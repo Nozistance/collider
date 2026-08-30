@@ -2,3 +2,12 @@
 .idea/
 *.iml
 target/
+exclude/
+.nrepl-port
+CLAUDE.md
+.clj-kondo/
+.lsp/
+world.snapshot
+world-*.tmp
+config.edn
+logs/

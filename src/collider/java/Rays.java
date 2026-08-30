@@ -28,8 +28,7 @@ public final class Rays {
                                (int) Math.floor(cx + sx * t),
                                (int) Math.floor(cy + sy * t),
                                (int) Math.floor(cz + sz * t));
-            int id = st >> 4;
-            if (id < 256 && solid[id]) return 0;
+            if (st < solid.length && solid[st]) return 0;
         }
         return 1;
     }
