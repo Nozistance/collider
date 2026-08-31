@@ -1,30 +1,14 @@
 (ns collider.world.light
 
-  (:require [collider.world.chunk :as chunk])
+  (:require [collider.world.block :as block]
+            [collider.world.chunk :as chunk])
   (:import (collider.world.chunk Section)
-           (java.util ArrayDeque Arrays HashMap)))
+           (java.util ArrayDeque HashMap)))
 
 (set! *warn-on-reflection* true)
 
-(def emission
-  {10 15, 11 15, 50 14, 51 15, 62 13, 76 7, 89 15, 91 15, 124 15, 138 15, 169 15})
-
-(def ^:private opacity-table
-  {0 0, 6 0, 8 3, 9 3, 18 1, 20 0, 26 0, 27 0, 28 0, 30 0, 31 0, 32 0,
-   37 0, 38 0, 39 0, 40 0, 50 0, 51 0, 54 0, 55 0, 63 0, 64 0, 65 0, 66 0,
-   68 0, 69 0, 70 0, 71 0, 72 0, 75 0, 76 0, 77 0, 79 3, 83 0, 85 0, 90 0,
-   95 0, 96 0, 101 0, 102 0, 106 0, 107 0, 111 0, 117 0, 131 0, 132 0,
-   143 0, 145 0, 154 0, 160 0, 161 1, 165 0, 166 0, 167 0, 175 0, 183 0,
-   184 0, 185 0, 186 0, 187 0})
-
-(def ^:private ^ints opacity-arr
-  (let [a (int-array 256)] (Arrays/fill a (int 255))
-    (doseq [[id op] opacity-table] (aset a (long id) (int op))) a))
-(def ^:private ^ints emission-arr
-  (let [a (int-array 256)] (doseq [[id em] emission] (aset a (long id) (int em))) a))
-
-(defn- opacity ^long [^long id] (if (< -1 id 256) (aget ^ints opacity-arr id) 255))
-(defn- emits ^long [^long id] (if (< -1 id 256) (aget ^ints emission-arr id) 0))
+(defn- opacity ^long [^long st] (block/opacity st))
+(defn- emits ^long [^long st] (block/emits st))
 (def ^:private ^:const SL 1)
 
 (def ^:private DX (long-array [1 -1 0 0 0 0]))
@@ -32,10 +16,11 @@
 (def ^:private DZ (long-array [0 0 0 0 1 -1]))
 (def ^:private ^:const OFF 8388608)
 (defn- pack ^long [^long x ^long y ^long z ^long l]
-  (bit-or (bit-shift-left (+ x OFF) 38) (bit-shift-left (+ z OFF) 14) (bit-shift-left (inc y) 4) l))
+  (bit-or (bit-shift-left (+ x OFF) 38) (bit-shift-left (+ z OFF) 14)
+          (bit-shift-left (inc (- y chunk/min-y)) 4) l))
 (defn- px ^long [^long e] (- (bit-shift-right e 38) OFF))
 (defn- pz ^long [^long e] (- (bit-and (bit-shift-right e 14) 0xFFFFFF) OFF))
-(defn- py ^long [^long e] (dec (bit-and (bit-shift-right e 4) 0x3FF)))
+(defn- py ^long [^long e] (+ chunk/min-y (dec (bit-and (bit-shift-right e 4) 0x3FF))))
 (defn- pl ^long [^long e] (bit-and e 0xF))
 (defn- l-idx ^long [^long x ^long y ^long z]
   (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15)))
@@ -43,23 +28,23 @@
 (defn- section ^Section [chunks template x y z]
   (let [x (long x) y (long y) z (long z)]
     (get (:sections (get chunks (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4)) template))
-         (bit-shift-right y 4))))
+         (chunk/section-index y))))
 
 (defn- block-id-at [chunks template x y z]
   (let [y (long y)]
-    (if (or (neg? y) (> y 255))
-      0
-      (bit-shift-right (long (chunk/chunks-get-block chunks template x y z)) 4))))
+    (if (chunk/in-range? y)
+      (long (chunk/chunks-get-block chunks template x y z))
+      0)))
 
 (defn- light-key ^long [^long x ^long y ^long z ^long ch]
-  (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4)) 5)
-          (bit-shift-left (bit-shift-right y 4) 1)
+  (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4)) 6)
+          (bit-shift-left (chunk/section-index y) 1)
           ch))
 
 (defn- get-l [^HashMap cache chunks template ch x y z]
   (let [ch (long ch) x (long x) y (long y) z (long z)]
-    (if (or (neg? y) (> y 255))
-      (if (and (= ch SL) (> y 255)) 15 0)
+    (if (not (chunk/in-range? y))
+      (if (and (= ch SL) (> y chunk/max-y)) 15 0)
       (if-let [^bytes arr (.get cache (light-key x y z ch))]
         (chunk/nibble-get arr (l-idx x y z))
         (if-let [s (section chunks template x y z)]
@@ -68,7 +53,7 @@
 
 (defn- set-l! [^HashMap cache chunks template ch x y z v]
   (let [ch (long ch) x (long x) y (long y) z (long z) v (long v)]
-    (when (<= 0 y 255)
+    (when (chunk/in-range? y)
       (let [k (light-key x y z ch)]
         (if-let [^bytes arr (.get cache k)]
           (do (chunk/nibble-set! arr (l-idx x y z) v) true)
@@ -109,7 +94,7 @@
             (dotimes [d 6]
               (let [dy (aget ^longs DY d)
                     nx (+ x (aget ^longs DX d)) ny (+ y dy) nz (+ z (aget ^longs DZ d))]
-                (when (<= 0 ny 255)
+                (when (chunk/in-range? ny)
                   (let [op   (opacity (long (block-id-at chunks template nx ny nz)))
                         cand (if (and (= ch SL) (= l 15) (= dy -1) (zero? op))
                                15
@@ -133,19 +118,19 @@
         cp (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4))
         c    (get chunks cp template)
         secs (:sections c)
-        top  (long (loop [si 15] (cond (neg? si) 0 (nth secs si) si :else (recur (dec si)))))
-        ymax (+ (* 16 top) 15)]
+        top  (long (loop [si (dec chunk/section-count)] (cond (neg? si) 0 (nth secs si) si :else (recur (dec si)))))
+        ymax (+ chunk/min-y (* 16 top) 15)]
     (loop [yy (inc y)]
       (cond
         (> yy ymax) true
-        (pos? (opacity (bit-shift-right (chunk/get-block c (bit-and x 15) yy (bit-and z 15)) 4))) false
+        (pos? (opacity (chunk/get-block c (bit-and x 15) yy (bit-and z 15)))) false
         :else (recur (inc yy))))))
 
 (defn- rebuild [chunks template ^HashMap cache]
   (reduce
    (fn [chs k]
      (let [k (long k) ^bytes arr (.get cache k)
-           cp (bit-shift-right k 5) si (bit-and (bit-shift-right k 1) 15) ch (bit-and k 1)
+           cp (bit-shift-right k 6) si (bit-and (bit-shift-right k 1) 31) ch (bit-and k 1)
            c  (get chs cp template)
            ^Section s (get (:sections c) si)]
        (if (nil? s)
@@ -179,11 +164,11 @@
     (propagate! cache chunks template ch pq)))
 
 (defn blocks-light? [^long state]
-  (> (opacity (bit-shift-right state 4)) 2))
+  (> (opacity state) 2))
 
 (defn light-at [chunks template x y z]
-  (if (or (neg? (long y)) (> (long y) 255))
-    (if (> (long y) 255) 15 0)
+  (if (not (chunk/in-range? y))
+    (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks template x y z)]
       (max (chunk/nibble-get (.sky-light ^Section s) (l-idx x y z))
            (chunk/nibble-get (.block-light ^Section s) (l-idx x y z)))
@@ -194,8 +179,8 @@
         (reduce
          (fn [[b s] [pos old new]]
            (let [[x y z] pos
-                 old-id (bit-shift-right (long old) 4)
-                 new-id (bit-shift-right (long new) 4)
+                 old-id (long old)
+                 new-id (long new)
                  op?    (not= (opacity old-id) (opacity new-id))
                  em-new (emits new-id)]
              (if (or op? (not= (emits old-id) em-new))

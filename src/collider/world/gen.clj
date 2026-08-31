@@ -1,5 +1,6 @@
 (ns collider.world.gen
-  (:require [collider.world.chunk :as chunk]))
+  (:require [collider.world.block :as block]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,15 +15,9 @@
   (let [bs (short-array 4096)]
     (dotimes [i 4096]
       (let [y  (quot i 256)
-            id (long (case y 0 7, (1 2) 3, 3 2, 0))]
-        (aset bs i (short (bit-shift-left id 4)))))
+            st (long (case y 0 (block/state :bedrock), (1 2) (block/state :dirt), 3 (block/state :grass-block), 0))]
+        (aset bs i (short st))))
     (chunk/->Section bs (byte-array 2048) (flat-sky))))
 
 (def flat-chunk
-  {:sections (assoc (vec (repeat 16 nil)) 0 (flat-section))})
-
-(let [[bm data] (chunk/encode-column flat-chunk)]
-  (def primary-bitmask bm)
-  (def ^bytes flat-column data))
-
-(def ^bytes unload-column (byte-array 256))
+  {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))})

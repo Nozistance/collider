@@ -1,7 +1,20 @@
 (ns collider.world.chunk
+  "Chunks and sections. A section is 16x16x16 states in a short array plus
+   two light nibble arrays; a chunk is a map with :sections. `chunks` is an
+   int-map keyed by `pos->id`; `template` stands in for chunks not in the map."
   (:import (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
+
+(def ^:const min-y -64)
+(def ^:const max-y 319)
+(def ^:const section-count 24)
+(def ^:const section-offset 4)
+
+(defn in-range? [^long y] (<= min-y y max-y))
+(defn section-index
+  "Index of the section holding y in the :sections vector."
+  ^long [^long y] (+ (bit-shift-right y 4) section-offset))
 
 (deftype Section [^shorts blocks ^bytes block-light ^bytes sky-light])
 (defn full-light ^bytes []
@@ -33,7 +46,7 @@
 
 (defn set-block [chunk lx y lz state]
   (let [y   (long y)
-        si  (bit-shift-right y 4)
+        si  (section-index y)
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
         s   (or (get (:sections chunk) si) empty-section)]
     (assoc-in chunk [:sections si] (section-set-block s idx state))))
@@ -41,7 +54,7 @@
 (defn get-block
   ^long [chunk lx y lz]
   (let [y  (long y)
-        si (bit-shift-right y 4)]
+        si (section-index y)]
     (if-let [s (get (:sections chunk) si)]
       (bit-and (long (aget ^shorts (.blocks ^Section s)
                            (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))))
@@ -81,6 +94,7 @@
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 
 (defn chunks-get-block
+  "State of the block at [x y z]. Chunks not in the map read as template."
   (^long [chunks template [x y z]]
    (chunks-get-block chunks template x y z))
   ([chunks template x y z]
@@ -93,14 +107,17 @@
      (get-block (get ~chunks (pos->id (bit-shift-right x# 4) (bit-shift-right z# 4)) ~template)
                 (bit-and x# 15) y# (bit-and z# 15))))
 
-(defn chunks-set-blocks [chunks template changes]
+(defn chunks-set-blocks
+  "Applies [[x y z] state] changes and returns the new chunks map. Chunks
+   not in the map start from template."
+  [chunks template changes]
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]
       (doseq [[[x y z] state] changes]
         (let [x  (long x) y (long y) z (long z)
               cp (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
-              si (bit-shift-right y 4)
+              si (section-index y)
               k  [cp si]
               ^shorts arr
               (or (.get cache k)
@@ -120,43 +137,3 @@
                             (->Section arr (.block-light s) (.sky-light s))))))
        chunks
        (sort-by key (into {} cache))))))
-
-(defn encode-sections [chunk sis]
-  (let [sections (into [] (keep (fn [si] (when-let [s (get (:sections chunk) si)] [si s]))) (sort sis))
-        n        (count sections)
-        data     (byte-array (* n 12288))
-        bl-base  (* n 8192)
-        sl-base  (+ bl-base (* n 2048))]
-    (doseq [[i [_si s]] (map-indexed vector sections)]
-      (let [^Section s s
-            ^shorts bs (.blocks s)
-            off        (* (long i) 8192)]
-        (dotimes [j 4096]
-          (let [v (bit-and (long (aget bs j)) 0xFFFF)]
-            (aset data (+ off (* 2 j)) (unchecked-byte (bit-and v 0xFF)))
-            (aset data (+ off (* 2 j) 1) (unchecked-byte (unsigned-bit-shift-right v 8)))))
-        (System/arraycopy (.block-light s) 0 data (+ bl-base (* (long i) 2048)) 2048)
-        (System/arraycopy (.sky-light s) 0 data (+ sl-base (* (long i) 2048)) 2048)))
-    [(reduce (fn [m [si _]] (bit-or (long m) (bit-shift-left 1 (long si)))) 0 sections)
-     data]))
-
-(defn encode-column [chunk]
-  (let [sections   (into [] (keep-indexed (fn [si s] (when s [si s]))) (:sections chunk))
-        n          (count sections)
-        data       (byte-array (+ (* n 12288) 256))
-        bl-base    (* n 8192)
-        sl-base    (+ bl-base (* n 2048))
-        biome-base (+ sl-base (* n 2048))]
-    (doseq [[i [_si s]] (map-indexed vector sections)]
-      (let [^Section s s
-            ^shorts bs (.blocks s)
-            off        (* (long i) 8192)]
-        (dotimes [j 4096]
-          (let [v (bit-and (long (aget bs j)) 0xFFFF)]
-            (aset data (+ off (* 2 j)) (unchecked-byte (bit-and v 0xFF)))
-            (aset data (+ off (* 2 j) 1) (unchecked-byte (unsigned-bit-shift-right v 8)))))
-        (System/arraycopy (.block-light s) 0 data (+ bl-base (* (long i) 2048)) 2048)
-        (System/arraycopy (.sky-light s) 0 data (+ sl-base (* (long i) 2048)) 2048)))
-    (Arrays/fill data (int biome-base) (alength data) (byte 1))
-    [(reduce (fn [m [si _]] (bit-or (long m) (bit-shift-left 1 (long si)))) 0 sections)
-     data]))

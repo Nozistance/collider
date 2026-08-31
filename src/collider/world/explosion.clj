@@ -1,34 +1,14 @@
 (ns collider.world.explosion
 
   (:require [collider.rnd :as rnd]
-            [collider.world.chunk :as chunk]
-            [collider.world.liquid :as liquid]
-            [collider.world.support :as support])
-  (:import (clojure.lang Murmur3)
-           (collider.java Rays)
+            [collider.world.block :as block]
+            [collider.world.chunk :as chunk])
+  (:import (collider.java Rays)
            (collider.world.chunk Section)))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private resistance
-  {1 6.0, 2 0.6, 3 0.5, 4 6.0, 5 3.0, 7 3.6E7
-   8 100.0, 9 100.0, 10 100.0, 11 100.0
-   12 0.5, 13 0.6, 17 2.0, 18 0.2, 20 0.3, 24 0.8, 35 0.8
-   43 6.0, 44 6.0, 45 6.0, 46 0.0, 48 6.0, 49 1200.0, 50 0.0, 51 0.0
-   79 0.5, 80 0.1, 85 3.0, 98 6.0, 109 6.0, 121 9.0, 155 0.8, 162 2.0})
-
-(def ^:private ^doubles resist-arr
-  (let [a (double-array 256)] (java.util.Arrays/fill a 3.0)
-    (doseq [[id r] resistance] (aset a (long id) (double r))) a))
-
-(defn- resist ^double [^long id] (if (< -1 id 256) (aget ^doubles resist-arr id) 3.0))
-(def ^:private ^booleans solid-arr
-  (let [a (boolean-array 256)]
-    (dotimes [id 256]
-      (aset a id (boolean (and (pos? id)
-                               (not (liquid/liquid-state? (bit-shift-left id 4)))
-                               (not (support/fragile-id? id))))))
-    a))
+(def ^:private solid-arr block/solid-arr)
 
 (def ^:private ^:const region-r 10)
 (deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
@@ -40,8 +20,8 @@
         cx1 (bit-shift-right (+ (long cx) region-r) 4)
         cz0 (bit-shift-right (- (long cz) region-r) 4)
         cz1 (bit-shift-right (+ (long cz) region-r) 4)
-        sy0 (max 0 (bit-shift-right (- (long cy) region-r) 4))
-        sy1 (min 15 (bit-shift-right (+ (long cy) region-r) 4))
+        sy0 (max (bit-shift-right chunk/min-y 4) (bit-shift-right (- (long cy) region-r) 4))
+        sy1 (min (bit-shift-right chunk/max-y 4) (bit-shift-right (+ (long cy) region-r) 4))
         ncx (inc (- cx1 cx0))
         ncz (inc (- cz1 cz0))
         nsy (inc (- sy1 sy0))
@@ -50,7 +30,7 @@
       (dotimes [iz ncz]
         (let [col (get chunks (chunk/pos->id (+ cx0 ix) (+ cz0 iz)) template)]
           (dotimes [iy nsy]
-            (when-let [^Section s (get-in col [:sections (+ sy0 iy)])]
+            (when-let [^Section s (get-in col [:sections (+ sy0 iy chunk/section-offset)])]
               (aset grid (+ (* (+ (* ix ncz) iz) nsy) iy) (.blocks s)))))))
     (Region. grid cx0 cz0 sy0 ncx ncz nsy)))
 
@@ -94,7 +74,7 @@
                         st (read-block rg bx by bz)
                         f  (if (zero? st)
                              f
-                             (- f (* (+ (resist (bit-shift-right st 4)) 0.3) 0.3)))]
+                             (- f (* (+ (block/resist st) 0.3) 0.3)))]
                     (when (and (pos? f) (pos? st))
                       (let [ix (- bx ox) iy (- by oy) iz (- bz oz)]
                         (when (and (< -1 ix W) (< -1 iy W) (< -1 iz W))
@@ -109,10 +89,6 @@
              (when (aget hit (+ (* (+ (* ix W) iy) W) iz))
                (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
        out))))
-
-(defn- solid-state? [^long st]
-  (let [id (bit-shift-right st 4)]
-    (and (< id 256) (aget ^booleans solid-arr id))))
 
 (defn block-density [^Region rg [cx cy cz] [px py pz] half height]
   (let [cx (double cx) cy (double cy) cz (double cz)

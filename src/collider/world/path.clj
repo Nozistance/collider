@@ -13,8 +13,7 @@
   (= :water (liquid/liquid-class (chunk/block-state chunks template x y z))))
 
 (defn- fence-at? [chunks template [x y z]]
-  (contains? phys/fence-ids
-             (bit-shift-right (long (chunk/block-state chunks template x y z)) 4)))
+  (phys/fence-at? chunks template x y z))
 
 (defn- open? [chunks template x y z]
   (and (not (phys/solid? chunks template x y z))

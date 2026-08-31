@@ -1,18 +1,19 @@
 (ns collider.world.grass
 
-  (:require [collider.world.chunk :as chunk]
+  (:require [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
             [collider.world.light :as light]))
 
 (set! *warn-on-reflection* true)
 
-(def grass-state 0x20)
-(def dirt-state  0x30)
-(def tallgrass-id 31)
+(def grass-state (block/state :grass-block))
+(def dirt-state  (block/state :dirt))
+(defn short-grass? [st] (= :short-grass (block/block-of (long st))))
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
-  (if (or (neg? (long y)) (> (long y) 255))
-    0
-    (chunk/chunks-get-block chunks gen/flat-chunk p)))
+  (if (chunk/in-range? y)
+    (chunk/chunks-get-block chunks gen/flat-chunk p)
+    0))
 
 (def ^:private neighborhood
   (vec (for [dy [-1 0 1] [dx dz] [[1 0] [-1 0] [0 1] [0 -1]]] [dx dy dz])))
