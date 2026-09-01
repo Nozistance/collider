@@ -2,12 +2,14 @@
 
   (:require [collider.world.fire :as fire]
             [collider.world.grass :as grass]
+            [collider.world.kelp :as kelp]
             [collider.world.liquid :as liquid]
             [collider.world.support :as support]))
 
 (set! *warn-on-reflection* true)
 
-(def rules [liquid/rule
+(def rules [kelp/rule
+   liquid/rule
    fire/rule
    support/rule
    grass/rule
@@ -16,10 +18,14 @@
 (defn- rule-for [chunks st pos]
   (reduce (fn [_ r] (when ((:match? r) chunks st pos) (reduced r))) nil rules))
 
-(defn wake-tick [chunks st tick pos old self?]
+(defn wake-tick
+  "Tick the first matching rule of the state wants, or nil."
+  [chunks st tick pos old self?]
   (when-let [r (rule-for chunks st pos)]
     ((:wake r) chunks tick pos old self?)))
 
-(defn cell-changes [chunks st pos]
+(defn cell-changes
+  "[[pos state] ...] from the first matching rule of the state."
+  [chunks st pos]
   (when-let [r (rule-for chunks st pos)]
     ((:due r) chunks pos)))

@@ -1,36 +1,45 @@
 (ns collider.world.liquid
-  (:require [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]
-            [collider.world.support :as support]))
+  (:require [collider.vec :as v]
+            [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
+            [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)
 
 (def liquids
-  {:water {:ids #{8 9}   :flowing 0x80 :step 1 :delay 5  :bucket 326 :infinite? true
+  {:water {:block :water :step 1 :delay 5  :bucket :water-bucket :infinite? true
            :push 0.014}
-   :lava  {:ids #{10 11} :flowing 0xA0 :step 2 :delay 30 :bucket 327 :infinite? false
+   :lava  {:block :lava :step 2 :delay 30 :bucket :lava-bucket :infinite? false
            :decay-jitter 4
-           :mix {:source 0x310 :flowing 0x40 :flowing-max 4 :smother 0x10}}})
+           :mix {:source :obsidian :flowing :cobblestone :smother :stone}}})
 
-(def ^:private class-of-id
-  (into {} (for [[cls {:keys [ids]}] liquids, id ids] [id cls])))
+(def ^:private base
+  (into {} (map (fn [[cls {:keys [block]}]] [cls (block/state block)])) liquids))
 
-(def ^:private bucket->flowing
-  (into {} (map (fn [[_ {:keys [bucket flowing]}]] [bucket flowing])) liquids))
+(def ^:private class-of-block
+  (into {} (map (fn [[cls {:keys [block]}]] [block cls])) liquids))
+
+(def ^:private bucket->class
+  (into {} (map (fn [[cls {:keys [bucket]}]] [bucket cls])) liquids))
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
-(def ^:private ^booleans liquid-table
-  (let [a (boolean-array 256)]
-    (doseq [id (mapcat :ids (vals liquids))] (aset a (long id) true))
-    a))
 
-(defn liquid-class [st] (class-of-id (bit-shift-right (long st) 4)))
-(defn liquid-state? [st]
-  (let [id (bit-shift-right (long st) 4)]
-    (and (< -1 id 256) (aget ^booleans liquid-table id))))
-(defn bucket->state [item-id] (bucket->flowing (long item-id)))
+(def ^:private water-source (block/state :water))
+
+(defn liquid-state? [st] (block/liquid? (long st)))
+(defn liquid-class
+  "Class of the liquid at the state: :water or :lava. A waterlogged state counts as :water."
+  [st]
+  (cond
+    (liquid-state? st) (class-of-block (block/block-of (long st)))
+    (block/waterlogged? (long st)) :water))
+(defn level
+  "Level of the liquid: 0 for a source, 1..7 flowing, 8 falling. Waterlogged states are sources."
+  ^long [st]
+  (if (liquid-state? st) (- (long st) (long (base (liquid-class st)))) 0))
+(defn liquid-state ^long [cls ^long level] (+ (long (base cls)) level))
+(defn bucket->state [item] (when-let [cls (bucket->class item)] (liquid-state cls 0)))
 (defn delay-of [st] (long (get-in liquids [(liquid-class st) :delay])))
-(defn- level ^long [st] (bit-and (long st) 15))
 
 (defn source-state? [st]
   (and (liquid-state? st) (zero? (level st))))
@@ -44,7 +53,7 @@
 (defn update-delay ^long [old new tick pos]
   (let [cls (liquid-class new)
         {:keys [delay decay-jitter]} (liquids cls)
-        om  (level old)
+        om  (if (liquid-state? old) (level old) 0)
         nm  (level new)]
     (if (and decay-jitter
              (= cls (liquid-class old))
@@ -53,11 +62,15 @@
       (* (long delay) (long decay-jitter))
       (long delay))))
 
-(defn- state-at [chunks template x y z]
+(defn- raw-at [chunks template x y z]
   (let [y (long y)]
-    (if (or (neg? y) (> y 255))
-      -1
-      (chunk/chunks-get-block chunks template x y z))))
+    (if (chunk/in-range? y)
+      (chunk/chunks-get-block chunks template x y z)
+      -1)))
+
+(defn- state-at [chunks template x y z]
+  (let [st (long (raw-at chunks template x y z))]
+    (if (and (pos? st) (block/waterlogged? st)) water-source st)))
 
 (defn- shifted [chunks template [x y z] [dx dy dz]]
   (state-at chunks template
@@ -67,20 +80,20 @@
 
 (defn- air? [st] (zero? (long st)))
 (defn- effective ^long [st] (let [m (level st)] (if (>= m 8) 0 m)))
-(defn- enterable? [st] (or (air? st) (support/washable? st)))
+(defn- enterable? [st] (or (air? st) (and (pos? (long st)) (block/replaceable? (long st)))))
 (defn- other-class? [cls st]
   (let [c (liquid-class st)]
     (and (some? c) (not= c cls))))
 
 (defn- blocks-movement? [st]
-  (let [id (bit-shift-right (long st) 4)]
-    (and (pos? id)
-         (nil? (class-of-id id))
-         (not (support/fragile-id? id)))))
+  (let [st (long st)]
+    (and (pos? st)
+         (not (block/liquid? st))
+         (not (block/needs-support? st)))))
 
 (defn- decay ^long [chunks template cls p]
   (let [st (state-at chunks template (p 0) (p 1) (p 2))]
-    (if (= cls (liquid-class st))
+    (if (and (pos? (long st)) (= cls (liquid-class st)))
       (let [m (level st)] (if (>= m 8) 0 m))
       -1)))
 
@@ -115,7 +128,7 @@
 
 (defn flow-vector [chunks template [x y z :as p]]
   (let [st (state-at chunks template x y z)]
-    (when-let [cls (liquid-class st)]
+    (when-let [cls (when (pos? (long st)) (liquid-class st))]
       (let [i (decay chunks template cls p)
             [vx vz] (reduce (fn [[vx vz] [dx dz :as d]]
                               (let [k (neighbor-pull chunks template cls i p d)]
@@ -166,9 +179,7 @@
 
 (defn- mix-product [mix m]
   (when mix
-    (cond
-      (zero? (long m)) (:source mix)
-      (<= (long m) (long (:flowing-max mix))) (:flowing mix))))
+    (block/state (if (zero? (long m)) (:source mix) (:flowing mix)))))
 
 (def ^:private contact-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0]])
 (def ^:private convert-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 -1 0]])
@@ -265,8 +276,8 @@
         (when (<= m 7) m))
       :else nil)))
 
-(defn- arrive [{:keys [chunks template cls mix fl]} pos nl]
-  (let [plain (bit-or (long fl) (long nl))
+(defn- arrive [{:keys [chunks template cls mix]} pos nl]
+  (let [plain (liquid-state cls nl)
         state (if (and mix (touches-other? chunks template cls pos))
                 (or (mix-product mix nl) plain)
                 plain)]
@@ -297,34 +308,77 @@
         grounded? (not (or (enterable? below) (liquid-state? below)))]
     (cond
       (and mix (other-class? cls below))
-      [[[x (dec (long y)) z] (:smother mix)]]
+      [[[x (dec (long y)) z] (block/state (:smother mix))]]
       down? (fall-changes env p below)
       (and (< nl 8) (or (zero? (long nm)) grounded?))
       (spread-changes env p nl))))
+
+(def ^:private column-drag {:soul-sand :false :magma :true})
+
+(defn bubble-column? [st] (= :bubble-column (block/type-of (long st))))
+
+(defn- column-state
+  "Bubble column state that belongs above the raw state below, or nil."
+  [below]
+  (cond
+    (bubble-column? below) below
+    :else (when-let [drag (get column-drag (block/type-of (long below)))]
+            (block/state :bubble-column {:drag drag}))))
+
+(defn- water-source? [st] (= (long st) water-source))
+
+(defn- column-changes [chunks template [x y z] col]
+  (loop [y (long y) acc []]
+    (let [st (long (raw-at chunks template x y z))]
+      (if (or (water-source? st) (and (bubble-column? st) (not= st (long col))))
+        (recur (inc y) (conj acc [[x y z] col]))
+        acc))))
+
+(defn- bubble-changes [chunks template [x y z :as p]]
+  (let [raw (long (raw-at chunks template x y z))
+        col (column-state (long (raw-at chunks template x (dec (long y)) z)))]
+    (cond
+      (and (bubble-column? raw) (nil? col)) [[p water-source]]
+      (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks template p col))))
+
+(defn bubble-push
+  "Vertical speed of an entity with its feet at pos after the bubble column there, as vanilla."
+  ^double [chunks template pos ^double vy]
+  (let [x (long (Math/floor (v/x pos))) y (long (Math/floor (v/y pos))) z (long (Math/floor (v/z pos)))
+        st (long (raw-at chunks template x y z))]
+    (if (bubble-column? st)
+      (let [drag? (= :true (:drag (block/props-of st)))
+            open? (zero? (long (raw-at chunks template x (inc y) z)))]
+        (cond
+          (and drag? open?) (max -0.9 (- vy 0.03))
+          drag? (max -0.3 (- vy 0.03))
+          open? (min 1.8 (+ vy 0.1))
+          :else (min 0.7 (+ vy 0.06))))
+      vy)))
 
 (defn update-cell [chunks template [x y z :as p]]
   (let [st  (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
-      (let [{:keys [step flowing infinite? mix]} (liquids cls)
+      (let [{:keys [step infinite? mix]} (liquids cls)
             env   {:chunks chunks :template template :cls cls
-                   :step (long step) :fl (long flowing)
-                   :infinite? infinite? :mix mix}
+                   :step (long step) :infinite? infinite? :mix mix}
             above (shifted chunks template p [0 1 0])
             below (shifted chunks template p [0 -1 0])
             sides (side-states chunks template p)]
         (if-let [mixed (mixed-state cls mix st above sides)]
           [[p mixed]]
           (if-let [nm (recompute-level env st above below sides)]
-            (into (if (not= (long nm) (level st))
-                    [[p (bit-or (long flowing) (long nm))]]
-                    [])
-                  (flow-changes env p nm below))
+            (or (when (zero? (long nm)) (seq (bubble-changes chunks template p)))
+                (into (if (not= (long nm) (level st))
+                        [[p (liquid-state cls nm)]]
+                        [])
+                      (flow-changes env p nm below)))
             [[p 0]]))))))
 
 (def rule
   {:name   :liquid
-   :match? (fn [_chunks st _p] (liquid-state? st))
+   :match? (fn [_chunks st _p] (some? (liquid-class st)))
    :wake   (fn [chunks tick p old self?]
              (if (mix-wake? chunks gen/flat-chunk p)
                (inc (long tick))

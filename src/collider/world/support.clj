@@ -1,62 +1,42 @@
 (ns collider.world.support
-  (:require [collider.world.chunk :as chunk]
+  (:require [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private torch-ids  #{50 75 76})
-(def ^:private side-ids   #{65 68})
-(def ^:private ground-ids #{6 27 28 31 32 37 38 39 40 51 55 59 63 66 70 72 78 104 105 141 142 171})
-(def ^:private ^booleans fragile-table
-  (let [a (boolean-array 256)]
-    (doseq [id (concat torch-ids side-ids ground-ids)] (aset a (long id) true))
-    a))
-
-(defn fragile-id? [id]
-  (let [id (long id)]
-    (and (< -1 id 256) (aget ^booleans fragile-table id))))
-
-(defn fragile? [st] (fragile-id? (bit-shift-right (long st) 4)))
-(def ^:private washable-ids (disj (into torch-ids ground-ids) 63))
-
-(defn washable? [st] (contains? washable-ids (bit-shift-right (long st) 4)))
-(def ^:private torch-support
-  {1 [-1 0 0], 2 [1 0 0], 3 [0 0 -1], 4 [0 0 1]})
-
-(def ^:private side-support
-  {2 [0 0 1], 3 [0 0 -1], 4 [1 0 0], 5 [-1 0 0]})
+(defn needs-support? [st] (block/needs-support? (long st)))
+(defn replaceable? [st] (block/replaceable? (long st)))
 
 (defn- state-at ^long [chunks template [_ y _ :as pos]]
   (let [y (long y)]
-    (if (or (neg? y) (> y 255))
-      -1
-      (chunk/chunks-get-block chunks template pos))))
+    (if (chunk/in-range? y)
+      (chunk/chunks-get-block chunks template pos)
+      -1)))
 
 (defn- solid-at? [chunks template pos]
-  (let [st (state-at chunks template pos)
-        id (bit-shift-right st 4)]
-    (or (neg? st)
-        (and (pos? id)
-             (not (#{8 9} id))
-             (not (fragile-id? id))))))
+  (let [st (state-at chunks template pos)]
+    (or (neg? st) (block/solid? st))))
+
+(def ^:private kelp-types #{:kelp :kelp-plant})
+
+(defn- kelp-supported? [chunks template pos]
+  (let [below (state-at chunks template (mapv + pos [0 -1 0]))]
+    (or (contains? kelp-types (block/type-of below))
+        (and (block/face-sturdy? below :up) (not= :magma (block/type-of below))))))
 
 (defn supported? [chunks template pos st]
-  (let [id  (bit-shift-right (long st) 4)
-        m   (bit-and (long st) 15)
-        off (cond
-              (torch-ids id)  (torch-support m [0 -1 0])
-              (side-ids id)   (side-support m [0 0 1])
-              (ground-ids id) [0 -1 0]
-              :else nil)]
-    (if off
-      (solid-at? chunks template (mapv + pos off))
-      true)))
+  (cond
+    (contains? kelp-types (block/type-of (long st))) (kelp-supported? chunks template pos)
+    :else (if-let [off (block/support-offset (long st))]
+            (solid-at? chunks template (mapv + pos off))
+            true)))
 
 (def rule
-  {:name   :fragile
-   :match? (fn [_chunks st _p] (fragile? st))
+  {:name   :support
+   :match? (fn [_chunks st _p] (needs-support? st))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
    :due    (fn [chunks p]
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                (when-not (supported? chunks gen/flat-chunk p st)
-                 [[p 0]])))})
+                 [[p (block/emptied st)]])))})
