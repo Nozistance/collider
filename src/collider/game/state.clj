@@ -1,15 +1,21 @@
 (ns collider.game.state
+  "Applies events and deltas to the world. `apply-event` handles what
+   players send (join, quit, move, dig, place, ...); `apply-deltas` merges
+   what the systems produced."
   (:require [clojure.core.reducers :as r]
+            [clojure.string]
             [collider.vec :as v]
             [clojure.data.int-map :as i]
             [clojure.set :as set]
             [collider.game.entity :as entity]
             [collider.game.deltas :as deltas]
             [collider.world.chunk :as chunk]
+            [collider.world.connect :as connect]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.rules :as rules])
-  (:import (collider.game.deltas Deltas)
+  (:import (clojure.lang MapEntry)
+           (collider.game.deltas Deltas)
            (java.nio.charset StandardCharsets)
            (java.util UUID)))
 
@@ -17,16 +23,9 @@
 
 (defn player-entries [world]
 
-  (let [ents (:entities world)]
-    (into [] (map (fn [eid] (clojure.lang.MapEntry/create eid (get ents eid))))
+  (let [entities (:entities world)]
+    (into [] (map (fn [eid] (MapEntry/create eid (get entities eid))))
           (sort (vals (:players world))))))
-
-(defn broadcast
-  ([world pkt] (broadcast world nil pkt))
-  ([world exclude pkt]
-   (for [eid (sort (vals (:players world)))
-         :when (not= eid exclude)]
-     [:send eid pkt])))
 
 (def spawn-pos [24.5 4.0 8.5])
 (def activation-radius 2)
@@ -78,9 +77,9 @@
   [[0 0 0] [1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
-  (if (or (neg? (long y)) (> (long y) 255))
-    0
-    (chunk/chunks-get-block chunks gen/flat-chunk p)))
+  (if (chunk/in-range? y)
+    (chunk/chunks-get-block chunks gen/flat-chunk p)
+    0))
 
 (defn- wake-tick [chunks tick p old self?]
   (let [st (block-or-zero chunks p)]
@@ -114,21 +113,25 @@
       (let [chunks' (-> chunks
                         (chunk/chunks-set-blocks gen/flat-chunk
                                                  (mapv (fn [[pos _ st]] [pos st]) real))
-                        (light/relight-batch gen/flat-chunk real))]
+                        (light/relight-batch gen/flat-chunk real))
+            derived (connect/derived-changes chunks' (map first real))
+            chunks' (chunk/chunks-set-blocks chunks' gen/flat-chunk derived)
+            events  (concat (when record-events? (map (fn [[pos _ st]] [pos st]) real)) derived)]
         (-> w
             (assoc :chunks chunks')
             (update :block-ticks schedule-updates (:tick w) chunks' real)
-            (cond-> record-events?
+            (cond-> (seq events)
               (update :block-events
                       (fn [ev]
-                        (reduce (fn [ev [pos _ st]]
+                        (reduce (fn [ev [pos st]]
                                   (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
-                                (or ev (i/int-map)) real)))))))))
+                                (or ev (i/int-map)) events)))))))))
 
 (defn- new-player [name tick]
   {:type           :player :name name :uuid (offline-uuid name)
    :pos            spawn-pos :yaw 0.0 :pitch 0.0 :on-ground true
    :chunk-pos      nil :sent-chunks (i/int-set) :needs-spawn? true
+   :chunk-rate     9.0 :chunk-quota 0.0 :batches-unacked 0 :batches-max 1
    :tracking       (i/int-set) :track nil
    :inventory      {} :held-slot 0
    :sneaking?      false :sprinting? false :skin-parts 0 :ping 0
@@ -154,15 +157,17 @@
                                         :yaw (or yaw 0.0) :pitch (or pitch 0.0)
                                         :on-ground (boolean on-ground)))))))
 
-(def ^:private sword-ids #{267 268 272 276 283})
+(defn- sword? [item]
+  (and (keyword? item) (clojure.string/ends-with? (name item) "-sword")))
+
 (defn- held-item [w eid slot]
   (if (<= 0 (long slot) 8)
     (update-entity w eid assoc :held-slot (long slot) :using-item? false)
     w))
 
-(defn- use-item [w eid face item-id]
+(defn- use-item [w eid face item]
   (if (and (= 255 (bit-and (long face) 0xFF))
-           (sword-ids (long item-id)))
+           (sword? item))
     (update-entity w eid assoc :using-item? true)
     w))
 
@@ -182,8 +187,8 @@
   (let [slot (long slot)]
     (if (and (<= 1 slot 44)
              (or (nil? stack)
-                 (and (<= 1 (long (:count stack 1)) 64)
-                      (not (neg? (long (:damage stack 0)))))))
+                 (and (keyword? (:item stack))
+                      (<= 1 (long (:count stack 1)) 64))))
       (set-slot w eid slot stack)
       w)))
 
@@ -194,13 +199,22 @@
         dz (- (double az) (double bz))]
     (< (+ (* dx dx) (* dy dy) (* dz dz)) tp-tolerance)))
 
+(defn- fall-changes [e changes vel]
+  (let [fall (double (or (:fall e) 0.0))
+        dy (if vel (v/y vel) 0.0)]
+    (cond
+      (or (:flying e) (:flying changes)) {:fall 0.0}
+      (:on-ground changes) (if (pos? fall) {:fall 0.0 :landed fall} {:fall 0.0})
+      (neg? dy) {:fall (- fall dy)}
+      :else nil)))
+
 (defn- apply-move [w eid changes]
   (let [e (get-in w [:entities eid])
         target (:tp-target e)
         new (:pos changes)]
     (cond
       (and target new (near-target? new target))
-      (update-entity w eid merge changes {:tp-target nil :client-vel [0.0 0.0 0.0]})
+      (update-entity w eid merge changes {:tp-target nil :client-vel [0.0 0.0 0.0] :fall 0.0})
       target
       (update-entity w eid merge (dissoc changes :pos))
       :else
@@ -209,7 +223,16 @@
             vel (when (and old new)
                   (v/v3 (- (v/x new) (v/x old)) (- (v/y new) (v/y old)) (- (v/z new) (v/z old))))
             changes (cond-> changes new (assoc :pos new))]
-        (update-entity w eid merge changes (when vel {:client-vel vel}))))))
+        (update-entity w eid merge changes (when vel {:client-vel vel}) (fall-changes e changes vel))))))
+
+(defn- chunk-batch-ack [w eid rate]
+  (let [rate (double rate)
+        rate (if (Double/isNaN rate) 0.01 (-> rate (max 0.01) (min 64.0)))]
+    (if-let [e (get-in w [:entities eid])]
+      (let [unacked (max 0 (dec (long (or (:batches-unacked e) 0))))]
+        (update-entity w eid merge (cond-> {:chunk-rate rate :batches-unacked unacked :batches-max 10}
+                                     (zero? unacked) (assoc :chunk-quota 1.0))))
+      w)))
 
 (defn- keepalive-echo [w eid id]
   (if-let [e (get-in w [:entities eid])]
@@ -229,17 +252,22 @@
     (update-entity w eid assoc k v)
     w))
 
-(defn apply-event [world [tag & args]]
+(defn apply-event
+  "Applies one player event [tag & args] to the world. Unknown tags are
+   ignored."
+  [world [tag & args]]
   (case tag
     :player-join (apply player-join world args)
     :player-quit (apply player-quit world args)
     :move (let [[eid changes] args] (apply-move world eid changes))
     :keepalive-echo (apply keepalive-echo world args)
+    :chunk-batch-ack (apply chunk-batch-ack world args)
     :entity-action (apply entity-action world args)
+    :input (let [[eid flags] args] (update-entity world eid merge flags))
     :client-settings (let [[eid sp] args] (update-entity world eid assoc :skin-parts sp))
     :held-item (apply held-item world args)
     :creative-slot (apply creative-slot world args)
-    :place (let [[eid _ face item-id] args] (use-item world eid face item-id))
+    :place (let [[eid _ face item] args] (use-item world eid face item))
     :dig (let [[eid status] args] (release-item world eid status))
     world))
 
@@ -316,22 +344,20 @@
                           (assoc-in [:entities a] (entity/of b))
                           (update :next-eid (fnil max 1000000) (inc (long a))))))
     :set-block (apply-set-blocks w [(vec args)] false)
+    :edit-blocks (apply-set-blocks w (first args) false)
     :set-blocks (apply-set-blocks w (first args) true)
     :ticks-flushed (apply defer-ticks w args)
     :block-events-flushed (assoc w :block-events nil)
-    :chunk-flush (let [[held resent t] args]
-                   (assoc w
-                          :dirty-chunks (when (seq held) held)
-                          :chunk-resent (reduce (fn [m cp] (assoc m cp t))
-                                                (or (:chunk-resent w) (i/int-map))
-                                                resent)))
     :set-time (assoc w :time-of-day (long (first args)))
     (if (deltas/entity-tags tag)
       (update-entity w (first args) apply-entity-delta delta)
       w)))
 
-(defn apply-deltas [world deltas]
-  (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/bucket-deltas deltas/empty-deltas deltas))
+(defn apply-deltas
+  "Applies the deltas of one tick. World deltas go first, in order; entity
+   deltas are then merged per entity; removals come last. Returns [world' deltas]."
+  [world deltas]
+  (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
         [w removes _] (reduce
                        (fn [[w removes seen :as acc] [tag & args :as delta]]
                          (case tag
@@ -346,13 +372,13 @@
                            [(apply-world-delta w delta) removes seen]))
                        [world [] #{}]
                        (.world d))
-        ents    (:entities w)
+        entities    (:entities w)
         updated (r/fold 1 (r/monoid i/merge i/int-map)
                         (fn [m [eid ds]]
-                          (if-let [e (get ents eid)]
+                          (if-let [e (get entities eid)]
                             (assoc m eid (reduce apply-entity-delta e ds))
                             m))
-                        (vec (.ents d)))
-        w (if (pos? (count updated)) (assoc w :entities (i/merge ents updated)) w)
+                        (vec (.entities d)))
+        w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)
         w (reduce player-quit w removes)]
-    [w (.out d)]))
+    [w d]))

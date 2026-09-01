@@ -1,25 +1,11 @@
 (ns collider.game.commands
-  (:require [clojure.string :as str]))
+  (:require [clojure.string :as str]
+            [collider.data :as data]))
+
+(defn- block-name [kw] (str/replace (name kw) "-" "_"))
+(defn- block-kw [s] (keyword (str/replace (str/replace (str/lower-case (str s)) #"^minecraft:" "") "_" "-")))
 
 (set! *warn-on-reflection* true)
-
-(def block-names
-  {"air" 0 "stone" 1 "grass" 2 "dirt" 3 "cobblestone" 4 "planks" 5 "sapling" 6
-   "bedrock" 7 "flowing_water" 8 "water" 9 "flowing_lava" 10 "lava" 11
-   "sand" 12 "gravel" 13 "gold_ore" 14 "iron_ore" 15 "coal_ore" 16 "log" 17
-   "leaves" 18 "sponge" 19 "glass" 20 "lapis_ore" 21 "lapis_block" 22
-   "sandstone" 24 "web" 30 "tallgrass" 31 "wool" 35 "gold_block" 41
-   "iron_block" 42 "stone_slab" 44 "brick_block" 45 "tnt" 46 "bookshelf" 47
-   "mossy_cobblestone" 48 "obsidian" 49 "torch" 50 "fire" 51 "oak_stairs" 53
-   "chest" 54 "diamond_ore" 56 "diamond_block" 57 "crafting_table" 58
-   "farmland" 60 "furnace" 61 "ladder" 65 "rail" 66 "stone_stairs" 67
-   "snow_layer" 78 "ice" 79 "snow" 80 "clay" 82 "fence" 85 "pumpkin" 86
-   "netherrack" 87 "soul_sand" 88 "glowstone" 89 "lit_pumpkin" 91
-   "stonebrick" 98 "glass_pane" 102 "melon_block" 103 "nether_brick" 112
-   "end_stone" 121 "wooden_slab" 126 "emerald_ore" 129 "emerald_block" 133
-   "beacon" 138 "cobblestone_wall" 139 "redstone_block" 152 "quartz_block" 155
-   "hay_block" 170 "carpet" 171 "hardened_clay" 172 "coal_block" 173
-   "packed_ice" 174 "prismarine" 168 "sea_lantern" 169 "slime" 165})
 
 (def commands [
 
@@ -33,12 +19,12 @@
      [:world :time-query]]]
    [:fill "fill a box with a block (~ = your position)"
     [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
-     [:y1 [:coord {:min 0 :max 255 :axis 1}]]
+     [:y1 [:coord {:min -64 :max 319 :axis 1}]]
      [:z1 [:coord {:min -10000 :max 10000 :axis 2}]]
      [:x2 [:coord {:min -10000 :max 10000 :axis 0}]]
-     [:y2 [:coord {:min 0 :max 255 :axis 1}]]
+     [:y2 [:coord {:min -64 :max 319 :axis 1}]]
      [:z2 [:coord {:min -10000 :max 10000 :axis 2}]]
-     [:block [:named-int {:min 0 :max 255 :default 1 :names block-names}]]]
+     [:block [:block {:default :stone}]]]
     [:world :fill]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
@@ -47,7 +33,7 @@
 (defn- label [[nm [kind {:keys [min max]}]]]
   (case kind
     :int (str "<" (name nm) " " min "-" max ">")
-    (:coord :named-int :enum) (str "<" (name nm) ">")))
+    (:coord :named-int :enum :block) (str "<" (name nm) ">")))
 
 (defn- parse-long* [^String s]
   (try (Long/parseLong s) (catch NumberFormatException _ nil)))
@@ -83,13 +69,19 @@
       (<= (long (:min opts)) (long n) (long (:max opts))) [:ok n]
       :else [:err (str (name nm) ": " n " is out of " (:min opts) ".." (:max opts))])))
 
+(defn- as-block [nm s _opts _origin]
+  (let [k (block-kw s)]
+    (if (contains? @data/blocks k)
+      [:ok k]
+      [:err (str (name nm) ": unknown block \"" s "\"")])))
+
 (defn- as-enum [nm s {:keys [values]} _origin]
   (if (contains? values s)
     [:ok s]
     [:err (str (name nm) ": give one of " (str/join ", " (sort values)) ", not \"" s "\"")]))
 
 (def ^:private coercers
-  {:int as-int, :named-int as-named-int, :coord as-coord, :enum as-enum})
+  {:int as-int, :named-int as-named-int, :coord as-coord, :enum as-enum, :block as-block})
 
 (defn- coerce [[nm [kind opts] :as arg] s origin]
   (if (nil? s)
@@ -103,7 +95,10 @@
     :coord (if target [(str (nth target axis))] [])
     :named-int (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
                  (into (if dn [dn] []) (sort (remove #{dn} (keys names)))))
-    :enum (vec (sort values))))
+    :enum (vec (sort values))
+    :block (into [(block-name default)]
+                 (remove #{(block-name default)})
+                 (sort (map block-name (keys @data/blocks))))))
 
 (defn usage [path]
   (let [form (loop [forms commands, [nm & more] path]

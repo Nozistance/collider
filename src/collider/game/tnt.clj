@@ -1,13 +1,13 @@
 (ns collider.game.tnt
 
-  (:require [collider.rnd :as rnd]))
+  (:require [collider.rnd :as rnd]
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:const block-id 46)
 (def ^:const fuse-ticks 80)
 (def ^:const power 4.0)
-(defn tnt-state? [st] (= block-id (bit-shift-right (long st) 4)))
+(defn tnt-state? [st] (block/tnt? (long st)))
 
 (defn primed
   ([pos seed] (primed pos seed fuse-ticks))

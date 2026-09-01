@@ -1,8 +1,7 @@
 (ns collider.game.features.sheep
   (:require [collider.game.mobs :as mobs]
             [collider.game.sense :as sense]
-            [collider.game.state :as state]
-            [collider.proto.packets.play :as play]
+            [collider.game.out :as out]
             [collider.rnd :as rnd]
             [collider.vec :as v]
             [collider.world.grass :as grass]))
@@ -15,7 +14,6 @@
 (def ^:private ^:const mate-together 60)
 (def ^:private ^:const breed-cooldown 6000)
 (def ^:private ^:const baby-growth 24000)
-(def ^:private ^:const tallgrass-id 31)
 
 (defn- decide [t eid e]
   (let [means (mobs/action-means (:type e))
@@ -27,7 +25,7 @@
 (defn- grass-target [world e]
   (let [[fx fy fz :as feet] (sense/feet-cell (:pos e))]
     (cond
-      (= tallgrass-id (bit-shift-right (sense/block-at world feet) 4)) feet
+      (grass/short-grass? (sense/block-at world feet)) feet
       (= grass/grass-state (sense/block-at world [fx (dec fy) fz])) [fx (dec fy) fz]
       :else nil)))
 
@@ -35,7 +33,7 @@
   (if-let [cell (grass-target world e)]
     [(assoc e :pending nil
               :task {:kind :eat :until (+ (long t) eat-duration) :cell cell})
-     (state/broadcast world (play/entity-status eid 10))]
+     [(out/all (out/status eid :eat))]]
     [(decide t eid (assoc e :pending nil)) nil]))
 
 (defn- start-wander [world eid e t]
@@ -75,11 +73,11 @@
 (defn- finish-bite [world e]
   (let [cell (get-in e [:task :cell])
         old (sense/block-at world cell)
-        new (if (= tallgrass-id (bit-shift-right old 4)) 0 grass/dirt-state)]
-    (when (or (= grass/grass-state old) (= tallgrass-id (bit-shift-right old 4)))
+        new (if (grass/short-grass? old) 0 grass/dirt-state)]
+    (when (or (= grass/grass-state old) (grass/short-grass? old))
       (concat [[:set-block cell new]]
-              (state/broadcast world (play/block-change cell new))
-              (state/broadcast world (play/break-effect cell old))))))
+              [(out/all (out/block-change cell new))]
+              [(out/all (out/break-effect cell old))]))))
 
 (defn- run-eat [world eid e t]
   (let [remaining (- (long (get-in e [:task :until])) (long t))]
@@ -150,15 +148,15 @@
       [e nil]
       [(assoc e :task nil) nil])))
 
-(defn- spawn-baby [world eid pid e t]
+(defn- spawn-baby [eid pid e t]
   (let [cooled {:love-until 0 :breed-ready-at (+ (long t) breed-cooldown) :task nil}]
     (concat
       [[:spawn-entity (assoc (mobs/new-mob (:type e) (:pos e) (:color e) t)
                         :baby-until (+ (long t) baby-growth))]
        [:merge-entity eid cooled]
        [:merge-entity pid cooled]]
-      (state/broadcast world (play/entity-status eid 18))
-      (state/broadcast world (play/entity-status pid 18)))))
+      [(out/all (out/status eid :love))]
+      [(out/all (out/status pid :love))])))
 
 (defn- run-mate [world eid e t]
   (let [pid (get-in e [:task :partner])
@@ -169,7 +167,7 @@
       (and (< (v/dist-sq (:pos e) (:pos partner)) 9.0)
            (>= (- (long t) (long (get-in e [:task :since]))) mate-together))
       (if (< (long eid) (long pid))
-        [(assoc e :task nil) (spawn-baby world eid pid e t)]
+        [(assoc e :task nil) (spawn-baby eid pid e t)]
         [(assoc e :task nil) nil])
       :else [(assoc e :look {:target pid :until (+ (long t) 2)}) nil])))
 
@@ -258,5 +256,5 @@
                         {:baby-until (+ (long t) (long (* 0.9 remaining)))}]])
                     (feedable? e t)
                     (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
-                          (state/broadcast world (play/entity-status target 18))))))))
+                          [(out/all (out/status target :love))]))))))
           events))

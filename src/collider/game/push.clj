@@ -1,4 +1,4 @@
-(ns collider.game.crowd
+(ns collider.game.push
 
   (:require [clojure.data.int-map :as im]
             [collider.game.mobs :as mobs]
@@ -109,7 +109,7 @@
   (loop [i (long from)]
     (when (< i (long to)) (push-into! acc w i me) (recur (inc i)))))
 
-(defn crowd-push [index eid e t half height]
+(defn push [index eid e t half height]
   (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
         x (double x) z (double z)
         ^Window w (push-window index (bit-shift-right (long (Math/floor x)) 2)

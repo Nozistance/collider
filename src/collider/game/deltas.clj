@@ -1,5 +1,10 @@
 (ns collider.game.deltas
-
+  "Deltas of one tick. A system returns a seq of deltas: world deltas
+   ([:set-blocks ...], [:spawn-entity ...]), entity deltas ([:merge-entity eid ...]
+   and the other tags in `entity-tags`) and effects ([:fx msg], see
+   collider.game.out). `run` calls the systems in parallel and buckets what
+   they return into a Deltas record. The merged order is fixed: by system,
+   then by position inside the system, so a tick does not depend on scheduling."
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]))
 
@@ -7,9 +12,10 @@
 
 (def ^:private ^:const fold-leaf 64)
 (def ^:private ^:const fold-threshold 64)
-(defn fold-each
-
-  ([f v] (fold-each f v fold-leaf fold-threshold))
+(defn pmapcat
+  "Like (into [] (mapcat f) v), in parallel when v is longer than
+   threshold. Order is preserved."
+  ([f v] (pmapcat f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))
      (into [] (mapcat f) v)
@@ -17,23 +23,25 @@
              (fn [acc x] (into acc (f x)))
              v))))
 
-(defrecord Deltas [world ents out])
+(defrecord Deltas [world entities out])
 (def empty-deltas (->Deltas [] (i/int-map) []))
 
 (def entity-tags
   #{:merge-entity :track :tracking :spawned :set-slot :chunks-sent :push :damage})
 
-(defn bucket-deltas
+(defn add
+  "Buckets a seq of deltas into acc: [:fx m] to out, entity-tagged deltas
+   to entities by eid, everything else to world."
   ^Deltas [^Deltas acc deltas]
   (loop [ds (seq deltas)
          w  (transient (.world acc))
-         e  (transient (.ents acc))
+         e  (transient (.entities acc))
          o  (transient (.out acc))]
     (if ds
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
-          :send  (recur ds w e (conj! o (subvec d 1)))
-          :close (recur ds w e (conj! o [(nth d 1) :close]))
+          :fx    (recur ds w e (conj! o (nth d 1)))
+          :close (recur ds w e (conj! o {:msg :close :to (nth d 1)}))
           (:merge-entity :track :tracking :spawned :set-slot :chunks-sent :push :damage)
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
@@ -43,26 +51,29 @@
 (defn merge-deltas
   ^Deltas [^Deltas a ^Deltas b]
   (->Deltas (into (.world a) (.world b))
-            (i/merge-with into (.ents a) (.ents b))
+            (i/merge-with into (.entities a) (.entities b))
             (into (.out a) (.out b))))
 
-(defn fold-buckets [reducef v]
+(defn fold [reducef v]
   (r/fold 1 (r/monoid merge-deltas (constantly empty-deltas)) reducef v))
 
-(defn fold
+(defn run
+  "Calls each thunk in fs in parallel and merges what they return into a
+   Deltas record. A thunk may return a vector of thunks; they run the same way.
+   Merge order is the order of fs."
   ^Deltas [fs]
-  (fold-buckets (fn [^Deltas acc f]
+  (fold (fn [^Deltas acc f]
                   (let [r (f)]
                     (if (fn? (first r))
-                      (merge-deltas acc (fold (vec r)))
-                      (bucket-deltas acc r))))
+                      (merge-deltas acc (run (vec r)))
+                      (add acc r))))
                 fs))
 
 (defn of ^Deltas [systems world events]
-  (fold (mapv (fn [s] (fn [] (s world events))) systems)))
+  (run (mapv (fn [s] (fn [] (s world events))) systems)))
 
-(defn fold-seq [fs]
+(defn run-seq [fs]
   (into [] (mapcat (fn [f]
                      (let [r (f)]
-                       (if (fn? (first r)) (fold-seq (vec r)) r))))
+                       (if (fn? (first r)) (run-seq (vec r)) r))))
         fs))

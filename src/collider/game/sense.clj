@@ -1,5 +1,6 @@
 (ns collider.game.sense
-
+  "Queries systems ask about the world: the block at a position, the
+   nearest player or entity, what a player holds."
   (:require [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -8,6 +9,8 @@
 (set! *warn-on-reflection* true)
 
 (defn block-at
+  "Block state at p, or at x y z. Chunks not yet in the world read as the
+   flat template."
   (^long [world p] (chunk/chunks-get-block (:chunks world) gen/flat-chunk p))
   (^long [world x y z] (chunk/block-state (:chunks world) gen/flat-chunk x y z)))
 
@@ -15,9 +18,9 @@
   [(long (Math/floor (v/x p))) (long (Math/floor (v/y p))) (long (Math/floor (v/z p)))])
 
 (defn nearest-player [world pos r2]
-  (let [r2 (double r2) ents (:entities world)]
+  (let [r2 (double r2) entities (:entities world)]
     (reduce (fn [best oid]
-              (if-let [o (get ents oid)]
+              (if-let [o (get entities oid)]
                 (let [d2 (v/dist-sq pos (:pos o))]
                   (if (and (< d2 r2)
                            (or (nil? best)
@@ -29,7 +32,10 @@
             nil
             (vals (:players world)))))
 
-(defn nearest [world pos r2 pred]
+(defn nearest
+  "Nearest entity within sqrt(r2) of pos for which (pred eid e) is true, as
+   [d2 eid e]; ties go to the lower eid. nil if none."
+  [world pos r2 pred]
   (let [r2 (double r2)]
     (reduce-kv (fn [best oid o]
                  (if (pred oid o)

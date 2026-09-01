@@ -1,7 +1,7 @@
 (ns collider.game.systems.block.updates
   (:require [collider.game.state :as state]
             [collider.game.tnt :as tnt]
-            [collider.proto.packets.play :as play]
+            [collider.game.out :as out]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
             [collider.world.fire :as fire]
@@ -15,7 +15,7 @@
 
 (defn- tnt-neighbors [chunks [x y z]]
   (filterv (fn [[_ ny _ :as p]]
-             (and (<= 0 (long ny) 255)
+             (and (chunk/in-range? ny)
                   (tnt/tnt-state? (chunk/chunks-get-block chunks gen/flat-chunk p))))
            (map (fn [d] (mapv + [x y z] d)) sides)))
 
@@ -29,44 +29,12 @@
                                       p))
                                     cells)))))
 
-(defn- sections-packet [world cp sis]
-  (let [[cx cz] (chunk/id->pos cp)
-        c (get-in world [:chunks cp])
-        [bm data] (chunk/encode-sections (or c gen/flat-chunk) sis)]
-    {:packet/key ::play/chunk-data :chunk-x cx :chunk-z cz
-     :ground-up? false :bitmask bm :data data}))
-
-(defn- chunk-resend-deltas [world cp sis]
-  (into [] (keep (fn [[eid e]]
-                   (when (and (= :player (:type e))
-                              (contains? (or (:sent-chunks e) #{}) cp))
-                     [:send eid (sections-packet world cp sis)])))
-        (:entities world)))
-
-(def ^:private ^:const resend-cooldown 20)
 (defn- block-flush-deltas [world]
-  (let [t      (long (:tick world))
-        sent   (:chunk-resent world)
-        cooled? (fn [cp] (>= (- t (long (get sent cp -1000))) resend-cooldown))
-        events (:block-events world)
-        small  (when events (filterv (fn [[_ recs]] (<= (count recs) 64)) events))
-        big    (reduce (fn [m [cp recs]]
-                         (if (> (count recs) 64)
-                           (update m cp (fnil into #{})
-                                   (map (fn [[[_ y _] _]] (bit-shift-right (long y) 4))) recs)
-                           m))
-                       (or (:dirty-chunks world) {})
-                       events)
-        now    (into {} (filter (fn [[cp _]] (cooled? cp))) big)
-        held   (into {} (remove (fn [[cp _]] (cooled? cp))) big)]
-    (concat
-     (when events [[:block-events-flushed]])
-     (when (or (seq big) (seq (:dirty-chunks world)))
-       [[:chunk-flush held (vec (keys now)) t]])
-     (mapcat (fn [[cp recs]]
-               (state/broadcast world (play/multi-block-change (chunk/id->pos cp) recs)))
-             small)
-     (mapcat (fn [[cp sis]] (chunk-resend-deltas world cp sis)) now))))
+  (when-let [events (:block-events world)]
+    (cons [:block-events-flushed]
+          (mapcat (fn [[cp recs]]
+                    [(out/all (out/blocks-changed cp recs))])
+                  events))))
 
 (defn block-flush [world _events]
   [#(block-flush-deltas world)])
@@ -75,10 +43,10 @@
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
         :when (or (and (pos? (long st))
-                       (not (liquid/liquid-state? st))
+                       (nil? (liquid/liquid-class st))
                        (or (liquid/liquid-state? old) (zero? (long old))))
                   (and (liquid/mix-class? st) (pos? (long old))))
-        d (state/broadcast world (play/fizz-effect pos))]
+        d [(out/all (out/fizz pos))]]
     d))
 
 (defn- ignite-deltas [world due]
@@ -92,8 +60,7 @@
                        due)]
     (mapcat (fn [pos]
               (cons [:spawn-entity (tnt/primed pos [(:tick world) pos])]
-                    (state/broadcast world (play/named-sound "game.tnt.primed"
-                                                             pos 1.0 63))))
+                    [(out/all (out/sound :tnt/primed pos 1.0 1.0))]))
             tnts)))
 
 (defn- block-updates-deltas [world _events]

@@ -1,9 +1,6 @@
 (ns collider.game.mobs
 
-  (:require [collider.rnd :as rnd]
-            [collider.vec :as v]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+  (:require [collider.rnd :as rnd]))
 
 (set! *warn-on-reflection* true)
 
@@ -18,20 +15,19 @@
       :else    0)))
 
 (def types
-  {:sheep {:net-id 91
-           :half 0.45 :height 1.3 :speed 0.23
+  {:sheep {:half 0.45 :height 1.3 :speed 0.23
            :max-health 8.0
-           :breeding-item 296
+           :breeding-item :wheat
            :action-means {:eat 1000 :wander 120 :look 50}
-           :say "mob.sheep.say"
-           :step "mob.sheep.step"
+           :say :sheep/say
+           :step :sheep/step
            :spawn-color sheep-color}})
 
-(def ^:private egg->type
-  (into {} (map (fn [[t {:keys [net-id]}]] [net-id t])) types))
-
-(defn egg-type [damage] (egg->type (long damage)))
-(defn net-id [type] (get-in types [type :net-id]))
+(defn egg-type [item]
+  (when (keyword? item)
+    (when-let [[_ m] (re-matches #"(.*)-spawn-egg" (name item))]
+      (let [t (keyword m)]
+        (when (contains? types t) t)))))
 (defn max-health [type] (get-in types [type :max-health]))
 (defn mob-type? [type] (contains? types type))
 (defn breeding-item [type] (get-in types [type :breeding-item]))
@@ -40,9 +36,7 @@
 (defn step-sound [type] (get-in types [type :step]))
 (def ^:private sheep-meta
   (into {} (for [color (range 16) baby [false true] burning [false true]]
-             [[color baby burning] [[0 :byte (if burning 1 0)]
-                                    [12 :byte (if baby -1 0)]
-                                    [16 :byte color]]])))
+             [[color baby burning] {:color color :baby? baby :burning? burning}])))
 
 (defn burning? [e] (boolean (:burning? e)))
 (defn metadata [e]
