@@ -1,15 +1,14 @@
 (ns collider.game.systems.mobs
 
   (:require [collider.rnd :as rnd]
-            [clojure.data.int-map :as im]
             [collider.game.entity :as entity]
             [collider.vec :as v]
             [collider.game.features.sheep :as sheep]
-            [collider.game.crowd :as crowd]
+            [collider.game.push :as push]
             [collider.game.mobs :as mobs]
             [collider.game.sense :as sense]
             [collider.game.state :as state]
-            [collider.proto.packets.play :as play]
+            [collider.game.out :as out]
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
             [collider.world.path :as path]
@@ -173,7 +172,7 @@
         [e wp target] (navigate world e t half water?)
         moving? (some? target)
         og (boolean (:on-ground e))
-        [cx cz] (crowd/crowd-push index eid e t half height)
+        [cx cz] (push/push index eid e t half height)
         vel0 (:vel e)
         vx0 (let [a (v/x vel0)] (if (< (Math/abs a) 0.005) 0.0 a))
         vz0 (let [a (v/z vel0)] (if (< (Math/abs a) 0.005) 0.0 a))
@@ -222,6 +221,7 @@
                  jump?  jump-speed
                  water? (- (* water-friction (double ny)) 0.02)
                  :else  (* 0.98 (- (double ny) gravity)))
+        ny (liquid/bubble-push (:chunks world) gen/flat-chunk pos ny)
         yaw (if moving?
               (v/wrap-deg (v/limit-angle (double (:yaw e))
                                      (v/yaw-toward (:pos e) target)
@@ -233,22 +233,21 @@
 
 (def ^:private ^:const say-rest 120)
 (def ^:private ^:const say-mean 40)
-(defn- sound-pitch ^long [e ^long t ^long eid]
-
+(defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
-    (long (* 63.0 (+ base (* 0.2 (- (rnd/rnd3 t eid (hash :p1))
-                                    (rnd/rnd3 t eid (hash :p2)))))))))
+    (+ base (* 0.2 (- (rnd/rnd3 t eid (hash :p1))
+                      (rnd/rnd3 t eid (hash :p2)))))))
 
-(defn- wide-pitch ^long [^long t ^long eid kind]
-  (long (* 63.0 (+ 1.0 (* 0.4 (- (rnd/rnd4 t eid (hash kind) (hash :w1))
-                                 (rnd/rnd4 t eid (hash kind) (hash :w2))))))))
+(defn- wide-pitch ^double [^long t ^long eid kind]
+  (+ 1.0 (* 0.4 (- (rnd/rnd4 t eid (hash kind) (hash :w1))
+                   (rnd/rnd4 t eid (hash kind) (hash :w2))))))
 
 (defn- water-vol ^double [vel3 k]
   (let [vx (v/x vel3) vy (v/y vel3) vz (v/z vel3)]
     (min 1.0 (* (Math/sqrt (+ (* vx vx 0.2) (* vy vy) (* vz vz 0.2)))
                 (double k)))))
 
-(defn- ambient [world eid e t]
+(defn- ambient [eid e t]
   (if-let [say (mobs/say-sound (:type e))]
     (let [st (:say-tick e)
           next-say (+ (long t) say-rest (mobs/exp-delay say-mean (long t) (long eid) :say))]
@@ -256,26 +255,26 @@
         (nil? st)         [(assoc e :say-tick next-say) nil]
         (>= (long t) (long st))
         [(assoc e :say-tick next-say)
-         (state/broadcast world (play/entity-sound say (:pos e) 1.0
-                                                   (sound-pitch e (long t) (long eid))))]
+         [(out/all (out/sound say (:pos e) 1.0
+                                           (sound-pitch e (long t) (long eid))))]]
         :else [e nil]))
     [e nil]))
 
-(defn- movement-sounds [world e was-wet? old-walked new-walked t eid]
+(defn- movement-sounds [e was-wet? old-walked new-walked t eid]
   (concat
    (when (and (:wet? e) (not was-wet?))
-     (state/broadcast world (play/entity-sound "game.neutral.swim.splash" (:pos e)
-                                               (water-vol (:vel e) 0.2)
-                                               (wide-pitch (long t) (long eid) :spl))))
+     [(out/all (out/sound :splash (:pos e)
+                                       (water-vol (:vel e) 0.2)
+                                       (wide-pitch (long t) (long eid) :spl)))])
    (when (> (long (Math/floor (double new-walked)))
             (long (Math/floor (double old-walked))))
      (if (:wet? e)
-       (state/broadcast world (play/entity-sound "game.neutral.swim" (:pos e)
-                                                 (water-vol (:vel e) 0.35)
-                                                 (wide-pitch (long t) (long eid) :swm)))
+       [(out/all (out/sound :swim (:pos e)
+                                         (water-vol (:vel e) 0.35)
+                                         (wide-pitch (long t) (long eid) :swm)))]
        (when (:on-ground e)
          (when-let [snd (mobs/step-sound (:type e))]
-           (state/broadcast world (play/entity-sound snd (:pos e) 0.15 63))))))))
+           [(out/all (out/sound snd (:pos e) 0.15 1.0))]))))))
 
 (defn- dist3 ^double [[x1 y1 z1] [x2 y2 z2]]
   (let [dx (- (double x2) (double x1))
@@ -315,7 +314,7 @@
         e1 (if (and (mobs/baby? e1) (>= (long t) (long (:baby-until e1))))
              (assoc e1 :baby-until nil)
              e1)
-        [e1 say-deltas] (if dead? [e1 nil] (ambient world eid e1 t))
+        [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))
         was-wet? (boolean (:wet? e))
         e2 (physics world index eid e1 half height speed)
         walked  (double (or (:walked e) 0.0))
@@ -325,12 +324,12 @@
     (concat (when (seq changes) [[:merge-entity eid changes]])
             deltas
             say-deltas
-            (movement-sounds world e2 was-wet? walked walked' t eid))))
+            (movement-sounds e2 was-wet? walked walked' t eid))))
 
 (defn mobs-system [world events]
   (let [t        (long (:tick world))
         active   (state/active-chunks world)
-        index    (crowd/push-index world active)
+        index    (push/push-index world active)
         tempters (sense/holders world)
         herd     (into []
                        (filter (fn [[_ e]] (and (mobs/mob-type? (:type e))

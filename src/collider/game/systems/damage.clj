@@ -5,14 +5,16 @@
             [collider.game.mobs :as mobs]
             [collider.world.chunk :as chunk]
             [collider.game.state :as state]
+            [collider.world.block :as block]
             [collider.world.gen :as gen]
+            [collider.world.liquid :as liquid]
             [collider.world.phys :as phys]
-            [collider.proto.packets.play :as play]
+            [collider.game.out :as out]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const void-y -64.0)
+(def ^:private ^:const void-y (- chunk/min-y 64.0))
 (def ^:private ^:const void-damage 4.0)
 (def ^:private ^:const death-ticks 20)
 (def ^:private ^:const panic-ticks 100)
@@ -21,21 +23,27 @@
 (def ^:private ^:const blind-reach-sq 9.0)
 (def ^:private ^:const base-damage 1.0)
 
-(def ^:private weapon-damage
-  {268 4.0 272 5.0 267 6.0 276 7.0 283 4.0
-   271 3.0 275 4.0 258 5.0 279 6.0 286 3.0
-   270 2.0 274 3.0 257 4.0 278 5.0 285 2.0
-   269 1.0 273 2.0 256 3.0 277 4.0 284 1.0})
+(def ^:private material-bonus
+  {"wooden" 0.0 "golden" 0.0 "stone" 1.0 "iron" 2.0 "diamond" 3.0 "netherite" 4.0})
+(def ^:private tool-base
+  {"sword" 4.0 "axe" 3.0 "pickaxe" 2.0 "shovel" 1.0})
+
+(defn- weapon-damage ^double [item]
+  (if-let [[_ m t] (when (keyword? item) (re-matches #"(\w+)-(\w+)" (name item)))]
+    (if-let [base (tool-base t)]
+      (+ (double base) (double (get material-bonus m 0.0)))
+      0.0)
+    0.0))
 
 (defn- hurt-sound [e]
   (when (not= :player (:type e)) (mobs/say-sound (:type e))))
 
 (defn- sound-pitch
-  ^long [world eid e]
+  ^double [world eid e]
   (let [t (long (:tick world))
         base (if (:baby-until e) 1.5 1.0)
         r (- (rnd/rnd3 t eid (hash :hurt1)) (rnd/rnd3 t eid (hash :hurt2)))]
-    (long (* 63.0 (+ base (* 0.2 r))))))
+    (+ base (* 0.2 r))))
 
 (defn- creative-proof? [e]
   (= :player (:type e)))
@@ -79,27 +87,26 @@
        (not (:wet? t))))
 
 (defn- melee-damage ^double [a crit?]
-  (cond-> (+ base-damage (double (get weapon-damage (held-item a) 0.0)))
+  (cond-> (+ base-damage (weapon-damage (held-item a)))
           crit? (* 1.5)))
 
 (defn- sprint-push [a target]
   (let [yaw (Math/toRadians (double (:yaw a)))]
     [:push target [(* (- (Math/sin yaw)) 0.5) 0.1 (* (Math/cos yaw) 0.5)]]))
 
-(defn- hit-deltas [world a t target crit?]
+(defn- hit-deltas [a t target crit?]
   (cond-> [[:damage target (melee-damage a crit?)
             (- (v/x (:pos a)) (v/x (:pos t)))
             (- (v/z (:pos a)) (v/z (:pos t)))]
            [:merge-entity target {:love-until nil}]]
           (:sprinting? a) (conj (sprint-push a target))
-          crit? (into (state/broadcast world {:packet/key ::play/animation
-                                              :entity-id  target :animation 4}))))
+          crit? (into [(out/all (out/animation target :crit))])))
 
 (defn- attack-deltas [world [_ eid target]]
   (let [a (get-in world [:entities eid])
         t (get-in world [:entities target])]
     (when (and (attackable? a t) (in-reach? world a t))
-      (hit-deltas world a t target (crit? a t)))))
+      (hit-deltas a t target (crit? a t)))))
 
 (def ^:private ^:const fire-seconds 8)
 (def ^:private ^:const lava-seconds 15)
@@ -132,8 +139,8 @@
         fl (fn ^long [^double a] (long (Math/floor (+ a 0.001))))
         ce (fn ^long [^double a] (long (Math/floor (+ (- a 0.001) 1.0))))
         x0 (fl (- (v/x p) half)) x1 (ce (+ (v/x p) half))
-        y0 (max 0 (fl (+ (v/y p) shrink-y)))
-        y1 (min 256 (ce (- (+ (v/y p) (double height)) shrink-y)))
+        y0 (max chunk/min-y (fl (+ (v/y p) shrink-y)))
+        y1 (min (inc chunk/max-y) (ce (- (+ (v/y p) (double height)) shrink-y)))
         z0 (fl (- (v/z p) half)) z1 (ce (+ (v/z p) half))
         ]
     (when true
@@ -143,10 +150,9 @@
                 (when (< y y1)
                   (or (loop [z z0]
                         (when (< z z1)
-                          (let [id (bit-shift-right
-                                     (chunk/block-state chunks gen/flat-chunk x y z) 4)]
-                            (cond (and (= id 51) (not lava-only?)) :fire
-                                  (or (= id 10) (= id 11)) :lava
+                          (let [st (chunk/block-state chunks gen/flat-chunk x y z)]
+                            (cond (and (block/fire? st) (not lava-only?)) :fire
+                                  (= :lava (liquid/liquid-class st)) :lava
                                   :else (recur (inc z))))))
                       (recur (inc y)))))
               (recur (inc x))))))))
@@ -165,12 +171,12 @@
   (cond-> [[:damage eid (double damage)]]
           (not wet?) (conj [:merge-entity eid {:fire (max (long fire) (* 20 (long seconds)))}])))
 
-(defn- douse-deltas [world eid e fire wet?]
+(defn- douse-deltas [eid e fire wet?]
   (when (and wet? (pos? (long fire)))
     (cons [:merge-entity eid {:fire 0 :burning? false}]
-          (state/broadcast world (play/fizz-effect
+          [(out/all (out/fizz
                                    (mapv (fn [c] (long (Math/floor (double c))))
-                                         [(v/x (:pos e)) (v/y (:pos e)) (v/z (:pos e))]))))))
+                                         [(v/x (:pos e)) (v/y (:pos e)) (v/z (:pos e))])))])))
 
 (defn- fire-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))
@@ -184,7 +190,24 @@
               (burn-tick-deltas eid fire wet?)
               (when touch (ignite-deltas eid fire wet? 1.0 fire-seconds))
               (when sunk? (ignite-deltas eid fire wet? lava-damage lava-seconds))
-              (douse-deltas world eid e fire wet?)))))
+              (douse-deltas eid e fire wet?)))))
+
+(def ^:private ^:const safe-fall 3.0)
+
+(defn- landing-particles [world e ^double fall]
+  (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
+        pos (:pos e)
+        st (chunk/chunks-get-block (:chunks world) gen/flat-chunk
+                                   [(long (Math/floor (v/x pos))) (long (Math/floor (- (v/y pos) 0.2)))
+                                    (long (Math/floor (v/z pos)))])]
+    (when (and (pos? power) (not (block/air? st)))
+      (let [scale (min (+ 0.2 (/ power 15.0)) 2.5)]
+        [(out/all (out/particles :block st [(v/x pos) (v/y pos) (v/z pos)] (long (* 150.0 scale)) 0.15))]))))
+
+(defn- landing-deltas [world eid e]
+  (when-let [fall (:landed e)]
+    (concat [[:merge-entity eid {:landed nil}]]
+            (landing-particles world e (double fall)))))
 
 (defn- void-deltas [eid e]
   (when (and (pos? (double (:health e))) (< (v/y (:pos e)) void-y))
@@ -199,12 +222,10 @@
                                     (not= :player (:type e))
                                     (assoc :panic-until (+ (long (:tick world)) panic-ticks)))]]
         (when-let [snd (hurt-sound e)]
-          (state/broadcast world (play/entity-sound snd (:pos e) 1.0
-                                                    (sound-pitch world eid e))))
-        (state/broadcast world (play/entity-status eid (if (pos? health) 2 3)))
+          [(out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e)))])
+        [(out/all (out/status eid (if (pos? health) :hurt :death)))]
         (when (= :player (:type e))
-          [[:send eid {:packet/key ::play/update-health
-                       :health     health :food 20 :saturation 5.0}]])))))
+          [(out/to eid (out/health health))])))))
 
 (defn- timer-deltas [eid e]
   (let [resist (long (or (:hurt-resist e) 0))
@@ -227,12 +248,9 @@
                              :health      player-health
                              :health-sent player-health
                              :hurt-resist 0 :last-damage 0.0 :death-time 0}]
-         [:send eid {:packet/key ::play/respawn :dimension 0 :difficulty 0
-                     :gamemode   1 :level-type "flat"}]
-         [:send eid {:packet/key ::play/position-look
-                     :x          sx :y sy :z sz :yaw 0.0 :pitch 0.0 :flags 0}]
-         [:send eid {:packet/key ::play/update-health
-                     :health     player-health :food 20 :saturation 5.0}]]))))
+         (out/to eid (out/respawn))
+         (out/to eid (out/teleport [sx sy sz] 0.0 0.0))
+         (out/to eid (out/health player-health))]))))
 
 (defn- idle? [e]
   (let [health (double (or (:health e) 0.0))]
@@ -241,6 +259,7 @@
          (zero? (long (or (:fire e) 0)))
          (not (:burning? e))
          (zero? (long (or (:hurt-resist e) 0)))
+         (nil? (:landed e))
          (>= health (double (or (:health-sent e) health))))))
 
 (defn- living-fns [world]
@@ -254,6 +273,7 @@
                              (let [busy? (not (idle? e))]
                                (concat (when busy? (timer-deltas eid e))
                                        (when busy? (void-deltas eid e))
+                                       (when busy? (landing-deltas world eid e))
                                        (fire-deltas world eid e)
                                        (when busy? (report-deltas world eid e))))))
                    batch))

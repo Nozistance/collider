@@ -1,9 +1,8 @@
 (ns collider.game.systems.chat
-  (:require [clojure.data.json :as json]
-            [clojure.string :as str]
+  (:require [clojure.string :as str]
             [collider.game.commands :as cmd]
-            [collider.game.state :as state]
-            [collider.proto.packets.play :as play]))
+            [collider.game.out :as out]
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -47,35 +46,16 @@
                (do (.append plain c)
                    (recur (inc i) plain out))))))))))
 
-(defn message-json [name text]
-  (let [runs (parse-runs text)]
-    (json/write-str
-     {:translate "chat.type.text"
-      :with [{:text name}
-             (case (count runs)
-               0 {:text ""}
-               1 (first runs)
-               {:text "" :extra runs})]})))
-
-(defn system-json [text]
-  (let [runs (parse-runs text)]
-    (json/write-str
-     (case (count runs)
-       0 {:text ""}
-       1 (first runs)
-       {:text "" :extra runs}))))
-
-(defn- chat-packet [json] {:packet/key ::play/chat :json json :position 0})
 (defn tell [eid & lines]
-  (mapv (fn [line] [:send eid (chat-packet (system-json line))])
+  (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- fill-deltas [world eid [ax ay az bx by bz block]]
+(defn- fill-deltas [eid [ax ay az bx by bz block]]
   (let [[x1 x2] (sort [(long ax) (long bx)])
         [y1 y2] (sort [(long ay) (long by)])
         [z1 z2] (sort [(long az) (long bz)])
         n (* (inc (- x2 x1)) (inc (- y2 y1)) (inc (- z2 z1)))
-        st      (bit-shift-left (long block) 4)
+        st      (block/state block)
         changes (vec (for [x (range x1 (inc x2))
                            y (range y1 (inc y2))
                            z (range z1 (inc z2))]
@@ -86,7 +66,7 @@
 
 (defn- world-command-deltas [world eid [_ op & args]]
   (case op
-    :fill (fill-deltas world eid args)
+    :fill (fill-deltas eid args)
     :time-set (let [t (long (first args))]
                 (cons [:set-time t]
                       (tell eid (format "set the time to **%d**" t))))
@@ -110,7 +90,7 @@
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]
-    (state/broadcast world (chat-packet (message-json (:name e) text)))))
+    [(out/all (out/player-chat (:name e) (parse-runs text)))]))
 
 (defn- said-deltas [world eid raw]
   (let [text (str/trim (str raw))]
@@ -120,7 +100,7 @@
       :else                       (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text target]
-  [[:send eid (play/tab-complete (cmd/suggest world text target))]])
+  [(out/to eid (out/suggestions (cmd/suggest world text target)))])
 
 (defn- event-deltas [world [tag eid text target]]
   (case tag

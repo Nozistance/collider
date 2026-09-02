@@ -1,23 +1,19 @@
 (ns collider.game.systems.daynight
-  (:require [collider.game.state :as state]
-            [collider.proto.packets.play :as play]))
+  (:require [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
 
 (def send-interval 20)
-(defn- time-packet [world]
-  (let [t (long (:time-of-day world 0))]
-    {:packet/key ::play/time-update
-     :world-age (long (:tick world))
-     :time t}))
+(defn- time-msg [world]
+  (out/time (long (:tick world)) (long (:time-of-day world 0))))
 
 (defn- daynight-deltas [world events]
-  (let [pkt (time-packet world)]
+  (let [msg (time-msg world)]
     (concat
      (when (zero? (rem (long (:tick world)) send-interval))
-       (state/broadcast world pkt))
+       [(out/all msg)])
      (for [[tag eid] events :when (= :player-join tag)]
-       [:send eid pkt]))))
+       (out/to eid msg)))))
 
 (defn daynight [world events]
   [#(daynight-deltas world events)])

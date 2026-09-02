@@ -1,6 +1,6 @@
 (ns collider.game.systems.keepalive
-  (:require [collider.game.state :as state]
-            [collider.proto.packets.play :as play]))
+  (:require [collider.game.out :as out]
+            [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,8 +14,7 @@
              (fn [[eid e]]
                (if (> (- t (long (:last-echo-tick e))) timeout-ticks)
                  [[:remove-entity eid] [:close eid]]
-                 [[:send eid {:packet/key ::play/keep-alive
-                              :id (bit-and t 0xFFFFF)}]])))
+                 [(out/to eid (out/keepalive (bit-and t 0xFFFFF)))])))
             (state/player-entries world)))))
 
 (defn keepalive [world events]

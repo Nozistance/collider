@@ -1,7 +1,7 @@
 (ns collider.game.systems.items
   (:require [collider.rnd :as rnd]
             [collider.game.state :as state]
-            [collider.proto.packets.play :as play]
+            [collider.game.out :as out]
             [collider.vec :as v]
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
@@ -21,7 +21,7 @@
              (item-entities world))))
 
 (defn- same-stack? [a b]
-  (and (= (:item a) (:item b)) (= (:damage a 0) (:damage b 0))))
+  (= (:item a) (:item b)))
 
 (defn- throw-velocity [world eid]
   (let [e (get-in world [:entities eid])
@@ -70,7 +70,7 @@
     (cons [:spawn-entity eid (item-entity world thrower stack)]
           (when take-from
             [[:set-slot thrower (take-from 0) (take-from 1)]
-             [:send thrower (play/set-slot (take-from 0) (take-from 1))]]))))
+             (out/to thrower (out/set-slot (take-from 0) (take-from 1)))]))))
 
 (defn- spawn-deltas [world events]
   (let [base (long (:next-eid world 1000000))]
@@ -96,7 +96,9 @@
       [:remove-entity eid]
       [:merge-entity eid
        {:pos          pos
-        :vel          (v/+ [(* (double mx) f) (* (double my) 0.98) (* (double mz) f)]
+        :vel          (v/+ [(* (double mx) f)
+                            (liquid/bubble-push (:chunks world) gen/flat-chunk pos (* (double my) 0.98))
+                            (* (double mz) f)]
                            (liquid-push world pos))
         :on-ground    on-ground
         :age          age
@@ -167,13 +169,13 @@
 (defn- collect-deltas [_world ieid _ie peid changes remaining players]
   (concat
     (for [[slot s] changes] [:set-slot peid slot s])
-    (for [[slot s] changes] [:send peid (play/set-slot slot s)])
+    (for [[slot s] changes] (out/to peid (out/set-slot slot s)))
     (if remaining
       [[:merge-entity ieid {:stack remaining}]]
       (concat
         (for [[oid o] players
               :when (contains? (:tracking o) ieid)]
-          [:send oid (play/collect-item ieid peid)])
+          (out/to oid (out/collect ieid peid)))
         [[:remove-entity ieid]]))))
 
 (defn- pickup-one [world players [peid pe] [out taken inv :as acc] [ieid ie]]

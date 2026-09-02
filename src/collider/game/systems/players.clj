@@ -2,8 +2,9 @@
   (:require [clojure.data.int-map :as i]
             [collider.vec :as vv]
             [collider.game.mobs :as mobs]
-            [collider.game.state :as state]
-            [collider.proto.packets.play :as play]))
+            [collider.game.out :as out]
+            [collider.game.state :as state])
+  (:import (java.util ArrayList Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -12,22 +13,24 @@
 (def latency-interval 600)
 (def forced-teleport 400)
 (def ^:private vel-zero (vv/v3 0.0 0.0 0.0))
-(defn- fixed ^long [v] (long (Math/floor (* (double v) 32.0))))
+(def ^:const ^:private pos-unit 4096.0)
+(def ^:const ^:private rel-limit 32767)
+(defn- fixed ^long [v] (long (Math/floor (* (double v) pos-unit))))
 (defn- angle ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 (defn metadata [e]
   (cond
     (= :item (:type e))
-    [[10 :slot (:stack e)]]
+    {:stack (:stack e)}
     (= :tnt (:type e))
-    []
+    {}
     (mobs/mob-type? (:type e))
     (mobs/metadata e)
     :else
-    [[0 :byte (bit-or (if (:burning? e) 0x01 0)
-                      (if (:sneaking? e) 0x02 0)
-                      (if (:sprinting? e) 0x08 0)
-                      (if (:using-item? e) 0x10 0))]
-     [10 :byte (long (or (:skin-parts e) 0))]]))
+    {:burning?    (boolean (:burning? e))
+     :sneaking?   (boolean (:sneaking? e))
+     :sprinting?  (boolean (:sprinting? e))
+     :using-item? (boolean (:using-item? e))
+     :skin-parts  (long (or (:skin-parts e) 0))}))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
@@ -62,9 +65,9 @@
   (persistent!
    (reduce (fn [acc [oid o]]
              (reduce (fn [a eid]
-                       (if-let [^java.util.ArrayList l (get a eid)]
+                       (if-let [^ArrayList l (get a eid)]
                          (do (.add l oid) a)
-                         (assoc! a eid (doto (java.util.ArrayList. 4) (.add oid)))))
+                         (assoc! a eid (doto (ArrayList. 4) (.add oid)))))
                      acc
                      (seq (:tracking o))))
            (transient (i/int-map))
@@ -73,8 +76,7 @@
 (defn- entity-chunk ^long [e]
   (state/pos-chunk (:pos e)))
 
-(def ^:private duplicate-login-reason
-  "{\"text\":\"You logged in from another location\"}")
+(def ^:private duplicate-login-reason "You logged in from another location")
 
 (defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
@@ -84,31 +86,26 @@
                       :when (and (= :player (:type e))
                                  (= pname (:name e))
                                  (not= eid owner))
-                      d [[:send eid {:packet/key ::play/disconnect
-                                     :reason duplicate-login-reason}]
+                      d [(out/to eid (out/disconnect duplicate-login-reason))
                          [:close eid]
                          [:remove-entity eid]]]
                   d))))
           events))
 
 (defn- add-entry [e]
-  {:uuid (:uuid e) :name (:name e) :gamemode 1 :ping (or (:ping e) 0)})
+  {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)})
 
-(defn- list-packet [action entries]
-  {:packet/key ::play/player-list-item :action action :entries entries})
-
-(defn- join-list-deltas [world joined all]
+(defn- join-list-deltas [joined all]
   (mapcat (fn [[eid e]]
-            (cons [:send eid (list-packet play/list-add all)]
-                  (state/broadcast world eid (list-packet play/list-add [(add-entry e)]))))
+            [(out/to eid (out/tab-add all))
+             (out/except eid (out/tab-add [(add-entry e)]))])
           joined))
 
 (defn- leave-list-deltas [world live left]
   (let [listed (:listed world)]
     (mapcat (fn [eid]
               (when-not (contains? live (get listed eid))
-                (state/broadcast world (list-packet play/list-remove
-                                                    [{:uuid (get listed eid)}]))))
+                [(out/all (out/tab-remove [(get listed eid)]))]))
             left)))
 
 (defn- list-deltas [world ps]
@@ -118,43 +115,16 @@
         left   (sort (remove cur (keys listed)))
         all    (mapv (comp add-entry val) ps)]
     (concat
-     (join-list-deltas world joined all)
+     (join-list-deltas joined all)
      (leave-list-deltas world (into #{} (map val) cur) left)
      (when (zero? (rem (long (:tick world)) latency-interval))
-       (state/broadcast world (list-packet play/list-latency all)))
+       [(out/all (out/tab-latency all))])
      (when (or (seq joined) (seq left))
        [[:tab-list (into {} (map (fn [[eid e]] [eid (:uuid e)])) joined) left]]))))
 
-(defn- spawn-packet [eid e]
-  (let [{:keys [pos yaw pitch]} (track-of e)
-        [x y z] pos]
-    {:packet/key ::play/spawn-player
-     :entity-id eid :uuid (:uuid e)
-     :x x :y y :z z :yaw yaw :pitch pitch
-     :current-item 0
-     :metadata (metadata e)}))
-
-(defn- spawn-deltas [world oid eid]
-  (let [e  (get-in world [:entities eid])
-        tr (track-of e)]
-    (concat
-     (when-not (:track e) [[:track eid tr]])
-     (cond
-       (= :item (:type e))
-       [[:send oid (play/spawn-item eid (:pos tr) (:vel e))]
-        [:send oid {:packet/key ::play/entity-metadata
-                    :entity-id eid :metadata (:mdata tr)}]]
-       (= :tnt (:type e))
-       [[:send oid (play/spawn-tnt eid (:pos tr))]
-        [:send oid (play/entity-velocity eid (:vel e))]]
-       (mobs/mob-type? (:type e))
-       [[:send oid (play/spawn-mob eid (mobs/net-id (:type e))
-                                   (:pos tr) (:yaw tr) (:pitch tr) (:mdata tr))]]
-       :else
-       (cons [:send oid (spawn-packet eid e)]
-             (keep-indexed (fn [slot s]
-                             (when s [:send oid (play/equipment eid slot s)]))
-                           (:equip tr)))))))
+(defn- baseline-deltas [world eid]
+  (let [e (get-in world [:entities eid])]
+    (when-not (:track e) [[:track eid (baseline e)]])))
 
 (defn- entities-by-chunk [ts]
   (persistent!
@@ -174,11 +144,9 @@
         add  (into [] (remove #(contains? have %)) (seq want))
         gone (into [] (remove #(contains? want %)) (seq have))]
     (when (or (seq add) (seq gone))
-      (concat
-       [[:tracking oid add gone]]
-       (mapcat (fn [eid] (spawn-deltas world oid eid)) add)
-       (when (seq gone)
-         [[:send oid {:packet/key ::play/destroy-entities :entity-ids gone}]])))))
+      (into [[:tracking oid add gone]]
+            (mapcat (fn [eid] (baseline-deltas world eid)))
+            add))))
 
 (defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata equip
                   moved? turned? rel? head-turned? meta-changed? equip-changed?
@@ -206,15 +174,16 @@
         mdata (metadata e)
         equip (equipment-stacks e)
         moved? (boolean (and due?
-                             (or (>= (abs dx) 4) (>= (abs dy) 4) (>= (abs dz) 4)
+                             (or (not (zero? dx)) (not (zero? dy)) (not (zero? dz))
                                  (zero? (rem t resync-interval)))))
         turned? (boolean (and due?
-                              (or (>= (abs (- yaw (long (.yaw tr)))) 4)
-                                  (>= (abs (- pitch (long (.pitch tr)))) 4))))
-        rel? (boolean (and (<= -128 dx 127) (<= -128 dy 127) (<= -128 dz 127)
-                           (<= since forced-teleport)
-                           (= ground (.on-ground tr))))
-        head-turned? (boolean (and due? (>= (abs (- head (long (.head tr)))) 4)))
+                              (or (not= yaw (long (.yaw tr)))
+                                  (not= pitch (long (.pitch tr))))))
+        rel? (boolean (and (<= (- rel-limit) dx rel-limit)
+                           (<= (- rel-limit) dy rel-limit)
+                           (<= (- rel-limit) dz rel-limit)
+                           (<= since forced-teleport)))
+        head-turned? (boolean (and due? (not= head (long (.head tr)))))
         meta-changed? (not= mdata (.mdata tr))
         equip-changed? (not= equip (.equip tr))
         equip-diff (when equip-changed?
@@ -226,34 +195,29 @@
              moved? turned? rel? head-turned? meta-changed? equip-changed?
              (vel-changed? tr vel) equip-diff)))
 
-(defn- move-packet [eid ^Frame f]
-  (let [x (.x f) y (.y f) z (.z f) yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
+(defn- move-msg [eid e ^Frame f]
+  (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
     (cond
       (not (.rel? f))
-      {:packet/key ::play/entity-teleport :entity-id eid
-       :x x :y y :z z :yaw yaw :pitch pitch :on-ground ground}
+      (out/sync-pos eid (:pos e) (:yaw e) (:pitch e) ground)
       (and (.moved? f) (.turned? f))
-      {:packet/key ::play/entity-look-move :entity-id eid
-       :dx (.dx f) :dy (.dy f) :dz (.dz f) :yaw yaw :pitch pitch :on-ground ground}
+      (out/move-look eid (.dx f) (.dy f) (.dz f) yaw pitch ground)
       (.moved? f)
-      {:packet/key ::play/entity-rel-move :entity-id eid
-       :dx (.dx f) :dy (.dy f) :dz (.dz f) :on-ground ground}
+      (out/move eid (.dx f) (.dy f) (.dz f) ground)
       (.turned? f)
-      {:packet/key ::play/entity-look :entity-id eid
-       :yaw yaw :pitch pitch :on-ground ground})))
+      (out/look eid yaw pitch ground))))
 
-(defn- self-packets [eid ^Frame f]
+(defn- self-msgs [eid ^Frame f]
   (cond-> []
-    (.meta-changed? f) (conj {:packet/key ::play/entity-metadata
-                              :entity-id eid :metadata (.mdata f)})
-    (.vel-changed? f)  (conj (play/entity-velocity eid (.vel f)))))
+    (.meta-changed? f) (conj (out/meta eid (.mdata f)))
+    (.vel-changed? f)  (conj (out/velocity eid (.vel f)))))
 
-(defn- move-packets [eid ^Frame f]
-  (cond-> (if-let [p (when (.due? f) (move-packet eid f))] [p] [])
-    (.head-turned? f)     (conj {:packet/key ::play/entity-head-look :entity-id eid :yaw (.head f)})
-    (.meta-changed? f)    (conj {:packet/key ::play/entity-metadata :entity-id eid :metadata (.mdata f)})
-    (.vel-changed? f)     (conj (play/entity-velocity eid (.vel f)))
-    (seq (.equip-diff f)) (into (map (fn [[slot s]] (play/equipment eid slot s)) (.equip-diff f)))))
+(defn- move-msgs [eid e ^Frame f]
+  (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
+    (.head-turned? f)     (conj (out/head-look eid (.head f)))
+    (.meta-changed? f)    (conj (out/meta eid (.mdata f)))
+    (.vel-changed? f)     (conj (out/velocity eid (.vel f)))
+    (seq (.equip-diff f)) (into (map (fn [[slot s]] (out/equipment eid slot s)) (.equip-diff f)))))
 
 (def ^:private item-update-interval 20)
 (def ^:private mob-update-interval 3)
@@ -275,10 +239,10 @@
         (.equip-changed? f) (assoc :equip (.equip f))
         (.vel-changed? f)   (assoc :vel-sent (.vel f))))))
 
-(defn- move-deltas [world t viewers [eid e]]
+(defn- move-deltas [t viewers [eid e]]
   (let [vs   (viewers eid)
         self? (= :player (:type e))]
-    (when (or (pos? (count vs)) self?)
+    (when (or (some? vs) self?)
       (let [freq (case (:type e)
                    :item item-update-interval
                    :tnt 10
@@ -293,50 +257,49 @@
                    (not (vel-changed? tr (:vel e))))
             (when-not (identical? e (:seen tr))
               [[:track eid (assoc tr :seen e)]])
-          (let [f    (frame e tr (long t) due?)
-                tr'  (advance-track tr f)
-                pkts (move-packets eid f)
-                tr'  (cond
-                       (not (identical? tr tr')) (assoc tr' :seen e)
-                       (and (empty? pkts) (not due?) (not (identical? e (:seen tr))))
-                       (assoc tr :seen e)
-                       :else tr')
-                out  (transient [])
-                out  (if (identical? tr tr') out (conj! out [:track eid tr']))
-                out  (reduce (fn [out oid] (reduce (fn [out p] (conj! out [:send oid p])) out pkts))
-                             out vs)
-                out  (if self?
-                       (reduce (fn [out p] (conj! out [:send eid p])) out (self-packets eid f))
-                       out)]
-            (persistent! out))))))))
+            (let [f    (frame e tr (long t) due?)
+                  tr'  (advance-track tr f)
+                  msgs (move-msgs eid e f)
+                  tr'  (cond
+                         (not (identical? tr tr')) (assoc tr' :seen e)
+                         (and (empty? msgs) (not due?) (not (identical? e (:seen tr))))
+                         (assoc tr :seen e)
+                         :else tr')
+                  out  (transient [])
+                  out  (if (identical? tr tr') out (conj! out [:track eid tr']))
+                  out  (if (some? vs)
+                         (reduce (fn [out m] (conj! out (out/all m))) out msgs)
+                         out)
+                  out  (if self?
+                         (reduce (fn [out m] (conj! out (out/to eid m))) out (self-msgs eid f))
+                         out)]
+              (persistent! out))))))))
 
 (def ^:private tab-header-interval 20)
 (defn- fmt ^String [^String pattern v]
-  (String/format java.util.Locale/ROOT pattern
+  (String/format Locale/ROOT pattern
                  (to-array [(double (or v 0.0))])))
 
-(defn- tab-header-packet [{:keys [tps p50-ms p99-ms]}]
-  {:packet/key ::play/tab-header
-   :header "{\"text\":\"Collider\"}"
-   :footer (str "{\"text\":\"TPS " (fmt "%.1f" (or tps 20.0))
-                "  tick p50 " (fmt "%.2f" p50-ms)
-                "ms  p99 " (fmt "%.2f" p99-ms) "ms\",\"color\":\"gray\"}")})
+(defn- tab-header-msg [{:keys [tps p50-ms p99-ms]}]
+  (out/tab-header "Collider"
+                  (str "TPS " (fmt "%.1f" (or tps 20.0))
+                       "  tick p50 " (fmt "%.2f" p50-ms)
+                       "ms  p99 " (fmt "%.2f" p99-ms) "ms")))
 
 (defn- tab-header-deltas [world events]
   (when-let [perf (:perf world)]
-    (let [pkt (tab-header-packet perf)]
+    (let [msg (tab-header-msg perf)]
       (concat
        (when (zero? (rem (long (:tick world)) tab-header-interval))
-         (state/broadcast world pkt))
+         [(out/all msg)])
        (for [[tag eid] events :when (= :player-join tag)]
-         [:send eid pkt])))))
+         (out/to eid msg))))))
 
 (defn- swing-deltas [viewers events]
-  (mapcat (fn [[tag eid]]
-            (when (= :swing tag)
-              (for [oid (viewers eid)]
-                [:send oid {:packet/key ::play/animation :entity-id eid :animation 0}])))
-          events))
+  (keep (fn [[tag eid]]
+          (when (and (= :swing tag) (some? (viewers eid)))
+            (out/all (out/animation eid :swing))))
+        events))
 
 (defn players [world events]
   (let [ps (state/player-entries world)
@@ -347,7 +310,7 @@
           moves  (fn []
                    (let [viewers (viewer-index ps)]
                      (conj (mapv (fn [batch]
-                                   #(into [] (mapcat (fn [entry] (move-deltas world (long (:tick world)) viewers entry))) batch))
+                                   #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
                                  (partition-all 32 ts))
                            #(swing-deltas viewers events))))]
       [#(duplicate-login-deltas world events)

@@ -1,4 +1,7 @@
 (ns collider.game.tick
+  "One game tick. `tick` takes the world and the events received since the
+   last tick and returns [world' deltas]. `start-ticker!` runs it 20 times per
+   second on its own thread and hands each result to deliver!."
   (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.log :as log]
@@ -14,7 +17,8 @@
             [collider.game.systems.players :as players]
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.damage :as damage])
-  (:import (java.util Arrays)
+  (:import (collider.game.deltas Deltas)
+           (java.util Arrays)
            (java.util.concurrent ConcurrentLinkedQueue)
            (java.util.concurrent.atomic AtomicBoolean AtomicLong)))
 
@@ -35,7 +39,10 @@
    #'daynight/daynight
    #'keepalive/keepalive])
 
-(defn tick [world events]
+(defn tick
+  "Advances the world by one tick: applies the events in order, runs the
+   systems, merges their deltas. Returns [world' deltas]."
+  [world events]
   (let [world' (-> (update world :tick inc)
                    (update :time-of-day (fnil inc 0)))
         world' (reduce state/apply-event world' events)
@@ -94,19 +101,19 @@
   (try (tick world events)
        (catch Throwable t
          (log/info "tick error:" t)
-         [world []])))
+         [world deltas/empty-deltas])))
 
-(defn- send-out! [deliver! out]
-  (when (seq out)
-    (try (deliver! out)
+(defn- send-out! [deliver! world ^Deltas deltas]
+  (when (or (seq (.out deltas)) (pos? (count (.entities deltas))))
+    (try (deliver! world deltas)
          (catch Throwable t (log/info "deliver error:" t)))))
 
 (defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
   (let [events (drain! queue)
         world  (tick-input world-atom perf (when io-input (io-input)))
-        [world' outbound] (safe-tick world events)]
+        [world' deltas] (safe-tick world events)]
     (reset! world-atom world')
-    (send-out! deliver! outbound)))
+    (send-out! deliver! world' deltas)))
 
 (defn- ticker-state [_cfg]
   {:window  (long-array window-size)

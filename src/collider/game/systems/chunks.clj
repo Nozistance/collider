@@ -1,13 +1,15 @@
 (ns collider.game.systems.chunks
   (:require [collider.game.state :as state]
-            [collider.proto.packets.play :as play]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.game.out :as out]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
 (def view-radius 7)
-(def send-per-tick 20)
+(def ^:const start-rate 9.0)
+(def ^:const min-rate 0.01)
+(def ^:const max-rate 64.0)
+(def ^:const max-unacked 10)
 
 (defn chunk-coord ^long [^double c]
   (bit-shift-right (long (Math/floor c)) 4))
@@ -17,29 +19,13 @@
         [cx cz] (chunk/id->pos cp)]
     (into #{} (chunk/around-ids (long cx) (long cz) r))))
 
-(defn- load-packet [world cp]
-  (let [[cx cz] (chunk/id->pos cp)
-        [bm data] (if-let [c (get-in world [:chunks cp])]
-                    (chunk/encode-column c)
-                    [gen/primary-bitmask gen/flat-column])]
-    {:packet/key ::play/chunk-data :chunk-x cx :chunk-z cz
-     :ground-up? true :bitmask bm :data data}))
-
-(defn- unload-packet [cp]
-  (let [[cx cz] (chunk/id->pos cp)]
-    {:packet/key ::play/chunk-data :chunk-x cx :chunk-z cz
-     :ground-up? true :bitmask 0 :data gen/unload-column}))
-
 (defn- own-column? [world eid sent-chunks cp]
   (or (contains? (or sent-chunks #{}) cp)
       (nil? (:writable world))
       (contains? (:writable world) eid)))
 
-(defn- send-cap
-  ^long [world eid]
-  (if (if-let [w (:writable world)] (contains? w eid) true)
-    (long (get-in world [:config :chunk-send-rate] send-per-tick))
-    0))
+(defn- writable? [world eid]
+  (if-let [w (:writable world)] (contains? w eid) true))
 
 (defn- nearest-first [ids cp]
   (let [[pcx pcz] (chunk/id->pos cp)]
@@ -50,30 +36,39 @@
                  [(+ (* dx dx) (* dz dz)) id]))
              ids)))
 
-(defn- restream-deltas [world eid cp sent-chunks]
+(defn- restream-deltas
+  "Chunks for the player this tick, paced as vanilla PlayerChunkSender: a quota
+   of :chunk-rate chunks per tick, at most :batches-max batches the client has
+   not acknowledged with chunk-batch-received."
+  [world eid cp {:keys [chunk-pos sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
   (let [want    (wanted-chunks world cp)
         add-all (vec (remove #(contains? sent-chunks %) want))
-        add     (into [] (take (send-cap world eid)) (nearest-first add-all cp))
-        drop    (sort (remove #(contains? want %) sent-chunks))]
+        drop    (sort (remove #(contains? want %) sent-chunks))
+        rate    (double (or chunk-rate start-rate))
+        unacked (long (or batches-unacked 0))
+        blocked (or (>= unacked (long (or batches-max 1))) (not (writable? world eid)))
+        quota   (if blocked 0.0 (min (+ (double (or chunk-quota 0.0)) rate) (max 1.0 rate)))
+        n       (min (long (Math/floor quota)) (count add-all))
+        add     (into [] (take n) (nearest-first add-all cp))
+        pending (when (> (count add-all) n) true)]
     (concat
-     [[:chunks-sent eid cp add drop (when (> (count add-all) (count add)) true)]]
-     (map #(vector :send eid (load-packet world %)) add)
-     (map #(vector :send eid (unload-packet %)) drop))))
+     (when (or (not= cp chunk-pos) (seq add) (seq drop))
+       [[:chunks-sent eid cp add drop pending]])
+     (cond
+       (seq add) [[:merge-entity eid {:chunk-quota (- quota n) :batches-unacked (inc unacked)}]]
+       (and (not blocked) pending) [[:merge-entity eid {:chunk-quota quota}]]))))
 
 (defn- spawn-look-deltas [_ eid pos yaw pitch]
   (let [[sx sy sz] (or pos state/spawn-pos)]
-    [[:send eid {:packet/key ::play/position-look
-                 :x sx :y sy :z sz
-                 :yaw (float (or yaw 0.0)) :pitch (float (or pitch 0.0))
-                 :flags 0}]
+    [(out/to eid (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0)))
      [:spawned eid]]))
 
-(defn- stream-deltas [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks needs-spawn? chunks-pending?]}]]
+(defn- stream-deltas [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks needs-spawn? chunks-pending?] :as p}]]
   (let [[x _ z] pos
         cp (chunk/pos->id (chunk-coord x) (chunk-coord z))]
     (concat
      (when (or (not= cp chunk-pos) chunks-pending?)
-       (restream-deltas world eid cp sent-chunks))
+       (restream-deltas world eid cp p))
      (when (and needs-spawn? (own-column? world eid sent-chunks cp))
        (spawn-look-deltas world eid pos yaw pitch)))))
 
