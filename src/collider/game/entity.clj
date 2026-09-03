@@ -14,9 +14,9 @@
    chunk-pos sent-chunks needs-spawn? tracking track
    health hurt-resist last-damage death-time health-sent
    inventory held-slot using-item? sneaking? sprinting? skin-parts
-   ping last-echo-tick])
+   ping keepalive-at keepalive-pending?])
 
-(defrecord Item [type pos vel yaw pitch on-ground stack age pickup-delay track])
+(defrecord Item [type pos vel yaw pitch on-ground stack age pickup-delay needs-sync? track])
 
 (defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb track])
 

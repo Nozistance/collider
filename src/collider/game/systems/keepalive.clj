@@ -1,21 +1,25 @@
 (ns collider.game.systems.keepalive
+  "Keep-alive as vanilla: a challenge every 15 seconds; a player who has not
+   answered the last one by then is disconnected with disconnect.timeout."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
 
-(def interval-ticks 20)
-(def timeout-ticks 600)
+(def interval-ticks 300)
+
+(defn- player-deltas [^long t [eid e]]
+  (when (>= (- t (long (:keepalive-at e t))) interval-ticks)
+    (if (:keepalive-pending? e)
+      [(out/to eid (out/disconnect {:translate "disconnect.timeout"}))
+       [:remove-entity eid]
+       [:close eid]]
+      [[:merge-entity eid {:keepalive-at t :keepalive-pending? true}]
+       (out/to eid (out/keepalive t))])))
+
 (defn- keepalive-deltas [world _events]
   (let [t (long (:tick world))]
-    (when (zero? (rem t interval-ticks))
-      (into []
-            (mapcat
-             (fn [[eid e]]
-               (if (> (- t (long (:last-echo-tick e))) timeout-ticks)
-                 [[:remove-entity eid] [:close eid]]
-                 [(out/to eid (out/keepalive (bit-and t 0xFFFFF)))])))
-            (state/player-entries world)))))
+    (into [] (mapcat #(player-deltas t %)) (state/player-entries world))))
 
 (defn keepalive [world events]
   [#(keepalive-deltas world events)])

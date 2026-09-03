@@ -8,7 +8,9 @@
             [clojure.data.int-map :as i]
             [clojure.set :as set]
             [collider.game.entity :as entity]
+            [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.connect :as connect]
             [collider.world.gen :as gen]
@@ -56,17 +58,7 @@
   ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
-(def initial-world
-  {:tick        0
-   :time-ms     0
-   :time-of-day 0
-   :entities    (i/int-map)
-   :next-eid    1000000
-   :players     {}
-   :profiles    {}
-   :listed      {}
-   :chunks      (i/int-map)
-   :block-ticks (i/int-map)})
+(def initial-world schema/initial-world)
 
 (defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
@@ -137,7 +129,7 @@
    :sneaking?      false :sprinting? false :skin-parts 0 :ping 0
    :health         20.0
    :health-sent    20.0
-   :last-echo-tick tick})
+   :keepalive-at   tick :keepalive-pending? false})
 
 (defn- player-join [w eid name]
   (-> w
@@ -145,17 +137,21 @@
                 (entity/of (merge (new-player name (:tick w)) (get-in w [:profiles name]))))
       (assoc-in [:players name] eid)))
 
+(defn- vacated-bed [w eid]
+  (if-let [pos (get-in w [:entities eid :sleeping :pos])]
+    (let [st (chunk/chunks-get-block (:chunks w) gen/flat-chunk pos)]
+      (if (= :bed (block/type-of st))
+        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] false)
+        w))
+    w))
+
 (defn- player-quit [w eid]
-  (let [{:keys [name inventory held-slot pos yaw pitch on-ground]} (get-in w [:entities eid])]
-    (cond-> (-> w
+  (let [{:keys [name] :as e} (get-in w [:entities eid])]
+    (cond-> (-> (vacated-bed w eid)
                 (update :entities dissoc eid)
                 (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
-            name (assoc-in [:profiles name]
-                           (cond-> {:inventory (or inventory {})
-                                    :held-slot (or held-slot 0)}
-                             pos (assoc :pos [(v/x pos) (v/y pos) (v/z pos)]
-                                        :yaw (or yaw 0.0) :pitch (or pitch 0.0)
-                                        :on-ground (boolean on-ground)))))))
+      name (assoc-in [:profiles name]
+                     (schema/profile-of (update-in e [:stats [:custom :leave-game]] (fnil inc 0)))))))
 
 (defn- sword? [item]
   (and (keyword? item) (clojure.string/ends-with? (name item) "-sword")))
@@ -185,19 +181,30 @@
 
 (defn- creative-slot [w eid slot stack]
   (let [slot (long slot)]
-    (if (and (<= 1 slot 44)
+    (if (and (<= 1 slot 45)
              (or (nil? stack)
                  (and (keyword? (:item stack))
                       (<= 1 (long (:count stack 1)) 64))))
       (set-slot w eid slot stack)
       w)))
 
-(def ^:private tp-tolerance 0.25)
-(defn- near-target? [[ax ay az] [bx by bz]]
-  (let [dx (- (double ax) (double bx))
-        dy (- (double ay) (double by))
-        dz (- (double az) (double bz))]
-    (< (+ (* dx dx) (* dy dy) (* dz dz)) tp-tolerance)))
+(def ^:private horizontal-limit 3.0E7)
+(def ^:private vertical-limit 2.0E7)
+
+(defn- clamped [[x y z]]
+  [(-> (double x) (max (- horizontal-limit)) (min horizontal-limit))
+   (-> (double y) (max (- vertical-limit)) (min vertical-limit))
+   (-> (double z) (max (- horizontal-limit)) (min horizontal-limit))])
+
+(defn- teleport-ack
+  "The client confirmed the teleport with this id: the player stands at the
+   target and moves again (vanilla handleAcceptTeleportPacket)."
+  [w eid id]
+  (let [e (get-in w [:entities eid])]
+    (if (and (:tp-target e) (= (long id) (long (:tp-id e -1))))
+      (update-entity w eid merge {:pos (v/v3 (:tp-target e)) :tp-target nil :tp-id nil
+                                  :client-vel [0.0 0.0 0.0] :fall 0.0})
+      w)))
 
 (defn- fall-changes [e changes vel]
   (let [fall (double (or (:fall e) 0.0))
@@ -208,18 +215,19 @@
       (neg? dy) {:fall (- fall dy)}
       :else nil)))
 
-(defn- apply-move [w eid changes]
+(defn- apply-move
+  "A client position is taken only when no teleport is waiting for its
+   acknowledgement and the player is not asleep; rotation is always taken.
+   Coordinates are clamped as vanilla clampHorizontal/clampVertical."
+  [w eid changes]
   (let [e (get-in w [:entities eid])
-        target (:tp-target e)
         new (:pos changes)]
     (cond
-      (and target new (near-target? new target))
-      (update-entity w eid merge changes {:tp-target nil :client-vel [0.0 0.0 0.0] :fall 0.0})
-      target
+      (or (:tp-target e) (:sleeping e))
       (update-entity w eid merge (dissoc changes :pos))
       :else
       (let [old (:pos e)
-            new (some-> new v/v3)
+            new (some-> new clamped v/v3)
             vel (when (and old new)
                   (v/v3 (- (v/x new) (v/x old)) (- (v/y new) (v/y old)) (- (v/z new) (v/z old))))
             changes (cond-> changes new (assoc :pos new))]
@@ -234,18 +242,22 @@
                                      (zero? unacked) (assoc :chunk-quota 1.0))))
       w)))
 
-(defn- keepalive-echo [w eid id]
-  (if-let [e (get-in w [:entities eid])]
-    (let [t (long (:tick w))
-          rtt (* 50 (bit-and (- t (long id)) 0xFFFFF))]
-      (update-entity w eid assoc
-                     :last-echo-tick t
-                     :ping (quot (+ (* 3 (long (or (:ping e) 0))) rtt) 4)))
-    w))
+(defn- keepalive-echo
+  "An answer to the pending challenge (its id is the tick it was sent in)
+   clears it and smooths the latency as vanilla; any other answer is ignored."
+  [w eid id]
+  (let [e (get-in w [:entities eid])]
+    (if (and e (:keepalive-pending? e) (= (long id) (long (:keepalive-at e -1))))
+      (let [rtt (* 50 (- (long (:tick w)) (long id)))]
+        (update-entity w eid assoc
+                       :keepalive-pending? false
+                       :ping (quot (+ (* 3 (long (or (:ping e) 0))) rtt) 4)))
+      w)))
 
 (def ^:private entity-actions
-  {0 [:sneaking? true] 1 [:sneaking? false]
-   3 [:sprinting? true] 4 [:sprinting? false]})
+  "player-command actions of 26.2: stop sleeping, start and stop sprinting;
+   sneaking comes with player-input."
+  {0 [:leave-bed? true] 1 [:sprinting? true] 2 [:sprinting? false]})
 
 (defn- entity-action [w eid action]
   (if-let [[k v] (entity-actions (long action))]
@@ -260,6 +272,7 @@
     :player-join (apply player-join world args)
     :player-quit (apply player-quit world args)
     :move (let [[eid changes] args] (apply-move world eid changes))
+    :teleport-ack (apply teleport-ack world args)
     :keepalive-echo (apply keepalive-echo world args)
     :chunk-batch-ack (apply chunk-batch-ack world args)
     :entity-action (apply entity-action world args)
@@ -315,9 +328,11 @@
                               :hurt-resist max-resist)
                dx (knock-back (double dx) (double dz)))))))
 
-(defn- apply-entity-delta [e [tag & args]]
+(defn- apply-entity-delta [tick e [tag & args]]
   (case tag
-    :merge-entity (merge e (second args))
+    :merge-entity (let [m (second args)]
+                    (cond-> (merge e m)
+                      (:tp-target m) (assoc :tp-id tick)))
     :track (assoc e :track (second args))
     :tracking (let [[_ add drop] args] (update e :tracking merge-diff add drop))
     :spawned (assoc e :needs-spawn? nil)
@@ -349,8 +364,9 @@
     :ticks-flushed (apply defer-ticks w args)
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
+    :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
     (if (deltas/entity-tags tag)
-      (update-entity w (first args) apply-entity-delta delta)
+      (update-entity w (first args) #(apply-entity-delta (:tick w) % delta))
       w)))
 
 (defn apply-deltas
@@ -376,7 +392,7 @@
         updated (r/fold 1 (r/monoid i/merge i/int-map)
                         (fn [m [eid ds]]
                           (if-let [e (get entities eid)]
-                            (assoc m eid (reduce apply-entity-delta e ds))
+                            (assoc m eid (reduce #(apply-entity-delta (:tick w) %1 %2) e ds))
                             m))
                         (vec (.entities d)))
         w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)

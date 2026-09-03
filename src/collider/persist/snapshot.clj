@@ -2,9 +2,8 @@
   "Snapshot of the world: chunks, non-player entities, block ticks, profiles,
    time of day. `Store` is where it lives; `FileStore` keeps it in one nippy
    file. The saver writes on request from its own thread."
-  (:require [clojure.data.int-map :as im]
-            [clojure.java.io :as io]
-            [collider.game.entity :as entity]
+  (:require [clojure.java.io :as io]
+            [collider.game.schema :as schema]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
             [taoensso.nippy :as nippy])
@@ -61,54 +60,17 @@
 
 (defn file-store [file] (->FileStore file))
 
-(defn- plain-entity [e]
-  (-> (into {} e)
-      (dissoc :track)
-      (update :pos #(some-> % vec))
-      (update :vel #(some-> % vec))))
-
-(defn- world-entities [world]
-  (into {} (keep (fn [[eid e]] (when (not= :player (:type e)) [eid (plain-entity e)]))) (:entities world)))
-
-(defn- rel-ticks [world]
-  (let [t (long (:tick world 0))]
-    (mapv (fn [[k s]] [(- (long k) t) (mapv chunk/id->block-pos s)]) (:block-ticks world))))
-
 (defn snapshot
-  "Snapshot map of the world: chunks, non-player entities, block ticks
-   relative to the current tick, profiles, time of day."
+  "Snapshot map of the world with the format version, see collider.game.schema."
   [world]
-  {:format      format-version
-   :chunks      (into {} (:chunks world))
-   :time-of-day (:time-of-day world)
-   :next-eid    (:next-eid world)
-   :block-ticks (rel-ticks world)
-   :profiles    (:profiles world)
-   :entities    (world-entities world)})
+  (assoc (schema/snapshot world) :format format-version))
 
 (defn write-snapshot! [store snap]
   (put! store snap))
 
-(defn- thaw-block-ticks [bt]
-  (reduce (fn [acc [dt ps]]
-            (update acc (max 1 (long dt))
-                    (fnil into (im/int-set))
-                    (map chunk/block-pos->id ps)))
-          (im/int-map)
-          bt))
-
-(defn- thaw-entities [es]
-  (into (im/int-map) (map (fn [[eid e]] [(long eid) (entity/of e)])) es))
-
-(defn world-of
+(def world-of
   "World fields from a snapshot map, to merge over initial-world."
-  [m]
-  (cond-> {:chunks      (into (im/int-map) (:chunks m))
-           :time-of-day (:time-of-day m 0)
-           :profiles    (:profiles m {})
-           :entities    (thaw-entities (:entities m))}
-    (:next-eid m)         (assoc :next-eid (:next-eid m))
-    (seq (:block-ticks m)) (assoc :block-ticks (thaw-block-ticks (:block-ticks m)))))
+  schema/world-of)
 
 (defn load-snapshot [store]
   (try

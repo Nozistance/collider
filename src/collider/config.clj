@@ -12,6 +12,7 @@
    :max-players 20
    :view-distance 4
    :simulation-distance 2
+   :compression-threshold 256
    :save-file "world.snapshot"
    :save-period-ms 120000})
 
