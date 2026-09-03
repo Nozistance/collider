@@ -10,6 +10,7 @@
   {:water {:block :water :step 1 :delay 5  :bucket :water-bucket :infinite? true
            :push 0.014}
    :lava  {:block :lava :step 2 :delay 30 :bucket :lava-bucket :infinite? false
+           :push 0.0023333333333333335
            :decay-jitter 4
            :mix {:source :obsidian :flowing :cobblestone :smother :stone}}})
 
@@ -141,35 +142,75 @@
             (normalize [nx -6.0 nz]))
           (normalize [vx 0.0 vz]))))))
 
-(defn entity-push [chunks template [x y z] half height]
-  (let [x (double x) y (double y) z (double z)
-        half (double half) height (double height)
-        cells (distinct
-               (for [cx [(long (Math/floor (- x half))) (long (Math/floor (+ x half)))]
-                     cy [(long (Math/floor y)) (long (Math/floor (+ y height)))]
-                     cz [(long (Math/floor (- z half))) (long (Math/floor (+ z half)))]]
-                 [cx cy cz]))
-        pushes (keep (fn [c]
-                       (let [st (chunk/chunks-get-block chunks template c)]
-                         (when-let [p (push-of st)]
-                           (when-let [v (flow-vector chunks template c)]
-                             [p v]))))
-                     cells)
-        [sx sy sz] (reduce (fn [[ax ay az] [_ [bx by bz]]]
-                             [(+ (double ax) (double bx))
-                              (+ (double ay) (double by))
-                              (+ (double az) (double bz))])
-                           [0.0 0.0 0.0]
-                           pushes)
-        len (Math/sqrt (+ (* (double sx) (double sx))
-                          (* (double sy) (double sy))
-                          (* (double sz) (double sz))))]
-    (if (or (empty? pushes) (< len 1.0E-4))
-      [0.0 0.0 0.0]
-      (let [p (double (ffirst pushes))]
-        [(* (/ (double sx) len) p)
-         (* (/ (double sy) len) p)
-         (* (/ (double sz) len) p)]))))
+(defn- own-height
+  "Height of the liquid in its cell, vanilla getOwnHeight: amount / 9."
+  ^double [st]
+  (let [l (level st)] (/ (double (if (or (zero? l) (>= l 8)) 8 (- 8 l))) 9.0)))
+
+(defn- height-in
+  "Height of the liquid in the cell, 1.0 when the same liquid stands above."
+  ^double [chunks template cls [x y z]]
+  (let [above (state-at chunks template x (inc (long y)) z)]
+    (if (and (pos? (long above)) (= cls (liquid-class above)))
+      1.0
+      (own-height (state-at chunks template x y z)))))
+
+(defn- cells-of [x y z half height]
+  (let [x (double x) y (double y) z (double z) half (double half) height (double height)]
+    (for [cx (range (long (Math/floor (- x half))) (long (Math/ceil (+ x half))))
+          cy (range (long (Math/floor y)) (long (Math/ceil (+ y height))))
+          cz (range (long (Math/floor (- z half))) (long (Math/ceil (+ z half))))]
+      [cx cy cz])))
+
+(defn- fluid-around
+  "{cls {:height h :flow [x y z] :n count}} for the liquids the box at pos
+   touches, vanilla EntityFluidInteraction.update: the height is the top of
+   the liquid over the bottom of the box, the flow is summed, scaled by the
+   height while it is under 0.4."
+  [chunks template [x y z] half height]
+  (reduce (fn [acc [cx cy cz :as c]]
+            (let [st (state-at chunks template cx cy cz)
+                  cls (when (pos? (long st)) (liquid-class st))]
+              (if (nil? cls)
+                acc
+                (let [top (+ (double cy) (height-in chunks template cls c))
+                      h (- top (double y))]
+                  (if (neg? h)
+                    acc
+                    (let [h (max h (double (get-in acc [cls :height] 0.0)))
+                          [fx fy fz] (or (flow-vector chunks template c) [0.0 0.0 0.0])
+                          k (if (< h 0.4) h 1.0)
+                          [ax ay az] (get-in acc [cls :flow] [0.0 0.0 0.0])]
+                      (assoc acc cls {:height h
+                                      :flow [(+ (double ax) (* (double fx) k)) (+ (double ay) (* (double fy) k)) (+ (double az) (* (double fz) k))]
+                                      :n (inc (long (get-in acc [cls :n] 0)))})))))))
+          {}
+          (cells-of x y z half height)))
+
+(defn fluid-height
+  "How deep the box at pos stands in the liquid class (0.0 when not in it)."
+  [chunks template pos half height cls]
+  (double (get-in (fluid-around chunks template pos half height) [cls :height] 0.0)))
+
+(defn entity-push
+  "Push of the currents on an entity with velocity vel, to add to it
+   (vanilla applyCurrentTo for a non-player): the summed flow, normalized,
+   times the push of the liquid; at least 0.0045 when the entity stands still."
+  [chunks template pos half height vel]
+  (reduce (fn [[ax ay az] [cls {[fx fy fz] :flow n :n}]]
+            (let [len2 (+ (* (double fx) (double fx)) (* (double fy) (double fy)) (* (double fz) (double fz)))
+                  p (double (get-in liquids [cls :push] 0.0))]
+              (if (or (zero? (long n)) (< len2 1.0E-5) (zero? p))
+                [ax ay az]
+                (let [len (Math/sqrt len2)
+                      [ix iy iz] [(* (/ (double fx) len) p) (* (/ (double fy) len) p) (* (/ (double fz) len) p)]
+                      ilen (Math/sqrt (+ (* ix ix) (* iy iy) (* iz iz)))
+                      [ix iy iz] (if (and (< (Math/abs (v/x vel)) 0.003) (< (Math/abs (v/z vel)) 0.003) (< ilen 0.0045))
+                                   [(* (/ ix ilen) 0.0045) (* (/ iy ilen) 0.0045) (* (/ iz ilen) 0.0045)]
+                                   [ix iy iz])]
+                  [(+ (double ax) ix) (+ (double ay) iy) (+ (double az) iz)]))))
+          [0.0 0.0 0.0]
+          (fluid-around chunks template pos half height)))
 
 (defn- flow-into? [cls st]
   (or (enterable? st)

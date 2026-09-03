@@ -17,8 +17,8 @@
 
 (def ^:private ^:const tnt-half 0.49)
 (def ^:private ^:const tnt-height 0.98)
-(defn- liquid-push [world pos]
-  (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height))
+(defn- liquid-push [world pos vel]
+  (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height vel))
 
 (defn- unblock-deltas [eid e]
   (concat
@@ -38,9 +38,8 @@
         gf (if on-ground 0.7 1.0)]
     (cond-> [[:merge-entity eid
               {:pos       pos
-               :vel       (v/+ [(* (double mx) 0.98 gf) (* (double my) 0.98)
-                                (* (double mz) 0.98 gf)]
-                               (liquid-push world pos))
+               :vel       (let [v' [(* (double mx) 0.98 gf) (* (double my) 0.98) (* (double mz) 0.98 gf)]]
+                            (v/+ v' (liquid-push world pos v')))
                :on-ground on-ground
                :fuse      (dec (long (:fuse e)))}]]
             kb (conj [:push eid (mapv - kb)]))))

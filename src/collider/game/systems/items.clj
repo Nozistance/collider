@@ -35,13 +35,26 @@
         (* 0.1 (- (rnd/rnd [t eid :y1]) (rnd/rnd [t eid :y2]))))
      (+ (* 0.3 (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
-(defn- item-entity [world thrower stack]
-  (let [[px py pz] (get-in world [:entities thrower :pos])]
-    {:type  :item
-     :pos   [(double px) (+ (double py) 1.32) (double pz)]
-     :vel   (throw-velocity world thrower)
-     :yaw   0.0 :pitch 0.0 :on-ground false
-     :stack stack :age 0 :pickup-delay throw-pickup-delay}))
+(defn- around-velocity
+  "A stack let go from the inventory screen: a random direction, up to half
+   a block per tick, a small hop (vanilla createItemStackToDrop randomly)."
+  [world eid salt]
+  (let [t (:tick world)
+        pow (* 0.5 (rnd/rnd [t eid salt :p]))
+        dir (* Math/PI 2.0 (rnd/rnd [t eid salt :d]))]
+    [(* -1.0 (Math/sin dir) pow) 0.2 (* (Math/cos dir) pow)]))
+
+(defn dropped
+  "Item entity of a stack the player lets go: thrown from the hand along the
+   look, or around them from the inventory screen (randomly?)."
+  ([world thrower stack] (dropped world thrower stack false 0))
+  ([world thrower stack randomly? salt]
+   (let [[px py pz] (get-in world [:entities thrower :pos])]
+     {:type  :item
+      :pos   [(double px) (+ (double py) 1.32) (double pz)]
+      :vel   (if randomly? (around-velocity world thrower salt) (throw-velocity world thrower))
+      :yaw   0.0 :pitch 0.0 :on-ground false
+      :stack stack :age 0 :pickup-delay throw-pickup-delay})))
 
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
@@ -67,7 +80,7 @@
 
 (defn- spawn-one [world ^long base ^long i {:keys [thrower stack take-from]}]
   (let [eid (+ base i)]
-    (cons [:spawn-entity eid (item-entity world thrower stack)]
+    (cons [:spawn-entity eid (dropped world thrower stack)]
           (when take-from
             [[:set-slot thrower (take-from 0) (take-from 1)]
              (out/to thrower (out/set-slot (take-from 0) (take-from 1)))]))))
@@ -80,27 +93,53 @@
 
 (def ^:private ^:const item-half 0.125)
 (def ^:private ^:const item-height 0.25)
-(defn- liquid-push [world pos]
-  (liquid/entity-push (:chunks world) gen/flat-chunk pos item-half item-height))
+(defn- fluid-movement
+  "Velocity of an item in a liquid (vanilla setFluidMovement): a slow drift
+   up to 0.06 per tick, drag on the sides."
+  [[vx vy vz] ^double drag]
+  [(* (double vx) drag) (+ (double vy) (if (< (double vy) 0.06) 5.0E-4 0.0)) (* (double vz) drag)])
 
-(defn- step-item [world eid e]
-  (let [[vx vy vz] (v/+ (:vel e) (liquid-push world (:pos e)))
-        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
-                            [(double vx) (- (double vy) 0.04) (double vz)]
-                            item-half item-height)
-        pos (.pos mv) vel (.vel mv) on-ground (.on-ground mv)
-        [mx my mz] vel
-        f (if on-ground 0.588 0.98)
+(defn- step-item
+  "One tick of an item as vanilla ItemEntity.tick: the currents push it, in
+   water or lava it drifts, else it falls; at rest on the ground it moves
+   only every fourth tick; friction after the move; it is synced when its
+   velocity jumps, it lands or takes off, or while it is in a liquid."
+  [world eid e]
+  (let [chunks (:chunks world) pos (:pos e)
+        pushed (v/+ (:vel e) (liquid/entity-push chunks gen/flat-chunk pos item-half item-height (:vel e)))
+        water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
+        lava  (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)
+        in-fluid? (or (> water 0.1) (> lava 0.1))
+        [vx vy vz] (cond
+                     (> water 0.1) (fluid-movement pushed 0.99)
+                     (> lava 0.1) (fluid-movement pushed 0.95)
+                     :else [(v/x pushed) (- (v/y pushed) 0.04) (v/z pushed)])
+        resting? (and (:on-ground e)
+                      (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) 1.0E-5)
+                      (not= 0 (rem (+ (long (:tick world)) (long eid)) 4)))
+        [pos' vel' on-ground]
+        (if resting?
+          [pos [vx vy vz] true]
+          (let [^Move mv (phys/move chunks gen/flat-chunk pos [(double vx) (double vy) (double vz)] item-half item-height)
+                on-ground (.on-ground mv)
+                [mx my mz] (.vel mv)
+                f (if on-ground 0.588 0.98)
+                my (* (double my) 0.98)]
+            [(.pos mv)
+             [(* (double mx) f) (if (and on-ground (neg? my)) (* my -0.5) my) (* (double mz) f)]
+             on-ground]))
+        vel' (assoc vel' 1 (liquid/bubble-push chunks gen/flat-chunk pos' (double (vel' 1))))
+        old (:vel e)
+        jolt (let [dx (- (double (vel' 0)) (v/x old)) dy (- (double (vel' 1)) (v/y old)) dz (- (double (vel' 2)) (v/z old))]
+               (+ (* dx dx) (* dy dy) (* dz dz)))
         age (inc (long (or (:age e) 0)))]
     (if (>= age despawn-age)
       [:remove-entity eid]
       [:merge-entity eid
-       {:pos          pos
-        :vel          (v/+ [(* (double mx) f)
-                            (liquid/bubble-push (:chunks world) gen/flat-chunk pos (* (double my) 0.98))
-                            (* (double mz) f)]
-                           (liquid-push world pos))
+       {:pos          pos'
+        :vel          vel'
         :on-ground    on-ground
+        :needs-sync?  (or in-fluid? (> jolt 0.01) (not= on-ground (boolean (:on-ground e))))
         :age          age
         :pickup-delay (max 0 (dec (long (or (:pickup-delay e) 0))))}])))
 
@@ -152,7 +191,10 @@
   (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
                  slot-order)))
 
-(defn- add-stack [inv stack]
+(defn add-stack
+  "Puts the stack into the inventory as a pickup does: [changes left-over],
+   changes as [slot stack], left-over the part that did not fit."
+  [inv stack]
   (let [[changes n] (fill-existing inv stack (long (:count stack 1)))
         n (long n)]
     (if-let [slot (when (pos? n) (first-empty-slot inv changes))]

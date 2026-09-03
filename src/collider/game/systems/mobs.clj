@@ -197,7 +197,7 @@
         fric  (cond water? water-friction og ground-friction :else air-friction)
         accel (if (and og (not water?)) (* aispeed aispeed) (* air-accel aispeed))
         wpush (if water?
-                     (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height)
+                     (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
                      zero3)
         vx (let [a (+ vx0 (if hx (* (double hx) accel) 0.0) (double cx) (v/x wpush))]
              (if (and (not moving?) (not water?) (< (Math/abs a) 0.005)) 0.0 a))
