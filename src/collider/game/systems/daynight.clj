@@ -4,6 +4,19 @@
 (set! *warn-on-reflection* true)
 
 (def send-interval 20)
+(def ^:private sky-keyframes
+  "Sky light multiplier over the day, vanilla overworld timeline."
+  [[133 1.0] [11867 1.0] [13670 0.26666668] [22330 0.26666668] [24133 1.0]])
+
+(defn dark?
+  "Whether it is dark outside at time-of-day: sky light at most 11 of 15
+   (vanilla isDarkOutside, skyDarken >= 4)."
+  [time-of-day]
+  (let [t  (let [r (rem (long time-of-day) 24000)] (if (< r 133) (+ r 24000) r))
+        [[t0 v0] [t1 v1]] (first (filter (fn [[[a _] [b _]]] (and (<= a t) (< t b))) (partition 2 1 sky-keyframes)))
+        m  (+ v0 (* (- v1 v0) (/ (double (- t t0)) (- t1 t0))))]
+    (>= (long (- 15.0 (* 15.0 m))) 4)))
+
 (defn- time-msg [world]
   (out/time (long (:tick world)) (long (:time-of-day world 0))))
 

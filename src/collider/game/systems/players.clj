@@ -26,11 +26,12 @@
     (mobs/mob-type? (:type e))
     (mobs/metadata e)
     :else
-    {:burning?    (boolean (:burning? e))
-     :sneaking?   (boolean (:sneaking? e))
-     :sprinting?  (boolean (:sprinting? e))
-     :using-item? (boolean (:using-item? e))
-     :skin-parts  (long (or (:skin-parts e) 0))}))
+    (cond-> {:burning?    (boolean (:burning? e))
+             :sneaking?   (boolean (:sneaking? e))
+             :sprinting?  (boolean (:sprinting? e))
+             :using-item? (boolean (:using-item? e))
+             :skin-parts  (long (or (:skin-parts e) 0))}
+      (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos])))))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
@@ -152,17 +153,23 @@
                   moved? turned? rel? head-turned? meta-changed? equip-changed?
                   vel-changed? equip-diff])
 
-(defn- vel-changed? [^Track tr vel]
-  (boolean
-   (when vel
-     (let [sent (or (.vel-sent tr) vel-zero)
-           dx (- (vv/x vel) (vv/x sent))
-           dy (- (vv/y vel) (vv/y sent))
-           dz (- (vv/z vel) (vv/z sent))]
-       (> (+ (* dx dx) (* dy dy) (* dz dz)) 4.0E-4)))))
+(def ^:private vel-threshold 4.0E-4)
+(def ^:private item-vel-threshold 1.0E-7)
+
+(defn- vel-changed?
+  ([tr vel] (vel-changed? tr vel vel-threshold))
+  ([^Track tr vel ^double threshold]
+   (boolean
+    (when vel
+      (let [sent (or (.vel-sent tr) vel-zero)
+            dx (- (vv/x vel) (vv/x sent))
+            dy (- (vv/y vel) (vv/y sent))
+            dz (- (vv/z vel) (vv/z sent))]
+        (> (+ (* dx dx) (* dy dy) (* dz dz)) threshold))))))
 
 (defn- frame ^Frame [e ^Track tr ^long t due?]
-  (let [[bx by bz] (.pos tr)
+  (let [item? (= :item (:type e))
+        [bx by bz] (.pos tr)
         p (:pos e)
         x (fixed (vv/x p)) y (fixed (vv/y p)) z (fixed (vv/z p))
         dx (- x (long bx)) dy (- y (long by)) dz (- z (long bz))
@@ -182,7 +189,8 @@
         rel? (boolean (and (<= (- rel-limit) dx rel-limit)
                            (<= (- rel-limit) dy rel-limit)
                            (<= (- rel-limit) dz rel-limit)
-                           (<= since forced-teleport)))
+                           (<= since forced-teleport)
+                           (not (and item? (not= ground (boolean (.on-ground tr)))))))
         head-turned? (boolean (and due? (not= head (long (.head tr)))))
         meta-changed? (not= mdata (.mdata tr))
         equip-changed? (not= equip (.equip tr))
@@ -193,7 +201,7 @@
                            equip))]
     (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?) vel mdata equip
              moved? turned? rel? head-turned? meta-changed? equip-changed?
-             (vel-changed? tr vel) equip-diff)))
+             (vel-changed? tr vel (if item? item-vel-threshold vel-threshold)) equip-diff)))
 
 (defn- move-msg [eid e ^Frame f]
   (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
@@ -248,13 +256,15 @@
                    :tnt 10
                    :player update-interval
                    mob-update-interval)
-            due? (zero? (rem (long t) (long freq)))
+            item? (= :item (:type e))
+            due? (or (zero? (rem (long t) (long freq)))
+                     (and item? (boolean (:needs-sync? e))))
             tr   (track-of e)]
         (when-not (and (not due?) (instance? Track tr) (identical? e (:seen tr)))
           (if (and (not due?) (instance? Track tr)
-                   (identical? (metadata e) (:mdata tr))
-                   (identical? (equipment-stacks e) (:equip tr))
-                   (not (vel-changed? tr (:vel e))))
+                   (= (metadata e) (:mdata tr))
+                   (= (equipment-stacks e) (:equip tr))
+                   (or item? (not (vel-changed? tr (:vel e)))))
             (when-not (identical? e (:seen tr))
               [[:track eid (assoc tr :seen e)]])
             (let [f    (frame e tr (long t) due?)
@@ -295,6 +305,19 @@
        (for [[tag eid] events :when (= :player-join tag)]
          (out/to eid msg))))))
 
+(def ^:private teleport-retry 20)
+
+(defn- pending-teleport-deltas
+  "A teleport the client has not acknowledged in 20 ticks is sent again with
+   a fresh id (vanilla awaitingTeleportTime)."
+  [world ps]
+  (mapcat (fn [[eid e]]
+            (let [target (:tp-target e) since (:tp-id e)]
+              (when (and target since (>= (- (long (:tick world)) (long since)) teleport-retry))
+                [[:merge-entity eid {:tp-target target}]
+                 (out/to eid (out/teleport target (:yaw e 0.0) (:pitch e 0.0)))])))
+          ps))
+
 (defn- swing-deltas [viewers events]
   (keep (fn [[tag eid]]
           (when (and (= :swing tag) (some? (viewers eid)))
@@ -315,6 +338,7 @@
                            #(swing-deltas viewers events))))]
       [#(duplicate-login-deltas world events)
        #(list-deltas world ps)
+       #(pending-teleport-deltas world ps)
        spawns
        moves
        #(tab-header-deltas world events)])))

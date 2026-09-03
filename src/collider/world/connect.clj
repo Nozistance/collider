@@ -18,7 +18,7 @@
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
 (def ^:private neighbours (conj (vec (vals dirs)) [0 1 0] [0 -1 0]))
-(def connecting-types #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door})
+(def connecting-types #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :bed})
 
 (defn- exception? [n]
   (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
@@ -88,6 +88,23 @@
       lower? st
       :else (block/state self (assoc pprops :half :upper)))))
 
+(defn bed-partner-offset
+  "Offset from a bed half to its other half: the foot looks at the head."
+  [st]
+  (let [f (block/facing-of st)]
+    (dirs (if (= :foot (:part (block/props-of st))) f (opposite f)))))
+
+(defn- bed-state
+  "A bed half is gone without its other half and shares its occupied flag
+   (vanilla updateShape)."
+  [self st at]
+  (let [partner (at (bed-partner-offset st))
+        pprops  (block/props-of partner)]
+    (if (and (= self (block/block-of partner))
+             (not= (:part pprops) (:part (block/props-of st))))
+      (block/state self (assoc (block/props-of st) :occupied (:occupied pprops)))
+      0)))
+
 (defn reshape
   "New state of the block at pos after its connections to the neighbours are
    recomputed; nil if unchanged or not a connecting block."
@@ -102,6 +119,7 @@
                         0)))
             new   (case t
                     :door (door-state self st at)
+                    :bed (bed-state self st at)
                     :fence-gate (gate-state self st at)
                     (let [sides (into {} (map (fn [[dir off]]
                                                 (let [c (connects? t self (at off) dir)]
@@ -146,14 +164,19 @@
           (+ (long z) (long dz))])
        neighbours))
 
-(defn- reshaped [chunks positions]
-  (into []
-        (keep (fn [[_ y _ :as p]]
-                (when (chunk/in-range? y)
-                  (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
-                    (when-let [new (reshape chunks p st)]
-                      [p new])))))
-        (distinct (concat positions (mapcat around positions)))))
+(defn- reshaped
+  "Changes at positions and around them. A changed bed half is not reshaped
+   by its own change: it is the source its other half copies from."
+  [chunks positions]
+  (let [origin (set positions)]
+    (into []
+          (keep (fn [[_ y _ :as p]]
+                  (when (chunk/in-range? y)
+                    (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
+                      (when-not (and (contains? origin p) (= :bed (block/type-of st)))
+                        (when-let [new (reshape chunks p st)]
+                          [p new]))))))
+          (distinct (concat positions (mapcat around positions))))))
 
 (defn derived-changes
   "[[pos state] ...] for the blocks at positions and their neighbours whose

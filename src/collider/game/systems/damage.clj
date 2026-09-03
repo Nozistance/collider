@@ -5,6 +5,7 @@
             [collider.game.mobs :as mobs]
             [collider.world.chunk :as chunk]
             [collider.game.state :as state]
+            [collider.world.bed :as bed]
             [collider.world.block :as block]
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
@@ -239,18 +240,30 @@
       (when (and death (>= (long death) death-ticks) (not= :player (:type e)))
         [[:remove-entity eid]]))))
 
+(defn- respawn-point
+  "[pos yaw] next to the player's bed if it still stands, else the world
+   spawn with a word about it (vanilla findRespawnAndUseSpawnBlock)."
+  [world e]
+  (let [bed-pos (:spawn e)
+        chunks  (:chunks world)]
+    (if (and bed-pos (bed/head-pos chunks bed-pos))
+      (let [up (bed/stand-up-position chunks bed-pos (:yaw e 0.0))]
+        [up (bed/look-yaw bed-pos up) nil])
+      [state/spawn-pos 0.0 (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
+
 (defn- respawn-deltas [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
-      (let [[sx sy sz] state/spawn-pos]
-        [[:merge-entity eid {:pos         (v/v3 state/spawn-pos)
-                             :tp-target   state/spawn-pos
-                             :health      player-health
-                             :health-sent player-health
-                             :hurt-resist 0 :last-damage 0.0 :death-time 0}]
-         (out/to eid (out/respawn))
-         (out/to eid (out/teleport [sx sy sz] 0.0 0.0))
-         (out/to eid (out/health player-health))]))))
+      (let [[pos yaw lost] (respawn-point world e)]
+        (cond-> [[:merge-entity eid {:pos         (v/v3 pos)
+                                     :tp-target   pos
+                                     :health      player-health
+                                     :health-sent player-health
+                                     :hurt-resist 0 :last-damage 0.0 :death-time 0}]
+                 (out/to eid (out/respawn))
+                 (out/to eid (out/teleport pos yaw 0.0))
+                 (out/to eid (out/health player-health))]
+          lost (conj (out/to eid lost)))))))
 
 (defn- idle? [e]
   (let [health (double (or (:health e) 0.0))]

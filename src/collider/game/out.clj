@@ -22,7 +22,9 @@
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
-(defn time [age time-of-day]
+(defn time
+  "Clock broadcast; the values sent are those of the world after the tick."
+  [age time-of-day]
   {:msg :time :age age :time time-of-day})
 
 (defn explosion [center radius records motion]
@@ -52,17 +54,41 @@
 (defn set-slot [slot stack]
   {:msg :set-slot :slot slot :stack stack})
 
+(defn carried
+  "The stack on the cursor of the inventory screen."
+  [stack]
+  {:msg :carried :stack stack})
+
 (defn held-slot [slot]
   {:msg :held-slot :slot slot})
 
-(defn inventory [slots]
-  {:msg :inventory :slots slots})
+(defn inventory
+  ([slots] (inventory slots nil))
+  ([slots carried] {:msg :inventory :slots slots :carried carried}))
 
-(defn suggestions [matches]
-  {:msg :suggestions :matches (vec matches)})
+(defn suggestions
+  "Completions of the last word of what the player typed: request id, where
+   the word starts and how long it is, the matches."
+  [id start length matches]
+  {:msg :suggestions :id id :start start :length length :matches (vec matches)})
 
 (defn system-chat [runs]
   {:msg :system-chat :runs runs})
+
+(defn stats
+  "Statistics of the player for the statistics screen: {[type key] count}."
+  [stats]
+  {:msg :stats :stats stats})
+
+(defn game-rules
+  "All game rule values for the client's rules screen."
+  [rules]
+  {:msg :game-rules :rules rules})
+
+(defn overlay
+  "Message over the hotbar, as vanilla sendOverlayMessage."
+  [runs]
+  {:msg :overlay :runs runs})
 
 (defn player-chat [name runs]
   {:msg :player-chat :name name :runs runs})
@@ -120,6 +146,11 @@
 
 (defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
+
+(defn extinguish
+  "Fire put out: the sound for everyone, vanilla level event 1009."
+  [pos]
+  {:msg :extinguish :pos pos})
 
 (defn fizz [pos]
   {:msg :fizz :pos pos})

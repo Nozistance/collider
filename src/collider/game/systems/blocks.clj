@@ -5,6 +5,10 @@
             [collider.game.out :as out]
             [collider.game.sense :as sense]
             [collider.game.tnt :as tnt]
+            [collider.game.systems.daynight :as daynight]
+            [collider.game.systems.sleep :as sleep]
+            [collider.vec :as v]
+            [collider.world.bed :as bed]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.connect :as connect]
@@ -23,7 +27,7 @@
       (some #(str/ends-with? n %) ["-leaves"]) :place/grass
       (#{"dirt" "gravel" "farmland" "clay" "coarse-dirt" "rooted-dirt" "mud"} n) :place/gravel
       (some #(str/ends-with? n %) ["sand" "soul-sand"]) :place/sand
-      (some #(str/ends-with? n %) ["-wool" "-carpet"]) :place/cloth
+      (some #(str/ends-with? n %) ["-wool" "-carpet" "-bed"]) :place/cloth
       (some #(str/includes? n %) ["glass" "ice" "glowstone" "sea-lantern"]) :place/glass
       (#{"snow" "snow-block" "powder-snow"} n) :place/snow
       :else :place/stone)))
@@ -114,24 +118,30 @@
     (conj (change-deltas world changes)
           (out/except eid (out/sound (open-sound state open?) pos 1.0 pitch)))))
 
-(defn- extinguish-deltas [world [_ status pos face]]
-  (when (= 0 status)
-    (when-let [off (block/face-offsets face)]
-      (let [[_ y' _ :as pos'] (mapv + pos off)]
-        (when (and (chunk/in-range? y')
-                   (fire/fire-state? (block-at world pos')))
-          [[:set-block pos' 0]
-           (out/all (out/block-change pos' 0))
-           (out/all (out/fizz pos'))])))))
+(defn- bed-head-effect
+  "Breaking the foot of a bed in creative shows the head breaking too
+   (vanilla BedBlock.playerWillDestroy)."
+  [world eid pos old]
+  (when (and (= :bed (block/type-of old)) (= :foot (:part (block/props-of old))))
+    (let [head-pos (mapv + pos (connect/bed-partner-offset old))
+          head     (block-at world head-pos)]
+      (when (and (= (block/block-of old) (block/block-of head))
+                 (= :head (:part (block/props-of head))))
+        (out/except eid (out/break-effect head-pos head))))))
 
-(defn- dig-deltas [world [eid status pos _face :as args]]
-  (or (extinguish-deltas world args)
-      (let [old (block-at world pos)]
-        (when (or (= 0 status) (= 2 status))
-          (if (pos? old)
-            (conj (change-deltas world [[pos (block/emptied old)]])
-                  (out/except eid (out/break-effect pos old)))
-            [(out/to eid (out/block-change pos 0))])))))
+(defn- dig-deltas
+  "Breaking a block in creative: the cell is emptied and everyone else sees
+   it break; fire goes out with its sound for all (vanilla
+   BaseFireBlock.playerWillDestroy)."
+  [world [eid status pos _face]]
+  (let [old (block-at world pos)]
+    (when (or (= 0 status) (= 2 status))
+      (if (pos? old)
+        (cond-> (conj (change-deltas world [[pos (block/emptied old)]])
+                      (out/except eid (out/break-effect pos old)))
+          (fire/fire-state? old) (conj (out/all (out/extinguish pos)))
+          (bed-head-effect world eid pos old) (conj (bed-head-effect world eid pos old)))
+        [(out/to eid (out/block-change pos 0))]))))
 
 (defn- snow-layers ^long [st]
   (Long/parseLong (name (:layers (block/props-of st)))))
@@ -157,19 +167,25 @@
       (block/state :snow {:layers (keyword (str (min 8 (inc (snow-layers cur)))))})
       state)))
 
-(defn- flint-deltas [world [eid pos face]]
+(defn- flint-deltas
+  "Fire in the air cell past the clicked face when fire can stand there
+   (vanilla BaseFireBlock.canBePlacedAt); the click sound is the client's own."
+  [world [eid pos face]]
   (when-let [off (block/face-offsets face)]
     (if (and (tnt/tnt-state? (block-at world pos))
+             (get-in world [:rules :tnt-explodes] true)
              (not (get-in world [:entities eid :sneaking?]))
              (not ((tnt/primed-origins world) pos)))
       [[:spawn-entity (tnt/primed pos [(:tick world) pos])]
        (out/all (out/sound :tnt/primed pos 1.0 1.0))]
-      (let [[_ y' _ :as pos'] (mapv + pos off)]
-        (when (and (chunk/in-range? y') (zero? (block-at world pos')))
-          (let [st (fire/fire-state 0)]
-            [[:set-block pos' st]
-             (out/all (out/block-change pos' st))
-             (out/all (out/sound :fire/ignite pos' 1.0 1.0))]))))))
+      (let [[_ y' _ :as pos'] (mapv + pos off)
+            st (fire/fire-state 0)]
+        (when (and (chunk/in-range? y')
+                   (zero? (block-at world pos'))
+                   (support/supported? (:chunks world) gen/flat-chunk pos' st))
+          [[:set-block pos' st]
+           (out/all (out/block-change pos' st))
+           (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos' :flint])))))])))))
 
 (defn- slab-merge [world pos pos' face item]
   (let [clicked (block-at world pos)
@@ -196,7 +212,7 @@
          (pos? (long y))
          (support/supported? (:chunks world) gen/flat-chunk pos' (block/state :kelp)))))
 
-(declare door-place-deltas)
+(declare door-place-deltas bed-place-deltas)
 
 (defn- solid-place-deltas [world [eid pos face item cursor]]
   (when-let [off (block/face-offsets face)]
@@ -204,7 +220,7 @@
                                       (replaceable? world pos))]
       (let [[_ y' _ :as target] (if (replaceable? world pos item) pos (mapv + pos off))
             pos'   (when (chunk/in-range? y') target)
-            state  (or (when (and pos' (not= :door (block/type-of state))) (connect/reshape (:chunks world) pos' state)) state)
+            state  (or (when (and pos' (not (#{:door :bed} (block/type-of state)))) (connect/reshape (:chunks world) pos' state)) state)
             state  (if pos' (waterlogged world pos' state) state)
             state  (if pos' (stacked-snow world pos' state item) state)
             merged (slab-merge world pos pos' face item)]
@@ -223,6 +239,8 @@
           (reject-deltas world eid pos pos')
           (= :door (block/type-of state))
           (door-place-deltas world eid pos pos' state item cursor)
+          (= :bed (block/type-of state))
+          (bed-place-deltas world eid pos pos' state item)
           :else
           (placed-deltas world eid pos' state item))))))
 
@@ -342,6 +360,67 @@
          (by-hand? cur)
          (not (and item (get-in world [:entities eid :sneaking?]))))))
 
+(defn- bed-place-deltas
+  "The foot in the clicked cell, the head one cell along the player's look;
+   nothing if the head cell is taken (vanilla BedBlock.getStateForPlacement)."
+  [world eid pos pos' state item]
+  (let [head-pos (mapv + pos' (connect/bed-partner-offset state))
+        head     (block/state (block/block-of state) (assoc (block/props-of state) :part :head))]
+    (if (and (replaceable? world head-pos item)
+             (not (intersects-player? world head-pos head)))
+      (placed-deltas world eid [[pos' state] [head-pos head]] item)
+      (reject-deltas world eid pos pos'))))
+
+(defn- uses-bed? [world eid pos item use-item?]
+  (and (not use-item?)
+       (= :bed (block/type-of (block-at world pos)))
+       (not (and item (get-in world [:entities eid :sneaking?])))))
+
+(defn- bed-in-range? [world eid head]
+  (let [p  (get-in world [:entities eid :pos])
+        st (block-at world head)
+        foot (mapv + head (connect/bed-partner-offset st))]
+    (some (fn [[x y z]]
+            (and (<= (Math/abs (- (v/x p) (+ (double x) 0.5))) 3.0)
+                 (<= (Math/abs (- (v/y p) (double y))) 2.0)
+                 (<= (Math/abs (- (v/z p) (+ (double z) 0.5))) 3.0)))
+          [head foot])))
+
+(defn- bed-blocked? [world head]
+  (let [st   (block-at world head)
+        above (mapv + head [0 1 0])]
+    (or (block/full-cube? (block-at world above))
+        (block/full-cube? (block-at world (mapv + above (connect/bed-partner-offset st)))))))
+
+(defn- spawn-deltas [world eid head]
+  (when (not= head (get-in world [:entities eid :spawn]))
+    [[:merge-entity eid {:spawn head}]
+     (out/to eid (out/system-chat [{:translate "block.minecraft.set_spawn"}]))]))
+
+(defn- sleep-deltas
+  "Using a bed: sets the respawn point, then lies down in it or says why not
+   (vanilla BedBlock.useWithoutItem and ServerPlayer.startSleepInBed)."
+  [world eid pos]
+  (let [head (bed/head-pos (:chunks world) pos)
+        st   (when head (block-at world head))
+        say  (fn [k] [(out/to eid (out/overlay [{:translate k}]))])]
+    (cond
+      (nil? head) nil
+      (= :true (:occupied (block/props-of st))) (say "block.minecraft.bed.occupied")
+      (get-in world [:entities eid :sleeping]) nil
+      (not (bed-in-range? world eid head)) (say "block.minecraft.bed.too_far_away")
+      (bed-blocked? world head) (say "block.minecraft.bed.obstructed")
+      (not (daynight/dark? (:time-of-day world 0)))
+      (concat (spawn-deltas world eid head) (say "block.minecraft.bed.no_sleep"))
+      :else
+      (let [[x y z] head
+            lie [(+ (long x) 0.5) (+ (long y) 0.6875) (+ (long z) 0.5)]]
+        (concat (spawn-deltas world eid head)
+                (change-deltas world [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :true))]])
+                [[:merge-entity eid {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
+                                     :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
+                 (sleep/announcement world (inc (count (sleep/sleepers world))))])))))
+
 (defn- place-deltas [world [eid pos face item cursor]]
   (let [item      (or item (sense/held-of (get-in world [:entities eid])))
         args      [eid pos face item cursor]
@@ -349,6 +428,7 @@
         pour      (liquid/bucket->state item)]
     (cond
       (opens? world eid pos item use-item?) (toggle-deltas world eid pos (block-at world pos))
+      (uses-bed? world eid pos item use-item?) (sleep-deltas world eid pos)
       (nil? item)                  nil
       pour                         (when use-item? (add world args pour))
       (= :flint-and-steel item)    (when-not use-item? (flint-deltas world args))

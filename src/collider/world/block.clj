@@ -264,6 +264,8 @@
                   {:persistent :true}
                   (= :door t)
                   {:facing (player-direction yaw) :half :lower}
+                  (= :bed t)
+                  {:facing (player-direction yaw) :part :foot :occupied :false}
                   (= :fence-gate t)
                   {:facing (player-direction yaw)}
                   (= :trapdoor t)
