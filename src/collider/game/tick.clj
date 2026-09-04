@@ -4,6 +4,7 @@
    second on its own thread and hands each result to deliver!."
   (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
+            [collider.game.detector :as detector]
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
@@ -15,6 +16,7 @@
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.players :as players]
+            [collider.game.systems.sleep :as sleep]
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.damage :as damage])
   (:import (collider.game.deltas Deltas)
@@ -34,6 +36,7 @@
    #'mobs/mobs-system
    #'tnt/tnt-system
    #'damage/damage
+   #'sleep/sleep
    #'inventory/inventory
    #'chat/chat
    #'daynight/daynight
@@ -41,13 +44,19 @@
 
 (defn tick
   "Advances the world by one tick: applies the events in order, runs the
-   systems, merges their deltas. Returns [world' deltas]."
+   systems, merges their deltas, then lets the Detector add what it saw.
+   Returns [world' deltas]."
   [world events]
-  (let [world' (-> (update world :tick inc)
-                   (update :time-of-day (fnil inc 0)))
+  (let [world' (cond-> (update world :tick inc)
+                 (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
         world' (reduce state/apply-event world' events)
-        deltas (deltas/of systems world' events)]
-    (state/apply-deltas world' deltas)))
+        deltas (deltas/of systems world' events)
+        [w1 d1] (state/apply-deltas world' deltas)
+        seen (detector/observe world events d1 w1)]
+    (if (empty? seen)
+      [w1 d1]
+      (let [[w2 d2] (state/apply-deltas w1 seen)]
+        [w2 (deltas/merge-deltas d1 d2)]))))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 (def ^:private ^:const window-size 4096)
