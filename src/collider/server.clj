@@ -2,7 +2,8 @@
   "Netty server for 26.2 (protocol 776). Connection states: handshake, status,
    login, configuration, play. Packets become events in the tick queue;
    `deliver!` renders the deltas of a tick and writes the packets."
-  (:require [clojure.data.json :as json]
+  (:require [collider.game.commands :as commands]
+            [clojure.data.json :as json]
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.state :as state]
@@ -79,19 +80,39 @@
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 
-(defn- send-join-burst! [^ChannelHandlerContext ctx eid {:keys [max-players view-distance simulation-distance]}]
+(def ^:private command-tree (delay (commands/tree)))
+(def ^:private world-border-size 5.9999968E7)
+(def ^:private world-border-max 29999984)
+(def ^:private op-level-event 24)
+
+(defn- send-join-burst!
+  "What a vanilla server sends between login and the first chunks, in its
+   order: creative abilities, peaceful, operator level 4, MOTD, world border,
+   spawn, tick rate, health and experience."
+  [^ChannelHandlerContext ctx eid {:keys [max-players view-distance simulation-distance motd]}]
   (let [[x y z] state/spawn-pos]
     (.write ctx {:packet :login :eid eid
                  :max-players (min 255 (long max-players))
                  :view-distance view-distance
                  :simulation-distance simulation-distance
                  :dimension-type @overworld})
+    (.write ctx {:packet :change-difficulty :difficulty 0 :locked false})
     (.write ctx {:packet :player-abilities :flags (bit-or 1 4 8)
                  :flying-speed 0.05 :walking-speed 0.1})
+    (.write ctx {:packet :entity-event :eid eid :event (+ op-level-event 4)})
+    (.write ctx {:packet :commands :nodes @command-tree})
+    (.write ctx {:packet :server-data :motd motd})
+    (.write ctx {:packet :initialize-border :size world-border-size :max-size world-border-max})
     (.write ctx {:packet :set-default-spawn-position :pos [(long x) (long y) (long z)]})
+    (.write ctx {:packet :game-event :event 13 :value 0.0})
+    (.write ctx {:packet :ticking-state :rate 20.0 :frozen? false})
+    (.write ctx {:packet :ticking-step :steps 0})
     (.write ctx {:packet :set-health :health 20.0 :food 20 :saturation 5.0})
     (.write ctx {:packet :set-experience :progress 0.0 :level 0 :total 0})
-    (.writeAndFlush ctx {:packet :game-event :event 13 :value 0.0})))
+    (.writeAndFlush ctx {:packet :update-attributes :eid eid
+                         :attributes [[:entity-interaction-range 3.0]
+                                      [:movement-speed 0.1]
+                                      [:block-interaction-range 4.5]]})))
 
 (defn- do-login! [^ChannelHandlerContext ctx {:keys [conns ^ConcurrentLinkedQueue queue cfg]}]
   (let [ch  (.channel ctx)
@@ -106,6 +127,13 @@
 
 (defn- on-ground? [m] (odd? (long (:flags m))))
 
+(defn- invalid-move?
+  "NaN coordinates or a non-finite rotation (vanilla containsInvalidValues)."
+  [m]
+  (or (some #(Double/isNaN (double %)) (:pos m))
+      (some #(Double/isInfinite (double %)) (:pos m))
+      (some #(not (Double/isFinite (double %))) (keep m [:yaw :pitch]))))
+
 (defn- packet->event [eid {:keys [packet] :as m}]
   (case packet
     :keep-alive              [:keepalive-echo eid (:id m)]
@@ -115,6 +143,7 @@
                                          :on-ground (on-ground? m)}]
     :move-player-rot         [:move eid {:yaw (:yaw m) :pitch (:pitch m) :on-ground (on-ground? m)}]
     :move-player-status-only [:move eid {:on-ground (on-ground? m)}]
+    :accept-teleportation    [:teleport-ack eid (:id m)]
     :player-abilities        [:move eid {:flying (bit-test (long (:flags m)) 1)}]
     :player-action           [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]
     :use-item-on             (let [[cx cy cz] (:cursor m)]
@@ -129,7 +158,10 @@
     :pick-item-from-block    [:pick eid {:pos (:pos m)}]
     :pick-item-from-entity   [:pick eid {:entity (:id m)}]
     :set-creative-mode-slot  [:creative-slot eid (:slot m) (:stack m)]
-    :client-command          (when (zero? (long (:action m))) [:respawn eid])
+    :container-click         (when (zero? (long (:container m))) [:click eid (dissoc m :packet :container)])
+    :client-command          (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
+    :set-game-rule           [:set-rules eid (:entries m)]
+    :command-suggestion      [:tab-complete eid (:text m) nil (:id m)]
     :interact                (case (long (:action m))
                                0 [:interact eid (:target m)]
                                1 [:attack eid (:target m)]
@@ -139,16 +171,45 @@
     nil))
 
 (def ^:private ignored
-  #{:accept-teleportation :client-information :player-loaded
-    :client-tick-end :custom-payload :chat-session-update :chat-ack
-    :container-close})
+  "Serverbound packets with nothing to do: bookkeeping the client does on
+   its own, or content outside the frame (trading, books, structures,
+   spectators, vehicles, signed chat)."
+  #{:client-information :player-loaded :client-tick-end :custom-payload
+    :chat-session-update :chat-ack :container-close :configuration-acknowledged
+    :cookie-response :custom-click-action :debug-subscription-request
+    :chat-command-signed :pong :bundle-item-selected :block-entity-tag-query
+    :entity-tag-query :edit-book :jigsaw-generate :lock-difficulty
+    :change-difficulty :move-vehicle :paddle-boat :place-recipe
+    :recipe-book-change-settings :recipe-book-seen-recipe :rename-item
+    :resource-pack :seen-advancements :select-trade :set-beacon
+    :set-command-block :set-command-minecart :set-jigsaw-block
+    :set-structure-block :set-test-block :spectator-action
+    :teleport-to-entity :test-instance-block-action})
+
+(def ^:private later
+  "Serverbound packets of categories still to come (ticket 028): inventory
+   screens, signs, entity interaction, commands, game mode."
+  #{:container-button-click :container-slot-state-changed
+    :sign-update :attack :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
 
 (defn- log-unhandled! [packet]
-  (when-not (or (ignored packet) (@unhandled packet))
+  (when-not (or (ignored packet) (later packet) (@unhandled packet))
     (swap! unhandled conj packet)
     (log/info "play:" packet "not handled")))
+
+(defn- setup-compression!
+  "Tells the client the threshold and, once that packet is out, compresses
+   both ways (vanilla setupCompression). Negative threshold: no compression."
+  [^ChannelHandlerContext ctx ^long threshold]
+  (when-not (neg? threshold)
+    (-> (.writeAndFlush ctx {:packet :login-compression :threshold threshold})
+        (.addListener (reify ChannelFutureListener
+                        (operationComplete [_ _]
+                          (doto (.pipeline (.channel ctx))
+                            (.addAfter "framer" "decompress" (c/compression-decoder threshold))
+                            (.addAfter "frame-encoder" "compress" (c/compression-encoder threshold)))))))))
 
 (defn- handle-packet [^ChannelHandlerContext ctx {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
   (case [(conn-state ctx) (:packet m)]
@@ -162,9 +223,13 @@
     (-> (.writeAndFlush ctx {:packet :pong-response :payload (:payload m)})
         (.addListener ChannelFutureListener/CLOSE))
 
+    [:play :ping-request]
+    (.writeAndFlush ctx {:packet :pong-response :payload (:payload m)})
+
     [:login :hello]
     (let [nm (:name m)]
       (.set (.attr (.channel ctx) name-key) nm)
+      (setup-compression! ctx (long (:compression-threshold cfg -1)))
       (.writeAndFlush ctx {:packet :login-finished :uuid (c/offline-uuid nm) :name nm}))
 
     [:login :login-acknowledged]
@@ -179,9 +244,12 @@
 
     (when (= :play (conn-state ctx))
       (when-let [eid (.get (.attr (.channel ctx) eid-key))]
-        (if-let [ev (packet->event eid m)]
-          (.offer queue ev)
-          (log-unhandled! (:packet m)))))))
+        (if (and (#{:move-player-pos :move-player-pos-rot :move-player-rot} (:packet m)) (invalid-move? m))
+          (-> (.writeAndFlush ctx {:packet :disconnect :text {:translate "multiplayer.disconnect.invalid_player_movement"}})
+              (.addListener ChannelFutureListener/CLOSE))
+          (if-let [ev (packet->event eid m)]
+            (.offer queue ev)
+            (log-unhandled! (:packet m))))))))
 
 (defn connection-handler [{:keys [conns ^ConcurrentLinkedQueue queue save!] :as io}]
   (proxy [ChannelInboundHandlerAdapter] []

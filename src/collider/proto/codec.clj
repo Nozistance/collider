@@ -4,10 +4,12 @@
             [collider.data :as data])
   (:import (io.netty.buffer ByteBuf)
            (io.netty.channel ChannelHandlerContext)
-           (io.netty.handler.codec ByteToMessageDecoder MessageToByteEncoder)
+           (io.netty.handler.codec ByteToMessageDecoder MessageToByteEncoder
+                                   MessageToMessageDecoder MessageToMessageEncoder DecoderException)
            (java.io ByteArrayOutputStream DataOutputStream)
            (java.nio.charset StandardCharsets)
-           (java.util List UUID)))
+           (java.util List UUID)
+           (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
 
@@ -59,11 +61,44 @@
                   (str/includes? (str k) ":") (str k)
                   :else (str "minecraft:" k))))
 
-(defn write-component [^ByteBuf buf s]
+(defn- write-nbt-string [^DataOutputStream d ^String name ^String v]
+  (.writeByte d 8) (.writeUTF d name) (.writeUTF d v))
+
+(declare write-translatable)
+
+(defn- write-argument [^DataOutputStream d a]
+  (if (map? a)
+    (write-translatable d a)
+    (do (write-nbt-string d "text" (str a)) (.writeByte d 0))))
+
+(defn- write-translatable
+  "Compound of a translatable component; the arguments are numbers, texts,
+   or components themselves."
+  [^DataOutputStream d {:keys [translate with]}]
+  (write-nbt-string d "translate" translate)
+  (when (seq with)
+    (.writeByte d 9) (.writeUTF d "with")
+    (cond
+      (every? number? with)
+      (do (.writeByte d 3) (.writeInt d (count with))
+          (doseq [a with] (.writeInt d (int a))))
+      (every? string? with)
+      (do (.writeByte d 8) (.writeInt d (count with))
+          (doseq [a with] (.writeUTF d a)))
+      :else
+      (do (.writeByte d 10) (.writeInt d (count with))
+          (doseq [a with] (write-argument d a)))))
+  (.writeByte d 0))
+
+(defn write-component
+  "Text component as network NBT: a string, or {:translate key :with args}
+   for a client-side translation."
+  [^ByteBuf buf s]
   (let [bo (ByteArrayOutputStream.)]
     (with-open [d (DataOutputStream. bo)]
-      (.writeUTF d ^String (str s)))
-    (.writeByte buf 8)
+      (if (map? s)
+        (do (.writeByte buf 10) (write-translatable d s))
+        (do (.writeByte buf 8) (.writeUTF d ^String (str s)))))
     (.writeBytes buf (.toByteArray bo))))
 
 (defn write-angle [^ByteBuf buf ^double deg]
@@ -137,7 +172,18 @@
                           {:item item :added added :removed removed})))
         {:item (get @item-names item) :count n}))))
 
-(def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-state 14})
+(defn read-hashed-stack
+  "Stack as the client sees it in a container click: {:item :count} or nil.
+   The component hashes are read and dropped."
+  [^ByteBuf buf]
+  (when (.readBoolean buf)
+    (let [item (read-varint buf)
+          n    (read-varint buf)]
+      (dotimes [_ (read-varint buf)] (read-varint buf) (.readInt buf))
+      (dotimes [_ (read-varint buf)] (read-varint buf))
+      {:item (get @item-names item) :count n})))
+
+(def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :optional-block-pos 11 :block-state 14 :pose 20})
 
 (defn write-entity-data [^ByteBuf buf entries]
   (doseq [[idx type v] entries]
@@ -149,7 +195,10 @@
       :float (.writeFloat buf (float v))
       :item (write-item-stack buf v)
       :boolean (.writeBoolean buf (boolean v))
-      :block-state (write-varint buf (long v))))
+      :optional-block-pos (do (.writeBoolean buf (some? v))
+                              (when v (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))))
+      :block-state (write-varint buf (long v))
+      :pose (write-varint buf (long v))))
   (.writeByte buf 0xFF))
 
 (defn offline-uuid ^UUID [^String name]
@@ -183,3 +232,52 @@
     (encode [^ChannelHandlerContext _ctx ^ByteBuf msg ^ByteBuf out]
       (write-varint out (.readableBytes msg))
       (.writeBytes out msg))))
+
+(def ^:private max-uncompressed 8388608)
+
+(defn compression-decoder
+  "Frame to payload under vanilla compression: a varint of the uncompressed
+   length, 0 for a frame sent as is, else zlib data of that length."
+  [^long threshold]
+  (let [inflater (Inflater.)]
+    (proxy [MessageToMessageDecoder] []
+      (decode [^ChannelHandlerContext ctx ^ByteBuf in ^List out]
+        (let [n (read-varint in)]
+          (if (zero? n)
+            (.add out (.readRetainedSlice in (.readableBytes in)))
+            (do
+              (when (< n threshold)
+                (throw (DecoderException. (str "badly compressed packet: " n " below threshold " threshold))))
+              (when (> n max-uncompressed)
+                (throw (DecoderException. (str "badly compressed packet: " n " above " max-uncompressed))))
+              (let [src (byte-array (.readableBytes in))
+                    dst (byte-array n)]
+                (.readBytes in src)
+                (.setInput inflater src)
+                (let [got (.inflate inflater dst)]
+                  (.reset inflater)
+                  (when (not= got n)
+                    (throw (DecoderException. (str "badly compressed packet: inflated " got " of " n)))))
+                (.add out (.writeBytes (.buffer (.alloc ctx) n) dst))))))))))
+
+(defn compression-encoder
+  "Payload to frame body: packets of at least threshold bytes go zlib-compressed
+   behind their length, shorter ones behind a 0."
+  [^long threshold]
+  (let [deflater (Deflater.)
+        chunk (byte-array 8192)]
+    (proxy [MessageToMessageEncoder] []
+      (encode [^ChannelHandlerContext ctx ^ByteBuf msg ^List out]
+        (let [n (.readableBytes msg)
+              buf (.buffer (.alloc ctx))]
+          (if (< n threshold)
+            (do (write-varint buf 0) (.writeBytes buf msg))
+            (let [src (byte-array n)]
+              (.readBytes msg src)
+              (write-varint buf n)
+              (.setInput deflater src)
+              (.finish deflater)
+              (while (not (.finished deflater))
+                (.writeBytes buf chunk 0 (.deflate deflater chunk)))
+              (.reset deflater)))
+          (.add out buf))))))

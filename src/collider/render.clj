@@ -5,6 +5,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.data :as data]
             [collider.game.deltas]
+            [collider.game.rules :as rules]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen])
@@ -16,8 +17,12 @@
 (defn- players [world]
   (sort (vals (:players world))))
 
-(defn- text-of [runs]
-  (apply str (map :text runs)))
+(defn- text-of
+  "Component of the runs: one translatable run goes as is, plain runs join."
+  [runs]
+  (if-let [t (some :translate runs)]
+    (select-keys (first (filter :translate runs)) [:translate :with])
+    (apply str (map :text runs))))
 
 (defn- chunk-packets [world [_ eid cp add drop]]
   (let [[cx cz] (chunk/id->pos cp)]
@@ -58,7 +63,9 @@
 (defn- entity-data [kind meta]
   (case kind
     :player [[0 :byte (flags-byte meta)]
-             [8 :byte (if (:using-item? meta) 0x01 0)]]
+             [6 :pose (if (:sleeping-pos meta) 2 0)]
+             [8 :byte (if (:using-item? meta) 0x01 0)]
+             [14 :optional-block-pos (:sleeping-pos meta)]]
     :sheep  [[0 :byte (flags-byte meta)]
              [16 :boolean (boolean (:baby? meta))]
              [18 :byte (bit-and (long (or (:color meta) 0)) 15)]]
@@ -77,8 +84,12 @@
           d     (entity-data kind meta)]
       (concat
        [{:packet :bundle-delimiter}
+        ;; the position and velocity the track started from: the relative
+        ;; moves that follow are counted from there, so the client must
+        ;; start its own simulation there too
         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
-         :pos (:pos e) :vel (:vel e [0.0 0.0 0.0])
+         :pos (if tr (mapv #(/ (double %) 4096.0) (:pos tr)) (:pos e))
+         :vel (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
          :yaw (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))}]
        (when (seq d) [{:packet :set-entity-data :eid eid :data d}])
        (when (seq equip) [{:packet :set-equipment :eid eid :slots equip}])
@@ -162,22 +173,29 @@
     :keepalive  [{:packet :keep-alive :id (:id m)}]
     :disconnect [{:packet :disconnect :text (:text m)}]
     :system-chat [{:packet :system-chat :text (text-of (:runs m)) :overlay false}]
+    :overlay    [{:packet :system-chat :text (text-of (:runs m)) :overlay true}]
+    :stats      [{:packet :award-stats :stats (:stats m)}]
+    :suggestions [{:packet :command-suggestions :id (:id m) :start (:start m) :length (:length m) :matches (:matches m)}]
+    :game-rules [{:packet :game-rule-values
+                  :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)]) (:rules m))}]
     :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
     :health     [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
     :respawn    []
-    :time       [{:packet :set-time :age (:age m) :time (:time m)}]
+    :time       [{:packet :set-time :age (:tick world) :time (:time-of-day world)}]
     :block-change [{:packet :block-update :pos (:pos m) :state (:state m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]
+    :carried    [{:packet :container-set-slot :container -1 :slot -1 :stack (:stack m)}]
     :held-slot  [{:packet :set-held-slot :slot (:slot m)}]
     :block-ack  [{:packet :block-changed-ack :sequence (:sequence m)}]
-    :inventory  [{:packet :container-set-content :items (:slots m) :carried nil}]
+    :inventory  [{:packet :container-set-content :items (:slots m) :carried (:carried m)}]
     :tab-add    [{:packet :player-info-update :players (:entries m)}]
     :tab-remove [{:packet :player-info-remove :uuids (:uuids m)}]
     :tab-latency [{:packet :player-info-update :action :latency :players (:entries m)}]
     :tab-header [{:packet :tab-list :header (:header m) :footer (:footer m)}]
     :break-effect [{:packet :level-event :event 2001 :pos (:pos m) :data (:state m)}]
     :fizz [{:packet :level-event :event 1501 :pos (:pos m) :data 0}]
+    :extinguish [{:packet :level-event :event 1009 :pos (:pos m) :data 0}]
     :move [{:packet :move-entity-pos :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m) :on-ground (:on-ground m)}]
     :move-look [{:packet :move-entity-pos-rot :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)
                  :yaw (:yaw m) :pitch (:pitch m) :on-ground (:on-ground m)}]
@@ -189,7 +207,7 @@
     :meta (let [d (entity-data (kind-of (get-in world [:entities (:eid m)])) (:meta m))]
             (when (seq d) [{:packet :set-entity-data :eid (:eid m) :data d}]))
     :equipment [{:packet :set-equipment :eid (:eid m) :slots [[(equipment-slots (:slot m)) (:stack m)]]}]
-    :animation [{:packet :animate :eid (:eid m) :action (case (:kind m) :swing 0 :crit 4 0)}]
+    :animation [{:packet :animate :eid (:eid m) :action (case (:kind m) :swing 0 :wake-up 2 :crit 4 0)}]
     :status (when-let [p (status-packet m)] [p])
     :collect [{:packet :take-item-entity :item (:item m) :collector (:collector m) :amount 1}]
     :sound (when-let [p (sound-packet m)] [p])

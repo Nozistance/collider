@@ -31,6 +31,8 @@
 
    [:login :hello]
    {:read (fn [^ByteBuf buf] {:name (c/read-string buf) :uuid (c/read-uuid buf)})}
+   [:login :login-compression]
+   {:write (fn [^ByteBuf buf m] (c/write-varint buf (long (:threshold m))))}
    [:login :login-finished]
    {:write (fn [^ByteBuf buf m]
              (c/write-uuid buf (:uuid m))
@@ -120,6 +122,97 @@
    {:write (fn [^ByteBuf buf m]
              (.writeByte buf (int (:event m)))
              (.writeFloat buf (float (:value m 0.0))))}
+   [:play :commands]
+   {:write (fn [^ByteBuf buf {:keys [nodes]}]
+             (c/write-varint buf (count nodes))
+             (doseq [{:keys [type name parser props executable? children]} nodes]
+               (.writeByte buf (int (bit-or (case type :root 0 :literal 1 :argument 2)
+                                            (if executable? 4 0))))
+               (c/write-varint buf (count children))
+               (doseq [c children] (c/write-varint buf (long c)))
+               (when (not= :root type)
+                 (c/write-string buf name))
+               (when (= :argument type)
+                 (c/write-varint buf (data/registry-id "command_argument_type" parser))
+                 (case (clojure.core/name parser)
+                   "brigadier:integer" (do (.writeByte buf 3) (.writeInt buf (int (:min props))) (.writeInt buf (int (:max props))))
+                   "brigadier:double" (do (.writeByte buf 3) (.writeDouble buf (double (:min props))) (.writeDouble buf (double (:max props))))
+                   "brigadier:string" (c/write-varint buf (long (:kind props 0)))
+                   "time" (.writeInt buf (int (:min props 0)))
+                   "entity" (.writeByte buf (int (bit-or (if (:single? props) 1 0) (if (:players? props) 2 0))))
+                   "resource" (c/write-string buf (:registry props))
+                   nil)))
+             (c/write-varint buf (dec (count nodes))))}
+   [:play :command-suggestions]
+   {:write (fn [^ByteBuf buf {:keys [id start length matches]}]
+             (c/write-varint buf (long id))
+             (c/write-varint buf (long start))
+             (c/write-varint buf (long length))
+             (c/write-varint buf (count matches))
+             (doseq [m matches]
+               (c/write-string buf m)
+               (.writeBoolean buf false)))}
+   [:play :command-suggestion]
+   {:read (fn [^ByteBuf buf] {:id (c/read-varint buf) :text (c/read-string buf)})}
+   [:play :award-stats]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-varint buf (count (:stats m)))
+             (doseq [[[type key] n] (:stats m)]
+               (c/write-varint buf (data/registry-id "stat_type" type))
+               (c/write-varint buf (data/registry-id (case type
+                                                       :custom "custom_stat"
+                                                       :mined "block"
+                                                       (:killed :killed-by) "entity_type"
+                                                       "item")
+                                                     key))
+               (c/write-varint buf (long n))))}
+   [:play :game-rule-values]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-varint buf (count (:values m)))
+             (doseq [[k v] (:values m)]
+               (c/write-string buf k)
+               (c/write-string buf v)))}
+   [:play :set-game-rule]
+   {:read (fn [^ByteBuf buf]
+            {:entries (vec (repeatedly (c/read-varint buf)
+                                       #(vector (c/read-string buf) (c/read-string buf))))})}
+   [:play :ping-request]
+   {:read (fn [^ByteBuf buf] {:payload (.readLong buf)})}
+   [:play :pong-response]
+   {:write (fn [^ByteBuf buf m] (.writeLong buf (long (:payload m))))}
+   [:play :change-difficulty]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-varint buf (long (:difficulty m 0)))
+             (.writeBoolean buf (boolean (:locked m))))}
+   [:play :server-data]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-component buf (:motd m))
+             (.writeBoolean buf false))}
+   [:play :initialize-border]
+   {:write (fn [^ByteBuf buf m]
+             (.writeDouble buf (double (:center-x m 0.0)))
+             (.writeDouble buf (double (:center-z m 0.0)))
+             (.writeDouble buf (double (:size m)))
+             (.writeDouble buf (double (:size m)))
+             (c/write-varlong buf 0)
+             (c/write-varint buf (long (:max-size m)))
+             (c/write-varint buf (long (:warning-blocks m 5)))
+             (c/write-varint buf (long (:warning-time m 15))))}
+   [:play :ticking-state]
+   {:write (fn [^ByteBuf buf m]
+             (.writeFloat buf (float (:rate m 20.0)))
+             (.writeBoolean buf (boolean (:frozen? m))))}
+   [:play :ticking-step]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-varint buf (long (:steps m 0))))}
+   [:play :update-attributes]
+   {:write (fn [^ByteBuf buf m]
+             (c/write-varint buf (long (:eid m)))
+             (c/write-varint buf (count (:attributes m)))
+             (doseq [[attr base] (:attributes m)]
+               (c/write-varint buf (data/registry-id "attribute" attr))
+               (.writeDouble buf (double base))
+               (c/write-varint buf 0)))}
    [:play :set-time]
    {:write (fn [^ByteBuf buf m]
              (.writeLong buf (long (:age m)))
@@ -385,6 +478,18 @@
                               :include-data (.readBoolean buf)})}
    [:play :set-carried-item]
    {:read (fn [^ByteBuf buf] {:slot (.readShort buf)})}
+   [:play :container-click]
+   {:read (fn [^ByteBuf buf]
+            (let [container (c/read-varint buf)
+                  state-id  (c/read-varint buf)
+                  slot      (.readShort buf)
+                  button    (.readByte buf)
+                  mode      (c/read-varint buf)
+                  changed   (into {} (repeatedly (c/read-varint buf)
+                                                 #(vector (long (.readShort buf)) (c/read-hashed-stack buf))))
+                  carried   (c/read-hashed-stack buf)]
+              {:container container :state-id state-id :slot slot :button button
+               :mode mode :changed changed :carried carried}))}
    [:play :set-creative-mode-slot]
    {:read (fn [^ByteBuf buf] {:slot  (.readShort buf)
                               :stack (c/read-item-stack buf)})}

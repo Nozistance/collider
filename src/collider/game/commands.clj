@@ -1,5 +1,10 @@
 (ns collider.game.commands
-  (:require [clojure.string :as str]
+  "Chat commands: the spec `commands` (plain data), `parse` of a line into a
+   delta template, `suggest` for the last word, and `tree` for the client's
+   command tree (autocompletion on its side)."
+  (:require [collider.game.mobs :as mobs]
+            [collider.game.rules :as rules]
+            [clojure.string :as str]
             [collider.data :as data]))
 
 (defn- block-name [kw] (str/replace (name kw) "-" "_"))
@@ -17,6 +22,35 @@
      [:world :time-add]]
     [:query "read the clock" [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
      [:world :time-query]]]
+   [:gamerule "read or set a game rule"
+    [[:rule [:rule {}]]
+     [:value [:text {:default nil}]]]
+    [:world :gamerule]]
+   [:tp "teleport to a position (~ = where you are)"
+    [[:x [:dcoord {:axis 0}]]
+     [:y [:dcoord {:axis 1}]]
+     [:z [:dcoord {:axis 2}]]]
+    [:world :tp]]
+   [:give "give items to players"
+    [[:targets [:targets {:players? true}]]
+     [:item [:item {}]]
+     [:count [:int {:min 1 :max 6400 :default 1}]]]
+    [:world :give]]
+   [:kill "kill entities (yourself without a target)"
+    [[:targets [:targets {:default {:self true}}]]]
+    [:world :kill]]
+   [:summon "summon a mob (~ = where you are)"
+    [[:entity [:entity-type {}]]
+     [:x [:dcoord {:axis 0 :default nil}]]
+     [:y [:dcoord {:axis 1 :default nil}]]
+     [:z [:dcoord {:axis 2 :default nil}]]]
+    [:world :summon]]
+   [:setblock "set one block (~ = your position)"
+    [[:x [:coord {:min -10000 :max 10000 :axis 0}]]
+     [:y [:coord {:min -64 :max 319 :axis 1}]]
+     [:z [:coord {:min -10000 :max 10000 :axis 2}]]
+     [:block [:block {}]]]
+    [:world :setblock]]
    [:fill "fill a box with a block (~ = your position)"
     [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
      [:y1 [:coord {:min -64 :max 319 :axis 1}]]
@@ -33,7 +67,7 @@
 (defn- label [[nm [kind {:keys [min max]}]]]
   (case kind
     :int (str "<" (name nm) " " min "-" max ">")
-    (:coord :named-int :enum :block) (str "<" (name nm) ">")))
+    (str "<" (name nm) ">")))
 
 (defn- parse-long* [^String s]
   (try (Long/parseLong s) (catch NumberFormatException _ nil)))
@@ -62,12 +96,52 @@
         n    (if rel?
                (when origin
                  (when-let [off (if (= "~" s) 0 (parse-long* (subs s 1)))]
-                   (+ (long (nth origin axis)) (long off))))
+                   (+ (long (Math/floor (double (nth origin axis)))) (long off))))
                (parse-long* s))]
     (cond
       (nil? n) [:err (str (name nm) ": give a whole number or ~, not \"" s "\"")]
       (<= (long (:min opts)) (long n) (long (:max opts))) [:ok n]
       :else [:err (str (name nm) ": " n " is out of " (:min opts) ".." (:max opts))])))
+
+(defn- parse-double* [^String s]
+  (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
+
+(defn- as-dcoord
+  "A coordinate with decimals; ~ and ~N are relative to the origin."
+  [nm s {:keys [axis]} origin]
+  (let [rel? (str/starts-with? s "~")
+        n    (if rel?
+               (when origin
+                 (when-let [off (if (= "~" s) 0.0 (parse-double* (subs s 1)))]
+                   (+ (double (nth origin axis)) (double off))))
+               (parse-double* s))]
+    (cond
+      (nil? n) [:err (str (name nm) ": give a number or ~, not \"" s "\"")]
+      (> (Math/abs (double n)) 3.0E7) [:err (str (name nm) ": " n " is too far")]
+      :else [:ok (double n)])))
+
+(defn- as-item [nm s _opts _origin]
+  (let [k (block-kw s)]
+    (if (contains? (get @data/registries "item") k)
+      [:ok k]
+      [:err (str (name nm) ": unknown item \"" s "\"")])))
+
+(defn- as-entity-type [nm s _opts _origin]
+  (let [k (block-kw s)]
+    (if (mobs/mob-type? k)
+      [:ok k]
+      [:err (str (name nm) ": cannot summon \"" s "\", only " (str/join ", " (sort (map name (keys mobs/types)))))])))
+
+(defn- as-targets
+  "A target selector: @s @a @p @e, @e[type=...], or a player name."
+  [nm s {:keys [players?]} _origin]
+  (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
+        type (when args (some->> (re-find #"type=([a-z_:]+)" args) second block-kw))]
+    (cond
+      (nil? sel) [:ok {:name s}]
+      (and players? (= "e" sel)) [:err (str (name nm) ": @e is not a player")]
+      :else [:ok (cond-> ({"s" {:self true} "a" {:all true} "p" {:nearest true} "e" {:entities true}} sel)
+                   type (assoc :type type))])))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -80,12 +154,21 @@
     [:ok s]
     [:err (str (name nm) ": give one of " (str/join ", " (sort values)) ", not \"" s "\"")]))
 
+(defn- as-rule [nm s _opts _origin]
+  (if-let [r (rules/rule-of s)]
+    [:ok r]
+    [:err (str (name nm) ": unknown game rule \"" s "\"")]))
+
+(defn- as-text [_nm s _opts _origin] [:ok s])
+
 (def ^:private coercers
-  {:int as-int, :named-int as-named-int, :coord as-coord, :enum as-enum, :block as-block})
+  {:int as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
+   :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
+   :rule as-rule, :text as-text})
 
 (defn- coerce [[nm [kind opts] :as arg] s origin]
   (if (nil? s)
-    (if-let [d (:default opts)] [:ok d] [:err (str "give the argument " (label arg))])
+    (if (contains? opts :default) [:ok (:default opts)] [:err (str "give the argument " (label arg))])
     ((coercers kind as-enum) nm s opts origin)))
 
 (defn- arg-values [[_ [kind {:keys [min max values default axis names]}]] target]
@@ -96,6 +179,12 @@
     :named-int (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
                  (into (if dn [dn] []) (sort (remove #{dn} (keys names)))))
     :enum (vec (sort values))
+    :rule (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table))
+    :text []
+    :dcoord (if target [(str (nth target axis))] [])
+    :item (vec (sort (map block-name (keys (get @data/registries "item")))))
+    :entity-type (vec (sort (map name (keys mobs/types))))
+    :targets ["@s" "@a" "@p" "@e"]
     :block (into [(block-name default)]
                  (remove #{(block-name default)})
                  (sort (map block-name (keys @data/blocks))))))
@@ -187,3 +276,96 @@
            (empty? more) (suggest-command nm)
            (nil? form) []
            :else (suggest-after-command form more target)))))))
+
+;; --- the command tree for the client ---------------------------------------
+
+(def ^:private brigadier-integer (keyword "brigadier:integer"))
+(def ^:private brigadier-double (keyword "brigadier:double"))
+(def ^:private brigadier-bool (keyword "brigadier:bool"))
+
+(defn- argument-nodes
+  "Nodes of one argument as the client parses it: [[name parser props]...],
+   or {:literals [names]} for a choice; three coordinates are one node."
+  [[nm [kind {:keys [min max values]}]]]
+  (case kind
+    :int [[(name nm) brigadier-integer {:min min :max max}]]
+    :named-int [[(name nm) :time {:min 0}]]
+    :coord [[(name nm) :block-pos nil]]
+    :dcoord [[(name nm) :vec3 nil]]
+    :enum {:literals (sort values)}
+    :block [[(name nm) :block-state nil]]
+    :item [[(name nm) :item-stack nil]]
+    :entity-type [[(name nm) :resource {:registry "minecraft:entity_type"}]]
+    :targets [[(name nm) :entity {:single? false :players? false}]]
+    :text [[(name nm) (keyword "brigadier:string") {:kind 0}]]
+    :rule {:rules true}))
+
+(defn- coords-merged
+  "The three coordinate arguments of a command become one block-pos or vec3."
+  [args]
+  (loop [as args acc []]
+    (if-let [[nm [kind opts] :as a] (first as)]
+      (if (and (#{:coord :dcoord} kind) (= 0 (long (:axis opts 0))))
+        (recur (drop 3 as) (conj acc [nm [kind opts]]))
+        (recur (rest as) (conj acc a)))
+      acc)))
+
+(defn- optional-from
+  "Index of the first argument all of whose followers have defaults."
+  [args]
+  (or (first (keep-indexed (fn [i _] (when (every? (fn [[_ [_ o]]] (contains? o :default)) (drop i args)) i)) args))
+      (count args)))
+
+(declare add-chain)
+
+(defn- add-node! [nodes node]
+  (swap! nodes conj node)
+  (dec (count @nodes)))
+
+(defn- add-rules! [nodes]
+  (vec (for [[rule {:keys [type min max]}] rules/table
+             :let [value (add-node! nodes {:type :argument :name "value" :executable? true
+                                          :parser (if (= :bool type) brigadier-bool brigadier-integer)
+                                          :props (when (= :int type) {:min min :max max})})]]
+         (add-node! nodes {:type :literal :name (subs (rules/wire-name rule) 10) :executable? true :children [value]}))))
+
+(defn- add-chain
+  "Adds the nodes of the arguments from i on; returns the child ids of the
+   node before them and whether that node is executable."
+  [nodes args i]
+  (let [optional (optional-from args)]
+    (if (>= i (count args))
+      [[] true]
+      (let [a (nth args i)
+            spec (argument-nodes a)
+            [tail-children tail-exec] (if (:rules spec) [[] true] (add-chain nodes args (inc i)))
+            exec? (or tail-exec (>= (inc i) optional))]
+        (cond
+          (:rules spec) [(add-rules! nodes) (>= i optional)]
+          (:literals spec)
+          [(vec (for [l (:literals spec)]
+                  (add-node! nodes {:type :literal :name l :executable? exec? :children tail-children})))
+           (>= i optional)]
+          :else
+          [[(add-node! nodes (let [[n parser props] (first spec)]
+                               {:type :argument :name n :parser parser :props props
+                                :executable? exec? :children tail-children}))]
+           (>= i optional)])))))
+
+(defn- add-form! [nodes form]
+  (if (subcommands? form)
+    (add-node! nodes {:type :literal :name (cmd-name form)
+                      :children (vec (map #(add-form! nodes %) (drop 2 form)))})
+    (let [args (coords-merged (nth form 2))
+          [children exec?] (add-chain nodes args 0)]
+      (add-node! nodes {:type :literal :name (cmd-name form) :executable? exec? :children children}))))
+
+(defn tree
+  "The command tree as the client wants it: a vector of nodes, the root
+   last, each {:type :root|:literal|:argument :name :parser :props
+   :executable? :children [ids]}."
+  []
+  (let [nodes (atom [])
+        top (vec (map #(add-form! nodes %) commands))]
+    (add-node! nodes {:type :root :children top})
+    @nodes))
