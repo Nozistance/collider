@@ -63,7 +63,7 @@
   [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk changes)
         all     (into (vec changes) (connect/derived-changes chunks' (map first changes)))]
-    (into [[:edit-blocks all]]
+    (into [[:set-blocks-quiet all]]
           (map (fn [[p st]] (out/all (out/block-change p st))))
           all)))
 
@@ -183,7 +183,7 @@
         (when (and (chunk/in-range? y')
                    (zero? (block-at world pos'))
                    (support/supported? (:chunks world) gen/flat-chunk pos' st))
-          [[:set-block pos' st]
+          [[:set-blocks-quiet [[pos' st]]]
            (out/all (out/block-change pos' st))
            (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos' :flint])))))])))))
 
@@ -299,7 +299,7 @@
         (and pos' (chunk/in-range? y'))
         (let [cur (block-at world pos')]
           (when (or (zero? cur) (liquid/liquid-state? cur))
-            [[:set-block pos' state]
+            [[:set-blocks-quiet [[pos' state]]]
              (out/all (out/block-change pos' state))]))))))
 
 (defn- scoop-target [world eid]
@@ -323,7 +323,7 @@
   [world eid]
   (when-let [[kind pos] (scoop-target world eid)]
     (case kind
-      :source [[:set-block pos 0] (out/all (out/block-change pos 0))]
+      :source [[:set-blocks-quiet [[pos 0]]] (out/all (out/block-change pos 0))]
       :waterlogged (change-deltas world [[pos (with-water (block-at world pos) false)]]))))
 
 (def ^:private armor-slot
@@ -449,12 +449,7 @@
 (defn- with-edits
   "World as the next event of the tick sees it: the block changes so far applied."
   [world deltas]
-  (let [changes (into [] (mapcat (fn [[tag p st]]
-                                   (case tag
-                                     :set-block [[p st]]
-                                     :edit-blocks p
-                                     nil)))
-                      deltas)]
+  (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks-quiet) recs))) deltas)]
     (if (empty? changes)
       world
       (update world :chunks chunk/chunks-set-blocks gen/flat-chunk changes))))

@@ -88,7 +88,7 @@
                                  (= pname (:name e))
                                  (not= eid owner))
                       d [(out/to eid (out/disconnect duplicate-login-reason))
-                         [:close eid]
+                         (out/to eid (out/close))
                          [:remove-entity eid]]]
                   d))))
           events))
@@ -121,7 +121,7 @@
      (when (zero? (rem (long (:tick world)) latency-interval))
        [(out/all (out/tab-latency all))])
      (when (or (seq joined) (seq left))
-       [[:tab-list (into {} (map (fn [[eid e]] [eid (:uuid e)])) joined) left]]))))
+       [[:listed (into {} (map (fn [[eid e]] [eid (:uuid e)])) joined) left]]))))
 
 (defn- baseline-deltas [world eid]
   (let [e (get-in world [:entities eid])]

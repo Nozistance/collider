@@ -13,7 +13,7 @@
     (if (:keepalive-pending? e)
       [(out/to eid (out/disconnect {:translate "disconnect.timeout"}))
        [:remove-entity eid]
-       [:close eid]]
+       (out/to eid (out/close))]
       [[:merge-entity eid {:keepalive-at t :keepalive-pending? true}]
        (out/to eid (out/keepalive t))])))
 

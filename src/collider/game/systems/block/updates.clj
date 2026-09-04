@@ -1,5 +1,6 @@
 (ns collider.game.systems.block.updates
-  (:require [collider.game.state :as state]
+  (:require [clojure.data.int-map :as i]
+            [collider.game.state :as state]
             [collider.game.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
@@ -65,7 +66,8 @@
 
 (defn- block-updates-deltas [world _events]
   (let [t   (long (:tick world))
-        due (get (:block-ticks world) t)]
+        due (into (i/int-set) (comp (take-while (fn [[k _]] (<= (long k) t))) (mapcat val))
+                  (:block-ticks world))]
     (when (seq due)
       (let [active  (state/active-chunks world)
             now     (into [] (comp (filter #(state/active-id? active %))
@@ -73,7 +75,7 @@
             parked  (into [] (remove #(state/active-id? active %)) due)
             changes (lww-changes (:chunks world) now)]
         (concat
-         [[:ticks-flushed t [] parked]]
+         [[:ticks-flushed t parked]]
          (when (seq changes)
            (concat [[:set-blocks changes]]
                    (fizz-deltas world changes)))

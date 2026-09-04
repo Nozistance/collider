@@ -287,19 +287,19 @@
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
 
-(defn- tab-list [w add drop]
+(defn- listed [w add drop]
   (update w :listed #(apply dissoc (merge % add) drop)))
 
-(defn- defer-ticks
-  ([w t deferred] (defer-ticks w t deferred nil))
-  ([w t deferred parked]
-   (update w :block-ticks
-           (fn [bt]
-             (cond-> (dissoc bt t)
-                     (seq deferred)
-                     (update (inc (long t)) (fnil into (i/int-set)) deferred)
-                     (seq parked)
-                     (update (+ (long t) 20) (fnil into (i/int-set)) parked))))))
+(defn- flush-ticks
+  "Всё, что было назначено на тик t и раньше, снято; parked — тики в
+   неактивных чанках — остаются просроченными под ключом t и исполнятся,
+   как только чанк станет активным (ваниль держит их до загрузки чанка)."
+  [w t parked]
+  (update w :block-ticks
+          (fn [bt]
+            (let [stale (into [] (take-while #(<= (long %) (long t))) (keys bt))
+                  bt (reduce dissoc bt stale)]
+              (cond-> bt (seq parked) (assoc t (into (i/int-set) parked)))))))
 
 (def ^:const max-resist 20)
 (defn- knock-back [e ^double dx ^double dz]
@@ -335,7 +335,6 @@
                       (:tp-target m) (assoc :tp-id tick)))
     :track (assoc e :track (second args))
     :tracking (let [[_ add drop] args] (update e :tracking merge-diff add drop))
-    :spawned (assoc e :needs-spawn? nil)
     :set-slot (let [[_ slot stack] args]
                 (if stack (assoc-in e [:inventory slot] stack) (update e :inventory dissoc slot)))
     :chunks-sent (let [[_ cp add drop pending?] args]
@@ -348,7 +347,7 @@
 (defn- apply-world-delta [w [tag & args :as delta]]
   (case tag
     :remove-entity (apply player-quit w args)
-    :tab-list (apply tab-list w args)
+    :listed (apply listed w args)
     :spawn-entity (let [[a b] args]
                     (if (map? a)
                       (let [eid (long (:next-eid w 1000000))]
@@ -358,10 +357,9 @@
                       (-> w
                           (assoc-in [:entities a] (entity/of b))
                           (update :next-eid (fnil max 1000000) (inc (long a))))))
-    :set-block (apply-set-blocks w [(vec args)] false)
-    :edit-blocks (apply-set-blocks w (first args) false)
     :set-blocks (apply-set-blocks w (first args) true)
-    :ticks-flushed (apply defer-ticks w args)
+    :set-blocks-quiet (apply-set-blocks w (first args) false)
+    :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))

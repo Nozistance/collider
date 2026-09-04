@@ -2,11 +2,13 @@
   "Deltas of one tick. A system returns a seq of deltas: world deltas
    ([:set-blocks ...], [:spawn-entity ...]), entity deltas ([:merge-entity eid ...]
    and the other tags in `entity-tags`) and effects ([:fx msg], see
-   collider.game.out). `run` calls the systems in parallel and buckets what
+   collider.game.out). The vocabulary with schemas is collider.game.delta;
+   `add` validates when delta/validate? is set. `run` calls the systems in parallel and buckets what
    they return into a Deltas record. The merged order is fixed: by system,
    then by position inside the system, so a tick does not depend on scheduling."
   (:require [clojure.core.reducers :as r]
-            [clojure.data.int-map :as i]))
+            [clojure.data.int-map :as i]
+            [collider.game.delta :as delta]))
 
 (set! *warn-on-reflection* true)
 
@@ -27,13 +29,13 @@
 (def empty-deltas (->Deltas [] (i/int-map) []))
 
 (def entity-tags
-  #{:merge-entity :track :tracking :spawned :set-slot :chunks-sent :push :damage})
+  #{:merge-entity :track :tracking :set-slot :chunks-sent :push :damage})
 
 (defn add
   "Buckets a seq of deltas into acc: [:fx m] to out, entity-tagged deltas
    to entities by eid, everything else to world."
   ^Deltas [^Deltas acc deltas]
-  (loop [ds (seq deltas)
+  (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
          w  (transient (.world acc))
          e  (transient (.entities acc))
          o  (transient (.out acc))]
@@ -41,8 +43,7 @@
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
           :fx    (recur ds w e (conj! o (nth d 1)))
-          :close (recur ds w e (conj! o {:msg :close :to (nth d 1)}))
-          (:merge-entity :track :tracking :spawned :set-slot :chunks-sent :push :damage)
+          (:merge-entity :track :tracking :set-slot :chunks-sent :push :damage)
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))

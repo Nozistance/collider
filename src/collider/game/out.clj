@@ -27,8 +27,12 @@
   [age time-of-day]
   {:msg :time :age age :time time-of-day})
 
-(defn explosion [center radius records motion]
-  {:msg :explosion :center center :radius radius :records records :motion motion})
+(defn explosion
+  "Explosion as the 26.2 client sees it: the centre, the radius, how many
+   blocks went (it draws the smoke from the count) and the knockback of the
+   addressee."
+  [center radius blocks motion]
+  {:msg :explosion :center center :radius radius :blocks blocks :motion motion})
 
 (defn teleport [pos yaw pitch]
   {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)})

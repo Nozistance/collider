@@ -22,7 +22,7 @@
 
 (defn- unblock-deltas [eid e]
   (concat
-    [[:set-block (:origin e) 0]]
+    [[:set-blocks-quiet [[(:origin e) 0]]]]
     [(out/all (out/block-change (:origin e) 0))]
     [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]]))
 
@@ -109,20 +109,17 @@
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
 (defn- near? [center p] (< (dist2 center p) 4096.0))
-(def ^:private ^:const records-cap 32)
-
-(defn- explosion-msgs [read players center seed affected blasts]
+(defn- explosion-msgs [read players center seed affected]
   (let [pitch (* 0.7 (+ 1.0 (* 0.2 (- (rnd/rnd [seed :p1]) (rnd/rnd [seed :p2])))))
-        sound (out/sound :explosion center 4.0 pitch)
-        recs (if (<= (long blasts) records-cap) (vec affected) [])]
+        sound (out/sound :explosion center 4.0 pitch)]
     (for [[eid e] players
           :when (near? center (:pos e))
-          msg [(out/explosion center tnt/power recs
+          msg [(out/explosion center tnt/power (count affected)
                               (or (first (knockback read center e)) [0.0 0.0 0.0]))
                sound]]
       (out/to eid msg))))
 
-(defn- explode-deltas [world others players pending blasts eid e]
+(defn- explode-deltas [world others players pending eid e]
   (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))
         [x y z] (.pos ^Move
                       (phys/move (:chunks world) gen/flat-chunk (:pos e)
@@ -139,7 +136,7 @@
     (concat
       [[:remove-entity eid]]
       (when (seq destroy) [[:set-blocks (mapv (fn [p] [p 0]) destroy)]])
-      (explosion-msgs rg players center seed affected blasts)
+      (explosion-msgs rg players center seed affected)
       (knockback-deltas rg others center)
       (map (fn [p] [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil :dedup [:tnt p])])
            chains))))
@@ -161,5 +158,5 @@
         pending (when (seq due) (tnt/primed-origins world))]
     (-> []
         (into (map (fn [[eid e]] #(unblock-deltas eid e))) fresh)
-        (into (map (fn [[eid e]] #(explode-deltas world others players pending (count due) eid e))) due)
+        (into (map (fn [[eid e]] #(explode-deltas world others players pending eid e))) due)
         (into (map (fn [[eid e]] #(step-deltas world eid e))) moving))))

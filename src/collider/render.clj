@@ -162,7 +162,7 @@
 
 (defn- explode-packet [m]
   (let [k (:motion m)]
-    {:packet :explode :center (:center m) :radius (:radius m) :blocks (count (:records m))
+    {:packet :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
      :particle @explosion-particle :sound (first (get @sounds :explosion))}))
 
@@ -181,7 +181,7 @@
     :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
     :health     [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
     :respawn    []
-    :time       [{:packet :set-time :age (:tick world) :time (:time-of-day world)}]
+    :time       [{:packet :set-time :age (:age m) :time (:time m)}]
     :block-change [{:packet :block-update :pos (:pos m) :state (:state m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]

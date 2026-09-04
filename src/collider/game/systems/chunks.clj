@@ -61,7 +61,7 @@
 (defn- spawn-look-deltas [_ eid pos yaw pitch]
   (let [[sx sy sz] (or pos state/spawn-pos)]
     [(out/to eid (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0)))
-     [:spawned eid]]))
+     [:merge-entity eid {:needs-spawn? nil}]]))
 
 (defn- stream-deltas [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks needs-spawn? chunks-pending?] :as p}]]
   (let [[x _ z] pos
