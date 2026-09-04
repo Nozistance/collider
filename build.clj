@@ -24,7 +24,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare blocks datapack-names kw packets registries tags-of vanilla-shapes write-edn!)
+(declare blocks datapack-names kw packets registries tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -36,6 +36,7 @@
     (println "reading" (str root))
     (let [ps (packets reports)
           {sh :shapes sturdy :sturdy} (vanilla-shapes root)
+          items (vanilla-items reports)
           bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
                                    (json/read-str (slurp (io/file reports "blocks.json")))))
           rs (registries reports)
@@ -57,6 +58,8 @@
                   (format "%d states that are not a whole cube" (count sh)))
       (write-edn! (path "sturdy.edn") sturdy
                   (format "%d states with a non-sturdy face" (count sturdy)))
+      (write-edn! (path "items.edn") items
+                  (format "%d items that do not stack to 64 or are equippable" (count items)))
       (when tg
         (write-edn! (path "tags.edn") tg
                     (format "%d registries, %d tags" (count tg) (reduce + (map count (vals tg)))))))))
@@ -159,6 +162,20 @@
                                               0 (map-indexed vector dirs))]
                            :when (not= mask 63)]
                        [id mask]))})))
+
+(defn- vanilla-items
+  "item to {:max-stack n :equip slot} for items that do not stack to 64 or
+   go into an equipment slot, from reports/minecraft/components/item."
+  [reports]
+  (into (sorted-map)
+        (for [^File f (sort (.listFiles (io/file reports "minecraft" "components" "item")))
+              :when (str/ends-with? (.getName f) ".json")
+              :let [cs   (get (json/read-str (slurp f)) "components")
+                    n    (get cs "minecraft:max_stack_size" 64)
+                    slot (get-in cs ["minecraft:equippable" "slot"])
+                    m    (cond-> {} (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot)))]
+              :when (seq m)]
+          [(kw (str/replace (.getName f) #"\.json$" "")) m])))
 
 (defn- blocks [reports full]
   (into (sorted-map)

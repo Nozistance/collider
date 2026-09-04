@@ -17,6 +17,17 @@
 (def tags       (delay (load-edn "tags.edn")))
 (def shapes     (delay (load-edn "shapes.edn")))
 (def sturdy     (delay (load-edn "sturdy.edn")))
+(def items      (delay (load-edn "items.edn")))
+
+(defn max-stack
+  "How many of the item go in one stack (64 unless the item says otherwise)."
+  ^long [item]
+  (long (get-in @items [item :max-stack] 64)))
+
+(defn equip-slot
+  "Equipment slot the item goes into (:head :chest :legs :feet :offhand ...), or nil."
+  [item]
+  (get-in @items [item :equip]))
 
 (defn packet-id ^long [state dir name]
   (or (get-in @packets [state dir name])
