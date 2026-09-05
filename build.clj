@@ -24,7 +24,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare blocks datapack-names kw packets registries tags-of vanilla-items vanilla-shapes write-edn!)
+(declare block-drops blocks datapack-names fire-odds kw packets registries tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -35,7 +35,8 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes sturdy :sturdy} (vanilla-shapes root)
+          {sh :shapes sturdy :sturdy flags :flags fire :fire} (vanilla-shapes root)
+          drops (when (.isFile server) (block-drops server))
           items (vanilla-items reports)
           bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
                                    (json/read-str (slurp (io/file reports "blocks.json")))))
@@ -58,6 +59,14 @@
                   (format "%d states that are not a whole cube" (count sh)))
       (write-edn! (path "sturdy.edn") sturdy
                   (format "%d states with a non-sturdy face" (count sturdy)))
+      (write-edn! (path "flags.edn") flags
+                  (format "%d states that block motion, ignite by lava or tick randomly" (count flags)))
+      (write-edn! (path "fire.edn") fire
+                  (format "%d blocks with fire odds" (count fire)))
+      (when drops
+        (write-edn! (path "drops.edn") drops
+                    (format "%d block loot tables, %d of them complex"
+                            (count drops) (count (filter #(= :complex (val %)) drops)))))
       (write-edn! (path "items.edn") items
                   (format "%d items that do not stack to 64 or are equippable" (count items)))
       (when tg
@@ -143,6 +152,7 @@
           dir-cls    (Class/forName "net.minecraft.core.Direction" true cl)
           dirs       (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
           sturdy-m   (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls]))
+          flag-ms    (mapv #(.getMethod state-cls % (make-array Class 0)) ["blocksMotion" "ignitedByLava" "isRandomlyTicking"])
           states     (vec (iterator-seq (.iterator ^Iterable registry)))]
       {:shapes (into (sorted-map)
                      (for [st states
@@ -152,6 +162,17 @@
                                              (.invoke aabbs-m shape (object-array 0)))]
                            :when (not= boxes full-box)]
                        [id boxes]))
+       :flags (into (sorted-map)
+                    (for [st states
+                          :let [id   (.invoke get-id registry (object-array [st]))
+                                mask (reduce (fn [m [i ^java.lang.reflect.Method f]]
+                                               (if (.invoke f st (object-array 0))
+                                                 (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                 m))
+                                             0 (map-indexed vector flag-ms))]
+                          :when (pos? (long mask))]
+                      [id mask]))
+       :fire (fire-odds cl)
        :sturdy (into (sorted-map)
                      (for [st states
                            :let [id   (.invoke get-id registry (object-array [st]))
@@ -162,6 +183,113 @@
                                               0 (map-indexed vector dirs))]
                            :when (not= mask 63)]
                        [id mask]))})))
+
+(defn- fire-odds
+  "block → {:ignite n :burn m}: таблицы FireBlock (igniteOdds, burnOdds),
+   заполняются в FireBlock.bootStrap."
+  [^ClassLoader cl]
+  (let [fire     (static-field cl "net.minecraft.world.level.block.Blocks" "FIRE")
+        fire-cls (Class/forName "net.minecraft.world.level.block.FireBlock" true cl)
+        reg      (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
+        key-m    (.getMethod (class reg) "getKey" (into-array Class [Object]))
+        name-of  (fn [b] (let [k (.invoke key-m reg (object-array [b]))]
+                           (kw (.invoke (.getMethod (class k) "getPath" (make-array Class 0)) k (object-array 0)))))
+        table    (fn [n] (let [f (doto (.getDeclaredField fire-cls n) (.setAccessible true))]
+                           (into {} (map (fn [[b v]] [(name-of b) v])) (.get f fire))))]
+    (merge-with merge
+                (into (sorted-map) (map (fn [[k v]] [k {:ignite v}])) (table "igniteOdds"))
+                (into (sorted-map) (map (fn [[k v]] [k {:burn v}])) (table "burnOdds")))))
+
+;; --- лут-таблицы блоков --------------------------------------------------
+;; Только путь «без инструмента, без чар»: что выпадает, когда блок ломает
+;; вода, взрыв или рука. Запись — вектор вариантов (alternatives) по порядку,
+;; каждый {:item :count [min max] :chance p :props {..} :entity? bool}.
+;; Блок с условием, которого мы не понимаем, помечается :complex.
+
+(defn- loot-number [v]
+  (cond
+    (number? v) [(long v) (long v)]
+    (map? v) [(long (get v "min" 1)) (long (get v "max" 1))]
+    :else [1 1]))
+
+(defn- loot-condition
+  "Свёртка условия в карту флагов или :skip (нужен инструмент/чары) / :unknown."
+  [c]
+  (case (get c "condition")
+    "minecraft:survives_explosion" {}
+    "minecraft:random_chance" {:chance (double (get c "chance"))}
+    "minecraft:table_bonus" {:chance (double (first (get c "chances")))}
+    "minecraft:block_state_property" {:props (into {} (map (fn [[k v]] [(kw k) (keyword v)])) (get c "properties"))}
+    "minecraft:entity_properties" {:entity? true}
+    "minecraft:match_tool" :skip
+    "minecraft:inverted" (let [r (loot-condition (get c "term"))] (if (= :skip r) {} :unknown))
+    "minecraft:any_of" (if (every? #(= :skip (loot-condition %)) (get c "terms")) :skip :unknown)
+    :unknown))
+
+(defn- loot-conditions [cs]
+  (reduce (fn [acc c]
+            (let [r (loot-condition c)]
+              (if (keyword? r) (reduced r) (merge acc r))))
+          {} cs))
+
+(defn- loot-entry [e]
+  (case (get e "type")
+    "minecraft:item"
+    (let [cs (loot-conditions (get e "conditions"))]
+      (if (keyword? cs)
+        cs
+        (let [count (some (fn [f] (when (= "minecraft:set_count" (get f "function")) (loot-number (get f "count"))))
+                          (get e "functions"))]
+          [(cond-> (assoc cs :item (kw (subs (get e "name") 10)))
+             count (assoc :count count))])))
+    "minecraft:alternatives"
+    (let [cs (loot-conditions (get e "conditions"))]
+      (if (keyword? cs)
+        cs
+        (reduce (fn [acc child]
+                  (let [r (loot-entry child)]
+                    (cond
+                      (= r :skip) acc
+                      (keyword? r) (reduced r)
+                      :else (into acc (map #(merge cs %)) r))))
+                [] (get e "children"))))
+    :unknown))
+
+(defn- loot-pool [p]
+  (let [cs (loot-conditions (get p "conditions"))
+        rolls (loot-number (get p "rolls" 1))]
+    (if (keyword? cs)
+      cs
+      (let [entries (reduce (fn [acc e]
+                              (let [r (loot-entry e)]
+                                (cond (= r :skip) acc
+                                      (keyword? r) (reduced r)
+                                      :else (into acc r))))
+                            [] (get p "entries"))]
+        (if (keyword? entries)
+          entries
+          (mapv #(cond-> (merge cs %) (not= rolls [1 1]) (assoc :rolls rolls)) entries))))))
+
+(defn- loot-table [json]
+  (let [pools (get json "pools")]
+    (cond
+      (empty? pools) []
+      :else (let [rs (map loot-pool pools)]
+              (if (some #{:unknown} rs)
+                :complex
+                (into [] (mapcat #(if (= % :skip) [] %)) rs))))))
+
+(defn- block-drops [jar]
+  (with-open [zf (ZipFile. (io/file jar))]
+    (let [prefix "data/minecraft/loot_table/blocks/"]
+      (into (sorted-map)
+            (keep (fn [^ZipEntry e]
+                    (let [n (.getName e)]
+                      (when (and (str/starts-with? n prefix) (str/ends-with? n ".json"))
+                        (let [table (loot-table (json/read-str (slurp (.getInputStream zf e))))]
+                          (when (not= table [])
+                            [(kw (subs n (count prefix) (- (count n) 5))) table]))))))
+            (enumeration-seq (.entries zf))))))
 
 (defn- vanilla-items
   "item to {:max-stack n :equip slot} for items that do not stack to 64 or

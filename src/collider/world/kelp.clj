@@ -28,13 +28,13 @@
   {:name   :kelp
    :match? (fn [_chunks st _p] (kelp? st))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
-   :due    (fn [chunks p]
+   :due    (fn [chunks p rules]
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)
                    up? (kelp? (above chunks p))]
-               (or (seq ((:due support/rule) chunks p))
+               (or (seq ((:due support/rule) chunks p nil))
                    (concat
                     (case (block/type-of st)
                       :kelp (when up? [[p (block/state :kelp-plant)]])
                       :kelp-plant (when-not up? [[p (head-state p)]])
                       nil)
-                    (liquid/update-cell chunks gen/flat-chunk p)))))})
+                    (liquid/update-cell chunks gen/flat-chunk p rules)))))})

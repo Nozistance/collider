@@ -36,7 +36,7 @@
   {:name   :support
    :match? (fn [_chunks st _p] (needs-support? st))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
-   :due    (fn [chunks p]
+   :due    (fn [chunks p _rules]
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                (when-not (supported? chunks gen/flat-chunk p st)
                  [[p (block/emptied st)]])))})

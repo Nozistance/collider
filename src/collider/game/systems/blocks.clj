@@ -62,10 +62,13 @@
    connections, door halves), applied as one group so no half-state is seen."
   [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk changes)
-        all     (into (vec changes) (connect/derived-changes chunks' (map first changes)))]
-    (into [[:set-blocks-quiet all]]
-          (map (fn [[p st]] (out/all (out/block-change p st))))
-          all)))
+        all     (into (vec changes) (connect/derived-changes chunks' (map first changes)))
+        chunks'' (chunk/chunks-set-blocks chunks' gen/flat-chunk all)
+        mixed   (liquid/mix-changes chunks'' gen/flat-chunk (map first all))
+        all     (into all mixed)]
+    (-> [[:set-blocks-quiet all]]
+        (into (map (fn [[p st]] (out/all (out/block-change p st)))) all)
+        (into (map (fn [[p _]] (out/all (out/fizz p)))) mixed))))
 
 (defn- placed-deltas
   ([world eid pos state item] (placed-deltas world eid [[pos state]] item))
@@ -299,8 +302,7 @@
         (and pos' (chunk/in-range? y'))
         (let [cur (block-at world pos')]
           (when (or (zero? cur) (liquid/liquid-state? cur))
-            [[:set-blocks-quiet [[pos' state]]]
-             (out/all (out/block-change pos' state))]))))))
+            (change-deltas world [[pos' state]])))))))
 
 (defn- scoop-target [world eid]
   (when-let [e (get-in world [:entities eid])]

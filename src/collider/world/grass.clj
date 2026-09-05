@@ -38,7 +38,7 @@
    :match? (fn [chunks st p] (and (= dirt-state st) (regrowable-dirt? chunks p)))
    :wake  (fn [_chunks tick p _old _self?]
             (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
-   :due   (fn [_chunks p] [[p grass-state]])})
+   :due   (fn [_chunks p _rules] [[p grass-state]])})
 
 (defn smothered? [chunks [x y z]]
   (let [above [(long x) (inc (long y)) (long z)]]
@@ -51,4 +51,4 @@
    :match? (fn [chunks st p] (and (= grass-state st) (smothered? chunks p)))
    :wake   (fn [_chunks tick p _old _self?]
              (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
-   :due    (fn [_chunks p] [[p dirt-state]])})
+   :due    (fn [_chunks p _rules] [[p dirt-state]])})

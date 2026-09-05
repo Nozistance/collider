@@ -18,6 +18,9 @@
 (def shapes     (delay (load-edn "shapes.edn")))
 (def sturdy     (delay (load-edn "sturdy.edn")))
 (def items      (delay (load-edn "items.edn")))
+(def flags      (delay (load-edn "flags.edn")))
+(def fire       (delay (load-edn "fire.edn")))
+(def drops      (delay (load-edn "drops.edn")))
 
 (defn max-stack
   "How many of the item go in one stack (64 unless the item says otherwise)."

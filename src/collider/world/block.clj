@@ -301,6 +301,56 @@
 (defn full-cube? [^long st]
   (and (known? st) (aget ^booleans full-cube-arr st)))
 
+(def ^:private flag-arr
+  (let [a (byte-array state-count)]
+    (doseq [[id m] @data/flags] (aset a (int id) (byte m)))
+    a))
+
+(defn blocks-motion?
+  "Vanilla blocksMotion: the legacy solid flag of the state (forceSolidOn/Off,
+   else a collision box big enough), except cobweb and bamboo sapling."
+  [^long st]
+  (and (known? st)
+       (pos? (bit-and (long (aget ^bytes flag-arr st)) 1))
+       (not (contains? #{:cobweb :bamboo-sapling} (block-of st)))))
+
+(defn ignited-by-lava?
+  "Vanilla ignitedByLava: lava next to it may start a fire."
+  [^long st]
+  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 2))))
+
+(defn randomly-ticking?
+  "Vanilla isRandomlyTicking of the block or its fluid."
+  [^long st]
+  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 4))))
+
+(defn burnable?
+  "Vanilla FireBlock.canBurn: the block has ignite odds."
+  [^long st]
+  (and (known? st) (pos? (long (get-in @data/fire [(block-of st) :ignite] 0)))))
+
+(defn- drop-count ^long [entry rnd]
+  (let [[lo hi] (:count entry [1 1])]
+    (+ (long lo) (long (Math/floor (* (double (rnd [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
+
+(defn drops
+  "Stacks the state drops when broken without a tool or an entity (water,
+   explosions): its vanilla loot table on that path; rnd is (fn [salt] 0..1).
+   A table we could not read (:complex) drops nothing."
+  [^long st rnd]
+  (let [table (get @data/drops (block-of st))
+        props (props-of st)]
+    (if (vector? table)
+      (into []
+            (keep (fn [e]
+                    (when (and (not (:entity? e))
+                               (every? (fn [[k v]] (= v (get props k))) (:props e))
+                               (< (double (rnd [:chance (:item e)])) (double (:chance e 1.0))))
+                      (let [n (drop-count e rnd)]
+                        (when (pos? n) {:item (:item e) :count n})))))
+            table)
+      [])))
+
 (def ^:private face-bit {:down 0 :up 1 :north 2 :south 3 :west 4 :east 5})
 
 (defn face-sturdy?

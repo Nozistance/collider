@@ -56,6 +56,21 @@
       :yaw   0.0 :pitch 0.0 :on-ground false
       :stack stack :age 0 :pickup-delay throw-pickup-delay})))
 
+(defn popped
+  "Item entity of a stack a block drops at pos (vanilla Block.popResource):
+   near the centre of the cell, with the small random hop of ItemEntity."
+  [world pos stack salt]
+  (let [t (:tick world)
+        r (fn [k] (rnd/rnd [t pos salt k]))
+        [x y z] pos]
+    {:type  :item
+     :pos   [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))
+             (+ (double y) 0.5 (- (* 0.5 (r :y)) 0.25) -0.125)
+             (+ (double z) 0.5 (- (* 0.5 (r :z)) 0.25))]
+     :vel   [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
+     :yaw   0.0 :pitch 0.0 :on-ground false
+     :stack stack :age 0 :pickup-delay 10}))
+
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
         slot (+ 36 (long (or (:held-slot e) 0)))

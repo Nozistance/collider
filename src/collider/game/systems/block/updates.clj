@@ -1,6 +1,9 @@
 (ns collider.game.systems.block.updates
   (:require [clojure.data.int-map :as i]
             [collider.game.state :as state]
+            [collider.game.systems.items :as items]
+            [collider.rnd :as rnd]
+            [collider.world.block :as block]
             [collider.game.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
@@ -20,15 +23,29 @@
                   (tnt/tnt-state? (chunk/chunks-get-block chunks gen/flat-chunk p))))
            (map (fn [d] (mapv + [x y z] d)) sides)))
 
-(defn- lww-changes [chunks cells]
+(defn- lww-changes [chunks rules cells]
   (into []
         (vals (into (sorted-map)
                     (map (fn [[pos st]] [pos [pos st]]))
                     (mapcat (fn [p] (rules/cell-changes
                                       chunks
                                       (chunk/chunks-get-block chunks gen/flat-chunk p)
-                                      p))
+                                      p rules))
                                     cells)))))
+
+(defn- wash-deltas
+  "Water flowing into a block breaks it and drops its loot
+   (WaterFluid.beforeDestroyingBlock → Block.dropResources), gamerule blockDrops."
+  [world changes]
+  (when (get-in world [:rules :block-drops] true)
+    (for [[pos st] changes
+          :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+          :when (and (= :water (liquid/liquid-class st))
+                     (pos? (long old))
+                     (nil? (liquid/liquid-class old))
+                     (not (block/waterlogged? old)))
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
+      [:spawn-entity (items/popped world pos stack i)])))
 
 (defn- block-flush-deltas [world]
   (when-let [events (:block-events world)]
@@ -40,13 +57,15 @@
 (defn block-flush [world _events]
   [#(block-flush-deltas world)])
 
-(defn- fizz-deltas [world changes]
+(defn- fizz-deltas
+  "Level event 1501: жидкость застыла (обсидиан, булыжник, камень на месте
+   воды или лавы) или лава сожгла блок, в который пришла
+   (LavaFluid.beforeDestroyingBlock)."
+  [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-        :when (or (and (pos? (long st))
-                       (nil? (liquid/liquid-class st))
-                       (or (liquid/liquid-state? old) (zero? (long old))))
-                  (and (liquid/mix-class? st) (pos? (long old))))
+        :when (or (and (liquid/liquid-state? old) (pos? (long st)) (nil? (liquid/liquid-class st)))
+                  (and (liquid/mix-class? st) (pos? (long old)) (nil? (liquid/liquid-class old))))
         d [(out/all (out/fizz pos))]]
     d))
 
@@ -73,12 +92,13 @@
             now     (into [] (comp (filter #(state/active-id? active %))
                                    (map chunk/id->block-pos)) due)
             parked  (into [] (remove #(state/active-id? active %)) due)
-            changes (lww-changes (:chunks world) now)]
+            changes (lww-changes (:chunks world) (:rules world) now)]
         (concat
          [[:ticks-flushed t parked]]
          (when (seq changes)
            (concat [[:set-blocks changes]]
-                   (fizz-deltas world changes)))
+                   (fizz-deltas world changes)
+                   (wash-deltas world changes)))
          (ignite-deltas world now))))))
 
 (defn block-updates [world events]

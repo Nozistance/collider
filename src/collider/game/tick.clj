@@ -16,6 +16,7 @@
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.players :as players]
+            [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.damage :as damage])
@@ -32,6 +33,7 @@
    #'players/players
    #'blocks/block-edits
    #'block-updates/block-updates
+   #'random-tick/random-ticks
    #'items/items
    #'mobs/mobs-system
    #'tnt/tnt-system

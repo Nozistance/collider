@@ -34,7 +34,7 @@
                  (+ (long tick) 30 (mod (long (hash [p tick])) 10))
                  (+ (long tick) 90 (mod (long (hash [p tick])) 30)))
                (inc (long tick))))
-   :due    (fn [chunks p]
+   :due    (fn [chunks p _rules]
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                (cond
                  (not (support/supported? chunks gen/flat-chunk p st)) [[p 0]]

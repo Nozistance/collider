@@ -25,7 +25,8 @@
     ((:wake r) chunks tick pos old self?)))
 
 (defn cell-changes
-  "[[pos state] ...] from the first matching rule of the state."
-  [chunks st pos]
+  "[[pos state] ...] from the first matching rule of the state; rules are the
+   game rules of the world."
+  [chunks st pos rules]
   (when-let [r (rule-for chunks st pos)]
-    ((:due r) chunks pos)))
+    ((:due r) chunks pos rules)))

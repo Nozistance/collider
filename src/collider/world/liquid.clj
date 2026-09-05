@@ -7,9 +7,9 @@
 (set! *warn-on-reflection* true)
 
 (def liquids
-  {:water {:block :water :step 1 :delay 5  :bucket :water-bucket :infinite? true
+  {:water {:block :water :dropoff 1 :slope 4 :delay 5  :bucket :water-bucket :infinite? true
            :push 0.014}
-   :lava  {:block :lava :step 2 :delay 30 :bucket :lava-bucket :infinite? false
+   :lava  {:block :lava :dropoff 2 :slope 2 :delay 30 :bucket :lava-bucket :infinite? false
            :push 0.0023333333333333335
            :decay-jitter 4
            :mix {:source :obsidian :flowing :cobblestone :smother :stone}}})
@@ -81,16 +81,12 @@
 
 (defn- air? [st] (zero? (long st)))
 (defn- effective ^long [st] (let [m (level st)] (if (>= m 8) 0 m)))
-(defn- enterable? [st] (or (air? st) (and (pos? (long st)) (block/replaceable? (long st)))))
 (defn- other-class? [cls st]
   (let [c (liquid-class st)]
     (and (some? c) (not= c cls))))
 
 (defn- blocks-movement? [st]
-  (let [st (long st)]
-    (and (pos? st)
-         (not (block/liquid? st))
-         (not (block/needs-support? st)))))
+  (and (pos? (long st)) (block/blocks-motion? (long st))))
 
 (defn- decay ^long [chunks template cls p]
   (let [st (state-at chunks template (p 0) (p 1) (p 2))]
@@ -108,23 +104,38 @@
 (defn- neighbor-pull [chunks template cls i [x y z] [dx dz]]
   (let [nx (+ (long x) (long dx))
         nz (+ (long z) (long dz))
+        ns (state-at chunks template nx y nz)
         j  (decay chunks template cls [nx y nz])]
     (cond
+      (other-class? cls ns)
+      0
       (>= j 0)
       (- j (long i))
-      (not (blocks-movement? (state-at chunks template nx y nz)))
+      (not (blocks-movement? ns))
       (let [j2 (decay chunks template cls [nx (dec (long y)) nz])]
         (if (>= j2 0)
           (- j2 (- (long i) 8))
           0))
       :else 0)))
 
-(defn- walled? [chunks template [x y z]]
-  (some (fn [[dx dz]]
+(def ^:private side-face {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
+
+(defn- solid-face?
+  "Vanilla isSolidFace: not the same liquid, not ice, and the face of the
+   neighbour in direction d is sturdy."
+  [cls st d]
+  (let [st (long st)]
+    (and (pos? st)
+         (not= cls (liquid-class st))
+         (not (contains? #{:ice :packed-ice :blue-ice :frosted-ice} (block/block-of st)))
+         (block/face-sturdy? st (side-face d)))))
+
+(defn- walled? [chunks template cls [x y z]]
+  (some (fn [[dx dz :as d]]
           (let [nx (+ (long x) (long dx))
                 nz (+ (long z) (long dz))]
-            (or (blocks-movement? (state-at chunks template nx y nz))
-                (blocks-movement? (state-at chunks template nx (inc (long y)) nz)))))
+            (or (solid-face? cls (raw-at chunks template nx y nz) d)
+                (solid-face? cls (raw-at chunks template nx (inc (long y)) nz) d))))
         horiz))
 
 (defn flow-vector [chunks template [x y z :as p]]
@@ -137,7 +148,7 @@
                                  (+ (double vz) (* (long dz) k))]))
                             [0.0 0.0]
                             horiz)]
-        (if (and (>= (level st) 8) (walled? chunks template p))
+        (if (and (>= (level st) 8) (walled? chunks template cls p))
           (let [[nx _ nz] (normalize [vx 0.0 vz])]
             (normalize [nx -6.0 nz]))
           (normalize [vx 0.0 vz]))))))
@@ -212,11 +223,155 @@
           [0.0 0.0 0.0]
           (fluid-around chunks template pos half height)))
 
-(defn- flow-into? [cls st]
-  (or (enterable? st)
-      (let [c (liquid-class st)]
-        (and (some? c) (not= c cls)
-             (nil? (get-in liquids [c :mix]))))))
+;; --- растекание: порт FlowingFluid / LavaFluid / WaterFluid 26.2 -----------
+;;
+;; Уровень у нас «legacy»: 0 источник, 1..7 поток, 8 падающий. Ваниль считает
+;; в amount (8 источник и падающий, 7..1 поток); переводим на границе.
+
+(def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
+(def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
+(def ^:private faces
+  {[1 0 0] [:east :west] [-1 0 0] [:west :east] [0 0 1] [:south :north]
+   [0 0 -1] [:north :south] [0 -1 0] [:down :up] [0 1 0] [:up :down]})
+(def ^:private opposite {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0] [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
+(def ^:private no-fluid-types #{:door :standing-sign :wall-sign :ladder :sugar-cane :bubble-column})
+
+(defn- amount ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
+(defn- falling? [st] (= 8 (level st)))
+(defn- same? [cls st] (= cls (liquid-class st)))
+(defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
+(defn- height ^double [st] (/ (double (amount st)) 9.0))
+
+(defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
+
+(defn- face-covered?
+  "Shapes.mergedFaceOccludes: грань между first и second закрыта целиком
+   слоем first у его дальнего края (max = 16 по оси) вместе со слоем second
+   у ближнего (min = 0). Считаем покрытие сетки 16×16 клетками в 1/16."
+  [first second ^long axis]
+  (let [grid (boolean-array 256)
+        [u v] (case axis 0 [1 2] 1 [0 2] [0 1])
+        mark (fn [box]
+               (let [u0 (long (Math/ceil (double (nth box u)))) u1 (long (Math/floor (double (nth box (+ u 3)))))
+                     v0 (long (Math/ceil (double (nth box v)))) v1 (long (Math/floor (double (nth box (+ v 3)))))]
+                 (doseq [a (range (max 0 u0) (min 16 u1)) b (range (max 0 v0) (min 16 v1))]
+                   (aset grid (+ (* a 16) b) true))))]
+    (doseq [box first :when (== 16.0 (double (nth box (+ axis 3))))] (mark box))
+    (doseq [box second :when (== 0.0 (double (nth box axis)))] (mark box))
+    (every? true? grid)))
+
+(defn- pass-wall?
+  "canPassThroughWall: жидкость проходит из клетки с raw-состоянием src в
+   клетку tgt по направлению d. Полный куб с любой стороны не пускает; две
+   пустые формы пускают; иначе грань не должна быть закрыта
+   (Shapes.mergedFaceOccludes)."
+  [src tgt d]
+  (let [src (long src) tgt (long tgt)]
+    (cond
+      (or (neg? src) (neg? tgt)) false
+      (or (block/full-cube? tgt) (block/full-cube? src)) false
+      (and (empty? (boxes src)) (empty? (boxes tgt))) true
+      :else (let [axis (cond (not= 0 (long (d 0))) 0 (not= 0 (long (d 1))) 1 :else 2)
+                  positive? (pos? (long (d axis)))
+                  s (boxes src) t (boxes tgt)]
+              (not (face-covered? (if positive? s t) (if positive? t s) axis))))))
+
+(defn- container? [st]
+  (and (pos? (long st))
+       (or (contains? (block/props-of (long st)) :waterlogged)
+           (contains? block/water-holder-types (block/type-of (long st))))))
+
+(defn- holds-any-fluid?
+  "canHoldAnyFluid по raw-состоянию: контейнер (waterlogged-блоки), иначе
+   всё, что не мешает движению, кроме дверей, табличек, лестниц, тростника
+   и пузырьковой колонны."
+  [st]
+  (let [st (long st)]
+    (cond
+      (zero? st) true
+      (container? st) true
+      (blocks-movement? st) false
+      :else (not (contains? no-fluid-types (block/type-of st))))))
+
+(defn- holds-specific?
+  "canHoldSpecificFluid: контейнер берёт только воду и только пока сух."
+  [cls st]
+  (if (container? st)
+    (and (= :water cls) (not (block/waterlogged? (long st))))
+    true))
+
+(defn- can-hold? [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
+
+(defn- replaceable-with?
+  "canBeReplacedWith: чем можно заменить жидкость в клетке (по state-at).
+   Пусто — всем; вода — только сверху и не водой; лава — только водой и
+   только если её высота не меньше 4/9."
+  [tgt cls d]
+  (case (liquid-class tgt)
+    nil true
+    :water (and (= d [0 -1 0]) (not= cls :water))
+    :lava (and (= cls :water) (>= (height tgt) 0.44444445))))
+
+(defn- can-maybe-pass? [cls src-raw tgt-raw tgt d]
+  (and (not (source-of? cls tgt))
+       (holds-any-fluid? tgt-raw)
+       (pass-wall? src-raw tgt-raw d)))
+
+(defn- cell [{:keys [chunks template]} [x y z]]
+  [(raw-at chunks template x y z) (state-at chunks template x y z)])
+
+(defn- hole?
+  "isWaterHole: под клеткой та же жидкость или место, куда она может утечь."
+  [{:keys [cls] :as env} [x y z :as p]]
+  (let [[raw _] (cell env p)
+        [braw b] (cell env [x (dec (long y)) z])]
+    (and (pass-wall? raw braw [0 -1 0])
+         (or (same? cls b) (can-hold? cls braw)))))
+
+(defn- new-liquid
+  "getNewLiquid для клетки p: :source, :falling, amount 1..7 или nil (пусто)."
+  [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
+  (let [[raw _] (cell env p)
+        [highest sources]
+        (reduce (fn [[h s] [dx _ dz :as d]]
+                  (let [[nraw n] (cell env [(+ (long x) dx) y (+ (long z) dz)])]
+                    (if (and (same? cls n) (pass-wall? raw nraw d))
+                      [(max (long h) (amount n)) (if (source-of? cls n) (inc (long s)) s)]
+                      [h s])))
+                [0 0] horiz3)
+        [braw b] (cell env [x (dec (long y)) z])
+        [araw a] (cell env [x (inc (long y)) z])]
+    (cond
+      (and infinite? (>= (long sources) 2)
+           (or (block/solid? (long (max 0 (long braw)))) (source-of? cls b)))
+      :source
+      (and (same? cls a) (pass-wall? raw araw [0 1 0]))
+      :falling
+      :else (let [n (- (long highest) (long dropoff))] (when (pos? n) n)))))
+
+(defn- liquid->state ^long [cls v]
+  (case v
+    :source (liquid-state cls 0)
+    :falling (liquid-state cls 8)
+    (liquid-state cls (- 8 (long v)))))
+
+(defn- slope-distance
+  "getSlopeDistance: сколько шагов от p до ямы, не возвращаясь в from;
+   1000, если в пределах slope её нет."
+  ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
+  (reduce (fn [lowest [dx _ dz :as d]]
+            (if (= d from)
+              lowest
+              (let [tp [(+ (long x) dx) y (+ (long z) dz)]
+                    [raw _] (cell env p)
+                    [traw t] (cell env tp)]
+                (if (and (can-maybe-pass? cls raw traw t d) (holds-specific? cls traw))
+                  (cond
+                    (hole? env tp) (reduced pass)
+                    (< pass (long slope)) (min (long lowest) (slope-distance env tp (inc pass) (opposite d)))
+                    :else lowest)
+                  lowest))))
+          1000 horiz3))
 
 (defn- mix-product [mix m]
   (when mix
@@ -227,7 +382,10 @@
 (defn- touches-other? [chunks template cls pos]
   (some (fn [d] (other-class? cls (shifted chunks template pos d))) contact-dirs))
 
-(defn- convert-neighbors [chunks template cls [x y z]]
+(defn- convert-neighbors
+  "Соседняя лава от пришедшей воды: LiquidBlock.shouldSpreadLiquid у соседа
+   срабатывает в neighborChanged, то есть сразу."
+  [chunks template cls [x y z]]
   (into []
         (keep (fn [[dx dy dz]]
                 (let [np [(+ (long x) (long dx))
@@ -248,111 +406,120 @@
           (get-in liquids [cls :mix])
           (touches-other? chunks template cls pos)))))
 
-(defn- grow-frontier [pass? seen frontier]
-  (into []
-        (comp (mapcat (fn [[cx cz]]
-                        (map (fn [[dx dz]]
-                               [(+ (long cx) (long dx)) (+ (long cz) (long dz))])
-                             horiz)))
-              (distinct)
-              (remove seen)
-              (filter (fn [[cx cz]] (pass? cx cz))))
-        frontier))
-
-(defn- hole-distance [pass? drop? start seen]
-  (loop [frontier [start] seen seen d 1]
+(defn- spread-to
+  "spreadTo: что записать, когда жидкость приходит в клетку tp. Лава вниз на
+   воду — камень (LavaFluid.spreadTo); контейнер — заливается; иначе новое
+   состояние жидкости, а пришедшая лава у воды сразу застывает и пришедшая
+   вода застуживает соседнюю лаву."
+  [{:keys [chunks template cls mix] :as env} tp d v]
+  (let [[traw t] (cell env tp)]
     (cond
-      (some (fn [[cx cz]] (drop? cx cz)) frontier) d
-      (>= d 4) 99
+      (and mix (= d [0 -1 0]) (= :water (liquid-class t)))
+      [[tp (block/state (:smother mix))]]
+      (container? traw)
+      [[tp (block/state (block/block-of (long traw)) (assoc (block/props-of (long traw)) :waterlogged :true))]]
       :else
-      (let [nxt (grow-frontier pass? seen frontier)]
-        (if (empty? nxt)
-          99
-          (recur nxt (into seen nxt) (inc d)))))))
+      (let [plain (liquid->state cls v)
+            st (if (and mix (touches-other? chunks template cls tp))
+                 (or (mix-product mix (level plain)) plain)
+                 plain)]
+        (cons [tp st] (convert-neighbors chunks template cls tp))))))
 
-(defn- min-cost-dirs [costs]
-  (let [best (long (reduce min costs))]
-    (if (>= best 99)
-      horiz
-      (into [] (keep-indexed (fn [i c] (when (= c best) (horiz i)))) costs))))
+(defn- spread-sides
+  "spreadToSides + getSpread: соседи с ближайшей ямой, кого можно заменить."
+  [{:keys [cls dropoff] :as env} [x y z :as p] st]
+  (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
+    (when (pos? n)
+      (let [[raw _] (cell env p)
+            cands (reduce (fn [[lowest acc] [dx _ dz :as d]]
+                            (let [tp [(+ (long x) dx) y (+ (long z) dz)]
+                                  [traw t] (cell env tp)]
+                              (if-let [v (and (can-maybe-pass? cls raw traw t d)
+                                              (new-liquid env tp))]
+                                (if (holds-specific? cls traw)
+                                  (let [dist (if (hole? env tp) 0 (slope-distance env tp 1 (opposite d)))
+                                        acc (if (< dist (long lowest)) [] acc)]
+                                    (if (<= dist (long lowest))
+                                      [dist (if (replaceable-with? t cls d) (conj acc [tp d v]) acc)]
+                                      [lowest acc]))
+                                  [lowest acc])
+                                [lowest acc])))
+                          [1000 []] horiz3)]
+        (into [] (mapcat (fn [[tp d v]] (spread-to env tp d v))) (second cands))))))
 
-(defn- flow-dirs [chunks template cls [x y z]]
-  (let [x (long x) y (long y) z (long z)
-        open? (fn [st] (or (enterable? st) (liquid-state? st)))
-        pass? (fn [cx cz]
-                (let [st (state-at chunks template cx y cz)]
-                  (and (open? st)
-                       (not (and (= cls (liquid-class st))
-                                 (zero? (level st)))))))
-        drop? (fn [cx cz] (open? (state-at chunks template cx (dec y) cz)))
-        cost  (fn [[dx dz]]
-                (let [sx (+ x (long dx)) sz (+ z (long dz))]
-                  (if (pass? sx sz)
-                    (hole-distance pass? drop? [sx sz] #{[x z] [sx sz]})
-                    99)))]
-    (min-cost-dirs (mapv cost horiz))))
+(defn- source-neighbours ^long [{:keys [cls] :as env} [x y z]]
+  (count (filter (fn [[dx _ dz]] (source-of? cls (second (cell env [(+ (long x) dx) y (+ (long z) dz)])))) horiz3)))
+
+(defn- spread
+  "FlowingFluid.spread: сначала вниз (и вбок, если вокруг три источника),
+   иначе вбок, если это источник или под клеткой не яма."
+  [{:keys [cls] :as env} [x y z :as p] st]
+  (let [bp [x (dec (long y)) z]
+        [raw _] (cell env p)
+        [braw b] (cell env bp)]
+    (or (when (can-maybe-pass? cls raw braw b [0 -1 0])
+          (when-let [v (new-liquid env bp)]
+            (when (and (replaceable-with? b cls [0 -1 0]) (holds-specific? cls braw))
+              (into (vec (spread-to env bp [0 -1 0] v))
+                    (when (>= (source-neighbours env p) 3) (spread-sides env p st))))))
+        (when (or (source-of? cls st) (not (hole? env p)))
+          (spread-sides env p st)))))
+
+(defn update-delay
+  "getSpreadDelay: задержка тика клетки, чьё состояние сменилось с old на
+   new. У лавы подъём уровня (не падающей) в 3 случаях из 4 идёт вчетверо
+   медленнее; выбор детерминирован хешем тика и позиции."
+  ^long [old new tick pos]
+  (let [cls (liquid-class new)
+        {:keys [delay decay-jitter]} (liquids cls)]
+    (if (and decay-jitter
+             (same? cls old)
+             (not (falling? old)) (not (falling? new))
+             (> (height new) (height old))
+             (not= 0 (mod (hash [tick pos]) 4)))
+      (* (long delay) (long decay-jitter))
+      (long delay))))
 
 (defn- side-states [chunks template [x y z]]
   (mapv (fn [[dx dz]]
           (state-at chunks template (+ (long x) (long dx)) y (+ (long z) (long dz))))
         horiz))
 
-(defn- mixed-state [cls mix st above sides]
-  (when (and mix (some (fn [s] (other-class? cls s)) (cons above sides)))
-    (mix-product mix (level st))))
+(def ^:private basalt-state (delay (block/state :basalt)))
+(def ^:private soul-soil-state (delay (block/state :soul-soil)))
+(def ^:private blue-ice-state (delay (block/state :blue-ice)))
 
-(defn- recompute-level [{:keys [cls step infinite?]} st above below sides]
-  (let [same? (fn [s] (= cls (liquid-class s)))
-        src?  (fn [s] (and (same? s) (zero? (level s))))
-        flows (filterv same? sides)]
+(defn- mixed-state
+  "LiquidBlock.shouldSpreadLiquid: лава у воды (сверху или сбоку) — обсидиан
+   из источника, булыжник из потока; лава на soul soil у синего льда — базальт."
+  [cls mix st above sides below-raw]
+  (when mix
     (cond
-      (src? st) 0
-      (and infinite?
-           (>= (count (filterv src? sides)) 2)
-           (or (src? below)
-               (not (or (air? below) (liquid-state? below))))) 0
-      (same? above) 8
-      (seq flows)
-      (let [m (+ (long step) (long (reduce min (map effective flows))))]
-        (when (<= m 7) m))
+      (some (fn [s] (other-class? cls s)) (cons above sides)) (mix-product mix (level st))
+      (and (= (long below-raw) (long @soul-soil-state))
+           (some #(= (long %) (long @blue-ice-state)) (cons above sides))) @basalt-state
       :else nil)))
 
-(defn- arrive [{:keys [chunks template cls mix]} pos nl]
-  (let [plain (liquid-state cls nl)
-        state (if (and mix (touches-other? chunks template cls pos))
-                (or (mix-product mix nl) plain)
-                plain)]
-    (cons [pos state] (convert-neighbors chunks template cls pos))))
+(defn- solidified [chunks template [x y z :as p]]
+  (let [st (state-at chunks template x y z)
+        cls (liquid-class st)]
+    (when-let [mix (and cls (get-in liquids [cls :mix]))]
+      (let [above (shifted chunks template p [0 1 0])
+            sides (side-states chunks template p)
+            below-raw (raw-at chunks template x (dec (long y)) z)]
+        (mixed-state cls mix st above sides below-raw)))))
 
-(defn- fall-changes [env [x y z] below]
-  (when (and (pos? (long y))
-             (or (enterable? below) (not= 8 (level below))))
-    (arrive env [x (dec (long y)) z] 8)))
-
-(defn- spread-target? [cls ns]
-  (flow-into? cls ns))
-
-(defn- spread-changes [{:keys [chunks template cls] :as env} [x y z :as p] nl]
+(defn mix-changes
+  "Что застывает сразу после записи блоков в positions (neighborChanged у
+   соседей в ванили): лава в этих клетках и рядом с ними, коснувшаяся воды
+   или синего льда. chunks уже держат записанные блоки."
+  [chunks template positions]
   (into []
-        (mapcat (fn [[dx dz]]
-                  (let [np [(+ (long x) (long dx)) y (+ (long z) (long dz))]
-                        ns (state-at chunks template (np 0) (np 1) (np 2))]
-                    (when (spread-target? cls ns)
-                      (arrive env np nl)))))
-        (flow-dirs chunks template cls p)))
+        (comp (mapcat (fn [[x y z]] (cons [x y z] (map (fn [[dx dy dz]] [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)]) horiz3+))))
+              (distinct)
+              (keep (fn [p] (when-let [st (solidified chunks template p)] [p st]))))
+        positions))
 
-(defn- flow-changes [{:keys [cls step mix] :as env} [x y z :as p] nm below]
-  (let [nl        (if (= 8 (long nm)) 1 (+ (long nm) (long step)))
-        down?     (or (enterable? below)
-                      (and (= cls (liquid-class below))
-                           (not (source-state? below))))
-        grounded? (not (or (enterable? below) (liquid-state? below)))]
-    (cond
-      (and mix (other-class? cls below))
-      [[[x (dec (long y)) z] (block/state (:smother mix))]]
-      down? (fall-changes env p below)
-      (and (< nl 8) (or (zero? (long nm)) grounded?))
-      (spread-changes env p nl))))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
 
@@ -397,25 +564,78 @@
           :else (min 0.7 (+ vy 0.06))))
       vy)))
 
-(defn update-cell [chunks template [x y z :as p]]
+(def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
+
+(defn update-cell
+  "FlowingFluid.tick: застывание рядом с другой жидкостью, пересчёт уровня
+   не-источника, затем растекание из нового состояния. rules — геймрулы мира
+   (конверсия в источник)."
+  [chunks template [x y z :as p] rules]
   (let [st  (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
-      (let [{:keys [step infinite? mix]} (liquids cls)
+      (let [{:keys [dropoff slope infinite? mix]} (liquids cls)
             env   {:chunks chunks :template template :cls cls
-                   :step (long step) :infinite? infinite? :mix mix}
+                   :dropoff (long dropoff) :slope (long slope)
+                   :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}
             above (shifted chunks template p [0 1 0])
-            below (shifted chunks template p [0 -1 0])
-            sides (side-states chunks template p)]
-        (if-let [mixed (mixed-state cls mix st above sides)]
+            sides (side-states chunks template p)
+            below-raw (raw-at chunks template x (dec (long y)) z)]
+        (if-let [mixed (mixed-state cls mix st above sides below-raw)]
           [[p mixed]]
-          (if-let [nm (recompute-level env st above below sides)]
-            (or (when (zero? (long nm)) (seq (bubble-changes chunks template p)))
-                (into (if (not= (long nm) (level st))
-                        [[p (liquid-state cls nm)]]
-                        [])
-                      (flow-changes env p nm below)))
-            [[p 0]]))))))
+          (let [v   (if (source-of? cls st) :source (new-liquid env p))
+                st' (if v (liquid->state cls v) 0)]
+            (cond
+              (zero? st') [[p 0]]
+              (and (= :source v) (seq (bubble-changes chunks template p))) (bubble-changes chunks template p)
+              :else (into (if (not= st' (long st)) [[p st']] [])
+                          (spread env p st')))))))))
+
+(defn- fire-state-at
+  "BaseFireBlock.getState: soul fire над soul sand/soil, иначе огонь возраста 0;
+   без опоры снизу — с флагами сторон, где есть что жечь (FireBlock.getStateForPlacement)."
+  [chunks template [x y z :as p]]
+  (let [below (raw-at chunks template x (dec (long y)) z)]
+    (cond
+      (contains? #{:soul-sand :soul-soil} (block/block-of (long (max 0 (long below)))))
+      (block/state :soul-fire {:age :0})
+      (or (block/burnable? (long (max 0 (long below)))) (block/face-sturdy? (long (max 0 (long below))) :up))
+      (block/state :fire {:age :0})
+      :else
+      (block/state :fire (into {:age :0}
+                               (map (fn [[k d]] [k (if (block/burnable? (long (max 0 (long (shifted chunks template p d))))) :true :false)]))
+                               {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0] :up [0 1 0]})))))
+
+(defn- flammable-around? [chunks template p]
+  (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
+
+(defn lava-random-tick
+  "LavaFluid.randomTick: в 2 случаях из 3 — до двух шагов вверх и вбок по
+   воздуху, огонь, если рядом горючее; иначе три пробы вокруг на том же
+   уровне — огонь над горючим блоком. rnd — (fn [salt] 0..1)."
+  [chunks template [x y z :as p] rnd]
+  (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (rnd salt)))))))
+        passes (long (Math/floor (* 3.0 (double (rnd :passes)))))]
+    (if (pos? passes)
+      (loop [tp p i 0]
+        (when (< i passes)
+          (let [tp' [(+ (long (tp 0)) (r3 [:x i])) (inc (long (tp 1))) (+ (long (tp 2)) (r3 [:z i]))]
+                st (raw-at chunks template (tp' 0) (tp' 1) (tp' 2))]
+            (cond
+              (neg? st) nil
+              (zero? st) (if (flammable-around? chunks template tp')
+                           [[tp' (fire-state-at chunks template tp')]]
+                           (recur tp' (inc i)))
+              (block/blocks-motion? st) nil
+              :else (recur tp' (inc i))))))
+      (into []
+            (keep (fn [i]
+                    (let [tp [(+ (long x) (r3 [:x i])) y (+ (long z) (r3 [:z i]))]
+                          above [(tp 0) (inc (long y)) (tp 2)]]
+                      (when (and (zero? (long (raw-at chunks template (above 0) (above 1) (above 2))))
+                                 (block/ignited-by-lava? (long (max 0 (long (raw-at chunks template (tp 0) (tp 1) (tp 2)))))))
+                        [above (fire-state-at chunks template above)]))))
+            (range 3)))))
 
 (def rule
   {:name   :liquid
@@ -427,4 +647,4 @@
                   (if self?
                     (update-delay old (chunk/chunks-get-block chunks gen/flat-chunk p) tick p)
                     (delay-of (chunk/chunks-get-block chunks gen/flat-chunk p))))))
-   :due    (fn [chunks p] (update-cell chunks gen/flat-chunk p))})
+   :due    (fn [chunks p rules] (update-cell chunks gen/flat-chunk p rules))})
