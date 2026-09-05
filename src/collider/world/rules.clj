@@ -24,9 +24,17 @@
   (when-let [r (rule-for chunks st pos)]
     ((:wake r) chunks tick pos old self?)))
 
-(defn cell-changes
-  "[[pos state] ...] from the first matching rule of the state; rules are the
-   game rules of the world."
-  [chunks st pos rules]
+(defn again-tick
+  "Тик, на который правило состояния хочет тикнуть снова без изменения
+   блока (scheduleTick из tick в ванили), или nil."
+  [chunks st pos tick]
   (when-let [r (rule-for chunks st pos)]
-    ((:due r) chunks pos rules)))
+    (when-let [f (:again r)]
+      (f chunks tick pos))))
+
+(defn cell-changes
+  "[[pos state] ...] from the first matching rule of the state; ctx carries
+   what a rule may need beside the chunks: {:rules game-rules :tick t}."
+  [chunks st pos ctx]
+  (when-let [r (rule-for chunks st pos)]
+    ((:due r) chunks pos ctx)))

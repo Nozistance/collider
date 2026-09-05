@@ -647,4 +647,4 @@
                   (if self?
                     (update-delay old (chunk/chunks-get-block chunks gen/flat-chunk p) tick p)
                     (delay-of (chunk/chunks-get-block chunks gen/flat-chunk p))))))
-   :due    (fn [chunks p rules] (update-cell chunks gen/flat-chunk p rules))})
+   :due    (fn [chunks p ctx] (update-cell chunks gen/flat-chunk p (:rules ctx)))})

@@ -23,14 +23,14 @@
                   (tnt/tnt-state? (chunk/chunks-get-block chunks gen/flat-chunk p))))
            (map (fn [d] (mapv + [x y z] d)) sides)))
 
-(defn- lww-changes [chunks rules cells]
+(defn- lww-changes [chunks ctx cells]
   (into []
         (vals (into (sorted-map)
                     (map (fn [[pos st]] [pos [pos st]]))
                     (mapcat (fn [p] (rules/cell-changes
                                       chunks
                                       (chunk/chunks-get-block chunks gen/flat-chunk p)
-                                      p rules))
+                                      p ctx))
                                     cells)))))
 
 (defn- wash-deltas
@@ -92,9 +92,19 @@
             now     (into [] (comp (filter #(state/active-id? active %))
                                    (map chunk/id->block-pos)) due)
             parked  (into [] (remove #(state/active-id? active %)) due)
-            changes (lww-changes (:chunks world) (:rules world) now)]
+            changes (lww-changes (:chunks world) {:rules (:rules world) :tick t} now)
+            changed (into #{} (map first) changes)
+            again   (reduce (fn [m p]
+                              (if-let [at (and (not (contains? changed p))
+                                               (rules/again-tick (:chunks world)
+                                                                 (chunk/chunks-get-block (:chunks world) gen/flat-chunk p)
+                                                                 p t))]
+                                (update m at (fnil conj []) (chunk/block-pos->id p))
+                                m))
+                            {} now)]
         (concat
          [[:ticks-flushed t parked]]
+         (when (seq again) [[:schedule-ticks again]])
          (when (seq changes)
            (concat [[:set-blocks changes]]
                    (fizz-deltas world changes)

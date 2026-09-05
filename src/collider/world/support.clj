@@ -25,9 +25,26 @@
     (or (contains? kelp-types (block/type-of below))
         (and (block/face-sturdy? below :up) (not= :magma (block/type-of below))))))
 
+(def ^:private around6 [[1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
+
+(defn- fire-supported?
+  "FireBlock.canSurvive: прочная верхняя грань снизу или горючий сосед
+   (canBurn — igniteOdds). Soul fire (SoulFireBlock) — только на soul sand/soil."
+  [chunks template pos st]
+  (let [below (state-at chunks template (mapv + pos [0 -1 0]))]
+    (if (= :soul-fire (block/type-of (long st)))
+      (contains? #{:soul-sand :soul-soil} (block/block-of (max 0 below)))
+      (boolean
+       (or (and (not (neg? below)) (block/face-sturdy? below :up))
+           (some (fn [d]
+                   (let [n (state-at chunks template (mapv + pos d))]
+                     (and (pos? n) (block/burnable? n))))
+                 around6))))))
+
 (defn supported? [chunks template pos st]
   (cond
     (contains? kelp-types (block/type-of (long st))) (kelp-supported? chunks template pos)
+    (contains? #{:fire :soul-fire} (block/type-of (long st))) (fire-supported? chunks template pos st)
     :else (if-let [off (block/support-offset (long st))]
             (solid-at? chunks template (mapv + pos off))
             true)))

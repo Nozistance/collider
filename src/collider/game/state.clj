@@ -360,6 +360,9 @@
     :set-blocks (apply-set-blocks w (first args) true)
     :set-blocks-quiet (apply-set-blocks w (first args) false)
     :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
+    :schedule-ticks (update w :block-ticks
+                            (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
+                                             bt (first args))))
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
