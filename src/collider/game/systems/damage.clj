@@ -10,6 +10,7 @@
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
             [collider.world.phys :as phys]
+            [collider.game.menu :as menu]
             [collider.game.out :as out]
             [collider.vec :as v]))
 
@@ -36,8 +37,16 @@
       0.0)
     0.0))
 
-(defn- hurt-sound [e]
-  (when (not= :player (:type e)) (mobs/say-sound (:type e))))
+(defn- hurt-sound
+  "What vanilla plays on hurt: the death sound when the blow killed, else the
+   hurt sound of the damage source (on fire: hurt_on_fire); mobs say."
+  [e]
+  (if (= :player (:type e))
+    (cond
+      (not (pos? (double (:health e)))) :player/death
+      (pos? (long (or (:fire e) 0)))    :player/hurt-on-fire
+      :else                             :player/hurt)
+    (mobs/say-sound (:type e))))
 
 (defn- sound-pitch
   ^double [world eid e]
@@ -251,10 +260,23 @@
         [up (bed/look-yaw bed-pos up) nil])
       [state/spawn-pos 0.0 (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
 
-(defn- respawn-deltas [world eid]
+(defn- reshow-deltas
+  "Vanilla respawn removes the player and adds a new one under the same id:
+   whoever tracks the corpse drops it now and spawns the player anew next tick."
+  [world eid]
+  (for [[oid o] (:entities world)
+        :when (contains? (:tracking o) eid)]
+    [:tracking oid [] [eid]]))
+
+(defn- respawn-deltas
+  "The client asked to respawn (vanilla PlayerList.respawn): a fresh player at
+   the respawn point, the Respawn packet, the teleport, the health and the
+   inventory the new client-side player starts without."
+  [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
-      (let [[pos yaw lost] (respawn-point world e)]
+      (let [[pos yaw lost] (respawn-point world e)
+            inv (:inventory e)]
         (cond-> [[:merge-entity eid {:pos         (v/v3 pos)
                                      :tp-target   pos
                                      :health      player-health
@@ -262,8 +284,11 @@
                                      :hurt-resist 0 :last-damage 0.0 :death-time 0}]
                  (out/to eid (out/respawn))
                  (out/to eid (out/teleport pos yaw 0.0))
-                 (out/to eid (out/health player-health))]
-          lost (conj (out/to eid lost)))))))
+                 (out/to eid (out/health player-health))
+                 (out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
+          (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))
+          lost (conj (out/to eid lost))
+          true (into (reshow-deltas world eid)))))))
 
 (defn- idle? [e]
   (let [health (double (or (:health e) 0.0))]

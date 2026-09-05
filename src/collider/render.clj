@@ -104,7 +104,10 @@
   (delay
    (into {}
          (map (fn [[k [ev src]]] [k [(data/registry-id "sound_event" ev) src]]))
-         {:sheep/say    [:entity.sheep.ambient 6]
+         {:player/hurt         [:entity.player.hurt 7]
+          :player/hurt-on-fire [:entity.player.hurt-on-fire 7]
+          :player/death        [:entity.player.death 7]
+          :sheep/say    [:entity.sheep.ambient 6]
           :sheep/step   [:entity.sheep.step 6]
           :tnt/primed   [:entity.tnt.primed 4]
           :fire/ignite  [:item.flintandsteel.use 4]
@@ -120,6 +123,7 @@
           :place/glass  [:block.glass.place 4]
           :place/snow   [:block.snow.place 4]})))
 
+(def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 (def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))
 
 (defn- particles-packet [m]
@@ -180,7 +184,10 @@
                   :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)]) (:rules m))}]
     :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
     :health     [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
-    :respawn    []
+    ;; после Respawn клиент ждёт game-event 13 (LEVEL_CHUNKS_LOAD_START),
+    ;; иначе висит на «Loading terrain» до таймаута; ваниль шлёт его в sendLevelInfo
+    :respawn    [{:packet :respawn :dimension-type @overworld :keep 0}
+                 {:packet :game-event :event 13 :value 0.0}]
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]
     :block-change [{:packet :block-update :pos (:pos m) :state (:state m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))

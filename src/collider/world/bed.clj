@@ -47,8 +47,8 @@
   [chunks [x y z :as pos]]
   (let [here (box-top (block-at chunks pos))]
     (cond
-      (and (> here Double/NEGATIVE_INFINITY) (<= here 1.0)) here
-      (> here 1.0) nil
+      (and (> here Double/NEGATIVE_INFINITY) (< here 1.0)) here
+      (>= here 1.0) nil
       :else (let [below (box-top (block-at chunks [x (dec (long y)) z]))]
               (when (> below Double/NEGATIVE_INFINITY) (- below 1.0))))))
 
@@ -67,20 +67,43 @@
                     bz [(long (Math/floor (- z 0.3))) (long (Math/floor (+ z 0.3)))]]
                 [bx by bz]))))
 
+(def ^:private burning #{:fire :soul-fire :lava :magma-block :lava-cauldron})
+(def ^:private campfires #{:campfire :soul-campfire})
+(def ^:private prickly #{:wither-rose :sweet-berry-bush :cactus :powder-snow})
+
+(defn- dangerous?
+  "Whether a player must not stand in this block: burning (vanilla
+   NodeEvaluator.isBurningBlock) or hurting (EntityType.isBlockDangerous)."
+  [st]
+  (let [b (block/block-of st)]
+    (or (contains? burning b)
+        (and (contains? campfires b) (= :true (:lit (block/props-of st))))
+        (contains? prickly b))))
+
+(defn- dismount-position
+  "Where a player stands in the cell, or nil (vanilla
+   DismountHelper.findSafeDismountLocation). With safe? the cell and, when
+   standing on its floor, the block below must not be dangerous."
+  [chunks [x y z :as cell] safe?]
+  (when-not (and safe? (dangerous? (block-at chunks cell)))
+    (when-let [h (floor-height chunks cell)]
+      (when-not (and safe? (<= (double h) 0.0) (dangerous? (block-at chunks [x (dec (long y)) z])))
+        (let [p [(+ (double x) 0.5) (+ (double y) (double h)) (+ (double z) 0.5)]]
+          (when (player-fits? chunks p) p))))))
+
 (defn stand-up-position
-  "Where a player leaving the bed with head at pos stands: the first free
-   cell around it by the vanilla order, else on top of the bed."
+  "Where a player leaving the bed with head at pos stands (vanilla
+   BedBlock.findStandUpPosition): the first cell around it by the vanilla
+   order that is free and safe, else the first free one, else on top of the bed."
   [chunks [x y z :as pos] ^double yaw]
   (let [st      (block-at chunks pos)
         forward (block/facing-of st)
         right   (clockwise forward)
         side    (if (facing-angle? right yaw) (get {:north :south :south :north :east :west :west :east} right) right)
-        found   (some (fn [[dx dz]]
-                        (let [cell [(+ (long x) (long dx)) y (+ (long z) (long dz))]]
-                          (when-let [h (floor-height chunks cell)]
-                            (let [p [(+ (double (first cell)) 0.5) (+ (double y) h) (+ (double (last cell)) 0.5)]]
-                              (when (player-fits? chunks p) p)))))
-                      (stand-up-offsets forward side))]
+        cells   (mapv (fn [[dx dz]] [(+ (long x) (long dx)) y (+ (long z) (long dz))])
+                      (stand-up-offsets forward side))
+        found   (or (some #(dismount-position chunks % true) cells)
+                    (some #(dismount-position chunks % false) cells))]
     (or found [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])))
 
 (defn look-yaw

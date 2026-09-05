@@ -15,6 +15,21 @@
     (c/write-id buf n)
     (.writeBoolean buf false)))
 
+(defn- write-spawn-info
+  "CommonPlayerSpawnInfo 26.2: overworld, seed 0, creative with no previous
+   mode, flat, no last death, no portal cooldown, sea level 63."
+  [^ByteBuf buf m]
+  (c/write-holder-ref buf (long (:dimension-type m)))
+  (c/write-id buf :overworld)
+  (.writeLong buf 0)
+  (.writeByte buf 1)
+  (.writeByte buf -1)
+  (.writeBoolean buf false)
+  (.writeBoolean buf true)
+  (.writeBoolean buf false)
+  (c/write-varint buf 0)
+  (c/write-varint buf 63))
+
 (def packets
   {[:handshake :intention]
    {:read (fn [^ByteBuf buf] {:protocol (c/read-varint buf)
@@ -83,18 +98,13 @@
              (.writeBoolean buf false)
              (.writeBoolean buf true)
              (.writeBoolean buf false)
-             (c/write-holder-ref buf (long (:dimension-type m)))
-             (c/write-id buf :overworld)
-             (.writeLong buf 0)
-             (.writeByte buf 1)
-             (.writeByte buf -1)
-             (.writeBoolean buf false)
-             (.writeBoolean buf true)
-             (.writeBoolean buf false)
-             (c/write-varint buf 0)
-             (c/write-varint buf 63)
+             (write-spawn-info buf m)
              (.writeBoolean buf false)
              (.writeBoolean buf false))}
+   [:play :respawn]
+   {:write (fn [^ByteBuf buf m]
+             (write-spawn-info buf m)
+             (.writeByte buf (int (:keep m 0))))}
    [:play :player-abilities]
    {:read (fn [^ByteBuf buf] {:flags (.readByte buf)})
     :write (fn [^ByteBuf buf m]
