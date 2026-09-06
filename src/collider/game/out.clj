@@ -16,10 +16,9 @@
 (defn except
   "Effect for everyone concerned but eid, usually the player who caused it."
   [eid msg] [:fx (assoc msg :except eid)])
-(defn block-change [pos state]
-  {:msg :block-change :pos pos :state state})
-
-(defn blocks-changed [cp records]
+(defn blocks-changed
+  "Blocks of one chunk that changed: cp is the chunk id, records [[pos state] …]."
+  [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
 (defn time

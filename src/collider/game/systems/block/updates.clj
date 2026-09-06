@@ -47,16 +47,6 @@
           [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
-(defn- block-flush-deltas [world]
-  (when-let [events (:block-events world)]
-    (cons [:block-events-flushed]
-          (mapcat (fn [[cp recs]]
-                    [(out/all (out/blocks-changed cp recs))])
-                  events))))
-
-(defn block-flush [world _events]
-  [#(block-flush-deltas world)])
-
 (defn- fizz-deltas
   "Level event 1501: жидкость застыла (обсидиан, булыжник, камень на месте
    воды или лавы) или лава сожгла блок, в который пришла

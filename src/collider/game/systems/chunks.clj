@@ -53,7 +53,8 @@
         pending (when (> (count add-all) n) true)]
     (concat
      (when (or (not= cp chunk-pos) (seq add) (seq drop))
-       [[:chunks-sent eid cp add drop pending]])
+       [[:merge-entity eid {:chunk-pos cp :chunks-pending? pending}]
+        [:chunks-sent eid add drop]])
      (cond
        (seq add) [[:merge-entity eid {:chunk-quota (- quota n) :batches-unacked (inc unacked)}]]
        (and (not blocked) pending) [[:merge-entity eid {:chunk-quota quota}]]))))

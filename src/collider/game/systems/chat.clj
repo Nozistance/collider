@@ -114,7 +114,7 @@
 
 (defn- tp-deltas [world eid [x y z]]
   (let [e (get-in world [:entities eid]) pos [x y z]]
-    [[:merge-entity eid {:pos (v/v3 pos) :tp-target pos}]
+    [[:teleport eid pos]
      (out/to eid (out/teleport pos (:yaw e 0.0) (:pitch e 0.0)))
      (out/to eid (out/system-chat [{:translate "commands.teleport.success.location.single"
                                     :with [(:name e) (format "%.2f" (double x)) (format "%.2f" (double y)) (format "%.2f" (double z))]}]))]))
@@ -128,7 +128,7 @@
                  (let [e (get-in world [:entities id])
                        [changes left] (items/add-stack (or (:inventory e) {}) {:item item :count n})]
                    (concat
-                    (mapcat (fn [[slot stack]] [[:set-slot id slot stack] (out/to id (out/set-slot slot stack))]) changes)
+                    (map (fn [[slot stack]] [:set-slot id slot stack]) changes)
                     (when left [[:spawn-entity (items/dropped world id left true 0)]])
                     (say eid "commands.give.success.single" n {:translate (str "item.minecraft." (str/replace (name item) "-" "_"))} (:name e)))))
                ids)))))

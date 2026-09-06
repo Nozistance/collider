@@ -277,9 +277,8 @@
     (when (and e (not (pos? (double (:health e)))))
       (let [[pos yaw lost] (respawn-point world e)
             inv (:inventory e)]
-        (cond-> [[:merge-entity eid {:pos         (v/v3 pos)
-                                     :tp-target   pos
-                                     :health      player-health
+        (cond-> [[:teleport eid pos]
+                 [:merge-entity eid {:health      player-health
                                      :health-sent player-health
                                      :hurt-resist 0 :last-damage 0.0 :death-time 0}]
                  (out/to eid (out/respawn))

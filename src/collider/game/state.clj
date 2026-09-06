@@ -92,7 +92,7 @@
     bt
     changed))
 
-(defn- apply-set-blocks [w changes record-events?]
+(defn- apply-set-blocks [w changes]
   (let [chunks (:chunks w)
         real (into []
                    (keep (fn [[pos st]]
@@ -108,7 +108,7 @@
                         (light/relight-batch gen/flat-chunk real))
             derived (connect/derived-changes chunks' (map first real))
             chunks' (chunk/chunks-set-blocks chunks' gen/flat-chunk derived)
-            events  (concat (when record-events? (map (fn [[pos _ st]] [pos st]) real)) derived)]
+            events  (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
         (-> w
             (assoc :chunks chunks')
             (update :block-ticks schedule-updates (:tick w) chunks' real)
@@ -141,7 +141,7 @@
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
     (let [st (chunk/chunks-get-block (:chunks w) gen/flat-chunk pos)]
       (if (= :bed (block/type-of st))
-        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] false)
+        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]])
         w))
     w))
 
@@ -179,13 +179,24 @@
                      (assoc-in e [:inventory slot] stack)
                      (update e :inventory dissoc slot)))))
 
+(defn- client-slots
+  "The client set these slots and the cursor itself: the remote copy in its
+   Track follows (vanilla setRemoteSlot), so nothing is echoed back."
+  [e slots carried]
+  (if-let [tr (:track e)]
+    (assoc e :track (-> tr
+                        (update :slots (fn [m] (reduce (fn [m [s st]] (if st (assoc m s st) (dissoc m s))) (or m {}) slots)))
+                        (assoc :carried carried)))
+    e))
+
 (defn- creative-slot [w eid slot stack]
   (let [slot (long slot)]
     (if (and (<= 1 slot 45)
              (or (nil? stack)
                  (and (keyword? (:item stack))
                       (<= 1 (long (:count stack 1)) 64))))
-      (set-slot w eid slot stack)
+      (-> (set-slot w eid slot stack)
+          (update-entity eid (fn [e] (client-slots e {slot stack} (get-in e [:track :carried])))))
       w)))
 
 (def ^:private horizontal-limit 3.0E7)
@@ -330,16 +341,14 @@
 
 (defn- apply-entity-delta [tick e [tag & args]]
   (case tag
-    :merge-entity (let [m (second args)]
-                    (cond-> (merge e m)
-                      (:tp-target m) (assoc :tp-id tick)))
+    :merge-entity (merge e (second args))
+    :teleport (let [[_ pos] args] (assoc e :pos (v/v3 pos) :tp-target pos :tp-id tick))
+    :client-slots (let [[_ slots carried] args] (client-slots e slots carried))
     :track (assoc e :track (second args))
     :tracking (let [[_ add drop] args] (update e :tracking merge-diff add drop))
     :set-slot (let [[_ slot stack] args]
                 (if stack (assoc-in e [:inventory slot] stack) (update e :inventory dissoc slot)))
-    :chunks-sent (let [[_ cp add drop pending?] args]
-                   (-> e (assoc :chunk-pos cp :chunks-pending? pending?)
-                       (update :sent-chunks merge-diff add drop)))
+    :chunks-sent (let [[_ add drop] args] (update e :sent-chunks merge-diff add drop))
     :damage (let [[_ amount dx dz] args] (hurt e amount dx dz))
     :push (let [[_ v] args]
             (update e (if (= :tnt (:type e)) :kb :vel) (fnil v/+ [0.0 0.0 0.0]) v))))
@@ -348,17 +357,11 @@
   (case tag
     :remove-entity (apply player-quit w args)
     :listed (apply listed w args)
-    :spawn-entity (let [[a b] args]
-                    (if (map? a)
-                      (let [eid (long (:next-eid w 1000000))]
-                        (-> w
-                            (assoc-in [:entities eid] (entity/of a))
-                            (assoc :next-eid (inc eid))))
-                      (-> w
-                          (assoc-in [:entities a] (entity/of b))
-                          (update :next-eid (fnil max 1000000) (inc (long a))))))
-    :set-blocks (apply-set-blocks w (first args) true)
-    :set-blocks-quiet (apply-set-blocks w (first args) false)
+    :spawn-entity (let [eid (long (:next-eid w 1000000))]
+                    (-> w
+                        (assoc-in [:entities eid] (entity/of (first args)))
+                        (assoc :next-eid (inc eid))))
+    :set-blocks (apply-set-blocks w (first args))
     :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
     :schedule-ticks (update w :block-ticks
                             (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
@@ -375,20 +378,13 @@
    deltas are then merged per entity; removals come last. Returns [world' deltas]."
   [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
-        [w removes _] (reduce
-                       (fn [[w removes seen :as acc] [tag & args :as delta]]
-                         (case tag
-                           :remove-entity [w (conj removes (first args)) seen]
-                           :spawn-entity
-                           (let [m (first args)]
-                             (if-let [k (and (map? m) (:dedup m))]
-                               (if (contains? seen k)
-                                 acc
-                                 [(apply-world-delta w [:spawn-entity (dissoc m :dedup)]) removes (conj seen k)])
-                               [(apply-world-delta w delta) removes seen]))
-                           [(apply-world-delta w delta) removes seen]))
-                       [world [] #{}]
-                       (.world d))
+        [w removes] (reduce
+                     (fn [[w removes] [tag & args :as delta]]
+                       (if (= :remove-entity tag)
+                         [w (conj removes (first args))]
+                         [(apply-world-delta w delta) removes]))
+                     [world []]
+                     (.world d))
         entities    (:entities w)
         updated (r/fold 1 (r/monoid i/merge i/int-map)
                         (fn [m [eid ds]]

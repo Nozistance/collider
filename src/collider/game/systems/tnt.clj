@@ -1,6 +1,7 @@
 (ns collider.game.systems.tnt
 
-  (:require [clojure.data.int-map :as i]
+  (:require [collider.game.deltas :as deltas]
+            [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.mobs :as mobs]
             [collider.game.out :as out]
@@ -21,10 +22,8 @@
   (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height vel))
 
 (defn- unblock-deltas [eid e]
-  (concat
-    [[:set-blocks-quiet [[(:origin e) 0]]]]
-    [(out/all (out/block-change (:origin e) 0))]
-    [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]]))
+  [[:set-blocks [[(:origin e) 0]]]
+   [:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
 
 (defn- step-deltas [world eid e]
   (let [kb (:kb e)
@@ -138,8 +137,20 @@
       (when (seq destroy) [[:set-blocks (mapv (fn [p] [p 0]) destroy)]])
       (explosion-msgs rg players center seed affected)
       (knockback-deltas rg others center)
-      (map (fn [p] [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil :dedup [:tnt p])])
-           chains))))
+      (map (fn [p] [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil :from p)]) chains))))
+
+(defn- one-chain
+  "Two blasts of one tick may both reach the same TNT block: vanilla sees the
+   block gone after the first, we see one snapshot, so the second priming of
+   a block is dropped."
+  [deltas]
+  (let [seen (volatile! #{})]
+    (into []
+          (remove (fn [[tag m]]
+                    (when (= tag :spawn-entity)
+                      (let [o (:from m)]
+                        (if (contains? @seen o) true (do (vswap! seen conj o) false))))))
+          deltas)))
 
 (defn tnt-system [world _events]
   (let [tnts (into []
@@ -158,5 +169,6 @@
         pending (when (seq due) (tnt/primed-origins world))]
     (-> []
         (into (map (fn [[eid e]] #(unblock-deltas eid e))) fresh)
-        (into (map (fn [[eid e]] #(explode-deltas world others players pending eid e))) due)
+        (cond-> (seq due)
+          (conj #(one-chain (deltas/pmapcat (fn [[eid e]] (explode-deltas world others players pending eid e)) due))))
         (into (map (fn [[eid e]] #(step-deltas world eid e))) moving))))

@@ -21,13 +21,6 @@
               (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e)))))]
     msg))
 
-(defn- echo-deltas [world events]
-  (for [[tag eid slot] events
-        :when (and (= :creative-slot tag)
-                   (<= 0 (long slot) 44)
-                   (get-in world [:entities eid]))]
-    (out/to eid (out/set-slot slot (get-in world [:entities eid :inventory slot])))))
-
 (defn- item-of [name]
   (when (contains? (get @data/registries "item") name) name))
 
@@ -53,35 +46,26 @@
             (when (not= n held)
               [[:merge-entity eid {:held-slot n}]
                (out/to eid (out/held-slot n))]))
-          (let [slot (+ 36 held)
-                stack {:item item :count 1}]
-            [[:set-slot eid slot stack]
-             (out/to eid (out/set-slot slot stack))]))))))
-
-(defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
+          (let [slot (+ 36 held)]
+            [[:set-slot eid slot {:item item :count 1}]]))))))
 
 (defn- click-deltas
-  "A click on the player's own inventory: the menu applies it; the slots the
-   client predicted differently, and the carried stack, are set straight
-   (vanilla broadcastChanges over the remote slots)."
+  "A click on the player's own inventory: the menu applies it; what the
+   client predicted for the slots and the cursor becomes its remote copy
+   (vanilla setRemoteSlot/setRemoteCarried), the player system then sends
+   only what differs."
   [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
     (let [before {:inventory (or (:inventory e) {}) :carried (:carried e) :quickcraft (:quickcraft e)}
           after  (menu/click before m)]
       (concat
-       [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]]
-       (for [[slot seen] changed
-             :let [ours (get (:inventory after) slot)]
-             :when (not= (as-seen ours) (as-seen seen))]
-         (out/to eid (out/set-slot slot ours)))
-       (when (not= (as-seen (:carried after)) (as-seen carried))
-         [(out/to eid (out/carried (:carried after)))])
+       [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]
+        [:client-slots eid (or changed {}) carried]]
        (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
                     (:drops after))))))
 
 (defn- inventory-deltas [world events]
   (concat (restore-deltas world events)
-          (echo-deltas world events)
           (mapcat #(when (= :click (first %)) (click-deltas world %)) events)
           (mapcat #(when (= :pick (first %)) (pick-deltas world %)) events)))
 

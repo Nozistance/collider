@@ -29,7 +29,7 @@
 (def empty-deltas (->Deltas [] (i/int-map) []))
 
 (def entity-tags
-  #{:merge-entity :track :tracking :set-slot :chunks-sent :push :damage})
+  #{:merge-entity :track :tracking :set-slot :chunks-sent :push :damage :teleport :client-slots})
 
 (defn add
   "Buckets a seq of deltas into acc: [:fx m] to out, entity-tagged deltas
@@ -43,7 +43,7 @@
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
           :fx    (recur ds w e (conj! o (nth d 1)))
-          (:merge-entity :track :tracking :set-slot :chunks-sent :push :damage)
+          (:merge-entity :track :tracking :set-slot :chunks-sent :push :damage :teleport :client-slots)
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))

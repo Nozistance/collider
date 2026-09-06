@@ -24,8 +24,8 @@
     (select-keys (first (filter :translate runs)) [:translate :with])
     (apply str (map :text runs))))
 
-(defn- chunk-packets [world [_ eid cp add drop]]
-  (let [[cx cz] (chunk/id->pos cp)]
+(defn- chunk-packets [world [_ eid add drop]]
+  (let [[cx cz] (chunk/id->pos (get-in world [:entities eid :chunk-pos]))]
     (concat
      [{:packet :set-chunk-cache-center :cx cx :cz cz}]
      (when (seq add)
@@ -137,15 +137,20 @@
     (swap! unhandled conj kind)
     (log/info "render:" kind "not rendered yet")))
 
-(defn- block-records [[cx cz] records]
-  (for [[sy recs] (group-by (fn [[[_ y _] _]] (bit-shift-right (long y) 4)) records)]
-    {:packet :section-blocks-update :section [cx sy cz]
-     :changes (map (fn [[[x y z] st]]
-                     [(bit-or (bit-shift-left (bit-and (long x) 15) 8)
-                              (bit-shift-left (bit-and (long z) 15) 4)
-                              (bit-and (long y) 15))
-                      st])
-                   recs)}))
+(defn- block-records
+  "ChunkHolder.broadcastChanges: one change is a block update, more go as a
+   section update per section."
+  [[cx cz] records]
+  (if (= 1 (count records))
+    (let [[[pos st]] records] [{:packet :block-update :pos pos :state st}])
+    (for [[sy recs] (group-by (fn [[[_ y _] _]] (bit-shift-right (long y) 4)) records)]
+      {:packet :section-blocks-update :section [cx sy cz]
+       :changes (map (fn [[[x y z] st]]
+                       [(bit-or (bit-shift-left (bit-and (long x) 15) 8)
+                                (bit-shift-left (bit-and (long z) 15) 4)
+                                (bit-and (long y) 15))
+                        st])
+                     recs)})))
 
 (defn- status-packet [m]
   (case (:kind m)
@@ -189,7 +194,6 @@
     :respawn    [{:packet :respawn :dimension-type @overworld :keep 0}
                  {:packet :game-event :event 13 :value 0.0}]
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]
-    :block-change [{:packet :block-update :pos (:pos m) :state (:state m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]
     :carried    [{:packet :container-set-slot :container -1 :slot -1 :stack (:stack m)}]

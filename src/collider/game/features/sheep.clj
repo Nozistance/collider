@@ -75,9 +75,8 @@
         old (sense/block-at world cell)
         new (if (grass/short-grass? old) 0 grass/dirt-state)]
     (when (or (= grass/grass-state old) (grass/short-grass? old))
-      (concat [[:set-blocks-quiet [[cell new]]]]
-              [(out/all (out/block-change cell new))]
-              [(out/all (out/break-effect cell old))]))))
+      [[:set-blocks [[cell new]]]
+       (out/all (out/break-effect cell old))])))
 
 (defn- run-eat [world eid e t]
   (let [remaining (- (long (get-in e [:task :until])) (long t))]

@@ -31,12 +31,9 @@
   "tag → [схема аргументов, описание]."
   {:set-blocks
    [[:cat Records]
-    "Записать блоки с обновлением соседей и сообщить клиентам через block events
-     (взрывы, жидкости, огонь, /setblock)."]
-   :set-blocks-quiet
-   [[:cat Records]
-    "Записать блоки, клиентам не сообщать: вызывающий сам шлёт block-change
-     или block-ack (игрок ставит и ломает, двери, кровати, TNT убирает себя)."]
+    "Записать блоки с обновлением соседей. Клиенты узнают в конце того же
+     тика одной пачкой на чанк (ChunkHolder.broadcastChanges): tick.clj
+     сбрасывает :block-events в эффекты :blocks-changed."]
    :ticks-flushed
    [[:cat :int Coll]
     "Блок-тики до t включительно исполнены: снять; parked (были в неактивных
@@ -55,8 +52,8 @@
    [[:cat :keyword :any]
     "Геймрул: ключ из game/rules и значение."]
    :spawn-entity
-   [[:cat [:? Eid] :map]
-    "Новая сущность из карты (entity/of); eid выдаёт мир или задан явно."]
+   [[:cat :map]
+    "Новая сущность из карты (entity/of); eid выдаёт мир."]
    :remove-entity
    [[:cat Eid]
     "Убрать сущность; для игрока — уход с сервера."]
@@ -71,12 +68,20 @@
   "tag → [схема аргументов после eid, описание]. Первый аргумент всегда eid."
   {:merge-entity
    [[:cat :map]
-    "Слить поля в сущность (так же снимается :needs-spawn? после спавна).
-     `:tp-target` попутно ставит `:tp-id` = тик."]
+    "Слить поля в сущность (так же снимается :needs-spawn? после спавна)."]
+   :teleport
+   [[:cat Vec3]
+    "Поставить игрока в точку и ждать teleport-ack: :pos, :tp-target,
+     :tp-id = тик (сон, респавн, /tp, повтор через 20 тиков)."]
+   :client-slots
+   [[:cat [:map-of :int [:maybe Stack]] [:maybe Stack]]
+    "Что клиент сам поставил в слоты и на курсор (клик, creative-slot):
+     копия remoteSlots в Track, render шлёт только расхождения."]
    :track
    [[:cat :map]
-    "Что клиент этого игрока уже знает о нём самом (Track: pos, yaw, mdata,
-     equip, :seen). Меняется — render шлёт разницу."]
+    "Что клиенты уже знают о сущности (Track: pos, yaw, mdata, equip,
+     vel-sent; для игрока ещё slots и carried — его remoteSlots; :seen).
+     Система игроков шлёт разницу и обновляет."]
    :tracking
    [[:cat Coll Coll]
     "Кого этот игрок видит: добавить eids, убрать eids. Спавн и снятие
@@ -85,9 +90,9 @@
    [[:cat :int [:maybe Stack]]
     "Слот инвентаря: стек или nil (пусто)."]
    :chunks-sent
-   [[:cat :int Coll Coll [:maybe :boolean]]
-    "Чанки игроку: его chunk-pos, добавленные, убранные, ждёт ли ещё
-     (render шлёт чанки сам)."]
+   [[:cat Coll Coll]
+    "Чанки игроку: добавленные и убранные ids (render шлёт чанки сам,
+     центр берёт из :chunk-pos сущности)."]
    :damage
    [[:cat number? [:? [:cat number? number?]]]
     "Урон: величина и, если есть, направление отброса dx dz."]
@@ -100,8 +105,7 @@
 (def fx-messages
   "msg → [поля, описание]. Адрес добавляется поверх: `:to eid` личное,
    `:except eid` всем кроме, без адреса — всем, кого касается (решает render)."
-  {:block-change   [[[:pos Pos] [:state State]] "Один блок сменился (после quiet-записи)."]
-   :blocks-changed [[[:cp :int] [:records Records]] "Пачка блоков в одном чанке (block events)."]
+  {:blocks-changed [[[:cp :int] [:records Records]] "Блоки чанка, сменившиеся за тик; одна запись — block-update, больше — section update. С :to — правка одному игроку (отказ в установке)."]
    :break-effect   [[[:pos Pos] [:state State]] "Частицы и звук разрушения блока."]
    :explosion      [[[:center Vec3] [:radius number?] [:blocks :int] [:motion Vec3]] "Взрыв: центр, радиус, сколько блоков снесено (клиент рисует дым по числу), толчок адресату."]
    :sound          [[[:kind :keyword] [:pos Vec3] [:volume number?] [:pitch number?]] "Звук в точке."]

@@ -51,11 +51,15 @@
               (some #(box-hits-player? % (:pos e)) boxes)))
           (:entities world))))
 
+(defn- own-change
+  "The true block for one player, as the block update vanilla sends when a
+   placement or a dig is refused."
+  [world eid pos]
+  (out/to eid (out/blocks-changed (chunk/block-chunk pos) [[pos (block-at world pos)]])))
+
 (defn- reject-deltas [world eid pos pos']
-  (concat
-   [(out/to eid (out/block-change pos (block-at world pos)))]
-   (when pos'
-     [(out/to eid (out/block-change pos' (block-at world pos')))])))
+  (cond-> [(own-change world eid pos)]
+    pos' (conj (own-change world eid pos'))))
 
 (defn- change-deltas
   "One edit of the player: the changes and what they pull along (fence
@@ -64,11 +68,10 @@
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk changes)
         all     (into (vec changes) (connect/derived-changes chunks' (map first changes)))
         chunks'' (chunk/chunks-set-blocks chunks' gen/flat-chunk all)
-        mixed   (liquid/mix-changes chunks'' gen/flat-chunk (map first all))
-        all     (into all mixed)]
-    (-> [[:set-blocks-quiet all]]
-        (into (map (fn [[p st]] (out/all (out/block-change p st)))) all)
-        (into (map (fn [[p _]] (out/all (out/fizz p)))) mixed))))
+        mixed   (liquid/mix-changes chunks'' gen/flat-chunk (map first all))]
+    (into [[:set-blocks (into all mixed)]]
+          (map (fn [[p _]] (out/all (out/fizz p))))
+          mixed)))
 
 (defn- placed-deltas
   ([world eid pos state item] (placed-deltas world eid [[pos state]] item))
@@ -144,7 +147,7 @@
                       (out/except eid (out/break-effect pos old)))
           (fire/fire-state? old) (conj (out/all (out/extinguish pos)))
           (bed-head-effect world eid pos old) (conj (bed-head-effect world eid pos old)))
-        [(out/to eid (out/block-change pos 0))]))))
+        [(own-change world eid pos)]))))
 
 (defn- snow-layers ^long [st]
   (Long/parseLong (name (:layers (block/props-of st)))))
@@ -186,8 +189,7 @@
         (when (and (chunk/in-range? y')
                    (zero? (block-at world pos'))
                    (support/supported? (:chunks world) gen/flat-chunk pos' st))
-          [[:set-blocks-quiet [[pos' st]]]
-           (out/all (out/block-change pos' st))
+          [[:set-blocks [[pos' st]]]
            (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos' :flint])))))])))))
 
 (defn- slab-merge [world pos pos' face item]
@@ -325,7 +327,7 @@
   [world eid]
   (when-let [[kind pos] (scoop-target world eid)]
     (case kind
-      :source [[:set-blocks-quiet [[pos 0]]] (out/all (out/block-change pos 0))]
+      :source [[:set-blocks [[pos 0]]]]
       :waterlogged (change-deltas world [[pos (with-water (block-at world pos) false)]]))))
 
 (def ^:private armor-slot
@@ -451,7 +453,7 @@
 (defn- with-edits
   "World as the next event of the tick sees it: the block changes so far applied."
   [world deltas]
-  (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks-quiet) recs))) deltas)]
+  (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]
     (if (empty? changes)
       world
       (update world :chunks chunk/chunks-set-blocks gen/flat-chunk changes))))

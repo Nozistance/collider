@@ -43,7 +43,7 @@
       no-equip
       [(held-stack e) (get inv 8) (get inv 7) (get inv 6) (get inv 5)])))
 
-(defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp seen])
+(defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots carried seen])
 (defn- baseline [{:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
     (->Track [(fixed x) (fixed y) (fixed z)]
@@ -53,7 +53,21 @@
              (equipment-stacks e)
              (:vel e)
              0
+             (when (= :player (:type e)) (or (:inventory e) {}))
+             (:carried e)
              e)))
+
+(defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
+
+(defn- slot-diff
+  "Slots whose stack the client has wrong (vanilla broadcastChanges against
+   remoteSlots): [[slot stack] …], compared by item and count."
+  [inv known]
+  (into []
+        (keep (fn [slot]
+                (let [ours (get inv slot) theirs (get known slot)]
+                  (when (not= (as-seen ours) (as-seen theirs)) [slot ours]))))
+        (into (sorted-set) (concat (keys inv) (keys known)))))
 
 (defn- track-of [e] (or (:track e) (baseline e)))
 (defn- tracked-entries [world]
@@ -151,7 +165,7 @@
 
 (defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata equip
                   moved? turned? rel? head-turned? meta-changed? equip-changed?
-                  vel-changed? equip-diff])
+                  vel-changed? equip-diff slot-diff carried-changed?])
 
 (def ^:private vel-threshold 4.0E-4)
 (def ^:private item-vel-threshold 1.0E-7)
@@ -198,10 +212,15 @@
                      (into []
                            (keep-indexed (fn [i s]
                                            (when (not= s (get (.equip tr) i)) [i s])))
-                           equip))]
+                           equip))
+        self? (= :player (:type e))
+        slot-diff (when (and self? (not (identical? (:inventory e) (.slots tr))))
+                    (slot-diff (or (:inventory e) {}) (.slots tr)))
+        carried-changed? (boolean (and self? (not= (as-seen (:carried e)) (as-seen (.carried tr)))))]
     (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?) vel mdata equip
              moved? turned? rel? head-turned? meta-changed? equip-changed?
-             (vel-changed? tr vel (if item? item-vel-threshold vel-threshold)) equip-diff)))
+             (vel-changed? tr vel (if item? item-vel-threshold vel-threshold)) equip-diff
+             slot-diff carried-changed?)))
 
 (defn- move-msg [eid e ^Frame f]
   (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
@@ -215,10 +234,12 @@
       (.turned? f)
       (out/look eid yaw pitch ground))))
 
-(defn- self-msgs [eid ^Frame f]
+(defn- self-msgs [eid e ^Frame f]
   (cond-> []
     (.meta-changed? f) (conj (out/meta eid (.mdata f)))
-    (.vel-changed? f)  (conj (out/velocity eid (.vel f)))))
+    (.vel-changed? f)  (conj (out/velocity eid (.vel f)))
+    (seq (.slot-diff f)) (into (map (fn [[slot s]] (out/set-slot slot s))) (.slot-diff f))
+    (.carried-changed? f) (conj (out/carried (:carried e)))))
 
 (defn- move-msgs [eid e ^Frame f]
   (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
@@ -229,12 +250,13 @@
 
 (def ^:private item-update-interval 20)
 (def ^:private mob-update-interval 3)
-(defn- advance-track [^Track tr ^Frame f]
+(defn- advance-track [^Track tr e ^Frame f]
   (let [due? (.due? f) rel? (.rel? f)
         moved? (.moved? f) turned? (.turned? f)]
     (if (and (not due?)
              (not (.head-turned? f)) (not (.meta-changed? f))
-             (not (.equip-changed? f)) (not (.vel-changed? f)))
+             (not (.equip-changed? f)) (not (.vel-changed? f))
+             (empty? (.slot-diff f)) (not (.carried-changed? f)))
       tr
       (cond-> (if (or rel? (not due?))
                 (cond-> (assoc tr :since-tp (.since f))
@@ -245,7 +267,9 @@
         (.head-turned? f)   (assoc :head (.head f))
         (.meta-changed? f)  (assoc :mdata (.mdata f))
         (.equip-changed? f) (assoc :equip (.equip f))
-        (.vel-changed? f)   (assoc :vel-sent (.vel f))))))
+        (.vel-changed? f)   (assoc :vel-sent (.vel f))
+        (seq (.slot-diff f)) (assoc :slots (or (:inventory e) {}))
+        (.carried-changed? f) (assoc :carried (:carried e))))))
 
 (defn- move-deltas [t viewers [eid e]]
   (let [vs   (viewers eid)
@@ -264,11 +288,12 @@
           (if (and (not due?) (instance? Track tr)
                    (= (metadata e) (:mdata tr))
                    (= (equipment-stacks e) (:equip tr))
+                   (or (not self?) (and (identical? (:inventory e) (:slots tr)) (= (:carried e) (:carried tr))))
                    (or item? (not (vel-changed? tr (:vel e)))))
             (when-not (identical? e (:seen tr))
               [[:track eid (assoc tr :seen e)]])
             (let [f    (frame e tr (long t) due?)
-                  tr'  (advance-track tr f)
+                  tr'  (advance-track tr e f)
                   msgs (move-msgs eid e f)
                   tr'  (cond
                          (not (identical? tr tr')) (assoc tr' :seen e)
@@ -281,7 +306,7 @@
                          (reduce (fn [out m] (conj! out (out/all m))) out msgs)
                          out)
                   out  (if self?
-                         (reduce (fn [out m] (conj! out (out/to eid m))) out (self-msgs eid f))
+                         (reduce (fn [out m] (conj! out (out/to eid m))) out (self-msgs eid e f))
                          out)]
               (persistent! out))))))))
 
@@ -314,7 +339,7 @@
   (mapcat (fn [[eid e]]
             (let [target (:tp-target e) since (:tp-id e)]
               (when (and target since (>= (- (long (:tick world)) (long since)) teleport-retry))
-                [[:merge-entity eid {:tp-target target}]
+                [[:teleport eid target]
                  (out/to eid (out/teleport target (:yaw e 0.0) (:pitch e 0.0)))])))
           ps))
 

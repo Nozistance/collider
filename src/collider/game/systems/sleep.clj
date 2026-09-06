@@ -45,9 +45,9 @@
         yaw  (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
     (concat
      (when bed?
-       [[:set-blocks-quiet [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]]]
-        (out/all (out/block-change head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))))])
-     [[:merge-entity eid {:sleeping nil :leave-bed? nil :pos (v/v3 up) :tp-target up :yaw yaw :pitch 0.0}]
+       [[:set-blocks [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]]]])
+     [[:merge-entity eid {:sleeping nil :leave-bed? nil :yaw yaw :pitch 0.0}]
+      [:teleport eid up]
       (out/all (out/animation eid :wake-up))
       (out/to eid (out/animation eid :wake-up))
       (out/to eid (out/teleport up yaw 0.0))])))

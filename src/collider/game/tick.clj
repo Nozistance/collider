@@ -5,6 +5,7 @@
   (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
+            [collider.game.out :as out]
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
@@ -28,8 +29,6 @@
 (set! *warn-on-reflection* true)
 
 (def systems [#'chunks/chunk-streaming
-
-   #'block-updates/block-flush
    #'players/players
    #'blocks/block-edits
    #'block-updates/block-updates
@@ -44,20 +43,35 @@
    #'daynight/daynight
    #'keepalive/keepalive])
 
+(defn- final-records
+  "One record per cell with its last state (vanilla keeps a set of changed
+   cells per section), in the order the cells first changed."
+  [recs]
+  (let [last (into {} recs)]
+    (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
+
+(defn- block-flush-deltas
+  "The blocks that changed this tick go out at its end, one effect per chunk
+   (vanilla ChunkHolder.broadcastChanges), and the queue is cleared."
+  [w]
+  (when-let [events (:block-events w)]
+    (cons [:block-events-flushed]
+          (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events))))
+
 (defn tick
   "Advances the world by one tick: applies the events in order, runs the
-   systems, merges their deltas, then lets the Detector add what it saw.
-   Returns [world' deltas]."
+   systems, merges their deltas, then flushes the block changes and lets the
+   Detector add what it saw. Returns [world' deltas]."
   [world events]
   (let [world' (cond-> (update world :tick inc)
                  (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
         world' (reduce state/apply-event world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
-        seen (detector/observe world events d1 w1)]
-    (if (empty? seen)
+        post (concat (block-flush-deltas w1) (detector/observe world events d1 w1))]
+    (if (empty? post)
       [w1 d1]
-      (let [[w2 d2] (state/apply-deltas w1 seen)]
+      (let [[w2 d2] (state/apply-deltas w1 post)]
         [w2 (deltas/merge-deltas d1 d2)]))))
 
 (def ^:private ^:const nominal-tick-ns 50000000)

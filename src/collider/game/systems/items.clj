@@ -93,18 +93,13 @@
             nil))
         events))
 
-(defn- spawn-one [world ^long base ^long i {:keys [thrower stack take-from]}]
-  (let [eid (+ base i)]
-    (cons [:spawn-entity eid (dropped world thrower stack)]
-          (when take-from
-            [[:set-slot thrower (take-from 0) (take-from 1)]
-             (out/to thrower (out/set-slot (take-from 0) (take-from 1)))]))))
+(defn- spawn-one [world {:keys [thrower stack take-from]}]
+  (cons [:spawn-entity (dropped world thrower stack)]
+        (when take-from
+          [[:set-slot thrower (take-from 0) (take-from 1)]])))
 
 (defn- spawn-deltas [world events]
-  (let [base (long (:next-eid world 1000000))]
-    (apply concat
-           (map-indexed (fn [i d] (spawn-one world base i d))
-                        (drops world events)))))
+  (mapcat #(spawn-one world %) (drops world events)))
 
 (def ^:private ^:const item-half 0.125)
 (def ^:private ^:const item-height 0.25)
@@ -226,7 +221,6 @@
 (defn- collect-deltas [_world ieid _ie peid changes remaining players]
   (concat
     (for [[slot s] changes] [:set-slot peid slot s])
-    (for [[slot s] changes] (out/to peid (out/set-slot slot s)))
     (if remaining
       [[:merge-entity ieid {:stack remaining}]]
       (concat
