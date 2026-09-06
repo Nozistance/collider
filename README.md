@@ -2,6 +2,11 @@
 
 ### A proof-of-concept Minecraft server
 
+> [!IMPORTANT]
+> ### 🚧 Collider is being rewritten for the latest Minecraft
+>
+> Active work is happening on the [`mc-26`](https://github.com/Nozistance/collider/tree/mc-26) branch, targeting client 26.2. This branch is the 1.8.9 archive.
+
 ## About
 
 Collider is a Minecraft server with a parallel tick and no asterisks: no locks,
