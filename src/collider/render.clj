@@ -189,8 +189,6 @@
                   :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)]) (:rules m))}]
     :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
     :health     [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
-    ;; после Respawn клиент ждёт game-event 13 (LEVEL_CHUNKS_LOAD_START),
-    ;; иначе висит на «Loading terrain» до таймаута; ваниль шлёт его в sendLevelInfo
     :respawn    [{:packet :respawn :dimension-type @overworld :keep 0}
                  {:packet :game-event :event 13 :value 0.0}]
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]

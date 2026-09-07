@@ -223,10 +223,10 @@
           [0.0 0.0 0.0]
           (fluid-around chunks template pos half height)))
 
-;; --- растекание: порт FlowingFluid / LavaFluid / WaterFluid 26.2 -----------
+;; --- spread: port of FlowingFluid / LavaFluid / WaterFluid 26.2 ------------
 ;;
-;; Уровень у нас «legacy»: 0 источник, 1..7 поток, 8 падающий. Ваниль считает
-;; в amount (8 источник и падающий, 7..1 поток); переводим на границе.
+;; Our level is the legacy one: 0 source, 1..7 flow, 8 falling. Vanilla counts
+;; in amount (8 for source and falling, 7..1 for flow). We convert at the boundary.
 
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
@@ -245,9 +245,9 @@
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
 
 (defn- face-covered?
-  "Shapes.mergedFaceOccludes: грань между first и second закрыта целиком
-   слоем first у его дальнего края (max = 16 по оси) вместе со слоем second
-   у ближнего (min = 0). Считаем покрытие сетки 16×16 клетками в 1/16."
+  "Shapes.mergedFaceOccludes: the far layer of first (max = 16 on the axis)
+   and the near layer of second (min = 0) cover the face. We count a 16x16
+   grid in cells of 1/16."
   [first second ^long axis]
   (let [grid (boolean-array 256)
         [u v] (case axis 0 [1 2] 1 [0 2] [0 1])
@@ -261,10 +261,8 @@
     (every? true? grid)))
 
 (defn- pass-wall?
-  "canPassThroughWall: жидкость проходит из клетки с raw-состоянием src в
-   клетку tgt по направлению d. Полный куб с любой стороны не пускает; две
-   пустые формы пускают; иначе грань не должна быть закрыта
-   (Shapes.mergedFaceOccludes)."
+  "canPassThroughWall: fluid can flow from src to tgt in direction d. A full
+   cube blocks. Two empty shapes pass. Otherwise the face must not be covered."
   [src tgt d]
   (let [src (long src) tgt (long tgt)]
     (cond
@@ -282,9 +280,8 @@
            (contains? block/water-holder-types (block/type-of (long st))))))
 
 (defn- holds-any-fluid?
-  "canHoldAnyFluid по raw-состоянию: контейнер (waterlogged-блоки), иначе
-   всё, что не мешает движению, кроме дверей, табличек, лестниц, тростника
-   и пузырьковой колонны."
+  "canHoldAnyFluid: a container (waterlogged) or a block that does not block
+   motion, except doors, signs, ladders, sugar cane and bubble columns."
   [st]
   (let [st (long st)]
     (cond
@@ -294,7 +291,7 @@
       :else (not (contains? no-fluid-types (block/type-of st))))))
 
 (defn- holds-specific?
-  "canHoldSpecificFluid: контейнер берёт только воду и только пока сух."
+  "canHoldSpecificFluid: a dry container accepts only water."
   [cls st]
   (if (container? st)
     (and (= :water cls) (not (block/waterlogged? (long st))))
@@ -303,9 +300,8 @@
 (defn- can-hold? [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
 
 (defn- replaceable-with?
-  "canBeReplacedWith: чем можно заменить жидкость в клетке (по state-at).
-   Пусто — всем; вода — только сверху и не водой; лава — только водой и
-   только если её высота не меньше 4/9."
+  "canBeReplacedWith. Empty: any fluid. Water: only from above, not by water.
+   Lava: only by water with height 4/9 or more."
   [tgt cls d]
   (case (liquid-class tgt)
     nil true
@@ -321,7 +317,7 @@
   [(raw-at chunks template x y z) (state-at chunks template x y z)])
 
 (defn- hole?
-  "isWaterHole: под клеткой та же жидкость или место, куда она может утечь."
+  "isWaterHole: the cell below holds the same fluid or can take it."
   [{:keys [cls] :as env} [x y z :as p]]
   (let [[raw _] (cell env p)
         [braw b] (cell env [x (dec (long y)) z])]
@@ -329,7 +325,7 @@
          (or (same? cls b) (can-hold? cls braw)))))
 
 (defn- new-liquid
-  "getNewLiquid для клетки p: :source, :falling, amount 1..7 или nil (пусто)."
+  "getNewLiquid for the cell p: :source, :falling, amount 1..7 or nil (empty)."
   [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
   (let [[raw _] (cell env p)
         [highest sources]
@@ -356,8 +352,8 @@
     (liquid-state cls (- 8 (long v)))))
 
 (defn- slope-distance
-  "getSlopeDistance: сколько шагов от p до ямы, не возвращаясь в from;
-   1000, если в пределах slope её нет."
+  "getSlopeDistance: steps from p to a hole, not through from. 1000 if none
+   within slope."
   ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
   (reduce (fn [lowest [dx _ dz :as d]]
             (if (= d from)
@@ -383,8 +379,8 @@
   (some (fn [d] (other-class? cls (shifted chunks template pos d))) contact-dirs))
 
 (defn- convert-neighbors
-  "Соседняя лава от пришедшей воды: LiquidBlock.shouldSpreadLiquid у соседа
-   срабатывает в neighborChanged, то есть сразу."
+  "Adjacent lava hardened by incoming water (shouldSpreadLiquid runs at once
+   in neighborChanged)."
   [chunks template cls [x y z]]
   (into []
         (keep (fn [[dx dy dz]]
@@ -407,10 +403,9 @@
           (touches-other? chunks template cls pos)))))
 
 (defn- spread-to
-  "spreadTo: что записать, когда жидкость приходит в клетку tp. Лава вниз на
-   воду — камень (LavaFluid.spreadTo); контейнер — заливается; иначе новое
-   состояние жидкости, а пришедшая лава у воды сразу застывает и пришедшая
-   вода застуживает соседнюю лаву."
+  "spreadTo: what to write when fluid comes to tp. Lava on water gives stone.
+   A container gets filled. Otherwise the new fluid state. Lava next to water
+   hardens at once, water hardens adjacent lava."
   [{:keys [chunks template cls mix] :as env} tp d v]
   (let [[traw t] (cell env tp)]
     (cond
@@ -426,7 +421,7 @@
         (cons [tp st] (convert-neighbors chunks template cls tp))))))
 
 (defn- spread-sides
-  "spreadToSides + getSpread: соседи с ближайшей ямой, кого можно заменить."
+  "spreadToSides + getSpread: replaceable neighbors with the nearest hole."
   [{:keys [cls dropoff] :as env} [x y z :as p] st]
   (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
     (when (pos? n)
@@ -451,8 +446,8 @@
   (count (filter (fn [[dx _ dz]] (source-of? cls (second (cell env [(+ (long x) dx) y (+ (long z) dz)])))) horiz3)))
 
 (defn- spread
-  "FlowingFluid.spread: сначала вниз (и вбок, если вокруг три источника),
-   иначе вбок, если это источник или под клеткой не яма."
+  "FlowingFluid.spread: down first (also sideways with three sources around).
+   Otherwise sideways if the cell is a source or the cell below is not a hole."
   [{:keys [cls] :as env} [x y z :as p] st]
   (let [bp [x (dec (long y)) z]
         [raw _] (cell env p)
@@ -466,9 +461,8 @@
           (spread-sides env p st)))))
 
 (defn update-delay
-  "getSpreadDelay: задержка тика клетки, чьё состояние сменилось с old на
-   new. У лавы подъём уровня (не падающей) в 3 случаях из 4 идёт вчетверо
-   медленнее; выбор детерминирован хешем тика и позиции."
+  "getSpreadDelay: tick delay after a change from old to new. A lava level
+   increase is four times slower in 3 of 4 cases (hash of tick and pos)."
   ^long [old new tick pos]
   (let [cls (liquid-class new)
         {:keys [delay decay-jitter]} (liquids cls)]
@@ -490,8 +484,8 @@
 (def ^:private blue-ice-state (delay (block/state :blue-ice)))
 
 (defn- mixed-state
-  "LiquidBlock.shouldSpreadLiquid: лава у воды (сверху или сбоку) — обсидиан
-   из источника, булыжник из потока; лава на soul soil у синего льда — базальт."
+  "LiquidBlock.shouldSpreadLiquid: lava next to water gives obsidian (source)
+   or cobblestone (flow). Lava on soul soil next to blue ice gives basalt."
   [cls mix st above sides below-raw]
   (when mix
     (cond
@@ -510,9 +504,8 @@
         (mixed-state cls mix st above sides below-raw)))))
 
 (defn mix-changes
-  "Что застывает сразу после записи блоков в positions (neighborChanged у
-   соседей в ванили): лава в этих клетках и рядом с ними, коснувшаяся воды
-   или синего льда. chunks уже держат записанные блоки."
+  "Lava at or next to positions that touches water or blue ice hardens at
+   once (neighborChanged). chunks already hold the written blocks."
   [chunks template positions]
   (into []
         (comp (mapcat (fn [[x y z]] (cons [x y z] (map (fn [[dx dy dz]] [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)]) horiz3+))))
@@ -567,9 +560,8 @@
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
 
 (defn update-cell
-  "FlowingFluid.tick: застывание рядом с другой жидкостью, пересчёт уровня
-   не-источника, затем растекание из нового состояния. rules — геймрулы мира
-   (конверсия в источник)."
+  "FlowingFluid.tick: harden next to the other fluid, update the level of a
+   non-source, then spread. rules are the game rules (source conversion)."
   [chunks template [x y z :as p] rules]
   (let [st  (state-at chunks template x y z)
         cls (liquid-class st)]
@@ -592,8 +584,8 @@
                           (spread env p st')))))))))
 
 (defn- fire-state-at
-  "BaseFireBlock.getState: soul fire над soul sand/soil, иначе огонь возраста 0;
-   без опоры снизу — с флагами сторон, где есть что жечь (FireBlock.getStateForPlacement)."
+  "BaseFireBlock.getState: soul fire above soul sand/soil, else fire of age 0.
+   Without support below, set side flags towards burnable blocks."
   [chunks template [x y z :as p]]
   (let [below (raw-at chunks template x (dec (long y)) z)]
     (cond
@@ -610,9 +602,9 @@
   (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
 
 (defn lava-random-tick
-  "LavaFluid.randomTick: в 2 случаях из 3 — до двух шагов вверх и вбок по
-   воздуху, огонь, если рядом горючее; иначе три пробы вокруг на том же
-   уровне — огонь над горючим блоком. rnd — (fn [salt] 0..1)."
+  "LavaFluid.randomTick. 2 of 3 cases: up to two steps up and sideways through
+   air, fire next to a burnable block. Else three tries at the same level:
+   fire above a burnable block. rnd is (fn [salt] 0..1)."
   [chunks template [x y z :as p] rnd]
   (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (rnd salt)))))))
         passes (long (Math/floor (* 3.0 (double (rnd :passes)))))]

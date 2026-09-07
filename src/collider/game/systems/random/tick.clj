@@ -1,8 +1,7 @@
 (ns collider.game.systems.random.tick
-  "Случайные тики (ServerLevel.tickChunk): в каждой непустой секции каждого
-   активного чанка randomTickSpeed случайных клеток за тик; блок, который
-   тикает случайно, получает свой randomTick. Пока это только лава
-   (LavaFluid.randomTick — поджиг), остальное подключается сюда же."
+  "Random ticks (ServerLevel.tickChunk): randomTickSpeed random cells per
+   non-empty section of each active chunk. For now only lava
+   (LavaFluid.randomTick)."
   (:require [collider.game.state :as state]
             [collider.rnd :as rnd]
             [collider.world.block :as block]
@@ -14,8 +13,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- near-player?
-  "ServerLevel.canSpreadFireAround: игрок ближе fireSpreadRadiusAroundPlayer
-   блоков от клетки, либо правило -1."
+  "ServerLevel.canSpreadFireAround: a player within radius, or radius -1."
   [world ^long radius [x y z]]
   (or (= radius -1)
       (let [cx (+ (double x) 0.5) cy (+ (double y) 0.5) cz (+ (double z) 0.5)]

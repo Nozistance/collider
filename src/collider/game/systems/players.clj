@@ -61,7 +61,7 @@
 
 (defn- slot-diff
   "Slots whose stack the client has wrong (vanilla broadcastChanges against
-   remoteSlots): [[slot stack] …], compared by item and count."
+   remoteSlots): [[slot stack] ...], compared by item and count."
   [inv known]
   (into []
         (keep (fn [slot]

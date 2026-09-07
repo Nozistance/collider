@@ -302,9 +302,8 @@
   (update w :listed #(apply dissoc (merge % add) drop)))
 
 (defn- flush-ticks
-  "Всё, что было назначено на тик t и раньше, снято; parked — тики в
-   неактивных чанках — остаются просроченными под ключом t и исполнятся,
-   как только чанк станет активным (ваниль держит их до загрузки чанка)."
+  "Remove ticks up to t. Parked ticks (inactive chunks) stay under key t and
+   run when the chunk becomes active."
   [w t parked]
   (update w :block-ticks
           (fn [bt]

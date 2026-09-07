@@ -25,8 +25,8 @@
     ((:wake r) chunks tick pos old self?)))
 
 (defn again-tick
-  "Тик, на который правило состояния хочет тикнуть снова без изменения
-   блока (scheduleTick из tick в ванили), или nil."
+  "The tick at which the state rule wants to tick again without a block
+   change (vanilla calls scheduleTick from tick), or nil."
   [chunks st pos tick]
   (when-let [r (rule-for chunks st pos)]
     (when-let [f (:again r)]

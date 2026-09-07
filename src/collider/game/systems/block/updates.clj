@@ -35,7 +35,7 @@
 
 (defn- wash-deltas
   "Water flowing into a block breaks it and drops its loot
-   (WaterFluid.beforeDestroyingBlock → Block.dropResources), gamerule blockDrops."
+   (WaterFluid.beforeDestroyingBlock, Block.dropResources), gamerule blockDrops."
   [world changes]
   (when (get-in world [:rules :block-drops] true)
     (for [[pos st] changes
@@ -48,9 +48,8 @@
       [:spawn-entity (items/popped world pos stack i)])))
 
 (defn- fizz-deltas
-  "Level event 1501: жидкость застыла (обсидиан, булыжник, камень на месте
-   воды или лавы) или лава сожгла блок, в который пришла
-   (LavaFluid.beforeDestroyingBlock)."
+  "Level event 1501: a fluid hardened, or lava burned the block it flowed
+   into (LavaFluid.beforeDestroyingBlock)."
   [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]

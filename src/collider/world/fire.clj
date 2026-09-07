@@ -1,6 +1,6 @@
 (ns collider.world.fire
-  "Огонь: выживание и старение как FireBlock 26.2. Распространение на соседей
-   (checkBurnOut, tryCatchFire) и дождь — ещё нет."
+  "Fire: survival and ageing as in FireBlock 26.2. Spread to neighbors
+   (checkBurnOut, tryCatchFire) and rain are not done yet."
   (:require [collider.rnd :as rnd]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -23,14 +23,15 @@
   (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks gen/flat-chunk p) -1))
 
 (defn- valid-location?
-  "FireBlock.isValidFireLocation: рядом есть что жечь."
+  "FireBlock.isValidFireLocation: a burnable block is adjacent."
   [chunks p]
   (boolean (some (fn [d] (let [n (state-at chunks (mapv + p d))] (and (pos? n) (block/burnable? n)))) around6)))
 
 (defn- tick-changes
-  "FireBlock.tick без распространения: не выжил — снять; возраст растёт на
-   nextInt(3)/2; без горючего рядом гаснет, когда снизу не прочно или возраст
-   больше 3; в 15 лет с шансом 1/4 гаснет над негорючим."
+  "FireBlock.tick without spread. Remove fire that cannot survive. Age grows
+   by nextInt(3)/2. With no burnable neighbor, fire goes out when the block
+   below is not solid or age > 3. At age 15, chance 1/4 to go out above a
+   non-burnable block."
   [chunks p ctx]
   (let [st (state-at chunks p)
         r (fn [salt] (rnd/rnd [(:tick ctx) p salt]))
@@ -51,7 +52,7 @@
 (def rule
   {:name   :fire
    :match? (fn [_chunks st _p] (fire-state? st))
-   ;; getFireTickDelay: 30 + nextInt(10); без опоры — сразу (updateShape → воздух)
+   ;; getFireTickDelay: 30 + nextInt(10). Without support: at once (updateShape gives air)
    :wake   (fn [chunks tick p _old _self?]
              (if (support/supported? chunks gen/flat-chunk p (chunk/chunks-get-block chunks gen/flat-chunk p))
                (fire-delay tick p)

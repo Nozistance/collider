@@ -28,8 +28,8 @@
 (def ^:private around6 [[1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
 
 (defn- fire-supported?
-  "FireBlock.canSurvive: прочная верхняя грань снизу или горючий сосед
-   (canBurn — igniteOdds). Soul fire (SoulFireBlock) — только на soul sand/soil."
+  "FireBlock.canSurvive: solid top face below or a burnable neighbor. Soul
+   fire only on soul sand/soil."
   [chunks template pos st]
   (let [below (state-at chunks template (mapv + pos [0 -1 0]))]
     (if (= :soul-fire (block/type-of (long st)))

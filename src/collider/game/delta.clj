@@ -1,152 +1,147 @@
 (ns collider.game.delta
-  "Словарь дельт: всё, что система может выдать за тик, в одном месте.
+  "All deltas that a system can return in one tick.
 
-   Дельта — вектор `[tag & args]`. `deltas/add` раскладывает их в три корзины:
-   мировые (меняют мир), сущностные (по eid, теги из `deltas/entity-tags`)
-   и эффекты `[:fx msg]` — сообщения игрокам, карты с `:msg` (строятся в
-   `game/out.clj`, рендерятся в `render.clj`). Применяет всё `game/state.clj`.
+   A delta is a vector [tag & args]. deltas/add sorts deltas into three groups:
+   world deltas, entity deltas (by eid) and effects [:fx msg]. An effect is a
+   message to players. game/out.clj builds effects, render.clj sends them.
+   game/state.clj applies world and entity deltas.
 
-   Схемы — malli. Проверка не в горячем пути: `check!` зовётся из тика,
-   только когда `validate?` истинно (тесты, живой REPL)."
+   Schemas are malli. check! runs only when validate? is true (tests, REPL)."
   (:require [malli.core :as m]
-            [malli.error :as me]))
+            [malli.error :as me])
+  (:import (collider.java V3)))
 
-;; --- примитивы ------------------------------------------------------------
+;; --- primitives -----------------------------------------------------------
 
-(def Pos "Позиция блока [x y z]." [:tuple :int :int :int])
+(def Pos "Block position [x y z]." [:tuple :int :int :int])
 (defn- vec3? [v]
-  (or (instance? collider.java.V3 v)
+  (or (instance? V3 v)
       (and (sequential? v) (= 3 (count v)) (every? number? v))))
-(def Vec3 "Вектор в блоках: [x y z] из double или примитивный V3 горячего пути." [:fn vec3?])
-(def Eid "Id сущности; игроки с 1, остальные с 1 000 000." :int)
-(def State "Глобальный id состояния блока 26.2." :int)
-(def Stack "Стек предмета." [:map [:item :keyword] [:count :int]])
-(def Records "Пачка блоков [[pos state] …]." [:sequential [:tuple Pos State]])
-(def Coll "Любая коллекция (int-set, вектор, список)." [:fn coll?])
-(def Runs "Текст чата: строки или карты translate/with." [:sequential [:or :string :map]])
+(def Vec3 "Vector in blocks: [x y z] of doubles or a primitive V3." [:fn vec3?])
+(def Eid "Entity id. Players start at 1, other entities at 1000000." :int)
+(def State "Global block state id of 26.2." :int)
+(def Stack "Item stack." [:map [:item :keyword] [:count :int]])
+(def Records "Batch of blocks [[pos state] ...]." [:sequential [:tuple Pos State]])
+(def Coll "Any collection (int-set, vector, list)." [:fn coll?])
+(def Runs "Chat text: strings or translate/with maps." [:sequential [:or :string :map]])
 
-;; --- мировые дельты -------------------------------------------------------
+;; --- world deltas ---------------------------------------------------------
 
 (def world-deltas
-  "tag → [схема аргументов, описание]."
+  "tag -> [argument schema, description]."
   {:set-blocks
    [[:cat Records]
-    "Записать блоки с обновлением соседей. Клиенты узнают в конце того же
-     тика одной пачкой на чанк (ChunkHolder.broadcastChanges): tick.clj
-     сбрасывает :block-events в эффекты :blocks-changed."]
+    "Write blocks and update neighbors. Clients get one batch per chunk at the
+     end of the tick (ChunkHolder.broadcastChanges)."]
    :ticks-flushed
    [[:cat :int Coll]
-    "Блок-тики до t включительно исполнены: снять; parked (были в неактивных
-     чанках) остаются просроченными и идут, как только чанк активен."]
+    "Remove block ticks up to t. Parked ticks (inactive chunks) stay and run
+     when the chunk becomes active."]
    :schedule-ticks
    [[:cat [:map-of :int Coll]]
-    "Правило просит тикнуть клетки снова без смены блока (scheduleTick из tick
-     в ванили, огонь): {тик [block-id …]}."]
+    "Tick cells again without a block change (scheduleTick, fire):
+     {tick [block-id ...]}."]
    :block-events-flushed
    [[:cat]
-    "Очередь block events отправлена, очистить."]
+    "Clear the sent block event queue."]
    :set-time
    [[:cat :int]
-    "Время суток (команда /time, сон)."]
+    "Time of day (/time command, sleep)."]
    :set-rule
    [[:cat :keyword :any]
-    "Геймрул: ключ из game/rules и значение."]
+    "Game rule: a key from game/rules and a value."]
    :spawn-entity
    [[:cat :map]
-    "Новая сущность из карты (entity/of); eid выдаёт мир."]
+    "New entity from a map (entity/of). The world gives the eid."]
    :remove-entity
    [[:cat Eid]
-    "Убрать сущность; для игрока — уход с сервера."]
+    "Remove an entity. A removed player leaves the server."]
    :listed
    [[:cat [:map-of Eid :uuid] Coll]
-    "Кто в таб-листе (:listed мира): добавить {eid uuid}, убрать eids.
-     Нужно, чтобы снять из списка игрока, чьей сущности уже нет."]})
+    "Tab list (:listed of the world): add {eid uuid}, remove eids."]})
 
-;; --- дельты сущностей -----------------------------------------------------
+;; --- entity deltas --------------------------------------------------------
 
 (def entity-deltas
-  "tag → [схема аргументов после eid, описание]. Первый аргумент всегда eid."
+  "tag -> [schema of the arguments after eid, description]."
   {:merge-entity
    [[:cat :map]
-    "Слить поля в сущность (так же снимается :needs-spawn? после спавна)."]
+    "Merge fields into the entity."]
    :teleport
    [[:cat Vec3]
-    "Поставить игрока в точку и ждать teleport-ack: :pos, :tp-target,
-     :tp-id = тик (сон, респавн, /tp, повтор через 20 тиков)."]
+    "Move the player and wait for teleport-ack. Sets :pos, :tp-target and
+     :tp-id (the tick). Retry after 20 ticks."]
    :client-slots
    [[:cat [:map-of :int [:maybe Stack]] [:maybe Stack]]
-    "Что клиент сам поставил в слоты и на курсор (клик, creative-slot):
-     копия remoteSlots в Track, render шлёт только расхождения."]
+    "Slots and cursor set by the client (copy of remoteSlots in Track)."]
    :track
    [[:cat :map]
-    "Что клиенты уже знают о сущности (Track: pos, yaw, mdata, equip,
-     vel-sent; для игрока ещё slots и carried — его remoteSlots; :seen).
-     Система игроков шлёт разницу и обновляет."]
+    "What clients know about the entity (Track: pos, yaw, mdata, equip,
+     vel-sent, slots, carried, :seen). The player system sends the difference."]
    :tracking
    [[:cat Coll Coll]
-    "Кого этот игрок видит: добавить eids, убрать eids. Спавн и снятие
-     сущностей клиенту render выводит отсюда."]
+    "Entities that this player sees: add eids, remove eids. render sends
+     spawn and removal from this delta."]
    :set-slot
    [[:cat :int [:maybe Stack]]
-    "Слот инвентаря: стек или nil (пусто)."]
+    "Inventory slot: a stack or nil (empty)."]
    :chunks-sent
    [[:cat Coll Coll]
-    "Чанки игроку: добавленные и убранные ids (render шлёт чанки сам,
-     центр берёт из :chunk-pos сущности)."]
+    "Chunks of the player: added and removed ids. render sends the chunks."]
    :damage
    [[:cat number? [:? [:cat number? number?]]]
-    "Урон: величина и, если есть, направление отброса dx dz."]
+    "Damage: amount and optional knockback direction dx dz."]
    :push
    [[:cat Vec3]
-    "Прибавить скорость (у TNT — отдачу :kb)."]})
+    "Add velocity (for TNT, the knockback :kb)."]})
 
-;; --- эффекты --------------------------------------------------------------
+;; --- effects --------------------------------------------------------------
 
 (def fx-messages
-  "msg → [поля, описание]. Адрес добавляется поверх: `:to eid` личное,
-   `:except eid` всем кроме, без адреса — всем, кого касается (решает render)."
-  {:blocks-changed [[[:cp :int] [:records Records]] "Блоки чанка, сменившиеся за тик; одна запись — block-update, больше — section update. С :to — правка одному игроку (отказ в установке)."]
-   :break-effect   [[[:pos Pos] [:state State]] "Частицы и звук разрушения блока."]
-   :explosion      [[[:center Vec3] [:radius number?] [:blocks :int] [:motion Vec3]] "Взрыв: центр, радиус, сколько блоков снесено (клиент рисует дым по числу), толчок адресату."]
-   :sound          [[[:kind :keyword] [:pos Vec3] [:volume number?] [:pitch number?]] "Звук в точке."]
-   :particles      [[[:kind :keyword] [:state [:maybe State]] [:pos Vec3] [:count :int] [:speed number?]] "Частицы."]
-   :extinguish     [[[:pos Pos]] "Огонь потушен (level event 1009)."]
-   :fizz           [[[:pos Pos]] "Шипение: лава с водой, огонь в воде."]
-   :time           [[[:age :int] [:time :int]] "Часы: возраст мира и время суток после тика."]
-   :teleport       [[[:pos Vec3] [:yaw number?] [:pitch number?]] "Поставить игрока сюда (ждём teleport-ack)."]
-   :health         [[[:health number?]] "Здоровье игрока."]
-   :respawn        [[] "Возродить игрока."]
-   :keepalive      [[[:id :int]] "Пинг."]
-   :disconnect     [[[:text [:or :string :map]]] "Отключить с текстом (строка или translate)."]
-   :close          [[] "Закрыть соединение."]
-   :block-ack      [[[:sequence :int]] "Подтвердить клиенту его правки блоков до sequence."]
-   :set-slot       [[[:slot :int] [:stack [:maybe Stack]]] "Слот инвентаря клиенту."]
-   :carried        [[[:stack [:maybe Stack]]] "Стек на курсоре."]
-   :held-slot      [[[:slot :int]] "Выбранный слот хотбара."]
-   :inventory      [[[:slots [:sequential :any]] [:carried [:maybe Stack]]] "Весь инвентарь."]
-   :suggestions    [[[:id :int] [:start :int] [:length :int] [:matches [:sequential :any]]] "Подсказки команд."]
-   :system-chat    [[[:runs Runs]] "Системное сообщение в чат."]
-   :player-chat    [[[:name :string] [:runs Runs]] "Сообщение игрока."]
-   :overlay        [[[:runs Runs]] "Текст над хотбаром."]
-   :stats          [[[:stats :map]] "Статистика для экрана клиента."]
-   :game-rules     [[[:rules :map]] "Геймрулы для экрана клиента."]
-   :tab-add        [[[:entries [:sequential :map]]] "В таб-лист."]
-   :tab-remove     [[[:uuids [:sequential :uuid]]] "Из таб-листа."]
-   :tab-latency    [[[:entries [:sequential :map]]] "Пинги в таб-листе."]
-   :tab-header     [[[:header :string] [:footer :string]] "Шапка и подвал таб-листа."]
-   :move           [[[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:on-ground :boolean]] "Сущность сдвинулась (1/4096 блока)."]
-   :move-look      [[[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:yaw :int] [:pitch :int] [:on-ground :boolean]] "Сдвинулась и повернулась."]
-   :look           [[[:eid Eid] [:yaw :int] [:pitch :int] [:on-ground :boolean]] "Повернулась."]
-   :sync-pos       [[[:eid Eid] [:pos Vec3] [:yaw number?] [:pitch number?] [:on-ground :boolean]] "Абсолютная позиция (накопилась ошибка или далеко)."]
-   :head-look      [[[:eid Eid] [:yaw number?]] "Поворот головы."]
-   :meta           [[[:eid Eid] [:meta :map]] "Метаданные: горит, крадётся, бежит, скин."]
-   :velocity       [[[:eid Eid] [:vel Vec3]] "Скорость сущности."]
-   :equipment      [[[:eid Eid] [:slot :int] [:stack [:maybe Stack]]] "Экипировка: слот 0..5 (рука, вторая рука, ботинки … шлем)."]
-   :animation      [[[:eid Eid] [:kind :keyword]] "Анимация: удар, пробуждение."]
-   :status         [[[:eid Eid] [:kind :keyword]] "Entity event: урон, смерть, стрижка."]
-   :collect        [[[:item Eid] [:collector Eid]] "Предмет подобран."]})
+  "msg -> [fields, description]. Address: :to eid for one player, :except eid
+   for all others, no address for all (render decides)."
+  {:blocks-changed [[[:cp :int] [:records Records]] "Changed blocks of a chunk. With :to it is a correction for one player."]
+   :break-effect   [[[:pos Pos] [:state State]] "Particles and sound of a block break."]
+   :explosion      [[[:center Vec3] [:radius number?] [:blocks :int] [:motion Vec3]] "Explosion: center, radius, count of removed blocks, push for the receiver."]
+   :sound          [[[:kind :keyword] [:pos Vec3] [:volume number?] [:pitch number?]] "Sound at a point."]
+   :particles      [[[:kind :keyword] [:state [:maybe State]] [:pos Vec3] [:count :int] [:speed number?]] "Particles."]
+   :extinguish     [[[:pos Pos]] "Fire is out (level event 1009)."]
+   :fizz           [[[:pos Pos]] "Fizz: lava with water, fire in water."]
+   :time           [[[:age :int] [:time :int]] "Clock: world age and time of day after the tick."]
+   :teleport       [[[:pos Vec3] [:yaw number?] [:pitch number?]] "Put the player here (we wait for teleport-ack)."]
+   :health         [[[:health number?]] "Player health."]
+   :respawn        [[] "Respawn the player."]
+   :keepalive      [[[:id :int]] "Ping."]
+   :disconnect     [[[:text [:or :string :map]]] "Disconnect with a text (string or translate)."]
+   :close          [[] "Close the connection."]
+   :block-ack      [[[:sequence :int]] "Confirm the block changes of the client up to sequence."]
+   :set-slot       [[[:slot :int] [:stack [:maybe Stack]]] "Inventory slot for the client."]
+   :carried        [[[:stack [:maybe Stack]]] "Stack on the cursor."]
+   :held-slot      [[[:slot :int]] "Selected hotbar slot."]
+   :inventory      [[[:slots [:sequential :any]] [:carried [:maybe Stack]]] "Full inventory."]
+   :suggestions    [[[:id :int] [:start :int] [:length :int] [:matches [:sequential :any]]] "Command suggestions."]
+   :system-chat    [[[:runs Runs]] "System message to the chat."]
+   :player-chat    [[[:name :string] [:runs Runs]] "Player message."]
+   :overlay        [[[:runs Runs]] "Text above the hotbar."]
+   :stats          [[[:stats :map]] "Statistics for the client screen."]
+   :game-rules     [[[:rules :map]] "Game rules for the client screen."]
+   :tab-add        [[[:entries [:sequential :map]]] "Add to the tab list."]
+   :tab-remove     [[[:uuids [:sequential :uuid]]] "Remove from the tab list."]
+   :tab-latency    [[[:entries [:sequential :map]]] "Pings in the tab list."]
+   :tab-header     [[[:header :string] [:footer :string]] "Header and footer of the tab list."]
+   :move           [[[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:on-ground :boolean]] "Entity moved (in 1/4096 of a block)."]
+   :move-look      [[[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:yaw :int] [:pitch :int] [:on-ground :boolean]] "Entity moved and turned."]
+   :look           [[[:eid Eid] [:yaw :int] [:pitch :int] [:on-ground :boolean]] "Entity turned."]
+   :sync-pos       [[[:eid Eid] [:pos Vec3] [:yaw number?] [:pitch number?] [:on-ground :boolean]] "Absolute position."]
+   :head-look      [[[:eid Eid] [:yaw number?]] "Head turn."]
+   :meta           [[[:eid Eid] [:meta :map]] "Metadata: on fire, sneaking, sprinting, skin."]
+   :velocity       [[[:eid Eid] [:vel Vec3]] "Entity velocity."]
+   :equipment      [[[:eid Eid] [:slot :int] [:stack [:maybe Stack]]] "Equipment: slot 0..5 (main hand, off hand, boots ... helmet)."]
+   :animation      [[[:eid Eid] [:kind :keyword]] "Animation: swing, wake up."]
+   :status         [[[:eid Eid] [:kind :keyword]] "Entity event: hurt, death, shear."]
+   :collect        [[[:item Eid] [:collector Eid]] "Item collected."]})
 
-;; --- сборка схем ----------------------------------------------------------
+;; --- schema assembly ------------------------------------------------------
 
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid] [:except {:optional true} Eid]] fields))
@@ -167,25 +162,24 @@
 (defn valid? [delta] (delta-validator delta))
 
 (defn explain
-  "Человеческое объяснение, чем дельта плоха, или nil."
+  "Why the delta is not valid, or nil."
   [delta]
   (some-> (delta-explainer delta) me/humanize))
 
 (def validate?
-  "Проверять ли дельты каждого тика. Ставится alter-var-root из тестов и
-   dev/live.clj; в проде false — горячий путь чист."
+  "Validate deltas each tick. Tests set it with alter-var-root."
   false)
 
 (defn check!
-  "Бросает ex-info на первой невалидной дельте."
+  "Throws ex-info on the first delta that is not valid."
   [deltas]
   (doseq [d deltas]
     (when-not (delta-validator d)
-      (throw (ex-info (str "плохая дельта " (first d)) {:delta d :why (explain d)}))))
+      (throw (ex-info (str "invalid delta " (first d)) {:delta d :why (explain d)}))))
   deltas)
 
 (defn describe
-  "Описание вида дельты или эффекта для человека."
+  "Description of a delta or an effect."
   [tag]
   (or (second (world-deltas tag)) (second (entity-deltas tag))
       (second (fx-messages tag))))
