@@ -180,6 +180,13 @@
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
+(defn use-origin
+  [w [tag & args]]
+  (when (= :place tag)
+    (let [[eid _ _ _ _ _ rot] args]
+      (when-let [e (get-in w [:entities eid])]
+        (select-keys (snapped e rot) [:pos :yaw :pitch :sneaking? :flying])))))
+
 (defn- use-item [w eid face item rot]
   (let [w (update-entity w eid snapped rot)]
     (if (and (= 255 (bit-and (long face) 0xFF))

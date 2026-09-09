@@ -569,26 +569,25 @@
              [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
 (defn- add
-  [world [eid _ _] state]
-  (let [e (get-in world [:entities eid])]
-    (when-let [{:keys [pos face]} (clip world e :none)]
-      (let [relative (mapv + pos (face-normal face))
-            hit (block-at world pos)
-            target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (liquid/liquid-class state))) pos relative)]
-        (when (chunk/in-range? (target 1))
-          (pour-deltas world eid target state (when (= target pos) relative)))))))
+  [world eid e state]
+  (when-let [{:keys [pos face]} (clip world e :none)]
+    (let [relative (mapv + pos (face-normal face))
+          hit (block-at world pos)
+          target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (liquid/liquid-class state))) pos relative)]
+      (when (chunk/in-range? (target 1))
+        (pour-deltas world eid target state (when (= target pos) relative))))))
 
 (defn- scoop-target
-  [world eid]
-  (when-let [{:keys [pos]} (clip world (get-in world [:entities eid]) :source-only)]
+  [world e]
+  (when-let [{:keys [pos]} (clip world e :source-only)]
     (let [st (block-at world pos)]
       (cond
         (liquid/source-state? st) [:source pos]
         (= :true (:waterlogged (block/props-of st))) [:waterlogged pos]))))
 
 (defn- scoop-deltas
-  [world eid]
-  (when-let [[kind pos] (scoop-target world eid)]
+  [world eid e]
+  (when-let [[kind pos] (scoop-target world e)]
     (let [st (block-at world pos)
           sound (if (= :lava (liquid/liquid-class st)) :bucket/fill-lava :bucket/fill)]
       (concat (case kind
@@ -597,8 +596,8 @@
               [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
 (defn- lily-deltas
-  [world eid]
-  (when-let [[kind pos] (scoop-target world eid)]
+  [world eid e]
+  (when-let [[kind pos] (scoop-target world e)]
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
           st (block/state :lily-pad)]
       (when (and (= :source kind)
@@ -773,9 +772,10 @@
                                      :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
                  (sleep/announcement world (inc (count (sleep/sleepers world))))])))))
 
-(defn- place-deltas [world [eid pos face item cursor]]
+(defn- place-deltas [world [eid pos face item cursor] origin]
   (let [item      (or item (sense/held-of (get-in world [:entities eid])))
         args      [eid pos face item cursor]
+        at        (merge (get-in world [:entities eid]) origin)
         use-item? (= 255 (bit-and (long face) 0xFF))
         pour      (liquid/bucket->state item)]
     (cond
@@ -786,10 +786,10 @@
       (and (= :scaffolding item) (not use-item?) (= :scaffolding (block/type-of (block-at world pos))))
       (scaffold-place-deltas world eid pos face)
       (nil? item)                  nil
-      pour                         (when use-item? (add world args pour))
+      pour                         (when use-item? (add world eid at pour))
       (= :flint-and-steel item)    (when-not use-item? (flint-deltas world args))
-      (= :bucket item)             (when use-item? (scoop-deltas world eid))
-      (= :lily-pad item)           (when use-item? (lily-deltas world eid))
+      (= :bucket item)             (when use-item? (scoop-deltas world eid at))
+      (= :lily-pad item)           (when use-item? (lily-deltas world eid at))
       (= :bone-meal item)          (when-not use-item? (bonemeal-deltas world args))
       (hoe? item)                  (when-not use-item? (till-deltas world args))
       (= :honeycomb item)          (when-not use-item? (wax-deltas world args))
@@ -818,15 +818,15 @@
       (update world :chunks chunk/chunks-set-blocks gen/flat-chunk changes))))
 
 (defn- block-edits-deltas [world events]
-  (let [[_ edits] (reduce (fn [[w acc] [tag & args]]
+  (let [[_ edits] (reduce (fn [[w acc] [i [tag & args]]]
                             (let [ds (case tag
                                        :dig   (dig-deltas w args)
-                                       :place (place-deltas w args)
+                                       :place (place-deltas w args (get-in world [:use-origins i]))
                                        :sign-update (sign-update-deltas w args)
                                        nil)]
                               [(with-edits w ds) (into acc ds)]))
                           [world []]
-                          events)]
+                          (map-indexed vector events))]
     edits))
 
 (defn block-edits [world events]

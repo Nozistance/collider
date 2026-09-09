@@ -63,6 +63,14 @@
             (for [[_ recs] events [pos _] recs :when (sign/at w pos)]
               (out/all (out/block-entity pos))))))
 
+(defn- apply-events
+  [world events]
+  (loop [w world i 0 origins {}]
+    (if-let [ev (nth events i nil)]
+      (let [o (state/use-origin w ev)]
+        (recur (state/apply-event w ev) (inc i) (if o (assoc origins i o) origins)))
+      (assoc w :use-origins origins))))
+
 (defn tick
   "Advances the world by one tick: applies the events in order, runs the
    systems, merges their deltas, then flushes the block changes and lets the
@@ -70,7 +78,7 @@
   [world events]
   (let [world' (cond-> (update world :tick inc)
                  (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
-        world' (reduce state/apply-event world' events)
+        world' (apply-events world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
         post (concat (block-flush-deltas w1) (blocks/ack-deltas events) (detector/observe world events d1 w1))]
