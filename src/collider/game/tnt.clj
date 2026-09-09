@@ -1,5 +1,4 @@
 (ns collider.game.tnt
-
   (:require [collider.rnd :as rnd]
             [collider.world.block :as block]))
 
@@ -8,7 +7,6 @@
 (def ^:const fuse-ticks 80)
 (def ^:const power 4.0)
 (defn tnt-state? [st] (block/tnt? (long st)))
-
 (defn primed
   ([pos seed] (primed pos seed fuse-ticks))
   ([[x y z :as pos] seed fuse]

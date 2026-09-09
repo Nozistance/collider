@@ -15,15 +15,13 @@
 (def ^:private ^:const half 0.49)
 (def ^:private ^:const height 0.98)
 (def ^:private ^:const max-time 600)
-
 (defn- block-at ^long [world [_ y _ :as pos]]
   (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos) 0))
 
 (defn- cell-of [pos]
   [(long (Math/floor (v/x pos))) (long (Math/floor (v/y pos))) (long (Math/floor (v/z pos)))])
 
-(defn- item-deltas
-  [world eid e]
+(defn- item-deltas [world eid e]
   (when (get-in world [:rules :entity-drops] true)
     (let [t (:tick world)
           r (fn [k] (rnd/rnd [t eid k]))]
@@ -32,8 +30,7 @@
                        :yaw 0.0 :pitch 0.0 :on-ground false
                        :stack {:item (block/block-of (:block e)) :count 1} :age 0 :pickup-delay 10}]])))
 
-(defn- landed-state
-  [world cell st cur concrete? stuck?]
+(defn- landed-state [world cell st cur concrete? stuck?]
   (let [continues? (and (falling/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?))
       (let [in-water? (= :water (liquid/liquid-class cur))
@@ -45,8 +42,7 @@
     [[:remove-entity eid] [:set-blocks [[cell st]]]]
     (cons [:remove-entity eid] (item-deltas world eid e))))
 
-(defn- solid-here?
-  [world cell]
+(defn- solid-here? [world cell]
   (let [st (block-at world cell)]
     (and (pos? st) (not (liquid/liquid-state? st)) (block/blocks-motion? st))))
 
@@ -55,8 +51,7 @@
     (or (block/waterlogged? st)
         (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
 
-(defn- next-cell
-  [from d cell]
+(defn- next-cell [from d cell]
   (let [ts (for [i (range 3)
                  :let [di (double (nth d i)) ci (long (nth cell i))]
                  :when (not (zero? di))
@@ -67,8 +62,7 @@
       (update cell axis (fn [v] (+ (long v) (if (pos? (double (nth d axis))) 1 -1))))
       cell)))
 
-(defn- clip-cell
-  [world from to]
+(defn- clip-cell [world from to]
   (let [d (mapv - to from) end (cell-of to)]
     (loop [cell (cell-of from) n 0]
       (cond
@@ -76,8 +70,7 @@
         (or (= cell end) (> n 64)) nil
         :else (recur (next-cell from d cell) (inc n))))))
 
-(defn- clipped-cell
-  [world e pos [mx my mz]]
+(defn- clipped-cell [world e pos [mx my mz]]
   (when (> (+ (* (double mx) (double mx)) (* (double my) (double my)) (* (double mz) (double mz))) 1.0)
     (when-let [hit (clip-cell world (:pos e) pos)]
       (when (= :water (liquid/liquid-class (block-at world hit))) hit))))

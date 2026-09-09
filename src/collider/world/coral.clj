@@ -8,14 +8,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private around6 [[0 -1 0] [0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
-
 (defn- at ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
 
 (defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
-
-(defn wet?
-  [chunks p st]
+(defn wet? [chunks p st]
   (or (block/waterlogged? st)
       (boolean (some #(water? (at chunks (mapv + p %))) around6))))
 

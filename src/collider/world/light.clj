@@ -1,5 +1,4 @@
 (ns collider.world.light
-
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider.world.chunk Section)
@@ -10,7 +9,6 @@
 (defn- opacity ^long [^long st] (block/opacity st))
 (defn- emits ^long [^long st] (block/emits st))
 (def ^:private ^:const SL 1)
-
 (def ^:private DX (long-array [1 -1 0 0 0 0]))
 (def ^:private DY (long-array [0 0 1 -1 0 0]))
 (def ^:private DZ (long-array [0 0 0 0 1 -1]))
@@ -174,8 +172,7 @@
            (chunk/nibble-get (.block-light ^Section s) (l-idx x y z)))
       15)))
 
-(defn block-light-at
-  [chunks template x y z]
+(defn block-light-at [chunks template x y z]
   (if (not (chunk/in-range? y))
     0
     (if-let [s (section chunks template x y z)]

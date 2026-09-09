@@ -16,7 +16,6 @@
 (def prim-dir  "target/classes")
 (def jar-file  "target/collider.jar")
 (def basis     (b/create-basis {:project "deps.edn"}))
-
 (defn clean [_]
   (b/delete {:path "target"}))
 
@@ -139,7 +138,6 @@
   (.get (.getField (Class/forName cls true cl) f) nil))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
-
 (defn- sixteenth [^double v]
   (let [x (* 16.0 v)] (if (== x (Math/rint x)) (long x) x)))
 
@@ -415,8 +413,6 @@
                                  found)]))))
           registries)))
 
-;; --- tracker ---------------------------------------------------------------
-
 (defn- pascal [k]
   (apply str (map str/capitalize (str/split (name k) #"-"))))
 
@@ -443,15 +439,10 @@
         acc))))
 
 (def ^:private type-classes
-  "Block definition types whose vanilla class is not the type name + Block."
   {:jack-o-lantern "CarvedPumpkinBlock" :enchantment-table "EnchantingTableBlock"})
 
 (defn- letters [s] (str/lower-case (str/replace (str s) #"[^A-Za-z]" "")))
-
-(defn- block-entries
-  "Block names per vanilla class, from the :type of blocks.edn: the type
-   name plus Block, matched by letters only (trapdoor = TrapDoorBlock)."
-  [classes]
+(defn- block-entries [classes]
   (let [blocks (edn/read-string (slurp "resources/mc/blocks.edn"))
         by-letters (into {} (map (fn [c] [(letters c) c])) classes)]
     (reduce (fn [m [b info]]
@@ -467,13 +458,7 @@
   (let [entries (block-entries (set (keys blocks)))]
     (reduce (fn [m [c es]] (update m c (fn [v] (assoc (or v {:hooks []}) :entries (vec (sort es)))))) blocks entries)))
 
-(defn tracker
-  "Writes the parity report of this repository: per vanilla class its hooks
-   (done / skipped / open) and, for blocks, the block names of the class,
-   with summary.json next to it for the totals. Reads the hooks matrix
-   (default ../exclude/hooks.md). The site reads the result over HTTP; this
-   repository knows nothing about the site."
-  [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
+(defn tracker [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
   (let [parsed (parse-hooks (slurp hooks))
         data {:meta {:generated (str (Instant/now))
                      :commit (str/trim (b/git-process {:git-args "rev-parse HEAD"}))

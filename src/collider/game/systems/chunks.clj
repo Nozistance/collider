@@ -10,7 +10,6 @@
 (def ^:const min-rate 0.01)
 (def ^:const max-rate 64.0)
 (def ^:const max-unacked 10)
-
 (defn chunk-coord ^long [^double c]
   (bit-shift-right (long (Math/floor c)) 4))
 
@@ -36,11 +35,7 @@
                  [(+ (* dx dx) (* dz dz)) id]))
              ids)))
 
-(defn- restream-deltas
-  "Chunks for the player this tick, paced as vanilla PlayerChunkSender: a quota
-   of :chunk-rate chunks per tick, at most :batches-max batches the client has
-   not acknowledged with chunk-batch-received."
-  [world eid cp {:keys [chunk-pos sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
+(defn- restream-deltas [world eid cp {:keys [chunk-pos sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
   (let [want    (wanted-chunks world cp)
         add-all (vec (remove #(contains? sent-chunks %) want))
         drop    (sort (remove #(contains? want %) sent-chunks))

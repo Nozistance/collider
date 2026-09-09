@@ -1,7 +1,4 @@
 (ns collider.game.tick
-  "One game tick. `tick` takes the world and the events received since the
-   last tick and returns [world' deltas]. `start-ticker!` runs it 20 times per
-   second on its own thread and hands each result to deliver!."
   (:require [collider.game.sign :as sign]
             [collider.game.state :as state]
             [collider.game.deltas :as deltas]
@@ -46,36 +43,25 @@
    #'daynight/daynight
    #'keepalive/keepalive])
 
-(defn- final-records
-  "One record per cell with its last state (vanilla keeps a set of changed
-   cells per section), in the order the cells first changed."
-  [recs]
+(defn- final-records [recs]
   (let [last (into {} recs)]
     (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
 
-(defn- block-flush-deltas
-  "The blocks that changed this tick go out at its end, one effect per chunk
-   (vanilla ChunkHolder.broadcastChanges), and the queue is cleared."
-  [w]
+(defn- block-flush-deltas [w]
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]
             (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
             (for [[_ recs] events [pos _] recs :when (sign/at w pos)]
               (out/all (out/block-entity pos))))))
 
-(defn- apply-events
-  [world events]
+(defn- apply-events [world events]
   (loop [w world i 0 origins {}]
     (if-let [ev (nth events i nil)]
       (let [o (state/use-origin w ev)]
         (recur (state/apply-event w ev) (inc i) (if o (assoc origins i o) origins)))
       (assoc w :use-origins origins))))
 
-(defn tick
-  "Advances the world by one tick: applies the events in order, runs the
-   systems, merges their deltas, then flushes the block changes and lets the
-   Detector add what it saw. Returns [world' deltas]."
-  [world events]
+(defn tick [world events]
   (let [world' (cond-> (update world :tick inc)
                  (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
         world' (apply-events world' events)

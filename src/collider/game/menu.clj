@@ -1,10 +1,4 @@
 (ns collider.game.menu
-  "The inventory menu of a player: slots 0..45 as the vanilla InventoryMenu
-   (0 crafting result, 1..4 crafting grid, 5..8 armor, 9..35 main, 36..44
-   hotbar, 45 offhand), the carried stack, and what one click does to them.
-   `click` is the vanilla AbstractContainerMenu.doClick for a creative player:
-   it takes {:inventory :carried :quickcraft} and returns the same with
-   :drops, the stacks thrown out."
   (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
@@ -14,24 +8,17 @@
 (def ^:private armor-slots {5 :head 6 :chest 7 :legs 8 :feet})
 (def ^:private hotbar-slot 36)
 (def ^:private offhand-slot 45)
-
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
 (defn- max-of ^long [s] (data/max-stack (:item s)))
 (defn- same? [a b] (and a b (= (:item a) (:item b))))
 (defn- sized [s ^long n] (when (pos? n) (assoc s :count n)))
-
-(defn- may-place?
-  "Whether the stack may go into the slot: nothing into the crafting result,
-   only matching armor into armor slots."
-  [slot stack]
+(defn- may-place? [slot stack]
   (cond
     (= 0 (long slot)) false
     (armor-slots slot) (= (armor-slots slot) (data/equip-slot (:item stack)))
     :else true))
 
-(defn- insert
-  "Puts up to n of stack into the slot; [inventory' left-over]."
-  [inv slot stack ^long n]
+(defn- insert [inv slot stack ^long n]
   (let [here (get inv slot)]
     (if (or (not (may-place? slot stack)) (and here (not (same? here stack))))
       [inv stack]
@@ -40,9 +27,7 @@
         [(if (pos? put) (assoc inv slot (sized stack (+ (count-of here) put))) inv)
          (sized stack (- (count-of stack) put))]))))
 
-(defn- take-out
-  "Takes up to n from the slot; [inventory' taken]."
-  [inv slot ^long n]
+(defn- take-out [inv slot ^long n]
   (let [here (get inv slot)
         got  (min n (count-of here))]
     (if (pos? got)
@@ -80,11 +65,7 @@
         (assoc m :inventory inv :carried (sized carried (+ (count-of carried) (count-of got)))))
       :else m)))
 
-(defn- move-to
-  "Moves stack into the slots from..to (end exclusive), first onto the same
-   stacks, then into empty slots; backwards? walks from the end.
-   [inventory' left-over]."
-  [inv stack from to backwards?]
+(defn- move-to [inv stack from to backwards?]
   (let [from (long from) to (long to)
         slots (if backwards? (range (dec to) (dec from) -1) (range from to))
         [inv stack] (reduce (fn [[inv s :as acc] slot]
@@ -118,18 +99,14 @@
           :else (move-to inv' stack 9 46 false))]
     (if left (assoc inv' slot left) inv')))
 
-(defn- quick-move
-  "Shift-click: the stack goes to its other place while any of it moves."
-  [{:keys [inventory] :as m} slot]
+(defn- quick-move [{:keys [inventory] :as m} slot]
   (loop [inv inventory]
     (let [inv' (quick-move-once inv slot)]
       (if (or (= inv' inv) (nil? (get inv' slot)))
         (assoc m :inventory inv')
         (recur inv')))))
 
-(defn- swap-with
-  "A number key or F: the slot and the hotbar or offhand slot trade stacks."
-  [{:keys [inventory] :as m} slot ^long button]
+(defn- swap-with [{:keys [inventory] :as m} slot ^long button]
   (let [other  (if (= 40 button) offhand-slot (+ hotbar-slot button))
         source (get inventory other)
         target (get inventory slot)]
@@ -169,10 +146,7 @@
       (assoc m :inventory inv :carried c))
     m))
 
-(defn- spread
-  "End of a drag: the carried stack spread over the dragged slots (vanilla
-   quickcraft type 0 evenly, 1 one each, 2 a full stack each in creative)."
-  [{:keys [inventory carried] :as m} slots ^long type]
+(defn- spread [{:keys [inventory carried] :as m} slots ^long type]
   (let [n (count slots)
         each (case type 0 (quot (count-of carried) n) 1 1 (max-of carried))
         [inv left] (reduce (fn [[inv c] slot]
@@ -203,11 +177,7 @@
           :else (spread m slots (long (:type quickcraft)))))
       :else (assoc m :quickcraft nil))))
 
-(defn click
-  "One container click of the player on their own inventory: mode 0 pickup,
-   1 quick move, 2 swap, 3 clone, 4 throw, 5 quick craft (drag), 6 pick up
-   all, as the vanilla ContainerInput ids."
-  [{:keys [quickcraft] :as m} {:keys [slot button mode]}]
+(defn click [{:keys [quickcraft] :as m} {:keys [slot button mode]}]
   (let [m (assoc m :drops [])
         slot (long slot) button (long button) mode (long mode)
         in-range? (< -1 slot slot-count)]

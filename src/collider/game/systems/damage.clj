@@ -1,5 +1,4 @@
 (ns collider.game.systems.damage
-
   (:require [collider.game.entity :as entity]
             [collider.rnd :as rnd]
             [collider.game.mobs :as mobs]
@@ -24,7 +23,6 @@
 (def ^:private ^:const reach-sq 36.0)
 (def ^:private ^:const blind-reach-sq 9.0)
 (def ^:private ^:const base-damage 1.0)
-
 (def ^:private material-bonus
   {"wooden" 0.0 "golden" 0.0 "stone" 1.0 "iron" 2.0 "diamond" 3.0 "netherite" 4.0})
 (def ^:private tool-base
@@ -37,10 +35,7 @@
       0.0)
     0.0))
 
-(defn- hurt-sound
-  "What vanilla plays on hurt: the death sound when the blow killed, else the
-   hurt sound of the damage source (on fire: hurt_on_fire); mobs say."
-  [e]
+(defn- hurt-sound [e]
   (if (= :player (:type e))
     (cond
       (not (pos? (double (:health e)))) :player/death
@@ -48,8 +43,7 @@
       :else                             :player/hurt)
     (mobs/say-sound (:type e))))
 
-(defn- sound-pitch
-  ^double [world eid e]
+(defn- sound-pitch ^double [world eid e]
   (let [t (long (:tick world))
         base (if (:baby-until e) 1.5 1.0)
         r (- (rnd/rnd3 t eid (hash :hurt1)) (rnd/rnd3 t eid (hash :hurt2)))]
@@ -203,7 +197,6 @@
               (douse-deltas eid e fire wet?)))))
 
 (def ^:private ^:const safe-fall 3.0)
-
 (defn- landing-particles [world e ^double fall]
   (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
         pos (:pos e)
@@ -249,10 +242,7 @@
       (when (and death (>= (long death) death-ticks) (not= :player (:type e)))
         [[:remove-entity eid]]))))
 
-(defn- respawn-point
-  "[pos yaw] next to the player's bed if it still stands, else the world
-   spawn with a word about it (vanilla findRespawnAndUseSpawnBlock)."
-  [world e]
+(defn- respawn-point [world e]
   (let [bed-pos (:spawn e)
         chunks  (:chunks world)]
     (if (and bed-pos (bed/head-pos chunks bed-pos))
@@ -260,19 +250,12 @@
         [up (bed/look-yaw bed-pos up) nil])
       [state/spawn-pos 0.0 (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
 
-(defn- reshow-deltas
-  "Vanilla respawn removes the player and adds a new one under the same id:
-   whoever tracks the corpse drops it now and spawns the player anew next tick."
-  [world eid]
+(defn- reshow-deltas [world eid]
   (for [[oid o] (:entities world)
         :when (contains? (:tracking o) eid)]
     [:tracking oid [] [eid]]))
 
-(defn- respawn-deltas
-  "The client asked to respawn (vanilla PlayerList.respawn): a fresh player at
-   the respawn point, the Respawn packet, the teleport, the health and the
-   inventory the new client-side player starts without."
-  [world eid]
+(defn- respawn-deltas [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
       (let [[pos yaw lost] (respawn-point world e)

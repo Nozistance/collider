@@ -1,16 +1,5 @@
 (ns collider.game.delta
-  "All deltas that a system can return in one tick.
-
-   A delta is a vector [tag & args]. deltas/add sorts deltas into three groups:
-   world deltas, entity deltas (by eid) and effects [:fx msg]. An effect is a
-   message to players. game/out.clj builds effects, render.clj sends them.
-   game/state.clj applies world and entity deltas.
-
-   Schemas are malli, loaded on demand: check! runs only when validate? is
-   true (tests, REPL), so a release does not carry malli."
   (:import (collider.java V3)))
-
-;; --- primitives -----------------------------------------------------------
 
 (def Pos "Block position [x y z]." [:tuple :int :int :int])
 (defn- vec3? [v]
@@ -23,11 +12,7 @@
 (def Records "Batch of blocks [[pos state] ...]." [:sequential [:tuple Pos State]])
 (def Coll "Any collection (int-set, vector, list)." [:fn coll?])
 (def Runs "Chat text: strings or translate/with maps." [:sequential [:or :string :map]])
-
-;; --- world deltas ---------------------------------------------------------
-
 (def world-deltas
-  "tag -> [argument schema, description]."
   {:set-blocks
    [[:cat Records]
     "Write blocks and update neighbors. Clients get one batch per chunk at the
@@ -62,10 +47,7 @@
    [[:cat [:map-of Eid :uuid] Coll]
     "Tab list (:listed of the world): add {eid uuid}, remove eids."]})
 
-;; --- entity deltas --------------------------------------------------------
-
 (def entity-deltas
-  "tag -> [schema of the arguments after eid, description]."
   {:merge-entity
    [[:cat :map]
     "Merge fields into the entity."]
@@ -97,11 +79,7 @@
    [[:cat Vec3]
     "Add velocity (for TNT, the knockback :kb)."]})
 
-;; --- effects --------------------------------------------------------------
-
 (def fx-messages
-  "msg -> [fields, description]. Address: :to eid for one player, :except eid
-   for all others, no address for all (render decides)."
   {:blocks-changed [[[:cp :int] [:records Records]] "Changed blocks of a chunk. With :to it is a correction for one player."]
    :break-effect   [[[:pos Pos] [:state State]] "Particles and sound of a block break."]
    :explosion      [[[:center Vec3] [:radius number?] [:blocks :int] [:motion Vec3]] "Explosion: center, radius, count of removed blocks, push for the receiver."]
@@ -147,8 +125,6 @@
    :status         [[[:eid Eid] [:kind :keyword]] "Entity event: hurt, death, shear."]
    :collect        [[[:item Eid] [:collector Eid]] "Item collected."]})
 
-;; --- schema assembly ------------------------------------------------------
-
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid] [:except {:optional true} Eid]] fields))
 
@@ -164,29 +140,20 @@
 
 (def ^:private delta-validator (delay ((requiring-resolve 'malli.core/validator) Delta)))
 (def ^:private delta-explainer (delay ((requiring-resolve 'malli.core/explainer) Delta)))
-
 (defn valid? [delta] (@delta-validator delta))
-
-(defn explain
-  "Why the delta is not valid, or nil."
-  [delta]
+(defn explain [delta]
   (when-let [e (@delta-explainer delta)]
     ((requiring-resolve 'malli.error/humanize) e)))
 
 (def validate?
-  "Validate deltas each tick. Tests set it with alter-var-root."
   false)
 
-(defn check!
-  "Throws ex-info on the first delta that is not valid."
-  [deltas]
+(defn check! [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)
       (throw (ex-info (str "invalid delta " (first d)) {:delta d :why (explain d)}))))
   deltas)
 
-(defn describe
-  "Description of a delta or an effect."
-  [tag]
+(defn describe [tag]
   (or (second (world-deltas tag)) (second (entity-deltas tag))
       (second (fx-messages tag))))

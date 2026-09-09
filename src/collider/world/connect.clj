@@ -1,6 +1,4 @@
 (ns collider.world.connect
-  "Connections of fences, walls and panes to their neighbours, by the
-   vanilla rules and block tags."
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.world.block :as block]
@@ -12,7 +10,6 @@
 (set! *warn-on-reflection* true)
 
 (defn- tag [t] (set (get-in @data/tags ["block" t])))
-
 (def ^:private fences (delay (tag "fences")))
 (def ^:private wooden (delay (tag "wooden_fences")))
 (def ^:private walls (delay (tag "walls")))
@@ -22,8 +19,6 @@
 (def ^:private neighbours (conj (vec (vals dirs)) [0 1 0] [0 -1 0]))
 (def pair-types #{:double-plant :tall-flower :tall-seagrass})
 (def placed-types
-  "Connecting blocks whose state a placement computes from the neighbours
-   before it lands: the rest (doors, beds, plants, vines) are placed whole."
   #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder})
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
@@ -35,7 +30,6 @@
 
 (def ^:private opposite {:north :south :south :north :west :east :east :west})
 (def ^:private opposite-face {:up :down :down :up :north :south :south :north :west :east :east :west})
-
 (defn- sturdy? [st n dir]
   (and (block/face-sturdy? st (opposite dir)) (not (exception? n))))
 
@@ -77,7 +71,6 @@
            (and (= :low (:east sides)) (= :low (:west sides)) (= :none (:north sides)) (= :none (:south sides))))))
 
 (defn- wall-at? [st] (contains? @walls (block/block-of st)))
-
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)
@@ -85,10 +78,7 @@
                    (or (wall-at? (at [0 0 -1])) (wall-at? (at [0 0 1]))))]
     (block/state self (assoc (block/props-of st) :in-wall (if in-wall? :true :false)))))
 
-(defn- door-state
-  "A door half follows its other half; without it, or without a sturdy block
-   under the lower half, it is gone (vanilla updateShape and canSurvive)."
-  [self st at]
+(defn- door-state [self st at]
   (let [props (block/props-of st)
         lower? (= :lower (:half props))
         partner (at (if lower? [0 1 0] [0 -1 0]))
@@ -99,16 +89,11 @@
       lower? st
       :else (block/state self (assoc pprops :half :upper)))))
 
-(defn bed-partner-offset
-  "Offset from a bed half to its other half: the foot looks at the head."
-  [st]
+(defn bed-partner-offset [st]
   (let [f (block/facing-of st)]
     (dirs (if (= :foot (:part (block/props-of st))) f (opposite f)))))
 
-(defn- bed-state
-  "A bed half is gone without its other half and shares its occupied flag
-   (vanilla updateShape)."
-  [self st at]
+(defn- bed-state [self st at]
   (let [partner (at (bed-partner-offset st))
         pprops  (block/props-of partner)]
     (if (and (= self (block/block-of partner))
@@ -119,14 +104,12 @@
 (defn- stair? [st half]
   (and (= :stair (block/type-of st)) (= half (:half (block/props-of st)))))
 
-(defn- can-take-shape?
-  [st at dir]
+(defn- can-take-shape? [st at dir]
   (let [n (at (dirs dir))]
     (not (and (stair? n (:half (block/props-of st)))
               (= (block/facing-of n) (block/facing-of st))))))
 
-(defn- stair-state
-  [self st at]
+(defn- stair-state [self st at]
   (let [props  (block/props-of st)
         facing (:facing props)
         half   (:half props)
@@ -145,25 +128,20 @@
     (block/state self (assoc props :shape shape))))
 
 (def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-
 (defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
-
-(defn- touches-water?
-  [st at]
+(defn- touches-water? [st at]
   (or (and (water? st) (water? (at (six :down))))
       (some (fn [dir]
               (let [n (at (six dir))]
                 (and (water? n) (not (block/face-sturdy? n (opposite-face dir))))))
             [:up :north :south :west :east])))
 
-(defn- powder-state
-  [st at]
+(defn- powder-state [st at]
   (if (or (water? (at [0 0 0])) (touches-water? (at [0 0 0]) at))
     (block/concrete-of st)
     st))
 
-(defn- pair-state
-  [self st at]
+(defn- pair-state [self st at]
   (let [props (block/props-of st)
         lower? (= :lower (:half props))
         partner (at (if lower? [0 1 0] [0 -1 0]))]
@@ -172,14 +150,12 @@
       st
       (block/emptied st))))
 
-(defn- pitcher-state
-  [self st at]
+(defn- pitcher-state [self st at]
   (if (>= (Long/parseLong (name (:age (block/props-of st)))) 3)
     (pair-state self st at)
     st))
 
-(defn- growing-plant-state
-  [pos st at tick]
+(defn- growing-plant-state [pos st at tick]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
         on? (contains? #{head body} (block/block-of (at (six dir))))
         berries (:berries (block/props-of st))
@@ -189,11 +165,7 @@
       (and (= body (block/block-of st)) (not on?)) (block/state head (assoc props :age (support/plant-age tick pos)))
       :else st)))
 
-(defn reshape
-  "New state of the block at pos after its connections to the neighbours are
-   recomputed; nil if unchanged or not a connecting block. tick seeds the
-   age a growing plant body turned back into a head rolls."
-  [chunks [x y z :as pos] ^long st tick]
+(defn reshape [chunks [x y z :as pos] ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
       (let [self  (block/block-of st)
@@ -223,10 +195,7 @@
                       (block/state self props)))]
         (when (not= (long new) st) new)))))
 
-(defn door-hinge
-  "Hinge side for a door placed at pos looking facing, as vanilla getHinge:
-   the side with more solid blocks, next to another door, else by the cursor."
-  [chunks [x y z :as pos] facing cursor-x cursor-z]
+(defn door-hinge [chunks [x y z :as pos] facing cursor-x cursor-z]
   (let [at (fn [[dx dy dz]]
              (let [ny (+ (long y) (long dy))]
                (if (chunk/in-range? ny)
@@ -257,10 +226,7 @@
           (+ (long z) (long dz))])
        neighbours))
 
-(defn- reshaped
-  "Changes at positions and around them. A changed bed half is not reshaped
-   by its own change: it is the source its other half copies from."
-  [chunks positions tick]
+(defn- reshaped [chunks positions tick]
   (let [origin (set positions)]
     (into []
           (keep (fn [[_ y _ :as p]]
@@ -271,11 +237,7 @@
                           [p new]))))))
           (distinct (concat positions (mapcat around positions))))))
 
-(defn derived-changes
-  "[[pos state] ...] for the blocks at positions and their neighbours whose
-   connections changed, followed through: a door half that goes takes the
-   other half with it. chunks already hold the changes at positions."
-  [chunks positions tick]
+(defn derived-changes [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))

@@ -1,36 +1,18 @@
 (ns collider.game.out
-  "Effects: what systems tell players. An effect is a map with :msg.
-   Positions in blocks, angles in degrees, stacks as {:item :count}, block
-   states as ids. `to` addresses one player, `except` everyone but one, `all`
-   everyone concerned; who receives what is decided in collider.render."
   (:refer-clojure :exclude [time meta]))
 
 (set! *warn-on-reflection* true)
 
-(defn to
-  "Effect for one player."
-  [eid msg] [:fx (assoc msg :to eid)])
-(defn all
-  "Effect for everyone concerned."
-  [msg] [:fx msg])
-(defn except
-  "Effect for everyone concerned but eid, usually the player who caused it."
-  [eid msg] [:fx (assoc msg :except eid)])
-(defn blocks-changed
-  "Blocks of one chunk that changed: cp is the chunk id, records [[pos state] ...]."
-  [cp records]
+(defn to [eid msg] [:fx (assoc msg :to eid)])
+(defn all [msg] [:fx msg])
+(defn except [eid msg] [:fx (assoc msg :except eid)])
+(defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
-(defn time
-  "Clock broadcast; the values sent are those of the world after the tick."
-  [age time-of-day]
+(defn time [age time-of-day]
   {:msg :time :age age :time time-of-day})
 
-(defn explosion
-  "Explosion as the 26.2 client sees it: the centre, the radius, how many
-   blocks went (it draws the smoke from the count) and the knockback of the
-   addressee."
-  [center radius blocks motion]
+(defn explosion [center radius blocks motion]
   {:msg :explosion :center center :radius radius :blocks blocks :motion motion})
 
 (defn teleport [pos yaw pitch]
@@ -57,9 +39,7 @@
 (defn set-slot [slot stack]
   {:msg :set-slot :slot slot :stack stack})
 
-(defn carried
-  "The stack on the cursor of the inventory screen."
-  [stack]
+(defn carried [stack]
   {:msg :carried :stack stack})
 
 (defn held-slot [slot]
@@ -69,28 +49,19 @@
   ([slots] (inventory slots nil))
   ([slots carried] {:msg :inventory :slots slots :carried carried}))
 
-(defn suggestions
-  "Completions of the last word of what the player typed: request id, where
-   the word starts and how long it is, the matches."
-  [id start length matches]
+(defn suggestions [id start length matches]
   {:msg :suggestions :id id :start start :length length :matches (vec matches)})
 
 (defn system-chat [runs]
   {:msg :system-chat :runs runs})
 
-(defn stats
-  "Statistics of the player for the statistics screen: {[type key] count}."
-  [stats]
+(defn stats [stats]
   {:msg :stats :stats stats})
 
-(defn game-rules
-  "All game rule values for the client's rules screen."
-  [rules]
+(defn game-rules [rules]
   {:msg :game-rules :rules rules})
 
-(defn overlay
-  "Message over the hotbar, as vanilla sendOverlayMessage."
-  [runs]
+(defn overlay [runs]
   {:msg :overlay :runs runs})
 
 (defn player-chat [name runs]
@@ -150,9 +121,7 @@
 (defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
 
-(defn extinguish
-  "Fire put out: the sound for everyone, vanilla level event 1009."
-  [pos]
+(defn extinguish [pos]
   {:msg :extinguish :pos pos})
 
 (defn fizz [pos]
@@ -162,14 +131,11 @@
   ([event pos] (level-event event pos 0))
   ([event pos data] {:msg :level-event :event event :pos pos :data data}))
 
-(defn sign-editor
-  [pos front?]
+(defn sign-editor [pos front?]
   {:msg :sign-editor :pos pos :front? (boolean front?)})
 
-(defn block-entity
-  [pos]
+(defn block-entity [pos]
   {:msg :block-entity :pos pos})
 
-(defn bonemeal
-  [pos]
+(defn bonemeal [pos]
   {:msg :bonemeal :pos pos})

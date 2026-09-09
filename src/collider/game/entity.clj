@@ -1,5 +1,4 @@
 (ns collider.game.entity
-
   (:require [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -43,8 +42,7 @@
     :item   0.21
     1.19))
 
-(defn mob-moved
-  ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
+(defn mob-moved ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
   (Mob. pos vel on-ground yaw (.-pitch e) (.-head-yaw e) (.-walked e) wet? jump-cd
         (.-task e) (.-pending e) (.-look e) (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)
@@ -52,8 +50,7 @@
         (.-type e) (.-color e) (.-track e)
         (.-__meta e) (.-__extmap e)))
 
-(defn mob-looked
-  ^Mob [^Mob e head-yaw pitch look]
+(defn mob-looked ^Mob [^Mob e head-yaw pitch look]
   (Mob. (.-pos e) (.-vel e) (.-on-ground e) (.-yaw e) pitch head-yaw (.-walked e) (.-wet? e) (.-jump-cd e)
         (.-task e) (.-pending e) look (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)

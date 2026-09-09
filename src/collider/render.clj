@@ -1,7 +1,4 @@
 (ns collider.render
-  "Packets of one tick. `render` takes the world and the deltas and returns
-   [eid packet] pairs. Chunk and entity packets come from :chunks-sent and
-   :tracking deltas, everything else from effects."
   (:require [collider.game.sign :as sign]
             [clojure.data.int-map :as i]
             [collider.data :as data]
@@ -18,9 +15,7 @@
 (defn- players [world]
   (sort (vals (:players world))))
 
-(defn- text-of
-  "Component of the runs: one translatable run goes as is, plain runs join."
-  [runs]
+(defn- text-of [runs]
   (if-let [t (some :translate runs)]
     (select-keys (first (filter :translate runs)) [:translate :with])
     (apply str (map :text runs))))
@@ -78,7 +73,6 @@
     []))
 
 (def ^:private equipment-slots [0 2 3 4 5])
-
 (defn- spawn-packets [world eid]
   (when-let [e (get-in world [:entities eid])]
     (let [kind  (kind-of e)
@@ -88,9 +82,9 @@
           d     (entity-data kind meta)]
       (concat
        [{:packet :bundle-delimiter}
-        ;; the position and velocity the track started from: the relative
-        ;; moves that follow are counted from there, so the client must
-        ;; start its own simulation there too
+        
+        
+        
         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
          :pos (if tr (mapv #(/ (double %) 4096.0) (:pos tr)) (:pos e))
          :vel (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
@@ -106,8 +100,6 @@
    (when (seq gone) [{:packet :remove-entities :eids gone}])))
 
 (def sound-table
-  "Sound kind of the core -> [vanilla sound event, source]. Resolved one by
-   one: an unknown event drops that sound with a log line, never the tick."
   {:player/hurt         [:entity.player.hurt 7]
           :player/hurt-on-fire [:entity.player.hurt-on-fire 7]
           :player/death        [:entity.player.death 7]
@@ -158,22 +150,17 @@
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 (def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))
-
 (defn- particles-packet [m]
   {:packet :level-particles :particle (data/registry-id "particle_type" (:kind m)) :state (:state m)
    :pos (:pos m) :count (:count m) :speed (:speed m)})
 
 (def ^:private unhandled (atom #{}))
-
 (defn- once! [kind]
   (when-not (@unhandled kind)
     (swap! unhandled conj kind)
     (log/info "render:" kind "not rendered yet")))
 
-(defn- block-records
-  "ChunkHolder.broadcastChanges: one change is a block update, more go as a
-   section update per section."
-  [[cx cz] records]
+(defn- block-records [[cx cz] records]
   (if (= 1 (count records))
     (let [[[pos st]] records] [{:packet :block-update :pos pos :state st}])
     (for [[sy recs] (group-by (fn [[[_ y _] _]] (bit-shift-right (long y) 4)) records)]
@@ -284,9 +271,7 @@
     (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
     :else       (players world)))
 
-(defn render
-  "Packets of one tick as [eid packet] pairs, in send order per player."
-  [world ^Deltas deltas]
+(defn render [world ^Deltas deltas]
   (let [viewers (delay (viewer-index world))]
     (concat
      (for [[eid ds] (.entities deltas)

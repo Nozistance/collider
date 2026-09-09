@@ -1,7 +1,4 @@
 (ns collider.persist.snapshot
-  "Snapshot of the world: chunks, non-player entities, block ticks, profiles,
-   time of day. `Store` is where it lives; `FileStore` keeps it in one nippy
-   file. The saver writes on request from its own thread."
   (:require [clojure.java.io :as io]
             [collider.game.schema :as schema]
             [collider.log :as log]
@@ -15,7 +12,6 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const format-version 5)
-
 (nippy/extend-freeze Section ::section [^Section s out]
   (nippy/freeze-to-out! out (.blocks s))
   (nippy/freeze-to-out! out (.block-light s))
@@ -28,11 +24,7 @@
     (chunk/->Section blocks block-light sky-light)))
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
-
 (defprotocol Store
-  "Where the snapshot of the world lives. put! gets the snapshot map (see
-   `snapshot`) from the saver thread, never concurrently; fetch returns the
-   last one, or nil."
   (put! [this snapshot])
   (fetch [this]))
 
@@ -59,17 +51,13 @@
   (toString [_] (str file)))
 
 (defn file-store [file] (->FileStore file))
-
-(defn snapshot
-  "Snapshot map of the world with the format version, see collider.game.schema."
-  [world]
+(defn snapshot [world]
   (assoc (schema/snapshot world) :format format-version))
 
 (defn write-snapshot! [store snap]
   (put! store snap))
 
 (def world-of
-  "World fields from a snapshot map, to merge over initial-world."
   schema/world-of)
 
 (defn load-snapshot [store]
@@ -107,10 +95,7 @@
           (log/info "snapshot: write failed -" (.getMessage t))
           state)))))
 
-(defn request-save!
-  "Asks the saver to write world to store. Returns at once; a save already
-   in progress finishes first."
-  [saver store world]
+(defn request-save! [saver store world]
   (when saver
     (send-off saver save! store world)
     true))

@@ -1,6 +1,4 @@
 (ns collider.proto.packets
-  "Readers and writers of 26.2 packets by [state name]; ids come from
-   resources/mc/packets.edn."
   (:require [collider.data :as data]
             [collider.proto.chunk :as chunk]
             [collider.proto.codec :as c])
@@ -15,10 +13,7 @@
     (c/write-id buf n)
     (.writeBoolean buf false)))
 
-(defn- write-spawn-info
-  "CommonPlayerSpawnInfo 26.2: overworld, seed 0, creative with no previous
-   mode, flat, no last death, no portal cooldown, sea level 63."
-  [^Buf buf m]
+(defn- write-spawn-info [^Buf buf m]
   (c/write-holder-ref buf (long (:dimension-type m)))
   (c/write-id buf :overworld)
   (.writeLong buf 0)
@@ -537,19 +532,14 @@
                         [nm id] (:serverbound dirs)]
                     [[state (long id)] nm]))))
 
-(defn decode
-  "Reads one serverbound packet of the given connection state: a map with
-   :packet name, or nil for an unknown id."
-  [state ^Buf buf]
+(defn decode [state ^Buf buf]
   (let [id (c/read-varint buf)]
     (when-let [nm (@name-by-id [state id])]
       (if-let [r (:read (packets [state nm]))]
         (assoc (r buf) :packet nm)
         {:packet nm}))))
 
-(defn encode!
-  "Writes the clientbound packet m (:packet name) of the given connection state."
-  [state ^Buf buf m]
+(defn encode! [state ^Buf buf m]
   (let [nm (:packet m)
         w  (or (:write (packets [state nm]))
                (throw (ex-info "no writer for packet" {:state state :packet nm})))]

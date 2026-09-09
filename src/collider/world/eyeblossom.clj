@@ -11,17 +11,13 @@
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
 
 (defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
-
 (defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
-
-(defn switched
-  [^long st ^long time]
+(defn switched [^long st ^long time]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (when (not= open? (night? time))
       (block/state (if (night? time) :open-eyeblossom :closed-eyeblossom)))))
 
-(defn sound-kind
-  [^long st long?]
+(defn sound-kind [^long st long?]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (if long?
       (if open? :eyeblossom/open-long :eyeblossom/close-long)
@@ -32,8 +28,7 @@
         :when (not (and (zero? (long dx)) (zero? (long dy)) (zero? (long dz))))]
     [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]))
 
-(defn cascade
-  [chunks [x y z :as p] ^long old ^long tick]
+(defn cascade [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
             (if (not= old (at chunks q))
               m
@@ -47,9 +42,9 @@
 (def rule
   {:name   :eyeblossom
    :match? (fn [_chunks st _p] (eyeblossom? st))
-   ;; vanilla removes an unsupported flower in updateShape, on the spot, and
-   ;; schedules a tick only from the cascade: waking on a neighbour change
-   ;; that leaves it standing would switch it early, with the wrong sound.
+   
+   
+   
    :wake   (fn [chunks tick p _old _self?]
              (when-not (support/supported? chunks gen/flat-chunk p
                                            (chunk/chunks-get-block chunks gen/flat-chunk p))

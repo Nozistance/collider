@@ -5,8 +5,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn free-below?
-  [chunks template [x y z]]
+(defn free-below? [chunks template [x y z]]
   (let [y' (dec (long y))]
     (and (chunk/in-range? y')
          (block/free? (chunk/chunks-get-block chunks template [x y' z])))))

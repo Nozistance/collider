@@ -35,18 +35,13 @@
         (* 0.1 (- (rnd/rnd [t eid :y1]) (rnd/rnd [t eid :y2]))))
      (+ (* 0.3 (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
-(defn- around-velocity
-  "A stack let go from the inventory screen: a random direction, up to half
-   a block per tick, a small hop (vanilla createItemStackToDrop randomly)."
-  [world eid salt]
+(defn- around-velocity [world eid salt]
   (let [t (:tick world)
         pow (* 0.5 (rnd/rnd [t eid salt :p]))
         dir (* Math/PI 2.0 (rnd/rnd [t eid salt :d]))]
     [(* -1.0 (Math/sin dir) pow) 0.2 (* (Math/cos dir) pow)]))
 
 (defn dropped
-  "Item entity of a stack the player lets go: thrown from the hand along the
-   look, or around them from the inventory screen (randomly?)."
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [[px py pz] (get-in world [:entities thrower :pos])]
@@ -56,10 +51,7 @@
       :yaw   0.0 :pitch 0.0 :on-ground false
       :stack stack :age 0 :pickup-delay throw-pickup-delay})))
 
-(defn popped
-  "Item entity of a stack a block drops at pos (vanilla Block.popResource):
-   near the centre of the cell, with the small random hop of ItemEntity."
-  [world pos stack salt]
+(defn popped [world pos stack salt]
   (let [t (:tick world)
         r (fn [k] (rnd/rnd [t pos salt k]))
         [x y z] pos]
@@ -103,18 +95,10 @@
 
 (def ^:private ^:const item-half 0.125)
 (def ^:private ^:const item-height 0.25)
-(defn- fluid-movement
-  "Velocity of an item in a liquid (vanilla setFluidMovement): a slow drift
-   up to 0.06 per tick, drag on the sides."
-  [[vx vy vz] ^double drag]
+(defn- fluid-movement [[vx vy vz] ^double drag]
   [(* (double vx) drag) (+ (double vy) (if (< (double vy) 0.06) 5.0E-4 0.0)) (* (double vz) drag)])
 
-(defn- step-item
-  "One tick of an item as vanilla ItemEntity.tick: the currents push it, in
-   water or lava it drifts, else it falls; at rest on the ground it moves
-   only every fourth tick; friction after the move; it is synced when its
-   velocity jumps, it lands or takes off, or while it is in a liquid."
-  [world eid e]
+(defn- step-item [world eid e]
   (let [chunks (:chunks world) pos (:pos e)
         pushed (v/+ (:vel e) (liquid/entity-push chunks gen/flat-chunk pos item-half item-height (:vel e)))
         water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
@@ -201,10 +185,7 @@
   (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
                  slot-order)))
 
-(defn add-stack
-  "Puts the stack into the inventory as a pickup does: [changes left-over],
-   changes as [slot stack], left-over the part that did not fit."
-  [inv stack]
+(defn add-stack [inv stack]
   (let [[changes n] (fill-existing inv stack (long (:count stack 1)))
         n (long n)]
     (if-let [slot (when (pos? n) (first-empty-slot inv changes))]

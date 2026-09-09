@@ -8,19 +8,16 @@
 
 (def ^:private around6 [[0 -1 0] [0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
 (def ^:private plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
-
 (defn- at ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
 
-(defn- dried
-  [st]
+(defn- dried [st]
   (cond
     (contains? plants (block/type-of st)) 0
     (= :true (:waterlogged (block/props-of st))) (block/without-water st)
     (= :water (liquid/liquid-class st)) 0))
 
-(defn absorbed
-  [chunks pos]
+(defn absorbed [chunks pos]
   (loop [queue (conj clojure.lang.PersistentQueue/EMPTY [pos 0]) seen #{pos} acc []]
     (if (or (empty? queue) (>= (count acc) 64))
       (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))

@@ -1,5 +1,4 @@
 (ns collider.game.systems.mobs
-
   (:require [collider.rnd :as rnd]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -35,7 +34,6 @@
 (def ^:private ^:const water-friction 0.8)
 (def ^:private ^:const air-accel 0.02)
 (def ^:private ^:const repath-interval 10)
-
 (defn- steer-target [world e]
   (case (get-in e [:task :kind])
     (:wander :panic) (let [[tx tz] (get-in e [:task :target])]
@@ -67,8 +65,7 @@
                             :path-goal gc
                             :repath-at (+ (long t) repath-interval))))))
 
-(defn- advance-path
-  ^long [e]
+(defn- advance-path ^long [e]
   (let [{:keys [path path-i]} (:task e)
         p (:pos e)]
     (loop [i (long (or path-i 0))]
@@ -287,10 +284,6 @@
    :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet?])
 
 (defmacro ^:private diff-keys
-  "Build the map of the ks whose value in new is not identical? to old's.
-   Expands to compiled keyword reads ((:k new) - an inline lookup thunk):
-   a dynamic (get record k) goes through the record's case dispatch and
-   hashes the keyword on every key of every sheep every tick."
   [old new & ks]
   (let [o (gensym) n (gensym)]
     `(let [~o ~old ~n ~new]
@@ -307,7 +300,6 @@
              :look :jump-cd :wet?))
 
 (defn- step-mob [world index tempters eid e t]
-
   (let [{:keys [half height speed]} (mobs/types (:type e))
         dead?  (not (pos? (double (:health e))))
         [e1 deltas] (if dead? [e nil] (think world eid e t tempters))

@@ -24,24 +24,17 @@
   (into {} (map (fn [[cls {:keys [bucket]}]] [bucket cls])) liquids))
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
-
 (def ^:private water-source (block/state :water))
-
 (defn liquid-state? [st] (block/liquid? (long st)))
-(defn liquid-class
-  "Class of the liquid at the state: :water or :lava. A waterlogged state counts as :water."
-  [st]
+(defn liquid-class [st]
   (cond
     (liquid-state? st) (class-of-block (block/block-of (long st)))
     (block/waterlogged? (long st)) :water))
-(defn level
-  "Level of the liquid: 0 for a source, 1..7 flowing, 8 falling. Waterlogged states are sources."
-  ^long [st]
+(defn level ^long [st]
   (if (liquid-state? st) (- (long st) (long (base (liquid-class st)))) 0))
 (defn liquid-state ^long [cls ^long level] (+ (long (base cls)) level))
 (defn bucket->state [item] (when-let [cls (bucket->class item)] (liquid-state cls 0)))
 (defn delay-of [st] (long (get-in liquids [(liquid-class st) :delay])))
-
 (defn source-state? [st]
   (and (liquid-state? st) (zero? (level st))))
 
@@ -119,11 +112,7 @@
       :else 0)))
 
 (def ^:private side-face {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
-
-(defn- solid-face?
-  "Vanilla isSolidFace: not the same liquid, not ice, and the face of the
-   neighbour in direction d is sturdy."
-  [cls st d]
+(defn- solid-face? [cls st d]
   (let [st (long st)]
     (and (pos? st)
          (not= cls (liquid-class st))
@@ -153,14 +142,10 @@
             (normalize [nx -6.0 nz]))
           (normalize [vx 0.0 vz]))))))
 
-(defn- own-height
-  "Height of the liquid in its cell, vanilla getOwnHeight: amount / 9."
-  ^double [st]
+(defn- own-height ^double [st]
   (let [l (level st)] (/ (double (if (or (zero? l) (>= l 8)) 8 (- 8 l))) 9.0)))
 
-(defn- height-in
-  "Height of the liquid in the cell, 1.0 when the same liquid stands above."
-  ^double [chunks template cls [x y z]]
+(defn- height-in ^double [chunks template cls [x y z]]
   (let [above (state-at chunks template x (inc (long y)) z)]
     (if (and (pos? (long above)) (= cls (liquid-class above)))
       1.0
@@ -173,12 +158,7 @@
           cz (range (long (Math/floor (- z half))) (long (Math/ceil (+ z half))))]
       [cx cy cz])))
 
-(defn- fluid-around
-  "{cls {:height h :flow [x y z] :n count}} for the liquids the box at pos
-   touches, vanilla EntityFluidInteraction.update: the height is the top of
-   the liquid over the bottom of the box, the flow is summed, scaled by the
-   height while it is under 0.4."
-  [chunks template [x y z] half height]
+(defn- fluid-around [chunks template [x y z] half height]
   (reduce (fn [acc [cx cy cz :as c]]
             (let [st (state-at chunks template cx cy cz)
                   cls (when (pos? (long st)) (liquid-class st))]
@@ -198,16 +178,10 @@
           {}
           (cells-of x y z half height)))
 
-(defn fluid-height
-  "How deep the box at pos stands in the liquid class (0.0 when not in it)."
-  [chunks template pos half height cls]
+(defn fluid-height [chunks template pos half height cls]
   (double (get-in (fluid-around chunks template pos half height) [cls :height] 0.0)))
 
-(defn entity-push
-  "Push of the currents on an entity with velocity vel, to add to it
-   (vanilla applyCurrentTo for a non-player): the summed flow, normalized,
-   times the push of the liquid; at least 0.0045 when the entity stands still."
-  [chunks template pos half height vel]
+(defn entity-push [chunks template pos half height vel]
   (reduce (fn [[ax ay az] [cls {[fx fy fz] :flow n :n}]]
             (let [len2 (+ (* (double fx) (double fx)) (* (double fy) (double fy)) (* (double fz) (double fz)))
                   p (double (get-in liquids [cls :push] 0.0))]
@@ -223,11 +197,6 @@
           [0.0 0.0 0.0]
           (fluid-around chunks template pos half height)))
 
-;; --- spread: port of FlowingFluid / LavaFluid / WaterFluid 26.2 ------------
-;;
-;; Our level is the legacy one: 0 source, 1..7 flow, 8 falling. Vanilla counts
-;; in amount (8 for source and falling, 7..1 for flow). We convert at the boundary.
-
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
 (def ^:private faces
@@ -235,27 +204,19 @@
    [0 0 -1] [:north :south] [0 -1 0] [:down :up] [0 1 0] [:up :down]})
 (def ^:private opposite {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0] [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
 (def ^:private no-fluid-types #{:door :standing-sign :wall-sign :ladder :sugar-cane :bubble-column})
-
 (defn- amount ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
 (defn- falling? [st] (= 8 (level st)))
 (defn- same? [cls st] (= cls (liquid-class st)))
 (defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
 (defn- height ^double [st] (/ (double (amount st)) 9.0))
-
-(defn fluid-height-of
-  [chunks template [x y z] st mode]
+(defn fluid-height-of [chunks template [x y z] st mode]
   (let [cls (liquid-class st)]
     (when (and cls (or (not= mode :source-only) (source-of? cls st)))
       (let [above (if (chunk/in-range? (inc (long y))) (chunk/chunks-get-block chunks template [x (inc (long y)) z]) 0)]
         (if (same? cls above) 1.0 (height st))))))
 
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
-
-(defn- face-covered?
-  "Shapes.mergedFaceOccludes: the far layer of first (max = 16 on the axis)
-   and the near layer of second (min = 0) cover the face. We count a 16x16
-   grid in cells of 1/16."
-  [first second ^long axis]
+(defn- face-covered? [first second ^long axis]
   (let [grid (boolean-array 256)
         [u v] (case axis 0 [1 2] 1 [0 2] [0 1])
         mark (fn [box]
@@ -267,10 +228,7 @@
     (doseq [box second :when (== 0.0 (double (nth box axis)))] (mark box))
     (every? true? grid)))
 
-(defn- pass-wall?
-  "canPassThroughWall: fluid can flow from src to tgt in direction d. A full
-   cube blocks. Two empty shapes pass. Otherwise the face must not be covered."
-  [src tgt d]
+(defn- pass-wall? [src tgt d]
   (let [src (long src) tgt (long tgt)]
     (cond
       (or (neg? src) (neg? tgt)) false
@@ -286,10 +244,7 @@
        (or (contains? (block/props-of (long st)) :waterlogged)
            (contains? block/water-holder-types (block/type-of (long st))))))
 
-(defn- holds-any-fluid?
-  "canHoldAnyFluid: a container (waterlogged) or a block that does not block
-   motion, except doors, signs, ladders, sugar cane and bubble columns."
-  [st]
+(defn- holds-any-fluid? [st]
   (let [st (long st)]
     (cond
       (zero? st) true
@@ -297,19 +252,13 @@
       (blocks-movement? st) false
       :else (not (contains? no-fluid-types (block/type-of st))))))
 
-(defn- holds-specific?
-  "canHoldSpecificFluid: a dry container accepts only water."
-  [cls st]
+(defn- holds-specific? [cls st]
   (if (container? st)
     (and (= :water cls) (not (block/waterlogged? (long st))))
     true))
 
 (defn- can-hold? [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
-
-(defn- replaceable-with?
-  "canBeReplacedWith. Empty: any fluid. Water: only from above, not by water.
-   Lava: only by water with height 4/9 or more."
-  [tgt cls d]
+(defn- replaceable-with? [tgt cls d]
   (case (liquid-class tgt)
     nil true
     :water (and (= d [0 -1 0]) (not= cls :water))
@@ -323,17 +272,13 @@
 (defn- cell [{:keys [chunks template]} [x y z]]
   [(raw-at chunks template x y z) (state-at chunks template x y z)])
 
-(defn- hole?
-  "isWaterHole: the cell below holds the same fluid or can take it."
-  [{:keys [cls] :as env} [x y z :as p]]
+(defn- hole? [{:keys [cls] :as env} [x y z :as p]]
   (let [[raw _] (cell env p)
         [braw b] (cell env [x (dec (long y)) z])]
     (and (pass-wall? raw braw [0 -1 0])
          (or (same? cls b) (can-hold? cls braw)))))
 
-(defn- new-liquid
-  "getNewLiquid for the cell p: :source, :falling, amount 1..7 or nil (empty)."
-  [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
+(defn- new-liquid [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
   (let [[raw _] (cell env p)
         [highest sources]
         (reduce (fn [[h s] [dx _ dz :as d]]
@@ -358,10 +303,7 @@
     :falling (liquid-state cls 8)
     (liquid-state cls (- 8 (long v)))))
 
-(defn- slope-distance
-  "getSlopeDistance: steps from p to a hole, not through from. 1000 if none
-   within slope."
-  ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
+(defn- slope-distance ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
   (reduce (fn [lowest [dx _ dz :as d]]
             (if (= d from)
               lowest
@@ -385,10 +327,7 @@
 (defn- touches-other? [chunks template cls pos]
   (some (fn [d] (other-class? cls (shifted chunks template pos d))) contact-dirs))
 
-(defn- convert-neighbors
-  "Adjacent lava hardened by incoming water (shouldSpreadLiquid runs at once
-   in neighborChanged)."
-  [chunks template cls [x y z]]
+(defn- convert-neighbors [chunks template cls [x y z]]
   (into []
         (keep (fn [[dx dy dz]]
                 (let [np [(+ (long x) (long dx))
@@ -409,11 +348,7 @@
           (get-in liquids [cls :mix])
           (touches-other? chunks template cls pos)))))
 
-(defn- spread-to
-  "spreadTo: what to write when fluid comes to tp. Lava on water gives stone.
-   A container gets filled. Otherwise the new fluid state. Lava next to water
-   hardens at once, water hardens adjacent lava."
-  [{:keys [chunks template cls mix] :as env} tp d v]
+(defn- spread-to [{:keys [chunks template cls mix] :as env} tp d v]
   (let [[traw t] (cell env tp)]
     (cond
       (and mix (= d [0 -1 0]) (= :water (liquid-class t)))
@@ -427,9 +362,7 @@
                  plain)]
         (cons [tp st] (convert-neighbors chunks template cls tp))))))
 
-(defn- spread-sides
-  "spreadToSides + getSpread: replaceable neighbors with the nearest hole."
-  [{:keys [cls dropoff] :as env} [x y z :as p] st]
+(defn- spread-sides [{:keys [cls dropoff] :as env} [x y z :as p] st]
   (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
     (when (pos? n)
       (let [[raw _] (cell env p)
@@ -452,10 +385,7 @@
 (defn- source-neighbours ^long [{:keys [cls] :as env} [x y z]]
   (count (filter (fn [[dx _ dz]] (source-of? cls (second (cell env [(+ (long x) dx) y (+ (long z) dz)])))) horiz3)))
 
-(defn- spread
-  "FlowingFluid.spread: down first (also sideways with three sources around).
-   Otherwise sideways if the cell is a source or the cell below is not a hole."
-  [{:keys [cls] :as env} [x y z :as p] st]
+(defn- spread [{:keys [cls] :as env} [x y z :as p] st]
   (let [bp [x (dec (long y)) z]
         [raw _] (cell env p)
         [braw b] (cell env bp)]
@@ -467,10 +397,7 @@
         (when (or (source-of? cls st) (not (hole? env p)))
           (spread-sides env p st)))))
 
-(defn update-delay
-  "getSpreadDelay: tick delay after a change from old to new. A lava level
-   increase is four times slower in 3 of 4 cases (hash of tick and pos)."
-  ^long [old new tick pos]
+(defn update-delay ^long [old new tick pos]
   (let [cls (liquid-class new)
         {:keys [delay decay-jitter]} (liquids cls)]
     (if (and decay-jitter
@@ -489,11 +416,7 @@
 (def ^:private basalt-state (delay (block/state :basalt)))
 (def ^:private soul-soil-state (delay (block/state :soul-soil)))
 (def ^:private blue-ice-state (delay (block/state :blue-ice)))
-
-(defn- mixed-state
-  "LiquidBlock.shouldSpreadLiquid: lava next to water gives obsidian (source)
-   or cobblestone (flow). Lava on soul soil next to blue ice gives basalt."
-  [cls mix st above sides below-raw]
+(defn- mixed-state [cls mix st above sides below-raw]
   (when mix
     (cond
       (some (fn [s] (other-class? cls s)) (cons above sides)) (mix-product mix (level st))
@@ -510,31 +433,22 @@
             below-raw (raw-at chunks template x (dec (long y)) z)]
         (mixed-state cls mix st above sides below-raw)))))
 
-(defn mix-changes
-  "Lava at or next to positions that touches water or blue ice hardens at
-   once (neighborChanged). chunks already hold the written blocks."
-  [chunks template positions]
+(defn mix-changes [chunks template positions]
   (into []
         (comp (mapcat (fn [[x y z]] (cons [x y z] (map (fn [[dx dy dz]] [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)]) horiz3+))))
               (distinct)
               (keep (fn [p] (when-let [st (solidified chunks template p)] [p st]))))
         positions))
 
-
 (def ^:private column-drag {:soul-sand :false :magma :true})
-
 (defn bubble-column? [st] (= :bubble-column (block/type-of (long st))))
-
-(defn- column-state
-  "Bubble column state that belongs above the raw state below, or nil."
-  [below]
+(defn- column-state [below]
   (cond
     (bubble-column? below) below
     :else (when-let [drag (get column-drag (block/type-of (long below)))]
             (block/state :bubble-column {:drag drag}))))
 
 (defn- water-source? [st] (= (long st) water-source))
-
 (defn- column-changes [chunks template [x y z] col]
   (loop [y (long y) acc []]
     (let [st (long (raw-at chunks template x y z))]
@@ -549,9 +463,7 @@
       (and (bubble-column? raw) (nil? col)) [[p water-source]]
       (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks template p col))))
 
-(defn bubble-push
-  "Vertical speed of an entity with its feet at pos after the bubble column there, as vanilla."
-  ^double [chunks template pos ^double vy]
+(defn bubble-push ^double [chunks template pos ^double vy]
   (let [x (long (Math/floor (v/x pos))) y (long (Math/floor (v/y pos))) z (long (Math/floor (v/z pos)))
         st (long (raw-at chunks template x y z))]
     (if (bubble-column? st)
@@ -565,11 +477,7 @@
       vy)))
 
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
-
-(defn update-cell
-  "FlowingFluid.tick: harden next to the other fluid, update the level of a
-   non-source, then spread. rules are the game rules (source conversion)."
-  [chunks template [x y z :as p] rules]
+(defn update-cell [chunks template [x y z :as p] rules]
   (let [st  (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
@@ -590,10 +498,7 @@
               :else (into (if (not= st' (long st)) [[p st']] [])
                           (spread env p st')))))))))
 
-(defn- fire-state-at
-  "BaseFireBlock.getState: soul fire above soul sand/soil, else fire of age 0.
-   Without support below, set side flags towards burnable blocks."
-  [chunks template [x y z :as p]]
+(defn- fire-state-at [chunks template [x y z :as p]]
   (let [below (raw-at chunks template x (dec (long y)) z)]
     (cond
       (contains? #{:soul-sand :soul-soil} (block/block-of (long (max 0 (long below)))))
@@ -608,11 +513,7 @@
 (defn- flammable-around? [chunks template p]
   (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
 
-(defn lava-random-tick
-  "LavaFluid.randomTick. 2 of 3 cases: up to two steps up and sideways through
-   air, fire next to a burnable block. Else three tries at the same level:
-   fire above a burnable block. rnd is (fn [salt] 0..1)."
-  [chunks template [x y z :as p] rnd]
+(defn lava-random-tick [chunks template [x y z :as p] rnd]
   (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (rnd salt)))))))
         passes (long (Math/floor (* 3.0 (double (rnd :passes)))))]
     (if (pos? passes)

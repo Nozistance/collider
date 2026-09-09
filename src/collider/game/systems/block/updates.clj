@@ -35,10 +35,7 @@
                                       p ctx))
                                     cells)))))
 
-(defn- wash-deltas
-  "Water flowing into a block breaks it and drops its loot
-   (WaterFluid.beforeDestroyingBlock, Block.dropResources), gamerule blockDrops."
-  [world changes]
+(defn- wash-deltas [world changes]
   (when (get-in world [:rules :block-drops] true)
     (for [[pos st] changes
           :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
@@ -49,10 +46,7 @@
           [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
-(defn- fizz-deltas
-  "Level event 1501: a fluid hardened, or lava burned the block it flowed
-   into (LavaFluid.beforeDestroyingBlock)."
-  [world changes]
+(defn- fizz-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
         :when (or (and (liquid/liquid-state? old) (pos? (long st)) (nil? (liquid/liquid-class st)))
@@ -60,12 +54,10 @@
         d [(out/all (out/fizz pos))]]
     d))
 
-(defn- loose-scaffold?
-  [old]
+(defn- loose-scaffold? [old]
   (and (= :scaffolding (block/type-of old)) (not= :7 (:distance (block/props-of old)))))
 
-(defn- fall-deltas
-  [world changes]
+(defn- fall-deltas [world changes]
   (for [[[x y z :as pos] st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
         :when (and (block/falls? old) (= (long st) (block/emptied old)))]
@@ -77,9 +69,7 @@
                       :block (block/without-water old) :start pos :time 0}])))
 
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
-
-(defn- sponge-drops
-  [world sponge changed]
+(defn- sponge-drops [world sponge changed]
   (let [chunks (:chunks world)]
     (for [[pos st] (sponge/absorbed chunks sponge)
           :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
@@ -88,8 +78,7 @@
           [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
       [pos stack i])))
 
-(defn- sponge-deltas
-  [world cells changes]
+(defn- sponge-deltas [world cells changes]
   (when (get-in world [:rules :block-drops] true)
     (let [chunks  (:chunks world)
           changed (into {} changes)
@@ -102,13 +91,11 @@
                    [#{} []])
            second))))
 
-(defn- eyeblossom-deltas
-  [changes]
+(defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]
     (out/all (out/sound (eyeblossom/sound-kind (long st) false) pos 1.0 1.0))))
 
-(defn- eyeblossom-schedules
-  [world changes]
+(defn- eyeblossom-schedules [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [pos st]]
               (if-not (eyeblossom/eyeblossom? (long st))

@@ -71,10 +71,7 @@
 (defn- say [eid key & with]
   [(out/to eid (out/system-chat [{:translate key :with (vec with)}]))])
 
-(defn- rule-deltas
-  "Sets the rule from its text, or reads it when text is nil (vanilla
-   commands.gamerule.set / .query); the rules screen of everyone is refreshed."
-  [world eid rule text]
+(defn- rule-deltas [world eid rule text]
   (let [id (subs (rules/wire-name rule) 10)]
     (if (nil? text)
       (say eid "commands.gamerule.query" id (rules/serialize rule (get-in world [:rules rule])))
@@ -84,23 +81,16 @@
                 (say eid "commands.gamerule.set" id (rules/serialize rule v)))
         (tell eid (str id ": give " (if (= :bool (:type (rules/table rule))) "true or false" "a whole number in range") ", not \"" text "\""))))))
 
-(defn- rules-event-deltas
-  "The rules screen: a request answers with all values, a change from the
-   screen sets them one by one."
-  [world [tag eid entries]]
+(defn- rules-event-deltas [world [tag eid entries]]
   (case tag
     :rules-request [(out/to eid (out/game-rules (:rules world)))]
     :set-rules (mapcat (fn [[k v]] (when-let [r (rules/rule-of k)] (rule-deltas world eid r v))) entries)
     nil))
 
-(defn- entity-name
-  "Component naming an entity: the player's name or the mob's translation."
-  [e]
+(defn- entity-name [e]
   (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (str/replace (name (:type e)) "-" "_"))}))
 
-(defn- targets
-  "Entity ids a selector names, as seen from eid."
-  [world eid {:keys [self all nearest entities type name]}]
+(defn- targets [world eid {:keys [self all nearest entities type name]}]
   (let [players (vals (:players world))
         typed (fn [ids] (if type (filter #(= type (get-in world [:entities % :type])) ids) ids))]
     (cond

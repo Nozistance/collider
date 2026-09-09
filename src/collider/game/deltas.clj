@@ -1,11 +1,4 @@
 (ns collider.game.deltas
-  "Deltas of one tick. A system returns a seq of deltas: world deltas
-   ([:set-blocks ...], [:spawn-entity ...]), entity deltas ([:merge-entity eid ...]
-   and the other tags in `entity-tags`) and effects ([:fx msg], see
-   collider.game.out). The vocabulary with schemas is collider.game.delta;
-   `add` validates when delta/validate? is set. `run` calls the systems in parallel and buckets what
-   they return into a Deltas record. The merged order is fixed: by system,
-   then by position inside the system, so a tick does not depend on scheduling."
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
             [collider.game.delta :as delta]))
@@ -15,8 +8,6 @@
 (def ^:private ^:const fold-leaf 64)
 (def ^:private ^:const fold-threshold 64)
 (defn pmapcat
-  "Like (into [] (mapcat f) v), in parallel when v is longer than
-   threshold. Order is preserved."
   ([f v] (pmapcat f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))
@@ -27,14 +18,10 @@
 
 (defrecord Deltas [world entities out])
 (def empty-deltas (->Deltas [] (i/int-map) []))
-
 (def entity-tags
   #{:merge-entity :track :tracking :set-slot :chunks-sent :push :damage :teleport :client-slots})
 
-(defn add
-  "Buckets a seq of deltas into acc: [:fx m] to out, entity-tagged deltas
-   to entities by eid, everything else to world."
-  ^Deltas [^Deltas acc deltas]
+(defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
          w  (transient (.world acc))
          e  (transient (.entities acc))
@@ -49,8 +36,7 @@
           (recur ds (conj! w d) e o)))
       (->Deltas (persistent! w) (persistent! e) (persistent! o)))))
 
-(defn merge-deltas
-  ^Deltas [^Deltas a ^Deltas b]
+(defn merge-deltas ^Deltas [^Deltas a ^Deltas b]
   (->Deltas (into (.world a) (.world b))
             (i/merge-with into (.entities a) (.entities b))
             (into (.out a) (.out b))))
@@ -58,11 +44,7 @@
 (defn fold [reducef v]
   (r/fold 1 (r/monoid merge-deltas (constantly empty-deltas)) reducef v))
 
-(defn run
-  "Calls each thunk in fs in parallel and merges what they return into a
-   Deltas record. A thunk may return a vector of thunks; they run the same way.
-   Merge order is the order of fs."
-  ^Deltas [fs]
+(defn run ^Deltas [fs]
   (fold (fn [^Deltas acc f]
                   (let [r (f)]
                     (if (fn? (first r))

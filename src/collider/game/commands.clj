@@ -1,7 +1,4 @@
 (ns collider.game.commands
-  "Chat commands: the spec `commands` (plain data), `parse` of a line into a
-   delta template, `suggest` for the last word, and `tree` for the client's
-   command tree (autocompletion on its side)."
   (:require [collider.game.mobs :as mobs]
             [collider.game.rules :as rules]
             [clojure.string :as str]
@@ -9,11 +6,9 @@
 
 (defn- block-name [kw] (str/replace (name kw) "-" "_"))
 (defn- block-kw [s] (keyword (str/replace (str/replace (str/lower-case (str s)) #"^minecraft:" "") "_" "-")))
-
 (set! *warn-on-reflection* true)
 
 (def commands [
-
    [:time "change or query the time of day"
     [:set "set the time" [[:value [:named-int {:min 0 :max 2147483647
                                                :names {"day" 1000 "night" 13000}}]]]
@@ -106,9 +101,7 @@
 (defn- parse-double* [^String s]
   (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
 
-(defn- as-dcoord
-  "A coordinate with decimals; ~ and ~N are relative to the origin."
-  [nm s {:keys [axis]} origin]
+(defn- as-dcoord [nm s {:keys [axis]} origin]
   (let [rel? (str/starts-with? s "~")
         n    (if rel?
                (when origin
@@ -132,9 +125,7 @@
       [:ok k]
       [:err (str (name nm) ": cannot summon \"" s "\", only " (str/join ", " (sort (map name (keys mobs/types)))))])))
 
-(defn- as-targets
-  "A target selector: @s @a @p @e, @e[type=...], or a player name."
-  [nm s {:keys [players?]} _origin]
+(defn- as-targets [nm s {:keys [players?]} _origin]
   (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
         type (when args (some->> (re-find #"type=([a-z_:]+)" args) second block-kw))]
     (cond
@@ -160,7 +151,6 @@
     [:err (str (name nm) ": unknown game rule \"" s "\"")]))
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
-
 (def ^:private coercers
   {:int as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
    :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
@@ -277,16 +267,10 @@
            (nil? form) []
            :else (suggest-after-command form more target)))))))
 
-;; --- the command tree for the client ---------------------------------------
-
 (def ^:private brigadier-integer (keyword "brigadier:integer"))
 (def ^:private brigadier-double (keyword "brigadier:double"))
 (def ^:private brigadier-bool (keyword "brigadier:bool"))
-
-(defn- argument-nodes
-  "Nodes of one argument as the client parses it: [[name parser props]...],
-   or {:literals [names]} for a choice; three coordinates are one node."
-  [[nm [kind {:keys [min max values]}]]]
+(defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
   (case kind
     :int [[(name nm) brigadier-integer {:min min :max max}]]
     :named-int [[(name nm) :time {:min 0}]]
@@ -300,9 +284,7 @@
     :text [[(name nm) (keyword "brigadier:string") {:kind 0}]]
     :rule {:rules true}))
 
-(defn- coords-merged
-  "The three coordinate arguments of a command become one block-pos or vec3."
-  [args]
+(defn- coords-merged [args]
   (loop [as args acc []]
     (if-let [[nm [kind opts] :as a] (first as)]
       (if (and (#{:coord :dcoord} kind) (= 0 (long (:axis opts 0))))
@@ -310,9 +292,7 @@
         (recur (rest as) (conj acc a)))
       acc)))
 
-(defn- optional-from
-  "Index of the first argument all of whose followers have defaults."
-  [args]
+(defn- optional-from [args]
   (or (first (keep-indexed (fn [i _] (when (every? (fn [[_ [_ o]]] (contains? o :default)) (drop i args)) i)) args))
       (count args)))
 
@@ -329,10 +309,7 @@
                                           :props (when (= :int type) {:min min :max max})})]]
          (add-node! nodes {:type :literal :name (subs (rules/wire-name rule) 10) :executable? true :children [value]}))))
 
-(defn- add-chain
-  "Adds the nodes of the arguments from i on; returns the child ids of the
-   node before them and whether that node is executable."
-  [nodes args i]
+(defn- add-chain [nodes args i]
   (let [optional (optional-from args)]
     (if (>= i (count args))
       [[] true]
@@ -360,11 +337,7 @@
           [children exec?] (add-chain nodes args 0)]
       (add-node! nodes {:type :literal :name (cmd-name form) :executable? exec? :children children}))))
 
-(defn tree
-  "The command tree as the client wants it: a vector of nodes, the root
-   last, each {:type :root|:literal|:argument :name :parser :props
-   :executable? :children [ids]}."
-  []
+(defn tree []
   (let [nodes (atom [])
         top (vec (map #(add-form! nodes %) commands))]
     (add-node! nodes {:type :root :children top})

@@ -1,5 +1,4 @@
 (ns collider.world.explosion
-
   (:require [collider.rnd :as rnd]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -9,13 +8,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private solid-arr block/solid-arr)
-
 (def ^:private ^:const region-r 10)
 (deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
                  ^long ncx ^long ncz ^long nsy])
 
-(defn block-reader
-  ^Region [chunks template [cx cy cz]]
+(defn block-reader ^Region [chunks template [cx cy cz]]
   (let [cx0 (bit-shift-right (- (long cx) region-r) 4)
         cx1 (bit-shift-right (+ (long cx) region-r) 4)
         cz0 (bit-shift-right (- (long cz) region-r) 4)

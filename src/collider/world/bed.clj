@@ -1,5 +1,4 @@
 (ns collider.world.bed
-  "Beds: the head cell a player sleeps in, and where they stand up."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.connect :as connect]
@@ -10,10 +9,7 @@
 (defn- block-at [chunks [_ y _ :as pos]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk pos) 0))
 
-(defn head-pos
-  "Position of the head of the bed at pos; nil if pos holds no bed or the
-   head is missing."
-  [chunks pos]
+(defn head-pos [chunks pos]
   (let [st (block-at chunks pos)]
     (when (= :bed (block/type-of st))
       (let [head (if (= :head (:part (block/props-of st))) pos (mapv + pos (connect/bed-partner-offset st)))]
@@ -22,18 +18,13 @@
 
 (def ^:private steps {:north [0 -1] :south [0 1] :west [-1 0] :east [1 0]})
 (def ^:private clockwise {:north :east :east :south :south :west :west :north})
-
-(defn- facing-angle?
-  "Whether yaw looks within 90 degrees of the direction (vanilla isFacingAngle)."
-  [dir ^double yaw]
+(defn- facing-angle? [dir ^double yaw]
   (let [[dx dz] (steps dir)
         a (Math/toDegrees (Math/atan2 (- dx) dz))
         d (^[double] Math/abs (rem (+ (- yaw a) 540.0) 360.0))]
     (< (^[double] Math/abs (- d 180.0)) 90.0)))
 
-(defn- stand-up-offsets
-  "[dx dz] to try around the head, vanilla bedStandUpOffsets order."
-  [forward side]
+(defn- stand-up-offsets [forward side]
   (let [[fx fz] (steps forward) [sx sz] (steps side)]
     [[sx sz] [(- sx fx) (- sz fz)] [(- sx (* 2 fx)) (- sz (* 2 fz))] [(* -2 fx) (* -2 fz)]
      [(- (- sx) (* 2 fx)) (- (- sz) (* 2 fz))] [(- (- sx) fx) (- (- sz) fz)] [(- sx) (- sz)]
@@ -42,9 +33,7 @@
 (defn- box-top ^double [st]
   (reduce (fn [^double m [_ _ _ _ y1 _]] (max m (/ (double y1) 16.0))) Double/NEGATIVE_INFINITY (block/collision-boxes st)))
 
-(defn- floor-height
-  "Height above the cell bottom to stand on, or nil (vanilla getBlockFloorHeight)."
-  [chunks [x y z :as pos]]
+(defn- floor-height [chunks [x y z :as pos]]
   (let [here (box-top (block-at chunks pos))]
     (cond
       (and (> here Double/NEGATIVE_INFINITY) (< here 1.0)) here
@@ -52,9 +41,7 @@
       :else (let [below (box-top (block-at chunks [x (dec (long y)) z]))]
               (when (> below Double/NEGATIVE_INFINITY) (- below 1.0))))))
 
-(defn- player-fits?
-  "Whether a player standing at [x y z] (feet centre) hits no collision box."
-  [chunks [x y z]]
+(defn- player-fits? [chunks [x y z]]
   (let [x (double x) y (double y) z (double z)]
     (not-any? (fn [[bx by bz]]
                 (some (fn [[a b c d e f]]
@@ -70,32 +57,20 @@
 (def ^:private burning #{:fire :soul-fire :lava :magma-block :lava-cauldron})
 (def ^:private campfires #{:campfire :soul-campfire})
 (def ^:private prickly #{:wither-rose :sweet-berry-bush :cactus :powder-snow})
-
-(defn- dangerous?
-  "Whether a player must not stand in this block: burning (vanilla
-   NodeEvaluator.isBurningBlock) or hurting (EntityType.isBlockDangerous)."
-  [st]
+(defn- dangerous? [st]
   (let [b (block/block-of st)]
     (or (contains? burning b)
         (and (contains? campfires b) (= :true (:lit (block/props-of st))))
         (contains? prickly b))))
 
-(defn- dismount-position
-  "Where a player stands in the cell, or nil (vanilla
-   DismountHelper.findSafeDismountLocation). With safe? the cell and, when
-   standing on its floor, the block below must not be dangerous."
-  [chunks [x y z :as cell] safe?]
+(defn- dismount-position [chunks [x y z :as cell] safe?]
   (when-not (and safe? (dangerous? (block-at chunks cell)))
     (when-let [h (floor-height chunks cell)]
       (when-not (and safe? (<= (double h) 0.0) (dangerous? (block-at chunks [x (dec (long y)) z])))
         (let [p [(+ (double x) 0.5) (+ (double y) (double h)) (+ (double z) 0.5)]]
           (when (player-fits? chunks p) p))))))
 
-(defn stand-up-position
-  "Where a player leaving the bed with head at pos stands (vanilla
-   BedBlock.findStandUpPosition): the first cell around it by the vanilla
-   order that is free and safe, else the first free one, else on top of the bed."
-  [chunks [x y z :as pos] ^double yaw]
+(defn stand-up-position [chunks [x y z :as pos] ^double yaw]
   (let [st      (block-at chunks pos)
         forward (block/facing-of st)
         right   (clockwise forward)
@@ -106,9 +81,7 @@
                     (some #(dismount-position chunks % false) cells))]
     (or found [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])))
 
-(defn look-yaw
-  "Yaw from standing at from towards the bed at pos, as vanilla stopSleeping."
-  ^double [[x _ z] [fx _ fz]]
+(defn look-yaw ^double [[x _ z] [fx _ fz]]
   (let [dx (- (+ (double x) 0.5) (double fx))
         dz (- (+ (double z) 0.5) (double fz))
         a  (- (Math/toDegrees (Math/atan2 dz dx)) 90.0)]

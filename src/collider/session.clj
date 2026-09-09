@@ -19,7 +19,6 @@
    :description {:text motd}})
 
 (def ^:private known-pack ["minecraft" "core" c/game-version])
-
 (defn- start-configuration! [conn]
   (server/send! conn {:packet :custom-payload :channel :brand :value "collider"})
   (server/send! conn {:packet :update-enabled-features :features [:vanilla]})
@@ -32,14 +31,11 @@
   (server/send! conn {:packet :finish-configuration}))
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
-
 (def ^:private command-tree (delay (commands/tree)))
 (def ^:private world-border-size 5.9999968E7)
 (def ^:private world-border-max 29999984)
 (def ^:private op-level-event 24)
-
-(defn- send-join-burst!
-  [conn eid {:keys [max-players view-distance simulation-distance motd]}]
+(defn- send-join-burst! [conn eid {:keys [max-players view-distance simulation-distance motd]}]
   (let [[x y z] state/spawn-pos]
     (server/send! conn {:packet :login :eid eid
                  :max-players (min 255 (long max-players))
@@ -75,9 +71,7 @@
     (log/info "player" nm "connected: eid" eid "addr" (:addr (server/info conn)))))
 
 (defn- on-ground? [m] (odd? (long (:flags m))))
-
-(defn- invalid-move?
-  [m]
+(defn- invalid-move? [m]
   (or (some #(Double/isNaN (double %)) (:pos m))
       (some #(Double/isInfinite (double %)) (:pos m))
       (some #(not (Double/isFinite (double %))) (keep m [:yaw :pitch]))))
@@ -137,14 +131,12 @@
     :attack :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
-
 (defn- log-unhandled! [packet]
   (when-not (or (ignored packet) (later packet) (@unhandled packet))
     (swap! unhandled conj packet)
     (log/info "play:" packet "not handled")))
 
-(defn- setup-compression!
-  [conn ^long threshold]
+(defn- setup-compression! [conn ^long threshold]
   (when-not (neg? threshold)
     (server/send! conn {:packet :login-compression :threshold threshold})
     (server/compress! conn threshold)))

@@ -1,5 +1,4 @@
 (ns collider.vec
-
   (:refer-clojure :exclude [+])
   (:import (collider.java V3)))
 
@@ -7,7 +6,6 @@
 
 (defn v3? [v] (instance? V3 v))
 (defn v3
-
   (^V3 [v] (if (v3? v)
              v
              (let [[a b c] v] (V3. (double a) (double b) (double c)))))
@@ -16,9 +14,7 @@
 (defn x ^double [v] (if (v3? v) (.x ^V3 v) (double (nth v 0))))
 (defn y ^double [v] (if (v3? v) (.y ^V3 v) (double (nth v 1))))
 (defn z ^double [v] (if (v3? v) (.z ^V3 v) (double (nth v 2))))
-(defn +
-
-  ^V3 [a b]
+(defn + ^V3 [a b]
   (V3. (clojure.core/+ (x a) (x b))
        (clojure.core/+ (y a) (y b))
        (clojure.core/+ (z a) (z b))))

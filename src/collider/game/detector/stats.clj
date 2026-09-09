@@ -1,7 +1,4 @@
 (ns collider.game.detector.stats
-  "Statistics of a player as vanilla awards them: time counters, distance by
-   the way of moving, jumps, sleep. Kept on the player in :stats as
-   {[type key] count} and shown on request with award-stats."
   (:require [collider.game.out :as out]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -17,11 +14,7 @@
                                                                 [(long (Math/floor (double x))) y (long (Math/floor (double z)))]))))))
 
 (defn- cm ^long [^double d] (Math/round (* d 100.0)))
-
-(defn- moved
-  "[stat cm] for the way the player moved this tick (vanilla
-   checkMovementStatistics), or nil."
-  [world e e']
+(defn- moved [world e e']
   (let [p (:pos e) p' (:pos e')]
     (when (and p p' (not (identical? p p')))
       (let [dx (- (v/x p') (v/x p)) dy (- (v/y p') (v/y p)) dz (- (v/z p') (v/z p))
@@ -38,10 +31,7 @@
   (and (:on-ground e) (not (:on-ground e'))
        (:pos e) (:pos e') (> (v/y (:pos e')) (v/y (:pos e)))))
 
-(defn- counts
-  "[[key n] ...] of the custom stats this tick earned the player, e' the
-   player after the tick, e before."
-  [world e e']
+(defn- counts [world e e']
   (cond-> [[:play-time 1] [:total-world-time 1] [:time-since-death 1]]
     (:sneaking? e')                          (conj [:crouch-time 1])
     (not (:sleeping e'))                     (conj [:time-since-rest 1])

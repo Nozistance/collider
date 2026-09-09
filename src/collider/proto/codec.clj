@@ -12,7 +12,6 @@
 
 (def protocol-version 776)
 (def game-version "26.2")
-
 (defn write-varint [^Buf buf v]
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
@@ -68,10 +67,7 @@
     (write-translatable d a)
     (do (write-nbt-string d "text" (str a)) (.writeByte d 0))))
 
-(defn- write-translatable
-  "Compound of a translatable component; the arguments are numbers, texts,
-   or components themselves."
-  [^DataOutputStream d {:keys [translate with]}]
+(defn- write-translatable [^DataOutputStream d {:keys [translate with]}]
   (write-nbt-string d "translate" translate)
   (when (seq with)
     (.writeByte d 9) (.writeUTF d "with")
@@ -87,10 +83,7 @@
           (doseq [a with] (write-argument d a)))))
   (.writeByte d 0))
 
-(defn write-component
-  "Text component as network NBT: a string, or {:translate key :with args}
-   for a client-side translation."
-  [^Buf buf s]
+(defn write-component [^Buf buf s]
   (let [bo (ByteArrayOutputStream.)]
     (with-open [d (DataOutputStream. bo)]
       (if (map? s)
@@ -114,8 +107,7 @@
                     (.writeInt d (count v))
                     (doseq [x v] (write-nbt-payload d x)))))
 
-(defn write-nbt
-  [^Buf buf v]
+(defn write-nbt [^Buf buf v]
   (let [bo (ByteArrayOutputStream.)]
     (with-open [d (DataOutputStream. bo)]
       (.writeByte d (nbt-type v))
@@ -193,10 +185,7 @@
                           {:item item :added added :removed removed})))
         {:item (get @item-names item) :count n}))))
 
-(defn read-hashed-stack
-  "Stack as the client sees it in a container click: {:item :count} or nil.
-   The component hashes are read and dropped."
-  [^Buf buf]
+(defn read-hashed-stack [^Buf buf]
   (when (.readBoolean buf)
     (let [item (read-varint buf)
           n    (read-varint buf)]
@@ -205,7 +194,6 @@
       {:item (get @item-names item) :count n})))
 
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
-
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
     (.writeByte buf (int idx))
@@ -227,7 +215,6 @@
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def ^:private ^:const max-uncompressed 8388608)
-
 (defn- read-varint-stream ^long [^InputStream in]
   (loop [n 0 acc 0]
     (let [b (.read in)]
@@ -239,7 +226,6 @@
           :else (recur (inc n) acc))))))
 
 (def ^:private ^:const frame-keep 8192)
-
 (defn read-frame! ^Buf [^InputStream in ^Buf buf]
   (let [len (read-varint-stream in)]
     (.clear buf frame-keep)
@@ -266,8 +252,7 @@
           (.writeBytes buf dst)))))
   buf)
 
-(defn write-frame!
-  [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
+(defn write-frame! [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
   (.clear body)
   (.clear head)
   (if (neg? (long threshold))

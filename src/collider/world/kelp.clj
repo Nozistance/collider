@@ -1,8 +1,4 @@
 (ns collider.world.kelp
-  "Kelp: the top block is the head (:kelp, with :age), the rest is :kelp-plant.
-   A head under another kelp becomes a stem; a stem with nothing above becomes
-   a head. Kelp needs support and holds a water source, so its rule also runs
-   the support and liquid rules for the cell."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
@@ -12,13 +8,8 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private kelp-types #{:kelp :kelp-plant})
-
 (defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
-
-(defn head-state
-  "Head with a random age, as GrowingPlantHeadBlock.getStateForPlacement
-   rolls nextInt(25)."
-  ^long [tick pos]
+(defn head-state ^long [tick pos]
   (block/state :kelp {:age (support/plant-age tick pos)}))
 
 (defn- above [chunks [x y z]]

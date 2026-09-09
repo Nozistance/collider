@@ -1,5 +1,4 @@
 (ns collider.game.mobs
-
   (:require [collider.rnd :as rnd]))
 
 (set! *warn-on-reflection* true)

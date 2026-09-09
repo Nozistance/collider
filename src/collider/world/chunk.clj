@@ -1,7 +1,4 @@
 (ns collider.world.chunk
-  "Chunks and sections. A section is 16x16x16 states in a short array plus
-   two light nibble arrays; a chunk is a map with :sections. `chunks` is an
-   int-map keyed by `pos->id`; `template` stands in for chunks not in the map."
   (:import (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -10,12 +7,8 @@
 (def ^:const max-y 319)
 (def ^:const section-count 24)
 (def ^:const section-offset 4)
-
 (defn in-range? [^long y] (<= min-y y max-y))
-(defn section-index
-  "Index of the section holding y in the :sections vector."
-  ^long [^long y] (+ (bit-shift-right y 4) section-offset))
-
+(defn section-index ^long [^long y] (+ (bit-shift-right y 4) section-offset))
 (deftype Section [^shorts blocks ^bytes block-light ^bytes sky-light])
 (defn full-light ^bytes []
   (doto (byte-array 2048) (Arrays/fill (unchecked-byte 0xFF))))
@@ -23,8 +16,7 @@
 (def ^Section empty-section
   (Section. (short-array 4096) (byte-array 2048) (full-light)))
 
-(defn nibble-get
-  ^long [^bytes arr ^long idx]
+(defn nibble-get ^long [^bytes arr ^long idx]
   (let [b (long (aget arr (bit-shift-right idx 1)))]
     (if (zero? (bit-and idx 1))
       (bit-and b 0xF)
@@ -51,8 +43,7 @@
         s   (or (get (:sections chunk) si) empty-section)]
     (assoc-in chunk [:sections si] (section-set-block s idx state))))
 
-(defn get-block
-  ^long [chunk lx y lz]
+(defn get-block ^long [chunk lx y lz]
   (let [y  (long y)
         si (section-index y)]
     (if-let [s (get (:sections chunk) si)]
@@ -74,13 +65,11 @@
    (bit-shift-right (bit-shift-left id 26) 52)
    (bit-shift-right (bit-shift-left id 38) 38)])
 
-(defn pos->id
-  ^long [cx cz]
+(defn pos->id ^long [cx cz]
   (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
           (bit-and (long cz) 0xFFFFFFFF)))
 
 (defn id->pos [chunk-id]
-
   [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
    (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
 
@@ -89,12 +78,10 @@
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
 
-(defn block-chunk
-  ^long [[x _ z]]
+(defn block-chunk ^long [[x _ z]]
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 
 (defn chunks-get-block
-  "State of the block at [x y z]. Chunks not in the map read as template."
   (^long [chunks template [x y z]]
    (chunks-get-block chunks template x y z))
   ([chunks template x y z]
@@ -107,10 +94,7 @@
      (get-block (get ~chunks (pos->id (bit-shift-right x# 4) (bit-shift-right z# 4)) ~template)
                 (bit-and x# 15) y# (bit-and z# 15))))
 
-(defn chunks-set-blocks
-  "Applies [[x y z] state] changes and returns the new chunks map. Chunks
-   not in the map start from template."
-  [chunks template changes]
+(defn chunks-set-blocks [chunks template changes]
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]

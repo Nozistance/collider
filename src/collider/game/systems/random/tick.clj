@@ -1,7 +1,4 @@
 (ns collider.game.systems.random.tick
-  "Random ticks (ServerLevel.tickChunk): randomTickSpeed random cells per
-   non-empty section of each active chunk: lava (LavaFluid.randomTick),
-   plants and soil (world/grow)."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.rnd :as rnd]
@@ -15,9 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- near-player?
-  "ServerLevel.canSpreadFireAround: a player within radius, or radius -1."
-  [world ^long radius [x y z]]
+(defn- near-player? [world ^long radius [x y z]]
   (or (= radius -1)
       (let [cx (+ (double x) 0.5) cy (+ (double y) 0.5) cz (+ (double z) 0.5)]
         (some (fn [eid]
@@ -51,13 +46,11 @@
 (defn- eyeblossom-changes [changes]
   (filter (fn [[_ st]] (eyeblossom/eyeblossom? (long st))) changes))
 
-(defn- eyeblossom-sounds
-  [changes]
+(defn- eyeblossom-sounds [changes]
   (for [[p st] (eyeblossom-changes changes)]
     (out/all (out/sound (eyeblossom/sound-kind (long st) true) p 1.0 1.0))))
 
-(defn- eyeblossom-schedules
-  [world changes]
+(defn- eyeblossom-schedules [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [p st]]
               (let [old (chunk/chunks-get-block chunks gen/flat-chunk p)]

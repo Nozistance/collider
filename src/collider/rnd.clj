@@ -1,15 +1,12 @@
 (ns collider.rnd
-
   (:import (clojure.lang Murmur3)))
 
 (set! *warn-on-reflection* true)
 
-(defn rnd
-  ^double [ks]
+(defn rnd ^double [ks]
   (/ (double (bit-and (long (hash ks)) 0xFFFFFF)) 16777216.0))
 
-(defn mix64
-  ^long [^long z]
+(defn mix64 ^long [^long z]
   (let [z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 30)) -4658895280553007687)
         z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 27)) -7723592293110705685)]
     (bit-xor z (unsigned-bit-shift-right z 31))))

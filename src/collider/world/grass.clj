@@ -1,5 +1,4 @@
 (ns collider.world.grass
-
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]

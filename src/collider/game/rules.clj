@@ -1,6 +1,4 @@
 (ns collider.game.rules
-  "Game rules of 26.2: the table with types and defaults, their wire names,
-   parsing and printing of values. The values of a world live in :rules."
   (:require [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
@@ -35,33 +33,23 @@
    :respawn-radius                   [10 0 Integer/MAX_VALUE]})
 
 (def table
-  "Rule to {:type :bool or :int, :default, and for ints :min :max}, as vanilla
-   GameRules registers them."
   (into (sorted-map)
         (concat (map (fn [k] [k {:type :bool :default true}]) booleans-on)
                 (map (fn [k] [k {:type :bool :default false}]) booleans-off)
                 (map (fn [[k [d lo hi]]] [k {:type :int :default d :min lo :max hi}]) integers))))
 
 (def defaults (into {} (map (fn [[k v]] [k (:default v)])) table))
-
-(defn wire-name
-  "Identifier of the rule on the wire and in commands: minecraft:advance_time."
-  ^String [rule]
+(defn wire-name ^String [rule]
   (str "minecraft:" (str/replace (name rule) "-" "_")))
 
-(defn rule-of
-  "Rule keyword for a name as typed or sent: advance_time, minecraft:advance_time."
-  [^String s]
+(defn rule-of [^String s]
   (let [k (keyword (str/replace (str/replace (str/lower-case s) #"^minecraft:" "") "_" "-"))]
     (when (contains? table k) k)))
 
 (defn serialize ^String [rule value]
   (if (= :bool (:type (table rule))) (if value "true" "false") (str value)))
 
-(defn parse
-  "Value of the rule from its text, nil if the text does not fit the type
-   or the range."
-  [rule ^String s]
+(defn parse [rule ^String s]
   (let [{:keys [type min max]} (table rule)]
     (case type
       :bool (case s "true" true "false" false nil)

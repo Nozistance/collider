@@ -23,15 +23,10 @@
 (def flags      (delay (load-edn "flags.edn")))
 (def fire       (delay (load-edn "fire.edn")))
 (def drops      (delay (load-edn "drops.edn")))
-
-(defn max-stack
-  "How many of the item go in one stack (64 unless the item says otherwise)."
-  ^long [item]
+(defn max-stack ^long [item]
   (long (get-in @items [item :max-stack] 64)))
 
-(defn equip-slot
-  "Equipment slot the item goes into (:head :chest :legs :feet :offhand ...), or nil."
-  [item]
+(defn equip-slot [item]
   (get-in @items [item :equip]))
 
 (defn packet-id ^long [state dir name]
@@ -55,7 +50,6 @@
 (defn- prop-order [b] (vec (keys (:props b))))
 (defn- prop-sizes [b] (mapv #(count (get (:props b) %)) (prop-order b)))
 (defn- state-count ^long [b] (reduce * 1 (map count (vals (:props b)))))
-
 (defn- decode-props [b ^long offset]
   (let [order (prop-order b) sizes (prop-sizes b)]
     (loop [i 0, left offset, acc {}]

@@ -14,7 +14,6 @@
 (def ^:private ^:const mate-together 60)
 (def ^:private ^:const breed-cooldown 6000)
 (def ^:private ^:const baby-growth 24000)
-
 (defn- decide [t eid e]
   (let [means (mobs/action-means (:type e))
         means (if (mobs/baby? e) (assoc means :eat 50) means)
@@ -103,7 +102,6 @@
 
 (def ^:private ^:const tempt-range-sq 100.0)
 (def ^:private ^:const tempt-cooldown 100)
-
 (defn- tempt-target [e tempters]
   (let [item (mobs/breeding-item (:type e))]
     (->> tempters

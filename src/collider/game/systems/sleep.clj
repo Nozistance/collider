@@ -1,7 +1,4 @@
 (ns collider.game.systems.sleep
-  "Sleeping players: waking up by choice or at dawn, and skipping the night
-   when enough of them have slept long enough: the share is the world rule
-   :players-sleeping-percentage, vanilla playersSleepingPercentage."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.daynight :as daynight]
@@ -15,28 +12,19 @@
 
 (def ^:private deep-sleep 100)
 (def ^:private day-length 24000)
-
 (defn- block-at [world pos] (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
-
-(defn sleepers-needed
-  "How many sleepers skip the night, by the world rule :players-sleeping-percentage."
-  ^long [world]
+(defn sleepers-needed ^long [world]
   (let [players (count (state/player-entries world))
         share   (long (get-in world [:rules :players-sleeping-percentage] 100))]
     (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
 
-(defn announcement
-  "Overlay for everyone when the number of sleepers changes to asleep
-   (vanilla announceSleepStatus)."
-  [world ^long asleep]
+(defn announcement [world ^long asleep]
   (let [needed (sleepers-needed world)]
     (out/all (out/overlay [(if (>= asleep needed)
                              {:translate "sleep.skipping_night"}
                              {:translate "sleep.players_sleeping" :with [asleep needed]})]))))
 
-(defn wake-deltas
-  "The player stands up next to the bed, everyone sees them wake."
-  [world eid]
+(defn wake-deltas [world eid]
   (let [e    (get-in world [:entities eid])
         head (get-in e [:sleeping :pos])
         st   (block-at world head)

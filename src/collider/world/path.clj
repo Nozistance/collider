@@ -1,5 +1,4 @@
 (ns collider.world.path
-
   (:require [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.liquid :as liquid]

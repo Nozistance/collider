@@ -9,7 +9,6 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const light-sections 26)
-
 (defn- pack-longs ^longs [^long bits ^ints values]
   (let [per (quot 64 bits)
         n   (long (Math/ceil (/ 4096.0 per)))
@@ -36,7 +35,6 @@
         (doseq [^long l (pack-longs bits packed)] (.writeLong buf l))))))
 
 (def ^:private plains (delay (data/datapack-id "worldgen/biome" :plains)))
-
 (defn- section-ids ^ints [^Section s]
   (let [^shorts bs (.blocks s)
         out (int-array 4096)]
@@ -44,11 +42,7 @@
       (aset out i (int (bit-and (long (aget bs i)) 0xFFFF))))
     out))
 
-(defn- write-section!
-  "Section as the client reads it: non-air count, then the count of states
-   holding a fluid. The client skips fluid physics in a section whose fluid
-   count is zero, so it has to be right."
-  [^Buf buf ^Section s]
+(defn- write-section! [^Buf buf ^Section s]
   (let [ids (section-ids s)
         [n fluids] (loop [i 0 n 0 f 0]
                      (if (= i 4096)
@@ -69,7 +63,6 @@
   (.writeByte buf 0) (c/write-varint buf (long @plains)))
 
 (def ^:private full-light (byte-array 2048 (unchecked-byte 0xFF)))
-
 (defn- light-mask ^long [pred]
   (loop [i 0 m 0]
     (if (= i light-sections) m (recur (inc i) (if (pred i) (bit-or m (bit-shift-left 1 i)) m)))))
@@ -77,8 +70,7 @@
 (defn- our-section [chunk ^long si]
   (when (< -1 si chunk/section-count) (get (:sections chunk) si)))
 
-(defn- write-block-entities!
-  [^Buf buf entries]
+(defn- write-block-entities! [^Buf buf entries]
   (c/write-varint buf (count entries))
   (doseq [[[x y z] {:keys [type nbt]}] entries]
     (.writeByte buf (int (bit-or (bit-shift-left (bit-and (long x) 15) 4) (bit-and (long z) 15))))

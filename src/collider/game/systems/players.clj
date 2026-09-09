@@ -60,11 +60,7 @@
              e)))
 
 (defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
-
-(defn- slot-diff
-  "Slots whose stack the client has wrong (vanilla broadcastChanges against
-   remoteSlots): [[slot stack] ...], compared by item and count."
-  [inv known]
+(defn- slot-diff [inv known]
   (into []
         (keep (fn [slot]
                 (let [ours (get inv slot) theirs (get known slot)]
@@ -94,7 +90,6 @@
   (state/pos-chunk (:pos e)))
 
 (def ^:private duplicate-login-reason "You logged in from another location")
-
 (defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
             (when (= :player-join tag)
@@ -171,7 +166,6 @@
 
 (def ^:private vel-threshold 4.0E-4)
 (def ^:private item-vel-threshold 1.0E-7)
-
 (defn- vel-changed?
   ([tr vel] (vel-changed? tr vel vel-threshold))
   ([^Track tr vel ^double threshold]
@@ -333,11 +327,7 @@
          (out/to eid msg))))))
 
 (def ^:private teleport-retry 20)
-
-(defn- pending-teleport-deltas
-  "A teleport the client has not acknowledged in 20 ticks is sent again with
-   a fresh id (vanilla awaitingTeleportTime)."
-  [world ps]
+(defn- pending-teleport-deltas [world ps]
   (mapcat (fn [[eid e]]
             (let [target (:tp-target e) since (:tp-id e)]
               (when (and target since (>= (- (long (:tick world)) (long since)) teleport-retry))

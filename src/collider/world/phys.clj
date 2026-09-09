@@ -1,5 +1,4 @@
 (ns collider.world.phys
-
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -59,8 +58,7 @@
 (deftype Sweep [^doubles a ^long n])
 (deftype Move [pos vel ^boolean on-ground])
 
-(defn- swept-boxes
-  ^Sweep [chunks template ^doubles ebox vx vy vz]
+(defn- swept-boxes ^Sweep [chunks template ^doubles ebox vx vy vz]
   (let [vx (double vx) vy (double vy) vz (double vz)
         x1 (long (Math/floor (- (+ (aget ebox 0) (min 0.0 vx)) eps)))
         x2 (long (Math/floor (+ (+ (aget ebox 3) (max 0.0 vx)) eps)))

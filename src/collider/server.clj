@@ -14,23 +14,17 @@
 (def ^:private ^:const out-queue-size 4096)
 (def ^:private ^:const out-queue-high 1024)
 (def ^:private ^:const writer-poll-ms 500)
-
 (defrecord Conn [^Socket sock ^ArrayBlockingQueue q st ^AtomicBoolean closing])
 
 (defn conn-state [^Conn c] (:state @(:st c)))
-
 (defn info [^Conn c] @(:st c))
-
 (defn put! [^Conn c k v] (swap! (:st c) assoc k v))
-
 (defn take-key! [^Conn c k] (k (first (swap-vals! (:st c) dissoc k))))
-
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
 
 (defn set-conn-state! [^Conn c s] (swap! (:st c) assoc :state s))
-
 (defn close! [^Conn c]
   (.set ^AtomicBoolean (:closing c) true)
   (.offer ^ArrayBlockingQueue (:q c) [:close]))
@@ -41,8 +35,7 @@
     (.set ^AtomicBoolean (:closing c) true)
     (.close ^Socket (:sock c))))
 
-(defn compress!
-  [^Conn c ^long threshold]
+(defn compress! [^Conn c ^long threshold]
   (.offer ^ArrayBlockingQueue (:q c) [:threshold threshold]))
 
 (defn- writer-loop [^Conn c]
@@ -132,15 +125,13 @@
                 (when (< (.size ^ArrayBlockingQueue (:q conn)) out-queue-high) eid)))
         @conns))
 
-(defn- drain!
-  [conns ^long ms]
+(defn- drain! [conns ^long ms]
   (let [deadline (+ (System/currentTimeMillis) ms)]
     (doseq [[_ ^Conn conn] conns]
       (when-let [^Thread w (:writer @(:st conn))]
         (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
 
-(defn close-all!
-  [conns text ^long ms]
+(defn close-all! [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]
       (when (= :play (conn-state conn))

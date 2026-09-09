@@ -1,5 +1,4 @@
 (ns collider.game.systems.tnt
-
   (:require [collider.game.deltas :as deltas]
             [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
@@ -71,7 +70,6 @@
 
 (def ^:private ^:const kb-cell 8)
 (defn- kb-cell-key ^long [^long x ^long y ^long z]
-
   (bit-or (bit-shift-left (+ (bit-shift-right x 3) 524288) 26)
           (bit-shift-left (+ (bit-shift-right z 3) 524288) 6)
           (bit-and (bit-shift-right y 3) 63)))
@@ -139,11 +137,7 @@
       (knockback-deltas rg others center)
       (map (fn [p] [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil :from p)]) chains))))
 
-(defn- one-chain
-  "Two blasts of one tick may both reach the same TNT block: vanilla sees the
-   block gone after the first, we see one snapshot, so the second priming of
-   a block is dropped."
-  [deltas]
+(defn- one-chain [deltas]
   (let [seen (volatile! #{})]
     (into []
           (remove (fn [[tag m]]

@@ -1,13 +1,10 @@
 (ns collider.game.systems.keepalive
-  "Keep-alive as vanilla: a challenge every 15 seconds; a player who has not
-   answered the last one by then is disconnected with disconnect.timeout."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
 
 (def interval-ticks 300)
-
 (defn- player-deltas [^long t [eid e]]
   (when (>= (- t (long (:keepalive-at e t))) interval-ticks)
     (if (:keepalive-pending? e)

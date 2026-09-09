@@ -16,7 +16,6 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const shutdown-drain-ms 1000)
-
 (defn- deliver! [conns world deltas]
   (let [cs @conns]
     (doseq [[eid pkt] (render/render world deltas)]
@@ -43,28 +42,27 @@
     (.addShutdownHook (Runtime/getRuntime) t)
     t))
 
-(defn start
-  [opts]
+(defn start [opts]
   (let [cfg (merge (config/load-config) opts)
         {:keys [save-file save-period-ms]} cfg
         store (or (:store opts) (when save-file (snapshot/file-store save-file)))
         saved (when store (snapshot/load-snapshot store))
         world (atom (assoc (merge state/initial-world saved)
-                           :config (select-keys cfg [:view-distance :simulation-distance])))
+                      :config (select-keys cfg [:view-distance :simulation-distance])))
         saver (when store (snapshot/start-saver))
         save! (when saver #(snapshot/request-save! saver store @world))
         queue (ConcurrentLinkedQueue.)
         conns (atom {})
-        io {:queue queue :conns conns :cfg cfg :save! save!
-             :on-packet session/handle-packet}
+        io {:queue     queue :conns conns :cfg cfg :save! save!
+            :on-packet session/handle-packet}
         {^ServerSocket srv :socket accept :accept} (server/listen! io (:port cfg))
         ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))
                                    {:io-input #(hash-map :writable (server/writable-eids conns))})
         sched (when saver (saver-scheduler save! save-period-ms))
-        server {:socket srv :accept accept
-                :world world :queue queue :conns conns :ticker ticker
+        server {:socket     srv :accept accept
+                :world      world :queue queue :conns conns :ticker ticker
                 :tick-stats (:stats ticker)
-                :saver saver :store store :scheduler sched}]
+                :saver      saver :store store :scheduler sched}]
     (when (seq (:chunks saved))
       (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
     (log/info "collider" c/game-version "(protocol" (str c/protocol-version ") on")
