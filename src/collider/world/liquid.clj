@@ -242,6 +242,13 @@
 (defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
 (defn- height ^double [st] (/ (double (amount st)) 9.0))
 
+(defn fluid-height-of
+  [chunks template [x y z] st mode]
+  (let [cls (liquid-class st)]
+    (when (and cls (or (not= mode :source-only) (source-of? cls st)))
+      (let [above (if (chunk/in-range? (inc (long y))) (chunk/chunks-get-block chunks template [x (inc (long y)) z]) 0)]
+        (if (same? cls above) 1.0 (height st))))))
+
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
 
 (defn- face-covered?

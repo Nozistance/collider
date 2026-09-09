@@ -49,6 +49,9 @@
    :set-rule
    [[:cat :keyword :any]
     "Game rule: a key from game/rules and a value."]
+   :set-block-entity
+   [[:cat Pos [:maybe :map]]
+    "Block entity at pos (a sign), nil removes it."]
    :spawn-entity
    [[:cat :map]
     "New entity from a map (entity/of). The world gives the eid."]
@@ -106,6 +109,10 @@
    :particles      [[[:kind :keyword] [:state [:maybe State]] [:pos Vec3] [:count :int] [:speed number?]] "Particles."]
    :extinguish     [[[:pos Pos]] "Fire is out (level event 1009)."]
    :fizz           [[[:pos Pos]] "Fizz: lava with water, fire in water."]
+   :bonemeal       [[[:pos Pos]] "Bone meal took: green sparks, level event 1505."]
+   :level-event    [[[:event :int] [:pos Pos] [:data :int]] "A level event at a block with its data: wax on/off, scrape, composter fill."]
+   :sign-editor    [[[:pos Pos] [:front? :boolean]] "Open the sign editor of one side (to the player)."]
+   :block-entity   [[[:pos Pos]] "Block entity data at pos changed: sent from the world after the tick."]
    :time           [[[:age :int] [:time :int]] "Clock: world age and time of day after the tick."]
    :teleport       [[[:pos Vec3] [:yaw number?] [:pitch number?]] "Put the player here (we wait for teleport-ack)."]
    :health         [[[:health number?]] "Player health."]

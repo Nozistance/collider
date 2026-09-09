@@ -39,9 +39,11 @@
 (defn type-of [^long st] (when (known? st) (aget ^objects type-arr st)))
 (defn block-of [^long st] (when (known? st) (aget ^objects name-arr st)))
 
+(def door-types #{:door :weathering-copper-door})
+(def trapdoor-types #{:trapdoor :weathering-copper-trapdoor})
 (def torch-types #{:torch :redstone-torch})
 (def wall-torch-types #{:wall-torch :redstone-wall-torch})
-(def side-types #{:ladder :wall-sign :wall-hanging-sign})
+(def side-types #{:ladder :wall-sign :wall-hanging-sign :coral-wall-fan :base-coral-wall-fan})
 (def ground-types
   #{:sapling :powered-rail :detector-rail :rail :tall-grass :double-plant :dry-vegetation
     :short-dry-grass :tall-dry-grass :flower :mushroom :fire :soul-fire :redstone-wire
@@ -50,7 +52,29 @@
     :nether-wart :torchflower-crop :pitcher-crop :lily-pad :flower-bed :leaf-litter
     :eyeblossom :firefly-bush :kelp :kelp-plant :seagrass :tall-seagrass})
 (def water-holder-types #{:kelp :kelp-plant :seagrass :tall-seagrass :bubble-column})
-(def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types)))
+(def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding})
+(def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
+(def multiface-types #{:glow-lichen :multiface :sculk-vein})
+(def growing-plant
+  "GrowingPlantBlock kinds by block type: the head and the body of the plant
+   and the way it grows (weeping and cave vines down, twisting up)."
+  (into {} (for [[head body dir] [[:weeping-vines :weeping-vines-plant :down]
+                                  [:twisting-vines :twisting-vines-plant :up]
+                                  [:cave-vines :cave-vines-plant :down]]
+                 t [head body]]
+             [t {:head head :body body :dir dir}])))
+(def growing-plant-types (set (keys growing-plant)))
+
+(def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
+(def attached-types
+  "Blocks with a body that still hang on a neighbour: lanterns, bells,
+   candles, cocoa; farmland and paths that turn to dirt under a block."
+  #{:lantern :weathering-lantern :bell :farmland :dirt-path :candle :sea-pickle :cocoa
+    :amethyst-cluster})
+(def stack-props
+  "Blocks that pile up in one cell when placed on themselves: the property
+   that counts them (SegmentableBlock, CandleBlock, SeaPickleBlock)."
+  {:candle :candles :sea-pickle :pickles :flower-bed :flower-amount :leaf-litter :segment-amount})
 (def replaceable-types (disj (into ground-types (concat torch-types wall-torch-types)) :standing-sign))
 
 (defn- boolean-table [pred]
@@ -61,16 +85,23 @@
     a))
 
 (def ^:private needs-support-arr (boolean-table (fn [_ t _] (contains? needs-support-types t))))
+(def ^:private attached-arr (boolean-table (fn [_ t _] (or (contains? needs-support-types t) (contains? attached-types t)))))
 (def ^:private replaceable-arr (boolean-table (fn [_ t _] (contains? replaceable-types t))))
 (def ^:private liquid-arr (boolean-table (fn [_ t _] (= :liquid t))))
 (def ^:private waterlogged-arr
   (boolean-table (fn [st t _] (or (contains? water-holder-types t) (= :true (:waterlogged (props-of st)))))))
 (def ^:private water-state (state :water))
+(def ^:private falls-arr (boolean-table (fn [_ t _] (contains? falling-types t))))
+(def ^:private can-be-replaced-arr
+  (let [tagged (set (get-in @data/tags ["block" "replaceable"]))]
+    (boolean-table (fn [_ _ n] (contains? tagged n)))))
 
 (defn needs-support?
   "True for blocks that drop when the block they rest on is gone: plants,
    torches, rails, ladders, signs."
   [^long st] (and (known? st) (aget ^booleans needs-support-arr st)))
+(defn attached?
+  [^long st] (and (known? st) (aget ^booleans attached-arr st)))
 (defn replaceable?
   "True for blocks that flowing water or lava replaces."
   [^long st] (and (known? st) (aget ^booleans replaceable-arr st)))
@@ -85,6 +116,29 @@
 (defn air? [^long st] (zero? st))
 (defn fire? [^long st] (= :fire (type-of st)))
 (defn tnt? [^long st] (= :tnt (type-of st)))
+(defn falls?
+  [^long st] (and (known? st) (aget ^booleans falls-arr st)))
+(defn can-be-replaced?
+  [^long st] (or (zero? st) (and (known? st) (aget ^booleans can-be-replaced-arr st))))
+(defn free?
+  [^long st] (or (zero? st) (fire? st) (liquid? st) (can-be-replaced? st)))
+(defn without-water
+  "The state with its waterlogged flag off."
+  ^long [^long st]
+  (if (= :true (:waterlogged (props-of st)))
+    (state (block-of st) (assoc (props-of st) :waterlogged :false))
+    st))
+(defn with-water
+  "The state with its waterlogged flag on, if it has one."
+  ^long [^long st]
+  (if (contains? (props-of st) :waterlogged)
+    (state (block-of st) (assoc (props-of st) :waterlogged :true))
+    st))
+(defn concrete-of
+  "The concrete a concrete powder hardens into."
+  ^long [^long st]
+  (let [n (name (block-of st))]
+    (state (keyword (subs n 0 (- (count n) 7))))))
 
 (defn- shape-type [t]
   (let [n (name t)]
@@ -130,7 +184,8 @@
     (cond
       (= :liquid t) (if (= :water block) 3 255)
       (#{:ice :frosted-ice :half-transparent :slime :honey} t) 3
-      (#{:transparent :stained-glass :tinted-glass :stained-glass-pane :iron-bars} t) 0
+      (#{:transparent :stained-glass :stained-glass-pane :iron-bars} t) 0
+      (= :tinted-glass t) 255
       (str/ends-with? (name t) "leaves") 1
       (#{:slab :stair} (shape-type t)) 255
       full? 255
@@ -204,6 +259,7 @@
   {0 [0 -1 0], 1 [0 1 0], 2 [0 0 -1], 3 [0 0 1], 4 [-1 0 0], 5 [1 0 0]})
 
 (def ^:private face->facing {2 :north 3 :south 4 :west 5 :east})
+(def ^:private face->direction {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east})
 
 (defn player-facing
   ^long [yaw]
@@ -219,6 +275,12 @@
 
 (def ^:private wall-torches {:torch :wall-torch :soul-torch :soul-wall-torch :redstone-torch :redstone-wall-torch})
 
+(defn- skull-wall
+  [n]
+  (cond
+    (str/ends-with? n "-skull") (keyword (str (subs n 0 (- (count n) 6)) "-wall-skull"))
+    (str/ends-with? n "-head") (keyword (str (subs n 0 (- (count n) 5)) "-wall-head"))))
+
 (defn- wall-variant
   "Block an item turns into on a wall: wall torches, wall signs, wall banners."
   [item]
@@ -226,20 +288,112 @@
         candidate (or (wall-torches item)
                       (when (and (str/ends-with? n "-sign") (not (str/includes? n "hanging")))
                         (keyword (str (subs n 0 (- (count n) 5)) "-wall-sign")))
+                      (when (str/ends-with? n "-coral-fan")
+                        (keyword (str (subs n 0 (- (count n) 4)) "-wall-fan")))
                       (when (str/ends-with? n "-banner")
-                        (keyword (str (subs n 0 (- (count n) 7)) "-wall-banner"))))]
+                        (keyword (str (subs n 0 (- (count n) 7)) "-wall-banner")))
+                      (skull-wall n))]
     (when (and candidate (contains? @data/blocks candidate)) candidate)))
 
-(defn item->block [item face]
-  (let [face (long face)]
+(def ^:private weather-prefixes ["exposed-" "weathered-" "oxidized-"])
+
+(defn weathering?
+  [^long st]
+  (let [t (type-of st)] (and t (str/starts-with? (name t) "weathering-"))))
+
+(defn weather-stage
+  "0 clean, 1 exposed, 2 weathered, 3 oxidized, by the block name."
+  ^long [^long st]
+  (let [n (name (block-of st))]
+    (long (or (first (keep-indexed (fn [i p] (when (str/starts-with? n p) (inc i))) weather-prefixes)) 0))))
+
+(defn- with-props-of
+  "The block with the properties of the state, as vanilla withPropertiesOf."
+  ^long [block ^long st]
+  (state block (select-keys (props-of st) (keys (:props (data/info block))))))
+
+(defn- weather-base [^long st]
+  (let [n (name (block-of st)) stage (weather-stage st)]
     (cond
-      (and (<= 2 face 5) (wall-variant item)) (wall-variant item)
-      (contains? @data/blocks item) item)))
+      (= n "copper-block") "copper"
+      (zero? stage) n
+      :else (subs n (count (weather-prefixes (dec stage)))))))
+
+(defn- weather-name [^long st ^long stage]
+  (let [base (weather-base st)]
+    (keyword (cond
+               (zero? stage) (if (= base "copper") "copper-block" base)
+               :else (str (weather-prefixes (dec stage)) base)))))
+
+(defn weathered-next
+  [^long st]
+  (when (and (weathering? st) (< (weather-stage st) 3))
+    (with-props-of (weather-name st (inc (weather-stage st))) st)))
+
+(defn weathered-prev
+  [^long st]
+  (when (and (weathering? st) (pos? (weather-stage st)))
+    (with-props-of (weather-name st (dec (weather-stage st))) st)))
+
+(defn waxed
+  [^long st]
+  (when (weathering? st)
+    (let [b (keyword (str "waxed-" (name (block-of st))))]
+      (when (contains? @data/blocks b) (with-props-of b st)))))
+
+(defn unwaxed
+  [^long st]
+  (let [n (name (block-of st))]
+    (when (str/starts-with? n "waxed-")
+      (with-props-of (keyword (subs n 6)) st))))
+
+(defn dead-coral
+  "The dead kind of a living coral state, dry and turned the same way."
+  ^long [^long st]
+  (with-props-of (keyword (str "dead-" (name (block-of st)))) (without-water st)))
+
+(defn stripped
+  [^long st]
+  (when (contains? #{:rotated-pillar} (type-of st))
+    (let [b (keyword (str "stripped-" (name (block-of st))))]
+      (when (contains? @data/blocks b) (with-props-of b st)))))
+
+(def named-block-items
+  "Items whose block has another name (vanilla createBlockItemWithCustomItemName)."
+  {:redstone :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
+   :pumpkin-seeds :pumpkin-stem :melon-seeds :melon-stem :carrot :carrots :potato :potatoes
+   :torchflower-seeds :torchflower-crop :pitcher-pod :pitcher-crop :beetroot-seeds :beetroots
+   :sweet-berries :sweet-berry-bush :glow-berries :cave-vines})
+
+(defn wall-block
+  [block]
+  (let [n (name block)]
+    (cond
+      (str/ends-with? n "-hanging-sign") (keyword (str (subs n 0 (- (count n) 13)) "-wall-hanging-sign"))
+      :else (wall-variant block))))
+
+(def ^:private standing-and-wall-types
+  "Blocks whose item is a StandingAndWallBlockItem: the placement picks the
+   standing or the wall kind by the look, never by the clicked face."
+  #{:standing-sign :skull :player-head})
+
+(defn item->block [item face]
+  (let [face (long face)
+        n (name item)]
+    (cond
+      (contains? standing-and-wall-types (:type (get @data/blocks item))) item
+      (and (<= 2 face 5) (not (str/ends-with? n "-sign")) (wall-variant item)) (wall-variant item)
+      (contains? @data/blocks item) item
+      :else (named-block-items item))))
 
 (defn rotation-segment
   "One of 16 rotations for signs and banners, as vanilla RotationSegment."
   [yaw]
   (bit-and (long (Math/floor (+ (/ (* (+ (double yaw) 180.0) 16.0) 360.0) 0.5))) 15))
+
+(defn skull-rotation
+  [yaw]
+  (bit-and (long (Math/floor (+ (/ (* (double yaw) 16.0) 360.0) 0.5))) 15))
 
 (defn placement
   "State the client places for item on face (0..5, vanilla order) with the
@@ -254,21 +408,25 @@
           f    (player-facing yaw)
           top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))
           props (cond
-                  (#{:rotated-pillar :infested-rotated-pillar} t)
+                  (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
                   {:axis (case face (0 1) :y, (4 5) :x, :z)}
-                  (#{:standing-sign :banner} t)
+                  (#{:end-rod :weathering-lightning-rod :amethyst-cluster} t)
+                  {:facing (face->direction face)}
+                  (#{:standing-sign :banner :ceiling-hanging-sign} t)
                   {:rotation (keyword (str (rotation-segment yaw)))}
+                  (#{:skull :player-head} t)
+                  {:rotation (keyword (str (skull-rotation yaw)))}
                   (= :lantern t)
                   {:hanging (if (= face 0) :true :false)}
                   (str/ends-with? (name t) "leaves")
                   {:persistent :true}
-                  (= :door t)
+                  (contains? door-types t)
                   {:facing (player-direction yaw) :half :lower}
                   (= :bed t)
                   {:facing (player-direction yaw) :part :foot :occupied :false}
                   (= :fence-gate t)
                   {:facing (player-direction yaw)}
-                  (= :trapdoor t)
+                  (contains? trapdoor-types t)
                   (if (and (not replacing?) (>= face 2))
                     {:facing (face->facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
                     {:facing (opposite-facing (player-direction yaw)) :half (if (= face 1) :bottom :top)})
@@ -282,7 +440,7 @@
                   {:facing (get face->facing face :north)}
                   (contains? (:props b) :facing)
                   {:facing (nth [:north :east :south :west] f)})]
-      (state block (select-keys props (keys (:props b))))))))
+      (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 
@@ -318,6 +476,14 @@
   "Vanilla ignitedByLava: lava next to it may start a fire."
   [^long st]
   (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 2))))
+
+(defn solid-render?
+  [^long st]
+  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 8))))
+
+(defn collision-face-full-up?
+  [^long st]
+  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 16))))
 
 (defn randomly-ticking?
   "Vanilla isRandomlyTicking of the block or its fluid."
@@ -359,6 +525,52 @@
   [^long st face]
   (and (known? st)
        (pos? (bit-and (long (get @data/sturdy st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+
+(defn face-holds-rigid?
+  [^long st face]
+  (and (known? st)
+       (pos? (bit-and (long (get @data/sturdy-rigid st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+
+(defn face-holds-center?
+  [^long st face]
+  (and (known? st)
+       (pos? (bit-and (long (get @data/sturdy-center st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+
+(def ^:private tag-sets (atom {}))
+
+(defn tag-set
+  [tag]
+  (or (get @tag-sets tag)
+      (get (swap! tag-sets assoc tag (set (get-in @data/tags ["block" tag]))) tag)))
+
+(defn tagged?
+  [^long st tag]
+  (contains? (tag-set tag) (block-of st)))
+
+(def face-props [:up :north :south :west :east :down])
+
+(defn faces-of
+  [^long st]
+  (let [props (props-of st)]
+    (filterv #(= :true (get props %)) face-props)))
+
+(defn- vacant-face? [^long st]
+  (some (fn [k] (= :false (get (props-of st) k))) face-props))
+
+(defn stackable?
+  [^long st item]
+  (and (= item (block-of st))
+       (if-let [k (stack-props (type-of st))]
+         (< (Long/parseLong (name (get (props-of st) k))) 4)
+         (and (or (= :vine (type-of st)) (contains? multiface-types (type-of st)))
+              (boolean (vacant-face? st))))))
+
+(defn stacked
+  "The state with one more in the pile."
+  ^long [^long st]
+  (let [k (stack-props (type-of st))
+        n (Long/parseLong (name (get (props-of st) k)))]
+    (state (block-of st) (assoc (props-of st) k (keyword (str (inc n)))))))
 
 (defn same-slab? [^long st item]
   (and (= item (block-of st)) (= :slab (shape-type (type-of st)))))

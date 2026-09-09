@@ -2,7 +2,8 @@
   "One game tick. `tick` takes the world and the events received since the
    last tick and returns [world' deltas]. `start-ticker!` runs it 20 times per
    second on its own thread and hands each result to deliver!."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.sign :as sign]
+            [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
             [collider.game.out :as out]
@@ -12,6 +13,7 @@
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.daynight :as daynight]
+            [collider.game.systems.falling :as falling]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.keepalive :as keepalive]
@@ -34,6 +36,7 @@
    #'block-updates/block-updates
    #'random-tick/random-ticks
    #'items/items
+   #'falling/falling-blocks
    #'mobs/mobs-system
    #'tnt/tnt-system
    #'damage/damage
@@ -55,8 +58,10 @@
    (vanilla ChunkHolder.broadcastChanges), and the queue is cleared."
   [w]
   (when-let [events (:block-events w)]
-    (cons [:block-events-flushed]
-          (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events))))
+    (concat [[:block-events-flushed]]
+            (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
+            (for [[_ recs] events [pos _] recs :when (sign/at w pos)]
+              (out/all (out/block-entity pos))))))
 
 (defn tick
   "Advances the world by one tick: applies the events in order, runs the
@@ -68,7 +73,7 @@
         world' (reduce state/apply-event world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
-        post (concat (block-flush-deltas w1) (detector/observe world events d1 w1))]
+        post (concat (block-flush-deltas w1) (blocks/ack-deltas events) (detector/observe world events d1 w1))]
     (if (empty? post)
       [w1 d1]
       (let [[w2 d2] (state/apply-deltas w1 post)]

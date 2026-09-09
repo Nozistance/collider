@@ -5,7 +5,7 @@
             [clojure.string :as str]
             [clojure.tools.build.api :as b])
   (:import (java.io File)
-           (java.lang.reflect Field)
+           (java.lang.reflect Field Method)
            (java.net URL URLClassLoader)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
@@ -37,7 +37,7 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes sturdy :sturdy flags :flags fire :fire} (vanilla-shapes root)
+          {sh :shapes sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire} (vanilla-shapes root)
           drops (when (.isFile server) (block-drops server))
           items (vanilla-items reports)
           bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
@@ -61,8 +61,13 @@
                   (format "%d states that are not a whole cube" (count sh)))
       (write-edn! (path "sturdy.edn") sturdy
                   (format "%d states with a non-sturdy face" (count sturdy)))
+      (write-edn! (path "sturdy-center.edn") center
+                  (format "%d states with a face that does not hold a centred block" (count center)))
+      (write-edn! (path "sturdy-rigid.edn") rigid
+                  (format "%d states with a face that does not hold a rigid block" (count rigid)))
       (write-edn! (path "flags.edn") flags
-                  (format "%d states that block motion, ignite by lava or tick randomly" (count flags)))
+                  (format "%d states that block motion, ignite by lava, tick randomly, render solid or have a full top collision face"
+                          (count flags)))
       (write-edn! (path "fire.edn") fire
                   (format "%d blocks with fire odds" (count fire)))
       (when drops
@@ -156,7 +161,16 @@
           dir-cls    (Class/forName "net.minecraft.core.Direction" true cl)
           dirs       (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
           sturdy-m   (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls]))
-          flag-ms    (mapv #(.getMethod state-cls % (make-array Class 0)) ["blocksMotion" "ignitedByLava" "isRandomlyTicking"])
+          support-cls (Class/forName "net.minecraft.world.level.block.SupportType" true cl)
+          center     (static-field cl "net.minecraft.world.level.block.SupportType" "CENTER")
+          rigid      (static-field cl "net.minecraft.world.level.block.SupportType" "RIGID")
+          center-m   (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls support-cls]))
+          block-cls  (Class/forName "net.minecraft.world.level.block.Block" true cl)
+          shape-cls  (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl)
+          face-full-m (.getMethod block-cls "isFaceFull" (into-array Class [shape-cls dir-cls]))
+          up         (static-field cl "net.minecraft.core.Direction" "UP")
+          flag-ms    (mapv #(.getMethod state-cls % (make-array Class 0))
+                           ["blocksMotion" "ignitedByLava" "isRandomlyTicking" "isSolidRender"])
           states     (vec (iterator-seq (.iterator ^Iterable registry)))]
       {:shapes (into (sorted-map)
                      (for [st states
@@ -169,17 +183,41 @@
        :flags (into (sorted-map)
                     (for [st states
                           :let [id   (.invoke get-id registry (object-array [st]))
-                                mask (reduce (fn [m [i ^java.lang.reflect.Method f]]
+                                bits (reduce (fn [m [i ^Method f]]
                                                (if (.invoke f st (object-array 0))
                                                  (bit-or (long m) (bit-shift-left 1 (long i)))
                                                  m))
-                                             0 (map-indexed vector flag-ms))]
+                                             0 (map-indexed vector flag-ms))
+                                shape (.invoke shape-m st (object-array [empty zero]))
+                                mask (if (.invoke face-full-m nil (object-array [shape up]))
+                                       (bit-or (long bits) 16)
+                                       bits)]
                           :when (pos? (long mask))]
                       [id mask]))
-       :fire (fire-odds cl)
+       :fire   (fire-odds cl)
+       :sturdy-center (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        mask (reduce (fn [m [i d]]
+                                                       (if (.invoke center-m st (object-array [empty zero d center]))
+                                                         (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                         m))
+                                                     0 (map-indexed vector dirs))]
+                                  :when (not= mask 63)]
+                              [id mask]))
+       :sturdy-rigid (into (sorted-map)
+                           (for [st states
+                                 :let [id (.invoke get-id registry (object-array [st]))
+                                       mask (reduce (fn [m [i d]]
+                                                      (if (.invoke center-m st (object-array [empty zero d rigid]))
+                                                        (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                        m))
+                                                    0 (map-indexed vector dirs))]
+                                 :when (not= mask 63)]
+                             [id mask]))
        :sturdy (into (sorted-map)
                      (for [st states
-                           :let [id   (.invoke get-id registry (object-array [st]))
+                           :let [id (.invoke get-id registry (object-array [st]))
                                  mask (reduce (fn [m [i d]]
                                                 (if (.invoke sturdy-m st (object-array [empty zero d]))
                                                   (bit-or (long m) (bit-shift-left 1 (long i)))
@@ -189,14 +227,14 @@
                        [id mask]))})))
 
 (defn- fire-odds [^ClassLoader cl]
-  (let [fire     (static-field cl "net.minecraft.world.level.block.Blocks" "FIRE")
+  (let [fire (static-field cl "net.minecraft.world.level.block.Blocks" "FIRE")
         fire-cls (Class/forName "net.minecraft.world.level.block.FireBlock" true cl)
-        reg      (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
-        key-m    (.getMethod (class reg) "getKey" (into-array Class [Object]))
-        name-of  (fn [b] (let [k (.invoke key-m reg (object-array [b]))]
-                           (kw (.invoke (.getMethod (class k) "getPath" (make-array Class 0)) k (object-array 0)))))
-        table    (fn [n] (let [f (doto (.getDeclaredField fire-cls n) (.setAccessible true))]
-                           (into {} (map (fn [[b v]] [(name-of b) v])) (.get f fire))))]
+        reg (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
+        key-m (.getMethod (class reg) "getKey" (into-array Class [Object]))
+        name-of (fn [b] (let [k (.invoke key-m reg (object-array [b]))]
+                          (kw (.invoke (.getMethod (class k) "getPath" (make-array Class 0)) k (object-array 0)))))
+        table (fn [n] (let [f (doto (.getDeclaredField fire-cls n) (.setAccessible true))]
+                        (into {} (map (fn [[b v]] [(name-of b) v])) (.get f fire))))]
     (merge-with merge
                 (into (sorted-map) (map (fn [[k v]] [k {:ignite v}])) (table "igniteOdds"))
                 (into (sorted-map) (map (fn [[k v]] [k {:burn v}])) (table "burnOdds")))))
@@ -405,11 +443,15 @@
         acc))))
 
 (def ^:private type-classes
+  "Block definition types whose vanilla class is not the type name + Block."
   {:jack-o-lantern "CarvedPumpkinBlock" :enchantment-table "EnchantingTableBlock"})
 
 (defn- letters [s] (str/lower-case (str/replace (str s) #"[^A-Za-z]" "")))
 
-(defn- block-entries [classes]
+(defn- block-entries
+  "Block names per vanilla class, from the :type of blocks.edn: the type
+   name plus Block, matched by letters only (trapdoor = TrapDoorBlock)."
+  [classes]
   (let [blocks (edn/read-string (slurp "resources/mc/blocks.edn"))
         by-letters (into {} (map (fn [c] [(letters c) c])) classes)]
     (reduce (fn [m [b info]]
@@ -426,6 +468,11 @@
     (reduce (fn [m [c es]] (update m c (fn [v] (assoc (or v {:hooks []}) :entries (vec (sort es)))))) blocks entries)))
 
 (defn tracker
+  "Writes the parity report of this repository: per vanilla class its hooks
+   (done / skipped / open) and, for blocks, the block names of the class,
+   with summary.json next to it for the totals. Reads the hooks matrix
+   (default ../exclude/hooks.md). The site reads the result over HTTP; this
+   repository knows nothing about the site."
   [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
   (let [parsed (parse-hooks (slurp hooks))
         data {:meta {:generated (str (Instant/now))

@@ -7,6 +7,8 @@
             [collider.game.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
+            [collider.world.eyeblossom :as eyeblossom]
+            [collider.world.sponge :as sponge]
             [collider.world.gen :as gen]
             [collider.world.fire :as fire]
             [collider.world.liquid :as liquid]
@@ -58,6 +60,62 @@
         d [(out/all (out/fizz pos))]]
     d))
 
+(defn- loose-scaffold?
+  [old]
+  (and (= :scaffolding (block/type-of old)) (not= :7 (:distance (block/props-of old)))))
+
+(defn- fall-deltas
+  [world changes]
+  (for [[[x y z :as pos] st] changes
+        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :when (and (block/falls? old) (= (long st) (block/emptied old)))]
+    (if (loose-scaffold? old)
+      [:spawn-entity (items/popped world pos {:item :scaffolding :count 1} :loose)]
+      [:spawn-entity {:type :falling-block
+                      :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+                      :vel [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
+                      :block (block/without-water old) :start pos :time 0}])))
+
+(def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
+
+(defn- sponge-drops
+  [world sponge changed]
+  (let [chunks (:chunks world)]
+    (for [[pos st] (sponge/absorbed chunks sponge)
+          :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
+          :when (and (zero? (long st)) (contains? sponge-plants (block/type-of old))
+                     (= 0 (long (get changed pos -1))))
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
+      [pos stack i])))
+
+(defn- sponge-deltas
+  [world cells changes]
+  (when (get-in world [:rules :block-drops] true)
+    (let [chunks  (:chunks world)
+          changed (into {} changes)
+          sponges (filter #(= :sponge (block/type-of (chunk/chunks-get-block chunks gen/flat-chunk %))) cells)]
+      (->> (mapcat #(sponge-drops world % changed) sponges)
+           (reduce (fn [[seen acc] [pos stack i]]
+                     (if (contains? seen [pos i])
+                       [seen acc]
+                       [(conj seen [pos i]) (conj acc [:spawn-entity (items/popped world pos stack i)])]))
+                   [#{} []])
+           second))))
+
+(defn- eyeblossom-deltas
+  [changes]
+  (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]
+    (out/all (out/sound (eyeblossom/sound-kind (long st) false) pos 1.0 1.0))))
+
+(defn- eyeblossom-schedules
+  [world changes]
+  (let [chunks (:chunks world) t (long (:tick world))]
+    (reduce (fn [m [pos st]]
+              (if-not (eyeblossom/eyeblossom? (long st))
+                m
+                (merge-with into m (eyeblossom/cascade chunks pos (chunk/chunks-get-block chunks gen/flat-chunk pos) t))))
+            {} changes)))
+
 (defn- ignite-deltas [world due]
   (let [chunks   (:chunks world)
         pending  (tnt/primed-origins world)
@@ -81,7 +139,9 @@
             now     (into [] (comp (filter #(state/active-id? active %))
                                    (map chunk/id->block-pos)) due)
             parked  (into [] (remove #(state/active-id? active %)) due)
-            changes (lww-changes (:chunks world) {:rules (:rules world) :tick t} now)
+            changes (lww-changes (:chunks world)
+                                 {:rules (:rules world) :tick t :time-of-day (:time-of-day world 0)}
+                                 now)
             changed (into #{} (map first) changes)
             again   (reduce (fn [m p]
                               (if-let [at (and (not (contains? changed p))
@@ -90,14 +150,18 @@
                                                                  p t))]
                                 (update m at (fnil conj []) (chunk/block-pos->id p))
                                 m))
-                            {} now)]
+                            {} now)
+            woken   (merge-with into again (eyeblossom-schedules world changes))]
         (concat
          [[:ticks-flushed t parked]]
-         (when (seq again) [[:schedule-ticks again]])
+         (when (seq woken) [[:schedule-ticks woken]])
          (when (seq changes)
            (concat [[:set-blocks changes]]
                    (fizz-deltas world changes)
-                   (wash-deltas world changes)))
+                   (wash-deltas world changes)
+                   (sponge-deltas world now changes)
+                   (fall-deltas world changes)
+                   (eyeblossom-deltas changes)))
          (ignite-deltas world now))))))
 
 (defn block-updates [world events]

@@ -2,7 +2,8 @@
   "Packets of one tick. `render` takes the world and the deltas and returns
    [eid packet] pairs. Chunk and entity packets come from :chunks-sent and
    :tracking deltas, everything else from effects."
-  (:require [clojure.data.int-map :as i]
+  (:require [collider.game.sign :as sign]
+            [clojure.data.int-map :as i]
             [collider.data :as data]
             [collider.game.deltas]
             [collider.game.rules :as rules]
@@ -34,7 +35,8 @@
         (map (fn [id]
                (let [[x z] (chunk/id->pos id)]
                  {:packet :level-chunk-with-light :cx x :cz z
-                  :chunk (get-in world [:chunks id] gen/flat-chunk)}))
+                  :chunk (get-in world [:chunks id] gen/flat-chunk)
+                  :block-entities (sign/wire (get-in world [:block-entities id]))}))
              add)
         [{:packet :chunk-batch-finished :size (count add)}]))
      (map (fn [id]
@@ -46,7 +48,8 @@
   (delay {:player (data/registry-id "entity_type" :player)
           :sheep  (data/registry-id "entity_type" :sheep)
           :item   (data/registry-id "entity_type" :item)
-          :tnt    (data/registry-id "entity_type" :tnt)}))
+          :tnt    (data/registry-id "entity_type" :tnt)
+          :falling-block (data/registry-id "entity_type" :falling-block)}))
 
 (defn- kind-of [e]
   (let [t (:type e)]
@@ -71,6 +74,7 @@
              [18 :byte (bit-and (long (or (:color meta) 0)) 15)]]
     :item   [[8 :item (:stack meta)]]
     :tnt    [[8 :int 80]]
+    :falling-block [[8 :block-pos (:start meta)]]
     []))
 
 (def ^:private equipment-slots [0 2 3 4 5])
@@ -90,7 +94,8 @@
         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
          :pos (if tr (mapv #(/ (double %) 4096.0) (:pos tr)) (:pos e))
          :vel (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
-         :yaw (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))}]
+         :yaw (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
+         :data (if (= :falling-block kind) (:block e) 0)}]
        (when (seq d) [{:packet :set-entity-data :eid eid :data d}])
        (when (seq equip) [{:packet :set-equipment :eid eid :slots equip}])
        [{:packet :bundle-delimiter}]))))
@@ -100,16 +105,44 @@
    (mapcat #(spawn-packets world %) add)
    (when (seq gone) [{:packet :remove-entities :eids gone}])))
 
-(def ^:private sounds
-  (delay
-   (into {}
-         (map (fn [[k [ev src]]] [k [(data/registry-id "sound_event" ev) src]]))
-         {:player/hurt         [:entity.player.hurt 7]
+(def sound-table
+  "Sound kind of the core -> [vanilla sound event, source]. Resolved one by
+   one: an unknown event drops that sound with a log line, never the tick."
+  {:player/hurt         [:entity.player.hurt 7]
           :player/hurt-on-fire [:entity.player.hurt-on-fire 7]
           :player/death        [:entity.player.death 7]
           :sheep/say    [:entity.sheep.ambient 6]
           :sheep/step   [:entity.sheep.step 6]
           :tnt/primed   [:entity.tnt.primed 4]
+          :hoe/till     [:item.hoe.till 4]
+          :candle/extinguish [:block.candle.extinguish 4]
+          :eyeblossom/open       [:block.eyeblossom.open 4]
+          :eyeblossom/close      [:block.eyeblossom.close 4]
+          :eyeblossom/open-long  [:block.eyeblossom.open-long 4]
+          :eyeblossom/close-long [:block.eyeblossom.close-long 4]
+          :cake/add-candle [:block.cake.add-candle 4]
+          :cave-vines/pick-berries [:block.cave-vines.pick-berries 4]
+          :copper-golem/statue [:entity.copper-golem-become-statue 4]
+          :axe/strip    [:item.axe.strip 4]
+          :axe/scrape   [:item.axe.scrape 4]
+          :axe/wax-off  [:item.axe.wax-off 4]
+          :honeycomb/wax-on [:item.honeycomb.wax-on 4]
+          :dye/use      [:item.dye.use 4]
+          :glow-ink/use [:item.glow-ink-sac.use 4]
+          :ink-sac/use  [:item.ink-sac.use 4]
+          :sign/waxed   [:block.sign.waxed-interact-fail 4]
+          :bucket/empty [:item.bucket.empty 4]
+          :bucket/fill  [:item.bucket.fill 4]
+          :bucket/empty-lava [:item.bucket.empty-lava 4]
+          :bucket/fill-lava  [:item.bucket.fill-lava 4]
+          :bucket/empty-snow [:item.bucket.empty-powder-snow 4]
+          :bucket/fill-snow  [:item.bucket.fill-powder-snow 4]
+          :pumpkin/carve [:block.pumpkin.carve 4]
+          :composter/fill [:block.composter.fill 4]
+          :composter/fill-success [:block.composter.fill-success 4]
+          :composter/ready [:block.composter.ready 4]
+          :composter/empty [:block.composter.empty 4]
+          :shovel/flatten [:item.shovel.flatten 4]
           :fire/ignite  [:item.flintandsteel.use 4]
           :explosion    [:entity.generic.explode 4]
           :splash       [:entity.generic.splash 6]
@@ -121,7 +154,7 @@
           :place/sand   [:block.sand.place 4]
           :place/cloth  [:block.wool.place 4]
           :place/glass  [:block.glass.place 4]
-          :place/snow   [:block.snow.place 4]})))
+          :place/snow   [:block.snow.place 4]})
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 (def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))
@@ -161,8 +194,10 @@
     nil))
 
 (defn- sound-id [kind]
-  (or (get @sounds kind)
-      (when-let [id (get (get @data/registries "sound_event") kind)] [id 4])))
+  (let [reg (get @data/registries "sound_event")]
+    (if-let [[ev src] (get sound-table kind)]
+      (when-let [id (get reg ev)] [id src])
+      (when-let [id (get reg kind)] [id 4]))))
 
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
@@ -173,7 +208,7 @@
   (let [k (:motion m)]
     {:packet :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
-     :particle @explosion-particle :sound (first (get @sounds :explosion))}))
+     :particle @explosion-particle :sound (first (sound-id :explosion))}))
 
 (defn- fx-packets [world m]
   (case (:msg m)
@@ -204,6 +239,11 @@
     :tab-header [{:packet :tab-list :header (:header m) :footer (:footer m)}]
     :break-effect [{:packet :level-event :event 2001 :pos (:pos m) :data (:state m)}]
     :fizz [{:packet :level-event :event 1501 :pos (:pos m) :data 0}]
+    :bonemeal [{:packet :level-event :event 1505 :pos (:pos m) :data 15}]
+    :level-event [{:packet :level-event :event (:event m) :pos (:pos m) :data (:data m 0)}]
+    :sign-editor [{:packet :open-sign-editor :pos (:pos m) :front? (:front? m)}]
+    :block-entity (when-let [e (sign/at world (:pos m))]
+                    [{:packet :block-entity-data :pos (:pos m) :type (sign/type-id e) :nbt (sign/nbt e)}])
     :extinguish [{:packet :level-event :event 1009 :pos (:pos m) :data 0}]
     :move [{:packet :move-entity-pos :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m) :on-ground (:on-ground m)}]
     :move-look [{:packet :move-entity-pos-rot :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)

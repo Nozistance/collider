@@ -98,6 +98,30 @@
         (do (.writeByte buf 8) (.writeUTF d ^String (str s)))))
     (.writeBytes buf (.toByteArray bo))))
 
+(defn- nbt-type ^long [v]
+  (cond (map? v) 10 (string? v) 8 (boolean? v) 1 (integer? v) 3 (vector? v) 9
+        :else (throw (ex-info "no NBT type" {:value v}))))
+
+(defn- write-nbt-payload [^DataOutputStream d v]
+  (cond
+    (map? v) (do (doseq [[k x] v :when (some? x)]
+                   (.writeByte d (nbt-type x)) (.writeUTF d (name k)) (write-nbt-payload d x))
+                 (.writeByte d 0))
+    (string? v) (.writeUTF d ^String v)
+    (boolean? v) (.writeByte d (if v 1 0))
+    (integer? v) (.writeInt d (int v))
+    (vector? v) (do (.writeByte d (if (empty? v) 0 (nbt-type (first v))))
+                    (.writeInt d (count v))
+                    (doseq [x v] (write-nbt-payload d x)))))
+
+(defn write-nbt
+  [^Buf buf v]
+  (let [bo (ByteArrayOutputStream.)]
+    (with-open [d (DataOutputStream. bo)]
+      (.writeByte d (nbt-type v))
+      (write-nbt-payload d v))
+    (.writeBytes buf (.toByteArray bo))))
+
 (defn write-angle [^Buf buf ^double deg]
   (.writeByte buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
 

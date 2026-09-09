@@ -77,9 +77,20 @@
 (defn- our-section [chunk ^long si]
   (when (< -1 si chunk/section-count) (get (:sections chunk) si)))
 
-(defn write-chunk! [^Buf buf ^long cx ^long cz chunk]
-  (.writeInt buf (int cx))
-  (.writeInt buf (int cz))
+(defn- write-block-entities!
+  [^Buf buf entries]
+  (c/write-varint buf (count entries))
+  (doseq [[[x y z] {:keys [type nbt]}] entries]
+    (.writeByte buf (int (bit-or (bit-shift-left (bit-and (long x) 15) 4) (bit-and (long z) 15))))
+    (.writeShort buf (int y))
+    (c/write-varint buf (long type))
+    (c/write-nbt buf nbt)))
+
+(defn write-chunk!
+  ([buf cx cz chunk] (write-chunk! buf cx cz chunk nil))
+  ([^Buf buf cx cz chunk block-entities]
+  (.writeInt buf (int (long cx)))
+  (.writeInt buf (int (long cz)))
   (c/write-varint buf 0)
   (let [body (Buf. 4096)]
     (dotimes [wi chunk/section-count]
@@ -88,7 +99,7 @@
         (write-empty-section! body)))
     (c/write-varint buf (.readableBytes body))
     (.writeBytes buf body))
-  (c/write-varint buf 0)
+  (write-block-entities! buf block-entities)
   (let [blk? (fn [li] (some? (our-section chunk (dec (long li)))))
         sky? (fn [li] (or (blk? li) (blk? (dec (long li)))))
         sky-mask (light-mask sky?)
@@ -108,4 +119,4 @@
     (dotimes [li light-sections]
       (when (blk? li)
         (c/write-varint buf 2048)
-        (.writeBytes buf ^bytes (.block-light ^Section (our-section chunk (dec li))))))))
+        (.writeBytes buf ^bytes (.block-light ^Section (our-section chunk (dec li)))))))))

@@ -2,7 +2,8 @@
   "Applies events and deltas to the world. `apply-event` handles what
    players send (join, quit, move, dig, place, ...); `apply-deltas` merges
    what the systems produced."
-  (:require [clojure.core.reducers :as r]
+  (:require [collider.game.sign :as sign]
+            [clojure.core.reducers :as r]
             [clojure.string]
             [collider.vec :as v]
             [clojure.data.int-map :as i]
@@ -92,6 +93,14 @@
     bt
     changed))
 
+(defn- drop-block-entities
+  [w real]
+  (reduce (fn [w [pos old st]]
+            (if (and (sign/kind old) (not= (block/block-of old) (block/block-of (long st))))
+              (update-in w [:block-entities (chunk/block-chunk pos)] dissoc pos)
+              w))
+          w real))
+
 (defn- apply-set-blocks [w changes]
   (let [chunks (:chunks w)
         real (into []
@@ -106,11 +115,12 @@
                         (chunk/chunks-set-blocks gen/flat-chunk
                                                  (mapv (fn [[pos _ st]] [pos st]) real))
                         (light/relight-batch gen/flat-chunk real))
-            derived (connect/derived-changes chunks' (map first real))
+            derived (connect/derived-changes chunks' (map first real) (:tick w))
             chunks' (chunk/chunks-set-blocks chunks' gen/flat-chunk derived)
             events  (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
         (-> w
             (assoc :chunks chunks')
+            (drop-block-entities real)
             (update :block-ticks schedule-updates (:tick w) chunks' real)
             (cond-> (seq events)
               (update :block-events
@@ -161,11 +171,21 @@
     (update-entity w eid assoc :held-slot (long slot) :using-item? false)
     w))
 
-(defn- use-item [w eid face item]
-  (if (and (= 255 (bit-and (long face) 0xFF))
-           (sword? item))
-    (update-entity w eid assoc :using-item? true)
-    w))
+(defn- wrap-degrees ^double [^double d]
+  (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
+
+(defn- snapped
+  [e rot]
+  (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
+    (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
+    e))
+
+(defn- use-item [w eid face item rot]
+  (let [w (update-entity w eid snapped rot)]
+    (if (and (= 255 (bit-and (long face) 0xFF))
+             (sword? item))
+      (update-entity w eid assoc :using-item? true)
+      w)))
 
 (defn- release-item [w eid status]
   (if (= 5 (long status))
@@ -291,7 +311,7 @@
     :client-settings (let [[eid sp] args] (update-entity world eid assoc :skin-parts sp))
     :held-item (apply held-item world args)
     :creative-slot (apply creative-slot world args)
-    :place (let [[eid _ face item] args] (use-item world eid face item))
+    :place (let [[eid _ face item _ _ rot] args] (use-item world eid face item rot))
     :dig (let [[eid status] args] (release-item world eid status))
     world))
 
@@ -368,6 +388,10 @@
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
+    :set-block-entity (let [[pos e] args cp (chunk/block-chunk pos)]
+                        (if e
+                          (assoc-in w [:block-entities cp pos] e)
+                          (update-in w [:block-entities cp] dissoc pos)))
     (if (deltas/entity-tags tag)
       (update-entity w (first args) #(apply-entity-delta (:tick w) % delta))
       w)))

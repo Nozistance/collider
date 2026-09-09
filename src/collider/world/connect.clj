@@ -5,7 +5,9 @@
             [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.gen :as gen]
+            [collider.world.liquid :as liquid]
+            [collider.world.support :as support]))
 
 (set! *warn-on-reflection* true)
 
@@ -18,12 +20,21 @@
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
 (def ^:private neighbours (conj (vec (vals dirs)) [0 1 0] [0 -1 0]))
-(def connecting-types #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :bed})
+(def pair-types #{:double-plant :tall-flower :tall-seagrass})
+(def placed-types
+  "Connecting blocks whose state a placement computes from the neighbours
+   before it lands: the rest (doors, beds, plants, vines) are placed whole."
+  #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder})
+(def connecting-types
+  (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
+          :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein}
+        (concat pair-types block/growing-plant-types [:pitcher-crop])))
 
 (defn- exception? [n]
   (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
 
 (def ^:private opposite {:north :south :south :north :west :east :east :west})
+(def ^:private opposite-face {:up :down :down :up :north :south :south :north :west :east :east :west})
 
 (defn- sturdy? [st n dir]
   (and (block/face-sturdy? st (opposite dir)) (not (exception? n))))
@@ -105,10 +116,84 @@
       (block/state self (assoc (block/props-of st) :occupied (:occupied pprops)))
       0)))
 
+(defn- stair? [st half]
+  (and (= :stair (block/type-of st)) (= half (:half (block/props-of st)))))
+
+(defn- can-take-shape?
+  [st at dir]
+  (let [n (at (dirs dir))]
+    (not (and (stair? n (:half (block/props-of st)))
+              (= (block/facing-of n) (block/facing-of st))))))
+
+(defn- stair-state
+  [self st at]
+  (let [props  (block/props-of st)
+        facing (:facing props)
+        half   (:half props)
+        axis   (fn [f] (if (#{:north :south} f) :z :x))
+        behind (at (dirs facing))
+        front  (at (dirs (opposite facing)))
+        bf     (block/facing-of behind)
+        ff     (block/facing-of front)
+        left   (block/counter-clockwise facing)
+        shape  (cond
+                 (and (stair? behind half) (not= (axis bf) (axis facing)) (can-take-shape? st at (opposite bf)))
+                 (if (= bf left) :outer_left :outer_right)
+                 (and (stair? front half) (not= (axis ff) (axis facing)) (can-take-shape? st at ff))
+                 (if (= ff left) :inner_left :inner_right)
+                 :else :straight)]
+    (block/state self (assoc props :shape shape))))
+
+(def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
+
+(defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
+
+(defn- touches-water?
+  [st at]
+  (or (and (water? st) (water? (at (six :down))))
+      (some (fn [dir]
+              (let [n (at (six dir))]
+                (and (water? n) (not (block/face-sturdy? n (opposite-face dir))))))
+            [:up :north :south :west :east])))
+
+(defn- powder-state
+  [st at]
+  (if (or (water? (at [0 0 0])) (touches-water? (at [0 0 0]) at))
+    (block/concrete-of st)
+    st))
+
+(defn- pair-state
+  [self st at]
+  (let [props (block/props-of st)
+        lower? (= :lower (:half props))
+        partner (at (if lower? [0 1 0] [0 -1 0]))]
+    (if (and (= self (block/block-of partner))
+             (not= (:half (block/props-of partner)) (:half props)))
+      st
+      (block/emptied st))))
+
+(defn- pitcher-state
+  [self st at]
+  (if (>= (Long/parseLong (name (:age (block/props-of st)))) 3)
+    (pair-state self st at)
+    st))
+
+(defn- growing-plant-state
+  [pos st at tick]
+  (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
+        on? (contains? #{head body} (block/block-of (at (six dir))))
+        berries (:berries (block/props-of st))
+        props (cond-> {} berries (assoc :berries berries))]
+    (cond
+      (and (= head (block/block-of st)) on?) (block/state body props)
+      (and (= body (block/block-of st)) (not on?)) (block/state head (assoc props :age (support/plant-age tick pos)))
+      :else st)))
+
 (defn reshape
   "New state of the block at pos after its connections to the neighbours are
-   recomputed; nil if unchanged or not a connecting block."
-  [chunks [x y z :as pos] ^long st]
+   recomputed; nil if unchanged or not a connecting block. tick seeds the
+   age a growing plant body turned back into a head rolls."
+  [chunks [x y z :as pos] ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
       (let [self  (block/block-of st)
@@ -118,9 +203,17 @@
                         (chunk/chunks-get-block chunks gen/flat-chunk [(+ (long x) (long dx)) ny (+ (long z) (long dz))])
                         0)))
             new   (case t
-                    :door (door-state self st at)
+                    (:door :weathering-copper-door) (door-state self st at)
                     :bed (bed-state self st at)
                     :fence-gate (gate-state self st at)
+                    :stair (stair-state self st at)
+                    :concrete-powder (powder-state st at)
+                    :vine (support/vine-updated chunks gen/flat-chunk pos st)
+                    (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
+                    (:double-plant :tall-flower :tall-seagrass) (pair-state self st at)
+                    :pitcher-crop (pitcher-state self st at)
+                    (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
+                    (growing-plant-state pos st at tick)
                     (let [sides (into {} (map (fn [[dir off]]
                                                 (let [c (connects? t self (at off) dir)]
                                                   [dir (if (= :wall t) (if c :low :none) (if c :true :false))])))
@@ -143,7 +236,7 @@
         right (dirs (block/clockwise facing))
         full (fn [off] (if (block/full-cube? (at off)) 1 0))
         balance (+ (- (full left)) (- (full (mapv + left [0 1 0]))) (full right) (full (mapv + right [0 1 0])))
-        lower-door? (fn [st] (and (= :door (block/type-of st)) (= :lower (:half (block/props-of st)))))
+        lower-door? (fn [st] (and (contains? block/door-types (block/type-of st)) (= :lower (:half (block/props-of st)))))
         door-left (lower-door? (at left))
         door-right (lower-door? (at right))
         [sx _ sz] (dirs facing)
@@ -167,14 +260,14 @@
 (defn- reshaped
   "Changes at positions and around them. A changed bed half is not reshaped
    by its own change: it is the source its other half copies from."
-  [chunks positions]
+  [chunks positions tick]
   (let [origin (set positions)]
     (into []
           (keep (fn [[_ y _ :as p]]
                   (when (chunk/in-range? y)
                     (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                       (when-not (and (contains? origin p) (= :bed (block/type-of st)))
-                        (when-let [new (reshape chunks p st)]
+                        (when-let [new (reshape chunks p st tick)]
                           [p new]))))))
           (distinct (concat positions (mapcat around positions))))))
 
@@ -182,9 +275,9 @@
   "[[pos state] ...] for the blocks at positions and their neighbours whose
    connections changed, followed through: a door half that goes takes the
    other half with it. chunks already hold the changes at positions."
-  [chunks positions]
+  [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
-    (let [changes (reshaped chunks positions)]
+    (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))
         acc
         (recur (chunk/chunks-set-blocks chunks gen/flat-chunk changes)

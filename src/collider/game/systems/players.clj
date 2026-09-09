@@ -23,6 +23,8 @@
     {:stack (:stack e)}
     (= :tnt (:type e))
     {}
+    (= :falling-block (:type e))
+    {:start (:start e)}
     (mobs/mob-type? (:type e))
     (mobs/metadata e)
     :else

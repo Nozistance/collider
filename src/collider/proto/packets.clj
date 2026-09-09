@@ -245,7 +245,16 @@
    [:play :set-chunk-cache-center]
    {:write (fn [^Buf buf m] (c/write-varint buf (long (:cx m))) (c/write-varint buf (long (:cz m))))}
    [:play :level-chunk-with-light]
-   {:write (fn [^Buf buf m] (chunk/write-chunk! buf (:cx m) (:cz m) (:chunk m)))}
+   {:write (fn [^Buf buf m] (chunk/write-chunk! buf (:cx m) (:cz m) (:chunk m) (:block-entities m)))}
+   [:play :open-sign-editor]
+   {:write (fn [^Buf buf m]
+             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
+             (.writeBoolean buf (boolean (:front? m))))}
+   [:play :block-entity-data]
+   {:write (fn [^Buf buf m]
+             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
+             (c/write-varint buf (long (:type m)))
+             (c/write-nbt buf (:nbt m)))}
    [:play :forget-level-chunk]
    {:write (fn [^Buf buf m]
              (.writeLong buf (bit-or (bit-and (long (:cx m)) 0xFFFFFFFF)
@@ -471,7 +480,13 @@
                               :sequence (c/read-varint buf)})}
    [:play :use-item]
    {:read (fn [^Buf buf] {:hand     (c/read-varint buf)
-                              :sequence (c/read-varint buf)})}
+                              :sequence (c/read-varint buf)
+                              :yaw      (.readFloat buf)
+                              :pitch    (.readFloat buf)})}
+   [:play :sign-update]
+   {:read (fn [^Buf buf] {:pos    (c/read-block-pos buf)
+                              :front? (.readBoolean buf)
+                              :lines  (vec (repeatedly 4 #(c/read-string buf)))})}
    [:play :swing]
    {:read (fn [^Buf buf] {:hand (c/read-varint buf)})}
    [:play :player-command]

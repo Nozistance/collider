@@ -1,12 +1,15 @@
 (ns collider.game.systems.random.tick
   "Random ticks (ServerLevel.tickChunk): randomTickSpeed random cells per
-   non-empty section of each active chunk. For now only lava
-   (LavaFluid.randomTick)."
-  (:require [collider.game.state :as state]
+   non-empty section of each active chunk: lava (LavaFluid.randomTick),
+   plants and soil (world/grow)."
+  (:require [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.rnd :as rnd]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.eyeblossom :as eyeblossom]
             [collider.world.gen :as gen]
+            [collider.world.grow :as grow]
             [collider.world.liquid :as liquid])
   (:import (collider.world.chunk Section)))
 
@@ -24,10 +27,11 @@
               (vals (:players world))))))
 
 (defn- cell-changes [world chunks p st]
-  (when (= :lava (liquid/liquid-class st))
-    (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
-      (liquid/lava-random-tick chunks gen/flat-chunk p
-                               (fn [salt] (rnd/rnd [(:tick world) p salt]))))))
+  (let [rnd (fn [salt] (rnd/rnd [(:tick world) p salt]))]
+    (if (= :lava (liquid/liquid-class st))
+      (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
+        (liquid/lava-random-tick chunks gen/flat-chunk p rnd))
+      (grow/random-tick chunks p st rnd (:time-of-day world 0)))))
 
 (defn- section-changes [world chunks cid si speed]
   (let [t (long (:tick world)) cid (long cid) si (long si) speed (long speed)
@@ -44,6 +48,22 @@
                         (cell-changes world chunks [(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)] st)))))
           (range speed))))
 
+(defn- eyeblossom-changes [changes]
+  (filter (fn [[_ st]] (eyeblossom/eyeblossom? (long st))) changes))
+
+(defn- eyeblossom-sounds
+  [changes]
+  (for [[p st] (eyeblossom-changes changes)]
+    (out/all (out/sound (eyeblossom/sound-kind (long st) true) p 1.0 1.0))))
+
+(defn- eyeblossom-schedules
+  [world changes]
+  (let [chunks (:chunks world) t (long (:tick world))]
+    (reduce (fn [m [p st]]
+              (let [old (chunk/chunks-get-block chunks gen/flat-chunk p)]
+                (merge-with into m (eyeblossom/cascade chunks p old t))))
+            {} (eyeblossom-changes changes))))
+
 (defn- random-tick-deltas [world _events]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))
         chunks (:chunks world)]
@@ -58,7 +78,10 @@
                                             (map-indexed vector (:sections c))))))
                           (seq (state/active-chunks world)))]
         (when (seq changes)
-          [[:set-blocks changes]])))))
+          (let [woken (eyeblossom-schedules world changes)]
+            (concat [[:set-blocks changes]]
+                    (when (seq woken) [[:schedule-ticks woken]])
+                    (eyeblossom-sounds changes))))))))
 
 (defn random-ticks [world events]
   [#(random-tick-deltas world events)])

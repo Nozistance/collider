@@ -16,9 +16,10 @@
 (defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
 
 (defn head-state
-  "Head with an age from the position, as vanilla picks a random one."
-  ^long [pos]
-  (block/state :kelp {:age (keyword (str (mod (hash pos) 25)))}))
+  "Head with a random age, as GrowingPlantHeadBlock.getStateForPlacement
+   rolls nextInt(25)."
+  ^long [tick pos]
+  (block/state :kelp {:age (support/plant-age tick pos)}))
 
 (defn- above [chunks [x y z]]
   (let [y (inc (long y))]
@@ -35,6 +36,6 @@
                    (concat
                     (case (block/type-of st)
                       :kelp (when up? [[p (block/state :kelp-plant)]])
-                      :kelp-plant (when-not up? [[p (head-state p)]])
+                      :kelp-plant (when-not up? [[p (head-state (:tick ctx) p)]])
                       nil)
                     (liquid/update-cell chunks gen/flat-chunk p (:rules ctx))))))})

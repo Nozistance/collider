@@ -17,6 +17,8 @@
 (def tags       (delay (load-edn "tags.edn")))
 (def shapes     (delay (load-edn "shapes.edn")))
 (def sturdy     (delay (load-edn "sturdy.edn")))
+(def sturdy-center (delay (load-edn "sturdy-center.edn")))
+(def sturdy-rigid  (delay (load-edn "sturdy-rigid.edn")))
 (def items      (delay (load-edn "items.edn")))
 (def flags      (delay (load-edn "flags.edn")))
 (def fire       (delay (load-edn "fire.edn")))

@@ -157,3 +157,19 @@
 
 (defn fizz [pos]
   {:msg :fizz :pos pos})
+
+(defn level-event
+  ([event pos] (level-event event pos 0))
+  ([event pos data] {:msg :level-event :event event :pos pos :data data}))
+
+(defn sign-editor
+  [pos front?]
+  {:msg :sign-editor :pos pos :front? (boolean front?)})
+
+(defn block-entity
+  [pos]
+  {:msg :block-entity :pos pos})
+
+(defn bonemeal
+  [pos]
+  {:msg :bonemeal :pos pos})

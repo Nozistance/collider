@@ -1,17 +1,29 @@
 (ns collider.world.rules
 
-  (:require [collider.world.fire :as fire]
+  (:require [collider.world.composter :as composter]
+            [collider.world.coral :as coral]
+            [collider.world.eyeblossom :as eyeblossom]
+            [collider.world.falling :as falling]
+            [collider.world.fire :as fire]
             [collider.world.grass :as grass]
             [collider.world.kelp :as kelp]
             [collider.world.liquid :as liquid]
+            [collider.world.scaffold :as scaffold]
+            [collider.world.sponge :as sponge]
             [collider.world.support :as support]))
 
 (set! *warn-on-reflection* true)
 
 (def rules [kelp/rule
+   eyeblossom/rule
    liquid/rule
    fire/rule
    support/rule
+   falling/rule
+   sponge/rule
+   coral/rule
+   scaffold/rule
+   composter/rule
    grass/rule
    grass/smother-rule])
 

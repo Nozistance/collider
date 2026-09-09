@@ -20,6 +20,8 @@
 
 (defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb track])
 
+(defrecord FallingBlock [type pos vel yaw pitch on-ground block start time track])
+
 (defn of [m]
   (if (record? m)
     m
@@ -30,12 +32,14 @@
       :player (map->Player m)
       :item   (map->Item m)
       :tnt    (map->Tnt m)
+      :falling-block (map->FallingBlock m)
       (map->Mob m)))))
 
 (defn eye-height ^double [e]
   (case (:type e)
     :player 1.62
     :tnt    0.0
+    :falling-block 0.0
     :item   0.21
     1.19))
 

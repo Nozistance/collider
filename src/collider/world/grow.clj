@@ -1,0 +1,462 @@
+(ns collider.world.grow
+  (:require [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
+            [collider.world.eyeblossom :as eyeblossom]
+            [collider.world.gen :as gen]
+            [collider.world.light :as light]
+            [collider.world.liquid :as liquid]
+            [collider.world.support :as support]))
+
+(set! *warn-on-reflection* true)
+
+(defn- at ^long [chunks [_ y _ :as p]]
+  (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
+
+(defn- air-at? [chunks [_ y _ :as p]] (and (chunk/in-range? y) (zero? (at chunks p))))
+(defn- up [p] (mapv + p [0 1 0]))
+(defn- down [p] (mapv + p [0 -1 0]))
+(defn- lit? [chunks [x y z] ^long n] (>= (long (light/light-at chunks gen/flat-chunk x y z)) n))
+(defn- chance? [rnd salt ^long n] (< (double (rnd salt)) (/ 1.0 n)))
+(defn- pick ^long [rnd salt ^long n] (long (Math/floor (* (double (rnd salt)) n))))
+(defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
+
+(defn- prop ^long [st k] (Long/parseLong (name (get (block/props-of st) k))))
+(defn- with [st & kvs]
+  (block/state (block/block-of st) (apply assoc (block/props-of st) (map-indexed (fn [i v] (if (and (odd? i) (not (keyword? v))) (keyword (str v)) v)) kvs))))
+(defn- age ^long [st] (prop st :age))
+(defn- aged ^long [st ^long n] (with st :age n))
+
+(def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
+(def ^:private dir-order [:north :south :west :east])
+(def ^:private six-order [:down :up :north :south :west :east])
+(def ^:private clockwise {:north :east :east :south :south :west :west :north})
+(def ^:private counter {:north :west :west :south :south :east :east :north})
+(def ^:private opposite {:north :south :south :north :west :east :east :west :up :down :down :up})
+(def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
+
+;; crops
+
+(def ^:private max-age {:crop 7 :carrot 7 :potato 7 :beetroot 3 :torchflower-crop 1 :stem 7})
+
+(defn- soil-speed
+  "Farmland at dx dz under the crop: 1, wet 3, nothing else."
+  ^double [chunks [x y z] ^long dx ^long dz]
+  (let [st (at chunks [(+ (long x) dx) (dec (long y)) (+ (long z) dz)])]
+    (if (block/tagged? st "grows_crops")
+      (if (pos? (prop st :moisture)) 3.0 1.0)
+      0.0)))
+
+(defn- crowded?
+  [chunks [x y z] self]
+  (let [same? (fn [^long dx ^long dz] (= self (block/block-of (at chunks [(+ (long x) dx) y (+ (long z) dz)]))))]
+    (or (and (or (same? -1 0) (same? 1 0)) (or (same? 0 -1) (same? 0 1)))
+        (same? -1 -1) (same? 1 -1) (same? 1 1) (same? -1 1))))
+
+(defn- growth-speed
+  "CropBlock.getGrowthSpeed: farmland under and around, wet counts triple,
+   the sides a quarter; crowding halves it."
+  ^double [chunks p self]
+  (let [speed (reduce + 1.0 (for [dx [-1 0 1] dz [-1 0 1]]
+                              (let [s (soil-speed chunks p dx dz)]
+                                (if (and (zero? (long dx)) (zero? (long dz))) s (/ s 4.0)))))]
+    (if (crowded? chunks p self) (/ speed 2.0) speed)))
+
+(defn- growth-roll?
+  [chunks p st rnd]
+  (chance? rnd :grow (inc (long (/ 25.0 (growth-speed chunks p (block/block-of st)))))))
+
+(defn- grows-now?
+  [chunks p st rnd]
+  (and (lit? chunks p 9) (growth-roll? chunks p st rnd)))
+
+(defn- crop-tick [chunks p st rnd]
+  (let [t (block/type-of st) a (age st)]
+    (when (and (< a (long (max-age t)))
+               (or (not (#{:beetroot :torchflower-crop} t)) (not (chance? rnd :gate 3)))
+               (grows-now? chunks p st rnd))
+      [[p (aged st (inc a))]])))
+
+(defn- pitcher-grown
+  [chunks p st ^long a]
+  (when (and (lit? chunks p 8)
+             (chunk/in-range? (inc (long (p 1))))
+             (or (< a 3) (let [u (at chunks (up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
+    (let [st' (aged st a)]
+      (cond-> [[p st']]
+        (>= a 3) (conj [(up p) (with st' :half :upper)])))))
+
+(defn- pitcher-tick
+  [chunks p st rnd]
+  (when (and (= :lower (:half (block/props-of st))) (< (age st) 4) (growth-roll? chunks p st rnd))
+    (pitcher-grown chunks p st (inc (age st)))))
+
+(defn- pitcher-meal
+  [chunks p st]
+  (let [lower? (= :lower (:half (block/props-of st)))
+        lp (if lower? p (down p))
+        lst (if lower? st (at chunks lp))]
+    (when (and (= :pitcher-crop (block/type-of lst)) (< (age lst) 4))
+      (when-let [changes (pitcher-grown chunks lp lst (inc (age lst)))]
+        {:changes changes}))))
+
+(def ^:private fruits
+  {:pumpkin-stem [:pumpkin :attached-pumpkin-stem "supports_pumpkin_stem_fruit"]
+   :melon-stem   [:melon :attached-melon-stem "supports_melon_stem_fruit"]})
+
+(defn- fruit-changes
+  [chunks p st rnd]
+  (let [[fruit attached tag] (fruits (block/block-of st))
+        dir (dir-order (pick rnd :dir 4))
+        beside (mapv + p (dirs dir))]
+    (when (and (air-at? chunks beside) (block/tagged? (at chunks (down beside)) tag))
+      [[beside (block/state fruit)] [p (block/state attached {:facing dir})]])))
+
+(defn- stem-tick [chunks p st rnd]
+  (when (grows-now? chunks p st rnd)
+    (if (< (age st) 7)
+      [[p (aged st (inc (age st)))]]
+      (fruit-changes chunks p st rnd))))
+
+;; canes and stalks
+
+(defn- height-below ^long [chunks p self ^long cap]
+  (loop [h 0]
+    (if (and (< h cap) (= self (block/block-of (at chunks (mapv + p [0 (- (inc h)) 0])))))
+      (recur (inc h))
+      h)))
+
+(defn- cane-tick
+  [chunks p st _rnd]
+  (when (and (air-at? chunks (up p)) (< (inc (height-below chunks p (block/block-of st) 3)) 3))
+    (if (= 15 (age st))
+      [[(up p) (block/state (block/block-of st))] [p (aged st 0)]]
+      [[p (aged st (inc (age st)))]])))
+
+(defn- cactus-tick
+  [chunks p st rnd]
+  (when (air-at? chunks (up p))
+    (let [a (age st) h (inc (height-below chunks p :cactus 3))]
+      (when-not (and (>= h 3) (= a 15))
+        (let [top (cond
+                    (and (= a 8) (support/supported? chunks gen/flat-chunk (up p) (block/state :cactus)))
+                    (when (<= (double (rnd :flower)) (if (>= h 3) 0.25 0.1)) [[(up p) (block/state :cactus-flower)]])
+                    (and (= a 15) (< h 3)) [[(up p) (block/state :cactus)] [p (aged st 0)]])]
+          (into (vec top) (when (< a 15) [[p (aged st (inc a))]])))))))
+
+(defn- grown-bamboo
+  [chunks p st rnd height]
+  (let [below (at chunks (down p)) two (at chunks (down (down p)))
+        bamboo? (fn [s] (= :bamboo (block/block-of s)))
+        leaves (cond
+                 (or (not (bamboo? below)) (= :none (:leaves (block/props-of below)))) :small
+                 :else :large)
+        shift (when (and (= leaves :large) (bamboo? two))
+                [[(down p) (with below :leaves :small)] [(down (down p)) (with two :leaves :none)]])
+        a (if (and (not= 1 (age st)) (not (bamboo? two))) 0 1)
+        height (long height)
+        stage (if (or (and (>= height 11) (< (double (rnd :stage)) 0.25)) (= height 15)) 1 0)]
+    (conj (vec shift) [(up p) (block/state :bamboo {:age (keyword (str a)) :leaves leaves :stage (keyword (str stage))})])))
+
+(defn- bamboo-tick [chunks p st rnd]
+  (when (and (= 0 (prop st :stage)) (chance? rnd :gate 3) (air-at? chunks (up p)) (lit? chunks (up p) 9))
+    (let [height (inc (height-below chunks p :bamboo 16))]
+      (when (< height 16)
+        (grown-bamboo chunks p st rnd height)))))
+
+(defn- bamboo-sapling-tick [chunks p _st rnd]
+  (when (and (chance? rnd :gate 3) (air-at? chunks (up p)) (lit? chunks (up p) 9))
+    [[(up p) (block/state :bamboo {:leaves :small})]]))
+
+(defn- berry-tick [chunks p st rnd]
+  (when (and (< (age st) 3) (chance? rnd :gate 5) (lit? chunks (up p) 9))
+    [[p (aged st (inc (age st)))]]))
+
+(defn- kelp-tick
+  [chunks p st rnd]
+  (when (and (< (age st) 25) (< (double (rnd :grow)) 0.14)
+             (= :water (liquid/liquid-class (at chunks (up p)))))
+    [[(up p) (aged st (inc (age st)))]]))
+
+(defn- amethyst-next
+  [^long target dir]
+  (let [n (block/block-of target)]
+    (cond
+      (or (zero? target) (and (= :water (liquid/liquid-class target)) (liquid/source-state? target))) :small-amethyst-bud
+      (not= dir (block/facing-of target)) nil
+      (= :small-amethyst-bud n) :medium-amethyst-bud
+      (= :medium-amethyst-bud n) :large-amethyst-bud
+      (= :large-amethyst-bud n) :amethyst-cluster)))
+
+(defn- budding-tick
+  [chunks p _st rnd]
+  (when (chance? rnd :gate 5)
+    (let [dir (six-order (pick rnd :dir 6))
+          q (mapv + p (six dir))
+          target (at chunks q)]
+      (when-let [b (amethyst-next target dir)]
+        [[q (block/state b {:facing dir :waterlogged (if (water? target) :true :false)})]]))))
+
+(defn- grow-into
+  "GrowingPlantHeadBlock.getGrowIntoState: the head one age older, cave
+   vines with berries about one time in nine."
+  ^long [^long st ^long a rnd]
+  (let [st' (aged st a)]
+    (if (= :cave-vines (block/type-of st))
+      (with st' :berries (if (< (double (rnd :berries)) 0.11) :true :false))
+      st')))
+
+(defn- vines-tick
+  [chunks p st rnd]
+  (let [q (mapv + p (six (:dir (block/growing-plant (block/type-of st)))))]
+    (when (and (< (age st) 25) (< (double (rnd :grow)) 0.1) (air-at? chunks q))
+      [[q (grow-into st (inc (age st)) rnd)]])))
+
+;; mushrooms and soil
+
+(defn- crowd ^long [chunks [x y z] self]
+  (count (for [dx (range -4 5) dy [-1 0 1] dz (range -4 5)
+               :when (= self (block/block-of (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
+           1)))
+
+(defn- mushroom-tick
+  [chunks p st rnd]
+  (when (and (chance? rnd :gate 25) (< (crowd chunks p (block/block-of st)) 5))
+    (let [step (fn [q i] (mapv + q [(dec (pick rnd [:x i] 3)) (- (pick rnd [:y1 i] 2) (pick rnd [:y2 i] 2)) (dec (pick rnd [:z i] 3))]))
+          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks gen/flat-chunk q st)))
+          target (loop [q p off (step p 0) i 1]
+                   (if (> i 4)
+                     off
+                     (let [q (if (ok? off) off q)]
+                       (recur q (step q i) (inc i)))))]
+      (when (ok? target) [[target st]]))))
+
+(defn- near-water? [chunks [x y z]]
+  (boolean (some (fn [[dx dy dz]] (water? (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
+                 (for [dx (range -4 5) dy [0 1] dz (range -4 5)] [dx dy dz]))))
+
+(defn- farmland-tick
+  [chunks p st _rnd]
+  (let [m (prop st :moisture)]
+    (cond
+      (near-water? chunks p) (when (< m 7) [[p (with st :moisture 7)]])
+      (pos? m) [[p (with st :moisture (dec m))]]
+      (not (block/tagged? (at chunks (up p)) "maintains_farmland")) [[p (block/state :dirt)]])))
+
+(defn- weather-odds
+  [chunks [x y z] st]
+  (let [own (block/weather-stage st)
+        ages (for [dx (range -4 5) dy (range -4 5) dz (range -4 5)
+                   :when (and (<= (+ (Math/abs (long dx)) (Math/abs (long dy)) (Math/abs (long dz))) 4)
+                              (not (and (zero? (long dx)) (zero? (long dy)) (zero? (long dz)))))
+                   :let [n (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])]
+                   :when (block/weathering? n)]
+               (block/weather-stage n))]
+    (when-not (some #(< (long %) own) ages)
+      (let [older (count (filter #(> (long %) own) ages))
+            same (- (count ages) older)
+            chance (/ (double (inc older)) (double (+ older same 1)))]
+        (* chance chance (if (zero? own) 0.75 1.0))))))
+
+(defn- weather-tick
+  [chunks p st rnd]
+  (when (< (double (rnd :day)) 0.05688889)
+    (when-let [odds (weather-odds chunks p st)]
+      (when (< (double (rnd :age)) (double odds))
+        (when-let [next (block/weathered-next st)]
+          [[p next]])))))
+
+
+(defn- vine-with [st dir] (with st dir :true))
+(defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
+(defn- attachable? [chunks p dir]
+  (let [n (at chunks (mapv + p (six dir)))]
+    (and (pos? n) (block/face-sturdy? n (opposite dir)))))
+(defn- vine-face-held? [chunks p st dir]
+  (support/supported? chunks gen/flat-chunk p (vine-with (block/state (block/block-of st)) dir)))
+
+(defn- vine-crowded?
+  [chunks [x y z] self]
+  (>= (count (for [dx (range -4 5) dy [-1 0 1] dz (range -4 5)
+                   :when (= self (block/block-of (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
+               1))
+      5))
+
+(defn- vine-sideways
+  [chunks p st dir rnd]
+  (let [self (block/block-of st) fresh (block/state self)
+        test (mapv + p (six dir))
+        cw (clockwise dir) ccw (counter dir)
+        cw? (vine-has? st cw) ccw? (vine-has? st ccw)
+        cw-test (mapv + test (six cw)) ccw-test (mapv + test (six ccw))
+        opp (opposite dir)]
+    (cond
+      (not (air-at? chunks test)) (when (attachable? chunks p dir) [[p (vine-with st dir)]])
+      (and cw? (attachable? chunks test cw)) [[test (vine-with fresh cw)]]
+      (and ccw? (attachable? chunks test ccw)) [[test (vine-with fresh ccw)]]
+      (and cw? (air-at? chunks cw-test) (attachable? chunks (mapv + p (six cw)) opp)) [[cw-test (vine-with fresh opp)]]
+      (and ccw? (air-at? chunks ccw-test) (attachable? chunks (mapv + p (six ccw)) opp)) [[ccw-test (vine-with fresh opp)]]
+      (and (< (double (rnd :up-wall)) 0.05) (attachable? chunks (up test) :up)) [[test (vine-with fresh :up)]])))
+
+(defn- vine-upward
+  [chunks p st rnd]
+  (let [above (up p)]
+    (cond
+      (vine-face-held? chunks p st :up) [[p (vine-with st :up)]]
+      (air-at? chunks above)
+      (when-not (vine-crowded? chunks p (block/block-of st))
+        (let [st' (reduce (fn [s dir]
+                            (if (or (< (double (rnd [:keep dir])) 0.5) (not (attachable? chunks above dir)))
+                              (with s dir :false)
+                              s))
+                          st [:north :south :west :east])]
+          (when (some #(vine-has? st' %) [:north :south :west :east]) [[above st']])))
+      :else nil)))
+
+(defn- vine-downward
+  [chunks p st rnd]
+  (let [below (down p) bst (at chunks below)]
+    (when (or (zero? bst) (= (block/block-of bst) (block/block-of st)))
+      (let [before (if (zero? bst) (block/state (block/block-of st)) bst)
+            after (reduce (fn [s dir] (if (and (< (double (rnd [:copy dir])) 0.5) (vine-has? st dir)) (vine-with s dir) s))
+                          before [:north :south :west :east])]
+        (when (and (not= after before) (some #(vine-has? after %) [:north :south :west :east]))
+          [[below after]])))))
+
+(defn- vine-tick
+  [chunks p st rnd]
+  (when (chance? rnd :gate 4)
+    (let [dir (six-order (pick rnd :dir 6))]
+      (cond
+        (and (contains? dirs dir) (not (vine-has? st dir)))
+        (when-not (vine-crowded? chunks p (block/block-of st)) (vine-sideways chunks p st dir rnd))
+        (= :up dir) (or (when (chunk/in-range? (inc (long (p 1)))) (vine-upward chunks p st rnd))
+                        (vine-downward chunks p st rnd))
+        :else (vine-downward chunks p st rnd)))))
+
+(defn- eyeblossom-tick
+  [p ^long st ^long time]
+  (when-let [new (eyeblossom/switched st time)]
+    [[p new]]))
+
+(defn random-tick
+  [chunks p st rnd time]
+  (let [st (long st)]
+    (case (block/type-of st)
+      (:crop :carrot :potato :beetroot :torchflower-crop) (crop-tick chunks p st rnd)
+      :stem (stem-tick chunks p st rnd)
+      :pitcher-crop (pitcher-tick chunks p st rnd)
+      :sugar-cane (cane-tick chunks p st rnd)
+      :cactus (cactus-tick chunks p st rnd)
+      :bamboo-stalk (bamboo-tick chunks p st rnd)
+      :bamboo-sapling (bamboo-sapling-tick chunks p st rnd)
+      :sweet-berry-bush (berry-tick chunks p st rnd)
+      :kelp (kelp-tick chunks p st rnd)
+      :mushroom (mushroom-tick chunks p st rnd)
+      :farmland (farmland-tick chunks p st rnd)
+      :cocoa (when (and (chance? rnd :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
+      :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/opacity st))) [[p (block/state :water)]])
+      :snow-layer (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) 11) [[p 0]])
+      :vine (vine-tick chunks p st rnd)
+      :budding-amethyst (budding-tick chunks p st rnd)
+      :eyeblossom (eyeblossom-tick p st time)
+      (:weeping-vines :twisting-vines :cave-vines) (vines-tick chunks p st rnd)
+      (when (block/weathering? st) (weather-tick chunks p st rnd)))))
+
+;; bone meal
+
+(defn- crop-meal [chunks p st rnd]
+  (let [t (block/type-of st) a (age st) top (long (max-age t))]
+    (when (< a top)
+      (let [n (case t :beetroot (quot (+ 2 (pick rnd :meal 4)) 3) :torchflower-crop 1 (+ 2 (pick rnd :meal 4)))
+            a' (min top (+ a (long n)))]
+        {:changes (if (and (= :stem t) (= a' 7) (grows-now? chunks p st rnd))
+                    (into [[p (aged st a')]] (fruit-changes chunks p (aged st a') rnd))
+                    [[p (aged st a')]])}))))
+
+(defn- doubled
+  [chunks p st]
+  (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))]
+    (when (and (air-at? chunks (up p)) (support/supported? chunks gen/flat-chunk p tall))
+      {:changes [[p tall] [(up p) (block/state (block/block-of tall) {:half :upper})]]})))
+
+(defn- petals-meal [p st]
+  (let [n (prop st :flower-amount)]
+    (if (< n 4)
+      {:changes [[p (with st :flower-amount (inc n))]]}
+      {:drops [{:item (block/block-of st) :count 1}]})))
+
+(defn- nether-vines-count
+  "NetherVines.getBlocksToGrowWhenBonemealed: one more cell while the
+   chance holds, each step 0.826 of the one before."
+  ^long [rnd]
+  (loop [p 1.0 n 0]
+    (if (and (< n 25) (< (double (rnd [:count n])) p))
+      (recur (* p 0.826) (inc n))
+      n)))
+
+(defn- head-pos
+  [chunks p st]
+  (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
+        off (six dir)]
+    (loop [q p n 0]
+      (let [nq (mapv + q off) b (block/block-of (at chunks nq))]
+        (cond
+          (= head b) nq
+          (and (= body b) (< n 256)) (recur nq (inc n))
+          :else nil)))))
+
+(defn- vines-meal
+  [chunks p st rnd]
+  (let [off (six (:dir (block/growing-plant (block/type-of st))))
+        n (if (= :cave-vines (block/type-of st)) 1 (nether-vines-count rnd))]
+    (loop [q (mapv + p off) a (min 25 (inc (age st))) left n acc []]
+      (if (and (pos? left) (air-at? chunks q))
+        (recur (mapv + q off) (min 25 (inc a)) (dec left) (conj acc [q (aged st a)]))
+        (when (seq acc) {:changes acc})))))
+
+(defn- berries-meal
+  [p st]
+  (when (= :false (:berries (block/props-of st)))
+    {:changes [[p (with st :berries :true)]]}))
+
+(defn bonemeal
+  [chunks p st rnd]
+  (let [st (long st)]
+    (case (block/type-of st)
+      (:crop :carrot :potato :beetroot :torchflower-crop :stem) (crop-meal chunks p st rnd)
+      :pitcher-crop (pitcher-meal chunks p st)
+      :tall-grass (doubled chunks p st)
+      :tall-flower (when (= :lower (:half (block/props-of st))) {:drops [{:item (block/block-of st) :count 1}]})
+      :flower-bed (petals-meal p st)
+      :sweet-berry-bush (when (< (age st) 3) {:changes [[p (aged st (inc (age st)))]]})
+      :cocoa (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]})
+      :bamboo-sapling (when (air-at? chunks (up p)) {:changes [[(up p) (block/state :bamboo {:leaves :small})]]})
+      :kelp (when (and (< (age st) 25) (= :water (liquid/liquid-class (at chunks (up p)))))
+              {:changes [[(up p) (aged st (inc (age st)))]]})
+      (:weeping-vines :twisting-vines) (vines-meal chunks p st rnd)
+      (:weeping-vines-plant :twisting-vines-plant)
+      (when-let [h (head-pos chunks p st)] (vines-meal chunks h (at chunks h) rnd))
+      (:cave-vines :cave-vines-plant) (berries-meal p st)
+      :seagrass (when (water? (at chunks (up p)))
+                  {:changes [[p (block/state :tall-seagrass {:half :lower})] [(up p) (block/state :tall-seagrass {:half :upper})]]})
+      nil)))
+
+;; tools on soil
+
+(def compostables
+  "ComposterBlock.COMPOSTABLES: item -> chance of one more level."
+  (let [t {0.3 [:jungle-leaves :oak-leaves :spruce-leaves :dark-oak-leaves :pale-oak-leaves :acacia-leaves :cherry-leaves :birch-leaves :azalea-leaves :mangrove-leaves :oak-sapling :spruce-sapling :birch-sapling :jungle-sapling :acacia-sapling :cherry-sapling :dark-oak-sapling :pale-oak-sapling :mangrove-propagule :beetroot-seeds :dried-kelp :short-grass :kelp :melon-seeds :pumpkin-seeds :seagrass :sweet-berries :glow-berries :wheat-seeds :moss-carpet :pale-moss-carpet :pale-hanging-moss :pink-petals :wildflowers :leaf-litter :small-dripleaf :hanging-roots :mangrove-roots :torchflower-seeds :pitcher-pod :firefly-bush :bush :cactus-flower :short-dry-grass :tall-dry-grass]
+           0.5 [:dried-kelp-block :tall-grass :flowering-azalea-leaves :cactus :sugar-cane :vine :nether-sprouts :weeping-vines :twisting-vines :melon-slice :glow-lichen]
+           0.65 [:sea-pickle :lily-pad :pumpkin :carved-pumpkin :melon :apple :beetroot :carrot :cocoa-beans :potato :wheat :brown-mushroom :red-mushroom :mushroom-stem :crimson-fungus :warped-fungus :nether-wart :crimson-roots :warped-roots :shroomlight :dandelion :poppy :blue-orchid :allium :azure-bluet :red-tulip :orange-tulip :white-tulip :pink-tulip :oxeye-daisy :cornflower :lily-of-the-valley :wither-rose :open-eyeblossom :closed-eyeblossom :fern :sunflower :lilac :rose-bush :peony :large-fern :spore-blossom :azalea :moss-block :pale-moss-block :big-dripleaf]
+           0.85 [:hay-block :brown-mushroom-block :red-mushroom-block :nether-wart-block :warped-wart-block :flowering-azalea :bread :baked-potato :cookie :torchflower :pitcher-plant]
+           1.0 [:cake :pumpkin-pie]}]
+    (into {} (for [[chance items] t item items] [item chance]))))
+
+(def tilled
+  "HoeItem.TILLABLES: what a hoe makes of the block, with the item it frees."
+  {:grass-block [:farmland] :dirt-path [:farmland] :dirt [:farmland]
+   :coarse-dirt [:dirt] :rooted-dirt [:dirt :hanging-roots]})
+
+(def flattened
+  "ShovelItem.FLATTENABLES: blocks a shovel makes a path of."
+  #{:grass-block :dirt :podzol :coarse-dirt :mycelium :rooted-dirt})

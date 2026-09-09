@@ -174,7 +174,7 @@
                                [:place eid (:pos m) (:face m) nil
                                 [(long (* 16 (double cx))) (long (* 16 (double cy))) (long (* 16 (double cz)))]
                                 (:sequence m)])
-    :use-item                [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m)]
+    :use-item                [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}]
     :swing                   [:swing eid]
     :player-command          [:entity-action eid (:action m)]
     :player-input            [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}]
@@ -192,6 +192,7 @@
                                nil)
     :chat                    [:chat eid (:message m)]
     :chat-command            [:chat eid (str "/" (:command m))]
+    :sign-update             [:sign-update eid (:pos m) (:front? m) (:lines m)]
     nil))
 
 (def ^:private ignored
@@ -214,7 +215,7 @@
   "Serverbound packets of categories still to come (ticket 028): inventory
    screens, signs, entity interaction, commands, game mode."
   #{:container-button-click :container-slot-state-changed
-    :sign-update :attack :change-game-mode})
+    :attack :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
 

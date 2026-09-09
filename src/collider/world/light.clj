@@ -174,6 +174,14 @@
            (chunk/nibble-get (.block-light ^Section s) (l-idx x y z)))
       15)))
 
+(defn block-light-at
+  [chunks template x y z]
+  (if (not (chunk/in-range? y))
+    0
+    (if-let [s (section chunks template x y z)]
+      (chunk/nibble-get (.block-light ^Section s) (l-idx x y z))
+      0)))
+
 (defn relight-batch [chunks template changes]
   (let [[bcells scells]
         (reduce
