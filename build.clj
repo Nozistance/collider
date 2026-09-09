@@ -1,5 +1,6 @@
 (ns build
   (:require [clojure.data.json :as json]
+            [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
             [clojure.tools.build.api :as b])
@@ -8,6 +9,7 @@
            (java.net URL URLClassLoader)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
+           (java.time Instant)
            (java.util.zip ZipEntry ZipFile)))
 
 (def class-dir "target/classes")
@@ -186,10 +188,7 @@
                            :when (not= mask 63)]
                        [id mask]))})))
 
-(defn- fire-odds
-  "block → {:ignite n :burn m}: таблицы FireBlock (igniteOdds, burnOdds),
-   заполняются в FireBlock.bootStrap."
-  [^ClassLoader cl]
+(defn- fire-odds [^ClassLoader cl]
   (let [fire     (static-field cl "net.minecraft.world.level.block.Blocks" "FIRE")
         fire-cls (Class/forName "net.minecraft.world.level.block.FireBlock" true cl)
         reg      (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
@@ -202,21 +201,13 @@
                 (into (sorted-map) (map (fn [[k v]] [k {:ignite v}])) (table "igniteOdds"))
                 (into (sorted-map) (map (fn [[k v]] [k {:burn v}])) (table "burnOdds")))))
 
-;; --- лут-таблицы блоков --------------------------------------------------
-;; Только путь «без инструмента, без чар»: что выпадает, когда блок ломает
-;; вода, взрыв или рука. Запись — вектор вариантов (alternatives) по порядку,
-;; каждый {:item :count [min max] :chance p :props {..} :entity? bool}.
-;; Блок с условием, которого мы не понимаем, помечается :complex.
-
 (defn- loot-number [v]
   (cond
     (number? v) [(long v) (long v)]
     (map? v) [(long (get v "min" 1)) (long (get v "max" 1))]
     :else [1 1]))
 
-(defn- loot-condition
-  "Свёртка условия в карту флагов или :skip (нужен инструмент/чары) / :unknown."
-  [c]
+(defn- loot-condition [c]
   (case (get c "condition")
     "minecraft:survives_explosion" {}
     "minecraft:random_chance" {:chance (double (get c "chance"))}
@@ -293,10 +284,7 @@
                             [(kw (subs n (count prefix) (- (count n) 5))) table]))))))
             (enumeration-seq (.entries zf))))))
 
-(defn- vanilla-items
-  "item to {:max-stack n :equip slot} for items that do not stack to 64 or
-   go into an equipment slot, from reports/minecraft/components/item."
-  [reports]
+(defn- vanilla-items [reports]
   (into (sorted-map)
         (for [^File f (sort (.listFiles (io/file reports "minecraft" "components" "item")))
               :when (str/ends-with? (.getName f) ".json")
@@ -388,3 +376,79 @@
                                  (map (fn [[t vs]] [t (resolve* vs #{})]))
                                  found)]))))
           registries)))
+
+;; --- tracker ---------------------------------------------------------------
+
+(defn- pascal [k]
+  (apply str (map str/capitalize (str/split (name k) #"-"))))
+
+(defn- hook-status [mark]
+  (let [m (str/trim (or mark ""))]
+    (cond (str/starts-with? m "x") "done"
+          (str/starts-with? m "skip") "skipped"
+          :else "open")))
+
+(defn- parse-hooks [text]
+  (let [sections {"Entities" "entities" "Blocks" "blocks"}]
+    (loop [lines (str/split-lines text) cat nil cls nil acc {}]
+      (if-let [l (first lines)]
+        (cond
+          (str/starts-with? l "## ") (recur (rest lines) (get sections (subs l 3)) nil acc)
+          (and cat (str/starts-with? l "### "))
+          (let [[_ c] (re-matches #"### (\S+) - `([^`]+)`" l)]
+            (recur (rest lines) cat c (assoc-in acc [cat c] {:hooks []})))
+          (and cat cls (str/starts-with? l "- "))
+          (let [[_ h owner mark] (re-matches #"- (\S+) \(([^)]*)\) \|(.*)" l)]
+            (recur (rest lines) cat cls
+                   (cond-> acc h (update-in [cat cls :hooks] conj {:name h :owner owner :status (hook-status mark)}))))
+          :else (recur (rest lines) cat cls acc))
+        acc))))
+
+(def ^:private type-classes
+  {:jack-o-lantern "CarvedPumpkinBlock" :enchantment-table "EnchantingTableBlock"})
+
+(defn- letters [s] (str/lower-case (str/replace (str s) #"[^A-Za-z]" "")))
+
+(defn- block-entries [classes]
+  (let [blocks (edn/read-string (slurp "resources/mc/blocks.edn"))
+        by-letters (into {} (map (fn [c] [(letters c) c])) classes)]
+    (reduce (fn [m [b info]]
+              (let [t (:type info)
+                    c (or (type-classes t)
+                          (get by-letters (letters (str (name t) "block")))
+                          (get by-letters (letters t))
+                          (str (pascal t) "Block"))]
+                (update m c (fnil conj []) (name b))))
+            {} (sort-by key blocks))))
+
+(defn- with-entries [blocks]
+  (let [entries (block-entries (set (keys blocks)))]
+    (reduce (fn [m [c es]] (update m c (fn [v] (assoc (or v {:hooks []}) :entries (vec (sort es)))))) blocks entries)))
+
+(defn tracker
+  [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
+  (let [parsed (parse-hooks (slurp hooks))
+        data {:meta {:generated (str (Instant/now))
+                     :commit (str/trim (b/git-process {:git-args "rev-parse HEAD"}))
+                     :target "26.2"}
+              :blocks (with-entries (get parsed "blocks" {}))
+              :entities (get parsed "entities" {})}
+        total (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))]
+                          [(count (filter #(= "done" (:status %)) hs)) (count (filter #(= "skipped" (:status %)) hs)) (count hs)]))]
+    (io/make-parents out)
+    (spit out (json/write-str data))
+    (let [tally (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))
+                                done (count (filter #(= "done" (:status %)) hs))
+                                skipped (count (filter #(= "skipped" (:status %)) hs))]
+                            {:classes (count (get data cat)) :hooks (count hs) :done done :skipped skipped
+                             :pct (if (seq hs) (Math/round (* 100.0 (/ (+ done skipped) (count hs)))) 0)}))
+          b (tally :blocks) e (tally :entities)
+          sum (fn [k] (+ (long (k b)) (long (k e))))
+          all {:classes (sum :classes) :hooks (sum :hooks) :done (sum :done) :skipped (sum :skipped)
+               :pct (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (+ (sum :done) (sum :skipped)) (sum :hooks)))) 0)}]
+      (spit (str (.getParent (io/file out)) "/summary.json")
+            (json/write-str (assoc (:meta data) :all all :blocks b :entities e)))
+      (println (format "  %s/summary.json: %d%% overall, %d%% in blocks"
+                       (.getParent (io/file out)) (:pct all) (:pct b))))
+    (println (format "  %s: blocks %d classes, hooks done/skipped/all %s; entities %d classes, %s"
+                     out (count (:blocks data)) (total :blocks) (count (:entities data)) (total :entities)))))
