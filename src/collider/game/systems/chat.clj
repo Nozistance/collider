@@ -38,7 +38,7 @@
              :else
              (if-let [[^String m st] (marker-at s i)]
                (let [start (+ i (.length m))
-                     close (.indexOf s m start)]
+                     close (^[String int] String/.indexOf s m start)]
                  (if (> close start)
                    (let [inner (.substring s start close)
                          runs  (if (= m "`")

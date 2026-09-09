@@ -178,8 +178,8 @@
         vz0 (let [a (v/z vel0)] (if (< (Math/abs a) 0.005) 0.0 a))
         vy0 (v/y vel0)]
     (if (and (not moving?) og (not water?)
-             (< (Math/abs (+ vx0 (double cx))) 0.005)
-             (< (Math/abs (+ vz0 (double cz))) 0.005)
+             (< (^[double] Math/abs (+ vx0 (double cx))) 0.005)
+             (< (^[double] Math/abs (+ vz0 (double cz))) 0.005)
              (<= -0.0785 vy0 0.0)
              (phys/standing-on-cubes? (:chunks world) gen/flat-chunk x ey z half))
       (head-update world (entity/mob-moved e pos rest-vel true (:yaw e) false (:jump-cd e))

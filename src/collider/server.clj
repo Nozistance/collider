@@ -137,7 +137,7 @@
   (let [deadline (+ (System/currentTimeMillis) ms)]
     (doseq [[_ ^Conn conn] conns]
       (when-let [^Thread w (:writer @(:st conn))]
-        (.join w (max 1 (- deadline (System/currentTimeMillis))))))))
+        (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
 
 (defn close-all!
   [conns text ^long ms]

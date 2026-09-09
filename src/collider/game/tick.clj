@@ -126,7 +126,7 @@
         now    (System/nanoTime)
         target (if (> (- now target) 1000000000) now target)
         sleep  (quot (- target now) 1000000)]
-    (when (pos? sleep) (Thread/sleep sleep))
+    (when (pos? sleep) (^[long] Thread/sleep sleep))
     target))
 
 (defn- tick-input [world-atom perf io]

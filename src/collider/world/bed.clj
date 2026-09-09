@@ -28,8 +28,8 @@
   [dir ^double yaw]
   (let [[dx dz] (steps dir)
         a (Math/toDegrees (Math/atan2 (- dx) dz))
-        d (Math/abs (rem (+ (- yaw a) 540.0) 360.0))]
-    (< (Math/abs (- d 180.0)) 90.0)))
+        d (^[double] Math/abs (rem (+ (- yaw a) 540.0) 360.0))]
+    (< (^[double] Math/abs (- d 180.0)) 90.0)))
 
 (defn- stand-up-offsets
   "[dx dz] to try around the head, vanilla bedStandUpOffsets order."
