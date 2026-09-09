@@ -26,6 +26,7 @@
 (def ^:private ^:const out-queue-size 4096)
 (def ^:private ^:const out-queue-high 1024)
 (def ^:private ^:const writer-poll-ms 500)
+(def ^:private ^:const shutdown-drain-ms 1000)
 
 (defrecord Conn [^Socket sock ^ArrayBlockingQueue q st ^AtomicBoolean closing])
 
@@ -297,12 +298,13 @@
                      (atom {:state :handshake :threshold -1
                             :addr (str (.getRemoteSocketAddress sock))})
                      (AtomicBoolean. false))]
-    (Thread/startVirtualThread
-      #(try (writer-loop conn)
-            (catch InterruptedException _ nil)
-            (catch SocketException _ nil)
-            (catch Throwable t
-              (log/info "writer failed for" (who conn) "-" (str t)))))
+    (swap! (:st conn) assoc :writer
+           (Thread/startVirtualThread
+             #(try (writer-loop conn)
+                   (catch InterruptedException _ nil)
+                   (catch SocketException _ nil)
+                   (catch Throwable t
+                     (log/info "writer failed for" (who conn) "-" (str t))))))
     (try
       (reader-loop conn io)
       (catch EOFException _ nil)
@@ -328,6 +330,26 @@
           (close! conn)
           (send! conn pkt))))))
 
+(defn- drain!
+  [conns ^long ms]
+  (let [deadline (+ (System/currentTimeMillis) ms)]
+    (doseq [[_ ^Conn conn] conns]
+      (when-let [^Thread w (:writer @(:st conn))]
+        (.join w (max 1 (- deadline (System/currentTimeMillis))))))))
+
+(defn- shutdown! [{:keys [^ServerSocket socket conns ticker saver store world]}]
+  (some-> socket .close)
+  (some-> ticker tick/stop-ticker!)
+  (let [cs @conns]
+    (doseq [[_ ^Conn conn] cs]
+      (when (= :play (conn-state conn))
+        (send! conn {:packet :disconnect
+                     :text {:translate "multiplayer.disconnect.server_shutdown"}}))
+      (close! conn))
+    (drain! cs shutdown-drain-ms)
+    (doseq [[_ ^Conn conn] cs] (.close ^Socket (:sock conn))))
+  (when saver (snapshot/stop-saver! saver store @world)))
+
 (defn- saver-scheduler ^ScheduledExecutorService [save! ^long period-ms]
   (doto (Executors/newSingleThreadScheduledExecutor
           (reify ThreadFactory
@@ -335,8 +357,8 @@
                                (.setDaemon true)))))
     (.scheduleWithFixedDelay ^Runnable save! period-ms period-ms TimeUnit/MILLISECONDS)))
 
-(defn- shutdown-hook! [saver save-file world]
-  (let [t (Thread. ^Runnable #(snapshot/stop-saver! saver save-file @world) "collider-shutdown-save")]
+(defn- shutdown-hook! [server]
+  (let [t (Thread. ^Runnable #(shutdown! server) "collider-shutdown")]
     (.addShutdownHook (Runtime/getRuntime) t)
     t))
 
@@ -378,28 +400,22 @@
         ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))
                                    {:io-input #(hash-map :writable (writable-eids conns))})
         sched (when saver (saver-scheduler save! save-period-ms))
-        hook (when saver (shutdown-hook! saver store world))]
+        server {:socket srv :accept accept
+                :world world :queue queue :conns conns :ticker ticker
+                :tick-stats (:stats ticker)
+                :saver saver :store store :scheduler sched}]
     (when (seq (:chunks saved))
       (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
     (log/info "collider" c/game-version "(protocol" (str c/protocol-version ") on")
               (str (.getLocalSocketAddress srv)))
-    {:socket srv :accept accept
-     :world world :queue queue :conns conns :ticker ticker
-     :tick-stats (:stats ticker)
-     :saver saver :store store :scheduler sched :shutdown-hook hook}))
+    (assoc server :shutdown-hook (shutdown-hook! server))))
 
-(defn stop [{:keys [^ServerSocket socket conns ticker
-                    saver store world ^ScheduledExecutorService scheduler ^Thread shutdown-hook]}]
+(defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
   (some-> scheduler .shutdownNow)
   (when shutdown-hook
     (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
          (catch IllegalStateException _ nil)))
-  (some-> ticker tick/stop-ticker!)
-  (some-> socket .close)
-  (doseq [[_ ^Conn conn] @conns]
-    (close! conn)
-    (.close ^Socket (:sock conn)))
-  (when saver (snapshot/stop-saver! saver store @world))
+  (shutdown! server)
   (log/info "server stopped")
   nil)
 
