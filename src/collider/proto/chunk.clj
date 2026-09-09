@@ -4,7 +4,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider.world.chunk Section)
-           (io.netty.buffer ByteBuf Unpooled)))
+           (collider.java Buf)))
 
 (set! *warn-on-reflection* true)
 
@@ -21,7 +21,7 @@
                              (bit-shift-left (long (aget values i)) off)))))
     out))
 
-(defn- write-container! [^ByteBuf buf ^ints ids ^long linear-bits]
+(defn- write-container! [^Buf buf ^ints ids ^long linear-bits]
   (let [distinct (vec (distinct (seq ids)))]
     (if (= 1 (count distinct))
       (do (.writeByte buf 0)
@@ -48,7 +48,7 @@
   "Section as the client reads it: non-air count, then the count of states
    holding a fluid. The client skips fluid physics in a section whose fluid
    count is zero, so it has to be right."
-  [^ByteBuf buf ^Section s]
+  [^Buf buf ^Section s]
   (let [ids (section-ids s)
         [n fluids] (loop [i 0 n 0 f 0]
                      (if (= i 4096)
@@ -62,7 +62,7 @@
     (write-container! buf ids 4)
     (write-container! buf (int-array 64 (int @plains)) 1)))
 
-(defn- write-empty-section! [^ByteBuf buf]
+(defn- write-empty-section! [^Buf buf]
   (.writeShort buf 0)
   (.writeShort buf 0)
   (.writeByte buf 0) (c/write-varint buf block/air)
@@ -77,11 +77,11 @@
 (defn- our-section [chunk ^long si]
   (when (< -1 si chunk/section-count) (get (:sections chunk) si)))
 
-(defn write-chunk! [^ByteBuf buf ^long cx ^long cz chunk]
+(defn write-chunk! [^Buf buf ^long cx ^long cz chunk]
   (.writeInt buf (int cx))
   (.writeInt buf (int cz))
   (c/write-varint buf 0)
-  (let [body (Unpooled/buffer 4096)]
+  (let [body (Buf. 4096)]
     (dotimes [wi chunk/section-count]
       (if-let [^Section s (our-section chunk wi)]
         (write-section! body s)
