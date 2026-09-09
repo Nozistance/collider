@@ -9,4 +9,4 @@
            :run   {:jvm-opts  ["-XX:+UseG1GC" "-XX:MaxGCPauseMillis=5"
                                "-XX:G1PeriodicGCInterval=60000" "-Xmx1g"
                                "--sun-misc-unsafe-memory-access=allow"]
-                   :main-opts ["-m" "collider.server"]}}}
+                   :main-opts ["-m" "collider.core"]}}}
