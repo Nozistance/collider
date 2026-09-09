@@ -33,21 +33,51 @@
     entity (when-let [t (get-in world [:entities entity :type])]
              (item-of (keyword (str (name t) "-spawn-egg"))))))
 
-(defn- hotbar-slot-with [inv item]
-  (some (fn [slot] (when (= item (get-in inv [slot :item])) slot)) (range 36 45)))
+(def ^:private scan-order
+  "Inventory slots in the order vanilla walks them: the hotbar, then the rest."
+  (vec (concat (range 36 45) (range 9 36))))
 
-(defn- pick-deltas [world [_ eid what]]
+(defn- slot-with [inv item]
+  (some (fn [slot] (when (= item (get-in inv [slot :item])) slot)) scan-order))
+
+(defn- free-slot [inv]
+  (some (fn [slot] (when-not (get inv slot) slot)) scan-order))
+
+(defn- suitable-hotbar
+  "getSuitableHotbarSlot: the first empty hotbar slot from the held one round
+   the hotbar, and the held one when every slot is taken."
+  [inv ^long held]
+  (or (some (fn [i] (let [n (mod (+ held (long i)) 9)]
+                      (when-not (get inv (+ 36 n)) n)))
+            (range 9))
+      held))
+
+(defn- select-deltas [eid ^long n]
+  [[:merge-entity eid {:held-slot n}] (out/to eid (out/held-slot n))])
+
+(defn- pick-deltas
+  "tryPickItem: an item the player already has comes to the hand, otherwise
+   creative gives a new stack. It takes a free hotbar slot and overwrites the
+   held one only when the hotbar is full, and then what was there moves to a
+   free slot."
+  [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
     (when-let [item (pick-item world what)]
       (let [inv  (:inventory e)
             held (long (or (:held-slot e) 0))]
-        (if-let [slot (hotbar-slot-with inv item)]
-          (let [n (- (long slot) 36)]
-            (when (not= n held)
-              [[:merge-entity eid {:held-slot n}]
-               (out/to eid (out/held-slot n))]))
-          (let [slot (+ 36 held)]
-            [[:set-slot eid slot {:item item :count 1}]]))))))
+        (if-let [slot (slot-with inv item)]
+          (if (<= 36 (long slot) 44)
+            (select-deltas eid (- (long slot) 36))
+            (let [n (suitable-hotbar inv held)]
+              (concat (select-deltas eid n)
+                      [[:set-slot eid (+ 36 n) (get inv slot)]
+                       [:set-slot eid slot (get inv (+ 36 n))]])))
+          (let [n    (suitable-hotbar inv held)
+                cur  (get inv (+ 36 n))
+                free (when cur (free-slot inv))]
+            (concat (select-deltas eid n)
+                    (when free [[:set-slot eid free cur]])
+                    [[:set-slot eid (+ 36 n) {:item item :count 1}]])))))))
 
 (defn- click-deltas
   "A click on the player's own inventory: the menu applies it; what the
