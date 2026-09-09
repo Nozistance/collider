@@ -6,9 +6,8 @@
    message to players. game/out.clj builds effects, render.clj sends them.
    game/state.clj applies world and entity deltas.
 
-   Schemas are malli. check! runs only when validate? is true (tests, REPL)."
-  (:require [malli.core :as m]
-            [malli.error :as me])
+   Schemas are malli, loaded on demand: check! runs only when validate? is
+   true (tests, REPL), so a release does not carry malli."
   (:import (collider.java V3)))
 
 ;; --- primitives -----------------------------------------------------------
@@ -156,15 +155,16 @@
                 (for [[tag [args _]] entity-deltas] [tag (into [:cat [:= tag] Eid] (rest args))])
                 [[:fx [:cat [:= :fx] Fx]]])))
 
-(def ^:private delta-validator (m/validator Delta))
-(def ^:private delta-explainer (m/explainer Delta))
+(def ^:private delta-validator (delay ((requiring-resolve 'malli.core/validator) Delta)))
+(def ^:private delta-explainer (delay ((requiring-resolve 'malli.core/explainer) Delta)))
 
-(defn valid? [delta] (delta-validator delta))
+(defn valid? [delta] (@delta-validator delta))
 
 (defn explain
   "Why the delta is not valid, or nil."
   [delta]
-  (some-> (delta-explainer delta) me/humanize))
+  (when-let [e (@delta-explainer delta)]
+    ((requiring-resolve 'malli.error/humanize) e)))
 
 (def validate?
   "Validate deltas each tick. Tests set it with alter-var-root."
@@ -174,7 +174,7 @@
   "Throws ex-info on the first delta that is not valid."
   [deltas]
   (doseq [d deltas]
-    (when-not (delta-validator d)
+    (when-not (@delta-validator d)
       (throw (ex-info (str "invalid delta " (first d)) {:delta d :why (explain d)}))))
   deltas)
 

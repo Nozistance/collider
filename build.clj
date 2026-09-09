@@ -77,7 +77,8 @@
   (clean nil)
   (javac nil)
   (b/copy-dir {:src-dirs   ["src" "resources"]
-               :target-dir class-dir})
+               :target-dir class-dir
+               :ignores    [".*~$" "^#.*#$" "^\\.#.*" "^\\.DS_Store$" ".*\\.java$" ".*\\.clj$"]})
   (b/compile-clj {:basis      basis
                   :src-dirs   ["src"]
                   :class-dir  class-dir
@@ -86,7 +87,8 @@
   (b/uber {:class-dir class-dir
            :uber-file jar-file
            :basis     basis
-           :main      'collider.server}))
+           :main      'collider.server
+           :exclude   [".*\\.java$" ".*\\.cljs$"]}))
 
 (defn- kw [s]
   (keyword (str/replace (str/replace (str s) #"^minecraft:" "") "_" "-")))
