@@ -16,6 +16,7 @@
 (def datapack   (delay (load-edn "datapack.edn")))
 (def tags       (delay (load-edn "tags.edn")))
 (def shapes     (delay (load-edn "shapes.edn")))
+(def outlines   (delay (load-edn "outlines.edn")))
 (def sturdy     (delay (load-edn "sturdy.edn")))
 (def sturdy-center (delay (load-edn "sturdy-center.edn")))
 (def sturdy-rigid  (delay (load-edn "sturdy-rigid.edn")))
@@ -25,6 +26,9 @@
 (def drops      (delay (load-edn "drops.edn")))
 (defn max-stack ^long [item]
   (long (get-in @items [item :max-stack] 64)))
+
+(defn jukebox-song [item]
+  (get-in @items [item :jukebox-song]))
 
 (defn equip-slot [item]
   (get-in @items [item :equip]))

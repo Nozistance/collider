@@ -36,7 +36,7 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire} (vanilla-shapes root)
+          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire} (vanilla-shapes root)
           drops (when (.isFile server) (block-drops server))
           items (vanilla-items reports)
           bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
@@ -58,6 +58,8 @@
         (println "  (no server-plain.jar - datapack names skipped)"))
       (write-edn! (path "shapes.edn") sh
                   (format "%d states that are not a whole cube" (count sh)))
+      (write-edn! (path "outlines.edn") ol
+                  (format "%d states whose outline is not a whole cube" (count ol)))
       (write-edn! (path "sturdy.edn") sturdy
                   (format "%d states with a non-sturdy face" (count sturdy)))
       (write-edn! (path "sturdy-center.edn") center
@@ -153,6 +155,7 @@
           pos-cls    (Class/forName "net.minecraft.core.BlockPos" true cl)
           state-cls  (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase" true cl)
           shape-m    (.getMethod state-cls "getCollisionShape" (into-array Class [getter-cls pos-cls]))
+          outline-m  (.getMethod state-cls "getShape" (into-array Class [getter-cls pos-cls]))
           aabbs-m    (.getMethod (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl) "toAabbs" (make-array Class 0))
           aabb-cls   (Class/forName "net.minecraft.world.phys.AABB" true cl)
           fields     (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
@@ -178,6 +181,14 @@
                                              (.invoke aabbs-m shape (object-array 0)))]
                            :when (not= boxes full-box)]
                        [id boxes]))
+       :outlines (into (sorted-map)
+                       (for [st states
+                             :let [id    (.invoke get-id registry (object-array [st]))
+                                   shape (.invoke outline-m st (object-array [empty zero]))
+                                   boxes (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
+                                               (.invoke aabbs-m shape (object-array 0)))]
+                             :when (not= boxes full-box)]
+                         [id boxes]))
        :flags (into (sorted-map)
                     (for [st states
                           :let [id   (.invoke get-id registry (object-array [st]))
@@ -327,7 +338,9 @@
               :let [cs   (get (json/read-str (slurp f)) "components")
                     n    (get cs "minecraft:max_stack_size" 64)
                     slot (get-in cs ["minecraft:equippable" "slot"])
-                    m    (cond-> {} (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot)))]
+                    song (get cs "minecraft:jukebox_playable")
+                    m    (cond-> {} (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
+                           song (assoc :jukebox-song (kw song)))]
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))
 
@@ -420,6 +433,7 @@
   (let [m (str/trim (or mark ""))]
     (cond (str/starts-with? m "x") "done"
           (str/starts-with? m "skip") "skipped"
+          (str/starts-with? m "pending") "pending"
           :else "open")))
 
 (defn- parse-hooks [text]
@@ -466,21 +480,27 @@
               :blocks (with-entries (get parsed "blocks" {}))
               :entities (get parsed "entities" {})}
         total (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))]
-                          [(count (filter #(= "done" (:status %)) hs)) (count (filter #(= "skipped" (:status %)) hs)) (count hs)]))]
+                          [(count (filter #(= "done" (:status %)) hs))
+                           (count (filter #(= "skipped" (:status %)) hs))
+                           (count (filter #(= "pending" (:status %)) hs))
+                           (count hs)]))]
     (io/make-parents out)
     (spit out (json/write-str data))
     (let [tally (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))
                                 done (count (filter #(= "done" (:status %)) hs))
-                                skipped (count (filter #(= "skipped" (:status %)) hs))]
+                                skipped (count (filter #(= "skipped" (:status %)) hs))
+                                pending (count (filter #(= "pending" (:status %)) hs))]
                             {:classes (count (get data cat)) :hooks (count hs) :done done :skipped skipped
+                             :pending pending
                              :pct (if (seq hs) (Math/round (* 100.0 (/ (+ done skipped) (count hs)))) 0)}))
           b (tally :blocks) e (tally :entities)
           sum (fn [k] (+ (long (k b)) (long (k e))))
           all {:classes (sum :classes) :hooks (sum :hooks) :done (sum :done) :skipped (sum :skipped)
+               :pending (sum :pending)
                :pct (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (+ (sum :done) (sum :skipped)) (sum :hooks)))) 0)}]
       (spit (str (.getParent (io/file out)) "/summary.json")
             (json/write-str (assoc (:meta data) :all all :blocks b :entities e)))
       (println (format "  %s/summary.json: %d%% overall, %d%% in blocks"
                        (.getParent (io/file out)) (:pct all) (:pct b))))
-    (println (format "  %s: blocks %d classes, hooks done/skipped/all %s; entities %d classes, %s"
+    (println (format "  %s: blocks %d classes, hooks done/skipped/pending/all %s; entities %d classes, %s"
                      out (count (:blocks data)) (total :blocks) (count (:entities data)) (total :entities)))))
