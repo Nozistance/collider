@@ -6,6 +6,7 @@
 (set! *warn-on-reflection* true)
 
 (defn level ^long [^long st] (Long/parseLong (name (:level (block/props-of st)))))
+
 (def rule
   {:name   :composter
    :match? (fn [_chunks st _p] (= :composter (block/type-of st)))

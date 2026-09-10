@@ -2,8 +2,11 @@
   (:require [collider.rnd :as rnd]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.dripleaf :as dripleaf]
+            [collider.world.dripstone :as dripstone]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
+            [collider.world.moss :as moss]
             [collider.world.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
@@ -149,6 +152,8 @@
       (:wall-torch :redstone-wall-torch :ladder)
       (attached-to? chunks template pos (opposite (block/facing-of st)))
       :standing-sign (block/blocks-motion? (max 0 below))
+      :banner (block/blocks-motion? (max 0 below))
+      :wall-banner (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dirs (opposite (block/facing-of st)))))))
       :wall-sign (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dirs (opposite (block/facing-of st)))))))
       :ceiling-hanging-sign (holds-center-above? above)
       :wall-hanging-sign (hanging-sign-held? chunks template pos st)
@@ -179,6 +184,10 @@
       :vine (pos? (vine-updated chunks template pos st))
       (:glow-lichen :multiface :sculk-vein) (pos? (multiface-updated chunks template pos st))
       :scaffolding (< (scaffold-distance chunks template pos) 7)
+      :mossy-carpet (moss/carpet-supported? chunks pos st)
+      :hanging-moss (moss/hanging-supported? chunks pos st)
+      (:pointed-dripstone :sulfur-spike) (dripstone/supported? chunks pos st)
+      (:big-dripleaf :big-dripleaf-stem :small-dripleaf) (dripleaf/supported? chunks pos st)
       :hanging-roots (and (not (neg? above)) (block/face-sturdy? above :down))
       :farmland (or (not (block/blocks-motion? (max 0 above))) (block/tagged? (max 0 above) "maintains_farmland"))
       :dirt-path (or (not (block/blocks-motion? (max 0 above))) (= :fence-gate (block/type-of (max 0 above))))
@@ -378,10 +387,14 @@
                  :when cand]
              cand))))
 
+(defn- carpet-fitted [chunks pos ^long st]
+  (let [st' (moss/carpet-updated chunks pos st true)]
+    (when (moss/carpet-supported? chunks pos st') st')))
+
 (defn fitted [chunks template pos st face yaw pitch sneaking? tick]
   (case (block/type-of st)
     :standing-sign (sign-fitted chunks template pos st yaw pitch)
-    (:skull :player-head) (skull-fitted chunks template pos st yaw pitch)
+    (:skull :wither-skull :player-head) (skull-fitted chunks template pos st yaw pitch)
     :ceiling-hanging-sign (hanging-sign-fitted chunks template pos st yaw pitch sneaking?)
     (:lantern :weathering-lantern) (lantern-fitted chunks template pos st pitch)
     :bell (bell-fitted chunks template pos st face yaw)
@@ -389,6 +402,9 @@
     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
     (growing-plant-fitted chunks template pos st tick)
     :end-rod (rod-fitted chunks template pos st face)
+    :mossy-carpet (carpet-fitted chunks pos st)
+    (:pointed-dripstone :sulfur-spike) (dripstone/placed chunks pos st pitch sneaking?)
+    :big-dripleaf (dripleaf/leaf-placed chunks pos st)
     :vine (vine-fitted chunks template pos st yaw pitch)
     (:glow-lichen :multiface :sculk-vein) (multiface-fitted chunks template pos st yaw pitch)
     :scaffolding (when (< (scaffold-distance chunks template pos) 7) (scaffold-state chunks template pos st))

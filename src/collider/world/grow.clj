@@ -1,9 +1,12 @@
 (ns collider.world.grow
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.dripleaf :as dripleaf]
             [collider.world.eyeblossom :as eyeblossom]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
+            [collider.world.moss :as moss]
+            [collider.world.multiface :as multiface]
             [collider.world.liquid :as liquid]
             [collider.world.support :as support]))
 
@@ -197,6 +200,114 @@
                        (recur q (step q i) (inc i)))))]
       (when (ok? target) [[target st]]))))
 
+(def ^:private huge-mushroom
+  {:red-mushroom   {:cap :red-mushroom-block   :radius 2 :tag "huge_red_mushroom_can_place_on"}
+   :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
+(def ^:private stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
+(defn- flag [b] (if b :true :false))
+
+(defn- cleared-at ^long [chunks origin q]
+  (if (= q origin) 0 (at chunks q)))
+
+(defn- check-radius ^long [kind ^long radius ^long dy]
+  (if (= :brown-mushroom kind) (if (<= dy 3) 0 radius) 0))
+
+(defn- mushroom-room? [chunks p kind radius height]
+  (every? (fn [[dx dy dz]]
+            (let [st (cleared-at chunks p (mapv + p [dx dy dz]))]
+              (or (zero? st) (block/tagged? st "leaves"))))
+          (for [dy (range (inc (long height)))
+                :let [r (check-radius kind (long radius) dy)]
+                dx (range (- r) (inc r)) dz (range (- r) (inc r))]
+            [dx dy dz])))
+
+(defn- mushroom-fits? [chunks [_ y _ :as p] kind radius tag height]
+  (and (>= (long y) 1) (chunk/in-range? (+ (long y) (long height) 1))
+       (block/tagged? (at chunks (down p)) tag)
+       (mushroom-room? chunks p kind (long radius) (long height))))
+
+(defn- mushroom-height ^long [rnd]
+  (let [h (+ 4 (pick rnd :height 3))]
+    (if (zero? (pick rnd :double 12)) (* 2 h) h)))
+
+(defn- red-cap [p cap ^long radius ^long height]
+  (let [center (- radius 2)]
+    (for [dy (range (- height 3) (inc height))
+          :let [r (if (< dy height) radius (dec radius))]
+          dx (range (- r) (inc r)) dz (range (- r) (inc r))
+          :let [xe (or (= dx (- r)) (= dx r)) ze (or (= dz (- r)) (= dz r))]
+          :when (or (>= dy height) (not= xe ze))]
+      [(mapv + p [dx dy dz])
+       (block/state cap {:down :false :up (flag (>= dy (dec height)))
+                         :west (flag (< dx (- center))) :east (flag (> dx center))
+                         :north (flag (< dz (- center))) :south (flag (> dz center))})])))
+
+(defn- brown-cap [p cap ^long radius ^long height]
+  (for [dx (range (- radius) (inc radius)) dz (range (- radius) (inc radius))
+        :let [nx (= dx (- radius)) px (= dx radius) nz (= dz (- radius)) pz (= dz radius)
+              xe (or nx px) ze (or nz pz)]
+        :when (not (and xe ze))]
+    [(mapv + p [dx height dz])
+     (block/state cap {:up :true :down :false
+                       :west (flag (or nx (and ze (= dx (- 1 radius)))))
+                       :east (flag (or px (and ze (= dx (dec radius)))))
+                       :north (flag (or nz (and xe (= dz (- 1 radius)))))
+                       :south (flag (or pz (and xe (= dz (dec radius)))))})]))
+
+(defn- mushroom-cells [p kind cap radius height]
+  (let [cap-fn (if (= :brown-mushroom kind) brown-cap red-cap)]
+    (concat (cap-fn p cap (long radius) (long height))
+            (for [dy (range (long height))] [(mapv + p [0 dy 0]) @stem-state]))))
+
+(defn- mushroom-changes [chunks origin cells]
+  (loop [cells (seq cells) seen {origin 0} acc []]
+    (if-let [[q st] (first cells)]
+      (let [cur (long (get seen q (at chunks q)))]
+        (if (or (zero? cur) (block/tagged? cur "replaceable_by_mushrooms"))
+          (recur (next cells) (assoc seen q st) (conj acc [q st]))
+          (recur (next cells) seen acc)))
+      acc)))
+
+(defn- mushroom-grown [chunks p kind rnd]
+  (let [{:keys [cap radius tag]} (huge-mushroom kind) radius (long radius)
+        height (mushroom-height rnd)]
+    (if (mushroom-fits? chunks p kind radius tag height)
+      (mushroom-changes chunks p (mushroom-cells p kind cap radius height))
+      [])))
+
+(defn- mushroom-meal [chunks [_ y _ :as p] st rnd]
+  (let [kind (block/block-of st) {:keys [radius]} (huge-mushroom kind)]
+    (when (and radius (chunk/in-range? (+ (long y) 4 (long radius))))
+      {:changes (if (< (double (rnd :success)) 0.4) (mushroom-grown chunks p kind rnd) [])})))
+
+(defn- roots-meal [chunks [_ y _ :as p]]
+  (when (and (chunk/in-range? (dec (long y))) (zero? (at chunks (down p))))
+    {:changes [[(down p) (block/state :hanging-roots)]]}))
+
+(defn- snowy [chunks p] (flag (block/tagged? (at chunks (up p)) "snow")))
+
+(defn- spread-alive? [chunks p]
+  (let [a (at chunks (up p))]
+    (cond
+      (and (= :snow-layer (block/type-of a)) (= 1 (prop a :layers))) true
+      (and (liquid/liquid-state? a) (liquid/source-state? a)) false
+      :else (not (light/blocks-light? a)))))
+
+(defn- spread-target? [chunks q]
+  (and (= :dirt (block/block-of (at chunks q))) (spread-alive? chunks q)
+       (not (water? (at chunks (up q))))))
+
+(defn- spread-tick [chunks p st rnd]
+  (if-not (spread-alive? chunks p)
+    [[p (block/state :dirt)]]
+    (when (lit? chunks (up p) 9)
+      (let [self (block/block-of st)]
+        (into [] (keep (fn [i]
+                         (let [q (mapv + p [(dec (pick rnd [:x i] 3)) (- (pick rnd [:y i] 5) 3) (dec (pick rnd [:z i] 3))])]
+                           (when (and (chunk/in-range? (q 1)) (spread-target? chunks q))
+                             [q (block/state self {:snowy (snowy chunks q)})]))))
+              (range 4))))))
+
 (defn- near-water? [chunks [x y z]]
   (boolean (some (fn [[dx dy dz]] (water? (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
                  (for [dx (range -4 5) dy [0 1] dz (range -4 5)] [dx dy dz]))))
@@ -222,8 +333,12 @@
             chance (/ (double (inc older)) (double (+ older same 1)))]
         (* chance chance (if (zero? own) 0.75 1.0))))))
 
+(defn- weathers-here? [st]
+  (or (not= :weathering-copper-door (block/type-of st))
+      (= :lower (:half (block/props-of st)))))
+
 (defn- weather-tick [chunks p st rnd]
-  (when (< (double (rnd :day)) 0.05688889)
+  (when (and (weathers-here? st) (< (double (rnd :day)) 0.05688889))
     (when-let [odds (weather-odds chunks p st)]
       (when (< (double (rnd :age)) (double odds))
         (when-let [next (block/weathered-next st)]
@@ -308,6 +423,7 @@
       :sweet-berry-bush (berry-tick chunks p st rnd)
       :kelp (kelp-tick chunks p st rnd)
       :mushroom (mushroom-tick chunks p st rnd)
+      :mycelium (spread-tick chunks p st rnd)
       :farmland (farmland-tick chunks p st rnd)
       :cocoa (when (and (chance? rnd :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
       :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/opacity st))) [[p (block/state :water)]])
@@ -366,6 +482,20 @@
   (when (= :false (:berries (block/props-of st)))
     {:changes [[p (with st :berries :true)]]}))
 
+(defn- carpet-meal [chunks p st]
+  (when (= :true (:bottom (block/props-of st)))
+    (when-let [topper (moss/carpet-topper chunks p (constantly true))]
+      {:changes [[(up p) topper]]})))
+
+(defn- hanging-moss-meal [chunks p st]
+  (let [q (moss/hanging-end chunks p (block/block-of st))]
+    (when (air-at? chunks q)
+      {:changes [[q (with st :tip :true)]]})))
+
+(defn- lichen-meal [chunks p st rnd]
+  (when-let [changes (multiface/spread-random chunks p st rnd)]
+    {:changes changes}))
+
 (defn bonemeal [chunks p st rnd]
   (let [st (long st)]
     (case (block/type-of st)
@@ -375,6 +505,8 @@
       :tall-flower (when (= :lower (:half (block/props-of st))) {:drops [{:item (block/block-of st) :count 1}]})
       :flower-bed (petals-meal p st)
       :sweet-berry-bush (when (< (age st) 3) {:changes [[p (aged st (inc (age st)))]]})
+      :mushroom (mushroom-meal chunks p st rnd)
+      :rooted-dirt (roots-meal chunks p)
       :cocoa (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]})
       :bamboo-sapling (when (air-at? chunks (up p)) {:changes [[(up p) (block/state :bamboo {:leaves :small})]]})
       :kelp (when (and (< (age st) 25) (= :water (liquid/liquid-class (at chunks (up p)))))
@@ -383,6 +515,10 @@
       (:weeping-vines-plant :twisting-vines-plant)
       (when-let [h (head-pos chunks p st)] (vines-meal chunks h (at chunks h) rnd))
       (:cave-vines :cave-vines-plant) (berries-meal p st)
+      :glow-lichen (lichen-meal chunks p st rnd)
+      :hanging-moss (hanging-moss-meal chunks p st)
+      :mossy-carpet (carpet-meal chunks p st)
+      (:big-dripleaf :big-dripleaf-stem :small-dripleaf) (dripleaf/meal chunks p st rnd)
       :seagrass (when (water? (at chunks (up p)))
                   {:changes [[p (block/state :tall-seagrass {:half :lower})] [(up p) (block/state :tall-seagrass {:half :upper})]]})
       nil)))

@@ -134,6 +134,9 @@
 (defn sign-editor [pos front?]
   {:msg :sign-editor :pos pos :front? (boolean front?)})
 
+(defn block-event [pos action param]
+  {:msg :block-event :pos pos :action action :param param})
+
 (defn block-entity [pos]
   {:msg :block-entity :pos pos})
 

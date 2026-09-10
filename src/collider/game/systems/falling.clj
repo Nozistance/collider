@@ -1,5 +1,6 @@
 (ns collider.game.systems.falling
-  (:require [collider.game.state :as state]
+  (:require [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.rnd :as rnd]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -7,7 +8,8 @@
             [collider.world.falling :as falling]
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
-            [collider.world.phys :as phys])
+            [collider.world.phys :as phys]
+            [collider.world.support :as support])
   (:import (collider.world.phys Move)))
 
 (set! *warn-on-reflection* true)
@@ -30,17 +32,26 @@
                        :yaw 0.0 :pitch 0.0 :on-ground false
                        :stack {:item (block/block-of (:block e)) :count 1} :age 0 :pickup-delay 10}]])))
 
+(defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
+
 (defn- landed-state [world cell st cur concrete? stuck?]
   (let [continues? (and (falling/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
-    (when (and (block/can-be-replaced? cur) (not continues?))
+    (when (and (block/can-be-replaced? cur) (not continues?)
+               (support/supported? (:chunks world) gen/flat-chunk cell st))
       (let [in-water? (= :water (liquid/liquid-class cur))
             st (if in-water? (block/with-water st) st)]
         (if (and concrete? in-water?) (block/concrete-of st) st)))))
 
+(defn- broken-deltas [world eid e cell]
+  (concat [[:remove-entity eid]]
+          (when (speleothem? (:block e))
+            [(out/all (out/level-event 1045 cell 0))])
+          (item-deltas world eid e)))
+
 (defn- land-deltas [world eid e cell cur concrete? stuck?]
   (if-let [st (landed-state world cell (:block e) cur concrete? stuck?)]
     [[:remove-entity eid] [:set-blocks [[cell st]]]]
-    (cons [:remove-entity eid] (item-deltas world eid e))))
+    (broken-deltas world eid e cell)))
 
 (defn- solid-here? [world cell]
   (let [st (block-at world cell)]

@@ -7,6 +7,7 @@
             [collider.game.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
+            [collider.world.dripleaf :as dripleaf]
             [collider.world.eyeblossom :as eyeblossom]
             [collider.world.sponge :as sponge]
             [collider.world.gen :as gen]
@@ -91,6 +92,22 @@
                    [#{} []])
            second))))
 
+(def ^:private cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
+(defn- drip-fill-deltas [world changes]
+  (for [[pos st] changes
+        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :when (contains? cauldron-types (block/type-of old))]
+    (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) 1046 1047) pos 0))))
+
+(defn- tilt-deltas [world changes]
+  (for [[pos st] changes
+        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)
+              sound (when (and (dripleaf/leaf? (long st)) (dripleaf/leaf? old)
+                               (not= (dripleaf/tilt-of (long st)) (dripleaf/tilt-of old)))
+                      (dripleaf/tilt-sound (long st)))]
+        :when sound]
+    (out/all (out/sound sound pos 1.0 (+ 0.8 (* 0.4 (double (rnd/rnd [(:tick world) pos :tilt]))))))))
+
 (defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]
     (out/all (out/sound (eyeblossom/sound-kind (long st) false) pos 1.0 1.0))))
@@ -127,7 +144,8 @@
                                    (map chunk/id->block-pos)) due)
             parked  (into [] (remove #(state/active-id? active %)) due)
             changes (lww-changes (:chunks world)
-                                 {:rules (:rules world) :tick t :time-of-day (:time-of-day world 0)}
+                                 {:rules (:rules world) :tick t :time-of-day (:time-of-day world 0)
+                                  :players (mapv (comp :pos val) (state/player-entries world))}
                                  now)
             changed (into #{} (map first) changes)
             again   (reduce (fn [m p]
@@ -148,7 +166,9 @@
                    (wash-deltas world changes)
                    (sponge-deltas world now changes)
                    (fall-deltas world changes)
-                   (eyeblossom-deltas changes)))
+                   (eyeblossom-deltas changes)
+                   (tilt-deltas world changes)
+                   (drip-fill-deltas world changes)))
          (ignite-deltas world now))))))
 
 (defn block-updates [world events]

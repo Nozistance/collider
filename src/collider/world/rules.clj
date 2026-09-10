@@ -1,6 +1,8 @@
 (ns collider.world.rules
   (:require [collider.world.composter :as composter]
             [collider.world.coral :as coral]
+            [collider.world.dripleaf :as dripleaf]
+            [collider.world.dripstone :as dripstone]
             [collider.world.eyeblossom :as eyeblossom]
             [collider.world.falling :as falling]
             [collider.world.fire :as fire]
@@ -17,7 +19,10 @@
    eyeblossom/rule
    liquid/rule
    fire/rule
+   dripleaf/rule
    support/rule
+   dripstone/rule
+   dripstone/cauldron-rule
    falling/rule
    sponge/rule
    coral/rule

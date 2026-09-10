@@ -92,7 +92,9 @@
     (.writeBytes buf (.toByteArray bo))))
 
 (defn- nbt-type ^long [v]
-  (cond (map? v) 10 (string? v) 8 (boolean? v) 1 (integer? v) 3 (vector? v) 9
+  (cond (map? v) 10 (string? v) 8 (boolean? v) 1
+        (instance? Byte v) 1 (instance? Short v) 2 (instance? Long v) 4
+        (integer? v) 3 (vector? v) 9
         :else (throw (ex-info "no NBT type" {:value v}))))
 
 (defn- write-nbt-payload [^DataOutputStream d v]
@@ -102,6 +104,9 @@
                  (.writeByte d 0))
     (string? v) (.writeUTF d ^String v)
     (boolean? v) (.writeByte d (if v 1 0))
+    (instance? Byte v) (.writeByte d (int ^Byte v))
+    (instance? Short v) (.writeShort d (int ^Short v))
+    (instance? Long v) (.writeLong d (long v))
     (integer? v) (.writeInt d (int v))
     (vector? v) (do (.writeByte d (if (empty? v) 0 (nbt-type (first v))))
                     (.writeInt d (count v))

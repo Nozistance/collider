@@ -90,6 +90,7 @@
    :bonemeal       [[[:pos Pos]] "Bone meal took: green sparks, level event 1505."]
    :level-event    [[[:event :int] [:pos Pos] [:data :int]] "A level event at a block with its data: wax on/off, scrape, composter fill."]
    :sign-editor    [[[:pos Pos] [:front? :boolean]] "Open the sign editor of one side (to the player)."]
+   :block-event    [[[:pos Pos] [:action :int] [:param :int]] "Block event at a block: pot wobble, bell ring."]
    :block-entity   [[[:pos Pos]] "Block entity data at pos changed: sent from the world after the tick."]
    :time           [[[:age :int] [:time :int]] "Clock: world age and time of day after the tick."]
    :teleport       [[[:pos Vec3] [:yaw number?] [:pitch number?]] "Put the player here (we wait for teleport-ack)."]

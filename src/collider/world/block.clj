@@ -34,7 +34,7 @@
 (def trapdoor-types #{:trapdoor :weathering-copper-trapdoor})
 (def torch-types #{:torch :redstone-torch})
 (def wall-torch-types #{:wall-torch :redstone-wall-torch})
-(def side-types #{:ladder :wall-sign :wall-hanging-sign :coral-wall-fan :base-coral-wall-fan})
+(def side-types #{:ladder :wall-sign :wall-hanging-sign :wall-banner :coral-wall-fan :base-coral-wall-fan})
 (def ground-types
   #{:sapling :powered-rail :detector-rail :rail :tall-grass :double-plant :dry-vegetation
     :short-dry-grass :tall-dry-grass :flower :mushroom :fire :soul-fire :redstone-wire
@@ -43,7 +43,7 @@
     :nether-wart :torchflower-crop :pitcher-crop :lily-pad :flower-bed :leaf-litter
     :eyeblossom :firefly-bush :kelp :kelp-plant :seagrass :tall-seagrass})
 (def water-holder-types #{:kelp :kelp-plant :seagrass :tall-seagrass :bubble-column})
-(def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding})
+(def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding :pointed-dripstone :sulfur-spike})
 (def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
 (def multiface-types #{:glow-lichen :multiface :sculk-vein})
 (def growing-plant
@@ -53,10 +53,10 @@
                  t [head body]]
              [t {:head head :body body :dir dir}])))
 (def growing-plant-types (set (keys growing-plant)))
-(def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
+(def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :banner :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
 (def attached-types
   #{:lantern :weathering-lantern :bell :farmland :dirt-path :candle :sea-pickle :cocoa
-    :amethyst-cluster})
+    :amethyst-cluster :hanging-moss :big-dripleaf :big-dripleaf-stem :small-dripleaf})
 (def stack-props
   {:candle :candles :sea-pickle :pickles :flower-bed :flower-amount :leaf-litter :segment-amount})
 (def replaceable-types (disj (into ground-types (concat torch-types wall-torch-types)) :standing-sign))
@@ -296,7 +296,8 @@
   {:redstone :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
    :pumpkin-seeds :pumpkin-stem :melon-seeds :melon-stem :carrot :carrots :potato :potatoes
    :torchflower-seeds :torchflower-crop :pitcher-pod :pitcher-crop :beetroot-seeds :beetroots
-   :sweet-berries :sweet-berry-bush :glow-berries :cave-vines})
+   :sweet-berries :sweet-berry-bush :glow-berries :cave-vines
+   :powder-snow-bucket :powder-snow})
 
 (defn wall-block [block]
   (let [n (name block)]
@@ -305,7 +306,7 @@
       :else (wall-variant block))))
 
 (def ^:private standing-and-wall-types
-  #{:standing-sign :skull :player-head})
+  #{:standing-sign :skull :wither-skull :player-head})
 
 (defn item->block [item face]
   (let [face (long face)
@@ -338,8 +339,10 @@
                   {:facing (face->direction face)}
                   (#{:standing-sign :banner :ceiling-hanging-sign} t)
                   {:rotation (keyword (str (rotation-segment yaw)))}
-                  (#{:skull :player-head} t)
+                  (#{:skull :wither-skull :player-head} t)
                   {:rotation (keyword (str (skull-rotation yaw)))}
+                  (= :decorated-pot t)
+                  {:facing (nth [:south :west :north :east] f)}
                   (= :lantern t)
                   {:hanging (if (= face 0) :true :false)}
                   (str/ends-with? (name t) "leaves")
@@ -369,6 +372,9 @@
 (def ^:private full-box [[0 0 0 16 16 16]])
 (defn collision-boxes [^long st]
   (get @data/shapes st full-box))
+
+(defn outline-boxes [^long st]
+  (get @data/outlines st full-box))
 
 (def ^:private full-cube-arr
   (let [a (boolean-array state-count)]

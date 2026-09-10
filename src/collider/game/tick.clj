@@ -1,5 +1,5 @@
 (ns collider.game.tick
-  (:require [collider.game.sign :as sign]
+  (:require [collider.game.blockentity :as be]
             [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
@@ -10,9 +10,11 @@
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.daynight :as daynight]
+            [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
+            [collider.game.systems.jukebox :as jukebox]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.players :as players]
@@ -30,9 +32,11 @@
 (def systems [#'chunks/chunk-streaming
    #'players/players
    #'blocks/block-edits
+   #'dripleaf/dripleaf-tilt
    #'block-updates/block-updates
    #'random-tick/random-ticks
    #'items/items
+   #'jukebox/jukebox-songs
    #'falling/falling-blocks
    #'mobs/mobs-system
    #'tnt/tnt-system
@@ -51,7 +55,7 @@
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]
             (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
-            (for [[_ recs] events [pos _] recs :when (sign/at w pos)]
+            (for [[_ recs] events [pos _] recs :when (be/at w pos)]
               (out/all (out/block-entity pos))))))
 
 (defn- apply-events [world events]

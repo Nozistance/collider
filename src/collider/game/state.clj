@@ -1,5 +1,5 @@
 (ns collider.game.state
-  (:require [collider.game.sign :as sign]
+  (:require [collider.game.blockentity :as be]
             [clojure.core.reducers :as r]
             [clojure.string]
             [collider.vec :as v]
@@ -87,7 +87,7 @@
 
 (defn- drop-block-entities [w real]
   (reduce (fn [w [pos old st]]
-            (if (and (sign/kind old) (not= (block/block-of old) (block/block-of (long st))))
+            (if (and (be/kind old) (not= (block/block-of old) (block/block-of (long st))))
               (update-in w [:block-entities (chunk/block-chunk pos)] dissoc pos)
               w))
           w real))

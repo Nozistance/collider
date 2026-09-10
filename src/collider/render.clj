@@ -1,16 +1,20 @@
 (ns collider.render
-  (:require [collider.game.sign :as sign]
+  (:require [collider.game.blockentity :as be]
             [clojure.data.int-map :as i]
             [collider.data :as data]
             [collider.game.deltas]
             [collider.game.rules :as rules]
             [collider.log :as log]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen])
   (:import (collider.game.deltas Deltas)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
+
+(defn- block-state ^long [world pos]
+  (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
 
 (defn- players [world]
   (sort (vals (:players world))))
@@ -31,7 +35,7 @@
                (let [[x z] (chunk/id->pos id)]
                  {:packet :level-chunk-with-light :cx x :cz z
                   :chunk (get-in world [:chunks id] gen/flat-chunk)
-                  :block-entities (sign/wire (get-in world [:block-entities id]))}))
+                  :block-entities (be/wire (get-in world [:block-entities id]))}))
              add)
         [{:packet :chunk-batch-finished :size (count add)}]))
      (map (fn [id]
@@ -114,6 +118,10 @@
           :eyeblossom/close-long [:block.eyeblossom.close-long 4]
           :cake/add-candle [:block.cake.add-candle 4]
           :cave-vines/pick-berries [:block.cave-vines.pick-berries 4]
+          :big-dripleaf/tilt-down [:block.big-dripleaf.tilt-down 4]
+          :big-dripleaf/tilt-up   [:block.big-dripleaf.tilt-up 4]
+          :sweet-berry-bush/pick-berries [:block.sweet-berry-bush.pick-berries 4]
+          :bottle/fill  [:item.bottle.fill 4]
           :copper-golem/statue [:entity.copper-golem-become-statue 4]
           :axe/strip    [:item.axe.strip 4]
           :axe/scrape   [:item.axe.scrape 4]
@@ -123,6 +131,16 @@
           :glow-ink/use [:item.glow-ink-sac.use 4]
           :ink-sac/use  [:item.ink-sac.use 4]
           :sign/waxed   [:block.sign.waxed-interact-fail 4]
+          :decorated-pot/insert      [:block.decorated-pot.insert 4]
+          :decorated-pot/insert-fail [:block.decorated-pot.insert-fail 4]
+          :shelf/place-item  [:block.shelf.place-item 4]
+          :shelf/single-swap [:block.shelf.single-swap 4]
+          :shelf/take-item   [:block.shelf.take-item 4]
+          :bookshelf/insert            [:block.chiseled-bookshelf.insert 4]
+          :bookshelf/insert-enchanted  [:block.chiseled-bookshelf.insert.enchanted 4]
+          :bookshelf/pickup            [:block.chiseled-bookshelf.pickup 4]
+          :bookshelf/pickup-enchanted  [:block.chiseled-bookshelf.pickup.enchanted 4]
+          :bell/use     [:block.bell.use 4]
           :bucket/empty [:item.bucket.empty 4]
           :bucket/fill  [:item.bucket.fill 4]
           :bucket/empty-lava [:item.bucket.empty-lava 4]
@@ -146,7 +164,10 @@
           :place/sand   [:block.sand.place 4]
           :place/cloth  [:block.wool.place 4]
           :place/glass  [:block.glass.place 4]
-          :place/snow   [:block.snow.place 4]})
+          :place/snow   [:block.snow.place 4]
+          :place/shelf  [:block.shelf.place 4]
+          :place/bookshelf [:block.chiseled-bookshelf.place 4]
+          :place/anvil  [:block.anvil.place 4]})
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 (def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))
@@ -229,8 +250,11 @@
     :bonemeal [{:packet :level-event :event 1505 :pos (:pos m) :data 15}]
     :level-event [{:packet :level-event :event (:event m) :pos (:pos m) :data (:data m 0)}]
     :sign-editor [{:packet :open-sign-editor :pos (:pos m) :front? (:front? m)}]
-    :block-entity (when-let [e (sign/at world (:pos m))]
-                    [{:packet :block-entity-data :pos (:pos m) :type (sign/type-id e) :nbt (sign/nbt e)}])
+    :block-event [{:packet :block-event :pos (:pos m) :action (:action m) :param (:param m)
+                   :block (data/registry-id "block" (block/block-of (block-state world (:pos m))))}]
+    :block-entity (when-let [e (be/at world (:pos m))]
+                    (when (be/on-wire? e)
+                      [{:packet :block-entity-data :pos (:pos m) :type (be/type-id e) :nbt (be/nbt e)}]))
     :extinguish [{:packet :level-event :event 1009 :pos (:pos m) :data 0}]
     :move [{:packet :move-entity-pos :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m) :on-ground (:on-ground m)}]
     :move-look [{:packet :move-entity-pos-rot :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)

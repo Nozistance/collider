@@ -3,8 +3,12 @@
             [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.dripleaf :as dripleaf]
+            [collider.world.dripstone :as dripstone]
+            [collider.world.fire :as fire]
             [collider.world.gen :as gen]
             [collider.world.liquid :as liquid]
+            [collider.world.moss :as moss]
             [collider.world.support :as support]))
 
 (set! *warn-on-reflection* true)
@@ -17,13 +21,15 @@
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
 (def ^:private neighbours (conj (vec (vals dirs)) [0 1 0] [0 -1 0]))
-(def pair-types #{:double-plant :tall-flower :tall-seagrass})
+(def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
+(def snowy-types #{:grass :mycelium :snowy-dirt})
 (def placed-types
   #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder})
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
-          :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein}
-        (concat pair-types block/growing-plant-types [:pitcher-crop])))
+          :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
+          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire}
+        (concat pair-types block/growing-plant-types snowy-types [:pitcher-crop])))
 
 (defn- exception? [n]
   (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
@@ -84,10 +90,11 @@
         partner (at (if lower? [0 1 0] [0 -1 0]))
         pprops (block/props-of partner)]
     (cond
-      (not (and (= self (block/block-of partner)) (not= (:half pprops) (:half props)))) 0
+      (not (and (contains? block/door-types (block/type-of partner))
+                (not= (:half pprops) (:half props)))) 0
       (and lower? (not (block/face-sturdy? (at [0 -1 0]) :up))) 0
       lower? st
-      :else (block/state self (assoc pprops :half :upper)))))
+      :else (block/state (block/block-of partner) (assoc pprops :half :upper)))))
 
 (defn bed-partner-offset [st]
   (let [f (block/facing-of st)]
@@ -165,6 +172,10 @@
       (and (= body (block/block-of st)) (not on?)) (block/state head (assoc props :age (support/plant-age tick pos)))
       :else st)))
 
+(defn- snowy-state [self st at]
+  (block/state self (assoc (block/props-of st)
+                           :snowy (if (block/tagged? (at [0 1 0]) "snow") :true :false))))
+
 (defn reshape [chunks [x y z :as pos] ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
@@ -180,10 +191,17 @@
                     :fence-gate (gate-state self st at)
                     :stair (stair-state self st at)
                     :concrete-powder (powder-state st at)
+                    :mossy-carpet (moss/carpet-reshaped chunks pos st)
+                    :hanging-moss (moss/hanging-tip chunks pos st)
+                    (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)
                     :vine (support/vine-updated chunks gen/flat-chunk pos st)
                     (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
                     (:double-plant :tall-flower :tall-seagrass) (pair-state self st at)
+                    :big-dripleaf (dripleaf/leaf-updated chunks pos st)
+                    :small-dripleaf (dripleaf/small-updated chunks pos st)
                     :pitcher-crop (pitcher-state self st at)
+                    :fire (fire/state-with-age chunks pos (fire/age st))
+                    (:grass :mycelium :snowy-dirt) (snowy-state self st at)
                     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
                     (growing-plant-state pos st at tick)
                     (let [sides (into {} (map (fn [[dir off]]

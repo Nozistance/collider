@@ -90,7 +90,7 @@
     :player-action           [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]
     :use-item-on             (let [[cx cy cz] (:cursor m)]
                                [:place eid (:pos m) (:face m) nil
-                                [(long (* 16 (double cx))) (long (* 16 (double cy))) (long (* 16 (double cz)))]
+                                [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
                                 (:sequence m)])
     :use-item                [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}]
     :swing                   [:swing eid]

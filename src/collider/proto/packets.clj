@@ -245,6 +245,12 @@
    {:write (fn [^Buf buf m]
              (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
              (.writeBoolean buf (boolean (:front? m))))}
+   [:play :block-event]
+   {:write (fn [^Buf buf m]
+             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
+             (.writeByte buf (int (:action m)))
+             (.writeByte buf (int (:param m)))
+             (c/write-varint buf (long (:block m))))}
    [:play :block-entity-data]
    {:write (fn [^Buf buf m]
              (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
