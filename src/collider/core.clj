@@ -8,7 +8,9 @@
             [collider.render :as render]
             [collider.server :as server]
             [collider.session :as session])
-  (:import (java.net ServerSocket)
+  (:import (java.lang.management ManagementFactory)
+           (java.net ServerSocket)
+           (java.util Locale)
            (java.util.concurrent ConcurrentLinkedQueue Executors
                                  ScheduledExecutorService ThreadFactory TimeUnit))
   (:gen-class))
@@ -44,8 +46,8 @@
 
 (defn start [opts]
   (let [cfg (merge (config/load-config) opts)
-        {:keys [save-file save-period-ms]} cfg
-        store (or (:store opts) (when save-file (snapshot/file-store save-file)))
+        {:keys [save-dir save-period-ms]} cfg
+        store (or (:store opts) (when save-dir (snapshot/file-store save-dir)))
         saved (when store (snapshot/load-snapshot store))
         world (atom (assoc (merge state/initial-world saved)
                       :config (select-keys cfg [:view-distance :simulation-distance])))
@@ -65,8 +67,10 @@
                 :saver      saver :store store :scheduler sched}]
     (when (seq (:chunks saved))
       (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
-    (log/info "collider" c/game-version "(protocol" (str c/protocol-version ") on")
-              (str (.getLocalSocketAddress srv)))
+    (log/info (String/format Locale/ROOT "collider %s (protocol %s) done (%.3fs), on %s"
+                             (object-array [c/game-version c/protocol-version
+                                            (/ (double (.getUptime (ManagementFactory/getRuntimeMXBean))) 1000.0)
+                                            (str (.getLocalSocketAddress srv))])))
     (assoc server :shutdown-hook (shutdown-hook! server))))
 
 (defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]

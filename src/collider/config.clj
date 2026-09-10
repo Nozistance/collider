@@ -13,8 +13,8 @@
    :view-distance 4
    :simulation-distance 2
    :compression-threshold 256
-   :save-file "world.snapshot"
-   :save-period-ms 120000})
+   :save-dir "world"
+   :save-period-ms 300000})
 
 (defn load-config
   ([] (load-config "config.edn"))

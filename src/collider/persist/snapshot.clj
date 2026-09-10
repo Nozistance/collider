@@ -1,4 +1,5 @@
 (ns collider.persist.snapshot
+  (:refer-clojure :exclude [load])
   (:require [clojure.java.io :as io]
             [collider.game.schema :as schema]
             [collider.log :as log]
@@ -11,7 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const format-version 5)
+(def ^:const format-version 6)
 (nippy/extend-freeze Section ::section [^Section s out]
   (nippy/freeze-to-out! out (.blocks s))
   (nippy/freeze-to-out! out (.block-light s))
@@ -25,10 +26,14 @@
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
 (defprotocol Store
-  (put! [this snapshot])
-  (fetch [this]))
+  (put-chunk! [this id chunk])
+  (del-chunk! [this id])
+  (get-chunk [this id])
+  (put-meta! [this m])
+  (load [this])
+  (flush! [this]))
 
-(defn- write-atomically! [file ^bytes data]
+(defn- write-atomically! ^long [file ^bytes data]
   (let [^Path target (.toPath (io/file file))
         dir (or (.getParent target) (.toPath (io/file ".")))]
     (Files/createDirectories dir (make-array FileAttribute 0))
@@ -40,29 +45,74 @@
                                                        StandardCopyOption/REPLACE_EXISTING]))
         (catch Throwable t
           (Files/deleteIfExists tmp)
-          (throw t))))))
+          (throw t))))
+    (alength data)))
 
-(defrecord FileStore [file]
+(defn- chunk-file ^File [dir id]
+  (let [[cx cz] (chunk/id->pos id)]
+    (io/file dir "chunks" (str cx "_" cz))))
+
+(defn- meta-file ^File [dir]
+  (io/file dir "meta"))
+
+(defn- read-frozen [^File f]
+  (when (.isFile f)
+    (nippy/thaw (Files/readAllBytes (.toPath f)))))
+
+(defn- chunk-id-of [^File f]
+  (let [[cx cz] (.split (.getName f) "_")]
+    (chunk/pos->id (parse-long cx) (parse-long cz))))
+
+(defn- chunk-files [dir]
+  (filter #(re-matches #"-?\d+_-?\d+" (.getName ^File %))
+          (or (.listFiles (io/file dir "chunks")) (make-array File 0))))
+
+(defn- read-chunks [dir]
+  (into {} (keep (fn [f] (when-let [c (read-frozen f)] [(chunk-id-of f) c])))
+        (chunk-files dir)))
+
+(defn- read-store [dir]
+  (let [^File d (io/file dir)]
+    (cond
+      (.isFile d) (log/info "snapshot:" (str d) "is a single-file world of an older layout"
+                            "- starting fresh")
+      (.isDirectory d) (when-let [m (read-frozen (meta-file d))]
+                         (assoc m :chunks (read-chunks d))))))
+
+(defrecord FileStore [dir]
   Store
-  (put! [_ snap] (write-atomically! file (nippy/freeze snap freeze-opts)))
-  (fetch [_] (let [^File f (io/file file)]
-               (when (.isFile f) (nippy/thaw (Files/readAllBytes (.toPath f))))))
+  (put-chunk! [_ id c] (write-atomically! (chunk-file dir id) (nippy/freeze c freeze-opts)))
+  (del-chunk! [_ id] (Files/deleteIfExists (.toPath (chunk-file dir id))))
+  (get-chunk [_ id] (read-frozen (chunk-file dir id)))
+  (put-meta! [_ m] (write-atomically! (meta-file dir) (nippy/freeze m freeze-opts)))
+  (load [_] (read-store dir))
+  (flush! [_] nil)
   Object
-  (toString [_] (str file)))
+  (toString [_] (str dir)))
 
-(defn file-store [file] (->FileStore file))
+(defn file-store [dir] (->FileStore dir))
 (defn snapshot [world]
   (assoc (schema/snapshot world) :format format-version))
 
+(defn- meta-of [snap]
+  (assoc (dissoc snap :chunks) :format format-version))
+
+(defn- written [n]
+  (if (number? n) (long n) 0))
+
+(defn- write-chunks! [store chunks]
+  (reduce + 0 (map (fn [[id c]] (written (put-chunk! store id c))) chunks)))
+
 (defn write-snapshot! [store snap]
-  (put! store snap))
+  (+ (written (put-meta! store (meta-of snap)))
+     (long (write-chunks! store (:chunks snap)))))
 
 (def world-of
   schema/world-of)
 
 (defn load-snapshot [store]
   (try
-    (when-let [m (fetch store)]
+    (when-let [m (load store)]
       (if (= format-version (:format m))
         (world-of m)
         (do (log/info "snapshot: unknown format" (:format m) "- world not loaded")
@@ -72,28 +122,36 @@
       nil)))
 
 (defn start-saver []
-  (agent {:snap nil :writes 0} :error-mode :continue))
+  (agent {:chunks nil :meta nil :writes 0} :error-mode :continue))
 
-(defn- same-but-time? [a b]
-  (and (identical? (:chunks a) (:chunks b))
-       (= (:block-ticks a) (:block-ticks b))
-       (= (:profiles a) (:profiles b))
-       (= (:entities a) (:entities b))))
+(defn changed-chunks [old new]
+  (remove (fn [[k v]] (identical? v (get old k))) new))
+
+(defn- dropped-chunks [old new]
+  (remove #(contains? new %) (keys old)))
+
+(defn- meta-changed? [a b]
+  (not= (dissoc a :time-of-day) (dissoc b :time-of-day)))
+
+(defn- write-changes! [state store snap m changed gone]
+  (try
+    (let [n (+ (written (put-meta! store m)) (long (write-chunks! store changed)))]
+      (run! #(del-chunk! store %) gone)
+      (log/info "snapshot: saved" (count changed) "chunks," (log/human-bytes n)
+                "to" (str store))
+      (-> state (assoc :chunks (:chunks snap) :meta m) (update :writes inc)))
+    (catch Throwable t
+      (log/info "snapshot: write failed -" (.getMessage t))
+      state)))
 
 (defn- save! [state store world]
-  (let [snap (snapshot world)]
-    (if (and (same-but-time? world (:snap state))
-             (= (:time-of-day world) (:time-of-day (:snap state))))
+  (let [snap (snapshot world)
+        m (meta-of snap)
+        changed (changed-chunks (:chunks state) (:chunks snap))
+        gone (dropped-chunks (:chunks state) (:chunks snap))]
+    (if (and (empty? changed) (empty? gone) (not (meta-changed? m (:meta state))))
       state
-      (try
-        (do (write-snapshot! store snap)
-            (when-not (same-but-time? world (:snap state))
-              (log/info "snapshot: saved" (count (:chunks snap)) "chunks,"
-                        (count (:entities snap)) "entities to" (str store)))
-            (-> state (assoc :snap world) (update :writes inc)))
-        (catch Throwable t
-          (log/info "snapshot: write failed -" (.getMessage t))
-          state)))))
+      (write-changes! state store snap m changed gone))))
 
 (defn request-save! [saver store world]
   (when saver
@@ -106,4 +164,6 @@
 
 (defn stop-saver! [saver store world]
   (request-save! saver store world)
-  (await-saver! saver))
+  (let [ok (await-saver! saver)]
+    (flush! store)
+    ok))
