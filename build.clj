@@ -432,7 +432,6 @@
 (defn- hook-status [mark]
   (let [m (str/trim (or mark ""))]
     (cond (str/starts-with? m "x") "done"
-          (str/starts-with? m "skip") "skipped"
           (str/starts-with? m "pending") "pending"
           :else "open")))
 
@@ -451,6 +450,18 @@
                    (cond-> acc h (update-in [cat cls :hooks] conj {:name h :owner owner :status (hook-status mark)}))))
           :else (recur (rest lines) cat cls acc))
         acc))))
+
+(defn- excluded-counts [text]
+  (let [section (fn [head]
+                  (->> (str/split-lines text)
+                       (drop-while #(not= % (str "## Excluded as " head)))
+                       rest
+                       (take-while #(not (str/starts-with? % "## ")))
+                       (filter #(re-matches #"\| [^|]+ \| [^|]+ \|" %))
+                       count
+                       (max 0)))]
+    {:client-only (- (section "client-only") 1)
+     :developer-compat (- (section "developer compatibility") 1)}))
 
 (def ^:private type-classes
   {:jack-o-lantern "CarvedPumpkinBlock" :enchantment-table "EnchantingTableBlock"})
@@ -479,28 +490,27 @@
                      :target "26.2"}
               :blocks (with-entries (get parsed "blocks" {}))
               :entities (get parsed "entities" {})}
+        excluded (excluded-counts (slurp hooks))
         total (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))]
                           [(count (filter #(= "done" (:status %)) hs))
-                           (count (filter #(= "skipped" (:status %)) hs))
                            (count (filter #(= "pending" (:status %)) hs))
                            (count hs)]))]
     (io/make-parents out)
     (spit out (json/write-str data))
     (let [tally (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))
                                 done (count (filter #(= "done" (:status %)) hs))
-                                skipped (count (filter #(= "skipped" (:status %)) hs))
                                 pending (count (filter #(= "pending" (:status %)) hs))]
-                            {:classes (count (get data cat)) :hooks (count hs) :done done :skipped skipped
+                            {:classes (count (get data cat)) :hooks (count hs) :done done
                              :pending pending
-                             :pct (if (seq hs) (Math/round (* 100.0 (/ (+ done skipped) (count hs)))) 0)}))
+                             :pct (if (seq hs) (Math/round (* 100.0 (/ done (count hs)))) 0)}))
           b (tally :blocks) e (tally :entities)
           sum (fn [k] (+ (long (k b)) (long (k e))))
-          all {:classes (sum :classes) :hooks (sum :hooks) :done (sum :done) :skipped (sum :skipped)
+          all {:classes (sum :classes) :hooks (sum :hooks) :done (sum :done)
                :pending (sum :pending)
-               :pct (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (+ (sum :done) (sum :skipped)) (sum :hooks)))) 0)}]
+               :pct (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (sum :done) (sum :hooks)))) 0)}]
       (spit (str (.getParent (io/file out)) "/summary.json")
-            (json/write-str (assoc (:meta data) :all all :blocks b :entities e)))
+            (json/write-str (assoc (:meta data) :all all :blocks b :entities e :excluded excluded)))
       (println (format "  %s/summary.json: %d%% overall, %d%% in blocks"
                        (.getParent (io/file out)) (:pct all) (:pct b))))
-    (println (format "  %s: blocks %d classes, hooks done/skipped/pending/all %s; entities %d classes, %s"
+    (println (format "  %s: blocks %d classes, hooks done/pending/all %s; entities %d classes, %s"
                      out (count (:blocks data)) (total :blocks) (count (:entities data)) (total :entities)))))
