@@ -145,12 +145,14 @@
 
 (defn- as-targets [nm s {:keys [players?]} _origin]
   (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
-        type (when args (some->> (re-find #"type=([a-z_:]+)" args) second block-kw))]
+        [_ negated type] (when args (re-find #"type=(!?)([a-z_:]+)" args))
+        type (some-> type block-kw)]
     (cond
       (nil? sel) [:ok {:name s}]
       (and players? (= "e" sel)) [:err (str (name nm) ": @e is not a player")]
       :else [:ok (cond-> ({"s" {:self true} "a" {:all true} "p" {:nearest true} "e" {:entities true}} sel)
-                   type (assoc :type type))])))
+                   type (assoc :type type)
+                   (= "!" negated) (assoc :not-type? true))])))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]

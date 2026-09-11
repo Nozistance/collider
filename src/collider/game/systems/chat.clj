@@ -92,9 +92,11 @@
 (defn- entity-name [e]
   (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (str/replace (name (:type e)) "-" "_"))}))
 
-(defn- targets [world eid {:keys [self all nearest entities type name]}]
+(defn- targets [world eid {:keys [self all nearest entities type not-type? name]}]
   (let [players (vals (:players world))
-        typed (fn [ids] (if type (filter #(= type (get-in world [:entities % :type])) ids) ids))]
+        typed (fn [ids] (if type
+                          (filter #(= (boolean not-type?) (not= type (get-in world [:entities % :type]))) ids)
+                          ids))]
     (cond
       self [eid]
       all (typed players)
