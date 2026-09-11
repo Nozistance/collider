@@ -235,6 +235,10 @@
     :respawn    [{:packet :respawn :dimension-type @overworld :keep 0}
                  {:packet :game-event :event 13 :value 0.0}]
     :default-spawn [{:packet :set-default-spawn-position :pos (:pos m)}]
+    :rain-started [{:packet :game-event :event 1 :value 0.0}]
+    :rain-stopped [{:packet :game-event :event 2 :value 0.0}]
+    :rain-level [{:packet :game-event :event 7 :value (:level m)}]
+    :thunder-level [{:packet :game-event :event 8 :value (:level m)}]
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]

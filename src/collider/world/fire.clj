@@ -6,6 +6,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.difficulty :as difficulty]
             [collider.world.gen :as gen]
+            [collider.world.biome :as biome]
             [collider.world.weather :as weather]
             [collider.world.support :as support]))
 
@@ -65,33 +66,38 @@
 (def ^:private rain-sides [[0 0 0] [-1 0 0] [1 0 0] [0 0 -1] [0 0 1]])
 
 (defn- near-rain? [chunks ctx p]
-  (and (weather/raining? ctx)
-       (boolean (some (fn [d] (weather/raining-at? chunks (mapv + p d))) rain-sides))))
+  (boolean (some (fn [d] (weather/raining-at? ctx chunks (mapv + p d))) rain-sides)))
 
-(defn- burn-out [chunks p d chance roll a]
+(defn- burn-out [chunks ctx p d chance roll a]
   (let [q (mapv + p d) st (state-at chunks q)]
     (when (< (pick roll [:burn q] chance) (odds st :burn))
-      (if (and (< (pick roll [:burn-age q] (+ a 10)) 5) (not (weather/raining-at? chunks q)))
+      (if (and (< (pick roll [:burn-age q] (+ a 10)) 5) (not (weather/raining-at? ctx chunks q)))
         [q (state-with-age chunks q (spread-age roll [:burn-spread q] a))]
         [q 0]))))
 
 (def ^:private burn-sides
   [[[1 0 0] 300] [[-1 0 0] 300] [[0 -1 0] 250] [[0 1 0] 250] [[0 0 -1] 300] [[0 0 1] 300]])
 
+(defn- burnout? [chunks p]
+  (biome/increased-fire-burnout? (biome/at chunks p)))
+
 (defn- catch-fire [chunks p ctx roll a difficulty]
-  (for [xx [-1 0 1] zz [-1 0 1] yy (range -1 5)
-        :when (not (and (zero? (long xx)) (zero? (long yy)) (zero? (long zz))))
-        :let [rate (if (> (long yy) 1) (+ 100 (* (dec (long yy)) 100)) 100)
-              q (mapv + p [xx yy zz])
-              io (ignite-odds chunks q)
-              o (quot (+ io 40 (* (long difficulty) 7)) (+ a 30))]
-        :when (and (pos? io) (pos? o) (<= (pick roll [:catch q] rate) o)
-                   (not (near-rain? chunks ctx q)))]
-    [q (state-with-age chunks q (spread-age roll [:catch-age q] a))]))
+  (let [extra? (burnout? chunks p)]
+    (for [xx [-1 0 1] zz [-1 0 1] yy (range -1 5)
+          :when (not (and (zero? (long xx)) (zero? (long yy)) (zero? (long zz))))
+          :let [rate (if (> (long yy) 1) (+ 100 (* (dec (long yy)) 100)) 100)
+                q (mapv + p [xx yy zz])
+                io (ignite-odds chunks q)
+                o (quot (+ io 40 (* (long difficulty) 7)) (+ a 30))
+                o (if extra? (quot (long o) 2) o)]
+          :when (and (pos? io) (pos? o) (<= (pick roll [:catch q] rate) o)
+                     (not (and (weather/raining? ctx) (near-rain? chunks ctx q))))]
+      [q (state-with-age chunks q (spread-age roll [:catch-age q] a))])))
 
 (defn- spread-changes [chunks p ctx roll a]
-  (concat (keep (fn [[d chance]] (burn-out chunks p d chance roll a)) burn-sides)
-          (catch-fire chunks p ctx roll a (difficulty/id ctx))))
+  (let [extra (if (burnout? chunks p) -50 0)]
+    (concat (keep (fn [[d chance]] (burn-out chunks ctx p d (+ (long chance) extra) roll a)) burn-sides)
+            (catch-fire chunks p ctx roll a (difficulty/id ctx)))))
 
 (def ^:private infiniburn #{:netherrack :magma-block})
 
@@ -118,6 +124,10 @@
         aged (aged-change st a a' p)]
     (cond
       (not (support/supported? chunks gen/flat-chunk p st)) [[p 0]]
+      (and (not (contains? infiniburn (block/block-of (max 0 below))))
+           (weather/raining? ctx)
+           (near-rain? chunks ctx p)
+           (< (double (r :rain-out)) (+ 0.2 (* (double a) 0.03)))) [[p 0]]
       (contains? infiniburn (block/block-of (max 0 below))) (concat aged (spread-changes chunks p ctx r a))
       (not (valid-location? chunks p))
       (if (or (neg? below) (not (block/face-sturdy? below :up)) (> a 3)) [[p 0]] aged)

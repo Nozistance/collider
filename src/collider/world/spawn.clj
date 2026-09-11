@@ -42,6 +42,10 @@
                (if (and (= motion none) (motion-blocking? st)) y motion)
                (if (block/blocks-motion? st) y floor))))))
 
+(defn motion-blocking-height ^long [chunks template x z]
+  (let [[_ motion _] (column-heights chunks template x z)]
+    (if (= (long motion) (long none)) (long chunk/min-y) (inc (long motion)))))
+
 (defn- overlaps? [lo box]
   (let [[x0 y0 z0 x1 y1 z1] lo [a b c d e f] box]
     (and (< (double x0) (double d)) (> (double x1) (double a))

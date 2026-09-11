@@ -35,6 +35,12 @@
         (for [[_ e] (:entities world) :when (and (= :player (:type e)) (:name e))]
           [(:name e) (profile-of e)])))
 
+(defn- store-rain-level [_ world]
+  (if (:raining? world) 1.0 0.0))
+
+(defn- store-thunder-level [_ world]
+  (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
+
 (def world
   {:tick        {:default 0}
    :time-ms     {:default 0}
@@ -49,6 +55,15 @@
                     :store (fn [v _] (into {} (map (fn [[k m]] [k (into {} m)])) v))
                     :load #(into (i/int-map) (map (fn [[k m]] [(long k) (into {} (map (fn [[p e]] [(vec p) e])) m)])) %)}
    :world-spawn {:default [24 4 8] :store (fn [v _] v) :load identity}
+   :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :rain-time      {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :thunder-time   {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :raining?       {:default false :store (fn [v _] (boolean v)) :load boolean}
+   :thundering?    {:default false :store (fn [v _] (boolean v)) :load boolean}
+   :rain-level     {:default 0.0 :store store-rain-level :load double}
+   :o-rain-level   {:default 0.0 :store store-rain-level :load double}
+   :thunder-level  {:default 0.0 :store store-thunder-level :load double}
+   :o-thunder-level {:default 0.0 :store store-thunder-level :load double}
    :players     {:default {}}
    :listed      {:default {}}})
 

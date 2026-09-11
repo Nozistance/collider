@@ -37,6 +37,10 @@
    :set-world-spawn
    [[:cat Pos]
     "World spawn point (/setworldspawn)."]
+   :set-weather
+   [[:cat :map]
+    "Weather fields of the world (timers, flags and levels) after
+     ServerLevel.advanceWeatherCycle or /weather."]
    :set-block-entity
    [[:cat Pos [:maybe :map]]
     "Block entity at pos (a sign), nil removes it."]
@@ -100,6 +104,10 @@
    :health         [[[:health number?]] "Player health."]
    :respawn        [[] "Respawn the player."]
    :default-spawn  [[[:pos Pos]] "World spawn point shown by the compass."]
+   :rain-started   [[] "Rain begins (game event 1)."]
+   :rain-stopped   [[] "Rain ends (game event 2)."]
+   :rain-level     [[[:level number?]] "Rain level 0..1 (game event 7)."]
+   :thunder-level  [[[:level number?]] "Thunder level 0..1 (game event 8)."]
    :keepalive      [[[:id :int]] "Ping."]
    :disconnect     [[[:text [:or :string :map]]] "Disconnect with a text (string or translate)."]
    :close          [[] "Close the connection."]

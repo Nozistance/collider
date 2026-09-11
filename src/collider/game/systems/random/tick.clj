@@ -8,7 +8,8 @@
             [collider.world.eyeblossom :as eyeblossom]
             [collider.world.gen :as gen]
             [collider.world.grow :as grow]
-            [collider.world.liquid :as liquid])
+            [collider.world.liquid :as liquid]
+            [collider.world.precipitation :as precipitation])
   (:import (collider.world.chunk Section)))
 
 (set! *warn-on-reflection* true)
@@ -31,7 +32,7 @@
         {:drip drip
          :changes (concat (:changes drip)
                           (dripstone/random-changes chunks p st roll)
-                          (grow/random-tick chunks p st roll (:time-of-day world 0)))}))))
+                          (grow/random-tick chunks p st roll (:time-of-day world 0) world))}))))
 
 (defn- section-cells [world chunks cid si speed]
   (let [t (long (:tick world)) cid (long cid) si (long si) speed (long speed)
@@ -58,6 +59,24 @@
                                       (section-cells world chunks cid si speed))))
                           (map-indexed vector (:sections c))))))
         (seq (state/active-chunks world))))
+
+(defn- precipitation-changes [world chunks speed]
+  (let [t (long (:tick world)) max-height (long (get-in world [:rules :max-snow-accumulation-height] 1))]
+    (into []
+          (mapcat
+           (fn [cid]
+             (let [cid (long cid) [cx cz] (chunk/id->pos cid)]
+               (into []
+                     (mapcat
+                      (fn [^long i]
+                        (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
+                          (let [x (+ (* 16 (long cx)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-x))))))
+                                z (+ (* 16 (long cz)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-z))))))]
+                            (precipitation/tick-precipitation
+                             world chunks [x 0 z] max-height
+                             (random/of-longs t cid i (hash :precipitation-fill)))))))
+                     (range (long speed))))))
+          (seq (state/active-chunks world)))))
 
 (defn- eyeblossom-changes [changes]
   (filter (fn [[_ st]] (eyeblossom/eyeblossom? (long st))) changes))
@@ -89,7 +108,7 @@
         chunks (:chunks world)]
     (when (pos? speed)
       (let [results (mapv (fn [[p st]] (cell-result world chunks p st)) (world-cells world chunks speed))
-            changes (into [] (mapcat :changes) results)
+            changes (into (precipitation-changes world chunks speed) (mapcat :changes) results)
             drips (into [] (keep :drip) results)]
         (when (or (seq changes) (seq drips))
           (let [woken (merge-with into (eyeblossom-schedules world changes) (drip-schedules world drips))]

@@ -6,7 +6,9 @@
             [collider.game.rules :as rules]
             [collider.game.systems.items :as items]
             [collider.vec :as v]
-            [collider.world.block :as block]))
+            [collider.random :as random]
+            [collider.world.block :as block]
+            [collider.world.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 
@@ -160,6 +162,20 @@
                     :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
                            "0.0" "0.0" "minecraft:overworld"]}]))]))
 
+(defn- duration-of ^long [world ^long given bounds salt]
+  (if (pos? given)
+    given
+    (weather/sample (random/of-key [(:tick world) salt]) bounds)))
+
+(defn- weather-deltas [world eid kind given]
+  (let [given (long (or given 0))
+        m (case kind
+            :clear (weather/parameters (duration-of world given weather/rain-delay :weather-clear) 0 false false)
+            :rain (weather/parameters 0 (duration-of world given weather/rain-duration :weather-rain) true false)
+            :thunder (weather/parameters 0 (duration-of world given weather/thunder-duration :weather-thunder) true true))]
+    [[:set-weather m]
+     (out/to eid (out/system-chat [{:translate (str "commands.weather.set." (name kind))}]))]))
+
 (defn- world-command-deltas [world eid [_ op & args]]
   (case op
     :gamerule (rule-deltas world eid (first args) (second args))
@@ -170,6 +186,9 @@
     :setblock (setblock-deltas eid args)
     :setworldspawn (setworldspawn-deltas world eid args)
     :fill (fill-deltas eid args)
+    :weather-clear (weather-deltas world eid :clear (first args))
+    :weather-rain (weather-deltas world eid :rain (first args))
+    :weather-thunder (weather-deltas world eid :thunder (first args))
     :time-set (let [t (long (first args))]
                 (cons [:set-time t]
                       (tell eid (format "set the time to **%d**" t))))

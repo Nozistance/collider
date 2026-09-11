@@ -15,7 +15,8 @@
             [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.rules :as rules]
-            [collider.world.spawn :as spawn])
+            [collider.world.spawn :as spawn]
+            [collider.world.weather :as weather])
   (:import (clojure.lang MapEntry)
            (collider.game.deltas Deltas)
            (java.nio.charset StandardCharsets)
@@ -374,6 +375,7 @@
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
     :set-world-spawn (assoc w :world-spawn (vec (first args)))
+    :set-weather (merge w (select-keys (first args) weather/fields))
     :set-block-entity (let [[pos e] args cp (chunk/block-chunk pos)]
                         (if e
                           (assoc-in w [:block-entities cp pos] e)

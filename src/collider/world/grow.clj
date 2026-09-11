@@ -9,7 +9,8 @@
             [collider.world.moss :as moss]
             [collider.world.multiface :as multiface]
             [collider.world.liquid :as liquid]
-            [collider.world.support :as support]))
+            [collider.world.support :as support]
+            [collider.world.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 
@@ -294,10 +295,10 @@
   (and (= :dirt (block/block-of (at chunks q))) (spread-alive? chunks q)
        (not (water? (at chunks (up q))))))
 
-(defn- spread-tick [chunks p st roll time]
+(defn- spread-tick [chunks p st roll time ctx]
   (if-not (spread-alive? chunks p)
     [[p (block/state :dirt)]]
-    (when (>= (light/brightness chunks gen/flat-chunk (p 0) (inc (long (p 1))) (p 2) time) 9)
+    (when (>= (weather/brightness ctx chunks gen/flat-chunk (p 0) (inc (long (p 1))) (p 2) time) 9)
       (let [self (block/block-of st)]
         (into [] (keep (fn [i]
                          (let [q (mapv + p [(dec (pick roll [:x i] 3)) (- (pick roll [:y i] 5) 3) (dec (pick roll [:z i] 3))])]
@@ -407,7 +408,9 @@
   (when-let [new (eyeblossom/switched st time)]
     [[p new]]))
 
-(defn random-tick [chunks p st roll time]
+(defn random-tick
+  ([chunks p st roll time] (random-tick chunks p st roll time nil))
+  ([chunks p st roll time ctx]
   (let [st (long st)]
     (case (block/type-of st)
       (:crop :carrot :potato :beetroot :torchflower-crop) (crop-tick chunks p st roll)
@@ -420,7 +423,7 @@
       :sweet-berry-bush (berry-tick chunks p st roll)
       :kelp (kelp-tick chunks p st roll)
       :mushroom (mushroom-tick chunks p st roll)
-      :mycelium (spread-tick chunks p st roll (long time))
+      :mycelium (spread-tick chunks p st roll (long time) ctx)
       :farmland (farmland-tick chunks p st roll)
       :cocoa (when (and (chance? roll :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
       :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/dampening st))) [[p (block/state :water)]])
@@ -429,7 +432,7 @@
       :budding-amethyst (budding-tick chunks p st roll)
       :eyeblossom (eyeblossom-tick p st time)
       (:weeping-vines :twisting-vines :cave-vines) (vines-tick chunks p st roll)
-      (when (block/weathering? st) (weather-tick chunks p st roll)))))
+      (when (block/weathering? st) (weather-tick chunks p st roll))))))
 
 (defn- crop-meal [chunks p st roll]
   (let [t (block/type-of st) a (age st) top (long (max-age t))]

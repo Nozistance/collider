@@ -1,7 +1,6 @@
 (ns collider.world.light
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.weather :as weather])
+            [collider.world.chunk :as chunk])
   (:import (collider.world.chunk Section)
            (java.util ArrayDeque HashMap)))
 
@@ -217,20 +216,27 @@
         to (float (+ v (float (* (float alpha) (float (- (float target) v))))))]
     (float (+ v (float (* (float weight) (float (- to v))))))))
 
-(defn sky-light-level ^double [^long time]
-  (let [thunder (float (weather/thunder-level nil))
-        rain    (float (- (float (weather/rain-level nil)) thunder))
-        v       (float (* (float 15.0) (float (sky-level-factor time))))
-        v       (float (if (pos? rain) (blend v 0.3125 4.0 rain) v))
-        v       (float (if (pos? thunder) (blend v 0.52734375 4.0 thunder) v))]
-    (float (min (float 15.0) (max (float 0.0) v)))))
+(defn sky-light-level
+  (^double [^long time] (sky-light-level time 0.0 0.0))
+  (^double [^long time ^double rain-level ^double thunder-level]
+   (let [thunder (float thunder-level)
+         rain    (float (- (float rain-level) thunder))
+         v       (float (* (float 15.0) (float (sky-level-factor time))))
+         v       (float (if (pos? rain) (blend v 0.3125 4.0 rain) v))
+         v       (float (if (pos? thunder) (blend v 0.52734375 4.0 thunder) v))]
+     (float (min (float 15.0) (max (float 0.0) v))))))
 
-(defn sky-darken ^long [^long time]
-  (long (int (float (- (float 15.0) (float (sky-light-level time)))))))
+(defn sky-darken
+  (^long [^long time] (sky-darken time 0.0 0.0))
+  (^long [^long time ^double rain-level ^double thunder-level]
+   (long (int (float (- (float 15.0) (float (sky-light-level time rain-level thunder-level))))))))
 
-(defn brightness [chunks template x y z time]
-  (max (- (long (sky-light-at chunks template x y z)) (sky-darken (long time)))
-       (long (block-light-at chunks template x y z))))
+(defn brightness
+  ([chunks template x y z time] (brightness chunks template x y z time 0.0 0.0))
+  ([chunks template x y z time rain-level thunder-level]
+   (max (- (long (sky-light-at chunks template x y z))
+           (sky-darken (long time) (double rain-level) (double thunder-level)))
+        (long (block-light-at chunks template x y z)))))
 
 (defn- different? [^long old ^long new]
   (and (not= old new)

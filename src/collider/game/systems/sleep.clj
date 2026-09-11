@@ -6,7 +6,8 @@
             [collider.world.bed :as bed]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.gen :as gen]
+            [collider.world.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 
@@ -53,6 +54,8 @@
       (and (>= (count asleep) needed) (>= deep needed))
       (let [t (* day-length (inc (quot (long (:time-of-day world 0)) day-length)))]
         (concat [[:set-time t] (out/all (out/time (long (:tick world)) t))]
+                (when (and (get-in world [:rules :advance-weather] true) (weather/raining? world))
+                  [[:set-weather weather/reset-cycle]])
                 (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep)))
       (seq waking)
       (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)

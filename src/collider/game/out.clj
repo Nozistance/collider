@@ -27,6 +27,18 @@
 (defn default-spawn [pos]
   {:msg :default-spawn :pos pos})
 
+(defn rain-started []
+  {:msg :rain-started})
+
+(defn rain-stopped []
+  {:msg :rain-stopped})
+
+(defn rain-level [level]
+  {:msg :rain-level :level (double level)})
+
+(defn thunder-level [level]
+  {:msg :thunder-level :level (double level)})
+
 (defn keepalive [id]
   {:msg :keepalive :id id})
 

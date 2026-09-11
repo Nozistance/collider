@@ -51,6 +51,13 @@
      [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
      [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
     [:world :setworldspawn]]
+   [:weather "set the weather"
+    [:clear "clear the sky" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+     [:world :weather-clear]]
+    [:rain "let it rain" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+     [:world :weather-rain]]
+    [:thunder "let it storm" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+     [:world :weather-thunder]]]
    [:fill "fill a box with a block (~ = your position)"
     [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
      [:y1 [:coord {:min -64 :max 319 :axis 1}]]
@@ -66,6 +73,7 @@
 (defn- find-form [forms nm] (first (filter #(= nm (cmd-name %)) forms)))
 (defn- label [[nm [kind {:keys [min max]}]]]
   (case kind
+    :duration (str "<" (name nm) ">")
     :int (str "<" (name nm) " " min "-" max ">")
     (str "<" (name nm) ">")))
 
@@ -155,11 +163,21 @@
     [:ok r]
     [:err (str (name nm) ": unknown game rule \"" s "\"")]))
 
+(def ^:private time-units {"" 1 "t" 1 "s" 20 "d" 24000})
+
+(defn- as-duration [nm s opts _origin]
+  (let [[_ value unit] (re-matches #"(-?[0-9]*\.?[0-9]+)([a-z]*)" (str s))
+        factor (get time-units (or unit ""))]
+    (cond
+      (nil? factor) [:err (str (name nm) ": give a duration in ticks, or with d, s or t, not \"" s "\"")]
+      (nil? value) [:err (str (name nm) ": give a duration, not \"" s "\"")]
+      :else (in-range nm (Math/round (* (Double/parseDouble value) (double (long factor)))) opts))))
+
 (defn- as-text [_nm s _opts _origin] [:ok s])
 (def ^:private coercers
   {:int as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
    :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
-   :rule as-rule, :text as-text})
+   :rule as-rule, :text as-text, :duration as-duration})
 
 (defn- coerce [[nm [kind opts] :as arg] s origin]
   (if (nil? s)
@@ -168,6 +186,7 @@
 
 (defn- arg-values [[_ [kind {:keys [min max values default axis names]}]] target]
   (case kind
+    :duration ["1d" "1s" "100"]
     :int (->> [default min (quot (+ (long min) (long max)) 2) max]
               (remove nil?) (map str) distinct vec)
     :coord (if target [(str (nth target axis))] [])
@@ -277,6 +296,7 @@
 (def ^:private brigadier-bool (keyword "brigadier:bool"))
 (defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
   (case kind
+    :duration [[(name nm) :time {:min 1}]]
     :int [[(name nm) brigadier-integer {:min min :max max}]]
     :named-int [[(name nm) :time {:min 0}]]
     :coord [[(name nm) :block-pos nil]]
