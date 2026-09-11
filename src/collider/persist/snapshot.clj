@@ -130,8 +130,14 @@
 (defn- dropped-chunks [old new]
   (remove #(contains? new %) (keys old)))
 
+(def ^:private clock-keys [:tick :time-ms :time-of-day])
+
+(defn- timeless [m]
+  (-> (apply dissoc m clock-keys)
+      (update :block-ticks #(into #{} (mapcat second) %))))
+
 (defn- meta-changed? [a b]
-  (not= (dissoc a :time-of-day) (dissoc b :time-of-day)))
+  (not= (timeless a) (timeless b)))
 
 (defn- write-changes! [state store snap m changed gone]
   (try
