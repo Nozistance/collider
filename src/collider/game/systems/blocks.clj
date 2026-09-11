@@ -182,9 +182,28 @@
       (concat (change-deltas world [[pos (cauldron-lowered cur)]])
               [(out/all (out/sound :bottle/fill pos 1.0 1.0))]))))
 
-(defn- cauldron-deltas [world pos item]
+(defn water-bottle? [stack]
+  (and (= :potion (:item stack))
+       (= :water (get-in stack [:components :potion-contents :potion]))))
+
+(defn- cauldron-raised [cur]
+  (if (= :cauldron (block/block-of cur))
+    (block/state :water-cauldron)
+    (let [lvl (cauldron-level cur)]
+      (when (< lvl 3)
+        (block/state (block/block-of cur) {:level (keyword (str (inc lvl)))})))))
+
+(defn- pour-bottle-deltas [world pos]
+  (let [cur (block-at world pos)]
+    (when (contains? #{:cauldron :water-cauldron} (block/block-of cur))
+      (when-let [st (cauldron-raised cur)]
+        (concat (change-deltas world [[pos st]])
+                [(out/all (out/sound :bottle/empty pos 1.0 1.0))])))))
+
+(defn- cauldron-deltas [world pos item stack]
   (let [cur (block-at world pos)]
     (cond
+      (and (= :potion item) (water-bottle? stack)) (pour-bottle-deltas world pos)
       (= :bucket item)
       (when-let [sound (cauldron-scooped cur)]
         (concat (change-deltas world [[pos (block/state :cauldron)]]) [(out/all (out/sound sound pos 1.0 1.0))]))
@@ -421,7 +440,7 @@
       (contains? #{:cave-vines :cave-vines-plant} t) (when (nil? item) (berries-deltas world pos))
       (= :sweet-berry-bush t) (bush-deltas world pos)
       (= :composter t) (compost-deltas world pos item)
-      (contains? cauldron-types t) (cauldron-deltas world pos item)
+      (contains? cauldron-types t) (cauldron-deltas world pos item (held-stack world eid))
       (sign/kind cur) (sign-use-deltas world eid pos item)
       (= :decorated-pot t) (pot-use-deltas world pos item)
       (= :jukebox t) (jukebox-use-deltas world pos item)
@@ -651,7 +670,8 @@
 
 (defn- block-entity-place-deltas [world eid pos state item]
   (concat (placed-deltas world eid pos state item)
-          [[:set-block-entity pos (be/fresh (be/kind state) eid)]]
+          [[:set-block-entity pos (be/from-stack (be/fresh (be/kind state) eid)
+                                                 (held-stack world eid))]]
           (when (sign/kind state) [(out/to eid (out/sign-editor pos true))])))
 
 (defn- door-place-deltas [world eid pos pos' state item [cx _ cz]]
@@ -950,6 +970,16 @@
                                      :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
                  (sleep/announcement world (inc (count (sleep/sleepers world))))])))))
 
+(def ^:private mud-blocks (delay (set (get-in @data/tags ["block" "convertable_to_mud"]))))
+
+(defn- mud-deltas [world eid pos face]
+  (when (and (not= 0 (long face))
+             (contains? @mud-blocks (block/block-of (block-at world pos)))
+             (water-bottle? (held-stack world eid)))
+    (concat (change-deltas world [[pos (block/state :mud)]])
+            [(out/all (out/sound :splash pos 1.0 1.0))
+             (out/all (out/sound :bottle/empty pos 1.0 1.0))])))
+
 (defn- place-deltas [world [eid pos face item cursor] origin]
   (let [item      (or item (sense/held-of (get-in world [:entities eid])))
         args      [eid pos face item cursor]
@@ -968,6 +998,7 @@
       (= :flint-and-steel item)    (when-not use-item? (flint-deltas world args))
       (= :bucket item)             (when use-item? (scoop-deltas world eid at))
       (= :lily-pad item)           (when use-item? (lily-deltas world eid at))
+      (= :potion item)             (when-not use-item? (mud-deltas world eid pos face))
       (= :bone-meal item)          (when-not use-item? (bonemeal-deltas world args))
       (hoe? item)                  (when-not use-item? (till-deltas world args))
       (= :honeycomb item)          (when-not use-item? (wax-deltas world args))

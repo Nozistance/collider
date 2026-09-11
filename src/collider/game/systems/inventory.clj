@@ -1,5 +1,6 @@
 (ns collider.game.systems.inventory
   (:require [collider.data :as data]
+            [collider.game.blockentity :as be]
             [collider.game.menu :as menu]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
@@ -21,18 +22,32 @@
 (defn- item-of [name]
   (when (contains? (get @data/registries "item") name) name))
 
+(def ^:private cloned-kinds #{:banner :decorated-pot})
+
+(defn- cloned-stack [world pos item]
+  (let [e (be/at world pos)]
+    (if (contains? cloned-kinds (:kind e))
+      (be/to-stack item e)
+      {:item item :count 1})))
+
 (defn- pick-item [world {:keys [pos entity]}]
   (cond
     pos (let [st (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-          (when (pos? (long st)) (item-of (block/block-of (long st)))))
+          (when (pos? (long st))
+            (when-let [item (item-of (block/block-of (long st)))]
+              (cloned-stack world pos item))))
     entity (when-let [t (get-in world [:entities entity :type])]
-             (item-of (keyword (str (name t) "-spawn-egg"))))))
+             (when-let [item (item-of (keyword (str (name t) "-spawn-egg")))]
+               {:item item :count 1}))))
 
 (def ^:private scan-order
   (vec (concat (range 36 45) (range 9 36))))
 
-(defn- slot-with [inv item]
-  (some (fn [slot] (when (= item (get-in inv [slot :item])) slot)) scan-order))
+(defn- same-item? [a b]
+  (and (some? a) (= (dissoc a :count) (dissoc b :count))))
+
+(defn- slot-with [inv stack]
+  (some (fn [slot] (when (same-item? (get inv slot) stack) slot)) scan-order))
 
 (defn- free-slot [inv]
   (some (fn [slot] (when-not (get inv slot) slot)) scan-order))
@@ -48,10 +63,10 @@
 
 (defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
-    (when-let [item (pick-item world what)]
+    (when-let [stack (pick-item world what)]
       (let [inv  (:inventory e)
             held (long (or (:held-slot e) 0))]
-        (if-let [slot (slot-with inv item)]
+        (if-let [slot (slot-with inv stack)]
           (if (<= 36 (long slot) 44)
             (select-deltas eid (- (long slot) 36))
             (let [n (suitable-hotbar inv held)]
@@ -63,7 +78,7 @@
                 free (when cur (free-slot inv))]
             (concat (select-deltas eid n)
                     (when free [[:set-slot eid free cur]])
-                    [[:set-slot eid (+ 36 n) {:item item :count 1}]])))))))
+                    [[:set-slot eid (+ 36 n) stack]])))))))
 
 (defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]

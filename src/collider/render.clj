@@ -122,6 +122,7 @@
           :big-dripleaf/tilt-up   [:block.big-dripleaf.tilt-up 4]
           :sweet-berry-bush/pick-berries [:block.sweet-berry-bush.pick-berries 4]
           :bottle/fill  [:item.bottle.fill 4]
+          :bottle/empty [:item.bottle.empty 4]
           :copper-golem/statue [:entity.copper-golem-become-statue 4]
           :axe/strip    [:item.axe.strip 4]
           :axe/scrape   [:item.axe.scrape 4]

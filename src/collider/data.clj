@@ -52,6 +52,23 @@
     (registry-id registry entry)
     (datapack-id registry entry)))
 
+(def ^:private by-id
+  (delay
+   (into {}
+         (map (fn [[registry entries]]
+                [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
+         @registries)))
+
+(defn entry-name [registry ^long id]
+  (if-let [m (get @by-id registry)]
+    (or (get m id)
+        (throw (ex-info "unknown registry id" {:registry registry :id id})))
+    (let [v (get @datapack registry)]
+      (when-not v (throw (ex-info "unknown registry" {:registry registry})))
+      (when (or (neg? id) (>= id (count v)))
+        (throw (ex-info "unknown registry id" {:registry registry :id id})))
+      (nth v id))))
+
 (defn- prop-order [b] (vec (keys (:props b))))
 (defn- prop-sizes [b] (mapv #(count (get (:props b) %)) (prop-order b)))
 (defn- state-count ^long [b] (reduce * 1 (map count (vals (:props b)))))
