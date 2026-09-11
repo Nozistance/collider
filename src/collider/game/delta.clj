@@ -33,6 +33,11 @@
     "Next game time the container at pos re-broadcasts its opener count
      (ContainerOpenersCounter.scheduleRecheck, every 5 ticks while open);
      nil clears it."]
+   :shulker-anim
+   [[:cat Pos [:maybe :map]]
+    "Lid animation of the shulker box at pos ({:status :progress}, as
+     ShulkerBoxBlockEntity.animationStatus and progress); nil is CLOSED.
+     Transient, like the vanilla field: it is not saved with the world."]
    :block-events-flushed
    [[:cat]
     "Clear the sent block event queue."]

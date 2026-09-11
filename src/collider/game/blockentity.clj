@@ -21,11 +21,17 @@
    :chest :chest :copper-chest :chest :weathering-copper-chest :chest
    :trapped-chest :trapped-chest
    :ender-chest :ender-chest
-   :barrel :barrel})
+   :barrel :barrel
+   :shulker-box :shulker-box})
 
-(def ^:private silent #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel})
+(def ^:private silent
+  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel :shulker-box})
 
-(def container-kinds #{:chest :trapped-chest :barrel})
+(def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
+
+;; ShulkerBoxBlockEntity.preRemoveSideEffects is empty: a broken shulker box
+;; keeps its contents in the dropped item instead of spilling them.
+(def spill-kinds #{:chest :trapped-chest :barrel})
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -110,12 +116,33 @@
    :skull         {:profile :profile}
    :decorated-pot {:sherds :pot-decorations}})
 
+(defn- template [stack]
+  (when stack
+    (cond-> {:item (:item stack) :count (long (:count stack 1))}
+      (or (:components stack) (:removed stack))
+      (assoc :patch (select-keys stack [:components :removed])))))
+
+(defn- from-template [t]
+  (when t (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
+
+(defn contents
+  "ItemContainerContents.fromItems: templates up to the last non-empty slot."
+  [items]
+  (let [top (reduce (fn [acc [i s]] (if s (long i) acc)) -1 (map-indexed vector items))]
+    (mapv template (take (inc top) items))))
+
+(defn- items-of [cs size]
+  (vec (take size (concat (map from-template cs) (repeat nil)))))
+
 (defn from-stack [e stack]
   (reduce-kv (fn [e field component]
                (if-let [v (get-in stack [:components component])]
                  (assoc e field v)
                  e))
-             e (get component-fields (:kind e) {})))
+             (if (= :shulker-box (:kind e))
+               (assoc e :items (items-of (get-in stack [:components :container]) 27))
+               e)
+             (get component-fields (:kind e) {})))
 
 (defn to-stack [item e]
   (let [cs (reduce-kv (fn [m field component]
@@ -124,7 +151,9 @@
                             m
                             (assoc m component v))))
                       {} (get component-fields (:kind e) {}))]
-    (cond-> {:item item :count 1} (seq cs) (assoc :components cs))))
+    (cond-> {:item item :count 1}
+      (= :shulker-box (:kind e)) (assoc-in [:components :container] (contents (:items e)))
+      (seq cs) (update :components merge cs))))
 
 (defn fresh [k editor]
   (case k
@@ -136,7 +165,7 @@
     :shelf {:kind :shelf :items [nil nil nil]}
     :chiseled-bookshelf {:kind :chiseled-bookshelf :items [nil nil nil nil nil nil] :last-slot -1}
     :bell {:kind :bell}
-    (:chest :trapped-chest :barrel) {:kind k :items (vec (repeat 27 nil))}
+    (:chest :trapped-chest :barrel :shulker-box) {:kind k :items (vec (repeat 27 nil))}
     :ender-chest {:kind :ender-chest}))
 
 (defn wire [entries]

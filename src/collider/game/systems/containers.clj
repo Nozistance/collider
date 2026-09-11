@@ -72,7 +72,7 @@
      :slots slots}))
 
 (defn open-deltas [world eid pos]
-  (if-let [m (container/menu-at (:chunks world) pos)]
+  (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
           prev (close-deltas world eid e true)
           e' (cond-> e prev (assoc :carried nil :menu nil))
@@ -145,6 +145,7 @@
 
 (defn- containers-deltas [world events]
   (concat
+   (container/animate-deltas world)
    (mapcat (fn [[tag :as ev]]
              (case tag
                :menu-click (click-deltas world ev)

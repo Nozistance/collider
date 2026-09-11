@@ -411,7 +411,7 @@
           props (cond
                   (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
                   {:axis (case face (0 1) :y, (4 5) :x, :z)}
-                  (#{:end-rod :weathering-lightning-rod :amethyst-cluster} t)
+                  (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t)
                   {:facing (face->direction face)}
                   (#{:standing-sign :banner :ceiling-hanging-sign} t)
                   {:rotation (keyword (str (rotation-segment yaw)))}

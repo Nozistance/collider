@@ -22,7 +22,7 @@
 (defn- item-of [name]
   (when (contains? (get @data/registries "item") name) name))
 
-(def ^:private cloned-kinds #{:banner :decorated-pot})
+(def ^:private cloned-kinds #{:banner :decorated-pot :shulker-box})
 
 (defn- cloned-stack [world pos item]
   (let [e (be/at world pos)]
@@ -30,12 +30,14 @@
       (be/to-stack item e)
       {:item item :count 1})))
 
-(defn- pick-item [world {:keys [pos entity]}]
+(defn- pick-item [world {:keys [pos entity include-data]}]
   (cond
     pos (let [st (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
           (when (pos? (long st))
             (when-let [item (item-of (block/block-of (long st)))]
-              (cloned-stack world pos item))))
+              (if include-data
+                (cloned-stack world pos item)
+                {:item item :count 1}))))
     entity (when-let [t (get-in world [:entities entity :type])]
              (when-let [item (item-of (keyword (str (name t) "-spawn-egg")))]
                {:item item :count 1}))))

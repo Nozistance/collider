@@ -101,7 +101,7 @@
     :player-command          [:entity-action eid (:action m)]
     :player-input            [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}]
     :set-carried-item        [:held-item eid (:slot m)]
-    :pick-item-from-block    [:pick eid {:pos (:pos m)}]
+    :pick-item-from-block    [:pick eid {:pos (:pos m) :include-data (:include-data m)}]
     :pick-item-from-entity   [:pick eid {:entity (:id m)}]
     :set-creative-mode-slot  [:creative-slot eid (:slot m) (:stack m)]
     :container-click         (if (zero? (long (:container m)))

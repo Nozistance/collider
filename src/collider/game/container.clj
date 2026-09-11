@@ -1,5 +1,6 @@
 (ns collider.game.container
-  (:require [collider.game.blockentity :as be]
+  (:require [collider.data :as data]
+            [collider.game.blockentity :as be]
             [collider.game.menu :as menu]
             [collider.game.out :as out]
             [collider.random :as random]
@@ -10,7 +11,7 @@
 
 (def size 27)
 (def chest-types chest/types)
-(def container-types (conj chest/types :barrel :ender-chest))
+(def container-types (conj chest/types :barrel :ender-chest :shulker-box))
 
 (def state-at chest/state-at)
 (def connected-direction chest/connected-direction)
@@ -34,12 +35,43 @@
          :cells (if (= :right (:type (block/props-of st))) [pos p2] [p2 pos])})
       {:kind :block :rows 3 :type :generic-9x3 :title {:translate "container.chest"} :cells [pos]})))
 
-(defn menu-at [chunks pos]
-  (let [st (state-at chunks pos) t (block/type-of st)]
+(def ^:private dir-offset
+  {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
+
+(def ^:private axis-of {:down 1 :up 1 :north 2 :south 2 :west 0 :east 0})
+(def ^:private positive? #{:up :south :east})
+
+(defn- half-free?
+  "Shulker.getProgressDeltaAabb(1, facing, 0, 0.5) over the neighbour cell:
+   the half of it next to the box must hold no collision box."
+  [chunks pos facing]
+  (let [st (state-at chunks (mapv + pos (dir-offset facing)))
+        ax (long (axis-of facing))
+        far? (contains? positive? facing)]
+    (not-any? (fn [box]
+                (let [lo (double (nth box ax)) hi (double (nth box (+ ax 3)))]
+                  (if far? (< lo 8.0) (> hi 8.0))))
+              (block/collision-boxes st))))
+
+(defn animation [world pos]
+  (get (:shulker-anim world) pos))
+
+(defn can-open?
+  "ShulkerBoxBlock.canOpen: an already moving or open lid always opens."
+  [world pos ^long st]
+  (or (some? (animation world pos))
+      (half-free? (:chunks world) pos (:facing (block/props-of st)))))
+
+(defn menu-at [world pos]
+  (let [chunks (:chunks world)
+        st (state-at chunks pos) t (block/type-of st)]
     (cond
       (contains? chest-types t) (chest-menu chunks pos st)
       (= :barrel t) {:kind :block :rows 3 :type :generic-9x3
                      :title {:translate "container.barrel"} :cells [pos]}
+      (= :shulker-box t) (when (can-open? world pos st)
+                           {:kind :block :rows 3 :type :shulker-box
+                            :title {:translate "container.shulkerBox"} :cells [pos]})
       (= :ender-chest t) (when-not (blocked? chunks pos)
                            {:kind :ender :rows 3 :type :generic-9x3
                             :title {:translate "container.enderchest"} :cells [] :pos pos}))))
@@ -110,6 +142,12 @@
                           (+ (double z) 0.5 (* 0.5 (double dz)))]
                          0.5 (pitch world pos :lid)))]))
 
+(defn- shulker-sound [world pos open?]
+  (let [[x y z] pos]
+    [(out/all (out/sound (if open? :block.shulker-box.open :block.shulker-box.close)
+                         [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+                         0.5 (pitch world pos :lid)))]))
+
 (defn- ender-sound [world pos open?]
   (let [[x y z] pos]
     [(out/all (out/sound (if open? :block.ender-chest.open :block.ender-chest.close)
@@ -117,6 +155,32 @@
                          0.5 (pitch world pos :lid)))]))
 
 (def ^:private ^:const recheck-delay 5)
+(def ^:private step (float 0.1))
+
+(defn- trigger-deltas
+  "ShulkerBoxBlockEntity.triggerEvent: opener count 1 starts opening, 0 closing."
+  [pos ^long after]
+  (cond
+    (zero? after) [[:shulker-anim pos {:status :closing}]]
+    (= 1 after) [[:shulker-anim pos {:status :opening}]]
+    :else nil))
+
+(defn animate-deltas
+  "ShulkerBoxBlockEntity.updateAnimation: 0.1 of the lid per tick."
+  [world]
+  (mapcat (fn [[pos {:keys [status progress]}]]
+            (let [p (float progress)
+                  up (float (+ p step)) down (float (- p step))]
+              (if (not= :shulker-box (block/type-of (state-at (:chunks world) pos)))
+                [[:shulker-anim pos nil]]
+                (case status
+                  :opening [[:shulker-anim pos (if (>= up (float 1.0))
+                                                 {:status :opened :progress (float 1.0)}
+                                                 {:status :opening :progress up})]]
+                  :closing [[:shulker-anim pos (when (> down (float 0.0))
+                                                 {:status :closing :progress down})]]
+                  nil))))
+          (:shulker-anim world)))
 
 (defn count-deltas [world pos ^long before ^long after]
   (let [st (state-at (:chunks world) pos)
@@ -124,12 +188,16 @@
         edge (fn [open?] (cond
                            (contains? chest-types t) (chest-sound world pos st open?)
                            (= :barrel t) (barrel-sound world pos st open?)
+                           (= :shulker-box t) (shulker-sound world pos open?)
                            (= :ender-chest t) (ender-sound world pos open?)))]
     (concat
      (when (and (zero? before) (pos? after)) (edge true))
      (when (and (pos? before) (zero? after)) (edge false))
      (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
-     (when (and (not= :barrel t) (zero? before) (pos? after))
+     (when (= :shulker-box t) (trigger-deltas pos after))
+     ;; ShulkerBoxBlockEntity keeps its own openCount and never schedules a
+     ;; recheck: only ContainerOpenersCounter does.
+     (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
 
 (defn recheck-deltas [world]
@@ -146,4 +214,15 @@
 (defn barrel-open-state [^long st open?]
   (block/state (block/block-of st) (assoc (block/props-of st) :open (if open? :true :false))))
 
-(defn layout [m] (menu/container-layout (long (:rows m))))
+(defn fits-inside?
+  "Item.canFitInsideContainerItems: BlockItem of a ShulkerBoxBlock cannot."
+  [item]
+  (not= :shulker-box (:type (get @data/blocks item))))
+
+(defn- may-place? [_ stack]
+  (fits-inside? (:item stack)))
+
+(defn layout [m]
+  (if (= :shulker-box (:type m))
+    (menu/container-layout (long (:rows m)) may-place?)
+    (menu/container-layout (long (:rows m)))))

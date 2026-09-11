@@ -534,9 +534,27 @@
       [[:spawn-entity (items/popped world (mapv + pos [0 1 0]) (:record e) :jukebox)]
        (out/all (out/level-event 1011 pos 0))])))
 
+(defn- shulker-break-deltas
+  "ShulkerBoxBlock.playerWillDestroy: a creative player still gets the box
+   itself when it is not empty, with its contents in the item."
+  [world pos]
+  (let [e (be/at world pos)
+        [x y z] pos]
+    (when (= :shulker-box (:kind e))
+      (concat
+       (when (container/animation world pos) [[:shulker-anim pos nil]])
+       (when (some some? (:items e))
+         (let [item (block/block-of (block-at world pos))
+               r (fn [k] (random/of-key [(:tick world) pos :shulker k]))]
+           [[:spawn-entity {:type :item
+                            :pos [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+                            :vel [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
+                            :yaw 0.0 :pitch 0.0 :on-ground false
+                            :stack (be/to-stack item e) :age 0 :pickup-delay 10}]]))))))
+
 (defn- spill-deltas [world pos]
   (let [e (be/at world pos)]
-    (when (contains? be/container-kinds (:kind e))
+    (when (contains? be/spill-kinds (:kind e))
       (mapcat (fn [[i stack]]
                 (when stack
                   (map (fn [part] [:spawn-entity (items/popped world pos part [:spill i])])
@@ -547,7 +565,9 @@
   (let [old (block-at world pos)]
     (when (or (= 0 status) (= 2 status))
       (if (pos? old)
-        (cond-> (into (vec (concat (jukebox-break-deltas world pos) (spill-deltas world pos)))
+        (cond-> (into (vec (concat (jukebox-break-deltas world pos)
+                                   (shulker-break-deltas world pos)
+                                   (spill-deltas world pos)))
                       (conj (change-deltas world [[pos (block/emptied old)]])
                             (out/except eid (out/break-effect pos old))))
           (fire/fire-state? old) (conj (out/all (out/extinguish pos)))

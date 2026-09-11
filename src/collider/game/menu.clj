@@ -40,22 +40,24 @@
    :swap    (fn ^long [^long button] (if (= 40 button) offhand-slot (+ hotbar-slot button)))
    :quick   player-quick-slots})
 
-(defn container-layout [^long rows]
-  (let [n (* 9 rows)
-        menu (into (vec (range n))
-                   (map #(+ n (long %)))
-                   (concat (range 9 36) (range 36 45)))
-        index (into {} (map-indexed (fn [i f] [f i])) menu)]
-    {:count   (+ n 46)
-     :visible menu
-     :place   (fn [_ _] true)
-     :swap    (fn ^long [^long button] (+ n (if (= 40 button) offhand-slot (+ hotbar-slot button))))
-     :quick   (fn [_ slot]
-                (let [m (long (index slot -1))]
-                  (cond
-                    (neg? m) nil
-                    (< m n) (map menu (range (dec (count menu)) (dec n) -1))
-                    :else (map menu (range 0 n)))))}))
+(defn container-layout
+  ([rows] (container-layout rows (fn [_ _] true)))
+  ([^long rows place]
+   (let [n (* 9 rows)
+         menu (into (vec (range n))
+                    (map #(+ n (long %)))
+                    (concat (range 9 36) (range 36 45)))
+         index (into {} (map-indexed (fn [i f] [f i])) menu)]
+     {:count   (+ n 46)
+      :visible menu
+      :place   (fn [slot stack] (or (>= (long slot) n) (place slot stack)))
+      :swap    (fn ^long [^long button] (+ n (if (= 40 button) offhand-slot (+ hotbar-slot button))))
+      :quick   (fn [_ slot]
+                 (let [m (long (index slot -1))]
+                   (cond
+                     (neg? m) nil
+                     (< m n) (map menu (range (dec (count menu)) (dec n) -1))
+                     :else (map menu (range 0 n)))))})))
 
 (defn- layout-of [m] (or (:layout m) player-layout))
 

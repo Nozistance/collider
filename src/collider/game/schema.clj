@@ -65,6 +65,7 @@
    :thunder-level  {:default 0.0 :store store-thunder-level :load double}
    :o-thunder-level {:default 0.0 :store store-thunder-level :load double}
    :container-rechecks {:default {}}
+   :shulker-anim {:default {}}
    :players     {:default {}}
    :listed      {:default {}}})
 
