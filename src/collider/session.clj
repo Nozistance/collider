@@ -49,6 +49,7 @@
     (server/send! conn {:packet :change-difficulty :difficulty 0 :locked false})
     (server/send! conn {:packet :player-abilities :flags (bit-or 1 4 8)
                  :flying-speed 0.05 :walking-speed 0.1})
+    (server/send! conn (assoc @data/recipes :packet :update-recipes))
     (server/send! conn {:packet :entity-event :eid eid :event (+ op-level-event 4)})
     (server/send! conn {:packet :commands :nodes @command-tree})
     (server/send! conn {:packet :server-data :motd motd})
@@ -108,6 +109,7 @@
                                [:click eid (dissoc m :packet :container)]
                                [:menu-click eid (dissoc m :packet)])
     :container-close         [:menu-close eid (:container m)]
+    :container-button-click  [:menu-button eid (:container m) (:button m)]
     :client-command          (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
     :set-game-rule           [:set-rules eid (:entries m)]
     :command-suggestion      [:tab-complete eid (:text m) nil (:id m)]
@@ -134,8 +136,7 @@
     :teleport-to-entity :test-instance-block-action})
 
 (def ^:private later
-  #{:container-button-click :container-slot-state-changed
-    :attack :change-game-mode})
+  #{:container-slot-state-changed :attack :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
 (defn- log-unhandled! [packet]

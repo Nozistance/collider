@@ -343,6 +343,30 @@
              (c/write-varint buf (long (:container m)))
              (c/write-varint buf (long (:menu m)))
              (c/write-component buf (:title m)))}
+   [:play :container-set-data]
+   {:write (fn [^Buf buf m]
+             (c/write-varint buf (long (:container m)))
+             (.writeShort buf (int (:id m)))
+             (.writeShort buf (int (:value m))))}
+   [:play :container-button-click]
+   {:read (fn [^Buf buf] {:container (c/read-varint buf) :button (c/read-varint buf)})}
+   [:play :update-recipes]
+   {:write (fn [^Buf buf m]
+             (let [sets (:property-sets m)
+                   item (fn [i] (c/write-holder-ref buf (data/registry-id "item" i)))]
+               (c/write-varint buf (count sets))
+               (doseq [[k items] sets]
+                 (c/write-id buf (data/kebab k))
+                 (c/write-varint buf (count items))
+                 (run! item items))
+               (c/write-varint buf (count (:stonecutting m)))
+               (doseq [{:keys [in out]} (:stonecutting m)]
+                 (c/write-varint buf (inc (count in)))
+                 (run! item in)
+                 (c/write-varint buf (data/registry-id "slot_display" :item-stack))
+                 (item (:item out))
+                 (c/write-varint buf (long (:count out 1)))
+                 (c/write-patch buf nil))))}
    [:play :container-close]
    {:read  (fn [^Buf buf] {:container (c/read-varint buf)})
     :write (fn [^Buf buf m] (c/write-varint buf (long (:container m))))}

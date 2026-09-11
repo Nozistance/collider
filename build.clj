@@ -25,7 +25,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare block-drops blocks datapack-names fire-odds kw light-table packets registries tags-of vanilla-items vanilla-shapes write-edn!)
+(declare block-drops blocks datapack-names fire-odds kw light-table packets recipes registries tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -45,6 +45,7 @@
           dp (when (.isFile server) (datapack-names server))
           tg (when (.isFile server)
                (tags-of server (distinct (concat (keys rs) (keys (or dp {}))))))
+          rec (when (.isFile server) (recipes server tg))
           path (fn [n] (str out "/" n))]
       (write-edn! (path "packets.edn") ps
                   (format "%d states, %d packets"
@@ -80,6 +81,10 @@
                             (count drops) (count (filter #(= :complex (val %)) drops)))))
       (write-edn! (path "items.edn") items
                   (format "%d items that do not stack to 64 or are equippable" (count items)))
+      (when rec
+        (write-edn! (path "recipes.edn") rec
+                    (format "%d stonecutting recipes, %d item property sets"
+                            (count (:stonecutting rec)) (count (:property-sets rec)))))
       (when tg
         (write-edn! (path "tags.edn") tg
                     (format "%d registries, %d tags" (count tg) (reduce + (map count (vals tg)))))))))
@@ -426,8 +431,12 @@
                     n    (get cs "minecraft:max_stack_size" 64)
                     slot (get-in cs ["minecraft:equippable" "slot"])
                     song (get cs "minecraft:jukebox_playable")
+                    dye  (get cs "minecraft:dye")
+                    pat  (get cs "minecraft:provides_banner_patterns")
                     m    (cond-> (sorted-map) (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
-                           song (assoc :jukebox-song (kw song)))]
+                           song (assoc :jukebox-song (kw song))
+                           dye (assoc :dye (kw dye))
+                           (string? pat) (assoc :patterns (str/replace (subs pat 1) #"^minecraft:" "")))]
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))
 
@@ -481,6 +490,73 @@
                                    names)]
                       (when (seq es) [reg (vec es)]))))
             synchronized-registries))))
+
+(defn- ingredient [v]
+  (cond
+    (string? v) (if (str/starts-with? v "#")
+                  {:tag (str/replace (subs v 1) #"^minecraft:" "")}
+                  [(kw v)])
+    (sequential? v) (mapv kw v)
+    :else (throw (ex-info "unknown ingredient" {:value v}))))
+
+(def ^:private property-sets
+  "RecipeManager.RECIPE_PROPERTY_SETS: recipe type -> the ingredient field the
+   client is told about."
+  {"furnace_input"      [#{"minecraft:smelting"} "ingredient"]
+   "blast_furnace_input" [#{"minecraft:blasting"} "ingredient"]
+   "smoker_input"       [#{"minecraft:smoking"} "ingredient"]
+   "campfire_input"     [#{"minecraft:campfire_cooking"} "ingredient"]
+   "smithing_base"      [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "base"]
+   "smithing_template"  [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "template"]
+   "smithing_addition"  [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "addition"]})
+
+(defn- recipe-entries [^ZipFile zf]
+  (let [prefix "data/minecraft/recipe/"]
+    (sort-by key
+             (into {}
+                   (keep (fn [^ZipEntry e]
+                           (let [n (.getName e)]
+                             (when (and (str/starts-with? n prefix) (str/ends-with? n ".json")
+                                        (not (str/includes? (subs n (count prefix)) "/")))
+                               [(subs n (count prefix) (- (count n) 5))
+                                (json/read-str (slurp (.getInputStream zf e)))]))))
+                   (enumeration-seq (.entries zf))))))
+
+(defn- stonecutting
+  "Recipes of type minecraft:stonecutting in datapack order: RecipeManager.prepare
+   sorts by recipe identifier, and finalizeRecipeLoading keeps that order."
+  [entries]
+  (into []
+        (keep (fn [[_ json]]
+                (when (= "minecraft:stonecutting" (get json "type"))
+                  (let [r (get json "result")
+                        r (if (string? r) {"id" r} r)
+                        n (get r "count" 1)]
+                    {:in (ingredient (get json "ingredient"))
+                     :out (cond-> {:item (kw (get r "id"))} (not= 1 n) (assoc :count n))}))))
+        entries))
+
+(defn- ingredient-items [tags v]
+  (let [i (ingredient v)]
+    (if (map? i) (get-in tags ["item" (:tag i)] []) i)))
+
+(defn- property-set [tags entries [types field]]
+  (into (sorted-set)
+        (mapcat (fn [[_ json]]
+                  (when (and (contains? types (get json "type")) (contains? json field))
+                    (ingredient-items tags (get json field)))))
+        entries))
+
+(defn- recipes
+  "resources/mc/recipes.edn: the stonecutter recipe list and the item property
+   sets, both of which the client needs to draw its menus."
+  [jar tags]
+  (with-open [zf (ZipFile. (io/file jar))]
+    (let [entries (recipe-entries zf)]
+      {:stonecutting (stonecutting entries)
+       :property-sets (into (sorted-map)
+                            (map (fn [[k spec]] [k (vec (property-set tags entries spec))]))
+                            property-sets)})))
 
 (defn- tag-values [^ZipFile zf entry]
   (let [json (json/read-str (slurp (.getInputStream zf entry)))]

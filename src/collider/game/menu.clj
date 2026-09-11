@@ -40,11 +40,13 @@
    :swap    (fn ^long [^long button] (if (= 40 button) offhand-slot (+ hotbar-slot button)))
    :quick   player-quick-slots})
 
-(defn container-layout
-  ([rows] (container-layout rows (fn [_ _] true)))
-  ([^long rows place]
-   (let [n (* 9 rows)
-         menu (into (vec (range n))
+(defn slots-layout
+  "The flat slot space of a menu with n slots of its own: 0..n-1 are the menu's,
+   n+0..n+45 the whole player inventory, and :visible turns a slot number from
+   the packet into a flat one."
+  ([n] (slots-layout n (fn [_ _] true)))
+  ([^long n place]
+   (let [menu (into (vec (range n))
                     (map #(+ n (long %)))
                     (concat (range 9 36) (range 36 45)))
          index (into {} (map-indexed (fn [i f] [f i])) menu)]
@@ -59,6 +61,10 @@
                      (< m n) (map menu (range (dec (count menu)) (dec n) -1))
                      :else (map menu (range 0 n)))))})))
 
+(defn container-layout
+  ([rows] (container-layout rows (fn [_ _] true)))
+  ([^long rows place] (slots-layout (* 9 rows) place)))
+
 (defn- layout-of [m] (or (:layout m) player-layout))
 
 (defn- insert [place inv slot stack n]
@@ -70,16 +76,24 @@
         [(if (pos? put) (assoc inv slot (sized stack (+ (count-of here) put))) inv)
          (sized stack (- (count-of stack) put))]))))
 
-(defn- take-out [inv slot ^long n]
-  (let [here (get inv slot)
-        got  (min n (count-of here))]
+(defn- take-out
+  "Slot.tryRemove. A result slot hands over the whole stack or nothing:
+   ResultContainer.removeItem ignores the count and allowModification is false."
+  ([layout inv slot n] (take-out layout inv slot n Long/MAX_VALUE))
+  ([layout inv slot n mx]
+  (let [here  (get inv slot)
+        whole (count-of here)
+        got   (long (if (= slot (:result layout))
+                      (if (< (long mx) whole) 0 whole)
+                      (min (long n) (long mx) whole)))]
     (if (pos? got)
       [(if-let [left (sized here (- (count-of here) got))] (assoc inv slot left) (dissoc inv slot))
        (sized here got)]
-      [inv nil])))
+      [inv nil]))))
 
 (defn- pickup [{:keys [inventory carried] :as m} slot primary?]
-  (let [place   (:place (layout-of m))
+  (let [layout  (layout-of m)
+        place   (:place layout)
         clicked (get inventory slot)]
     (cond
       (= outside (long slot))
@@ -94,7 +108,7 @@
         m)
       (nil? carried)
       (let [n (if primary? (count-of clicked) (quot (inc (count-of clicked)) 2))
-            [inv got] (take-out inventory slot n)]
+            [inv got] (take-out layout inventory slot n)]
         (assoc m :inventory inv :carried got))
       (place slot carried)
       (cond
@@ -105,7 +119,8 @@
         (assoc m :inventory (assoc inventory slot carried) :carried clicked)
         :else m)
       (same? clicked carried)
-      (let [[inv got] (take-out inventory slot (min (count-of clicked) (- (max-of carried) (count-of carried))))]
+      (let [room (- (max-of carried) (count-of carried))
+            [inv got] (take-out layout inventory slot (min (count-of clicked) room) room)]
         (assoc m :inventory inv :carried (sized carried (+ (count-of carried) (count-of got)))))
       :else m)))
 
@@ -132,13 +147,27 @@
                       (move-to (:place layout) inv' stack ((:quick layout) inv slot)))]
     (if left (assoc inv' slot left) inv')))
 
+(defn- settle
+  "The tail of a click on a menu with a derived result slot: taking the result
+   runs the menu's onTake and the result is assembled again from what is left."
+  [m before]
+  (let [{:keys [result on-take derive]} (layout-of m)]
+    (if (nil? derive)
+      m
+      (let [took? (and result (some? (get before result)) (nil? (get (:inventory m) result)))
+            inv (cond-> (:inventory m) took? on-take)]
+        (cond-> (assoc m :inventory (derive inv))
+          took? (update :takes inc))))))
+
 (defn- quick-move [{:keys [inventory] :as m} slot]
   (let [layout (layout-of m)]
-    (loop [inv inventory]
-      (let [inv' (quick-move-once layout inv slot)]
-        (if (or (= inv' inv) (nil? (get inv' slot)))
-          (assoc m :inventory inv')
-          (recur inv'))))))
+    (loop [m m]
+      (let [inv (:inventory m)
+            moved (quick-move-once layout inv slot)
+            m' (settle (assoc m :inventory moved) inv)]
+        (if (or (= moved inv) (nil? (get (:inventory m') slot)))
+          m'
+          (recur m'))))))
 
 (defn- swap-with [{:keys [inventory] :as m} slot ^long button]
   (let [layout (layout-of m)
@@ -160,7 +189,7 @@
 (defn- throw-out [{:keys [inventory carried] :as m} slot ^long button]
   (if-let [here (and (nil? carried) (get inventory slot))]
     (let [n (if (zero? button) 1 (count-of here))
-          [inv got] (take-out inventory slot n)]
+          [inv got] (take-out (layout-of m) inventory slot n)]
       (assoc m :inventory inv :drops [got]))
     m))
 
@@ -168,14 +197,16 @@
   (let [layout (layout-of m)
         place  (:place layout)]
     (if (and carried (nil? (get inventory slot)))
-      (let [slots (cond-> (:visible layout) (not (zero? button)) reverse)
+      (let [slots (cond->> (:visible layout)
+                    (:result layout) (remove #(= % (:result layout)))
+                    (not (zero? button)) reverse)
             step (fn [[inv c] pass]
                    (reduce (fn [[inv c :as acc] s]
                              (let [here (get inv s)]
                                (if (and here (same? here c) (place s c)
                                         (< (count-of c) (max-of c))
                                         (or (= 1 pass) (not= (count-of here) (max-of here))))
-                                 (let [[inv' got] (take-out inv s (min (count-of here) (- (max-of c) (count-of c))))]
+                                 (let [[inv' got] (take-out layout inv s (min (count-of here) (- (max-of c) (count-of c))))]
                                    [inv' (sized c (+ (count-of c) (count-of got)))])
                                  acc)))
                            [inv c] slots))
@@ -217,13 +248,15 @@
       :else (assoc m :quickcraft nil))))
 
 (defn click [{:keys [quickcraft] :as m} {:keys [slot button mode]}]
-  (let [m (assoc m :drops [])
+  (let [m (assoc m :drops [] :takes 0)
+        before (:inventory m)
         layout (layout-of m)
         visible (:visible layout)
         menu (long slot) button (long button) mode (long mode)
         in-range? (< -1 menu (count visible))
         slot (if in-range? (long (nth visible menu)) menu)]
-    (cond
+    (settle
+     (cond
       (= 5 mode) (quick-craft m slot button)
       (:status quickcraft) (assoc m :quickcraft nil)
       (and (#{0 1} mode) (#{0 1} button) (= outside menu)) (pickup m slot (= 0 button))
@@ -234,4 +267,5 @@
       (= 3 mode) (clone m slot)
       (= 4 mode) (throw-out m slot button)
       (= 6 mode) (pickup-all m slot button)
-      :else m)))
+      :else m)
+     before)))

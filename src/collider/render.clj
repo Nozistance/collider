@@ -250,6 +250,8 @@
                          :items (:items m) :carried (:carried m)}]
     :container-slot [{:packet :container-set-slot :container (:container m) :state-id (:state-id m)
                       :slot (:slot m) :stack (:stack m)}]
+    :container-data [{:packet :container-set-data :container (:container m)
+                      :id (:id m) :value (:value m)}]
     :container-close [{:packet :container-close :container (:container m)}]
     :held-slot  [{:packet :set-held-slot :slot (:slot m)}]
     :block-ack  [{:packet :block-changed-ack :sequence (:sequence m)}]

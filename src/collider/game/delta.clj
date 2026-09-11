@@ -153,6 +153,7 @@
    :open-screen    [[[:container :int] [:menu :keyword] [:title :map]] "Open a container screen: id, menu type, title."]
    :container-content [[[:container :int] [:state-id :int] [:items [:sequential [:maybe Stack]]] [:carried [:maybe Stack]]] "Full contents of an open menu."]
    :container-slot [[[:container :int] [:state-id :int] [:slot :int] [:stack [:maybe Stack]]] "One slot of an open menu."]
+   :container-data [[[:container :int] [:id :int] [:value :int]] "One data value of an open menu."]
    :container-close [[[:container :int]] "Close the open menu on the client."]})
 
 (defn- with-address [fields]

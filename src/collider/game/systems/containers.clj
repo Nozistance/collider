@@ -44,19 +44,40 @@
           (container/positions m)))
 
 (defn- valid? [world m]
-  (or (= :ender (:kind m))
-      (every? (fn [pos] (contains? be/container-kinds (:kind (be/at world pos)))) (:cells m))))
+  (cond
+    (container/bench? m)
+    (= (:type m) (block/type-of (container/state-at (:chunks world) (:pos m))))
+    (= :ender (:kind m)) true
+    :else
+    (every? (fn [pos] (contains? be/container-kinds (:kind (be/at world pos)))) (:cells m))))
 
 (defn- back-into [inv stack]
   (when stack (items/add-stack inv stack)))
 
+(defn- give-back
+  "Inventory.placeItemBackInInventory for a run of stacks, one after another."
+  [inv stacks]
+  (reduce (fn [[inv changes drops] stack]
+            (let [[chg left] (items/add-stack inv stack)]
+              [(reduce (fn [i [slot v]] (assoc i slot v)) inv chg)
+               (into changes chg)
+               (cond-> drops left (conj left))]))
+          [inv [] []] (remove nil? stacks)))
+
 (defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
     (let [carried (:carried e)
-          [changes left] (if carried (back-into (:inventory e) carried) [nil nil])]
+          ;; ContainerLevelAccess.create(...).execute always runs: the inputs
+          ;; come back even if the bench itself is gone.
+          back (when (container/bench? m)
+                 (container/inputs m (container/items world eid m)))
+          [inv0 kept drops] (give-back (or (:inventory e) {}) back)
+          [changes left] (if carried (back-into inv0 carried) [nil nil])
+          changes (concat kept changes)]
       (concat
        [[:merge-entity eid {:menu nil :carried nil}]]
        (for [[slot s] changes] [:set-slot eid slot s])
+       (for [s drops] [:spawn-entity (items/dropped world eid s)])
        (when left [[:spawn-entity (items/dropped world eid left)]])
        (when carried [(out/to eid (out/carried nil))])
        (when notify? [(out/to eid (out/container-close (:id m)))])
@@ -83,6 +104,9 @@
        [[:merge-entity eid {:menu menu :container-counter id}]
         (out/to eid (out/open-screen id (:type m) (:title m)))
         (out/to eid (out/container-content id 1 slots (:carried e')))]
+       ;; sendInitialData: every data slot goes out after the contents
+       (when (container/bench? m)
+         [(out/to eid (out/container-data id 0 (:selected m)))])
        (count-deltas world m 1)
        (barrel-deltas world m 1)))
     []))
@@ -112,6 +136,16 @@
          :remote (reduce (fn [r [s v]] (assoc r (long s) (remote-of v))) (:remote menu) changed)
          :remote-carried (remote-of carried)))
 
+(defn- slot-changes
+  "What the click did to the player's own slots. While a menu is open its own
+   sync tells the client about them, so the player tracker must not say it
+   again: in vanilla the inventory menu is not the open one and is silent."
+  [before after]
+  (into {}
+        (keep (fn [slot] (when (not= (get after slot) (get before slot))
+                           [slot (get after slot)])))
+        (into (set (keys before)) (keys after))))
+
 (defn- click-deltas [world [_ eid packet]]
   (when-let [e (get-in world [:entities eid])]
     (let [m (:menu e)]
@@ -119,25 +153,46 @@
         (or (nil? m) (not= (long (:container packet)) (long (:id m)))) nil
         (not (valid? world m)) (close-deltas world eid e true)
         :else
-        (let [n (* 9 (long (:rows m)))
+        (let [n (container/slot-count m)
               contents (container/items world eid m)
               before {:inventory (flat contents (or (:inventory e) {}) n)
                       :carried (:carried e)
                       :quickcraft (:quickcraft e)
                       :layout (container/layout m)}
               after (menu/click before packet)
-              [items' inv'] (split-flat (:inventory after) n)
+              [items0 inv'] (split-flat (:inventory after) n)
+              [m0 items'] (container/settled m items0)
               slots (view items' inv')
               resync? (not= (long (:state-id packet)) (long (:state-id m 1)))
-              m' (with-client m (:changed packet) (:carried packet))
+              m' (with-client (cond-> m0 (container/bench? m0) (assoc :contents items'))
+                              (:changed packet) (:carried packet))
               {:keys [deltas menu]} (sync-deltas world eid m' slots (:carried after) resync?)]
           (concat
            [[:merge-entity eid {:inventory inv' :carried (:carried after)
-                                :quickcraft (:quickcraft after) :menu menu}]]
+                                :quickcraft (:quickcraft after) :menu menu}]
+            [:client-slots eid (slot-changes (or (:inventory e) {}) inv') (:carried after)]]
            (container/store-deltas world eid m items')
            deltas
+           (when (not= (:selected m) (:selected menu))
+             [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))])
+           (when (pos? (long (:takes after 0))) [(container/take-sound m)])
            (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
                         (:drops after))))))))
+
+(defn- button-deltas [world [_ eid container id]]
+  (when-let [e (get-in world [:entities eid])]
+    (let [m (:menu e)]
+      (when (and m (container/bench? m) (= (long container) (long (:id m))))
+        (let [m' (container/button m (long id))]
+          (when (not= (:selected m') (:selected m))
+            (let [items (container/derived m' (:contents m'))
+                  slots (view items (:inventory e))
+                  {:keys [deltas menu]} (sync-deltas world eid (assoc m' :contents items)
+                                                     slots (:carried e) false)]
+              (concat
+               [[:merge-entity eid {:menu menu}]]
+               deltas
+               [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))]))))))))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]
@@ -150,6 +205,7 @@
              (case tag
                :menu-click (click-deltas world ev)
                :menu-close (close-event-deltas world ev)
+               :menu-button (button-deltas world ev)
                nil))
            events)
    (container/recheck-deltas world)))

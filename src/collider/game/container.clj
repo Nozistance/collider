@@ -4,14 +4,18 @@
             [collider.game.menu :as menu]
             [collider.game.out :as out]
             [collider.random :as random]
+            [collider.game.workbench :as workbench]
             [collider.world.block :as block]
-            [collider.world.chest :as chest]))
+            [collider.world.chest :as chest])
+  (:import (java.util List)))
 
 (set! *warn-on-reflection* true)
 
 (def size 27)
 (def chest-types chest/types)
-(def container-types (conj chest/types :barrel :ender-chest :shulker-box))
+(def bench-types #{:stonecutter :loom})
+(def container-types
+  (into (conj chest/types :barrel :ender-chest :shulker-box) bench-types))
 
 (def state-at chest/state-at)
 (def connected-direction chest/connected-direction)
@@ -74,20 +78,43 @@
                             :title {:translate "container.shulkerBox"} :cells [pos]})
       (= :ender-chest t) (when-not (blocked? chunks pos)
                            {:kind :ender :rows 3 :type :generic-9x3
-                            :title {:translate "container.enderchest"} :cells [] :pos pos}))))
+                            :title {:translate "container.enderchest"} :cells [] :pos pos})
+      (= :stonecutter t) {:kind :bench :type :stonecutter :size 2 :result 1
+                          :title {:translate "container.stonecutter"}
+                          :cells [] :pos pos :selected 0 :contents [nil nil]}
+      (= :loom t) {:kind :bench :type :loom :size 4 :result 3
+                   :title {:translate "container.loom"}
+                   :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})))
+
+(defn bench? [m] (= :bench (:kind m)))
+
+(defn slot-count ^long [m]
+  (if (bench? m) (long (:size m)) (* 9 (long (:rows m)))))
 
 (defn- padded [items] (vec (take size (concat items (repeat nil)))))
 
 (defn cell-items [world pos] (padded (:items (be/at world pos))))
 
 (defn items [world eid m]
-  (if (= :ender (:kind m))
-    (padded (get-in world [:entities eid :ender-items]))
-    (into [] (mapcat #(cell-items world %)) (:cells m))))
+  (cond
+    (bench? m) (vec (take (slot-count m) (concat (:contents m) (repeat nil))))
+    (= :ender (:kind m)) (padded (get-in world [:entities eid :ender-items]))
+    :else (into [] (mapcat #(cell-items world %)) (:cells m))))
 
-(defn store-deltas [world eid m items]
-  (if (= :ender (:kind m))
-    [[:merge-entity eid {:ender-items (vec items)}]]
+(defn inputs
+  "AbstractContainerMenu.clearContainer on removed: the result is discarded, the
+   inputs go back to the player."
+  [m items]
+  (keep-indexed (fn [i s] (when (not= i (:result m)) s)) items))
+
+(defn store-deltas
+  "Where the contents of an open menu live. A bench keeps its own on the menu,
+   so it stores nothing of its own here."
+  [world eid m items]
+  (cond
+    (bench? m) nil
+    (= :ender (:kind m)) [[:merge-entity eid {:ender-items (vec items)}]]
+    :else
     (keep-indexed (fn [i pos]
                     (let [old (be/at world pos)
                           part (vec (subvec (vec items) (* i size) (* (inc (long i)) size)))]
@@ -96,7 +123,7 @@
                   (:cells m))))
 
 (defn positions [m]
-  (if (= :ender (:kind m)) [(:pos m)] (:cells m)))
+  (cond (bench? m) [] (= :ender (:kind m)) [(:pos m)] :else (:cells m)))
 
 (defn covers? [m pos]
   (boolean (some #(= pos %) (positions m))))
@@ -222,7 +249,120 @@
 (defn- may-place? [_ stack]
   (fits-inside? (:item stack)))
 
+(defn- shrink [inv slot]
+  (let [n (dec (long (:count (get inv slot) 1)))]
+    (if (pos? n) (update inv slot assoc :count n) (dissoc inv slot))))
+
+(defn- span [v ^long from ^long to reverse?]
+  (map v (if reverse? (range (dec to) (dec from) -1) (range from to))))
+
+(defn- cut-quick [v inv slot]
+  (let [i (long (.indexOf ^List v slot))]
+    (cond
+      (= 1 i) (span v 2 38 true)
+      (= 0 i) (span v 2 38 false)
+      (workbench/cuts-input? (get inv slot)) (span v 0 1 false)
+      (< 1 i 29) (span v 29 38 false)
+      :else (span v 2 29 false))))
+
+(defn- loom-quick [v inv slot]
+  (let [i (long (.indexOf ^List v slot))
+        stack (get inv slot)]
+    (cond
+      (= 3 i) (span v 4 40 true)
+      (< i 3) (span v 4 40 false)
+      (workbench/banner? stack) (span v 0 1 false)
+      (workbench/dye? stack) (span v 1 2 false)
+      (workbench/pattern-item? stack) (span v 2 3 false)
+      (< 3 i 31) (span v 31 40 false)
+      :else (span v 4 31 false))))
+
+(defn- cut-layout [m]
+  (let [base (menu/slots-layout 2 (fn [slot _] (not= 1 (long slot))))
+        v (:visible base)
+        selected (long (:selected m))]
+    (assoc base
+           :result 1
+           :quick (fn [inv slot] (cut-quick v inv slot))
+           :on-take (fn [inv] (shrink inv 0))
+           :derive (fn [inv]
+                     (if-let [r (workbench/cut-result (get inv 0) selected)]
+                       (assoc inv 1 r)
+                       (dissoc inv 1))))))
+
+(defn- loom-place? [slot stack]
+  (case (long slot)
+    0 (workbench/banner? stack)
+    1 (workbench/dye? stack)
+    2 (workbench/pattern-item? stack)
+    3 false))
+
+(defn- loom-layout [m]
+  (let [base (menu/slots-layout 4 loom-place?)
+        v (:visible base)
+        patterns (vec (:patterns m))
+        selected (long (:selected m))
+        pattern (when (< -1 selected (count patterns)) (nth patterns selected))]
+    (assoc base
+           :result 3
+           :quick (fn [inv slot] (loom-quick v inv slot))
+           :on-take (fn [inv] (-> inv (shrink 0) (shrink 1)))
+           :derive (fn [inv]
+                     (if-let [r (workbench/loom-result (get inv 0) (get inv 1) pattern)]
+                       (assoc inv 3 r)
+                       (dissoc inv 3))))))
+
 (defn layout [m]
-  (if (= :shulker-box (:type m))
-    (menu/container-layout (long (:rows m)) may-place?)
+  (case (:type m)
+    :stonecutter (cut-layout m)
+    :loom (loom-layout m)
+    :shulker-box (menu/container-layout (long (:rows m)) may-place?)
     (menu/container-layout (long (:rows m)))))
+
+(defn derived
+  "The result slot rebuilt from the inputs: setupResultSlot."
+  [m items]
+  (if-not (bench? m)
+    items
+    (let [inv ((:derive (layout m))
+               (into {} (keep-indexed (fn [i s] (when s [i s]))) items))]
+      (mapv #(get inv %) (range (slot-count m))))))
+
+(defn slots-changed
+  "The menu's own reaction to its inputs changing: StonecutterMenu.slotsChanged
+   and LoomMenu.slotsChanged."
+  [m items]
+  (case (:type m)
+    :stonecutter (workbench/cut-changed m items)
+    :loom (workbench/loom-changed m items)
+    m))
+
+(defn settled
+  "A bench after its slots moved: slotsChanged and then the result slot again."
+  [m items]
+  (if-not (bench? m)
+    [m items]
+    (let [m' (slots-changed m items)]
+      [m' (derived m' items)])))
+
+(defn button
+  "AbstractContainerMenu.clickMenuButton for the two benches: the button picks
+   an entry of the list the menu currently offers."
+  [m ^long id]
+  (let [n (case (:type m)
+            :stonecutter (count (workbench/cuts (first (:contents m))))
+            :loom (count (:patterns m))
+            0)]
+    (if (and (not= id (long (:selected m))) (< -1 id n))
+      (assoc m :selected id)
+      m)))
+
+(def ^:private take-sounds
+  {:stonecutter :ui.stonecutter.take-result
+   :loom :ui.loom.take-result})
+
+(defn take-sound [m]
+  (let [[x y z] (:pos m)]
+    (out/all (out/sound (take-sounds (:type m))
+                        [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+                        1.0 1.0))))

@@ -25,6 +25,7 @@
 (def light      (delay (load-edn "light.edn")))
 (def fire       (delay (load-edn "fire.edn")))
 (def drops      (delay (load-edn "drops.edn")))
+(def recipes    (delay (load-edn "recipes.edn")))
 (defn max-stack ^long [item]
   (long (get-in @items [item :max-stack] 64)))
 
@@ -33,6 +34,19 @@
 
 (defn equip-slot [item]
   (get-in @items [item :equip]))
+
+(defn dye-color
+  "The minecraft:dye component of an item, as DyeColor."
+  [item]
+  (get-in @items [item :dye]))
+
+(defn pattern-tag
+  "The minecraft:provides_banner_patterns component of an item: a banner_pattern tag."
+  [item]
+  (get-in @items [item :patterns]))
+
+(defn tag-values [registry tag]
+  (get-in @tags [registry tag] []))
 
 (defn snake ^String [k]
   (.replace (name k) \- \_))

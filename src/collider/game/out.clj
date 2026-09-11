@@ -161,6 +161,9 @@
 (defn container-slot [container state-id slot stack]
   {:msg :container-slot :container container :state-id state-id :slot slot :stack stack})
 
+(defn container-data [container id value]
+  {:msg :container-data :container container :id id :value value})
+
 (defn container-close [container]
   {:msg :container-close :container container})
 
