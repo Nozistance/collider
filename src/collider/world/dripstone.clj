@@ -7,6 +7,8 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private grows-on {:pointed-dripstone :dripstone-block})
+;; SpeleothemBlock.getMaxGrowthLength is 7; SulfurSpikeBlock overrides it with 2.
+(def ^:private max-growth-length {:pointed-dripstone 7 :sulfur-spike 2})
 (def ^:private cauldrons #{:cauldron :layered-cauldron :lava-cauldron})
 (def ^:private water-chance 0.17578125)
 (def ^:private lava-chance 0.05859375)
@@ -214,7 +216,7 @@
 (defn- grow-changes [chunks p ^long st roll]
   (let [self (block/block-of st)]
     (when (can-grow? chunks p self)
-      (when-let [tip (find-tip chunks p st 7)]
+      (when-let [tip (find-tip chunks p st (get max-growth-length (block/type-of st) 7))]
         (let [tst (at chunks tip)]
           (when (and (free-hanging? tst) (can-tip-grow? chunks tip tst))
             (if (< (double (roll :which)) 0.5)

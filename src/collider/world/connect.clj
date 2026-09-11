@@ -26,12 +26,13 @@
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
 (def snowy-types #{:grass :mycelium :snowy-dirt})
 (def placed-types
-  #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder :chorus-plant})
+  #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder :chorus-plant
+    :potent-sulfur})
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
           :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
           :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
-          :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant}
+          :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
         (concat pair-types block/growing-plant-types snowy-types block/leaves-types [:pitcher-crop])))
 
 (defn- exception? [n]
@@ -110,6 +111,32 @@
              (not= (:part pprops) (:part (block/props-of st))))
       (block/state self (assoc (block/props-of st) :occupied (:occupied pprops)))
       0)))
+
+(defn- water-source-state? [^long st]
+  (or (block/waterlogged? st)
+      (and (= :water (liquid/liquid-class st)) (liquid/source-state? st))))
+
+(defn- source-if-fluid? [^long st]
+  (or (nil? (liquid/liquid-class st))
+      (block/waterlogged? st)
+      (liquid/source-state? st)))
+
+(defn- sulfur-state
+  "PotentSulfurBlock.validBlockState: the state follows the water source above
+   and the geyser tag of the block below. ERUPTING is kept as it is; without a
+   block entity there is no countdown to reset."
+  [self ^long st at]
+  (let [above (at [0 1 0]) below (at [0 -1 0])
+        state (cond
+                (not (water-source-state? above)) :dry
+                (and (block/tagged? (max 0 below) "causes_continuous_geyser_eruptions")
+                     (source-if-fluid? below))
+                :continuous
+                (and (block/tagged? (max 0 below) "causes_periodic_geyser_eruptions")
+                     (source-if-fluid? below))
+                (if (= :erupting (:potent-sulfur-state (block/props-of st))) :erupting :dormant)
+                :else :wet)]
+    (block/state self (assoc (block/props-of st) :potent-sulfur-state state))))
 
 (defn- stair? [st half]
   (and (= :stair (block/type-of st)) (= half (:half (block/props-of st)))))
@@ -201,6 +228,7 @@
             new   (case t
                     (:door :weathering-copper-door) (door-state self st at)
                     :bed (bed-state self st at)
+                    :potent-sulfur (sulfur-state self st at)
                     :fence-gate (gate-state self st at)
                     :stair (stair-state self st at)
                     :concrete-powder (powder-state st at)

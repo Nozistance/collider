@@ -55,8 +55,10 @@
              [t {:head head :body body :dir dir}])))
 (def growing-plant-types (set (keys growing-plant)))
 (def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :banner :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
+(def face-attached-types #{:button :lever :grindstone})
 (def attached-types
   #{:lantern :weathering-lantern :bell :farmland :dirt-path :candle :sea-pickle :cocoa
+    :cake :candle-cake :button :lever
     :amethyst-cluster :hanging-moss :big-dripleaf :big-dripleaf-stem :small-dripleaf
     :azalea :wither-rose :nether-sprouts :nether-fungus :nether-roots
     :mangrove-propagule :chorus-flower :chorus-plant})
@@ -457,6 +459,26 @@
 
 (defn outline-boxes [^long st]
   (get @data/outlines st full-box))
+
+(def ^:private legacy-solid-arr
+  ;; BlockBehaviour.BlockStateBase.calculateSolid: the union box of the
+  ;; collision shape counts as solid when its mean side reaches 0.729166..,
+  ;; or when it is a full block tall.
+  (let [a (boolean-array state-count)]
+    (dotimes [i state-count]
+      (let [boxes (get @data/shapes i full-box)]
+        (when (seq boxes)
+          (let [x0 (reduce min (map #(nth % 0) boxes)) y0 (reduce min (map #(nth % 1) boxes))
+                z0 (reduce min (map #(nth % 2) boxes)) x1 (reduce max (map #(nth % 3) boxes))
+                y1 (reduce max (map #(nth % 4) boxes)) z1 (reduce max (map #(nth % 5) boxes))
+                xs (/ (- (double x1) (double x0)) 16.0)
+                ys (/ (- (double y1) (double y0)) 16.0)
+                zs (/ (- (double z1) (double z0)) 16.0)]
+            (aset a i (boolean (or (>= (/ (+ xs ys zs) 3.0) 0.7291666666666666) (>= ys 1.0))))))))
+    a))
+
+(defn legacy-solid? [^long st]
+  (and (pos? st) (known? st) (aget ^booleans legacy-solid-arr st)))
 
 (def ^:private full-cube-arr
   (let [a (boolean-array state-count)]

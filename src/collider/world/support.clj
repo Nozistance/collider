@@ -134,7 +134,16 @@
     (and (not (neg? n))
          (or (contains? #{head body} (block/block-of n)) (block/face-sturdy? n dir)))))
 
-(declare vine-updated multiface-updated scaffold-distance)
+(declare vine-updated multiface-updated scaffold-distance attachable?)
+
+(defn- connected-direction
+  "FaceAttachedHorizontalDirectionalBlock.getConnectedDirection."
+  [^long st]
+  (let [props (block/props-of st)]
+    (case (:face props)
+      :ceiling :down
+      :floor :up
+      (:facing props))))
 
 (def ^:private clockwise {:north :east :east :south :south :west :west :north})
 (def ^:private counter-clockwise {:north :west :west :south :south :east :east :north})
@@ -187,6 +196,9 @@
                                        (holds-center-below? below))
       :bell (bell-supported? chunks template pos st below above)
       :candle (holds-center-below? below)
+      (:cake :candle-cake) (block/legacy-solid? (max 0 below))
+      :grindstone true
+      (:button :lever) (attachable? chunks template pos (opposite (connected-direction st)))
       (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
       (growing-plant-supported? chunks template pos st)
       :amethyst-cluster (let [f (block/facing-of st)
@@ -262,7 +274,7 @@
 (defn- horizontal-look-order [yaw]
   (filterv #(contains? dirs %) (look-order yaw 0.0)))
 
-(defn- attachable? [chunks template pos dir]
+(defn attachable? [chunks template pos dir]
   (let [n (state-at chunks template (mapv + pos (six dir)))]
     (and (not (neg? n)) (block/face-sturdy? n (opposite dir)))))
 
@@ -417,12 +429,39 @@
                  :when cand]
              cand))))
 
+(def ^:private face-dirs [:down :up :north :south :west :east])
+
+(defn place-order
+  "BlockPlaceContext.getNearestLookingDirections: Direction.orderedByNearest,
+   with the opposite of the clicked face moved to the front unless the clicked
+   block itself is being replaced."
+  [face yaw pitch replacing?]
+  (let [order (look-order yaw pitch)]
+    (if replacing?
+      order
+      (let [first-dir (opposite (nth face-dirs (long face)))]
+        (into [first-dir] (remove #(= % first-dir)) order)))))
+
+(defn- face-attached-fitted [chunks template pos st face yaw pitch replacing?]
+  (let [self (block/block-of st) props (block/props-of st)
+        horizontal (block/player-direction yaw)
+        candidate (fn [dir]
+                    (if (contains? #{:up :down} dir)
+                      (block/state self (assoc props :face (if (= :up dir) :ceiling :floor)
+                                               :facing horizontal))
+                      (block/state self (assoc props :face :wall :facing (opposite dir)))))]
+    (first (for [dir (place-order face yaw pitch replacing?)
+                 :let [cand (candidate dir)]
+                 :when (supported? chunks template pos cand)]
+             cand))))
+
 (defn- carpet-fitted [chunks pos ^long st]
   (let [st' (moss/carpet-updated chunks pos st true)]
     (when (moss/carpet-supported? chunks pos st') st')))
 
-(defn fitted [chunks template pos st face yaw pitch sneaking? tick]
+(defn fitted [chunks template pos st face yaw pitch sneaking? tick replacing?]
   (case (block/type-of st)
+    (:button :lever :grindstone) (face-attached-fitted chunks template pos st face yaw pitch replacing?)
     :standing-sign (sign-fitted chunks template pos st yaw pitch)
     (:skull :wither-skull :player-head) (skull-fitted chunks template pos st yaw pitch)
     :ceiling-hanging-sign (hanging-sign-fitted chunks template pos st yaw pitch sneaking?)

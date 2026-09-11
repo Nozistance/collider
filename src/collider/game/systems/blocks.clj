@@ -695,7 +695,8 @@
                      (support/fitted (:chunks world) gen/flat-chunk pos' state face
                                      (or (get-in world [:entities eid :yaw]) 0.0) (or (get-in world [:entities eid :pitch]) 0.0)
                                      (boolean (get-in world [:entities eid :sneaking?]))
-                                     (:tick world))
+                                     (:tick world)
+                                     (= pos' pos))
                      state)
             state  (if (and pos' state (contains? container/container-types (block/type-of state)))
                      (container/placed-state (:chunks world) pos' state face
@@ -855,6 +856,7 @@
     (let [st (block-at world pos)]
       (cond
         (= :powder-snow (block/type-of st)) [:powder-snow pos]
+        (liquid/bubble-column? st) [:bubble-column pos]
         (liquid/source-state? st) [:source pos]
         (= :true (:waterlogged (block/props-of st))) [:waterlogged pos]))))
 
@@ -866,7 +868,7 @@
                   (= :lava (liquid/liquid-class st)) :bucket/fill-lava
                   :else :bucket/fill)]
       (concat (case kind
-                :source [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
+                (:source :bubble-column) [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
                 :powder-snow (change-deltas world [[pos 0]])
                 :waterlogged (change-deltas world [[pos (with-water st false)]]))
               (when (= :powder-snow kind) [(out/all (out/level-event 2001 pos st))])
