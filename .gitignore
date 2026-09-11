@@ -11,3 +11,4 @@ world.snapshot
 world-*.tmp
 config.edn
 logs/
+/world/

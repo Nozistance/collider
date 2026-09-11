@@ -28,7 +28,7 @@
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
           :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
-          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire}
+          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire}
         (concat pair-types block/growing-plant-types snowy-types [:pitcher-crop])))
 
 (defn- exception? [n]
@@ -200,7 +200,10 @@
                     :big-dripleaf (dripleaf/leaf-updated chunks pos st)
                     :small-dripleaf (dripleaf/small-updated chunks pos st)
                     :pitcher-crop (pitcher-state self st at)
-                    :fire (fire/state-with-age chunks pos (fire/age st))
+                    :fire (if (support/supported? chunks gen/flat-chunk pos st)
+                            (fire/state-with-age chunks pos (fire/age st))
+                            0)
+                    :soul-fire (if (support/supported? chunks gen/flat-chunk pos st) st 0)
                     (:grass :mycelium :snowy-dirt) (snowy-state self st at)
                     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
                     (growing-plant-state pos st at tick)
