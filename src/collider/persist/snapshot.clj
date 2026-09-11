@@ -1,6 +1,7 @@
 (ns collider.persist.snapshot
   (:refer-clojure :exclude [load])
-  (:require [clojure.java.io :as io]
+  (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
             [collider.game.schema :as schema]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
@@ -12,7 +13,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const format-version 6)
+(def ^:const format-version 7)
 (nippy/extend-freeze Section ::section [^Section s out]
   (nippy/freeze-to-out! out (.blocks s))
   (nippy/freeze-to-out! out (.block-light s))
@@ -50,21 +51,28 @@
 
 (defn- chunk-file ^File [dir id]
   (let [[cx cz] (chunk/id->pos id)]
-    (io/file dir "chunks" (str cx "_" cz))))
+    (io/file dir "chunks" (str cx "_" cz ".chunk"))))
 
 (defn- meta-file ^File [dir]
-  (io/file dir "meta"))
+  (io/file dir "meta.edn"))
 
 (defn- read-frozen [^File f]
   (when (.isFile f)
     (nippy/thaw (Files/readAllBytes (.toPath f)))))
 
+(defn- read-edn [^File f]
+  (when (.isFile f)
+    (edn/read-string (slurp f))))
+
+(defn- edn-bytes ^bytes [m]
+  (.getBytes (binding [*print-length* nil *print-level* nil] (pr-str m)) "UTF-8"))
+
 (defn- chunk-id-of [^File f]
-  (let [[cx cz] (.split (.getName f) "_")]
+  (let [[cx cz] (.split (subs (.getName f) 0 (- (count (.getName f)) 6)) "_")]
     (chunk/pos->id (parse-long cx) (parse-long cz))))
 
 (defn- chunk-files [dir]
-  (filter #(re-matches #"-?\d+_-?\d+" (.getName ^File %))
+  (filter #(re-matches #"-?\d+_-?\d+\.chunk" (.getName ^File %))
           (or (.listFiles (io/file dir "chunks")) (make-array File 0))))
 
 (defn- read-chunks [dir]
@@ -76,7 +84,7 @@
     (cond
       (.isFile d) (log/info "snapshot:" (str d) "is a single-file world of an older layout"
                             "- starting fresh")
-      (.isDirectory d) (when-let [m (read-frozen (meta-file d))]
+      (.isDirectory d) (when-let [m (read-edn (meta-file d))]
                          (assoc m :chunks (read-chunks d))))))
 
 (defrecord FileStore [dir]
@@ -84,7 +92,7 @@
   (put-chunk! [_ id c] (write-atomically! (chunk-file dir id) (nippy/freeze c freeze-opts)))
   (del-chunk! [_ id] (Files/deleteIfExists (.toPath (chunk-file dir id))))
   (get-chunk [_ id] (read-frozen (chunk-file dir id)))
-  (put-meta! [_ m] (write-atomically! (meta-file dir) (nippy/freeze m freeze-opts)))
+  (put-meta! [_ m] (write-atomically! (meta-file dir) (edn-bytes m)))
   (load [_] (read-store dir))
   (flush! [_] nil)
   Object
