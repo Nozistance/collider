@@ -1,5 +1,5 @@
 (ns collider.world.eyeblossom
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
@@ -35,7 +35,7 @@
               (let [dx (- (long qx) (long x)) dy (- (long qy) (long y)) dz (- (long qz) (long z))
                     dist (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz))))
                     lo (long (* dist 5.0)) hi (long (* dist 10.0))
-                    roll (long (Math/floor (* (rnd/rnd [tick q :eyeblossom]) (inc (- hi lo)))))]
+                    roll (long (Math/floor (* (random/of-key [tick q :eyeblossom]) (inc (- hi lo)))))]
                 (update m (+ tick lo roll) (fnil conj []) (chunk/block-pos->id q)))))
           {} (neighbours p)))
 

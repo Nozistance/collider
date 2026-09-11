@@ -1,5 +1,5 @@
 (ns collider.game.systems.mobs
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
             [collider.game.features.sheep :as sheep]
@@ -202,7 +202,7 @@
              (if (and (not moving?) (not water?) (< (Math/abs a) 0.005)) 0.0 a))
         vy (if water?
              (+ vy0 (v/y wpush)
-                (if (< (rnd/rnd3 t eid (hash :swim)) 0.8) 0.04 0.0))
+                (if (< (random/of-longs t eid (hash :swim)) 0.8) 0.04 0.0))
              (double vy0))
         ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e) (v/v3 vx vy vz) half height 0.6)
         pos (.pos mv) vel (.vel mv) on-ground (.on-ground mv)
@@ -232,12 +232,12 @@
 (def ^:private ^:const say-mean 40)
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
-    (+ base (* 0.2 (- (rnd/rnd3 t eid (hash :p1))
-                      (rnd/rnd3 t eid (hash :p2)))))))
+    (+ base (* 0.2 (- (random/of-longs t eid (hash :p1))
+                      (random/of-longs t eid (hash :p2)))))))
 
 (defn- wide-pitch ^double [^long t ^long eid kind]
-  (+ 1.0 (* 0.4 (- (rnd/rnd4 t eid (hash kind) (hash :w1))
-                   (rnd/rnd4 t eid (hash kind) (hash :w2))))))
+  (+ 1.0 (* 0.4 (- (random/of-longs t eid (hash kind) (hash :w1))
+                   (random/of-longs t eid (hash kind) (hash :w2))))))
 
 (defn- water-vol ^double [vel3 k]
   (let [vx (v/x vel3) vy (v/y vel3) vz (v/z vel3)]

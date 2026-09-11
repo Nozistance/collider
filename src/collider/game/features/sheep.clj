@@ -2,7 +2,7 @@
   (:require [collider.game.mobs :as mobs]
             [collider.game.sense :as sense]
             [collider.game.out :as out]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.grass :as grass]))
 
@@ -38,8 +38,8 @@
 (defn- start-wander [world eid e t]
   (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
         try-at (fn [i]
-                 [(+ (double x) (- (* 20.0 (rnd/rnd4 t eid (hash :tx) i)) 10.0))
-                  (+ (double z) (- (* 20.0 (rnd/rnd4 t eid (hash :tz) i)) 10.0))])
+                 [(+ (double x) (- (* 20.0 (random/of-longs t eid (hash :tx) i)) 10.0))
+                  (+ (double z) (- (* 20.0 (random/of-longs t eid (hash :tz) i)) 10.0))])
         weight (fn [[cx cz]]
                  (if (= grass/grass-state
                         (sense/block-at world [(long (Math/floor (double cx)))
@@ -57,9 +57,9 @@
   (let [[_ pid] (sense/nearest-player world (:pos e) 36.0)
         look (if pid
                {:target pid
-                :until  (+ (long t) 40 (long (* 40.0 (rnd/rnd3 t eid (hash :lt)))))}
-               {:yaw   (- (* 360.0 (rnd/rnd3 t eid (hash :y))) 180.0)
-                :until (+ (long t) 20 (long (* 20.0 (rnd/rnd3 t eid (hash :lt)))))})]
+                :until  (+ (long t) 40 (long (* 40.0 (random/of-longs t eid (hash :lt)))))}
+               {:yaw   (- (* 360.0 (random/of-longs t eid (hash :y))) 180.0)
+                :until (+ (long t) 20 (long (* 20.0 (random/of-longs t eid (hash :lt)))))})]
     [(decide t eid (assoc e :pending nil :look look)) nil]))
 
 (defn- start-pending [world eid e t]
@@ -183,8 +183,8 @@
 (defn- start-panic [world eid e t]
   (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
         try-at (fn [i]
-                 [(+ (double x) (- (* 10.0 (rnd/rnd4 t eid (hash :px) i)) 5.0))
-                  (+ (double z) (- (* 10.0 (rnd/rnd4 t eid (hash :pz) i)) 5.0))])
+                 [(+ (double x) (- (* 10.0 (random/of-longs t eid (hash :px) i)) 5.0))
+                  (+ (double z) (- (* 10.0 (random/of-longs t eid (hash :pz) i)) 5.0))])
         weight (fn [[cx cz]]
                  (if (= grass/grass-state
                         (sense/block-at world [(long (Math/floor (double cx)))

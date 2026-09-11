@@ -2,7 +2,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.world.block :as block]
             [collider.game.tnt :as tnt]
             [collider.game.out :as out]
@@ -44,7 +44,7 @@
                      (pos? (long old))
                      (nil? (liquid/liquid-class old))
                      (not (block/waterlogged? old)))
-          [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key [(:tick world) pos salt]))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
 (defn- fizz-deltas [world changes]
@@ -76,7 +76,7 @@
           :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
           :when (and (zero? (long st)) (contains? sponge-plants (block/type-of old))
                      (= 0 (long (get changed pos -1))))
-          [i stack] (map-indexed vector (block/drops old (fn [salt] (rnd/rnd [(:tick world) pos salt]))))]
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key [(:tick world) pos salt]))))]
       [pos stack i])))
 
 (defn- sponge-deltas [world cells changes]
@@ -106,7 +106,7 @@
                                (not= (dripleaf/tilt-of (long st)) (dripleaf/tilt-of old)))
                       (dripleaf/tilt-sound (long st)))]
         :when sound]
-    (out/all (out/sound sound pos 1.0 (+ 0.8 (* 0.4 (double (rnd/rnd [(:tick world) pos :tilt]))))))))
+    (out/all (out/sound sound pos 1.0 (+ 0.8 (* 0.4 (double (random/of-key [(:tick world) pos :tilt]))))))))
 
 (defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]

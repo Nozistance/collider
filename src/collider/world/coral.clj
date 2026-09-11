@@ -1,5 +1,5 @@
 (ns collider.world.coral
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
@@ -21,7 +21,7 @@
    :match? (fn [_chunks st _p] (contains? block/coral-types (block/type-of st)))
    :wake   (fn [chunks tick p _old _self?]
              (when-not (wet? chunks p (at chunks p))
-               (+ (long tick) 60 (long (Math/floor (* 40.0 (rnd/rnd [tick p :coral])))))))
+               (+ (long tick) 60 (long (Math/floor (* 40.0 (random/of-key [tick p :coral])))))))
    :due    (fn [chunks p _ctx]
              (let [st (at chunks p)]
                (when-not (wet? chunks p st)

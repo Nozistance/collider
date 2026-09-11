@@ -1,16 +1,16 @@
 (ns collider.game.mobs
-  (:require [collider.rnd :as rnd]))
+  (:require [collider.random :as random]))
 
 (set! *warn-on-reflection* true)
 
 (defn- sheep-color [ks]
-  (let [r (long (* 100.0 (rnd/rnd ks)))]
+  (let [r (long (* 100.0 (random/of-key ks)))]
     (cond
       (< r 5)  15
       (< r 10) 7
       (< r 15) 8
       (< r 18) 12
-      (zero? (long (* 500.0 (rnd/rnd (conj ks :pink))))) 6
+      (zero? (long (* 500.0 (random/of-key (conj ks :pink))))) 6
       :else    0)))
 
 (def types
@@ -58,12 +58,12 @@
 
 (defn egg-mob [type pos ks tick]
   (let [color-fn (get-in types [type :spawn-color] (constantly 0))
-        yaw (- (* 360.0 (rnd/rnd (conj ks :yaw))) 180.0)]
+        yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
     (assoc (new-mob type pos (color-fn ks) tick)
            :yaw yaw :head-yaw yaw)))
 
 (defn exp-delay ^long [mean ^long t ^long eid kind]
-  (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (rnd/rnd3 t eid (hash kind)))))))))
+  (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (random/of-longs t eid (hash kind)))))))))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 (defn baby? [e] (some? (:baby-until e)))

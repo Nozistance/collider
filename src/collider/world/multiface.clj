@@ -14,11 +14,11 @@
 (defn- at ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks gen/flat-chunk p) -1))
 
-(defn shuffled [rnd xs]
+(defn shuffled [roll xs]
   (loop [v (vec xs) i (count v)]
     (if (< i 2)
       v
-      (let [j (long (Math/floor (* (double (rnd [:shuffle i])) i)))
+      (let [j (long (Math/floor (* (double (roll [:shuffle i])) i)))
             a (v (dec i)) b (v j)]
         (recur (assoc v (dec i) b j a) (dec i))))))
 
@@ -66,14 +66,14 @@
                    :else (block/state self))]
     (block/state (block/block-of base) (assoc (block/props-of base) dir :true))))
 
-(defn- from-face-random [chunks p st from-face rnd]
+(defn- from-face-random [chunks p st from-face roll]
   (first (keep #(spread-toward chunks p st from-face %)
-               (shuffled (fn [salt] (rnd [:dir from-face salt])) all-dirs))))
+               (shuffled (fn [salt] (roll [:dir from-face salt])) all-dirs))))
 
-(defn spread-random [chunks p ^long st rnd]
+(defn spread-random [chunks p ^long st roll]
   (let [self (block/block-of st)]
-    (when-let [sp (first (keep #(when (has-face? st %) (from-face-random chunks p st % rnd))
-                               (shuffled (fn [salt] (rnd [:face salt])) all-dirs)))]
+    (when-let [sp (first (keep #(when (has-face? st %) (from-face-random chunks p st % roll))
+                               (shuffled (fn [salt] (roll [:face salt])) all-dirs)))]
       [[(first sp) (placed-state chunks sp self)]])))
 
 (defn can-spread? [chunks p ^long st]

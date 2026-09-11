@@ -1,5 +1,5 @@
 (ns collider.game.systems.items
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.vec :as v]
@@ -28,17 +28,17 @@
         yaw (Math/toRadians (double (or (:yaw e) 0.0)))
         pitch (Math/toRadians (double (or (:pitch e) 0.0)))
         t (:tick world)
-        ang (* (rnd/rnd [t eid :a]) Math/PI 2.0)
-        mag (* 0.02 (rnd/rnd [t eid :m]))]
+        ang (* (random/of-key [t eid :a]) Math/PI 2.0)
+        mag (* 0.02 (random/of-key [t eid :m]))]
     [(+ (* -0.3 (Math/sin yaw) (Math/cos pitch)) (* (Math/cos ang) mag))
      (+ (* -0.3 (Math/sin pitch)) 0.1
-        (* 0.1 (- (rnd/rnd [t eid :y1]) (rnd/rnd [t eid :y2]))))
+        (* 0.1 (- (random/of-key [t eid :y1]) (random/of-key [t eid :y2]))))
      (+ (* 0.3 (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
 (defn- around-velocity [world eid salt]
   (let [t (:tick world)
-        pow (* 0.5 (rnd/rnd [t eid salt :p]))
-        dir (* Math/PI 2.0 (rnd/rnd [t eid salt :d]))]
+        pow (* 0.5 (random/of-key [t eid salt :p]))
+        dir (* Math/PI 2.0 (random/of-key [t eid salt :d]))]
     [(* -1.0 (Math/sin dir) pow) 0.2 (* (Math/cos dir) pow)]))
 
 (defn dropped
@@ -53,7 +53,7 @@
 
 (defn popped [world pos stack salt]
   (let [t (:tick world)
-        r (fn [k] (rnd/rnd [t pos salt k]))
+        r (fn [k] (random/of-key [t pos salt k]))
         [x y z] pos]
     {:type  :item
      :pos   [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))

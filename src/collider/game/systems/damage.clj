@@ -1,6 +1,6 @@
 (ns collider.game.systems.damage
   (:require [collider.game.entity :as entity]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.game.mobs :as mobs]
             [collider.world.chunk :as chunk]
             [collider.game.state :as state]
@@ -46,7 +46,7 @@
 (defn- sound-pitch ^double [world eid e]
   (let [t (long (:tick world))
         base (if (:baby-until e) 1.5 1.0)
-        r (- (rnd/rnd3 t eid (hash :hurt1)) (rnd/rnd3 t eid (hash :hurt2)))]
+        r (- (random/of-longs t eid (hash :hurt1)) (random/of-longs t eid (hash :hurt2)))]
     (+ base (* 0.2 r))))
 
 (defn- creative-proof? [e]

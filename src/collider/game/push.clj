@@ -2,7 +2,7 @@
   (:require [clojure.data.int-map :as im]
             [collider.game.mobs :as mobs]
             [collider.game.state :as state]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -118,7 +118,7 @@
         n   (.n w)]
     (if (<= n push-cap)
       (push-span! acc w 0 n me)
-      (let [off (mod (rnd/mix64 (unchecked-add (rnd/mix64 t) (long eid))) n)
+      (let [off (mod (random/mix64 (unchecked-add (random/mix64 t) (long eid))) n)
             end (+ off push-cap)]
         (if (<= end n)
           (push-span! acc w off end me)

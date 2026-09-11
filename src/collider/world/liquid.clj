@@ -513,9 +513,9 @@
 (defn- flammable-around? [chunks template p]
   (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
 
-(defn lava-random-tick [chunks template [x y z :as p] rnd]
-  (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (rnd salt)))))))
-        passes (long (Math/floor (* 3.0 (double (rnd :passes)))))]
+(defn lava-random-tick [chunks template [x y z :as p] roll]
+  (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (roll salt)))))))
+        passes (long (Math/floor (* 3.0 (double (roll :passes)))))]
     (if (pos? passes)
       (loop [tp p i 0]
         (when (< i passes)

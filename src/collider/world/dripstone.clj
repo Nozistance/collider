@@ -166,9 +166,9 @@
             (when-let [c (fillable-cauldron chunks tip fluid)]
               {:tip tip :cauldron c :delay (+ 50 (- (long (tip 1)) (long (c 1))))})))))))
 
-(defn drip [chunks p ^long st rnd]
+(defn drip [chunks p ^long st roll]
   (when (= :pointed-dripstone (block/type-of st))
-    (let [roll (double (rnd :drip))]
+    (let [roll (double (roll :drip))]
       (when (and (< roll water-chance) (start-pos? chunks p st))
         (transferred chunks p st roll)))))
 
@@ -211,21 +211,21 @@
   (and (= (grows-on self) (block/block-of (at chunks (up p))))
        (water-source-at? chunks (up (up p)))))
 
-(defn- grow-changes [chunks p ^long st rnd]
+(defn- grow-changes [chunks p ^long st roll]
   (let [self (block/block-of st)]
     (when (can-grow? chunks p self)
       (when-let [tip (find-tip chunks p st 7)]
         (let [tst (at chunks tip)]
           (when (and (free-hanging? tst) (can-tip-grow? chunks tip tst))
-            (if (< (double (rnd :which)) 0.5)
+            (if (< (double (roll :which)) 0.5)
               (grown chunks tip :down self)
               (stalagmite-below chunks tip self))))))))
 
-(defn random-changes [chunks p ^long st rnd]
+(defn random-changes [chunks p ^long st roll]
   (when (and (= :pointed-dripstone (block/type-of st))
-             (< (double (rnd :grow)) growth-chance)
+             (< (double (roll :grow)) growth-chance)
              (start-pos? chunks p st))
-    (grow-changes chunks p st rnd)))
+    (grow-changes chunks p st roll)))
 
 (defn- fall-changes [chunks p]
   (loop [q p acc []]

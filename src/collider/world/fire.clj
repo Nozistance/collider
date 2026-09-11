@@ -1,6 +1,6 @@
 (ns collider.world.fire
   (:require [collider.data :as data]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -54,13 +54,13 @@
     0
     (reduce (fn [^long m d] (max m (odds (state-at chunks (mapv + p d)) :ignite))) 0 around6)))
 
-(defn- pick ^long [rnd salt ^long n] (long (Math/floor (* (double (rnd salt)) n))))
+(defn- pick ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
 
 (defn state-with-age ^long [chunks p ^long a]
   (let [st (state-for chunks p)]
     (if (fire-state? st) (with-age st a) st)))
 
-(defn- spread-age ^long [rnd salt ^long a] (min 15 (+ a (quot (pick rnd salt 5) 4))))
+(defn- spread-age ^long [roll salt ^long a] (min 15 (+ a (quot (pick roll salt 5) 4))))
 
 (def ^:private rain-sides [[0 0 0] [-1 0 0] [1 0 0] [0 0 -1] [0 0 1]])
 
@@ -68,30 +68,30 @@
   (and (weather/raining? ctx)
        (boolean (some (fn [d] (weather/raining-at? chunks (mapv + p d))) rain-sides))))
 
-(defn- burn-out [chunks p d chance rnd a]
+(defn- burn-out [chunks p d chance roll a]
   (let [q (mapv + p d) st (state-at chunks q)]
-    (when (< (pick rnd [:burn q] chance) (odds st :burn))
-      (if (and (< (pick rnd [:burn-age q] (+ a 10)) 5) (not (weather/raining-at? chunks q)))
-        [q (state-with-age chunks q (spread-age rnd [:burn-spread q] a))]
+    (when (< (pick roll [:burn q] chance) (odds st :burn))
+      (if (and (< (pick roll [:burn-age q] (+ a 10)) 5) (not (weather/raining-at? chunks q)))
+        [q (state-with-age chunks q (spread-age roll [:burn-spread q] a))]
         [q 0]))))
 
 (def ^:private burn-sides
   [[[1 0 0] 300] [[-1 0 0] 300] [[0 -1 0] 250] [[0 1 0] 250] [[0 0 -1] 300] [[0 0 1] 300]])
 
-(defn- catch-fire [chunks p ctx rnd a difficulty]
+(defn- catch-fire [chunks p ctx roll a difficulty]
   (for [xx [-1 0 1] zz [-1 0 1] yy (range -1 5)
         :when (not (and (zero? (long xx)) (zero? (long yy)) (zero? (long zz))))
         :let [rate (if (> (long yy) 1) (+ 100 (* (dec (long yy)) 100)) 100)
               q (mapv + p [xx yy zz])
               io (ignite-odds chunks q)
               o (quot (+ io 40 (* (long difficulty) 7)) (+ a 30))]
-        :when (and (pos? io) (pos? o) (<= (pick rnd [:catch q] rate) o)
+        :when (and (pos? io) (pos? o) (<= (pick roll [:catch q] rate) o)
                    (not (near-rain? chunks ctx q)))]
-    [q (state-with-age chunks q (spread-age rnd [:catch-age q] a))]))
+    [q (state-with-age chunks q (spread-age roll [:catch-age q] a))]))
 
-(defn- spread-changes [chunks p ctx rnd a]
-  (concat (keep (fn [[d chance]] (burn-out chunks p d chance rnd a)) burn-sides)
-          (catch-fire chunks p ctx rnd a (difficulty/id ctx))))
+(defn- spread-changes [chunks p ctx roll a]
+  (concat (keep (fn [[d chance]] (burn-out chunks p d chance roll a)) burn-sides)
+          (catch-fire chunks p ctx roll a (difficulty/id ctx))))
 
 (def ^:private infiniburn #{:netherrack :magma-block})
 
@@ -111,7 +111,7 @@
 
 (defn- tick-changes [chunks p ctx]
   (let [st (state-at chunks p)
-        r (fn [salt] (rnd/rnd [(:tick ctx) p salt]))
+        r (fn [salt] (random/of-key [(:tick ctx) p salt]))
         below (state-at chunks (mapv + p [0 -1 0]))
         a (age st)
         a' (min 15 (+ a (quot (pick r :age 3) 2)))

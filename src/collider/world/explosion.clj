@@ -1,5 +1,5 @@
 (ns collider.world.explosion
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider.java Rays)
@@ -62,7 +62,7 @@
                   d2 (- (/ (double l) 7.5) 1.0)
                   d3 (Math/sqrt (+ (* d0 d0) (* d1 d1) (* d2 d2)))
                   d0 (/ d0 d3) d1 (/ d1 d3) d2 (/ d2 d3)]
-              (loop [f (* power (+ 0.7 (* 0.6 (rnd/rnd-v4 seed-h j k l))))
+              (loop [f (* power (+ 0.7 (* 0.6 (random/of-longs seed-h j k l))))
                      x cx y cy z cz]
                 (when (pos? f)
                   (let [bx (long (Math/floor x))

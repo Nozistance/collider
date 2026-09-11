@@ -128,22 +128,22 @@
       (let [f (block/facing-of st) a (up h)]
         {:changes [[h (stem-state chunks h f)] [a (leaf-state chunks a f)]]}))))
 
-(defn small-meal [chunks p ^long st rnd]
+(defn small-meal [chunks p ^long st roll]
   (let [lower (if (= :upper (half-of st)) (down p) p)
         base (at chunks lower)
         a (up lower)
         cleared (if (block/waterlogged? (at chunks a)) (block/state :water) 0)]
     (when (small? base)
       (let [chunks' (chunk/chunks-set-blocks chunks gen/flat-chunk [[a cleared]])
-            desired (+ 2 (long (Math/floor (* 4.0 (double (rnd :height))))))]
+            desired (+ 2 (long (Math/floor (* 4.0 (double (roll :height))))))]
         {:changes (into [[a cleared]]
                         (column-changes chunks' lower (block/facing-of base) desired))}))))
 
-(defn meal [chunks p ^long st rnd]
+(defn meal [chunks p ^long st roll]
   (cond
     (leaf? st) (leaf-meal chunks p st)
     (stem? st) (stem-meal chunks p st)
-    (small? st) (small-meal chunks p st rnd)))
+    (small? st) (small-meal chunks p st roll)))
 
 (def rule
   {:name   :dripleaf

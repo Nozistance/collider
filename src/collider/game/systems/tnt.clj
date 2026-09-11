@@ -5,7 +5,7 @@
             [collider.game.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.tnt :as tnt]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.explosion :as explosion]
             [collider.world.gen :as gen]
@@ -107,7 +107,7 @@
 
 (defn- near? [center p] (< (dist2 center p) 4096.0))
 (defn- explosion-msgs [read players center seed affected]
-  (let [pitch (* 0.7 (+ 1.0 (* 0.2 (- (rnd/rnd [seed :p1]) (rnd/rnd [seed :p2])))))
+  (let [pitch (* 0.7 (+ 1.0 (* 0.2 (- (random/of-key [seed :p1]) (random/of-key [seed :p2])))))
         sound (out/sound :explosion center 4.0 pitch)]
     (for [[eid e] players
           :when (near? center (:pos e))

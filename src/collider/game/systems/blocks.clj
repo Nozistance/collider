@@ -1,6 +1,6 @@
 (ns collider.game.systems.blocks
   (:require [clojure.string :as str]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.data :as data]
             [collider.game.blockentity :as be]
             [collider.game.jukebox :as jukebox]
@@ -120,7 +120,7 @@
 (defn- berries-deltas [world pos]
   (let [cur (block-at world pos)]
     (when (= :true (:berries (block/props-of cur)))
-      (let [pitch (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos :berries])))]
+      (let [pitch (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos :berries])))]
         (concat (change-deltas world [[pos (block/state (block/block-of cur) (assoc (block/props-of cur) :berries :false))]])
                 [[:spawn-entity (items/popped world pos {:item :glow-berries :count 1} :berries)]
                  (out/all (out/sound :cave-vines/pick-berries pos 1.0 pitch))])))))
@@ -131,13 +131,13 @@
        (not (and (= :bone-meal item) (< (bush-age cur) 3)))))
 
 (defn- bush-stacks [world pos ^long a]
-  (let [n (inc (long (Math/floor (* 2.0 (rnd/rnd [(:tick world) pos :bush-count])))))]
+  (let [n (inc (long (Math/floor (* 2.0 (random/of-key [(:tick world) pos :bush-count])))))]
     (cond-> [] (= 3 a) (conj {:item :sweet-berries :count 1})
             true (conj {:item :sweet-berries :count n}))))
 
 (defn- bush-deltas [world pos]
   (let [cur (block-at world pos)
-        pitch (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos :bush-pitch])))]
+        pitch (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos :bush-pitch])))]
     (concat (change-deltas world [[pos (block/state :sweet-berry-bush {:age :1})]])
             (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bush i])])
                          (bush-stacks world pos (bush-age cur)))
@@ -203,7 +203,7 @@
     (concat
      (change-deltas world [[pos (block/state :carved-pumpkin {:facing dir})]])
      [[:spawn-entity {:type :item :pos [(+ (long x) 0.5 (* 0.65 (long ox))) (+ (long y) 0.1) (+ (long z) 0.5 (* 0.65 (long oz)))]
-                      :vel [(+ (* 0.05 (long ox)) (* 0.02 (rnd/rnd [t pos :sx]))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (rnd/rnd [t pos :sz])))]
+                      :vel [(+ (* 0.05 (long ox)) (* 0.02 (random/of-key [t pos :sx]))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (random/of-key [t pos :sz])))]
                       :yaw 0.0 :pitch 0.0 :on-ground false
                       :stack {:item :pumpkin-seeds :count 4} :age 0 :pickup-delay 10}]
       (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
@@ -213,7 +213,7 @@
     (cond
       (and item (< lvl 8) (grow/compostables item))
       (when (< lvl 7)
-        (let [took? (or (zero? lvl) (< (rnd/rnd [(:tick world) pos :compost]) (double (grow/compostables item))))
+        (let [took? (or (zero? lvl) (< (random/of-key [(:tick world) pos :compost]) (double (grow/compostables item))))
               st (if took? (block/state :composter {:level (keyword (str (inc lvl)))}) cur)]
           (concat (when took? (change-deltas world [[pos st]]))
                   [(out/all (out/level-event 1500 pos (if took? 1 0)))
@@ -484,7 +484,7 @@
   (let [changes (toggled world eid pos state)
         open? (= :true (:open (block/props-of (second (first changes)))))
         t (:tick world)
-        pitch (+ 0.9 (* 0.1 (rnd/rnd [t pos :door])))]
+        pitch (+ 0.9 (* 0.1 (random/of-key [t pos :door])))]
     (conj (change-deltas world changes)
           (out/except eid (out/sound (open-sound state open?) pos 1.0 pitch)))))
 
@@ -550,7 +550,7 @@
                (zero? (block-at world pos'))
                (support/supported? (:chunks world) gen/flat-chunk pos' st))
       [[:set-blocks [[pos' st]]]
-       (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (rnd/rnd [(:tick world) pos' :flint])))))])))
+       (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos' :flint])))))])))
 
 (defn- flint-deltas [world [eid pos face]]
   (when-let [off (block/face-offsets face)]
@@ -596,7 +596,7 @@
 
 (defn- carpet-place-deltas [world eid pos state item]
   (let [chunks (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk [[pos state]])
-        side? (fn [dir] (< (double (rnd/rnd [(:tick world) pos :moss dir])) 0.5))]
+        side? (fn [dir] (< (double (random/of-key [(:tick world) pos :moss dir])) 0.5))]
     (if-let [topper (moss/carpet-topper chunks pos side?)]
       (placed-deltas world eid [[pos state] [(mapv + pos [0 1 0]) topper]] item)
       (placed-deltas world eid pos state item))))
@@ -738,7 +738,7 @@
       :else (concat
              (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur)) (get-in world [:rules :block-drops] true))
                (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
-                            (block/drops cur (fn [salt] (rnd/rnd [(:tick world) pos salt])))))
+                            (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt])))))
              (change-deltas world [[pos state]])
              [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
@@ -786,7 +786,7 @@
 
 (defn- bonemeal-deltas [world [eid pos _ _ _]]
   (let [st (block-at world pos)]
-    (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (rnd/rnd [(:tick world) pos :meal salt])))]
+    (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key [(:tick world) pos :meal salt])))]
       (concat
        (when (seq changes) (change-deltas world changes))
        (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
@@ -861,7 +861,7 @@
       (let [[x y z] (mapv + pos off)
             t (:tick world)
             at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-            pitch (+ 1.0 (* 0.2 (- (rnd/rnd [t pos :p1]) (rnd/rnd [t pos :p2]))))]
+            pitch (+ 1.0 (* 0.2 (- (random/of-key [t pos :p1]) (random/of-key [t pos :p2]))))]
         (when (chunk/in-range? y)
           (cons [:spawn-entity (mobs/egg-mob mob at [t pos] t)]
                 (when-let [say (mobs/say-sound mob)]

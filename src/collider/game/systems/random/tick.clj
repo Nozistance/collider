@@ -1,7 +1,7 @@
 (ns collider.game.systems.random.tick
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
-            [collider.rnd :as rnd]
+            [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.dripstone :as dripstone]
@@ -23,15 +23,15 @@
               (vals (:players world))))))
 
 (defn- cell-result [world chunks p ^long st]
-  (let [rnd (fn [salt] (rnd/rnd [(:tick world) p salt]))]
+  (let [roll (fn [salt] (random/of-key [(:tick world) p salt]))]
     (if (= :lava (liquid/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
-        {:changes (liquid/lava-random-tick chunks gen/flat-chunk p rnd)})
-      (let [drip (dripstone/drip chunks p st rnd)]
+        {:changes (liquid/lava-random-tick chunks gen/flat-chunk p roll)})
+      (let [drip (dripstone/drip chunks p st roll)]
         {:drip drip
          :changes (concat (:changes drip)
-                          (dripstone/random-changes chunks p st rnd)
-                          (grow/random-tick chunks p st rnd (:time-of-day world 0)))}))))
+                          (dripstone/random-changes chunks p st roll)
+                          (grow/random-tick chunks p st roll (:time-of-day world 0)))}))))
 
 (defn- section-cells [world chunks cid si speed]
   (let [t (long (:tick world)) cid (long cid) si (long si) speed (long speed)
@@ -40,9 +40,9 @@
         y0 (* 16 (- si (long chunk/section-offset)))]
     (into []
           (keep (fn [^long i]
-                  (let [lx (long (Math/floor (* 16.0 (rnd/rnd4 t cid (* 3 si) i))))
-                        ly (long (Math/floor (* 16.0 (rnd/rnd4 t cid (inc (* 3 si)) i))))
-                        lz (long (Math/floor (* 16.0 (rnd/rnd4 t cid (+ 2 (* 3 si)) i))))
+                  (let [lx (long (Math/floor (* 16.0 (random/of-longs t cid (* 3 si) i))))
+                        ly (long (Math/floor (* 16.0 (random/of-longs t cid (inc (* 3 si)) i))))
+                        lz (long (Math/floor (* 16.0 (random/of-longs t cid (+ 2 (* 3 si)) i))))
                         st (chunk/get-block c lx (+ y0 ly) lz)]
                     (when (block/randomly-ticking? st)
                       [[(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)] st]))))

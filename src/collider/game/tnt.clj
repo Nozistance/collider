@@ -1,5 +1,5 @@
 (ns collider.game.tnt
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
@@ -10,7 +10,7 @@
 (defn primed
   ([pos seed] (primed pos seed fuse-ticks))
   ([[x y z :as pos] seed fuse]
-   (let [a (* (rnd/rnd [seed pos :ang]) Math/PI 2.0)]
+   (let [a (* (random/of-key [seed pos :ang]) Math/PI 2.0)]
      {:type :tnt
       :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
       :vel [(* -0.02 (Math/sin a)) 0.2 (* -0.02 (Math/cos a))]

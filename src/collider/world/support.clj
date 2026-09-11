@@ -1,5 +1,5 @@
 (ns collider.world.support
-  (:require [collider.rnd :as rnd]
+  (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.dripleaf :as dripleaf]
@@ -119,7 +119,7 @@
     (block/tagged? below "supports_vegetation")))
 
 (defn plant-age [tick pos]
-  (keyword (str (long (Math/floor (* 25.0 (rnd/rnd [tick pos :plant-age])))))))
+  (keyword (str (long (Math/floor (* 25.0 (random/of-key [tick pos :plant-age])))))))
 
 (defn- growing-plant-supported? [chunks template pos st]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
