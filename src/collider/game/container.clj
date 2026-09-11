@@ -116,6 +116,8 @@
                          [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
                          0.5 (pitch world pos :lid)))]))
 
+(def ^:private ^:const recheck-delay 5)
+
 (defn count-deltas [world pos ^long before ^long after]
   (let [st (state-at (:chunks world) pos)
         t (block/type-of st)
@@ -126,7 +128,20 @@
     (concat
      (when (and (zero? before) (pos? after)) (edge true))
      (when (and (pos? before) (zero? after)) (edge false))
-     (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))]))))
+     (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
+     (when (and (not= :barrel t) (zero? before) (pos? after))
+       [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
+
+(defn recheck-deltas [world]
+  (let [t (long (:tick world))]
+    (mapcat (fn [[pos at]]
+              (when (<= (long at) t)
+                (let [st (state-at (:chunks world) pos)
+                      n (if (contains? container-types (block/type-of st)) (viewers world pos) 0)]
+                  (cons [:container-recheck pos (when (pos? n) (+ t recheck-delay))]
+                        (when (not= :barrel (block/type-of st))
+                          [(out/all (out/block-event pos 1 (min 255 n)))])))))
+            (:container-rechecks world))))
 
 (defn barrel-open-state [^long st open?]
   (block/state (block/block-of st) (assoc (block/props-of st) :open (if open? :true :false))))

@@ -14,9 +14,12 @@
 (def Runs "Chat text: strings or translate/with maps." [:sequential [:or :string :map]])
 (def world-deltas
   {:set-blocks
-   [[:cat Records]
+   [[:cat Records [:? :int]]
     "Write blocks and update neighbors. Clients get one batch per chunk at the
-     end of the tick (ChunkHolder.broadcastChanges)."]
+     end of the tick (ChunkHolder.broadcastChanges). The optional second
+     argument is the game time scheduled ticks count from; it defaults to the
+     current tick and is one less for edits driven by a player packet, which
+     vanilla handles after the level tick (MinecraftServer.tickChildren:1136)."]
    :ticks-flushed
    [[:cat :int Coll]
     "Remove block ticks up to t. Parked ticks (inactive chunks) stay and run
@@ -25,6 +28,11 @@
    [[:cat [:map-of :int Coll]]
     "Tick cells again without a block change (scheduleTick, fire):
      {tick [block-id ...]}."]
+   :container-recheck
+   [[:cat Pos [:maybe :int]]
+    "Next game time the container at pos re-broadcasts its opener count
+     (ContainerOpenersCounter.scheduleRecheck, every 5 ticks while open);
+     nil clears it."]
    :block-events-flushed
    [[:cat]
     "Clear the sent block event queue."]

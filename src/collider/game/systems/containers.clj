@@ -144,12 +144,14 @@
     (close-deltas world eid e false)))
 
 (defn- containers-deltas [world events]
-  (mapcat (fn [[tag :as ev]]
-            (case tag
-              :menu-click (click-deltas world ev)
-              :menu-close (close-event-deltas world ev)
-              nil))
-          events))
+  (concat
+   (mapcat (fn [[tag :as ev]]
+             (case tag
+               :menu-click (click-deltas world ev)
+               :menu-close (close-event-deltas world ev)
+               nil))
+           events)
+   (container/recheck-deltas world)))
 
 (defn containers [world events]
   [#(containers-deltas world events)])

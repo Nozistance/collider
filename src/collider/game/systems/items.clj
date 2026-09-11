@@ -95,7 +95,9 @@
 (defn- spawn-one [world {:keys [thrower stack take-from]}]
   (cons [:spawn-entity (dropped world thrower stack)]
         (when take-from
-          [[:set-slot thrower (take-from 0) (take-from 1)]])))
+          [[:set-slot thrower (take-from 0) (take-from 1)]
+           [:client-slots thrower {(take-from 0) (take-from 1)}
+            (get-in world [:entities thrower :track :carried])]])))
 
 (defn- spawn-deltas [world events]
   (mapcat #(spawn-one world %) (drops world events)))

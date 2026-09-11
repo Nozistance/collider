@@ -109,6 +109,15 @@
       [[:merge-entity eid {:pos pos :on-ground false :time time
                            :vel [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)]}]])))
 
+(defn first-step-deltas [world]
+  (let [active (state/active-chunks world)]
+    (into []
+          (comp (filter (fn [[_ e]] (and (= :falling-block (:type e))
+                                         (zero? (long (:time e 0)))
+                                         (state/active-at? active (:pos e)))))
+                (mapcat (fn [[eid e]] (step-deltas world eid e))))
+          (sort-by key (:entities world)))))
+
 (defn falling-blocks [world _events]
   (let [active (state/active-chunks world)]
     (into []

@@ -64,6 +64,7 @@
    :o-rain-level   {:default 0.0 :store store-rain-level :load double}
    :thunder-level  {:default 0.0 :store store-thunder-level :load double}
    :o-thunder-level {:default 0.0 :store store-thunder-level :load double}
+   :container-rechecks {:default {}}
    :players     {:default {}}
    :listed      {:default {}}})
 

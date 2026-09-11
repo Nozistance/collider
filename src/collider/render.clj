@@ -90,7 +90,7 @@
         
         
         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
-         :pos (if tr (mapv #(/ (double %) 4096.0) (:pos tr)) (:pos e))
+         :pos (if tr (mapv double (:pos tr)) (:pos e))
          :vel (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
          :yaw (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
          :data (if (= :falling-block kind) (:block e) 0)}]

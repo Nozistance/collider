@@ -29,8 +29,8 @@
                (out/thunder-level (weather/thunder-level world))]]
       (out/to eid msg))))
 
-(defn- weather-deltas [world events]
-  (concat (level-messages world) (switch-messages world) (join-messages world events)))
+(defn advanced [world]
+  (merge world (weather/advance world)))
 
-(defn weather [world events]
-  [#(weather-deltas world events)])
+(defn messages [world events]
+  (concat (level-messages world) (switch-messages world) (join-messages world events)))

@@ -119,13 +119,16 @@
 (defn- parse-double* [^String s]
   (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
 
+(defn- centered ^double [^double n ^String s ^long axis]
+  (if (and (not= 1 axis) (not (str/includes? s "."))) (+ n 0.5) n))
+
 (defn- as-dcoord [nm s {:keys [axis]} origin]
   (let [rel? (str/starts-with? s "~")
         n    (if rel?
                (when origin
                  (when-let [off (if (= "~" s) 0.0 (parse-double* (subs s 1)))]
                    (+ (double (nth origin axis)) (double off))))
-               (parse-double* s))]
+               (when-let [v (parse-double* s)] (centered (double v) s (long axis))))]
     (cond
       (nil? n) [:err (str (name nm) ": give a number or ~, not \"" s "\"")]
       (> (Math/abs (double n)) 3.0E7) [:err (str (name nm) ": " n " is too far")]

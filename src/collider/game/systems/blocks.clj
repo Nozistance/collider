@@ -86,7 +86,7 @@
         all     (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
         chunks'' (chunk/chunks-set-blocks chunks' gen/flat-chunk all)
         mixed   (liquid/mix-changes chunks'' gen/flat-chunk (map first all))]
-    (into [[:set-blocks (into all mixed)]]
+    (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
           (map (fn [[p _]] (out/all (out/fizz p))))
           mixed)))
 
@@ -590,7 +590,7 @@
     (when (and (chunk/in-range? y')
                (zero? (block-at world pos'))
                (support/supported? (:chunks world) gen/flat-chunk pos' st))
-      [[:set-blocks [[pos' st]]]
+      [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
        (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos' :flint])))))])))
 
 (defn- flint-deltas [world [eid pos face]]
@@ -718,6 +718,19 @@
   (let [p (:pos e) crouch? (and (:sneaking? e) (not (:flying e)))]
     [(v/x p) (+ (v/y p) (if crouch? 1.27 1.62)) (v/z p)]))
 
+(def ^:private ^:const block-interaction-range 6.0)
+
+(defn- axis-gap ^double [^double eye ^double lo]
+  (max (- lo eye) (- eye (+ lo 1.0)) 0.0))
+
+(defn- in-reach? [e pos]
+  (let [[ex ey ez] (eye-pos e)
+        dx (axis-gap ex (double (nth pos 0)))
+        dy (axis-gap ey (double (nth pos 1)))
+        dz (axis-gap ez (double (nth pos 2)))]
+    (< (+ (* dx dx) (* dy dy) (* dz dz))
+       (* block-interaction-range block-interaction-range))))
+
 (defn- look-dir [e]
   (let [yaw   (Math/toRadians (double (:yaw e)))
         pitch (Math/toRadians (double (:pitch e)))]
@@ -814,7 +827,7 @@
                   (= :lava (liquid/liquid-class st)) :bucket/fill-lava
                   :else :bucket/fill)]
       (concat (case kind
-                :source [[:set-blocks [[pos 0]]]]
+                :source [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
                 :powder-snow (change-deltas world [[pos 0]])
                 :waterlogged (change-deltas world [[pos (with-water st false)]]))
               (when (= :powder-snow kind) [(out/all (out/level-event 2001 pos st))])
@@ -1038,13 +1051,36 @@
                                      (equip-armor-deltas world eid item (armor-slot-of item)))
       :else                        (solid-place-deltas world args))))
 
-(defn ack-deltas [events]
+(def ^:private face-offsets
+  {0 [0 -1 0] 1 [0 1 0] 2 [0 0 -1] 3 [0 0 1] 4 [-1 0 0] 5 [1 0 0]})
+
+(defn- sequence-of [tag args]
+  (case tag
+    :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
+    :place (nth args 4 nil)
+    nil))
+
+(defn- acted-at [world eid origin pos]
+  (in-reach? (merge (get-in world [:entities eid]) origin) pos))
+
+(defn- use-ack-deltas [world events origins]
+  (mapcat (fn [[i [tag eid pos face]]]
+            (when-let [off (and (= :place tag) (face-offsets (bit-and (long face) 0xFF)))]
+              (when (and (chunk/in-range? (nth pos 1))
+                         (acted-at world eid (get origins i) pos))
+                (let [pos' (mapv + pos off)]
+                  (cond-> [(own-change world eid pos)]
+                    (chunk/in-range? (nth pos' 1)) (conj (own-change world eid pos')))))))
+          (map-indexed vector events)))
+
+(defn ack-deltas [world events]
   (let [latest (reduce (fn [m [tag eid & args]]
-                         (if-let [sq (case tag :dig (nth args 3 nil) :place (nth args 4 nil) nil)]
+                         (if-let [sq (sequence-of tag args)]
                            (update m eid (fnil max -1) (long sq))
                            m))
                        {} events)]
-    (map (fn [[eid sq]] (out/to eid (out/block-ack sq))) latest)))
+    (concat (map (fn [[eid sq]] (out/to eid (out/block-ack sq))) latest)
+            (use-ack-deltas world events (:use-origins world)))))
 
 (defn- with-edits [world deltas]
   (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]

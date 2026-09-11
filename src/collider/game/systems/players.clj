@@ -46,10 +46,10 @@
       no-equip
       [(held-stack e) (get inv 8) (get inv 7) (get inv 6) (get inv 5)])))
 
-(defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots carried seen])
-(defn- baseline [{:keys [pos yaw pitch on-ground] :as e}]
+(defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots carried seen t0])
+(defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
-    (->Track [(fixed x) (fixed y) (fixed z)]
+    (->Track [(double x) (double y) (double z)]
              (angle yaw) (angle pitch) (angle (or (:head-yaw e) yaw))
              (boolean on-ground)
              (metadata e)
@@ -58,7 +58,8 @@
              0
              (when (= :player (:type e)) (or (:inventory e) {}))
              (:carried e)
-             e)))
+             e
+             t)))
 
 (defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
 (defn- slot-diff [inv known]
@@ -68,7 +69,7 @@
                   (when (not= (as-seen ours) (as-seen theirs)) [slot ours]))))
         (into (sorted-set) (concat (keys inv) (keys known)))))
 
-(defn- track-of [e] (or (:track e) (baseline e)))
+(defn- track-of [^long t e] (or (:track e) (baseline t e)))
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]]
                      (let [t (:type e)]
@@ -137,7 +138,11 @@
 
 (defn- baseline-deltas [world eid]
   (let [e (get-in world [:entities eid])]
-    (when-not (:track e) [[:track eid (baseline e)]])))
+    (when-not (:track e)
+      (let [mdata (metadata e)]
+        (cond-> [[:track eid (baseline (long (:tick world)) e)]
+                 (out/all (out/move eid 0 0 0 (boolean (:on-ground e))))]
+          (seq mdata) (conj (out/all (out/meta eid mdata))))))))
 
 (defn- entities-by-chunk [ts]
   (persistent!
@@ -163,27 +168,32 @@
 
 (defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata equip
                   moved? turned? rel? head-turned? meta-changed? equip-changed?
-                  vel-changed? equip-diff slot-diff carried-changed?])
+                  vel-changed? equip-diff slot-diff carried-changed? first?])
 
-(def ^:private vel-threshold 4.0E-4)
-(def ^:private item-vel-threshold 1.0E-7)
-(defn- vel-changed?
-  ([tr vel] (vel-changed? tr vel vel-threshold))
-  ([^Track tr vel ^double threshold]
-   (boolean
-    (when vel
-      (let [sent (or (.vel-sent tr) vel-zero)
-            dx (- (vv/x vel) (vv/x sent))
-            dy (- (vv/y vel) (vv/y sent))
-            dz (- (vv/z vel) (vv/z sent))]
-        (> (+ (* dx dx) (* dy dy) (* dz dz)) threshold))))))
+(def ^:private vel-threshold 1.0E-7)
+(def ^:private pos-threshold 7.6293945E-6)
+(defn- vel-changed? [^Track tr vel]
+  (boolean
+   (when vel
+     (let [sent (or (.vel-sent tr) vel-zero)
+           dx (- (vv/x vel) (vv/x sent))
+           dy (- (vv/y vel) (vv/y sent))
+           dz (- (vv/z vel) (vv/z sent))
+           d  (+ (* dx dx) (* dy dy) (* dz dz))]
+       (or (> d vel-threshold)
+           (and (> d 0.0)
+                (zero? (+ (* (vv/x vel) (vv/x vel)) (* (vv/y vel) (vv/y vel))
+                          (* (vv/z vel) (vv/z vel))))))))))
 
 (defn- frame ^Frame [e ^Track tr ^long t due?]
   (let [item? (= :item (:type e))
         [bx by bz] (.pos tr)
         p (:pos e)
-        x (fixed (vv/x p)) y (fixed (vv/y p)) z (fixed (vv/z p))
-        dx (- x (long bx)) dy (- y (long by)) dz (- z (long bz))
+        ex (- (vv/x p) (double bx)) ey (- (vv/y p) (double by)) ez (- (vv/z p) (double bz))
+        near? (< (+ (* ex ex) (* ey ey) (* ez ez)) pos-threshold)
+        x (vv/x p) y (vv/y p) z (vv/z p)
+        dx (fixed ex) dy (fixed ey) dz (fixed ez)
+        ticks (- t (long (.t0 tr)))
         yaw (angle (:yaw e)) pitch (angle (:pitch e))
         head (angle (or (:head-yaw e) (:yaw e)))
         ground (boolean (:on-ground e))
@@ -191,9 +201,8 @@
         vel (:vel e)
         mdata (metadata e)
         equip (equipment-stacks e)
-        moved? (boolean (and due?
-                             (or (not (zero? dx)) (not (zero? dy)) (not (zero? dz))
-                                 (zero? (rem t resync-interval)))))
+        moved? (boolean (and due? (or (not near?) (zero? (rem ticks resync-interval)))))
+        first? (zero? ticks)
         turned? (boolean (and due?
                               (or (not= yaw (long (.yaw tr)))
                                   (not= pitch (long (.pitch tr))))))
@@ -216,8 +225,8 @@
         carried-changed? (boolean (and self? (not= (as-seen (:carried e)) (as-seen (.carried tr)))))]
     (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?) vel mdata equip
              moved? turned? rel? head-turned? meta-changed? equip-changed?
-             (vel-changed? tr vel (if item? item-vel-threshold vel-threshold)) equip-diff
-             slot-diff carried-changed?)))
+             (vel-changed? tr vel) equip-diff
+             slot-diff carried-changed? first?)))
 
 (defn- move-msg [eid e ^Frame f]
   (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
@@ -241,8 +250,8 @@
 (defn- move-msgs [eid e ^Frame f]
   (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
     (.head-turned? f)     (conj (out/head-look eid (.head f)))
-    (.meta-changed? f)    (conj (out/meta eid (.mdata f)))
-    (.vel-changed? f)     (conj (out/velocity eid (.vel f)))
+    (or (.meta-changed? f) (.first? f)) (conj (out/meta eid (.mdata f)))
+    (and (.due? f) (.vel-changed? f)) (conj (out/velocity eid (.vel f)))
     (seq (.equip-diff f)) (into (map (fn [[slot s]] (out/equipment eid slot s)) (.equip-diff f)))))
 
 (def ^:private item-update-interval 20)
@@ -279,9 +288,9 @@
                    :player update-interval
                    mob-update-interval)
             item? (= :item (:type e))
-            due? (or (zero? (rem (long t) (long freq)))
-                     (and item? (boolean (:needs-sync? e))))
-            tr   (track-of e)]
+            tr   (track-of (long t) e)
+            due? (or (zero? (rem (- (long t) (long (:t0 tr))) (long freq)))
+                     (and item? (boolean (:needs-sync? e))))]
         (when-not (and (not due?) (instance? Track tr) (identical? e (:seen tr)))
           (if (and (not due?) (instance? Track tr)
                    (= (metadata e) (:mdata tr))

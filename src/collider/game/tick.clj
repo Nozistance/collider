@@ -23,7 +23,6 @@
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.weather :as weather-system]
-            [collider.world.weather :as weather]
             [collider.game.systems.damage :as damage])
   (:import (collider.game.deltas Deltas)
            (java.util Arrays)
@@ -49,7 +48,6 @@
    #'containers/containers
    #'chat/chat
    #'daynight/daynight
-   #'weather-system/weather
    #'keepalive/keepalive])
 
 (defn- final-records [recs]
@@ -73,11 +71,14 @@
 (defn tick [world events]
   (let [world' (cond-> (update world :tick inc)
                  (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
-        world' (merge world' (weather/advance world'))
         world' (apply-events world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
-        post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1) (blocks/ack-deltas events) (detector/observe world events d1 w1))]
+        w1 (weather-system/advanced w1)
+        post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1)
+                     (blocks/ack-deltas w1 events) (weather-system/messages w1 events)
+                     (falling/first-step-deltas w1)
+                     (detector/observe world events d1 w1))]
     (if (empty? post)
       [w1 d1]
       (let [[w2 d2] (state/apply-deltas w1 post)]

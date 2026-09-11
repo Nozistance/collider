@@ -74,14 +74,14 @@
     (when-not (zero? st)
       (rules/wake-tick chunks st tick p old self?))))
 
-(defn- schedule-updates [bt tick chunks changed]
+(defn- schedule-updates [bt tick floor chunks changed]
   (reduce
     (fn [bt [[x y z] old _]]
       (reduce
         (fn [bt [dx dy dz :as d]]
           (let [p [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]]
             (if-let [at (wake-tick chunks tick p old (= [0 0 0] d))]
-              (update bt at (fnil conj (i/int-set)) (chunk/block-pos->id p))
+              (update bt (max (long at) (long floor)) (fnil conj (i/int-set)) (chunk/block-pos->id p))
               bt)))
         bt
         around))
@@ -97,7 +97,7 @@
               w))
           w real))
 
-(defn- apply-set-blocks [w changes]
+(defn- apply-set-blocks [w changes ^long base]
   (let [chunks (:chunks w)
         real (into []
                    (keep (fn [[pos st]]
@@ -117,7 +117,7 @@
         (-> w
             (assoc :chunks chunks')
             (drop-block-entities real)
-            (update :block-ticks schedule-updates (:tick w) chunks' real)
+            (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
             (cond-> (seq events)
               (update :block-events
                       (fn [ev]
@@ -156,7 +156,7 @@
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
     (let [st (chunk/chunks-get-block (:chunks w) gen/flat-chunk pos)]
       (if (= :bed (block/type-of st))
-        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]])
+        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] (long (:tick w)))
         w))
     w))
 
@@ -368,11 +368,15 @@
                     (-> w
                         (assoc-in [:entities eid] (entity/of (first args)))
                         (assoc :next-eid (inc eid))))
-    :set-blocks (apply-set-blocks w (first args))
+    :set-blocks (apply-set-blocks w (first args) (long (or (second args) (:tick w))))
     :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
     :schedule-ticks (update w :block-ticks
                             (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
                                              bt (first args))))
+    :container-recheck (let [[pos at] args]
+                         (if at
+                           (assoc-in w [:container-rechecks pos] (long at))
+                           (update w :container-rechecks dissoc pos)))
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
