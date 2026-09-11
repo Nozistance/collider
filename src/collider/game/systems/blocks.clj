@@ -49,20 +49,29 @@
 (defn- block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
 
-(defn- box-hits-player? [[x1 y1 z1 x2 y2 z2] [px py pz]]
-  (let [px (double px) py (double py) pz (double pz)]
-    (and (> (+ px 0.3) (double x1)) (< (- px 0.3) (double x2))
-         (> (+ py 1.8) (double y1)) (< py (double y2))
-         (> (+ pz 0.3) (double z1)) (< (- pz 0.3) (double z2)))))
+(defn- builder-box [e]
+  (case (:type e)
+    :player [0.3 (if (and (:sneaking? e) (not (:flying e))) 1.5 1.8)]
+    (:tnt :falling-block) [0.49 0.98]
+    :item nil
+    (when-let [m (get mobs/types (:type e))]
+      (let [s (if (mobs/baby? e) 0.5 1.0)]
+        [(* s (double (:half m))) (* s (double (:height m)))]))))
 
-(defn- intersects-player? [world [x y z] state]
+(defn- box-hits? [[x1 y1 z1 x2 y2 z2] [px py pz] [half h]]
+  (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
+    (and (> (+ px half) (double x1)) (< (- px half) (double x2))
+         (> (+ py h) (double y1)) (< py (double y2))
+         (> (+ pz half) (double z1)) (< (- pz half) (double z2)))))
+
+(defn- obstructed? [world [x y z] state]
   (let [boxes (map (fn [[a b c d e f]]
                      [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
                       (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
                    (block/collision-boxes state))]
     (some (fn [[_ e]]
-            (when (= :player (:type e))
-              (some #(box-hits-player? % (:pos e)) boxes)))
+            (when-let [dims (builder-box e)]
+              (some #(box-hits? % (:pos e) dims) boxes)))
           (:entities world))))
 
 (defn- own-change [world eid pos]
@@ -661,7 +670,7 @@
         (cond
           merged
           (let [[mp ms] merged]
-            (if (intersects-player? world mp ms)
+            (if (obstructed? world mp ms)
               (reject-deltas world eid pos pos')
               (placed-deltas world eid mp ms item)))
           (nil? pos') nil
@@ -672,7 +681,7 @@
           (and (contains? water-plant-types (block/type-of state))
                (not (water-plant-ok? world pos' state)))
           (reject-deltas world eid pos pos')
-          (intersects-player? world pos' state)
+          (obstructed? world pos' state)
           (reject-deltas world eid pos pos')
           (contains? block/door-types (block/type-of state))
           (door-place-deltas world eid pos pos' state item cursor)
@@ -700,7 +709,7 @@
         upper (block/state (block/block-of state) (assoc (block/props-of lower) :half :upper))]
     (if (and (chunk/in-range? (above 1))
              (replaceable? world above)
-             (not (intersects-player? world above upper))
+             (not (obstructed? world above upper))
              (block/face-sturdy? (block-at world (mapv + pos' [0 -1 0])) :up))
       (placed-deltas world eid [[pos' lower] [above upper]] item)
       (reject-deltas world eid pos pos'))))
@@ -819,7 +828,7 @@
                  (= :water (liquid/liquid-class (block-at world pos)))
                  (chunk/in-range? y')
                  (block/can-be-replaced? (block-at world above))
-                 (not (intersects-player? world above st))
+                 (not (obstructed? world above st))
                  (support/supported? (:chunks world) gen/flat-chunk above st))
         (placed-deltas world eid above st :lily-pad)))))
 
@@ -917,14 +926,14 @@
   (let [head-pos (mapv + pos' (connect/bed-partner-offset state))
         head     (block/state (block/block-of state) (assoc (block/props-of state) :part :head))]
     (if (and (replaceable? world head-pos item)
-             (not (intersects-player? world head-pos head)))
+             (not (obstructed? world head-pos head)))
       (placed-deltas world eid [[pos' state] [head-pos head]] item)
       (reject-deltas world eid pos pos'))))
 
 (defn- scaffold-place-deltas [world eid pos face]
   (if-let [target (scaffold-target world eid pos face)]
     (let [st (support/scaffold-state (:chunks world) gen/flat-chunk target (block/state :scaffolding))]
-      (if (not (intersects-player? world target st))
+      (if (not (obstructed? world target st))
         (placed-deltas world eid target (waterlogged world target st) :scaffolding)
         (reject-deltas world eid pos target)))
     (reject-deltas world eid pos nil)))
@@ -938,7 +947,7 @@
                 upper)]
     (if (and (chunk/in-range? (above 1))
              (block/can-be-replaced? (block-at world above))
-             (not (intersects-player? world above upper)))
+             (not (obstructed? world above upper)))
       (placed-deltas world eid [[pos' state] [above upper]] item)
       (reject-deltas world eid pos pos'))))
 
@@ -1003,6 +1012,7 @@
   (let [item      (or item (sense/held-of (get-in world [:entities eid])))
         args      [eid pos face item cursor]
         at        (merge (get-in world [:entities eid]) origin)
+        world     (assoc-in world [:entities eid] at)
         use-item? (= 255 (bit-and (long face) 0xFF))
         pour      (liquid/bucket->state item)]
     (cond
