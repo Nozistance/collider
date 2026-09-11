@@ -22,10 +22,14 @@
    :trapped-chest :trapped-chest
    :ender-chest :ender-chest
    :barrel :barrel
-   :shulker-box :shulker-box})
+   :shulker-box :shulker-box
+   :lectern :lectern})
 
+;; A kind whose getUpdateTag is empty: the chunk carries no tag for it.
+;; LecternBlockEntity keeps its book as a menu slot, not as part of the view.
 (def ^:private silent
-  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel :shulker-box})
+  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
+    :shulker-box :lectern})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
@@ -166,7 +170,8 @@
     :chiseled-bookshelf {:kind :chiseled-bookshelf :items [nil nil nil nil nil nil] :last-slot -1}
     :bell {:kind :bell}
     (:chest :trapped-chest :barrel :shulker-box) {:kind k :items (vec (repeat 27 nil))}
-    :ender-chest {:kind :ender-chest}))
+    :ender-chest {:kind :ender-chest}
+    :lectern {:kind :lectern :book nil :page 0}))
 
 (defn wire [entries]
   (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))

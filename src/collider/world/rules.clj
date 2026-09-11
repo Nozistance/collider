@@ -8,6 +8,7 @@
             [collider.world.fire :as fire]
             [collider.world.grass :as grass]
             [collider.world.kelp :as kelp]
+            [collider.world.lectern :as lectern]
             [collider.world.liquid :as liquid]
             [collider.world.scaffold :as scaffold]
             [collider.world.sponge :as sponge]
@@ -28,7 +29,8 @@
    coral/rule
    scaffold/rule
    composter/rule
-   grass/rule])
+   grass/rule
+   lectern/rule])
 
 (defn- rule-for [chunks st pos]
   (reduce (fn [_ r] (when ((:match? r) chunks st pos) (reduced r))) nil rules))

@@ -21,6 +21,7 @@
             [collider.world.connect :as connect]
             [collider.world.gen :as gen]
             [collider.world.grow :as grow]
+            [collider.world.lectern :as lectern]
             [collider.world.fire :as fire]
             [collider.world.liquid :as liquid]
             [collider.world.moss :as moss]
@@ -427,12 +428,23 @@
       [(out/all (out/block-event pos 1 (get dir-index (get face-dir (long face)))))
        (out/all (out/sound :bell/use pos 2.0 1.0))])))
 
+(defn- lectern-use-deltas
+  "LecternBlock.useItemOn with a book, then useWithoutItem on the book already
+   there. The book itself is never consumed: a creative player has
+   hasInfiniteMaterials."
+  [world eid pos]
+  (let [st (block-at world pos)
+        stack (held-stack world eid)]
+    (cond
+      (lectern/has-book? st) (containers/open-deltas world eid pos)
+      (container/book? stack) (container/place-book-deltas world pos st stack))))
+
 (defn- uses-block? [world eid pos item use-item?]
   (and (not use-item?)
        (not (and item (get-in world [:entities eid :sneaking?])))
        (let [cur (block-at world pos)]
          (or (contains? #{:flower-pot :candle :candle-cake :cake :composter :cave-vines :cave-vines-plant
-                          :decorated-pot :jukebox :shelf :chiseled-book-shelf :bell}
+                          :decorated-pot :jukebox :shelf :chiseled-book-shelf :bell :lectern}
                         (block/type-of cur))
              (contains? container/container-types (block/type-of cur))
              (picks-berries? cur item)
@@ -459,6 +471,7 @@
       (= :shelf t) (shelf-use-deltas world eid pos face cursor)
       (= :chiseled-book-shelf t) (bookshelf-use-deltas world eid pos face item cursor)
       (= :bell t) (bell-use-deltas world pos face cursor)
+      (= :lectern t) (lectern-use-deltas world eid pos)
       (contains? container/container-types t) (containers/open-deltas world eid pos)
       (= :pumpkin (block/block-of cur)) (carve-deltas world eid pos face))))
 
@@ -552,6 +565,11 @@
                             :yaw 0.0 :pitch 0.0 :on-ground false
                             :stack (be/to-stack item e) :age 0 :pickup-delay 10}]]))))))
 
+(defn- lectern-break-deltas
+  "LecternBlockEntity.preRemoveSideEffects: the book falls out."
+  [world pos]
+  (for [e (container/dropped-book world pos)] [:spawn-entity e]))
+
 (defn- spill-deltas [world pos]
   (let [e (be/at world pos)]
     (when (contains? be/spill-kinds (:kind e))
@@ -567,6 +585,7 @@
       (if (pos? old)
         (cond-> (into (vec (concat (jukebox-break-deltas world pos)
                                    (shulker-break-deltas world pos)
+                                   (lectern-break-deltas world pos)
                                    (spill-deltas world pos)))
                       (conj (change-deltas world [[pos (block/emptied old)]])
                             (out/except eid (out/break-effect pos old))))

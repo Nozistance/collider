@@ -6,7 +6,9 @@
             [collider.random :as random]
             [collider.game.workbench :as workbench]
             [collider.world.block :as block]
-            [collider.world.chest :as chest])
+            [collider.world.chest :as chest]
+            [collider.world.chunk :as chunk]
+            [collider.world.lectern :as lectern])
   (:import (java.util List)))
 
 (set! *warn-on-reflection* true)
@@ -82,21 +84,59 @@
       (= :stonecutter t) {:kind :bench :type :stonecutter :size 2 :result 1
                           :title {:translate "container.stonecutter"}
                           :cells [] :pos pos :selected 0 :contents [nil nil]}
+      (= :lectern t) (when (lectern/has-book? st)
+                       {:kind :lectern :type :lectern
+                        :title {:translate "container.lectern"}
+                        :cells [] :pos pos})
       (= :loom t) {:kind :bench :type :loom :size 4 :result 3
                    :title {:translate "container.loom"}
                    :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})))
 
 (defn bench? [m] (= :bench (:kind m)))
+(defn lectern? [m] (= :lectern (:kind m)))
+
+(defn player-slots?
+  "Whether the menu shows the player inventory. LecternMenu has one slot and
+   nothing else."
+  [m]
+  (not (lectern? m)))
 
 (defn slot-count ^long [m]
-  (if (bench? m) (long (:size m)) (* 9 (long (:rows m)))))
+  (cond
+    (lectern? m) 1
+    (bench? m) (long (:size m))
+    :else (* 9 (long (:rows m)))))
+
+(def book-items (set (data/tag-values "item" "lectern_books")))
+
+(defn book?
+  "LecternBlockEntity.hasBook: a stack carrying one of the book content
+   components. Both book items carry theirs by default and we never strip
+   them, so the item alone decides."
+  [stack]
+  (contains? book-items (:item stack)))
+
+(defn page-count ^long [stack]
+  (let [c (:components stack)]
+    (cond
+      (:written-book-content c) (count (:pages (:written-book-content c)))
+      (:writable-book-content c) (count (:writable-book-content c))
+      :else 0)))
+
+(defn clamp-page ^long [^long page ^long pages]
+  (if (< page 0) 0 (min page (dec pages))))
 
 (defn- padded [items] (vec (take size (concat items (repeat nil)))))
 
 (defn cell-items [world pos] (padded (:items (be/at world pos))))
 
+(defn book-of [world m] (:book (be/at world (:pos m))))
+
+(defn page ^long [world m] (long (:page (be/at world (:pos m)) 0)))
+
 (defn items [world eid m]
   (cond
+    (lectern? m) [(book-of world m)]
     (bench? m) (vec (take (slot-count m) (concat (:contents m) (repeat nil))))
     (= :ender (:kind m)) (padded (get-in world [:entities eid :ender-items]))
     :else (into [] (mapcat #(cell-items world %)) (:cells m))))
@@ -112,6 +152,7 @@
    so it stores nothing of its own here."
   [world eid m items]
   (cond
+    (lectern? m) nil
     (bench? m) nil
     (= :ender (:kind m)) [[:merge-entity eid {:ender-items (vec items)}]]
     :else
@@ -122,8 +163,67 @@
                         [:set-block-entity pos (assoc old :items part)])))
                   (:cells m))))
 
+(defn- centre [[x y z]]
+  [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
+
+(defn place-book-deltas
+  "LecternBlock.placeBook: the block entity takes one book, the state gets
+   HAS_BOOK with the impulse cleared, and the page goes back to the start."
+  [world pos ^long st stack]
+  (let [e (or (be/at world pos) (be/fresh :lectern nil))]
+    [[:set-block-entity pos (assoc e :book (assoc stack :count 1) :page 0)]
+     [:set-blocks [[pos (lectern/reset-state st true)]]]
+     (out/all (out/sound :item.book.put (centre pos) 1.0 1.0))]))
+
+(defn remove-book-deltas
+  "LecternBlockEntity.onBookItemRemove: the page resets and the block loses
+   HAS_BOOK."
+  [world pos]
+  (let [st (state-at (:chunks world) pos)
+        e (be/at world pos)]
+    [[:set-block-entity pos (assoc e :book nil :page 0)]
+     [:set-blocks [[pos (lectern/reset-state st false)]]]]))
+
+(defn next-page ^long [world m ^long want]
+  (clamp-page want (page-count (book-of world m))))
+
+(defn page-deltas
+  "LecternBlockEntity.setPage: a clamped page that really moved schedules the
+   page change impulse of LecternBlock.signalPageChange."
+  [world m ^long want]
+  (let [pos (:pos m)
+        st (state-at (:chunks world) pos)
+        e (be/at world pos)
+        p (clamp-page want (page-count (:book e)))]
+    (when (not= p (long (:page e 0)))
+      [[:set-block-entity pos (assoc e :page p)]
+       [:set-blocks [[pos (lectern/powered-state st true)]]]
+       ;; the button packet is handled before ServerLevel advances its game
+       ;; time, so vanilla's delay of two lands one tick from ours
+       [:schedule-ticks {(+ (long (:tick world)) lectern/impulse-ticks -1)
+                         [(chunk/block-pos->id pos)]}]
+       (out/all (out/level-event 1043 pos 0))])))
+
+(defn dropped-book
+  "LecternBlockEntity.preRemoveSideEffects: the book falls a quarter of a block
+   towards the front of the lectern, one block up."
+  [world pos]
+  (let [e (be/at world pos)
+        st (state-at (:chunks world) pos)]
+    (when (and (lectern/has-book? st) (:book e))
+      (let [[x y z] pos
+            [dx _ dz] (chest/offset (lectern/facing st))
+            r (fn [k] (random/of-key [(:tick world) pos :lectern k]))]
+        [{:type :item
+          :pos [(+ (double x) 0.5 (* 0.25 (double dx)))
+                (double (inc (long y)))
+                (+ (double z) 0.5 (* 0.25 (double dz)))]
+          :vel [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
+          :yaw 0.0 :pitch 0.0 :on-ground false
+          :stack (:book e) :age 0 :pickup-delay 10}]))))
+
 (defn positions [m]
-  (cond (bench? m) [] (= :ender (:kind m)) [(:pos m)] :else (:cells m)))
+  (cond (lectern? m) [] (bench? m) [] (= :ender (:kind m)) [(:pos m)] :else (:cells m)))
 
 (defn covers? [m pos]
   (boolean (some #(= pos %) (positions m))))
@@ -312,12 +412,22 @@
                        (assoc inv 3 r)
                        (dissoc inv 3))))))
 
+(defn- lectern-layout []
+  ;; LecternMenu has a single slot that takes nothing and quick-moves nothing,
+  ;; and LecternScreen is a book view with no slots: no click ever arrives.
+  {:count 1 :visible [0]
+   :place (fn [_ _] false)
+   :swap  (fn ^long [^long _] 0)
+   :quick (fn [_ _] nil)})
+
 (defn layout [m]
-  (case (:type m)
-    :stonecutter (cut-layout m)
-    :loom (loom-layout m)
-    :shulker-box (menu/container-layout (long (:rows m)) may-place?)
-    (menu/container-layout (long (:rows m)))))
+  (if (lectern? m)
+    (lectern-layout)
+    (case (:type m)
+      :stonecutter (cut-layout m)
+      :loom (loom-layout m)
+      :shulker-box (menu/container-layout (long (:rows m)) may-place?)
+      (menu/container-layout (long (:rows m))))))
 
 (defn derived
   "The result slot rebuilt from the inputs: setupResultSlot."
