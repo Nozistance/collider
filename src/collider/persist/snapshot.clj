@@ -2,7 +2,6 @@
   (:refer-clojure :exclude [load])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.pprint :as pprint]
             [collider.game.schema :as schema]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
@@ -65,9 +64,23 @@
   (when (.isFile f)
     (edn/read-string (slurp f))))
 
+(defn- edn-lines [^StringBuilder sb v ^long depth]
+  (if (map? v)
+    (let [pad (apply str (repeat (inc (* 2 depth)) " "))]
+      (.append sb "{")
+      (doseq [[i [k x]] (map-indexed vector (sort-by pr-str v))]
+        (when (pos? (long i)) (.append sb "\n") (.append sb pad))
+        (.append sb (pr-str k))
+        (.append sb " ")
+        (edn-lines sb x (inc depth)))
+      (.append sb "}"))
+    (.append sb (pr-str v))))
+
 (defn- edn-bytes ^bytes [m]
-  (let [^String s (binding [*print-length* nil *print-level* nil pprint/*print-right-margin* 200] (with-out-str (pprint/pprint m)))]
-    (.getBytes s "UTF-8")))
+  (let [sb (StringBuilder.)]
+    (binding [*print-length* nil *print-level* nil] (edn-lines sb m 0))
+    (.append sb "\n")
+    (.getBytes (str sb) "UTF-8")))
 
 (defn- chunk-id-of [^File f]
   (let [[cx cz] (.split (subs (.getName f) 0 (- (count (.getName f)) 6)) "_")]
