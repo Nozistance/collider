@@ -64,15 +64,18 @@
   (when (.isFile f)
     (edn/read-string (slurp f))))
 
-(defn- edn-lines [^StringBuilder sb v ^long depth]
+(defn- spaces ^String [^long n] (apply str (repeat n " ")))
+
+(defn- edn-lines [^StringBuilder sb v ^long col]
   (if (map? v)
-    (let [pad (apply str (repeat (inc (* 2 depth)) " "))]
+    (let [keys (mapv pr-str (keys v))
+          width (long (reduce max 0 (map count keys)))]
       (.append sb "{")
-      (doseq [[i [k x]] (map-indexed vector (sort-by pr-str v))]
-        (when (pos? (long i)) (.append sb "\n") (.append sb pad))
-        (.append sb (pr-str k))
-        (.append sb " ")
-        (edn-lines sb x (inc depth)))
+      (doseq [[i [k x]] (map-indexed vector (map vector keys (vals v)))]
+        (when (pos? (long i)) (.append sb "\n") (.append sb (spaces (inc col))))
+        (.append sb ^String k)
+        (.append sb (spaces (inc (- width (count k)))))
+        (edn-lines sb x (+ col 2 width)))
       (.append sb "}"))
     (.append sb (pr-str v))))
 
