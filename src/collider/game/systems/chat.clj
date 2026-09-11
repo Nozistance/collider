@@ -148,6 +148,18 @@
   [[:set-blocks [[[x y z] (block/state block)]]]
    (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))])
 
+(defn- setworldspawn-deltas [world eid [x y z]]
+  (let [p (get-in world [:entities eid :pos])
+        at [(long (or x (Math/floor (v/x p))))
+            (long (or y (Math/floor (v/y p))))
+            (long (or z (Math/floor (v/z p))))]]
+    [[:set-world-spawn at]
+     (out/all (out/default-spawn at))
+     (out/to eid (out/system-chat
+                  [{:translate "commands.setworldspawn.success"
+                    :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
+                           "0.0" "0.0" "minecraft:overworld"]}]))]))
+
 (defn- world-command-deltas [world eid [_ op & args]]
   (case op
     :gamerule (rule-deltas world eid (first args) (second args))
@@ -156,6 +168,7 @@
     :kill (kill-deltas world eid args)
     :summon (summon-deltas world eid args)
     :setblock (setblock-deltas eid args)
+    :setworldspawn (setworldspawn-deltas world eid args)
     :fill (fill-deltas eid args)
     :time-set (let [t (long (first args))]
                 (cons [:set-time t]

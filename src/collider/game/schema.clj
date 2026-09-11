@@ -48,6 +48,7 @@
    :block-entities {:default (i/int-map)
                     :store (fn [v _] (into {} (map (fn [[k m]] [k (into {} m)])) v))
                     :load #(into (i/int-map) (map (fn [[k m]] [(long k) (into {} (map (fn [[p e]] [(vec p) e])) m)])) %)}
+   :world-spawn {:default [24 4 8] :store (fn [v _] v) :load identity}
    :players     {:default {}}
    :listed      {:default {}}})
 

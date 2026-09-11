@@ -242,13 +242,14 @@
       (when (and death (>= (long death) death-ticks) (not= :player (:type e)))
         [[:remove-entity eid]]))))
 
-(defn- respawn-point [world e]
+(defn- respawn-point [world eid e]
   (let [bed-pos (:spawn e)
         chunks  (:chunks world)]
     (if (and bed-pos (bed/head-pos chunks bed-pos))
       (let [up (bed/stand-up-position chunks bed-pos (:yaw e 0.0))]
         [up (bed/look-yaw bed-pos up) nil])
-      [state/spawn-pos 0.0 (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
+      [(state/world-spawn-pos world eid) 0.0
+       (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
 
 (defn- reshow-deltas [world eid]
   (for [[oid o] (:entities world)
@@ -258,7 +259,7 @@
 (defn- respawn-deltas [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
-      (let [[pos yaw lost] (respawn-point world e)
+      (let [[pos yaw lost] (respawn-point world eid e)
             inv (:inventory e)]
         (cond-> [[:teleport eid pos]
                  [:merge-entity eid {:health      player-health

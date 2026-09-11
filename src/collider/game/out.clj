@@ -24,6 +24,9 @@
 (defn respawn []
   {:msg :respawn})
 
+(defn default-spawn [pos]
+  {:msg :default-spawn :pos pos})
+
 (defn keepalive [id]
   {:msg :keepalive :id id})
 

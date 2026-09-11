@@ -46,6 +46,11 @@
      [:z [:coord {:min -10000 :max 10000 :axis 2}]]
      [:block [:block {}]]]
     [:world :setblock]]
+   [:setworldspawn "set the world spawn point (default: where you are)"
+    [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
+     [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
+     [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
+    [:world :setworldspawn]]
    [:fill "fill a box with a block (~ = your position)"
     [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
      [:y1 [:coord {:min -64 :max 319 :axis 1}]]

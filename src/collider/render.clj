@@ -234,6 +234,7 @@
     :health     [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
     :respawn    [{:packet :respawn :dimension-type @overworld :keep 0}
                  {:packet :game-event :event 13 :value 0.0}]
+    :default-spawn [{:packet :set-default-spawn-position :pos (:pos m)}]
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]

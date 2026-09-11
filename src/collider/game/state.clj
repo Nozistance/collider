@@ -6,6 +6,7 @@
             [clojure.data.int-map :as i]
             [clojure.set :as set]
             [collider.game.entity :as entity]
+            [collider.random :as random]
             [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
             [collider.world.block :as block]
@@ -13,7 +14,8 @@
             [collider.world.connect :as connect]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
-            [collider.world.rules :as rules])
+            [collider.world.rules :as rules]
+            [collider.world.spawn :as spawn])
   (:import (clojure.lang MapEntry)
            (collider.game.deltas Deltas)
            (java.nio.charset StandardCharsets)
@@ -120,9 +122,17 @@
                                   (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
                                 (or ev (i/int-map)) events)))))))))
 
-(defn- new-player [name tick]
+(defn spawn-seed ^double [w eid]
+  (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
+
+(defn world-spawn-pos [w eid]
+  (spawn/find-spawn (:chunks w) gen/flat-chunk (:world-spawn w)
+                    (long (get-in w [:rules :respawn-radius] 10))
+                    (spawn-seed w eid)))
+
+(defn- new-player [name tick pos]
   {:type           :player :name name :uuid (offline-uuid name)
-   :pos            spawn-pos :yaw 0.0 :pitch 0.0 :on-ground true
+   :pos            pos :yaw 0.0 :pitch 0.0 :on-ground true
    :chunk-pos      nil :sent-chunks (i/int-set) :needs-spawn? true
    :chunk-rate     9.0 :chunk-quota 0.0 :batches-unacked 0 :batches-max 1
    :tracking       (i/int-set) :track nil
@@ -135,7 +145,8 @@
 (defn- player-join [w eid name]
   (-> w
       (assoc-in [:entities eid]
-                (entity/of (merge (new-player name (:tick w)) (get-in w [:profiles name]))))
+                (entity/of (merge (new-player name (:tick w) (world-spawn-pos w eid))
+                                  (get-in w [:profiles name]))))
       (assoc-in [:players name] eid)))
 
 (defn- vacated-bed [w eid]
@@ -362,6 +373,7 @@
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
+    :set-world-spawn (assoc w :world-spawn (vec (first args)))
     :set-block-entity (let [[pos e] args cp (chunk/block-chunk pos)]
                         (if e
                           (assoc-in w [:block-entities cp pos] e)

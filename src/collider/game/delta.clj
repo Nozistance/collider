@@ -34,6 +34,9 @@
    :set-rule
    [[:cat :keyword :any]
     "Game rule: a key from game/rules and a value."]
+   :set-world-spawn
+   [[:cat Pos]
+    "World spawn point (/setworldspawn)."]
    :set-block-entity
    [[:cat Pos [:maybe :map]]
     "Block entity at pos (a sign), nil removes it."]
@@ -96,6 +99,7 @@
    :teleport       [[[:pos Vec3] [:yaw number?] [:pitch number?]] "Put the player here (we wait for teleport-ack)."]
    :health         [[[:health number?]] "Player health."]
    :respawn        [[] "Respawn the player."]
+   :default-spawn  [[[:pos Pos]] "World spawn point shown by the compass."]
    :keepalive      [[[:id :int]] "Ping."]
    :disconnect     [[[:text [:or :string :map]]] "Disconnect with a text (string or translate)."]
    :close          [[] "Close the connection."]
