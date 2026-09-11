@@ -65,7 +65,8 @@
     (edn/read-string (slurp f))))
 
 (defn- edn-bytes ^bytes [m]
-  (.getBytes (binding [*print-length* nil *print-level* nil] (pr-str m)) "UTF-8"))
+  (let [^String s (binding [*print-length* nil *print-level* nil] (pr-str m))]
+    (.getBytes s "UTF-8")))
 
 (defn- chunk-id-of [^File f]
   (let [[cx cz] (.split (subs (.getName f) 0 (- (count (.getName f)) 6)) "_")]
