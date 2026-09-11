@@ -471,6 +471,16 @@
        (pos? (bit-and (long (aget ^bytes flag-arr st)) 1))
        (not (contains? #{:cobweb :bamboo-sapling} (block-of st)))))
 
+(def ^:private respawnable-types
+  #{:banner :wall-banner :standing-sign :wall-sign :ceiling-hanging-sign
+    :wall-hanging-sign :pressure-plate :weighted-pressure-plate})
+
+(defn possible-to-respawn-in? [^long st]
+  (or (contains? respawnable-types (type-of st))
+      (and (known? st)
+           (zero? (bit-and (long (aget ^bytes flag-arr st)) 1))
+           (not (liquid? st)))))
+
 (defn ignited-by-lava? [^long st]
   (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 2))))
 

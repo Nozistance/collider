@@ -51,6 +51,11 @@
      [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
      [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
     [:world :setworldspawn]]
+   [:spawnpoint "set your respawn point (default: where you are)"
+    [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
+     [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
+     [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
+    [:world :spawnpoint]]
    [:weather "set the weather"
     [:clear "clear the sky" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
      [:world :weather-clear]]

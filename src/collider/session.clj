@@ -35,8 +35,12 @@
 (def ^:private world-border-size 5.9999968E7)
 (def ^:private world-border-max 29999984)
 (def ^:private op-level-event 24)
-(defn- send-join-burst! [conn eid {:keys [max-players view-distance simulation-distance motd]}]
-  (let [[x y z] state/spawn-pos]
+(defn join-spawn [io]
+  (let [[x y z] (or (some-> (:world io) deref :world-spawn) state/spawn-pos)]
+    [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))
+
+(defn- send-join-burst! [conn eid spawn {:keys [max-players view-distance simulation-distance motd]}]
+  (let [[x y z] spawn]
     (server/send! conn {:packet :login :eid eid
                  :max-players (min 255 (long max-players))
                  :view-distance view-distance
@@ -49,7 +53,7 @@
     (server/send! conn {:packet :commands :nodes @command-tree})
     (server/send! conn {:packet :server-data :motd motd})
     (server/send! conn {:packet :initialize-border :size world-border-size :max-size world-border-max})
-    (server/send! conn {:packet :set-default-spawn-position :pos [(long x) (long y) (long z)]})
+    (server/send! conn {:packet :set-default-spawn-position :pos [x y z]})
     (server/send! conn {:packet :game-event :event 13 :value 0.0})
     (server/send! conn {:packet :ticking-state :rate 20.0 :frozen? false})
     (server/send! conn {:packet :ticking-step :steps 0})
@@ -60,13 +64,13 @@
                                       [:movement-speed 0.1]
                                       [:block-interaction-range 4.5]]})))
 
-(defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue cfg]}]
+(defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue cfg] :as io}]
   (let [nm  (:name (server/info conn))
         eid (.incrementAndGet next-entity-id)]
     (server/put! conn :eid eid)
     (swap! conns assoc eid conn)
     (server/set-conn-state! conn :play)
-    (send-join-burst! conn eid cfg)
+    (send-join-burst! conn eid (join-spawn io) cfg)
     (.offer queue [:player-join eid nm])
     (log/info "player" nm "connected: eid" eid "addr" (:addr (server/info conn)))))
 

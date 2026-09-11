@@ -55,7 +55,7 @@
         save! (when saver #(snapshot/request-save! saver store @world))
         queue (ConcurrentLinkedQueue.)
         conns (atom {})
-        io {:queue     queue :conns conns :cfg cfg :save! save!
+        io {:queue     queue :conns conns :cfg cfg :save! save! :world world
             :on-packet session/handle-packet}
         {^ServerSocket srv :socket accept :accept} (server/listen! io (:port cfg))
         ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))

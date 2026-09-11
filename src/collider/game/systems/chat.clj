@@ -150,17 +150,29 @@
   [[:set-blocks [[[x y z] (block/state block)]]]
    (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))])
 
-(defn- setworldspawn-deltas [world eid [x y z]]
-  (let [p (get-in world [:entities eid :pos])
-        at [(long (or x (Math/floor (v/x p))))
-            (long (or y (Math/floor (v/y p))))
-            (long (or z (Math/floor (v/z p))))]]
+(defn- block-under [world eid [x y z]]
+  (let [p (get-in world [:entities eid :pos])]
+    [(long (or x (Math/floor (v/x p))))
+     (long (or y (Math/floor (v/y p))))
+     (long (or z (Math/floor (v/z p))))]))
+
+(defn- setworldspawn-deltas [world eid args]
+  (let [at (block-under world eid args)]
     [[:set-world-spawn at]
      (out/all (out/default-spawn at))
      (out/to eid (out/system-chat
                   [{:translate "commands.setworldspawn.success"
                     :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
                            "0.0" "0.0" "minecraft:overworld"]}]))]))
+
+(defn- spawnpoint-deltas [world eid args]
+  (let [at (block-under world eid args)
+        e (get-in world [:entities eid])]
+    [[:merge-entity eid {:forced-spawn {:pos at :yaw 0.0 :pitch 0.0}}]
+     (out/to eid (out/system-chat
+                  [{:translate "commands.spawnpoint.success.single"
+                    :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
+                           "0.0" "0.0" "minecraft:overworld" (entity-name e)]}]))]))
 
 (defn- duration-of ^long [world ^long given bounds salt]
   (if (pos? given)
@@ -185,6 +197,7 @@
     :summon (summon-deltas world eid args)
     :setblock (setblock-deltas eid args)
     :setworldspawn (setworldspawn-deltas world eid args)
+    :spawnpoint (spawnpoint-deltas world eid args)
     :fill (fill-deltas eid args)
     :weather-clear (weather-deltas world eid :clear (first args))
     :weather-rain (weather-deltas world eid :rain (first args))

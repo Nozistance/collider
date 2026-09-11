@@ -28,8 +28,7 @@
    coral/rule
    scaffold/rule
    composter/rule
-   grass/rule
-   grass/smother-rule])
+   grass/rule])
 
 (defn- rule-for [chunks st pos]
   (reduce (fn [_ r] (when ((:match? r) chunks st pos) (reduced r))) nil rules))

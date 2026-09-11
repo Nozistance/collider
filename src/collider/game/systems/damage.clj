@@ -242,14 +242,31 @@
       (when (and death (>= (long death) death-ticks) (not= :player (:type e)))
         [[:remove-entity eid]]))))
 
+(defn- respawn-config [e]
+  (if-let [{:keys [pos yaw pitch]} (:forced-spawn e)]
+    {:pos pos :yaw (double (or yaw 0.0)) :pitch (double (or pitch 0.0)) :forced? true}
+    (when-let [pos (:spawn e)]
+      {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false})))
+
+(defn- free-to-stand? [chunks [x y z]]
+  (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks gen/flat-chunk [x y z]))
+       (block/possible-to-respawn-in? (chunk/chunks-get-block chunks gen/flat-chunk [x (inc (long y)) z]))))
+
+(defn- found-respawn [chunks {:keys [pos yaw pitch forced?]}]
+  (if (bed/head-pos chunks pos)
+    (let [up (bed/stand-up-position chunks pos yaw)]
+      [up (bed/look-yaw pos up) 0.0])
+    (when (and forced? (free-to-stand? chunks pos))
+      [[(+ (double (nth pos 0)) 0.5) (+ (double (nth pos 1)) 0.1) (+ (double (nth pos 2)) 0.5)]
+       yaw pitch])))
+
 (defn- respawn-point [world eid e]
-  (let [bed-pos (:spawn e)
-        chunks  (:chunks world)]
-    (if (and bed-pos (bed/head-pos chunks bed-pos))
-      (let [up (bed/stand-up-position chunks bed-pos (:yaw e 0.0))]
-        [up (bed/look-yaw bed-pos up) nil])
-      [(state/world-spawn-pos world eid) 0.0
-       (when bed-pos (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
+  (let [cfg (respawn-config e)
+        chunks (:chunks world)]
+    (if-let [[pos yaw pitch] (and cfg (found-respawn chunks cfg))]
+      [pos yaw pitch nil]
+      [(state/world-spawn-pos world eid) 0.0 0.0
+       (when cfg (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
 
 (defn- reshow-deltas [world eid]
   (for [[oid o] (:entities world)
@@ -259,14 +276,14 @@
 (defn- respawn-deltas [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
-      (let [[pos yaw lost] (respawn-point world eid e)
+      (let [[pos yaw pitch lost] (respawn-point world eid e)
             inv (:inventory e)]
         (cond-> [[:teleport eid pos]
                  [:merge-entity eid {:health      player-health
                                      :health-sent player-health
                                      :hurt-resist 0 :last-damage 0.0 :death-time 0}]
                  (out/to eid (out/respawn))
-                 (out/to eid (out/teleport pos yaw 0.0))
+                 (out/to eid (out/teleport pos yaw pitch))
                  (out/to eid (out/health player-health))
                  (out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
           (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))

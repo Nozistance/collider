@@ -426,7 +426,7 @@
                     n    (get cs "minecraft:max_stack_size" 64)
                     slot (get-in cs ["minecraft:equippable" "slot"])
                     song (get cs "minecraft:jukebox_playable")
-                    m    (cond-> {} (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
+                    m    (cond-> (sorted-map) (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
                            song (assoc :jukebox-song (kw song)))]
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))

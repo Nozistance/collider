@@ -80,6 +80,7 @@
   {:inventory {:default {}}
    :held-slot {:default 0}
    :spawn     {}
+   :forced-spawn {}
    :stats     {:default {}}
    :pos       {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}
    :yaw       {:default 0.0}

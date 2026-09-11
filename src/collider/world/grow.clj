@@ -288,23 +288,24 @@
 
 (defn- snowy [chunks p] (flag (block/tagged? (at chunks (up p)) "snow")))
 
-(defn- spread-alive? [chunks p]
-  (grass/can-stay-alive? chunks (block/state :grass-block) p))
-
-(defn- spread-target? [chunks q]
-  (and (= :dirt (block/block-of (at chunks q))) (spread-alive? chunks q)
+(defn- spread-target? [chunks fresh q]
+  (and (= :dirt (block/block-of (at chunks q)))
+       (grass/can-stay-alive? chunks fresh q)
        (not (water? (at chunks (up q))))))
 
+(defn- spread-cells [chunks p st roll]
+  (let [self (block/block-of st) fresh (block/state self)]
+    (into [] (keep (fn [i]
+                     (let [q (mapv + p [(dec (pick roll [:x i] 3)) (- (pick roll [:y i] 5) 3) (dec (pick roll [:z i] 3))])]
+                       (when (and (chunk/in-range? (q 1)) (spread-target? chunks fresh q))
+                         [q (block/state self {:snowy (snowy chunks q)})]))))
+          (range 4))))
+
 (defn- spread-tick [chunks p st roll time ctx]
-  (if-not (spread-alive? chunks p)
+  (if-not (grass/can-stay-alive? chunks st p)
     [[p (block/state :dirt)]]
     (when (>= (weather/brightness ctx chunks gen/flat-chunk (p 0) (inc (long (p 1))) (p 2) time) 9)
-      (let [self (block/block-of st)]
-        (into [] (keep (fn [i]
-                         (let [q (mapv + p [(dec (pick roll [:x i] 3)) (- (pick roll [:y i] 5) 3) (dec (pick roll [:z i] 3))])]
-                           (when (and (chunk/in-range? (q 1)) (spread-target? chunks q))
-                             [q (block/state self {:snowy (snowy chunks q)})]))))
-              (range 4))))))
+      (spread-cells chunks p st roll))))
 
 (defn- near-water? [chunks [x y z]]
   (boolean (some (fn [[dx dy dz]] (water? (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
@@ -423,7 +424,7 @@
       :sweet-berry-bush (berry-tick chunks p st roll)
       :kelp (kelp-tick chunks p st roll)
       :mushroom (mushroom-tick chunks p st roll)
-      :mycelium (spread-tick chunks p st roll (long time) ctx)
+      (:grass :mycelium) (spread-tick chunks p st roll (long time) ctx)
       :farmland (farmland-tick chunks p st roll)
       :cocoa (when (and (chance? roll :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
       :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/dampening st))) [[p (block/state :water)]])
