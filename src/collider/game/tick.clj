@@ -77,7 +77,7 @@
         world' (apply-events world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
-        post (concat (block-flush-deltas w1) (blocks/ack-deltas events) (detector/observe world events d1 w1))]
+        post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1) (blocks/ack-deltas events) (detector/observe world events d1 w1))]
     (if (empty? post)
       [w1 d1]
       (let [[w2 d2] (state/apply-deltas w1 post)]
