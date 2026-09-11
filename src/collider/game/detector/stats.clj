@@ -33,7 +33,7 @@
 
 (defn- counts [world e e']
   (cond-> [[:play-time 1] [:total-world-time 1] [:time-since-death 1]]
-    (:sneaking? e')                          (conj [:crouch-time 1])
+    (:sneaking? e')                          (conj [:sneak-time 1])
     (not (:sleeping e'))                     (conj [:time-since-rest 1])
     (and (:sleeping e') (not (:sleeping e))) (conj [:sleep-in-bed 1])
     (jumped? e e')                           (conj [:jump 1])
