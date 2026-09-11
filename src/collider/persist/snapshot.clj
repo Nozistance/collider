@@ -2,6 +2,7 @@
   (:refer-clojure :exclude [load])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.pprint :as pprint]
             [collider.game.schema :as schema]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
@@ -65,7 +66,7 @@
     (edn/read-string (slurp f))))
 
 (defn- edn-bytes ^bytes [m]
-  (let [^String s (binding [*print-length* nil *print-level* nil] (pr-str m))]
+  (let [^String s (binding [*print-length* nil *print-level* nil] (with-out-str (pprint/pprint m)))]
     (.getBytes s "UTF-8")))
 
 (defn- chunk-id-of [^File f]
