@@ -4,8 +4,8 @@
             [clojure.string :as str]
             [collider.data :as data]))
 
-(defn- block-name [kw] (str/replace (name kw) "-" "_"))
-(defn- block-kw [s] (keyword (str/replace (str/replace (str/lower-case (str s)) #"^minecraft:" "") "_" "-")))
+(defn- block-name [kw] (data/snake kw))
+(defn- block-kw [s] (data/kebab (str s)))
 (set! *warn-on-reflection* true)
 
 (def commands [

@@ -18,7 +18,7 @@
 (defn type-id ^long [e] (data/registry-id "block_entity_type" (:kind e)))
 (defn- text-nbt [t]
   {:messages (vec (:lines t))
-   :color (str/replace (name (:color t)) "-" "_")
+   :color (data/snake (:color t))
    :has_glowing_text (boolean (:glowing? t))})
 
 (defn nbt [e]

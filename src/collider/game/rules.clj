@@ -1,5 +1,5 @@
 (ns collider.game.rules
-  (:require [clojure.string :as str]))
+  (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
 
@@ -40,10 +40,10 @@
 
 (def defaults (into {} (map (fn [[k v]] [k (:default v)])) table))
 (defn wire-name ^String [rule]
-  (str "minecraft:" (str/replace (name rule) "-" "_")))
+  (data/wire rule))
 
 (defn rule-of [^String s]
-  (let [k (keyword (str/replace (str/replace (str/lower-case s) #"^minecraft:" "") "_" "-"))]
+  (let [k (data/kebab s)]
     (when (contains? table k) k)))
 
 (defn serialize ^String [rule value]

@@ -1,5 +1,6 @@
 (ns collider.game.systems.chat
-  (:require [clojure.string :as str]
+  (:require [collider.data :as data]
+            [clojure.string :as str]
             [collider.game.commands :as cmd]
             [collider.game.out :as out]
             [collider.game.mobs :as mobs]
@@ -90,7 +91,7 @@
     nil))
 
 (defn- entity-name [e]
-  (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (str/replace (name (:type e)) "-" "_"))}))
+  (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (data/snake (:type e)))}))
 
 (defn- targets [world eid {:keys [self all nearest entities type not-type? name]}]
   (let [players (vals (:players world))
@@ -124,7 +125,7 @@
                    (concat
                     (map (fn [[slot stack]] [:set-slot id slot stack]) changes)
                     (when left [[:spawn-entity (items/dropped world id left true 0)]])
-                    (say eid "commands.give.success.single" n {:translate (str "item.minecraft." (str/replace (name item) "-" "_"))} (:name e)))))
+                    (say eid "commands.give.success.single" n {:translate (str "item.minecraft." (data/snake item))} (:name e)))))
                ids)))))
 
 (defn- kill-deltas [world eid [sel]]

@@ -34,6 +34,19 @@
 (defn equip-slot [item]
   (get-in @items [item :equip]))
 
+(defn snake ^String [k]
+  (.replace (name k) \- \_))
+
+(defn wire ^String [k]
+  (str (or (namespace k) "minecraft") ":" (snake k)))
+
+(defn kebab [^String s]
+  (let [s (.toLowerCase s)
+        i (.indexOf s ":")
+        ns (if (neg? i) "minecraft" (subs s 0 i))
+        nm (.replace (if (neg? i) s (subs s (inc i))) \_ \-)]
+    (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
+
 (defn packet-id ^long [state dir name]
   (or (get-in @packets [state dir name])
       (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))

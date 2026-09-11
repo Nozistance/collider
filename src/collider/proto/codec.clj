@@ -53,8 +53,7 @@
 (defn write-id [^Buf buf k]
   (write-string buf
                 (cond
-                  (keyword? k) (str (or (namespace k) "minecraft") ":"
-                                    (str/replace (name k) "-" "_"))
+                  (keyword? k) (data/wire k)
                   (str/includes? (str k) ":") (str k)
                   :else (str "minecraft:" k))))
 
@@ -214,11 +213,7 @@
   (write-varint buf (inc id)))
 
 (defn read-id [^Buf buf]
-  (let [s (read-string buf)
-        i (.indexOf s ":")
-        ns (if (neg? i) "minecraft" (subs s 0 i))
-        nm (str/replace (if (neg? i) s (subs s (inc i))) "_" "-")]
-    (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
+  (data/kebab (read-string buf)))
 
 (declare components read-patch write-patch)
 

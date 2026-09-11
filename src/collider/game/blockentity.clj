@@ -37,7 +37,7 @@
   (data/registry-id "block_entity_type" (:kind e)))
 
 (defn identifier [item]
-  (str "minecraft:" (str/replace (name item) "-" "_")))
+  (data/wire item))
 
 (defn stack-nbt [stack]
   (when stack
@@ -46,7 +46,7 @@
 (defn items-nbt [items]
   (into [] (keep-indexed (fn [i s] (when s (assoc (stack-nbt s) :Slot (byte i))))) items))
 
-(defn- dye-name [color] (str/replace (name color) "-" "_"))
+(defn- dye-name [color] (data/snake color))
 
 (defn- pattern-nbt [{:keys [pattern color]}]
   {:pattern (if (map? pattern)
