@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -30,6 +31,8 @@
         {:changes (liquid/lava-random-tick chunks gen/flat-chunk p roll)})
       (let [drip (dripstone/drip chunks p st roll)]
         {:drip drip
+         :drops (grow/random-drops st roll)
+         :pos p
          :changes (concat (:changes drip)
                           (dripstone/random-changes chunks p st roll)
                           (grow/random-tick chunks p st roll (:time-of-day world 0) world))}))))
@@ -99,9 +102,19 @@
               m))
           {} drips))
 
+(defn- chorus-events [changes]
+  (for [[p st] changes
+        :when (= :chorus-flower (block/type-of (long st)))]
+    (out/all (out/level-event (if (= :5 (:age (block/props-of (long st)))) 1034 1033) p 0))))
+
 (defn- drip-events [drips]
   (for [{:keys [tip]} drips]
     (out/all (out/level-event 1504 tip 0))))
+
+(defn- drop-spawns [world results]
+  (for [{:keys [pos drops]} results
+        [i stack] (map-indexed vector drops)]
+    [:spawn-entity (items/popped world pos stack [:decay i])]))
 
 (defn- random-tick-deltas [world _events]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))
@@ -115,7 +128,9 @@
             (concat (when (seq changes) [[:set-blocks changes]])
                     (when (seq woken) [[:schedule-ticks woken]])
                     (eyeblossom-sounds changes)
-                    (drip-events drips))))))))
+                    (chorus-events changes)
+                    (drip-events drips)
+                    (drop-spawns world results))))))))
 
 (defn random-ticks [world events]
   [#(random-tick-deltas world events)])

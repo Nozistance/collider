@@ -1,6 +1,7 @@
 (ns collider.world.support
   (:require [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.dripleaf :as dripleaf]
             [collider.world.dripstone :as dripstone]
@@ -28,7 +29,12 @@
 (def ^:private kelp-types #{:kelp :kelp-plant})
 (defn- kelp-supported? [below]
   (or (contains? kelp-types (block/type-of below))
-      (and (block/face-sturdy? below :up) (not= :magma (block/type-of below)))))
+      (and (block/face-sturdy? below :up) (not (block/tagged? (max 0 below) "cannot_support_kelp")))))
+
+(defn- seagrass-supported? [below]
+  (and (not (neg? below))
+       (block/face-sturdy? below :up)
+       (not (block/tagged? below "cannot_support_seagrass"))))
 
 (defn- fire-supported? [chunks template pos st below]
   (if (= :soul-fire (block/type-of (long st)))
@@ -109,13 +115,14 @@
     (:double-plant :tall-flower) (if (= :upper (:half (block/props-of st)))
                                    (lower-half-of? below st)
                                    (block/tagged? below "supports_vegetation"))
-    :tall-seagrass (if (= :upper (:half (block/props-of st)))
-                     (lower-half-of? below st)
-                     (kelp-supported? below))
-    :seagrass (kelp-supported? below)
+    :seagrass (seagrass-supported? below)
     :cactus-flower (or (block/tagged? below "support_override_cactus_flower")
                        (holds-center-below? below))
     (:bamboo-stalk :bamboo-sapling) (block/tagged? below "supports_bamboo")
+    :nether-wart (block/tagged? below "supports_nether_wart")
+    :azalea (block/tagged? below "supports_azalea")
+    :wither-rose (block/tagged? below "supports_wither_rose")
+    :nether-sprouts (block/tagged? below "supports_nether_sprouts")
     (block/tagged? below "supports_vegetation")))
 
 (defn plant-age [tick pos]
@@ -158,6 +165,15 @@
       :ceiling-hanging-sign (holds-center-above? above)
       :wall-hanging-sign (hanging-sign-held? chunks template pos st)
       (:kelp :kelp-plant) (kelp-supported? below)
+      :tall-seagrass (if (= :upper (:half (block/props-of st)))
+                       (lower-half-of? below st)
+                       (seagrass-supported? below))
+      (:azalea :wither-rose :nether-sprouts :nether-fungus :nether-roots)
+      (vegetation-supported? t st below)
+      :mangrove-propagule (if (= :true (:hanging (block/props-of st)))
+                            (block/tagged? (max 0 above) "supports_hanging_mangrove_propagule")
+                            (block/tagged? (max 0 below) "supports_mangrove_propagule"))
+      (:chorus-flower :chorus-plant) (chorus/supported? chunks pos st)
       (:fire :soul-fire) (fire-supported? chunks template pos st below)
       :mushroom (mushroom-supported? chunks template pos below)
       :sugar-cane (sugar-cane-supported? chunks template pos st below)
@@ -297,6 +313,20 @@
                  (assoc (block/props-of st) :distance (keyword (str d))
                         :bottom (if (and (pos? d) (not= :scaffolding (block/type-of (max 0 below)))) :true :false)))))
 
+(defn- bamboo-fitted [chunks template pos ^long st]
+  (let [below (state-at chunks template (mapv + pos [0 -1 0]))
+        above (state-at chunks template (mapv + pos [0 1 0]))
+        age (fn [^long n] (:age (block/props-of n)))]
+    (when (and (let [cur (max 0 (state-at chunks template pos))]
+                 (and (nil? (liquid/liquid-class cur)) (not (block/waterlogged? cur))))
+               (block/tagged? (max 0 below) "supports_bamboo"))
+      (case (block/block-of (max 0 below))
+        :bamboo-sapling (block/state :bamboo {:age :0})
+        :bamboo (block/state :bamboo {:age (if (= :0 (age below)) :0 :1)})
+        (if (= :bamboo (block/block-of (max 0 above)))
+          (block/state :bamboo {:age (age above)})
+          (block/state :bamboo-sapling))))))
+
 (defn- cocoa-fitted [chunks template pos st yaw]
   (pick chunks template pos
         (map #(block/state (block/block-of st) (assoc (block/props-of st) :facing %)) (horizontal-look-order yaw))))
@@ -399,6 +429,7 @@
     (:lantern :weathering-lantern) (lantern-fitted chunks template pos st pitch)
     :bell (bell-fitted chunks template pos st face yaw)
     :cocoa (cocoa-fitted chunks template pos st yaw)
+    :bamboo-stalk (bamboo-fitted chunks template pos st)
     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
     (growing-plant-fitted chunks template pos st tick)
     :end-rod (rod-fitted chunks template pos st face)

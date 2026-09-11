@@ -3,6 +3,7 @@
             [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chest :as chest]
+            [collider.world.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.dripleaf :as dripleaf]
             [collider.world.dripstone :as dripstone]
@@ -25,13 +26,13 @@
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
 (def snowy-types #{:grass :mycelium :snowy-dirt})
 (def placed-types
-  #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder})
+  #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder :chorus-plant})
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
           :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
           :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
-          :chest :trapped-chest :copper-chest :weathering-copper-chest}
-        (concat pair-types block/growing-plant-types snowy-types [:pitcher-crop])))
+          :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant}
+        (concat pair-types block/growing-plant-types snowy-types block/leaves-types [:pitcher-crop])))
 
 (defn- exception? [n]
   (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
@@ -174,6 +175,16 @@
       (and (= body (block/block-of st)) (not on?)) (block/state head (assoc props :age (support/plant-age tick pos)))
       :else st)))
 
+(defn- leaf-distance ^long [^long st]
+  (cond
+    (block/tagged? st "prevents_nearby_leaf_decay") 0
+    (block/leaves? st) (Long/parseLong (name (:distance (block/props-of st))))
+    :else 7))
+
+(defn- leaves-state [self st at]
+  (let [d (reduce (fn [d off] (min (long d) (inc (leaf-distance (at off))))) 7 neighbours)]
+    (block/state self (assoc (block/props-of st) :distance (keyword (str d))))))
+
 (defn- snowy-state [self st at]
   (block/state self (assoc (block/props-of st)
                            :snowy (if (block/tagged? (at [0 1 0]) "snow") :true :false))))
@@ -208,6 +219,8 @@
                             0)
                     :soul-fire (if (support/supported? chunks gen/flat-chunk pos st) st 0)
                     (:grass :mycelium :snowy-dirt) (snowy-state self st at)
+                    (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-state self st at)
+                    :chorus-plant (chorus/connected chunks pos st)
                     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
                     (growing-plant-state pos st at tick)
                     (let [sides (into {} (map (fn [[dir off]]

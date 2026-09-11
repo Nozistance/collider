@@ -1,5 +1,6 @@
 (ns collider.world.grow
   (:require [collider.world.block :as block]
+            [collider.world.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.dripleaf :as dripleaf]
             [collider.world.eyeblossom :as eyeblossom]
@@ -409,6 +410,32 @@
   (when-let [new (eyeblossom/switched st time)]
     [[p new]]))
 
+(def ^:private potted-eyeblossom {:potted-open-eyeblossom :potted-closed-eyeblossom
+                                  :potted-closed-eyeblossom :potted-open-eyeblossom})
+
+(defn- potted-tick [p ^long st ^long time]
+  (let [self (block/block-of st)]
+    (when (contains? potted-eyeblossom self)
+      (let [open? (= :potted-open-eyeblossom self)
+            night? (<= 12600 (mod time 24000) 23400)]
+        (when (not= open? night?)
+          [[p (block/state (potted-eyeblossom self))]])))))
+
+(defn- nether-wart-tick [p st roll]
+  (when (and (< (age st) 3) (chance? roll :gate 10))
+    [[p (aged st (inc (age st)))]]))
+
+(defn- propagule-tick [p st]
+  (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
+    [[p (aged st (inc (age st)))]]))
+
+(defn- leaves-tick [p st]
+  (when (and (= :false (:persistent (block/props-of st))) (= 7 (prop st :distance)))
+    [[p (block/emptied st)]]))
+
+(defn- chorus-tick [chunks p st roll]
+  (chorus/flower-tick chunks p st (fn [salt ^long n] (pick roll salt n))))
+
 (defn random-tick
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
@@ -432,8 +459,19 @@
       :vine (vine-tick chunks p st roll)
       :budding-amethyst (budding-tick chunks p st roll)
       :eyeblossom (eyeblossom-tick p st time)
+      :flower-pot (potted-tick p st time)
+      :nether-wart (nether-wart-tick p st roll)
+      :mangrove-propagule (propagule-tick p st)
+      :chorus-flower (chorus-tick chunks p st roll)
+      (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-tick p st)
       (:weeping-vines :twisting-vines :cave-vines) (vines-tick chunks p st roll)
       (when (block/weathering? st) (weather-tick chunks p st roll))))))
+
+(defn random-drops [^long st roll]
+  (when (and (block/leaves? st)
+             (= :false (:persistent (block/props-of st)))
+             (= 7 (prop st :distance)))
+    (block/drops st roll)))
 
 (defn- crop-meal [chunks p st roll]
   (let [t (block/type-of st) a (age st) top (long (max-age t))]
@@ -497,6 +535,64 @@
   (when-let [changes (multiface/spread-random chunks p st roll)]
     {:changes changes}))
 
+(defn- shuffled-dirs [roll]
+  (loop [pool (vec dir-order) i 0 acc []]
+    (if (= i 3)
+      (into acc pool)
+      (let [j (pick roll [:shuffle i] (- 4 i))]
+        (recur (into (subvec pool 0 j) (subvec pool (inc j))) (inc i) (conj acc (pool j)))))))
+
+(defn- spread-meal [chunks p roll target]
+  (when-let [q (first (for [d (shuffled-dirs roll)
+                            :let [q (mapv + p (dirs d))]
+                            :when (and (air-at? chunks q)
+                                       (support/supported? chunks gen/flat-chunk q target))]
+                        q))]
+    {:changes [[q target]]}))
+
+(defn- height-above ^long [chunks p self ^long cap]
+  (loop [h 0]
+    (if (and (< h cap) (= self (block/block-of (at chunks (mapv + p [0 (inc h) 0])))))
+      (recur (inc h))
+      h)))
+
+(defn- bamboo-meal [chunks p st roll]
+  (let [above (height-above chunks p :bamboo 16)
+        below (height-below chunks p :bamboo 16)
+        top (mapv + p [0 above 0])
+        top-st (at chunks top)
+        target (up top)]
+    (when (and (< (+ above below 1) 16)
+               (not= 1 (prop top-st :stage))
+               (chunk/in-range? (long (target 1)))
+               (air-at? chunks target))
+      {:changes (grown-bamboo chunks top top-st roll (+ above below 1))})))
+
+(defn- pickle-cells [[x y z]]
+  (for [[i span] (map-indexed vector [1 3 5 3 1])
+        :let [z-off ([0 1 2 1 0] i)]
+        dz (range span)]
+    [(+ (long x) -2 (long i)) y (+ (long z) (- (long z-off)) dz)]))
+
+(defn- pickle-spots [chunks p roll]
+  (into []
+        (comp (map-indexed vector)
+              (mapcat (fn [[i [qx qy qz]]]
+                        (for [dy [-1 0]
+                              :let [q [qx (+ (long qy) (long dy)) qz]]
+                              :when (and (not= q p)
+                                         (zero? (pick roll [:seed i dy] 6))
+                                         (= :water (liquid/liquid-class (at chunks q)))
+                                         (block/tagged? (at chunks (down q)) "coral_blocks"))]
+                          [q (block/state :sea-pickle {:pickles (keyword (str (inc (pick roll [:n i dy] 4))))
+                                                       :waterlogged :true})]))))
+        (pickle-cells p)))
+
+(defn- pickle-meal [chunks p st roll]
+  (when (and (= :true (:waterlogged (block/props-of st)))
+             (block/tagged? (at chunks (down p)) "coral_blocks"))
+    {:changes (conj (pickle-spots chunks p roll) [p (with st :pickles 4)])}))
+
 (defn bonemeal [chunks p st roll]
   (let [st (long st)]
     (case (block/type-of st)
@@ -520,6 +616,13 @@
       :hanging-moss (hanging-moss-meal chunks p st)
       :mossy-carpet (carpet-meal chunks p st)
       (:big-dripleaf :big-dripleaf-stem :small-dripleaf) (dripleaf/meal chunks p st roll)
+      (:bush :firefly-bush) (spread-meal chunks p roll (block/state (block/block-of st)))
+      :short-dry-grass {:changes [[p (block/state :tall-dry-grass)]]}
+      :tall-dry-grass (spread-meal chunks p roll (block/state :short-dry-grass))
+      :bamboo-stalk (bamboo-meal chunks p st roll)
+      :sea-pickle (pickle-meal chunks p st roll)
+      :mangrove-propagule (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
+                            {:changes [[p (aged st (inc (age st)))]]})
       :seagrass (when (water? (at chunks (up p)))
                   {:changes [[p (block/state :tall-seagrass {:half :lower})] [(up p) (block/state :tall-seagrass {:half :upper})]]})
       nil)))

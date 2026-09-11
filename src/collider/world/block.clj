@@ -46,6 +46,7 @@
 (def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding :pointed-dripstone :sulfur-spike})
 (def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
 (def multiface-types #{:glow-lichen :multiface :sculk-vein})
+(def leaves-types #{:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves})
 (def growing-plant
   (into {} (for [[head body dir] [[:weeping-vines :weeping-vines-plant :down]
                                   [:twisting-vines :twisting-vines-plant :up]
@@ -56,7 +57,9 @@
 (def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :banner :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
 (def attached-types
   #{:lantern :weathering-lantern :bell :farmland :dirt-path :candle :sea-pickle :cocoa
-    :amethyst-cluster :hanging-moss :big-dripleaf :big-dripleaf-stem :small-dripleaf})
+    :amethyst-cluster :hanging-moss :big-dripleaf :big-dripleaf-stem :small-dripleaf
+    :azalea :wither-rose :nether-sprouts :nether-fungus :nether-roots
+    :mangrove-propagule :chorus-flower :chorus-plant})
 (def stack-props
   {:candle :candles :sea-pickle :pickles :flower-bed :flower-amount :leaf-litter :segment-amount})
 (def replaceable-types (disj (into ground-types (concat torch-types wall-torch-types)) :standing-sign))
@@ -79,6 +82,7 @@
   (let [tagged (set (get-in @data/tags ["block" "replaceable"]))]
     (boolean-table (fn [_ _ n] (contains? tagged n)))))
 
+(defn leaves? [^long st] (contains? leaves-types (type-of st)))
 (defn needs-support? [^long st] (and (known? st) (aget ^booleans needs-support-arr st)))
 (defn attached? [^long st] (and (known? st) (aget ^booleans attached-arr st)))
 (defn replaceable? [^long st] (and (known? st) (aget ^booleans replaceable-arr st)))
@@ -423,6 +427,8 @@
                   {:hanging (if (= face 0) :true :false)}
                   (str/ends-with? (name t) "leaves")
                   {:persistent :true}
+                  (= :mangrove-propagule t)
+                  {:age :4}
                   (contains? door-types t)
                   {:facing (player-direction yaw) :half :lower}
                   (= :bed t)
