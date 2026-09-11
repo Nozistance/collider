@@ -72,7 +72,7 @@
      :slots slots}))
 
 (defn open-deltas [world eid pos]
-  (when-let [m (container/menu-at (:chunks world) pos)]
+  (if-let [m (container/menu-at (:chunks world) pos)]
     (let [e (get-in world [:entities eid])
           prev (close-deltas world eid e true)
           e' (cond-> e prev (assoc :carried nil :menu nil))
@@ -84,7 +84,8 @@
         (out/to eid (out/open-screen id (:type m) (:title m)))
         (out/to eid (out/container-content id 1 slots (:carried e')))]
        (count-deltas world m 1)
-       (barrel-deltas world m 1)))))
+       (barrel-deltas world m 1)))
+    []))
 
 (defn- sync-deltas [world eid menu slots carried resync?]
   (let [remote (:remote menu)
