@@ -140,7 +140,4 @@
     :ender-chest {:kind :ender-chest}))
 
 (defn wire [entries]
-  (into {}
-        (comp (filter (fn [[_ e]] (on-wire? e)))
-              (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])))
-        entries))
+  (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))
