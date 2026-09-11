@@ -22,6 +22,7 @@
 (def sturdy-rigid  (delay (load-edn "sturdy-rigid.edn")))
 (def items      (delay (load-edn "items.edn")))
 (def flags      (delay (load-edn "flags.edn")))
+(def light      (delay (load-edn "light.edn")))
 (def fire       (delay (load-edn "fire.edn")))
 (def drops      (delay (load-edn "drops.edn")))
 (defn max-stack ^long [item]

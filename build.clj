@@ -25,7 +25,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare block-drops blocks datapack-names fire-odds kw packets registries tags-of vanilla-items vanilla-shapes write-edn!)
+(declare block-drops blocks datapack-names fire-odds kw light-table packets registries tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -36,7 +36,7 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire} (vanilla-shapes root)
+          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire lt :light} (vanilla-shapes root)
           drops (when (.isFile server) (block-drops server))
           items (vanilla-items reports)
           bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
@@ -69,6 +69,9 @@
       (write-edn! (path "flags.edn") flags
                   (format "%d states that block motion, ignite by lava, tick randomly, render solid or have a full top collision face"
                           (count flags)))
+      (write-edn! (path "light.edn") lt
+                  (format "%d dampening runs, %d emission runs, %d occlusion-shape runs over %d shapes"
+                          (count (:dampening lt)) (count (:emission lt)) (count (:faces lt)) (count (:kinds lt))))
       (write-edn! (path "fire.edn") fire
                   (format "%d blocks with fire odds" (count fire)))
       (when drops
@@ -203,6 +206,7 @@
                                        bits)]
                           :when (pos? (long mask))]
                       [id mask]))
+       :light  (light-table cl)
        :fire   (fire-odds cl)
        :sturdy-center (into (sorted-map)
                             (for [st states
@@ -234,6 +238,89 @@
                                               0 (map-indexed vector dirs))]
                            :when (not= mask 63)]
                        [id mask]))})))
+
+
+(def ^:private face-axis [1 1 2 2 0 0])
+(def ^:private dir-names [:down :up :north :south :west :east])
+
+(defn- project-face [^long axis box]
+  (let [[x0 y0 z0 x1 y1 z1] box]
+    (case axis
+      0 [y0 z0 y1 z1]
+      1 [x0 z0 x1 z1]
+      2 [x0 y0 x1 y1])))
+
+(defn- shape-boxes [aabbs-m fields shape]
+  (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
+        (.invoke aabbs-m shape (object-array 0))))
+
+(defn- face-entry [aabbs-m fields block-shape d shape]
+  (let [boxes (shape-boxes aabbs-m fields shape)]
+    (cond
+      (identical? shape block-shape) :full
+      (empty? boxes) nil
+      :else (let [ps (mapv #(project-face (long (face-axis d)) %) boxes)]
+              (if (= ps [[0 0 16 16]]) :full ps)))))
+
+(defn- runs [pairs]
+  (->> (sort-by first pairs)
+       (reduce (fn [acc [id v]]
+                 (let [[lo hi pv] (peek acc)]
+                   (if (and lo (= v pv) (= (long id) (inc (long hi))))
+                     (conj (pop acc) [lo id v])
+                     (conj acc [id id v]))))
+               [])
+       vec))
+
+(defn- flag-runs [ids]
+  (mapv (fn [[lo hi _]] (if (= lo hi) lo [lo hi])) (runs (map (fn [id] [id true]) ids))))
+
+(defn- value-runs [pairs]
+  (mapv (fn [[lo hi v]] (if (= lo hi) [lo v] [lo hi v])) (runs pairs)))
+
+(defn- light-table [^ClassLoader cl]
+  (let [registry  (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
+        get-id    (.getMethod (class registry) "getId" (into-array Class [Object]))
+        state-cls (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase" true cl)
+        dir-cls   (Class/forName "net.minecraft.core.Direction" true cl)
+        dirs      (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
+        shape-cls (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl)
+        aabbs-m   (.getMethod shape-cls "toAabbs" (make-array Class 0))
+        aabb-cls  (Class/forName "net.minecraft.world.phys.AABB" true cl)
+        fields    (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
+        block-shape (.invoke (.getMethod (Class/forName "net.minecraft.world.phys.shapes.Shapes" true cl)
+                                         "block" (make-array Class 0))
+                             nil (object-array 0))
+        call      (fn [^Method m st] (.invoke m st (object-array 0)))
+        emit-m    (.getMethod state-cls "getLightEmission" (make-array Class 0))
+        damp-m    (.getMethod state-cls "getLightDampening" (make-array Class 0))
+        occl-m    (.getMethod state-cls "canOcclude" (make-array Class 0))
+        use-m     (.getMethod state-cls "useShapeForLightOcclusion" (make-array Class 0))
+        oshape-m  (.getMethod state-cls "getOcclusionShape" (make-array Class 0))
+        fshape-m  (.getMethod state-cls "getFaceOcclusionShape" (into-array Class [dir-cls]))
+        states    (vec (iterator-seq (.iterator ^Iterable registry)))
+        ided      (mapv (fn [st] [(.invoke get-id registry (object-array [st])) st]) states)
+        faces-of  (fn [st]
+                    (into (sorted-map)
+                          (keep (fn [d]
+                                  (when-let [e (face-entry aabbs-m fields block-shape d
+                                                           (.invoke fshape-m st (object-array [(dirs d)])))]
+                                    [(dir-names d) e])))
+                          (range 6)))
+        shaped    (for [[id st] ided
+                        :when (and (call occl-m st) (call use-m st))
+                        :let [k {:shape (shape-boxes aabbs-m fields (call oshape-m st))
+                                 :faces (faces-of st)}]
+                        :when (seq (:faces k))]
+                    [id k])
+        kinds     (vec (sort-by pr-str (distinct (map second shaped))))
+        index     (into {} (map-indexed (fn [i k] [k i])) kinds)]
+    {:dampening (value-runs (for [[id st] ided :let [v (call damp-m st)] :when (not= 15 (long v))] [id v]))
+     :emission  (value-runs (for [[id st] ided :let [v (call emit-m st)] :when (pos? (long v))] [id v]))
+     :occludes  (flag-runs (for [[id st] ided :when (call occl-m st)] id))
+     :use-shape (flag-runs (for [[id st] ided :when (call use-m st)] id))
+     :kinds     kinds
+     :faces     (value-runs (for [[id k] shaped] [id (index k)]))}))
 
 (defn- fire-odds [^ClassLoader cl]
   (let [fire (static-field cl "net.minecraft.world.level.block.Blocks" "FIRE")

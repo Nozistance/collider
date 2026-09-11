@@ -125,44 +125,120 @@
   (and (pos? st) (known? st) (not (aget ^booleans liquid-arr st)) (not (aget ^booleans needs-support-arr st))))
 
 (def solid-arr (boolean-table (fn [st _ _] (solid? st))))
-(def ^:private emission
-  {:lava 15 :torch 14 :wall-torch 14 :fire 15 :soul-fire 10 :soul-torch 10 :soul-wall-torch 10
-   :furnace 13 :redstone-torch 7 :redstone-wall-torch 7 :glowstone 15 :jack-o-lantern 15
-   :redstone-lamp 15 :beacon 15 :sea-lantern 15 :lantern 15 :soul-lantern 10 :shroomlight 15
-   :end-rod 14 :magma-block 3})
+(def ^:private dir-index {:down 0 :up 1 :north 2 :south 3 :west 4 :east 5})
+(def ^:private opposite-dir (int-array [1 0 3 2 5 4]))
 
-(def ^:private emission-arr
-  (let [a (int-array state-count)]
-    (doseq [[block em] emission
-            :let [b (get @data/blocks block)]
-            :when b
-            i (range (reduce * 1 (map count (vals (:props b)))))]
-      (aset a (+ (long (:first b)) (long i)) (int em)))
+(defn- each-run! [runs f]
+  (doseq [r runs]
+    (let [[lo hi] (if (number? r) [r r] [(nth r 0) (nth r (if (= 2 (count r)) 0 1))])
+          v (if (number? r) nil (peek r))]
+      (dotimes [i (inc (- (long hi) (long lo)))]
+        (let [id (+ (long lo) i)] (when (< id state-count) (f id v)))))))
+
+(defn- flag-run! [runs f]
+  (doseq [r runs]
+    (let [[lo hi] (if (number? r) [r r] r)]
+      (dotimes [i (inc (- (long hi) (long lo)))]
+        (let [id (+ (long lo) i)] (when (< id state-count) (f id)))))))
+
+(defn- int-runs [^long default runs]
+  (let [a (int-array state-count (int default))]
+    (each-run! runs (fn [i v] (aset a (int i) (int v))))
     a))
 
-(defn- opacity-of ^long [block t full?]
-  (let [n (name block)]
-    (cond
-      (= :liquid t) (if (= :water block) 3 255)
-      (#{:ice :frosted-ice :half-transparent :slime :honey} t) 3
-      (#{:transparent :stained-glass :stained-glass-pane :iron-bars} t) 0
-      (= :tinted-glass t) 255
-      (str/ends-with? (name t) "leaves") 1
-      (#{:slab :stair} (shape-type t)) 255
-      full? 255
-      :else 0)))
-
-(def ^:private opacity-arr
-  (let [a (int-array state-count)]
-    (doseq [[block b] @data/blocks
-            :let [op (opacity-of block (:type b) (:full-cube? b))]
-            i (range (reduce * 1 (map count (vals (:props b)))))]
-      (aset a (+ (long (:first b)) (long i)) (int op)))
-    (aset a 0 (int 0))
+(defn- bool-runs [runs]
+  (let [a (boolean-array state-count)]
+    (flag-run! runs (fn [i] (aset a (int i) true)))
     a))
 
-(defn opacity ^long [^long st] (if (< -1 st state-count) (aget ^ints opacity-arr st) 255))
+(def ^:private dampening-arr (int-runs 15 (:dampening @data/light)))
+(def ^:private emission-arr  (int-runs 0 (:emission @data/light)))
+(def ^:private use-shape-arr (bool-runs (:use-shape @data/light)))
+(def ^:private can-occlude-arr (bool-runs (:occludes @data/light)))
+
+(defn- face-mask ^longs [boxes]
+  (let [m (long-array 4)]
+    (doseq [[u0 v0 u1 v1] boxes
+            v (range (long v0) (long v1))
+            u (range (long u0) (long u1))]
+      (let [b (+ (* 16 (long v)) (long u))]
+        (aset m (bit-shift-right b 6) (bit-or (aget m (bit-shift-right b 6)) (bit-shift-left 1 b)))))
+    m))
+
+(def ^:private full-mask (long-array 4 -1))
+(defn- full-face? [^longs m]
+  (and (== -1 (aget m 0)) (== -1 (aget m 1)) (== -1 (aget m 2)) (== -1 (aget m 3))))
+
+(def ^:private dir-keys (mapv key (sort-by val dir-index)))
+
+(defn- faces-of-kind [kind]
+  (mapv (fn [d]
+          (let [f (get (:faces kind) (nth dir-keys d))]
+            (cond (= :full f) full-mask (nil? f) nil :else (face-mask f))))
+        (range 6)))
+
+(defn- touch-of-kind [kind]
+  (reduce (fn [m d]
+            (let [axis (nth [1 1 2 2 0 0] d)
+                  lo?  (even? d)
+                  hit? (some (fn [b] (if lo? (zero? (long (nth b axis))) (== 16 (long (nth b (+ 3 axis))))))
+                             (:shape kind))]
+              (if hit? (bit-or (long m) (bit-shift-left 1 d)) m)))
+          0 (range 6)))
+
+(def ^:private kind-faces (mapv faces-of-kind (:kinds @data/light)))
+(def ^:private kind-touch (int-array (map touch-of-kind (:kinds @data/light))))
+
+(def ^:private face-arr
+  (let [a (object-array (* state-count 6))]
+    (each-run! (:faces @data/light)
+               (fn [i k] (dotimes [d 6] (aset a (+ (* 6 (long i)) d) (nth (nth kind-faces k) d)))))
+    a))
+
+(def ^:private touch-arr
+  (let [a (int-array state-count)]
+    (each-run! (:faces @data/light) (fn [i k] (aset a (int i) (aget ^ints kind-touch (int k)))))
+    a))
+
+(defn dampening ^long [^long st] (if (< -1 st state-count) (aget ^ints dampening-arr st) 15))
+(defn opacity ^long [^long st] (max 1 (dampening st)))
 (defn emits ^long [^long st] (if (< -1 st state-count) (aget ^ints emission-arr st) 0))
+(defn use-shape-for-light-occlusion? [^long st]
+  (and (< -1 st state-count) (aget ^booleans use-shape-arr st)))
+(defn can-occlude? [^long st] (and (< -1 st state-count) (aget ^booleans can-occlude-arr st)))
+
+(defn- occlusion-face ^longs [^long st ^long d]
+  (when (< -1 st state-count) (aget ^objects face-arr (+ (* 6 st) d))))
+
+(defn- covers-block? [^longs a ^longs b]
+  (and (== -1 (bit-or (aget a 0) (aget b 0))) (== -1 (bit-or (aget a 1) (aget b 1)))
+       (== -1 (bit-or (aget a 2) (aget b 2))) (== -1 (bit-or (aget a 3) (aget b 3)))))
+
+(defn shape-occludes? [^long from ^long to ^long d]
+  (let [a (occlusion-face from d)
+        b (occlusion-face to (aget ^ints opposite-dir d))]
+    (cond
+      (and (nil? a) (nil? b)) false
+      (nil? a) (full-face? b)
+      (nil? b) (full-face? a)
+      :else (covers-block? a b))))
+
+(defn- touches? [^long st ^long d]
+  (and (< -1 st state-count) (pos? (bit-and (aget ^ints touch-arr st) (bit-shift-left 1 d)))))
+
+(defn- merged-side ^longs [^long st ^long d]
+  (if (touches? st d) (occlusion-face st d) nil))
+
+(defn light-dampening-into ^long [^long from ^long to dir ^long simple]
+  (let [d (long (dir-index dir))
+        a (merged-side from d)
+        b (merged-side to (aget ^ints opposite-dir d))]
+    (cond
+      (and (nil? a) (nil? b)) simple
+      (nil? a) (if (full-face? b) 16 simple)
+      (nil? b) (if (full-face? a) 16 simple)
+      :else (if (covers-block? a b) 16 simple))))
+
 (defn- resistance-of ^double [block t]
   (let [n (name block)]
     (cond
@@ -410,11 +486,11 @@
 (defn burnable? [^long st]
   (and (known? st) (pos? (long (get-in @data/fire [(block-of st) :ignite] 0)))))
 
-(defn- drop-count ^long [entry rnd]
+(defn- drop-count ^long [entry roll]
   (let [[lo hi] (:count entry [1 1])]
-    (+ (long lo) (long (Math/floor (* (double (rnd [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
+    (+ (long lo) (long (Math/floor (* (double (roll [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
 
-(defn drops [^long st rnd]
+(defn drops [^long st roll]
   (let [table (get @data/drops (block-of st))
         props (props-of st)]
     (if (vector? table)
@@ -422,8 +498,8 @@
             (keep (fn [e]
                     (when (and (not (:entity? e))
                                (every? (fn [[k v]] (= v (get props k))) (:props e))
-                               (< (double (rnd [:chance (:item e)])) (double (:chance e 1.0))))
-                      (let [n (drop-count e rnd)]
+                               (< (double (roll [:chance (:item e)])) (double (:chance e 1.0))))
+                      (let [n (drop-count e roll)]
                         (when (pos? n) {:item (:item e) :count n})))))
             table)
       [])))

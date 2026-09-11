@@ -31,6 +31,26 @@
              (bit-or (bit-and b 0xF0) v)
              (bit-or (bit-and b 0x0F) (bit-shift-left v 4)))))))
 
+(defn first-above ^Section [chunk ^long si]
+  (loop [i (inc si)]
+    (when (< i section-count)
+      (if-let [s (get (:sections chunk) i)] s (recur (inc i))))))
+
+(defn nil-sky ^long [chunk ^long si ^long lx ^long lz]
+  (if-let [^Section s (first-above chunk si)]
+    (nibble-get (.sky-light s) (+ (* lz 16) lx))
+    15))
+
+(defn nil-sky-array ^bytes [chunk ^long si]
+  (if-let [^Section s (first-above chunk si)]
+    (let [out (byte-array 2048)]
+      (dotimes [k 16] (System/arraycopy ^bytes (.sky-light s) 0 out (* k 128) 128))
+      out)
+    (full-light)))
+
+(defn new-section ^Section [chunk ^long si]
+  (Section. (short-array 4096) (byte-array 2048) (nil-sky-array chunk si)))
+
 (defn section-set-block ^Section [^Section s ^long idx ^long state]
   (let [b (aclone ^shorts (.blocks s))]
     (aset b idx (short state))
@@ -40,7 +60,7 @@
   (let [y   (long y)
         si  (section-index y)
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
-        s   (or (get (:sections chunk) si) empty-section)]
+        s   (or (get (:sections chunk) si) (new-section chunk si))]
     (assoc-in chunk [:sections si] (section-set-block s idx state))))
 
 (defn get-block ^long [chunk lx y lz]
@@ -115,9 +135,9 @@
       (reduce
        (fn [chs [[cp si] arr]]
          (let [c (get chs cp template)
-               ^Section s (or (get (:sections c) si) empty-section)]
+               ^Section s (or (get (:sections c) si) (new-section c si))]
            (assoc chs cp
                   (assoc-in c [:sections si]
                             (->Section arr (.block-light s) (.sky-light s))))))
        chunks
-       (sort-by key (into {} cache))))))
+       (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))

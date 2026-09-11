@@ -93,7 +93,10 @@
     (.writeBytes buf body))
   (write-block-entities! buf block-entities)
   (let [blk? (fn [li] (some? (our-section chunk (dec (long li)))))
-        sky? (fn [li] (or (blk? li) (blk? (dec (long li)))))
+        top  (long (reduce (fn [^long acc ^long si]
+                             (if (some? (our-section chunk si)) si acc))
+                           -1 (range chunk/section-count)))
+        sky? (fn [li] (or (blk? li) (and (>= top 0) (= (dec (long li)) (inc top)))))
         sky-mask (light-mask sky?)
         blk-mask (light-mask blk?)]
     (c/write-varint buf 1) (.writeLong buf sky-mask)

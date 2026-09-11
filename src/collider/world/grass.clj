@@ -2,7 +2,7 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
-            [collider.world.light :as light]))
+            [collider.world.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
 
@@ -39,11 +39,17 @@
             (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
    :due   (fn [_chunks p _rules] [[p grass-state]])})
 
-(defn smothered? [chunks [x y z]]
-  (let [above [(long x) (inc (long y)) (long z)]]
-    (and (= grass-state (block-or-zero chunks [(long x) (long y) (long z)]))
-         (light/blocks-light? (block-or-zero chunks above))
-         (< (light/light-at chunks gen/flat-chunk (above 0) (above 1) (above 2)) 4))))
+(defn can-stay-alive? [chunks ^long st [x y z]]
+  (let [a (block-or-zero chunks [(long x) (inc (long y)) (long z)])]
+    (cond
+      (and (= :snow-layer (block/type-of a))
+           (= :1 (:layers (block/props-of a)))) true
+      (and (liquid/liquid-state? a) (liquid/source-state? a)) false
+      :else (< (block/light-dampening-into st a :up (block/dampening a)) 15))))
+
+(defn smothered? [chunks p]
+  (and (= grass-state (block-or-zero chunks p))
+       (not (can-stay-alive? chunks grass-state p))))
 
 (def smother-rule
   {:name   :grass-smothered
