@@ -650,10 +650,13 @@
 (defn read-hashed-stack [^Buf buf]
   (when (.readBoolean buf)
     (let [item (read-varint buf)
-          n    (read-varint buf)]
-      (dotimes [_ (read-varint buf)] (read-varint buf) (.readInt buf))
-      (dotimes [_ (read-varint buf)] (read-varint buf))
-      {:item (data/entry-name "item" item) :count n})))
+          n    (read-varint buf)
+          added (read-varint buf)]
+      (dotimes [_ added] (read-varint buf) (.readInt buf))
+      (let [removed (read-varint buf)]
+        (dotimes [_ removed] (read-varint buf))
+        (cond-> {:item (data/entry-name "item" item) :count n}
+          (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
 (defn write-entity-data [^Buf buf entries]

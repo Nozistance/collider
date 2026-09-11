@@ -152,6 +152,18 @@
 (defn block-event [pos action param]
   {:msg :block-event :pos pos :action action :param param})
 
+(defn open-screen [container menu title]
+  {:msg :open-screen :container container :menu menu :title title})
+
+(defn container-content [container state-id items carried]
+  {:msg :container-content :container container :state-id state-id :items (vec items) :carried carried})
+
+(defn container-slot [container state-id slot stack]
+  {:msg :container-slot :container container :state-id state-id :slot slot :stack stack})
+
+(defn container-close [container]
+  {:msg :container-close :container container})
+
 (defn block-entity [pos]
   {:msg :block-entity :pos pos})
 

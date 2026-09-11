@@ -3,6 +3,8 @@
             [collider.random :as random]
             [collider.data :as data]
             [collider.game.blockentity :as be]
+            [collider.game.container :as container]
+            [collider.game.systems.containers :as containers]
             [collider.game.jukebox :as jukebox]
             [collider.game.mobs :as mobs]
             [collider.game.sign :as sign]
@@ -423,6 +425,7 @@
          (or (contains? #{:flower-pot :candle :candle-cake :cake :composter :cave-vines :cave-vines-plant
                           :decorated-pot :jukebox :shelf :chiseled-book-shelf :bell}
                         (block/type-of cur))
+             (contains? container/container-types (block/type-of cur))
              (picks-berries? cur item)
              (poses? cur item)
              (contains? cauldron-types (block/type-of cur))
@@ -447,6 +450,7 @@
       (= :shelf t) (shelf-use-deltas world eid pos face cursor)
       (= :chiseled-book-shelf t) (bookshelf-use-deltas world eid pos face item cursor)
       (= :bell t) (bell-use-deltas world pos face cursor)
+      (contains? container/container-types t) (containers/open-deltas world eid pos)
       (= :pumpkin (block/block-of cur)) (carve-deltas world eid pos face))))
 
 (defn- scaffold-target [world eid pos face]
@@ -521,11 +525,20 @@
       [[:spawn-entity (items/popped world (mapv + pos [0 1 0]) (:record e) :jukebox)]
        (out/all (out/level-event 1011 pos 0))])))
 
+(defn- spill-deltas [world pos]
+  (let [e (be/at world pos)]
+    (when (contains? be/container-kinds (:kind e))
+      (mapcat (fn [[i stack]]
+                (when stack
+                  (map (fn [part] [:spawn-entity (items/popped world pos part [:spill i])])
+                       (items/split-drop world pos stack [:spill i]))))
+              (map-indexed vector (:items e))))))
+
 (defn- dig-deltas [world [eid status pos _face]]
   (let [old (block-at world pos)]
     (when (or (= 0 status) (= 2 status))
       (if (pos? old)
-        (cond-> (into (vec (jukebox-break-deltas world pos))
+        (cond-> (into (vec (concat (jukebox-break-deltas world pos) (spill-deltas world pos)))
                       (conj (change-deltas world [[pos (block/emptied old)]])
                             (out/except eid (out/break-effect pos old))))
           (fire/fire-state? old) (conj (out/all (out/extinguish pos)))
@@ -635,6 +648,12 @@
                                      (or (get-in world [:entities eid :yaw]) 0.0) (or (get-in world [:entities eid :pitch]) 0.0)
                                      (boolean (get-in world [:entities eid :sneaking?]))
                                      (:tick world))
+                     state)
+            state  (if (and pos' state (contains? container/container-types (block/type-of state)))
+                     (container/placed-state (:chunks world) pos' state face
+                                             (boolean (get-in world [:entities eid :sneaking?]))
+                                             (or (get-in world [:entities eid :yaw]) 0.0)
+                                             (or (get-in world [:entities eid :pitch]) 0.0))
                      state)
             state  (if (and pos' state) (waterlogged world pos' state) state)
             state  (if pos' (stacked world pos' state item) state)

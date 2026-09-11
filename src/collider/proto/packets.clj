@@ -337,6 +337,17 @@
              (.writeShort buf (int (:slot m)))
              (c/write-item-stack buf (:stack m)))}
 
+   [:play :open-screen]
+   {:write (fn [^Buf buf m]
+             (c/write-varint buf (long (:container m)))
+             (c/write-varint buf (long (:menu m)))
+             (c/write-component buf (:title m)))}
+   [:play :container-close]
+   {:read  (fn [^Buf buf] {:container (c/read-varint buf)})
+    :write (fn [^Buf buf m] (c/write-varint buf (long (:container m))))}
+   [:play :set-cursor-item]
+   {:write (fn [^Buf buf m] (c/write-item-stack buf (:stack m)))}
+
    [:play :bundle-delimiter]
    {:write (fn [_ _] nil)}
    [:play :add-entity]

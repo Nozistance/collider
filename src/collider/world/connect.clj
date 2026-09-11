@@ -2,6 +2,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.chest :as chest]
             [collider.world.chunk :as chunk]
             [collider.world.dripleaf :as dripleaf]
             [collider.world.dripstone :as dripstone]
@@ -28,7 +29,8 @@
 (def connecting-types
   (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
           :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
-          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire}
+          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
+          :chest :trapped-chest :copper-chest :weathering-copper-chest}
         (concat pair-types block/growing-plant-types snowy-types [:pitcher-crop])))
 
 (defn- exception? [n]
@@ -191,6 +193,7 @@
                     :fence-gate (gate-state self st at)
                     :stair (stair-state self st at)
                     :concrete-powder (powder-state st at)
+                    (:chest :trapped-chest :copper-chest :weathering-copper-chest) (chest/updated chunks pos st)
                     :mossy-carpet (moss/carpet-reshaped chunks pos st)
                     :hanging-moss (moss/hanging-tip chunks pos st)
                     (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)

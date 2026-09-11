@@ -136,7 +136,11 @@
    :equipment      [[[:eid Eid] [:slot :int] [:stack [:maybe Stack]]] "Equipment: slot 0..5 (main hand, off hand, boots ... helmet)."]
    :animation      [[[:eid Eid] [:kind :keyword]] "Animation: swing, wake up."]
    :status         [[[:eid Eid] [:kind :keyword]] "Entity event: hurt, death, shear."]
-   :collect        [[[:item Eid] [:collector Eid]] "Item collected."]})
+   :collect        [[[:item Eid] [:collector Eid]] "Item collected."]
+   :open-screen    [[[:container :int] [:menu :keyword] [:title :map]] "Open a container screen: id, menu type, title."]
+   :container-content [[[:container :int] [:state-id :int] [:items [:sequential [:maybe Stack]]] [:carried [:maybe Stack]]] "Full contents of an open menu."]
+   :container-slot [[[:container :int] [:state-id :int] [:slot :int] [:stack [:maybe Stack]]] "One slot of an open menu."]
+   :container-close [[[:container :int]] "Close the open menu on the client."]})
 
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid] [:except {:optional true} Eid]] fields))

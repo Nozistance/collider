@@ -9,6 +9,7 @@
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.falling :as falling]
@@ -45,6 +46,7 @@
    #'damage/damage
    #'sleep/sleep
    #'inventory/inventory
+   #'containers/containers
    #'chat/chat
    #'daynight/daynight
    #'weather-system/weather

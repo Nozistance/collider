@@ -63,6 +63,13 @@
      :yaw   0.0 :pitch 0.0 :on-ground false
      :stack stack :age 0 :pickup-delay 10}))
 
+(defn split-drop [world pos stack salt]
+  (loop [n (long (:count stack 1)) i 0 acc []]
+    (if (pos? n)
+      (let [got (min n (+ 10 (long (* 21.0 (double (random/of-key [(:tick world) pos salt :split i]))))))]
+        (recur (- n got) (inc i) (conj acc (assoc stack :count got))))
+      acc)))
+
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
         slot (+ 36 (long (or (:held-slot e) 0)))

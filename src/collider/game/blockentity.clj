@@ -17,9 +17,15 @@
    :jukebox :jukebox
    :shelf :shelf
    :chiseled-book-shelf :chiseled-bookshelf
-   :bell :bell})
+   :bell :bell
+   :chest :chest :copper-chest :chest :weathering-copper-chest :chest
+   :trapped-chest :trapped-chest
+   :ender-chest :ender-chest
+   :barrel :barrel})
 
-(def ^:private silent #{:chiseled-bookshelf :bell :jukebox})
+(def ^:private silent #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel})
+
+(def container-kinds #{:chest :trapped-chest :barrel})
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -129,7 +135,9 @@
     :jukebox {:kind :jukebox :record nil}
     :shelf {:kind :shelf :items [nil nil nil]}
     :chiseled-bookshelf {:kind :chiseled-bookshelf :items [nil nil nil nil nil nil] :last-slot -1}
-    :bell {:kind :bell}))
+    :bell {:kind :bell}
+    (:chest :trapped-chest :barrel) {:kind k :items (vec (repeat 27 nil))}
+    :ender-chest {:kind :ender-chest}))
 
 (defn wire [entries]
   (into {}

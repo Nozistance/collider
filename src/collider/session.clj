@@ -104,7 +104,10 @@
     :pick-item-from-block    [:pick eid {:pos (:pos m)}]
     :pick-item-from-entity   [:pick eid {:entity (:id m)}]
     :set-creative-mode-slot  [:creative-slot eid (:slot m) (:stack m)]
-    :container-click         (when (zero? (long (:container m))) [:click eid (dissoc m :packet :container)])
+    :container-click         (if (zero? (long (:container m)))
+                               [:click eid (dissoc m :packet :container)]
+                               [:menu-click eid (dissoc m :packet)])
+    :container-close         [:menu-close eid (:container m)]
     :client-command          (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
     :set-game-rule           [:set-rules eid (:entries m)]
     :command-suggestion      [:tab-complete eid (:text m) nil (:id m)]
@@ -119,7 +122,7 @@
 
 (def ^:private ignored
   #{:client-information :player-loaded :client-tick-end :custom-payload
-    :chat-session-update :chat-ack :container-close :configuration-acknowledged
+    :chat-session-update :chat-ack :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request
     :chat-command-signed :pong :bundle-item-selected :block-entity-tag-query
     :entity-tag-query :edit-book :jigsaw-generate :lock-difficulty

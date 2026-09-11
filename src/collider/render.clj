@@ -243,7 +243,14 @@
     :time       [{:packet :set-time :age (:age m) :time (:time m)}]
     :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
     :set-slot   [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]
-    :carried    [{:packet :container-set-slot :container -1 :slot -1 :stack (:stack m)}]
+    :carried    [{:packet :set-cursor-item :stack (:stack m)}]
+    :open-screen [{:packet :open-screen :container (:container m)
+                   :menu (data/registry-id "menu" (:menu m)) :title (:title m)}]
+    :container-content [{:packet :container-set-content :container (:container m) :state-id (:state-id m)
+                         :items (:items m) :carried (:carried m)}]
+    :container-slot [{:packet :container-set-slot :container (:container m) :state-id (:state-id m)
+                      :slot (:slot m) :stack (:stack m)}]
+    :container-close [{:packet :container-close :container (:container m)}]
     :held-slot  [{:packet :set-held-slot :slot (:slot m)}]
     :block-ack  [{:packet :block-changed-ack :sequence (:sequence m)}]
     :inventory  [{:packet :container-set-content :items (:slots m) :carried (:carried m)}]

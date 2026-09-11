@@ -82,6 +82,7 @@
    :spawn     {}
    :forced-spawn {}
    :stats     {:default {}}
+   :ender-items {:default []}
    :pos       {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}
    :yaw       {:default 0.0}
    :pitch     {:default 0.0}

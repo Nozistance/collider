@@ -90,7 +90,9 @@
 
 (defn- drop-block-entities [w real]
   (reduce (fn [w [pos old st]]
-            (if (and (be/kind old) (not= (block/block-of old) (block/block-of (long st))))
+            (if (and (be/kind old)
+                     (not= (block/block-of old) (block/block-of (long st)))
+                     (not= (be/kind old) (be/kind (long st))))
               (update-in w [:block-entities (chunk/block-chunk pos)] dissoc pos)
               w))
           w real))
