@@ -166,7 +166,7 @@
                 (update :entities dissoc eid)
                 (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
       name (assoc-in [:profiles name]
-                     (schema/profile-of (update-in e [:stats [:custom :leave-game]] (fnil inc 0)))))))
+                     (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
 
 (defn- sword? [item]
   (and (keyword? item) (clojure.string/ends-with? (name item) "-sword")))

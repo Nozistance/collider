@@ -162,7 +162,8 @@
    [:play :award-stats]
    {:write (fn [^Buf buf m]
              (c/write-varint buf (count (:stats m)))
-             (doseq [[[type key] n] (:stats m)]
+             (doseq [[k n] (:stats m)
+                     :let [type (keyword (namespace k)) key (keyword (name k))]]
                (c/write-varint buf (data/registry-id "stat_type" type))
                (c/write-varint buf (data/registry-id (case type
                                                        :custom "custom_stat"

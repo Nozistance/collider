@@ -41,7 +41,7 @@
     (moved world e e')                       (conj (moved world e e'))))
 
 (defn- add-counts [stats pairs]
-  (reduce (fn [m [k n]] (update m [:custom k] (fnil + 0) (long n))) stats pairs))
+  (reduce (fn [m [k n]] (update m (keyword "custom" (name k)) (fnil + 0) (long n))) stats pairs))
 
 (defn observe [world events _deltas world']
   (concat
