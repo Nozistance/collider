@@ -71,7 +71,7 @@
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]]
                      (let [t (:type e)]
-                       (or (#{:player :item :tnt} t) (mobs/mob-type? t)))))
+                       (or (#{:player :item :tnt :falling-block} t) (mobs/mob-type? t)))))
         (:entities world)))
 
 (defn- viewer-index [ps]
@@ -274,6 +274,7 @@
       (let [freq (case (:type e)
                    :item item-update-interval
                    :tnt 10
+                   :falling-block 20
                    :player update-interval
                    mob-update-interval)
             item? (= :item (:type e))
