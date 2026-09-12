@@ -194,7 +194,7 @@
 (def ^:private huge-mushroom
   {:red-mushroom   {:cap :red-mushroom-block :radius 2 :tag "huge_red_mushroom_can_place_on"}
    :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
-(def ^:private stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
+(def ^:private stem-state (block/state :mushroom-stem {:up :false :down :false}))
 (defn- flag [b] (if b :true :false))
 
 (defn- cleared-at ^long [chunks origin q]
@@ -248,7 +248,7 @@
 (defn- mushroom-cells [p kind cap radius height]
   (let [cap-fn (if (= :brown-mushroom kind) brown-cap red-cap)]
     (concat (cap-fn p cap (long radius) (long height))
-            (for [dy (range (long height))] [(mapv + p [0 dy 0]) @stem-state]))))
+            (for [dy (range (long height))] [(mapv + p [0 dy 0]) stem-state]))))
 
 (defn- mushroom-changes [chunks origin cells]
   (loop [cells (seq cells) seen {origin 0} acc []]

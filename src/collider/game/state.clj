@@ -168,9 +168,9 @@
             name (assoc-in [:profiles name]
                            (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
 
-(def ^:private swords (delay (set (data/tag-values "item" "swords"))))
+(def ^:private swords (set (data/tag-values "item" "swords")))
 (defn- sword? [item]
-  (contains? @swords item))
+  (contains? swords item))
 
 (defn- held-item [w eid slot]
   (if (<= 0 (long slot) 8)

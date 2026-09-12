@@ -4,7 +4,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private cut-recipes (delay (:stonecutting @data/recipes)))
+(def ^:private cut-recipes (:stonecutting data/recipes))
 
 (defn- of [item] (data/tag-values "item" item))
 
@@ -12,7 +12,7 @@
   [stack]
   (if (nil? stack)
     []
-    (filterv (fn [r] (some #(= % (:item stack)) (:in r))) @cut-recipes)))
+    (filterv (fn [r] (some #(= % (:item stack)) (:in r))) cut-recipes)))
 
 (defn cuts-input?
   [stack]
@@ -33,28 +33,28 @@
       (assoc m :input-item item :selected -1))))
 
 (def ^:private no-item-required
-  (delay (vec (data/tag-values "banner_pattern" "no_item_required"))))
+  (vec (data/tag-values "banner_pattern" "no_item_required")))
 
-(def ^:private banner-items (delay (set (of "banners"))))
-(def ^:private loom-dyes (delay (set (of "loom_dyes"))))
-(def ^:private loom-patterns (delay (set (of "loom_patterns"))))
+(def ^:private banner-items (set (of "banners")))
+(def ^:private loom-dyes (set (of "loom_dyes")))
+(def ^:private loom-patterns (set (of "loom_patterns")))
 
-(defn banner? [stack] (contains? @banner-items (:item stack)))
+(defn banner? [stack] (contains? banner-items (:item stack)))
 
 (defn dye?
   [stack]
-  (and (contains? @loom-dyes (:item stack))
+  (and (contains? loom-dyes (:item stack))
        (some? (data/dye-color (:item stack)))))
 
 (defn pattern-item?
   [stack]
-  (and (contains? @loom-patterns (:item stack))
+  (and (contains? loom-patterns (:item stack))
        (some? (data/pattern-tag (:item stack)))))
 
 (defn selectable-patterns
   [pattern]
   (if (nil? pattern)
-    @no-item-required
+    no-item-required
     (if-let [tag (data/pattern-tag (:item pattern))]
       (vec (data/tag-values "banner_pattern" tag))
       [])))

@@ -35,7 +35,7 @@
         (doseq [v distinct] (c/write-varint buf (long v)))
         (doseq [^long l (pack-longs bits packed)] (.writeLong buf l))))))
 
-(def ^:private plains (delay (data/datapack-id "worldgen/biome" :plains)))
+(def ^:private plains (data/datapack-id "worldgen/biome" :plains))
 (defn- section-ids ^ints [^Section s]
   (let [^shorts bs (.blocks s)
         out (int-array 4096)]
@@ -55,13 +55,13 @@
     (.writeShort buf (int n))
     (.writeShort buf (int fluids))
     (write-container! buf ids 4)
-    (write-container! buf (int-array 64 (int @plains)) 1)))
+    (write-container! buf (int-array 64 (int plains)) 1)))
 
 (defn- write-empty-section! [^Buf buf]
   (.writeShort buf 0)
   (.writeShort buf 0)
   (.writeByte buf 0) (c/write-varint buf block/air)
-  (.writeByte buf 0) (c/write-varint buf (long @plains)))
+  (.writeByte buf 0) (c/write-varint buf (long plains)))
 
 (def ^:private full-light (byte-array 2048 (unchecked-byte 0xFF)))
 (defn- light-mask ^long [pred]

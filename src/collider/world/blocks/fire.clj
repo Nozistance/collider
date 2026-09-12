@@ -39,7 +39,7 @@
 (defn- odds ^long [^long st k]
   (if (or (neg? st) (block/waterlogged? st))
     0
-    (long (get-in @data/fire [(block/block-of st) k] 0))))
+    (long (get-in data/fire [(block/block-of st) k] 0))))
 
 (defn- can-burn? [^long st] (pos? (odds st :ignite)))
 

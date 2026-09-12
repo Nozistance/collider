@@ -20,7 +20,7 @@
     msg))
 
 (defn- item-of [name]
-  (when (contains? (get @data/registries "item") name) name))
+  (when (contains? (get data/registries "item") name) name))
 
 (def ^:private cloned-kinds #{:banner :decorated-pot :shulker-box})
 

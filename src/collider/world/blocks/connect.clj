@@ -16,11 +16,11 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tag [t] (set (get-in @data/tags ["block" t])))
-(def ^:private fences (delay (tag "fences")))
-(def ^:private wooden (delay (tag "wooden_fences")))
-(def ^:private walls (delay (tag "walls")))
-(def ^:private leaves (delay (tag "leaves")))
+(defn- tag [t] (set (get-in data/tags ["block" t])))
+(def ^:private fences (tag "fences"))
+(def ^:private wooden (tag "wooden_fences"))
+(def ^:private walls (tag "walls"))
+(def ^:private leaves (tag "leaves"))
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private neighbours (conj (vec (vals dir/horizontal-offset)) [0 1 0] [0 -1 0]))
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
@@ -58,7 +58,7 @@
       (when (paired? st o) [p o]))))
 
 (defn- exception? [n]
-  (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
+  (or (contains? leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
 
 (defn- sturdy? [st n dir]
   (and (block/face-sturdy? st (dir/opposite dir)) (not (exception? n))))
@@ -71,7 +71,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (contains? @fences n) (= (contains? @wooden n) (contains? @wooden self))
+      (contains? fences n) (= (contains? wooden n) (contains? wooden self))
       (= :fence-gate t) (gate-connects? nst dir)
       :else (sturdy? nst n dir))))
 
@@ -79,7 +79,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (or (contains? @walls n) (contains? @fences n) (#{:iron-bars :stained-glass-pane} t)) true
+      (or (contains? walls n) (contains? fences n) (#{:iron-bars :stained-glass-pane} t)) true
       (= :fence-gate t) (gate-connects? nst dir)
       :else (sturdy? nst n dir))))
 
@@ -87,7 +87,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (or (#{:iron-bars :stained-glass-pane} t) (contains? @walls n)) true
+      (or (#{:iron-bars :stained-glass-pane} t) (contains? walls n)) true
       :else (sturdy? nst n dir))))
 
 (defn- connects? [t self nst dir]
@@ -100,7 +100,7 @@
   (not (or (and (= :low (:north sides)) (= :low (:south sides)) (= :none (:east sides)) (= :none (:west sides)))
            (and (= :low (:east sides)) (= :low (:west sides)) (= :none (:north sides)) (= :none (:south sides))))))
 
-(defn- wall-at? [st] (contains? @walls (block/block-of st)))
+(defn- wall-at? [st] (contains? walls (block/block-of st)))
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)

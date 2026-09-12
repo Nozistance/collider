@@ -25,13 +25,13 @@
   (server/send! conn {:packet :select-known-packs :packs [known-pack]}))
 
 (defn- finish-configuration! [conn]
-  (doseq [[registry names] @data/datapack]
+  (doseq [[registry names] data/datapack]
     (server/send! conn {:packet :registry-data :registry registry :names names}))
-  (server/send! conn {:packet :update-tags :tags @data/tags})
+  (server/send! conn {:packet :update-tags :tags data/tags})
   (server/send! conn {:packet :finish-configuration}))
 
-(def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
-(def ^:private command-tree (delay (commands/tree)))
+(def ^:private overworld (data/datapack-id "dimension_type" :overworld))
+(def ^:private command-tree (commands/tree))
 (def ^:private world-border-size 5.9999968E7)
 (def ^:private world-border-max 29999984)
 (def ^:private op-level-event 24)
@@ -45,13 +45,13 @@
                         :max-players         (min 255 (long max-players))
                         :view-distance       view-distance
                         :simulation-distance simulation-distance
-                        :dimension-type      @overworld})
+                        :dimension-type      overworld})
     (server/send! conn {:packet :change-difficulty :difficulty 0 :locked false})
     (server/send! conn {:packet       :player-abilities :flags (bit-or 1 4 8)
                         :flying-speed 0.05 :walking-speed 0.1})
-    (server/send! conn (assoc @data/recipes :packet :update-recipes))
+    (server/send! conn (assoc data/recipes :packet :update-recipes))
     (server/send! conn {:packet :entity-event :eid eid :event (+ op-level-event 4)})
-    (server/send! conn {:packet :commands :nodes @command-tree})
+    (server/send! conn {:packet :commands :nodes command-tree})
     (server/send! conn {:packet :server-data :motd motd})
     (server/send! conn {:packet :initialize-border :size world-border-size :max-size world-border-max})
     (server/send! conn {:packet :set-default-spawn-position :pos [x y z]})

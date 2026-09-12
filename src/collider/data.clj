@@ -10,45 +10,45 @@
   (with-open [r (io/reader (io/resource (str "mc/" name)))]
     (edn/read (PushbackReader. r))))
 
-(def packets (delay (load-edn "packets.edn")))
-(def registries (delay (load-edn "registries.edn")))
-(def blocks (delay (load-edn "blocks.edn")))
-(def datapack (delay (load-edn "datapack.edn")))
-(def tags (delay (load-edn "tags.edn")))
-(def shapes (delay (load-edn "shapes.edn")))
-(def outlines (delay (load-edn "outlines.edn")))
-(def sturdy (delay (load-edn "sturdy.edn")))
-(def sturdy-center (delay (load-edn "sturdy-center.edn")))
-(def sturdy-rigid (delay (load-edn "sturdy-rigid.edn")))
-(def items (delay (load-edn "items.edn")))
-(def flags (delay (load-edn "flags.edn")))
-(def light (delay (load-edn "light.edn")))
-(def fire (delay (load-edn "fire.edn")))
-(def drops (delay (load-edn "drops.edn")))
-(def recipes (delay (load-edn "recipes.edn")))
-(def sounds (delay (load-edn "sounds.edn")))
+(def packets (load-edn "packets.edn"))
+(def registries (load-edn "registries.edn"))
+(def blocks (load-edn "blocks.edn"))
+(def datapack (load-edn "datapack.edn"))
+(def tags (load-edn "tags.edn"))
+(def shapes (load-edn "shapes.edn"))
+(def outlines (load-edn "outlines.edn"))
+(def sturdy (load-edn "sturdy.edn"))
+(def sturdy-center (load-edn "sturdy-center.edn"))
+(def sturdy-rigid (load-edn "sturdy-rigid.edn"))
+(def items (load-edn "items.edn"))
+(def flags (load-edn "flags.edn"))
+(def light (load-edn "light.edn"))
+(def fire (load-edn "fire.edn"))
+(def drops (load-edn "drops.edn"))
+(def recipes (load-edn "recipes.edn"))
+(def sounds (load-edn "sounds.edn"))
 (defn max-stack ^long [item]
-  (long (get-in @items [item :max-stack] 64)))
+  (long (get-in items [item :max-stack] 64)))
 
 (defn jukebox-song [item]
-  (get-in @items [item :jukebox-song]))
+  (get-in items [item :jukebox-song]))
 
 (defn equip-slot [item]
-  (get-in @items [item :equip]))
+  (get-in items [item :equip]))
 
 (defn dye-color
   [item]
-  (get-in @items [item :dye]))
+  (get-in items [item :dye]))
 
 (defn pattern-tag
   [item]
-  (get-in @items [item :patterns]))
+  (get-in items [item :patterns]))
 
 (defn compost [item]
-  (get-in @items [item :compost]))
+  (get-in items [item :compost]))
 
 (defn tag-values [registry tag]
-  (get-in @tags [registry tag] []))
+  (get-in tags [registry tag] []))
 
 (defn snake ^String [k]
   (.replace (name k) \- \_))
@@ -64,35 +64,34 @@
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
 (defn packet-id ^long [state dir name]
-  (or (get-in @packets [state dir name])
+  (or (get-in packets [state dir name])
       (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))
 
 (defn registry-id ^long [registry entry]
-  (or (get-in @registries [registry entry])
+  (or (get-in registries [registry entry])
       (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
 
 (defn datapack-id ^long [registry entry]
-  (let [i (.indexOf ^List (get @datapack registry) entry)]
+  (let [i (.indexOf ^List (get datapack registry) entry)]
     (when (neg? i) (throw (ex-info "unknown datapack entry" {:registry registry :entry entry})))
     i))
 
 (defn entry-id ^long [registry entry]
-  (if (contains? @registries registry)
+  (if (contains? registries registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
 
 (def ^:private by-id
-  (delay
-    (into {}
-          (map (fn [[registry entries]]
-                 [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
-          @registries)))
+  (into {}
+        (map (fn [[registry entries]]
+               [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
+        registries))
 
 (defn entry-name [registry ^long id]
-  (if-let [m (get @by-id registry)]
+  (if-let [m (get by-id registry)]
     (or (get m id)
         (throw (ex-info "unknown registry id" {:registry registry :id id})))
-    (let [v (get @datapack registry)]
+    (let [v (get datapack registry)]
       (when-not v (throw (ex-info "unknown registry" {:registry registry})))
       (when (or (neg? id) (>= id (count v)))
         (throw (ex-info "unknown registry id" {:registry registry :id id})))
@@ -112,27 +111,25 @@
                             (nth (get (:props b) (nth order i)) (quot left tail)))))))))
 
 (def block-of-state
-  (delay
-    (persistent!
-      (reduce (fn [m [block b]]
-                (let [from (long (:first b))]
-                  (reduce (fn [m i] (assoc! m (+ from (long i)) block))
-                          m (range (state-count b)))))
-              (transient {}) @blocks))))
+  (persistent!
+    (reduce (fn [m [block b]]
+              (let [from (long (:first b))]
+                (reduce (fn [m i] (assoc! m (+ from (long i)) block))
+                        m (range (state-count b)))))
+            (transient {}) blocks)))
 
 (def default-props
-  (delay
-    (into {}
-          (map (fn [[block b]]
-                 [block (decode-props b (- (long (:default b)) (long (:first b))))]))
-          @blocks)))
+  (into {}
+        (map (fn [[block b]]
+               [block (decode-props b (- (long (:default b)) (long (:first b))))]))
+        blocks))
 
 (defn info [block]
-  (or (get @blocks block)
+  (or (get blocks block)
       (throw (ex-info "unknown block" {:block block}))))
 
 (defn place-sound [block]
-  (get-in @sounds [(:sound (info block)) :place]))
+  (get-in sounds [(:sound (info block)) :place]))
 
 (defn open-sound [block open?]
   (get (info block) (if open? :open :close)))
@@ -147,7 +144,7 @@
      (if (empty? wanted)
        (state-id block-name)
        (let [order (prop-order b) sizes (prop-sizes b)
-             defaults (get @default-props block-name)]
+             defaults (get default-props block-name)]
          (loop [i 0 id (long (:first b))]
            (if (= i (count order))
              id
@@ -162,9 +159,9 @@
                (recur (inc i) (long (+ id (* idx tail))))))))))))
 
 (defn state-props [^long id]
-  (when-let [block-name (get @block-of-state id)]
-    (let [b (get @blocks block-name)]
+  (when-let [block-name (get block-of-state id)]
+    (let [b (get blocks block-name)]
       [block-name (decode-props b (- id (long (:first b))))])))
 
 (defn state-block [^long id]
-  (get @block-of-state id))
+  (get block-of-state id))

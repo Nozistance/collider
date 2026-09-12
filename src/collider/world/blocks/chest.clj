@@ -9,7 +9,7 @@
 
 (def types #{:chest :trapped-chest :copper-chest :weathering-copper-chest})
 (def copper-types #{:copper-chest :weathering-copper-chest})
-(def ^:private copper-chests (delay (set (get-in @data/tags ["block" "copper_chests"]))))
+(def ^:private copper-chests (set (get-in data/tags ["block" "copper_chests"])))
 
 
 (defn state-at ^long [chunks pos]
@@ -21,7 +21,7 @@
 
 (defn connects? [^long self ^long other]
   (if (contains? copper-types (block/type-of self))
-    (contains? @copper-chests (block/block-of other))
+    (contains? copper-chests (block/block-of other))
     (and (pos? other) (= (block/block-of self) (block/block-of other)))))
 
 (defn partner-pos [pos ^long st]
@@ -58,7 +58,7 @@
 
 (defn- copper-merged [^long st ^long other]
   (if (and (contains? copper-types (block/type-of st))
-           (contains? @copper-chests (block/block-of other)))
+           (contains? copper-chests (block/block-of other)))
     (block/state (least-oxidized (block/block-of st) (block/block-of other)) (block/props-of st))
     st))
 

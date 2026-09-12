@@ -16,11 +16,11 @@
 (defn prop-long ^long [^long st k] (Long/parseLong (name (get (props-of st) k :0))))
 (def ^:private state-count
   (long (reduce max 0 (map (fn [[_ b]] (+ (long (:first b)) (reduce * 1 (map count (vals (:props b))))))
-                           @data/blocks))))
+                           data/blocks))))
 
 (defn- block-table [f]
   (let [a (object-array state-count)]
-    (doseq [[block b] @data/blocks
+    (doseq [[block b] data/blocks
             :let [v (f block b)]
             :when (some? v)
             i (range (reduce * 1 (map count (vals (:props b)))))]
@@ -83,7 +83,7 @@
 (def ^:private water-state (state :water))
 (def ^:private falls-arr (boolean-table (fn [_ t _] (contains? falling-types t))))
 (def ^:private can-be-replaced-arr
-  (let [tagged (set (get-in @data/tags ["block" "replaceable"]))]
+  (let [tagged (set (get-in data/tags ["block" "replaceable"]))]
     (boolean-table (fn [_ _ n] (contains? tagged n)))))
 
 (defn leaves? [^long st] (contains? leaves-types (type-of st)))
@@ -157,10 +157,10 @@
     (flag-run! runs (fn [i] (aset a (int i) true)))
     a))
 
-(def ^:private dampening-arr (int-runs 15 (:dampening @data/light)))
-(def ^:private emission-arr (int-runs 0 (:emission @data/light)))
-(def ^:private use-shape-arr (bool-runs (:use-shape @data/light)))
-(def ^:private can-occlude-arr (bool-runs (:occludes @data/light)))
+(def ^:private dampening-arr (int-runs 15 (:dampening data/light)))
+(def ^:private emission-arr (int-runs 0 (:emission data/light)))
+(def ^:private use-shape-arr (bool-runs (:use-shape data/light)))
+(def ^:private can-occlude-arr (bool-runs (:occludes data/light)))
 
 (defn- face-mask ^longs [boxes]
   (let [m (long-array 4)]
@@ -191,18 +191,18 @@
               (if hit? (bit-or (long m) (bit-shift-left 1 d)) m)))
           0 (range 6)))
 
-(def ^:private kind-faces (mapv faces-of-kind (:kinds @data/light)))
-(def ^:private kind-touch (int-array (map touch-of-kind (:kinds @data/light))))
+(def ^:private kind-faces (mapv faces-of-kind (:kinds data/light)))
+(def ^:private kind-touch (int-array (map touch-of-kind (:kinds data/light))))
 
 (def ^:private face-arr
   (let [a (object-array (* state-count 6))]
-    (each-run! (:faces @data/light)
+    (each-run! (:faces data/light)
                (fn [i k] (dotimes [d 6] (aset a (+ (* 6 (long i)) d) (nth (nth kind-faces k) d)))))
     a))
 
 (def ^:private touch-arr
   (let [a (int-array state-count)]
-    (each-run! (:faces @data/light) (fn [i k] (aset a (int i) (aget ^ints kind-touch (int k)))))
+    (each-run! (:faces data/light) (fn [i k] (aset a (int i) (aget ^ints kind-touch (int k)))))
     a))
 
 (defn dampening ^long [^long st] (if (< -1 st state-count) (aget ^ints dampening-arr st) 15))
@@ -247,7 +247,7 @@
 (def ^:private resist-arr
   (let [a (double-array state-count)]
     (Arrays/fill a 3.0)
-    (doseq [[_ b] @data/blocks
+    (doseq [[_ b] data/blocks
             i (range (reduce * 1 (map count (vals (:props b)))))]
       (aset a (+ (long (:first b)) (long i)) (double (:resistance b 3.0))))
     a))
@@ -279,7 +279,7 @@
                       (when (str/ends-with? n "-banner")
                         (keyword (str (subs n 0 (- (count n) 7)) "-wall-banner")))
                       (skull-wall n))]
-    (when (and candidate (contains? @data/blocks candidate)) candidate)))
+    (when (and candidate (contains? data/blocks candidate)) candidate)))
 
 (def ^:private weather-prefixes ["exposed-" "weathered-" "oxidized-"])
 (defn weathering? [^long st]
@@ -316,7 +316,7 @@
 (defn waxed [^long st]
   (when (weathering? st)
     (let [b (keyword (str "waxed-" (name (block-of st))))]
-      (when (contains? @data/blocks b) (with-props-of b st)))))
+      (when (contains? data/blocks b) (with-props-of b st)))))
 
 (defn unwaxed [^long st]
   (let [n (name (block-of st))]
@@ -329,7 +329,7 @@
 (defn stripped [^long st]
   (when (contains? #{:rotated-pillar} (type-of st))
     (let [b (keyword (str "stripped-" (name (block-of st))))]
-      (when (contains? @data/blocks b) (with-props-of b st)))))
+      (when (contains? data/blocks b) (with-props-of b st)))))
 
 (def named-block-items
   {:redstone           :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
@@ -351,9 +351,9 @@
   (let [face (long face)
         n (name item)]
     (cond
-      (contains? standing-and-wall-types (:type (get @data/blocks item))) item
+      (contains? standing-and-wall-types (:type (get data/blocks item))) item
       (and (<= 2 face 5) (not (str/ends-with? n "-sign")) (wall-variant item)) (wall-variant item)
-      (contains? @data/blocks item) item
+      (contains? data/blocks item) item
       :else (named-block-items item))))
 
 (defn rotation-segment [yaw]
@@ -412,15 +412,15 @@
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 (defn collision-boxes [^long st]
-  (get @data/shapes st full-box))
+  (get data/shapes st full-box))
 
 (defn outline-boxes [^long st]
-  (get @data/outlines st full-box))
+  (get data/outlines st full-box))
 
 (def ^:private legacy-solid-arr
   (let [a (boolean-array state-count)]
     (dotimes [i state-count]
-      (let [boxes (get @data/shapes i full-box)]
+      (let [boxes (get data/shapes i full-box)]
         (when (seq boxes)
           (let [x0 (reduce min (map #(nth % 0) boxes)) y0 (reduce min (map #(nth % 1) boxes))
                 z0 (reduce min (map #(nth % 2) boxes)) x1 (reduce max (map #(nth % 3) boxes))
@@ -437,7 +437,7 @@
 (def ^:private full-cube-arr
   (let [a (boolean-array state-count)]
     (dotimes [i state-count]
-      (aset a i (boolean (and (pos? i) (not (contains? @data/shapes i))))))
+      (aset a i (boolean (and (pos? i) (not (contains? data/shapes i))))))
     a))
 
 (defn full-cube? [^long st]
@@ -445,7 +445,7 @@
 
 (def ^:private flag-arr
   (let [a (byte-array state-count)]
-    (doseq [[id m] @data/flags] (aset a (int id) (byte m)))
+    (doseq [[id m] data/flags] (aset a (int id) (byte m)))
     a))
 
 (defn blocks-motion? [^long st]
@@ -476,14 +476,14 @@
   (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 4))))
 
 (defn burnable? [^long st]
-  (and (known? st) (pos? (long (get-in @data/fire [(block-of st) :ignite] 0)))))
+  (and (known? st) (pos? (long (get-in data/fire [(block-of st) :ignite] 0)))))
 
 (defn- drop-count ^long [entry roll]
   (let [[lo hi] (:count entry [1 1])]
     (+ (long lo) (long (Math/floor (* (double (roll [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
 
 (defn drops [^long st roll]
-  (let [table (get @data/drops (block-of st))
+  (let [table (get data/drops (block-of st))
         props (props-of st)]
     (if (vector? table)
       (into []
@@ -498,20 +498,20 @@
 
 (defn face-sturdy? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (get data/sturdy st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-rigid? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy-rigid st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (get data/sturdy-rigid st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-center? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy-center st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (get data/sturdy-center st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (def ^:private tag-sets (atom {}))
 (defn tag-set [tag]
   (or (get @tag-sets tag)
-      (get (swap! tag-sets assoc tag (set (get-in @data/tags ["block" tag]))) tag)))
+      (get (swap! tag-sets assoc tag (set (get-in data/tags ["block" tag]))) tag)))
 
 (defn tagged? [^long st tag]
   (contains? (tag-set tag) (block-of st)))

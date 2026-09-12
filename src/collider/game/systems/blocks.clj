@@ -25,7 +25,7 @@
 (defn- when-use [f] (fn [c] (when (:use-item? c) (f c))))
 (defn- when-hand [f] (fn [c] (when-not (:use-item? c) (f c))))
 (defn- item-is [k] (comp #{k} :item))
-(defn- tool-is [d] (fn [c] (@d (:item c))))
+(defn- tool-is [d] (fn [c] (d (:item c))))
 (defn- on-args [f] (fn [{:keys [world args]}] (f world args)))
 
 (def ^:private item-actions

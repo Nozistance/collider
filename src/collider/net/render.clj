@@ -44,15 +44,15 @@
            drop))))
 
 (def ^:private entity-type
-  (delay {:player        (data/registry-id "entity_type" :player)
-          :sheep         (data/registry-id "entity_type" :sheep)
-          :item          (data/registry-id "entity_type" :item)
-          :tnt           (data/registry-id "entity_type" :tnt)
-          :falling-block (data/registry-id "entity_type" :falling-block)}))
+  {:player        (data/registry-id "entity_type" :player)
+   :sheep         (data/registry-id "entity_type" :sheep)
+   :item          (data/registry-id "entity_type" :item)
+   :tnt           (data/registry-id "entity_type" :tnt)
+   :falling-block (data/registry-id "entity_type" :falling-block)})
 
 (defn- kind-of [e]
   (let [t (:type e)]
-    (if (contains? @entity-type t) t :player)))
+    (if (contains? entity-type t) t :player)))
 
 (defn- uuid-of [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
@@ -89,7 +89,7 @@
 
 
 
-         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
+         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (entity-type kind)
           :pos    (if tr (mapv double (:pos tr)) (:pos e))
           :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
           :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
@@ -159,8 +159,8 @@
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})
 
-(def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
-(def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))
+(def ^:private overworld (data/datapack-id "dimension_type" :overworld))
+(def ^:private explosion-particle (data/registry-id "particle_type" :explosion-emitter))
 (defn- particles-packet [m]
   {:packet :level-particles :particle (data/registry-id "particle_type" (:kind m)) :state (:state m)
    :pos    (:pos m) :count (:count m) :speed (:speed m)})
@@ -192,7 +192,7 @@
     nil))
 
 (defn- sound-id [kind]
-  (let [reg (get @data/registries "sound_event")]
+  (let [reg (get data/registries "sound_event")]
     (if-let [[ev src] (get sound-table kind)]
       (when-let [id (get reg ev)] [id src])
       (when-let [id (get reg kind)] [id 4]))))
@@ -206,7 +206,7 @@
   (let [k (:motion m)]
     {:packet    :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
-     :particle  @explosion-particle :sound (first (sound-id :explosion))}))
+     :particle  explosion-particle :sound (first (sound-id :explosion))}))
 
 (defn- fx-packets [world m]
   (case (:msg m)
@@ -222,7 +222,7 @@
                   :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)]) (:rules m))}]
     :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
     :health [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
-    :respawn [{:packet :respawn :dimension-type @overworld :keep 0}
+    :respawn [{:packet :respawn :dimension-type overworld :keep 0}
               {:packet :game-event :event 13 :value 0.0}]
     :default-spawn [{:packet :set-default-spawn-position :pos (:pos m)}]
     :rain-started [{:packet :game-event :event 1 :value 0.0}]

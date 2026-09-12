@@ -570,13 +570,13 @@
                 {:target target :action action :sneaking (.readBoolean buf)})))}})
 
 (def ^:private name-by-id
-  (delay (into {} (for [[state dirs] @data/packets
-                        [nm id] (:serverbound dirs)]
-                    [[state (long id)] nm]))))
+  (into {} (for [[state dirs] data/packets
+                 [nm id] (:serverbound dirs)]
+             [[state (long id)] nm])))
 
 (defn decode [state ^Buf buf]
   (let [id (c/read-varint buf)]
-    (when-let [nm (@name-by-id [state id])]
+    (when-let [nm (name-by-id [state id])]
       (if-let [r (:read (packets [state nm]))]
         (assoc (r buf) :packet nm)
         {:packet nm}))))

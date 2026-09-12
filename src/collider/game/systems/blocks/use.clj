@@ -20,7 +20,7 @@
 
 (defn- potted-block [item]
   (let [b (keyword (str "potted-" (name item)))]
-    (when (contains? @data/blocks b) b)))
+    (when (contains? data/blocks b) b)))
 
 (defn- pot-deltas [world eid pos item]
   (let [cur (edit/block-at world pos) n (block/block-of cur)]
@@ -41,11 +41,11 @@
               [(out/all (out/sound :candle/extinguish pos 1.0 1.0))]))))
 
 (defn- candle-item? [item]
-  (= :candle (:type (get @data/blocks item))))
+  (= :candle (:type (get data/blocks item))))
 
 (defn- candle-cake-deltas [world pos item]
   (let [cur (edit/block-at world pos) cake (keyword (str (name item) "-cake"))]
-    (when (and (= :0 (:bites (block/props-of cur))) (contains? @data/blocks cake))
+    (when (and (= :0 (:bites (block/props-of cur))) (contains? data/blocks cake))
       (concat (edit/change-deltas world [[pos (block/state cake)]])
               [(out/all (out/sound :cake/add-candle pos 1.0 1.0))]))))
 
@@ -80,7 +80,7 @@
 (defn- poses? [cur item]
   (and (contains? statue-types (block/type-of cur))
        (some? item)
-       (not (@tools/axes item))))
+       (not (tools/axes item))))
 
 (defn- pose-deltas [world pos]
   (let [cur (edit/block-at world pos) props (block/props-of cur)]
@@ -187,10 +187,10 @@
     (when (and e slot (not (signal/has-neighbor-signal? (:chunks world) pos)))
       (shelf-swap-deltas world eid pos e slot))))
 
-(def ^:private book-items (delay (set (get-in @data/tags ["item" "bookshelf_books"]))))
+(def ^:private book-items (set (get-in data/tags ["item" "bookshelf_books"])))
 
 (defn- book-item? [item]
-  (contains? @book-items item))
+  (contains? book-items item))
 
 (defn- bookshelf-state [^long st items]
   (let [props (reduce (fn [m ^long i]

@@ -398,15 +398,15 @@
           (state-at chunks template (+ (long x) (long dx)) y (+ (long z) (long dz))))
         horiz))
 
-(def ^:private basalt-state (delay (block/state :basalt)))
-(def ^:private soul-soil-state (delay (block/state :soul-soil)))
-(def ^:private blue-ice-state (delay (block/state :blue-ice)))
+(def ^:private basalt-state (block/state :basalt))
+(def ^:private soul-soil-state (block/state :soul-soil))
+(def ^:private blue-ice-state (block/state :blue-ice))
 (defn- mixed-state [cls mix st above sides below-raw]
   (when mix
     (cond
       (some (fn [s] (other-class? cls s)) (cons above sides)) (mix-product mix (level st))
-      (and (= (long below-raw) (long @soul-soil-state))
-           (some #(= (long %) (long @blue-ice-state)) (cons above sides))) @basalt-state
+      (and (= (long below-raw) (long soul-soil-state))
+           (some #(= (long %) (long blue-ice-state)) (cons above sides))) basalt-state
       :else nil)))
 
 (defn- solidified [chunks template [x y z :as p]]
