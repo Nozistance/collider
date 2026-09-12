@@ -1,6 +1,8 @@
 (ns collider.game.delta
   (:import (collider.java V3)))
 
+(set! *warn-on-reflection* true)
+
 (def Pos "Block position [x y z]." [:tuple :int :int :int])
 (defn- vec3? [v]
   (or (instance? V3 v)
@@ -176,8 +178,7 @@
   (when-let [e (@delta-explainer delta)]
     ((requiring-resolve 'malli.error/humanize) e)))
 
-(def validate?
-  false)
+(def validate? (Boolean/getBoolean "collider.validate"))
 
 (defn check! [deltas]
   (doseq [d deltas]

@@ -4,9 +4,10 @@
             [clojure.string :as str]
             [collider.data :as data]))
 
+(set! *warn-on-reflection* true)
+
 (defn- block-name [kw] (data/snake kw))
 (defn- block-kw [s] (data/kebab (str s)))
-(set! *warn-on-reflection* true)
 
 (def commands [
    [:time "change or query the time of day"
