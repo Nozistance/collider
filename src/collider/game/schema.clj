@@ -42,32 +42,32 @@
   (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
 
 (def world
-  {:tick        {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :time-ms     {:default 0}
-   :time-of-day {:default 0 :store (fn [v _] v) :load identity}
-   :next-eid    {:default 1000000 :store (fn [v _] v) :load identity}
-   :rules       {:default rules/defaults :store (fn [v _] v) :load #(merge rules/defaults %)}
-   :profiles    {:default {} :store store-profiles :load identity}
-   :chunks      {:default (i/int-map) :store (fn [v _] (into {} v)) :load #(into (i/int-map) %)}
-   :entities    {:default (i/int-map) :store store-entities :load load-entities}
-   :block-ticks {:default (i/int-map) :store store-ticks :load load-ticks}
-   :block-entities {:default (i/int-map)
-                    :store (fn [v _] (into {} (map (fn [[k m]] [k (into {} m)])) v))
-                    :load #(into (i/int-map) (map (fn [[k m]] [(long k) (into {} (map (fn [[p e]] [(vec p) e])) m)])) %)}
-   :world-spawn {:default [24 4 8] :store (fn [v _] v) :load identity}
+  {:tick               {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :time-ms            {:default 0}
+   :time-of-day        {:default 0 :store (fn [v _] v) :load identity}
+   :next-eid           {:default 1000000 :store (fn [v _] v) :load identity}
+   :rules              {:default rules/defaults :store (fn [v _] v) :load #(merge rules/defaults %)}
+   :profiles           {:default {} :store store-profiles :load identity}
+   :chunks             {:default (i/int-map) :store (fn [v _] (into {} v)) :load #(into (i/int-map) %)}
+   :entities           {:default (i/int-map) :store store-entities :load load-entities}
+   :block-ticks        {:default (i/int-map) :store store-ticks :load load-ticks}
+   :block-entities     {:default (i/int-map)
+                        :store   (fn [v _] (into {} (map (fn [[k m]] [k (into {} m)])) v))
+                        :load    #(into (i/int-map) (map (fn [[k m]] [(long k) (into {} (map (fn [[p e]] [(vec p) e])) m)])) %)}
+   :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity}
    :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :rain-time      {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :thunder-time   {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :raining?       {:default false :store (fn [v _] (boolean v)) :load boolean}
-   :thundering?    {:default false :store (fn [v _] (boolean v)) :load boolean}
-   :rain-level     {:default 0.0 :store store-rain-level :load double}
-   :o-rain-level   {:default 0.0 :store store-rain-level :load double}
-   :thunder-level  {:default 0.0 :store store-thunder-level :load double}
-   :o-thunder-level {:default 0.0 :store store-thunder-level :load double}
+   :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :thunder-time       {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+   :raining?           {:default false :store (fn [v _] (boolean v)) :load boolean}
+   :thundering?        {:default false :store (fn [v _] (boolean v)) :load boolean}
+   :rain-level         {:default 0.0 :store store-rain-level :load double}
+   :o-rain-level       {:default 0.0 :store store-rain-level :load double}
+   :thunder-level      {:default 0.0 :store store-thunder-level :load double}
+   :o-thunder-level    {:default 0.0 :store store-thunder-level :load double}
    :container-rechecks {:default {}}
-   :shulker-anim {:default {}}
-   :players     {:default {}}
-   :listed      {:default {}}})
+   :shulker-anim       {:default {}}
+   :players            {:default {}}
+   :listed             {:default {}}})
 
 (def initial-world (update-vals world :default))
 (defn snapshot [w]
@@ -84,16 +84,16 @@
                [k (if (contains? m k) (load (k m)) default)]))))
 
 (def profile
-  {:inventory {:default {}}
-   :held-slot {:default 0}
-   :spawn     {}
+  {:inventory    {:default {}}
+   :held-slot    {:default 0}
+   :spawn        {}
    :forced-spawn {}
-   :stats     {:default {}}
-   :ender-items {:default []}
-   :pos       {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}
-   :yaw       {:default 0.0}
-   :pitch     {:default 0.0}
-   :on-ground {:default true :store boolean}})
+   :stats        {:default {}}
+   :ender-items  {:default []}
+   :pos          {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}
+   :yaw          {:default 0.0}
+   :pitch        {:default 0.0}
+   :on-ground    {:default true :store boolean}})
 
 (defn profile-of [player]
   (into {} (for [[k {store :store default :default}] profile

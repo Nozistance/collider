@@ -10,69 +10,69 @@
 (defn- block-kw [s] (data/kebab (str s)))
 
 (def commands [
-   [:time "change or query the time of day"
-    [:set "set the time" [[:value [:named-int {:min 0 :max 2147483647
-                                               :names {"day" 1000 "night" 13000}}]]]
-     [:world :time-set]]
-    [:add "advance the time" [[:value [:int {:min 0 :max 2147483647}]]]
-     [:world :time-add]]
-    [:query "read the clock" [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
-     [:world :time-query]]]
-   [:gamerule "read or set a game rule"
-    [[:rule [:rule {}]]
-     [:value [:text {:default nil}]]]
-    [:world :gamerule]]
-   [:tp "teleport to a position (~ = where you are)"
-    [[:x [:dcoord {:axis 0}]]
-     [:y [:dcoord {:axis 1}]]
-     [:z [:dcoord {:axis 2}]]]
-    [:world :tp]]
-   [:give "give items to players"
-    [[:targets [:targets {:players? true}]]
-     [:item [:item {}]]
-     [:count [:int {:min 1 :max 6400 :default 1}]]]
-    [:world :give]]
-   [:kill "kill entities (yourself without a target)"
-    [[:targets [:targets {:default {:self true}}]]]
-    [:world :kill]]
-   [:summon "summon a mob (~ = where you are)"
-    [[:entity [:entity-type {}]]
-     [:x [:dcoord {:axis 0 :default nil}]]
-     [:y [:dcoord {:axis 1 :default nil}]]
-     [:z [:dcoord {:axis 2 :default nil}]]]
-    [:world :summon]]
-   [:setblock "set one block (~ = your position)"
-    [[:x [:coord {:min -10000 :max 10000 :axis 0}]]
-     [:y [:coord {:min -64 :max 319 :axis 1}]]
-     [:z [:coord {:min -10000 :max 10000 :axis 2}]]
-     [:block [:block {}]]]
-    [:world :setblock]]
-   [:setworldspawn "set the world spawn point (default: where you are)"
-    [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
-     [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
-     [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
-    [:world :setworldspawn]]
-   [:spawnpoint "set your respawn point (default: where you are)"
-    [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
-     [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
-     [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
-    [:world :spawnpoint]]
-   [:weather "set the weather"
-    [:clear "clear the sky" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-     [:world :weather-clear]]
-    [:rain "let it rain" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-     [:world :weather-rain]]
-    [:thunder "let it storm" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-     [:world :weather-thunder]]]
-   [:fill "fill a box with a block (~ = your position)"
-    [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
-     [:y1 [:coord {:min -64 :max 319 :axis 1}]]
-     [:z1 [:coord {:min -10000 :max 10000 :axis 2}]]
-     [:x2 [:coord {:min -10000 :max 10000 :axis 0}]]
-     [:y2 [:coord {:min -64 :max 319 :axis 1}]]
-     [:z2 [:coord {:min -10000 :max 10000 :axis 2}]]
-     [:block [:block {:default :stone}]]]
-    [:world :fill]]])
+               [:time "change or query the time of day"
+                [:set "set the time" [[:value [:named-int {:min   0 :max 2147483647
+                                                           :names {"day" 1000 "night" 13000}}]]]
+                 [:world :time-set]]
+                [:add "advance the time" [[:value [:int {:min 0 :max 2147483647}]]]
+                 [:world :time-add]]
+                [:query "read the clock" [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
+                 [:world :time-query]]]
+               [:gamerule "read or set a game rule"
+                [[:rule [:rule {}]]
+                 [:value [:text {:default nil}]]]
+                [:world :gamerule]]
+               [:tp "teleport to a position (~ = where you are)"
+                [[:x [:dcoord {:axis 0}]]
+                 [:y [:dcoord {:axis 1}]]
+                 [:z [:dcoord {:axis 2}]]]
+                [:world :tp]]
+               [:give "give items to players"
+                [[:targets [:targets {:players? true}]]
+                 [:item [:item {}]]
+                 [:count [:int {:min 1 :max 6400 :default 1}]]]
+                [:world :give]]
+               [:kill "kill entities (yourself without a target)"
+                [[:targets [:targets {:default {:self true}}]]]
+                [:world :kill]]
+               [:summon "summon a mob (~ = where you are)"
+                [[:entity [:entity-type {}]]
+                 [:x [:dcoord {:axis 0 :default nil}]]
+                 [:y [:dcoord {:axis 1 :default nil}]]
+                 [:z [:dcoord {:axis 2 :default nil}]]]
+                [:world :summon]]
+               [:setblock "set one block (~ = your position)"
+                [[:x [:coord {:min -10000 :max 10000 :axis 0}]]
+                 [:y [:coord {:min -64 :max 319 :axis 1}]]
+                 [:z [:coord {:min -10000 :max 10000 :axis 2}]]
+                 [:block [:block {}]]]
+                [:world :setblock]]
+               [:setworldspawn "set the world spawn point (default: where you are)"
+                [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
+                 [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
+                 [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
+                [:world :setworldspawn]]
+               [:spawnpoint "set your respawn point (default: where you are)"
+                [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
+                 [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
+                 [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
+                [:world :spawnpoint]]
+               [:weather "set the weather"
+                [:clear "clear the sky" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+                 [:world :weather-clear]]
+                [:rain "let it rain" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+                 [:world :weather-rain]]
+                [:thunder "let it storm" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+                 [:world :weather-thunder]]]
+               [:fill "fill a box with a block (~ = your position)"
+                [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
+                 [:y1 [:coord {:min -64 :max 319 :axis 1}]]
+                 [:z1 [:coord {:min -10000 :max 10000 :axis 2}]]
+                 [:x2 [:coord {:min -10000 :max 10000 :axis 0}]]
+                 [:y2 [:coord {:min -64 :max 319 :axis 1}]]
+                 [:z2 [:coord {:min -10000 :max 10000 :axis 2}]]
+                 [:block [:block {:default :stone}]]]
+                [:world :fill]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 (defn- cmd-name [form] (name (first form)))
@@ -107,11 +107,11 @@
 
 (defn- as-coord [nm s {:keys [axis] :as opts} origin]
   (let [rel? (str/starts-with? s "~")
-        n    (if rel?
-               (when origin
-                 (when-let [off (if (= "~" s) 0 (parse-long* (subs s 1)))]
-                   (+ (long (Math/floor (double (nth origin axis)))) (long off))))
-               (parse-long* s))]
+        n (if rel?
+            (when origin
+              (when-let [off (if (= "~" s) 0 (parse-long* (subs s 1)))]
+                (+ (long (Math/floor (double (nth origin axis)))) (long off))))
+            (parse-long* s))]
     (cond
       (nil? n) [:err (str (name nm) ": give a whole number or ~, not \"" s "\"")]
       (<= (long (:min opts)) (long n) (long (:max opts))) [:ok n]
@@ -125,11 +125,11 @@
 
 (defn- as-dcoord [nm s {:keys [axis]} origin]
   (let [rel? (str/starts-with? s "~")
-        n    (if rel?
-               (when origin
-                 (when-let [off (if (= "~" s) 0.0 (parse-double* (subs s 1)))]
-                   (+ (double (nth origin axis)) (double off))))
-               (when-let [v (parse-double* s)] (centered (double v) s (long axis))))]
+        n (if rel?
+            (when origin
+              (when-let [off (if (= "~" s) 0.0 (parse-double* (subs s 1)))]
+                (+ (double (nth origin axis)) (double off))))
+            (when-let [v (parse-double* s)] (centered (double v) s (long axis))))]
     (cond
       (nil? n) [:err (str (name nm) ": give a number or ~, not \"" s "\"")]
       (> (Math/abs (double n)) 3.0E7) [:err (str (name nm) ": " n " is too far")]
@@ -155,8 +155,8 @@
       (nil? sel) [:ok {:name s}]
       (and players? (= "e" sel)) [:err (str (name nm) ": @e is not a player")]
       :else [:ok (cond-> ({"s" {:self true} "a" {:all true} "p" {:nearest true} "e" {:entities true}} sel)
-                   type (assoc :type type)
-                   (= "!" negated) (assoc :not-type? true))])))
+                         type (assoc :type type)
+                         (= "!" negated) (assoc :not-type? true))])))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -186,9 +186,9 @@
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
 (def ^:private coercers
-  {:int as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
+  {:int   as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
    :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
-   :rule as-rule, :text as-text, :duration as-duration})
+   :rule  as-rule, :text as-text, :duration as-duration})
 
 (defn- coerce [[nm [kind opts] :as arg] s origin]
   (if (nil? s)
@@ -340,9 +340,9 @@
 
 (defn- add-rules! [nodes]
   (vec (for [[rule {:keys [type min max]}] rules/table
-             :let [value (add-node! nodes {:type :argument :name "value" :executable? true
-                                          :parser (if (= :bool type) brigadier-bool brigadier-integer)
-                                          :props (when (= :int type) {:min min :max max})})]]
+             :let [value (add-node! nodes {:type   :argument :name "value" :executable? true
+                                           :parser (if (= :bool type) brigadier-bool brigadier-integer)
+                                           :props  (when (= :int type) {:min min :max max})})]]
          (add-node! nodes {:type :literal :name (subs (rules/wire-name rule) 10) :executable? true :children [value]}))))
 
 (defn- add-chain [nodes args i]
@@ -361,13 +361,13 @@
            (>= i optional)]
           :else
           [[(add-node! nodes (let [[n parser props] (first spec)]
-                               {:type :argument :name n :parser parser :props props
+                               {:type        :argument :name n :parser parser :props props
                                 :executable? exec? :children tail-children}))]
            (>= i optional)])))))
 
 (defn- add-form! [nodes form]
   (if (subcommands? form)
-    (add-node! nodes {:type :literal :name (cmd-name form)
+    (add-node! nodes {:type     :literal :name (cmd-name form)
                       :children (vec (map #(add-form! nodes %) (drop 2 form)))})
     (let [args (coords-merged (nth form 2))
           [children exec?] (add-chain nodes args 0)]

@@ -155,20 +155,20 @@
               (= (block/facing-of n) (block/facing-of st))))))
 
 (defn- stair-state [self st at]
-  (let [props  (block/props-of st)
+  (let [props (block/props-of st)
         facing (:facing props)
-        half   (:half props)
+        half (:half props)
         behind (at (dir/horizontal-offset facing))
-        front  (at (dir/horizontal-offset (dir/opposite facing)))
-        bf     (block/facing-of behind)
-        ff     (block/facing-of front)
-        left   (dir/counter-clockwise facing)
-        shape  (cond
-                 (and (stair? behind half) (not= (dir/axis bf) (dir/axis facing)) (can-take-shape? st at (dir/opposite bf)))
-                 (if (= bf left) :outer_left :outer_right)
-                 (and (stair? front half) (not= (dir/axis ff) (dir/axis facing)) (can-take-shape? st at ff))
-                 (if (= ff left) :inner_left :inner_right)
-                 :else :straight)]
+        front (at (dir/horizontal-offset (dir/opposite facing)))
+        bf (block/facing-of behind)
+        ff (block/facing-of front)
+        left (dir/counter-clockwise facing)
+        shape (cond
+                (and (stair? behind half) (not= (dir/axis bf) (dir/axis facing)) (can-take-shape? st at (dir/opposite bf)))
+                (if (= bf left) :outer_left :outer_right)
+                (and (stair? front half) (not= (dir/axis ff) (dir/axis facing)) (can-take-shape? st at ff))
+                (if (= ff left) :inner_left :inner_right)
+                :else :straight)]
     (block/state self (assoc props :shape shape))))
 
 (defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
@@ -212,46 +212,46 @@
 
 (defn- snowy-state [self st at]
   (block/state self (assoc (block/props-of st)
-                           :snowy (if (block/tagged? (at [0 1 0]) "snow") :true :false))))
+                      :snowy (if (block/tagged? (at [0 1 0]) "snow") :true :false))))
 
 (defn reshape [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
-      (let [self  (block/block-of st)
-            at    (fn [d] (gen/at chunks (mapv + pos d)))
-            new   (case t
-                    (:door :weathering-copper-door) (door-state chunks pos st)
-                    :bed (bed-state chunks pos st)
-                    :potent-sulfur (sulfur-state self st at)
-                    :fence-gate (gate-state self st at)
-                    :stair (stair-state self st at)
-                    :concrete-powder (powder-state st at)
-                    (:chest :trapped-chest :copper-chest :weathering-copper-chest) (chest/updated chunks pos st)
-                    :mossy-carpet (moss/carpet-reshaped chunks pos st)
-                    :hanging-moss (moss/hanging-tip chunks pos st)
-                    (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)
-                    :vine (support/vine-updated chunks gen/flat-chunk pos st)
-                    (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
-                    (:double-plant :tall-flower :tall-seagrass) (pair-state chunks pos st)
-                    :big-dripleaf (dripleaf/leaf-updated chunks pos st)
-                    :small-dripleaf (dripleaf/small-updated chunks pos st)
-                    :pitcher-crop (pitcher-state chunks pos st)
-                    :fire (if (support/supported? chunks gen/flat-chunk pos st)
-                            (fire/state-with-age chunks pos (fire/age st))
-                            0)
-                    :soul-fire (if (support/supported? chunks gen/flat-chunk pos st) st 0)
-                    (:grass :mycelium :snowy-dirt) (snowy-state self st at)
-                    (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-state self st at)
-                    :chorus-plant (chorus/connected chunks pos st)
-                    (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
-                    (growing-plant-state pos st at tick)
-                    (let [sides (into {} (map (fn [[dir off]]
-                                                (let [c (connects? t self (at off) dir)]
-                                                  [dir (if (= :wall t) (if c :low :none) (if c :true :false))])))
-                                      dir/horizontal-offset)
-                          props (cond-> (merge (block/props-of st) sides)
-                                  (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
-                      (block/state self props)))]
+      (let [self (block/block-of st)
+            at (fn [d] (gen/at chunks (mapv + pos d)))
+            new (case t
+                  (:door :weathering-copper-door) (door-state chunks pos st)
+                  :bed (bed-state chunks pos st)
+                  :potent-sulfur (sulfur-state self st at)
+                  :fence-gate (gate-state self st at)
+                  :stair (stair-state self st at)
+                  :concrete-powder (powder-state st at)
+                  (:chest :trapped-chest :copper-chest :weathering-copper-chest) (chest/updated chunks pos st)
+                  :mossy-carpet (moss/carpet-reshaped chunks pos st)
+                  :hanging-moss (moss/hanging-tip chunks pos st)
+                  (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)
+                  :vine (support/vine-updated chunks gen/flat-chunk pos st)
+                  (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
+                  (:double-plant :tall-flower :tall-seagrass) (pair-state chunks pos st)
+                  :big-dripleaf (dripleaf/leaf-updated chunks pos st)
+                  :small-dripleaf (dripleaf/small-updated chunks pos st)
+                  :pitcher-crop (pitcher-state chunks pos st)
+                  :fire (if (support/supported? chunks gen/flat-chunk pos st)
+                          (fire/state-with-age chunks pos (fire/age st))
+                          0)
+                  :soul-fire (if (support/supported? chunks gen/flat-chunk pos st) st 0)
+                  (:grass :mycelium :snowy-dirt) (snowy-state self st at)
+                  (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-state self st at)
+                  :chorus-plant (chorus/connected chunks pos st)
+                  (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
+                  (growing-plant-state pos st at tick)
+                  (let [sides (into {} (map (fn [[dir off]]
+                                              (let [c (connects? t self (at off) dir)]
+                                                [dir (if (= :wall t) (if c :low :none) (if c :true :false))])))
+                                    dir/horizontal-offset)
+                        props (cond-> (merge (block/props-of st) sides)
+                                      (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
+                    (block/state self props)))]
         (when (not= (long new) st) new)))))
 
 (defn door-hinge [chunks pos facing cursor-x cursor-z]

@@ -63,11 +63,11 @@
   (let [n (dec timer)] [n (if (zero? n) (not flag) flag)]))
 
 (defn- timers [w]
-  (let [t          (long (:tick w 0))
-        clear      (long (:clear-weather-time w 0))
-        rain-t     (long (:rain-time w 0))
-        thunder-t  (long (:thunder-time w 0))
-        raining    (boolean (:raining? w))
+  (let [t (long (:tick w 0))
+        clear (long (:clear-weather-time w 0))
+        rain-t (long (:rain-time w 0))
+        thunder-t (long (:thunder-time w 0))
+        raining (boolean (:raining? w))
         thundering (boolean (:thundering? w))]
     (if (pos? clear)
       {:clear-weather-time (dec clear)
@@ -101,14 +101,14 @@
      :raining?           (boolean (:raining? w))}))
 
 (defn advance [w]
-  (let [m       (cycled w)
+  (let [m (cycled w)
         thunder (double (:thunder-level w 0.0))
-        rain    (double (:rain-level w 0.0))]
+        rain (double (:rain-level w 0.0))]
     (assoc m
-           :o-thunder-level thunder
-           :thunder-level   (step-level thunder (:thundering? m))
-           :o-rain-level    rain
-           :rain-level      (step-level rain (:raining? m)))))
+      :o-thunder-level thunder
+      :thunder-level (step-level thunder (:thundering? m))
+      :o-rain-level rain
+      :rain-level (step-level rain (:raining? m)))))
 
 (defn parameters [^long clear-time ^long weather-time raining? thundering?]
   {:clear-weather-time clear-time

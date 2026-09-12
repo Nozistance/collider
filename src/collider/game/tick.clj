@@ -32,23 +32,23 @@
 (set! *warn-on-reflection* true)
 
 (def systems [#'chunks/chunk-streaming
-   #'players/players
-   #'blocks/block-edits
-   #'dripleaf/dripleaf-tilt
-   #'block-updates/block-updates
-   #'random-tick/random-ticks
-   #'items/items
-   #'jukebox/jukebox-songs
-   #'falling/falling-blocks
-   #'mobs/mobs-system
-   #'tnt/tnt-system
-   #'damage/damage
-   #'sleep/sleep
-   #'inventory/inventory
-   #'containers/containers
-   #'chat/chat
-   #'daynight/daynight
-   #'keepalive/keepalive])
+              #'players/players
+              #'blocks/block-edits
+              #'dripleaf/dripleaf-tilt
+              #'block-updates/block-updates
+              #'random-tick/random-ticks
+              #'items/items
+              #'jukebox/jukebox-songs
+              #'falling/falling-blocks
+              #'mobs/mobs-system
+              #'tnt/tnt-system
+              #'damage/damage
+              #'sleep/sleep
+              #'inventory/inventory
+              #'containers/containers
+              #'chat/chat
+              #'daynight/daynight
+              #'keepalive/keepalive])
 
 (defn- final-records [recs]
   (let [last (into {} recs)]
@@ -70,7 +70,7 @@
 
 (defn tick [world events]
   (let [world' (cond-> (update world :tick inc)
-                 (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
+                       (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
         world' (apply-events world' events)
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
@@ -120,9 +120,9 @@
 
 (defn- pace ^long [^long next-ns ^long step-ns]
   (let [target (+ next-ns step-ns)
-        now    (System/nanoTime)
+        now (System/nanoTime)
         target (if (> (- now target) 1000000000) now target)
-        sleep  (quot (- target now) 1000000)]
+        sleep (quot (- target now) 1000000)]
     (when (pos? sleep) (^[long] Thread/sleep sleep))
     target))
 
@@ -130,7 +130,7 @@
   (-> @world-atom
       (assoc :time-ms (System/currentTimeMillis))
       (cond-> perf (assoc :perf perf)
-              io   (merge io))))
+              io (merge io))))
 
 (defn- safe-tick [world events]
   (try (tick world events)
@@ -145,7 +145,7 @@
 
 (defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
   (let [events (drain! queue)
-        world  (tick-input world-atom perf (when io-input (io-input)))
+        world (tick-input world-atom perf (when io-input (io-input)))
         [world' deltas] (safe-tick world events)]
     (reset! world-atom world')
     (send-out! deliver! world' deltas)))
@@ -170,7 +170,7 @@
         (if (idle? @world-atom queue)
           (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil))
           (let [t0 (System/nanoTime)
-                p  (or (perf-of st i t0 20) perf)]
+                p (or (perf-of st i t0 20) perf)]
             (aset stamps (int (rem (long i) tps-window)) t0)
             (one-tick! st world-atom queue deliver! p t0 io-input)
             (recur (pace next-ns nominal-tick-ns) (inc (long i)) p)))))))
@@ -178,16 +178,16 @@
 (defn start-ticker!
   ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
-   (let [st      (ticker-state opts)
+   (let [st (ticker-state opts)
          running (AtomicBoolean. true)
-         thread  (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver!
-                                            (:io-input opts))
-                                "collider-ticker")
-                   (.setDaemon true)
-                   (.start))]
-     {:thread thread
+         thread (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver!
+                                                       (:io-input opts))
+                               "collider-ticker")
+                  (.setDaemon true)
+                  (.start))]
+     {:thread  thread
       :running running
-      :stats #(percentiles (:window st) (:counter st))})))
+      :stats   #(percentiles (:window st) (:counter st))})))
 
 (defn stop-ticker! [{:keys [^Thread thread ^AtomicBoolean running]}]
   (.set running false)

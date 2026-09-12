@@ -30,31 +30,31 @@
 (def ^:private ^:const push-cap 16)
 (defn push-index [world active]
   (let [groups (persistent!
-                (reduce (fn [m [eid e]]
-                          (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
-                                   (state/active-at? active (:pos e)))
-                            (let [k (push-cell-key (:pos e))]
-                              (assoc! m k (conj (get m k []) [eid e])))
-                            m))
-                        (transient (im/int-map))
-                        (:entities world)))]
+                 (reduce (fn [m [eid e]]
+                           (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
+                                    (state/active-at? active (:pos e)))
+                             (let [k (push-cell-key (:pos e))]
+                               (assoc! m k (conj (get m k []) [eid e])))
+                             m))
+                         (transient (im/int-map))
+                         (:entities world)))]
     (persistent!
-     (reduce-kv (fn [m k entries]
-                  (let [entries (sort-by first entries)
-                        n (count entries)
-                        eids (long-array n) xs (double-array n) ys (double-array n)
-                        zs (double-array n) halfs (double-array n) heights (double-array n)]
-                    (loop [i 0 es (seq entries)]
-                      (when es
-                        (let [[eid e] (first es)
-                              p (:pos e) x (v/x p) y (v/y p) z (v/z p)]
-                          (aset eids i (long eid))
-                          (aset xs i (double x)) (aset ys i (double y)) (aset zs i (double z))
-                          (aset halfs i (pushable-half e)) (aset heights i (pushable-height e))
-                          (recur (inc i) (next es)))))
-                    (assoc! m k (PushCell. eids xs ys zs halfs heights))))
-                (transient (im/int-map))
-                groups))))
+      (reduce-kv (fn [m k entries]
+                   (let [entries (sort-by first entries)
+                         n (count entries)
+                         eids (long-array n) xs (double-array n) ys (double-array n)
+                         zs (double-array n) halfs (double-array n) heights (double-array n)]
+                     (loop [i 0 es (seq entries)]
+                       (when es
+                         (let [[eid e] (first es)
+                               p (:pos e) x (v/x p) y (v/y p) z (v/z p)]
+                           (aset eids i (long eid))
+                           (aset xs i (double x)) (aset ys i (double y)) (aset zs i (double z))
+                           (aset halfs i (pushable-half e)) (aset heights i (pushable-height e))
+                           (recur (inc i) (next es)))))
+                     (assoc! m k (PushCell. eids xs ys zs halfs heights))))
+                 (transient (im/int-map))
+                 groups))))
 
 (deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
 (defn- push-window ^Window [index ^long cx ^long cz ^long eid]
@@ -85,8 +85,8 @@
       (let [sz (aget sizes c)]
         (if (< i sz)
           (let [^PushCell cell (aget cells c)
-                j  (if (and (= c 4) (>= (.self-i w) 0) (>= i (.self-i w))) (inc i) i)
-                x  (aget me 0) y (aget me 1) z (aget me 2)
+                j (if (and (= c 4) (>= (.self-i w) 0) (>= i (.self-i w))) (inc i) i)
+                x (aget me 0) y (aget me 1) z (aget me 2)
                 ox (aget ^doubles (.xs cell) j)
                 oy (aget ^doubles (.ys cell) j)
                 oz (aget ^doubles (.zs cell) j)
@@ -96,9 +96,9 @@
                        (< oy (+ y (aget me 4)))
                        (> (+ oy (aget ^doubles (.heights cell) j)) y))
               (let [dx (- ox x) dz (- oz z)
-                    m  (max (Math/abs dx) (Math/abs dz))]
+                    m (max (Math/abs dx) (Math/abs dz))]
                 (when (>= m 0.01)
-                  (let [s  (Math/sqrt m)
+                  (let [s (Math/sqrt m)
                         d3 (min 1.0 (/ 1.0 s))]
                     (aset acc 0 (+ (aget acc 0) (- (* (/ dx s) d3 0.1))))
                     (aset acc 1 (+ (aget acc 1) (- (* (/ dz s) d3 0.1)))))))))
@@ -113,9 +113,9 @@
         x (double x) z (double z)
         ^Window w (push-window index (bit-shift-right (long (Math/floor x)) 2)
                                (bit-shift-right (long (Math/floor z)) 2) (long eid))
-        me  (double-array [x (double y) z (double half) (double height)])
+        me (double-array [x (double y) z (double half) (double height)])
         acc (double-array 2)
-        n   (.n w)]
+        n (.n w)]
     (if (<= n push-cap)
       (push-span! acc w 0 n me)
       (let [off (mod (random/mix64 (unchecked-add (random/mix64 t) (long eid))) n)

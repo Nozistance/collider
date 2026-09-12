@@ -9,10 +9,10 @@
 
 (defn- level-messages [world]
   (concat
-   (when (not= (double (:o-rain-level world 0.0)) (weather/rain-level world))
-     [(out/all (out/rain-level (weather/rain-level world)))])
-   (when (not= (double (:o-thunder-level world 0.0)) (weather/raw-thunder-level world))
-     [(out/all (out/thunder-level (weather/raw-thunder-level world)))])))
+    (when (not= (double (:o-rain-level world 0.0)) (weather/rain-level world))
+      [(out/all (out/rain-level (weather/rain-level world)))])
+    (when (not= (double (:o-thunder-level world 0.0)) (weather/raw-thunder-level world))
+      [(out/all (out/thunder-level (weather/raw-thunder-level world)))])))
 
 (defn- switch-messages [world]
   (when (not= (was-raining? world) (weather/raining? world))

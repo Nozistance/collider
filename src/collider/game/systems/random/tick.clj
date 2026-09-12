@@ -30,9 +30,9 @@
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
         {:changes (liquid/lava-random-tick chunks gen/flat-chunk p roll)})
       (let [drip (dripstone/drip chunks p st roll)]
-        {:drip drip
-         :drops (grow/random-drops st roll)
-         :pos p
+        {:drip    drip
+         :drops   (grow/random-drops st roll)
+         :pos     p
          :changes (concat (:changes drip)
                           (dripstone/random-changes chunks p st roll)
                           (grow/random-tick chunks p st roll (:time-of-day world 0) world))}))))
@@ -67,18 +67,18 @@
   (let [t (long (:tick world)) max-height (long (get-in world [:rules :max-snow-accumulation-height] 1))]
     (into []
           (mapcat
-           (fn [cid]
-             (let [cid (long cid) [cx cz] (chunk/id->pos cid)]
-               (into []
-                     (mapcat
-                      (fn [^long i]
-                        (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
-                          (let [x (+ (* 16 (long cx)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-x))))))
-                                z (+ (* 16 (long cz)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-z))))))]
-                            (precipitation/tick-precipitation
-                             world chunks [x 0 z] max-height
-                             (random/of-longs t cid i (hash :precipitation-fill)))))))
-                     (range (long speed))))))
+            (fn [cid]
+              (let [cid (long cid) [cx cz] (chunk/id->pos cid)]
+                (into []
+                      (mapcat
+                        (fn [^long i]
+                          (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
+                            (let [x (+ (* 16 (long cx)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-x))))))
+                                  z (+ (* 16 (long cz)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-z))))))]
+                              (precipitation/tick-precipitation
+                                world chunks [x 0 z] max-height
+                                (random/of-longs t cid i (hash :precipitation-fill)))))))
+                      (range (long speed))))))
           (seq (state/active-chunks world)))))
 
 (defn- eyeblossom-changes [changes]

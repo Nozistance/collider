@@ -7,14 +7,14 @@
 (set! *warn-on-reflection* true)
 
 (def defaults
-  {:port 25565
-   :motd "Powered by Collider"
-   :max-players 20
-   :view-distance 4
-   :simulation-distance 2
+  {:port                  25565
+   :motd                  "Powered by Collider"
+   :max-players           20
+   :view-distance         4
+   :simulation-distance   2
    :compression-threshold 256
-   :save-dir "world"
-   :save-period-ms 300000})
+   :save-dir              "world"
+   :save-period-ms        300000})
 
 (defn load-config
   ([] (load-config "config.edn"))

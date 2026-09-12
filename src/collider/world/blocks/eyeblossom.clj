@@ -39,9 +39,9 @@
 (def rule
   {:name   :eyeblossom
    :match? (fn [_chunks st _p] (eyeblossom? st))
-   
-   
-   
+
+
+
    :wake   (fn [chunks tick p _old _self?]
              (when-not (support/supported? chunks gen/flat-chunk p
                                            (chunk/chunks-get-block chunks gen/flat-chunk p))

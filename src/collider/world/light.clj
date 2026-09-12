@@ -117,7 +117,7 @@
               (dotimes [d 6]
                 (let [nx (+ x (aget ^longs DX d)) ny (+ y (aget ^longs DY d)) nz (+ z (aget ^longs DZ d))]
                   (when (chunk/in-range? ny)
-                    (let [to   (long (block-id-at chunks template nx ny nz))
+                    (let [to (long (block-id-at chunks template nx ny nz))
                           cand (- l (block/opacity to))]
                       (when (and (pos? cand)
                                  (> cand (long (get-l cache chunks template ch nx ny nz)))
@@ -136,18 +136,18 @@
 
 (defn- rebuild [chunks template ^HashMap cache]
   (reduce
-   (fn [chs k]
-     (let [k (long k) ^bytes arr (.get cache k)
-           cp (bit-shift-right k 6) si (bit-and (bit-shift-right k 1) 31) ch (bit-and k 1)
-           c  (get chs cp template)
-           ^Section s (or (get (:sections c) si) (chunk/new-section c si))]
-       (assoc chs cp
-              (assoc-in c [:sections si]
-                        (if (= ch SL)
-                          (chunk/->Section (.blocks s) (.block-light s) arr)
-                          (chunk/->Section (.blocks s) arr (.sky-light s)))))))
-   chunks
-   (reverse (sort (keys cache)))))
+    (fn [chs k]
+      (let [k (long k) ^bytes arr (.get cache k)
+            cp (bit-shift-right k 6) si (bit-and (bit-shift-right k 1) 31) ch (bit-and k 1)
+            c (get chs cp template)
+            ^Section s (or (get (:sections c) si) (chunk/new-section c si))]
+        (assoc chs cp
+                   (assoc-in c [:sections si]
+                             (if (= ch SL)
+                               (chunk/->Section (.blocks s) (.block-light s) arr)
+                               (chunk/->Section (.blocks s) arr (.sky-light s)))))))
+    chunks
+    (reverse (sort (keys cache)))))
 
 (defn- channel-pass! [^HashMap cache chunks template ch cells]
   (let [ch (long ch)
@@ -194,7 +194,7 @@
 (def ^:private sky-level-segments
   (let [ks [133 11867 13670 22330]
         vs [(float 1.0) (float 1.0) (float 0.26666668) (float 0.26666668)]
-        n  (dec (count ks))]
+        n (dec (count ks))]
     (vec (concat [[(- (long (ks n)) day-period) (vs n) (ks 0) (vs 0)]]
                  (for [i (range n)] [(ks i) (vs i) (ks (inc i)) (vs (inc i))])
                  [[(ks n) (vs n) (+ (long (ks 0)) day-period) (vs 0)]]))))
@@ -204,15 +204,15 @@
       (peek sky-level-segments)))
 
 (defn- sky-level-factor ^double [^long time]
-  (let [t   (mod time day-period)
+  (let [t (mod time day-period)
         seg (sky-level-segment t)
-        v0  (float (seg 1))
-        v1  (float (seg 3))
-        a   (float (/ (float (- t (long (seg 0)))) (float (- (long (seg 2)) (long (seg 0))))))]
+        v0 (float (seg 1))
+        v1 (float (seg 3))
+        a (float (/ (float (- t (long (seg 0)))) (float (- (long (seg 2)) (long (seg 0))))))]
     (float (+ v0 (float (* a (float (- v1 v0))))))))
 
 (defn- blend ^double [^double value ^double alpha ^double target ^double weight]
-  (let [v  (float value)
+  (let [v (float value)
         to (float (+ v (float (* (float alpha) (float (- (float target) v))))))]
     (float (+ v (float (* (float weight) (float (- to v))))))))
 
@@ -220,10 +220,10 @@
   (^double [^long time] (sky-light-level time 0.0 0.0))
   (^double [^long time ^double rain-level ^double thunder-level]
    (let [thunder (float thunder-level)
-         rain    (float (- (float rain-level) thunder))
-         v       (float (* (float 15.0) (float (sky-level-factor time))))
-         v       (float (if (pos? rain) (blend v 0.3125 4.0 rain) v))
-         v       (float (if (pos? thunder) (blend v 0.52734375 4.0 thunder) v))]
+         rain (float (- (float rain-level) thunder))
+         v (float (* (float 15.0) (float (sky-level-factor time))))
+         v (float (if (pos? rain) (blend v 0.3125 4.0 rain) v))
+         v (float (if (pos? thunder) (blend v 0.52734375 4.0 thunder) v))]
      (float (min (float 15.0) (max (float 0.0) v))))))
 
 (defn sky-darken
@@ -252,17 +252,17 @@
                (if (and (chunk/in-range? yy) (= 15 (long (stored-l chunks template SL x yy z))))
                  (recur (dec yy) (conj acc [x yy z 0]))
                  acc))
-        add  (loop [yy src acc []]
-               (if (and (<= yy chunk/max-y) (not= 15 (long (stored-l chunks template SL x yy z))))
-                 (recur (inc yy) (conj acc [x yy z 15]))
-                 acc))]
+        add (loop [yy src acc []]
+              (if (and (<= yy chunk/max-y) (not= 15 (long (stored-l chunks template SL x yy z))))
+                (recur (inc yy) (conj acc [x yy z 15]))
+                acc))]
     (conj (into drop add) [x y z (if (>= y src) 15 0)])))
 
 (defn relight-batch [chunks template changes]
   (let [changed (filter (fn [[_ old new]] (different? (long old) (long new))) changes)
-        bcells  (mapv (fn [[[x y z] _ new]] [x y z (block/emits (long new))]) changed)
-        scells  (into [] (comp (mapcat (fn [[[x y z] _ _]] (sky-cells chunks template x y z))) (distinct))
-                      changed)]
+        bcells (mapv (fn [[[x y z] _ new]] [x y z (block/emits (long new))]) changed)
+        scells (into [] (comp (mapcat (fn [[[x y z] _ _]] (sky-cells chunks template x y z))) (distinct))
+                     changed)]
     (if (empty? bcells)
       chunks
       (let [cache (HashMap.)]

@@ -11,12 +11,12 @@
   ([pos seed] (primed pos seed fuse-ticks))
   ([[x y z :as pos] seed fuse]
    (let [a (* (random/of-key [seed pos :ang]) Math/PI 2.0)]
-     {:type :tnt
-      :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-      :vel [(* -0.02 (Math/sin a)) 0.2 (* -0.02 (Math/cos a))]
-      :yaw 0.0 :pitch 0.0 :on-ground false
+     {:type   :tnt
+      :pos    [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+      :vel    [(* -0.02 (Math/sin a)) 0.2 (* -0.02 (Math/cos a))]
+      :yaw    0.0 :pitch 0.0 :on-ground false
       :origin pos
-      :fuse fuse})))
+      :fuse   fuse})))
 
 (defn chain-primed [pos seed]
   (primed pos seed (+ 10 (mod (long (hash [seed pos :fuse])) 20))))

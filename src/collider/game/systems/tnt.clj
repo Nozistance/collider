@@ -171,5 +171,5 @@
     (-> []
         (into (map (fn [[eid e]] #(unblock-deltas eid e))) fresh)
         (cond-> (seq due)
-          (conj #(one-chain (deltas/pmapcat (fn [[eid e]] (explode-deltas world others players pending eid e)) due))))
+                (conj #(one-chain (deltas/pmapcat (fn [[eid e]] (explode-deltas world others players pending eid e)) due))))
         (into (map (fn [[eid e]] #(step-deltas world eid e))) moving))))

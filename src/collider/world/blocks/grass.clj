@@ -7,7 +7,7 @@
 (set! *warn-on-reflection* true)
 
 (def grass-state (block/state :grass-block))
-(def dirt-state  (block/state :dirt))
+(def dirt-state (block/state :dirt))
 (defn short-grass? [st] (= :short-grass (block/block-of (long st))))
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
@@ -33,11 +33,11 @@
          (grass-neighbor? chunks p))))
 
 (def rule
-  {:name  :grass
+  {:name   :grass
    :match? (fn [chunks st p] (and (= dirt-state st) (regrowable-dirt? chunks p)))
-   :wake  (fn [_chunks tick p _old _self?]
-            (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
-   :due   (fn [_chunks p _rules] [[p grass-state]])})
+   :wake   (fn [_chunks tick p _old _self?]
+             (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
+   :due    (fn [_chunks p _rules] [[p grass-state]])})
 
 (defn can-stay-alive? [chunks ^long st [x y z]]
   (let [a (block-or-zero chunks [(long x) (inc (long y)) (long z)])]

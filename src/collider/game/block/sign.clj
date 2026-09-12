@@ -17,8 +17,8 @@
 (defn at [world pos] (get-in world [:block-entities (chunk/block-chunk pos) pos]))
 (defn type-id ^long [e] (data/registry-id "block_entity_type" (:kind e)))
 (defn- text-nbt [t]
-  {:messages (vec (:lines t))
-   :color (data/snake (:color t))
+  {:messages         (vec (:lines t))
+   :color            (data/snake (:color t))
    :has_glowing_text (boolean (:glowing? t))})
 
 (defn nbt [e]

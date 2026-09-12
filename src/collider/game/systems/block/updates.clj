@@ -32,7 +32,7 @@
                                       chunks
                                       (chunk/chunks-get-block chunks gen/flat-chunk p)
                                       p ctx))
-                                    cells)))))
+                            cells)))))
 
 (defn- wash-deltas [world changes]
   (when (get-in world [:rules :block-drops] true)
@@ -62,9 +62,9 @@
         :when (and (block/falls? old) (= (long st) (block/emptied old)))]
     (if (loose-scaffold? old)
       [:spawn-entity (items/popped world pos {:item :scaffolding :count 1} :loose)]
-      [:spawn-entity {:type :falling-block
-                      :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-                      :vel [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
+      [:spawn-entity {:type  :falling-block
+                      :pos   [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+                      :vel   [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
                       :block (block/without-water old) :start pos :time 0}])))
 
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
@@ -79,7 +79,7 @@
 
 (defn- sponge-deltas [world cells changes]
   (when (get-in world [:rules :block-drops] true)
-    (let [chunks  (:chunks world)
+    (let [chunks (:chunks world)
           changed (into {} changes)
           sponges (filter #(= :sponge (block/type-of (chunk/chunks-get-block chunks gen/flat-chunk %))) cells)]
       (->> (mapcat #(sponge-drops world % changed) sponges)
@@ -118,14 +118,14 @@
             {} changes)))
 
 (defn- ignite-deltas [world due]
-  (let [chunks   (:chunks world)
-        pending  (tnt/primed-origins world)
-        tnts     (into (sorted-set)
-                       (comp (filter #(fire/fire-state?
-                                       (chunk/chunks-get-block chunks gen/flat-chunk %)))
-                             (mapcat #(tnt-neighbors chunks %))
-                             (remove pending))
-                       due)]
+  (let [chunks (:chunks world)
+        pending (tnt/primed-origins world)
+        tnts (into (sorted-set)
+                   (comp (filter #(fire/fire-state?
+                                    (chunk/chunks-get-block chunks gen/flat-chunk %)))
+                         (mapcat #(tnt-neighbors chunks %))
+                         (remove pending))
+                   due)]
     (mapcat (fn [pos]
               (let [primed (tnt/primed pos [(:tick world) pos])]
                 [[:set-blocks [[pos 0]]]
@@ -134,41 +134,41 @@
             tnts)))
 
 (defn- block-updates-deltas [world _events]
-  (let [t   (long (:tick world))
+  (let [t (long (:tick world))
         due (into (i/int-set) (comp (take-while (fn [[k _]] (<= (long k) t))) (mapcat val))
                   (:block-ticks world))]
     (when (seq due)
-      (let [active  (state/active-chunks world)
-            now     (into [] (comp (filter #(state/active-id? active %))
-                                   (map chunk/id->block-pos)) due)
-            parked  (into [] (remove #(state/active-id? active %)) due)
+      (let [active (state/active-chunks world)
+            now (into [] (comp (filter #(state/active-id? active %))
+                               (map chunk/id->block-pos)) due)
+            parked (into [] (remove #(state/active-id? active %)) due)
             changes (lww-changes (:chunks world)
-                                 {:rules (:rules world) :tick t :time-of-day (:time-of-day world 0)
+                                 {:rules   (:rules world) :tick t :time-of-day (:time-of-day world 0)
                                   :players (mapv (comp :pos val) (state/player-entries world))}
                                  now)
             changed (into #{} (map first) changes)
-            again   (reduce (fn [m p]
-                              (if-let [at (and (not (contains? changed p))
-                                               (rules/again-tick (:chunks world)
-                                                                 (chunk/chunks-get-block (:chunks world) gen/flat-chunk p)
-                                                                 p t))]
-                                (update m at (fnil conj []) (chunk/block-pos->id p))
-                                m))
-                            {} now)
-            woken   (merge-with into again (eyeblossom-schedules world changes))]
+            again (reduce (fn [m p]
+                            (if-let [at (and (not (contains? changed p))
+                                             (rules/again-tick (:chunks world)
+                                                               (chunk/chunks-get-block (:chunks world) gen/flat-chunk p)
+                                                               p t))]
+                              (update m at (fnil conj []) (chunk/block-pos->id p))
+                              m))
+                          {} now)
+            woken (merge-with into again (eyeblossom-schedules world changes))]
         (concat
-         [[:ticks-flushed t parked]]
-         (when (seq woken) [[:schedule-ticks woken]])
-         (when (seq changes)
-           (concat [[:set-blocks changes]]
-                   (fizz-deltas world changes)
-                   (wash-deltas world changes)
-                   (sponge-deltas world now changes)
-                   (fall-deltas world changes)
-                   (eyeblossom-deltas changes)
-                   (tilt-deltas world changes)
-                   (drip-fill-deltas world changes)))
-         (ignite-deltas world now))))))
+          [[:ticks-flushed t parked]]
+          (when (seq woken) [[:schedule-ticks woken]])
+          (when (seq changes)
+            (concat [[:set-blocks changes]]
+                    (fizz-deltas world changes)
+                    (wash-deltas world changes)
+                    (sponge-deltas world now changes)
+                    (fall-deltas world changes)
+                    (eyeblossom-deltas changes)
+                    (tilt-deltas world changes)
+                    (drip-fill-deltas world changes)))
+          (ignite-deltas world now))))))
 
 (defn block-updates [world events]
   [#(block-updates-deltas world events)])

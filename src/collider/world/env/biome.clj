@@ -17,7 +17,7 @@
 (defn- temperature-noise ^double [^long _x ^long _z] 0.0)
 
 (defn- height-adjusted-temperature ^double [biome p]
-  (let [y    (long (nth p 1))
+  (let [y (long (nth p 1))
         base (float (:temperature biome))]
     (if (> y (long snow-level))
       (let [v (float (* (temperature-noise (long (nth p 0)) (long (nth p 2))) 8.0))
@@ -37,8 +37,8 @@
 (defn precipitation-at [biome p]
   (cond
     (not (:has-precipitation? biome)) :none
-    (cold-enough-to-snow? biome p)    :snow
-    :else                             :rain))
+    (cold-enough-to-snow? biome p) :snow
+    :else :rain))
 
 (defn increased-fire-burnout? [biome]
   (boolean (:increased-fire-burnout? biome)))

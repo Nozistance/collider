@@ -78,9 +78,9 @@
         (> cz z2) (recur (inc cx) z1 y1 n ckey blocks)
         (> cy y2) (recur cx (inc cz) y1 n ckey blocks)
         (< cy chunk/min-y) (let [o (* n 6)]
-                    (aset a o (double cx)) (aset a (+ o 1) (- chunk/min-y 4.0)) (aset a (+ o 2) (double cz))
-                    (aset a (+ o 3) (+ cx 1.0)) (aset a (+ o 4) (double chunk/min-y)) (aset a (+ o 5) (+ cz 1.0))
-                    (recur cx cz (inc cy) (inc n) ckey blocks))
+                             (aset a o (double cx)) (aset a (+ o 1) (- chunk/min-y 4.0)) (aset a (+ o 2) (double cz))
+                             (aset a (+ o 3) (+ cx 1.0)) (aset a (+ o 4) (double chunk/min-y)) (aset a (+ o 5) (+ cz 1.0))
+                             (recur cx cz (inc cy) (inc n) ckey blocks))
         (> cy chunk/max-y) (recur cx cz (inc cy) n ckey blocks)
         :else
         (let [
@@ -124,9 +124,9 @@
          x (v/x pos) y (v/y pos) z (v/z pos)
          vx (v/x vel) vy (v/y vel) vz (v/z vel)
          box0 (double-array [(- x half) y (- z half) (+ x half) (+ y (double height)) (+ z half)])
-         sw   (swept-boxes chunks template box0 vx vy vz)
-         out  (double-array 3)
-         _    (Phys/clampAxes (.a sw) (.n sw) box0 vx vy vz out)
+         sw (swept-boxes chunks template box0 vx vy vz)
+         out (double-array 3)
+         _ (Phys/clampAxes (.a sw) (.n sw) box0 vx vy vz out)
          dx (aget out 0) dy (aget out 1) dz (aget out 2)
          hit-y? (not= dy vy)
          grounded? (and hit-y? (neg? vy))
@@ -137,11 +137,11 @@
                             ^doubles a (.a sb) n (.n sb)
                             ^doubles e (aclone ^doubles gbox)
                             du (Phys/clampAll a n e 0 1 step)
-                            _  (do (aset e 1 (+ (aget e 1) du)) (aset e 4 (+ (aget e 4) du)))
+                            _ (do (aset e 1 (+ (aget e 1) du)) (aset e 4 (+ (aget e 4) du)))
                             sx (Phys/clampAll a n e 0 0 vx)
-                            _  (do (aset e 0 (+ (aget e 0) sx)) (aset e 3 (+ (aget e 3) sx)))
+                            _ (do (aset e 0 (+ (aget e 0) sx)) (aset e 3 (+ (aget e 3) sx)))
                             sz (Phys/clampAll a n e 0 2 vz)
-                            _  (do (aset e 2 (+ (aget e 2) sz)) (aset e 5 (+ (aget e 5) sz)))
+                            _ (do (aset e 2 (+ (aget e 2) sz)) (aset e 5 (+ (aget e 5) sz)))
                             dd (Phys/clampAll a n e 0 1 (- du))]
                         (if (> (+ (* sx sx) (* sz sz)) (+ (* dx dx) (* dz dz)))
                           [sx (+ dy du dd) sz]

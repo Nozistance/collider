@@ -7,12 +7,12 @@
 (set! *warn-on-reflection* true)
 
 (def liquids
-  {:water {:block :water :dropoff 1 :slope 4 :delay 5  :bucket :water-bucket :infinite? true
-           :push 0.014}
-   :lava  {:block :lava :dropoff 2 :slope 2 :delay 30 :bucket :lava-bucket :infinite? false
-           :push 0.0023333333333333335
+  {:water {:block :water :dropoff 1 :slope 4 :delay 5 :bucket :water-bucket :infinite? true
+           :push  0.014}
+   :lava  {:block        :lava :dropoff 2 :slope 2 :delay 30 :bucket :lava-bucket :infinite? false
+           :push         0.0023333333333333335
            :decay-jitter 4
-           :mix {:source :obsidian :flowing :cobblestone :smother :stone}}})
+           :mix          {:source :obsidian :flowing :cobblestone :smother :stone}}})
 
 (def ^:private base
   (into {} (map (fn [[cls {:keys [block]}]] [cls (block/state block)])) liquids))
@@ -86,7 +86,7 @@
   (let [nx (+ (long x) (long dx))
         nz (+ (long z) (long dz))
         ns (state-at chunks template nx y nz)
-        j  (decay chunks template cls [nx y nz])]
+        j (decay chunks template cls [nx y nz])]
     (cond
       (other-class? cls ns)
       0
@@ -161,8 +161,8 @@
                           k (if (< h 0.4) h 1.0)
                           [ax ay az] (get-in acc [cls :flow] [0.0 0.0 0.0])]
                       (assoc acc cls {:height h
-                                      :flow [(+ (double ax) (* (double fx) k)) (+ (double ay) (* (double fy) k)) (+ (double az) (* (double fz) k))]
-                                      :n (inc (long (get-in acc [cls :n] 0)))})))))))
+                                      :flow   [(+ (double ax) (* (double fx) k)) (+ (double ay) (* (double fy) k)) (+ (double az) (* (double fz) k))]
+                                      :n      (inc (long (get-in acc [cls :n] 0)))})))))))
           {}
           (cells-of x y z half height)))
 
@@ -326,12 +326,12 @@
         convert-dirs))
 
 (defn mix-wake? [chunks template pos]
-  (let [st  (state-at chunks template (pos 0) (pos 1) (pos 2))
+  (let [st (state-at chunks template (pos 0) (pos 1) (pos 2))
         cls (liquid-class st)]
     (boolean
-     (and cls
-          (get-in liquids [cls :mix])
-          (touches-other? chunks template cls pos)))))
+      (and cls
+           (get-in liquids [cls :mix])
+           (touches-other? chunks template cls pos)))))
 
 (defn- spread-to [{:keys [chunks template cls mix] :as env} tp d v]
   (let [[traw t] (cell env tp)]
@@ -463,19 +463,19 @@
 
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
 (defn update-cell [chunks template [x y z :as p] rules]
-  (let [st  (state-at chunks template x y z)
+  (let [st (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
       (let [{:keys [dropoff slope infinite? mix]} (liquids cls)
-            env   {:chunks chunks :template template :cls cls
-                   :dropoff (long dropoff) :slope (long slope)
-                   :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}
+            env {:chunks    chunks :template template :cls cls
+                 :dropoff   (long dropoff) :slope (long slope)
+                 :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}
             above (shifted chunks template p [0 1 0])
             sides (side-states chunks template p)
             below-raw (raw-at chunks template x (dec (long y)) z)]
         (if-let [mixed (mixed-state cls mix st above sides below-raw)]
           [[p mixed]]
-          (let [v   (if (source-of? cls st) :source (new-liquid env p))
+          (let [v (if (source-of? cls st) :source (new-liquid env p))
                 st' (if v (liquid->state cls v) 0)]
             (cond
               (zero? st') [[p 0]]

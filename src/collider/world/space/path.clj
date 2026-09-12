@@ -94,13 +94,13 @@
 
 (defn find-path [chunks template start goal avoid-water?]
   (let [h (fn ^double [c] (dist c goal))]
-    (loop [open   (sorted-set [(h start) start])
+    (loop [open (sorted-set [(h start) start])
            closed #{}
-           g      {start 0.0}
-           came   {}
-           best   start
+           g {start 0.0}
+           came {}
+           best start
            best-h (double (h start))
-           n      0]
+           n 0]
       (if-let [[_ cur :as entry] (first open)]
         (cond
           (= cur goal) (rebuild came cur)
@@ -110,19 +110,19 @@
           (let [closed (conj closed cur)
                 [open g came best best-h]
                 (reduce
-                 (fn [[open g came best best-h :as acc] d]
-                   (if-let [nb (step-cell chunks template avoid-water? cur d)]
-                     (let [ng (+ (double (g cur)) (dist cur nb))]
-                       (if (< ng (double (get g nb Double/MAX_VALUE)))
-                         (let [nh (double (h nb))]
-                           [(conj open [(+ ng nh) nb])
-                            (assoc g nb ng)
-                            (assoc came nb cur)
-                            (if (< nh best-h) nb best)
-                            (min nh best-h)])
-                         acc))
-                     acc))
-                 [(disj open entry) g came best best-h]
-                 dirs)]
+                  (fn [[open g came best best-h :as acc] d]
+                    (if-let [nb (step-cell chunks template avoid-water? cur d)]
+                      (let [ng (+ (double (g cur)) (dist cur nb))]
+                        (if (< ng (double (get g nb Double/MAX_VALUE)))
+                          (let [nh (double (h nb))]
+                            [(conj open [(+ ng nh) nb])
+                             (assoc g nb ng)
+                             (assoc came nb cur)
+                             (if (< nh best-h) nb best)
+                             (min nh best-h)])
+                          acc))
+                      acc))
+                  [(disj open entry) g came best best-h]
+                  dirs)]
             (recur open closed g came best (double best-h) (inc n))))
         (when (not= best start) (rebuild came best))))))

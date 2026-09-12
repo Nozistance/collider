@@ -33,23 +33,23 @@
 
 (defn- counts [world e e']
   (cond-> [[:play-time 1] [:total-world-time 1] [:time-since-death 1]]
-    (:sneaking? e')                          (conj [:sneak-time 1])
-    (not (:sleeping e'))                     (conj [:time-since-rest 1])
-    (and (:sleeping e') (not (:sleeping e))) (conj [:sleep-in-bed 1])
-    (jumped? e e')                           (conj [:jump 1])
-    (:landed e')                             (conj [:fall-one-cm (cm (double (:landed e')))])
-    (moved world e e')                       (conj (moved world e e'))))
+          (:sneaking? e') (conj [:sneak-time 1])
+          (not (:sleeping e')) (conj [:time-since-rest 1])
+          (and (:sleeping e') (not (:sleeping e))) (conj [:sleep-in-bed 1])
+          (jumped? e e') (conj [:jump 1])
+          (:landed e') (conj [:fall-one-cm (cm (double (:landed e')))])
+          (moved world e e') (conj (moved world e e'))))
 
 (defn- add-counts [stats pairs]
   (reduce (fn [m [k n]] (update m (keyword "custom" (name k)) (fnil + 0) (long n))) stats pairs))
 
 (defn observe [world events _deltas world']
   (concat
-   (for [[eid e'] (:entities world') :when (= :player (:type e'))
-         :let [e (get-in world [:entities eid] e')
-               pairs (counts world e e')]
-         :when (seq pairs)]
-     [:merge-entity eid {:stats (add-counts (or (:stats e') {}) pairs)}])
-   (for [[tag eid] events :when (= :stats-request tag)
-         :let [e (get-in world' [:entities eid])] :when e]
-     (out/to eid (out/stats (or (:stats e) {}))))))
+    (for [[eid e'] (:entities world') :when (= :player (:type e'))
+          :let [e (get-in world [:entities eid] e')
+                pairs (counts world e e')]
+          :when (seq pairs)]
+      [:merge-entity eid {:stats (add-counts (or (:stats e') {}) pairs)}])
+    (for [[tag eid] events :when (= :stats-request tag)
+          :let [e (get-in world' [:entities eid])] :when e]
+      (out/to eid (out/stats (or (:stats e) {}))))))

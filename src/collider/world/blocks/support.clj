@@ -35,11 +35,11 @@
   (if (= :soul-fire (block/type-of (long st)))
     (block/tagged? (max 0 below) "soul_fire_base_blocks")
     (boolean
-     (or (and (not (neg? below)) (block/face-sturdy? below :up))
-         (some (fn [d]
-                 (let [n (state-at chunks template (mapv + pos d))]
-                   (and (pos? n) (block/burnable? n))))
-               dir/around)))))
+      (or (and (not (neg? below)) (block/face-sturdy? below :up))
+          (some (fn [d]
+                  (let [n (state-at chunks template (mapv + pos d))]
+                    (and (pos? n) (block/burnable? n))))
+                dir/around)))))
 
 (defn- lower-half-of? [below st]
   (and (= (block/block-of below) (block/block-of st))
@@ -315,7 +315,7 @@
         below (state-at chunks template (mapv + pos [0 -1 0]))]
     (block/state (block/block-of st)
                  (assoc (block/props-of st) :distance (keyword (str d))
-                        :bottom (if (and (pos? d) (not= :scaffolding (block/type-of (max 0 below)))) :true :false)))))
+                                            :bottom (if (and (pos? d) (not= :scaffolding (block/type-of (max 0 below)))) :true :false)))))
 
 (defn- bamboo-fitted [chunks template pos]
   (let [below (state-at chunks template (mapv + pos [0 -1 0]))
@@ -435,7 +435,7 @@
         candidate (fn [dir]
                     (if (contains? #{:up :down} dir)
                       (block/state self (assoc props :face (if (= :up dir) :ceiling :floor)
-                                               :facing horizontal))
+                                                     :facing horizontal))
                       (block/state self (assoc props :face :wall :facing (dir/opposite dir)))))]
     (first (for [dir (place-order face yaw pitch replacing?)
                  :let [cand (candidate dir)]

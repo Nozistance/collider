@@ -28,9 +28,9 @@
 (def packets
   {[:handshake :intention]
    {:read (fn [^Buf buf] {:protocol (c/read-varint buf)
-                              :address  (c/read-string buf)
-                              :port     (.readUnsignedShort buf)
-                              :next     (c/read-varint buf)})}
+                          :address  (c/read-string buf)
+                          :port     (.readUnsignedShort buf)
+                          :next     (c/read-varint buf)})}
 
    [:status :status-response]
    {:write (fn [^Buf buf m] (c/write-string buf (:json m)))}
@@ -101,7 +101,7 @@
              (write-spawn-info buf m)
              (.writeByte buf (int (:keep m 0))))}
    [:play :player-abilities]
-   {:read (fn [^Buf buf] {:flags (.readByte buf)})
+   {:read  (fn [^Buf buf] {:flags (.readByte buf)})
     :write (fn [^Buf buf m]
              (.writeByte buf (int (:flags m)))
              (.writeFloat buf (float (:flying-speed m)))
@@ -490,71 +490,71 @@
    {:read (fn [^Buf buf] {:command (c/read-string buf)})}
    [:play :move-player-pos]
    {:read (fn [^Buf buf] {:pos   [(.readDouble buf) (.readDouble buf) (.readDouble buf)]
-                              :flags (.readByte buf)})}
+                          :flags (.readByte buf)})}
    [:play :move-player-pos-rot]
    {:read (fn [^Buf buf] {:pos   [(.readDouble buf) (.readDouble buf) (.readDouble buf)]
-                              :yaw   (.readFloat buf)
-                              :pitch (.readFloat buf)
-                              :flags (.readByte buf)})}
+                          :yaw   (.readFloat buf)
+                          :pitch (.readFloat buf)
+                          :flags (.readByte buf)})}
    [:play :move-player-rot]
    {:read (fn [^Buf buf] {:yaw   (.readFloat buf)
-                              :pitch (.readFloat buf)
-                              :flags (.readByte buf)})}
+                          :pitch (.readFloat buf)
+                          :flags (.readByte buf)})}
    [:play :move-player-status-only]
    {:read (fn [^Buf buf] {:flags (.readByte buf)})}
    [:play :player-action]
    {:read (fn [^Buf buf] {:action   (c/read-varint buf)
-                              :pos      (c/read-block-pos buf)
-                              :face     (.readUnsignedByte buf)
-                              :sequence (c/read-varint buf)})}
+                          :pos      (c/read-block-pos buf)
+                          :face     (.readUnsignedByte buf)
+                          :sequence (c/read-varint buf)})}
    [:play :use-item-on]
    {:read (fn [^Buf buf] {:hand     (c/read-varint buf)
-                              :pos      (c/read-block-pos buf)
-                              :face     (c/read-varint buf)
-                              :cursor   [(.readFloat buf) (.readFloat buf) (.readFloat buf)]
-                              :inside   (.readBoolean buf)
-                              :border   (.readBoolean buf)
-                              :sequence (c/read-varint buf)})}
+                          :pos      (c/read-block-pos buf)
+                          :face     (c/read-varint buf)
+                          :cursor   [(.readFloat buf) (.readFloat buf) (.readFloat buf)]
+                          :inside   (.readBoolean buf)
+                          :border   (.readBoolean buf)
+                          :sequence (c/read-varint buf)})}
    [:play :use-item]
    {:read (fn [^Buf buf] {:hand     (c/read-varint buf)
-                              :sequence (c/read-varint buf)
-                              :yaw      (.readFloat buf)
-                              :pitch    (.readFloat buf)})}
+                          :sequence (c/read-varint buf)
+                          :yaw      (.readFloat buf)
+                          :pitch    (.readFloat buf)})}
    [:play :sign-update]
    {:read (fn [^Buf buf] {:pos    (c/read-block-pos buf)
-                              :front? (.readBoolean buf)
-                              :lines  (vec (repeatedly 4 #(c/read-string buf)))})}
+                          :front? (.readBoolean buf)
+                          :lines  (vec (repeatedly 4 #(c/read-string buf)))})}
    [:play :swing]
    {:read (fn [^Buf buf] {:hand (c/read-varint buf)})}
    [:play :player-command]
    {:read (fn [^Buf buf] {:eid    (c/read-varint buf)
-                              :action (c/read-varint buf)
-                              :data   (c/read-varint buf)})}
+                          :action (c/read-varint buf)
+                          :data   (c/read-varint buf)})}
    [:play :player-input]
    {:read (fn [^Buf buf] {:flags (.readByte buf)})}
    [:play :pick-item-from-block]
-   {:read (fn [^Buf buf] {:pos (c/read-block-pos buf)
-                              :include-data (.readBoolean buf)})}
+   {:read (fn [^Buf buf] {:pos          (c/read-block-pos buf)
+                          :include-data (.readBoolean buf)})}
    [:play :pick-item-from-entity]
-   {:read (fn [^Buf buf] {:id (c/read-varint buf)
-                              :include-data (.readBoolean buf)})}
+   {:read (fn [^Buf buf] {:id           (c/read-varint buf)
+                          :include-data (.readBoolean buf)})}
    [:play :set-carried-item]
    {:read (fn [^Buf buf] {:slot (.readShort buf)})}
    [:play :container-click]
    {:read (fn [^Buf buf]
             (let [container (c/read-varint buf)
-                  state-id  (c/read-varint buf)
-                  slot      (.readShort buf)
-                  button    (.readByte buf)
-                  mode      (c/read-varint buf)
-                  changed   (into {} (repeatedly (c/read-varint buf)
-                                                 #(vector (long (.readShort buf)) (c/read-hashed-stack buf))))
-                  carried   (c/read-hashed-stack buf)]
+                  state-id (c/read-varint buf)
+                  slot (.readShort buf)
+                  button (.readByte buf)
+                  mode (c/read-varint buf)
+                  changed (into {} (repeatedly (c/read-varint buf)
+                                               #(vector (long (.readShort buf)) (c/read-hashed-stack buf))))
+                  carried (c/read-hashed-stack buf)]
               {:container container :state-id state-id :slot slot :button button
-               :mode mode :changed changed :carried carried}))}
+               :mode      mode :changed changed :carried carried}))}
    [:play :set-creative-mode-slot]
    {:read (fn [^Buf buf] {:slot  (.readShort buf)
-                              :stack (c/read-item-stack buf)})}
+                          :stack (c/read-item-stack buf)})}
    [:play :client-command]
    {:read (fn [^Buf buf] {:action (c/read-varint buf)})}
    [:play :interact]
@@ -583,7 +583,7 @@
 
 (defn encode! [state ^Buf buf m]
   (let [nm (:packet m)
-        w  (or (:write (packets [state nm]))
-               (throw (ex-info "no writer for packet" {:state state :packet nm})))]
+        w (or (:write (packets [state nm]))
+              (throw (ex-info "no writer for packet" {:state state :packet nm})))]
     (c/write-varint buf (data/packet-id state :clientbound nm))
     (w buf m)))

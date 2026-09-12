@@ -17,20 +17,20 @@
 (set! *warn-on-reflection* true)
 
 (def rules [kelp/rule
-   eyeblossom/rule
-   liquid/rule
-   fire/rule
-   dripleaf/rule
-   support/rule
-   dripstone/rule
-   dripstone/cauldron-rule
-   falling/rule
-   sponge/rule
-   coral/rule
-   scaffold/rule
-   composter/rule
-   grass/rule
-   lectern/rule])
+            eyeblossom/rule
+            liquid/rule
+            fire/rule
+            dripleaf/rule
+            support/rule
+            dripstone/rule
+            dripstone/cauldron-rule
+            falling/rule
+            sponge/rule
+            coral/rule
+            scaffold/rule
+            composter/rule
+            grass/rule
+            lectern/rule])
 
 (defn- rule-for [chunks st pos]
   (reduce (fn [_ r] (when ((:match? r) chunks st pos) (reduced r))) nil rules))

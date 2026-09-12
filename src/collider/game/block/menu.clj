@@ -20,7 +20,7 @@
     :else true))
 
 (defn- player-quick-slots [inv slot]
-  (let [slot  (long slot)
+  (let [slot (long slot)
         stack (get inv slot)
         equip (data/equip-slot (:item stack))
         armor (some (fn [[k v]] (when (= v equip) k)) armor-slots)]
@@ -69,26 +69,26 @@
     (if (or (not (place slot stack)) (and here (not (same? here stack))))
       [inv stack]
       (let [room (- (max-of stack) (count-of here))
-            put  (max 0 (min (long n) (count-of stack) room))]
+            put (max 0 (min (long n) (count-of stack) room))]
         [(if (pos? put) (assoc inv slot (sized stack (+ (count-of here) put))) inv)
          (sized stack (- (count-of stack) put))]))))
 
 (defn- take-out
   ([layout inv slot n] (take-out layout inv slot n Long/MAX_VALUE))
   ([layout inv slot n mx]
-  (let [here  (get inv slot)
-        whole (count-of here)
-        got   (long (if (= slot (:result layout))
-                      (if (< (long mx) whole) 0 whole)
-                      (min (long n) (long mx) whole)))]
-    (if (pos? got)
-      [(if-let [left (sized here (- (count-of here) got))] (assoc inv slot left) (dissoc inv slot))
-       (sized here got)]
-      [inv nil]))))
+   (let [here (get inv slot)
+         whole (count-of here)
+         got (long (if (= slot (:result layout))
+                     (if (< (long mx) whole) 0 whole)
+                     (min (long n) (long mx) whole)))]
+     (if (pos? got)
+       [(if-let [left (sized here (- (count-of here) got))] (assoc inv slot left) (dissoc inv slot))
+        (sized here got)]
+       [inv nil]))))
 
 (defn- pickup [{:keys [inventory carried] :as m} slot primary?]
-  (let [layout  (layout-of m)
-        place   (:place layout)
+  (let [layout (layout-of m)
+        place (:place layout)
         clicked (get inventory slot)]
     (cond
       (= outside (long slot))
@@ -136,7 +136,7 @@
 
 (defn- quick-move-once [layout inv slot]
   (let [stack (get inv slot)
-        inv'  (dissoc inv slot)
+        inv' (dissoc inv slot)
         [inv' left] (if (nil? stack)
                       [inv nil]
                       (move-to (:place layout) inv' stack ((:quick layout) inv slot)))]
@@ -150,7 +150,7 @@
       (let [took? (and result (some? (get before result)) (nil? (get (:inventory m) result)))
             inv (cond-> (:inventory m) took? on-take)]
         (cond-> (assoc m :inventory (derive inv))
-          took? (update :takes inc))))))
+                took? (update :takes inc))))))
 
 (defn- quick-move [m slot]
   (let [layout (layout-of m)]
@@ -164,7 +164,7 @@
 
 (defn- swap-with [{:keys [inventory] :as m} slot ^long button]
   (let [layout (layout-of m)
-        other  ((:swap layout) button)
+        other ((:swap layout) button)
         source (get inventory other)
         target (get inventory slot)]
     (cond
@@ -188,11 +188,11 @@
 
 (defn- pickup-all [{:keys [inventory carried] :as m} slot ^long button]
   (let [layout (layout-of m)
-        place  (:place layout)]
+        place (:place layout)]
     (if (and carried (nil? (get inventory slot)))
       (let [slots (cond->> (:visible layout)
-                    (:result layout) (remove #(= % (:result layout)))
-                    (not (zero? button)) reverse)
+                           (:result layout) (remove #(= % (:result layout)))
+                           (not (zero? button)) reverse)
             step (fn [[inv c] pass]
                    (reduce (fn [[inv c :as acc] s]
                              (let [here (get inv s)]
@@ -249,16 +249,16 @@
         in-range? (< -1 menu (count visible))
         slot (if in-range? (long (nth visible menu)) menu)]
     (settle
-     (cond
-      (= 5 mode) (quick-craft m slot button)
-      (:status quickcraft) (assoc m :quickcraft nil)
-      (and (#{0 1} mode) (#{0 1} button) (= outside menu)) (pickup m slot (= 0 button))
-      (not in-range?) m
-      (= 0 mode) (if (#{0 1} button) (pickup m slot (= 0 button)) m)
-      (= 1 mode) (if (#{0 1} button) (quick-move m slot) m)
-      (= 2 mode) (if (or (< -1 button 9) (= 40 button)) (swap-with m slot button) m)
-      (= 3 mode) (clone m slot)
-      (= 4 mode) (throw-out m slot button)
-      (= 6 mode) (pickup-all m slot button)
-      :else m)
-     before)))
+      (cond
+        (= 5 mode) (quick-craft m slot button)
+        (:status quickcraft) (assoc m :quickcraft nil)
+        (and (#{0 1} mode) (#{0 1} button) (= outside menu)) (pickup m slot (= 0 button))
+        (not in-range?) m
+        (= 0 mode) (if (#{0 1} button) (pickup m slot (= 0 button)) m)
+        (= 1 mode) (if (#{0 1} button) (quick-move m slot) m)
+        (= 2 mode) (if (or (< -1 button 9) (= 40 button)) (swap-with m slot button) m)
+        (= 3 mode) (clone m slot)
+        (= 4 mode) (throw-out m slot button)
+        (= 6 mode) (pickup-all m slot button)
+        :else m)
+      before)))

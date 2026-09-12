@@ -69,13 +69,13 @@
 
 (defn- reject-deltas [world eid pos pos']
   (cond-> [(own-change world eid pos)]
-    pos' (conj (own-change world eid pos'))))
+          pos' (conj (own-change world eid pos'))))
 
 (defn- change-deltas [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk changes)
-        all     (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
+        all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
         chunks'' (chunk/chunks-set-blocks chunks' gen/flat-chunk all)
-        mixed   (liquid/mix-changes chunks'' gen/flat-chunk (map first all))]
+        mixed (liquid/mix-changes chunks'' gen/flat-chunk (map first all))]
     (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
           (map (fn [[p _]] (out/all (out/fizz p))))
           mixed)))
@@ -219,11 +219,11 @@
         [x y z] pos
         t (:tick world)]
     (concat
-     (change-deltas world [[pos (block/state :carved-pumpkin {:facing dir})]])
-     [[:spawn-entity (entity/item [(+ (long x) 0.5 (* 0.65 (long ox))) (+ (long y) 0.1) (+ (long z) 0.5 (* 0.65 (long oz)))]
-                                  [(+ (* 0.05 (long ox)) (* 0.02 (random/of-key [t pos :sx]))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (random/of-key [t pos :sz])))]
-                                  {:item :pumpkin-seeds :count 4})]
-      (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
+      (change-deltas world [[pos (block/state :carved-pumpkin {:facing dir})]])
+      [[:spawn-entity (entity/item [(+ (long x) 0.5 (* 0.65 (long ox))) (+ (long y) 0.1) (+ (long z) 0.5 (* 0.65 (long oz)))]
+                                   [(+ (* 0.05 (long ox)) (* 0.02 (random/of-key [t pos :sx]))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (random/of-key [t pos :sz])))]
+                                   {:item :pumpkin-seeds :count 4})]
+       (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
 
 (defn- compost-deltas [world pos item]
   (let [cur (block-at world pos) lvl (block/prop-long cur :level)]
@@ -360,7 +360,7 @@
 (defn- bookshelf-state [^long st items]
   (let [props (reduce (fn [m ^long i]
                         (assoc m (keyword (str "slot-" i "-occupied"))
-                               (if (nth items i) :true :false)))
+                                 (if (nth items i) :true :false)))
                       (block/props-of st) (range 6))]
     (block/state (block/block-of st) props)))
 
@@ -509,12 +509,12 @@
         [x y z] pos]
     (when (= :shulker-box (:kind e))
       (concat
-       (when (container/animation world pos) [[:shulker-anim pos nil]])
-       (when (some some? (:items e))
-         (let [item (block/block-of (block-at world pos))]
-           [[:spawn-entity (entity/item [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
-                                        (entity/pop-velocity [(:tick world) pos :shulker])
-                                        (be/to-stack item e))]]))))))
+        (when (container/animation world pos) [[:shulker-anim pos nil]])
+        (when (some some? (:items e))
+          (let [item (block/block-of (block-at world pos))]
+            [[:spawn-entity (entity/item [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+                                         (entity/pop-velocity [(:tick world) pos :shulker])
+                                         (be/to-stack item e))]]))))))
 
 (defn- lectern-break-deltas
   [world pos]
@@ -560,7 +560,7 @@
        (liquid/liquid-state? cur) true
        (fire/fire-state? cur) true
        (= :snow-layer (block/type-of cur)) (let [n (block/prop-long cur :layers)]
-                                            (if (= item :snow) (< n 8) (= n 1)))
+                                             (if (= item :snow) (< n 8) (= n 1)))
        (block/stackable? cur item) true
        :else (block/can-be-replaced? cur)))))
 
@@ -604,9 +604,9 @@
 
 (defn- slab-merge [world pos pos' face item]
   (let [clicked (block-at world pos)
-        part    (block/slab-part clicked)
-        lower?  (and (= 1 (long face)) (= :bottom part))
-        upper?  (and (= 0 (long face)) (= :top part))]
+        part (block/slab-part clicked)
+        lower? (and (= 1 (long face)) (= :bottom part))
+        upper? (and (= 0 (long face)) (= :top part))]
     (cond
       (and (block/same-slab? clicked item) (or lower? upper?))
       [pos (block/double-slab item)]
@@ -644,25 +644,25 @@
                                       (replaceable? world pos))]
       (let [pile (if (get-in world [:entities eid :sneaking?]) nil item)
             [_ y' _ :as target] (if (replaceable? world pos pile) pos (mapv + pos off))
-            pos'   (when (chunk/in-range? y') target)
-            state  (or (when (and pos' (contains? connect/placed-types (block/type-of state)))
-                         (connect/reshape (:chunks world) pos' state (:tick world)))
-                       state)
-            state  (if pos'
-                     (support/fitted (:chunks world) gen/flat-chunk pos' state face
-                                     (or (get-in world [:entities eid :yaw]) 0.0) (or (get-in world [:entities eid :pitch]) 0.0)
-                                     (boolean (get-in world [:entities eid :sneaking?]))
-                                     (:tick world)
-                                     (= pos' pos))
-                     state)
-            state  (if (and pos' state (contains? container/container-types (block/type-of state)))
-                     (container/placed-state (:chunks world) pos' state face
-                                             (boolean (get-in world [:entities eid :sneaking?]))
-                                             (or (get-in world [:entities eid :yaw]) 0.0)
-                                             (or (get-in world [:entities eid :pitch]) 0.0))
-                     state)
-            state  (if (and pos' state) (waterlogged world pos' state) state)
-            state  (if pos' (stacked world pos' state item) state)
+            pos' (when (chunk/in-range? y') target)
+            state (or (when (and pos' (contains? connect/placed-types (block/type-of state)))
+                        (connect/reshape (:chunks world) pos' state (:tick world)))
+                      state)
+            state (if pos'
+                    (support/fitted (:chunks world) gen/flat-chunk pos' state face
+                                    (or (get-in world [:entities eid :yaw]) 0.0) (or (get-in world [:entities eid :pitch]) 0.0)
+                                    (boolean (get-in world [:entities eid :sneaking?]))
+                                    (:tick world)
+                                    (= pos' pos))
+                    state)
+            state (if (and pos' state (contains? container/container-types (block/type-of state)))
+                    (container/placed-state (:chunks world) pos' state face
+                                            (boolean (get-in world [:entities eid :sneaking?]))
+                                            (or (get-in world [:entities eid :yaw]) 0.0)
+                                            (or (get-in world [:entities eid :pitch]) 0.0))
+                    state)
+            state (if (and pos' state) (waterlogged world pos' state) state)
+            state (if pos' (stacked world pos' state item) state)
             merged (slab-merge world pos pos' face item)]
         (cond
           merged
@@ -731,7 +731,7 @@
        (* block-interaction-range block-interaction-range))))
 
 (defn- look-dir [e]
-  (let [yaw   (Math/toRadians (double (:yaw e)))
+  (let [yaw (Math/toRadians (double (:yaw e)))
         pitch (Math/toRadians (double (:pitch e)))]
     [(- (* (Math/sin yaw) (Math/cos pitch)))
      (- (Math/sin pitch))
@@ -765,7 +765,7 @@
         d (mapv #(* 5.0 (double %)) dir)
         step (fn [_ dc] (if (neg? (double dc)) -1 1))
         next-t (fn [f dc c] (if (zero? (double dc)) Double/POSITIVE_INFINITY
-                                (/ (- (if (pos? (double dc)) (inc (long c)) (double c)) (double f)) (double dc))))]
+                                                    (/ (- (if (pos? (double dc)) (inc (long c)) (double c)) (double f)) (double dc))))]
     (loop [[cx cy cz :as cell] (mapv #(long (Math/floor (double %))) from)
            tx (next-t (from 0) (d 0) cx) ty (next-t (from 1) (d 1) cy) tz (next-t (from 2) (d 2) cz)
            n 0]
@@ -795,11 +795,11 @@
       (when relative (pour-deltas world eid relative state nil))
       holds? (concat (change-deltas world [[pos (with-water cur true)]]) [(out/except eid (out/sound sound pos 1.0 1.0))])
       :else (concat
-             (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur)) (get-in world [:rules :block-drops] true))
-               (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
-                            (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt])))))
-             (change-deltas world [[pos state]])
-             [(out/except eid (out/sound sound pos 1.0 1.0))]))))
+              (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur)) (get-in world [:rules :block-drops] true))
+                (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
+                             (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt])))))
+              (change-deltas world [[pos state]])
+              [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
 (defn- add [world eid e state]
   (when-let [{:keys [pos face]} (clip world e :none)]
@@ -848,18 +848,18 @@
   (let [st (block-at world pos)]
     (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key [(:tick world) pos :meal salt])))]
       (concat
-       (when (seq changes) (change-deltas world changes))
-       (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
-       [(out/all (out/bonemeal pos))]))))
+        (when (seq changes) (change-deltas world changes))
+        (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
+        [(out/all (out/bonemeal pos))]))))
 
 (defn- till-deltas [world [_eid pos _ _ _]]
   (let [cur (block-at world pos)]
     (when-let [[to freed] (grow/tilled (block/block-of cur))]
       (when (zero? (block-at world (mapv + pos [0 1 0])))
         (concat
-         (change-deltas world [[pos (block/state to)]])
-         (when freed [[:spawn-entity (items/popped world pos {:item freed :count 1} :till)]])
-         [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
+          (change-deltas world [[pos (block/state to)]])
+          (when freed [[:spawn-entity (items/popped world pos {:item freed :count 1} :till)]])
+          [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
 
 (defn- flatten-deltas [world [_eid pos face _ _]]
   (let [cur (block-at world pos)]
@@ -867,8 +867,8 @@
                (contains? grow/flattened (block/block-of cur))
                (zero? (block-at world (mapv + pos [0 1 0]))))
       (concat
-       (change-deltas world [[pos (block/state :dirt-path)]])
-       [(out/all (out/sound :shovel/flatten pos 1.0 1.0))]))))
+        (change-deltas world [[pos (block/state :dirt-path)]])
+        [(out/all (out/sound :shovel/flatten pos 1.0 1.0))]))))
 
 (defn- half-changes [world pos ^long st]
   (let [cur (block-at world pos)]
@@ -901,7 +901,7 @@
 (defn- equip-armor-deltas [world eid item slot]
   (let [e (get-in world [:entities eid])]
     (when (and e (nil? (get-in e [:inventory slot])))
-      (let [held  (+ 36 (long (or (:held-slot e) 0)))
+      (let [held (+ 36 (long (or (:held-slot e) 0)))
             stack (or (get-in e [:inventory held])
                       {:item item :count 1})]
         [[:set-slot eid slot stack]
@@ -928,7 +928,7 @@
 
 (defn- bed-place-deltas [world eid pos pos' state item]
   (let [head-pos (mapv + pos' (connect/partner-offset state))
-        head     (block/state (block/block-of state) (assoc (block/props-of state) :part :head))]
+        head (block/state (block/block-of state) (assoc (block/props-of state) :part :head))]
     (second-cell-deltas world eid pos pos' state head-pos head
                         #(replaceable? world head-pos item))))
 
@@ -956,7 +956,7 @@
        (not (and item (get-in world [:entities eid :sneaking?])))))
 
 (defn- bed-in-range? [world eid head]
-  (let [p  (get-in world [:entities eid :pos])
+  (let [p (get-in world [:entities eid :pos])
         st (block-at world head)
         foot (mapv + head (connect/partner-offset st))]
     (some (fn [[x y z]]
@@ -966,7 +966,7 @@
           [head foot])))
 
 (defn- bed-blocked? [world head]
-  (let [st   (block-at world head)
+  (let [st (block-at world head)
         above (mapv + head [0 1 0])]
     (or (block/full-cube? (block-at world above))
         (block/full-cube? (block-at world (mapv + above (connect/partner-offset st)))))))
@@ -978,8 +978,8 @@
 
 (defn- sleep-deltas [world eid pos]
   (let [head (bed/head-pos (:chunks world) pos)
-        st   (when head (block-at world head))
-        say  (fn [k] [(out/to eid (out/overlay [{:translate k}]))])]
+        st (when head (block-at world head))
+        say (fn [k] [(out/to eid (out/overlay [{:translate k}]))])]
     (cond
       (nil? head) nil
       (= :true (:occupied (block/props-of st))) (say "block.minecraft.bed.occupied")
@@ -994,7 +994,7 @@
         (concat (spawn-deltas world eid head)
                 (change-deltas world [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :true))]])
                 [[:merge-entity eid {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
-                                     :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
+                                     :vel      [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
                  (sleep/announcement world (inc (count (sleep/sleepers world))))])))))
 
 (def ^:private mud-blocks (delay (set (get-in @data/tags ["block" "convertable_to_mud"]))))
@@ -1008,12 +1008,12 @@
              (out/all (out/sound :bottle/empty pos 1.0 1.0))])))
 
 (defn- place-deltas [world [eid pos face item cursor] origin]
-  (let [item      (or item (sense/held-of (get-in world [:entities eid])))
-        args      [eid pos face item cursor]
-        at        (merge (get-in world [:entities eid]) origin)
-        world     (assoc-in world [:entities eid] at)
+  (let [item (or item (sense/held-of (get-in world [:entities eid])))
+        args [eid pos face item cursor]
+        at (merge (get-in world [:entities eid]) origin)
+        world (assoc-in world [:entities eid] at)
         use-item? (= 255 (bit-and (long face) 0xFF))
-        pour      (liquid/bucket->state item)]
+        pour (liquid/bucket->state item)]
     (cond
       (opens? world eid pos item use-item?) (toggle-deltas world eid pos (block-at world pos))
       (uses-bed? world eid pos item use-item?) (sleep-deltas world eid pos)
@@ -1021,21 +1021,21 @@
       (use-deltas world eid pos face item cursor)
       (and (= :scaffolding item) (not use-item?) (= :scaffolding (block/type-of (block-at world pos))))
       (scaffold-place-deltas world eid pos face)
-      (nil? item)                  nil
-      pour                         (when use-item? (add world eid at pour))
-      (= :flint-and-steel item)    (when-not use-item? (flint-deltas world args))
-      (= :bucket item)             (when use-item? (scoop-deltas world eid at))
-      (= :lily-pad item)           (when use-item? (lily-deltas world eid at))
-      (= :potion item)             (when-not use-item? (mud-deltas world eid pos face))
-      (= :bone-meal item)          (when-not use-item? (bonemeal-deltas world args))
-      (@hoes item)                 (when-not use-item? (till-deltas world args))
-      (= :honeycomb item)          (when-not use-item? (wax-deltas world args))
-      (@axes item)                 (when-not use-item? (or (axe-deltas world args) (solid-place-deltas world args)))
-      (@shovels item)              (when-not use-item? (flatten-deltas world args))
-      (mobs/egg-type item)         (when-not use-item? (spawn-egg-deltas world args))
+      (nil? item) nil
+      pour (when use-item? (add world eid at pour))
+      (= :flint-and-steel item) (when-not use-item? (flint-deltas world args))
+      (= :bucket item) (when use-item? (scoop-deltas world eid at))
+      (= :lily-pad item) (when use-item? (lily-deltas world eid at))
+      (= :potion item) (when-not use-item? (mud-deltas world eid pos face))
+      (= :bone-meal item) (when-not use-item? (bonemeal-deltas world args))
+      (@hoes item) (when-not use-item? (till-deltas world args))
+      (= :honeycomb item) (when-not use-item? (wax-deltas world args))
+      (@axes item) (when-not use-item? (or (axe-deltas world args) (solid-place-deltas world args)))
+      (@shovels item) (when-not use-item? (flatten-deltas world args))
+      (mobs/egg-type item) (when-not use-item? (spawn-egg-deltas world args))
       (and use-item? (armor-slot-of item))
       (equip-armor-deltas world eid item (armor-slot-of item))
-      :else                        (solid-place-deltas world args))))
+      :else (solid-place-deltas world args))))
 
 (defn- sequence-of [tag args]
   (case tag
@@ -1053,7 +1053,7 @@
                          (acted-at world eid (get origins i) pos))
                 (let [pos' (mapv + pos off)]
                   (cond-> [(own-change world eid pos)]
-                    (chunk/in-range? (nth pos' 1)) (conj (own-change world eid pos')))))))
+                          (chunk/in-range? (nth pos' 1)) (conj (own-change world eid pos')))))))
           (map-indexed vector events)))
 
 (defn ack-deltas [world events]
@@ -1074,7 +1074,7 @@
 (defn- block-edits-deltas [world events]
   (let [[_ edits] (reduce (fn [[w acc] [i [tag & args]]]
                             (let [ds (case tag
-                                       :dig   (dig-deltas w args)
+                                       :dig (dig-deltas w args)
                                        :place (place-deltas w args (get-in world [:use-origins i]))
                                        :sign-update (sign-update-deltas w args)
                                        nil)]

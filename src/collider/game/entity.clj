@@ -5,16 +5,16 @@
 (set! *warn-on-reflection* true)
 
 (defrecord Mob [pos vel on-ground yaw pitch head-yaw walked wet? jump-cd
-   task pending look wake-tick say-tick
-   health hurt-resist last-damage death-time health-sent panic-until
-   baby-until love-until breed-ready-at tempt-cooldown-until
-   type color track])
+                task pending look wake-tick say-tick
+                health hurt-resist last-damage death-time health-sent panic-until
+                baby-until love-until breed-ready-at tempt-cooldown-until
+                type color track])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel tp-target
-   chunk-pos sent-chunks needs-spawn? tracking track
-   health hurt-resist last-damage death-time health-sent
-   inventory held-slot using-item? sneaking? sprinting? skin-parts
-   ping keepalive-at keepalive-pending?])
+                   chunk-pos sent-chunks needs-spawn? tracking track
+                   health hurt-resist last-damage death-time health-sent
+                   inventory held-slot using-item? sneaking? sprinting? skin-parts
+                   ping keepalive-at keepalive-pending?])
 
 (defrecord Item [type pos vel yaw pitch on-ground stack age pickup-delay needs-sync? track])
 
@@ -25,7 +25,7 @@
 (defn item
   ([pos vel stack] (item pos vel stack 10))
   ([pos vel stack delay]
-   {:type :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
+   {:type  :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
     :stack stack :age 0 :pickup-delay delay}))
 
 (defn pop-velocity [ks]
@@ -36,21 +36,21 @@
   (if (record? m)
     m
     (let [m (cond-> m
-              (:pos m) (assoc :pos (v/v3 (:pos m)))
-              (:vel m) (assoc :vel (v/v3 (:vel m))))]
-     (case (:type m)
-      :player (map->Player m)
-      :item   (map->Item m)
-      :tnt    (map->Tnt m)
-      :falling-block (map->FallingBlock m)
-      (map->Mob m)))))
+                    (:pos m) (assoc :pos (v/v3 (:pos m)))
+                    (:vel m) (assoc :vel (v/v3 (:vel m))))]
+      (case (:type m)
+        :player (map->Player m)
+        :item (map->Item m)
+        :tnt (map->Tnt m)
+        :falling-block (map->FallingBlock m)
+        (map->Mob m)))))
 
 (defn eye-height ^double [e]
   (case (:type e)
     :player 1.62
-    :tnt    0.0
+    :tnt 0.0
     :falling-block 0.0
-    :item   0.21
+    :item 0.21
     1.19))
 
 (defn mob-moved ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]

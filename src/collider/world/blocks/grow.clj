@@ -62,7 +62,7 @@
              (or (< a 3) (let [u (gen/at chunks (dir/up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
     (let [st' (aged st a)]
       (cond-> [[p st']]
-        (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
+              (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
 
 (defn- pitcher-tick [chunks p st roll]
   (when (and (= :lower (:half (block/props-of st))) (< (age st) 4) (growth-roll? chunks p st roll))
@@ -192,7 +192,7 @@
       (when (ok? target) [[target st]]))))
 
 (def ^:private huge-mushroom
-  {:red-mushroom   {:cap :red-mushroom-block   :radius 2 :tag "huge_red_mushroom_can_place_on"}
+  {:red-mushroom   {:cap :red-mushroom-block :radius 2 :tag "huge_red_mushroom_can_place_on"}
    :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
 (def ^:private stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
 (defn- flag [b] (if b :true :false))
@@ -229,8 +229,8 @@
           :let [xe (or (= dx (- r)) (= dx r)) ze (or (= dz (- r)) (= dz r))]
           :when (or (>= dy height) (not= xe ze))]
       [(mapv + p [dx dy dz])
-       (block/state cap {:down :false :up (flag (>= dy (dec height)))
-                         :west (flag (< dx (- center))) :east (flag (> dx center))
+       (block/state cap {:down  :false :up (flag (>= dy (dec height)))
+                         :west  (flag (< dx (- center))) :east (flag (> dx center))
                          :north (flag (< dz (- center))) :south (flag (> dz center))})])))
 
 (defn- brown-cap [p cap ^long radius ^long height]
@@ -239,9 +239,9 @@
               xe (or nx px) ze (or nz pz)]
         :when (not (and xe ze))]
     [(mapv + p [dx height dz])
-     (block/state cap {:up :true :down :false
-                       :west (flag (or nx (and ze (= dx (- 1 radius)))))
-                       :east (flag (or px (and ze (= dx (dec radius)))))
+     (block/state cap {:up    :true :down :false
+                       :west  (flag (or nx (and ze (= dx (- 1 radius)))))
+                       :east  (flag (or px (and ze (= dx (dec radius)))))
                        :north (flag (or nz (and xe (= dz (- 1 radius)))))
                        :south (flag (or pz (and xe (= dz (dec radius)))))})]))
 
@@ -398,7 +398,7 @@
   (when-let [new (eyeblossom/switched st time)]
     [[p new]]))
 
-(def ^:private potted-eyeblossom {:potted-open-eyeblossom :potted-closed-eyeblossom
+(def ^:private potted-eyeblossom {:potted-open-eyeblossom   :potted-closed-eyeblossom
                                   :potted-closed-eyeblossom :potted-open-eyeblossom})
 
 (defn- potted-tick [p ^long st ^long time]
@@ -427,33 +427,33 @@
 (defn random-tick
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
-  (let [st (long st)]
-    (case (block/type-of st)
-      (:crop :carrot :potato :beetroot :torchflower-crop) (crop-tick chunks p st roll)
-      :stem (stem-tick chunks p st roll)
-      :pitcher-crop (pitcher-tick chunks p st roll)
-      :sugar-cane (cane-tick chunks p st roll)
-      :cactus (cactus-tick chunks p st roll)
-      :bamboo-stalk (bamboo-tick chunks p st roll)
-      :bamboo-sapling (bamboo-sapling-tick chunks p st roll)
-      :sweet-berry-bush (berry-tick chunks p st roll)
-      :kelp (kelp-tick chunks p st roll)
-      :mushroom (mushroom-tick chunks p st roll)
-      (:grass :mycelium) (spread-tick chunks p st roll (long time) ctx)
-      :farmland (farmland-tick chunks p st roll)
-      :cocoa (when (and (chance? roll :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
-      :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/dampening st))) [[p (block/state :water)]])
-      :snow-layer (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) 11) [[p 0]])
-      :vine (vine-tick chunks p st roll)
-      :budding-amethyst (budding-tick chunks p st roll)
-      :eyeblossom (eyeblossom-tick p st time)
-      :flower-pot (potted-tick p st time)
-      :nether-wart (nether-wart-tick p st roll)
-      :mangrove-propagule (propagule-tick p st)
-      :chorus-flower (chorus-tick chunks p st roll)
-      (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-tick p st)
-      (:weeping-vines :twisting-vines :cave-vines) (vines-tick chunks p st roll)
-      (when (block/weathering? st) (weather-tick chunks p st roll))))))
+   (let [st (long st)]
+     (case (block/type-of st)
+       (:crop :carrot :potato :beetroot :torchflower-crop) (crop-tick chunks p st roll)
+       :stem (stem-tick chunks p st roll)
+       :pitcher-crop (pitcher-tick chunks p st roll)
+       :sugar-cane (cane-tick chunks p st roll)
+       :cactus (cactus-tick chunks p st roll)
+       :bamboo-stalk (bamboo-tick chunks p st roll)
+       :bamboo-sapling (bamboo-sapling-tick chunks p st roll)
+       :sweet-berry-bush (berry-tick chunks p st roll)
+       :kelp (kelp-tick chunks p st roll)
+       :mushroom (mushroom-tick chunks p st roll)
+       (:grass :mycelium) (spread-tick chunks p st roll (long time) ctx)
+       :farmland (farmland-tick chunks p st roll)
+       :cocoa (when (and (chance? roll :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]])
+       :ice (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/dampening st))) [[p (block/state :water)]])
+       :snow-layer (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) 11) [[p 0]])
+       :vine (vine-tick chunks p st roll)
+       :budding-amethyst (budding-tick chunks p st roll)
+       :eyeblossom (eyeblossom-tick p st time)
+       :flower-pot (potted-tick p st time)
+       :nether-wart (nether-wart-tick p st roll)
+       :mangrove-propagule (propagule-tick p st)
+       :chorus-flower (chorus-tick chunks p st roll)
+       (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-tick p st)
+       (:weeping-vines :twisting-vines :cave-vines) (vines-tick chunks p st roll)
+       (when (block/weathering? st) (weather-tick chunks p st roll))))))
 
 (defn random-drops [^long st roll]
   (when (and (block/leaves? st)
@@ -572,7 +572,7 @@
                                          (zero? (pick roll [:seed i dy] 6))
                                          (= :water (liquid/liquid-class (gen/at chunks q)))
                                          (block/tagged? (gen/at chunks (dir/down q)) "coral_blocks"))]
-                          [q (block/state :sea-pickle {:pickles (keyword (str (inc (pick roll [:n i dy] 4))))
+                          [q (block/state :sea-pickle {:pickles     (keyword (str (inc (pick roll [:n i dy] 4))))
                                                        :waterlogged :true})]))))
         (pickle-cells p)))
 

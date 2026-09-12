@@ -24,12 +24,12 @@
 
 (defn nibble-set! [^bytes arr ^long idx ^long v]
   (let [bi (bit-shift-right idx 1)
-        b  (long (aget arr bi))]
+        b (long (aget arr bi))]
     (aset arr bi
           (unchecked-byte
-           (if (zero? (bit-and idx 1))
-             (bit-or (bit-and b 0xF0) v)
-             (bit-or (bit-and b 0x0F) (bit-shift-left v 4)))))))
+            (if (zero? (bit-and idx 1))
+              (bit-or (bit-and b 0xF0) v)
+              (bit-or (bit-and b 0x0F) (bit-shift-left v 4)))))))
 
 (defn first-above ^Section [chunk ^long si]
   (loop [i (inc si)]
@@ -57,14 +57,14 @@
     (Section. b (.block-light s) (.sky-light s))))
 
 (defn set-block [chunk lx y lz state]
-  (let [y   (long y)
-        si  (section-index y)
+  (let [y (long y)
+        si (section-index y)
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
-        s   (or (get (:sections chunk) si) (new-section chunk si))]
+        s (or (get (:sections chunk) si) (new-section chunk si))]
     (assoc-in chunk [:sections si] (section-set-block s idx state))))
 
 (defn get-block ^long [chunk lx y lz]
-  (let [y  (long y)
+  (let [y (long y)
         si (section-index y)]
     (if-let [s (get (:sections chunk) si)]
       (bit-and (long (aget ^shorts (.blocks ^Section s)
@@ -119,10 +119,10 @@
     chunks
     (let [cache (HashMap.)]
       (doseq [[[x y z] state] changes]
-        (let [x  (long x) y (long y) z (long z)
+        (let [x (long x) y (long y) z (long z)
               cp (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
               si (section-index y)
-              k  [cp si]
+              k [cp si]
               ^shorts arr
               (or (.get cache k)
                   (let [c (get chunks cp template)
@@ -133,11 +133,11 @@
           (aset arr (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15))
                 (short state))))
       (reduce
-       (fn [chs [[cp si] arr]]
-         (let [c (get chs cp template)
-               ^Section s (or (get (:sections c) si) (new-section c si))]
-           (assoc chs cp
-                  (assoc-in c [:sections si]
-                            (->Section arr (.block-light s) (.sky-light s))))))
-       chunks
-       (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))
+        (fn [chs [[cp si] arr]]
+          (let [c (get chs cp template)
+                ^Section s (or (get (:sections c) si) (new-section c si))]
+            (assoc chs cp
+                       (assoc-in c [:sections si]
+                                 (->Section arr (.block-light s) (.sky-light s))))))
+        chunks
+        (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))

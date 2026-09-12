@@ -41,12 +41,12 @@
   (let [^Socket sock (:sock c)
         ^ArrayBlockingQueue q (:q c)
         ^AtomicBoolean closing (:closing c)
-        out     (BufferedOutputStream. (.getOutputStream sock))
+        out (BufferedOutputStream. (.getOutputStream sock))
         payload (Buf. 1024)
-        body    (Buf. 1024)
-        head    (Buf. 5)
-        defl    (Deflater.)
-        chunk   (byte-array 8192)]
+        body (Buf. 1024)
+        head (Buf. 5)
+        defl (Deflater.)
+        chunk (byte-array 8192)]
     (try
       (loop [threshold -1]
         (let [x (.poll q writer-poll-ms TimeUnit/MILLISECONDS)]
@@ -76,12 +76,12 @@
         (.close sock)))))
 
 (defn- reader-loop [^Conn conn io]
-  (let [in   (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
-        buf  (Buf. 2048)
+  (let [in (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
+        buf (Buf. 2048)
         infl (Inflater.)]
     (try
       (loop []
-        (let [raw   (c/read-frame! in buf)
+        (let [raw (c/read-frame! in buf)
               frame (c/decompress! raw (long (:threshold @(:st conn))) infl)]
           (when-let [m (packets/decode (conn-state conn) frame)]
             ((:on-packet io) conn io m)))
@@ -98,7 +98,7 @@
 (defn- serve-conn! [^Socket sock io]
   (let [conn (->Conn sock (ArrayBlockingQueue. out-queue-size)
                      (atom {:state :handshake :threshold -1
-                            :addr (str (.getRemoteSocketAddress sock))})
+                            :addr  (str (.getRemoteSocketAddress sock))})
                      (AtomicBoolean. false))]
     (swap! (:st conn) assoc :writer
            (Thread/startVirtualThread

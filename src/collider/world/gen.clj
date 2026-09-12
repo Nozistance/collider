@@ -14,7 +14,7 @@
 (defn- flat-section []
   (let [bs (short-array 4096)]
     (dotimes [i 4096]
-      (let [y  (quot i 256)
+      (let [y (quot i 256)
             st (long (case y 0 (block/state :bedrock), (1 2) (block/state :dirt), 3 (block/state :grass-block), 0))]
         (aset bs i (short st))))
     (chunk/->Section bs (byte-array 2048) (flat-sky))))

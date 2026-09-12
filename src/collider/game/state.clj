@@ -113,17 +113,17 @@
                         (light/relight-batch gen/flat-chunk real))
             derived (connect/derived-changes chunks' (map first real) (:tick w))
             chunks' (chunk/chunks-set-blocks chunks' gen/flat-chunk derived)
-            events  (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
+            events (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
         (-> w
             (assoc :chunks chunks')
             (drop-block-entities real)
             (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
             (cond-> (seq events)
-              (update :block-events
-                      (fn [ev]
-                        (reduce (fn [ev [pos st]]
-                                  (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
-                                (or ev (i/int-map)) events)))))))))
+                    (update :block-events
+                            (fn [ev]
+                              (reduce (fn [ev [pos st]]
+                                        (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
+                                      (or ev (i/int-map)) events)))))))))
 
 (defn spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
@@ -134,16 +134,16 @@
                     (spawn-seed w eid)))
 
 (defn- new-player [name tick pos]
-  {:type           :player :name name :uuid (offline-uuid name)
-   :pos            pos :yaw 0.0 :pitch 0.0 :on-ground true
-   :chunk-pos      nil :sent-chunks (i/int-set) :needs-spawn? true
-   :chunk-rate     9.0 :chunk-quota 0.0 :batches-unacked 0 :batches-max 1
-   :tracking       (i/int-set) :track nil
-   :inventory      {} :held-slot 0
-   :sneaking?      false :sprinting? false :skin-parts 0 :ping 0
-   :health         20.0
-   :health-sent    20.0
-   :keepalive-at   tick :keepalive-pending? false})
+  {:type         :player :name name :uuid (offline-uuid name)
+   :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
+   :chunk-pos    nil :sent-chunks (i/int-set) :needs-spawn? true
+   :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0 :batches-max 1
+   :tracking     (i/int-set) :track nil
+   :inventory    {} :held-slot 0
+   :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
+   :health       20.0
+   :health-sent  20.0
+   :keepalive-at tick :keepalive-pending? false})
 
 (defn- player-join [w eid name]
   (-> w
@@ -165,8 +165,8 @@
     (cond-> (-> (vacated-bed w eid)
                 (update :entities dissoc eid)
                 (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
-      name (assoc-in [:profiles name]
-                     (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
+            name (assoc-in [:profiles name]
+                           (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
 
 (def ^:private swords (delay (set (data/tag-values "item" "swords"))))
 (defn- sword? [item]
@@ -237,7 +237,7 @@
 (defn- teleport-ack [w eid id]
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e -1))))
-      (update-entity w eid merge {:pos (v/v3 (:tp-target e)) :tp-target nil :tp-id nil
+      (update-entity w eid merge {:pos        (v/v3 (:tp-target e)) :tp-target nil :tp-id nil
                                   :client-vel [0.0 0.0 0.0] :fall 0.0})
       w)))
 
@@ -270,7 +270,7 @@
     (if-let [e (get-in w [:entities eid])]
       (let [unacked (max 0 (dec (long (or (:batches-unacked e) 0))))]
         (update-entity w eid merge (cond-> {:chunk-rate rate :batches-unacked unacked :batches-max 10}
-                                     (zero? unacked) (assoc :chunk-quota 1.0))))
+                                           (zero? unacked) (assoc :chunk-quota 1.0))))
       w)))
 
 (defn- keepalive-echo [w eid id]
@@ -345,7 +345,7 @@
        :else (cond-> (assoc e :health (max 0.0 (- health amount))
                               :last-damage amount
                               :hurt-resist max-resist)
-               dx (knock-back (double dx) (double dz)))))))
+                     dx (knock-back (double dx) (double dz)))))))
 
 (defn- apply-entity-delta [tick e [tag & args]]
   (case tag
@@ -398,13 +398,13 @@
 (defn apply-deltas [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
         [w removes] (reduce
-                     (fn [[w removes] [tag & args :as delta]]
-                       (if (= :remove-entity tag)
-                         [w (conj removes (first args))]
-                         [(apply-world-delta w delta) removes]))
-                     [world []]
-                     (.world d))
-        entities    (:entities w)
+                      (fn [[w removes] [tag & args :as delta]]
+                        (if (= :remove-entity tag)
+                          [w (conj removes (first args))]
+                          [(apply-world-delta w delta) removes]))
+                      [world []]
+                      (.world d))
+        entities (:entities w)
         updated (r/fold 1 (r/monoid i/merge i/int-map)
                         (fn [m [eid ds]]
                           (if-let [e (get entities eid)]

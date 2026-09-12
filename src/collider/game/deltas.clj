@@ -23,13 +23,13 @@
 
 (defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
-         w  (transient (.world acc))
-         e  (transient (.entities acc))
-         o  (transient (.out acc))]
+         w (transient (.world acc))
+         e (transient (.entities acc))
+         o (transient (.out acc))]
     (if ds
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
-          :fx    (recur ds w e (conj! o (nth d 1)))
+          :fx (recur ds w e (conj! o (nth d 1)))
           (:merge-entity :track :tracking :set-slot :chunks-sent :push :damage :teleport :client-slots)
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
@@ -46,11 +46,11 @@
 
 (defn run ^Deltas [fs]
   (fold (fn [^Deltas acc f]
-                  (let [r (f)]
-                    (if (fn? (first r))
-                      (merge-deltas acc (run (vec r)))
-                      (add acc r))))
-                fs))
+          (let [r (f)]
+            (if (fn? (first r))
+              (merge-deltas acc (run (vec r)))
+              (add acc r))))
+        fs))
 
 (defn of ^Deltas [systems world events]
   (run (mapv (fn [s] (fn [] (s world events))) systems)))

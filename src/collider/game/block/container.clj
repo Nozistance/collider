@@ -39,7 +39,7 @@
   (when-not (blocked? chunks pos)
     (if-let [p2 (chest/partner chunks pos st)]
       (when-not (blocked? chunks p2)
-        {:kind :block :rows 6 :type :generic-9x6 :title {:translate "container.chestDouble"}
+        {:kind  :block :rows 6 :type :generic-9x6 :title {:translate "container.chestDouble"}
          :cells (if (= :right (:type (block/props-of st))) [pos p2] [p2 pos])})
       {:kind :block :rows 3 :type :generic-9x3 :title {:translate "container.chest"} :cells [pos]})))
 
@@ -69,22 +69,22 @@
         st (state-at chunks pos) t (block/type-of st)]
     (cond
       (contains? chest-types t) (chest-menu chunks pos st)
-      (= :barrel t) {:kind :block :rows 3 :type :generic-9x3
+      (= :barrel t) {:kind  :block :rows 3 :type :generic-9x3
                      :title {:translate "container.barrel"} :cells [pos]}
       (= :shulker-box t) (when (can-open? world pos st)
-                           {:kind :block :rows 3 :type :shulker-box
+                           {:kind  :block :rows 3 :type :shulker-box
                             :title {:translate "container.shulkerBox"} :cells [pos]})
       (= :ender-chest t) (when-not (blocked? chunks pos)
-                           {:kind :ender :rows 3 :type :generic-9x3
+                           {:kind  :ender :rows 3 :type :generic-9x3
                             :title {:translate "container.enderchest"} :cells [] :pos pos})
-      (= :stonecutter t) {:kind :bench :type :stonecutter :size 2 :result 1
+      (= :stonecutter t) {:kind  :bench :type :stonecutter :size 2 :result 1
                           :title {:translate "container.stonecutter"}
                           :cells [] :pos pos :selected 0 :contents [nil nil]}
       (= :lectern t) (when (lectern/has-book? st)
-                       {:kind :lectern :type :lectern
+                       {:kind  :lectern :type :lectern
                         :title {:translate "container.lectern"}
                         :cells [] :pos pos})
-      (= :loom t) {:kind :bench :type :loom :size 4 :result 3
+      (= :loom t) {:kind  :bench :type :loom :size 4 :result 3
                    :title {:translate "container.loom"}
                    :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})))
 
@@ -208,10 +208,10 @@
 (defn- pitch [world pos salt] (random/hinge-pitch [(:tick world) pos salt]))
 
 (def ^:private copper-hinge
-  {:weathered-copper-chest :block.copper-chest-weathered
+  {:weathered-copper-chest       :block.copper-chest-weathered
    :waxed-weathered-copper-chest :block.copper-chest-weathered
-   :oxidized-copper-chest :block.copper-chest-oxidized
-   :waxed-oxidized-copper-chest :block.copper-chest-oxidized})
+   :oxidized-copper-chest        :block.copper-chest-oxidized
+   :waxed-oxidized-copper-chest  :block.copper-chest-oxidized})
 
 (defn- chest-sound-name [^long st open?]
   (let [t (block/type-of st)
@@ -289,12 +289,12 @@
                            (= :shulker-box t) (shulker-sound world pos open?)
                            (= :ender-chest t) (ender-sound world pos open?)))]
     (concat
-     (when (and (zero? before) (pos? after)) (edge true))
-     (when (and (pos? before) (zero? after)) (edge false))
-     (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
-     (when (= :shulker-box t) (trigger-deltas pos after))
-     (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
-       [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
+      (when (and (zero? before) (pos? after)) (edge true))
+      (when (and (pos? before) (zero? after)) (edge false))
+      (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
+      (when (= :shulker-box t) (trigger-deltas pos after))
+      (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
+        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
 
 (defn recheck-deltas [world]
   (let [t (long (:tick world))]
@@ -350,13 +350,13 @@
         v (:visible base)
         selected (long (:selected m))]
     (assoc base
-           :result 1
-           :quick (fn [inv slot] (cut-quick v inv slot))
-           :on-take (fn [inv] (shrink inv 0))
-           :derive (fn [inv]
-                     (if-let [r (workbench/cut-result (get inv 0) selected)]
-                       (assoc inv 1 r)
-                       (dissoc inv 1))))))
+      :result 1
+      :quick (fn [inv slot] (cut-quick v inv slot))
+      :on-take (fn [inv] (shrink inv 0))
+      :derive (fn [inv]
+                (if-let [r (workbench/cut-result (get inv 0) selected)]
+                  (assoc inv 1 r)
+                  (dissoc inv 1))))))
 
 (defn- loom-place? [slot stack]
   (case (long slot)
@@ -372,13 +372,13 @@
         selected (long (:selected m))
         pattern (when (< -1 selected (count patterns)) (nth patterns selected))]
     (assoc base
-           :result 3
-           :quick (fn [inv slot] (loom-quick v inv slot))
-           :on-take (fn [inv] (-> inv (shrink 0) (shrink 1)))
-           :derive (fn [inv]
-                     (if-let [r (workbench/loom-result (get inv 0) (get inv 1) pattern)]
-                       (assoc inv 3 r)
-                       (dissoc inv 3))))))
+      :result 3
+      :quick (fn [inv slot] (loom-quick v inv slot))
+      :on-take (fn [inv] (-> inv (shrink 0) (shrink 1)))
+      :derive (fn [inv]
+                (if-let [r (workbench/loom-result (get inv 0) (get inv 1) pattern)]
+                  (assoc inv 3 r)
+                  (dissoc inv 3))))))
 
 (defn- lectern-layout []
   {:count 1 :visible [0]
@@ -429,7 +429,7 @@
 
 (def ^:private take-sounds
   {:stonecutter :ui.stonecutter.take-result
-   :loom :ui.loom.take-result})
+   :loom        :ui.loom.take-result})
 
 (defn take-sound [m]
   (let [[x y z] (:pos m)]

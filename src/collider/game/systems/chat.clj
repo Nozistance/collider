@@ -19,9 +19,9 @@
    ["**" {:bold true}]
    ["__" {:underlined true}]
    ["~~" {:strikethrough true}]
-   ["*"  {:italic true}]
-   ["_"  {:italic true}]
-   ["`"  {:color "gray"}]])
+   ["*" {:italic true}]
+   ["_" {:italic true}]
+   ["`" {:color "gray"}]])
 
 (defn- marker-at [^String s ^long i]
   (some (fn [[^String m st]] (when (.startsWith s m i) [m st])) markers))
@@ -45,9 +45,9 @@
                      close (^[String int] String/.indexOf s m start)]
                  (if (> close start)
                    (let [inner (.substring s start close)
-                         runs  (if (= m "`")
-                                 [(merge styles st {:text inner})]
-                                 (parse-runs inner (merge styles st)))]
+                         runs (if (= m "`")
+                                [(merge styles st {:text inner})]
+                                (parse-runs inner (merge styles st)))]
                      (recur (+ close (.length m)) (StringBuilder.) (into (flush! out) runs)))
                    (do (.append plain m)
                        (recur (long start) plain out))))
@@ -63,14 +63,14 @@
         [y1 y2] (sort [(long ay) (long by)])
         [z1 z2] (sort [(long az) (long bz)])
         n (* (inc (- x2 x1)) (inc (- y2 y1)) (inc (- z2 z1)))
-        st      (block/state block)
+        st (block/state block)
         changes (vec (for [x (range x1 (inc x2))
                            y (range y1 (inc y2))
                            z (range z1 (inc z2))]
                        [[x y z] st]))]
     (concat
-     [[:set-blocks changes]]
-     (tell eid (format "filled **%d** blocks" n)))))
+      [[:set-blocks changes]]
+      (tell eid (format "filled **%d** blocks" n)))))
 
 (defn- say [eid key & with]
   [(out/to eid (out/system-chat [{:translate key :with (vec with)}]))])
@@ -104,7 +104,7 @@
       all (typed players)
       nearest (let [p (get-in world [:entities eid :pos])]
                 (when-let [near (first (sort-by (fn [id] [(v/dist-sq p (get-in world [:entities id :pos])) id])
-                                               (typed players)))]
+                                                (typed players)))]
                   [near]))
       entities (typed (keys (:entities world)))
       name (when-let [id (get-in world [:players name])] [id]))))
@@ -114,35 +114,35 @@
     [[:teleport eid pos]
      (out/to eid (out/teleport pos (:yaw e 0.0) (:pitch e 0.0)))
      (out/to eid (out/system-chat [{:translate "commands.teleport.success.location.single"
-                                    :with [(:name e) (format "%.2f" (double x)) (format "%.2f" (double y)) (format "%.2f" (double z))]}]))]))
+                                    :with      [(:name e) (format "%.2f" (double x)) (format "%.2f" (double y)) (format "%.2f" (double z))]}]))]))
 
 (defn- give-deltas [world eid [sel item n]]
   (let [ids (targets world eid sel)]
     (if (empty? ids)
       (say eid "argument.entity.notfound.player")
       (concat
-       (mapcat (fn [id]
-                 (let [e (get-in world [:entities id])
-                       [changes left] (items/add-stack (or (:inventory e) {}) {:item item :count n})]
-                   (concat
-                    (map (fn [[slot stack]] [:set-slot id slot stack]) changes)
-                    (when left [[:spawn-entity (items/dropped world id left true 0)]])
-                    (say eid "commands.give.success.single" n {:translate (str "item.minecraft." (data/snake item))} (:name e)))))
-               ids)))))
+        (mapcat (fn [id]
+                  (let [e (get-in world [:entities id])
+                        [changes left] (items/add-stack (or (:inventory e) {}) {:item item :count n})]
+                    (concat
+                      (map (fn [[slot stack]] [:set-slot id slot stack]) changes)
+                      (when left [[:spawn-entity (items/dropped world id left true 0)]])
+                      (say eid "commands.give.success.single" n {:translate (str "item.minecraft." (data/snake item))} (:name e)))))
+                ids)))))
 
 (defn- kill-deltas [world eid [sel]]
   (let [ids (targets world eid sel)]
     (cond
       (empty? ids) (say eid "argument.entity.notfound.entity")
       :else (concat
-             (mapcat (fn [id]
-                       (if (= :player (get-in world [:entities id :type]))
-                         [[:merge-entity id {:health 0.0}]]
-                         [[:remove-entity id]]))
-                     ids)
-             (if (= 1 (count ids))
-               (say eid "commands.kill.success.single" (entity-name (get-in world [:entities (first ids)])))
-               (say eid "commands.kill.success.multiple" (count ids)))))))
+              (mapcat (fn [id]
+                        (if (= :player (get-in world [:entities id :type]))
+                          [[:merge-entity id {:health 0.0}]]
+                          [[:remove-entity id]]))
+                      ids)
+              (if (= 1 (count ids))
+                (say eid "commands.kill.success.single" (entity-name (get-in world [:entities (first ids)])))
+                (say eid "commands.kill.success.multiple" (count ids)))))))
 
 (defn- summon-deltas [world eid [type x y z]]
   (let [p (get-in world [:entities eid :pos])
@@ -166,18 +166,18 @@
     [[:set-world-spawn at]
      (out/all (out/default-spawn at))
      (out/to eid (out/system-chat
-                  [{:translate "commands.setworldspawn.success"
-                    :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
-                           "0.0" "0.0" "minecraft:overworld"]}]))]))
+                   [{:translate "commands.setworldspawn.success"
+                     :with      [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
+                                 "0.0" "0.0" "minecraft:overworld"]}]))]))
 
 (defn- spawnpoint-deltas [world eid args]
   (let [at (block-under world eid args)
         e (get-in world [:entities eid])]
     [[:merge-entity eid {:forced-spawn {:pos at :yaw 0.0 :pitch 0.0}}]
      (out/to eid (out/system-chat
-                  [{:translate "commands.spawnpoint.success.single"
-                    :with [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
-                           "0.0" "0.0" "minecraft:overworld" (entity-name e)]}]))]))
+                   [{:translate "commands.spawnpoint.success.single"
+                     :with      [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
+                                 "0.0" "0.0" "minecraft:overworld" (entity-name e)]}]))]))
 
 (defn- duration-of ^long [world ^long given bounds salt]
   (if (pos? given)
@@ -214,7 +214,7 @@
                 (cons [:set-time t]
                       (tell eid (format "added **%d** to the time" (first args)))))
     :time-query (tell eid (case (first args)
-                            "daytime"  (format "the time is **%d**" (long (:time-of-day world 0)))
+                            "daytime" (format "the time is **%d**" (long (:time-of-day world 0)))
                             "gametime" (format "the game time is **%d**" (long (:tick world 0)))))
     (tell eid (str "unknown world command: " op))))
 
@@ -233,9 +233,9 @@
 (defn- said-deltas [world eid raw]
   (let [text (str/trim (str raw))]
     (cond
-      (str/blank? text)           nil
+      (str/blank? text) nil
       (str/starts-with? text "/") (command-deltas world eid text)
-      :else                       (public-deltas world eid text))))
+      :else (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text target id]
   (let [start (inc (.lastIndexOf ^String text " "))]
@@ -243,7 +243,7 @@
 
 (defn- event-deltas [world [tag eid text target id]]
   (case tag
-    :chat         (said-deltas world eid text)
+    :chat (said-deltas world eid text)
     :tab-complete (tab-deltas world eid text target id)
     nil))
 

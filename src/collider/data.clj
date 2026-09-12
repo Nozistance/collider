@@ -10,23 +10,23 @@
   (with-open [r (io/reader (io/resource (str "mc/" name)))]
     (edn/read (PushbackReader. r))))
 
-(def packets    (delay (load-edn "packets.edn")))
+(def packets (delay (load-edn "packets.edn")))
 (def registries (delay (load-edn "registries.edn")))
-(def blocks     (delay (load-edn "blocks.edn")))
-(def datapack   (delay (load-edn "datapack.edn")))
-(def tags       (delay (load-edn "tags.edn")))
-(def shapes     (delay (load-edn "shapes.edn")))
-(def outlines   (delay (load-edn "outlines.edn")))
-(def sturdy     (delay (load-edn "sturdy.edn")))
+(def blocks (delay (load-edn "blocks.edn")))
+(def datapack (delay (load-edn "datapack.edn")))
+(def tags (delay (load-edn "tags.edn")))
+(def shapes (delay (load-edn "shapes.edn")))
+(def outlines (delay (load-edn "outlines.edn")))
+(def sturdy (delay (load-edn "sturdy.edn")))
 (def sturdy-center (delay (load-edn "sturdy-center.edn")))
-(def sturdy-rigid  (delay (load-edn "sturdy-rigid.edn")))
-(def items      (delay (load-edn "items.edn")))
-(def flags      (delay (load-edn "flags.edn")))
-(def light      (delay (load-edn "light.edn")))
-(def fire       (delay (load-edn "fire.edn")))
-(def drops      (delay (load-edn "drops.edn")))
-(def recipes    (delay (load-edn "recipes.edn")))
-(def sounds     (delay (load-edn "sounds.edn")))
+(def sturdy-rigid (delay (load-edn "sturdy-rigid.edn")))
+(def items (delay (load-edn "items.edn")))
+(def flags (delay (load-edn "flags.edn")))
+(def light (delay (load-edn "light.edn")))
+(def fire (delay (load-edn "fire.edn")))
+(def drops (delay (load-edn "drops.edn")))
+(def recipes (delay (load-edn "recipes.edn")))
+(def sounds (delay (load-edn "sounds.edn")))
 (defn max-stack ^long [item]
   (long (get-in @items [item :max-stack] 64)))
 
@@ -83,10 +83,10 @@
 
 (def ^:private by-id
   (delay
-   (into {}
-         (map (fn [[registry entries]]
-                [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
-         @registries)))
+    (into {}
+          (map (fn [[registry entries]]
+                 [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
+          @registries)))
 
 (defn entry-name [registry ^long id]
   (if-let [m (get @by-id registry)]
@@ -109,23 +109,23 @@
         (let [tail (long (reduce * 1 (subvec sizes (inc i))))]
           (recur (inc i) (rem left tail)
                  (assoc acc (nth order i)
-                        (nth (get (:props b) (nth order i)) (quot left tail)))))))))
+                            (nth (get (:props b) (nth order i)) (quot left tail)))))))))
 
 (def block-of-state
   (delay
-   (persistent!
-    (reduce (fn [m [block b]]
-              (let [from (long (:first b))]
-                (reduce (fn [m i] (assoc! m (+ from (long i)) block))
-                        m (range (state-count b)))))
-            (transient {}) @blocks))))
+    (persistent!
+      (reduce (fn [m [block b]]
+                (let [from (long (:first b))]
+                  (reduce (fn [m i] (assoc! m (+ from (long i)) block))
+                          m (range (state-count b)))))
+              (transient {}) @blocks))))
 
 (def default-props
   (delay
-   (into {}
-         (map (fn [[block b]]
-                [block (decode-props b (- (long (:default b)) (long (:first b))))]))
-         @blocks)))
+    (into {}
+          (map (fn [[block b]]
+                 [block (decode-props b (- (long (:default b)) (long (:first b))))]))
+          @blocks)))
 
 (defn info [block]
   (or (get @blocks block)
@@ -152,9 +152,9 @@
            (if (= i (count order))
              id
              (let [prop (nth order i)
-                   vs   (get (:props b) prop)
-                   v    (get wanted prop (get defaults prop))
-                   idx  (.indexOf ^List vs v)
+                   vs (get (:props b) prop)
+                   v (get wanted prop (get defaults prop))
+                   idx (.indexOf ^List vs v)
                    tail (long (reduce * 1 (subvec sizes (inc i))))]
                (when (neg? idx)
                  (throw (ex-info "unknown property value"

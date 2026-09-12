@@ -41,14 +41,14 @@
 
 (defn- send-join-burst! [conn eid spawn {:keys [max-players view-distance simulation-distance motd]}]
   (let [[x y z] spawn]
-    (server/send! conn {:packet :login :eid eid
-                 :max-players (min 255 (long max-players))
-                 :view-distance view-distance
-                 :simulation-distance simulation-distance
-                 :dimension-type @overworld})
+    (server/send! conn {:packet              :login :eid eid
+                        :max-players         (min 255 (long max-players))
+                        :view-distance       view-distance
+                        :simulation-distance simulation-distance
+                        :dimension-type      @overworld})
     (server/send! conn {:packet :change-difficulty :difficulty 0 :locked false})
-    (server/send! conn {:packet :player-abilities :flags (bit-or 1 4 8)
-                 :flying-speed 0.05 :walking-speed 0.1})
+    (server/send! conn {:packet       :player-abilities :flags (bit-or 1 4 8)
+                        :flying-speed 0.05 :walking-speed 0.1})
     (server/send! conn (assoc @data/recipes :packet :update-recipes))
     (server/send! conn {:packet :entity-event :eid eid :event (+ op-level-event 4)})
     (server/send! conn {:packet :commands :nodes @command-tree})
@@ -60,13 +60,13 @@
     (server/send! conn {:packet :ticking-step :steps 0})
     (server/send! conn {:packet :set-health :health 20.0 :food 20 :saturation 5.0})
     (server/send! conn {:packet :set-experience :progress 0.0 :level 0 :total 0})
-    (server/send! conn {:packet :update-attributes :eid eid
-                         :attributes [[:entity-interaction-range 3.0]
-                                      [:movement-speed 0.1]
-                                      [:block-interaction-range 4.5]]})))
+    (server/send! conn {:packet     :update-attributes :eid eid
+                        :attributes [[:entity-interaction-range 3.0]
+                                     [:movement-speed 0.1]
+                                     [:block-interaction-range 4.5]]})))
 
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue cfg] :as io}]
-  (let [nm  (:name (server/info conn))
+  (let [nm (:name (server/info conn))
         eid (.incrementAndGet next-entity-id)]
     (server/put! conn :eid eid)
     (swap! conns assoc eid conn)
@@ -83,43 +83,43 @@
 
 (defn- packet->event [eid {:keys [packet] :as m}]
   (case packet
-    :keep-alive              [:keepalive-echo eid (:id m)]
-    :chunk-batch-received    [:chunk-batch-ack eid (:rate m)]
-    :move-player-pos         [:move eid {:pos (:pos m) :on-ground (on-ground? m)}]
-    :move-player-pos-rot     [:move eid {:pos (:pos m) :yaw (:yaw m) :pitch (:pitch m)
-                                         :on-ground (on-ground? m)}]
-    :move-player-rot         [:move eid {:yaw (:yaw m) :pitch (:pitch m) :on-ground (on-ground? m)}]
+    :keep-alive [:keepalive-echo eid (:id m)]
+    :chunk-batch-received [:chunk-batch-ack eid (:rate m)]
+    :move-player-pos [:move eid {:pos (:pos m) :on-ground (on-ground? m)}]
+    :move-player-pos-rot [:move eid {:pos       (:pos m) :yaw (:yaw m) :pitch (:pitch m)
+                                     :on-ground (on-ground? m)}]
+    :move-player-rot [:move eid {:yaw (:yaw m) :pitch (:pitch m) :on-ground (on-ground? m)}]
     :move-player-status-only [:move eid {:on-ground (on-ground? m)}]
-    :accept-teleportation    [:teleport-ack eid (:id m)]
-    :player-abilities        [:move eid {:flying (bit-test (long (:flags m)) 1)}]
-    :player-action           [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]
-    :use-item-on             (let [[cx cy cz] (:cursor m)]
-                               [:place eid (:pos m) (:face m) nil
-                                [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
-                                (:sequence m)])
-    :use-item                [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}]
-    :swing                   [:swing eid]
-    :player-command          [:entity-action eid (:action m)]
-    :player-input            [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}]
-    :set-carried-item        [:held-item eid (:slot m)]
-    :pick-item-from-block    [:pick eid {:pos (:pos m) :include-data (:include-data m)}]
-    :pick-item-from-entity   [:pick eid {:entity (:id m)}]
-    :set-creative-mode-slot  [:creative-slot eid (:slot m) (:stack m)]
-    :container-click         (if (zero? (long (:container m)))
-                               [:click eid (dissoc m :packet :container)]
-                               [:menu-click eid (dissoc m :packet)])
-    :container-close         [:menu-close eid (:container m)]
-    :container-button-click  [:menu-button eid (:container m) (:button m)]
-    :client-command          (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
-    :set-game-rule           [:set-rules eid (:entries m)]
-    :command-suggestion      [:tab-complete eid (:text m) nil (:id m)]
-    :interact                (case (long (:action m))
-                               0 [:interact eid (:target m)]
-                               1 [:attack eid (:target m)]
-                               nil)
-    :chat                    [:chat eid (:message m)]
-    :chat-command            [:chat eid (str "/" (:command m))]
-    :sign-update             [:sign-update eid (:pos m) (:front? m) (:lines m)]
+    :accept-teleportation [:teleport-ack eid (:id m)]
+    :player-abilities [:move eid {:flying (bit-test (long (:flags m)) 1)}]
+    :player-action [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]
+    :use-item-on (let [[cx cy cz] (:cursor m)]
+                   [:place eid (:pos m) (:face m) nil
+                    [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
+                    (:sequence m)])
+    :use-item [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}]
+    :swing [:swing eid]
+    :player-command [:entity-action eid (:action m)]
+    :player-input [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}]
+    :set-carried-item [:held-item eid (:slot m)]
+    :pick-item-from-block [:pick eid {:pos (:pos m) :include-data (:include-data m)}]
+    :pick-item-from-entity [:pick eid {:entity (:id m)}]
+    :set-creative-mode-slot [:creative-slot eid (:slot m) (:stack m)]
+    :container-click (if (zero? (long (:container m)))
+                       [:click eid (dissoc m :packet :container)]
+                       [:menu-click eid (dissoc m :packet)])
+    :container-close [:menu-close eid (:container m)]
+    :container-button-click [:menu-button eid (:container m) (:button m)]
+    :client-command (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
+    :set-game-rule [:set-rules eid (:entries m)]
+    :command-suggestion [:tab-complete eid (:text m) nil (:id m)]
+    :interact (case (long (:action m))
+                0 [:interact eid (:target m)]
+                1 [:attack eid (:target m)]
+                nil)
+    :chat [:chat eid (:message m)]
+    :chat-command [:chat eid (str "/" (:command m))]
+    :sign-update [:sign-update eid (:pos m) (:front? m) (:lines m)]
     nil))
 
 (def ^:private ignored
@@ -155,8 +155,8 @@
   (server/set-conn-state! conn :login)
   (when-not (= protocol c/protocol-version)
     (kick-login! conn (version-reason (if (< protocol 754)
-                                       "multiplayer.disconnect.outdated_client"
-                                       "multiplayer.disconnect.incompatible")))))
+                                        "multiplayer.disconnect.outdated_client"
+                                        "multiplayer.disconnect.incompatible")))))
 
 (defn- valid-name? [nm]
   (and (string? nm) (<= (count nm) 16) (every? #(< 32 (long (int %)) 127) nm)))

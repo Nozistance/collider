@@ -41,14 +41,14 @@
       (when (paired? st (state-at chunks p2)) p2))))
 
 (def ^:private oxidation
-  {:copper-chest 0 :exposed-copper-chest 1 :weathered-copper-chest 2 :oxidized-copper-chest 3
-   :waxed-copper-chest 0 :waxed-exposed-copper-chest 1
+  {:copper-chest                 0 :exposed-copper-chest 1 :weathered-copper-chest 2 :oxidized-copper-chest 3
+   :waxed-copper-chest           0 :waxed-exposed-copper-chest 1
    :waxed-weathered-copper-chest 2 :waxed-oxidized-copper-chest 3})
 
 (def ^:private unwaxed
-  {:waxed-copper-chest :copper-chest :waxed-exposed-copper-chest :exposed-copper-chest
+  {:waxed-copper-chest           :copper-chest :waxed-exposed-copper-chest :exposed-copper-chest
    :waxed-weathered-copper-chest :weathered-copper-chest
-   :waxed-oxidized-copper-chest :oxidized-copper-chest})
+   :waxed-oxidized-copper-chest  :oxidized-copper-chest})
 
 (defn- waxed? [b] (contains? unwaxed b))
 

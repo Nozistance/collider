@@ -109,7 +109,7 @@
   (let [chunks (:chunks world) pos (:pos e)
         pushed (v/+ (:vel e) (liquid/entity-push chunks gen/flat-chunk pos item-half item-height (:vel e)))
         water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
-        lava  (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)
+        lava (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)
         in-fluid? (or (> water 0.1) (> lava 0.1))
         [vx vy vz] (cond
                      (> water 0.1) (fluid-movement pushed 0.99)
@@ -237,7 +237,7 @@
 
 (defn- pickup-deltas [world items]
   (let [players (state/player-entries world)
-        ready   (filterv (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0)))) items)]
+        ready (filterv (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0)))) items)]
     (first (reduce (fn [acc entry] (player-pickups world players ready acc entry))
                    [[] #{}]
                    players))))

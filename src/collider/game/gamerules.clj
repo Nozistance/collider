@@ -19,18 +19,18 @@
    :reduced-debug-info :tnt-explosion-drop-decay :universal-anger])
 
 (def ^:private integers
-  {:fire-spread-radius-around-player [128 -1 Integer/MAX_VALUE]
-   :max-block-modifications          [32768 1 Integer/MAX_VALUE]
-   :max-command-forks                [65536 0 Integer/MAX_VALUE]
-   :max-command-sequence-length      [65536 0 Integer/MAX_VALUE]
-   :max-entity-cramming              [24 0 Integer/MAX_VALUE]
-   :max-minecart-speed               [8 1 1000]
-   :max-snow-accumulation-height     [1 0 8]
+  {:fire-spread-radius-around-player     [128 -1 Integer/MAX_VALUE]
+   :max-block-modifications              [32768 1 Integer/MAX_VALUE]
+   :max-command-forks                    [65536 0 Integer/MAX_VALUE]
+   :max-command-sequence-length          [65536 0 Integer/MAX_VALUE]
+   :max-entity-cramming                  [24 0 Integer/MAX_VALUE]
+   :max-minecart-speed                   [8 1 1000]
+   :max-snow-accumulation-height         [1 0 8]
    :players-nether-portal-creative-delay [0 0 Integer/MAX_VALUE]
    :players-nether-portal-default-delay  [80 0 Integer/MAX_VALUE]
-   :players-sleeping-percentage      [100 0 Integer/MAX_VALUE]
-   :random-tick-speed                [3 0 Integer/MAX_VALUE]
-   :respawn-radius                   [10 0 Integer/MAX_VALUE]})
+   :players-sleeping-percentage          [100 0 Integer/MAX_VALUE]
+   :random-tick-speed                    [3 0 Integer/MAX_VALUE]
+   :respawn-radius                       [10 0 Integer/MAX_VALUE]})
 
 (def table
   (into (sorted-map)

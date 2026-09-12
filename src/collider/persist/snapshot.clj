@@ -15,15 +15,15 @@
 
 (def ^:const format-version 7)
 (nippy/extend-freeze Section ::section [^Section s out]
-  (nippy/freeze-to-out! out (.blocks s))
-  (nippy/freeze-to-out! out (.block-light s))
-  (nippy/freeze-to-out! out (.sky-light s)))
+                     (nippy/freeze-to-out! out (.blocks s))
+                     (nippy/freeze-to-out! out (.block-light s))
+                     (nippy/freeze-to-out! out (.sky-light s)))
 
 (nippy/extend-thaw ::section [in]
-  (let [blocks      (nippy/thaw-from-in! in)
-        block-light (nippy/thaw-from-in! in)
-        sky-light   (nippy/thaw-from-in! in)]
-    (chunk/->Section blocks block-light sky-light)))
+                   (let [blocks (nippy/thaw-from-in! in)
+                         block-light (nippy/thaw-from-in! in)
+                         sky-light (nippy/thaw-from-in! in)]
+                     (chunk/->Section blocks block-light sky-light)))
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
 (defprotocol Store

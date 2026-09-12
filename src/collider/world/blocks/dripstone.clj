@@ -65,7 +65,7 @@
     (if-not (valid-placement? chunks p dir self)
       st
       (block/state self (assoc (block/props-of st)
-                               :thickness (thickness chunks p dir (= :tip_merge (thickness-of st)) self))))))
+                          :thickness (thickness chunks p dir (= :tip_merge (thickness-of st)) self))))))
 
 (defn placed [chunks p st pitch sneaking?]
   (let [st (long st)
@@ -76,8 +76,8 @@
               (valid-placement? chunks p (dir/opposite default) self) (dir/opposite default))]
     (when dir
       (block/state self (assoc (block/props-of st)
-                               :vertical-direction dir
-                               :thickness (thickness chunks p dir (not sneaking?) self))))))
+                          :vertical-direction dir
+                          :thickness (thickness chunks p dir (not sneaking?) self))))))
 
 (defn- find-vertical [chunks p dir path? target? max-steps]
   (loop [i 1 q (mapv + p (dir/offset dir))]
@@ -168,7 +168,7 @@
 
 (defn- created [chunks q dir th self]
   (block/state self {:vertical-direction dir :thickness th
-                     :waterlogged (if (water-at? chunks q) :true :false)}))
+                     :waterlogged        (if (water-at? chunks q) :true :false)}))
 
 (defn- merged [chunks q ^long tst self]
   (let [[a b] (if (= :up (dir-of tst)) [(dir/up q) q] [q (dir/down q)])]

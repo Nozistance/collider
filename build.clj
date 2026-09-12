@@ -13,9 +13,9 @@
            (java.util.zip ZipEntry ZipFile)))
 
 (def class-dir "target/classes")
-(def prim-dir  "target/classes")
-(def jar-file  "target/collider.jar")
-(def basis     (b/create-basis {:project "deps.edn"}))
+(def prim-dir "target/classes")
+(def jar-file "target/collider.jar")
+(def basis (b/create-basis {:project "deps.edn"}))
 (defn clean [_]
   (b/delete {:path "target"}))
 
@@ -28,9 +28,9 @@
 (declare block-drops block-props blocks compostables datapack-names fire-odds flt kw light-table packets recipes registries sound-types tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
-  (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
+  (let [root (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
         reports (io/file root "reports")
-        server  (io/file root "jars" "server-plain.jar")]
+        server (io/file root "jars" "server-plain.jar")]
     (when-not (.isDirectory reports)
       (throw (ex-info (str "no reports in " reports)
                       {:dir (str root)})))
@@ -40,7 +40,7 @@
           drops (when (.isFile server) (block-drops server))
           items (merge-with merge (vanilla-items reports) compost)
           bs (blocks reports bp (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
-                                   (json/read-str (slurp (io/file reports "blocks.json")))))
+                                      (json/read-str (slurp (io/file reports "blocks.json")))))
           rs (registries reports)
           dp (when (.isFile server) (datapack-names server))
           tg (when (.isFile server)
@@ -157,67 +157,67 @@
         props (delay (block-props cl))]
     (call-static cl "net.minecraft.SharedConstants" "tryDetectVersion")
     (call-static cl "net.minecraft.server.Bootstrap" "bootStrap")
-    (let [registry   (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
-          get-id     (.getMethod (class registry) "getId" (into-array Class [Object]))
-          empty      (static-field cl "net.minecraft.world.level.EmptyBlockGetter" "INSTANCE")
-          zero       (static-field cl "net.minecraft.core.BlockPos" "ZERO")
+    (let [registry (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
+          get-id (.getMethod (class registry) "getId" (into-array Class [Object]))
+          empty (static-field cl "net.minecraft.world.level.EmptyBlockGetter" "INSTANCE")
+          zero (static-field cl "net.minecraft.core.BlockPos" "ZERO")
           getter-cls (Class/forName "net.minecraft.world.level.BlockGetter" true cl)
-          pos-cls    (Class/forName "net.minecraft.core.BlockPos" true cl)
-          state-cls  (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase" true cl)
-          shape-m    (.getMethod state-cls "getCollisionShape" (into-array Class [getter-cls pos-cls]))
-          outline-m  (.getMethod state-cls "getShape" (into-array Class [getter-cls pos-cls]))
-          aabbs-m    (.getMethod (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl) "toAabbs" (make-array Class 0))
-          aabb-cls   (Class/forName "net.minecraft.world.phys.AABB" true cl)
-          fields     (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
-          dir-cls    (Class/forName "net.minecraft.core.Direction" true cl)
-          dirs       (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
-          sturdy-m   (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls]))
+          pos-cls (Class/forName "net.minecraft.core.BlockPos" true cl)
+          state-cls (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase" true cl)
+          shape-m (.getMethod state-cls "getCollisionShape" (into-array Class [getter-cls pos-cls]))
+          outline-m (.getMethod state-cls "getShape" (into-array Class [getter-cls pos-cls]))
+          aabbs-m (.getMethod (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl) "toAabbs" (make-array Class 0))
+          aabb-cls (Class/forName "net.minecraft.world.phys.AABB" true cl)
+          fields (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
+          dir-cls (Class/forName "net.minecraft.core.Direction" true cl)
+          dirs (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
+          sturdy-m (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls]))
           support-cls (Class/forName "net.minecraft.world.level.block.SupportType" true cl)
-          center     (static-field cl "net.minecraft.world.level.block.SupportType" "CENTER")
-          rigid      (static-field cl "net.minecraft.world.level.block.SupportType" "RIGID")
-          center-m   (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls support-cls]))
-          block-cls  (Class/forName "net.minecraft.world.level.block.Block" true cl)
-          shape-cls  (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl)
+          center (static-field cl "net.minecraft.world.level.block.SupportType" "CENTER")
+          rigid (static-field cl "net.minecraft.world.level.block.SupportType" "RIGID")
+          center-m (.getMethod state-cls "isFaceSturdy" (into-array Class [getter-cls pos-cls dir-cls support-cls]))
+          block-cls (Class/forName "net.minecraft.world.level.block.Block" true cl)
+          shape-cls (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl)
           face-full-m (.getMethod block-cls "isFaceFull" (into-array Class [shape-cls dir-cls]))
-          up         (static-field cl "net.minecraft.core.Direction" "UP")
-          flag-ms    (mapv #(.getMethod state-cls % (make-array Class 0))
-                           ["blocksMotion" "ignitedByLava" "isRandomlyTicking" "isSolidRender"])
-          states     (vec (iterator-seq (.iterator ^Iterable registry)))]
-      {:shapes (into (sorted-map)
-                     (for [st states
-                           :let [id    (.invoke get-id registry (object-array [st]))
-                                 shape (.invoke shape-m st (object-array [empty zero]))
-                                 boxes (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
-                                             (.invoke aabbs-m shape (object-array 0)))]
-                           :when (not= boxes full-box)]
-                       [id boxes]))
-       :outlines (into (sorted-map)
-                       (for [st states
-                             :let [id    (.invoke get-id registry (object-array [st]))
-                                   shape (.invoke outline-m st (object-array [empty zero]))
-                                   boxes (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
-                                               (.invoke aabbs-m shape (object-array 0)))]
-                             :when (not= boxes full-box)]
-                         [id boxes]))
-       :flags (into (sorted-map)
-                    (for [st states
-                          :let [id   (.invoke get-id registry (object-array [st]))
-                                bits (reduce (fn [m [i ^Method f]]
-                                               (if (.invoke f st (object-array 0))
-                                                 (bit-or (long m) (bit-shift-left 1 (long i)))
-                                                 m))
-                                             0 (map-indexed vector flag-ms))
-                                shape (.invoke shape-m st (object-array [empty zero]))
-                                mask (if (.invoke face-full-m nil (object-array [shape up]))
-                                       (bit-or (long bits) 16)
-                                       bits)]
-                          :when (pos? (long mask))]
-                      [id mask]))
-       :light  (light-table cl)
-       :fire   (fire-odds cl)
-       :block-props (:props @props)
-       :sounds (:sounds @props)
-       :compost (compostables cl)
+          up (static-field cl "net.minecraft.core.Direction" "UP")
+          flag-ms (mapv #(.getMethod state-cls % (make-array Class 0))
+                        ["blocksMotion" "ignitedByLava" "isRandomlyTicking" "isSolidRender"])
+          states (vec (iterator-seq (.iterator ^Iterable registry)))]
+      {:shapes        (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        shape (.invoke shape-m st (object-array [empty zero]))
+                                        boxes (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
+                                                    (.invoke aabbs-m shape (object-array 0)))]
+                                  :when (not= boxes full-box)]
+                              [id boxes]))
+       :outlines      (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        shape (.invoke outline-m st (object-array [empty zero]))
+                                        boxes (mapv (fn [a] (mapv (fn [^Field f] (sixteenth (double (.get f a)))) fields))
+                                                    (.invoke aabbs-m shape (object-array 0)))]
+                                  :when (not= boxes full-box)]
+                              [id boxes]))
+       :flags         (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        bits (reduce (fn [m [i ^Method f]]
+                                                       (if (.invoke f st (object-array 0))
+                                                         (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                         m))
+                                                     0 (map-indexed vector flag-ms))
+                                        shape (.invoke shape-m st (object-array [empty zero]))
+                                        mask (if (.invoke face-full-m nil (object-array [shape up]))
+                                               (bit-or (long bits) 16)
+                                               bits)]
+                                  :when (pos? (long mask))]
+                              [id mask]))
+       :light         (light-table cl)
+       :fire          (fire-odds cl)
+       :block-props   (:props @props)
+       :sounds        (:sounds @props)
+       :compost       (compostables cl)
        :sturdy-center (into (sorted-map)
                             (for [st states
                                   :let [id (.invoke get-id registry (object-array [st]))
@@ -228,26 +228,26 @@
                                                      0 (map-indexed vector dirs))]
                                   :when (not= mask 63)]
                               [id mask]))
-       :sturdy-rigid (into (sorted-map)
-                           (for [st states
-                                 :let [id (.invoke get-id registry (object-array [st]))
-                                       mask (reduce (fn [m [i d]]
-                                                      (if (.invoke center-m st (object-array [empty zero d rigid]))
-                                                        (bit-or (long m) (bit-shift-left 1 (long i)))
-                                                        m))
-                                                    0 (map-indexed vector dirs))]
-                                 :when (not= mask 63)]
-                             [id mask]))
-       :sturdy (into (sorted-map)
-                     (for [st states
-                           :let [id (.invoke get-id registry (object-array [st]))
-                                 mask (reduce (fn [m [i d]]
-                                                (if (.invoke sturdy-m st (object-array [empty zero d]))
-                                                  (bit-or (long m) (bit-shift-left 1 (long i)))
-                                                  m))
-                                              0 (map-indexed vector dirs))]
-                           :when (not= mask 63)]
-                       [id mask]))})))
+       :sturdy-rigid  (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        mask (reduce (fn [m [i d]]
+                                                       (if (.invoke center-m st (object-array [empty zero d rigid]))
+                                                         (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                         m))
+                                                     0 (map-indexed vector dirs))]
+                                  :when (not= mask 63)]
+                              [id mask]))
+       :sturdy        (into (sorted-map)
+                            (for [st states
+                                  :let [id (.invoke get-id registry (object-array [st]))
+                                        mask (reduce (fn [m [i d]]
+                                                       (if (.invoke sturdy-m st (object-array [empty zero d]))
+                                                         (bit-or (long m) (bit-shift-left 1 (long i)))
+                                                         m))
+                                                     0 (map-indexed vector dirs))]
+                                  :when (not= mask 63)]
+                              [id mask]))})))
 
 
 (defn- flt ^double [v]
@@ -256,7 +256,7 @@
 (def ^:private sound-parts {:break "Break" :step "Step" :place "Place" :hit "Hit" :fall "Fall"})
 
 (defn- sound-types [^ClassLoader cl]
-  (let [cls   (Class/forName "net.minecraft.world.level.block.SoundType" true cl)
+  (let [cls (Class/forName "net.minecraft.world.level.block.SoundType" true cl)
         loc-m (.getMethod (Class/forName "net.minecraft.sounds.SoundEvent" true cl) "location" (make-array Class 0))
         getters (into (sorted-map)
                       (map (fn [[k n]] [k (.getMethod cls (str "get" n "Sound") (make-array Class 0))]))
@@ -280,27 +280,27 @@
     (doto ^Field f (.setAccessible true))))
 
 (defn- block-props [^ClassLoader cl]
-  (let [types    (sound-types cl)
-        by-type  (into {} (map (fn [[k o _]] [o k])) types)
-        reg      (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
-        key-m    (.getMethod (class reg) "getKey" (into-array Class [Object]))
-        behave   (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour" true cl)
+  (let [types (sound-types cl)
+        by-type (into {} (map (fn [[k o _]] [o k])) types)
+        reg (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
+        key-m (.getMethod (class reg) "getKey" (into-array Class [Object]))
+        behave (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour" true cl)
         resist-f (doto (.getDeclaredField behave "explosionResistance") (.setAccessible true))
-        sound-f  (doto (.getDeclaredField behave "soundType") (.setAccessible true))
-        set-cls  (Class/forName "net.minecraft.world.level.block.state.properties.BlockSetType" true cl)
+        sound-f (doto (.getDeclaredField behave "soundType") (.setAccessible true))
+        set-cls (Class/forName "net.minecraft.world.level.block.state.properties.BlockSetType" true cl)
         wood-cls (Class/forName "net.minecraft.world.level.block.state.properties.WoodType" true cl)
-        loc-m    (.getMethod (Class/forName "net.minecraft.sounds.SoundEvent" true cl) "location" (make-array Class 0))
-        hand-m   (.getMethod set-cls "canOpenByHand" (make-array Class 0))
-        event    (fn [^Class c n o] (kw (str (.invoke loc-m (.invoke (.getMethod c n (make-array Class 0)) o (object-array 0)) (object-array 0)))))
-        kinds    [[(Class/forName "net.minecraft.world.level.block.DoorBlock" true cl) set-cls "doorOpen" "doorClose" true]
-                  [(Class/forName "net.minecraft.world.level.block.TrapDoorBlock" true cl) set-cls "trapdoorOpen" "trapdoorClose" true]
-                  [(Class/forName "net.minecraft.world.level.block.FenceGateBlock" true cl) wood-cls "fenceGateOpen" "fenceGateClose" false]]
-        toggle   (fn [b] (some (fn [[^Class bc want open close hand?]]
-                                 (when-let [f (and (.isInstance bc b) (field-of want (class b)))]
-                                   (let [t (.get ^Field f b)]
-                                     (cond-> {:open (event want open t) :close (event want close t)}
-                                       hand? (assoc :hand? (boolean (.invoke hand-m t (object-array 0))))))))
-                               kinds))]
+        loc-m (.getMethod (Class/forName "net.minecraft.sounds.SoundEvent" true cl) "location" (make-array Class 0))
+        hand-m (.getMethod set-cls "canOpenByHand" (make-array Class 0))
+        event (fn [^Class c n o] (kw (str (.invoke loc-m (.invoke (.getMethod c n (make-array Class 0)) o (object-array 0)) (object-array 0)))))
+        kinds [[(Class/forName "net.minecraft.world.level.block.DoorBlock" true cl) set-cls "doorOpen" "doorClose" true]
+               [(Class/forName "net.minecraft.world.level.block.TrapDoorBlock" true cl) set-cls "trapdoorOpen" "trapdoorClose" true]
+               [(Class/forName "net.minecraft.world.level.block.FenceGateBlock" true cl) wood-cls "fenceGateOpen" "fenceGateClose" false]]
+        toggle (fn [b] (some (fn [[^Class bc want open close hand?]]
+                               (when-let [f (and (.isInstance bc b) (field-of want (class b)))]
+                                 (let [t (.get ^Field f b)]
+                                   (cond-> {:open (event want open t) :close (event want close t)}
+                                           hand? (assoc :hand? (boolean (.invoke hand-m t (object-array 0))))))))
+                             kinds))]
     {:props  (into (sorted-map)
                    (for [b (iterator-seq (.iterator ^Iterable reg))]
                      [(kw (str (.invoke key-m reg (object-array [b]))))
@@ -309,7 +309,7 @@
      :sounds (into (sorted-map) (map (fn [[k _ evs]] [k evs])) types)}))
 
 (defn- compostables [^ClassLoader cl]
-  (let [reg   (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "ITEM")
+  (let [reg (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "ITEM")
         key-m (.getMethod (class reg) "getKey" (into-array Class [Object]))]
     (into (sorted-map)
           (map (fn [e] [(kw (str (.invoke key-m reg (object-array [(key e)])))) {:compost (flt (val e))}]))
@@ -354,42 +354,42 @@
   (mapv (fn [[lo hi v]] (if (= lo hi) [lo v] [lo hi v])) (runs pairs)))
 
 (defn- light-table [^ClassLoader cl]
-  (let [registry  (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
-        get-id    (.getMethod (class registry) "getId" (into-array Class [Object]))
+  (let [registry (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
+        get-id (.getMethod (class registry) "getId" (into-array Class [Object]))
         state-cls (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour$BlockStateBase" true cl)
-        dir-cls   (Class/forName "net.minecraft.core.Direction" true cl)
-        dirs      (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
+        dir-cls (Class/forName "net.minecraft.core.Direction" true cl)
+        dirs (vec (.invoke (.getMethod dir-cls "values" (make-array Class 0)) nil (object-array 0)))
         shape-cls (Class/forName "net.minecraft.world.phys.shapes.VoxelShape" true cl)
-        aabbs-m   (.getMethod shape-cls "toAabbs" (make-array Class 0))
-        aabb-cls  (Class/forName "net.minecraft.world.phys.AABB" true cl)
-        fields    (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
+        aabbs-m (.getMethod shape-cls "toAabbs" (make-array Class 0))
+        aabb-cls (Class/forName "net.minecraft.world.phys.AABB" true cl)
+        fields (mapv #(.getField aabb-cls %) ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
         block-shape (.invoke (.getMethod (Class/forName "net.minecraft.world.phys.shapes.Shapes" true cl)
                                          "block" (make-array Class 0))
                              nil (object-array 0))
-        call      (fn [^Method m st] (.invoke m st (object-array 0)))
-        emit-m    (.getMethod state-cls "getLightEmission" (make-array Class 0))
-        damp-m    (.getMethod state-cls "getLightDampening" (make-array Class 0))
-        occl-m    (.getMethod state-cls "canOcclude" (make-array Class 0))
-        use-m     (.getMethod state-cls "useShapeForLightOcclusion" (make-array Class 0))
-        oshape-m  (.getMethod state-cls "getOcclusionShape" (make-array Class 0))
-        fshape-m  (.getMethod state-cls "getFaceOcclusionShape" (into-array Class [dir-cls]))
-        states    (vec (iterator-seq (.iterator ^Iterable registry)))
-        ided      (mapv (fn [st] [(.invoke get-id registry (object-array [st])) st]) states)
-        faces-of  (fn [st]
-                    (into (sorted-map)
-                          (keep (fn [d]
-                                  (when-let [e (face-entry aabbs-m fields block-shape d
-                                                           (.invoke fshape-m st (object-array [(dirs d)])))]
-                                    [(dir-names d) e])))
-                          (range 6)))
-        shaped    (for [[id st] ided
-                        :when (and (call occl-m st) (call use-m st))
-                        :let [k {:shape (shape-boxes aabbs-m fields (call oshape-m st))
-                                 :faces (faces-of st)}]
-                        :when (seq (:faces k))]
-                    [id k])
-        kinds     (vec (sort-by pr-str (distinct (map second shaped))))
-        index     (into {} (map-indexed (fn [i k] [k i])) kinds)]
+        call (fn [^Method m st] (.invoke m st (object-array 0)))
+        emit-m (.getMethod state-cls "getLightEmission" (make-array Class 0))
+        damp-m (.getMethod state-cls "getLightDampening" (make-array Class 0))
+        occl-m (.getMethod state-cls "canOcclude" (make-array Class 0))
+        use-m (.getMethod state-cls "useShapeForLightOcclusion" (make-array Class 0))
+        oshape-m (.getMethod state-cls "getOcclusionShape" (make-array Class 0))
+        fshape-m (.getMethod state-cls "getFaceOcclusionShape" (into-array Class [dir-cls]))
+        states (vec (iterator-seq (.iterator ^Iterable registry)))
+        ided (mapv (fn [st] [(.invoke get-id registry (object-array [st])) st]) states)
+        faces-of (fn [st]
+                   (into (sorted-map)
+                         (keep (fn [d]
+                                 (when-let [e (face-entry aabbs-m fields block-shape d
+                                                          (.invoke fshape-m st (object-array [(dirs d)])))]
+                                   [(dir-names d) e])))
+                         (range 6)))
+        shaped (for [[id st] ided
+                     :when (and (call occl-m st) (call use-m st))
+                     :let [k {:shape (shape-boxes aabbs-m fields (call oshape-m st))
+                              :faces (faces-of st)}]
+                     :when (seq (:faces k))]
+                 [id k])
+        kinds (vec (sort-by pr-str (distinct (map second shaped))))
+        index (into {} (map-indexed (fn [i k] [k i])) kinds)]
     {:dampening (value-runs (for [[id st] ided :let [v (call damp-m st)] :when (not= 15 (long v))] [id v]))
      :emission  (value-runs (for [[id st] ided :let [v (call emit-m st)] :when (pos? (long v))] [id v]))
      :occludes  (flag-runs (for [[id st] ided :when (call occl-m st)] id))
@@ -443,7 +443,7 @@
         (let [count (some (fn [f] (when (= "minecraft:set_count" (get f "function")) (loot-number (get f "count"))))
                           (get e "functions"))]
           [(cond-> (assoc cs :item (kw (subs (get e "name") 10)))
-             count (assoc :count count))])))
+                   count (assoc :count count))])))
     "minecraft:alternatives"
     (let [cs (loot-conditions (get e "conditions"))]
       (if (keyword? cs)
@@ -497,16 +497,16 @@
   (into (sorted-map)
         (for [^File f (sort (.listFiles (io/file reports "minecraft" "components" "item")))
               :when (str/ends-with? (.getName f) ".json")
-              :let [cs   (get (json/read-str (slurp f)) "components")
-                    n    (get cs "minecraft:max_stack_size" 64)
+              :let [cs (get (json/read-str (slurp f)) "components")
+                    n (get cs "minecraft:max_stack_size" 64)
                     slot (get-in cs ["minecraft:equippable" "slot"])
                     song (get cs "minecraft:jukebox_playable")
-                    dye  (get cs "minecraft:dye")
-                    pat  (get cs "minecraft:provides_banner_patterns")
-                    m    (cond-> (sorted-map) (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
-                           song (assoc :jukebox-song (kw song))
-                           dye (assoc :dye (kw dye))
-                           (string? pat) (assoc :patterns (str/replace (subs pat 1) #"^minecraft:" "")))]
+                    dye (get cs "minecraft:dye")
+                    pat (get cs "minecraft:provides_banner_patterns")
+                    m (cond-> (sorted-map) (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
+                              song (assoc :jukebox-song (kw song))
+                              dye (assoc :dye (kw dye))
+                              (string? pat) (assoc :patterns (str/replace (subs pat 1) #"^minecraft:" "")))]
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))
 
@@ -514,17 +514,17 @@
   (into (sorted-map)
         (map (fn [[name {:strs [properties states definition]}]]
                (let [first-id (apply min (map #(get % "id") states))
-                     default  (or (some (fn [s] (when (get s "default") (get s "id"))) states)
-                                  first-id)
-                     props    (into (sorted-map)
-                                    (map (fn [[p vs]] [(kw p) (mapv keyword vs)]))
-                                    properties)]
+                     default (or (some (fn [s] (when (get s "default") (get s "id"))) states)
+                                 first-id)
+                     props (into (sorted-map)
+                                 (map (fn [[p vs]] [(kw p) (mapv keyword vs)]))
+                                 properties)]
                  [(kw name) (cond-> (into (sorted-map)
                                           (merge {:first first-id :default default
-                                                  :type (kw (get definition "type"))}
+                                                  :type  (kw (get definition "type"))}
                                                  (get extra (kw name))))
-                              (contains? full (kw name)) (assoc :full-cube? true)
-                              (seq props) (assoc :props props))])))
+                                    (contains? full (kw name)) (assoc :full-cube? true)
+                                    (seq props) (assoc :props props))])))
         (json/read-str (slurp (io/file reports "blocks.json")))))
 
 (defn- registries [reports]
@@ -574,13 +574,13 @@
 (def ^:private property-sets
   "RecipeManager.RECIPE_PROPERTY_SETS: recipe type -> the ingredient field the
    client is told about."
-  {"furnace_input"      [#{"minecraft:smelting"} "ingredient"]
+  {"furnace_input"       [#{"minecraft:smelting"} "ingredient"]
    "blast_furnace_input" [#{"minecraft:blasting"} "ingredient"]
-   "smoker_input"       [#{"minecraft:smoking"} "ingredient"]
-   "campfire_input"     [#{"minecraft:campfire_cooking"} "ingredient"]
-   "smithing_base"      [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "base"]
-   "smithing_template"  [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "template"]
-   "smithing_addition"  [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "addition"]})
+   "smoker_input"        [#{"minecraft:smoking"} "ingredient"]
+   "campfire_input"      [#{"minecraft:campfire_cooking"} "ingredient"]
+   "smithing_base"       [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "base"]
+   "smithing_template"   [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "template"]
+   "smithing_addition"   [#{"minecraft:smithing_transform" "minecraft:smithing_trim"} "addition"]})
 
 (defn- recipe-entries [^ZipFile zf]
   (let [prefix "data/minecraft/recipe/"]
@@ -602,7 +602,7 @@
                   (let [r (get json "result")
                         r (if (string? r) {"id" r} r)
                         n (get r "count" 1)]
-                    {:in (ingredient (get json "ingredient"))
+                    {:in  (ingredient (get json "ingredient"))
                      :out (cond-> {:item (kw (get r "id"))} (not= 1 n) (assoc :count n))}))))
         entries))
 
@@ -621,7 +621,7 @@
   [jar tags]
   (with-open [zf (ZipFile. (io/file jar))]
     (let [entries (recipe-entries zf)]
-      {:stonecutting (stonecutting entries)
+      {:stonecutting  (stonecutting entries)
        :property-sets (into (sorted-map)
                             (map (fn [[k spec]] [k (vec (property-set tags entries spec))]))
                             property-sets)})))
@@ -691,7 +691,7 @@
                        (filter #(re-matches #"\| [^|]+ \| [^|]+ \|" %))
                        count
                        (max 0)))]
-    {:client-only (- (section "client-only") 1)
+    {:client-only      (- (section "client-only") 1)
      :developer-compat (- (section "developer compatibility") 1)}))
 
 (def ^:private type-classes
@@ -716,10 +716,10 @@
 
 (defn tracker [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
   (let [parsed (parse-hooks (slurp hooks))
-        data {:meta {:generated (str (Instant/now))
-                     :commit (str/trim (b/git-process {:git-args "rev-parse HEAD"}))
-                     :target "26.2"}
-              :blocks (with-entries (get parsed "blocks" {}))
+        data {:meta     {:generated (str (Instant/now))
+                         :commit    (str/trim (b/git-process {:git-args "rev-parse HEAD"}))
+                         :target    "26.2"}
+              :blocks   (with-entries (get parsed "blocks" {}))
               :entities (get parsed "entities" {})}
         excluded (excluded-counts (slurp hooks))
         total (fn [cat] (let [hs (mapcat :hooks (vals (get data cat)))]
@@ -733,12 +733,12 @@
                                 pending (count (filter #(= "pending" (:status %)) hs))]
                             {:classes (count (get data cat)) :hooks (count hs) :done done
                              :pending pending
-                             :pct (if (seq hs) (Math/round (* 100.0 (/ done (count hs)))) 0)}))
+                             :pct     (if (seq hs) (Math/round (* 100.0 (/ done (count hs)))) 0)}))
           b (tally :blocks) e (tally :entities)
           sum (fn [k] (+ (long (k b)) (long (k e))))
           all {:classes (sum :classes) :hooks (sum :hooks) :done (sum :done)
                :pending (sum :pending)
-               :pct (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (sum :done) (sum :hooks)))) 0)}]
+               :pct     (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (sum :done) (sum :hooks)))) 0)}]
       (spit (str (.getParent (io/file out)) "/summary.json")
             (json/write-str (assoc (:meta data) :all all :blocks b :entities e :excluded excluded)))
       (println (format "  %s/summary.json: %d%% overall, %d%% in blocks"

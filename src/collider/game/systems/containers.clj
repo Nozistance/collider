@@ -27,7 +27,7 @@
 
 (defn- remote-of [stack]
   (when stack
-    {:item (:item stack) :count (long (:count stack 1))
+    {:item        (:item stack) :count (long (:count stack 1))
      :components? (boolean (or (:components stack) (:components? stack)))}))
 
 (defn- count-deltas [world m ^long step]
@@ -78,21 +78,21 @@
           [changes left] (if carried (back-into inv0 carried) [nil nil])
           changes (concat kept changes)]
       (concat
-       [[:merge-entity eid {:menu nil :carried nil}]]
-       (for [[slot s] changes] [:set-slot eid slot s])
-       (for [s drops] [:spawn-entity (items/dropped world eid s)])
-       (when left [[:spawn-entity (items/dropped world eid left)]])
-       (when carried [(out/to eid (out/carried nil))])
-       (when notify? [(out/to eid (out/container-close (:id m)))])
-       (count-deltas world m -1)
-       (barrel-deltas world m -1)))))
+        [[:merge-entity eid {:menu nil :carried nil}]]
+        (for [[slot s] changes] [:set-slot eid slot s])
+        (for [s drops] [:spawn-entity (items/dropped world eid s)])
+        (when left [[:spawn-entity (items/dropped world eid left)]])
+        (when carried [(out/to eid (out/carried nil))])
+        (when notify? [(out/to eid (out/container-close (:id m)))])
+        (count-deltas world m -1)
+        (barrel-deltas world m -1)))))
 
 (defn- opened [world eid e m id]
   (let [contents (container/items world eid m)
         slots (view m contents (:inventory e))]
-    {:menu (assoc m :id id :state-id 1
-                  :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
-                  :remote-carried (remote-of (:carried e)))
+    {:menu  (assoc m :id id :state-id 1
+                     :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
+                     :remote-carried (remote-of (:carried e)))
      :slots slots}))
 
 (defn open-deltas [world eid pos]
@@ -103,16 +103,16 @@
           id (inc (mod (long (:container-counter e 0)) 100))
           {:keys [menu slots]} (opened world eid e' m id)]
       (concat
-       prev
-       [[:merge-entity eid {:menu menu :container-counter id}]
-        (out/to eid (out/open-screen id (:type m) (:title m)))
-        (out/to eid (out/container-content id 1 slots (:carried e')))]
-       (when (container/bench? m)
-         [(out/to eid (out/container-data id 0 (:selected m)))])
-       (when (container/lectern? m)
-         [(out/to eid (out/container-data id 0 (container/page world m)))])
-       (count-deltas world m 1)
-       (barrel-deltas world m 1)))
+        prev
+        [[:merge-entity eid {:menu menu :container-counter id}]
+         (out/to eid (out/open-screen id (:type m) (:title m)))
+         (out/to eid (out/container-content id 1 slots (:carried e')))]
+        (when (container/bench? m)
+          [(out/to eid (out/container-data id 0 (:selected m)))])
+        (when (container/lectern? m)
+          [(out/to eid (out/container-data id 0 (container/page world m)))])
+        (count-deltas world m 1)
+        (barrel-deltas world m 1)))
     []))
 
 (defn- sync-deltas [eid menu slots carried resync?]
@@ -120,25 +120,25 @@
         base (long (:state-id menu 1))]
     (if resync?
       {:deltas [(out/to eid (out/container-content (:id menu) (inc base) slots carried))]
-       :menu (assoc menu :state-id (inc base)
-                    :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
-                    :remote-carried (remote-of carried))}
+       :menu   (assoc menu :state-id (inc base)
+                           :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
+                           :remote-carried (remote-of carried))}
       (let [diff (keep-indexed (fn [i s] (when (not= (get remote i) (remote-of s)) [i s])) slots)
             [ds st] (reduce (fn [[ds ^long st] [i s]]
                               [(conj ds (out/to eid (out/container-slot (:id menu) (inc st) i s)))
                                (inc st)])
                             [[] base] diff)]
         {:deltas (cond-> ds
-                   (not= (:remote-carried menu) (remote-of carried))
-                   (conj (out/to eid (out/carried carried))))
-         :menu (assoc menu :state-id st
-                      :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
-                      :remote-carried (remote-of carried))}))))
+                         (not= (:remote-carried menu) (remote-of carried))
+                         (conj (out/to eid (out/carried carried))))
+         :menu   (assoc menu :state-id st
+                             :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
+                             :remote-carried (remote-of carried))}))))
 
 (defn- with-client [menu changed carried]
   (assoc menu
-         :remote (reduce (fn [r [s v]] (assoc r (long s) (remote-of v))) (:remote menu) changed)
-         :remote-carried (remote-of carried)))
+    :remote (reduce (fn [r [s v]] (assoc r (long s) (remote-of v))) (:remote menu) changed)
+    :remote-carried (remote-of carried)))
 
 (defn- slot-changes
   [before after]
@@ -157,10 +157,10 @@
         :else
         (let [n (container/slot-count m)
               contents (container/items world eid m)
-              before {:inventory (flat contents (or (:inventory e) {}) n)
-                      :carried (:carried e)
+              before {:inventory  (flat contents (or (:inventory e) {}) n)
+                      :carried    (:carried e)
                       :quickcraft (:quickcraft e)
-                      :layout (container/layout m)}
+                      :layout     (container/layout m)}
               after (menu/click before packet)
               [items0 inv'] (split-flat (:inventory after) n)
               [m0 items'] (container/settled m items0)
@@ -170,16 +170,16 @@
                               (:changed packet) (:carried packet))
               {:keys [deltas menu]} (sync-deltas eid m' slots (:carried after) resync?)]
           (concat
-           [[:merge-entity eid {:inventory inv' :carried (:carried after)
-                                :quickcraft (:quickcraft after) :menu menu}]
-            [:client-slots eid (slot-changes (or (:inventory e) {}) inv') (:carried after)]]
-           (container/store-deltas world eid m items')
-           deltas
-           (when (not= (:selected m) (:selected menu))
-             [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))])
-           (when (pos? (long (:takes after 0))) [(container/take-sound m)])
-           (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
-                        (:drops after))))))))
+            [[:merge-entity eid {:inventory  inv' :carried (:carried after)
+                                 :quickcraft (:quickcraft after) :menu menu}]
+             [:client-slots eid (slot-changes (or (:inventory e) {}) inv') (:carried after)]]
+            (container/store-deltas world eid m items')
+            deltas
+            (when (not= (:selected m) (:selected menu))
+              [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))])
+            (when (pos? (long (:takes after 0))) [(container/take-sound m)])
+            (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
+                         (:drops after))))))))
 
 (defn- page-button-deltas
   [world eid m ^long want]
@@ -193,13 +193,13 @@
     (let [[changes left] (items/add-stack (or (:inventory e) {}) book)
           state-id (inc (long (:state-id m 1)))]
       (concat
-       (container/remove-book-deltas world (:pos m))
-       [(out/to eid (out/container-slot (:id m) state-id 0 nil))]
-       (when (not= 0 (container/page world m))
-         [(out/to eid (out/container-data (:id m) 0 0))])
-       (for [[slot s] changes] [:set-slot eid slot s])
-       (when left [[:spawn-entity (items/dropped world eid left)]])
-       (close-deltas world eid e true)))))
+        (container/remove-book-deltas world (:pos m))
+        [(out/to eid (out/container-slot (:id m) state-id 0 nil))]
+        (when (not= 0 (container/page world m))
+          [(out/to eid (out/container-data (:id m) 0 0))])
+        (for [[slot s] changes] [:set-slot eid slot s])
+        (when left [[:spawn-entity (items/dropped world eid left)]])
+        (close-deltas world eid e true)))))
 
 (defn- lectern-button-deltas [world eid e m id]
   (let [id (long id)
@@ -219,9 +219,9 @@
             {:keys [deltas menu]} (sync-deltas eid (assoc m' :contents items)
                                                slots (:carried e) false)]
         (concat
-         [[:merge-entity eid {:menu menu}]]
-         deltas
-         [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))])))))
+          [[:merge-entity eid {:menu menu}]]
+          deltas
+          [(out/to eid (out/container-data (:id menu) 0 (:selected menu)))])))))
 
 (defn- button-deltas [world [_ eid container id]]
   (when-let [e (get-in world [:entities eid])]
@@ -238,15 +238,15 @@
 
 (defn- containers-deltas [world events]
   (concat
-   (container/animate-deltas world)
-   (mapcat (fn [[tag :as ev]]
-             (case tag
-               :menu-click (click-deltas world ev)
-               :menu-close (close-event-deltas world ev)
-               :menu-button (button-deltas world ev)
-               nil))
-           events)
-   (container/recheck-deltas world)))
+    (container/animate-deltas world)
+    (mapcat (fn [[tag :as ev]]
+              (case tag
+                :menu-click (click-deltas world ev)
+                :menu-close (close-event-deltas world ev)
+                :menu-button (button-deltas world ev)
+                nil))
+            events)
+    (container/recheck-deltas world)))
 
 (defn containers [world events]
   [#(containers-deltas world events)])

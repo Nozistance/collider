@@ -8,22 +8,22 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private block-kinds
-  {:banner :banner :wall-banner :banner
-   :skull :skull :wall-skull :skull
-   :wither-skull :skull :wither-wall-skull :skull
-   :piglinwallskull :skull
-   :player-head :skull :player-wall-head :skull
-   :decorated-pot :decorated-pot
-   :jukebox :jukebox
-   :shelf :shelf
+  {:banner              :banner :wall-banner :banner
+   :skull               :skull :wall-skull :skull
+   :wither-skull        :skull :wither-wall-skull :skull
+   :piglinwallskull     :skull
+   :player-head         :skull :player-wall-head :skull
+   :decorated-pot       :decorated-pot
+   :jukebox             :jukebox
+   :shelf               :shelf
    :chiseled-book-shelf :chiseled-bookshelf
-   :bell :bell
-   :chest :chest :copper-chest :chest :weathering-copper-chest :chest
-   :trapped-chest :trapped-chest
-   :ender-chest :ender-chest
-   :barrel :barrel
-   :shulker-box :shulker-box
-   :lectern :lectern})
+   :bell                :bell
+   :chest               :chest :copper-chest :chest :weathering-copper-chest :chest
+   :trapped-chest       :trapped-chest
+   :ender-chest         :ender-chest
+   :barrel              :barrel
+   :shulker-box         :shulker-box
+   :lectern             :lectern})
 
 (def ^:private silent
   #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
@@ -56,10 +56,10 @@
 
 (defn- pattern-nbt [{:keys [pattern color]}]
   {:pattern (if (map? pattern)
-              {:asset_id (identifier (:asset (:direct pattern)))
+              {:asset_id        (identifier (:asset (:direct pattern)))
                :translation_key (:translation-key (:direct pattern))}
               (identifier pattern))
-   :color (dye-name color)})
+   :color   (dye-name color)})
 
 (defn- banner-nbt [e]
   (cond-> {} (seq (:patterns e)) (assoc :patterns (mapv pattern-nbt (:patterns e)))))
@@ -75,17 +75,17 @@
 
 (defn- skin-nbt [skin]
   (cond-> {}
-    (:body skin)   (assoc :texture (identifier (:body skin)))
-    (:cape skin)   (assoc :cape (identifier (:cape skin)))
-    (:elytra skin) (assoc :elytra (identifier (:elytra skin)))
-    (:model skin)  (assoc :model (name (:model skin)))))
+          (:body skin) (assoc :texture (identifier (:body skin)))
+          (:cape skin) (assoc :cape (identifier (:cape skin)))
+          (:elytra skin) (assoc :elytra (identifier (:elytra skin)))
+          (:model skin) (assoc :model (name (:model skin)))))
 
 (defn profile-nbt [profile]
   (let [p (or (:left (:profile profile)) (:right (:profile profile)))]
     (merge (cond-> {}
-             (:name p) (assoc :name (:name p))
-             (:id p) (assoc :id (uuid-ints (:id p)))
-             (seq (:properties p)) (assoc :properties (mapv property-nbt (:properties p))))
+                   (:name p) (assoc :name (:name p))
+                   (:id p) (assoc :id (uuid-ints (:id p)))
+                   (seq (:properties p)) (assoc :properties (mapv property-nbt (:properties p))))
            (skin-nbt (:skin profile)))))
 
 (defn- skull-nbt [e]
@@ -93,8 +93,8 @@
 
 (defn- pot-nbt [e]
   (cond-> {}
-    (seq (:sherds e)) (assoc :sherds (mapv identifier (:sherds e)))
-    (:item e) (assoc :item (stack-nbt (:item e)))))
+          (seq (:sherds e)) (assoc :sherds (mapv identifier (:sherds e)))
+          (:item e) (assoc :item (stack-nbt (:item e)))))
 
 (defn- shelf-nbt [e]
   {:Items (items-nbt (:items e)) :align_items_to_bottom (boolean (:align-bottom? e))})
@@ -119,8 +119,8 @@
 (defn- template [stack]
   (when stack
     (cond-> {:item (:item stack) :count (long (:count stack 1))}
-      (or (:components stack) (:removed stack))
-      (assoc :patch (select-keys stack [:components :removed])))))
+            (or (:components stack) (:removed stack))
+            (assoc :patch (select-keys stack [:components :removed])))))
 
 (defn- from-template [t]
   (when t (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
@@ -151,8 +151,8 @@
                             (assoc m component v))))
                       {} (get component-fields (:kind e) {}))]
     (cond-> {:item item :count 1}
-      (= :shulker-box (:kind e)) (assoc-in [:components :container] (contents (:items e)))
-      (seq cs) (update :components merge cs))))
+            (= :shulker-box (:kind e)) (assoc-in [:components :container] (contents (:items e)))
+            (seq cs) (update :components merge cs))))
 
 (defn fresh [k editor]
   (case k

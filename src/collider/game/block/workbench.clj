@@ -86,4 +86,4 @@
       (let [patterns (selectable-patterns (get inv 2))
             selected (long (kept-pattern (vec (:patterns m)) (long (:selected m)) patterns))]
         (assoc m :patterns patterns
-               :selected (if (>= (count (layers banner)) max-layers) -1 selected))))))
+                 :selected (if (>= (count (layers banner)) max-layers) -1 selected))))))

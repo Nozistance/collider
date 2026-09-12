@@ -6,21 +6,21 @@
 (defn- sheep-color [ks]
   (let [r (long (* 100.0 (random/of-key ks)))]
     (cond
-      (< r 5)  15
+      (< r 5) 15
       (< r 10) 7
       (< r 15) 8
       (< r 18) 12
       (zero? (long (* 500.0 (random/of-key (conj ks :pink))))) 6
-      :else    0)))
+      :else 0)))
 
 (def types
-  {:sheep {:half 0.45 :height 1.3 :speed 0.23
-           :max-health 8.0
+  {:sheep {:half          0.45 :height 1.3 :speed 0.23
+           :max-health    8.0
            :breeding-item :wheat
-           :action-means {:eat 1000 :wander 120 :look 50}
-           :say :sheep/say
-           :step :sheep/step
-           :spawn-color sheep-color}})
+           :action-means  {:eat 1000 :wander 120 :look 50}
+           :say           :sheep/say
+           :step          :sheep/step
+           :spawn-color   sheep-color}})
 
 (defn egg-type [item]
   (when (keyword? item)
@@ -45,22 +45,22 @@
                         (burning? e)])))
 
 (defn new-mob [type pos color tick]
-  {:type type
-   :pos pos
-   :vel [0.0 0.0 0.0]
-   :yaw 0.0 :pitch 0.0 :on-ground false
-   :color color
-   :task nil
-   :pending nil
-   :wake-tick tick
-   :health (max-health type)
+  {:type        type
+   :pos         pos
+   :vel         [0.0 0.0 0.0]
+   :yaw         0.0 :pitch 0.0 :on-ground false
+   :color       color
+   :task        nil
+   :pending     nil
+   :wake-tick   tick
+   :health      (max-health type)
    :health-sent (max-health type)})
 
 (defn egg-mob [type pos ks tick]
   (let [color-fn (get-in types [type :spawn-color] (constantly 0))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
     (assoc (new-mob type pos (color-fn ks) tick)
-           :yaw yaw :head-yaw yaw)))
+      :yaw yaw :head-yaw yaw)))
 
 (defn exp-delay ^long [mean ^long t ^long eid kind]
   (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (random/of-longs t eid (hash kind)))))))))

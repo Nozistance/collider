@@ -158,7 +158,7 @@
     a))
 
 (def ^:private dampening-arr (int-runs 15 (:dampening @data/light)))
-(def ^:private emission-arr  (int-runs 0 (:emission @data/light)))
+(def ^:private emission-arr (int-runs 0 (:emission @data/light)))
 (def ^:private use-shape-arr (bool-runs (:use-shape @data/light)))
 (def ^:private can-occlude-arr (bool-runs (:occludes @data/light)))
 
@@ -185,7 +185,7 @@
 (defn- touch-of-kind [kind]
   (reduce (fn [m d]
             (let [axis (nth [1 1 2 2 0 0] d)
-                  lo?  (even? d)
+                  lo? (even? d)
                   hit? (some (fn [b] (if lo? (zero? (long (nth b axis))) (== 16 (long (nth b (+ 3 axis))))))
                              (:shape kind))]
               (if hit? (bit-or (long m) (bit-shift-left 1 d)) m)))
@@ -332,10 +332,10 @@
       (when (contains? @data/blocks b) (with-props-of b st)))))
 
 (def named-block-items
-  {:redstone :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
-   :pumpkin-seeds :pumpkin-stem :melon-seeds :melon-stem :carrot :carrots :potato :potatoes
-   :torchflower-seeds :torchflower-crop :pitcher-pod :pitcher-crop :beetroot-seeds :beetroots
-   :sweet-berries :sweet-berry-bush :glow-berries :cave-vines
+  {:redstone           :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
+   :pumpkin-seeds      :pumpkin-stem :melon-seeds :melon-stem :carrot :carrots :potato :potatoes
+   :torchflower-seeds  :torchflower-crop :pitcher-pod :pitcher-crop :beetroot-seeds :beetroots
+   :sweet-berries      :sweet-berry-bush :glow-berries :cave-vines
    :powder-snow-bucket :powder-snow})
 
 (defn wall-block [block]
@@ -365,50 +365,50 @@
 (defn placement
   ([item face yaw cursor-y] (placement item face yaw cursor-y false))
   ([item face yaw cursor-y replacing?]
-  (when-let [block (item->block item face)]
-    (let [b    (data/info block)
-          t    (:type b)
-          face (long face)
-          f    (dir/player-index yaw)
-          top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))
-          props (cond
-                  (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
-                  {:axis (case face (0 1) :y, (4 5) :x, :z)}
-                  (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t)
-                  {:facing (dir/from-index face)}
-                  (#{:standing-sign :banner :ceiling-hanging-sign} t)
-                  {:rotation (keyword (str (rotation-segment yaw)))}
-                  (#{:skull :wither-skull :player-head} t)
-                  {:rotation (keyword (str (skull-rotation yaw)))}
-                  (= :decorated-pot t)
-                  {:facing (nth [:south :west :north :east] f)}
-                  (= :lantern t)
-                  {:hanging (if (= face 0) :true :false)}
-                  (str/ends-with? (name t) "leaves")
-                  {:persistent :true}
-                  (= :mangrove-propagule t)
-                  {:age :4}
-                  (contains? door-types t)
-                  {:facing (dir/player-direction yaw) :half :lower}
-                  (= :bed t)
-                  {:facing (dir/player-direction yaw) :part :foot :occupied :false}
-                  (= :fence-gate t)
-                  {:facing (dir/player-direction yaw)}
-                  (contains? trapdoor-types t)
-                  (if (and (not replacing?) (>= face 2))
-                    {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
-                    {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= face 1) :bottom :top)})
-                  (= :stair (shape-type t))
-                  {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)}
-                  (= :slab (shape-type t))
-                  {:type (if top? :top :bottom)}
-                  (contains? wall-torch-types t)
-                  {:facing (dir/face-facing face)}
-                  (contains? side-types t)
-                  {:facing (get dir/face-facing face :north)}
-                  (contains? (:props b) :facing)
-                  {:facing (nth [:north :east :south :west] f)})]
-      (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
+   (when-let [block (item->block item face)]
+     (let [b (data/info block)
+           t (:type b)
+           face (long face)
+           f (dir/player-index yaw)
+           top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))
+           props (cond
+                   (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
+                   {:axis (case face (0 1) :y, (4 5) :x, :z)}
+                   (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t)
+                   {:facing (dir/from-index face)}
+                   (#{:standing-sign :banner :ceiling-hanging-sign} t)
+                   {:rotation (keyword (str (rotation-segment yaw)))}
+                   (#{:skull :wither-skull :player-head} t)
+                   {:rotation (keyword (str (skull-rotation yaw)))}
+                   (= :decorated-pot t)
+                   {:facing (nth [:south :west :north :east] f)}
+                   (= :lantern t)
+                   {:hanging (if (= face 0) :true :false)}
+                   (str/ends-with? (name t) "leaves")
+                   {:persistent :true}
+                   (= :mangrove-propagule t)
+                   {:age :4}
+                   (contains? door-types t)
+                   {:facing (dir/player-direction yaw) :half :lower}
+                   (= :bed t)
+                   {:facing (dir/player-direction yaw) :part :foot :occupied :false}
+                   (= :fence-gate t)
+                   {:facing (dir/player-direction yaw)}
+                   (contains? trapdoor-types t)
+                   (if (and (not replacing?) (>= face 2))
+                     {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
+                     {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= face 1) :bottom :top)})
+                   (= :stair (shape-type t))
+                   {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)}
+                   (= :slab (shape-type t))
+                   {:type (if top? :top :bottom)}
+                   (contains? wall-torch-types t)
+                   {:facing (dir/face-facing face)}
+                   (contains? side-types t)
+                   {:facing (get dir/face-facing face :north)}
+                   (contains? (:props b) :facing)
+                   {:facing (nth [:north :east :south :west] f)})]
+       (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 (defn collision-boxes [^long st]

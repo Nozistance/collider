@@ -65,18 +65,18 @@
           (when (player-fits? chunks p) p))))))
 
 (defn stand-up-position [chunks [x y z :as pos] ^double yaw]
-  (let [st      (gen/at chunks pos)
+  (let [st (gen/at chunks pos)
         forward (block/facing-of st)
-        right   (dir/clockwise forward)
-        side    (if (facing-angle? right yaw) (dir/opposite right) right)
-        cells   (mapv (fn [[dx dz]] [(+ (long x) (long dx)) y (+ (long z) (long dz))])
-                      (stand-up-offsets forward side))
-        found   (or (some #(dismount-position chunks % true) cells)
-                    (some #(dismount-position chunks % false) cells))]
+        right (dir/clockwise forward)
+        side (if (facing-angle? right yaw) (dir/opposite right) right)
+        cells (mapv (fn [[dx dz]] [(+ (long x) (long dx)) y (+ (long z) (long dz))])
+                    (stand-up-offsets forward side))
+        found (or (some #(dismount-position chunks % true) cells)
+                  (some #(dismount-position chunks % false) cells))]
     (or found [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])))
 
 (defn look-yaw ^double [[x _ z] [fx _ fz]]
   (let [dx (- (+ (double x) 0.5) (double fx))
         dz (- (+ (double z) 0.5) (double fz))
-        a  (- (Math/toDegrees (Math/atan2 dz dx)) 90.0)]
+        a (- (Math/toDegrees (Math/atan2 dz dx)) 90.0)]
     (- (rem (+ (rem a 360.0) 540.0) 360.0) 180.0)))

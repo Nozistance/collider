@@ -157,9 +157,9 @@
 
 (defn read-nbt [^Buf buf]
   (let [in (ByteArrayInputStream. (.a buf) (.r buf) (- (.w buf) (.r buf)))
-        d  (DataInputStream. in)
-        t  (long (.readByte d))
-        v  (when-not (zero? t) (read-nbt-payload d t))]
+        d (DataInputStream. in)
+        t (long (.readByte d))
+        v (when-not (zero? t) (read-nbt-payload d t))]
     (set! (.r buf) (- (.w buf) (.available in)))
     v))
 
@@ -317,11 +317,11 @@
   (record-codec :effect (c-reg "mob_effect") :details c-effect-details))
 
 (def ^:private consume-effects
-  {:apply-effects    (record-codec :effects (c-list c-effect-instance) :probability c-float)
-   :remove-effects   (record-codec :effects (c-holder-set "mob_effect"))
+  {:apply-effects     (record-codec :effects (c-list c-effect-instance) :probability c-float)
+   :remove-effects    (record-codec :effects (c-holder-set "mob_effect"))
    :clear-all-effects (record-codec)
    :teleport-randomly (record-codec :diameter c-float)
-   :play-sound       (record-codec :sound c-sound)})
+   :play-sound        (record-codec :sound c-sound)})
 
 (def ^:private c-consume-effect
   (codec (fn [^Buf b]
@@ -402,12 +402,12 @@
 
 (def ^:private c-profile
   (record-codec
-   :profile (c-either (record-codec :id c-uuid :name c-string
-                                    :properties c-game-profile-properties)
-                      (record-codec :name (c-opt c-string) :id (c-opt c-uuid)
-                                    :properties c-game-profile-properties))
-   :skin (record-codec :body (c-opt c-ident) :cape (c-opt c-ident) :elytra (c-opt c-ident)
-                       :model (c-opt (c-enum [:wide :slim])))))
+    :profile (c-either (record-codec :id c-uuid :name c-string
+                                     :properties c-game-profile-properties)
+                       (record-codec :name (c-opt c-string) :id (c-opt c-uuid)
+                                     :properties c-game-profile-properties))
+    :skin (record-codec :body (c-opt c-ident) :cape (c-opt c-ident) :elytra (c-opt c-ident)
+                        :model (c-opt (c-enum [:wide :slim])))))
 
 (def ^:private c-typed-entity-data
   (fn [type-codec] (record-codec :type type-codec :data c-nbt)))
@@ -438,167 +438,167 @@
                                              :title (c-opt c-text) :author (c-opt c-text))))
 
 (def components
-  {:custom-data                  c-nbt
-   :max-stack-size               c-varint
-   :max-damage                   c-varint
-   :damage                       c-varint
-   :unbreakable                  c-unit
-   :use-effects                  (record-codec :can-sprint c-bool :interact-vibrations c-bool
-                                               :speed-multiplier c-float)
-   :custom-name                  c-text
-   :minimum-attack-charge        c-float
-   :damage-type                  (c-reg "damage_type")
-   :item-name                    c-text
-   :item-model                   c-ident
-   :lore                         (c-list c-text)
-   :rarity                       (c-enum [:common :uncommon :rare :epic])
-   :enchantments                 (c-map (c-reg "enchantment") c-varint)
-   :can-place-on                 c-adventure
-   :can-break                    c-adventure
-   :attribute-modifiers          (c-list c-attribute-entry)
-   :custom-model-data            (record-codec :floats (c-list c-float) :flags (c-list c-bool)
-                                               :strings (c-list c-string) :colors (c-list c-int))
-   :tooltip-display              (record-codec :hide-tooltip c-bool
-                                               :hidden (c-list (c-reg "data_component_type")))
-   :repair-cost                  c-varint
-   :creative-slot-lock           c-unit
-   :enchantment-glint-override   c-bool
-   :intangible-projectile        c-nbt
-   :food                         (record-codec :nutrition c-varint :saturation c-float
-                                               :can-always-eat c-bool)
-   :consumable                   (record-codec :seconds c-float
-                                               :animation (c-enum [:none :eat :drink :block :bow
-                                                                   :trident :crossbow :spyglass
-                                                                   :toot-horn :brush :bundle :spear])
-                                               :sound c-sound :particles c-bool
-                                               :on-consume (c-list c-consume-effect))
-   :use-remainder                (record-codec :convert-into c-template)
-   :use-cooldown                 (record-codec :seconds c-float :group (c-opt c-ident))
-   :damage-resistant             (record-codec :types (c-holder-set "damage_type"))
-   :tool                         (record-codec :rules (c-list c-tool-rule)
-                                               :default-mining-speed c-float
-                                               :damage-per-block c-varint
-                                               :destroy-in-creative c-bool)
-   :weapon                       (record-codec :damage-per-attack c-varint
-                                               :disable-blocking-seconds c-float)
-   :attack-range                 (record-codec :min-reach c-float :max-reach c-float
-                                               :min-creative-reach c-float :max-creative-reach c-float
-                                               :hitbox-margin c-float :mob-factor c-float)
-   :enchantable                  c-varint
-   :equippable                   (record-codec :slot (c-enum [:mainhand :feet :legs :chest :head
-                                                              :offhand :body :saddle])
-                                               :equip-sound c-sound
-                                               :asset (c-opt c-ident) :camera-overlay (c-opt c-ident)
-                                               :allowed-entities (c-opt (c-holder-set "entity_type"))
-                                               :dispensable c-bool :swappable c-bool
-                                               :damage-on-hurt c-bool :equip-on-interact c-bool
-                                               :can-be-sheared c-bool :shearing-sound c-sound)
-   :repairable                   (record-codec :items (c-holder-set "item"))
-   :glider                       c-unit
-   :tooltip-style                c-ident
-   :death-protection             (record-codec :death-effects (c-list c-consume-effect))
-   :blocks-attacks               (record-codec :block-delay-seconds c-float
-                                               :disable-cooldown-scale c-float
-                                               :damage-reductions (c-list c-damage-reduction)
-                                               :item-damage (record-codec :threshold c-float
-                                                                          :base c-float
-                                                                          :factor c-float)
-                                               :bypassed-by (c-opt (c-holder-set "damage_type"))
-                                               :block-sound (c-opt c-sound)
-                                               :disable-sound (c-opt c-sound))
-   :piercing-weapon              (record-codec :deals-knockback c-bool :dismounts c-bool
-                                               :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
-   :kinetic-weapon               (record-codec :contact-cooldown-ticks c-varint :delay-ticks c-varint
-                                               :dismount (c-opt c-kinetic-condition)
-                                               :knockback (c-opt c-kinetic-condition)
-                                               :damage (c-opt c-kinetic-condition)
-                                               :forward-movement c-float :damage-multiplier c-float
-                                               :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
-   :swing-animation              (record-codec :type (c-enum [:none :whack :stab])
-                                               :duration c-varint)
-   :additional-trade-cost        c-varint
-   :stored-enchantments          (c-map (c-reg "enchantment") c-varint)
-   :dye                          c-dye
-   :dyed-color                   c-int
-   :map-color                    c-int
-   :map-id                       c-varint
-   :map-decorations              c-nbt
-   :map-post-processing          (c-enum [:lock :scale])
-   :charged-projectiles          (c-list c-template)
-   :bundle-contents              (c-list c-template)
-   :potion-contents              (record-codec :potion (c-opt (c-reg "potion"))
-                                               :custom-color (c-opt c-int)
-                                               :custom-effects (c-list c-effect-instance)
-                                               :custom-name (c-opt c-string))
-   :potion-duration-scale        c-float
-   :suspicious-stew-effects      (c-list (record-codec :effect (c-reg "mob_effect")
-                                                       :duration c-varint))
-   :writable-book-content        (c-list (c-filterable c-string))
-   :written-book-content         (record-codec :title (c-filterable c-string) :author c-string
-                                               :generation c-varint
-                                               :pages (c-list (c-filterable c-text))
-                                               :resolved c-bool)
-   :trim                         (record-codec :material c-trim-material :pattern c-trim-pattern)
-   :debug-stick-state            c-nbt
-   :entity-data                  (c-typed-entity-data (c-reg "entity_type"))
-   :bucket-entity-data           c-nbt
-   :block-entity-data            (c-typed-entity-data (c-reg "block_entity_type"))
-   :instrument                   c-instrument
-   :provides-trim-material       c-trim-material
-   :ominous-bottle-amplifier     c-varint
-   :jukebox-playable             (record-codec :song c-jukebox-song)
-   :provides-banner-patterns     (c-holder-set "banner_pattern")
-   :recipes                      c-nbt
-   :lodestone-tracker            (record-codec :target (c-opt (record-codec :dimension c-ident
-                                                                            :pos c-block-pos))
-                                               :tracked c-bool)
-   :firework-explosion           c-firework-explosion
-   :fireworks                    (record-codec :flight-duration c-varint
-                                               :explosions (c-list c-firework-explosion))
-   :profile                      c-profile
-   :note-block-sound             c-ident
-   :banner-patterns              (c-list (record-codec :pattern c-banner-pattern :color c-dye))
-   :base-color                   c-dye
-   :pot-decorations              (c-list (c-reg "item"))
-   :container                    (c-list (c-opt c-template))
-   :block-state                  (c-map c-string c-string)
-   :bees                         (c-list (record-codec :data (c-typed-entity-data
+  {:custom-data                 c-nbt
+   :max-stack-size              c-varint
+   :max-damage                  c-varint
+   :damage                      c-varint
+   :unbreakable                 c-unit
+   :use-effects                 (record-codec :can-sprint c-bool :interact-vibrations c-bool
+                                              :speed-multiplier c-float)
+   :custom-name                 c-text
+   :minimum-attack-charge       c-float
+   :damage-type                 (c-reg "damage_type")
+   :item-name                   c-text
+   :item-model                  c-ident
+   :lore                        (c-list c-text)
+   :rarity                      (c-enum [:common :uncommon :rare :epic])
+   :enchantments                (c-map (c-reg "enchantment") c-varint)
+   :can-place-on                c-adventure
+   :can-break                   c-adventure
+   :attribute-modifiers         (c-list c-attribute-entry)
+   :custom-model-data           (record-codec :floats (c-list c-float) :flags (c-list c-bool)
+                                              :strings (c-list c-string) :colors (c-list c-int))
+   :tooltip-display             (record-codec :hide-tooltip c-bool
+                                              :hidden (c-list (c-reg "data_component_type")))
+   :repair-cost                 c-varint
+   :creative-slot-lock          c-unit
+   :enchantment-glint-override  c-bool
+   :intangible-projectile       c-nbt
+   :food                        (record-codec :nutrition c-varint :saturation c-float
+                                              :can-always-eat c-bool)
+   :consumable                  (record-codec :seconds c-float
+                                              :animation (c-enum [:none :eat :drink :block :bow
+                                                                  :trident :crossbow :spyglass
+                                                                  :toot-horn :brush :bundle :spear])
+                                              :sound c-sound :particles c-bool
+                                              :on-consume (c-list c-consume-effect))
+   :use-remainder               (record-codec :convert-into c-template)
+   :use-cooldown                (record-codec :seconds c-float :group (c-opt c-ident))
+   :damage-resistant            (record-codec :types (c-holder-set "damage_type"))
+   :tool                        (record-codec :rules (c-list c-tool-rule)
+                                              :default-mining-speed c-float
+                                              :damage-per-block c-varint
+                                              :destroy-in-creative c-bool)
+   :weapon                      (record-codec :damage-per-attack c-varint
+                                              :disable-blocking-seconds c-float)
+   :attack-range                (record-codec :min-reach c-float :max-reach c-float
+                                              :min-creative-reach c-float :max-creative-reach c-float
+                                              :hitbox-margin c-float :mob-factor c-float)
+   :enchantable                 c-varint
+   :equippable                  (record-codec :slot (c-enum [:mainhand :feet :legs :chest :head
+                                                             :offhand :body :saddle])
+                                              :equip-sound c-sound
+                                              :asset (c-opt c-ident) :camera-overlay (c-opt c-ident)
+                                              :allowed-entities (c-opt (c-holder-set "entity_type"))
+                                              :dispensable c-bool :swappable c-bool
+                                              :damage-on-hurt c-bool :equip-on-interact c-bool
+                                              :can-be-sheared c-bool :shearing-sound c-sound)
+   :repairable                  (record-codec :items (c-holder-set "item"))
+   :glider                      c-unit
+   :tooltip-style               c-ident
+   :death-protection            (record-codec :death-effects (c-list c-consume-effect))
+   :blocks-attacks              (record-codec :block-delay-seconds c-float
+                                              :disable-cooldown-scale c-float
+                                              :damage-reductions (c-list c-damage-reduction)
+                                              :item-damage (record-codec :threshold c-float
+                                                                         :base c-float
+                                                                         :factor c-float)
+                                              :bypassed-by (c-opt (c-holder-set "damage_type"))
+                                              :block-sound (c-opt c-sound)
+                                              :disable-sound (c-opt c-sound))
+   :piercing-weapon             (record-codec :deals-knockback c-bool :dismounts c-bool
+                                              :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
+   :kinetic-weapon              (record-codec :contact-cooldown-ticks c-varint :delay-ticks c-varint
+                                              :dismount (c-opt c-kinetic-condition)
+                                              :knockback (c-opt c-kinetic-condition)
+                                              :damage (c-opt c-kinetic-condition)
+                                              :forward-movement c-float :damage-multiplier c-float
+                                              :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
+   :swing-animation             (record-codec :type (c-enum [:none :whack :stab])
+                                              :duration c-varint)
+   :additional-trade-cost       c-varint
+   :stored-enchantments         (c-map (c-reg "enchantment") c-varint)
+   :dye                         c-dye
+   :dyed-color                  c-int
+   :map-color                   c-int
+   :map-id                      c-varint
+   :map-decorations             c-nbt
+   :map-post-processing         (c-enum [:lock :scale])
+   :charged-projectiles         (c-list c-template)
+   :bundle-contents             (c-list c-template)
+   :potion-contents             (record-codec :potion (c-opt (c-reg "potion"))
+                                              :custom-color (c-opt c-int)
+                                              :custom-effects (c-list c-effect-instance)
+                                              :custom-name (c-opt c-string))
+   :potion-duration-scale       c-float
+   :suspicious-stew-effects     (c-list (record-codec :effect (c-reg "mob_effect")
+                                                      :duration c-varint))
+   :writable-book-content       (c-list (c-filterable c-string))
+   :written-book-content        (record-codec :title (c-filterable c-string) :author c-string
+                                              :generation c-varint
+                                              :pages (c-list (c-filterable c-text))
+                                              :resolved c-bool)
+   :trim                        (record-codec :material c-trim-material :pattern c-trim-pattern)
+   :debug-stick-state           c-nbt
+   :entity-data                 (c-typed-entity-data (c-reg "entity_type"))
+   :bucket-entity-data          c-nbt
+   :block-entity-data           (c-typed-entity-data (c-reg "block_entity_type"))
+   :instrument                  c-instrument
+   :provides-trim-material      c-trim-material
+   :ominous-bottle-amplifier    c-varint
+   :jukebox-playable            (record-codec :song c-jukebox-song)
+   :provides-banner-patterns    (c-holder-set "banner_pattern")
+   :recipes                     c-nbt
+   :lodestone-tracker           (record-codec :target (c-opt (record-codec :dimension c-ident
+                                                                           :pos c-block-pos))
+                                              :tracked c-bool)
+   :firework-explosion          c-firework-explosion
+   :fireworks                   (record-codec :flight-duration c-varint
+                                              :explosions (c-list c-firework-explosion))
+   :profile                     c-profile
+   :note-block-sound            c-ident
+   :banner-patterns             (c-list (record-codec :pattern c-banner-pattern :color c-dye))
+   :base-color                  c-dye
+   :pot-decorations             (c-list (c-reg "item"))
+   :container                   (c-list (c-opt c-template))
+   :block-state                 (c-map c-string c-string)
+   :bees                        (c-list (record-codec :data (c-typed-entity-data
                                                               (c-reg "entity_type"))
-                                                       :ticks-in-hive c-varint
-                                                       :min-ticks-in-hive c-varint))
-   :sulfur-cube-content          (record-codec :absorbed c-template)
-   :lock                         c-nbt
-   :container-loot               c-nbt
-   :break-sound                  c-sound
-   :villager/variant             (c-reg "villager_type")
-   :wolf/variant                 (c-reg "wolf_variant")
-   :wolf/sound-variant           (c-reg "wolf_sound_variant")
-   :wolf/collar                  c-dye
-   :fox/variant                  c-varint
-   :salmon/size                  c-varint
-   :parrot/variant               c-varint
-   :tropical-fish/pattern        c-varint
-   :tropical-fish/base-color     c-dye
-   :tropical-fish/pattern-color  c-dye
-   :mooshroom/variant            c-varint
-   :rabbit/variant               c-varint
-   :pig/variant                  (c-reg "pig_variant")
-   :pig/sound-variant            (c-reg "pig_sound_variant")
-   :cow/variant                  (c-reg "cow_variant")
-   :cow/sound-variant            (c-reg "cow_sound_variant")
-   :chicken/variant              (c-reg "chicken_variant")
-   :chicken/sound-variant        (c-reg "chicken_sound_variant")
-   :zombie-nautilus/variant      (c-reg "zombie_nautilus_variant")
-   :frog/variant                 (c-reg "frog_variant")
-   :horse/variant                c-varint
-   :painting/variant             c-painting-variant
-   :llama/variant                c-varint
-   :axolotl/variant              c-varint
-   :cat/variant                  (c-reg "cat_variant")
-   :cat/sound-variant            (c-reg "cat_sound_variant")
-   :cat/collar                   c-dye
-   :sheep/color                  c-dye
-   :shulker/color                c-dye})
+                                                      :ticks-in-hive c-varint
+                                                      :min-ticks-in-hive c-varint))
+   :sulfur-cube-content         (record-codec :absorbed c-template)
+   :lock                        c-nbt
+   :container-loot              c-nbt
+   :break-sound                 c-sound
+   :villager/variant            (c-reg "villager_type")
+   :wolf/variant                (c-reg "wolf_variant")
+   :wolf/sound-variant          (c-reg "wolf_sound_variant")
+   :wolf/collar                 c-dye
+   :fox/variant                 c-varint
+   :salmon/size                 c-varint
+   :parrot/variant              c-varint
+   :tropical-fish/pattern       c-varint
+   :tropical-fish/base-color    c-dye
+   :tropical-fish/pattern-color c-dye
+   :mooshroom/variant           c-varint
+   :rabbit/variant              c-varint
+   :pig/variant                 (c-reg "pig_variant")
+   :pig/sound-variant           (c-reg "pig_sound_variant")
+   :cow/variant                 (c-reg "cow_variant")
+   :cow/sound-variant           (c-reg "cow_sound_variant")
+   :chicken/variant             (c-reg "chicken_variant")
+   :chicken/sound-variant       (c-reg "chicken_sound_variant")
+   :zombie-nautilus/variant     (c-reg "zombie_nautilus_variant")
+   :frog/variant                (c-reg "frog_variant")
+   :horse/variant               c-varint
+   :painting/variant            c-painting-variant
+   :llama/variant               c-varint
+   :axolotl/variant             c-varint
+   :cat/variant                 (c-reg "cat_variant")
+   :cat/sound-variant           (c-reg "cat_sound_variant")
+   :cat/collar                  c-dye
+   :sheep/color                 c-dye
+   :shulker/color               c-dye})
 
 (defn- component-codec [kw]
   (or (get components kw)
@@ -616,8 +616,8 @@
             rs (mapv (fn [_] (data/entry-name "data_component_type" (read-varint buf)))
                      (range removed))]
         (cond-> {}
-          (seq cs) (assoc :components (apply array-map (apply concat cs)))
-          (seq rs) (assoc :removed (set rs)))))))
+                (seq cs) (assoc :components (apply array-map (apply concat cs)))
+                (seq rs) (assoc :removed (set rs)))))))
 
 (defn write-patch [^Buf buf patch]
   (let [cs (:components patch)
@@ -645,13 +645,13 @@
 (defn read-hashed-stack [^Buf buf]
   (when (.readBoolean buf)
     (let [item (read-varint buf)
-          n    (read-varint buf)
+          n (read-varint buf)
           added (read-varint buf)]
       (dotimes [_ added] (read-varint buf) (.readInt buf))
       (let [removed (read-varint buf)]
         (dotimes [_ removed] (read-varint buf))
         (cond-> {:item (data/entry-name "item" item) :count n}
-          (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
+                (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
 (defn write-entity-data [^Buf buf entries]

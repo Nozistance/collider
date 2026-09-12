@@ -1,5 +1,5 @@
 (ns collider.game.systems.jukebox
-  (:require            [collider.game.block.jukebox :as jukebox]
+  (:require [collider.game.block.jukebox :as jukebox]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)

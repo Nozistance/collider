@@ -37,13 +37,13 @@
 (defn- steer-target [world e]
   (case (get-in e [:task :kind])
     (:wander :panic) (let [[tx tz] (get-in e [:task :target])]
-              [(v/v3 (double tx) (v/y (:pos e)) (double tz)) 0.4])
+                       [(v/v3 (double tx) (v/y (:pos e)) (double tz)) 0.4])
     :follow (when-let [p (get-in world [:entities (get-in e [:task :parent])])]
               [(:pos p) 1.5])
-    :mate   (when-let [p (get-in world [:entities (get-in e [:task :partner])])]
-              [(:pos p) 1.1])
-    :tempt  (when-let [p (get-in world [:entities (get-in e [:task :player])])]
-              [(:pos p) 2.5])
+    :mate (when-let [p (get-in world [:entities (get-in e [:task :partner])])]
+            [(:pos p) 1.1])
+    :tempt (when-let [p (get-in world [:entities (get-in e [:task :player])])]
+             [(:pos p) 2.5])
     nil))
 
 (defn- task-speed-mult ^double [e]
@@ -54,16 +54,16 @@
 
 (defn- ensure-path [world e t goal avoid-water?]
   (let [task (:task e)
-        gc   (sense/feet-cell goal)]
+        gc (sense/feet-cell goal)]
     (if (or (and (:path task) (= gc (:path-goal task)))
             (> (long (:repath-at task 0)) (long t)))
       e
       (assoc e :task (assoc task
-                            :path (path/find-path (:chunks world) gen/flat-chunk
-                                                  (sense/feet-cell (:pos e)) gc avoid-water?)
-                            :path-i 0
-                            :path-goal gc
-                            :repath-at (+ (long t) repath-interval))))))
+                       :path (path/find-path (:chunks world) gen/flat-chunk
+                                             (sense/feet-cell (:pos e)) gc avoid-water?)
+                       :path-i 0
+                       :path-goal gc
+                       :repath-at (+ (long t) repath-interval))))))
 
 (defn- advance-path ^long [e]
   (let [{:keys [path path-i]} (:task e)
@@ -97,7 +97,7 @@
         (if (nil? pth)
           [e nil goal]
           (let [pi (smooth-index world e half pth (advance-path e))
-                e  (assoc-in e [:task :path-i] pi)
+                e (assoc-in e [:task :path-i] pi)
                 wp (get pth pi)]
             [e wp (when wp (v/v3 (+ (double (wp 0)) 0.5) 0.0 (+ (double (wp 2)) 0.5)))]))))
     [e nil nil]))
@@ -115,20 +115,20 @@
 
 (defn- water-above? [world p]
   (= :water (liquid/liquid-class
-             (sense/block-at world (long (Math/floor (v/x p)))
-                             (long (Math/floor (+ (v/y p) 0.6)))
-                             (long (Math/floor (v/z p)))))))
+              (sense/block-at world (long (Math/floor (v/x p)))
+                              (long (Math/floor (+ (v/y p) 0.6)))
+                              (long (Math/floor (v/z p)))))))
 
 (defn- heading [p tgt]
   (let [dx (- (v/x tgt) (v/x p))
         dz (- (v/z tgt) (v/z p))
-        d  (Math/sqrt (+ (* dx dx) (* dz dz)))]
+        d (Math/sqrt (+ (* dx dx) (* dz dz)))]
     (when (> d 1.0E-4) [(/ dx d) (/ dz d)])))
 
 (defn- look-toward [e height o]
   (let [[_ y _] (:pos e)
         [_ oy _] (:pos o)
-        eye  (+ (double y) (* 0.95 (double height)))
+        eye (+ (double y) (* 0.95 (double height)))
         oeye (+ (double oy)
                 (if (= :player (:type o))
                   1.62
@@ -138,21 +138,21 @@
      (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))]))
 
 (defn- head-update [world e height t moving?]
-  (let [look   (:look e)
-        look   (when (and look (> (long (:until look 0)) (long t))) look)
+  (let [look (:look e)
+        look (when (and look (> (long (:until look 0)) (long t))) look)
         target (when-let [oid (:target look)] (get-in world [:entities oid]))
         [dyaw dpitch] (cond
-                        target                 (look-toward e height target)
+                        target (look-toward e height target)
                         (and look (:yaw look)) [(:yaw look) 0.0]
-                        :else                  [(:yaw e) 0.0])
-        hy   (v/limit-angle (double (or (:head-yaw e) (:yaw e))) (double dyaw) 10.0)
-        hp   (v/limit-angle (double (or (:pitch e) 0.0)) (double dpitch) 40.0)
+                        :else [(:yaw e) 0.0])
+        hy (v/limit-angle (double (or (:head-yaw e) (:yaw e))) (double dyaw) 10.0)
+        hp (v/limit-angle (double (or (:pitch e) 0.0)) (double dpitch) 40.0)
         body (double (:yaw e))
-        d    (v/wrap-deg (- hy body))
-        hy   (cond (and moving? (> d 75.0))  (+ body 75.0)
-                   (and moving? (< d -75.0)) (- body 75.0)
-                   :else hy)
-        hy   (v/wrap-deg hy)]
+        d (v/wrap-deg (- hy body))
+        hy (cond (and moving? (> d 75.0)) (+ body 75.0)
+                 (and moving? (< d -75.0)) (- body 75.0)
+                 :else hy)
+        hy (v/wrap-deg hy)]
     (if (and (identical? look (:look e))
              (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
              (let [op (:pitch e)] (and op (== (double op) hp))))
@@ -191,11 +191,11 @@
         og (boolean (:on-ground e))
         vx0 (double vx0) vy0 (double vy0) vz0 (double vz0)
         aispeed (* (double attr) (task-speed-mult e))
-        fric  (cond water? water-friction og ground-friction :else air-friction)
+        fric (cond water? water-friction og ground-friction :else air-friction)
         accel (if (and og (not water?)) (* aispeed aispeed) (* air-accel aispeed))
         wpush (if water?
-                     (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
-                     zero3)
+                (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
+                zero3)
         vx (let [a (+ vx0 (if hx (* (double hx) accel) 0.0) (double cx) (v/x wpush))]
              (if (and (not moving?) (not water?) (< (Math/abs a) 0.005)) 0.0 a))
         vz (let [a (+ vz0 (if hz (* (double hz) accel) 0.0) (double cz) (v/z wpush))]
@@ -215,14 +215,14 @@
                     (< (v/dist-sq (:pos e) target) 1.0))
         jump? (and on-ground climb? (>= t (long (or (:jump-cd e) 0))))
         ny (cond (and bump? water? (water-above? world (:pos e))) 0.3
-                 jump?  jump-speed
+                 jump? jump-speed
                  water? (- (* water-friction (double ny)) 0.02)
-                 :else  (* 0.98 (- (double ny) gravity)))
+                 :else (* 0.98 (- (double ny) gravity)))
         ny (liquid/bubble-push (:chunks world) gen/flat-chunk pos ny)
         yaw (if moving?
               (v/wrap-deg (v/limit-angle (double (:yaw e))
-                                     (v/yaw-toward (:pos e) target)
-                                     30.0))
+                                         (v/yaw-toward (:pos e) target)
+                                         30.0))
               (:yaw e))
         e (entity/mob-moved e pos (v/v3 (* (double nx) fric) (double ny) (* (double nz) fric))
                             on-ground yaw water? (if jump? (+ t 10) (:jump-cd e)))]
@@ -249,29 +249,29 @@
     (let [st (:say-tick e)
           next-say (+ (long t) say-rest (mobs/exp-delay say-mean (long t) (long eid) :say))]
       (cond
-        (nil? st)         [(assoc e :say-tick next-say) nil]
+        (nil? st) [(assoc e :say-tick next-say) nil]
         (>= (long t) (long st))
         [(assoc e :say-tick next-say)
          [(out/all (out/sound say (:pos e) 1.0
-                                           (sound-pitch e (long t) (long eid))))]]
+                              (sound-pitch e (long t) (long eid))))]]
         :else [e nil]))
     [e nil]))
 
 (defn- movement-sounds [e was-wet? old-walked new-walked t eid]
   (concat
-   (when (and (:wet? e) (not was-wet?))
-     [(out/all (out/sound :splash (:pos e)
-                                       (water-vol (:vel e) 0.2)
-                                       (wide-pitch (long t) (long eid) :spl)))])
-   (when (> (long (Math/floor (double new-walked)))
-            (long (Math/floor (double old-walked))))
-     (if (:wet? e)
-       [(out/all (out/sound :swim (:pos e)
-                                         (water-vol (:vel e) 0.35)
-                                         (wide-pitch (long t) (long eid) :swm)))]
-       (when (:on-ground e)
-         (when-let [snd (mobs/step-sound (:type e))]
-           [(out/all (out/sound snd (:pos e) 0.15 1.0))]))))))
+    (when (and (:wet? e) (not was-wet?))
+      [(out/all (out/sound :splash (:pos e)
+                           (water-vol (:vel e) 0.2)
+                           (wide-pitch (long t) (long eid) :spl)))])
+    (when (> (long (Math/floor (double new-walked)))
+             (long (Math/floor (double old-walked))))
+      (if (:wet? e)
+        [(out/all (out/sound :swim (:pos e)
+                             (water-vol (:vel e) 0.35)
+                             (wide-pitch (long t) (long eid) :swm)))]
+        (when (:on-ground e)
+          (when-let [snd (mobs/step-sound (:type e))]
+            [(out/all (out/sound snd (:pos e) 0.15 1.0))]))))))
 
 (defn- dist3 ^double [[x1 y1 z1] [x2 y2 z2]]
   (let [dx (- (double x2) (double x1))
@@ -288,10 +288,10 @@
   (let [o (gensym) n (gensym)]
     `(let [~o ~old ~n ~new]
        (cond-> {}
-         ~@(mapcat (fn [k]
-                     [`(let [v# (~k ~n)] (not (identical? v# (~k ~o))))
-                      `(assoc ~k (~k ~n))])
-                   ks)))))
+               ~@(mapcat (fn [k]
+                           [`(let [v# (~k ~n)] (not (identical? v# (~k ~o))))
+                            `(assoc ~k (~k ~n))])
+                         ks)))))
 
 (defn- mob-changes [old new]
   (diff-keys old new
@@ -301,7 +301,7 @@
 
 (defn- step-mob [world index tempters eid e t]
   (let [{:keys [half height speed]} (mobs/types (:type e))
-        dead?  (not (pos? (double (:health e))))
+        dead? (not (pos? (double (:health e))))
         [e1 deltas] (if dead? [e nil] (think world eid e t tempters))
         e1 (if (and (mobs/baby? e1) (>= (long t) (long (:baby-until e1))))
              (assoc e1 :baby-until nil)
@@ -309,7 +309,7 @@
         [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))
         was-wet? (boolean (:wet? e))
         e2 (physics world index eid e1 half height speed)
-        walked  (double (or (:walked e) 0.0))
+        walked (double (or (:walked e) 0.0))
         walked' (+ walked (* 0.6 (dist3 (:pos e1) (:pos e2))))
         e2 (if (== walked walked') e2 (assoc e2 :walked walked'))
         changes (mob-changes e e2)]
@@ -319,14 +319,14 @@
             (movement-sounds e2 was-wet? walked walked' t eid))))
 
 (defn mobs-system [world events]
-  (let [t        (long (:tick world))
-        active   (state/active-chunks world)
-        index    (push/push-index world active)
+  (let [t (long (:tick world))
+        active (state/active-chunks world)
+        index (push/push-index world active)
         tempters (sense/holders world)
-        herd     (into []
-                       (filter (fn [[_ e]] (and (mobs/mob-type? (:type e))
-                                                (state/active-at? active (:pos e)))))
-                       (:entities world))]
+        herd (into []
+                   (filter (fn [[_ e]] (and (mobs/mob-type? (:type e))
+                                            (state/active-at? active (:pos e)))))
+                   (:entities world))]
     (conj (mapv (fn [batch]
                   #(into [] (mapcat (fn [me] (step-mob world index tempters (key me) (val me) t))) batch))
                 (partition-all 32 herd))

@@ -69,9 +69,9 @@
                         by (long (Math/floor y))
                         bz (long (Math/floor z))
                         st (read-block rg bx by bz)
-                        f  (if (zero? st)
-                             f
-                             (- f (* (+ (block/resist st) 0.3) 0.3)))]
+                        f (if (zero? st)
+                            f
+                            (- f (* (+ (block/resist st) 0.3) 0.3)))]
                     (when (and (pos? f) (pos? st))
                       (let [ix (- bx ox) iy (- by oy) iz (- bz oz)]
                         (when (and (< -1 ix W) (< -1 iy W) (< -1 iz W))
@@ -79,13 +79,13 @@
                     (recur (- f 0.22500001)
                            (+ x (* d0 0.3)) (+ y (* d1 0.3)) (+ z (* d2 0.3)))))))))))
     (persistent!
-     (let [out (transient [])]
-       (dotimes [ix W]
-         (dotimes [iy W]
-           (dotimes [iz W]
-             (when (aget hit (+ (* (+ (* ix W) iy) W) iz))
-               (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
-       out))))
+      (let [out (transient [])]
+        (dotimes [ix W]
+          (dotimes [iy W]
+            (dotimes [iz W]
+              (when (aget hit (+ (* (+ (* ix W) iy) W) iz))
+                (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
+        out))))
 
 (defn block-density [^Region rg [cx cy cz] [px py pz] half height]
   (let [cx (double cx) cy (double cy) cz (double cz)

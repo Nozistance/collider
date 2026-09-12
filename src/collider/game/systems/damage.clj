@@ -39,8 +39,8 @@
   (if (= :player (:type e))
     (cond
       (not (pos? (double (:health e)))) :player/death
-      (pos? (long (or (:fire e) 0)))    :player/hurt-on-fire
-      :else                             :player/hurt)
+      (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
+      :else :player/hurt)
     (mobs/say-sound (:type e))))
 
 (defn- sound-pitch ^double [world eid e]
@@ -177,8 +177,8 @@
   (when (and wet? (pos? (long fire)))
     (cons [:merge-entity eid {:fire 0 :burning? false}]
           [(out/all (out/fizz
-                                   (mapv (fn [c] (long (Math/floor (double c))))
-                                         [(v/x (:pos e)) (v/y (:pos e)) (v/z (:pos e))])))])))
+                      (mapv (fn [c] (long (Math/floor (double c))))
+                            [(v/x (:pos e)) (v/y (:pos e)) (v/z (:pos e))])))])))
 
 (defn- fire-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))
@@ -284,9 +284,9 @@
                  (out/to eid (out/teleport pos yaw pitch))
                  (out/to eid (out/health player-health))
                  (out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
-          (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))
-          lost (conj (out/to eid lost))
-          true (into (reshow-deltas world eid)))))))
+                (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))
+                lost (conj (out/to eid lost))
+                true (into (reshow-deltas world eid)))))))
 
 (defn- idle? [e]
   (let [health (double (or (:health e) 0.0))]

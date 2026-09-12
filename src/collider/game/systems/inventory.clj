@@ -13,10 +13,10 @@
 (defn- restore-deltas [world events]
   (for [[tag eid] events
         :when (= :player-join tag)
-        :let [e   (get-in world [:entities eid])
+        :let [e (get-in world [:entities eid])
               inv (:inventory e)]
         msg (cond-> [(out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
-              (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e)))))]
+                    (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e)))))]
     msg))
 
 (defn- item-of [name]
@@ -66,7 +66,7 @@
 (defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
     (when-let [stack (pick-item world what)]
-      (let [inv  (:inventory e)
+      (let [inv (:inventory e)
             held (long (or (:held-slot e) 0))]
         (if-let [slot (slot-with inv stack)]
           (if (<= 36 (long slot) 44)
@@ -75,8 +75,8 @@
               (concat (select-deltas eid n)
                       [[:set-slot eid (+ 36 n) (get inv slot)]
                        [:set-slot eid slot (get inv (+ 36 n))]])))
-          (let [n    (suitable-hotbar inv held)
-                cur  (get inv (+ 36 n))
+          (let [n (suitable-hotbar inv held)
+                cur (get inv (+ 36 n))
                 free (when cur (free-slot inv))]
             (concat (select-deltas eid n)
                     (when free [[:set-slot eid free cur]])
@@ -85,12 +85,12 @@
 (defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
     (let [before {:inventory (or (:inventory e) {}) :carried (:carried e) :quickcraft (:quickcraft e)}
-          after  (menu/click before m)]
+          after (menu/click before m)]
       (concat
-       [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]
-        [:client-slots eid (or changed {}) carried]]
-       (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
-                    (:drops after))))))
+        [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]
+         [:client-slots eid (or changed {}) carried]]
+        (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
+                     (:drops after))))))
 
 (defn- inventory-deltas [world events]
   (concat (restore-deltas world events)

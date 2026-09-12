@@ -25,8 +25,8 @@
                    up? (kelp? (above chunks p))]
                (or (seq ((:due support/rule) chunks p nil))
                    (concat
-                    (case (block/type-of st)
-                      :kelp (when up? [[p (block/state :kelp-plant)]])
-                      :kelp-plant (when-not up? [[p (head-state (:tick ctx) p)]])
-                      nil)
-                    (liquid/update-cell chunks gen/flat-chunk p (:rules ctx))))))})
+                     (case (block/type-of st)
+                       :kelp (when up? [[p (block/state :kelp-plant)]])
+                       :kelp-plant (when-not up? [[p (head-state (:tick ctx) p)]])
+                       nil)
+                     (liquid/update-cell chunks gen/flat-chunk p (:rules ctx))))))})
