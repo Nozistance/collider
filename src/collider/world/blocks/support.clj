@@ -99,26 +99,28 @@
       :ceiling (holds-center-above? above)
       (attached-to? chunks template pos (:facing props)))))
 
+(def ^:private vegetation-tags
+  {:dry-vegetation "supports_dry_vegetation" :short-dry-grass "supports_dry_vegetation"
+   :tall-dry-grass "supports_dry_vegetation"
+   :crop           "supports_crops" :carrot "supports_crops" :potato "supports_crops"
+   :beetroot       "supports_crops" :torchflower-crop "supports_crops"
+   :stem           "supports_stem_crops" :attached-stem "supports_stem_crops"
+   :bamboo-stalk   "supports_bamboo" :bamboo-sapling "supports_bamboo"
+   :nether-wart    "supports_nether_wart" :azalea "supports_azalea"
+   :wither-rose    "supports_wither_rose" :nether-sprouts "supports_nether_sprouts"})
+
+(def ^:private halved-vegetation
+  {:pitcher-crop "supports_crops" :double-plant "supports_vegetation" :tall-flower "supports_vegetation"})
+
 (defn- vegetation-supported? [t st below]
-  (case t
-    (:dry-vegetation :short-dry-grass :tall-dry-grass) (block/tagged? below "supports_dry_vegetation")
-    (:crop :carrot :potato :beetroot :torchflower-crop) (block/tagged? below "supports_crops")
-    (:stem :attached-stem) (block/tagged? below "supports_stem_crops")
-    :pitcher-crop (if (= :upper (:half (block/props-of st)))
-                    (lower-half-of? below st)
-                    (block/tagged? below "supports_crops"))
-    (:double-plant :tall-flower) (if (= :upper (:half (block/props-of st)))
-                                   (lower-half-of? below st)
-                                   (block/tagged? below "supports_vegetation"))
-    :seagrass (seagrass-supported? below)
-    :cactus-flower (or (block/tagged? below "support_override_cactus_flower")
-                       (holds-center-below? below))
-    (:bamboo-stalk :bamboo-sapling) (block/tagged? below "supports_bamboo")
-    :nether-wart (block/tagged? below "supports_nether_wart")
-    :azalea (block/tagged? below "supports_azalea")
-    :wither-rose (block/tagged? below "supports_wither_rose")
-    :nether-sprouts (block/tagged? below "supports_nether_sprouts")
-    (block/tagged? below "supports_vegetation")))
+  (cond
+    (halved-vegetation t) (if (= :upper (:half (block/props-of st)))
+                            (lower-half-of? below st)
+                            (block/tagged? below (halved-vegetation t)))
+    (= :seagrass t) (seagrass-supported? below)
+    (= :cactus-flower t) (or (block/tagged? below "support_override_cactus_flower")
+                             (holds-center-below? below))
+    :else (block/tagged? below (get vegetation-tags t "supports_vegetation"))))
 
 (defn plant-age [tick pos]
   (keyword (str (long (Math/floor (* 25.0 (random/of-key [tick pos :plant-age])))))))
@@ -151,80 +153,114 @@
     (or (hanging-sign-attaches? chunks template st (mapv + pos (dir/horizontal-offset cw)) ccw)
         (hanging-sign-attaches? chunks template st (mapv + pos (dir/horizontal-offset ccw)) cw))))
 
+(defn- wall-attached? [chunks template pos st]
+  (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st))))))))
+
+(defn- tall-seagrass-supported? [st below]
+  (if (= :upper (:half (block/props-of st)))
+    (lower-half-of? below st)
+    (seagrass-supported? below)))
+
+(defn- propagule-supported? [st below above]
+  (if (= :true (:hanging (block/props-of st)))
+    (block/tagged? (max 0 above) "supports_hanging_mangrove_propagule")
+    (block/tagged? (max 0 below) "supports_mangrove_propagule")))
+
+(defn- lantern-supported? [st below above]
+  (if (= :true (:hanging (block/props-of st)))
+    (holds-center-above? above)
+    (holds-center-below? below)))
+
+(defn- cluster-supported? [chunks template pos st]
+  (let [f (block/facing-of st)
+        n (state-at chunks template (mapv + pos (dir/offset (dir/opposite f))))]
+    (and (not (neg? n)) (block/face-sturdy? n f))))
+
+(defn- cocoa-supported? [chunks template pos st]
+  (block/tagged? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (block/facing-of st))))) "supports_cocoa"))
+
+(defn- farmland-supported? [above]
+  (or (not (block/blocks-motion? (max 0 above))) (block/tagged? (max 0 above) "maintains_farmland")))
+
+(defn- dirt-path-supported? [above]
+  (or (not (block/blocks-motion? (max 0 above))) (= :fence-gate (block/type-of (max 0 above)))))
+
+(defn- crop-supported? [chunks template pos st below]
+  (and (crop-lit? chunks template pos) (vegetation-supported? (block/type-of st) st below)))
+
+(defn- pitcher-supported? [chunks template pos st below]
+  (and (or (= :upper (:half (block/props-of st))) (crop-lit? chunks template pos))
+       (vegetation-supported? (block/type-of st) st below)))
+
+(def ^:private supports
+  (into {}
+        (for [[classes f] [[[:torch :redstone-torch :candle] (fn [_c _t _p _st below _a] (holds-center-below? below))]
+                           [[:wall-torch :redstone-wall-torch :ladder]
+                            (fn [c t p st _b _a] (attached-to? c t p (dir/opposite (block/facing-of st))))]
+                           [[:standing-sign :banner] (fn [_c _t _p _st below _a] (block/blocks-motion? (max 0 below)))]
+                           [[:wall-banner :wall-sign] (fn [c t p st _b _a] (wall-attached? c t p st))]
+                           [[:ceiling-hanging-sign] (fn [_c _t _p _st _b above] (holds-center-above? above))]
+                           [[:wall-hanging-sign] (fn [c t p st _b _a] (hanging-sign-held? c t p st))]
+                           [[:kelp :kelp-plant] (fn [_c _t _p _st below _a] (kelp-supported? below))]
+                           [[:tall-seagrass] (fn [_c _t _p st below _a] (tall-seagrass-supported? st below))]
+                           [[:azalea :wither-rose :nether-sprouts :nether-fungus :nether-roots]
+                            (fn [_c _t _p st below _a] (vegetation-supported? (block/type-of st) st below))]
+                           [[:mangrove-propagule] (fn [_c _t _p st below above] (propagule-supported? st below above))]
+                           [[:chorus-flower :chorus-plant] (fn [c _t p st _b _a] (chorus/supported? c p st))]
+                           [[:fire :soul-fire] (fn [c t p st below _a] (fire-supported? c t p st below))]
+                           [[:mushroom] (fn [c t p _st below _a] (mushroom-supported? c t p below))]
+                           [[:sugar-cane] (fn [c t p st below _a] (sugar-cane-supported? c t p st below))]
+                           [[:cactus] (fn [c t p st below _a] (cactus-supported? c t p st below))]
+                           [[:lily-pad] (fn [c t p _st below _a] (lily-pad-supported? c t p below))]
+                           [[:snow-layer] (fn [_c _t _p _st below _a] (snow-supported? below))]
+                           [[:wool-carpet :carpet] (fn [_c _t _p _st below _a] (not (zero? below)))]
+                           [[:leaf-litter :coral-plant :coral-fan :base-coral-plant :base-coral-fan]
+                            (fn [_c _t _p _st below _a] (and (not (neg? below)) (block/face-sturdy? below :up)))]
+                           [[:lantern :weathering-lantern] (fn [_c _t _p st below above] (lantern-supported? st below above))]
+                           [[:bell] (fn [c t p st below above] (bell-supported? c t p st below above))]
+                           [[:cake :candle-cake] (fn [_c _t _p _st below _a] (block/legacy-solid? (max 0 below)))]
+                           [[:grindstone] (fn [_c _t _p _st _b _a] true)]
+                           [[:button :lever] (fn [c t p st _b _a] (attachable? c t p (dir/opposite (connected-direction st))))]
+                           [[:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant]
+                            (fn [c t p st _b _a] (growing-plant-supported? c t p st))]
+                           [[:amethyst-cluster] (fn [c t p st _b _a] (cluster-supported? c t p st))]
+                           [[:sea-pickle] (fn [_c _t _p _st below _a] (or (neg? below) (block/face-sturdy? below :up) (block/full-cube? below)))]
+                           [[:cocoa] (fn [c t p st _b _a] (cocoa-supported? c t p st))]
+                           [[:spore-blossom] (fn [c t p _st _b above] (and (holds-center-above? above) (not (water? (state-at c t p)))))]
+                           [[:coral-wall-fan :base-coral-wall-fan]
+                            (fn [c t p st _b _a] (attached-to? c t p (dir/opposite (block/facing-of st))))]
+                           [[:vine] (fn [c t p st _b _a] (pos? (vine-updated c t p st)))]
+                           [[:glow-lichen :multiface :sculk-vein] (fn [c t p st _b _a] (pos? (multiface-updated c t p st)))]
+                           [[:scaffolding] (fn [c t p _st _b _a] (< (scaffold-distance c t p) 7))]
+                           [[:mossy-carpet] (fn [c _t p st _b _a] (moss/carpet-supported? c p st))]
+                           [[:hanging-moss] (fn [c _t p st _b _a] (moss/hanging-supported? c p st))]
+                           [[:pointed-dripstone :sulfur-spike] (fn [c _t p st _b _a] (dripstone/supported? c p st))]
+                           [[:big-dripleaf :big-dripleaf-stem :small-dripleaf] (fn [c _t p st _b _a] (dripleaf/supported? c p st))]
+                           [[:hanging-roots] (fn [_c _t _p _st _b above] (and (not (neg? above)) (block/face-sturdy? above :down)))]
+                           [[:farmland] (fn [_c _t _p _st _b above] (farmland-supported? above))]
+                           [[:dirt-path] (fn [_c _t _p _st _b above] (dirt-path-supported? above))]
+                           [[:crop :carrot :potato :beetroot :torchflower-crop]
+                            (fn [c t p st below _a] (crop-supported? c t p st below))]
+                           [[:pitcher-crop] (fn [c t p st below _a] (pitcher-supported? c t p st below))]
+                           [[:rail :powered-rail :detector-rail]
+                            (fn [_c _t _p _st below _a] (or (neg? below) (block/face-holds-rigid? below :up)))]
+                           [[:pressure-plate :weighted-pressure-plate]
+                            (fn [_c _t _p _st below _a] (or (neg? below) (block/face-holds-rigid? below :up) (block/face-holds-center? below :up)))]
+                           [[:redstone-wire]
+                            (fn [_c _t _p _st below _a] (or (neg? below) (block/face-sturdy? below :up) (= :hopper (block/block-of below))))]]
+              k classes]
+          [k f])))
+
+(defn- default-supported? [t st below]
+  (if (block/needs-support? st) (vegetation-supported? t st below) true))
+
 (defn supported? [chunks template pos st]
   (let [st (long st) t (block/type-of st)
         below (state-at chunks template (mapv + pos [0 -1 0]))
         above (state-at chunks template (mapv + pos [0 1 0]))]
-    (case t
-      (:torch :redstone-torch) (holds-center-below? below)
-      (:wall-torch :redstone-wall-torch :ladder)
-      (attached-to? chunks template pos (dir/opposite (block/facing-of st)))
-      :standing-sign (block/blocks-motion? (max 0 below))
-      :banner (block/blocks-motion? (max 0 below))
-      :wall-banner (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st)))))))
-      :wall-sign (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st)))))))
-      :ceiling-hanging-sign (holds-center-above? above)
-      :wall-hanging-sign (hanging-sign-held? chunks template pos st)
-      (:kelp :kelp-plant) (kelp-supported? below)
-      :tall-seagrass (if (= :upper (:half (block/props-of st)))
-                       (lower-half-of? below st)
-                       (seagrass-supported? below))
-      (:azalea :wither-rose :nether-sprouts :nether-fungus :nether-roots)
-      (vegetation-supported? t st below)
-      :mangrove-propagule (if (= :true (:hanging (block/props-of st)))
-                            (block/tagged? (max 0 above) "supports_hanging_mangrove_propagule")
-                            (block/tagged? (max 0 below) "supports_mangrove_propagule"))
-      (:chorus-flower :chorus-plant) (chorus/supported? chunks pos st)
-      (:fire :soul-fire) (fire-supported? chunks template pos st below)
-      :mushroom (mushroom-supported? chunks template pos below)
-      :sugar-cane (sugar-cane-supported? chunks template pos st below)
-      :cactus (cactus-supported? chunks template pos st below)
-      :lily-pad (lily-pad-supported? chunks template pos below)
-      :snow-layer (snow-supported? below)
-      (:wool-carpet :carpet) (not (zero? below))
-      :leaf-litter (and (not (neg? below)) (block/face-sturdy? below :up))
-      (:lantern :weathering-lantern) (if (= :true (:hanging (block/props-of st)))
-                                       (holds-center-above? above)
-                                       (holds-center-below? below))
-      :bell (bell-supported? chunks template pos st below above)
-      :candle (holds-center-below? below)
-      (:cake :candle-cake) (block/legacy-solid? (max 0 below))
-      :grindstone true
-      (:button :lever) (attachable? chunks template pos (dir/opposite (connected-direction st)))
-      (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
-      (growing-plant-supported? chunks template pos st)
-      :amethyst-cluster (let [f (block/facing-of st)
-                              n (state-at chunks template (mapv + pos (dir/offset (dir/opposite f))))]
-                          (and (not (neg? n)) (block/face-sturdy? n f)))
-      :sea-pickle (or (neg? below) (block/face-sturdy? below :up) (block/full-cube? below))
-      :cocoa (block/tagged? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (block/facing-of st))))) "supports_cocoa")
-      :spore-blossom (and (holds-center-above? above) (not (water? (state-at chunks template pos))))
-      (:coral-plant :coral-fan :base-coral-plant :base-coral-fan) (and (not (neg? below)) (block/face-sturdy? below :up))
-      (:coral-wall-fan :base-coral-wall-fan) (attached-to? chunks template pos (dir/opposite (block/facing-of st)))
-      :vine (pos? (vine-updated chunks template pos st))
-      (:glow-lichen :multiface :sculk-vein) (pos? (multiface-updated chunks template pos st))
-      :scaffolding (< (scaffold-distance chunks template pos) 7)
-      :mossy-carpet (moss/carpet-supported? chunks pos st)
-      :hanging-moss (moss/hanging-supported? chunks pos st)
-      (:pointed-dripstone :sulfur-spike) (dripstone/supported? chunks pos st)
-      (:big-dripleaf :big-dripleaf-stem :small-dripleaf) (dripleaf/supported? chunks pos st)
-      :hanging-roots (and (not (neg? above)) (block/face-sturdy? above :down))
-      :farmland (or (not (block/blocks-motion? (max 0 above))) (block/tagged? (max 0 above) "maintains_farmland"))
-      :dirt-path (or (not (block/blocks-motion? (max 0 above))) (= :fence-gate (block/type-of (max 0 above))))
-      (:crop :carrot :potato :beetroot :torchflower-crop)
-      (and (crop-lit? chunks template pos) (vegetation-supported? t st below))
-      :pitcher-crop
-      (and (or (= :upper (:half (block/props-of st))) (crop-lit? chunks template pos))
-           (vegetation-supported? t st below))
-      (:rail :powered-rail :detector-rail)
-      (or (neg? below) (block/face-holds-rigid? below :up))
-      (:pressure-plate :weighted-pressure-plate)
-      (or (neg? below) (block/face-holds-rigid? below :up) (block/face-holds-center? below :up))
-      :redstone-wire
-      (or (neg? below) (block/face-sturdy? below :up) (= :hopper (block/block-of below)))
-      (if (block/needs-support? st)
-        (vegetation-supported? t st below)
-        true))))
+    (if-let [f (supports t)]
+      (f chunks template pos st below above)
+      (default-supported? t st below))))
 
 (defn- pick [chunks template pos states]
   (first (filter #(supported? chunks template pos %) states)))
@@ -446,26 +482,36 @@
   (let [st' (moss/carpet-updated chunks pos st true)]
     (when (moss/carpet-supported? chunks pos st') st')))
 
+(def ^:private fits
+  (into {}
+        (for [[classes f] [[[:button :lever :grindstone]
+                            (fn [c t p st {:keys [face yaw pitch replacing?]}] (face-attached-fitted c t p st face yaw pitch replacing?))]
+                           [[:standing-sign] (fn [c t p st {:keys [yaw pitch]}] (sign-fitted c t p st yaw pitch))]
+                           [[:skull :wither-skull :player-head] (fn [c t p st {:keys [yaw pitch]}] (skull-fitted c t p st yaw pitch))]
+                           [[:ceiling-hanging-sign]
+                            (fn [c t p st {:keys [yaw pitch sneaking?]}] (hanging-sign-fitted c t p st yaw pitch sneaking?))]
+                           [[:lantern :weathering-lantern] (fn [c t p st {:keys [pitch]}] (lantern-fitted c t p st pitch))]
+                           [[:bell] (fn [c t p st {:keys [face yaw]}] (bell-fitted c t p st face yaw))]
+                           [[:cocoa] (fn [c t p st {:keys [yaw]}] (cocoa-fitted c t p st yaw))]
+                           [[:bamboo-stalk] (fn [c t p _st _o] (bamboo-fitted c t p))]
+                           [[:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant]
+                            (fn [c t p st {:keys [tick]}] (growing-plant-fitted c t p st tick))]
+                           [[:end-rod] (fn [c t p st {:keys [face]}] (rod-fitted c t p st face))]
+                           [[:mossy-carpet] (fn [c _t p st _o] (carpet-fitted c p st))]
+                           [[:pointed-dripstone :sulfur-spike]
+                            (fn [c _t p st {:keys [pitch sneaking?]}] (dripstone/placed c p st pitch sneaking?))]
+                           [[:big-dripleaf] (fn [c _t p st _o] (dripleaf/leaf-placed c p st))]
+                           [[:vine] (fn [c t p st {:keys [yaw pitch]}] (vine-fitted c t p st yaw pitch))]
+                           [[:glow-lichen :multiface :sculk-vein] (fn [c t p st {:keys [yaw pitch]}] (multiface-fitted c t p st yaw pitch))]
+                           [[:scaffolding] (fn [c t p st _o] (when (< (scaffold-distance c t p) 7) (scaffold-state c t p st)))]
+                           [[:farmland :dirt-path] (fn [c t p st _o] (if (supported? c t p st) st (gone-state st)))]]
+              k classes]
+          [k f])))
+
 (defn fitted [chunks template pos st face yaw pitch sneaking? tick replacing?]
-  (case (block/type-of st)
-    (:button :lever :grindstone) (face-attached-fitted chunks template pos st face yaw pitch replacing?)
-    :standing-sign (sign-fitted chunks template pos st yaw pitch)
-    (:skull :wither-skull :player-head) (skull-fitted chunks template pos st yaw pitch)
-    :ceiling-hanging-sign (hanging-sign-fitted chunks template pos st yaw pitch sneaking?)
-    (:lantern :weathering-lantern) (lantern-fitted chunks template pos st pitch)
-    :bell (bell-fitted chunks template pos st face yaw)
-    :cocoa (cocoa-fitted chunks template pos st yaw)
-    :bamboo-stalk (bamboo-fitted chunks template pos)
-    (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
-    (growing-plant-fitted chunks template pos st tick)
-    :end-rod (rod-fitted chunks template pos st face)
-    :mossy-carpet (carpet-fitted chunks pos st)
-    (:pointed-dripstone :sulfur-spike) (dripstone/placed chunks pos st pitch sneaking?)
-    :big-dripleaf (dripleaf/leaf-placed chunks pos st)
-    :vine (vine-fitted chunks template pos st yaw pitch)
-    (:glow-lichen :multiface :sculk-vein) (multiface-fitted chunks template pos st yaw pitch)
-    :scaffolding (when (< (scaffold-distance chunks template pos) 7) (scaffold-state chunks template pos st))
-    (:farmland :dirt-path) (if (supported? chunks template pos st) st (gone-state st))
+  (if-let [f (fits (block/type-of st))]
+    (f chunks template pos st {:face      face :yaw yaw :pitch pitch
+                               :sneaking? sneaking? :tick tick :replacing? replacing?})
     (when (or (not (block/attached? st)) (supported? chunks template pos st)) st)))
 
 (def rule
