@@ -461,9 +461,6 @@
   (get @data/outlines st full-box))
 
 (def ^:private legacy-solid-arr
-  ;; BlockBehaviour.BlockStateBase.calculateSolid: the union box of the
-  ;; collision shape counts as solid when its mean side reaches 0.729166..,
-  ;; or when it is a full block tall.
   (let [a (boolean-array state-count)]
     (dotimes [i state-count]
       (let [boxes (get @data/shapes i full-box)]

@@ -137,7 +137,6 @@
 (declare vine-updated multiface-updated scaffold-distance attachable?)
 
 (defn- connected-direction
-  "FaceAttachedHorizontalDirectionalBlock.getConnectedDirection."
   [^long st]
   (let [props (block/props-of st)]
     (case (:face props)
@@ -432,9 +431,6 @@
 (def ^:private face-dirs [:down :up :north :south :west :east])
 
 (defn place-order
-  "BlockPlaceContext.getNearestLookingDirections: Direction.orderedByNearest,
-   with the opposite of the clicked face moved to the front unless the clicked
-   block itself is being replaced."
   [face yaw pitch replacing?]
   (let [order (look-order yaw pitch)]
     (if replacing?

@@ -25,16 +25,12 @@
    :shulker-box :shulker-box
    :lectern :lectern})
 
-;; A kind whose getUpdateTag is empty: the chunk carries no tag for it.
-;; LecternBlockEntity keeps its book as a menu slot, not as part of the view.
 (def ^:private silent
   #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
     :shulker-box :lectern})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
-;; ShulkerBoxBlockEntity.preRemoveSideEffects is empty: a broken shulker box
-;; keeps its contents in the dropped item instead of spilling them.
 (def spill-kinds #{:chest :trapped-chest :barrel})
 
 (defn kind [^long st]
@@ -130,7 +126,6 @@
   (when t (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
 
 (defn contents
-  "ItemContainerContents.fromItems: templates up to the last non-empty slot."
   [items]
   (let [top (reduce (fn [acc [i s]] (if s (long i) acc)) -1 (map-indexed vector items))]
     (mapv template (take (inc top) items))))

@@ -429,9 +429,6 @@
        (out/all (out/sound :bell/use pos 2.0 1.0))])))
 
 (defn- lectern-use-deltas
-  "LecternBlock.useItemOn with a book, then useWithoutItem on the book already
-   there. The book itself is never consumed: a creative player has
-   hasInfiniteMaterials."
   [world eid pos]
   (let [st (block-at world pos)
         stack (held-stack world eid)]
@@ -548,8 +545,6 @@
        (out/all (out/level-event 1011 pos 0))])))
 
 (defn- shulker-break-deltas
-  "ShulkerBoxBlock.playerWillDestroy: a creative player still gets the box
-   itself when it is not empty, with its contents in the item."
   [world pos]
   (let [e (be/at world pos)
         [x y z] pos]
@@ -566,7 +561,6 @@
                             :stack (be/to-stack item e) :age 0 :pickup-delay 10}]]))))))
 
 (defn- lectern-break-deltas
-  "LecternBlockEntity.preRemoveSideEffects: the book falls out."
   [world pos]
   (for [e (container/dropped-book world pos)] [:spawn-entity e]))
 

@@ -11,7 +11,6 @@
 (def ^:private player-view (vec (concat (range 9 36) (range 36 45))))
 
 (defn- view
-  "The menu slots as the client sees them. LecternMenu has no player slots."
   [m contents inv]
   (if (container/player-slots? m)
     (into (vec contents) (map inv) player-view)
@@ -50,7 +49,6 @@
 (defn- valid? [world m]
   (cond
     (container/lectern? m)
-    ;; the bookAccess Container: the block entity is there and still has a book
     (and (= :lectern (:kind (be/at world (:pos m))))
          (container/book? (container/book-of world m)))
     (container/bench? m)
@@ -63,7 +61,6 @@
   (when stack (items/add-stack inv stack)))
 
 (defn- give-back
-  "Inventory.placeItemBackInInventory for a run of stacks, one after another."
   [inv stacks]
   (reduce (fn [[inv changes drops] stack]
             (let [[chg left] (items/add-stack inv stack)]
@@ -75,8 +72,6 @@
 (defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
     (let [carried (:carried e)
-          ;; ContainerLevelAccess.create(...).execute always runs: the inputs
-          ;; come back even if the bench itself is gone.
           back (when (container/bench? m)
                  (container/inputs m (container/items world eid m)))
           [inv0 kept drops] (give-back (or (:inventory e) {}) back)
@@ -112,7 +107,6 @@
        [[:merge-entity eid {:menu menu :container-counter id}]
         (out/to eid (out/open-screen id (:type m) (:title m)))
         (out/to eid (out/container-content id 1 slots (:carried e')))]
-       ;; sendInitialData: every data slot goes out after the contents
        (when (container/bench? m)
          [(out/to eid (out/container-data id 0 (:selected m)))])
        (when (container/lectern? m)
@@ -147,9 +141,6 @@
          :remote-carried (remote-of carried)))
 
 (defn- slot-changes
-  "What the click did to the player's own slots. While a menu is open its own
-   sync tells the client about them, so the player tracker must not say it
-   again: in vanilla the inventory menu is not the open one and is silent."
   [before after]
   (into {}
         (keep (fn [slot] (when (not= (get after slot) (get before slot))
@@ -161,7 +152,6 @@
     (let [m (:menu e)]
       (cond
         (or (nil? m) (not= (long (:container packet)) (long (:id m)))) nil
-        ;; LecternScreen is a book view with no slots: it never clicks.
         (container/lectern? m) nil
         (not (valid? world m)) (close-deltas world eid e true)
         :else
@@ -192,23 +182,18 @@
                         (:drops after))))))))
 
 (defn- page-button-deltas
-  "LecternMenu.setData: the clamped page goes back to the client right away,
-   the way broadcastChanges does."
   [world eid m ^long want]
   (when-let [ds (container/page-deltas world m want)]
     (concat ds [(out/to eid (out/container-data (:id m) 0
                                                 (container/next-page world m want)))])))
 
 (defn- take-book-deltas
-  "LecternMenu button 3: the book goes to the player, the lectern loses it and
-   the menu stops being valid."
   [world eid e m]
   (when-let [book (container/book-of world m)]
     (let [[changes left] (items/add-stack (or (:inventory e) {}) book)
           state-id (inc (long (:state-id m 1)))]
       (concat
        (container/remove-book-deltas world (:pos m))
-       ;; broadcastChanges before ServerPlayer.tick finds the menu invalid
        [(out/to eid (out/container-slot (:id m) state-id 0 nil))]
        (when (not= 0 (container/page world m))
          [(out/to eid (out/container-data (:id m) 0 0))])
@@ -223,7 +208,6 @@
       (>= id 100) (page-button-deltas world eid m (- id 100))
       (= 1 id) (page-button-deltas world eid m (dec page))
       (= 2 id) (page-button-deltas world eid m (inc page))
-      ;; Player.mayBuild is always true for the creative player we serve
       (= 3 id) (take-book-deltas world eid e m)
       :else nil)))
 

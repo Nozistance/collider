@@ -41,9 +41,6 @@
    :quick   player-quick-slots})
 
 (defn slots-layout
-  "The flat slot space of a menu with n slots of its own: 0..n-1 are the menu's,
-   n+0..n+45 the whole player inventory, and :visible turns a slot number from
-   the packet into a flat one."
   ([n] (slots-layout n (fn [_ _] true)))
   ([^long n place]
    (let [menu (into (vec (range n))
@@ -77,8 +74,6 @@
          (sized stack (- (count-of stack) put))]))))
 
 (defn- take-out
-  "Slot.tryRemove. A result slot hands over the whole stack or nothing:
-   ResultContainer.removeItem ignores the count and allowModification is false."
   ([layout inv slot n] (take-out layout inv slot n Long/MAX_VALUE))
   ([layout inv slot n mx]
   (let [here  (get inv slot)
@@ -148,8 +143,6 @@
     (if left (assoc inv' slot left) inv')))
 
 (defn- settle
-  "The tail of a click on a menu with a derived result slot: taking the result
-   runs the menu's onTake and the result is assembled again from what is left."
   [m before]
   (let [{:keys [result on-take derive]} (layout-of m)]
     (if (nil? derive)

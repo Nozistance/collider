@@ -48,8 +48,6 @@
 (def ^:private positive? #{:up :south :east})
 
 (defn- half-free?
-  "Shulker.getProgressDeltaAabb(1, facing, 0, 0.5) over the neighbour cell:
-   the half of it next to the box must hold no collision box."
   [chunks pos facing]
   (let [st (state-at chunks (mapv + pos (dir-offset facing)))
         ax (long (axis-of facing))
@@ -63,7 +61,6 @@
   (get (:shulker-anim world) pos))
 
 (defn can-open?
-  "ShulkerBoxBlock.canOpen: an already moving or open lid always opens."
   [world pos ^long st]
   (or (some? (animation world pos))
       (half-free? (:chunks world) pos (:facing (block/props-of st)))))
@@ -96,8 +93,6 @@
 (defn lectern? [m] (= :lectern (:kind m)))
 
 (defn player-slots?
-  "Whether the menu shows the player inventory. LecternMenu has one slot and
-   nothing else."
   [m]
   (not (lectern? m)))
 
@@ -110,9 +105,6 @@
 (def book-items (set (data/tag-values "item" "lectern_books")))
 
 (defn book?
-  "LecternBlockEntity.hasBook: a stack carrying one of the book content
-   components. Both book items carry theirs by default and we never strip
-   them, so the item alone decides."
   [stack]
   (contains? book-items (:item stack)))
 
@@ -142,14 +134,10 @@
     :else (into [] (mapcat #(cell-items world %)) (:cells m))))
 
 (defn inputs
-  "AbstractContainerMenu.clearContainer on removed: the result is discarded, the
-   inputs go back to the player."
   [m items]
   (keep-indexed (fn [i s] (when (not= i (:result m)) s)) items))
 
 (defn store-deltas
-  "Where the contents of an open menu live. A bench keeps its own on the menu,
-   so it stores nothing of its own here."
   [world eid m items]
   (cond
     (lectern? m) nil
@@ -167,8 +155,6 @@
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
 
 (defn place-book-deltas
-  "LecternBlock.placeBook: the block entity takes one book, the state gets
-   HAS_BOOK with the impulse cleared, and the page goes back to the start."
   [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))]
     [[:set-block-entity pos (assoc e :book (assoc stack :count 1) :page 0)]
@@ -176,8 +162,6 @@
      (out/all (out/sound :item.book.put (centre pos) 1.0 1.0))]))
 
 (defn remove-book-deltas
-  "LecternBlockEntity.onBookItemRemove: the page resets and the block loses
-   HAS_BOOK."
   [world pos]
   (let [st (state-at (:chunks world) pos)
         e (be/at world pos)]
@@ -188,8 +172,6 @@
   (clamp-page want (page-count (book-of world m))))
 
 (defn page-deltas
-  "LecternBlockEntity.setPage: a clamped page that really moved schedules the
-   page change impulse of LecternBlock.signalPageChange."
   [world m ^long want]
   (let [pos (:pos m)
         st (state-at (:chunks world) pos)
@@ -198,15 +180,11 @@
     (when (not= p (long (:page e 0)))
       [[:set-block-entity pos (assoc e :page p)]
        [:set-blocks [[pos (lectern/powered-state st true)]]]
-       ;; the button packet is handled before ServerLevel advances its game
-       ;; time, so vanilla's delay of two lands one tick from ours
        [:schedule-ticks {(+ (long (:tick world)) lectern/impulse-ticks -1)
                          [(chunk/block-pos->id pos)]}]
        (out/all (out/level-event 1043 pos 0))])))
 
 (defn dropped-book
-  "LecternBlockEntity.preRemoveSideEffects: the book falls a quarter of a block
-   towards the front of the lectern, one block up."
   [world pos]
   (let [e (be/at world pos)
         st (state-at (:chunks world) pos)]
@@ -285,7 +263,6 @@
 (def ^:private step (float 0.1))
 
 (defn- trigger-deltas
-  "ShulkerBoxBlockEntity.triggerEvent: opener count 1 starts opening, 0 closing."
   [pos ^long after]
   (cond
     (zero? after) [[:shulker-anim pos {:status :closing}]]
@@ -293,7 +270,6 @@
     :else nil))
 
 (defn animate-deltas
-  "ShulkerBoxBlockEntity.updateAnimation: 0.1 of the lid per tick."
   [world]
   (mapcat (fn [[pos {:keys [status progress]}]]
             (let [p (float progress)
@@ -322,8 +298,6 @@
      (when (and (pos? before) (zero? after)) (edge false))
      (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
      (when (= :shulker-box t) (trigger-deltas pos after))
-     ;; ShulkerBoxBlockEntity keeps its own openCount and never schedules a
-     ;; recheck: only ContainerOpenersCounter does.
      (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
 
@@ -342,7 +316,6 @@
   (block/state (block/block-of st) (assoc (block/props-of st) :open (if open? :true :false))))
 
 (defn fits-inside?
-  "Item.canFitInsideContainerItems: BlockItem of a ShulkerBoxBlock cannot."
   [item]
   (not= :shulker-box (:type (get @data/blocks item))))
 
@@ -413,8 +386,6 @@
                        (dissoc inv 3))))))
 
 (defn- lectern-layout []
-  ;; LecternMenu has a single slot that takes nothing and quick-moves nothing,
-  ;; and LecternScreen is a book view with no slots: no click ever arrives.
   {:count 1 :visible [0]
    :place (fn [_ _] false)
    :swap  (fn ^long [^long _] 0)
@@ -430,7 +401,6 @@
       (menu/container-layout (long (:rows m))))))
 
 (defn derived
-  "The result slot rebuilt from the inputs: setupResultSlot."
   [m items]
   (if-not (bench? m)
     items
@@ -439,8 +409,6 @@
       (mapv #(get inv %) (range (slot-count m))))))
 
 (defn slots-changed
-  "The menu's own reaction to its inputs changing: StonecutterMenu.slotsChanged
-   and LoomMenu.slotsChanged."
   [m items]
   (case (:type m)
     :stonecutter (workbench/cut-changed m items)
@@ -448,7 +416,6 @@
     m))
 
 (defn settled
-  "A bench after its slots moved: slotsChanged and then the result slot again."
   [m items]
   (if-not (bench? m)
     [m items]
@@ -456,8 +423,6 @@
       [m' (derived m' items)])))
 
 (defn button
-  "AbstractContainerMenu.clickMenuButton for the two benches: the button picks
-   an entry of the list the menu currently offers."
   [m ^long id]
   (let [n (case (:type m)
             :stonecutter (count (workbench/cuts (first (:contents m))))

@@ -5,7 +5,6 @@
 
 (set! *warn-on-reflection* true)
 
-;; LecternBlock.PAGE_CHANGE_IMPULSE_TICKS
 (def ^:const impulse-ticks 2)
 
 (defn lectern? [^long st] (= :lectern (block/type-of st)))
@@ -17,12 +16,10 @@
   (block/state (block/block-of st) (merge (block/props-of st) m)))
 
 (defn reset-state
-  "LecternBlock.resetBookState: the impulse ends together with the book state."
   [^long st book?]
   (with-props st {:powered :false :has-book (if book? :true :false)}))
 
 (defn powered-state
-  "LecternBlock.changePowered."
   [^long st on?]
   (with-props st {:powered (if on? :true :false)}))
 
@@ -31,7 +28,6 @@
    :match? (fn [_chunks st _p] (lectern? st))
    :wake   (fn [_chunks _tick _p _old _self?] nil)
    :due    (fn [chunks p _ctx]
-             ;; LecternBlock.tick: the page change impulse falls back off.
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                (when (and (lectern? st) (powered? st))
                  [[p (powered-state st false)]])))})

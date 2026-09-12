@@ -523,8 +523,6 @@
                    (enumeration-seq (.entries zf))))))
 
 (defn- stonecutting
-  "Recipes of type minecraft:stonecutting in datapack order: RecipeManager.prepare
-   sorts by recipe identifier, and finalizeRecipeLoading keeps that order."
   [entries]
   (into []
         (keep (fn [[_ json]]
@@ -548,8 +546,6 @@
         entries))
 
 (defn- recipes
-  "resources/mc/recipes.edn: the stonecutter recipe list and the item property
-   sets, both of which the client needs to draw its menus."
   [jar tags]
   (with-open [zf (ZipFile. (io/file jar))]
     (let [entries (recipe-entries zf)]

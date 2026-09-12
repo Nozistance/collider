@@ -377,9 +377,6 @@
                          (if at
                            (assoc-in w [:container-rechecks pos] (long at))
                            (update w :container-rechecks dissoc pos)))
-    ;; The lid ticks before the packets that trigger it (ShulkerBoxBlockEntity
-    ;; ticks with the level, ServerGamePacketListener runs after it), so a
-    ;; status from triggerEvent merges over the progress of this tick.
     :shulker-anim (let [[pos a] args]
                     (if a
                       (update-in w [:shulker-anim pos] #(merge {:progress (float 0.0)} % a))

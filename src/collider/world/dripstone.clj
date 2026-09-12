@@ -7,7 +7,6 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private grows-on {:pointed-dripstone :dripstone-block})
-;; SpeleothemBlock.getMaxGrowthLength is 7; SulfurSpikeBlock overrides it with 2.
 (def ^:private max-growth-length {:pointed-dripstone 7 :sulfur-spike 2})
 (def ^:private cauldrons #{:cauldron :layered-cauldron :lava-cauldron})
 (def ^:private water-chance 0.17578125)

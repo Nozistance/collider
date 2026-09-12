@@ -1,7 +1,4 @@
 (ns collider.game.workbench
-  "Stonecutter and loom: menus that hold no storage. Their slots are a few
-   inputs plus a result assembled from a recipe or a pattern the player picks
-   with a button (StonecutterMenu, LoomMenu)."
   (:require [collider.data :as data])
   (:import (java.util List)))
 
@@ -12,21 +9,16 @@
 (defn- of [item] (data/tag-values "item" item))
 
 (defn cuts
-  "SelectableRecipe.SingleInputSet.selectByInput: every stonecutting recipe whose
-   ingredient accepts the stack, in datapack order."
   [stack]
   (if (nil? stack)
     []
     (filterv (fn [r] (some #(= % (:item stack)) (:in r))) @cut-recipes)))
 
 (defn cuts-input?
-  "SingleInputSet.acceptsInput, as StonecutterMenu.quickMoveStack asks it."
   [stack]
   (boolean (seq (cuts stack))))
 
 (defn cut-result
-  "StonecutterMenu.setupResultSlot: assemble() ignores the input and creates the
-   recipe result."
   [stack ^long selected]
   (let [rs (cuts stack)]
     (when (and (not (neg? selected)) (< selected (count rs)))
@@ -34,8 +26,6 @@
         {:item (:item out) :count (long (:count out 1))}))))
 
 (defn cut-changed
-  "StonecutterMenu.slotsChanged: only a change of the input item resets the list
-   and clears the selection."
   [m inv]
   (let [item (:item (get inv 0))]
     (if (= item (:input-item m))
@@ -52,20 +42,16 @@
 (defn banner? [stack] (contains? @banner-items (:item stack)))
 
 (defn dye?
-  "LoomMenu.isDyeItem: in #loom_dyes and carrying the dye component."
   [stack]
   (and (contains? @loom-dyes (:item stack))
        (some? (data/dye-color (:item stack)))))
 
 (defn pattern-item?
-  "LoomMenu.isPatternItem: in #loom_patterns and carrying provides_banner_patterns."
   [stack]
   (and (contains? @loom-patterns (:item stack))
        (some? (data/pattern-tag (:item stack)))))
 
 (defn selectable-patterns
-  "LoomMenu.getSelectablePatterns: without a pattern item the whole
-   #no_item_required tag, with one the tag its component provides."
   [pattern]
   (if (nil? pattern)
     @no-item-required
@@ -78,8 +64,6 @@
 (defn- layers [stack] (vec (get-in stack [:components :banner-patterns])))
 
 (defn loom-result
-  "LoomMenu.setupResultSlot: one banner with the chosen pattern in the dye's
-   colour appended to its banner_patterns."
   [banner dye pattern]
   (when (and banner dye pattern)
     (when-let [color (data/dye-color (:item dye))]
@@ -95,8 +79,6 @@
     :else (.indexOf ^List patterns (nth prev selected))))
 
 (defn loom-changed
-  "LoomMenu.slotsChanged: the pattern list follows the pattern slot, a single
-   choice selects itself, and a banner that already wears six layers takes none."
   [m inv]
   (let [banner (get inv 0) dye (get inv 1)]
     (if-not (and banner dye)

@@ -122,9 +122,6 @@
       (liquid/source-state? st)))
 
 (defn- sulfur-state
-  "PotentSulfurBlock.validBlockState: the state follows the water source above
-   and the geyser tag of the block below. ERUPTING is kept as it is; without a
-   block entity there is no countdown to reset."
   [self ^long st at]
   (let [above (at [0 1 0]) below (at [0 -1 0])
         state (cond

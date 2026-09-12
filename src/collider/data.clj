@@ -36,12 +36,10 @@
   (get-in @items [item :equip]))
 
 (defn dye-color
-  "The minecraft:dye component of an item, as DyeColor."
   [item]
   (get-in @items [item :dye]))
 
 (defn pattern-tag
-  "The minecraft:provides_banner_patterns component of an item: a banner_pattern tag."
   [item]
   (get-in @items [item :patterns]))
 
