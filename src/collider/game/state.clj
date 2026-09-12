@@ -112,7 +112,10 @@
                                                  (mapv (fn [[pos _ st]] [pos st]) real))
                         (light/relight-batch gen/flat-chunk real))
             derived (connect/derived-changes chunks' (map first real) (:tick w))
-            chunks' (chunk/chunks-set-blocks chunks' gen/flat-chunk derived)
+            dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' gen/flat-chunk pos) st]) derived)
+            chunks' (-> chunks'
+                        (chunk/chunks-set-blocks gen/flat-chunk derived)
+                        (light/relight-batch gen/flat-chunk dropped))
             events (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
         (-> w
             (assoc :chunks chunks')
