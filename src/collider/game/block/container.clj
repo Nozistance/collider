@@ -101,11 +101,11 @@
     (bench? m) (long (:size m))
     :else (* 9 (long (:rows m)))))
 
-(def book-items (set (data/tag-values "item" "lectern_books")))
+(def book-items (delay (set (data/tag-values "item" "lectern_books"))))
 
 (defn book?
   [stack]
-  (contains? book-items (:item stack)))
+  (contains? @book-items (:item stack)))
 
 (defn page-count ^long [stack]
   (let [c (:components stack)]

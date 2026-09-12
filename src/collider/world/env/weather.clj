@@ -110,10 +110,10 @@
            :o-rain-level    rain
            :rain-level      (step-level rain (:raining? m)))))
 
-(defn parameters [^long clear-time ^long rain-time raining? thundering?]
+(defn parameters [^long clear-time ^long weather-time raining? thundering?]
   {:clear-weather-time clear-time
-   :rain-time          rain-time
-   :thunder-time       rain-time
+   :rain-time          weather-time
+   :thunder-time       weather-time
    :raining?           (boolean raining?)
    :thundering?        (boolean thundering?)})
 
