@@ -579,6 +579,17 @@
                        (items/split-drop world pos stack [:spill i]))))
               (map-indexed vector (:items e))))))
 
+(defn- door-partner-effect [world eid pos old]
+  (when (contains? block/door-types (block/type-of old))
+    (let [lower? (= :lower (:half (block/props-of old)))
+          ppos   (mapv + pos (if lower? [0 1 0] [0 -1 0]))
+          partner (block-at world ppos)]
+      (when (and (= (block/block-of old) (block/block-of partner))
+                 (not= (:half (block/props-of partner)) (:half (block/props-of old))))
+        (if lower?
+          (out/all (out/break-effect ppos partner))
+          (out/except eid (out/break-effect ppos partner)))))))
+
 (defn- dig-deltas [world [eid status pos _face]]
   (let [old (block-at world pos)]
     (when (or (= 0 status) (= 2 status))
@@ -590,7 +601,8 @@
                       (conj (change-deltas world [[pos (block/emptied old)]])
                             (out/except eid (out/break-effect pos old))))
           (fire/fire-state? old) (conj (out/all (out/extinguish pos)))
-          (bed-head-effect world eid pos old) (conj (bed-head-effect world eid pos old)))
+          (bed-head-effect world eid pos old) (conj (bed-head-effect world eid pos old))
+          (door-partner-effect world eid pos old) (conj (door-partner-effect world eid pos old)))
         [(own-change world eid pos)]))))
 
 (defn- snow-layers ^long [st]
