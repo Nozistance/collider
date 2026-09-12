@@ -35,7 +35,7 @@
      [(out/all (out/status eid :eat))]]
     [(decide t eid (assoc e :pending nil)) nil]))
 
-(defn- start-roam [world eid e t kind span sx sz]
+(defn- roam-target [world e t eid span sx sz]
   (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
         try-at (fn [i]
                  [(+ (double x) (- (* (double span) (random/of-longs t eid (hash sx) i)) (* 0.5 (double span))))
@@ -45,13 +45,16 @@
                         (sense/block-at world [(long (Math/floor (double cx)))
                                                (dec (long (Math/floor (double y))))
                                                (long (Math/floor (double cz)))]))
-                   10.0 0.0))
-        target (reduce (fn [best c] (if (> (double (weight c)) (double (weight best))) c best))
-                       (try-at 0)
-                       (map try-at (range 1 10)))]
-    [(assoc e :pending nil
-              :task {:kind kind :until (+ (long t) wander-timeout) :target target})
-     nil]))
+                   10.0 0.0))]
+    (reduce (fn [best c] (if (> (double (weight c)) (double (weight best))) c best))
+            (try-at 0)
+            (map try-at (range 1 10)))))
+
+(defn- start-roam [world eid e t kind span sx sz]
+  [(assoc e :pending nil
+            :task {:kind   kind :until (+ (long t) wander-timeout)
+                   :target (roam-target world e t eid span sx sz)})
+   nil])
 
 (defn- start-wander [world eid e t] (start-roam world eid e t :wander 20.0 :tx :tz))
 
@@ -190,6 +193,16 @@
     (roam-done? e t) (start-panic world eid e t)
     :else [e nil]))
 
+(defn- idle-brain [world eid e t kind]
+  (cond
+    (= :follow kind) (run-follow world eid e t)
+    (= :wander kind) (run-wander world eid e t)
+    (>= (long t) (long (or (:wake-tick e) 0)))
+    (if (:pending e)
+      (start-pending world eid e t)
+      [(decide t eid e) nil])
+    :else [e nil]))
+
 (defn brain [world eid e t tempters]
   (let [kind (get-in e [:task :kind])]
     (cond
@@ -199,23 +212,24 @@
       (= :mate kind) (run-mate world eid e t)
       (mobs/in-love? e t) (start-mate world eid e t)
       (= :tempt kind) (run-tempt world eid e t tempters)
-      :else
-      (or (tempted eid e t tempters)
-          (start-follow world eid e t)
-          (cond
-            (= :follow kind) (run-follow world eid e t)
-            (= :wander kind) (run-wander world eid e t)
-            (>= (long t) (long (or (:wake-tick e) 0)))
-            (if (:pending e)
-              (start-pending world eid e t)
-              [(decide t eid e) nil])
-            :else [e nil])))))
+      :else (or (tempted eid e t tempters)
+                (start-follow world eid e t)
+                (idle-brain world eid e t kind)))))
 
 (defn- feedable? [e t]
   (and (mobs/mob-type? (:type e))
        (not (mobs/baby? e))
        (not (mobs/in-love? e t))
        (<= (long (or (:breed-ready-at e) 0)) (long t))))
+
+(defn- fed-deltas [t target e]
+  (cond
+    (mobs/baby? e)
+    (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
+      [[:merge-entity target {:baby-until (+ (long t) (long (* 0.9 remaining)))}]])
+    (feedable? e t)
+    (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
+          [(out/all (out/status target :love))])))
 
 (defn feed-deltas [world events t]
   (mapcat (fn [[tag peid target]]
@@ -224,12 +238,5 @@
                 (when (and (mobs/mob-type? (:type e))
                            (= (mobs/breeding-item (:type e))
                               (sense/held-of (get-in world [:entities peid]))))
-                  (cond
-                    (mobs/baby? e)
-                    (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
-                      [[:merge-entity target
-                        {:baby-until (+ (long t) (long (* 0.9 remaining)))}]])
-                    (feedable? e t)
-                    (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
-                          [(out/all (out/status target :love))]))))))
+                  (fed-deltas t target e)))))
           events))

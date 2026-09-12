@@ -97,36 +97,38 @@
               w))
           w real))
 
+(defn- real-changes [chunks changes]
+  (into []
+        (keep (fn [[pos st]]
+                (let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
+                  (when (not= old (long st)) [pos old st]))))
+        changes))
+
+(defn- with-derived [chunks tick real]
+  (let [chunks' (-> chunks
+                    (chunk/chunks-set-blocks gen/flat-chunk (mapv (fn [[pos _ st]] [pos st]) real))
+                    (light/relight-batch gen/flat-chunk real))
+        derived (connect/derived-changes chunks' (map first real) tick)
+        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' gen/flat-chunk pos) st]) derived)]
+    [(-> chunks'
+         (chunk/chunks-set-blocks gen/flat-chunk derived)
+         (light/relight-batch gen/flat-chunk dropped))
+     (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
+
+(defn- add-block-events [ev events]
+  (reduce (fn [ev [pos st]] (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
+          (or ev (i/int-map)) events))
+
 (defn- apply-set-blocks [w changes ^long base]
-  (let [chunks (:chunks w)
-        real (into []
-                   (keep (fn [[pos st]]
-                           (let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
-                             (when (not= old (long st))
-                               [pos old st]))))
-                   changes)]
+  (let [real (real-changes (:chunks w) changes)]
     (if (empty? real)
       w
-      (let [chunks' (-> chunks
-                        (chunk/chunks-set-blocks gen/flat-chunk
-                                                 (mapv (fn [[pos _ st]] [pos st]) real))
-                        (light/relight-batch gen/flat-chunk real))
-            derived (connect/derived-changes chunks' (map first real) (:tick w))
-            dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' gen/flat-chunk pos) st]) derived)
-            chunks' (-> chunks'
-                        (chunk/chunks-set-blocks gen/flat-chunk derived)
-                        (light/relight-batch gen/flat-chunk dropped))
-            events (concat (map (fn [[pos _ st]] [pos st]) real) derived)]
+      (let [[chunks' events] (with-derived (:chunks w) (:tick w) real)]
         (-> w
             (assoc :chunks chunks')
             (drop-block-entities real)
             (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
-            (cond-> (seq events)
-                    (update :block-events
-                            (fn [ev]
-                              (reduce (fn [ev [pos st]]
-                                        (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
-                                      (or ev (i/int-map)) events)))))))))
+            (cond-> (seq events) (update :block-events add-block-events events)))))))
 
 (defn spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
@@ -364,56 +366,69 @@
     :push (let [[_ v] args]
             (update e (if (= :tnt (:type e)) :kb :vel) (fnil v/+ [0.0 0.0 0.0]) v))))
 
+(defn- spawned [w spec]
+  (let [eid (long (:next-eid w 1000000))]
+    (-> w
+        (assoc-in [:entities eid] (entity/of spec))
+        (assoc :next-eid (inc eid)))))
+
+(defn- scheduled [w at-ids]
+  (update w :block-ticks
+          (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
+                           bt at-ids))))
+
+(defn- rechecked [w pos at]
+  (if at
+    (assoc-in w [:container-rechecks pos] (long at))
+    (update w :container-rechecks dissoc pos)))
+
+(defn- shulker-animated [w pos a]
+  (if a
+    (update-in w [:shulker-anim pos] #(merge {:progress (float 0.0)} % a))
+    (update w :shulker-anim dissoc pos)))
+
+(defn- block-entity-set [w pos e]
+  (let [cp (chunk/block-chunk pos)]
+    (if e
+      (assoc-in w [:block-entities cp pos] e)
+      (update-in w [:block-entities cp] dissoc pos))))
+
 (defn- apply-world-delta [w [tag & args :as delta]]
   (case tag
     :remove-entity (apply player-quit w args)
     :listed (apply listed w args)
-    :spawn-entity (let [eid (long (:next-eid w 1000000))]
-                    (-> w
-                        (assoc-in [:entities eid] (entity/of (first args)))
-                        (assoc :next-eid (inc eid))))
+    :spawn-entity (spawned w (first args))
     :set-blocks (apply-set-blocks w (first args) (long (or (second args) (:tick w))))
     :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
-    :schedule-ticks (update w :block-ticks
-                            (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
-                                             bt (first args))))
-    :container-recheck (let [[pos at] args]
-                         (if at
-                           (assoc-in w [:container-rechecks pos] (long at))
-                           (update w :container-rechecks dissoc pos)))
-    :shulker-anim (let [[pos a] args]
-                    (if a
-                      (update-in w [:shulker-anim pos] #(merge {:progress (float 0.0)} % a))
-                      (update w :shulker-anim dissoc pos)))
+    :schedule-ticks (scheduled w (first args))
+    :container-recheck (apply rechecked w args)
+    :shulker-anim (apply shulker-animated w args)
     :block-events-flushed (assoc w :block-events nil)
     :set-time (assoc w :time-of-day (long (first args)))
     :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
     :set-world-spawn (assoc w :world-spawn (vec (first args)))
     :set-weather (merge w (select-keys (first args) weather/fields))
-    :set-block-entity (let [[pos e] args cp (chunk/block-chunk pos)]
-                        (if e
-                          (assoc-in w [:block-entities cp pos] e)
-                          (update-in w [:block-entities cp] dissoc pos)))
+    :set-block-entity (apply block-entity-set w args)
     (if (deltas/entity-tags tag)
       (update-entity w (first args) #(apply-entity-delta (:tick w) % delta))
       w)))
 
+(defn- folded-entities [w entities pairs]
+  (r/fold 1 (r/monoid i/merge i/int-map)
+          (fn [m [eid ds]]
+            (if-let [e (get entities eid)]
+              (assoc m eid (reduce #(apply-entity-delta (:tick w) %1 %2) e ds))
+              m))
+          pairs))
+
 (defn apply-deltas [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
-        [w removes] (reduce
-                      (fn [[w removes] [tag & args :as delta]]
-                        (if (= :remove-entity tag)
-                          [w (conj removes (first args))]
-                          [(apply-world-delta w delta) removes]))
-                      [world []]
-                      (.world d))
+        [w removes] (reduce (fn [[w removes] [tag & args :as delta]]
+                              (if (= :remove-entity tag)
+                                [w (conj removes (first args))]
+                                [(apply-world-delta w delta) removes]))
+                            [world []] (.world d))
         entities (:entities w)
-        updated (r/fold 1 (r/monoid i/merge i/int-map)
-                        (fn [m [eid ds]]
-                          (if-let [e (get entities eid)]
-                            (assoc m eid (reduce #(apply-entity-delta (:tick w) %1 %2) e ds))
-                            m))
-                        (vec (.entities d)))
-        w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)
-        w (reduce player-quit w removes)]
-    [w d]))
+        updated (folded-entities w entities (vec (.entities d)))
+        w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)]
+    [(reduce player-quit w removes) d]))

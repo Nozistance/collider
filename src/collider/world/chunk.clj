@@ -114,30 +114,31 @@
      (get-block (get ~chunks (pos->id (bit-shift-right x# 4) (bit-shift-right z# 4)) ~template)
                 (bit-and x# 15) y# (bit-and z# 15))))
 
+(defn- section-array ^shorts [^HashMap cache chunks template cp si]
+  (let [k [cp si]]
+    (or (.get cache k)
+        (let [c (get chunks cp template)
+              ^Section s (or (get (:sections c) si) empty-section)
+              a (aclone ^shorts (.blocks s))]
+          (.put cache k a)
+          a))))
+
+(defn- merge-section [template chs [[cp si] arr]]
+  (let [c (get chs cp template)
+        ^Section s (or (get (:sections c) si) (new-section c si))]
+    (assoc chs cp (assoc-in c [:sections si] (->Section arr (.block-light s) (.sky-light s))))))
+
 (defn chunks-set-blocks [chunks template changes]
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]
       (doseq [[[x y z] state] changes]
         (let [x (long x) y (long y) z (long z)
-              cp (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
-              si (section-index y)
-              k [cp si]
-              ^shorts arr
-              (or (.get cache k)
-                  (let [c (get chunks cp template)
-                        ^Section s (or (get (:sections c) si) empty-section)
-                        a (aclone ^shorts (.blocks s))]
-                    (.put cache k a)
-                    a))]
+              ^shorts arr (section-array cache chunks template
+                                         (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
+                                         (section-index y))]
           (aset arr (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15))
                 (short state))))
-      (reduce
-        (fn [chs [[cp si] arr]]
-          (let [c (get chs cp template)
-                ^Section s (or (get (:sections c) si) (new-section c si))]
-            (assoc chs cp
-                       (assoc-in c [:sections si]
-                                 (->Section arr (.block-light s) (.sky-light s))))))
-        chunks
-        (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))
+      (reduce (partial merge-section template)
+              chunks
+              (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))

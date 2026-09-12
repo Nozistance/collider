@@ -63,22 +63,22 @@
                           (map-indexed vector (:sections c))))))
         (seq (state/active-chunks world))))
 
+(defn- precipitation-at [world chunks t cid max-height i]
+  (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
+    (let [t (long t) cid (long cid)
+          [cx cz] (chunk/id->pos cid)
+          x (+ (* 16 (long cx)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-x))))))
+          z (+ (* 16 (long cz)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-z))))))]
+      (precipitation/tick-precipitation world chunks [x 0 z] max-height
+                                        (random/of-longs t cid i (hash :precipitation-fill))))))
+
 (defn- precipitation-changes [world chunks speed]
-  (let [t (long (:tick world)) max-height (long (get-in world [:rules :max-snow-accumulation-height] 1))]
+  (let [t (long (:tick world))
+        max-height (long (get-in world [:rules :max-snow-accumulation-height] 1))]
     (into []
-          (mapcat
-            (fn [cid]
-              (let [cid (long cid) [cx cz] (chunk/id->pos cid)]
-                (into []
-                      (mapcat
-                        (fn [^long i]
-                          (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
-                            (let [x (+ (* 16 (long cx)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-x))))))
-                                  z (+ (* 16 (long cz)) (long (Math/floor (* 16.0 (random/of-longs t cid i (hash :precipitation-z))))))]
-                              (precipitation/tick-precipitation
-                                world chunks [x 0 z] max-height
-                                (random/of-longs t cid i (hash :precipitation-fill)))))))
-                      (range (long speed))))))
+          (mapcat (fn [cid]
+                    (into [] (mapcat #(precipitation-at world chunks t (long cid) max-height %))
+                          (range (long speed)))))
           (seq (state/active-chunks world)))))
 
 (defn- eyeblossom-changes [changes]

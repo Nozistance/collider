@@ -63,24 +63,30 @@
 (defn- select-deltas [eid ^long n]
   [[:merge-entity eid {:held-slot n}] (out/to eid (out/held-slot n))])
 
+(defn- swap-into-hotbar [eid inv slot n]
+  (let [n (long n)]
+    (concat (select-deltas eid n)
+            [[:set-slot eid (+ 36 n) (get inv slot)]
+             [:set-slot eid slot (get inv (+ 36 n))]])))
+
+(defn- stash-into-hotbar [eid inv stack n]
+  (let [n (long n)
+        cur (get inv (+ 36 n))
+        free (when cur (free-slot inv))]
+    (concat (select-deltas eid n)
+            (when free [[:set-slot eid free cur]])
+            [[:set-slot eid (+ 36 n) stack]])))
+
 (defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
     (when-let [stack (pick-item world what)]
       (let [inv (:inventory e)
-            held (long (or (:held-slot e) 0))]
-        (if-let [slot (slot-with inv stack)]
-          (if (<= 36 (long slot) 44)
-            (select-deltas eid (- (long slot) 36))
-            (let [n (suitable-hotbar inv held)]
-              (concat (select-deltas eid n)
-                      [[:set-slot eid (+ 36 n) (get inv slot)]
-                       [:set-slot eid slot (get inv (+ 36 n))]])))
-          (let [n (suitable-hotbar inv held)
-                cur (get inv (+ 36 n))
-                free (when cur (free-slot inv))]
-            (concat (select-deltas eid n)
-                    (when free [[:set-slot eid free cur]])
-                    [[:set-slot eid (+ 36 n) stack]])))))))
+            held (long (or (:held-slot e) 0))
+            slot (slot-with inv stack)]
+        (cond
+          (and slot (<= 36 (long slot) 44)) (select-deltas eid (- (long slot) 36))
+          slot (swap-into-hotbar eid inv slot (suitable-hotbar inv held))
+          :else (stash-into-hotbar eid inv stack (suitable-hotbar inv held)))))))
 
 (defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]

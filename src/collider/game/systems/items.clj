@@ -105,34 +105,43 @@
 (defn- fluid-movement [[vx vy vz] ^double drag]
   [(* (double vx) drag) (+ (double vy) (if (< (double vy) 0.06) 5.0E-4 0.0)) (* (double vz) drag)])
 
+(defn- item-drift [chunks pos vel]
+  (let [pushed (v/+ vel (liquid/entity-push chunks gen/flat-chunk pos item-half item-height vel))
+        water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
+        lava (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)]
+    [(cond
+       (> water 0.1) (fluid-movement pushed 0.99)
+       (> lava 0.1) (fluid-movement pushed 0.95)
+       :else [(v/x pushed) (- (v/y pushed) 0.04) (v/z pushed)])
+     (or (> water 0.1) (> lava 0.1))]))
+
+(defn- item-moved [chunks pos [vx vy vz]]
+  (let [^Move mv (phys/move chunks gen/flat-chunk pos
+                            [(double vx) (double vy) (double vz)] item-half item-height)
+        on-ground (.on-ground mv)
+        [mx my mz] (.vel mv)
+        f (if on-ground 0.588 0.98)
+        my (* (double my) 0.98)]
+    [(.pos mv)
+     [(* (double mx) f) (if (and on-ground (neg? my)) (* my -0.5) my) (* (double mz) f)]
+     on-ground]))
+
+(defn- jolt-of ^double [vel' old]
+  (let [dx (- (double (vel' 0)) (v/x old))
+        dy (- (double (vel' 1)) (v/y old))
+        dz (- (double (vel' 2)) (v/z old))]
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
 (defn- step-item [world eid e]
   (let [chunks (:chunks world) pos (:pos e)
-        pushed (v/+ (:vel e) (liquid/entity-push chunks gen/flat-chunk pos item-half item-height (:vel e)))
-        water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
-        lava (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)
-        in-fluid? (or (> water 0.1) (> lava 0.1))
-        [vx vy vz] (cond
-                     (> water 0.1) (fluid-movement pushed 0.99)
-                     (> lava 0.1) (fluid-movement pushed 0.95)
-                     :else [(v/x pushed) (- (v/y pushed) 0.04) (v/z pushed)])
+        [[vx _ vz :as drift] in-fluid?] (item-drift chunks pos (:vel e))
         resting? (and (:on-ground e)
                       (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) 1.0E-5)
                       (not= 0 (rem (+ (long (:tick world)) (long eid)) 4)))
-        [pos' vel' on-ground]
-        (if resting?
-          [pos [vx vy vz] true]
-          (let [^Move mv (phys/move chunks gen/flat-chunk pos [(double vx) (double vy) (double vz)] item-half item-height)
-                on-ground (.on-ground mv)
-                [mx my mz] (.vel mv)
-                f (if on-ground 0.588 0.98)
-                my (* (double my) 0.98)]
-            [(.pos mv)
-             [(* (double mx) f) (if (and on-ground (neg? my)) (* my -0.5) my) (* (double mz) f)]
-             on-ground]))
+        [pos' vel' on-ground] (if resting?
+                                [pos drift true]
+                                (item-moved chunks pos drift))
         vel' (assoc vel' 1 (liquid/bubble-push chunks gen/flat-chunk pos' (double (vel' 1))))
-        old (:vel e)
-        jolt (let [dx (- (double (vel' 0)) (v/x old)) dy (- (double (vel' 1)) (v/y old)) dz (- (double (vel' 2)) (v/z old))]
-               (+ (* dx dx) (* dy dy) (* dz dz)))
         age (inc (long (or (:age e) 0)))]
     (if (>= age despawn-age)
       [:remove-entity eid]
@@ -140,7 +149,8 @@
        {:pos          pos'
         :vel          vel'
         :on-ground    on-ground
-        :needs-sync?  (or in-fluid? (> jolt 0.01) (not= on-ground (boolean (:on-ground e))))
+        :needs-sync?  (or in-fluid? (> (jolt-of vel' (:vel e)) 0.01)
+                          (not= on-ground (boolean (:on-ground e))))
         :age          age
         :pickup-delay (max 0 (dec (long (or (:pickup-delay e) 0))))}])))
 

@@ -62,29 +62,29 @@
 (defn- toggled [^long timer flag]
   (let [n (dec timer)] [n (if (zero? n) (not flag) flag)]))
 
+(defn- cleared-timers [^long clear raining thundering]
+  {:clear-weather-time (dec clear)
+   :thunder-time       (if thundering 0 1)
+   :rain-time          (if raining 0 1)
+   :thundering?        false
+   :raining?           false})
+
+(defn- next-phase [left on? t salt duration delay]
+  (if (pos? (long left))
+    (toggled left on?)
+    [(sample (random/of-key [t salt]) (if on? duration delay)) on?]))
+
 (defn- timers [w]
   (let [t (long (:tick w 0))
         clear (long (:clear-weather-time w 0))
-        rain-t (long (:rain-time w 0))
-        thunder-t (long (:thunder-time w 0))
         raining (boolean (:raining? w))
         thundering (boolean (:thundering? w))]
     (if (pos? clear)
-      {:clear-weather-time (dec clear)
-       :thunder-time       (if thundering 0 1)
-       :rain-time          (if raining 0 1)
-       :thundering?        false
-       :raining?           false}
-      (let [[tt th] (if (pos? thunder-t)
-                      (toggled thunder-t thundering)
-                      [(sample (random/of-key [t :thunder-time])
-                               (if thundering thunder-duration thunder-delay))
-                       thundering])
-            [rt rn] (if (pos? rain-t)
-                      (toggled rain-t raining)
-                      [(sample (random/of-key [t :rain-time])
-                               (if raining rain-duration rain-delay))
-                       raining])]
+      (cleared-timers clear raining thundering)
+      (let [[tt th] (next-phase (long (:thunder-time w 0)) thundering t :thunder-time
+                                thunder-duration thunder-delay)
+            [rt rn] (next-phase (long (:rain-time w 0)) raining t :rain-time
+                                rain-duration rain-delay)]
         {:clear-weather-time clear
          :thunder-time       tt
          :rain-time          rt

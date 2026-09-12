@@ -37,6 +37,14 @@
 (defn compress! [^Conn c ^long threshold]
   (.offer ^ArrayBlockingQueue (:q c) [:threshold threshold]))
 
+(defn- write-packet! [out payload body head threshold defl chunk state m]
+  (try
+    (.clear ^Buf payload)
+    (packets/encode! state payload m)
+    (c/write-frame! out payload body head (long threshold) defl chunk)
+    (catch Throwable t
+      (log/info "encode failed for" (:packet m) "-" (str t)))))
+
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
         ^ArrayBlockingQueue q (:q c)
@@ -53,18 +61,10 @@
           (cond
             (nil? x)
             (when-not (.get closing) (recur threshold))
-
             (= :packet (nth x 0))
-            (let [[_ state m] x]
-              (try
-                (.clear payload)
-                (packets/encode! state payload m)
-                (c/write-frame! out payload body head threshold defl chunk)
-                (catch Throwable t
-                  (log/info "encode failed for" (:packet m) "-" (str t))))
-              (when (.isEmpty q) (.flush out))
-              (recur threshold))
-
+            (do (write-packet! out payload body head threshold defl chunk (nth x 1) (nth x 2))
+                (when (.isEmpty q) (.flush out))
+                (recur threshold))
             (= :threshold (nth x 0))
             (let [n (long (nth x 1))]
               (swap! (:st c) assoc :threshold n)
@@ -95,18 +95,20 @@
     (log/info "player disconnected: eid" eid)
     (when save! (save!))))
 
+(defn- start-writer! [conn]
+  (Thread/startVirtualThread
+    #(try (writer-loop conn)
+          (catch InterruptedException _ nil)
+          (catch SocketException _ nil)
+          (catch Throwable t
+            (log/info "writer failed for" (who conn) "-" (str t))))))
+
 (defn- serve-conn! [^Socket sock io]
   (let [conn (->Conn sock (ArrayBlockingQueue. out-queue-size)
                      (atom {:state :handshake :threshold -1
                             :addr  (str (.getRemoteSocketAddress sock))})
                      (AtomicBoolean. false))]
-    (swap! (:st conn) assoc :writer
-           (Thread/startVirtualThread
-             #(try (writer-loop conn)
-                   (catch InterruptedException _ nil)
-                   (catch SocketException _ nil)
-                   (catch Throwable t
-                     (log/info "writer failed for" (who conn) "-" (str t))))))
+    (swap! (:st conn) assoc :writer (start-writer! conn))
     (try
       (reader-loop conn io)
       (catch EOFException _ nil)

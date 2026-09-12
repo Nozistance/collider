@@ -82,6 +82,14 @@
     (when-let [hit (clip-cell world (:pos e) pos)]
       (when (= :water (liquid/liquid-class (block-at world hit))) hit))))
 
+(defn- landing [world e pos vel]
+  (let [concrete? (= :concrete-powder (block/type-of (:block e)))
+        clipped (when concrete? (clipped-cell world e pos vel))
+        cell (or clipped (cell-of pos))
+        cur (block-at world cell)]
+    [cell cur concrete?
+     (and concrete? (or (some? clipped) (= :water (liquid/liquid-class cur))))]))
+
 (defn- step-deltas [world eid e]
   (let [[vx vy vz] (:vel e)
         ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
@@ -89,13 +97,7 @@
         pos (.pos mv) on-ground (.on-ground mv)
         [mx my mz] (.vel mv)
         time (inc (long (:time e)))
-        cell (cell-of pos)
-        cur (block-at world cell)
-        concrete? (= :concrete-powder (block/type-of (:block e)))
-        clipped (when concrete? (clipped-cell world e pos (.vel mv)))
-        cell (or clipped cell)
-        cur (if clipped (block-at world cell) cur)
-        stuck? (and concrete? (or (some? clipped) (= :water (liquid/liquid-class cur))))]
+        [cell cur concrete? stuck?] (landing world e pos (.vel mv))]
     (cond
       (or on-ground stuck?)
       (land-deltas world eid (assoc e :pos pos) cell cur concrete? stuck?)

@@ -146,25 +146,24 @@
           cz (range (long (Math/floor (- z half))) (long (Math/ceil (+ z half))))]
       [cx cy cz])))
 
+(defn- add-fluid [chunks template y acc [cx cy cz :as c]]
+  (let [st (state-at chunks template cx cy cz)
+        cls (when (pos? (long st)) (liquid-class st))
+        h (when cls (- (+ (double cy) (height-in chunks template cls c)) (double y)))]
+    (if (or (nil? cls) (neg? (double h)))
+      acc
+      (let [h (max (double h) (double (get-in acc [cls :height] 0.0)))
+            [fx fy fz] (or (flow-vector chunks template c) [0.0 0.0 0.0])
+            k (if (< h 0.4) h 1.0)
+            [ax ay az] (get-in acc [cls :flow] [0.0 0.0 0.0])]
+        (assoc acc cls {:height h
+                        :flow   [(+ (double ax) (* (double fx) k))
+                                 (+ (double ay) (* (double fy) k))
+                                 (+ (double az) (* (double fz) k))]
+                        :n      (inc (long (get-in acc [cls :n] 0)))})))))
+
 (defn- fluid-around [chunks template [x y z] half height]
-  (reduce (fn [acc [cx cy cz :as c]]
-            (let [st (state-at chunks template cx cy cz)
-                  cls (when (pos? (long st)) (liquid-class st))]
-              (if (nil? cls)
-                acc
-                (let [top (+ (double cy) (height-in chunks template cls c))
-                      h (- top (double y))]
-                  (if (neg? h)
-                    acc
-                    (let [h (max h (double (get-in acc [cls :height] 0.0)))
-                          [fx fy fz] (or (flow-vector chunks template c) [0.0 0.0 0.0])
-                          k (if (< h 0.4) h 1.0)
-                          [ax ay az] (get-in acc [cls :flow] [0.0 0.0 0.0])]
-                      (assoc acc cls {:height h
-                                      :flow   [(+ (double ax) (* (double fx) k)) (+ (double ay) (* (double fy) k)) (+ (double az) (* (double fz) k))]
-                                      :n      (inc (long (get-in acc [cls :n] 0)))})))))))
-          {}
-          (cells-of x y z half height)))
+  (reduce (partial add-fluid chunks template y) {} (cells-of x y z half height)))
 
 (defn fluid-height [chunks template pos half height cls]
   (double (get-in (fluid-around chunks template pos half height) [cls :height] 0.0)))
@@ -263,15 +262,17 @@
     (and (pass-wall? raw braw [0 -1 0])
          (or (same? cls b) (can-hold? cls braw)))))
 
+(defn- horizontal-source-scan [{:keys [cls] :as env} raw [x y z]]
+  (reduce (fn [[h s] [dx _ dz :as d]]
+            (let [[nraw n] (cell env [(+ (long x) dx) y (+ (long z) dz)])]
+              (if (and (same? cls n) (pass-wall? raw nraw d))
+                [(max (long h) (amount n)) (if (source-of? cls n) (inc (long s)) s)]
+                [h s])))
+          [0 0] horiz3))
+
 (defn- new-liquid [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
   (let [[raw _] (cell env p)
-        [highest sources]
-        (reduce (fn [[h s] [dx _ dz :as d]]
-                  (let [[nraw n] (cell env [(+ (long x) dx) y (+ (long z) dz)])]
-                    (if (and (same? cls n) (pass-wall? raw nraw d))
-                      [(max (long h) (amount n)) (if (source-of? cls n) (inc (long s)) s)]
-                      [h s])))
-                [0 0] horiz3)
+        [highest sources] (horizontal-source-scan env raw p)
         [braw b] (cell env [x (dec (long y)) z])
         [araw a] (cell env [x (inc (long y)) z])]
     (cond
@@ -347,25 +348,26 @@
                  plain)]
         (cons [tp st] (convert-neighbors chunks template cls tp))))))
 
-(defn- spread-sides [{:keys [cls dropoff] :as env} [x y z :as p] st]
+(defn- lowest-targets [{:keys [cls] :as env} raw [x y z]]
+  (second
+    (reduce (fn [[lowest acc] [dx _ dz :as d]]
+              (let [tp [(+ (long x) dx) y (+ (long z) dz)]
+                    [traw t] (cell env tp)
+                    v (and (can-maybe-pass? cls raw traw t d) (new-liquid env tp))]
+                (if-not (and v (holds-specific? cls traw))
+                  [lowest acc]
+                  (let [dist (if (hole? env tp) 0 (slope-distance env tp 1 (opposite d)))
+                        acc (if (< dist (long lowest)) [] acc)]
+                    (if (<= dist (long lowest))
+                      [dist (if (replaceable-with? t cls d) (conj acc [tp d v]) acc)]
+                      [lowest acc])))))
+            [1000 []] horiz3)))
+
+(defn- spread-sides [{:keys [dropoff] :as env} p st]
   (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
     (when (pos? n)
-      (let [[raw _] (cell env p)
-            cands (reduce (fn [[lowest acc] [dx _ dz :as d]]
-                            (let [tp [(+ (long x) dx) y (+ (long z) dz)]
-                                  [traw t] (cell env tp)]
-                              (if-let [v (and (can-maybe-pass? cls raw traw t d)
-                                              (new-liquid env tp))]
-                                (if (holds-specific? cls traw)
-                                  (let [dist (if (hole? env tp) 0 (slope-distance env tp 1 (opposite d)))
-                                        acc (if (< dist (long lowest)) [] acc)]
-                                    (if (<= dist (long lowest))
-                                      [dist (if (replaceable-with? t cls d) (conj acc [tp d v]) acc)]
-                                      [lowest acc]))
-                                  [lowest acc])
-                                [lowest acc])))
-                          [1000 []] horiz3)]
-        (into [] (mapcat (fn [[tp d v]] (spread-to env tp d v))) (second cands))))))
+      (let [[raw _] (cell env p)]
+        (into [] (mapcat (fn [[tp d v]] (spread-to env tp d v))) (lowest-targets env raw p))))))
 
 (defn- source-neighbours ^long [{:keys [cls] :as env} [x y z]]
   (count (filter (fn [[dx _ dz]] (source-of? cls (second (cell env [(+ (long x) dx) y (+ (long z) dz)])))) horiz3)))
@@ -462,18 +464,21 @@
       vy)))
 
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
+(defn- flow-env [chunks template cls rules]
+  (let [{:keys [dropoff slope infinite? mix]} (liquids cls)]
+    {:chunks    chunks :template template :cls cls
+     :dropoff   (long dropoff) :slope (long slope)
+     :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}))
+
 (defn update-cell [chunks template [x y z :as p] rules]
   (let [st (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
-      (let [{:keys [dropoff slope infinite? mix]} (liquids cls)
-            env {:chunks    chunks :template template :cls cls
-                 :dropoff   (long dropoff) :slope (long slope)
-                 :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}
+      (let [env (flow-env chunks template cls rules)
             above (shifted chunks template p [0 1 0])
             sides (side-states chunks template p)
             below-raw (raw-at chunks template x (dec (long y)) z)]
-        (if-let [mixed (mixed-state cls mix st above sides below-raw)]
+        (if-let [mixed (mixed-state cls (:mix env) st above sides below-raw)]
           [[p mixed]]
           (let [v (if (source-of? cls st) :source (new-liquid env p))
                 st' (if v (liquid->state cls v) 0)]
@@ -498,29 +503,36 @@
 (defn- flammable-around? [chunks template p]
   (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
 
-(defn lava-random-tick [chunks template [x y z :as p] roll]
+(defn- lava-fire-walk [chunks template p r3 passes]
+  (loop [tp p i 0]
+    (when (< i (long passes))
+      (let [tp' [(+ (long (tp 0)) (long (r3 [:x i]))) (inc (long (tp 1))) (+ (long (tp 2)) (long (r3 [:z i])))]
+            st (raw-at chunks template (tp' 0) (tp' 1) (tp' 2))]
+        (cond
+          (neg? st) nil
+          (zero? st) (if (flammable-around? chunks template tp')
+                       [[tp' (fire-state-at chunks template tp')]]
+                       (recur tp' (inc i)))
+          (block/blocks-motion? st) nil
+          :else (recur tp' (inc i)))))))
+
+(defn- lava-spot-fires [chunks template [x y z] r3]
+  (into []
+        (keep (fn [i]
+                (let [tp [(+ (long x) (long (r3 [:x i]))) y (+ (long z) (long (r3 [:z i])))]
+                      above [(tp 0) (inc (long y)) (tp 2)]]
+                  (when (and (zero? (long (raw-at chunks template (above 0) (above 1) (above 2))))
+                             (block/ignited-by-lava?
+                               (long (max 0 (long (raw-at chunks template (tp 0) (tp 1) (tp 2)))))))
+                    [above (fire-state-at chunks template above)]))))
+        (range 3)))
+
+(defn lava-random-tick [chunks template p roll]
   (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (roll salt)))))))
         passes (long (Math/floor (* 3.0 (double (roll :passes)))))]
     (if (pos? passes)
-      (loop [tp p i 0]
-        (when (< i passes)
-          (let [tp' [(+ (long (tp 0)) (r3 [:x i])) (inc (long (tp 1))) (+ (long (tp 2)) (r3 [:z i]))]
-                st (raw-at chunks template (tp' 0) (tp' 1) (tp' 2))]
-            (cond
-              (neg? st) nil
-              (zero? st) (if (flammable-around? chunks template tp')
-                           [[tp' (fire-state-at chunks template tp')]]
-                           (recur tp' (inc i)))
-              (block/blocks-motion? st) nil
-              :else (recur tp' (inc i))))))
-      (into []
-            (keep (fn [i]
-                    (let [tp [(+ (long x) (r3 [:x i])) y (+ (long z) (r3 [:z i]))]
-                          above [(tp 0) (inc (long y)) (tp 2)]]
-                      (when (and (zero? (long (raw-at chunks template (above 0) (above 1) (above 2))))
-                                 (block/ignited-by-lava? (long (max 0 (long (raw-at chunks template (tp 0) (tp 1) (tp 2)))))))
-                        [above (fire-state-at chunks template above)]))))
-            (range 3)))))
+      (lava-fire-walk chunks template p r3 passes)
+      (lava-spot-fires chunks template p r3))))
 
 (def rule
   {:name   :liquid

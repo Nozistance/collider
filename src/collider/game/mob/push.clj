@@ -28,33 +28,36 @@
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
 
 (def ^:private ^:const push-cap 16)
+(defn- pushable-groups [world active]
+  (persistent!
+    (reduce (fn [m [eid e]]
+              (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
+                       (state/active-at? active (:pos e)))
+                (let [k (push-cell-key (:pos e))]
+                  (assoc! m k (conj (get m k []) [eid e])))
+                m))
+            (transient (im/int-map))
+            (:entities world))))
+
+(defn- packed-cell ^PushCell [entries]
+  (let [n (count entries)
+        eids (long-array n) xs (double-array n) ys (double-array n)
+        zs (double-array n) halfs (double-array n) heights (double-array n)]
+    (loop [i 0 es (seq entries)]
+      (when es
+        (let [[eid e] (first es)
+              p (:pos e)]
+          (aset eids i (long eid))
+          (aset xs i (double (v/x p))) (aset ys i (double (v/y p))) (aset zs i (double (v/z p)))
+          (aset halfs i (pushable-half e)) (aset heights i (pushable-height e))
+          (recur (inc i) (next es)))))
+    (PushCell. eids xs ys zs halfs heights)))
+
 (defn push-index [world active]
-  (let [groups (persistent!
-                 (reduce (fn [m [eid e]]
-                           (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
-                                    (state/active-at? active (:pos e)))
-                             (let [k (push-cell-key (:pos e))]
-                               (assoc! m k (conj (get m k []) [eid e])))
-                             m))
-                         (transient (im/int-map))
-                         (:entities world)))]
-    (persistent!
-      (reduce-kv (fn [m k entries]
-                   (let [entries (sort-by first entries)
-                         n (count entries)
-                         eids (long-array n) xs (double-array n) ys (double-array n)
-                         zs (double-array n) halfs (double-array n) heights (double-array n)]
-                     (loop [i 0 es (seq entries)]
-                       (when es
-                         (let [[eid e] (first es)
-                               p (:pos e) x (v/x p) y (v/y p) z (v/z p)]
-                           (aset eids i (long eid))
-                           (aset xs i (double x)) (aset ys i (double y)) (aset zs i (double z))
-                           (aset halfs i (pushable-half e)) (aset heights i (pushable-height e))
-                           (recur (inc i) (next es)))))
-                     (assoc! m k (PushCell. eids xs ys zs halfs heights))))
-                 (transient (im/int-map))
-                 groups))))
+  (persistent!
+    (reduce-kv (fn [m k entries] (assoc! m k (packed-cell (sort-by first entries))))
+               (transient (im/int-map))
+               (pushable-groups world active))))
 
 (deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
 (defn- push-window ^Window [index ^long cx ^long cz ^long eid]

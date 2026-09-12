@@ -127,57 +127,57 @@
         (edit/reject-deltas world eid pos target)))
     (edit/reject-deltas world eid pos nil)))
 
+(defn- pose [world eid]
+  (let [e (get-in world [:entities eid])]
+    [(or (:yaw e) 0.0) (or (:pitch e) 0.0) (boolean (:sneaking? e))]))
+
+(defn- reshaped [world pos' state]
+  (or (when (contains? connect/placed-types (block/type-of state))
+        (connect/reshape (:chunks world) pos' state (:tick world)))
+      state))
+
+(defn- refined [world eid pos pos' state face item]
+  (let [[yaw pitch sneaking?] (pose world eid)
+        state (support/fitted (:chunks world) gen/flat-chunk pos' (reshaped world pos' state) face
+                              yaw pitch sneaking? (:tick world) (= pos' pos))
+        state (if (and state (contains? container/container-types (block/type-of state)))
+                (container/placed-state (:chunks world) pos' state face sneaking? yaw pitch)
+                state)]
+    (stacked world pos' (if state (edit/waterlogged world pos' state) state) item)))
+
+(defn- rejected? [world pos' state item]
+  (or (nil? state)
+      (not (replaceable? world pos' item))
+      (and (contains? water-plant-types (block/type-of state))
+           (not (water-plant-ok? world pos' state)))
+      (edit/obstructed? world pos' state)))
+
+(defn- merged-deltas [world eid pos pos' [mp ms]]
+  (if (edit/obstructed? world mp ms)
+    (edit/reject-deltas world eid pos pos')
+    (edit/placed-deltas world eid mp ms)))
+
+(defn- kind-deltas [world eid pos pos' state item cursor]
+  (let [type (block/type-of state)]
+    (cond
+      (contains? block/door-types type) (door-place-deltas world eid pos pos' state cursor)
+      (= :bed type) (bed-place-deltas world eid pos pos' state item)
+      (= :mossy-carpet type) (carpet-place-deltas world eid pos' state)
+      (contains? connect/pair-types type) (pair-place-deltas world eid pos pos' state)
+      (be/kind state) (block-entity-place-deltas world eid pos' state)
+      :else (edit/placed-deltas world eid pos' state))))
+
 (defn solid-place-deltas [world [eid pos face item cursor]]
   (when-let [off (dir/face-offset face)]
     (when-let [state (block/placement item face (get-in world [:entities eid :yaw] 0.0) (nth cursor 1)
                                       (replaceable? world pos))]
-      (let [pile (if (get-in world [:entities eid :sneaking?]) nil item)
+      (let [pile (when-not (get-in world [:entities eid :sneaking?]) item)
             [_ y' _ :as target] (if (replaceable? world pos pile) pos (mapv + pos off))
             pos' (when (chunk/in-range? y') target)
-            state (or (when (and pos' (contains? connect/placed-types (block/type-of state)))
-                        (connect/reshape (:chunks world) pos' state (:tick world)))
-                      state)
-            state (if pos'
-                    (support/fitted (:chunks world) gen/flat-chunk pos' state face
-                                    (or (get-in world [:entities eid :yaw]) 0.0) (or (get-in world [:entities eid :pitch]) 0.0)
-                                    (boolean (get-in world [:entities eid :sneaking?]))
-                                    (:tick world)
-                                    (= pos' pos))
-                    state)
-            state (if (and pos' state (contains? container/container-types (block/type-of state)))
-                    (container/placed-state (:chunks world) pos' state face
-                                            (boolean (get-in world [:entities eid :sneaking?]))
-                                            (or (get-in world [:entities eid :yaw]) 0.0)
-                                            (or (get-in world [:entities eid :pitch]) 0.0))
-                    state)
-            state (if (and pos' state) (edit/waterlogged world pos' state) state)
-            state (if pos' (stacked world pos' state item) state)
-            merged (slab-merge world pos pos' face item)]
-        (cond
-          merged
-          (let [[mp ms] merged]
-            (if (edit/obstructed? world mp ms)
+            state (when pos' (refined world eid pos pos' state face item))]
+        (if-let [merged (slab-merge world pos pos' face item)]
+          (merged-deltas world eid pos pos' merged)
+          (when pos'
+            (if (rejected? world pos' state item)
               (edit/reject-deltas world eid pos pos')
-              (edit/placed-deltas world eid mp ms)))
-          (nil? pos') nil
-          (nil? state)
-          (edit/reject-deltas world eid pos pos')
-          (not (replaceable? world pos' item))
-          (edit/reject-deltas world eid pos pos')
-          (and (contains? water-plant-types (block/type-of state))
-               (not (water-plant-ok? world pos' state)))
-          (edit/reject-deltas world eid pos pos')
-          (edit/obstructed? world pos' state)
-          (edit/reject-deltas world eid pos pos')
-          (contains? block/door-types (block/type-of state))
-          (door-place-deltas world eid pos pos' state cursor)
-          (= :bed (block/type-of state))
-          (bed-place-deltas world eid pos pos' state item)
-          (= :mossy-carpet (block/type-of state))
-          (carpet-place-deltas world eid pos' state)
-          (contains? connect/pair-types (block/type-of state))
-          (pair-place-deltas world eid pos pos' state)
-          (be/kind state)
-          (block-entity-place-deltas world eid pos' state)
-          :else
-          (edit/placed-deltas world eid pos' state))))))
+              (kind-deltas world eid pos pos' state item cursor))))))))

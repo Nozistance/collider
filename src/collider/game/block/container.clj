@@ -64,29 +64,32 @@
   (or (some? (animation world pos))
       (half-free? (:chunks world) pos (:facing (block/props-of st)))))
 
+(def ^:private menu-builders
+  {:barrel      (fn [_ _ pos _] {:kind  :block :rows 3 :type :generic-9x3
+                                 :title {:translate "container.barrel"} :cells [pos]})
+   :shulker-box (fn [world _ pos st] (when (can-open? world pos st)
+                                       {:kind  :block :rows 3 :type :shulker-box
+                                        :title {:translate "container.shulkerBox"} :cells [pos]}))
+   :ender-chest (fn [_ chunks pos _] (when-not (blocked? chunks pos)
+                                       {:kind  :ender :rows 3 :type :generic-9x3
+                                        :title {:translate "container.enderchest"} :cells [] :pos pos}))
+   :stonecutter (fn [_ _ pos _] {:kind  :bench :type :stonecutter :size 2 :result 1
+                                 :title {:translate "container.stonecutter"}
+                                 :cells [] :pos pos :selected 0 :contents [nil nil]})
+   :lectern     (fn [_ _ pos st] (when (lectern/has-book? st)
+                                   {:kind  :lectern :type :lectern
+                                    :title {:translate "container.lectern"}
+                                    :cells [] :pos pos}))
+   :loom        (fn [_ _ pos _] {:kind  :bench :type :loom :size 4 :result 3
+                                 :title {:translate "container.loom"}
+                                 :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})})
+
 (defn menu-at [world pos]
   (let [chunks (:chunks world)
         st (state-at chunks pos) t (block/type-of st)]
-    (cond
-      (contains? chest-types t) (chest-menu chunks pos st)
-      (= :barrel t) {:kind  :block :rows 3 :type :generic-9x3
-                     :title {:translate "container.barrel"} :cells [pos]}
-      (= :shulker-box t) (when (can-open? world pos st)
-                           {:kind  :block :rows 3 :type :shulker-box
-                            :title {:translate "container.shulkerBox"} :cells [pos]})
-      (= :ender-chest t) (when-not (blocked? chunks pos)
-                           {:kind  :ender :rows 3 :type :generic-9x3
-                            :title {:translate "container.enderchest"} :cells [] :pos pos})
-      (= :stonecutter t) {:kind  :bench :type :stonecutter :size 2 :result 1
-                          :title {:translate "container.stonecutter"}
-                          :cells [] :pos pos :selected 0 :contents [nil nil]}
-      (= :lectern t) (when (lectern/has-book? st)
-                       {:kind  :lectern :type :lectern
-                        :title {:translate "container.lectern"}
-                        :cells [] :pos pos})
-      (= :loom t) {:kind  :bench :type :loom :size 4 :result 3
-                   :title {:translate "container.loom"}
-                   :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})))
+    (if (contains? chest-types t)
+      (chest-menu chunks pos st)
+      (when-let [f (menu-builders t)] (f world chunks pos st)))))
 
 (defn bench? [m] (= :bench (:kind m)))
 (defn lectern? [m] (= :lectern (:kind m)))

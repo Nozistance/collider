@@ -193,6 +193,16 @@
     [[:set-weather m]
      (out/to eid (out/system-chat [{:translate (str "commands.weather.set." (name kind))}]))]))
 
+(defn- time-deltas [world eid op args]
+  (case op
+    :time-set (let [t (long (first args))]
+                (cons [:set-time t] (tell eid (format "set the time to **%d**" t))))
+    :time-add (let [t (+ (long (:time-of-day world 0)) (long (first args)))]
+                (cons [:set-time t] (tell eid (format "added **%d** to the time" (first args)))))
+    :time-query (tell eid (case (first args)
+                            "daytime" (format "the time is **%d**" (long (:time-of-day world 0)))
+                            "gametime" (format "the game time is **%d**" (long (:tick world 0)))))))
+
 (defn- world-command-deltas [world eid [_ op & args]]
   (case op
     :gamerule (rule-deltas world eid (first args) (second args))
@@ -207,15 +217,7 @@
     :weather-clear (weather-deltas world eid :clear (first args))
     :weather-rain (weather-deltas world eid :rain (first args))
     :weather-thunder (weather-deltas world eid :thunder (first args))
-    :time-set (let [t (long (first args))]
-                (cons [:set-time t]
-                      (tell eid (format "set the time to **%d**" t))))
-    :time-add (let [t (+ (long (:time-of-day world 0)) (long (first args)))]
-                (cons [:set-time t]
-                      (tell eid (format "added **%d** to the time" (first args)))))
-    :time-query (tell eid (case (first args)
-                            "daytime" (format "the time is **%d**" (long (:time-of-day world 0)))
-                            "gametime" (format "the game time is **%d**" (long (:tick world 0)))))
+    (:time-set :time-add :time-query) (time-deltas world eid op args)
     (tell eid (str "unknown world command: " op))))
 
 (defn- command-deltas [world eid text]

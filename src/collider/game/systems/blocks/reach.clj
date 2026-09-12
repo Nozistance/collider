@@ -55,20 +55,33 @@
     (concat (when (and (pos? st) (not (liquid/liquid-state? st))) (map abs (block/outline-boxes st)))
             fluid)))
 
+(defn- axis-step ^long [dc] (if (neg? (double dc)) -1 1))
+
+(defn- first-cross ^double [f dc c]
+  (if (zero? (double dc))
+    Double/POSITIVE_INFINITY
+    (/ (- (if (pos? (double dc)) (inc (long c)) (double c)) (double f)) (double dc))))
+
+(defn- cross-delta ^double [dc] (/ 1.0 (Math/abs (double dc))))
+
+(defn- cell-hit [world from d cell fluids]
+  (first (sort-by first (keep #(box-entry from d %) (cell-boxes world cell fluids)))))
+
 (defn clip [world e fluids]
-  (let [from (eye-pos e) dir (look-dir e)
-        d (mapv #(* 5.0 (double %)) dir)
-        step (fn [_ dc] (if (neg? (double dc)) -1 1))
-        next-t (fn [f dc c] (if (zero? (double dc)) Double/POSITIVE_INFINITY
-                                                    (/ (- (if (pos? (double dc)) (inc (long c)) (double c)) (double f)) (double dc))))]
+  (let [from (eye-pos e)
+        d (mapv #(* 5.0 (double %)) (look-dir e))]
     (loop [[cx cy cz :as cell] (mapv #(long (Math/floor (double %))) from)
-           tx (next-t (from 0) (d 0) cx) ty (next-t (from 1) (d 1) cy) tz (next-t (from 2) (d 2) cz)
+           tx (first-cross (from 0) (d 0) (long (Math/floor (double (from 0)))))
+           ty (first-cross (from 1) (d 1) (long (Math/floor (double (from 1)))))
+           tz (first-cross (from 2) (d 2) (long (Math/floor (double (from 2)))))
            n 0]
-      (let [hit (when (chunk/in-range? cy)
-                  (first (sort-by first (keep #(box-entry from d %) (cell-boxes world cell fluids)))))]
+      (let [hit (when (chunk/in-range? cy) (cell-hit world from d cell fluids))]
         (cond
           hit {:pos cell :face (second hit)}
           (or (> n 24) (every? #(> (double %) 1.0) [tx ty tz])) nil
-          (and (<= tx ty) (<= tx tz)) (recur [(+ cx (step cx (d 0))) cy cz] (+ tx (/ 1.0 (Math/abs (double (d 0))))) ty tz (inc n))
-          (<= ty tz) (recur [cx (+ cy (step cy (d 1))) cz] tx (+ ty (/ 1.0 (Math/abs (double (d 1))))) tz (inc n))
-          :else (recur [cx cy (+ cz (step cz (d 2)))] tx ty (+ tz (/ 1.0 (Math/abs (double (d 2))))) (inc n)))))))
+          (and (<= tx ty) (<= tx tz))
+          (recur [(+ cx (axis-step (d 0))) cy cz] (+ tx (cross-delta (d 0))) ty tz (inc n))
+          (<= ty tz)
+          (recur [cx (+ cy (axis-step (d 1))) cz] tx (+ ty (cross-delta (d 1))) tz (inc n))
+          :else
+          (recur [cx cy (+ cz (axis-step (d 2)))] tx ty (+ tz (cross-delta (d 2))) (inc n)))))))

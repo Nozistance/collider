@@ -137,6 +137,12 @@
 (defn by-hand? [block]
   (get (info block) :hand? true))
 
+(defn- prop-index ^long [block-name prop vs v]
+  (let [idx (.indexOf ^List vs v)]
+    (when (neg? idx)
+      (throw (ex-info "unknown property value" {:block block-name :prop prop :value v})))
+    idx))
+
 (defn state-id
   (^long [block-name] (long (:default (info block-name))))
   (^long [block-name wanted]
@@ -149,13 +155,9 @@
            (if (= i (count order))
              id
              (let [prop (nth order i)
-                   vs (get (:props b) prop)
-                   v (get wanted prop (get defaults prop))
-                   idx (.indexOf ^List vs v)
+                   idx (prop-index block-name prop (get (:props b) prop)
+                                   (get wanted prop (get defaults prop)))
                    tail (long (reduce * 1 (subvec sizes (inc i))))]
-               (when (neg? idx)
-                 (throw (ex-info "unknown property value"
-                                 {:block block-name :prop prop :value v})))
                (recur (inc i) (long (+ id (* idx tail))))))))))))
 
 (defn state-props [^long id]

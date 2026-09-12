@@ -133,42 +133,49 @@
                  (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
             tnts)))
 
+(defn- due-ticks [world]
+  (let [t (long (:tick world))]
+    (into (i/int-set) (comp (take-while (fn [[k _]] (<= (long k) t))) (mapcat val))
+          (:block-ticks world))))
+
+(defn- tick-ctx [world]
+  {:rules   (:rules world) :tick (long (:tick world)) :time-of-day (:time-of-day world 0)
+   :players (mapv (comp :pos val) (state/player-entries world))})
+
+(defn- again-schedule [world now changes]
+  (let [chunks (:chunks world) t (long (:tick world))
+        changed (into #{} (map first) changes)]
+    (reduce (fn [m p]
+              (if-let [at (and (not (contains? changed p))
+                               (rules/again-tick chunks (chunk/chunks-get-block chunks gen/flat-chunk p) p t))]
+                (update m at (fnil conj []) (chunk/block-pos->id p))
+                m))
+            {} now)))
+
+(defn- change-deltas [world now changes]
+  (concat [[:set-blocks changes]]
+          (fizz-deltas world changes)
+          (wash-deltas world changes)
+          (sponge-deltas world now changes)
+          (fall-deltas world changes)
+          (eyeblossom-deltas changes)
+          (tilt-deltas world changes)
+          (drip-fill-deltas world changes)))
+
 (defn- block-updates-deltas [world _events]
   (let [t (long (:tick world))
-        due (into (i/int-set) (comp (take-while (fn [[k _]] (<= (long k) t))) (mapcat val))
-                  (:block-ticks world))]
+        due (due-ticks world)]
     (when (seq due)
       (let [active (state/active-chunks world)
-            now (into [] (comp (filter #(state/active-id? active %))
-                               (map chunk/id->block-pos)) due)
+            now (into [] (comp (filter #(state/active-id? active %)) (map chunk/id->block-pos)) due)
             parked (into [] (remove #(state/active-id? active %)) due)
-            changes (lww-changes (:chunks world)
-                                 {:rules   (:rules world) :tick t :time-of-day (:time-of-day world 0)
-                                  :players (mapv (comp :pos val) (state/player-entries world))}
-                                 now)
-            changed (into #{} (map first) changes)
-            again (reduce (fn [m p]
-                            (if-let [at (and (not (contains? changed p))
-                                             (rules/again-tick (:chunks world)
-                                                               (chunk/chunks-get-block (:chunks world) gen/flat-chunk p)
-                                                               p t))]
-                              (update m at (fnil conj []) (chunk/block-pos->id p))
-                              m))
-                          {} now)
-            woken (merge-with into again (eyeblossom-schedules world changes))]
-        (concat
-          [[:ticks-flushed t parked]]
-          (when (seq woken) [[:schedule-ticks woken]])
-          (when (seq changes)
-            (concat [[:set-blocks changes]]
-                    (fizz-deltas world changes)
-                    (wash-deltas world changes)
-                    (sponge-deltas world now changes)
-                    (fall-deltas world changes)
-                    (eyeblossom-deltas changes)
-                    (tilt-deltas world changes)
-                    (drip-fill-deltas world changes)))
-          (ignite-deltas world now))))))
+            changes (lww-changes (:chunks world) (tick-ctx world) now)
+            woken (merge-with into (again-schedule world now changes)
+                              (eyeblossom-schedules world changes))]
+        (concat [[:ticks-flushed t parked]]
+                (when (seq woken) [[:schedule-ticks woken]])
+                (when (seq changes) (change-deltas world now changes))
+                (ignite-deltas world now))))))
 
 (defn block-updates [world events]
   [#(block-updates-deltas world events)])

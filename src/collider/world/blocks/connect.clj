@@ -214,6 +214,15 @@
   (block/state self (assoc (block/props-of st)
                       :snowy (if (block/tagged? (at [0 1 0]) "snow") :true :false))))
 
+(defn- sides-state [t self ^long st at]
+  (let [sides (into {} (map (fn [[dir off]]
+                              (let [c (connects? t self (at off) dir)]
+                                [dir (if (= :wall t) (if c :low :none) (if c :true :false))])))
+                    dir/horizontal-offset)
+        props (cond-> (merge (block/props-of st) sides)
+                      (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
+    (block/state self props)))
+
 (defn reshape [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
@@ -245,13 +254,7 @@
                   :chorus-plant (chorus/connected chunks pos st)
                   (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
                   (growing-plant-state pos st at tick)
-                  (let [sides (into {} (map (fn [[dir off]]
-                                              (let [c (connects? t self (at off) dir)]
-                                                [dir (if (= :wall t) (if c :low :none) (if c :true :false))])))
-                                    dir/horizontal-offset)
-                        props (cond-> (merge (block/props-of st) sides)
-                                      (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
-                    (block/state self props)))]
+                  (sides-state t self st at))]
         (when (not= (long new) st) new)))))
 
 (defn door-hinge [chunks pos facing cursor-x cursor-z]

@@ -86,37 +86,41 @@
         (sized here got)]
        [inv nil]))))
 
+(defn- place-carried [m layout slot carried primary?]
+  (let [[inv left] (insert (:place layout) (:inventory m) slot carried
+                           (if primary? (count-of carried) 1))]
+    (assoc m :inventory inv :carried left)))
+
+(defn- drop-carried [m carried primary?]
+  (let [n (if primary? (count-of carried) 1)]
+    (assoc m :carried (sized carried (- (count-of carried) n)) :drops [(sized carried n)])))
+
+(defn- take-carried [m layout slot clicked primary?]
+  (let [n (if primary? (count-of clicked) (quot (inc (count-of clicked)) 2))
+        [inv got] (take-out layout (:inventory m) slot n)]
+    (assoc m :inventory inv :carried got)))
+
+(defn- onto-slot [m layout slot clicked carried primary?]
+  (cond
+    (same? clicked carried) (place-carried m layout slot carried primary?)
+    (<= (count-of carried) (max-of carried))
+    (assoc m :inventory (assoc (:inventory m) slot carried) :carried clicked)
+    :else m))
+
+(defn- gather-onto-carried [m layout slot clicked carried]
+  (let [room (- (max-of carried) (count-of carried))
+        [inv got] (take-out layout (:inventory m) slot (min (count-of clicked) room) room)]
+    (assoc m :inventory inv :carried (sized carried (+ (count-of carried) (count-of got))))))
+
 (defn- pickup [{:keys [inventory carried] :as m} slot primary?]
   (let [layout (layout-of m)
-        place (:place layout)
         clicked (get inventory slot)]
     (cond
-      (= outside (long slot))
-      (if carried
-        (let [n (if primary? (count-of carried) 1)]
-          (assoc m :carried (sized carried (- (count-of carried) n)) :drops [(sized carried n)]))
-        m)
-      (nil? clicked)
-      (if carried
-        (let [[inv left] (insert place inventory slot carried (if primary? (count-of carried) 1))]
-          (assoc m :inventory inv :carried left))
-        m)
-      (nil? carried)
-      (let [n (if primary? (count-of clicked) (quot (inc (count-of clicked)) 2))
-            [inv got] (take-out layout inventory slot n)]
-        (assoc m :inventory inv :carried got))
-      (place slot carried)
-      (cond
-        (same? clicked carried)
-        (let [[inv left] (insert place inventory slot carried (if primary? (count-of carried) 1))]
-          (assoc m :inventory inv :carried left))
-        (<= (count-of carried) (max-of carried))
-        (assoc m :inventory (assoc inventory slot carried) :carried clicked)
-        :else m)
-      (same? clicked carried)
-      (let [room (- (max-of carried) (count-of carried))
-            [inv got] (take-out layout inventory slot (min (count-of clicked) room) room)]
-        (assoc m :inventory inv :carried (sized carried (+ (count-of carried) (count-of got)))))
+      (= outside (long slot)) (if carried (drop-carried m carried primary?) m)
+      (nil? clicked) (if carried (place-carried m layout slot carried primary?) m)
+      (nil? carried) (take-carried m layout slot clicked primary?)
+      ((:place layout) slot carried) (onto-slot m layout slot clicked carried primary?)
+      (same? clicked carried) (gather-onto-carried m layout slot clicked carried)
       :else m)))
 
 (defn- move-to [place inv stack slots]
@@ -186,24 +190,25 @@
       (assoc m :inventory inv :drops [got]))
     m))
 
+(defn- gather-pass [layout place slots [inv c] pass]
+  (reduce (fn [[inv c :as acc] s]
+            (let [here (get inv s)]
+              (if (and here (same? here c) (place s c)
+                       (< (count-of c) (max-of c))
+                       (or (= 1 (long pass)) (not= (count-of here) (max-of here))))
+                (let [[inv' got] (take-out layout inv s (min (count-of here) (- (max-of c) (count-of c))))]
+                  [inv' (sized c (+ (count-of c) (count-of got)))])
+                acc)))
+          [inv c] slots))
+
 (defn- pickup-all [{:keys [inventory carried] :as m} slot ^long button]
-  (let [layout (layout-of m)
-        place (:place layout)]
+  (let [layout (layout-of m)]
     (if (and carried (nil? (get inventory slot)))
       (let [slots (cond->> (:visible layout)
                            (:result layout) (remove #(= % (:result layout)))
                            (not (zero? button)) reverse)
-            step (fn [[inv c] pass]
-                   (reduce (fn [[inv c :as acc] s]
-                             (let [here (get inv s)]
-                               (if (and here (same? here c) (place s c)
-                                        (< (count-of c) (max-of c))
-                                        (or (= 1 pass) (not= (count-of here) (max-of here))))
-                                 (let [[inv' got] (take-out layout inv s (min (count-of here) (- (max-of c) (count-of c))))]
-                                   [inv' (sized c (+ (count-of c) (count-of got)))])
-                                 acc)))
-                           [inv c] slots))
-            [inv c] (step (step [inventory carried] 0) 1)]
+            pass (partial gather-pass layout (:place layout) slots)
+            [inv c] (pass (pass [inventory carried] 0) 1)]
         (assoc m :inventory inv :carried c))
       m)))
 
@@ -219,25 +224,29 @@
                            [inventory carried] (sort slots))]
     (assoc m :inventory inv :carried (if (= type 2) carried left) :quickcraft nil)))
 
+(defn- quick-craft-add [m place quickcraft slot carried]
+  (let [here (get (:inventory m) slot)]
+    (if (and (place slot carried) (or (nil? here) (same? here carried))
+             (or (= 2 (long (:type quickcraft))) (> (count-of carried) (count (:slots quickcraft)))))
+      (update-in m [:quickcraft :slots] conj slot)
+      m)))
+
+(defn- quick-craft-end [m quickcraft]
+  (let [slots (:slots quickcraft)]
+    (cond
+      (empty? slots) (assoc m :quickcraft nil)
+      (= 1 (count slots)) (pickup (assoc m :quickcraft nil) (first slots) (= 0 (long (:type quickcraft))))
+      :else (spread m slots (long (:type quickcraft))))))
+
 (defn- quick-craft [{:keys [carried quickcraft] :as m} slot ^long button]
-  (let [place (:place (layout-of m))
-        header (bit-and button 3) type (bit-and (bit-shift-right button 2) 3)
+  (let [header (bit-and button 3) type (bit-and (bit-shift-right button 2) 3)
         status (long (:status quickcraft 0))]
     (cond
       (nil? carried) (assoc m :quickcraft nil)
       (= 0 header) (assoc m :quickcraft {:status 1 :type type :slots #{}})
       (and (= 1 header) (= 1 status))
-      (let [here (get (:inventory m) slot)]
-        (if (and (place slot carried) (or (nil? here) (same? here carried))
-                 (or (= 2 (long (:type quickcraft))) (> (count-of carried) (count (:slots quickcraft)))))
-          (update-in m [:quickcraft :slots] conj slot)
-          m))
-      (and (= 2 header) (= 1 status))
-      (let [slots (:slots quickcraft)]
-        (cond
-          (empty? slots) (assoc m :quickcraft nil)
-          (= 1 (count slots)) (pickup (assoc m :quickcraft nil) (first slots) (= 0 (long (:type quickcraft))))
-          :else (spread m slots (long (:type quickcraft)))))
+      (quick-craft-add m (:place (layout-of m)) quickcraft slot carried)
+      (and (= 2 header) (= 1 status)) (quick-craft-end m quickcraft)
       :else (assoc m :quickcraft nil))))
 
 (defn click [{:keys [quickcraft] :as m} {:keys [slot button mode]}]

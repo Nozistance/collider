@@ -39,31 +39,33 @@
   (let [[x y z] (or (some-> (:world io) deref :world-spawn) state/spawn-pos)]
     [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))
 
-(defn- send-join-burst! [conn eid spawn {:keys [max-players view-distance simulation-distance motd]}]
-  (let [[x y z] spawn]
-    (server/send! conn {:packet              :login :eid eid
-                        :max-players         (min 255 (long max-players))
-                        :view-distance       view-distance
-                        :simulation-distance simulation-distance
-                        :dimension-type      overworld})
-    (server/send! conn {:packet :change-difficulty :difficulty 0 :locked false})
-    (server/send! conn {:packet       :player-abilities :flags (bit-or 1 4 8)
-                        :flying-speed 0.05 :walking-speed 0.1})
-    (server/send! conn (assoc data/recipes :packet :update-recipes))
-    (server/send! conn {:packet :entity-event :eid eid :event (+ op-level-event 4)})
-    (server/send! conn {:packet :commands :nodes command-tree})
-    (server/send! conn {:packet :server-data :motd motd})
-    (server/send! conn {:packet :initialize-border :size world-border-size :max-size world-border-max})
-    (server/send! conn {:packet :set-default-spawn-position :pos [x y z]})
-    (server/send! conn {:packet :game-event :event 13 :value 0.0})
-    (server/send! conn {:packet :ticking-state :rate 20.0 :frozen? false})
-    (server/send! conn {:packet :ticking-step :steps 0})
-    (server/send! conn {:packet :set-health :health 20.0 :food 20 :saturation 5.0})
-    (server/send! conn {:packet :set-experience :progress 0.0 :level 0 :total 0})
-    (server/send! conn {:packet     :update-attributes :eid eid
-                        :attributes [[:entity-interaction-range 3.0]
-                                     [:movement-speed 0.1]
-                                     [:block-interaction-range 4.5]]})))
+(defn- join-packets [eid [x y z] {:keys [max-players view-distance simulation-distance motd]}]
+  [{:packet              :login :eid eid
+    :max-players         (min 255 (long max-players))
+    :view-distance       view-distance
+    :simulation-distance simulation-distance
+    :dimension-type      overworld}
+   {:packet :change-difficulty :difficulty 0 :locked false}
+   {:packet       :player-abilities :flags (bit-or 1 4 8)
+    :flying-speed 0.05 :walking-speed 0.1}
+   (assoc data/recipes :packet :update-recipes)
+   {:packet :entity-event :eid eid :event (+ op-level-event 4)}
+   {:packet :commands :nodes command-tree}
+   {:packet :server-data :motd motd}
+   {:packet :initialize-border :size world-border-size :max-size world-border-max}
+   {:packet :set-default-spawn-position :pos [x y z]}
+   {:packet :game-event :event 13 :value 0.0}
+   {:packet :ticking-state :rate 20.0 :frozen? false}
+   {:packet :ticking-step :steps 0}
+   {:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+   {:packet :set-experience :progress 0.0 :level 0 :total 0}
+   {:packet     :update-attributes :eid eid
+    :attributes [[:entity-interaction-range 3.0]
+                 [:movement-speed 0.1]
+                 [:block-interaction-range 4.5]]}])
+
+(defn- send-join-burst! [conn eid spawn cfg]
+  (doseq [p (join-packets eid spawn cfg)] (server/send! conn p)))
 
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue cfg] :as io}]
   (let [nm (:name (server/info conn))
@@ -171,55 +173,51 @@
     (server/send! conn {:packet :login-compression :threshold threshold})
     (server/compress! conn threshold)))
 
+(defn- intention! [conn m]
+  (case (long (:next m))
+    1 (server/set-conn-state! conn :status)
+    2 (begin-login! conn (long (:protocol m)))
+    3 (do (server/set-conn-state! conn :login)
+          (kick-login! conn {:translate "multiplayer.disconnect.transfers_disabled"}))
+    (server/close! conn)))
+
+(defn- hello! [conn io cfg m]
+  (let [nm (:name m)
+        conns (:conns io)]
+    (cond
+      (not (valid-name? nm))
+      (kick-login! conn {:translate "multiplayer.disconnect.generic"})
+      (>= (count @conns) (long (:max-players cfg)))
+      (kick-login! conn {:translate "multiplayer.disconnect.server_full"})
+      :else
+      (do (server/put! conn :name nm)
+          (setup-compression! conn (long (:compression-threshold cfg -1)))
+          (kick-duplicates! conns nm)
+          (server/send! conn {:packet :login-finished :uuid (c/offline-uuid nm) :name nm})))))
+
+(defn- play-packet! [conn ^ConcurrentLinkedQueue queue m]
+  (when (= :play (server/conn-state conn))
+    (when-let [eid (:eid (server/info conn))]
+      (if (and (#{:move-player-pos :move-player-pos-rot :move-player-rot} (:packet m)) (invalid-move? m))
+        (do (server/send! conn {:packet :disconnect
+                                :text   {:translate "multiplayer.disconnect.invalid_player_movement"}})
+            (server/close! conn))
+        (if-let [ev (packet->event eid m)]
+          (.offer queue ev)
+          (log-unhandled! (:packet m)))))))
+
 (defn handle-packet [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
-    [:handshake :intention]
-    (case (long (:next m))
-      1 (server/set-conn-state! conn :status)
-      2 (begin-login! conn (long (:protocol m)))
-      3 (do (server/set-conn-state! conn :login)
-            (kick-login! conn {:translate "multiplayer.disconnect.transfers_disabled"}))
-      (server/close! conn))
-
+    [:handshake :intention] (intention! conn m)
     [:status :status-request]
     (server/send! conn {:packet :status-response :json (json/write-str (status-body io))})
-
     [:status :ping-request]
     (do (server/send! conn {:packet :pong-response :payload (:payload m)})
         (server/close! conn))
-
-    [:play :ping-request]
-    (server/send! conn {:packet :pong-response :payload (:payload m)})
-
-    [:login :hello]
-    (let [nm (:name m)
-          conns (:conns io)]
-      (cond
-        (not (valid-name? nm))
-        (kick-login! conn {:translate "multiplayer.disconnect.generic"})
-        (>= (count @conns) (long (:max-players cfg)))
-        (kick-login! conn {:translate "multiplayer.disconnect.server_full"})
-        :else
-        (do (server/put! conn :name nm)
-            (setup-compression! conn (long (:compression-threshold cfg -1)))
-            (kick-duplicates! conns nm)
-            (server/send! conn {:packet :login-finished :uuid (c/offline-uuid nm) :name nm}))))
-
-    [:login :login-acknowledged]
-    (do (server/set-conn-state! conn :configuration)
-        (start-configuration! conn))
-
-    [:configuration :select-known-packs]
-    (finish-configuration! conn)
-
-    [:configuration :finish-configuration]
-    (do-login! conn io)
-
-    (when (= :play (server/conn-state conn))
-      (when-let [eid (:eid (server/info conn))]
-        (if (and (#{:move-player-pos :move-player-pos-rot :move-player-rot} (:packet m)) (invalid-move? m))
-          (do (server/send! conn {:packet :disconnect :text {:translate "multiplayer.disconnect.invalid_player_movement"}})
-              (server/close! conn))
-          (if-let [ev (packet->event eid m)]
-            (.offer queue ev)
-            (log-unhandled! (:packet m))))))))
+    [:play :ping-request] (server/send! conn {:packet :pong-response :payload (:payload m)})
+    [:login :hello] (hello! conn io cfg m)
+    [:login :login-acknowledged] (do (server/set-conn-state! conn :configuration)
+                                     (start-configuration! conn))
+    [:configuration :select-known-packs] (finish-configuration! conn)
+    [:configuration :finish-configuration] (do-login! conn io)
+    (play-packet! conn queue m)))

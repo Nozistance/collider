@@ -183,49 +183,61 @@
                    height t false)
       (physics-move world eid e water? wp target [vx0 vy0 vz0] [cx cz] half height attr))))
 
-(defn- physics-move [world eid e water? wp target [vx0 vy0 vz0] [cx cz] half height attr]
-  (let [t (long (:tick world))
-        pos (:pos e) ey (v/y pos)
-        moving? (some? target)
-        [hx hz] (when moving? (heading pos target))
+(defn- steer-vel [world e t eid water? [hx hz] [vx0 vy0 vz0] [cx cz] half height attr moving?]
+  (let [aispeed (* (double attr) (task-speed-mult e))
         og (boolean (:on-ground e))
-        vx0 (double vx0) vy0 (double vy0) vz0 (double vz0)
-        aispeed (* (double attr) (task-speed-mult e))
-        fric (cond water? water-friction og ground-friction :else air-friction)
         accel (if (and og (not water?)) (* aispeed aispeed) (* air-accel aispeed))
         wpush (if water?
                 (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
                 zero3)
-        vx (let [a (+ vx0 (if hx (* (double hx) accel) 0.0) (double cx) (v/x wpush))]
-             (if (and (not moving?) (not water?) (< (Math/abs a) 0.005)) 0.0 a))
-        vz (let [a (+ vz0 (if hz (* (double hz) accel) 0.0) (double cz) (v/z wpush))]
-             (if (and (not moving?) (not water?) (< (Math/abs a) 0.005)) 0.0 a))
-        vy (if water?
-             (+ vy0 (v/y wpush)
-                (if (< (random/of-longs t eid (hash :swim)) 0.8) 0.04 0.0))
-             (double vy0))
-        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e) (v/v3 vx vy vz) half height 0.6)
-        pos (.pos mv) vel (.vel mv) on-ground (.on-ground mv)
-        nx (v/x vel) ny (v/y vel) nz (v/z vel)
-        bump? (and moving?
-                   (or (and (not (zero? (double vx))) (zero? (double nx)))
-                       (and (not (zero? (double vz))) (zero? (double nz)))))
-        climb? (and moving? wp
-                    (> (long (wp 1)) (long (Math/floor (double ey))))
-                    (< (v/dist-sq (:pos e) target) 1.0))
-        jump? (and on-ground climb? (>= t (long (or (:jump-cd e) 0))))
-        ny (cond (and bump? water? (water-above? world (:pos e))) 0.3
-                 jump? jump-speed
-                 water? (- (* water-friction (double ny)) 0.02)
-                 :else (* 0.98 (- (double ny) gravity)))
-        ny (liquid/bubble-push (:chunks world) gen/flat-chunk pos ny)
-        yaw (if moving?
-              (v/wrap-deg (v/limit-angle (double (:yaw e))
-                                         (v/yaw-toward (:pos e) target)
-                                         30.0))
-              (:yaw e))
-        e (entity/mob-moved e pos (v/v3 (* (double nx) fric) (double ny) (* (double nz) fric))
-                            on-ground yaw water? (if jump? (+ t 10) (:jump-cd e)))]
+        drop? (and (not moving?) (not water?))
+        ax (+ (double vx0) (if hx (* (double hx) accel) 0.0) (double cx) (v/x wpush))
+        az (+ (double vz0) (if hz (* (double hz) accel) 0.0) (double cz) (v/z wpush))]
+    (v/v3 (if (and drop? (< (Math/abs ax) 0.005)) 0.0 ax)
+          (if water?
+            (+ (double vy0) (v/y wpush)
+               (if (< (random/of-longs t eid (hash :swim)) 0.8) 0.04 0.0))
+            (double vy0))
+          (if (and drop? (< (Math/abs az) 0.005)) 0.0 az))))
+
+(defn- bumped? [moving? vx vz nx nz]
+  (and moving? (or (and (not (zero? (double vx))) (zero? (double nx)))
+                   (and (not (zero? (double vz))) (zero? (double nz))))))
+
+(defn- climbing? [e wp target ey moving?]
+  (and moving? wp
+       (> (long (wp 1)) (long (Math/floor (double ey))))
+       (< (v/dist-sq (:pos e) target) 1.0)))
+
+(defn- next-vy [world e ny water? bump? jump?]
+  (let [ny (double ny)]
+    (cond (and bump? water? (water-above? world (:pos e))) 0.3
+          jump? jump-speed
+          water? (- (* water-friction ny) 0.02)
+          :else (* 0.98 (- ny gravity)))))
+
+(defn- next-yaw [e target moving?]
+  (if moving?
+    (v/wrap-deg (v/limit-angle (double (:yaw e)) (v/yaw-toward (:pos e) target) 30.0))
+    (:yaw e)))
+
+(defn- physics-move [world eid e water? wp target vel0 push half height attr]
+  (let [t (long (:tick world))
+        ey (v/y (:pos e))
+        moving? (some? target)
+        og (boolean (:on-ground e))
+        fric (cond water? water-friction og ground-friction :else air-friction)
+        drive (steer-vel world e t eid water? (when moving? (heading (:pos e) target))
+                         vel0 push half height attr moving?)
+        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e) drive half height 0.6)
+        vel (.vel mv) nx (v/x vel) nz (v/z vel)
+        bump? (bumped? moving? (v/x drive) (v/z drive) nx nz)
+        jump? (and (.on-ground mv) (climbing? e wp target ey moving?) (>= t (long (or (:jump-cd e) 0))))
+        ny (liquid/bubble-push (:chunks world) gen/flat-chunk (.pos mv)
+                               (next-vy world e (v/y vel) water? bump? jump?))
+        e (entity/mob-moved e (.pos mv) (v/v3 (* (double nx) fric) (double ny) (* (double nz) fric))
+                            (.on-ground mv) (next-yaw e target moving?) water?
+                            (if jump? (+ t 10) (:jump-cd e)))]
     (head-update world e height t moving?)))
 
 (def ^:private ^:const say-rest 120)

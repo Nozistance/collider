@@ -13,22 +13,25 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- break-drops [world pos cur may-replace?]
+  (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur))
+             (get-in world [:rules :block-drops] true))
+    (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
+                 (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt]))))))
+
 (defn- pour-deltas [world eid pos state relative]
   (let [cur (edit/block-at world pos) water? (= :water (liquid/liquid-class state))
         may-replace? (or (block/can-be-replaced? cur) (not (block/blocks-motion? cur)))
         holds? (and water? (edit/waterloggable? cur))
         shift? (get-in world [:entities eid :sneaking?])
-        sound (if water? :bucket/empty :bucket/empty-lava)]
+        splash [(out/except eid (out/sound (if water? :bucket/empty :bucket/empty-lava) pos 1.0 1.0))]]
     (cond
       (not (or (zero? cur) (and (or may-replace? holds?) (or (not shift?) (nil? relative)))))
       (when relative (pour-deltas world eid relative state nil))
-      holds? (concat (edit/change-deltas world [[pos (edit/with-water cur true)]]) [(out/except eid (out/sound sound pos 1.0 1.0))])
-      :else (concat
-              (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur)) (get-in world [:rules :block-drops] true))
-                (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
-                             (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt])))))
-              (edit/change-deltas world [[pos state]])
-              [(out/except eid (out/sound sound pos 1.0 1.0))]))))
+      holds? (concat (edit/change-deltas world [[pos (edit/with-water cur true)]]) splash)
+      :else (concat (break-drops world pos cur may-replace?)
+                    (edit/change-deltas world [[pos state]])
+                    splash))))
 
 (defn add [world eid e state]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]

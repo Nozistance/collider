@@ -24,22 +24,22 @@
 (defn- unblock-deltas [eid e]
   [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
 
+(defn- stepped-vel [world pos [mx my mz] on-ground]
+  (let [gf (if on-ground 0.7 1.0)
+        v' [(* (double mx) 0.98 gf) (* (double my) 0.98) (* (double mz) 0.98 gf)]]
+    (v/+ v' (liquid-push world pos v'))))
+
 (defn- step-deltas [world eid e]
   (let [kb (:kb e)
         [vx vy vz] (v/+ (:vel e) (or kb [0.0 0.0 0.0]))
-        ^Move mv
-        (phys/move (:chunks world) gen/flat-chunk (:pos e)
-                   [(double vx) (- (double vy) 0.04) (double vz)]
-                   tnt-half tnt-height)
-        pos (.pos mv) vel (.vel mv) on-ground (.on-ground mv)
-        [mx my mz] vel
-        gf (if on-ground 0.7 1.0)]
-    (cond-> [[:merge-entity eid
-              {:pos       pos
-               :vel       (let [v' [(* (double mx) 0.98 gf) (* (double my) 0.98) (* (double mz) 0.98 gf)]]
-                            (v/+ v' (liquid-push world pos v')))
-               :on-ground on-ground
-               :fuse      (dec (long (:fuse e)))}]]
+        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
+                            [(double vx) (- (double vy) 0.04) (double vz)]
+                            tnt-half tnt-height)
+        pos (.pos mv) on-ground (.on-ground mv)]
+    (cond-> [[:merge-entity eid {:pos       pos
+                                 :vel       (stepped-vel world pos (.vel mv) on-ground)
+                                 :on-ground on-ground
+                                 :fuse      (dec (long (:fuse e)))}]]
             kb (conj [:push eid (mapv - kb)]))))
 
 (defn- entity-box [e]
@@ -49,6 +49,17 @@
     :item [0.125 0.25]
     (let [{:keys [half height]} (mobs/types (:type e))]
       [(or half 0.45) (or height 1.3)])))
+
+(defn- blast-impulse [center [px _ pz] ey d12 density]
+  (let [ey (double ey) d12 (double d12) density (double density)
+        dx (- (double px) (double (center 0)))
+        dy (- ey (double (center 1)))
+        dz (- (double pz) (double (center 2)))
+        d13 (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
+    (when (pos? d13)
+      (let [k (* (- 1.0 d12) density)
+            dmg (Math/floor (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 2.0 tnt/power)))]
+        [[(* (/ dx d13) k) (* (/ dy d13) k) (* (/ dz d13) k)] dmg]))))
 
 (defn- knockback [read [cx cy cz :as center] e]
   (let [p (:pos e) px (v/x p) py (v/y p) pz (v/z p)
@@ -60,13 +71,7 @@
       (let [[half height] (entity-box e)
             density (explosion/block-density read center (:pos e) half height)]
         (when (pos? density)
-          (let [ey (+ (double py) (entity/eye-height e))
-                dy (- ey (double cy))
-                d13 (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
-            (when (pos? d13)
-              (let [k (* (- 1.0 d12) density)
-                    dmg (Math/floor (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 2.0 tnt/power)))]
-                [[(* (/ dx d13) k) (* (/ dy d13) k) (* (/ dz d13) k)] dmg]))))))))
+          (blast-impulse center [px py pz] (+ (double py) (entity/eye-height e)) d12 density))))))
 
 (def ^:private ^:const kb-cell 8)
 (defn- kb-cell-key ^long [^long x ^long y ^long z]
@@ -116,16 +121,17 @@
                sound]]
       (out/to eid msg))))
 
+(defn- moved-pos [world e]
+  (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))]
+    (.pos ^Move (phys/move (:chunks world) gen/flat-chunk (:pos e)
+                           [(double vx) (- (double vy) 0.04) (double vz)]
+                           tnt-half tnt-height))))
+
 (defn- explode-deltas [world others players pending eid e]
-  (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))
-        [x y z] (.pos ^Move
-                      (phys/move (:chunks world) gen/flat-chunk (:pos e)
-                                 [(double vx) (- (double vy) 0.04) (double vz)]
-                                 tnt-half tnt-height))
+  (let [[x y z] (moved-pos world e)
         center [(double x) (+ (double y) (/ tnt-height 16.0)) (double z)]
         seed [(:tick world) eid]
-        rg (explosion/block-reader (:chunks world) gen/flat-chunk
-                                   [(long x) (long y) (long z)])
+        rg (explosion/block-reader (:chunks world) gen/flat-chunk [(long x) (long y) (long z)])
         affected (explosion/affected-blocks rg center tnt/power seed)
         tnt-cell? (fn [[bx by bz]] (tnt/tnt-state? (explosion/read-block rg bx by bz)))
         chains (into [] (comp (filter tnt-cell?) (remove pending)) affected)
@@ -153,23 +159,23 @@
                 (mapcat (fn [[eid e]] (into (unblock-deltas eid e) (step-deltas world eid e)))))
           (sort-by key (:entities world)))))
 
+(defn- blast-targets [world]
+  [(kb-index (filter (fn [[_ e]] (not= :player (:type e))) (:entities world)))
+   (vec (keep (fn [eid] (when-let [e (get-in world [:entities eid])] [eid e]))
+              (sort (vals (:players world)))))
+   (tnt/primed-origins world)])
+
 (defn tnt-system [world _events]
-  (let [tnts (into []
-                   (filter (fn [[_ e]] (= :tnt (:type e))))
-                   (sort-by key (:entities world)))
+  (let [tnts (into [] (filter (fn [[_ e]] (= :tnt (:type e)))) (sort-by key (:entities world)))
         fresh (filterv (fn [[_ e]] (:origin e)) tnts)
         armed (into [] (remove (fn [[_ e]] (:origin e))) tnts)
         due (filterv (fn [[_ e]] (<= (long (:fuse e)) 0)) armed)
         moving (filterv (fn [[_ e]] (pos? (long (:fuse e)))) armed)
-        others (when (seq due)
-                 (kb-index (filter (fn [[_ e]] (not= :player (:type e))) (:entities world))))
-        players (when (seq due)
-                  (vec (keep (fn [eid] (when-let [e (get-in world [:entities eid])]
-                                         [eid e]))
-                             (sort (vals (:players world))))))
-        pending (when (seq due) (tnt/primed-origins world))]
+        [others players pending] (when (seq due) (blast-targets world))]
     (-> []
         (into (map (fn [[eid e]] #(unblock-deltas eid e))) fresh)
         (cond-> (seq due)
-                (conj #(one-chain (deltas/pmapcat (fn [[eid e]] (explode-deltas world others players pending eid e)) due))))
+                (conj #(one-chain (deltas/pmapcat
+                                    (fn [[eid e]] (explode-deltas world others players pending eid e))
+                                    due))))
         (into (map (fn [[eid e]] #(step-deltas world eid e))) moving))))
