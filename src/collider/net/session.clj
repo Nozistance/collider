@@ -13,10 +13,10 @@
 
 (defonce ^AtomicInteger next-entity-id (AtomicInteger.))
 
-(defn- status-body [{:keys [motd max-players]}]
+(defn- status-body [{:keys [conns cfg]}]
   {:version     {:name c/game-version :protocol c/protocol-version}
-   :players     {:max max-players :online 0}
-   :description {:text motd}})
+   :players     {:max (:max-players cfg) :online (count @conns)}
+   :description {:text (:motd cfg)}})
 
 (def ^:private known-pack ["minecraft" "core" c/game-version])
 (defn- start-configuration! [conn]
@@ -144,6 +144,28 @@
     (swap! unhandled conj packet)
     (log/info "play:" packet "not handled")))
 
+(defn- kick-login! [conn reason]
+  (server/send! conn {:packet :login-disconnect :json (json/write-str reason)})
+  (server/close! conn))
+
+(defn- version-reason [k]
+  {:translate k :with [c/game-version]})
+
+(defn- begin-login! [conn ^long protocol]
+  (server/set-conn-state! conn :login)
+  (when-not (= protocol c/protocol-version)
+    (kick-login! conn (version-reason (if (< protocol 754)
+                                       "multiplayer.disconnect.outdated_client"
+                                       "multiplayer.disconnect.incompatible")))))
+
+(defn- valid-name? [nm]
+  (and (string? nm) (<= (count nm) 16) (every? #(< 32 (long (int %)) 127) nm)))
+
+(defn- kick-duplicates! [conns nm]
+  (doseq [[_ c] @conns :when (= nm (:name (server/info c)))]
+    (server/send! c {:packet :disconnect :text {:translate "multiplayer.disconnect.duplicate_login"}})
+    (server/close! c)))
+
 (defn- setup-compression! [conn ^long threshold]
   (when-not (neg? threshold)
     (server/send! conn {:packet :login-compression :threshold threshold})
@@ -152,10 +174,15 @@
 (defn handle-packet [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention]
-    (server/set-conn-state! conn (case (long (:next m)) 1 :status 2 :login :closed))
+    (case (long (:next m))
+      1 (server/set-conn-state! conn :status)
+      2 (begin-login! conn (long (:protocol m)))
+      3 (do (server/set-conn-state! conn :login)
+            (kick-login! conn {:translate "multiplayer.disconnect.transfers_disabled"}))
+      (server/close! conn))
 
     [:status :status-request]
-    (server/send! conn {:packet :status-response :json (json/write-str (status-body cfg))})
+    (server/send! conn {:packet :status-response :json (json/write-str (status-body io))})
 
     [:status :ping-request]
     (do (server/send! conn {:packet :pong-response :payload (:payload m)})
@@ -165,10 +192,18 @@
     (server/send! conn {:packet :pong-response :payload (:payload m)})
 
     [:login :hello]
-    (let [nm (:name m)]
-      (server/put! conn :name nm)
-      (setup-compression! conn (long (:compression-threshold cfg -1)))
-      (server/send! conn {:packet :login-finished :uuid (c/offline-uuid nm) :name nm}))
+    (let [nm (:name m)
+          conns (:conns io)]
+      (cond
+        (not (valid-name? nm))
+        (kick-login! conn {:translate "multiplayer.disconnect.generic"})
+        (>= (count @conns) (long (:max-players cfg)))
+        (kick-login! conn {:translate "multiplayer.disconnect.server_full"})
+        :else
+        (do (server/put! conn :name nm)
+            (setup-compression! conn (long (:compression-threshold cfg -1)))
+            (kick-duplicates! conns nm)
+            (server/send! conn {:packet :login-finished :uuid (c/offline-uuid nm) :name nm}))))
 
     [:login :login-acknowledged]
     (do (server/set-conn-state! conn :configuration)
