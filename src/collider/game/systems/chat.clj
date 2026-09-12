@@ -5,6 +5,7 @@
             [collider.game.out :as out]
             [collider.game.mob.mobs :as mobs]
             [collider.game.gamerules :as rules]
+            [collider.game.state :as state]
             [collider.game.systems.items :as items]
             [collider.vec :as v]
             [collider.random :as random]
@@ -94,7 +95,7 @@
   (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (data/snake (:type e)))}))
 
 (defn- targets [world eid {:keys [self all nearest entities type not-type? name]}]
-  (let [players (vals (:players world))
+  (let [players (map key (state/player-entries world))
         typed (fn [ids] (if type
                           (filter #(= (boolean not-type?) (not= type (get-in world [:entities % :type]))) ids)
                           ids))]
@@ -102,7 +103,8 @@
       self [eid]
       all (typed players)
       nearest (let [p (get-in world [:entities eid :pos])]
-                (when-let [near (first (sort-by #(v/dist-sq p (get-in world [:entities % :pos])) (typed players)))]
+                (when-let [near (first (sort-by (fn [id] [(v/dist-sq p (get-in world [:entities id :pos])) id])
+                                               (typed players)))]
                   [near]))
       entities (typed (keys (:entities world)))
       name (when-let [id (get-in world [:players name])] [id]))))
