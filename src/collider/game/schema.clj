@@ -42,7 +42,7 @@
   (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
 
 (def world
-  {:tick        {:default 0}
+  {:tick        {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
    :time-ms     {:default 0}
    :time-of-day {:default 0 :store (fn [v _] v) :load identity}
    :next-eid    {:default 1000000 :store (fn [v _] v) :load identity}
@@ -74,9 +74,14 @@
   (into {} (for [[k {store :store}] world :when store]
              [k (store (k w) w)])))
 
+(defn- rebase-ticks [w]
+  (let [t (long (:tick w 0))]
+    (update w :block-ticks #(into (i/int-map) (map (fn [[dt s]] [(+ t (long dt)) s])) %))))
+
 (defn world-of [m]
-  (into {} (for [[k {load :load default :default}] world :when load]
-             [k (if (contains? m k) (load (k m)) default)])))
+  (rebase-ticks
+    (into {} (for [[k {load :load default :default}] world :when load]
+               [k (if (contains? m k) (load (k m)) default)]))))
 
 (def profile
   {:inventory {:default {}}

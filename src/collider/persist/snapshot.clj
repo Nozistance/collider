@@ -8,7 +8,7 @@
             [taoensso.nippy :as nippy])
   (:import (collider.world.chunk Section)
            (java.io File)
-           (java.nio.file CopyOption Files OpenOption Path StandardCopyOption)
+           (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption)
            (java.nio.file.attribute FileAttribute)))
 
 (set! *warn-on-reflection* true)
@@ -55,6 +55,13 @@
 
 (defn- meta-file ^File [dir]
   (io/file dir "meta.edn"))
+
+(defn- backup-meta! [dir]
+  (let [^Path f (.toPath (meta-file dir))]
+    (when (Files/isRegularFile f (make-array LinkOption 0))
+      (Files/copy f (.resolveSibling f "meta.edn.bak")
+                  ^"[Ljava.nio.file.CopyOption;"
+                  (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))))
 
 (defn- read-frozen [^File f]
   (when (.isFile f)
@@ -110,7 +117,7 @@
   (put-chunk! [_ id c] (write-atomically! (chunk-file dir id) (nippy/freeze c freeze-opts)))
   (del-chunk! [_ id] (Files/deleteIfExists (.toPath (chunk-file dir id))))
   (get-chunk [_ id] (read-frozen (chunk-file dir id)))
-  (put-meta! [_ m] (write-atomically! (meta-file dir) (edn-bytes m)))
+  (put-meta! [_ m] (backup-meta! dir) (write-atomically! (meta-file dir) (edn-bytes m)))
   (load [_] (read-store dir))
   (flush! [_] nil)
   Object
@@ -130,22 +137,26 @@
   (reduce + 0 (map (fn [[id c]] (written (put-chunk! store id c))) chunks)))
 
 (defn write-snapshot! [store snap]
-  (+ (written (put-meta! store (meta-of snap)))
-     (long (write-chunks! store (:chunks snap)))))
+  (+ (long (write-chunks! store (:chunks snap)))
+     (written (put-meta! store (meta-of snap)))))
 
 (def world-of
   schema/world-of)
 
+(defn- check-format! [store m]
+  (when-not (= format-version (:format m))
+    (throw (ex-info (str "snapshot " store " has format " (pr-str (:format m))
+                         ", this server writes format " format-version
+                         " - move the world aside or start with a fresh save directory")
+                    {:found (:format m) :expected format-version :store (str store)}))))
+
 (defn load-snapshot [store]
-  (try
-    (when-let [m (load store)]
-      (if (= format-version (:format m))
-        (world-of m)
-        (do (log/info "snapshot: unknown format" (:format m) "- world not loaded")
-            nil)))
-    (catch Throwable t
-      (log/info "snapshot: read failed" (str store) "-" (.getMessage t))
-      nil)))
+  (when-let [m (try (load store)
+                    (catch Throwable t
+                      (log/info "snapshot: read failed" (str store) "-" (.getMessage t))
+                      nil))]
+    (check-format! store m)
+    (world-of m)))
 
 (defn start-saver []
   (agent {:chunks nil :meta nil :writes 0} :error-mode :continue))
@@ -167,7 +178,7 @@
 
 (defn- write-changes! [state store snap m changed gone]
   (try
-    (let [n (+ (written (put-meta! store m)) (long (write-chunks! store changed)))]
+    (let [n (+ (long (write-chunks! store changed)) (written (put-meta! store m)))]
       (run! #(del-chunk! store %) gone)
       (log/info "snapshot: saved" (count changed) "chunks," (log/human-bytes n)
                 "to" (str store))
