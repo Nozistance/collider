@@ -44,33 +44,44 @@
     (.addShutdownHook (Runtime/getRuntime) t)
     t))
 
-(defn start [opts]
+(defn- open-world [opts]
   (let [cfg (merge (config/load-config) opts)
-        {:keys [save-dir save-period-ms]} cfg
-        store (or (:store opts) (when save-dir (snapshot/file-store save-dir)))
+        store (or (:store opts) (when-let [dir (:save-dir cfg)] (snapshot/file-store dir)))
         saved (when store (snapshot/load-snapshot store))
         world (atom (assoc (merge state/initial-world saved)
                       :config (select-keys cfg [:view-distance :simulation-distance])))
-        saver (when store (snapshot/start-saver))
-        save! (when saver #(snapshot/request-save! saver store @world))
-        queue (ConcurrentLinkedQueue.)
+        saver (when store (snapshot/start-saver))]
+    {:cfg   cfg :store store :saved saved :world world :saver saver
+     :save! (when saver #(snapshot/request-save! saver store @world))}))
+
+(defn- open-net [{:keys [cfg world save!]}]
+  (let [queue (ConcurrentLinkedQueue.)
         conns (atom {})
         io {:queue     queue :conns conns :cfg cfg :save! save! :world world
             :on-packet session/handle-packet}
-        {^ServerSocket srv :socket accept :accept} (server/listen! io (:port cfg))
-        ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))
-                                   {:io-input #(hash-map :writable (server/writable-eids conns))})
-        sched (when saver (saver-scheduler save! save-period-ms))
-        server {:socket     srv :accept accept
-                :world      world :queue queue :conns conns :ticker ticker
-                :tick-stats (:stats ticker)
-                :saver      saver :store store :scheduler sched}]
-    (when (seq (:chunks saved))
-      (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
-    (log/info (String/format Locale/ROOT "collider %s (protocol %s) done (%.3fs), on %s"
-                             (object-array [c/game-version c/protocol-version
-                                            (/ (double (.getUptime (ManagementFactory/getRuntimeMXBean))) 1000.0)
-                                            (str (.getLocalSocketAddress srv))])))
+        {:keys [socket accept]} (server/listen! io (:port cfg))]
+    {:queue queue :conns conns :socket socket :accept accept}))
+
+(defn- start-clocks [{:keys [cfg world saver save!]} {:keys [queue conns]}]
+  (let [ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))
+                                   {:io-input #(hash-map :writable (server/writable-eids conns))})]
+    {:ticker    ticker :tick-stats (:stats ticker)
+     :scheduler (when saver (saver-scheduler save! (:save-period-ms cfg)))}))
+
+(defn- log-started! [store saved ^ServerSocket srv]
+  (when (seq (:chunks saved))
+    (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
+  (log/info (String/format Locale/ROOT "collider %s (protocol %s) done (%.3fs), on %s"
+                           (object-array [c/game-version c/protocol-version
+                                          (/ (double (.getUptime (ManagementFactory/getRuntimeMXBean))) 1000.0)
+                                          (str (.getLocalSocketAddress srv))]))))
+
+(defn start [opts]
+  (let [{:keys [store saved world saver] :as base} (open-world opts)
+        net (open-net base)
+        clocks (start-clocks base net)
+        server (merge {:world world :saver saver :store store} net clocks)]
+    (log-started! store saved (:socket net))
     (assoc server :shutdown-hook (shutdown-hook! server))))
 
 (defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
