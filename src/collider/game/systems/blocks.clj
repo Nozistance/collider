@@ -631,7 +631,7 @@
 
 (declare door-place-deltas bed-place-deltas pair-place-deltas block-entity-place-deltas)
 
-(defn- carpet-place-deltas [world eid pos state item]
+(defn- carpet-place-deltas [world eid pos state]
   (let [chunks (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk [[pos state]])
         side? (fn [dir] (< (double (random/of-key [(:tick world) pos :moss dir])) 0.5))]
     (if-let [topper (moss/carpet-topper chunks pos side?)]
@@ -681,35 +681,35 @@
           (obstructed? world pos' state)
           (reject-deltas world eid pos pos')
           (contains? block/door-types (block/type-of state))
-          (door-place-deltas world eid pos pos' state item cursor)
+          (door-place-deltas world eid pos pos' state cursor)
           (= :bed (block/type-of state))
           (bed-place-deltas world eid pos pos' state item)
           (= :mossy-carpet (block/type-of state))
-          (carpet-place-deltas world eid pos' state item)
+          (carpet-place-deltas world eid pos' state)
           (contains? connect/pair-types (block/type-of state))
-          (pair-place-deltas world eid pos pos' state item)
+          (pair-place-deltas world eid pos pos' state)
           (be/kind state)
-          (block-entity-place-deltas world eid pos' state item)
+          (block-entity-place-deltas world eid pos' state)
           :else
           (placed-deltas world eid pos' state))))))
 
-(defn- block-entity-place-deltas [world eid pos state item]
+(defn- block-entity-place-deltas [world eid pos state]
   (concat (placed-deltas world eid pos state)
           [[:set-block-entity pos (be/from-stack (be/fresh (be/kind state) eid)
                                                  (held-stack world eid))]]
           (when (sign/kind state) [(out/to eid (out/sign-editor pos true))])))
 
-(defn- second-cell-deltas [world eid pos pos' state item ppos pstate ok?]
+(defn- second-cell-deltas [world eid pos pos' state ppos pstate ok?]
   (if (and (chunk/in-range? (ppos 1)) (ok?) (not (obstructed? world ppos pstate)))
     (placed-deltas world eid [[pos' state] [ppos pstate]])
     (reject-deltas world eid pos pos')))
 
-(defn- door-place-deltas [world eid pos pos' state item [cx _ cz]]
+(defn- door-place-deltas [world eid pos pos' state [cx _ cz]]
   (let [above (dir/up pos')
         hinge (connect/door-hinge (:chunks world) pos' (block/facing-of state) cx cz)
         lower (block/state (block/block-of state) (assoc (block/props-of state) :hinge hinge))
         upper (block/state (block/block-of state) (assoc (block/props-of lower) :half :upper))]
-    (second-cell-deltas world eid pos pos' lower item above upper
+    (second-cell-deltas world eid pos pos' lower above upper
                         #(and (replaceable? world above)
                               (block/face-sturdy? (block-at world (dir/down pos')) :up)))))
 
@@ -763,7 +763,7 @@
 (defn- clip [world e fluids]
   (let [from (eye-pos e) dir (look-dir e)
         d (mapv #(* 5.0 (double %)) dir)
-        step (fn [c dc] (if (neg? (double dc)) -1 1))
+        step (fn [_ dc] (if (neg? (double dc)) -1 1))
         next-t (fn [f dc c] (if (zero? (double dc)) Double/POSITIVE_INFINITY
                                 (/ (- (if (pos? (double dc)) (inc (long c)) (double c)) (double f)) (double dc))))]
     (loop [[cx cy cz :as cell] (mapv #(long (Math/floor (double %))) from)
@@ -844,7 +844,7 @@
                  (support/supported? (:chunks world) gen/flat-chunk above st))
         (placed-deltas world eid above st)))))
 
-(defn- bonemeal-deltas [world [eid pos _ _ _]]
+(defn- bonemeal-deltas [world [_eid pos _ _ _]]
   (let [st (block-at world pos)]
     (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key [(:tick world) pos :meal salt])))]
       (concat
@@ -852,7 +852,7 @@
        (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
        [(out/all (out/bonemeal pos))]))))
 
-(defn- till-deltas [world [eid pos _ _ _]]
+(defn- till-deltas [world [_eid pos _ _ _]]
   (let [cur (block-at world pos)]
     (when-let [[to freed] (grow/tilled (block/block-of cur))]
       (when (zero? (block-at world (mapv + pos [0 1 0])))
@@ -861,7 +861,7 @@
          (when freed [[:spawn-entity (items/popped world pos {:item freed :count 1} :till)]])
          [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
 
-(defn- flatten-deltas [world [eid pos face _ _]]
+(defn- flatten-deltas [world [_eid pos face _ _]]
   (let [cur (block-at world pos)]
     (when (and (not= 0 (long face))
                (contains? grow/flattened (block/block-of cur))
@@ -929,7 +929,7 @@
 (defn- bed-place-deltas [world eid pos pos' state item]
   (let [head-pos (mapv + pos' (connect/partner-offset state))
         head     (block/state (block/block-of state) (assoc (block/props-of state) :part :head))]
-    (second-cell-deltas world eid pos pos' state item head-pos head
+    (second-cell-deltas world eid pos pos' state head-pos head
                         #(replaceable? world head-pos item))))
 
 (defn- scaffold-place-deltas [world eid pos face]
@@ -940,14 +940,14 @@
         (reject-deltas world eid pos target)))
     (reject-deltas world eid pos nil)))
 
-(defn- pair-place-deltas [world eid pos pos' state item]
+(defn- pair-place-deltas [world eid pos pos' state]
   (let [above (dir/up pos')
         props (block/props-of state)
         upper (block/state (block/block-of state) (assoc props :half :upper))
         upper (if (contains? props :waterlogged)
                 (with-water upper (= :water (liquid/liquid-class (block-at world above))))
                 upper)]
-    (second-cell-deltas world eid pos pos' state item above upper
+    (second-cell-deltas world eid pos pos' state above upper
                         #(block/can-be-replaced? (block-at world above)))))
 
 (defn- uses-bed? [world eid pos item use-item?]

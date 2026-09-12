@@ -50,7 +50,7 @@
       (and (< (long (light/light-at chunks template x y z)) 13)
            (block/solid-render? below))))
 
-(defn- sugar-cane-supported? [chunks template [x y z :as pos] st below]
+(defn- sugar-cane-supported? [chunks template [x y z] st below]
   (or (= (block/block-of below) (block/block-of st))
       (and (block/tagged? below "supports_sugar_cane")
            (boolean (some (fn [[dx _ dz]]
@@ -317,7 +317,7 @@
                  (assoc (block/props-of st) :distance (keyword (str d))
                         :bottom (if (and (pos? d) (not= :scaffolding (block/type-of (max 0 below)))) :true :false)))))
 
-(defn- bamboo-fitted [chunks template pos ^long st]
+(defn- bamboo-fitted [chunks template pos]
   (let [below (state-at chunks template (mapv + pos [0 -1 0]))
         above (state-at chunks template (mapv + pos [0 1 0]))
         age (fn [^long n] (:age (block/props-of n)))]
@@ -455,7 +455,7 @@
     (:lantern :weathering-lantern) (lantern-fitted chunks template pos st pitch)
     :bell (bell-fitted chunks template pos st face yaw)
     :cocoa (cocoa-fitted chunks template pos st yaw)
-    :bamboo-stalk (bamboo-fitted chunks template pos st)
+    :bamboo-stalk (bamboo-fitted chunks template pos)
     (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
     (growing-plant-fitted chunks template pos st tick)
     :end-rod (rod-fitted chunks template pos st face)

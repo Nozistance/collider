@@ -152,7 +152,7 @@
         (cond-> (assoc m :inventory (derive inv))
           took? (update :takes inc))))))
 
-(defn- quick-move [{:keys [inventory] :as m} slot]
+(defn- quick-move [m slot]
   (let [layout (layout-of m)]
     (loop [m m]
       (let [inv (:inventory m)

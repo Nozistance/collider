@@ -189,8 +189,7 @@
         st (state-at (:chunks world) pos)]
     (when (and (lectern/has-book? st) (:book e))
       (let [[x y z] pos
-            [dx _ dz] (dir/offset (lectern/facing st))
-            r (fn [k] (random/of-key [(:tick world) pos :lectern k]))]
+            [dx _ dz] (dir/offset (lectern/facing st))]
         [(entity/item [(+ (double x) 0.5 (* 0.25 (double dx)))
                        (double (inc (long y)))
                        (+ (double z) 0.5 (* 0.25 (double dz)))]

@@ -1,7 +1,8 @@
 (ns collider.world.blocks.sponge
   (:require [collider.world.block :as block]
             [collider.world.gen :as gen]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.blocks.liquid :as liquid])
+  (:import (clojure.lang PersistentQueue)))
 
 (set! *warn-on-reflection* true)
 
@@ -14,7 +15,7 @@
     (= :water (liquid/liquid-class st)) 0))
 
 (defn absorbed [chunks pos]
-  (loop [queue (conj clojure.lang.PersistentQueue/EMPTY [pos 0]) seen #{pos} acc []]
+  (loop [queue (conj PersistentQueue/EMPTY [pos 0]) seen #{pos} acc []]
     (if (or (empty? queue) (>= (count acc) 64))
       (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))
       (let [[p ^long d] (peek queue)

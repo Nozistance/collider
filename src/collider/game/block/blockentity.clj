@@ -1,9 +1,9 @@
 (ns collider.game.block.blockentity
-  (:require [clojure.string :as str]
-            [collider.data :as data]
+  (:require [collider.data :as data]
             [collider.game.block.sign :as sign]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk])
+  (:import (java.util UUID)))
 
 (set! *warn-on-reflection* true)
 
@@ -64,7 +64,7 @@
 (defn- banner-nbt [e]
   (cond-> {} (seq (:patterns e)) (assoc :patterns (mapv pattern-nbt (:patterns e)))))
 
-(defn- uuid-ints ^ints [^java.util.UUID u]
+(defn- uuid-ints ^ints [^UUID u]
   (int-array [(unsigned-bit-shift-right (.getMostSignificantBits u) 32)
               (.getMostSignificantBits u)
               (unsigned-bit-shift-right (.getLeastSignificantBits u) 32)

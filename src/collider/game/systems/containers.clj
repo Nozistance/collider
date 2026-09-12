@@ -115,7 +115,7 @@
        (barrel-deltas world m 1)))
     []))
 
-(defn- sync-deltas [world eid menu slots carried resync?]
+(defn- sync-deltas [eid menu slots carried resync?]
   (let [remote (:remote menu)
         base (long (:state-id menu 1))]
     (if resync?
@@ -168,7 +168,7 @@
               resync? (not= (long (:state-id packet)) (long (:state-id m 1)))
               m' (with-client (cond-> m0 (container/bench? m0) (assoc :contents items'))
                               (:changed packet) (:carried packet))
-              {:keys [deltas menu]} (sync-deltas world eid m' slots (:carried after) resync?)]
+              {:keys [deltas menu]} (sync-deltas eid m' slots (:carried after) resync?)]
           (concat
            [[:merge-entity eid {:inventory inv' :carried (:carried after)
                                 :quickcraft (:quickcraft after) :menu menu}]
@@ -211,12 +211,12 @@
       (= 3 id) (take-book-deltas world eid e m)
       :else nil)))
 
-(defn- bench-button-deltas [world eid e m id]
+(defn- bench-button-deltas [eid e m id]
   (let [m' (container/button m (long id))]
     (when (not= (:selected m') (:selected m))
       (let [items (container/derived m' (:contents m'))
             slots (view m' items (:inventory e))
-            {:keys [deltas menu]} (sync-deltas world eid (assoc m' :contents items)
+            {:keys [deltas menu]} (sync-deltas eid (assoc m' :contents items)
                                                slots (:carried e) false)]
         (concat
          [[:merge-entity eid {:menu menu}]]
@@ -230,7 +230,7 @@
         (cond
           (container/lectern? m) (when (valid? world m)
                                    (lectern-button-deltas world eid e m (long id)))
-          (container/bench? m) (bench-button-deltas world eid e m (long id)))))))
+          (container/bench? m) (bench-button-deltas eid e m (long id)))))))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]

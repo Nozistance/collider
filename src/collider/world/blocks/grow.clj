@@ -544,7 +544,7 @@
       (recur (inc h))
       h)))
 
-(defn- bamboo-meal [chunks p st roll]
+(defn- bamboo-meal [chunks p roll]
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)
         top (mapv + p [0 above 0])
@@ -607,7 +607,7 @@
       (:bush :firefly-bush) (spread-meal chunks p roll (block/state (block/block-of st)))
       :short-dry-grass {:changes [[p (block/state :tall-dry-grass)]]}
       :tall-dry-grass (spread-meal chunks p roll (block/state :short-dry-grass))
-      :bamboo-stalk (bamboo-meal chunks p st roll)
+      :bamboo-stalk (bamboo-meal chunks p roll)
       :sea-pickle (pickle-meal chunks p st roll)
       :mangrove-propagule (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
                             {:changes [[p (aged st (inc (age st)))]]})

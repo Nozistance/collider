@@ -90,7 +90,7 @@
 
 (defn- eyeblossom-schedules [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
-    (reduce (fn [m [p st]]
+    (reduce (fn [m [p _]]
               (let [old (chunk/chunks-get-block chunks gen/flat-chunk p)]
                 (merge-with into m (eyeblossom/cascade chunks p old t))))
             {} (eyeblossom-changes changes))))

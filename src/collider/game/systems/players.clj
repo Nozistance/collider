@@ -186,8 +186,7 @@
                           (* (vv/z vel) (vv/z vel))))))))))
 
 (defn- frame ^Frame [e ^Track tr t due? mdata]
-  (let [item? (= :item (:type e))
-        [bx by bz] (.pos tr)
+  (let [[bx by bz] (.pos tr)
         p (:pos e)
         ex (- (vv/x p) (double bx)) ey (- (vv/y p) (double by)) ez (- (vv/z p) (double bz))
         near? (< (+ (* ex ex) (* ey ey) (* ez ez)) pos-threshold)
