@@ -11,9 +11,10 @@
 (def ^:const light-sections 26)
 (defn- pack-longs ^longs [^long bits ^ints values]
   (let [per (quot 64 bits)
-        n   (long (Math/ceil (/ 4096.0 per)))
+        len (alength values)
+        n   (long (Math/ceil (/ (double len) per)))
         out (long-array n)]
-    (dotimes [i 4096]
+    (dotimes [i len]
       (let [at  (quot (long i) per)
             off (* (rem (long i) per) bits)]
         (aset out at (bit-or (aget out at)
