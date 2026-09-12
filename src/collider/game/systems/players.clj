@@ -23,7 +23,7 @@
     (= :item (:type e))
     {:stack (:stack e)}
     (= :tnt (:type e))
-    {}
+    {:fuse (:fuse e)}
     (= :falling-block (:type e))
     {:start (:start e)}
     (mobs/mob-type? (:type e))
@@ -185,7 +185,7 @@
                 (zero? (+ (* (vv/x vel) (vv/x vel)) (* (vv/y vel) (vv/y vel))
                           (* (vv/z vel) (vv/z vel))))))))))
 
-(defn- frame ^Frame [e ^Track tr ^long t due?]
+(defn- frame ^Frame [e ^Track tr t due? mdata]
   (let [item? (= :item (:type e))
         [bx by bz] (.pos tr)
         p (:pos e)
@@ -193,13 +193,12 @@
         near? (< (+ (* ex ex) (* ey ey) (* ez ez)) pos-threshold)
         x (vv/x p) y (vv/y p) z (vv/z p)
         dx (fixed ex) dy (fixed ey) dz (fixed ez)
-        ticks (- t (long (.t0 tr)))
+        ticks (- (long t) (long (.t0 tr)))
         yaw (angle (:yaw e)) pitch (angle (:pitch e))
         head (angle (or (:head-yaw e) (:yaw e)))
         ground (boolean (:on-ground e))
         since (if due? (inc (long (.since-tp tr))) (long (.since-tp tr)))
         vel (:vel e)
-        mdata (metadata e)
         equip (equipment-stacks e)
         moved? (boolean (and due? (or (not near?) (zero? (rem ticks resync-interval)))))
         first? (zero? ticks)
@@ -289,17 +288,20 @@
                    mob-update-interval)
             item? (= :item (:type e))
             tr   (track-of (long t) e)
+            mdata (metadata e)
+            dirty? (not= mdata (:mdata tr))
             due? (or (zero? (rem (- (long t) (long (:t0 tr))) (long freq)))
-                     (and item? (boolean (:needs-sync? e))))]
+                     (and item? (boolean (:needs-sync? e)))
+                     dirty?)]
         (when-not (and (not due?) (instance? Track tr) (identical? e (:seen tr)))
           (if (and (not due?) (instance? Track tr)
-                   (= (metadata e) (:mdata tr))
+                   (not dirty?)
                    (= (equipment-stacks e) (:equip tr))
                    (or (not self?) (and (identical? (:inventory e) (:slots tr)) (= (:carried e) (:carried tr))))
                    (or item? (not (vel-changed? tr (:vel e)))))
             (when-not (identical? e (:seen tr))
               [[:track eid (assoc tr :seen e)]])
-            (let [f    (frame e tr (long t) due?)
+            (let [f    (frame e tr (long t) due? mdata)
                   tr'  (advance-track tr e f)
                   msgs (move-msgs eid e f)
                   tr'  (cond

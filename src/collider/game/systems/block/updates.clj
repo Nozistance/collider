@@ -127,8 +127,10 @@
                              (remove pending))
                        due)]
     (mapcat (fn [pos]
-              (cons [:spawn-entity (tnt/primed pos [(:tick world) pos])]
-                    [(out/all (out/sound :tnt/primed pos 1.0 1.0))]))
+              (let [primed (tnt/primed pos [(:tick world) pos])]
+                [[:set-blocks [[pos 0]]]
+                 [:spawn-entity primed]
+                 (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
             tnts)))
 
 (defn- block-updates-deltas [world _events]

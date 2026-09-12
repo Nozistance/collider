@@ -596,8 +596,10 @@
            (get-in world [:rules :tnt-explodes] true)
            (not (get-in world [:entities eid :sneaking?]))
            (not ((tnt/primed-origins world) pos)))
-      [[:spawn-entity (tnt/primed pos [(:tick world) pos])]
-       (out/all (out/sound :tnt/primed pos 1.0 1.0))]
+      (let [primed (tnt/primed pos [(:tick world) pos])]
+        (into (change-deltas world [[pos 0]])
+              [[:spawn-entity primed]
+               (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
       :else (fire-deltas world eid pos off))))
 
 (defn- slab-merge [world pos pos' face item]

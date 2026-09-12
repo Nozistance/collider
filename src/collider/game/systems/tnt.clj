@@ -21,8 +21,7 @@
   (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height vel))
 
 (defn- unblock-deltas [eid e]
-  [[:set-blocks [[(:origin e) 0]]]
-   [:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
+  [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
 
 (defn- step-deltas [world eid e]
   (let [kb (:kb e)

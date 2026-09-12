@@ -72,7 +72,7 @@
              [16 :boolean (boolean (:baby? meta))]
              [18 :byte (bit-and (long (or (:color meta) 0)) 15)]]
     :item   [[8 :item (:stack meta)]]
-    :tnt    [[8 :int 80]]
+    :tnt    (let [f (:fuse meta 80)] (if (= 80 f) [] [[8 :int f]]))
     :falling-block [[8 :block-pos (:start meta)]]
     []))
 
