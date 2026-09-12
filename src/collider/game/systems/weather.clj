@@ -1,6 +1,6 @@
 (ns collider.game.systems.weather
   (:require [collider.game.out :as out]
-            [collider.world.weather :as weather]))
+            [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 

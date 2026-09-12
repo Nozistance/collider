@@ -1,15 +1,15 @@
 (ns collider.game.systems.chat
   (:require [collider.data :as data]
             [clojure.string :as str]
-            [collider.game.commands :as cmd]
+            [collider.game.command.tree :as cmd]
             [collider.game.out :as out]
-            [collider.game.mobs :as mobs]
-            [collider.game.rules :as rules]
+            [collider.game.mob.mobs :as mobs]
+            [collider.game.gamerules :as rules]
             [collider.game.systems.items :as items]
             [collider.vec :as v]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.weather :as weather]))
+            [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 

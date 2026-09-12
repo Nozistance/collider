@@ -1,6 +1,6 @@
 (ns collider.game.systems.jukebox
-  (:require [collider.game.blockentity :as be]
-            [collider.game.jukebox :as jukebox]
+  (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.jukebox :as jukebox]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)

@@ -5,9 +5,9 @@
             [collider.log :as log]
             [collider.persist.snapshot :as snapshot]
             [collider.proto.codec :as c]
-            [collider.render :as render]
-            [collider.server :as server]
-            [collider.session :as session])
+            [collider.net.render :as render]
+            [collider.net.server :as server]
+            [collider.net.session :as session])
   (:import (java.lang.management ManagementFactory)
            (java.net ServerSocket)
            (java.util Locale)

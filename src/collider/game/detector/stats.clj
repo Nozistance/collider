@@ -3,7 +3,7 @@
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]))
+            [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
 

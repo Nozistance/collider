@@ -1,7 +1,7 @@
 (ns collider.game.schema
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
-            [collider.game.rules :as rules]
+            [collider.game.gamerules :as rules]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 

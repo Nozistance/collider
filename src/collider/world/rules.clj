@@ -1,18 +1,18 @@
 (ns collider.world.rules
-  (:require [collider.world.composter :as composter]
-            [collider.world.coral :as coral]
-            [collider.world.dripleaf :as dripleaf]
-            [collider.world.dripstone :as dripstone]
-            [collider.world.eyeblossom :as eyeblossom]
-            [collider.world.falling :as falling]
-            [collider.world.fire :as fire]
-            [collider.world.grass :as grass]
-            [collider.world.kelp :as kelp]
-            [collider.world.lectern :as lectern]
-            [collider.world.liquid :as liquid]
-            [collider.world.scaffold :as scaffold]
-            [collider.world.sponge :as sponge]
-            [collider.world.support :as support]))
+  (:require [collider.world.blocks.composter :as composter]
+            [collider.world.blocks.coral :as coral]
+            [collider.world.blocks.dripleaf :as dripleaf]
+            [collider.world.blocks.dripstone :as dripstone]
+            [collider.world.blocks.eyeblossom :as eyeblossom]
+            [collider.world.blocks.falling :as falling]
+            [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.grass :as grass]
+            [collider.world.blocks.kelp :as kelp]
+            [collider.world.blocks.lectern :as lectern]
+            [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.scaffold :as scaffold]
+            [collider.world.blocks.sponge :as sponge]
+            [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
 

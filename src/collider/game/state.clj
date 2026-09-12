@@ -1,5 +1,5 @@
 (ns collider.game.state
-  (:require [collider.game.blockentity :as be]
+  (:require [collider.game.block.blockentity :as be]
             [clojure.core.reducers :as r]
             [clojure.string]
             [collider.vec :as v]
@@ -11,12 +11,12 @@
             [collider.game.deltas :as deltas]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.connect :as connect]
+            [collider.world.blocks.connect :as connect]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.rules :as rules]
-            [collider.world.spawn :as spawn]
-            [collider.world.weather :as weather])
+            [collider.world.space.spawn :as spawn]
+            [collider.world.env.weather :as weather])
   (:import (clojure.lang MapEntry)
            (collider.game.deltas Deltas)
            (java.nio.charset StandardCharsets)

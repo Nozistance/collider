@@ -5,12 +5,12 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.dripstone :as dripstone]
-            [collider.world.eyeblossom :as eyeblossom]
+            [collider.world.blocks.dripstone :as dripstone]
+            [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.gen :as gen]
-            [collider.world.grow :as grow]
-            [collider.world.liquid :as liquid]
-            [collider.world.precipitation :as precipitation])
+            [collider.world.blocks.grow :as grow]
+            [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.precipitation :as precipitation])
   (:import (collider.world.chunk Section)))
 
 (set! *warn-on-reflection* true)

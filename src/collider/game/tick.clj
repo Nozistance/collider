@@ -1,5 +1,5 @@
 (ns collider.game.tick
-  (:require [collider.game.blockentity :as be]
+  (:require [collider.game.block.blockentity :as be]
             [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]

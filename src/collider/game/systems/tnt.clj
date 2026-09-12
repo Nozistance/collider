@@ -2,14 +2,14 @@
   (:require [collider.game.deltas :as deltas]
             [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
-            [collider.game.mobs :as mobs]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.tnt :as tnt]
+            [collider.game.block.tnt :as tnt]
             [collider.random :as random]
             [collider.vec :as v]
-            [collider.world.explosion :as explosion]
+            [collider.world.space.explosion :as explosion]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys])
   (:import (collider.world.phys Move)))
 

@@ -1,7 +1,7 @@
 (ns collider.game.systems.players
   (:require [clojure.data.int-map :as i]
             [collider.vec :as vv]
-            [collider.game.mobs :as mobs]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state])
   (:import (collider.game.deltas Deltas)

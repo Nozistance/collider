@@ -1,7 +1,7 @@
 (ns collider.game.systems.containers
-  (:require [collider.game.blockentity :as be]
-            [collider.game.container :as container]
-            [collider.game.menu :as menu]
+  (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.container :as container]
+            [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]))

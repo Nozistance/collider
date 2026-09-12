@@ -3,11 +3,11 @@
             [collider.game.state :as state]
             [collider.game.systems.daynight :as daynight]
             [collider.vec :as v]
-            [collider.world.bed :as bed]
+            [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
-            [collider.world.weather :as weather]))
+            [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 

@@ -5,11 +5,11 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.falling :as falling]
+            [collider.world.blocks.falling :as falling]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
-            [collider.world.support :as support])
+            [collider.world.blocks.support :as support])
   (:import (collider.world.phys Move)))
 
 (set! *warn-on-reflection* true)

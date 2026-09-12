@@ -4,7 +4,7 @@
             [collider.game.out :as out]
             [collider.vec :as v]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys])
   (:import (collider.world.phys Move)))
 

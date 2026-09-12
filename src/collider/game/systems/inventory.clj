@@ -1,7 +1,7 @@
 (ns collider.game.systems.inventory
   (:require [collider.data :as data]
-            [collider.game.blockentity :as be]
-            [collider.game.menu :as menu]
+            [collider.game.block.blockentity :as be]
+            [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]

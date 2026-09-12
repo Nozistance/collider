@@ -4,15 +4,15 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.game.tnt :as tnt]
+            [collider.game.block.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
-            [collider.world.dripleaf :as dripleaf]
-            [collider.world.eyeblossom :as eyeblossom]
-            [collider.world.sponge :as sponge]
+            [collider.world.blocks.dripleaf :as dripleaf]
+            [collider.world.blocks.eyeblossom :as eyeblossom]
+            [collider.world.blocks.sponge :as sponge]
             [collider.world.gen :as gen]
-            [collider.world.fire :as fire]
-            [collider.world.liquid :as liquid]
+            [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.rules :as rules]))
 
 (set! *warn-on-reflection* true)

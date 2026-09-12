@@ -1,15 +1,15 @@
 (ns collider.game.systems.damage
   (:require [collider.game.entity :as entity]
             [collider.random :as random]
-            [collider.game.mobs :as mobs]
+            [collider.game.mob.mobs :as mobs]
             [collider.world.chunk :as chunk]
             [collider.game.state :as state]
-            [collider.world.bed :as bed]
+            [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
-            [collider.game.menu :as menu]
+            [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.vec :as v]))
 

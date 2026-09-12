@@ -2,7 +2,7 @@
   (:require [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
-            [collider.world.dripleaf :as dripleaf]
+            [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)

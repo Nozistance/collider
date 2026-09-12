@@ -2,15 +2,15 @@
   (:require [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
-            [collider.game.features.sheep :as sheep]
-            [collider.game.push :as push]
-            [collider.game.mobs :as mobs]
-            [collider.game.sense :as sense]
+            [collider.game.mob.sheep :as sheep]
+            [collider.game.mob.push :as push]
+            [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.sense :as sense]
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.world.gen :as gen]
-            [collider.world.liquid :as liquid]
-            [collider.world.path :as path]
+            [collider.world.blocks.liquid :as liquid]
+            [collider.world.space.path :as path]
             [collider.world.phys :as phys])
   (:import (collider.world.phys Move)))
 
