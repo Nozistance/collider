@@ -209,7 +209,7 @@
                            (<= (- rel-limit) dy rel-limit)
                            (<= (- rel-limit) dz rel-limit)
                            (<= since forced-teleport)
-                           (not (and item? (not= ground (boolean (.on-ground tr)))))))
+                           (= ground (boolean (.on-ground tr)))))
         head-turned? (boolean (and due? (not= head (long (.head tr)))))
         meta-changed? (not= mdata (.mdata tr))
         equip-changed? (not= equip (.equip tr))
