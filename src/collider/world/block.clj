@@ -362,52 +362,59 @@
 (defn skull-rotation [yaw]
   (bit-and (long (Math/floor (+ (/ (* (double yaw) 16.0) 360.0) 0.5))) 15))
 
+(def ^:private placement-rules
+  [[(fn [t _b] (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t))
+    (fn [{:keys [face]}] {:axis (case (long face) (0 1) :y, (4 5) :x, :z)})]
+   [(fn [t _b] (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t))
+    (fn [{:keys [face]}] {:facing (dir/from-index face)})]
+   [(fn [t _b] (#{:standing-sign :banner :ceiling-hanging-sign} t))
+    (fn [{:keys [yaw]}] {:rotation (keyword (str (rotation-segment yaw)))})]
+   [(fn [t _b] (#{:skull :wither-skull :player-head} t))
+    (fn [{:keys [yaw]}] {:rotation (keyword (str (skull-rotation yaw)))})]
+   [(fn [t _b] (= :decorated-pot t))
+    (fn [{:keys [f]}] {:facing (nth [:south :west :north :east] f)})]
+   [(fn [t _b] (= :lantern t))
+    (fn [{:keys [face]}] {:hanging (if (= 0 (long face)) :true :false)})]
+   [(fn [t _b] (str/ends-with? (name t) "leaves"))
+    (fn [_] {:persistent :true})]
+   [(fn [t _b] (= :mangrove-propagule t))
+    (fn [_] {:age :4})]
+   [(fn [t _b] (contains? door-types t))
+    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw) :half :lower})]
+   [(fn [t _b] (= :bed t))
+    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw) :part :foot :occupied :false})]
+   [(fn [t _b] (= :fence-gate t))
+    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw)})]
+   [(fn [t _b] (contains? trapdoor-types t))
+    (fn [{:keys [face yaw cursor-y replacing?]}]
+      (if (and (not replacing?) (>= (long face) 2))
+        {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
+        {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= 1 (long face)) :bottom :top)}))]
+   [(fn [t _b] (= :stair (shape-type t)))
+    (fn [{:keys [f top?]}] {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)})]
+   [(fn [t _b] (= :slab (shape-type t)))
+    (fn [{:keys [top?]}] {:type (if top? :top :bottom)})]
+   [(fn [t _b] (contains? wall-torch-types t))
+    (fn [{:keys [face]}] {:facing (dir/face-facing face)})]
+   [(fn [t _b] (contains? side-types t))
+    (fn [{:keys [face]}] {:facing (get dir/face-facing face :north)})]
+   [(fn [_t b] (contains? (:props b) :facing))
+    (fn [{:keys [f]}] {:facing (nth [:north :east :south :west] f)})]])
+
+(defn- placement-props [t b ctx]
+  (when-let [[_ f] (first (filter (fn [[pred _]] (pred t b)) placement-rules))]
+    (f ctx)))
+
 (defn placement
   ([item face yaw cursor-y] (placement item face yaw cursor-y false))
   ([item face yaw cursor-y replacing?]
    (when-let [block (item->block item face)]
      (let [b (data/info block)
-           t (:type b)
            face (long face)
-           f (dir/player-index yaw)
-           top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))
-           props (cond
-                   (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
-                   {:axis (case face (0 1) :y, (4 5) :x, :z)}
-                   (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t)
-                   {:facing (dir/from-index face)}
-                   (#{:standing-sign :banner :ceiling-hanging-sign} t)
-                   {:rotation (keyword (str (rotation-segment yaw)))}
-                   (#{:skull :wither-skull :player-head} t)
-                   {:rotation (keyword (str (skull-rotation yaw)))}
-                   (= :decorated-pot t)
-                   {:facing (nth [:south :west :north :east] f)}
-                   (= :lantern t)
-                   {:hanging (if (= face 0) :true :false)}
-                   (str/ends-with? (name t) "leaves")
-                   {:persistent :true}
-                   (= :mangrove-propagule t)
-                   {:age :4}
-                   (contains? door-types t)
-                   {:facing (dir/player-direction yaw) :half :lower}
-                   (= :bed t)
-                   {:facing (dir/player-direction yaw) :part :foot :occupied :false}
-                   (= :fence-gate t)
-                   {:facing (dir/player-direction yaw)}
-                   (contains? trapdoor-types t)
-                   (if (and (not replacing?) (>= face 2))
-                     {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
-                     {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= face 1) :bottom :top)})
-                   (= :stair (shape-type t))
-                   {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)}
-                   (= :slab (shape-type t))
-                   {:type (if top? :top :bottom)}
-                   (contains? wall-torch-types t)
-                   {:facing (dir/face-facing face)}
-                   (contains? side-types t)
-                   {:facing (get dir/face-facing face :north)}
-                   (contains? (:props b) :facing)
-                   {:facing (nth [:north :east :south :west] f)})]
+           ctx {:face face :yaw yaw :cursor-y cursor-y :replacing? replacing?
+                :f    (dir/player-index yaw)
+                :top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))}
+           props (placement-props (:type b) b ctx)]
        (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
