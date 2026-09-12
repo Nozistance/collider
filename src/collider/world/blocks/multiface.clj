@@ -1,18 +1,11 @@
 (ns collider.world.blocks.multiface
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private all-dirs [:down :up :north :south :west :east])
-(def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def ^:private opposite {:down :up :up :down :north :south :south :north :west :east :east :west})
-(def ^:private axis {:down :y :up :y :north :z :south :z :west :x :east :x})
-
-(defn- at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks gen/flat-chunk p) -1))
 
 (defn shuffled [roll xs]
   (loop [v (vec xs) i (count v)]
@@ -25,8 +18,8 @@
 (defn- has-face? [^long st dir] (= :true (get (block/props-of st) dir)))
 
 (defn- attachable? [chunks p dir]
-  (let [n (at chunks (mapv + p (six dir)))]
-    (and (pos? n) (block/face-sturdy? n (opposite dir)))))
+  (let [n (gen/at-void chunks (mapv + p (dir/offset dir)))]
+    (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- water-source? [^long st]
   (and (pos? st) (= :water (liquid/liquid-class st)) (liquid/source-state? st)))
@@ -39,7 +32,7 @@
        (attachable? chunks p dir)))
 
 (defn- spread-into? [chunks [q dir] self]
-  (let [existing (at chunks q)]
+  (let [existing (gen/at-void chunks q)]
     (and (not (neg? existing))
          (replaceable? existing self)
          (valid-placement? chunks existing q dir self))))
@@ -47,11 +40,11 @@
 (defn- spread-pos [p from-face spread-dir type]
   (case type
     :same-position [p spread-dir]
-    :same-plane [(mapv + p (six spread-dir)) from-face]
-    :wrap-around [(mapv + p (six spread-dir) (six from-face)) (opposite spread-dir)]))
+    :same-plane [(mapv + p (dir/offset spread-dir)) from-face]
+    :wrap-around [(mapv + p (dir/offset spread-dir) (dir/offset from-face)) (dir/opposite spread-dir)]))
 
 (defn spread-toward [chunks p st from-face spread-dir]
-  (when (and (not= (axis spread-dir) (axis from-face))
+  (when (and (not= (dir/axis spread-dir) (dir/axis from-face))
              (has-face? st from-face)
              (not (has-face? st spread-dir)))
     (first (for [type [:same-position :same-plane :wrap-around]
@@ -60,7 +53,7 @@
              sp))))
 
 (defn- placed-state ^long [chunks [q dir] self]
-  (let [old (at chunks q)
+  (let [old (gen/at-void chunks q)
         base (cond (= self (block/block-of (max 0 old))) old
                    (water-source? old) (block/with-water (block/state self))
                    :else (block/state self))]
@@ -68,13 +61,13 @@
 
 (defn- from-face-random [chunks p st from-face roll]
   (first (keep #(spread-toward chunks p st from-face %)
-               (shuffled (fn [salt] (roll [:dir from-face salt])) all-dirs))))
+               (shuffled (fn [salt] (roll [:dir from-face salt])) dir/six))))
 
 (defn spread-random [chunks p ^long st roll]
   (let [self (block/block-of st)]
     (when-let [sp (first (keep #(when (has-face? st %) (from-face-random chunks p st % roll))
-                               (shuffled (fn [salt] (roll [:face salt])) all-dirs)))]
+                               (shuffled (fn [salt] (roll [:face salt])) dir/six)))]
       [[(first sp) (placed-state chunks sp self)]])))
 
 (defn can-spread? [chunks p ^long st]
-  (boolean (some (fn [from] (some #(spread-toward chunks p st from %) all-dirs)) all-dirs)))
+  (boolean (some (fn [from] (some #(spread-toward chunks p st from %) dir/six)) dir/six)))

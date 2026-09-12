@@ -19,7 +19,6 @@
 (defn conn-state [^Conn c] (:state @(:st c)))
 (defn info [^Conn c] @(:st c))
 (defn put! [^Conn c k v] (swap! (:st c) assoc k v))
-(defn take-key! [^Conn c k] (k (first (swap-vals! (:st c) dissoc k))))
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))

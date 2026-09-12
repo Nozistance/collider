@@ -17,6 +17,7 @@
             [collider.vec :as v]
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.connect :as connect]
             [collider.world.gen :as gen]
@@ -137,10 +138,9 @@
                 [[:spawn-entity (items/popped world pos {:item :glow-berries :count 1} :berries)]
                  (out/all (out/sound :cave-vines/pick-berries pos 1.0 pitch))])))))
 
-(defn- bush-age ^long [^long st] (Long/parseLong (name (:age (block/props-of st)))))
 (defn- picks-berries? [^long cur item]
-  (and (= :sweet-berry-bush (block/type-of cur)) (> (bush-age cur) 1)
-       (not (and (= :bone-meal item) (< (bush-age cur) 3)))))
+  (and (= :sweet-berry-bush (block/type-of cur)) (> (block/prop-long cur :age) 1)
+       (not (and (= :bone-meal item) (< (block/prop-long cur :age) 3)))))
 
 (defn- bush-stacks [world pos ^long a]
   (let [n (inc (long (Math/floor (* 2.0 (random/of-key [(:tick world) pos :bush-count])))))]
@@ -152,7 +152,7 @@
         pitch (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos :bush-pitch])))]
     (concat (change-deltas world [[pos (block/state :sweet-berry-bush {:age :1})]])
             (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bush i])])
-                         (bush-stacks world pos (bush-age cur)))
+                         (bush-stacks world pos (block/prop-long cur :age)))
             [(out/all (out/sound :sweet-berry-bush/pick-berries pos 1.0 pitch))])))
 
 (def ^:private statue-types #{:copper-golem-statue :weathering-copper-golem-statue})
@@ -167,8 +167,6 @@
     (concat (change-deltas world [[pos (block/state (block/block-of cur) (update props :copper-golem-pose next-pose))]])
             [(out/all (out/sound :copper-golem/statue pos 1.0 1.0))])))
 
-(def ^:private cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
-(defn- cauldron-level ^long [st] (Long/parseLong (name (:level (block/props-of st) :0))))
 (defn- cauldron-filled [world pos item]
   (let [under-water? (= :water (liquid/liquid-class (block-at world (mapv + pos [0 1 0]))))]
     (case item
@@ -181,11 +179,11 @@
   (let [n (block/block-of cur)]
     (cond
       (= :lava-cauldron n) :bucket/fill-lava
-      (and (= :water-cauldron n) (= 3 (cauldron-level cur))) :bucket/fill
-      (and (= :powder-snow-cauldron n) (= 3 (cauldron-level cur))) :bucket/fill-snow)))
+      (and (= :water-cauldron n) (= 3 (block/prop-long cur :level))) :bucket/fill
+      (and (= :powder-snow-cauldron n) (= 3 (block/prop-long cur :level))) :bucket/fill-snow)))
 
 (defn- cauldron-lowered ^long [cur]
-  (let [lvl (cauldron-level cur)]
+  (let [lvl (block/prop-long cur :level)]
     (if (= 1 lvl) (block/state :cauldron) (block/state (block/block-of cur) {:level (keyword (str (dec lvl)))}))))
 
 (defn- bottle-deltas [world pos]
@@ -201,7 +199,7 @@
 (defn- cauldron-raised [cur]
   (if (= :cauldron (block/block-of cur))
     (block/state :water-cauldron)
-    (let [lvl (cauldron-level cur)]
+    (let [lvl (block/prop-long cur :level)]
       (when (< lvl 3)
         (block/state (block/block-of cur) {:level (keyword (str (inc lvl)))})))))
 
@@ -226,9 +224,9 @@
 
 (defn- carve-deltas [world eid pos face]
   (let [dir (if (<= (long face) 1)
-              (block/opposite-facing (block/player-direction (get-in world [:entities eid :yaw] 0.0)))
+              (dir/opposite (dir/player-direction (get-in world [:entities eid :yaw] 0.0)))
               (get {2 :north 3 :south 4 :west 5 :east} face))
-        [ox _ oz] (block/facing-offset dir)
+        [ox _ oz] (dir/offset dir)
         [x y z] pos
         t (:tick world)]
     (concat
@@ -240,7 +238,7 @@
       (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
 
 (defn- compost-deltas [world pos item]
-  (let [cur (block-at world pos) lvl (cauldron-level cur)]
+  (let [cur (block-at world pos) lvl (block/prop-long cur :level)]
     (cond
       (and item (< lvl 8) (grow/compostables item))
       (when (< lvl 7)
@@ -286,7 +284,6 @@
 (defn- held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))
 
-(def ^:private face-dir {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east})
 
 (defn- hit-uv [face [cx cy cz]]
   (let [x (/ (double cx) 16.0) y (/ (double cy) 16.0) z (/ (double cz) 16.0)]
@@ -301,7 +298,7 @@
   (min (dec n) (max 0 (long (Math/floor (* rel n))))))
 
 (defn- hit-slot [st face cursor rows cols]
-  (when (= (block/facing-of st) (get face-dir (long face)))
+  (when (= (block/facing-of st) (dir/from-index (long face)))
     (when-let [[u v] (hit-uv face cursor)]
       (+ (section (double u) (long cols)) (* (long cols) (section (- 1.0 (double v)) (long rows)))))))
 
@@ -411,7 +408,7 @@
 (def ^:private axis-of {:north :z :south :z :west :x :east :x})
 
 (defn- bell-hit? [^long st face ^double cursor-y]
-  (let [dir (get face-dir (long face))]
+  (let [dir (dir/from-index (long face))]
     (and dir (contains? axis-of dir) (not (> (/ cursor-y 16.0) 0.8124))
          (let [same? (= (get axis-of (block/facing-of st)) (get axis-of dir))]
            (case (:attachment (block/props-of st))
@@ -420,12 +417,10 @@
              :ceiling true
              false)))))
 
-(def ^:private dir-index {:down 0 :up 1 :north 2 :south 3 :west 4 :east 5})
-
 (defn- bell-use-deltas [world pos face cursor]
   (let [st (block-at world pos)]
     (when (bell-hit? st face (double (nth cursor 1)))
-      [(out/all (out/block-event pos 1 (get dir-index (get face-dir (long face)))))
+      [(out/all (out/block-event pos 1 (get dir/index (dir/from-index (long face)))))
        (out/all (out/sound :bell/use pos 2.0 1.0))])))
 
 (defn- lectern-use-deltas
@@ -446,7 +441,7 @@
              (contains? container/container-types (block/type-of cur))
              (picks-berries? cur item)
              (poses? cur item)
-             (contains? cauldron-types (block/type-of cur))
+             (contains? block/cauldron-types (block/type-of cur))
              (some? (sign/kind cur))
              (and (= :pumpkin (block/block-of cur)) (= :shears item))))))
 
@@ -461,7 +456,7 @@
       (contains? #{:cave-vines :cave-vines-plant} t) (when (nil? item) (berries-deltas world pos))
       (= :sweet-berry-bush t) (bush-deltas world pos)
       (= :composter t) (compost-deltas world pos item)
-      (contains? cauldron-types t) (cauldron-deltas world pos item (held-stack world eid))
+      (contains? block/cauldron-types t) (cauldron-deltas world pos item (held-stack world eid))
       (sign/kind cur) (sign-use-deltas world eid pos item)
       (= :decorated-pot t) (pot-use-deltas world pos item)
       (= :jukebox t) (jukebox-use-deltas world pos item)
@@ -476,9 +471,9 @@
   (let [sneaking? (get-in world [:entities eid :sneaking?])
         dir (cond
               sneaking? (get {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east} face)
-              (= 1 (long face)) (block/player-direction (get-in world [:entities eid :yaw] 0.0))
+              (= 1 (long face)) (dir/player-direction (get-in world [:entities eid :yaw] 0.0))
               :else :up)
-        off (get {:down [0 -1 0] :up [0 1 0]} dir (block/facing-offset dir))
+        off (dir/offset dir)
         horizontal? (contains? #{:north :south :west :east} dir)]
     (loop [p (mapv + pos off) n 0]
       (let [[_ y _] p]
@@ -518,8 +513,8 @@
                 (= self (block/block-of ost))
                 (conj [other (block/state self (assoc (block/props-of ost) :open (if open? :false :true)))])))
       (:trapdoor :weathering-copper-trapdoor) [[pos (block/state self (assoc props :open (if open? :false :true)))]]
-      :fence-gate (let [dir (block/player-direction (get-in world [:entities eid :yaw] 0.0))
-                        facing (if (and (not open?) (= (:facing props) (block/opposite-facing dir))) dir (:facing props))]
+      :fence-gate (let [dir (dir/player-direction (get-in world [:entities eid :yaw] 0.0))
+                        facing (if (and (not open?) (= (:facing props) (dir/opposite dir))) dir (:facing props))]
                     [[pos (block/state self (assoc props :open (if open? :false :true) :facing facing))]]))))
 
 (defn- toggle-deltas [world eid pos state]
@@ -599,9 +594,6 @@
           (door-partner-effect world eid pos old) (conj (door-partner-effect world eid pos old)))
         [(own-change world eid pos)]))))
 
-(defn- snow-layers ^long [st]
-  (Long/parseLong (name (:layers (block/props-of st)))))
-
 (defn- replaceable?
   ([world pos] (replaceable? world pos nil))
   ([world pos item]
@@ -610,7 +602,7 @@
        (zero? cur) true
        (liquid/liquid-state? cur) true
        (fire/fire-state? cur) true
-       (= :snow-layer (block/type-of cur)) (let [n (snow-layers cur)]
+       (= :snow-layer (block/type-of cur)) (let [n (block/prop-long cur :layers)]
                                             (if (= item :snow) (< n 8) (= n 1)))
        (block/stackable? cur item) true
        :else (block/can-be-replaced? cur)))))
@@ -619,7 +611,7 @@
   (let [cur (block-at world pos')]
     (cond
       (and (= item :snow) (= :snow-layer (block/type-of cur)))
-      (block/state :snow {:layers (keyword (str (min 8 (inc (snow-layers cur)))))})
+      (block/state :snow {:layers (keyword (str (min 8 (inc (block/prop-long cur :layers)))))})
       (and (block/stackable? cur item) (block/stack-props (block/type-of cur))) (block/stacked cur)
       :else state)))
 
@@ -639,7 +631,7 @@
        (out/except eid (out/sound :fire/ignite pos' 1.0 (+ 0.8 (* 0.4 (random/of-key [(:tick world) pos' :flint])))))])))
 
 (defn- flint-deltas [world [eid pos face]]
-  (when-let [off (block/face-offsets face)]
+  (when-let [off (dir/face-offset face)]
     (cond
       (candle-lit world pos)
       (change-deltas world [[pos (candle-lit world pos)]])
@@ -688,7 +680,7 @@
       (placed-deltas world eid pos state item))))
 
 (defn- solid-place-deltas [world [eid pos face item cursor]]
-  (when-let [off (block/face-offsets face)]
+  (when-let [off (dir/face-offset face)]
     (when-let [state (block/placement item face (get-in world [:entities eid :yaw] 0.0) (nth cursor 1)
                                       (replaceable? world pos))]
       (let [pile (if (get-in world [:entities eid :sneaking?]) nil item)
@@ -825,7 +817,6 @@
           (<= ty tz) (recur [cx (+ cy (step cy (d 1))) cz] tx (+ ty (/ 1.0 (Math/abs (double (d 1))))) tz (inc n))
           :else (recur [cx cy (+ cz (step cz (d 2)))] tx ty (+ tz (/ 1.0 (Math/abs (double (d 2))))) (inc n)))))))
 
-(def ^:private face-normal {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
 (defn- waterloggable? [st]
   (= :false (:waterlogged (block/props-of st))))
 
@@ -851,7 +842,7 @@
 
 (defn- add [world eid e state]
   (when-let [{:keys [pos face]} (clip world e :none)]
-    (let [relative (mapv + pos (face-normal face))
+    (let [relative (mapv + pos (dir/offset face))
           hit (block-at world pos)
           target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (liquid/liquid-class state))) pos relative)]
       (when (chunk/in-range? (target 1))
@@ -964,7 +955,7 @@
          [:set-slot eid held nil]]))))
 
 (defn- spawn-egg-deltas [world [_ pos face item]]
-  (when-let [off (block/face-offsets face)]
+  (when-let [off (dir/face-offset face)]
     (when-let [mob (mobs/egg-type item)]
       (let [[x y z] (mapv + pos off)
             t (:tick world)
@@ -1098,9 +1089,6 @@
                                      (equip-armor-deltas world eid item (armor-slot-of item)))
       :else                        (solid-place-deltas world args))))
 
-(def ^:private face-offsets
-  {0 [0 -1 0] 1 [0 1 0] 2 [0 0 -1] 3 [0 0 1] 4 [-1 0 0] 5 [1 0 0]})
-
 (defn- sequence-of [tag args]
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
@@ -1112,7 +1100,7 @@
 
 (defn- use-ack-deltas [world events origins]
   (mapcat (fn [[i [tag eid pos face]]]
-            (when-let [off (and (= :place tag) (face-offsets (bit-and (long face) 0xFF)))]
+            (when-let [off (and (= :place tag) (dir/face-offset (bit-and (long face) 0xFF)))]
               (when (and (chunk/in-range? (nth pos 1))
                          (acted-at world eid (get origins i) pos))
                 (let [pos' (mapv + pos off)]

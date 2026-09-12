@@ -1,5 +1,6 @@
 (ns collider.world.blocks.grow
   (:require [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -15,37 +16,24 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
-
-(defn- air-at? [chunks [_ y _ :as p]] (and (chunk/in-range? y) (zero? (at chunks p))))
-(defn- up [p] (mapv + p [0 1 0]))
-(defn- down [p] (mapv + p [0 -1 0]))
+(defn- air-at? [chunks [_ y _ :as p]] (and (chunk/in-range? y) (zero? (gen/at chunks p))))
 (defn- lit? [chunks [x y z] ^long n] (>= (long (light/light-at chunks gen/flat-chunk x y z)) n))
 (defn- chance? [roll salt ^long n] (< (double (roll salt)) (/ 1.0 n)))
 (defn- pick ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
 (defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
-(defn- prop ^long [st k] (Long/parseLong (name (get (block/props-of st) k))))
 (defn- with [st & kvs]
   (block/state (block/block-of st) (apply assoc (block/props-of st) (map-indexed (fn [i v] (if (and (odd? i) (not (keyword? v))) (keyword (str v)) v)) kvs))))
-(defn- age ^long [st] (prop st :age))
+(defn- age ^long [st] (block/prop-long st :age))
 (defn- aged ^long [st ^long n] (with st :age n))
-(def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def ^:private dir-order [:north :south :west :east])
-(def ^:private six-order [:down :up :north :south :west :east])
-(def ^:private clockwise {:north :east :east :south :south :west :west :north})
-(def ^:private counter {:north :west :west :south :south :east :east :north})
-(def ^:private opposite {:north :south :south :north :west :east :east :west :up :down :down :up})
-(def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
 (def ^:private max-age {:crop 7 :carrot 7 :potato 7 :beetroot 3 :torchflower-crop 1 :stem 7})
 (defn- soil-speed ^double [chunks [x y z] ^long dx ^long dz]
-  (let [st (at chunks [(+ (long x) dx) (dec (long y)) (+ (long z) dz)])]
+  (let [st (gen/at chunks [(+ (long x) dx) (dec (long y)) (+ (long z) dz)])]
     (if (block/tagged? st "grows_crops")
-      (if (pos? (prop st :moisture)) 3.0 1.0)
+      (if (pos? (block/prop-long st :moisture)) 3.0 1.0)
       0.0)))
 
 (defn- crowded? [chunks [x y z] self]
-  (let [same? (fn [^long dx ^long dz] (= self (block/block-of (at chunks [(+ (long x) dx) y (+ (long z) dz)]))))]
+  (let [same? (fn [^long dx ^long dz] (= self (block/block-of (gen/at chunks [(+ (long x) dx) y (+ (long z) dz)]))))]
     (or (and (or (same? -1 0) (same? 1 0)) (or (same? 0 -1) (same? 0 1)))
         (same? -1 -1) (same? 1 -1) (same? 1 1) (same? -1 1))))
 
@@ -71,10 +59,10 @@
 (defn- pitcher-grown [chunks p st ^long a]
   (when (and (lit? chunks p 8)
              (chunk/in-range? (inc (long (p 1))))
-             (or (< a 3) (let [u (at chunks (up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
+             (or (< a 3) (let [u (gen/at chunks (dir/up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
     (let [st' (aged st a)]
       (cond-> [[p st']]
-        (>= a 3) (conj [(up p) (with st' :half :upper)])))))
+        (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
 
 (defn- pitcher-tick [chunks p st roll]
   (when (and (= :lower (:half (block/props-of st))) (< (age st) 4) (growth-roll? chunks p st roll))
@@ -82,8 +70,8 @@
 
 (defn- pitcher-meal [chunks p st]
   (let [lower? (= :lower (:half (block/props-of st)))
-        lp (if lower? p (down p))
-        lst (if lower? st (at chunks lp))]
+        lp (if lower? p (dir/down p))
+        lst (if lower? st (gen/at chunks lp))]
     (when (and (= :pitcher-crop (block/type-of lst)) (< (age lst) 4))
       (when-let [changes (pitcher-grown chunks lp lst (inc (age lst)))]
         {:changes changes}))))
@@ -94,9 +82,9 @@
 
 (defn- fruit-changes [chunks p st roll]
   (let [[fruit attached tag] (fruits (block/block-of st))
-        dir (dir-order (pick roll :dir 4))
-        beside (mapv + p (dirs dir))]
-    (when (and (air-at? chunks beside) (block/tagged? (at chunks (down beside)) tag))
+        dir (dir/horizontal (pick roll :dir 4))
+        beside (mapv + p (dir/horizontal-offset dir))]
+    (when (and (air-at? chunks beside) (block/tagged? (gen/at chunks (dir/down beside)) tag))
       [[beside (block/state fruit)] [p (block/state attached {:facing dir})]])))
 
 (defn- stem-tick [chunks p st roll]
@@ -107,57 +95,57 @@
 
 (defn- height-below ^long [chunks p self ^long cap]
   (loop [h 0]
-    (if (and (< h cap) (= self (block/block-of (at chunks (mapv + p [0 (- (inc h)) 0])))))
+    (if (and (< h cap) (= self (block/block-of (gen/at chunks (mapv + p [0 (- (inc h)) 0])))))
       (recur (inc h))
       h)))
 
 (defn- cane-tick [chunks p st _rnd]
-  (when (and (air-at? chunks (up p)) (< (inc (height-below chunks p (block/block-of st) 3)) 3))
+  (when (and (air-at? chunks (dir/up p)) (< (inc (height-below chunks p (block/block-of st) 3)) 3))
     (if (= 15 (age st))
-      [[(up p) (block/state (block/block-of st))] [p (aged st 0)]]
+      [[(dir/up p) (block/state (block/block-of st))] [p (aged st 0)]]
       [[p (aged st (inc (age st)))]])))
 
 (defn- cactus-tick [chunks p st roll]
-  (when (air-at? chunks (up p))
+  (when (air-at? chunks (dir/up p))
     (let [a (age st) h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
         (let [top (cond
-                    (and (= a 8) (support/supported? chunks gen/flat-chunk (up p) (block/state :cactus)))
-                    (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1)) [[(up p) (block/state :cactus-flower)]])
-                    (and (= a 15) (< h 3)) [[(up p) (block/state :cactus)] [p (aged st 0)]])]
+                    (and (= a 8) (support/supported? chunks gen/flat-chunk (dir/up p) (block/state :cactus)))
+                    (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1)) [[(dir/up p) (block/state :cactus-flower)]])
+                    (and (= a 15) (< h 3)) [[(dir/up p) (block/state :cactus)] [p (aged st 0)]])]
           (into (vec top) (when (< a 15) [[p (aged st (inc a))]])))))))
 
 (defn- grown-bamboo [chunks p st roll height]
-  (let [below (at chunks (down p)) two (at chunks (down (down p)))
+  (let [below (gen/at chunks (dir/down p)) two (gen/at chunks (dir/down (dir/down p)))
         bamboo? (fn [s] (= :bamboo (block/block-of s)))
         leaves (cond
                  (or (not (bamboo? below)) (= :none (:leaves (block/props-of below)))) :small
                  :else :large)
         shift (when (and (= leaves :large) (bamboo? two))
-                [[(down p) (with below :leaves :small)] [(down (down p)) (with two :leaves :none)]])
+                [[(dir/down p) (with below :leaves :small)] [(dir/down (dir/down p)) (with two :leaves :none)]])
         a (if (and (not= 1 (age st)) (not (bamboo? two))) 0 1)
         height (long height)
         stage (if (or (and (>= height 11) (< (double (roll :stage)) 0.25)) (= height 15)) 1 0)]
-    (conj (vec shift) [(up p) (block/state :bamboo {:age (keyword (str a)) :leaves leaves :stage (keyword (str stage))})])))
+    (conj (vec shift) [(dir/up p) (block/state :bamboo {:age (keyword (str a)) :leaves leaves :stage (keyword (str stage))})])))
 
 (defn- bamboo-tick [chunks p st roll]
-  (when (and (= 0 (prop st :stage)) (chance? roll :gate 3) (air-at? chunks (up p)) (lit? chunks (up p) 9))
+  (when (and (= 0 (block/prop-long st :stage)) (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
     (let [height (inc (height-below chunks p :bamboo 16))]
       (when (< height 16)
         (grown-bamboo chunks p st roll height)))))
 
 (defn- bamboo-sapling-tick [chunks p _st roll]
-  (when (and (chance? roll :gate 3) (air-at? chunks (up p)) (lit? chunks (up p) 9))
-    [[(up p) (block/state :bamboo {:leaves :small})]]))
+  (when (and (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
+    [[(dir/up p) (block/state :bamboo {:leaves :small})]]))
 
 (defn- berry-tick [chunks p st roll]
-  (when (and (< (age st) 3) (chance? roll :gate 5) (lit? chunks (up p) 9))
+  (when (and (< (age st) 3) (chance? roll :gate 5) (lit? chunks (dir/up p) 9))
     [[p (aged st (inc (age st)))]]))
 
 (defn- kelp-tick [chunks p st roll]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
-             (= :water (liquid/liquid-class (at chunks (up p)))))
-    [[(up p) (aged st (inc (age st)))]]))
+             (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
+    [[(dir/up p) (aged st (inc (age st)))]]))
 
 (defn- amethyst-next [^long target dir]
   (let [n (block/block-of target)]
@@ -170,9 +158,9 @@
 
 (defn- budding-tick [chunks p _st roll]
   (when (chance? roll :gate 5)
-    (let [dir (six-order (pick roll :dir 6))
-          q (mapv + p (six dir))
-          target (at chunks q)]
+    (let [dir (dir/six (pick roll :dir 6))
+          q (mapv + p (dir/offset dir))
+          target (gen/at chunks q)]
       (when-let [b (amethyst-next target dir)]
         [[q (block/state b {:facing dir :waterlogged (if (water? target) :true :false)})]]))))
 
@@ -183,13 +171,13 @@
       st')))
 
 (defn- vines-tick [chunks p st roll]
-  (let [q (mapv + p (six (:dir (block/growing-plant (block/type-of st)))))]
+  (let [q (mapv + p (dir/offset (:dir (block/growing-plant (block/type-of st)))))]
     (when (and (< (age st) 25) (< (double (roll :grow)) 0.1) (air-at? chunks q))
       [[q (grow-into st (inc (age st)) roll)]])))
 
 (defn- crowd ^long [chunks [x y z] self]
   (count (for [dx (range -4 5) dy [-1 0 1] dz (range -4 5)
-               :when (= self (block/block-of (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
+               :when (= self (block/block-of (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
            1)))
 
 (defn- mushroom-tick [chunks p st roll]
@@ -210,7 +198,7 @@
 (defn- flag [b] (if b :true :false))
 
 (defn- cleared-at ^long [chunks origin q]
-  (if (= q origin) 0 (at chunks q)))
+  (if (= q origin) 0 (gen/at chunks q)))
 
 (defn- check-radius ^long [kind ^long radius ^long dy]
   (if (= :brown-mushroom kind) (if (<= dy 3) 0 radius) 0))
@@ -226,7 +214,7 @@
 
 (defn- mushroom-fits? [chunks [_ y _ :as p] kind radius tag height]
   (and (>= (long y) 1) (chunk/in-range? (+ (long y) (long height) 1))
-       (block/tagged? (at chunks (down p)) tag)
+       (block/tagged? (gen/at chunks (dir/down p)) tag)
        (mushroom-room? chunks p kind (long radius) (long height))))
 
 (defn- mushroom-height ^long [roll]
@@ -265,7 +253,7 @@
 (defn- mushroom-changes [chunks origin cells]
   (loop [cells (seq cells) seen {origin 0} acc []]
     (if-let [[q st] (first cells)]
-      (let [cur (long (get seen q (at chunks q)))]
+      (let [cur (long (get seen q (gen/at chunks q)))]
         (if (or (zero? cur) (block/tagged? cur "replaceable_by_mushrooms"))
           (recur (next cells) (assoc seen q st) (conj acc [q st]))
           (recur (next cells) seen acc)))
@@ -284,15 +272,15 @@
       {:changes (if (< (double (roll :success)) 0.4) (mushroom-grown chunks p kind roll) [])})))
 
 (defn- roots-meal [chunks [_ y _ :as p]]
-  (when (and (chunk/in-range? (dec (long y))) (zero? (at chunks (down p))))
-    {:changes [[(down p) (block/state :hanging-roots)]]}))
+  (when (and (chunk/in-range? (dec (long y))) (zero? (gen/at chunks (dir/down p))))
+    {:changes [[(dir/down p) (block/state :hanging-roots)]]}))
 
-(defn- snowy [chunks p] (flag (block/tagged? (at chunks (up p)) "snow")))
+(defn- snowy [chunks p] (flag (block/tagged? (gen/at chunks (dir/up p)) "snow")))
 
 (defn- spread-target? [chunks fresh q]
-  (and (= :dirt (block/block-of (at chunks q)))
+  (and (= :dirt (block/block-of (gen/at chunks q)))
        (grass/can-stay-alive? chunks fresh q)
-       (not (water? (at chunks (up q))))))
+       (not (water? (gen/at chunks (dir/up q))))))
 
 (defn- spread-cells [chunks p st roll]
   (let [self (block/block-of st) fresh (block/state self)]
@@ -309,22 +297,22 @@
       (spread-cells chunks p st roll))))
 
 (defn- near-water? [chunks [x y z]]
-  (boolean (some (fn [[dx dy dz]] (water? (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
+  (boolean (some (fn [[dx dy dz]] (water? (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
                  (for [dx (range -4 5) dy [0 1] dz (range -4 5)] [dx dy dz]))))
 
 (defn- farmland-tick [chunks p st _rnd]
-  (let [m (prop st :moisture)]
+  (let [m (block/prop-long st :moisture)]
     (cond
       (near-water? chunks p) (when (< m 7) [[p (with st :moisture 7)]])
       (pos? m) [[p (with st :moisture (dec m))]]
-      (not (block/tagged? (at chunks (up p)) "maintains_farmland")) [[p (block/state :dirt)]])))
+      (not (block/tagged? (gen/at chunks (dir/up p)) "maintains_farmland")) [[p (block/state :dirt)]])))
 
 (defn- weather-odds [chunks [x y z] st]
   (let [own (block/weather-stage st)
         ages (for [dx (range -4 5) dy (range -4 5) dz (range -4 5)
                    :when (and (<= (+ (Math/abs (long dx)) (Math/abs (long dy)) (Math/abs (long dz))) 4)
                               (not (and (zero? (long dx)) (zero? (long dy)) (zero? (long dz)))))
-                   :let [n (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])]
+                   :let [n (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])]
                    :when (block/weathering? n)]
                (block/weather-stage n))]
     (when-not (some #(< (long %) own) ages)
@@ -347,34 +335,34 @@
 (defn- vine-with [st dir] (with st dir :true))
 (defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
 (defn- attachable? [chunks p dir]
-  (let [n (at chunks (mapv + p (six dir)))]
-    (and (pos? n) (block/face-sturdy? n (opposite dir)))))
+  (let [n (gen/at chunks (mapv + p (dir/offset dir)))]
+    (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 (defn- vine-face-held? [chunks p st dir]
   (support/supported? chunks gen/flat-chunk p (vine-with (block/state (block/block-of st)) dir)))
 
 (defn- vine-crowded? [chunks [x y z] self]
   (>= (count (for [dx (range -4 5) dy [-1 0 1] dz (range -4 5)
-                   :when (= self (block/block-of (at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
+                   :when (= self (block/block-of (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))]
                1))
       5))
 
 (defn- vine-sideways [chunks p st dir roll]
   (let [self (block/block-of st) fresh (block/state self)
-        test (mapv + p (six dir))
-        cw (clockwise dir) ccw (counter dir)
+        test (mapv + p (dir/offset dir))
+        cw (dir/clockwise dir) ccw (dir/counter-clockwise dir)
         cw? (vine-has? st cw) ccw? (vine-has? st ccw)
-        cw-test (mapv + test (six cw)) ccw-test (mapv + test (six ccw))
-        opp (opposite dir)]
+        cw-test (mapv + test (dir/offset cw)) ccw-test (mapv + test (dir/offset ccw))
+        opp (dir/opposite dir)]
     (cond
       (not (air-at? chunks test)) (when (attachable? chunks p dir) [[p (vine-with st dir)]])
       (and cw? (attachable? chunks test cw)) [[test (vine-with fresh cw)]]
       (and ccw? (attachable? chunks test ccw)) [[test (vine-with fresh ccw)]]
-      (and cw? (air-at? chunks cw-test) (attachable? chunks (mapv + p (six cw)) opp)) [[cw-test (vine-with fresh opp)]]
-      (and ccw? (air-at? chunks ccw-test) (attachable? chunks (mapv + p (six ccw)) opp)) [[ccw-test (vine-with fresh opp)]]
-      (and (< (double (roll :up-wall)) 0.05) (attachable? chunks (up test) :up)) [[test (vine-with fresh :up)]])))
+      (and cw? (air-at? chunks cw-test) (attachable? chunks (mapv + p (dir/offset cw)) opp)) [[cw-test (vine-with fresh opp)]]
+      (and ccw? (air-at? chunks ccw-test) (attachable? chunks (mapv + p (dir/offset ccw)) opp)) [[ccw-test (vine-with fresh opp)]]
+      (and (< (double (roll :up-wall)) 0.05) (attachable? chunks (dir/up test) :up)) [[test (vine-with fresh :up)]])))
 
 (defn- vine-upward [chunks p st roll]
-  (let [above (up p)]
+  (let [above (dir/up p)]
     (cond
       (vine-face-held? chunks p st :up) [[p (vine-with st :up)]]
       (air-at? chunks above)
@@ -388,7 +376,7 @@
       :else nil)))
 
 (defn- vine-downward [chunks p st roll]
-  (let [below (down p) bst (at chunks below)]
+  (let [below (dir/down p) bst (gen/at chunks below)]
     (when (or (zero? bst) (= (block/block-of bst) (block/block-of st)))
       (let [before (if (zero? bst) (block/state (block/block-of st)) bst)
             after (reduce (fn [s dir] (if (and (< (double (roll [:copy dir])) 0.5) (vine-has? st dir)) (vine-with s dir) s))
@@ -398,9 +386,9 @@
 
 (defn- vine-tick [chunks p st roll]
   (when (chance? roll :gate 4)
-    (let [dir (six-order (pick roll :dir 6))]
+    (let [dir (dir/six (pick roll :dir 6))]
       (cond
-        (and (contains? dirs dir) (not (vine-has? st dir)))
+        (and (contains? dir/horizontal-offset dir) (not (vine-has? st dir)))
         (when-not (vine-crowded? chunks p (block/block-of st)) (vine-sideways chunks p st dir roll))
         (= :up dir) (or (when (chunk/in-range? (inc (long (p 1)))) (vine-upward chunks p st roll))
                         (vine-downward chunks p st roll))
@@ -430,7 +418,7 @@
     [[p (aged st (inc (age st)))]]))
 
 (defn- leaves-tick [p st]
-  (when (and (= :false (:persistent (block/props-of st))) (= 7 (prop st :distance)))
+  (when (and (= :false (:persistent (block/props-of st))) (= 7 (block/prop-long st :distance)))
     [[p (block/emptied st)]]))
 
 (defn- chorus-tick [chunks p st roll]
@@ -470,7 +458,7 @@
 (defn random-drops [^long st roll]
   (when (and (block/leaves? st)
              (= :false (:persistent (block/props-of st)))
-             (= 7 (prop st :distance)))
+             (= 7 (block/prop-long st :distance)))
     (block/drops st roll)))
 
 (defn- crop-meal [chunks p st roll]
@@ -484,11 +472,11 @@
 
 (defn- doubled [chunks p st]
   (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))]
-    (when (and (air-at? chunks (up p)) (support/supported? chunks gen/flat-chunk p tall))
-      {:changes [[p tall] [(up p) (block/state (block/block-of tall) {:half :upper})]]})))
+    (when (and (air-at? chunks (dir/up p)) (support/supported? chunks gen/flat-chunk p tall))
+      {:changes [[p tall] [(dir/up p) (block/state (block/block-of tall) {:half :upper})]]})))
 
 (defn- petals-meal [p st]
-  (let [n (prop st :flower-amount)]
+  (let [n (block/prop-long st :flower-amount)]
     (if (< n 4)
       {:changes [[p (with st :flower-amount (inc n))]]}
       {:drops [{:item (block/block-of st) :count 1}]})))
@@ -501,16 +489,16 @@
 
 (defn- head-pos [chunks p st]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
-        off (six dir)]
+        off (dir/offset dir)]
     (loop [q p n 0]
-      (let [nq (mapv + q off) b (block/block-of (at chunks nq))]
+      (let [nq (mapv + q off) b (block/block-of (gen/at chunks nq))]
         (cond
           (= head b) nq
           (and (= body b) (< n 256)) (recur nq (inc n))
           :else nil)))))
 
 (defn- vines-meal [chunks p st roll]
-  (let [off (six (:dir (block/growing-plant (block/type-of st))))
+  (let [off (dir/offset (:dir (block/growing-plant (block/type-of st))))
         n (if (= :cave-vines (block/type-of st)) 1 (nether-vines-count roll))]
     (loop [q (mapv + p off) a (min 25 (inc (age st))) left n acc []]
       (if (and (pos? left) (air-at? chunks q))
@@ -524,7 +512,7 @@
 (defn- carpet-meal [chunks p st]
   (when (= :true (:bottom (block/props-of st)))
     (when-let [topper (moss/carpet-topper chunks p (constantly true))]
-      {:changes [[(up p) topper]]})))
+      {:changes [[(dir/up p) topper]]})))
 
 (defn- hanging-moss-meal [chunks p st]
   (let [q (moss/hanging-end chunks p (block/block-of st))]
@@ -536,7 +524,7 @@
     {:changes changes}))
 
 (defn- shuffled-dirs [roll]
-  (loop [pool (vec dir-order) i 0 acc []]
+  (loop [pool (vec dir/horizontal) i 0 acc []]
     (if (= i 3)
       (into acc pool)
       (let [j (pick roll [:shuffle i] (- 4 i))]
@@ -544,7 +532,7 @@
 
 (defn- spread-meal [chunks p roll target]
   (when-let [q (first (for [d (shuffled-dirs roll)
-                            :let [q (mapv + p (dirs d))]
+                            :let [q (mapv + p (dir/horizontal-offset d))]
                             :when (and (air-at? chunks q)
                                        (support/supported? chunks gen/flat-chunk q target))]
                         q))]
@@ -552,7 +540,7 @@
 
 (defn- height-above ^long [chunks p self ^long cap]
   (loop [h 0]
-    (if (and (< h cap) (= self (block/block-of (at chunks (mapv + p [0 (inc h) 0])))))
+    (if (and (< h cap) (= self (block/block-of (gen/at chunks (mapv + p [0 (inc h) 0])))))
       (recur (inc h))
       h)))
 
@@ -560,10 +548,10 @@
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)
         top (mapv + p [0 above 0])
-        top-st (at chunks top)
-        target (up top)]
+        top-st (gen/at chunks top)
+        target (dir/up top)]
     (when (and (< (+ above below 1) 16)
-               (not= 1 (prop top-st :stage))
+               (not= 1 (block/prop-long top-st :stage))
                (chunk/in-range? (long (target 1)))
                (air-at? chunks target))
       {:changes (grown-bamboo chunks top top-st roll (+ above below 1))})))
@@ -582,15 +570,15 @@
                               :let [q [qx (+ (long qy) (long dy)) qz]]
                               :when (and (not= q p)
                                          (zero? (pick roll [:seed i dy] 6))
-                                         (= :water (liquid/liquid-class (at chunks q)))
-                                         (block/tagged? (at chunks (down q)) "coral_blocks"))]
+                                         (= :water (liquid/liquid-class (gen/at chunks q)))
+                                         (block/tagged? (gen/at chunks (dir/down q)) "coral_blocks"))]
                           [q (block/state :sea-pickle {:pickles (keyword (str (inc (pick roll [:n i dy] 4))))
                                                        :waterlogged :true})]))))
         (pickle-cells p)))
 
 (defn- pickle-meal [chunks p st roll]
   (when (and (= :true (:waterlogged (block/props-of st)))
-             (block/tagged? (at chunks (down p)) "coral_blocks"))
+             (block/tagged? (gen/at chunks (dir/down p)) "coral_blocks"))
     {:changes (conj (pickle-spots chunks p roll) [p (with st :pickles 4)])}))
 
 (defn bonemeal [chunks p st roll]
@@ -605,12 +593,12 @@
       :mushroom (mushroom-meal chunks p st roll)
       :rooted-dirt (roots-meal chunks p)
       :cocoa (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]})
-      :bamboo-sapling (when (air-at? chunks (up p)) {:changes [[(up p) (block/state :bamboo {:leaves :small})]]})
-      :kelp (when (and (< (age st) 25) (= :water (liquid/liquid-class (at chunks (up p)))))
-              {:changes [[(up p) (aged st (inc (age st)))]]})
+      :bamboo-sapling (when (air-at? chunks (dir/up p)) {:changes [[(dir/up p) (block/state :bamboo {:leaves :small})]]})
+      :kelp (when (and (< (age st) 25) (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
+              {:changes [[(dir/up p) (aged st (inc (age st)))]]})
       (:weeping-vines :twisting-vines) (vines-meal chunks p st roll)
       (:weeping-vines-plant :twisting-vines-plant)
-      (when-let [h (head-pos chunks p st)] (vines-meal chunks h (at chunks h) roll))
+      (when-let [h (head-pos chunks p st)] (vines-meal chunks h (gen/at chunks h) roll))
       (:cave-vines :cave-vines-plant) (berries-meal p st)
       :glow-lichen (lichen-meal chunks p st roll)
       :hanging-moss (hanging-moss-meal chunks p st)
@@ -623,8 +611,8 @@
       :sea-pickle (pickle-meal chunks p st roll)
       :mangrove-propagule (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
                             {:changes [[p (aged st (inc (age st)))]]})
-      :seagrass (when (water? (at chunks (up p)))
-                  {:changes [[p (block/state :tall-seagrass {:half :lower})] [(up p) (block/state :tall-seagrass {:half :upper})]]})
+      :seagrass (when (water? (gen/at chunks (dir/up p)))
+                  {:changes [[p (block/state :tall-seagrass {:half :lower})] [(dir/up p) (block/state :tall-seagrass {:half :upper})]]})
       nil)))
 
 (def compostables

@@ -21,3 +21,9 @@
 
 (def flat-chunk
   {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))})
+
+(defn at ^long [chunks [_ y _ :as p]]
+  (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) 0))
+
+(defn at-void ^long [chunks [_ y _ :as p]]
+  (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) -1))

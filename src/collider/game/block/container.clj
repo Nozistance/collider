@@ -6,6 +6,7 @@
             [collider.random :as random]
             [collider.game.block.workbench :as workbench]
             [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.world.blocks.chest :as chest]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.lectern :as lectern])
@@ -41,15 +42,12 @@
          :cells (if (= :right (:type (block/props-of st))) [pos p2] [p2 pos])})
       {:kind :block :rows 3 :type :generic-9x3 :title {:translate "container.chest"} :cells [pos]})))
 
-(def ^:private dir-offset
-  {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-
 (def ^:private axis-of {:down 1 :up 1 :north 2 :south 2 :west 0 :east 0})
 (def ^:private positive? #{:up :south :east})
 
 (defn- half-free?
   [chunks pos facing]
-  (let [st (state-at chunks (mapv + pos (dir-offset facing)))
+  (let [st (state-at chunks (mapv + pos (dir/offset facing)))
         ax (long (axis-of facing))
         far? (contains? positive? facing)]
     (not-any? (fn [box]
@@ -190,7 +188,7 @@
         st (state-at (:chunks world) pos)]
     (when (and (lectern/has-book? st) (:book e))
       (let [[x y z] pos
-            [dx _ dz] (chest/offset (lectern/facing st))
+            [dx _ dz] (dir/offset (lectern/facing st))
             r (fn [k] (random/of-key [(:tick world) pos :lectern k]))]
         [{:type :item
           :pos [(+ (double x) 0.5 (* 0.25 (double dx)))
@@ -229,7 +227,7 @@
   (let [[x y z] pos
         c [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]]
     (if (= :right (:type (block/props-of st)))
-      (let [[dx _ dz] (chest/offset (connected-direction st))]
+      (let [[dx _ dz] (dir/offset (connected-direction st))]
         [(+ (c 0) (* 0.5 (double dx))) (c 1) (+ (c 2) (* 0.5 (double dz)))])
       c)))
 
@@ -240,7 +238,7 @@
 
 (defn- barrel-sound [world pos ^long st open?]
   (let [[x y z] pos
-        [dx dy dz] (chest/offset (:facing (block/props-of st)))]
+        [dx dy dz] (dir/offset (:facing (block/props-of st)))]
     [(out/all (out/sound (if open? :block.barrel.open :block.barrel.close)
                          [(+ (double x) 0.5 (* 0.5 (double dx)))
                           (+ (double y) 0.5 (* 0.5 (double dy)))

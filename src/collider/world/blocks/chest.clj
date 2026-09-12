@@ -1,6 +1,7 @@
 (ns collider.world.blocks.chest
   (:require [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
 
@@ -10,19 +11,13 @@
 (def copper-types #{:copper-chest :weathering-copper-chest})
 (def ^:private copper-chests (delay (set (get-in @data/tags ["block" "copper_chests"]))))
 
-(def clockwise {:north :east :east :south :south :west :west :north})
-(def counter-clockwise {:north :west :west :south :south :east :east :north})
-(def axis {:north :z :south :z :east :x :west :x :up :y :down :y})
-(def face-dir [:down :up :north :south :west :east])
-(def offset {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def opposite {:down :up :up :down :north :south :south :north :west :east :east :west})
 
 (defn state-at ^long [chunks pos]
   (chunk/chunks-get-block chunks gen/flat-chunk pos))
 
 (defn connected-direction [^long st]
   (let [{:keys [type facing]} (block/props-of st)]
-    (if (= :left type) (clockwise facing) (counter-clockwise facing))))
+    (if (= :left type) (dir/clockwise facing) (dir/counter-clockwise facing))))
 
 (defn connects? [^long self ^long other]
   (if (contains? copper-types (block/type-of self))
@@ -30,7 +25,7 @@
     (and (pos? other) (= (block/block-of self) (block/block-of other)))))
 
 (defn partner-pos [pos ^long st]
-  (mapv + pos (offset (connected-direction st))))
+  (mapv + pos (dir/offset (connected-direction st))))
 
 (defn paired? [^long st ^long other]
   (let [a (block/props-of st) b (block/props-of other)]
@@ -68,23 +63,23 @@
     st))
 
 (defn- candidate-facing [chunks pos ^long st dir]
-  (let [o (state-at chunks (mapv + pos (offset dir)))]
+  (let [o (state-at chunks (mapv + pos (dir/offset dir)))]
     (when (and (connects? st o) (= :single (:type (block/props-of o))))
       (:facing (block/props-of o)))))
 
 (defn- chest-type [chunks pos ^long st facing]
   (cond
-    (= facing (candidate-facing chunks pos st (clockwise facing))) :left
-    (= facing (candidate-facing chunks pos st (counter-clockwise facing))) :right
+    (= facing (candidate-facing chunks pos st (dir/clockwise facing))) :left
+    (= facing (candidate-facing chunks pos st (dir/counter-clockwise facing))) :right
     :else :single))
 
 (defn placed [chunks pos st face sneaking?]
   (let [props (block/props-of st)
-        clicked (get face-dir (long face))
-        nf (when (and sneaking? (contains? #{:x :z} (axis clicked)))
-             (candidate-facing chunks pos st (opposite clicked)))
-        [facing type] (if (and nf (not= (axis nf) (axis clicked)))
-                        [nf (if (= (counter-clockwise nf) (opposite clicked)) :right :left)]
+        clicked (dir/from-index (long face))
+        nf (when (and sneaking? (contains? #{:x :z} (dir/axis clicked)))
+             (candidate-facing chunks pos st (dir/opposite clicked)))
+        [facing type] (if (and nf (not= (dir/axis nf) (dir/axis clicked)))
+                        [nf (if (= (dir/counter-clockwise nf) (dir/opposite clicked)) :right :left)]
                         [(:facing props) :single])
         type (if (and (= :single type) (not sneaking?))
                (chest-type chunks pos st facing)
@@ -96,11 +91,11 @@
 
 (defn- joined-type [chunks pos ^long st]
   (some (fn [dir]
-          (let [o (state-at chunks (mapv + pos (offset dir)))]
+          (let [o (state-at chunks (mapv + pos (dir/offset dir)))]
             (when (and (connects? st o)
                        (not= :single (:type (block/props-of o)))
                        (= (:facing (block/props-of st)) (:facing (block/props-of o)))
-                       (= (connected-direction o) (opposite dir)))
+                       (= (connected-direction o) (dir/opposite dir)))
               (if (= :left (:type (block/props-of o))) :right :left))))
         [:north :south :west :east]))
 
@@ -127,4 +122,4 @@
 
 (defn barrel-placed [^long st yaw pitch]
   (block/state (block/block-of st)
-               (assoc (block/props-of st) :facing (opposite (nearest-looking yaw pitch)))))
+               (assoc (block/props-of st) :facing (dir/opposite (nearest-looking yaw pitch)))))

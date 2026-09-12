@@ -1,6 +1,7 @@
 (ns collider.world.blocks.support
   (:require [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -12,18 +13,12 @@
 
 (set! *warn-on-reflection* true)
 
-(defn needs-support? [st] (block/needs-support? (long st)))
-(defn replaceable? [st] (block/replaceable? (long st)))
 (defn- state-at ^long [chunks template [_ y _ :as pos]]
   (let [y (long y)]
     (if (chunk/in-range? y)
       (chunk/chunks-get-block chunks template pos)
       -1)))
 
-(def ^:private dirs {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def ^:private around6 [[1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
-(def ^:private six {:down [0 -1 0] :up [0 1 0] :north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def ^:private opposite {:north :south :south :north :west :east :east :west :up :down :down :up})
 (defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
 (defn- water-source? [st] (and (pos? st) (or (block/waterlogged? st) (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
 (def ^:private kelp-types #{:kelp :kelp-plant})
@@ -38,13 +33,13 @@
 
 (defn- fire-supported? [chunks template pos st below]
   (if (= :soul-fire (block/type-of (long st)))
-    (contains? #{:soul-sand :soul-soil} (block/block-of (max 0 below)))
+    (block/tagged? (max 0 below) "soul_fire_base_blocks")
     (boolean
      (or (and (not (neg? below)) (block/face-sturdy? below :up))
          (some (fn [d]
                  (let [n (state-at chunks template (mapv + pos d))]
                    (and (pos? n) (block/burnable? n))))
-               around6)))))
+               dir/around)))))
 
 (defn- lower-half-of? [below st]
   (and (= (block/block-of below) (block/block-of st))
@@ -61,13 +56,13 @@
            (boolean (some (fn [[dx _ dz]]
                             (let [n (state-at chunks template [(+ (long x) (long dx)) (dec (long y)) (+ (long z) (long dz))])]
                               (and (pos? n) (or (water? n) (block/tagged? n "supports_sugar_cane_adjacently")))))
-                          (vals dirs))))))
+                          (vals dir/horizontal-offset))))))
 
 (defn- cactus-supported? [chunks template pos st below]
   (and (not (some (fn [d]
                     (let [n (state-at chunks template (mapv + pos d))]
                       (and (pos? n) (or (block/blocks-motion? n) (= :lava (liquid/liquid-class n))))))
-                  (vals dirs)))
+                  (vals dir/horizontal-offset)))
        (or (= (block/block-of below) (block/block-of st)) (block/tagged? below "supports_cactus"))
        (not (block/liquid? (max 0 (state-at chunks template (mapv + pos [0 1 0])))))))
 
@@ -94,8 +89,8 @@
   (>= (long (light/light-at chunks template x y z)) 8))
 
 (defn- attached-to? [chunks template pos dir]
-  (let [n (state-at chunks template (mapv + pos (dirs dir)))]
-    (and (not (neg? n)) (block/face-sturdy? n (opposite dir)))))
+  (let [n (state-at chunks template (mapv + pos (dir/horizontal-offset dir)))]
+    (and (not (neg? n)) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- bell-supported? [chunks template pos st below above]
   (let [props (block/props-of st)]
@@ -130,7 +125,7 @@
 
 (defn- growing-plant-supported? [chunks template pos st]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
-        n (state-at chunks template (mapv - pos (six dir)))]
+        n (state-at chunks template (mapv - pos (dir/offset dir)))]
     (and (not (neg? n))
          (or (contains? #{head body} (block/block-of n)) (block/face-sturdy? n dir)))))
 
@@ -144,8 +139,6 @@
       :floor :up
       (:facing props))))
 
-(def ^:private clockwise {:north :east :east :south :south :west :west :north})
-(def ^:private counter-clockwise {:north :west :west :south :south :east :east :north})
 (defn- hanging-sign-attaches? [chunks template st attach-pos attach-face]
   (let [n (state-at chunks template attach-pos)]
     (and (not (neg? n))
@@ -154,9 +147,9 @@
            (block/face-sturdy? n attach-face)))))
 
 (defn- hanging-sign-held? [chunks template pos st]
-  (let [f (block/facing-of st) cw (clockwise f) ccw (counter-clockwise f)]
-    (or (hanging-sign-attaches? chunks template st (mapv + pos (dirs cw)) ccw)
-        (hanging-sign-attaches? chunks template st (mapv + pos (dirs ccw)) cw))))
+  (let [f (block/facing-of st) cw (dir/clockwise f) ccw (dir/counter-clockwise f)]
+    (or (hanging-sign-attaches? chunks template st (mapv + pos (dir/horizontal-offset cw)) ccw)
+        (hanging-sign-attaches? chunks template st (mapv + pos (dir/horizontal-offset ccw)) cw))))
 
 (defn supported? [chunks template pos st]
   (let [st (long st) t (block/type-of st)
@@ -165,11 +158,11 @@
     (case t
       (:torch :redstone-torch) (holds-center-below? below)
       (:wall-torch :redstone-wall-torch :ladder)
-      (attached-to? chunks template pos (opposite (block/facing-of st)))
+      (attached-to? chunks template pos (dir/opposite (block/facing-of st)))
       :standing-sign (block/blocks-motion? (max 0 below))
       :banner (block/blocks-motion? (max 0 below))
-      :wall-banner (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dirs (opposite (block/facing-of st)))))))
-      :wall-sign (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dirs (opposite (block/facing-of st)))))))
+      :wall-banner (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st)))))))
+      :wall-sign (block/blocks-motion? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st)))))))
       :ceiling-hanging-sign (holds-center-above? above)
       :wall-hanging-sign (hanging-sign-held? chunks template pos st)
       (:kelp :kelp-plant) (kelp-supported? below)
@@ -197,17 +190,17 @@
       :candle (holds-center-below? below)
       (:cake :candle-cake) (block/legacy-solid? (max 0 below))
       :grindstone true
-      (:button :lever) (attachable? chunks template pos (opposite (connected-direction st)))
+      (:button :lever) (attachable? chunks template pos (dir/opposite (connected-direction st)))
       (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
       (growing-plant-supported? chunks template pos st)
       :amethyst-cluster (let [f (block/facing-of st)
-                              n (state-at chunks template (mapv + pos (six (opposite f))))]
+                              n (state-at chunks template (mapv + pos (dir/offset (dir/opposite f))))]
                           (and (not (neg? n)) (block/face-sturdy? n f)))
       :sea-pickle (or (neg? below) (block/face-sturdy? below :up) (block/full-cube? below))
-      :cocoa (block/tagged? (max 0 (state-at chunks template (mapv + pos (dirs (block/facing-of st))))) "supports_cocoa")
+      :cocoa (block/tagged? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset (block/facing-of st))))) "supports_cocoa")
       :spore-blossom (and (holds-center-above? above) (not (water? (state-at chunks template pos))))
       (:coral-plant :coral-fan :base-coral-plant :base-coral-fan) (and (not (neg? below)) (block/face-sturdy? below :up))
-      (:coral-wall-fan :base-coral-wall-fan) (attached-to? chunks template pos (opposite (block/facing-of st)))
+      (:coral-wall-fan :base-coral-wall-fan) (attached-to? chunks template pos (dir/opposite (block/facing-of st)))
       :vine (pos? (vine-updated chunks template pos st))
       (:glow-lichen :multiface :sculk-vein) (pos? (multiface-updated chunks template pos st))
       :scaffolding (< (scaffold-distance chunks template pos) 7)
@@ -247,8 +240,8 @@
         face (long face)
         with (fn [attachment facing] (block/state self (assoc props :attachment attachment :facing facing)))]
     (if (<= face 1)
-      (pick chunks template pos [(with (if (= 0 face) :ceiling :floor) (block/player-direction yaw))])
-      (let [facing (opposite (get {2 :north 3 :south 4 :west 5 :east} face))
+      (pick chunks template pos [(with (if (= 0 face) :ceiling :floor) (dir/player-direction yaw))])
+      (let [facing (dir/opposite (dir/face-facing face))
             axis (if (#{:north :south} facing) [:north :south] [:west :east])
             double? (every? #(attached-to? chunks template pos %) axis)
             wall (with (if double? :double_wall :single_wall) facing)
@@ -268,19 +261,19 @@
         [a b c] (if (> xy zy)
                   (cond (> ym xm) [ay ax az] (> zm ym) [ax az ay] :else [ax ay az])
                   (cond (> ym zm) [ay az ax] (> xm ym) [az ax ay] :else [az ay ax]))]
-    [a b c (opposite c) (opposite b) (opposite a)]))
+    [a b c (dir/opposite c) (dir/opposite b) (dir/opposite a)]))
 
 (defn- horizontal-look-order [yaw]
-  (filterv #(contains? dirs %) (look-order yaw 0.0)))
+  (filterv #(contains? dir/horizontal-offset %) (look-order yaw 0.0)))
 
 (defn attachable? [chunks template pos dir]
-  (let [n (state-at chunks template (mapv + pos (six dir)))]
-    (and (not (neg? n)) (block/face-sturdy? n (opposite dir)))))
+  (let [n (state-at chunks template (mapv + pos (dir/offset dir)))]
+    (and (not (neg? n)) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- vine-face-held? [chunks template pos st dir]
   (and (not= :down dir)
        (or (attachable? chunks template pos dir)
-           (and (contains? dirs dir)
+           (and (contains? dir/horizontal-offset dir)
                 (let [above (state-at chunks template (mapv + pos [0 1 0]))]
                   (and (= (block/block-of above) (block/block-of st))
                        (= :true (get (block/props-of above) dir))))))))
@@ -308,14 +301,14 @@
 (defn scaffold-distance ^long [chunks template [x y z :as pos]]
   (let [below (state-at chunks template [x (dec (long y)) z])
         scaffold? (fn [st] (= :scaffolding (block/type-of (max 0 st))))
-        dist (fn [st] (Long/parseLong (name (:distance (block/props-of st)))))]
+        dist (fn [st] (block/prop-long st :distance))]
     (if (and (not (neg? below)) (not (scaffold? below)) (block/face-sturdy? below :up))
       0
       (reduce (fn [d dir]
-                (let [n (state-at chunks template (mapv + pos (dirs dir)))]
+                (let [n (state-at chunks template (mapv + pos (dir/horizontal-offset dir)))]
                   (if (scaffold? n) (min (long d) (inc (dist n))) d)))
               (if (scaffold? below) (dist below) 7)
-              [:north :south :west :east]))))
+              dir/horizontal))))
 
 (defn scaffold-state ^long [chunks template pos ^long st]
   (let [d (scaffold-distance chunks template pos)
@@ -363,15 +356,15 @@
 
 (defn- rod-fitted [chunks template pos st face]
   (let [f (block/facing-of st)
-        clicked (state-at chunks template (mapv - pos (block/face-offsets face)))]
+        clicked (state-at chunks template (mapv - pos (dir/face-offset face)))]
     (if (and (= (block/block-of clicked) (block/block-of st)) (= f (block/facing-of clicked)))
-      (block/state (block/block-of st) (assoc (block/props-of st) :facing (opposite f)))
+      (block/state (block/block-of st) (assoc (block/props-of st) :facing (dir/opposite f)))
       st)))
 
 (defn- sign-fitted [chunks template pos st yaw pitch]
   (let [self (block/block-of st) wall (block/wall-block self)
-        on-wall (fn [dir] (block/state wall {:facing (opposite dir)}))
-        wall-state (first (for [dir (look-order yaw pitch) :when (contains? dirs dir)
+        on-wall (fn [dir] (block/state wall {:facing (dir/opposite dir)}))
+        wall-state (first (for [dir (look-order yaw pitch) :when (contains? dir/horizontal-offset dir)
                                 :when (supported? chunks template pos (on-wall dir))]
                             (on-wall dir)))]
     (first (for [dir (look-order yaw pitch) :when (not= :up dir)
@@ -381,9 +374,9 @@
 
 (defn- skull-wall-state [chunks template pos st yaw pitch]
   (let [wall (block/wall-block (block/block-of st))]
-    (first (for [dir (look-order yaw pitch) :when (contains? dirs dir)
-                 :when (not (block/can-be-replaced? (max 0 (state-at chunks template (mapv + pos (dirs dir))))))]
-             (block/state wall {:facing (opposite dir)})))))
+    (first (for [dir (look-order yaw pitch) :when (contains? dir/horizontal-offset dir)
+                 :when (not (block/can-be-replaced? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset dir))))))]
+             (block/state wall {:facing (dir/opposite dir)})))))
 
 (defn- skull-fitted [chunks template pos st yaw pitch]
   (let [wall-state (skull-wall-state chunks template pos st yaw pitch)]
@@ -394,7 +387,7 @@
 
 (defn- growing-plant-fitted [chunks template pos st tick]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
-        n (max 0 (state-at chunks template (mapv + pos (six dir))))
+        n (max 0 (state-at chunks template (mapv + pos (dir/offset dir))))
         st' (if (contains? #{head body} (block/block-of n))
               (block/state body)
               (block/state head {:age (plant-age tick pos)}))]
@@ -402,24 +395,24 @@
 
 (defn- ceiling-sign [chunks template pos st yaw sneaking?]
   (let [above (state-at chunks template (mapv + pos [0 1 0]))
-        dir (block/player-direction yaw)
+        dir (dir/player-direction yaw)
         ns? (contains? #{:north :south} dir)
         above-axis (case (block/type-of (max 0 above))
                      :wall-hanging-sign (contains? #{:north :south} (block/facing-of above))
-                     :ceiling-hanging-sign (let [r (Long/parseLong (name (:rotation (block/props-of above))))]
+                     :ceiling-hanging-sign (let [r (block/prop-long above :rotation)]
                                              (when (zero? (mod r 4)) (contains? #{0 8} r)))
                      nil)
         middle? (and (not (and (some? above-axis) (= above-axis ns?) (not sneaking?)))
                      (or (not (and (not (neg? above)) (block/face-sturdy? above :down))) sneaking?))
         rotation (if middle?
                    (:rotation (block/props-of st))
-                   (keyword (str ({:south 0 :west 4 :north 8 :east 12} (opposite dir)))))]
+                   (keyword (str ({:south 0 :west 4 :north 8 :east 12} (dir/opposite dir)))))]
     (block/state (block/block-of st) (assoc (block/props-of st) :attached (if middle? :true :false) :rotation rotation))))
 
 (defn- hanging-sign-fitted [chunks template pos st yaw pitch sneaking?]
   (let [wall (block/wall-block (block/block-of st))
-        on-wall (fn [dir] (block/state wall {:facing (opposite dir)}))
-        wall-state (first (for [dir (look-order yaw pitch) :when (contains? dirs dir)
+        on-wall (fn [dir] (block/state wall {:facing (dir/opposite dir)}))
+        wall-state (first (for [dir (look-order yaw pitch) :when (contains? dir/horizontal-offset dir)
                                 :when (hanging-sign-held? chunks template pos (on-wall dir))]
                             (on-wall dir)))
         ceiling (ceiling-sign chunks template pos st yaw sneaking?)]
@@ -428,24 +421,22 @@
                  :when cand]
              cand))))
 
-(def ^:private face-dirs [:down :up :north :south :west :east])
-
 (defn place-order
   [face yaw pitch replacing?]
   (let [order (look-order yaw pitch)]
     (if replacing?
       order
-      (let [first-dir (opposite (nth face-dirs (long face)))]
+      (let [first-dir (dir/opposite (nth dir/six (long face)))]
         (into [first-dir] (remove #(= % first-dir)) order)))))
 
 (defn- face-attached-fitted [chunks template pos st face yaw pitch replacing?]
   (let [self (block/block-of st) props (block/props-of st)
-        horizontal (block/player-direction yaw)
+        horizontal (dir/player-direction yaw)
         candidate (fn [dir]
                     (if (contains? #{:up :down} dir)
                       (block/state self (assoc props :face (if (= :up dir) :ceiling :floor)
                                                :facing horizontal))
-                      (block/state self (assoc props :face :wall :facing (opposite dir)))))]
+                      (block/state self (assoc props :face :wall :facing (dir/opposite dir)))))]
     (first (for [dir (place-order face yaw pitch replacing?)
                  :let [cand (candidate dir)]
                  :when (supported? chunks template pos cand)]

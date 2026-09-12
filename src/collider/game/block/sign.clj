@@ -30,7 +30,7 @@
 (defn- y-rot ^double [^long st]
   (case (block/type-of st)
     (:standing-sign :ceiling-hanging-sign)
-    (let [d (* 22.5 (Long/parseLong (name (:rotation (block/props-of st)))))]
+    (let [d (* 22.5 (block/prop-long st :rotation))]
       (if (>= d 180.0) (- d 360.0) d))
     (double ({:south 0 :west 90 :north 180 :east 270} (block/facing-of st)))))
 

@@ -5,7 +5,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn level ^long [^long st] (Long/parseLong (name (:level (block/props-of st)))))
+(defn level ^long [^long st] (block/prop-long st :level))
 
 (def rule
   {:name   :composter

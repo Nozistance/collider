@@ -44,18 +44,6 @@
 (defn push-of [st]
   (get-in liquids [(liquid-class st) :push]))
 
-(defn update-delay ^long [old new tick pos]
-  (let [cls (liquid-class new)
-        {:keys [delay decay-jitter]} (liquids cls)
-        om  (if (liquid-state? old) (level old) 0)
-        nm  (level new)]
-    (if (and decay-jitter
-             (= cls (liquid-class old))
-             (< om 8) (< nm 8) (> nm om)
-             (not= 0 (mod (hash [tick pos]) 4)))
-      (* (long delay) (long decay-jitter))
-      (long delay))))
-
 (defn- raw-at [chunks template x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
@@ -116,7 +104,7 @@
   (let [st (long st)]
     (and (pos? st)
          (not= cls (liquid-class st))
-         (not (contains? #{:ice :packed-ice :blue-ice :frosted-ice} (block/block-of st)))
+         (not (block/tagged? st "ice"))
          (block/face-sturdy? st (side-face d)))))
 
 (defn- walled? [chunks template cls [x y z]]
@@ -199,9 +187,6 @@
 
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
-(def ^:private faces
-  {[1 0 0] [:east :west] [-1 0 0] [:west :east] [0 0 1] [:south :north]
-   [0 0 -1] [:north :south] [0 -1 0] [:down :up] [0 1 0] [:up :down]})
 (def ^:private opposite {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0] [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
 (def ^:private no-fluid-types #{:door :standing-sign :wall-sign :ladder :sugar-cane :bubble-column})
 (defn- amount ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
@@ -501,7 +486,7 @@
 (defn- fire-state-at [chunks template [x y z :as p]]
   (let [below (raw-at chunks template x (dec (long y)) z)]
     (cond
-      (contains? #{:soul-sand :soul-soil} (block/block-of (long (max 0 (long below)))))
+      (block/tagged? (long (max 0 (long below))) "soul_fire_base_blocks")
       (block/state :soul-fire {:age :0})
       (or (block/burnable? (long (max 0 (long below)))) (block/face-sturdy? (long (max 0 (long below))) :up))
       (block/state :fire {:age :0})

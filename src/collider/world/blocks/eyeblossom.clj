@@ -7,9 +7,6 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
-
 (defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
 (defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
 (defn switched [^long st ^long time]
@@ -30,7 +27,7 @@
 
 (defn cascade [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
-            (if (not= old (at chunks q))
+            (if (not= old (gen/at chunks q))
               m
               (let [dx (- (long qx) (long x)) dy (- (long qy) (long y)) dz (- (long qz) (long z))
                     dist (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz))))

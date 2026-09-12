@@ -1,6 +1,6 @@
 (ns collider.world.blocks.dripstone
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]))
 
@@ -12,13 +12,6 @@
 (def ^:private water-chance 0.17578125)
 (def ^:private lava-chance 0.05859375)
 (def ^:private growth-chance 0.011377778)
-(defn- at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) -1))
-
-(defn- up [p] (mapv + p [0 1 0]))
-(defn- down [p] (mapv + p [0 -1 0]))
-(defn- offset [dir] (if (= :up dir) [0 1 0] [0 -1 0]))
-(defn- opposite [dir] (if (= :up dir) :down :up))
 (defn speleothem? [^long st] (block/tagged? st "speleothems"))
 (defn- dir-of [^long st] (:vertical-direction (block/props-of st)))
 (defn- thickness-of [^long st] (:thickness (block/props-of st)))
@@ -41,14 +34,14 @@
     (block/waterlogged? st) :water
     :else (liquid/liquid-class st)))
 
-(defn- water-at? [chunks p] (= :water (fluid-of (at chunks p))))
+(defn- water-at? [chunks p] (= :water (fluid-of (gen/at-void chunks p))))
 (defn- water-source-at? [chunks p]
-  (let [st (at chunks p)]
+  (let [st (gen/at-void chunks p)]
     (and (= :water (fluid-of st))
          (or (block/waterlogged? st) (liquid/source-state? st)))))
 
 (defn valid-placement? [chunks p dir self]
-  (let [b (at chunks (mapv + p (offset (opposite dir))))]
+  (let [b (gen/at-void chunks (mapv + p (dir/offset (dir/opposite dir))))]
     (and (not (neg? b))
          (or (block/face-sturdy? b dir)
              (and (directed? b dir) (= self (block/block-of b)))))))
@@ -57,14 +50,14 @@
   (valid-placement? chunks p (dir-of st) (block/block-of st)))
 
 (defn- thickness [chunks p dir merge? self]
-  (let [base (opposite dir)
-        front (at chunks (mapv + p (offset dir)))]
+  (let [base (dir/opposite dir)
+        front (gen/at-void chunks (mapv + p (dir/offset dir)))]
     (cond
       (and (directed? front base) (= self (block/block-of front)))
       (if (and (not merge?) (not= :tip_merge (thickness-of front))) :tip :tip_merge)
       (not (directed? front dir)) :tip
       (contains? #{:tip :tip_merge} (thickness-of front)) :frustum
-      (directed? (at chunks (mapv + p (offset base))) dir) :middle
+      (directed? (gen/at-void chunks (mapv + p (dir/offset base))) dir) :middle
       :else :base)))
 
 (defn updated ^long [chunks p ^long st]
@@ -80,20 +73,20 @@
         default (if (neg? (double pitch)) :down :up)
         dir (cond
               (valid-placement? chunks p default self) default
-              (valid-placement? chunks p (opposite default) self) (opposite default))]
+              (valid-placement? chunks p (dir/opposite default) self) (dir/opposite default))]
     (when dir
       (block/state self (assoc (block/props-of st)
                                :vertical-direction dir
                                :thickness (thickness chunks p dir (not sneaking?) self))))))
 
 (defn- find-vertical [chunks p dir path? target? max-steps]
-  (loop [i 1 q (mapv + p (offset dir))]
+  (loop [i 1 q (mapv + p (dir/offset dir))]
     (when (< i (long max-steps))
-      (let [st (at chunks q)]
+      (let [st (gen/at-void chunks q)]
         (cond
           (neg? st) nil
           (target? st) q
-          (path? st) (recur (inc i) (mapv + q (offset dir)))
+          (path? st) (recur (inc i) (mapv + q (dir/offset dir)))
           :else nil)))))
 
 (defn- find-tip [chunks p ^long st ^long max-len]
@@ -115,7 +108,7 @@
 (defn- fluid-above [chunks p ^long st]
   (when (stalactite? st)
     (when-let [root (root-pos chunks p st)]
-      (let [q (up root) n (at chunks q)]
+      (let [q (dir/up root) n (gen/at-void chunks q)]
         (when-not (neg? n)
           {:pos q :state n :fluid (if (= :mud (block/block-of n)) :water (fluid-of n))})))))
 
@@ -139,13 +132,13 @@
 (defn- filled [^long st fluid]
   (case (block/type-of st)
     :cauldron (if (= :water fluid) (block/state :water-cauldron {:level :1}) (block/state :lava-cauldron))
-    :layered-cauldron (let [lvl (Long/parseLong (name (:level (block/props-of st))))]
+    :layered-cauldron (let [lvl (block/prop-long st :level)]
                         (when (< lvl 3)
                           (block/state (block/block-of st) {:level (keyword (str (inc lvl)))})))
     nil))
 
 (defn- start-pos? [chunks p ^long st]
-  (and (stalactite? st) (not= (block/block-of st) (block/block-of (at chunks (up p))))))
+  (and (stalactite? st) (not= (block/block-of st) (block/block-of (gen/at-void chunks (dir/up p))))))
 
 (defn- fillable-cauldron [chunks tip fluid]
   (find-vertical chunks tip :down (fn [n] (drips-through? n)) (fn [n] (receives? n fluid)) 11))
@@ -154,7 +147,7 @@
   (find-vertical chunks p :up (fn [n] (drips-through? n)) (fn [n] (free-hanging? n)) 11))
 
 (defn- fill-fluid [chunks tip]
-  (let [f (:fluid (fluid-above chunks tip (at chunks tip)))]
+  (let [f (:fluid (fluid-above chunks tip (gen/at-void chunks tip)))]
     (when (contains? #{:water :lava} f) f)))
 
 (defn- transferred [chunks p ^long st ^double roll]
@@ -178,45 +171,45 @@
                      :waterlogged (if (water-at? chunks q) :true :false)}))
 
 (defn- merged [chunks q ^long tst self]
-  (let [[a b] (if (= :up (dir-of tst)) [(up q) q] [q (down q)])]
+  (let [[a b] (if (= :up (dir-of tst)) [(dir/up q) q] [q (dir/down q)])]
     [[a (created chunks a :down :tip_merge self)]
      [b (created chunks b :up :tip_merge self)]]))
 
 (defn- grown [chunks from dir self]
-  (let [target (mapv + from (offset dir)) n (at chunks target)]
+  (let [target (mapv + from (dir/offset dir)) n (gen/at-void chunks target)]
     (cond
-      (unmerged-tip? n (opposite dir) self) (merged chunks target n self)
+      (unmerged-tip? n (dir/opposite dir) self) (merged chunks target n self)
       (or (zero? n) (= :water (block/block-of n))) [[target (created chunks target dir :tip self)]])))
 
 (defn- can-tip-grow? [chunks q ^long tst]
-  (let [dir (dir-of tst) n (at chunks (mapv + q (offset dir)))]
+  (let [dir (dir-of tst) n (gen/at-void chunks (mapv + q (dir/offset dir)))]
     (cond
       (neg? n) false
       (some? (fluid-of n)) false
       (zero? n) true
-      :else (unmerged-tip? n (opposite dir) (block/block-of tst)))))
+      :else (unmerged-tip? n (dir/opposite dir) (block/block-of tst)))))
 
 (defn- stalagmite-below [chunks tip self]
-  (loop [i 0 q (down tip)]
+  (loop [i 0 q (dir/down tip)]
     (when (< i 10)
-      (let [n (at chunks q)]
+      (let [n (gen/at-void chunks q)]
         (cond
           (neg? n) nil
           (some? (fluid-of n)) nil
           (and (unmerged-tip? n :up self) (can-tip-grow? chunks q n)) (grown chunks q :up self)
-          (and (valid-placement? chunks q :up self) (not (water-at? chunks (down q)))) (grown chunks (down q) :up self)
+          (and (valid-placement? chunks q :up self) (not (water-at? chunks (dir/down q)))) (grown chunks (dir/down q) :up self)
           (not (drips-through? n)) nil
-          :else (recur (inc i) (down q)))))))
+          :else (recur (inc i) (dir/down q)))))))
 
 (defn- can-grow? [chunks p self]
-  (and (= (grows-on self) (block/block-of (at chunks (up p))))
-       (water-source-at? chunks (up (up p)))))
+  (and (= (grows-on self) (block/block-of (gen/at-void chunks (dir/up p))))
+       (water-source-at? chunks (dir/up (dir/up p)))))
 
 (defn- grow-changes [chunks p ^long st roll]
   (let [self (block/block-of st)]
     (when (can-grow? chunks p self)
       (when-let [tip (find-tip chunks p st (get max-growth-length (block/type-of st) 7))]
-        (let [tst (at chunks tip)]
+        (let [tst (gen/at-void chunks tip)]
           (when (and (free-hanging? tst) (can-tip-grow? chunks tip tst))
             (if (< (double (roll :which)) 0.5)
               (grown chunks tip :down self)
@@ -230,21 +223,21 @@
 
 (defn- fall-changes [chunks p]
   (loop [q p acc []]
-    (let [st (at chunks q)]
+    (let [st (gen/at-void chunks q)]
       (if-not (stalactite? st)
         acc
         (let [acc (conj acc [q (block/emptied st)])]
-          (if (tip? st true) acc (recur (down q) acc)))))))
+          (if (tip? st true) acc (recur (dir/down q) acc)))))))
 
 (def rule
   {:name   :dripstone
    :match? (fn [_chunks st _p] (speleothem? st))
    :wake   (fn [chunks tick p _old _self?]
-             (let [st (at chunks p)]
+             (let [st (gen/at-void chunks p)]
                (when-not (supported? chunks p st)
                  (+ (long tick) (if (stalactite? st) 2 1)))))
    :due    (fn [chunks p _ctx]
-             (let [st (at chunks p)]
+             (let [st (gen/at-void chunks p)]
                (if (and (stalagmite? st) (not (supported? chunks p st)))
                  [[p (block/emptied st)]]
                  (seq (fall-changes chunks p)))))})
@@ -256,7 +249,7 @@
    :due    (fn [chunks p _ctx]
              (when-let [tip (tip-above-cauldron chunks p)]
                (when-let [fluid (fill-fluid chunks tip)]
-                 (let [st (at chunks p)]
+                 (let [st (gen/at-void chunks p)]
                    (when (receives? st fluid)
                      (when-let [st' (filled st fluid)]
                        [[p st']]))))))})

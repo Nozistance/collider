@@ -1,6 +1,7 @@
 (ns collider.world.block
   (:require [clojure.string :as str]
-            [collider.data :as data])
+            [collider.data :as data]
+            [collider.world.direction :as dir])
   (:import (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
@@ -12,6 +13,7 @@
 
 (defn name-of [^long st] (data/state-block st))
 (defn props-of [^long st] (second (data/state-props st)))
+(defn prop-long ^long [^long st k] (Long/parseLong (name (get (props-of st) k :0))))
 (def ^:private state-count
   (long (reduce max 0 (map (fn [[_ b]] (+ (long (:first b)) (reduce * 1 (map count (vals (:props b))))))
                            @data/blocks))))
@@ -45,6 +47,7 @@
 (def water-holder-types #{:kelp :kelp-plant :seagrass :tall-seagrass :bubble-column})
 (def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding :pointed-dripstone :sulfur-spike})
 (def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
+(def cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
 (def multiface-types #{:glow-lichen :multiface :sculk-vein})
 (def leaves-types #{:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves})
 (def growing-plant
@@ -55,7 +58,6 @@
              [t {:head head :body body :dir dir}])))
 (def growing-plant-types (set (keys growing-plant)))
 (def needs-support-types (into ground-types (concat torch-types wall-torch-types side-types #{:ceiling-hanging-sign :tall-flower :cactus :cactus-flower :bamboo-sapling :bamboo-stalk :sweet-berry-bush :banner :spore-blossom :hanging-roots :coral-plant :coral-fan :coral-wall-fan :base-coral-plant :base-coral-fan :base-coral-wall-fan :vine} multiface-types growing-plant-types)))
-(def face-attached-types #{:button :lever :grindstone})
 (def attached-types
   #{:lantern :weathering-lantern :bell :farmland :dirt-path :candle :sea-pickle :cocoa
     :cake :candle-cake :button :lever
@@ -131,8 +133,6 @@
   (and (pos? st) (known? st) (not (aget ^booleans liquid-arr st)) (not (aget ^booleans needs-support-arr st))))
 
 (def solid-arr (boolean-table (fn [st _ _] (solid? st))))
-(def ^:private dir-index {:down 0 :up 1 :north 2 :south 3 :west 4 :east 5})
-(def ^:private opposite-dir (int-array [1 0 3 2 5 4]))
 
 (defn- each-run! [runs f]
   (doseq [r runs]
@@ -175,11 +175,10 @@
 (defn- full-face? [^longs m]
   (and (== -1 (aget m 0)) (== -1 (aget m 1)) (== -1 (aget m 2)) (== -1 (aget m 3))))
 
-(def ^:private dir-keys (mapv key (sort-by val dir-index)))
 
 (defn- faces-of-kind [kind]
   (mapv (fn [d]
-          (let [f (get (:faces kind) (nth dir-keys d))]
+          (let [f (get (:faces kind) (nth dir/six d))]
             (cond (= :full f) full-mask (nil? f) nil :else (face-mask f))))
         (range 6)))
 
@@ -222,7 +221,7 @@
 
 (defn shape-occludes? [^long from ^long to ^long d]
   (let [a (occlusion-face from d)
-        b (occlusion-face to (aget ^ints opposite-dir d))]
+        b (occlusion-face to (aget ^ints dir/opposite-index d))]
     (cond
       (and (nil? a) (nil? b)) false
       (nil? a) (full-face? b)
@@ -236,9 +235,9 @@
   (if (touches? st d) (occlusion-face st d) nil))
 
 (defn light-dampening-into ^long [^long from ^long to dir ^long simple]
-  (let [d (long (dir-index dir))
+  (let [d (long (dir/index dir))
         a (merged-side from d)
-        b (merged-side to (aget ^ints opposite-dir d))]
+        b (merged-side to (aget ^ints dir/opposite-index d))]
     (cond
       (and (nil? a) (nil? b)) simple
       (nil? a) (if (full-face? b) 16 simple)
@@ -281,10 +280,7 @@
     a))
 
 (defn resist ^double [^long st] (if (< -1 st state-count) (aget ^doubles resist-arr st) 3.0))
-(def ^:private facing-offsets {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]})
-(def ^:private opposite {:north :south :south :north :west :east :east :west})
-(defn facing-offset [facing] (get facing-offsets facing))
-(defn behind [facing] (get facing-offsets (get opposite facing)))
+(defn- behind [facing] (dir/offset (dir/opposite facing)))
 (defn facing-of [^long st] (:facing (props-of st)))
 (defn support-offset [^long st]
   (let [t (type-of st)]
@@ -294,18 +290,6 @@
       (contains? side-types t) (behind (facing-of st))
       (contains? ground-types t) [0 -1 0])))
 
-(def face-offsets
-  {0 [0 -1 0], 1 [0 1 0], 2 [0 0 -1], 3 [0 0 1], 4 [-1 0 0], 5 [1 0 0]})
-
-(def ^:private face->facing {2 :north 3 :south 4 :west 5 :east})
-(def ^:private face->direction {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east})
-(defn player-facing ^long [yaw]
-  (bit-and (long (Math/floor (+ (/ (* (double yaw) 4.0) 360.0) 0.5))) 3))
-
-(defn player-direction [yaw] (nth [:south :west :north :east] (player-facing yaw)))
-(def opposite-facing {:north :south :south :north :west :east :east :west})
-(def clockwise {:north :east :east :south :south :west :west :north})
-(def counter-clockwise {:north :west :west :south :south :east :east :north})
 (def ^:private wall-torches {:torch :wall-torch :soul-torch :soul-wall-torch :redstone-torch :redstone-wall-torch})
 (defn- skull-wall [n]
   (cond
@@ -412,13 +396,13 @@
     (let [b    (data/info block)
           t    (:type b)
           face (long face)
-          f    (player-facing yaw)
+          f    (dir/player-index yaw)
           top? (or (= face 0) (and (not= face 1) (> (long cursor-y) 8)))
           props (cond
                   (#{:rotated-pillar :infested-rotated-pillar :chain :weathering-copper-chain} t)
                   {:axis (case face (0 1) :y, (4 5) :x, :z)}
                   (#{:end-rod :weathering-lightning-rod :amethyst-cluster :shulker-box} t)
-                  {:facing (face->direction face)}
+                  {:facing (dir/from-index face)}
                   (#{:standing-sign :banner :ceiling-hanging-sign} t)
                   {:rotation (keyword (str (rotation-segment yaw)))}
                   (#{:skull :wither-skull :player-head} t)
@@ -432,23 +416,23 @@
                   (= :mangrove-propagule t)
                   {:age :4}
                   (contains? door-types t)
-                  {:facing (player-direction yaw) :half :lower}
+                  {:facing (dir/player-direction yaw) :half :lower}
                   (= :bed t)
-                  {:facing (player-direction yaw) :part :foot :occupied :false}
+                  {:facing (dir/player-direction yaw) :part :foot :occupied :false}
                   (= :fence-gate t)
-                  {:facing (player-direction yaw)}
+                  {:facing (dir/player-direction yaw)}
                   (contains? trapdoor-types t)
                   (if (and (not replacing?) (>= face 2))
-                    {:facing (face->facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
-                    {:facing (opposite-facing (player-direction yaw)) :half (if (= face 1) :bottom :top)})
+                    {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
+                    {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= face 1) :bottom :top)})
                   (= :stair (shape-type t))
                   {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)}
                   (= :slab (shape-type t))
                   {:type (if top? :top :bottom)}
                   (contains? wall-torch-types t)
-                  {:facing (face->facing face)}
+                  {:facing (dir/face-facing face)}
                   (contains? side-types t)
-                  {:facing (get face->facing face :north)}
+                  {:facing (get dir/face-facing face :north)}
                   (contains? (:props b) :facing)
                   {:facing (nth [:north :east :south :west] f)})]
       (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
@@ -539,18 +523,17 @@
             table)
       [])))
 
-(def ^:private face-bit {:down 0 :up 1 :north 2 :south 3 :west 4 :east 5})
 (defn face-sturdy? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+       (pos? (bit-and (long (get @data/sturdy st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-rigid? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy-rigid st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+       (pos? (bit-and (long (get @data/sturdy-rigid st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-center? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get @data/sturdy-center st 63)) (bit-shift-left 1 (long (face-bit face)))))))
+       (pos? (bit-and (long (get @data/sturdy-center st 63)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (def ^:private tag-sets (atom {}))
 (defn tag-set [tag]
@@ -571,13 +554,13 @@
 (defn stackable? [^long st item]
   (and (= item (block-of st))
        (if-let [k (stack-props (type-of st))]
-         (< (Long/parseLong (name (get (props-of st) k))) 4)
+         (< (prop-long st k) 4)
          (and (or (= :vine (type-of st)) (contains? multiface-types (type-of st)))
               (boolean (vacant-face? st))))))
 
 (defn stacked ^long [^long st]
   (let [k (stack-props (type-of st))
-        n (Long/parseLong (name (get (props-of st) k)))]
+        n (prop-long st k)]
     (state (block-of st) (assoc (props-of st) k (keyword (str (inc n)))))))
 
 (defn same-slab? [^long st item]

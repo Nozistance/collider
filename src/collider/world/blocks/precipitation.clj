@@ -48,7 +48,7 @@
   (when (and (pos? max-height) (should-snow? chunks biome p))
     (let [st (state-at chunks p)]
       (if (= :snow (block/block-of st))
-        (let [layers (long (Long/parseLong (name (:layers (block/props-of st)))))]
+        (let [layers (block/prop-long st :layers)]
           (when (< layers (min max-height 8))
             [[p (block/state :snow {:layers (keyword (str (inc layers)))})]]))
         [[p (block/state :snow)]]))))
@@ -63,7 +63,7 @@
                 :snow (block/state :powder-snow-cauldron)
                 nil)
     :layered-cauldron
-    (let [level (long (Long/parseLong (name (:level (block/props-of st)))))
+    (let [level (block/prop-long st :level)
           kind  (case (block/block-of st)
                   :water-cauldron :rain
                   :powder-snow-cauldron :snow

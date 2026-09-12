@@ -1,6 +1,5 @@
 (ns collider.world.blocks.sponge
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]))
 
@@ -8,9 +7,6 @@
 
 (def ^:private around6 [[0 -1 0] [0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
 (def ^:private plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
-(defn- at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk p) 0))
-
 (defn- dried [st]
   (cond
     (contains? plants (block/type-of st)) 0
@@ -23,10 +19,10 @@
       (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))
       (let [[p ^long d] (peek queue)
             wet (when (< d 6)
-                  (for [o around6 :let [q (mapv + p o)] :when (and (not (seen q)) (some? (dried (at chunks q))))] q))]
+                  (for [o around6 :let [q (mapv + p o)] :when (and (not (seen q)) (some? (dried (gen/at chunks q))))] q))]
         (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
                (into seen wet)
-               (into acc (map (fn [q] [q (dried (at chunks q))]) wet)))))))
+               (into acc (map (fn [q] [q (dried (gen/at chunks q))]) wet)))))))
 
 (def rule
   {:name   :sponge

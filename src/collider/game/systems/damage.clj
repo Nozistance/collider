@@ -145,21 +145,19 @@
         x0 (fl (- (v/x p) half)) x1 (ce (+ (v/x p) half))
         y0 (max chunk/min-y (fl (+ (v/y p) shrink-y)))
         y1 (min (inc chunk/max-y) (ce (- (+ (v/y p) (double height)) shrink-y)))
-        z0 (fl (- (v/z p) half)) z1 (ce (+ (v/z p) half))
-        ]
-    (when true
-      (loop [x x0]
-        (when (< x x1)
-          (or (loop [y y0]
-                (when (< y y1)
-                  (or (loop [z z0]
-                        (when (< z z1)
-                          (let [st (chunk/block-state chunks gen/flat-chunk x y z)]
-                            (cond (and (block/fire? st) (not lava-only?)) :fire
-                                  (= :lava (liquid/liquid-class st)) :lava
-                                  :else (recur (inc z))))))
-                      (recur (inc y)))))
-              (recur (inc x))))))))
+        z0 (fl (- (v/z p) half)) z1 (ce (+ (v/z p) half))]
+    (loop [x x0]
+      (when (< x x1)
+        (or (loop [y y0]
+              (when (< y y1)
+                (or (loop [z z0]
+                      (when (< z z1)
+                        (let [st (chunk/block-state chunks gen/flat-chunk x y z)]
+                          (cond (and (block/fire? st) (not lava-only?)) :fire
+                                (= :lava (liquid/liquid-class st)) :lava
+                                :else (recur (inc z))))))
+                    (recur (inc y)))))
+            (recur (inc x)))))))
 
 (defn- burning-flag [eid e ^long fire sunk?]
   (let [lit? (boolean (or (pos? fire) sunk?))]

@@ -20,8 +20,8 @@
   (sort (vals (:players world))))
 
 (defn- text-of [runs]
-  (if-let [t (some :translate runs)]
-    (select-keys (first (filter :translate runs)) [:translate :with])
+  (if-let [t (first (filter :translate runs))]
+    (select-keys t [:translate :with])
     (apply str (map :text runs))))
 
 (defn- chunk-packets [world [_ eid add drop]]

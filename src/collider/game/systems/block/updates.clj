@@ -4,6 +4,7 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.direction :as dir]
             [collider.game.block.tnt :as tnt]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
@@ -17,14 +18,11 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private sides
-  [[1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
-
 (defn- tnt-neighbors [chunks [x y z]]
   (filterv (fn [[_ ny _ :as p]]
              (and (chunk/in-range? ny)
                   (tnt/tnt-state? (chunk/chunks-get-block chunks gen/flat-chunk p))))
-           (map (fn [d] (mapv + [x y z] d)) sides)))
+           (map (fn [d] (mapv + [x y z] d)) dir/around)))
 
 (defn- lww-changes [chunks ctx cells]
   (into []
@@ -92,11 +90,10 @@
                    [#{} []])
            second))))
 
-(def ^:private cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
 (defn- drip-fill-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-        :when (contains? cauldron-types (block/type-of old))]
+        :when (contains? block/cauldron-types (block/type-of old))]
     (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) 1046 1047) pos 0))))
 
 (defn- tilt-deltas [world changes]
