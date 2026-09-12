@@ -63,8 +63,8 @@ public record V3(double x, double y, double z)
         return RT.vector();
     }
     public boolean equiv(Object o) {
-        if (o instanceof V3 v) {
-            return x == v.x && y == v.y && z == v.z;
+        if (o instanceof V3(double x1, double y1, double z1)) {
+            return x == x1 && y == y1 && z == z1;
         }
         if (o instanceof Sequential) {
             return RT.count(o) == 3
