@@ -10,7 +10,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.eyeblossom :as eyeblossom]
-            [collider.world.blocks.sponge :as sponge]
+            [collider.world.blocks.water :as water]
             [collider.world.gen :as gen]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.liquid :as liquid]
@@ -70,7 +70,7 @@
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
 (defn- sponge-drops [world sponge changed]
   (let [chunks (:chunks world)]
-    (for [[pos st] (sponge/absorbed chunks sponge)
+    (for [[pos st] (water/absorbed chunks sponge)
           :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
           :when (and (zero? (long st)) (contains? sponge-plants (block/type-of old))
                      (= 0 (long (get changed pos -1))))

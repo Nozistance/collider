@@ -5,7 +5,6 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.blocks.falling :as falling]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
@@ -32,7 +31,7 @@
 (defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
 
 (defn- landed-state [world cell st cur concrete? stuck?]
-  (let [continues? (and (falling/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
+  (let [continues? (and (support/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
                (support/supported? (:chunks world) gen/flat-chunk cell st))
       (let [in-water? (= :water (liquid/liquid-class cur))

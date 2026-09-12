@@ -522,3 +522,27 @@
              (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
                (when-not (supported? chunks gen/flat-chunk p st)
                  [[p (gone-state st)]])))})
+
+(defn free-below? [chunks template [x y z]]
+  (let [y' (dec (long y))]
+    (and (chunk/in-range? y')
+         (block/free? (chunk/chunks-get-block chunks template [x y' z])))))
+
+(def falling-rule
+  {:name   :falling
+   :match? (fn [_chunks st _p] (and (block/falls? st) (not= :scaffolding (block/type-of st))))
+   :wake   (fn [_chunks tick _p _old _self?] (+ (long tick) 2))
+   :due    (fn [chunks p _ctx]
+             (when (free-below? chunks gen/flat-chunk p)
+               [[p (block/emptied (chunk/chunks-get-block chunks gen/flat-chunk p))]]))})
+
+(def scaffold-rule
+  {:name   :scaffold
+   :match? (fn [_chunks st _p] (= :scaffolding (block/type-of st)))
+   :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
+   :due    (fn [chunks p _ctx]
+             (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)
+                   st' (scaffold-state chunks gen/flat-chunk p st)]
+               (cond
+                 (= :7 (:distance (block/props-of st'))) [[p (block/emptied st)]]
+                 (not= st' st) [[p st']])))})
