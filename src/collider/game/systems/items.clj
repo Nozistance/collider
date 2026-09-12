@@ -1,5 +1,6 @@
 (ns collider.game.systems.items
-  (:require [collider.random :as random]
+  (:require [collider.data :as data]
+            [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.game.state :as state]
             [collider.game.out :as out]
@@ -147,7 +148,8 @@
   (let [pa (:pos ea) ax (v/x pa) ay (v/y pa) az (v/z pa)
         pb (:pos eb) bx (v/x pb) by (v/y pb) bz (v/z pb)]
     (and (same-stack? (:stack ea) (:stack eb))
-         (<= (+ (long (:count (:stack ea) 1)) (long (:count (:stack eb) 1))) 64)
+         (<= (+ (long (:count (:stack ea) 1)) (long (:count (:stack eb) 1)))
+             (data/max-stack (:item (:stack eb))))
          (< (Math/abs (- (double ax) (double bx))) 0.75)
          (< (Math/abs (- (double az) (double bz))) 0.75)
          (< (Math/abs (- (double ay) (double by))) 0.5))))
@@ -178,14 +180,15 @@
   (vec (concat (range 36 45) (range 9 36))))
 
 (defn- fill-existing [inv stack ^long n]
-  (reduce (fn [[chs n] slot]
-            (let [n (long n) cur (get inv slot)]
-              (if (and (pos? n) cur (same-stack? cur stack) (< (long (:count cur 1)) 64))
-                (let [take (min (- 64 (long (:count cur 1))) n)]
-                  [(conj chs [slot (update cur :count (fnil + 1) take)]) (- n take)])
-                [chs n])))
-          [[] n]
-          slot-order))
+  (let [cap (data/max-stack (:item stack))]
+    (reduce (fn [[chs n] slot]
+              (let [n (long n) cur (get inv slot)]
+                (if (and (pos? n) cur (same-stack? cur stack) (< (long (:count cur 1)) cap))
+                  (let [take (min (- cap (long (:count cur 1))) n)]
+                    [(conj chs [slot (update cur :count (fnil + 1) take)]) (- n take)])
+                  [chs n])))
+            [[] n]
+            slot-order)))
 
 (defn- first-empty-slot [inv changes]
   (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
