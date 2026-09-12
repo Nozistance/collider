@@ -397,29 +397,31 @@
       (block/state (block/block-of st) (assoc (block/props-of st) :facing (dir/opposite f)))
       st)))
 
-(defn- sign-fitted [chunks template pos st yaw pitch]
-  (let [self (block/block-of st) wall (block/wall-block self)
-        on-wall (fn [dir] (block/state wall {:facing (dir/opposite dir)}))
-        wall-state (first (for [dir (look-order yaw pitch) :when (contains? dir/horizontal-offset dir)
+(defn- placement-order [yaw pitch face replacing?]
+  (let [order (look-order yaw pitch) first-dir (dir/opposite (dir/from-index face))]
+    (if replacing? order (into [first-dir] (remove #{first-dir}) order))))
+
+(defn- standing-or-wall [order standing wall-state]
+  (first (for [dir order :when (not= :up dir)
+               :let [cand (if (= :down dir) standing wall-state)]
+               :when cand]
+           cand)))
+
+(defn- standing-or-wall-fitted [chunks template pos st {:keys [yaw pitch face replacing?]}]
+  (let [order (placement-order yaw pitch face replacing?)
+        on-wall (fn [dir] (block/state (block/wall-block (block/block-of st)) {:facing (dir/opposite dir)}))
+        wall-state (first (for [dir order :when (contains? dir/horizontal-offset dir)
                                 :when (supported? chunks template pos (on-wall dir))]
                             (on-wall dir)))]
-    (first (for [dir (look-order yaw pitch) :when (not= :up dir)
-                 :let [cand (if (= :down dir) (when (supported? chunks template pos st) st) wall-state)]
-                 :when cand]
-             cand))))
+    (standing-or-wall order (when (supported? chunks template pos st) st) wall-state)))
 
-(defn- skull-wall-state [chunks template pos st yaw pitch]
-  (let [wall (block/wall-block (block/block-of st))]
-    (first (for [dir (look-order yaw pitch) :when (contains? dir/horizontal-offset dir)
-                 :when (not (block/can-be-replaced? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset dir))))))]
-             (block/state wall {:facing (dir/opposite dir)})))))
-
-(defn- skull-fitted [chunks template pos st yaw pitch]
-  (let [wall-state (skull-wall-state chunks template pos st yaw pitch)]
-    (first (for [dir (look-order yaw pitch) :when (not= :up dir)
-                 :let [cand (if (= :down dir) st wall-state)]
-                 :when cand]
-             cand))))
+(defn- skull-fitted [chunks template pos st {:keys [yaw pitch face replacing?]}]
+  (let [order (placement-order yaw pitch face replacing?)
+        wall (block/wall-block (block/block-of st))
+        wall-state (first (for [dir order :when (contains? dir/horizontal-offset dir)
+                                :when (not (block/can-be-replaced? (max 0 (state-at chunks template (mapv + pos (dir/horizontal-offset dir))))))]
+                            (block/state wall {:facing (dir/opposite dir)})))]
+    (standing-or-wall order st wall-state)))
 
 (defn- growing-plant-fitted [chunks template pos st tick]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
@@ -486,8 +488,8 @@
   (into {}
         (for [[classes f] [[[:button :lever :grindstone]
                             (fn [c t p st {:keys [face yaw pitch replacing?]}] (face-attached-fitted c t p st face yaw pitch replacing?))]
-                           [[:standing-sign] (fn [c t p st {:keys [yaw pitch]}] (sign-fitted c t p st yaw pitch))]
-                           [[:skull :wither-skull :player-head] (fn [c t p st {:keys [yaw pitch]}] (skull-fitted c t p st yaw pitch))]
+                           [[:standing-sign :torch :redstone-torch :banner] standing-or-wall-fitted]
+                           [[:skull :wither-skull :player-head] skull-fitted]
                            [[:ceiling-hanging-sign]
                             (fn [c t p st {:keys [yaw pitch sneaking?]}] (hanging-sign-fitted c t p st yaw pitch sneaking?))]
                            [[:lantern :weathering-lantern] (fn [c t p st {:keys [pitch]}] (lantern-fitted c t p st pitch))]

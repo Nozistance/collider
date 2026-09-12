@@ -345,7 +345,7 @@
       :else (wall-variant block))))
 
 (def ^:private standing-and-wall-types
-  #{:standing-sign :skull :wither-skull :player-head})
+  #{:standing-sign :skull :wither-skull :player-head :torch :redstone-torch :banner})
 
 (defn item->block [item face]
   (let [face (long face)
