@@ -25,7 +25,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare block-drops blocks datapack-names fire-odds kw light-table packets recipes registries tags-of vanilla-items vanilla-shapes write-edn!)
+(declare block-drops block-props blocks compostables datapack-names fire-odds flt kw light-table packets recipes registries sound-types tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root    (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -36,10 +36,10 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire lt :light} (vanilla-shapes root)
+          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire lt :light bp :block-props snd :sounds compost :compost} (vanilla-shapes root)
           drops (when (.isFile server) (block-drops server))
-          items (vanilla-items reports)
-          bs (blocks reports (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
+          items (merge-with merge (vanilla-items reports) compost)
+          bs (blocks reports bp (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
                                    (json/read-str (slurp (io/file reports "blocks.json")))))
           rs (registries reports)
           dp (when (.isFile server) (datapack-names server))
@@ -79,8 +79,9 @@
         (write-edn! (path "drops.edn") drops
                     (format "%d block loot tables, %d of them complex"
                             (count drops) (count (filter #(= :complex (val %)) drops)))))
+      (write-edn! (path "sounds.edn") snd (format "%d sound types" (count snd)))
       (write-edn! (path "items.edn") items
-                  (format "%d items that do not stack to 64 or are equippable" (count items)))
+                  (format "%d items with a non-default stack, an equipment slot or a compost chance" (count items)))
       (when rec
         (write-edn! (path "recipes.edn") rec
                     (format "%d stonecutting recipes, %d item property sets"
@@ -152,7 +153,8 @@
   (let [x (* 16.0 v)] (if (== x (Math/rint x)) (long x) x)))
 
 (defn- vanilla-shapes [root]
-  (let [cl (vanilla-loader root)]
+  (let [cl (vanilla-loader root)
+        props (delay (block-props cl))]
     (call-static cl "net.minecraft.SharedConstants" "tryDetectVersion")
     (call-static cl "net.minecraft.server.Bootstrap" "bootStrap")
     (let [registry   (static-field cl "net.minecraft.world.level.block.Block" "BLOCK_STATE_REGISTRY")
@@ -213,6 +215,9 @@
                       [id mask]))
        :light  (light-table cl)
        :fire   (fire-odds cl)
+       :block-props (:props @props)
+       :sounds (:sounds @props)
+       :compost (compostables cl)
        :sturdy-center (into (sorted-map)
                             (for [st states
                                   :let [id (.invoke get-id registry (object-array [st]))
@@ -244,6 +249,71 @@
                            :when (not= mask 63)]
                        [id mask]))})))
 
+
+(defn- flt ^double [v]
+  (Double/parseDouble (Float/toString (float v))))
+
+(def ^:private sound-parts {:break "Break" :step "Step" :place "Place" :hit "Hit" :fall "Fall"})
+
+(defn- sound-types [^ClassLoader cl]
+  (let [cls   (Class/forName "net.minecraft.world.level.block.SoundType" true cl)
+        loc-m (.getMethod (Class/forName "net.minecraft.sounds.SoundEvent" true cl) "location" (make-array Class 0))
+        getters (into (sorted-map)
+                      (map (fn [[k n]] [k (.getMethod cls (str "get" n "Sound") (make-array Class 0))]))
+                      sound-parts)]
+    (into []
+          (comp (filter (fn [^Field f] (= cls (.getType f))))
+                (map (fn [^Field f]
+                       (let [o (.get f nil)]
+                         [(kw (str/lower-case (.getName f))) o
+                          (into (sorted-map)
+                                (map (fn [[k ^Method m]]
+                                       [k (kw (str (.invoke loc-m (.invoke m o (object-array 0)) (object-array 0))))]))
+                                getters)]))))
+          (.getFields cls))))
+
+(defn- field-of ^Field [^Class want ^Class from]
+  (when-let [f (->> (take-while some? (iterate (fn [^Class c] (.getSuperclass c)) from))
+                    (mapcat (fn [^Class c] (sort-by (fn [^Field f] (.getName f)) (.getDeclaredFields c))))
+                    (filter (fn [^Field f] (= want (.getType f))))
+                    first)]
+    (doto ^Field f (.setAccessible true))))
+
+(defn- block-props [^ClassLoader cl]
+  (let [types    (sound-types cl)
+        by-type  (into {} (map (fn [[k o _]] [o k])) types)
+        reg      (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
+        key-m    (.getMethod (class reg) "getKey" (into-array Class [Object]))
+        behave   (Class/forName "net.minecraft.world.level.block.state.BlockBehaviour" true cl)
+        resist-f (doto (.getDeclaredField behave "explosionResistance") (.setAccessible true))
+        sound-f  (doto (.getDeclaredField behave "soundType") (.setAccessible true))
+        set-cls  (Class/forName "net.minecraft.world.level.block.state.properties.BlockSetType" true cl)
+        wood-cls (Class/forName "net.minecraft.world.level.block.state.properties.WoodType" true cl)
+        loc-m    (.getMethod (Class/forName "net.minecraft.sounds.SoundEvent" true cl) "location" (make-array Class 0))
+        hand-m   (.getMethod set-cls "canOpenByHand" (make-array Class 0))
+        event    (fn [^Class c n o] (kw (str (.invoke loc-m (.invoke (.getMethod c n (make-array Class 0)) o (object-array 0)) (object-array 0)))))
+        kinds    [[(Class/forName "net.minecraft.world.level.block.DoorBlock" true cl) set-cls "doorOpen" "doorClose" true]
+                  [(Class/forName "net.minecraft.world.level.block.TrapDoorBlock" true cl) set-cls "trapdoorOpen" "trapdoorClose" true]
+                  [(Class/forName "net.minecraft.world.level.block.FenceGateBlock" true cl) wood-cls "fenceGateOpen" "fenceGateClose" false]]
+        toggle   (fn [b] (some (fn [[^Class bc want open close hand?]]
+                                 (when-let [f (and (.isInstance bc b) (field-of want (class b)))]
+                                   (let [t (.get ^Field f b)]
+                                     (cond-> {:open (event want open t) :close (event want close t)}
+                                       hand? (assoc :hand? (boolean (.invoke hand-m t (object-array 0))))))))
+                               kinds))]
+    {:props  (into (sorted-map)
+                   (for [b (iterator-seq (.iterator ^Iterable reg))]
+                     [(kw (str (.invoke key-m reg (object-array [b]))))
+                      (merge {:resistance (flt (.get resist-f b)) :sound (get by-type (.get sound-f b))}
+                             (toggle b))]))
+     :sounds (into (sorted-map) (map (fn [[k _ evs]] [k evs])) types)}))
+
+(defn- compostables [^ClassLoader cl]
+  (let [reg   (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "ITEM")
+        key-m (.getMethod (class reg) "getKey" (into-array Class [Object]))]
+    (into (sorted-map)
+          (map (fn [e] [(kw (str (.invoke key-m reg (object-array [(key e)])))) {:compost (flt (val e))}]))
+          (static-field cl "net.minecraft.world.level.block.ComposterBlock" "COMPOSTABLES"))))
 
 (def ^:private face-axis [1 1 2 2 0 0])
 (def ^:private dir-names [:down :up :north :south :west :east])
@@ -440,7 +510,7 @@
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))
 
-(defn- blocks [reports full]
+(defn- blocks [reports extra full]
   (into (sorted-map)
         (map (fn [[name {:strs [properties states definition]}]]
                (let [first-id (apply min (map #(get % "id") states))
@@ -449,8 +519,10 @@
                      props    (into (sorted-map)
                                     (map (fn [[p vs]] [(kw p) (mapv keyword vs)]))
                                     properties)]
-                 [(kw name) (cond-> {:first first-id :default default
-                                     :type (kw (get definition "type"))}
+                 [(kw name) (cond-> (into (sorted-map)
+                                          (merge {:first first-id :default default
+                                                  :type (kw (get definition "type"))}
+                                                 (get extra (kw name))))
                               (contains? full (kw name)) (assoc :full-cube? true)
                               (seq props) (assoc :props props))])))
         (json/read-str (slurp (io/file reports "blocks.json")))))
