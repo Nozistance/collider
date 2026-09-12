@@ -1,6 +1,7 @@
 (ns collider.game.block.container
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
+            [collider.game.entity :as entity]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.random :as random]
@@ -42,13 +43,13 @@
          :cells (if (= :right (:type (block/props-of st))) [pos p2] [p2 pos])})
       {:kind :block :rows 3 :type :generic-9x3 :title {:translate "container.chest"} :cells [pos]})))
 
-(def ^:private axis-of {:down 1 :up 1 :north 2 :south 2 :west 0 :east 0})
+(def ^:private axis-index {:x 0 :y 1 :z 2})
 (def ^:private positive? #{:up :south :east})
 
 (defn- half-free?
   [chunks pos facing]
   (let [st (state-at chunks (mapv + pos (dir/offset facing)))
-        ax (long (axis-of facing))
+        ax (long (axis-index (dir/axis facing)))
         far? (contains? positive? facing)]
     (not-any? (fn [box]
                 (let [lo (double (nth box ax)) hi (double (nth box (+ ax 3)))]
@@ -190,13 +191,11 @@
       (let [[x y z] pos
             [dx _ dz] (dir/offset (lectern/facing st))
             r (fn [k] (random/of-key [(:tick world) pos :lectern k]))]
-        [{:type :item
-          :pos [(+ (double x) 0.5 (* 0.25 (double dx)))
-                (double (inc (long y)))
-                (+ (double z) 0.5 (* 0.25 (double dz)))]
-          :vel [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
-          :yaw 0.0 :pitch 0.0 :on-ground false
-          :stack (:book e) :age 0 :pickup-delay 10}]))))
+        [(entity/item [(+ (double x) 0.5 (* 0.25 (double dx)))
+                       (double (inc (long y)))
+                       (+ (double z) 0.5 (* 0.25 (double dz)))]
+                      (entity/pop-velocity [(:tick world) pos :lectern])
+                      (:book e))]))))
 
 (defn positions [m]
   (cond (lectern? m) [] (bench? m) [] (= :ender (:kind m)) [(:pos m)] :else (:cells m)))
@@ -207,8 +206,7 @@
 (defn viewers [world pos]
   (count (filter (fn [[_ e]] (and (:menu e) (covers? (:menu e) pos))) (:entities world))))
 
-(defn- pitch [world pos salt]
-  (+ 0.9 (* 0.1 (random/of-key [(:tick world) pos salt]))))
+(defn- pitch [world pos salt] (random/hinge-pitch [(:tick world) pos salt]))
 
 (def ^:private copper-hinge
   {:weathered-copper-chest :block.copper-chest-weathered

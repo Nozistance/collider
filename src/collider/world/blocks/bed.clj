@@ -9,9 +9,7 @@
 (defn head-pos [chunks pos]
   (let [st (gen/at chunks pos)]
     (when (= :bed (block/type-of st))
-      (let [head (if (= :head (:part (block/props-of st))) pos (mapv + pos (connect/bed-partner-offset st)))]
-        (when (= :head (:part (block/props-of (gen/at chunks head))))
-          head)))))
+      (if (= :head (:part (block/props-of st))) pos (first (connect/partner chunks pos st))))))
 
 (def ^:private steps {:north [0 -1] :south [0 1] :west [-1 0] :east [1 0]})
 (defn- facing-angle? [dir ^double yaw]

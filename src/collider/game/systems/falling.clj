@@ -1,7 +1,7 @@
 (ns collider.game.systems.falling
-  (:require [collider.game.out :as out]
+  (:require [collider.game.entity :as entity]
+            [collider.game.out :as out]
             [collider.game.state :as state]
-            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -25,12 +25,9 @@
 
 (defn- item-deltas [world eid e]
   (when (get-in world [:rules :entity-drops] true)
-    (let [t (:tick world)
-          r (fn [k] (random/of-key [t eid k]))]
-      [[:spawn-entity {:type :item :pos (:pos e)
-                       :vel [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
-                       :yaw 0.0 :pitch 0.0 :on-ground false
-                       :stack {:item (block/block-of (:block e)) :count 1} :age 0 :pickup-delay 10}]])))
+    (let [t (:tick world)]
+      [[:spawn-entity (entity/item (:pos e) (entity/pop-velocity [t eid])
+                                   {:item (block/block-of (:block e)) :count 1})]])))
 
 (defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
 

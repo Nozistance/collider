@@ -1,5 +1,6 @@
 (ns collider.game.systems.items
   (:require [collider.random :as random]
+            [collider.game.entity :as entity]
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.vec :as v]
@@ -45,23 +46,19 @@
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [[px py pz] (get-in world [:entities thrower :pos])]
-     {:type  :item
-      :pos   [(double px) (+ (double py) 1.32) (double pz)]
-      :vel   (if randomly? (around-velocity world thrower salt) (throw-velocity world thrower))
-      :yaw   0.0 :pitch 0.0 :on-ground false
-      :stack stack :age 0 :pickup-delay throw-pickup-delay})))
+     (entity/item [(double px) (+ (double py) 1.32) (double pz)]
+                  (if randomly? (around-velocity world thrower salt) (throw-velocity world thrower))
+                  stack throw-pickup-delay))))
 
 (defn popped [world pos stack salt]
   (let [t (:tick world)
         r (fn [k] (random/of-key [t pos salt k]))
         [x y z] pos]
-    {:type  :item
-     :pos   [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))
-             (+ (double y) 0.5 (- (* 0.5 (r :y)) 0.25) -0.125)
-             (+ (double z) 0.5 (- (* 0.5 (r :z)) 0.25))]
-     :vel   [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]
-     :yaw   0.0 :pitch 0.0 :on-ground false
-     :stack stack :age 0 :pickup-delay 10}))
+    (entity/item [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))
+                  (+ (double y) 0.5 (- (* 0.5 (r :y)) 0.25) -0.125)
+                  (+ (double z) 0.5 (- (* 0.5 (r :z)) 0.25))]
+                 (entity/pop-velocity [t pos salt])
+                 stack)))
 
 (defn split-drop [world pos stack salt]
   (loop [n (long (:count stack 1)) i 0 acc []]

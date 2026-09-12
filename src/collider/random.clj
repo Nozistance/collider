@@ -5,6 +5,10 @@
 (defn of-key ^double [ks]
   (/ (double (bit-and (long (hash ks)) 0xFFFFFF)) 16777216.0))
 
+(defn pitch ^double [ks] (+ 0.8 (* 0.4 (of-key ks))))
+
+(defn hinge-pitch ^double [ks] (+ 0.9 (* 0.1 (of-key ks))))
+
 (defn mix64 ^long [^long z]
   (let [z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 30)) -4658895280553007687)
         z (unchecked-multiply (bit-xor z (unsigned-bit-shift-right z 27)) -7723592293110705685)]

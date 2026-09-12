@@ -103,7 +103,7 @@
                                (not= (dripleaf/tilt-of (long st)) (dripleaf/tilt-of old)))
                       (dripleaf/tilt-sound (long st)))]
         :when sound]
-    (out/all (out/sound sound pos 1.0 (+ 0.8 (* 0.4 (double (random/of-key [(:tick world) pos :tilt]))))))))
+    (out/all (out/sound sound pos 1.0 (random/pitch [(:tick world) pos :tilt])))))
 
 (defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]

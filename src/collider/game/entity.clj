@@ -1,5 +1,6 @@
 (ns collider.game.entity
-  (:require [collider.vec :as v]))
+  (:require [collider.random :as random]
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
@@ -20,6 +21,16 @@
 (defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb track])
 
 (defrecord FallingBlock [type pos vel yaw pitch on-ground block start time track])
+
+(defn item
+  ([pos vel stack] (item pos vel stack 10))
+  ([pos vel stack delay]
+   {:type :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
+    :stack stack :age 0 :pickup-delay delay}))
+
+(defn pop-velocity [ks]
+  (let [r (fn [k] (random/of-key (conj ks k)))]
+    [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
 (defn of [m]
   (if (record? m)

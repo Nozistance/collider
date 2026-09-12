@@ -35,11 +35,11 @@
      [(out/all (out/status eid :eat))]]
     [(decide t eid (assoc e :pending nil)) nil]))
 
-(defn- start-wander [world eid e t]
+(defn- start-roam [world eid e t kind span sx sz]
   (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
         try-at (fn [i]
-                 [(+ (double x) (- (* 20.0 (random/of-longs t eid (hash :tx) i)) 10.0))
-                  (+ (double z) (- (* 20.0 (random/of-longs t eid (hash :tz) i)) 10.0))])
+                 [(+ (double x) (- (* (double span) (random/of-longs t eid (hash sx) i)) (* 0.5 (double span))))
+                  (+ (double z) (- (* (double span) (random/of-longs t eid (hash sz) i)) (* 0.5 (double span))))])
         weight (fn [[cx cz]]
                  (if (= grass/grass-state
                         (sense/block-at world [(long (Math/floor (double cx)))
@@ -50,8 +50,10 @@
                        (try-at 0)
                        (map try-at (range 1 10)))]
     [(assoc e :pending nil
-              :task {:kind :wander :until (+ (long t) wander-timeout) :target target})
+              :task {:kind kind :until (+ (long t) wander-timeout) :target target})
      nil]))
+
+(defn- start-wander [world eid e t] (start-roam world eid e t :wander 20.0 :tx :tz))
 
 (defn- start-look [world eid e t]
   (let [[_ pid] (sense/nearest-player world (:pos e) 36.0)
@@ -89,16 +91,16 @@
         [e deltas])
       :else [e nil])))
 
-(defn- run-wander [_ eid e t]
+(defn- roam-done? [e t]
   (let [{:keys [until target path path-i path-goal]} (:task e)
-        [tx tz] target
-        done? (or (>= (long t) (long until))
-                  (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
-                  (and path-goal (nil? path))
-                  (and path (>= (long (or path-i 0)) (count path))))]
-    (if done?
-      [(decide t eid (assoc e :task nil)) nil]
-      [e nil])))
+        [tx tz] target]
+    (or (>= (long t) (long until))
+        (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
+        (and path-goal (nil? path))
+        (and path (>= (long (or path-i 0)) (count path))))))
+
+(defn- run-wander [_ eid e t]
+  (if (roam-done? e t) [(decide t eid (assoc e :task nil)) nil] [e nil]))
 
 (def ^:private ^:const tempt-range-sq 100.0)
 (def ^:private ^:const tempt-cooldown 100)
@@ -180,37 +182,13 @@
 (defn- panicking? [e t]
   (< (long t) (long (or (:panic-until e) 0))))
 
-(defn- start-panic [world eid e t]
-  (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
-        try-at (fn [i]
-                 [(+ (double x) (- (* 10.0 (random/of-longs t eid (hash :px) i)) 5.0))
-                  (+ (double z) (- (* 10.0 (random/of-longs t eid (hash :pz) i)) 5.0))])
-        weight (fn [[cx cz]]
-                 (if (= grass/grass-state
-                        (sense/block-at world [(long (Math/floor (double cx)))
-                                               (dec (long (Math/floor (double y))))
-                                               (long (Math/floor (double cz)))]))
-                   10.0 0.0))
-        target (reduce (fn [best c] (if (> (double (weight c)) (double (weight best))) c best))
-                       (try-at 0)
-                       (map try-at (range 1 10)))]
-    [(assoc e :pending nil
-              :task {:kind :panic :until (+ (long t) wander-timeout) :target target})
-     nil]))
+(defn- start-panic [world eid e t] (start-roam world eid e t :panic 10.0 :px :pz))
 
 (defn- run-panic [world eid e t]
-  (let [{:keys [until target path path-i path-goal]} (:task e)
-        [tx tz] target
-        done? (or (not (panicking? e t))
-                  (>= (long t) (long until))
-                  (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
-                  (and path-goal (nil? path))
-                  (and path (>= (long (or path-i 0)) (count path))))]
-    (if done?
-      (if (panicking? e t)
-        (start-panic world eid e t)
-        [(decide t eid (assoc e :task nil)) nil])
-      [e nil])))
+  (cond
+    (not (panicking? e t)) [(decide t eid (assoc e :task nil)) nil]
+    (roam-done? e t) (start-panic world eid e t)
+    :else [e nil]))
 
 (defn brain [world eid e t tempters]
   (let [kind (get-in e [:task :kind])]

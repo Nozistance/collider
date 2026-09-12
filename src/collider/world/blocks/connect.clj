@@ -35,6 +35,28 @@
           :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
         (concat pair-types block/growing-plant-types snowy-types block/leaves-types [:pitcher-crop])))
 
+(def ^:private half-types (into block/door-types (conj pair-types :pitcher-crop)))
+
+(defn partner-offset [^long st]
+  (let [{:keys [half part facing]} (block/props-of st)
+        t (block/type-of st)]
+    (cond
+      (contains? half-types t) (if (= :lower half) [0 1 0] [0 -1 0])
+      (= :bed t) (dir/horizontal-offset (if (= :foot part) facing (dir/opposite facing)))
+      (contains? chest/types t) (dir/offset (chest/connected-direction st)))))
+
+(defn- paired? [^long st ^long other]
+  (if (contains? chest/types (block/type-of st))
+    (chest/paired? st other)
+    (and (= (block/block-of st) (block/block-of other))
+         (let [k (if (= :bed (block/type-of st)) :part :half)]
+           (not= (k (block/props-of st)) (k (block/props-of other)))))))
+
+(defn partner [chunks pos ^long st]
+  (when-let [off (partner-offset st)]
+    (let [p (mapv + pos off) o (gen/at chunks p)]
+      (when (paired? st o) [p o]))))
+
 (defn- exception? [n]
   (or (contains? @leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
 
@@ -86,29 +108,20 @@
                    (or (wall-at? (at [0 0 -1])) (wall-at? (at [0 0 1]))))]
     (block/state self (assoc (block/props-of st) :in-wall (if in-wall? :true :false)))))
 
-(defn- door-state [self st at]
-  (let [props (block/props-of st)
-        lower? (= :lower (:half props))
-        partner (at (if lower? [0 1 0] [0 -1 0]))
-        pprops (block/props-of partner)]
+(defn- door-state [chunks pos ^long st]
+  (let [lower? (= :lower (:half (block/props-of st)))
+        [_ pst] (partner chunks pos st)]
     (cond
-      (not (and (contains? block/door-types (block/type-of partner))
-                (not= (:half pprops) (:half props)))) 0
-      (and lower? (not (block/face-sturdy? (at [0 -1 0]) :up))) 0
+      (nil? pst) 0
+      (and lower? (not (block/face-sturdy? (gen/at chunks (dir/down pos)) :up))) 0
       lower? st
-      :else (block/state (block/block-of partner) (assoc pprops :half :upper)))))
+      :else (block/state (block/block-of pst) (assoc (block/props-of pst) :half :upper)))))
 
-(defn bed-partner-offset [st]
-  (let [f (block/facing-of st)]
-    (dir/horizontal-offset (if (= :foot (:part (block/props-of st))) f (dir/opposite f)))))
-
-(defn- bed-state [self st at]
-  (let [partner (at (bed-partner-offset st))
-        pprops  (block/props-of partner)]
-    (if (and (= self (block/block-of partner))
-             (not= (:part pprops) (:part (block/props-of st))))
-      (block/state self (assoc (block/props-of st) :occupied (:occupied pprops)))
-      0)))
+(defn- bed-state [chunks pos ^long st]
+  (if-let [[_ pst] (partner chunks pos st)]
+    (block/state (block/block-of st)
+                 (assoc (block/props-of st) :occupied (:occupied (block/props-of pst))))
+    0))
 
 (defn- water-source-state? [^long st]
   (or (block/waterlogged? st)
@@ -171,19 +184,11 @@
     (block/concrete-of st)
     st))
 
-(defn- pair-state [self st at]
-  (let [props (block/props-of st)
-        lower? (= :lower (:half props))
-        partner (at (if lower? [0 1 0] [0 -1 0]))]
-    (if (and (= self (block/block-of partner))
-             (not= (:half (block/props-of partner)) (:half props)))
-      st
-      (block/emptied st))))
+(defn- pair-state [chunks pos ^long st]
+  (if (partner chunks pos st) st (block/emptied st)))
 
-(defn- pitcher-state [self st at]
-  (if (>= (block/prop-long st :age) 3)
-    (pair-state self st at)
-    st))
+(defn- pitcher-state [chunks pos ^long st]
+  (if (>= (block/prop-long st :age) 3) (pair-state chunks pos st) st))
 
 (defn- growing-plant-state [pos st at tick]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
@@ -215,8 +220,8 @@
       (let [self  (block/block-of st)
             at    (fn [d] (gen/at chunks (mapv + pos d)))
             new   (case t
-                    (:door :weathering-copper-door) (door-state self st at)
-                    :bed (bed-state self st at)
+                    (:door :weathering-copper-door) (door-state chunks pos st)
+                    :bed (bed-state chunks pos st)
                     :potent-sulfur (sulfur-state self st at)
                     :fence-gate (gate-state self st at)
                     :stair (stair-state self st at)
@@ -227,10 +232,10 @@
                     (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)
                     :vine (support/vine-updated chunks gen/flat-chunk pos st)
                     (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
-                    (:double-plant :tall-flower :tall-seagrass) (pair-state self st at)
+                    (:double-plant :tall-flower :tall-seagrass) (pair-state chunks pos st)
                     :big-dripleaf (dripleaf/leaf-updated chunks pos st)
                     :small-dripleaf (dripleaf/small-updated chunks pos st)
-                    :pitcher-crop (pitcher-state self st at)
+                    :pitcher-crop (pitcher-state chunks pos st)
                     :fire (if (support/supported? chunks gen/flat-chunk pos st)
                             (fire/state-with-age chunks pos (fire/age st))
                             0)
