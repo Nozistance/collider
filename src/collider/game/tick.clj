@@ -77,7 +77,7 @@
         w1 (weather-system/advanced w1)
         post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1)
                      (blocks/ack-deltas w1 events) (weather-system/messages w1 events)
-                     (falling/first-step-deltas w1)
+                     (falling/first-step-deltas w1) (tnt/first-step-deltas w1)
                      (detector/observe world events d1 w1))]
     (if (empty? post)
       [w1 d1]

@@ -1,5 +1,6 @@
 (ns collider.game.systems.tnt
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.game.state :as state]
+            [collider.game.deltas :as deltas]
             [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
@@ -144,6 +145,13 @@
                       (let [o (:from m)]
                         (if (contains? @seen o) true (do (vswap! seen conj o) false))))))
           deltas)))
+
+(defn first-step-deltas [world]
+  (let [active (state/active-chunks world)]
+    (into []
+          (comp (filter (fn [[_ e]] (and (= :tnt (:type e)) (:origin e) (state/active-at? active (:pos e)))))
+                (mapcat (fn [[eid e]] (into (unblock-deltas eid e) (step-deltas world eid e)))))
+          (sort-by key (:entities world)))))
 
 (defn tnt-system [world _events]
   (let [tnts (into []
