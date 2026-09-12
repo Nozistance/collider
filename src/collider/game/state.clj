@@ -1,7 +1,7 @@
 (ns collider.game.state
   (:require [collider.game.block.blockentity :as be]
+            [collider.data :as data]
             [clojure.core.reducers :as r]
-            [clojure.string]
             [collider.vec :as v]
             [clojure.data.int-map :as i]
             [clojure.set :as set]
@@ -168,8 +168,9 @@
       name (assoc-in [:profiles name]
                      (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
 
+(def ^:private swords (delay (set (data/tag-values "item" "swords"))))
 (defn- sword? [item]
-  (and (keyword? item) (clojure.string/ends-with? (name item) "-sword")))
+  (contains? @swords item))
 
 (defn- held-item [w eid slot]
   (if (<= 0 (long slot) 8)

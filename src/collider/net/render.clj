@@ -157,18 +157,7 @@
           :fire/ignite  [:item.flintandsteel.use 4]
           :explosion    [:entity.generic.explode 4]
           :splash       [:entity.generic.splash 6]
-          :swim         [:entity.generic.swim 6]
-          :place/stone  [:block.stone.place 4]
-          :place/wood   [:block.wood.place 4]
-          :place/grass  [:block.grass.place 4]
-          :place/gravel [:block.gravel.place 4]
-          :place/sand   [:block.sand.place 4]
-          :place/cloth  [:block.wool.place 4]
-          :place/glass  [:block.glass.place 4]
-          :place/snow   [:block.snow.place 4]
-          :place/shelf  [:block.shelf.place 4]
-          :place/bookshelf [:block.chiseled-bookshelf.place 4]
-          :place/anvil  [:block.anvil.place 4]})
+          :swim         [:entity.generic.swim 6]})
 
 (def ^:private overworld (delay (data/datapack-id "dimension_type" :overworld)))
 (def ^:private explosion-particle (delay (data/registry-id "particle_type" :explosion-emitter)))

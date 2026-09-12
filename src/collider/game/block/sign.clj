@@ -58,14 +58,10 @@
       (assoc-in [(side front?) :lines] (mapv #(strip-formatting (str %)) (take 4 (concat lines (repeat "")))))
       (assoc :editor nil)))
 
-(defn- dye-color [item]
-  (let [n (name item)]
-    (when (str/ends-with? n "-dye") (keyword (subs n 0 (- (count n) 4))))))
-
 (defn applied [e front? item]
   (let [s (side front?) text (get e s)]
     (cond
-      (dye-color item) (when (not= (dye-color item) (:color text)) [(assoc-in e [s :color] (dye-color item)) :dye/use])
+      (data/dye-color item) (when (not= (data/dye-color item) (:color text)) [(assoc-in e [s :color] (data/dye-color item)) :dye/use])
       (= :glow-ink-sac item) (when-not (:glowing? text) [(assoc-in e [s :glowing?] true) :glow-ink/use])
       (= :ink-sac item) (when (:glowing? text) [(assoc-in e [s :glowing?] false) :ink-sac/use])
       (= :honeycomb item) (when-not (:waxed? e) [(assoc e :waxed? true) :wax]))))

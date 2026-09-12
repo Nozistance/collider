@@ -1,6 +1,5 @@
 (ns collider.game.systems.blocks
-  (:require [clojure.string :as str]
-            [collider.random :as random]
+  (:require [collider.random :as random]
             [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
@@ -32,22 +31,10 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- place-sound [item]
-  (let [n (name item)]
-    (cond
-      (= "chiseled-bookshelf" n) :place/bookshelf
-      (str/ends-with? n "-shelf") :place/shelf
-      (= "bell" n) :place/anvil
-      (some #(str/ends-with? n %) ["-planks" "-log" "-wood" "-fence" "-fence-gate" "-door" "-trapdoor" "-sign" "-banner" "bookshelf" "crafting-table" "chest" "ladder" "jukebox"]) :place/wood
-      (#{"grass-block" "short-grass" "tnt" "sponge" "vine" "moss-block"} n) :place/grass
-      (some #(str/ends-with? n %) ["-leaves"]) :place/grass
-      (#{"dirt" "gravel" "farmland" "clay" "coarse-dirt" "rooted-dirt" "mud"} n) :place/gravel
-      (some #(str/ends-with? n %) ["sand" "soul-sand"]) :place/sand
-      (some #(str/ends-with? n %) ["-wool" "-carpet" "-bed"]) :place/cloth
-      (some #(str/includes? n %) ["glass" "ice" "glowstone" "sea-lantern"]) :place/glass
-      (= "powder-snow-bucket" n) :bucket/empty-snow
-      (#{"snow" "snow-block" "powder-snow"} n) :place/snow
-      :else :place/stone)))
+(defn- tool-set [tag] (delay (set (data/tag-values "item" tag))))
+(def ^:private axes (tool-set "axes"))
+(def ^:private hoes (tool-set "hoes"))
+(def ^:private shovels (tool-set "shovels"))
 
 (defn- block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
@@ -94,10 +81,11 @@
           mixed)))
 
 (defn- placed-deltas
-  ([world eid pos state item] (placed-deltas world eid [[pos state]] item))
-  ([world eid changes item]
-   (conj (change-deltas world changes)
-         (out/except eid (out/sound (place-sound item) (ffirst changes) 1.0 0.8)))))
+  ([world eid pos state] (placed-deltas world eid [[pos state]]))
+  ([world eid changes]
+   (let [[pos state] (first changes)]
+     (conj (change-deltas world changes)
+           (out/except eid (out/sound (data/place-sound (block/block-of state)) pos 1.0 0.8))))))
 
 (def ^:private openable-types (into #{:fence-gate} (concat block/door-types block/trapdoor-types)))
 (defn- potted-block [item]
@@ -161,7 +149,7 @@
 (defn- poses? [cur item]
   (and (contains? statue-types (block/type-of cur))
        (some? item)
-       (not (str/ends-with? (name item) "-axe"))))
+       (not (@axes item))))
 
 (defn- pose-deltas [world pos]
   (let [cur (block-at world pos) props (block/props-of cur)]
@@ -240,9 +228,9 @@
 (defn- compost-deltas [world pos item]
   (let [cur (block-at world pos) lvl (block/prop-long cur :level)]
     (cond
-      (and item (< lvl 8) (grow/compostables item))
+      (and item (< lvl 8) (data/compost item))
       (when (< lvl 7)
-        (let [took? (or (zero? lvl) (< (random/of-key [(:tick world) pos :compost]) (double (grow/compostables item))))
+        (let [took? (or (zero? lvl) (< (random/of-key [(:tick world) pos :compost]) (double (data/compost item))))
               st (if took? (block/state :composter {:level (keyword (str (inc lvl)))}) cur)]
           (concat (when took? (change-deltas world [[pos st]]))
                   [(out/all (out/level-event 1500 pos (if took? 1 0)))
@@ -482,23 +470,6 @@
               (block/can-be-replaced? st) p
               :else nil)))))))
 
-(defn- by-hand? [state]
-  (not (str/starts-with? (name (block/block-of state)) "iron-")))
-
-(defn- open-sound [state open?]
-  (let [n (name (block/block-of state))
-        wood (cond
-               (str/includes? n "copper") "copper"
-               (or (str/starts-with? n "crimson") (str/starts-with? n "warped")) "nether-wood"
-               (str/starts-with? n "bamboo") "bamboo"
-               (str/starts-with? n "cherry") "cherry"
-               :else "wooden")
-        kind (case (block/type-of state)
-               (:door :weathering-copper-door) (if (#{"bamboo" "cherry"} wood) "wooden-door" (str wood "-door"))
-               (:trapdoor :weathering-copper-trapdoor) (if (#{"bamboo" "cherry"} wood) "wooden-trapdoor" (str wood "-trapdoor"))
-               :fence-gate (if (#{"wooden" "copper"} wood) "fence-gate" (str wood "-wood-fence-gate")))]
-    (keyword (str "block." kind "." (if open? "open" "close")))))
-
 (defn- toggled [world eid pos state]
   (let [props (block/props-of state)
         self (block/block-of state)
@@ -518,7 +489,7 @@
   (let [changes (toggled world eid pos state)
         open? (= :true (:open (block/props-of (second (first changes)))))]
     (conj (change-deltas world changes)
-          (out/except eid (out/sound (open-sound state open?) pos 1.0
+          (out/except eid (out/sound (data/open-sound (block/block-of state) open?) pos 1.0
                                      (random/hinge-pitch [(:tick world) pos :door]))))))
 
 (defn- bed-head-effect [world eid pos old]
@@ -662,8 +633,8 @@
   (let [chunks (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk [[pos state]])
         side? (fn [dir] (< (double (random/of-key [(:tick world) pos :moss dir])) 0.5))]
     (if-let [topper (moss/carpet-topper chunks pos side?)]
-      (placed-deltas world eid [[pos state] [(mapv + pos [0 1 0]) topper]] item)
-      (placed-deltas world eid pos state item))))
+      (placed-deltas world eid [[pos state] [(mapv + pos [0 1 0]) topper]])
+      (placed-deltas world eid pos state))))
 
 (defn- solid-place-deltas [world [eid pos face item cursor]]
   (when-let [off (dir/face-offset face)]
@@ -696,7 +667,7 @@
           (let [[mp ms] merged]
             (if (obstructed? world mp ms)
               (reject-deltas world eid pos pos')
-              (placed-deltas world eid mp ms item)))
+              (placed-deltas world eid mp ms)))
           (nil? pos') nil
           (nil? state)
           (reject-deltas world eid pos pos')
@@ -718,17 +689,17 @@
           (be/kind state)
           (block-entity-place-deltas world eid pos' state item)
           :else
-          (placed-deltas world eid pos' state item))))))
+          (placed-deltas world eid pos' state))))))
 
 (defn- block-entity-place-deltas [world eid pos state item]
-  (concat (placed-deltas world eid pos state item)
+  (concat (placed-deltas world eid pos state)
           [[:set-block-entity pos (be/from-stack (be/fresh (be/kind state) eid)
                                                  (held-stack world eid))]]
           (when (sign/kind state) [(out/to eid (out/sign-editor pos true))])))
 
 (defn- second-cell-deltas [world eid pos pos' state item ppos pstate ok?]
   (if (and (chunk/in-range? (ppos 1)) (ok?) (not (obstructed? world ppos pstate)))
-    (placed-deltas world eid [[pos' state] [ppos pstate]] item)
+    (placed-deltas world eid [[pos' state] [ppos pstate]])
     (reject-deltas world eid pos pos')))
 
 (defn- door-place-deltas [world eid pos pos' state item [cx _ cz]]
@@ -869,7 +840,7 @@
                  (block/can-be-replaced? (block-at world above))
                  (not (obstructed? world above st))
                  (support/supported? (:chunks world) gen/flat-chunk above st))
-        (placed-deltas world eid above st :lily-pad)))))
+        (placed-deltas world eid above st)))))
 
 (defn- bonemeal-deltas [world [eid pos _ _ _]]
   (let [st (block-at world pos)]
@@ -920,14 +891,10 @@
           (concat (change-deltas world (half-changes world pos st))
                   [(out/all (out/sound :axe/wax-off pos 1.0 1.0)) (out/all (out/level-event 3004 pos))]))))))
 
-(defn- axe? [item] (str/ends-with? (name item) "-axe"))
-(defn- hoe? [item] (str/ends-with? (name item) "-hoe"))
-(defn- shovel? [item] (str/ends-with? (name item) "-shovel"))
-(def ^:private armor-slot
-  {"helmet" 5 "chestplate" 6 "leggings" 7 "boots" 8})
+(def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
 
 (defn- armor-slot-of [item]
-  (some (fn [[suffix slot]] (when (str/ends-with? (name item) suffix) slot)) armor-slot))
+  (armor-slot (data/equip-slot item)))
 
 (defn- equip-armor-deltas [world eid item slot]
   (let [e (get-in world [:entities eid])]
@@ -954,7 +921,7 @@
   (let [cur (block-at world pos)]
     (and (not use-item?)
          (contains? openable-types (block/type-of cur))
-         (by-hand? cur)
+         (data/by-hand? (block/block-of cur))
          (not (and item (get-in world [:entities eid :sneaking?]))))))
 
 (defn- bed-place-deltas [world eid pos pos' state item]
@@ -967,7 +934,7 @@
   (if-let [target (scaffold-target world eid pos face)]
     (let [st (support/scaffold-state (:chunks world) gen/flat-chunk target (block/state :scaffolding))]
       (if (not (obstructed? world target st))
-        (placed-deltas world eid target (waterlogged world target st) :scaffolding)
+        (placed-deltas world eid target (waterlogged world target st))
         (reject-deltas world eid pos target)))
     (reject-deltas world eid pos nil)))
 
@@ -1059,13 +1026,13 @@
       (= :lily-pad item)           (when use-item? (lily-deltas world eid at))
       (= :potion item)             (when-not use-item? (mud-deltas world eid pos face))
       (= :bone-meal item)          (when-not use-item? (bonemeal-deltas world args))
-      (hoe? item)                  (when-not use-item? (till-deltas world args))
+      (@hoes item)                 (when-not use-item? (till-deltas world args))
       (= :honeycomb item)          (when-not use-item? (wax-deltas world args))
-      (axe? item)                  (when-not use-item? (or (axe-deltas world args) (solid-place-deltas world args)))
-      (shovel? item)               (when-not use-item? (flatten-deltas world args))
+      (@axes item)                 (when-not use-item? (or (axe-deltas world args) (solid-place-deltas world args)))
+      (@shovels item)              (when-not use-item? (flatten-deltas world args))
       (mobs/egg-type item)         (when-not use-item? (spawn-egg-deltas world args))
-      (armor-slot-of item)         (when use-item?
-                                     (equip-armor-deltas world eid item (armor-slot-of item)))
+      (and use-item? (armor-slot-of item))
+      (equip-armor-deltas world eid item (armor-slot-of item))
       :else                        (solid-place-deltas world args))))
 
 (defn- sequence-of [tag args]

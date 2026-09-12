@@ -244,39 +244,12 @@
       (nil? b) (if (full-face? a) 16 simple)
       :else (if (covers-block? a b) 16 simple))))
 
-(defn- resistance-of ^double [block t]
-  (let [n (name block)]
-    (cond
-      (= :bedrock block) 3.6E7
-      (= :obsidian block) 1200.0
-      (= :liquid t) 100.0
-      (= :tnt t) 0.0
-      (contains? needs-support-types t) 0.0
-      (= :grass block) 0.6
-      (= :grass-block block) 0.6
-      (#{:dirt :sand :red-sand :ice} block) 0.5
-      (= :gravel block) 0.6
-      (= :snow-block block) 0.2
-      (= :end-stone block) 9.0
-      (str/ends-with? n "-planks") 3.0
-      (str/ends-with? n "-log") 2.0
-      (str/ends-with? n "-wood") 2.0
-      (str/ends-with? n "leaves") 0.2
-      (str/includes? n "glass") 0.3
-      (str/ends-with? n "-wool") 0.8
-      (str/ends-with? n "sandstone") 0.8
-      (str/ends-with? n "quartz-block") 0.8
-      (= :fence t) 3.0
-      (#{:block :stair :slab :wall} t) 6.0
-      :else 3.0)))
-
 (def ^:private resist-arr
   (let [a (double-array state-count)]
     (Arrays/fill a 3.0)
-    (doseq [[block b] @data/blocks
-            :let [r (resistance-of block (:type b))]
+    (doseq [[_ b] @data/blocks
             i (range (reduce * 1 (map count (vals (:props b)))))]
-      (aset a (+ (long (:first b)) (long i)) (double r)))
+      (aset a (+ (long (:first b)) (long i)) (double (:resistance b 3.0))))
     a))
 
 (defn resist ^double [^long st] (if (< -1 st state-count) (aget ^doubles resist-arr st) 3.0))

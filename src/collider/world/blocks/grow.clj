@@ -615,14 +615,6 @@
                   {:changes [[p (block/state :tall-seagrass {:half :lower})] [(dir/up p) (block/state :tall-seagrass {:half :upper})]]})
       nil)))
 
-(def compostables
-  (let [t {0.3 [:jungle-leaves :oak-leaves :spruce-leaves :dark-oak-leaves :pale-oak-leaves :acacia-leaves :cherry-leaves :birch-leaves :azalea-leaves :mangrove-leaves :oak-sapling :spruce-sapling :birch-sapling :jungle-sapling :acacia-sapling :cherry-sapling :dark-oak-sapling :pale-oak-sapling :mangrove-propagule :beetroot-seeds :dried-kelp :short-grass :kelp :melon-seeds :pumpkin-seeds :seagrass :sweet-berries :glow-berries :wheat-seeds :moss-carpet :pale-moss-carpet :pale-hanging-moss :pink-petals :wildflowers :leaf-litter :small-dripleaf :hanging-roots :mangrove-roots :torchflower-seeds :pitcher-pod :firefly-bush :bush :cactus-flower :short-dry-grass :tall-dry-grass]
-           0.5 [:dried-kelp-block :tall-grass :flowering-azalea-leaves :cactus :sugar-cane :vine :nether-sprouts :weeping-vines :twisting-vines :melon-slice :glow-lichen]
-           0.65 [:sea-pickle :lily-pad :pumpkin :carved-pumpkin :melon :apple :beetroot :carrot :cocoa-beans :potato :wheat :brown-mushroom :red-mushroom :mushroom-stem :crimson-fungus :warped-fungus :nether-wart :crimson-roots :warped-roots :shroomlight :dandelion :poppy :blue-orchid :allium :azure-bluet :red-tulip :orange-tulip :white-tulip :pink-tulip :oxeye-daisy :cornflower :lily-of-the-valley :wither-rose :open-eyeblossom :closed-eyeblossom :fern :sunflower :lilac :rose-bush :peony :large-fern :spore-blossom :azalea :moss-block :pale-moss-block :big-dripleaf]
-           0.85 [:hay-block :brown-mushroom-block :red-mushroom-block :nether-wart-block :warped-wart-block :flowering-azalea :bread :baked-potato :cookie :torchflower :pitcher-plant]
-           1.0 [:cake :pumpkin-pie]}]
-    (into {} (for [[chance items] t item items] [item chance]))))
-
 (def tilled
   {:grass-block [:farmland] :dirt-path [:farmland] :dirt [:farmland]
    :coarse-dirt [:dirt] :rooted-dirt [:dirt :hanging-roots]})

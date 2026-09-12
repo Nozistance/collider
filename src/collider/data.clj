@@ -26,6 +26,7 @@
 (def fire       (delay (load-edn "fire.edn")))
 (def drops      (delay (load-edn "drops.edn")))
 (def recipes    (delay (load-edn "recipes.edn")))
+(def sounds     (delay (load-edn "sounds.edn")))
 (defn max-stack ^long [item]
   (long (get-in @items [item :max-stack] 64)))
 
@@ -42,6 +43,9 @@
 (defn pattern-tag
   [item]
   (get-in @items [item :patterns]))
+
+(defn compost [item]
+  (get-in @items [item :compost]))
 
 (defn tag-values [registry tag]
   (get-in @tags [registry tag] []))
@@ -126,6 +130,15 @@
 (defn info [block]
   (or (get @blocks block)
       (throw (ex-info "unknown block" {:block block}))))
+
+(defn place-sound [block]
+  (get-in @sounds [(:sound (info block)) :place]))
+
+(defn open-sound [block open?]
+  (get (info block) (if open? :open :close)))
+
+(defn by-hand? [block]
+  (get (info block) :hand? true))
 
 (defn state-id
   (^long [block-name] (long (:default (info block-name))))
