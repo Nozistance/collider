@@ -1,4 +1,5 @@
 (ns collider.config
+  "Server settings, read from config.edn."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -18,16 +19,20 @@
    :save-period-ms        300000})
 
 (defn load-config
+  "Returns the settings at path, over the defaults for whatever it leaves out."
   ([] (load-config "config.edn"))
   ([path]
    (merge defaults
           (when (.exists (io/file (str path)))
             (edn/read-string (slurp (str path)))))))
 
-(defn- render ^String [m]
+(defn- render
+  "Returns the settings as text, one setting per line."
+  ^String [m]
   (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))
 
 (defn write-default!
+  "Writes the default settings to path, unless a file is already there."
   ([] (write-default! "config.edn"))
   ([path]
    (let [f (io/file (str path))]

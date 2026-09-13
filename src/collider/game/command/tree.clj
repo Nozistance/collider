@@ -1,4 +1,5 @@
 (ns collider.game.command.tree
+  "The commands players can type: what they take and what they mean."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.gamerules :as rules]
             [clojure.string :as str]
@@ -226,7 +227,9 @@
     :targets ["@s" "@a" "@p" "@e"]
     :block (block-values opts)))
 
-(defn usage [path]
+(defn usage
+  "Returns the line that shows how the command at path is used."
+  [path]
   (let [form (loop [forms commands, [nm & more] path]
                (let [f (find-form forms nm)]
                  (if (seq more) (recur (drop 2 f) more) f)))
@@ -265,6 +268,8 @@
     (no-subcommand form nm sub)))
 
 (defn parse
+  "Returns the delta the typed command means, or the reason it cannot be
+   run. Coordinates are read relative to origin."
   ([text] (parse text nil))
   ([text origin]
    (let [[nm & more] (remove str/blank? (str/split (subs text 1) #"\s+"))
@@ -302,6 +307,8 @@
                        target)))
 
 (defn suggest
+  "Returns the completions offered for half-typed text, as a player standing
+   at target would see them."
   ([world text] (suggest world text nil))
   ([world text target]
    (let [text (or text "")]
@@ -387,7 +394,9 @@
           [children exec?] (add-chain nodes args 0)]
       (add-node! nodes {:type :literal :name (cmd-name form) :executable? exec? :children children}))))
 
-(defn tree []
+(defn tree
+  "Returns the commands as the client is given them."
+  []
   (let [nodes (atom [])
         top (vec (map #(add-form! nodes %) commands))]
     (add-node! nodes {:type :root :children top})

@@ -1,4 +1,5 @@
 (ns collider.net.render
+  "Packets for each player from the tick."
   (:require [collider.game.block.blockentity :as be]
             [clojure.data.int-map :as i]
             [collider.config :as config]
@@ -23,7 +24,9 @@
 (defn- players [world]
   (vec (sort (vals (:players world)))))
 
-(defn- text-of [runs]
+(defn- text-of
+  "Returns the plain message the runs read as."
+  [runs]
   (if-let [t (first (filter :translate runs))]
     (select-keys t [:translate :with])
     (apply str (map :text runs))))
@@ -59,7 +62,9 @@
    :tnt           (data/registry-id "entity_type" :tnt)
    :falling-block (data/registry-id "entity_type" :falling-block)})
 
-(defn- kind-of [e]
+(defn- kind-of
+  "Returns the kind of entity e is shown as."
+  [e]
   (let [t (:type e)]
     (if (contains? entity-type t) t :player)))
 
@@ -71,7 +76,9 @@
           (if (:sneaking? meta) 0x02 0)
           (if (:sprinting? meta) 0x08 0)))
 
-(defn- entity-data [kind meta]
+(defn- entity-data
+  "Returns the metadata of an entity of that kind."
+  [kind meta]
   (case kind
     :player [[0 :byte (flags-byte meta)]
              [6 :pose (if (:sleeping-pos meta) 2 0)]
@@ -180,7 +187,9 @@
    :pos    (:pos m) :count (:count m) :speed (:speed m)})
 
 (def ^:private unhandled (atom #{}))
-(defn- once! [kind]
+(defn- once!
+  "Logs an unhandled kind once."
+  [kind]
   (when-not (@unhandled kind)
     (swap! unhandled conj kind)
     (log/info "render:" kind "not rendered yet")))
@@ -205,7 +214,9 @@
     :love {:packet :entity-event :eid (:eid m) :event 18}
     nil))
 
-(defn- sound-id [kind]
+(defn- sound-id
+  "Returns the id and source of the sound kind, nil when unknown."
+  [kind]
   (let [reg (get data/registries "sound_event")]
     (if-let [[ev src] (get sound-table kind)]
       (when-let [id (get reg ev)] [id src])
@@ -419,7 +430,9 @@
               p pkts]
           [eid p])))))
 
-(defn render [world ^Deltas deltas]
+(defn render
+  "Returns packets for each player from a world and its deltas."
+  [world ^Deltas deltas]
   (let [ps (players world)
         viewers (delay (viewer-index world (.entities deltas) ps))]
     (concat

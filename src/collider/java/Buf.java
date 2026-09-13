@@ -5,6 +5,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UTFDataFormatException;
 
+/** A growable byte buffer with a read and a write position. */
 public final class Buf {
     public byte[] a;
     public int w, r;

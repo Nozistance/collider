@@ -1,4 +1,5 @@
 (ns collider.game.systems.blocks.use
+  "Using a block, by hand or with an item in hand."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
@@ -121,7 +122,9 @@
       (not busy?) [[:set-block-entity pos (assoc e :editor eid)]
                    (out/to eid (out/sign-editor pos front?))])))
 
-(defn sign-update-deltas [world [eid pos front? lines]]
+(defn sign-update-deltas
+  "Returns the deltas for the lines a player wrote on a sign."
+  [world [eid pos front? lines]]
   (let [e (sign/at world pos)]
     (when (and e (not (:waxed? e)) (= eid (:editor e)))
       [[:set-block-entity pos (sign/written e front? lines)]
@@ -282,7 +285,9 @@
           (and (= :pumpkin (block/block-of cur)) (= :shears item))
           (fn [w eid pos face _ _] (tools/carve-deltas w eid pos face))))))
 
-(defn deltas [world eid pos face item cursor]
+(defn deltas
+  "Returns the deltas for a player using the block at pos."
+  [world eid pos face item cursor]
   (let [cur (edit/block-at world pos)]
     (when-let [h (handler cur item)]
       (h world eid pos face item cursor))))

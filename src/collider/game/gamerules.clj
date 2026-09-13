@@ -1,4 +1,5 @@
 (ns collider.game.gamerules
+  "Game rules: which ones there are, what they default to, and their values."
   (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
@@ -39,17 +40,26 @@
                 (map (fn [[k [d lo hi]]] [k {:type :int :default d :min lo :max hi}]) integers))))
 
 (def defaults (into {} (map (fn [[k v]] [k (:default v)])) table))
-(defn wire-name ^String [rule]
+(defn wire-name
+  "Returns the full name a rule is known by."
+  ^String [rule]
   (data/wire rule))
 
-(defn rule-of [^String s]
+(defn rule-of
+  "Returns the rule named s, nil when there is no such rule."
+  [^String s]
   (let [k (data/kebab s)]
     (when (contains? table k) k)))
 
-(defn serialize ^String [rule value]
+(defn serialize
+  "Returns the text a rule's value is written as."
+  ^String [rule value]
   (if (= :bool (:type (table rule))) (if value "true" "false") (str value)))
 
-(defn parse [rule ^String s]
+(defn parse
+  "Returns the value rule takes from the text s, nil when s does not suit
+   it."
+  [rule ^String s]
   (let [{:keys [type min max]} (table rule)]
     (case type
       :bool (case s "true" true "false" false nil)

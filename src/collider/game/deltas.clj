@@ -23,14 +23,12 @@
 (defrecord Deltas [world entities out input])
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
 (defn input
-  "Returns the Deltas of a tick's network input: the events in arrival order,
-   with the tick advance as its one world delta."
+  "Returns the Deltas of a tick's input events."
   ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
 (defn add
-  "Returns acc with deltas sorted into its buckets by tag; checks them against
-   the schemas when validation is on."
+  "Returns acc with deltas added."
   ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
          w (transient (.world acc)) e (transient (.entities acc)) o (transient (.out acc))]
@@ -76,7 +74,10 @@
   ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
-(defn run-seq [fs]
+(defn run-seq
+  "Runs the jobs in order, and the jobs they return, and returns all their
+   deltas."
+  [fs]
   (into [] (mapcat (fn [f]
                      (let [r (f)]
                        (if (fn? (first r)) (run-seq (vec r)) r))))

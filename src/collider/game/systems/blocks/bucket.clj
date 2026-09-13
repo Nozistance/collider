@@ -1,4 +1,5 @@
 (ns collider.game.systems.blocks.bucket
+  "Filling and emptying buckets."
   (:require [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
@@ -33,7 +34,10 @@
                     (edit/change-deltas world [[pos state]])
                     splash))))
 
-(defn add [world eid e state]
+(defn add
+  "Returns the deltas for emptying a bucket of state where the player is
+   looking."
+  [world eid e state]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))
           hit (edit/block-at world pos)
@@ -50,7 +54,10 @@
         (liquid/source-state? st) [:source pos]
         (= :true (:waterlogged (block/props-of st))) [:waterlogged pos]))))
 
-(defn scoop-deltas [world eid e]
+(defn scoop-deltas
+  "Returns the deltas for filling a bucket from the block the player is
+   looking at."
+  [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
     (let [st (edit/block-at world pos)
           sound (cond
@@ -64,7 +71,10 @@
               (when (= :powder-snow kind) [(out/all (out/level-event out/particles-destroy-block pos st))])
               [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
-(defn lily-deltas [world eid e]
+(defn lily-deltas
+  "Returns the deltas for setting a lily pad on the water the player is
+   looking at."
+  [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
           st (block/state :lily-pad)]

@@ -1,4 +1,5 @@
 (ns collider.game.systems.jukebox
+  "Jukeboxes: the record that is playing."
   (:require [collider.game.block.jukebox :as jukebox]
             [collider.game.out :as out]))
 
@@ -15,5 +16,7 @@
     [[:set-block-entity pos (assoc e :song nil :started nil)]
      (out/all (out/level-event out/sound-stop-jukebox-song pos 0))]))
 
-(defn jukebox-songs [world _d]
+(defn jukebox-songs
+  "Returns the deltas for jukeboxes whose record has run out."
+  [world _d]
   [#(mapcat (partial stop-deltas world) (playing world))])

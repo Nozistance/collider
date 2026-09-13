@@ -1,4 +1,5 @@
 (ns collider.world.blocks.multiface
+  "Blocks that sit on the faces of their neighbours, and their spreading."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.gen :as gen]
@@ -7,7 +8,9 @@
 (set! *warn-on-reflection* true)
 
 
-(defn shuffled [roll xs]
+(defn shuffled
+  "Returns the elements of xs in an order drawn from roll."
+  [roll xs]
   (loop [v (vec xs) i (count v)]
     (if (< i 2)
       v
@@ -15,7 +18,9 @@
             a (v (dec i)) b (v j)]
         (recur (assoc v (dec i) b j a) (dec i))))))
 
-(defn- has-face? [^long st dir] (= :true (get (block/props-of st) dir)))
+(defn- has-face?
+  "Returns true when st covers the face dir."
+  [^long st dir] (= :true (get (block/props-of st) dir)))
 
 (defn- attachable? [chunks p dir]
   (let [n (gen/at-void chunks (mapv + p (dir/offset dir)))]
@@ -43,7 +48,10 @@
     :same-plane [(mapv + p (dir/offset spread-dir)) from-face]
     :wrap-around [(mapv + p (dir/offset spread-dir) (dir/offset from-face)) (dir/opposite spread-dir)]))
 
-(defn spread-toward [chunks p st from-face spread-dir]
+(defn spread-toward
+  "Returns the position and face that st at p spreads onto when it leaves from-
+   face toward spread-dir, or nil when it cannot."
+  [chunks p st from-face spread-dir]
   (when (and (not= (dir/axis spread-dir) (dir/axis from-face))
              (has-face? st from-face)
              (not (has-face? st spread-dir)))
@@ -63,11 +71,16 @@
   (first (keep #(spread-toward chunks p st from-face %)
                (shuffled (fn [salt] (roll [:dir from-face salt])) dir/six))))
 
-(defn spread-random [chunks p ^long st roll]
+(defn spread-random
+  "Returns the one change spreading st at p onto a new face, chosen with roll,
+   or nil when it has nowhere to go."
+  [chunks p ^long st roll]
   (let [self (block/block-of st)]
     (when-let [sp (first (keep #(when (has-face? st %) (from-face-random chunks p st % roll))
                                (shuffled (fn [salt] (roll [:face salt])) dir/six)))]
       [[(first sp) (placed-state chunks sp self)]])))
 
-(defn can-spread? [chunks p ^long st]
+(defn can-spread?
+  "Returns true when st at p has any face left to spread onto."
+  [chunks p ^long st]
   (boolean (some (fn [from] (some #(spread-toward chunks p st from %) dir/six)) dir/six)))

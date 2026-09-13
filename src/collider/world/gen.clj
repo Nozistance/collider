@@ -1,4 +1,6 @@
 (ns collider.world.gen
+  "The flat world: the chunk every loaded chunk starts from, and block reads
+   against it."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -22,8 +24,13 @@
 (def flat-chunk
   {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))})
 
-(defn at ^long [chunks [_ y _ :as p]]
+(defn at
+  "Returns the block state at p, air where no chunk is loaded and air outside
+   the world height."
+  ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) 0))
 
-(defn at-void ^long [chunks [_ y _ :as p]]
+(defn at-void
+  "Returns the block state at p, -1 outside the world height."
+  ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) -1))

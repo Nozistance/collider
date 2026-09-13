@@ -38,7 +38,7 @@
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
 (defn of
-  "Returns m as the record of its :type, with positions and velocities as V3."
+  "Returns m as an entity record."
   [m]
   (if (record? m)
     m
@@ -63,7 +63,7 @@
     1.19))
 
 (defn mob-moved
-  "Returns mob e with its movement fields replaced, in one allocation."
+  "Returns mob e moved to pos with vel."
   ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
   (Mob. pos vel on-ground yaw (.-pitch e) (.-head-yaw e) (.-walked e) wet? jump-cd
         (.-task e) (.-pending e) (.-look e) (.-wake-tick e) (.-say-tick e)
@@ -73,7 +73,7 @@
         (.-__meta e) (.-__extmap e)))
 
 (defn mob-looked
-  "Returns mob e with its look fields replaced, in one allocation."
+  "Returns mob e looking as given."
   ^Mob [^Mob e head-yaw pitch look]
   (Mob. (.-pos e) (.-vel e) (.-on-ground e) (.-yaw e) pitch head-yaw (.-walked e) (.-wet? e) (.-jump-cd e)
         (.-task e) (.-pending e) look (.-wake-tick e) (.-say-tick e)

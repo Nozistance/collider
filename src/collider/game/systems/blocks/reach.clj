@@ -1,4 +1,5 @@
 (ns collider.game.systems.blocks.reach
+  "Reach and the block a player looks at."
   (:require [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -10,14 +11,20 @@
 
 (def ^:const block-interaction-range 6.0)
 
-(defn eye-pos [e]
+(defn eye-pos
+  "Returns where a player's eyes are."
+  [e]
   (let [p (:pos e) crouch? (and (:sneaking? e) (not (:flying e)))]
     [(v/x p) (+ (v/y p) (if crouch? 1.27 1.62)) (v/z p)]))
 
-(defn axis-gap ^double [^double eye ^double lo]
+(defn axis-gap
+  "Returns how far an eye is from a block along one axis."
+  ^double [^double eye ^double lo]
   (max (- lo eye) (- eye (+ lo 1.0)) 0.0))
 
-(defn in-reach? [e pos]
+(defn in-reach?
+  "Returns true when a player can reach the block at pos."
+  [e pos]
   (let [[ex ey ez] (eye-pos e)
         dx (axis-gap ex (double (nth pos 0)))
         dy (axis-gap ey (double (nth pos 1)))
@@ -25,14 +32,19 @@
     (< (+ (* dx dx) (* dy dy) (* dz dz))
        (* block-interaction-range block-interaction-range))))
 
-(defn look-dir [e]
+(defn look-dir
+  "Returns the direction an entity looks in."
+  [e]
   (let [yaw (Math/toRadians (double (:yaw e)))
         pitch (Math/toRadians (double (:pitch e)))]
     [(- (* (Math/sin yaw) (Math/cos pitch)))
      (- (Math/sin pitch))
      (* (Math/cos yaw) (Math/cos pitch))]))
 
-(defn box-entry [[fx fy fz] [dx dy dz] [x0 y0 z0 x1 y1 z1]]
+(defn box-entry
+  "Returns how far along a ray a box is met and the face it is met by, or
+   nil when the ray misses it."
+  [[fx fy fz] [dx dy dz] [x0 y0 z0 x1 y1 z1]]
   (let [axis (fn [f d lo hi neg pos]
                (cond (pos? (double d)) [(/ (- (double lo) (double f)) (double d)) (/ (- (double hi) (double f)) (double d)) neg]
                      (neg? (double d)) [(/ (- (double hi) (double f)) (double d)) (/ (- (double lo) (double f)) (double d)) pos]
@@ -46,7 +58,9 @@
     (when (and (<= t-in t-out) (< 0.0 t-in 1.0) face)
       [t-in face])))
 
-(defn cell-boxes [world [x y z :as pos] fluids]
+(defn cell-boxes
+  "Returns the shapes a ray can meet in the block at pos."
+  [world [x y z :as pos] fluids]
   (let [st (edit/block-at world pos)
         abs (fn [[a b c d e f]] [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
                                  (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
@@ -88,7 +102,10 @@
   [(update cell axis + (axis-step (d axis)))
    (update t axis + (cross-delta (d axis)))])
 
-(defn clip [world e fluids]
+(defn clip
+  "Returns the block an entity is looking at and the face it sees, or nil
+   when it looks at nothing."
+  [world e fluids]
   (let [from (eye-pos e)
         d (mapv #(* 5.0 (double %)) (look-dir e))]
     (loop [cell (mapv #(long (Math/floor (double %))) from)

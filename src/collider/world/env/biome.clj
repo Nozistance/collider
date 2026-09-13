@@ -1,4 +1,5 @@
-(ns collider.world.env.biome)
+(ns collider.world.env.biome
+  "Biomes, and the temperature and precipitation they give a position.")
 
 (set! *warn-on-reflection* true)
 
@@ -12,7 +13,9 @@
    :downfall                0.4
    :increased-fire-burnout? false})
 
-(defn at [_chunks _p] plains)
+(defn at
+  "Returns the biome at block position p."
+  [_chunks _p] plains)
 
 (defn- temperature-noise ^double [^long _x ^long _z] 0.0)
 
@@ -25,20 +28,30 @@
         (double (float (- base (float (/ (float (* d (float 0.05))) (float 40.0)))))))
       (double base))))
 
-(defn temperature ^double [biome p]
+(defn temperature
+  "Returns the temperature of biome at block position p, colder high up."
+  ^double [biome p]
   (height-adjusted-temperature biome p))
 
-(defn warm-enough-to-rain? [biome p]
+(defn warm-enough-to-rain?
+  "Returns true when precipitation in biome at p falls as rain."
+  [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 
-(defn cold-enough-to-snow? [biome p]
+(defn cold-enough-to-snow?
+  "Returns true when precipitation in biome at p falls as snow."
+  [biome p]
   (not (warm-enough-to-rain? biome p)))
 
-(defn precipitation-at [biome p]
+(defn precipitation-at
+  "Returns :rain, :snow or :none for biome at block position p."
+  [biome p]
   (cond
     (not (:has-precipitation? biome)) :none
     (cold-enough-to-snow? biome p) :snow
     :else :rain))
 
-(defn increased-fire-burnout? [biome]
+(defn increased-fire-burnout?
+  "Returns true when fire goes out sooner in biome."
+  [biome]
   (boolean (:increased-fire-burnout? biome)))

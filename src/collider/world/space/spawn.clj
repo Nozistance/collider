@@ -1,4 +1,5 @@
 (ns collider.world.space.spawn
+  "Places to put a player: the world spawn and the room a body needs to stand."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]))
@@ -13,7 +14,9 @@
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
-(defn- state-at [chunks template x y z]
+(defn- state-at
+  "Returns the block state at x y z, air outside the world height."
+  [chunks template x y z]
   (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks template x y z) 0))
 
 (defn- air? [^long st] (contains? air-blocks (block/block-of st)))
@@ -42,7 +45,9 @@
                (if (and (= motion none) (motion-blocking? st)) y motion)
                (if (block/blocks-motion? st) y floor))))))
 
-(defn motion-blocking-height ^long [chunks template x z]
+(defn motion-blocking-height
+  "Returns the y just above the highest block or fluid of the column at x z."
+  ^long [chunks template x z]
   (let [[_ motion _] (column-heights chunks template x z)]
     (if (= (long motion) (long none)) (long chunk/min-y) (inc (long motion)))))
 
@@ -69,7 +74,10 @@
     [(- cx player-half) (double py) (- cz player-half)
      (+ cx player-half) (+ py player-height) (+ cz player-half)]))
 
-(defn- cell-edge ^long [^double v ^long d]
+(defn- cell-edge
+  "Returns the block a box edge at v falls in, reaching one further out
+   in the direction d."
+  ^long [^double v ^long d]
   (+ d (long (Math/floor (+ v (* d (double eps)))))))
 
 (defn- box-free? [chunks template px py pz]
@@ -112,7 +120,9 @@
                  (recur (dec y))))]
     (bottom-center [x (inc (long down)) z])))
 
-(defn- coprime ^long [^long n] (if (<= n 16) (dec n) 17))
+(defn- coprime
+  "Returns a stride that walks every one of n cells before repeating."
+  ^long [^long n] (if (<= n 16) (dec n) 17))
 
 (defn- scan-params [radius seed]
   (let [radius (max 0 (long radius))
@@ -120,7 +130,9 @@
         n (long (min (long max-attempts) (* (long side) (long side))))]
     [radius side n (coprime n) (long (Math/floor (* (double seed) n)))]))
 
-(defn- candidate-cell [[radius side n step offset] ^long ox ^long oz ^long i]
+(defn- candidate-cell
+  "Returns the ith cell a spawn scan around ox oz tries."
+  [[radius side n step offset] ^long ox ^long oz ^long i]
   (let [value (rem (+ (long offset) (* (long step) i)) (long n))]
     [(+ ox (rem value (long side)) (- (long radius)))
      (+ oz (quot value (long side)) (- (long radius)))]))
@@ -130,7 +142,11 @@
     (when (and pos (box-free? chunks template (nth pos 0) (nth pos 1) (nth pos 2)))
       (bottom-center pos))))
 
-(defn find-spawn [chunks template suggestion radius seed]
+(defn find-spawn
+  "Returns a standing position with room for a player, looking at the columns
+   within radius of suggestion in an order decided by seed. When no column is
+   free, returns a position above or below suggestion instead."
+  [chunks template suggestion radius seed]
   (let [[_ _ n :as params] (scan-params radius seed)
         ox (long (nth suggestion 0)) oz (long (nth suggestion 2))]
     (loop [i 0]

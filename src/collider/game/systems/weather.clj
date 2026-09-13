@@ -1,4 +1,5 @@
 (ns collider.game.systems.weather
+  "Rain and thunder."
   (:require [collider.game.out :as out]
             [collider.world.env.weather :as weather]))
 
@@ -29,6 +30,8 @@
                (out/thunder-level (weather/thunder-level world))]]
       (out/to eid msg))))
 
-(defn weather [world d]
+(defn weather
+  "Returns the deltas that advance the weather and tell players about it."
+  [world d]
   (let [w (merge world (weather/advance world))]
     (concat [[:advance-weather]] (level-messages w) (switch-messages w) (join-messages w (:input d)))))

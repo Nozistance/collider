@@ -15,6 +15,7 @@ import clojure.lang.Util;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
+/** A point or motion of three doubles, also a Clojure sequence. */
 public record V3(double x, double y, double z)
         implements Indexed, Counted, Sequential, Seqable, ILookup,
         IPersistentCollection, IHashEq, Iterable<Object> {

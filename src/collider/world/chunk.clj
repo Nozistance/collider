@@ -1,6 +1,5 @@
 (ns collider.world.chunk
-  "Chunk storage: sections of 4096 block states with light, and packed chunk
-   and block ids."
+  "Chunks: block states and light, and chunk and block ids."
   (:import (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -99,7 +98,7 @@
       0)))
 
 (defn block-pos->id
-  "Packs a block position into one long."
+  "Returns the id of a block position."
   (^long [[x y z]] (block-pos->id x y z))
   (^long [x y z]
    (let [x (long x) y (long y) z (long z)]
@@ -108,14 +107,14 @@
              (bit-and z 0x3FFFFFF)))))
 
 (defn id->block-pos
-  "Returns the block position of a packed id."
+  "Returns the block position of an id."
   [^long id]
   [(bit-shift-right id 38)
    (bit-shift-right (bit-shift-left id 26) 52)
    (bit-shift-right (bit-shift-left id 38) 38)])
 
 (defn pos->id
-  "Packs chunk coordinates into a chunk id."
+  "Returns the id of the chunk at cx cz."
   ^long [cx cz]
   (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
           (bit-and (long cz) 0xFFFFFFFF)))

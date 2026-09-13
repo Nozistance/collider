@@ -1,4 +1,5 @@
 (ns collider.game.systems.mobs
+  "Mobs: what they decide, where they walk, and the noise they make."
   (:require [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -19,12 +20,16 @@
 
 (def ^:private brains {:sheep sheep/brain})
 (def ^:private feeders {:sheep sheep/feed-deltas})
-(defn- think [world eid e t tempters]
+(defn- think
+  "Returns the mob after deciding what to do, and the deltas of that decision."
+  [world eid e t tempters]
   (if-let [b (brains (:type e))]
     (b world eid e t tempters)
     [e nil]))
 
-(defn- feed-deltas [world events t]
+(defn- feed-deltas
+  "Returns the deltas for players feeding mobs this tick."
+  [world events t]
   (into [] (mapcat (fn [f] (f world events t))) (vals feeders)))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
@@ -35,7 +40,9 @@
 (def ^:private ^:const water-friction 0.8)
 (def ^:private ^:const air-accel 0.02)
 (def ^:private ^:const repath-interval 10)
-(defn- steer-target [world e]
+(defn- steer-target
+  "Returns where a mob wants to get to and how close is close enough."
+  [world e]
   (case (get-in e [:task :kind])
     (:wander :panic) (let [[tx tz] (get-in e [:task :target])]
                        [(v/v3 (double tx) (v/y (:pos e)) (double tz)) 0.4])
@@ -47,13 +54,17 @@
              [(:pos p) 2.5])
     nil))
 
-(defn- task-speed-mult ^double [e]
+(defn- task-speed-mult
+  "Returns how much faster or slower a mob moves at what it is doing."
+  ^double [e]
   (case (get-in e [:task :kind])
     :panic 1.25
     (:tempt :follow) 1.1
     1.0))
 
-(defn- ensure-path [world e t goal avoid-water?]
+(defn- ensure-path
+  "Returns a mob with a usable route to the goal."
+  [world e t goal avoid-water?]
   (let [task (:task e)
         gc (sense/feet-cell goal)]
     (if (or (and (:path task) (= gc (:path-goal task)))
@@ -66,7 +77,9 @@
                        :path-goal gc
                        :repath-at (+ (long t) repath-interval))))))
 
-(defn- advance-path ^long [e]
+(defn- advance-path
+  "Returns how far along its route a mob has got."
+  ^long [e]
   (let [{:keys [path path-i]} (:task e)
         p (:pos e)]
     (loop [i (long (or path-i 0))]
@@ -76,7 +89,9 @@
           i)
         i))))
 
-(defn- smooth-index [world e half pth pi]
+(defn- smooth-index
+  "Returns the furthest point of a route a mob can head straight for."
+  [world e half pth pi]
   (let [pi (long pi)
         fy (long (Math/floor (double (nth (:pos e) 1))))]
     (loop [j (min (+ pi 3) (dec (count pth)))]
@@ -88,7 +103,10 @@
             j
             (recur (dec j))))))))
 
-(defn- navigate [world e t half water?]
+(defn- navigate
+  "Returns a mob with its route brought up to date, the step it is taking, and
+   where that step leads."
+  [world e t half water?]
   (if-let [[goal stop] (steer-target world e)]
     (if (<= (v/dist-sq (:pos e) goal) (* (double stop) (double stop)))
       [e nil nil]
@@ -103,7 +121,9 @@
             [e wp (when wp (v/v3 (+ (double (wp 0)) 0.5) 0.0 (+ (double (wp 2)) 0.5)))]))))
     [e nil nil]))
 
-(defn- in-water? [world p ^double height]
+(defn- in-water?
+  "Returns true when an entity of that height stands in water."
+  [world p ^double height]
   (let [y (v/y p)
         cx (long (Math/floor (v/x p)))
         cz (long (Math/floor (v/z p)))
@@ -114,19 +134,26 @@
         (= :water (liquid/liquid-class (sense/block-at world cx cy cz))) true
         :else (recur (inc cy))))))
 
-(defn- water-above? [world p]
+(defn- water-above?
+  "Returns true when there is water just above a position."
+  [world p]
   (= :water (liquid/liquid-class
               (sense/block-at world (long (Math/floor (v/x p)))
                               (long (Math/floor (+ (v/y p) 0.6)))
                               (long (Math/floor (v/z p)))))))
 
-(defn- heading [p tgt]
+(defn- heading
+  "Returns the direction from one point to another, or nothing when they are the
+   same."
+  [p tgt]
   (let [dx (- (v/x tgt) (v/x p))
         dz (- (v/z tgt) (v/z p))
         d (Math/sqrt (+ (* dx dx) (* dz dz)))]
     (when (> d 1.0E-4) [(/ dx d) (/ dz d)])))
 
-(defn- look-toward [e height o]
+(defn- look-toward
+  "Returns the angles a mob turns to look another entity in the eye."
+  [e height o]
   (let [[_ y _] (:pos e)
         [_ oy _] (:pos o)
         eye (+ (double y) (* 0.95 (double height)))
@@ -138,29 +165,39 @@
     [(v/yaw-toward (:pos e) (:pos o))
      (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))]))
 
-(defn- active-look [e ^long t]
+(defn- active-look
+  "Returns what a mob is still meant to be looking at, if anything."
+  [e ^long t]
   (let [look (:look e)]
     (when (and look (> (long (:until look 0)) t)) look)))
 
-(defn- look-angles [world e height look]
+(defn- look-angles
+  "Returns the angles a mob would like to be facing."
+  [world e height look]
   (let [target (when-let [oid (:target look)] (get-in world [:entities oid]))]
     (cond
       target (look-toward e height target)
       (and look (:yaw look)) [(:yaw look) 0.0]
       :else [(:yaw e) 0.0])))
 
-(defn- clamp-head ^double [^double hy ^double body moving?]
+(defn- clamp-head
+  "Returns a head angle kept within what a walking mob's neck allows."
+  ^double [^double hy ^double body moving?]
   (let [d (v/wrap-deg (- hy body))]
     (v/wrap-deg (cond (and moving? (> d 75.0)) (+ body 75.0)
                       (and moving? (< d -75.0)) (- body 75.0)
                       :else hy))))
 
-(defn- head-same? [e look ^double hy ^double hp]
+(defn- head-same?
+  "Returns true when a mob's head has not moved."
+  [e look ^double hy ^double hp]
   (and (identical? look (:look e))
        (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
        (let [op (:pitch e)] (and op (== (double op) hp)))))
 
-(defn- head-update [world e height t moving?]
+(defn- head-update
+  "Returns a mob with its head turned a little further toward what it looks at."
+  [world e height t moving?]
   (let [look (active-look e (long t))
         [dyaw dpitch] (look-angles world e height look)
         hy (v/limit-angle (double (or (:head-yaw e) (:yaw e))) (double dyaw) 10.0)
@@ -173,10 +210,14 @@
 (def ^:private rest-vel (v/v3 0.0 (* 0.98 (- 0.0 0.08)) 0.0))
 (declare physics-move)
 
-(defn- dead-band ^double [^double a]
+(defn- dead-band
+  "Returns a speed, or zero when it is too small to matter."
+  ^double [^double a]
   (if (< (Math/abs a) 0.005) 0.0 a))
 
-(defn- at-rest? [world e half moving? water? [vx0 vy0 vz0] [cx cz]]
+(defn- at-rest?
+  "Returns true when a mob is standing still and nothing is about to move it."
+  [world e half moving? water? [vx0 vy0 vz0] [cx cz]]
   (let [pos (:pos e)]
     (and (not moving?) (boolean (:on-ground e)) (not water?)
          (< (^[double] Math/abs (+ (double vx0) (double cx))) 0.005)
@@ -185,12 +226,16 @@
          (phys/standing-on-cubes? (:chunks world) gen/flat-chunk
                                   (v/x pos) (v/y pos) (v/z pos) half))))
 
-(defn- rest-step [world e height t]
+(defn- rest-step
+  "Returns the mob after a tick without moving."
+  [world e height t]
   (head-update world
                (entity/mob-moved e (:pos e) rest-vel true (:yaw e) false (:jump-cd e))
                height t false))
 
-(defn- physics [world index eid e half height attr]
+(defn- physics
+  "Returns a mob after it has moved this tick."
+  [world index eid e half height attr]
   (let [t (long (:tick world))
         water? (in-water? world (:pos e) height)
         [e wp target] (navigate world e t half water?)
@@ -202,21 +247,32 @@
       (rest-step world e height t)
       (physics-move world eid e water? wp target vel push half height attr))))
 
-(defn- water-push [world e half height water?]
+(defn- water-push
+  "Returns the shove flowing water gives a mob."
+  [world e half height water?]
   (if water?
     (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
     zero3))
 
-(defn- steer-axis ^double [^double v0 h ^double accel]
+(defn- steer-axis
+  "Returns a speed with a mob's own push along one axis added."
+  ^double [^double v0 h ^double accel]
   (+ v0 (if h (* (double h) accel) 0.0)))
 
-(defn- drop-axis ^double [drop? ^double a]
+(defn- drop-axis
+  "Returns a speed, or zero once a mob that stopped steering has nearly halted."
+  ^double [drop? ^double a]
   (if (and drop? (< (Math/abs a) 0.005)) 0.0 a))
 
-(defn- swim-bob ^double [^long t ^long eid]
+(defn- swim-bob
+  "Returns the little lift a swimming mob sometimes gets."
+  ^double [^long t ^long eid]
   (if (< (random/of-longs t eid (hash :swim)) 0.8) 0.04 0.0))
 
-(defn- steer-vel [world e t eid water? [hx hz] [vx0 vy0 vz0] [cx cz] half height attr moving?]
+(defn- steer-vel
+  "Returns the speed a mob sets off with, its own effort and every shove
+   included."
+  [world e t eid water? [hx hz] [vx0 vy0 vz0] [cx cz] half height attr moving?]
   (let [aispeed (* (double attr) (task-speed-mult e))
         og (boolean (:on-ground e))
         accel (if (and og (not water?)) (* aispeed aispeed) (* air-accel aispeed))
@@ -230,40 +286,56 @@
             (double vy0))
           (drop-axis drop? az))))
 
-(defn- bumped? [moving? vx vz nx nz]
+(defn- bumped?
+  "Returns true when a mob ran into something."
+  [moving? vx vz nx nz]
   (and moving? (or (and (not (zero? (double vx))) (zero? (double nx)))
                    (and (not (zero? (double vz))) (zero? (double nz))))))
 
-(defn- climbing? [e wp target ey moving?]
+(defn- climbing?
+  "Returns true when a mob's next step is up onto a higher block."
+  [e wp target ey moving?]
   (and moving? wp
        (> (long (wp 1)) (long (Math/floor (double ey))))
        (< (v/dist-sq (:pos e) target) 1.0)))
 
-(defn- next-vy [world e ny water? bump? jump?]
+(defn- next-vy
+  "Returns a mob's upward speed after gravity, swimming or a jump."
+  [world e ny water? bump? jump?]
   (let [ny (double ny)]
     (cond (and bump? water? (water-above? world (:pos e))) 0.3
           jump? jump-speed
           water? (- (* water-friction ny) 0.02)
           :else (* 0.98 (- ny gravity)))))
 
-(defn- next-yaw [e target moving?]
+(defn- next-yaw
+  "Returns the way a mob faces after turning toward where it is going."
+  [e target moving?]
   (if moving?
     (v/wrap-deg (v/limit-angle (double (:yaw e)) (v/yaw-toward (:pos e) target) 30.0))
     (:yaw e)))
 
-(defn- friction ^double [og water?]
+(defn- friction
+  "Returns how much speed a mob keeps from one tick to the next."
+  ^double [og water?]
   (cond water? water-friction og ground-friction :else air-friction))
 
-(defn- jump-now? [world e wp target ey moving? ^Move mv t]
+(defn- jump-now?
+  "Returns true when a mob jumps this tick."
+  [world e wp target ey moving? ^Move mv t]
   (and (.on-ground mv)
        (climbing? e wp target ey moving?)
        (>= (long t) (long (or (:jump-cd e) 0)))))
 
-(defn- bubbled-vy [world e ^Move mv water? bump? jump?]
+(defn- bubbled-vy
+  "Returns a mob's upward speed with bubble columns taken into account."
+  [world e ^Move mv water? bump? jump?]
   (liquid/bubble-push (:chunks world) gen/flat-chunk (.pos mv)
                       (next-vy world e (v/y (.vel mv)) water? bump? jump?)))
 
-(defn- mob-stepped [e ^Move mv ny fric target moving? water? jump? t]
+(defn- mob-stepped
+  "Returns a mob standing where its move left it."
+  [e ^Move mv ny fric target moving? water? jump? t]
   (let [vel (.vel mv)]
     (entity/mob-moved e (.pos mv)
                       (v/v3 (* (double (v/x vel)) (double fric)) (double ny)
@@ -271,7 +343,9 @@
                       (.on-ground mv) (next-yaw e target moving?) water?
                       (if jump? (+ (long t) 10) (:jump-cd e)))))
 
-(defn- physics-move [world eid e water? wp target vel0 push half height attr]
+(defn- physics-move
+  "Returns a mob that walked, swam or fell this tick."
+  [world eid e water? wp target vel0 push half height attr]
   (let [t (long (:tick world))
         ey (v/y (:pos e))
         moving? (some? target)
@@ -288,24 +362,35 @@
 
 (def ^:private ^:const say-rest 120)
 (def ^:private ^:const say-mean 40)
-(defn- sound-pitch ^double [e ^long t ^long eid]
+(defn- sound-pitch
+  "Returns the pitch of a mob's voice."
+  ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
     (+ base (* 0.2 (- (random/of-longs t eid (hash :p1))
                       (random/of-longs t eid (hash :p2)))))))
 
-(defn- wide-pitch ^double [^long t ^long eid kind]
+(defn- wide-pitch
+  "Returns the pitch of one of a mob's rougher noises."
+  ^double [^long t ^long eid kind]
   (+ 1.0 (* 0.4 (- (random/of-longs t eid (hash kind) (hash :w1))
                    (random/of-longs t eid (hash kind) (hash :w2))))))
 
-(defn- water-vol ^double [vel3 k]
+(defn- water-vol
+  "Returns how loud a mob's splashing is at that speed."
+  ^double [vel3 k]
   (let [vx (v/x vel3) vy (v/y vel3) vz (v/z vel3)]
     (min 1.0 (* (Math/sqrt (+ (* vx vx 0.2) (* vy vy) (* vz vz 0.2)))
                 (double k)))))
 
-(defn- next-say ^long [^long t ^long eid]
+(defn- next-say
+  "Returns the tick a mob will next speak up."
+  ^long [^long t ^long eid]
   (+ t say-rest (mobs/exp-delay say-mean t eid :say)))
 
-(defn- ambient [eid e t]
+(defn- ambient
+  "Returns a mob with its next idle noise scheduled, and the noise it makes
+   now."
+  [eid e t]
   (let [t (long t) eid (long eid) st (:say-tick e)]
     (if (and st (< t (long st)))
       [e nil]
@@ -316,7 +401,9 @@
            [(out/all (out/sound say (:pos e) 1.0 (sound-pitch e t eid)))]])
         [e nil]))))
 
-(defn- step-sound-delta [e t eid]
+(defn- step-sound-delta
+  "Returns the delta for one footfall or swimming stroke."
+  [e t eid]
   (if (:wet? e)
     (out/all (out/sound :swim (:pos e)
                         (water-vol (:vel e) 0.35)
@@ -325,7 +412,9 @@
       (when-let [snd (mobs/step-sound (:type e))]
         (out/all (out/sound snd (:pos e) 0.15 1.0))))))
 
-(defn- movement-sounds [acc e was-wet? old-walked new-walked t eid]
+(defn- movement-sounds
+  "Returns the running deltas with a mob's splashes and footsteps added."
+  [acc e was-wet? old-walked new-walked t eid]
   (let [acc (if (and (:wet? e) (not was-wet?))
               (conj acc (out/all (out/sound :splash (:pos e)
                                             (water-vol (:vel e) 0.2)
@@ -336,7 +425,9 @@
       (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
       acc)))
 
-(defn- dist3 ^double [[x1 y1 z1] [x2 y2 z2]]
+(defn- dist3
+  "Returns the distance between two positions."
+  ^double [[x1 y1 z1] [x2 y2 z2]]
   (let [dx (- (double x2) (double x1))
         dy (- (double y2) (double y1))
         dz (- (double z2) (double z1))]
@@ -358,29 +449,41 @@
                               `(assoc ~k (~f ~n))]))
                          ks)))))
 
-(defn- mob-changes [old new]
+(defn- mob-changes
+  "Returns what changed about a mob this tick."
+  [old new]
   (diff-fields old new
                :pos :vel :yaw :pitch :on-ground :task :pending :wake-tick
                :baby-until :tempt-cooldown-until :say-tick :walked :head-yaw
                :look :jump-cd :wet?))
 
-(defn- age-up [e t]
+(defn- age-up
+  "Returns a mob grown up if its childhood is over."
+  [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
     (assoc e :baby-until nil)
     e))
 
-(defn- brain-step [world eid e t tempters dead?]
+(defn- brain-step
+  "Returns a mob after thinking and ageing, and the deltas and noises that came
+   of it."
+  [world eid e t tempters dead?]
   (let [[e1 deltas] (if dead? [e nil] (think world eid e t tempters))
         e1 (age-up e1 t)
         [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))]
     [e1 deltas say-deltas]))
 
-(defn- walked-step [e prev now]
+(defn- walked-step
+  "Returns a mob with the ground it covered added up, and that total before and
+   after."
+  [e prev now]
   (let [walked (double (or (:walked e) 0.0))
         walked' (+ walked (* 0.6 (dist3 (:pos prev) (:pos now))))]
     [(if (== walked walked') now (assoc now :walked walked')) walked walked']))
 
-(defn- step-mob [world index tempters eid e t]
+(defn- step-mob
+  "Returns the deltas for one mob this tick."
+  [world index tempters eid e t]
   (let [{:keys [half height speed]} (mobs/types (:type e))
         dead? (not (pos? (double (:health e))))
         [e1 deltas say-deltas] (brain-step world eid e t tempters dead?)
@@ -393,7 +496,9 @@
                 say-deltas (into say-deltas))
         (movement-sounds e2 was-wet? walked walked' t eid))))
 
-(defn mobs-system [world d]
+(defn mobs-system
+  "Returns the deltas for the mobs living this tick."
+  [world d]
   (let [events (:input d)
         t (long (:tick world))
         active (state/active-chunks world)

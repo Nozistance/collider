@@ -1,4 +1,5 @@
 (ns collider.game.systems.blocks.place
+  "Placing blocks."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.block.sign :as sign]
@@ -18,6 +19,7 @@
 (set! *warn-on-reflection* true)
 
 (defn replaceable-state?
+  "Returns true when the block state can be replaced by placing."
   ([cur] (replaceable-state? cur nil))
   ([^long cur item]
    (cond
@@ -30,6 +32,7 @@
      :else (block/can-be-replaced? cur))))
 
 (defn replaceable?
+  "Returns true when the block at pos can be replaced by placing."
   ([world pos] (replaceable-state? (edit/block-at world pos) nil))
   ([world pos item] (replaceable-state? (edit/block-at world pos) item)))
 
@@ -76,7 +79,10 @@
                                                  (edit/held-stack world eid))]]
           (when (sign/kind state) [(out/to eid (out/sign-editor pos true))])))
 
-(defn- second-cell-deltas [world eid pos pos' state ppos pstate ok?]
+(defn- second-cell-deltas
+  "Returns the deltas for a block that needs a second cell, or takes back
+   the placement when that cell is not free."
+  [world eid pos pos' state ppos pstate ok?]
   (if (and (chunk/in-range? (ppos 1)) (ok?) (not (edit/obstructed? world ppos pstate)))
     (edit/placed-deltas world eid [[pos' state] [ppos pstate]])
     (edit/reject-deltas world eid pos pos')))
@@ -123,7 +129,9 @@
               (block/can-be-replaced? st) p
               :else nil)))))))
 
-(defn scaffold-place-deltas [world eid pos face]
+(defn scaffold-place-deltas
+  "Returns the deltas for placing scaffolding on scaffolding."
+  [world eid pos face]
   (if-let [target (scaffold-target world eid pos face)]
     (let [st (support/scaffold-state (:chunks world) gen/flat-chunk target (block/state :scaffolding))]
       (if (not (edit/obstructed? world target st))
@@ -171,7 +179,9 @@
       (be/kind state) (block-entity-place-deltas world eid pos' state)
       :else (edit/placed-deltas world eid pos' state))))
 
-(defn solid-place-deltas [world [eid pos face item cursor]]
+(defn solid-place-deltas
+  "Returns the deltas for a player placing a block, or for refusing it."
+  [world [eid pos face item cursor]]
   (when-let [off (dir/face-offset face)]
     (let [cur (edit/block-at world pos)]
       (when-let [state (block/placement item face (get-in world [:entities eid :yaw] 0.0) (nth cursor 1)

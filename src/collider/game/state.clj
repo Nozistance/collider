@@ -37,7 +37,9 @@
 (def ^:private ^:const fold-leaf 64)
 (def spawn-pos [24.5 4.0 8.5])
 (def activation-radius 2)
-(defn pos-chunk ^long [pos]
+(defn pos-chunk
+  "Returns the id of the chunk a position stands in."
+  ^long [pos]
   (chunk/pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
                  (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
@@ -60,7 +62,7 @@
       (compute-active-chunks world))))
 
 (defn cache-active-chunks
-  "Returns world with its active chunk set memoized for the current entities."
+  "Returns world with its active chunks computed."
   [world]
   (let [cached (:active-chunks world)]
     (if (and cached (identical? (key cached) (:entities world)))
@@ -91,7 +93,9 @@
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def initial-world schema/initial-world)
-(defn- update-entity [w eid f & args]
+(defn- update-entity
+  "Returns w with f applied to entity eid, or w when there is no such entity."
+  [w eid f & args]
   (if (get-in w [:entities eid])
     (clojure.core/apply update-in w [:entities eid] f args)
     w))
@@ -104,12 +108,18 @@
     (chunk/chunks-get-block chunks gen/flat-chunk p)
     0))
 
-(defn- wake-tick [chunks tick p old self?]
+(defn- wake-tick
+  "Returns the tick at which the block at p should act on a neighbour
+   changing, or nil when it does not care."
+  [chunks tick p old self?]
   (let [st (block-or-zero chunks p)]
     (when-not (zero? st)
       (rules/wake-tick chunks st tick p old self?))))
 
-(defn- schedule-updates [bt tick floor chunks changed]
+(defn- schedule-updates
+  "Returns the scheduled block ticks with the neighbours of every changed
+   block woken."
+  [bt tick floor chunks changed]
   (reduce
     (fn [bt [[x y z] old _]]
       (reduce
@@ -132,14 +142,20 @@
               w))
           w real))
 
-(defn- real-changes [chunks changes]
+(defn- real-changes
+  "Returns the changes that actually change something, each with the state
+   it replaces."
+  [chunks changes]
   (into []
         (keep (fn [[pos st]]
                 (let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
                   (when (not= old (long st)) [pos old st]))))
         changes))
 
-(defn- with-derived [chunks tick real]
+(defn- with-derived
+  "Returns the world blocks after the changes, relit, and everything that
+   changed with them."
+  [chunks tick real]
   (let [chunks' (-> chunks
                     (chunk/chunks-set-blocks gen/flat-chunk (mapv (fn [[pos _ st]] [pos st]) real))
                     (light/relight-batch gen/flat-chunk real))
@@ -154,7 +170,10 @@
   (reduce (fn [ev [pos st]] (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
           (or ev (i/int-map)) events))
 
-(defn- apply-set-blocks [w changes ^long base]
+(defn- apply-set-blocks
+  "Returns w with blocks changed, along with the light, block ticks and
+   block entities that follow."
+  [w changes ^long base]
   (let [real (real-changes (:chunks w) changes)]
     (if (empty? real)
       w
@@ -225,7 +244,10 @@
 (defn- wrap-degrees ^double [^double d]
   (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
 
-(defn- snapped [e rot]
+(defn- snapped
+  "Returns e turned to rot, as the client says it looked when it used an
+   item."
+  [e rot]
   (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
@@ -360,7 +382,10 @@
   [world delta]
   ((get input-apply (nth delta 0) unchanged) world delta))
 
-(defn- applied-input [world input]
+(defn- applied-input
+  "Returns world with a tick's input events applied, remembering the pose
+   each use started from."
+  [world input]
   (loop [w world i 0 origins {}]
     (if-let [d (nth input i nil)]
       (recur (apply-event w d) (inc i)
@@ -370,7 +395,9 @@
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
 
-(defn- listed [w add drop]
+(defn- listed
+  "Returns w with names added to and dropped from the player list."
+  [w add drop]
   (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
 
 (defn- flush-ticks [w t parked]
@@ -485,7 +512,9 @@
         (update-entity w (nth delta 1) (fn [e] (g (:tick w) e delta)))
         w))))
 
-(defn- folded-entities [w entities pairs]
+(defn- folded-entities
+  "Returns the entities that changed, each with its deltas applied."
+  [w entities pairs]
   (r/fold fold-leaf (r/monoid i/merge i/int-map)
           (fn [m [eid ds]]
             (if-let [e (get entities eid)]
@@ -494,8 +523,7 @@
           pairs))
 
 (defn apply
-  "Returns the world with deltas applied: world deltas, then input, then entity
-   deltas in parallel, then removals."
+  "Returns the world with deltas applied."
   [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
         [w removes] (reduce (fn [[w removes] delta]

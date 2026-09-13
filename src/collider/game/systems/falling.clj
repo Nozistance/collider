@@ -1,4 +1,5 @@
 (ns collider.game.systems.falling
+  "Sand, gravel and anvils falling, and what they leave where they land."
   (:require [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -16,13 +17,19 @@
 (def ^:private ^:const half 0.49)
 (def ^:private ^:const height 0.98)
 (def ^:private ^:const max-time 600)
-(defn- block-at ^long [world [_ y _ :as pos]]
+(defn- block-at
+  "Returns the block at a position, or nothing outside the world height."
+  ^long [world [_ y _ :as pos]]
   (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos) 0))
 
-(defn- cell-of [pos]
+(defn- cell-of
+  "Returns the block a position stands in."
+  [pos]
   [(long (Math/floor (v/x pos))) (long (Math/floor (v/y pos))) (long (Math/floor (v/z pos)))])
 
-(defn- item-deltas [world eid e]
+(defn- item-deltas
+  "Returns the deltas that drop a falling block as an item."
+  [world eid e]
   (when (get-in world [:rules :entity-drops] true)
     (let [t (:tick world)]
       [[:spawn-entity (entity/item (:pos e) (entity/pop-velocity [t eid])
@@ -31,7 +38,10 @@
 (defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
 (defn- anvil? [^long st] (= :anvil (block/type-of st)))
 
-(defn- landed-state [world cell st cur concrete? stuck?]
+(defn- landed-state
+  "Returns the block a falling block turns into where it lands, or nothing when
+   it shatters."
+  [world cell st cur concrete? stuck?]
   (let [continues? (and (support/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
                (support/supported? (:chunks world) gen/flat-chunk cell st))
@@ -62,7 +72,9 @@
     (or (block/waterlogged? st)
         (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
 
-(defn- next-cell [from d cell]
+(defn- next-cell
+  "Returns the next block a straight line enters."
+  [from d cell]
   (let [ts (for [i (range 3)
                  :let [di (double (nth d i)) ci (long (nth cell i))]
                  :when (not (zero? di))
@@ -73,7 +85,9 @@
       (update cell axis (fn [v] (+ (long v) (if (pos? (double (nth d axis))) 1 -1))))
       cell)))
 
-(defn- clip-cell [world from to]
+(defn- clip-cell
+  "Returns the first block on the way that stops a falling block, if any."
+  [world from to]
   (let [d (mapv - to from) end (cell-of to)]
     (loop [cell (cell-of from) n 0]
       (cond
@@ -81,12 +95,16 @@
         (or (= cell end) (> n 64)) nil
         :else (recur (next-cell from d cell) (inc n))))))
 
-(defn- clipped-cell [world e pos [mx my mz]]
+(defn- clipped-cell
+  "Returns the water a fast falling block would pass straight through."
+  [world e pos [mx my mz]]
   (when (> (+ (* (double mx) (double mx)) (* (double my) (double my)) (* (double mz) (double mz))) 1.0)
     (when-let [hit (clip-cell world (:pos e) pos)]
       (when (= :water (liquid/liquid-class (block-at world hit))) hit))))
 
-(defn- landing [world e pos vel]
+(defn- landing
+  "Returns where a falling block comes to rest and what it finds there."
+  [world e pos vel]
   (let [concrete? (= :concrete-powder (block/type-of (:block e)))
         clipped (when concrete? (clipped-cell world e pos vel))
         cell (or clipped (cell-of pos))
@@ -94,16 +112,22 @@
     [cell cur concrete?
      (and concrete? (or (some? clipped) (= :water (liquid/liquid-class cur))))]))
 
-(defn- fall-move ^Move [world e]
+(defn- fall-move
+  "Returns the move a falling block makes this tick."
+  ^Move [world e]
   (let [[vx vy vz] (:vel e)]
     (phys/move (:chunks world) gen/flat-chunk (:pos e)
                [(double vx) (- (double vy) 0.04) (double vz)] half height)))
 
-(defn- drift-deltas [eid pos ^long time [mx my mz]]
+(defn- drift-deltas
+  "Returns the deltas for a falling block still on its way down."
+  [eid pos ^long time [mx my mz]]
   [[:merge-entity eid {:pos pos :on-ground false :time time
                        :vel [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)]}]])
 
-(defn- step-deltas [world eid e]
+(defn- step-deltas
+  "Returns the deltas for one falling block this tick."
+  [world eid e]
   (let [^Move mv (fall-move world e)
         pos (.pos mv)
         time (inc (long (:time e)))
@@ -115,7 +139,9 @@
       (cons [:remove-entity eid] (item-deltas world eid (assoc e :pos pos)))
       :else (drift-deltas eid pos time (.vel mv)))))
 
-(defn first-step [world _d]
+(defn first-step
+  "Returns the deltas for blocks that started falling this tick."
+  [world _d]
   (let [active (state/active-chunks world)]
     (into []
           (comp (filter (fn [[_ e]] (and (= :falling-block (:type e))
@@ -124,7 +150,9 @@
                 (mapcat (fn [[eid e]] (step-deltas world eid e))))
           (sort-by key (:entities world)))))
 
-(defn falling-blocks [world _d]
+(defn falling-blocks
+  "Returns the deltas for the blocks falling this tick."
+  [world _d]
   (let [active (state/active-chunks world)]
     (into []
           (comp (filter (fn [[_ e]] (and (= :falling-block (:type e)) (state/active-at? active (:pos e)))))

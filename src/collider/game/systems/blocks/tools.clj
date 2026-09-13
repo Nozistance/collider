@@ -1,4 +1,5 @@
 (ns collider.game.systems.blocks.tools
+  "Using tools and other items on blocks."
   (:require [collider.data :as data]
             [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
@@ -19,7 +20,9 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tool-set [tag] (set (data/tag-values "item" tag)))
+(defn- tool-set
+  "Returns the items of a tag."
+  [tag] (set (data/tag-values "item" tag)))
 (def axes (tool-set "axes"))
 (def hoes (tool-set "hoes"))
 (def shovels (tool-set "shovels"))
@@ -39,7 +42,10 @@
       [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
        (out/except eid (out/sound :fire/ignite pos' 1.0 (random/pitch (:tick world) pos' :flint)))])))
 
-(defn flint-deltas [world [eid pos face]]
+(defn flint-deltas
+  "Returns the deltas for flint and steel used at pos: a flame, a lit
+   candle, or primed TNT."
+  [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
     (cond
       (candle-lit world pos)
@@ -54,7 +60,9 @@
                (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
       :else (fire-deltas world eid pos off))))
 
-(defn bonemeal-deltas [world [_eid pos _ _ _]]
+(defn bonemeal-deltas
+  "Returns the deltas for bone meal used on the block at pos."
+  [world [_eid pos _ _ _]]
   (let [st (edit/block-at world pos)]
     (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key (:tick world) pos :meal salt)))]
       (concat
@@ -62,7 +70,9 @@
         (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
         [(out/all (out/bonemeal pos))]))))
 
-(defn till-deltas [world [_eid pos _ _ _]]
+(defn till-deltas
+  "Returns the deltas for a hoe tilling the block at pos."
+  [world [_eid pos _ _ _]]
   (let [cur (edit/block-at world pos)]
     (when-let [[to freed] (grow/tilled (block/block-of cur))]
       (when (zero? (edit/block-at world (mapv + pos [0 1 0])))
@@ -71,7 +81,9 @@
           (when freed [[:spawn-entity (items/popped world pos {:item freed :count 1} :till)]])
           [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
 
-(defn flatten-deltas [world [_eid pos face _ _]]
+(defn flatten-deltas
+  "Returns the deltas for a shovel making a path of the block at pos."
+  [world [_eid pos face _ _]]
   (let [cur (edit/block-at world pos)]
     (when (and (not= 0 (long face))
                (contains? grow/flattened (block/block-of cur))
@@ -80,19 +92,27 @@
         (edit/change-deltas world [[pos (block/state :dirt-path)]])
         [(out/all (out/sound :shovel/flatten pos 1.0 1.0))]))))
 
-(defn- half-changes [world pos ^long st]
+(defn- half-changes
+  "Returns the changes putting st at pos, and the same change to the
+   other half of a door."
+  [world pos ^long st]
   (let [cur (edit/block-at world pos)]
     (if-let [[ppos pst] (when (contains? block/door-types (block/type-of cur))
                           (connect/partner (:chunks world) pos cur))]
       [[pos st] [ppos (block/state (block/block-of st) (block/props-of pst))]]
       [[pos st]])))
 
-(defn wax-deltas [world [_ pos _ _ _]]
+(defn wax-deltas
+  "Returns the deltas for a honeycomb waxing the block at pos."
+  [world [_ pos _ _ _]]
   (when-let [st (block/waxed (edit/block-at world pos))]
     (concat (edit/change-deltas world (half-changes world pos st))
             [(out/all (out/sound :honeycomb/wax-on pos 1.0 1.0)) (out/all (out/level-event out/particles-and-sound-wax-on pos))])))
 
-(defn axe-deltas [world [_ pos _ _ _]]
+(defn axe-deltas
+  "Returns the deltas for an axe stripping, scraping or unwaxing the block
+   at pos."
+  [world [_ pos _ _ _]]
   (let [cur (edit/block-at world pos)]
     (if-let [st (block/stripped cur)]
       (concat (edit/change-deltas world [[pos st]]) [(out/all (out/sound :axe/strip pos 1.0 1.0))])
@@ -105,10 +125,14 @@
 
 (def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
 
-(defn armor-slot-of [item]
+(defn armor-slot-of
+  "Returns the slot an item is worn in, or nil when it is not worn."
+  [item]
   (armor-slot (data/equip-slot item)))
 
-(defn equip-armor-deltas [world eid item slot]
+(defn equip-armor-deltas
+  "Returns the deltas for a player putting on the armor they hold."
+  [world eid item slot]
   (let [e (get-in world [:entities eid])]
     (when (and e (nil? (get-in e [:inventory slot])))
       (let [held (+ 36 (long (or (:held-slot e) 0)))
@@ -117,7 +141,9 @@
         [[:set-slot eid slot stack]
          [:set-slot eid held nil]]))))
 
-(defn spawn-egg-deltas [world [_ pos face item]]
+(defn spawn-egg-deltas
+  "Returns the deltas for a spawn egg used at pos."
+  [world [_ pos face item]]
   (when-let [off (dir/face-offset face)]
     (when-let [mob (mobs/egg-type item)]
       (let [[x y z] (mapv + pos off)
@@ -129,7 +155,9 @@
                 (when-let [say (mobs/say-sound mob)]
                   [(out/all (out/sound say at 1.0 pitch))])))))))
 
-(defn carve-deltas [world eid pos face]
+(defn carve-deltas
+  "Returns the deltas for shears carving a face into a pumpkin."
+  [world eid pos face]
   (let [dir (if (<= (long face) 1)
               (dir/opposite (dir/player-direction (get-in world [:entities eid :yaw] 0.0)))
               (get {2 :north 3 :south 4 :west 5 :east} face))
@@ -145,7 +173,9 @@
 
 (def ^:private mud-blocks (set (get-in data/tags ["block" "convertable_to_mud"])))
 
-(defn mud-deltas [world eid pos face]
+(defn mud-deltas
+  "Returns the deltas for a water bottle turning the block at pos to mud."
+  [world eid pos face]
   (when (and (not= 0 (long face))
              (contains? mud-blocks (block/block-of (edit/block-at world pos)))
              (cauldron/water-bottle? (edit/held-stack world eid)))

@@ -1,4 +1,5 @@
 (ns collider.data
+  "The game data tables."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])
   (:import (java.io PushbackReader)
@@ -21,47 +22,72 @@
 (def drops (load-edn "drops.edn"))
 (def recipes (load-edn "recipes.edn"))
 (def sounds (load-edn "sounds.edn"))
-(defn max-stack ^long [item]
+(defn max-stack
+  "Returns how many of item fit in one stack."
+  ^long [item]
   (long (get-in items [item :max-stack] 64)))
 
-(defn jukebox-song [item]
+(defn jukebox-song
+  "Returns the song a music disc plays, or nil when item is not one."
+  [item]
   (get-in items [item :jukebox-song]))
 
-(defn equip-slot [item]
+(defn equip-slot
+  "Returns the slot item is worn in, or nil when it is not worn."
+  [item]
   (get-in items [item :equip]))
 
 (defn dye-color
+  "Returns the color item dyes with, or nil when it is not a dye."
   [item]
   (get-in items [item :dye]))
 
 (defn pattern-tag
+  "Returns the banner patterns item can apply, or nil when it applies none."
   [item]
   (get-in items [item :patterns]))
 
-(defn compost [item]
+(defn compost
+  "Returns the chance item raises a composter, or nil when it does not."
+  [item]
   (get-in items [item :compost]))
 
-(defn tag-values [registry tag]
+(defn tag-values
+  "Returns the entries of a tag of a registry, empty when there is no such
+   tag."
+  [registry tag]
   (get-in tags [registry tag] []))
 
-(defn snake ^String [k]
+(defn snake
+  "Returns the name of keyword k with dashes turned into underscores."
+  ^String [k]
   (.replace (name k) \- \_))
 
-(defn wire ^String [k]
+(defn wire
+  "Returns the wire name of keyword k."
+  ^String [k]
   (str (or (namespace k) "minecraft") ":" (snake k)))
 
-(defn kebab [^String s]
+(defn kebab
+  "Returns the keyword for a name as it comes off the wire."
+  [^String s]
   (let [s (.toLowerCase s)
         i (.indexOf s ":")
         ns (if (neg? i) "minecraft" (subs s 0 i))
         nm (.replace (if (neg? i) s (subs s (inc i))) \_ \-)]
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
-(defn packet-id ^long [state dir name]
+(defn packet-id
+  "Returns the id of a packet of a connection state and direction. Throws when
+   there is no such packet."
+  ^long [state dir name]
   (or (get-in packets [state dir name])
       (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))
 
-(defn registry-id ^long [registry entry]
+(defn registry-id
+  "Returns the id of an entry of a registry. Throws when there is no such
+   entry."
+  ^long [registry entry]
   (or (get-in registries [registry entry])
       (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
 
@@ -71,11 +97,16 @@
                [registry (into {} (map-indexed (fn [i e] [e (long i)])) entries)]))
         datapack))
 
-(defn datapack-id ^long [registry entry]
+(defn datapack-id
+  "Returns the id of an entry the server sends to the client rather than one
+   the client knows. Throws when there is no such entry."
+  ^long [registry entry]
   (or (get (get datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
 
-(defn entry-id ^long [registry entry]
+(defn entry-id
+  "Returns the id of an entry, from whichever kind of registry holds it."
+  ^long [registry entry]
   (if (contains? registries registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
@@ -86,7 +117,10 @@
                [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
         registries))
 
-(defn entry-name [registry ^long id]
+(defn entry-name
+  "Returns the entry of a registry with the given id. Throws when there is no
+   such entry."
+  [registry ^long id]
   (if-let [m (get by-id registry)]
     (or (get m id)
         (throw (ex-info "unknown registry id" {:registry registry :id id})))
@@ -120,7 +154,10 @@
       (aset a (+ from (long i)) block))
     a))
 
-(defn- interned [^HashMap seen v]
+(defn- interned
+  "Returns v with every value equal to one already seen replaced by that
+   one, so equal values are shared."
+  [^HashMap seen v]
   (if (vector? v)
     (let [v (mapv (fn [x] (interned seen x)) v)]
       (or (.get seen v) (do (.put seen v v) v)))
@@ -155,17 +192,26 @@
                [block (decode-props b (- (long (:default b)) (long (:first b))))]))
         blocks))
 
-(defn info [block]
+(defn info
+  "Returns everything the tables hold about a block. Throws when there is no
+   such block."
+  [block]
   (or (get blocks block)
       (throw (ex-info "unknown block" {:block block}))))
 
-(defn place-sound [block]
+(defn place-sound
+  "Returns the sound of placing a block."
+  [block]
   (get-in sounds [(:sound (info block)) :place]))
 
-(defn open-sound [block open?]
+(defn open-sound
+  "Returns the sound of a block opening, or of it closing."
+  [block open?]
   (get (info block) (if open? :open :close)))
 
-(defn by-hand? [block]
+(defn by-hand?
+  "Returns true if a block can be broken by hand."
+  [block]
   (get (info block) :hand? true))
 
 (defn- prop-index ^long [block-name prop vs v]
@@ -186,6 +232,8 @@
           (recur (inc i) (long (+ id (* idx tail)))))))))
 
 (defn state-id
+  "Returns the global state id of a block: its default state, or the state
+   with the wanted properties over the defaults."
   (^long [block-name] (long (:default (info block-name))))
   (^long [block-name wanted]
    (let [b (info block-name)]
@@ -193,10 +241,15 @@
        (state-id block-name)
        (state-offset block-name b wanted (get default-props block-name))))))
 
-(defn state-block [^long id]
+(defn state-block
+  "Returns the block of a state id, or nil when there is no such state."
+  [^long id]
   (when (< -1 id block-state-count) (aget ^objects block-of-state id)))
 
-(defn state-props [^long id]
+(defn state-props
+  "Returns the block and the properties of a state id, or nil when there is no
+   such state."
+  [^long id]
   (when-let [block-name (state-block id)]
     (let [b (get blocks block-name)]
       [block-name (decode-props b (- id (long (:first b))))])))

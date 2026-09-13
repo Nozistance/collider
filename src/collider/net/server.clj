@@ -1,4 +1,5 @@
 (ns collider.net.server
+  "Serving the players who connect."
   (:require [collider.log :as log]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
@@ -18,25 +19,41 @@
 (def ^:private ^:const default-max-connections 256)
 (defrecord Conn [^Socket sock ^ArrayBlockingQueue q st ^AtomicBoolean closing])
 
-(defn conn-state [^Conn c] (:state @(:st c)))
-(defn info [^Conn c] @(:st c))
-(defn put! [^Conn c k v] (swap! (:st c) assoc k v))
-(defn- who [^Conn c]
+(defn conn-state
+  "Returns the state the connection c is in."
+  [^Conn c] (:state @(:st c)))
+(defn info
+  "Returns the state map of the connection c."
+  [^Conn c] @(:st c))
+(defn put!
+  "Records k as v on the connection c."
+  [^Conn c k v] (swap! (:st c) assoc k v))
+(defn- who
+  "Returns the name of the connection c for logging."
+  [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
 
-(defn set-conn-state! [^Conn c s] (swap! (:st c) assoc :state s))
-(defn close! [^Conn c]
+(defn set-conn-state!
+  "Moves the connection c to state s."
+  [^Conn c s] (swap! (:st c) assoc :state s))
+(defn close!
+  "Closes the connection c once everything already sent has gone out."
+  [^Conn c]
   (.set ^AtomicBoolean (:closing c) true)
   (.offer ^ArrayBlockingQueue (:q c) [:close]))
 
-(defn send! [^Conn c m]
+(defn send!
+  "Sends m to the connection c."
+  [^Conn c m]
   (when-not (.offer ^ArrayBlockingQueue (:q c) [:packet (conn-state c) m])
     (log/info "output queue full, closing" (who c))
     (.set ^AtomicBoolean (:closing c) true)
     (.close ^Socket (:sock c))))
 
-(defn compress! [^Conn c ^long threshold]
+(defn compress!
+  "Compresses everything above threshold on the connection c from here on."
+  [^Conn c ^long threshold]
   (.offer ^ArrayBlockingQueue (:q c) [:threshold threshold]))
 
 (defn- encode-packet! [^Buf payload state m]
@@ -146,7 +163,9 @@
         (disconnected! conn io)
         (close! conn)))))
 
-(defn writable-eids [conns]
+(defn writable-eids
+  "Returns the players whose connections can take more packets."
+  [conns]
   (into #{}
         (keep (fn [[eid ^Conn conn]]
                 (when (< (.size ^ArrayBlockingQueue (:q conn)) out-queue-high) eid)))
@@ -158,7 +177,9 @@
       (when-let [^Thread w (:writer @(:st conn))]
         (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
 
-(defn close-all! [conns text ^long ms]
+(defn close-all!
+  "Disconnects everyone with text and waits up to ms for it to reach them."
+  [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]
       (when (= :play (conn-state conn))
@@ -191,7 +212,9 @@
             (admit! sock live limit io))
           (recur))))))
 
-(defn listen! [io port]
+(defn listen!
+  "Starts taking player connections on port and returns the server."
+  [io port]
   (let [srv (ServerSocket. (int port))
         live (AtomicInteger.)]
     {:socket srv

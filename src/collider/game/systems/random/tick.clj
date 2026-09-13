@@ -1,4 +1,6 @@
 (ns collider.game.systems.random.tick
+  "Blocks that grow, melt, drip and weather, on a tick that picks them at
+   random."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
@@ -15,7 +17,9 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- near-player? [world ^long radius [x y z]]
+(defn- near-player?
+  "Returns true when a player is within radius of pos."
+  [world ^long radius [x y z]]
   (or (= radius -1)
       (let [cx (+ (double x) 0.5) cy (+ (double y) 0.5) cz (+ (double z) 0.5)]
         (some (fn [eid]
@@ -24,7 +28,9 @@
                     (< (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz))) (double radius)))))
               (vals (:players world))))))
 
-(defn- cell-result [world chunks p ^long st]
+(defn- cell-result
+  "Returns what one block does on its random tick."
+  [world chunks p ^long st]
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (= :lava (liquid/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
@@ -37,7 +43,9 @@
                           (dripstone/random-changes chunks p st roll)
                           (grow/random-tick chunks p st roll (:time-of-day world 0) world))}))))
 
-(defn- section-cells [world chunks cid si speed]
+(defn- section-cells
+  "Returns the blocks a section offers up to a random tick."
+  [world chunks cid si speed]
   (let [t (long (:tick world)) cid (long cid) si (long si) speed (long speed)
         c (get chunks cid)
         [cx cz] (chunk/id->pos cid)
@@ -52,7 +60,9 @@
                       [[(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)] st]))))
           (range speed))))
 
-(defn- world-cells [world chunks speed]
+(defn- world-cells
+  "Returns the blocks the world offers up to a random tick."
+  [world chunks speed]
   (into []
         (mapcat (fn [cid]
                   (when-let [c (get chunks cid)]
@@ -63,7 +73,9 @@
                           (map-indexed vector (:sections c))))))
         (seq (state/active-chunks world))))
 
-(defn- precipitation-at [world chunks t cid max-height i]
+(defn- precipitation-at
+  "Returns the changes the weather makes at one spot of a chunk."
+  [world chunks t cid max-height i]
   (when (< (random/of-longs t cid i (hash :precipitation)) (/ 1.0 48.0))
     (let [t (long t) cid (long cid)
           [cx cz] (chunk/id->pos cid)
@@ -72,7 +84,9 @@
       (precipitation/tick-precipitation world chunks [x 0 z] max-height
                                         (random/of-longs t cid i (hash :precipitation-fill))))))
 
-(defn- precipitation-changes [world chunks speed]
+(defn- precipitation-changes
+  "Returns the changes the weather makes this tick."
+  [world chunks speed]
   (let [t (long (:tick world))
         max-height (long (get-in world [:rules :max-snow-accumulation-height] 1))]
     (into []
@@ -81,43 +95,59 @@
                           (range (long speed)))))
           (seq (state/active-chunks world)))))
 
-(defn- eyeblossom-changes [changes]
+(defn- eyeblossom-changes
+  "Returns the changes that leave an eyeblossom behind."
+  [changes]
   (filter (fn [[_ st]] (eyeblossom/eyeblossom? (long st))) changes))
 
-(defn- eyeblossom-sounds [changes]
+(defn- eyeblossom-sounds
+  "Returns the sounds for eyeblossoms opening and closing."
+  [changes]
   (for [[p st] (eyeblossom-changes changes)]
     (out/all (out/sound (eyeblossom/sound-kind (long st) true) p 1.0 1.0))))
 
-(defn- eyeblossom-schedules [world changes]
+(defn- eyeblossom-schedules
+  "Returns the ticks the eyeblossoms around the changes ask for."
+  [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [p _]]
               (let [old (chunk/chunks-get-block chunks gen/flat-chunk p)]
                 (merge-with into m (eyeblossom/cascade chunks p old t))))
             {} (eyeblossom-changes changes))))
 
-(defn- drip-schedules [world drips]
+(defn- drip-schedules
+  "Returns the ticks asked for by the cauldrons under dripstone."
+  [world drips]
   (reduce (fn [m {:keys [cauldron delay]}]
             (if cauldron
               (update m (+ (long (:tick world)) (long delay)) (fnil conj []) (chunk/block-pos->id cauldron))
               m))
           {} drips))
 
-(defn- chorus-events [changes]
+(defn- chorus-events
+  "Returns the effects for chorus flowers growing and dying."
+  [changes]
   (for [[p st] changes
         :when (= :chorus-flower (block/type-of (long st)))]
     (out/all (out/level-event (if (= :5 (:age (block/props-of (long st)))) out/sound-chorus-death out/sound-chorus-grow) p 0))))
 
-(defn- drip-events [drips]
+(defn- drip-events
+  "Returns the effects for water falling from a dripstone tip."
+  [drips]
   (for [{:keys [tip]} drips]
     (out/all (out/level-event out/dripstone-drip tip 0))))
 
-(defn- drop-spawns [world results]
+(defn- drop-spawns
+  "Returns the deltas dropping what the randomly ticked blocks leave."
+  [world results]
   (when (get-in world [:rules :block-drops] true)
     (for [{:keys [pos drops]} results
           [i stack] (map-indexed vector drops)]
       [:spawn-entity (items/popped world pos stack [:decay i])])))
 
-(defn- random-tick-deltas [world _events]
+(defn- random-tick-deltas
+  "Returns the deltas for the blocks picked for a random tick."
+  [world _events]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))
         chunks (:chunks world)]
     (when (pos? speed)
@@ -133,6 +163,8 @@
                     (drip-events drips)
                     (drop-spawns world results))))))))
 
-(defn random-ticks [world d]
+(defn random-ticks
+  "Returns the deltas for the blocks picked for a random tick."
+  [world d]
   (let [events (:input d)]
     [#(random-tick-deltas world events)]))

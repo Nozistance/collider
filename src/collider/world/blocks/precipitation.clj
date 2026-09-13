@@ -1,4 +1,5 @@
 (ns collider.world.blocks.precipitation
+  "What rain and snow do to the top of a column."
   (:require [collider.world.env.biome :as biome]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -14,7 +15,9 @@
 (def ^:const rain-fill-chance 0.05)
 (def ^:const powder-snow-fill-chance 0.1)
 
-(defn- state-at ^long [chunks p]
+(defn- state-at
+  "Returns the block state at p, air outside the world height."
+  ^long [chunks p]
   (if (chunk/in-range? (long (nth p 1)))
     (long (chunk/chunks-get-block chunks gen/flat-chunk p))
     0))
@@ -77,7 +80,11 @@
     (when-let [st (cauldron-fill (state-at chunks p) precipitation)]
       [[p st]])))
 
-(defn tick-precipitation [ctx chunks [x _ z] max-height roll]
+(defn tick-precipitation
+  "Returns the changes the weather makes to the top of the column at x z. max-
+   height is the deepest snow allowed there, and roll decides whether a cauldron
+   fills."
+  [ctx chunks [x _ z] max-height roll]
   (let [top [(long x) (spawn/motion-blocking-height chunks gen/flat-chunk x z) (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]
         biome (biome/at chunks top)]

@@ -1,4 +1,6 @@
 (ns collider.world.blocks.liquid
+  "Flowing water and lava: how they spread and mix, and the push they give
+   entities."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -26,39 +28,68 @@
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
 (def ^:private water-source (block/state :water))
-(defn liquid-state? [st] (block/liquid? (long st)))
-(defn liquid-class [st]
+(defn liquid-state?
+  "Returns true when st is water or lava."
+  [st] (block/liquid? (long st)))
+(defn liquid-class
+  "Returns :water or :lava for a block state that is or holds a liquid,
+   nil for anything else."
+  [st]
   (cond
     (liquid-state? st) (class-of-block (block/block-of (long st)))
     (block/waterlogged? (long st)) :water))
-(defn level ^long [st]
+(defn level
+  "Returns the level of a liquid state: 0 for a source, 8 for falling."
+  ^long [st]
   (if (liquid-state? st) (- (long st) (long (base (liquid-class st)))) 0))
-(defn liquid-state ^long [cls ^long level] (+ (long (base cls)) level))
-(defn bucket->state [item] (when-let [cls (bucket->class item)] (liquid-state cls 0)))
-(defn delay-of [st] (long (get-in liquids [(liquid-class st) :delay])))
-(defn source-state? [st]
+(defn liquid-state
+  "Returns the block state of class cls at that level."
+  ^long [cls ^long level]
+  (+ (long (base cls)) level))
+(defn bucket->state
+  "Returns the source state a bucket item pours, nil for other items."
+  [item] (when-let [cls (bucket->class item)] (liquid-state cls 0)))
+(defn delay-of
+  "Returns how many ticks st waits between spreading."
+  [st] (long (get-in liquids [(liquid-class st) :delay])))
+(defn source-state?
+  "Returns true when st is a source rather than a flow."
+  [st]
   (and (liquid-state? st) (zero? (level st))))
 
-(defn mix-class? [st]
+(defn mix-class?
+  "Returns true when st turns to stone where it meets the other liquid."
+  [st]
   (some? (get-in liquids [(liquid-class st) :mix])))
 
-(defn push-of [st]
+(defn push-of
+  "Returns how hard st pushes what floats in it."
+  [st]
   (get-in liquids [(liquid-class st) :push]))
 
-(defn- raw-at [chunks template x y z]
+(defn- raw-at
+  "Returns the block state at x y z, -1 outside the world height."
+  [chunks template x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
       (chunk/chunks-get-block chunks template x y z)
       -1)))
 
-(defn- state-of ^long [raw]
+(defn- state-of
+  "Returns the liquid a block state stands for, water for a block that
+   holds water."
+  ^long [raw]
   (let [st (long raw)]
     (if (and (pos? st) (block/waterlogged? st)) water-source st)))
 
-(defn- state-at [chunks template x y z]
+(defn- state-at
+  "Returns the liquid at x y z, water where a block holds water."
+  [chunks template x y z]
   (state-of (raw-at chunks template x y z)))
 
-(defn- shifted [chunks template [x y z] [dx dy dz]]
+(defn- shifted
+  "Returns the liquid one step from pos in the direction d."
+  [chunks template [x y z] [dx dy dz]]
   (state-at chunks template
             (+ (long x) (long dx))
             (+ (long y) (long dy))
@@ -66,14 +97,19 @@
 
 (defn- air? [st] (zero? (long st)))
 (defn- effective ^long [st] (let [m (level st)] (if (>= m 8) 0 m)))
-(defn- other-class? [cls st]
+(defn- other-class?
+  "Returns true when st is a liquid of a kind other than cls."
+  [cls st]
   (let [c (liquid-class st)]
     (and (some? c) (not= c cls))))
 
 (defn- blocks-movement? [st]
   (and (pos? (long st)) (block/blocks-motion? (long st))))
 
-(defn- decay ^long [chunks template cls p]
+(defn- decay
+  "Returns how far the liquid of class cls at p has fallen off from a
+   source, -1 where there is none."
+  ^long [chunks template cls p]
   (let [st (state-at chunks template (p 0) (p 1) (p 2))]
     (if (and (pos? (long st)) (= cls (liquid-class st)))
       (let [m (level st)] (if (>= m 8) 0 m))
@@ -117,7 +153,10 @@
                 (solid-face? cls (raw-at chunks template nx (inc (long y)) nz) d))))
         horiz))
 
-(defn flow-vector [chunks template [x y z :as p]]
+(defn flow-vector
+  "Returns the unit direction the liquid at pos flows in, nil where there
+   is none."
+  [chunks template [x y z :as p]]
   (let [st (state-at chunks template x y z)]
     (when-let [cls (when (pos? (long st)) (liquid-class st))]
       (let [i (decay chunks template cls p)
@@ -164,13 +203,22 @@
                                  (+ (double az) (* (double fz) k))]
                         :n      (inc (long (get-in acc [cls :n] 0)))})))))
 
-(defn- fluid-around [chunks template [x y z] half height]
+(defn- fluid-around
+  "Returns the liquids filling a box at pos, how deep each stands and
+   which way it flows."
+  [chunks template [x y z] half height]
   (reduce (partial add-fluid chunks template y) {} (cells-of x y z half height)))
 
-(defn fluid-height [chunks template pos half height cls]
+(defn fluid-height
+  "Returns how deep liquid of class cls stands in a box of that half width
+   and height at pos."
+  [chunks template pos half height cls]
   (double (get-in (fluid-around chunks template pos half height) [cls :height] 0.0)))
 
-(defn entity-push [chunks template pos half height vel]
+(defn entity-push
+  "Returns the velocity the liquids in a box at pos add to an entity moving
+   at vel."
+  [chunks template pos half height vel]
   (reduce (fn [[ax ay az] [cls {[fx fy fz] :flow n :n}]]
             (let [len2 (+ (* (double fx) (double fx)) (* (double fy) (double fy)) (* (double fz) (double fz)))
                   p (double (get-in liquids [cls :push] 0.0))]
@@ -190,18 +238,31 @@
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
 (def ^:private opposite {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0] [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
 (def ^:private no-fluid-types #{:door :standing-sign :wall-sign :ladder :sugar-cane :bubble-column})
-(defn- amount ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
+(defn- amount
+  "Returns how much liquid st holds, most for a source or a fall."
+  ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
 (defn- falling? [st] (= 8 (level st)))
-(defn- same? [cls st] (= cls (liquid-class st)))
-(defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
-(defn- height ^double [st] (/ (double (amount st)) 9.0))
-(defn fluid-height-of [chunks template [x y z] st mode]
+(defn- same?
+  "Returns true when st is a liquid of class cls."
+  [cls st] (= cls (liquid-class st)))
+(defn- source-of?
+  "Returns true when st is a source of class cls."
+  [cls st] (and (same? cls st) (zero? (level st))))
+(defn- height
+  "Returns how tall the liquid in st stands, from 0.0 to 1.0."
+  ^double [st] (/ (double (amount st)) 9.0))
+(defn fluid-height-of
+  "Returns the height of the liquid in st, from 0.0 to 1.0, or nil when st
+   holds none. Mode :source-only counts sources only."
+  [chunks template [x y z] st mode]
   (let [cls (liquid-class st)]
     (when (and cls (or (not= mode :source-only) (source-of? cls st)))
       (let [above (if (chunk/in-range? (inc (long y))) (chunk/chunks-get-block chunks template [x (inc (long y)) z]) 0)]
         (if (same? cls above) 1.0 (height st))))))
 
-(defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
+(defn- boxes
+  "Returns the collision boxes of st, none for air."
+  [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
 (def ^:private ^ThreadLocal cover-rows
   (proxy [ThreadLocal] [] (initialValue [] (int-array 16))))
 
@@ -230,7 +291,10 @@
         (not= 0xFFFF (aget rows i)) false
         :else (recur (inc i))))))
 
-(defn- pass-wall? [src tgt d]
+(defn- pass-wall?
+  "Returns true when liquid can get from src into tgt going in the
+   direction d."
+  [src tgt d]
   (let [src (long src) tgt (long tgt)]
     (cond
       (or (neg? src) (neg? tgt)) false
@@ -246,7 +310,9 @@
        (or (contains? (block/props-of (long st)) :waterlogged)
            (contains? block/water-holder-types (block/type-of (long st))))))
 
-(defn- holds-any-fluid? [st]
+(defn- holds-any-fluid?
+  "Returns true when any liquid can stand in st."
+  [st]
   (let [st (long st)]
     (cond
       (zero? st) true
@@ -254,12 +320,16 @@
       (blocks-movement? st) false
       :else (not (contains? no-fluid-types (block/type-of st))))))
 
-(defn- holds-specific? [cls st]
+(defn- holds-specific?
+  "Returns true when st has room for a liquid of class cls in particular."
+  [cls st]
   (if (container? st)
     (and (= :water cls) (not (block/waterlogged? (long st))))
     true))
 
-(defn- can-hold? [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
+(defn- can-hold?
+  "Returns true when a liquid of class cls can stand in st."
+  [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
 (defn- replaceable-with? [tgt cls d]
   (case (liquid-class tgt)
     nil true
@@ -271,7 +341,9 @@
        (holds-any-fluid? tgt-raw)
        (pass-wall? src-raw tgt-raw d)))
 
-(defn- raw-of ^long [{:keys [chunks template]} x y z]
+(defn- raw-of
+  "Returns the block state at x y z, -1 outside the world height."
+  ^long [{:keys [chunks template]} x y z]
   (long (raw-at chunks template x y z)))
 
 (defn- hole? [{:keys [cls] :as env} [x y z :as p]]
@@ -289,7 +361,10 @@
                 [h s])))
           [0 0] horiz3))
 
-(defn- new-liquid [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
+(defn- new-liquid
+  "Returns the level the liquid at p settles at, nil where it drains
+   away."
+  [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
   (let [raw (raw-of env x y z)
         [highest sources] (horizontal-source-scan env raw p)
         braw (raw-of env x (dec (long y)) z)
@@ -310,7 +385,10 @@
     :falling (liquid-state cls 8)
     (liquid-state cls (- 8 (long v)))))
 
-(defn- slope-distance ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
+(defn- slope-distance
+  "Returns how many steps of falling ground lie ahead of a liquid
+   leaving p."
+  ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
   (let [raw (raw-of env x y z)]
     (reduce (fn [lowest [dx _ dz :as d]]
               (if (= d from)
@@ -348,7 +426,9 @@
                       [np prod])))))
         convert-dirs))
 
-(defn mix-wake? [chunks template pos]
+(defn mix-wake?
+  "Returns true when the liquid at pos touches one of the other kind."
+  [chunks template pos]
   (let [st (state-at chunks template (pos 0) (pos 1) (pos 2))
         cls (liquid-class st)]
     (boolean
@@ -356,7 +436,10 @@
            (get-in liquids [cls :mix])
            (touches-other? chunks template cls pos)))))
 
-(defn- spread-to [{:keys [chunks template cls mix] :as env} tp d v]
+(defn- spread-to
+  "Returns the changes made by liquid arriving at tp from the direction d
+   at the level v."
+  [{:keys [chunks template cls mix] :as env} tp d v]
   (let [traw (raw-of env (tp 0) (tp 1) (tp 2))
         t (state-of traw)]
     (cond
@@ -409,7 +492,9 @@
         (when (or (source-of? cls st) (not (hole? env p)))
           (spread-sides env p st)))))
 
-(defn update-delay ^long [old new tick pos]
+(defn update-delay
+  "Returns how many ticks to wait before the cell at pos is looked at again."
+  ^long [old new tick pos]
   (let [cls (liquid-class new)
         {:keys [delay decay-jitter]} (liquids cls)]
     (if (and decay-jitter
@@ -428,7 +513,10 @@
 (def ^:private basalt-state (block/state :basalt))
 (def ^:private soul-soil-state (block/state :soul-soil))
 (def ^:private blue-ice-state (block/state :blue-ice))
-(defn- mixed-state [cls mix st above sides below-raw]
+(defn- mixed-state
+  "Returns the solid block that liquids meeting at a cell turn into, nil
+   where they do not meet."
+  [cls mix st above sides below-raw]
   (when mix
     (cond
       (some (fn [s] (other-class? cls s)) (cons above sides)) (mix-product mix (level st))
@@ -445,7 +533,10 @@
             below-raw (raw-at chunks template x (dec (long y)) z)]
         (mixed-state cls mix st above sides below-raw)))))
 
-(defn mix-changes [chunks template positions]
+(defn mix-changes
+  "Returns the [pos state] changes where liquids meeting near the given
+   positions turn solid."
+  [chunks template positions]
   (into []
         (comp (mapcat (fn [[x y z]] (cons [x y z] (map (fn [[dx dy dz]] [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)]) horiz3+))))
               (distinct)
@@ -453,7 +544,9 @@
         positions))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
-(defn bubble-column? [st] (= :bubble-column (block/type-of (long st))))
+(defn bubble-column?
+  "Returns true when st is a bubble column."
+  [st] (= :bubble-column (block/type-of (long st))))
 (defn- column-state [below]
   (cond
     (bubble-column? below) below
@@ -475,7 +568,10 @@
       (and (bubble-column? raw) (nil? col)) [[p water-source]]
       (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks template p col))))
 
-(defn bubble-push ^double [chunks template pos ^double vy]
+(defn bubble-push
+  "Returns the vertical velocity a bubble column at pos gives an entity
+   rising or sinking at vy."
+  ^double [chunks template pos ^double vy]
   (let [x (long (Math/floor (v/x pos))) y (long (Math/floor (v/y pos))) z (long (Math/floor (v/z pos)))
         st (long (raw-at chunks template x y z))]
     (if (bubble-column? st)
@@ -510,7 +606,10 @@
       :else (into (if (not= (long st') (long st)) [[p st']] [])
                   (spread env p st')))))
 
-(defn update-cell [chunks template [x y z :as p] rules]
+(defn update-cell
+  "Returns the [pos state] changes the liquid at p makes this tick, nil
+   where p holds none."
+  [chunks template [x y z :as p] rules]
   (let [st (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
@@ -558,7 +657,10 @@
                     [above (fire-state-at chunks template above)]))))
         (range 3)))
 
-(defn lava-random-tick [chunks template p roll]
+(defn lava-random-tick
+  "Returns the [pos state] changes where lava sets its surroundings alight.
+   Roll draws the randomness."
+  [chunks template p roll]
   (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (roll salt)))))))
         passes (long (Math/floor (* 3.0 (double (roll :passes)))))]
     (if (pos? passes)

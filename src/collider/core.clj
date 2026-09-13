@@ -1,4 +1,5 @@
 (ns collider.core
+  "Starting and stopping the server."
   (:require [collider.config :as config]
             [collider.game.state :as state]
             [collider.game.tick :as tick]
@@ -76,7 +77,9 @@
                                           (/ (double (.getUptime (ManagementFactory/getRuntimeMXBean))) 1000.0)
                                           (str (.getLocalSocketAddress srv))]))))
 
-(defn start [opts]
+(defn start
+  "Starts a server with the options opts and returns it."
+  [opts]
   (let [{:keys [store saved world saver] :as base} (open-world opts)
         net (open-net base)
         clocks (start-clocks base net)
@@ -84,7 +87,9 @@
     (log-started! store saved (:socket net))
     (assoc server :shutdown-hook (shutdown-hook! server))))
 
-(defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
+(defn stop
+  "Stops a running server and returns nil."
+  [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
   (some-> scheduler .shutdownNow)
   (when shutdown-hook
     (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
@@ -93,7 +98,9 @@
   (log/info "server stopped")
   nil)
 
-(defn -main [& _]
+(defn -main
+  "Starts the server and waits for it to stop."
+  [& _]
   (config/write-default!)
   (let [{:keys [^Thread accept]} (start {})]
     (.join accept)))

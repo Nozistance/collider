@@ -1,4 +1,5 @@
 (ns collider.world.blocks.fire
+  "Fire: where it catches, how it spreads, and when it burns out."
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.vec :as v]
@@ -14,15 +15,23 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const ages 16)
-(defn fire-state? [st] (block/fire? (long st)))
-(defn fire-state ^long [^long age] (block/state :fire {:age (keyword (str age))}))
-(defn age ^long [st] (block/prop-long (long st) :age))
+(defn fire-state?
+  "Returns true when st is fire."
+  [st] (block/fire? (long st)))
+(defn fire-state
+  "Returns fire at that age."
+  ^long [^long age] (block/state :fire {:age (keyword (str age))}))
+(defn age
+  "Returns how long the fire st has been burning."
+  ^long [st] (block/prop-long (long st) :age))
 (defn- with-age ^long [^long st ^long age]
   (block/state :fire (assoc (block/props-of st) :age (keyword (str age)))))
 
 (def ^:private side-offsets
   {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0] :up [0 1 0]})
-(defn state-for ^long [chunks p]
+(defn state-for
+  "Returns the state of fire that catches at p."
+  ^long [chunks p]
   (let [below (max 0 (long (gen/at-void chunks (mapv + p [0 -1 0]))))]
     (cond
       (block/tagged? below "soul_fire_base_blocks")
@@ -51,9 +60,14 @@
     0
     (reduce (fn [^long m d] (max m (odds (gen/at-void chunks (mapv + p d)) :ignite))) 0 dir/around)))
 
-(defn- pick ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
+(defn- pick
+  "Returns a number from 0 up to but not including n, drawn from roll at
+   salt."
+  ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
 
-(defn state-with-age ^long [chunks p ^long a]
+(defn state-with-age
+  "Returns the state of fire that catches at p, aged a."
+  ^long [chunks p ^long a]
   (let [st (state-for chunks p)]
     (if (fire-state? st) (with-age st a) st)))
 

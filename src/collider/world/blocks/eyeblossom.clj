@@ -1,4 +1,5 @@
 (ns collider.world.blocks.eyeblossom
+  "Eyeblossoms, open by night and closed by day."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -7,14 +8,22 @@
 
 (set! *warn-on-reflection* true)
 
-(defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
+(defn eyeblossom?
+  "Returns true when st is an eyeblossom."
+  [^long st] (= :eyeblossom (block/type-of st)))
 (defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
-(defn switched [^long st ^long time]
+(defn switched
+  "Returns the eyeblossom state st turns into at that time of day, or nil when
+   it already matches."
+  [^long st ^long time]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (when (not= open? (night? time))
       (block/state (if (night? time) :open-eyeblossom :closed-eyeblossom)))))
 
-(defn sound-kind [^long st long?]
+(defn sound-kind
+  "Returns the sound the eyeblossom st makes as it changes; long? asks for the
+   longer variant."
+  [^long st long?]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (if long?
       (if open? :eyeblossom/open-long :eyeblossom/close-long)
@@ -25,7 +34,10 @@
         :when (not (and (zero? (long dx)) (zero? (long dy)) (zero? (long dz))))]
     [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]))
 
-(defn cascade [chunks [x y z :as p] ^long old ^long tick]
+(defn cascade
+  "Returns the eyeblossoms near p that follow the one at p, grouped by the
+   tick they change on."
+  [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
             (if (not= old (gen/at chunks q))
               m

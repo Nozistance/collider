@@ -1,4 +1,5 @@
 (ns collider.world.blocks.grow
+  "Random growth and bone meal of every block class."
   (:require [collider.world.block :as block]
             [collider.world.blocks.grow.bamboo :as bamboo]
             [collider.world.blocks.dripleaf :as dripleaf]
@@ -40,6 +41,8 @@
           [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
 
 (defn random-tick
+  "Returns the changes the block state st at p makes on a random tick, or nil
+   when it does not grow."
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
    (let [st (long st)]
@@ -47,7 +50,10 @@
        (f chunks p st roll time ctx)
        (when (block/weathering? st) (weather/tick chunks p st roll))))))
 
-(defn random-drops [^long st roll]
+(defn random-drops
+  "Returns the drops of leaves that have grown too far from their log, nil for
+   any other block."
+  [^long st roll]
   (when (and (block/leaves? st)
              (= :false (:persistent (block/props-of st)))
              (= 7 (block/prop-long st :distance)))
@@ -80,7 +86,10 @@
           [[:mangrove-propagule] crop/propagule-meal]
           [[:seagrass] crop/seagrass-meal]]))
 
-(defn bonemeal [chunks p st roll]
+(defn bonemeal
+  "Returns the result of bone meal on st at p, or nil when it does nothing. The
+   result holds block changes, drops, or both."
+  [chunks p st roll]
   (let [st (long st)]
     (when-let [f (meals (block/type-of st))]
       (f chunks p st roll))))

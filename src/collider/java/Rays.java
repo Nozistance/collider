@@ -1,5 +1,6 @@
 package collider.java;
 
+/** Block reads and line of sight over a packed grid of sections. */
 public final class Rays {
 
     public static int readBlock(Object[] grid, int cx0, int cz0, int sy0,

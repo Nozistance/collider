@@ -1,4 +1,5 @@
 (ns collider.game.systems.tnt
+  "Primed TNT: its fuse, its fall, and the blast at the end."
   (:require [collider.game.state :as state]
             [collider.game.block.tnt :as tnt]
             [collider.vec :as v]
@@ -14,15 +15,21 @@
 (defn- liquid-push [world pos vel]
   (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height vel))
 
-(defn- unblock-deltas [eid e]
+(defn- unblock-deltas
+  "Returns the deltas that free TNT from the block it was placed as."
+  [eid e]
   [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
 
-(defn- stepped-vel [world pos [mx my mz] on-ground]
+(defn- stepped-vel
+  "Returns the speed primed TNT keeps after moving."
+  [world pos [mx my mz] on-ground]
   (let [gf (if on-ground 0.7 1.0)
         v' [(* (double mx) 0.98 gf) (* (double my) 0.98) (* (double mz) 0.98 gf)]]
     (v/+ v' (liquid-push world pos v'))))
 
-(defn- step-deltas [world eid e]
+(defn- step-deltas
+  "Returns the deltas for one primed TNT moving and burning down this tick."
+  [world eid e]
   (let [kb (:kb e)
         [vx vy vz] (v/+ (:vel e) (or kb [0.0 0.0 0.0]))
         ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
@@ -35,7 +42,9 @@
                                  :fuse      (dec (long (:fuse e)))}]]
             kb (conj [:push eid (mapv - kb)]))))
 
-(defn- moved-pos [world e]
+(defn- moved-pos
+  "Returns where primed TNT will be when it goes off."
+  [world e]
   (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))]
     (.pos ^Move (phys/move (:chunks world) gen/flat-chunk (:pos e)
                            [(double vx) (- (double vy) 0.04) (double vz)]
@@ -45,7 +54,10 @@
   (let [dx (- (v/x p) (double cx)) dy (- (v/y p) (double cy)) dz (- (v/z p) (double cz))]
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* reach reach))))
 
-(defn- later-positions [world eid center]
+(defn- later-positions
+  "Returns where the TNT that has not yet moved this tick stands, so the blast
+   pushes it from the right place."
+  [world eid center]
   (let [reach (+ (* 2.0 tnt/power) 2.0)]
     (into {}
           (keep (fn [[oid o]]
@@ -53,7 +65,9 @@
                     [oid (:pos o)])))
           (:entities world))))
 
-(defn- explode-deltas [world eid e]
+(defn- explode-deltas
+  "Returns the deltas for TNT whose fuse has run out."
+  [world eid e]
   (let [[x y z] (moved-pos world e)
         center [(double x) (+ (double y) (/ tnt-height 16.0)) (double z)]]
     (cond-> [[:remove-entity eid]]
@@ -65,14 +79,18 @@
                              :by     eid
                              :later  (later-positions world eid center)}]))))
 
-(defn first-step [world _d]
+(defn first-step
+  "Returns the deltas for TNT lit this tick."
+  [world _d]
   (let [active (state/active-chunks world)]
     (into []
           (comp (filter (fn [[_ e]] (and (= :tnt (:type e)) (:origin e) (state/active-at? active (:pos e)))))
                 (mapcat (fn [[eid e]] (into (unblock-deltas eid e) (step-deltas world eid e)))))
           (sort-by key (:entities world)))))
 
-(defn tnt-system [world _d]
+(defn tnt-system
+  "Returns the deltas for primed TNT this tick."
+  [world _d]
   (let [tnts (into [] (filter (fn [[_ e]] (= :tnt (:type e)))) (sort-by key (:entities world)))
         fresh (filterv (fn [[_ e]] (:origin e)) tnts)
         armed (into [] (remove (fn [[_ e]] (:origin e))) tnts)

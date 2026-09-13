@@ -1,4 +1,5 @@
 (ns collider.world.blocks.connect
+  "Blocks that take their shape from their neighbours."
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
@@ -15,7 +16,9 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tag [t] (set (get-in data/tags ["block" t])))
+(defn- tag
+  "Returns the blocks carrying tag t."
+  [t] (set (get-in data/tags ["block" t])))
 (def ^:private fences (tag "fences"))
 (def ^:private wooden (tag "wooden_fences"))
 (def ^:private walls (tag "walls"))
@@ -37,7 +40,10 @@
 
 (def ^:private half-types (into block/door-types (conj pair-types :pitcher-crop)))
 
-(defn partner-offset [^long st]
+(defn partner-offset
+  "Returns the offset from st to the other half of the block it belongs to,
+   nil when it stands alone."
+  [^long st]
   (let [{:keys [half part facing]} (block/props-of st)
         t (block/type-of st)]
     (cond
@@ -52,7 +58,10 @@
          (let [k (if (= :bed (block/type-of st)) :part :half)]
            (not= (k (block/props-of st)) (k (block/props-of other)))))))
 
-(defn partner [chunks pos ^long st]
+(defn partner
+  "Returns [pos state] of the other half of the block at pos, nil when it
+   stands alone."
+  [chunks pos ^long st]
   (when-let [off (partner-offset st)]
     (let [p (mapv + pos off) o (gen/at chunks p)]
       (when (paired? st o) [p o]))))
@@ -100,7 +109,9 @@
   (not (or (and (= :low (:north sides)) (= :low (:south sides)) (= :none (:east sides)) (= :none (:west sides)))
            (and (= :low (:east sides)) (= :low (:west sides)) (= :none (:north sides)) (= :none (:south sides))))))
 
-(defn- wall-at? [st] (contains? walls (block/block-of st)))
+(defn- wall-at?
+  "Returns true when st is a wall."
+  [st] (contains? walls (block/block-of st)))
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)
@@ -170,7 +181,9 @@
   (let [props (block/props-of st)]
     (block/state self (assoc props :shape (stair-shape st at (:facing props) (:half props))))))
 
-(defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
+(defn- water?
+  "Returns true when st is water or holds water."
+  [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
 (defn- touches-water? [st at]
   (or (and (water? st) (water? (at (dir/offset :down))))
       (some (fn [dir]
@@ -280,7 +293,10 @@
       (contains? growing-reshaped t) (growing-plant-state pos st at tick)
       :else (sides-state t self st at))))
 
-(defn reshape [chunks pos ^long st tick]
+(defn reshape
+  "Returns the state the block at pos takes from its neighbours, nil when it
+   stays as it is."
+  [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
       (let [at (fn [d] (gen/at chunks (mapv + pos d)))
@@ -304,7 +320,10 @@
       :left
       :right)))
 
-(defn door-hinge [chunks pos facing cursor-x cursor-z]
+(defn door-hinge
+  "Returns :left or :right for a door placed at pos with that facing. The
+   cursor coordinates are within the clicked face, in sixteenths."
+  [chunks pos facing cursor-x cursor-z]
   (let [at (fn [d] (gen/at chunks (mapv + pos d)))
         left (dir/horizontal-offset (dir/counter-clockwise facing))
         right (dir/horizontal-offset (dir/clockwise facing))
@@ -316,7 +335,9 @@
       (not (and (or (not door-right) door-left) (>= balance 0))) :left
       :else (cursor-hinge facing (/ (double cursor-x) 16.0) (/ (double cursor-z) 16.0)))))
 
-(defn around [[x y z]]
+(defn around
+  "Returns the positions sharing a face with pos."
+  [[x y z]]
   (map (fn [[dx dy dz]]
          [(+ (long x) (long dx))
           (+ (long y) (long dy))
@@ -334,7 +355,10 @@
                           [p new]))))))
           (distinct (concat positions (mapcat around positions))))))
 
-(defn derived-changes [chunks positions tick]
+(defn derived-changes
+  "Returns the [pos state] changes that follow from reshaping the blocks
+   around the given positions."
+  [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))

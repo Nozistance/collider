@@ -1,11 +1,14 @@
 (ns collider.world.blocks.composter
+  "Composter: its fill level, and the settling of a full one."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)
 
-(defn level ^long [^long st] (block/prop-long st :level))
+(defn level
+  "Returns how full the composter st is."
+  ^long [^long st] (block/prop-long st :level))
 
 (def rule
   {:name   :composter

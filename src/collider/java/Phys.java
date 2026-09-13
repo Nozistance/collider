@@ -1,5 +1,6 @@
 package collider.java;
 
+/** Collision of a moving box against packed block boxes, on primitives. */
 public final class Phys {
 
     private static final double EPS = 1.0E-7;

@@ -1,4 +1,5 @@
 (ns collider.world.space.path
+  "Ground paths for mobs: walking from cell to cell around the blocks."
   (:require [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]
@@ -8,13 +9,17 @@
 
 (def ^:private ^:const max-nodes 200)
 (def ^:private ^:const max-fall 3)
-(defn- water-at? [chunks template x y z]
+(defn- water-at?
+  "Returns true when x y z is water."
+  [chunks template x y z]
   (= :water (liquid/liquid-class (chunk/block-state chunks template x y z))))
 
 (defn- fence-at? [chunks template [x y z]]
   (phys/fence-at? chunks template x y z))
 
-(defn- open? [chunks template x y z]
+(defn- open?
+  "Returns true when a body can stand at x y z without meeting a block."
+  [chunks template x y z]
   (and (not (phys/solid? chunks template x y z))
        (not (phys/solid? chunks template x (inc y) z))))
 
@@ -62,7 +67,10 @@
                    (supported? chunks template cx y cz))))
           (let [h (double half)] [[(- h) (- h)] [(- h) h] [h (- h)] [h h]])))
 
-(defn direct? [chunks template pos half [wx wy wz]]
+(defn direct?
+  "Returns true when a body of half width half can walk straight from pos to the
+   cell without leaving open, supported ground."
+  [chunks template pos half [wx wy wz]]
   (let [half (double half)
         x (v/x pos) z (v/z pos)
         y (long wy)
@@ -82,13 +90,18 @@
     (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
 
 (def ^:private dirs [[1 0] [-1 0] [0 1] [0 -1]])
-(defn- rebuild [came cell]
+(defn- rebuild
+  "Returns the cells walked to reach cell."
+  [came cell]
   (loop [acc (list cell) c cell]
     (if-let [p (came c)]
       (recur (conj acc p) p)
       (vec (rest acc)))))
 
-(defn- relax [chunks template avoid-water? h cur acc d]
+(defn- relax
+  "Returns acc with the step from cur in the direction d taken, when that
+   is a shorter way there."
+  [chunks template avoid-water? h cur acc d]
   (let [[open g came best best-h] acc]
     (if-let [nb (step-cell chunks template avoid-water? cur d)]
       (let [ng (+ (double (g cur)) (dist cur nb))]
@@ -99,7 +112,11 @@
           acc))
       acc)))
 
-(defn find-path [chunks template start goal avoid-water?]
+(defn find-path
+  "Returns the cells to walk from start to goal, or to the cell closest to goal
+   when goal cannot be reached, or nil when nothing beats standing still.
+   avoid-water? keeps the path dry."
+  [chunks template start goal avoid-water?]
   (let [h (fn ^double [c] (dist c goal))]
     (loop [open (sorted-set [(h start) start]) closed #{} g {start 0.0} came {}
            best start best-h (double (h start)) n 0]

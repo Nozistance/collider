@@ -1,4 +1,5 @@
 (ns collider.game.detector
+  "Observers of the finished tick."
   (:require [collider.game.out :as out]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -7,14 +8,18 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- water-at? [world [x y z]]
+(defn- water-at?
+  "Returns true when the point is in water."
+  [world [x y z]]
   (let [y (long (Math/floor (double y)))]
     (and (chunk/in-range? y)
          (= :water (liquid/liquid-class (chunk/chunks-get-block (:chunks world) gen/flat-chunk
                                                                 [(long (Math/floor (double x))) y (long (Math/floor (double z)))]))))))
 
 (defn- cm ^long [^double d] (Math/round (* d 100.0)))
-(defn- moved [world e e']
+(defn- moved
+  "Returns how far a player moved this tick, nil when it did not."
+  [world e e']
   (let [p (:pos e) p' (:pos e')]
     (when (and p p' (not (identical? p p')))
       (let [dx (- (v/x p') (v/x p)) dy (- (v/y p') (v/y p)) dz (- (v/z p') (v/z p))
@@ -31,7 +36,9 @@
   (and (:on-ground e) (not (:on-ground e'))
        (:pos e) (:pos e') (> (v/y (:pos e')) (v/y (:pos e)))))
 
-(defn- counts [world e e']
+(defn- counts
+  "Returns the statistics a player earned this tick."
+  [world e e']
   (cond-> [[:play-time 1] [:total-world-time 1] [:time-since-death 1]]
           (:sneaking? e') (conj [:sneak-time 1])
           (not (:sleeping e')) (conj [:time-since-rest 1])
@@ -65,5 +72,7 @@
 
 (def channels [stats-observe])
 
-(defn observe [world d]
+(defn observe
+  "Returns the deltas the observers draw from the finished tick."
+  [world d]
   (into [] (mapcat (fn [c] (c world d))) channels))

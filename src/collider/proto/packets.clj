@@ -1,4 +1,5 @@
 (ns collider.proto.packets
+  "Readers and writers of every packet, by connection state and name."
   (:require [collider.data :as data]
             [collider.proto.chunk :as chunk]
             [collider.proto.codec :as c])
@@ -7,13 +8,17 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- write-registry-entries! [^Buf buf names]
+(defn- write-registry-entries!
+  "Writes the names of a registry the client is told about."
+  [^Buf buf names]
   (c/write-varint buf (count names))
   (doseq [n names]
     (c/write-id buf n)
     (.writeBoolean buf false)))
 
-(defn- write-spawn-info [^Buf buf m]
+(defn- write-spawn-info
+  "Writes where and how a player enters the world."
+  [^Buf buf m]
   (c/write-holder-ref buf (long (:dimension-type m)))
   (c/write-id buf :overworld)
   (.writeLong buf 0)
@@ -588,14 +593,20 @@
                             (:clientbound dirs))]))
         data/packets))
 
-(defn decode [state ^Buf buf]
+(defn decode
+  "Returns the next packet of the connection state from buf, or nil when its
+   id is unknown."
+  [state ^Buf buf]
   (let [id (c/read-varint buf)]
     (when-let [e (get (get inbound state) id)]
       (if-let [r (:read e)]
         (assoc (r buf) :packet (:packet e))
         {:packet (:packet e)}))))
 
-(defn encode! [state ^Buf buf m]
+(defn encode!
+  "Writes a packet map to buf for the connection state. Throws when nothing
+   writes that packet."
+  [state ^Buf buf m]
   (let [e (or (get (get outbound state) (:packet m))
               (throw (ex-info "no writer for packet" {:state state :packet (:packet m)})))]
     (c/write-varint buf (long (:id e)))

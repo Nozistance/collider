@@ -1,4 +1,6 @@
 (ns collider.world.blocks.support
+  "Support of attached blocks: whether a block can stay where it is, and the
+   state it takes when placed."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
@@ -13,14 +15,20 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- state-at ^long [chunks template [_ y _ :as pos]]
+(defn- state-at
+  "Returns the block state at pos, -1 outside the world height."
+  ^long [chunks template [_ y _ :as pos]]
   (let [y (long y)]
     (if (chunk/in-range? y)
       (chunk/chunks-get-block chunks template pos)
       -1)))
 
-(defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
-(defn- water-source? [st] (and (pos? st) (or (block/waterlogged? st) (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
+(defn- water?
+  "Returns true when st is water or holds water."
+  [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
+(defn- water-source?
+  "Returns true when st is a water source or holds water."
+  [st] (and (pos? st) (or (block/waterlogged? st) (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
 (def ^:private kelp-types #{:kelp :kelp-plant})
 (defn- kelp-supported? [below]
   (or (contains? kelp-types (block/type-of below))
@@ -80,7 +88,9 @@
 (defn- holds-center-below? [below]
   (or (neg? below) (block/face-holds-center? below :up)))
 
-(defn- holds-center-above? [above]
+(defn- holds-center-above?
+  "Returns true when above holds a block hanging from its center."
+  [above]
   (and (not (neg? above))
        (not (block/tagged? above "unstable_bottom_center"))
        (block/face-holds-center? above :down)))
@@ -88,7 +98,9 @@
 (defn- crop-lit? [chunks template [x y z]]
   (>= (long (light/light-at chunks template x y z)) 8))
 
-(defn- attached-to? [chunks template pos dir]
+(defn- attached-to?
+  "Returns true when the block beside pos in dir offers it a sturdy face."
+  [chunks template pos dir]
   (let [n (state-at chunks template (mapv + pos (dir/horizontal-offset dir)))]
     (and (not (neg? n)) (block/face-sturdy? n (dir/opposite dir)))))
 
@@ -112,7 +124,9 @@
 (def ^:private halved-vegetation
   {:pitcher-crop "supports_crops" :double-plant "supports_vegetation" :tall-flower "supports_vegetation"})
 
-(defn- vegetation-supported? [t st below]
+(defn- vegetation-supported?
+  "Returns true when below holds up the plant st of class t."
+  [t st below]
   (cond
     (halved-vegetation t) (if (= :upper (:half (block/props-of st)))
                             (lower-half-of? below st)
@@ -122,7 +136,9 @@
                              (holds-center-below? below))
     :else (block/tagged? below (get vegetation-tags t "supports_vegetation"))))
 
-(defn plant-age [tick pos]
+(defn plant-age
+  "Returns the age a plant placed at pos on that tick starts with."
+  [tick pos]
   (keyword (str (long (Math/floor (* 25.0 (random/of-key tick pos :plant-age)))))))
 
 (defn- growing-plant-supported? [chunks template pos st]
@@ -254,7 +270,9 @@
 (defn- default-supported? [t st below]
   (if (block/needs-support? st) (vegetation-supported? t st below) true))
 
-(defn supported? [chunks template pos st]
+(defn supported?
+  "Returns true when the block state st can stay at pos."
+  [chunks template pos st]
   (let [st (long st) t (block/type-of st)
         below (state-at chunks template (mapv + pos [0 -1 0]))
         above (state-at chunks template (mapv + pos [0 1 0]))]
@@ -262,7 +280,9 @@
       (f chunks template pos st below above)
       (default-supported? t st below))))
 
-(defn- pick [chunks template pos states]
+(defn- pick
+  "Returns the first of states that can stay at pos, nil when none can."
+  [chunks template pos states]
   (first (filter #(supported? chunks template pos %) states)))
 
 (defn- lantern-fitted [chunks template pos st pitch]
@@ -285,10 +305,15 @@
             fallback (with (if (and (not (neg? below)) (block/face-sturdy? below :up)) :floor :ceiling) facing)]
         (pick chunks template pos [wall fallback])))))
 
-(defn gone-state ^long [^long st]
+(defn gone-state
+  "Returns the state left in place of st when its support is gone."
+  ^long [^long st]
   (if (#{:farmland :dirt-path} (block/type-of st)) (block/state :dirt) (block/emptied st)))
 
-(defn look-order [yaw pitch]
+(defn look-order
+  "Returns the six directions, nearest first, as seen by a player looking
+   along yaw and pitch."
+  [yaw pitch]
   (let [p (Math/toRadians (double pitch)) y (Math/toRadians (- (double yaw)))
         ps (Math/sin p) pc (Math/cos p) ys (Math/sin y) yc (Math/cos y)
         ax (if (pos? ys) :east :west) ay (if (neg? ps) :up :down) az (if (pos? yc) :south :north)
@@ -302,7 +327,9 @@
 (defn- horizontal-look-order [yaw]
   (filterv #(contains? dir/horizontal-offset %) (look-order yaw 0.0)))
 
-(defn attachable? [chunks template pos dir]
+(defn attachable?
+  "Returns true when the block next to pos in dir offers it a sturdy face."
+  [chunks template pos dir]
   (let [n (state-at chunks template (mapv + pos (dir/offset dir)))]
     (and (not (neg? n)) (block/face-sturdy? n (dir/opposite dir)))))
 
@@ -314,7 +341,10 @@
                   (and (= (block/block-of above) (block/block-of st))
                        (= :true (get (block/props-of above) dir))))))))
 
-(defn vine-updated ^long [chunks template pos ^long st]
+(defn vine-updated
+  "Returns st with its faces cut back to the ones still held, 0 when none
+   are left."
+  ^long [chunks template pos ^long st]
   (let [props (block/props-of st)
         props' (reduce (fn [m dir]
                          (if (= :true (get m dir))
@@ -324,7 +354,10 @@
         st' (block/state (block/block-of st) props')]
     (if (seq (block/faces-of st')) st' 0)))
 
-(defn multiface-updated ^long [chunks template pos ^long st]
+(defn multiface-updated
+  "Returns st with its faces cut back to the ones still held, the emptied
+   state when none are left."
+  ^long [chunks template pos ^long st]
   (let [props (block/props-of st)
         props' (reduce (fn [m dir]
                          (if (and (= :true (get m dir)) (not (attachable? chunks template pos dir)))
@@ -334,7 +367,10 @@
         st' (block/state (block/block-of st) props')]
     (if (seq (block/faces-of st')) st' (block/emptied st))))
 
-(defn scaffold-distance ^long [chunks template [x y z :as pos]]
+(defn scaffold-distance
+  "Returns how far pos is from scaffolding support, 7 when nothing is in
+   reach."
+  ^long [chunks template [x y z :as pos]]
   (let [below (state-at chunks template [x (dec (long y)) z])
         scaffold? (fn [st] (= :scaffolding (block/type-of (max 0 st))))
         dist (fn [st] (block/prop-long st :distance))]
@@ -346,7 +382,9 @@
               (if (scaffold? below) (dist below) 7)
               dir/horizontal))))
 
-(defn scaffold-state ^long [chunks template pos ^long st]
+(defn scaffold-state
+  "Returns st with the distance and bottom it has at pos."
+  ^long [chunks template pos ^long st]
   (let [d (scaffold-distance chunks template pos)
         below (state-at chunks template (mapv + pos [0 -1 0]))]
     (block/state (block/block-of st)
@@ -397,7 +435,10 @@
       (block/state (block/block-of st) (assoc (block/props-of st) :facing (dir/opposite f)))
       st)))
 
-(defn- placement-order [yaw pitch face replacing?]
+(defn- placement-order
+  "Returns the directions to try for a block placed against face, as seen
+   by a player looking along yaw and pitch."
+  [yaw pitch face replacing?]
   (let [order (look-order yaw pitch) first-dir (dir/opposite (dir/from-index face))]
     (if replacing? order (into [first-dir] (remove #{first-dir}) order))))
 
@@ -460,6 +501,8 @@
              cand))))
 
 (defn place-order
+  "Returns the directions to try for a block placed against that face, as
+   seen by a player looking along yaw and pitch."
   [face yaw pitch replacing?]
   (let [order (look-order yaw pitch)]
     (if replacing?
@@ -510,7 +553,9 @@
               k classes]
           [k f])))
 
-(defn fitted [chunks template pos st face yaw pitch sneaking? tick replacing?]
+(defn fitted
+  "Returns the state st takes when placed at pos, nil where it cannot stay."
+  [chunks template pos st face yaw pitch sneaking? tick replacing?]
   (if-let [f (fits (block/type-of st))]
     (f chunks template pos st {:face      face :yaw yaw :pitch pitch
                                :sneaking? sneaking? :tick tick :replacing? replacing?})
@@ -525,7 +570,9 @@
                (when-not (supported? chunks gen/flat-chunk p st)
                  [[p (gone-state st)]])))})
 
-(defn free-below? [chunks template [x y z]]
+(defn free-below?
+  "Returns true when nothing under pos holds a falling block up."
+  [chunks template [x y z]]
   (let [y' (dec (long y))]
     (and (chunk/in-range? y')
          (block/free? (chunk/chunks-get-block chunks template [x y' z])))))

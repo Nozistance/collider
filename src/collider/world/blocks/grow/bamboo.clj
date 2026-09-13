@@ -1,4 +1,5 @@
 (ns collider.world.blocks.grow.bamboo
+  "Growth of bamboo."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -18,20 +19,32 @@
         stage (if (or (and (>= height 11) (< (double (roll :stage)) 0.25)) (= height 15)) 1 0)]
     (conj (vec shift) [(dir/up p) (block/state :bamboo {:age (keyword (str a)) :leaves leaves :stage (keyword (str stage))})])))
 
-(defn tick [chunks p st roll _time _ctx]
+(defn tick
+  "Returns the changes a bamboo stalk at p makes this tick, or nil when it does
+   not grow."
+  [chunks p st roll _time _ctx]
   (when (and (= 0 (block/prop-long st :stage)) (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
     (let [height (inc (height-below chunks p :bamboo 16))]
       (when (< height 16)
         (grown chunks p st roll height)))))
 
-(defn sapling-tick [chunks p _st roll _time _ctx]
+(defn sapling-tick
+  "Returns the changes a bamboo sapling at p makes this tick, or nil when it
+   does not grow."
+  [chunks p _st roll _time _ctx]
   (when (and (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
     [[(dir/up p) (block/state :bamboo {:leaves :small})]]))
 
-(defn sapling-meal [chunks p _st _roll]
+(defn sapling-meal
+  "Returns the bone meal result for a bamboo sapling at p, or nil when there is
+   no room above it."
+  [chunks p _st _roll]
   (when (air-at? chunks (dir/up p)) {:changes [[(dir/up p) (block/state :bamboo {:leaves :small})]]}))
 
-(defn meal [chunks p _st roll]
+(defn meal
+  "Returns the bone meal result for the bamboo at p, taken at the top of its
+   stalk, or nil when it cannot grow."
+  [chunks p _st roll]
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)
         top (mapv + p [0 above 0])

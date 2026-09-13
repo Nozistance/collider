@@ -1,4 +1,5 @@
 (ns collider.game.systems.keepalive
+  "Keeping connections alive, and dropping the ones that stop answering."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]))
 
@@ -18,6 +19,8 @@
   (let [t (long (:tick world))]
     (into [] (mapcat #(player-deltas t %)) (state/player-entries world))))
 
-(defn keepalive [world d]
+(defn keepalive
+  "Returns the deltas that ping players and disconnect the silent ones."
+  [world d]
   (let [events (:input d)]
     [#(keepalive-deltas world events)]))

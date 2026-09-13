@@ -1,4 +1,5 @@
 (ns collider.game.systems.sleep
+  "Players sleeping in beds, and the night they can skip."
   (:require [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.daynight :as daynight]
@@ -14,18 +15,24 @@
 (def ^:private deep-sleep 100)
 (def ^:private day-length 24000)
 (defn- block-at [world pos] (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
-(defn sleepers-needed ^long [world]
+(defn sleepers-needed
+  "Returns how many players must sleep to skip the night."
+  ^long [world]
   (let [players (count (state/player-entries world))
         share (long (get-in world [:rules :players-sleeping-percentage] 100))]
     (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
 
-(defn announcement [world ^long asleep]
+(defn announcement
+  "Returns the message telling everyone how the night is going."
+  [world ^long asleep]
   (let [needed (sleepers-needed world)]
     (out/all (out/overlay [(if (>= asleep needed)
                              {:translate "sleep.skipping_night"}
                              {:translate "sleep.players_sleeping" :with [asleep needed]})]))))
 
-(defn wake-deltas [world eid]
+(defn wake-deltas
+  "Returns the deltas that get a player out of bed."
+  [world eid]
   (let [e (get-in world [:entities eid])
         head (get-in e [:sleeping :pos])
         st (block-at world head)
@@ -41,7 +48,9 @@
        (out/to eid (out/animation eid :wake-up))
        (out/to eid (out/teleport up yaw 0.0))])))
 
-(defn sleepers [world]
+(defn sleepers
+  "Returns the players who are asleep."
+  [world]
   (filter (fn [[_ e]] (and (= :player (:type e)) (:sleeping e))) (:entities world)))
 
 (defn- deep-count ^long [world asleep]
@@ -68,5 +77,8 @@
       (skip-night-deltas world asleep)
       (seq waking) (waking-deltas world asleep waking))))
 
-(defn sleep [world _d]
+(defn sleep
+  "Returns the deltas that skip the night or wake players who cannot stay
+   asleep."
+  [world _d]
   [#(sleep-deltas world)])

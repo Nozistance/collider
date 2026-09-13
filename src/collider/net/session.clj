@@ -1,4 +1,5 @@
 (ns collider.net.session
+  "The login of a player, from handshake to play."
   (:require [clojure.data.json :as json]
             [collider.data :as data]
             [collider.log :as log]
@@ -122,7 +123,9 @@
     (swap! unhandled conj packet)
     (log/info "play:" packet "not handled")))
 
-(defn- kick-login! [conn reason]
+(defn- kick-login!
+  "Refuses the login of conn with reason."
+  [conn reason]
   (server/send! conn {:packet :login-disconnect :json (json/write-str reason)})
   (server/close! conn))
 
@@ -208,7 +211,9 @@
     [:configuration :finish-configuration] (do-login! conn io)
     (play-packet! conn queue m)))
 
-(defn handle-packet [conn io m]
+(defn handle-packet
+  "Handles one packet from a player; a malformed one disconnects them."
+  [conn io m]
   (try
     (dispatch! conn io m)
     (catch Throwable t

@@ -1,4 +1,5 @@
 (ns collider.game.systems.daynight
+  "The passing of the day."
   (:require [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
@@ -7,7 +8,9 @@
 (def ^:private sky-keyframes
   [[133 1.0] [11867 1.0] [13670 0.26666668] [22330 0.26666668] [24133 1.0]])
 
-(defn dark? [time-of-day]
+(defn dark?
+  "Returns true when it is night at the given time of day."
+  [time-of-day]
   (let [t (let [r (rem (long time-of-day) 24000)] (if (< r 133) (+ r 24000) r))
         [[t0 v0] [t1 v1]] (first (filter (fn [[[a _] [b _]]] (and (<= a t) (< t b))) (partition 2 1 sky-keyframes)))
         m (+ v0 (* (- v1 v0) (/ (double (- t t0)) (- t1 t0))))]
@@ -24,6 +27,8 @@
       (for [[tag eid] events :when (= :player-join tag)]
         (out/to eid msg)))))
 
-(defn daynight [world d]
+(defn daynight
+  "Returns the deltas that tell players the time of day."
+  [world d]
   (let [events (:input d)]
     [#(daynight-deltas world events)]))

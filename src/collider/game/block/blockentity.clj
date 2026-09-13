@@ -1,4 +1,5 @@
 (ns collider.game.block.blockentity
+  "Block entities: what a block keeps besides its state."
   (:require [collider.data :as data]
             [collider.game.block.sign :as sign]
             [collider.world.block :as block]
@@ -33,23 +34,35 @@
 
 (def spill-kinds #{:chest :trapped-chest :barrel})
 
-(defn kind [^long st]
+(defn kind
+  "Returns the kind of block entity a block has, or nil."
+  [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
 
-(defn at [world pos]
+(defn at
+  "Returns the block entity at pos, or nil."
+  [world pos]
   (get-in world [:block-entities (chunk/block-chunk pos) pos]))
 
-(defn type-id ^long [e]
+(defn type-id
+  "Returns the block entity type id."
+  ^long [e]
   (data/registry-id "block_entity_type" (:kind e)))
 
-(defn identifier [item]
+(defn identifier
+  "Returns the wire name of an item."
+  [item]
   (data/wire item))
 
-(defn stack-nbt [stack]
+(defn stack-nbt
+  "Returns the NBT of one stack, or nil for an empty slot."
+  [stack]
   (when stack
     {:id (identifier (:item stack)) :count (int (:count stack 1))}))
 
-(defn items-nbt [items]
+(defn items-nbt
+  "Returns the NBT of a block's items, empty slots left out."
+  [items]
   (into [] (keep-indexed (fn [i s] (when s (assoc (stack-nbt s) :Slot (byte i))))) items))
 
 (defn- dye-name [color] (data/snake color))
@@ -80,7 +93,9 @@
           (:elytra skin) (assoc :elytra (identifier (:elytra skin)))
           (:model skin) (assoc :model (name (:model skin)))))
 
-(defn profile-nbt [profile]
+(defn profile-nbt
+  "Returns the NBT of a head's owner."
+  [profile]
   (let [p (or (:left (:profile profile)) (:right (:profile profile)))]
     (merge (cond-> {}
                    (:name p) (assoc :name (:name p))
@@ -99,7 +114,9 @@
 (defn- shelf-nbt [e]
   {:Items (items-nbt (:items e)) :align_items_to_bottom (boolean (:align-bottom? e))})
 
-(defn nbt [e]
+(defn nbt
+  "Returns the NBT of the block entity."
+  [e]
   (case (:kind e)
     (:sign :hanging-sign) (sign/nbt e)
     :banner (banner-nbt e)
@@ -108,7 +125,9 @@
     :shelf (shelf-nbt e)
     {}))
 
-(defn on-wire? [e]
+(defn on-wire?
+  "Returns true when the block entity is sent to clients."
+  [e]
   (not (contains? silent (:kind e))))
 
 (def ^:private component-fields
@@ -126,6 +145,7 @@
   (when t (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
 
 (defn contents
+  "Returns the contents of a container as an item component."
   [items]
   (let [top (reduce (fn [acc [i s]] (if s (long i) acc)) -1 (map-indexed vector items))]
     (mapv template (take (inc top) items))))
@@ -133,7 +153,9 @@
 (defn- items-of [cs size]
   (vec (take size (concat (map from-template cs) (repeat nil)))))
 
-(defn from-stack [e stack]
+(defn from-stack
+  "Returns the block entity carried over from the item it was placed from."
+  [e stack]
   (reduce-kv (fn [e field component]
                (if-let [v (get-in stack [:components component])]
                  (assoc e field v)
@@ -143,7 +165,9 @@
                e)
              (get component-fields (:kind e) {})))
 
-(defn to-stack [item e]
+(defn to-stack
+  "Returns the item a block entity becomes when picked up."
+  [item e]
   (let [cs (reduce-kv (fn [m field component]
                         (let [v (get e field)]
                           (if (or (nil? v) (and (coll? v) (empty? v)))
@@ -154,7 +178,9 @@
             (= :shulker-box (:kind e)) (assoc-in [:components :container] (contents (:items e)))
             (seq cs) (update :components merge cs))))
 
-(defn fresh [k editor]
+(defn fresh
+  "Returns an empty block entity of that kind."
+  [k editor]
   (case k
     (:sign :hanging-sign) (sign/fresh k editor)
     :banner {:kind :banner :patterns []}
@@ -168,5 +194,7 @@
     :ender-chest {:kind :ender-chest}
     :lectern {:kind :lectern :book nil :page 0}))
 
-(defn wire [entries]
+(defn wire
+  "Returns the block entities at those positions for the client."
+  [entries]
   (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))

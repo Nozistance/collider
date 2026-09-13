@@ -1,4 +1,5 @@
 (ns collider.world.blocks.chorus
+  "Chorus plants and flowers: support, connections, and the growing flower."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]
@@ -7,12 +8,20 @@
 (set! *warn-on-reflection* true)
 
 
-(defn- off [p d] (mapv + p (dir/offset d)))
-(defn- plant? [^long st] (= :chorus-plant (block/type-of st)))
+(defn- off
+  "Returns the position one block from p in the direction d."
+  [p d] (mapv + p (dir/offset d)))
+(defn- plant?
+  "Returns true when st is a chorus plant."
+  [^long st] (= :chorus-plant (block/type-of st)))
 (defn- flower? [^long st] (= :chorus-flower (block/type-of st)))
-(defn- roots? [^long st] (block/tagged? st "supports_chorus_plant"))
+(defn- roots?
+  "Returns true when st can hold a chorus plant up."
+  [^long st] (block/tagged? st "supports_chorus_plant"))
 
-(defn plant-supported? [chunks p]
+(defn plant-supported?
+  "Returns true when something holds a chorus plant at p."
+  [chunks p]
   (let [below (gen/at chunks (off p :down))
         squeezed? (and (pos? (gen/at chunks (off p :up))) (pos? below))
         branch (some (fn [d]
@@ -28,7 +37,9 @@
       :held true
       (or (plant? below) (roots? below)))))
 
-(defn flower-supported? [chunks p]
+(defn flower-supported?
+  "Returns true when something holds a chorus flower at p."
+  [chunks p]
   (let [below (gen/at chunks (off p :down))]
     (if (or (plant? below) (block/tagged? below "supports_chorus_flower"))
       true
@@ -42,13 +53,18 @@
                 :else (recur (next ds) one?)))
             one?))))))
 
-(defn supported? [chunks p ^long st]
+(defn supported?
+  "Returns true when something holds the chorus block st at p."
+  [chunks p ^long st]
   (boolean (if (flower? st) (flower-supported? chunks p) (plant-supported? chunks p))))
 
 (defn- connects? [^long n d]
   (or (plant? n) (flower? n) (and (= :down d) (roots? n))))
 
-(defn connected ^long [chunks p ^long st]
+(defn connected
+  "Returns st with each of its six sides set from whether a chorus block joins
+   it there."
+  ^long [chunks p ^long st]
   (block/state (block/block-of st)
                (reduce (fn [m d]
                          (assoc m d (if (connects? (gen/at chunks (off p d)) d) :true :false)))
@@ -93,7 +109,10 @@
             (recur (inc i) (assoc seen q flower) (conj acc [q flower]))
             (recur (inc i) seen acc)))))))
 
-(defn flower-tick [chunks p ^long st pick]
+(defn flower-tick
+  "Returns the changes a chorus flower at p makes as it grows, or nil when it
+   stays. pick returns a number below n for a salt."
+  [chunks p ^long st pick]
   (let [above (off p :up) age (block/prop-long st :age)]
     (when (and (zero? (gen/at chunks above)) (chunk/in-range? (long (above 1))) (< age 5))
       (let [[up? _] (grows-up? chunks p pick)]
