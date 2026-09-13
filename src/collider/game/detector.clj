@@ -43,18 +43,27 @@
 (defn- add-counts [stats pairs]
   (reduce (fn [m [k n]] (update m (keyword "custom" (name k)) (fnil + 0) (long n))) stats pairs))
 
-(defn- stats-observe [world events _deltas world']
-  (concat
-    (for [[eid e'] (:entities world') :when (= :player (:type e'))
-          :let [e (get-in world [:entities eid] e')
-                pairs (counts world e e')]
-          :when (seq pairs)]
-      [:merge-entity eid {:stats (add-counts (or (:stats e') {}) pairs)}])
-    (for [[tag eid] events :when (= :stats-request tag)
-          :let [e (get-in world' [:entities eid])] :when e]
-      (out/to eid (out/stats (or (:stats e) {}))))))
+(defn- snapshot [world]
+  (into {}
+        (keep (fn [[eid e]]
+                (when (= :player (:type e))
+                  [eid (select-keys e [:pos :on-ground :sleeping])])))
+        (:entities world)))
+
+(defn- stats-observe [world d]
+  (let [prev (:observed world)]
+    (concat
+      (for [[eid e'] (:entities world) :when (= :player (:type e'))
+            :let [e (get prev eid e')
+                  pairs (counts world e e')]
+            :when (seq pairs)]
+        [:merge-entity eid {:stats (add-counts (or (:stats e') {}) pairs)}])
+      (for [[tag eid] (:input d) :when (= :stats-request tag)
+            :let [e (get-in world [:entities eid])] :when e]
+        (out/to eid (out/stats (or (:stats e) {}))))
+      [[:observed (snapshot world)]])))
 
 (def channels [stats-observe])
 
-(defn observe [world events deltas world']
-  (into [] (mapcat #(% world events deltas world')) channels))
+(defn observe [world d]
+  (into [] (mapcat (fn [c] (c world d))) channels))

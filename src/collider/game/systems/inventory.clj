@@ -103,5 +103,6 @@
           (mapcat #(when (= :click (first %)) (click-deltas world %)) events)
           (mapcat #(when (= :pick (first %)) (pick-deltas world %)) events)))
 
-(defn inventory [world events]
-  [#(inventory-deltas world events)])
+(defn inventory [world d]
+  (let [events (:input d)]
+    [#(inventory-deltas world events)]))

@@ -61,5 +61,5 @@
       (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
               [(announcement world (- (count asleep) (count waking)))]))))
 
-(defn sleep [world _events]
+(defn sleep [world _d]
   [#(sleep-deltas world)])

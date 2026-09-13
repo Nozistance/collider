@@ -1,4 +1,5 @@
 (ns collider.game.state
+  (:refer-clojure :exclude [apply])
   (:require [collider.game.block.blockentity :as be]
             [collider.data :as data]
             [clojure.core.reducers :as r]
@@ -53,7 +54,14 @@
       (compute-active-chunks world))))
 
 (defn cache-active-chunks [world]
-  (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))
+  (let [cached (:active-chunks world)]
+    (if (and cached (identical? (key cached) (:entities world)))
+      world
+      (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))))
+
+(defn advance [world]
+  (cond-> (update world :tick inc)
+          (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0))))
 
 (defn active-at? [active pos]
   (contains? active (pos-chunk pos)))
@@ -68,7 +76,7 @@
 (def initial-world schema/initial-world)
 (defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
-    (apply update-in w [:entities eid] f args)
+    (clojure.core/apply update-in w [:entities eid] f args)
     w))
 
 (def ^:private around
@@ -305,28 +313,39 @@
     (update-entity w eid assoc k v)
     w))
 
-(defn apply-event [world [tag & args]]
-  (case tag
-    :player-join (apply player-join world args)
-    :player-quit (apply player-quit world args)
-    :move (let [[eid changes] args] (apply-move world eid changes))
-    :teleport-ack (apply teleport-ack world args)
-    :keepalive-echo (apply keepalive-echo world args)
-    :chunk-batch-ack (apply chunk-batch-ack world args)
-    :entity-action (apply entity-action world args)
-    :input (let [[eid flags] args] (update-entity world eid merge flags))
-    :client-settings (let [[eid sp] args] (update-entity world eid assoc :skin-parts sp))
-    :held-item (apply held-item world args)
-    :creative-slot (apply creative-slot world args)
-    :place (let [[eid _ face item _ _ rot] args] (use-item world eid face item rot))
-    :dig (let [[eid status] args] (release-item world eid status))
-    world))
+(def input-apply
+  {:player-join     (fn [w [_ eid name]] (player-join w eid name))
+   :player-quit     (fn [w [_ eid]] (player-quit w eid))
+   :move            (fn [w [_ eid changes]] (apply-move w eid changes))
+   :teleport-ack    (fn [w [_ eid id]] (teleport-ack w eid id))
+   :keepalive-echo  (fn [w [_ eid id]] (keepalive-echo w eid id))
+   :chunk-batch-ack (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
+   :entity-action   (fn [w [_ eid action]] (entity-action w eid action))
+   :input           (fn [w [_ eid flags]] (update-entity w eid merge flags))
+   :client-settings (fn [w [_ eid sp]] (update-entity w eid assoc :skin-parts sp))
+   :held-item       (fn [w [_ eid slot]] (held-item w eid slot))
+   :creative-slot   (fn [w [_ eid slot stack]] (creative-slot w eid slot stack))
+   :place           (fn [w [_ eid _ face item _ _ rot]] (use-item w eid face item rot))
+   :dig             (fn [w [_ eid status]] (release-item w eid status))})
+
+(defn- unchanged [w _]
+  w)
+
+(defn apply-event [world delta]
+  ((get input-apply (nth delta 0) unchanged) world delta))
+
+(defn- applied-input [world input]
+  (loop [w world i 0 origins {}]
+    (if-let [d (nth input i nil)]
+      (recur (apply-event w d) (inc i)
+             (if-let [o (use-origin w d)] (assoc origins i o) origins))
+      (assoc w :use-origins origins))))
 
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
 
 (defn- listed [w add drop]
-  (update w :listed #(apply dissoc (merge % add) drop)))
+  (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
 
 (defn- flush-ticks [w t parked]
   (update w :block-ticks
@@ -362,19 +381,21 @@
                               :hurt-resist max-resist)
                      dx (knock-back (double dx) (double dz)))))))
 
-(defn- apply-entity-delta [tick e [tag & args]]
-  (case tag
-    :merge-entity (merge e (second args))
-    :teleport (let [[_ pos] args] (assoc e :pos (v/v3 pos) :tp-target pos :tp-id tick))
-    :client-slots (let [[_ slots carried] args] (client-slots e slots carried))
-    :track (assoc e :track (second args))
-    :tracking (let [[_ add drop] args] (update e :tracking merge-diff add drop))
-    :set-slot (let [[_ slot stack] args]
-                (if stack (assoc-in e [:inventory slot] stack) (update e :inventory dissoc slot)))
-    :chunks-sent (let [[_ add drop] args] (update e :sent-chunks merge-diff add drop))
-    :damage (let [[_ amount dx dz] args] (hurt e amount dx dz))
-    :push (let [[_ v] args]
-            (update e (if (= :tnt (:type e)) :kb :vel) (fnil v/+ [0.0 0.0 0.0]) v))))
+(def entity-apply
+  {:merge-entity (fn [_ e [_ _ m]] (merge e m))
+   :teleport     (fn [tick e [_ _ pos]] (assoc e :pos (v/v3 pos) :tp-target pos :tp-id tick))
+   :client-slots (fn [_ e [_ _ slots carried]] (client-slots e slots carried))
+   :track        (fn [_ e [_ _ tr]] (assoc e :track tr))
+   :tracking     (fn [_ e [_ _ add drop]] (update e :tracking merge-diff add drop))
+   :set-slot     (fn [_ e [_ _ slot stack]]
+                   (if stack (assoc-in e [:inventory slot] stack) (update e :inventory dissoc slot)))
+   :chunks-sent  (fn [_ e [_ _ add drop]] (update e :sent-chunks merge-diff add drop))
+   :damage       (fn [_ e [_ _ amount dx dz]] (hurt e amount dx dz))
+   :push         (fn [_ e [_ _ vel]]
+                   (update e (if (= :tnt (:type e)) :kb :vel) (fnil v/+ [0.0 0.0 0.0]) vel))})
+
+(defn- apply-entity-delta [tick e delta]
+  ((get entity-apply (nth delta 0)) tick e delta))
 
 (defn- spawned [w spec]
   (let [eid (long (:next-eid w 1000000))]
@@ -403,25 +424,32 @@
       (assoc-in w [:block-entities cp pos] e)
       (update-in w [:block-entities cp] dissoc pos))))
 
-(defn- apply-world-delta [w [tag & args :as delta]]
-  (case tag
-    :remove-entity (apply player-quit w args)
-    :listed (apply listed w args)
-    :spawn-entity (spawned w (first args))
-    :set-blocks (apply-set-blocks w (first args) (long (or (second args) (:tick w))))
-    :ticks-flushed (let [[t parked] args] (flush-ticks w t parked))
-    :schedule-ticks (scheduled w (first args))
-    :container-recheck (apply rechecked w args)
-    :shulker-anim (apply shulker-animated w args)
-    :block-events-flushed (assoc w :block-events nil)
-    :set-time (assoc w :time-of-day (long (first args)))
-    :set-rule (let [[rule value] args] (assoc-in w [:rules rule] value))
-    :set-world-spawn (assoc w :world-spawn (vec (first args)))
-    :set-weather (merge w (select-keys (first args) weather/fields))
-    :set-block-entity (apply block-entity-set w args)
-    (if (deltas/entity-tags tag)
-      (update-entity w (first args) #(apply-entity-delta (:tick w) % delta))
-      w)))
+(def world-apply
+  {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
+   :listed               (fn [w [_ add drop]] (listed w add drop))
+   :spawn-entity         (fn [w [_ spec]] (spawned w spec))
+   :set-blocks           (fn [w [_ changes base]] (apply-set-blocks w changes (long (or base (:tick w)))))
+   :ticks-flushed        (fn [w [_ t parked]] (flush-ticks w t parked))
+   :schedule-ticks       (fn [w [_ at-ids]] (scheduled w at-ids))
+   :container-recheck    (fn [w [_ pos at]] (rechecked w pos at))
+   :shulker-anim         (fn [w [_ pos a]] (shulker-animated w pos a))
+   :block-events-flushed (fn [w _] (assoc w :block-events nil))
+   :set-time             (fn [w [_ t]] (assoc w :time-of-day (long t)))
+   :set-rule             (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
+   :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
+   :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
+   :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
+   :advance-tick         (fn [w _] (advance w))
+   :advance-weather      (fn [w _] (merge w (weather/advance w)))
+   :observed             (fn [w [_ m]] (assoc w :observed m))})
+
+(defn- apply-world-delta [w delta]
+  (let [tag (nth delta 0)]
+    (if-let [f (get world-apply tag)]
+      (f w delta)
+      (if-let [g (get entity-apply tag)]
+        (update-entity w (nth delta 1) (fn [e] (g (:tick w) e delta)))
+        w))))
 
 (defn- folded-entities [w entities pairs]
   (r/fold fold-leaf (r/monoid i/merge i/int-map)
@@ -431,14 +459,19 @@
               m))
           pairs))
 
-(defn apply-deltas [world deltas]
+(defn apply [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
-        [w removes] (reduce (fn [[w removes] [tag & args :as delta]]
-                              (if (= :remove-entity tag)
-                                [w (conj removes (first args))]
+        [w removes] (reduce (fn [[w removes] delta]
+                              (if (identical? :remove-entity (nth delta 0))
+                                [w (conj removes (nth delta 1))]
                                 [(apply-world-delta w delta) removes]))
                             [world []] (.world d))
+        w (if (seq (.input d)) (applied-input w (.input d)) w)
         entities (:entities w)
         updated (folded-entities w entities (vec (.entities d)))
         w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)]
-    [(reduce player-quit w removes) d]))
+    (cache-active-chunks (reduce player-quit w removes))))
+
+(defn apply-deltas [world deltas]
+  (let [d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))]
+    [(apply world d) d]))

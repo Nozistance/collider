@@ -15,5 +15,5 @@
     [[:set-block-entity pos (assoc e :song nil :started nil)]
      (out/all (out/level-event out/sound-stop-jukebox-song pos 0))]))
 
-(defn jukebox-songs [world _events]
+(defn jukebox-songs [world _d]
   [#(mapcat (partial stop-deltas world) (playing world))])

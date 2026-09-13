@@ -84,8 +84,9 @@
                           (chunk/in-range? (nth pos' 1)) (conj (edit/own-change world eid pos')))))))
           (map-indexed vector events)))
 
-(defn ack-deltas [world events]
-  (let [latest (reduce (fn [m [tag eid & args]]
+(defn acks [world d]
+  (let [events (:input d)
+        latest (reduce (fn [m [tag eid & args]]
                          (if-let [sq (sequence-of tag args)]
                            (update m eid (fnil max -1) (long sq))
                            m))
@@ -111,5 +112,6 @@
                           (map-indexed vector events))]
     edits))
 
-(defn block-edits [world events]
-  [#(block-edits-deltas world events)])
+(defn block-edits [world d]
+  (let [events (:input d)]
+    [#(block-edits-deltas world events)]))

@@ -338,8 +338,9 @@
                 say-deltas (into say-deltas))
         (movement-sounds e2 was-wet? walked walked' t eid))))
 
-(defn mobs-system [world events]
-  (let [t (long (:tick world))
+(defn mobs-system [world d]
+  (let [events (:input d)
+        t (long (:tick world))
         active (state/active-chunks world)
         index (push/push-index world active)
         tempters (sense/holders world)

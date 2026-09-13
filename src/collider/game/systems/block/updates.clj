@@ -1,5 +1,6 @@
 (ns collider.game.systems.block.updates
   (:require [clojure.data.int-map :as i]
+            [collider.game.block.blockentity :as be]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
             [collider.random :as random]
@@ -181,5 +182,16 @@
                 (when (seq changes) (change-deltas world now changes))
                 (ignite-deltas world now))))))
 
-(defn block-updates [world events]
-  [#(block-updates-deltas world events)])
+(defn block-updates [world d]
+  [#(block-updates-deltas world d)])
+
+(defn- final-records [recs]
+  (let [last (into {} recs)]
+    (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
+
+(defn block-flush [w _d]
+  (when-let [events (:block-events w)]
+    (concat [[:block-events-flushed]]
+            (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
+            (for [[_ recs] events [pos _] recs :when (be/at w pos)]
+              (out/all (out/block-entity pos))))))

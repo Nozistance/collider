@@ -1,9 +1,7 @@
 (ns collider.game.tick
-  (:require [collider.game.block.blockentity :as be]
-            [collider.game.state :as state]
+  (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
-            [collider.game.out :as out]
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
@@ -50,39 +48,23 @@
               #'daynight/daynight
               #'keepalive/keepalive])
 
-(defn- final-records [recs]
-  (let [last (into {} recs)]
-    (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
+(def post-systems [#'players/late-tracking
+                   #'block-updates/block-flush
+                   #'blocks/acks
+                   #'weather-system/weather
+                   #'falling/first-step
+                   #'tnt/first-step])
 
-(defn- block-flush-deltas [w]
-  (when-let [events (:block-events w)]
-    (concat [[:block-events-flushed]]
-            (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
-            (for [[_ recs] events [pos _] recs :when (be/at w pos)]
-              (out/all (out/block-entity pos))))))
-
-(defn- apply-events [world events]
-  (loop [w world i 0 origins {}]
-    (if-let [ev (nth events i nil)]
-      (let [o (state/use-origin w ev)]
-        (recur (state/apply-event w ev) (inc i) (if o (assoc origins i o) origins)))
-      (assoc w :use-origins origins))))
+(def phases [systems
+             post-systems
+             [#'detector/observe]])
 
 (defn tick [world events]
-  (let [world' (cond-> (update world :tick inc)
-                       (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
-        world' (state/cache-active-chunks (apply-events world' events))
-        deltas (deltas/of systems world' events)
-        [w1 d1] (state/apply-deltas world' deltas)
-        w1 (state/cache-active-chunks (weather-system/advanced w1))
-        post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1)
-                     (blocks/ack-deltas w1 events) (weather-system/messages w1 events)
-                     (falling/first-step-deltas w1) (tnt/first-step-deltas w1)
-                     (detector/observe world events d1 w1))]
-    (if (empty? post)
-      [w1 d1]
-      (let [[w2 d2] (state/apply-deltas w1 post)]
-        [w2 (deltas/merge-deltas d1 d2)]))))
+  (let [input (deltas/input events)]
+    (reduce (fn [[w d] phase]
+              (let [d' (deltas/of phase w d)]
+                [(state/apply w d') (deltas/merge d d')]))
+            [(state/apply world input) input] phases)))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 (def ^:private ^:const window-size 4096)

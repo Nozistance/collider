@@ -305,8 +305,9 @@
                    [[] #{}]
                    (state/player-entries world)))))
 
-(defn items [world events]
-  (let [act (active-items world)]
+(defn items [world d]
+  (let [events (:input d)
+        act (active-items world)]
     (-> [#(spawn-deltas world events)]
         (into (map (fn [[eid e]] #(vector (step-item world eid e)))) act)
         (conj #(merge-deltas act)

@@ -42,7 +42,13 @@
    :remove-entity
    [:cat Eid]
    :listed
-   [:cat [:map-of Eid :uuid] Coll]})
+   [:cat [:map-of Eid :uuid] Coll]
+   :advance-tick
+   [:cat]
+   :advance-weather
+   [:cat]
+   :observed
+   [:cat :map]})
 
 (def entity-deltas
   {:merge-entity

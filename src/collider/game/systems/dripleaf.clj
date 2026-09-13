@@ -40,5 +40,5 @@
   (let [changes (tilt-changes world)]
     (when (seq changes) [[:set-blocks (vec changes)]])))
 
-(defn dripleaf-tilt [world _events]
+(defn dripleaf-tilt [world _d]
   [#(tilt-deltas world)])

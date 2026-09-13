@@ -18,5 +18,6 @@
   (let [t (long (:tick world))]
     (into [] (mapcat #(player-deltas t %)) (state/player-entries world))))
 
-(defn keepalive [world events]
-  [#(keepalive-deltas world events)])
+(defn keepalive [world d]
+  (let [events (:input d)]
+    [#(keepalive-deltas world events)]))

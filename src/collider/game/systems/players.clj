@@ -4,8 +4,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state])
-  (:import (collider.game.deltas Deltas)
-           (java.util ArrayList Locale)))
+  (:import (java.util ArrayList Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -357,13 +356,20 @@
             (out/all (out/animation eid :swing))))
         events))
 
-(defn late-tracking-deltas [world ^Deltas d]
-  (when (some (fn [t] (contains? #{:spawn-entity :remove-entity} (nth t 0))) (.world d))
+(defn- entities-changed? [d]
+  (some (fn [delta]
+          (let [tag (nth delta 0)]
+            (or (identical? :spawn-entity tag) (identical? :remove-entity tag))))
+        (:world d)))
+
+(defn late-tracking [world d]
+  (when (entities-changed? d)
     (let [by-chunk (entities-by-chunk (tracked-entries world))]
       (into [] (mapcat (fn [entry] (tracking-deltas world by-chunk entry))) (state/player-entries world)))))
 
-(defn players [world events]
-  (let [ps (state/player-entries world)
+(defn players [world d]
+  (let [events (:input d)
+        ps (state/player-entries world)
         ts (tracked-entries world)]
     (let [spawns (fn []
                    (let [by-chunk (entities-by-chunk ts)]

@@ -24,5 +24,6 @@
       (for [[tag eid] events :when (= :player-join tag)]
         (out/to eid msg)))))
 
-(defn daynight [world events]
-  [#(daynight-deltas world events)])
+(defn daynight [world d]
+  (let [events (:input d)]
+    [#(daynight-deltas world events)]))

@@ -252,5 +252,6 @@
 (defn- chat-deltas [world events]
   (into [] (mapcat #(concat (event-deltas world %) (rules-event-deltas world %))) events))
 
-(defn chat [world events]
-  [#(chat-deltas world events)])
+(defn chat [world d]
+  (let [events (:input d)]
+    [#(chat-deltas world events)]))

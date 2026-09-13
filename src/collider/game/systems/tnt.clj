@@ -144,7 +144,7 @@
                         (if (contains? @seen o) true (do (vswap! seen conj o) false))))))
           deltas)))
 
-(defn first-step-deltas [world]
+(defn first-step [world _d]
   (let [active (state/active-chunks world)]
     (into []
           (comp (filter (fn [[_ e]] (and (= :tnt (:type e)) (:origin e) (state/active-at? active (:pos e)))))
@@ -155,7 +155,7 @@
   [(kb-index (:entities world))
    (tnt/primed-origins world)])
 
-(defn tnt-system [world _events]
+(defn tnt-system [world _d]
   (let [tnts (into [] (filter (fn [[_ e]] (= :tnt (:type e)))) (sort-by key (:entities world)))
         fresh (filterv (fn [[_ e]] (:origin e)) tnts)
         armed (into [] (remove (fn [[_ e]] (:origin e))) tnts)

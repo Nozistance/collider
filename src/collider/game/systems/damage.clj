@@ -352,5 +352,6 @@
                     nil)))
         events))
 
-(defn damage [world events]
-  (conj (living-fns world) #(event-deltas world events)))
+(defn damage [world d]
+  (let [events (:input d)]
+    (conj (living-fns world) #(event-deltas world events))))

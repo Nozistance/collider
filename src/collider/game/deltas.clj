@@ -1,4 +1,5 @@
 (ns collider.game.deltas
+  (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
             [collider.game.delta :as delta]))
@@ -16,10 +17,10 @@
              (fn [acc x] (into acc (f x)))
              v))))
 
-(defrecord Deltas [world entities out])
-(def empty-deltas (->Deltas [] (i/int-map) []))
-(def entity-tags
-  #{:merge-entity :track :tracking :set-slot :chunks-sent :push :damage :teleport :client-slots})
+(defrecord Deltas [world entities out input])
+(def empty-deltas (->Deltas [] (i/int-map) [] []))
+(defn input ^Deltas [events]
+  (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
 (defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
@@ -34,26 +35,31 @@
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))
-      (->Deltas (persistent! w) (persistent! e) (persistent! o)))))
+      (->Deltas (persistent! w) (persistent! e) (persistent! o) (.input acc)))))
 
-(defn merge-deltas ^Deltas [^Deltas a ^Deltas b]
-  (->Deltas (into (.world a) (.world b))
-            (i/merge-with into (.entities a) (.entities b))
-            (into (.out a) (.out b))))
+(defn merge
+  (^Deltas [^Deltas a ^Deltas b]
+   (->Deltas (into (.world a) (.world b))
+             (i/merge-with into (.entities a) (.entities b))
+             (into (.out a) (.out b))
+             (into (.input a) (.input b))))
+  (^Deltas [a b & more] (reduce merge (merge a b) more)))
+
+(def merge-deltas merge)
 
 (defn fold [reducef v]
-  (r/fold 1 (r/monoid merge-deltas (constantly empty-deltas)) reducef v))
+  (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (defn run ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]
             (if (fn? (first r))
-              (merge-deltas acc (run (vec r)))
+              (merge acc (run (vec r)))
               (add acc r))))
         fs))
 
-(defn of ^Deltas [systems world events]
-  (run (mapv (fn [s] (fn [] (s world events))) systems)))
+(defn of ^Deltas [systems world deltas]
+  (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
 (defn run-seq [fs]
   (into [] (mapcat (fn [f]

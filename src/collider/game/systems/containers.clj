@@ -254,5 +254,6 @@
             events)
     (container/recheck-deltas world)))
 
-(defn containers [world events]
-  [#(containers-deltas world events)])
+(defn containers [world d]
+  (let [events (:input d)]
+    [#(containers-deltas world events)]))

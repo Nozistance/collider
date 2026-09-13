@@ -68,6 +68,6 @@
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas world eid pos yaw pitch)))))
 
-(defn chunk-streaming [world _events]
+(defn chunk-streaming [world _d]
   (mapv (fn [entry] #(stream-deltas world entry))
         (state/player-entries world)))

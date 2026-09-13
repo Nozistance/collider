@@ -132,5 +132,6 @@
                     (drip-events drips)
                     (drop-spawns world results))))))))
 
-(defn random-ticks [world events]
-  [#(random-tick-deltas world events)])
+(defn random-ticks [world d]
+  (let [events (:input d)]
+    [#(random-tick-deltas world events)]))
