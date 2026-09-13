@@ -322,6 +322,8 @@
     (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw) :half :lower})]
    [(fn [t _b] (= :bed t))
     (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw) :part :foot :occupied :false})]
+   [(fn [t _b] (= :anvil t))
+    (fn [{:keys [yaw]}] {:facing (dir/clockwise (dir/player-direction yaw))})]
    [(fn [t _b] (= :fence-gate t))
     (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw)})]
    [(fn [t _b] (contains? trapdoor-types t))

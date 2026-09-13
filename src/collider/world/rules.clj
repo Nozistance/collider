@@ -5,6 +5,7 @@
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grass :as grass]
+            [collider.world.blocks.grow.crop :as crop]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]
@@ -17,6 +18,7 @@
             liquid/rule
             fire/rule
             dripleaf/rule
+            crop/attached-stem-rule
             support/rule
             dripstone/rule
             dripstone/cauldron-rule

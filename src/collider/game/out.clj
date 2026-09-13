@@ -148,6 +148,8 @@
 
 (def ^:const sound-play-jukebox-song 1010)
 (def ^:const sound-stop-jukebox-song 1011)
+(def ^:const sound-anvil-broken 1029)
+(def ^:const sound-anvil-land 1031)
 (def ^:const sound-chorus-grow 1033)
 (def ^:const sound-chorus-death 1034)
 (def ^:const sound-page-turn 1043)

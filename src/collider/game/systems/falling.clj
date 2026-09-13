@@ -29,6 +29,7 @@
                                    {:item (block/block-of (:block e)) :count 1})]])))
 
 (defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
+(defn- anvil? [^long st] (= :anvil (block/type-of st)))
 
 (defn- landed-state [world cell st cur concrete? stuck?]
   (let [continues? (and (support/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
@@ -42,11 +43,14 @@
   (concat [[:remove-entity eid]]
           (when (speleothem? (:block e))
             [(out/all (out/level-event out/sound-pointed-dripstone-land cell 0))])
+          (when (anvil? (:block e))
+            [(out/all (out/level-event out/sound-anvil-broken cell 0))])
           (item-deltas world eid e)))
 
 (defn- land-deltas [world eid e cell cur concrete? stuck?]
   (if-let [st (landed-state world cell (:block e) cur concrete? stuck?)]
-    [[:remove-entity eid] [:set-blocks [[cell st]]]]
+    (cond-> [[:remove-entity eid] [:set-blocks [[cell st]]]]
+            (anvil? st) (conj (out/all (out/level-event out/sound-anvil-land cell 0))))
     (broken-deltas world eid e cell)))
 
 (defn- solid-here? [world cell]

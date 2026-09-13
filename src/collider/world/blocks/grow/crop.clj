@@ -78,6 +78,24 @@
       [[p (aged st (inc (age st)))]]
       (fruit-changes chunks p st roll))))
 
+(def ^:private stems
+  (into {} (for [[stem [fruit attached _]] fruits] [attached [fruit stem]])))
+
+(defn- fruitless? [chunks p ^long st]
+  (let [[fruit _] (stems (block/block-of st))
+        beside (mapv + p (dir/horizontal-offset (block/facing-of st)))]
+    (not= fruit (block/block-of (gen/at chunks beside)))))
+
+(def attached-stem-rule
+  {:name   :attached-stem
+   :match? (fn [_chunks st _p] (= :attached-stem (block/type-of st)))
+   :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
+   :due    (fn [chunks p _ctx]
+             (let [st (gen/at chunks p)]
+               (cond
+                 (not (support/supported? chunks gen/flat-chunk p st)) [[p (support/gone-state st)]]
+                 (fruitless? chunks p st) [[p (block/state (second (stems (block/block-of st))) {:age :7})]])))})
+
 (defn cane-tick [chunks p st _roll _time _ctx]
   (when (and (air-at? chunks (dir/up p)) (< (inc (height-below chunks p (block/block-of st) 3)) 3))
     (if (= 15 (age st))

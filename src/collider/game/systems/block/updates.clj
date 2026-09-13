@@ -14,6 +14,7 @@
             [collider.world.gen :as gen]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.support :as support]
             [collider.world.rules :as rules]))
 
 (set! *warn-on-reflection* true)
@@ -34,14 +35,17 @@
                                       p ctx))
                             cells)))))
 
-(defn- wash-deltas [world changes]
+(defn- destroyed? [^long old ^long st]
+  (and (pos? old) (nil? (liquid/liquid-class old))
+       (if (= :water (liquid/liquid-class st))
+         (not (block/waterlogged? old))
+         (and (zero? st) (block/attached? old) (= st (support/gone-state old))))))
+
+(defn- destroyed-deltas [world changes]
   (when (get-in world [:rules :block-drops] true)
     (for [[pos st] changes
           :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-          :when (and (= :water (liquid/liquid-class st))
-                     (pos? (long old))
-                     (nil? (liquid/liquid-class old))
-                     (not (block/waterlogged? old)))
+          :when (destroyed? old st)
           [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key [(:tick world) pos salt]))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
@@ -155,7 +159,7 @@
 (defn- change-deltas [world now changes]
   (concat [[:set-blocks changes]]
           (fizz-deltas world changes)
-          (wash-deltas world changes)
+          (destroyed-deltas world changes)
           (sponge-deltas world now changes)
           (fall-deltas world changes)
           (eyeblossom-deltas changes)
