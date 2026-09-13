@@ -1,4 +1,5 @@
 (ns collider.game.tick
+  "The tick, a fold over phases of systems, and the ticker thread that runs it."
   (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
@@ -59,7 +60,11 @@
              post-systems
              [#'detector/observe]])
 
-(defn tick [world events]
+(defn tick
+  "Returns [world' deltas] for one tick of world with the network input events:
+   the input applied, then each phase of systems run on the world so far and
+   applied in turn."
+  [world events]
   (let [input (deltas/input events)]
     (reduce (fn [[w d] phase]
               (let [d' (deltas/of phase w d)]
@@ -158,6 +163,9 @@
             (recur (pace next-ns nominal-tick-ns) (inc (long i)) p)))))))
 
 (defn start-ticker!
+  "Starts a daemon thread that ticks world-atom at the nominal rate, draining
+   queue for input and handing each tick's deltas to deliver!. Returns a handle
+   for stop-ticker! with a :stats fn of tick time percentiles."
   ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)
@@ -171,7 +179,9 @@
       :running running
       :stats   #(percentiles (:window st) (:counter st))})))
 
-(defn stop-ticker! [{:keys [^Thread thread ^AtomicBoolean running]}]
+(defn stop-ticker!
+  "Stops the ticker thread of a start-ticker! handle."
+  [{:keys [^Thread thread ^AtomicBoolean running]}]
   (.set running false)
   (.join thread 1000)
   nil)

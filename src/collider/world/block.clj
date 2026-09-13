@@ -1,4 +1,5 @@
 (ns collider.world.block
+  "Block state tables of 26.2: ids, properties, classes, shapes and placement."
   (:require [collider.data :as data]
             [collider.world.direction :as dir])
   (:import (java.util Arrays)))
@@ -7,11 +8,16 @@
 
 (def ^:const air 0)
 (defn state
+  "Returns the global state id of block with props, or of its default state."
   (^long [block] (data/state-id block))
   (^long [block props] (data/state-id block props)))
 
-(defn name-of [^long st] (data/state-block st))
-(defn props-of [^long st] (second (data/state-props st)))
+(defn name-of
+  "Returns the block keyword of state id st."
+  [^long st] (data/state-block st))
+(defn props-of
+  "Returns the property map of st."
+  [^long st] (second (data/state-props st)))
 (defn prop-long ^long [^long st k] (Long/parseLong (name (get (props-of st) k :0))))
 (def ^:private state-count (long data/block-state-count))
 
@@ -27,8 +33,12 @@
 (def ^:private type-arr (block-table (fn [_ b] (:type b))))
 (def ^:private name-arr (block-table (fn [block _] block)))
 (defn- known? [^long st] (< -1 st state-count))
-(defn type-of [^long st] (when (known? st) (aget ^objects type-arr st)))
-(defn block-of [^long st] (when (known? st) (aget ^objects name-arr st)))
+(defn type-of
+  "Returns the vanilla block class of st as a keyword, nil for an unknown id."
+  [^long st] (when (known? st) (aget ^objects type-arr st)))
+(defn block-of
+  "Returns the block keyword of st, nil for an unknown id."
+  [^long st] (when (known? st) (aget ^objects name-arr st)))
 (def door-types #{:door :weathering-copper-door})
 (def trapdoor-types #{:trapdoor :weathering-copper-trapdoor})
 (def torch-types #{:torch :redstone-torch})
@@ -100,7 +110,9 @@
   (if (= :true (:waterlogged (props-of st)))
     (state (block-of st) (assoc (props-of st) :waterlogged :false))
     st))
-(defn with-water ^long [^long st]
+(defn with-water
+  "Returns st waterlogged when the block allows it, else st."
+  ^long [^long st]
   (if (contains? (props-of st) :waterlogged)
     (state (block-of st) (assoc (props-of st) :waterlogged :true))
     st))
@@ -241,7 +253,9 @@
       (aset a (+ (long (:first b)) (long i)) (double (:resistance b 3.0))))
     a))
 
-(defn resist ^double [^long st] (if (< -1 st state-count) (aget ^doubles resist-arr st) 3.0))
+(defn resist
+  "Returns the explosion resistance of st."
+  ^double [^long st] (if (< -1 st state-count) (aget ^doubles resist-arr st) 3.0))
 (defn- behind [facing] (dir/offset (dir/opposite facing)))
 (defn facing-of [^long st] (:facing (props-of st)))
 (defn support-offset [^long st]
@@ -357,7 +371,10 @@
        (state block (select-keys (merge {:waterlogged :false} props) (keys (:props b))))))))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
-(defn collision-boxes [^long st]
+(defn collision-boxes
+  "Returns the collision boxes of st, each [x1 y1 z1 x2 y2 z2] within the
+   block."
+  [^long st]
   (if (known? st)
     (let [v (aget ^objects data/shapes st)] (if (nil? v) full-box v))
     full-box))
@@ -427,7 +444,9 @@
   (let [[lo hi] (:count entry [1 1])]
     (+ (long lo) (long (Math/floor (* (double (roll [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
 
-(defn drops [^long st roll]
+(defn drops
+  "Returns the stacks st drops, rolled with roll."
+  [^long st roll]
   (let [table (get data/drops (block-of st))
         props (props-of st)]
     (if (vector? table)

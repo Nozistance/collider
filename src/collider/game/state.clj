@@ -1,4 +1,6 @@
 (ns collider.game.state
+  "The world value: how deltas apply to it, and the players and active chunks
+   it holds."
   (:refer-clojure :exclude [apply])
   (:require [collider.game.block.blockentity :as be]
             [collider.data :as data]
@@ -25,7 +27,9 @@
 
 (set! *warn-on-reflection* true)
 
-(defn player-entries [world]
+(defn player-entries
+  "Returns [eid entity] pairs of the online players in eid order."
+  [world]
   (let [entities (:entities world)]
     (into [] (map (fn [eid] (MapEntry/create eid (get entities eid))))
           (sort (vals (:players world))))))
@@ -47,30 +51,43 @@
                       (chunk/around-ids (long cx) (long cz) r)))))
         (:entities world)))
 
-(defn active-chunks [world]
+(defn active-chunks
+  "Returns the set of chunk ids in which the world ticks."
+  [world]
   (let [cached (:active-chunks world)]
     (if (and cached (identical? (key cached) (:entities world)))
       (val cached)
       (compute-active-chunks world))))
 
-(defn cache-active-chunks [world]
+(defn cache-active-chunks
+  "Returns world with its active chunk set memoized for the current entities."
+  [world]
   (let [cached (:active-chunks world)]
     (if (and cached (identical? (key cached) (:entities world)))
       world
       (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))))
 
-(defn advance [world]
+(defn advance
+  "Returns world one tick later, with the day time advanced when the
+   advance_time rule allows."
+  [world]
   (cond-> (update world :tick inc)
           (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0))))
 
-(defn active-at? [active pos]
+(defn active-at?
+  "Returns true when pos lies in an active chunk."
+  [active pos]
   (contains? active (pos-chunk pos)))
 
-(defn active-id? [active ^long bid]
+(defn active-id?
+  "Returns true when chunk id bid is active."
+  [active ^long bid]
   (contains? active (chunk/pos->id (bit-shift-right bid 42)
                                    (bit-shift-right (bit-shift-left bid 38) 42))))
 
-(defn offline-uuid ^UUID [^String name]
+(defn offline-uuid
+  "Returns the offline-mode UUID of a player name."
+  ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def initial-world schema/initial-world)
@@ -148,10 +165,15 @@
             (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
             (cond-> (seq events) (update :block-events add-block-events events)))))))
 
-(defn spawn-seed ^double [w eid]
+(defn spawn-seed
+  "Returns the random seed of the spawn search for eid this tick."
+  ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
-(defn world-spawn-pos [w eid]
+(defn world-spawn-pos
+  "Returns the spawn position for player eid, searched around the world spawn
+   within the respawn radius."
+  [w eid]
   (spawn/find-spawn (:chunks w) gen/flat-chunk (:world-spawn w)
                     (long (get-in w [:rules :respawn-radius] 10))
                     (spawn-seed w eid)))
@@ -208,7 +230,9 @@
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
-(defn use-origin [w [tag & args]]
+(defn use-origin
+  "Returns the pose of the player at a :place event, or nil for other events."
+  [w [tag & args]]
   (when (= :place tag)
     (let [[eid _ _ _ _ _ rot] args]
       (when-let [e (get-in w [:entities eid])]
@@ -331,7 +355,9 @@
 (defn- unchanged [w _]
   w)
 
-(defn apply-event [world delta]
+(defn apply-event
+  "Returns world with one input delta applied."
+  [world delta]
   ((get input-apply (nth delta 0) unchanged) world delta))
 
 (defn- applied-input [world input]
@@ -365,6 +391,8 @@
                      (- (/ (v/z v) 2.0) (* (/ dz f) 0.4))]))))
 
 (defn hurt
+  "Returns entity e after amount of damage, knocked back from direction dx dz
+   when given; no change inside the hurt resistance window."
   ([e ^double amount] (hurt e amount nil nil))
   ([e ^double amount dx dz]
    (let [health (double (or (:health e) 0.0))
@@ -459,7 +487,10 @@
               m))
           pairs))
 
-(defn apply [world deltas]
+(defn apply
+  "Returns the world with deltas applied: world deltas, then input, then entity
+   deltas in parallel, then removals."
+  [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
         [w removes] (reduce (fn [[w removes] delta]
                               (if (identical? :remove-entity (nth delta 0))
@@ -472,6 +503,8 @@
         w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)]
     (cache-active-chunks (reduce player-quit w removes))))
 
-(defn apply-deltas [world deltas]
+(defn apply-deltas
+  "Returns [world' deltas] like apply, for callers that need both."
+  [world deltas]
   (let [d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))]
     [(apply world d) d]))

@@ -1,4 +1,5 @@
 (ns collider.game.entity
+  "Entity records and their constructors."
   (:require [collider.random :as random]
             [collider.vec :as v]))
 
@@ -23,16 +24,22 @@
 (defrecord FallingBlock [type pos vel yaw pitch on-ground block start time track])
 
 (defn item
+  "Returns a dropped item entity of stack at pos with velocity vel and a pickup
+   delay in ticks."
   ([pos vel stack] (item pos vel stack 10))
   ([pos vel stack delay]
    {:type  :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
     :stack stack :age 0 :pickup-delay delay}))
 
-(defn pop-velocity [ks]
+(defn pop-velocity
+  "Returns the velocity of a popped item, seeded by ks."
+  [ks]
   (let [r (fn [k] (random/of-key (conj ks k)))]
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
-(defn of [m]
+(defn of
+  "Returns m as the record of its :type, with positions and velocities as V3."
+  [m]
   (if (record? m)
     m
     (let [m (cond-> m
@@ -45,7 +52,9 @@
         :falling-block (map->FallingBlock m)
         (map->Mob m)))))
 
-(defn eye-height ^double [e]
+(defn eye-height
+  "Returns the eye height of entity e in blocks."
+  ^double [e]
   (case (:type e)
     :player 1.62
     :tnt 0.0
@@ -53,7 +62,9 @@
     :item 0.21
     1.19))
 
-(defn mob-moved ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
+(defn mob-moved
+  "Returns mob e with its movement fields replaced, in one allocation."
+  ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
   (Mob. pos vel on-ground yaw (.-pitch e) (.-head-yaw e) (.-walked e) wet? jump-cd
         (.-task e) (.-pending e) (.-look e) (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)
@@ -61,7 +72,9 @@
         (.-type e) (.-color e) (.-track e)
         (.-__meta e) (.-__extmap e)))
 
-(defn mob-looked ^Mob [^Mob e head-yaw pitch look]
+(defn mob-looked
+  "Returns mob e with its look fields replaced, in one allocation."
+  ^Mob [^Mob e head-yaw pitch look]
   (Mob. (.-pos e) (.-vel e) (.-on-ground e) (.-yaw e) pitch head-yaw (.-walked e) (.-wet? e) (.-jump-cd e)
         (.-task e) (.-pending e) look (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)

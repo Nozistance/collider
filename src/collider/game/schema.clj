@@ -1,4 +1,5 @@
 (ns collider.game.schema
+  "Schema of the world map and of the player profile, with their stored forms."
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
@@ -70,7 +71,9 @@
    :listed             {:default {}}})
 
 (def initial-world (update-vals world :default))
-(defn snapshot [w]
+(defn snapshot
+  "Returns the storable form of world w."
+  [w]
   (into {} (for [[k {store :store}] world :when store]
              [k (store (k w) w)])))
 
@@ -78,7 +81,9 @@
   (let [t (long (:tick w 0))]
     (update w :block-ticks #(into (i/int-map) (map (fn [[dt s]] [(+ t (long dt)) s])) %))))
 
-(defn world-of [m]
+(defn world-of
+  "Returns the world of its stored form m."
+  [m]
   (rebase-ticks
     (into {} (for [[k {load :load default :default}] world :when load]
                [k (if (contains? m k) (load (k m)) default)]))))
@@ -95,7 +100,9 @@
    :pitch        {:default 0.0}
    :on-ground    {:default true :store boolean}})
 
-(defn profile-of [player]
+(defn profile-of
+  "Returns the stored profile of a player entity."
+  [player]
   (into {} (for [[k {store :store default :default}] profile
                  :let [val (get player k)]
                  :when (or (some? val) (contains? (profile k) :default))]

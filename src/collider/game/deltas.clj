@@ -1,4 +1,6 @@
 (ns collider.game.deltas
+  "Deltas of one tick, a record of world, entity, out and input buckets, and
+   the parallel fold that collects them from systems."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -9,6 +11,7 @@
 (def ^:private ^:const fold-leaf 64)
 (def ^:private ^:const fold-threshold 64)
 (defn pmapcat
+  "Like mapcat over a vector, in parallel when v is longer than threshold."
   ([f v] (pmapcat f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))
@@ -19,10 +22,16 @@
 
 (defrecord Deltas [world entities out input])
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
-(defn input ^Deltas [events]
+(defn input
+  "Returns the Deltas of a tick's network input: the events in arrival order,
+   with the tick advance as its one world delta."
+  ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
-(defn add ^Deltas [^Deltas acc deltas]
+(defn add
+  "Returns acc with deltas sorted into its buckets by tag; checks them against
+   the schemas when validation is on."
+  ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
          w (transient (.world acc))
          e (transient (.entities acc))
@@ -38,6 +47,7 @@
       (->Deltas (persistent! w) (persistent! e) (persistent! o) (.input acc)))))
 
 (defn merge
+  "Returns the concatenation of Deltas, bucket by bucket, in argument order."
   (^Deltas [^Deltas a ^Deltas b]
    (->Deltas (into (.world a) (.world b))
              (i/merge-with into (.entities a) (.entities b))
@@ -47,10 +57,16 @@
 
 (def merge-deltas merge)
 
-(defn fold [reducef v]
+(defn fold
+  "Folds v with reducef in parallel, merging Deltas as the monoid; the result
+   does not depend on the number of threads."
+  [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
-(defn run ^Deltas [fs]
+(defn run
+  "Returns the Deltas of the jobs fs run in parallel; a job returns deltas or
+   more jobs."
+  ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]
             (if (fn? (first r))

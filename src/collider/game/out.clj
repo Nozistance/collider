@@ -1,11 +1,18 @@
 (ns collider.game.out
+  "Effect vocabulary of the game systems."
   (:refer-clojure :exclude [time meta]))
 
 (set! *warn-on-reflection* true)
 
-(defn to [eid msg] [:fx (assoc msg :to eid)])
-(defn all [msg] [:fx msg])
-(defn except [eid msg] [:fx (assoc msg :except eid)])
+(defn to
+  "Returns the effect msg addressed to player eid."
+  [eid msg] [:fx (assoc msg :to eid)])
+(defn all
+  "Returns the effect msg for everybody it concerns."
+  [msg] [:fx msg])
+(defn except
+  "Returns the effect msg for everybody but eid."
+  [eid msg] [:fx (assoc msg :except eid)])
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
