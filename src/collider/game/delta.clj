@@ -50,7 +50,10 @@
    :advance-weather
    [:cat]
    :observed
-   [:cat :map]})
+   [:cat :map]
+   :explode
+   [:cat [:map [:center Vec3] [:power number?] [:source :keyword] [:fire? :boolean]
+          [:by {:optional true} [:maybe Eid]] [:later {:optional true} :map]]]})
 
 (def entity-deltas
   {:merge-entity
@@ -118,7 +121,7 @@
    :look              [[:eid Eid] [:yaw :int] [:pitch :int] [:on-ground :boolean]]
    :sync-pos          [[:eid Eid] [:pos Vec3] [:yaw number?] [:pitch number?] [:on-ground :boolean]]
    :head-look         [[:eid Eid] [:yaw number?]]
-   :meta              [[:eid Eid] [:meta :map]]
+   :meta              [[:eid Eid] [:type :keyword] [:meta :map]]
    :velocity          [[:eid Eid] [:vel Vec3]]
    :equipment         [[:eid Eid] [:slot :int] [:stack [:maybe Stack]]]
    :animation         [[:eid Eid] [:kind :keyword]]

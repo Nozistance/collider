@@ -11,6 +11,7 @@
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.dripleaf :as dripleaf]
+            [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
@@ -57,6 +58,7 @@
                    #'tnt/first-step])
 
 (def phases [systems
+             [#'explosions/explosions]
              post-systems
              [#'detector/observe]])
 
@@ -162,6 +164,12 @@
             (one-tick! st world-atom queue deliver! p t0 io-input)
             (recur (pace next-ns nominal-tick-ns) (inc (long i)) p)))))))
 
+(defn- ticker-thread ^Thread [st running world-atom queue deliver! opts]
+  (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver! (:io-input opts))
+                 "collider-ticker")
+    (.setDaemon true)
+    (.start)))
+
 (defn start-ticker!
   "Starts a daemon thread that ticks world-atom at the nominal rate, draining
    queue for input and handing each tick's deltas to deliver!. Returns a handle
@@ -170,11 +178,7 @@
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)
          running (AtomicBoolean. true)
-         thread (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver!
-                                                       (:io-input opts))
-                               "collider-ticker")
-                  (.setDaemon true)
-                  (.start))]
+         thread (ticker-thread st running world-atom queue deliver! opts)]
      {:thread  thread
       :running running
       :stats   #(percentiles (:window st) (:counter st))})))

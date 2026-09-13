@@ -485,7 +485,7 @@
 
 (defn- loot-condition [c]
   (case (get c "condition")
-    "minecraft:survives_explosion" {}
+    "minecraft:survives_explosion" {:survives-explosion true}
     "minecraft:random_chance" {:chance (double (get c "chance"))}
     "minecraft:table_bonus" {:chance (double (first (get c "chances")))}
     "minecraft:block_state_property" {:props (into {} (map (fn [[k v]] [(kw k) (keyword v)])) (get c "properties"))}

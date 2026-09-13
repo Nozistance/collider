@@ -390,24 +390,29 @@
                      (min 0.4 (+ (/ (v/y v) 2.0) 0.4))
                      (- (/ (v/z v) 2.0) (* (/ dz f) 0.4))]))))
 
+(defn- hurt-again [e ^double health ^double amount]
+  (let [last-d (double (or (:last-damage e) 0.0))]
+    (if (> amount last-d)
+      (assoc e :health (- health (- amount last-d)) :last-damage amount)
+      e)))
+
+(defn- hurt-fully [e health amount dx dz]
+  (cond-> (assoc e :health (max 0.0 (- (double health) (double amount)))
+                   :last-damage amount
+                   :hurt-resist max-resist)
+          dx (knock-back (double dx) (double dz))))
+
 (defn hurt
   "Returns entity e after amount of damage, knocked back from direction dx dz
    when given; no change inside the hurt resistance window."
   ([e ^double amount] (hurt e amount nil nil))
   ([e ^double amount dx dz]
    (let [health (double (or (:health e) 0.0))
-         resist (long (or (:hurt-resist e) 0))
-         last-d (double (or (:last-damage e) 0.0))]
+         resist (long (or (:hurt-resist e) 0))]
      (cond
        (not (pos? health)) e
-       (> resist (/ max-resist 2.0))
-       (if (> amount last-d)
-         (assoc e :health (- health (- amount last-d)) :last-damage amount)
-         e)
-       :else (cond-> (assoc e :health (max 0.0 (- health amount))
-                              :last-damage amount
-                              :hurt-resist max-resist)
-                     dx (knock-back (double dx) (double dz)))))))
+       (> resist (/ max-resist 2.0)) (hurt-again e health amount)
+       :else (hurt-fully e health amount dx dz)))))
 
 (def entity-apply
   {:merge-entity (fn [_ e [_ _ m]] (merge e m))
@@ -469,7 +474,8 @@
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick         (fn [w _] (advance w))
    :advance-weather      (fn [w _] (merge w (weather/advance w)))
-   :observed             (fn [w [_ m]] (assoc w :observed m))})
+   :observed             (fn [w [_ m]] (assoc w :observed m))
+   :explode              (fn [w _] w)})
 
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]

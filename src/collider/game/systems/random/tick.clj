@@ -25,7 +25,7 @@
               (vals (:players world))))))
 
 (defn- cell-result [world chunks p ^long st]
-  (let [roll (fn [salt] (random/of-key [(:tick world) p salt]))]
+  (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (= :lava (liquid/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
         {:changes (liquid/lava-random-tick chunks gen/flat-chunk p roll)})
@@ -112,9 +112,10 @@
     (out/all (out/level-event out/dripstone-drip tip 0))))
 
 (defn- drop-spawns [world results]
-  (for [{:keys [pos drops]} results
-        [i stack] (map-indexed vector drops)]
-    [:spawn-entity (items/popped world pos stack [:decay i])]))
+  (when (get-in world [:rules :block-drops] true)
+    (for [{:keys [pos drops]} results
+          [i stack] (map-indexed vector drops)]
+      [:spawn-entity (items/popped world pos stack [:decay i])])))
 
 (defn- random-tick-deltas [world _events]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))

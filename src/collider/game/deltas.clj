@@ -1,6 +1,6 @@
 (ns collider.game.deltas
-  "Deltas of one tick, a record of world, entity, out and input buckets, and
-   the parallel fold that collects them from systems."
+  "Deltas of one tick, and the jobs that make them. A job returns deltas
+   or more jobs."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -33,9 +33,7 @@
    the schemas when validation is on."
   ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
-         w (transient (.world acc))
-         e (transient (.entities acc))
-         o (transient (.out acc))]
+         w (transient (.world acc)) e (transient (.entities acc)) o (transient (.out acc))]
     (if ds
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
@@ -47,7 +45,7 @@
       (->Deltas (persistent! w) (persistent! e) (persistent! o) (.input acc)))))
 
 (defn merge
-  "Returns the concatenation of Deltas, bucket by bucket, in argument order."
+  "Joins Deltas, in order."
   (^Deltas [^Deltas a ^Deltas b]
    (->Deltas (into (.world a) (.world b))
              (i/merge-with into (.entities a) (.entities b))
@@ -58,14 +56,13 @@
 (def merge-deltas merge)
 
 (defn fold
-  "Folds v with reducef in parallel, merging Deltas as the monoid; the result
-   does not depend on the number of threads."
+  "Folds v in parallel, joining Deltas as it goes."
   [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (defn run
-  "Returns the Deltas of the jobs fs run in parallel; a job returns deltas or
-   more jobs."
+  "Runs the jobs in parallel and returns their deltas in one Deltas, in the
+   same order every time."
   ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]
@@ -74,7 +71,9 @@
               (add acc r))))
         fs))
 
-(defn of ^Deltas [systems world deltas]
+(defn of
+  "Runs the systems of a phase on the world and returns their deltas."
+  ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
 (defn run-seq [fs]

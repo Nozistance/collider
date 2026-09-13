@@ -10,6 +10,7 @@
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
+            [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.water :as water]
             [collider.world.gen :as gen]
@@ -36,18 +37,38 @@
                                       p ctx))
                             cells)))))
 
-(defn- destroyed? [^long old ^long st]
-  (and (pos? old) (nil? (liquid/liquid-class old))
-       (if (= :water (liquid/liquid-class st))
-         (not (block/waterlogged? old))
-         (and (zero? st) (block/attached? old) (= st (support/gone-state old))))))
+(defn- loose-scaffold? [^long old]
+  (and (= :scaffolding (block/type-of old)) (not= :7 (:distance (block/props-of old)))))
 
-(defn- destroyed-deltas [world changes]
+(defn- falling-entity? [^long old]
+  (and (block/falls? old) (not (loose-scaffold? old))
+       (or (not (dripstone/speleothem? old)) (dripstone/stalactite? old))))
+
+(defn- washed? [^long old ^long st]
+  (and (= :water (liquid/liquid-class st)) (not (block/waterlogged? old))))
+
+(defn- unsupported? [^long old ^long st]
+  (and (= st (block/emptied old)) (= st (support/gone-state old))
+       (not (block/fire? old)) (not (falling-entity? old))))
+
+(defn- destroyed? [^long old ^long st]
+  (and (pos? old) (not (liquid/liquid-state? old))
+       (or (washed? old st) (unsupported? old st))))
+
+(defn- destroyed [world changes]
+  (for [[pos st] changes
+        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :when (destroyed? old (long st))]
+    [pos old]))
+
+(defn- destroyed-effects [gone]
+  (for [[pos old] gone]
+    (out/all (out/break-effect pos old))))
+
+(defn- destroyed-drops [world gone]
   (when (get-in world [:rules :block-drops] true)
-    (for [[pos st] changes
-          :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-          :when (destroyed? old st)
-          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key [(:tick world) pos salt]))))]
+    (for [[pos old] gone
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key (:tick world) pos salt))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
 (defn- fizz-deltas [world changes]
@@ -58,19 +79,14 @@
         d [(out/all (out/fizz pos))]]
     d))
 
-(defn- loose-scaffold? [old]
-  (and (= :scaffolding (block/type-of old)) (not= :7 (:distance (block/props-of old)))))
-
 (defn- fall-deltas [world changes]
   (for [[[x y z :as pos] st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
-        :when (and (block/falls? old) (= (long st) (block/emptied old)))]
-    (if (loose-scaffold? old)
-      [:spawn-entity (items/popped world pos {:item :scaffolding :count 1} :loose)]
-      [:spawn-entity {:type  :falling-block
-                      :pos   [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-                      :vel   [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
-                      :block (block/without-water old) :start pos :time 0}])))
+        :when (and (falling-entity? old) (= (long st) (block/emptied old)))]
+    [:spawn-entity {:type  :falling-block
+                    :pos   [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+                    :vel   [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
+                    :block (block/without-water old) :start pos :time 0}]))
 
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
 (defn- sponge-drops [world sponge changed]
@@ -79,7 +95,7 @@
           :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
           :when (and (zero? (long st)) (contains? sponge-plants (block/type-of old))
                      (= 0 (long (get changed pos -1))))
-          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key [(:tick world) pos salt]))))]
+          [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key (:tick world) pos salt))))]
       [pos stack i])))
 
 (defn- sponge-deltas [world cells changes]
@@ -108,7 +124,7 @@
                                (not= (dripleaf/tilt-of (long st)) (dripleaf/tilt-of old)))
                       (dripleaf/tilt-sound (long st)))]
         :when sound]
-    (out/all (out/sound sound pos 1.0 (random/pitch [(:tick world) pos :tilt])))))
+    (out/all (out/sound sound pos 1.0 (random/pitch (:tick world) pos :tilt)))))
 
 (defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]
@@ -158,14 +174,16 @@
             {} now)))
 
 (defn- change-deltas [world now changes]
-  (concat [[:set-blocks changes]]
-          (fizz-deltas world changes)
-          (destroyed-deltas world changes)
-          (sponge-deltas world now changes)
-          (fall-deltas world changes)
-          (eyeblossom-deltas changes)
-          (tilt-deltas world changes)
-          (drip-fill-deltas world changes)))
+  (let [gone (destroyed world changes)]
+    (concat [[:set-blocks changes]]
+            (fizz-deltas world changes)
+            (destroyed-effects gone)
+            (destroyed-drops world gone)
+            (sponge-deltas world now changes)
+            (fall-deltas world changes)
+            (eyeblossom-deltas changes)
+            (tilt-deltas world changes)
+            (drip-fill-deltas world changes))))
 
 (defn- block-updates-deltas [world _events]
   (let [t (long (:tick world))

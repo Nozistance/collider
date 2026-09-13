@@ -444,21 +444,29 @@
   (let [[lo hi] (:count entry [1 1])]
     (+ (long lo) (long (Math/floor (* (double (roll [:count (:item entry)])) (inc (- (long hi) (long lo)))))))))
 
+(defn- survives-explosion? [e roll radius]
+  (or (not (:survives-explosion e))
+      (nil? radius)
+      (<= (double (roll [:survives (:item e)])) (/ 1.0 (double radius)))))
+
+(defn- drop-entry [e roll radius props]
+  (when (and (not (:entity? e))
+             (every? (fn [[k v]] (= v (get props k))) (:props e))
+             (survives-explosion? e roll radius)
+             (< (double (roll [:chance (:item e)])) (double (:chance e 1.0))))
+    (let [n (drop-count e roll)]
+      (when (pos? n) {:item (:item e) :count n}))))
+
 (defn drops
-  "Returns the stacks st drops, rolled with roll."
-  [^long st roll]
-  (let [table (get data/drops (block-of st))
-        props (props-of st)]
-    (if (vector? table)
-      (into []
-            (keep (fn [e]
-                    (when (and (not (:entity? e))
-                               (every? (fn [[k v]] (= v (get props k))) (:props e))
-                               (< (double (roll [:chance (:item e)])) (double (:chance e 1.0))))
-                      (let [n (drop-count e roll)]
-                        (when (pos? n) {:item (:item e) :count n})))))
-            table)
-      [])))
+  "Returns the stacks st drops, rolled with roll; radius, when given, is the
+   radius of the explosion that broke it and decays the drops."
+  ([^long st roll] (drops st roll nil))
+  ([^long st roll radius]
+   (let [table (get data/drops (block-of st))
+         props (props-of st)]
+     (if (vector? table)
+       (into [] (keep (fn [e] (drop-entry e roll radius props))) table)
+       []))))
 
 (defn face-sturdy? [^long st face]
   (and (known? st)

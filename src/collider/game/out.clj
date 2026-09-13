@@ -120,8 +120,8 @@
 (defn head-look [eid yaw]
   {:msg :head-look :eid eid :yaw yaw})
 
-(defn meta [eid meta]
-  {:msg :meta :eid eid :meta meta})
+(defn meta [eid type meta]
+  {:msg :meta :eid eid :type type :meta meta})
 
 (defn velocity [eid vel]
   {:msg :velocity :eid eid :vel vel})
