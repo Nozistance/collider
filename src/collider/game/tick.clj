@@ -71,10 +71,10 @@
 (defn tick [world events]
   (let [world' (cond-> (update world :tick inc)
                        (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0)))
-        world' (apply-events world' events)
+        world' (state/cache-active-chunks (apply-events world' events))
         deltas (deltas/of systems world' events)
         [w1 d1] (state/apply-deltas world' deltas)
-        w1 (weather-system/advanced w1)
+        w1 (state/cache-active-chunks (weather-system/advanced w1))
         post (concat (players/late-tracking-deltas w1 d1) (block-flush-deltas w1)
                      (blocks/ack-deltas w1 events) (weather-system/messages w1 events)
                      (falling/first-step-deltas w1) (tnt/first-step-deltas w1)

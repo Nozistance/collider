@@ -39,22 +39,6 @@
           (and (> y chunk/min-y) (fence-at? chunks template x (dec y) z)))
       (< y chunk/min-y))))
 
-(defn- table-boxes [x y z st]
-  (mapv (fn [[a b c d e f]]
-          [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
-           (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
-        (block/collision-boxes st)))
-
-(defn- cell-boxes [chunks template cx cy cz]
-  (let [cx (long cx) cy (long cy) cz (long cz)]
-    (cond
-      (< cy chunk/min-y) [[(double cx) (- chunk/min-y 4.0) (double cz) (+ cx 1.0) (double chunk/min-y) (+ cz 1.0)]]
-      (> cy chunk/max-y) nil
-      :else
-      (let [st (chunk/chunks-get-block chunks template cx cy cz)]
-        (when (block/solid? st)
-          (table-boxes cx cy cz st))))))
-
 (deftype Sweep [^doubles a ^long n])
 (deftype Move [pos vel ^boolean on-ground])
 
@@ -67,7 +51,7 @@
         z1 (long (Math/floor (- (+ (aget ebox 2) (min 0.0 vz)) eps)))
         z2 (long (Math/floor (+ (+ (aget ebox 5) (max 0.0 vz)) eps)))
         cells (* (inc (- x2 x1)) (inc (- (max y1 y2) y1)) (inc (- z2 z1)))
-        need (* 24 (max 1 cells))
+        need (* 96 (max 1 cells))
         ^doubles a (let [^doubles b (.get sweep-buf)]
                      (if (>= (alength b) need)
                        b
@@ -83,8 +67,7 @@
                              (recur cx cz (inc cy) (inc n) ckey blocks))
         (> cy chunk/max-y) (recur cx cz (inc cy) n ckey blocks)
         :else
-        (let [
-              k (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) 5)
+        (let [k (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) 5)
                         (chunk/section-index cy))
               ^shorts blocks (if (= k ckey)
                                blocks
@@ -100,9 +83,14 @@
             (not (block/full-cube? st))
             (let [n (long (reduce (fn [^long n b]
                                     (let [o (* n 6)]
-                                      (dotimes [i 6] (aset a (+ o i) (double (nth b i))))
+                                      (aset a o (+ cx (/ (double (nth b 0)) 16.0)))
+                                      (aset a (+ o 1) (+ cy (/ (double (nth b 1)) 16.0)))
+                                      (aset a (+ o 2) (+ cz (/ (double (nth b 2)) 16.0)))
+                                      (aset a (+ o 3) (+ cx (/ (double (nth b 3)) 16.0)))
+                                      (aset a (+ o 4) (+ cy (/ (double (nth b 4)) 16.0)))
+                                      (aset a (+ o 5) (+ cz (/ (double (nth b 5)) 16.0)))
                                       (inc n)))
-                                  n (cell-boxes chunks template cx cy cz)))]
+                                  n (block/collision-boxes st)))]
               (recur cx cz (inc cy) n k blocks))
             :else
             (let [o (* n 6)]
@@ -127,27 +115,28 @@
          sw (swept-boxes chunks template box0 vx vy vz)
          out (double-array 3)
          _ (Phys/clampAxes (.a sw) (.n sw) box0 vx vy vz out)
-         dx (aget out 0) dy (aget out 1) dz (aget out 2)
-         hit-y? (not= dy vy)
+         dy0 (aget out 1)
+         hit-y? (not= dy0 vy)
          grounded? (and hit-y? (neg? vy))
-         [dx dy dz] (if (and (pos? step) grounded?
-                             (or (not= dx vx) (not= dz vz)))
-                      (let [gbox (shifted box0 1 dy)
-                            ^Sweep sb (swept-boxes chunks template gbox vx step vz)
-                            ^doubles a (.a sb) n (.n sb)
-                            ^doubles e (aclone ^doubles gbox)
-                            du (Phys/clampAll a n e 0 1 step)
-                            _ (do (aset e 1 (+ (aget e 1) du)) (aset e 4 (+ (aget e 4) du)))
-                            sx (Phys/clampAll a n e 0 0 vx)
-                            _ (do (aset e 0 (+ (aget e 0) sx)) (aset e 3 (+ (aget e 3) sx)))
-                            sz (Phys/clampAll a n e 0 2 vz)
-                            _ (do (aset e 2 (+ (aget e 2) sz)) (aset e 5 (+ (aget e 5) sz)))
-                            dd (Phys/clampAll a n e 0 1 (- du))]
-                        (if (> (+ (* sx sx) (* sz sz)) (+ (* dx dx) (* dz dz)))
-                          [sx (+ dy du dd) sz]
-                          [dx dy dz]))
-                      [dx dy dz])
-         dx (double dx) dy (double dy) dz (double dz)]
+         _ (when (and (pos? step) grounded?
+                      (or (not= (aget out 0) vx) (not= (aget out 2) vz)))
+             (let [^doubles e (shifted box0 1 dy0)
+                   ^Sweep sb (swept-boxes chunks template e vx step vz)
+                   ^doubles a (.a sb)
+                   n (.n sb)
+                   du (Phys/clampAll a n e 0 1 step)
+                   _ (do (aset e 1 (+ (aget e 1) du)) (aset e 4 (+ (aget e 4) du)))
+                   sx (Phys/clampAll a n e 0 0 vx)
+                   _ (do (aset e 0 (+ (aget e 0) sx)) (aset e 3 (+ (aget e 3) sx)))
+                   sz (Phys/clampAll a n e 0 2 vz)
+                   _ (do (aset e 2 (+ (aget e 2) sz)) (aset e 5 (+ (aget e 5) sz)))
+                   dd (Phys/clampAll a n e 0 1 (- du))]
+               (when (> (+ (* sx sx) (* sz sz))
+                        (+ (* (aget out 0) (aget out 0)) (* (aget out 2) (aget out 2))))
+                 (aset out 0 sx)
+                 (aset out 1 (+ dy0 du dd))
+                 (aset out 2 sz))))
+         dx (aget out 0) dy (aget out 1) dz (aget out 2)]
      (Move. (v/v3 (+ x dx) (+ y dy) (+ z dz))
             (v/v3 (if (= dx vx) vx 0.0)
                   (if hit-y? 0.0 vy)

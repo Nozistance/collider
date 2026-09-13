@@ -17,18 +17,21 @@
 
 (set! *warn-on-reflection* true)
 
+(defn replaceable-state?
+  ([cur] (replaceable-state? cur nil))
+  ([^long cur item]
+   (cond
+     (zero? cur) true
+     (liquid/liquid-state? cur) true
+     (fire/fire-state? cur) true
+     (= :snow-layer (block/type-of cur)) (let [n (block/prop-long cur :layers)]
+                                           (if (= item :snow) (< n 8) (= n 1)))
+     (block/stackable? cur item) true
+     :else (block/can-be-replaced? cur))))
+
 (defn replaceable?
-  ([world pos] (replaceable? world pos nil))
-  ([world pos item]
-   (let [cur (edit/block-at world pos)]
-     (cond
-       (zero? cur) true
-       (liquid/liquid-state? cur) true
-       (fire/fire-state? cur) true
-       (= :snow-layer (block/type-of cur)) (let [n (block/prop-long cur :layers)]
-                                             (if (= item :snow) (< n 8) (= n 1)))
-       (block/stackable? cur item) true
-       :else (block/can-be-replaced? cur)))))
+  ([world pos] (replaceable-state? (edit/block-at world pos) nil))
+  ([world pos item] (replaceable-state? (edit/block-at world pos) item)))
 
 (defn- stacked [world pos' state item]
   (let [cur (edit/block-at world pos')]
@@ -46,9 +49,10 @@
     (cond
       (and (block/same-slab? clicked item) (or lower? upper?))
       [pos (block/double-slab item)]
-      (and pos' (block/same-slab? (edit/block-at world pos') item)
-           (not= :double (block/slab-part (edit/block-at world pos'))))
-      [pos' (block/double-slab item)])))
+      (nil? pos') nil
+      :else (let [at' (edit/block-at world pos')]
+              (when (and (block/same-slab? at' item) (not= :double (block/slab-part at')))
+                [pos' (block/double-slab item)])))))
 
 (def ^:private water-plant-types #{:kelp :seagrass})
 
@@ -169,15 +173,16 @@
 
 (defn solid-place-deltas [world [eid pos face item cursor]]
   (when-let [off (dir/face-offset face)]
-    (when-let [state (block/placement item face (get-in world [:entities eid :yaw] 0.0) (nth cursor 1)
-                                      (replaceable? world pos))]
-      (let [pile (when-not (get-in world [:entities eid :sneaking?]) item)
-            [_ y' _ :as target] (if (replaceable? world pos pile) pos (mapv + pos off))
-            pos' (when (chunk/in-range? y') target)
-            state (when pos' (refined world eid pos pos' state face item))]
-        (if-let [merged (slab-merge world pos pos' face item)]
-          (merged-deltas world eid pos pos' merged)
-          (when pos'
-            (if (rejected? world pos' state item)
-              (edit/reject-deltas world eid pos pos')
-              (kind-deltas world eid pos pos' state item cursor))))))))
+    (let [cur (edit/block-at world pos)]
+      (when-let [state (block/placement item face (get-in world [:entities eid :yaw] 0.0) (nth cursor 1)
+                                        (replaceable-state? cur))]
+        (let [pile (when-not (get-in world [:entities eid :sneaking?]) item)
+              [_ y' _ :as target] (if (replaceable-state? cur pile) pos (mapv + pos off))
+              pos' (when (chunk/in-range? y') target)
+              state (when pos' (refined world eid pos pos' state face item))]
+          (if-let [merged (slab-merge world pos pos' face item)]
+            (merged-deltas world eid pos pos' merged)
+            (when pos'
+              (if (rejected? world pos' state item)
+                (edit/reject-deltas world eid pos pos')
+                (kind-deltas world eid pos pos' state item cursor)))))))))

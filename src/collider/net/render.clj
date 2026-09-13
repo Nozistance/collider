@@ -21,7 +21,7 @@
   (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
 
 (defn- players [world]
-  (sort (vals (:players world))))
+  (vec (sort (vals (:players world)))))
 
 (defn- text-of [runs]
   (if-let [t (first (filter :translate runs))]
@@ -220,9 +220,9 @@
           dz (- (v/z p) (double (center 2)))]
       (< (+ (* dx dx) (* dy dy) (* dz dz)) explosion-range-sq))))
 
-(defn- explosion-packets [world m]
+(defn- explosion-packets [world ps m]
   (let [sound (sound-packet {:kind :explosion :pos (:center m) :volume 4.0 :pitch (:pitch m)})]
-    (for [eid (players world)
+    (for [eid ps
           :when (in-earshot? world (:center m) eid)
           p (cond-> [(explode-packet m eid)] sound (conj sound))]
       [eid p])))
@@ -341,24 +341,24 @@
         p (join-packets world (:to m))]
     [(:to m) p]))
 
-(defn- viewer-index [world]
+(defn- viewer-index [world ps]
   (persistent!
     (reduce (fn [acc pid]
               (reduce (fn [a eid] (assoc! a eid (conj (get a eid []) pid)))
                       acc
                       (seq (get-in world [:entities pid :tracking]))))
             (transient (i/int-map))
-            (players world))))
+            ps)))
 
 (def ^:private entity-msgs
   #{:move :move-look :look :sync-pos :head-look :velocity :meta :equipment :animation :status :collect})
 
-(defn- recipients [world viewers m]
+(defn- recipients [ps viewers m]
   (cond
     (:to m) [(:to m)]
-    (:except m) (remove #{(:except m)} (players world))
+    (:except m) (remove #{(:except m)} ps)
     (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
-    :else (players world)))
+    :else ps))
 
 (defn- entity-delta-packets [world deltas]
   (for [[eid ds] deltas
@@ -369,18 +369,19 @@
             nil)]
     [eid p]))
 
-(defn- msg-packets [world viewers m]
+(defn- msg-packets [world ps viewers m]
   (if (= :explosion (:msg m))
-    (explosion-packets world m)
-    (let [ps (fx-packets world m)]
-      (when (seq ps)
-        (for [eid (recipients world viewers m)
-              p ps]
+    (explosion-packets world ps m)
+    (let [pkts (fx-packets world m)]
+      (when (seq pkts)
+        (for [eid (recipients ps viewers m)
+              p pkts]
           [eid p])))))
 
 (defn render [world ^Deltas deltas]
-  (let [viewers (delay (viewer-index world))]
+  (let [ps (players world)
+        viewers (delay (viewer-index world ps))]
     (concat
       (join-bursts world deltas)
       (entity-delta-packets world (.entities deltas))
-      (mapcat (fn [m] (msg-packets world viewers m)) (.out deltas)))))
+      (mapcat (fn [m] (msg-packets world ps viewers m)) (.out deltas)))))

@@ -12,7 +12,8 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.space.path :as path]
             [collider.world.phys :as phys])
-  (:import (collider.world.phys Move)))
+  (:import (collider.game.entity Mob)
+           (collider.world.phys Move)))
 
 (set! *warn-on-reflection* true)
 
@@ -256,34 +257,39 @@
     (min 1.0 (* (Math/sqrt (+ (* vx vx 0.2) (* vy vy) (* vz vz 0.2)))
                 (double k)))))
 
-(defn- ambient [eid e t]
-  (if-let [say (mobs/say-sound (:type e))]
-    (let [st (:say-tick e)
-          next-say (+ (long t) say-rest (mobs/exp-delay say-mean (long t) (long eid) :say))]
-      (cond
-        (nil? st) [(assoc e :say-tick next-say) nil]
-        (>= (long t) (long st))
-        [(assoc e :say-tick next-say)
-         [(out/all (out/sound say (:pos e) 1.0
-                              (sound-pitch e (long t) (long eid))))]]
-        :else [e nil]))
-    [e nil]))
+(defn- next-say ^long [^long t ^long eid]
+  (+ t say-rest (mobs/exp-delay say-mean t eid :say)))
 
-(defn- movement-sounds [e was-wet? old-walked new-walked t eid]
-  (concat
-    (when (and (:wet? e) (not was-wet?))
-      [(out/all (out/sound :splash (:pos e)
-                           (water-vol (:vel e) 0.2)
-                           (wide-pitch (long t) (long eid) :spl)))])
-    (when (> (long (Math/floor (double new-walked)))
-             (long (Math/floor (double old-walked))))
-      (if (:wet? e)
-        [(out/all (out/sound :swim (:pos e)
-                             (water-vol (:vel e) 0.35)
-                             (wide-pitch (long t) (long eid) :swm)))]
-        (when (:on-ground e)
-          (when-let [snd (mobs/step-sound (:type e))]
-            [(out/all (out/sound snd (:pos e) 0.15 1.0))]))))))
+(defn- ambient [eid e t]
+  (let [t (long t) eid (long eid) st (:say-tick e)]
+    (if (and st (< t (long st)))
+      [e nil]
+      (if-let [say (mobs/say-sound (:type e))]
+        (if (nil? st)
+          [(assoc e :say-tick (next-say t eid)) nil]
+          [(assoc e :say-tick (next-say t eid))
+           [(out/all (out/sound say (:pos e) 1.0 (sound-pitch e t eid)))]])
+        [e nil]))))
+
+(defn- step-sound-delta [e t eid]
+  (if (:wet? e)
+    (out/all (out/sound :swim (:pos e)
+                        (water-vol (:vel e) 0.35)
+                        (wide-pitch (long t) (long eid) :swm)))
+    (when (:on-ground e)
+      (when-let [snd (mobs/step-sound (:type e))]
+        (out/all (out/sound snd (:pos e) 0.15 1.0))))))
+
+(defn- movement-sounds [acc e was-wet? old-walked new-walked t eid]
+  (let [acc (if (and (:wet? e) (not was-wet?))
+              (conj acc (out/all (out/sound :splash (:pos e)
+                                            (water-vol (:vel e) 0.2)
+                                            (wide-pitch (long t) (long eid) :spl))))
+              acc)]
+    (if (> (long (Math/floor (double new-walked)))
+           (long (Math/floor (double old-walked))))
+      (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
+      acc)))
 
 (defn- dist3 ^double [[x1 y1 z1] [x2 y2 z2]]
   (let [dx (- (double x2) (double x1))
@@ -295,21 +301,23 @@
   [:pos :vel :yaw :pitch :on-ground :task :pending :wake-tick :baby-until
    :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet?])
 
-(defmacro ^:private diff-keys
+(defmacro ^:private diff-fields
   [old new & ks]
-  (let [o (gensym) n (gensym)]
+  (let [o (with-meta (gensym) {:tag 'collider.game.entity.Mob})
+        n (with-meta (gensym) {:tag 'collider.game.entity.Mob})]
     `(let [~o ~old ~n ~new]
        (cond-> {}
                ~@(mapcat (fn [k]
-                           [`(let [v# (~k ~n)] (not (identical? v# (~k ~o))))
-                            `(assoc ~k (~k ~n))])
+                           (let [f (symbol (str ".-" (name k)))]
+                             [`(not (identical? (~f ~n) (~f ~o)))
+                              `(assoc ~k (~f ~n))]))
                          ks)))))
 
 (defn- mob-changes [old new]
-  (diff-keys old new
-             :pos :vel :yaw :pitch :on-ground :task :pending :wake-tick
-             :baby-until :tempt-cooldown-until :say-tick :walked :head-yaw
-             :look :jump-cd :wet?))
+  (diff-fields old new
+               :pos :vel :yaw :pitch :on-ground :task :pending :wake-tick
+               :baby-until :tempt-cooldown-until :say-tick :walked :head-yaw
+               :look :jump-cd :wet?))
 
 (defn- step-mob [world index tempters eid e t]
   (let [{:keys [half height speed]} (mobs/types (:type e))
@@ -325,10 +333,10 @@
         walked' (+ walked (* 0.6 (dist3 (:pos e1) (:pos e2))))
         e2 (if (== walked walked') e2 (assoc e2 :walked walked'))
         changes (mob-changes e e2)]
-    (concat (when (seq changes) [[:merge-entity eid changes]])
-            deltas
-            say-deltas
-            (movement-sounds e2 was-wet? walked walked' t eid))))
+    (-> (if (seq changes) [[:merge-entity eid changes]] [])
+        (cond-> deltas (into deltas)
+                say-deltas (into say-deltas))
+        (movement-sounds e2 was-wet? walked walked' t eid))))
 
 (defn mobs-system [world events]
   (let [t (long (:tick world))

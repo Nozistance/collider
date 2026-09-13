@@ -53,33 +53,54 @@
           (recur (inc i) (next es)))))
     (PushCell. eids xs ys zs halfs heights)))
 
-(defn push-index [world active]
-  (persistent!
-    (reduce-kv (fn [m k entries] (assoc! m k (packed-cell (sort-by first entries))))
-               (transient (im/int-map))
-               (pushable-groups world active))))
+(deftype Hood [^objects cells ^longs sizes ^long n])
 
-(deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
-(defn- push-window ^Window [index ^long cx ^long cz ^long eid]
-  (let [cells (object-array 9)
+(defn- hood ^Hood [cells ^long cx ^long cz]
+  (let [cs (object-array 9)
         sizes (long-array 9)
-        self-i (long (if-let [^PushCell own (get index (cell-key cx cz))]
-                       (let [^longs ids (.eids own)]
-                         (loop [i 0]
-                           (cond (= i (alength ids)) -1
-                                 (= (aget ids i) eid) i
-                                 :else (recur (inc i)))))
-                       -1))
         n (loop [c 0 n 0]
             (if (= c 9)
               n
-              (let [^PushCell cell (get index (cell-key (+ cx (dec (quot c 3))) (+ cz (dec (rem c 3)))))
-                    sz (if cell
-                         (- (alength ^longs (.eids cell)) (if (and (= c 4) (>= self-i 0)) 1 0))
-                         0)]
-                (aset cells c cell) (aset sizes c sz)
+              (let [^PushCell cell (get cells (cell-key (+ cx (dec (quot c 3))) (+ cz (dec (rem c 3)))))
+                    sz (long (if cell (alength ^longs (.eids cell)) 0))]
+                (aset cs c cell) (aset sizes c sz)
                 (recur (inc c) (+ n sz)))))]
-    (Window. cells sizes self-i n)))
+    (Hood. cs sizes n)))
+
+(defn push-index [world active]
+  (let [cells (persistent!
+                (reduce-kv (fn [m k entries] (assoc! m k (packed-cell (sort-by first entries))))
+                           (transient (im/int-map))
+                           (pushable-groups world active)))]
+    (persistent!
+      (reduce-kv (fn [m k _]
+                   (assoc! m k (hood cells (long (unchecked-int (bit-shift-right (long k) 32)))
+                                     (long (unchecked-int (long k))))))
+                 (transient (im/int-map))
+                 cells))))
+
+(deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
+(def ^:private ^Window empty-window (Window. (object-array 9) (long-array 9) -1 0))
+
+(defn- self-index ^long [^Hood h ^long eid]
+  (let [^PushCell own (aget ^objects (.cells h) 4)]
+    (if own
+      (let [^longs ids (.eids own)]
+        (loop [i 0]
+          (cond (= i (alength ids)) -1
+                (= (aget ids i) eid) i
+                :else (recur (inc i)))))
+      -1)))
+
+(defn- push-window ^Window [index ^long cx ^long cz ^long eid]
+  (if-let [^Hood h (get index (cell-key cx cz))]
+    (let [self-i (self-index h eid)
+          ^longs sizes (aclone ^longs (.sizes h))]
+      (if (>= self-i 0)
+        (do (aset sizes 4 (dec (aget sizes 4)))
+            (Window. (.cells h) sizes self-i (dec (.n h))))
+        (Window. (.cells h) sizes self-i (.n h))))
+    empty-window))
 
 (defn- push-into! [^doubles acc ^Window w ^long i ^doubles me]
   (let [^longs sizes (.sizes w)

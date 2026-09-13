@@ -35,15 +35,43 @@
          (> (+ py h) (double y1)) (< py (double y2))
          (> (+ pz half) (double z1)) (< (- pz half) (double z2)))))
 
+(defn- box-hits-at? [^doubles a ^long n [px py pz] [half h]]
+  (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
+    (loop [i 0]
+      (if (= i n)
+        false
+        (let [o (* i 6)]
+          (if (and (> (+ px half) (aget a o)) (< (- px half) (aget a (+ o 3)))
+                   (> (+ py h) (aget a (+ o 1))) (< py (aget a (+ o 4)))
+                   (> (+ pz half) (aget a (+ o 2))) (< (- pz half) (aget a (+ o 5))))
+            true
+            (recur (inc i))))))))
+
+(defn- abs-boxes ^doubles [^long x ^long y ^long z state]
+  (let [bs (block/collision-boxes state)
+        a (double-array (* 6 (count bs)))]
+    (reduce (fn [^long i b]
+              (let [o (* i 6)]
+                (aset a o (+ x (/ (double (nth b 0)) 16.0)))
+                (aset a (+ o 1) (+ y (/ (double (nth b 1)) 16.0)))
+                (aset a (+ o 2) (+ z (/ (double (nth b 2)) 16.0)))
+                (aset a (+ o 3) (+ x (/ (double (nth b 3)) 16.0)))
+                (aset a (+ o 4) (+ y (/ (double (nth b 4)) 16.0)))
+                (aset a (+ o 5) (+ z (/ (double (nth b 5)) 16.0)))
+                (inc i)))
+            0 bs)
+    a))
+
 (defn obstructed? [world [x y z] state]
-  (let [boxes (map (fn [[a b c d e f]]
-                     [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
-                      (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
-                   (block/collision-boxes state))]
-    (some (fn [[_ e]]
-            (when-let [dims (builder-box e)]
-              (some #(box-hits? % (:pos e) dims) boxes)))
-          (:entities world))))
+  (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
+        n (quot (alength a) 6)]
+    (and (pos? n)
+         (boolean
+           (reduce-kv (fn [_ _ e]
+                        (if-let [dims (builder-box e)]
+                          (if (box-hits-at? a n (:pos e) dims) (reduced true) false)
+                          false))
+                      false (:entities world))))))
 
 (defn own-change [world eid pos]
   (out/to eid (out/blocks-changed (chunk/block-chunk pos) [[pos (block-at world pos)]])))

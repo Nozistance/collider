@@ -50,8 +50,9 @@
   (let [st (edit/block-at world pos)
         abs (fn [[a b c d e f]] [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
                                  (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
-        fluid (when (and (not= :none fluids) (liquid/fluid-height-of (:chunks world) gen/flat-chunk pos st fluids))
-                [[(long x) (long y) (long z) (inc (long x)) (+ (long y) (double (liquid/fluid-height-of (:chunks world) gen/flat-chunk pos st fluids))) (inc (long z))]])]
+        fh (when (not= :none fluids) (liquid/fluid-height-of (:chunks world) gen/flat-chunk pos st fluids))
+        fluid (when fh
+                [[(long x) (long y) (long z) (inc (long x)) (+ (long y) (double fh)) (inc (long z))]])]
     (concat (when (and (pos? st) (not (liquid/liquid-state? st))) (map abs (block/outline-boxes st)))
             fluid)))
 
@@ -65,7 +66,11 @@
 (defn- cross-delta ^double [dc] (/ 1.0 (Math/abs (double dc))))
 
 (defn- cell-hit [world from d cell fluids]
-  (first (sort-by first (keep #(box-entry from d %) (cell-boxes world cell fluids)))))
+  (reduce (fn [best box]
+            (if-let [hit (box-entry from d box)]
+              (if (or (nil? best) (< (double (hit 0)) (double (best 0)))) hit best)
+              best))
+          nil (cell-boxes world cell fluids)))
 
 (defn clip [world e fluids]
   (let [from (eye-pos e)
@@ -78,7 +83,7 @@
       (let [hit (when (chunk/in-range? cy) (cell-hit world from d cell fluids))]
         (cond
           hit {:pos cell :face (second hit)}
-          (or (> n 24) (every? #(> (double %) 1.0) [tx ty tz])) nil
+          (or (> n 24) (and (> (double tx) 1.0) (> (double ty) 1.0) (> (double tz) 1.0))) nil
           (and (<= tx ty) (<= tx tz))
           (recur [(+ cx (axis-step (d 0))) cy cz] (+ tx (cross-delta (d 0))) ty tz (inc n))
           (<= ty tz)

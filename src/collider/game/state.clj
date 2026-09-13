@@ -29,13 +29,14 @@
     (into [] (map (fn [eid] (MapEntry/create eid (get entities eid))))
           (sort (vals (:players world))))))
 
+(def ^:private ^:const fold-leaf 64)
 (def spawn-pos [24.5 4.0 8.5])
 (def activation-radius 2)
 (defn pos-chunk ^long [pos]
   (chunk/pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
                  (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
-(defn active-chunks [world]
+(defn- compute-active-chunks [world]
   (into (i/int-set)
         (mapcat (fn [[_ e]]
                   (when (= :player (:type e))
@@ -44,6 +45,15 @@
                                           activation-radius))]
                       (chunk/around-ids (long cx) (long cz) r)))))
         (:entities world)))
+
+(defn active-chunks [world]
+  (let [cached (:active-chunks world)]
+    (if (and cached (identical? (key cached) (:entities world)))
+      (val cached)
+      (compute-active-chunks world))))
+
+(defn cache-active-chunks [world]
+  (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))
 
 (defn active-at? [active pos]
   (contains? active (pos-chunk pos)))
@@ -414,7 +424,7 @@
       w)))
 
 (defn- folded-entities [w entities pairs]
-  (r/fold 1 (r/monoid i/merge i/int-map)
+  (r/fold fold-leaf (r/monoid i/merge i/int-map)
           (fn [m [eid ds]]
             (if-let [e (get entities eid)]
               (assoc m eid (reduce #(apply-entity-delta (:tick w) %1 %2) e ds))

@@ -13,9 +13,7 @@
 (defn name-of [^long st] (data/state-block st))
 (defn props-of [^long st] (second (data/state-props st)))
 (defn prop-long ^long [^long st k] (Long/parseLong (name (get (props-of st) k :0))))
-(def ^:private state-count
-  (long (reduce max 0 (map (fn [[_ b]] (+ (long (:first b)) (reduce * 1 (map count (vals (:props b))))))
-                           data/blocks))))
+(def ^:private state-count (long data/block-state-count))
 
 (defn- block-table [f]
   (let [a (object-array state-count)]
@@ -360,15 +358,19 @@
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 (defn collision-boxes [^long st]
-  (get data/shapes st full-box))
+  (if (known? st)
+    (let [v (aget ^objects data/shapes st)] (if (nil? v) full-box v))
+    full-box))
 
 (defn outline-boxes [^long st]
-  (get data/outlines st full-box))
+  (if (known? st)
+    (let [v (aget ^objects data/outlines st)] (if (nil? v) full-box v))
+    full-box))
 
 (def ^:private legacy-solid-arr
   (let [a (boolean-array state-count)]
     (dotimes [i state-count]
-      (let [boxes (get data/shapes i full-box)]
+      (let [boxes (collision-boxes i)]
         (when (seq boxes)
           (let [x0 (reduce min (map #(nth % 0) boxes)) y0 (reduce min (map #(nth % 1) boxes))
                 z0 (reduce min (map #(nth % 2) boxes)) x1 (reduce max (map #(nth % 3) boxes))
@@ -385,20 +387,15 @@
 (def ^:private full-cube-arr
   (let [a (boolean-array state-count)]
     (dotimes [i state-count]
-      (aset a i (boolean (and (pos? i) (not (contains? data/shapes i))))))
+      (aset a i (boolean (and (pos? i) (nil? (aget ^objects data/shapes i))))))
     a))
 
 (defn full-cube? [^long st]
   (and (known? st) (aget ^booleans full-cube-arr st)))
 
-(def ^:private flag-arr
-  (let [a (byte-array state-count)]
-    (doseq [[id m] data/flags] (aset a (int id) (byte m)))
-    a))
-
 (defn blocks-motion? [^long st]
   (and (known? st)
-       (pos? (bit-and (long (aget ^bytes flag-arr st)) 1))
+       (pos? (bit-and (long (aget ^bytes data/flags st)) 1))
        (not (contains? #{:cobweb :bamboo-sapling} (block-of st)))))
 
 (def ^:private respawnable-types
@@ -408,20 +405,20 @@
 (defn possible-to-respawn-in? [^long st]
   (or (contains? respawnable-types (type-of st))
       (and (known? st)
-           (zero? (bit-and (long (aget ^bytes flag-arr st)) 1))
+           (zero? (bit-and (long (aget ^bytes data/flags st)) 1))
            (not (liquid? st)))))
 
 (defn ignited-by-lava? [^long st]
-  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 2))))
+  (and (known? st) (pos? (bit-and (long (aget ^bytes data/flags st)) 2))))
 
 (defn solid-render? [^long st]
-  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 8))))
+  (and (known? st) (pos? (bit-and (long (aget ^bytes data/flags st)) 8))))
 
 (defn collision-face-full-up? [^long st]
-  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 16))))
+  (and (known? st) (pos? (bit-and (long (aget ^bytes data/flags st)) 16))))
 
 (defn randomly-ticking? [^long st]
-  (and (known? st) (pos? (bit-and (long (aget ^bytes flag-arr st)) 4))))
+  (and (known? st) (pos? (bit-and (long (aget ^bytes data/flags st)) 4))))
 
 (defn burnable? [^long st]
   (and (known? st) (pos? (long (get-in data/fire [(block-of st) :ignite] 0)))))
@@ -446,15 +443,15 @@
 
 (defn face-sturdy? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get data/sturdy st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (aget ^bytes data/sturdy st)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-rigid? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get data/sturdy-rigid st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (aget ^bytes data/sturdy-rigid st)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (defn face-holds-center? [^long st face]
   (and (known? st)
-       (pos? (bit-and (long (get data/sturdy-center st 63)) (bit-shift-left 1 (long (dir/index face)))))))
+       (pos? (bit-and (long (aget ^bytes data/sturdy-center st)) (bit-shift-left 1 (long (dir/index face)))))))
 
 (def ^:private tag-sets (atom {}))
 (defn tag-set [tag]

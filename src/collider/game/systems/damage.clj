@@ -71,23 +71,27 @@
         len (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
         n (long (Math/ceil (/ len 0.1)))
         chunks (:chunks world)]
-    (loop [i 1]
+    (loop [i 1 lx Long/MIN_VALUE ly Long/MIN_VALUE lz Long/MIN_VALUE]
       (if (>= i n)
         true
-        (let [s (/ (double i) n)]
-          (if (phys/solid? chunks gen/flat-chunk
-                           (long (Math/floor (+ ax (* dx s))))
-                           (long (Math/floor (+ ay (* dy s))))
-                           (long (Math/floor (+ az (* dz s)))))
-            false
-            (recur (inc i))))))))
+        (let [s (/ (double i) n)
+              x (long (Math/floor (+ ax (* dx s))))
+              y (long (Math/floor (+ ay (* dy s))))
+              z (long (Math/floor (+ az (* dz s))))]
+          (if (and (= x lx) (= y ly) (= z lz))
+            (recur (inc i) x y z)
+            (if (phys/solid? chunks gen/flat-chunk x y z)
+              false
+              (recur (inc i) x y z))))))))
 
 (defn- attackable? [a t]
   (and a t (:health t) (pos? (double (:health t))) (not (creative-proof? t))))
 
 (defn- in-reach? [world a t]
-  (< (dist-sq (:pos a) (:pos t))
-     (if (sees? world a t) reach-sq blind-reach-sq)))
+  (let [d2 (dist-sq (:pos a) (:pos t))]
+    (cond (< d2 blind-reach-sq) true
+          (>= d2 reach-sq) false
+          :else (sees? world a t))))
 
 (defn- crit? [a t]
   (and (not (:on-ground a))
@@ -138,31 +142,49 @@
             (and (not= x0 x1) (not= z0 z1)
                  (some? (get chunks (chunk/pos->id x1 z1)))))))))
 
-(defn- probe [world e shrink-xz shrink-y lava-only?]
+(def ^:private ^:const sunk-shrink-xz 0.1)
+(def ^:private ^:const sunk-shrink-y 0.4)
+(def ^:private ^:const touch-bit 1)
+(def ^:private ^:const sunk-bit 2)
+
+(defn- floor-lo ^long [^double a] (long (Math/floor (+ a fluid-margin))))
+(defn- floor-hi ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
+
+(defn- probe ^long [world e]
   (let [[half height] (box-of e)
         p (:pos e)
-        shrink-xz (double shrink-xz)
-        shrink-y (double shrink-y)
-        half (- (double half) shrink-xz)
+        px (v/x p) py (v/y p) pz (v/z p)
+        half (double half) height (double height)
         chunks (:chunks world)
-        fl (fn ^long [^double a] (long (Math/floor (+ a fluid-margin))))
-        ce (fn ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
-        x0 (fl (- (v/x p) half)) x1 (ce (+ (v/x p) half))
-        y0 (max chunk/min-y (fl (+ (v/y p) shrink-y)))
-        y1 (min (inc chunk/max-y) (ce (- (+ (v/y p) (double height)) shrink-y)))
-        z0 (fl (- (v/z p) half)) z1 (ce (+ (v/z p) half))]
+        oh (- half fluid-margin)
+        ih (- half sunk-shrink-xz)
+        x0 (floor-lo (- px oh)) x1 (floor-hi (+ px oh))
+        y0 (max chunk/min-y (floor-lo (+ py fluid-margin)))
+        y1 (min (inc chunk/max-y) (floor-hi (- (+ py height) fluid-margin)))
+        z0 (floor-lo (- pz oh)) z1 (floor-hi (+ pz oh))
+        ix0 (floor-lo (- px ih)) ix1 (floor-hi (+ px ih))
+        iy0 (max chunk/min-y (floor-lo (+ py sunk-shrink-y)))
+        iy1 (min (inc chunk/max-y) (floor-hi (- (+ py height) sunk-shrink-y)))
+        iz0 (floor-lo (- pz ih)) iz1 (floor-hi (+ pz ih))
+        ^longs acc (long-array 1)]
     (loop [x x0]
-      (when (< x x1)
-        (or (loop [y y0]
-              (when (< y y1)
-                (or (loop [z z0]
-                      (when (< z z1)
-                        (let [st (chunk/block-state chunks gen/flat-chunk x y z)]
-                          (cond (and (block/fire? st) (not lava-only?)) :fire
-                                (= :lava (liquid/liquid-class st)) :lava
-                                :else (recur (inc z))))))
-                    (recur (inc y)))))
-            (recur (inc x)))))))
+      (when (and (< x x1) (not= 3 (aget acc 0)))
+        (let [xin? (and (>= x ix0) (< x ix1))]
+          (loop [y y0]
+            (when (and (< y y1) (not= 3 (aget acc 0)))
+              (let [yin? (and xin? (>= y iy0) (< y iy1))]
+                (loop [z z0]
+                  (when (and (< z z1) (not= 3 (aget acc 0)))
+                    (let [st (chunk/block-state chunks gen/flat-chunk x y z)
+                          lava? (= :lava (liquid/liquid-class st))]
+                      (when (or lava? (block/fire? st))
+                        (aset acc 0 (bit-or (aget acc 0) touch-bit)))
+                      (when (and lava? yin? (>= z iz0) (< z iz1))
+                        (aset acc 0 (bit-or (aget acc 0) sunk-bit)))
+                      (recur (inc z))))))
+              (recur (inc y)))))
+        (recur (inc x))))
+    (aget acc 0)))
 
 (defn- burning-flag [eid e ^long fire sunk?]
   (let [lit? (boolean (or (pos? fire) sunk?))]
@@ -188,8 +210,9 @@
 (defn- fire-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))
         wet? (boolean (:wet? e))
-        touch (probe world e fluid-margin fluid-margin false)
-        sunk? (some? (probe world e 0.1 0.4 true))
+        flags (probe world e)
+        touch (not (zero? (bit-and flags touch-bit)))
+        sunk? (not (zero? (bit-and flags sunk-bit)))
         flag (burning-flag eid e fire sunk?)]
     (if (creative-proof? e)
       (concat flag (when (pos? fire) [[:merge-entity eid {:fire 0}]]))

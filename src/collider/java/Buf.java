@@ -3,6 +3,7 @@ package collider.java;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.UTFDataFormatException;
 
 public final class Buf {
     public byte[] a;
@@ -24,6 +25,16 @@ public final class Buf {
             System.arraycopy(a, 0, b, 0, w);
             a = b;
         }
+    }
+
+    public void ensure(int n) {
+        need(n);
+    }
+
+    public void adopt(byte[] src, int len) {
+        a = src;
+        r = 0;
+        w = len;
     }
 
     public int readableBytes() {
@@ -103,6 +114,34 @@ public final class Buf {
     public void writeBytes(Buf src) {
         writeBytes(src.a, src.r, src.readableBytes());
         src.r = src.w;
+    }
+
+    public void writeUtf(String s) throws UTFDataFormatException {
+        int n = s.length();
+        int len = 0;
+        for (int i = 0; i < n; i++) {
+            int ch = s.charAt(i);
+            if (ch >= 0x0001 && ch <= 0x007F) len++;
+            else if (ch > 0x07FF) len += 3;
+            else len += 2;
+        }
+        if (len > 65535) throw new UTFDataFormatException("encoded string too long: " + len + " bytes");
+        need(len + 2);
+        a[w++] = (byte) (len >> 8);
+        a[w++] = (byte) len;
+        for (int i = 0; i < n; i++) {
+            int ch = s.charAt(i);
+            if (ch >= 0x0001 && ch <= 0x007F) {
+                a[w++] = (byte) ch;
+            } else if (ch > 0x07FF) {
+                a[w++] = (byte) (0xE0 | ((ch >> 12) & 0x0F));
+                a[w++] = (byte) (0x80 | ((ch >> 6) & 0x3F));
+                a[w++] = (byte) (0x80 | (ch & 0x3F));
+            } else {
+                a[w++] = (byte) (0xC0 | ((ch >> 6) & 0x1F));
+                a[w++] = (byte) (0x80 | (ch & 0x3F));
+            }
+        }
     }
 
     public byte readByte() {

@@ -28,20 +28,66 @@
             nil
             (vals (:players world)))))
 
+(def ^:private ^:const cell-shift 2)
+
+(defn- cell-key ^long [^long cx ^long cz]
+  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
+
+(defn- cell-of ^long [pos]
+  (cell-key (bit-shift-right (long (Math/floor (v/x pos))) cell-shift)
+            (bit-shift-right (long (Math/floor (v/z pos))) cell-shift)))
+
+(defn- build-index [entities]
+  (persistent!
+    (reduce-kv (fn [m eid e]
+                 (if-let [p (:pos e)]
+                   (let [k (cell-of p)]
+                     (assoc! m k (conj (get m k []) [eid e])))
+                   m))
+               (transient {})
+               entities)))
+
+(def ^:private index-cache (atom nil))
+
+(defn- entity-index [entities]
+  (let [c @index-cache]
+    (if (and c (identical? (nth c 0) entities))
+      (nth c 1)
+      (let [idx (build-index entities)]
+        (reset! index-cache [entities idx])
+        idx))))
+
+(defn- closer? [best ^double d2 oid]
+  (or (nil? best)
+      (< d2 (double (best 0)))
+      (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
+
+(defn- scan-cell [best pos r2 pred entries]
+  (reduce (fn [best [oid o]]
+            (if (pred oid o)
+              (let [d2 (v/dist-sq pos (:pos o))]
+                (if (and (< d2 (double r2)) (closer? best d2 oid)) [d2 oid o] best))
+              best))
+          best
+          entries))
+
 (defn nearest [world pos r2 pred]
-  (let [r2 (double r2)]
-    (reduce-kv (fn [best oid o]
-                 (if (pred oid o)
-                   (let [d2 (v/dist-sq pos (:pos o))]
-                     (if (and (< d2 r2)
-                              (or (nil? best)
-                                  (< d2 (double (best 0)))
-                                  (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
-                       [d2 oid o]
-                       best))
-                   best))
-               nil
-               (:entities world))))
+  (let [r2 (double r2)
+        index (entity-index (:entities world))
+        r (Math/sqrt r2)
+        x0 (bit-shift-right (long (Math/floor (- (v/x pos) r))) cell-shift)
+        x1 (bit-shift-right (long (Math/floor (+ (v/x pos) r))) cell-shift)
+        z0 (bit-shift-right (long (Math/floor (- (v/z pos) r))) cell-shift)
+        z1 (bit-shift-right (long (Math/floor (+ (v/z pos) r))) cell-shift)]
+    (loop [cx x0 best nil]
+      (if (> cx x1)
+        best
+        (recur (inc cx)
+               (loop [cz z0 best best]
+                 (if (> cz z1)
+                   best
+                   (recur (inc cz)
+                          (scan-cell best pos r2 pred (get index (cell-key cx cz)))))))))))
 
 (defn held-of [p]
   (get-in p [:inventory (+ 36 (long (or (:held-slot p) 0))) :item]))

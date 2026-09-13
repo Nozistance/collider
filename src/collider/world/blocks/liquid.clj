@@ -2,7 +2,8 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.gen :as gen])
+  (:import (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
 
@@ -50,9 +51,12 @@
       (chunk/chunks-get-block chunks template x y z)
       -1)))
 
-(defn- state-at [chunks template x y z]
-  (let [st (long (raw-at chunks template x y z))]
+(defn- state-of ^long [raw]
+  (let [st (long raw)]
     (if (and (pos? st) (block/waterlogged? st)) water-source st)))
+
+(defn- state-at [chunks template x y z]
+  (state-of (raw-at chunks template x y z)))
 
 (defn- shifted [chunks template [x y z] [dx dy dz]]
   (state-at chunks template
@@ -200,17 +204,33 @@
         (if (same? cls above) 1.0 (height st))))))
 
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
+(def ^:private ^ThreadLocal cover-rows
+  (proxy [ThreadLocal] [] (initialValue [] (int-array 16))))
+
+(defn- mark-face [^ints rows box ^long u ^long v]
+  (let [u0 (max 0 (long (Math/ceil (double (nth box u)))))
+        u1 (min 16 (long (Math/floor (double (nth box (+ u 3))))))
+        v0 (max 0 (long (Math/ceil (double (nth box v)))))
+        v1 (min 16 (long (Math/floor (double (nth box (+ v 3))))))]
+    (when (and (< u0 u1) (< v0 v1))
+      (let [m (int (bit-shift-left (dec (bit-shift-left 1 (- v1 v0))) v0))]
+        (loop [a u0]
+          (when (< a u1)
+            (aset rows a (int (bit-or (aget rows a) m)))
+            (recur (inc a))))))))
+
 (defn- face-covered? [first second ^long axis]
-  (let [grid (boolean-array 256)
-        [u v] (case axis 0 [1 2] 1 [0 2] [0 1])
-        mark (fn [box]
-               (let [u0 (long (Math/ceil (double (nth box u)))) u1 (long (Math/floor (double (nth box (+ u 3)))))
-                     v0 (long (Math/ceil (double (nth box v)))) v1 (long (Math/floor (double (nth box (+ v 3)))))]
-                 (doseq [a (range (max 0 u0) (min 16 u1)) b (range (max 0 v0) (min 16 v1))]
-                   (aset grid (+ (* a 16) b) true))))]
-    (doseq [box first :when (== 16.0 (double (nth box (+ axis 3))))] (mark box))
-    (doseq [box second :when (== 0.0 (double (nth box axis)))] (mark box))
-    (every? true? grid)))
+  (let [^ints rows (.get cover-rows)
+        u (if (= axis 0) 1 0)
+        v (if (= axis 2) 1 2)]
+    (Arrays/fill rows (int 0))
+    (doseq [box first :when (== 16.0 (double (nth box (+ axis 3))))] (mark-face rows box u v))
+    (doseq [box second :when (== 0.0 (double (nth box axis)))] (mark-face rows box u v))
+    (loop [i 0]
+      (cond
+        (= i 16) true
+        (not= 0xFFFF (aget rows i)) false
+        :else (recur (inc i))))))
 
 (defn- pass-wall? [src tgt d]
   (let [src (long src) tgt (long tgt)]
@@ -253,28 +273,31 @@
        (holds-any-fluid? tgt-raw)
        (pass-wall? src-raw tgt-raw d)))
 
-(defn- cell [{:keys [chunks template]} [x y z]]
-  [(raw-at chunks template x y z) (state-at chunks template x y z)])
+(defn- raw-of ^long [{:keys [chunks template]} x y z]
+  (long (raw-at chunks template x y z)))
 
 (defn- hole? [{:keys [cls] :as env} [x y z :as p]]
-  (let [[raw _] (cell env p)
-        [braw b] (cell env [x (dec (long y)) z])]
+  (let [raw (raw-of env x y z)
+        braw (raw-of env x (dec (long y)) z)]
     (and (pass-wall? raw braw [0 -1 0])
-         (or (same? cls b) (can-hold? cls braw)))))
+         (or (same? cls (state-of braw)) (can-hold? cls braw)))))
 
 (defn- horizontal-source-scan [{:keys [cls] :as env} raw [x y z]]
   (reduce (fn [[h s] [dx _ dz :as d]]
-            (let [[nraw n] (cell env [(+ (long x) dx) y (+ (long z) dz)])]
+            (let [nraw (raw-of env (+ (long x) dx) y (+ (long z) dz))
+                  n (state-of nraw)]
               (if (and (same? cls n) (pass-wall? raw nraw d))
                 [(max (long h) (amount n)) (if (source-of? cls n) (inc (long s)) s)]
                 [h s])))
           [0 0] horiz3))
 
 (defn- new-liquid [{:keys [cls dropoff infinite?] :as env} [x y z :as p]]
-  (let [[raw _] (cell env p)
+  (let [raw (raw-of env x y z)
         [highest sources] (horizontal-source-scan env raw p)
-        [braw b] (cell env [x (dec (long y)) z])
-        [araw a] (cell env [x (inc (long y)) z])]
+        braw (raw-of env x (dec (long y)) z)
+        b (state-of braw)
+        araw (raw-of env x (inc (long y)) z)
+        a (state-of araw)]
     (cond
       (and infinite? (>= (long sources) 2)
            (or (block/solid? (long (max 0 (long braw)))) (source-of? cls b)))
@@ -290,19 +313,20 @@
     (liquid-state cls (- 8 (long v)))))
 
 (defn- slope-distance ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
-  (reduce (fn [lowest [dx _ dz :as d]]
-            (if (= d from)
-              lowest
-              (let [tp [(+ (long x) dx) y (+ (long z) dz)]
-                    [raw _] (cell env p)
-                    [traw t] (cell env tp)]
-                (if (and (can-maybe-pass? cls raw traw t d) (holds-specific? cls traw))
-                  (cond
-                    (hole? env tp) (reduced pass)
-                    (< pass (long slope)) (min (long lowest) (slope-distance env tp (inc pass) (opposite d)))
-                    :else lowest)
-                  lowest))))
-          1000 horiz3))
+  (let [raw (raw-of env x y z)]
+    (reduce (fn [lowest [dx _ dz :as d]]
+              (if (= d from)
+                lowest
+                (let [tp [(+ (long x) dx) y (+ (long z) dz)]
+                      traw (raw-of env (tp 0) (tp 1) (tp 2))
+                      t (state-of traw)]
+                  (if (and (can-maybe-pass? cls raw traw t d) (holds-specific? cls traw))
+                    (cond
+                      (hole? env tp) (reduced pass)
+                      (< pass (long slope)) (min (long lowest) (slope-distance env tp (inc pass) (opposite d)))
+                      :else lowest)
+                    lowest))))
+            1000 horiz3)))
 
 (defn- mix-product [mix m]
   (when mix
@@ -335,7 +359,8 @@
            (touches-other? chunks template cls pos)))))
 
 (defn- spread-to [{:keys [chunks template cls mix] :as env} tp d v]
-  (let [[traw t] (cell env tp)]
+  (let [traw (raw-of env (tp 0) (tp 1) (tp 2))
+        t (state-of traw)]
     (cond
       (and mix (= d [0 -1 0]) (= :water (liquid-class t)))
       [[tp (block/state (:smother mix))]]
@@ -352,7 +377,8 @@
   (second
     (reduce (fn [[lowest acc] [dx _ dz :as d]]
               (let [tp [(+ (long x) dx) y (+ (long z) dz)]
-                    [traw t] (cell env tp)
+                    traw (raw-of env (tp 0) (tp 1) (tp 2))
+                    t (state-of traw)
                     v (and (can-maybe-pass? cls raw traw t d) (new-liquid env tp))]
                 (if-not (and v (holds-specific? cls traw))
                   [lowest acc]
@@ -366,16 +392,17 @@
 (defn- spread-sides [{:keys [dropoff] :as env} p st]
   (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
     (when (pos? n)
-      (let [[raw _] (cell env p)]
+      (let [raw (raw-of env (p 0) (p 1) (p 2))]
         (into [] (mapcat (fn [[tp d v]] (spread-to env tp d v))) (lowest-targets env raw p))))))
 
 (defn- source-neighbours ^long [{:keys [cls] :as env} [x y z]]
-  (count (filter (fn [[dx _ dz]] (source-of? cls (second (cell env [(+ (long x) dx) y (+ (long z) dz)])))) horiz3)))
+  (count (filter (fn [[dx _ dz]] (source-of? cls (state-of (raw-of env (+ (long x) dx) y (+ (long z) dz))))) horiz3)))
 
 (defn- spread [{:keys [cls] :as env} [x y z :as p] st]
   (let [bp [x (dec (long y)) z]
-        [raw _] (cell env p)
-        [braw b] (cell env bp)]
+        raw (raw-of env x y z)
+        braw (raw-of env x (dec (long y)) z)
+        b (state-of braw)]
     (or (when (can-maybe-pass? cls raw braw b [0 -1 0])
           (when-let [v (new-liquid env bp)]
             (when (and (replaceable-with? b cls [0 -1 0]) (holds-specific? cls braw))

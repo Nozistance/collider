@@ -3,8 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data])
   (:import (collider.java Buf)
-           (java.io ByteArrayInputStream ByteArrayOutputStream DataInputStream DataOutputStream
-                    EOFException InputStream OutputStream)
+           (java.io ByteArrayInputStream DataInputStream EOFException InputStream OutputStream)
            (java.nio.charset StandardCharsets)
            (java.util UUID)
            (java.util.zip Deflater Inflater)))
@@ -79,82 +78,102 @@
                   (str/includes? (str k) ":") (str k)
                   :else (str "minecraft:" k))))
 
-(defn- write-nbt-string [^DataOutputStream d ^String name ^String v]
-  (.writeByte d 8) (.writeUTF d name) (.writeUTF d v))
+(def ^:private ^:const tag-end 0)
+(def ^:private ^:const tag-byte 1)
+(def ^:private ^:const tag-short 2)
+(def ^:private ^:const tag-int 3)
+(def ^:private ^:const tag-long 4)
+(def ^:private ^:const tag-float 5)
+(def ^:private ^:const tag-double 6)
+(def ^:private ^:const tag-byte-array 7)
+(def ^:private ^:const tag-string 8)
+(def ^:private ^:const tag-list 9)
+(def ^:private ^:const tag-compound 10)
+(def ^:private ^:const tag-int-array 11)
+(def ^:private ^:const tag-long-array 12)
+
+(def ^:private byte-array-class (Class/forName "[B"))
+(def ^:private int-array-class (Class/forName "[I"))
+(def ^:private long-array-class (Class/forName "[J"))
+
+(defn- write-nbt-string [^Buf buf ^String name ^String v]
+  (.writeByte buf (int tag-string)) (.writeUtf buf name) (.writeUtf buf v))
 
 (declare write-translatable)
 
-(defn- write-argument [^DataOutputStream d a]
+(defn- write-argument [^Buf buf a]
   (if (map? a)
-    (write-translatable d a)
-    (do (write-nbt-string d "text" (str a)) (.writeByte d 0))))
+    (write-translatable buf a)
+    (do (write-nbt-string buf "text" (str a)) (.writeByte buf (int tag-end)))))
 
-(defn- write-translatable [^DataOutputStream d {:keys [translate with]}]
-  (write-nbt-string d "translate" translate)
+(defn- write-translatable [^Buf buf {:keys [translate with]}]
+  (write-nbt-string buf "translate" translate)
   (when (seq with)
-    (.writeByte d 9) (.writeUTF d "with")
+    (.writeByte buf (int tag-list)) (.writeUtf buf "with")
     (cond
       (every? number? with)
-      (do (.writeByte d 3) (.writeInt d (count with))
-          (doseq [a with] (.writeInt d (int a))))
+      (do (.writeByte buf (int tag-int)) (.writeInt buf (count with))
+          (doseq [a with] (.writeInt buf (int a))))
       (every? string? with)
-      (do (.writeByte d 8) (.writeInt d (count with))
-          (doseq [a with] (.writeUTF d a)))
+      (do (.writeByte buf (int tag-string)) (.writeInt buf (count with))
+          (doseq [a with] (.writeUtf buf a)))
       :else
-      (do (.writeByte d 10) (.writeInt d (count with))
-          (doseq [a with] (write-argument d a)))))
-  (.writeByte d 0))
+      (do (.writeByte buf (int tag-compound)) (.writeInt buf (count with))
+          (doseq [a with] (write-argument buf a)))))
+  (.writeByte buf (int tag-end)))
 
 (defn write-component [^Buf buf s]
-  (let [bo (ByteArrayOutputStream.)]
-    (with-open [d (DataOutputStream. bo)]
-      (if (map? s)
-        (do (.writeByte buf 10) (write-translatable d s))
-        (do (.writeByte buf 8) (.writeUTF d ^String (str s)))))
-    (.writeBytes buf (.toByteArray bo))))
+  (if (map? s)
+    (do (.writeByte buf (int tag-compound)) (write-translatable buf s))
+    (do (.writeByte buf (int tag-string)) (.writeUtf buf (str s)))))
 
 (defn- nbt-type ^long [v]
-  (cond (map? v) 10 (string? v) 8 (boolean? v) 1
-        (instance? Byte v) 1 (instance? Short v) 2 (instance? Long v) 4
-        (instance? Float v) 5 (instance? Double v) 6
-        (bytes? v) 7 (instance? (Class/forName "[I") v) 11
-        (instance? (Class/forName "[J") v) 12
-        (integer? v) 3 (vector? v) 9
+  (cond (map? v) tag-compound
+        (string? v) tag-string
+        (boolean? v) tag-byte
+        (instance? Byte v) tag-byte
+        (instance? Short v) tag-short
+        (instance? Long v) tag-long
+        (instance? Float v) tag-float
+        (instance? Double v) tag-double
+        (.isInstance ^Class byte-array-class v) tag-byte-array
+        (.isInstance ^Class int-array-class v) tag-int-array
+        (.isInstance ^Class long-array-class v) tag-long-array
+        (integer? v) tag-int
+        (vector? v) tag-list
         :else (throw (ex-info "no NBT type" {:value v}))))
 
 (defn- list-type ^long [v]
-  (long (or (:nbt-type (meta v)) (if (empty? v) 0 (nbt-type (first v))))))
+  (long (or (:nbt-type (meta v)) (if (empty? v) tag-end (nbt-type (first v))))))
 
-(defn- write-nbt-payload [^DataOutputStream d v]
-  (cond
-    (map? v) (do (doseq [[k x] v :when (some? x)]
-                   (.writeByte d (nbt-type x)) (.writeUTF d (name k)) (write-nbt-payload d x))
-                 (.writeByte d 0))
-    (string? v) (.writeUTF d ^String v)
-    (boolean? v) (.writeByte d (if v 1 0))
-    (instance? Byte v) (.writeByte d (int ^Byte v))
-    (instance? Short v) (.writeShort d (int ^Short v))
-    (instance? Long v) (.writeLong d (long v))
-    (instance? Float v) (.writeFloat d (float v))
-    (instance? Double v) (.writeDouble d (double v))
-    (bytes? v) (do (.writeInt d (alength ^bytes v)) (.write d ^bytes v))
-    (instance? (Class/forName "[I") v)
-    (do (.writeInt d (alength ^ints v)) (dotimes [i (alength ^ints v)] (.writeInt d (aget ^ints v i))))
-    (instance? (Class/forName "[J") v)
-    (do (.writeInt d (alength ^longs v)) (dotimes [i (alength ^longs v)] (.writeLong d (aget ^longs v i))))
-    (integer? v) (.writeInt d (int v))
-    (vector? v) (do (.writeByte d (list-type v))
-                    (.writeInt d (count v))
-                    (doseq [x v] (write-nbt-payload d x)))))
+(defn- write-nbt-payload [^Buf buf v]
+  (case (int (nbt-type v))
+    10 (do (doseq [[k x] v :when (some? x)]
+             (.writeByte buf (int (nbt-type x)))
+             (.writeUtf buf (name k))
+             (write-nbt-payload buf x))
+           (.writeByte buf (int tag-end)))
+    8 (.writeUtf buf ^String v)
+    1 (.writeByte buf (int (if (boolean? v) (if v 1 0) ^Byte v)))
+    2 (.writeShort buf (int ^Short v))
+    4 (.writeLong buf (long v))
+    5 (.writeFloat buf (float v))
+    6 (.writeDouble buf (double v))
+    7 (do (.writeInt buf (alength ^bytes v)) (.writeBytes buf ^bytes v))
+    11 (do (.writeInt buf (alength ^ints v))
+           (dotimes [i (alength ^ints v)] (.writeInt buf (aget ^ints v i))))
+    12 (do (.writeInt buf (alength ^longs v))
+           (dotimes [i (alength ^longs v)] (.writeLong buf (aget ^longs v i))))
+    3 (.writeInt buf (int v))
+    9 (do (.writeByte buf (int (list-type v)))
+          (.writeInt buf (count v))
+          (doseq [x v] (write-nbt-payload buf x)))))
 
 (defn write-nbt [^Buf buf v]
-  (let [bo (ByteArrayOutputStream.)]
-    (with-open [d (DataOutputStream. bo)]
-      (if (nil? v)
-        (.writeByte d 0)
-        (do (.writeByte d (nbt-type v))
-            (write-nbt-payload d v))))
-    (.writeBytes buf (.toByteArray bo))))
+  (if (nil? v)
+    (.writeByte buf (int tag-end))
+    (do (.writeByte buf (int (nbt-type v)))
+        (write-nbt-payload buf v))))
 
 (def ^:private ^:const nbt-quota 2097152)
 (def ^:private ^:const nbt-max-depth 512)
@@ -787,16 +806,23 @@
           (throw (ex-info "badly compressed packet" {:size n :threshold threshold})))
         (when (> n max-uncompressed)
           (throw (ex-info "badly compressed packet" {:size n :max max-uncompressed})))
-        (let [src (byte-array (.readableBytes buf))
-              dst (byte-array n)]
-          (.readBytes buf src)
-          (.setInput inflater src)
+        (let [dst (byte-array n)]
+          (.setInput inflater (.a buf) (.r buf) (.readableBytes buf))
           (let [got (try (.inflate inflater dst) (finally (.reset inflater)))]
             (when (not= got n)
               (throw (ex-info "badly compressed packet" {:got got :expected n}))))
-          (.clear buf)
-          (.writeBytes buf dst)))))
+          (.adopt buf dst n)))))
   buf)
+
+(def ^:private ^:const deflate-step 8192)
+
+(defn- deflate-into! [^Buf body ^Deflater deflater]
+  (loop []
+    (.ensure body deflate-step)
+    (let [a (.a body)
+          k (.deflate deflater a (.w body) (- (alength a) (.w body)))]
+      (set! (.w body) (+ (.w body) k))
+      (when-not (.finished deflater) (recur)))))
 
 (defn write-frame! [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
   (.clear body)
@@ -806,14 +832,12 @@
     (let [n (.readableBytes payload)]
       (if (< n (long threshold))
         (do (write-varint body 0) (.writeBytes body payload))
-        (let [src (byte-array n)]
-          (.readBytes payload src)
-          (write-varint body n)
-          (.setInput deflater src)
-          (.finish deflater)
-          (while (not (.finished deflater))
-            (.writeBytes body chunk 0 (.deflate deflater chunk)))
-          (.reset deflater)))))
+        (do (write-varint body n)
+            (.setInput deflater (.a payload) (.r payload) n)
+            (set! (.r payload) (.w payload))
+            (.finish deflater)
+            (deflate-into! body deflater)
+            (.reset deflater)))))
   (write-varint head (.readableBytes body))
   (.writeTo head out)
   (.writeTo body out))

@@ -2,7 +2,7 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])
   (:import (java.io PushbackReader)
-           (java.util List)))
+           (java.util Arrays HashMap List)))
 
 (set! *warn-on-reflection* true)
 
@@ -15,13 +15,7 @@
 (def blocks (load-edn "blocks.edn"))
 (def datapack (load-edn "datapack.edn"))
 (def tags (load-edn "tags.edn"))
-(def shapes (load-edn "shapes.edn"))
-(def outlines (load-edn "outlines.edn"))
-(def sturdy (load-edn "sturdy.edn"))
-(def sturdy-center (load-edn "sturdy-center.edn"))
-(def sturdy-rigid (load-edn "sturdy-rigid.edn"))
 (def items (load-edn "items.edn"))
-(def flags (load-edn "flags.edn"))
 (def light (load-edn "light.edn"))
 (def fire (load-edn "fire.edn"))
 (def drops (load-edn "drops.edn"))
@@ -71,10 +65,15 @@
   (or (get-in registries [registry entry])
       (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
 
+(def ^:private datapack-index
+  (into {}
+        (map (fn [[registry entries]]
+               [registry (into {} (map-indexed (fn [i e] [e (long i)])) entries)]))
+        datapack))
+
 (defn datapack-id ^long [registry entry]
-  (let [i (.indexOf ^List (get datapack registry) entry)]
-    (when (neg? i) (throw (ex-info "unknown datapack entry" {:registry registry :entry entry})))
-    i))
+  (or (get (get datapack-index registry) entry)
+      (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
 
 (defn entry-id ^long [registry entry]
   (if (contains? registries registry)
@@ -110,13 +109,45 @@
                  (assoc acc (nth order i)
                             (nth (get (:props b) (nth order i)) (quot left tail)))))))))
 
+(def block-state-count
+  (long (reduce (fn [n [_ b]] (max n (+ (long (:first b)) (state-count b)))) 0 blocks)))
+
 (def block-of-state
-  (persistent!
-    (reduce (fn [m [block b]]
-              (let [from (long (:first b))]
-                (reduce (fn [m i] (assoc! m (+ from (long i)) block))
-                        m (range (state-count b)))))
-            (transient {}) blocks)))
+  (let [a (object-array block-state-count)]
+    (doseq [[block b] blocks
+            :let [from (long (:first b))]
+            i (range (state-count b))]
+      (aset a (+ from (long i)) block))
+    a))
+
+(defn- interned [^HashMap seen v]
+  (if (vector? v)
+    (let [v (mapv (fn [x] (interned seen x)) v)]
+      (or (.get seen v) (do (.put seen v v) v)))
+    v))
+
+(defn- object-table [name]
+  (let [a (object-array block-state-count)
+        seen (HashMap.)]
+    (doseq [[k v] (load-edn name)
+            :when (< -1 (long k) block-state-count)]
+      (aset a (int (long k)) (interned seen v)))
+    a))
+
+(defn- byte-table [name ^long default]
+  (let [a (byte-array block-state-count)]
+    (Arrays/fill a (byte default))
+    (doseq [[k v] (load-edn name)
+            :when (< -1 (long k) block-state-count)]
+      (aset a (int (long k)) (byte (long v))))
+    a))
+
+(def ^"[Ljava.lang.Object;" shapes (object-table "shapes.edn"))
+(def ^"[Ljava.lang.Object;" outlines (object-table "outlines.edn"))
+(def ^bytes sturdy (byte-table "sturdy.edn" 63))
+(def ^bytes sturdy-center (byte-table "sturdy-center.edn" 63))
+(def ^bytes sturdy-rigid (byte-table "sturdy-rigid.edn" 63))
+(def ^bytes flags (byte-table "flags.edn" 0))
 
 (def default-props
   (into {}
@@ -160,10 +191,11 @@
                    tail (long (reduce * 1 (subvec sizes (inc i))))]
                (recur (inc i) (long (+ id (* idx tail))))))))))))
 
+(defn state-block [^long id]
+  (when (< -1 id block-state-count) (aget ^objects block-of-state id)))
+
 (defn state-props [^long id]
-  (when-let [block-name (get block-of-state id)]
+  (when-let [block-name (state-block id)]
     (let [b (get blocks block-name)]
       [block-name (decode-props b (- id (long (:first b))))])))
 
-(defn state-block [^long id]
-  (get block-of-state id))

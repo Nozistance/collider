@@ -189,8 +189,39 @@
          (< (Math/abs (- (double az) (double bz))) (+ item-half item-half merge-inflate))
          (< (Math/abs (- (double ay) (double by))) (+ item-height item-height)))))
 
-(defn- merge-partner [items ^long from a used]
-  (first (for [j (range from (count items))
+(defn- cell-key ^long [^long x ^long y ^long z]
+  (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
+          (bit-shift-left (bit-and z 0x3FFFFFF) 12)
+          (bit-and y 0xFFF)))
+
+(defn- cell-of ^long [pos]
+  (cell-key (long (Math/floor (v/x pos))) (long (Math/floor (v/y pos))) (long (Math/floor (v/z pos)))))
+
+(defn- merge-index [items]
+  (persistent!
+    (reduce (fn [m ^long i]
+              (let [k (cell-of (:pos ((items i) 1)))]
+                (assoc! m k (conj (get m k []) i))))
+            (transient {})
+            (range (count items)))))
+
+(defn- neighbour-idxs [index pos]
+  (let [x (long (Math/floor (v/x pos)))
+        y (long (Math/floor (v/y pos)))
+        z (long (Math/floor (v/z pos)))]
+    (sort (persistent!
+            (reduce (fn [acc ^long c]
+                      (reduce conj! acc
+                              (get index (cell-key (+ x (dec (quot c 9)))
+                                                   (+ y (dec (rem (quot c 3) 3)))
+                                                   (+ z (dec (rem c 3))))
+                                   [])))
+                    (transient [])
+                    (range 27))))))
+
+(defn- merge-partner [items index from a used]
+  (first (for [j (neighbour-idxs index (:pos a))
+               :when (>= (long j) (long from))
                :let [[eb b] (items j)]
                :when (and (not (used eb)) (mergeable? a b))]
            [eb b])))
@@ -202,12 +233,13 @@
    [:remove-entity eb]])
 
 (defn- merge-deltas [items]
-  (let [items (vec items)]
+  (let [items (vec items)
+        index (merge-index items)]
     (loop [i 0 used #{} out []]
       (if (>= i (count items))
         out
         (let [[ea a] (items i)]
-          (if-let [[eb b] (when-not (used ea) (merge-partner items (inc i) a used))]
+          (if-let [[eb b] (when-not (used ea) (merge-partner items index (inc i) a used))]
             (recur (inc i) (conj used ea eb) (into out (absorb ea a eb b)))
             (recur (inc i) used out)))))))
 

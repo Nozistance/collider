@@ -569,21 +569,34 @@
                     {:target target :action action :at at :hand hand :sneaking (.readBoolean buf)})
                 {:target target :action action :sneaking (.readBoolean buf)})))}})
 
-(def ^:private name-by-id
-  (into {} (for [[state dirs] data/packets
-                 [nm id] (:serverbound dirs)]
-             [[state (long id)] nm])))
+(def ^:private inbound
+  (into {}
+        (map (fn [[state dirs]]
+               [state (into {}
+                            (map (fn [[nm id]]
+                                   [(long id) (assoc (get packets [state nm]) :packet nm)]))
+                            (:serverbound dirs))]))
+        data/packets))
+
+(def ^:private outbound
+  (into {}
+        (map (fn [[state dirs]]
+               [state (into {}
+                            (keep (fn [[nm id]]
+                                    (when-let [w (:write (get packets [state nm]))]
+                                      [nm {:id (long id) :write w}])))
+                            (:clientbound dirs))]))
+        data/packets))
 
 (defn decode [state ^Buf buf]
   (let [id (c/read-varint buf)]
-    (when-let [nm (name-by-id [state id])]
-      (if-let [r (:read (packets [state nm]))]
-        (assoc (r buf) :packet nm)
-        {:packet nm}))))
+    (when-let [e (get (get inbound state) id)]
+      (if-let [r (:read e)]
+        (assoc (r buf) :packet (:packet e))
+        {:packet (:packet e)}))))
 
 (defn encode! [state ^Buf buf m]
-  (let [nm (:packet m)
-        w (or (:write (packets [state nm]))
-              (throw (ex-info "no writer for packet" {:state state :packet nm})))]
-    (c/write-varint buf (data/packet-id state :clientbound nm))
-    (w buf m)))
+  (let [e (or (get (get outbound state) (:packet m))
+              (throw (ex-info "no writer for packet" {:state state :packet (:packet m)})))]
+    (c/write-varint buf (long (:id e)))
+    ((:write e) buf m)))
