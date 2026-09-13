@@ -52,35 +52,45 @@
   (when (encode-packet! payload state m)
     (c/write-frame! out payload body head (long threshold) defl chunk)))
 
+(defn- writer-wire [^BufferedOutputStream out]
+  {:out out :payload (Buf. 1024) :body (Buf. 1024) :head (Buf. 5)
+   :defl (Deflater.) :chunk (byte-array 8192)})
+
+(defn- emit! [w ^long threshold state m]
+  (write-packet! (:out w) (:payload w) (:body w) (:head w) threshold (:defl w) (:chunk w) state m))
+
+(defn- close-writer! [w ^Socket sock]
+  (let [^BufferedOutputStream out (:out w)]
+    (try (.flush out) (catch Throwable _ nil))
+    (.end ^Deflater (:defl w))
+    (.close sock)))
+
+(defn- writer-step [^Conn c w ^long threshold x]
+  (let [^ArrayBlockingQueue q (:q c)
+        ^BufferedOutputStream out (:out w)]
+    (cond
+      (nil? x)
+      (when-not (.get ^AtomicBoolean (:closing c)) threshold)
+      (= :packet (nth x 0))
+      (do (emit! w threshold (nth x 1) (nth x 2))
+          (when (.isEmpty q) (.flush out))
+          threshold)
+      (= :threshold (nth x 0))
+      (let [n (long (nth x 1))]
+        (swap! (:st c) assoc :threshold n)
+        (.flush out)
+        n))))
+
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
         ^ArrayBlockingQueue q (:q c)
-        ^AtomicBoolean closing (:closing c)
-        out (BufferedOutputStream. (.getOutputStream sock))
-        payload (Buf. 1024)
-        body (Buf. 1024)
-        head (Buf. 5)
-        defl (Deflater.)
-        chunk (byte-array 8192)]
+        w (writer-wire (BufferedOutputStream. (.getOutputStream sock)))]
     (try
       (loop [threshold -1]
-        (let [x (.poll q writer-poll-ms TimeUnit/MILLISECONDS)]
-          (cond
-            (nil? x)
-            (when-not (.get closing) (recur threshold))
-            (= :packet (nth x 0))
-            (do (write-packet! out payload body head threshold defl chunk (nth x 1) (nth x 2))
-                (when (.isEmpty q) (.flush out))
-                (recur threshold))
-            (= :threshold (nth x 0))
-            (let [n (long (nth x 1))]
-              (swap! (:st c) assoc :threshold n)
-              (.flush out)
-              (recur n)))))
+        (when-let [t (writer-step c w threshold (.poll q writer-poll-ms TimeUnit/MILLISECONDS))]
+          (recur (long t))))
       (finally
-        (try (.flush out) (catch Throwable _ nil))
-        (.end defl)
-        (.close sock)))))
+        (close-writer! w sock)))))
 
 (defn- reader-loop [^Conn conn io]
   (let [in (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
@@ -110,21 +120,28 @@
           (catch Throwable t
             (log/info "writer failed for" (who conn) "-" (str t))))))
 
+(defn- new-conn [^Socket sock]
+  (->Conn sock (ArrayBlockingQueue. out-queue-size)
+          (atom {:state :handshake :threshold -1
+                 :addr  (str (.getRemoteSocketAddress sock))})
+          (AtomicBoolean. false)))
+
+(defn- read-safely! [^Conn conn io ^Socket sock]
+  (try
+    (reader-loop conn io)
+    (catch EOFException _ nil)
+    (catch SocketTimeoutException _
+      (log/info "read timeout, closing" (who conn)))
+    (catch SocketException _ nil)
+    (catch Throwable t
+      (when-not (.isClosed sock)
+        (log/info "reader failed for" (who conn) "-" (str t))))))
+
 (defn- serve-conn! [^Socket sock io]
-  (let [conn (->Conn sock (ArrayBlockingQueue. out-queue-size)
-                     (atom {:state :handshake :threshold -1
-                            :addr  (str (.getRemoteSocketAddress sock))})
-                     (AtomicBoolean. false))]
+  (let [conn (new-conn sock)]
     (swap! (:st conn) assoc :writer (start-writer! conn))
     (try
-      (reader-loop conn io)
-      (catch EOFException _ nil)
-      (catch SocketTimeoutException _
-        (log/info "read timeout, closing" (who conn)))
-      (catch SocketException _ nil)
-      (catch Throwable t
-        (when-not (.isClosed sock)
-          (log/info "reader failed for" (who conn) "-" (str t))))
+      (read-safely! conn io sock)
       (finally
         (disconnected! conn io)
         (close! conn)))))

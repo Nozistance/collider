@@ -43,46 +43,62 @@
       (some #(Double/isInfinite (double %)) (:pos m))
       (some #(not (Double/isFinite (double %))) (keep m [:yaw :pitch]))))
 
+(def ^:private move-events
+  {:move-player-pos         (fn [eid m] [:move eid {:pos (:pos m) :on-ground (on-ground? m)}])
+   :move-player-pos-rot     (fn [eid m] [:move eid {:pos       (:pos m) :yaw (:yaw m) :pitch (:pitch m)
+                                                    :on-ground (on-ground? m)}])
+   :move-player-rot         (fn [eid m] [:move eid {:yaw (:yaw m) :pitch (:pitch m) :on-ground (on-ground? m)}])
+   :move-player-status-only (fn [eid m] [:move eid {:on-ground (on-ground? m)}])
+   :accept-teleportation    (fn [eid m] [:teleport-ack eid (:id m)])
+   :player-abilities        (fn [eid m] [:move eid {:flying (bit-test (long (:flags m)) 1)}])
+   :player-input            (fn [eid m] [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}])})
+
+(defn- place-on-block [eid m]
+  (let [[cx cy cz] (:cursor m)]
+    [:place eid (:pos m) (:face m) nil
+     [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
+     (:sequence m)]))
+
+(def ^:private action-events
+  {:player-action         (fn [eid m] [:dig eid (:action m) (:pos m) (:face m) (:sequence m)])
+   :use-item-on           place-on-block
+   :use-item              (fn [eid m] [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m)
+                                       {:yaw (:yaw m) :pitch (:pitch m)}])
+   :swing                 (fn [eid _] [:swing eid])
+   :player-command        (fn [eid m] [:entity-action eid (:action m)])
+   :interact              (fn [eid m] (case (long (:action m))
+                                        0 [:interact eid (:target m)]
+                                        1 [:attack eid (:target m)]
+                                        nil))
+   :pick-item-from-block  (fn [eid m] [:pick eid {:pos (:pos m) :include-data (:include-data m)}])
+   :pick-item-from-entity (fn [eid m] [:pick eid {:entity (:id m)}])})
+
+(def ^:private container-events
+  {:set-carried-item       (fn [eid m] [:held-item eid (:slot m)])
+   :set-creative-mode-slot (fn [eid m] [:creative-slot eid (:slot m) (:stack m)])
+   :container-click        (fn [eid m] (if (zero? (long (:container m)))
+                                         [:click eid (dissoc m :packet :container)]
+                                         [:menu-click eid (dissoc m :packet)]))
+   :container-close        (fn [eid m] [:menu-close eid (:container m)])
+   :container-button-click (fn [eid m] [:menu-button eid (:container m) (:button m)])})
+
+(def ^:private session-events
+  {:keep-alive           (fn [eid m] [:keepalive-echo eid (:id m)])
+   :chunk-batch-received (fn [eid m] [:chunk-batch-ack eid (:rate m)])
+   :client-command       (fn [eid m] (case (long (:action m))
+                                       0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil))
+   :set-game-rule        (fn [eid m] [:set-rules eid (:entries m)])
+   :command-suggestion   (fn [eid m] [:tab-complete eid (:text m) nil (:id m)])
+   :chat                 (fn [eid m] [:chat eid (:message m)])
+   :chat-command         (fn [eid m] [:chat eid (str "/" (:command m))])
+   :sign-update          (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])})
+
+(def ^:private event-table
+  (merge session-events move-events action-events container-events))
+
 (defn- packet->event [eid {:keys [packet] :as m}]
-  (case packet
-    :keep-alive [:keepalive-echo eid (:id m)]
-    :chunk-batch-received [:chunk-batch-ack eid (:rate m)]
-    :move-player-pos [:move eid {:pos (:pos m) :on-ground (on-ground? m)}]
-    :move-player-pos-rot [:move eid {:pos       (:pos m) :yaw (:yaw m) :pitch (:pitch m)
-                                     :on-ground (on-ground? m)}]
-    :move-player-rot [:move eid {:yaw (:yaw m) :pitch (:pitch m) :on-ground (on-ground? m)}]
-    :move-player-status-only [:move eid {:on-ground (on-ground? m)}]
-    :accept-teleportation [:teleport-ack eid (:id m)]
-    :player-abilities [:move eid {:flying (bit-test (long (:flags m)) 1)}]
-    :player-action [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]
-    :use-item-on (let [[cx cy cz] (:cursor m)]
-                   [:place eid (:pos m) (:face m) nil
-                    [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
-                    (:sequence m)])
-    :use-item [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}]
-    :swing [:swing eid]
-    :player-command [:entity-action eid (:action m)]
-    :player-input [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}]
-    :set-carried-item [:held-item eid (:slot m)]
-    :pick-item-from-block [:pick eid {:pos (:pos m) :include-data (:include-data m)}]
-    :pick-item-from-entity [:pick eid {:entity (:id m)}]
-    :set-creative-mode-slot [:creative-slot eid (:slot m) (:stack m)]
-    :container-click (if (zero? (long (:container m)))
-                       [:click eid (dissoc m :packet :container)]
-                       [:menu-click eid (dissoc m :packet)])
-    :container-close [:menu-close eid (:container m)]
-    :container-button-click [:menu-button eid (:container m) (:button m)]
-    :client-command (case (long (:action m)) 0 [:respawn eid] 1 [:stats-request eid] 2 [:rules-request eid] nil)
-    :set-game-rule [:set-rules eid (:entries m)]
-    :command-suggestion [:tab-complete eid (:text m) nil (:id m)]
-    :interact (case (long (:action m))
-                0 [:interact eid (:target m)]
-                1 [:attack eid (:target m)]
-                nil)
-    :chat [:chat eid (:message m)]
-    :chat-command [:chat eid (str "/" (:command m))]
-    :sign-update [:sign-update eid (:pos m) (:front? m) (:lines m)]
-    nil))
+  (when-let [f (get event-table packet)]
+    (f eid m)))
 
 (def ^:private ignored
   #{:client-information :player-loaded :client-tick-end :custom-payload

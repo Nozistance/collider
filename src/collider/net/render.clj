@@ -28,24 +28,29 @@
     (select-keys t [:translate :with])
     (apply str (map :text runs))))
 
+(defn- chunk-packet [world id]
+  (let [[x z] (chunk/id->pos id)]
+    {:packet         :level-chunk-with-light :cx x :cz z
+     :chunk          (get-in world [:chunks id] gen/flat-chunk)
+     :block-entities (be/wire (get-in world [:block-entities id]))}))
+
+(defn- forget-chunk-packet [id]
+  (let [[x z] (chunk/id->pos id)]
+    {:packet :forget-level-chunk :cx x :cz z}))
+
+(defn- added-chunk-packets [world add]
+  (when (seq add)
+    (concat
+      [{:packet :chunk-batch-start}]
+      (map #(chunk-packet world %) add)
+      [{:packet :chunk-batch-finished :size (count add)}])))
+
 (defn- chunk-packets [world [_ eid add drop]]
   (let [[cx cz] (chunk/id->pos (get-in world [:entities eid :chunk-pos]))]
     (concat
       [{:packet :set-chunk-cache-center :cx cx :cz cz}]
-      (when (seq add)
-        (concat
-          [{:packet :chunk-batch-start}]
-          (map (fn [id]
-                 (let [[x z] (chunk/id->pos id)]
-                   {:packet         :level-chunk-with-light :cx x :cz z
-                    :chunk          (get-in world [:chunks id] gen/flat-chunk)
-                    :block-entities (be/wire (get-in world [:block-entities id]))}))
-               add)
-          [{:packet :chunk-batch-finished :size (count add)}]))
-      (map (fn [id]
-             (let [[x z] (chunk/id->pos id)]
-               {:packet :forget-level-chunk :cx x :cz z}))
-           drop))))
+      (added-chunk-packets world add)
+      (map forget-chunk-packet drop))))
 
 (def ^:private entity-type
   {:player        (data/registry-id "entity_type" :player)
@@ -81,31 +86,36 @@
     []))
 
 (def ^:private equipment-slots [0 2 3 4 5])
+(defn- add-entity-packet [eid e tr kind]
+  {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (entity-type kind)
+   :pos    (if tr (mapv double (:pos tr)) (:pos e))
+   :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
+   :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
+   :data   (if (= :falling-block kind) (:block e) 0)})
+
+(defn- equipment-of [tr]
+  (keep-indexed (fn [i s] (when s [(equipment-slots i) s])) (if tr (:equip tr) [])))
+
 (defn- spawn-packets [world eid]
   (when-let [e (get-in world [:entities eid])]
     (let [kind (kind-of e)
           tr (:track e)
-          meta (if tr (:mdata tr) {})
-          equip (keep-indexed (fn [i s] (when s [(equipment-slots i) s])) (if tr (:equip tr) []))
-          d (entity-data kind meta)]
+          d (entity-data kind (if tr (:mdata tr) {}))
+          equip (equipment-of tr)]
       (concat
-        [{:packet :bundle-delimiter}
-
-
-
-         {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (entity-type kind)
-          :pos    (if tr (mapv double (:pos tr)) (:pos e))
-          :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
-          :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
-          :data   (if (= :falling-block kind) (:block e) 0)}]
+        [{:packet :bundle-delimiter} (add-entity-packet eid e tr kind)]
         (when (seq d) [{:packet :set-entity-data :eid eid :data d}])
         (when (seq equip) [{:packet :set-equipment :eid eid :slots equip}])
         [{:packet :bundle-delimiter}]))))
 
-(defn- tracking-packets [world [_ _ add gone]]
-  (concat
-    (mapcat #(spawn-packets world %) add)
-    (when (seq gone) [{:packet :remove-entities :eids gone}])))
+(defn- tracking-packets [world [_ _ add _]]
+  (mapcat #(spawn-packets world %) add))
+
+(defn- forget-packets [deltas]
+  (for [[eid ds] deltas
+        [tag _ _ gone] ds
+        :when (and (= :tracking tag) (seq gone))]
+    [eid {:packet :remove-entities :eids gone}]))
 
 (def sound-table
   {:player/hurt                   [:entity.player.hurt 7]
@@ -221,83 +231,101 @@
       (< (+ (* dx dx) (* dy dy) (* dz dz)) explosion-range-sq))))
 
 (defn- explosion-packets [world ps m]
-  (let [sound (sound-packet {:kind :explosion :pos (:center m) :volume 4.0 :pitch (:pitch m)})]
-    (for [eid ps
-          :when (in-earshot? world (:center m) eid)
-          p (cond-> [(explode-packet m eid)] sound (conj sound))]
-      [eid p])))
+  (for [eid ps
+        :when (in-earshot? world (:center m) eid)]
+    [eid (explode-packet m eid)]))
+
+(def ^:private session-fx
+  {:teleport      (fn [world m] [{:packet :player-position :teleport-id (long (:tick world))
+                                  :pos    (:pos m) :yaw (:yaw m) :pitch (:pitch m)}])
+   :keepalive     (fn [_ m] [{:packet :keep-alive :id (:id m)}])
+   :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
+   :system-chat   (fn [_ m] [{:packet :system-chat :text (text-of (:runs m)) :overlay false}])
+   :overlay       (fn [_ m] [{:packet :system-chat :text (text-of (:runs m)) :overlay true}])
+   :player-chat   (fn [_ m] [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m)))
+                              :overlay false}])
+   :stats         (fn [_ m] [{:packet :award-stats :stats (:stats m)}])
+   :suggestions   (fn [_ m] [{:packet  :command-suggestions :id (:id m) :start (:start m)
+                              :length  (:length m) :matches (:matches m)}])
+   :game-rules    (fn [_ m] [{:packet :game-rule-values
+                              :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)])
+                                           (:rules m))}])
+   :health        (fn [_ m] [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}])
+   :respawn       (fn [_ _] [{:packet :respawn :dimension-type overworld :keep 0}
+                             {:packet :game-event :event 13 :value 0.0}])
+   :default-spawn (fn [_ m] [{:packet :set-default-spawn-position :pos (:pos m)}])
+   :joined        (fn [_ _] nil)
+   :close         (fn [_ _] [:close])})
+
+(def ^:private world-fx
+  {:rain-started   (fn [_ _] [{:packet :game-event :event 1 :value 0.0}])
+   :rain-stopped   (fn [_ _] [{:packet :game-event :event 2 :value 0.0}])
+   :rain-level     (fn [_ m] [{:packet :game-event :event 7 :value (:level m)}])
+   :thunder-level  (fn [_ m] [{:packet :game-event :event 8 :value (:level m)}])
+   :time           (fn [_ m] [{:packet :set-time :age (:age m) :time (:time m)}])
+   :blocks-changed (fn [_ m] (block-records (chunk/id->pos (:cp m)) (:records m)))
+   :break-effect   (fn [_ m] [{:packet :level-event :event 2001 :pos (:pos m) :data (:state m)}])
+   :fizz           (fn [_ m] [{:packet :level-event :event 1501 :pos (:pos m) :data 0}])
+   :bonemeal       (fn [_ m] [{:packet :level-event :event 1505 :pos (:pos m) :data 15}])
+   :extinguish     (fn [_ m] [{:packet :level-event :event 1009 :pos (:pos m) :data 0}])
+   :level-event    (fn [_ m] [{:packet :level-event :event (:event m) :pos (:pos m) :data (:data m 0)}])
+   :sign-editor    (fn [_ m] [{:packet :open-sign-editor :pos (:pos m) :front? (:front? m)}])
+   :block-event    (fn [world m] [{:packet :block-event :pos (:pos m) :action (:action m) :param (:param m)
+                                   :block  (data/registry-id "block"
+                                                             (block/block-of (block-state world (:pos m))))}])
+   :block-entity   (fn [world m] (when-let [e (be/at world (:pos m))]
+                                   (when (be/on-wire? e)
+                                     [{:packet :block-entity-data :pos (:pos m)
+                                       :type   (be/type-id e) :nbt (be/nbt e)}])))
+   :sound          (fn [_ m] (when-let [p (sound-packet m)] [p]))
+   :particles      (fn [_ m] [(particles-packet m)])
+   :explosion      (fn [_ _] nil)})
+
+(def ^:private container-fx
+  {:set-slot          (fn [_ m] [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}])
+   :carried           (fn [_ m] [{:packet :set-cursor-item :stack (:stack m)}])
+   :open-screen       (fn [_ m] [{:packet :open-screen :container (:container m)
+                                  :menu   (data/registry-id "menu" (:menu m)) :title (:title m)}])
+   :container-content (fn [_ m] [{:packet   :container-set-content :container (:container m)
+                                  :state-id (:state-id m) :items (:items m) :carried (:carried m)}])
+   :container-slot    (fn [_ m] [{:packet   :container-set-slot :container (:container m)
+                                  :state-id (:state-id m) :slot (:slot m) :stack (:stack m)}])
+   :container-data    (fn [_ m] [{:packet :container-set-data :container (:container m)
+                                  :id     (:id m) :value (:value m)}])
+   :container-close   (fn [_ m] [{:packet :container-close :container (:container m)}])
+   :held-slot         (fn [_ m] [{:packet :set-held-slot :slot (:slot m)}])
+   :block-ack         (fn [_ m] [{:packet :block-changed-ack :sequence (:sequence m)}])
+   :inventory         (fn [_ m] [{:packet :container-set-content :items (:slots m) :carried (:carried m)}])
+   :tab-add           (fn [_ m] [{:packet :player-info-update :players (:entries m)}])
+   :tab-remove        (fn [_ m] [{:packet :player-info-remove :uuids (:uuids m)}])
+   :tab-latency       (fn [_ m] [{:packet :player-info-update :action :latency :players (:entries m)}])
+   :tab-header        (fn [_ m] [{:packet :tab-list :header (:header m) :footer (:footer m)}])})
+
+(def ^:private entity-fx
+  {:move      (fn [_ m] [{:packet :move-entity-pos :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)
+                          :on-ground (:on-ground m)}])
+   :move-look (fn [_ m] [{:packet :move-entity-pos-rot :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)
+                          :yaw    (:yaw m) :pitch (:pitch m) :on-ground (:on-ground m)}])
+   :look      (fn [_ m] [{:packet :move-entity-rot :eid (:eid m) :yaw (:yaw m) :pitch (:pitch m)
+                          :on-ground (:on-ground m)}])
+   :sync-pos  (fn [_ m] [{:packet    :entity-position-sync :eid (:eid m) :pos (:pos m)
+                          :yaw       (:yaw m) :pitch (:pitch m) :on-ground (:on-ground m)}])
+   :head-look (fn [_ m] [{:packet :rotate-head :eid (:eid m) :yaw (:yaw m)}])
+   :velocity  (fn [_ m] [{:packet :set-entity-motion :eid (:eid m) :vel (:vel m)}])
+   :meta      (fn [_ m] (let [d (entity-data (kind-of m) (:meta m))]
+                          (when (seq d) [{:packet :set-entity-data :eid (:eid m) :data d}])))
+   :equipment (fn [_ m] [{:packet :set-equipment :eid (:eid m)
+                          :slots  [[(equipment-slots (:slot m)) (:stack m)]]}])
+   :animation (fn [_ m] [{:packet :animate :eid (:eid m)
+                          :action (case (:kind m) :swing 0 :wake-up 2 :crit 4 0)}])
+   :status    (fn [_ m] (when-let [p (status-packet m)] [p]))
+   :collect   (fn [_ m] [{:packet :take-item-entity :item (:eid m) :collector (:collector m) :amount 1}])})
+
+(def ^:private fx-table (merge session-fx world-fx container-fx entity-fx))
 
 (defn- fx-packets [world m]
-  (case (:msg m)
-    :teleport [{:packet :player-position :teleport-id (long (:tick world))
-                :pos    (:pos m) :yaw (:yaw m) :pitch (:pitch m)}]
-    :keepalive [{:packet :keep-alive :id (:id m)}]
-    :disconnect [{:packet :disconnect :text (:text m)}]
-    :system-chat [{:packet :system-chat :text (text-of (:runs m)) :overlay false}]
-    :overlay [{:packet :system-chat :text (text-of (:runs m)) :overlay true}]
-    :stats [{:packet :award-stats :stats (:stats m)}]
-    :suggestions [{:packet :command-suggestions :id (:id m) :start (:start m) :length (:length m) :matches (:matches m)}]
-    :game-rules [{:packet :game-rule-values
-                  :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)]) (:rules m))}]
-    :player-chat [{:packet :system-chat :text (str "<" (:name m) "> " (text-of (:runs m))) :overlay false}]
-    :health [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}]
-    :respawn [{:packet :respawn :dimension-type overworld :keep 0}
-              {:packet :game-event :event 13 :value 0.0}]
-    :default-spawn [{:packet :set-default-spawn-position :pos (:pos m)}]
-    :rain-started [{:packet :game-event :event 1 :value 0.0}]
-    :rain-stopped [{:packet :game-event :event 2 :value 0.0}]
-    :rain-level [{:packet :game-event :event 7 :value (:level m)}]
-    :thunder-level [{:packet :game-event :event 8 :value (:level m)}]
-    :time [{:packet :set-time :age (:age m) :time (:time m)}]
-    :blocks-changed (block-records (chunk/id->pos (:cp m)) (:records m))
-    :set-slot [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}]
-    :carried [{:packet :set-cursor-item :stack (:stack m)}]
-    :open-screen [{:packet :open-screen :container (:container m)
-                   :menu   (data/registry-id "menu" (:menu m)) :title (:title m)}]
-    :container-content [{:packet :container-set-content :container (:container m) :state-id (:state-id m)
-                         :items  (:items m) :carried (:carried m)}]
-    :container-slot [{:packet :container-set-slot :container (:container m) :state-id (:state-id m)
-                      :slot   (:slot m) :stack (:stack m)}]
-    :container-data [{:packet :container-set-data :container (:container m)
-                      :id     (:id m) :value (:value m)}]
-    :container-close [{:packet :container-close :container (:container m)}]
-    :held-slot [{:packet :set-held-slot :slot (:slot m)}]
-    :block-ack [{:packet :block-changed-ack :sequence (:sequence m)}]
-    :inventory [{:packet :container-set-content :items (:slots m) :carried (:carried m)}]
-    :tab-add [{:packet :player-info-update :players (:entries m)}]
-    :tab-remove [{:packet :player-info-remove :uuids (:uuids m)}]
-    :tab-latency [{:packet :player-info-update :action :latency :players (:entries m)}]
-    :tab-header [{:packet :tab-list :header (:header m) :footer (:footer m)}]
-    :break-effect [{:packet :level-event :event 2001 :pos (:pos m) :data (:state m)}]
-    :fizz [{:packet :level-event :event 1501 :pos (:pos m) :data 0}]
-    :bonemeal [{:packet :level-event :event 1505 :pos (:pos m) :data 15}]
-    :level-event [{:packet :level-event :event (:event m) :pos (:pos m) :data (:data m 0)}]
-    :sign-editor [{:packet :open-sign-editor :pos (:pos m) :front? (:front? m)}]
-    :block-event [{:packet :block-event :pos (:pos m) :action (:action m) :param (:param m)
-                   :block  (data/registry-id "block" (block/block-of (block-state world (:pos m))))}]
-    :block-entity (when-let [e (be/at world (:pos m))]
-                    (when (be/on-wire? e)
-                      [{:packet :block-entity-data :pos (:pos m) :type (be/type-id e) :nbt (be/nbt e)}]))
-    :extinguish [{:packet :level-event :event 1009 :pos (:pos m) :data 0}]
-    :move [{:packet :move-entity-pos :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m) :on-ground (:on-ground m)}]
-    :move-look [{:packet :move-entity-pos-rot :eid (:eid m) :dx (:dx m) :dy (:dy m) :dz (:dz m)
-                 :yaw    (:yaw m) :pitch (:pitch m) :on-ground (:on-ground m)}]
-    :look [{:packet :move-entity-rot :eid (:eid m) :yaw (:yaw m) :pitch (:pitch m) :on-ground (:on-ground m)}]
-    :sync-pos [{:packet    :entity-position-sync :eid (:eid m) :pos (:pos m) :yaw (:yaw m) :pitch (:pitch m)
-                :on-ground (:on-ground m)}]
-    :head-look [{:packet :rotate-head :eid (:eid m) :yaw (:yaw m)}]
-    :velocity [{:packet :set-entity-motion :eid (:eid m) :vel (:vel m)}]
-    :meta (let [d (entity-data (kind-of (get-in world [:entities (:eid m)])) (:meta m))]
-            (when (seq d) [{:packet :set-entity-data :eid (:eid m) :data d}]))
-    :equipment [{:packet :set-equipment :eid (:eid m) :slots [[(equipment-slots (:slot m)) (:stack m)]]}]
-    :animation [{:packet :animate :eid (:eid m) :action (case (:kind m) :swing 0 :wake-up 2 :crit 4 0)}]
-    :status (when-let [p (status-packet m)] [p])
-    :collect [{:packet :take-item-entity :item (:eid m) :collector (:collector m) :amount 1}]
-    :sound (when-let [p (sound-packet m)] [p])
-    :particles [(particles-packet m)]
-    :explosion nil
-    :joined nil
-    :close [:close]
+  (if-let [f (fx-table (:msg m))]
+    (f world m)
     (once! (:msg m))))
 
 (def ^:private command-tree (commands/tree))
@@ -308,9 +336,8 @@
   (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
     [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))
 
-(defn- join-packets [world eid]
-  (let [{:keys [max-players view-distance simulation-distance motd]} (merge config/defaults (:config world))
-        [x y z] (join-spawn world)]
+(defn- join-login-packets [cfg eid]
+  (let [{:keys [max-players view-distance simulation-distance]} cfg]
     [{:packet              :login :eid eid
       :max-players         (min 255 (long max-players))
       :view-distance       view-distance
@@ -318,8 +345,11 @@
       :dimension-type      overworld}
      {:packet :change-difficulty :difficulty 0 :locked false}
      {:packet       :player-abilities :flags (bit-or 1 4 8)
-      :flying-speed 0.05 :walking-speed 0.1}
-     (assoc data/recipes :packet :update-recipes)
+      :flying-speed 0.05 :walking-speed 0.1}]))
+
+(defn- join-world-packets [world eid motd]
+  (let [[x y z] (join-spawn world)]
+    [(assoc data/recipes :packet :update-recipes)
      {:packet :entity-event :eid eid :event (+ op-level-event 4)}
      {:packet :commands :nodes command-tree}
      {:packet :server-data :motd motd}
@@ -327,13 +357,21 @@
      {:packet :set-default-spawn-position :pos [x y z]}
      {:packet :game-event :event 13 :value 0.0}
      {:packet :ticking-state :rate 20.0 :frozen? false}
-     {:packet :ticking-step :steps 0}
-     {:packet :set-health :health 20.0 :food 20 :saturation 5.0}
-     {:packet :set-experience :progress 0.0 :level 0 :total 0}
-     {:packet     :update-attributes :eid eid
-      :attributes [[:entity-interaction-range 3.0]
-                   [:movement-speed 0.1]
-                   [:block-interaction-range 4.5]]}]))
+     {:packet :ticking-step :steps 0}]))
+
+(defn- join-player-packets [eid]
+  [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+   {:packet :set-experience :progress 0.0 :level 0 :total 0}
+   {:packet     :update-attributes :eid eid
+    :attributes [[:entity-interaction-range 3.0]
+                 [:movement-speed 0.1]
+                 [:block-interaction-range 4.5]]}])
+
+(defn- join-packets [world eid]
+  (let [cfg (merge config/defaults (:config world))]
+    (concat (join-login-packets cfg eid)
+            (join-world-packets world eid (:motd cfg))
+            (join-player-packets eid))))
 
 (defn- join-bursts [world ^Deltas deltas]
   (for [m (.out deltas)
@@ -341,12 +379,15 @@
         p (join-packets world (:to m))]
     [(:to m) p]))
 
-(defn- viewer-index [world ps]
+(defn- forgotten [deltas pid]
+  (for [[tag _ _ gone] (get deltas pid) :when (= :tracking tag) eid gone] eid))
+
+(defn- viewer-index [world deltas ps]
   (persistent!
     (reduce (fn [acc pid]
               (reduce (fn [a eid] (assoc! a eid (conj (get a eid []) pid)))
                       acc
-                      (seq (get-in world [:entities pid :tracking]))))
+                      (concat (get-in world [:entities pid :tracking]) (forgotten deltas pid))))
             (transient (i/int-map))
             ps)))
 
@@ -380,8 +421,9 @@
 
 (defn render [world ^Deltas deltas]
   (let [ps (players world)
-        viewers (delay (viewer-index world ps))]
+        viewers (delay (viewer-index world (.entities deltas) ps))]
     (concat
       (join-bursts world deltas)
       (entity-delta-packets world (.entities deltas))
-      (mapcat (fn [m] (msg-packets world ps viewers m)) (.out deltas)))))
+      (mapcat (fn [m] (msg-packets world ps viewers m)) (.out deltas))
+      (forget-packets (.entities deltas)))))
