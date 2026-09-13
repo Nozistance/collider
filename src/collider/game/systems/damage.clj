@@ -63,26 +63,36 @@
   (let [dx (- (v/x a) (v/x b)) dy (- (v/y a) (v/y b)) dz (- (v/z a) (v/z b))]
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
+(defn- eye-of [e]
+  (let [p (:pos e)]
+    [(v/x p) (+ (v/y p) (entity/eye-height e)) (v/z p)]))
+
+(defn- ray-steps ^long [[ax ay az] [bx by bz]]
+  (let [dx (- (double bx) (double ax))
+        dy (- (double by) (double ay))
+        dz (- (double bz) (double az))]
+    (long (Math/ceil (/ (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz))) 0.1)))))
+
+(defn- ray-cell [[ax ay az] [bx by bz] ^double s]
+  [(long (Math/floor (+ (double ax) (* (- (double bx) (double ax)) s))))
+   (long (Math/floor (+ (double ay) (* (- (double by) (double ay)) s))))
+   (long (Math/floor (+ (double az) (* (- (double bz) (double az)) s))))])
+
+(defn- clear-ray? [chunks a b ^long n]
+  (loop [i 1 lx Long/MIN_VALUE ly Long/MIN_VALUE lz Long/MIN_VALUE]
+    (if (>= i n)
+      true
+      (let [[x y z] (ray-cell a b (/ (double i) n))
+            x (long x) y (long y) z (long z)]
+        (if (and (= x lx) (= y ly) (= z lz))
+          (recur (inc i) x y z)
+          (if (phys/solid? chunks gen/flat-chunk x y z)
+            false
+            (recur (inc i) x y z)))))))
+
 (defn- sees? [world a b]
-  (let [pa (:pos a) pb (:pos b)
-        ax (v/x pa) ay (+ (v/y pa) (entity/eye-height a)) az (v/z pa)
-        bx (v/x pb) by (+ (v/y pb) (entity/eye-height b)) bz (v/z pb)
-        dx (- bx ax) dy (- by ay) dz (- bz az)
-        len (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
-        n (long (Math/ceil (/ len 0.1)))
-        chunks (:chunks world)]
-    (loop [i 1 lx Long/MIN_VALUE ly Long/MIN_VALUE lz Long/MIN_VALUE]
-      (if (>= i n)
-        true
-        (let [s (/ (double i) n)
-              x (long (Math/floor (+ ax (* dx s))))
-              y (long (Math/floor (+ ay (* dy s))))
-              z (long (Math/floor (+ az (* dz s))))]
-          (if (and (= x lx) (= y ly) (= z lz))
-            (recur (inc i) x y z)
-            (if (phys/solid? chunks gen/flat-chunk x y z)
-              false
-              (recur (inc i) x y z))))))))
+  (let [pa (eye-of a) pb (eye-of b)]
+    (clear-ray? (:chunks world) pa pb (ray-steps pa pb))))
 
 (defn- attackable? [a t]
   (and a t (:health t) (pos? (double (:health t))) (not (creative-proof? t))))
@@ -150,39 +160,48 @@
 (defn- floor-lo ^long [^double a] (long (Math/floor (+ a fluid-margin))))
 (defn- floor-hi ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
+(defn- span [p ^double half ^double height [sxz sy]]
+  (let [px (v/x p) py (v/y p) pz (v/z p)
+        sy (double sy)
+        h (- half (double sxz))]
+    [(floor-lo (- px h)) (floor-hi (+ px h))
+     (max chunk/min-y (floor-lo (+ py sy)))
+     (min (inc chunk/max-y) (floor-hi (- (+ py height) sy)))
+     (floor-lo (- pz h)) (floor-hi (+ pz h))]))
+
+(defn- mark-cell [chunks ^longs acc x y z inner?]
+  (let [st (chunk/block-state chunks gen/flat-chunk x y z)
+        lava? (= :lava (liquid/liquid-class st))]
+    (when (or lava? (block/fire? st))
+      (aset acc 0 (bit-or (aget acc 0) touch-bit)))
+    (when (and lava? inner?)
+      (aset acc 0 (bit-or (aget acc 0) sunk-bit)))))
+
+(defn- scan-z [chunks ^longs acc outer inner x y yin?]
+  (let [z1 (outer 5) iz0 (inner 4) iz1 (inner 5)]
+    (loop [z (outer 4)]
+      (when (and (< z z1) (not= 3 (aget acc 0)))
+        (mark-cell chunks acc x y z (and yin? (>= z iz0) (< z iz1)))
+        (recur (inc z))))))
+
+(defn- scan-y [chunks ^longs acc outer inner x xin?]
+  (let [y1 (outer 3) iy0 (inner 2) iy1 (inner 3)]
+    (loop [y (outer 2)]
+      (when (and (< y y1) (not= 3 (aget acc 0)))
+        (scan-z chunks acc outer inner x y (and xin? (>= y iy0) (< y iy1)))
+        (recur (inc y))))))
+
 (defn- probe ^long [world e]
   (let [[half height] (box-of e)
         p (:pos e)
-        px (v/x p) py (v/y p) pz (v/z p)
-        half (double half) height (double height)
+        outer (span p (double half) (double height) [fluid-margin fluid-margin])
+        inner (span p (double half) (double height) [sunk-shrink-xz sunk-shrink-y])
         chunks (:chunks world)
-        oh (- half fluid-margin)
-        ih (- half sunk-shrink-xz)
-        x0 (floor-lo (- px oh)) x1 (floor-hi (+ px oh))
-        y0 (max chunk/min-y (floor-lo (+ py fluid-margin)))
-        y1 (min (inc chunk/max-y) (floor-hi (- (+ py height) fluid-margin)))
-        z0 (floor-lo (- pz oh)) z1 (floor-hi (+ pz oh))
-        ix0 (floor-lo (- px ih)) ix1 (floor-hi (+ px ih))
-        iy0 (max chunk/min-y (floor-lo (+ py sunk-shrink-y)))
-        iy1 (min (inc chunk/max-y) (floor-hi (- (+ py height) sunk-shrink-y)))
-        iz0 (floor-lo (- pz ih)) iz1 (floor-hi (+ pz ih))
+        x1 (outer 1) ix0 (inner 0) ix1 (inner 1)
         ^longs acc (long-array 1)]
-    (loop [x x0]
+    (loop [x (outer 0)]
       (when (and (< x x1) (not= 3 (aget acc 0)))
-        (let [xin? (and (>= x ix0) (< x ix1))]
-          (loop [y y0]
-            (when (and (< y y1) (not= 3 (aget acc 0)))
-              (let [yin? (and xin? (>= y iy0) (< y iy1))]
-                (loop [z z0]
-                  (when (and (< z z1) (not= 3 (aget acc 0)))
-                    (let [st (chunk/block-state chunks gen/flat-chunk x y z)
-                          lava? (= :lava (liquid/liquid-class st))]
-                      (when (or lava? (block/fire? st))
-                        (aset acc 0 (bit-or (aget acc 0) touch-bit)))
-                      (when (and lava? yin? (>= z iz0) (< z iz1))
-                        (aset acc 0 (bit-or (aget acc 0) sunk-bit)))
-                      (recur (inc z))))))
-              (recur (inc y)))))
+        (scan-y chunks acc outer inner x (and (>= x ix0) (< x ix1)))
         (recur (inc x))))
     (aget acc 0)))
 
@@ -299,19 +318,22 @@
         :when (contains? (:tracking o) eid)]
     [:tracking oid [] [eid]]))
 
+(defn- revived [eid e pos yaw pitch]
+  [[:teleport eid pos]
+   [:merge-entity eid {:health      player-health
+                       :health-sent player-health
+                       :hurt-resist 0 :last-damage 0.0 :death-time 0}]
+   (out/to eid (out/respawn))
+   (out/to eid (out/teleport pos yaw pitch))
+   (out/to eid (out/health player-health))
+   (out/to eid (out/held-slot (long (or (:held-slot e) 0))))])
+
 (defn- respawn-deltas [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
       (let [[pos yaw pitch lost] (respawn-point world eid e)
             inv (:inventory e)]
-        (cond-> [[:teleport eid pos]
-                 [:merge-entity eid {:health      player-health
-                                     :health-sent player-health
-                                     :hurt-resist 0 :last-damage 0.0 :death-time 0}]
-                 (out/to eid (out/respawn))
-                 (out/to eid (out/teleport pos yaw pitch))
-                 (out/to eid (out/health player-health))
-                 (out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
+        (cond-> (revived eid e pos yaw pitch)
                 (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))
                 lost (conj (out/to eid lost))
                 true (into (reshow-deltas world eid)))))))
@@ -326,22 +348,26 @@
          (nil? (:landed e))
          (>= health (double (or (:health-sent e) health))))))
 
+(defn- living-deltas [world eid e]
+  (let [busy? (not (idle? e))]
+    (concat (when busy? (timer-deltas eid e))
+            (when busy? (void-deltas eid e))
+            (when busy? (landing-deltas world eid e))
+            (fire-deltas world eid e)
+            (when busy? (report-deltas world eid e)))))
+
+(defn- live-entries [world]
+  (into []
+        (filter (fn [[_ e]] (and (some? (:health e))
+                                 (or (not (idle? e)) (near-edits? world e)))))
+        (:entities world)))
+
+(defn- living-batch-fn [world batch]
+  #(into [] (mapcat (fn [[eid e]] (living-deltas world eid e))) batch))
+
 (defn- living-fns [world]
-  (let [alive (into []
-                    (filter (fn [[_ e]] (and (some? (:health e))
-                                             (or (not (idle? e)) (near-edits? world e)))))
-                    (:entities world))]
-    (mapv (fn [batch]
-            #(into []
-                   (mapcat (fn [[eid e]]
-                             (let [busy? (not (idle? e))]
-                               (concat (when busy? (timer-deltas eid e))
-                                       (when busy? (void-deltas eid e))
-                                       (when busy? (landing-deltas world eid e))
-                                       (fire-deltas world eid e)
-                                       (when busy? (report-deltas world eid e))))))
-                   batch))
-          (partition-all 32 alive))))
+  (mapv (fn [batch] (living-batch-fn world batch))
+        (partition-all 32 (live-entries world))))
 
 (defn- event-deltas [world events]
   (into []

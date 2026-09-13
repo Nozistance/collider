@@ -195,24 +195,36 @@
     (if (contains? opts :default) [:ok (:default opts)] [:err (str "give the argument " (label arg))])
     ((coercers kind as-enum) nm s opts origin)))
 
-(defn- arg-values [[_ [kind {:keys [min max values default axis names]}]] target]
+(defn- int-values [{:keys [min max default]}]
+  (->> [default min (quot (+ (long min) (long max)) 2) max]
+       (remove nil?) (map str) distinct vec))
+
+(defn- named-int-values [{:keys [default names]}]
+  (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
+    (into (if dn [dn] []) (sort (remove #{dn} (keys names))))))
+
+(defn- block-values [{:keys [default]}]
+  (into [(block-name default)]
+        (remove #{(block-name default)})
+        (sort (map block-name (keys data/blocks)))))
+
+(defn- coord-values [target axis]
+  (if target [(str (nth target axis))] []))
+
+(defn- arg-values [[_ [kind {:keys [values axis] :as opts}]] target]
   (case kind
     :duration ["1d" "1s" "100"]
-    :int (->> [default min (quot (+ (long min) (long max)) 2) max]
-              (remove nil?) (map str) distinct vec)
-    :coord (if target [(str (nth target axis))] [])
-    :named-int (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
-                 (into (if dn [dn] []) (sort (remove #{dn} (keys names)))))
+    :int (int-values opts)
+    :coord (coord-values target axis)
+    :named-int (named-int-values opts)
     :enum (vec (sort values))
     :rule (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table))
     :text []
-    :dcoord (if target [(str (nth target axis))] [])
+    :dcoord (coord-values target axis)
     :item (vec (sort (map block-name (keys (get data/registries "item")))))
     :entity-type (vec (sort (map name (keys mobs/types))))
     :targets ["@s" "@a" "@p" "@e"]
-    :block (into [(block-name default)]
-                 (remove #{(block-name default)})
-                 (sort (map block-name (keys data/blocks))))))
+    :block (block-values opts)))
 
 (defn usage [path]
   (let [form (loop [forms commands, [nm & more] path]
@@ -345,25 +357,27 @@
                                            :props  (when (= :int type) {:min min :max max})})]]
          (add-node! nodes {:type :literal :name (subs (rules/wire-name rule) 10) :executable? true :children [value]}))))
 
+(defn- add-literals! [nodes spec exec? tail-children]
+  (vec (for [l (:literals spec)]
+         (add-node! nodes {:type :literal :name l :executable? exec? :children tail-children}))))
+
+(defn- add-argument! [nodes spec exec? tail-children]
+  [(add-node! nodes (let [[n parser props] (first spec)]
+                      {:type        :argument :name n :parser parser :props props
+                       :executable? exec? :children tail-children}))])
+
 (defn- add-chain [nodes args i]
   (let [optional (optional-from args)]
     (if (>= i (count args))
       [[] true]
-      (let [a (nth args i)
-            spec (argument-nodes a)
+      (let [spec (argument-nodes (nth args i))
             [tail-children tail-exec] (if (:rules spec) [[] true] (add-chain nodes args (inc i)))
-            exec? (or tail-exec (>= (inc i) optional))]
+            exec? (or tail-exec (>= (inc i) optional))
+            mine? (>= i optional)]
         (cond
-          (:rules spec) [(add-rules! nodes) (>= i optional)]
-          (:literals spec)
-          [(vec (for [l (:literals spec)]
-                  (add-node! nodes {:type :literal :name l :executable? exec? :children tail-children})))
-           (>= i optional)]
-          :else
-          [[(add-node! nodes (let [[n parser props] (first spec)]
-                               {:type        :argument :name n :parser parser :props props
-                                :executable? exec? :children tail-children}))]
-           (>= i optional)])))))
+          (:rules spec) [(add-rules! nodes) mine?]
+          (:literals spec) [(add-literals! nodes spec exec? tail-children) mine?]
+          :else [(add-argument! nodes spec exec? tail-children) mine?])))))
 
 (defn- add-form! [nodes form]
   (if (subcommands? form)

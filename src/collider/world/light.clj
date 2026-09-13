@@ -61,19 +61,23 @@
         (chunk/nibble-get arr (l-idx x y z))
         (stored-l chunks template ch x y z)))))
 
+(defn- fresh-light ^bytes [chunks template ch x y z]
+  (let [ch (long ch) x (long x) y (long y) z (long z)
+        s (section chunks template x y z)
+        ^bytes src (if s
+                     (if (= ch SL) (.sky-light ^Section s) (.block-light ^Section s))
+                     (if (= ch SL)
+                       (chunk/nil-sky-array (chunk-at chunks template x z) (chunk/section-index y))
+                       (byte-array 2048)))]
+    (aclone src)))
+
 (defn- set-l! [^HashMap cache chunks template ch x y z v]
   (let [ch (long ch) x (long x) y (long y) z (long z) v (long v)]
     (when (chunk/in-range? y)
       (let [k (light-key x y z ch)]
         (if-let [^bytes arr (.get cache k)]
           (do (chunk/nibble-set! arr (l-idx x y z) v) true)
-          (let [s (section chunks template x y z)
-                ^bytes src (if s
-                             (if (= ch SL) (.sky-light ^Section s) (.block-light ^Section s))
-                             (if (= ch SL)
-                               (chunk/nil-sky-array (chunk-at chunks template x z) (chunk/section-index y))
-                               (byte-array 2048)))
-                ^bytes arr (aclone src)]
+          (let [^bytes arr (fresh-light chunks template ch x y z)]
             (.put cache k arr)
             (chunk/nibble-set! arr (l-idx x y z) v)
             true))))))
@@ -88,43 +92,55 @@
       (let [b (long (block-id-at chunks template x y z))]
         (if (edge-occluded? top b) (inc y) (recur (dec y) b))))))
 
+(defn- re-emit! [^HashMap cache chunks template ^ArrayDeque pq ch nx ny nz]
+  (let [ch (long ch) nx (long nx) ny (long ny) nz (long nz)
+        em (block/emits (long (block-id-at chunks template nx ny nz)))]
+    (when (and (pos? em) (= ch 0))
+      (set-l! cache chunks template ch nx ny nz em)
+      (.add pq (pack nx ny nz em)))))
+
+(defn- unlight-at! [^HashMap cache chunks template ^ArrayDeque rq ^ArrayDeque pq ch e d]
+  (let [ch (long ch) e (long e) d (long d)
+        nx (+ (px e) (aget ^longs DX d)) ny (+ (py e) (aget ^longs DY d)) nz (+ (pz e) (aget ^longs DZ d))
+        ln (long (get-l cache chunks template ch nx ny nz))]
+    (when (pos? ln)
+      (if (< ln (pl e))
+        (when (set-l! cache chunks template ch nx ny nz 0)
+          (.add rq (pack nx ny nz ln))
+          (re-emit! cache chunks template pq ch nx ny nz))
+        (.add pq (pack nx ny nz ln))))))
+
 (defn- unlight! [^HashMap cache chunks template ch ^ArrayDeque rq ^ArrayDeque pq]
-  (let [ch (long ch)]
-    (loop []
-      (when-let [e (.poll rq)]
-        (let [e (long e) x (px e) y (py e) z (pz e) l (pl e)]
-          (dotimes [d 6]
-            (let [nx (+ x (aget ^longs DX d)) ny (+ y (aget ^longs DY d)) nz (+ z (aget ^longs DZ d))
-                  ln (long (get-l cache chunks template ch nx ny nz))]
-              (when (pos? ln)
-                (if (< ln l)
-                  (when (set-l! cache chunks template ch nx ny nz 0)
-                    (.add rq (pack nx ny nz ln))
-                    (let [em (block/emits (long (block-id-at chunks template nx ny nz)))]
-                      (when (and (pos? em) (= ch 0))
-                        (set-l! cache chunks template ch nx ny nz em)
-                        (.add pq (pack nx ny nz em)))))
-                  (.add pq (pack nx ny nz ln)))))))
-        (recur)))))
+  (loop []
+    (when-let [e (.poll rq)]
+      (dotimes [d 6]
+        (unlight-at! cache chunks template rq pq ch e d))
+      (recur))))
+
+(defn- propagate-to! [^HashMap cache chunks template ^ArrayDeque pq ch from e d]
+  (let [ch (long ch) from (long from) e (long e) d (long d)
+        nx (+ (px e) (aget ^longs DX d)) ny (+ (py e) (aget ^longs DY d)) nz (+ (pz e) (aget ^longs DZ d))]
+    (when (chunk/in-range? ny)
+      (let [to (long (block-id-at chunks template nx ny nz))
+            cand (- (pl e) (block/opacity to))]
+        (when (and (pos? cand)
+                   (> cand (long (get-l cache chunks template ch nx ny nz)))
+                   (not (block/shape-occludes? from to d))
+                   (set-l! cache chunks template ch nx ny nz cand))
+          (.add pq (pack nx ny nz cand)))))))
+
+(defn- propagate-from! [^HashMap cache chunks template ^ArrayDeque pq ch e]
+  (let [ch (long ch) e (long e) x (px e) y (py e) z (pz e)]
+    (when (= (pl e) (long (get-l cache chunks template ch x y z)))
+      (let [from (long (block-id-at chunks template x y z))]
+        (dotimes [d 6]
+          (propagate-to! cache chunks template pq ch from e d))))))
 
 (defn- propagate! [^HashMap cache chunks template ch ^ArrayDeque pq]
-  (let [ch (long ch)]
-    (loop []
-      (when-let [e (.poll pq)]
-        (let [e (long e) x (px e) y (py e) z (pz e) l (pl e)]
-          (when (= l (long (get-l cache chunks template ch x y z)))
-            (let [from (long (block-id-at chunks template x y z))]
-              (dotimes [d 6]
-                (let [nx (+ x (aget ^longs DX d)) ny (+ y (aget ^longs DY d)) nz (+ z (aget ^longs DZ d))]
-                  (when (chunk/in-range? ny)
-                    (let [to (long (block-id-at chunks template nx ny nz))
-                          cand (- l (block/opacity to))]
-                      (when (and (pos? cand)
-                                 (> cand (long (get-l cache chunks template ch nx ny nz)))
-                                 (not (block/shape-occludes? from to d))
-                                 (set-l! cache chunks template ch nx ny nz cand))
-                        (.add pq (pack nx ny nz cand))))))))))
-        (recur)))))
+  (loop []
+    (when-let [e (.poll pq)]
+      (propagate-from! cache chunks template pq ch e)
+      (recur))))
 
 (defn- seed-neighbors! [^HashMap cache chunks template ch ^ArrayDeque pq x y z]
   (let [x (long x) y (long y) z (long z)]
@@ -149,22 +165,26 @@
     chunks
     (reverse (sort (keys cache)))))
 
+(defn- clear-cell! [^HashMap cache chunks template ch ^ArrayDeque rq cell]
+  (let [[x y z _] cell
+        cur (long (get-l cache chunks template ch x y z))]
+    (when (pos? cur)
+      (set-l! cache chunks template ch x y z 0)
+      (.add rq (pack x y z cur)))))
+
+(defn- seed-cell! [^HashMap cache chunks template ch ^ArrayDeque pq cell]
+  (let [[x y z source] cell
+        x (long x) y (long y) z (long z) source (long source)]
+    (when (and (pos? source) (> source (long (get-l cache chunks template ch x y z))))
+      (set-l! cache chunks template ch x y z source)
+      (.add pq (pack x y z source)))
+    (seed-neighbors! cache chunks template ch pq x y z)))
+
 (defn- channel-pass! [^HashMap cache chunks template ch cells]
-  (let [ch (long ch)
-        rq (ArrayDeque.)
-        pq (ArrayDeque.)]
-    (doseq [[x y z _] cells]
-      (let [cur (long (get-l cache chunks template ch x y z))]
-        (when (pos? cur)
-          (set-l! cache chunks template ch x y z 0)
-          (.add rq (pack x y z cur)))))
+  (let [ch (long ch) rq (ArrayDeque.) pq (ArrayDeque.)]
+    (doseq [cell cells] (clear-cell! cache chunks template ch rq cell))
     (unlight! cache chunks template ch rq pq)
-    (doseq [[x y z source] cells]
-      (let [x (long x) y (long y) z (long z) source (long source)]
-        (when (and (pos? source) (> source (long (get-l cache chunks template ch x y z))))
-          (set-l! cache chunks template ch x y z source)
-          (.add pq (pack x y z source)))
-        (seed-neighbors! cache chunks template ch pq x y z)))
+    (doseq [cell cells] (seed-cell! cache chunks template ch pq cell))
     (propagate! cache chunks template ch pq)))
 
 (defn light-at [chunks template x y z]

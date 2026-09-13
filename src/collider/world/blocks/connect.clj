@@ -132,8 +132,7 @@
       (block/waterlogged? st)
       (liquid/source-state? st)))
 
-(defn- sulfur-state
-  [self ^long st at]
+(defn- sulfur-state [self ^long st at]
   (let [above (at [0 1 0]) below (at [0 -1 0])
         state (cond
                 (not (water-source-state? above)) :dry
@@ -154,22 +153,22 @@
     (not (and (stair? n (:half (block/props-of st)))
               (= (block/facing-of n) (block/facing-of st))))))
 
-(defn- stair-state [self st at]
-  (let [props (block/props-of st)
-        facing (:facing props)
-        half (:half props)
-        behind (at (dir/horizontal-offset facing))
+(defn- stair-shape [st at facing half]
+  (let [behind (at (dir/horizontal-offset facing))
         front (at (dir/horizontal-offset (dir/opposite facing)))
         bf (block/facing-of behind)
         ff (block/facing-of front)
-        left (dir/counter-clockwise facing)
-        shape (cond
-                (and (stair? behind half) (not= (dir/axis bf) (dir/axis facing)) (can-take-shape? st at (dir/opposite bf)))
-                (if (= bf left) :outer_left :outer_right)
-                (and (stair? front half) (not= (dir/axis ff) (dir/axis facing)) (can-take-shape? st at ff))
-                (if (= ff left) :inner_left :inner_right)
-                :else :straight)]
-    (block/state self (assoc props :shape shape))))
+        left (dir/counter-clockwise facing)]
+    (cond
+      (and (stair? behind half) (not= (dir/axis bf) (dir/axis facing)) (can-take-shape? st at (dir/opposite bf)))
+      (if (= bf left) :outer_left :outer_right)
+      (and (stair? front half) (not= (dir/axis ff) (dir/axis facing)) (can-take-shape? st at ff))
+      (if (= ff left) :inner_left :inner_right)
+      :else :straight)))
+
+(defn- stair-state [self st at]
+  (let [props (block/props-of st)]
+    (block/state self (assoc props :shape (stair-shape st at (:facing props) (:half props))))))
 
 (defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
 (defn- touches-water? [st at]
@@ -223,59 +222,99 @@
                       (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
     (block/state self props)))
 
+(defn- vine-reshaped [chunks pos st] (support/vine-updated chunks gen/flat-chunk pos st))
+(defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks gen/flat-chunk pos st))
+(defn- fire-reshaped [chunks pos st]
+  (if (support/supported? chunks gen/flat-chunk pos st)
+    (fire/state-with-age chunks pos (fire/age st))
+    0))
+(defn- soul-fire-reshaped [chunks pos st]
+  (if (support/supported? chunks gen/flat-chunk pos st) st 0))
+
+(def ^:private pos-reshapers
+  {:door                    door-state
+   :weathering-copper-door  door-state
+   :bed                     bed-state
+   :chest                   chest/updated
+   :trapped-chest           chest/updated
+   :copper-chest            chest/updated
+   :weathering-copper-chest chest/updated
+   :mossy-carpet            moss/carpet-reshaped
+   :hanging-moss            moss/hanging-tip
+   :pointed-dripstone       dripstone/updated
+   :sulfur-spike            dripstone/updated
+   :vine                    vine-reshaped
+   :glow-lichen             multiface-reshaped
+   :multiface               multiface-reshaped
+   :sculk-vein              multiface-reshaped
+   :double-plant            pair-state
+   :tall-flower             pair-state
+   :tall-seagrass           pair-state
+   :big-dripleaf            dripleaf/leaf-updated
+   :small-dripleaf          dripleaf/small-updated
+   :pitcher-crop            pitcher-state
+   :fire                    fire-reshaped
+   :soul-fire               soul-fire-reshaped
+   :chorus-plant            chorus/connected})
+
+(def ^:private self-reshapers
+  {:potent-sulfur            sulfur-state
+   :fence-gate               gate-state
+   :stair                    stair-state
+   :grass                    snowy-state
+   :mycelium                 snowy-state
+   :snowy-dirt               snowy-state
+   :mangrove-leaves          leaves-state
+   :tinted-particle-leaves   leaves-state
+   :untinted-particle-leaves leaves-state})
+
+(def ^:private growing-reshaped
+  #{:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant})
+
+(defn- reshaped-state [t chunks pos st at tick]
+  (let [self (block/block-of st)]
+    (cond
+      (pos-reshapers t) ((pos-reshapers t) chunks pos st)
+      (self-reshapers t) ((self-reshapers t) self st at)
+      (= :concrete-powder t) (powder-state st at)
+      (contains? growing-reshaped t) (growing-plant-state pos st at tick)
+      :else (sides-state t self st at))))
+
 (defn reshape [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? connecting-types t)
-      (let [self (block/block-of st)
-            at (fn [d] (gen/at chunks (mapv + pos d)))
-            new (case t
-                  (:door :weathering-copper-door) (door-state chunks pos st)
-                  :bed (bed-state chunks pos st)
-                  :potent-sulfur (sulfur-state self st at)
-                  :fence-gate (gate-state self st at)
-                  :stair (stair-state self st at)
-                  :concrete-powder (powder-state st at)
-                  (:chest :trapped-chest :copper-chest :weathering-copper-chest) (chest/updated chunks pos st)
-                  :mossy-carpet (moss/carpet-reshaped chunks pos st)
-                  :hanging-moss (moss/hanging-tip chunks pos st)
-                  (:pointed-dripstone :sulfur-spike) (dripstone/updated chunks pos st)
-                  :vine (support/vine-updated chunks gen/flat-chunk pos st)
-                  (:glow-lichen :multiface :sculk-vein) (support/multiface-updated chunks gen/flat-chunk pos st)
-                  (:double-plant :tall-flower :tall-seagrass) (pair-state chunks pos st)
-                  :big-dripleaf (dripleaf/leaf-updated chunks pos st)
-                  :small-dripleaf (dripleaf/small-updated chunks pos st)
-                  :pitcher-crop (pitcher-state chunks pos st)
-                  :fire (if (support/supported? chunks gen/flat-chunk pos st)
-                          (fire/state-with-age chunks pos (fire/age st))
-                          0)
-                  :soul-fire (if (support/supported? chunks gen/flat-chunk pos st) st 0)
-                  (:grass :mycelium :snowy-dirt) (snowy-state self st at)
-                  (:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves) (leaves-state self st at)
-                  :chorus-plant (chorus/connected chunks pos st)
-                  (:weeping-vines :weeping-vines-plant :twisting-vines :twisting-vines-plant :cave-vines :cave-vines-plant)
-                  (growing-plant-state pos st at tick)
-                  (sides-state t self st at))]
+      (let [at (fn [d] (gen/at chunks (mapv + pos d)))
+            new (reshaped-state t chunks pos st at tick)]
         (when (not= (long new) st) new)))))
+
+(defn- hinge-balance ^long [at left right]
+  (let [full (fn [off] (if (block/full-cube? (at off)) 1 0))]
+    (+ (- (long (full left))) (- (long (full (mapv + left [0 1 0]))))
+       (long (full right)) (long (full (mapv + right [0 1 0]))))))
+
+(defn- lower-door? [st]
+  (and (contains? block/door-types (block/type-of st)) (= :lower (:half (block/props-of st)))))
+
+(defn- cursor-hinge [facing ^double cx ^double cz]
+  (let [[sx _ sz] (dir/horizontal-offset facing)]
+    (if (and (or (>= (long sx) 0) (not (< cz 0.5)))
+             (or (<= (long sx) 0) (not (> cz 0.5)))
+             (or (>= (long sz) 0) (not (> cx 0.5)))
+             (or (<= (long sz) 0) (not (< cx 0.5))))
+      :left
+      :right)))
 
 (defn door-hinge [chunks pos facing cursor-x cursor-z]
   (let [at (fn [d] (gen/at chunks (mapv + pos d)))
         left (dir/horizontal-offset (dir/counter-clockwise facing))
         right (dir/horizontal-offset (dir/clockwise facing))
-        full (fn [off] (if (block/full-cube? (at off)) 1 0))
-        balance (+ (- (full left)) (- (full (mapv + left [0 1 0]))) (full right) (full (mapv + right [0 1 0])))
-        lower-door? (fn [st] (and (contains? block/door-types (block/type-of st)) (= :lower (:half (block/props-of st)))))
+        balance (hinge-balance at left right)
         door-left (lower-door? (at left))
-        door-right (lower-door? (at right))
-        [sx _ sz] (dir/horizontal-offset facing)
-        cx (/ (double cursor-x) 16.0) cz (/ (double cursor-z) 16.0)]
+        door-right (lower-door? (at right))]
     (cond
       (not (and (or (not door-left) door-right) (<= balance 0))) :right
       (not (and (or (not door-right) door-left) (>= balance 0))) :left
-      (and (or (>= (long sx) 0) (not (< cz 0.5)))
-           (or (<= (long sx) 0) (not (> cz 0.5)))
-           (or (>= (long sz) 0) (not (> cx 0.5)))
-           (or (<= (long sz) 0) (not (< cx 0.5)))) :left
-      :else :right)))
+      :else (cursor-hinge facing (/ (double cursor-x) 16.0) (/ (double cursor-z) 16.0)))))
 
 (defn around [[x y z]]
   (map (fn [[dx dy dz]]

@@ -64,21 +64,25 @@
                    (+ x 1.0) (+ y (double (fluid-height chunks template x y z st))) (+ z 1.0)])
       solid)))
 
+(defn- player-box [^long px ^long py ^long pz]
+  (let [cx (+ px 0.5) cz (+ pz 0.5)]
+    [(- cx player-half) (double py) (- cz player-half)
+     (+ cx player-half) (+ py player-height) (+ cz player-half)]))
+
+(defn- cell-edge ^long [^double v ^long d]
+  (+ d (long (Math/floor (+ v (* d (double eps)))))))
+
 (defn- box-free? [chunks template px py pz]
-  (let [px (long px) py (long py) pz (long pz)
-        cx (+ px 0.5) cz (+ pz 0.5)
-        x0 (- cx player-half) x1 (+ cx player-half)
-        y0 (double py) y1 (+ py player-height)
-        z0 (- cz player-half) z1 (+ cz player-half)
-        i0 (dec (long (Math/floor (- x0 eps)))) i1 (inc (long (Math/floor (+ x1 eps))))
-        j0 (dec (long (Math/floor (- y0 eps)))) j1 (inc (long (Math/floor (+ y1 eps))))
-        k0 (dec (long (Math/floor (- z0 eps)))) k1 (inc (long (Math/floor (+ z1 eps))))]
+  (let [[x0 y0 z0 x1 y1 z1 :as box] (player-box (long px) (long py) (long pz))
+        i0 (cell-edge x0 -1) i1 (cell-edge x1 1)
+        j0 (cell-edge y0 -1) j1 (cell-edge y1 1)
+        k0 (cell-edge z0 -1) k1 (cell-edge z1 1)]
     (loop [i i0 j j0 k k0]
       (cond
         (> i i1) true
         (> j j1) (recur (inc i) j0 k0)
         (> k k1) (recur i (inc j) k0)
-        (some (partial overlaps? [x0 y0 z0 x1 y1 z1]) (cell-boxes chunks template i j k)) false
+        (some (partial overlaps? box) (cell-boxes chunks template i j k)) false
         :else (recur i j (inc k))))))
 
 (defn- bottom-center [[x y z]]
@@ -110,22 +114,27 @@
 
 (defn- coprime ^long [^long n] (if (<= n 16) (dec n) 17))
 
-(defn find-spawn
-  [chunks template suggestion radius seed]
+(defn- scan-params [radius seed]
   (let [radius (max 0 (long radius))
-        seed (double seed)
         side (inc (* 2 radius))
-        n (long (min (long max-attempts) (* (long side) (long side))))
-        step (coprime n)
-        offset (long (Math/floor (* seed n)))
+        n (long (min (long max-attempts) (* (long side) (long side))))]
+    [radius side n (coprime n) (long (Math/floor (* (double seed) n)))]))
+
+(defn- candidate-cell [[radius side n step offset] ^long ox ^long oz ^long i]
+  (let [value (rem (+ (long offset) (* (long step) i)) (long n))]
+    [(+ ox (rem value (long side)) (- (long radius)))
+     (+ oz (quot value (long side)) (- (long radius)))]))
+
+(defn- free-spawn [chunks template x z]
+  (let [pos (level-respawn-pos chunks template x z)]
+    (when (and pos (box-free? chunks template (nth pos 0) (nth pos 1) (nth pos 2)))
+      (bottom-center pos))))
+
+(defn find-spawn [chunks template suggestion radius seed]
+  (let [[_ _ n :as params] (scan-params radius seed)
         ox (long (nth suggestion 0)) oz (long (nth suggestion 2))]
     (loop [i 0]
-      (if (>= i n)
+      (if (>= i (long n))
         (fixup-height chunks template suggestion)
-        (let [value (rem (+ offset (* step i)) n)
-              x (+ ox (rem value side) (- radius))
-              z (+ oz (quot value side) (- radius))
-              pos (level-respawn-pos chunks template x z)]
-          (if (and pos (box-free? chunks template (nth pos 0) (nth pos 1) (nth pos 2)))
-            (bottom-center pos)
-            (recur (inc i))))))))
+        (let [[x z] (candidate-cell params ox oz i)]
+          (if-let [p (free-spawn chunks template x z)] p (recur (inc i))))))))

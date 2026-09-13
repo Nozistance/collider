@@ -94,22 +94,26 @@
     [cell cur concrete?
      (and concrete? (or (some? clipped) (= :water (liquid/liquid-class cur))))]))
 
+(defn- fall-move ^Move [world e]
+  (let [[vx vy vz] (:vel e)]
+    (phys/move (:chunks world) gen/flat-chunk (:pos e)
+               [(double vx) (- (double vy) 0.04) (double vz)] half height)))
+
+(defn- drift-deltas [eid pos ^long time [mx my mz]]
+  [[:merge-entity eid {:pos pos :on-ground false :time time
+                       :vel [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)]}]])
+
 (defn- step-deltas [world eid e]
-  (let [[vx vy vz] (:vel e)
-        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
-                            [(double vx) (- (double vy) 0.04) (double vz)] half height)
-        pos (.pos mv) on-ground (.on-ground mv)
-        [mx my mz] (.vel mv)
+  (let [^Move mv (fall-move world e)
+        pos (.pos mv)
         time (inc (long (:time e)))
         [cell cur concrete? stuck?] (landing world e pos (.vel mv))]
     (cond
-      (or on-ground stuck?)
+      (or (.on-ground mv) stuck?)
       (land-deltas world eid (assoc e :pos pos) cell cur concrete? stuck?)
       (or (> time max-time) (and (> time 100) (not (chunk/in-range? (cell 1)))))
       (cons [:remove-entity eid] (item-deltas world eid (assoc e :pos pos)))
-      :else
-      [[:merge-entity eid {:pos pos :on-ground false :time time
-                           :vel [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)]}]])))
+      :else (drift-deltas eid pos time (.vel mv)))))
 
 (defn first-step [world _d]
   (let [active (state/active-chunks world)]

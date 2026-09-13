@@ -72,21 +72,31 @@
               best))
           nil (cell-boxes world cell fluids)))
 
+(defn- first-crosses [from d]
+  (mapv (fn [i] (first-cross (from i) (d i) (long (Math/floor (double (from i))))))
+        (range 3)))
+
+(defn- step-axis ^long [[tx ty tz]]
+  (cond (and (<= (double tx) (double ty)) (<= (double tx) (double tz))) 0
+        (<= (double ty) (double tz)) 1
+        :else 2))
+
+(defn- stop? [[tx ty tz] ^long n]
+  (or (> n 24) (and (> (double tx) 1.0) (> (double ty) 1.0) (> (double tz) 1.0))))
+
+(defn- advance [cell d t ^long axis]
+  [(update cell axis + (axis-step (d axis)))
+   (update t axis + (cross-delta (d axis)))])
+
 (defn clip [world e fluids]
   (let [from (eye-pos e)
         d (mapv #(* 5.0 (double %)) (look-dir e))]
-    (loop [[cx cy cz :as cell] (mapv #(long (Math/floor (double %))) from)
-           tx (first-cross (from 0) (d 0) (long (Math/floor (double (from 0)))))
-           ty (first-cross (from 1) (d 1) (long (Math/floor (double (from 1)))))
-           tz (first-cross (from 2) (d 2) (long (Math/floor (double (from 2)))))
+    (loop [cell (mapv #(long (Math/floor (double %))) from)
+           t (first-crosses from d)
            n 0]
-      (let [hit (when (chunk/in-range? cy) (cell-hit world from d cell fluids))]
+      (let [hit (when (chunk/in-range? (cell 1)) (cell-hit world from d cell fluids))]
         (cond
           hit {:pos cell :face (second hit)}
-          (or (> n 24) (and (> (double tx) 1.0) (> (double ty) 1.0) (> (double tz) 1.0))) nil
-          (and (<= tx ty) (<= tx tz))
-          (recur [(+ cx (axis-step (d 0))) cy cz] (+ tx (cross-delta (d 0))) ty tz (inc n))
-          (<= ty tz)
-          (recur [cx (+ cy (axis-step (d 1))) cz] tx (+ ty (cross-delta (d 1))) tz (inc n))
-          :else
-          (recur [cx cy (+ cz (axis-step (d 2)))] tx ty (+ tz (cross-delta (d 2))) (inc n)))))))
+          (stop? t n) nil
+          :else (let [[cell' t'] (advance cell d t (step-axis t))]
+                  (recur cell' t' (inc n))))))))

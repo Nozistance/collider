@@ -71,23 +71,26 @@
           best
           entries))
 
+(defn- cell-span [^double c ^double r]
+  [(bit-shift-right (long (Math/floor (- c r))) cell-shift)
+   (bit-shift-right (long (Math/floor (+ c r))) cell-shift)])
+
+(defn- scan-row [index best pos r2 pred cx z0 z1]
+  (loop [cz (long z0) best best]
+    (if (> cz (long z1))
+      best
+      (recur (inc cz) (scan-cell best pos r2 pred (get index (cell-key (long cx) cz)))))))
+
 (defn nearest [world pos r2 pred]
   (let [r2 (double r2)
         index (entity-index (:entities world))
         r (Math/sqrt r2)
-        x0 (bit-shift-right (long (Math/floor (- (v/x pos) r))) cell-shift)
-        x1 (bit-shift-right (long (Math/floor (+ (v/x pos) r))) cell-shift)
-        z0 (bit-shift-right (long (Math/floor (- (v/z pos) r))) cell-shift)
-        z1 (bit-shift-right (long (Math/floor (+ (v/z pos) r))) cell-shift)]
-    (loop [cx x0 best nil]
-      (if (> cx x1)
+        [x0 x1] (cell-span (v/x pos) r)
+        [z0 z1] (cell-span (v/z pos) r)]
+    (loop [cx (long x0) best nil]
+      (if (> cx (long x1))
         best
-        (recur (inc cx)
-               (loop [cz z0 best best]
-                 (if (> cz z1)
-                   best
-                   (recur (inc cz)
-                          (scan-cell best pos r2 pred (get index (cell-key cx cz)))))))))))
+        (recur (inc cx) (scan-row index best pos r2 pred cx z0 z1))))))
 
 (defn held-of [p]
   (get-in p [:inventory (+ 36 (long (or (:held-slot p) 0))) :item]))

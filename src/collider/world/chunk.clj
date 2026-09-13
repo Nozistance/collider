@@ -167,6 +167,18 @@
         ^Section s (or (get (:sections c) si) (new-section c si))]
     (assoc chs cp (assoc-in c [:sections si] (->Section arr (.block-light s) (.sky-light s))))))
 
+(defn- apply-change! [^HashMap cache chunks template change]
+  (let [[[x y z] state] change
+        x (long x) y (long y) z (long z)
+        ^shorts arr (section-array cache chunks template
+                                   (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
+                                   (section-index y))]
+    (aset arr (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15))
+          (short state))))
+
+(defn- cache-order [^HashMap cache]
+  (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
+
 (defn chunks-set-blocks
   "Returns chunks with the [pos state] changes applied; an absent chunk starts
    from template."
@@ -174,13 +186,5 @@
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]
-      (doseq [[[x y z] state] changes]
-        (let [x (long x) y (long y) z (long z)
-              ^shorts arr (section-array cache chunks template
-                                         (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
-                                         (section-index y))]
-          (aset arr (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15))
-                (short state))))
-      (reduce (partial merge-section template)
-              chunks
-              (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache))))))
+      (doseq [change changes] (apply-change! cache chunks template change))
+      (reduce (partial merge-section template) chunks (cache-order cache)))))

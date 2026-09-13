@@ -44,22 +44,29 @@
 (defn sleepers [world]
   (filter (fn [[_ e]] (and (= :player (:type e)) (:sleeping e))) (:entities world)))
 
+(defn- deep-count ^long [world asleep]
+  (count (filter (fn [[_ e]] (>= (- (long (:tick world)) (long (get-in e [:sleeping :since]))) deep-sleep)) asleep)))
+
+(defn- skip-night-deltas [world asleep]
+  (let [t (* day-length (inc (quot (long (:time-of-day world 0)) day-length)))]
+    (concat [[:set-time t] (out/all (out/time (long (:tick world)) t))]
+            (when (and (get-in world [:rules :advance-weather] true) (weather/raining? world))
+              [[:set-weather weather/reset-cycle]])
+            (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep))))
+
+(defn- waking-deltas [world asleep waking]
+  (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
+          [(announcement world (- (count asleep) (count waking)))]))
+
 (defn- sleep-deltas [world]
   (let [dark? (daynight/dark? (:time-of-day world 0))
         asleep (sleepers world)
         needed (sleepers-needed world)
-        deep (count (filter (fn [[_ e]] (>= (- (long (:tick world)) (long (get-in e [:sleeping :since]))) deep-sleep)) asleep))
         waking (remove (fn [[_ e]] (not (or (:leave-bed? e) (not dark?)))) asleep)]
     (cond
-      (and (>= (count asleep) needed) (>= deep needed))
-      (let [t (* day-length (inc (quot (long (:time-of-day world 0)) day-length)))]
-        (concat [[:set-time t] (out/all (out/time (long (:tick world)) t))]
-                (when (and (get-in world [:rules :advance-weather] true) (weather/raining? world))
-                  [[:set-weather weather/reset-cycle]])
-                (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep)))
-      (seq waking)
-      (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
-              [(announcement world (- (count asleep) (count waking)))]))))
+      (and (>= (count asleep) needed) (>= (deep-count world asleep) needed))
+      (skip-night-deltas world asleep)
+      (seq waking) (waking-deltas world asleep waking))))
 
 (defn sleep [world _d]
   [#(sleep-deltas world)])

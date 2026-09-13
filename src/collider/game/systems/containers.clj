@@ -69,21 +69,28 @@
                (cond-> drops left (conj left))]))
           [inv [] []] (remove nil? stacks)))
 
+(defn- closed-inventory [world eid e m]
+  (let [carried (:carried e)
+        back (when (container/bench? m)
+               (container/inputs m (container/items world eid m)))
+        [inv0 kept drops] (give-back (or (:inventory e) {}) back)
+        [changes left] (if carried (back-into inv0 carried) [nil nil])]
+    [(concat kept changes) drops left]))
+
+(defn- close-out-deltas [eid m carried notify?]
+  (concat
+    (when carried [(out/to eid (out/carried nil))])
+    (when notify? [(out/to eid (out/container-close (:id m)))])))
+
 (defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
-    (let [carried (:carried e)
-          back (when (container/bench? m)
-                 (container/inputs m (container/items world eid m)))
-          [inv0 kept drops] (give-back (or (:inventory e) {}) back)
-          [changes left] (if carried (back-into inv0 carried) [nil nil])
-          changes (concat kept changes)]
+    (let [[changes drops left] (closed-inventory world eid e m)]
       (concat
         [[:merge-entity eid {:menu nil :carried nil}]]
         (for [[slot s] changes] [:set-slot eid slot s])
         (for [s drops] [:spawn-entity (items/dropped world eid s)])
         (when left [[:spawn-entity (items/dropped world eid left)]])
-        (when carried [(out/to eid (out/carried nil))])
-        (when notify? [(out/to eid (out/container-close (:id m)))])
+        (close-out-deltas eid m (:carried e) notify?)
         (count-deltas world m -1)
         (barrel-deltas world m -1)))))
 
@@ -95,6 +102,15 @@
                      :remote-carried (remote-of (:carried e)))
      :slots slots}))
 
+(defn- open-screen-deltas [world eid m id slots carried]
+  (concat
+    [(out/to eid (out/open-screen id (:type m) (:title m)))
+     (out/to eid (out/container-content id 1 slots carried))]
+    (when (container/bench? m)
+      [(out/to eid (out/container-data id 0 (:selected m)))])
+    (when (container/lectern? m)
+      [(out/to eid (out/container-data id 0 (container/page world m)))])))
+
 (defn open-deltas [world eid pos]
   (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
@@ -104,13 +120,8 @@
           {:keys [menu slots]} (opened world eid e' m id)]
       (concat
         prev
-        [[:merge-entity eid {:menu menu :container-counter id}]
-         (out/to eid (out/open-screen id (:type m) (:title m)))
-         (out/to eid (out/container-content id 1 slots (:carried e')))]
-        (when (container/bench? m)
-          [(out/to eid (out/container-data id 0 (:selected m)))])
-        (when (container/lectern? m)
-          [(out/to eid (out/container-data id 0 (container/page world m)))])
+        [[:merge-entity eid {:menu menu :container-counter id}]]
+        (open-screen-deltas world eid m id slots (:carried e'))
         (count-deltas world m 1)
         (barrel-deltas world m 1)))
     []))

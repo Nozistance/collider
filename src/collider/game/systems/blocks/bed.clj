@@ -36,10 +36,22 @@
     [[:merge-entity eid {:spawn head}]
      (out/to eid (out/system-chat [{:translate "block.minecraft.set_spawn"}]))]))
 
+(defn- say-deltas [eid k]
+  [(out/to eid (out/overlay [{:translate k}]))])
+
+(defn- lie-deltas [world eid head st]
+  (let [[x y z] head
+        lie [(+ (long x) 0.5) (+ (long y) 0.6875) (+ (long z) 0.5)]]
+    (concat (spawn-deltas world eid head)
+            (edit/change-deltas world [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :true))]])
+            [[:merge-entity eid {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
+                                 :vel      [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
+             (sleep/announcement world (inc (count (sleep/sleepers world))))])))
+
 (defn sleep-deltas [world eid pos]
   (let [head (bed/head-pos (:chunks world) pos)
         st (when head (edit/block-at world head))
-        say (fn [k] [(out/to eid (out/overlay [{:translate k}]))])]
+        say (fn [k] (say-deltas eid k))]
     (cond
       (nil? head) nil
       (= :true (:occupied (block/props-of st))) (say "block.minecraft.bed.occupied")
@@ -48,11 +60,4 @@
       (bed-blocked? world head) (say "block.minecraft.bed.obstructed")
       (not (daynight/dark? (:time-of-day world 0)))
       (concat (spawn-deltas world eid head) (say "block.minecraft.bed.no_sleep"))
-      :else
-      (let [[x y z] head
-            lie [(+ (long x) 0.5) (+ (long y) 0.6875) (+ (long z) 0.5)]]
-        (concat (spawn-deltas world eid head)
-                (edit/change-deltas world [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :true))]])
-                [[:merge-entity eid {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
-                                     :vel      [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
-                 (sleep/announcement world (inc (count (sleep/sleepers world))))])))))
+      :else (lie-deltas world eid head st))))

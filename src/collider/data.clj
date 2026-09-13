@@ -174,22 +174,24 @@
       (throw (ex-info "unknown property value" {:block block-name :prop prop :value v})))
     idx))
 
+(defn- state-offset ^long [block-name b wanted defaults]
+  (let [order (prop-order b) sizes (prop-sizes b)]
+    (loop [i 0 id (long (:first b))]
+      (if (= i (count order))
+        id
+        (let [prop (nth order i)
+              idx (prop-index block-name prop (get (:props b) prop)
+                              (get wanted prop (get defaults prop)))
+              tail (long (reduce * 1 (subvec sizes (inc i))))]
+          (recur (inc i) (long (+ id (* idx tail)))))))))
+
 (defn state-id
   (^long [block-name] (long (:default (info block-name))))
   (^long [block-name wanted]
    (let [b (info block-name)]
      (if (empty? wanted)
        (state-id block-name)
-       (let [order (prop-order b) sizes (prop-sizes b)
-             defaults (get default-props block-name)]
-         (loop [i 0 id (long (:first b))]
-           (if (= i (count order))
-             id
-             (let [prop (nth order i)
-                   idx (prop-index block-name prop (get (:props b) prop)
-                                   (get wanted prop (get defaults prop)))
-                   tail (long (reduce * 1 (subvec sizes (inc i))))]
-               (recur (inc i) (long (+ id (* idx tail))))))))))))
+       (state-offset block-name b wanted (get default-props block-name))))))
 
 (defn state-block [^long id]
   (when (< -1 id block-state-count) (aget ^objects block-of-state id)))

@@ -35,24 +35,34 @@
                  [(+ (* dx dx) (* dz dz)) id]))
              ids)))
 
-(defn- restream-deltas [world eid cp {:keys [chunk-pos sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
+(defn- stream-quota ^double [chunk-rate chunk-quota blocked]
+  (let [rate (double (or chunk-rate start-rate))]
+    (if blocked 0.0 (min (+ (double (or chunk-quota 0.0)) rate) (max 1.0 rate)))))
+
+(defn- stream-plan [world eid cp {:keys [sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
   (let [want (wanted-chunks world cp)
         add-all (vec (remove #(contains? sent-chunks %) want))
-        drop (sort (remove #(contains? want %) sent-chunks))
-        rate (double (or chunk-rate start-rate))
         unacked (long (or batches-unacked 0))
         blocked (or (>= unacked (long (or batches-max 1))) (not (writable? world eid)))
-        quota (if blocked 0.0 (min (+ (double (or chunk-quota 0.0)) rate) (max 1.0 rate)))
-        n (min (long (Math/floor quota)) (count add-all))
-        add (into [] (take n) (nearest-first add-all cp))
-        pending (when (> (count add-all) n) true)]
+        quota (stream-quota chunk-rate chunk-quota blocked)
+        n (min (long (Math/floor quota)) (count add-all))]
+    {:add     (into [] (take n) (nearest-first add-all cp))
+     :drop    (sort (remove #(contains? want %) sent-chunks))
+     :n       n :quota quota :unacked unacked :blocked blocked
+     :pending (when (> (count add-all) n) true)}))
+
+(defn- quota-deltas [eid {:keys [add n quota unacked blocked pending]}]
+  (cond
+    (seq add) [[:merge-entity eid {:chunk-quota (- (double quota) (long n)) :batches-unacked (inc (long unacked))}]]
+    (and (not blocked) pending) [[:merge-entity eid {:chunk-quota quota}]]))
+
+(defn- restream-deltas [world eid cp p]
+  (let [{:keys [add drop pending] :as plan} (stream-plan world eid cp p)]
     (concat
-      (when (or (not= cp chunk-pos) (seq add) (seq drop))
+      (when (or (not= cp (:chunk-pos p)) (seq add) (seq drop))
         [[:merge-entity eid {:chunk-pos cp :chunks-pending? pending}]
          [:chunks-sent eid add drop]])
-      (cond
-        (seq add) [[:merge-entity eid {:chunk-quota (- quota n) :batches-unacked (inc unacked)}]]
-        (and (not blocked) pending) [[:merge-entity eid {:chunk-quota quota}]]))))
+      (quota-deltas eid plan))))
 
 (defn- spawn-look-deltas [_ eid pos yaw pitch]
   (let [[sx sy sz] (or pos state/spawn-pos)]

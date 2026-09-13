@@ -102,6 +102,26 @@
         (Window. (.cells h) sizes self-i (.n h))))
     empty-window))
 
+(defn- add-impulse! [^doubles acc ^double dx ^double dz]
+  (let [m (max (Math/abs dx) (Math/abs dz))]
+    (when (>= m 0.01)
+      (let [s (Math/sqrt m)
+            d3 (min 1.0 (/ 1.0 s))]
+        (aset acc 0 (+ (aget acc 0) (- (* (/ dx s) d3 0.1))))
+        (aset acc 1 (+ (aget acc 1) (- (* (/ dz s) d3 0.1))))))))
+
+(defn- push-pair! [^doubles acc ^doubles me ^PushCell cell ^long j]
+  (let [x (aget me 0) y (aget me 1) z (aget me 2)
+        ox (aget ^doubles (.xs cell) j)
+        oy (aget ^doubles (.ys cell) j)
+        oz (aget ^doubles (.zs cell) j)
+        reach (+ (aget me 3) (aget ^doubles (.halfs cell) j) 0.2)]
+    (when (and (< (Math/abs (- ox x)) reach)
+               (< (Math/abs (- oz z)) reach)
+               (< oy (+ y (aget me 4)))
+               (> (+ oy (aget ^doubles (.heights cell) j)) y))
+      (add-impulse! acc (- ox x) (- oz z)))))
+
 (defn- push-into! [^doubles acc ^Window w ^long i ^doubles me]
   (let [^longs sizes (.sizes w)
         ^objects cells (.cells w)]
@@ -109,43 +129,32 @@
       (let [sz (aget sizes c)]
         (if (< i sz)
           (let [^PushCell cell (aget cells c)
-                j (if (and (= c 4) (>= (.self-i w) 0) (>= i (.self-i w))) (inc i) i)
-                x (aget me 0) y (aget me 1) z (aget me 2)
-                ox (aget ^doubles (.xs cell) j)
-                oy (aget ^doubles (.ys cell) j)
-                oz (aget ^doubles (.zs cell) j)
-                reach (+ (aget me 3) (aget ^doubles (.halfs cell) j) 0.2)]
-            (when (and (< (Math/abs (- ox x)) reach)
-                       (< (Math/abs (- oz z)) reach)
-                       (< oy (+ y (aget me 4)))
-                       (> (+ oy (aget ^doubles (.heights cell) j)) y))
-              (let [dx (- ox x) dz (- oz z)
-                    m (max (Math/abs dx) (Math/abs dz))]
-                (when (>= m 0.01)
-                  (let [s (Math/sqrt m)
-                        d3 (min 1.0 (/ 1.0 s))]
-                    (aset acc 0 (+ (aget acc 0) (- (* (/ dx s) d3 0.1))))
-                    (aset acc 1 (+ (aget acc 1) (- (* (/ dz s) d3 0.1)))))))))
+                j (if (and (= c 4) (>= (.self-i w) 0) (>= i (.self-i w))) (inc i) i)]
+            (push-pair! acc me cell j))
           (recur (inc c) (- i sz)))))))
 
 (defn- push-span! [^doubles acc ^Window w from to ^doubles me]
   (loop [i (long from)]
     (when (< i (long to)) (push-into! acc w i me) (recur (inc i)))))
 
+(defn- push-window-of ^Window [index ^double x ^double z ^long eid]
+  (push-window index (bit-shift-right (long (Math/floor x)) 2)
+               (bit-shift-right (long (Math/floor z)) 2) eid))
+
+(defn- push-wrapped! [^doubles acc ^Window w ^doubles me ^long off]
+  (let [n (.n w) end (+ off push-cap)]
+    (if (<= end n)
+      (push-span! acc w off end me)
+      (do (push-span! acc w off n me)
+          (push-span! acc w 0 (- end n) me)))))
+
 (defn push [index eid e t half height]
-  (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
-        x (double x) z (double z)
-        ^Window w (push-window index (bit-shift-right (long (Math/floor x)) 2)
-                               (bit-shift-right (long (Math/floor z)) 2) (long eid))
+  (let [p (:pos e) x (double (v/x p)) y (v/y p) z (double (v/z p))
+        ^Window w (push-window-of index x z (long eid))
         me (double-array [x (double y) z (double half) (double height)])
         acc (double-array 2)
         n (.n w)]
     (if (<= n push-cap)
       (push-span! acc w 0 n me)
-      (let [off (mod (random/mix64 (unchecked-add (random/mix64 t) (long eid))) n)
-            end (+ off push-cap)]
-        (if (<= end n)
-          (push-span! acc w off end me)
-          (do (push-span! acc w off n me)
-              (push-span! acc w 0 (- end n) me)))))
+      (push-wrapped! acc w me (mod (random/mix64 (unchecked-add (random/mix64 t) (long eid))) n)))
     [(aget acc 0) (aget acc 1)]))

@@ -226,6 +226,38 @@
     (c/write-varint buf (.readableBytes body))
     (.writeBytes buf body)))
 
+(defn- blk-pred [chunk] (fn [li] (some? (our-section chunk (dec (long li))))))
+
+(defn- top-section ^long [chunk]
+  (long (reduce (fn [^long acc ^long si] (if (some? (our-section chunk si)) si acc))
+                -1 (range chunk/section-count))))
+
+(defn- sky-pred [chunk blk?]
+  (let [top (top-section chunk)]
+    (fn [li] (or (blk? li) (and (>= top 0) (= (dec (long li)) (inc top)))))))
+
+(defn- write-light-masks! [^Buf buf ^long sky-mask ^long blk-mask]
+  (c/write-varint buf 1) (.writeLong buf sky-mask)
+  (c/write-varint buf 1) (.writeLong buf blk-mask)
+  (c/write-varint buf 0)
+  (c/write-varint buf 0))
+
+(defn- write-sky-light! [^Buf buf chunk sky? ^long sky-mask]
+  (c/write-varint buf (Long/bitCount sky-mask))
+  (dotimes [li light-sections]
+    (when (sky? li)
+      (c/write-varint buf 2048)
+      (if-let [^Section s (our-section chunk (dec li))]
+        (.writeBytes buf ^bytes (.sky-light s))
+        (.writeBytes buf ^bytes full-light)))))
+
+(defn- write-block-light! [^Buf buf chunk blk? ^long blk-mask]
+  (c/write-varint buf (Long/bitCount blk-mask))
+  (dotimes [li light-sections]
+    (when (blk? li)
+      (c/write-varint buf 2048)
+      (.writeBytes buf ^bytes (.block-light ^Section (our-section chunk (dec li)))))))
+
 (defn write-chunk!
   ([buf cx cz chunk] (write-chunk! buf cx cz chunk nil))
   ([^Buf buf cx cz chunk block-entities]
@@ -234,26 +266,10 @@
    (write-heightmaps! buf chunk)
    (write-sections! buf chunk)
    (write-block-entities! buf block-entities)
-   (let [blk? (fn [li] (some? (our-section chunk (dec (long li)))))
-         top (long (reduce (fn [^long acc ^long si]
-                             (if (some? (our-section chunk si)) si acc))
-                           -1 (range chunk/section-count)))
-         sky? (fn [li] (or (blk? li) (and (>= top 0) (= (dec (long li)) (inc top)))))
+   (let [blk? (blk-pred chunk)
+         sky? (sky-pred chunk blk?)
          sky-mask (light-mask sky?)
          blk-mask (light-mask blk?)]
-     (c/write-varint buf 1) (.writeLong buf sky-mask)
-     (c/write-varint buf 1) (.writeLong buf blk-mask)
-     (c/write-varint buf 0)
-     (c/write-varint buf 0)
-     (c/write-varint buf (Long/bitCount sky-mask))
-     (dotimes [li light-sections]
-       (when (sky? li)
-         (c/write-varint buf 2048)
-         (if-let [^Section s (our-section chunk (dec li))]
-           (.writeBytes buf ^bytes (.sky-light s))
-           (.writeBytes buf ^bytes full-light))))
-     (c/write-varint buf (Long/bitCount blk-mask))
-     (dotimes [li light-sections]
-       (when (blk? li)
-         (c/write-varint buf 2048)
-         (.writeBytes buf ^bytes (.block-light ^Section (our-section chunk (dec li)))))))))
+     (write-light-masks! buf sky-mask blk-mask)
+     (write-sky-light! buf chunk sky? sky-mask)
+     (write-block-light! buf chunk blk? blk-mask))))

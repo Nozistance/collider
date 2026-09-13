@@ -40,23 +40,28 @@
    :swap    (fn ^long [^long button] (if (= 40 button) offhand-slot (+ hotbar-slot button)))
    :quick   player-quick-slots})
 
+(defn- slots-menu [^long n]
+  (into (vec (range n))
+        (map #(+ n (long %)))
+        (concat (range 9 36) (range 36 45))))
+
+(defn- slots-quick [menu index ^long n slot]
+  (let [m (long (index slot -1))]
+    (cond
+      (neg? m) nil
+      (< m n) (map menu (range (dec (count menu)) (dec n) -1))
+      :else (map menu (range 0 n)))))
+
 (defn slots-layout
   ([n] (slots-layout n (fn [_ _] true)))
   ([^long n place]
-   (let [menu (into (vec (range n))
-                    (map #(+ n (long %)))
-                    (concat (range 9 36) (range 36 45)))
+   (let [menu (slots-menu n)
          index (into {} (map-indexed (fn [i f] [f i])) menu)]
      {:count   (+ n 46)
       :visible menu
       :place   (fn [slot stack] (or (>= (long slot) n) (place slot stack)))
       :swap    (fn ^long [^long button] (+ n (if (= 40 button) offhand-slot (+ hotbar-slot button))))
-      :quick   (fn [_ slot]
-                 (let [m (long (index slot -1))]
-                   (cond
-                     (neg? m) nil
-                     (< m n) (map menu (range (dec (count menu)) (dec n) -1))
-                     :else (map menu (range 0 n)))))})))
+      :quick   (fn [_ slot] (slots-quick menu index n slot))})))
 
 (defn container-layout
   ([rows] (container-layout rows (fn [_ _] true)))
@@ -249,25 +254,29 @@
       (and (= 2 header) (= 1 status)) (quick-craft-end m quickcraft)
       :else (assoc m :quickcraft nil))))
 
+(defn- click-mode [m slot button ^long mode]
+  (case mode
+    0 (if (#{0 1} button) (pickup m slot (= 0 button)) m)
+    1 (if (#{0 1} button) (quick-move m slot) m)
+    2 (if (or (< -1 (long button) 9) (= 40 button)) (swap-with m slot button) m)
+    3 (clone m slot)
+    4 (throw-out m slot button)
+    6 (pickup-all m slot button)
+    m))
+
+(defn- click-acted [m quickcraft slot menu button mode in-range?]
+  (cond
+    (= 5 (long mode)) (quick-craft m slot button)
+    (:status quickcraft) (assoc m :quickcraft nil)
+    (and (#{0 1} mode) (#{0 1} button) (= outside (long menu))) (pickup m slot (= 0 button))
+    (not in-range?) m
+    :else (click-mode m slot button mode)))
+
 (defn click [{:keys [quickcraft] :as m} {:keys [slot button mode]}]
   (let [m (assoc m :drops [] :takes 0)
         before (:inventory m)
-        layout (layout-of m)
-        visible (:visible layout)
+        visible (:visible (layout-of m))
         menu (long slot) button (long button) mode (long mode)
         in-range? (< -1 menu (count visible))
         slot (if in-range? (long (nth visible menu)) menu)]
-    (settle
-      (cond
-        (= 5 mode) (quick-craft m slot button)
-        (:status quickcraft) (assoc m :quickcraft nil)
-        (and (#{0 1} mode) (#{0 1} button) (= outside menu)) (pickup m slot (= 0 button))
-        (not in-range?) m
-        (= 0 mode) (if (#{0 1} button) (pickup m slot (= 0 button)) m)
-        (= 1 mode) (if (#{0 1} button) (quick-move m slot) m)
-        (= 2 mode) (if (or (< -1 button 9) (= 40 button)) (swap-with m slot button) m)
-        (= 3 mode) (clone m slot)
-        (= 4 mode) (throw-out m slot button)
-        (= 6 mode) (pickup-all m slot button)
-        :else m)
-      before)))
+    (settle (click-acted m quickcraft slot menu button mode in-range?) before)))

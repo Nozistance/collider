@@ -42,61 +42,83 @@
 (deftype Sweep [^doubles a ^long n])
 (deftype Move [pos vel ^boolean on-ground])
 
+(defn- lo-bound ^long [^double c ^double v]
+  (long (Math/floor (- (+ c (min 0.0 v)) eps))))
+
+(defn- hi-bound ^long [^double c ^double v]
+  (long (Math/floor (+ (+ c (max 0.0 v)) eps))))
+
+(defn- sweep-buffer ^doubles [^long need]
+  (let [^doubles b (.get sweep-buf)]
+    (if (>= (alength b) need)
+      b
+      (let [nb (double-array (* 2 need))] (.set sweep-buf nb) nb))))
+
+(defn- section-key ^long [^long cx ^long cy ^long cz]
+  (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) 5)
+          (chunk/section-index cy)))
+
+(defn- section-blocks ^shorts [chunks template cx cy cz]
+  (let [cx (long cx) cy (long cy) cz (long cz)
+        c (get chunks (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) template)]
+    (when-let [^Section sec (get (:sections c) (chunk/section-index cy))]
+      (.blocks sec))))
+
+(definline ^:private block-at [blocks cx cy cz]
+  `(let [^{:tag ~'shorts} b# ~blocks]
+     (if b#
+       (bit-and (long (aget b# (+ (* (bit-and (long ~cy) 15) 256)
+                                  (* (bit-and (long ~cz) 15) 16)
+                                  (bit-and (long ~cx) 15)))) 0xFFFF)
+       0)))
+
+(definline ^:private put-void! [a n cx cz]
+  `(let [^{:tag ~'doubles} a# ~a n# (long ~n) cx# (long ~cx) cz# (long ~cz) o# (* n# 6)]
+     (aset a# o# (double cx#)) (aset a# (+ o# 1) (- chunk/min-y 4.0)) (aset a# (+ o# 2) (double cz#))
+     (aset a# (+ o# 3) (+ cx# 1.0)) (aset a# (+ o# 4) (double chunk/min-y)) (aset a# (+ o# 5) (+ cz# 1.0))
+     (inc n#)))
+
+(definline ^:private put-cube! [a n cx cy cz]
+  `(let [^{:tag ~'doubles} a# ~a n# (long ~n) cx# (long ~cx) cy# (long ~cy) cz# (long ~cz) o# (* n# 6)]
+     (aset a# o# (double cx#)) (aset a# (+ o# 1) (double cy#)) (aset a# (+ o# 2) (double cz#))
+     (aset a# (+ o# 3) (+ cx# 1.0)) (aset a# (+ o# 4) (+ cy# 1.0)) (aset a# (+ o# 5) (+ cz# 1.0))
+     (inc n#)))
+
+(definline ^:private put-shape! [a n st cx cy cz]
+  `(let [^{:tag ~'doubles} a# ~a cx# (long ~cx) cy# (long ~cy) cz# (long ~cz)]
+     (long (reduce (fn [^long n# b#]
+                     (let [o# (* n# 6)]
+                       (aset a# o# (+ cx# (/ (double (nth b# 0)) 16.0)))
+                       (aset a# (+ o# 1) (+ cy# (/ (double (nth b# 1)) 16.0)))
+                       (aset a# (+ o# 2) (+ cz# (/ (double (nth b# 2)) 16.0)))
+                       (aset a# (+ o# 3) (+ cx# (/ (double (nth b# 3)) 16.0)))
+                       (aset a# (+ o# 4) (+ cy# (/ (double (nth b# 4)) 16.0)))
+                       (aset a# (+ o# 5) (+ cz# (/ (double (nth b# 5)) 16.0)))
+                       (inc n#)))
+                   (long ~n) (block/collision-boxes (long ~st))))))
+
 (defn- swept-boxes ^Sweep [chunks template ^doubles ebox vx vy vz]
   (let [vx (double vx) vy (double vy) vz (double vz)
-        x1 (long (Math/floor (- (+ (aget ebox 0) (min 0.0 vx)) eps)))
-        x2 (long (Math/floor (+ (+ (aget ebox 3) (max 0.0 vx)) eps)))
-        y1 (max (dec chunk/min-y) (- (long (Math/floor (- (+ (aget ebox 1) (min 0.0 vy)) eps))) 1))
-        y2 (long (Math/floor (+ (+ (aget ebox 4) (max 0.0 vy)) eps)))
-        z1 (long (Math/floor (- (+ (aget ebox 2) (min 0.0 vz)) eps)))
-        z2 (long (Math/floor (+ (+ (aget ebox 5) (max 0.0 vz)) eps)))
+        x1 (lo-bound (aget ebox 0) vx) x2 (hi-bound (aget ebox 3) vx)
+        y1 (max (dec chunk/min-y) (- (lo-bound (aget ebox 1) vy) 1)) y2 (hi-bound (aget ebox 4) vy)
+        z1 (lo-bound (aget ebox 2) vz) z2 (hi-bound (aget ebox 5) vz)
         cells (* (inc (- x2 x1)) (inc (- (max y1 y2) y1)) (inc (- z2 z1)))
-        need (* 96 (max 1 cells))
-        ^doubles a (let [^doubles b (.get sweep-buf)]
-                     (if (>= (alength b) need)
-                       b
-                       (let [nb (double-array (* 2 need))] (.set sweep-buf nb) nb)))]
+        ^doubles a (sweep-buffer (* 96 (max 1 cells)))]
     (loop [cx x1 cz z1 cy y1 n 0 ckey -1 ^shorts blocks nil]
       (cond
         (> cx x2) (Sweep. a n)
         (> cz z2) (recur (inc cx) z1 y1 n ckey blocks)
         (> cy y2) (recur cx (inc cz) y1 n ckey blocks)
-        (< cy chunk/min-y) (let [o (* n 6)]
-                             (aset a o (double cx)) (aset a (+ o 1) (- chunk/min-y 4.0)) (aset a (+ o 2) (double cz))
-                             (aset a (+ o 3) (+ cx 1.0)) (aset a (+ o 4) (double chunk/min-y)) (aset a (+ o 5) (+ cz 1.0))
-                             (recur cx cz (inc cy) (inc n) ckey blocks))
+        (< cy chunk/min-y) (recur cx cz (inc cy) (long (put-void! a n cx cz)) ckey blocks)
         (> cy chunk/max-y) (recur cx cz (inc cy) n ckey blocks)
         :else
-        (let [k (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) 5)
-                        (chunk/section-index cy))
-              ^shorts blocks (if (= k ckey)
-                               blocks
-                               (let [c (get chunks (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) template)]
-                                 (when-let [^Section sec (get (:sections c) (chunk/section-index cy))]
-                                   (.blocks sec))))
-              st (if blocks
-                   (bit-and (long (aget blocks (+ (* (bit-and cy 15) 256) (* (bit-and cz 15) 16) (bit-and cx 15)))) 0xFFFF)
-                   0)]
+        (let [k (section-key cx cy cz)
+              ^shorts blocks (if (= k ckey) blocks (section-blocks chunks template cx cy cz))
+              st (long (block-at blocks cx cy cz))]
           (cond
-            (not (block/solid? st))
-            (recur cx cz (inc cy) n k blocks)
-            (not (block/full-cube? st))
-            (let [n (long (reduce (fn [^long n b]
-                                    (let [o (* n 6)]
-                                      (aset a o (+ cx (/ (double (nth b 0)) 16.0)))
-                                      (aset a (+ o 1) (+ cy (/ (double (nth b 1)) 16.0)))
-                                      (aset a (+ o 2) (+ cz (/ (double (nth b 2)) 16.0)))
-                                      (aset a (+ o 3) (+ cx (/ (double (nth b 3)) 16.0)))
-                                      (aset a (+ o 4) (+ cy (/ (double (nth b 4)) 16.0)))
-                                      (aset a (+ o 5) (+ cz (/ (double (nth b 5)) 16.0)))
-                                      (inc n)))
-                                  n (block/collision-boxes st)))]
-              (recur cx cz (inc cy) n k blocks))
-            :else
-            (let [o (* n 6)]
-              (aset a o (double cx)) (aset a (+ o 1) (double cy)) (aset a (+ o 2) (double cz))
-              (aset a (+ o 3) (+ cx 1.0)) (aset a (+ o 4) (+ cy 1.0)) (aset a (+ o 5) (+ cz 1.0))
-              (recur cx cz (inc cy) (inc n) k blocks))))))))
+            (not (block/solid? st)) (recur cx cz (inc cy) n k blocks)
+            (not (block/full-cube? st)) (recur cx cz (inc cy) (long (put-shape! a n st cx cy cz)) k blocks)
+            :else (recur cx cz (inc cy) (long (put-cube! a n cx cy cz)) k blocks)))))))
 
 (defn- shifted ^doubles [^doubles box ^long axis ^double d]
   (let [b (aclone box)]

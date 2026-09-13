@@ -86,21 +86,19 @@
       [0.0 0.0 0.0]
       [(/ x len) (/ y len) (/ z len)])))
 
+(defn- below-pull [chunks template cls i [nx y nz]]
+  (let [j (decay chunks template cls [nx (dec (long y)) nz])]
+    (if (>= j 0) (- j (- (long i) 8)) 0)))
+
 (defn- neighbor-pull [chunks template cls i [x y z] [dx dz]]
   (let [nx (+ (long x) (long dx))
         nz (+ (long z) (long dz))
         ns (state-at chunks template nx y nz)
         j (decay chunks template cls [nx y nz])]
     (cond
-      (other-class? cls ns)
-      0
-      (>= j 0)
-      (- j (long i))
-      (not (blocks-movement? ns))
-      (let [j2 (decay chunks template cls [nx (dec (long y)) nz])]
-        (if (>= j2 0)
-          (- j2 (- (long i) 8))
-          0))
+      (other-class? cls ns) 0
+      (>= j 0) (- j (long i))
+      (not (blocks-movement? ns)) (below-pull chunks template cls (long i) [nx y nz])
       :else 0)))
 
 (def ^:private side-face {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
@@ -497,23 +495,29 @@
      :dropoff   (long dropoff) :slope (long slope)
      :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}))
 
+(defn- cell-mixed [chunks template mix cls st [x y z :as p]]
+  (let [above (shifted chunks template p [0 1 0])
+        sides (side-states chunks template p)
+        below-raw (raw-at chunks template x (dec (long y)) z)]
+    (mixed-state cls mix st above sides below-raw)))
+
+(defn- cell-flowed [chunks template env cls p st]
+  (let [v (if (source-of? cls st) :source (new-liquid env p))
+        st' (if v (liquid->state cls v) 0)]
+    (cond
+      (zero? (long st')) [[p 0]]
+      (and (= :source v) (seq (bubble-changes chunks template p))) (bubble-changes chunks template p)
+      :else (into (if (not= (long st') (long st)) [[p st']] [])
+                  (spread env p st')))))
+
 (defn update-cell [chunks template [x y z :as p] rules]
   (let [st (state-at chunks template x y z)
         cls (liquid-class st)]
     (when cls
-      (let [env (flow-env chunks template cls rules)
-            above (shifted chunks template p [0 1 0])
-            sides (side-states chunks template p)
-            below-raw (raw-at chunks template x (dec (long y)) z)]
-        (if-let [mixed (mixed-state cls (:mix env) st above sides below-raw)]
+      (let [env (flow-env chunks template cls rules)]
+        (if-let [mixed (cell-mixed chunks template (:mix env) cls st p)]
           [[p mixed]]
-          (let [v (if (source-of? cls st) :source (new-liquid env p))
-                st' (if v (liquid->state cls v) 0)]
-            (cond
-              (zero? st') [[p 0]]
-              (and (= :source v) (seq (bubble-changes chunks template p))) (bubble-changes chunks template p)
-              :else (into (if (not= st' (long st)) [[p st']] [])
-                          (spread env p st')))))))))
+          (cell-flowed chunks template env cls p st))))))
 
 (defn- fire-state-at [chunks template [x y z :as p]]
   (let [below (raw-at chunks template x (dec (long y)) z)]
