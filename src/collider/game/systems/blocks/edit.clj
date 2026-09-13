@@ -14,10 +14,16 @@
 (defn block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
 
+(def ^:private ^:const player-half 0.3)
+(def ^:private ^:const player-height 1.8)
+(def ^:private ^:const crouching-height 1.5)
+(def ^:private ^:const tnt-half 0.49)
+(def ^:private ^:const tnt-height 0.98)
+
 (defn builder-box [e]
   (case (:type e)
-    :player [0.3 (if (and (:sneaking? e) (not (:flying e))) 1.5 1.8)]
-    (:tnt :falling-block) [0.49 0.98]
+    :player [player-half (if (and (:sneaking? e) (not (:flying e))) crouching-height player-height)]
+    (:tnt :falling-block) [tnt-half tnt-height]
     :item nil
     (when-let [m (get mobs/types (:type e))]
       (let [s (if (mobs/baby? e) 0.5 1.0)]

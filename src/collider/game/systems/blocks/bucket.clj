@@ -61,7 +61,7 @@
                 (:source :bubble-column) [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
                 :powder-snow (edit/change-deltas world [[pos 0]])
                 :waterlogged (edit/change-deltas world [[pos (edit/with-water st false)]]))
-              (when (= :powder-snow kind) [(out/all (out/level-event 2001 pos st))])
+              (when (= :powder-snow kind) [(out/all (out/level-event out/particles-destroy-block pos st))])
               [(out/except eid (out/sound sound pos 1.0 1.0))]))))
 
 (defn lily-deltas [world eid e]

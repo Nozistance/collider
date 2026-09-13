@@ -18,9 +18,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- potted-block [item]
-  (let [b (keyword (str "potted-" (name item)))]
-    (when (contains? data/blocks b) b)))
+(defn- potted-block [item] (get-in data/blocks [item :pot]))
 
 (defn- pot-deltas [world eid pos item]
   (let [cur (edit/block-at world pos) n (block/block-of cur)]
@@ -28,7 +26,7 @@
       (and (= :flower-pot n) item (potted-block item))
       (edit/change-deltas world [[pos (block/state (potted-block item))]])
       (and (not= :flower-pot n) (nil? item))
-      (let [plant (keyword (subs (name n) 7))
+      (let [plant (:potted (get data/blocks n))
             [changes left] (items/add-stack (get-in world [:entities eid :inventory]) {:item plant :count 1})]
         (concat (edit/change-deltas world [[pos (block/state :flower-pot)]])
                 (for [[slot s] changes] [:set-slot eid slot s])
@@ -57,13 +55,17 @@
                (out/all (out/sound :cave-vines/pick-berries pos 1.0
                                    (random/pitch [(:tick world) pos :berries])))]))))
 
+(def ^:private ^:const bush-max-age 3)
+(def ^:private ^:const dust-plume-particles 7)
+(def ^:private ^:const berry-rolls 2.0)
+
 (defn- picks-berries? [^long cur item]
   (and (= :sweet-berry-bush (block/type-of cur)) (> (block/prop-long cur :age) 1)
-       (not (and (= :bone-meal item) (< (block/prop-long cur :age) 3)))))
+       (not (and (= :bone-meal item) (< (block/prop-long cur :age) bush-max-age)))))
 
 (defn- bush-stacks [world pos ^long a]
-  (let [n (inc (long (Math/floor (* 2.0 (random/of-key [(:tick world) pos :bush-count])))))]
-    (cond-> [] (= 3 a) (conj {:item :sweet-berries :count 1})
+  (let [n (inc (long (Math/floor (* berry-rolls (random/of-key [(:tick world) pos :bush-count])))))]
+    (cond-> [] (= bush-max-age a) (conj {:item :sweet-berries :count 1})
             true (conj {:item :sweet-berries :count n}))))
 
 (defn- bush-deltas [world pos]
@@ -95,7 +97,7 @@
         (let [took? (or (zero? lvl) (< (random/of-key [(:tick world) pos :compost]) (double (data/compost item))))
               st (if took? (block/state :composter {:level (keyword (str (inc lvl)))}) cur)]
           (concat (when took? (edit/change-deltas world [[pos st]]))
-                  [(out/all (out/level-event 1500 pos (if took? 1 0)))
+                  [(out/all (out/level-event out/composter-fill pos (if took? 1 0)))
                    (out/all (out/sound (if took? :composter/fill-success :composter/fill) pos 1.0 1.0))])))
       (and (nil? item) (= lvl 8))
       (concat (edit/change-deltas world [[pos (block/state :composter {:level :0})]])
@@ -112,7 +114,7 @@
       (when-let [[e' sound] (sign/applied e front? item)]
         (concat [[:set-block-entity pos e'] (out/all (out/block-entity pos))]
                 (if (= :wax sound)
-                  [(out/all (out/level-event 3003 pos))]
+                  [(out/all (out/level-event out/particles-and-sound-wax-on pos))]
                   [(out/all (out/sound sound pos 1.0 1.0))])))
       (some? item) nil
       (:waxed? e) [(out/all (out/sound :sign/waxed pos 1.0 1.0))]
@@ -139,7 +141,7 @@
     (concat (edit/be-changed pos (assoc e :item stack))
             [(out/all (out/block-event pos 1 0))
              (out/all (out/sound :decorated-pot/insert pos 1.0 pitch))
-             (out/all (out/particles :dust-plume nil plume 7 0.0))])))
+             (out/all (out/particles :dust-plume nil plume dust-plume-particles 0.0))])))
 
 (defn- pot-use-deltas [world pos item]
   (when-let [e (be/at world pos)]
@@ -153,13 +155,13 @@
     (concat (edit/change-deltas world [[pos (block/state (block/block-of cur) {:has-record :false})]])
             (edit/be-changed pos (assoc e :record nil :song nil :started nil))
             [[:spawn-entity (items/popped world (mapv + pos [0 1 0]) (:record e) :jukebox)]
-             (out/all (out/level-event 1011 pos 0))])))
+             (out/all (out/level-event out/sound-stop-jukebox-song pos 0))])))
 
 (defn- jukebox-insert-deltas [world pos e item]
   (let [cur (edit/block-at world pos) song (jukebox/song-of item)]
     (concat (edit/change-deltas world [[pos (block/state (block/block-of cur) {:has-record :true})]])
             (edit/be-changed pos (assoc e :record {:item item :count 1} :song song :started (:tick world)))
-            [(out/all (out/level-event 1010 pos (jukebox/song-id song)))])))
+            [(out/all (out/level-event out/sound-play-jukebox-song pos (jukebox/song-id song)))])))
 
 (defn- jukebox-use-deltas [world pos item]
   (let [e (be/at world pos)

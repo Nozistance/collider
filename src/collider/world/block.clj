@@ -1,6 +1,5 @@
 (ns collider.world.block
-  (:require [clojure.string :as str]
-            [collider.data :as data]
+  (:require [collider.data :as data]
             [collider.world.direction :as dir])
   (:import (java.util Arrays)))
 
@@ -49,7 +48,7 @@
 (def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
 (def cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
 (def multiface-types #{:glow-lichen :multiface :sculk-vein})
-(def leaves-types #{:mangrove-leaves :tinted-particle-leaves :untinted-particle-leaves})
+(def leaves-types (into #{} (map (fn [b] (:type (get data/blocks b)))) (data/tag-values "block" "leaves")))
 (def growing-plant
   (into {} (for [[head body dir] [[:weeping-vines :weeping-vines-plant :down]
                                   [:twisting-vines :twisting-vines-plant :up]
@@ -108,23 +107,15 @@
     (state (block-of st) (assoc (props-of st) :waterlogged :true))
     st))
 (defn concrete-of ^long [^long st]
-  (let [n (name (block-of st))]
-    (state (keyword (subs n 0 (- (count n) 7))))))
+  (state (:concrete (get data/blocks (block-of st)))))
 
-(defn- shape-type [t]
-  (let [n (name t)]
-    (cond
-      (or (= t :fence) (= t :wall)) :fence
-      (= t :fence-gate) :gate
-      (str/ends-with? n "slab") :slab
-      (str/ends-with? n "stair") :stair)))
+(def ^:private shape-classes
+  {:fence-block :fence :wall-block :fence :fence-gate-block :gate
+   :slab-block  :slab :weathering-copper-slab-block :slab
+   :stair-block :stair :weathering-copper-stair-block :stair})
 
-(def ^:private shape-arr
-  (let [a (object-array state-count)]
-    (dotimes [i state-count]
-      (when-let [t (aget ^objects type-arr i)]
-        (aset a i (shape-type t))))
-    a))
+(defn- shape-type [b] (shape-classes (:class b)))
+(def ^:private shape-arr (block-table (fn [_ b] (shape-type b))))
 
 (defn shape-of [^long st] (when (known? st) (aget ^objects shape-arr st)))
 (defn fence? [^long st] (= :fence (shape-of st)))
@@ -263,73 +254,26 @@
       (contains? side-types t) (behind (facing-of st))
       (contains? ground-types t) [0 -1 0])))
 
-(def ^:private wall-torches {:torch :wall-torch :soul-torch :soul-wall-torch :redstone-torch :redstone-wall-torch})
-(defn- skull-wall [n]
-  (cond
-    (str/ends-with? n "-skull") (keyword (str (subs n 0 (- (count n) 6)) "-wall-skull"))
-    (str/ends-with? n "-head") (keyword (str (subs n 0 (- (count n) 5)) "-wall-head"))))
-
-(defn- wall-variant [item]
-  (let [n (name item)
-        candidate (or (wall-torches item)
-                      (when (and (str/ends-with? n "-sign") (not (str/includes? n "hanging")))
-                        (keyword (str (subs n 0 (- (count n) 5)) "-wall-sign")))
-                      (when (str/ends-with? n "-coral-fan")
-                        (keyword (str (subs n 0 (- (count n) 4)) "-wall-fan")))
-                      (when (str/ends-with? n "-banner")
-                        (keyword (str (subs n 0 (- (count n) 7)) "-wall-banner")))
-                      (skull-wall n))]
-    (when (and candidate (contains? data/blocks candidate)) candidate)))
-
-(def ^:private weather-prefixes ["exposed-" "weathered-" "oxidized-"])
-(defn weathering? [^long st]
-  (let [t (type-of st)] (and t (str/starts-with? (name t) "weathering-"))))
-
-(defn weather-stage ^long [^long st]
-  (let [n (name (block-of st))]
-    (long (or (first (keep-indexed (fn [i p] (when (str/starts-with? n p) (inc i))) weather-prefixes)) 0))))
-
+(defn- info-of [^long st] (get data/blocks (block-of st)))
 (defn- with-props-of ^long [block ^long st]
   (state block (select-keys (props-of st) (keys (:props (data/info block))))))
 
-(defn- weather-base [^long st]
-  (let [n (name (block-of st)) stage (weather-stage st)]
-    (cond
-      (= n "copper-block") "copper"
-      (zero? stage) n
-      :else (subs n (count (weather-prefixes (dec stage)))))))
+(defn- related [^long st k]
+  (when-let [b (k (info-of st))] (with-props-of b st)))
 
-(defn- weather-name [^long st ^long stage]
-  (let [base (weather-base st)]
-    (keyword (cond
-               (zero? stage) (if (= base "copper") "copper-block" base)
-               :else (str (weather-prefixes (dec stage)) base)))))
+(defn weathering? [^long st]
+  (let [b (info-of st)] (boolean (and b (or (:next b) (:previous b))))))
 
-(defn weathered-next [^long st]
-  (when (and (weathering? st) (< (weather-stage st) 3))
-    (with-props-of (weather-name st (inc (weather-stage st))) st)))
+(defn weather-stage ^long [^long st]
+  (loop [b (info-of st) n 0]
+    (if-let [p (:previous b)] (recur (get data/blocks p) (inc n)) n)))
 
-(defn weathered-prev [^long st]
-  (when (and (weathering? st) (pos? (weather-stage st)))
-    (with-props-of (weather-name st (dec (weather-stage st))) st)))
-
-(defn waxed [^long st]
-  (when (weathering? st)
-    (let [b (keyword (str "waxed-" (name (block-of st))))]
-      (when (contains? data/blocks b) (with-props-of b st)))))
-
-(defn unwaxed [^long st]
-  (let [n (name (block-of st))]
-    (when (str/starts-with? n "waxed-")
-      (with-props-of (keyword (subs n 6)) st))))
-
-(defn dead-coral ^long [^long st]
-  (with-props-of (keyword (str "dead-" (name (block-of st)))) (without-water st)))
-
-(defn stripped [^long st]
-  (when (contains? #{:rotated-pillar} (type-of st))
-    (let [b (keyword (str "stripped-" (name (block-of st))))]
-      (when (contains? data/blocks b) (with-props-of b st)))))
+(defn weathered-next [^long st] (related st :next))
+(defn weathered-prev [^long st] (related st :previous))
+(defn waxed [^long st] (related st :waxed))
+(defn unwaxed [^long st] (related st :unwaxed))
+(defn dead-coral ^long [^long st] (with-props-of (:dead (info-of st)) (without-water st)))
+(defn stripped [^long st] (related st :stripped))
 
 (def named-block-items
   {:redstone           :redstone-wire :string :tripwire :wheat-seeds :wheat :cocoa-beans :cocoa
@@ -338,23 +282,18 @@
    :sweet-berries      :sweet-berry-bush :glow-berries :cave-vines
    :powder-snow-bucket :powder-snow})
 
-(defn wall-block [block]
-  (let [n (name block)]
-    (cond
-      (str/ends-with? n "-hanging-sign") (keyword (str (subs n 0 (- (count n) 13)) "-wall-hanging-sign"))
-      :else (wall-variant block))))
+(defn wall-block [block] (get-in data/items [block :wall]))
 
 (def ^:private standing-and-wall-types
-  #{:standing-sign :skull :wither-skull :player-head :torch :redstone-torch :banner})
+  #{:standing-sign :skull :wither-skull :player-head :torch :redstone-torch :banner
+    :ceiling-hanging-sign})
 
 (defn item->block [item face]
-  (let [face (long face)
-        n (name item)]
-    (cond
-      (contains? standing-and-wall-types (:type (get data/blocks item))) item
-      (and (<= 2 face 5) (not (str/ends-with? n "-sign")) (wall-variant item)) (wall-variant item)
-      (contains? data/blocks item) item
-      :else (named-block-items item))))
+  (cond
+    (contains? standing-and-wall-types (:type (get data/blocks item))) item
+    (and (<= 2 (long face) 5) (wall-block item)) (wall-block item)
+    (contains? data/blocks item) item
+    :else (named-block-items item)))
 
 (defn rotation-segment [yaw]
   (bit-and (long (Math/floor (+ (/ (* (+ (double yaw) 180.0) 16.0) 360.0) 0.5))) 15))
@@ -375,7 +314,7 @@
     (fn [{:keys [f]}] {:facing (nth [:south :west :north :east] f)})]
    [(fn [t _b] (= :lantern t))
     (fn [{:keys [face]}] {:hanging (if (= 0 (long face)) :true :false)})]
-   [(fn [t _b] (str/ends-with? (name t) "leaves"))
+   [(fn [t _b] (contains? leaves-types t))
     (fn [_] {:persistent :true})]
    [(fn [t _b] (= :mangrove-propagule t))
     (fn [_] {:age :4})]
@@ -390,9 +329,9 @@
       (if (and (not replacing?) (>= (long face) 2))
         {:facing (dir/face-facing face) :half (if (> (long cursor-y) 8) :top :bottom)}
         {:facing (dir/opposite (dir/player-direction yaw)) :half (if (= 1 (long face)) :bottom :top)}))]
-   [(fn [t _b] (= :stair (shape-type t)))
+   [(fn [_t b] (= :stair (shape-type b)))
     (fn [{:keys [f top?]}] {:facing (nth [:south :west :north :east] f) :half (if top? :top :bottom)})]
-   [(fn [t _b] (= :slab (shape-type t)))
+   [(fn [_t b] (= :slab (shape-type b)))
     (fn [{:keys [top?]}] {:type (if top? :top :bottom)})]
    [(fn [t _b] (contains? wall-torch-types t))
     (fn [{:keys [face]}] {:facing (dir/face-facing face)})]
@@ -544,7 +483,7 @@
     (state (block-of st) (assoc (props-of st) k (keyword (str (inc n)))))))
 
 (defn same-slab? [^long st item]
-  (and (= item (block-of st)) (= :slab (shape-type (type-of st)))))
+  (and (= item (block-of st)) (= :slab (shape-of st))))
 
 (defn slab-part [^long st] (:type (props-of st)))
 (defn double-slab ^long [item] (state item {:type :double}))

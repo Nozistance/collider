@@ -27,7 +27,7 @@
   (let [e (be/at world pos)]
     (when (and (= :jukebox (:kind e)) (:record e))
       [[:spawn-entity (items/popped world (mapv + pos [0 1 0]) (:record e) :jukebox)]
-       (out/all (out/level-event 1011 pos 0))])))
+       (out/all (out/level-event out/sound-stop-jukebox-song pos 0))])))
 
 (defn- shulker-break-deltas [world pos]
   (let [e (be/at world pos)

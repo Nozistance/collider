@@ -1,5 +1,6 @@
 (ns collider.game.systems.damage
-  (:require [collider.game.entity :as entity]
+  (:require [collider.data :as data]
+            [collider.game.entity :as entity]
             [collider.random :as random]
             [collider.game.mob.mobs :as mobs]
             [collider.world.chunk :as chunk]
@@ -23,17 +24,20 @@
 (def ^:private ^:const reach-sq 36.0)
 (def ^:private ^:const blind-reach-sq 9.0)
 (def ^:private ^:const base-damage 1.0)
-(def ^:private material-bonus
-  {"wooden" 0.0 "golden" 0.0 "stone" 1.0 "iron" 2.0 "diamond" 3.0 "netherite" 4.0})
-(def ^:private tool-base
-  {"sword" 4.0 "axe" 3.0 "pickaxe" 2.0 "shovel" 1.0})
+(def ^:private ^:const crit-multiplier 1.5)
+(def ^:private ^:const knockback-attack-strength 0.5)
+(def ^:private ^:const knockback-lift 0.1)
+(def ^:private ^:const voice-pitch-spread 0.2)
+(def ^:private ^:const baby-voice-pitch 1.5)
+(def ^:private ^:const adult-voice-pitch 1.0)
+(def ^:private ^:const fluid-margin 0.001)
+(def ^:private ^:const fire-damage-period 20)
+(def ^:private ^:const ticks-per-second 20)
+(def ^:private ^:const player-half 0.3)
+(def ^:private ^:const player-height 1.8)
 
 (defn- weapon-damage ^double [item]
-  (if-let [[_ m t] (when (keyword? item) (re-matches #"(\w+)-(\w+)" (name item)))]
-    (if-let [base (tool-base t)]
-      (+ (double base) (double (get material-bonus m 0.0)))
-      0.0)
-    0.0))
+  (double (get-in data/items [item :attack-damage] 0.0)))
 
 (defn- hurt-sound [e]
   (if (= :player (:type e))
@@ -45,9 +49,9 @@
 
 (defn- sound-pitch ^double [world eid e]
   (let [t (long (:tick world))
-        base (if (:baby-until e) 1.5 1.0)
+        base (if (:baby-until e) baby-voice-pitch adult-voice-pitch)
         r (- (random/of-longs t eid (hash :hurt1)) (random/of-longs t eid (hash :hurt2)))]
-    (+ base (* 0.2 r))))
+    (+ base (* voice-pitch-spread r))))
 
 (defn- creative-proof? [e]
   (= :player (:type e)))
@@ -92,11 +96,12 @@
 
 (defn- melee-damage ^double [a crit?]
   (cond-> (+ base-damage (weapon-damage (held-item a)))
-          crit? (* 1.5)))
+          crit? (* crit-multiplier)))
 
 (defn- sprint-push [a target]
   (let [yaw (Math/toRadians (double (:yaw a)))]
-    [:push target [(* (- (Math/sin yaw)) 0.5) 0.1 (* (Math/cos yaw) 0.5)]]))
+    [:push target [(* (- (Math/sin yaw)) knockback-attack-strength) knockback-lift
+                   (* (Math/cos yaw) knockback-attack-strength)]]))
 
 (defn- hit-deltas [a t target crit?]
   (cond-> [[:damage target (melee-damage a crit?)
@@ -117,8 +122,8 @@
 (def ^:private ^:const lava-damage 4.0)
 (defn- box-of [e]
   (if (= :player (:type e))
-    [0.3 1.8]
-    (let [{:keys [half height]} (mobs/types (:type e))] [(or half 0.45) (or height 1.3)])))
+    [player-half player-height]
+    (let [{:keys [half height]} (mobs/types (:type e))] [half height])))
 
 (defn- near-edits? [world e]
   (let [chunks (:chunks world)]
@@ -140,8 +145,8 @@
         shrink-y (double shrink-y)
         half (- (double half) shrink-xz)
         chunks (:chunks world)
-        fl (fn ^long [^double a] (long (Math/floor (+ a 0.001))))
-        ce (fn ^long [^double a] (long (Math/floor (+ (- a 0.001) 1.0))))
+        fl (fn ^long [^double a] (long (Math/floor (+ a fluid-margin))))
+        ce (fn ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
         x0 (fl (- (v/x p) half)) x1 (ce (+ (v/x p) half))
         y0 (max chunk/min-y (fl (+ (v/y p) shrink-y)))
         y1 (min (inc chunk/max-y) (ce (- (+ (v/y p) (double height)) shrink-y)))
@@ -167,11 +172,11 @@
 (defn- burn-tick-deltas [eid ^long fire wet?]
   (when (and (pos? fire) (not wet?))
     (cond-> [[:merge-entity eid {:fire (dec fire)}]]
-            (zero? (rem fire 20)) (conj [:damage eid 1.0]))))
+            (zero? (rem fire fire-damage-period)) (conj [:damage eid 1.0]))))
 
 (defn- ignite-deltas [eid fire wet? damage seconds]
   (cond-> [[:damage eid (double damage)]]
-          (not wet?) (conj [:merge-entity eid {:fire (max (long fire) (* 20 (long seconds)))}])))
+          (not wet?) (conj [:merge-entity eid {:fire (max (long fire) (* ticks-per-second (long seconds)))}])))
 
 (defn- douse-deltas [eid e fire wet?]
   (when (and wet? (pos? (long fire)))
@@ -183,7 +188,7 @@
 (defn- fire-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))
         wet? (boolean (:wet? e))
-        touch (probe world e 0.001 0.001 false)
+        touch (probe world e fluid-margin fluid-margin false)
         sunk? (some? (probe world e 0.1 0.4 true))
         flag (burning-flag eid e fire sunk?)]
     (if (creative-proof? e)

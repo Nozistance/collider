@@ -105,11 +105,11 @@
 (defn- chorus-events [changes]
   (for [[p st] changes
         :when (= :chorus-flower (block/type-of (long st)))]
-    (out/all (out/level-event (if (= :5 (:age (block/props-of (long st)))) 1034 1033) p 0))))
+    (out/all (out/level-event (if (= :5 (:age (block/props-of (long st)))) out/sound-chorus-death out/sound-chorus-grow) p 0))))
 
 (defn- drip-events [drips]
   (for [{:keys [tip]} drips]
-    (out/all (out/level-event 1504 tip 0))))
+    (out/all (out/level-event out/dripstone-drip tip 0))))
 
 (defn- drop-spawns [world results]
   (for [{:keys [pos drops]} results

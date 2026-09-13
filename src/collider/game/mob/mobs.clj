@@ -1,17 +1,30 @@
 (ns collider.game.mob.mobs
-  (:require [collider.random :as random]))
+  (:require [collider.data :as data]
+            [collider.random :as random]))
 
 (set! *warn-on-reflection* true)
 
+(def ^:private ^:const black 15)
+(def ^:private ^:const gray 7)
+(def ^:private ^:const light-gray 8)
+(def ^:private ^:const brown 12)
+(def ^:private ^:const pink 6)
+(def ^:private ^:const white 0)
+(def ^:private temperate-colors [[5 black] [5 gray] [5 light-gray] [3 brown]])
+(def ^:private ^:const temperate-total 100.0)
+(def ^:private ^:const common-total 500.0)
+
+(defn- weighted [^long r entries]
+  (loop [lo 0 [[w c] & more] entries]
+    (when w
+      (if (< r (+ lo (long w))) c (recur (+ lo (long w)) more)))))
+
+(defn- common-color [ks]
+  (if (zero? (long (* common-total (random/of-key (conj ks :pink))))) pink white))
+
 (defn- sheep-color [ks]
-  (let [r (long (* 100.0 (random/of-key ks)))]
-    (cond
-      (< r 5) 15
-      (< r 10) 7
-      (< r 15) 8
-      (< r 18) 12
-      (zero? (long (* 500.0 (random/of-key (conj ks :pink))))) 6
-      :else 0)))
+  (or (weighted (long (* temperate-total (random/of-key ks))) temperate-colors)
+      (common-color ks)))
 
 (def types
   {:sheep {:half          0.45 :height 1.3 :speed 0.23
@@ -23,10 +36,8 @@
            :spawn-color   sheep-color}})
 
 (defn egg-type [item]
-  (when (keyword? item)
-    (when-let [[_ m] (re-matches #"(.*)-spawn-egg" (name item))]
-      (let [t (keyword m)]
-        (when (contains? types t) t)))))
+  (let [t (get-in data/items [item :spawns])]
+    (when (contains? types t) t)))
 (defn max-health [type] (get-in types [type :max-health]))
 (defn mob-type? [type] (contains? types type))
 (defn breeding-item [type] (get-in types [type :breeding-item]))

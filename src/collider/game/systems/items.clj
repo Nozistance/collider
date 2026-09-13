@@ -14,6 +14,13 @@
 
 (def ^:private ^:const despawn-age 6000)
 (def ^:private ^:const throw-pickup-delay 40)
+(def ^:private ^:const throw-power 0.3)
+(def ^:private ^:const throw-spread 0.02)
+(def ^:private ^:const throw-lift 0.1)
+(def ^:private ^:const throw-jitter 0.1)
+(def ^:private ^:const around-power 0.5)
+(def ^:private ^:const around-lift 0.2)
+(def ^:private ^:const hand-height 1.32)
 (defn- item-entities [world]
   (sort-by key (filter (fn [[_ e]] (= :item (:type e))) (:entities world))))
 
@@ -31,23 +38,23 @@
         pitch (Math/toRadians (double (or (:pitch e) 0.0)))
         t (:tick world)
         ang (* (random/of-key [t eid :a]) Math/PI 2.0)
-        mag (* 0.02 (random/of-key [t eid :m]))]
-    [(+ (* -0.3 (Math/sin yaw) (Math/cos pitch)) (* (Math/cos ang) mag))
-     (+ (* -0.3 (Math/sin pitch)) 0.1
-        (* 0.1 (- (random/of-key [t eid :y1]) (random/of-key [t eid :y2]))))
-     (+ (* 0.3 (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
+        mag (* throw-spread (random/of-key [t eid :m]))]
+    [(+ (* (- throw-power) (Math/sin yaw) (Math/cos pitch)) (* (Math/cos ang) mag))
+     (+ (* (- throw-power) (Math/sin pitch)) throw-lift
+        (* throw-jitter (- (random/of-key [t eid :y1]) (random/of-key [t eid :y2]))))
+     (+ (* throw-power (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
 (defn- around-velocity [world eid salt]
   (let [t (:tick world)
-        pow (* 0.5 (random/of-key [t eid salt :p]))
+        pow (* around-power (random/of-key [t eid salt :p]))
         dir (* Math/PI 2.0 (random/of-key [t eid salt :d]))]
-    [(* -1.0 (Math/sin dir) pow) 0.2 (* (Math/cos dir) pow)]))
+    [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
 
 (defn dropped
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [[px py pz] (get-in world [:entities thrower :pos])]
-     (entity/item [(double px) (+ (double py) 1.32) (double pz)]
+     (entity/item [(double px) (+ (double py) hand-height) (double pz)]
                   (if randomly? (around-velocity world thrower salt) (throw-velocity world thrower))
                   stack throw-pickup-delay))))
 
@@ -102,28 +109,46 @@
 
 (def ^:private ^:const item-half 0.125)
 (def ^:private ^:const item-height 0.25)
+(def ^:private ^:const air-drag 0.98)
+(def ^:private ^:const ground-friction 0.588)
+(def ^:private ^:const gravity 0.04)
+(def ^:private ^:const water-drag 0.99)
+(def ^:private ^:const lava-drag 0.95)
+(def ^:private ^:const buoyancy 5.0E-4)
+(def ^:private ^:const buoyancy-below 0.06)
+(def ^:private ^:const fluid-depth 0.1)
+(def ^:private ^:const bounce -0.5)
+(def ^:private ^:const resting-speed-sq 1.0E-5)
+(def ^:private ^:const resting-period 4)
+(def ^:private ^:const merge-inflate 0.5)
+(def ^:private ^:const pickup-inflate 1.0)
+(def ^:private ^:const pickup-inflate-y 0.5)
+(def ^:private ^:const player-height 1.8)
+(def ^:private ^:const player-half 0.3)
+(def ^:private ^:const pickup-reach (+ player-half item-half pickup-inflate))
+(def ^:private ^:const pickup-bottom -1.0)
 (defn- fluid-movement [[vx vy vz] ^double drag]
-  [(* (double vx) drag) (+ (double vy) (if (< (double vy) 0.06) 5.0E-4 0.0)) (* (double vz) drag)])
+  [(* (double vx) drag) (+ (double vy) (if (< (double vy) buoyancy-below) buoyancy 0.0)) (* (double vz) drag)])
 
 (defn- item-drift [chunks pos vel]
   (let [pushed (v/+ vel (liquid/entity-push chunks gen/flat-chunk pos item-half item-height vel))
         water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
         lava (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)]
     [(cond
-       (> water 0.1) (fluid-movement pushed 0.99)
-       (> lava 0.1) (fluid-movement pushed 0.95)
-       :else [(v/x pushed) (- (v/y pushed) 0.04) (v/z pushed)])
-     (or (> water 0.1) (> lava 0.1))]))
+       (> water fluid-depth) (fluid-movement pushed water-drag)
+       (> lava fluid-depth) (fluid-movement pushed lava-drag)
+       :else [(v/x pushed) (- (v/y pushed) gravity) (v/z pushed)])
+     (or (> water fluid-depth) (> lava fluid-depth))]))
 
 (defn- item-moved [chunks pos [vx vy vz]]
   (let [^Move mv (phys/move chunks gen/flat-chunk pos
                             [(double vx) (double vy) (double vz)] item-half item-height)
         on-ground (.on-ground mv)
         [mx my mz] (.vel mv)
-        f (if on-ground 0.588 0.98)
-        my (* (double my) 0.98)]
+        f (if on-ground ground-friction air-drag)
+        my (* (double my) air-drag)]
     [(.pos mv)
-     [(* (double mx) f) (if (and on-ground (neg? my)) (* my -0.5) my) (* (double mz) f)]
+     [(* (double mx) f) (if (and on-ground (neg? my)) (* my bounce) my) (* (double mz) f)]
      on-ground]))
 
 (defn- jolt-of ^double [vel' old]
@@ -136,8 +161,8 @@
   (let [chunks (:chunks world) pos (:pos e)
         [[vx _ vz :as drift] in-fluid?] (item-drift chunks pos (:vel e))
         resting? (and (:on-ground e)
-                      (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) 1.0E-5)
-                      (not= 0 (rem (+ (long (:tick world)) (long eid)) 4)))
+                      (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) resting-speed-sq)
+                      (not= 0 (rem (+ (long (:tick world)) (long eid)) resting-period)))
         [pos' vel' on-ground] (if resting?
                                 [pos drift true]
                                 (item-moved chunks pos drift))
@@ -160,9 +185,9 @@
     (and (same-stack? (:stack ea) (:stack eb))
          (<= (+ (long (:count (:stack ea) 1)) (long (:count (:stack eb) 1)))
              (data/max-stack (:item (:stack eb))))
-         (< (Math/abs (- (double ax) (double bx))) 0.75)
-         (< (Math/abs (- (double az) (double bz))) 0.75)
-         (< (Math/abs (- (double ay) (double by))) 0.5))))
+         (< (Math/abs (- (double ax) (double bx))) (+ item-half item-half merge-inflate))
+         (< (Math/abs (- (double az) (double bz))) (+ item-half item-half merge-inflate))
+         (< (Math/abs (- (double ay) (double by))) (+ item-height item-height)))))
 
 (defn- merge-partner [items ^long from a used]
   (first (for [j (range from (count items))
@@ -214,9 +239,9 @@
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) px (v/x pp) py (v/y pp) pz (v/z pp)
         pi (:pos ie) ix (v/x pi) iy (v/y pi) iz (v/z pi)]
-    (and (< (Math/abs (- (double ix) (double px))) 1.425)
-         (< (Math/abs (- (double iz) (double pz))) 1.425)
-         (< -1.0 (- (double iy) (double py)) 2.3))))
+    (and (< (Math/abs (- (double ix) (double px))) pickup-reach)
+         (< (Math/abs (- (double iz) (double pz))) pickup-reach)
+         (< pickup-bottom (- (double iy) (double py)) (+ player-height pickup-inflate-y)))))
 
 (defn- collect-deltas [_world ieid _ie peid changes remaining players]
   (concat

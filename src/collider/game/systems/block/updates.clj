@@ -94,7 +94,7 @@
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
         :when (contains? block/cauldron-types (block/type-of old))]
-    (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) 1046 1047) pos 0))))
+    (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) out/sound-drip-lava-into-cauldron out/sound-drip-water-into-cauldron) pos 0))))
 
 (defn- tilt-deltas [world changes]
   (for [[pos st] changes

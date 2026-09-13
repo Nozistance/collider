@@ -142,6 +142,21 @@
 (defn fizz [pos]
   {:msg :fizz :pos pos})
 
+(def ^:const sound-play-jukebox-song 1010)
+(def ^:const sound-stop-jukebox-song 1011)
+(def ^:const sound-chorus-grow 1033)
+(def ^:const sound-chorus-death 1034)
+(def ^:const sound-page-turn 1043)
+(def ^:const sound-drip-lava-into-cauldron 1046)
+(def ^:const sound-drip-water-into-cauldron 1047)
+(def ^:const sound-pointed-dripstone-land 1045)
+(def ^:const composter-fill 1500)
+(def ^:const dripstone-drip 1504)
+(def ^:const particles-destroy-block 2001)
+(def ^:const particles-and-sound-wax-on 3003)
+(def ^:const particles-wax-off 3004)
+(def ^:const particles-scrape 3005)
+
 (defn level-event
   ([event pos] (level-event event pos 0))
   ([event pos data] {:msg :level-event :event event :pos pos :data data}))

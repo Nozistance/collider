@@ -14,9 +14,23 @@
 (def ^:private ^:const mate-together 60)
 (def ^:private ^:const breed-cooldown 6000)
 (def ^:private ^:const baby-growth 24000)
+(def ^:private ^:const baby-eat-mean 50)
+(def ^:private ^:const stroll-range 10)
+(def ^:private ^:const panic-range 5)
+(def ^:private ^:const stroll-tries 10)
+(def ^:private ^:const grass-walk-target 10.0)
+(def ^:private ^:const look-distance-sq 36.0)
+(def ^:private ^:const look-at-player-time 40)
+(def ^:private ^:const look-around-time 20)
+(def ^:private ^:const parent-follow-min-sq 9.0)
+(def ^:private ^:const parent-follow-max-sq 256.0)
+(def ^:private ^:const partner-search-sq 64.0)
+(def ^:private ^:const breed-distance-sq 9.0)
+(def ^:private ^:const feeding-speedup 0.1)
+(def ^:private ^:const ticks-per-second 20)
 (defn- decide [t eid e]
   (let [means (mobs/action-means (:type e))
-        means (if (mobs/baby? e) (assoc means :eat 50) means)
+        means (if (mobs/baby? e) (assoc means :eat baby-eat-mean) means)
         choices (map (fn [[kind mean]] [kind (mobs/exp-delay mean t eid kind)]) means)
         [kind d] (apply min-key second choices)]
     (assoc e :pending kind :wake-tick (+ (long t) (long d)))))
@@ -45,10 +59,10 @@
                         (sense/block-at world [(long (Math/floor (double cx)))
                                                (dec (long (Math/floor (double y))))
                                                (long (Math/floor (double cz)))]))
-                   10.0 0.0))]
+                   grass-walk-target 0.0))]
     (reduce (fn [best c] (if (> (double (weight c)) (double (weight best))) c best))
             (try-at 0)
-            (map try-at (range 1 10)))))
+            (map try-at (range 1 stroll-tries)))))
 
 (defn- start-roam [world eid e t kind span sx sz]
   [(assoc e :pending nil
@@ -56,15 +70,17 @@
                    :target (roam-target world e t eid span sx sz)})
    nil])
 
-(defn- start-wander [world eid e t] (start-roam world eid e t :wander 20.0 :tx :tz))
+(defn- start-wander [world eid e t] (start-roam world eid e t :wander (* 2.0 stroll-range) :tx :tz))
 
 (defn- start-look [world eid e t]
-  (let [[_ pid] (sense/nearest-player world (:pos e) 36.0)
+  (let [[_ pid] (sense/nearest-player world (:pos e) look-distance-sq)
         look (if pid
                {:target pid
-                :until  (+ (long t) 40 (long (* 40.0 (random/of-longs t eid (hash :lt)))))}
+                :until  (+ (long t) look-at-player-time
+                           (long (* (double look-at-player-time) (random/of-longs t eid (hash :lt)))))}
                {:yaw   (- (* 360.0 (random/of-longs t eid (hash :y))) 180.0)
-                :until (+ (long t) 20 (long (* 20.0 (random/of-longs t eid (hash :lt)))))})]
+                :until (+ (long t) look-around-time
+                          (long (* (double look-around-time) (random/of-longs t eid (hash :lt)))))})]
     [(decide t eid (assoc e :pending nil :look look)) nil]))
 
 (defn- start-pending [world eid e t]
@@ -136,17 +152,17 @@
   (when (and (mobs/baby? e)
              (not= :follow (get-in e [:task :kind]))
              (zero? (mod (+ (long t) (long eid)) 10)))
-    (when-let [[d2 oid] (sense/nearest world (:pos e) 256.0
+    (when-let [[d2 oid] (sense/nearest world (:pos e) parent-follow-max-sq
                                        (fn [oid o] (and (not= oid eid)
                                                         (= (:type e) (:type o))
                                                         (not (mobs/baby? o)))))]
-      (when (>= (double d2) 9.0)
+      (when (>= (double d2) parent-follow-min-sq)
         [(assoc e :task {:kind :follow :parent oid}) nil]))))
 
 (defn- run-follow [world _ e _]
   (let [o (get-in world [:entities (get-in e [:task :parent])])]
     (if (and (mobs/baby? e) o
-             (<= 9.0 (v/dist-sq (:pos e) (:pos o)) 256.0))
+             (<= parent-follow-min-sq (v/dist-sq (:pos e) (:pos o)) parent-follow-max-sq))
       [e nil]
       [(assoc e :task nil) nil])))
 
@@ -166,7 +182,7 @@
     (cond
       (not (and partner (mobs/in-love? partner t) (mobs/in-love? e t)))
       [(assoc e :task nil) nil]
-      (and (< (v/dist-sq (:pos e) (:pos partner)) 9.0)
+      (and (< (v/dist-sq (:pos e) (:pos partner)) breed-distance-sq)
            (>= (- (long t) (long (get-in e [:task :since]))) mate-together))
       (if (< (long eid) (long pid))
         [(assoc e :task nil) (spawn-baby eid pid e t)]
@@ -174,7 +190,7 @@
       :else [(assoc e :look {:target pid :until (+ (long t) 2)}) nil])))
 
 (defn- start-mate [world eid e t]
-  (if-let [[_ pid] (sense/nearest world (:pos e) 64.0
+  (if-let [[_ pid] (sense/nearest world (:pos e) partner-search-sq
                                   (fn [oid o] (and (not= oid eid)
                                                    (= (:type e) (:type o))
                                                    (mobs/in-love? o t)
@@ -185,7 +201,7 @@
 (defn- panicking? [e t]
   (< (long t) (long (or (:panic-until e) 0))))
 
-(defn- start-panic [world eid e t] (start-roam world eid e t :panic 10.0 :px :pz))
+(defn- start-panic [world eid e t] (start-roam world eid e t :panic (* 2.0 panic-range) :px :pz))
 
 (defn- run-panic [world eid e t]
   (cond
@@ -222,11 +238,15 @@
        (not (mobs/in-love? e t))
        (<= (long (or (:breed-ready-at e) 0)) (long t))))
 
+(defn- fed-growth ^long [^long remaining]
+  (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
+    (- remaining (* seconds ticks-per-second))))
+
 (defn- fed-deltas [t target e]
   (cond
     (mobs/baby? e)
     (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
-      [[:merge-entity target {:baby-until (+ (long t) (long (* 0.9 remaining)))}]])
+      [[:merge-entity target {:baby-until (+ (long t) (fed-growth remaining))}]])
     (feedable? e t)
     (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
           [(out/all (out/status target :love))])))

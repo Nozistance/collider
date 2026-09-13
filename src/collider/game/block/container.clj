@@ -184,7 +184,7 @@
        [:set-blocks [[pos (lectern/powered-state st true)]]]
        [:schedule-ticks {(+ (long (:tick world)) lectern/impulse-ticks -1)
                          [(chunk/block-pos->id pos)]}]
-       (out/all (out/level-event 1043 pos 0))])))
+       (out/all (out/level-event out/sound-page-turn pos 0))])))
 
 (defn dropped-book
   [world pos]
@@ -258,7 +258,7 @@
                          0.5 (pitch world pos :lid)))]))
 
 (def ^:private ^:const recheck-delay 5)
-(def ^:private step (float 0.1))
+(def ^:private open-step (float 0.1))
 
 (defn- trigger-deltas
   [pos ^long after]
@@ -271,7 +271,7 @@
   [world]
   (mapcat (fn [[pos {:keys [status progress]}]]
             (let [p (float progress)
-                  up (float (+ p step)) down (float (- p step))]
+                  up (float (+ p open-step)) down (float (- p open-step))]
               (if (not= :shulker-box (block/type-of (state-at (:chunks world) pos)))
                 [[:shulker-anim pos nil]]
                 (case status

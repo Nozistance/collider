@@ -41,7 +41,7 @@
 (defn- broken-deltas [world eid e cell]
   (concat [[:remove-entity eid]]
           (when (speleothem? (:block e))
-            [(out/all (out/level-event 1045 cell 0))])
+            [(out/all (out/level-event out/sound-pointed-dripstone-land cell 0))])
           (item-deltas world eid e)))
 
 (defn- land-deltas [world eid e cell cur concrete? stuck?]

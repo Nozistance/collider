@@ -90,7 +90,7 @@
 (defn wax-deltas [world [_ pos _ _ _]]
   (when-let [st (block/waxed (edit/block-at world pos))]
     (concat (edit/change-deltas world (half-changes world pos st))
-            [(out/all (out/sound :honeycomb/wax-on pos 1.0 1.0)) (out/all (out/level-event 3003 pos))])))
+            [(out/all (out/sound :honeycomb/wax-on pos 1.0 1.0)) (out/all (out/level-event out/particles-and-sound-wax-on pos))])))
 
 (defn axe-deltas [world [_ pos _ _ _]]
   (let [cur (edit/block-at world pos)]
@@ -98,10 +98,10 @@
       (concat (edit/change-deltas world [[pos st]]) [(out/all (out/sound :axe/strip pos 1.0 1.0))])
       (if-let [st (block/weathered-prev cur)]
         (concat (edit/change-deltas world (half-changes world pos st))
-                [(out/all (out/sound :axe/scrape pos 1.0 1.0)) (out/all (out/level-event 3005 pos))])
+                [(out/all (out/sound :axe/scrape pos 1.0 1.0)) (out/all (out/level-event out/particles-scrape pos))])
         (when-let [st (block/unwaxed cur)]
           (concat (edit/change-deltas world (half-changes world pos st))
-                  [(out/all (out/sound :axe/wax-off pos 1.0 1.0)) (out/all (out/level-event 3004 pos))]))))))
+                  [(out/all (out/sound :axe/wax-off pos 1.0 1.0)) (out/all (out/level-event out/particles-wax-off pos))]))))))
 
 (def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
 

@@ -1,6 +1,5 @@
 (ns collider.world.blocks.connect
-  (:require [clojure.string :as str]
-            [collider.data :as data]
+  (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.blocks.chest :as chest]
@@ -21,6 +20,7 @@
 (def ^:private wooden (tag "wooden_fences"))
 (def ^:private walls (tag "walls"))
 (def ^:private leaves (tag "leaves"))
+(def ^:private shulker-boxes (tag "shulker_boxes"))
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private neighbours (conj (vec (vals dir/horizontal-offset)) [0 1 0] [0 -1 0]))
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
@@ -58,7 +58,7 @@
       (when (paired? st o) [p o]))))
 
 (defn- exception? [n]
-  (or (contains? leaves n) (contains? exceptions n) (str/ends-with? (name n) "shulker-box")))
+  (or (contains? leaves n) (contains? exceptions n) (contains? shulker-boxes n)))
 
 (defn- sturdy? [st n dir]
   (and (block/face-sturdy? st (dir/opposite dir)) (not (exception? n))))
