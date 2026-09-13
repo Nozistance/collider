@@ -206,7 +206,17 @@
           (.offer queue ev)
           (log-unhandled! (:packet m)))))))
 
-(defn handle-packet [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
+(def ^:private generic-reason {:translate "multiplayer.disconnect.generic"})
+
+(defn- disconnect-generic! [conn t]
+  (log/info "bad packet from" (:addr (server/info conn)) "-" (str t))
+  (case (server/conn-state conn)
+    :play (server/send! conn {:packet :disconnect :text generic-reason})
+    :login (server/send! conn {:packet :login-disconnect :json (json/write-str generic-reason)})
+    nil)
+  (server/close! conn))
+
+(defn- dispatch! [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention] (intention! conn m)
     [:status :status-request]
@@ -221,3 +231,9 @@
     [:configuration :select-known-packs] (finish-configuration! conn)
     [:configuration :finish-configuration] (do-login! conn io)
     (play-packet! conn queue m)))
+
+(defn handle-packet [conn io m]
+  (try
+    (dispatch! conn io m)
+    (catch Throwable t
+      (disconnect-generic! conn t))))

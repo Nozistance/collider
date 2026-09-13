@@ -4,9 +4,9 @@
             [collider.proto.packets :as packets])
   (:import (collider.java Buf)
            (java.io BufferedInputStream BufferedOutputStream EOFException)
-           (java.net ServerSocket Socket SocketException)
+           (java.net ServerSocket Socket SocketException SocketTimeoutException)
            (java.util.concurrent ArrayBlockingQueue ConcurrentLinkedQueue TimeUnit)
-           (java.util.concurrent.atomic AtomicBoolean)
+           (java.util.concurrent.atomic AtomicBoolean AtomicInteger)
            (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
@@ -14,6 +14,8 @@
 (def ^:private ^:const out-queue-size 4096)
 (def ^:private ^:const out-queue-high 1024)
 (def ^:private ^:const writer-poll-ms 500)
+(def ^:private ^:const read-timeout-ms 30000)
+(def ^:private ^:const default-max-connections 256)
 (defrecord Conn [^Socket sock ^ArrayBlockingQueue q st ^AtomicBoolean closing])
 
 (defn conn-state [^Conn c] (:state @(:st c)))
@@ -37,13 +39,18 @@
 (defn compress! [^Conn c ^long threshold]
   (.offer ^ArrayBlockingQueue (:q c) [:threshold threshold]))
 
-(defn- write-packet! [out payload body head threshold defl chunk state m]
+(defn- encode-packet! [^Buf payload state m]
   (try
-    (.clear ^Buf payload)
+    (.clear payload)
     (packets/encode! state payload m)
-    (c/write-frame! out payload body head (long threshold) defl chunk)
+    true
     (catch Throwable t
-      (log/info "encode failed for" (:packet m) "-" (str t)))))
+      (log/info "encode failed for" (:packet m) "-" (str t))
+      false)))
+
+(defn- write-packet! [out payload body head threshold defl chunk state m]
+  (when (encode-packet! payload state m)
+    (c/write-frame! out payload body head (long threshold) defl chunk)))
 
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
@@ -112,6 +119,8 @@
     (try
       (reader-loop conn io)
       (catch EOFException _ nil)
+      (catch SocketTimeoutException _
+        (log/info "read timeout, closing" (who conn)))
       (catch SocketException _ nil)
       (catch Throwable t
         (when-not (.isClosed sock)
@@ -141,21 +150,32 @@
     (drain! cs ms)
     (doseq [[_ ^Conn conn] cs] (.close ^Socket (:sock conn)))))
 
-(defn- accept-loop [^ServerSocket srv io]
-  (loop []
-    (when-not (.isClosed srv)
-      (let [sock (try (.accept srv)
-                      (catch Throwable t
-                        (when-not (.isClosed srv)
-                          (log/info "accept failed:" (str t))
-                          (Thread/sleep 100))
-                        nil))]
-        (when sock
-          (.setTcpNoDelay ^Socket sock true)
-          (Thread/startVirtualThread #(serve-conn! sock io)))
-        (recur)))))
+(defn- admit! [^Socket sock ^AtomicInteger live ^long limit io]
+  (if (> (.incrementAndGet live) limit)
+    (do (.decrementAndGet live)
+        (log/info "connection limit" limit "reached, refusing" (str (.getRemoteSocketAddress sock)))
+        (.close sock))
+    (Thread/startVirtualThread
+      #(try (serve-conn! sock io) (finally (.decrementAndGet live))))))
+
+(defn- accept-loop [^ServerSocket srv io ^AtomicInteger live]
+  (let [limit (long (:max-connections (:cfg io) default-max-connections))]
+    (loop []
+      (when-not (.isClosed srv)
+        (let [sock (try (.accept srv)
+                        (catch Throwable t
+                          (when-not (.isClosed srv)
+                            (log/info "accept failed:" (str t))
+                            (Thread/sleep 100))
+                          nil))]
+          (when sock
+            (.setTcpNoDelay ^Socket sock true)
+            (.setSoTimeout ^Socket sock read-timeout-ms)
+            (admit! sock live limit io))
+          (recur))))))
 
 (defn listen! [io port]
-  (let [srv (ServerSocket. (int port))]
+  (let [srv (ServerSocket. (int port))
+        live (AtomicInteger.)]
     {:socket srv
-     :accept (Thread/startVirtualThread #(accept-loop srv io))}))
+     :accept (Thread/startVirtualThread #(accept-loop srv io live))}))

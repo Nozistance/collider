@@ -10,6 +10,7 @@
   {:port                  25565
    :motd                  "Powered by Collider"
    :max-players           20
+   :max-connections       256
    :view-distance         4
    :simulation-distance   2
    :compression-threshold 256
