@@ -17,7 +17,7 @@
   (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur))
              (get-in world [:rules :block-drops] true))
     (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
-                 (block/drops cur (fn [salt] (random/of-key [(:tick world) pos salt]))))))
+                 (block/drops cur (fn [salt] (random/of-key (:tick world) pos salt))))))
 
 (defn- pour-deltas [world eid pos state relative]
   (let [cur (edit/block-at world pos) water? (= :water (liquid/liquid-class state))

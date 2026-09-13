@@ -37,7 +37,7 @@
                (zero? (edit/block-at world pos'))
                (support/supported? (:chunks world) gen/flat-chunk pos' st))
       [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
-       (out/except eid (out/sound :fire/ignite pos' 1.0 (random/pitch [(:tick world) pos' :flint])))])))
+       (out/except eid (out/sound :fire/ignite pos' 1.0 (random/pitch (:tick world) pos' :flint)))])))
 
 (defn flint-deltas [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
@@ -56,7 +56,7 @@
 
 (defn bonemeal-deltas [world [_eid pos _ _ _]]
   (let [st (edit/block-at world pos)]
-    (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key [(:tick world) pos :meal salt])))]
+    (when-let [{:keys [changes drops]} (grow/bonemeal (:chunks world) pos st (fn [salt] (random/of-key (:tick world) pos :meal salt)))]
       (concat
         (when (seq changes) (edit/change-deltas world changes))
         (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:meal i])]) drops)
@@ -123,7 +123,7 @@
       (let [[x y z] (mapv + pos off)
             t (:tick world)
             at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-            pitch (+ 1.0 (* 0.2 (- (random/of-key [t pos :p1]) (random/of-key [t pos :p2]))))]
+            pitch (+ 1.0 (* 0.2 (- (random/of-key t pos :p1) (random/of-key t pos :p2))))]
         (when (chunk/in-range? y)
           (cons [:spawn-entity (mobs/egg-mob mob at [t pos] t)]
                 (when-let [say (mobs/say-sound mob)]
@@ -139,7 +139,7 @@
     (concat
       (edit/change-deltas world [[pos (block/state :carved-pumpkin {:facing dir})]])
       [[:spawn-entity (entity/item [(+ (long x) 0.5 (* 0.65 (long ox))) (+ (long y) 0.1) (+ (long z) 0.5 (* 0.65 (long oz)))]
-                                   [(+ (* 0.05 (long ox)) (* 0.02 (random/of-key [t pos :sx]))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (random/of-key [t pos :sz])))]
+                                   [(+ (* 0.05 (long ox)) (* 0.02 (random/of-key t pos :sx))) 0.05 (+ (* 0.05 (long oz)) (* 0.02 (random/of-key t pos :sz)))]
                                    {:item :pumpkin-seeds :count 4})]
        (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
 

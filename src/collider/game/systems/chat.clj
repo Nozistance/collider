@@ -182,7 +182,7 @@
 (defn- duration-of ^long [world ^long given bounds salt]
   (if (pos? given)
     given
-    (weather/sample (random/of-key [(:tick world) salt]) bounds)))
+    (weather/sample (random/of-key (:tick world) salt) bounds)))
 
 (defn- weather-deltas [world eid kind given]
   (let [given (long (or given 0))

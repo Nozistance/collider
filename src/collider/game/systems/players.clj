@@ -15,25 +15,27 @@
 (def ^:private vel-zero (vv/v3 0.0 0.0 0.0))
 (def ^:const ^:private pos-unit 4096.0)
 (def ^:const ^:private rel-limit 32767)
-(defn- fixed ^long [v] (long (Math/floor (* (double v) pos-unit))))
+(defn- fixed ^long [v] (Math/round (* (double v) pos-unit)))
 (defn- angle ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
+(def ^:private simple-metadata
+  {:item          (fn [e] {:stack (:stack e)})
+   :tnt           (fn [e] {:fuse (:fuse e)})
+   :falling-block (fn [e] {:start (:start e)})})
+
+(defn- player-metadata [e]
+  (cond-> {:burning?    (boolean (:burning? e))
+           :sneaking?   (boolean (:sneaking? e))
+           :sprinting?  (boolean (:sprinting? e))
+           :using-item? (boolean (:using-item? e))
+           :skin-parts  (long (or (:skin-parts e) 0))}
+          (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
+
 (defn metadata [e]
-  (cond
-    (= :item (:type e))
-    {:stack (:stack e)}
-    (= :tnt (:type e))
-    {:fuse (:fuse e)}
-    (= :falling-block (:type e))
-    {:start (:start e)}
-    (mobs/mob-type? (:type e))
-    (mobs/metadata e)
-    :else
-    (cond-> {:burning?    (boolean (:burning? e))
-             :sneaking?   (boolean (:sneaking? e))
-             :sprinting?  (boolean (:sprinting? e))
-             :using-item? (boolean (:using-item? e))
-             :skin-parts  (long (or (:skin-parts e) 0))}
-            (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos])))))
+  (if-let [f (simple-metadata (:type e))]
+    (f e)
+    (if (mobs/mob-type? (:type e))
+      (mobs/metadata e)
+      (player-metadata e))))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
@@ -145,7 +147,7 @@
       (let [mdata (metadata e)]
         (cond-> [[:track eid (baseline (long (:tick world)) e)]
                  (out/all (out/move eid 0 0 0 (boolean (:on-ground e))))]
-                (seq mdata) (conj (out/all (out/meta eid mdata))))))))
+                (seq mdata) (conj (out/all (out/meta eid (:type e) mdata))))))))
 
 (defn- entities-by-chunk [ts]
   (persistent!
@@ -194,7 +196,7 @@
         ex (- (vv/x p) (double bx)) ey (- (vv/y p) (double by)) ez (- (vv/z p) (double bz))
         near? (< (+ (* ex ex) (* ey ey) (* ez ez)) pos-threshold)
         x (vv/x p) y (vv/y p) z (vv/z p)
-        dx (fixed ex) dy (fixed ey) dz (fixed ez)
+        dx (- (fixed x) (fixed bx)) dy (- (fixed y) (fixed by)) dz (- (fixed z) (fixed bz))
         ticks (- (long t) (long (.t0 tr)))
         yaw (angle (:yaw e)) pitch (angle (:pitch e))
         head (angle (or (:head-yaw e) (:yaw e)))
@@ -243,7 +245,7 @@
 
 (defn- self-msgs [eid e ^Frame f]
   (cond-> []
-          (.meta-changed? f) (conj (out/meta eid (.mdata f)))
+          (.meta-changed? f) (conj (out/meta eid (:type e) (.mdata f)))
           (.vel-changed? f) (conj (out/velocity eid (.vel f)))
           (seq (.slot-diff f)) (into (map (fn [[slot s]] (out/set-slot slot s))) (.slot-diff f))
           (.carried-changed? f) (conj (out/carried (:carried e)))))
@@ -251,75 +253,100 @@
 (defn- move-msgs [eid e ^Frame f]
   (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
           (.head-turned? f) (conj (out/head-look eid (.head f)))
-          (or (.meta-changed? f) (.first? f)) (conj (out/meta eid (.mdata f)))
+          (or (.meta-changed? f) (.first? f)) (conj (out/meta eid (:type e) (.mdata f)))
           (and (.due? f) (.vel-changed? f)) (conj (out/velocity eid (.vel f)))
           (seq (.equip-diff f)) (into (map (fn [[slot s]] (out/equipment eid slot s)) (.equip-diff f)))))
 
 (def ^:private item-update-interval 20)
 (def ^:private mob-update-interval 3)
+(defn- track-idle? [^Frame f]
+  (and (not (.due? f))
+       (not (.head-turned? f)) (not (.meta-changed? f))
+       (not (.equip-changed? f)) (not (.vel-changed? f))
+       (empty? (.slot-diff f)) (not (.carried-changed? f))))
+
+(defn- advance-pos [^Track tr ^Frame f]
+  (if (or (.rel? f) (not (.due? f)))
+    (cond-> (assoc tr :since-tp (.since f))
+            (.moved? f) (assoc :pos [(.x f) (.y f) (.z f)])
+            (.turned? f) (assoc :yaw (.yaw f) :pitch (.pitch f)))
+    (assoc tr :pos [(.x f) (.y f) (.z f)] :yaw (.yaw f) :pitch (.pitch f)
+              :on-ground (.ground f) :since-tp 0)))
+
 (defn- advance-track [^Track tr e ^Frame f]
-  (let [due? (.due? f) rel? (.rel? f)
-        moved? (.moved? f) turned? (.turned? f)]
-    (if (and (not due?)
-             (not (.head-turned? f)) (not (.meta-changed? f))
-             (not (.equip-changed? f)) (not (.vel-changed? f))
-             (empty? (.slot-diff f)) (not (.carried-changed? f)))
-      tr
-      (cond-> (if (or rel? (not due?))
-                (cond-> (assoc tr :since-tp (.since f))
-                        moved? (assoc :pos [(.x f) (.y f) (.z f)])
-                        turned? (assoc :yaw (.yaw f) :pitch (.pitch f)))
-                (assoc tr :pos [(.x f) (.y f) (.z f)] :yaw (.yaw f) :pitch (.pitch f)
-                          :on-ground (.ground f) :since-tp 0))
-              (.head-turned? f) (assoc :head (.head f))
-              (.meta-changed? f) (assoc :mdata (.mdata f))
-              (.equip-changed? f) (assoc :equip (.equip f))
-              (.vel-changed? f) (assoc :vel-sent (.vel f))
-              (seq (.slot-diff f)) (assoc :slots (or (:inventory e) {}))
-              (.carried-changed? f) (assoc :carried (:carried e))))))
+  (if (track-idle? f)
+    tr
+    (cond-> (advance-pos tr f)
+            (.head-turned? f) (assoc :head (.head f))
+            (.meta-changed? f) (assoc :mdata (.mdata f))
+            (.equip-changed? f) (assoc :equip (.equip f))
+            (.vel-changed? f) (assoc :vel-sent (.vel f))
+            (seq (.slot-diff f)) (assoc :slots (or (:inventory e) {}))
+            (.carried-changed? f) (assoc :carried (:carried e)))))
+
+(def ^:private update-freqs
+  {:item          item-update-interval
+   :tnt           10
+   :falling-block 20
+   :player        update-interval})
+
+(defn- update-freq ^long [e]
+  (long (get update-freqs (:type e) mob-update-interval)))
+
+(defn- due-now? [^long t tr e dirty?]
+  (or (zero? (rem (- t (long (:t0 tr))) (update-freq e)))
+      (and (= :item (:type e)) (boolean (:needs-sync? e)))
+      (boolean dirty?)))
+
+(defn- quiet? [tr e self? item? dirty?]
+  (and (not dirty?)
+       (= (equipment-stacks e) (:equip tr))
+       (or (not self?)
+           (and (identical? (:inventory e) (:slots tr))
+                (= (:carried e) (:carried tr))))
+       (or item? (not (vel-changed? tr (:vel e))))))
+
+(defn- settle-track [tr tr' e due? msgs]
+  (cond
+    (not (identical? tr tr')) (assoc tr' :seen e)
+    (and (empty? msgs) (not due?) (not (identical? e (:seen tr))))
+    (assoc tr :seen e)
+    :else tr'))
+
+(defn- collect-out [eid e vs self? track-delta msgs selfs]
+  (let [out (transient [])
+        out (if track-delta (conj! out track-delta) out)
+        out (if (some? vs)
+              (reduce (fn [out m] (conj! out (out/all m))) out msgs)
+              out)
+        out (if self?
+              (reduce (fn [out m] (conj! out (out/to eid m))) out selfs)
+              out)]
+    (persistent! out)))
+
+(defn- changed-deltas [t eid e vs self? tr mdata due?]
+  (let [f (frame e tr (long t) due? mdata)
+        tr' (advance-track tr e f)
+        msgs (move-msgs eid e f)
+        tr' (settle-track tr tr' e due? msgs)]
+    (collect-out eid e vs self?
+                 (when-not (identical? tr tr') [:track eid tr'])
+                 msgs (self-msgs eid e f))))
 
 (defn- move-deltas [t viewers [eid e]]
   (let [vs (viewers eid)
-        self? (= :player (:type e))]
-    (when (or (some? vs) self?)
-      (let [freq (case (:type e)
-                   :item item-update-interval
-                   :tnt 10
-                   :falling-block 20
-                   :player update-interval
-                   mob-update-interval)
-            item? (= :item (:type e))
-            tr (track-of (long t) e)
-            mdata (metadata e)
-            dirty? (not= mdata (:mdata tr))
-            due? (or (zero? (rem (- (long t) (long (:t0 tr))) (long freq)))
-                     (and item? (boolean (:needs-sync? e)))
-                     dirty?)]
-        (when-not (and (not due?) (instance? Track tr) (identical? e (:seen tr)))
-          (if (and (not due?) (instance? Track tr)
-                   (not dirty?)
-                   (= (equipment-stacks e) (:equip tr))
-                   (or (not self?) (and (identical? (:inventory e) (:slots tr)) (= (:carried e) (:carried tr))))
-                   (or item? (not (vel-changed? tr (:vel e)))))
-            (when-not (identical? e (:seen tr))
-              [[:track eid (assoc tr :seen e)]])
-            (let [f (frame e tr (long t) due? mdata)
-                  tr' (advance-track tr e f)
-                  msgs (move-msgs eid e f)
-                  tr' (cond
-                        (not (identical? tr tr')) (assoc tr' :seen e)
-                        (and (empty? msgs) (not due?) (not (identical? e (:seen tr))))
-                        (assoc tr :seen e)
-                        :else tr')
-                  out (transient [])
-                  out (if (identical? tr tr') out (conj! out [:track eid tr']))
-                  out (if (some? vs)
-                        (reduce (fn [out m] (conj! out (out/all m))) out msgs)
-                        out)
-                  out (if self?
-                        (reduce (fn [out m] (conj! out (out/to eid m))) out (self-msgs eid e f))
-                        out)]
-              (persistent! out))))))))
+        self? (= :player (:type e))
+        item? (= :item (:type e))
+        tr (track-of (long t) e)
+        mdata (metadata e)
+        dirty? (not= mdata (:mdata tr))
+        due? (due-now? (long t) tr e dirty?)
+        fresh? (and (not due?) (instance? Track tr))]
+    (when (and (or (some? vs) self?)
+               (not (and fresh? (identical? e (:seen tr)))))
+      (if (and fresh? (quiet? tr e self? item? dirty?))
+        (when-not (identical? e (:seen tr)) [[:track eid (assoc tr :seen e)]])
+        (changed-deltas (long t) eid e vs self? tr mdata due?)))))
 
 (def ^:private tab-header-interval 20)
 (defn- fmt ^String [^String pattern v]
@@ -367,23 +394,25 @@
     (let [by-chunk (entities-by-chunk (tracked-entries world))]
       (into [] (mapcat (fn [entry] (tracking-deltas world by-chunk entry))) (state/player-entries world)))))
 
+(defn- spawn-jobs [world ps ts]
+  (let [by-chunk (entities-by-chunk ts)]
+    (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
+
+(defn- move-jobs [world ps ts events]
+  (let [viewers (viewer-index ps)]
+    (conj (mapv (fn [batch]
+                  #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
+                (partition-all 32 ts))
+          #(swing-deltas viewers events))))
+
 (defn players [world d]
   (let [events (:input d)
         ps (state/player-entries world)
         ts (tracked-entries world)]
-    (let [spawns (fn []
-                   (let [by-chunk (entities-by-chunk ts)]
-                     (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
-          moves (fn []
-                  (let [viewers (viewer-index ps)]
-                    (conj (mapv (fn [batch]
-                                  #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
-                                (partition-all 32 ts))
-                          #(swing-deltas viewers events))))]
-      [#(joined-deltas events)
-       #(duplicate-login-deltas world events)
-       #(list-deltas world ps)
-       #(pending-teleport-deltas world ps)
-       spawns
-       moves
-       #(tab-header-deltas world events)])))
+    [#(joined-deltas events)
+     #(duplicate-login-deltas world events)
+     #(list-deltas world ps)
+     #(pending-teleport-deltas world ps)
+     #(spawn-jobs world ps ts)
+     #(move-jobs world ps ts events)
+     #(tab-header-deltas world events)]))

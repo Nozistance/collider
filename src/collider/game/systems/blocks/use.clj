@@ -53,7 +53,7 @@
       (concat (edit/change-deltas world [[pos (block/state (block/block-of cur) (assoc (block/props-of cur) :berries :false))]])
               [[:spawn-entity (items/popped world pos {:item :glow-berries :count 1} :berries)]
                (out/all (out/sound :cave-vines/pick-berries pos 1.0
-                                   (random/pitch [(:tick world) pos :berries])))]))))
+                                   (random/pitch (:tick world) pos :berries)))]))))
 
 (def ^:private ^:const bush-max-age 3)
 (def ^:private ^:const dust-plume-particles 7)
@@ -64,7 +64,7 @@
        (not (and (= :bone-meal item) (< (block/prop-long cur :age) bush-max-age)))))
 
 (defn- bush-stacks [world pos ^long a]
-  (let [n (inc (long (Math/floor (* berry-rolls (random/of-key [(:tick world) pos :bush-count])))))]
+  (let [n (inc (long (Math/floor (* berry-rolls (random/of-key (:tick world) pos :bush-count)))))]
     (cond-> [] (= bush-max-age a) (conj {:item :sweet-berries :count 1})
             true (conj {:item :sweet-berries :count n}))))
 
@@ -74,7 +74,7 @@
             (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bush i])])
                          (bush-stacks world pos (block/prop-long cur :age)))
             [(out/all (out/sound :sweet-berry-bush/pick-berries pos 1.0
-                                 (random/pitch [(:tick world) pos :bush-pitch])))])))
+                                 (random/pitch (:tick world) pos :bush-pitch)))])))
 
 (def ^:private statue-types #{:copper-golem-statue :weathering-copper-golem-statue})
 (def ^:private next-pose {:standing :sitting :sitting :running :running :star :star :standing})
@@ -94,7 +94,7 @@
     (cond
       (and item (< lvl 8) (data/compost item))
       (when (< lvl 7)
-        (let [took? (or (zero? lvl) (< (random/of-key [(:tick world) pos :compost]) (double (data/compost item))))
+        (let [took? (or (zero? lvl) (< (random/of-key (:tick world) pos :compost) (double (data/compost item))))
               st (if took? (block/state :composter {:level (keyword (str (inc lvl)))}) cur)]
           (concat (when took? (edit/change-deltas world [[pos st]]))
                   [(out/all (out/level-event out/composter-fill pos (if took? 1 0)))

@@ -24,7 +24,7 @@
    :match? (fn [_chunks st _p] (contains? block/coral-types (block/type-of st)))
    :wake   (fn [chunks tick p _old _self?]
              (when-not (coral-wet? chunks p (gen/at chunks p))
-               (+ (long tick) 60 (long (Math/floor (* 40.0 (random/of-key [tick p :coral])))))))
+               (+ (long tick) 60 (long (Math/floor (* 40.0 (random/of-key tick p :coral)))))))
    :due    (fn [chunks p _ctx]
              (let [st (gen/at chunks p)]
                (when-not (coral-wet? chunks p st)

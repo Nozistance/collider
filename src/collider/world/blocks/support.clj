@@ -123,7 +123,7 @@
     :else (block/tagged? below (get vegetation-tags t "supports_vegetation"))))
 
 (defn plant-age [tick pos]
-  (keyword (str (long (Math/floor (* 25.0 (random/of-key [tick pos :plant-age])))))))
+  (keyword (str (long (Math/floor (* 25.0 (random/of-key tick pos :plant-age)))))))
 
 (defn- growing-plant-supported? [chunks template pos st]
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))

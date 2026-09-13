@@ -32,7 +32,7 @@
               (let [dx (- (long qx) (long x)) dy (- (long qy) (long y)) dz (- (long qz) (long z))
                     dist (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz))))
                     lo (long (* dist 5.0)) hi (long (* dist 10.0))
-                    roll (long (Math/floor (* (random/of-key [tick q :eyeblossom]) (inc (- hi lo)))))]
+                    roll (long (Math/floor (* (random/of-key tick q :eyeblossom) (inc (- hi lo)))))]
                 (update m (+ tick lo roll) (fnil conj []) (chunk/block-pos->id q)))))
           {} (neighbours p)))
 

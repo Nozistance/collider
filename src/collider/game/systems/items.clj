@@ -37,17 +37,17 @@
         yaw (Math/toRadians (double (or (:yaw e) 0.0)))
         pitch (Math/toRadians (double (or (:pitch e) 0.0)))
         t (:tick world)
-        ang (* (random/of-key [t eid :a]) Math/PI 2.0)
-        mag (* throw-spread (random/of-key [t eid :m]))]
+        ang (* (random/of-key t eid :a) Math/PI 2.0)
+        mag (* throw-spread (random/of-key t eid :m))]
     [(+ (* (- throw-power) (Math/sin yaw) (Math/cos pitch)) (* (Math/cos ang) mag))
      (+ (* (- throw-power) (Math/sin pitch)) throw-lift
-        (* throw-jitter (- (random/of-key [t eid :y1]) (random/of-key [t eid :y2]))))
+        (* throw-jitter (- (random/of-key t eid :y1) (random/of-key t eid :y2))))
      (+ (* throw-power (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
 (defn- around-velocity [world eid salt]
   (let [t (:tick world)
-        pow (* around-power (random/of-key [t eid salt :p]))
-        dir (* Math/PI 2.0 (random/of-key [t eid salt :d]))]
+        pow (* around-power (random/of-key t eid salt :p))
+        dir (* Math/PI 2.0 (random/of-key t eid salt :d))]
     [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
 
 (defn dropped
@@ -60,7 +60,7 @@
 
 (defn popped [world pos stack salt]
   (let [t (:tick world)
-        r (fn [k] (random/of-key [t pos salt k]))
+        r (fn [k] (random/of-key t pos salt k))
         [x y z] pos]
     (entity/item [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))
                   (+ (double y) 0.5 (- (* 0.5 (r :y)) 0.25) -0.125)
@@ -160,14 +160,14 @@
 (defn- step-item [world eid e]
   (let [chunks (:chunks world) pos (:pos e)
         [[vx _ vz :as drift] in-fluid?] (item-drift chunks pos (:vel e))
+        age (inc (long (or (:age e) 0)))
         resting? (and (:on-ground e)
                       (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) resting-speed-sq)
-                      (not= 0 (rem (+ (long (:tick world)) (long eid)) resting-period)))
+                      (not= 0 (rem (+ age (long eid)) resting-period)))
         [pos' vel' on-ground] (if resting?
                                 [pos drift true]
                                 (item-moved chunks pos drift))
-        vel' (assoc vel' 1 (liquid/bubble-push chunks gen/flat-chunk pos' (double (vel' 1))))
-        age (inc (long (or (:age e) 0)))]
+        vel' (assoc vel' 1 (liquid/bubble-push chunks gen/flat-chunk pos' (double (vel' 1))))]
     (if (>= age despawn-age)
       [:remove-entity eid]
       [:merge-entity eid

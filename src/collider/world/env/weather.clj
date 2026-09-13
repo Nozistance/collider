@@ -72,7 +72,7 @@
 (defn- next-phase [left on? t salt duration delay]
   (if (pos? (long left))
     (toggled left on?)
-    [(sample (random/of-key [t salt]) (if on? duration delay)) on?]))
+    [(sample (random/of-key t salt) (if on? duration delay)) on?]))
 
 (defn- timers [w]
   (let [t (long (:tick w 0))

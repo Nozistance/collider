@@ -111,7 +111,7 @@
 
 (defn- tick-changes [chunks p ctx]
   (let [st (gen/at-void chunks p)
-        r (fn [salt] (random/of-key [(:tick ctx) p salt]))
+        r (fn [salt] (random/of-key (:tick ctx) p salt))
         below (gen/at-void chunks (mapv + p [0 -1 0]))
         a (age st)
         a' (min 15 (+ a (quot (pick r :age 3) 2)))
