@@ -25,7 +25,7 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
-(declare block-drops block-props blocks compostables datapack-names fire-odds flt kw light-table packets recipes registries sound-types tags-of vanilla-items vanilla-shapes write-edn!)
+(declare block-drops block-props block-pairs block-refs pot-contents strippables blocks compostables simple-name block-class wall-items datapack-names fire-odds flt kw light-table packets recipes registries sound-types tags-of vanilla-items vanilla-shapes write-edn!)
 
 (defn data [{:keys [dir out] :or {out "resources/mc"}}]
   (let [root (io/file (or dir (str (System/getProperty "user.home") "/Documents/MC-26.2")))
@@ -36,9 +36,9 @@
                       {:dir (str root)})))
     (println "reading" (str root))
     (let [ps (packets reports)
-          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire lt :light bp :block-props snd :sounds compost :compost} (vanilla-shapes root)
+          {sh :shapes ol :outlines sturdy :sturdy center :sturdy-center rigid :sturdy-rigid flags :flags fire :fire lt :light bp :block-props snd :sounds compost :compost walls :walls} (vanilla-shapes root)
           drops (when (.isFile server) (block-drops server))
-          items (merge-with merge (vanilla-items reports) compost)
+          items (merge-with merge (vanilla-items reports) compost walls)
           bs (blocks reports bp (into #{} (comp (remove (fn [[_ b]] (contains? sh (get (first (filter #(get % "default") (get b "states"))) "id")))) (map (comp kw key)))
                                       (json/read-str (slurp (io/file reports "blocks.json")))))
           rs (registries reports)
@@ -218,6 +218,7 @@
        :block-props   (:props @props)
        :sounds        (:sounds @props)
        :compost       (compostables cl)
+       :walls         (wall-items cl)
        :sturdy-center (into (sorted-map)
                             (for [st states
                                   :let [id (.invoke get-id registry (object-array [st]))
@@ -279,6 +280,50 @@
                     first)]
     (doto ^Field f (.setAccessible true))))
 
+(defn- simple-name [^Class c]
+  (if (str/blank? (.getSimpleName c)) (recur (.getSuperclass c)) (.getSimpleName c)))
+
+(defn- block-class [b]
+  (kw (str/lower-case (str/replace (simple-name (class b)) #"(?<=.)(?=\p{Upper})" "_"))))
+
+(defn- block-pairs [^ClassLoader cl reg key-m cls field forward back]
+  (let [name-of (fn [b] (kw (str (.invoke ^Method key-m reg (object-array [b])))))
+        supplier (static-field cl cls field)
+        m (.invoke (.getMethod (Class/forName "java.util.function.Supplier" true cl) "get" (make-array Class 0))
+                   supplier (object-array 0))]
+    (apply merge-with merge
+           (into (sorted-map))
+           (for [[a b] m]
+             {(name-of a) {forward (name-of b)} (name-of b) {back (name-of a)}}))))
+
+(def ^:private ref-fields {"deadBlock" :dead "concrete" :concrete "potted" :potted})
+
+(defn- block-refs [reg key-m block-cls]
+  (let [name-of (fn [b] (kw (str (.invoke ^Method key-m reg (object-array [b])))))
+        fields (fn [^Class c] (mapcat (fn [^Class c] (.getDeclaredFields c))
+                                      (take-while some? (iterate (fn [^Class c] (.getSuperclass c)) c))))]
+    (into (sorted-map)
+          (for [b (iterator-seq (.iterator ^Iterable reg))
+                :let [m (into (sorted-map)
+                              (keep (fn [^Field f]
+                                      (when (and (= block-cls (.getType f)) (ref-fields (.getName f)))
+                                        (.setAccessible f true)
+                                        [(ref-fields (.getName f)) (name-of (.get f b))])))
+                              (fields (class b)))]
+                :when (seq m)]
+            [(name-of b) m]))))
+
+(defn- pot-contents [refs]
+  (into (sorted-map)
+        (for [[pot {:keys [potted]}] refs :when (and potted (not= :air potted))]
+          [potted {:pot pot}])))
+
+(defn- strippables [^ClassLoader cl reg key-m]
+  (let [name-of (fn [b] (kw (str (.invoke ^Method key-m reg (object-array [b])))))
+        f (doto (.getDeclaredField (Class/forName "net.minecraft.world.item.AxeItem" true cl) "STRIPPABLES")
+            (.setAccessible true))]
+    (into (sorted-map) (map (fn [[a b]] [(name-of a) {:stripped (name-of b)}])) (.get f nil))))
+
 (defn- block-props [^ClassLoader cl]
   (let [types (sound-types cl)
         by-type (into {} (map (fn [[k o _]] [o k])) types)
@@ -301,12 +346,34 @@
                                    (cond-> {:open (event want open t) :close (event want close t)}
                                            hand? (assoc :hand? (boolean (.invoke hand-m t (object-array 0))))))))
                              kinds))]
-    {:props  (into (sorted-map)
-                   (for [b (iterator-seq (.iterator ^Iterable reg))]
-                     [(kw (str (.invoke key-m reg (object-array [b]))))
-                      (merge {:resistance (flt (.get resist-f b)) :sound (get by-type (.get sound-f b))}
-                             (toggle b))]))
+    {:props  (merge-with merge
+                         (into (sorted-map)
+                               (for [b (iterator-seq (.iterator ^Iterable reg))]
+                                 [(kw (str (.invoke key-m reg (object-array [b]))))
+                                  (merge {:resistance (flt (.get resist-f b)) :sound (get by-type (.get sound-f b))
+                                          :class      (block-class b)}
+                                         (toggle b))]))
+                         (block-pairs cl reg key-m "net.minecraft.world.level.block.WeatheringCopper"
+                                      "NEXT_BY_BLOCK" :next :previous)
+                         (block-pairs cl reg key-m "net.minecraft.world.item.HoneycombItem"
+                                      "WAXABLES" :waxed :unwaxed)
+                         (let [refs (block-refs reg key-m (Class/forName "net.minecraft.world.level.block.Block" true cl))]
+                           (merge-with merge refs (pot-contents refs)))
+                         (strippables cl reg key-m))
      :sounds (into (sorted-map) (map (fn [[k _ evs]] [k evs])) types)}))
+
+(defn- wall-items [^ClassLoader cl]
+  (let [reg (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "ITEM")
+        blocks (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "BLOCK")
+        key-m (.getMethod (class reg) "getKey" (into-array Class [Object]))
+        cls (Class/forName "net.minecraft.world.item.StandingAndWallBlockItem" true cl)
+        wall-f (doto (.getDeclaredField cls "wallBlock") (.setAccessible true))]
+    (into (sorted-map)
+          (keep (fn [i]
+                  (when (.isInstance cls i)
+                    [(kw (str (.invoke key-m reg (object-array [i]))))
+                     {:wall (kw (str (.invoke key-m blocks (object-array [(.get wall-f i)]))))}])))
+          (iterator-seq (.iterator ^Iterable reg)))))
 
 (defn- compostables [^ClassLoader cl]
   (let [reg (static-field cl "net.minecraft.core.registries.BuiltInRegistries" "ITEM")
@@ -503,9 +570,17 @@
                     song (get cs "minecraft:jukebox_playable")
                     dye (get cs "minecraft:dye")
                     pat (get cs "minecraft:provides_banner_patterns")
+                    egg (get-in cs ["minecraft:entity_data" "id"])
+                    hit (reduce + 0.0 (for [a (get cs "minecraft:attribute_modifiers")
+                                            :when (and (= "minecraft:attack_damage" (get a "type"))
+                                                       (= "add_value" (get a "operation"))
+                                                       (= "mainhand" (get a "slot")))]
+                                        (double (get a "amount"))))
                     m (cond-> (sorted-map) (not= n 64) (assoc :max-stack n) slot (assoc :equip (kw slot))
                               song (assoc :jukebox-song (kw song))
                               dye (assoc :dye (kw dye))
+                              egg (assoc :spawns (kw egg))
+                              (pos? (double hit)) (assoc :attack-damage (flt hit))
                               (string? pat) (assoc :patterns (str/replace (subs pat 1) #"^minecraft:" "")))]
               :when (seq m)]
           [(kw (str/replace (.getName f) #"\.json$" "")) m])))
