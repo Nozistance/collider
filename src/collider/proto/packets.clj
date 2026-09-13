@@ -28,7 +28,7 @@
 (def packets
   {[:handshake :intention]
    {:read (fn [^Buf buf] {:protocol (c/read-varint buf)
-                          :address  (c/read-string buf)
+                          :address  (c/read-string buf 255)
                           :port     (.readUnsignedShort buf)
                           :next     (c/read-varint buf)})}
 
@@ -40,7 +40,7 @@
    {:write (fn [^Buf buf m] (.writeLong buf (long (:payload m))))}
 
    [:login :hello]
-   {:read (fn [^Buf buf] {:name (c/read-string buf) :uuid (c/read-uuid buf)})}
+   {:read (fn [^Buf buf] {:name (c/read-string buf 16) :uuid (c/read-uuid buf)})}
    [:login :login-compression]
    {:write (fn [^Buf buf m] (c/write-varint buf (long (:threshold m))))}
    [:login :login-finished]
@@ -158,7 +158,7 @@
                (c/write-string buf m)
                (.writeBoolean buf false)))}
    [:play :command-suggestion]
-   {:read (fn [^Buf buf] {:id (c/read-varint buf) :text (c/read-string buf)})}
+   {:read (fn [^Buf buf] {:id (c/read-varint buf) :text (c/read-string buf 32500)})}
    [:play :award-stats]
    {:write (fn [^Buf buf m]
              (c/write-varint buf (count (:stats m)))
@@ -180,7 +180,7 @@
                (c/write-string buf v)))}
    [:play :set-game-rule]
    {:read (fn [^Buf buf]
-            {:entries (vec (repeatedly (c/read-varint buf)
+            {:entries (vec (repeatedly (c/read-count buf)
                                        #(vector (c/read-string buf) (c/read-string buf))))})}
    [:play :ping-request]
    {:read (fn [^Buf buf] {:payload (.readLong buf)})}
@@ -485,7 +485,7 @@
              (c/write-holder-ref buf (long (:sound m)))
              (c/write-varint buf 0))}
    [:play :chat]
-   {:read (fn [^Buf buf] {:message (c/read-string buf)})}
+   {:read (fn [^Buf buf] {:message (c/read-string buf 256)})}
    [:play :chat-command]
    {:read (fn [^Buf buf] {:command (c/read-string buf)})}
    [:play :move-player-pos]
@@ -523,7 +523,7 @@
    [:play :sign-update]
    {:read (fn [^Buf buf] {:pos    (c/read-block-pos buf)
                           :front? (.readBoolean buf)
-                          :lines  (vec (repeatedly 4 #(c/read-string buf)))})}
+                          :lines  (vec (repeatedly 4 #(c/read-string buf 384)))})}
    [:play :swing]
    {:read (fn [^Buf buf] {:hand (c/read-varint buf)})}
    [:play :player-command]

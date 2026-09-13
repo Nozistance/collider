@@ -20,11 +20,16 @@
       (do (.writeByte buf (unchecked-int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
+(def ^:private ^:const max-varint-size 5)
+
 (defn read-varint ^long [^Buf buf]
   (loop [n 0 r 0]
     (let [b (long (.readByte buf))
           r (bit-or r (bit-shift-left (bit-and b 0x7F) (* 7 n)))]
-      (if (zero? (bit-and b 0x80)) (long (unchecked-int r)) (recur (inc n) r)))))
+      (cond
+        (zero? (bit-and b 0x80)) (long (unchecked-int r))
+        (>= (inc n) max-varint-size) (throw (ex-info "VarInt too big" {:bytes (inc n)}))
+        :else (recur (inc n) r)))))
 
 (defn write-varlong [^Buf buf ^long v]
   (loop [v v]
@@ -38,10 +43,27 @@
     (write-varint buf (alength bs))
     (.writeBytes buf bs)))
 
-(defn read-string ^String [^Buf buf]
-  (let [n (read-varint buf) bs (byte-array n)]
-    (.readBytes buf bs)
-    (String. bs StandardCharsets/UTF_8)))
+(def ^:const max-string-length 32767)
+
+(defn read-string
+  (^String [^Buf buf] (read-string buf max-string-length))
+  (^String [^Buf buf max]
+   (let [max (long max)
+         n (read-varint buf)]
+     (when (or (neg? n) (> n (* max 3)))
+       (throw (ex-info "encoded string too long" {:length n :max (* max 3)})))
+     (let [bs (byte-array n)]
+       (.readBytes buf bs)
+       (let [s (String. bs StandardCharsets/UTF_8)]
+         (when (> (.length s) max)
+           (throw (ex-info "string too long" {:length (.length s) :max max})))
+         s)))))
+
+(defn read-count ^long [^Buf buf]
+  (let [n (read-varint buf)]
+    (when (or (neg? n) (> n (.readableBytes buf)))
+      (throw (ex-info "count exceeds remaining bytes" {:count n :readable (.readableBytes buf)})))
+    n))
 
 (defn write-uuid [^Buf buf ^UUID u]
   (.writeLong buf (.getMostSignificantBits u))
@@ -134,32 +156,97 @@
             (write-nbt-payload d v))))
     (.writeBytes buf (.toByteArray bo))))
 
-(defn- read-nbt-payload [^DataInputStream d ^long t]
+(def ^:private ^:const nbt-quota 2097152)
+(def ^:private ^:const nbt-max-depth 512)
+
+(defn- account! [^longs acc ^long size]
+  (when (neg? size)
+    (throw (ex-info "negative NBT size" {:size size})))
+  (let [used (+ (aget acc 0) size)]
+    (when (> used nbt-quota)
+      (throw (ex-info "NBT tag too big" {:usage used :quota nbt-quota})))
+    (aset acc 0 used)))
+
+(defn- push-depth! [^longs acc]
+  (when (>= (aget acc 1) nbt-max-depth)
+    (throw (ex-info "NBT tag too complex" {:max-depth nbt-max-depth})))
+  (aset acc 1 (inc (aget acc 1))))
+
+(defn- pop-depth! [^longs acc]
+  (aset acc 1 (dec (aget acc 1))))
+
+(defn- read-nbt-string ^String [^DataInputStream d ^longs acc ^long base]
+  (account! acc base)
+  (let [s (.readUTF d)]
+    (account! acc (* 2 (.length s)))
+    s))
+
+(declare read-nbt-payload)
+
+(defn- read-nbt-list [^DataInputStream d ^longs acc]
+  (push-depth! acc)
+  (try
+    (account! acc 36)
+    (let [et (long (.readByte d))
+          n (long (.readInt d))]
+      (account! acc (* 4 n))
+      (with-meta (mapv (fn [_] (read-nbt-payload d acc et)) (range n)) {:nbt-type et}))
+    (finally (pop-depth! acc))))
+
+(defn- read-nbt-compound [^DataInputStream d ^longs acc]
+  (push-depth! acc)
+  (try
+    (account! acc 48)
+    (loop [entries []]
+      (let [et (long (.readByte d))]
+        (if (zero? et)
+          (apply array-map (apply concat entries))
+          (let [nm (read-nbt-string d acc 28)
+                v (read-nbt-payload d acc et)]
+            (account! acc 36)
+            (recur (conj entries [(keyword nm) v]))))))
+    (finally (pop-depth! acc))))
+
+(defn- read-nbt-bytes [^DataInputStream d ^longs acc]
+  (account! acc 24)
+  (let [n (long (.readInt d))]
+    (account! acc n)
+    (let [b (byte-array n)] (.readFully d b) b)))
+
+(defn- read-nbt-ints [^DataInputStream d ^longs acc]
+  (account! acc 24)
+  (let [n (long (.readInt d))]
+    (account! acc (* 4 n))
+    (let [a (int-array n)] (dotimes [i n] (aset a i (.readInt d))) a)))
+
+(defn- read-nbt-longs [^DataInputStream d ^longs acc]
+  (account! acc 24)
+  (let [n (long (.readInt d))]
+    (account! acc (* 8 n))
+    (let [a (long-array n)] (dotimes [i n] (aset a i (.readLong d))) a)))
+
+(defn- read-nbt-payload [^DataInputStream d ^longs acc ^long t]
   (case (int t)
-    1 (Byte/valueOf (.readByte d))
-    2 (Short/valueOf (.readShort d))
-    3 (Integer/valueOf (.readInt d))
-    4 (Long/valueOf (.readLong d))
-    5 (Float/valueOf (.readFloat d))
-    6 (Double/valueOf (.readDouble d))
-    7 (let [n (.readInt d) b (byte-array n)] (.readFully d b) b)
-    8 (.readUTF d)
-    9 (let [et (long (.readByte d)) n (.readInt d)]
-        (with-meta (mapv (fn [_] (read-nbt-payload d et)) (range n)) {:nbt-type et}))
-    10 (loop [acc []]
-         (let [et (long (.readByte d))]
-           (if (zero? et)
-             (apply array-map (apply concat acc))
-             (let [nm (.readUTF d)] (recur (conj acc [(keyword nm) (read-nbt-payload d et)]))))))
-    11 (let [n (.readInt d) a (int-array n)] (dotimes [i n] (aset a i (.readInt d))) a)
-    12 (let [n (.readInt d) a (long-array n)] (dotimes [i n] (aset a i (.readLong d))) a)
+    1 (do (account! acc 9) (Byte/valueOf (.readByte d)))
+    2 (do (account! acc 10) (Short/valueOf (.readShort d)))
+    3 (do (account! acc 12) (Integer/valueOf (.readInt d)))
+    4 (do (account! acc 16) (Long/valueOf (.readLong d)))
+    5 (do (account! acc 12) (Float/valueOf (.readFloat d)))
+    6 (do (account! acc 16) (Double/valueOf (.readDouble d)))
+    7 (read-nbt-bytes d acc)
+    8 (read-nbt-string d acc 36)
+    9 (read-nbt-list d acc)
+    10 (read-nbt-compound d acc)
+    11 (read-nbt-ints d acc)
+    12 (read-nbt-longs d acc)
     (throw (ex-info "unknown NBT tag" {:tag t}))))
 
 (defn read-nbt [^Buf buf]
   (let [in (ByteArrayInputStream. (.a buf) (.r buf) (- (.w buf) (.r buf)))
         d (DataInputStream. in)
+        acc (long-array 2)
         t (long (.readByte d))
-        v (when-not (zero? t) (read-nbt-payload d t))]
+        v (when-not (zero? t) (read-nbt-payload d acc t))]
     (set! (.r buf) (- (.w buf) (.available in)))
     v))
 
@@ -239,12 +326,12 @@
          (fn [^Buf b v] (.writeBoolean b (some? v)) (when (some? v) (w b v)))))
 
 (defn- c-list [{:keys [r w]}]
-  (codec (fn [^Buf b] (let [n (read-varint b)] (mapv (fn [_] (r b)) (range n))))
+  (codec (fn [^Buf b] (let [n (read-count b)] (mapv (fn [_] (r b)) (range n))))
          (fn [^Buf b v] (write-varint b (count v)) (doseq [x v] (w b x)))))
 
 (defn- c-map [k v]
   (codec (fn [^Buf b]
-           (let [n (read-varint b)]
+           (let [n (read-count b)]
              (apply array-map (mapcat (fn [_] [((:r k) b) ((:r v) b)]) (range n)))))
          (fn [^Buf b m]
            (write-varint b (count m))
@@ -285,7 +372,7 @@
 
 (defn- c-holder-set [registry]
   (codec (fn [^Buf b]
-           (let [n (dec (read-varint b))]
+           (let [n (dec (read-count b))]
              (if (neg? n)
                {:tag (read-id b)}
                (mapv (fn [_] (data/entry-name registry (read-varint b))) (range n)))))
@@ -605,8 +692,8 @@
       (throw (ex-info "no codec for data component" {:component kw}))))
 
 (defn read-patch [^Buf buf]
-  (let [added (read-varint buf)
-        removed (read-varint buf)]
+  (let [added (read-count buf)
+        removed (read-count buf)]
     (if (and (zero? added) (zero? removed))
       nil
       (let [cs (mapv (fn [_]
@@ -646,9 +733,9 @@
   (when (.readBoolean buf)
     (let [item (read-varint buf)
           n (read-varint buf)
-          added (read-varint buf)]
+          added (read-count buf)]
       (dotimes [_ added] (read-varint buf) (.readInt buf))
-      (let [removed (read-varint buf)]
+      (let [removed (read-count buf)]
         (dotimes [_ removed] (read-varint buf))
         (cond-> {:item (data/entry-name "item" item) :count n}
                 (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
@@ -704,8 +791,7 @@
               dst (byte-array n)]
           (.readBytes buf src)
           (.setInput inflater src)
-          (let [got (.inflate inflater dst)]
-            (.reset inflater)
+          (let [got (try (.inflate inflater dst) (finally (.reset inflater)))]
             (when (not= got n)
               (throw (ex-info "badly compressed packet" {:got got :expected n}))))
           (.clear buf)
