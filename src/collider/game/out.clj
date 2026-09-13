@@ -12,8 +12,9 @@
 (defn time [age time-of-day]
   {:msg :time :age age :time time-of-day})
 
-(defn explosion [center radius blocks motion]
-  {:msg :explosion :center center :radius radius :blocks blocks :motion motion})
+(defn explosion [center radius blocks motions pitch]
+  {:msg     :explosion :center center :radius radius :blocks blocks
+   :motions motions :pitch (double pitch)})
 
 (defn teleport [pos yaw pitch]
   {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)})
@@ -47,6 +48,9 @@
 
 (defn close []
   {:msg :close})
+
+(defn joined []
+  {:msg :joined})
 
 (defn block-ack [sequence]
   {:msg :block-ack :sequence sequence})
@@ -125,7 +129,7 @@
   {:msg :status :eid eid :kind kind})
 
 (defn collect [item-eid collector-eid]
-  {:msg :collect :item item-eid :collector collector-eid})
+  {:msg :collect :eid item-eid :collector collector-eid})
 
 (defn sound [kind pos volume pitch]
   {:msg :sound :kind kind :pos pos :volume (double volume) :pitch (double pitch)})

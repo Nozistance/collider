@@ -106,6 +106,10 @@
                   d))))
           events))
 
+(defn- joined-deltas [events]
+  (for [[tag eid] events :when (= :player-join tag)]
+    (out/to eid (out/joined))))
+
 (defn- add-entry [e]
   {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)})
 
@@ -370,7 +374,8 @@
                                   #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
                                 (partition-all 32 ts))
                           #(swing-deltas viewers events))))]
-      [#(duplicate-login-deltas world events)
+      [#(joined-deltas events)
+       #(duplicate-login-deltas world events)
        #(list-deltas world ps)
        #(pending-teleport-deltas world ps)
        spawns

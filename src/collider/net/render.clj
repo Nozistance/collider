@@ -1,10 +1,14 @@
 (ns collider.net.render
   (:require [collider.game.block.blockentity :as be]
             [clojure.data.int-map :as i]
+            [collider.config :as config]
             [collider.data :as data]
+            [collider.game.command.tree :as commands]
             [collider.game.deltas]
+            [collider.game.state :as state]
             [collider.game.gamerules :as rules]
             [collider.log :as log]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen])
@@ -202,11 +206,26 @@
     {:packet :sound :sound id :source src :pos (:pos m) :volume (:volume m) :pitch (:pitch m)}
     (once! [:sound (:kind m)])))
 
-(defn- explode-packet [m]
-  (let [k (:motion m)]
+(defn- explode-packet [m eid]
+  (let [k (get (:motions m) eid)]
     {:packet    :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
      :particle  explosion-particle :sound (first (sound-id :explosion))}))
+
+(def ^:private ^:const explosion-range-sq 4096.0)
+(defn- in-earshot? [world center eid]
+  (when-let [p (get-in world [:entities eid :pos])]
+    (let [dx (- (v/x p) (double (center 0)))
+          dy (- (v/y p) (double (center 1)))
+          dz (- (v/z p) (double (center 2)))]
+      (< (+ (* dx dx) (* dy dy) (* dz dz)) explosion-range-sq))))
+
+(defn- explosion-packets [world m]
+  (let [sound (sound-packet {:kind :explosion :pos (:center m) :volume 4.0 :pitch (:pitch m)})]
+    (for [eid (players world)
+          :when (in-earshot? world (:center m) eid)
+          p (cond-> [(explode-packet m eid)] sound (conj sound))]
+      [eid p])))
 
 (defn- fx-packets [world m]
   (case (:msg m)
@@ -273,12 +292,54 @@
     :equipment [{:packet :set-equipment :eid (:eid m) :slots [[(equipment-slots (:slot m)) (:stack m)]]}]
     :animation [{:packet :animate :eid (:eid m) :action (case (:kind m) :swing 0 :wake-up 2 :crit 4 0)}]
     :status (when-let [p (status-packet m)] [p])
-    :collect [{:packet :take-item-entity :item (:item m) :collector (:collector m) :amount 1}]
+    :collect [{:packet :take-item-entity :item (:eid m) :collector (:collector m) :amount 1}]
     :sound (when-let [p (sound-packet m)] [p])
     :particles [(particles-packet m)]
-    :explosion [(explode-packet m)]
+    :explosion nil
+    :joined nil
     :close [:close]
     (once! (:msg m))))
+
+(def ^:private command-tree (commands/tree))
+(def ^:private world-border-size 5.9999968E7)
+(def ^:private world-border-max 29999984)
+(def ^:private op-level-event 24)
+(defn- join-spawn [world]
+  (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
+    [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))
+
+(defn- join-packets [world eid]
+  (let [{:keys [max-players view-distance simulation-distance motd]} (merge config/defaults (:config world))
+        [x y z] (join-spawn world)]
+    [{:packet              :login :eid eid
+      :max-players         (min 255 (long max-players))
+      :view-distance       view-distance
+      :simulation-distance simulation-distance
+      :dimension-type      overworld}
+     {:packet :change-difficulty :difficulty 0 :locked false}
+     {:packet       :player-abilities :flags (bit-or 1 4 8)
+      :flying-speed 0.05 :walking-speed 0.1}
+     (assoc data/recipes :packet :update-recipes)
+     {:packet :entity-event :eid eid :event (+ op-level-event 4)}
+     {:packet :commands :nodes command-tree}
+     {:packet :server-data :motd motd}
+     {:packet :initialize-border :size world-border-size :max-size world-border-max}
+     {:packet :set-default-spawn-position :pos [x y z]}
+     {:packet :game-event :event 13 :value 0.0}
+     {:packet :ticking-state :rate 20.0 :frozen? false}
+     {:packet :ticking-step :steps 0}
+     {:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+     {:packet :set-experience :progress 0.0 :level 0 :total 0}
+     {:packet     :update-attributes :eid eid
+      :attributes [[:entity-interaction-range 3.0]
+                   [:movement-speed 0.1]
+                   [:block-interaction-range 4.5]]}]))
+
+(defn- join-bursts [world ^Deltas deltas]
+  (for [m (.out deltas)
+        :when (= :joined (:msg m))
+        p (join-packets world (:to m))]
+    [(:to m) p]))
 
 (defn- viewer-index [world]
   (persistent!
@@ -299,19 +360,27 @@
     (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
     :else (players world)))
 
+(defn- entity-delta-packets [world deltas]
+  (for [[eid ds] deltas
+        d ds
+        p (case (first d)
+            :chunks-sent (chunk-packets world d)
+            :tracking (tracking-packets world d)
+            nil)]
+    [eid p]))
+
+(defn- msg-packets [world viewers m]
+  (if (= :explosion (:msg m))
+    (explosion-packets world m)
+    (let [ps (fx-packets world m)]
+      (when (seq ps)
+        (for [eid (recipients world viewers m)
+              p ps]
+          [eid p])))))
+
 (defn render [world ^Deltas deltas]
   (let [viewers (delay (viewer-index world))]
     (concat
-      (for [[eid ds] (.entities deltas)
-            d ds
-            p (case (first d)
-                :chunks-sent (chunk-packets world d)
-                :tracking (tracking-packets world d)
-                nil)]
-        [eid p])
-      (for [m (.out deltas)
-            :let [ps (fx-packets world m)]
-            :when (seq ps)
-            eid (recipients world viewers m)
-            p ps]
-        [eid p]))))
+      (join-bursts world deltas)
+      (entity-delta-packets world (.entities deltas))
+      (mapcat (fn [m] (msg-packets world viewers m)) (.out deltas)))))

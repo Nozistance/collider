@@ -243,39 +243,35 @@
          (< (Math/abs (- (double iz) (double pz))) pickup-reach)
          (< pickup-bottom (- (double iy) (double py)) (+ player-height pickup-inflate-y)))))
 
-(defn- collect-deltas [_world ieid _ie peid changes remaining players]
+(defn- collect-deltas [ieid peid changes remaining]
   (concat
     (for [[slot s] changes] [:set-slot peid slot s])
     (if remaining
       [[:merge-entity ieid {:stack remaining}]]
-      (concat
-        (for [[oid o] players
-              :when (contains? (:tracking o) ieid)]
-          (out/to oid (out/collect ieid peid)))
-        [[:remove-entity ieid]]))))
+      [(out/all (out/collect ieid peid))
+       [:remove-entity ieid]])))
 
-(defn- pickup-one [world players [peid pe] [out taken inv :as acc] [ieid ie]]
+(defn- pickup-one [[peid pe] [out taken inv :as acc] [ieid ie]]
   (if (or (contains? taken ieid) (not (in-pickup-range? pe ie)))
     acc
     (let [[changes remaining] (add-stack inv (:stack ie))]
       (if (seq changes)
-        [(into out (collect-deltas world ieid ie peid changes remaining players))
+        [(into out (collect-deltas ieid peid changes remaining))
          (conj taken ieid)
          (into inv changes)]
         acc))))
 
-(defn- player-pickups [world players ready [out taken] [_ pe :as entry]]
-  (let [[out taken] (reduce (fn [acc item] (pickup-one world players entry acc item))
+(defn- player-pickups [ready [out taken] [_ pe :as entry]]
+  (let [[out taken] (reduce (fn [acc item] (pickup-one entry acc item))
                             [out taken (:inventory pe)]
                             ready)]
     [out taken]))
 
 (defn- pickup-deltas [world items]
-  (let [players (state/player-entries world)
-        ready (filterv (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0)))) items)]
-    (first (reduce (fn [acc entry] (player-pickups world players ready acc entry))
+  (let [ready (filterv (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0)))) items)]
+    (first (reduce (fn [acc entry] (player-pickups ready acc entry))
                    [[] #{}]
-                   players))))
+                   (state/player-entries world)))))
 
 (defn items [world events]
   (let [act (active-items world)]

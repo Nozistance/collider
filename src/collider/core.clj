@@ -49,7 +49,7 @@
         store (or (:store opts) (when-let [dir (:save-dir cfg)] (snapshot/file-store dir)))
         saved (when store (snapshot/load-snapshot store))
         world (atom (assoc (merge state/initial-world saved)
-                      :config (select-keys cfg [:view-distance :simulation-distance])))
+                      :config (select-keys cfg [:view-distance :simulation-distance :max-players :motd])))
         saver (when store (snapshot/start-saver))]
     {:cfg   cfg :store store :saved saved :world world :saver saver
      :save! (when saver #(snapshot/request-save! saver store @world))}))

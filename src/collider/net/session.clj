@@ -1,8 +1,6 @@
 (ns collider.net.session
   (:require [clojure.data.json :as json]
             [collider.data :as data]
-            [collider.game.command.tree :as commands]
-            [collider.game.state :as state]
             [collider.log :as log]
             [collider.proto.codec :as c]
             [collider.net.server :as server])
@@ -30,50 +28,12 @@
   (server/send! conn {:packet :update-tags :tags data/tags})
   (server/send! conn {:packet :finish-configuration}))
 
-(def ^:private overworld (data/datapack-id "dimension_type" :overworld))
-(def ^:private command-tree (commands/tree))
-(def ^:private world-border-size 5.9999968E7)
-(def ^:private world-border-max 29999984)
-(def ^:private op-level-event 24)
-(defn join-spawn [io]
-  (let [[x y z] (or (some-> (:world io) deref :world-spawn) state/spawn-pos)]
-    [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))
-
-(defn- join-packets [eid [x y z] {:keys [max-players view-distance simulation-distance motd]}]
-  [{:packet              :login :eid eid
-    :max-players         (min 255 (long max-players))
-    :view-distance       view-distance
-    :simulation-distance simulation-distance
-    :dimension-type      overworld}
-   {:packet :change-difficulty :difficulty 0 :locked false}
-   {:packet       :player-abilities :flags (bit-or 1 4 8)
-    :flying-speed 0.05 :walking-speed 0.1}
-   (assoc data/recipes :packet :update-recipes)
-   {:packet :entity-event :eid eid :event (+ op-level-event 4)}
-   {:packet :commands :nodes command-tree}
-   {:packet :server-data :motd motd}
-   {:packet :initialize-border :size world-border-size :max-size world-border-max}
-   {:packet :set-default-spawn-position :pos [x y z]}
-   {:packet :game-event :event 13 :value 0.0}
-   {:packet :ticking-state :rate 20.0 :frozen? false}
-   {:packet :ticking-step :steps 0}
-   {:packet :set-health :health 20.0 :food 20 :saturation 5.0}
-   {:packet :set-experience :progress 0.0 :level 0 :total 0}
-   {:packet     :update-attributes :eid eid
-    :attributes [[:entity-interaction-range 3.0]
-                 [:movement-speed 0.1]
-                 [:block-interaction-range 4.5]]}])
-
-(defn- send-join-burst! [conn eid spawn cfg]
-  (doseq [p (join-packets eid spawn cfg)] (server/send! conn p)))
-
-(defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue cfg] :as io}]
+(defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]
   (let [nm (:name (server/info conn))
         eid (.incrementAndGet next-entity-id)]
     (server/put! conn :eid eid)
     (swap! conns assoc eid conn)
     (server/set-conn-state! conn :play)
-    (send-join-burst! conn eid (join-spawn io) cfg)
     (.offer queue [:player-join eid nm])
     (log/info "player" nm "connected: eid" eid "addr" (:addr (server/info conn)))))
 
