@@ -13,7 +13,7 @@
   [chunks [_ y _ :as p]] (and (chunk/in-range? y) (zero? (gen/at chunks p))))
 (defn lit?
   "Returns true when the light at the position is n or more."
-  [chunks [x y z] ^long n] (>= (long (light/light-at chunks gen/flat-chunk x y z)) n))
+  [chunks [x y z] ^long n] (>= (long (light/light-at chunks (gen/flat-chunk) x y z)) n))
 (defn chance?
   "Returns true one time in n, drawn from roll at salt."
   [roll salt ^long n] (< (double (roll salt)) (/ 1.0 n)))

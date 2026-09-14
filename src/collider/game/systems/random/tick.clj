@@ -34,7 +34,7 @@
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (= :lava (liquid/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
-        {:changes (liquid/lava-random-tick chunks gen/flat-chunk p roll)})
+        {:changes (liquid/lava-random-tick chunks (gen/flat-chunk) p roll)})
       (let [drip (dripstone/drip chunks p st roll)]
         {:drip    drip
          :drops   (grow/random-drops st roll)
@@ -111,7 +111,7 @@
   [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [p _]]
-              (let [old (chunk/chunks-get-block chunks gen/flat-chunk p)]
+              (let [old (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
                 (merge-with into m (eyeblossom/cascade chunks p old t))))
             {} (eyeblossom-changes changes))))
 

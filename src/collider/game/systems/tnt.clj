@@ -13,7 +13,7 @@
 (def ^:private ^:const tnt-half 0.49)
 (def ^:private ^:const tnt-height 0.98)
 (defn- liquid-push [world pos vel]
-  (liquid/entity-push (:chunks world) gen/flat-chunk pos tnt-half tnt-height vel))
+  (liquid/entity-push (:chunks world) (gen/flat-chunk) pos tnt-half tnt-height vel))
 
 (defn- unblock-deltas
   "Returns the deltas that free TNT from the block it was placed as."
@@ -32,7 +32,7 @@
   [world eid e]
   (let [kb (:kb e)
         [vx vy vz] (v/+ (:vel e) (or kb [0.0 0.0 0.0]))
-        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e)
+        ^Move mv (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
                             [(double vx) (- (double vy) 0.04) (double vz)]
                             tnt-half tnt-height)
         pos (.pos mv) on-ground (.on-ground mv)]
@@ -46,7 +46,7 @@
   "Returns where primed TNT will be when it goes off."
   [world e]
   (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))]
-    (.pos ^Move (phys/move (:chunks world) gen/flat-chunk (:pos e)
+    (.pos ^Move (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
                            [(double vx) (- (double vy) 0.04) (double vz)]
                            tnt-half tnt-height))))
 

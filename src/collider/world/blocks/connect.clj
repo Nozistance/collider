@@ -18,12 +18,12 @@
 
 (defn- tag
   "Returns the blocks carrying tag t."
-  [t] (set (get-in data/tags ["block" t])))
-(def ^:private fences (tag "fences"))
-(def ^:private wooden (tag "wooden_fences"))
-(def ^:private walls (tag "walls"))
-(def ^:private leaves (tag "leaves"))
-(def ^:private shulker-boxes (tag "shulker_boxes"))
+  [t] (set (get-in (data/tags) ["block" t])))
+(def ^:private ^:table fences (delay (tag "fences")))
+(def ^:private ^:table wooden (delay (tag "wooden_fences")))
+(def ^:private ^:table walls (delay (tag "walls")))
+(def ^:private ^:table leaves (delay (tag "leaves")))
+(def ^:private ^:table shulker-boxes (delay (tag "shulker_boxes")))
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 (def ^:private neighbours (conj (vec (vals dir/horizontal-offset)) [0 1 0] [0 -1 0]))
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
@@ -31,12 +31,17 @@
 (def placed-types
   #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder :chorus-plant
     :potent-sulfur})
-(def connecting-types
-  (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
-          :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
-          :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
-          :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
-        (concat pair-types block/growing-plant-types snowy-types block/leaves-types [:pitcher-crop])))
+(def ^:private ^:table connecting-set
+  (delay
+    (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
+            :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
+            :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
+            :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
+          (concat pair-types block/growing-plant-types snowy-types (block/leaves-types) [:pitcher-crop]))))
+
+(defn connecting-types
+  "Returns the kinds of block that take their shape from their neighbours."
+  [] @connecting-set)
 
 (def ^:private half-types (into block/door-types (conj pair-types :pitcher-crop)))
 
@@ -67,7 +72,7 @@
       (when (paired? st o) [p o]))))
 
 (defn- exception? [n]
-  (or (contains? leaves n) (contains? exceptions n) (contains? shulker-boxes n)))
+  (or (contains? @leaves n) (contains? exceptions n) (contains? @shulker-boxes n)))
 
 (defn- sturdy? [st n dir]
   (and (block/face-sturdy? st (dir/opposite dir)) (not (exception? n))))
@@ -80,7 +85,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (contains? fences n) (= (contains? wooden n) (contains? wooden self))
+      (contains? @fences n) (= (contains? @wooden n) (contains? @wooden self))
       (= :fence-gate t) (gate-connects? nst dir)
       :else (sturdy? nst n dir))))
 
@@ -88,7 +93,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (or (contains? walls n) (contains? fences n) (#{:iron-bars :stained-glass-pane} t)) true
+      (or (contains? @walls n) (contains? @fences n) (#{:iron-bars :stained-glass-pane} t)) true
       (= :fence-gate t) (gate-connects? nst dir)
       :else (sturdy? nst n dir))))
 
@@ -96,7 +101,7 @@
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
-      (or (#{:iron-bars :stained-glass-pane} t) (contains? walls n)) true
+      (or (#{:iron-bars :stained-glass-pane} t) (contains? @walls n)) true
       :else (sturdy? nst n dir))))
 
 (defn- connects? [t self nst dir]
@@ -111,7 +116,7 @@
 
 (defn- wall-at?
   "Returns true when st is a wall."
-  [st] (contains? walls (block/block-of st)))
+  [st] (contains? @walls (block/block-of st)))
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)
@@ -235,14 +240,14 @@
                       (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
     (block/state self props)))
 
-(defn- vine-reshaped [chunks pos st] (support/vine-updated chunks gen/flat-chunk pos st))
-(defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks gen/flat-chunk pos st))
+(defn- vine-reshaped [chunks pos st] (support/vine-updated chunks (gen/flat-chunk) pos st))
+(defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks (gen/flat-chunk) pos st))
 (defn- fire-reshaped [chunks pos st]
-  (if (support/supported? chunks gen/flat-chunk pos st)
+  (if (support/supported? chunks (gen/flat-chunk) pos st)
     (fire/state-with-age chunks pos (fire/age st))
     0))
 (defn- soul-fire-reshaped [chunks pos st]
-  (if (support/supported? chunks gen/flat-chunk pos st) st 0))
+  (if (support/supported? chunks (gen/flat-chunk) pos st) st 0))
 
 (def ^:private pos-reshapers
   {:door                    door-state
@@ -298,7 +303,7 @@
    stays as it is."
   [chunks pos ^long st tick]
   (let [t (block/type-of st)]
-    (when (contains? connecting-types t)
+    (when (contains? (connecting-types) t)
       (let [at (fn [d] (gen/at chunks (mapv + pos d)))
             new (reshaped-state t chunks pos st at tick)]
         (when (not= (long new) st) new)))))
@@ -349,7 +354,7 @@
     (into []
           (keep (fn [[_ y _ :as p]]
                   (when (chunk/in-range? y)
-                    (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
+                    (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
                       (when-not (and (contains? origin p) (= :bed (block/type-of st)))
                         (when-let [new (reshape chunks p st tick)]
                           [p new]))))))
@@ -363,7 +368,7 @@
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))
         acc
-        (recur (chunk/chunks-set-blocks chunks gen/flat-chunk changes)
+        (recur (chunk/chunks-set-blocks chunks (gen/flat-chunk) changes)
                (map first changes)
                (into acc changes)
                (inc n))))))

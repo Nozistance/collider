@@ -19,11 +19,11 @@
   "Returns the block state at p, air outside the world height."
   ^long [chunks p]
   (if (chunk/in-range? (long (nth p 1)))
-    (long (chunk/chunks-get-block chunks gen/flat-chunk p))
+    (long (chunk/chunks-get-block chunks (gen/flat-chunk) p))
     0))
 
 (defn- block-light ^long [chunks p]
-  (long (light/block-light-at chunks gen/flat-chunk (nth p 0) (nth p 1) (nth p 2))))
+  (long (light/block-light-at chunks (gen/flat-chunk) (nth p 0) (nth p 1) (nth p 2))))
 
 (defn- water? [chunks p]
   (= :water (liquid/liquid-class (state-at chunks p))))
@@ -45,7 +45,7 @@
          (chunk/in-range? (long (nth p 1)))
          (< (block-light chunks p) 10)
          (or (zero? st) (= :snow (block/block-of st)))
-         (support/supported? chunks gen/flat-chunk p (block/state :snow)))))
+         (support/supported? chunks (gen/flat-chunk) p (block/state :snow)))))
 
 (defn- snow-change [chunks biome p ^long max-height]
   (when (and (pos? max-height) (should-snow? chunks biome p))
@@ -85,7 +85,7 @@
    height is the deepest snow allowed there, and roll decides whether a cauldron
    fills."
   [ctx chunks [x _ z] max-height roll]
-  (let [top [(long x) (spawn/motion-blocking-height chunks gen/flat-chunk x z) (long z)]
+  (let [top [(long x) (spawn/motion-blocking-height chunks (gen/flat-chunk) x z) (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]
         biome (biome/at chunks top)]
     (concat

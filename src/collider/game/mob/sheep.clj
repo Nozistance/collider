@@ -42,7 +42,7 @@
   (let [[fx fy fz :as feet] (sense/feet-cell (:pos e))]
     (cond
       (grass/short-grass? (sense/block-at world feet)) feet
-      (= grass/grass-state (sense/block-at world [fx (dec fy) fz])) [fx (dec fy) fz]
+      (= (grass/grass-state) (sense/block-at world [fx (dec fy) fz])) [fx (dec fy) fz]
       :else nil)))
 
 (defn- start-eat [world eid e t]
@@ -58,7 +58,7 @@
                  [(+ (double x) (- (* (double span) (random/of-longs t eid (hash sx) i)) (* 0.5 (double span))))
                   (+ (double z) (- (* (double span) (random/of-longs t eid (hash sz) i)) (* 0.5 (double span))))])
         weight (fn [[cx cz]]
-                 (if (= grass/grass-state
+                 (if (= (grass/grass-state)
                         (sense/block-at world [(long (Math/floor (double cx)))
                                                (dec (long (Math/floor (double y))))
                                                (long (Math/floor (double cz)))]))
@@ -96,8 +96,8 @@
 (defn- finish-bite [world e]
   (let [cell (get-in e [:task :cell])
         old (sense/block-at world cell)
-        new (if (grass/short-grass? old) 0 grass/dirt-state)]
-    (when (or (= grass/grass-state old) (grass/short-grass? old))
+        new (if (grass/short-grass? old) 0 (grass/dirt-state))]
+    (when (or (= (grass/grass-state) old) (grass/short-grass? old))
       [[:set-blocks [[cell new]]]
        (out/all (out/break-effect cell old))])))
 

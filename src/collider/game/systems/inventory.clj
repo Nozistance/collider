@@ -23,7 +23,7 @@
     msg))
 
 (defn- item-of [name]
-  (when (contains? (get data/registries "item") name) name))
+  (when (contains? (get (data/registries) "item") name) name))
 
 (def ^:private cloned-kinds #{:banner :decorated-pot :shulker-box})
 
@@ -39,7 +39,7 @@
   "Returns the stack a player gets for picking a block or an entity."
   [world {:keys [pos entity include-data]}]
   (cond
-    pos (let [st (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+    pos (let [st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
           (when (pos? (long st))
             (when-let [item (item-of (block/block-of (long st)))]
               (if include-data

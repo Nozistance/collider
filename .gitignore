@@ -12,3 +12,4 @@ world-*.tmp
 config.edn
 logs/
 /world/
+/data/

@@ -20,12 +20,23 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tool-set
-  "Returns the items of a tag."
-  [tag] (set (data/tag-values "item" tag)))
-(def axes (tool-set "axes"))
-(def hoes (tool-set "hoes"))
-(def shovels (tool-set "shovels"))
+(defn- tool-set [tag] (delay (set (data/tag-values "item" tag))))
+
+(def ^:private axe-items (tool-set "axes"))
+(def ^:private hoe-items (tool-set "hoes"))
+(def ^:private shovel-items (tool-set "shovels"))
+
+(defn axes
+  "Returns the items that count as axes."
+  [] @axe-items)
+
+(defn hoes
+  "Returns the items that count as hoes."
+  [] @hoe-items)
+
+(defn shovels
+  "Returns the items that count as shovels."
+  [] @shovel-items)
 
 (defn- candle-lit [world pos]
   (let [cur (edit/block-at world pos) props (block/props-of cur)]
@@ -38,7 +49,7 @@
         st (fire/state-for (:chunks world) pos')]
     (when (and (chunk/in-range? y')
                (zero? (edit/block-at world pos'))
-               (support/supported? (:chunks world) gen/flat-chunk pos' st))
+               (support/supported? (:chunks world) (gen/flat-chunk) pos' st))
       [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
        (out/except eid (out/sound :fire/ignite pos' 1.0 (random/pitch (:tick world) pos' :flint)))])))
 
@@ -171,13 +182,13 @@
                                    {:item :pumpkin-seeds :count 4})]
        (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
 
-(def ^:private mud-blocks (set (get-in data/tags ["block" "convertable_to_mud"])))
+(def ^:private ^:table mud-blocks (delay (set (get-in (data/tags) ["block" "convertable_to_mud"]))))
 
 (defn mud-deltas
   "Returns the deltas for a water bottle turning the block at pos to mud."
   [world eid pos face]
   (when (and (not= 0 (long face))
-             (contains? mud-blocks (block/block-of (edit/block-at world pos)))
+             (contains? @mud-blocks (block/block-of (edit/block-at world pos)))
              (cauldron/water-bottle? (edit/held-stack world eid)))
     (concat (edit/change-deltas world [[pos (block/state :mud)]])
             [(out/all (out/sound :splash pos 1.0 1.0))

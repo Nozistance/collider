@@ -39,7 +39,7 @@
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- face-held? [chunks p st dir]
-  (support/supported? chunks gen/flat-chunk p (vine-with (block/state (block/block-of st)) dir)))
+  (support/supported? chunks (gen/flat-chunk) p (vine-with (block/state (block/block-of st)) dir)))
 
 (defn- crowded? [chunks p self] (>= (crowd chunks p self) 5))
 

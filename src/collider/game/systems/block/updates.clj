@@ -27,7 +27,7 @@
   [chunks [x y z]]
   (filterv (fn [[_ ny _ :as p]]
              (and (chunk/in-range? ny)
-                  (tnt/tnt-state? (chunk/chunks-get-block chunks gen/flat-chunk p))))
+                  (tnt/tnt-state? (chunk/chunks-get-block chunks (gen/flat-chunk) p))))
            (map (fn [d] (mapv + [x y z] d)) dir/around)))
 
 (defn- lww-changes
@@ -39,7 +39,7 @@
                     (map (fn [[pos st]] [pos [pos st]]))
                     (mapcat (fn [p] (rules/cell-changes
                                       chunks
-                                      (chunk/chunks-get-block chunks gen/flat-chunk p)
+                                      (chunk/chunks-get-block chunks (gen/flat-chunk) p)
                                       p ctx))
                             cells)))))
 
@@ -76,7 +76,7 @@
   "Returns the blocks the changes destroy, as they were."
   [world changes]
   (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (destroyed? old (long st))]
     [pos old]))
 
@@ -98,7 +98,7 @@
   "Returns the effects for water and lava meeting."
   [world changes]
   (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (or (and (liquid/liquid-state? old) (pos? (long st)) (nil? (liquid/liquid-class st)))
                   (and (liquid/mix-class? st) (pos? (long old)) (nil? (liquid/liquid-class old))))
         d [(out/all (out/fizz pos))]]
@@ -108,7 +108,7 @@
   "Returns the deltas starting the blocks that begin to fall."
   [world changes]
   (for [[[x y z :as pos] st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (and (falling-entity? old) (= (long st) (block/emptied old)))]
     [:spawn-entity {:type  :falling-block
                     :pos   [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
@@ -121,7 +121,7 @@
   [world sponge changed]
   (let [chunks (:chunks world)]
     (for [[pos st] (water/absorbed chunks sponge)
-          :let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
+          :let [old (chunk/chunks-get-block chunks (gen/flat-chunk) pos)]
           :when (and (zero? (long st)) (contains? sponge-plants (block/type-of old))
                      (= 0 (long (get changed pos -1))))
           [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key (:tick world) pos salt))))]
@@ -133,7 +133,7 @@
   (when (get-in world [:rules :block-drops] true)
     (let [chunks (:chunks world)
           changed (into {} changes)
-          sponges (filter #(= :sponge (block/type-of (chunk/chunks-get-block chunks gen/flat-chunk %))) cells)]
+          sponges (filter #(= :sponge (block/type-of (chunk/chunks-get-block chunks (gen/flat-chunk) %))) cells)]
       (->> (mapcat #(sponge-drops world % changed) sponges)
            (reduce (fn [[seen acc] [pos stack i]]
                      (if (contains? seen [pos i])
@@ -146,7 +146,7 @@
   "Returns the effects for a cauldron caught by a drip."
   [world changes]
   (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)]
+        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (contains? block/cauldron-types (block/type-of old))]
     (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) out/sound-drip-lava-into-cauldron out/sound-drip-water-into-cauldron) pos 0))))
 
@@ -154,7 +154,7 @@
   "Returns the sounds for big dripleaves tipping."
   [world changes]
   (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos)
+        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)
               sound (when (and (dripleaf/leaf? (long st)) (dripleaf/leaf? old)
                                (not= (dripleaf/tilt-of (long st)) (dripleaf/tilt-of old)))
                       (dripleaf/tilt-sound (long st)))]
@@ -174,7 +174,7 @@
     (reduce (fn [m [pos st]]
               (if-not (eyeblossom/eyeblossom? (long st))
                 m
-                (merge-with into m (eyeblossom/cascade chunks pos (chunk/chunks-get-block chunks gen/flat-chunk pos) t))))
+                (merge-with into m (eyeblossom/cascade chunks pos (chunk/chunks-get-block chunks (gen/flat-chunk) pos) t))))
             {} changes)))
 
 (defn- ignite-deltas
@@ -184,7 +184,7 @@
         pending (tnt/primed-origins world)
         tnts (into (sorted-set)
                    (comp (filter #(fire/fire-state?
-                                    (chunk/chunks-get-block chunks gen/flat-chunk %)))
+                                    (chunk/chunks-get-block chunks (gen/flat-chunk) %)))
                          (mapcat #(tnt-neighbors chunks %))
                          (remove pending))
                    due)]
@@ -215,7 +215,7 @@
         changed (into #{} (map first) changes)]
     (reduce (fn [m p]
               (if-let [at (and (not (contains? changed p))
-                               (rules/again-tick chunks (chunk/chunks-get-block chunks gen/flat-chunk p) p t))]
+                               (rules/again-tick chunks (chunk/chunks-get-block chunks (gen/flat-chunk) p) p t))]
                 (update m at (fnil conj []) (chunk/block-pos->id p))
                 m))
             {} now)))

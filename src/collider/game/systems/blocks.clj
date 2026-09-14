@@ -34,7 +34,7 @@
   [k] (comp #{k} :item))
 (defn- tool-is
   "Returns a test for holding one of those tools."
-  [d] (fn [c] (d (:item c))))
+  [d] (fn [c] ((d) (:item c))))
 (defn- on-args
   "Returns an action that takes the world and the raw event."
   [f] (fn [{:keys [world args]}] (f world args)))
@@ -121,7 +121,7 @@
   (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]
     (if (empty? changes)
       world
-      (update world :chunks chunk/chunks-set-blocks gen/flat-chunk changes))))
+      (update world :chunks chunk/chunks-set-blocks (gen/flat-chunk) changes))))
 
 (defn- block-edits-deltas [world events]
   (let [[_ edits] (reduce (fn [[w acc] [i [tag & args]]]

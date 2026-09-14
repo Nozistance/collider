@@ -20,7 +20,7 @@
 (defn- block-at
   "Returns the block at a position, or nothing outside the world height."
   ^long [world [_ y _ :as pos]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos) 0))
+  (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos) 0))
 
 (defn- cell-of
   "Returns the block a position stands in."
@@ -42,9 +42,9 @@
   "Returns the block a falling block turns into where it lands, or nothing when
    it shatters."
   [world cell st cur concrete? stuck?]
-  (let [continues? (and (support/free-below? (:chunks world) gen/flat-chunk cell) (not (and concrete? stuck?)))]
+  (let [continues? (and (support/free-below? (:chunks world) (gen/flat-chunk) cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
-               (support/supported? (:chunks world) gen/flat-chunk cell st))
+               (support/supported? (:chunks world) (gen/flat-chunk) cell st))
       (let [in-water? (= :water (liquid/liquid-class cur))
             st (if in-water? (block/with-water st) st)]
         (if (and concrete? in-water?) (block/concrete-of st) st)))))
@@ -116,7 +116,7 @@
   "Returns the move a falling block makes this tick."
   ^Move [world e]
   (let [[vx vy vz] (:vel e)]
-    (phys/move (:chunks world) gen/flat-chunk (:pos e)
+    (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
                [(double vx) (- (double vy) 0.04) (double vz)] half height)))
 
 (defn- drift-deltas

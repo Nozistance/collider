@@ -45,14 +45,14 @@
 
 (defn- above [chunks [x y z]]
   (let [y (inc (long y))]
-    (if (chunk/in-range? y) (chunk/chunks-get-block chunks gen/flat-chunk [x y z]) 0)))
+    (if (chunk/in-range? y) (chunk/chunks-get-block chunks (gen/flat-chunk) [x y z]) 0)))
 
 (def kelp-rule
   {:name   :kelp
    :match? (fn [_chunks st _p] (kelp? st))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
    :due    (fn [chunks p ctx]
-             (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)
+             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)
                    up? (kelp? (above chunks p))]
                (or (seq ((:due support/rule) chunks p nil))
                    (concat
@@ -60,7 +60,7 @@
                        :kelp (when up? [[p (block/state :kelp-plant)]])
                        :kelp-plant (when-not up? [[p (kelp-head-state (:tick ctx) p)]])
                        nil)
-                     (liquid/update-cell chunks gen/flat-chunk p (:rules ctx))))))})
+                     (liquid/update-cell chunks (gen/flat-chunk) p (:rules ctx))))))})
 
 (defn- dried [st]
   (cond

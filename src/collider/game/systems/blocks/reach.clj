@@ -64,7 +64,7 @@
   (let [st (edit/block-at world pos)
         abs (fn [[a b c d e f]] [(+ (long x) (/ (double a) 16.0)) (+ (long y) (/ (double b) 16.0)) (+ (long z) (/ (double c) 16.0))
                                  (+ (long x) (/ (double d) 16.0)) (+ (long y) (/ (double e) 16.0)) (+ (long z) (/ (double f) 16.0))])
-        fh (when (not= :none fluids) (liquid/fluid-height-of (:chunks world) gen/flat-chunk pos st fluids))
+        fh (when (not= :none fluids) (liquid/fluid-height-of (:chunks world) (gen/flat-chunk) pos st fluids))
         fluid (when fh
                 [[(long x) (long y) (long z) (inc (long x)) (+ (long y) (double fh)) (inc (long z))]])]
     (concat (when (and (pos? st) (not (liquid/liquid-state? st))) (map abs (block/outline-boxes st)))

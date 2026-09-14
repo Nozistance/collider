@@ -574,31 +574,33 @@
                     {:target target :action action :at at :hand hand :sneaking (.readBoolean buf)})
                 {:target target :action action :sneaking (.readBoolean buf)})))}})
 
-(def ^:private inbound
-  (into {}
-        (map (fn [[state dirs]]
-               [state (into {}
-                            (map (fn [[nm id]]
-                                   [(long id) (assoc (get packets [state nm]) :packet nm)]))
-                            (:serverbound dirs))]))
-        data/packets))
+(def ^:private ^:table inbound
+  (delay
+    (into {}
+          (map (fn [[state dirs]]
+                 [state (into {}
+                              (map (fn [[nm id]]
+                                     [(long id) (assoc (get packets [state nm]) :packet nm)]))
+                              (:serverbound dirs))]))
+          (data/packets))))
 
-(def ^:private outbound
-  (into {}
-        (map (fn [[state dirs]]
-               [state (into {}
-                            (keep (fn [[nm id]]
-                                    (when-let [w (:write (get packets [state nm]))]
-                                      [nm {:id (long id) :write w}])))
-                            (:clientbound dirs))]))
-        data/packets))
+(def ^:private ^:table outbound
+  (delay
+    (into {}
+          (map (fn [[state dirs]]
+                 [state (into {}
+                              (keep (fn [[nm id]]
+                                      (when-let [w (:write (get packets [state nm]))]
+                                        [nm {:id (long id) :write w}])))
+                              (:clientbound dirs))]))
+          (data/packets))))
 
 (defn decode
   "Returns the next packet of the connection state from buf, or nil when its
    id is unknown."
   [state ^Buf buf]
   (let [id (c/read-varint buf)]
-    (when-let [e (get (get inbound state) id)]
+    (when-let [e (get (get @inbound state) id)]
       (if-let [r (:read e)]
         (assoc (r buf) :packet (:packet e))
         {:packet (:packet e)}))))
@@ -607,7 +609,7 @@
   "Writes a packet map to buf for the connection state. Throws when nothing
    writes that packet."
   [state ^Buf buf m]
-  (let [e (or (get (get outbound state) (:packet m))
+  (let [e (or (get (get @outbound state) (:packet m))
               (throw (ex-info "no writer for packet" {:state state :packet (:packet m)})))]
     (c/write-varint buf (long (:id e)))
     ((:write e) buf m)))

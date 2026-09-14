@@ -15,7 +15,7 @@
   [chunks p st roll _time _ctx]
   (when (and (chance? roll :gate 25) (< (crowd chunks p (block/block-of st)) 5))
     (let [step (fn [q i] (mapv + q [(dec (pick roll [:x i] 3)) (- (pick roll [:y1 i] 2) (pick roll [:y2 i] 2)) (dec (pick roll [:z i] 3))]))
-          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks gen/flat-chunk q st)))
+          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks (gen/flat-chunk) q st)))
           target (loop [q p off (step p 0) i 1]
                    (if (> i 4)
                      off
@@ -26,7 +26,7 @@
 (def ^:private huge
   {:red-mushroom   {:cap :red-mushroom-block :radius 2 :tag "huge_red_mushroom_can_place_on"}
    :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
-(def ^:private stem-state (block/state :mushroom-stem {:up :false :down :false}))
+(def ^:private ^:table stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
 
 (defn- cleared-at ^long [chunks origin q]
   (if (= q origin) 0 (gen/at chunks q)))
@@ -79,7 +79,7 @@
 (defn- cells [p kind cap radius height]
   (let [cap-fn (if (= :brown-mushroom kind) brown-cap red-cap)]
     (concat (cap-fn p cap (long radius) (long height))
-            (for [dy (range (long height))] [(mapv + p [0 dy 0]) stem-state]))))
+            (for [dy (range (long height))] [(mapv + p [0 dy 0]) @stem-state]))))
 
 (defn- changes [chunks origin cells]
   (loop [cells (seq cells) seen {origin 0} acc []]

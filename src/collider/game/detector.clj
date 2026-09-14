@@ -13,7 +13,7 @@
   [world [x y z]]
   (let [y (long (Math/floor (double y)))]
     (and (chunk/in-range? y)
-         (= :water (liquid/liquid-class (chunk/chunks-get-block (:chunks world) gen/flat-chunk
+         (= :water (liquid/liquid-class (chunk/chunks-get-block (:chunks world) (gen/flat-chunk)
                                                                 [(long (Math/floor (double x))) y (long (Math/floor (double z)))]))))))
 
 (defn- cm ^long [^double d] (Math/round (* d 100.0)))

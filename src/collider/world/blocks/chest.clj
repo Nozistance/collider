@@ -10,13 +10,13 @@
 
 (def types #{:chest :trapped-chest :copper-chest :weathering-copper-chest})
 (def copper-types #{:copper-chest :weathering-copper-chest})
-(def ^:private copper-chests (set (get-in data/tags ["block" "copper_chests"])))
+(def ^:private ^:table copper-chests (delay (set (get-in (data/tags) ["block" "copper_chests"]))))
 
 
 (defn state-at
   "Returns the block state at pos."
   ^long [chunks pos]
-  (chunk/chunks-get-block chunks gen/flat-chunk pos))
+  (chunk/chunks-get-block chunks (gen/flat-chunk) pos))
 
 (defn connected-direction
   "Returns the direction in which the double chest st has its other half."
@@ -28,7 +28,7 @@
   "Returns true when a chest self may pair with the block other."
   [^long self ^long other]
   (if (contains? copper-types (block/type-of self))
-    (contains? copper-chests (block/block-of other))
+    (contains? @copper-chests (block/block-of other))
     (and (pos? other) (= (block/block-of self) (block/block-of other)))))
 
 (defn partner-pos
@@ -72,7 +72,7 @@
 
 (defn- copper-merged [^long st ^long other]
   (if (and (contains? copper-types (block/type-of st))
-           (contains? copper-chests (block/block-of other)))
+           (contains? @copper-chests (block/block-of other)))
     (block/state (least-oxidized (block/block-of st) (block/block-of other)) (block/props-of st))
     st))
 

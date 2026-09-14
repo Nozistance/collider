@@ -180,7 +180,7 @@
         a (dir/up lower)
         cleared (if (block/waterlogged? (gen/at-void chunks a)) (block/state :water) 0)]
     (when (small? base)
-      (let [chunks' (chunk/chunks-set-blocks chunks gen/flat-chunk [[a cleared]])
+      (let [chunks' (chunk/chunks-set-blocks chunks (gen/flat-chunk) [[a cleared]])
             desired (+ 2 (long (Math/floor (* 4.0 (double (roll :height))))))]
         {:changes (into [[a cleared]]
                         (column-changes chunks' lower (block/facing-of base) desired))}))))

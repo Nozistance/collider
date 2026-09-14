@@ -9,8 +9,8 @@
 
 (defn block-at
   "Returns the block state at a position."
-  (^long [world p] (chunk/chunks-get-block (:chunks world) gen/flat-chunk p))
-  (^long [world x y z] (chunk/block-state (:chunks world) gen/flat-chunk x y z)))
+  (^long [world p] (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) p))
+  (^long [world x y z] (chunk/block-state (:chunks world) (gen/flat-chunk) x y z)))
 
 (defn feet-cell
   "Returns the block position an entity standing at p occupies."

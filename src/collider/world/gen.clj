@@ -21,16 +21,20 @@
         (aset bs i (short st))))
     (chunk/->Section bs (byte-array 2048) (flat-sky))))
 
-(def flat-chunk
-  {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))})
+(def ^:private ^:table flat
+  (delay {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))}))
+
+(defn flat-chunk
+  "Returns the chunk every loaded chunk starts from."
+  [] @flat)
 
 (defn at
   "Returns the block state at p, air where no chunk is loaded and air outside
    the world height."
   ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) 0))
+  (if (chunk/in-range? y) (chunk/chunks-get-block chunks (flat-chunk) p) 0))
 
 (defn at-void
   "Returns the block state at p, -1 outside the world height."
   ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks flat-chunk p) -1))
+  (if (chunk/in-range? y) (chunk/chunks-get-block chunks (flat-chunk) p) -1))

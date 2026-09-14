@@ -48,7 +48,7 @@
 (defn- odds ^long [^long st k]
   (if (or (neg? st) (block/waterlogged? st))
     0
-    (long (get-in data/fire [(block/block-of st) k] 0))))
+    (long (get-in (data/fire) [(block/block-of st) k] 0))))
 
 (defn- can-burn? [^long st] (pos? (odds st :ignite)))
 
@@ -131,7 +131,7 @@
         a' (min 15 (+ a (quot (pick r :age 3) 2)))
         aged (aged-change st a a' p)]
     (cond
-      (not (support/supported? chunks gen/flat-chunk p st)) [[p 0]]
+      (not (support/supported? chunks (gen/flat-chunk) p st)) [[p 0]]
       (and (not (block/tagged? (max 0 below) "infiniburn_overworld"))
            (weather/raining? ctx)
            (near-rain? chunks ctx p)
@@ -147,7 +147,7 @@
   {:name   :fire
    :match? (fn [_chunks st _p] (fire-state? st))
    :wake   (fn [chunks tick p _old _self?]
-             (if (support/supported? chunks gen/flat-chunk p (chunk/chunks-get-block chunks gen/flat-chunk p))
+             (if (support/supported? chunks (gen/flat-chunk) p (chunk/chunks-get-block chunks (gen/flat-chunk) p))
                (fire-delay tick p)
                (inc (long tick))))
    :again  (fn [_chunks tick p] (fire-delay tick p))

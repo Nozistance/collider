@@ -105,7 +105,7 @@
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
-    (chunk/chunks-get-block chunks gen/flat-chunk p)
+    (chunk/chunks-get-block chunks (gen/flat-chunk) p)
     0))
 
 (defn- wake-tick
@@ -148,7 +148,7 @@
   [chunks changes]
   (into []
         (keep (fn [[pos st]]
-                (let [old (chunk/chunks-get-block chunks gen/flat-chunk pos)]
+                (let [old (chunk/chunks-get-block chunks (gen/flat-chunk) pos)]
                   (when (not= old (long st)) [pos old st]))))
         changes))
 
@@ -157,13 +157,13 @@
    changed with them."
   [chunks tick real]
   (let [chunks' (-> chunks
-                    (chunk/chunks-set-blocks gen/flat-chunk (mapv (fn [[pos _ st]] [pos st]) real))
-                    (light/relight-batch gen/flat-chunk real))
+                    (chunk/chunks-set-blocks (gen/flat-chunk) (mapv (fn [[pos _ st]] [pos st]) real))
+                    (light/relight-batch (gen/flat-chunk) real))
         derived (connect/derived-changes chunks' (map first real) tick)
-        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' gen/flat-chunk pos) st]) derived)]
+        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' (gen/flat-chunk) pos) st]) derived)]
     [(-> chunks'
-         (chunk/chunks-set-blocks gen/flat-chunk derived)
-         (light/relight-batch gen/flat-chunk dropped))
+         (chunk/chunks-set-blocks (gen/flat-chunk) derived)
+         (light/relight-batch (gen/flat-chunk) dropped))
      (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
 
 (defn- add-block-events [ev events]
@@ -193,7 +193,7 @@
   "Returns the spawn position for player eid, searched around the world spawn
    within the respawn radius."
   [w eid]
-  (spawn/find-spawn (:chunks w) gen/flat-chunk (:world-spawn w)
+  (spawn/find-spawn (:chunks w) (gen/flat-chunk) (:world-spawn w)
                     (long (get-in w [:rules :respawn-radius] 10))
                     (spawn-seed w eid)))
 
@@ -218,7 +218,7 @@
 
 (defn- vacated-bed [w eid]
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
-    (let [st (chunk/chunks-get-block (:chunks w) gen/flat-chunk pos)]
+    (let [st (chunk/chunks-get-block (:chunks w) (gen/flat-chunk) pos)]
       (if (= :bed (block/type-of st))
         (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] (long (:tick w)))
         w))
@@ -232,9 +232,9 @@
             name (assoc-in [:profiles name]
                            (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
 
-(def ^:private swords (set (data/tag-values "item" "swords")))
+(def ^:private ^:table swords (delay (set (data/tag-values "item" "swords"))))
 (defn- sword? [item]
-  (contains? swords item))
+  (contains? @swords item))
 
 (defn- held-item [w eid slot]
   (if (<= 0 (long slot) 8)

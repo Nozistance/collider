@@ -106,7 +106,7 @@
    :due    (fn [chunks p _ctx]
              (let [st (gen/at chunks p)]
                (cond
-                 (not (support/supported? chunks gen/flat-chunk p st)) [[p (support/gone-state st)]]
+                 (not (support/supported? chunks (gen/flat-chunk) p st)) [[p (support/gone-state st)]]
                  (fruitless? chunks p st) [[p (block/state (second (stems (block/block-of st))) {:age :7})]])))})
 
 (defn cane-tick
@@ -126,7 +126,7 @@
     (let [a (age st) h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
         (let [top (cond
-                    (and (= a 8) (support/supported? chunks gen/flat-chunk (dir/up p) (block/state :cactus)))
+                    (and (= a 8) (support/supported? chunks (gen/flat-chunk) (dir/up p) (block/state :cactus)))
                     (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1)) [[(dir/up p) (block/state :cactus-flower)]])
                     (and (= a 15) (< h 3)) [[(dir/up p) (block/state :cactus)] [p (aged st 0)]])]
           (into (vec top) (when (< a 15) [[p (aged st (inc a))]])))))))
@@ -215,7 +215,7 @@
    form, or nil when there is no room."
   [chunks p st _roll]
   (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))]
-    (when (and (air-at? chunks (dir/up p)) (support/supported? chunks gen/flat-chunk p tall))
+    (when (and (air-at? chunks (dir/up p)) (support/supported? chunks (gen/flat-chunk) p tall))
       {:changes [[p tall] [(dir/up p) (block/state (block/block-of tall) {:half :upper})]]})))
 
 (defn petals-meal

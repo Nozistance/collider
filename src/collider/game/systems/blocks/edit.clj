@@ -15,7 +15,7 @@
 (defn block-at
   "Returns the block at pos."
   ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
+  (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
 
 (def ^:private ^:const player-half 0.3)
 (def ^:private ^:const player-height 1.8)
@@ -98,10 +98,10 @@
   "Returns the deltas for changing blocks, together with what the change
    does to the blocks around them."
   [world changes]
-  (let [chunks' (chunk/chunks-set-blocks (:chunks world) gen/flat-chunk changes)
+  (let [chunks' (chunk/chunks-set-blocks (:chunks world) (gen/flat-chunk) changes)
         all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
-        chunks'' (chunk/chunks-set-blocks chunks' gen/flat-chunk all)
-        mixed (liquid/mix-changes chunks'' gen/flat-chunk (map first all))]
+        chunks'' (chunk/chunks-set-blocks chunks' (gen/flat-chunk) all)
+        mixed (liquid/mix-changes chunks'' (gen/flat-chunk) (map first all))]
     (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
           (map (fn [[p _]] (out/all (out/fizz p))))
           mixed)))

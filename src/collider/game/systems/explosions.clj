@@ -151,7 +151,7 @@
           affected)))
 
 (defn- explosion-reader [world [cx cy cz]]
-  (explosion/block-reader (:chunks world) gen/flat-chunk
+  (explosion/block-reader (:chunks world) (gen/flat-chunk)
                           [(long (double cx)) (long (double cy)) (long (double cz))]))
 
 (defn- break-cells

@@ -71,7 +71,7 @@
             (> (long (:repath-at task 0)) (long t)))
       e
       (assoc e :task (assoc task
-                       :path (path/find-path (:chunks world) gen/flat-chunk
+                       :path (path/find-path (:chunks world) (gen/flat-chunk)
                                              (sense/feet-cell (:pos e)) gc avoid-water?)
                        :path-i 0
                        :path-goal gc
@@ -99,7 +99,7 @@
         pi
         (let [w (pth j)]
           (if (and (= (long (w 1)) fy)
-                   (path/direct? (:chunks world) gen/flat-chunk (:pos e) half w))
+                   (path/direct? (:chunks world) (gen/flat-chunk) (:pos e) half w))
             j
             (recur (dec j))))))))
 
@@ -223,7 +223,7 @@
          (< (^[double] Math/abs (+ (double vx0) (double cx))) 0.005)
          (< (^[double] Math/abs (+ (double vz0) (double cz))) 0.005)
          (<= -0.0785 (double vy0) 0.0)
-         (phys/standing-on-cubes? (:chunks world) gen/flat-chunk
+         (phys/standing-on-cubes? (:chunks world) (gen/flat-chunk)
                                   (v/x pos) (v/y pos) (v/z pos) half))))
 
 (defn- rest-step
@@ -251,7 +251,7 @@
   "Returns the shove flowing water gives a mob."
   [world e half height water?]
   (if water?
-    (liquid/entity-push (:chunks world) gen/flat-chunk (:pos e) half height (:vel e))
+    (liquid/entity-push (:chunks world) (gen/flat-chunk) (:pos e) half height (:vel e))
     zero3))
 
 (defn- steer-axis
@@ -330,7 +330,7 @@
 (defn- bubbled-vy
   "Returns a mob's upward speed with bubble columns taken into account."
   [world e ^Move mv water? bump? jump?]
-  (liquid/bubble-push (:chunks world) gen/flat-chunk (.pos mv)
+  (liquid/bubble-push (:chunks world) (gen/flat-chunk) (.pos mv)
                       (next-vy world e (v/y (.vel mv)) water? bump? jump?)))
 
 (defn- mob-stepped
@@ -352,7 +352,7 @@
         fric (friction (boolean (:on-ground e)) water?)
         drive (steer-vel world e t eid water? (when moving? (heading (:pos e) target))
                          vel0 push half height attr moving?)
-        ^Move mv (phys/move (:chunks world) gen/flat-chunk (:pos e) drive half height 0.6)
+        ^Move mv (phys/move (:chunks world) (gen/flat-chunk) (:pos e) drive half height 0.6)
         vel (.vel mv)
         bump? (bumped? moving? (v/x drive) (v/z drive) (v/x vel) (v/z vel))
         jump? (jump-now? world e wp target ey moving? mv t)

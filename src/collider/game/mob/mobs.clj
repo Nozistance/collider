@@ -39,7 +39,7 @@
 (defn egg-type
   "Returns the kind of mob a spawn egg makes, or nil."
   [item]
-  (let [t (get-in data/items [item :spawns])]
+  (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
 (defn max-health
   "Returns the health a mob of that kind starts with."

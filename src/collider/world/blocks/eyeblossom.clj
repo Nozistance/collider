@@ -55,11 +55,11 @@
 
 
    :wake   (fn [chunks tick p _old _self?]
-             (when-not (support/supported? chunks gen/flat-chunk p
-                                           (chunk/chunks-get-block chunks gen/flat-chunk p))
+             (when-not (support/supported? chunks (gen/flat-chunk) p
+                                           (chunk/chunks-get-block chunks (gen/flat-chunk) p))
                (inc (long tick))))
    :due    (fn [chunks p ctx]
-             (let [st (chunk/chunks-get-block chunks gen/flat-chunk p)]
+             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
                (or (seq ((:due support/rule) chunks p nil))
                    (when-let [new (switched st (long (:time-of-day ctx 0)))]
                      [[p new]]))))})

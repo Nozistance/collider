@@ -19,7 +19,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- block-state ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
+  (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
 
 (defn- players [world]
   (vec (sort (vals (:players world)))))
@@ -34,7 +34,7 @@
 (defn- chunk-packet [world id]
   (let [[x z] (chunk/id->pos id)]
     {:packet         :level-chunk-with-light :cx x :cz z
-     :chunk          (get-in world [:chunks id] gen/flat-chunk)
+     :chunk          (get-in world [:chunks id] (gen/flat-chunk))
      :block-entities (be/wire (get-in world [:block-entities id]))}))
 
 (defn- forget-chunk-packet [id]
@@ -55,18 +55,19 @@
       (added-chunk-packets world add)
       (map forget-chunk-packet drop))))
 
-(def ^:private entity-type
-  {:player        (data/registry-id "entity_type" :player)
-   :sheep         (data/registry-id "entity_type" :sheep)
-   :item          (data/registry-id "entity_type" :item)
-   :tnt           (data/registry-id "entity_type" :tnt)
-   :falling-block (data/registry-id "entity_type" :falling-block)})
+(def ^:private ^:table entity-type
+  (delay
+    {:player        (data/registry-id "entity_type" :player)
+     :sheep         (data/registry-id "entity_type" :sheep)
+     :item          (data/registry-id "entity_type" :item)
+     :tnt           (data/registry-id "entity_type" :tnt)
+     :falling-block (data/registry-id "entity_type" :falling-block)}))
 
 (defn- kind-of
   "Returns the kind of entity e is shown as."
   [e]
   (let [t (:type e)]
-    (if (contains? entity-type t) t :player)))
+    (if (contains? @entity-type t) t :player)))
 
 (defn- uuid-of [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
@@ -94,7 +95,7 @@
 
 (def ^:private equipment-slots [0 2 3 4 5])
 (defn- add-entity-packet [eid e tr kind]
-  {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (entity-type kind)
+  {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
    :pos    (if tr (mapv double (:pos tr)) (:pos e))
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
    :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
@@ -180,8 +181,9 @@
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})
 
-(def ^:private overworld (data/datapack-id "dimension_type" :overworld))
-(def ^:private explosion-particle (data/registry-id "particle_type" :explosion-emitter))
+(def ^:private ^:table overworld (delay (data/datapack-id "dimension_type" :overworld)))
+(def ^:private ^:table explosion-particle
+  (delay (data/registry-id "particle_type" :explosion-emitter)))
 (defn- particles-packet [m]
   {:packet :level-particles :particle (data/registry-id "particle_type" (:kind m)) :state (:state m)
    :pos    (:pos m) :count (:count m) :speed (:speed m)})
@@ -217,7 +219,7 @@
 (defn- sound-id
   "Returns the id and source of the sound kind, nil when unknown."
   [kind]
-  (let [reg (get data/registries "sound_event")]
+  (let [reg (get (data/registries) "sound_event")]
     (if-let [[ev src] (get sound-table kind)]
       (when-let [id (get reg ev)] [id src])
       (when-let [id (get reg kind)] [id 4]))))
@@ -231,7 +233,7 @@
   (let [k (get (:motions m) eid)]
     {:packet    :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
-     :particle  explosion-particle :sound (first (sound-id :explosion))}))
+     :particle  @explosion-particle :sound (first (sound-id :explosion))}))
 
 (def ^:private ^:const explosion-range-sq 4096.0)
 (defn- in-earshot? [world center eid]
@@ -262,7 +264,7 @@
                               :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)])
                                            (:rules m))}])
    :health        (fn [_ m] [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}])
-   :respawn       (fn [_ _] [{:packet :respawn :dimension-type overworld :keep 0}
+   :respawn       (fn [_ _] [{:packet :respawn :dimension-type @overworld :keep 0}
                              {:packet :game-event :event 13 :value 0.0}])
    :default-spawn (fn [_ m] [{:packet :set-default-spawn-position :pos (:pos m)}])
    :joined        (fn [_ _] nil)
@@ -339,7 +341,7 @@
     (f world m)
     (once! (:msg m))))
 
-(def ^:private command-tree (commands/tree))
+(def ^:private ^:table command-tree (delay (commands/tree)))
 (def ^:private world-border-size 5.9999968E7)
 (def ^:private world-border-max 29999984)
 (def ^:private op-level-event 24)
@@ -353,16 +355,16 @@
       :max-players         (min 255 (long max-players))
       :view-distance       view-distance
       :simulation-distance simulation-distance
-      :dimension-type      overworld}
+      :dimension-type      @overworld}
      {:packet :change-difficulty :difficulty 0 :locked false}
      {:packet       :player-abilities :flags (bit-or 1 4 8)
       :flying-speed 0.05 :walking-speed 0.1}]))
 
 (defn- join-world-packets [world eid motd]
   (let [[x y z] (join-spawn world)]
-    [(assoc data/recipes :packet :update-recipes)
+    [(assoc (data/recipes) :packet :update-recipes)
      {:packet :entity-event :eid eid :event (+ op-level-event 4)}
-     {:packet :commands :nodes command-tree}
+     {:packet :commands :nodes @command-tree}
      {:packet :server-data :motd motd}
      {:packet :initialize-border :size world-border-size :max-size world-border-max}
      {:packet :set-default-spawn-position :pos [x y z]}

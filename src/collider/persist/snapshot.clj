@@ -43,7 +43,7 @@
         dir (or (.getParent target) (.toPath (io/file ".")))]
     (Files/createDirectories dir (make-array FileAttribute 0))
     (let [tmp (Files/createTempFile dir "world-" ".tmp" (make-array FileAttribute 0))
-          ^"[Ljava.nio.file.OpenOption;" open-opts (make-array OpenOption 0)]
+          ^OpenOption/1 open-opts (make-array OpenOption 0)]
       (try
         (Files/write tmp data open-opts)
         (Files/move tmp target (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
@@ -64,7 +64,7 @@
   (let [^Path f (.toPath (meta-file dir))]
     (when (Files/isRegularFile f (make-array LinkOption 0))
       (Files/copy f (.resolveSibling f "meta.edn.bak")
-                  ^"[Ljava.nio.file.CopyOption;"
+                  ^CopyOption/1
                   (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))))
 
 (defn- read-frozen [^File f]

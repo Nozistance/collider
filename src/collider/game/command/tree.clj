@@ -138,7 +138,7 @@
 
 (defn- as-item [nm s _opts _origin]
   (let [k (block-kw s)]
-    (if (contains? (get data/registries "item") k)
+    (if (contains? (get (data/registries) "item") k)
       [:ok k]
       [:err (str (name nm) ": unknown item \"" s "\"")])))
 
@@ -161,7 +161,7 @@
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
-    (if (contains? data/blocks k)
+    (if (contains? (data/blocks) k)
       [:ok k]
       [:err (str (name nm) ": unknown block \"" s "\"")])))
 
@@ -207,7 +207,7 @@
 (defn- block-values [{:keys [default]}]
   (into [(block-name default)]
         (remove #{(block-name default)})
-        (sort (map block-name (keys data/blocks)))))
+        (sort (map block-name (keys (data/blocks))))))
 
 (defn- coord-values [target axis]
   (if target [(str (nth target axis))] []))
@@ -222,7 +222,7 @@
     :rule (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table))
     :text []
     :dcoord (coord-values target axis)
-    :item (vec (sort (map block-name (keys (get data/registries "item")))))
+    :item (vec (sort (map block-name (keys (get (data/registries) "item")))))
     :entity-type (vec (sort (map name (keys mobs/types))))
     :targets ["@s" "@a" "@p" "@e"]
     :block (block-values opts)))

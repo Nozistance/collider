@@ -63,7 +63,7 @@
   (long (light/brightness chunks template x y z time (rain-level ctx) (thunder-level ctx))))
 
 (defn- can-see-sky? [chunks p]
-  (>= (long (light/sky-light-at chunks gen/flat-chunk (nth p 0) (nth p 1) (nth p 2))) 15))
+  (>= (long (light/sky-light-at chunks (gen/flat-chunk) (nth p 0) (nth p 1) (nth p 2))) 15))
 
 (defn precipitation-at
   "Returns :rain, :snow or :none at block position p; nothing falls where the
@@ -72,7 +72,7 @@
   (cond
     (not (raining? ctx)) :none
     (not (can-see-sky? chunks p)) :none
-    (> (spawn/motion-blocking-height chunks gen/flat-chunk (nth p 0) (nth p 2)) (long (nth p 1))) :none
+    (> (spawn/motion-blocking-height chunks (gen/flat-chunk) (nth p 0) (nth p 2)) (long (nth p 1))) :none
     :else (biome/precipitation-at (biome/at chunks p) p)))
 
 (defn raining-at?

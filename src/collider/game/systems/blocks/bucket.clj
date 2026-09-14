@@ -83,5 +83,5 @@
                  (chunk/in-range? y')
                  (block/can-be-replaced? (edit/block-at world above))
                  (not (edit/obstructed? world above st))
-                 (support/supported? (:chunks world) gen/flat-chunk above st))
+                 (support/supported? (:chunks world) (gen/flat-chunk) above st))
         (edit/placed-deltas world eid above st)))))

@@ -24,9 +24,9 @@
   (server/send! conn {:packet :select-known-packs :packs [known-pack]}))
 
 (defn- finish-configuration! [conn]
-  (doseq [[registry names] data/datapack]
+  (doseq [[registry names] (data/datapack)]
     (server/send! conn {:packet :registry-data :registry registry :names names}))
-  (server/send! conn {:packet :update-tags :tags data/tags})
+  (server/send! conn {:packet :update-tags :tags (data/tags)})
   (server/send! conn {:packet :finish-configuration}))
 
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]

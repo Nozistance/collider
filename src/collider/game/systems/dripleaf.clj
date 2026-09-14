@@ -22,7 +22,7 @@
 
 (defn- tilt-cell [world e p]
   (when (chunk/in-range? (nth p 1))
-    (let [st (chunk/chunks-get-block (:chunks world) gen/flat-chunk p)]
+    (let [st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) p)]
       (when (and (dripleaf/leaf? st)
                  (= :none (dripleaf/tilt-of st))
                  (dripleaf/can-tilt? p (v/y (:pos e)) (:on-ground e)))

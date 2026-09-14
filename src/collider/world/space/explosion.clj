@@ -10,7 +10,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private solid-arr block/solid-arr)
 (def ^:private ^:const region-r 10)
 (deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
                  ^long ncx ^long ncz ^long nsy])
@@ -137,7 +136,7 @@
         nx (unchecked-int (.ncx rg)) nz (unchecked-int (.ncz rg)) ny (unchecked-int (.nsy rg))
         cx (double cx) cy (double cy) cz (double cz)]
     (fn ^long [^double x ^double y ^double z]
-      (long (Rays/clearPath grid gx gz gy nx nz ny ^booleans solid-arr cx cy cz x y z)))))
+      (long (Rays/clearPath grid gx gz gy nx nz ny ^booleans (block/solid-arr) cx cy cz x y z)))))
 
 (defn- density-steps [^double half ^double height]
   (let [sx (/ 1.0 (+ (* 4.0 half) 1.0))

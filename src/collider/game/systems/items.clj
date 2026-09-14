@@ -158,9 +158,9 @@
   "Returns the speed an item takes on before it moves, and whether it is in a
    fluid."
   [chunks pos vel]
-  (let [pushed (v/+ vel (liquid/entity-push chunks gen/flat-chunk pos item-half item-height vel))
-        water (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :water)
-        lava (liquid/fluid-height chunks gen/flat-chunk pos item-half item-height :lava)]
+  (let [pushed (v/+ vel (liquid/entity-push chunks (gen/flat-chunk) pos item-half item-height vel))
+        water (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :water)
+        lava (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :lava)]
     [(cond
        (> water fluid-depth) (fluid-movement pushed water-drag)
        (> lava fluid-depth) (fluid-movement pushed lava-drag)
@@ -171,7 +171,7 @@
   "Returns where an item ends up, how fast it still goes, and whether it rests
    on the ground."
   [chunks pos [vx vy vz]]
-  (let [^Move mv (phys/move chunks gen/flat-chunk pos
+  (let [^Move mv (phys/move chunks (gen/flat-chunk) pos
                             [(double vx) (double vy) (double vz)] item-half item-height)
         on-ground (.on-ground mv)
         [mx my mz] (.vel mv)
@@ -201,7 +201,7 @@
         [pos' vel' on-ground] (if resting?
                                 [pos drift true]
                                 (item-moved chunks pos drift))
-        vel' (assoc vel' 1 (liquid/bubble-push chunks gen/flat-chunk pos' (double (vel' 1))))]
+        vel' (assoc vel' 1 (liquid/bubble-push chunks (gen/flat-chunk) pos' (double (vel' 1))))]
     (if (>= age despawn-age)
       [:remove-entity eid]
       [:merge-entity eid

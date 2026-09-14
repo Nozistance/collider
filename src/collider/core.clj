@@ -1,6 +1,8 @@
 (ns collider.core
   "Starting and stopping the server."
-  (:require [collider.config :as config]
+  (:require [clojure.edn :as edn]
+            [collider.config :as config]
+            [collider.data :as data]
             [collider.game.state :as state]
             [collider.game.tick :as tick]
             [collider.log :as log]
@@ -80,6 +82,7 @@
 (defn start
   "Starts a server with the options opts and returns it."
   [opts]
+  (data/load!)
   (let [{:keys [store saved world saver] :as base} (open-world opts)
         net (open-net base)
         clocks (start-clocks base net)
@@ -100,7 +103,7 @@
 
 (defn -main
   "Starts the server and waits for it to stop."
-  [& _]
+  [& args]
   (config/write-default!)
-  (let [{:keys [^Thread accept]} (start {})]
+  (let [{:keys [^Thread accept]} (start (apply merge {} (map edn/read-string args)))]
     (.join accept)))

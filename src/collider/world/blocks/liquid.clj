@@ -17,17 +17,17 @@
            :decay-jitter 4
            :mix          {:source :obsidian :flowing :cobblestone :smother :stone}}})
 
-(def ^:private base
-  (into {} (map (fn [[cls {:keys [block]}]] [cls (block/state block)])) liquids))
+(def ^:private ^:table base
+  (delay (into {} (map (fn [[cls {:keys [block]}]] [cls (block/state block)])) liquids)))
 
-(def ^:private class-of-block
-  (into {} (map (fn [[cls {:keys [block]}]] [block cls])) liquids))
+(def ^:private ^:table class-of-block
+  (delay (into {} (map (fn [[cls {:keys [block]}]] [block cls])) liquids)))
 
-(def ^:private bucket->class
-  (into {} (map (fn [[cls {:keys [bucket]}]] [bucket cls])) liquids))
+(def ^:private ^:table bucket->class
+  (delay (into {} (map (fn [[cls {:keys [bucket]}]] [bucket cls])) liquids)))
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
-(def ^:private water-source (block/state :water))
+(def ^:private ^:table water-source (delay (block/state :water)))
 (defn liquid-state?
   "Returns true when st is water or lava."
   [st] (block/liquid? (long st)))
@@ -36,19 +36,19 @@
    nil for anything else."
   [st]
   (cond
-    (liquid-state? st) (class-of-block (block/block-of (long st)))
+    (liquid-state? st) (@class-of-block (block/block-of (long st)))
     (block/waterlogged? (long st)) :water))
 (defn level
   "Returns the level of a liquid state: 0 for a source, 8 for falling."
   ^long [st]
-  (if (liquid-state? st) (- (long st) (long (base (liquid-class st)))) 0))
+  (if (liquid-state? st) (- (long st) (long (@base (liquid-class st)))) 0))
 (defn liquid-state
   "Returns the block state of class cls at that level."
   ^long [cls ^long level]
-  (+ (long (base cls)) level))
+  (+ (long (@base cls)) level))
 (defn bucket->state
   "Returns the source state a bucket item pours, nil for other items."
-  [item] (when-let [cls (bucket->class item)] (liquid-state cls 0)))
+  [item] (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
 (defn delay-of
   "Returns how many ticks st waits between spreading."
   [st] (long (get-in liquids [(liquid-class st) :delay])))
@@ -80,7 +80,7 @@
    holds water."
   ^long [raw]
   (let [st (long raw)]
-    (if (and (pos? st) (block/waterlogged? st)) water-source st)))
+    (if (and (pos? st) (block/waterlogged? st)) @water-source st)))
 
 (defn- state-at
   "Returns the liquid at x y z, water where a block holds water."
@@ -510,9 +510,9 @@
           (state-at chunks template (+ (long x) (long dx)) y (+ (long z) (long dz))))
         horiz))
 
-(def ^:private basalt-state (block/state :basalt))
-(def ^:private soul-soil-state (block/state :soul-soil))
-(def ^:private blue-ice-state (block/state :blue-ice))
+(def ^:private ^:table basalt-state (delay (block/state :basalt)))
+(def ^:private ^:table soul-soil-state (delay (block/state :soul-soil)))
+(def ^:private ^:table blue-ice-state (delay (block/state :blue-ice)))
 (defn- mixed-state
   "Returns the solid block that liquids meeting at a cell turn into, nil
    where they do not meet."
@@ -520,8 +520,8 @@
   (when mix
     (cond
       (some (fn [s] (other-class? cls s)) (cons above sides)) (mix-product mix (level st))
-      (and (= (long below-raw) (long soul-soil-state))
-           (some #(= (long %) (long blue-ice-state)) (cons above sides))) basalt-state
+      (and (= (long below-raw) (long @soul-soil-state))
+           (some #(= (long %) (long @blue-ice-state)) (cons above sides))) @basalt-state
       :else nil)))
 
 (defn- solidified [chunks template [x y z :as p]]
@@ -553,7 +553,7 @@
     :else (when-let [drag (get column-drag (block/type-of (long below)))]
             (block/state :bubble-column {:drag drag}))))
 
-(defn- water-source? [st] (= (long st) water-source))
+(defn- water-source? [st] (= (long st) @water-source))
 (defn- column-changes [chunks template [x y z] col]
   (loop [y (long y) acc []]
     (let [st (long (raw-at chunks template x y z))]
@@ -565,7 +565,7 @@
   (let [raw (long (raw-at chunks template x y z))
         col (column-state (long (raw-at chunks template x (dec (long y)) z)))]
     (cond
-      (and (bubble-column? raw) (nil? col)) [[p water-source]]
+      (and (bubble-column? raw) (nil? col)) [[p @water-source]]
       (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks template p col))))
 
 (defn bubble-push
@@ -671,10 +671,10 @@
   {:name   :liquid
    :match? (fn [_chunks st _p] (some? (liquid-class st)))
    :wake   (fn [chunks tick p old self?]
-             (if (mix-wake? chunks gen/flat-chunk p)
+             (if (mix-wake? chunks (gen/flat-chunk) p)
                (inc (long tick))
                (+ (long tick)
                   (if self?
-                    (update-delay old (chunk/chunks-get-block chunks gen/flat-chunk p) tick p)
-                    (delay-of (chunk/chunks-get-block chunks gen/flat-chunk p))))))
-   :due    (fn [chunks p ctx] (update-cell chunks gen/flat-chunk p (:rules ctx)))})
+                    (update-delay old (chunk/chunks-get-block chunks (gen/flat-chunk) p) tick p)
+                    (delay-of (chunk/chunks-get-block chunks (gen/flat-chunk) p))))))
+   :due    (fn [chunks p ctx] (update-cell chunks (gen/flat-chunk) p (:rules ctx)))})

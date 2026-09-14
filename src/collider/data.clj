@@ -7,56 +7,105 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- load-edn [name]
-  (with-open [r (io/reader (io/resource (str "mc/" name)))]
-    (edn/read (PushbackReader. r))))
+(defn dir
+  "Returns the directory of the tables, or nil when there is none."
+  []
+  (->> [(System/getProperty "collider.data") "target/data" "data"]
+       (remove nil?)
+       (filter #(.isFile (io/file % "blocks.edn")))
+       first))
 
-(def packets (load-edn "packets.edn"))
-(def registries (load-edn "registries.edn"))
-(def blocks (load-edn "blocks.edn"))
-(def datapack (load-edn "datapack.edn"))
-(def tags (load-edn "tags.edn"))
-(def items (load-edn "items.edn"))
-(def light (load-edn "light.edn"))
-(def fire (load-edn "fire.edn"))
-(def drops (load-edn "drops.edn"))
-(def recipes (load-edn "recipes.edn"))
-(def sounds (load-edn "sounds.edn"))
+(defn- tables-of [ns]
+  (for [[_ v] (ns-interns ns) :when (:table (meta v))] @v))
+
+(defn load!
+  "Loads every table."
+  []
+  (doseq [ns (all-ns)
+          :when (.startsWith (str (ns-name ns)) "collider.")
+          t (tables-of ns)]
+    @t))
+
+(defn- read-edn [name]
+  (let [d (or (dir) (throw (ex-info "no tables" {:looked-in ["target/data" "data"]})))]
+    (with-open [r (io/reader (io/file d name))]
+      (edn/read (PushbackReader. r)))))
+
+(def ^:private table-names
+  [:packets :registries :blocks :datapack :tags :items :light :fire :drops :recipes :sounds])
+
+(def ^:private ^:table tables
+  (delay (into {} (map (fn [k] [k (read-edn (str (name k) ".edn"))])) table-names)))
+
+(defn packets
+  "Returns the packet ids by connection state, direction and name."
+  [] (:packets @tables))
+(defn registries
+  "Returns the ids of the entries the client knows, by registry."
+  [] (:registries @tables))
+(defn blocks
+  "Returns every block by keyword."
+  [] (:blocks @tables))
+(defn datapack
+  "Returns the entries the server sends to the client, by registry."
+  [] (:datapack @tables))
+(defn tags
+  "Returns the tags of every registry."
+  [] (:tags @tables))
+(defn items
+  "Returns the properties of items by keyword."
+  [] (:items @tables))
+(defn light
+  "Returns how block states pass and emit light."
+  [] (:light @tables))
+(defn fire
+  "Returns how blocks catch fire and burn."
+  [] (:fire @tables))
+(defn drops
+  "Returns what blocks drop when broken."
+  [] (:drops @tables))
+(defn recipes
+  "Returns the stonecutting recipes and the ingredients the client is told of."
+  [] (:recipes @tables))
+(defn sounds
+  "Returns the sounds of every sound type."
+  [] (:sounds @tables))
+
 (defn max-stack
   "Returns how many of item fit in one stack."
   ^long [item]
-  (long (get-in items [item :max-stack] 64)))
+  (long (get-in (items) [item :max-stack] 64)))
 
 (defn jukebox-song
   "Returns the song a music disc plays, or nil when item is not one."
   [item]
-  (get-in items [item :jukebox-song]))
+  (get-in (items) [item :jukebox-song]))
 
 (defn equip-slot
   "Returns the slot item is worn in, or nil when it is not worn."
   [item]
-  (get-in items [item :equip]))
+  (get-in (items) [item :equip]))
 
 (defn dye-color
   "Returns the color item dyes with, or nil when it is not a dye."
   [item]
-  (get-in items [item :dye]))
+  (get-in (items) [item :dye]))
 
 (defn pattern-tag
   "Returns the banner patterns item can apply, or nil when it applies none."
   [item]
-  (get-in items [item :patterns]))
+  (get-in (items) [item :patterns]))
 
 (defn compost
   "Returns the chance item raises a composter, or nil when it does not."
   [item]
-  (get-in items [item :compost]))
+  (get-in (items) [item :compost]))
 
 (defn tag-values
   "Returns the entries of a tag of a registry, empty when there is no such
    tag."
   [registry tag]
-  (get-in tags [registry tag] []))
+  (get-in (tags) [registry tag] []))
 
 (defn snake
   "Returns the name of keyword k with dashes turned into underscores."
@@ -81,54 +130,55 @@
   "Returns the id of a packet of a connection state and direction. Throws when
    there is no such packet."
   ^long [state dir name]
-  (or (get-in packets [state dir name])
+  (or (get-in (packets) [state dir name])
       (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))
 
 (defn registry-id
   "Returns the id of an entry of a registry. Throws when there is no such
    entry."
   ^long [registry entry]
-  (or (get-in registries [registry entry])
+  (or (get-in (registries) [registry entry])
       (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
 
-(def ^:private datapack-index
-  (into {}
-        (map (fn [[registry entries]]
-               [registry (into {} (map-indexed (fn [i e] [e (long i)])) entries)]))
-        datapack))
+(def ^:private ^:table datapack-index
+  (delay
+    (into {}
+          (map (fn [[registry entries]]
+                 [registry (into {} (map-indexed (fn [i e] [e (long i)])) entries)]))
+          (datapack))))
 
 (defn datapack-id
   "Returns the id of an entry the server sends to the client rather than one
    the client knows. Throws when there is no such entry."
   ^long [registry entry]
-  (or (get (get datapack-index registry) entry)
+  (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
 
 (defn entry-id
   "Returns the id of an entry, from whichever kind of registry holds it."
   ^long [registry entry]
-  (if (contains? registries registry)
+  (if (contains? (registries) registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
 
-(def ^:private by-id
-  (into {}
-        (map (fn [[registry entries]]
-               [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
-        registries))
+(def ^:private ^:table by-id
+  (delay
+    (into {}
+          (map (fn [[registry entries]]
+                 [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
+          (registries))))
 
 (defn entry-name
   "Returns the entry of a registry with the given id. Throws when there is no
    such entry."
   [registry ^long id]
-  (if-let [m (get by-id registry)]
-    (or (get m id)
-        (throw (ex-info "unknown registry id" {:registry registry :id id})))
-    (let [v (get datapack registry)]
-      (when-not v (throw (ex-info "unknown registry" {:registry registry})))
-      (when (or (neg? id) (>= id (count v)))
-        (throw (ex-info "unknown registry id" {:registry registry :id id})))
-      (nth v id))))
+  (let [m (get @by-id registry)
+        v (get (datapack) registry)]
+    (cond
+      m (or (get m id) (throw (ex-info "unknown registry id" {:registry registry :id id})))
+      (nil? v) (throw (ex-info "unknown registry" {:registry registry}))
+      (< -1 id (count v)) (nth v id)
+      :else (throw (ex-info "unknown registry id" {:registry registry :id id})))))
 
 (defn- prop-order [b] (vec (keys (:props b))))
 (defn- prop-sizes [b] (mapv #(count (get (:props b) %)) (prop-order b)))
@@ -143,16 +193,27 @@
                  (assoc acc (nth order i)
                             (nth (get (:props b) (nth order i)) (quot left tail)))))))))
 
-(def block-state-count
-  (long (reduce (fn [n [_ b]] (max n (+ (long (:first b)) (state-count b)))) 0 blocks)))
+(def ^:private ^:table state-total
+  (delay (long (reduce (fn [n [_ b]] (max n (+ (long (:first b)) (state-count b)))) 0 (blocks)))))
 
-(def block-of-state
-  (let [a (object-array block-state-count)]
-    (doseq [[block b] blocks
-            :let [from (long (:first b))]
-            i (range (state-count b))]
-      (aset a (+ from (long i)) block))
-    a))
+(defn block-state-count
+  "Returns how many block states there are."
+  ^long []
+  @state-total)
+
+(def ^:private ^:table state-blocks
+  (delay
+    (let [a (object-array (block-state-count))]
+      (doseq [[block b] (blocks)
+              :let [from (long (:first b))]
+              i (range (state-count b))]
+        (aset a (+ from (long i)) block))
+      a)))
+
+(defn block-of-state
+  "Returns the block of every state, by id."
+  ^objects []
+  @state-blocks)
 
 (defn- interned
   "Returns v with every value equal to one already seen replaced by that
@@ -164,45 +225,81 @@
     v))
 
 (defn- object-table [name]
-  (let [a (object-array block-state-count)
+  (let [a (object-array (block-state-count))
         seen (HashMap.)]
-    (doseq [[k v] (load-edn name)
-            :when (< -1 (long k) block-state-count)]
+    (doseq [[k v] (read-edn name)
+            :when (< -1 (long k) (block-state-count))]
       (aset a (int (long k)) (interned seen v)))
     a))
 
 (defn- byte-table [name ^long default]
-  (let [a (byte-array block-state-count)]
+  (let [a (byte-array (block-state-count))]
     (Arrays/fill a (byte default))
-    (doseq [[k v] (load-edn name)
-            :when (< -1 (long k) block-state-count)]
+    (doseq [[k v] (read-edn name)
+            :when (< -1 (long k) (block-state-count))]
       (aset a (int (long k)) (byte (long v))))
     a))
 
-(def ^"[Ljava.lang.Object;" shapes (object-table "shapes.edn"))
-(def ^"[Ljava.lang.Object;" outlines (object-table "outlines.edn"))
-(def ^bytes sturdy (byte-table "sturdy.edn" 63))
-(def ^bytes sturdy-center (byte-table "sturdy-center.edn" 63))
-(def ^bytes sturdy-rigid (byte-table "sturdy-rigid.edn" 63))
-(def ^bytes flags (byte-table "flags.edn" 0))
+(def ^:private ^:table shape-table (delay (object-table "shapes.edn")))
+(def ^:private ^:table outline-table (delay (object-table "outlines.edn")))
+(def ^:private ^:table sturdy-table (delay (byte-table "sturdy.edn" 63)))
+(def ^:private ^:table sturdy-center-table (delay (byte-table "sturdy-center.edn" 63)))
+(def ^:private ^:table sturdy-rigid-table (delay (byte-table "sturdy-rigid.edn" 63)))
+(def ^:private ^:table flag-table (delay (byte-table "flags.edn" 0)))
 
-(def default-props
-  (into {}
-        (map (fn [[block b]]
-               [block (decode-props b (- (long (:default b)) (long (:first b))))]))
-        blocks))
+(defn shapes
+  "Returns the collision boxes of every state, by id, nil for a full cube."
+  ^objects []
+  @shape-table)
+
+(defn outlines
+  "Returns the outline boxes of every state, by id, nil for a full cube."
+  ^objects []
+  @outline-table)
+
+(defn sturdy
+  "Returns which faces of every state hold things, by id."
+  ^bytes []
+  @sturdy-table)
+
+(defn sturdy-center
+  "Returns which faces of every state hold things at their center, by id."
+  ^bytes []
+  @sturdy-center-table)
+
+(defn sturdy-rigid
+  "Returns which faces of every state hold things rigidly, by id."
+  ^bytes []
+  @sturdy-rigid-table)
+
+(defn flags
+  "Returns the flags of every state, by id."
+  ^bytes []
+  @flag-table)
+
+(def ^:private ^:table defaults
+  (delay
+    (into {}
+          (map (fn [[block b]]
+                 [block (decode-props b (- (long (:default b)) (long (:first b))))]))
+          (blocks))))
+
+(defn default-props
+  "Returns the properties of the default state of every block."
+  []
+  @defaults)
 
 (defn info
   "Returns everything the tables hold about a block. Throws when there is no
    such block."
   [block]
-  (or (get blocks block)
+  (or (get (blocks) block)
       (throw (ex-info "unknown block" {:block block}))))
 
 (defn place-sound
   "Returns the sound of placing a block."
   [block]
-  (get-in sounds [(:sound (info block)) :place]))
+  (get-in (sounds) [(:sound (info block)) :place]))
 
 (defn open-sound
   "Returns the sound of a block opening, or of it closing."
@@ -239,18 +336,17 @@
    (let [b (info block-name)]
      (if (empty? wanted)
        (state-id block-name)
-       (state-offset block-name b wanted (get default-props block-name))))))
+       (state-offset block-name b wanted (get (default-props) block-name))))))
 
 (defn state-block
   "Returns the block of a state id, or nil when there is no such state."
   [^long id]
-  (when (< -1 id block-state-count) (aget ^objects block-of-state id)))
+  (when (< -1 id (block-state-count)) (aget (block-of-state) id)))
 
 (defn state-props
   "Returns the block and the properties of a state id, or nil when there is no
    such state."
   [^long id]
   (when-let [block-name (state-block id)]
-    (let [b (get blocks block-name)]
+    (let [b (get (blocks) block-name)]
       [block-name (decode-props b (- id (long (:first b))))])))
-

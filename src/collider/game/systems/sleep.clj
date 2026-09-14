@@ -14,7 +14,7 @@
 
 (def ^:private deep-sleep 100)
 (def ^:private day-length 24000)
-(defn- block-at [world pos] (chunk/chunks-get-block (:chunks world) gen/flat-chunk pos))
+(defn- block-at [world pos] (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
 (defn sleepers-needed
   "Returns how many players must sleep to skip the night."
   ^long [world]

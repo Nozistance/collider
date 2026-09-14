@@ -38,7 +38,7 @@
   [chunks p st roll time ctx]
   (if-not (grass/can-stay-alive? chunks st p)
     [[p (block/state :dirt)]]
-    (when (>= (weather/brightness ctx chunks gen/flat-chunk (p 0) (inc (long (p 1))) (p 2) time) 9)
+    (when (>= (weather/brightness ctx chunks (gen/flat-chunk) (p 0) (inc (long (p 1))) (p 2) time) 9)
       (spread-cells chunks p st roll))))
 
 (defn- near-water? [chunks [x y z]]
@@ -77,13 +77,13 @@
 (defn ice-tick
   "Returns the change melting the ice st at p, or nil when it holds."
   [chunks p st _roll _time _ctx]
-  (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) (- 11 (block/dampening st)))
+  (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) (- 11 (block/dampening st)))
     [[p (block/state :water)]]))
 
 (defn snow-tick
   "Returns the change melting the snow layer at p, or nil when it holds."
   [chunks p _st _roll _time _ctx]
-  (when (> (long (light/block-light-at chunks gen/flat-chunk (p 0) (p 1) (p 2))) 11)
+  (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) 11)
     [[p 0]]))
 
 (defn eyeblossom-tick
@@ -163,7 +163,7 @@
   (when-let [q (first (for [d (shuffled-dirs roll)
                             :let [q (mapv + p (dir/horizontal-offset d))]
                             :when (and (air-at? chunks q)
-                                       (support/supported? chunks gen/flat-chunk q target))]
+                                       (support/supported? chunks (gen/flat-chunk) q target))]
                         q))]
     {:changes [[q target]]}))
 

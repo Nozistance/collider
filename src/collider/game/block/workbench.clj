@@ -5,7 +5,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private cut-recipes (:stonecutting data/recipes))
+(def ^:private ^:table cut-recipes (delay (:stonecutting (data/recipes))))
 
 (defn- of [item] (data/tag-values "item" item))
 
@@ -14,7 +14,7 @@
   [stack]
   (if (nil? stack)
     []
-    (filterv (fn [r] (some #(= % (:item stack)) (:in r))) cut-recipes)))
+    (filterv (fn [r] (some #(= % (:item stack)) (:in r))) @cut-recipes)))
 
 (defn cuts-input?
   "Returns true when a stonecutter accepts the stack."
@@ -39,34 +39,34 @@
       m
       (assoc m :input-item item :selected -1))))
 
-(def ^:private no-item-required
-  (vec (data/tag-values "banner_pattern" "no_item_required")))
+(def ^:private ^:table no-item-required
+  (delay (vec (data/tag-values "banner_pattern" "no_item_required"))))
 
-(def ^:private banner-items (set (of "banners")))
-(def ^:private loom-dyes (set (of "loom_dyes")))
-(def ^:private loom-patterns (set (of "loom_patterns")))
+(def ^:private ^:table banner-items (delay (set (of "banners"))))
+(def ^:private ^:table loom-dyes (delay (set (of "loom_dyes"))))
+(def ^:private ^:table loom-patterns (delay (set (of "loom_patterns"))))
 
 (defn banner?
   "Returns true when the stack is a banner."
-  [stack] (contains? banner-items (:item stack)))
+  [stack] (contains? @banner-items (:item stack)))
 
 (defn dye?
   "Returns true when a loom can dye a pattern with the stack."
   [stack]
-  (and (contains? loom-dyes (:item stack))
+  (and (contains? @loom-dyes (:item stack))
        (some? (data/dye-color (:item stack)))))
 
 (defn pattern-item?
   "Returns true when the stack is a banner pattern."
   [stack]
-  (and (contains? loom-patterns (:item stack))
+  (and (contains? @loom-patterns (:item stack))
        (some? (data/pattern-tag (:item stack)))))
 
 (defn selectable-patterns
   "Returns the patterns a loom offers, given the pattern item in it."
   [pattern]
   (if (nil? pattern)
-    no-item-required
+    @no-item-required
     (if-let [tag (data/pattern-tag (:item pattern))]
       (vec (data/tag-values "banner_pattern" tag))
       [])))

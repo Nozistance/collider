@@ -30,13 +30,13 @@
   ^long [^long n]
   (- 32 (Integer/numberOfLeadingZeros (int (dec (max 1 n))))))
 
-(def ^:private global-block-bits (ceillog2 data/block-state-count))
-(def ^:private global-biome-bits (ceillog2 (count (get data/datapack "worldgen/biome"))))
+(def ^:private ^:table global-block-bits (delay (ceillog2 (data/block-state-count))))
+(def ^:private ^:table global-biome-bits (delay (ceillog2 (count (get (data/datapack) "worldgen/biome")))))
 
 (defn- state-flag?
   "Returns true if a block state carries the given flag."
   [^long st ^long bit]
-  (pos? (bit-and (long (get data/flags st 0)) bit)))
+  (pos? (bit-and (long (get (data/flags) st 0)) bit)))
 
 (defn- fluid?
   "Returns true if a block state holds fluid."
@@ -51,21 +51,21 @@
 (defn- state-table
   "Returns pred as a table over every block state."
   ^booleans [pred]
-  (let [a (boolean-array data/block-state-count)]
-    (dotimes [i data/block-state-count]
+  (let [a (boolean-array (data/block-state-count))]
+    (dotimes [i (data/block-state-count)]
       (aset a i (boolean (pred i))))
     a))
 
-(def ^:private surface-arr (state-table (fn [^long st] (not= :air (block/type-of st)))))
-(def ^:private motion-arr (state-table motion-blocking?))
-(def ^:private no-leaves-arr
-  (state-table (fn [^long st] (and (motion-blocking? st) (not (block/leaves? st))))))
-(def ^:private fluid-arr (state-table fluid?))
+(def ^:private ^:table surface-arr (delay (state-table (fn [^long st] (not= :air (block/type-of st))))))
+(def ^:private ^:table motion-arr (delay (state-table motion-blocking?)))
+(def ^:private ^:table no-leaves-arr
+  (delay (state-table (fn [^long st] (and (motion-blocking? st) (not (block/leaves? st)))))))
+(def ^:private ^:table fluid-arr (delay (state-table fluid?)))
 
 (def ^:private ^:const palette-slots 1024)
 (def ^:private ^:const palette-max 256)
 (def ^:private ^:const block-bits-floor 4)
-(def ^:private plains (data/datapack-id "worldgen/biome" :plains))
+(def ^:private ^:table plains (delay (data/datapack-id "worldgen/biome" :plains)))
 
 (defn- pack-into!
   "Writes len values, bits wide each."
@@ -164,7 +164,7 @@
    fluid."
   ^longs [^shorts bs]
   (let [out (long-array 2)
-        ^booleans fluids fluid-arr]
+        ^booleans fluids @fluid-arr]
     (dotimes [i 4096]
       (let [id (bit-and (long (aget bs i)) 0xFFFF)]
         (when-not (= id (long block/air)) (aset out 0 (inc (aget out 0))))
@@ -176,7 +176,7 @@
   "Writes the biomes of a section."
   [^Buf buf]
   (.writeByte buf 0)
-  (c/write-varint buf (long plains)))
+  (c/write-varint buf (long @plains)))
 
 (defn- write-section!
   "Writes one section of a chunk."
@@ -187,9 +187,9 @@
       (let [^longs t (raw-tally bs)]
         (.writeShort buf (int (aget t 0)))
         (.writeShort buf (int (aget t 1)))
-        (write-global! buf bs global-block-bits))
+        (write-global! buf bs (long @global-block-bits)))
       (do (.writeShort buf (int (- 4096 (air-tally scratch n))))
-          (.writeShort buf (int (tallied scratch n fluid-arr)))
+          (.writeShort buf (int (tallied scratch n @fluid-arr)))
           (if (= n 1)
             (do (.writeByte buf 0) (c/write-varint buf (long (aget scratch palette-at))))
             (write-palette! buf idx scratch n))))
@@ -245,13 +245,14 @@
     (dotimes [c 256] (aset out c (int (column-height chunk pred c))))
     (pack-longs height-bits out)))
 
-(def ^:private client-heightmaps [[1 surface-arr] [4 motion-arr] [5 no-leaves-arr]])
+(def ^:private ^:table client-heightmaps
+  (delay [[1 @surface-arr] [4 @motion-arr] [5 @no-leaves-arr]]))
 
 (defn- write-heightmaps!
   "Writes the heightmaps of a chunk."
   [^Buf buf chunk]
-  (c/write-varint buf (count client-heightmaps))
-  (doseq [[id pred] client-heightmaps]
+  (c/write-varint buf (count @client-heightmaps))
+  (doseq [[id pred] @client-heightmaps]
     (c/write-varint buf (long id))
     (let [^longs ls (heightmap-longs chunk pred)]
       (c/write-varint buf (alength ls))

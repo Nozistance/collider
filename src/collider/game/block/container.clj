@@ -123,12 +123,16 @@
     (bench? m) (long (:size m))
     :else (* 9 (long (:rows m)))))
 
-(def book-items (set (data/tag-values "item" "lectern_books")))
+(def ^:private ^:table lectern-books (delay (set (data/tag-values "item" "lectern_books"))))
+
+(defn book-items
+  "Returns the items a lectern takes."
+  [] @lectern-books)
 
 (defn book?
   "Returns true when a lectern takes the stack."
   [stack]
-  (contains? book-items (:item stack)))
+  (contains? (book-items) (:item stack)))
 
 (defn page-count
   "Returns how many pages a book has."
@@ -375,7 +379,7 @@
 (defn fits-inside?
   "Returns true when a shulker box may hold the item."
   [item]
-  (not= :shulker-box (:type (get data/blocks item))))
+  (not= :shulker-box (:type (get (data/blocks) item))))
 
 (defn- may-place? [_ stack]
   (fits-inside? (:item stack)))

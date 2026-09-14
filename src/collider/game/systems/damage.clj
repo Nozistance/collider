@@ -40,7 +40,7 @@
 (defn- weapon-damage
   "Returns the damage an item adds to a blow."
   ^double [item]
-  (double (get-in data/items [item :attack-damage] 0.0)))
+  (double (get-in (data/items) [item :attack-damage] 0.0)))
 
 (defn- hurt-sound
   "Returns the sound an entity makes when it is hurt or killed."
@@ -107,7 +107,7 @@
             x (long x) y (long y) z (long z)]
         (if (and (= x lx) (= y ly) (= z lz))
           (recur (inc i) x y z)
-          (if (phys/solid? chunks gen/flat-chunk x y z)
+          (if (phys/solid? chunks (gen/flat-chunk) x y z)
             false
             (recur (inc i) x y z)))))))
 
@@ -218,7 +218,7 @@
   "Notes in the running flags whether a block touches or engulfs an entity in
    fire."
   [chunks ^longs acc x y z inner?]
-  (let [st (chunk/block-state chunks gen/flat-chunk x y z)
+  (let [st (chunk/block-state chunks (gen/flat-chunk) x y z)
         lava? (= :lava (liquid/liquid-class st))]
     (when (or lava? (block/fire? st))
       (aset acc 0 (bit-or (aget acc 0) touch-bit)))
@@ -312,7 +312,7 @@
   [world e ^double fall]
   (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
         pos (:pos e)
-        st (chunk/chunks-get-block (:chunks world) gen/flat-chunk
+        st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk)
                                    [(long (Math/floor (v/x pos))) (long (Math/floor (- (v/y pos) 0.2)))
                                     (long (Math/floor (v/z pos)))])]
     (when (and (pos? power) (not (block/air? st)))
@@ -373,8 +373,8 @@
 (defn- free-to-stand?
   "Returns true when a player can stand at a position."
   [chunks [x y z]]
-  (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks gen/flat-chunk [x y z]))
-       (block/possible-to-respawn-in? (chunk/chunks-get-block chunks gen/flat-chunk [x (inc (long y)) z]))))
+  (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks (gen/flat-chunk) [x y z]))
+       (block/possible-to-respawn-in? (chunk/chunks-get-block chunks (gen/flat-chunk) [x (inc (long y)) z]))))
 
 (defn- found-respawn
   "Returns the place and direction a player actually comes back at, or nothing
