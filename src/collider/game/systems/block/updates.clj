@@ -22,14 +22,6 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tnt-neighbors
-  "Returns the TNT next to pos."
-  [chunks [x y z]]
-  (filterv (fn [[_ ny _ :as p]]
-             (and (chunk/in-range? ny)
-                  (tnt/tnt-state? (chunk/chunks-get-block chunks (gen/flat-chunk) p))))
-           (map (fn [d] (mapv + [x y z] d)) dir/around)))
-
 (defn- lww-changes
   "Returns the changes the given blocks ask for as they tick, at most one
    change per block."
@@ -72,13 +64,25 @@
   (and (pos? old) (not (liquid/liquid-state? old))
        (or (washed? old st) (unsupported? old st))))
 
+(defn- ticking-fires
+  "Returns the positions of the fires among the blocks that tick now."
+  [chunks now]
+  (into #{} (filter #(fire/fire-state? (chunk/chunks-get-block chunks (gen/flat-chunk) %))) now))
+
+(defn- burnt?
+  "Returns true when a fire that ticks now stands next to pos, so the block
+   burns away rather than breaks: FireBlock.checkBurnOut drops nothing."
+  [fires pos]
+  (boolean (some #(contains? fires (mapv + pos %)) dir/around)))
+
 (defn- destroyed
   "Returns the blocks the changes destroy, as they were."
-  [world changes]
-  (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
-        :when (destroyed? old (long st))]
-    [pos old]))
+  [world now changes]
+  (let [fires (ticking-fires (:chunks world) now)]
+    (for [[pos st] changes
+          :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
+          :when (and (destroyed? old (long st)) (not (burnt? fires pos)))]
+      [pos old])))
 
 (defn- destroyed-effects
   "Returns the breaking effects for the blocks that were destroyed."
@@ -177,23 +181,27 @@
                 (merge-with into m (eyeblossom/cascade chunks pos (chunk/chunks-get-block chunks (gen/flat-chunk) pos) t))))
             {} changes)))
 
-(defn- ignite-deltas
-  "Returns the deltas for TNT that catches from the fire next to it."
-  [world due]
+(defn- burnt-tnt
+  "Returns the TNT the fire took away this tick."
+  [world changes]
   (let [chunks (:chunks world)
-        pending (tnt/primed-origins world)
-        tnts (into (sorted-set)
-                   (comp (filter #(fire/fire-state?
-                                    (chunk/chunks-get-block chunks (gen/flat-chunk) %)))
-                         (mapcat #(tnt-neighbors chunks %))
-                         (remove pending))
-                   due)]
-    (mapcat (fn [pos]
-              (let [primed (tnt/primed pos [(:tick world) pos])]
-                [[:set-blocks [[pos 0]]]
-                 [:spawn-entity primed]
-                 (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
-            tnts)))
+        pending (tnt/primed-origins world)]
+    (into (sorted-set)
+          (comp (filter (fn [[pos st]]
+                          (and (not (tnt/tnt-state? (long st)))
+                               (tnt/tnt-state? (chunk/chunks-get-block chunks (gen/flat-chunk) pos)))))
+                (map first)
+                (remove pending))
+          changes)))
+
+(defn- ignite-deltas
+  "Returns the deltas for TNT that the fire set off."
+  [world changes]
+  (mapcat (fn [pos]
+            (let [primed (tnt/primed pos [(:tick world) pos])]
+              [[:spawn-entity primed]
+               (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
+          (burnt-tnt world changes)))
 
 (defn- due-ticks
   "Returns the blocks whose tick has come."
@@ -223,7 +231,7 @@
 (defn- change-deltas
   "Returns the deltas for this tick's block changes and all they set off."
   [world now changes]
-  (let [gone (destroyed world changes)]
+  (let [gone (destroyed world now changes)]
     (concat [[:set-blocks changes]]
             (fizz-deltas world changes)
             (destroyed-effects gone)
@@ -249,7 +257,7 @@
         (concat [[:ticks-flushed t parked]]
                 (when (seq woken) [[:schedule-ticks woken]])
                 (when (seq changes) (change-deltas world now changes))
-                (ignite-deltas world now))))))
+                (ignite-deltas world changes))))))
 
 (defn block-updates
   "Returns the deltas for the blocks whose tick has come."
