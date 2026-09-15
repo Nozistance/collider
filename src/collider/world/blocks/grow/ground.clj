@@ -13,7 +13,9 @@
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.support :as support]
-            [collider.world.env.weather :as weather]))
+            [collider.world.env.biome :as biome]
+            [collider.world.env.weather :as weather]
+            [collider.world.feature :as feature]))
 
 (set! *warn-on-reflection* true)
 
@@ -204,3 +206,65 @@
   (when (and (= :true (:waterlogged (block/props-of st)))
              (block/tagged? (gen/at chunks (dir/down p)) "coral_blocks"))
     {:changes (conj (pickle-spots chunks p roll) [p (with st :pickles 4)])}))
+
+(defn- grown-tall [acc q ^long st]
+  (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))
+        up (dir/up q)]
+    (when (and (support/supported? (feature/chunks acc) (gen/flat-chunk) q tall)
+               (air-at? (feature/chunks acc) up))
+      (-> acc
+          (feature/set-state q tall)
+          (feature/set-state up (block/state (block/block-of tall) {:half :upper}))))))
+
+(defn- turf-short [acc q st j roll]
+  (if (and (= :short-grass (block/block-of (long st))) (zero? (pick roll [:tall j] 10)))
+    (or (grown-tall acc q st) acc)
+    acc))
+
+(defn- turf-plant [acc q st j roll biome]
+  (let [salt [:grow j]]
+    (cond
+      (not (and (zero? (long st)) (chunk/in-range? (q 1)))) acc
+      (pos? (pick roll [:kind j] 8)) (feature/placed acc :grass-bonemeal q roll salt)
+      :else (let [fs (feature/bone-meal-features biome)]
+              (if (empty? fs)
+                acc
+                (feature/configured acc (nth fs (pick roll [:which j] (count fs))) q roll salt))))))
+
+(defn- turf-walk [acc self p j roll]
+  (loop [q (dir/up p) i 0]
+    (if (= i (quot (long j) 16))
+      q
+      (let [s [:walk j i]
+            q' (mapv + q [(dec (pick roll (conj s :x) 3))
+                          (quot (* (dec (pick roll (conj s :y) 3)) (pick roll (conj s :n) 3)) 2)
+                          (dec (pick roll (conj s :z) 3))])]
+        (when (and (= self (block/block-of (feature/state-at acc (dir/down q'))))
+                   (not (block/full-cube? (feature/state-at acc q'))))
+          (recur q' (inc i)))))))
+
+(defn- turf-try [acc self p j roll biome]
+  (if-let [q (turf-walk acc self p j roll)]
+    (let [st (feature/state-at acc q)]
+      (-> (turf-short acc q st j roll)
+          (turf-plant q st j roll biome)))
+    acc))
+
+(defn turf-meal
+  "Returns the bone meal result for a grass block at p: grass, tall grass and
+   the flowers of its biome around it."
+  [chunks p st roll]
+  (when (air-at? chunks (dir/up p))
+    (let [self (block/block-of st)
+          biome (:name (biome/at chunks p))
+          acc (reduce (fn [acc j] (turf-try acc self p j roll biome))
+                      (feature/start chunks) (range 128))]
+      {:changes (feature/cells acc)})))
+
+(defn placer-meal
+  "Returns the bone meal result for a block that grows a feature above it."
+  [chunks p st roll]
+  (when (air-at? chunks (dir/up p))
+    (let [f (feature/placer-feature (block/block-of st))
+          acc (feature/configured (feature/start chunks) f (dir/up p) roll [:patch])]
+      {:changes (feature/cells acc)})))

@@ -541,6 +541,13 @@
                 (table "igniteOdds" :ignite)
                 (table "burnOdds" :burn))))
 
+(defn- placer-features [reg]
+  (let [c (cls "world.level.block.BonemealableFeaturePlacerBlock")]
+    (into (sorted-map)
+          (for [b (elements reg) :when (.isInstance c b)]
+            [(key-of reg b)
+             (kw (str (call (hidden-field (class b) b "feature") "identifier")))]))))
+
 (defn- from-classes [jars server]
   (binding [*loader* (class-loader jars server)]
     (call-static "SharedConstants" "tryDetectVersion")
@@ -549,11 +556,12 @@
       (merge (state-shapes states)
              (block-props)
              {:light   (light-table states)
+              :placers (placer-features (registry "BLOCK"))
               :fire    (fire-odds)
               :compost (compostables)
               :walls   (wall-items)}))))
 
-(defn- report [reports name]
+(defn- report-json [reports name]
   (json/read-str (slurp (io/file reports name))))
 
 (defn- ids [entries]
@@ -568,14 +576,14 @@
                 (into {}
                       (map (fn [[dir ps]] [(kw dir) (ids ps)]))
                       dirs)]))
-        (report reports "packets.json")))
+        (report-json reports "packets.json")))
 
 (defn- registries [reports]
   (into (sorted-map)
         (map (fn [[name m]]
                [(str/replace name #"^minecraft:" "")
                 (ids (get m "entries"))]))
-        (report reports "registries.json")))
+        (report-json reports "registries.json")))
 
 (defn- block [[name m] extra shaped]
   (let [{:strs [properties states definition]} m
@@ -596,7 +604,7 @@
 (defn- blocks [reports extra shaped]
   (into (sorted-map)
         (map #(block % extra shaped))
-        (report reports "blocks.json")))
+        (report-json reports "blocks.json")))
 
 (defn- attack-damage ^double [components]
   (reduce + 0.0
@@ -765,6 +773,97 @@
                   (when (seq names) [reg (vec names)]))))
         synchronized-registries))
 
+(defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
+(defn- json-name [k] (str/replace (name k) "-" "_"))
+
+(defn- state-value [m]
+  (let [props (get m "Properties")]
+    (cond-> (sorted-map :block (kw (get m "Name")))
+      props (assoc :props (into (sorted-map)
+                                (map (fn [[k v]] [(kw k) (keyword v)]))
+                                props)))))
+
+(defn- feature-value [v]
+  (cond
+    (and (map? v) (contains? v "Name")) (state-value v)
+    (map? v) (into (sorted-map) (map (fn [[k x]] [(kw k) (feature-value x)])) v)
+    (vector? v) (mapv feature-value v)
+    (not (string? v)) v
+    (str/starts-with? v "#") {:tag (plain (subs v 1))}
+    :else (kw v)))
+
+(def ^:private selector-types
+  #{"minecraft:random_selector" "minecraft:weighted_random_selector"
+    "minecraft:simple_random_selector" "minecraft:random_boolean_selector"})
+
+(def ^:private placed-fields
+  #{"feature" "default_feature" "vegetation_feature"})
+
+(defn- placed-refs [v]
+  (cond
+    (and (map? v) (contains? v "placement")) [v]
+    (map? v) (mapcat (fn [[k x]]
+                       (if (and (string? x) (placed-fields k))
+                         [(plain x)]
+                         (placed-refs x)))
+                     v)
+    (vector? v) (mapcat placed-refs v)))
+
+(declare conf-features)
+
+(defn- placed-of [reg p] (if (map? p) p (get (:placed reg) p)))
+
+(defn- placed-features [reg p]
+  (conf-features reg (plain (get (placed-of reg p) "feature"))))
+
+(defn- conf-features [reg nm]
+  (let [j (get (:configured reg) nm)]
+    (into [nm]
+          (when (selector-types (get j "type"))
+            (mapcat #(placed-features reg %) (placed-refs (get j "config")))))))
+
+(defn- bone-meal-biomes [reg tagged]
+  (into (sorted-map)
+        (keep (fn [[nm j]]
+                (let [fs (into [] (comp cat
+                                        (mapcat #(placed-features reg (plain %)))
+                                        (filter tagged))
+                               (get j "features"))]
+                  (when (seq fs) [(kw nm) (mapv kw fs)]))))
+        (:biomes reg)))
+
+(defn- conf-placed-refs [reg nm]
+  (placed-refs (get (get (:configured reg) nm) "config")))
+
+(defn- closure [reg cs ps]
+  (let [rs (mapcat #(conf-placed-refs reg %) cs)
+        cs' (into cs (map #(plain (get (placed-of reg %) "feature")))
+                  (concat ps rs))
+        ps' (into ps (filter string?) rs)]
+    (if (and (= cs cs') (= ps ps')) [cs' ps'] (recur reg cs' ps'))))
+
+(defn- feature-set [reg kind names]
+  (into (sorted-map)
+        (map (fn [n] [(kw n) (feature-value (get (kind reg) n))]))
+        names))
+
+(def ^:private bone-meal-tag
+  "data/minecraft/tags/worldgen/configured_feature/can_spawn_from_bone_meal.json")
+
+(defn- feature-registries [zf]
+  (into {} (map (fn [[k dir]] [k (jsons zf (str "data/minecraft/worldgen/" dir "/"))]))
+        {:placed "placed_feature" :configured "configured_feature" :biomes "biome"}))
+
+(defn- features [zf placers]
+  (let [reg (feature-registries zf)
+        tagged (into #{} (map plain) (get (read-json zf bone-meal-tag) "values"))
+        roots (into tagged (map (comp json-name second)) placers)
+        [cs ps] (closure reg roots #{"grass_bonemeal"})]
+    {:configured (feature-set reg :configured cs)
+     :placed     (feature-set reg :placed ps)
+     :bone-meal  (bone-meal-biomes reg tagged)
+     :placers    placers}))
+
 (defn- ingredient [v]
   (cond
     (string? v) (if (str/starts-with? v "#")
@@ -849,10 +948,10 @@
         (.write ^Writer w "\n")))))
 
 (defn- tables [zf from-class reports rs]
-  (let [{:keys [props shapes compost walls]} from-class
+  (let [{:keys [props shapes compost walls placers]} from-class
         dp (datapack-names zf)
         tags (tags-of zf (distinct (concat (keys rs) (keys dp))))]
-    (merge (dissoc from-class :props :compost :walls)
+    (merge (dissoc from-class :props :compost :walls :placers)
            {:packets    (packets reports)
             :blocks     (blocks reports props shapes)
             :registries rs
@@ -861,6 +960,7 @@
             :items      (merge-with merge
                                     (vanilla-items reports)
                                     compost walls)
+            :features   (features zf placers)
             :recipes    (recipes zf tags)
             :tags       tags})))
 

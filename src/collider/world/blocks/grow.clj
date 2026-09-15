@@ -68,6 +68,8 @@
           [[:sweet-berry-bush] crop/berry-meal]
           [[:mushroom] mushroom/meal]
           [[:rooted-dirt] ground/roots-meal]
+          [[:grass] ground/turf-meal]
+          [[:bonemealable-feature-placer] ground/placer-meal]
           [[:cocoa] crop/cocoa-meal]
           [[:bamboo-sapling] bamboo/sapling-meal]
           [[:kelp] crop/kelp-meal]

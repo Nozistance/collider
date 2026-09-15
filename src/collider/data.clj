@@ -62,7 +62,7 @@
       (edn/read (PushbackReader. r)))))
 
 (def ^:private table-names
-  [:packets :registries :blocks :datapack :tags :items :light :fire :drops :recipes :sounds])
+  [:packets :registries :blocks :datapack :tags :items :light :fire :drops :recipes :sounds :features])
 
 (def ^:private ^:table tables
   (delay (into {} (map (fn [k] [k (read-edn (str (name k) ".edn"))])) table-names)))
@@ -100,6 +100,10 @@
 (defn sounds
   "Returns the sounds of every sound type."
   [] (:sounds @tables))
+(defn features
+  "Returns the worldgen features bone meal reaches and the ones each biome
+   grows."
+  [] (:features @tables))
 
 (defn max-stack
   "Returns how many of item fit in one stack."
