@@ -18,7 +18,8 @@
 
 (defmethod render! :default [_] nil)
 
-(defmethod render! :intro [{:keys [version]}]
+(defmethod render! :intro [{:keys [version stale?]}]
+  (when stale? (log/info "Game data in data is incomplete or from another version, regenerating"))
   (log/info "Preparing game data for version" version))
 
 (defmethod render! :begin [{:keys [step]}]

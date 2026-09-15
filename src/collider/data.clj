@@ -7,12 +7,35 @@
 
 (set! *warn-on-reflection* true)
 
+(def game "26.2")
+(def layout 2)
+
+(def ^:private files
+  ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
+   "drops" "recipes" "sounds" "features"
+   "shapes" "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
+
+(defn stamp
+  "Returns what a set of tables is stamped with: the game version and the
+   layout of the tables."
+  []
+  {:game game :layout layout})
+
+(defn- stamped? [d]
+  (= (stamp) (try (edn/read-string (slurp (io/file d "stamp.edn")))
+                  (catch Exception _ nil))))
+
+(defn complete?
+  "Returns true when d holds every table of this version."
+  [d]
+  (and (every? #(.isFile (io/file d (str % ".edn"))) files) (stamped? d)))
+
 (defn dir
-  "Returns the directory of the tables, or nil when there is none."
+  "Returns the directory of the tables, or nil when there is no complete one."
   []
   (->> [(System/getProperty "collider.data") "target/data" "data"]
        (remove nil?)
-       (filter #(.isFile (io/file % "blocks.edn")))
+       (filter complete?)
        first))
 
 (defn- tables-of [ns]
@@ -26,8 +49,15 @@
           t (tables-of ns)]
     @t))
 
+(defn- no-tables []
+  (ex-info "no tables"
+           {:what    "no game data"
+            :why     (str "No complete set of tables for " game " in target/data or data;"
+                          " the release jar generates it on its first start")
+            :command "From the source tree: clojure -T:build data"}))
+
 (defn- read-edn [name]
-  (let [d (or (dir) (throw (ex-info "no tables" {:looked-in ["target/data" "data"]})))]
+  (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
       (edn/read (PushbackReader. r)))))
 

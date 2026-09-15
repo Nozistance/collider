@@ -13,7 +13,7 @@
 (set! *warn-on-reflection* true)
 
 (def protocol-version 776)
-(def game-version "26.2")
+(def game-version data/game)
 (defn write-varint
   "Writes a variable-length int."
   [^Buf buf v]

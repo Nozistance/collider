@@ -3,7 +3,8 @@
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.edn :as edn]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [collider.data :as data])
   (:import (clojure.lang ExceptionInfo Reflector)
            (java.io File Writer)
            (java.lang.reflect Field)
@@ -16,7 +17,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def version "26.2")
+(def version data/game)
 (def manifest-url
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
 
@@ -866,6 +867,7 @@
     (let [ts (tables zf from-class dir (registries dir))]
       (doseq [[k data] ts]
         (write-edn! out k data))
+      (write-edn! out :stamp (data/stamp))
       {:count (count ts) :dir (str out)})))
 
 (defn- generate-tables! [^File bundle ^File server ^File dir out]

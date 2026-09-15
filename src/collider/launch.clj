@@ -47,7 +47,8 @@
 
 (defn- first-run! [args]
   (let [{:keys [jar]} (apply merge {} (map edn/read-string args))]
-    (cli/render! {:event :intro :version tables/version})
+    (cli/render! {:event :intro :version tables/version
+                  :stale? (.isDirectory (io/file "data"))})
     (generate! {:out "data" :jar jar})
     (cli/render! {:event :data-ready})))
 
