@@ -188,7 +188,7 @@
 (def ^:private generic-reason {:translate "multiplayer.disconnect.generic"})
 
 (defn- disconnect-generic! [conn t]
-  (log/info "bad packet from" (:addr (server/info conn)) "-" (str t))
+  (log/warn "bad packet from" (:addr (server/info conn)) "-" (str t))
   (case (server/conn-state conn)
     :play (server/send! conn {:packet :disconnect :text generic-reason})
     :login (server/send! conn {:packet :login-disconnect :json (json/write-str generic-reason)})

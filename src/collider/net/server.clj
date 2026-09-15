@@ -62,7 +62,7 @@
     (packets/encode! state payload m)
     true
     (catch Throwable t
-      (log/info "encode failed for" (:packet m) "-" (str t))
+      (log/warn "encode failed for" (:packet m) "-" (str t))
       false)))
 
 (defn- write-packet! [out payload body head threshold defl chunk state m]
@@ -135,7 +135,7 @@
           (catch InterruptedException _ nil)
           (catch SocketException _ nil)
           (catch Throwable t
-            (log/info "writer failed for" (who conn) "-" (str t))))))
+            (log/warn "writer failed for" (who conn) "-" (str t))))))
 
 (defn- new-conn [^Socket sock]
   (->Conn sock (ArrayBlockingQueue. out-queue-size)
@@ -148,11 +148,11 @@
     (reader-loop conn io)
     (catch EOFException _ nil)
     (catch SocketTimeoutException _
-      (log/info "read timeout, closing" (who conn)))
+      (log/warn "read timeout, closing" (who conn)))
     (catch SocketException _ nil)
     (catch Throwable t
       (when-not (.isClosed sock)
-        (log/info "reader failed for" (who conn) "-" (str t))))))
+        (log/warn "reader failed for" (who conn) "-" (str t))))))
 
 (defn- serve-conn! [^Socket sock io]
   (let [conn (new-conn sock)]
@@ -191,7 +191,7 @@
 (defn- admit! [^Socket sock ^AtomicInteger live ^long limit io]
   (if (> (.incrementAndGet live) limit)
     (do (.decrementAndGet live)
-        (log/info "connection limit" limit "reached, refusing" (str (.getRemoteSocketAddress sock)))
+        (log/warn "connection limit" limit "reached, refusing" (str (.getRemoteSocketAddress sock)))
         (.close sock))
     (Thread/startVirtualThread
       #(try (serve-conn! sock io) (finally (.decrementAndGet live))))))
@@ -203,7 +203,7 @@
         (let [sock (try (.accept srv)
                         (catch Throwable t
                           (when-not (.isClosed srv)
-                            (log/info "accept failed:" (str t))
+                            (log/warn "accept failed:" (str t))
                             (Thread/sleep 100))
                           nil))]
           (when sock

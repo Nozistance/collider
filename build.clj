@@ -19,27 +19,37 @@
             :basis      basis
             :javac-opts ["-proc:none" "--release" "21"]}))
 
+(defn- log-bytes [n] ((requiring-resolve 'collider.log/human-bytes) n))
+(defn- info [& args] (apply (requiring-resolve 'collider.log/info) args))
+(defn- step [doing done f] ((requiring-resolve 'collider.log/step) doing done f))
+
 (defn fetch [{:keys [version jar]}]
-  (println (str ((requiring-resolve 'collider.tables/fetch)
-                 (or version @(requiring-resolve 'collider.tables/version))
-                 jar))))
+  (let [version (or version @(requiring-resolve 'collider.tables/version))]
+    (info "vanilla jar at" (str ((requiring-resolve 'collider.tables/fetch) version jar)))))
 
 (defn data [opts]
   ((requiring-resolve 'collider.tables/generate!) opts))
 
-(defn release [_]
-  (clean nil)
-  (javac nil)
+(defn- compile-clj []
   (b/compile-clj {:basis      basis
                   :src-dirs   ["src"]
                   :class-dir  class-dir
                   :ns-compile '[collider.launch collider.core]
-                  :java-opts  ["-Dclojure.compiler.direct-linking=true"]})
+                  :java-opts  ["-Dclojure.compiler.direct-linking=true"]}))
+
+(defn- uber []
   (b/uber {:class-dir class-dir
            :uber-file jar-file
            :basis     basis
            :main      'collider.launch
            :exclude   [".*\\.java$" ".*\\.cljs$"]}))
+
+(defn release [_]
+  (clean nil)
+  (step "Compiling java" "Compiled java" #(javac nil))
+  (step "Compiling clojure" "Compiled clojure" #(compile-clj))
+  (step "Packing the jar" "Packed the jar" #(uber))
+  (info jar-file (log-bytes (.length (io/file jar-file)))))
 
 (defn- pascal [k]
   (apply str (map str/capitalize (str/split (name k) #"-"))))
@@ -100,7 +110,7 @@
           blocks
           (block-entries (set (keys blocks)))))
 
-(defn tracker [{:keys [hooks out] :or {out "parity/implementation.json"}}]
+(defn tracker [{:keys [hooks out] :or {hooks "../exclude/hooks.md" out "parity/implementation.json"}}]
   (let [parsed (parse-hooks (slurp hooks))
         data {:meta     {:generated (str (Instant/now))
                          :commit    (str/trim (b/git-process {:git-args "rev-parse HEAD"}))
@@ -127,7 +137,7 @@
                :pct     (if (pos? (sum :hooks)) (Math/round (* 100.0 (/ (sum :done) (sum :hooks)))) 0)}]
       (spit (str (.getParent (io/file out)) "/summary.json")
             (json/write-str (assoc (:meta data) :all all :blocks b :entities e :excluded excluded)))
-      (println (format "  %s/summary.json: %d%% overall, %d%% in blocks"
-                       (.getParent (io/file out)) (:pct all) (:pct b))))
-    (println (format "  %s: blocks %d classes, hooks done/pending/all %s; entities %d classes, %s"
-                     out (count (:blocks data)) (total :blocks) (count (:entities data)) (total :entities)))))
+      (info (format "%s/summary.json: %d%% overall, %d%% in blocks"
+                    (.getParent (io/file out)) (:pct all) (:pct b))))
+    (info (format "%s: blocks %d classes, hooks done/pending/all %s; entities %d classes, %s"
+                  out (count (:blocks data)) (total :blocks) (count (:entities data)) (total :entities)))))

@@ -2,11 +2,12 @@
   "Generating the game data tables from the vanilla server."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
+            [clojure.edn :as edn]
             [clojure.string :as str])
-  (:import (clojure.lang Reflector)
+  (:import (clojure.lang ExceptionInfo Reflector)
            (java.io File Writer)
            (java.lang.reflect Field)
-           (java.net URL URLClassLoader)
+           (java.net HttpURLConnection URL URLClassLoader)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
            (java.security MessageDigest)
@@ -18,6 +19,18 @@
 (def version "26.2")
 (def manifest-url
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
+
+(def ^:dynamic *progress* (fn [_] nil))
+
+(defn- progress! [m]
+  (*progress* m))
+
+(defn- timed [step f]
+  (progress! {:event :begin :step step})
+  (let [t (System/nanoTime)
+        v (f)]
+    (progress! (assoc v :event :end :step step :took (- (System/nanoTime) t)))
+    v))
 
 (defn cache-dir
   "Returns the directory of the vanilla jar of a version."
@@ -35,14 +48,27 @@
             (recur)))))
     (.formatHex (HexFormat/of) (.digest md))))
 
+(def ^:private timeout-ms 15000)
+
+(defn- open-url ^java.io.InputStream [url]
+  (let [c (.openConnection (URL. (str url)))]
+    (.setConnectTimeout c timeout-ms)
+    (.setReadTimeout c timeout-ms)
+    (.getInputStream c)))
+
+(defn- unreachable [url e]
+  (ex-info (str "cannot reach " (.getHost (URL. (str url))))
+           {:step    :jar
+            :what    "failed to reach Mojang"
+            :why     (str "The exception was: " (.getSimpleName (class e)) ": " (.getMessage ^Throwable e))
+            :command (str "Download server.jar " version " yourself and start with '{:jar \"path/to/server.jar\"}'")}
+           e))
+
 (defn- fetch-json [url]
-  (try (json/read-str (slurp url))
+  (try (with-open [in (open-url url)]
+         (json/read-str (slurp in)))
        (catch Exception e
-         (throw (ex-info (str "cannot reach " url
-                              "; put the vanilla server.jar of " version
-                              " somewhere local and start with "
-                              "'{:jar \"path/to/server.jar\"}'")
-                         {:url url} e)))))
+         (throw (unreachable url e)))))
 
 (defn- temp-dir ^File [name]
   (.toFile (Files/createTempDirectory name
@@ -59,15 +85,22 @@
       (io/make-parents t)
       (io/copy f t))))
 
+(defn- corrupt [url want got]
+  (ex-info "sha1 mismatch"
+           {:step    :jar
+            :what    "server.jar is corrupt"
+            :why     "Its checksum does not match the one Mojang published"
+            :command (str "Delete " (cache-dir version) " and start again")
+            :url url :want want :got got}))
+
 (defn- download! [url ^File to want]
   (io/make-parents to)
-  (with-open [in (io/input-stream url)]
+  (with-open [in (open-url url)]
     (io/copy in to))
   (let [got (sha1 to)]
     (when (not= got want)
       (.delete to)
-      (throw (ex-info "sha1 mismatch"
-                      {:url url :want want :got got})))))
+      (throw (corrupt url want got)))))
 
 (defn- server-download [version]
   (let [versions (get (fetch-json manifest-url) "versions")
@@ -80,20 +113,36 @@
 (defn- fetch! [version ^File jar]
   (let [{:strs [url size sha1]} (server-download version)
         part (io/file (cache-dir version) "server.jar.part")]
-    (println (format "fetching %s (%d bytes)" url (long size)))
     (download! url part sha1)
-    (.renameTo part jar)))
+    (.renameTo part jar)
+    {:source :mojang :bytes size}))
+
+(defn- no-such-jar [local]
+  (ex-info (str "no jar at " local)
+           {:step :jar
+            :what    "no such jar"
+            :why     (str "There is no file at " local)
+            :command "Check :jar, or leave it out to download server.jar from Mojang"}))
+
+(defn- copy-local! [local ^File jar]
+  (when-not (.isFile (io/file local))
+    (throw (no-such-jar local)))
+  (io/make-parents jar)
+  (io/copy (io/file local) jar)
+  {:source :local :path (str local)})
+
+(defn- fetch-into [version local ^File jar]
+  (cond
+    (.isFile jar) {:source :cached :path (str (.getParentFile jar))}
+    local (copy-local! local jar)
+    :else (fetch! version jar)))
 
 (defn fetch
   "Returns the vanilla server jar of a version."
   (^File [version] (fetch version nil))
   (^File [version local]
    (let [jar (io/file (cache-dir version) "server.jar")]
-     (cond
-       (.isFile jar) nil
-       local (do (io/make-parents jar)
-                 (io/copy (io/file local) jar))
-       :else (fetch! version jar))
+     (timed :jar #(fetch-into version local jar))
      jar)))
 
 (defn- zip-names [^ZipFile zf]
@@ -115,25 +164,39 @@
              (#(unzip zf % out)))))
     out))
 
+(defn- generator-command ^String/1 [^File bundle]
+  (into-array String [(str (System/getProperty "java.home") "/bin/java")
+                      "-DbundlerMainClass=net.minecraft.data.Main"
+                      "-jar" (.getAbsolutePath bundle) "--reports"]))
+
+(defn- file-count ^long [^File dir]
+  (count (filter #(.isFile ^File %) (file-seq dir))))
+
+(defn- generator-failed [^File bundle ^File log]
+  (ex-info "the data generator failed"
+           {:step :reports
+            :what "data generator failed"
+            :why  (str "Its output is in " log)
+            :jar  (str bundle)}))
+
 (defn- run-generator! [^File bundle ^File dir]
   (let [work (temp-dir "reports")
-        java (str (System/getProperty "java.home") "/bin/java")
-        cmd [java "-DbundlerMainClass=net.minecraft.data.Main"
-             "-jar" (.getAbsolutePath bundle) "--reports"]
-        p (-> (ProcessBuilder. ^String/1
-                               (into-array String cmd))
+        log (io/file (.getParentFile bundle) "reports.log")
+        p (-> (ProcessBuilder. (generator-command bundle))
               (.directory work)
-              (.inheritIO)
+              (.redirectErrorStream true)
+              (.redirectOutput log)
               (.start))]
     (when-not (zero? (.waitFor p))
-      (throw (ex-info "the data generator failed" {:jar (str bundle)})))
-    (copy-tree! (io/file work "generated" "reports") dir)))
+      (throw (generator-failed bundle log)))
+    (copy-tree! (io/file work "generated" "reports") dir)
+    {:files (file-count dir)}))
 
 (defn- reports ^File [^File bundle]
   (let [dir (io/file (.getParentFile bundle) "reports")]
-    (when-not (.isFile (io/file dir "blocks.json"))
-      (println "running the data generator into" (str dir))
-      (run-generator! bundle dir))
+    (if (.isFile (io/file dir "blocks.json"))
+      (timed :reports (fn [] {:files (file-count dir)}))
+      (timed :reports #(run-generator! bundle dir)))
     dir))
 
 (defn- unpack-libraries [^File bundle ^File tmp]
@@ -780,8 +843,7 @@
     (with-open [w (io/writer f)]
       (binding [*out* w *print-length* nil *print-level* nil]
         (pr data)
-        (.write ^Writer w "\n")))
-    (println (format "  %-28s %d entries" (str f) (count data)))))
+        (.write ^Writer w "\n")))))
 
 (defn- tables [zf from-class reports rs]
   (let [{:keys [props shapes compost walls]} from-class
@@ -801,18 +863,39 @@
 
 (defn- write-tables! [^File server ^File dir out from-class]
   (with-open [zf (ZipFile. server)]
-    (doseq [[k data] (tables zf from-class dir (registries dir))]
-      (write-edn! out k data))))
+    (let [ts (tables zf from-class dir (registries dir))]
+      (doseq [[k data] ts]
+        (write-edn! out k data))
+      {:count (count ts) :dir (str out)})))
+
+(defn- generate-tables! [^File bundle ^File server ^File dir out]
+  (let [libraries (temp-dir "libraries")]
+    (try (write-tables! server dir out
+                        (from-classes (unpack-libraries bundle libraries)
+                                      server))
+         (finally (delete-tree! libraries)))))
 
 (defn generate!
   "Writes the game data tables of a version."
   [{:keys [version out jar] :or {version version out "target/data"}}]
   (let [bundle (fetch version jar)
         server (inner-jar bundle)
-        dir (reports bundle)
-        libraries (temp-dir "libraries")]
-    (println "reading" (str bundle))
-    (try (write-tables! server dir out
-                        (from-classes (unpack-libraries bundle libraries)
-                                      server))
-         (finally (delete-tree! libraries)))))
+        dir (reports bundle)]
+    (timed :tables #(generate-tables! bundle server dir out))))
+
+(defn- emit-edn! [m]
+  (println (pr-str m))
+  (flush))
+
+(defn -main
+  "Generates the tables in this JVM, reporting each event as edn on stdout."
+  [opts]
+  (binding [*progress* emit-edn!]
+    (try (generate! (edn/read-string opts))
+         (catch ExceptionInfo e
+           (emit-edn! (assoc (ex-data e) :event :error))
+           (System/exit 1))
+         (catch Exception e
+           (emit-edn! {:event :error :what "data generator failed" :why (str "The exception was: " e)})
+           (System/exit 1))))
+  (System/exit 0))

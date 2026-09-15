@@ -32,13 +32,15 @@
   (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))
 
 (defn write-default!
-  "Writes the default settings to path, unless a file is already there."
+  "Writes the default settings to path, unless a file is already there.
+   Returns true when it wrote them."
   ([] (write-default! "config.edn"))
   ([path]
    (let [f (io/file (str path))]
      (when-not (.exists f)
        (try
          (spit f (render defaults))
-         (log/info "wrote default config to" (.getPath f))
+         true
          (catch Exception e
-           (log/info "could not write" (.getPath f) "-" (.getMessage e))))))))
+           (log/warn "could not write" (.getPath f) "-" (.getMessage e))
+           false))))))

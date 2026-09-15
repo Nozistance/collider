@@ -135,13 +135,13 @@
   [world events]
   (try (tick world events)
        (catch Throwable t
-         (log/info "tick error:" t)
+         (log/warn "tick error:" t)
          [world deltas/empty-deltas])))
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (.out deltas)) (pos? (count (.entities deltas))))
     (try (deliver! world deltas)
-         (catch Throwable t (log/info "deliver error:" t)))))
+         (catch Throwable t (log/warn "deliver error:" t)))))
 
 (defn- run-tick!
   "Ticks the world once on the events that have come in, and sends out what

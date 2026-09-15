@@ -1,19 +1,20 @@
 (ns collider.core
   "Starting and stopping the server."
+  (:refer-clojure :exclude [run!])
   (:require [clojure.edn :as edn]
+            [collider.cli :as cli]
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.state :as state]
             [collider.game.tick :as tick]
             [collider.log :as log]
-            [collider.persist.snapshot :as snapshot]
-            [collider.proto.codec :as c]
             [collider.net.render :as render]
             [collider.net.server :as server]
-            [collider.net.session :as session])
-  (:import (java.lang.management ManagementFactory)
-           (java.net ServerSocket)
-           (java.util Locale)
+            [collider.net.session :as session]
+            [collider.persist.snapshot :as snapshot])
+  (:import (clojure.lang ExceptionInfo)
+           (java.lang.management GarbageCollectorMXBean ManagementFactory)
+           (java.net BindException ServerSocket)
            (java.util.concurrent ConcurrentLinkedQueue Executors
                                  ScheduledExecutorService ThreadFactory TimeUnit))
   (:gen-class))
@@ -71,24 +72,54 @@
     {:ticker    ticker :tick-stats (:stats ticker)
      :scheduler (when saver (saver-scheduler save! (:save-period-ms cfg)))}))
 
-(defn- log-started! [store saved ^ServerSocket srv]
-  (when (seq (:chunks saved))
-    (log/info "world loaded:" (count (:chunks saved)) "chunks," (count (:entities saved)) "entities from" (str store)))
-  (log/info (String/format Locale/ROOT "collider %s (protocol %s) done (%.3fs), on %s"
-                           (object-array [c/game-version c/protocol-version
-                                          (/ (double (.getUptime (ManagementFactory/getRuntimeMXBean))) 1000.0)
-                                          (str (.getLocalSocketAddress srv))]))))
+(defn- host-event [saved config-written?]
+  (let [rt (Runtime/getRuntime)
+        ^GarbageCollectorMXBean gc (first (ManagementFactory/getGarbageCollectorMXBeans))]
+    {:event           :host
+     :java            (System/getProperty "java.version")
+     :cores           (.availableProcessors rt)
+     :heap            (log/human-bytes (.maxMemory rt))
+     :gc              (re-find #"\S+" (.getName gc))
+     :data            (data/dir)
+     :world           (:save-dir (config/load-config))
+     :chunks          (when (seq (:chunks saved)) (count (:chunks saved)))
+     :entities        (count (:entities saved))
+     :config          "config.edn"
+     :config-written? config-written?}))
+
+(defn- timed [report step f]
+  (report {:event :begin :step step})
+  (let [t (System/nanoTime)
+        v (f)]
+    (report {:event :end :step step :took (- (System/nanoTime) t)})
+    v))
+
+(defn- uptime ^long []
+  (* 1000000 (.getUptime (ManagementFactory/getRuntimeMXBean))))
+
+(defn- port-taken [port]
+  (ex-info "port taken"
+           {:what    "failed to bind to port"
+            :why     (str "Perhaps a server is already running on port " port "?")
+            :command (str "Set another port in config.edn: {:port " (inc (long port)) "}")}))
+
+(defn- listen [base]
+  (try (open-net base)
+       (catch BindException _
+         (throw (port-taken (:port (:cfg base)))))))
 
 (defn start
   "Starts a server with the options opts and returns it."
   [opts]
-  (data/load!)
-  (let [{:keys [store saved world saver] :as base} (open-world opts)
-        net (open-net base)
-        clocks (start-clocks base net)
-        server (merge {:world world :saver saver :store store} net clocks)]
-    (log-started! store saved (:socket net))
-    (assoc server :shutdown-hook (shutdown-hook! server))))
+  (let [report (:report opts (fn [_] nil))
+        {:keys [store saved world saver] :as base} (open-world opts)]
+    (report (host-event saved (:config-written? opts)))
+    (timed report :load data/load!)
+    (let [net (listen base)
+          clocks (start-clocks base net)
+          server (merge {:world world :saver saver :store store} net clocks)]
+      (report {:event :ready :port (.getLocalPort ^ServerSocket (:socket net)) :took (uptime)})
+      (assoc server :shutdown-hook (shutdown-hook! server)))))
 
 (defn stop
   "Stops a running server and returns nil."
@@ -101,9 +132,16 @@
   (log/info "server stopped")
   nil)
 
+(defn- run! [opts]
+  (try (start (assoc opts :report cli/render!))
+       (catch ExceptionInfo e
+         (cli/render! (assoc (ex-data e) :event :error))
+         (System/exit 1))))
+
 (defn -main
   "Starts the server and waits for it to stop."
   [& args]
-  (config/write-default!)
-  (let [{:keys [^Thread accept]} (start (apply merge {} (map edn/read-string args)))]
+  (let [written? (config/write-default!)
+        opts (apply merge {} (map edn/read-string args))
+        {:keys [^Thread accept]} (run! (assoc opts :config-written? written?))]
     (.join accept)))

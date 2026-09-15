@@ -111,7 +111,7 @@
 (defn- read-store [dir]
   (let [^File d (io/file dir)]
     (cond
-      (.isFile d) (log/info "snapshot:" (str d) "is a single-file world of an older layout"
+      (.isFile d) (log/warn "snapshot:" (str d) "is a single-file world of an older layout"
                             "- starting fresh")
       (.isDirectory d) (when-let [m (read-edn (meta-file d))]
                          (assoc m :chunks (read-chunks d))))))
@@ -168,7 +168,7 @@
   [store]
   (when-let [m (try (load store)
                     (catch Throwable t
-                      (log/info "snapshot: read failed" (str store) "-" (.getMessage t))
+                      (log/warn "snapshot: read failed" (str store) "-" (.getMessage t))
                       nil))]
     (check-format! store m)
     (world-of m)))
@@ -205,7 +205,7 @@
                 "to" (str store))
       (-> state (assoc :chunks (:chunks snap) :meta m) (update :writes inc)))
     (catch Throwable t
-      (log/info "snapshot: write failed -" (.getMessage t))
+      (log/warn "snapshot: write failed -" (.getMessage t))
       state)))
 
 (defn- save! [state store world]

@@ -194,7 +194,7 @@
   [kind]
   (when-not (@unhandled kind)
     (swap! unhandled conj kind)
-    (log/info "render:" kind "not rendered yet")))
+    (log/warn "render:" kind "not rendered yet")))
 
 (defn- block-records [[cx cz] records]
   (if (= 1 (count records))
