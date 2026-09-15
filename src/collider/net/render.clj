@@ -75,22 +75,42 @@
 (defn- flags-byte [meta]
   (bit-or (if (:burning? meta) 0x01 0)
           (if (:sneaking? meta) 0x02 0)
-          (if (:sprinting? meta) 0x08 0)))
+          (if (:sprinting? meta) 0x08 0)
+          (if (:swimming? meta) 0x10 0)))
+
+(def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming?])
+(defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
+
+(def ^:private pose-id
+  {:standing 0 :sleeping 2 :swimming 3 :crouching 5})
+
+(defn- player-data [meta]
+  (cond-> []
+          (flags? meta) (conj [0 :byte (flags-byte meta)])
+          (contains? meta :pose) (conj [6 :pose (pose-id (:pose meta) 0)])
+          (contains? meta :using-item?)
+          (conj [8 :byte (if (:using-item? meta) 0x01 0)])
+          (contains? meta :sleeping-pos)
+          (conj [14 :optional-block-pos (:sleeping-pos meta)])))
+
+(defn- sheep-data [meta]
+  (cond-> []
+          (flags? meta) (conj [0 :byte (flags-byte meta)])
+          (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
+          (contains? meta :color)
+          (conj [18 :byte (bit-and (long (or (:color meta) 0)) 15)])))
 
 (defn- entity-data
-  "Returns the metadata of an entity of that kind."
+  "Returns the metadata entries of an entity of that kind."
   [kind meta]
   (case kind
-    :player [[0 :byte (flags-byte meta)]
-             [6 :pose (if (:sleeping-pos meta) 2 0)]
-             [8 :byte (if (:using-item? meta) 0x01 0)]
-             [14 :optional-block-pos (:sleeping-pos meta)]]
-    :sheep [[0 :byte (flags-byte meta)]
-            [16 :boolean (boolean (:baby? meta))]
-            [18 :byte (bit-and (long (or (:color meta) 0)) 15)]]
-    :item [[8 :item (:stack meta)]]
-    :tnt (let [f (:fuse meta 80)] (if (= 80 f) [] [[8 :int f]]))
-    :falling-block [[8 :block-pos (:start meta)]]
+    :player (player-data meta)
+    :sheep (sheep-data meta)
+    :item (if (contains? meta :stack) [[8 :item (:stack meta)]] [])
+    :tnt (let [f (:fuse meta 80)]
+           (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))
+    :falling-block (if (contains? meta :start)
+                     [[8 :block-pos (:start meta)]] [])
     []))
 
 (def ^:private equipment-slots [0 2 3 4 5])

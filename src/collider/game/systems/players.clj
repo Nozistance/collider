@@ -35,8 +35,22 @@
            :sneaking?   (boolean (:sneaking? e))
            :sprinting?  (boolean (:sprinting? e))
            :using-item? (boolean (:using-item? e))
+           :swimming?   (boolean (:swimming? e))
+           :pose        (or (:pose e) :standing)
            :skin-parts  (long (or (:skin-parts e) 0))}
           (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
+
+(def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming?])
+(defn- meta-diff
+  "Returns the metadata entries an entity's watchers have not been told."
+  [mdata sent]
+  (let [ks (into #{} (concat (keys mdata) (keys sent)))
+        changed (into {} (keep (fn [k] (let [v (get mdata k)]
+                                         (when (not= v (get sent k)) [k v]))))
+                      ks)]
+    (if (some #(contains? changed %) flag-keys)
+      (into changed (select-keys mdata flag-keys))
+      changed)))
 
 (defn metadata
   "Returns how an entity looks to players."
@@ -217,7 +231,7 @@
             (mapcat (fn [eid] (baseline-deltas world eid)))
             add))))
 
-(defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata equip
+(defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata mdiff equip
                   moved? turned? rel? head-turned? meta-changed? equip-changed?
                   vel-changed? equip-diff slot-diff carried-changed? first?])
 
@@ -278,7 +292,8 @@
         slot-diff (when (and self? (not (identical? (:inventory e) (.slots tr))))
                     (slot-diff (or (:inventory e) {}) (.slots tr)))
         carried-changed? (boolean (and self? (not= (as-seen (:carried e)) (as-seen (.carried tr)))))]
-    (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?) vel mdata equip
+    (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?) vel mdata
+             (meta-diff mdata (.mdata tr)) equip
              moved? turned? rel? head-turned? meta-changed? equip-changed?
              (vel-changed? tr vel) equip-diff
              slot-diff carried-changed? first?)))
@@ -301,7 +316,7 @@
   "Returns the messages a player needs about their own entity."
   [eid e ^Frame f]
   (cond-> []
-          (.meta-changed? f) (conj (out/meta eid (:type e) (.mdata f)))
+          (.meta-changed? f) (conj (out/meta eid (:type e) (.mdiff f)))
           (.vel-changed? f) (conj (out/velocity eid (.vel f)))
           (seq (.slot-diff f)) (into (map (fn [[slot s]] (out/set-slot slot s))) (.slot-diff f))
           (.carried-changed? f) (conj (out/carried (:carried e)))))
@@ -311,7 +326,8 @@
   [eid e ^Frame f]
   (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
           (.head-turned? f) (conj (out/head-look eid (.head f)))
-          (or (.meta-changed? f) (.first? f)) (conj (out/meta eid (:type e) (.mdata f)))
+          (or (.meta-changed? f) (.first? f))
+          (conj (out/meta eid (:type e) (if (.first? f) (.mdata f) (.mdiff f))))
           (and (.due? f) (.vel-changed? f)) (conj (out/velocity eid (.vel f)))
           (seq (.equip-diff f)) (into (map (fn [[slot s]] (out/equipment eid slot s)) (.equip-diff f)))))
 

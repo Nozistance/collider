@@ -19,6 +19,7 @@
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.players :as players]
+            [collider.game.systems.pose :as pose]
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.tnt :as tnt]
@@ -57,7 +58,8 @@
                    #'falling/first-step
                    #'tnt/first-step])
 
-(def phases [systems
+(def phases [[#'pose/pose]
+             systems
              [#'explosions/explosions]
              post-systems
              [#'detector/observe]])
