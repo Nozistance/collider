@@ -6,18 +6,17 @@
   (:import (collider.java Buf)
            (java.io BufferedInputStream BufferedOutputStream EOFException)
            (java.net ServerSocket Socket SocketException SocketTimeoutException)
-           (java.util.concurrent ArrayBlockingQueue ConcurrentLinkedQueue TimeUnit)
+           (java.util.concurrent BlockingQueue ConcurrentLinkedQueue LinkedBlockingQueue TimeUnit)
            (java.util.concurrent.atomic AtomicBoolean AtomicInteger)
            (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const out-queue-size 4096)
 (def ^:private ^:const out-queue-high 1024)
 (def ^:private ^:const writer-poll-ms 500)
 (def ^:private ^:const read-timeout-ms 30000)
 (def ^:private ^:const default-max-connections 256)
-(defrecord Conn [^Socket sock ^ArrayBlockingQueue q st ^AtomicBoolean closing])
+(defrecord Conn [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
 
 (defn conn-state
   "Returns the state the connection c is in."
@@ -40,21 +39,19 @@
 (defn close!
   "Closes the connection c once everything already sent has gone out."
   [^Conn c]
-  (.set ^AtomicBoolean (:closing c) true)
-  (.offer ^ArrayBlockingQueue (:q c) [:close]))
+  (when (.compareAndSet ^AtomicBoolean (:closing c) false true)
+    (.offer ^BlockingQueue (:q c) [:close])))
 
 (defn send!
-  "Sends m to the connection c."
+  "Sends m to the connection c, unless it is closing."
   [^Conn c m]
-  (when-not (.offer ^ArrayBlockingQueue (:q c) [:packet (conn-state c) m])
-    (log/info "output queue full, closing" (who c))
-    (.set ^AtomicBoolean (:closing c) true)
-    (.close ^Socket (:sock c))))
+  (when-not (.get ^AtomicBoolean (:closing c))
+    (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
 (defn compress!
   "Compresses everything above threshold on the connection c from here on."
   [^Conn c ^long threshold]
-  (.offer ^ArrayBlockingQueue (:q c) [:threshold threshold]))
+  (.offer ^BlockingQueue (:q c) [:threshold threshold]))
 
 (defn- encode-packet! [^Buf payload state m]
   (try
@@ -83,7 +80,7 @@
     (.close sock)))
 
 (defn- writer-step [^Conn c w ^long threshold x]
-  (let [^ArrayBlockingQueue q (:q c)
+  (let [^BlockingQueue q (:q c)
         ^BufferedOutputStream out (:out w)]
     (cond
       (nil? x)
@@ -100,7 +97,7 @@
 
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
-        ^ArrayBlockingQueue q (:q c)
+        ^BlockingQueue q (:q c)
         w (writer-wire (BufferedOutputStream. (.getOutputStream sock)))]
     (try
       (loop [threshold -1]
@@ -138,7 +135,7 @@
             (log/warn "writer failed for" (who conn) "-" (str t))))))
 
 (defn- new-conn [^Socket sock]
-  (->Conn sock (ArrayBlockingQueue. out-queue-size)
+  (->Conn sock (LinkedBlockingQueue.)
           (atom {:state :handshake :threshold -1
                  :addr  (str (.getRemoteSocketAddress sock))})
           (AtomicBoolean. false)))
@@ -168,7 +165,7 @@
   [conns]
   (into #{}
         (keep (fn [[eid ^Conn conn]]
-                (when (< (.size ^ArrayBlockingQueue (:q conn)) out-queue-high) eid)))
+                (when (< (.size ^BlockingQueue (:q conn)) out-queue-high) eid)))
         @conns))
 
 (defn- drain! [conns ^long ms]
