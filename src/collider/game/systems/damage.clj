@@ -456,7 +456,7 @@
   "Returns the entities that need a look this tick."
   [world]
   (into []
-        (filter (fn [[_ e]] (and (some? (:health e))
+        (filter (fn [[_ e]] (and (some? (:health e)) (not= :item (:type e))
                                  (or (not (idle? e)) (near-edits? world e)))))
         (:entities world)))
 

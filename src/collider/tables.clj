@@ -614,6 +614,7 @@
         pat (get cs "minecraft:provides_banner_patterns")
         egg (get-in cs ["minecraft:entity_data" "id"])
         hit (attack-damage cs)
+        resists (get-in cs ["minecraft:damage_resistant" "types"])
         tag #(str/replace (subs % 1) #"^minecraft:" "")]
     (cond-> (sorted-map)
       (not= n 64) (assoc :max-stack n)
@@ -622,6 +623,7 @@
       dye (assoc :dye (kw dye))
       egg (assoc :spawns (kw egg))
       (pos? hit) (assoc :attack-damage (flt hit))
+      (string? resists) (assoc :resists (tag resists))
       (string? pat) (assoc :patterns (tag pat)))))
 
 (defn- vanilla-items [reports]

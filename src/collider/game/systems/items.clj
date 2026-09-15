@@ -202,7 +202,7 @@
                                 [pos drift true]
                                 (item-moved chunks pos drift))
         vel' (assoc vel' 1 (liquid/bubble-push chunks (gen/flat-chunk) pos' (double (vel' 1))))]
-    (if (>= age despawn-age)
+    (if (or (>= age despawn-age) (not (pos? (double (:health e 1.0)))))
       [:remove-entity eid]
       [:merge-entity eid
        {:pos          pos'

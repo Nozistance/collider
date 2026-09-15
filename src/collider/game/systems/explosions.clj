@@ -8,6 +8,7 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
+            [collider.data :as data]
             [collider.world.blocks.fire :as fire]
             [collider.world.block :as block]
             [collider.world.gen :as gen]
@@ -81,13 +82,26 @@
          (apply concat)
          (sort-by first))))
 
+(defn- hurtable?
+  "Returns true when a blast hurts e, as ItemEntity.hurtServer and canBeHurtBy
+   decide it."
+  [e]
+  (and (some? (:health e))
+       (not (and (= :item (:type e)) (= "is_explosion" (data/resists (:item (:stack e))))))))
+
+(defn- item-dies?
+  "Returns true when the blast leaves an item no health."
+  [e dmg]
+  (and (= :item (:type e)) (hurtable? e) (>= (double dmg) (double (:health e)))))
+
 (defn- blast-one
   "Returns the running deltas with one entity's share of a blast added."
   [[motions ds] [oid o] kb dmg]
-  (if (= :player (:type o))
-    [(assoc motions oid kb) ds]
-    [motions (cond-> (conj ds [:push oid kb])
-                     (some? (:health o)) (conj [:damage oid dmg]))]))
+  (cond
+    (= :player (:type o)) [(assoc motions oid kb) ds]
+    (item-dies? o dmg) [motions (conj ds [:remove-entity oid])]
+    :else [motions (cond-> (conj ds [:push oid kb])
+                           (hurtable? o) (conj [:damage oid dmg]))]))
 
 (defn- blast-deltas
   "Returns the players' knockback and the deltas for everything else the blast throws."

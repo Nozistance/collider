@@ -131,6 +131,11 @@
   [item]
   (get-in (items) [item :compost]))
 
+(defn resists
+  "Returns the tag of the damage item shrugs off, or nil when it takes all."
+  [item]
+  (get-in (items) [item :resists]))
+
 (defn tag-values
   "Returns the entries of a tag of a registry, empty when there is no such
    tag."

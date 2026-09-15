@@ -29,7 +29,7 @@
   ([pos vel stack] (item pos vel stack 10))
   ([pos vel stack delay]
    {:type  :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
-    :stack stack :age 0 :pickup-delay delay}))
+    :stack stack :age 0 :pickup-delay delay :health 5.0}))
 
 (defn pop-velocity
   "Returns the velocity of a popped item, seeded by ks."
