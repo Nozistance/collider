@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
+            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.chest :as chest]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.chunk :as chunk]
@@ -12,6 +13,7 @@
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.moss :as moss]
+            [collider.world.blocks.mushroom :as mushroom]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
@@ -35,7 +37,7 @@
   (delay
     (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
             :stair :concrete-powder :vine :glow-lichen :multiface :sculk-vein
-            :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
+            :campfire :huge-mushroom :mossy-carpet :hanging-moss :pointed-dripstone :sulfur-spike :big-dripleaf :fire :soul-fire
             :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
           (concat pair-types block/growing-plant-types snowy-types (block/leaves-types) [:pitcher-crop]))))
 
@@ -276,7 +278,9 @@
    :chorus-plant            chorus/connected})
 
 (def ^:private self-reshapers
-  {:potent-sulfur            sulfur-state
+  {:campfire                 campfire/updated
+   :huge-mushroom            mushroom/updated
+   :potent-sulfur            sulfur-state
    :fence-gate               gate-state
    :stair                    stair-state
    :grass                    snowy-state

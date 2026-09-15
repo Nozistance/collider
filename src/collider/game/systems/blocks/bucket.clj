@@ -6,6 +6,7 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
@@ -29,6 +30,11 @@
     (cond
       (not (or (zero? cur) (and (or may-replace? holds?) (or (not shift?) (nil? relative)))))
       (when relative (pour-deltas world eid relative state nil))
+      (and water? (campfire/drowned cur))
+      (concat (edit/change-deltas world [[pos (campfire/drowned cur)]])
+              (when (= :true (:lit (block/props-of cur)))
+                [(out/all (out/sound :generic/extinguish-fire pos 1.0 1.0))])
+              splash)
       holds? (concat (edit/change-deltas world [[pos (edit/with-water cur true)]]) splash)
       :else (concat (break-drops world pos cur may-replace?)
                     (edit/change-deltas world [[pos state]])

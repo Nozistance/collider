@@ -4,13 +4,16 @@
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
+            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
+            [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.blocks.moss :as moss]
+            [collider.world.blocks.mushroom :as mushroom]
             [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
@@ -549,6 +552,8 @@
                            [[:vine] (fn [c t p st {:keys [yaw pitch]}] (vine-fitted c t p st yaw pitch))]
                            [[:glow-lichen :multiface :sculk-vein] (fn [c t p st {:keys [yaw pitch]}] (multiface-fitted c t p st yaw pitch))]
                            [[:scaffolding] (fn [c t p st _o] (when (< (scaffold-distance c t p) 7) (scaffold-state c t p st)))]
+                           [[:campfire] (fn [c t p st {:keys [yaw]}] (campfire/placed c t p st yaw))]
+                           [[:huge-mushroom] (fn [c t p st _o] (mushroom/placed c t p st))]
                            [[:farmland :dirt-path] (fn [c t p st _o] (if (supported? c t p st) st (gone-state st)))]]
               k classes]
           [k f])))
@@ -577,10 +582,15 @@
     (and (chunk/in-range? y')
          (block/free? (chunk/chunks-get-block chunks template [x y' z])))))
 
+(defn- place-delay ^long [chunks p]
+  (if (= :dragon-egg (block/type-of (chunk/chunks-get-block chunks (gen/flat-chunk) p)))
+    (dragonegg/delay-after-place)
+    2))
+
 (def falling-rule
   {:name   :falling
    :match? (fn [_chunks st _p] (and (block/falls? st) (not= :scaffolding (block/type-of st))))
-   :wake   (fn [_chunks tick _p _old _self?] (+ (long tick) 2))
+   :wake   (fn [chunks tick p _old _self?] (+ (long tick) (place-delay chunks p)))
    :due    (fn [chunks p _ctx]
              (when (free-below? chunks (gen/flat-chunk) p)
                [[p (block/emptied (chunk/chunks-get-block chunks (gen/flat-chunk) p))]]))})

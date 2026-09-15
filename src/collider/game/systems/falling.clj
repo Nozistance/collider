@@ -8,6 +8,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
             [collider.world.blocks.support :as support])
   (:import (collider.world.phys Move)))
@@ -115,15 +116,19 @@
 (defn- fall-move
   "Returns the move a falling block makes this tick."
   ^Move [world e]
-  (let [[vx vy vz] (:vel e)]
+  (let [[vx vy vz] (:vel e)
+        d [(double vx) (- (double vy) 0.04) (double vz)]]
     (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
-               [(double vx) (- (double vy) 0.04) (double vz)] half height)))
+               (if (:stuck e) (mapv * d (:stuck e)) d) half height)))
 
 (defn- drift-deltas
   "Returns the deltas for a falling block still on its way down."
-  [eid pos ^long time [mx my mz]]
-  [[:merge-entity eid {:pos pos :on-ground false :time time
-                       :vel [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)]}]])
+  [eid pos time [mx my mz] stuck stuck']
+  [[:merge-entity eid (cond-> {:pos pos :on-ground false :time time
+                               :vel (if stuck
+                                      [0.0 0.0 0.0]
+                                      [(* (double mx) 0.98) (* (double my) 0.98) (* (double mz) 0.98)])}
+                              (or stuck' stuck) (assoc :stuck stuck'))]])
 
 (defn- step-deltas
   "Returns the deltas for one falling block this tick."
@@ -137,7 +142,8 @@
       (land-deltas world eid (assoc e :pos pos) cell cur concrete? stuck?)
       (or (> time max-time) (and (> time 100) (not (chunk/in-range? (cell 1)))))
       (cons [:remove-entity eid] (item-deltas world eid (assoc e :pos pos)))
-      :else (drift-deltas eid pos time (.vel mv)))))
+      :else (drift-deltas eid pos time (.vel mv) (:stuck e)
+                          (motion/stuck-speed (:chunks world) pos half height)))))
 
 (defn first-step
   "Returns the deltas for blocks that started falling this tick."

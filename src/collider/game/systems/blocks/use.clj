@@ -13,6 +13,7 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.direction :as dir]
             [collider.world.env.signal :as signal]))
@@ -249,6 +250,21 @@
       [(out/all (out/block-event pos 1 (get dir/index (dir/from-index (long face)))))
        (out/all (out/sound :bell/use pos 2.0 1.0))])))
 
+(defn- egg-deltas [world pos]
+  (let [st (edit/block-at world pos)
+        roll (fn [k] (random/of-key (:tick world) pos :egg k))]
+    (when-let [target (dragonegg/teleport-target (:chunks world) pos roll)]
+      (edit/change-deltas world [[pos 0] [target st]]))))
+
+(def ^:private ^:const light-levels 16)
+
+(defn- light-deltas [world pos]
+  (let [st (edit/block-at world pos)
+        lvl (rem (inc (block/prop-long st :level)) light-levels)]
+    (edit/change-deltas
+      world [[pos (block/state (block/block-of st)
+                               (assoc (block/props-of st) :level (keyword (str lvl))))]])))
+
 (defn- lectern-use-deltas [world eid pos]
   (let [st (edit/block-at world pos)
         stack (edit/held-stack world eid)]
@@ -270,7 +286,9 @@
    :shelf               (fn [w eid pos face _ cursor] (shelf-use-deltas w eid pos face cursor))
    :chiseled-book-shelf (fn [w eid pos face item cursor] (bookshelf-use-deltas w eid pos face item cursor))
    :bell                (fn [w _ pos face _ cursor] (bell-use-deltas w pos face cursor))
-   :lectern             (fn [w eid pos _ _ _] (lectern-use-deltas w eid pos))})
+   :lectern             (fn [w eid pos _ _ _] (lectern-use-deltas w eid pos))
+   :dragon-egg          (fn [w _ pos _ _ _] (egg-deltas w pos))
+   :light               (fn [w _ pos _ _ _] (light-deltas w pos))})
 
 (defn- handler [cur item]
   (let [t (block/type-of cur)]

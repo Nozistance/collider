@@ -177,6 +177,8 @@
    :composter/empty               [:block.composter.empty 4]
    :shovel/flatten                [:item.shovel.flatten 4]
    :fire/ignite                   [:item.flintandsteel.use 4]
+   :firecharge/use                [:item.firecharge.use 4]
+   :generic/extinguish-fire       [:entity.generic.extinguish-fire 4]
    :explosion                     [:entity.generic.explode 4]
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})

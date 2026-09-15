@@ -246,6 +246,7 @@
 
 (def ^:const sound-play-jukebox-song 1010)
 (def ^:const sound-stop-jukebox-song 1011)
+(def ^:const sound-extinguish-fire 1009)
 (def ^:const sound-anvil-broken 1029)
 (def ^:const sound-anvil-land 1031)
 (def ^:const sound-chorus-grow 1033)

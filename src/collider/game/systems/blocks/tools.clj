@@ -10,6 +10,7 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow :as grow]
@@ -38,20 +39,38 @@
   "Returns the items that count as shovels."
   [] @shovel-items)
 
-(defn- candle-lit [world pos]
+(def ^:private lightable-types #{:candle :candle-cake :campfire})
+
+(defn- lightable [world pos]
   (let [cur (edit/block-at world pos) props (block/props-of cur)]
-    (when (and (contains? #{:candle :candle-cake} (block/type-of cur))
+    (when (and (contains? lightable-types (block/type-of cur))
                (= :false (:lit props)) (not= :true (:waterlogged props)))
       (block/state (block/block-of cur) (assoc props :lit :true)))))
 
-(defn- fire-deltas [world eid pos off]
+(defn- fire-deltas [world pos off snd]
   (let [[_ y' _ :as pos'] (mapv + pos off)
         st (fire/state-for (:chunks world) pos')]
     (when (and (chunk/in-range? y')
                (zero? (edit/block-at world pos'))
                (support/supported? (:chunks world) (gen/flat-chunk) pos' st))
-      [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
-       (out/except eid (out/sound :fire/ignite pos' 1.0 (random/pitch (:tick world) pos' :flint)))])))
+      [[:set-blocks [[pos' st]] (dec (long (:tick world)))] (snd pos')])))
+
+(defn- flint-sound [world eid pos]
+  (out/except eid (out/sound :fire/ignite pos 1.0 (random/pitch (:tick world) pos :flint))))
+
+(defn- charge-sound [world pos]
+  (let [t (:tick world)
+        p (- (random/of-key t pos :charge-a) (random/of-key t pos :charge-b))]
+    (out/all (out/sound :firecharge/use pos 1.0 (+ 1.0 (* 0.2 (double p)))))))
+
+(defn firecharge-deltas
+  "Returns the deltas for a fire charge used at pos: a lit block or a new
+   flame."
+  [world [_eid pos face]]
+  (if-let [st (lightable world pos)]
+    (concat (edit/change-deltas world [[pos st]]) [(charge-sound world pos)])
+    (when-let [off (dir/face-offset face)]
+      (fire-deltas world pos off #(charge-sound world %)))))
 
 (defn flint-deltas
   "Returns the deltas for flint and steel used at pos: a flame, a lit
@@ -59,8 +78,9 @@
   [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
     (cond
-      (candle-lit world pos)
-      (edit/change-deltas world [[pos (candle-lit world pos)]])
+      (lightable world pos)
+      (concat (edit/change-deltas world [[pos (lightable world pos)]])
+              [(flint-sound world eid pos)])
       (and (tnt/tnt-state? (edit/block-at world pos))
            (get-in world [:rules :tnt-explodes] true)
            (not (get-in world [:entities eid :sneaking?]))
@@ -69,7 +89,7 @@
         (into (edit/change-deltas world [[pos 0]])
               [[:spawn-entity primed]
                (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
-      :else (fire-deltas world eid pos off))))
+      :else (fire-deltas world pos off #(flint-sound world eid %)))))
 
 (defn bonemeal-deltas
   "Returns the deltas for bone meal used on the block at pos."
@@ -92,16 +112,23 @@
           (when freed [[:spawn-entity (items/popped world pos {:item freed :count 1} :till)]])
           [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
 
+(defn- flattened-state [world pos cur]
+  (when (and (contains? grow/flattened (block/block-of cur))
+             (zero? (edit/block-at world (mapv + pos [0 1 0]))))
+    (block/state :dirt-path)))
+
 (defn flatten-deltas
-  "Returns the deltas for a shovel making a path of the block at pos."
+  "Returns the deltas for a shovel making a path of the block at pos, or
+   putting out the campfire there."
   [world [_eid pos face _ _]]
   (let [cur (edit/block-at world pos)]
-    (when (and (not= 0 (long face))
-               (contains? grow/flattened (block/block-of cur))
-               (zero? (edit/block-at world (mapv + pos [0 1 0]))))
-      (concat
-        (edit/change-deltas world [[pos (block/state :dirt-path)]])
-        [(out/all (out/sound :shovel/flatten pos 1.0 1.0))]))))
+    (when (not= 0 (long face))
+      (if-let [st (flattened-state world pos cur)]
+        (concat (edit/change-deltas world [[pos st]])
+                [(out/all (out/sound :shovel/flatten pos 1.0 1.0))])
+        (when-let [st (campfire/dowsed cur)]
+          (concat (edit/change-deltas world [[pos st]])
+                  [(out/all (out/level-event out/sound-extinguish-fire pos))]))))))
 
 (defn- half-changes
   "Returns the changes putting st at pos, and the same change to the

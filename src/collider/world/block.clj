@@ -55,7 +55,9 @@
     :nether-wart :torchflower-crop :pitcher-crop :lily-pad :flower-bed :leaf-litter
     :eyeblossom :firefly-bush :kelp :kelp-plant :seagrass :tall-seagrass})
 (def water-holder-types #{:kelp :kelp-plant :seagrass :tall-seagrass :bubble-column})
-(def falling-types #{:sand :colored-falling :concrete-powder :anvil :scaffolding :pointed-dripstone :sulfur-spike})
+(def falling-types
+  #{:sand :colored-falling :concrete-powder :anvil :scaffolding :pointed-dripstone :sulfur-spike
+    :dragon-egg})
 (def coral-types #{:coral :coral-plant :coral-fan :coral-wall-fan})
 (def cauldron-types #{:cauldron :layered-cauldron :lava-cauldron})
 (def multiface-types #{:glow-lichen :multiface :sculk-vein})

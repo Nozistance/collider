@@ -8,6 +8,7 @@
             [collider.vec :as v]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
   (:import (collider.world.phys Move)))
 
@@ -174,7 +175,7 @@
   (let [^Move mv (phys/move chunks (gen/flat-chunk) pos
                             [(double vx) (double vy) (double vz)] item-half item-height)
         on-ground (.on-ground mv)
-        [mx my mz] (.vel mv)
+        [mx my mz] (if on-ground (motion/stepped-speed chunks (.pos mv) (.vel mv)) (.vel mv))
         f (if on-ground ground-friction air-drag)
         my (* (double my) air-drag)]
     [(.pos mv)
@@ -194,24 +195,29 @@
   [world eid e]
   (let [chunks (:chunks world) pos (:pos e)
         [[vx _ vz :as drift] in-fluid?] (item-drift chunks pos (:vel e))
+        stuck (:stuck e)
         age (inc (long (or (:age e) 0)))
         resting? (and (:on-ground e)
                       (<= (+ (* (double vx) (double vx)) (* (double vz) (double vz))) resting-speed-sq)
                       (not= 0 (rem (+ age (long eid)) resting-period)))
         [pos' vel' on-ground] (if resting?
                                 [pos drift true]
-                                (item-moved chunks pos drift))
-        vel' (assoc vel' 1 (liquid/bubble-push chunks (gen/flat-chunk) pos' (double (vel' 1))))]
+                                (item-moved chunks pos (if stuck (mapv * drift stuck) drift)))
+        vel' (if (and stuck (not resting?)) [0.0 0.0 0.0] vel')
+        vel' (assoc vel' 1 (liquid/bubble-push chunks (gen/flat-chunk) pos' (double (vel' 1))))
+        stuck' (motion/stuck-speed chunks pos' item-half item-height)
+        stuck' (if resting? (or stuck' stuck) stuck')]
     (if (or (>= age despawn-age) (not (pos? (double (:health e 1.0)))))
       [:remove-entity eid]
       [:merge-entity eid
-       {:pos          pos'
-        :vel          vel'
-        :on-ground    on-ground
-        :needs-sync?  (or in-fluid? (> (jolt-of vel' (:vel e)) 0.01)
-                          (not= on-ground (boolean (:on-ground e))))
-        :age          age
-        :pickup-delay (max 0 (dec (long (or (:pickup-delay e) 0))))}])))
+       (cond-> {:pos          pos'
+                :vel          vel'
+                :on-ground    on-ground
+                :needs-sync?  (or in-fluid? (> (jolt-of vel' (:vel e)) 0.01)
+                                  (not= on-ground (boolean (:on-ground e))))
+                :age          age
+                :pickup-delay (max 0 (dec (long (or (:pickup-delay e) 0))))}
+               (or stuck' stuck) (assoc :stuck stuck'))])))
 
 (defn- mergeable?
   "Returns true when two items are close enough and alike enough to become one."

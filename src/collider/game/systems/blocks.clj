@@ -44,6 +44,7 @@
    [(comp nil? :item) (constantly nil)]
    [:pour (when-use (fn [{:keys [world eid at pour]}] (bucket/add world eid at pour)))]
    [(item-is :flint-and-steel) (when-hand (on-args tools/flint-deltas))]
+   [(item-is :fire-charge) (when-hand (on-args tools/firecharge-deltas))]
    [(item-is :bucket) (when-use (fn [{:keys [world eid at]}] (bucket/scoop-deltas world eid at)))]
    [(item-is :lily-pad) (when-use (fn [{:keys [world eid at]}] (bucket/lily-deltas world eid at)))]
    [(item-is :potion) (when-hand (fn [{:keys [world eid pos face]}] (tools/mud-deltas world eid pos face)))]

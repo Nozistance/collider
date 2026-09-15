@@ -5,6 +5,7 @@
             [collider.vec :as v]
             [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
   (:import (collider.world.phys Move)))
 
@@ -30,16 +31,21 @@
 (defn- step-deltas
   "Returns the deltas for one primed TNT moving and burning down this tick."
   [world eid e]
-  (let [kb (:kb e)
+  (let [kb (:kb e) stuck (:stuck e)
         [vx vy vz] (v/+ (:vel e) (or kb [0.0 0.0 0.0]))
+        drift [(double vx) (- (double vy) 0.04) (double vz)]
         ^Move mv (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
-                            [(double vx) (- (double vy) 0.04) (double vz)]
-                            tnt-half tnt-height)
-        pos (.pos mv) on-ground (.on-ground mv)]
-    (cond-> [[:merge-entity eid {:pos       pos
-                                 :vel       (stepped-vel world pos (.vel mv) on-ground)
-                                 :on-ground on-ground
-                                 :fuse      (dec (long (:fuse e)))}]]
+                            (if stuck (mapv * drift stuck) drift) tnt-half tnt-height)
+        pos (.pos mv) on-ground (.on-ground mv)
+        moved (cond stuck [0.0 0.0 0.0]
+                    on-ground (motion/stepped-speed (:chunks world) pos (.vel mv))
+                    :else (.vel mv))
+        stuck' (motion/stuck-speed (:chunks world) pos tnt-half tnt-height)]
+    (cond-> [[:merge-entity eid (cond-> {:pos       pos
+                                         :vel       (stepped-vel world pos moved on-ground)
+                                         :on-ground on-ground
+                                         :fuse      (dec (long (:fuse e)))}
+                                        (or stuck' stuck) (assoc :stuck stuck'))]]
             kb (conj [:push eid (mapv - kb)]))))
 
 (defn- moved-pos
