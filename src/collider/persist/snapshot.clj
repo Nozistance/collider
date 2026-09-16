@@ -7,15 +7,15 @@
             [collider.log :as log]
             [collider.world.chunk :as chunk]
             [taoensso.nippy :as nippy])
-  (:import (collider.java Section)
+  (:import (collider.java Chunk Section)
            (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption)
            (java.nio.file.attribute FileAttribute)))
 
 (set! *warn-on-reflection* true)
 
-(def ^:const format-version 8)
-(def ^:private readable-formats #{7 8})
+(def ^:const format-version 9)
+(def ^:private readable-formats #{7 8 9})
 
 (nippy/extend-freeze Section ::palette-section
                      [^Section s ^DataOutput out]
@@ -23,6 +23,12 @@
 
 (nippy/extend-thaw ::palette-section [^DataInput in]
   (Section/load in))
+
+(nippy/extend-freeze Chunk ::chunk [^Chunk c ^DataOutput out]
+  (.save c out))
+
+(nippy/extend-thaw ::chunk [^DataInput in]
+  (Chunk/load in))
 
 (nippy/extend-thaw ::section [in]
   (let [blocks (nippy/thaw-from-in! in)

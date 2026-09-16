@@ -4,7 +4,7 @@
             [collider.proto.codec :as c]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Buf Section)))
+  (:import (collider.java Buf Chunk Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -84,8 +84,8 @@
 
 (defn- our-section
   "Returns the section of chunk at si, or nil when nothing is there."
-  [chunk ^long si]
-  (when (< -1 si chunk/section-count) (get (:sections chunk) si)))
+  [^Chunk chunk ^long si]
+  (.section chunk (int si)))
 
 (def ^:private height-bits (ceillog2 (+ 2 (- chunk/max-y chunk/min-y))))
 

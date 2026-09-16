@@ -22,7 +22,9 @@
     (chunk/section bs nil (flat-sky))))
 
 (def ^:private ^:table flat
-  (delay {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))}))
+  (delay (chunk/chunk-of
+           (assoc (vec (repeat chunk/section-count nil))
+                  (chunk/section-index 0) (flat-section)))))
 
 (defn flat-chunk
   "Returns the chunk every loaded chunk starts from."

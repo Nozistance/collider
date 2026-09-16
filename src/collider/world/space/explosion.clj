@@ -5,7 +5,7 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Rays Section)))
+  (:import (collider.java Chunk Rays Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -22,13 +22,14 @@
         sy1 (min (bit-shift-right chunk/max-y 4) (bit-shift-right (+ (long cy) region-r) 4))]
     [cx0 cz0 sy0 (inc (- cx1 cx0)) (inc (- cz1 cz0)) (inc (- sy1 sy0))]))
 
-(defn- section-at [col ^long sy]
-  (get-in col [:sections (+ sy chunk/section-offset)]))
+(defn- section-at [^Chunk col ^long sy]
+  (.section col (int (+ sy chunk/section-offset))))
 
 (defn- fill-grid [^objects grid chunks template [cx0 cz0 sy0 ncx ncz nsy]]
   (dotimes [ix (long ncx)]
     (dotimes [iz (long ncz)]
-      (let [col (get chunks (chunk/pos->id (+ (long cx0) ix) (+ (long cz0) iz)) template)]
+      (let [col (Chunk/at chunks template (+ (long cx0) ix)
+                          (+ (long cz0) iz))]
         (dotimes [iy (long nsy)]
           (aset grid (+ (* (+ (* ix (long ncz)) iz) (long nsy)) iy)
                 (section-at col (+ (long sy0) iy))))))))

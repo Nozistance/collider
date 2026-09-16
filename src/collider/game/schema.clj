@@ -29,6 +29,11 @@
         (for [[dt ps] (group-by (fn [[dt _]] (max 1 (long dt))) ticks)]
           [dt (into (i/int-set) (map chunk/block-pos->id) (mapcat second ps))])))
 
+(defn- load-chunks [cs]
+  (into chunk/no-chunks
+        (map (fn [[id c]] [(long id) (chunk/stored-chunk c)]))
+        cs))
+
 (declare profile-of)
 
 (defn- store-profiles [profiles world]
@@ -49,7 +54,7 @@
    :next-eid           {:default 1000000 :store (fn [v _] v) :load identity}
    :rules              {:default rules/defaults :store (fn [v _] v) :load #(merge rules/defaults %)}
    :profiles           {:default {} :store store-profiles :load identity}
-   :chunks             {:default (i/int-map) :store (fn [v _] (into {} v)) :load #(into (i/int-map) %)}
+   :chunks             {:default chunk/no-chunks :store (fn [v _] v) :load load-chunks}
    :entities           {:default (i/int-map) :store store-entities :load load-entities}
    :block-ticks        {:default (i/int-map) :store store-ticks :load load-ticks}
    :block-entities     {:default (i/int-map)

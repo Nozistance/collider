@@ -3,7 +3,7 @@
    the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Section)
+  (:import (collider.java Chunk ChunkIndex Section)
            (java.util ArrayDeque HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -25,15 +25,16 @@
 (defn- l-idx ^long [^long x ^long y ^long z]
   (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15)))
 
-(defn- chunk-at [chunks template x z]
-  (get chunks (chunk/pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)) template))
+(defn- chunk-at ^Chunk [chunks template x z]
+  (Chunk/at chunks template (bit-shift-right (unchecked-int x) 4)
+            (bit-shift-right (unchecked-int z) 4)))
 
 (defn- section
   "Returns the section of the world holding x y z, nil when there is
    none."
   ^Section [chunks template x y z]
-  (let [x (long x) y (long y) z (long z)]
-    (get (:sections (chunk-at chunks template x z)) (chunk/section-index y))))
+  (Chunk/sectionAt chunks template (unchecked-int x) (unchecked-int y)
+                   (unchecked-int z)))
 
 (defn- absent-sky
   "Returns the sky light at x y z where nothing has been lit yet."
@@ -173,20 +174,20 @@
         (when (pos? ln)
           (.add pq (pack nx ny nz ln)))))))
 
+(defn- relit ^Chunk [^Chunk c [[_ k] ^bytes arr]]
+  (let [k (long k)
+        si (int (bit-and (bit-shift-right k 1) 31))
+        s (or (.section c si) (.fresh c si))]
+    (.with c si (if (= (bit-and k 1) SL)
+                  (.withSkyLight s arr)
+                  (.withBlockLight s arr)))))
+
 (defn- rebuild [chunks template ^HashMap cache]
-  (reduce
-    (fn [chs k]
-      (let [k (long k) ^bytes arr (.get cache k)
-            cp (bit-shift-right k 6) si (bit-and (bit-shift-right k 1) 31) ch (bit-and k 1)
-            c (get chs cp template)
-            ^Section s (or (get (:sections c) si) (chunk/new-section c si))]
-        (assoc chs cp
-                   (assoc-in c [:sections si]
-                             (if (= ch SL)
-                               (.withSkyLight s arr)
-                               (.withBlockLight s arr))))))
-    chunks
-    (reverse (sort (keys cache)))))
+  (let [ks (reverse (sort (keys cache)))
+        entry (fn [k]
+                [[(bit-shift-right (long k) 6) k] (.get cache k)])]
+    (chunk/with-chunks chunks template relit
+      (partition-by ffirst (map entry ks)))))
 
 (defn- clear-cell! [^HashMap cache chunks template ch ^ArrayDeque rq cell]
   (let [[x y z _] cell

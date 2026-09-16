@@ -1,6 +1,6 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
-  (:import (collider.java Section)
+  (:import (collider.java Chunk ChunkIndex Section)
            (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -42,12 +42,23 @@
               (bit-or (bit-and b 0xF0) v)
               (bit-or (bit-and b 0x0F) (bit-shift-left v 4)))))))
 
+(def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
+
+(defn chunk-of
+  "Returns a chunk of the sections given, nil for an absent one."
+  ^Chunk [sections]
+  (Chunk/of (object-array sections)))
+
+(defn stored-chunk
+  "Returns the chunk a snapshot holds, a map of :sections before
+   format 9."
+  ^Chunk [c]
+  (if (instance? Chunk c) c (chunk-of (:sections c))))
+
 (defn first-above
   "Returns the first present section above si, or nil."
-  ^Section [chunk ^long si]
-  (loop [i (inc si)]
-    (when (< i section-count)
-      (if-let [s (get (:sections chunk) i)] s (recur (inc i))))))
+  ^Section [^Chunk chunk ^long si]
+  (.firstAbove chunk (int si)))
 
 (defn nil-sky
   "Returns the sky light a new section at si inherits from above at lx lz."
@@ -58,10 +69,8 @@
 
 (defn new-section
   "Returns an empty section at si with inherited sky light."
-  ^Section [chunk ^long si]
-  (if-let [^Section s (first-above chunk si)]
-    (.below s)
-    Section/EMPTY))
+  ^Section [^Chunk chunk ^long si]
+  (.fresh chunk (int si)))
 
 (defn nil-sky-array
   "Returns the sky light a new section at si inherits from above, as a
@@ -71,23 +80,19 @@
 
 (defn set-block
   "Returns chunk with the block at local lx y lz set to state."
-  [chunk lx y lz state]
+  ^Chunk [^Chunk chunk lx y lz state]
   (let [y (long y)
-        si (section-index y)
+        si (int (section-index y))
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
-        ^Section s (or (get (:sections chunk) si)
-                       (new-section chunk si))]
-    (assoc-in chunk [:sections si] (.with s (int idx) (int state)))))
+        s (or (.section chunk si) (.fresh chunk si))]
+    (.with chunk si (.with s (int idx) (int state)))))
 
 (defn get-block
   "Returns the block state at local lx y lz, air where no section exists."
-  ^long [chunk lx y lz]
-  (let [y (long y)
-        si (section-index y)]
-    (if-let [s (get (:sections chunk) si)]
-      (.block ^Section s (int (+ (* (bit-and y 15) 256)
-                                 (* (long lz) 16) (long lx))))
-      0)))
+  ^long [^Chunk chunk lx y lz]
+  (if chunk
+    (.block chunk (int lx) (int y) (int lz))
+    0))
 
 (defn block-pos->id
   "Returns the id of a block position."
@@ -133,16 +138,15 @@
   "Returns the block state at x y z, reading template where the chunk is
    absent."
   (^long [chunks template [x y z]]
-   (chunks-get-block chunks template x y z))
+   (Chunk/blockAt chunks template (unchecked-int x) (unchecked-int y)
+                  (unchecked-int z)))
   ([chunks template x y z]
-   (let [x (long x) y (long y) z (long z)]
-     (get-block (get chunks (pos->id (bit-shift-right x 4) (bit-shift-right z 4)) template)
-                (bit-and x 15) y (bit-and z 15)))))
+   (Chunk/blockAt chunks template (unchecked-int x) (unchecked-int y)
+                  (unchecked-int z))))
 
 (definline block-state [chunks template x y z]
-  `(let [x# (long ~x) y# (long ~y) z# (long ~z)]
-     (get-block (get ~chunks (pos->id (bit-shift-right x# 4) (bit-shift-right z# 4)) ~template)
-                (bit-and x# 15) y# (bit-and z# 15))))
+  `(long (Chunk/blockAt ~chunks ~template (unchecked-int ~x)
+                        (unchecked-int ~y) (unchecked-int ~z))))
 
 (definterface Edits
   (add [^long i ^long state])
@@ -169,11 +173,10 @@
           (.put cache k e)
           e))))
 
-(defn- merge-section [template chs [[cp si] edits]]
-  (let [c (get chs cp template)
-        s (or (get (:sections c) si) (new-section c si))]
-    (assoc chs cp (assoc-in c [:sections si]
-                            (.applyTo ^Edits edits s)))))
+(defn- merge-section ^Chunk [^Chunk c [[_ si] edits]]
+  (let [si (int si)
+        s (or (.section c si) (.fresh c si))]
+    (.with c si (.applyTo ^Edits edits s))))
 
 (defn- apply-change! [^HashMap cache change]
   (let [[[x y z] state] change
@@ -186,6 +189,20 @@
 (defn- cache-order [^HashMap cache]
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
 
+(defn with-chunks
+  "Returns chunks with each group of [[cp k] x] entries reduced by f
+   into the chunk at cp, template where it is absent."
+  ^ChunkIndex [^ChunkIndex chunks template f groups]
+  (let [gs (vec groups)
+        ids (long-array (count gs))
+        cs (object-array (count gs))]
+    (dotimes [i (count gs)]
+      (let [g (gs i)
+            cp (long (ffirst (first g)))]
+        (aset ids i cp)
+        (aset cs i (reduce f (or (.get chunks cp) template) g))))
+    (.withAll chunks ids cs)))
+
 (defn chunks-set-blocks
   "Returns chunks with the [pos state] changes applied; an absent chunk starts
    from template."
@@ -194,4 +211,5 @@
     chunks
     (let [cache (HashMap.)]
       (doseq [change changes] (apply-change! cache change))
-      (reduce (partial merge-section template) chunks (cache-order cache)))))
+      (with-chunks chunks template merge-section
+        (partition-by ffirst (cache-order cache))))))

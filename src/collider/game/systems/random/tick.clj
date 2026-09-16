@@ -13,7 +13,7 @@
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.precipitation :as precipitation])
-  (:import (collider.java Section)))
+  (:import (collider.java Chunk Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -60,6 +60,10 @@
                       [[(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)] st]))))
           (range speed))))
 
+(defn- sections-of [^Chunk c]
+  (map (fn [si] [si (.section c (int si))])
+       (range chunk/section-count)))
+
 (defn- world-cells
   "Returns the blocks the world offers up to a random tick."
   [world chunks speed]
@@ -70,7 +74,7 @@
                           (mapcat (fn [[si ^Section s]]
                                     (when (and s (not (identical? s chunk/empty-section)))
                                       (section-cells world chunks cid si speed))))
-                          (map-indexed vector (:sections c))))))
+                          (sections-of c)))))
         (seq (state/active-chunks world))))
 
 (defn- precipitation-at

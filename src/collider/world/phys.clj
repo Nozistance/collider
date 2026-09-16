@@ -3,7 +3,7 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Phys Section)))
+  (:import (collider.java Chunk Phys Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -76,9 +76,8 @@
           (chunk/section-index cy)))
 
 (defn- section-blocks ^Section [chunks template cx cy cz]
-  (let [cx (long cx) cy (long cy) cz (long cz)
-        c (get chunks (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) template)]
-    (get (:sections c) (chunk/section-index cy))))
+  (Chunk/sectionAt chunks template (unchecked-int cx)
+                   (unchecked-int cy) (unchecked-int cz)))
 
 (definline ^:private block-at [blocks cx cy cz]
   `(let [^collider.java.Section b# ~blocks]
