@@ -4,15 +4,16 @@
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk])
+  (:import (collider.java V3)))
 
 (set! *warn-on-reflection* true)
 
+(defn- plain [v] (if (instance? V3 v) (vec v) v))
+
 (defn- plain-entity [e]
-  (-> (into {} e)
-      (dissoc :track)
-      (update :pos #(some-> % vec))
-      (update :vel #(some-> % vec))))
+  (reduce-kv (fn [m k v] (assoc m k (plain v)))
+             {} (dissoc (into {} e) :track)))
 
 (defn- store-entities [es _]
   (into {} (keep (fn [[eid e]] (when (not= :player (:type e)) [eid (plain-entity e)]))) es))
