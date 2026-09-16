@@ -14,6 +14,7 @@
             [collider.game.deltas :as deltas]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.blocks.climb :as climb]
             [collider.world.blocks.connect :as connect]
             [collider.world.gen :as gen]
             [collider.world.light :as light]
@@ -314,10 +315,10 @@
   (let [fall (double (or (:fall e) 0.0))
         dy (if vel (v/y vel) 0.0)]
     (cond
-      (or (:flying e) (:flying changes)) {:fall 0.0}
-      (:on-ground changes) (if (pos? fall) {:fall 0.0 :landed fall} {:fall 0.0})
-      (neg? dy) {:fall (- fall dy)}
-      :else nil)))
+      (or (:flying e) (:flying changes)) {:fall 0.0 :landed nil}
+      (:on-ground changes) {:fall 0.0 :landed (when (pos? fall) fall)}
+      (neg? dy) {:fall (- fall dy) :landed nil}
+      :else {:landed nil})))
 
 (defn- apply-move [w eid changes]
   (let [e (get-in w [:entities eid])
@@ -382,15 +383,39 @@
   [world delta]
   ((get input-apply (nth delta 0) unchanged) world delta))
 
+(def ^:private move-keys
+  [:on-ground :sprinting? :pose :swimming? :eye-in-water? :in-water?
+   :landed])
+
+(defn- jump? [e e']
+  (and (:on-ground e) (not (:on-ground e'))
+       (> (v/y (:pos e')) (v/y (:pos e)))))
+
+(defn move-of
+  "Returns what a :move event did to its player as vanilla counts it,
+   or nil when the event moved no player."
+  [w w' [tag eid changes]]
+  (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
+    (when (and (= :move tag) (:pos changes) (:pos e) e'
+               (not (:tp-target e)) (not (:sleeping e)))
+      (assoc (select-keys e' move-keys)
+             :eid eid :from (:pos e) :to (:pos e') :jump? (jump? e e')
+             :climbing?
+             (climb/on-climbable? (:chunks w') (:pos e'))))))
+
 (defn- applied-input
   "Returns world with a tick's input events applied, remembering the pose
-   each use started from."
+   each use started from and what each move did."
   [world input]
-  (loop [w world i 0 origins {}]
+  (loop [w world i 0 origins {} moves []]
     (if-let [d (nth input i nil)]
-      (recur (apply-event w d) (inc i)
-             (if-let [o (use-origin w d)] (assoc origins i o) origins))
-      (assoc w :use-origins origins))))
+      (let [w' (apply-event w d) m (move-of w w' d)]
+        (recur w' (inc i)
+               (if-let [o (use-origin w d)]
+                 (assoc origins i o)
+                 origins)
+               (cond-> moves m (conj m))))
+      (assoc w :use-origins origins :moves moves))))
 
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
