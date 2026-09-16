@@ -492,7 +492,12 @@
                (.writeBoolean buf false))
              (c/write-varint buf (long (:particle m)))
              (c/write-holder-ref buf (long (:sound m)))
-             (c/write-varint buf 0))}
+             (c/write-varint buf (count (:block-particles m)))
+             (doseq [[id scaling speed weight] (:block-particles m)]
+               (c/write-varint buf (long id))
+               (.writeFloat buf (float scaling))
+               (.writeFloat buf (float speed))
+               (c/write-varint buf (long weight))))}
    [:play :chat]
    {:read (fn [^Buf buf] {:message (c/read-string buf 256)})}
    [:play :chat-command]

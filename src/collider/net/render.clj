@@ -204,6 +204,10 @@
    :swim                          [:entity.generic.swim 6]})
 
 (def ^:private ^:table overworld (delay (data/datapack-id "dimension_type" :overworld)))
+(def ^:private ^:table explosion-block-particles
+  (delay [[(data/registry-id "particle_type" :poof) 0.5 1.0 1]
+          [(data/registry-id "particle_type" :smoke) 1.0 1.0 1]]))
+
 (def ^:private ^:table explosion-particle
   (delay (data/registry-id "particle_type" :explosion-emitter)))
 (defn- particles-packet [m]
@@ -255,7 +259,8 @@
   (let [k (get (:motions m) eid)]
     {:packet    :explode :center (:center m) :radius (:radius m) :blocks (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
-     :particle  @explosion-particle :sound (first (sound-id :explosion))}))
+     :particle  @explosion-particle :sound (first (sound-id :explosion))
+     :block-particles @explosion-block-particles}))
 
 (def ^:private ^:const explosion-range-sq 4096.0)
 (defn- in-earshot? [world center eid]
