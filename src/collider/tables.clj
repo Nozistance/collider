@@ -548,6 +548,37 @@
             [(key-of reg b)
              (kw (str (call (hidden-field (class b) b "feature") "identifier")))]))))
 
+(defn- template [reg t]
+  (when t
+    (when-not (call (call t "components") "isEmpty")
+      (throw (ex-info "remainder with components" {:template (str t)})))
+    {:item (key-of reg (call (call t "item") "value"))
+     :count (call t "count")}))
+
+(defn- remainders []
+  (let [items (registry "ITEM")]
+    (into (sorted-map)
+          (for [i (elements items)
+                :let [t (call i "getCraftingRemainder")]
+                :when t]
+            [(key-of items i) {:remainder (template items t)}]))))
+
+(defn- banner-colors []
+  (let [items (registry "ITEM")
+        c (cls "world.item.BannerItem")]
+    (into (sorted-map)
+          (for [i (elements items) :when (.isInstance c i)]
+            [(key-of items i)
+             {:banner-color (kw (call (call i "getColor")
+                                      "getSerializedName"))}]))))
+
+(defn- dye-colors []
+  (into (sorted-map)
+        (for [d (call-static "world.item.DyeColor" "values")]
+          [(kw (call d "getSerializedName"))
+           {:firework (call d "getFireworkColor")
+            :diffuse  (call d "getTextureDiffuseColor")}])))
+
 (defn- from-classes [jars server]
   (binding [*loader* (class-loader jars server)]
     (call-static "SharedConstants" "tryDetectVersion")
@@ -559,7 +590,10 @@
               :placers (placer-features (registry "BLOCK"))
               :fire    (fire-odds)
               :compost (compostables)
-              :walls   (wall-items)}))))
+              :walls   (wall-items)
+              :remainders (remainders)
+              :banners (banner-colors)
+              :dyes    (dye-colors)}))))
 
 (defn- report-json [reports name]
   (json/read-str (slurp (io/file reports name))))
@@ -613,6 +647,53 @@
                          ["minecraft:attack_damage" "add_value" "mainhand"])]
             (double (get a "amount")))))
 
+(defn- unmodelled [v]
+  (throw (ex-info "default component not modelled" {:value v})))
+
+(defn- empty-or-throw [k v]
+  (when (seq v) (throw (ex-info "default component not modelled" {k v})))
+  v)
+
+(defn- potion-default [v]
+  (empty-or-throw "custom_effects" (get v "custom_effects"))
+  (when-let [extra (seq (dissoc v "potion" "custom_effects"))]
+    (throw (ex-info "default potion not modelled" {:extra extra})))
+  {:potion (some-> (get v "potion") kw) :custom-color nil
+   :custom-effects [] :custom-name nil})
+
+(defn- pot-default [v]
+  (vec (take 4 (concat (map kw v) (repeat :brick)))))
+
+(defn- fireworks-default [v]
+  (empty-or-throw "explosions" (get v "explosions"))
+  {:flight-duration (get v "flight_duration" 0) :explosions []})
+
+(defn- levels [v] (into (sorted-map) (map (fn [[e n]] [(kw e) n])) v))
+
+(def ^:private crafted-components
+  {"minecraft:damage"               [:damage identity]
+   "minecraft:max_damage"           [:max-damage identity]
+   "minecraft:max_stack_size"       [:max-stack-size identity]
+   "minecraft:dye"                  [:dye kw]
+   "minecraft:enchantments"         [:enchantments levels]
+   "minecraft:stored_enchantments"  [:stored-enchantments levels]
+   "minecraft:potion_contents"      [:potion-contents potion-default]
+   "minecraft:banner_patterns"
+   [:banner-patterns #(empty-or-throw "banner_patterns" (vec %))]
+   "minecraft:pot_decorations"      [:pot-decorations pot-default]
+   "minecraft:fireworks"            [:fireworks fireworks-default]
+   "minecraft:firework_explosion"   [:firework-explosion unmodelled]
+   "minecraft:written_book_content" [:written-book-content unmodelled]
+   "minecraft:map_id"               [:map-id unmodelled]
+   "minecraft:dyed_color"           [:dyed-color unmodelled]
+   "minecraft:base_color"           [:base-color unmodelled]})
+
+(defn- default-components [cs]
+  (into (sorted-map)
+        (keep (fn [[json [k f]]]
+                (when (contains? cs json) [k (f (get cs json))])))
+        crafted-components))
+
 (defn- item [^File f]
   (let [cs (get (json/read-str (slurp f)) "components")
         n (get cs "minecraft:max_stack_size" 64)
@@ -632,7 +713,8 @@
       egg (assoc :spawns (kw egg))
       (pos? hit) (assoc :attack-damage (flt hit))
       (string? resists) (assoc :resists (tag resists))
-      (string? pat) (assoc :patterns (tag pat)))))
+      (string? pat) (assoc :patterns (tag pat))
+      :always (assoc :components (default-components cs)))))
 
 (defn- vanilla-items [reports]
   (let [dir (io/file reports "minecraft" "components" "item")]
@@ -907,13 +989,155 @@
                         i)))))
         recipes))
 
-(defn- recipes [zf tags]
-  (let [rs (->> (jsons zf "data/minecraft/recipe/")
-                (remove #(str/includes? (key %) "/"))
-                (map val))]
+(def ^:private crafting-types
+  {"minecraft:crafting_shaped"                    :shaped
+   "minecraft:crafting_shapeless"                 :shapeless
+   "minecraft:crafting_transmute"                 :transmute
+   "minecraft:crafting_dye"                       :dye
+   "minecraft:crafting_imbue"                     :imbue
+   "minecraft:crafting_decorated_pot"             :decorated-pot
+   "minecraft:crafting_special_bannerduplicate"   :banner-duplicate
+   "minecraft:crafting_special_bookcloning"       :book-cloning
+   "minecraft:crafting_special_firework_rocket"   :firework-rocket
+   "minecraft:crafting_special_firework_star"     :firework-star
+   "minecraft:crafting_special_firework_star_fade" :firework-star-fade
+   "minecraft:crafting_special_repairitem"        :repair-item
+   "minecraft:crafting_special_mapextending"      :map-extending
+   "minecraft:crafting_special_shielddecoration"  :shield-decoration})
+
+(defn- item-set [tags v]
+  (let [i (ingredient v)
+        items (if (map? i)
+                (or (get-in tags ["item" (:tag i)])
+                    (throw (ex-info "unknown item tag" {:tag i})))
+                i)]
+    (into (sorted-set) items)))
+
+(defn- raw-ingredient [v]
+  (let [i (ingredient v)] (if (map? i) [:tag (:tag i)] (vec i))))
+
+(defn- stew-effects [v]
+  (mapv (fn [e]
+          {:effect (kw (get e "id")) :duration (get e "duration" 160)})
+        v))
+
+(defn- result-components [cs]
+  (into (sorted-map)
+        (map (fn [[k v]]
+               (if (= k "minecraft:suspicious_stew_effects")
+                 [:suspicious-stew-effects (stew-effects v)]
+                 (throw (ex-info "result component not modelled" {k v})))))
+        cs))
+
+(defn- result [r]
+  (let [r (if (string? r) {"id" r} r)
+        cs (get r "components")]
+    (cond-> {:item (kw (get r "id")) :count (get r "count" 1)}
+      (seq cs) (assoc :components (result-components cs)))))
+
+(defn- bounds [v default]
+  (cond (nil? v) default
+        (number? v) {:min v :max v}
+        :else (cond-> {}
+                (contains? v "min") (assoc :min (get v "min"))
+                (contains? v "max") (assoc :max (get v "max")))))
+
+(defn- shrink-step [[left right top bottom] [i ^String line]]
+  (let [first-non (count (take-while #(= \space %) line))
+        last-non (- (count line) 1
+                    (count (take-while #(= \space %) (reverse line))))]
+    [(min left first-non) (max right last-non)
+     (if (and (neg? last-non) (= top i)) (inc top) top)
+     (if (neg? last-non) (inc bottom) 0)]))
+
+(defn- shrink [pattern]
+  (let [[left right top bottom]
+        (reduce shrink-step [Integer/MAX_VALUE 0 0 0]
+                (map-indexed vector pattern))
+        n (count pattern)]
+    (if (= n bottom)
+      []
+      (mapv #(subs (nth pattern (+ % top)) left (inc right))
+            (range (- n bottom top))))))
+
+(defn- symmetric? [w h cells]
+  (or (= 1 w)
+      (every? (fn [[x y]] (= (nth cells (+ x (* y w)))
+                             (nth cells (+ (- w 1 x) (* y w)))))
+              (for [y (range h) x (range (quot w 2))] [x y]))))
+
+(defn- shaped [tags json]
+  (let [rows (shrink (get json "pattern"))
+        key-of-cell #(when (not= \space %)
+                       (or (get-in json ["key" (str %)])
+                           (throw (ex-info "undefined symbol" {:symbol %}))))
+        raw (mapv key-of-cell (apply str rows))
+        w (count (first rows))
+        h (count rows)]
+    {:w w :h h
+     :cells (mapv #(some->> % (item-set tags)) raw)
+     :symmetric? (symmetric? w h (mapv #(some-> % raw-ingredient)
+                                       raw))}))
+
+(def ^:private ingredient-fields
+  {:transmute          ["input" "material"]
+   :dye                ["target" "dye"]
+   :imbue              ["source" "material"]
+   :decorated-pot      ["back" "left" "right" "front"]
+   :banner-duplicate   ["banner"]
+   :book-cloning       ["source" "material"]
+   :firework-rocket    ["shell" "fuel" "star"]
+   :firework-star      ["trail" "twinkle" "fuel" "dye"]
+   :firework-star-fade ["target" "dye"]
+   :map-extending      ["map" "material"]
+   :shield-decoration  ["banner" "target"]})
+
+(defn- extra-fields [tags type json]
+  (case type
+    :transmute
+    {:material-count (bounds (get json "material_count") {:min 1 :max 1})
+     :add-material-count?
+     (get json "add_material_count_to_result" false)}
+    :book-cloning
+    {:allowed-generations
+     (bounds (get json "allowed_generations") {:min 0 :max 1})}
+    :firework-star
+    {:shapes (mapv (fn [[k v]] [(kw k) (item-set tags v)])
+                   (get json "shapes"))}
+    {}))
+
+(defn- fields-of [tags type json]
+  (into (extra-fields tags type json)
+        (map (fn [f] [(kw f) (item-set tags (get json f))]))
+        (ingredient-fields type)))
+
+(defn- shapeless [tags json]
+  {:ingredients (mapv #(item-set tags %) (get json "ingredients"))})
+
+(defn- crafting-recipe [tags order [id json]]
+  (let [type (crafting-types (get json "type"))
+        r (get json "result")]
+    (cond-> (merge {:id (kw id) :order order :type type}
+                   (case type
+                     :shaped (shaped tags json)
+                     :shapeless (shapeless tags json)
+                     (fields-of tags type json)))
+      r (assoc :result (result r)))))
+
+(defn- crafting [recipes tags]
+  (into []
+        (map-indexed #(crafting-recipe tags %1 %2))
+        (filter #(crafting-types (get (val %) "type")) recipes)))
+
+(defn- recipes [zf tags dyes]
+  (let [named (->> (jsons zf "data/minecraft/recipe/")
+                   (remove #(str/includes? (key %) "/")))
+        rs (map val named)]
     {:stonecutting  (stonecutting rs)
      :property-sets (sorted-vals property-sets
-                                 #(vec (property-set tags rs %)))}))
+                                 #(vec (property-set tags rs %)))
+     :crafting      (crafting named tags)
+     :dyes          dyes}))
 
 (defn- tag-values [json]
   (mapv #(if (map? %) (get % "id") %) (get json "values")))
@@ -948,10 +1172,12 @@
         (.write ^Writer w "\n")))))
 
 (defn- tables [zf from-class reports rs]
-  (let [{:keys [props shapes compost walls placers]} from-class
+  (let [{:keys [props shapes compost walls placers remainders banners dyes]}
+        from-class
         dp (datapack-names zf)
         tags (tags-of zf (distinct (concat (keys rs) (keys dp))))]
-    (merge (dissoc from-class :props :compost :walls :placers)
+    (merge (dissoc from-class :props :compost :walls :placers
+                   :remainders :banners :dyes)
            {:packets    (packets reports)
             :blocks     (blocks reports props shapes)
             :registries rs
@@ -959,9 +1185,9 @@
             :drops      (block-drops zf)
             :items      (merge-with merge
                                     (vanilla-items reports)
-                                    compost walls)
+                                    compost walls remainders banners)
             :features   (features zf placers)
-            :recipes    (recipes zf tags)
+            :recipes    (recipes zf tags dyes)
             :tags       tags})))
 
 (defn- write-tables! [^File server ^File dir out from-class]

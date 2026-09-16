@@ -8,7 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
-(def layout 2)
+(def layout 3)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
