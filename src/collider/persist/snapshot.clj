@@ -7,24 +7,28 @@
             [collider.log :as log]
             [collider.world.chunk :as chunk]
             [taoensso.nippy :as nippy])
-  (:import (collider.world.chunk Section)
-           (java.io File)
+  (:import (collider.java Section)
+           (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption)
            (java.nio.file.attribute FileAttribute)))
 
 (set! *warn-on-reflection* true)
 
-(def ^:const format-version 7)
-(nippy/extend-freeze Section ::section [^Section s out]
-                     (nippy/freeze-to-out! out (.blocks s))
-                     (nippy/freeze-to-out! out (.block-light s))
-                     (nippy/freeze-to-out! out (.sky-light s)))
+(def ^:const format-version 8)
+(def ^:private readable-formats #{7 8})
+
+(nippy/extend-freeze Section ::palette-section
+                     [^Section s ^DataOutput out]
+  (.save s out))
+
+(nippy/extend-thaw ::palette-section [^DataInput in]
+  (Section/load in))
 
 (nippy/extend-thaw ::section [in]
-                   (let [blocks (nippy/thaw-from-in! in)
-                         block-light (nippy/thaw-from-in! in)
-                         sky-light (nippy/thaw-from-in! in)]
-                     (chunk/->Section blocks block-light sky-light)))
+  (let [blocks (nippy/thaw-from-in! in)
+        block-light (nippy/thaw-from-in! in)
+        sky-light (nippy/thaw-from-in! in)]
+    (chunk/section blocks block-light sky-light)))
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
 (defprotocol Store
@@ -156,7 +160,7 @@
   schema/world-of)
 
 (defn- check-format! [store m]
-  (when-not (= format-version (:format m))
+  (when-not (contains? readable-formats (:format m))
     (throw (ex-info (str "snapshot " store " has format " (pr-str (:format m))
                          ", this server writes format " format-version
                          " - move the world aside or start with a fresh save directory")

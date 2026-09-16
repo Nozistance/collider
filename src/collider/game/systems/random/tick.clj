@@ -13,7 +13,7 @@
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.precipitation :as precipitation])
-  (:import (collider.world.chunk Section)))
+  (:import (collider.java Section)))
 
 (set! *warn-on-reflection* true)
 

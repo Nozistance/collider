@@ -1,6 +1,5 @@
 package collider.java;
 
-/** Block reads and line of sight over a packed grid of sections. */
 public final class Rays {
 
     public static int readBlock(Object[] grid, int cx0, int cz0, int sy0,
@@ -10,9 +9,9 @@ public final class Rays {
         int iz = (z >> 4) - cz0;
         int iy = (y >> 4) - sy0;
         if (ix < 0 || ix >= ncx || iz < 0 || iz >= ncz || iy < 0 || iy >= nsy) return 0;
-        short[] blocks = (short[]) grid[(ix * ncz + iz) * nsy + iy];
-        if (blocks == null) return 0;
-        return blocks[((y & 15) << 8) | ((z & 15) << 4) | (x & 15)] & 0xFFFF;
+        Section s = (Section) grid[(ix * ncz + iz) * nsy + iy];
+        if (s == null) return 0;
+        return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
     public static long clearPath(Object[] grid, int cx0, int cz0, int sy0,
                                  int ncx, int ncz, int nsy, boolean[] solid,

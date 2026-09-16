@@ -19,7 +19,7 @@
       (let [y (quot i 256)
             st (long (case y 0 (block/state :bedrock), (1 2) (block/state :dirt), 3 (block/state :grass-block), 0))]
         (aset bs i (short st))))
-    (chunk/->Section bs (byte-array 2048) (flat-sky))))
+    (chunk/section bs nil (flat-sky))))
 
 (def ^:private ^:table flat
   (delay {:sections (assoc (vec (repeat chunk/section-count nil)) (chunk/section-index 0) (flat-section))}))

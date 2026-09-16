@@ -1,6 +1,7 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
-  (:import (java.util Arrays HashMap)))
+  (:import (collider.java Section)
+           (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
 
@@ -14,14 +15,13 @@
 (defn section-index
   "Returns the index of the section holding y."
   ^long [^long y] (+ (bit-shift-right y 4) section-offset))
-(deftype Section [^shorts blocks ^bytes block-light ^bytes sky-light])
-(defn full-light
-  "Returns a nibble array of full light."
-  ^bytes []
-  (doto (byte-array 2048) (Arrays/fill (unchecked-byte 0xFF))))
 
-(def ^Section empty-section
-  (Section. (short-array 4096) (byte-array 2048) (full-light)))
+(def ^Section empty-section Section/EMPTY)
+
+(defn section
+  "Returns a section of the block states and light arrays given."
+  ^Section [^shorts blocks ^bytes block-light ^bytes sky-light]
+  (Section/of blocks block-light sky-light))
 
 (defn nibble-get
   "Returns the 4-bit value at idx of a nibble array."
@@ -53,29 +53,21 @@
   "Returns the sky light a new section at si inherits from above at lx lz."
   ^long [chunk ^long si ^long lx ^long lz]
   (if-let [^Section s (first-above chunk si)]
-    (nibble-get (.sky-light s) (+ (* lz 16) lx))
+    (.skyLight s (int (+ (* lz 16) lx)))
     15))
-
-(defn nil-sky-array
-  "Returns the sky light array a new section at si inherits from above."
-  ^bytes [chunk ^long si]
-  (if-let [^Section s (first-above chunk si)]
-    (let [out (byte-array 2048)]
-      (dotimes [k 16] (System/arraycopy ^bytes (.sky-light s) 0 out (* k 128) 128))
-      out)
-    (full-light)))
 
 (defn new-section
   "Returns an empty section at si with inherited sky light."
   ^Section [chunk ^long si]
-  (Section. (short-array 4096) (byte-array 2048) (nil-sky-array chunk si)))
+  (if-let [^Section s (first-above chunk si)]
+    (.below s)
+    Section/EMPTY))
 
-(defn section-set-block
-  "Returns a copy of s with the block at idx set to state."
-  ^Section [^Section s ^long idx ^long state]
-  (let [b (aclone ^shorts (.blocks s))]
-    (aset b idx (short state))
-    (Section. b (.block-light s) (.sky-light s))))
+(defn nil-sky-array
+  "Returns the sky light a new section at si inherits from above, as a
+   fresh array."
+  ^bytes [chunk ^long si]
+  (.skyLightCopy ^Section (new-section chunk si)))
 
 (defn set-block
   "Returns chunk with the block at local lx y lz set to state."
@@ -83,8 +75,9 @@
   (let [y (long y)
         si (section-index y)
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
-        s (or (get (:sections chunk) si) (new-section chunk si))]
-    (assoc-in chunk [:sections si] (section-set-block s idx state))))
+        ^Section s (or (get (:sections chunk) si)
+                       (new-section chunk si))]
+    (assoc-in chunk [:sections si] (.with s (int idx) (int state)))))
 
 (defn get-block
   "Returns the block state at local lx y lz, air where no section exists."
@@ -92,9 +85,8 @@
   (let [y (long y)
         si (section-index y)]
     (if-let [s (get (:sections chunk) si)]
-      (bit-and (long (aget ^shorts (.blocks ^Section s)
-                           (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))))
-               0xFFFF)
+      (.block ^Section s (int (+ (* (bit-and y 15) 256)
+                                 (* (long lz) 16) (long lx))))
       0)))
 
 (defn block-pos->id
@@ -152,28 +144,44 @@
      (get-block (get ~chunks (pos->id (bit-shift-right x# 4) (bit-shift-right z# 4)) ~template)
                 (bit-and x# 15) y# (bit-and z# 15))))
 
-(defn- section-array ^shorts [^HashMap cache chunks template cp si]
+(definterface Edits
+  (add [^long i ^long state])
+  (applyTo [^collider.java.Section s]))
+
+(deftype ^:private Batch [^:unsynchronized-mutable ^ints idx
+                          ^:unsynchronized-mutable ^ints states
+                          ^:unsynchronized-mutable ^long n]
+  Edits
+  (add [_ i state]
+    (when (= n (alength idx))
+      (set! idx (Arrays/copyOf idx (int (* 2 n))))
+      (set! states (Arrays/copyOf states (int (* 2 n)))))
+    (aset idx n (int i))
+    (aset states n (int state))
+    (set! n (inc n)))
+  (applyTo [_ s]
+    (.apply s idx states (int n))))
+
+(defn- edits-of ^Edits [^HashMap cache cp si]
   (let [k [cp si]]
     (or (.get cache k)
-        (let [c (get chunks cp template)
-              ^Section s (or (get (:sections c) si) empty-section)
-              a (aclone ^shorts (.blocks s))]
-          (.put cache k a)
-          a))))
+        (let [e (Batch. (int-array 8) (int-array 8) 0)]
+          (.put cache k e)
+          e))))
 
-(defn- merge-section [template chs [[cp si] arr]]
+(defn- merge-section [template chs [[cp si] edits]]
   (let [c (get chs cp template)
-        ^Section s (or (get (:sections c) si) (new-section c si))]
-    (assoc chs cp (assoc-in c [:sections si] (->Section arr (.block-light s) (.sky-light s))))))
+        s (or (get (:sections c) si) (new-section c si))]
+    (assoc chs cp (assoc-in c [:sections si]
+                            (.applyTo ^Edits edits s)))))
 
-(defn- apply-change! [^HashMap cache chunks template change]
+(defn- apply-change! [^HashMap cache change]
   (let [[[x y z] state] change
         x (long x) y (long y) z (long z)
-        ^shorts arr (section-array cache chunks template
-                                   (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
-                                   (section-index y))]
-    (aset arr (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15))
-          (short state))))
+        cp (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
+        idx (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
+               (bit-and x 15))]
+    (.add (edits-of cache cp (section-index y)) idx (long state))))
 
 (defn- cache-order [^HashMap cache]
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
@@ -185,5 +193,5 @@
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]
-      (doseq [change changes] (apply-change! cache chunks template change))
+      (doseq [change changes] (apply-change! cache change))
       (reduce (partial merge-section template) chunks (cache-order cache)))))

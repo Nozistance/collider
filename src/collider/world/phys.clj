@@ -3,8 +3,7 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Phys)
-           (collider.world.chunk Section)))
+  (:import (collider.java Phys Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -76,18 +75,17 @@
   (bit-or (bit-shift-left (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) 5)
           (chunk/section-index cy)))
 
-(defn- section-blocks ^shorts [chunks template cx cy cz]
+(defn- section-blocks ^Section [chunks template cx cy cz]
   (let [cx (long cx) cy (long cy) cz (long cz)
         c (get chunks (chunk/pos->id (bit-shift-right cx 4) (bit-shift-right cz 4)) template)]
-    (when-let [^Section sec (get (:sections c) (chunk/section-index cy))]
-      (.blocks sec))))
+    (get (:sections c) (chunk/section-index cy))))
 
 (definline ^:private block-at [blocks cx cy cz]
-  `(let [^{:tag ~'shorts} b# ~blocks]
+  `(let [^collider.java.Section b# ~blocks]
      (if b#
-       (bit-and (long (aget b# (+ (* (bit-and (long ~cy) 15) 256)
-                                  (* (bit-and (long ~cz) 15) 16)
-                                  (bit-and (long ~cx) 15)))) 0xFFFF)
+       (long (.block b# (int (+ (* (bit-and (long ~cy) 15) 256)
+                                (* (bit-and (long ~cz) 15) 16)
+                                (bit-and (long ~cx) 15)))))
        0)))
 
 (definline ^:private put-void! [a n cx cz]
@@ -125,7 +123,7 @@
         z1 (lo-bound (aget ebox 2) vz) z2 (hi-bound (aget ebox 5) vz)
         cells (* (inc (- x2 x1)) (inc (- (max y1 y2) y1)) (inc (- z2 z1)))
         ^doubles a (sweep-buffer (* 96 (max 1 cells)))]
-    (loop [cx x1 cz z1 cy y1 n 0 ckey -1 ^shorts blocks nil]
+    (loop [cx x1 cz z1 cy y1 n 0 ckey -1 blocks nil]
       (cond
         (> cx x2) (Sweep. a n)
         (> cz z2) (recur (inc cx) z1 y1 n ckey blocks)
@@ -134,7 +132,7 @@
         (> cy chunk/max-y) (recur cx cz (inc cy) n ckey blocks)
         :else
         (let [k (section-key cx cy cz)
-              ^shorts blocks (if (= k ckey) blocks (section-blocks chunks template cx cy cz))
+              blocks (if (= k ckey) blocks (section-blocks chunks template cx cy cz))
               st (long (block-at blocks cx cy cz))]
           (cond
             (not (block/solid? st)) (recur cx cz (inc cy) n k blocks)

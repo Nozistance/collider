@@ -3,7 +3,7 @@
    the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.world.chunk Section)
+  (:import (collider.java Section)
            (java.util ArrayDeque HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -55,13 +55,16 @@
           (bit-shift-left (chunk/section-index y) 1)
           ch))
 
+(defn- stored-in ^long [^Section s ^long ch ^long idx]
+  (if (= ch SL) (.skyLight s (int idx)) (.blockLight s (int idx))))
+
 (defn- stored-l
   "Returns the light of channel ch at x y z before this pass."
   [chunks template ch x y z]
   (if (not (chunk/in-range? y))
     (if (and (= ch SL) (> y chunk/max-y)) 15 0)
     (if-let [s (section chunks template x y z)]
-      (chunk/nibble-get (if (= ch SL) (.sky-light s) (.block-light s)) (l-idx x y z))
+      (stored-in s ch (l-idx x y z))
       (if (= ch SL) (absent-sky chunks template x y z) 0))))
 
 (defn- get-l
@@ -76,13 +79,10 @@
 
 (defn- fresh-light ^bytes [chunks template ch x y z]
   (let [ch (long ch) x (long x) y (long y) z (long z)
-        s (section chunks template x y z)
-        ^bytes src (if s
-                     (if (= ch SL) (.sky-light ^Section s) (.block-light ^Section s))
-                     (if (= ch SL)
-                       (chunk/nil-sky-array (chunk-at chunks template x z) (chunk/section-index y))
-                       (byte-array 2048)))]
-    (aclone src)))
+        c (chunk-at chunks template x z)
+        ^Section s (or (section chunks template x y z)
+                       (chunk/new-section c (chunk/section-index y)))]
+    (if (= ch SL) (.skyLightCopy s) (.blockLightCopy s))))
 
 (defn- set-l!
   "Sets the light of channel ch at x y z, true when x y z is in the world."
@@ -183,8 +183,8 @@
         (assoc chs cp
                    (assoc-in c [:sections si]
                              (if (= ch SL)
-                               (chunk/->Section (.blocks s) (.block-light s) arr)
-                               (chunk/->Section (.blocks s) arr (.sky-light s)))))))
+                               (.withSkyLight s arr)
+                               (.withBlockLight s arr))))))
     chunks
     (reverse (sort (keys cache)))))
 
@@ -218,8 +218,8 @@
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks template x y z)]
-      (max (chunk/nibble-get (.sky-light ^Section s) (l-idx x y z))
-           (chunk/nibble-get (.block-light ^Section s) (l-idx x y z)))
+      (max (.skyLight ^Section s (int (l-idx x y z)))
+           (.blockLight ^Section s (int (l-idx x y z))))
       (absent-sky chunks template x y z))))
 
 (defn block-light-at
@@ -228,7 +228,7 @@
   (if (not (chunk/in-range? y))
     0
     (if-let [s (section chunks template x y z)]
-      (chunk/nibble-get (.block-light ^Section s) (l-idx x y z))
+      (.blockLight ^Section s (int (l-idx x y z)))
       0)))
 
 (defn sky-light-at
@@ -238,7 +238,7 @@
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks template x y z)]
-      (chunk/nibble-get (.sky-light ^Section s) (l-idx x y z))
+      (.skyLight ^Section s (int (l-idx x y z)))
       (absent-sky chunks template x y z))))
 
 (def ^:private ^:const day-period 24000)
