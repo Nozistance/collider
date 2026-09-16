@@ -196,14 +196,15 @@
         [[:listed (into {} (map (fn [[eid e]] [eid (:uuid e)])) joined) left]]))))
 
 (defn- baseline-deltas
-  "Returns the deltas that first show an entity to the players who can see it."
-  [world eid]
+  "Returns the deltas that first show an entity to the player pid, as
+   ServerEntity.addPairing does for one new watcher."
+  [world pid eid]
   (let [e (get-in world [:entities eid])]
     (when-not (:track e)
       (let [mdata (metadata e)]
         (cond-> [[:track eid (baseline (long (:tick world)) e)]
-                 (out/all (out/move eid 0 0 0 (boolean (:on-ground e))))]
-                (seq mdata) (conj (out/all (out/meta eid (:type e) mdata))))))))
+                 (out/to pid (out/move eid 0 0 0 (boolean (:on-ground e))))]
+                (seq mdata) (conj (out/to pid (out/meta eid (:type e) mdata))))))))
 
 (defn- entities-by-chunk
   "Returns the entities gathered by the chunk they stand in."
@@ -228,7 +229,7 @@
         gone (into [] (remove #(contains? want %)) (seq have))]
     (when (or (seq add) (seq gone))
       (into [[:tracking oid add gone]]
-            (mapcat (fn [eid] (baseline-deltas world eid)))
+            (mapcat (fn [eid] (baseline-deltas world oid eid)))
             add))))
 
 (defrecord Frame [x y z dx dy dz yaw pitch head ground since due? vel mdata mdiff equip
