@@ -2,8 +2,10 @@
   "The player's own inventory: what they carry, click and pick."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
+            [collider.game.systems.containers :as containers]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -107,15 +109,21 @@
           slot (swap-into-hotbar eid inv slot (suitable-hotbar inv held))
           :else (stash-into-hotbar eid inv stack (suitable-hotbar inv held)))))))
 
+(defn- own-start [world e]
+  {:inventory  (or (:inventory e) {})
+   :carried    (:carried e)
+   :quickcraft (:quickcraft e)
+   :layout     (crafting/player-layout (crafting/context world e))})
+
 (defn- click-deltas
   "Returns the deltas for a click in the player's own inventory."
   [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
-    (let [before {:inventory (or (:inventory e) {}) :carried (:carried e) :quickcraft (:quickcraft e)}
-          after (menu/click before m)]
+    (let [after (menu/click (own-start world e) m)]
       (concat
         [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]
          [:client-slots eid (or changed {}) carried]]
+        (containers/craft-deltas world eid after)
         (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
                      (:drops after))))))
 

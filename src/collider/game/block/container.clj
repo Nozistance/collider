@@ -6,6 +6,7 @@
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.random :as random]
+            [collider.game.block.crafting :as crafting]
             [collider.game.block.workbench :as workbench]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
@@ -18,7 +19,7 @@
 
 (def size 27)
 (def chest-types chest/types)
-(def bench-types #{:stonecutter :loom})
+(def bench-types #{:stonecutter :loom :crafting-table})
 (def container-types
   (into (conj chest/types :barrel :ender-chest :shulker-box) bench-types))
 
@@ -86,6 +87,12 @@
    :stonecutter (fn [_ _ pos _] {:kind  :bench :type :stonecutter :size 2 :result 1
                                  :title {:translate "container.stonecutter"}
                                  :cells [] :pos pos :selected 0 :contents [nil nil]})
+   :crafting-table
+   (fn [_ _ pos _]
+     {:kind :bench :type :crafting-table :screen :crafting
+      :size 10 :result 0 :cells [] :pos pos
+      :title {:translate "container.crafting"}
+      :contents (vec (repeat 10 nil))})
    :lectern     (fn [_ _ pos st] (when (lectern/has-book? st)
                                    {:kind  :lectern :type :lectern
                                     :title {:translate "container.lectern"}
@@ -109,6 +116,9 @@
 (defn lectern?
   "Returns true when the menu is a lectern."
   [m] (= :lectern (:kind m)))
+(defn crafting?
+  "Returns true when the menu is a crafting table."
+  [m] (= :crafting-table (:type m)))
 
 (defn player-slots?
   "Returns true when the menu shows the player their own inventory too."
@@ -459,14 +469,17 @@
 
 (defn layout
   "Returns the rules for where items may go and move in the open menu."
-  [m]
-  (if (lectern? m)
-    (lectern-layout)
-    (case (:type m)
-      :stonecutter (cut-layout m)
-      :loom (loom-layout m)
-      :shulker-box (menu/container-layout (long (:rows m)) may-place?)
-      (menu/container-layout (long (:rows m))))))
+  ([m] (layout m {:held 0}))
+  ([m ctx]
+   (if (lectern? m)
+     (lectern-layout)
+     (case (:type m)
+       :stonecutter (cut-layout m)
+       :loom (loom-layout m)
+       :crafting-table (crafting/table-layout ctx)
+       :shulker-box
+       (menu/container-layout (long (:rows m)) may-place?)
+       (menu/container-layout (long (:rows m)))))))
 
 (defn derived
   "Returns the menu's items with any result slot filled in."
@@ -488,7 +501,7 @@
 (defn settled
   "Returns the menu with its result recomputed."
   [m items]
-  (if-not (bench? m)
+  (if (or (not (bench? m)) (crafting? m))
     [m items]
     (let [m' (slots-changed m items)]
       [m' (derived m' items)])))
@@ -512,7 +525,9 @@
 (defn take-sound
   "Returns the sound of taking a bench's result."
   [m]
-  (let [[x y z] (:pos m)]
-    (out/all (out/sound (take-sounds (:type m))
-                        [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
-                        1.0 1.0))))
+  (when-let [kind (take-sounds (:type m))]
+    (let [[x y z] (:pos m)]
+      (out/all (out/sound kind
+                          [(+ (double x) 0.5) (+ (double y) 0.5)
+                           (+ (double z) 0.5)]
+                          1.0 1.0)))))

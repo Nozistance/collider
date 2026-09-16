@@ -62,6 +62,8 @@
    [:cat Vec3]
    :client-slots
    [:cat [:map-of :int [:maybe Stack]] [:maybe Stack]]
+   :award
+   [:cat :keyword :int]
    :track
    [:cat :map]
    :tracking

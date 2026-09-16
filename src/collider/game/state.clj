@@ -225,13 +225,19 @@
         w))
     w))
 
+(defn- stored-profile [e]
+  (schema/profile-of
+    (-> e
+        (update-in [:stats :custom/leave-game] (fnil inc 0))
+        (update :inventory
+                #(clojure.core/apply dissoc % (range 5))))))
+
 (defn- player-quit [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
     (cond-> (-> (vacated-bed w eid)
                 (update :entities dissoc eid)
                 (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
-            name (assoc-in [:profiles name]
-                           (schema/profile-of (update-in e [:stats :custom/leave-game] (fnil inc 0)))))))
+            name (assoc-in [:profiles name] (stored-profile e)))))
 
 (def ^:private ^:table swords (delay (set (data/tag-values "item" "swords"))))
 (defn- sword? [item]
@@ -403,19 +409,38 @@
              :climbing?
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
+(defn infinite-materials?
+  "Returns true when a player builds and crafts without running out of
+   items."
+  [_player]
+  true)
+
+(defn quit-of
+  "Returns the player a :player-quit event takes out of the world as
+   they were, or nil for other events."
+  [w [tag eid]]
+  (when (= :player-quit tag)
+    (when-let [e (get-in w [:entities eid])]
+      (assoc e :eid eid))))
+
+(defn- remembered [w quits]
+  (cond-> w (seq quits) (assoc :quits quits)))
+
 (defn- applied-input
   "Returns world with a tick's input events applied, remembering the pose
-   each use started from and what each move did."
+   each use started from, what each move did and who quit."
   [world input]
-  (loop [w world i 0 origins {} moves []]
+  (loop [w world i 0 origins {} moves [] quits []]
     (if-let [d (nth input i nil)]
-      (let [w' (apply-event w d) m (move-of w w' d)]
+      (let [w' (apply-event w d) m (move-of w w' d) q (quit-of w d)]
         (recur w' (inc i)
                (if-let [o (use-origin w d)]
                  (assoc origins i o)
                  origins)
-               (cond-> moves m (conj m))))
-      (assoc w :use-origins origins :moves moves))))
+               (cond-> moves m (conj m))
+               (cond-> quits q (conj q))))
+      (-> (assoc w :use-origins origins :moves moves)
+          (remembered quits)))))
 
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
@@ -470,6 +495,8 @@
   {:merge-entity (fn [_ e [_ _ m]] (merge e m))
    :teleport     (fn [tick e [_ _ pos]] (assoc e :pos (v/v3 pos) :tp-target pos :tp-id tick))
    :client-slots (fn [_ e [_ _ slots carried]] (client-slots e slots carried))
+   :award        (fn [_ e [_ _ k n]]
+                   (update e :awards (fnil conj []) [k n]))
    :track        (fn [_ e [_ _ tr]] (assoc e :track tr))
    :tracking     (fn [_ e [_ _ add drop]] (update e :tracking merge-diff add drop))
    :set-slot     (fn [_ e [_ _ slot stack]]
@@ -524,7 +551,7 @@
    :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
    :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
-   :advance-tick         (fn [w _] (advance w))
+   :advance-tick         (fn [w _] (dissoc (advance w) :quits))
    :advance-weather      (fn [w _] (merge w (weather/advance w)))
    :observed             (fn [w [_ m]] (assoc w :observed m))
    :explode              (fn [w _] w)})

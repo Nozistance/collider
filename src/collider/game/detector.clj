@@ -74,6 +74,10 @@
           (keep #(fall-stat e %))
           moved)))
 
+(defn- add-awards [stats awards]
+  (reduce (fn [m [k n]] (update m k (fnil + 0) (long n)))
+          stats awards))
+
 (defn- players [world]
   (filter #(= :player (:type (val %))) (:entities world)))
 
@@ -82,9 +86,11 @@
     (conj
       (mapv (fn [[eid e]]
               [:merge-entity eid
-               {:stats (add-counts
-                         (or (:stats e) {})
-                         (player-stats world moves eid e))}])
+               (cond-> {:stats (-> (or (:stats e) {})
+                                   (add-counts
+                                     (player-stats world moves eid e))
+                                   (add-awards (:awards e)))}
+                 (:awards e) (assoc :awards nil))])
             (players world))
       [:observed (into {} (map (fn [[eid e]]
                                  [eid (select-keys e [:sleeping])]))

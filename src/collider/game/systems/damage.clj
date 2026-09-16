@@ -12,6 +12,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
             [collider.game.block.menu :as menu]
+            [collider.game.systems.containers :as containers]
             [collider.game.out :as out]
             [collider.vec :as v]))
 
@@ -418,15 +419,19 @@
    (out/to eid (out/health player-health))
    (out/to eid (out/held-slot (long (or (:held-slot e) 0))))])
 
+(defn- own-slots [inv]
+  (out/inventory (mapv inv (range menu/slot-count)) nil))
+
 (defn- respawn-deltas
   "Returns the deltas for a dead player asking to come back."
   [world eid]
   (let [e (get-in world [:entities eid])]
     (when (and e (not (pos? (double (:health e)))))
       (let [[pos yaw pitch lost] (respawn-point world eid e)
-            inv (:inventory e)]
-        (cond-> (revived eid e pos yaw pitch)
-                (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e))))
+            inv (apply dissoc (:inventory e) (range 5))]
+        (cond-> (into (vec (containers/removed-deltas world eid e))
+                      (revived eid e pos yaw pitch))
+                (seq inv) (conj (out/to eid (own-slots inv)))
                 lost (conj (out/to eid lost))
                 true (into (reshow-deltas world eid)))))))
 
