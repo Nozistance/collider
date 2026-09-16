@@ -32,7 +32,7 @@
 
 (defn- load-chunks [cs]
   (into chunk/no-chunks
-        (map (fn [[id c]] [(long id) (chunk/stored-chunk c)]))
+        (map (fn [[id c]] [(long id) c]))
         cs))
 
 (declare profile-of)

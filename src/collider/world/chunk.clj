@@ -49,12 +49,6 @@
   ^Chunk [sections]
   (Chunk/of (object-array sections)))
 
-(defn stored-chunk
-  "Returns the chunk a snapshot holds, a map of :sections before
-   format 9."
-  ^Chunk [c]
-  (if (instance? Chunk c) c (chunk-of (:sections c))))
-
 (defn first-above
   "Returns the first present section above si, or nil."
   ^Section [^Chunk chunk ^long si]
