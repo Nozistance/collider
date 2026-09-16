@@ -415,6 +415,18 @@
   [_player]
   true)
 
+(def ^:const block-range 4.5)
+(def ^:const creative-block-range 0.5)
+(def ^:const entity-range 3.0)
+(def ^:const creative-entity-range 2.0)
+
+(defn block-reach
+  "Returns how far a player reaches blocks."
+  ^double [player]
+  (if (infinite-materials? player)
+    (+ block-range creative-block-range)
+    block-range))
+
 (defn quit-of
   "Returns the player a :player-quit event takes out of the world as
    they were, or nil for other events."

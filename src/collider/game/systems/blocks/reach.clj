@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.reach
   "Reach and the block a player looks at."
-  (:require [collider.game.systems.blocks.edit :as edit]
+  (:require [collider.game.state :as state]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -9,7 +10,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const block-interaction-range 6.0)
+(def ^:private ^:const use-buffer 1.0)
 
 (defn eye-pos
   "Returns where a player's eyes are."
@@ -30,7 +31,7 @@
         dy (axis-gap ey (double (nth pos 1)))
         dz (axis-gap ez (double (nth pos 2)))]
     (< (+ (* dx dx) (* dy dy) (* dz dz))
-       (* block-interaction-range block-interaction-range))))
+       (let [r (+ (state/block-reach e) use-buffer)] (* r r)))))
 
 (defn look-dir
   "Returns the direction an entity looks in."
@@ -107,7 +108,7 @@
    when it looks at nothing."
   [world e fluids]
   (let [from (eye-pos e)
-        d (mapv #(* 5.0 (double %)) (look-dir e))]
+        d (mapv #(* (state/block-reach e) (double %)) (look-dir e))]
     (loop [cell (mapv #(long (Math/floor (double %))) from)
            t (first-crosses from d)
            n 0]

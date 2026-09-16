@@ -220,10 +220,14 @@
    {:write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (c/write-varint buf (count (:attributes m)))
-             (doseq [[attr base] (:attributes m)]
+             (doseq [[attr base mods] (:attributes m)]
                (c/write-varint buf (data/registry-id "attribute" attr))
                (.writeDouble buf (double base))
-               (c/write-varint buf 0)))}
+               (c/write-varint buf (count mods))
+               (doseq [[id amount op] mods]
+                 (c/write-string buf (data/wire id))
+                 (.writeDouble buf (double amount))
+                 (c/write-varint buf (long op)))))}
    [:play :set-time]
    {:write (fn [^Buf buf m]
              (.writeLong buf (long (:age m)))

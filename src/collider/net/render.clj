@@ -398,9 +398,12 @@
   [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
    {:packet :set-experience :progress 0.0 :level 0 :total 0}
    {:packet     :update-attributes :eid eid
-    :attributes [[:entity-interaction-range 3.0]
-                 [:movement-speed 0.1]
-                 [:block-interaction-range 4.5]]}])
+    :attributes
+    [[:entity-interaction-range state/entity-range
+      [[:creative-mode-entity-range state/creative-entity-range 0]]]
+     [:movement-speed 0.1 []]
+     [:block-interaction-range state/block-range
+      [[:creative-mode-block-range state/creative-block-range 0]]]]}])
 
 (defn- join-packets [world eid]
   (let [cfg (merge config/defaults (:config world))]
