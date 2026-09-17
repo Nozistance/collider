@@ -8,7 +8,11 @@
 (defn- vec3? [v]
   (or (instance? V3 v)
       (and (sequential? v) (= 3 (count v)) (every? number? v))))
-(def Vec3 [:fn vec3?])
+(def Vec3
+  [:fn {:gen/schema [:tuple [:double {:min -64.0 :max 64.0}]
+                     [:double {:min -64.0 :max 64.0}]
+                     [:double {:min -64.0 :max 64.0}]]}
+   vec3?])
 (def Eid :int)
 (def State :int)
 (def Stack [:map [:item :keyword] [:count :int]])
