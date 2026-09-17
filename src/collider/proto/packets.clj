@@ -4,7 +4,9 @@
             [collider.game.delta :as delta]
             [collider.proto.buf :as buf]
             [collider.proto.chunk :as chunk]
-            [collider.proto.codec :as c])
+            [collider.proto.codec :as c]
+            [malli.core :as m]
+            [malli.error :as me])
   (:import (collider.java Buf)
            (java.util UUID)))
 
@@ -788,14 +790,13 @@
    validation is off. The validator itself is built on first use."
   [nm schema]
   (when (and delta/validate? schema)
-    (let [valid (delay ((requiring-resolve 'malli.core/validator) schema))
-          explain (delay ((requiring-resolve 'malli.core/explainer) schema))]
+    (let [valid (delay (m/validator schema))
+          explain (delay (m/explainer schema))]
       (fn [m]
         (when-not (@valid m)
           (throw (ex-info (str "invalid packet " nm)
                           {:packet nm :message m
-                           :why ((requiring-resolve 'malli.error/humanize)
-                                 (@explain m))})))))))
+                           :why (me/humanize (@explain m))})))))))
 
 (def ^:private ^:table inbound
   (delay

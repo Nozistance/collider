@@ -1,5 +1,7 @@
 (ns collider.game.delta
   "Schemas of delta tags and effect messages, and the optional check against them."
+  (:require [malli.core :as m]
+            [malli.error :as me])
   (:import (collider.java V3)))
 
 (set! *warn-on-reflection* true)
@@ -165,12 +167,12 @@
                 (for [[tag args] entity-deltas] [tag (into [:cat [:= tag] Eid] (rest args))])
                 [[:fx [:cat [:= :fx] Fx]]])))
 
-(def ^:private delta-validator (delay ((requiring-resolve 'malli.core/validator) Delta)))
-(def ^:private delta-explainer (delay ((requiring-resolve 'malli.core/explainer) Delta)))
+(def ^:private delta-validator (delay (m/validator Delta)))
+(def ^:private delta-explainer (delay (m/explainer Delta)))
 (defn valid? [delta] (@delta-validator delta))
 (defn explain [delta]
   (when-let [e (@delta-explainer delta)]
-    ((requiring-resolve 'malli.error/humanize) e)))
+    (me/humanize e)))
 
 (def validate? (Boolean/getBoolean "collider.validate"))
 
