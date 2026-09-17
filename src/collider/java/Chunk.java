@@ -3,6 +3,7 @@ package collider.java;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
+import java.util.Objects;
 
 public final class Chunk {
     public static final int COUNT = 24;
@@ -84,7 +85,7 @@ public final class Chunk {
         if (!(o instanceof Chunk)) return false;
         Section[] b = ((Chunk) o).sections;
         for (int i = 0; i < COUNT; i++) {
-            if (sections[i] != b[i]) return false;
+            if (!Objects.equals(sections[i], b[i])) return false;
         }
         return true;
     }
@@ -92,7 +93,7 @@ public final class Chunk {
     public int hashCode() {
         int h = 1;
         for (Section s : sections) {
-            h = 31 * h + System.identityHashCode(s);
+            h = 31 * h + Objects.hashCode(s);
         }
         return h;
     }

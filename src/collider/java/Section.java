@@ -12,6 +12,7 @@ public final class Section {
     private static final int MAX_PALETTE = 256;
     private static final byte[] ZERO = new byte[LIGHT];
     private static final byte[] FULL = filled();
+
     public static final Section EMPTY =
         new Section(0, new int[] {0}, null, null, FULL);
 
@@ -125,6 +126,30 @@ public final class Section {
             out[c] = acc;
         }
         return out;
+    }
+
+    private boolean sameBlocks(Section o) {
+        if (bits == o.bits && Arrays.equals(pal, o.pal)
+            && Arrays.equals(data, o.data)) {
+            return true;
+        }
+        for (int i = 0; i < SIZE; i++) {
+            if (block(i) != o.block(i)) return false;
+        }
+        return true;
+    }
+
+    public boolean equals(Object other) {
+        if (other == this) return true;
+        if (!(other instanceof Section o)) return false;
+        return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl)
+            && sameBlocks(o);
+    }
+
+    public int hashCode() {
+        int h = 31 * Arrays.hashCode(bl) + Arrays.hashCode(sl);
+        for (int i = 0; i < SIZE; i++) h = 31 * h + block(i);
+        return h;
     }
 
     public int block(int i) {
