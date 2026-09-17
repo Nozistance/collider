@@ -38,10 +38,12 @@
 
 (def rule
   {:name   :grass
-   :match? (fn [chunks st p] (and (= (dirt-state) st) (regrowable-dirt? chunks p)))
-   :wake   (fn [_chunks tick p _old _self?]
-             (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
-   :due    (fn [_chunks p _rules] [[p (grass-state)]])})
+   :match? (fn [_chunks st _p] (= (dirt-state) st))
+   :wake   (fn [chunks tick p _old _self?]
+             (when (regrowable-dirt? chunks p)
+               (+ (long tick) 1200 (mod (long (hash [p tick])) 2400))))
+   :due    (fn [chunks p _rules]
+             (when (regrowable-dirt? chunks p) [[p (grass-state)]]))})
 
 (defn can-stay-alive? [chunks ^long st [x y z]]
   (let [a (block-or-zero chunks [(long x) (inc (long y)) (long z)])]

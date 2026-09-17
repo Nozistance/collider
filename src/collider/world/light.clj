@@ -271,8 +271,8 @@
            (block/use-shape-for-light-occlusion? old)
            (block/use-shape-for-light-occlusion? new))))
 
-(defn- sky-cells [chunks x y z]
-  (let [x (long x) y (long y) z (long z)
+(defn- sky-column [chunks x z ys]
+  (let [x (long x) z (long z)
         src (sky-source-y chunks x z)
         drop (loop [yy (dec src) acc []]
                (if (and (chunk/in-range? yy) (= 15 (long (stored-l chunks SL x yy z))))
@@ -281,14 +281,28 @@
         add (loop [yy src acc []]
               (if (and (<= yy chunk/max-y) (not= 15 (long (stored-l chunks SL x yy z))))
                 (recur (inc yy) (conj acc [x yy z 15]))
-                acc))]
-    (conj (into drop add) [x y z (if (>= y src) 15 0)])))
+                acc))
+        seen (into #{} (map second) (concat drop add))]
+    (into (into drop add)
+          (keep (fn [y] (when-not (seen y) [x y z (if (>= (long y) src) 15 0)])))
+          ys)))
+
+(defn- columns [changed]
+  (let [m (HashMap.)]
+    (doseq [[[x y z] _ _] changed]
+      (let [k (chunk/pos->id x z)]
+        (.put m k (conj (.getOrDefault m k #{}) y))))
+    m))
+
+(defn- sky-cells [chunks changed]
+  (into [] (mapcat (fn [[k ys]]
+                     (let [[x z] (chunk/id->pos k)] (sky-column chunks x z ys))))
+        (columns changed)))
 
 (defn relight-batch [chunks changes]
   (let [changed (filter (fn [[_ old new]] (different? (long old) (long new))) changes)
         bcells (mapv (fn [[[x y z] _ new]] [x y z (block/emits (long new))]) changed)
-        scells (into [] (comp (mapcat (fn [[[x y z] _ _]] (sky-cells chunks x y z))) (distinct))
-                     changed)]
+        scells (sky-cells chunks changed)]
     (if (empty? bcells)
       chunks
       (let [cache (HashMap.)]

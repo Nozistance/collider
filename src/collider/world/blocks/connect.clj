@@ -327,22 +327,31 @@
       :else (cursor-hinge facing (/ (double cursor-x) 16.0) (/ (double cursor-z) 16.0)))))
 
 (defn around [[x y z]]
-  (map (fn [[dx dy dz]]
+  (mapv (fn [[dx dy dz]]
          [(+ (long x) (long dx))
           (+ (long y) (long dy))
           (+ (long z) (long dz))])
        neighbours))
 
+(defn- connecting-at
+  "Returns the block state at p when its type connects to neighbours."
+  [chunks [_ y _ :as p]]
+  (when (chunk/in-range? y)
+    (let [st (chunk/chunks-get-block chunks p)]
+      (when (contains? (connecting-types) (block/type-of st)) st))))
+
 (defn- reshaped [chunks positions tick]
-  (let [origin (set positions)]
+  (let [origin (delay (set positions))
+        seen (java.util.HashSet.)]
     (into []
-          (keep (fn [[_ y _ :as p]]
-                  (when (chunk/in-range? y)
-                    (let [st (chunk/chunks-get-block chunks p)]
-                      (when-not (and (contains? origin p) (= :bed (block/type-of st)))
-                        (when-let [new (reshape chunks p st tick)]
-                          [p new]))))))
-          (distinct (concat positions (mapcat around positions))))))
+          (comp (mapcat (fn [p] (cons p (around p))))
+                (keep (fn [p]
+                        (when-let [st (connecting-at chunks p)]
+                          (when (.add seen p)
+                            (when-not (and (= :bed (block/type-of st)) (contains? @origin p))
+                              (when-let [new (reshape chunks p st tick)]
+                                [p new])))))))
+          positions)))
 
 (defn derived-changes [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
