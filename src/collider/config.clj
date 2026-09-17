@@ -3,7 +3,9 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [collider.log :as log]))
+            [collider.log :as log]
+            [malli.core :as m]
+            [malli.error :as me]))
 
 (set! *warn-on-reflection* true)
 
@@ -19,12 +21,41 @@
    :save-period-ms           300000
    :pause-when-empty-seconds 60})
 
+(def ^:private Settings
+  [:map {:closed true}
+   [:port {:optional true} [:int {:min 1 :max 65535}]]
+   [:motd {:optional true} :string]
+   [:max-players {:optional true} [:int {:min 1}]]
+   [:max-connections {:optional true} [:int {:min 1}]]
+   [:view-distance {:optional true} [:int {:min 2 :max 32}]]
+   [:simulation-distance {:optional true} [:int {:min 2 :max 32}]]
+   [:compression-threshold {:optional true} [:int {:min -1}]]
+   [:save-dir {:optional true} :string]
+   [:save-period-ms {:optional true} [:int {:min 0}]]
+   [:pause-when-empty-seconds {:optional true}
+    [:int {:min 0}]]])
+
+(defn- complaint [settings [k msgs]]
+  (str k " " (str/join ", " msgs)
+       (when (contains? settings k)
+         (str ", got " (pr-str (get settings k))))))
+
+(defn- checked
+  "Returns settings, or throws with a line per bad key when they do not
+   fit the schema."
+  [path settings]
+  (if-let [errors (me/humanize (m/explain Settings settings))]
+    (throw (ex-info (str "invalid " path)
+                    {:what (str path " has bad settings")
+                     :why  (map #(complaint settings %) errors)}))
+    settings))
+
 (defn load-config
   ([] (load-config "config.edn"))
   ([path]
    (merge defaults
           (when (.exists (io/file (str path)))
-            (edn/read-string (slurp (str path)))))))
+            (checked path (edn/read-string (slurp (str path))))))))
 
 (defn- render ^String [m]
   (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))

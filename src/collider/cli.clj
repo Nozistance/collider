@@ -54,5 +54,5 @@
 
 (defmethod render! :error [{:keys [what why command]}]
   (log/error (str "**** " (str/upper-case what) "!"))
-  (when why (log/error why))
+  (doseq [l (if (string? why) [why] why)] (log/error l))
   (when command (log/error command)))
