@@ -387,20 +387,11 @@
     :menu-button (button-deltas world ev)
     nil))
 
-(defn- folded-event-deltas
-  "Returns the deltas of the menu events in order, each event seeing the
-   world after the ones before it, as packets do in vanilla."
-  [world events]
-  (second (reduce (fn [[w acc] ev]
-                    (let [ds (vec (event-deltas w ev))]
-                      [(first (state/apply-deltas w ds)) (into acc ds)]))
-                  [world []] events)))
-
 (defn- containers-deltas [world events]
   (concat
     (container/animate-deltas world)
     (quit-deltas world)
-    (folded-event-deltas world events)
+    (state/fold-events world events event-deltas)
     (container/recheck-deltas world)))
 
 (defn containers [world d]

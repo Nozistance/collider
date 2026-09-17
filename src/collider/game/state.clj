@@ -616,3 +616,14 @@
 (defn apply-deltas [world deltas]
   (let [d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))]
     [(apply world d) d]))
+
+(defn fold-events
+  "Returns the deltas f gives for each event in order, each event seeing
+   the world after the ones before it, as packets do in vanilla."
+  [world events f]
+  (loop [w world evs (seq events) acc []]
+    (if-not evs
+      acc
+      (let [ds (vec (f w (first evs))) more (next evs)]
+        (recur (if (and more (seq ds)) (first (apply-deltas w ds)) w)
+               more (into acc ds))))))
