@@ -37,7 +37,7 @@
            :skin-parts  (long (or (:skin-parts e) 0))}
           (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
 
-(def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming?])
+(def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming? :color :sheared? :variant])
 (defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
         changed (into {} (keep (fn [k] (let [v (get mdata k)]

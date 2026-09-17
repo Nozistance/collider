@@ -1,0 +1,345 @@
+(ns collider.game.mob.animal
+  "Farm animal behaviour shared by every breed, driven by a priority list of goals."
+  (:require [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.sense :as sense]
+            [collider.game.out :as out]
+            [collider.random :as random]
+            [collider.vec :as v]
+            [collider.world.block :as block]
+            [collider.world.blocks.grass :as grass]
+            [collider.world.blocks.liquid :as liquid]
+            [collider.world.chunk :as chunk]))
+
+(set! *warn-on-reflection* true)
+
+(def ^:private ^:const stroll-interval 120)
+(def ^:private ^:const stroll-idle 100)
+(def ^:private ^:const stroll-timeout 200)
+(def ^:private ^:const stroll-swim 0.001)
+(def ^:private ^:const look-chance 0.02)
+(def ^:private ^:const look-range-sq 36.0)
+(def ^:private ^:const look-ticks 40)
+(def ^:private ^:const look-around-ticks 20)
+(def ^:private ^:const love-ticks 600)
+(def ^:private ^:const mate-ticks 60)
+(def ^:private ^:const breed-cooldown 6000)
+(def ^:private ^:const baby-ticks 24000)
+(def ^:private ^:const breed-range 8.0)
+(def ^:private ^:const breed-near-sq 9.0)
+(def ^:private ^:const tempt-range-sq 100.0)
+(def ^:private ^:const calm-ticks 100)
+(def ^:private ^:const follow-near-sq 9.0)
+(def ^:private ^:const follow-far-sq 256.0)
+(def ^:private ^:const grass-weight 10.0)
+(def ^:private ^:const feeding-speedup 0.1)
+(def ^:private ^:const ticks-per-second 20)
+(def ^:private ^:const tries 10)
+
+(defn rnd
+  (^double [t eid k] (random/of-longs (long t) (long eid) (hash k)))
+  (^double [t eid k i] (random/of-longs (long t) (long eid) (hash k) (long i))))
+
+(defn one-in? [t eid k ^long n] (zero? (long (* n (rnd t eid k)))))
+
+(defn dist3-sq ^double [a b]
+  (let [dx (- (v/x b) (v/x a)) dy (- (v/y b) (v/y a)) dz (- (v/z b) (v/z a))]
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
+(defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))
+(defn feet [e] (sense/feet-cell (:pos e)))
+(defn grass-block? [world [x y z]] (= (grass/grass-state) (sense/block-at world [x (dec (long y)) z])))
+(defn- water? [world cell] (= :water (liquid/liquid-class (sense/block-at world cell))))
+(defn- solid? [world cell] (block/solid? (sense/block-at world cell)))
+
+(defn- random-dir [t eid k i h vert]
+  (let [r (fn [j n] (- (long (* (inc (* 2 (long n))) (rnd t eid [k j] i))) (long n)))]
+    [(r :x h) (r :y vert) (r :z h)]))
+
+(defn- toward [e [dx dy dz]]
+  (let [p (:pos e)]
+    [(long (Math/floor (+ (v/x p) (double dx))))
+     (long (Math/floor (+ (v/y p) (double dy))))
+     (long (Math/floor (+ (v/z p) (double dz))))]))
+
+(defn- up-out-of-solid [world [x y z :as cell]]
+  (if (solid? world cell)
+    (loop [y (inc (long y))]
+      (if (and (<= y chunk/max-y) (solid? world [x y z])) (recur (inc y)) [x y z]))
+    cell))
+
+(defn- stable? [world [x y z]]
+  (and (chunk/in-range? y) (solid? world [x (dec (long y)) z])))
+
+(defn- ground? [world e [x y z]]
+  (= (block/state (get-in mobs/types [(:type e) :ground] :grass-block))
+     (sense/block-at world [x (dec (long y)) z])))
+
+(defn- weight ^double [world e cell] (if (ground? world e cell) grass-weight 0.0))
+
+(defn- best-cell [world e t eid k h vert land?]
+  (loop [i 0 best nil best-w Double/NEGATIVE_INFINITY]
+    (if (= i tries)
+      best
+      (let [cell (toward e (random-dir t eid k i h vert))
+            cell (when (stable? world cell)
+                   (if land?
+                     (let [c (up-out-of-solid world cell)] (when-not (water? world c) c))
+                     cell))
+            w (if cell (weight world e cell) Double/NEGATIVE_INFINITY)]
+        (if (and cell (> w best-w))
+          (recur (inc i) cell w)
+          (recur (inc i) best best-w))))))
+
+(defn- roam-task [kind t [x _ z]]
+  {:kind kind :until (+ (long t) stroll-timeout) :target [(+ (long x) 0.5) (+ (long z) 0.5)]})
+
+(defn- roam-done? [e t]
+  (let [{:keys [until target path path-i path-goal]} (:task e)
+        [tx tz] target]
+    (or (>= (long t) (long until))
+        (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
+        (and path-goal (nil? path))
+        (and path (>= (long (or path-i 0)) (count path))))))
+
+(defn- water-near [world e]
+  (let [[x y z :as here] (feet e)]
+    (when-not (solid? world here)
+      (->> (for [dx (range -5 6) dy (range -1 2) dz (range -5 6)
+                 :let [c [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]]
+                 :when (water? world c)]
+             c)
+           (sort-by (fn [[cx _ cz]] (v/dist-sq (:pos e) (+ (long cx) 0.5) (+ (long cz) 0.5))))
+           first))))
+
+(defn- start-panic [world eid e t _]
+  (when (panicking? e t)
+    (when-let [cell (or (when (:burning? e) (water-near world e))
+                        (best-cell world e t eid :panic 5 4 false))]
+      [(assoc e :task (roam-task :panic t cell)) nil])))
+
+(defn- partner-for [world eid e t]
+  (let [r2 (* breed-range breed-range)]
+    (when-let [[_ pid] (sense/nearest world (:pos e) r2
+                                      (fn [oid o] (and (not= oid eid)
+                                                       (= (:type e) (:type o))
+                                                       (mobs/in-love? o t)
+                                                       (not (panicking? o t))
+                                                       (< (dist3-sq (:pos e) (:pos o)) r2))))]
+      pid)))
+
+(defn- start-mate [world eid e t _]
+  (when (mobs/in-love? e t)
+    (when-let [pid (partner-for world eid e t)]
+      [(assoc e :task {:kind :mate :partner pid :since t}) nil])))
+
+(defn- tempter [e tempters]
+  (let [item (mobs/breeding-item (:type e))]
+    (->> tempters
+         (keep (fn [[pid items pos]]
+                 (when (contains? items item)
+                   (let [d2 (dist3-sq (:pos e) pos)]
+                     (when (< d2 tempt-range-sq) [d2 pid])))))
+         (sort-by first)
+         first
+         second)))
+
+(defn- start-tempt [_ _ e t tempters]
+  (when (>= (long t) (long (or (:tempt-cooldown-until e) 0)))
+    (when-let [pid (tempter e tempters)]
+      [(assoc e :task {:kind :tempt :player pid}) nil])))
+
+(defn- parent-for [world eid e]
+  (let [p (:pos e)]
+    (when-let [[d2 oid] (sense/nearest world p follow-far-sq
+                                       (fn [oid o] (and (not= oid eid)
+                                                        (= (:type e) (:type o))
+                                                        (not (mobs/baby? o))
+                                                        (<= (Math/abs (- (v/y (:pos o)) (v/y p))) 4.0)
+                                                        (<= (Math/abs (- (v/x (:pos o)) (v/x p))) 8.0)
+                                                        (<= (Math/abs (- (v/z (:pos o)) (v/z p))) 8.0))))]
+      (when (>= (double d2) follow-near-sq) oid))))
+
+(defn- start-follow [world eid e _ _]
+  (when (mobs/baby? e)
+    (when-let [oid (parent-for world eid e)]
+      [(assoc e :follow oid) nil])))
+
+(defn- stroll-cell [world eid e t]
+  (cond
+    (:wet? e) (or (best-cell world e t eid :stroll 15 7 true) (best-cell world e t eid :stroll 10 7 false))
+    (>= (rnd t eid :swim) stroll-swim) (best-cell world e t eid :stroll 10 7 true)
+    :else (best-cell world e t eid :stroll 10 7 false)))
+
+(defn- start-wander [world eid e t _]
+  (when (and (< (long (or (:no-action e) 0)) stroll-idle)
+             (one-in? t eid :stroll (quot stroll-interval 2)))
+    (when-let [cell (stroll-cell world eid e t)]
+      [(assoc e :task (roam-task :wander t cell)) nil])))
+
+(defn- start-look-player [world eid e t _]
+  (when (< (rnd t eid :look) look-chance)
+    (when-let [[_ pid] (sense/nearest-player world (:pos e) look-range-sq)]
+      [(assoc e :look {:kind :look-player :target pid
+                       :until (+ (long t) look-ticks (long (* look-ticks (rnd t eid :look-time))))})
+       nil])))
+
+(defn- start-look-around [_ eid e t _]
+  (when (< (rnd t eid :around) look-chance)
+    [(assoc e :task {:kind :look-around
+                     :until (+ (long t) look-around-ticks (long (* look-around-ticks (rnd t eid :around-time))))}
+              :look {:yaw (- (* 360.0 (rnd t eid :around-yaw)) 180.0) :until Long/MAX_VALUE})
+     nil]))
+
+(def goals
+  [[:panic #{:move} start-panic]
+   [:mate #{:move :look} start-mate]
+   [:tempt #{:move :look} start-tempt]
+   [:follow #{} start-follow]
+   [:wander #{:move} start-wander]
+   [:look-player #{:look} start-look-player]
+   [:look-around #{:move :look} start-look-around]])
+
+(defn- look-goal [e t]
+  (let [l (:look e)]
+    (when (and (= :look-player (:kind l)) (> (long (:until l)) (long t))) l)))
+
+(defn- running? [e t kind]
+  (case kind
+    :follow (some? (:follow e))
+    :look-player (some? (look-goal e t))
+    (= kind (get-in e [:task :kind]))))
+
+(defn- stopped [e kind t]
+  (case kind
+    :tempt (assoc e :task nil :tempt-cooldown-until (+ (long t) calm-ticks))
+    :follow (assoc e :follow nil)
+    :look-player (assoc e :look nil)
+    :look-around (assoc e :task nil :look nil)
+    (assoc e :task nil)))
+
+(defn- continue? [spec world e t kind tempters]
+  (case kind
+    :panic (not (roam-done? e t))
+    :mate (let [o (get-in world [:entities (get-in e [:task :partner])])]
+            (and o (mobs/in-love? o t) (not (panicking? o t))
+                 (< (- (long t) (long (get-in e [:task :since]))) (* 2 mate-ticks))))
+    :tempt (some? (tempter e tempters))
+    :follow (let [o (get-in world [:entities (:follow e)])]
+              (and (mobs/baby? e) o
+                   (<= follow-near-sq (dist3-sq (:pos e) (:pos o)) follow-far-sq)))
+    :wander (not (roam-done? e t))
+    :look-player (let [o (get-in world [:entities (get-in e [:look :target])])]
+                   (and o (<= (dist3-sq (:pos e) (:pos o)) look-range-sq)))
+    :look-around (>= (long (get-in e [:task :until])) (long t))
+    ((:continue? spec) world e t)))
+
+(defn- displaced [spec e t flags]
+  (let [flags-of (:flags spec)
+        task (get-in e [:task :kind])
+        e (if (and task (some (flags-of task) flags)) (stopped e task t) e)]
+    (if (and (contains? flags :look) (look-goal e t)) (stopped e :look-player t) e)))
+
+(defn- free? [locked prio flags]
+  (every? (fn [f] (let [p (locked f)] (or (nil? p) (< (long prio) (long p))))) flags))
+
+(defn- locks [spec e t]
+  (let [task (get-in e [:task :kind])]
+    (cond-> {}
+            task (into (map (fn [f] [f ((:prio spec) task)])) ((:flags spec) task))
+            (look-goal e t) (assoc :look ((:prio spec) :look-player)))))
+
+(defn- cleaned [spec world e t tempters]
+  (reduce (fn [e kind]
+            (if (and (running? e t kind) (not (continue? spec world e t kind tempters)))
+              (stopped e kind t)
+              e))
+          e
+          (map first (:goals spec))))
+
+(defn- selected [spec world eid e t tempters]
+  (reduce (fn [[e ds] [kind flags start]]
+            (if (or (running? e t kind) (not (free? (locks spec e t) ((:prio spec) kind) flags)))
+              [e ds]
+              (if-let [[e2 ds2] (start world eid (displaced spec e t flags) t tempters)]
+                [e2 (into ds ds2)]
+                [e ds])))
+          [e []]
+          (:goals spec)))
+
+(defn- bred [spec eid pid e o t]
+  (let [cooled {:love-until 0 :breed-ready-at (+ (long t) breed-cooldown)}]
+    [(assoc e :task nil)
+     [[:spawn-entity (assoc (mobs/new-mob (:type e) (:pos e) ((:child-color spec) t eid e o) t)
+                       :baby-until (+ (long t) baby-ticks))]
+      [:merge-entity eid cooled]
+      [:merge-entity pid (assoc cooled :task nil)]
+      (out/all (out/status eid :love))
+      (out/all (out/status pid :love))]]))
+
+(defn glance [e oid t] (assoc e :look {:target oid :until (+ (long t) 2)}))
+
+(defn- ticked [spec world eid e t tempters]
+  (case (get-in e [:task :kind])
+    :mate (let [pid (get-in e [:task :partner])
+                o (get-in world [:entities pid])
+                e (glance e pid t)]
+            (if (and (>= (- (long t) (long (get-in e [:task :since]))) mate-ticks)
+                     (< (dist3-sq (:pos e) (:pos o)) breed-near-sq)
+                     (< (long eid) (long pid)))
+              (bred spec eid pid e o t)
+              [e nil]))
+    :tempt (let [pid (tempter e tempters)] [(glance (assoc-in e [:task :player] pid) pid t) nil])
+    ((:tick spec) world eid e t)))
+
+(defn- idle-count [world e]
+  (if (sense/nearest-player world (:pos e) 1024.0) 0 (inc (long (or (:no-action e) 0)))))
+
+(defn spec
+  "Returns the goal spec of a breed, its goals in priority order with any
+   breed goals of its own, and the hooks the engine calls for them."
+  [{:keys [goals child-color continue? tick]
+    :or   {goals goals child-color (fn [_ _ e _] (:color e))
+           continue? (fn [_ _ _] false) tick (fn [_ _ e _] [e nil])}}]
+  {:goals       goals
+   :flags       (into {} (map (fn [[k f]] [k f])) goals)
+   :prio        (into {} (map-indexed (fn [i [k]] [k i])) goals)
+   :child-color child-color
+   :continue?   continue?
+   :tick        tick})
+
+(defn brain [spec world eid e t tempters]
+  (let [e (assoc e :no-action (idle-count world e))]
+    (if (even? (+ (long t) (long eid)))
+      (let [e (cleaned spec world e t tempters)
+            [e ds] (selected spec world eid e t tempters)
+            [e ds2] (ticked spec world eid e t tempters)]
+        [e (concat ds ds2)])
+      [e nil])))
+
+(defn- feedable? [e t]
+  (and (not (mobs/baby? e))
+       (not (mobs/in-love? e t))
+       (<= (long (or (:breed-ready-at e) 0)) (long t))))
+
+(defn- fed-growth ^long [^long remaining]
+  (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
+    (- remaining (* seconds ticks-per-second))))
+
+(defn- fed-deltas [t target e]
+  (cond
+    (mobs/baby? e)
+    (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
+      [[:merge-entity target {:baby-until (+ (long t) (fed-growth remaining))}]])
+    (feedable? e t)
+    [[:merge-entity target {:love-until (+ (long t) love-ticks)}]
+     (out/all (out/status target :love))]))
+
+(defn feed-deltas [world events t]
+  (mapcat (fn [[tag peid target]]
+            (when (= :interact tag)
+              (when-let [e (get-in world [:entities target])]
+                (when (and (mobs/mob-type? (:type e))
+                           (contains? (sense/hands-of (get-in world [:entities peid]))
+                                      (mobs/breeding-item (:type e))))
+                  (fed-deltas t target e)))))
+          events))

@@ -3,7 +3,10 @@
   (:require [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
+            [collider.game.mob.animal :as animal]
             [collider.game.mob.sheep :as sheep]
+            [collider.game.mob.cow :as cow]
+            [collider.game.mob.mooshroom :as mooshroom]
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
@@ -18,15 +21,15 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private brains {:sheep sheep/brain})
-(def ^:private feeders {:sheep sheep/feed-deltas})
+(def ^:private brains {:sheep sheep/brain :cow cow/brain :mooshroom mooshroom/brain})
+(def ^:private feeders [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas])
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
     (b world eid e t tempters)
     [e nil]))
 
 (defn- feed-deltas [world events t]
-  (into [] (mapcat (fn [f] (f world events t))) (vals feeders)))
+  (into [] (mapcat (fn [f] (f world events t))) feeders))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
 (def ^:private ^:const gravity 0.08)
@@ -37,10 +40,10 @@
 (def ^:private ^:const air-accel 0.02)
 (def ^:private ^:const repath-interval 10)
 (defn- steer-target [world e]
-  (case (get-in e [:task :kind])
+  (case (if (:follow e) :follow (get-in e [:task :kind]))
     (:wander :panic) (let [[tx tz] (get-in e [:task :target])]
                        [(v/v3 (double tx) (v/y (:pos e)) (double tz)) 0.4])
-    :follow (when-let [p (get-in world [:entities (get-in e [:task :parent])])]
+    :follow (when-let [p (get-in world [:entities (:follow e)])]
               [(:pos p) 1.5])
     :mate (when-let [p (get-in world [:entities (get-in e [:task :partner])])]
             [(:pos p) 1.1])
@@ -49,10 +52,7 @@
     nil))
 
 (defn- task-speed-mult ^double [e]
-  (case (get-in e [:task :kind])
-    :panic 1.25
-    (:tempt :follow) 1.1
-    1.0))
+  (double (get-in mobs/types [(:type e) :speeds (if (:follow e) :follow (get-in e [:task :kind]))] 1.0)))
 
 (defn- ensure-path [world e t goal avoid-water?]
   (let [task (:task e)
@@ -346,8 +346,8 @@
     (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
 
 (def ^:private mob-keys
-  [:pos :vel :yaw :pitch :on-ground :task :pending :wake-tick :baby-until
-   :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet?])
+  [:pos :vel :yaw :pitch :on-ground :task :follow :no-action :baby-until
+   :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet? :sheared?])
 
 (defmacro ^:private diff-fields
   [old new & ks]
@@ -363,9 +363,9 @@
 
 (defn- mob-changes [old new]
   (diff-fields old new
-               :pos :vel :yaw :pitch :on-ground :task :pending :wake-tick
+               :pos :vel :yaw :pitch :on-ground :task :follow :no-action
                :baby-until :tempt-cooldown-until :say-tick :walked :head-yaw
-               :look :jump-cd :wet?))
+               :look :jump-cd :wet? :sheared?))
 
 (defn- age-up [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))

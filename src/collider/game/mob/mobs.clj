@@ -27,14 +27,27 @@
   (or (weighted (long (* temperate-total (random/of-key ks))) temperate-colors)
       (common-color ks)))
 
+(defn- sounds [type]
+  (into {} (for [k [:say :step :hurt :death]] [k (keyword (name type) (name k))])))
+
 (def types
-  {:sheep {:half          0.45 :height 1.3 :speed 0.23
-           :max-health    8.0
-           :breeding-item :wheat
-           :action-means  {:eat 1000 :wander 120 :look 50}
-           :say           :sheep/say
-           :step          :sheep/step
-           :spawn-color   sheep-color}})
+  {:sheep (merge (sounds :sheep)
+                 {:half          0.45 :height 1.3 :speed 0.23
+                  :max-health    8.0
+                  :breeding-item :wheat
+                  :speeds        {:panic 1.25 :tempt 1.1 :follow 1.1}
+                  :spawn-color   sheep-color})
+   :cow   (merge (sounds :cow)
+                 {:half          0.45 :height 1.4 :speed 0.2
+                  :max-health    10.0
+                  :breeding-item :wheat
+                  :speeds        {:panic 2.0 :tempt 1.25 :follow 1.25}})
+   :mooshroom (merge (sounds :cow)
+                     {:half          0.45 :height 1.4 :speed 0.2
+                      :max-health    10.0
+                      :breeding-item :wheat
+                      :ground        :mycelium
+                      :speeds        {:panic 2.0 :tempt 1.25 :follow 1.25}})})
 
 (defn egg-type [item]
   (let [t (get-in (data/items) [item :spawns])]
@@ -42,19 +55,24 @@
 (defn max-health [type] (get-in types [type :max-health]))
 (defn mob-type? [type] (contains? types type))
 (defn breeding-item [type] (get-in types [type :breeding-item]))
-(defn action-means [type] (get-in types [type :action-means]))
 (defn say-sound [type] (get-in types [type :say]))
 (defn step-sound [type] (get-in types [type :step]))
+(defn hurt-sound [type] (get-in types [type :hurt]))
+(defn death-sound [type] (get-in types [type :death]))
 (def ^:private sheep-meta
-  (into {} (for [color (range 16) baby [false true] burning [false true]]
-             [[color baby burning] {:color color :baby? baby :burning? burning}])))
+  (into {} (for [color (range 16) baby [false true] burning [false true] sheared [false true]]
+             [[color baby burning sheared]
+              (cond-> {:color color :baby? baby :burning? burning} sheared (assoc :sheared? true))])))
 
 (defn burning? [e] (boolean (:burning? e)))
 (defn metadata [e]
   (case (:type e)
     :sheep (sheep-meta [(long (or (:color e) 0))
                         (some? (:baby-until e))
-                        (burning? e)])))
+                        (burning? e)
+                        (boolean (:sheared? e))])
+    :cow {:baby? (some? (:baby-until e)) :burning? (burning? e)}
+    :mooshroom {:baby? (some? (:baby-until e)) :burning? (burning? e) :variant (long (or (:color e) 0))}))
 
 (defn new-mob [type pos color tick]
   {:type        type
@@ -63,8 +81,6 @@
    :yaw         0.0 :pitch 0.0 :on-ground false
    :color       color
    :task        nil
-   :pending     nil
-   :wake-tick   tick
    :health      (max-health type)
    :health-sent (max-health type)})
 

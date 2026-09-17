@@ -21,7 +21,7 @@
 (def ^:private ^:const void-y (- chunk/min-y 64.0))
 (def ^:private ^:const void-damage 4.0)
 (def ^:private ^:const death-ticks 20)
-(def ^:private ^:const panic-ticks 100)
+(def ^:private ^:const panic-ticks 40)
 (def ^:private ^:const player-health 20.0)
 (def ^:private ^:const reach-sq 36.0)
 (def ^:private ^:const blind-reach-sq 9.0)
@@ -47,7 +47,9 @@
       (not (pos? (double (:health e)))) :player/death
       (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
       :else :player/hurt)
-    (mobs/say-sound (:type e))))
+    (if (pos? (double (:health e)))
+      (mobs/hurt-sound (:type e))
+      (mobs/death-sound (:type e)))))
 
 (defn- sound-pitch ^double [world eid e]
   (let [t (long (:tick world))
@@ -273,6 +275,10 @@
   (when (and (pos? (double (:health e))) (< (v/y (:pos e)) void-y))
     [[:damage eid void-damage]]))
 
+(defn- panicked [world e]
+  (cond-> {:love-until nil :no-action 0}
+          (>= (v/y (:pos e)) void-y) (assoc :panic-until (+ (long (:tick world)) panic-ticks))))
+
 (defn- report-deltas [world eid e]
   (let [health (double (:health e))
         shown (double (or (:health-sent e) health))]
@@ -280,7 +286,7 @@
       (concat
         [[:merge-entity eid (cond-> {:health-sent health}
                                     (not= :player (:type e))
-                                    (assoc :panic-until (+ (long (:tick world)) panic-ticks)))]]
+                                    (merge (panicked world e)))]]
         (when-let [snd (hurt-sound e)]
           [(out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e)))])
         [(out/all (out/status eid (if (pos? health) :hurt :death)))]

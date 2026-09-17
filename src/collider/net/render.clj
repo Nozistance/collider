@@ -57,6 +57,8 @@
   (delay
     {:player        (data/registry-id "entity_type" :player)
      :sheep         (data/registry-id "entity_type" :sheep)
+     :cow           (data/registry-id "entity_type" :cow)
+     :mooshroom     (data/registry-id "entity_type" :mooshroom)
      :item          (data/registry-id "entity_type" :item)
      :tnt           (data/registry-id "entity_type" :tnt)
      :falling-block (data/registry-id "entity_type" :falling-block)}))
@@ -94,12 +96,16 @@
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
           (contains? meta :color)
-          (conj [18 :byte (bit-and (long (or (:color meta) 0)) 15)])))
+          (conj [18 :byte (bit-or (bit-and (long (or (:color meta) 0)) 15)
+                                  (if (:sheared? meta) 0x10 0))])))
 
 (defn- entity-data [kind meta]
   (case kind
     :player (player-data meta)
     :sheep (sheep-data meta)
+    :cow (sheep-data (dissoc meta :color))
+    :mooshroom (cond-> (sheep-data (dissoc meta :color))
+                       (contains? meta :variant) (conj [17 :int (long (:variant meta))]))
     :item (if (contains? meta :stack) [[8 :item (:stack meta)]] [])
     :tnt (let [f (:fuse meta 80)]
            (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))
@@ -145,6 +151,17 @@
    :player/death                  [:entity.player.death 7]
    :sheep/say                     [:entity.sheep.ambient 6]
    :sheep/step                    [:entity.sheep.step 6]
+   :sheep/hurt                    [:entity.sheep.hurt 6]
+   :sheep/death                   [:entity.sheep.death 6]
+   :cow/say                       [:entity.cow.ambient 6]
+   :cow/step                      [:entity.cow.step 6]
+   :cow/hurt                      [:entity.cow.hurt 6]
+   :cow/death                     [:entity.cow.death 6]
+   :cow/milk                      [:entity.cow.milk 6]
+   :mooshroom/milk                [:entity.mooshroom.milk 6]
+   :mooshroom/suspicious          [:entity.mooshroom.suspicious 6]
+   :mooshroom/shear               [:entity.mooshroom.shear 6]
+   :mooshroom/eat                 [:entity.mooshroom.eat 6]
    :tnt/primed                    [:entity.tnt.primed 4]
    :hoe/till                      [:item.hoe.till 4]
    :candle/extinguish             [:block.candle.extinguish 4]

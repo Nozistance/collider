@@ -1,265 +1,78 @@
 (ns collider.game.mob.sheep
-  "Sheep behaviour such as grazing, strolling, panic and breeding."
-  (:require [collider.game.mob.mobs :as mobs]
+  "What makes a sheep a sheep: grazing and wool colour."
+  (:require [collider.data :as data]
+            [collider.game.mob.animal :as animal]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
-            [collider.random :as random]
-            [collider.vec :as v]
+            [collider.world.block :as block]
             [collider.world.blocks.grass :as grass]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const eat-duration 40)
-(def ^:private ^:const wander-timeout 200)
-(def ^:private ^:const love-duration 600)
-(def ^:private ^:const mate-together 60)
-(def ^:private ^:const breed-cooldown 6000)
-(def ^:private ^:const baby-growth 24000)
-(def ^:private ^:const baby-eat-mean 50)
-(def ^:private ^:const stroll-range 10)
-(def ^:private ^:const panic-range 5)
-(def ^:private ^:const stroll-tries 10)
-(def ^:private ^:const grass-walk-target 10.0)
-(def ^:private ^:const look-distance-sq 36.0)
-(def ^:private ^:const look-at-player-time 40)
-(def ^:private ^:const look-around-time 20)
-(def ^:private ^:const parent-follow-min-sq 9.0)
-(def ^:private ^:const parent-follow-max-sq 256.0)
-(def ^:private ^:const partner-search-sq 64.0)
-(def ^:private ^:const breed-distance-sq 9.0)
-(def ^:private ^:const feeding-speedup 0.1)
-(def ^:private ^:const ticks-per-second 20)
-(defn- decide [t eid e]
-  (let [means (mobs/action-means (:type e))
-        means (if (mobs/baby? e) (assoc means :eat baby-eat-mean) means)
-        choices (map (fn [[kind mean]] [kind (mobs/exp-delay mean t eid kind)]) means)
-        [kind d] (apply min-key second choices)]
-    (assoc e :pending kind :wake-tick (+ (long t) (long d)))))
+(def ^:private ^:const eat-ticks 40)
+(def ^:private ^:const eat-chance 1000)
+(def ^:private ^:const baby-eat-chance 50)
+(def ^:private ^:const bite-growth 1200)
 
-(defn- grass-target [world e]
-  (let [[fx fy fz :as feet] (sense/feet-cell (:pos e))]
+(def ^:private ^:table edible
+  (delay (set (data/tag-values "block" "edible_for_sheep"))))
+
+(def ^:private colors
+  [:white :orange :magenta :light-blue :yellow :lime :pink :gray
+   :light-gray :cyan :purple :blue :brown :green :red :black])
+
+(def ^:private mixes
+  {#{:blue :red}    :purple #{:blue :green} :cyan #{:black :white} :gray
+   #{:gray :white}  :light-gray #{:green :white} :lime #{:red :white} :pink
+   #{:purple :pink} :magenta #{:red :yellow} :orange #{:blue :white} :light-blue})
+
+(defn- edible? [world cell] (contains? @edible (block/block-of (sense/block-at world cell))))
+
+(defn- start-eat [world eid e t _]
+  (when (and (animal/one-in? t eid :eat (quot (if (mobs/baby? e) baby-eat-chance eat-chance) 2))
+             (let [cell (animal/feet e)] (or (edible? world cell) (animal/grass-block? world cell))))
+    [(assoc e :task {:kind :eat :until (+ (long t) eat-ticks)})
+     [(out/all (out/status eid :eat))]]))
+
+(defn- bite [world e t]
+  (let [cell (animal/feet e)
+        [x y z] cell
+        below [x (dec (long y)) z]
+        griefing? (get-in world [:rules :mob-griefing] true)
+        ate (cond-> (assoc e :sheared? false)
+                    (mobs/baby? e) (assoc :baby-until (max (long t) (- (long (:baby-until e)) bite-growth))))]
     (cond
-      (grass/short-grass? (sense/block-at world feet)) feet
-      (= (grass/grass-state) (sense/block-at world [fx (dec fy) fz])) [fx (dec fy) fz]
-      :else nil)))
-
-(defn- start-eat [world eid e t]
-  (if-let [cell (grass-target world e)]
-    [(assoc e :pending nil
-              :task {:kind :eat :until (+ (long t) eat-duration) :cell cell})
-     [(out/all (out/status eid :eat))]]
-    [(decide t eid (assoc e :pending nil)) nil]))
-
-(defn- roam-target [world e t eid span sx sz]
-  (let [p (:pos e) x (v/x p) y (v/y p) z (v/z p)
-        try-at (fn [i]
-                 [(+ (double x) (- (* (double span) (random/of-longs t eid (hash sx) i)) (* 0.5 (double span))))
-                  (+ (double z) (- (* (double span) (random/of-longs t eid (hash sz) i)) (* 0.5 (double span))))])
-        weight (fn [[cx cz]]
-                 (if (= (grass/grass-state)
-                        (sense/block-at world [(long (Math/floor (double cx)))
-                                               (dec (long (Math/floor (double y))))
-                                               (long (Math/floor (double cz)))]))
-                   grass-walk-target 0.0))]
-    (reduce (fn [best c] (if (> (double (weight c)) (double (weight best))) c best))
-            (try-at 0)
-            (map try-at (range 1 stroll-tries)))))
-
-(defn- start-roam [world eid e t kind span sx sz]
-  [(assoc e :pending nil
-            :task {:kind   kind :until (+ (long t) wander-timeout)
-                   :target (roam-target world e t eid span sx sz)})
-   nil])
-
-(defn- start-wander [world eid e t] (start-roam world eid e t :wander (* 2.0 stroll-range) :tx :tz))
-
-(defn- start-look [world eid e t]
-  (let [[_ pid] (sense/nearest-player world (:pos e) look-distance-sq)
-        look (if pid
-               {:target pid
-                :until  (+ (long t) look-at-player-time
-                           (long (* (double look-at-player-time) (random/of-longs t eid (hash :lt)))))}
-               {:yaw   (- (* 360.0 (random/of-longs t eid (hash :y))) 180.0)
-                :until (+ (long t) look-around-time
-                          (long (* (double look-around-time) (random/of-longs t eid (hash :lt)))))})]
-    [(decide t eid (assoc e :pending nil :look look)) nil]))
-
-(defn- start-pending [world eid e t]
-  (case (:pending e)
-    :eat (start-eat world eid e t)
-    :wander (start-wander world eid e t)
-    :look (start-look world eid e t)
-    [(decide t eid e) nil]))
-
-(defn- finish-bite [world e]
-  (let [cell (get-in e [:task :cell])
-        old (sense/block-at world cell)
-        new (if (grass/short-grass? old) 0 (grass/dirt-state))]
-    (when (or (= (grass/grass-state) old) (grass/short-grass? old))
-      [[:set-blocks [[cell new]]]
-       (out/all (out/break-effect cell old))])))
-
-(defn- run-eat [world eid e t]
-  (let [remaining (- (long (get-in e [:task :until])) (long t))]
-    (cond
-      (<= remaining 0) [(decide t eid (assoc e :task nil)) nil]
-      (= remaining 4)
-      (let [deltas (finish-bite world e)
-            e (if (and deltas (mobs/baby? e))
-                (assoc e :baby-until (max (long t) (- (long (:baby-until e)) 1200)))
-                e)]
-        [e deltas])
+      (edible? world cell)
+      [ate (when griefing?
+             [[:set-blocks [[cell 0]]] (out/all (out/break-effect cell (sense/block-at world cell)))])]
+      (animal/grass-block? world cell)
+      [ate (when griefing?
+             [[:set-blocks [[below (grass/dirt-state)]]]
+              (out/all (out/break-effect below (grass/grass-state)))])]
       :else [e nil])))
 
-(defn- roam-done? [e t]
-  (let [{:keys [until target path path-i path-goal]} (:task e)
-        [tx tz] target]
-    (or (>= (long t) (long until))
-        (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
-        (and path-goal (nil? path))
-        (and path (>= (long (or path-i 0)) (count path))))))
-
-(defn- run-wander [_ eid e t]
-  (if (roam-done? e t) [(decide t eid (assoc e :task nil)) nil] [e nil]))
-
-(def ^:private ^:const tempt-range-sq 100.0)
-(def ^:private ^:const tempt-cooldown 100)
-(defn- tempt-target [e tempters]
-  (let [item (mobs/breeding-item (:type e))]
-    (->> tempters
-         (keep (fn [[pid it pos]]
-                 (when (= it item)
-                   (let [d2 (v/dist-sq (:pos e) pos)]
-                     (when (< d2 tempt-range-sq) [d2 pid])))))
-         (sort-by first)
-         first
-         second)))
-
-(defn- tempted [_ e t tempters]
-  (when (and (seq tempters)
-             (>= (long t) (long (or (:tempt-cooldown-until e) 0))))
-    (when-let [pid (tempt-target e tempters)]
-      [(assoc e :task {:kind :tempt :player pid}) nil])))
-
-(defn- run-tempt [_ _ e t tempters]
-  (if-let [pid (tempt-target e tempters)]
-    [(-> e
-         (assoc-in [:task :player] pid)
-         (assoc :look {:target pid :until (+ (long t) 2)}))
-     nil]
-    [(assoc e :task nil :tempt-cooldown-until (+ (long t) tempt-cooldown)) nil]))
-
-(defn- start-follow [world eid e t]
-  (when (and (mobs/baby? e)
-             (not= :follow (get-in e [:task :kind]))
-             (zero? (mod (+ (long t) (long eid)) 10)))
-    (when-let [[d2 oid] (sense/nearest world (:pos e) parent-follow-max-sq
-                                       (fn [oid o] (and (not= oid eid)
-                                                        (= (:type e) (:type o))
-                                                        (not (mobs/baby? o)))))]
-      (when (>= (double d2) parent-follow-min-sq)
-        [(assoc e :task {:kind :follow :parent oid}) nil]))))
-
-(defn- run-follow [world _ e _]
-  (let [o (get-in world [:entities (get-in e [:task :parent])])]
-    (if (and (mobs/baby? e) o
-             (<= parent-follow-min-sq (v/dist-sq (:pos e) (:pos o)) parent-follow-max-sq))
-      [e nil]
-      [(assoc e :task nil) nil])))
-
-(defn- spawn-baby [eid pid e t]
-  (let [cooled {:love-until 0 :breed-ready-at (+ (long t) breed-cooldown) :task nil}]
-    (concat
-      [[:spawn-entity (assoc (mobs/new-mob (:type e) (:pos e) (:color e) t)
-                        :baby-until (+ (long t) baby-growth))]
-       [:merge-entity eid cooled]
-       [:merge-entity pid cooled]]
-      [(out/all (out/status eid :love))]
-      [(out/all (out/status pid :love))])))
-
-(defn- run-mate [world eid e t]
-  (let [pid (get-in e [:task :partner])
-        partner (get-in world [:entities pid])]
-    (cond
-      (not (and partner (mobs/in-love? partner t) (mobs/in-love? e t)))
-      [(assoc e :task nil) nil]
-      (and (< (v/dist-sq (:pos e) (:pos partner)) breed-distance-sq)
-           (>= (- (long t) (long (get-in e [:task :since]))) mate-together))
-      (if (< (long eid) (long pid))
-        [(assoc e :task nil) (spawn-baby eid pid e t)]
-        [(assoc e :task nil) nil])
-      :else [(assoc e :look {:target pid :until (+ (long t) 2)}) nil])))
-
-(defn- start-mate [world eid e t]
-  (if-let [[_ pid] (sense/nearest world (:pos e) partner-search-sq
-                                  (fn [oid o] (and (not= oid eid)
-                                                   (= (:type e) (:type o))
-                                                   (mobs/in-love? o t)
-                                                   (not (mobs/baby? o)))))]
-    [(assoc e :task {:kind :mate :partner pid :since t} :pending nil) nil]
+(defn- eat-tick [world _ e t]
+  (if (and (= :eat (get-in e [:task :kind]))
+           (= (- (long (get-in e [:task :until])) (long t)) 4))
+    (bite world e t)
     [e nil]))
 
-(defn- panicking? [e t]
-  (< (long t) (long (or (:panic-until e) 0))))
+(defn- eating? [_ e t]
+  (and (= :eat (get-in e [:task :kind]))
+       (> (long (get-in e [:task :until])) (long t))))
 
-(defn- start-panic [world eid e t] (start-roam world eid e t :panic (* 2.0 panic-range) :px :pz))
+(defn- lamb-color [t eid a b]
+  (let [m (mixes (hash-set (colors (:color a)) (colors (:color b))))]
+    (cond m (.indexOf ^java.util.List colors m)
+          (< (animal/rnd t eid :mix) 0.5) (:color a)
+          :else (:color b))))
 
-(defn- run-panic [world eid e t]
-  (cond
-    (not (panicking? e t)) [(decide t eid (assoc e :task nil)) nil]
-    (roam-done? e t) (start-panic world eid e t)
-    :else [e nil]))
+(def ^:private spec
+  (animal/spec {:goals       (let [[before after] (split-with #(not= :wander (first %)) animal/goals)]
+                               (vec (concat before [[:eat #{:move :look} start-eat]] after)))
+                :child-color lamb-color
+                :continue?   eating?
+                :tick        eat-tick}))
 
-(defn- idle-brain [world eid e t kind]
-  (cond
-    (= :follow kind) (run-follow world eid e t)
-    (= :wander kind) (run-wander world eid e t)
-    (>= (long t) (long (or (:wake-tick e) 0)))
-    (if (:pending e)
-      (start-pending world eid e t)
-      [(decide t eid e) nil])
-    :else [e nil]))
-
-(defn brain [world eid e t tempters]
-  (let [kind (get-in e [:task :kind])]
-    (cond
-      (= :panic kind) (run-panic world eid e t)
-      (panicking? e t) (start-panic world eid e t)
-      (= :eat kind) (run-eat world eid e t)
-      (= :mate kind) (run-mate world eid e t)
-      (mobs/in-love? e t) (start-mate world eid e t)
-      (= :tempt kind) (run-tempt world eid e t tempters)
-      :else (or (tempted eid e t tempters)
-                (start-follow world eid e t)
-                (idle-brain world eid e t kind)))))
-
-(defn- feedable? [e t]
-  (and (mobs/mob-type? (:type e))
-       (not (mobs/baby? e))
-       (not (mobs/in-love? e t))
-       (<= (long (or (:breed-ready-at e) 0)) (long t))))
-
-(defn- fed-growth
-  "Returns how long a baby still has to grow after being fed."
-  ^long [^long remaining]
-  (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
-    (- remaining (* seconds ticks-per-second))))
-
-(defn- fed-deltas [t target e]
-  (cond
-    (mobs/baby? e)
-    (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
-      [[:merge-entity target {:baby-until (+ (long t) (fed-growth remaining))}]])
-    (feedable? e t)
-    (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
-          [(out/all (out/status target :love))])))
-
-(defn feed-deltas [world events t]
-  (mapcat (fn [[tag peid target]]
-            (when (= :interact tag)
-              (when-let [e (get-in world [:entities target])]
-                (when (and (mobs/mob-type? (:type e))
-                           (= (mobs/breeding-item (:type e))
-                              (sense/held-of (get-in world [:entities peid]))))
-                  (fed-deltas t target e)))))
-          events))
+(defn brain [world eid e t tempters] (animal/brain spec world eid e t tempters))

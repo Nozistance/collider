@@ -96,9 +96,13 @@
 (defn held-of [p]
   (get-in p [:inventory (+ 36 (long (or (:held-slot p) 0))) :item]))
 
+(defn hands-of [p]
+  (set (keep (fn [slot] (get-in p [:inventory slot :item]))
+             [(+ 36 (long (or (:held-slot p) 0))) 45])))
+
 (defn holders [world]
   (into []
         (keep (fn [[pid p]]
-                (when-let [it (held-of p)]
-                  [pid it (:pos p)])))
+                (let [items (hands-of p)]
+                  (when (seq items) [pid items (:pos p)]))))
         (state/player-entries world)))

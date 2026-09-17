@@ -6,10 +6,10 @@
 (set! *warn-on-reflection* true)
 
 (defrecord Mob [pos vel on-ground yaw pitch head-yaw walked wet? jump-cd
-                task pending look wake-tick say-tick
+                task follow look no-action say-tick
                 health hurt-resist last-damage death-time health-sent panic-until
                 baby-until love-until breed-ready-at tempt-cooldown-until
-                type color track])
+                type color sheared? track])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel tp-target
                    chunk-pos sent-chunks needs-spawn? tracking track
@@ -56,18 +56,8 @@
     :item 0.21
     1.19))
 
-(defn mob-moved ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
-  (Mob. pos vel on-ground yaw (.-pitch e) (.-head-yaw e) (.-walked e) wet? jump-cd
-        (.-task e) (.-pending e) (.-look e) (.-wake-tick e) (.-say-tick e)
-        (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)
-        (.-baby-until e) (.-love-until e) (.-breed-ready-at e) (.-tempt-cooldown-until e)
-        (.-type e) (.-color e) (.-track e)
-        (.-__meta e) (.-__extmap e)))
+(defn mob-moved [e pos vel on-ground yaw wet? jump-cd]
+  (assoc e :pos pos :vel vel :on-ground on-ground :yaw yaw :wet? wet? :jump-cd jump-cd))
 
-(defn mob-looked ^Mob [^Mob e head-yaw pitch look]
-  (Mob. (.-pos e) (.-vel e) (.-on-ground e) (.-yaw e) pitch head-yaw (.-walked e) (.-wet? e) (.-jump-cd e)
-        (.-task e) (.-pending e) look (.-wake-tick e) (.-say-tick e)
-        (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)
-        (.-baby-until e) (.-love-until e) (.-breed-ready-at e) (.-tempt-cooldown-until e)
-        (.-type e) (.-color e) (.-track e)
-        (.-__meta e) (.-__extmap e)))
+(defn mob-looked [e head-yaw pitch look]
+  (assoc e :head-yaw head-yaw :pitch pitch :look look))
