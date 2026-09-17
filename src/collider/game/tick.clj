@@ -13,6 +13,7 @@
             [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
+            [collider.game.systems.furnaces :as furnaces]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.jukebox :as jukebox]
@@ -41,6 +42,7 @@
               #'random-tick/random-ticks
               #'items/items
               #'jukebox/jukebox-songs
+              #'furnaces/furnace-cooking
               #'falling/falling-blocks
               #'mobs/mobs-system
               #'tnt/tnt-system

@@ -56,7 +56,9 @@
 (defn- test? [ingredient stack]
   (and (some? stack) (contains? ingredient (:item stack))))
 
-(defn- remainder [stack]
+(defn remainder
+  "Returns what is left of stack after it is used up, or nil."
+  [stack]
   (some-> (get-in (data/items) [(:item stack) :remainder]) create))
 
 (def ^:private empty-input

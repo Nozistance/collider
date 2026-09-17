@@ -547,7 +547,7 @@
 
 (defn- block-entity-set [w pos e]
   (let [cp (chunk/block-chunk pos)]
-    (if e
+    (if (and e (be/kind (chunk/chunks-get-block (:chunks w) pos)))
       (assoc-in w [:block-entities cp pos] e)
       (update-in w [:block-entities cp] dissoc pos))))
 

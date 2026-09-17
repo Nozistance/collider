@@ -24,15 +24,21 @@
    :ender-chest         :ender-chest
    :barrel              :barrel
    :shulker-box         :shulker-box
-   :lectern             :lectern})
+   :lectern             :lectern
+   :furnace             :furnace
+   :blast-furnace       :blast-furnace
+   :smoker              :smoker})
 
 (def ^:private silent
   #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
-    :shulker-box :lectern})
+    :shulker-box :lectern :furnace :blast-furnace :smoker})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
-(def spill-kinds #{:chest :trapped-chest :barrel})
+(def furnace-kinds #{:furnace :blast-furnace :smoker})
+
+(def spill-kinds
+  #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker})
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -166,7 +172,10 @@
     :bell {:kind :bell}
     (:chest :trapped-chest :barrel :shulker-box) {:kind k :items (vec (repeat 27 nil))}
     :ender-chest {:kind :ender-chest}
-    :lectern {:kind :lectern :book nil :page 0}))
+    :lectern {:kind :lectern :book nil :page 0}
+    (:furnace :blast-furnace :smoker)
+    {:kind  k :items [nil nil nil] :lit-remaining 0 :lit-total 0
+     :cook  0 :cook-total 0 :used {}}))
 
 (defn wire [entries]
   (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))
