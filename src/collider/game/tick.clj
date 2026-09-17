@@ -42,7 +42,6 @@
               #'random-tick/random-ticks
               #'items/items
               #'jukebox/jukebox-songs
-              #'furnaces/furnace-cooking
               #'falling/falling-blocks
               #'mobs/mobs-system
               #'tnt/tnt-system
@@ -64,6 +63,7 @@
 
 (def phases [[#'spawning/placing]
              [#'pose/pose]
+             [#'furnaces/furnace-cooking]
              systems
              [#'explosions/explosions]
              post-systems
