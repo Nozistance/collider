@@ -59,6 +59,7 @@
                    #'weather-system/weather
                    #'falling/first-step
                    #'tnt/first-step
+                   #'items/pickups
                    #'containers/broadcast])
 
 (def phases [[#'spawning/placing]

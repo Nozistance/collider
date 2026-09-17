@@ -271,8 +271,12 @@
     :tab-complete (tab-deltas world eid text target id)
     nil))
 
+(defn- one-deltas [world ev]
+  (vec (concat (event-deltas world ev)
+               (rules-event-deltas world ev))))
+
 (defn- chat-deltas [world events]
-  (into [] (mapcat #(concat (event-deltas world %) (rules-event-deltas world %))) events))
+  (state/fold-events world events one-deltas))
 
 (defn chat [world d]
   (let [events (:input d)]

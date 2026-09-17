@@ -321,5 +321,10 @@
         act (active-items world)]
     (-> [#(spawn-deltas world events)]
         (into (map (fn [[eid e]] #(vector (step-item world eid e)))) act)
-        (conj #(merge-deltas act)
-              #(pickup-deltas world act)))))
+        (conj #(merge-deltas act)))))
+
+(defn pickups
+  "Returns the deltas of players taking up items, after those of the
+   tick's own packets, as the level tick runs after them in vanilla."
+  [world _d]
+  [#(pickup-deltas world (active-items world))])

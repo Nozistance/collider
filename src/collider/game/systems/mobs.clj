@@ -27,8 +27,12 @@
     (b world eid e t tempters)
     [e nil]))
 
+(defn- interact-deltas [world ev t]
+  (into [] (mapcat (fn [f] (f world [ev] t))) interactions))
+
 (defn- feed-deltas [world events t]
-  (into [] (mapcat (fn [f] (f world events t))) interactions))
+  (state/fold-events world (filter #(= :interact (first %)) events)
+                     (fn [w ev] (interact-deltas w ev t))))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
 (def ^:private ^:const gravity 0.08)

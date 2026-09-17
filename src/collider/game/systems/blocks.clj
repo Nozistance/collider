@@ -3,6 +3,7 @@
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.game.systems.blocks.bed :as bed]
             [collider.game.systems.blocks.bucket :as bucket]
             [collider.game.systems.blocks.dig :as dig]
@@ -97,23 +98,17 @@
     (concat (map (fn [[eid sq]] (out/to eid (out/block-ack sq))) latest)
             (use-ack-deltas world events (:use-origins world)))))
 
-(defn- with-edits [world deltas]
-  (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]
-    (if (empty? changes)
-      world
-      (update world :chunks chunk/chunks-set-blocks changes))))
+(defn- edit-deltas [world i [tag & args] origins]
+  (case tag
+    :dig (dig/dig-deltas world args)
+    :place (place-deltas world args (get origins i))
+    :sign-update (use/sign-update-deltas world args)
+    nil))
 
 (defn- block-edits-deltas [world events]
-  (let [[_ edits] (reduce (fn [[w acc] [i [tag & args]]]
-                            (let [ds (case tag
-                                       :dig (dig/dig-deltas w args)
-                                       :place (place-deltas w args (get-in world [:use-origins i]))
-                                       :sign-update (use/sign-update-deltas w args)
-                                       nil)]
-                              [(with-edits w ds) (into acc ds)]))
-                          [world []]
-                          (map-indexed vector events))]
-    edits))
+  (let [origins (:use-origins world)]
+    (state/fold-events world (map-indexed vector events)
+                       (fn [w [i ev]] (edit-deltas w i ev origins)))))
 
 (defn block-edits [world d]
   (let [events (:input d)]

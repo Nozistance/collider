@@ -107,10 +107,15 @@
         (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
                      (:drops after))))))
 
+(defn- event-deltas [world [tag :as ev]]
+  (case tag
+    :click (click-deltas world ev)
+    :pick (pick-deltas world ev)
+    nil))
+
 (defn- inventory-deltas [world events joins]
   (concat (restore-deltas world joins)
-          (mapcat #(when (= :click (first %)) (click-deltas world %)) events)
-          (mapcat #(when (= :pick (first %)) (pick-deltas world %)) events)))
+          (state/fold-events world events event-deltas)))
 
 (defn inventory [world d]
   (let [events (:input d)]
