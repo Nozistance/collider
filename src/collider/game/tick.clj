@@ -92,7 +92,8 @@
 (defn- paused? [opts ^long n]
   (let [s (long (or (:pause-when-empty-seconds opts) 0))]
     (when (and (pos? s) (= n (* 20 s)))
-      (log/info "no players for" s "s, world paused until someone joins")
+      (log/info "no players for" s "s, world paused"
+                "until someone joins")
       (when-let [f (:on-pause opts)] (f)))
     (and (pos? s) (>= n (* 20 s)))))
 
@@ -170,14 +171,18 @@
     (one-tick! st world-atom queue deliver! p t0 (:io-input opts))
     p))
 
-(defn- ticker-loop [st ^AtomicBoolean running world-atom queue deliver! opts]
-  (loop [next-ns (System/nanoTime), i 0, perf nil, empty 0]
-    (when (.get running)
-      (let [n (empty-ticks empty @world-atom)]
-        (if (idle? opts n queue)
-          (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil n))
-          (let [p (timed-tick! st i perf world-atom queue deliver! opts)]
-            (recur (pace next-ns nominal-tick-ns) (inc (long i)) p n)))))))
+(defn- running? [^AtomicBoolean running] (.get running))
+
+(defn- ticker-loop [st running world-atom queue deliver! opts]
+  (let [tick! #(timed-tick! st %1 %2 world-atom queue deliver! opts)]
+    (loop [next-ns (System/nanoTime) i 0 perf nil empty 0]
+      (when (running? running)
+        (let [n (empty-ticks empty @world-atom)]
+          (if (idle? opts n queue)
+            (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil n))
+            (let [p (tick! i perf)
+                  at (pace next-ns nominal-tick-ns)]
+              (recur at (inc i) p n))))))))
 
 (defn- ticker-thread ^Thread [st running world-atom queue deliver! opts]
   (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver! opts)

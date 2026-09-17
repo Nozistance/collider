@@ -1,6 +1,5 @@
 (ns collider.game.systems.chunks
-  "Chunk loading for players and their spawns, chunk streaming to players and
-   chunk unloading."
+  "Chunk loading, streaming to players and unloading."
   (:require [clojure.data.int-map :as i]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
@@ -12,12 +11,7 @@
 
 (def view-radius 7)
 (def ^:const start-rate 9.0)
-(def ^:const min-rate 0.01)
-(def ^:const max-rate 64.0)
-(def ^:const max-unacked 10)
 (def ^:private ^:const loaded-border 2)
-(defn chunk-coord ^long [^double c]
-  (bit-shift-right (long (Math/floor c)) 4))
 
 (defn view-distance
   "Returns the view distance of the server in chunks."
@@ -35,17 +29,19 @@
   "Returns the ids of the chunks a player in chunk cp sees."
   [world cp]
   (let [v (view-distance world)
-        [cx cz] (chunk/id->pos cp)]
+        [cx cz] (chunk/id->pos cp)
+        span (range (- -1 v) (+ v 2))]
     (into #{}
-          (for [dx (range (- -1 v) (+ v 2))
-                dz (range (- -1 v) (+ v 2))
+          (for [dx span
+                dz span
                 :when (tracked? v dx dz)]
-            (chunk/pos->id (+ (long cx) (long dx)) (+ (long cz) (long dz)))))))
+            (chunk/pos->id (+ (long cx) (long dx))
+                           (+ (long cz) (long dz)))))))
 
 (defn loading-deltas
-  "Returns the deltas that bring the absent chunks among ids into the world. A
-   saved chunk is asked for and arrives in a later tick. Any other chunk is
-   generated now."
+  "Returns the deltas that bring the absent chunks among ids into the
+   world. A saved chunk is asked for and arrives in a later tick. Any
+   other chunk is generated now."
   [world ids]
   (for [id (set ids)
         :when (not (contains? (:chunks world) id))
@@ -60,25 +56,27 @@
     [:restore-chunk id (or payload {:chunk (gen/flat-chunk)})]))
 
 (defn- player-zone [world [_ p]]
-  (when-let [[x _ z] (:pos p)]
-    (chunk/around-ids (chunk-coord x) (chunk-coord z)
-                      (+ (view-distance world) loaded-border))))
+  (when-let [pos (:pos p)]
+    (let [[cx cz] (chunk/id->pos (chunk/pos-chunk pos))]
+      (chunk/around-ids (long cx) (long cz)
+                        (+ (view-distance world) loaded-border)))))
 
 (defn needed-ids
-  "Returns the ids of the chunks the world keeps loaded. They are the chunks
-   around its players and the chunks joining and respawning players wait for."
+  "Returns the ids of the chunks the world keeps loaded. They are the
+   chunks around its players and the chunks joining and respawning
+   players wait for."
   [world]
-  (into (i/int-set)
-        (concat (mapcat #(player-zone world %) (state/player-entries world))
-                (mapcat :need (vals (:spawning world))))))
-
-(defn- own-column? [world eid sent-chunks cp]
-  (or (contains? (or sent-chunks #{}) cp)
-      (nil? (:writable world))
-      (contains? (:writable world) eid)))
+  (let [players (state/player-entries world)]
+    (into (i/int-set)
+          (concat (mapcat #(player-zone world %) players)
+                  (mapcat :need (vals (:spawning world)))))))
 
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
+
+(defn- own-column? [world eid sent-chunks cp]
+  (or (contains? (or sent-chunks #{}) cp)
+      (writable? world eid)))
 
 (defn- nearest-first [ids cp]
   (let [[pcx pcz] (chunk/id->pos cp)]
@@ -89,50 +87,61 @@
                  [(+ (* dx dx) (* dz dz)) id]))
              ids)))
 
-(defn- stream-quota ^double [chunk-rate chunk-quota blocked]
-  (let [rate (double (or chunk-rate start-rate))]
-    (if blocked 0.0 (min (+ (double (or chunk-quota 0.0)) rate) (max 1.0 rate)))))
+(defn- blocked? [world eid ^long unacked batches-max]
+  (or (>= unacked (long (or batches-max 1)))
+      (not (writable? world eid))))
 
-(defn- stream-plan [world eid cp {:keys [sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
-  (let [want (wanted-chunks world cp)
+(defn- stream-quota ^double [chunk-rate chunk-quota blocked]
+  (let [rate (double (or chunk-rate start-rate))
+        quota (+ (double (or chunk-quota 0.0)) rate)]
+    (if blocked 0.0 (min quota (max 1.0 rate)))))
+
+(defn- stream-plan [world eid cp p]
+  (let [{:keys [sent-chunks chunk-rate chunk-quota batches-max]} p
+        want (wanted-chunks world cp)
         missing (vec (remove #(contains? sent-chunks %) want))
-        add-all (filterv #(contains? (:chunks world) %) missing)
-        unacked (long (or batches-unacked 0))
-        blocked (or (>= unacked (long (or batches-max 1))) (not (writable? world eid)))
+        ready (filterv #(contains? (:chunks world) %) missing)
+        unacked (long (or (:batches-unacked p) 0))
+        blocked (blocked? world eid unacked batches-max)
         quota (stream-quota chunk-rate chunk-quota blocked)
-        n (min (long (Math/floor quota)) (count add-all))]
-    {:add     (into [] (take n) (nearest-first add-all cp))
+        n (min (long (Math/floor quota)) (count ready))]
+    {:add     (into [] (take n) (nearest-first ready cp))
      :drop    (sort (remove #(contains? want %) sent-chunks))
      :n       n :quota quota :unacked unacked :blocked blocked
      :pending (when (> (count missing) n) true)}))
 
-(defn- quota-deltas [eid {:keys [add n quota unacked blocked pending]}]
-  (cond
-    (seq add) [[:merge-entity eid {:chunk-quota (- (double quota) (long n)) :batches-unacked (inc (long unacked))}]]
-    (and (not blocked) pending) [[:merge-entity eid {:chunk-quota quota}]]))
+(defn- quota-deltas [eid plan]
+  (let [{:keys [add n quota unacked blocked pending]} plan]
+    (cond
+      (seq add)
+      [[:merge-entity eid {:chunk-quota     (- (double quota) (long n))
+                           :batches-unacked (inc (long unacked))}]]
+      (and (not blocked) pending)
+      [[:merge-entity eid {:chunk-quota quota}]])))
 
 (defn- restream-deltas [world eid cp p]
-  (let [{:keys [add drop pending] :as plan} (stream-plan world eid cp p)]
+  (let [plan (stream-plan world eid cp p)
+        {:keys [add drop pending]} plan]
     (concat
       (when (or (not= cp (:chunk-pos p)) (seq add) (seq drop))
         [[:merge-entity eid {:chunk-pos cp :chunks-pending? pending}]
          [:chunks-sent eid add drop]])
       (quota-deltas eid plan))))
 
-(defn- spawn-look-deltas [_ eid pos yaw pitch]
-  (let [[sx sy sz] (or pos state/spawn-pos)]
-    [(out/to eid (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0)))
+(defn- spawn-look-deltas [eid pos yaw pitch]
+  (let [[sx sy sz] (or pos state/spawn-pos)
+        look (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0))]
+    [(out/to eid look)
      [:merge-entity eid {:needs-spawn? nil}]]))
 
-(defn- stream-deltas [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks
-                                         needs-spawn? chunks-pending?] :as p}]]
-  (let [[x _ z] pos
-        cp (chunk/pos->id (chunk-coord x) (chunk-coord z))]
+(defn- stream-deltas [world [eid p]]
+  (let [{:keys [pos yaw pitch sent-chunks needs-spawn?]} p
+        cp (chunk/pos-chunk pos)]
     (concat
-      (when (or (not= cp chunk-pos) chunks-pending?)
+      (when (or (not= cp (:chunk-pos p)) (:chunks-pending? p))
         (restream-deltas world eid cp p))
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
-        (spawn-look-deltas world eid pos yaw pitch)))))
+        (spawn-look-deltas eid pos yaw pitch)))))
 
 (defn chunk-streaming [world d]
   (conj (mapv (fn [entry] #(stream-deltas world entry))
@@ -145,8 +154,8 @@
    (out/all (out/store-chunk id (schema/chunk-payload world id)))])
 
 (defn unloading
-  "Unloads the chunks the world no longer needs and stores them as the tick
-   left them."
+  "Unloads the chunks the world no longer needs and stores them as
+   the tick left them."
   [world _]
   (when (get-in world [:config :unload-chunks?])
     (let [keep? (needed-ids world)]

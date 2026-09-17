@@ -1,6 +1,5 @@
 (ns collider.game.systems.spawning
-  "Joining and respawning players, placed once the chunks their spawn reads
-   are loaded."
+  "Placement of joining and respawning players."
   (:require [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.damage :as damage]
@@ -20,14 +19,18 @@
 (defn- loaded? [w ids] (every? #(contains? (:chunks w) %) ids))
 
 (defn- found [w req]
-  (spawn/find-spawn (:chunks w) (:world-spawn w) (radius w) (:seed req)))
+  (let [{:keys [chunks world-spawn]} w]
+    (spawn/find-spawn chunks world-spawn (radius w) (:seed req))))
 
 (defn- arrival-ids [pos]
-  (let [[cx cz] (chunk/id->pos (state/pos-chunk pos))]
+  (let [[cx cz] (chunk/id->pos (chunk/pos-chunk pos))]
     (chunk/around-ids (long cx) (long cz) arrival-radius)))
 
+(defn- join-pos [w req]
+  (or (:pos req) (when (loaded? w (search-ids w)) (found w req))))
+
 (defn- join-ids [w req]
-  (if-let [pos (or (:pos req) (when (loaded? w (search-ids w)) (found w req)))]
+  (if-let [pos (join-pos w req)]
     (concat (when-not (:pos req) (search-ids w)) (arrival-ids pos))
     (search-ids w)))
 
@@ -51,8 +54,9 @@
     [[:player-placed eid (:name req) (or (:pos req) (found w req))]]))
 
 (defn- loading [[w acc] need]
-  (let [ds (vec (chunks/loading-deltas w need))]
-    [(if (seq ds) (first (state/apply-deltas w ds)) w) (into acc ds)]))
+  (let [ds (vec (chunks/loading-deltas w need))
+        w' (if (seq ds) (first (state/apply-deltas w ds)) w)]
+    [w' (into acc ds)]))
 
 (defn- settle [[world acc] [eid req]]
   (let [[w acc] (loading [world acc] (need-ids world eid req))
@@ -63,7 +67,7 @@
                    [[:spawn-progress eid (assoc req :need need)]]))]))
 
 (defn placing
-  "Places the joining and respawning players whose spawn chunks are loaded,
-   loading the chunks the others wait for."
+  "Places the joining and respawning players whose spawn chunks are
+   loaded, loading the chunks the others wait for."
   [world _]
   (second (reduce settle [world []] (sort-by key (:spawning world)))))

@@ -24,12 +24,15 @@
 
 (def ^:private ^:const shutdown-drain-ms 1000)
 
-(defn- chunk-io! [{:keys [saver store]} ^ConcurrentLinkedQueue queue ^Deltas deltas]
-  (doseq [m (.out deltas)]
-    (case (:msg m)
-      :store-chunk (snapshot/store-chunk! saver store (:id m) (:payload m))
-      :load-chunk (let [id (:id m)]
-                    (snapshot/fetch-chunk! saver store id #(.offer queue [:chunk-loaded id %])))
+(defn- on-loaded [^ConcurrentLinkedQueue queue id]
+  #(.offer queue [:chunk-loaded id %]))
+
+(defn- chunk-io! [{:keys [saver store]} queue ^Deltas deltas]
+  (doseq [{:keys [msg id payload]} (.out deltas)]
+    (case msg
+      :store-chunk (snapshot/store-chunk! saver store id payload)
+      :load-chunk (snapshot/fetch-chunk! saver store id
+                                         (on-loaded queue id))
       nil)))
 
 (defn- deliver! [conns world deltas]
@@ -58,13 +61,21 @@
     (.addShutdownHook (Runtime/getRuntime) t)
     t))
 
+(defn- open-store [opts cfg]
+  (or (:store opts)
+      (when-let [dir (:save-dir cfg)] (snapshot/file-store dir))))
+
+(defn- world-config [cfg store]
+  (assoc (select-keys cfg [:view-distance :simulation-distance
+                           :max-players :motd])
+         :unload-chunks? (some? store)))
+
 (defn- open-world [opts]
   (let [cfg (merge (config/load-config) opts)
-        store (or (:store opts) (when-let [dir (:save-dir cfg)] (snapshot/file-store dir)))
+        store (open-store opts cfg)
         saved (when store (snapshot/load-snapshot store))
         world (atom (assoc (merge state/initial-world saved)
-                      :config (assoc (select-keys cfg [:view-distance :simulation-distance :max-players :motd])
-                                :unload-chunks? (some? store))))
+                           :config (world-config cfg store)))
         saver (when store (snapshot/start-saver))]
     {:cfg   cfg :store store :saved saved :world world :saver saver
      :save! (when saver #(snapshot/request-save! saver store @world))}))
@@ -77,15 +88,21 @@
         {:keys [socket accept]} (server/listen! io (:port cfg))]
     {:queue queue :conns conns :socket socket :accept accept}))
 
-(defn- start-clocks [{:keys [cfg world saver save!] :as base} {:keys [queue conns]}]
-  (let [ticker (tick/start-ticker! world queue (fn [w d]
-                                                 (when saver (chunk-io! base queue d))
-                                                 (deliver! conns w d))
-                                   {:io-input                 #(hash-map :writable (server/writable-eids conns))
-                                    :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
-                                    :on-pause                 save!})]
+(defn- ticker-opts [conns cfg save!]
+  {:io-input #(hash-map :writable (server/writable-eids conns))
+   :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
+   :on-pause save!})
+
+(defn- start-clocks [base {:keys [queue conns]}]
+  (let [{:keys [cfg world saver save!]} base
+        out! (fn [w d]
+               (when saver (chunk-io! base queue d))
+               (deliver! conns w d))
+        opts (ticker-opts conns cfg save!)
+        ticker (tick/start-ticker! world queue out! opts)]
     {:ticker    ticker :tick-stats (:stats ticker)
-     :scheduler (when saver (saver-scheduler save! (:save-period-ms cfg)))}))
+     :scheduler (when saver
+                  (saver-scheduler save! (:save-period-ms cfg)))}))
 
 (defn- host-event [saved config-written?]
   (let [rt (Runtime/getRuntime)

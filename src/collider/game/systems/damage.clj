@@ -304,7 +304,8 @@
   "Returns the respawn point player e set, or nil when it set none."
   [e]
   (if-let [{:keys [pos yaw pitch]} (:forced-spawn e)]
-    {:pos pos :yaw (double (or yaw 0.0)) :pitch (double (or pitch 0.0)) :forced? true}
+    {:pos     pos :yaw (double (or yaw 0.0))
+     :pitch   (double (or pitch 0.0)) :forced? true}
     (when-let [pos (:spawn e)]
       {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false})))
 

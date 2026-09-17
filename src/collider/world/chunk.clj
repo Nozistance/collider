@@ -1,5 +1,6 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
+  (:require [collider.vec :as v])
   (:import (collider.java Chunk ChunkIndex Section)
            (java.util Arrays HashMap)))
 
@@ -105,8 +106,16 @@
   ^long [^long bid]
   (pos->id (bit-shift-right bid 42) (bit-shift-right (bit-shift-left bid 38) 42)))
 
-(defn block-chunk ^long [[x _ z]]
+(defn block-chunk
+  "Returns the id of the chunk that holds the block at x y z."
+  ^long [[x _ z]]
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
+
+(defn pos-chunk
+  "Returns the id of the chunk that holds the point pos."
+  ^long [pos]
+  (pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
+           (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
 (defn chunks-get-block
   "Returns the block state at x y z, air where the chunk is absent."
@@ -159,9 +168,9 @@
     (.with c si (.applyTo ^Edits edits s))))
 
 (defn- apply-change! [^HashMap cache change]
-  (let [[[x y z] state] change
+  (let [[[x y z :as p] state] change
         x (long x) y (long y) z (long z)
-        cp (pos->id (bit-shift-right x 4) (bit-shift-right z 4))
+        cp (block-chunk p)
         idx (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
                (bit-and x 15))]
     (.add (edits-of cache cp (section-index y)) idx (long state))))

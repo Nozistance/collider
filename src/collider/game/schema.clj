@@ -15,15 +15,32 @@
   (reduce-kv (fn [m k v] (assoc m k (plain v)))
              {} (dissoc (into {} e) :track)))
 
-(defn- entity-chunk ^long [e]
-  (let [p (:pos e)]
-    (chunk/pos->id (bit-shift-right (long (Math/floor (v/x p))) 4)
-                   (bit-shift-right (long (Math/floor (v/z p))) 4))))
+(defn chunk-entity?
+  "Returns true when entity e belongs to chunk id. Players never do."
+  [^long id e]
+  (and (not= :player (:type e))
+       (= id (chunk/pos-chunk (:pos e)))))
+
+(defn chunk-tick?
+  "Returns true when the block with packed id bid lies in chunk id."
+  [^long id ^long bid]
+  (= id (chunk/block-id-chunk bid)))
+
+(defn- chunk-entities [w id]
+  (into {} (keep (fn [[eid e]]
+                   (when (chunk-entity? id e)
+                     [eid (plain-entity e)])))
+        (:entities w)))
+
+(defn- tick-positions [id bids]
+  (into [] (comp (filter #(chunk-tick? id %))
+                 (map chunk/id->block-pos))
+        bids))
 
 (defn- chunk-ticks [w ^long id]
   (let [t (long (:tick w 0))]
     (into [] (keep (fn [[at bids]]
-                     (let [ps (into [] (comp (filter #(= id (chunk/block-id-chunk %))) (map chunk/id->block-pos)) bids)]
+                     (let [ps (tick-positions id bids)]
                        (when (seq ps) [(- (long at) t) ps]))))
           (:block-ticks w))))
 
@@ -34,29 +51,33 @@
   (let [id (long id)]
     {:chunk          (get (:chunks w) id)
      :block-entities (into {} (get-in w [:block-entities id]))
-     :entities       (into {} (keep (fn [[eid e]]
-                                      (when (and (not= :player (:type e)) (= id (entity-chunk e)))
-                                        [eid (plain-entity e)])))
-                           (:entities w))
+     :entities       (chunk-entities w id)
      :ticks          (chunk-ticks w id)}))
 
 (defn- ticks-back [bt ^long t ticks]
   (reduce (fn [bt [dt ps]]
-            (update bt (+ t (max 1 (long dt))) (fnil into (i/int-set)) (map chunk/block-pos->id ps)))
+            (update bt (+ t (max 1 (long dt)))
+                    (fnil into (i/int-set))
+                    (map chunk/block-pos->id ps)))
           bt ticks))
+
+(defn- entity-entry [[eid e]] [(long eid) (entity/of e)])
+
+(defn- block-entity-entry [[p e]] [(vec p) e])
 
 (defn with-chunk
   "Returns w with the saved chunk id put back. Its block ticks come due after
    the delays they were saved with."
   [w id {:keys [chunk block-entities entities ticks]}]
-  (let [id (long id)]
+  (let [id (long id)
+        t (long (:tick w 0))
+        bes (into {} (map block-entity-entry) block-entities)]
     (cond-> (-> w
                 (update :chunks assoc id chunk)
-                (update :entities into (map (fn [[eid e]] [(long eid) (entity/of e)])) entities)
-                (update :block-ticks ticks-back (long (:tick w 0)) ticks)
+                (update :entities into (map entity-entry) entities)
+                (update :block-ticks ticks-back t ticks)
                 (update :loading disj id))
-            (seq block-entities)
-            (assoc-in [:block-entities id] (into {} (map (fn [[p e]] [(vec p) e])) block-entities)))))
+      (seq block-entities) (assoc-in [:block-entities id] bes))))
 
 (declare profile-of)
 

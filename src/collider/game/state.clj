@@ -34,18 +34,18 @@
 (def ^:private ^:const fold-leaf 64)
 (def spawn-pos [24.5 4.0 8.5])
 (def activation-radius 2)
-(defn pos-chunk ^long [pos]
-  (chunk/pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
-                 (bit-shift-right (long (Math/floor (v/z pos))) 4)))
+(defn- player-area [world e]
+  (let [[cx cz] (chunk/id->pos (chunk/pos-chunk (:pos e)))
+        r (long (get-in world [:config :simulation-distance]
+                        activation-radius))]
+    (filter #(contains? (:chunks world) %)
+            (chunk/around-ids (long cx) (long cz) r))))
 
 (defn- compute-active-chunks [world]
   (into (i/int-set)
         (mapcat (fn [[_ e]]
                   (when (= :player (:type e))
-                    (let [[cx cz] (chunk/id->pos (pos-chunk (:pos e)))
-                          r (long (get-in world [:config :simulation-distance]
-                                          activation-radius))]
-                      (filter #(contains? (:chunks world) %) (chunk/around-ids (long cx) (long cz) r))))))
+                    (player-area world e))))
         (:entities world)))
 
 (defn- fresh? [world cached]
@@ -60,17 +60,18 @@
       (compute-active-chunks world))))
 
 (defn cache-active-chunks [world]
-  (let [cached (:active-chunks world)]
-    (if (fresh? world cached)
-      world
-      (assoc world :active-chunks (MapEntry/create [(:entities world) (:chunks world)] (compute-active-chunks world))))))
+  (if (fresh? world (:active-chunks world))
+    world
+    (let [k [(:entities world) (:chunks world)]]
+      (assoc world :active-chunks
+             (MapEntry/create k (compute-active-chunks world))))))
 
 (defn advance [world]
   (cond-> (update world :tick inc)
           (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0))))
 
 (defn active-at? [active pos]
-  (contains? active (pos-chunk pos)))
+  (contains? active (chunk/pos-chunk pos)))
 
 (defn active-id? [active ^long bid]
   (contains? active (chunk/block-id-chunk bid)))
@@ -196,21 +197,27 @@
                 {:respawn? true :seed (spawn-seed w eid)})
       w)))
 
+(defn- drop-entities [es id]
+  (reduce-kv (fn [es eid e]
+               (if (schema/chunk-entity? id e) (dissoc es eid) es))
+             es es))
+
+(defn- drop-ticks [bt id]
+  (into (i/int-map)
+        (keep (fn [[at bids]]
+                (let [left (into (i/int-set)
+                                 (remove #(schema/chunk-tick? id %))
+                                 bids)]
+                  (when (seq left) [at left]))))
+        bt))
+
 (defn- unloaded [w id]
   (let [id (long id)]
     (-> w
         (update :chunks dissoc id)
         (update :block-entities dissoc id)
-        (update :entities (fn [es] (reduce-kv (fn [es eid e]
-                                                (if (and (not= :player (:type e)) (= id (pos-chunk (:pos e))))
-                                                  (dissoc es eid)
-                                                  es))
-                                              es es)))
-        (update :block-ticks (fn [bt] (into (i/int-map)
-                                            (keep (fn [[at bids]]
-                                                    (let [left (into (i/int-set) (remove #(= id (chunk/block-id-chunk %))) bids)]
-                                                      (when (seq left) [at left]))))
-                                            bt)))
+        (update :entities drop-entities id)
+        (update :block-ticks drop-ticks id)
         (update :stored (fnil conj (i/int-set)) id))))
 
 (defn- vacated-bed [w eid]
@@ -522,6 +529,22 @@
     (update-in w [:shulker-anim pos] #(merge {:progress (float 0.0)} % a))
     (update w :shulker-anim dissoc pos)))
 
+(defn- chunk-added [w id c]
+  (if (contains? (:chunks w) id) w (update w :chunks assoc id c)))
+
+(defn- chunk-requested [w id]
+  (update w :loading (fnil conj (i/int-set)) id))
+
+(defn- chunk-restored [w id payload]
+  (if (contains? (:chunks w) id)
+    (update w :loading disj id)
+    (schema/with-chunk w id payload)))
+
+(defn- spawn-progress [w eid req]
+  (if req
+    (assoc-in w [:spawning eid] req)
+    (update w :spawning dissoc eid)))
+
 (defn- block-entity-set [w pos e]
   (let [cp (chunk/block-chunk pos)]
     (if e
@@ -541,16 +564,12 @@
    :set-time             (fn [w [_ t]] (assoc w :time-of-day (long t)))
    :set-rule             (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
    :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
-   :add-chunk            (fn [w [_ id c]] (if (contains? (:chunks w) id) w (update w :chunks assoc id c)))
-   :chunk-requested      (fn [w [_ id]] (update w :loading (fnil conj (i/int-set)) id))
-   :restore-chunk        (fn [w [_ id payload]] (if (contains? (:chunks w) id)
-                                                  (update w :loading disj id)
-                                                  (schema/with-chunk w id payload)))
+   :add-chunk            (fn [w [_ id c]] (chunk-added w id c))
+   :chunk-requested      (fn [w [_ id]] (chunk-requested w id))
+   :restore-chunk        (fn [w [_ id p]] (chunk-restored w id p))
    :unload-chunk         (fn [w [_ id]] (unloaded w id))
-   :player-placed        (fn [w [_ eid name pos]] (player-placed w eid name pos))
-   :spawn-progress       (fn [w [_ eid req]] (if req
-                                               (assoc-in w [:spawning eid] req)
-                                               (update w :spawning dissoc eid)))
+   :player-placed        (fn [w [_ eid n p]] (player-placed w eid n p))
+   :spawn-progress       (fn [w [_ eid req]] (spawn-progress w eid req))
    :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick         (fn [w _] (dissoc (advance w) :quits))

@@ -4,7 +4,8 @@
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.state :as state])
+            [collider.game.state :as state]
+            [collider.world.chunk :as chunk])
   (:import (java.util ArrayList Locale)))
 
 (set! *warn-on-reflection* true)
@@ -106,9 +107,6 @@
             (transient (i/int-map))
             ps)))
 
-(defn- entity-chunk ^long [e]
-  (state/pos-chunk (:pos e)))
-
 (def ^:private duplicate-login-reason "You logged in from another location")
 (defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
@@ -169,7 +167,7 @@
 (defn- entities-by-chunk [ts]
   (persistent!
     (reduce (fn [m [eid e]]
-              (let [c (entity-chunk e)]
+              (let [c (chunk/pos-chunk (:pos e))]
                 (assoc! m c (conj (get m c []) eid))))
             (transient (i/int-map))
             ts)))

@@ -118,12 +118,13 @@
 
 (defn file-store [dir] (->FileStore dir))
 (defn snapshot
-  "Returns the world as a store keeps it, with every loaded chunk and what
-   belongs to it."
+  "Returns the world as a store keeps it, with every loaded chunk and
+   what belongs to it."
   [world]
-  (assoc (schema/snapshot world)
-    :format format-version
-    :chunks (into {} (map (fn [id] [id (schema/chunk-payload world id)])) (keys (:chunks world)))))
+  (let [entry (fn [id] [id (schema/chunk-payload world id)])]
+    (assoc (schema/snapshot world)
+      :format format-version
+      :chunks (into {} (map entry) (keys (:chunks world))))))
 
 (defn- meta-of [snap]
   (assoc (dissoc snap :chunks) :format format-version))
@@ -140,13 +141,18 @@
   (+ (long (write-chunks! store (:chunks snap)))
      (written (put-meta! store (meta-of snap)))))
 
+(def ^:private chunk-keys
+  [:chunks :entities :block-ticks :block-entities])
+
 (defn world-of
-  "Returns the world a snapshot holds, with its chunks and what belongs to them."
+  "Returns the world a snapshot holds, with its chunks and what belongs
+   to them."
   [snap]
-  (reduce-kv schema/with-chunk
-             (merge (select-keys schema/initial-world [:chunks :entities :block-ticks :block-entities])
-                    (schema/world-of (dissoc snap :chunks :stored)))
-             (:chunks snap)))
+  (let [empty-parts (select-keys schema/initial-world chunk-keys)
+        base (schema/world-of (dissoc snap :chunks :stored))]
+    (reduce-kv schema/with-chunk
+               (merge empty-parts base)
+               (:chunks snap))))
 
 (defn- check-format! [store m]
   (when-not (= format-version (:format m))
@@ -155,13 +161,18 @@
                          " - move the world aside or start with a fresh save directory")
                     {:found (:format m) :expected format-version :store (str store)}))))
 
+(defn- read-meta [store]
+  (try (load store)
+       (catch Throwable t
+         (log/warn "snapshot: read failed" (str store)
+                   "-" (.getMessage t))
+         nil)))
+
 (defn load-snapshot [store]
-  (when-let [m (try (load store)
-                    (catch Throwable t
-                      (log/warn "snapshot: read failed" (str store) "-" (.getMessage t))
-                      nil))]
+  (when-let [m (read-meta store)]
     (check-format! store m)
-    (assoc (world-of (dissoc m :chunks)) :stored (or (:stored m) (i/int-set)))))
+    (assoc (world-of (dissoc m :chunks))
+           :stored (or (:stored m) (i/int-set)))))
 
 (defn start-saver []
   (agent {:chunks nil :meta nil :writes 0} :error-mode :continue))
@@ -180,10 +191,13 @@
 
 (defn- write-changes! [state store snap m changed]
   (try
-    (let [n (+ (long (write-chunks! store changed)) (written (put-meta! store m)))]
-      (log/info "snapshot: saved" (count changed) "chunks," (log/human-bytes n)
-                "to" (str store))
-      (-> state (assoc :chunks (:chunks snap) :meta m) (update :writes inc)))
+    (let [n (+ (long (write-chunks! store changed))
+               (written (put-meta! store m)))]
+      (log/info "snapshot: saved" (count changed) "chunks,"
+                (log/human-bytes n) "to" (str store))
+      (-> state
+          (assoc :chunks (:chunks snap) :meta m)
+          (update :writes inc)))
     (catch Throwable t
       (log/warn "snapshot: write failed -" (.getMessage t))
       state)))
@@ -204,24 +218,30 @@
     (put-chunk! store id payload)
     (update state :chunks dissoc id)
     (catch Throwable t
-      (log/warn (chunk-name id) "was unloaded but not saved, its changes are lost -" (.getMessage t))
+      (log/warn (chunk-name id) "was unloaded but not saved,"
+                "its changes are lost -" (.getMessage t))
       state)))
 
 (defn store-chunk!
-  "Saves an unloaded chunk after every save and read asked for before it."
+  "Saves an unloaded chunk after every save and read asked for before
+   it."
   [saver store id payload]
   (send-off saver stored! store id payload))
 
+(defn- read-chunk [store id]
+  (try (get-chunk store id)
+       (catch Throwable t
+         (log/warn (chunk-name id) "could not be read and starts over"
+                   "as a new chunk -" (.getMessage t))
+         nil)))
+
 (defn- fetched! [state store id deliver]
-  (deliver (try (get-chunk store id)
-                (catch Throwable t
-                  (log/warn (chunk-name id) "could not be read and starts over as a new chunk -" (.getMessage t))
-                  nil)))
+  (deliver (read-chunk store id))
   state)
 
 (defn fetch-chunk!
-  "Reads a saved chunk after every save asked for before it and gives it to
-   deliver, or nil when it cannot be read."
+  "Reads a saved chunk after every save asked for before it and gives
+   it to deliver, or nil when it cannot be read."
   [saver store id deliver]
   (send-off saver fetched! store id deliver))
 
