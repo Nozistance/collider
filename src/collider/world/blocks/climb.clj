@@ -1,14 +1,13 @@
 (ns collider.world.blocks.climb
   "Blocks a living entity climbs."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
 (defn- st-at ^long [chunks x y z]
   (if (chunk/in-range? (long y))
-    (chunk/chunks-get-block chunks (gen/flat-chunk) x y z)
+    (chunk/chunks-get-block chunks x y z)
     block/air))
 
 (defn- ladder-trapdoor? [chunks st [x y z]]

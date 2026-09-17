@@ -1,6 +1,8 @@
 (ns collider.game.systems.chat
   "Chat lines, commands and tab completion."
   (:require [collider.data :as data]
+            [collider.game.systems.chunks :as chunks]
+            [collider.world.chunk :as chunk]
             [clojure.string :as str]
             [collider.game.command.tree :as cmd]
             [collider.game.out :as out]
@@ -60,7 +62,7 @@
   (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- fill-deltas [eid [ax ay az bx by bz block]]
+(defn- fill-deltas [world eid [ax ay az bx by bz block]]
   (let [[x1 x2] (sort [(long ax) (long bx)])
         [y1 y2] (sort [(long ay) (long by)])
         [z1 z2] (sort [(long az) (long bz)])
@@ -71,6 +73,7 @@
                            z (range z1 (inc z2))]
                        [[x y z] st]))]
     (concat
+      (chunks/loading-deltas world (map (comp chunk/block-chunk first) changes))
       [[:set-blocks changes]]
       (tell eid (format "filled **%d** blocks" n)))))
 
@@ -153,9 +156,11 @@
     [[:spawn-entity (mobs/egg-mob type at [t eid :summon] t)]
      (out/to eid (out/system-chat [{:translate "commands.summon.success" :with [{:translate (str "entity.minecraft." (name type))}]}]))]))
 
-(defn- setblock-deltas [eid [x y z block]]
-  [[:set-blocks [[[x y z] (block/state block)]]]
-   (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))])
+(defn- setblock-deltas [world eid [x y z block]]
+  (concat
+    (chunks/loading-deltas world [(chunk/block-chunk [x y z])])
+    [[:set-blocks [[[x y z] (block/state block)]]]
+     (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))]))
 
 (defn- block-under [world eid [x y z]]
   (let [p (get-in world [:entities eid :pos])]
@@ -212,10 +217,10 @@
     :give (give-deltas world eid args)
     :kill (kill-deltas world eid args)
     :summon (summon-deltas world eid args)
-    :setblock (setblock-deltas eid args)
+    :setblock (setblock-deltas world eid args)
     :setworldspawn (setworldspawn-deltas world eid args)
     :spawnpoint (spawnpoint-deltas world eid args)
-    :fill (fill-deltas eid args)
+    :fill (fill-deltas world eid args)
     :weather-clear (weather-deltas world eid :clear (first args))
     :weather-rain (weather-deltas world eid :rain (first args))
     :weather-thunder (weather-deltas world eid :thunder (first args))

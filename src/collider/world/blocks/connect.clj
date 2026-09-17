@@ -10,7 +10,6 @@
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.fire :as fire]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.mushroom :as mushroom]
@@ -60,7 +59,7 @@
 
 (defn partner [chunks pos ^long st]
   (when-let [off (partner-offset st)]
-    (let [p (mapv + pos off) o (gen/at chunks p)]
+    (let [p (mapv + pos off) o (chunk/at chunks p)]
       (when (paired? st o) [p o]))))
 
 (defn- exception? [n]
@@ -119,7 +118,7 @@
         [_ pst] (partner chunks pos st)]
     (cond
       (nil? pst) 0
-      (and lower? (not (block/face-sturdy? (gen/at chunks (dir/down pos)) :up))) 0
+      (and lower? (not (block/face-sturdy? (chunk/at chunks (dir/down pos)) :up))) 0
       lower? st
       :else (block/state (block/block-of pst) (assoc (block/props-of pst) :half :upper)))))
 
@@ -228,14 +227,14 @@
                       (= :wall t) (assoc :up (if (wall-post? sides) :true :false)))]
     (block/state self props)))
 
-(defn- vine-reshaped [chunks pos st] (support/vine-updated chunks (gen/flat-chunk) pos st))
-(defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks (gen/flat-chunk) pos st))
+(defn- vine-reshaped [chunks pos st] (support/vine-updated chunks pos st))
+(defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks pos st))
 (defn- fire-reshaped [chunks pos st]
-  (if (support/supported? chunks (gen/flat-chunk) pos st)
+  (if (support/supported? chunks pos st)
     (fire/state-with-age chunks pos (fire/age st))
     0))
 (defn- soul-fire-reshaped [chunks pos st]
-  (if (support/supported? chunks (gen/flat-chunk) pos st) st 0))
+  (if (support/supported? chunks pos st) st 0))
 
 (def ^:private pos-reshapers
   {:door                    door-state
@@ -291,7 +290,7 @@
 (defn reshape [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? (connecting-types) t)
-      (let [at (fn [d] (gen/at chunks (mapv + pos d)))
+      (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
             new (reshaped-state t chunks pos st at tick)]
         (when (not= (long new) st) new)))))
 
@@ -316,7 +315,7 @@
   "Returns :left or :right for a door placed at pos with that facing. The
    cursor coordinates are within the clicked face, in sixteenths."
   [chunks pos facing cursor-x cursor-z]
-  (let [at (fn [d] (gen/at chunks (mapv + pos d)))
+  (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
         left (dir/horizontal-offset (dir/counter-clockwise facing))
         right (dir/horizontal-offset (dir/clockwise facing))
         balance (hinge-balance at left right)
@@ -339,7 +338,7 @@
     (into []
           (keep (fn [[_ y _ :as p]]
                   (when (chunk/in-range? y)
-                    (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
+                    (let [st (chunk/chunks-get-block chunks p)]
                       (when-not (and (contains? origin p) (= :bed (block/type-of st)))
                         (when-let [new (reshape chunks p st tick)]
                           [p new]))))))
@@ -350,7 +349,7 @@
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))
         acc
-        (recur (chunk/chunks-set-blocks chunks (gen/flat-chunk) changes)
+        (recur (chunk/chunks-set-blocks chunks changes)
                (map first changes)
                (into acc changes)
                (inc n))))))

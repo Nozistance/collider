@@ -34,6 +34,8 @@
    [:cat :keyword :any]
    :set-world-spawn
    [:cat Pos]
+   :add-chunk
+   [:cat :int :any]
    :set-weather
    [:cat :map]
    :set-block-entity

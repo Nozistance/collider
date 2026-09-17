@@ -2,7 +2,8 @@
   "Sending players the chunks around them."
   (:require [collider.game.state :as state]
             [collider.game.out :as out]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.gen :as gen]))
 
 (set! *warn-on-reflection* true)
 
@@ -18,6 +19,17 @@
   (let [r (long (get-in world [:config :view-distance] view-radius))
         [cx cz] (chunk/id->pos cp)]
     (into #{} (chunk/around-ids (long cx) (long cz) r))))
+
+(defn loading-deltas
+  "Returns the deltas that bring the absent chunks among ids into the world."
+  [world ids]
+  (for [id (set ids) :when (not (contains? (:chunks world) id))]
+    [:add-chunk id (gen/flat-chunk)]))
+
+(defn- spawn-ids [world]
+  (let [[x _ z] (or (:world-spawn world) state/spawn-pos)
+        r (long (get-in world [:rules :spawn-chunk-radius] 2))]
+    (chunk/around-ids (chunk-coord (double x)) (chunk-coord (double z)) r)))
 
 (defn- own-column? [world eid sent-chunks cp]
   (or (contains? (or sent-chunks #{}) cp)
@@ -42,7 +54,8 @@
 
 (defn- stream-plan [world eid cp {:keys [sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
   (let [want (wanted-chunks world cp)
-        add-all (vec (remove #(contains? sent-chunks %) want))
+        missing (vec (remove #(contains? sent-chunks %) want))
+        add-all (filterv #(contains? (:chunks world) %) missing)
         unacked (long (or batches-unacked 0))
         blocked (or (>= unacked (long (or batches-max 1))) (not (writable? world eid)))
         quota (stream-quota chunk-rate chunk-quota blocked)
@@ -50,7 +63,7 @@
     {:add     (into [] (take n) (nearest-first add-all cp))
      :drop    (sort (remove #(contains? want %) sent-chunks))
      :n       n :quota quota :unacked unacked :blocked blocked
-     :pending (when (> (count add-all) n) true)}))
+     :pending (when (> (count missing) n) true)}))
 
 (defn- quota-deltas [eid {:keys [add n quota unacked blocked pending]}]
   (cond
@@ -75,10 +88,12 @@
         cp (chunk/pos->id (chunk-coord x) (chunk-coord z))]
     (concat
       (when (or (not= cp chunk-pos) chunks-pending?)
-        (restream-deltas world eid cp p))
+        (concat (loading-deltas world (wanted-chunks world cp))
+                (restream-deltas world eid cp p)))
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas world eid pos yaw pitch)))))
 
 (defn chunk-streaming [world _d]
-  (mapv (fn [entry] #(stream-deltas world entry))
-        (state/player-entries world)))
+  (conj (mapv (fn [entry] #(stream-deltas world entry))
+              (state/player-entries world))
+        #(loading-deltas world (spawn-ids world))))

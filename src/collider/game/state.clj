@@ -15,7 +15,6 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.climb :as climb]
             [collider.world.blocks.connect :as connect]
-            [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.rules :as rules]
             [collider.world.space.spawn :as spawn]
@@ -46,20 +45,25 @@
                     (let [[cx cz] (chunk/id->pos (pos-chunk (:pos e)))
                           r (long (get-in world [:config :simulation-distance]
                                           activation-radius))]
-                      (chunk/around-ids (long cx) (long cz) r)))))
+                      (filter #(contains? (:chunks world) %) (chunk/around-ids (long cx) (long cz) r))))))
         (:entities world)))
+
+(defn- fresh? [world cached]
+  (and cached
+       (identical? (nth (key cached) 0) (:entities world))
+       (identical? (nth (key cached) 1) (:chunks world))))
 
 (defn active-chunks [world]
   (let [cached (:active-chunks world)]
-    (if (and cached (identical? (key cached) (:entities world)))
+    (if (fresh? world cached)
       (val cached)
       (compute-active-chunks world))))
 
 (defn cache-active-chunks [world]
   (let [cached (:active-chunks world)]
-    (if (and cached (identical? (key cached) (:entities world)))
+    (if (fresh? world cached)
       world
-      (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))))
+      (assoc world :active-chunks (MapEntry/create [(:entities world) (:chunks world)] (compute-active-chunks world))))))
 
 (defn advance [world]
   (cond-> (update world :tick inc)
@@ -86,7 +90,7 @@
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
-    (chunk/chunks-get-block chunks (gen/flat-chunk) p)
+    (chunk/chunks-get-block chunks p)
     0))
 
 (defn- wake-tick [chunks tick p old self?]
@@ -120,19 +124,19 @@
 (defn- real-changes [chunks changes]
   (into []
         (keep (fn [[pos st]]
-                (let [old (chunk/chunks-get-block chunks (gen/flat-chunk) pos)]
+                (let [old (chunk/chunks-get-block chunks pos)]
                   (when (not= old (long st)) [pos old st]))))
         changes))
 
 (defn- with-derived [chunks tick real]
   (let [chunks' (-> chunks
-                    (chunk/chunks-set-blocks (gen/flat-chunk) (mapv (fn [[pos _ st]] [pos st]) real))
-                    (light/relight-batch (gen/flat-chunk) real))
+                    (chunk/chunks-set-blocks (mapv (fn [[pos _ st]] [pos st]) real))
+                    (light/relight-batch real))
         derived (connect/derived-changes chunks' (map first real) tick)
-        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' (gen/flat-chunk) pos) st]) derived)]
+        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' pos) st]) derived)]
     [(-> chunks'
-         (chunk/chunks-set-blocks (gen/flat-chunk) derived)
-         (light/relight-batch (gen/flat-chunk) dropped))
+         (chunk/chunks-set-blocks derived)
+         (light/relight-batch dropped))
      (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
 
 (defn- add-block-events [ev events]
@@ -154,7 +158,7 @@
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
 (defn world-spawn-pos [w eid]
-  (spawn/find-spawn (:chunks w) (gen/flat-chunk) (:world-spawn w)
+  (spawn/find-spawn (:chunks w) (:world-spawn w)
                     (long (get-in w [:rules :respawn-radius] 10))
                     (spawn-seed w eid)))
 
@@ -179,7 +183,7 @@
 
 (defn- vacated-bed [w eid]
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
-    (let [st (chunk/chunks-get-block (:chunks w) (gen/flat-chunk) pos)]
+    (let [st (chunk/chunks-get-block (:chunks w) pos)]
       (if (= :bed (block/type-of st))
         (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] (long (:tick w)))
         w))
@@ -503,6 +507,7 @@
    :set-time             (fn [w [_ t]] (assoc w :time-of-day (long t)))
    :set-rule             (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
    :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
+   :add-chunk            (fn [w [_ id c]] (if (contains? (:chunks w) id) w (update w :chunks assoc id c)))
    :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick         (fn [w _] (dissoc (advance w) :quits))

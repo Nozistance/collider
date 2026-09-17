@@ -2,8 +2,7 @@
   "Chorus plants and flowers: support, connections, and the growing flower."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,14 +13,14 @@
 (defn- roots? [^long st] (block/tagged? st "supports_chorus_plant"))
 
 (defn plant-supported? [chunks p]
-  (let [below (gen/at chunks (off p :down))
-        squeezed? (and (pos? (gen/at chunks (off p :up))) (pos? below))
+  (let [below (chunk/at chunks (off p :down))
+        squeezed? (and (pos? (chunk/at chunks (off p :up))) (pos? below))
         branch (some (fn [d]
-                       (let [q (off p d) n (gen/at chunks q)]
+                       (let [q (off p d) n (chunk/at chunks q)]
                          (when (plant? n)
                            (if squeezed?
                              :blocked
-                             (let [under (gen/at chunks (off q :down))]
+                             (let [under (chunk/at chunks (off q :down))]
                                (when (or (plant? under) (roots? under)) :held))))))
                      dir/horizontal)]
     (case branch
@@ -30,13 +29,13 @@
       (or (plant? below) (roots? below)))))
 
 (defn flower-supported? [chunks p]
-  (let [below (gen/at chunks (off p :down))]
+  (let [below (chunk/at chunks (off p :down))]
     (if (or (plant? below) (block/tagged? below "supports_chorus_flower"))
       true
       (when (zero? below)
         (loop [ds dir/horizontal one? false]
           (if-let [d (first ds)]
-            (let [n (gen/at chunks (off p d))]
+            (let [n (chunk/at chunks (off p d))]
               (cond
                 (plant? n) (when-not one? (recur (next ds) true))
                 (pos? n) false
@@ -52,24 +51,24 @@
 (defn connected ^long [chunks p ^long st]
   (block/state (block/block-of st)
                (reduce (fn [m d]
-                         (assoc m d (if (connects? (gen/at chunks (off p d)) d) :true :false)))
+                         (assoc m d (if (connects? (chunk/at chunks (off p d)) d) :true :false)))
                        (block/props-of st) dir/six)))
 
 (defn- neighbours-empty? [chunks seen p ignore]
   (every? (fn [d]
             (or (= d ignore)
-                (let [q (off p d)] (zero? (long (get seen q (gen/at chunks q)))))))
+                (let [q (off p d)] (zero? (long (get seen q (chunk/at chunks q)))))))
           dir/horizontal))
 
 (defn- pillar [chunks p]
   (loop [h 1 i 0]
     (if (= i 4)
       [h false]
-      (let [n (gen/at chunks (mapv + p [0 (- (inc h)) 0]))]
+      (let [n (chunk/at chunks (mapv + p [0 (- (inc h)) 0]))]
         (if (plant? n) (recur (inc h) (inc i)) [h (roots? n)])))))
 
 (defn- grows-up? [chunks p pick]
-  (let [below (gen/at chunks (off p :down))]
+  (let [below (chunk/at chunks (off p :down))]
     (cond
       (block/tagged? below "supports_chorus_flower") [true false]
       (plant? below) (let [[h on-roots?] (pillar chunks p)]
@@ -88,8 +87,8 @@
         acc
         (let [d (order (long (pick [:dir i] 4)))
               q (off p d)]
-          (if (and (zero? (long (get seen q (gen/at chunks q))))
-                   (zero? (long (get seen (off q :down) (gen/at chunks (off q :down)))))
+          (if (and (zero? (long (get seen q (chunk/at chunks q))))
+                   (zero? (long (get seen (off q :down) (chunk/at chunks (off q :down)))))
                    (neighbours-empty? chunks seen q ({:north :south :south :north :west :east :east :west} d)))
             (recur (inc i) (assoc seen q flower) (conj acc [q flower]))
             (recur (inc i) seen acc)))))))
@@ -99,10 +98,10 @@
    stays. pick takes a salt and a bound n and returns a number below n."
   [chunks p ^long st pick]
   (let [above (off p :up) age (block/prop-long st :age)]
-    (when (and (zero? (gen/at chunks above)) (chunk/in-range? (long (above 1))) (< age 5))
+    (when (and (zero? (chunk/at chunks above)) (chunk/in-range? (long (above 1))) (< age 5))
       (let [[up? _] (grows-up? chunks p pick)]
         (cond
-          (and up? (neighbours-empty? chunks {} above nil) (zero? (gen/at chunks (off above :up))))
+          (and up? (neighbours-empty? chunks {} above nil) (zero? (chunk/at chunks (off above :up))))
           [[p (connected chunks p (block/state :chorus-plant))]
            [above (block/state :chorus-flower {:age (keyword (str age))})]]
           (< age 4)

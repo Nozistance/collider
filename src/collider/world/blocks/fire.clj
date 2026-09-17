@@ -7,7 +7,6 @@
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]
             [collider.world.env.difficulty :as difficulty]
-            [collider.world.gen :as gen]
             [collider.world.env.biome :as biome]
             [collider.world.env.weather :as weather]
             [collider.world.blocks.support :as support]))
@@ -24,7 +23,7 @@
 (def ^:private side-offsets
   {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0] :up [0 1 0]})
 (defn state-for ^long [chunks p]
-  (let [below (max 0 (long (gen/at-void chunks (mapv + p [0 -1 0]))))]
+  (let [below (max 0 (long (chunk/at-void chunks (mapv + p [0 -1 0]))))]
     (cond
       (block/tagged? below "soul_fire_base_blocks")
       (block/state :soul-fire)
@@ -33,7 +32,7 @@
       :else
       (block/state :fire (into {:age :0}
                                (map (fn [[k d]]
-                                      [k (if (block/burnable? (max 0 (long (gen/at-void chunks (mapv + p d)))))
+                                      [k (if (block/burnable? (max 0 (long (chunk/at-void chunks (mapv + p d)))))
                                            :true :false)]))
                                side-offsets)))))
 
@@ -45,12 +44,12 @@
 (defn- can-burn? [^long st] (pos? (odds st :ignite)))
 
 (defn- valid-location? [chunks p]
-  (boolean (some (fn [d] (can-burn? (gen/at-void chunks (mapv + p d)))) dir/around)))
+  (boolean (some (fn [d] (can-burn? (chunk/at-void chunks (mapv + p d)))) dir/around)))
 
 (defn- ignite-odds ^long [chunks p]
-  (if (not (zero? (gen/at-void chunks p)))
+  (if (not (zero? (chunk/at-void chunks p)))
     0
-    (reduce (fn [^long m d] (max m (odds (gen/at-void chunks (mapv + p d)) :ignite))) 0 dir/around)))
+    (reduce (fn [^long m d] (max m (odds (chunk/at-void chunks (mapv + p d)) :ignite))) 0 dir/around)))
 
 (defn- pick ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
 
@@ -66,7 +65,7 @@
   (boolean (some (fn [d] (weather/raining-at? ctx chunks (mapv + p d))) rain-sides)))
 
 (defn- burn-out [chunks ctx p d chance roll a]
-  (let [q (mapv + p d) st (gen/at-void chunks q)]
+  (let [q (mapv + p d) st (chunk/at-void chunks q)]
     (when (< (pick roll [:burn q] chance) (odds st :burn))
       (if (and (< (pick roll [:burn-age q] (+ a 10)) 5) (not (weather/raining-at? ctx chunks q)))
         [q (state-with-age chunks q (spread-age roll [:burn-spread q] a))]
@@ -111,14 +110,14 @@
   (when (not= a a') [[p (with-age st a')]]))
 
 (defn- tick-changes [chunks p ctx]
-  (let [st (gen/at-void chunks p)
+  (let [st (chunk/at-void chunks p)
         r (fn [salt] (random/of-key (:tick ctx) p salt))
-        below (gen/at-void chunks (mapv + p [0 -1 0]))
+        below (chunk/at-void chunks (mapv + p [0 -1 0]))
         a (age st)
         a' (min 15 (+ a (quot (pick r :age 3) 2)))
         aged (aged-change st a a' p)]
     (cond
-      (not (support/supported? chunks (gen/flat-chunk) p st)) [[p 0]]
+      (not (support/supported? chunks p st)) [[p 0]]
       (and (not (block/tagged? (max 0 below) "infiniburn_overworld"))
            (weather/raining? ctx)
            (near-rain? chunks ctx p)
@@ -134,7 +133,7 @@
   {:name   :fire
    :match? (fn [_chunks st _p] (fire-state? st))
    :wake   (fn [chunks tick p _old _self?]
-             (if (support/supported? chunks (gen/flat-chunk) p (chunk/chunks-get-block chunks (gen/flat-chunk) p))
+             (if (support/supported? chunks p (chunk/chunks-get-block chunks p))
                (fire-delay tick p)
                (inc (long tick))))
    :again  (fn [_chunks tick p] (fire-delay tick p))

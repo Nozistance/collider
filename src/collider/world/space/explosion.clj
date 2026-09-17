@@ -24,19 +24,19 @@
 (defn- section-at [^Chunk col ^long sy]
   (.section col (int (+ sy chunk/section-offset))))
 
-(defn- fill-grid [^objects grid chunks template [cx0 cz0 sy0 ncx ncz nsy]]
+(defn- fill-grid [^objects grid chunks [cx0 cz0 sy0 ncx ncz nsy]]
   (dotimes [ix (long ncx)]
     (dotimes [iz (long ncz)]
-      (let [col (Chunk/at chunks template (+ (long cx0) ix)
+      (let [col (Chunk/at chunks (+ (long cx0) ix)
                           (+ (long cz0) iz))]
         (dotimes [iy (long nsy)]
           (aset grid (+ (* (+ (* ix (long ncz)) iz) (long nsy)) iy)
                 (section-at col (+ (long sy0) iy))))))))
 
-(defn block-reader ^Region [chunks template pos]
+(defn block-reader ^Region [chunks pos]
   (let [[cx0 cz0 sy0 ncx ncz nsy :as bounds] (region-bounds pos)
         grid (object-array (* (long ncx) (long ncz) (long nsy)))]
-    (fill-grid grid chunks template bounds)
+    (fill-grid grid chunks bounds)
     (Region. grid cx0 cz0 sy0 ncx ncz nsy)))
 
 (defn read-block ^long [^Region rg ^long x ^long y ^long z]

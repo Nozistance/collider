@@ -11,15 +11,14 @@
             [collider.log :as log]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen])
+            [collider.world.chunk :as chunk])
   (:import (collider.game.deltas Deltas)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
 
 (defn- block-state ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
+  (chunk/chunks-get-block (:chunks world) pos))
 
 (defn- players [world]
   (vec (sort (vals (:players world)))))
@@ -32,7 +31,7 @@
 (defn- chunk-packet [world id]
   (let [[x z] (chunk/id->pos id)]
     {:packet         :level-chunk-with-light :cx x :cz z
-     :chunk          (get-in world [:chunks id] (gen/flat-chunk))
+     :chunk          (get-in world [:chunks id] chunk/empty-chunk)
      :block-entities (be/wire (get-in world [:block-entities id]))}))
 
 (defn- forget-chunk-packet [id]
@@ -159,7 +158,7 @@
    :cow/death                     [:entity.cow.death 6]
    :cow/milk                      [:entity.cow.milk 6]
    :mooshroom/milk                [:entity.mooshroom.milk 6]
-   :mooshroom/suspicious          [:entity.mooshroom.suspicious 6]
+   :mooshroom/suspicious          [:entity.mooshroom.suspicious-milk 6]
    :mooshroom/shear               [:entity.mooshroom.shear 6]
    :mooshroom/eat                 [:entity.mooshroom.eat 6]
    :tnt/primed                    [:entity.tnt.primed 4]

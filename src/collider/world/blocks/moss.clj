@@ -2,8 +2,7 @@
   "Pale moss carpet and hanging moss."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -12,11 +11,11 @@
   (block/state (block/block-of st) (assoc (block/props-of st) k v)))
 
 (defn- attachable? [chunks p dir]
-  (let [n (gen/at-void chunks (mapv + p (dir/offset dir)))]
+  (let [n (chunk/at-void chunks (mapv + p (dir/offset dir)))]
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- carpet-at? [chunks p dir pred]
-  (let [n (gen/at-void chunks p)]
+  (let [n (chunk/at-void chunks p)]
     (and (= :pale-moss-carpet (block/block-of n)) (pred (block/props-of n) dir))))
 
 (defn- carpet-side [chunks p st dir create?]
@@ -40,7 +39,7 @@
     (or (= :true (:bottom props)) (boolean (some #(not= :none (get props %)) wall-sides)))))
 
 (defn carpet-supported? [chunks p ^long st]
-  (let [below (gen/at-void chunks (dir/down p))]
+  (let [below (chunk/at-void chunks (dir/down p))]
     (if (= :true (:bottom (block/props-of st)))
       (pos? below)
       (and (= :pale-moss-carpet (block/block-of below)) (= :true (:bottom (block/props-of below)))))))
@@ -55,7 +54,7 @@
   "Returns the carpet state to place above p, or nil when none fits there. side?
    is a predicate on a direction and tells which sides it may keep."
   [chunks p side?]
-  (let [above (dir/up p) prev (gen/at-void chunks above)
+  (let [above (dir/up p) prev (chunk/at-void chunks above)
         carpet? (= :pale-moss-carpet (block/block-of prev))]
     (when (and (chunk/in-range? (above 1))
                (or (not carpet?) (= :false (:bottom (block/props-of prev))))
@@ -67,12 +66,12 @@
         (when (and (carpet-faces? st') (not= st' prev)) st')))))
 
 (defn hanging-tip ^long [chunks p ^long st]
-  (with st :tip (if (= (block/block-of st) (block/block-of (gen/at-void chunks (dir/down p)))) :false :true)))
+  (with st :tip (if (= (block/block-of st) (block/block-of (chunk/at-void chunks (dir/down p)))) :false :true)))
 
 (defn hanging-supported? [chunks p ^long st]
-  (let [above (gen/at-void chunks (dir/up p))]
+  (let [above (chunk/at-void chunks (dir/up p))]
     (or (attachable? chunks p :up) (= (block/block-of st) (block/block-of above)))))
 
 (defn hanging-end [chunks p self]
   (loop [q (dir/down p)]
-    (if (= self (block/block-of (gen/at-void chunks q))) (recur (dir/down q)) q)))
+    (if (= self (block/block-of (chunk/at-void chunks q))) (recur (dir/down q)) q)))

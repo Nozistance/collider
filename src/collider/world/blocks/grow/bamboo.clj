@@ -3,13 +3,12 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grow.common :refer [age air-at? chance? height-above height-below lit? with]]))
 
 (set! *warn-on-reflection* true)
 
 (defn- grown [chunks p st roll height]
-  (let [below (gen/at chunks (dir/down p)) two (gen/at chunks (dir/down (dir/down p)))
+  (let [below (chunk/at chunks (dir/down p)) two (chunk/at chunks (dir/down (dir/down p)))
         bamboo? (fn [s] (= :bamboo (block/block-of s)))
         leaves (if (or (not (bamboo? below)) (= :none (:leaves (block/props-of below)))) :small :large)
         shift (when (and (= leaves :large) (bamboo? two))
@@ -39,7 +38,7 @@
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)
         top (mapv + p [0 above 0])
-        top-st (gen/at chunks top)
+        top-st (chunk/at chunks top)
         target (dir/up top)]
     (when (and (< (+ above below 1) 16)
                (not= 1 (block/prop-long top-st :stage))

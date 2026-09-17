@@ -1,8 +1,7 @@
 (ns collider.world.blocks.dragonegg
   "The dragon egg and the jump it makes when a player touches it."
   (:require [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -22,8 +21,8 @@
   (mapv + pos [(span roll i :x spread-xz) (span roll i :y spread-y) (span roll i :z spread-xz)]))
 
 (defn- lands? [chunks [_ y _ :as q]]
-  (and (chunk/in-range? y) (zero? (gen/at chunks q))
-       (not (zero? (gen/at chunks (dir/down q))))))
+  (and (chunk/in-range? y) (zero? (chunk/at chunks q))
+       (not (zero? (chunk/at chunks (dir/down q))))))
 
 (defn teleport-target [chunks pos roll]
   (first (sequence (comp (map (fn [i] (candidate pos roll i))) (filter #(lands? chunks %)))

@@ -15,8 +15,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -102,7 +101,7 @@
   (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]
     (if (empty? changes)
       world
-      (update world :chunks chunk/chunks-set-blocks (gen/flat-chunk) changes))))
+      (update world :chunks chunk/chunks-set-blocks changes))))
 
 (defn- block-edits-deltas [world events]
   (let [[_ edits] (reduce (fn [[w acc] [i [tag & args]]]

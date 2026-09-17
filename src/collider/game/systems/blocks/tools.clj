@@ -16,8 +16,7 @@
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,7 +45,7 @@
         st (fire/state-for (:chunks world) pos')]
     (when (and (chunk/in-range? y')
                (zero? (edit/block-at world pos'))
-               (support/supported? (:chunks world) (gen/flat-chunk) pos' st))
+               (support/supported? (:chunks world) pos' st))
       [[:set-blocks [[pos' st]] (dec (long (:tick world)))] (snd pos')])))
 
 (defn- flint-sound [world eid pos]

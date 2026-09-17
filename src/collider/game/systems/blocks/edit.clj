@@ -7,13 +7,12 @@
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
 (defn block-at ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
+  (chunk/chunks-get-block (:chunks world) pos))
 
 (def ^:private ^:const player-half 0.3)
 (def ^:private ^:const player-height 1.8)
@@ -90,10 +89,10 @@
   "Returns the deltas for the changes and for the changes they cause in the
    blocks around them."
   [world changes]
-  (let [chunks' (chunk/chunks-set-blocks (:chunks world) (gen/flat-chunk) changes)
+  (let [chunks' (chunk/chunks-set-blocks (:chunks world) changes)
         all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
-        chunks'' (chunk/chunks-set-blocks chunks' (gen/flat-chunk) all)
-        mixed (liquid/mix-changes chunks'' (gen/flat-chunk) (map first all))]
+        chunks'' (chunk/chunks-set-blocks chunks' all)
+        mixed (liquid/mix-changes chunks'' (map first all))]
     (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
           (map (fn [[p _]] (out/all (out/fizz p))))
           mixed)))

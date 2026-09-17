@@ -2,7 +2,6 @@
   "Grass blocks: where grass spreads and where it stays alive."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
@@ -16,7 +15,7 @@
 (defn short-grass? [st] (= :short-grass (block/block-of (long st))))
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
-    (chunk/chunks-get-block chunks (gen/flat-chunk) p)
+    (chunk/chunks-get-block chunks p)
     0))
 
 (def ^:private neighborhood

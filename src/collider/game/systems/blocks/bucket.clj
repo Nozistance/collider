@@ -10,8 +10,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -83,5 +82,5 @@
                  (chunk/in-range? y')
                  (block/can-be-replaced? (edit/block-at world above))
                  (not (edit/obstructed? world above st))
-                 (support/supported? (:chunks world) (gen/flat-chunk) above st))
+                 (support/supported? (:chunks world) above st))
         (edit/placed-deltas world eid above st)))))

@@ -12,7 +12,6 @@
             [collider.game.mob.sense :as sense]
             [collider.game.state :as state]
             [collider.game.out :as out]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.space.path :as path]
             [collider.world.phys :as phys])
@@ -61,7 +60,7 @@
             (> (long (:repath-at task 0)) (long t)))
       e
       (assoc e :task (assoc task
-                       :path (path/find-path (:chunks world) (gen/flat-chunk)
+                       :path (path/find-path (:chunks world)
                                              (sense/feet-cell (:pos e)) gc avoid-water?)
                        :path-i 0
                        :path-goal gc
@@ -87,7 +86,7 @@
         pi
         (let [w (pth j)]
           (if (and (= (long (w 1)) fy)
-                   (path/direct? (:chunks world) (gen/flat-chunk) (:pos e) half w))
+                   (path/direct? (:chunks world) (:pos e) half w))
             j
             (recur (dec j))))))))
 
@@ -185,7 +184,7 @@
          (< (^[double] Math/abs (+ (double vx0) (double cx))) 0.005)
          (< (^[double] Math/abs (+ (double vz0) (double cz))) 0.005)
          (<= -0.0785 (double vy0) 0.0)
-         (phys/standing-on-cubes? (:chunks world) (gen/flat-chunk)
+         (phys/standing-on-cubes? (:chunks world)
                                   (v/x pos) (v/y pos) (v/z pos) half))))
 
 (defn- rest-step [world e height t]
@@ -207,7 +206,7 @@
 
 (defn- water-push [world e half height water?]
   (if water?
-    (liquid/entity-push (:chunks world) (gen/flat-chunk) (:pos e) half height (:vel e))
+    (liquid/entity-push (:chunks world) (:pos e) half height (:vel e))
     zero3))
 
 (defn- steer-axis ^double [^double v0 h ^double accel]
@@ -263,7 +262,7 @@
        (>= (long t) (long (or (:jump-cd e) 0)))))
 
 (defn- bubbled-vy [world e ^Move mv water? bump? jump?]
-  (liquid/bubble-push (:chunks world) (gen/flat-chunk) (.pos mv)
+  (liquid/bubble-push (:chunks world) (.pos mv)
                       (next-vy world e (v/y (.vel mv)) water? bump? jump?)))
 
 (defn- mob-stepped [e ^Move mv ny fric target moving? water? jump? t]
@@ -281,7 +280,7 @@
         fric (friction (boolean (:on-ground e)) water?)
         drive (steer-vel world e t eid water? (when moving? (heading (:pos e) target))
                          vel0 push half height attr moving?)
-        ^Move mv (phys/move (:chunks world) (gen/flat-chunk) (:pos e) drive half height 0.6)
+        ^Move mv (phys/move (:chunks world) (:pos e) drive half height 0.6)
         vel (.vel mv)
         bump? (bumped? moving? (v/x drive) (v/z drive) (v/x vel) (v/z vel))
         jump? (jump-now? world e wp target ey moving? mv t)

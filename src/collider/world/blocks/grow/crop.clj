@@ -3,7 +3,6 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grow.common :refer [age aged air-at? chance? lit? pick water? with height-below]]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]))
@@ -13,13 +12,13 @@
 (def max-age {:crop 7 :carrot 7 :potato 7 :beetroot 3 :torchflower-crop 1 :stem 7})
 
 (defn- soil-speed ^double [chunks [x y z] ^long dx ^long dz]
-  (let [st (gen/at chunks [(+ (long x) dx) (dec (long y)) (+ (long z) dz)])]
+  (let [st (chunk/at chunks [(+ (long x) dx) (dec (long y)) (+ (long z) dz)])]
     (if (block/tagged? st "grows_crops")
       (if (pos? (block/prop-long st :moisture)) 3.0 1.0)
       0.0)))
 
 (defn- crowded? [chunks [x y z] self]
-  (let [same? (fn [^long dx ^long dz] (= self (block/block-of (gen/at chunks [(+ (long x) dx) y (+ (long z) dz)]))))]
+  (let [same? (fn [^long dx ^long dz] (= self (block/block-of (chunk/at chunks [(+ (long x) dx) y (+ (long z) dz)]))))]
     (or (and (or (same? -1 0) (same? 1 0)) (or (same? 0 -1) (same? 0 1)))
         (same? -1 -1) (same? 1 -1) (same? 1 1) (same? -1 1))))
 
@@ -45,7 +44,7 @@
 (defn- pitcher-grown [chunks p st ^long a]
   (when (and (lit? chunks p 8)
              (chunk/in-range? (inc (long (p 1))))
-             (or (< a 3) (let [u (gen/at chunks (dir/up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
+             (or (< a 3) (let [u (chunk/at chunks (dir/up p))] (or (zero? u) (= :pitcher-crop (block/type-of u))))))
     (let [st' (aged st a)]
       (cond-> [[p st']]
               (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
@@ -57,7 +56,7 @@
 (defn pitcher-meal [chunks p st _roll]
   (let [lower? (= :lower (:half (block/props-of st)))
         lp (if lower? p (dir/down p))
-        lst (if lower? st (gen/at chunks lp))]
+        lst (if lower? st (chunk/at chunks lp))]
     (when (and (= :pitcher-crop (block/type-of lst)) (< (age lst) 4))
       (when-let [changes (pitcher-grown chunks lp lst (inc (age lst)))]
         {:changes changes}))))
@@ -70,7 +69,7 @@
   (let [[fruit attached tag] (fruits (block/block-of st))
         dir (dir/horizontal (pick roll :dir 4))
         beside (mapv + p (dir/horizontal-offset dir))]
-    (when (and (air-at? chunks beside) (block/tagged? (gen/at chunks (dir/down beside)) tag))
+    (when (and (air-at? chunks beside) (block/tagged? (chunk/at chunks (dir/down beside)) tag))
       [[beside (block/state fruit)] [p (block/state attached {:facing dir})]])))
 
 (defn stem-tick [chunks p st roll _time _ctx]
@@ -85,16 +84,16 @@
 (defn- fruitless? [chunks p ^long st]
   (let [[fruit _] (stems (block/block-of st))
         beside (mapv + p (dir/horizontal-offset (block/facing-of st)))]
-    (not= fruit (block/block-of (gen/at chunks beside)))))
+    (not= fruit (block/block-of (chunk/at chunks beside)))))
 
 (def attached-stem-rule
   {:name   :attached-stem
    :match? (fn [_chunks st _p] (= :attached-stem (block/type-of st)))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
    :due    (fn [chunks p _ctx]
-             (let [st (gen/at chunks p)]
+             (let [st (chunk/at chunks p)]
                (cond
-                 (not (support/supported? chunks (gen/flat-chunk) p st)) [[p (support/gone-state st)]]
+                 (not (support/supported? chunks p st)) [[p (support/gone-state st)]]
                  (fruitless? chunks p st) [[p (block/state (second (stems (block/block-of st))) {:age :7})]])))})
 
 (defn cane-tick [chunks p st _roll _time _ctx]
@@ -108,7 +107,7 @@
     (let [a (age st) h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
         (let [top (cond
-                    (and (= a 8) (support/supported? chunks (gen/flat-chunk) (dir/up p) (block/state :cactus)))
+                    (and (= a 8) (support/supported? chunks (dir/up p) (block/state :cactus)))
                     (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1)) [[(dir/up p) (block/state :cactus-flower)]])
                     (and (= a 15) (< h 3)) [[(dir/up p) (block/state :cactus)] [p (aged st 0)]])]
           (into (vec top) (when (< a 15) [[p (aged st (inc a))]])))))))
@@ -119,7 +118,7 @@
 
 (defn kelp-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
-             (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
+             (= :water (liquid/liquid-class (chunk/at chunks (dir/up p)))))
     [[(dir/up p) (aged st (inc (age st)))]]))
 
 (defn cocoa-tick [_chunks p st roll _time _ctx]
@@ -146,7 +145,7 @@
 (defn cocoa-meal [_chunks p st _roll] (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]}))
 
 (defn kelp-meal [chunks p st _roll]
-  (when (and (< (age st) 25) (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
+  (when (and (< (age st) 25) (= :water (liquid/liquid-class (chunk/at chunks (dir/up p)))))
     {:changes [[(dir/up p) (aged st (inc (age st)))]]}))
 
 (defn propagule-meal [_chunks p st _roll]
@@ -154,7 +153,7 @@
     {:changes [[p (aged st (inc (age st)))]]}))
 
 (defn seagrass-meal [chunks p _st _roll]
-  (when (water? (gen/at chunks (dir/up p)))
+  (when (water? (chunk/at chunks (dir/up p)))
     {:changes [[p (block/state :tall-seagrass {:half :lower})] [(dir/up p) (block/state :tall-seagrass {:half :upper})]]}))
 
 (defn tall-flower-meal [_chunks _p st _roll]
@@ -162,7 +161,7 @@
 
 (defn doubled [chunks p st _roll]
   (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))]
-    (when (and (air-at? chunks (dir/up p)) (support/supported? chunks (gen/flat-chunk) p tall))
+    (when (and (air-at? chunks (dir/up p)) (support/supported? chunks p tall))
       {:changes [[p tall] [(dir/up p) (block/state (block/block-of tall) {:half :upper})]]})))
 
 (defn petals-meal [_chunks p st _roll]

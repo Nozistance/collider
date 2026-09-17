@@ -46,22 +46,17 @@ public final class Chunk {
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
 
-    public static Chunk at(ChunkIndex chunks, Chunk template,
-                           int cx, int cz) {
+    public static Chunk at(ChunkIndex chunks, int cx, int cz) {
         Object c = chunks.get(cx, cz);
-        return c == null ? template : (Chunk) c;
+        return c == null ? EMPTY : (Chunk) c;
     }
 
-    public static int blockAt(ChunkIndex chunks, Chunk template,
-                              int x, int y, int z) {
-        Chunk c = at(chunks, template, x >> 4, z >> 4);
-        return c == null ? 0 : c.block(x, y, z);
+    public static int blockAt(ChunkIndex chunks, int x, int y, int z) {
+        return at(chunks, x >> 4, z >> 4).block(x, y, z);
     }
 
-    public static Section sectionAt(ChunkIndex chunks, Chunk template,
-                                    int x, int y, int z) {
-        Chunk c = at(chunks, template, x >> 4, z >> 4);
-        return c == null ? null : c.section((y >> 4) + OFFSET);
+    public static Section sectionAt(ChunkIndex chunks, int x, int y, int z) {
+        return at(chunks, x >> 4, z >> 4).section((y >> 4) + OFFSET);
     }
 
     public Section firstAbove(int si) {

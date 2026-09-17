@@ -8,8 +8,7 @@
             [collider.game.systems.containers :as containers]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -35,7 +34,7 @@
 
 (defn- pick-item [world {:keys [pos entity include-data]}]
   (cond
-    pos (let [st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
+    pos (let [st (chunk/chunks-get-block (:chunks world) pos)]
           (when (pos? (long st))
             (when-let [item (item-of (block/block-of (long st)))]
               (if include-data

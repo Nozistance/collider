@@ -3,7 +3,6 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grow.common :refer [air-at? chance? crowd flag pick]]
             [collider.world.blocks.support :as support]))
 
@@ -12,7 +11,7 @@
 (defn tick [chunks p st roll _time _ctx]
   (when (and (chance? roll :gate 25) (< (crowd chunks p (block/block-of st)) 5))
     (let [step (fn [q i] (mapv + q [(dec (pick roll [:x i] 3)) (- (pick roll [:y1 i] 2) (pick roll [:y2 i] 2)) (dec (pick roll [:z i] 3))]))
-          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks (gen/flat-chunk) q st)))
+          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks q st)))
           target (loop [q p off (step p 0) i 1]
                    (if (> i 4)
                      off
@@ -26,7 +25,7 @@
 (def ^:private ^:table stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
 
 (defn- cleared-at ^long [chunks origin q]
-  (if (= q origin) 0 (gen/at chunks q)))
+  (if (= q origin) 0 (chunk/at chunks q)))
 
 (defn- check-radius ^long [kind ^long radius ^long dy]
   (if (= :brown-mushroom kind) (if (<= dy 3) 0 radius) 0))
@@ -42,7 +41,7 @@
 
 (defn- fits? [chunks [_ y _ :as p] kind radius tag height]
   (and (>= (long y) 1) (chunk/in-range? (+ (long y) (long height) 1))
-       (block/tagged? (gen/at chunks (dir/down p)) tag)
+       (block/tagged? (chunk/at chunks (dir/down p)) tag)
        (room? chunks p kind (long radius) (long height))))
 
 (defn- height-roll ^long [roll]
@@ -81,7 +80,7 @@
 (defn- changes [chunks origin cells]
   (loop [cells (seq cells) seen {origin 0} acc []]
     (if-let [[q st] (first cells)]
-      (let [cur (long (get seen q (gen/at chunks q)))]
+      (let [cur (long (get seen q (chunk/at chunks q)))]
         (if (or (zero? cur) (block/tagged? cur "replaceable_by_mushrooms"))
           (recur (next cells) (assoc seen q st) (conj acc [q st]))
           (recur (next cells) seen acc)))

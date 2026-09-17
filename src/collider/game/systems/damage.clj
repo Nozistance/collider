@@ -8,7 +8,6 @@
             [collider.game.state :as state]
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
             [collider.game.block.menu :as menu]
@@ -93,7 +92,7 @@
             x (long x) y (long y) z (long z)]
         (if (and (= x lx) (= y ly) (= z lz))
           (recur (inc i) x y z)
-          (if (phys/solid? chunks (gen/flat-chunk) x y z)
+          (if (phys/solid? chunks x y z)
             false
             (recur (inc i) x y z)))))))
 
@@ -182,7 +181,7 @@
      (floor-lo (- pz h)) (floor-hi (+ pz h))]))
 
 (defn- mark-cell [chunks ^longs acc x y z inner?]
-  (let [st (chunk/block-state chunks (gen/flat-chunk) x y z)
+  (let [st (chunk/block-state chunks x y z)
         lava? (= :lava (liquid/liquid-class st))]
     (when (or lava? (block/fire? st))
       (aset acc 0 (bit-or (aget acc 0) touch-bit)))
@@ -259,7 +258,7 @@
 (defn- landing-particles [world e ^double fall]
   (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
         pos (:pos e)
-        st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk)
+        st (chunk/chunks-get-block (:chunks world)
                                    [(long (Math/floor (v/x pos))) (long (Math/floor (- (v/y pos) 0.2)))
                                     (long (Math/floor (v/z pos)))])]
     (when (and (pos? power) (not (block/air? st)))
@@ -312,8 +311,8 @@
       {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false})))
 
 (defn- free-to-stand? [chunks [x y z]]
-  (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks (gen/flat-chunk) [x y z]))
-       (block/possible-to-respawn-in? (chunk/chunks-get-block chunks (gen/flat-chunk) [x (inc (long y)) z]))))
+  (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks [x y z]))
+       (block/possible-to-respawn-in? (chunk/chunks-get-block chunks [x (inc (long y)) z]))))
 
 (defn- found-respawn [chunks {:keys [pos yaw pitch forced?]}]
   (if (bed/head-pos chunks pos)

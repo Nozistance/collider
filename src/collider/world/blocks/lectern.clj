@@ -1,8 +1,7 @@
 (ns collider.world.blocks.lectern
   "Lectern: its book and its redstone pulse."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -27,6 +26,6 @@
    :match? (fn [_chunks st _p] (lectern? st))
    :wake   (fn [_chunks _tick _p _old _self?] nil)
    :due    (fn [chunks p _ctx]
-             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
+             (let [st (chunk/chunks-get-block chunks p)]
                (when (and (lectern? st) (powered? st))
                  [[p (powered-state st false)]])))})

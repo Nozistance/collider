@@ -11,7 +11,6 @@
             [collider.data :as data]
             [collider.world.blocks.fire :as fire]
             [collider.world.block :as block]
-            [collider.world.gen :as gen]
             [collider.world.space.explosion :as explosion]))
 
 (set! *warn-on-reflection* true)
@@ -136,7 +135,7 @@
           affected)))
 
 (defn- explosion-reader [world [cx cy cz]]
-  (explosion/block-reader (:chunks world) (gen/flat-chunk)
+  (explosion/block-reader (:chunks world)
                           [(long (double cx)) (long (double cy)) (long (double cz))]))
 
 (defn- break-cells [world rg affected gone primed source]

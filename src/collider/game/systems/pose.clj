@@ -4,8 +4,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -29,7 +28,7 @@
        (axis-hit? cz (nth b 2) (nth b 5) (nth lo 2) (nth hi 2))))
 
 (defn- st-at [chunks cx cy cz]
-  (chunk/chunks-get-block chunks (gen/flat-chunk) cx cy cz))
+  (chunk/chunks-get-block chunks cx cy cz))
 
 (defn- cell-hit? [chunks cx cy cz lo hi]
   (let [st (st-at chunks cx cy cz)]
@@ -58,7 +57,7 @@
 
 (defn- water-depth ^double [chunks pos pose]
   (let [[half h] (pose-box pose) m fluid-margin]
-    (liquid/fluid-height chunks (gen/flat-chunk)
+    (liquid/fluid-height chunks
                          [(v/x pos) (+ (v/y pos) m) (v/z pos)]
                          (- (double half) m)
                          (- (double h) (* 2.0 m))
@@ -74,7 +73,7 @@
     (boolean
       (when (water-at? chunks cx cy cz)
         (when-let [h (liquid/fluid-height-of
-                       chunks (gen/flat-chunk) [cx cy cz]
+                       chunks [cx cy cz]
                        (st-at chunks cx cy cz) nil)]
           (<= ey (+ (long cy) (double h))))))))
 

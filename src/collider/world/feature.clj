@@ -4,7 +4,6 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.support :as support])
   (:import (collider.java Noise)))
@@ -39,11 +38,11 @@
   (:chunks acc))
 
 (defn state-at ^long [acc p]
-  (gen/at (:chunks acc) p))
+  (chunk/at (:chunks acc) p))
 
 (defn set-state [acc p ^long st]
   (-> acc
-      (update :chunks chunk/chunks-set-blocks (gen/flat-chunk) [[p st]])
+      (update :chunks chunk/chunks-set-blocks [[p st]])
       (update :cells conj [p st])))
 
 (defn- air-at? [acc p]
@@ -135,7 +134,7 @@
 
 (defn- simple-block [acc cfg p roll salt]
   (let [st (state-of (provide (:to-place cfg) p roll salt))]
-    (if-not (support/supported? (:chunks acc) (gen/flat-chunk) p st)
+    (if-not (support/supported? (:chunks acc) p st)
       acc
       (case (block/type-of st)
         :double-plant (double-plant acc p st)

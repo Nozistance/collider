@@ -3,7 +3,6 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grow.common :refer [age aged air-at? chance? crowd pick with]]
             [collider.world.blocks.support :as support]))
 
@@ -26,11 +25,11 @@
 (defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
 
 (defn- attachable? [chunks p dir]
-  (let [n (gen/at chunks (mapv + p (dir/offset dir)))]
+  (let [n (chunk/at chunks (mapv + p (dir/offset dir)))]
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- face-held? [chunks p st dir]
-  (support/supported? chunks (gen/flat-chunk) p (vine-with (block/state (block/block-of st)) dir)))
+  (support/supported? chunks p (vine-with (block/state (block/block-of st)) dir)))
 
 (defn- crowded? [chunks p self] (>= (crowd chunks p self) 5))
 
@@ -64,7 +63,7 @@
       :else nil)))
 
 (defn- downward [chunks p st roll]
-  (let [below (dir/down p) bst (gen/at chunks below)]
+  (let [below (dir/down p) bst (chunk/at chunks below)]
     (when (or (zero? bst) (= (block/block-of bst) (block/block-of st)))
       (let [before (if (zero? bst) (block/state (block/block-of st)) bst)
             after (reduce (fn [s dir] (if (and (< (double (roll [:copy dir])) 0.5) (vine-has? st dir)) (vine-with s dir) s))
@@ -92,7 +91,7 @@
   (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
         off (dir/offset dir)]
     (loop [q p n 0]
-      (let [nq (mapv + q off) b (block/block-of (gen/at chunks nq))]
+      (let [nq (mapv + q off) b (block/block-of (chunk/at chunks nq))]
         (cond
           (= head b) nq
           (and (= body b) (< n 256)) (recur nq (inc n))
@@ -107,7 +106,7 @@
         (when (seq acc) {:changes acc})))))
 
 (defn body-meal [chunks p st roll]
-  (when-let [h (head-pos chunks p st)] (plant-meal chunks h (gen/at chunks h) roll)))
+  (when-let [h (head-pos chunks p st)] (plant-meal chunks h (chunk/at chunks h) roll)))
 
 (defn berries-meal [_chunks p st _roll]
   (when (= :false (:berries (block/props-of st)))

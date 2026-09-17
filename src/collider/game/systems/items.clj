@@ -6,7 +6,6 @@
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.vec :as v]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
@@ -135,9 +134,9 @@
   [(* (double vx) drag) (+ (double vy) (if (< (double vy) buoyancy-below) buoyancy 0.0)) (* (double vz) drag)])
 
 (defn- item-drift [chunks pos vel]
-  (let [pushed (v/+ vel (liquid/entity-push chunks (gen/flat-chunk) pos item-half item-height vel))
-        water (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :water)
-        lava (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :lava)]
+  (let [pushed (v/+ vel (liquid/entity-push chunks pos item-half item-height vel))
+        water (liquid/fluid-height chunks pos item-half item-height :water)
+        lava (liquid/fluid-height chunks pos item-half item-height :lava)]
     [(cond
        (> water fluid-depth) (fluid-movement pushed water-drag)
        (> lava fluid-depth) (fluid-movement pushed lava-drag)
@@ -145,7 +144,7 @@
      (or (> water fluid-depth) (> lava fluid-depth))]))
 
 (defn- item-moved [chunks pos [vx vy vz]]
-  (let [^Move mv (phys/move chunks (gen/flat-chunk) pos
+  (let [^Move mv (phys/move chunks pos
                             [(double vx) (double vy) (double vz)] item-half item-height)
         on-ground (.on-ground mv)
         [mx my mz] (if on-ground (motion/stepped-speed chunks (.pos mv) (.vel mv)) (.vel mv))
@@ -173,7 +172,7 @@
                                 [pos drift true]
                                 (item-moved chunks pos (if stuck (mapv * drift stuck) drift)))
         vel' (if (and stuck (not resting?)) [0.0 0.0 0.0] vel')
-        vel' (assoc vel' 1 (liquid/bubble-push chunks (gen/flat-chunk) pos' (double (vel' 1))))
+        vel' (assoc vel' 1 (liquid/bubble-push chunks pos' (double (vel' 1))))
         stuck' (motion/stuck-speed chunks pos' item-half item-height)
         stuck' (if resting? (or stuck' stuck) stuck')]
     (if (or (>= age despawn-age) (not (pos? (double (:health e 1.0)))))

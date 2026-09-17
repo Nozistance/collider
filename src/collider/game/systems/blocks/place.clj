@@ -13,8 +13,7 @@
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
-            [collider.world.gen :as gen]))
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
@@ -62,10 +61,10 @@
     (and (= :water (liquid/liquid-class cur))
          (contains? #{0 8} (liquid/level cur))
          (pos? (long y))
-         (support/supported? (:chunks world) (gen/flat-chunk) pos' state))))
+         (support/supported? (:chunks world) pos' state))))
 
 (defn- carpet-place-deltas [world eid pos state]
-  (let [chunks (chunk/chunks-set-blocks (:chunks world) (gen/flat-chunk) [[pos state]])
+  (let [chunks (chunk/chunks-set-blocks (:chunks world) [[pos state]])
         side? (fn [dir] (< (double (random/of-key (:tick world) pos :moss dir)) 0.5))]
     (if-let [topper (moss/carpet-topper chunks pos side?)]
       (edit/placed-deltas world eid [[pos state] [(mapv + pos [0 1 0]) topper]])
@@ -126,7 +125,7 @@
 
 (defn scaffold-place-deltas [world eid pos face]
   (if-let [target (scaffold-target world eid pos face)]
-    (let [st (support/scaffold-state (:chunks world) (gen/flat-chunk) target (block/state :scaffolding))]
+    (let [st (support/scaffold-state (:chunks world) target (block/state :scaffolding))]
       (if (not (edit/obstructed? world target st))
         (edit/placed-deltas world eid target (edit/waterlogged world target st))
         (edit/reject-deltas world eid pos target)))
@@ -143,7 +142,7 @@
 
 (defn- refined [world eid pos pos' state face item]
   (let [[yaw pitch sneaking?] (pose world eid)
-        state (support/fitted (:chunks world) (gen/flat-chunk) pos' (reshaped world pos' state) face
+        state (support/fitted (:chunks world) pos' (reshaped world pos' state) face
                               yaw pitch sneaking? (:tick world) (= pos' pos))
         state (if (and state (contains? container/container-types (block/type-of state)))
                 (container/placed-state (:chunks world) pos' state face sneaking? yaw pitch)

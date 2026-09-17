@@ -3,7 +3,6 @@
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
@@ -31,7 +30,7 @@
    tick they change on."
   [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
-            (if (not= old (gen/at chunks q))
+            (if (not= old (chunk/at chunks q))
               m
               (let [dx (- (long qx) (long x)) dy (- (long qy) (long y)) dz (- (long qz) (long z))
                     dist (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz))))
@@ -47,11 +46,11 @@
 
 
    :wake   (fn [chunks tick p _old _self?]
-             (when-not (support/supported? chunks (gen/flat-chunk) p
-                                           (chunk/chunks-get-block chunks (gen/flat-chunk) p))
+             (when-not (support/supported? chunks p
+                                           (chunk/chunks-get-block chunks p))
                (inc (long tick))))
    :due    (fn [chunks p ctx]
-             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
+             (let [st (chunk/chunks-get-block chunks p)]
                (or (seq ((:due support/rule) chunks p nil))
                    (when-let [new (switched st (long (:time-of-day ctx 0)))]
                      [[p new]]))))})

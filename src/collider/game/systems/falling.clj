@@ -6,7 +6,6 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
@@ -19,7 +18,7 @@
 (def ^:private ^:const height 0.98)
 (def ^:private ^:const max-time 600)
 (defn- block-at ^long [world [_ y _ :as pos]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos) 0))
+  (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) pos) 0))
 
 (defn- cell-of [pos]
   [(long (Math/floor (v/x pos))) (long (Math/floor (v/y pos))) (long (Math/floor (v/z pos)))])
@@ -34,9 +33,9 @@
 (defn- anvil? [^long st] (= :anvil (block/type-of st)))
 
 (defn- landed-state [world cell st cur concrete? stuck?]
-  (let [continues? (and (support/free-below? (:chunks world) (gen/flat-chunk) cell) (not (and concrete? stuck?)))]
+  (let [continues? (and (support/free-below? (:chunks world) cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
-               (support/supported? (:chunks world) (gen/flat-chunk) cell st))
+               (support/supported? (:chunks world) cell st))
       (let [in-water? (= :water (liquid/liquid-class cur))
             st (if in-water? (block/with-water st) st)]
         (if (and concrete? in-water?) (block/concrete-of st) st)))))
@@ -99,7 +98,7 @@
 (defn- fall-move ^Move [world e]
   (let [[vx vy vz] (:vel e)
         d [(double vx) (- (double vy) 0.04) (double vz)]]
-    (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
+    (phys/move (:chunks world) (:pos e)
                (if (:stuck e) (mapv * d (:stuck e)) d) half height)))
 
 (defn- drift-deltas [eid pos time [mx my mz] stuck stuck']

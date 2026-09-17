@@ -2,14 +2,13 @@
   "A mob's senses of the blocks under it and the entities around it."
   (:require [collider.game.state :as state]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
 (defn block-at
-  (^long [world p] (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) p))
-  (^long [world x y z] (chunk/block-state (:chunks world) (gen/flat-chunk) x y z)))
+  (^long [world p] (chunk/chunks-get-block (:chunks world) p))
+  (^long [world x y z] (chunk/block-state (:chunks world) x y z)))
 
 (defn feet-cell [p]
   [(long (Math/floor (v/x p))) (long (Math/floor (v/y p))) (long (Math/floor (v/z p)))])

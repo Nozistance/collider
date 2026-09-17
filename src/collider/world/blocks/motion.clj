@@ -1,7 +1,7 @@
 (ns collider.world.blocks.motion
   "What the blocks an entity touches do to the speed it keeps."
   (:require [collider.world.block :as block]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -20,7 +20,7 @@
     (for [bx (range (lo (- x half)) (inc (hi (+ x half))))
           by (range (lo y) (inc (hi (+ y height))))
           bz (range (lo (- z half)) (inc (hi (+ z half))))]
-      (gen/at chunks [bx by bz]))))
+      (chunk/at chunks [bx by bz]))))
 
 (defn stuck-speed
   "Returns what the blocks a box at pos stands in multiply its next move by,
@@ -31,7 +31,7 @@
     web-speed))
 
 (defn- below-of [chunks [x y z]]
-  (gen/at chunks [(long (Math/floor (double x)))
+  (chunk/at chunks [(long (Math/floor (double x)))
                   (long (Math/floor (- (double y) step-offset)))
                   (long (Math/floor (double z)))]))
 

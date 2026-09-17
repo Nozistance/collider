@@ -1,8 +1,7 @@
 (ns collider.world.blocks.composter
   "Composter: its fill level, and the settling of a full one."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -12,9 +11,9 @@
   {:name   :composter
    :match? (fn [_chunks st _p] (= :composter (block/type-of st)))
    :wake   (fn [chunks tick p _old self?]
-             (when (and self? (= 7 (level (chunk/chunks-get-block chunks (gen/flat-chunk) p))))
+             (when (and self? (= 7 (level (chunk/chunks-get-block chunks p))))
                (+ (long tick) 20)))
    :due    (fn [chunks p _ctx]
-             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
+             (let [st (chunk/chunks-get-block chunks p)]
                (when (= 7 (level st))
                  [[p (block/state :composter {:level :8})]])))})

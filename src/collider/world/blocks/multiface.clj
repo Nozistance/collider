@@ -2,7 +2,7 @@
   "Blocks that sit on the faces of their neighbours, and their spreading."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.gen :as gen]
+            [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
@@ -19,7 +19,7 @@
 (defn- has-face? [^long st dir] (= :true (get (block/props-of st) dir)))
 
 (defn- attachable? [chunks p dir]
-  (let [n (gen/at-void chunks (mapv + p (dir/offset dir)))]
+  (let [n (chunk/at-void chunks (mapv + p (dir/offset dir)))]
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- water-source? [^long st]
@@ -33,7 +33,7 @@
        (attachable? chunks p dir)))
 
 (defn- spread-into? [chunks [q dir] self]
-  (let [existing (gen/at-void chunks q)]
+  (let [existing (chunk/at-void chunks q)]
     (and (not (neg? existing))
          (replaceable? existing self)
          (valid-placement? chunks existing q dir self))))
@@ -57,7 +57,7 @@
              sp))))
 
 (defn- placed-state ^long [chunks [q dir] self]
-  (let [old (gen/at-void chunks q)
+  (let [old (chunk/at-void chunks q)
         base (cond (= self (block/block-of (max 0 old))) old
                    (water-source? old) (block/with-water (block/state self))
                    :else (block/state self))]

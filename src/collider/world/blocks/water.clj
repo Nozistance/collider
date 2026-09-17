@@ -3,7 +3,6 @@
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support])
   (:import (clojure.lang PersistentQueue)))
@@ -18,16 +17,16 @@
 
 (defn coral-wet? [chunks p st]
   (or (block/waterlogged? st)
-      (boolean (some #(water? (gen/at chunks (mapv + p %))) around6))))
+      (boolean (some #(water? (chunk/at chunks (mapv + p %))) around6))))
 
 (def coral-rule
   {:name   :coral
    :match? (fn [_chunks st _p] (contains? block/coral-types (block/type-of st)))
    :wake   (fn [chunks tick p _old _self?]
-             (when-not (coral-wet? chunks p (gen/at chunks p))
+             (when-not (coral-wet? chunks p (chunk/at chunks p))
                (+ (long tick) 60 (long (Math/floor (* 40.0 (random/of-key tick p :coral)))))))
    :due    (fn [chunks p _ctx]
-             (let [st (gen/at chunks p)]
+             (let [st (chunk/at chunks p)]
                (when-not (coral-wet? chunks p st)
                  [[p (block/dead-coral st)]])))})
 
@@ -38,14 +37,14 @@
 
 (defn- above [chunks [x y z]]
   (let [y (inc (long y))]
-    (if (chunk/in-range? y) (chunk/chunks-get-block chunks (gen/flat-chunk) [x y z]) 0)))
+    (if (chunk/in-range? y) (chunk/chunks-get-block chunks [x y z]) 0)))
 
 (def kelp-rule
   {:name   :kelp
    :match? (fn [_chunks st _p] (kelp? st))
    :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
    :due    (fn [chunks p ctx]
-             (let [st (chunk/chunks-get-block chunks (gen/flat-chunk) p)
+             (let [st (chunk/chunks-get-block chunks p)
                    up? (kelp? (above chunks p))]
                (or (seq ((:due support/rule) chunks p nil))
                    (concat
@@ -53,7 +52,7 @@
                        :kelp (when up? [[p (block/state :kelp-plant)]])
                        :kelp-plant (when-not up? [[p (kelp-head-state (:tick ctx) p)]])
                        nil)
-                     (liquid/update-cell chunks (gen/flat-chunk) p (:rules ctx))))))})
+                     (liquid/update-cell chunks p (:rules ctx))))))})
 
 (defn- dried [st]
   (cond
@@ -67,10 +66,10 @@
       (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))
       (let [[p ^long d] (peek queue)
             wet (when (< d 6)
-                  (for [o around6 :let [q (mapv + p o)] :when (and (not (seen q)) (some? (dried (gen/at chunks q))))] q))]
+                  (for [o around6 :let [q (mapv + p o)] :when (and (not (seen q)) (some? (dried (chunk/at chunks q))))] q))]
         (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
                (into seen wet)
-               (into acc (map (fn [q] [q (dried (gen/at chunks q))]) wet)))))))
+               (into acc (map (fn [q] [q (dried (chunk/at chunks q))]) wet)))))))
 
 (def sponge-rule
   {:name   :sponge

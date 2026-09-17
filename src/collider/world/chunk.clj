@@ -34,6 +34,8 @@
 
 (def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
 
+(def empty-chunk Chunk/EMPTY)
+
 (defn chunk-of ^Chunk [sections]
   (Chunk/of (object-array sections)))
 
@@ -102,18 +104,22 @@
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 
 (defn chunks-get-block
-  "Returns the block state at x y z, reading template where the chunk is
-   absent."
-  (^long [chunks template [x y z]]
-   (Chunk/blockAt chunks template (unchecked-int x) (unchecked-int y)
-                  (unchecked-int z)))
-  ([chunks template x y z]
-   (Chunk/blockAt chunks template (unchecked-int x) (unchecked-int y)
-                  (unchecked-int z))))
+  "Returns the block state at x y z, air where the chunk is absent."
+  (^long [chunks [x y z]]
+   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y) (unchecked-int z)))
+  ([chunks x y z]
+   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y) (unchecked-int z))))
 
-(definline block-state [chunks template x y z]
-  `(long (Chunk/blockAt ~chunks ~template (unchecked-int ~x)
-                        (unchecked-int ~y) (unchecked-int ~z))))
+(definline block-state [chunks x y z]
+  `(long (Chunk/blockAt ~chunks (unchecked-int ~x) (unchecked-int ~y) (unchecked-int ~z))))
+
+(defn at ^long [chunks [_ y _ :as p]]
+  (if (in-range? y) (chunks-get-block chunks p) 0))
+
+(defn at-void
+  "Returns the block state at p, -1 outside the world height."
+  ^long [chunks [_ y _ :as p]]
+  (if (in-range? y) (chunks-get-block chunks p) -1))
 
 (definterface Edits
   (add [^long i ^long state])
@@ -157,26 +163,26 @@
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
 
 (defn with-chunks
-  "Returns chunks with each group of [[cp k] x] entries reduced by f
-   into the chunk at cp, template where it is absent."
-  ^ChunkIndex [^ChunkIndex chunks template f groups]
-  (let [gs (vec groups)
+  "Returns chunks with each group of [[cp k] x] entries reduced by f into the
+   chunk at cp. A group for an absent chunk is dropped."
+  ^ChunkIndex [^ChunkIndex chunks f groups]
+  (let [gs (filterv (fn [g] (some? (.get chunks (long (ffirst (first g)))))) groups)
         ids (long-array (count gs))
         cs (object-array (count gs))]
     (dotimes [i (count gs)]
       (let [g (gs i)
             cp (long (ffirst (first g)))]
         (aset ids i cp)
-        (aset cs i (reduce f (or (.get chunks cp) template) g))))
+        (aset cs i (reduce f (.get chunks cp) g))))
     (.withAll chunks ids cs)))
 
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied. An absent chunk starts
-   from template."
-  [chunks template changes]
+  "Returns chunks with the [pos state] changes applied, those in absent chunks
+   dropped."
+  [chunks changes]
   (if (empty? changes)
     chunks
     (let [cache (HashMap.)]
       (doseq [change changes] (apply-change! cache change))
-      (with-chunks chunks template merge-section
+      (with-chunks chunks merge-section
         (partition-by ffirst (cache-order cache))))))

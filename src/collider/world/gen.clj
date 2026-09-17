@@ -1,5 +1,5 @@
 (ns collider.world.gen
-  "The flat world template and block reads against it."
+  "The flat chunk every new chunk starts from."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -26,9 +26,3 @@
                   (chunk/section-index 0) (flat-section)))))
 
 (defn flat-chunk [] @flat)
-
-(defn at ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks (flat-chunk) p) 0))
-
-(defn at-void ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks (flat-chunk) p) -1))

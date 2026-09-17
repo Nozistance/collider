@@ -8,7 +8,6 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.eyeblossom :as eyeblossom]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.precipitation :as precipitation])
@@ -29,7 +28,7 @@
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (= :lava (liquid/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
-        {:changes (liquid/lava-random-tick chunks (gen/flat-chunk) p roll)})
+        {:changes (liquid/lava-random-tick chunks p roll)})
       (let [drip (dripstone/drip chunks p st roll)]
         {:drip    drip
          :drops   (grow/random-drops st roll)
@@ -96,7 +95,7 @@
 (defn- eyeblossom-schedules [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [p _]]
-              (let [old (chunk/chunks-get-block chunks (gen/flat-chunk) p)]
+              (let [old (chunk/chunks-get-block chunks p)]
                 (merge-with into m (eyeblossom/cascade chunks p old t))))
             {} (eyeblossom-changes changes))))
 

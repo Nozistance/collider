@@ -9,61 +9,61 @@
 
 (def ^:private ^:const max-nodes 200)
 (def ^:private ^:const max-fall 3)
-(defn- water-at? [chunks template x y z]
-  (= :water (liquid/liquid-class (chunk/block-state chunks template x y z))))
+(defn- water-at? [chunks x y z]
+  (= :water (liquid/liquid-class (chunk/block-state chunks x y z))))
 
-(defn- fence-at? [chunks template [x y z]]
-  (phys/fence-at? chunks template x y z))
+(defn- fence-at? [chunks [x y z]]
+  (phys/fence-at? chunks x y z))
 
-(defn- open? [chunks template x y z]
-  (and (not (phys/solid? chunks template x y z))
-       (not (phys/solid? chunks template x (inc y) z))))
+(defn- open? [chunks x y z]
+  (and (not (phys/solid? chunks x y z))
+       (not (phys/solid? chunks x (inc y) z))))
 
-(defn- supported? [chunks template x y z]
-  (or (and (phys/solid? chunks template x (dec y) z)
-           (not (fence-at? chunks template [x (dec y) z]))
-           (not (fence-at? chunks template [x (- (long y) 2) z])))
-      (water-at? chunks template x (dec y) z)
-      (water-at? chunks template x y z)))
+(defn- supported? [chunks x y z]
+  (or (and (phys/solid? chunks x (dec y) z)
+           (not (fence-at? chunks [x (dec y) z]))
+           (not (fence-at? chunks [x (- (long y) 2) z])))
+      (water-at? chunks x (dec y) z)
+      (water-at? chunks x y z)))
 
-(defn- wet? [chunks template x y z]
-  (or (water-at? chunks template x y z)
-      (water-at? chunks template x (dec y) z)))
+(defn- wet? [chunks x y z]
+  (or (water-at? chunks x y z)
+      (water-at? chunks x (dec y) z)))
 
-(defn- walkable? [chunks template avoid-water? cx cy cz]
-  (and (open? chunks template cx cy cz)
-       (supported? chunks template cx cy cz)
-       (not (and avoid-water? (wet? chunks template cx cy cz)))))
+(defn- walkable? [chunks avoid-water? cx cy cz]
+  (and (open? chunks cx cy cz)
+       (supported? chunks cx cy cz)
+       (not (and avoid-water? (wet? chunks cx cy cz)))))
 
-(defn- fall-cell [chunks template avoid-water? nx y nz]
+(defn- fall-cell [chunks avoid-water? nx y nz]
   (loop [dy 1]
     (when (<= dy max-fall)
       (let [ny (- (long y) (long dy))]
         (cond
-          (not (open? chunks template nx ny nz)) nil
-          (supported? chunks template nx ny nz)
-          (when-not (and avoid-water? (wet? chunks template nx ny nz)) [nx ny nz])
+          (not (open? chunks nx ny nz)) nil
+          (supported? chunks nx ny nz)
+          (when-not (and avoid-water? (wet? chunks nx ny nz)) [nx ny nz])
           :else (recur (inc dy)))))))
 
-(defn- step-cell [chunks template avoid-water? [x y z] [dx dz]]
+(defn- step-cell [chunks avoid-water? [x y z] [dx dz]]
   (let [x (long x) y (long y) z (long z)
         nx (+ x (long dx)) nz (+ z (long dz))
-        ok? (fn [cy] (walkable? chunks template avoid-water? nx cy nz))]
+        ok? (fn [cy] (walkable? chunks avoid-water? nx cy nz))]
     (cond
       (ok? y) [nx y nz]
-      (and (ok? (inc y)) (not (phys/solid? chunks template x (+ y 2) z))) [nx (inc y) nz]
-      (open? chunks template nx y nz) (fall-cell chunks template avoid-water? nx y nz)
+      (and (ok? (inc y)) (not (phys/solid? chunks x (+ y 2) z))) [nx (inc y) nz]
+      (open? chunks nx y nz) (fall-cell chunks avoid-water? nx y nz)
       :else nil)))
 
-(defn- footprint-free? [chunks template half px pz y]
+(defn- footprint-free? [chunks half px pz y]
   (every? (fn [[ox oz]]
             (let [cx (long (Math/floor (+ (double px) (double ox))))
                   cz (long (Math/floor (+ (double pz) (double oz))))]
-              (and (open? chunks template cx y cz)
-                   (supported? chunks template cx y cz))))
+              (and (open? chunks cx y cz)
+                   (supported? chunks cx y cz))))
           (let [h (double half)] [[(- h) (- h)] [(- h) h] [h (- h)] [h h]])))
 
-(defn direct? [chunks template pos half [wx wy wz]]
+(defn direct? [chunks pos half [wx wy wz]]
   (let [half (double half)
         x (v/x pos) z (v/z pos)
         y (long wy)
@@ -73,7 +73,7 @@
     (loop [i 1]
       (cond
         (> i n) true
-        (footprint-free? chunks template half (+ x (/ (* dx i) n)) (+ z (/ (* dz i) n)) y) (recur (inc i))
+        (footprint-free? chunks half (+ x (/ (* dx i) n)) (+ z (/ (* dz i) n)) y) (recur (inc i))
         :else false))))
 
 (defn- dist ^double [[x1 y1 z1] [x2 y2 z2]]
@@ -89,9 +89,9 @@
       (recur (conj acc p) p)
       (vec (rest acc)))))
 
-(defn- relax [chunks template avoid-water? h cur acc d]
+(defn- relax [chunks avoid-water? h cur acc d]
   (let [[open g came best best-h] acc]
-    (if-let [nb (step-cell chunks template avoid-water? cur d)]
+    (if-let [nb (step-cell chunks avoid-water? cur d)]
       (let [ng (+ (double (g cur)) (dist cur nb))]
         (if (< ng (double (get g nb Double/MAX_VALUE)))
           (let [nh (double (h nb))]
@@ -104,7 +104,7 @@
   "Returns the cells to walk from start to goal, or to the cell closest to goal
    when goal cannot be reached, or nil when nothing beats standing still.
    avoid-water? keeps the path dry."
-  [chunks template start goal avoid-water?]
+  [chunks start goal avoid-water?]
   (let [h (fn ^double [c] (dist c goal))]
     (loop [open (sorted-set [(h start) start]) closed #{} g {start 0.0} came {}
            best start best-h (double (h start)) n 0]
@@ -115,7 +115,7 @@
           (closed cur) (recur (disj open entry) closed g came best best-h n)
           :else
           (let [[open g came best best-h]
-                (reduce (partial relax chunks template avoid-water? h cur)
+                (reduce (partial relax chunks avoid-water? h cur)
                         [(disj open entry) g came best best-h] dirs)]
             (recur open (conj closed cur) g came best (double best-h) (inc n))))
         (when (not= best start) (rebuild came best))))))

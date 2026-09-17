@@ -3,8 +3,7 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,7 +13,7 @@
 
 
 (defn state-at ^long [chunks pos]
-  (chunk/chunks-get-block chunks (gen/flat-chunk) pos))
+  (chunk/chunks-get-block chunks pos))
 
 (defn connected-direction [^long st]
   (let [{:keys [type facing]} (block/props-of st)]

@@ -5,7 +5,6 @@
             [collider.world.direction :as dir]
             [collider.world.blocks.chorus :as chorus]
             [collider.world.blocks.eyeblossom :as eyeblossom]
-            [collider.world.gen :as gen]
             [collider.world.blocks.grass :as grass]
             [collider.world.blocks.grow.common :refer [air-at? chance? flag pick water? with]]
             [collider.world.light :as light]
@@ -19,12 +18,12 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- snowy [chunks p] (flag (block/tagged? (gen/at chunks (dir/up p)) "snow")))
+(defn- snowy [chunks p] (flag (block/tagged? (chunk/at chunks (dir/up p)) "snow")))
 
 (defn- spread-target? [chunks fresh q]
-  (and (= :dirt (block/block-of (gen/at chunks q)))
+  (and (= :dirt (block/block-of (chunk/at chunks q)))
        (grass/can-stay-alive? chunks fresh q)
-       (not (water? (gen/at chunks (dir/up q))))))
+       (not (water? (chunk/at chunks (dir/up q))))))
 
 (defn- spread-cells [chunks p st roll]
   (let [self (block/block-of st) fresh (block/state self)]
@@ -37,11 +36,11 @@
 (defn spread-tick [chunks p st roll time ctx]
   (if-not (grass/can-stay-alive? chunks st p)
     [[p (block/state :dirt)]]
-    (when (>= (weather/brightness ctx chunks (gen/flat-chunk) (p 0) (inc (long (p 1))) (p 2) time) 9)
+    (when (>= (weather/brightness ctx chunks (p 0) (inc (long (p 1))) (p 2) time) 9)
       (spread-cells chunks p st roll))))
 
 (defn- near-water? [chunks [x y z]]
-  (boolean (some (fn [[dx dy dz]] (water? (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
+  (boolean (some (fn [[dx dy dz]] (water? (chunk/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
                  (for [dx (range -4 5) dy [0 1] dz (range -4 5)] [dx dy dz]))))
 
 (defn farmland-tick [chunks p st _roll _time _ctx]
@@ -49,7 +48,7 @@
     (cond
       (near-water? chunks p) (when (< m 7) [[p (with st :moisture 7)]])
       (pos? m) [[p (with st :moisture (dec m))]]
-      (not (block/tagged? (gen/at chunks (dir/up p)) "maintains_farmland")) [[p (block/state :dirt)]])))
+      (not (block/tagged? (chunk/at chunks (dir/up p)) "maintains_farmland")) [[p (block/state :dirt)]])))
 
 (defn- amethyst-next [^long target dir]
   (let [n (block/block-of target)]
@@ -64,16 +63,16 @@
   (when (chance? roll :gate 5)
     (let [dir (dir/six (pick roll :dir 6))
           q (mapv + p (dir/offset dir))
-          target (gen/at chunks q)]
+          target (chunk/at chunks q)]
       (when-let [b (amethyst-next target dir)]
         [[q (block/state b {:facing dir :waterlogged (if (water? target) :true :false)})]]))))
 
 (defn ice-tick [chunks p st _roll _time _ctx]
-  (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) (- 11 (block/dampening st)))
+  (when (> (long (light/block-light-at chunks (p 0) (p 1) (p 2))) (- 11 (block/dampening st)))
     [[p (block/state :water)]]))
 
 (defn snow-tick [chunks p _st _roll _time _ctx]
-  (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) 11)
+  (when (> (long (light/block-light-at chunks (p 0) (p 1) (p 2))) 11)
     [[p 0]]))
 
 (defn eyeblossom-tick [_chunks p st _roll time _ctx]
@@ -102,7 +101,7 @@
   (chorus/flower-tick chunks p st (fn [salt ^long n] (pick roll salt n))))
 
 (defn roots-meal [chunks [_ y _ :as p] _st _roll]
-  (when (and (chunk/in-range? (dec (long y))) (zero? (gen/at chunks (dir/down p))))
+  (when (and (chunk/in-range? (dec (long y))) (zero? (chunk/at chunks (dir/down p))))
     {:changes [[(dir/down p) (block/state :hanging-roots)]]}))
 
 (defn lichen-meal [chunks p st roll]
@@ -130,7 +129,7 @@
   (when-let [q (first (for [d (shuffled-dirs roll)
                             :let [q (mapv + p (dir/horizontal-offset d))]
                             :when (and (air-at? chunks q)
-                                       (support/supported? chunks (gen/flat-chunk) q target))]
+                                       (support/supported? chunks q target))]
                         q))]
     {:changes [[q target]]}))
 
@@ -152,21 +151,21 @@
                               :let [q [qx (+ (long qy) (long dy)) qz]]
                               :when (and (not= q p)
                                          (zero? (pick roll [:seed i dy] 6))
-                                         (= :water (liquid/liquid-class (gen/at chunks q)))
-                                         (block/tagged? (gen/at chunks (dir/down q)) "coral_blocks"))]
+                                         (= :water (liquid/liquid-class (chunk/at chunks q)))
+                                         (block/tagged? (chunk/at chunks (dir/down q)) "coral_blocks"))]
                           [q (block/state :sea-pickle {:pickles     (keyword (str (inc (pick roll [:n i dy] 4))))
                                                        :waterlogged :true})]))))
         (pickle-cells p)))
 
 (defn pickle-meal [chunks p st roll]
   (when (and (= :true (:waterlogged (block/props-of st)))
-             (block/tagged? (gen/at chunks (dir/down p)) "coral_blocks"))
+             (block/tagged? (chunk/at chunks (dir/down p)) "coral_blocks"))
     {:changes (conj (pickle-spots chunks p roll) [p (with st :pickles 4)])}))
 
 (defn- grown-tall [acc q ^long st]
   (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))
         up (dir/up q)]
-    (when (and (support/supported? (feature/chunks acc) (gen/flat-chunk) q tall)
+    (when (and (support/supported? (feature/chunks acc) q tall)
                (air-at? (feature/chunks acc) up))
       (-> acc
           (feature/set-state q tall)

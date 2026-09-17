@@ -3,7 +3,6 @@
   (:require [collider.game.state :as state]
             [collider.game.block.tnt :as tnt]
             [collider.vec :as v]
-            [collider.world.gen :as gen]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
@@ -14,7 +13,7 @@
 (def ^:private ^:const tnt-half 0.49)
 (def ^:private ^:const tnt-height 0.98)
 (defn- liquid-push [world pos vel]
-  (liquid/entity-push (:chunks world) (gen/flat-chunk) pos tnt-half tnt-height vel))
+  (liquid/entity-push (:chunks world) pos tnt-half tnt-height vel))
 
 (defn- unblock-deltas
   "Returns the deltas that cut fresh TNT loose from its origin block."
@@ -30,7 +29,7 @@
   (let [kb (:kb e) stuck (:stuck e)
         [vx vy vz] (v/+ (:vel e) (or kb [0.0 0.0 0.0]))
         drift [(double vx) (- (double vy) 0.04) (double vz)]
-        ^Move mv (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
+        ^Move mv (phys/move (:chunks world) (:pos e)
                             (if stuck (mapv * drift stuck) drift) tnt-half tnt-height)
         pos (.pos mv) on-ground (.on-ground mv)
         moved (cond stuck [0.0 0.0 0.0]
@@ -46,7 +45,7 @@
 
 (defn- moved-pos [world e]
   (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))]
-    (.pos ^Move (phys/move (:chunks world) (gen/flat-chunk) (:pos e)
+    (.pos ^Move (phys/move (:chunks world) (:pos e)
                            [(double vx) (- (double vy) 0.04) (double vz)]
                            tnt-half tnt-height))))
 

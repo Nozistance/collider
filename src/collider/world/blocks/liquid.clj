@@ -2,8 +2,7 @@
   "Water and lava, their spread and mixing, and their push on entities."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen])
+            [collider.world.chunk :as chunk])
   (:import (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
@@ -49,21 +48,21 @@
 (defn push-of [st]
   (get-in liquids [(liquid-class st) :push]))
 
-(defn- raw-at [chunks template x y z]
+(defn- raw-at [chunks x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
-      (chunk/chunks-get-block chunks template x y z)
+      (chunk/chunks-get-block chunks x y z)
       -1)))
 
 (defn- state-of ^long [raw]
   (let [st (long raw)]
     (if (and (pos? st) (block/waterlogged? st)) @water-source st)))
 
-(defn- state-at [chunks template x y z]
-  (state-of (raw-at chunks template x y z)))
+(defn- state-at [chunks x y z]
+  (state-of (raw-at chunks x y z)))
 
-(defn- shifted [chunks template [x y z] [dx dy dz]]
-  (state-at chunks template
+(defn- shifted [chunks [x y z] [dx dy dz]]
+  (state-at chunks
             (+ (long x) (long dx))
             (+ (long y) (long dy))
             (+ (long z) (long dz))))
@@ -77,8 +76,8 @@
 (defn- blocks-movement? [st]
   (and (pos? (long st)) (block/blocks-motion? (long st))))
 
-(defn- decay ^long [chunks template cls p]
-  (let [st (state-at chunks template (p 0) (p 1) (p 2))]
+(defn- decay ^long [chunks cls p]
+  (let [st (state-at chunks (p 0) (p 1) (p 2))]
     (if (and (pos? (long st)) (= cls (liquid-class st)))
       (let [m (level st)] (if (>= m 8) 0 m))
       -1)))
@@ -90,19 +89,19 @@
       [0.0 0.0 0.0]
       [(/ x len) (/ y len) (/ z len)])))
 
-(defn- below-pull [chunks template cls i [nx y nz]]
-  (let [j (decay chunks template cls [nx (dec (long y)) nz])]
+(defn- below-pull [chunks cls i [nx y nz]]
+  (let [j (decay chunks cls [nx (dec (long y)) nz])]
     (if (>= j 0) (- j (- (long i) 8)) 0)))
 
-(defn- neighbor-pull [chunks template cls i [x y z] [dx dz]]
+(defn- neighbor-pull [chunks cls i [x y z] [dx dz]]
   (let [nx (+ (long x) (long dx))
         nz (+ (long z) (long dz))
-        ns (state-at chunks template nx y nz)
-        j (decay chunks template cls [nx y nz])]
+        ns (state-at chunks nx y nz)
+        j (decay chunks cls [nx y nz])]
     (cond
       (other-class? cls ns) 0
       (>= j 0) (- j (long i))
-      (not (blocks-movement? ns)) (below-pull chunks template cls (long i) [nx y nz])
+      (not (blocks-movement? ns)) (below-pull chunks cls (long i) [nx y nz])
       :else 0)))
 
 (def ^:private side-face {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
@@ -113,25 +112,25 @@
          (not (block/tagged? st "ice"))
          (block/face-sturdy? st (side-face d)))))
 
-(defn- walled? [chunks template cls [x y z]]
+(defn- walled? [chunks cls [x y z]]
   (some (fn [[dx dz :as d]]
           (let [nx (+ (long x) (long dx))
                 nz (+ (long z) (long dz))]
-            (or (solid-face? cls (raw-at chunks template nx y nz) d)
-                (solid-face? cls (raw-at chunks template nx (inc (long y)) nz) d))))
+            (or (solid-face? cls (raw-at chunks nx y nz) d)
+                (solid-face? cls (raw-at chunks nx (inc (long y)) nz) d))))
         horiz))
 
-(defn flow-vector [chunks template [x y z :as p]]
-  (let [st (state-at chunks template x y z)]
+(defn flow-vector [chunks [x y z :as p]]
+  (let [st (state-at chunks x y z)]
     (when-let [cls (when (pos? (long st)) (liquid-class st))]
-      (let [i (decay chunks template cls p)
+      (let [i (decay chunks cls p)
             [vx vz] (reduce (fn [[vx vz] [dx dz :as d]]
-                              (let [k (neighbor-pull chunks template cls i p d)]
+                              (let [k (neighbor-pull chunks cls i p d)]
                                 [(+ (double vx) (* (long dx) k))
                                  (+ (double vz) (* (long dz) k))]))
                             [0.0 0.0]
                             horiz)]
-        (if (and (>= (level st) 8) (walled? chunks template cls p))
+        (if (and (>= (level st) 8) (walled? chunks cls p))
           (let [[nx _ nz] (normalize [vx 0.0 vz])]
             (normalize [nx -6.0 nz]))
           (normalize [vx 0.0 vz]))))))
@@ -139,11 +138,11 @@
 (defn- own-height ^double [st]
   (let [l (level st)] (/ (double (if (or (zero? l) (>= l 8)) 8 (- 8 l))) 9.0)))
 
-(defn- height-in ^double [chunks template cls [x y z]]
-  (let [above (state-at chunks template x (inc (long y)) z)]
+(defn- height-in ^double [chunks cls [x y z]]
+  (let [above (state-at chunks x (inc (long y)) z)]
     (if (and (pos? (long above)) (= cls (liquid-class above)))
       1.0
-      (own-height (state-at chunks template x y z)))))
+      (own-height (state-at chunks x y z)))))
 
 (defn- cells-of [x y z half height]
   (let [x (double x) y (double y) z (double z) half (double half) height (double height)]
@@ -152,14 +151,14 @@
           cz (range (long (Math/floor (- z half))) (long (Math/ceil (+ z half))))]
       [cx cy cz])))
 
-(defn- add-fluid [chunks template y acc [cx cy cz :as c]]
-  (let [st (state-at chunks template cx cy cz)
+(defn- add-fluid [chunks y acc [cx cy cz :as c]]
+  (let [st (state-at chunks cx cy cz)
         cls (when (pos? (long st)) (liquid-class st))
-        h (when cls (- (+ (double cy) (height-in chunks template cls c)) (double y)))]
+        h (when cls (- (+ (double cy) (height-in chunks cls c)) (double y)))]
     (if (or (nil? cls) (neg? (double h)))
       acc
       (let [h (max (double h) (double (get-in acc [cls :height] 0.0)))
-            [fx fy fz] (or (flow-vector chunks template c) [0.0 0.0 0.0])
+            [fx fy fz] (or (flow-vector chunks c) [0.0 0.0 0.0])
             k (if (< h 0.4) h 1.0)
             [ax ay az] (get-in acc [cls :flow] [0.0 0.0 0.0])]
         (assoc acc cls {:height h
@@ -168,13 +167,13 @@
                                  (+ (double az) (* (double fz) k))]
                         :n      (inc (long (get-in acc [cls :n] 0)))})))))
 
-(defn- fluid-around [chunks template [x y z] half height]
-  (reduce (partial add-fluid chunks template y) {} (cells-of x y z half height)))
+(defn- fluid-around [chunks [x y z] half height]
+  (reduce (partial add-fluid chunks y) {} (cells-of x y z half height)))
 
-(defn fluid-height [chunks template pos half height cls]
-  (double (get-in (fluid-around chunks template pos half height) [cls :height] 0.0)))
+(defn fluid-height [chunks pos half height cls]
+  (double (get-in (fluid-around chunks pos half height) [cls :height] 0.0)))
 
-(defn entity-push [chunks template pos half height vel]
+(defn entity-push [chunks pos half height vel]
   (reduce (fn [[ax ay az] [cls {[fx fy fz] :flow n :n}]]
             (let [len2 (+ (* (double fx) (double fx)) (* (double fy) (double fy)) (* (double fz) (double fz)))
                   p (double (get-in liquids [cls :push] 0.0))]
@@ -188,7 +187,7 @@
                                    [ix iy iz])]
                   [(+ (double ax) ix) (+ (double ay) iy) (+ (double az) iz)]))))
           [0.0 0.0 0.0]
-          (fluid-around chunks template pos half height)))
+          (fluid-around chunks pos half height)))
 
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
@@ -199,10 +198,10 @@
 (defn- same? [cls st] (= cls (liquid-class st)))
 (defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
 (defn- height ^double [st] (/ (double (amount st)) 9.0))
-(defn fluid-height-of [chunks template [x y z] st mode]
+(defn fluid-height-of [chunks [x y z] st mode]
   (let [cls (liquid-class st)]
     (when (and cls (or (not= mode :source-only) (source-of? cls st)))
-      (let [above (if (chunk/in-range? (inc (long y))) (chunk/chunks-get-block chunks template [x (inc (long y)) z]) 0)]
+      (let [above (if (chunk/in-range? (inc (long y))) (chunk/chunks-get-block chunks [x (inc (long y)) z]) 0)]
         (if (same? cls above) 1.0 (height st))))))
 
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
@@ -275,8 +274,8 @@
        (holds-any-fluid? tgt-raw)
        (pass-wall? src-raw tgt-raw d)))
 
-(defn- raw-of ^long [{:keys [chunks template]} x y z]
-  (long (raw-at chunks template x y z)))
+(defn- raw-of ^long [{:keys [chunks]} x y z]
+  (long (raw-at chunks x y z)))
 
 (defn- hole? [{:keys [cls] :as env} [x y z :as p]]
   (let [raw (raw-of env x y z)
@@ -339,31 +338,31 @@
 
 (def ^:private contact-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0]])
 (def ^:private convert-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 -1 0]])
-(defn- touches-other? [chunks template cls pos]
-  (some (fn [d] (other-class? cls (shifted chunks template pos d))) contact-dirs))
+(defn- touches-other? [chunks cls pos]
+  (some (fn [d] (other-class? cls (shifted chunks pos d))) contact-dirs))
 
-(defn- convert-neighbors [chunks template cls [x y z]]
+(defn- convert-neighbors [chunks cls [x y z]]
   (into []
         (keep (fn [[dx dy dz]]
                 (let [np [(+ (long x) (long dx))
                           (+ (long y) (long dy))
                           (+ (long z) (long dz))]
-                      ns (state-at chunks template (np 0) (np 1) (np 2))
+                      ns (state-at chunks (np 0) (np 1) (np 2))
                       nc (liquid-class ns)]
                   (when (and (some? nc) (not= nc cls))
                     (when-let [prod (mix-product (get-in liquids [nc :mix]) (level ns))]
                       [np prod])))))
         convert-dirs))
 
-(defn mix-wake? [chunks template pos]
-  (let [st (state-at chunks template (pos 0) (pos 1) (pos 2))
+(defn mix-wake? [chunks pos]
+  (let [st (state-at chunks (pos 0) (pos 1) (pos 2))
         cls (liquid-class st)]
     (boolean
       (and cls
            (get-in liquids [cls :mix])
-           (touches-other? chunks template cls pos)))))
+           (touches-other? chunks cls pos)))))
 
-(defn- spread-to [{:keys [chunks template cls mix] :as env} tp d v]
+(defn- spread-to [{:keys [chunks cls mix] :as env} tp d v]
   (let [traw (raw-of env (tp 0) (tp 1) (tp 2))
         t (state-of traw)]
     (cond
@@ -373,10 +372,10 @@
       [[tp (block/state (block/block-of (long traw)) (assoc (block/props-of (long traw)) :waterlogged :true))]]
       :else
       (let [plain (liquid->state cls v)
-            st (if (and mix (touches-other? chunks template cls tp))
+            st (if (and mix (touches-other? chunks cls tp))
                  (or (mix-product mix (level plain)) plain)
                  plain)]
-        (cons [tp st] (convert-neighbors chunks template cls tp))))))
+        (cons [tp st] (convert-neighbors chunks cls tp))))))
 
 (defn- lowest-targets [{:keys [cls] :as env} raw [x y z]]
   (second
@@ -427,9 +426,9 @@
       (* (long delay) (long decay-jitter))
       (long delay))))
 
-(defn- side-states [chunks template [x y z]]
+(defn- side-states [chunks [x y z]]
   (mapv (fn [[dx dz]]
-          (state-at chunks template (+ (long x) (long dx)) y (+ (long z) (long dz))))
+          (state-at chunks (+ (long x) (long dx)) y (+ (long z) (long dz))))
         horiz))
 
 (def ^:private ^:table basalt-state (delay (block/state :basalt)))
@@ -443,20 +442,20 @@
            (some #(= (long %) (long @blue-ice-state)) (cons above sides))) @basalt-state
       :else nil)))
 
-(defn- solidified [chunks template [x y z :as p]]
-  (let [st (state-at chunks template x y z)
+(defn- solidified [chunks [x y z :as p]]
+  (let [st (state-at chunks x y z)
         cls (liquid-class st)]
     (when-let [mix (and cls (get-in liquids [cls :mix]))]
-      (let [above (shifted chunks template p [0 1 0])
-            sides (side-states chunks template p)
-            below-raw (raw-at chunks template x (dec (long y)) z)]
+      (let [above (shifted chunks p [0 1 0])
+            sides (side-states chunks p)
+            below-raw (raw-at chunks x (dec (long y)) z)]
         (mixed-state cls mix st above sides below-raw)))))
 
-(defn mix-changes [chunks template positions]
+(defn mix-changes [chunks positions]
   (into []
         (comp (mapcat (fn [[x y z]] (cons [x y z] (map (fn [[dx dy dz]] [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)]) horiz3+))))
               (distinct)
-              (keep (fn [p] (when-let [st (solidified chunks template p)] [p st]))))
+              (keep (fn [p] (when-let [st (solidified chunks p)] [p st]))))
         positions))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
@@ -468,26 +467,26 @@
             (block/state :bubble-column {:drag drag}))))
 
 (defn- water-source? [st] (= (long st) @water-source))
-(defn- column-changes [chunks template [x y z] col]
+(defn- column-changes [chunks [x y z] col]
   (loop [y (long y) acc []]
-    (let [st (long (raw-at chunks template x y z))]
+    (let [st (long (raw-at chunks x y z))]
       (if (or (water-source? st) (and (bubble-column? st) (not= st (long col))))
         (recur (inc y) (conj acc [[x y z] col]))
         acc))))
 
-(defn- bubble-changes [chunks template [x y z :as p]]
-  (let [raw (long (raw-at chunks template x y z))
-        col (column-state (long (raw-at chunks template x (dec (long y)) z)))]
+(defn- bubble-changes [chunks [x y z :as p]]
+  (let [raw (long (raw-at chunks x y z))
+        col (column-state (long (raw-at chunks x (dec (long y)) z)))]
     (cond
       (and (bubble-column? raw) (nil? col)) [[p @water-source]]
-      (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks template p col))))
+      (and col (or (water-source? raw) (not= raw (long col)))) (column-changes chunks p col))))
 
-(defn bubble-push ^double [chunks template pos ^double vy]
+(defn bubble-push ^double [chunks pos ^double vy]
   (let [x (long (Math/floor (v/x pos))) y (long (Math/floor (v/y pos))) z (long (Math/floor (v/z pos)))
-        st (long (raw-at chunks template x y z))]
+        st (long (raw-at chunks x y z))]
     (if (bubble-column? st)
       (let [drag? (= :true (:drag (block/props-of st)))
-            open? (zero? (long (raw-at chunks template x (inc y) z)))]
+            open? (zero? (long (raw-at chunks x (inc y) z)))]
         (cond
           (and drag? open?) (max -0.9 (- vy 0.03))
           drag? (max -0.3 (- vy 0.03))
@@ -496,38 +495,38 @@
       vy)))
 
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
-(defn- flow-env [chunks template cls rules]
+(defn- flow-env [chunks cls rules]
   (let [{:keys [dropoff slope infinite? mix]} (liquids cls)]
-    {:chunks    chunks :template template :cls cls
+    {:chunks    chunks :cls cls
      :dropoff   (long dropoff) :slope (long slope)
      :infinite? (get rules (conversion-rule cls) infinite?) :mix mix}))
 
-(defn- cell-mixed [chunks template mix cls st [x y z :as p]]
-  (let [above (shifted chunks template p [0 1 0])
-        sides (side-states chunks template p)
-        below-raw (raw-at chunks template x (dec (long y)) z)]
+(defn- cell-mixed [chunks mix cls st [x y z :as p]]
+  (let [above (shifted chunks p [0 1 0])
+        sides (side-states chunks p)
+        below-raw (raw-at chunks x (dec (long y)) z)]
     (mixed-state cls mix st above sides below-raw)))
 
-(defn- cell-flowed [chunks template env cls p st]
+(defn- cell-flowed [chunks env cls p st]
   (let [v (if (source-of? cls st) :source (new-liquid env p))
         st' (if v (liquid->state cls v) 0)]
     (cond
       (zero? (long st')) [[p 0]]
-      (and (= :source v) (seq (bubble-changes chunks template p))) (bubble-changes chunks template p)
+      (and (= :source v) (seq (bubble-changes chunks p))) (bubble-changes chunks p)
       :else (into (if (not= (long st') (long st)) [[p st']] [])
                   (spread env p st')))))
 
-(defn update-cell [chunks template [x y z :as p] rules]
-  (let [st (state-at chunks template x y z)
+(defn update-cell [chunks [x y z :as p] rules]
+  (let [st (state-at chunks x y z)
         cls (liquid-class st)]
     (when cls
-      (let [env (flow-env chunks template cls rules)]
-        (if-let [mixed (cell-mixed chunks template (:mix env) cls st p)]
+      (let [env (flow-env chunks cls rules)]
+        (if-let [mixed (cell-mixed chunks (:mix env) cls st p)]
           [[p mixed]]
-          (cell-flowed chunks template env cls p st))))))
+          (cell-flowed chunks env cls p st))))))
 
-(defn- fire-state-at [chunks template [x y z :as p]]
-  (let [below (raw-at chunks template x (dec (long y)) z)]
+(defn- fire-state-at [chunks [x y z :as p]]
+  (let [below (raw-at chunks x (dec (long y)) z)]
     (cond
       (block/tagged? (long (max 0 (long below))) "soul_fire_base_blocks")
       (block/state :soul-fire {:age :0})
@@ -535,51 +534,51 @@
       (block/state :fire {:age :0})
       :else
       (block/state :fire (into {:age :0}
-                               (map (fn [[k d]] [k (if (block/burnable? (long (max 0 (long (shifted chunks template p d))))) :true :false)]))
+                               (map (fn [[k d]] [k (if (block/burnable? (long (max 0 (long (shifted chunks p d))))) :true :false)]))
                                {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0] :up [0 1 0]})))))
 
-(defn- flammable-around? [chunks template p]
-  (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks template p d)))))) horiz3+))
+(defn- flammable-around? [chunks p]
+  (some (fn [d] (block/ignited-by-lava? (long (max 0 (long (shifted chunks p d)))))) horiz3+))
 
-(defn- lava-fire-walk [chunks template p r3 passes]
+(defn- lava-fire-walk [chunks p r3 passes]
   (loop [tp p i 0]
     (when (< i (long passes))
       (let [tp' [(+ (long (tp 0)) (long (r3 [:x i]))) (inc (long (tp 1))) (+ (long (tp 2)) (long (r3 [:z i])))]
-            st (raw-at chunks template (tp' 0) (tp' 1) (tp' 2))]
+            st (raw-at chunks (tp' 0) (tp' 1) (tp' 2))]
         (cond
           (neg? st) nil
-          (zero? st) (if (flammable-around? chunks template tp')
-                       [[tp' (fire-state-at chunks template tp')]]
+          (zero? st) (if (flammable-around? chunks tp')
+                       [[tp' (fire-state-at chunks tp')]]
                        (recur tp' (inc i)))
           (block/blocks-motion? st) nil
           :else (recur tp' (inc i)))))))
 
-(defn- lava-spot-fires [chunks template [x y z] r3]
+(defn- lava-spot-fires [chunks [x y z] r3]
   (into []
         (keep (fn [i]
                 (let [tp [(+ (long x) (long (r3 [:x i]))) y (+ (long z) (long (r3 [:z i])))]
                       above [(tp 0) (inc (long y)) (tp 2)]]
-                  (when (and (zero? (long (raw-at chunks template (above 0) (above 1) (above 2))))
+                  (when (and (zero? (long (raw-at chunks (above 0) (above 1) (above 2))))
                              (block/ignited-by-lava?
-                               (long (max 0 (long (raw-at chunks template (tp 0) (tp 1) (tp 2)))))))
-                    [above (fire-state-at chunks template above)]))))
+                               (long (max 0 (long (raw-at chunks (tp 0) (tp 1) (tp 2)))))))
+                    [above (fire-state-at chunks above)]))))
         (range 3)))
 
-(defn lava-random-tick [chunks template p roll]
+(defn lava-random-tick [chunks p roll]
   (let [r3 (fn [salt] (dec (long (Math/floor (* 3.0 (double (roll salt)))))))
         passes (long (Math/floor (* 3.0 (double (roll :passes)))))]
     (if (pos? passes)
-      (lava-fire-walk chunks template p r3 passes)
-      (lava-spot-fires chunks template p r3))))
+      (lava-fire-walk chunks p r3 passes)
+      (lava-spot-fires chunks p r3))))
 
 (def rule
   {:name   :liquid
    :match? (fn [_chunks st _p] (some? (liquid-class st)))
    :wake   (fn [chunks tick p old self?]
-             (if (mix-wake? chunks (gen/flat-chunk) p)
+             (if (mix-wake? chunks p)
                (inc (long tick))
                (+ (long tick)
                   (if self?
-                    (update-delay old (chunk/chunks-get-block chunks (gen/flat-chunk) p) tick p)
-                    (delay-of (chunk/chunks-get-block chunks (gen/flat-chunk) p))))))
-   :due    (fn [chunks p ctx] (update-cell chunks (gen/flat-chunk) p (:rules ctx)))})
+                    (update-delay old (chunk/chunks-get-block chunks p) tick p)
+                    (delay-of (chunk/chunks-get-block chunks p))))))
+   :due    (fn [chunks p ctx] (update-cell chunks p (:rules ctx)))})

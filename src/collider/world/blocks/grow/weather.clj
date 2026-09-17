@@ -1,7 +1,7 @@
 (ns collider.world.blocks.grow.weather
   "Weathering of copper."
   (:require [collider.world.block :as block]
-            [collider.world.gen :as gen]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -10,7 +10,7 @@
         ages (for [dx (range -4 5) dy (range -4 5) dz (range -4 5)
                    :when (and (<= (+ (Math/abs (long dx)) (Math/abs (long dy)) (Math/abs (long dz))) 4)
                               (not (and (zero? (long dx)) (zero? (long dy)) (zero? (long dz)))))
-                   :let [n (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])]
+                   :let [n (chunk/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])]
                    :when (block/weathering? n)]
                (block/weather-stage n))]
     (when-not (some #(< (long %) own) ages)
