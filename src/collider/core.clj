@@ -6,6 +6,7 @@
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.state :as state]
+            [collider.game.systems.chunks :as chunks]
             [collider.game.tick :as tick]
             [collider.log :as log]
             [collider.net.render :as render]
@@ -13,6 +14,7 @@
             [collider.net.session :as session]
             [collider.persist.snapshot :as snapshot])
   (:import (clojure.lang ExceptionInfo)
+           (collider.game.deltas Deltas)
            (java.lang.management GarbageCollectorMXBean ManagementFactory)
            (java.net BindException ServerSocket)
            (java.util.concurrent ConcurrentLinkedQueue Executors
@@ -22,6 +24,15 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const shutdown-drain-ms 1000)
+
+(defn- chunk-io! [{:keys [saver store]} ^ConcurrentLinkedQueue queue ^Deltas deltas]
+  (doseq [m (.out deltas)]
+    (case (:msg m)
+      :store-chunk (snapshot/store-chunk! saver store (:id m) (:payload m))
+      :load-chunk (let [id (:id m)]
+                    (snapshot/fetch-chunk! saver store id #(.offer queue [:chunk-loaded id %])))
+      nil)))
+
 (defn- deliver! [conns world deltas]
   (let [cs @conns]
     (doseq [[eid pkt] (render/render world deltas)]
@@ -52,8 +63,11 @@
   (let [cfg (merge (config/load-config) opts)
         store (or (:store opts) (when-let [dir (:save-dir cfg)] (snapshot/file-store dir)))
         saved (when store (snapshot/load-snapshot store))
-        world (atom (assoc (merge state/initial-world saved)
-                      :config (select-keys cfg [:view-distance :simulation-distance :max-players :motd])))
+        world (atom (chunks/preloaded
+                      (assoc (merge state/initial-world saved)
+                        :config (assoc (select-keys cfg [:view-distance :simulation-distance :max-players :motd])
+                                  :unload-chunks? (some? store)))
+                      #(snapshot/get-chunk store %)))
         saver (when store (snapshot/start-saver))]
     {:cfg   cfg :store store :saved saved :world world :saver saver
      :save! (when saver #(snapshot/request-save! saver store @world))}))
@@ -66,8 +80,10 @@
         {:keys [socket accept]} (server/listen! io (:port cfg))]
     {:queue queue :conns conns :socket socket :accept accept}))
 
-(defn- start-clocks [{:keys [cfg world saver save!]} {:keys [queue conns]}]
-  (let [ticker (tick/start-ticker! world queue (fn [w d] (deliver! conns w d))
+(defn- start-clocks [{:keys [cfg world saver save!] :as base} {:keys [queue conns]}]
+  (let [ticker (tick/start-ticker! world queue (fn [w d]
+                                                 (when saver (chunk-io! base queue d))
+                                                 (deliver! conns w d))
                                    {:io-input #(hash-map :writable (server/writable-eids conns))})]
     {:ticker    ticker :tick-stats (:stats ticker)
      :scheduler (when saver (saver-scheduler save! (:save-period-ms cfg)))}))
@@ -82,7 +98,7 @@
      :gc              (re-find #"\S+" (.getName gc))
      :data            (data/dir)
      :world           (:save-dir (config/load-config))
-     :chunks          (when (seq (:chunks saved)) (count (:chunks saved)))
+     :chunks          (when (seq (:stored saved)) (count (:stored saved)))
      :entities        (count (:entities saved))
      :config          "config.edn"
      :config-written? config-written?}))

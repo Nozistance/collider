@@ -36,6 +36,12 @@
    [:cat Pos]
    :add-chunk
    [:cat :int :any]
+   :chunk-requested
+   [:cat :int]
+   :restore-chunk
+   [:cat :int :map]
+   :unload-chunk
+   [:cat :int]
    :set-weather
    [:cat :map]
    :set-block-entity
@@ -80,6 +86,8 @@
 
 (def fx-messages
   {:blocks-changed    [[:cp :int] [:records Records]]
+   :load-chunk        [[:id :int]]
+   :store-chunk       [[:id :int] [:payload :map]]
    :break-effect      [[:pos Pos] [:state State]]
    :explosion         [[:center Vec3] [:radius number?] [:blocks :int] [:motions :map] [:pitch number?]]
    :sound             [[:kind :keyword] [:pos Vec3] [:volume number?] [:pitch number?]]

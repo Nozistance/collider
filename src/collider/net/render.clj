@@ -323,7 +323,9 @@
                                        :type   (be/type-id e) :nbt (be/nbt e)}])))
    :sound          (fn [_ m] (when-let [p (sound-packet m)] [p]))
    :particles      (fn [_ m] [(particles-packet m)])
-   :explosion      (fn [_ _] nil)})
+   :explosion      (fn [_ _] nil)
+   :load-chunk     (fn [_ _] nil)
+   :store-chunk    (fn [_ _] nil)})
 
 (def ^:private container-fx
   {:set-slot          (fn [_ m] [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}])

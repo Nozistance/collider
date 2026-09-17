@@ -100,6 +100,11 @@
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
 
+(defn block-id-chunk
+  "Returns the id of the chunk that holds the block with packed id bid."
+  ^long [^long bid]
+  (pos->id (bit-shift-right bid 42) (bit-shift-right (bit-shift-left bid 38) 42)))
+
 (defn block-chunk ^long [[x _ z]]
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 

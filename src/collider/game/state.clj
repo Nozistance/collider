@@ -73,8 +73,7 @@
   (contains? active (pos-chunk pos)))
 
 (defn active-id? [active ^long bid]
-  (contains? active (chunk/pos->id (bit-shift-right bid 42)
-                                   (bit-shift-right (bit-shift-left bid 38) 42))))
+  (contains? active (chunk/block-id-chunk bid)))
 
 (defn offline-uuid ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
@@ -180,6 +179,23 @@
                 (entity/of (merge (new-player name (:tick w) (world-spawn-pos w eid))
                                   (get-in w [:profiles name]))))
       (assoc-in [:players name] eid)))
+
+(defn- unloaded [w id]
+  (let [id (long id)]
+    (-> w
+        (update :chunks dissoc id)
+        (update :block-entities dissoc id)
+        (update :entities (fn [es] (reduce-kv (fn [es eid e]
+                                                (if (and (not= :player (:type e)) (= id (pos-chunk (:pos e))))
+                                                  (dissoc es eid)
+                                                  es))
+                                              es es)))
+        (update :block-ticks (fn [bt] (into (i/int-map)
+                                            (keep (fn [[at bids]]
+                                                    (let [left (into (i/int-set) (remove #(= id (chunk/block-id-chunk %))) bids)]
+                                                      (when (seq left) [at left]))))
+                                            bt)))
+        (update :stored (fnil conj (i/int-set)) id))))
 
 (defn- vacated-bed [w eid]
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
@@ -508,6 +524,11 @@
    :set-rule             (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
    :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
    :add-chunk            (fn [w [_ id c]] (if (contains? (:chunks w) id) w (update w :chunks assoc id c)))
+   :chunk-requested      (fn [w [_ id]] (update w :loading (fnil conj (i/int-set)) id))
+   :restore-chunk        (fn [w [_ id payload]] (if (contains? (:chunks w) id)
+                                                  (update w :loading disj id)
+                                                  (schema/with-chunk w id payload)))
+   :unload-chunk         (fn [w [_ id]] (unloaded w id))
    :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick         (fn [w _] (dissoc (advance w) :quits))

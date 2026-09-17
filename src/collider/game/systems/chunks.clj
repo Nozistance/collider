@@ -1,6 +1,8 @@
 (ns collider.game.systems.chunks
   "Chunk loading around players and the spawn, and chunk streaming to players."
-  (:require [collider.game.state :as state]
+  (:require [clojure.data.int-map :as i]
+            [collider.game.schema :as schema]
+            [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
@@ -21,12 +23,43 @@
     (into #{} (chunk/around-ids (long cx) (long cz) r))))
 
 (defn loading-deltas
-  "Returns the deltas that bring the absent chunks among ids into the world."
+  "Returns the deltas that bring the absent chunks among ids into the world. A
+   saved chunk is asked for and arrives in a later tick. Any other chunk is
+   generated now."
   [world ids]
-  (for [id (set ids) :when (not (contains? (:chunks world) id))]
-    [:add-chunk id (gen/flat-chunk)]))
+  (for [id (set ids)
+        :when (not (contains? (:chunks world) id))
+        :when (not (contains? (:loading world) id))
+        d (if (contains? (:stored world) id)
+            [[:chunk-requested id] (out/all (out/load-chunk id))]
+            [[:add-chunk id (gen/flat-chunk)]])]
+    d))
 
-(defn- spawn-ids [world]
+(defn- restore-deltas [d]
+  (for [[tag id payload] (:input d) :when (= :chunk-loaded tag)]
+    [:restore-chunk id (or payload {:chunk (gen/flat-chunk)})]))
+
+(declare spawn-ids)
+
+(defn- needed [world]
+  (into (i/int-set)
+        (concat (spawn-ids world)
+                (mapcat (fn [[_ p]]
+                          (let [[x _ z] (:pos p)]
+                            (wanted-chunks world (chunk/pos->id (chunk-coord x) (chunk-coord z)))))
+                        (state/player-entries world)))))
+
+(defn- unloading-deltas [world]
+  (when (get-in world [:config :unload-chunks?])
+    (let [keep? (needed world)]
+      (for [id (keys (:chunks world))
+            :when (not (contains? keep? id))
+            d [[:unload-chunk id] (out/all (out/store-chunk id (schema/chunk-payload world id)))]]
+        d))))
+
+(defn spawn-ids
+  "Returns the ids of the chunks kept loaded around the world spawn."
+  [world]
   (let [[x _ z] (or (:world-spawn world) state/spawn-pos)
         r (long (get-in world [:rules :spawn-chunk-radius] 2))]
     (chunk/around-ids (chunk-coord (double x)) (chunk-coord (double z)) r)))
@@ -93,7 +126,21 @@
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas world eid pos yaw pitch)))))
 
-(defn chunk-streaming [world _d]
+(defn chunk-streaming [world d]
   (conj (mapv (fn [entry] #(stream-deltas world entry))
               (state/player-entries world))
-        #(loading-deltas world (spawn-ids world))))
+        #(concat (restore-deltas d)
+                 (loading-deltas world (spawn-ids world))
+                 (unloading-deltas world))))
+
+(defn preloaded
+  "Returns world with its spawn chunks loaded, read by fetch or generated when
+   fetch gives nothing."
+  [world fetch]
+  (reduce (fn [w id]
+            (if (contains? (:chunks w) id)
+              w
+              (schema/with-chunk w id (or (when (contains? (:stored w) id) (fetch id))
+                                          {:chunk (gen/flat-chunk)}))))
+          world
+          (spawn-ids world)))

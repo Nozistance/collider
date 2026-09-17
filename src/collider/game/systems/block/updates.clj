@@ -202,7 +202,9 @@
     (when (seq due)
       (let [active (state/active-chunks world)
             now (into [] (comp (filter #(state/active-id? active %)) (map chunk/id->block-pos)) due)
-            parked (into [] (remove #(state/active-id? active %)) due)
+            parked (into [] (remove #(or (state/active-id? active %)
+                                         (not (contains? (:chunks world) (chunk/block-id-chunk %)))))
+                         due)
             changes (lww-changes (:chunks world) (tick-ctx world) now)
             woken (merge-with into (again-schedule world now changes)
                               (eyeblossom-schedules world changes))]

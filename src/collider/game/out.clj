@@ -7,6 +7,9 @@
 (defn to [eid msg] [:fx (assoc msg :to eid)])
 (defn all [msg] [:fx msg])
 (defn except [eid msg] [:fx (assoc msg :except eid)])
+(defn load-chunk [id] {:msg :load-chunk :id id})
+(defn store-chunk [id payload] {:msg :store-chunk :id id :payload payload})
+
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 

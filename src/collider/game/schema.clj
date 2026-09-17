@@ -15,25 +15,48 @@
   (reduce-kv (fn [m k v] (assoc m k (plain v)))
              {} (dissoc (into {} e) :track)))
 
-(defn- store-entities [es _]
-  (into {} (keep (fn [[eid e]] (when (not= :player (:type e)) [eid (plain-entity e)]))) es))
+(defn- entity-chunk ^long [e]
+  (let [p (:pos e)]
+    (chunk/pos->id (bit-shift-right (long (Math/floor (v/x p))) 4)
+                   (bit-shift-right (long (Math/floor (v/z p))) 4))))
 
-(defn- load-entities [es]
-  (into (i/int-map) (map (fn [[eid e]] [(long eid) (entity/of e)])) es))
+(defn- chunk-ticks [w ^long id]
+  (let [t (long (:tick w 0))]
+    (into [] (keep (fn [[at bids]]
+                     (let [ps (into [] (comp (filter #(= id (chunk/block-id-chunk %))) (map chunk/id->block-pos)) bids)]
+                       (when (seq ps) [(- (long at) t) ps]))))
+          (:block-ticks w))))
 
-(defn- store-ticks [ticks world]
-  (let [t (long (:tick world 0))]
-    (mapv (fn [[k s]] [(- (long k) t) (mapv chunk/id->block-pos s)]) ticks)))
+(defn chunk-payload
+  "Returns chunk id with its block entities, the entities in it except players,
+   and its block ticks as delays from now."
+  [w id]
+  (let [id (long id)]
+    {:chunk          (get (:chunks w) id)
+     :block-entities (into {} (get-in w [:block-entities id]))
+     :entities       (into {} (keep (fn [[eid e]]
+                                      (when (and (not= :player (:type e)) (= id (entity-chunk e)))
+                                        [eid (plain-entity e)])))
+                           (:entities w))
+     :ticks          (chunk-ticks w id)}))
 
-(defn- load-ticks [ticks]
-  (into (i/int-map)
-        (for [[dt ps] (group-by (fn [[dt _]] (max 1 (long dt))) ticks)]
-          [dt (into (i/int-set) (map chunk/block-pos->id) (mapcat second ps))])))
+(defn- ticks-back [bt ^long t ticks]
+  (reduce (fn [bt [dt ps]]
+            (update bt (+ t (max 1 (long dt))) (fnil into (i/int-set)) (map chunk/block-pos->id ps)))
+          bt ticks))
 
-(defn- load-chunks [cs]
-  (into chunk/no-chunks
-        (map (fn [[id c]] [(long id) c]))
-        cs))
+(defn with-chunk
+  "Returns w with the saved chunk id put back. Its block ticks come due after
+   the delays they were saved with."
+  [w id {:keys [chunk block-entities entities ticks]}]
+  (let [id (long id)]
+    (cond-> (-> w
+                (update :chunks assoc id chunk)
+                (update :entities into (map (fn [[eid e]] [(long eid) (entity/of e)])) entities)
+                (update :block-ticks ticks-back (long (:tick w 0)) ticks)
+                (update :loading disj id))
+            (seq block-entities)
+            (assoc-in [:block-entities id] (into {} (map (fn [[p e]] [(vec p) e])) block-entities)))))
 
 (declare profile-of)
 
@@ -55,12 +78,12 @@
    :next-eid           {:default 1000000 :store (fn [v _] v) :load identity}
    :rules              {:default rules/defaults :store (fn [v _] v) :load #(merge rules/defaults %)}
    :profiles           {:default {} :store store-profiles :load identity}
-   :chunks             {:default chunk/no-chunks :store (fn [v _] v) :load load-chunks}
-   :entities           {:default (i/int-map) :store store-entities :load load-entities}
-   :block-ticks        {:default (i/int-map) :store store-ticks :load load-ticks}
-   :block-entities     {:default (i/int-map)
-                        :store   (fn [v _] (into {} (map (fn [[k m]] [k (into {} m)])) v))
-                        :load    #(into (i/int-map) (map (fn [[k m]] [(long k) (into {} (map (fn [[p e]] [(vec p) e])) m)])) %)}
+   :chunks             {:default chunk/no-chunks :load identity}
+   :entities           {:default (i/int-map) :load identity}
+   :block-ticks        {:default (i/int-map) :load identity}
+   :block-entities     {:default (i/int-map) :load identity}
+   :stored             {:default (i/int-set)}
+   :loading            {:default (i/int-set)}
    :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity}
    :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
    :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
