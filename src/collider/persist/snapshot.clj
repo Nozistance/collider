@@ -196,12 +196,15 @@
       state
       (write-changes! state store snap m changed))))
 
+(defn- chunk-name ^String [id]
+  (let [[cx cz] (chunk/id->pos id)] (str "chunk " cx "," cz)))
+
 (defn- stored! [state store id payload]
   (try
     (put-chunk! store id payload)
     (update state :chunks dissoc id)
     (catch Throwable t
-      (log/warn "snapshot: chunk" (chunk/id->pos id) "write failed -" (.getMessage t))
+      (log/warn (chunk-name id) "was unloaded but not saved, its changes are lost -" (.getMessage t))
       state)))
 
 (defn store-chunk!
@@ -212,7 +215,7 @@
 (defn- fetched! [state store id deliver]
   (deliver (try (get-chunk store id)
                 (catch Throwable t
-                  (log/warn "snapshot: chunk" (chunk/id->pos id) "read failed -" (.getMessage t))
+                  (log/warn (chunk-name id) "could not be read and starts over as a new chunk -" (.getMessage t))
                   nil)))
   state)
 
