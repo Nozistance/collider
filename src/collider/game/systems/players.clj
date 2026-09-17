@@ -24,7 +24,8 @@
   "Returns an angle in the 256 step units of the protocol."
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 (def ^:private simple-metadata
-  {:item          (fn [e] {:stack (:stack e)})
+  {:item          (fn [e] (cond-> {:stack (:stack e)}
+                                  (:burning? e) (assoc :burning? true)))
    :tnt           (fn [e] {:fuse (:fuse e)})
    :falling-block (fn [e] {:start (:start e)})})
 

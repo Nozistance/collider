@@ -103,7 +103,9 @@
   (case kind
     :player (player-data meta)
     (:sheep :cow :mooshroom) (animal-data meta)
-    :item (if (contains? meta :stack) [[8 :item (:stack meta)]] [])
+    :item (cond-> []
+                  (flags? meta) (conj [0 :byte (flags-byte meta)])
+                  (contains? meta :stack) (conj [8 :item (:stack meta)]))
     :tnt (let [f (:fuse meta 80)]
            (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))
     :falling-block (if (contains? meta :start)
@@ -207,6 +209,7 @@
    :fire/ignite                   [:item.flintandsteel.use 4]
    :firecharge/use                [:item.firecharge.use 4]
    :generic/extinguish-fire       [:entity.generic.extinguish-fire 4]
+   :generic/burn                  [:entity.generic.burn 8]
    :explosion                     [:entity.generic.explode 4]
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})

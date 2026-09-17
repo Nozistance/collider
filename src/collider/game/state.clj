@@ -478,6 +478,12 @@
                    :hurt-resist max-resist)
           dx (knock-back (double dx) (double dz))))
 
+(defn- hurt-item
+  "Returns dropped item e after amount of damage. It has no resistance window
+   and keeps its health as a whole number."
+  [e ^double health ^double amount]
+  (assoc e :health (double (long (- health amount)))))
+
 (defn hurt
   "Returns entity e after amount of damage, knocked back from direction dx dz
    when given."
@@ -487,6 +493,7 @@
          resist (long (or (:hurt-resist e) 0))]
      (cond
        (not (pos? health)) e
+       (= :item (:type e)) (hurt-item e health amount)
        (> resist (/ max-resist 2.0)) (hurt-again e health amount)
        :else (hurt-fully e health amount dx dz)))))
 

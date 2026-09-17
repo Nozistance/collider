@@ -136,9 +136,12 @@
 (def ^:private ^:const fire-seconds 8)
 (def ^:private ^:const lava-seconds 15)
 (def ^:private ^:const lava-damage 4.0)
+(def ^:private ^:const item-half 0.125)
+(def ^:private ^:const item-height 0.25)
 (defn- box-of [e]
-  (if (= :player (:type e))
-    [player-half player-height]
+  (case (:type e)
+    :player [player-half player-height]
+    :item [item-half item-height]
     (let [{:keys [half height]} (mobs/types (:type e))] [half height])))
 
 (defn- near-edits?
@@ -158,8 +161,10 @@
 
 (def ^:private ^:const sunk-shrink-xz 0.1)
 (def ^:private ^:const sunk-shrink-y 0.4)
-(def ^:private ^:const touch-bit 1)
-(def ^:private ^:const sunk-bit 2)
+(def ^:private ^:const fire-bit 1)
+(def ^:private ^:const lava-bit 2)
+(def ^:private ^:const sunk-bit 4)
+(def ^:private ^:const all-bits 7)
 
 (defn- floor-lo ^long [^double a] (long (Math/floor (+ a fluid-margin))))
 (defn- floor-hi ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
@@ -179,22 +184,22 @@
 (defn- mark-cell [chunks ^longs acc x y z inner?]
   (let [st (chunk/block-state chunks x y z)
         lava? (= :lava (liquid/liquid-class st))]
-    (when (or lava? (block/fire? st))
-      (aset acc 0 (bit-or (aget acc 0) touch-bit)))
+    (when lava? (aset acc 0 (bit-or (aget acc 0) lava-bit)))
+    (when (block/fire? st) (aset acc 0 (bit-or (aget acc 0) fire-bit)))
     (when (and lava? inner?)
       (aset acc 0 (bit-or (aget acc 0) sunk-bit)))))
 
 (defn- scan-z [chunks ^longs acc outer inner x y yin?]
   (let [z1 (outer 5) iz0 (inner 4) iz1 (inner 5)]
     (loop [z (outer 4)]
-      (when (and (< z z1) (not= 3 (aget acc 0)))
+      (when (and (< z z1) (not= all-bits (aget acc 0)))
         (mark-cell chunks acc x y z (and yin? (>= z iz0) (< z iz1)))
         (recur (inc z))))))
 
 (defn- scan-y [chunks ^longs acc outer inner x xin?]
   (let [y1 (outer 3) iy0 (inner 2) iy1 (inner 3)]
     (loop [y (outer 2)]
-      (when (and (< y y1) (not= 3 (aget acc 0)))
+      (when (and (< y y1) (not= all-bits (aget acc 0)))
         (scan-z chunks acc outer inner x y (and xin? (>= y iy0) (< y iy1)))
         (recur (inc y))))))
 
@@ -209,7 +214,7 @@
         x1 (outer 1) ix0 (inner 0) ix1 (inner 1)
         ^longs acc (long-array 1)]
     (loop [x (outer 0)]
-      (when (and (< x x1) (not= 3 (aget acc 0)))
+      (when (and (< x x1) (not= all-bits (aget acc 0)))
         (scan-y chunks acc outer inner x (and (>= x ix0) (< x ix1)))
         (recur (inc x))))
     (aget acc 0)))
@@ -239,7 +244,7 @@
   (let [fire (long (or (:fire e) 0))
         wet? (boolean (:wet? e))
         flags (probe world e)
-        touch (not (zero? (bit-and flags touch-bit)))
+        touch (not (zero? (bit-and flags (bit-or fire-bit lava-bit))))
         sunk? (not (zero? (bit-and flags sunk-bit)))
         flag (burning-flag eid e fire sunk?)]
     (if (creative-proof? e)
@@ -249,6 +254,58 @@
               (when touch (ignite-deltas eid fire wet? 1.0 fire-seconds))
               (when sunk? (ignite-deltas eid fire wet? lava-damage lava-seconds))
               (douse-deltas eid e fire wet?)))))
+
+(def ^:private ^:const burn-volume 0.4)
+(def ^:private ^:const burn-pitch 2.0)
+(def ^:private ^:const burn-pitch-spread 0.4)
+(def ^:private ^:const burn-sound-period 10)
+
+(defn- fire-proof-item?
+  "Returns true when the stack shrugs fire off, as netherite gear does."
+  [e]
+  (= "is_fire" (data/resists (:item (:stack e)))))
+
+(defn- item-wet? [world e]
+  (pos? (liquid/fluid-height (:chunks world) (:pos e)
+                             item-half item-height :water)))
+
+(defn- item-fire-deltas [world eid e ^long flags]
+  (let [fire (long (or (:fire e) 0))
+        wet? (boolean (and (or (pos? fire) (pos? flags))
+                           (item-wet? world e)))]
+    (concat (burning-flag eid e fire false)
+            (burn-tick-deltas eid fire wet?)
+            (when (pos? (bit-and flags fire-bit))
+              (ignite-deltas eid fire wet? 1.0 fire-seconds))
+            (when (pos? (bit-and flags lava-bit))
+              (ignite-deltas eid fire wet? lava-damage lava-seconds))
+            (douse-deltas eid e fire wet?))))
+
+(defn- damage-sum ^double [deltas]
+  (reduce (fn [^double s d]
+            (if (= :damage (nth d 0)) (+ s (double (nth d 2))) s))
+          0.0 deltas))
+
+(defn- burn-sound-deltas
+  "Returns the lava burn sound, played on the tick the item dies and on every
+   tenth tick of its age."
+  [world eid e ^double health]
+  (when (or (<= (- health lava-damage) 0.0)
+            (zero? (rem (inc (long (or (:age e) 0))) burn-sound-period)))
+    (let [r (random/of-key (:tick world) eid :burn)]
+      [(out/all (out/sound :generic/burn (:pos e) burn-volume
+                           (+ burn-pitch (* burn-pitch-spread r))))])))
+
+(defn- item-deltas [world eid e]
+  (if (fire-proof-item? e)
+    (when (pos? (long (or (:fire e) 0))) [[:merge-entity eid {:fire 0}]])
+    (let [flags (probe world e)
+          ds (item-fire-deltas world eid e flags)
+          health (double (:health e))]
+      (concat ds
+              (when (pos? (bit-and flags lava-bit))
+                (burn-sound-deltas world eid e health))
+              (when (>= (damage-sum ds) health) [[:remove-entity eid]])))))
 
 (def ^:private ^:const safe-fall 3.0)
 (defn- landing-particles [world e ^double fall]
@@ -386,7 +443,7 @@
          (nil? (:landed e))
          (>= health (double (or (:health-sent e) health))))))
 
-(defn- living-deltas [world eid e]
+(defn- mob-deltas [world eid e]
   (let [busy? (not (idle? e))]
     (concat (when busy? (timer-deltas eid e))
             (when busy? (void-deltas eid e))
@@ -394,9 +451,14 @@
             (fire-deltas world eid e)
             (when busy? (report-deltas world eid e)))))
 
+(defn- living-deltas [world eid e]
+  (if (= :item (:type e))
+    (item-deltas world eid e)
+    (mob-deltas world eid e)))
+
 (defn- live-entries [world]
   (into []
-        (filter (fn [[_ e]] (and (some? (:health e)) (not= :item (:type e))
+        (filter (fn [[_ e]] (and (some? (:health e))
                                  (or (not (idle? e)) (near-edits? world e)))))
         (:entities world)))
 

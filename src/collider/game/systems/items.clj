@@ -6,6 +6,7 @@
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.vec :as v]
+            [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
@@ -14,6 +15,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const despawn-age 6000)
+(def ^:private ^:const below-world (- chunk/min-y 64.0))
 (def ^:private ^:const throw-pickup-delay 40)
 (def ^:private ^:const throw-power 0.3)
 (def ^:private ^:const throw-spread 0.02)
@@ -175,7 +177,8 @@
         vel' (assoc vel' 1 (liquid/bubble-push chunks pos' (double (vel' 1))))
         stuck' (motion/stuck-speed chunks pos' item-half item-height)
         stuck' (if resting? (or stuck' stuck) stuck')]
-    (if (or (>= age despawn-age) (not (pos? (double (:health e 1.0)))))
+    (if (or (>= age despawn-age) (< (v/y pos') below-world)
+            (not (pos? (double (:health e 1.0)))))
       [:remove-entity eid]
       [:merge-entity eid
        (cond-> {:pos          pos'
