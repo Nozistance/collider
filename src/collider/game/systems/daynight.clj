@@ -1,6 +1,7 @@
 (ns collider.game.systems.daynight
   "The passing of the day."
-  (:require [collider.game.out :as out]))
+  (:require [collider.game.out :as out]
+            [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
 
@@ -26,5 +27,4 @@
         (out/to eid msg)))))
 
 (defn daynight [world d]
-  (let [events (:input d)]
-    [#(daynight-deltas world events)]))
+  [#(daynight-deltas world (state/joins d))])

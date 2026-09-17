@@ -300,11 +300,28 @@
       (when (and death (>= (long death) death-ticks) (not= :player (:type e)))
         [[:remove-entity eid]]))))
 
-(defn- respawn-config [e]
+(defn respawn-config
+  "Returns the respawn point player e set, or nil when it set none."
+  [e]
   (if-let [{:keys [pos yaw pitch]} (:forced-spawn e)]
     {:pos pos :yaw (double (or yaw 0.0)) :pitch (double (or pitch 0.0)) :forced? true}
     (when-let [pos (:spawn e)]
       {:pos pos :yaw (:yaw e 0.0) :pitch 0.0 :forced? false})))
+
+(def ^:private ^:const stand-up-reach 3)
+
+(defn- reach-chunks [c]
+  (let [c (long c)]
+    (range (bit-shift-right (- c stand-up-reach) 4)
+           (inc (bit-shift-right (+ c stand-up-reach) 4)))))
+
+(defn respawn-chunk-ids
+  "Returns the ids of the chunks the check of the respawn point of player e
+   reads."
+  [e]
+  (when-let [{[x _ z] :pos} (respawn-config e)]
+    (for [cx (reach-chunks x) cz (reach-chunks z)]
+      (chunk/pos->id cx cz))))
 
 (defn- free-to-stand? [chunks [x y z]]
   (and (block/possible-to-respawn-in? (chunk/chunks-get-block chunks [x y z]))
@@ -318,13 +335,12 @@
       [[(+ (double (nth pos 0)) 0.5) (+ (double (nth pos 1)) 0.1) (+ (double (nth pos 2)) 0.5)]
        yaw pitch])))
 
-(defn- respawn-point [world eid e]
-  (let [cfg (respawn-config e)
-        chunks (:chunks world)]
-    (if-let [[pos yaw pitch] (and cfg (found-respawn chunks cfg))]
-      [pos yaw pitch nil]
-      [(state/world-spawn-pos world eid) 0.0 0.0
-       (when cfg (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))])))
+(defn bed-respawn
+  "Returns [pos yaw pitch] at the respawn point of player e, or nil when it
+   has none or cannot be used."
+  [chunks e]
+  (when-let [cfg (respawn-config e)]
+    (found-respawn chunks cfg)))
 
 (defn- reshow-deltas [world eid]
   (for [[oid o] (:entities world)
@@ -344,16 +360,20 @@
 (defn- own-slots [inv]
   (out/inventory (mapv inv (range menu/slot-count)) nil))
 
-(defn- respawn-deltas [world eid]
-  (let [e (get-in world [:entities eid])]
-    (when (and e (not (pos? (double (:health e)))))
-      (let [[pos yaw pitch lost] (respawn-point world eid e)
-            inv (apply dissoc (:inventory e) (range 5))]
-        (cond-> (into (vec (containers/removed-deltas world eid e))
-                      (revived eid e pos yaw pitch))
-                (seq inv) (conj (out/to eid (own-slots inv)))
-                lost (conj (out/to eid lost))
-                true (into (reshow-deltas world eid)))))))
+(def ^:private not-valid
+  (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))
+
+(defn respawn-deltas
+  "Returns the deltas that bring dead player eid back at pos, telling it
+   the respawn point it set was lost when lost? is true."
+  [world eid [pos yaw pitch lost?]]
+  (let [e (get-in world [:entities eid])
+        inv (apply dissoc (:inventory e) (range 5))]
+    (cond-> (into (vec (containers/removed-deltas world eid e))
+                  (revived eid e pos yaw pitch))
+      (seq inv) (conj (out/to eid (own-slots inv)))
+      lost? (conj (out/to eid not-valid))
+      true (into (reshow-deltas world eid)))))
 
 (defn- idle? [e]
   (let [health (double (or (:health e) 0.0))]
@@ -388,11 +408,8 @@
 
 (defn- event-deltas [world events]
   (into []
-        (mapcat (fn [[tag eid :as ev]]
-                  (case tag
-                    :attack (attack-deltas world ev)
-                    :respawn (respawn-deltas world eid)
-                    nil)))
+        (mapcat (fn [[tag :as ev]]
+                  (when (= :attack tag) (attack-deltas world ev))))
         events))
 
 (defn damage [world d]

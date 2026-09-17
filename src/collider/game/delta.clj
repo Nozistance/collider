@@ -40,6 +40,10 @@
    [:cat :int]
    :restore-chunk
    [:cat :int :map]
+   :player-placed
+   [:cat Eid :string Vec3]
+   :spawn-progress
+   [:cat Eid [:maybe :map]]
    :unload-chunk
    [:cat :int]
    :set-weather

@@ -6,7 +6,6 @@
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.state :as state]
-            [collider.game.systems.chunks :as chunks]
             [collider.game.tick :as tick]
             [collider.log :as log]
             [collider.net.render :as render]
@@ -63,11 +62,9 @@
   (let [cfg (merge (config/load-config) opts)
         store (or (:store opts) (when-let [dir (:save-dir cfg)] (snapshot/file-store dir)))
         saved (when store (snapshot/load-snapshot store))
-        world (atom (chunks/preloaded
-                      (assoc (merge state/initial-world saved)
-                        :config (assoc (select-keys cfg [:view-distance :simulation-distance :max-players :motd])
-                                  :unload-chunks? (some? store)))
-                      #(snapshot/get-chunk store %)))
+        world (atom (assoc (merge state/initial-world saved)
+                      :config (assoc (select-keys cfg [:view-distance :simulation-distance :max-players :motd])
+                                :unload-chunks? (some? store))))
         saver (when store (snapshot/start-saver))]
     {:cfg   cfg :store store :saved saved :world world :saver saver
      :save! (when saver #(snapshot/request-save! saver store @world))}))

@@ -22,6 +22,7 @@
             [collider.game.systems.pose :as pose]
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
+            [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.weather :as weather-system]
             [collider.game.systems.damage :as damage])
@@ -58,10 +59,12 @@
                    #'falling/first-step
                    #'tnt/first-step])
 
-(def phases [[#'pose/pose]
+(def phases [[#'spawning/placing]
+             [#'pose/pose]
              systems
              [#'explosions/explosions]
              post-systems
+             [#'chunks/unloading]
              [#'detector/observe]])
 
 (defn tick [world events]

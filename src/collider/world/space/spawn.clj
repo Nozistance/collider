@@ -135,6 +135,17 @@
     (when (and pos (box-free? chunks (nth pos 0) (nth pos 1) (nth pos 2)))
       (bottom-center pos))))
 
+(defn search-chunk-ids
+  "Returns the ids of the chunks a spawn search within radius of suggestion
+   reads."
+  [suggestion radius]
+  (let [r (max 0 (long radius))
+        x (long (nth suggestion 0))
+        z (long (nth suggestion 2))
+        span (fn [^long c] (range (bit-shift-right (- c r) 4)
+                                  (inc (bit-shift-right (+ c r) 4))))]
+    (for [cx (span x) cz (span z)] (chunk/pos->id cx cz))))
+
 (defn find-spawn
   "Returns a standing position with room for a player, looking at the columns
    within radius of suggestion in an order decided by seed. When no column is
@@ -146,4 +157,4 @@
       (if (>= i (long n))
         (fixup-height chunks suggestion)
         (let [[x z] (candidate-cell params ox oz i)]
-          (if-let [p (free-spawn chunks x z)] p (recur (inc i))))))))
+          (or (free-spawn chunks x z) (recur (inc i))))))))

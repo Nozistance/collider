@@ -76,7 +76,9 @@
    :time-ms            {:default 0}
    :time-of-day        {:default 0 :store (fn [v _] v) :load identity}
    :next-eid           {:default 1000000 :store (fn [v _] v) :load identity}
-   :rules              {:default rules/defaults :store (fn [v _] v) :load #(merge rules/defaults %)}
+   :rules              {:default rules/defaults :store (fn [v _] v)
+                        :load    #(merge rules/defaults
+                                         (select-keys % (keys rules/defaults)))}
    :profiles           {:default {} :store store-profiles :load identity}
    :chunks             {:default chunk/no-chunks :load identity}
    :entities           {:default (i/int-map) :load identity}
@@ -97,6 +99,7 @@
    :container-rechecks {:default {}}
    :shulker-anim       {:default {}}
    :players            {:default {}}
+   :spawning           {:default (i/int-map)}
    :listed             {:default {}}})
 
 (def initial-world (update-vals world :default))

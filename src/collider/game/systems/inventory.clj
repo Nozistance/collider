@@ -5,6 +5,7 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
@@ -106,11 +107,11 @@
         (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
                      (:drops after))))))
 
-(defn- inventory-deltas [world events]
-  (concat (restore-deltas world events)
+(defn- inventory-deltas [world events joins]
+  (concat (restore-deltas world joins)
           (mapcat #(when (= :click (first %)) (click-deltas world %)) events)
           (mapcat #(when (= :pick (first %)) (pick-deltas world %)) events)))
 
 (defn inventory [world d]
   (let [events (:input d)]
-    [#(inventory-deltas world events)]))
+    [#(inventory-deltas world events (state/joins d))]))

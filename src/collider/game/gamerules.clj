@@ -31,8 +31,7 @@
    :players-nether-portal-default-delay  [80 0 Integer/MAX_VALUE]
    :players-sleeping-percentage          [100 0 Integer/MAX_VALUE]
    :random-tick-speed                    [3 0 Integer/MAX_VALUE]
-   :respawn-radius                       [10 0 Integer/MAX_VALUE]
-   :spawn-chunk-radius                   [2 0 32]})
+   :respawn-radius                       [10 0 Integer/MAX_VALUE]})
 
 (def table
   (into (sorted-map)

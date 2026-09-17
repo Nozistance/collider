@@ -431,10 +431,10 @@
   (let [events (:input d)
         ps (state/player-entries world)
         ts (tracked-entries world)]
-    [#(joined-deltas events)
-     #(duplicate-login-deltas world events)
+    [#(joined-deltas (state/joins d))
+     #(duplicate-login-deltas world (state/joins d))
      #(list-deltas world ps)
      #(pending-teleport-deltas world ps)
      #(spawn-jobs world ps ts)
      #(move-jobs world ps ts events)
-     #(tab-header-deltas world events)]))
+     #(tab-header-deltas world (state/joins d))]))

@@ -1,6 +1,7 @@
 (ns collider.game.systems.weather
   "Rain and thunder."
   (:require [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
@@ -32,4 +33,5 @@
 
 (defn weather [world d]
   (let [w (merge world (weather/advance world))]
-    (concat [[:advance-weather]] (level-messages w) (switch-messages w) (join-messages w (:input d)))))
+    (concat [[:advance-weather]] (level-messages w) (switch-messages w)
+            (join-messages w (state/joins d)))))

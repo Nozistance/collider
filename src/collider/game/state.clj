@@ -156,10 +156,11 @@
 (defn spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
-(defn world-spawn-pos [w eid]
-  (spawn/find-spawn (:chunks w) (:world-spawn w)
-                    (long (get-in w [:rules :respawn-radius] 10))
-                    (spawn-seed w eid)))
+(defn joins
+  "Returns [:player-join eid name] for every player placed in deltas d."
+  [d]
+  (for [[tag eid name] (:world d) :when (= :player-placed tag)]
+    [:player-join eid name]))
 
 (defn- new-player [name tick pos]
   {:type         :player :name name :uuid (offline-uuid name)
@@ -174,11 +175,26 @@
    :keepalive-at tick :keepalive-pending? false})
 
 (defn- player-join [w eid name]
+  (assoc-in w [:spawning eid]
+            (cond-> {:name name :seed (spawn-seed w eid)}
+              (get-in w [:profiles name :pos])
+              (assoc :pos (get-in w [:profiles name :pos])))))
+
+(defn- player-placed [w eid name pos]
   (-> w
       (assoc-in [:entities eid]
-                (entity/of (merge (new-player name (:tick w) (world-spawn-pos w eid))
+                (entity/of (merge (new-player name (:tick w) pos)
                                   (get-in w [:profiles name]))))
-      (assoc-in [:players name] eid)))
+      (assoc-in [:players name] eid)
+      (update :spawning dissoc eid)))
+
+(defn- respawn-requested [w eid]
+  (let [e (get-in w [:entities eid])]
+    (if (and e (not (pos? (double (:health e))))
+             (not (get-in w [:spawning eid])))
+      (assoc-in w [:spawning eid]
+                {:respawn? true :seed (spawn-seed w eid)})
+      w)))
 
 (defn- unloaded [w id]
   (let [id (long id)]
@@ -215,6 +231,7 @@
 (defn- player-quit [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
     (cond-> (-> (vacated-bed w eid)
+                (update :spawning dissoc eid)
                 (update :entities dissoc eid)
                 (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
             name (assoc-in [:profiles name] (stored-profile e)))))
@@ -348,6 +365,7 @@
    :player-quit     (fn [w [_ eid]] (player-quit w eid))
    :move            (fn [w [_ eid changes]] (apply-move w eid changes))
    :teleport-ack    (fn [w [_ eid id]] (teleport-ack w eid id))
+   :respawn         (fn [w [_ eid]] (respawn-requested w eid))
    :keepalive-echo  (fn [w [_ eid id]] (keepalive-echo w eid id))
    :chunk-batch-ack (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
    :entity-action   (fn [w [_ eid action]] (entity-action w eid action))
@@ -529,6 +547,10 @@
                                                   (update w :loading disj id)
                                                   (schema/with-chunk w id payload)))
    :unload-chunk         (fn [w [_ id]] (unloaded w id))
+   :player-placed        (fn [w [_ eid name pos]] (player-placed w eid name pos))
+   :spawn-progress       (fn [w [_ eid req]] (if req
+                                               (assoc-in w [:spawning eid] req)
+                                               (update w :spawning dissoc eid)))
    :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
    :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick         (fn [w _] (dissoc (advance w) :quits))
