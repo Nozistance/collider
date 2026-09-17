@@ -1,6 +1,7 @@
 (ns collider.net.server
   "Serving the players who connect."
   (:require [collider.log :as log]
+            [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
   (:import (collider.java Buf)
@@ -43,7 +44,7 @@
 
 (defn- encode-packet! [^Buf payload state m]
   (try
-    (.clear payload)
+    (buf/clear! payload)
     (packets/encode! state payload m)
     true
     (catch Throwable t
@@ -55,7 +56,7 @@
     (c/write-frame! out payload body head (long threshold) defl chunk)))
 
 (defn- writer-wire [^BufferedOutputStream out]
-  {:out out :payload (Buf. 1024) :body (Buf. 1024) :head (Buf. 5)
+  {:out out :payload (buf/buf 1024) :body (buf/buf 1024) :head (buf/buf 5)
    :defl (Deflater.) :chunk (byte-array 8192)})
 
 (defn- emit! [w ^long threshold state m]
@@ -96,7 +97,7 @@
 
 (defn- reader-loop [^Conn conn io]
   (let [in (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
-        buf (Buf. 2048)
+        buf (buf/buf 2048)
         infl (Inflater.)]
     (try
       (loop []

@@ -18,10 +18,10 @@
 (def ^:const format-version 10)
 
 (nippy/extend-freeze Chunk ::chunk [^Chunk c ^DataOutput out]
-  (.save c out))
+  (chunk/save-chunk! c out))
 
 (nippy/extend-thaw ::chunk [^DataInput in]
-  (Chunk/load in))
+  (chunk/load-chunk in))
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
 (defprotocol Store

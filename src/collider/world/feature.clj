@@ -5,8 +5,8 @@
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.moss :as moss]
-            [collider.world.blocks.support :as support])
-  (:import (collider.java Noise)))
+            [collider.world.blocks.support :as support]
+            [collider.world.noise :as noise]))
 
 (set! *warn-on-reflection* true)
 
@@ -62,16 +62,16 @@
 
 (def ^:private ^:table noises
   (delay (into {} (map (fn [[seed octave amps :as k]]
-                         [k (Noise/of seed octave (double-array amps))]))
+                         [k (noise/noise seed octave (double-array amps))]))
                (distinct (deep-noises (:configured (data/features)))))))
 
 (defn- fast-noise ^double [m p]
-  (.at ^Noise (get @noises (noise-key m :noise))
-       (double (p 0)) (double (p 1)) (double (p 2)) (float (:scale m))))
+  (noise/at (get @noises (noise-key m :noise))
+            (double (p 0)) (double (p 1)) (double (p 2)) (:scale m)))
 
 (defn- slow-noise ^double [m p]
-  (.atFloat ^Noise (get @noises (noise-key m :slow-noise))
-            (int (p 0)) (int (p 1)) (int (p 2)) (float (:slow-scale m))))
+  (noise/at-float (get @noises (noise-key m :slow-noise))
+                  (p 0) (p 1) (p 2) (:slow-scale m)))
 
 (defn- noise-state [states ^double v]
   (nth states (long (* (min 0.9999 (max 0.0 (/ (+ 1.0 v) 2.0))) (count states)))))

@@ -2,8 +2,7 @@
   "Block light, sky light, and the sky brightness of the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Chunk ChunkIndex Section)
-           (java.util ArrayDeque HashMap)))
+  (:import (java.util ArrayDeque HashMap)))
 
 (set! *warn-on-reflection* true)
 
@@ -24,13 +23,12 @@
 (defn- l-idx ^long [^long x ^long y ^long z]
   (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15)))
 
-(defn- chunk-at ^Chunk [chunks x z]
-  (Chunk/at chunks (bit-shift-right (unchecked-int x) 4)
-            (bit-shift-right (unchecked-int z) 4)))
+(defn- chunk-at [chunks x z]
+  (chunk/chunk-at chunks (bit-shift-right (long x) 4)
+                  (bit-shift-right (long z) 4)))
 
-(defn- section ^Section [chunks x y z]
-  (Chunk/sectionAt chunks (unchecked-int x) (unchecked-int y)
-                   (unchecked-int z)))
+(defn- section [chunks x y z]
+  (chunk/section-at chunks x y z))
 
 (defn- absent-sky [chunks x y z]
   (let [x (long x) y (long y) z (long z)]
@@ -48,8 +46,8 @@
           (bit-shift-left (chunk/section-index y) 1)
           ch))
 
-(defn- stored-in ^long [^Section s ^long ch ^long idx]
-  (if (= ch SL) (.skyLight s (int idx)) (.blockLight s (int idx))))
+(defn- stored-in ^long [s ^long ch ^long idx]
+  (if (= ch SL) (chunk/sky-light s idx) (chunk/block-light s idx)))
 
 (defn- stored-l [chunks ch x y z]
   (if (not (chunk/in-range? y))
@@ -69,9 +67,9 @@
 (defn- fresh-light ^bytes [chunks ch x y z]
   (let [ch (long ch) x (long x) y (long y) z (long z)
         c (chunk-at chunks x z)
-        ^Section s (or (section chunks x y z)
+        s (or (section chunks x y z)
                        (chunk/new-section c (chunk/section-index y)))]
-    (if (= ch SL) (.skyLightCopy s) (.blockLightCopy s))))
+    (if (= ch SL) (chunk/sky-light-copy s) (chunk/block-light-copy s))))
 
 (defn- set-l! [^HashMap cache chunks ch x y z v]
   (let [ch (long ch) x (long x) y (long y) z (long z) v (long v)]
@@ -152,13 +150,13 @@
         (when (pos? ln)
           (.add pq (pack nx ny nz ln)))))))
 
-(defn- relit ^Chunk [^Chunk c [[_ k] ^bytes arr]]
+(defn- relit [c [[_ k] ^bytes arr]]
   (let [k (long k)
         si (int (bit-and (bit-shift-right k 1) 31))
-        s (or (.section c si) (.fresh c si))]
-    (.with c si (if (= (bit-and k 1) SL)
-                  (.withSkyLight s arr)
-                  (.withBlockLight s arr)))))
+        s (or (chunk/chunk-section c si) (chunk/new-section c si))]
+    (chunk/with-section c si (if (= (bit-and k 1) SL)
+                                 (chunk/with-sky-light s arr)
+                                 (chunk/with-block-light s arr)))))
 
 (defn- rebuild [chunks ^HashMap cache]
   (let [ks (reverse (sort (keys cache)))
@@ -193,22 +191,22 @@
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks x y z)]
-      (max (.skyLight ^Section s (int (l-idx x y z)))
-           (.blockLight ^Section s (int (l-idx x y z))))
+      (max (chunk/sky-light s (l-idx x y z))
+           (chunk/block-light s (l-idx x y z)))
       (absent-sky chunks x y z))))
 
 (defn block-light-at [chunks x y z]
   (if (not (chunk/in-range? y))
     0
     (if-let [s (section chunks x y z)]
-      (.blockLight ^Section s (int (l-idx x y z)))
+      (chunk/block-light s (l-idx x y z))
       0)))
 
 (defn sky-light-at [chunks x y z]
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks x y z)]
-      (.skyLight ^Section s (int (l-idx x y z)))
+      (chunk/sky-light s (l-idx x y z))
       (absent-sky chunks x y z))))
 
 (def ^:private ^:const day-period 24000)

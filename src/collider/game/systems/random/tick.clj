@@ -10,8 +10,7 @@
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.blocks.precipitation :as precipitation])
-  (:import (collider.java Chunk Section)))
+            [collider.world.blocks.precipitation :as precipitation]))
 
 (set! *warn-on-reflection* true)
 
@@ -52,8 +51,8 @@
                       [[(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)] st]))))
           (range speed))))
 
-(defn- sections-of [^Chunk c]
-  (map (fn [si] [si (.section c (int si))])
+(defn- sections-of [c]
+  (map (fn [si] [si (chunk/chunk-section c si)])
        (range chunk/section-count)))
 
 (defn- world-cells [world chunks speed]
@@ -61,7 +60,7 @@
         (mapcat (fn [cid]
                   (when-let [c (get chunks cid)]
                     (into []
-                          (mapcat (fn [[si ^Section s]]
+                          (mapcat (fn [[si s]]
                                     (when (and s (not (identical? s chunk/empty-section)))
                                       (section-cells world chunks cid si speed))))
                           (sections-of c)))))

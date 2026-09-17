@@ -1,10 +1,10 @@
 (ns collider.proto.chunk
   "Chunks as the client receives them."
   (:require [collider.data :as data]
+            [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
-  (:import (collider.java Buf Chunk Section)))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -47,25 +47,25 @@
 
 (def ^:private ^:table plains (delay (data/datapack-id "worldgen/biome" :plains)))
 
-(defn- write-section! [^Buf buf ^Section s]
-  (.write s buf ^booleans @fluid-arr (int @plains)))
+(defn- write-section! [buf s]
+  (chunk/write-section! s buf @fluid-arr @plains))
 
-(defn- write-biomes! [^Buf buf]
-  (.writeByte buf 0)
+(defn- write-biomes! [buf]
+  (buf/write-byte! buf 0)
   (c/write-varint buf (long @plains)))
 
-(defn- write-empty-section! [^Buf buf]
-  (.writeShort buf 0)
-  (.writeShort buf 0)
-  (.writeByte buf 0) (c/write-varint buf block/air)
+(defn- write-empty-section! [buf]
+  (buf/write-short! buf 0)
+  (buf/write-short! buf 0)
+  (buf/write-byte! buf 0) (c/write-varint buf block/air)
   (write-biomes! buf))
 
 (defn- light-mask ^long [pred]
   (loop [i 0 m 0]
     (if (= i light-sections) m (recur (inc i) (if (pred i) (bit-or m (bit-shift-left 1 i)) m)))))
 
-(defn- our-section [^Chunk chunk ^long si]
-  (.section chunk (int si)))
+(defn- our-section [chunk ^long si]
+  (chunk/chunk-section chunk si))
 
 (def ^:private height-bits (ceillog2 (+ 2 (- chunk/max-y chunk/min-y))))
 
@@ -74,36 +74,36 @@
     (doseq [si (range (dec (long chunk/section-count)) -1 -1)
             :let [s (our-section chunk si)]
             :when s]
-      (.heights ^Section s pred out (int (* 16 (long si)))))
+      (chunk/heights! s pred out (* 16 (long si))))
     (pack-longs height-bits out)))
 
 (def ^:private ^:table client-heightmaps
   (delay [[1 @surface-arr] [4 @motion-arr] [5 @no-leaves-arr]]))
 
-(defn- write-heightmaps! [^Buf buf chunk]
+(defn- write-heightmaps! [buf chunk]
   (c/write-varint buf (count @client-heightmaps))
   (doseq [[id pred] @client-heightmaps]
     (c/write-varint buf (long id))
     (let [^longs ls (heightmap-longs chunk pred)]
       (c/write-varint buf (alength ls))
-      (dotimes [i (alength ls)] (.writeLong buf (aget ls i))))))
+      (dotimes [i (alength ls)] (buf/write-long! buf (aget ls i))))))
 
-(defn- write-block-entities! [^Buf buf entries]
+(defn- write-block-entities! [buf entries]
   (c/write-varint buf (count entries))
   (doseq [[[x y z] {:keys [type nbt]}] entries]
-    (.writeByte buf (int (bit-or (bit-shift-left (bit-and (long x) 15) 4) (bit-and (long z) 15))))
-    (.writeShort buf (int y))
+    (buf/write-byte! buf (int (bit-or (bit-shift-left (bit-and (long x) 15) 4) (bit-and (long z) 15))))
+    (buf/write-short! buf (int y))
     (c/write-varint buf (long type))
     (c/write-nbt buf nbt)))
 
-(defn- write-sections! [^Buf buf chunk]
-  (let [body (Buf. 4096)]
+(defn- write-sections! [buf chunk]
+  (let [body (buf/buf 4096)]
     (dotimes [wi chunk/section-count]
-      (if-let [^Section s (our-section chunk wi)]
+      (if-let [s (our-section chunk wi)]
         (write-section! body s)
         (write-empty-section! body)))
-    (c/write-varint buf (.readableBytes body))
-    (.writeBytes buf body)))
+    (c/write-varint buf (buf/readable-bytes body))
+    (buf/write-bytes! buf body)))
 
 (defn- blk-pred [chunk] (fn [li] (some? (our-section chunk (dec (long li))))))
 
@@ -115,8 +115,8 @@
   (let [top (top-section chunk)]
     (fn [li] (or (blk? li) (and (>= top 0) (= (dec (long li)) (inc top)))))))
 
-(defn- lit? [^Section s channel]
-  (if (= channel :sky) (.hasSkyLight s) (.hasBlockLight s)))
+(defn- lit? [s channel]
+  (if (= channel :sky) (chunk/sky-lit? s) (chunk/block-lit? s)))
 
 (defn- light-of [chunk pred ^long li channel]
   (when (pred li)
@@ -129,28 +129,28 @@
     [(light-mask #(not (contains? #{nil :empty} (of %))))
      (light-mask #(= :empty (of %)))]))
 
-(defn- write-light-masks! [^Buf buf [sky sky-empty] [blk blk-empty]]
+(defn- write-light-masks! [buf [sky sky-empty] [blk blk-empty]]
   (doseq [m [sky blk sky-empty blk-empty]]
     (if (zero? (long m))
       (c/write-varint buf 0)
-      (do (c/write-varint buf 1) (.writeLong buf (long m))))))
+      (do (c/write-varint buf 1) (buf/write-long! buf (long m))))))
 
-(defn- write-light! [^Buf buf chunk pred channel mask]
+(defn- write-light! [buf chunk pred channel mask]
   (c/write-varint buf (Long/bitCount (long mask)))
   (dotimes [li light-sections]
     (when (bit-test (long mask) li)
       (c/write-varint buf 2048)
       (let [l (light-of chunk pred li channel)]
         (cond
-          (= l :full) (Section/writeFullLight buf)
-          (= channel :sky) (.writeSkyLight ^Section l buf)
-          :else (.writeBlockLight ^Section l buf))))))
+          (= l :full) (chunk/write-full-light! buf)
+          (= channel :sky) (chunk/write-sky-light! l buf)
+          :else (chunk/write-block-light! l buf))))))
 
 (defn write-chunk!
   ([buf cx cz chunk] (write-chunk! buf cx cz chunk nil))
-  ([^Buf buf cx cz chunk block-entities]
-   (.writeInt buf (int (long cx)))
-   (.writeInt buf (int (long cz)))
+  ([buf cx cz chunk block-entities]
+   (buf/write-int! buf (int (long cx)))
+   (buf/write-int! buf (int (long cz)))
    (write-heightmaps! buf chunk)
    (write-sections! buf chunk)
    (write-block-entities! buf block-entities)

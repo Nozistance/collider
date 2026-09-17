@@ -3,7 +3,7 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Chunk Phys Section)))
+  (:import (collider.java Phys Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -62,15 +62,14 @@
           (chunk/section-index cy)))
 
 (defn- section-blocks ^Section [chunks cx cy cz]
-  (Chunk/sectionAt chunks (unchecked-int cx)
-                   (unchecked-int cy) (unchecked-int cz)))
+  (chunk/section-at chunks cx cy cz))
 
 (definline ^:private block-at [blocks cx cy cz]
-  `(let [^collider.java.Section b# ~blocks]
+  `(let [b# ~blocks]
      (if b#
-       (long (.block b# (int (+ (* (bit-and (long ~cy) 15) 256)
+       (chunk/section-block b# (+ (* (bit-and (long ~cy) 15) 256)
                                 (* (bit-and (long ~cz) 15) 16)
-                                (bit-and (long ~cx) 15)))))
+                                (bit-and (long ~cx) 15)))
        0)))
 
 (definline ^:private put-void! [a n cx cz]

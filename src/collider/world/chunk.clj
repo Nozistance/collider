@@ -1,7 +1,8 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
   (:require [collider.vec :as v])
-  (:import (collider.java Chunk ChunkIndex Section)
+  (:import (collider.java Buf Chunk ChunkIndex Section)
+           (java.io DataInput DataOutput)
            (java.util Arrays HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -60,6 +61,52 @@
    fresh array."
   ^bytes [chunk ^long si]
   (.skyLightCopy ^Section (new-section chunk si)))
+
+(defn chunk-at ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
+  (Chunk/at chunks (int cx) (int cz)))
+
+(defn section-at
+  "Returns the section holding block x y z, nil where none exists."
+  ^Section [^ChunkIndex chunks ^long x ^long y ^long z]
+  (Chunk/sectionAt chunks (unchecked-int x) (unchecked-int y)
+                   (unchecked-int z)))
+
+(defn chunk-section ^Section [^Chunk chunk ^long si]
+  (.section chunk (int si)))
+
+(defn with-section ^Chunk [^Chunk chunk ^long si ^Section s]
+  (.with chunk (int si) s))
+
+(defn section-block
+  "Returns the block state at index idx of s, ordered y, then z, then x."
+  ^long [^Section s ^long idx]
+  (.block s (int idx)))
+
+(defn sky-light ^long [^Section s ^long idx] (.skyLight s (int idx)))
+(defn block-light ^long [^Section s ^long idx] (.blockLight s (int idx)))
+(defn sky-light-copy ^bytes [^Section s] (.skyLightCopy s))
+(defn block-light-copy ^bytes [^Section s] (.blockLightCopy s))
+(defn with-sky-light ^Section [^Section s ^bytes a] (.withSkyLight s a))
+(defn with-block-light ^Section [^Section s ^bytes a] (.withBlockLight s a))
+(defn sky-lit? [^Section s] (.hasSkyLight s))
+(defn block-lit? [^Section s] (.hasBlockLight s))
+
+(defn heights!
+  "Fills the unset entries of the 256 heightmap columns in out with the
+   height above base of the topmost block of s that pred marks."
+  [^Section s ^booleans pred ^ints out ^long base]
+  (.heights s pred out (int base)))
+
+(defn write-section!
+  "Writes s to buf in wire form, counting the states fluid marks and
+   giving every block the biome."
+  [^Section s ^Buf buf ^booleans fluid ^long biome]
+  (.write s buf fluid (int biome)))
+(defn write-sky-light! [^Section s ^Buf buf] (.writeSkyLight s buf))
+(defn write-block-light! [^Section s ^Buf buf] (.writeBlockLight s buf))
+(defn write-full-light! [^Buf buf] (Section/writeFullLight buf))
+(defn save-chunk! [^Chunk chunk ^DataOutput out] (.save chunk out))
+(defn load-chunk ^Chunk [^DataInput in] (Chunk/load in))
 
 (defn set-block ^Chunk [^Chunk chunk lx y lz state]
   (let [y (long y)

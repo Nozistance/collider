@@ -2,7 +2,8 @@
   "Wire primitives of the protocol such as varints, NBT, item stacks and framing."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
-            [collider.data :as data])
+            [collider.data :as data]
+            [collider.proto.buf :as buf])
   (:import (collider.java Buf)
            (java.io ByteArrayInputStream DataInputStream EOFException InputStream OutputStream)
            (java.nio.charset StandardCharsets)
@@ -16,15 +17,15 @@
 (defn write-varint [^Buf buf v]
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
-      (.writeByte buf (unchecked-int v))
-      (do (.writeByte buf (unchecked-int (bit-or (bit-and v 0x7F) 0x80)))
+      (buf/write-byte! buf (unchecked-int v))
+      (do (buf/write-byte! buf (unchecked-int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
 (def ^:private ^:const max-varint-size 5)
 
 (defn read-varint ^long [^Buf buf]
   (loop [n 0 r 0]
-    (let [b (long (.readByte buf))
+    (let [b (long (buf/read-byte buf))
           r (bit-or r (bit-shift-left (bit-and b 0x7F) (* 7 n)))]
       (cond
         (zero? (bit-and b 0x80)) (long (unchecked-int r))
@@ -34,14 +35,14 @@
 (defn write-varlong [^Buf buf ^long v]
   (loop [v v]
     (if (zero? (bit-and v (bit-not 0x7F)))
-      (.writeByte buf (int v))
-      (do (.writeByte buf (int (bit-or (bit-and v 0x7F) 0x80)))
+      (buf/write-byte! buf (int v))
+      (do (buf/write-byte! buf (int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
 (defn write-string [^Buf buf ^String s]
   (let [bs (.getBytes s StandardCharsets/UTF_8)]
     (write-varint buf (alength bs))
-    (.writeBytes buf bs)))
+    (buf/write-bytes! buf bs)))
 
 (def ^:const max-string-length 32767)
 
@@ -55,7 +56,7 @@
      (when (or (neg? n) (> n (* max 3)))
        (throw (ex-info "encoded string too long" {:length n :max (* max 3)})))
      (let [bs (byte-array n)]
-       (.readBytes buf bs)
+       (buf/read-bytes! buf bs)
        (let [s (String. bs StandardCharsets/UTF_8)]
          (when (> (.length s) max)
            (throw (ex-info "string too long" {:length (.length s) :max max})))
@@ -63,16 +64,16 @@
 
 (defn read-count ^long [^Buf buf]
   (let [n (read-varint buf)]
-    (when (or (neg? n) (> n (.readableBytes buf)))
-      (throw (ex-info "count exceeds remaining bytes" {:count n :readable (.readableBytes buf)})))
+    (when (or (neg? n) (> n (buf/readable-bytes buf)))
+      (throw (ex-info "count exceeds remaining bytes" {:count n :readable (buf/readable-bytes buf)})))
     n))
 
 (defn write-uuid [^Buf buf ^UUID u]
-  (.writeLong buf (.getMostSignificantBits u))
-  (.writeLong buf (.getLeastSignificantBits u)))
+  (buf/write-long! buf (.getMostSignificantBits u))
+  (buf/write-long! buf (.getLeastSignificantBits u)))
 
 (defn read-uuid ^UUID [^Buf buf]
-  (UUID. (.readLong buf) (.readLong buf)))
+  (UUID. (buf/read-long buf) (buf/read-long buf)))
 
 (defn write-id [^Buf buf k]
   (write-string buf
@@ -100,37 +101,37 @@
 (def ^:private long-array-class (Class/forName "[J"))
 
 (defn- write-nbt-string [^Buf buf ^String name ^String v]
-  (.writeByte buf (int tag-string)) (.writeUtf buf name) (.writeUtf buf v))
+  (buf/write-byte! buf (int tag-string)) (buf/write-utf! buf name) (buf/write-utf! buf v))
 
 (declare write-translatable)
 
 (defn- write-argument [^Buf buf a]
   (if (map? a)
     (write-translatable buf a)
-    (do (write-nbt-string buf "text" (str a)) (.writeByte buf (int tag-end)))))
+    (do (write-nbt-string buf "text" (str a)) (buf/write-byte! buf (int tag-end)))))
 
 (defn- write-translatable [^Buf buf {:keys [translate with]}]
   (write-nbt-string buf "translate" translate)
   (when (seq with)
-    (.writeByte buf (int tag-list)) (.writeUtf buf "with")
+    (buf/write-byte! buf (int tag-list)) (buf/write-utf! buf "with")
     (cond
       (every? number? with)
-      (do (.writeByte buf (int tag-int)) (.writeInt buf (count with))
-          (doseq [a with] (.writeInt buf (int a))))
+      (do (buf/write-byte! buf (int tag-int)) (buf/write-int! buf (count with))
+          (doseq [a with] (buf/write-int! buf (int a))))
       (every? string? with)
-      (do (.writeByte buf (int tag-string)) (.writeInt buf (count with))
-          (doseq [a with] (.writeUtf buf a)))
+      (do (buf/write-byte! buf (int tag-string)) (buf/write-int! buf (count with))
+          (doseq [a with] (buf/write-utf! buf a)))
       :else
-      (do (.writeByte buf (int tag-compound)) (.writeInt buf (count with))
+      (do (buf/write-byte! buf (int tag-compound)) (buf/write-int! buf (count with))
           (doseq [a with] (write-argument buf a)))))
-  (.writeByte buf (int tag-end)))
+  (buf/write-byte! buf (int tag-end)))
 
 (defn write-component
   "Writes a piece of text a client shows, plain or translated."
   [^Buf buf s]
   (if (map? s)
-    (do (.writeByte buf (int tag-compound)) (write-translatable buf s))
-    (do (.writeByte buf (int tag-string)) (.writeUtf buf (str s)))))
+    (do (buf/write-byte! buf (int tag-compound)) (write-translatable buf s))
+    (do (buf/write-byte! buf (int tag-string)) (buf/write-utf! buf (str s)))))
 
 (defn- nbt-type ^long [v]
   (cond (map? v) tag-compound
@@ -154,30 +155,30 @@
 (defn- write-nbt-payload [^Buf buf v]
   (case (int (nbt-type v))
     10 (do (doseq [[k x] v :when (some? x)]
-             (.writeByte buf (int (nbt-type x)))
-             (.writeUtf buf (name k))
+             (buf/write-byte! buf (int (nbt-type x)))
+             (buf/write-utf! buf (name k))
              (write-nbt-payload buf x))
-           (.writeByte buf (int tag-end)))
-    8 (.writeUtf buf ^String v)
-    1 (.writeByte buf (int (if (boolean? v) (if v 1 0) ^Byte v)))
-    2 (.writeShort buf (int ^Short v))
-    4 (.writeLong buf (long v))
-    5 (.writeFloat buf (float v))
-    6 (.writeDouble buf (double v))
-    7 (do (.writeInt buf (alength ^bytes v)) (.writeBytes buf ^bytes v))
-    11 (do (.writeInt buf (alength ^ints v))
-           (dotimes [i (alength ^ints v)] (.writeInt buf (aget ^ints v i))))
-    12 (do (.writeInt buf (alength ^longs v))
-           (dotimes [i (alength ^longs v)] (.writeLong buf (aget ^longs v i))))
-    3 (.writeInt buf (int v))
-    9 (do (.writeByte buf (int (list-type v)))
-          (.writeInt buf (count v))
+           (buf/write-byte! buf (int tag-end)))
+    8 (buf/write-utf! buf ^String v)
+    1 (buf/write-byte! buf (int (if (boolean? v) (if v 1 0) ^Byte v)))
+    2 (buf/write-short! buf (int ^Short v))
+    4 (buf/write-long! buf (long v))
+    5 (buf/write-float! buf (float v))
+    6 (buf/write-double! buf (double v))
+    7 (do (buf/write-int! buf (alength ^bytes v)) (buf/write-bytes! buf ^bytes v))
+    11 (do (buf/write-int! buf (alength ^ints v))
+           (dotimes [i (alength ^ints v)] (buf/write-int! buf (aget ^ints v i))))
+    12 (do (buf/write-int! buf (alength ^longs v))
+           (dotimes [i (alength ^longs v)] (buf/write-long! buf (aget ^longs v i))))
+    3 (buf/write-int! buf (int v))
+    9 (do (buf/write-byte! buf (int (list-type v)))
+          (buf/write-int! buf (count v))
           (doseq [x v] (write-nbt-payload buf x)))))
 
 (defn write-nbt [^Buf buf v]
   (if (nil? v)
-    (.writeByte buf (int tag-end))
-    (do (.writeByte buf (int (nbt-type v)))
+    (buf/write-byte! buf (int tag-end))
+    (do (buf/write-byte! buf (int (nbt-type v)))
         (write-nbt-payload buf v))))
 
 (def ^:private ^:const nbt-quota 2097152)
@@ -278,10 +279,10 @@
     v))
 
 (defn write-angle [^Buf buf ^double deg]
-  (.writeByte buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
+  (buf/write-byte! buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
 
 (defn write-vec3 [^Buf buf [x y z]]
-  (.writeDouble buf (double x)) (.writeDouble buf (double y)) (.writeDouble buf (double z)))
+  (buf/write-double! buf (double x)) (buf/write-double! buf (double y)) (buf/write-double! buf (double z)))
 
 (defn- lp-pack ^long [^double v]
   (Math/round (* (+ (* v 0.5) 0.5) 32766.0)))
@@ -290,7 +291,7 @@
   (let [x (double x) y (double y) z (double z)
         m (max (Math/abs x) (Math/abs y) (Math/abs z))]
     (if (< m 3.051944088384301E-5)
-      (.writeByte buf 0)
+      (buf/write-byte! buf 0)
       (let [scale (long (Math/ceil m))
             partial? (not= (bit-and scale 3) scale)
             markers (if partial? (bit-or (bit-and scale 3) 4) scale)
@@ -298,18 +299,18 @@
                            (bit-shift-left (lp-pack (/ x scale)) 3)
                            (bit-shift-left (lp-pack (/ y scale)) 18)
                            (bit-shift-left (lp-pack (/ z scale)) 33))]
-        (.writeByte buf (unchecked-int buffer))
-        (.writeByte buf (unchecked-int (bit-shift-right buffer 8)))
-        (.writeInt buf (unchecked-int (bit-shift-right buffer 16)))
+        (buf/write-byte! buf (unchecked-int buffer))
+        (buf/write-byte! buf (unchecked-int (bit-shift-right buffer 8)))
+        (buf/write-int! buf (unchecked-int (bit-shift-right buffer 16)))
         (when partial? (write-varint buf (bit-shift-right scale 2)))))))
 
 (defn write-block-pos [^Buf buf ^long x ^long y ^long z]
-  (.writeLong buf (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
+  (buf/write-long! buf (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
                           (bit-shift-left (bit-and z 0x3FFFFFF) 12)
                           (bit-and y 0xFFF))))
 
 (defn read-block-pos [^Buf buf]
-  (let [v (.readLong buf)]
+  (let [v (buf/read-long buf)]
     [(bit-shift-right v 38)
      (bit-shift-right (bit-shift-left v 52) 52)
      (bit-shift-right (bit-shift-left v 26) 38)]))
@@ -333,11 +334,11 @@
 
 (defn- codec [r w] {:r r :w w})
 
-(def ^:private c-bool (codec (fn [^Buf b] (.readBoolean b)) (fn [^Buf b v] (.writeBoolean b (boolean v)))))
+(def ^:private c-bool (codec (fn [^Buf b] (buf/read-boolean b)) (fn [^Buf b v] (buf/write-boolean! b (boolean v)))))
 (def ^:private c-varint (codec (fn [^Buf b] (read-varint b)) (fn [^Buf b v] (write-varint b (long v)))))
-(def ^:private c-int (codec (fn [^Buf b] (long (.readInt b))) (fn [^Buf b v] (.writeInt b (int v)))))
-(def ^:private c-float (codec (fn [^Buf b] (.readFloat b)) (fn [^Buf b v] (.writeFloat b (float v)))))
-(def ^:private c-double (codec (fn [^Buf b] (.readDouble b)) (fn [^Buf b v] (.writeDouble b (double v)))))
+(def ^:private c-int (codec (fn [^Buf b] (long (buf/read-int b))) (fn [^Buf b v] (buf/write-int! b (int v)))))
+(def ^:private c-float (codec (fn [^Buf b] (buf/read-float b)) (fn [^Buf b v] (buf/write-float! b (float v)))))
+(def ^:private c-double (codec (fn [^Buf b] (buf/read-double b)) (fn [^Buf b v] (buf/write-double! b (double v)))))
 (def ^:private c-string (codec (fn [^Buf b] (read-string b)) (fn [^Buf b v] (write-string b (str v)))))
 (def ^:private c-ident (codec read-id (fn [^Buf b v] (write-id b v))))
 (def ^:private c-uuid (codec (fn [^Buf b] (read-uuid b)) (fn [^Buf b v] (write-uuid b v))))
@@ -349,8 +350,8 @@
          (fn [^Buf b [x y z]] (write-block-pos b (long x) (long y) (long z)))))
 
 (defn- c-opt [{:keys [r w]}]
-  (codec (fn [^Buf b] (when (.readBoolean b) (r b)))
-         (fn [^Buf b v] (.writeBoolean b (some? v)) (when (some? v) (w b v)))))
+  (codec (fn [^Buf b] (when (buf/read-boolean b) (r b)))
+         (fn [^Buf b v] (buf/write-boolean! b (some? v)) (when (some? v) (w b v)))))
 
 (defn- c-list [{:keys [r w]}]
   (codec (fn [^Buf b] (let [n (read-count b)] (mapv (fn [_] (r b)) (range n))))
@@ -365,11 +366,11 @@
            (doseq [[a x] m] ((:w k) b a) ((:w v) b x)))))
 
 (defn- c-either [l r]
-  (codec (fn [^Buf b] (if (.readBoolean b) {:left ((:r l) b)} {:right ((:r r) b)}))
+  (codec (fn [^Buf b] (if (buf/read-boolean b) {:left ((:r l) b)} {:right ((:r r) b)}))
          (fn [^Buf b v]
            (if (contains? v :left)
-             (do (.writeBoolean b true) ((:w l) b (:left v)))
-             (do (.writeBoolean b false) ((:w r) b (:right v)))))))
+             (do (buf/write-boolean! b true) ((:w l) b (:left v)))
+             (do (buf/write-boolean! b false) ((:w r) b (:right v)))))))
 
 (defn- record-codec [& kvs]
   (let [fields (mapv vec (partition 2 kvs))
@@ -761,11 +762,11 @@
    Component values arrive as hashes. The result only says whether the stack
    has any."
   [^Buf buf]
-  (when (.readBoolean buf)
+  (when (buf/read-boolean buf)
     (let [item (read-varint buf)
           n (read-varint buf)
           added (read-count buf)]
-      (dotimes [_ added] (read-varint buf) (.readInt buf))
+      (dotimes [_ added] (read-varint buf) (buf/read-int buf))
       (let [removed (read-count buf)]
         (dotimes [_ removed] (read-varint buf))
         (cond-> {:item (data/entry-name "item" item) :count n}
@@ -774,20 +775,20 @@
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
-    (.writeByte buf (int idx))
+    (buf/write-byte! buf (int idx))
     (write-varint buf (data-types type))
     (case type
-      :byte (.writeByte buf (int v))
+      :byte (buf/write-byte! buf (int v))
       :int (write-varint buf (long v))
-      :float (.writeFloat buf (float v))
+      :float (buf/write-float! buf (float v))
       :item (write-item-stack buf v)
-      :boolean (.writeBoolean buf (boolean v))
+      :boolean (buf/write-boolean! buf (boolean v))
       :block-pos (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))
-      :optional-block-pos (do (.writeBoolean buf (some? v))
+      :optional-block-pos (do (buf/write-boolean! buf (some? v))
                               (when v (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))))
       :block-state (write-varint buf (long v))
       :pose (write-varint buf (long v))))
-  (.writeByte buf 0xFF))
+  (buf/write-byte! buf 0xFF))
 
 (defn offline-uuid ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
@@ -806,8 +807,8 @@
 (def ^:private ^:const frame-keep 8192)
 (defn read-frame! ^Buf [^InputStream in ^Buf buf]
   (let [len (read-varint-stream in)]
-    (.clear buf frame-keep)
-    (.readFrom buf in (int len))
+    (buf/clear! buf frame-keep)
+    (buf/read-from! buf in len)
     buf))
 
 (defn decompress! ^Buf [^Buf buf ^long threshold ^Inflater inflater]
@@ -819,18 +820,18 @@
         (when (> n max-uncompressed)
           (throw (ex-info "badly compressed packet" {:size n :max max-uncompressed})))
         (let [dst (byte-array n)]
-          (.setInput inflater (.a buf) (.r buf) (.readableBytes buf))
+          (.setInput inflater (.a buf) (.r buf) (buf/readable-bytes buf))
           (let [got (try (.inflate inflater dst) (finally (.reset inflater)))]
             (when (not= got n)
               (throw (ex-info "badly compressed packet" {:got got :expected n}))))
-          (.adopt buf dst n)))))
+          (buf/adopt! buf dst n)))))
   buf)
 
 (def ^:private ^:const deflate-step 8192)
 
 (defn- deflate-into! [^Buf body ^Deflater deflater]
   (loop []
-    (.ensure body deflate-step)
+    (buf/ensure! body deflate-step)
     (let [a (.a body)
           k (.deflate deflater a (.w body) (- (alength a) (.w body)))]
       (set! (.w body) (+ (.w body) k))
@@ -840,19 +841,19 @@
   "Writes the payload to the stream as one packet. body and head are scratch
    buffers."
   [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
-  (.clear body)
-  (.clear head)
+  (buf/clear! body)
+  (buf/clear! head)
   (if (neg? (long threshold))
-    (.writeBytes body payload)
-    (let [n (.readableBytes payload)]
+    (buf/write-bytes! body payload)
+    (let [n (buf/readable-bytes payload)]
       (if (< n (long threshold))
-        (do (write-varint body 0) (.writeBytes body payload))
+        (do (write-varint body 0) (buf/write-bytes! body payload))
         (do (write-varint body n)
             (.setInput deflater (.a payload) (.r payload) n)
             (set! (.r payload) (.w payload))
             (.finish deflater)
             (deflate-into! body deflater)
             (.reset deflater)))))
-  (write-varint head (.readableBytes body))
-  (.writeTo head out)
-  (.writeTo body out))
+  (write-varint head (buf/readable-bytes body))
+  (buf/write-to! head out)
+  (buf/write-to! body out))
