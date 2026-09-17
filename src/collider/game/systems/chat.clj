@@ -1,7 +1,6 @@
 (ns collider.game.systems.chat
   "Chat lines, commands and tab completion."
   (:require [collider.data :as data]
-            [collider.game.systems.chunks :as chunks]
             [collider.world.chunk :as chunk]
             [clojure.string :as str]
             [collider.game.command.tree :as cmd]
@@ -62,23 +61,34 @@
   (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- fill-deltas [world eid [ax ay az bx by bz block]]
-  (let [[x1 x2] (sort [(long ax) (long bx)])
-        [y1 y2] (sort [(long ay) (long by)])
-        [z1 z2] (sort [(long az) (long bz)])
-        n (* (inc (- x2 x1)) (inc (- y2 y1)) (inc (- z2 z1)))
-        st (block/state block)
-        changes (vec (for [x (range x1 (inc x2))
-                           y (range y1 (inc y2))
-                           z (range z1 (inc z2))]
-                       [[x y z] st]))]
-    (concat
-      (chunks/loading-deltas world (map (comp chunk/block-chunk first) changes))
-      [[:set-blocks changes]]
-      (tell eid (format "filled **%d** blocks" n)))))
-
 (defn- say [eid key & with]
   [(out/to eid (out/system-chat [{:translate key :with (vec with)}]))])
+
+(defn- unloaded? [world positions]
+  (some #(not (contains? (:chunks world) (chunk/block-chunk %)))
+        positions))
+
+(defn- box [[ax ay az bx by bz]]
+  (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
+
+(defn- fill-changes [world [[x1 x2] [y1 y2] [z1 z2]] st]
+  (vec (for [x (range x1 (inc x2))
+             y (range y1 (inc y2))
+             z (range z1 (inc z2))
+             :when (not= st (chunk/chunks-get-block (:chunks world) [x y z]))]
+         [[x y z] st])))
+
+(defn- filled [world eid bounds block]
+  (let [changes (fill-changes world bounds (block/state block))]
+    (if (empty? changes)
+      (say eid "commands.fill.failed")
+      (cons [:set-blocks changes]
+            (say eid "commands.fill.success" (str (count changes)))))))
+
+(defn- fill-deltas [world eid [ax ay az bx by bz block]]
+  (if (unloaded? world [[ax ay az] [bx by bz]])
+    (say eid "argument.pos.unloaded")
+    (filled world eid (box [ax ay az bx by bz]) block)))
 
 (defn- rule-deltas [world eid rule text]
   (let [id (subs (rules/wire-name rule) 10)]
@@ -157,10 +167,15 @@
      (out/to eid (out/system-chat [{:translate "commands.summon.success" :with [{:translate (str "entity.minecraft." (name type))}]}]))]))
 
 (defn- setblock-deltas [world eid [x y z block]]
-  (concat
-    (chunks/loading-deltas world [(chunk/block-chunk [x y z])])
-    [[:set-blocks [[[x y z] (block/state block)]]]
-     (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))]))
+  (let [pos [x y z]
+        st (block/state block)]
+    (cond
+      (unloaded? world [pos]) (say eid "argument.pos.unloaded")
+      (= st (chunk/chunks-get-block (:chunks world) pos))
+      (say eid "commands.setblock.failed")
+      :else (cons [:set-blocks [[pos st]]]
+                  (say eid "commands.setblock.success"
+                       (str x) (str y) (str z))))))
 
 (defn- block-under [world eid [x y z]]
   (let [p (get-in world [:entities eid :pos])]
