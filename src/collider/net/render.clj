@@ -90,10 +90,11 @@
           (contains? meta :sleeping-pos)
           (conj [14 :optional-block-pos (:sleeping-pos meta)])))
 
-(defn- sheep-data [meta]
+(defn- animal-data [meta]
   (cond-> []
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
+          (contains? meta :variant) (conj [17 :int (long (:variant meta))])
           (contains? meta :color)
           (conj [18 :byte (bit-or (bit-and (long (or (:color meta) 0)) 15)
                                   (if (:sheared? meta) 0x10 0))])))
@@ -101,10 +102,7 @@
 (defn- entity-data [kind meta]
   (case kind
     :player (player-data meta)
-    :sheep (sheep-data meta)
-    :cow (sheep-data (dissoc meta :color))
-    :mooshroom (cond-> (sheep-data (dissoc meta :color))
-                       (contains? meta :variant) (conj [17 :int (long (:variant meta))]))
+    (:sheep :cow :mooshroom) (animal-data meta)
     :item (if (contains? meta :stack) [[8 :item (:stack meta)]] [])
     :tnt (let [f (:fuse meta 80)]
            (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))

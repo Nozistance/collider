@@ -21,14 +21,14 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private brains {:sheep sheep/brain :cow cow/brain :mooshroom mooshroom/brain})
-(def ^:private feeders [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas])
+(def ^:private interactions [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas])
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
     (b world eid e t tempters)
     [e nil]))
 
 (defn- feed-deltas [world events t]
-  (into [] (mapcat (fn [f] (f world events t))) feeders))
+  (into [] (mapcat (fn [f] (f world events t))) interactions))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
 (def ^:private ^:const gravity 0.08)
@@ -38,8 +38,10 @@
 (def ^:private ^:const water-friction 0.8)
 (def ^:private ^:const air-accel 0.02)
 (def ^:private ^:const repath-interval 10)
+(defn- steering [e] (if (:follow e) :follow (get-in e [:task :kind])))
+
 (defn- steer-target [world e]
-  (case (if (:follow e) :follow (get-in e [:task :kind]))
+  (case (steering e)
     (:wander :panic) (let [[tx tz] (get-in e [:task :target])]
                        [(v/v3 (double tx) (v/y (:pos e)) (double tz)) 0.4])
     :follow (when-let [p (get-in world [:entities (:follow e)])]
@@ -51,7 +53,7 @@
     nil))
 
 (defn- task-speed-mult ^double [e]
-  (double (get-in mobs/types [(:type e) :speeds (if (:follow e) :follow (get-in e [:task :kind]))] 1.0)))
+  (double (get-in mobs/types [(:type e) :speeds (steering e)] 1.0)))
 
 (defn- ensure-path [world e t goal avoid-water?]
   (let [task (:task e)
@@ -338,12 +340,6 @@
       (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
       acc)))
 
-(defn- dist3 ^double [[x1 y1 z1] [x2 y2 z2]]
-  (let [dx (- (double x2) (double x1))
-        dy (- (double y2) (double y1))
-        dz (- (double z2) (double z1))]
-    (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
-
 (def ^:private mob-keys
   [:pos :vel :yaw :pitch :on-ground :task :follow :no-action :baby-until
    :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet? :sheared?])
@@ -379,7 +375,7 @@
 
 (defn- walked-step [e prev now]
   (let [walked (double (or (:walked e) 0.0))
-        walked' (+ walked (* 0.6 (dist3 (:pos prev) (:pos now))))]
+        walked' (+ walked (* 0.6 (Math/sqrt (v/dist3-sq (:pos prev) (:pos now)))))]
     [(if (== walked walked') now (assoc now :walked walked')) walked walked']))
 
 (defn- step-mob [world index tempters eid e t]

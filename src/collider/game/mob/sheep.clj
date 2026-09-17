@@ -1,5 +1,5 @@
 (ns collider.game.mob.sheep
-  "What makes a sheep a sheep: grazing and wool colour."
+  "Sheep grazing and lamb colours."
   (:require [collider.data :as data]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
@@ -13,6 +13,7 @@
 (def ^:private ^:const eat-ticks 40)
 (def ^:private ^:const eat-chance 1000)
 (def ^:private ^:const baby-eat-chance 50)
+(def ^:private ^:const bite-at 4)
 (def ^:private ^:const bite-growth 1200)
 
 (def ^:private ^:table edible
@@ -29,38 +30,34 @@
 
 (defn- edible? [world cell] (contains? @edible (block/block-of (sense/block-at world cell))))
 
-(defn- start-eat [world eid e t _]
-  (when (and (animal/one-in? t eid :eat (quot (if (mobs/baby? e) baby-eat-chance eat-chance) 2))
-             (let [cell (animal/feet e)] (or (edible? world cell) (animal/grass-block? world cell))))
-    [(assoc e :task {:kind :eat :until (+ (long t) eat-ticks)})
-     [(out/all (out/status eid :eat))]]))
+(defn- on-grass? [world [x y z]] (= (grass/grass-state) (sense/block-at world [x (dec (long y)) z])))
 
-(defn- bite [world e t]
-  (let [cell (animal/feet e)
-        [x y z] cell
-        below [x (dec (long y)) z]
-        griefing? (get-in world [:rules :mob-griefing] true)
-        ate (cond-> (assoc e :sheared? false)
-                    (mobs/baby? e) (assoc :baby-until (max (long t) (- (long (:baby-until e)) bite-growth))))]
+(defn- start-eat [world eid e t _]
+  (let [cell (sense/feet-cell (:pos e))]
+    (when (and (animal/one-in? t eid :eat (quot (if (mobs/baby? e) baby-eat-chance eat-chance) 2))
+               (or (edible? world cell) (on-grass? world cell)))
+      [(assoc e :task {:kind :eat :until (+ (long t) eat-ticks)})
+       [(out/all (out/status eid :eat))]])))
+
+(defn- eating? [_ e t _] (> (long (get-in e [:task :until])) (long t)))
+
+(defn- ate [e t]
+  (cond-> (assoc e :sheared? false)
+          (mobs/baby? e) (assoc :baby-until (max (long t) (- (long (:baby-until e)) bite-growth)))))
+
+(defn- bitten [world [x y z :as cell]]
+  (let [below [x (dec (long y)) z]]
     (cond
       (edible? world cell)
-      [ate (when griefing?
-             [[:set-blocks [[cell 0]]] (out/all (out/break-effect cell (sense/block-at world cell)))])]
-      (animal/grass-block? world cell)
-      [ate (when griefing?
-             [[:set-blocks [[below (grass/dirt-state)]]]
-              (out/all (out/break-effect below (grass/grass-state)))])]
-      :else [e nil])))
+      [[:set-blocks [[cell 0]]] (out/all (out/break-effect cell (sense/block-at world cell)))]
+      (on-grass? world cell)
+      [[:set-blocks [[below (grass/dirt-state)]]] (out/all (out/break-effect below (grass/grass-state)))])))
 
-(defn- eat-tick [world _ e t]
-  (if (and (= :eat (get-in e [:task :kind]))
-           (= (- (long (get-in e [:task :until])) (long t)) 4))
-    (bite world e t)
+(defn- eat-tick [_ world _ e t _]
+  (if-let [ds (when (= bite-at (- (long (get-in e [:task :until])) (long t)))
+                (bitten world (sense/feet-cell (:pos e))))]
+    [(ate e t) (when (get-in world [:rules :mob-griefing] true) ds)]
     [e nil]))
-
-(defn- eating? [_ e t]
-  (and (= :eat (get-in e [:task :kind]))
-       (> (long (get-in e [:task :until])) (long t))))
 
 (defn- lamb-color [t eid a b]
   (let [m (mixes (hash-set (colors (:color a)) (colors (:color b))))]
@@ -68,11 +65,11 @@
           (< (animal/rnd t eid :mix) 0.5) (:color a)
           :else (:color b))))
 
+(def ^:private eat
+  {:kind :eat :flags #{:move :look} :start start-eat :continue? eating? :tick eat-tick})
+
 (def ^:private spec
-  (animal/spec {:goals       (let [[before after] (split-with #(not= :wander (first %)) animal/goals)]
-                               (vec (concat before [[:eat #{:move :look} start-eat]] after)))
-                :child-color lamb-color
-                :continue?   eating?
-                :tick        eat-tick}))
+  (let [[before after] (split-with #(not= :wander (:kind %)) animal/goals)]
+    (animal/spec (concat before [eat] after) lamb-color)))
 
 (defn brain [world eid e t tempters] (animal/brain spec world eid e t tempters))

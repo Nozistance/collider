@@ -30,24 +30,22 @@
 (defn- sounds [type]
   (into {} (for [k [:say :step :hurt :death]] [k (keyword (name type) (name k))])))
 
+(def ^:private cow
+  (merge (sounds :cow)
+         {:half          0.45 :height 1.4 :speed 0.2
+          :max-health    10.0
+          :breeding-item :wheat
+          :speeds        {:panic 2.0 :tempt 1.25 :follow 1.25}}))
+
 (def types
-  {:sheep (merge (sounds :sheep)
-                 {:half          0.45 :height 1.3 :speed 0.23
-                  :max-health    8.0
-                  :breeding-item :wheat
-                  :speeds        {:panic 1.25 :tempt 1.1 :follow 1.1}
-                  :spawn-color   sheep-color})
-   :cow   (merge (sounds :cow)
-                 {:half          0.45 :height 1.4 :speed 0.2
-                  :max-health    10.0
-                  :breeding-item :wheat
-                  :speeds        {:panic 2.0 :tempt 1.25 :follow 1.25}})
-   :mooshroom (merge (sounds :cow)
-                     {:half          0.45 :height 1.4 :speed 0.2
-                      :max-health    10.0
+  {:sheep     (merge (sounds :sheep)
+                     {:half          0.45 :height 1.3 :speed 0.23
+                      :max-health    8.0
                       :breeding-item :wheat
-                      :ground        :mycelium
-                      :speeds        {:panic 2.0 :tempt 1.25 :follow 1.25}})})
+                      :speeds        {:panic 1.25 :tempt 1.1 :follow 1.1}
+                      :spawn-color   sheep-color})
+   :cow       cow
+   :mooshroom (assoc cow :ground :mycelium)})
 
 (defn egg-type [item]
   (let [t (get-in (data/items) [item :spawns])]
@@ -84,7 +82,9 @@
    :health      (max-health type)
    :health-sent (max-health type)})
 
-(defn egg-mob [type pos ks tick]
+(defn egg-mob
+  "Returns a mob hatched from a spawn egg. The keys ks decide its colour and yaw."
+  [type pos ks tick]
   (let [color-fn (get-in types [type :spawn-color] (constantly 0))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
     (assoc (new-mob type pos (color-fn ks) tick)
@@ -95,3 +95,4 @@
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 (defn baby? [e] (some? (:baby-until e)))
+(defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))

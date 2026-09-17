@@ -65,10 +65,6 @@
 (defn- held-item [e]
   (:item (get (:inventory e) (+ 36 (long (or (:held-slot e) 0))))))
 
-(defn- dist-sq ^double [a b]
-  (let [dx (- (v/x a) (v/x b)) dy (- (v/y a) (v/y b)) dz (- (v/z a) (v/z b))]
-    (+ (* dx dx) (* dy dy) (* dz dz))))
-
 (defn- eye-of [e]
   (let [p (:pos e)]
     [(v/x p) (+ (v/y p) (entity/eye-height e)) (v/z p)]))
@@ -104,7 +100,7 @@
   (and a t (:health t) (pos? (double (:health t))) (not (creative-proof? t))))
 
 (defn- in-reach? [world a t]
-  (let [d2 (dist-sq (:pos a) (:pos t))]
+  (let [d2 (v/dist3-sq (:pos a) (:pos t))]
     (cond (< d2 blind-reach-sq) true
           (>= d2 reach-sq) false
           :else (sees? world a t))))

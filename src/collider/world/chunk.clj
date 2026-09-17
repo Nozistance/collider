@@ -113,7 +113,9 @@
 (definline block-state [chunks x y z]
   `(long (Chunk/blockAt ~chunks (unchecked-int ~x) (unchecked-int ~y) (unchecked-int ~z))))
 
-(defn at ^long [chunks [_ y _ :as p]]
+(defn at
+  "Returns the block state at p, air outside the world height."
+  ^long [chunks [_ y _ :as p]]
   (if (in-range? y) (chunks-get-block chunks p) 0))
 
 (defn at-void

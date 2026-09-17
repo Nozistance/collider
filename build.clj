@@ -23,10 +23,6 @@
 (defn- info [& args] (apply (requiring-resolve 'collider.log/info) args))
 (defn- step [doing done f] ((requiring-resolve 'collider.log/step) doing done f))
 
-(defn fetch [{:keys [version jar]}]
-  (let [version (or version @(requiring-resolve 'collider.tables/version))]
-    (info "vanilla jar at" (str ((requiring-resolve 'collider.tables/fetch) version jar)))))
-
 (defn data [opts]
   ((requiring-resolve 'collider.tables/generate!) opts))
 

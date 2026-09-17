@@ -1,5 +1,5 @@
 (ns collider.game.systems.chunks
-  "Sending players the chunks around them."
+  "Chunk loading around players and the spawn, and chunk streaming to players."
   (:require [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.world.chunk :as chunk]

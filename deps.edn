@@ -3,11 +3,10 @@
            org.clojure/data.int-map {:mvn/version "1.3.1"}
            org.clojure/data.json    {:mvn/version "2.5.2"}
            com.taoensso/nippy       {:mvn/version "3.8.1"}}
- :aliases {:build {:extra-paths ["src"]
-                   :extra-deps  {io.github.clojure/tools.build {:mvn/version "0.10.14"}
-                                 org.clojure/data.json         {:mvn/version "2.5.2"}}
-                   :ns-default  build}
+ :aliases {:build {:ns-default  build
+                   :extra-paths ["src"]
+                   :extra-deps  {io.github.clojure/tools.build {:mvn/version "0.10.14"}}}
            :run   {:jvm-opts  ["-XX:+UseG1GC" "-XX:MaxGCPauseMillis=5"
                                "-XX:G1PeriodicGCInterval=60000" "-Xmx1g"
                                "--sun-misc-unsafe-memory-access=allow"]
-                   :main-opts ["-m" "collider.core"]}}}
+                   :main-opts ["-m" "collider.launch"]}}}

@@ -31,6 +31,10 @@
          dz (- tz (z a))]
      (clojure.core/+ (* dx dx) (* dz dz)))))
 
+(defn dist3-sq ^double [a b]
+  (let [dx (- (x b) (x a)) dy (- (y b) (y a)) dz (- (z b) (z a))]
+    (clojure.core/+ (* dx dx) (* dy dy) (* dz dz))))
+
 (defn yaw-toward
   "Returns the yaw in degrees that looks from p at tgt."
   ^double [p tgt]
