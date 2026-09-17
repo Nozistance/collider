@@ -37,6 +37,8 @@
 
 (def furnace-kinds #{:furnace :blast-furnace :smoker})
 
+(def menu-kinds (into container-kinds furnace-kinds))
+
 (def spill-kinds
   #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker})
 

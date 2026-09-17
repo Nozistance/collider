@@ -7,6 +7,7 @@
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.game.block.crafting :as crafting]
+            [collider.game.block.furnace :as furnace]
             [collider.game.block.workbench :as workbench]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
@@ -22,6 +23,10 @@
 (def bench-types #{:stonecutter :loom :crafting-table})
 (def container-types
   (into (conj chest/types :barrel :ender-chest :shulker-box) bench-types))
+
+(def menu-types
+  "Blocks whose use opens a menu, containers and furnaces alike."
+  (into container-types be/furnace-kinds))
 
 (def state-at chest/state-at)
 (def connected-direction chest/connected-direction)
@@ -92,16 +97,39 @@
                                  :title {:translate "container.loom"}
                                  :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})})
 
+(def ^:private furnace-titles
+  {:furnace       "container.furnace"
+   :blast-furnace "container.blast_furnace"
+   :smoker        "container.smoker"})
+
+(defn- furnace-menu [t pos]
+  {:kind  :block :type t :slots 3 :cells [pos]
+   :title {:translate (furnace-titles t)}})
+
+(def ^:private builders
+  (into menu-builders
+        (map (fn [t] [t (fn [_ _ pos _] (furnace-menu t pos))]))
+        be/furnace-kinds))
+
 (defn menu-at [world pos]
   (let [chunks (:chunks world)
         st (state-at chunks pos) t (block/type-of st)]
     (if (contains? chest-types t)
       (chest-menu chunks pos st)
-      (when-let [f (menu-builders t)] (f world chunks pos st)))))
+      (when-let [f (builders t)] (f world chunks pos st)))))
 
 (defn bench? [m] (= :bench (:kind m)))
 (defn lectern? [m] (= :lectern (:kind m)))
 (defn crafting? [m] (= :crafting-table (:type m)))
+(defn furnace? [m] (contains? be/furnace-kinds (:type m)))
+
+(defn data-values
+  "Returns the four ContainerData values of a furnace menu."
+  [world m]
+  (when (furnace? m)
+    (let [e (be/at world (first (:cells m)))]
+      [(:lit-remaining e 0) (:lit-total e 0)
+       (:cook e 0) (:cook-total e 0)])))
 
 (defn player-slots? [m]
   (not (lectern? m)))
@@ -110,6 +138,7 @@
   (cond
     (lectern? m) 1
     (bench? m) (long (:size m))
+    (:slots m) (long (:slots m))
     :else (* 9 (long (:rows m)))))
 
 (def ^:private ^:table lectern-books (delay (set (data/tag-values "item" "lectern_books"))))
@@ -129,9 +158,15 @@
 (defn clamp-page ^long [^long page ^long pages]
   (if (< page 0) 0 (min page (dec pages))))
 
-(defn- padded [items] (vec (take size (concat items (repeat nil)))))
+(defn- padded
+  ([items] (padded items size))
+  ([items ^long n] (vec (take n (concat items (repeat nil))))))
 
-(defn cell-items [world pos] (padded (:items (be/at world pos))))
+(defn- cell-size ^long [m] (if (furnace? m) 3 size))
+
+(defn cell-items
+  ([world pos] (cell-items world pos size))
+  ([world pos ^long n] (padded (:items (be/at world pos)) n)))
 
 (defn book-of [world m] (:book (be/at world (:pos m))))
 
@@ -142,23 +177,50 @@
     (lectern? m) [(book-of world m)]
     (bench? m) (vec (take (slot-count m) (concat (:contents m) (repeat nil))))
     (= :ender (:kind m)) (padded (get-in world [:entities eid :ender-items]))
-    :else (into [] (mapcat #(cell-items world %)) (:cells m))))
+    :else (into [] (mapcat #(cell-items world % (cell-size m)))
+                (:cells m))))
 
 (defn inputs [m items]
   (keep-indexed (fn [i s] (when (not= i (:result m)) s)) items))
+
+(defn- count-of ^long [s] (if s (long (:count s 1)) 0))
+
+(defn- taken
+  "Returns [item n] of what a click removed from the result slot."
+  [old items]
+  (let [before (nth (:items old) 2)
+        n (- (count-of before) (count-of (nth items 2)))]
+    (when (pos? n) [(:item before) n])))
+
+(defn- award [eid [item n]]
+  [:award eid (keyword "crafted" (name item)) n])
+
+(defn- furnace-store [world eid m items]
+  (let [pos (first (:cells m))
+        old (be/at world pos)
+        got (taken old items)
+        e (-> (furnace/input-changed old (nth items 0))
+              (assoc-in [:items 1] (nth items 1))
+              (assoc-in [:items 2] (nth items 2))
+              (cond-> got (assoc :used {})))]
+    (concat (when (not= old e) [[:set-block-entity pos e]])
+            (when got [(award eid got)]))))
+
+(defn- cell-store [world items i pos]
+  (let [old (be/at world pos)
+        i (long i)
+        part (padded (subvec (vec items) (* i size)
+                             (* (inc i) size)))]
+    (when (not= (padded (:items old)) part)
+      [:set-block-entity pos (assoc old :items part)])))
 
 (defn store-deltas [world eid m items]
   (cond
     (lectern? m) nil
     (bench? m) nil
     (= :ender (:kind m)) [[:merge-entity eid {:ender-items (vec items)}]]
-    :else
-    (keep-indexed (fn [i pos]
-                    (let [old (be/at world pos)
-                          part (vec (subvec (vec items) (* i size) (* (inc (long i)) size)))]
-                      (when (not= (padded (:items old)) part)
-                        [:set-block-entity pos (assoc old :items part)])))
-                  (:cells m))))
+    (furnace? m) (furnace-store world eid m items)
+    :else (keep-indexed #(cell-store world items %1 %2) (:cells m))))
 
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
@@ -292,13 +354,14 @@
                            (= :barrel t) (barrel-sound world pos st open?)
                            (= :shulker-box t) (shulker-sound world pos open?)
                            (= :ender-chest t) (ender-sound world pos open?)))]
-    (concat
+    (when (contains? container-types t)
+     (concat
       (when (and (zero? before) (pos? after)) (edge true))
       (when (and (pos? before) (zero? after)) (edge false))
       (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
       (when (= :shulker-box t) (trigger-deltas pos after))
       (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
-        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
+        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]])))))
 
 (defn recheck-deltas [world]
   (let [t (long (:tick world))]
@@ -389,11 +452,42 @@
    :swap  (fn ^long [^long _] 0)
    :quick (fn [_ _] nil)})
 
+(defn- fuel? [stack]
+  (or (pos? (furnace/burn-duration stack))
+      (= :bucket (:item stack))))
+
+(defn- furnace-place? [slot stack]
+  (case (long slot) 0 true 1 (fuel? stack) 2 false))
+
+(defn- furnace-max [slot stack]
+  (when (and (= 1 (long slot)) (= :bucket (:item stack))) 1))
+
+(defn- furnace-quick [v kind inv slot]
+  (let [i (long (.indexOf ^List v slot))
+        stack (get inv slot)]
+    (cond
+      (= 2 i) (span v 3 39 true)
+      (< i 2) (span v 3 39 false)
+      (furnace/recipe kind stack) (span v 0 1 false)
+      (fuel? stack) (span v 1 2 false)
+      (< 2 i 30) (span v 30 39 false)
+      :else (span v 3 30 false))))
+
+(defn- furnace-layout [m]
+  (let [base (menu/slots-layout 3 furnace-place?)
+        v (:visible base)
+        kind (:type m)]
+    (assoc base
+      :max furnace-max
+      :quick (fn [inv slot] (furnace-quick v kind inv slot)))))
+
 (defn layout
   ([m] (layout m {:held 0}))
   ([m ctx]
-   (if (lectern? m)
-     (lectern-layout)
+   (cond
+     (lectern? m) (lectern-layout)
+     (furnace? m) (furnace-layout m)
+     :else
      (case (:type m)
        :stonecutter (cut-layout m)
        :loom (loom-layout m)

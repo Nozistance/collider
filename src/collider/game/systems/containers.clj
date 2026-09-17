@@ -58,7 +58,7 @@
     (= (:type m) (block/type-of (container/state-at (:chunks world) (:pos m))))
     (= :ender (:kind m)) true
     :else
-    (every? (fn [pos] (contains? be/container-kinds (:kind (be/at world pos)))) (:cells m))))
+    (every? (fn [pos] (contains? be/menu-kinds (:kind (be/at world pos)))) (:cells m))))
 
 (defn- put-back [ctx inv stacks]
   (reduce (fn [[inv drops] s]
@@ -107,6 +107,7 @@
         slots (view m contents (:inventory e))]
     {:menu  (assoc m :id id :state-id 1
                      :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
+                     :remote-data (container/data-values world m)
                      :remote-carried (remote-of (:carried e)))
      :slots slots}))
 
@@ -118,12 +119,17 @@
     (when (and (container/bench? m) (contains? m :selected))
       [(out/to eid (out/container-data id 0 (:selected m)))])
     (when (container/lectern? m)
-      [(out/to eid (out/container-data id 0 (container/page world m)))])))
+      [(out/to eid (out/container-data id 0 (container/page world m)))])
+    (map-indexed (fn [i v] (out/to eid (out/container-data id i v)))
+                 (container/data-values world m))))
 
 (def ^:private open-stats
   {:crafting-table :custom/interact-with-crafting-table
    :stonecutter    :custom/interact-with-stonecutter
-   :loom           :custom/interact-with-loom})
+   :loom           :custom/interact-with-loom
+   :furnace        :custom/interact-with-furnace
+   :blast-furnace  :custom/interact-with-blast-furnace
+   :smoker         :custom/interact-with-smoker})
 
 (defn- open-menu-deltas [world eid e m]
   (let [prev (close-deltas world eid e true)
@@ -339,6 +345,39 @@
     (if (:menu e)
       (close-deltas world eid e false)
       (inventory-close-deltas world eid e))))
+
+(defn- data-deltas
+  "Diffs the data values of a menu against what the client was told."
+  [eid m values]
+  (let [old (:remote-data m)]
+    [(keep-indexed (fn [i v]
+                     (when (not= (nth old i nil) v)
+                       (out/to eid (out/container-data (:id m) i v))))
+                   values)
+     (cond-> m values (assoc :remote-data (vec values)))]))
+
+(defn- broadcast-deltas [world eid e]
+  (let [m (:menu e)
+        slots (view m (container/items world eid m) (:inventory e))
+        synced (sync-deltas eid m slots (:carried e) false)
+        deltas (:deltas synced)
+        [ds menu] (data-deltas eid (:menu synced)
+                               (container/data-values world m))]
+    (when (or (seq deltas) (seq ds))
+      (concat [[:merge-entity eid {:menu menu}]] deltas ds))))
+
+(defn- broadcasting? [world e]
+  (let [m (:menu e)]
+    (and m (= :block (:kind m)) (valid? world m))))
+
+(defn broadcast
+  "Sends every viewer the slots and data of their menu that moved,
+   as AbstractContainerMenu.broadcastChanges does each player tick."
+  [world _d]
+  [#(mapcat (fn [[eid e]]
+              (when (broadcasting? world e)
+                (broadcast-deltas world (long eid) e)))
+            (:entities world))])
 
 (defn- containers-deltas [world events]
   (concat

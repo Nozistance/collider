@@ -72,11 +72,16 @@
 
 (defn- layout-of [m] (or (:layout m) player-layout))
 
-(defn- insert [place inv slot stack n]
+(defn- cap-of ^long [layout slot stack]
+  (let [f (:max layout) n (when f (f slot stack))]
+    (if n (min (max-of stack) (long n)) (max-of stack))))
+
+(defn- insert [layout inv slot stack n]
   (let [here (get inv slot)]
-    (if (or (not (place slot stack)) (and here (not (same? here stack))))
+    (if (or (not ((:place layout) slot stack))
+            (and here (not (same? here stack))))
       [inv stack]
-      (let [room (- (max-of stack) (count-of here))
+      (let [room (- (cap-of layout slot stack) (count-of here))
             put (max 0 (min (long n) (count-of stack) room))]
         [(if (pos? put) (assoc inv slot (sized stack (+ (count-of here) put))) inv)
          (sized stack (- (count-of stack) put))]))))
@@ -95,7 +100,7 @@
        [inv nil]))))
 
 (defn- place-carried [m layout slot carried primary?]
-  (let [[inv left] (insert (:place layout) (:inventory m) slot carried
+  (let [[inv left] (insert layout (:inventory m) slot carried
                            (if primary? (count-of carried) 1))]
     (assoc m :inventory inv :carried left)))
 
@@ -112,7 +117,7 @@
 (defn- onto-slot [m layout slot clicked carried primary?]
   (cond
     (same? clicked carried) (place-carried m layout slot carried primary?)
-    (<= (count-of carried) (max-of carried))
+    (<= (count-of carried) (cap-of layout slot carried))
     (assoc m :inventory (assoc (:inventory m) slot carried) :carried clicked)
     :else m))
 
@@ -132,35 +137,36 @@
       (same? clicked carried) (gather-onto-carried m layout slot clicked carried)
       :else m)))
 
-(defn- move-onto [place inv stack slots]
+(defn- move-onto [layout inv stack slots]
   (reduce (fn [[inv s :as acc] slot]
             (cond
               (nil? s) (reduced acc)
               (same? (get inv slot) s)
-              (insert place inv slot s (count-of s))
+              (insert layout inv slot s (count-of s))
               :else acc))
           [inv stack] slots))
 
-(defn- move-into [place inv stack slots]
+(defn- move-into [layout inv stack slots]
   (reduce (fn [[inv s :as acc] slot]
-            (if (and s (nil? (get inv slot)) (place slot s))
-              (reduced (insert place inv slot s (count-of s)))
+            (if (and s (nil? (get inv slot))
+                     ((:place layout) slot s))
+              (reduced (insert layout inv slot s (count-of s)))
               acc))
           [inv stack] slots))
 
-(defn- move-to [place inv stack slots]
-  (let [[inv stack] (move-onto place inv stack slots)]
+(defn- move-to [layout inv stack slots]
+  (let [[inv stack] (move-onto layout inv stack slots)]
     (if (nil? stack)
       [inv nil]
-      (move-into place inv stack slots))))
+      (move-into layout inv stack slots))))
 
-(defn- move-quick [place inv stack q]
+(defn- move-quick [layout inv stack q]
   (if (map? q)
-    (let [[inv' left :as moved] (move-to place inv stack (:try q))]
+    (let [[inv' left :as moved] (move-to layout inv stack (:try q))]
       (if (and (= inv' inv) (= left stack))
-        (move-to place inv stack (:else q))
+        (move-to layout inv stack (:else q))
         moved))
-    (move-to place inv stack q)))
+    (move-to layout inv stack q)))
 
 (defn- quick-move-once [layout inv slot]
   (let [stack (get inv slot)
@@ -168,7 +174,7 @@
         q (when stack ((:quick layout) inv slot))
         [inv' left] (if (nil? stack)
                       [inv nil]
-                      (move-quick (:place layout) inv' stack q))]
+                      (move-quick layout inv' stack q))]
     (if left (assoc inv' slot left) inv')))
 
 (defn- bench-settle [m layout before]
@@ -219,8 +225,7 @@
   (let [inv (:inventory m)
         stack (get inv slot)
         q ((:quick layout) inv slot)
-        [inv' left] (move-quick (:place layout) (dissoc inv slot)
-                                stack q)
+        [inv' left] (move-quick layout (dissoc inv slot) stack q)
         moved (- (count-of stack) (count-of left))]
     (when (pos? moved)
       (cond-> (-> (assoc m :inventory inv')
@@ -302,12 +307,12 @@
       m)))
 
 (defn- spread [{:keys [inventory carried] :as m} slots ^long type]
-  (let [place (:place (layout-of m))
+  (let [layout (layout-of m)
         n (count slots)
         each (case type 0 (quot (count-of carried) n) 1 1 (max-of carried))
         [inv left] (reduce (fn [[inv c] slot]
                              (if (and c (or (= type 2) (>= (count-of c) n)))
-                               (let [[inv' left] (insert place inv slot c each)]
+                               (let [[inv' left] (insert layout inv slot c each)]
                                  [inv' (if (= type 2) c left)])
                                [inv c]))
                            [inventory carried] (sort slots))]
