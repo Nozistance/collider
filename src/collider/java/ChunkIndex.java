@@ -6,8 +6,10 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 
+/// A persistent map from chunk coordinates to chunk values.
 public final class ChunkIndex extends APersistentMap
         implements IObj, IKVReduce, IReduceInit, IEditableCollection {
+
     static final int L = 4, I = 6, D = 22;
     static final int LM = (1 << L) - 1, IM = (1 << I) - 1;
     static final int B = (1 << 3) + (1 << 9) + (1 << 15) + (1 << 21);
@@ -47,10 +49,12 @@ public final class ChunkIndex extends APersistentMap
         return find(root, span, pu, pv, cx, cz);
     }
 
+    /// Returns the value at the key `id(cx, cz)` gives.
     public Object get(long id) {
         return find(root, span, pu, pv, (int) (id >> 32), (int) id);
     }
 
+    /// Returns the map key for chunk coordinates cx and cz.
     public static long id(int cx, int cz) {
         return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
     }

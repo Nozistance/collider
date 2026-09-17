@@ -5,7 +5,10 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Arrays;
 
+/// A 16 by 16 by 16 volume of block states with optional block light
+/// and sky light.
 public final class Section {
+
     public static final int GLOBAL_BITS = 15;
     private static final int SIZE = 4096;
     private static final int LIGHT = 2048;
@@ -13,6 +16,7 @@ public final class Section {
     private static final byte[] ZERO = new byte[LIGHT];
     private static final byte[] FULL = filled();
 
+    /// A section of air under an open sky.
     public static final Section EMPTY =
         new Section(0, new int[] {0}, null, null, FULL);
 
@@ -67,6 +71,8 @@ public final class Section {
         return (SIZE + per - 1) / per;
     }
 
+    /// Builds a section from 4096 block states, indexed y, then z,
+    /// then x, and optional light of 2048 bytes each.
     public static Section of(short[] blocks, byte[] blockLight,
                              byte[] skyLight) {
         if (blocks.length != SIZE) {
@@ -152,6 +158,7 @@ public final class Section {
         return h;
     }
 
+    /// Returns the block state at index i, ordered y, then z, then x.
     public int block(int i) {
         if (bits == 0) return pal[0];
         int c = (int) ((i * mul) >>> 32);
@@ -212,14 +219,20 @@ public final class Section {
         return sl != null;
     }
 
+    /// Returns this section with block light replaced by `a`, which
+    /// must be 2048 bytes.
     public Section withBlockLight(byte[] a) {
         return new Section(bits, pal, data, canon(a), sl);
     }
 
+    /// Returns this section with sky light replaced by `a`, which
+    /// must be 2048 bytes.
     public Section withSkyLight(byte[] a) {
         return new Section(bits, pal, data, bl, canon(a));
     }
 
+    /// Returns an all-air section carrying this section's bottom
+    /// layer of sky light spread across every layer.
     public Section below() {
         if (sl == null || sl == FULL) {
             return single(0, null, sl);
@@ -235,6 +248,8 @@ public final class Section {
         return apply(new int[] {i}, new int[] {state}, 1);
     }
 
+    /// Returns this section with the first n entries of `idx` set to
+    /// the matching entries of `states`.
     public Section apply(int[] idx, int[] states, int n) {
         if (n == 0) return this;
         long[] d = data == null ? null : data.clone();
@@ -340,6 +355,8 @@ public final class Section {
         return build(v, bl, sl);
     }
 
+    /// Returns true if any block id present in this section is true
+    /// in `pred`.
     public boolean holds(boolean[] pred) {
         if (pal == null) return true;
         for (int id : pal) {
@@ -348,6 +365,9 @@ public final class Section {
         return false;
     }
 
+    /// Sets each unset entry of the 256-column `out` to the height
+    /// above `base` of the topmost block in that column matching
+    /// `pred`, if this section holds one.
     public void heights(boolean[] pred, int[] out, int base) {
         if (!holds(pred)) return;
         boolean[] hit = hits(pred);
@@ -374,6 +394,8 @@ public final class Section {
         return 0;
     }
 
+    /// Writes this section to `buf` in network form, counting blocks
+    /// whose id is true in `fluid`, with `biome` as the sole biome.
     public void write(Buf buf, boolean[] fluid, int biome) {
         long t = tally(fluid);
         buf.writeShort((int) (t >>> 16));

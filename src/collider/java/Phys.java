@@ -1,9 +1,13 @@
 package collider.java;
 
-/** Collision of a moving box against packed block boxes, on primitives. */
+/// Collision of a moving box against block boxes on one axis at a time.
 public final class Phys {
 
     private static final double EPS = 1.0E-7;
+
+    /// Returns `d` clamped so the box `ebox` moving by `d` along `axis`
+    /// stops short of overlapping any of the `n` boxes in `a`, each
+    /// stored as 6 consecutive doubles (min x, y, z, max x, y, z).
     public static double clampAll(double[] a, int n, double[] ebox, int eo, int axis, double d) {
         int p1 = (axis == 0) ? 1 : 0;
         int q1 = (axis == 2) ? 1 : 2;
@@ -28,6 +32,9 @@ public final class Phys {
         }
         return d;
     }
+    /// Writes the clamped x, y, z motion of `box` through velocity
+    /// `vx`, `vy`, `vz` against the `n` boxes in `a` into `out`,
+    /// resolving y first, then x, then z.
     public static void clampAxes(double[] a, int n, double[] box,
                                  double vx, double vy, double vz, double[] out) {
         double b0 = box[0], b1 = box[1], b2 = box[2], b3 = box[3], b4 = box[4], b5 = box[5];

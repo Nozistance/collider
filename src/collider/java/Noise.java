@@ -1,7 +1,8 @@
 package collider.java;
 
-/** The perlin noise of 26.2 worldgen, built from a seed and its octave amplitudes. */
+/// A Perlin noise field built from a seed and its octave amplitudes.
 public final class Noise {
+
     private static final int[][] GRADIENT = {
             {1, 1, 0}, {-1, 1, 0}, {1, -1, 0}, {-1, -1, 0},
             {1, 0, 1}, {-1, 0, 1}, {1, 0, -1}, {-1, 0, -1},
@@ -180,22 +181,24 @@ public final class Noise {
         this.valueFactor = 0.16666666666666666 / (0.1 * (1.0 + 1.0 / (double) (highest - lowest + 1)));
     }
 
-    /** Returns the noise of a seed, its first octave and its octave amplitudes. */
+    /// Builds a noise field from a seed, its first octave and its
+    /// octave amplitudes.
     public static Noise of(long seed, int firstOctave, double[] amplitudes) {
         return new Noise(seed, firstOctave, amplitudes);
     }
 
-    /** Returns the noise at a point scaled by a float factor. */
+    /// Returns the noise at a point scaled by a float factor.
     public double at(double x, double y, double z, float scale) {
         return value(x * (double) scale, y * (double) scale, z * (double) scale);
     }
 
-    /** Returns the noise at a block position scaled in float arithmetic. */
+    /// Returns the noise at a point, scaling in float precision
+    /// rather than double.
     public double atFloat(int x, int y, int z, float scale) {
         return value((float) x * scale, (float) y * scale, (float) z * scale);
     }
 
-    /** Returns the value of the noise at a point, from -1 to 1. */
+    /// Returns the value of the noise at a point, from -1 to 1.
     public double value(double x, double y, double z) {
         return (first.value(x, y, z)
                 + second.value(x * INPUT_FACTOR, y * INPUT_FACTOR, z * INPUT_FACTOR)) * valueFactor;

@@ -1,7 +1,12 @@
 package collider.java;
 
+/// Line of sight through a rectangular grid of sections.
 public final class Rays {
 
+    /// Returns the block state at `x`, `y`, `z` in a `grid` of
+    /// sections shaped `ncx` by `ncz` by `nsy`, whose first cell
+    /// covers section coordinates `cx0`, `cz0`, `sy0`, or 0 if
+    /// outside the grid.
     public static int readBlock(Object[] grid, int cx0, int cz0, int sy0,
                                 int ncx, int ncz, int nsy,
                                 int x, int y, int z) {
@@ -13,6 +18,9 @@ public final class Rays {
         if (s == null) return 0;
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
+    /// Returns 1 if the straight path from `cx`, `cy`, `cz` to
+    /// `px`, `py`, `pz` crosses no block whose state is `true` in
+    /// `solid`, otherwise 0.
     public static long clearPath(Object[] grid, int cx0, int cz0, int sy0,
                                  int ncx, int ncz, int nsy, boolean[] solid,
                                  double cx, double cy, double cz,

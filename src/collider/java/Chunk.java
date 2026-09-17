@@ -5,7 +5,9 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Objects;
 
+/// A chunk column of `COUNT` sections, some of which may be absent.
 public final class Chunk {
+
     public static final int COUNT = 24;
     private static final int OFFSET = 4;
     public static final Chunk EMPTY = new Chunk(new Section[COUNT]);
@@ -39,6 +41,7 @@ public final class Chunk {
         return new Chunk(a);
     }
 
+    /// Returns the block state at chunk-relative x and z and world y.
     public int block(int x, int y, int z) {
         int si = (y >> 4) + OFFSET;
         if (si < 0 || si >= COUNT) return 0;
@@ -47,6 +50,7 @@ public final class Chunk {
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
 
+    /// Returns the chunk at chunk coordinates, or `EMPTY` if absent.
     public static Chunk at(ChunkIndex chunks, int cx, int cz) {
         Object c = chunks.get(cx, cz);
         return c == null ? EMPTY : (Chunk) c;
@@ -60,6 +64,7 @@ public final class Chunk {
         return at(chunks, x >> 4, z >> 4).section((y >> 4) + OFFSET);
     }
 
+    /// Returns the lowest present section above section index `si`.
     public Section firstAbove(int si) {
         for (int i = Math.max(0, si + 1); i < COUNT; i++) {
             if (sections[i] != null) return sections[i];
@@ -67,11 +72,14 @@ public final class Chunk {
         return null;
     }
 
+    /// Returns a starting section for `si` that inherits sky light from
+    /// the first present section above it, or `Section.EMPTY`.
     public Section fresh(int si) {
         Section s = firstAbove(si);
         return s == null ? Section.EMPTY : s.below();
     }
 
+    /// Returns a bit mask with bit `i` set when section `i` is present.
     public int present() {
         int mask = 0;
         for (int i = 0; i < COUNT; i++) {
