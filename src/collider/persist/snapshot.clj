@@ -4,9 +4,12 @@
   (:require [clojure.data.int-map :as i]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [collider.game.schema :as schema]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
+            [malli.core :as m]
+            [malli.error :as me]
             [taoensso.nippy :as nippy])
   (:import (collider.java Chunk)
            (java.io DataInput DataOutput File)
@@ -161,6 +164,16 @@
                          " - move the world aside or start with a fresh save directory")
                     {:found (:format m) :expected format-version :store (str store)}))))
 
+(defn- complaint [m [k msgs]]
+  (str k " " (str/join ", " msgs)
+       (when (contains? m k) (str ", got " (pr-str (get m k))))))
+
+(defn- check-meta! [store m]
+  (when-let [errors (me/humanize (m/explain schema/Meta m))]
+    (throw (ex-info (str "snapshot " store " has bad meta")
+                    {:what (str "snapshot " store " has bad meta")
+                     :why  (map #(complaint m %) errors)}))))
+
 (defn- read-meta [store]
   (try (load store)
        (catch Throwable t
@@ -171,6 +184,7 @@
 (defn load-snapshot [store]
   (when-let [m (read-meta store)]
     (check-format! store m)
+    (check-meta! store m)
     (assoc (world-of (dissoc m :chunks))
            :stored (or (:stored m) (i/int-set)))))
 

@@ -93,35 +93,39 @@
   (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
 
 (def world
-  {:tick               {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
+  {:tick               {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
    :time-ms            {:default 0}
-   :time-of-day        {:default 0 :store (fn [v _] v) :load identity}
-   :next-eid           {:default 1000000 :store (fn [v _] v) :load identity}
-   :rules              {:default rules/defaults :store (fn [v _] v)
+   :time-of-day        {:default 0 :store (fn [v _] v) :load identity :schema :int}
+   :next-eid           {:default 1000000 :store (fn [v _] v) :load identity :schema :int}
+   :rules              {:default rules/defaults :store (fn [v _] v) :schema :map
                         :load    #(merge rules/defaults
                                          (select-keys % (keys rules/defaults)))}
-   :profiles           {:default {} :store store-profiles :load identity}
+   :profiles           {:default {} :store store-profiles :load identity :schema [:map-of :string :map]}
    :chunks             {:default chunk/no-chunks :load identity}
    :entities           {:default (i/int-map) :load identity}
    :block-ticks        {:default (i/int-map) :load identity}
    :block-entities     {:default (i/int-map) :load identity}
    :stored             {:default (i/int-set)}
    :loading            {:default (i/int-set)}
-   :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity}
-   :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :thunder-time       {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0))}
-   :raining?           {:default false :store (fn [v _] (boolean v)) :load boolean}
-   :thundering?        {:default false :store (fn [v _] (boolean v)) :load boolean}
-   :rain-level         {:default 0.0 :store store-rain-level :load double}
-   :o-rain-level       {:default 0.0 :store store-rain-level :load double}
-   :thunder-level      {:default 0.0 :store store-thunder-level :load double}
-   :o-thunder-level    {:default 0.0 :store store-thunder-level :load double}
+   :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity :schema [:tuple :int :int :int]}
+   :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
+   :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
+   :thunder-time       {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
+   :raining?           {:default false :store (fn [v _] (boolean v)) :load boolean :schema :boolean}
+   :thundering?        {:default false :store (fn [v _] (boolean v)) :load boolean :schema :boolean}
+   :rain-level         {:default 0.0 :store store-rain-level :load double :schema number?}
+   :o-rain-level       {:default 0.0 :store store-rain-level :load double :schema number?}
+   :thunder-level      {:default 0.0 :store store-thunder-level :load double :schema number?}
+   :o-thunder-level    {:default 0.0 :store store-thunder-level :load double :schema number?}
    :container-rechecks {:default {}}
    :shulker-anim       {:default {}}
    :players            {:default {}}
    :spawning           {:default (i/int-map)}
    :listed             {:default {}}})
+
+(def Meta
+  (into [:map {:closed true} [:format :int] [:stored {:optional true} [:fn set?]]]
+        (for [[k {s :schema}] world :when s] [k {:optional true} s])))
 
 (def initial-world (update-vals world :default))
 (defn snapshot [w]
