@@ -35,10 +35,7 @@
                   (long (Math/floor (- (double y) step-offset)))
                   (long (Math/floor (double z)))]))
 
-(defn stepped-speed
-  "Returns the speed vel becomes when an entity at pos steps on the block
-   under it."
-  [chunks pos vel]
+(defn stepped-speed [chunks pos vel]
   (let [ay (Math/abs (double (nth vel 1)))]
     (if (and (= :slime (block/type-of (below-of chunks pos))) (< ay slow-fall))
       (let [s (+ step-base (* ay step-slope))]

@@ -9,17 +9,13 @@
 
 (def ^:private ^:const max-nodes 200)
 (def ^:private ^:const max-fall 3)
-(defn- water-at?
-  "Returns true when x y z is water."
-  [chunks template x y z]
+(defn- water-at? [chunks template x y z]
   (= :water (liquid/liquid-class (chunk/block-state chunks template x y z))))
 
 (defn- fence-at? [chunks template [x y z]]
   (phys/fence-at? chunks template x y z))
 
-(defn- open?
-  "Returns true when a body can stand at x y z without meeting a block."
-  [chunks template x y z]
+(defn- open? [chunks template x y z]
   (and (not (phys/solid? chunks template x y z))
        (not (phys/solid? chunks template x (inc y) z))))
 
@@ -67,10 +63,7 @@
                    (supported? chunks template cx y cz))))
           (let [h (double half)] [[(- h) (- h)] [(- h) h] [h (- h)] [h h]])))
 
-(defn direct?
-  "Returns true when a body of half width half can walk straight from pos to the
-   cell without leaving open, supported ground."
-  [chunks template pos half [wx wy wz]]
+(defn direct? [chunks template pos half [wx wy wz]]
   (let [half (double half)
         x (v/x pos) z (v/z pos)
         y (long wy)
@@ -90,18 +83,13 @@
     (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
 
 (def ^:private dirs [[1 0] [-1 0] [0 1] [0 -1]])
-(defn- rebuild
-  "Returns the cells walked to reach cell."
-  [came cell]
+(defn- rebuild [came cell]
   (loop [acc (list cell) c cell]
     (if-let [p (came c)]
       (recur (conj acc p) p)
       (vec (rest acc)))))
 
-(defn- relax
-  "Returns acc with the step from cur in the direction d taken, when that
-   is a shorter way there."
-  [chunks template avoid-water? h cur acc d]
+(defn- relax [chunks template avoid-water? h cur acc d]
   (let [[open g came best best-h] acc]
     (if-let [nb (step-cell chunks template avoid-water? cur d)]
       (let [ng (+ (double (g cur)) (dist cur nb))]

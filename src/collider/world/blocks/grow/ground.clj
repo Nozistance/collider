@@ -34,10 +34,7 @@
                          [q (block/state self {:snowy (snowy chunks q)})]))))
           (range 4))))
 
-(defn spread-tick
-  "Returns the changes grass or mycelium at p makes this tick, and dirt when it
-   can no longer live there."
-  [chunks p st roll time ctx]
+(defn spread-tick [chunks p st roll time ctx]
   (if-not (grass/can-stay-alive? chunks st p)
     [[p (block/state :dirt)]]
     (when (>= (weather/brightness ctx chunks (gen/flat-chunk) (p 0) (inc (long (p 1))) (p 2) time) 9)
@@ -47,10 +44,7 @@
   (boolean (some (fn [[dx dy dz]] (water? (gen/at chunks [(+ (long x) dx) (+ (long y) dy) (+ (long z) dz)])))
                  (for [dx (range -4 5) dy [0 1] dz (range -4 5)] [dx dy dz]))))
 
-(defn farmland-tick
-  "Returns the change wetting or drying the farmland st at p, or nil when it
-   stays as it is."
-  [chunks p st _roll _time _ctx]
+(defn farmland-tick [chunks p st _roll _time _ctx]
   (let [m (block/prop-long st :moisture)]
     (cond
       (near-water? chunks p) (when (< m 7) [[p (with st :moisture 7)]])
@@ -66,9 +60,7 @@
       (= :medium-amethyst-bud n) :large-amethyst-bud
       (= :large-amethyst-bud n) :amethyst-cluster)))
 
-(defn budding-tick
-  "Returns the change growing an amethyst bud beside p, or nil when none grows."
-  [chunks p _st roll _time _ctx]
+(defn budding-tick [chunks p _st roll _time _ctx]
   (when (chance? roll :gate 5)
     (let [dir (dir/six (pick roll :dir 6))
           q (mapv + p (dir/offset dir))
@@ -76,32 +68,22 @@
       (when-let [b (amethyst-next target dir)]
         [[q (block/state b {:facing dir :waterlogged (if (water? target) :true :false)})]]))))
 
-(defn ice-tick
-  "Returns the change melting the ice st at p, or nil when it holds."
-  [chunks p st _roll _time _ctx]
+(defn ice-tick [chunks p st _roll _time _ctx]
   (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) (- 11 (block/dampening st)))
     [[p (block/state :water)]]))
 
-(defn snow-tick
-  "Returns the change melting the snow layer at p, or nil when it holds."
-  [chunks p _st _roll _time _ctx]
+(defn snow-tick [chunks p _st _roll _time _ctx]
   (when (> (long (light/block-light-at chunks (gen/flat-chunk) (p 0) (p 1) (p 2))) 11)
     [[p 0]]))
 
-(defn eyeblossom-tick
-  "Returns the change opening or closing the eyeblossom st at p, or nil when it
-   already matches the time."
-  [_chunks p st _roll time _ctx]
+(defn eyeblossom-tick [_chunks p st _roll time _ctx]
   (when-let [new (eyeblossom/switched (long st) (long time))]
     [[p new]]))
 
 (def ^:private potted-eyeblossom {:potted-open-eyeblossom   :potted-closed-eyeblossom
                                   :potted-closed-eyeblossom :potted-open-eyeblossom})
 
-(defn potted-tick
-  "Returns the change opening or closing a potted eyeblossom at p, or nil when
-   it already matches the time."
-  [_chunks p st _roll time _ctx]
+(defn potted-tick [_chunks p st _roll time _ctx]
   (let [self (block/block-of (long st))]
     (when (contains? potted-eyeblossom self)
       (let [open? (= :potted-open-eyeblossom self)
@@ -110,43 +92,29 @@
           [[p (block/state (potted-eyeblossom self))]])))))
 
 (defn leaves-tick
-  "Returns the change taking away leaves that have grown too far from their log,
-   or nil."
+  "Returns the change that removes leaves grown too far from their log, or nil
+   when they stay."
   [_chunks p st _roll _time _ctx]
   (when (and (= :false (:persistent (block/props-of st))) (= 7 (block/prop-long st :distance)))
     [[p (block/emptied st)]]))
 
-(defn chorus-tick
-  "Returns the changes a chorus flower at p makes this tick, or nil when it
-   stays."
-  [chunks p st roll _time _ctx]
+(defn chorus-tick [chunks p st roll _time _ctx]
   (chorus/flower-tick chunks p st (fn [salt ^long n] (pick roll salt n))))
 
-(defn roots-meal
-  "Returns the bone meal result for rooted dirt at p, or nil when the block
-   below it is taken."
-  [chunks [_ y _ :as p] _st _roll]
+(defn roots-meal [chunks [_ y _ :as p] _st _roll]
   (when (and (chunk/in-range? (dec (long y))) (zero? (gen/at chunks (dir/down p))))
     {:changes [[(dir/down p) (block/state :hanging-roots)]]}))
 
-(defn lichen-meal
-  "Returns the bone meal result spreading the face block st at p."
-  [chunks p st roll]
+(defn lichen-meal [chunks p st roll]
   (when-let [changes (multiface/spread-random chunks p st roll)]
     {:changes changes}))
 
-(defn carpet-meal
-  "Returns the bone meal result for a moss carpet at p, or nil when nothing fits
-   above it."
-  [chunks p st _roll]
+(defn carpet-meal [chunks p st _roll]
   (when (= :true (:bottom (block/props-of st)))
     (when-let [topper (moss/carpet-topper chunks p (constantly true))]
       {:changes [[(dir/up p) topper]]})))
 
-(defn hanging-moss-meal
-  "Returns the bone meal result for hanging moss at p, taken at the bottom of
-   its column."
-  [chunks p st _roll]
+(defn hanging-moss-meal [chunks p st _roll]
   (let [q (moss/hanging-end chunks p (block/block-of st))]
     (when (air-at? chunks q)
       {:changes [[q (with st :tip :true)]]})))
@@ -158,10 +126,7 @@
       (let [j (pick roll [:shuffle i] (- 4 i))]
         (recur (into (subvec pool 0 j) (subvec pool (inc j))) (inc i) (conj acc (pool j)))))))
 
-(defn spread-meal
-  "Returns the bone meal result placing target in a free spot beside p, or nil
-   when there is none. roll chooses the order of the sides."
-  [chunks p roll target]
+(defn spread-meal [chunks p roll target]
   (when-let [q (first (for [d (shuffled-dirs roll)
                             :let [q (mapv + p (dir/horizontal-offset d))]
                             :when (and (air-at? chunks q)
@@ -169,15 +134,9 @@
                         q))]
     {:changes [[q target]]}))
 
-(defn bush-meal
-  "Returns the bone meal result for a bush at p, another one beside it."
-  [chunks p st roll] (spread-meal chunks p roll (block/state (block/block-of st))))
-(defn short-dry-grass-meal
-  "Returns the bone meal result for short dry grass at p, which grows tall."
-  [_chunks p _st _roll] {:changes [[p (block/state :tall-dry-grass)]]})
-(defn tall-dry-grass-meal
-  "Returns the bone meal result for tall dry grass at p, short grass beside it."
-  [chunks p _st roll] (spread-meal chunks p roll (block/state :short-dry-grass)))
+(defn bush-meal [chunks p st roll] (spread-meal chunks p roll (block/state (block/block-of st))))
+(defn short-dry-grass-meal [_chunks p _st _roll] {:changes [[p (block/state :tall-dry-grass)]]})
+(defn tall-dry-grass-meal [chunks p _st roll] (spread-meal chunks p roll (block/state :short-dry-grass)))
 
 (defn- pickle-cells [[x y z]]
   (for [[i span] (map-indexed vector [1 3 5 3 1])
@@ -199,10 +158,7 @@
                                                        :waterlogged :true})]))))
         (pickle-cells p)))
 
-(defn pickle-meal
-  "Returns the bone meal result for a sea pickle at p, filling it and seeding
-   more on the coral around it, or nil when it does not stand on coral."
-  [chunks p st roll]
+(defn pickle-meal [chunks p st roll]
   (when (and (= :true (:waterlogged (block/props-of st)))
              (block/tagged? (gen/at chunks (dir/down p)) "coral_blocks"))
     {:changes (conj (pickle-spots chunks p roll) [p (with st :pickles 4)])}))
@@ -251,8 +207,8 @@
     acc))
 
 (defn turf-meal
-  "Returns the bone meal result for a grass block at p: grass, tall grass and
-   the flowers of its biome around it."
+  "Returns the bone meal result for a grass block at p. It puts grass, tall
+   grass and the flowers of the biome around it."
   [chunks p st roll]
   (when (air-at? chunks (dir/up p))
     (let [self (block/block-of st)
@@ -261,9 +217,7 @@
                       (feature/start chunks) (range 128))]
       {:changes (feature/cells acc)})))
 
-(defn placer-meal
-  "Returns the bone meal result for a block that grows a feature above it."
-  [chunks p st roll]
+(defn placer-meal [chunks p st roll]
   (when (air-at? chunks (dir/up p))
     (let [f (feature/placer-feature (block/block-of st))
           acc (feature/configured (feature/start chunks) f (dir/up p) roll [:patch])]

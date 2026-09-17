@@ -19,16 +19,13 @@
    :save-period-ms        300000})
 
 (defn load-config
-  "Returns the settings at path, over the defaults for whatever it leaves out."
   ([] (load-config "config.edn"))
   ([path]
    (merge defaults
           (when (.exists (io/file (str path)))
             (edn/read-string (slurp (str path)))))))
 
-(defn- render
-  "Returns the settings as text, one setting per line."
-  ^String [m]
+(defn- render ^String [m]
   (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))
 
 (defn write-default!

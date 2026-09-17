@@ -7,9 +7,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn water-bottle?
-  "Returns true when the stack is a bottle of water."
-  [stack]
+(defn water-bottle? [stack]
   (and (= :potion (:item stack))
        (= :water (get-in stack [:components :potion-contents :potion]))))
 
@@ -52,9 +50,7 @@
         (concat (edit/change-deltas world [[pos st]])
                 [(out/all (out/sound :bottle/empty pos 1.0 1.0))])))))
 
-(defn cauldron-deltas
-  "Returns the deltas for using an item on the cauldron at pos."
-  [world pos item stack]
+(defn cauldron-deltas [world pos item stack]
   (let [cur (edit/block-at world pos)]
     (cond
       (and (= :potion item) (water-bottle? stack)) (pour-bottle-deltas world pos)

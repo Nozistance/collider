@@ -1,5 +1,5 @@
 (ns collider.game.systems.blocks
-  "What a player does to a block: digging, placing, and using what is there."
+  "Player block actions such as digging, placing and using."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
@@ -23,21 +23,11 @@
 (defn- clicked-scaffolding? [{:keys [world pos item use-item?]}]
   (and (= :scaffolding item) (not use-item?) (= :scaffolding (block/type-of (edit/block-at world pos)))))
 
-(defn- when-use
-  "Returns the action for using the item in the air."
-  [f] (fn [c] (when (:use-item? c) (f c))))
-(defn- when-hand
-  "Returns the action for using the item on a block."
-  [f] (fn [c] (when-not (:use-item? c) (f c))))
-(defn- item-is
-  "Returns a test for holding that item."
-  [k] (comp #{k} :item))
-(defn- tool-is
-  "Returns a test for holding one of those tools."
-  [d] (fn [c] ((d) (:item c))))
-(defn- on-args
-  "Returns an action that takes the world and the raw event."
-  [f] (fn [{:keys [world args]}] (f world args)))
+(defn- when-use [f] (fn [c] (when (:use-item? c) (f c))))
+(defn- when-hand [f] (fn [c] (when-not (:use-item? c) (f c))))
+(defn- item-is [k] (comp #{k} :item))
+(defn- tool-is [d] (fn [c] ((d) (:item c))))
+(defn- on-args [f] (fn [{:keys [world args]}] (f world args)))
 
 (def ^:private item-actions
   [[clicked-scaffolding? (fn [{:keys [world eid pos face]}] (place/scaffold-place-deltas world eid pos face))]
@@ -58,15 +48,11 @@
     (fn [{:keys [world eid item]}] (tools/equip-armor-deltas world eid item (tools/armor-slot-of item)))]
    [(constantly true) (on-args place/solid-place-deltas)]])
 
-(defn- item-deltas
-  "Returns the deltas for using the held item on a block."
-  [ctx]
+(defn- item-deltas [ctx]
   (when-let [[_ f] (first (filter (fn [[pred _]] (pred ctx)) item-actions))]
     (f ctx)))
 
-(defn- place-deltas
-  "Returns the deltas for a player using or placing something at a block face."
-  [world [eid pos face item cursor] origin]
+(defn- place-deltas [world [eid pos face item cursor] origin]
   (let [item (or item (sense/held-of (get-in world [:entities eid])))
         at (merge (get-in world [:entities eid]) origin)
         world (assoc-in world [:entities eid] at)
@@ -82,7 +68,7 @@
                           :pour  (liquid/bucket->state item)}))))
 
 (defn- sequence-of
-  "Returns the number a player gave an action, so it can be acknowledged."
+  "Returns the sequence number the player sent with the action, for the block ack."
   [tag args]
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
@@ -92,9 +78,7 @@
 (defn- acted-at [world eid origin pos]
   (reach/in-reach? (merge (get-in world [:entities eid]) origin) pos))
 
-(defn- use-ack-deltas
-  "Returns the deltas that correct a player's view of the blocks they used."
-  [world events origins]
+(defn- use-ack-deltas [world events origins]
   (mapcat (fn [[i [tag eid pos face]]]
             (when-let [off (and (= :place tag) (dir/face-offset (bit-and (long face) 0xFF)))]
               (when (and (chunk/in-range? (nth pos 1))
@@ -104,9 +88,7 @@
                           (chunk/in-range? (nth pos' 1)) (conj (edit/own-change world eid pos')))))))
           (map-indexed vector events)))
 
-(defn acks
-  "Returns the deltas that acknowledge a player's block actions."
-  [world d]
+(defn acks [world d]
   (let [events (:input d)
         latest (reduce (fn [m [tag eid & args]]
                          (if-let [sq (sequence-of tag args)]
@@ -116,9 +98,7 @@
     (concat (map (fn [[eid sq]] (out/to eid (out/block-ack sq))) latest)
             (use-ack-deltas world events (:use-origins world)))))
 
-(defn- with-edits
-  "Returns the world with those deltas applied."
-  [world deltas]
+(defn- with-edits [world deltas]
   (let [changes (into [] (mapcat (fn [[tag recs]] (when (= tag :set-blocks) recs))) deltas)]
     (if (empty? changes)
       world
@@ -136,8 +116,6 @@
                           (map-indexed vector events))]
     edits))
 
-(defn block-edits
-  "Returns the deltas for the blocks players dig, place and write on this tick."
-  [world d]
+(defn block-edits [world d]
   (let [events (:input d)]
     [#(block-edits-deltas world events)]))

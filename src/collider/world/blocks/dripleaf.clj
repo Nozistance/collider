@@ -8,40 +8,23 @@
 
 (set! *warn-on-reflection* true)
 
-(defn leaf?
-  "Returns true when st is the leaf of a big dripleaf."
-  [^long st] (= :big-dripleaf (block/type-of st)))
-(defn stem?
-  "Returns true when st is the stem of a big dripleaf."
-  [^long st] (= :big-dripleaf-stem (block/type-of st)))
-(defn small?
-  "Returns true when st is a small dripleaf."
-  [^long st] (= :small-dripleaf (block/type-of st)))
-(defn dripleaf?
-  "Returns true when st is any part of a dripleaf."
-  [^long st] (or (leaf? st) (stem? st) (small? st)))
-(defn- half-of
-  "Returns which half of a two-block dripleaf st is."
-  [^long st] (:half (block/props-of st)))
-(defn tilt-of
-  "Returns how far the big dripleaf st has tipped over."
-  [^long st] (:tilt (block/props-of st)))
+(defn leaf? [^long st] (= :big-dripleaf (block/type-of st)))
+(defn stem? [^long st] (= :big-dripleaf-stem (block/type-of st)))
+(defn small? [^long st] (= :small-dripleaf (block/type-of st)))
+(defn dripleaf? [^long st] (or (leaf? st) (stem? st) (small? st)))
+(defn- half-of [^long st] (:half (block/props-of st)))
+(defn tilt-of [^long st] (:tilt (block/props-of st)))
 
 (defn- water-source? [^long st]
   (and (pos? st)
        (or (block/waterlogged? st)
            (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
 
-(defn leaf-supported?
-  "Returns true when something holds a big dripleaf at p."
-  [chunks p]
+(defn leaf-supported? [chunks p]
   (let [b (gen/at-void chunks (dir/down p))]
     (or (leaf? b) (stem? b) (block/tagged? b "supports_big_dripleaf"))))
 
-(defn stem-supported?
-  "Returns true when something holds a big dripleaf stem at p and the plant goes
-   on above it."
-  [chunks p]
+(defn stem-supported? [chunks p]
   (let [b (gen/at-void chunks (dir/down p)) a (gen/at-void chunks (dir/up p))]
     (and (or (stem? b) (block/tagged? b "supports_big_dripleaf"))
          (or (stem? a) (leaf? a)))))
@@ -50,36 +33,26 @@
   (or (block/tagged? below "supports_small_dripleaf")
       (and (water-source? (gen/at-void chunks p)) (block/tagged? below "supports_vegetation"))))
 
-(defn small-supported?
-  "Returns true when something holds the small dripleaf st at p."
-  [chunks p ^long st]
+(defn small-supported? [chunks p ^long st]
   (let [b (gen/at-void chunks (dir/down p))]
     (if (= :upper (half-of st))
       (and (small? b) (= :lower (half-of b)))
       (may-place-small-on? chunks p b))))
 
-(defn supported?
-  "Returns true when something holds the dripleaf st at p."
-  [chunks p ^long st]
+(defn supported? [chunks p ^long st]
   (cond
     (leaf? st) (leaf-supported? chunks p)
     (stem? st) (stem-supported? chunks p)
     :else (small-supported? chunks p st)))
 
-(defn leaf-updated
-  "Returns the state a big dripleaf at p becomes now, air when nothing holds
-   it."
-  ^long [chunks p ^long st]
+(defn leaf-updated ^long [chunks p ^long st]
   (cond
     (not (leaf-supported? chunks p)) 0
     (leaf? (gen/at-void chunks (dir/up p)))
     (block/state :big-dripleaf-stem (select-keys (block/props-of st) [:facing :waterlogged]))
     :else st))
 
-(defn small-updated
-  "Returns st when both halves of the small dripleaf still stand at p, air
-   otherwise."
-  ^long [chunks p ^long st]
+(defn small-updated ^long [chunks p ^long st]
   (let [upper? (= :upper (half-of st))
         partner (gen/at-void chunks (if upper? (dir/down p) (dir/up p)))]
     (if (and (small? partner)
@@ -88,10 +61,7 @@
       st
       0)))
 
-(defn leaf-placed
-  "Returns the state of a big dripleaf placed at p, or nil when nothing holds it
-   there."
-  [chunks p ^long st]
+(defn leaf-placed [chunks p ^long st]
   (let [b (gen/at-void chunks (dir/down p))
         st' (if (or (leaf? b) (stem? b))
               (block/state (block/block-of st) (assoc (block/props-of st) :facing (block/facing-of b)))
@@ -101,14 +71,10 @@
 (def ^:private next-tilt {:unstable :partial :partial :full :full :none})
 (def ^:private tilt-delay {:unstable 10 :partial 10 :full 100})
 
-(defn tilted
-  "Returns st at that tilt."
-  ^long [^long st tilt]
+(defn tilted ^long [^long st tilt]
   (block/state (block/block-of st) (assoc (block/props-of st) :tilt tilt)))
 
-(defn tilt-sound
-  "Returns the sound st makes on reaching its tilt, or nil when it is silent."
-  [^long st]
+(defn tilt-sound [^long st]
   (case (tilt-of st)
     :unstable nil
     :none :big-dripleaf/tilt-up
@@ -136,20 +102,14 @@
 (defn- stem-state ^long [chunks p facing]
   (watered :big-dripleaf-stem chunks p {:facing facing}))
 
-(defn column-changes
-  "Returns the changes growing a dripleaf column upward from the position, at
-   most desired blocks tall, with the leaf on top."
-  [chunks [x y z] facing ^long desired]
+(defn column-changes [chunks [x y z] facing ^long desired]
   (let [h (loop [n 0]
             (if (and (< n desired) (can-place-at? chunks [x (+ (long y) n) z])) (recur (inc n)) n))
         top (max (long y) (+ (long y) h -1))]
     (conj (mapv (fn [q] [[x q z] (stem-state chunks [x q z] facing)]) (range (long y) top))
           [[x top z] (leaf-state chunks [x top z] facing)])))
 
-(defn leaf-meal
-  "Returns the bone meal result for a big dripleaf at p, or nil when there is no
-   room above it."
-  [chunks p ^long st]
+(defn leaf-meal [chunks p ^long st]
   (let [a (dir/up p)]
     (when (can-place-at? chunks a)
       (let [f (block/facing-of st)]
@@ -162,19 +122,13 @@
         (stem? st) (recur (dir/up q))
         (leaf? st) q))))
 
-(defn stem-meal
-  "Returns the bone meal result for a stem at p, taken at the top of its column,
-   or nil when there is no room."
-  [chunks p ^long st]
+(defn stem-meal [chunks p ^long st]
   (when-let [h (head-pos chunks p)]
     (when (can-place-at? chunks (dir/up h))
       (let [f (block/facing-of st) a (dir/up h)]
         {:changes [[h (stem-state chunks h f)] [a (leaf-state chunks a f)]]}))))
 
-(defn small-meal
-  "Returns the bone meal result for a small dripleaf at p, a column of the
-   height roll gives."
-  [chunks p ^long st roll]
+(defn small-meal [chunks p ^long st roll]
   (let [lower (if (= :upper (half-of st)) (dir/down p) p)
         base (gen/at-void chunks lower)
         a (dir/up lower)
@@ -185,9 +139,7 @@
         {:changes (into [[a cleared]]
                         (column-changes chunks' lower (block/facing-of base) desired))}))))
 
-(defn meal
-  "Returns the bone meal result for the dripleaf st at p."
-  [chunks p ^long st roll]
+(defn meal [chunks p ^long st roll]
   (cond
     (leaf? st) (leaf-meal chunks p st)
     (stem? st) (stem-meal chunks p st)

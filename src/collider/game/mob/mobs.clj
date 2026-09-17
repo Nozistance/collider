@@ -1,5 +1,5 @@
 (ns collider.game.mob.mobs
-  "Mobs: the kinds that exist, and how a new one starts out."
+  "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
             [collider.random :as random]))
 
@@ -36,47 +36,27 @@
            :step          :sheep/step
            :spawn-color   sheep-color}})
 
-(defn egg-type
-  "Returns the kind of mob a spawn egg makes, or nil."
-  [item]
+(defn egg-type [item]
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
-(defn max-health
-  "Returns the health a mob of that kind starts with."
-  [type] (get-in types [type :max-health]))
-(defn mob-type?
-  "Returns true when mobs of that kind exist."
-  [type] (contains? types type))
-(defn breeding-item
-  "Returns the food that puts a mob of that kind in the mood to breed."
-  [type] (get-in types [type :breeding-item]))
-(defn action-means
-  "Returns how long a mob of that kind waits between its idle actions."
-  [type] (get-in types [type :action-means]))
-(defn say-sound
-  "Returns the sound a mob of that kind makes on its own."
-  [type] (get-in types [type :say]))
-(defn step-sound
-  "Returns the sound a mob of that kind makes as it walks."
-  [type] (get-in types [type :step]))
+(defn max-health [type] (get-in types [type :max-health]))
+(defn mob-type? [type] (contains? types type))
+(defn breeding-item [type] (get-in types [type :breeding-item]))
+(defn action-means [type] (get-in types [type :action-means]))
+(defn say-sound [type] (get-in types [type :say]))
+(defn step-sound [type] (get-in types [type :step]))
 (def ^:private sheep-meta
   (into {} (for [color (range 16) baby [false true] burning [false true]]
              [[color baby burning] {:color color :baby? baby :burning? burning}])))
 
-(defn burning?
-  "Returns true when the mob is on fire."
-  [e] (boolean (:burning? e)))
-(defn metadata
-  "Returns how the mob looks to players."
-  [e]
+(defn burning? [e] (boolean (:burning? e)))
+(defn metadata [e]
   (case (:type e)
     :sheep (sheep-meta [(long (or (:color e) 0))
                         (some? (:baby-until e))
                         (burning? e)])))
 
-(defn new-mob
-  "Returns a mob of that kind, standing at pos."
-  [type pos color tick]
+(defn new-mob [type pos color tick]
   {:type        type
    :pos         pos
    :vel         [0.0 0.0 0.0]
@@ -88,22 +68,14 @@
    :health      (max-health type)
    :health-sent (max-health type)})
 
-(defn egg-mob
-  "Returns the mob a spawn egg makes, coloured and turned at random."
-  [type pos ks tick]
+(defn egg-mob [type pos ks tick]
   (let [color-fn (get-in types [type :spawn-color] (constantly 0))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
     (assoc (new-mob type pos (color-fn ks) tick)
       :yaw yaw :head-yaw yaw)))
 
-(defn exp-delay
-  "Returns a random wait of that average length, in ticks."
-  ^long [mean ^long t ^long eid kind]
+(defn exp-delay ^long [mean ^long t ^long eid kind]
   (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (random/of-longs t eid (hash kind)))))))))
 
-(defn in-love?
-  "Returns true when the mob is still looking for a mate."
-  [e t] (> (long (or (:love-until e) 0)) (long t)))
-(defn baby?
-  "Returns true when the mob has not grown up yet."
-  [e] (some? (:baby-until e)))
+(defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
+(defn baby? [e] (some? (:baby-until e)))

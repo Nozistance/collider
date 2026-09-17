@@ -1,6 +1,5 @@
 (ns collider.world.blocks.dripstone
-  "Pointed dripstone and sulfur spikes: their shape, their growth, and what
-   they drip."
+  "Pointed dripstone and sulfur spikes, their growth, and their drip."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.gen :as gen]
@@ -18,23 +17,12 @@
   "Returns true when st is pointed dripstone or another spike that grows
    from stone."
   [^long st] (block/tagged? st "speleothems"))
-(defn- dir-of
-  "Returns the direction the spike st grows in."
-  [^long st] (:vertical-direction (block/props-of st)))
-(defn- thickness-of
-  "Returns how thick the spike st is along its length."
-  [^long st] (:thickness (block/props-of st)))
-(defn- directed?
-  "Returns true when st is a spike growing in the direction dir."
-  [^long st dir] (and (speleothem? st) (= dir (dir-of st))))
-(defn stalactite?
-  "Returns true when st hangs from the ceiling."
-  [^long st] (directed? st :down))
+(defn- dir-of [^long st] (:vertical-direction (block/props-of st)))
+(defn- thickness-of [^long st] (:thickness (block/props-of st)))
+(defn- directed? [^long st dir] (and (speleothem? st) (= dir (dir-of st))))
+(defn stalactite? [^long st] (directed? st :down))
 (defn- stalagmite? [^long st] (directed? st :up))
-(defn- tip?
-  "Returns true when st is the tip of a spike; merged? counts a tip that
-   meets another."
-  [^long st merged?]
+(defn- tip? [^long st merged?]
   (and (speleothem? st)
        (or (= :tip (thickness-of st)) (and merged? (= :tip_merge (thickness-of st))))))
 
@@ -44,9 +32,7 @@
 (defn- unmerged-tip? [^long st dir self]
   (and (tip? st false) (= dir (dir-of st)) (= self (block/block-of st))))
 
-(defn- fluid-of
-  "Returns the liquid in st, nil when it holds none."
-  [^long st]
+(defn- fluid-of [^long st]
   (cond
     (not (pos? st)) nil
     (block/waterlogged? st) :water
@@ -58,18 +44,13 @@
     (and (= :water (fluid-of st))
          (or (block/waterlogged? st) (liquid/source-state? st)))))
 
-(defn valid-placement?
-  "Returns true when a block of self pointing dir has something to hold it
-   at p."
-  [chunks p dir self]
+(defn valid-placement? [chunks p dir self]
   (let [b (gen/at-void chunks (mapv + p (dir/offset (dir/opposite dir))))]
     (and (not (neg? b))
          (or (block/face-sturdy? b dir)
              (and (directed? b dir) (= self (block/block-of b)))))))
 
-(defn supported?
-  "Returns true when the dripstone st can stay at p."
-  [chunks p ^long st]
+(defn supported? [chunks p ^long st]
   (valid-placement? chunks p (dir-of st) (block/block-of st)))
 
 (defn- thickness [chunks p dir merge? self]
@@ -83,20 +64,14 @@
       (directed? (gen/at-void chunks (mapv + p (dir/offset base))) dir) :middle
       :else :base)))
 
-(defn updated
-  "Returns st with the thickness it has at p, unchanged where its support is
-   gone."
-  ^long [chunks p ^long st]
+(defn updated ^long [chunks p ^long st]
   (let [dir (dir-of st) self (block/block-of st)]
     (if-not (valid-placement? chunks p dir self)
       st
       (block/state self (assoc (block/props-of st)
                           :thickness (thickness chunks p dir (= :tip_merge (thickness-of st)) self))))))
 
-(defn placed
-  "Returns the state st takes when placed at p, nil where it can hang
-   neither way."
-  [chunks p st pitch sneaking?]
+(defn placed [chunks p st pitch sneaking?]
   (let [st (long st)
         self (block/block-of st)
         default (if (neg? (double pitch)) :down :up)
@@ -108,10 +83,7 @@
                           :vertical-direction dir
                           :thickness (thickness chunks p dir (not sneaking?) self))))))
 
-(defn- find-vertical
-  "Returns the first position from p along dir that target? accepts, nil
-   when the run of path? blocks ends first."
-  [chunks p dir path? target? max-steps]
+(defn- find-vertical [chunks p dir path? target? max-steps]
   (loop [i 1 q (mapv + p (dir/offset dir))]
     (when (< i (long max-steps))
       (let [st (gen/at-void chunks q)]
@@ -193,8 +165,9 @@
               {:tip tip :cauldron c :delay (+ 50 (- (long (tip 1)) (long (c 1))))})))))))
 
 (defn drip
-  "Returns what a dripstone at p drips this tick: the tip it falls from and
-   the changes it makes, nil when nothing drips."
+  "Returns the drip of the dripstone at p this tick, or nil when nothing drips.
+   The result holds the tip it falls from and either block changes or the
+   cauldron it fills and the delay before it lands."
   [chunks p ^long st roll]
   (when (= :pointed-dripstone (block/type-of st))
     (let [roll (double (roll :drip))]
@@ -250,10 +223,7 @@
               (grown chunks tip :down self)
               (stalagmite-below chunks tip self))))))))
 
-(defn random-changes
-  "Returns the [pos state] changes of dripstone growing at p, nil when it
-   does not grow this tick."
-  [chunks p ^long st roll]
+(defn random-changes [chunks p ^long st roll]
   (when (and (= :pointed-dripstone (block/type-of st))
              (< (double (roll :grow)) growth-chance)
              (start-pos? chunks p st))

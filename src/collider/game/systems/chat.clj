@@ -1,5 +1,5 @@
 (ns collider.game.systems.chat
-  "Chat and commands: what players type and what they are told."
+  "Chat lines, commands and tab completion."
   (:require [collider.data :as data]
             [clojure.string :as str]
             [collider.game.command.tree :as cmd]
@@ -24,14 +24,11 @@
    ["_" {:italic true}]
    ["`" {:color "gray"}]])
 
-(defn- marker-at
-  "Returns the styling mark starting at that point in the text, if any."
-  [^String s ^long i]
+(defn- marker-at [^String s ^long i]
   (some (fn [[^String m st]] (when (.startsWith s m i) [m st])) markers))
 
 (defn parse-runs
-  "Returns the styled pieces of a line written with bold, italic and the other
-   marks."
+  "Returns the styled runs of a line written with the chat markup marks."
   ([s] (parse-runs s {}))
   ([^String s styles]
    (loop [i 0, plain (StringBuilder.), out []]
@@ -59,9 +56,7 @@
                (do (.append plain c)
                    (recur (inc i) plain out))))))))))
 
-(defn tell
-  "Returns the deltas that write those lines to one player."
-  [eid & lines]
+(defn tell [eid & lines]
   (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
@@ -79,14 +74,10 @@
       [[:set-blocks changes]]
       (tell eid (format "filled **%d** blocks" n)))))
 
-(defn- say
-  "Returns the deltas that give one player a translated message."
-  [eid key & with]
+(defn- say [eid key & with]
   [(out/to eid (out/system-chat [{:translate key :with (vec with)}]))])
 
-(defn- rule-deltas
-  "Returns the deltas that read back or change a game rule."
-  [world eid rule text]
+(defn- rule-deltas [world eid rule text]
   (let [id (subs (rules/wire-name rule) 10)]
     (if (nil? text)
       (say eid "commands.gamerule.query" id (rules/serialize rule (get-in world [:rules rule])))
@@ -102,14 +93,10 @@
     :set-rules (mapcat (fn [[k v]] (when-let [r (rules/rule-of k)] (rule-deltas world eid r v))) entries)
     nil))
 
-(defn- entity-name
-  "Returns the name to show for an entity."
-  [e]
+(defn- entity-name [e]
   (if (= :player (:type e)) (:name e) {:translate (str "entity.minecraft." (data/snake (:type e)))}))
 
-(defn- targets
-  "Returns the entities a command's target selector picks out."
-  [world eid {:keys [self all nearest entities type not-type? name]}]
+(defn- targets [world eid {:keys [self all nearest entities type not-type? name]}]
   (let [players (map key (state/player-entries world))
         typed (fn [ids] (if type
                           (filter #(= (boolean not-type?) (not= type (get-in world [:entities % :type]))) ids)
@@ -170,10 +157,7 @@
   [[:set-blocks [[[x y z] (block/state block)]]]
    (out/to eid (out/system-chat [{:translate "commands.setblock.success" :with [(str x) (str y) (str z)]}]))])
 
-(defn- block-under
-  "Returns the block the arguments name, defaulting to the one the player stands
-   on."
-  [world eid [x y z]]
+(defn- block-under [world eid [x y z]]
   (let [p (get-in world [:entities eid :pos])]
     [(long (or x (Math/floor (v/x p))))
      (long (or y (Math/floor (v/y p))))
@@ -197,10 +181,7 @@
                      :with      [(str (nth at 0)) (str (nth at 1)) (str (nth at 2))
                                  "0.0" "0.0" "minecraft:overworld" (entity-name e)]}]))]))
 
-(defn- duration-of
-  "Returns how long weather should last, either as asked or as the world would
-   have chosen."
-  ^long [world ^long given bounds salt]
+(defn- duration-of ^long [world ^long given bounds salt]
   (if (pos? given)
     given
     (weather/sample (random/of-key (:tick world) salt) bounds)))
@@ -264,9 +245,7 @@
   (let [start (inc (.lastIndexOf ^String text " "))]
     [(out/to eid (out/suggestions (or id 0) start (- (count text) start) (cmd/suggest world text target)))]))
 
-(defn- event-deltas
-  "Returns the deltas for one chat line or command."
-  [world [tag eid text target id]]
+(defn- event-deltas [world [tag eid text target id]]
   (case tag
     :chat (said-deltas world eid text)
     :tab-complete (tab-deltas world eid text target id)
@@ -275,8 +254,6 @@
 (defn- chat-deltas [world events]
   (into [] (mapcat #(concat (event-deltas world %) (rules-event-deltas world %))) events))
 
-(defn chat
-  "Returns the deltas for chat, commands and completions this tick."
-  [world d]
+(defn chat [world d]
   (let [events (:input d)]
     [#(chat-deltas world events)]))

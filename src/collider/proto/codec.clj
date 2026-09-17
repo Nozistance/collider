@@ -1,6 +1,5 @@
 (ns collider.proto.codec
-  "Wire primitives of the protocol: numbers, strings, NBT, item stacks,
-   and packet framing."
+  "Wire primitives of the protocol such as varints, NBT, item stacks and framing."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
             [collider.data :as data])
@@ -14,9 +13,7 @@
 
 (def protocol-version 776)
 (def game-version data/game)
-(defn write-varint
-  "Writes a variable-length int."
-  [^Buf buf v]
+(defn write-varint [^Buf buf v]
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
       (.writeByte buf (unchecked-int v))
@@ -25,10 +22,7 @@
 
 (def ^:private ^:const max-varint-size 5)
 
-(defn read-varint
-  "Returns the variable-length int at the read point. Throws when it runs
-   too long."
-  ^long [^Buf buf]
+(defn read-varint ^long [^Buf buf]
   (loop [n 0 r 0]
     (let [b (long (.readByte buf))
           r (bit-or r (bit-shift-left (bit-and b 0x7F) (* 7 n)))]
@@ -37,18 +31,14 @@
         (>= (inc n) max-varint-size) (throw (ex-info "VarInt too big" {:bytes (inc n)}))
         :else (recur (inc n) r)))))
 
-(defn write-varlong
-  "Writes a variable-length long."
-  [^Buf buf ^long v]
+(defn write-varlong [^Buf buf ^long v]
   (loop [v v]
     (if (zero? (bit-and v (bit-not 0x7F)))
       (.writeByte buf (int v))
       (do (.writeByte buf (int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
-(defn write-string
-  "Writes a length-prefixed string."
-  [^Buf buf ^String s]
+(defn write-string [^Buf buf ^String s]
   (let [bs (.getBytes s StandardCharsets/UTF_8)]
     (write-varint buf (alength bs))
     (.writeBytes buf bs)))
@@ -57,7 +47,7 @@
 
 (defn read-string
   "Returns the string at the read point. Throws when it is longer than max
-   characters, 32767 by default."
+   characters."
   (^String [^Buf buf] (read-string buf max-string-length))
   (^String [^Buf buf max]
    (let [max (long max)
@@ -71,29 +61,20 @@
            (throw (ex-info "string too long" {:length (.length s) :max max})))
          s)))))
 
-(defn read-count
-  "Returns the length prefix at the read point. Throws when it claims more
-   elements than there are bytes left."
-  ^long [^Buf buf]
+(defn read-count ^long [^Buf buf]
   (let [n (read-varint buf)]
     (when (or (neg? n) (> n (.readableBytes buf)))
       (throw (ex-info "count exceeds remaining bytes" {:count n :readable (.readableBytes buf)})))
     n))
 
-(defn write-uuid
-  "Writes a UUID."
-  [^Buf buf ^UUID u]
+(defn write-uuid [^Buf buf ^UUID u]
   (.writeLong buf (.getMostSignificantBits u))
   (.writeLong buf (.getLeastSignificantBits u)))
 
-(defn read-uuid
-  "Returns the UUID at the read point."
-  ^UUID [^Buf buf]
+(defn read-uuid ^UUID [^Buf buf]
   (UUID. (.readLong buf) (.readLong buf)))
 
-(defn write-id
-  "Writes a registry name, adding the minecraft namespace when it has none."
-  [^Buf buf k]
+(defn write-id [^Buf buf k]
   (write-string buf
                 (cond
                   (keyword? k) (data/wire k)
@@ -118,9 +99,7 @@
 (def ^:private int-array-class (Class/forName "[I"))
 (def ^:private long-array-class (Class/forName "[J"))
 
-(defn- write-nbt-string
-  "Writes a named string tag."
-  [^Buf buf ^String name ^String v]
+(defn- write-nbt-string [^Buf buf ^String name ^String v]
   (.writeByte buf (int tag-string)) (.writeUtf buf name) (.writeUtf buf v))
 
 (declare write-translatable)
@@ -130,9 +109,7 @@
     (write-translatable buf a)
     (do (write-nbt-string buf "text" (str a)) (.writeByte buf (int tag-end)))))
 
-(defn- write-translatable
-  "Writes a translation key and the arguments that fill it in."
-  [^Buf buf {:keys [translate with]}]
+(defn- write-translatable [^Buf buf {:keys [translate with]}]
   (write-nbt-string buf "translate" translate)
   (when (seq with)
     (.writeByte buf (int tag-list)) (.writeUtf buf "with")
@@ -155,9 +132,7 @@
     (do (.writeByte buf (int tag-compound)) (write-translatable buf s))
     (do (.writeByte buf (int tag-string)) (.writeUtf buf (str s)))))
 
-(defn- nbt-type
-  "Returns the NBT tag that v is written as. Throws when it has none."
-  ^long [v]
+(defn- nbt-type ^long [v]
   (cond (map? v) tag-compound
         (string? v) tag-string
         (boolean? v) tag-byte
@@ -173,14 +148,10 @@
         (vector? v) tag-list
         :else (throw (ex-info "no NBT type" {:value v}))))
 
-(defn- list-type
-  "Returns the NBT tag every element of a list is written as."
-  ^long [v]
+(defn- list-type ^long [v]
   (long (or (:nbt-type (meta v)) (if (empty? v) tag-end (nbt-type (first v))))))
 
-(defn- write-nbt-payload
-  "Writes a value as the body of its NBT tag."
-  [^Buf buf v]
+(defn- write-nbt-payload [^Buf buf v]
   (case (int (nbt-type v))
     10 (do (doseq [[k x] v :when (some? x)]
              (.writeByte buf (int (nbt-type x)))
@@ -203,10 +174,7 @@
           (.writeInt buf (count v))
           (doseq [x v] (write-nbt-payload buf x)))))
 
-(defn write-nbt
-  "Writes a value as NBT, taking the tag from its type; nil writes as an
-   absent tag."
-  [^Buf buf v]
+(defn write-nbt [^Buf buf v]
   (if (nil? v)
     (.writeByte buf (int tag-end))
     (do (.writeByte buf (int (nbt-type v)))
@@ -215,10 +183,7 @@
 (def ^:private ^:const nbt-quota 2097152)
 (def ^:private ^:const nbt-max-depth 512)
 
-(defn- account!
-  "Charges size against what one NBT value is allowed to cost. Throws when
-   it costs too much."
-  [^longs acc ^long size]
+(defn- account! [^longs acc ^long size]
   (when (neg? size)
     (throw (ex-info "negative NBT size" {:size size})))
   (let [used (+ (aget acc 0) size)]
@@ -284,9 +249,7 @@
     (account! acc (* 8 n))
     (let [a (long-array n)] (dotimes [i n] (aset a i (.readLong d))) a)))
 
-(defn- read-nbt-payload
-  "Returns the body of an NBT tag of type t at the read point."
-  [^DataInputStream d ^longs acc ^long t]
+(defn- read-nbt-payload [^DataInputStream d ^longs acc ^long t]
   (case (int t)
     1 (do (account! acc 9) (Byte/valueOf (.readByte d)))
     2 (do (account! acc 10) (Short/valueOf (.readShort d)))
@@ -314,24 +277,16 @@
     (set! (.r buf) (- (.w buf) (.available in)))
     v))
 
-(defn write-angle
-  "Writes an angle in degrees as one byte."
-  [^Buf buf ^double deg]
+(defn write-angle [^Buf buf ^double deg]
   (.writeByte buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
 
-(defn write-vec3
-  "Writes a position or a motion in full precision."
-  [^Buf buf [x y z]]
+(defn write-vec3 [^Buf buf [x y z]]
   (.writeDouble buf (double x)) (.writeDouble buf (double y)) (.writeDouble buf (double z)))
 
-(defn- lp-pack
-  "Returns a number from -1 to 1 as the whole number the wire carries."
-  ^long [^double v]
+(defn- lp-pack ^long [^double v]
   (Math/round (* (+ (* v 0.5) 0.5) 32766.0)))
 
-(defn write-lp-vec3
-  "Writes a vector in the protocol's low-precision form."
-  [^Buf buf [x y z]]
+(defn write-lp-vec3 [^Buf buf [x y z]]
   (let [x (double x) y (double y) z (double z)
         m (max (Math/abs x) (Math/abs y) (Math/abs z))]
     (if (< m 3.051944088384301E-5)
@@ -348,49 +303,35 @@
         (.writeInt buf (unchecked-int (bit-shift-right buffer 16)))
         (when partial? (write-varint buf (bit-shift-right scale 2)))))))
 
-(defn write-block-pos
-  "Writes the position of a block."
-  [^Buf buf ^long x ^long y ^long z]
+(defn write-block-pos [^Buf buf ^long x ^long y ^long z]
   (.writeLong buf (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
                           (bit-shift-left (bit-and z 0x3FFFFFF) 12)
                           (bit-and y 0xFFF))))
 
-(defn read-block-pos
-  "Returns the block position at the read point."
-  [^Buf buf]
+(defn read-block-pos [^Buf buf]
   (let [v (.readLong buf)]
     [(bit-shift-right v 38)
      (bit-shift-right (bit-shift-left v 52) 52)
      (bit-shift-right (bit-shift-left v 26) 38)]))
 
-(defn section-pos
-  "Packs section coordinates into one long."
-  ^long [^long sx ^long sy ^long sz]
+(defn section-pos ^long [^long sx ^long sy ^long sz]
   (bit-or (bit-shift-left (bit-and sx 0x3FFFFF) 42)
           (bit-shift-left (bit-and sz 0x3FFFFF) 20)
           (bit-and sy 0xFFFFF)))
 
-(defn write-list
-  "Writes a length-prefixed sequence, writing each element with f."
-  [^Buf buf xs f]
+(defn write-list [^Buf buf xs f]
   (write-varint buf (count xs))
   (doseq [x xs] (f buf x)))
 
-(defn write-holder-ref
-  "Writes a reference to the registry entry with this id."
-  [^Buf buf ^long id]
+(defn write-holder-ref [^Buf buf ^long id]
   (write-varint buf (inc id)))
 
-(defn read-id
-  "Returns the registry name at the read point as a keyword."
-  [^Buf buf]
+(defn read-id [^Buf buf]
   (data/kebab (read-string buf)))
 
 (declare components read-patch write-patch)
 
-(defn- codec
-  "Returns a codec that reads with r and writes with w."
-  [r w] {:r r :w w})
+(defn- codec [r w] {:r r :w w})
 
 (def ^:private c-bool (codec (fn [^Buf b] (.readBoolean b)) (fn [^Buf b v] (.writeBoolean b (boolean v)))))
 (def ^:private c-varint (codec (fn [^Buf b] (read-varint b)) (fn [^Buf b v] (write-varint b (long v)))))
@@ -407,21 +348,15 @@
   (codec (fn [^Buf b] (read-block-pos b))
          (fn [^Buf b [x y z]] (write-block-pos b (long x) (long y) (long z)))))
 
-(defn- c-opt
-  "Returns a codec for a value that may be absent."
-  [{:keys [r w]}]
+(defn- c-opt [{:keys [r w]}]
   (codec (fn [^Buf b] (when (.readBoolean b) (r b)))
          (fn [^Buf b v] (.writeBoolean b (some? v)) (when (some? v) (w b v)))))
 
-(defn- c-list
-  "Returns a codec for a length-prefixed sequence of a value."
-  [{:keys [r w]}]
+(defn- c-list [{:keys [r w]}]
   (codec (fn [^Buf b] (let [n (read-count b)] (mapv (fn [_] (r b)) (range n))))
          (fn [^Buf b v] (write-varint b (count v)) (doseq [x v] (w b x)))))
 
-(defn- c-map
-  "Returns a codec for a length-prefixed sequence of key and value pairs."
-  [k v]
+(defn- c-map [k v]
   (codec (fn [^Buf b]
            (let [n (read-count b)]
              (apply array-map (mapcat (fn [_] [((:r k) b) ((:r v) b)]) (range n)))))
@@ -429,42 +364,31 @@
            (write-varint b (count m))
            (doseq [[a x] m] ((:w k) b a) ((:w v) b x)))))
 
-(defn- c-either
-  "Returns a codec for one of two values, told apart by a flag."
-  [l r]
+(defn- c-either [l r]
   (codec (fn [^Buf b] (if (.readBoolean b) {:left ((:r l) b)} {:right ((:r r) b)}))
          (fn [^Buf b v]
            (if (contains? v :left)
              (do (.writeBoolean b true) ((:w l) b (:left v)))
              (do (.writeBoolean b false) ((:w r) b (:right v)))))))
 
-(defn- record-codec
-  "Returns a codec for a fixed run of named fields, in the order given."
-  [& kvs]
+(defn- record-codec [& kvs]
   (let [fields (mapv vec (partition 2 kvs))
         ks (mapv first fields)]
     (codec (fn [^Buf b]
              (apply array-map (interleave ks (mapv (fn [[_ c]] ((:r c) b)) fields))))
            (fn [^Buf b v] (doseq [[k c] fields] ((:w c) b (get v k)))))))
 
-(defn- c-enum
-  "Returns a codec for a keyword named by its place among names."
-  [names]
+(defn- c-enum [names]
   (let [by-id (vec names)
         by-name (into {} (map-indexed (fn [i n] [n (long i)])) names)]
     (codec (fn [^Buf b] (let [i (read-varint b)] (get by-id i i)))
            (fn [^Buf b v] (write-varint b (long (if (keyword? v) (get by-name v) v)))))))
 
-(defn- c-reg
-  "Returns a codec for an entry of a registry, named by its id."
-  [registry]
+(defn- c-reg [registry]
   (codec (fn [^Buf b] (data/entry-name registry (read-varint b)))
          (fn [^Buf b v] (write-varint b (data/entry-id registry v)))))
 
-(defn- c-holder
-  "Returns a codec for either an entry of a registry or a value spelled out
-   in full."
-  [registry direct]
+(defn- c-holder [registry direct]
   (codec (fn [^Buf b]
            (let [i (read-varint b)]
              (if (zero? i) {:direct ((:r direct) b)} (data/entry-name registry (dec i)))))
@@ -473,9 +397,7 @@
              (do (write-varint b 0) ((:w direct) b (:direct v)))
              (write-varint b (inc (data/entry-id registry v)))))))
 
-(defn- c-holder-set
-  "Returns a codec for a tag or for entries named one by one."
-  [registry]
+(defn- c-holder-set [registry]
   (codec (fn [^Buf b]
            (let [n (dec (read-count b))]
              (if (neg? n)
@@ -487,9 +409,7 @@
              (do (write-varint b (inc (count v)))
                  (doseq [x v] (write-varint b (data/entry-id registry x))))))))
 
-(defn- c-filterable
-  "Returns a codec for text that carries a filtered version beside it."
-  [inner] (record-codec :raw inner :filtered (c-opt inner)))
+(defn- c-filterable [inner] (record-codec :raw inner :filtered (c-opt inner)))
 
 (def ^:private dye-colors
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
@@ -798,10 +718,7 @@
   (or (get components kw)
       (throw (ex-info "no codec for data component" {:component kw}))))
 
-(defn read-patch
-  "Returns the data components of an item stack at the read point, those set
-   and those removed, or nil when there are none."
-  [^Buf buf]
+(defn read-patch [^Buf buf]
   (let [added (read-count buf)
         removed (read-count buf)]
     (if (and (zero? added) (zero? removed))
@@ -816,9 +733,7 @@
                 (seq cs) (assoc :components (apply array-map (apply concat cs)))
                 (seq rs) (assoc :removed (set rs)))))))
 
-(defn write-patch
-  "Writes the data components of an item stack, those set and those removed."
-  [^Buf buf patch]
+(defn write-patch [^Buf buf patch]
   (let [cs (:components patch)
         rs (sort-by #(data/entry-id "data_component_type" %) (:removed patch))]
     (write-varint buf (count cs))
@@ -828,18 +743,14 @@
       ((:w (component-codec k)) buf v))
     (doseq [k rs] (write-varint buf (data/entry-id "data_component_type" k)))))
 
-(defn write-item-stack
-  "Writes a stack; nil writes as an empty slot."
-  [^Buf buf stack]
+(defn write-item-stack [^Buf buf stack]
   (if (nil? stack)
     (write-varint buf 0)
     (do (write-varint buf (long (:count stack 1)))
         (write-varint buf (data/registry-id "item" (:item stack)))
         (write-patch buf stack))))
 
-(defn read-item-stack
-  "Returns the stack at the read point, or nil when the slot is empty."
-  [^Buf buf]
+(defn read-item-stack [^Buf buf]
   (let [n (read-varint buf)]
     (when (pos? n)
       (let [item (data/entry-name "item" (read-varint buf))]
@@ -847,8 +758,8 @@
 
 (defn read-hashed-stack
   "Returns the stack the client claims is in a slot, or nil when it is empty.
-   Component values arrive as hashes, so the result only says whether the
-   stack carries any."
+   Component values arrive as hashes. The result only says whether the stack
+   has any."
   [^Buf buf]
   (when (.readBoolean buf)
     (let [item (read-varint buf)
@@ -861,9 +772,7 @@
                 (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
-(defn write-entity-data
-  "Writes entity metadata entries, each an index, a type, and a value."
-  [^Buf buf entries]
+(defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
     (.writeByte buf (int idx))
     (write-varint buf (data-types type))
@@ -880,9 +789,7 @@
       :pose (write-varint buf (long v))))
   (.writeByte buf 0xFF))
 
-(defn offline-uuid
-  "Returns the offline-mode UUID of a player name."
-  ^UUID [^String name]
+(defn offline-uuid ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def ^:private ^:const max-uncompressed 8388608)
@@ -897,18 +804,13 @@
           :else (recur (inc n) acc))))))
 
 (def ^:private ^:const frame-keep 8192)
-(defn read-frame!
-  "Reads one length-prefixed packet from the stream into buf and returns buf."
-  ^Buf [^InputStream in ^Buf buf]
+(defn read-frame! ^Buf [^InputStream in ^Buf buf]
   (let [len (read-varint-stream in)]
     (.clear buf frame-keep)
     (.readFrom buf in (int len))
     buf))
 
-(defn decompress!
-  "Returns buf with the packet body uncompressed, when compression is on at
-   threshold."
-  ^Buf [^Buf buf ^long threshold ^Inflater inflater]
+(defn decompress! ^Buf [^Buf buf ^long threshold ^Inflater inflater]
   (when-not (neg? threshold)
     (let [n (read-varint buf)]
       (when (pos? n)
@@ -935,8 +837,8 @@
       (when-not (.finished deflater) (recur)))))
 
 (defn write-frame!
-  "Writes the payload to the stream as one packet, compressing bodies of at
-   least threshold bytes. body and head are scratch buffers."
+  "Writes the payload to the stream as one packet. body and head are scratch
+   buffers."
   [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
   (.clear body)
   (.clear head)

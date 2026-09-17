@@ -54,9 +54,7 @@
                        (items/split-drop world pos stack [:spill i]))))
               (map-indexed vector (:items e))))))
 
-(defn dig-deltas
-  "Returns the deltas for a player breaking a block."
-  [world [eid status pos _face]]
+(defn dig-deltas [world [eid status pos _face]]
   (let [old (edit/block-at world pos)]
     (when (or (= 0 status) (= 2 status))
       (if (pos? old)

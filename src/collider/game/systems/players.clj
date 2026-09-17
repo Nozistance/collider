@@ -1,6 +1,5 @@
 (ns collider.game.systems.players
-  "Players and what they are shown: who is on the list, who watches whom, and
-   how entities move on their screens."
+  "Player list, entity tracking and movement updates."
   (:require [clojure.data.int-map :as i]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
@@ -18,19 +17,17 @@
 (def ^:const ^:private pos-unit 4096.0)
 (def ^:const ^:private rel-limit 32767)
 (defn- fixed
-  "Returns a coordinate as the whole number players are told."
+  "Returns a coordinate in the fixed point units of the protocol."
   ^long [v] (Math/round (* (double v) pos-unit)))
 (defn- angle
-  "Returns an angle as the whole number players are told."
+  "Returns an angle in the 256 step units of the protocol."
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 (def ^:private simple-metadata
   {:item          (fn [e] {:stack (:stack e)})
    :tnt           (fn [e] {:fuse (:fuse e)})
    :falling-block (fn [e] {:start (:start e)})})
 
-(defn- player-metadata
-  "Returns how a player looks to other players."
-  [e]
+(defn- player-metadata [e]
   (cond-> {:burning?    (boolean (:burning? e))
            :sneaking?   (boolean (:sneaking? e))
            :sprinting?  (boolean (:sprinting? e))
@@ -41,9 +38,7 @@
           (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
 
 (def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming?])
-(defn- meta-diff
-  "Returns the metadata entries an entity's watchers have not been told."
-  [mdata sent]
+(defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
         changed (into {} (keep (fn [k] (let [v (get mdata k)]
                                          (when (not= v (get sent k)) [k v]))))
@@ -52,33 +47,25 @@
       (into changed (select-keys mdata flag-keys))
       changed)))
 
-(defn metadata
-  "Returns how an entity looks to players."
-  [e]
+(defn metadata [e]
   (if-let [f (simple-metadata (:type e))]
     (f e)
     (if (mobs/mob-type? (:type e))
       (mobs/metadata e)
       (player-metadata e))))
 
-(defn- held-stack
-  "Returns the stack in a player's hand."
-  [e]
+(defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
 
 (def ^:private no-equip [nil nil nil nil nil])
-(defn- equipment-stacks
-  "Returns what a player wears and holds."
-  [e]
+(defn- equipment-stacks [e]
   (let [inv (:inventory e)]
     (if (nil? inv)
       no-equip
       [(held-stack e) (get inv 8) (get inv 7) (get inv 6) (get inv 5)])))
 
 (defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots carried seen t0])
-(defn- baseline
-  "Returns the tracking state of an entity nobody has been shown yet."
-  [^long t {:keys [pos yaw pitch on-ground] :as e}]
+(defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
     (->Track [(double x) (double y) (double z)]
              (angle yaw) (angle pitch) (angle (or (:head-yaw e) yaw))
@@ -92,33 +79,22 @@
              e
              t)))
 
-(defn- as-seen
-  "Returns as much of a stack as a player's screen knows about."
-  [s] (when s [(:item s) (long (:count s 1))]))
-(defn- slot-diff
-  "Returns the slots a player's screen has wrong."
-  [inv known]
+(defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
+(defn- slot-diff [inv known]
   (into []
         (keep (fn [slot]
                 (let [ours (get inv slot) theirs (get known slot)]
                   (when (not= (as-seen ours) (as-seen theirs)) [slot ours]))))
         (into (sorted-set) (concat (keys inv) (keys known)))))
 
-(defn- track-of
-  "Returns what an entity's watchers have been shown, starting fresh if nothing
-   yet."
-  [^long t e] (or (:track e) (baseline t e)))
-(defn- tracked-entries
-  "Returns the entities players can be shown."
-  [world]
+(defn- track-of [^long t e] (or (:track e) (baseline t e)))
+(defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]]
                      (let [t (:type e)]
                        (or (#{:player :item :tnt :falling-block} t) (mobs/mob-type? t)))))
         (:entities world)))
 
-(defn- viewer-index
-  "Returns, for each entity, the players watching it."
-  [ps]
+(defn- viewer-index [ps]
   (persistent!
     (reduce (fn [acc [oid o]]
               (reduce (fn [a eid]
@@ -130,15 +106,11 @@
             (transient (i/int-map))
             ps)))
 
-(defn- entity-chunk
-  "Returns the chunk an entity stands in."
-  ^long [e]
+(defn- entity-chunk ^long [e]
   (state/pos-chunk (:pos e)))
 
 (def ^:private duplicate-login-reason "You logged in from another location")
-(defn- duplicate-login-deltas
-  "Returns the deltas that drop an older session when a player logs in again."
-  [world events]
+(defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
             (when (= :player-join tag)
               (let [owner (get-in world [:players pname])]
@@ -152,36 +124,27 @@
                   d))))
           events))
 
-(defn- joined-deltas
-  "Returns the deltas for players who joined this tick."
-  [events]
+(defn- joined-deltas [events]
   (for [[tag eid] events :when (= :player-join tag)]
     (out/to eid (out/joined))))
 
 (defn- add-entry [e]
   {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)})
 
-(defn- join-list-deltas
-  "Returns the deltas that put a joining player on everyone's list, and everyone
-   on theirs."
-  [joined all]
+(defn- join-list-deltas [joined all]
   (mapcat (fn [[eid e]]
             [(out/to eid (out/tab-add all))
              (out/except eid (out/tab-add [(add-entry e)]))])
           joined))
 
-(defn- leave-list-deltas
-  "Returns the deltas that take players who left off the list."
-  [world live left]
+(defn- leave-list-deltas [world live left]
   (let [listed (:listed world)]
     (mapcat (fn [eid]
               (when-not (contains? live (get listed eid))
                 [(out/all (out/tab-remove [(get listed eid)]))]))
             left)))
 
-(defn- list-deltas
-  "Returns the deltas that keep the player list right."
-  [world ps]
+(defn- list-deltas [world ps]
   (let [listed (:listed world)
         cur (into {} (map (fn [[eid e]] [eid (:uuid e)])) ps)
         joined (remove (fn [[eid _]] (contains? listed eid)) ps)
@@ -195,10 +158,7 @@
       (when (or (seq joined) (seq left))
         [[:listed (into {} (map (fn [[eid e]] [eid (:uuid e)])) joined) left]]))))
 
-(defn- baseline-deltas
-  "Returns the deltas that first show an entity to the player pid, as
-   ServerEntity.addPairing does for one new watcher."
-  [world pid eid]
+(defn- baseline-deltas [world pid eid]
   (let [e (get-in world [:entities eid])]
     (when-not (:track e)
       (let [mdata (metadata e)]
@@ -206,9 +166,7 @@
                  (out/to pid (out/move eid 0 0 0 (boolean (:on-ground e))))]
                 (seq mdata) (conj (out/to pid (out/meta eid (:type e) mdata))))))))
 
-(defn- entities-by-chunk
-  "Returns the entities gathered by the chunk they stand in."
-  [ts]
+(defn- entities-by-chunk [ts]
   (persistent!
     (reduce (fn [m [eid e]]
               (let [c (entity-chunk e)]
@@ -216,9 +174,7 @@
             (transient (i/int-map))
             ts)))
 
-(defn- tracking-deltas
-  "Returns the deltas that start and stop showing entities to one player."
-  [world by-chunk [oid o]]
+(defn- tracking-deltas [world by-chunk [oid o]]
   (let [seen (or (:sent-chunks o) (i/int-set))
         want (into (i/int-set)
                    (comp (mapcat (fn [c] (get by-chunk c)))
@@ -238,10 +194,7 @@
 
 (def ^:private vel-threshold 1.0E-7)
 (def ^:private pos-threshold 7.6293945E-6)
-(defn- vel-changed?
-  "Returns true when an entity's speed has drifted from what its watchers were
-   told."
-  [^Track tr vel]
+(defn- vel-changed? [^Track tr vel]
   (boolean
     (when vel
       (let [sent (or (.vel-sent tr) vel-zero)
@@ -254,10 +207,7 @@
                  (zero? (+ (* (vv/x vel) (vv/x vel)) (* (vv/y vel) (vv/y vel))
                            (* (vv/z vel) (vv/z vel))))))))))
 
-(defn- frame
-  "Returns everything that changed about an entity since its watchers were last
-   told."
-  ^Frame [e ^Track tr t due? mdata]
+(defn- frame ^Frame [e ^Track tr t due? mdata]
   (let [[bx by bz] (.pos tr)
         p (:pos e)
         ex (- (vv/x p) (double bx)) ey (- (vv/y p) (double by)) ez (- (vv/z p) (double bz))
@@ -299,9 +249,7 @@
              (vel-changed? tr vel) equip-diff
              slot-diff carried-changed? first?)))
 
-(defn- move-msg
-  "Returns the one message that best describes how an entity moved."
-  [eid e ^Frame f]
+(defn- move-msg [eid e ^Frame f]
   (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
     (cond
       (not (.rel? f))
@@ -313,18 +261,14 @@
       (.turned? f)
       (out/look eid yaw pitch ground))))
 
-(defn- self-msgs
-  "Returns the messages a player needs about their own entity."
-  [eid e ^Frame f]
+(defn- self-msgs [eid e ^Frame f]
   (cond-> []
           (.meta-changed? f) (conj (out/meta eid (:type e) (.mdiff f)))
           (.vel-changed? f) (conj (out/velocity eid (.vel f)))
           (seq (.slot-diff f)) (into (map (fn [[slot s]] (out/set-slot slot s))) (.slot-diff f))
           (.carried-changed? f) (conj (out/carried (:carried e)))))
 
-(defn- move-msgs
-  "Returns the messages an entity's watchers need."
-  [eid e ^Frame f]
+(defn- move-msgs [eid e ^Frame f]
   (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
           (.head-turned? f) (conj (out/head-look eid (.head f)))
           (or (.meta-changed? f) (.first? f))
@@ -334,17 +278,13 @@
 
 (def ^:private item-update-interval 20)
 (def ^:private mob-update-interval 3)
-(defn- track-idle?
-  "Returns true when there is nothing new to tell an entity's watchers."
-  [^Frame f]
+(defn- track-idle? [^Frame f]
   (and (not (.due? f))
        (not (.head-turned? f)) (not (.meta-changed? f))
        (not (.equip-changed? f)) (not (.vel-changed? f))
        (empty? (.slot-diff f)) (not (.carried-changed? f))))
 
-(defn- advance-pos
-  "Returns the tracking state after the position and angles were sent."
-  [^Track tr ^Frame f]
+(defn- advance-pos [^Track tr ^Frame f]
   (if (or (.rel? f) (not (.due? f)))
     (cond-> (assoc tr :since-tp (.since f))
             (.moved? f) (assoc :pos [(.x f) (.y f) (.z f)])
@@ -352,9 +292,7 @@
     (assoc tr :pos [(.x f) (.y f) (.z f)] :yaw (.yaw f) :pitch (.pitch f)
               :on-ground (.ground f) :since-tp 0)))
 
-(defn- advance-track
-  "Returns the tracking state after everything was sent."
-  [^Track tr e ^Frame f]
+(defn- advance-track [^Track tr e ^Frame f]
   (if (track-idle? f)
     tr
     (cond-> (advance-pos tr f)
@@ -371,21 +309,15 @@
    :falling-block 20
    :player        update-interval})
 
-(defn- update-freq
-  "Returns how often an entity of that kind is worth an update."
-  ^long [e]
+(defn- update-freq ^long [e]
   (long (get update-freqs (:type e) mob-update-interval)))
 
-(defn- due-now?
-  "Returns true when an entity is due an update this tick."
-  [^long t tr e dirty?]
+(defn- due-now? [^long t tr e dirty?]
   (or (zero? (rem (- t (long (:t0 tr))) (update-freq e)))
       (and (= :item (:type e)) (boolean (:needs-sync? e)))
       (boolean dirty?)))
 
-(defn- quiet?
-  "Returns true when nothing about an entity is worth a second look."
-  [tr e self? item? dirty?]
+(defn- quiet? [tr e self? item? dirty?]
   (and (not dirty?)
        (= (equipment-stacks e) (:equip tr))
        (or (not self?)
@@ -393,19 +325,14 @@
                 (= (:carried e) (:carried tr))))
        (or item? (not (vel-changed? tr (:vel e))))))
 
-(defn- settle-track
-  "Returns the tracking state to keep for an entity that sent nothing this tick."
-  [tr tr' e due? msgs]
+(defn- settle-track [tr tr' e due? msgs]
   (cond
     (not (identical? tr tr')) (assoc tr' :seen e)
     (and (empty? msgs) (not due?) (not (identical? e (:seen tr))))
     (assoc tr :seen e)
     :else tr'))
 
-(defn- collect-out
-  "Returns the deltas for one entity: what its watchers get and what its own
-   player gets."
-  [eid e vs self? track-delta msgs selfs]
+(defn- collect-out [eid e vs self? track-delta msgs selfs]
   (let [out (transient [])
         out (if track-delta (conj! out track-delta) out)
         out (if (some? vs)
@@ -416,9 +343,7 @@
               out)]
     (persistent! out)))
 
-(defn- changed-deltas
-  "Returns the deltas that bring an entity's watchers up to date."
-  [t eid e vs self? tr mdata due?]
+(defn- changed-deltas [t eid e vs self? tr mdata due?]
   (let [f (frame e tr (long t) due? mdata)
         tr' (advance-track tr e f)
         msgs (move-msgs eid e f)
@@ -427,9 +352,7 @@
                  (when-not (identical? tr tr') [:track eid tr'])
                  msgs (self-msgs eid e f))))
 
-(defn- move-deltas
-  "Returns the deltas for one entity's movement this tick."
-  [t viewers [eid e]]
+(defn- move-deltas [t viewers [eid e]]
   (let [vs (viewers eid)
         self? (= :player (:type e))
         item? (= :item (:type e))
@@ -445,23 +368,17 @@
         (changed-deltas (long t) eid e vs self? tr mdata due?)))))
 
 (def ^:private tab-header-interval 20)
-(defn- fmt
-  "Returns a number written to the given pattern."
-  ^String [^String pattern v]
+(defn- fmt ^String [^String pattern v]
   (String/format Locale/ROOT pattern
                  (to-array [(double (or v 0.0))])))
 
-(defn- tab-header-msg
-  "Returns the message with the server's tick statistics."
-  [{:keys [tps p50-ms p99-ms]}]
+(defn- tab-header-msg [{:keys [tps p50-ms p99-ms]}]
   (out/tab-header "Collider"
                   (str "TPS " (fmt "%.1f" (or tps 20.0))
                        "  tick p50 " (fmt "%.2f" p50-ms)
                        "ms  p99 " (fmt "%.2f" p99-ms) "ms")))
 
-(defn- tab-header-deltas
-  "Returns the deltas that keep the player list header current."
-  [world events]
+(defn- tab-header-deltas [world events]
   (when-let [perf (:perf world)]
     (let [msg (tab-header-msg perf)]
       (concat
@@ -471,10 +388,7 @@
           (out/to eid msg))))))
 
 (def ^:private teleport-retry 20)
-(defn- pending-teleport-deltas
-  "Returns the deltas that try a teleport again when a player has not confirmed
-   it."
-  [world ps]
+(defn- pending-teleport-deltas [world ps]
   (mapcat (fn [[eid e]]
             (let [target (:tp-target e) since (:tp-id e)]
               (when (and target since (>= (- (long (:tick world)) (long since)) teleport-retry))
@@ -482,17 +396,13 @@
                  (out/to eid (out/teleport target (:yaw e 0.0) (:pitch e 0.0)))])))
           ps))
 
-(defn- swing-deltas
-  "Returns the deltas that show players swinging their arms."
-  [viewers events]
+(defn- swing-deltas [viewers events]
   (keep (fn [[tag eid]]
           (when (and (= :swing tag) (some? (viewers eid)))
             (out/all (out/animation eid :swing))))
         events))
 
-(defn- entities-changed?
-  "Returns true when entities appeared or vanished in those deltas."
-  [d]
+(defn- entities-changed? [d]
   (some (fn [delta]
           (let [tag (nth delta 0)]
             (or (identical? :spawn-entity tag) (identical? :remove-entity tag))))
@@ -506,24 +416,18 @@
     (let [by-chunk (entities-by-chunk (tracked-entries world))]
       (into [] (mapcat (fn [entry] (tracking-deltas world by-chunk entry))) (state/player-entries world)))))
 
-(defn- spawn-jobs
-  "Returns the jobs that work out what each player can see."
-  [world ps ts]
+(defn- spawn-jobs [world ps ts]
   (let [by-chunk (entities-by-chunk ts)]
     (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
 
-(defn- move-jobs
-  "Returns the jobs that tell players how entities moved."
-  [world ps ts events]
+(defn- move-jobs [world ps ts events]
   (let [viewers (viewer-index ps)]
     (conj (mapv (fn [batch]
                   #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
                 (partition-all 32 ts))
           #(swing-deltas viewers events))))
 
-(defn players
-  "Returns the deltas that keep every player's view of the world current."
-  [world d]
+(defn players [world d]
   (let [events (:input d)
         ps (state/player-entries world)
         ts (tracked-entries world)]

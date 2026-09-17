@@ -15,24 +15,17 @@
    "drops" "recipes" "sounds" "features"
    "shapes" "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
-(defn stamp
-  "Returns what a set of tables is stamped with: the game version and the
-   layout of the tables."
-  []
+(defn stamp []
   {:game game :layout layout})
 
 (defn- stamped? [d]
   (= (stamp) (try (edn/read-string (slurp (io/file d "stamp.edn")))
                   (catch Exception _ nil))))
 
-(defn complete?
-  "Returns true when d holds every table of this version."
-  [d]
+(defn complete? [d]
   (and (every? #(.isFile (io/file d (str % ".edn"))) files) (stamped? d)))
 
-(defn dir
-  "Returns the directory of the tables, or nil when there is no complete one."
-  []
+(defn dir []
   (->> [(System/getProperty "collider.data") "target/data" "data"]
        (remove nil?)
        (filter complete?)
@@ -41,9 +34,7 @@
 (defn- tables-of [ns]
   (for [[_ v] (ns-interns ns) :when (:table (meta v))] @v))
 
-(defn load!
-  "Loads every table."
-  []
+(defn load! []
   (doseq [ns (all-ns)
           :when (.startsWith (str (ns-name ns)) "collider.")
           t (tables-of ns)]
@@ -73,18 +64,12 @@
 (defn registries
   "Returns the ids of the entries the client knows, by registry."
   [] (:registries @tables))
-(defn blocks
-  "Returns every block by keyword."
-  [] (:blocks @tables))
+(defn blocks [] (:blocks @tables))
 (defn datapack
   "Returns the entries the server sends to the client, by registry."
   [] (:datapack @tables))
-(defn tags
-  "Returns the tags of every registry."
-  [] (:tags @tables))
-(defn items
-  "Returns the properties of items by keyword."
-  [] (:items @tables))
+(defn tags [] (:tags @tables))
+(defn items [] (:items @tables))
 (defn light
   "Returns how block states pass and emit light."
   [] (:light @tables))
@@ -97,37 +82,25 @@
 (defn recipes
   "Returns the stonecutting recipes and the ingredients the client is told of."
   [] (:recipes @tables))
-(defn sounds
-  "Returns the sounds of every sound type."
-  [] (:sounds @tables))
+(defn sounds [] (:sounds @tables))
 (defn features
   "Returns the worldgen features bone meal reaches and the ones each biome
    grows."
   [] (:features @tables))
 
-(defn max-stack
-  "Returns how many of item fit in one stack."
-  ^long [item]
+(defn max-stack ^long [item]
   (long (get-in (items) [item :max-stack] 64)))
 
-(defn jukebox-song
-  "Returns the song a music disc plays, or nil when item is not one."
-  [item]
+(defn jukebox-song [item]
   (get-in (items) [item :jukebox-song]))
 
-(defn equip-slot
-  "Returns the slot item is worn in, or nil when it is not worn."
-  [item]
+(defn equip-slot [item]
   (get-in (items) [item :equip]))
 
-(defn dye-color
-  "Returns the color item dyes with, or nil when it is not a dye."
-  [item]
+(defn dye-color [item]
   (get-in (items) [item :dye]))
 
-(defn pattern-tag
-  "Returns the banner patterns item can apply, or nil when it applies none."
-  [item]
+(defn pattern-tag [item]
   (get-in (items) [item :patterns]))
 
 (defn compost
@@ -140,42 +113,27 @@
   [item]
   (get-in (items) [item :resists]))
 
-(defn tag-values
-  "Returns the entries of a tag of a registry, empty when there is no such
-   tag."
-  [registry tag]
+(defn tag-values [registry tag]
   (get-in (tags) [registry tag] []))
 
-(defn snake
-  "Returns the name of keyword k with dashes turned into underscores."
-  ^String [k]
+(defn snake ^String [k]
   (.replace (name k) \- \_))
 
-(defn wire
-  "Returns the wire name of keyword k."
-  ^String [k]
+(defn wire ^String [k]
   (str (or (namespace k) "minecraft") ":" (snake k)))
 
-(defn kebab
-  "Returns the keyword for a name as it comes off the wire."
-  [^String s]
+(defn kebab [^String s]
   (let [s (.toLowerCase s)
         i (.indexOf s ":")
         ns (if (neg? i) "minecraft" (subs s 0 i))
         nm (.replace (if (neg? i) s (subs s (inc i))) \_ \-)]
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
-(defn packet-id
-  "Returns the id of a packet of a connection state and direction. Throws when
-   there is no such packet."
-  ^long [state dir name]
+(defn packet-id ^long [state dir name]
   (or (get-in (packets) [state dir name])
       (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))
 
-(defn registry-id
-  "Returns the id of an entry of a registry. Throws when there is no such
-   entry."
-  ^long [registry entry]
+(defn registry-id ^long [registry entry]
   (or (get-in (registries) [registry entry])
       (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
 
@@ -187,15 +145,13 @@
           (datapack))))
 
 (defn datapack-id
-  "Returns the id of an entry the server sends to the client rather than one
-   the client knows. Throws when there is no such entry."
+  "Returns the id of an entry the server sends to the client, not one the
+   client knows."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
 
-(defn entry-id
-  "Returns the id of an entry, from whichever kind of registry holds it."
-  ^long [registry entry]
+(defn entry-id ^long [registry entry]
   (if (contains? (registries) registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
@@ -207,10 +163,7 @@
                  [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
           (registries))))
 
-(defn entry-name
-  "Returns the entry of a registry with the given id. Throws when there is no
-   such entry."
-  [registry ^long id]
+(defn entry-name [registry ^long id]
   (let [m (get @by-id registry)
         v (get (datapack) registry)]
     (cond
@@ -235,9 +188,7 @@
 (def ^:private ^:table state-total
   (delay (long (reduce (fn [n [_ b]] (max n (+ (long (:first b)) (state-count b)))) 0 (blocks)))))
 
-(defn block-state-count
-  "Returns how many block states there are."
-  ^long []
+(defn block-state-count ^long []
   @state-total)
 
 (def ^:private ^:table state-blocks
@@ -249,15 +200,10 @@
         (aset a (+ from (long i)) block))
       a)))
 
-(defn block-of-state
-  "Returns the block of every state, by id."
-  ^objects []
+(defn block-of-state ^objects []
   @state-blocks)
 
-(defn- interned
-  "Returns v with every value equal to one already seen replaced by that
-   one, so equal values are shared."
-  [^HashMap seen v]
+(defn- interned [^HashMap seen v]
   (if (vector? v)
     (let [v (mapv (fn [x] (interned seen x)) v)]
       (or (.get seen v) (do (.put seen v v) v)))
@@ -311,9 +257,7 @@
   ^bytes []
   @sturdy-rigid-table)
 
-(defn flags
-  "Returns the flags of every state, by id."
-  ^bytes []
+(defn flags ^bytes []
   @flag-table)
 
 (def ^:private ^:table defaults
@@ -323,31 +267,20 @@
                  [block (decode-props b (- (long (:default b)) (long (:first b))))]))
           (blocks))))
 
-(defn default-props
-  "Returns the properties of the default state of every block."
-  []
+(defn default-props []
   @defaults)
 
-(defn info
-  "Returns everything the tables hold about a block. Throws when there is no
-   such block."
-  [block]
+(defn info [block]
   (or (get (blocks) block)
       (throw (ex-info "unknown block" {:block block}))))
 
-(defn place-sound
-  "Returns the sound of placing a block."
-  [block]
+(defn place-sound [block]
   (get-in (sounds) [(:sound (info block)) :place]))
 
-(defn open-sound
-  "Returns the sound of a block opening, or of it closing."
-  [block open?]
+(defn open-sound [block open?]
   (get (info block) (if open? :open :close)))
 
-(defn by-hand?
-  "Returns true if a block can be broken by hand."
-  [block]
+(defn by-hand? [block]
   (get (info block) :hand? true))
 
 (defn- prop-index ^long [block-name prop vs v]
@@ -368,8 +301,8 @@
           (recur (inc i) (long (+ id (* idx tail)))))))))
 
 (defn state-id
-  "Returns the global state id of a block: its default state, or the state
-   with the wanted properties over the defaults."
+  "Returns the global state id of a block. Properties missing from wanted take
+   their default values."
   (^long [block-name] (long (:default (info block-name))))
   (^long [block-name wanted]
    (let [b (info block-name)]
@@ -377,15 +310,10 @@
        (state-id block-name)
        (state-offset block-name b wanted (get (default-props) block-name))))))
 
-(defn state-block
-  "Returns the block of a state id, or nil when there is no such state."
-  [^long id]
+(defn state-block [^long id]
   (when (< -1 id (block-state-count)) (aget (block-of-state) id)))
 
-(defn state-props
-  "Returns the block and the properties of a state id, or nil when there is no
-   such state."
-  [^long id]
+(defn state-props [^long id]
   (when-let [block-name (state-block id)]
     (let [b (get (blocks) block-name)]
       [block-name (decode-props b (- id (long (:first b))))])))

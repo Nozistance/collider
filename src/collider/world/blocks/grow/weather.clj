@@ -23,10 +23,7 @@
   (or (not= :weathering-copper-door (block/type-of st))
       (= :lower (:half (block/props-of st)))))
 
-(defn tick
-  "Returns the change weathering st at p one stage further, or nil when it stays
-   as it is."
-  [chunks p st roll]
+(defn tick [chunks p st roll]
   (when (and (here? st) (< (double (roll :day)) 0.05688889))
     (when-let [o (odds chunks p st)]
       (when (< (double (roll :age)) (double o))

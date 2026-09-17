@@ -1,6 +1,5 @@
 (ns collider.game.systems.containers
-  "Chests, barrels, lecterns and crafting benches, and the screens players open
-   on them."
+  "Container menus for chests, barrels, lecterns and crafting benches."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
@@ -13,44 +12,32 @@
 
 (def ^:private player-view (vec (concat (range 9 36) (range 36 45))))
 
-(defn- view
-  "Returns the slots a player sees while the menu is open."
-  [m contents inv]
+(defn- view [m contents inv]
   (if (container/player-slots? m)
     (into (vec contents) (map inv) player-view)
     (vec contents)))
 
-(defn- flat
-  "Returns the container slots and the player's own slots as one sequence."
-  [contents inv ^long n]
+(defn- flat [contents inv ^long n]
   (into (into {} (keep-indexed (fn [i s] (when s [i s]))) contents)
         (map (fn [[k v]] [(+ n (long k)) v]))
         inv))
 
-(defn- split-flat
-  "Returns the container slots and the player's own slots, separated."
-  [m ^long n]
+(defn- split-flat [m ^long n]
   [(mapv #(get m %) (range n))
    (into {} (keep (fn [[k v]] (when (>= (long k) n) [(- (long k) n) v]))) m)])
 
-(defn- remote-of
-  "Returns as much of a stack as the player's screen needs to know."
-  [stack]
+(defn- remote-of [stack]
   (when stack
     {:item        (:item stack) :count (long (:count stack 1))
      :components? (boolean (or (:components stack) (:components? stack)))}))
 
-(defn- count-deltas
-  "Returns the deltas for a container gaining or losing a viewer."
-  [world m ^long step]
+(defn- count-deltas [world m ^long step]
   (mapcat (fn [pos]
             (let [before (container/viewers world pos)]
               (container/count-deltas world pos before (+ before step))))
           (container/positions m)))
 
-(defn- barrel-deltas
-  "Returns the deltas that open or shut a barrel as viewers come and go."
-  [world m ^long step]
+(defn- barrel-deltas [world m ^long step]
   (mapcat (fn [pos]
             (let [st (container/state-at (:chunks world) pos)
                   before (container/viewers world pos)
@@ -92,9 +79,7 @@
   (when (container/bench? m)
     (container/inputs m (container/items world eid m))))
 
-(defn- closed-inventory
-  "Returns what a player keeps and what falls at their feet when a menu closes."
-  [world eid e m]
+(defn- closed-inventory [world eid e m]
   (let [inv (or (:inventory e) {})
         [inv' drops] (put-back (crafting/context world e) inv
                                (cons (:carried e)
@@ -106,9 +91,7 @@
     (when carried [(out/to eid (out/carried nil))])
     (when notify? [(out/to eid (out/container-close (:id m)))])))
 
-(defn- close-deltas
-  "Returns the deltas that shut a player's open menu."
-  [world eid e notify?]
+(defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
     (let [[changes drops] (closed-inventory world eid e m)]
       (concat
@@ -119,9 +102,7 @@
         (count-deltas world m -1)
         (barrel-deltas world m -1)))))
 
-(defn- opened
-  "Returns the menu a player now has open and the slots it starts with."
-  [world eid e m id]
+(defn- opened [world eid e m id]
   (let [contents (container/items world eid m)
         slots (view m contents (:inventory e))]
     {:menu  (assoc m :id id :state-id 1
@@ -154,9 +135,7 @@
       [[:merge-entity eid {:menu menu :container-counter id}]]
       (open-screen-deltas world eid m id slots (:carried e')))))
 
-(defn open-deltas
-  "Returns the deltas that open the container at a position for a player."
-  [world eid pos]
+(defn open-deltas [world eid pos]
   (if-let [m (container/menu-at world pos)]
     (concat
       (open-menu-deltas world eid (get-in world [:entities eid]) m)
@@ -165,9 +144,7 @@
       (barrel-deltas world m 1))
     []))
 
-(defn- synced
-  "Returns the menu with the slots the player's screen has seen."
-  [menu ^long st slots carried]
+(defn- synced [menu ^long st slots carried]
   (assoc menu :state-id st
               :remote (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots)
               :remote-carried (remote-of carried)))
@@ -179,9 +156,7 @@
               [(conj ds (out/to eid (out/container-slot (:id menu) (inc st) i s))) (inc st)])
             [[] base] diff)))
 
-(defn- sync-deltas
-  "Returns the deltas that bring a player's screen back in line with the menu."
-  [eid menu slots carried resync?]
+(defn- sync-deltas [eid menu slots carried resync?]
   (let [base (long (:state-id menu 1))]
     (if resync?
       {:deltas [(out/to eid (out/container-content (:id menu) (inc base) slots carried))]
@@ -192,24 +167,19 @@
                          (conj (out/to eid (out/carried carried))))
          :menu   (synced menu st slots carried)}))))
 
-(defn- with-client
-  "Returns the menu with the slots as the player's screen reports them."
-  [menu changed carried]
+(defn- with-client [menu changed carried]
   (assoc menu
     :remote (reduce (fn [r [s v]] (assoc r (long s) (remote-of v))) (:remote menu) changed)
     :remote-carried (remote-of carried)))
 
-(defn- slot-changes
-  "Returns the slots that differ between two inventories."
-  [before after]
+(defn- slot-changes [before after]
   (into {}
         (keep (fn [slot] (when (not= (get after slot) (get before slot))
                            [slot (get after slot)])))
         (into (set (keys before)) (keys after))))
 
 (defn- stale-result
-  "Returns the menu with its result slot marked unseen when the grid
-   changed."
+  "Returns the menu with its result slot marked unseen when the grid changed."
   [m items items']
   (if (and (container/crafting? m)
            (not= (container/inputs m items)
@@ -229,9 +199,7 @@
       (with-client (:changed packet) (:carried packet))
       (stale-result items items')))
 
-(defn- clicked
-  "Returns the outcome of one click in an open menu."
-  [world eid e m packet]
+(defn- clicked [world eid e m packet]
   (let [items (container/items world eid m)
         after (menu/click (click-start world e m items) packet)
         [items0 inv'] (split-flat (:inventory after)
@@ -242,9 +210,7 @@
     (assoc (sync-deltas eid m' (view m items' inv') (:carried after) resync?)
       :after after :inventory inv' :items items')))
 
-(defn craft-deltas
-  "Returns the deltas for what a click crafted and spilled."
-  [world eid after]
+(defn craft-deltas [world eid after]
   (concat
     (for [[item n] (:crafted after)]
       [:award eid (keyword "crafted" (name item)) n])
@@ -275,9 +241,7 @@
         (not (valid? world m)) (close-deltas world eid e true)
         :else (click-result-deltas world eid e m (clicked world eid e m packet))))))
 
-(defn- page-button-deltas
-  "Returns the deltas for turning a lectern to a page."
-  [world eid m ^long want]
+(defn- page-button-deltas [world eid m ^long want]
   (when-let [ds (container/page-deltas world m want)]
     (concat ds [(out/to eid (out/container-data (:id m) 0
                                                 (container/next-page world m want)))])))
@@ -329,9 +293,7 @@
 
 (def ^:private own-grid [0 1 2 3 4])
 
-(defn- inventory-close-deltas
-  "Returns the deltas that shut a player's own inventory screen."
-  [world eid e]
+(defn- inventory-close-deltas [world eid e]
   (let [inv (or (:inventory e) {})
         stacks (cons (:carried e) (map inv (rest own-grid)))
         [inv' drops] (put-back (crafting/context world e)
@@ -349,9 +311,7 @@
               (concat grid [(:carried e)] (bench-inputs world eid m))
               (cons (:carried e) grid)))))
 
-(defn- left-behind-deltas
-  "Returns the deltas for what a leaving player's screens let fall."
-  [world eid e]
+(defn- left-behind-deltas [world eid e]
   (let [m (:menu e)]
     (concat
       (for [s (held-stacks world eid e)]
@@ -359,10 +319,7 @@
       (when m (count-deltas world m -1))
       (when m (barrel-deltas world m -1)))))
 
-(defn removed-deltas
-  "Returns the deltas for a player's screens as the player leaves the
-   world, what they held falling where they stand."
-  [world eid e]
+(defn removed-deltas [world eid e]
   (concat
     (when (or (:menu e) (:carried e))
       [[:merge-entity eid {:menu nil :carried nil}]])
@@ -370,9 +327,7 @@
       [:set-slot eid slot nil])
     (left-behind-deltas world eid e)))
 
-(defn- quit-deltas
-  "Returns the deltas for what players who quit this tick let fall."
-  [world]
+(defn- quit-deltas [world]
   (mapcat (fn [e]
             (let [eid (:eid e)]
               (left-behind-deltas (assoc-in world [:entities eid] e)
@@ -398,8 +353,6 @@
             events)
     (container/recheck-deltas world)))
 
-(defn containers
-  "Returns the deltas for what players do with open containers this tick."
-  [world d]
+(defn containers [world d]
   (let [events (:input d)]
     [#(containers-deltas world events)]))

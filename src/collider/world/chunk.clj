@@ -9,31 +9,21 @@
 (def ^:const max-y 319)
 (def ^:const section-count 24)
 (def ^:const section-offset 4)
-(defn in-range?
-  "Returns true when y is inside the world height."
-  [^long y] (<= min-y y max-y))
-(defn section-index
-  "Returns the index of the section holding y."
-  ^long [^long y] (+ (bit-shift-right y 4) section-offset))
+(defn in-range? [^long y] (<= min-y y max-y))
+(defn section-index ^long [^long y] (+ (bit-shift-right y 4) section-offset))
 
 (def ^Section empty-section Section/EMPTY)
 
-(defn section
-  "Returns a section of the block states and light arrays given."
-  ^Section [^shorts blocks ^bytes block-light ^bytes sky-light]
+(defn section ^Section [^shorts blocks ^bytes block-light ^bytes sky-light]
   (Section/of blocks block-light sky-light))
 
-(defn nibble-get
-  "Returns the 4-bit value at idx of a nibble array."
-  ^long [^bytes arr ^long idx]
+(defn nibble-get ^long [^bytes arr ^long idx]
   (let [b (long (aget arr (bit-shift-right idx 1)))]
     (if (zero? (bit-and idx 1))
       (bit-and b 0xF)
       (bit-and (bit-shift-right b 4) 0xF))))
 
-(defn nibble-set!
-  "Sets the 4-bit value at idx of a nibble array in place."
-  [^bytes arr ^long idx ^long v]
+(defn nibble-set! [^bytes arr ^long idx ^long v]
   (let [bi (bit-shift-right idx 1)
         b (long (aget arr bi))]
     (aset arr bi
@@ -44,14 +34,10 @@
 
 (def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
 
-(defn chunk-of
-  "Returns a chunk of the sections given, nil for an absent one."
-  ^Chunk [sections]
+(defn chunk-of ^Chunk [sections]
   (Chunk/of (object-array sections)))
 
-(defn first-above
-  "Returns the first present section above si, or nil."
-  ^Section [^Chunk chunk ^long si]
+(defn first-above ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
 (defn nil-sky
@@ -72,9 +58,7 @@
   ^bytes [chunk ^long si]
   (.skyLightCopy ^Section (new-section chunk si)))
 
-(defn set-block
-  "Returns chunk with the block at local lx y lz set to state."
-  ^Chunk [^Chunk chunk lx y lz state]
+(defn set-block ^Chunk [^Chunk chunk lx y lz state]
   (let [y (long y)
         si (int (section-index y))
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
@@ -89,7 +73,6 @@
     0))
 
 (defn block-pos->id
-  "Returns the id of a block position."
   (^long [[x y z]] (block-pos->id x y z))
   (^long [x y z]
    (let [x (long x) y (long y) z (long z)]
@@ -97,35 +80,25 @@
              (bit-shift-left (bit-and y 0xFFF) 26)
              (bit-and z 0x3FFFFFF)))))
 
-(defn id->block-pos
-  "Returns the block position of an id."
-  [^long id]
+(defn id->block-pos [^long id]
   [(bit-shift-right id 38)
    (bit-shift-right (bit-shift-left id 26) 52)
    (bit-shift-right (bit-shift-left id 38) 38)])
 
-(defn pos->id
-  "Returns the id of the chunk at cx cz."
-  ^long [cx cz]
+(defn pos->id ^long [cx cz]
   (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
           (bit-and (long cz) 0xFFFFFFFF)))
 
-(defn id->pos
-  "Returns [cx cz] of a chunk id."
-  [chunk-id]
+(defn id->pos [chunk-id]
   [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
    (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
 
-(defn around-ids
-  "Returns the chunk ids within r chunks of cx cz."
-  [^long cx ^long cz ^long r]
+(defn around-ids [^long cx ^long cz ^long r]
   (for [dx (range (- r) (inc r))
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
 
-(defn block-chunk
-  "Returns the chunk id of a block position."
-  ^long [[x _ z]]
+(defn block-chunk ^long [[x _ z]]
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 
 (defn chunks-get-block
@@ -198,7 +171,7 @@
     (.withAll chunks ids cs)))
 
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied; an absent chunk starts
+  "Returns chunks with the [pos state] changes applied. An absent chunk starts
    from template."
   [chunks template changes]
   (if (empty? changes)

@@ -13,9 +13,7 @@
    :downfall                0.4
    :increased-fire-burnout? false})
 
-(defn at
-  "Returns the biome at block position p."
-  [_chunks _p] plains)
+(defn at [_chunks _p] plains)
 
 (defn- temperature-noise ^double [^long _x ^long _z] 0.0)
 
@@ -29,29 +27,21 @@
       (double base))))
 
 (defn temperature
-  "Returns the temperature of biome at block position p, colder high up."
+  "Returns the temperature of biome at p. It falls above the snow level."
   ^double [biome p]
   (height-adjusted-temperature biome p))
 
-(defn warm-enough-to-rain?
-  "Returns true when precipitation in biome at p falls as rain."
-  [biome p]
+(defn warm-enough-to-rain? [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 
-(defn cold-enough-to-snow?
-  "Returns true when precipitation in biome at p falls as snow."
-  [biome p]
+(defn cold-enough-to-snow? [biome p]
   (not (warm-enough-to-rain? biome p)))
 
-(defn precipitation-at
-  "Returns :rain, :snow or :none for biome at block position p."
-  [biome p]
+(defn precipitation-at [biome p]
   (cond
     (not (:has-precipitation? biome)) :none
     (cold-enough-to-snow? biome p) :snow
     :else :rain))
 
-(defn increased-fire-burnout?
-  "Returns true when fire goes out sooner in biome."
-  [biome]
+(defn increased-fire-burnout? [biome]
   (boolean (:increased-fire-burnout? biome)))

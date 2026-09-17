@@ -9,10 +9,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn tick
-  "Returns the change moving the mushroom st away from p to a free spot near it,
-   or nil when it stays."
-  [chunks p st roll _time _ctx]
+(defn tick [chunks p st roll _time _ctx]
   (when (and (chance? roll :gate 25) (< (crowd chunks p (block/block-of st)) 5))
     (let [step (fn [q i] (mapv + q [(dec (pick roll [:x i] 3)) (- (pick roll [:y1 i] 2) (pick roll [:y2 i] 2)) (dec (pick roll [:z i] 3))]))
           ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks (gen/flat-chunk) q st)))
@@ -98,8 +95,8 @@
       [])))
 
 (defn meal
-  "Returns the bone meal result for the mushroom st at p, the blocks of a huge
-   mushroom, or no changes when none fits there."
+  "Returns the bone meal result for the mushroom st at p. The changes are the
+   blocks of a huge mushroom, or empty when none fits there."
   [chunks [_ y _ :as p] st roll]
   (let [kind (block/block-of st) {:keys [radius]} (huge kind)]
     (when (and radius (chunk/in-range? (+ (long y) 4 (long radius))))

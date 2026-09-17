@@ -7,10 +7,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn head-pos
-  "Returns the position of the head of the bed at pos, or nil when pos holds no
-   bed."
-  [chunks pos]
+(defn head-pos [chunks pos]
   (let [st (gen/at chunks pos)]
     (when (= :bed (block/type-of st))
       (if (= :head (:part (block/props-of st))) pos (first (connect/partner chunks pos st))))))
@@ -68,10 +65,7 @@
         (let [p [(+ (double x) 0.5) (+ (double y) (double h)) (+ (double z) 0.5)]]
           (when (player-fits? chunks p) p))))))
 
-(defn stand-up-position
-  "Returns the position a player looking at yaw takes on leaving the bed at pos.
-   Falls back to just above the bed when nothing near it is free."
-  [chunks [x y z :as pos] ^double yaw]
+(defn stand-up-position [chunks [x y z :as pos] ^double yaw]
   (let [st (gen/at chunks pos)
         forward (block/facing-of st)
         right (dir/clockwise forward)

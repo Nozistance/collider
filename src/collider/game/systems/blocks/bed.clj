@@ -11,9 +11,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn uses-bed?
-  "Returns true when using the block at pos means getting into bed."
-  [world eid pos item use-item?]
+(defn uses-bed? [world eid pos item use-item?]
   (and (not use-item?)
        (= :bed (block/type-of (edit/block-at world pos)))
        (not (and item (get-in world [:entities eid :sneaking?])))))
@@ -51,10 +49,7 @@
                                  :vel      [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
              (sleep/announcement world (inc (count (sleep/sleepers world))))])))
 
-(defn sleep-deltas
-  "Returns the deltas for a player lying down at pos, or the message
-   saying why they cannot."
-  [world eid pos]
+(defn sleep-deltas [world eid pos]
   (let [head (bed/head-pos (:chunks world) pos)
         st (when head (edit/block-at world head))
         say (fn [k] (say-deltas eid k))]

@@ -25,9 +25,6 @@
   (and (chunk/in-range? y) (zero? (gen/at chunks q))
        (not (zero? (gen/at chunks (dir/down q))))))
 
-(defn teleport-target
-  "Returns where the dragon egg at pos jumps to, nil when it finds nowhere
-   to land."
-  [chunks pos roll]
+(defn teleport-target [chunks pos roll]
   (first (sequence (comp (map (fn [i] (candidate pos roll i))) (filter #(lands? chunks %)))
                    (range tries))))

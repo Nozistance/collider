@@ -1,5 +1,5 @@
 (ns collider.game.block.workbench
-  "Stonecutter and loom: what they make from what is put in them."
+  "Stonecutter and loom results."
   (:require [collider.data :as data])
   (:import (java.util List)))
 
@@ -9,31 +9,21 @@
 
 (defn- of [item] (data/tag-values "item" item))
 
-(defn cuts
-  "Returns everything a stonecutter can make from a stack."
-  [stack]
+(defn cuts [stack]
   (if (nil? stack)
     []
     (filterv (fn [r] (some #(= % (:item stack)) (:in r))) @cut-recipes)))
 
-(defn cuts-input?
-  "Returns true when a stonecutter accepts the stack."
-  [stack]
+(defn cuts-input? [stack]
   (boolean (seq (cuts stack))))
 
-(defn cut-result
-  "Returns the stack a stonecutter makes from the chosen cut, or nil when
-   nothing is chosen."
-  [stack ^long selected]
+(defn cut-result [stack ^long selected]
   (let [rs (cuts stack)]
     (when (and (not (neg? selected)) (< selected (count rs)))
       (let [out (:out (nth rs selected))]
         {:item (:item out) :count (long (:count out 1))}))))
 
-(defn cut-changed
-  "Returns the stonecutter menu with its choice cleared when the ingredient
-   changed."
-  [m inv]
+(defn cut-changed [m inv]
   (let [item (:item (get inv 0))]
     (if (= item (:input-item m))
       m
@@ -46,25 +36,17 @@
 (def ^:private ^:table loom-dyes (delay (set (of "loom_dyes"))))
 (def ^:private ^:table loom-patterns (delay (set (of "loom_patterns"))))
 
-(defn banner?
-  "Returns true when the stack is a banner."
-  [stack] (contains? @banner-items (:item stack)))
+(defn banner? [stack] (contains? @banner-items (:item stack)))
 
-(defn dye?
-  "Returns true when a loom can dye a pattern with the stack."
-  [stack]
+(defn dye? [stack]
   (and (contains? @loom-dyes (:item stack))
        (some? (data/dye-color (:item stack)))))
 
-(defn pattern-item?
-  "Returns true when the stack is a banner pattern."
-  [stack]
+(defn pattern-item? [stack]
   (and (contains? @loom-patterns (:item stack))
        (some? (data/pattern-tag (:item stack)))))
 
-(defn selectable-patterns
-  "Returns the patterns a loom offers, given the pattern item in it."
-  [pattern]
+(defn selectable-patterns [pattern]
   (if (nil? pattern)
     @no-item-required
     (if-let [tag (data/pattern-tag (:item pattern))]
@@ -75,9 +57,7 @@
 
 (defn- layers [stack] (vec (get-in stack [:components :banner-patterns])))
 
-(defn loom-result
-  "Returns the banner a loom makes, or nil when it makes none."
-  [banner dye pattern]
+(defn loom-result [banner dye pattern]
   (when (and banner dye pattern)
     (when-let [color (data/dye-color (:item dye))]
       (-> banner
@@ -91,10 +71,7 @@
     (or (neg? selected) (>= selected (count prev))) -1
     :else (.indexOf ^List patterns (nth prev selected))))
 
-(defn loom-changed
-  "Returns the loom menu with the patterns it now offers, keeping the chosen
-   one where it still stands."
-  [m inv]
+(defn loom-changed [m inv]
   (let [banner (get inv 0) dye (get inv 1)]
     (if-not (and banner dye)
       (assoc m :patterns [] :selected -1)

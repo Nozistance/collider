@@ -8,22 +8,14 @@
 
 (set! *warn-on-reflection* true)
 
-(defn eyeblossom?
-  "Returns true when st is an eyeblossom."
-  [^long st] (= :eyeblossom (block/type-of st)))
+(defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
 (defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
-(defn switched
-  "Returns the eyeblossom state st turns into at that time of day, or nil when
-   it already matches."
-  [^long st ^long time]
+(defn switched [^long st ^long time]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (when (not= open? (night? time))
       (block/state (if (night? time) :open-eyeblossom :closed-eyeblossom)))))
 
-(defn sound-kind
-  "Returns the sound the eyeblossom st makes as it changes; long? asks for the
-   longer variant."
-  [^long st long?]
+(defn sound-kind [^long st long?]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (if long?
       (if open? :eyeblossom/open-long :eyeblossom/close-long)

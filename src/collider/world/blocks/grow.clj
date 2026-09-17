@@ -41,8 +41,6 @@
           [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
 
 (defn random-tick
-  "Returns the changes the block state st at p makes on a random tick, or nil
-   when it does not grow."
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
    (let [st (long st)]

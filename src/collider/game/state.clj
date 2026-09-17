@@ -1,6 +1,5 @@
 (ns collider.game.state
-  "The world value: how deltas apply to it, and the players and active chunks
-   it holds."
+  "The world value and the application of deltas to it."
   (:refer-clojure :exclude [apply])
   (:require [collider.game.block.blockentity :as be]
             [collider.data :as data]
@@ -28,9 +27,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn player-entries
-  "Returns [eid entity] pairs of the online players in eid order."
-  [world]
+(defn player-entries [world]
   (let [entities (:entities world)]
     (into [] (map (fn [eid] (MapEntry/create eid (get entities eid))))
           (sort (vals (:players world))))))
@@ -38,9 +35,7 @@
 (def ^:private ^:const fold-leaf 64)
 (def spawn-pos [24.5 4.0 8.5])
 (def activation-radius 2)
-(defn pos-chunk
-  "Returns the id of the chunk a position stands in."
-  ^long [pos]
+(defn pos-chunk ^long [pos]
   (chunk/pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
                  (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
@@ -54,49 +49,34 @@
                       (chunk/around-ids (long cx) (long cz) r)))))
         (:entities world)))
 
-(defn active-chunks
-  "Returns the set of chunk ids in which the world ticks."
-  [world]
+(defn active-chunks [world]
   (let [cached (:active-chunks world)]
     (if (and cached (identical? (key cached) (:entities world)))
       (val cached)
       (compute-active-chunks world))))
 
-(defn cache-active-chunks
-  "Returns world with its active chunks computed."
-  [world]
+(defn cache-active-chunks [world]
   (let [cached (:active-chunks world)]
     (if (and cached (identical? (key cached) (:entities world)))
       world
       (assoc world :active-chunks (MapEntry/create (:entities world) (compute-active-chunks world))))))
 
-(defn advance
-  "Returns world one tick later, with the day time advanced when the
-   advance_time rule allows."
-  [world]
+(defn advance [world]
   (cond-> (update world :tick inc)
           (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0))))
 
-(defn active-at?
-  "Returns true when pos lies in an active chunk."
-  [active pos]
+(defn active-at? [active pos]
   (contains? active (pos-chunk pos)))
 
-(defn active-id?
-  "Returns true when chunk id bid is active."
-  [active ^long bid]
+(defn active-id? [active ^long bid]
   (contains? active (chunk/pos->id (bit-shift-right bid 42)
                                    (bit-shift-right (bit-shift-left bid 38) 42))))
 
-(defn offline-uuid
-  "Returns the offline-mode UUID of a player name."
-  ^UUID [^String name]
+(defn offline-uuid ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def initial-world schema/initial-world)
-(defn- update-entity
-  "Returns w with f applied to entity eid, or w when there is no such entity."
-  [w eid f & args]
+(defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
     (clojure.core/apply update-in w [:entities eid] f args)
     w))
@@ -109,18 +89,12 @@
     (chunk/chunks-get-block chunks (gen/flat-chunk) p)
     0))
 
-(defn- wake-tick
-  "Returns the tick at which the block at p should act on a neighbour
-   changing, or nil when it does not care."
-  [chunks tick p old self?]
+(defn- wake-tick [chunks tick p old self?]
   (let [st (block-or-zero chunks p)]
     (when-not (zero? st)
       (rules/wake-tick chunks st tick p old self?))))
 
-(defn- schedule-updates
-  "Returns the scheduled block ticks with the neighbours of every changed
-   block woken."
-  [bt tick floor chunks changed]
+(defn- schedule-updates [bt tick floor chunks changed]
   (reduce
     (fn [bt [[x y z] old _]]
       (reduce
@@ -143,20 +117,14 @@
               w))
           w real))
 
-(defn- real-changes
-  "Returns the changes that actually change something, each with the state
-   it replaces."
-  [chunks changes]
+(defn- real-changes [chunks changes]
   (into []
         (keep (fn [[pos st]]
                 (let [old (chunk/chunks-get-block chunks (gen/flat-chunk) pos)]
                   (when (not= old (long st)) [pos old st]))))
         changes))
 
-(defn- with-derived
-  "Returns the world blocks after the changes, relit, and everything that
-   changed with them."
-  [chunks tick real]
+(defn- with-derived [chunks tick real]
   (let [chunks' (-> chunks
                     (chunk/chunks-set-blocks (gen/flat-chunk) (mapv (fn [[pos _ st]] [pos st]) real))
                     (light/relight-batch (gen/flat-chunk) real))
@@ -171,10 +139,7 @@
   (reduce (fn [ev [pos st]] (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
           (or ev (i/int-map)) events))
 
-(defn- apply-set-blocks
-  "Returns w with blocks changed, along with the light, block ticks and
-   block entities that follow."
-  [w changes ^long base]
+(defn- apply-set-blocks [w changes ^long base]
   (let [real (real-changes (:chunks w) changes)]
     (if (empty? real)
       w
@@ -185,15 +150,10 @@
             (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
             (cond-> (seq events) (update :block-events add-block-events events)))))))
 
-(defn spawn-seed
-  "Returns the random seed of the spawn search for eid this tick."
-  ^double [w eid]
+(defn spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
-(defn world-spawn-pos
-  "Returns the spawn position for player eid, searched around the world spawn
-   within the respawn radius."
-  [w eid]
+(defn world-spawn-pos [w eid]
   (spawn/find-spawn (:chunks w) (gen/flat-chunk) (:world-spawn w)
                     (long (get-in w [:rules :respawn-radius] 10))
                     (spawn-seed w eid)))
@@ -252,16 +212,13 @@
   (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
 
 (defn- snapped
-  "Returns e turned to rot, as the client says it looked when it used an
-   item."
+  "Returns e turned to rot, the pose the client reports for the use of an item."
   [e rot]
   (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
-(defn use-origin
-  "Returns the pose of the player at a :place event, or nil for other events."
-  [w [tag & args]]
+(defn use-origin [w [tag & args]]
   (when (= :place tag)
     (let [[eid _ _ _ _ _ rot] args]
       (when-let [e (get-in w [:entities eid])]
@@ -384,9 +341,7 @@
 (defn- unchanged [w _]
   w)
 
-(defn apply-event
-  "Returns world with one input delta applied."
-  [world delta]
+(defn apply-event [world delta]
   ((get input-apply (nth delta 0) unchanged) world delta))
 
 (def ^:private move-keys
@@ -398,8 +353,8 @@
        (> (v/y (:pos e')) (v/y (:pos e)))))
 
 (defn move-of
-  "Returns what a :move event did to its player as vanilla counts it,
-   or nil when the event moved no player."
+  "Returns what a :move event did to its player, or nil when the event moved no
+   player."
   [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) (:pos changes) (:pos e) e'
@@ -409,10 +364,7 @@
              :climbing?
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
-(defn infinite-materials?
-  "Returns true when a player builds and crafts without running out of
-   items."
-  [_player]
+(defn infinite-materials? [_player]
   true)
 
 (def ^:const block-range 4.5)
@@ -420,17 +372,12 @@
 (def ^:const entity-range 3.0)
 (def ^:const creative-entity-range 2.0)
 
-(defn block-reach
-  "Returns how far a player reaches blocks."
-  ^double [player]
+(defn block-reach ^double [player]
   (if (infinite-materials? player)
     (+ block-range creative-block-range)
     block-range))
 
-(defn quit-of
-  "Returns the player a :player-quit event takes out of the world as
-   they were, or nil for other events."
-  [w [tag eid]]
+(defn quit-of [w [tag eid]]
   (when (= :player-quit tag)
     (when-let [e (get-in w [:entities eid])]
       (assoc e :eid eid))))
@@ -438,10 +385,7 @@
 (defn- remembered [w quits]
   (cond-> w (seq quits) (assoc :quits quits)))
 
-(defn- applied-input
-  "Returns world with a tick's input events applied, remembering the pose
-   each use started from, what each move did and who quit."
-  [world input]
+(defn- applied-input [world input]
   (loop [w world i 0 origins {} moves [] quits []]
     (if-let [d (nth input i nil)]
       (let [w' (apply-event w d) m (move-of w w' d) q (quit-of w d)]
@@ -457,9 +401,7 @@
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
 
-(defn- listed
-  "Returns w with names added to and dropped from the player list."
-  [w add drop]
+(defn- listed [w add drop]
   (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
 
 (defn- flush-ticks [w t parked]
@@ -493,7 +435,7 @@
 
 (defn hurt
   "Returns entity e after amount of damage, knocked back from direction dx dz
-   when given; no change inside the hurt resistance window."
+   when given."
   ([e ^double amount] (hurt e amount nil nil))
   ([e ^double amount dx dz]
    (let [health (double (or (:health e) 0.0))
@@ -576,9 +518,7 @@
         (update-entity w (nth delta 1) (fn [e] (g (:tick w) e delta)))
         w))))
 
-(defn- folded-entities
-  "Returns the entities that changed, each with its deltas applied."
-  [w entities pairs]
+(defn- folded-entities [w entities pairs]
   (r/fold fold-leaf (r/monoid i/merge i/int-map)
           (fn [m [eid ds]]
             (if-let [e (get entities eid)]
@@ -586,9 +526,7 @@
               m))
           pairs))
 
-(defn apply
-  "Returns the world with deltas applied."
-  [world deltas]
+(defn apply [world deltas]
   (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
         [w removes] (reduce (fn [[w removes] delta]
                               (if (identical? :remove-entity (nth delta 0))
@@ -601,8 +539,6 @@
         w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)]
     (cache-active-chunks (reduce player-quit w removes))))
 
-(defn apply-deltas
-  "Returns [world' deltas] like apply, for callers that need both."
-  [world deltas]
+(defn apply-deltas [world deltas]
   (let [d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))]
     [(apply world d) d]))

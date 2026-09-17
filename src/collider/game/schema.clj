@@ -77,9 +77,7 @@
    :listed             {:default {}}})
 
 (def initial-world (update-vals world :default))
-(defn snapshot
-  "Returns the storable form of world w."
-  [w]
+(defn snapshot [w]
   (into {} (for [[k {store :store}] world :when store]
              [k (store (k w) w)])))
 
@@ -87,9 +85,7 @@
   (let [t (long (:tick w 0))]
     (update w :block-ticks #(into (i/int-map) (map (fn [[dt s]] [(+ t (long dt)) s])) %))))
 
-(defn world-of
-  "Returns the world of its stored form m."
-  [m]
+(defn world-of [m]
   (rebase-ticks
     (into {} (for [[k {load :load default :default}] world :when load]
                [k (if (contains? m k) (load (k m)) default)]))))
@@ -106,9 +102,7 @@
    :pitch        {:default 0.0}
    :on-ground    {:default true :store boolean}})
 
-(defn profile-of
-  "Returns the stored profile of a player entity."
-  [player]
+(defn profile-of [player]
   (into {} (for [[k {store :store default :default}] profile
                  :let [val (get player k)]
                  :when (or (some? val) (contains? (profile k) :default))]

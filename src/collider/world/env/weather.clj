@@ -1,6 +1,5 @@
 (ns collider.world.env.weather
-  "Weather of the world: the rain and thunder cycle, and what falls at a
-   position."
+  "The rain and thunder cycle, and what falls at a position."
   (:require [collider.random :as random]
             [collider.world.env.biome :as biome]
             [collider.world.gen :as gen]
@@ -18,76 +17,50 @@
   [:clear-weather-time :rain-time :thunder-time :raining? :thundering?
    :rain-level :o-rain-level :thunder-level :o-thunder-level])
 
-(defn sample
-  "Returns a value between the two bounds, chosen by roll, a number from 0 to
-   1."
-  ^long [^double roll bounds]
+(defn sample ^long [^double roll bounds]
   (let [lo (long (nth bounds 0))
         hi (long (nth bounds 1))]
     (+ lo (min (- hi lo) (long (Math/floor (* roll (inc (- hi lo)))))))))
 
-(defn rain-level
-  "Returns how hard it is raining, zero in clear weather."
-  ^double [ctx]
+(defn rain-level ^double [ctx]
   (double (:rain-level ctx 0.0)))
 
-(defn thunder-level
-  "Returns the thunder level, which is zero while it is not raining."
-  ^double [ctx]
+(defn thunder-level ^double [ctx]
   (double (float (* (float (:thunder-level ctx 0.0)) (float (rain-level ctx))))))
 
-(defn raw-thunder-level
-  "Returns the thunder level on its own, whether or not it is raining."
-  ^double [ctx]
+(defn raw-thunder-level ^double [ctx]
   (double (:thunder-level ctx 0.0)))
 
-(defn raining?
-  "Returns true when it is raining."
-  [ctx]
+(defn raining? [ctx]
   (> (rain-level ctx) 0.2))
 
-(defn thundering?
-  "Returns true when a thunderstorm is running."
-  [ctx]
+(defn thundering? [ctx]
   (> (thunder-level ctx) 0.9))
 
-(defn sky-darken
-  "Returns how much the sky is darkened at the given world time."
-  ^long [ctx ^long time]
+(defn sky-darken ^long [ctx ^long time]
   (light/sky-darken time (rain-level ctx) (thunder-level ctx)))
 
-(defn brightness
-  "Returns the light level at x y z, with sky light dimmed by weather and
-   time."
-  [ctx chunks template x y z time]
+(defn brightness [ctx chunks template x y z time]
   (long (light/brightness chunks template x y z time (rain-level ctx) (thunder-level ctx))))
 
 (defn- can-see-sky? [chunks p]
   (>= (long (light/sky-light-at chunks (gen/flat-chunk) (nth p 0) (nth p 1) (nth p 2))) 15))
 
-(defn precipitation-at
-  "Returns :rain, :snow or :none at block position p; nothing falls where the
-   sky is blocked."
-  [ctx chunks p]
+(defn precipitation-at [ctx chunks p]
   (cond
     (not (raining? ctx)) :none
     (not (can-see-sky? chunks p)) :none
     (> (spawn/motion-blocking-height chunks (gen/flat-chunk) (nth p 0) (nth p 2)) (long (nth p 1))) :none
     :else (biome/precipitation-at (biome/at chunks p) p)))
 
-(defn raining-at?
-  "Returns true when rain falls on p."
-  [ctx chunks p]
+(defn raining-at? [ctx chunks p]
   (= :rain (precipitation-at ctx chunks p)))
 
 (defn- step-level ^double [^double level raising?]
   (let [v (float (if raising? (+ (float level) (float 0.01)) (- (float level) (float 0.01))))]
     (double (float (min (float 1.0) (max (float 0.0) v))))))
 
-(defn- toggled
-  "Returns the countdown one tick down, and the flag it flips to as it
-   runs out."
-  [^long timer flag]
+(defn- toggled [^long timer flag]
   (let [n (dec timer)] [n (if (zero? n) (not flag) flag)]))
 
 (defn- cleared-timers [^long clear raining thundering]
@@ -97,16 +70,12 @@
    :thundering?        false
    :raining?           false})
 
-(defn- next-phase
-  "Returns the countdown and the flag of one weather cycle a tick on."
-  [left on? t salt duration delay]
+(defn- next-phase [left on? t salt duration delay]
   (if (pos? (long left))
     (toggled left on?)
     [(sample (random/of-key t salt) (if on? duration delay)) on?]))
 
-(defn- timers
-  "Returns the weather countdowns and flags of world w a tick on."
-  [w]
+(defn- timers [w]
   (let [t (long (:tick w 0))
         clear (long (:clear-weather-time w 0))
         raining (boolean (:raining? w))
@@ -123,10 +92,7 @@
          :thundering?        th
          :raining?           rn}))))
 
-(defn- cycled
-  "Returns the weather of world w a tick on, unchanged where the rules
-   hold the weather still."
-  [w]
+(defn- cycled [w]
   (if (get-in w [:rules :advance-weather] true)
     (timers w)
     {:clear-weather-time (long (:clear-weather-time w 0))
@@ -135,9 +101,7 @@
      :thundering?        (boolean (:thundering? w))
      :raining?           (boolean (:raining? w))}))
 
-(defn advance
-  "Returns the weather fields of world w one tick on."
-  [w]
+(defn advance [w]
   (let [m (cycled w)
         thunder (double (:thunder-level w 0.0))
         rain (double (:rain-level w 0.0))]
@@ -147,9 +111,7 @@
       :o-rain-level rain
       :rain-level (step-level rain (:raining? m)))))
 
-(defn parameters
-  "Returns weather fields for the given timers and flags."
-  [^long clear-time ^long weather-time raining? thundering?]
+(defn parameters [^long clear-time ^long weather-time raining? thundering?]
   {:clear-weather-time clear-time
    :rain-time          weather-time
    :thunder-time       weather-time

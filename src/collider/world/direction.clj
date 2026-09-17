@@ -18,17 +18,8 @@
 (def face-facing {2 :north 3 :south 4 :west 5 :east})
 (def opposite-index (int-array [1 0 3 2 5 4]))
 (def ^:private player-order [:south :west :north :east])
-(defn player-index
-  "Returns which of the four horizontal directions a player looking along
-   yaw faces, as an index."
-  ^long [yaw]
+(defn player-index ^long [yaw]
   (bit-and (long (Math/floor (+ (/ (* (double yaw) 4.0) 360.0) 0.5))) 3))
-(defn player-direction
-  "Returns the direction a player looking along yaw faces."
-  [yaw] (nth player-order (player-index yaw)))
-(defn up
-  "Returns the position one block above p."
-  [p] (mapv + p [0 1 0]))
-(defn down
-  "Returns the position one block below p."
-  [p] (mapv + p [0 -1 0]))
+(defn player-direction [yaw] (nth player-order (player-index yaw)))
+(defn up [p] (mapv + p [0 1 0]))
+(defn down [p] (mapv + p [0 -1 0]))

@@ -1,6 +1,5 @@
 (ns collider.game.block.crafting
-  "Crafting grids, the table's and the player's own: what they make
-   and what taking it costs."
+  "Crafting grids of the table and the player, their results and the cost of a take."
   (:require [collider.data :as data]
             [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
@@ -14,10 +13,7 @@
     :firework-star-fade :repair-item :map-extending
     :shield-decoration :decorated-pot})
 
-(defn context
-  "Returns what a crafting grid needs to know about the player using
-   it."
-  [world e]
+(defn context [world e]
   {:limited?  (boolean (get-in world [:rules :limited-crafting]))
    :known     (or (:known-recipes e) #{})
    :held      (long (or (:held-slot e) 0))
@@ -31,10 +27,7 @@
 (defn- input-of [inv grid ^long w]
   (craft/trim {:w w :h w :stacks (mapv #(get inv %) grid)}))
 
-(defn result
-  "Returns the stack a player makes from a square grid of stacks, or
-   nil."
-  [ctx stacks ^long w]
+(defn result [ctx stacks ^long w]
   (let [input (craft/trim {:w w :h w :stacks (vec stacks)})]
     (when-let [r (craft/find (craft/index) input nil)]
       (when (allowed? ctx r)
@@ -143,8 +136,8 @@
               (range (count reps))))))
 
 (defn place-back
-  "Returns a player's inventory with a stack put back into it as a
-   closing screen puts it, and what did not fit."
+  "Returns a player's inventory with a stack put back into it as a closing
+   screen puts it, and what did not fit."
   [ctx inv stack]
   (loop [inv inv s stack]
     (if-let [slot (and s (or (space-slot ctx inv s)
@@ -158,9 +151,7 @@
 
 (def ^:private player-grid [1 2 3 4])
 
-(defn player-layout
-  "Returns the rules of the player's own inventory screen."
-  [ctx]
+(defn player-layout [ctx]
   (assoc menu/player-layout
     :result 0
     :grid player-grid
@@ -184,9 +175,7 @@
 
 (def ^:private table-grid (vec (range 1 10)))
 
-(defn table-layout
-  "Returns the rules of a crafting table's screen."
-  [ctx]
+(defn table-layout [ctx]
   (let [base (menu/slots-layout 10 (fn [slot _] (not= 0 (long slot))))
         v (:visible base)
         ctx (assoc ctx :base 10)]

@@ -108,9 +108,7 @@
        (catch BindException _
          (throw (port-taken (:port (:cfg base)))))))
 
-(defn start
-  "Starts a server with the options opts and returns it."
-  [opts]
+(defn start [opts]
   (let [report (:report opts (fn [_] nil))
         {:keys [store saved world saver] :as base} (open-world opts)]
     (report (host-event saved (:config-written? opts)))
@@ -121,9 +119,7 @@
       (report {:event :ready :port (.getLocalPort ^ServerSocket (:socket net)) :took (uptime)})
       (assoc server :shutdown-hook (shutdown-hook! server)))))
 
-(defn stop
-  "Stops a running server and returns nil."
-  [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
+(defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
   (some-> scheduler .shutdownNow)
   (when shutdown-hook
     (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
@@ -138,9 +134,7 @@
          (cli/render! (assoc (ex-data e) :event :error))
          (System/exit 1))))
 
-(defn -main
-  "Starts the server and waits for it to stop."
-  [& args]
+(defn -main [& args]
   (let [written? (config/write-default!)
         opts (apply merge {} (map edn/read-string args))
         {:keys [^Thread accept]} (run! (assoc opts :config-written? written?))]

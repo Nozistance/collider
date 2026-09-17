@@ -1,5 +1,5 @@
 (ns collider.launch
-  "The first start: game data before the server."
+  "Game data generation before the first server start."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]

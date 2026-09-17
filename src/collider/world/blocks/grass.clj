@@ -10,19 +10,11 @@
 (def ^:private ^:table grass (delay (block/state :grass-block)))
 (def ^:private ^:table dirt (delay (block/state :dirt)))
 
-(defn grass-state
-  "Returns the state id of a grass block."
-  ^long [] @grass)
+(defn grass-state ^long [] @grass)
 
-(defn dirt-state
-  "Returns the state id of dirt."
-  ^long [] @dirt)
-(defn short-grass?
-  "Returns true when st is short grass."
-  [st] (= :short-grass (block/block-of (long st))))
-(defn- block-or-zero
-  "Returns the block state at p, air outside the world height."
-  ^long [chunks [_ y _ :as p]]
+(defn dirt-state ^long [] @dirt)
+(defn short-grass? [st] (= :short-grass (block/block-of (long st))))
+(defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
     (chunk/chunks-get-block chunks (gen/flat-chunk) p)
     0))
@@ -30,9 +22,7 @@
 (def ^:private neighborhood
   (vec (for [dy [-1 0 1] [dx dz] [[1 0] [-1 0] [0 1] [0 -1]]] [dx dy dz])))
 
-(defn grass-neighbor?
-  "Returns true when a grass block stands beside p, one level up or down."
-  [chunks [x y z]]
+(defn grass-neighbor? [chunks [x y z]]
   (boolean
     (some (fn [[dx dy dz]]
             (= (grass-state)
@@ -41,9 +31,7 @@
                                       (+ (long z) (long dz))])))
           neighborhood)))
 
-(defn regrowable-dirt?
-  "Returns true when p is bare dirt that the grass beside it may spread into."
-  [chunks p]
+(defn regrowable-dirt? [chunks p]
   (let [[x y z] p]
     (and (= (dirt-state) (block-or-zero chunks p))
          (zero? (block-or-zero chunks [x (inc (long y)) z]))
@@ -56,9 +44,7 @@
              (+ (long tick) 1200 (mod (long (hash [p tick])) 2400)))
    :due    (fn [_chunks p _rules] [[p (grass-state)]])})
 
-(defn can-stay-alive?
-  "Returns true when what stands above p lets the grass state st live there."
-  [chunks ^long st [x y z]]
+(defn can-stay-alive? [chunks ^long st [x y z]]
   (let [a (block-or-zero chunks [(long x) (inc (long y)) (long z)])]
     (cond
       (and (= :snow-layer (block/type-of a))

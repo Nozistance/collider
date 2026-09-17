@@ -1,5 +1,5 @@
 (ns collider.game.mob.sheep
-  "What a sheep does: grazing, strolling, panic, and breeding."
+  "Sheep behaviour such as grazing, strolling, panic and breeding."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
@@ -29,9 +29,7 @@
 (def ^:private ^:const breed-distance-sq 9.0)
 (def ^:private ^:const feeding-speedup 0.1)
 (def ^:private ^:const ticks-per-second 20)
-(defn- decide
-  "Returns the mob with its next idle action chosen and the tick it starts."
-  [t eid e]
+(defn- decide [t eid e]
   (let [means (mobs/action-means (:type e))
         means (if (mobs/baby? e) (assoc means :eat baby-eat-mean) means)
         choices (map (fn [[kind mean]] [kind (mobs/exp-delay mean t eid kind)]) means)
@@ -137,9 +135,7 @@
          first
          second)))
 
-(defn- tempted
-  "Returns the mob following a player who holds its food, or nil."
-  [_ e t tempters]
+(defn- tempted [_ e t tempters]
   (when (and (seq tempters)
              (>= (long t) (long (or (:tempt-cooldown-until e) 0))))
     (when-let [pid (tempt-target e tempters)]
@@ -214,9 +210,7 @@
     (roam-done? e t) (start-panic world eid e t)
     :else [e nil]))
 
-(defn- idle-brain
-  "Returns the mob after a tick of idle behaviour."
-  [world eid e t kind]
+(defn- idle-brain [world eid e t kind]
   (cond
     (= :follow kind) (run-follow world eid e t)
     (= :wander kind) (run-wander world eid e t)
@@ -226,9 +220,7 @@
       [(decide t eid e) nil])
     :else [e nil]))
 
-(defn brain
-  "Returns the mob one tick on, and the deltas its behaviour causes."
-  [world eid e t tempters]
+(defn brain [world eid e t tempters]
   (let [kind (get-in e [:task :kind])]
     (cond
       (= :panic kind) (run-panic world eid e t)
@@ -262,9 +254,7 @@
     (cons [:merge-entity target {:love-until (+ (long t) love-duration)}]
           [(out/all (out/status target :love))])))
 
-(defn feed-deltas
-  "Returns the deltas for mobs fed by a player this tick."
-  [world events t]
+(defn feed-deltas [world events t]
   (mapcat (fn [[tag peid target]]
             (when (= :interact tag)
               (when-let [e (get-in world [:entities target])]

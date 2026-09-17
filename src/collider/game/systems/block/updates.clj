@@ -1,5 +1,5 @@
 (ns collider.game.systems.block.updates
-  "Scheduled block ticks and what they change."
+  "Scheduled block ticks and their effects."
   (:require [clojure.data.int-map :as i]
             [collider.game.block.blockentity :as be]
             [collider.game.state :as state]
@@ -23,8 +23,8 @@
 (set! *warn-on-reflection* true)
 
 (defn- lww-changes
-  "Returns the changes the given blocks ask for as they tick, at most one
-   change per block."
+  "Returns the changes the ticking blocks ask for, at most one per block. The
+   last change wins."
   [chunks ctx cells]
   (into []
         (vals (into (sorted-map)
@@ -36,71 +36,52 @@
                             cells)))))
 
 (defn- loose-scaffold?
-  "Returns true when the block is scaffolding that still reaches a
-   support."
+  "Returns true when the block is scaffolding that still has support."
   [^long old]
   (and (= :scaffolding (block/type-of old)) (not= :7 (:distance (block/props-of old)))))
 
-(defn- falling-entity?
-  "Returns true when the block falls once nothing holds it up."
-  [^long old]
+(defn- falling-entity? [^long old]
   (and (block/falls? old) (not (loose-scaffold? old))
        (or (not (dripstone/speleothem? old)) (dripstone/stalactite? old))))
 
-(defn- washed?
-  "Returns true when a change puts water where the block was."
-  [^long old ^long st]
+(defn- washed? [^long old ^long st]
   (and (= :water (liquid/liquid-class st)) (not (block/waterlogged? old))))
 
-(defn- unsupported?
-  "Returns true when a change takes the block away for want of support."
-  [^long old ^long st]
+(defn- unsupported? [^long old ^long st]
   (and (= st (block/emptied old)) (= st (support/gone-state old))
        (not (block/fire? old)) (not (falling-entity? old))))
 
-(defn- destroyed?
-  "Returns true when a change destroys the block that was there."
-  [^long old ^long st]
+(defn- destroyed? [^long old ^long st]
   (and (pos? old) (not (liquid/liquid-state? old))
        (or (washed? old st) (unsupported? old st))))
 
-(defn- ticking-fires
-  "Returns the positions of the fires among the blocks that tick now."
-  [chunks now]
+(defn- ticking-fires [chunks now]
   (into #{} (filter #(fire/fire-state? (chunk/chunks-get-block chunks (gen/flat-chunk) %))) now))
 
 (defn- burnt?
-  "Returns true when a fire that ticks now stands next to pos, so the block
-   burns away rather than breaks: FireBlock.checkBurnOut drops nothing."
+  "Returns true when a fire that ticks now stands next to pos. A burnt block drops
+   nothing."
   [fires pos]
   (boolean (some #(contains? fires (mapv + pos %)) dir/around)))
 
-(defn- destroyed
-  "Returns the blocks the changes destroy, as they were."
-  [world now changes]
+(defn- destroyed [world now changes]
   (let [fires (ticking-fires (:chunks world) now)]
     (for [[pos st] changes
           :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
           :when (and (destroyed? old (long st)) (not (burnt? fires pos)))]
       [pos old])))
 
-(defn- destroyed-effects
-  "Returns the breaking effects for the blocks that were destroyed."
-  [gone]
+(defn- destroyed-effects [gone]
   (for [[pos old] gone]
     (out/all (out/break-effect pos old))))
 
-(defn- destroyed-drops
-  "Returns the deltas dropping what the destroyed blocks leave."
-  [world gone]
+(defn- destroyed-drops [world gone]
   (when (get-in world [:rules :block-drops] true)
     (for [[pos old] gone
           [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key (:tick world) pos salt))))]
       [:spawn-entity (items/popped world pos stack i)])))
 
-(defn- fizz-deltas
-  "Returns the effects for water and lava meeting."
-  [world changes]
+(defn- fizz-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (or (and (liquid/liquid-state? old) (pos? (long st)) (nil? (liquid/liquid-class st)))
@@ -108,9 +89,7 @@
         d [(out/all (out/fizz pos))]]
     d))
 
-(defn- fall-deltas
-  "Returns the deltas starting the blocks that begin to fall."
-  [world changes]
+(defn- fall-deltas [world changes]
   (for [[[x y z :as pos] st] changes
         :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (and (falling-entity? old) (= (long st) (block/emptied old)))]
@@ -120,9 +99,7 @@
                     :block (block/without-water old) :start pos :time 0}]))
 
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
-(defn- sponge-drops
-  "Returns what the plants a sponge dries out leave behind."
-  [world sponge changed]
+(defn- sponge-drops [world sponge changed]
   (let [chunks (:chunks world)]
     (for [[pos st] (water/absorbed chunks sponge)
           :let [old (chunk/chunks-get-block chunks (gen/flat-chunk) pos)]
@@ -131,9 +108,7 @@
           [i stack] (map-indexed vector (block/drops old (fn [salt] (random/of-key (:tick world) pos salt))))]
       [pos stack i])))
 
-(defn- sponge-deltas
-  "Returns the deltas dropping what the plants a sponge dries out leave."
-  [world cells changes]
+(defn- sponge-deltas [world cells changes]
   (when (get-in world [:rules :block-drops] true)
     (let [chunks (:chunks world)
           changed (into {} changes)
@@ -146,17 +121,13 @@
                    [#{} []])
            second))))
 
-(defn- drip-fill-deltas
-  "Returns the effects for a cauldron caught by a drip."
-  [world changes]
+(defn- drip-fill-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
         :when (contains? block/cauldron-types (block/type-of old))]
     (out/all (out/level-event (if (= :lava-cauldron (block/block-of (long st))) out/sound-drip-lava-into-cauldron out/sound-drip-water-into-cauldron) pos 0))))
 
-(defn- tilt-deltas
-  "Returns the sounds for big dripleaves tipping."
-  [world changes]
+(defn- tilt-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)
               sound (when (and (dripleaf/leaf? (long st)) (dripleaf/leaf? old)
@@ -165,15 +136,11 @@
         :when sound]
     (out/all (out/sound sound pos 1.0 (random/pitch (:tick world) pos :tilt)))))
 
-(defn- eyeblossom-deltas
-  "Returns the sounds for eyeblossoms opening and closing."
-  [changes]
+(defn- eyeblossom-deltas [changes]
   (for [[pos st] changes :when (eyeblossom/eyeblossom? (long st))]
     (out/all (out/sound (eyeblossom/sound-kind (long st) false) pos 1.0 1.0))))
 
-(defn- eyeblossom-schedules
-  "Returns the ticks the eyeblossoms around the changes ask for."
-  [world changes]
+(defn- eyeblossom-schedules [world changes]
   (let [chunks (:chunks world) t (long (:tick world))]
     (reduce (fn [m [pos st]]
               (if-not (eyeblossom/eyeblossom? (long st))
@@ -181,9 +148,7 @@
                 (merge-with into m (eyeblossom/cascade chunks pos (chunk/chunks-get-block chunks (gen/flat-chunk) pos) t))))
             {} changes)))
 
-(defn- burnt-tnt
-  "Returns the TNT the fire took away this tick."
-  [world changes]
+(defn- burnt-tnt [world changes]
   (let [chunks (:chunks world)
         pending (tnt/primed-origins world)]
     (into (sorted-set)
@@ -194,31 +159,23 @@
                 (remove pending))
           changes)))
 
-(defn- ignite-deltas
-  "Returns the deltas for TNT that the fire set off."
-  [world changes]
+(defn- ignite-deltas [world changes]
   (mapcat (fn [pos]
             (let [primed (tnt/primed pos [(:tick world) pos])]
               [[:spawn-entity primed]
                (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))]))
           (burnt-tnt world changes)))
 
-(defn- due-ticks
-  "Returns the blocks whose tick has come."
-  [world]
+(defn- due-ticks [world]
   (let [t (long (:tick world))]
     (into (i/int-set) (comp (take-while (fn [[k _]] (<= (long k) t))) (mapcat val))
           (:block-ticks world))))
 
-(defn- tick-ctx
-  "Returns what a ticking block may ask about the world."
-  [world]
+(defn- tick-ctx [world]
   {:rules   (:rules world) :tick (long (:tick world)) :time-of-day (:time-of-day world 0)
    :players (mapv (comp :pos val) (state/player-entries world))})
 
-(defn- again-schedule
-  "Returns the ticks asked for again by blocks that did nothing."
-  [world now changes]
+(defn- again-schedule [world now changes]
   (let [chunks (:chunks world) t (long (:tick world))
         changed (into #{} (map first) changes)]
     (reduce (fn [m p]
@@ -228,9 +185,7 @@
                 m))
             {} now)))
 
-(defn- change-deltas
-  "Returns the deltas for this tick's block changes and all they set off."
-  [world now changes]
+(defn- change-deltas [world now changes]
   (let [gone (destroyed world now changes)]
     (concat [[:set-blocks changes]]
             (fizz-deltas world changes)
@@ -242,9 +197,7 @@
             (tilt-deltas world changes)
             (drip-fill-deltas world changes))))
 
-(defn- block-updates-deltas
-  "Returns the deltas for the blocks whose tick has come."
-  [world _events]
+(defn- block-updates-deltas [world _events]
   (let [t (long (:tick world))
         due (due-ticks world)]
     (when (seq due)
@@ -259,21 +212,16 @@
                 (when (seq changes) (change-deltas world now changes))
                 (ignite-deltas world changes))))))
 
-(defn block-updates
-  "Returns the deltas for the blocks whose tick has come."
-  [world d]
+(defn block-updates [world d]
   [#(block-updates-deltas world d)])
 
 (defn- final-records
-  "Returns the state each block settled at, in the order they first
-   changed."
+  "Returns the last state of each block, in the order the blocks first changed."
   [recs]
   (let [last (into {} recs)]
     (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
 
-(defn block-flush
-  "Returns the effects telling players about the blocks that changed."
-  [w _d]
+(defn block-flush [w _d]
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]
             (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)

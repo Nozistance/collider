@@ -1,6 +1,5 @@
 (ns collider.game.delta
-  "Schemas of every delta tag and effect message, and the optional check
-   against them."
+  "Schemas of delta tags and effect messages, and the optional check against them."
   (:import (collider.java V3)))
 
 (set! *warn-on-reflection* true)
@@ -150,20 +149,14 @@
 
 (def ^:private delta-validator (delay ((requiring-resolve 'malli.core/validator) Delta)))
 (def ^:private delta-explainer (delay ((requiring-resolve 'malli.core/explainer) Delta)))
-(defn valid?
-  "Returns true when delta matches its schema."
-  [delta] (@delta-validator delta))
-(defn explain
-  "Returns a readable reason why delta fails its schema, or nil."
-  [delta]
+(defn valid? [delta] (@delta-validator delta))
+(defn explain [delta]
   (when-let [e (@delta-explainer delta)]
     ((requiring-resolve 'malli.error/humanize) e)))
 
 (def validate? (Boolean/getBoolean "collider.validate"))
 
-(defn check!
-  "Returns deltas, or throws on the first one that fails its schema."
-  [deltas]
+(defn check! [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)
       (throw (ex-info (str "invalid delta " (first d)) {:delta d :why (explain d)}))))

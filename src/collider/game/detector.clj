@@ -103,7 +103,5 @@
 
 (def channels [award answer])
 
-(defn observe
-  "Returns the deltas the observers draw from the finished tick."
-  [world d]
+(defn observe [world d]
   (into [] (mapcat (fn [c] (c world d))) channels))

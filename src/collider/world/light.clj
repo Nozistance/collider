@@ -1,6 +1,5 @@
 (ns collider.world.light
-  "Block light and sky light of the chunk sections, and the sky brightness of
-   the day cycle."
+  "Block light, sky light, and the sky brightness of the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider.java Chunk ChunkIndex Section)
@@ -29,23 +28,16 @@
   (Chunk/at chunks template (bit-shift-right (unchecked-int x) 4)
             (bit-shift-right (unchecked-int z) 4)))
 
-(defn- section
-  "Returns the section of the world holding x y z, nil when there is
-   none."
-  ^Section [chunks template x y z]
+(defn- section ^Section [chunks template x y z]
   (Chunk/sectionAt chunks template (unchecked-int x) (unchecked-int y)
                    (unchecked-int z)))
 
-(defn- absent-sky
-  "Returns the sky light at x y z where nothing has been lit yet."
-  [chunks template x y z]
+(defn- absent-sky [chunks template x y z]
   (let [x (long x) y (long y) z (long z)]
     (chunk/nil-sky (chunk-at chunks template x z) (chunk/section-index y)
                    (bit-and x 15) (bit-and z 15))))
 
-(defn- block-id-at
-  "Returns the block state at x y z, air outside the world height."
-  [chunks template x y z]
+(defn- block-id-at [chunks template x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
       (long (chunk/chunks-get-block chunks template x y z))
@@ -59,18 +51,14 @@
 (defn- stored-in ^long [^Section s ^long ch ^long idx]
   (if (= ch SL) (.skyLight s (int idx)) (.blockLight s (int idx))))
 
-(defn- stored-l
-  "Returns the light of channel ch at x y z before this pass."
-  [chunks template ch x y z]
+(defn- stored-l [chunks template ch x y z]
   (if (not (chunk/in-range? y))
     (if (and (= ch SL) (> y chunk/max-y)) 15 0)
     (if-let [s (section chunks template x y z)]
       (stored-in s ch (l-idx x y z))
       (if (= ch SL) (absent-sky chunks template x y z) 0))))
 
-(defn- get-l
-  "Returns the light of channel ch at x y z, including the changes of this pass."
-  [^HashMap cache chunks template ch x y z]
+(defn- get-l [^HashMap cache chunks template ch x y z]
   (let [ch (long ch) x (long x) y (long y) z (long z)]
     (if (not (chunk/in-range? y))
       (if (and (= ch SL) (> y chunk/max-y)) 15 0)
@@ -85,9 +73,7 @@
                        (chunk/new-section c (chunk/section-index y)))]
     (if (= ch SL) (.skyLightCopy s) (.blockLightCopy s))))
 
-(defn- set-l!
-  "Sets the light of channel ch at x y z, true when x y z is in the world."
-  [^HashMap cache chunks template ch x y z v]
+(defn- set-l! [^HashMap cache chunks template ch x y z v]
   (let [ch (long ch) x (long x) y (long y) z (long z) v (long v)]
     (when (chunk/in-range? y)
       (let [k (light-key x y z ch)]
@@ -98,14 +84,10 @@
             (chunk/nibble-set! arr (l-idx x y z) v)
             true))))))
 
-(defn- edge-occluded?
-  "Returns true when light cannot pass down from top into bottom."
-  [^long top ^long bottom]
+(defn- edge-occluded? [^long top ^long bottom]
   (or (pos? (block/dampening bottom)) (block/shape-occludes? top bottom DOWN)))
 
-(defn- sky-source-y
-  "Returns the lowest y at x z that the open sky still reaches."
-  ^long [chunks template ^long x ^long z]
+(defn- sky-source-y ^long [chunks template ^long x ^long z]
   (loop [y chunk/max-y top 0]
     (if (< y chunk/min-y)
       chunk/min-y
@@ -130,9 +112,7 @@
           (re-emit! cache chunks template pq ch nx ny nz))
         (.add pq (pack nx ny nz ln))))))
 
-(defn- unlight!
-  "Takes back the light that had spread from the darkened cells."
-  [^HashMap cache chunks template ch ^ArrayDeque rq ^ArrayDeque pq]
+(defn- unlight! [^HashMap cache chunks template ch ^ArrayDeque rq ^ArrayDeque pq]
   (loop []
     (when-let [e (.poll rq)]
       (dotimes [d 6]
@@ -158,9 +138,7 @@
         (dotimes [d 6]
           (propagate-to! cache chunks template pq ch from e d))))))
 
-(defn- propagate!
-  "Spreads light out from the brightened cells."
-  [^HashMap cache chunks template ch ^ArrayDeque pq]
+(defn- propagate! [^HashMap cache chunks template ch ^ArrayDeque pq]
   (loop []
     (when-let [e (.poll pq)]
       (propagate-from! cache chunks template pq ch e)
@@ -204,18 +182,14 @@
       (.add pq (pack x y z source)))
     (seed-neighbors! cache chunks template ch pq x y z)))
 
-(defn- channel-pass!
-  "Relights one channel around cells."
-  [^HashMap cache chunks template ch cells]
+(defn- channel-pass! [^HashMap cache chunks template ch cells]
   (let [ch (long ch) rq (ArrayDeque.) pq (ArrayDeque.)]
     (doseq [cell cells] (clear-cell! cache chunks template ch rq cell))
     (unlight! cache chunks template ch rq pq)
     (doseq [cell cells] (seed-cell! cache chunks template ch pq cell))
     (propagate! cache chunks template ch pq)))
 
-(defn light-at
-  "Returns the brighter of the sky and block light at x y z."
-  [chunks template x y z]
+(defn light-at [chunks template x y z]
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks template x y z)]
@@ -223,19 +197,14 @@
            (.blockLight ^Section s (int (l-idx x y z))))
       (absent-sky chunks template x y z))))
 
-(defn block-light-at
-  "Returns the block light at x y z, zero outside the world height."
-  [chunks template x y z]
+(defn block-light-at [chunks template x y z]
   (if (not (chunk/in-range? y))
     0
     (if-let [s (section chunks template x y z)]
       (.blockLight ^Section s (int (l-idx x y z)))
       0)))
 
-(defn sky-light-at
-  "Returns the sky light at x y z, full above the world height and zero
-   below it."
-  [chunks template x y z]
+(defn sky-light-at [chunks template x y z]
   (if (not (chunk/in-range? y))
     (if (> (long y) chunk/max-y) 15 0)
     (if-let [s (section chunks template x y z)]
@@ -289,26 +258,20 @@
    (long (int (float (- (float 15.0) (float (sky-light-level time rain-level thunder-level))))))))
 
 (defn brightness
-  "Returns the light at x y z as a player sees it: sky light dimmed by the time
-   of day and the weather, or block light where that is brighter."
   ([chunks template x y z time] (brightness chunks template x y z time 0.0 0.0))
   ([chunks template x y z time rain-level thunder-level]
    (max (- (long (sky-light-at chunks template x y z))
            (sky-darken (long time) (double rain-level) (double thunder-level)))
         (long (block-light-at chunks template x y z)))))
 
-(defn- different?
-  "Returns true when replacing old with new can change the light."
-  [^long old ^long new]
+(defn- different? [^long old ^long new]
   (and (not= old new)
        (or (not= (block/dampening old) (block/dampening new))
            (not= (block/emits old) (block/emits new))
            (block/use-shape-for-light-occlusion? old)
            (block/use-shape-for-light-occlusion? new))))
 
-(defn- sky-cells
-  "Returns the cells whose sky light a change at x y z can alter."
-  [chunks template x y z]
+(defn- sky-cells [chunks template x y z]
   (let [x (long x) y (long y) z (long z)
         src (sky-source-y chunks template x z)
         drop (loop [yy (dec src) acc []]
@@ -321,10 +284,7 @@
                 acc))]
     (conj (into drop add) [x y z (if (>= y src) 15 0)])))
 
-(defn relight-batch
-  "Returns chunks with the light recomputed around the changes, each a
-   [pos old-state new-state]."
-  [chunks template changes]
+(defn relight-batch [chunks template changes]
   (let [changed (filter (fn [[_ old new]] (different? (long old) (long new))) changes)
         bcells (mapv (fn [[[x y z] _ new]] [x y z (block/emits (long new))]) changed)
         scells (into [] (comp (mapcat (fn [[[x y z] _ _]] (sky-cells chunks template x y z))) (distinct))
@@ -336,7 +296,5 @@
         (channel-pass! cache chunks template SL scells)
         (if (.isEmpty cache) chunks (rebuild chunks template cache))))))
 
-(defn relight
-  "Returns chunks with the light recomputed around one block change."
-  [chunks template pos old-state new-state]
+(defn relight [chunks template pos old-state new-state]
   (relight-batch chunks template [[pos old-state new-state]]))

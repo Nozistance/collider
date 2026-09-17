@@ -1,6 +1,5 @@
 (ns collider.game.deltas
-  "Deltas of one tick, and the jobs that make them. A job returns deltas
-   or more jobs."
+  "Deltas of one tick and their jobs, each a source of deltas or of more jobs."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -11,7 +10,7 @@
 (def ^:private ^:const fold-leaf 64)
 (def ^:private ^:const fold-threshold 64)
 (defn pmapcat
-  "Like mapcat over a vector, in parallel when v is longer than threshold."
+  "Returns the mapcat of f over vector v, in parallel when v is longer than threshold."
   ([f v] (pmapcat f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))
@@ -22,14 +21,10 @@
 
 (defrecord Deltas [world entities out input])
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
-(defn input
-  "Returns the Deltas of a tick's input events."
-  ^Deltas [events]
+(defn input ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
-(defn add
-  "Returns acc with deltas added."
-  ^Deltas [^Deltas acc deltas]
+(defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
          w (transient (.world acc)) e (transient (.entities acc)) o (transient (.out acc))]
     (if ds
@@ -44,7 +39,6 @@
       (->Deltas (persistent! w) (persistent! e) (persistent! o) (.input acc)))))
 
 (defn merge
-  "Joins Deltas, in order."
   (^Deltas [^Deltas a ^Deltas b]
    (->Deltas (into (.world a) (.world b))
              (i/merge-with into (.entities a) (.entities b))
@@ -54,14 +48,11 @@
 
 (def merge-deltas merge)
 
-(defn fold
-  "Folds v in parallel, joining Deltas as it goes."
-  [reducef v]
+(defn fold [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (defn run
-  "Runs the jobs in parallel and returns their deltas in one Deltas, in the
-   same order every time."
+  "Returns the Deltas of the jobs run in parallel, in the same order every time."
   ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]
@@ -70,15 +61,10 @@
               (add acc r))))
         fs))
 
-(defn of
-  "Runs the systems of a phase on the world and returns their deltas."
-  ^Deltas [systems world deltas]
+(defn of ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
-(defn run-seq
-  "Runs the jobs in order, and the jobs they return, and returns all their
-   deltas."
-  [fs]
+(defn run-seq [fs]
   (into [] (mapcat (fn [f]
                      (let [r (f)]
                        (if (fn? (first r)) (run-seq (vec r)) r))))

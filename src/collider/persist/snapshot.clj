@@ -31,10 +31,7 @@
   (load [this])
   (flush! [this]))
 
-(defn- write-atomically!
-  "Writes data to file so a reader sees either the old contents or the new,
-   and returns how many bytes it took."
-  ^long [file ^bytes data]
+(defn- write-atomically! ^long [file ^bytes data]
   (let [^Path target (.toPath (io/file file))
         dir (or (.getParent target) (.toPath (io/file ".")))]
     (Files/createDirectories dir (make-array FileAttribute 0))
@@ -121,20 +118,14 @@
   Object
   (toString [_] (str dir)))
 
-(defn file-store
-  "Returns a store over the world directory dir."
-  [dir] (->FileStore dir))
-(defn snapshot
-  "Returns the part of a world that is saved."
-  [world]
+(defn file-store [dir] (->FileStore dir))
+(defn snapshot [world]
   (assoc (schema/snapshot world) :format format-version))
 
 (defn- meta-of [snap]
   (assoc (dissoc snap :chunks) :format format-version))
 
-(defn- written
-  "Returns how many bytes a write took, zero when it reported none."
-  [n]
+(defn- written [n]
   (if (number? n) (long n) 0))
 
 (defn- write-chunks! [store chunks]
@@ -156,10 +147,7 @@
                          " - move the world aside or start with a fresh save directory")
                     {:found (:format m) :expected format-version :store (str store)}))))
 
-(defn load-snapshot
-  "Returns the world held by a store, or nil when it holds none. Throws when
-   the world was written by another version of the server."
-  [store]
+(defn load-snapshot [store]
   (when-let [m (try (load store)
                     (catch Throwable t
                       (log/warn "snapshot: read failed" (str store) "-" (.getMessage t))
@@ -167,14 +155,10 @@
     (check-format! store m)
     (world-of m)))
 
-(defn start-saver
-  "Returns a saver that writes worlds in the background."
-  []
+(defn start-saver []
   (agent {:chunks nil :meta nil :writes 0} :error-mode :continue))
 
-(defn changed-chunks
-  "Returns the entries of new whose chunk is not the one old had."
-  [old new]
+(defn changed-chunks [old new]
   (remove (fn [[k v]] (identical? v (get old k))) new))
 
 (defn- dropped-chunks [old new]
@@ -182,9 +166,7 @@
 
 (def ^:private clock-keys [:tick :time-ms :time-of-day])
 
-(defn- timeless
-  "Returns m without the parts that change on every tick."
-  [m]
+(defn- timeless [m]
   (-> (apply dissoc m clock-keys)
       (update :block-ticks #(into #{} (mapcat second) %))))
 
@@ -211,15 +193,12 @@
       state
       (write-changes! state store snap m changed gone))))
 
-(defn request-save!
-  "Asks the saver to write a world and returns at once."
-  [saver store world]
+(defn request-save! [saver store world]
   (when saver
     (send-off saver save! store world)
     true))
 
 (defn await-saver!
-  "Waits up to ms for the saver to finish. Returns true when it did."
   ([saver] (await-saver! saver 2000))
   ([saver ms] (if saver (await-for ms saver) true)))
 

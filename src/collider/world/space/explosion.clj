@@ -1,6 +1,5 @@
 (ns collider.world.space.explosion
-  "Explosions: the blocks a blast breaks, the stacks they drop, and how much of
-   a body the blast reaches."
+  "Explosions, the blocks they break, their drops, and their reach into a body."
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -34,17 +33,13 @@
           (aset grid (+ (* (+ (* ix (long ncz)) iz) (long nsy)) iy)
                 (section-at col (+ (long sy0) iy))))))))
 
-(defn block-reader
-  "Returns the block states around pos in one value the blast reads from."
-  ^Region [chunks template pos]
+(defn block-reader ^Region [chunks template pos]
   (let [[cx0 cz0 sy0 ncx ncz nsy :as bounds] (region-bounds pos)
         grid (object-array (* (long ncx) (long ncz) (long nsy)))]
     (fill-grid grid chunks template bounds)
     (Region. grid cx0 cz0 sy0 ncx ncz nsy)))
 
-(defn read-block
-  "Returns the block state at x y z, air outside what was read."
-  ^long [^Region rg ^long x ^long y ^long z]
+(defn read-block ^long [^Region rg ^long x ^long y ^long z]
   (let [ix (- (bit-shift-right x 4) (.cx0 rg))
         iz (- (bit-shift-right z 4) (.cz0 rg))
         iy (- (bit-shift-right y 4) (.sy0 rg))]
@@ -61,10 +56,7 @@
 
 (def ^:private ^:const ray-w 21)
 
-(defn- shell?
-  "Returns true when j k l lies on the outside of the cube of ray
-   directions."
-  [^long j ^long k ^long l]
+(defn- shell? [^long j ^long k ^long l]
   (or (= j 0) (= j 15) (= k 0) (= k 15) (= l 0) (= l 15)))
 
 (defn- ray-dir [^long j ^long k ^long l]
@@ -114,10 +106,7 @@
             (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
     (persistent! out)))
 
-(defn affected-blocks
-  "Returns the positions a blast of the given power destroys around a center.
-   seed decides the ragged edge."
-  [^Region rg [cx cy cz] power seed]
+(defn affected-blocks [^Region rg [cx cy cz] power seed]
   (let [center [(double cx) (double cy) (double cz)]
         origin [(- (long (Math/floor (double cx))) region-r)
                 (- (long (Math/floor (double cy))) region-r)
@@ -126,10 +115,7 @@
     (cast-shell rg hit origin center (double power) (long (hash seed)))
     (hit-positions hit origin)))
 
-(defn- path-probe
-  "Returns a test of whether the blast at cx cy cz reaches a point with
-   nothing in the way."
-  [^Region rg cx cy cz]
+(defn- path-probe [^Region rg cx cy cz]
   (let [^objects grid (.grid rg)
         gx (unchecked-int (.cx0 rg)) gz (unchecked-int (.cz0 rg)) gy (unchecked-int (.sy0 rg))
         nx (unchecked-int (.ncx rg)) nz (unchecked-int (.ncz rg)) ny (unchecked-int (.nsy rg))
@@ -142,9 +128,7 @@
         sy (/ 1.0 (+ (* 2.0 height) 1.0))]
     [sx sy (/ (- 1.0 (* (Math/floor (/ 1.0 sx)) sx)) 2.0)]))
 
-(defn- density-loop
-  "Returns the share, 0.0 to 1.0, of a box at p the probe reaches."
-  [probe [px py pz] half height [sx sy ox]]
+(defn- density-loop [probe [px py pz] half height [sx sy ox]]
   (let [px (double px) py (double py) pz (double pz)
         half (double half) height (double height)
         sx (double sx) sy (double sy) ox (double ox)]
@@ -167,9 +151,7 @@
   (let [half (double half) height (double height)]
     (density-loop (path-probe rg cx cy cz) p half height (density-steps half height))))
 
-(defn shuffled
-  "Returns v in an order decided by seed."
-  [v seed]
+(defn shuffled [v seed]
   (let [^objects a (to-array v)]
     (loop [i (alength a)]
       (if (> i 1)
@@ -208,8 +190,8 @@
 
 (defn stacks
   "Returns [pos stack] pairs of what the destroyed positions leave behind,
-   gathered into few stacks. seed decides the random drops, radius is the blast
-   radius they depend on."
+   merged into few stacks. seed decides the random drops. radius is the blast
+   radius the drops depend on."
   [^Region rg positions seed radius]
   (mapv (fn [[pos item n]] [pos {:item item :count n}])
         (reduce (fn [cs pos]

@@ -12,9 +12,7 @@
 
 (def ^:private openable-types (into #{:fence-gate} (concat block/door-types block/trapdoor-types)))
 
-(defn opens?
-  "Returns true when using the block at pos means opening or closing it."
-  [world eid pos item use-item?]
+(defn opens? [world eid pos item use-item?]
   (let [cur (edit/block-at world pos)]
     (and (not use-item?)
          (contains? openable-types (block/type-of cur))
@@ -36,9 +34,7 @@
                         facing (if (and (not open?) (= (:facing props) (dir/opposite dir))) dir (:facing props))]
                     [[pos (block/state self (assoc props :open (if open? :false :true) :facing facing))]]))))
 
-(defn toggle-deltas
-  "Returns the deltas for opening or closing the block at pos."
-  [world eid pos state]
+(defn toggle-deltas [world eid pos state]
   (let [changes (toggled world eid pos state)
         open? (= :true (:open (block/props-of (second (first changes)))))]
     (conj (edit/change-deltas world changes)

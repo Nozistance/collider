@@ -1,5 +1,5 @@
 (ns collider.game.tick
-  "The tick and the ticker that runs it."
+  "The tick and its ticker."
   (:require [collider.game.state :as state]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
@@ -64,9 +64,7 @@
              post-systems
              [#'detector/observe]])
 
-(defn tick
-  "Returns [world' deltas] for one tick of world with the input events."
-  [world events]
+(defn tick [world events]
   (let [input (deltas/input events)]
     (reduce (fn [[w d] phase]
               (let [d' (deltas/of phase w d)]
@@ -82,17 +80,13 @@
       (recur (conj! acc e))
       (persistent! acc))))
 
-(defn- record!
-  "Notes how long one tick took."
-  [^longs window ^AtomicLong counter ^long elapsed]
+(defn- record! [^longs window ^AtomicLong counter ^long elapsed]
   (aset window (int (rem (.getAndIncrement counter) window-size)) elapsed))
 
 (defn- idle? [world ^ConcurrentLinkedQueue queue]
   (and (.isEmpty queue) (empty? (:players world))))
 
-(defn- percentiles
-  "Returns how long recent ticks took, in the middle and at the worst."
-  [^longs window ^AtomicLong counter]
+(defn- percentiles [^longs window ^AtomicLong counter]
   (let [n (int (min (.get counter) window-size))]
     (when (pos? n)
       (let [arr (Arrays/copyOf window n)]
@@ -102,9 +96,7 @@
          :p99-ms (/ (aget arr (min (dec n) (int (* n 0.99)))) 1e6)
          :max-ms (/ (aget arr (dec n)) 1e6)}))))
 
-(defn- tps-of
-  "Returns the rate of recent ticks per second, never above the target."
-  ^double [^longs stamps ^long i ^long now ^long target-tps]
+(defn- tps-of ^double [^longs stamps ^long i ^long now ^long target-tps]
   (let [n (min (inc i) tps-window)]
     (if (< n 2)
       (double target-tps)
@@ -113,9 +105,7 @@
           (double target-tps)
           (min (double target-tps) (/ (* 1.0E9 (dec n)) (- now past))))))))
 
-(defn- pace
-  "Holds until the next tick is due, and returns the time it was due."
-  ^long [^long next-ns ^long step-ns]
+(defn- pace ^long [^long next-ns ^long step-ns]
   (let [target (+ next-ns step-ns)
         now (System/nanoTime)
         target (if (> (- now target) 1000000000) now target)
@@ -123,18 +113,13 @@
     (when (pos? sleep) (^[long] Thread/sleep sleep))
     target))
 
-(defn- tick-input
-  "Returns the world the next tick starts from, with the clock and whatever
-   the world outside the tick reports."
-  [world-atom perf io]
+(defn- tick-input [world-atom perf io]
   (-> @world-atom
       (assoc :time-ms (System/currentTimeMillis))
       (cond-> perf (assoc :perf perf)
               io (merge io))))
 
-(defn- safe-tick
-  "Returns one tick of world, or world unchanged when the tick throws."
-  [world events]
+(defn- safe-tick [world events]
   (try (tick world events)
        (catch Throwable t
          (log/warn "tick error:" t)
@@ -145,10 +130,7 @@
     (try (deliver! world deltas)
          (catch Throwable t (log/warn "deliver error:" t)))))
 
-(defn- run-tick!
-  "Ticks the world once on the events that have come in, and sends out what
-   changed."
-  [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
+(defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
   (let [events (drain! queue)
         world (tick-input world-atom perf (when io-input (io-input)))
         [world' deltas] (safe-tick world events)]
@@ -160,10 +142,7 @@
    :counter (AtomicLong. 0)
    :stamps  (long-array tps-window)})
 
-(defn- perf-of
-  "Returns the tick timings worth reporting, or nil when it is not time to
-   report."
-  [{:keys [window counter ^longs stamps]} i t0 tps]
+(defn- perf-of [{:keys [window counter ^longs stamps]} i t0 tps]
   (when (zero? (rem (long i) 20))
     (assoc (or (percentiles window counter) {}) :tps (tps-of stamps i t0 tps))))
 
@@ -190,8 +169,8 @@
     (.start)))
 
 (defn start-ticker!
-  "Starts ticking world-atom: input is taken from queue and the deltas of
-   each tick go to deliver!. Returns a handle for stop-ticker!."
+  "Starts a daemon thread that ticks world-atom on the events from queue and
+   gives the deltas of each tick to deliver!. Returns a handle for the stop."
   ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)
@@ -201,9 +180,7 @@
       :running running
       :stats   #(percentiles (:window st) (:counter st))})))
 
-(defn stop-ticker!
-  "Stops the ticker of a start-ticker! handle."
-  [{:keys [^Thread thread ^AtomicBoolean running]}]
+(defn stop-ticker! [{:keys [^Thread thread ^AtomicBoolean running]}]
   (.set running false)
   (.join thread 1000)
   nil)

@@ -1,5 +1,5 @@
 (ns collider.game.block.container
-  "Containers and benches: opening, contents, lids and viewers."
+  "Containers and benches, their opening, contents, lids and viewers."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.entity :as entity]
@@ -27,18 +27,14 @@
 (def connected-direction chest/connected-direction)
 (def copper-types chest/copper-types)
 
-(defn placed-state
-  "Returns the state of a container placed by a player."
-  [chunks pos st face sneaking? yaw pitch]
+(defn placed-state [chunks pos st face sneaking? yaw pitch]
   (let [t (block/type-of st)]
     (cond
       (contains? chest/types t) (chest/placed chunks pos st face sneaking?)
       (= :barrel t) (chest/barrel-placed st yaw pitch)
       :else st)))
 
-(defn blocked?
-  "Returns true when the block above pos keeps a lid from opening."
-  [chunks pos]
+(defn blocked? [chunks pos]
   (block/full-cube? (chest/state-at chunks (mapv + pos [0 1 0]))))
 
 (defn- chest-menu [chunks pos ^long st]
@@ -63,15 +59,10 @@
                   (if far? (< lo 8.0) (> hi 8.0))))
               (block/collision-boxes st))))
 
-(defn animation
-  "Returns how far the shulker box at pos has opened, or nil when it is
-   shut."
-  [world pos]
+(defn animation [world pos]
   (get (:shulker-anim world) pos))
 
-(defn can-open?
-  "Returns true when the shulker box has room to open."
-  [world pos ^long st]
+(defn can-open? [world pos ^long st]
   (or (some? (animation world pos))
       (half-free? (:chunks world) pos (:facing (block/props-of st)))))
 
@@ -101,33 +92,21 @@
                                  :title {:translate "container.loom"}
                                  :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})})
 
-(defn menu-at
-  "Returns the menu the block at pos opens, or nil when it opens none."
-  [world pos]
+(defn menu-at [world pos]
   (let [chunks (:chunks world)
         st (state-at chunks pos) t (block/type-of st)]
     (if (contains? chest-types t)
       (chest-menu chunks pos st)
       (when-let [f (menu-builders t)] (f world chunks pos st)))))
 
-(defn bench?
-  "Returns true when the menu crafts something."
-  [m] (= :bench (:kind m)))
-(defn lectern?
-  "Returns true when the menu is a lectern."
-  [m] (= :lectern (:kind m)))
-(defn crafting?
-  "Returns true when the menu is a crafting table."
-  [m] (= :crafting-table (:type m)))
+(defn bench? [m] (= :bench (:kind m)))
+(defn lectern? [m] (= :lectern (:kind m)))
+(defn crafting? [m] (= :crafting-table (:type m)))
 
-(defn player-slots?
-  "Returns true when the menu shows the player their own inventory too."
-  [m]
+(defn player-slots? [m]
   (not (lectern? m)))
 
-(defn slot-count
-  "Returns how many slots the menu has of its own."
-  ^long [m]
+(defn slot-count ^long [m]
   (cond
     (lectern? m) 1
     (bench? m) (long (:size m))
@@ -135,62 +114,40 @@
 
 (def ^:private ^:table lectern-books (delay (set (data/tag-values "item" "lectern_books"))))
 
-(defn book-items
-  "Returns the items a lectern takes."
-  [] @lectern-books)
+(defn book-items [] @lectern-books)
 
-(defn book?
-  "Returns true when a lectern takes the stack."
-  [stack]
+(defn book? [stack]
   (contains? (book-items) (:item stack)))
 
-(defn page-count
-  "Returns how many pages a book has."
-  ^long [stack]
+(defn page-count ^long [stack]
   (let [c (:components stack)]
     (cond
       (:written-book-content c) (count (:pages (:written-book-content c)))
       (:writable-book-content c) (count (:writable-book-content c))
       :else 0)))
 
-(defn clamp-page
-  "Returns the page nearest to page that a book of that length has."
-  ^long [^long page ^long pages]
+(defn clamp-page ^long [^long page ^long pages]
   (if (< page 0) 0 (min page (dec pages))))
 
-(defn- padded
-  "Returns the items of a container, empty slots and all."
-  [items] (vec (take size (concat items (repeat nil)))))
+(defn- padded [items] (vec (take size (concat items (repeat nil)))))
 
-(defn cell-items
-  "Returns everything the container at pos holds."
-  [world pos] (padded (:items (be/at world pos))))
+(defn cell-items [world pos] (padded (:items (be/at world pos))))
 
-(defn book-of
-  "Returns the book on the lectern, or nil."
-  [world m] (:book (be/at world (:pos m))))
+(defn book-of [world m] (:book (be/at world (:pos m))))
 
-(defn page
-  "Returns the page a lectern is open at."
-  ^long [world m] (long (:page (be/at world (:pos m)) 0)))
+(defn page ^long [world m] (long (:page (be/at world (:pos m)) 0)))
 
-(defn items
-  "Returns the items of the open menu."
-  [world eid m]
+(defn items [world eid m]
   (cond
     (lectern? m) [(book-of world m)]
     (bench? m) (vec (take (slot-count m) (concat (:contents m) (repeat nil))))
     (= :ender (:kind m)) (padded (get-in world [:entities eid :ender-items]))
     :else (into [] (mapcat #(cell-items world %)) (:cells m))))
 
-(defn inputs
-  "Returns the ingredient slots of the menu."
-  [m items]
+(defn inputs [m items]
   (keep-indexed (fn [i s] (when (not= i (:result m)) s)) items))
 
-(defn store-deltas
-  "Returns the deltas that put the menu's items back where they belong."
-  [world eid m items]
+(defn store-deltas [world eid m items]
   (cond
     (lectern? m) nil
     (bench? m) nil
@@ -206,30 +163,22 @@
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
 
-(defn place-book-deltas
-  "Returns the deltas for a player putting a book on a lectern."
-  [world pos ^long st stack]
+(defn place-book-deltas [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))]
     [[:set-block-entity pos (assoc e :book (assoc stack :count 1) :page 0)]
      [:set-blocks [[pos (lectern/reset-state st true)]]]
      (out/all (out/sound :item.book.put (centre pos) 1.0 1.0))]))
 
-(defn remove-book-deltas
-  "Returns the deltas for taking the book off a lectern."
-  [world pos]
+(defn remove-book-deltas [world pos]
   (let [st (state-at (:chunks world) pos)
         e (be/at world pos)]
     [[:set-block-entity pos (assoc e :book nil :page 0)]
      [:set-blocks [[pos (lectern/reset-state st false)]]]]))
 
-(defn next-page
-  "Returns the page a lectern turns to when a player asks for want."
-  ^long [world m ^long want]
+(defn next-page ^long [world m ^long want]
   (clamp-page want (page-count (book-of world m))))
 
-(defn page-deltas
-  "Returns the deltas for turning a lectern to the page a player asked for."
-  [world m ^long want]
+(defn page-deltas [world m ^long want]
   (let [pos (:pos m)
         st (state-at (:chunks world) pos)
         e (be/at world pos)
@@ -241,9 +190,7 @@
                          [(chunk/block-pos->id pos)]}]
        (out/all (out/level-event out/sound-page-turn pos 0))])))
 
-(defn dropped-book
-  "Returns the book a broken lectern spills, or nil."
-  [world pos]
+(defn dropped-book [world pos]
   (let [e (be/at world pos)
         st (state-at (:chunks world) pos)]
     (when (and (lectern/has-book? st) (:book e))
@@ -255,24 +202,16 @@
                       (entity/pop-velocity [(:tick world) pos :lectern])
                       (:book e))]))))
 
-(defn positions
-  "Returns the blocks the open menu belongs to."
-  [m]
+(defn positions [m]
   (cond (lectern? m) [] (bench? m) [] (= :ender (:kind m)) [(:pos m)] :else (:cells m)))
 
-(defn covers?
-  "Returns true when the menu belongs to the block at pos."
-  [m pos]
+(defn covers? [m pos]
   (boolean (some #(= pos %) (positions m))))
 
-(defn viewers
-  "Returns how many players have the container at pos open."
-  [world pos]
+(defn viewers [world pos]
   (count (filter (fn [[_ e]] (and (:menu e) (covers? (:menu e) pos))) (:entities world))))
 
-(defn- pitch
-  "Returns the pitch of a hinge sound at pos."
-  [world pos salt] (random/hinge-pitch [(:tick world) pos salt]))
+(defn- pitch [world pos salt] (random/hinge-pitch [(:tick world) pos salt]))
 
 (def ^:private copper-hinge
   {:weathered-copper-chest       :block.copper-chest-weathered
@@ -324,17 +263,13 @@
 (def ^:private ^:const recheck-delay 5)
 (def ^:private open-step (float 0.1))
 
-(defn- trigger-deltas
-  "Returns the deltas that start a shulker box opening or closing."
-  [pos ^long after]
+(defn- trigger-deltas [pos ^long after]
   (cond
     (zero? after) [[:shulker-anim pos {:status :closing}]]
     (= 1 after) [[:shulker-anim pos {:status :opening}]]
     :else nil))
 
-(defn animate-deltas
-  "Returns the deltas for shulker box lids moving this tick."
-  [world]
+(defn animate-deltas [world]
   (mapcat (fn [[pos {:keys [status progress]}]]
             (let [p (float progress)
                   up (float (+ p open-step)) down (float (- p open-step))]
@@ -349,9 +284,7 @@
                   nil))))
           (:shulker-anim world)))
 
-(defn count-deltas
-  "Returns the deltas for a container going from before to after viewers."
-  [world pos ^long before ^long after]
+(defn count-deltas [world pos ^long before ^long after]
   (let [st (state-at (:chunks world) pos)
         t (block/type-of st)
         edge (fn [open?] (cond
@@ -367,10 +300,7 @@
       (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
         [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]]))))
 
-(defn recheck-deltas
-  "Returns the deltas that tell clients again how many players have a
-   container open."
-  [world]
+(defn recheck-deltas [world]
   (let [t (long (:tick world))]
     (mapcat (fn [[pos at]]
               (when (<= (long at) t)
@@ -381,28 +311,20 @@
                           [(out/all (out/block-event pos 1 (min 255 n)))])))))
             (:container-rechecks world))))
 
-(defn barrel-open-state
-  "Returns the barrel state shown open or shut."
-  [^long st open?]
+(defn barrel-open-state [^long st open?]
   (block/state (block/block-of st) (assoc (block/props-of st) :open (if open? :true :false))))
 
-(defn fits-inside?
-  "Returns true when a shulker box may hold the item."
-  [item]
+(defn fits-inside? [item]
   (not= :shulker-box (:type (get (data/blocks) item))))
 
 (defn- may-place? [_ stack]
   (fits-inside? (:item stack)))
 
-(defn- shrink
-  "Returns the slots with one taken off the stack in slot."
-  [inv slot]
+(defn- shrink [inv slot]
   (let [n (dec (long (:count (get inv slot) 1)))]
     (if (pos? n) (update inv slot assoc :count n) (dissoc inv slot))))
 
-(defn- span
-  "Returns the slots from from to to, the far end first when reverse?."
-  [v ^long from ^long to reverse?]
+(defn- span [v ^long from ^long to reverse?]
   (map v (if reverse? (range (dec to) (dec from) -1) (range from to))))
 
 (defn- cut-quick [v inv slot]
@@ -468,7 +390,6 @@
    :quick (fn [_ _] nil)})
 
 (defn layout
-  "Returns the rules for where items may go and move in the open menu."
   ([m] (layout m {:held 0}))
   ([m ctx]
    (if (lectern? m)
@@ -481,35 +402,26 @@
        (menu/container-layout (long (:rows m)) may-place?)
        (menu/container-layout (long (:rows m)))))))
 
-(defn derived
-  "Returns the menu's items with any result slot filled in."
-  [m items]
+(defn derived [m items]
   (if-not (bench? m)
     items
     (let [inv ((:derive (layout m))
                (into {} (keep-indexed (fn [i s] (when s [i s]))) items))]
       (mapv #(get inv %) (range (slot-count m))))))
 
-(defn slots-changed
-  "Returns the menu after its ingredients changed."
-  [m items]
+(defn slots-changed [m items]
   (case (:type m)
     :stonecutter (workbench/cut-changed m items)
     :loom (workbench/loom-changed m items)
     m))
 
-(defn settled
-  "Returns the menu with its result recomputed."
-  [m items]
+(defn settled [m items]
   (if (or (not (bench? m)) (crafting? m))
     [m items]
     (let [m' (slots-changed m items)]
       [m' (derived m' items)])))
 
-(defn button
-  "Returns the menu with the player's choice made, or unchanged when there
-   is nothing to choose."
-  [m ^long id]
+(defn button [m ^long id]
   (let [n (case (:type m)
             :stonecutter (count (workbench/cuts (first (:contents m))))
             :loom (count (:patterns m))
@@ -522,9 +434,7 @@
   {:stonecutter :ui.stonecutter.take-result
    :loom        :ui.loom.take-result})
 
-(defn take-sound
-  "Returns the sound of taking a bench's result."
-  [m]
+(defn take-sound [m]
   (when-let [kind (take-sounds (:type m))]
     (let [[x y z] (:pos m)]
       (out/all (out/sound kind

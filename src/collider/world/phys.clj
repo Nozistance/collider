@@ -11,16 +11,11 @@
 (def ^:private ^ThreadLocal sweep-buf
   (proxy [ThreadLocal] [] (initialValue [] (double-array 1536))))
 
-(defn- full-cube?
-  "Returns true when x y z is a solid block filling its whole cube."
-  [chunks template x y z]
+(defn- full-cube? [chunks template x y z]
   (let [st (chunk/block-state chunks template x y z)]
     (and (block/solid? st) (block/full-cube? st))))
 
-(defn standing-on-cubes?
-  "Returns true when a box of half width half at x y z rests squarely on full
-   solid blocks."
-  [chunks template x y z half]
+(defn standing-on-cubes? [chunks template x y z half]
   (let [x (double x) y (double y) z (double z) half (double half)]
     (and (== y (Math/floor y))
          (pos? y)
@@ -33,10 +28,7 @@
                 (or (and (= x1 x0) (= z1 z0)) (full-cube? chunks template x1 yb z1))
                 true)))))
 
-(defn fence-at?
-  "Returns true when the block at x y z stands taller than its cube, as a fence
-   or a gate does."
-  [chunks template x y z]
+(defn fence-at? [chunks template x y z]
   (let [st (chunk/block-state chunks template x y z)]
     (or (block/fence? st) (= :gate (block/shape-of st)))))
 
@@ -53,16 +45,10 @@
 (deftype Sweep [^doubles a ^long n])
 (deftype Move [pos vel ^boolean on-ground])
 
-(defn- lo-bound
-  "Returns the lowest block a box edge at c passes through while moving by
-   v."
-  ^long [^double c ^double v]
+(defn- lo-bound ^long [^double c ^double v]
   (long (Math/floor (- (+ c (min 0.0 v)) eps))))
 
-(defn- hi-bound
-  "Returns the highest block a box edge at c passes through while moving
-   by v."
-  ^long [^double c ^double v]
+(defn- hi-bound ^long [^double c ^double v]
   (long (Math/floor (+ (+ c (max 0.0 v)) eps))))
 
 (defn- sweep-buffer ^doubles [^long need]
@@ -112,10 +98,7 @@
                        (inc n#)))
                    (long ~n) (block/collision-boxes (long ~st))))))
 
-(defn- swept-boxes
-  "Returns the collision boxes anywhere a body at ebox can reach while
-   moving by vx vy vz."
-  ^Sweep [chunks template ^doubles ebox vx vy vz]
+(defn- swept-boxes ^Sweep [chunks template ^doubles ebox vx vy vz]
   (let [vx (double vx) vy (double vy) vz (double vz)
         x1 (lo-bound (aget ebox 0) vx) x2 (hi-bound (aget ebox 3) vx)
         y1 (max (dec chunk/min-y) (- (lo-bound (aget ebox 1) vy) 1)) y2 (hi-bound (aget ebox 4) vy)
@@ -147,7 +130,7 @@
 (defn move
   "Returns the position, velocity and ground flag of a body moved by vel from
    pos, stopped by the blocks it meets. The body is a box of half width half and
-   height height; step is how high it climbs without jumping."
+   height height. step is how high it climbs without jumping."
   ([chunks template pos vel half height]
    (move chunks template pos vel half height 0.0))
   ([chunks template pos vel half height step]

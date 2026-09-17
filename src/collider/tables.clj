@@ -33,9 +33,7 @@
     (progress! (assoc v :event :end :step step :took (- (System/nanoTime) t)))
     v))
 
-(defn cache-dir
-  "Returns the directory of the vanilla jar of a version."
-  ^File [version]
+(defn cache-dir ^File [version]
   (io/file "data" version))
 
 (defn- sha1 [^File f]
@@ -139,7 +137,6 @@
     :else (fetch! version jar)))
 
 (defn fetch
-  "Returns the vanilla server jar of a version."
   (^File [version] (fetch version nil))
   (^File [version local]
    (let [jar (io/file (cache-dir version) "server.jar")]
@@ -1205,9 +1202,7 @@
                                       server))
          (finally (delete-tree! libraries)))))
 
-(defn generate!
-  "Writes the game data tables of a version."
-  [{:keys [version out jar] :or {version version out "target/data"}}]
+(defn generate! [{:keys [version out jar] :or {version version out "target/data"}}]
   (let [bundle (fetch version jar)
         server (inner-jar bundle)
         dir (reports bundle)]
@@ -1218,7 +1213,7 @@
   (flush))
 
 (defn -main
-  "Generates the tables in this JVM, reporting each event as edn on stdout."
+  "Generates the tables in this JVM and reports each event as edn on stdout."
   [opts]
   (binding [*progress* emit-edn!]
     (try (generate! (edn/read-string opts))

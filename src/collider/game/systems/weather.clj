@@ -30,8 +30,6 @@
                (out/thunder-level (weather/thunder-level world))]]
       (out/to eid msg))))
 
-(defn weather
-  "Returns the deltas that advance the weather and tell players about it."
-  [world d]
+(defn weather [world d]
   (let [w (merge world (weather/advance world))]
     (concat [[:advance-weather]] (level-messages w) (switch-messages w) (join-messages w (:input d)))))

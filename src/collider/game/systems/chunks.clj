@@ -11,14 +11,10 @@
 (def ^:const min-rate 0.01)
 (def ^:const max-rate 64.0)
 (def ^:const max-unacked 10)
-(defn chunk-coord
-  "Returns the chunk a block coordinate falls in."
-  ^long [^double c]
+(defn chunk-coord ^long [^double c]
   (bit-shift-right (long (Math/floor c)) 4))
 
-(defn wanted-chunks
-  "Returns the chunks a player at the given chunk should be able to see."
-  [world cp]
+(defn wanted-chunks [world cp]
   (let [r (long (get-in world [:config :view-distance] view-radius))
         [cx cz] (chunk/id->pos cp)]
     (into #{} (chunk/around-ids (long cx) (long cz) r))))
@@ -31,9 +27,7 @@
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
 
-(defn- nearest-first
-  "Returns the chunks ordered from the given chunk outwards."
-  [ids cp]
+(defn- nearest-first [ids cp]
   (let [[pcx pcz] (chunk/id->pos cp)]
     (sort-by (fn [id]
                (let [[cx cz] (chunk/id->pos id)
@@ -46,10 +40,7 @@
   (let [rate (double (or chunk-rate start-rate))]
     (if blocked 0.0 (min (+ (double (or chunk-quota 0.0)) rate) (max 1.0 rate)))))
 
-(defn- stream-plan
-  "Returns what to send and what to forget for a player who has moved, and how
-   much more they may be sent."
-  [world eid cp {:keys [sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
+(defn- stream-plan [world eid cp {:keys [sent-chunks chunk-rate chunk-quota batches-unacked batches-max]}]
   (let [want (wanted-chunks world cp)
         add-all (vec (remove #(contains? sent-chunks %) want))
         unacked (long (or batches-unacked 0))
@@ -79,10 +70,7 @@
     [(out/to eid (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0)))
      [:merge-entity eid {:needs-spawn? nil}]]))
 
-(defn- stream-deltas
-  "Returns the deltas that keep one player's chunks up to date and place them in
-   the world once they can stand there."
-  [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks needs-spawn? chunks-pending?] :as p}]]
+(defn- stream-deltas [world [eid {:keys [pos yaw pitch chunk-pos sent-chunks needs-spawn? chunks-pending?] :as p}]]
   (let [[x _ z] pos
         cp (chunk/pos->id (chunk-coord x) (chunk-coord z))]
     (concat
@@ -91,8 +79,6 @@
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas world eid pos yaw pitch)))))
 
-(defn chunk-streaming
-  "Returns the deltas that send and drop chunks as players move."
-  [world _d]
+(defn chunk-streaming [world _d]
   (mapv (fn [entry] #(stream-deltas world entry))
         (state/player-entries world)))

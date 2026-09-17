@@ -4,134 +4,81 @@
 
 (set! *warn-on-reflection* true)
 
-(defn to
-  "Returns the effect msg addressed to player eid."
-  [eid msg] [:fx (assoc msg :to eid)])
-(defn all
-  "Returns the effect msg for everybody it concerns."
-  [msg] [:fx msg])
-(defn except
-  "Returns the effect msg for everybody but eid."
-  [eid msg] [:fx (assoc msg :except eid)])
-(defn blocks-changed
-  "Returns the effect that a batch of blocks in one chunk now look different."
-  [cp records]
+(defn to [eid msg] [:fx (assoc msg :to eid)])
+(defn all [msg] [:fx msg])
+(defn except [eid msg] [:fx (assoc msg :except eid)])
+(defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
-(defn time
-  "Returns the effect that carries the world age and the time of day."
-  [age time-of-day]
+(defn time [age time-of-day]
   {:msg :time :age age :time time-of-day})
 
-(defn explosion
-  "Returns the effect of an explosion seen and heard at center."
-  [center radius blocks motions pitch]
+(defn explosion [center radius blocks motions pitch]
   {:msg     :explosion :center center :radius radius :blocks blocks
    :motions motions :pitch (double pitch)})
 
-(defn teleport
-  "Returns the effect that places a player at pos, facing yaw and pitch."
-  [pos yaw pitch]
+(defn teleport [pos yaw pitch]
   {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)})
 
-(defn health
-  "Returns the effect that a player's health changed."
-  [health]
+(defn health [health]
   {:msg :health :health (double health)})
 
-(defn respawn
-  "Returns the effect that a player starts over in the world."
-  []
+(defn respawn []
   {:msg :respawn})
 
-(defn default-spawn
-  "Returns the effect that the world spawn point moved."
-  [pos]
+(defn default-spawn [pos]
   {:msg :default-spawn :pos pos})
 
-(defn rain-started
-  "Returns the effect that rain begins."
-  []
+(defn rain-started []
   {:msg :rain-started})
 
-(defn rain-stopped
-  "Returns the effect that rain ends."
-  []
+(defn rain-stopped []
   {:msg :rain-stopped})
 
-(defn rain-level
-  "Returns the effect that sets how hard it is raining."
-  [level]
+(defn rain-level [level]
   {:msg :rain-level :level (double level)})
 
-(defn thunder-level
-  "Returns the effect that sets how heavy the storm is."
-  [level]
+(defn thunder-level [level]
   {:msg :thunder-level :level (double level)})
 
-(defn keepalive
-  "Returns the effect that pings a player."
-  [id]
+(defn keepalive [id]
   {:msg :keepalive :id id})
 
-(defn disconnect
-  "Returns the effect that drops a player with a reason to show."
-  [text]
+(defn disconnect [text]
   {:msg :disconnect :text text})
 
-(defn close
-  "Returns the effect that closes a connection."
-  []
+(defn close []
   {:msg :close})
 
-(defn joined
-  "Returns the effect that a player is now in the world."
-  []
+(defn joined []
   {:msg :joined})
 
-(defn block-ack
-  "Returns the effect that answers a player's block action."
-  [sequence]
+(defn block-ack [sequence]
   {:msg :block-ack :sequence sequence})
 
-(defn set-slot
-  "Returns the effect that a slot of a player's inventory holds stack."
-  [slot stack]
+(defn set-slot [slot stack]
   {:msg :set-slot :slot slot :stack stack})
 
-(defn carried
-  "Returns the effect that sets what a player holds on the cursor."
-  [stack]
+(defn carried [stack]
   {:msg :carried :stack stack})
 
-(defn held-slot
-  "Returns the effect that selects a player's hotbar slot."
-  [slot]
+(defn held-slot [slot]
   {:msg :held-slot :slot slot})
 
 (defn inventory
-  "Returns the effect that replaces a player's whole inventory."
   ([slots] (inventory slots nil))
   ([slots carried] {:msg :inventory :slots slots :carried carried}))
 
-(defn suggestions
-  "Returns the effect that offers completions for what a player is typing."
-  [id start length matches]
+(defn suggestions [id start length matches]
   {:msg :suggestions :id id :start start :length length :matches (vec matches)})
 
-(defn system-chat
-  "Returns the effect that shows a message from the server in chat."
-  [runs]
+(defn system-chat [runs]
   {:msg :system-chat :runs runs})
 
-(defn stats
-  "Returns the effect that shows a player their statistics."
-  [stats]
+(defn stats [stats]
   {:msg :stats :stats stats})
 
-(defn game-rules
-  "Returns the effect that tells a player the game rules in force."
-  [rules]
+(defn game-rules [rules]
   {:msg :game-rules :rules rules})
 
 (defn overlay
@@ -139,29 +86,19 @@
   [runs]
   {:msg :overlay :runs runs})
 
-(defn player-chat
-  "Returns the effect that shows what a player said."
-  [name runs]
+(defn player-chat [name runs]
   {:msg :player-chat :name name :runs runs})
 
-(defn tab-add
-  "Returns the effect that adds players to the player list."
-  [entries]
+(defn tab-add [entries]
   {:msg :tab-add :entries entries})
 
-(defn tab-remove
-  "Returns the effect that removes players from the player list."
-  [uuids]
+(defn tab-remove [uuids]
   {:msg :tab-remove :uuids uuids})
 
-(defn tab-latency
-  "Returns the effect that updates the ping shown in the player list."
-  [entries]
+(defn tab-latency [entries]
   {:msg :tab-latency :entries entries})
 
-(defn tab-header
-  "Returns the effect that sets the text above and below the player list."
-  [header footer]
+(defn tab-header [header footer]
   {:msg :tab-header :header header :footer footer})
 
 (defn move
@@ -174,39 +111,25 @@
   [eid dx dy dz yaw pitch on-ground]
   {:msg :move-look :eid eid :dx dx :dy dy :dz dz :yaw yaw :pitch pitch :on-ground on-ground})
 
-(defn look
-  "Returns the effect that an entity turned in place."
-  [eid yaw pitch on-ground]
+(defn look [eid yaw pitch on-ground]
   {:msg :look :eid eid :yaw yaw :pitch pitch :on-ground on-ground})
 
-(defn sync-pos
-  "Returns the effect that puts an entity exactly where it belongs."
-  [eid pos yaw pitch on-ground]
+(defn sync-pos [eid pos yaw pitch on-ground]
   {:msg :sync-pos :eid eid :pos pos :yaw yaw :pitch pitch :on-ground on-ground})
 
-(defn head-look
-  "Returns the effect that an entity turned its head."
-  [eid yaw]
+(defn head-look [eid yaw]
   {:msg :head-look :eid eid :yaw yaw})
 
-(defn meta
-  "Returns the effect that an entity changed how it looks or behaves."
-  [eid type meta]
+(defn meta [eid type meta]
   {:msg :meta :eid eid :type type :meta meta})
 
-(defn velocity
-  "Returns the effect that an entity was set moving."
-  [eid vel]
+(defn velocity [eid vel]
   {:msg :velocity :eid eid :vel vel})
 
-(defn equipment
-  "Returns the effect that an entity wears or holds stack."
-  [eid slot stack]
+(defn equipment [eid slot stack]
   {:msg :equipment :eid eid :slot slot :stack stack})
 
-(defn animation
-  "Returns the effect that an entity plays an animation, such as a swing."
-  [eid kind]
+(defn animation [eid kind]
   {:msg :animation :eid eid :kind kind})
 
 (defn status
@@ -214,29 +137,19 @@
   [eid kind]
   {:msg :status :eid eid :kind kind})
 
-(defn collect
-  "Returns the effect of an item being picked up."
-  [item-eid collector-eid]
+(defn collect [item-eid collector-eid]
   {:msg :collect :eid item-eid :collector collector-eid})
 
-(defn sound
-  "Returns the effect of a sound played at pos."
-  [kind pos volume pitch]
+(defn sound [kind pos volume pitch]
   {:msg :sound :kind kind :pos pos :volume (double volume) :pitch (double pitch)})
 
-(defn particles
-  "Returns the effect of particles at pos."
-  [kind state pos count speed]
+(defn particles [kind state pos count speed]
   {:msg :particles :kind kind :state state :pos pos :count count :speed (double speed)})
 
-(defn break-effect
-  "Returns the effect of a block breaking, with its sound and shards."
-  [pos state]
+(defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
 
-(defn extinguish
-  "Returns the effect of a fire going out."
-  [pos]
+(defn extinguish [pos]
   {:msg :extinguish :pos pos})
 
 (defn fizz
@@ -263,13 +176,10 @@
 (def ^:const particles-scrape 3005)
 
 (defn level-event
-  "Returns the effect of a level event at pos."
   ([event pos] (level-event event pos 0))
   ([event pos data] {:msg :level-event :event event :pos pos :data data}))
 
-(defn sign-editor
-  "Returns the effect that opens a sign for a player to write on."
-  [pos front?]
+(defn sign-editor [pos front?]
   {:msg :sign-editor :pos pos :front? (boolean front?)})
 
 (defn block-event
@@ -277,19 +187,13 @@
   [pos action param]
   {:msg :block-event :pos pos :action action :param param})
 
-(defn open-screen
-  "Returns the effect that opens a menu for a player."
-  [container menu title]
+(defn open-screen [container menu title]
   {:msg :open-screen :container container :menu menu :title title})
 
-(defn container-content
-  "Returns the effect that fills an open menu with items."
-  [container state-id items carried]
+(defn container-content [container state-id items carried]
   {:msg :container-content :container container :state-id state-id :items (vec items) :carried carried})
 
-(defn container-slot
-  "Returns the effect that one slot of an open menu holds stack."
-  [container state-id slot stack]
+(defn container-slot [container state-id slot stack]
   {:msg :container-slot :container container :state-id state-id :slot slot :stack stack})
 
 (defn container-data
@@ -297,17 +201,11 @@
   [container id value]
   {:msg :container-data :container container :id id :value value})
 
-(defn container-close
-  "Returns the effect that closes an open menu."
-  [container]
+(defn container-close [container]
   {:msg :container-close :container container})
 
-(defn block-entity
-  "Returns the effect that resends the block entity at pos."
-  [pos]
+(defn block-entity [pos]
   {:msg :block-entity :pos pos})
 
-(defn bonemeal
-  "Returns the effect of bone meal sparkling at pos."
-  [pos]
+(defn bonemeal [pos]
   {:msg :bonemeal :pos pos})

@@ -18,33 +18,21 @@
 (def ^:private ^:const default-max-connections 256)
 (defrecord Conn [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
 
-(defn conn-state
-  "Returns the state the connection c is in."
-  [^Conn c] (:state @(:st c)))
-(defn info
-  "Returns the state map of the connection c."
-  [^Conn c] @(:st c))
-(defn put!
-  "Records k as v on the connection c."
-  [^Conn c k v] (swap! (:st c) assoc k v))
-(defn- who
-  "Returns the name of the connection c for logging."
-  [^Conn c]
+(defn conn-state [^Conn c] (:state @(:st c)))
+(defn info [^Conn c] @(:st c))
+(defn put! [^Conn c k v] (swap! (:st c) assoc k v))
+(defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
 
-(defn set-conn-state!
-  "Moves the connection c to state s."
-  [^Conn c s] (swap! (:st c) assoc :state s))
+(defn set-conn-state! [^Conn c s] (swap! (:st c) assoc :state s))
 (defn close!
   "Closes the connection c once everything already sent has gone out."
   [^Conn c]
   (when (.compareAndSet ^AtomicBoolean (:closing c) false true)
     (.offer ^BlockingQueue (:q c) [:close])))
 
-(defn send!
-  "Sends m to the connection c, unless it is closing."
-  [^Conn c m]
+(defn send! [^Conn c m]
   (when-not (.get ^AtomicBoolean (:closing c))
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
@@ -160,9 +148,7 @@
         (disconnected! conn io)
         (close! conn)))))
 
-(defn writable-eids
-  "Returns the players whose connections can take more packets."
-  [conns]
+(defn writable-eids [conns]
   (into #{}
         (keep (fn [[eid ^Conn conn]]
                 (when (< (.size ^BlockingQueue (:q conn)) out-queue-high) eid)))
@@ -209,9 +195,7 @@
             (admit! sock live limit io))
           (recur))))))
 
-(defn listen!
-  "Starts taking player connections on port and returns the server."
-  [io port]
+(defn listen! [io port]
   (let [srv (ServerSocket. (int port))
         live (AtomicInteger.)]
     {:socket srv

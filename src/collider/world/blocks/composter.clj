@@ -6,9 +6,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn level
-  "Returns how full the composter st is."
-  ^long [^long st] (block/prop-long st :level))
+(defn level ^long [^long st] (block/prop-long st :level))
 
 (def rule
   {:name   :composter

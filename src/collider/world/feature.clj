@@ -30,26 +30,18 @@
   [chunks]
   {:chunks chunks :cells []})
 
-(defn cells
-  "Returns the [pos state] changes a placement made, one for each position."
-  [acc]
+(defn cells [acc]
   (let [final (into {} (:cells acc))]
     (into [] (comp (map first) (distinct) (map (fn [p] [p (final p)])))
           (:cells acc))))
 
-(defn chunks
-  "Returns the world a placement reads."
-  [acc]
+(defn chunks [acc]
   (:chunks acc))
 
-(defn state-at
-  "Returns the block state a placement sees at p."
-  ^long [acc p]
+(defn state-at ^long [acc p]
   (gen/at (:chunks acc) p))
 
-(defn set-state
-  "Returns the placement with the block state st put at p."
-  [acc p ^long st]
+(defn set-state [acc p ^long st]
   (-> acc
       (update :chunks chunk/chunks-set-blocks (gen/flat-chunk) [[p st]])
       (update :cells conj [p st])))
@@ -217,9 +209,7 @@
                               [acc []] (patch-columns xr zr))]
     (vegetation acc cfg surface roll salt)))
 
-(defn configured
-  "Returns the placement with the configured feature placed at p."
-  [acc feature p roll salt]
+(defn configured [acc feature p roll salt]
   (let [m (if (keyword? feature)
             (get-in (data/features) [:configured feature])
             feature)
@@ -235,10 +225,7 @@
     (block/tagged? (state-at acc p) (tag-of (:tag (:predicate m))))
     true))
 
-(defn placed
-  "Returns the placement with the placed feature put at p, when its placement
-   lets it stand there."
-  [acc feature p roll salt]
+(defn placed [acc feature p roll salt]
   (let [m (if (keyword? feature)
             (get-in (data/features) [:placed feature])
             feature)]
@@ -246,12 +233,8 @@
       (configured acc (:feature m) p roll (conj salt feature))
       acc)))
 
-(defn bone-meal-features
-  "Returns the features bone meal grows in a biome."
-  [biome]
+(defn bone-meal-features [biome]
   (get-in (data/features) [:bone-meal biome]))
 
-(defn placer-feature
-  "Returns the feature a block grows from bone meal, nil when it grows none."
-  [block]
+(defn placer-feature [block]
   (get-in (data/features) [:placers block]))

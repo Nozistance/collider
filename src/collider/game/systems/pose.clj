@@ -1,5 +1,5 @@
 (ns collider.game.systems.pose
-  "The water around a player, whether they swim and how they stand."
+  "Player water state, swimming and pose."
   (:require [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -120,8 +120,6 @@
         m (into {} (remove same?) (changes world e))]
     (when (seq m) [[:merge-entity eid m]])))
 
-(defn pose
-  "Returns the deltas that keep a player's water, swimming and pose current."
-  [world _]
+(defn pose [world _]
   [#(into [] (mapcat (fn [entry] (player-deltas world entry)))
           (state/player-entries world))])

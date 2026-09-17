@@ -1,5 +1,5 @@
 (ns collider.game.craft
-  "Crafting recipes and what a crafting grid makes of them."
+  "Crafting recipes and their matching against a crafting grid."
   (:refer-clojure :exclude [find])
   (:require [collider.data :as data]))
 
@@ -589,9 +589,7 @@
     :shapeless [:shapeless (count ingredients)]
     [:other]))
 
-(defn index-of
-  "Returns the lookup index of recipes."
-  [recipes]
+(defn index-of [recipes]
   (reduce (fn [idx r] (update-in idx (bucket r) (fnil conj []) r))
           {:by-id (into {} (map (juxt :id identity)) recipes)}
           (sort-by :order recipes)))
@@ -599,9 +597,7 @@
 (def ^:private ^:table crafting-index
   (delay (index-of (:crafting (data/recipes)))))
 
-(defn index
-  "Returns the lookup index of the crafting recipes of the game."
-  [] @crafting-index)
+(defn index [] @crafting-index)
 
 (defn- candidates [idx {:keys [w h n]}]
   (sort-by :order (concat (get-in idx [:shaped [w h n]])

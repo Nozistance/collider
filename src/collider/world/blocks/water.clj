@@ -16,9 +16,7 @@
 
 (defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
 
-(defn coral-wet?
-  "Returns true when the coral state st at p touches water."
-  [chunks p st]
+(defn coral-wet? [chunks p st]
   (or (block/waterlogged? st)
       (boolean (some #(water? (gen/at chunks (mapv + p %))) around6))))
 
@@ -33,14 +31,9 @@
                (when-not (coral-wet? chunks p st)
                  [[p (block/dead-coral st)]])))})
 
-(defn kelp?
-  "Returns true when st is kelp."
-  [st] (contains? kelp-types (block/type-of (long st))))
+(defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
 
-(defn kelp-head-state
-  "Returns the state of a fresh kelp head, with the age it takes at that tick
-   and position."
-  ^long [tick pos]
+(defn kelp-head-state ^long [tick pos]
   (block/state :kelp {:age (support/plant-age tick pos)}))
 
 (defn- above [chunks [x y z]]
@@ -68,10 +61,7 @@
     (= :true (:waterlogged (block/props-of st))) (block/without-water st)
     (= :water (liquid/liquid-class st)) 0))
 
-(defn absorbed
-  "Returns the changes a sponge at pos makes as it dries the water around it, or
-   nil when there is nothing to dry."
-  [chunks pos]
+(defn absorbed [chunks pos]
   (loop [queue (conj PersistentQueue/EMPTY [pos 0]) seen #{pos} acc []]
     (if (or (empty? queue) (>= (count acc) 64))
       (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))

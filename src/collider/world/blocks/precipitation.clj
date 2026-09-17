@@ -15,9 +15,7 @@
 (def ^:const rain-fill-chance 0.05)
 (def ^:const powder-snow-fill-chance 0.1)
 
-(defn- state-at
-  "Returns the block state at p, air outside the world height."
-  ^long [chunks p]
+(defn- state-at ^long [chunks p]
   (if (chunk/in-range? (long (nth p 1)))
     (long (chunk/chunks-get-block chunks (gen/flat-chunk) p))
     0))
@@ -81,9 +79,9 @@
       [[p st]])))
 
 (defn tick-precipitation
-  "Returns the changes the weather makes to the top of the column at x z. max-
-   height is the deepest snow allowed there, and roll decides whether a cauldron
-   fills."
+  "Returns the changes the weather makes to the top of the column at x z.
+   max-height is the most snow layers allowed there. roll decides whether a
+   cauldron fills."
   [ctx chunks [x _ z] max-height roll]
   (let [top [(long x) (spawn/motion-blocking-height chunks (gen/flat-chunk) x z) (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]

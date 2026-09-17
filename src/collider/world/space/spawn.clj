@@ -14,9 +14,7 @@
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
-(defn- state-at
-  "Returns the block state at x y z, air outside the world height."
-  [chunks template x y z]
+(defn- state-at [chunks template x y z]
   (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks template x y z) 0))
 
 (defn- air? [^long st] (contains? air-blocks (block/block-of st)))
@@ -74,10 +72,7 @@
     [(- cx player-half) (double py) (- cz player-half)
      (+ cx player-half) (+ py player-height) (+ cz player-half)]))
 
-(defn- cell-edge
-  "Returns the block a box edge at v falls in, reaching one further out
-   in the direction d."
-  ^long [^double v ^long d]
+(defn- cell-edge ^long [^double v ^long d]
   (+ d (long (Math/floor (+ v (* d (double eps)))))))
 
 (defn- box-free? [chunks template px py pz]
@@ -130,9 +125,7 @@
         n (long (min (long max-attempts) (* (long side) (long side))))]
     [radius side n (coprime n) (long (Math/floor (* (double seed) n)))]))
 
-(defn- candidate-cell
-  "Returns the ith cell a spawn scan around ox oz tries."
-  [[radius side n step offset] ^long ox ^long oz ^long i]
+(defn- candidate-cell [[radius side n step offset] ^long ox ^long oz ^long i]
   (let [value (rem (+ (long offset) (* (long step) i)) (long n))]
     [(+ ox (rem value (long side)) (- (long radius)))
      (+ oz (quot value (long side)) (- (long radius)))]))

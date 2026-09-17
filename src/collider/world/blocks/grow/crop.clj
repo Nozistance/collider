@@ -35,10 +35,7 @@
 (defn- grows-now? [chunks p st roll]
   (and (lit? chunks p 9) (growth-roll? chunks p st roll)))
 
-(defn tick
-  "Returns the change ageing the crop at p by one, or nil when it does not grow
-   this tick."
-  [chunks p st roll _time _ctx]
+(defn tick [chunks p st roll _time _ctx]
   (let [t (block/type-of st) a (age st)]
     (when (and (< a (long (max-age t)))
                (or (not (#{:beetroot :torchflower-crop} t)) (not (chance? roll :gate 3)))
@@ -53,17 +50,11 @@
       (cond-> [[p st']]
               (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
 
-(defn pitcher-tick
-  "Returns the changes ageing a pitcher crop at p, or nil when it does not grow
-   this tick."
-  [chunks p st roll _time _ctx]
+(defn pitcher-tick [chunks p st roll _time _ctx]
   (when (and (= :lower (:half (block/props-of st))) (< (age st) 4) (growth-roll? chunks p st roll))
     (pitcher-grown chunks p st (inc (age st)))))
 
-(defn pitcher-meal
-  "Returns the bone meal result for a pitcher crop at p, whichever half of it p
-   holds."
-  [chunks p st _roll]
+(defn pitcher-meal [chunks p st _roll]
   (let [lower? (= :lower (:half (block/props-of st)))
         lp (if lower? p (dir/down p))
         lst (if lower? st (gen/at chunks lp))]
@@ -82,10 +73,7 @@
     (when (and (air-at? chunks beside) (block/tagged? (gen/at chunks (dir/down beside)) tag))
       [[beside (block/state fruit)] [p (block/state attached {:facing dir})]])))
 
-(defn stem-tick
-  "Returns the changes a pumpkin or melon stem at p makes this tick: an older
-   stem, or a fruit beside it."
-  [chunks p st roll _time _ctx]
+(defn stem-tick [chunks p st roll _time _ctx]
   (when (grows-now? chunks p st roll)
     (if (< (age st) 7)
       [[p (aged st (inc (age st)))]]
@@ -109,19 +97,13 @@
                  (not (support/supported? chunks (gen/flat-chunk) p st)) [[p (support/gone-state st)]]
                  (fruitless? chunks p st) [[p (block/state (second (stems (block/block-of st))) {:age :7})]])))})
 
-(defn cane-tick
-  "Returns the changes a sugar cane at p makes this tick, or nil when it does
-   not grow."
-  [chunks p st _roll _time _ctx]
+(defn cane-tick [chunks p st _roll _time _ctx]
   (when (and (air-at? chunks (dir/up p)) (< (inc (height-below chunks p (block/block-of st) 3)) 3))
     (if (= 15 (age st))
       [[(dir/up p) (block/state (block/block-of st))] [p (aged st 0)]]
       [[p (aged st (inc (age st)))]])))
 
-(defn cactus-tick
-  "Returns the changes a cactus at p makes this tick, or nil when it does not
-   grow."
-  [chunks p st roll _time _ctx]
+(defn cactus-tick [chunks p st roll _time _ctx]
   (when (air-at? chunks (dir/up p))
     (let [a (age st) h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
@@ -131,43 +113,27 @@
                     (and (= a 15) (< h 3)) [[(dir/up p) (block/state :cactus)] [p (aged st 0)]])]
           (into (vec top) (when (< a 15) [[p (aged st (inc a))]])))))))
 
-(defn berry-tick
-  "Returns the change ripening a berry bush at p, or nil when it does not this
-   tick."
-  [chunks p st roll _time _ctx]
+(defn berry-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 3) (chance? roll :gate 5) (lit? chunks (dir/up p) 9))
     [[p (aged st (inc (age st)))]]))
 
-(defn kelp-tick
-  "Returns the change growing kelp above p, or nil when it does not grow."
-  [chunks p st roll _time _ctx]
+(defn kelp-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
              (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
     [[(dir/up p) (aged st (inc (age st)))]]))
 
-(defn cocoa-tick
-  "Returns the change ripening cocoa at p, or nil when it does not this tick."
-  [_chunks p st roll _time _ctx]
+(defn cocoa-tick [_chunks p st roll _time _ctx]
   (when (and (chance? roll :gate 5) (< (age st) 2)) [[p (aged st (inc (age st)))]]))
 
-(defn nether-wart-tick
-  "Returns the change ripening nether wart at p, or nil when it does not this
-   tick."
-  [_chunks p st roll _time _ctx]
+(defn nether-wart-tick [_chunks p st roll _time _ctx]
   (when (and (< (age st) 3) (chance? roll :gate 10))
     [[p (aged st (inc (age st)))]]))
 
-(defn propagule-tick
-  "Returns the change ripening a hanging propagule at p, or nil when it is ripe
-   already."
-  [_chunks p st _roll _time _ctx]
+(defn propagule-tick [_chunks p st _roll _time _ctx]
   (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
     [[p (aged st (inc (age st)))]]))
 
-(defn meal
-  "Returns the bone meal result for the crop st at p, several ages older, or nil
-   when it is ripe already."
-  [chunks p st roll]
+(defn meal [chunks p st roll]
   (let [t (block/type-of st) a (age st) top (long (max-age t))]
     (when (< a top)
       (let [n (case t :beetroot (quot (+ 2 (pick roll :meal 4)) 3) :torchflower-crop 1 (+ 2 (pick roll :meal 4)))
@@ -176,52 +142,30 @@
                     (into [[p (aged st a')]] (fruit-changes chunks p (aged st a') roll))
                     [[p (aged st a')]])}))))
 
-(defn berry-meal
-  "Returns the bone meal result for a berry bush at p, or nil when it is ripe
-   already."
-  [_chunks p st _roll] (when (< (age st) 3) {:changes [[p (aged st (inc (age st)))]]}))
-(defn cocoa-meal
-  "Returns the bone meal result for cocoa at p, or nil when it is ripe already."
-  [_chunks p st _roll] (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]}))
+(defn berry-meal [_chunks p st _roll] (when (< (age st) 3) {:changes [[p (aged st (inc (age st)))]]}))
+(defn cocoa-meal [_chunks p st _roll] (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]}))
 
-(defn kelp-meal
-  "Returns the bone meal result for kelp at p, or nil when it cannot grow."
-  [chunks p st _roll]
+(defn kelp-meal [chunks p st _roll]
   (when (and (< (age st) 25) (= :water (liquid/liquid-class (gen/at chunks (dir/up p)))))
     {:changes [[(dir/up p) (aged st (inc (age st)))]]}))
 
-(defn propagule-meal
-  "Returns the bone meal result for a hanging propagule at p, or nil when it is
-   ripe already."
-  [_chunks p st _roll]
+(defn propagule-meal [_chunks p st _roll]
   (when (and (= :true (:hanging (block/props-of st))) (< (age st) 4))
     {:changes [[p (aged st (inc (age st)))]]}))
 
-(defn seagrass-meal
-  "Returns the bone meal result turning seagrass at p tall, or nil when there is
-   no water above it."
-  [chunks p _st _roll]
+(defn seagrass-meal [chunks p _st _roll]
   (when (water? (gen/at chunks (dir/up p)))
     {:changes [[p (block/state :tall-seagrass {:half :lower})] [(dir/up p) (block/state :tall-seagrass {:half :upper})]]}))
 
-(defn tall-flower-meal
-  "Returns the bone meal result for a tall flower, a copy of itself dropped, or
-   nil for its upper half."
-  [_chunks _p st _roll]
+(defn tall-flower-meal [_chunks _p st _roll]
   (when (= :lower (:half (block/props-of st))) {:drops [{:item (block/block-of st) :count 1}]}))
 
-(defn doubled
-  "Returns the bone meal result turning the grass or fern st at p into its tall
-   form, or nil when there is no room."
-  [chunks p st _roll]
+(defn doubled [chunks p st _roll]
   (let [tall (block/state (if (= :fern (block/block-of st)) :large-fern :tall-grass))]
     (when (and (air-at? chunks (dir/up p)) (support/supported? chunks (gen/flat-chunk) p tall))
       {:changes [[p tall] [(dir/up p) (block/state (block/block-of tall) {:half :upper})]]})))
 
-(defn petals-meal
-  "Returns the bone meal result for a flower bed at p: one more petal, or a drop
-   when it is full already."
-  [_chunks p st _roll]
+(defn petals-meal [_chunks p st _roll]
   (let [n (block/prop-long st :flower-amount)]
     (if (< n 4)
       {:changes [[p (with st :flower-amount (inc n))]]}

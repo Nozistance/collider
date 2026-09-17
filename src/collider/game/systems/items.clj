@@ -1,5 +1,5 @@
 (ns collider.game.systems.items
-  "Dropped items: how they fly, drift, merge and get picked up."
+  "Dropped item motion, merging and pickup."
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.game.entity :as entity]
@@ -23,26 +23,18 @@
 (def ^:private ^:const around-power 0.5)
 (def ^:private ^:const around-lift 0.2)
 (def ^:private ^:const hand-height 1.32)
-(defn- item-entities
-  "Returns the dropped items in the world, in a settled order."
-  [world]
+(defn- item-entities [world]
   (sort-by key (filter (fn [[_ e]] (= :item (:type e))) (:entities world))))
 
-(defn- active-items
-  "Returns the dropped items near a player."
-  [world]
+(defn- active-items [world]
   (let [active (state/active-chunks world)]
     (filterv (fn [[_ e]] (state/active-at? active (:pos e)))
              (item-entities world))))
 
-(defn- same-stack?
-  "Returns true when two stacks hold the same thing."
-  [a b]
+(defn- same-stack? [a b]
   (= (:item a) (:item b)))
 
-(defn- throw-velocity
-  "Returns the velocity of an item a player throws."
-  [world eid]
+(defn- throw-velocity [world eid]
   (let [e (get-in world [:entities eid])
         yaw (Math/toRadians (double (or (:yaw e) 0.0)))
         pitch (Math/toRadians (double (or (:pitch e) 0.0)))
@@ -54,16 +46,13 @@
         (* throw-jitter (- (random/of-key t eid :y1) (random/of-key t eid :y2))))
      (+ (* throw-power (Math/cos yaw) (Math/cos pitch)) (* (Math/sin ang) mag))]))
 
-(defn- around-velocity
-  "Returns the velocity of an item a player spills."
-  [world eid salt]
+(defn- around-velocity [world eid salt]
   (let [t (:tick world)
         pow (* around-power (random/of-key t eid salt :p))
         dir (* Math/PI 2.0 (random/of-key t eid salt :d))]
     [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
 
 (defn dropped
-  "Returns the item a player drops."
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [[px py pz] (get-in world [:entities thrower :pos])]
@@ -83,18 +72,14 @@
                  (entity/pop-velocity [t pos salt])
                  stack)))
 
-(defn split-drop
-  "Returns a stack split into the items a block drops."
-  [world pos stack salt]
+(defn split-drop [world pos stack salt]
   (loop [n (long (:count stack 1)) i 0 acc []]
     (if (pos? n)
       (let [got (min n (+ 10 (long (* 21.0 (double (random/of-key [(:tick world) pos salt :split i]))))))]
         (recur (- n got) (inc i) (conj acc (assoc stack :count got))))
       acc)))
 
-(defn- held-drop
-  "Returns what a player drops from the hand, one or the whole stack."
-  [world eid status]
+(defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
         slot (+ 36 (long (or (:held-slot e) 0)))
         s (get-in e [:inventory slot])]
@@ -104,9 +89,7 @@
             left (when (< n total) (assoc s :count (- total n)))]
         {:thrower eid :stack (assoc s :count n) :take-from [slot left]}))))
 
-(defn- drops
-  "Returns everything players throw away this tick."
-  [world events]
+(defn- drops [world events]
   (keep (fn [[tag eid a b]]
           (case tag
             :dig (when (and (#{3 4} (long a))
@@ -125,9 +108,7 @@
            [:client-slots thrower {(take-from 0) (take-from 1)}
             (get-in world [:entities thrower :track :carried])]])))
 
-(defn- spawn-deltas
-  "Returns the deltas for items players drop this tick."
-  [world events]
+(defn- spawn-deltas [world events]
   (mapcat #(spawn-one world %) (drops world events)))
 
 (def ^:private ^:const item-half 0.125)
@@ -150,15 +131,10 @@
 (def ^:private ^:const player-half 0.3)
 (def ^:private ^:const pickup-reach (+ player-half item-half pickup-inflate))
 (def ^:private ^:const pickup-bottom -1.0)
-(defn- fluid-movement
-  "Returns the speed an item keeps while it floats."
-  [[vx vy vz] ^double drag]
+(defn- fluid-movement [[vx vy vz] ^double drag]
   [(* (double vx) drag) (+ (double vy) (if (< (double vy) buoyancy-below) buoyancy 0.0)) (* (double vz) drag)])
 
-(defn- item-drift
-  "Returns the speed an item takes on before it moves, and whether it is in a
-   fluid."
-  [chunks pos vel]
+(defn- item-drift [chunks pos vel]
   (let [pushed (v/+ vel (liquid/entity-push chunks (gen/flat-chunk) pos item-half item-height vel))
         water (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :water)
         lava (liquid/fluid-height chunks (gen/flat-chunk) pos item-half item-height :lava)]
@@ -168,10 +144,7 @@
        :else [(v/x pushed) (- (v/y pushed) gravity) (v/z pushed)])
      (or (> water fluid-depth) (> lava fluid-depth))]))
 
-(defn- item-moved
-  "Returns where an item ends up, how fast it still goes, and whether it rests
-   on the ground."
-  [chunks pos [vx vy vz]]
+(defn- item-moved [chunks pos [vx vy vz]]
   (let [^Move mv (phys/move chunks (gen/flat-chunk) pos
                             [(double vx) (double vy) (double vz)] item-half item-height)
         on-ground (.on-ground mv)
@@ -182,17 +155,13 @@
      [(* (double mx) f) (if (and on-ground (neg? my)) (* my bounce) my) (* (double mz) f)]
      on-ground]))
 
-(defn- jolt-of
-  "Returns how sharply an item's speed changed."
-  ^double [vel' old]
+(defn- jolt-of ^double [vel' old]
   (let [dx (- (double (vel' 0)) (v/x old))
         dy (- (double (vel' 1)) (v/y old))
         dz (- (double (vel' 2)) (v/z old))]
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
-(defn- step-item
-  "Returns the delta for one dropped item this tick."
-  [world eid e]
+(defn- step-item [world eid e]
   (let [chunks (:chunks world) pos (:pos e)
         [[vx _ vz :as drift] in-fluid?] (item-drift chunks pos (:vel e))
         stuck (:stuck e)
@@ -219,9 +188,7 @@
                 :pickup-delay (max 0 (dec (long (or (:pickup-delay e) 0))))}
                (or stuck' stuck) (assoc :stuck stuck'))])))
 
-(defn- mergeable?
-  "Returns true when two items are close enough and alike enough to become one."
-  [ea eb]
+(defn- mergeable? [ea eb]
   (let [pa (:pos ea) ax (v/x pa) ay (v/y pa) az (v/z pa)
         pb (:pos eb) bx (v/x pb) by (v/y pb) bz (v/z pb)]
     (and (same-stack? (:stack ea) (:stack eb))
@@ -231,21 +198,15 @@
          (< (Math/abs (- (double az) (double bz))) (+ item-half item-half merge-inflate))
          (< (Math/abs (- (double ay) (double by))) (+ item-height item-height)))))
 
-(defn- cell-key
-  "Returns the key of the block a position belongs to."
-  ^long [^long x ^long y ^long z]
+(defn- cell-key ^long [^long x ^long y ^long z]
   (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
           (bit-shift-left (bit-and z 0x3FFFFFF) 12)
           (bit-and y 0xFFF)))
 
-(defn- cell-of
-  "Returns the key of the block a position stands in."
-  ^long [pos]
+(defn- cell-of ^long [pos]
   (cell-key (long (Math/floor (v/x pos))) (long (Math/floor (v/y pos))) (long (Math/floor (v/z pos)))))
 
-(defn- merge-index
-  "Returns the items gathered by the block they stand in."
-  [items]
+(defn- merge-index [items]
   (persistent!
     (reduce (fn [m ^long i]
               (let [k (cell-of (:pos ((items i) 1)))]
@@ -253,9 +214,7 @@
             (transient {})
             (range (count items)))))
 
-(defn- neighbour-idxs
-  "Returns the items in and around a position."
-  [index pos]
+(defn- neighbour-idxs [index pos]
   (let [x (long (Math/floor (v/x pos)))
         y (long (Math/floor (v/y pos)))
         z (long (Math/floor (v/z pos)))]
@@ -269,26 +228,20 @@
                     (transient [])
                     (range 27))))))
 
-(defn- merge-partner
-  "Returns the item this one merges with, if any."
-  [items index from a used]
+(defn- merge-partner [items index from a used]
   (first (for [j (neighbour-idxs index (:pos a))
                :when (>= (long j) (long from))
                :let [[eb b] (items j)]
                :when (and (not (used eb)) (mergeable? a b))]
            [eb b])))
 
-(defn- absorb
-  "Returns the deltas that merge two items."
-  [ea a eb b]
+(defn- absorb [ea a eb b]
   [[:merge-entity ea
     {:stack (update (:stack a) :count (fnil + 1) (long (:count (:stack b) 1)))
      :age   (min (long (or (:age a) 0)) (long (or (:age b) 0)))}]
    [:remove-entity eb]])
 
-(defn- merge-deltas
-  "Returns the deltas for the items that become one this tick."
-  [items]
+(defn- merge-deltas [items]
   (let [items (vec items)
         index (merge-index items)]
     (loop [i 0 used #{} out []]
@@ -302,9 +255,7 @@
 (def ^:private slot-order
   (vec (concat (range 36 45) (range 9 36))))
 
-(defn- fill-existing
-  "Returns the slots that take part of a stack, and what is left."
-  [inv stack ^long n]
+(defn- fill-existing [inv stack ^long n]
   (let [cap (data/max-stack (:item stack))]
     (reduce (fn [[chs n] slot]
               (let [n (long n) cur (get inv slot)]
@@ -315,33 +266,25 @@
             [[] n]
             slot-order)))
 
-(defn- first-empty-slot
-  "Returns a slot still free after those changes."
-  [inv changes]
+(defn- first-empty-slot [inv changes]
   (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
                  slot-order)))
 
-(defn add-stack
-  "Returns the slots a stack fills in an inventory, and whatever did not fit."
-  [inv stack]
+(defn add-stack [inv stack]
   (let [[changes n] (fill-existing inv stack (long (:count stack 1)))
         n (long n)]
     (if-let [slot (when (pos? n) (first-empty-slot inv changes))]
       [(conj changes [slot (assoc stack :count n)]) nil]
       [changes (when (pos? n) (assoc stack :count n))])))
 
-(defn- in-pickup-range?
-  "Returns true when a player is close enough to pick an item up."
-  [pe ie]
+(defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) px (v/x pp) py (v/y pp) pz (v/z pp)
         pi (:pos ie) ix (v/x pi) iy (v/y pi) iz (v/z pi)]
     (and (< (Math/abs (- (double ix) (double px))) pickup-reach)
          (< (Math/abs (- (double iz) (double pz))) pickup-reach)
          (< pickup-bottom (- (double iy) (double py)) (+ player-height pickup-inflate-y)))))
 
-(defn- collect-deltas
-  "Returns the deltas for a player taking an item, whole or in part."
-  [ieid peid changes remaining]
+(defn- collect-deltas [ieid peid changes remaining]
   (concat
     (for [[slot s] changes] [:set-slot peid slot s])
     (if remaining
@@ -349,9 +292,7 @@
       [(out/all (out/collect ieid peid))
        [:remove-entity ieid]])))
 
-(defn- pickup-one
-  "Returns acc with the deltas for a player picking up one item."
-  [[peid pe] [out taken inv :as acc] [ieid ie]]
+(defn- pickup-one [[peid pe] [out taken inv :as acc] [ieid ie]]
   (if (or (contains? taken ieid) (not (in-pickup-range? pe ie)))
     acc
     (let [[changes remaining] (add-stack inv (:stack ie))]
@@ -361,25 +302,19 @@
          (into inv changes)]
         acc))))
 
-(defn- player-pickups
-  "Returns acc with the deltas for everything one player picks up."
-  [ready [out taken] [_ pe :as entry]]
+(defn- player-pickups [ready [out taken] [_ pe :as entry]]
   (let [[out taken] (reduce (fn [acc item] (pickup-one entry acc item))
                             [out taken (:inventory pe)]
                             ready)]
     [out taken]))
 
-(defn- pickup-deltas
-  "Returns the deltas for the items players pick up this tick."
-  [world items]
+(defn- pickup-deltas [world items]
   (let [ready (filterv (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0)))) items)]
     (first (reduce (fn [acc entry] (player-pickups ready acc entry))
                    [[] #{}]
                    (state/player-entries world)))))
 
-(defn items
-  "Returns the deltas for dropped items this tick."
-  [world d]
+(defn items [world d]
   (let [events (:input d)
         act (active-items world)]
     (-> [#(spawn-deltas world events)]

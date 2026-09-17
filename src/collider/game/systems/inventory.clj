@@ -1,5 +1,5 @@
 (ns collider.game.systems.inventory
-  "The player's own inventory: what they carry, click and pick."
+  "Player inventory clicks and item picks."
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.crafting :as crafting]
@@ -13,9 +13,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- restore-deltas
-  "Returns the deltas that show a joining player the inventory they left with."
-  [world events]
+(defn- restore-deltas [world events]
   (for [[tag eid] events
         :when (= :player-join tag)
         :let [e (get-in world [:entities eid])
@@ -29,17 +27,13 @@
 
 (def ^:private cloned-kinds #{:banner :decorated-pot :shulker-box})
 
-(defn- cloned-stack
-  "Returns a stack that carries the block's contents along with it."
-  [world pos item]
+(defn- cloned-stack [world pos item]
   (let [e (be/at world pos)]
     (if (contains? cloned-kinds (:kind e))
       (be/to-stack item e)
       {:item item :count 1})))
 
-(defn- pick-item
-  "Returns the stack a player gets for picking a block or an entity."
-  [world {:keys [pos entity include-data]}]
+(defn- pick-item [world {:keys [pos entity include-data]}]
   (cond
     pos (let [st (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos)]
           (when (pos? (long st))
@@ -54,32 +48,22 @@
 (def ^:private scan-order
   (vec (concat (range 36 45) (range 9 36))))
 
-(defn- same-item?
-  "Returns true when two stacks hold the same thing."
-  [a b]
+(defn- same-item? [a b]
   (and (some? a) (= (dissoc a :count) (dissoc b :count))))
 
-(defn- slot-with
-  "Returns the slot already holding that stack, if any."
-  [inv stack]
+(defn- slot-with [inv stack]
   (some (fn [slot] (when (same-item? (get inv slot) stack) slot)) scan-order))
 
-(defn- free-slot
-  "Returns an empty slot, if any."
-  [inv]
+(defn- free-slot [inv]
   (some (fn [slot] (when-not (get inv slot) slot)) scan-order))
 
-(defn- suitable-hotbar
-  "Returns the hotbar slot a picked item should land in."
-  [inv ^long held]
+(defn- suitable-hotbar [inv ^long held]
   (or (some (fn [i] (let [n (mod (+ held (long i)) 9)]
                       (when-not (get inv (+ 36 n)) n)))
             (range 9))
       held))
 
-(defn- select-deltas
-  "Returns the deltas that make a hotbar slot the held one."
-  [eid ^long n]
+(defn- select-deltas [eid ^long n]
   [[:merge-entity eid {:held-slot n}] (out/to eid (out/held-slot n))])
 
 (defn- swap-into-hotbar [eid inv slot n]
@@ -96,9 +80,7 @@
             (when free [[:set-slot eid free cur]])
             [[:set-slot eid (+ 36 n) stack]])))
 
-(defn- pick-deltas
-  "Returns the deltas that put a picked stack in the player's hand."
-  [world [_ eid what]]
+(defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
     (when-let [stack (pick-item world what)]
       (let [inv (:inventory e)
@@ -115,9 +97,7 @@
    :quickcraft (:quickcraft e)
    :layout     (crafting/player-layout (crafting/context world e))})
 
-(defn- click-deltas
-  "Returns the deltas for a click in the player's own inventory."
-  [world [_ eid {:keys [changed carried] :as m}]]
+(defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
     (let [after (menu/click (own-start world e) m)]
       (concat
@@ -132,8 +112,6 @@
           (mapcat #(when (= :click (first %)) (click-deltas world %)) events)
           (mapcat #(when (= :pick (first %)) (pick-deltas world %)) events)))
 
-(defn inventory
-  "Returns the deltas for what players do with their inventory this tick."
-  [world d]
+(defn inventory [world d]
   (let [events (:input d)]
     [#(inventory-deltas world events)]))

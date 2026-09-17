@@ -1,5 +1,5 @@
 (ns collider.game.systems.blocks.edit
-  "Block edits: checks and the deltas of a change."
+  "Block edit checks and change deltas."
   (:require [collider.data :as data]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -12,9 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn block-at
-  "Returns the block at pos."
-  ^long [world pos]
+(defn block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) (gen/flat-chunk) pos))
 
 (def ^:private ^:const player-half 0.3)
@@ -24,8 +22,8 @@
 (def ^:private ^:const tnt-height 0.98)
 
 (defn builder-box
-  "Returns the width and height an entity takes up while building, or nil
-   when it never stands in the way."
+  "Returns the half width and height an entity blocks placement with, or nil
+   when it never blocks."
   [e]
   (case (:type e)
     :player [player-half (if (and (:sneaking? e) (not (:flying e))) crouching-height player-height)]
@@ -35,9 +33,7 @@
       (let [s (if (mobs/baby? e) 0.5 1.0)]
         [(* s (double (:half m))) (* s (double (:height m)))]))))
 
-(defn box-hits?
-  "Returns true when an entity of the given size at pos overlaps the box."
-  [[x1 y1 z1 x2 y2 z2] [px py pz] [half h]]
+(defn box-hits? [[x1 y1 z1 x2 y2 z2] [px py pz] [half h]]
   (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
     (and (> (+ px half) (double x1)) (< (- px half) (double x2))
          (> (+ py h) (double y1)) (< py (double y2))
@@ -70,9 +66,7 @@
             0 bs)
     a))
 
-(defn obstructed?
-  "Returns true when a block placed at pos would stand inside an entity."
-  [world [x y z] state]
+(defn obstructed? [world [x y z] state]
   (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
         n (quot (alength a) 6)]
     (and (pos? n)
@@ -84,19 +78,17 @@
                       false (:entities world))))))
 
 (defn own-change
-  "Returns the effect telling one player what the block at pos really is."
+  "Returns the effect that shows one player the true block at pos."
   [world eid pos]
   (out/to eid (out/blocks-changed (chunk/block-chunk pos) [[pos (block-at world pos)]])))
 
-(defn reject-deltas
-  "Returns the deltas that take back an edit the world refused."
-  [world eid pos pos']
+(defn reject-deltas [world eid pos pos']
   (cond-> [(own-change world eid pos)]
           pos' (conj (own-change world eid pos'))))
 
 (defn change-deltas
-  "Returns the deltas for changing blocks, together with what the change
-   does to the blocks around them."
+  "Returns the deltas for the changes and for the changes they cause in the
+   blocks around them."
   [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) (gen/flat-chunk) changes)
         all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
@@ -107,31 +99,23 @@
           mixed)))
 
 (defn placed-deltas
-  "Returns the deltas for a player placing blocks, with the sound the
-   block makes."
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [[pos state] (first changes)]
      (conj (change-deltas world changes)
            (out/except eid (out/sound (data/place-sound (block/block-of state)) pos 1.0 0.8))))))
 
-(defn be-changed
-  "Returns the deltas for what the block at pos holds."
-  [pos e]
+(defn be-changed [pos e]
   [[:set-block-entity pos e] (out/all (out/block-entity pos))])
 
-(defn held-slot
-  "Returns the inventory slot a player holds."
-  ^long [world eid]
+(defn held-slot ^long [world eid]
   (+ 36 (long (or (get-in world [:entities eid :held-slot]) 0))))
 
-(defn held-stack
-  "Returns the stack a player holds."
-  [world eid]
+(defn held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))
 
 (defn hit-uv
-  "Returns where on a face a click landed, across and up, from zero to one."
+  "Returns where a click landed on a face, across and up, from zero to one."
   [face [cx cy cz]]
   (let [x (/ (double cx) 16.0) y (/ (double cy) 16.0) z (/ (double cz) 16.0)]
     (case (long face)
@@ -147,25 +131,19 @@
   (min (dec n) (max 0 (long (Math/floor (* rel n))))))
 
 (defn hit-slot
-  "Returns which slot of a grid drawn on a block's face was clicked."
+  "Returns which slot of a grid drawn on the block face was clicked."
   [st face cursor rows cols]
   (when (= (block/facing-of st) (dir/from-index (long face)))
     (when-let [[u v] (hit-uv face cursor)]
       (+ (section (double u) (long cols)) (* (long cols) (section (- 1.0 (double v)) (long rows)))))))
 
-(defn waterloggable?
-  "Returns true when the block can still take water."
-  [st]
+(defn waterloggable? [st]
   (= :false (:waterlogged (block/props-of st))))
 
-(defn with-water
-  "Returns the block with water added or drained."
-  [st logged?]
+(defn with-water [st logged?]
   (block/state (block/block-of st) (assoc (block/props-of st) :waterlogged (if logged? :true :false))))
 
-(defn waterlogged
-  "Returns state full of water when it goes into water."
-  [world pos' state]
+(defn waterlogged [world pos' state]
   (if (and (= :water (liquid/liquid-class (block-at world pos')))
            (contains? (block/props-of state) :waterlogged))
     (block/state (block/block-of state) (assoc (block/props-of state) :waterlogged :true))

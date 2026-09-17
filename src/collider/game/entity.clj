@@ -31,15 +31,11 @@
    {:type  :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false
     :stack stack :age 0 :pickup-delay delay :health 5.0}))
 
-(defn pop-velocity
-  "Returns the velocity of a popped item, seeded by ks."
-  [ks]
+(defn pop-velocity [ks]
   (let [r (fn [k] (random/of-key (conj ks k)))]
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
-(defn of
-  "Returns m as an entity record."
-  [m]
+(defn of [m]
   (if (record? m)
     m
     (let [m (cond-> m
@@ -52,9 +48,7 @@
         :falling-block (map->FallingBlock m)
         (map->Mob m)))))
 
-(defn eye-height
-  "Returns the eye height of entity e in blocks."
-  ^double [e]
+(defn eye-height ^double [e]
   (case (:type e)
     :player 1.62
     :tnt 0.0
@@ -62,9 +56,7 @@
     :item 0.21
     1.19))
 
-(defn mob-moved
-  "Returns mob e moved to pos with vel."
-  ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
+(defn mob-moved ^Mob [^Mob e pos vel on-ground yaw wet? jump-cd]
   (Mob. pos vel on-ground yaw (.-pitch e) (.-head-yaw e) (.-walked e) wet? jump-cd
         (.-task e) (.-pending e) (.-look e) (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)
@@ -72,9 +64,7 @@
         (.-type e) (.-color e) (.-track e)
         (.-__meta e) (.-__extmap e)))
 
-(defn mob-looked
-  "Returns mob e looking as given."
-  ^Mob [^Mob e head-yaw pitch look]
+(defn mob-looked ^Mob [^Mob e head-yaw pitch look]
   (Mob. (.-pos e) (.-vel e) (.-on-ground e) (.-yaw e) pitch head-yaw (.-walked e) (.-wet? e) (.-jump-cd e)
         (.-task e) (.-pending e) look (.-wake-tick e) (.-say-tick e)
         (.-health e) (.-hurt-resist e) (.-last-damage e) (.-death-time e) (.-health-sent e) (.-panic-until e)

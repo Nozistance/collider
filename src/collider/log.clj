@@ -22,39 +22,26 @@
 (defn- emit! [^String s]
   (.println console s))
 
-(defn info
-  "Logs the arguments."
-  [& args]
+(defn info [& args]
   (emit! (line "INFO" args)))
 
-(defn warn
-  "Logs the arguments as a warning."
-  [& args]
+(defn warn [& args]
   (emit! (line "WARN" args)))
 
-(defn error
-  "Logs the arguments as an error."
-  [& args]
+(defn error [& args]
   (emit! (line "ERROR" args)))
 
-(defn seconds
-  "Returns a span of nanoseconds the way the server reports a duration."
-  ^String [^long nanos]
+(defn seconds ^String [^long nanos]
   (String/format Locale/ROOT "(%.1fs)" (to-array [(/ nanos 1e9)])))
 
-(defn step
-  "Logs doing, calls f, logs done with how long it took, and returns the
-   result of f."
-  [doing done f]
+(defn step [doing done f]
   (info (str doing "..."))
   (let [t (System/nanoTime)
         v (f)]
     (info done (seconds (- (System/nanoTime) t)))
     v))
 
-(defn human-bytes
-  "Returns a byte count as a short string with a unit."
-  ^String [n]
+(defn human-bytes ^String [n]
   (let [n (double n)]
     (loop [n n units ["B" "KiB" "MiB" "GiB" "TiB"]]
       (if (or (< n 1024.0) (empty? (rest units)))

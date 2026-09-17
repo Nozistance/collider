@@ -17,24 +17,15 @@
       (with st' :berries (if (< (double (roll :berries)) 0.11) :true :false))
       st')))
 
-(defn plant-tick
-  "Returns the change carrying the plant st at p one block further, or nil when
-   it does not grow."
-  [chunks p st roll _time _ctx]
+(defn plant-tick [chunks p st roll _time _ctx]
   (let [q (mapv + p (dir/offset (:dir (block/growing-plant (block/type-of st)))))]
     (when (and (< (age st) 25) (< (double (roll :grow)) 0.1) (air-at? chunks q))
       [[q (grow-into st (inc (age st)) roll)]])))
 
-(defn- vine-with
-  "Returns st covering the face dir as well."
-  [st dir] (with st dir :true))
-(defn- vine-has?
-  "Returns true when st covers the face dir."
-  [st dir] (= :true (get (block/props-of st) dir)))
+(defn- vine-with [st dir] (with st dir :true))
+(defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
 
-(defn- attachable?
-  "Returns true when the block beside p in dir offers it a sturdy face."
-  [chunks p dir]
+(defn- attachable? [chunks p dir]
   (let [n (gen/at chunks (mapv + p (dir/offset dir)))]
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
@@ -81,10 +72,7 @@
         (when (and (not= after before) (some #(vine-has? after %) sides))
           [[below after]])))))
 
-(defn tick
-  "Returns the changes a vine at p makes this tick, or nil when it does not
-   spread."
-  [chunks p st roll _time _ctx]
+(defn tick [chunks p st roll _time _ctx]
   (when (chance? roll :gate 4)
     (let [dir (dir/six (pick roll :dir 6))]
       (cond
@@ -110,10 +98,7 @@
           (and (= body b) (< n 256)) (recur nq (inc n))
           :else nil)))))
 
-(defn plant-meal
-  "Returns the bone meal result for the plant st at p, several blocks further
-   along, or nil when it has no room."
-  [chunks p st roll]
+(defn plant-meal [chunks p st roll]
   (let [off (dir/offset (:dir (block/growing-plant (block/type-of st))))
         n (if (= :cave-vines (block/type-of st)) 1 (nether-count roll))]
     (loop [q (mapv + p off) a (min 25 (inc (age st))) left n acc []]
@@ -121,15 +106,9 @@
         (recur (mapv + q off) (min 25 (inc a)) (dec left) (conj acc [q (aged st a)]))
         (when (seq acc) {:changes acc})))))
 
-(defn body-meal
-  "Returns the bone meal result for a plant body at p, taken at the head of its
-   column."
-  [chunks p st roll]
+(defn body-meal [chunks p st roll]
   (when-let [h (head-pos chunks p st)] (plant-meal chunks h (gen/at chunks h) roll)))
 
-(defn berries-meal
-  "Returns the bone meal result putting berries on st at p, or nil when it has
-   them already."
-  [_chunks p st _roll]
+(defn berries-meal [_chunks p st _roll]
   (when (= :false (:berries (block/props-of st)))
     {:changes [[p (with st :berries :true)]]}))

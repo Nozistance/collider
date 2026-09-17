@@ -18,9 +18,7 @@
          (= :ladder (block/block-of below))
          (= (:facing props) (:facing (block/props-of below))))))
 
-(defn on-climbable?
-  "Returns true when an entity at pos stands on something it climbs."
-  [chunks pos]
+(defn on-climbable? [chunks pos]
   (let [[x y z] (mapv #(long (Math/floor (double %))) pos)
         st (st-at chunks x y z)]
     (or (block/tagged? st "climbable")

@@ -18,9 +18,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- tag
-  "Returns the blocks carrying tag t."
-  [t] (set (get-in (data/tags) ["block" t])))
+(defn- tag [t] (set (get-in (data/tags) ["block" t])))
 (def ^:private ^:table fences (delay (tag "fences")))
 (def ^:private ^:table wooden (delay (tag "wooden_fences")))
 (def ^:private ^:table walls (delay (tag "walls")))
@@ -41,16 +39,11 @@
             :chest :trapped-chest :copper-chest :weathering-copper-chest :chorus-plant :potent-sulfur}
           (concat pair-types block/growing-plant-types snowy-types (block/leaves-types) [:pitcher-crop]))))
 
-(defn connecting-types
-  "Returns the kinds of block that take their shape from their neighbours."
-  [] @connecting-set)
+(defn connecting-types [] @connecting-set)
 
 (def ^:private half-types (into block/door-types (conj pair-types :pitcher-crop)))
 
-(defn partner-offset
-  "Returns the offset from st to the other half of the block it belongs to,
-   nil when it stands alone."
-  [^long st]
+(defn partner-offset [^long st]
   (let [{:keys [half part facing]} (block/props-of st)
         t (block/type-of st)]
     (cond
@@ -65,10 +58,7 @@
          (let [k (if (= :bed (block/type-of st)) :part :half)]
            (not= (k (block/props-of st)) (k (block/props-of other)))))))
 
-(defn partner
-  "Returns [pos state] of the other half of the block at pos, nil when it
-   stands alone."
-  [chunks pos ^long st]
+(defn partner [chunks pos ^long st]
   (when-let [off (partner-offset st)]
     (let [p (mapv + pos off) o (gen/at chunks p)]
       (when (paired? st o) [p o]))))
@@ -116,9 +106,7 @@
   (not (or (and (= :low (:north sides)) (= :low (:south sides)) (= :none (:east sides)) (= :none (:west sides)))
            (and (= :low (:east sides)) (= :low (:west sides)) (= :none (:north sides)) (= :none (:south sides))))))
 
-(defn- wall-at?
-  "Returns true when st is a wall."
-  [st] (contains? @walls (block/block-of st)))
+(defn- wall-at? [st] (contains? @walls (block/block-of st)))
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)
@@ -188,9 +176,7 @@
   (let [props (block/props-of st)]
     (block/state self (assoc props :shape (stair-shape st at (:facing props) (:half props))))))
 
-(defn- water?
-  "Returns true when st is water or holds water."
-  [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
+(defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
 (defn- touches-water? [st at]
   (or (and (water? st) (water? (at (dir/offset :down))))
       (some (fn [dir]
@@ -302,10 +288,7 @@
       (contains? growing-reshaped t) (growing-plant-state pos st at tick)
       :else (sides-state t self st at))))
 
-(defn reshape
-  "Returns the state the block at pos takes from its neighbours, nil when it
-   stays as it is."
-  [chunks pos ^long st tick]
+(defn reshape [chunks pos ^long st tick]
   (let [t (block/type-of st)]
     (when (contains? (connecting-types) t)
       (let [at (fn [d] (gen/at chunks (mapv + pos d)))
@@ -344,9 +327,7 @@
       (not (and (or (not door-right) door-left) (>= balance 0))) :left
       :else (cursor-hinge facing (/ (double cursor-x) 16.0) (/ (double cursor-z) 16.0)))))
 
-(defn around
-  "Returns the positions sharing a face with pos."
-  [[x y z]]
+(defn around [[x y z]]
   (map (fn [[dx dy dz]]
          [(+ (long x) (long dx))
           (+ (long y) (long dy))
@@ -364,10 +345,7 @@
                           [p new]))))))
           (distinct (concat positions (mapcat around positions))))))
 
-(defn derived-changes
-  "Returns the [pos state] changes that follow from reshaping the blocks
-   around the given positions."
-  [chunks positions tick]
+(defn derived-changes [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))

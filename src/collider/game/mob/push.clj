@@ -1,5 +1,5 @@
 (ns collider.game.mob.push
-  "Crowding: the shove entities give each other when they stand too close."
+  "Crowd shoves between entities too close together."
   (:require [clojure.data.int-map :as im]
             [collider.game.mob.mobs :as mobs]
             [collider.game.state :as state]
@@ -8,16 +8,12 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- pushable-half
-  "Returns how far the entity reaches out from its middle."
-  ^double [e]
+(defn- pushable-half ^double [e]
   (case (:type e)
     :player 0.3
     (double (get-in mobs/types [(:type e) :half] 0.0))))
 
-(defn- pushable-height
-  "Returns how tall the entity stands."
-  ^double [e]
+(defn- pushable-height ^double [e]
   (case (:type e)
     :player 1.8
     (double (get-in mobs/types [(:type e) :height] 1.0))))
@@ -25,22 +21,15 @@
 (deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
                    ^doubles halfs ^doubles heights])
 
-(defn- push-cell-key
-  "Returns the key of the patch of ground pos falls in."
-  ^long [pos]
+(defn- push-cell-key ^long [pos]
   (bit-or (bit-shift-left (bit-and (bit-shift-right (long (Math/floor (v/x pos))) 2) 0xFFFFFFFF) 32)
           (bit-and (bit-shift-right (long (Math/floor (v/z pos))) 2) 0xFFFFFFFF)))
 
-(defn- cell-key
-  "Returns the key of the patch of ground at cx cz."
-  ^long [^long cx ^long cz]
+(defn- cell-key ^long [^long cx ^long cz]
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
 
 (def ^:private ^:const push-cap 16)
-(defn- pushable-groups
-  "Returns the entities that can shove and be shoved, gathered by the patch
-   of ground they stand on."
-  [world active]
+(defn- pushable-groups [world active]
   (persistent!
     (reduce (fn [m [eid e]]
               (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
@@ -51,9 +40,7 @@
             (transient (im/int-map))
             (:entities world))))
 
-(defn- packed-cell
-  "Returns where the entities of one patch stand and how much room they take."
-  ^PushCell [entries]
+(defn- packed-cell ^PushCell [entries]
   (let [n (count entries)
         eids (long-array n) xs (double-array n) ys (double-array n)
         zs (double-array n) halfs (double-array n) heights (double-array n)]
@@ -69,9 +56,7 @@
 
 (deftype Hood [^objects cells ^longs sizes ^long n])
 
-(defn- hood
-  "Returns the patch at cx cz together with the eight around it."
-  ^Hood [cells ^long cx ^long cz]
+(defn- hood ^Hood [cells ^long cx ^long cz]
   (let [cs (object-array 9)
         sizes (long-array 9)
         n (loop [c 0 n 0]
@@ -83,9 +68,7 @@
                 (recur (inc c) (+ n sz)))))]
     (Hood. cs sizes n)))
 
-(defn push-index
-  "Returns what push needs to find an entity's neighbours this tick."
-  [world active]
+(defn push-index [world active]
   (let [cells (persistent!
                 (reduce-kv (fn [m k entries] (assoc! m k (packed-cell (sort-by first entries))))
                            (transient (im/int-map))
@@ -100,9 +83,7 @@
 (deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
 (def ^:private ^Window empty-window (Window. (object-array 9) (long-array 9) -1 0))
 
-(defn- self-index
-  "Returns where eid sits among its own neighbours, or -1 when absent."
-  ^long [^Hood h ^long eid]
+(defn- self-index ^long [^Hood h ^long eid]
   (let [^PushCell own (aget ^objects (.cells h) 4)]
     (if own
       (let [^longs ids (.eids own)]
@@ -112,9 +93,7 @@
                 :else (recur (inc i)))))
       -1)))
 
-(defn- push-window
-  "Returns everyone near cx cz that could shove eid, eid itself left out."
-  ^Window [index ^long cx ^long cz ^long eid]
+(defn- push-window ^Window [index ^long cx ^long cz ^long eid]
   (if-let [^Hood h (get index (cell-key cx cz))]
     (let [self-i (self-index h eid)
           ^longs sizes (aclone ^longs (.sizes h))]
@@ -124,9 +103,7 @@
         (Window. (.cells h) sizes self-i (.n h))))
     empty-window))
 
-(defn- add-impulse!
-  "Adds to acc the shove an entity dx dz away gives."
-  [^doubles acc ^double dx ^double dz]
+(defn- add-impulse! [^doubles acc ^double dx ^double dz]
   (let [m (max (Math/abs dx) (Math/abs dz))]
     (when (>= m 0.01)
       (let [s (Math/sqrt m)
@@ -134,9 +111,7 @@
         (aset acc 0 (+ (aget acc 0) (- (* (/ dx s) d3 0.1))))
         (aset acc 1 (+ (aget acc 1) (- (* (/ dz s) d3 0.1))))))))
 
-(defn- push-pair!
-  "Adds to acc the shove of one neighbour, when it is close enough to touch."
-  [^doubles acc ^doubles me ^PushCell cell ^long j]
+(defn- push-pair! [^doubles acc ^doubles me ^PushCell cell ^long j]
   (let [x (aget me 0) y (aget me 1) z (aget me 2)
         ox (aget ^doubles (.xs cell) j)
         oy (aget ^doubles (.ys cell) j)
@@ -148,9 +123,7 @@
                (> (+ oy (aget ^doubles (.heights cell) j)) y))
       (add-impulse! acc (- ox x) (- oz z)))))
 
-(defn- push-into!
-  "Adds to acc the shove of the i-th neighbour."
-  [^doubles acc ^Window w ^long i ^doubles me]
+(defn- push-into! [^doubles acc ^Window w ^long i ^doubles me]
   (let [^longs sizes (.sizes w)
         ^objects cells (.cells w)]
     (loop [c 0 i i]
@@ -161,31 +134,22 @@
             (push-pair! acc me cell j))
           (recur (inc c) (- i sz)))))))
 
-(defn- push-span!
-  "Adds to acc the shoves of the neighbours from from to to."
-  [^doubles acc ^Window w from to ^doubles me]
+(defn- push-span! [^doubles acc ^Window w from to ^doubles me]
   (loop [i (long from)]
     (when (< i (long to)) (push-into! acc w i me) (recur (inc i)))))
 
-(defn- push-window-of
-  "Returns everyone near x z that could shove eid."
-  ^Window [index ^double x ^double z ^long eid]
+(defn- push-window-of ^Window [index ^double x ^double z ^long eid]
   (push-window index (bit-shift-right (long (Math/floor x)) 2)
                (bit-shift-right (long (Math/floor z)) 2) eid))
 
-(defn- push-wrapped!
-  "Adds to acc the shoves of as many neighbours as one entity heeds,
-   starting at off and wrapping round."
-  [^doubles acc ^Window w ^doubles me ^long off]
+(defn- push-wrapped! [^doubles acc ^Window w ^doubles me ^long off]
   (let [n (.n w) end (+ off push-cap)]
     (if (<= end n)
       (push-span! acc w off end me)
       (do (push-span! acc w off n me)
           (push-span! acc w 0 (- end n) me)))))
 
-(defn push
-  "Returns the sideways shove the crowd around an entity gives it."
-  [index eid e t half height]
+(defn push [index eid e t half height]
   (let [p (:pos e) x (double (v/x p)) y (v/y p) z (double (v/z p))
         ^Window w (push-window-of index x z (long eid))
         me (double-array [x (double y) z (double half) (double height)])
