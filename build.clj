@@ -17,7 +17,7 @@
   (b/javac {:src-dirs   ["src"]
             :class-dir  prim-dir
             :basis      basis
-            :javac-opts ["-proc:none" "--release" "21"]}))
+            :javac-opts ["-proc:none" "--release" "25"]}))
 
 (defn- log-bytes [n] ((requiring-resolve 'collider.log/human-bytes) n))
 (defn- info [& args] (apply (requiring-resolve 'collider.log/info) args))
