@@ -86,8 +86,18 @@
 (defn- record! [^longs window ^AtomicLong counter ^long elapsed]
   (aset window (int (rem (.getAndIncrement counter) window-size)) elapsed))
 
-(defn- idle? [world ^ConcurrentLinkedQueue queue]
-  (and (.isEmpty queue) (empty? (:players world))))
+(defn- empty-ticks ^long [^long n world]
+  (if (empty? (:players world)) (inc n) 0))
+
+(defn- paused? [opts ^long n]
+  (let [s (long (or (:pause-when-empty-seconds opts) 0))]
+    (when (and (pos? s) (= n (* 20 s)))
+      (log/info "no players for" s "s, world paused until someone joins")
+      (when-let [f (:on-pause opts)] (f)))
+    (and (pos? s) (>= n (* 20 s)))))
+
+(defn- idle? [opts n ^ConcurrentLinkedQueue queue]
+  (and (paused? opts n) (.isEmpty queue)))
 
 (defn- percentiles [^longs window ^AtomicLong counter]
   (let [n (int (min (.get counter) window-size))]
@@ -153,20 +163,24 @@
   (run-tick! world-atom queue deliver! perf io-input)
   (record! window counter (- (System/nanoTime) t0)))
 
-(defn- ticker-loop [st ^AtomicBoolean running world-atom queue deliver! io-input]
-  (let [^longs stamps (:stamps st)]
-    (loop [next-ns (System/nanoTime), i 0, perf nil]
-      (when (.get running)
-        (if (idle? @world-atom queue)
-          (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil))
-          (let [t0 (System/nanoTime)
-                p (or (perf-of st i t0 20) perf)]
-            (aset stamps (int (rem (long i) tps-window)) t0)
-            (one-tick! st world-atom queue deliver! p t0 io-input)
-            (recur (pace next-ns nominal-tick-ns) (inc (long i)) p)))))))
+(defn- timed-tick! [st i perf world-atom queue deliver! opts]
+  (let [t0 (System/nanoTime)
+        p (or (perf-of st i t0 20) perf)]
+    (aset ^longs (:stamps st) (int (rem (long i) tps-window)) t0)
+    (one-tick! st world-atom queue deliver! p t0 (:io-input opts))
+    p))
+
+(defn- ticker-loop [st ^AtomicBoolean running world-atom queue deliver! opts]
+  (loop [next-ns (System/nanoTime), i 0, perf nil, empty 0]
+    (when (.get running)
+      (let [n (empty-ticks empty @world-atom)]
+        (if (idle? opts n queue)
+          (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil n))
+          (let [p (timed-tick! st i perf world-atom queue deliver! opts)]
+            (recur (pace next-ns nominal-tick-ns) (inc (long i)) p n)))))))
 
 (defn- ticker-thread ^Thread [st running world-atom queue deliver! opts]
-  (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver! (:io-input opts))
+  (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver! opts)
                  "collider-ticker")
     (.setDaemon true)
     (.start)))

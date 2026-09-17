@@ -81,7 +81,9 @@
   (let [ticker (tick/start-ticker! world queue (fn [w d]
                                                  (when saver (chunk-io! base queue d))
                                                  (deliver! conns w d))
-                                   {:io-input #(hash-map :writable (server/writable-eids conns))})]
+                                   {:io-input                 #(hash-map :writable (server/writable-eids conns))
+                                    :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
+                                    :on-pause                 save!})]
     {:ticker    ticker :tick-stats (:stats ticker)
      :scheduler (when saver (saver-scheduler save! (:save-period-ms cfg)))}))
 
