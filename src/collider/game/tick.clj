@@ -59,7 +59,8 @@
                    #'blocks/acks
                    #'weather-system/weather
                    #'falling/first-step
-                   #'tnt/first-step])
+                   #'tnt/first-step
+                   #'containers/broadcast])
 
 (def phases [[#'spawning/placing]
              [#'pose/pose]
@@ -89,7 +90,9 @@
   (aset window (int (rem (.getAndIncrement counter) window-size)) elapsed))
 
 (defn- empty-ticks ^long [^long n world]
-  (if (empty? (:players world)) (inc n) 0))
+  (if (and (empty? (:players world)) (empty? (:spawning world)))
+    (inc n)
+    0))
 
 (defn- paused? [opts ^long n]
   (let [s (long (or (:pause-when-empty-seconds opts) 0))]
