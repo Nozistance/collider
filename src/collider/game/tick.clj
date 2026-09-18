@@ -23,6 +23,7 @@
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.players :as players]
             [collider.game.systems.pose :as pose]
+            [collider.game.systems.projectiles :as projectiles]
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
@@ -47,6 +48,7 @@
               #'falling/falling-blocks
               #'mobs/mobs-system
               #'tnt/tnt-system
+              #'projectiles/projectiles
               #'damage/damage
               #'sleep/sleep
               #'inventory/inventory

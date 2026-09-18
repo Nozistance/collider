@@ -14,6 +14,7 @@
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
+            [collider.game.systems.projectiles :as projectiles]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -33,6 +34,8 @@
 (def ^:private item-actions
   [[clicked-scaffolding? (fn [{:keys [world eid pos face]}] (place/scaffold-place-deltas world eid pos face))]
    [(comp nil? :item) (constantly nil)]
+   [(comp projectiles/throwables :item)
+    (fn [{:keys [world eid at]}] (projectiles/throw-deltas world eid at))]
    [:pour (when-use (fn [{:keys [world eid at pour]}] (bucket/add world eid at pour)))]
    [(item-is :flint-and-steel) (when-hand (on-args tools/flint-deltas))]
    [(item-is :fire-charge) (when-hand (on-args tools/firecharge-deltas))]

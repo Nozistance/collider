@@ -58,7 +58,7 @@
 (def ^:private EntityData
   [:sequential [:tuple :int
                 [:enum :byte :int :float :item :boolean :block-pos
-                 :optional-block-pos :block-state :pose] :any]])
+                 :optional-block-pos :block-state :particle :pose] :any]])
 
 (def packets
   {[:handshake :intention]

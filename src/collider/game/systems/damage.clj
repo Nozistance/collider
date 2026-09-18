@@ -56,7 +56,7 @@
         r (- (random/of-longs t eid (hash :hurt1)) (random/of-longs t eid (hash :hurt2)))]
     (+ base (* voice-pitch-spread r))))
 
-(defn- creative-proof?
+(defn creative-proof?
   "Returns true when nothing can hurt the entity. Players are always in creative
    mode."
   [e]

@@ -772,7 +772,8 @@
         (cond-> {:item (data/entry-name "item" item) :count n}
                 (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
-(def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14 :pose 20})
+(def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
+                           :optional-block-pos 11 :block-state 14 :particle 16 :pose 20})
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
     (buf/write-byte! buf (int idx))
@@ -787,6 +788,9 @@
       :optional-block-pos (do (buf/write-boolean! buf (some? v))
                               (when v (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))))
       :block-state (write-varint buf (long v))
+      :particle (let [[t c] v]
+                  (write-varint buf (long t))
+                  (buf/write-int! buf (int c)))
       :pose (write-varint buf (long v))))
   (buf/write-byte! buf 0xFF))
 

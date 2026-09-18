@@ -23,6 +23,16 @@
 
 (defrecord FallingBlock [type pos vel yaw pitch on-ground block start time track])
 
+(defrecord Projectile [type pos vel yaw pitch on-ground stack owner age
+                       left-owner? track])
+
+(defrecord Cloud [type pos vel yaw pitch on-ground radius color waiting? age
+                  duration wait-time radius-per-tick radius-on-use victims
+                  track])
+
+(def thrown-types
+  #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
+
 (defn item
   "Returns a dropped item entity of stack at pos with velocity vel and a pickup
    delay in ticks."
@@ -46,6 +56,9 @@
         :item (map->Item m)
         :tnt (map->Tnt m)
         :falling-block (map->FallingBlock m)
+        :area-effect-cloud (map->Cloud m)
+        (:snowball :egg :ender-pearl :splash-potion :lingering-potion)
+        (map->Projectile m)
         (map->Mob m)))))
 
 (defn eye-height ^double [e]
@@ -54,6 +67,8 @@
     :tnt 0.0
     :falling-block 0.0
     :item 0.21
+    :area-effect-cloud 0.425
+    (:snowball :egg :ender-pearl :splash-potion :lingering-potion) 0.2125
     1.19))
 
 (defn mob-moved [e pos vel on-ground yaw wet? jump-cd]

@@ -1,6 +1,7 @@
 (ns collider.net.render
   "Packets for each player from the tick."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.entity :as entity]
             [clojure.data.int-map :as i]
             [collider.config :as config]
             [collider.data :as data]
@@ -60,7 +61,16 @@
      :mooshroom     (data/registry-id "entity_type" :mooshroom)
      :item          (data/registry-id "entity_type" :item)
      :tnt           (data/registry-id "entity_type" :tnt)
-     :falling-block (data/registry-id "entity_type" :falling-block)}))
+     :falling-block (data/registry-id "entity_type" :falling-block)
+     :snowball      (data/registry-id "entity_type" :snowball)
+     :egg           (data/registry-id "entity_type" :egg)
+     :ender-pearl   (data/registry-id "entity_type" :ender-pearl)
+     :splash-potion (data/registry-id "entity_type" :splash-potion)
+     :lingering-potion (data/registry-id "entity_type" :lingering-potion)
+     :area-effect-cloud (data/registry-id "entity_type" :area-effect-cloud)}))
+
+(def ^:private ^:table entity-effect-particle
+  (delay (data/registry-id "particle_type" :entity-effect)))
 
 (defn- kind-of [e]
   (let [t (:type e)]
@@ -99,6 +109,13 @@
           (conj [18 :byte (bit-or (bit-and (long (or (:color meta) 0)) 15)
                                   (if (:sheared? meta) 0x10 0))])))
 
+(defn- cloud-data [meta]
+  (cond-> []
+          (contains? meta :radius) (conj [8 :float (:radius meta)])
+          (contains? meta :waiting?) (conj [9 :boolean (:waiting? meta)])
+          (contains? meta :color)
+          (conj [10 :particle [@entity-effect-particle (:color meta)]])))
+
 (defn- entity-data [kind meta]
   (case kind
     :player (player-data meta)
@@ -110,7 +127,10 @@
            (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))
     :falling-block (if (contains? meta :start)
                      [[8 :block-pos (:start meta)]] [])
-    []))
+    :area-effect-cloud (cloud-data meta)
+    (if (entity/thrown-types kind)
+      (cond-> [] (contains? meta :stack) (conj [8 :item (:stack meta)]))
+      [])))
 
 (def ^:private equipment-slots [0 2 3 4 5])
 (defn- add-entity-packet [eid e tr kind]
@@ -118,7 +138,9 @@
    :pos    (if tr (mapv double (:pos tr)) (:pos e))
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
    :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
-   :data   (if (= :falling-block kind) (:block e) 0)})
+   :data   (cond (= :falling-block kind) (:block e)
+                 (entity/thrown-types kind) (long (:owner e 0))
+                 :else 0)})
 
 (defn- equipment-of [tr]
   (keep-indexed (fn [i s] (when s [(equipment-slots i) s])) (if tr (:equip tr) [])))
@@ -162,6 +184,10 @@
    :mooshroom/shear               [:entity.mooshroom.shear 6]
    :mooshroom/eat                 [:entity.mooshroom.eat 6]
    :tnt/primed                    [:entity.tnt.primed 4]
+   :snowball/throw                [:entity.snowball.throw 6]
+   :egg/throw                     [:entity.egg.throw 7]
+   :ender-pearl/throw             [:entity.ender-pearl.throw 6]
+   :player/teleport               [:entity.player.teleport 7]
    :hoe/till                      [:item.hoe.till 4]
    :candle/extinguish             [:block.candle.extinguish 4]
    :eyeblossom/open               [:block.eyeblossom.open 4]
@@ -247,6 +273,7 @@
   (case (:kind m)
     :hurt {:packet :hurt-animation :eid (:eid m) :yaw 0.0}
     :death {:packet :entity-event :eid (:eid m) :event 3}
+    :break {:packet :entity-event :eid (:eid m) :event 3}
     :eat {:packet :entity-event :eid (:eid m) :event 10}
     :love {:packet :entity-event :eid (:eid m) :event 18}
     nil))

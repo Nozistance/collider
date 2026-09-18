@@ -1,6 +1,7 @@
 (ns collider.game.systems.players
   "Player list, entity tracking and movement updates."
   (:require [clojure.data.int-map :as i]
+            [collider.game.entity :as entity]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -23,11 +24,17 @@
 (defn- angle
   "Returns an angle in the 256 step units of the protocol."
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
+(defn- thrown-metadata [e] {:stack (:stack e)})
 (def ^:private simple-metadata
-  {:item          (fn [e] (cond-> {:stack (:stack e)}
-                                  (:burning? e) (assoc :burning? true)))
-   :tnt           (fn [e] {:fuse (:fuse e)})
-   :falling-block (fn [e] {:start (:start e)})})
+  (merge
+    {:item          (fn [e] (cond-> {:stack (:stack e)}
+                                    (:burning? e) (assoc :burning? true)))
+     :tnt           (fn [e] {:fuse (:fuse e)})
+     :falling-block (fn [e] {:start (:start e)})
+     :area-effect-cloud
+     (fn [e] {:radius (:radius e) :color (:color e)
+              :waiting? (boolean (:waiting? e))})}
+    (zipmap entity/thrown-types (repeat thrown-metadata))))
 
 (defn- player-metadata [e]
   (cond-> {:burning?    (boolean (:burning? e))
@@ -94,7 +101,9 @@
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]]
                      (let [t (:type e)]
-                       (or (#{:player :item :tnt :falling-block} t) (mobs/mob-type? t)))))
+                       (or (#{:player :item :tnt :falling-block
+                              :area-effect-cloud} t)
+                           (entity/thrown-types t) (mobs/mob-type? t)))))
         (:entities world)))
 
 (defn- viewer-index [ps]
@@ -303,11 +312,14 @@
             (seq (.slot-diff f)) (assoc :slots (or (:inventory e) {}))
             (.carried-changed? f) (assoc :carried (:carried e)))))
 
+(def ^:private cloud-update-interval Integer/MAX_VALUE)
 (def ^:private update-freqs
-  {:item          item-update-interval
-   :tnt           10
-   :falling-block 20
-   :player        update-interval})
+  (merge {:item              item-update-interval
+          :tnt               10
+          :falling-block     20
+          :area-effect-cloud cloud-update-interval
+          :player            update-interval}
+         (zipmap entity/thrown-types (repeat 10))))
 
 (defn- update-freq ^long [e]
   (long (get update-freqs (:type e) mob-update-interval)))
