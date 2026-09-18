@@ -21,7 +21,7 @@
                  (block/drops cur (fn [salt] (random/of-key (:tick world) pos salt))))))
 
 (defn- pour-deltas [world eid pos state relative]
-  (let [cur (edit/block-at world pos) water? (= :water (block/liquid-class state))
+  (let [cur (edit/block-at world pos) water? (block/water? state)
         may-replace? (or (block/can-be-replaced? cur) (not (block/blocks-motion? cur)))
         holds? (and water? (edit/waterloggable? cur))
         shift? (get-in world [:entities eid :sneaking?])
@@ -40,13 +40,15 @@
                     splash))))
 
 (defn add
-  "Returns the deltas for a player who empties a bucket of state at the block in
-   view."
+  "Returns the deltas for a player who empties a bucket of state at
+  the block in view."
   [world eid e state]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))
           hit (edit/block-at world pos)
-          target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (block/liquid-class state))) pos relative)]
+          into-hit? (and (contains? (block/props-of hit) :waterlogged)
+                         (block/water? state))
+          target (if into-hit? pos relative)]
       (when (chunk/in-range? (target 1))
         (pour-deltas world eid target state (when (= target pos) relative))))))
 
@@ -86,7 +88,7 @@
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
           st (block/state :lily-pad)]
       (when (and (= :source kind)
-                 (= :water (block/liquid-class (edit/block-at world pos)))
+                 (block/water? (edit/block-at world pos))
                  (chunk/in-range? y')
                  (block/can-be-replaced? (edit/block-at world above))
                  (not (edit/obstructed? world above st))

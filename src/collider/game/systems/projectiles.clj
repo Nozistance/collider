@@ -18,21 +18,37 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const half 0.125)
+
 (def ^:private ^:const height 0.25)
+
 (def ^:private ^:const air-drag 0.99)
+
 (def ^:private ^:const water-drag 0.8)
+
 (def ^:private ^:const gravity 0.03)
+
 (def ^:private ^:const potion-gravity 0.05)
+
 (def ^:private ^:const inaccuracy 0.0172275)
+
 (def ^:private ^:const eye-drop 0.1)
+
 (def ^:private ^:const eye-height 1.62)
+
 (def ^:private ^:const below-world (- chunk/min-y 64.0))
+
 (def ^:private ^:const base-potion-color -13083194)
+
 (def ^:private ^:const splash-range-sq 16.0)
+
 (def ^:private ^:const pearl-damage 5.0)
+
 (def ^:private ^:const cloud-height 0.5)
+
 (def ^:private ^:const cloud-min-radius 0.5)
+
 (def ^:private ^:const cloud-period 5)
+
 (def ^:private ^:const cloud-reapply 20)
 
 (def throwables
@@ -83,7 +99,7 @@
 
 (defn- blend
   "Returns the amplifier-weighted mean of the effect colours, nil for
-   no visible effect."
+  no visible effect."
   [effects]
   (let [rows (filterv visible? effects)
         w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
@@ -93,8 +109,7 @@
               (channel rows 0 w)))))
 
 (defn potion-color
-  "Returns the colour the client paints the splash and the cloud
-   with."
+  "Returns the colour the client paints the splash and the cloud with."
   ^long [stack]
   (let [c (contents stack)]
     (long (or (:custom-color c) (blend (all-effects c))
@@ -108,8 +123,8 @@
   (:instant? (get (data/mob-effects) (:effect e))))
 
 (defn has-instant-effects?
-  "Returns true when the potion itself acts at once. Custom effects
-   do not count."
+  "Returns true when the potion itself acts at once. Custom effects do
+  not count."
   [stack]
   (boolean (some instant? (brewed (contents stack)))))
 
@@ -140,7 +155,7 @@
 
 (defn- carried
   "Returns vel plus the motion of the thrower. The thrower's own fall
-   speed is left out while it stands on the ground."
+  speed is left out while it stands on the ground."
   [e vel]
   (let [m (or (:client-vel e) [0.0 0.0 0.0])]
     (v/+ vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
@@ -351,7 +366,7 @@
 
 (defn- dowse-deltas
   "Returns the deltas of dowsing fire around the hit. Actual fire is
-   destroyed, while a candle or a campfire only goes out."
+  destroyed, while a candle or a campfire only goes out."
   [world hit]
   (let [cells (filterv #(chunk/in-range? (nth % 1)) (dowse-cells hit))
         fires (filterv #(fire-at? (:chunks world) %) cells)]
@@ -360,8 +375,7 @@
           (remove (set fires) cells))))
 
 (defn- doused-deltas
-  "Returns the deltas of a water splash putting out entities it
-   soaks."
+  "Returns the deltas of a water splash putting out entities it soaks."
   [world at]
   (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
     (for [[oid o] (sort-by key (:entities world))
@@ -459,8 +473,8 @@
           (sort-by key (:entities world)))))
 
 (defn projectiles
-  "Returns the flight and the hits of the thrown things, and the
-   life of the lingering clouds."
+  "Returns the flight and the hits of the thrown things, and the life
+  of the lingering clouds."
   [world _d]
   (-> (mapv (fn [[eid e]] #(step-deltas world eid e))
             (entries world entity/thrown-types))
@@ -469,7 +483,7 @@
 
 (defn first-step
   "Returns the flight of the things thrown this tick, which move at
-   once in the tick of their throw."
+  once in the tick of their throw."
   [world _d]
   (into []
         (comp (filter (fn [[_ e]] (zero? (long (:age e 0)))))

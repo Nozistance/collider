@@ -12,6 +12,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const effects-interval 4)
+
 (def ^:private ^:const effects-start 0.21875)
 
 (defn- roll ^double [world eid salt]
@@ -49,7 +50,7 @@
 
 (defn- extra-deltas
   "Returns the deltas that put the stack into the inventory, or drop
-   it when nothing fits."
+  it when nothing fits."
   [world eid e stack]
   (let [[changes left] (items/add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
@@ -58,7 +59,7 @@
 
 (defn- remainder-deltas
   "Returns the deltas that turn the used stack into its remainder. In
-   creative the stack is untouched and no remainder appears at all."
+  creative the stack is untouched and no remainder appears at all."
   [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
     (when (and left (not (state/infinite-materials? e)))
@@ -111,7 +112,7 @@
 
 (defn- filled-deltas
   "Returns the deltas of filling the bottle. In creative the hand
-   keeps its stack and the new one is added only when none is held."
+  keeps its stack and the new one is added only when none is held."
   [world eid e made]
   (if (state/infinite-materials? e)
     (when-not (some #(same-stack? made %) (vals (:inventory e)))
@@ -121,12 +122,12 @@
 (defn- water-at? [world pos]
   (let [st (edit/block-at world pos)]
     (or (and (block/source-state? st)
-             (= :water (block/liquid-class st)))
+             (block/water? st))
         (= :true (:waterlogged (block/props-of st))))))
 
 (defn bottle-deltas
   "Returns the deltas for a player who fills a glass bottle at the
-   water source in view."
+  water source in view."
   [world eid e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
     (when (water-at? world pos)

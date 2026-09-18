@@ -88,6 +88,7 @@
           (if (:swimming? meta) 0x10 0)))
 
 (def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming?])
+
 (defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
 
 (def ^:private pose-id
@@ -137,10 +138,11 @@
       [])))
 
 (def ^:private equipment-slots [0 2 3 4 5])
+
 (defn- spawn-rotation
   "Returns the angle a thrown thing had when its tracking began, in
-   degrees. It flies in the tick of the throw, so the entity already
-   turned. Everything else answers with the angle it holds now."
+  degrees. It flies in the tick of the throw, so the entity already
+  turned. Everything else answers with the angle it holds now."
   [tr kind k now]
   (if-let [a (and tr (entity/thrown-types kind) (get tr k))]
     (/ (* (double a) 360.0) 256.0)
@@ -260,17 +262,20 @@
    :swim                          [:entity.generic.swim 6]})
 
 (def ^:private ^:table overworld (delay (data/datapack-id "dimension_type" :overworld)))
+
 (def ^:private ^:table explosion-block-particles
   (delay [[(data/registry-id "particle_type" :poof) 0.5 1.0 1]
           [(data/registry-id "particle_type" :smoke) 1.0 1.0 1]]))
 
 (def ^:private ^:table explosion-particle
   (delay (data/registry-id "particle_type" :explosion-emitter)))
+
 (defn- particles-packet [m]
   {:packet :level-particles :particle (data/registry-id "particle_type" (:kind m)) :state (:state m)
    :pos    (:pos m) :count (:count m) :speed (:speed m)})
 
 (def ^:private unhandled (atom #{}))
+
 (defn- once! [kind]
   (when-not (@unhandled kind)
     (swap! unhandled conj kind)
@@ -320,6 +325,7 @@
      :block-particles @explosion-block-particles}))
 
 (def ^:private ^:const explosion-range-sq 4096.0)
+
 (defn- in-earshot? [world center eid]
   (when-let [p (get-in world [:entities eid :pos])]
     (let [dx (- (v/x p) (double (center 0)))
@@ -430,9 +436,13 @@
     (once! (:msg m))))
 
 (def ^:private ^:table command-tree (delay (commands/tree)))
+
 (def ^:private world-border-size 5.9999968E7)
+
 (def ^:private world-border-max 29999984)
+
 (def ^:private op-level-event 24)
+
 (defn- join-spawn [world]
   (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
     [(long (Math/floor (double x))) (long (Math/floor (double y))) (long (Math/floor (double z)))]))

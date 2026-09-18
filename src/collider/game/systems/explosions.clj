@@ -47,6 +47,7 @@
           (blast-impulse center [px py pz] (+ (double py) (entity/eye-height e)) d12 density power))))))
 
 (def ^:private ^:const kb-cell 8)
+
 (defn- kb-cell-key ^long [^long x ^long y ^long z]
   (bit-or (bit-shift-left (+ (bit-shift-right x 3) 524288) 26)
           (bit-shift-left (+ (bit-shift-right z 3) 524288) 6)
@@ -83,8 +84,8 @@
                            (hurtable? o) (conj [:damage oid dmg]))]))
 
 (defn- blast-deltas
-  "Returns the knockback of each player and the deltas for every other entity the
-   blast moves."
+  "Returns the knockback of each player and the deltas for every other
+  entity the blast moves."
   [read index center power later]
   (reduce (fn [acc [oid o :as entry]]
             (if-let [[kb dmg] (knockback read center o (get later oid (:pos o)) power)]
@@ -171,7 +172,8 @@
   (into [] (comp (filter (fn [delta] (= :explode (nth delta 0)))) (map second)) (:world d)))
 
 (defn explosions
-  "Returns the deltas for every blast requested this tick, in request order."
+  "Returns the deltas for every blast requested this tick, in
+  request order."
   [world d]
   (let [reqs (requests d)]
     (when (seq reqs)

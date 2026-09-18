@@ -11,6 +11,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const rain-fill-chance 0.05)
+
 (def ^:const powder-snow-fill-chance 0.1)
 
 (defn- state-at ^long [chunks p]
@@ -32,7 +33,7 @@
          (chunk/in-range? (long (nth p 1)))
          (< (block-light chunks p) 10)
          (block/liquid? st)
-         (= :water (block/liquid-class st))
+         (block/water? st)
          (not (every? (fn [d] (water? chunks (mapv + p d))) sides)))))
 
 (defn- should-snow? [chunks biome p]
@@ -77,9 +78,9 @@
       [[p st]])))
 
 (defn tick-precipitation
-  "Returns the changes the weather makes to the top of the column at x z.
-   max-height is the most snow layers allowed there. roll decides whether a
-   cauldron fills."
+  "Returns the changes the weather makes to the top of the column at x
+  z. max-height is the most snow layers allowed there. roll decides
+  whether a cauldron fills."
   [ctx chunks [x _ z] max-height roll]
   (let [top [(long x) (spawn/motion-blocking-height chunks x z) (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]

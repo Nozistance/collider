@@ -6,8 +6,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const tries 1000)
+
 (def ^:private ^:const spread-xz 16)
+
 (def ^:private ^:const spread-y 8)
+
 (def ^:private ^:const place-delay 5)
 
 (defn delay-after-place

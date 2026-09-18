@@ -110,8 +110,8 @@
       :else (run e lit? (recipe (:kind e) input)))))
 
 (defn input-changed
-  "Sets the input slot to stack. A different item restarts the
-   cooking timer at the total time of its recipe."
+  "Sets the input slot to stack. A different item restarts the cooking
+  timer at the total time of its recipe."
   [e stack]
   (let [old (nth (:items e) 0)
         e (assoc-in e [:items 0] stack)]

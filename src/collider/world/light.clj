@@ -7,19 +7,29 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const SL 1)
+
 (def ^:private DX (long-array [0 0 0 0 -1 1]))
+
 (def ^:private DY (long-array [-1 1 0 0 0 0]))
+
 (def ^:private DZ (long-array [0 0 -1 1 0 0]))
+
 (def ^:private ^:const DOWN 0)
+
 (def ^:private ^:const OFF 8388608)
 
 (defn- pack ^long [^long x ^long y ^long z ^long l]
   (bit-or (bit-shift-left (+ x OFF) 38) (bit-shift-left (+ z OFF) 14)
           (bit-shift-left (inc (- y chunk/min-y)) 4) l))
+
 (defn- px ^long [^long e] (- (bit-shift-right e 38) OFF))
+
 (defn- pz ^long [^long e] (- (bit-and (bit-shift-right e 14) 0xFFFFFF) OFF))
+
 (defn- py ^long [^long e] (+ chunk/min-y (dec (bit-and (bit-shift-right e 4) 0x3FF))))
+
 (defn- pl ^long [^long e] (bit-and e 0xF))
+
 (defn- l-idx ^long [^long x ^long y ^long z]
   (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16) (bit-and x 15)))
 
@@ -237,8 +247,8 @@
     (float (+ v (float (* (float weight) (float (- to v))))))))
 
 (defn sky-light-level
-  "Returns the brightness of the sky, 0.0 to 15.0, at a time of day. The rain
-   and thunder levels, 0.0 to 1.0, dim it."
+  "Returns the brightness of the sky, 0.0 to 15.0, at a time of day.
+  The rain and thunder levels, 0.0 to 1.0, dim it."
   (^double [^long time] (sky-light-level time 0.0 0.0))
   (^double [^long time ^double rain-level ^double thunder-level]
    (let [thunder (float thunder-level)
@@ -249,8 +259,8 @@
      (float (min (float 15.0) (max (float 0.0) v))))))
 
 (defn sky-darken
-  "Returns how much the sky light is dimmed, 0 to 15, at a time of day and
-   weather."
+  "Returns how much the sky light is dimmed, 0 to 15, at a time of day
+  and weather."
   (^long [^long time] (sky-darken time 0.0 0.0))
   (^long [^long time ^double rain-level ^double thunder-level]
    (long (int (float (- (float 15.0) (float (sky-light-level time rain-level thunder-level))))))))

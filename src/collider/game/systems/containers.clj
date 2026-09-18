@@ -40,8 +40,8 @@
 
 (defn- remote-match?
   "Returns true when the client already has stack in that slot. What
-   it told us of its own components is only whether it has any, so a
-   slot matches every stack that agrees on that much."
+  it told us of its own components is only whether it has any, so a
+  slot matches every stack that agrees on that much."
   [remote stack]
   (let [r (remote-of stack)]
     (if (:components? remote) (= remote (hashed r)) (= remote r))))
@@ -207,7 +207,8 @@
         (into (set (keys before)) (keys after))))
 
 (defn- stale-result
-  "Returns the menu with its result slot marked unseen when the grid changed."
+  "Returns the menu with its result slot marked unseen when the
+  grid changed."
   [m items items']
   (if (and (container/crafting? m)
            (not= (container/inputs m items)
@@ -393,8 +394,8 @@
     (and m (= :block (:kind m)) (valid? world m))))
 
 (defn broadcast
-  "Sends every viewer the slots and data of their menu that moved,
-   as AbstractContainerMenu.broadcastChanges does each player tick."
+  "Sends every viewer the slots and data of their menu that moved, as
+  AbstractContainerMenu.broadcastChanges does each player tick."
   [world _d]
   [#(mapcat (fn [[eid e]]
               (when (broadcasting? world e)

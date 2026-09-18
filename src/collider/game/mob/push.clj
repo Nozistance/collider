@@ -29,6 +29,7 @@
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
 
 (def ^:private ^:const push-cap 16)
+
 (defn- pushable-groups [world active]
   (persistent!
     (reduce (fn [m [eid e]]
@@ -81,6 +82,7 @@
                  cells))))
 
 (deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
+
 (def ^:private ^Window empty-window (Window. (object-array 9) (long-array 9) -1 0))
 
 (defn- self-index ^long [^Hood h ^long eid]

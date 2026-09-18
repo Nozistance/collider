@@ -52,7 +52,9 @@
                                    (random/pitch (:tick world) pos :berries)))]))))
 
 (def ^:private ^:const bush-max-age 3)
+
 (def ^:private ^:const dust-plume-particles 7)
+
 (def ^:private ^:const berry-rolls 2.0)
 
 (defn- picks-berries? [^long cur item]
@@ -73,6 +75,7 @@
                                  (random/pitch (:tick world) pos :bush-pitch)))])))
 
 (def ^:private statue-types #{:copper-golem-statue :weathering-copper-golem-statue})
+
 (def ^:private next-pose {:standing :sitting :sitting :running :running :star :star :standing})
 
 (defn- poses? [cur item]

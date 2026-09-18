@@ -7,20 +7,32 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private grows-on {:pointed-dripstone :dripstone-block})
+
 (def ^:private max-growth-length {:pointed-dripstone 7 :sulfur-spike 2})
+
 (def ^:private cauldrons #{:cauldron :layered-cauldron :lava-cauldron})
+
 (def ^:private water-chance 0.17578125)
+
 (def ^:private lava-chance 0.05859375)
+
 (def ^:private growth-chance 0.011377778)
+
 (defn speleothem?
-  "Returns true when st is pointed dripstone or another spike that grows
-   from stone."
+  "Returns true when st is pointed dripstone or another spike that
+  grows from stone."
   [^long st] (block/tagged? st "speleothems"))
+
 (defn- dir-of [^long st] (:vertical-direction (block/props-of st)))
+
 (defn- thickness-of [^long st] (:thickness (block/props-of st)))
+
 (defn- directed? [^long st dir] (and (speleothem? st) (= dir (dir-of st))))
+
 (defn stalactite? [^long st] (directed? st :down))
+
 (defn- stalagmite? [^long st] (directed? st :up))
+
 (defn- tip? [^long st merged?]
   (and (speleothem? st)
        (or (= :tip (thickness-of st)) (and merged? (= :tip_merge (thickness-of st))))))
@@ -38,6 +50,7 @@
     :else (block/liquid-class st)))
 
 (defn- water-at? [chunks p] (= :water (fluid-of (chunk/at-void chunks p))))
+
 (defn- water-source-at? [chunks p]
   (let [st (chunk/at-void chunks p)]
     (and (= :water (fluid-of st))
@@ -164,9 +177,10 @@
               {:tip tip :cauldron c :delay (+ 50 (- (long (tip 1)) (long (c 1))))})))))))
 
 (defn drip
-  "Returns the drip of the dripstone at p this tick, or nil when nothing drips.
-   The result holds the tip it falls from and either block changes or the
-   cauldron it fills and the delay before it lands."
+  "Returns the drip of the dripstone at p this tick, or nil when
+  nothing drips. The result holds the tip it falls from and
+  either block changes or the cauldron it fills and the delay
+  before it lands."
   [chunks p ^long st roll]
   (when (= :pointed-dripstone (block/type-of st))
     (let [roll (double (roll :drip))]

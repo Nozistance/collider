@@ -27,6 +27,7 @@
   (chunk/load-chunk in))
 
 (def ^:private freeze-opts {:compressor nippy/lz4-compressor})
+
 (defprotocol Store
   (put-chunk! [this id payload])
   (get-chunk [this id])
@@ -120,9 +121,10 @@
   (toString [_] (str dir)))
 
 (defn file-store [dir] (->FileStore dir))
+
 (defn snapshot
   "Returns the world as a store keeps it, with every loaded chunk and
-   what belongs to it."
+  what belongs to it."
   [world]
   (let [entry (fn [id] [id (schema/chunk-payload world id)])]
     (assoc (schema/snapshot world)
@@ -148,8 +150,8 @@
   [:chunks :entities :block-ticks :block-entities])
 
 (defn world-of
-  "Returns the world a snapshot holds, with its chunks and what belongs
-   to them."
+  "Returns the world a snapshot holds, with its chunks and what
+  belongs to them."
   [snap]
   (let [empty-parts (select-keys schema/initial-world chunk-keys)
         base (schema/world-of (dissoc snap :chunks :stored))]
@@ -237,8 +239,8 @@
       state)))
 
 (defn store-chunk!
-  "Saves an unloaded chunk after every save and read asked for before
-   it."
+  "Saves an unloaded chunk after every save and read asked for
+  before it."
   [saver store id payload]
   (send-off saver stored! store id payload))
 
@@ -255,7 +257,7 @@
 
 (defn fetch-chunk!
   "Reads a saved chunk after every save asked for before it and gives
-   it to deliver, or nil when it cannot be read."
+  it to deliver, or nil when it cannot be read."
   [saver store id deliver]
   (send-off saver fetched! store id deliver))
 
@@ -269,8 +271,8 @@
   ([saver ms] (if saver (await-for ms saver) true)))
 
 (defn stop-saver!
-  "Writes the world one last time and waits for the saver. Returns true when
-   it finished in time."
+  "Writes the world one last time and waits for the saver. Returns
+  true when it finished in time."
   [saver store world]
   (request-save! saver store world)
   (let [ok (await-saver! saver)]

@@ -8,7 +8,9 @@
 (set! *warn-on-reflection* true)
 
 (defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
+
 (defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
+
 (defn switched [^long st ^long time]
   (let [open? (= :open-eyeblossom (block/block-of st))]
     (when (not= open? (night? time))
@@ -26,8 +28,8 @@
     [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]))
 
 (defn cascade
-  "Returns the eyeblossoms near p that follow the one at p, grouped by the
-   tick they change on."
+  "Returns the eyeblossoms near p that follow the one at p, grouped by
+  the tick they change on."
   [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
             (if (not= old (chunk/at chunks q))
@@ -42,8 +44,6 @@
 (def rule
   {:name   :eyeblossom
    :match? (fn [_chunks st _p] (eyeblossom? st))
-
-
 
    :wake   (fn [chunks tick p _old _self?]
              (when-not (support/supported? chunks p

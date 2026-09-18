@@ -11,7 +11,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const mutate-chance 1024)
+
 (def ^:private ^:const brown 1)
+
 (def ^:private ^:const shorn-mushrooms 5)
 
 (defn- variant ^long [e] (long (or (:color e) 0)))
@@ -65,8 +67,9 @@
      (out/all (out/sound :mooshroom/eat (:pos e) 2.0 1.0))]))
 
 (defn interact-deltas
-  "Returns the deltas for players who use a bowl, shears or a flower on a grown
-   mooshroom. A bowl goes before shears and shears go before a flower."
+  "Returns the deltas for players who use a bowl, shears or a flower
+  on a grown mooshroom. A bowl goes before shears and shears go
+  before a flower."
   [world events t]
   (animal/on-interact world events
                       (fn [peid p eid e]

@@ -1,5 +1,6 @@
 (ns collider.game.deltas
-  "Deltas of one tick and their jobs, each a source of deltas or of more jobs."
+  "Deltas of one tick and their jobs, each a source of deltas or of
+  more jobs."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -8,9 +9,12 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const fold-leaf 64)
+
 (def ^:private ^:const fold-threshold 64)
+
 (defn pmapcat
-  "Returns the mapcat of f over vector v, in parallel when v is longer than threshold."
+  "Returns the mapcat of f over vector v, in parallel when v is longer
+  than threshold."
   ([f v] (pmapcat f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))
@@ -20,7 +24,9 @@
              v))))
 
 (defrecord Deltas [world entities out input])
+
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
+
 (defn input ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
@@ -52,7 +58,8 @@
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (defn run
-  "Returns the Deltas of the jobs run in parallel, in the same order every time."
+  "Returns the Deltas of the jobs run in parallel, in the same order
+  every time."
   ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]

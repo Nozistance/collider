@@ -13,6 +13,7 @@
       (if (= :head (:part (block/props-of st))) pos (first (connect/partner chunks pos st))))))
 
 (def ^:private steps {:north [0 -1] :south [0 1] :west [-1 0] :east [1 0]})
+
 (defn- facing-angle? [dir ^double yaw]
   (let [[dx dz] (steps dir)
         a (Math/toDegrees (Math/atan2 (- dx) dz))
@@ -50,8 +51,11 @@
                 [bx by bz]))))
 
 (def ^:private burning #{:fire :soul-fire :lava :magma-block :lava-cauldron})
+
 (def ^:private campfires #{:campfire :soul-campfire})
+
 (def ^:private prickly #{:wither-rose :sweet-berry-bush :cactus :powder-snow})
+
 (defn- dangerous? [st]
   (let [b (block/block-of st)]
     (or (contains? burning b)
@@ -77,8 +81,8 @@
     (or found [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])))
 
 (defn look-yaw
-  "Returns the yaw in degrees, from -180 to 180, pointing from the second
-   position to the middle of the first."
+  "Returns the yaw in degrees, from -180 to 180, pointing from the
+  second position to the middle of the first."
   ^double [[x _ z] [fx _ fz]]
   (let [dx (- (+ (double x) 0.5) (double fx))
         dz (- (+ (double z) 0.5) (double fz))

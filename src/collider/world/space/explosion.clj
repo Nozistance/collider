@@ -1,5 +1,6 @@
 (ns collider.world.space.explosion
-  "Explosions, the blocks they break, their drops, and their reach into a body."
+  "Explosions, the blocks they break, their drops, and their reach
+  into a body."
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -9,6 +10,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const region-r 10)
+
 (deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
                  ^long ncx ^long ncz ^long nsy])
 
@@ -144,9 +146,9 @@
                      (inc total))))))
 
 (defn block-density
-  "Returns the share, 0.0 to 1.0, of a body at p that the blast at the center
-   reaches without a block in the way. The body is a box of half width half and
-   height height."
+  "Returns the share, 0.0 to 1.0, of a body at p that the blast at the
+  center reaches without a block in the way. The body is a box of
+  half width half and height height."
   [^Region rg [cx cy cz] p half height]
   (let [half (double half) height (double height)]
     (density-loop (path-probe rg cx cy cz) p half height (density-steps half height))))
@@ -163,6 +165,7 @@
         (vec a)))))
 
 (def ^:private ^:const merge-cap 16)
+
 (defn- add-stack [cs pos item n]
   (let [mx (data/max-stack item)
         lim (min mx merge-cap)]
@@ -189,9 +192,9 @@
     (when (and (pos? st) (not (block/tnt? st))) st)))
 
 (defn stacks
-  "Returns [pos stack] pairs of what the destroyed positions leave behind,
-   merged into few stacks. seed decides the random drops. radius is the blast
-   radius the drops depend on."
+  "Returns [pos stack] pairs of what the destroyed positions leave
+  behind, merged into few stacks. seed decides the random drops.
+  radius is the blast radius the drops depend on."
   [^Region rg positions seed radius]
   (mapv (fn [[pos item n]] [pos {:item item :count n}])
         (reduce (fn [cs pos]

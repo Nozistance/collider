@@ -22,6 +22,7 @@
       [[q (grow-into st (inc (age st)) roll)]])))
 
 (defn- vine-with [st dir] (with st dir :true))
+
 (defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
 
 (defn- attachable? [chunks p dir]

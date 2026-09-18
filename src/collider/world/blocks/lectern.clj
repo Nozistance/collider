@@ -8,8 +8,11 @@
 (def ^:const impulse-ticks 2)
 
 (defn lectern? [^long st] (= :lectern (block/type-of st)))
+
 (defn has-book? [^long st] (= :true (:has-book (block/props-of st))))
+
 (defn powered? [^long st] (= :true (:powered (block/props-of st))))
+
 (defn facing [^long st] (:facing (block/props-of st)))
 
 (defn- with-props [^long st m]

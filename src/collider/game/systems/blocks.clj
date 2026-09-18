@@ -26,9 +26,13 @@
   (and (= :scaffolding item) (not use-item?) (= :scaffolding (block/type-of (edit/block-at world pos)))))
 
 (defn- when-use [f] (fn [c] (when (:use-item? c) (f c))))
+
 (defn- when-hand [f] (fn [c] (when-not (:use-item? c) (f c))))
+
 (defn- item-is [k] (comp #{k} :item))
+
 (defn- tool-is [d] (fn [c] ((d) (:item c))))
+
 (defn- on-args [f] (fn [{:keys [world args]}] (f world args)))
 
 (def ^:private item-actions
@@ -76,7 +80,8 @@
                           :pour  (liquid/bucket->state item)}))))
 
 (defn- sequence-of
-  "Returns the sequence number the player sent with the action, for the block ack."
+  "Returns the sequence number the player sent with the action, for
+  the block ack."
   [tag args]
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))

@@ -6,13 +6,21 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const black 15)
+
 (def ^:private ^:const gray 7)
+
 (def ^:private ^:const light-gray 8)
+
 (def ^:private ^:const brown 12)
+
 (def ^:private ^:const pink 6)
+
 (def ^:private ^:const white 0)
+
 (def ^:private temperate-colors [[5 black] [5 gray] [5 light-gray] [3 brown]])
+
 (def ^:private ^:const temperate-total 100.0)
+
 (def ^:private ^:const common-total 500.0)
 
 (defn- weighted [^long r entries]
@@ -50,19 +58,28 @@
 (defn egg-type [item]
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
+
 (defn max-health [type] (get-in types [type :max-health]))
+
 (defn mob-type? [type] (contains? types type))
+
 (defn breeding-item [type] (get-in types [type :breeding-item]))
+
 (defn say-sound [type] (get-in types [type :say]))
+
 (defn step-sound [type] (get-in types [type :step]))
+
 (defn hurt-sound [type] (get-in types [type :hurt]))
+
 (defn death-sound [type] (get-in types [type :death]))
+
 (def ^:private sheep-meta
   (into {} (for [color (range 16) baby [false true] burning [false true] sheared [false true]]
              [[color baby burning sheared]
               (cond-> {:color color :baby? baby :burning? burning} sheared (assoc :sheared? true))])))
 
 (defn burning? [e] (boolean (:burning? e)))
+
 (defn metadata [e]
   (case (:type e)
     :sheep (sheep-meta [(long (or (:color e) 0))
@@ -83,7 +100,8 @@
    :health-sent (max-health type)})
 
 (defn egg-mob
-  "Returns a mob hatched from a spawn egg. The keys ks decide its colour and yaw."
+  "Returns a mob hatched from a spawn egg. The keys ks decide its
+  colour and yaw."
   [type pos ks tick]
   (let [color-fn (get-in types [type :spawn-color] (constantly 0))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
@@ -94,5 +112,7 @@
   (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (random/of-longs t eid (hash kind)))))))))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
+
 (defn baby? [e] (some? (:baby-until e)))
+
 (defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))

@@ -8,10 +8,15 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const min-y -64)
+
 (def ^:const max-y 319)
+
 (def ^:const section-count 24)
+
 (def ^:const section-offset 4)
+
 (defn in-range? [^long y] (<= min-y y max-y))
+
 (defn section-index ^long [^long y] (+ (bit-shift-right y 4) section-offset))
 
 (def ^Section empty-section Section/EMPTY)
@@ -45,7 +50,8 @@
   (.firstAbove chunk (int si)))
 
 (defn nil-sky
-  "Returns the sky light a new section at si inherits from above at lx lz."
+  "Returns the sky light a new section at si inherits from above at
+  lx lz."
   ^long [chunk ^long si ^long lx ^long lz]
   (if-let [^Section s (first-above chunk si)]
     (.skyLight s (int (+ (* lz 16) lx)))
@@ -58,7 +64,7 @@
 
 (defn nil-sky-array
   "Returns the sky light a new section at si inherits from above, as a
-   fresh array."
+  fresh array."
   ^bytes [chunk ^long si]
   (.skyLightCopy ^Section (new-section chunk si)))
 
@@ -78,34 +84,47 @@
   (.with chunk (int si) s))
 
 (defn section-block
-  "Returns the block state at index idx of s, ordered y, then z, then x."
+  "Returns the block state at index idx of s, ordered y, then z,
+  then x."
   ^long [^Section s ^long idx]
   (.block s (int idx)))
 
 (defn sky-light ^long [^Section s ^long idx] (.skyLight s (int idx)))
+
 (defn block-light ^long [^Section s ^long idx] (.blockLight s (int idx)))
+
 (defn sky-light-copy ^bytes [^Section s] (.skyLightCopy s))
+
 (defn block-light-copy ^bytes [^Section s] (.blockLightCopy s))
+
 (defn with-sky-light ^Section [^Section s ^bytes a] (.withSkyLight s a))
+
 (defn with-block-light ^Section [^Section s ^bytes a] (.withBlockLight s a))
+
 (defn sky-lit? [^Section s] (.hasSkyLight s))
+
 (defn block-lit? [^Section s] (.hasBlockLight s))
 
 (defn heights!
-  "Fills the unset entries of the 256 heightmap columns in out with the
-   height above base of the topmost block of s that pred marks."
+  "Fills the unset entries of the 256 heightmap columns in out with
+  the height above base of the topmost block of s that pred marks."
   [^Section s ^booleans pred ^ints out ^long base]
   (.heights s pred out (int base)))
 
 (defn write-section!
   "Writes s to buf in wire form, counting the states fluid marks and
-   giving every block the biome."
+  giving every block the biome."
   [^Section s ^Buf buf ^booleans fluid ^long biome]
   (.write s buf fluid (int biome)))
+
 (defn write-sky-light! [^Section s ^Buf buf] (.writeSkyLight s buf))
+
 (defn write-block-light! [^Section s ^Buf buf] (.writeBlockLight s buf))
+
 (defn write-full-light! [^Buf buf] (Section/writeFullLight buf))
+
 (defn save-chunk! [^Chunk chunk ^DataOutput out] (.save chunk out))
+
 (defn load-chunk ^Chunk [^DataInput in] (Chunk/load in))
 
 (defn set-block ^Chunk [^Chunk chunk lx y lz state]
@@ -116,7 +135,8 @@
     (.with chunk si (.with s (int idx) (int state)))))
 
 (defn get-block
-  "Returns the block state at local lx y lz, air where no section exists."
+  "Returns the block state at local lx y lz, air where no
+  section exists."
   ^long [^Chunk chunk lx y lz]
   (if chunk
     (.block chunk (int lx) (int y) (int lz))
@@ -149,7 +169,8 @@
     (pos->id (+ cx dx) (+ cz dz))))
 
 (defn block-id-chunk
-  "Returns the id of the chunk that holds the block with packed id bid."
+  "Returns the id of the chunk that holds the block with packed
+  id bid."
   ^long [^long bid]
   (pos->id (bit-shift-right bid 42) (bit-shift-right (bit-shift-left bid 38) 42)))
 
@@ -226,8 +247,8 @@
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
 
 (defn with-chunks
-  "Returns chunks with each group of [[cp k] x] entries reduced by f into the
-   chunk at cp. A group for an absent chunk is dropped."
+  "Returns chunks with each group of [[cp k] x] entries reduced by f
+  into the chunk at cp. A group for an absent chunk is dropped."
   ^ChunkIndex [^ChunkIndex chunks f groups]
   (let [gs (filterv (fn [g] (some? (.get chunks (long (ffirst (first g)))))) groups)
         ids (long-array (count gs))
@@ -240,8 +261,8 @@
     (.withAll chunks ids cs)))
 
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied, those in absent chunks
-   dropped."
+  "Returns chunks with the [pos state] changes applied, those in
+  absent chunks dropped."
   [chunks changes]
   (if (empty? changes)
     chunks

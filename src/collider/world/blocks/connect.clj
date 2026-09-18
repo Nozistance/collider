@@ -17,18 +17,29 @@
 (set! *warn-on-reflection* true)
 
 (defn- tag [t] (set (get-in (data/tags) ["block" t])))
+
 (def ^:private ^:table fences (delay (tag "fences")))
+
 (def ^:private ^:table wooden (delay (tag "wooden_fences")))
+
 (def ^:private ^:table walls (delay (tag "walls")))
+
 (def ^:private ^:table leaves (delay (tag "leaves")))
+
 (def ^:private ^:table shulker-boxes (delay (tag "shulker_boxes")))
+
 (def ^:private exceptions #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
+
 (def ^:private neighbours (conj (vec (vals dir/horizontal-offset)) [0 1 0] [0 -1 0]))
+
 (def pair-types #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
+
 (def snowy-types #{:grass :mycelium :snowy-dirt})
+
 (def placed-types
   #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :stair :concrete-powder :chorus-plant
     :potent-sulfur})
+
 (def ^:private ^:table connecting-set
   (delay
     (into #{:fence :wall :iron-bars :stained-glass-pane :fence-gate :door :weathering-copper-door :bed
@@ -105,6 +116,7 @@
            (and (= :low (:east sides)) (= :low (:west sides)) (= :none (:north sides)) (= :none (:south sides))))))
 
 (defn- wall-at? [st] (contains? @walls (block/block-of st)))
+
 (defn- gate-state [self st at]
   (let [axis (if (#{:north :south} (block/facing-of st)) :z :x)
         in-wall? (if (= axis :z)
@@ -129,7 +141,7 @@
 
 (defn- water-source-state? [^long st]
   (or (block/waterlogged? st)
-      (and (= :water (block/liquid-class st)) (block/source-state? st))))
+      (block/water-source? st)))
 
 (defn- source-if-fluid? [^long st]
   (or (nil? (block/liquid-class st))
@@ -174,7 +186,8 @@
   (let [props (block/props-of st)]
     (block/state self (assoc props :shape (stair-shape st at (:facing props) (:half props))))))
 
-(defn- water? [st] (or (= :water (block/liquid-class st)) (block/waterlogged? st)))
+(defn- water? [st] (or (block/water? st) (block/waterlogged? st)))
+
 (defn- touches-water? [st at]
   (or (and (water? st) (water? (at (dir/offset :down))))
       (some (fn [dir]
@@ -227,11 +240,14 @@
     (block/state self props)))
 
 (defn- vine-reshaped [chunks pos st] (support/vine-updated chunks pos st))
+
 (defn- multiface-reshaped [chunks pos st] (support/multiface-updated chunks pos st))
+
 (defn- fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st)
     (fire/state-with-age chunks pos (fire/age st))
     0))
+
 (defn- soul-fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st) st 0))
 
@@ -311,8 +327,8 @@
       :right)))
 
 (defn door-hinge
-  "Returns :left or :right for a door placed at pos with that facing. The
-   cursor coordinates are within the clicked face, in sixteenths."
+  "Returns :left or :right for a door placed at pos with that facing.
+  The cursor coordinates are within the clicked face, in sixteenths."
   [chunks pos facing cursor-x cursor-z]
   (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
         left (dir/horizontal-offset (dir/counter-clockwise facing))

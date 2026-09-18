@@ -68,6 +68,6 @@
 
 (defn placing
   "Places the joining and respawning players whose spawn chunks are
-   loaded, loading the chunks the others wait for."
+  loaded, loading the chunks the others wait for."
   [world _]
   (second (reduce settle [world []] (sort-by key (:spawning world)))))

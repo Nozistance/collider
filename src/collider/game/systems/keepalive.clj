@@ -6,6 +6,7 @@
 (set! *warn-on-reflection* true)
 
 (def interval-ticks 300)
+
 (defn- player-deltas [^long t [eid e]]
   (when (>= (- t (long (:keepalive-at e t))) interval-ticks)
     (if (:keepalive-pending? e)

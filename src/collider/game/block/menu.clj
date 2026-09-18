@@ -5,13 +5,21 @@
 (set! *warn-on-reflection* true)
 
 (def slot-count 46)
+
 (def outside -999)
+
 (def ^:private armor-slots {5 :head 6 :chest 7 :legs 8 :feet})
+
 (def ^:private hotbar-slot 36)
+
 (def ^:private offhand-slot 45)
+
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
+
 (defn- max-of ^long [s] (data/max-stack (:item s)))
+
 (defn- same? [a b] (and a b (= (dissoc a :count) (dissoc b :count))))
+
 (defn- sized [s ^long n] (when (pos? n) (assoc s :count n)))
 
 (defn- player-may-place? [slot stack]
@@ -333,7 +341,8 @@
       :else (spread m slots (long (:type quickcraft))))))
 
 (defn- quick-craft
-  "Returns the menu after a click that starts, continues or ends a drag."
+  "Returns the menu after a click that starts, continues or ends
+  a drag."
   [{:keys [carried quickcraft] :as m} slot ^long button]
   (let [header (bit-and button 3) type (bit-and (bit-shift-right button 2) 3)
         status (long (:status quickcraft 0))]

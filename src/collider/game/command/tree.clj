@@ -8,6 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- block-name [kw] (data/snake kw))
+
 (defn- block-kw [s] (data/kebab (str s)))
 
 (def commands [
@@ -76,8 +77,11 @@
                 [:world :fill]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
+
 (defn- cmd-name [form] (name (first form)))
+
 (defn- find-form [forms nm] (first (filter #(= nm (cmd-name %)) forms)))
+
 (defn- label [[nm [kind {:keys [min max]}]]]
   (case kind
     :duration (str "<" (name nm) ">")
@@ -186,6 +190,7 @@
       :else (in-range nm (Math/round (* (Double/parseDouble value) (double (long factor)))) opts))))
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
+
 (def ^:private coercers
   {:int   as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
    :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
@@ -266,8 +271,8 @@
     (no-subcommand form nm sub)))
 
 (defn parse
-  "Returns the delta the typed command means, or the reason it cannot run.
-   Relative coordinates count from origin."
+  "Returns the delta the typed command means, or the reason it cannot
+  run. Relative coordinates count from origin."
   ([text] (parse text nil))
   ([text origin]
    (let [[nm & more] (remove str/blank? (str/split (subs text 1) #"\s+"))
@@ -305,8 +310,8 @@
                        target)))
 
 (defn suggest
-  "Returns the completions for half-typed text, as a player standing at target
-   sees them."
+  "Returns the completions for half-typed text, as a player standing
+  at target sees them."
   ([world text] (suggest world text nil))
   ([world text target]
    (let [text (or text "")]
@@ -320,7 +325,9 @@
            :else (suggest-after-command form more target)))))))
 
 (def ^:private brigadier-integer (keyword "brigadier:integer"))
+
 (def ^:private brigadier-bool (keyword "brigadier:bool"))
+
 (defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
   (case kind
     :duration [[(name nm) :time {:min 1}]]

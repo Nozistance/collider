@@ -11,7 +11,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const tnt-half 0.49)
+
 (def ^:private ^:const tnt-height 0.98)
+
 (defn- liquid-push [world pos vel]
   (liquid/entity-push (:chunks world) pos tnt-half tnt-height vel))
 
@@ -54,8 +56,8 @@
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* reach reach))))
 
 (defn- later-positions
-  "Returns the positions of the nearby entities that step after this TNT in the
-   tick. The blast pushes them from these positions."
+  "Returns the positions of the nearby entities that step after this
+  TNT in the tick. The blast pushes them from these positions."
   [world eid center]
   (let [reach (+ (* 2.0 tnt/power) 2.0)]
     (into {}

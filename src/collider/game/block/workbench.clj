@@ -33,7 +33,9 @@
   (delay (vec (data/tag-values "banner_pattern" "no_item_required"))))
 
 (def ^:private ^:table banner-items (delay (set (of "banners"))))
+
 (def ^:private ^:table loom-dyes (delay (set (of "loom_dyes"))))
+
 (def ^:private ^:table loom-patterns (delay (set (of "loom_patterns"))))
 
 (defn banner? [stack] (contains? @banner-items (:item stack)))

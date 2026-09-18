@@ -22,8 +22,8 @@
 (set! *warn-on-reflection* true)
 
 (defn- lww-changes
-  "Returns the changes the ticking blocks ask for, at most one per block. The
-   last change wins."
+  "Returns the changes the ticking blocks ask for, at most one per
+  block. The last change wins."
   [chunks ctx cells]
   (into []
         (vals (into (sorted-map)
@@ -44,7 +44,7 @@
        (or (not (dripstone/speleothem? old)) (dripstone/stalactite? old))))
 
 (defn- washed? [^long old ^long st]
-  (and (= :water (block/liquid-class st)) (not (block/waterlogged? old))))
+  (and (block/water? st) (not (block/waterlogged? old))))
 
 (defn- unsupported? [^long old ^long st]
   (and (= st (block/emptied old)) (= st (support/gone-state old))
@@ -58,8 +58,8 @@
   (into #{} (filter #(fire/fire-state? (chunk/chunks-get-block chunks %))) now))
 
 (defn- burnt?
-  "Returns true when a fire that ticks now stands next to pos. A burnt block drops
-   nothing."
+  "Returns true when a fire that ticks now stands next to pos. A burnt
+  block drops nothing."
   [fires pos]
   (boolean (some #(contains? fires (mapv + pos %)) dir/around)))
 
@@ -83,8 +83,10 @@
 (defn- fizz-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) pos)]
-        :when (or (and (block/liquid? old) (pos? (long st)) (nil? (block/liquid-class st)))
-                  (and (liquid/mix-class? st) (pos? (long old)) (nil? (block/liquid-class old))))
+        :when (or (and (block/liquid? old) (pos? (long st))
+                       (nil? (block/liquid-class st)))
+                  (and (liquid/mix-class? st) (pos? (long old))
+                       (nil? (block/liquid-class old))))
         d [(out/all (out/fizz pos))]]
     d))
 
@@ -98,6 +100,7 @@
                     :block (block/without-water old) :start pos :time 0}]))
 
 (def ^:private sponge-plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
+
 (defn- sponge-drops [world sponge changed]
   (let [chunks (:chunks world)]
     (for [[pos st] (water/absorbed chunks sponge)
@@ -217,7 +220,8 @@
   [#(block-updates-deltas world d)])
 
 (defn- final-records
-  "Returns the last state of each block, in the order the blocks first changed."
+  "Returns the last state of each block, in the order the blocks
+  first changed."
   [recs]
   (let [last (into {} recs)]
     (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))

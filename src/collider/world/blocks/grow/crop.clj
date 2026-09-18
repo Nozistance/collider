@@ -117,7 +117,7 @@
 
 (defn kelp-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
-             (= :water (block/liquid-class (chunk/at chunks (dir/up p)))))
+             (block/water? (chunk/at chunks (dir/up p))))
     [[(dir/up p) (aged st (inc (age st)))]]))
 
 (defn cocoa-tick [_chunks p st roll _time _ctx]
@@ -141,10 +141,12 @@
                     [[p (aged st a')]])}))))
 
 (defn berry-meal [_chunks p st _roll] (when (< (age st) 3) {:changes [[p (aged st (inc (age st)))]]}))
+
 (defn cocoa-meal [_chunks p st _roll] (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]}))
 
 (defn kelp-meal [chunks p st _roll]
-  (when (and (< (age st) 25) (= :water (block/liquid-class (chunk/at chunks (dir/up p)))))
+  (when (and (< (age st) 25)
+             (block/water? (chunk/at chunks (dir/up p))))
     {:changes [[(dir/up p) (aged st (inc (age st)))]]}))
 
 (defn propagule-meal [_chunks p st _roll]

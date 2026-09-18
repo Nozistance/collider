@@ -12,19 +12,29 @@
 (set! *warn-on-reflection* true)
 
 (def update-interval 2)
+
 (def resync-interval 60)
+
 (def latency-interval 600)
+
 (def forced-teleport 400)
+
 (def ^:private vel-zero (vv/v3 0.0 0.0 0.0))
+
 (def ^:const ^:private pos-unit 4096.0)
+
 (def ^:const ^:private rel-limit 32767)
+
 (defn- fixed
   "Returns a coordinate in the fixed point units of the protocol."
   ^long [v] (Math/round (* (double v) pos-unit)))
+
 (defn- angle
   "Returns an angle in the 256 step units of the protocol."
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
+
 (defn- thrown-metadata [e] {:stack (:stack e)})
+
 (def ^:private simple-metadata
   (merge
     {:item          (fn [e] (cond-> {:stack (:stack e)}
@@ -48,6 +58,7 @@
           (:sleeping e) (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
 
 (def ^:private flag-keys [:burning? :sneaking? :sprinting? :swimming? :color :sheared? :variant])
+
 (defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
         changed (into {} (keep (fn [k] (let [v (get mdata k)]
@@ -68,6 +79,7 @@
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
 
 (def ^:private no-equip [nil nil nil nil nil])
+
 (defn- equipment-stacks [e]
   (let [inv (:inventory e)]
     (if (nil? inv)
@@ -75,6 +87,7 @@
       [(held-stack e) (get inv 8) (get inv 7) (get inv 6) (get inv 5)])))
 
 (defrecord Track [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots carried seen t0])
+
 (defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
     (->Track [(double x) (double y) (double z)]
@@ -90,6 +103,7 @@
              t)))
 
 (defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
+
 (defn- slot-diff [inv known]
   (into []
         (keep (fn [slot]
@@ -98,6 +112,7 @@
         (into (sorted-set) (concat (keys inv) (keys known)))))
 
 (defn- track-of [^long t e] (or (:track e) (baseline t e)))
+
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]]
                      (let [t (:type e)]
@@ -119,6 +134,7 @@
             ps)))
 
 (def ^:private duplicate-login-reason "You logged in from another location")
+
 (defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
             (when (= :player-join tag)
@@ -202,7 +218,9 @@
                   vel-changed? equip-diff slot-diff carried-changed? first?])
 
 (def ^:private vel-threshold 1.0E-7)
+
 (def ^:private pos-threshold 7.6293945E-6)
+
 (defn- vel-changed? [^Track tr vel]
   (boolean
     (when vel
@@ -286,7 +304,9 @@
           (seq (.equip-diff f)) (into (map (fn [[slot s]] (out/equipment eid slot s)) (.equip-diff f)))))
 
 (def ^:private item-update-interval 20)
+
 (def ^:private mob-update-interval 3)
+
 (defn- track-idle? [^Frame f]
   (and (not (.due? f))
        (not (.head-turned? f)) (not (.meta-changed? f))
@@ -313,6 +333,7 @@
             (.carried-changed? f) (assoc :carried (:carried e)))))
 
 (def ^:private cloud-update-interval Integer/MAX_VALUE)
+
 (def ^:private update-freqs
   (merge {:item              item-update-interval
           :tnt               10
@@ -380,6 +401,7 @@
         (changed-deltas (long t) eid e vs self? tr mdata due?)))))
 
 (def ^:private tab-header-interval 20)
+
 (defn- fmt ^String [^String pattern v]
   (String/format Locale/ROOT pattern
                  (to-array [(double (or v 0.0))])))
@@ -400,6 +422,7 @@
           (out/to eid msg))))))
 
 (def ^:private teleport-retry 20)
+
 (defn- pending-teleport-deltas [world ps]
   (mapcat (fn [[eid e]]
             (let [target (:tp-target e) since (:tp-id e)]
@@ -421,8 +444,8 @@
         (:world d)))
 
 (defn late-tracking
-  "Returns the deltas that show players the entities that appeared during this
-   tick."
+  "Returns the deltas that show players the entities that appeared
+  during this tick."
   [world d]
   (when (entities-changed? d)
     (let [by-chunk (entities-by-chunk (tracked-entries world))]

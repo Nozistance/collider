@@ -22,7 +22,9 @@
 (defn- tool-set [tag] (delay (set (data/tag-values "item" tag))))
 
 (def ^:private axe-items (tool-set "axes"))
+
 (def ^:private hoe-items (tool-set "hoes"))
+
 (def ^:private shovel-items (tool-set "shovels"))
 
 (defn axes [] @axe-items)

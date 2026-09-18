@@ -22,8 +22,9 @@
             [:set-slot peid slot stack]))))
 
 (defn milk-deltas
-  "Returns the deltas for players who milk a cow. A player gets a milk bucket
-   only when the inventory has none yet. Nothing drops when it is full."
+  "Returns the deltas for players who milk a cow. A player gets a milk
+  bucket only when the inventory has none yet. Nothing drops when it
+  is full."
   [world events _]
   (animal/on-interact world events
                       (fn [peid p _ e]

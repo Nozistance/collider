@@ -8,6 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const epsilon 1.0E-7)
+
 (def ^:private ^:const half-width 0.3)
 
 (defn- floor ^long [^double a] (long (Math/floor a)))

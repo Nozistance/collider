@@ -5,9 +5,13 @@
 (set! *warn-on-reflection* true)
 
 (defn to [eid msg] [:fx (assoc msg :to eid)])
+
 (defn all [msg] [:fx msg])
+
 (defn except [eid msg] [:fx (assoc msg :except eid)])
+
 (defn load-chunk [id] {:msg :load-chunk :id id})
+
 (defn store-chunk [id payload] {:msg :store-chunk :id id :payload payload})
 
 (defn blocks-changed [cp records]
@@ -136,7 +140,8 @@
   {:msg :animation :eid eid :kind kind})
 
 (defn status
-  "Returns the effect that an entity does something brief, such as being hurt."
+  "Returns the effect that an entity does something brief, such as
+  being hurt."
   [eid kind]
   {:msg :status :eid eid :kind kind})
 
@@ -145,7 +150,7 @@
 
 (defn sound
   "Returns the effect of a sound at pos. Source names the mixer
-   channel when it is not the one the sound is listed under."
+  channel when it is not the one the sound is listed under."
   ([kind pos volume pitch] (sound kind pos volume pitch nil))
   ([kind pos volume pitch source]
    (cond-> {:msg :sound :kind kind :pos pos
@@ -167,22 +172,39 @@
   {:msg :fizz :pos pos})
 
 (def ^:const sound-play-jukebox-song 1010)
+
 (def ^:const sound-stop-jukebox-song 1011)
+
 (def ^:const sound-extinguish-fire 1009)
+
 (def ^:const sound-anvil-broken 1029)
+
 (def ^:const sound-anvil-land 1031)
+
 (def ^:const sound-chorus-grow 1033)
+
 (def ^:const sound-chorus-death 1034)
+
 (def ^:const sound-brewing-stand-brew 1035)
+
 (def ^:const sound-page-turn 1043)
+
 (def ^:const sound-drip-lava-into-cauldron 1046)
+
 (def ^:const sound-drip-water-into-cauldron 1047)
+
 (def ^:const sound-pointed-dripstone-land 1045)
+
 (def ^:const composter-fill 1500)
+
 (def ^:const dripstone-drip 1504)
+
 (def ^:const particles-destroy-block 2001)
+
 (def ^:const particles-and-sound-wax-on 3003)
+
 (def ^:const particles-wax-off 3004)
+
 (def ^:const particles-scrape 3005)
 
 (defn level-event
@@ -221,6 +243,7 @@
   {:msg :bonemeal :pos pos})
 
 (defn cooldown
-  "Returns the effect that a cooldown group locked for that many ticks."
+  "Returns the effect that a cooldown group locked for that
+  many ticks."
   [group ticks]
   {:msg :cooldown :group group :ticks ticks})

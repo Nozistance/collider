@@ -34,8 +34,8 @@
      (* (Math/cos yaw) (Math/cos pitch))]))
 
 (defn box-entry
-  "Returns the ray fraction where the box is entered and the face entered, or nil
-   when the ray misses."
+  "Returns the ray fraction where the box is entered and the face
+  entered, or nil when the ray misses."
   [[fx fy fz] [dx dy dz] [x0 y0 z0 x1 y1 z1]]
   (let [axis (fn [f d lo hi neg pos]
                (cond (pos? (double d)) [(/ (- (double lo) (double f)) (double d)) (/ (- (double hi) (double f)) (double d)) neg]
@@ -57,7 +57,8 @@
         fh (when (not= :none fluids) (liquid/fluid-height-of (:chunks world) pos st fluids))
         fluid (when fh
                 [[(long x) (long y) (long z) (inc (long x)) (+ (long y) (double fh)) (inc (long z))]])]
-    (concat (when (and (pos? st) (not (block/liquid? st))) (map abs (block/outline-boxes st)))
+    (concat (when (and (pos? st) (not (block/liquid? st)))
+              (map abs (block/outline-boxes st)))
             fluid)))
 
 (defn- axis-step ^long [dc] (if (neg? (double dc)) -1 1))
@@ -93,8 +94,8 @@
    (update t axis + (cross-delta (d axis)))])
 
 (defn clip
-  "Returns the block an entity looks at and the face it sees, or nil when it looks
-   at nothing."
+  "Returns the block an entity looks at and the face it sees, or nil
+  when it looks at nothing."
   [world e fluids]
   (let [from (eye-pos e)
         d (mapv #(* (state/block-reach e) (double %)) (look-dir e))]

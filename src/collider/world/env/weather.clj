@@ -8,8 +8,11 @@
 (set! *warn-on-reflection* true)
 
 (def rain-delay [12000 180000])
+
 (def rain-duration [12000 24000])
+
 (def thunder-delay [12000 180000])
+
 (def thunder-duration [3600 15600])
 
 (def fields

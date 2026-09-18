@@ -1,5 +1,6 @@
 (ns collider.proto.codec
-  "Wire primitives of the protocol such as varints, NBT, item stacks and framing."
+  "Wire primitives of the protocol such as varints, NBT, item stacks
+  and framing."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
             [collider.data :as data]
@@ -13,7 +14,9 @@
 (set! *warn-on-reflection* true)
 
 (def protocol-version 776)
+
 (def game-version data/game)
+
 (defn write-varint [^Buf buf v]
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
@@ -47,8 +50,8 @@
 (def ^:const max-string-length 32767)
 
 (defn read-string
-  "Returns the string at the read point. Throws when it is longer than max
-   characters."
+  "Returns the string at the read point. Throws when it is longer than
+  max characters."
   (^String [^Buf buf] (read-string buf max-string-length))
   (^String [^Buf buf max]
    (let [max (long max)
@@ -83,21 +86,35 @@
                   :else (str "minecraft:" k))))
 
 (def ^:private ^:const tag-end 0)
+
 (def ^:private ^:const tag-byte 1)
+
 (def ^:private ^:const tag-short 2)
+
 (def ^:private ^:const tag-int 3)
+
 (def ^:private ^:const tag-long 4)
+
 (def ^:private ^:const tag-float 5)
+
 (def ^:private ^:const tag-double 6)
+
 (def ^:private ^:const tag-byte-array 7)
+
 (def ^:private ^:const tag-string 8)
+
 (def ^:private ^:const tag-list 9)
+
 (def ^:private ^:const tag-compound 10)
+
 (def ^:private ^:const tag-int-array 11)
+
 (def ^:private ^:const tag-long-array 12)
 
 (def ^:private byte-array-class (Class/forName "[B"))
+
 (def ^:private int-array-class (Class/forName "[I"))
+
 (def ^:private long-array-class (Class/forName "[J"))
 
 (defn- write-nbt-string [^Buf buf ^String name ^String v]
@@ -182,6 +199,7 @@
         (write-nbt-payload buf v))))
 
 (def ^:private ^:const nbt-quota 2097152)
+
 (def ^:private ^:const nbt-max-depth 512)
 
 (defn- account! [^longs acc ^long size]
@@ -267,8 +285,8 @@
     (throw (ex-info "unknown NBT tag" {:tag t}))))
 
 (defn read-nbt
-  "Returns the NBT value at the read point, with compound keys as keywords.
-   Throws when it is too big or too deeply nested."
+  "Returns the NBT value at the read point, with compound keys as
+  keywords. Throws when it is too big or too deeply nested."
   [^Buf buf]
   (let [in (ByteArrayInputStream. (.a buf) (.r buf) (- (.w buf) (.r buf)))
         d (DataInputStream. in)
@@ -335,16 +353,27 @@
 (defn- codec [r w] {:r r :w w})
 
 (def ^:private c-bool (codec (fn [^Buf b] (buf/read-boolean b)) (fn [^Buf b v] (buf/write-boolean! b (boolean v)))))
+
 (def ^:private c-varint (codec (fn [^Buf b] (read-varint b)) (fn [^Buf b v] (write-varint b (long v)))))
+
 (def ^:private c-int (codec (fn [^Buf b] (long (buf/read-int b))) (fn [^Buf b v] (buf/write-int! b (int v)))))
+
 (def ^:private c-float (codec (fn [^Buf b] (buf/read-float b)) (fn [^Buf b v] (buf/write-float! b (float v)))))
+
 (def ^:private c-double (codec (fn [^Buf b] (buf/read-double b)) (fn [^Buf b v] (buf/write-double! b (double v)))))
+
 (def ^:private c-string (codec (fn [^Buf b] (read-string b)) (fn [^Buf b v] (write-string b (str v)))))
+
 (def ^:private c-ident (codec read-id (fn [^Buf b v] (write-id b v))))
+
 (def ^:private c-uuid (codec (fn [^Buf b] (read-uuid b)) (fn [^Buf b v] (write-uuid b v))))
+
 (def ^:private c-nbt (codec (fn [^Buf b] (read-nbt b)) (fn [^Buf b v] (write-nbt b v))))
+
 (def ^:private c-text c-nbt)
+
 (def ^:private c-unit (codec (fn [^Buf _] true) (fn [^Buf _ _] nil)))
+
 (def ^:private c-block-pos
   (codec (fn [^Buf b] (read-block-pos b))
          (fn [^Buf b [x y z]] (write-block-pos b (long x) (long y) (long z)))))
@@ -415,6 +444,7 @@
 (def ^:private dye-colors
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
    :light-gray :cyan :purple :blue :brown :green :red :black])
+
 (def ^:private c-dye (c-enum dye-colors))
 
 (def ^:private c-sound
@@ -758,9 +788,9 @@
         (merge {:item item :count n} (read-patch buf))))))
 
 (defn read-hashed-stack
-  "Returns the stack the client claims is in a slot, or nil when it is empty.
-   Component values arrive as hashes. The result only says whether the stack
-   has any."
+  "Returns the stack the client claims is in a slot, or nil when it is
+  empty. Component values arrive as hashes. The result only says
+  whether the stack has any."
   [^Buf buf]
   (when (buf/read-boolean buf)
     (let [item (read-varint buf)
@@ -774,6 +804,7 @@
 
 (def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
                            :optional-block-pos 11 :block-state 14 :particle 16 :pose 20})
+
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
     (buf/write-byte! buf (int idx))
@@ -798,6 +829,7 @@
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def ^:private ^:const max-uncompressed 8388608)
+
 (defn- read-varint-stream ^long [^InputStream in]
   (loop [n 0 acc 0]
     (let [b (.read in)]
@@ -809,6 +841,7 @@
           :else (recur (inc n) acc))))))
 
 (def ^:private ^:const frame-keep 8192)
+
 (defn read-frame! ^Buf [^InputStream in ^Buf buf]
   (let [len (read-varint-stream in)]
     (buf/clear! buf frame-keep)
@@ -842,8 +875,8 @@
       (when-not (.finished deflater) (recur)))))
 
 (defn write-frame!
-  "Writes the payload to the stream as one packet. body and head are scratch
-   buffers."
+  "Writes the payload to the stream as one packet. body and head are
+  scratch buffers."
   [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
   (buf/clear! body)
   (buf/clear! head)

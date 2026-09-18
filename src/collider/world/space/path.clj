@@ -8,7 +8,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const max-nodes 200)
+
 (def ^:private ^:const max-fall 3)
+
 (defn- water-at? [chunks x y z]
   (= :water (block/liquid-class (chunk/block-state chunks x y z))))
 
@@ -83,6 +85,7 @@
     (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))))
 
 (def ^:private dirs [[1 0] [-1 0] [0 1] [0 -1]])
+
 (defn- rebuild [came cell]
   (loop [acc (list cell) c cell]
     (if-let [p (came c)]
@@ -101,9 +104,9 @@
       acc)))
 
 (defn find-path
-  "Returns the cells to walk from start to goal, or to the cell closest to goal
-   when goal cannot be reached, or nil when nothing beats standing still.
-   avoid-water? keeps the path dry."
+  "Returns the cells to walk from start to goal, or to the cell
+  closest to goal when goal cannot be reached, or nil when nothing
+  beats standing still. avoid-water? keeps the path dry."
   [chunks start goal avoid-water?]
   (let [h (fn ^double [c] (dist c goal))]
     (loop [open (sorted-set [(h start) start]) closed #{} g {start 0.0} came {}

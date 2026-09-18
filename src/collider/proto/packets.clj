@@ -32,14 +32,19 @@
 
 (def ^:private Varint
   [:int {:min -2147483648 :max 2147483647}])
+
 (def ^:private Id [:or :keyword :string])
+
 (def ^:private Component [:or :string :map])
+
 (def ^:private Stacks [:sequential [:maybe delta/Stack]])
+
 (def ^:private Attributes
   [:or [:map-of :keyword number?]
    [:sequential [:tuple :keyword number?
                  [:maybe [:sequential
                           [:tuple :keyword number? :int]]]]]])
+
 (def ^:private Node
   [:map [:type [:enum :root :literal :argument]]
    [:name {:optional true} :string]
@@ -47,14 +52,17 @@
    [:props {:optional true} [:maybe :map]]
    [:executable? {:optional true} [:maybe :boolean]]
    [:children [:sequential :int]]])
+
 (def ^:private Player
   [:map [:uuid :uuid]
    [:name {:optional true} :string]
    [:gamemode {:optional true} [:maybe :int]]
    [:ping {:optional true} [:maybe :int]]])
+
 (def ^:private Stonecutting
   [:map [:in [:sequential :keyword]]
    [:out [:map [:item :keyword] [:count {:optional true} :int]]]])
+
 (def ^:private EntityData
   [:sequential [:tuple :int
                 [:enum :byte :int :float :item :boolean :block-pos
@@ -791,8 +799,8 @@
                 {:target target :action action :sneaking (buf/read-boolean buf)})))}})
 
 (defn- checker
-  "Returns a fn throwing on a message that does not fit schema, or nil when
-   validation is off. The validator itself is built on first use."
+  "Returns a fn throwing on a message that does not fit schema, or
+  nil when validation is off. The validator itself is built on first use."
   [nm schema]
   (when (and delta/validate? schema)
     (let [valid (delay (m/validator schema))

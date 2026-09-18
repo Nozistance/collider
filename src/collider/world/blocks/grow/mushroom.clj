@@ -22,6 +22,7 @@
 (def ^:private huge
   {:red-mushroom   {:cap :red-mushroom-block :radius 2 :tag "huge_red_mushroom_can_place_on"}
    :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
+
 (def ^:private ^:table stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
 
 (defn- cleared-at ^long [chunks origin q]
@@ -94,8 +95,8 @@
       [])))
 
 (defn meal
-  "Returns the bone meal result for the mushroom st at p. The changes are the
-   blocks of a huge mushroom, or empty when none fits there."
+  "Returns the bone meal result for the mushroom st at p. The changes
+  are the blocks of a huge mushroom, or empty when none fits there."
   [chunks [_ y _ :as p] st roll]
   (let [kind (block/block-of st) {:keys [radius]} (huge kind)]
     (when (and radius (chunk/in-range? (+ (long y) 4 (long radius))))

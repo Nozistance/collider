@@ -4,14 +4,15 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const sea-level -63)
+
 (def ^:const snow-level (+ sea-level 17))
 
 (def plains
   {:name                    :plains
-   :has-precipitation?      true
-   :temperature             0.8
-   :downfall                0.4
-   :increased-fire-burnout? false})
+  :has-precipitation?      true
+  :temperature             0.8
+  :downfall                0.4
+  :increased-fire-burnout? false})
 
 (defn at [_chunks _p] plains)
 
@@ -27,7 +28,8 @@
       (double base))))
 
 (defn temperature
-  "Returns the temperature of biome at p. It falls above the snow level."
+  "Returns the temperature of biome at p. It falls above the
+  snow level."
   ^double [biome p]
   (height-adjusted-temperature biome p))
 

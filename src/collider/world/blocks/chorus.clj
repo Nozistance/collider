@@ -1,15 +1,18 @@
 (ns collider.world.blocks.chorus
-  "Chorus plants and flowers: support, connections, and the growing flower."
+  "Chorus plants and flowers: support, connections, and the
+  growing flower."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-
 (defn- off [p d] (mapv + p (dir/offset d)))
+
 (defn- plant? [^long st] (= :chorus-plant (block/type-of st)))
+
 (defn- flower? [^long st] (= :chorus-flower (block/type-of st)))
+
 (defn- roots? [^long st] (block/tagged? st "supports_chorus_plant"))
 
 (defn plant-supported? [chunks p]
@@ -94,8 +97,9 @@
             (recur (inc i) seen acc)))))))
 
 (defn flower-tick
-  "Returns the changes a chorus flower at p makes as it grows, or nil when it
-   stays. pick takes a salt and a bound n and returns a number below n."
+  "Returns the changes a chorus flower at p makes as it grows, or nil
+  when it stays. pick takes a salt and a bound n and returns a number
+  below n."
   [chunks p ^long st pick]
   (let [above (off p :up) age (block/prop-long st :age)]
     (when (and (zero? (chunk/at chunks above)) (chunk/in-range? (long (above 1))) (< age 5))

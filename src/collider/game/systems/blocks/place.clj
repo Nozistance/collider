@@ -57,7 +57,7 @@
 
 (defn- water-plant-ok? [world [_ y _ :as pos'] ^long state]
   (let [cur (edit/block-at world pos')]
-    (and (= :water (block/liquid-class cur))
+    (and (block/water? cur)
          (contains? #{0 8} (block/liquid-level cur))
          (pos? (long y))
          (support/supported? (:chunks world) pos' state))))
@@ -100,7 +100,8 @@
         props (block/props-of state)
         upper (block/state (block/block-of state) (assoc props :half :upper))
         upper (if (contains? props :waterlogged)
-                (edit/with-water upper (= :water (block/liquid-class (edit/block-at world above))))
+                (edit/with-water upper
+                  (block/water? (edit/block-at world above)))
                 upper)]
     (second-cell-deltas world eid pos pos' state above upper
                         #(block/can-be-replaced? (edit/block-at world above)))))

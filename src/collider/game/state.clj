@@ -33,8 +33,11 @@
           (sort (vals (:players world))))))
 
 (def ^:private ^:const fold-leaf 64)
+
 (def spawn-pos [24.5 4.0 8.5])
+
 (def activation-radius 2)
+
 (defn- player-area [world e]
   (let [[cx cz] (chunk/id->pos (chunk/pos-chunk (:pos e)))
         r (long (get-in world [:config :simulation-distance]
@@ -81,6 +84,7 @@
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
 
 (def initial-world schema/initial-world)
+
 (defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
     (clojure.core/apply update-in w [:entities eid] f args)
@@ -159,7 +163,8 @@
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
 (defn joins
-  "Returns [:player-join eid name] for every player placed in deltas d."
+  "Returns [:player-join eid name] for every player placed in
+  deltas d."
   [d]
   (for [[tag eid name] (:world d) :when (= :player-placed tag)]
     [:player-join eid name]))
@@ -245,6 +250,7 @@
             name (assoc-in [:profiles name] (stored-profile e)))))
 
 (def ^:private ^:table swords (delay (set (data/tag-values "item" "swords"))))
+
 (defn- sword? [item]
   (contains? @swords item))
 
@@ -266,13 +272,15 @@
   (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
 
 (defn- snapped
-  "Returns e turned to rot, the pose the client reports for the use of an item."
+  "Returns e turned to rot, the pose the client reports for the use of
+  an item."
   [e rot]
   (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
+
 (defn use-origin [w [tag & args]]
   (let [rot (case tag
               :place (nth args 6 nil)
@@ -307,7 +315,7 @@
 
 (defn cooldown-deltas
   "Returns the deltas that lock item's cooldown group and notify the
-   client, or nil when item carries no cooldown."
+  client, or nil when item carries no cooldown."
   [eid e item ^long tick]
   (when-let [[group ticks] (data/use-cooldown item)]
     [[:merge-entity eid
@@ -360,7 +368,9 @@
       w)))
 
 (def ^:private horizontal-limit 3.0E7)
+
 (def ^:private vertical-limit 2.0E7)
+
 (defn- clamped [[x y z]]
   [(-> (double x) (max (- horizontal-limit)) (min horizontal-limit))
    (-> (double y) (max (- vertical-limit)) (min vertical-limit))
@@ -457,8 +467,8 @@
        (> (v/y (:pos e')) (v/y (:pos e)))))
 
 (defn move-of
-  "Returns what a :move event did to its player, or nil when the event moved no
-   player."
+  "Returns what a :move event did to its player, or nil when the event
+  moved no player."
   [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) (:pos changes) (:pos e) e'
@@ -472,8 +482,11 @@
   true)
 
 (def ^:const block-range 4.5)
+
 (def ^:const creative-block-range 0.5)
+
 (def ^:const entity-range 3.0)
+
 (def ^:const creative-entity-range 2.0)
 
 (defn block-reach ^double [player]
@@ -516,6 +529,7 @@
               (cond-> bt (seq parked) (assoc t (into (i/int-set) parked)))))))
 
 (def ^:const max-resist 20)
+
 (defn- knock-back [e ^double dx ^double dz]
   (let [f (Math/sqrt (+ (* dx dx) (* dz dz)))
         v (or (:vel e) [0.0 0.0 0.0])]
@@ -541,8 +555,8 @@
   (assoc e :health (double (long (- health amount)))))
 
 (defn hurt
-  "Returns entity e after amount of damage, knocked back from direction dx dz
-   when given."
+  "Returns entity e after amount of damage, knocked back from
+  direction dx dz when given."
   ([e ^double amount] (hurt e amount nil nil))
   ([e ^double amount dx dz]
    (let [health (double (or (:health e) 0.0))
@@ -674,8 +688,8 @@
     [(apply world d) d]))
 
 (defn fold-events
-  "Returns the deltas f gives for each event in order. Each event
-   sees the world after the ones before it were applied."
+  "Returns the deltas f gives for each event in order. Each event sees
+  the world after the ones before it were applied."
   [world events f]
   (loop [w world evs (seq events) acc []]
     (if-not evs

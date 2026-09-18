@@ -1,5 +1,6 @@
 (ns collider.game.systems.damage
-  "Damage from attacks, fire, the void and falls, with death and respawn."
+  "Damage from attacks, fire, the void and falls, with death
+  and respawn."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.random :as random]
@@ -18,23 +19,41 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const void-y (- chunk/min-y 64.0))
+
 (def ^:private ^:const void-damage 4.0)
+
 (def ^:private ^:const death-ticks 20)
+
 (def ^:private ^:const panic-ticks 40)
+
 (def ^:private ^:const player-health 20.0)
+
 (def ^:private ^:const reach-sq 36.0)
+
 (def ^:private ^:const blind-reach-sq 9.0)
+
 (def ^:private ^:const base-damage 1.0)
+
 (def ^:private ^:const crit-multiplier 1.5)
+
 (def ^:private ^:const knockback-attack-strength 0.5)
+
 (def ^:private ^:const knockback-lift 0.1)
+
 (def ^:private ^:const voice-pitch-spread 0.2)
+
 (def ^:private ^:const baby-voice-pitch 1.5)
+
 (def ^:private ^:const adult-voice-pitch 1.0)
+
 (def ^:private ^:const fluid-margin 0.001)
+
 (def ^:private ^:const fire-damage-period 20)
+
 (def ^:private ^:const ticks-per-second 20)
+
 (def ^:private ^:const player-half 0.3)
+
 (def ^:private ^:const player-height 1.8)
 
 (defn- weapon-damage ^double [item]
@@ -57,8 +76,8 @@
     (+ base (* voice-pitch-spread r))))
 
 (defn creative-proof?
-  "Returns true when nothing can hurt the entity. Players are always in creative
-   mode."
+  "Returns true when nothing can hurt the entity. Players are always
+  in creative mode."
   [e]
   (= :player (:type e)))
 
@@ -134,10 +153,15 @@
       (hit-deltas a t target (crit? a t)))))
 
 (def ^:private ^:const fire-seconds 8)
+
 (def ^:private ^:const lava-seconds 15)
+
 (def ^:private ^:const lava-damage 4.0)
+
 (def ^:private ^:const item-half 0.125)
+
 (def ^:private ^:const item-height 0.25)
+
 (defn- box-of [e]
   (case (:type e)
     :player [player-half player-height]
@@ -160,18 +184,24 @@
                  (some? (get chunks (chunk/pos->id x1 z1)))))))))
 
 (def ^:private ^:const sunk-shrink-xz 0.1)
+
 (def ^:private ^:const sunk-shrink-y 0.4)
+
 (def ^:private ^:const fire-bit 1)
+
 (def ^:private ^:const lava-bit 2)
+
 (def ^:private ^:const sunk-bit 4)
+
 (def ^:private ^:const all-bits 7)
 
 (defn- floor-lo ^long [^double a] (long (Math/floor (+ a fluid-margin))))
+
 (defn- floor-hi ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
 (defn- span
-  "Returns the blocks the body of an entity reaches into, shrunk by the given
-   margins."
+  "Returns the blocks the body of an entity reaches into, shrunk by
+  the given margins."
   [p ^double half ^double height [sxz sy]]
   (let [px (v/x p) py (v/y p) pz (v/z p)
         sy (double sy)
@@ -256,12 +286,16 @@
               (douse-deltas eid e fire wet?)))))
 
 (def ^:private ^:const burn-volume 0.4)
+
 (def ^:private ^:const burn-pitch 2.0)
+
 (def ^:private ^:const burn-pitch-spread 0.4)
+
 (def ^:private ^:const burn-sound-period 10)
 
 (defn- fire-proof-item?
-  "Returns true when the stack shrugs fire off, as netherite gear does."
+  "Returns true when the stack shrugs fire off, as netherite
+  gear does."
   [e]
   (= "is_fire" (data/resists (:item (:stack e)))))
 
@@ -287,8 +321,8 @@
           0.0 deltas))
 
 (defn- burn-sound-deltas
-  "Returns the lava burn sound, played on the tick the item dies and on every
-   tenth tick of its age."
+  "Returns the lava burn sound, played on the tick the item dies and
+  on every tenth tick of its age."
   [world eid e ^double health]
   (when (or (<= (- health lava-damage) 0.0)
             (zero? (rem (inc (long (or (:age e) 0))) burn-sound-period)))
@@ -308,6 +342,7 @@
               (when (>= (damage-sum ds) health) [[:remove-entity eid]])))))
 
 (def ^:private ^:const safe-fall 3.0)
+
 (defn- landing-particles [world e ^double fall]
   (let [power (Math/floor (+ (- fall safe-fall) 1.0e-6))
         pos (:pos e)
@@ -374,8 +409,8 @@
            (inc (bit-shift-right (+ c stand-up-reach) 4)))))
 
 (defn respawn-chunk-ids
-  "Returns the ids of the chunks the check of the respawn point of player e
-   reads."
+  "Returns the ids of the chunks the check of the respawn point of
+  player e reads."
   [e]
   (when-let [{[x _ z] :pos} (respawn-config e)]
     (for [cx (reach-chunks x) cz (reach-chunks z)]
@@ -394,8 +429,8 @@
        yaw pitch])))
 
 (defn bed-respawn
-  "Returns [pos yaw pitch] at the respawn point of player e, or nil when it
-   has none or cannot be used."
+  "Returns [pos yaw pitch] at the respawn point of player e, or nil
+  when it has none or cannot be used."
   [chunks e]
   (when-let [cfg (respawn-config e)]
     (found-respawn chunks cfg)))
@@ -422,8 +457,8 @@
   (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))
 
 (defn respawn-deltas
-  "Returns the deltas that bring dead player eid back at pos, telling it
-   the respawn point it set was lost when lost? is true."
+  "Returns the deltas that bring dead player eid back at pos, telling
+  it the respawn point it set was lost when lost? is true."
   [world eid [pos yaw pitch lost?]]
   (let [e (get-in world [:entities eid])
         inv (apply dissoc (:inventory e) (range 5))]

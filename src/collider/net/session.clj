@@ -18,6 +18,7 @@
    :description {:text (:motd cfg)}})
 
 (def ^:private known-pack ["minecraft" "core" c/game-version])
+
 (defn- start-configuration! [conn]
   (server/send! conn {:packet :custom-payload :channel :brand :value "collider"})
   (server/send! conn {:packet :update-enabled-features :features [:vanilla]})
@@ -39,6 +40,7 @@
     (log/info "player" nm "connected: eid" eid "addr" (:addr (server/info conn)))))
 
 (defn- on-ground? [m] (odd? (long (:flags m))))
+
 (defn- invalid-move? [m]
   (or (some #(Double/isNaN (double %)) (:pos m))
       (some #(Double/isInfinite (double %)) (:pos m))
@@ -61,6 +63,7 @@
      (:sequence m)]))
 
 (def ^:private ^:const release-use-item 5)
+
 (defn- dig-event [eid m]
   (if (= release-use-item (long (:action m)))
     [:release-use eid]
@@ -124,6 +127,7 @@
   #{:container-slot-state-changed :attack :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
+
 (defn- log-unhandled! [packet]
   (when-not (or (ignored packet) (later packet) (@unhandled packet))
     (swap! unhandled conj packet)

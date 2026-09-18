@@ -9,10 +9,13 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const fluid-margin 0.001)
+
 (def ^:private ^:const fit-eps 1.0E-7)
+
 (def ^:private pose-box
   {:standing [0.3 1.8] :crouching [0.3 1.5]
    :swimming [0.3 0.6] :sleeping [0.1 0.2]})
+
 (def ^:private pose-eye
   {:standing 1.62 :crouching 1.27 :swimming 0.4 :sleeping 0.2})
 

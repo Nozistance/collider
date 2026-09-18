@@ -16,14 +16,18 @@
   (chunk/chunks-get-block (:chunks world) pos))
 
 (def ^:private ^:const player-half 0.3)
+
 (def ^:private ^:const player-height 1.8)
+
 (def ^:private ^:const crouching-height 1.5)
+
 (def ^:private ^:const tnt-half 0.49)
+
 (def ^:private ^:const tnt-height 0.98)
 
 (defn builder-box
-  "Returns the half width and height an entity blocks placement with, or nil
-   when it never blocks."
+  "Returns the half width and height an entity blocks placement with,
+  or nil when it never blocks."
   [e]
   (case (:type e)
     :player [player-half (if (and (:sneaking? e) (not (:flying e))) crouching-height player-height)]
@@ -81,8 +85,8 @@
           pos' (conj (own-change world eid pos'))))
 
 (defn change-deltas
-  "Returns the deltas for the changes and for the changes they cause in the
-   blocks around them."
+  "Returns the deltas for the changes and for the changes they cause
+  in the blocks around them."
   [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) changes)
         all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
@@ -109,7 +113,8 @@
   (get-in world [:entities eid :inventory (held-slot world eid)]))
 
 (defn hit-uv
-  "Returns where a click landed on a face, across and up, from zero to one."
+  "Returns where a click landed on a face, across and up, from zero
+  to one."
   [face [cx cy cz]]
   (let [x (/ (double cx) 16.0) y (/ (double cy) 16.0) z (/ (double cz) 16.0)]
     (case (long face)
@@ -148,8 +153,8 @@
                (assoc (block/props-of st) :lit :false)))
 
 (defn candle-out-deltas
-  "Returns the deltas that put out a lit candle at pos, or nil when
-   it is already unlit."
+  "Returns the deltas that put out a lit candle at pos, or nil when it
+  is already unlit."
   [world pos]
   (let [cur (block-at world pos)]
     (when (= :true (:lit (block/props-of cur)))
@@ -158,8 +163,8 @@
                                    1.0 1.0))]))))
 
 (defn campfire-out-deltas
-  "Returns the deltas that dowse a campfire at pos, with its level
-   event."
+  "Returns the deltas that dowse a campfire at pos, with its
+  level event."
   [world pos]
   (when-let [st (campfire/dowsed (block-at world pos))]
     (concat (change-deltas world [[pos st]])
@@ -167,8 +172,7 @@
                         out/sound-extinguish-fire pos))])))
 
 (defn dowse-deltas
-  "Returns the deltas of a candle or a campfire going out under
-   water."
+  "Returns the deltas of a candle or a campfire going out under water."
   [world pos]
   (case (block/type-of (block-at world pos))
     (:candle :candle-cake) (candle-out-deltas world pos)

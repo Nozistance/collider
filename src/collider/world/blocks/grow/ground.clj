@@ -52,7 +52,8 @@
 (defn- amethyst-next [^long target dir]
   (let [n (block/block-of target)]
     (cond
-      (or (zero? target) (and (= :water (block/liquid-class target)) (block/source-state? target))) :small-amethyst-bud
+      (or (zero? target) (block/water-source? target))
+      :small-amethyst-bud
       (not= dir (block/facing-of target)) nil
       (= :small-amethyst-bud n) :medium-amethyst-bud
       (= :medium-amethyst-bud n) :large-amethyst-bud
@@ -90,8 +91,8 @@
           [[p (block/state (potted-eyeblossom self))]])))))
 
 (defn leaves-tick
-  "Returns the change that removes leaves grown too far from their log, or nil
-   when they stay."
+  "Returns the change that removes leaves grown too far from their
+  log, or nil when they stay."
   [_chunks p st _roll _time _ctx]
   (when (and (= :false (:persistent (block/props-of st))) (= 7 (block/prop-long st :distance)))
     [[p (block/emptied st)]]))
@@ -124,16 +125,21 @@
       (let [j (pick roll [:shuffle i] (- 4 i))]
         (recur (into (subvec pool 0 j) (subvec pool (inc j))) (inc i) (conj acc (pool j)))))))
 
+(defn- meal-room? [chunks q target]
+  (and (air-at? chunks q) (support/supported? chunks q target)))
+
 (defn spread-meal [chunks p roll target]
-  (when-let [q (first (for [d (shuffled-dirs roll)
-                            :let [q (mapv + p (dir/horizontal-offset d))]
-                            :when (and (air-at? chunks q)
-                                       (support/supported? chunks q target))]
-                        q))]
-    {:changes [[q target]]}))
+  (let [beside (fn [d] (mapv + p (dir/horizontal-offset d)))
+        q (->> (shuffled-dirs roll)
+               (map beside)
+               (filter #(meal-room? chunks % target))
+               first)]
+    (when q {:changes [[q target]]})))
 
 (defn bush-meal [chunks p st roll] (spread-meal chunks p roll (block/state (block/block-of st))))
+
 (defn short-dry-grass-meal [_chunks p _st _roll] {:changes [[p (block/state :tall-dry-grass)]]})
+
 (defn tall-dry-grass-meal [chunks p _st roll] (spread-meal chunks p roll (block/state :short-dry-grass)))
 
 (defn- pickle-cells [[x y z]]
@@ -147,10 +153,11 @@
         (comp (map-indexed vector)
               (mapcat (fn [[i [qx qy qz]]]
                         (for [dy [-1 0]
-                              :let [q [qx (+ (long qy) (long dy)) qz]]
+                              :let [q [qx (+ (long qy) (long dy)) qz]
+                                    at (chunk/at chunks q)]
                               :when (and (not= q p)
                                          (zero? (pick roll [:seed i dy] 6))
-                                         (= :water (block/liquid-class (chunk/at chunks q)))
+                                         (block/water? at)
                                          (block/tagged? (chunk/at chunks (dir/down q)) "coral_blocks"))]
                           [q (block/state :sea-pickle {:pickles     (keyword (str (inc (pick roll [:n i dy] 4))))
                                                        :waterlogged :true})]))))
@@ -205,8 +212,8 @@
     acc))
 
 (defn turf-meal
-  "Returns the bone meal result for a grass block at p. It puts grass, tall
-   grass and the flowers of the biome around it."
+  "Returns the bone meal result for a grass block at p. It puts grass,
+  tall grass and the flowers of the biome around it."
   [chunks p st roll]
   (when (air-at? chunks (dir/up p))
     (let [self (block/block-of st)

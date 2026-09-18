@@ -6,6 +6,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const brew-time 400)
+
 (def ^:const fuel-uses 20)
 
 (def bottles
@@ -84,7 +85,7 @@
 
 (defn- spent
   "Returns the ingredient slot and what its remainder spills. The
-   remainder takes the slot only once the stack is used up."
+  remainder takes the slot only once the stack is used up."
   [ing]
   (let [n (dec (long (:count ing 1)))
         left (craft/remainder ing)]
@@ -122,7 +123,7 @@
 
 (defn tick
   "Runs one server tick, returning the stand, whether it finished a
-   brew and what its ingredient remainder spilled."
+  brew and what its ingredient remainder spilled."
   [e]
   (let [e (refuel e)
         left (dec (long (:brew e 0)))]

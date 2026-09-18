@@ -11,9 +11,13 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const eat-ticks 40)
+
 (def ^:private ^:const eat-chance 1000)
+
 (def ^:private ^:const baby-eat-chance 50)
+
 (def ^:private ^:const bite-at 4)
+
 (def ^:private ^:const bite-growth 1200)
 
 (def ^:private ^:table edible

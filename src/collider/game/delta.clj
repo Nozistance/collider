@@ -1,5 +1,6 @@
 (ns collider.game.delta
-  "Schemas of delta tags and effect messages, and the optional check against them."
+  "Schemas of delta tags and effect messages, and the optional check
+  against them."
   (:require [malli.core :as m]
             [malli.error :as me])
   (:import (collider.java V3)))
@@ -7,20 +8,29 @@
 (set! *warn-on-reflection* true)
 
 (def Pos [:tuple :int :int :int])
+
 (defn- vec3? [v]
   (or (instance? V3 v)
       (and (sequential? v) (= 3 (count v)) (every? number? v))))
+
 (def Vec3
   [:fn {:gen/schema [:tuple [:double {:min -64.0 :max 64.0}]
                      [:double {:min -64.0 :max 64.0}]
                      [:double {:min -64.0 :max 64.0}]]}
    vec3?])
+
 (def Eid :int)
+
 (def State :int)
+
 (def Stack [:map [:item :keyword] [:count :int]])
+
 (def Records [:sequential [:tuple Pos State]])
+
 (def Coll [:fn coll?])
+
 (def Runs [:sequential [:or :string :map]])
+
 (def world-deltas
   {:set-blocks
    [:cat Records [:? :int]]
@@ -171,8 +181,11 @@
                 [[:fx [:cat [:= :fx] Fx]]])))
 
 (def ^:private delta-validator (delay (m/validator Delta)))
+
 (def ^:private delta-explainer (delay (m/explainer Delta)))
+
 (defn valid? [delta] (@delta-validator delta))
+
 (defn explain [delta]
   (when-let [e (@delta-explainer delta)]
     (me/humanize e)))

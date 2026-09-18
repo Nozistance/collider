@@ -86,7 +86,7 @@
 
 (defn trim
   "Returns grid without its empty rows and columns, and where the
-   rest starts."
+  rest starts."
   [{:keys [w h stacks] :as grid}]
   (if (or (zero? w) (zero? h))
     (merge grid empty-input)
@@ -607,8 +607,8 @@
                           (:other idx))))
 
 (defn find
-  "Returns the recipe that crafts input, the hinted recipe first if it
-   does."
+  "Returns the recipe that crafts input, the hinted recipe first if
+  it does."
   [idx input hint]
   (let [hinted (get-in idx [:by-id hint])]
     (if (and hinted (matches? hinted input))

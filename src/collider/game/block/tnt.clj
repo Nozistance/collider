@@ -6,8 +6,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const fuse-ticks 80)
+
 (def ^:const power 4.0)
+
 (defn tnt-state? [st] (block/tnt? (long st)))
+
 (defn primed
   ([pos seed] (primed pos seed fuse-ticks))
   ([[x y z :as pos] seed fuse]

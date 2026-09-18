@@ -9,6 +9,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const light-sections 26)
+
 (defn- pack-longs ^longs [^long bits ^ints values]
   (let [per (quot 64 bits)
         len (alength values)
@@ -40,9 +41,12 @@
     a))
 
 (def ^:private ^:table surface-arr (delay (state-table (fn [^long st] (not= :air (block/type-of st))))))
+
 (def ^:private ^:table motion-arr (delay (state-table motion-blocking?)))
+
 (def ^:private ^:table no-leaves-arr
   (delay (state-table (fn [^long st] (and (motion-blocking? st) (not (block/leaves? st)))))))
+
 (def ^:private ^:table fluid-arr (delay (state-table fluid?)))
 
 (def ^:private ^:table plains (delay (data/datapack-id "worldgen/biome" :plains)))

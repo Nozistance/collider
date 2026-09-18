@@ -8,6 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const eps 1.0E-7)
+
 (def ^:private ^ThreadLocal sweep-buf
   (proxy [ThreadLocal] [] (initialValue [] (double-array 1536))))
 
@@ -33,8 +34,8 @@
     (or (block/fence? st) (= :gate (block/shape-of st)))))
 
 (defn solid?
-  "Returns true when x y z stops a walking body. Everything below the world is
-   solid and everything above it is not."
+  "Returns true when x y z stops a walking body. Everything below the
+  world is solid and everything above it is not."
   [chunks x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
@@ -43,6 +44,7 @@
       (< y chunk/min-y))))
 
 (deftype Sweep [^doubles a ^long n])
+
 (deftype Move [pos vel ^boolean on-ground])
 
 (defn- lo-bound ^long [^double c ^double v]
@@ -127,9 +129,10 @@
     b))
 
 (defn move
-  "Returns the position, velocity and ground flag of a body moved by vel from
-   pos, stopped by the blocks it meets. The body is a box of half width half and
-   height height. step is how high it climbs without jumping."
+  "Returns the position, velocity and ground flag of a body moved by
+  vel from pos, stopped by the blocks it meets. The body is a box of
+  half width half and height height. step is how high it climbs
+  without jumping."
   ([chunks pos vel half height]
    (move chunks pos vel half height 0.0))
   ([chunks pos vel half height step]

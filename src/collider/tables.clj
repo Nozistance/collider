@@ -18,6 +18,7 @@
 (set! *warn-on-reflection* true)
 
 (def version data/game)
+
 (def manifest-url
   "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json")
 
@@ -247,7 +248,9 @@
       keyword))
 
 (defn- key-of [reg x] (kw (str (call reg "getKey" x))))
+
 (defn- elements [reg] (iterator-seq (.iterator ^Iterable reg)))
+
 (defn- flt ^double [v] (Double/parseDouble (Float/toString (float v))))
 
 (defn- registry [name]
@@ -280,7 +283,9 @@
 (defn- unless-default [x v] (when (not= x v) v))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
+
 (def ^:private dir-names [:down :up :north :south :west :east])
+
 (def ^:private face-axis [1 1 2 2 0 0])
 
 (defn- block-states []
@@ -363,6 +368,7 @@
         (runs pairs)))
 
 (defn- occludes? [st] (call st "canOcclude"))
+
 (defn- shaped? [st] (call st "useShapeForLightOcclusion"))
 
 (defn- occlusion-faces [block-shape dirs st]
@@ -697,7 +703,7 @@
 
 (defn- consumable
   "Returns how an item is eaten or drunk, with the defaults the game
-   assumes for what the recipe leaves out."
+  assumes for what the recipe leaves out."
   [v]
   (sorted-map
     :seconds (flt (get v "consume_seconds" 1.6))
@@ -899,6 +905,7 @@
         synchronized-registries))
 
 (defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
+
 (defn- json-name [k] (str/replace (name k) "-" "_"))
 
 (defn- state-value [m]
@@ -1284,7 +1291,7 @@
 
 (def ^:private potion-effects
   "Every potion's effect rows, each a triple of effect, duration
-   and amplifier."
+  and amplifier."
   {:water []
    :mundane []
    :thick []
@@ -1358,8 +1365,8 @@
    [:splash-potion :dragon-breath :lingering-potion]])
 
 (def ^:private potion-mixes
-  "Every ingredient mix that turns one potion into another. A
-   :start row expands into both its water and its awkward mix."
+  "Every ingredient mix that turns one potion into another. A :start
+  row expands into both its water and its awkward mix."
   [[:water :glowstone-dust :thick]
    [:water :redstone :mundane]
    [:water :nether-wart :awkward]
@@ -1529,7 +1536,8 @@
   (flush))
 
 (defn -main
-  "Generates the tables in this JVM and reports each event as edn on stdout."
+  "Generates the tables in this JVM and reports each event as edn
+  on stdout."
   [opts]
   (binding [*progress* emit-edn!]
     (try (generate! (edn/read-string opts))

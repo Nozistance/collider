@@ -14,14 +14,19 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const ages 16)
+
 (defn fire-state? [st] (block/fire? (long st)))
+
 (defn fire-state ^long [^long age] (block/state :fire {:age (keyword (str age))}))
+
 (defn age ^long [st] (block/prop-long (long st) :age))
+
 (defn- with-age ^long [^long st ^long age]
   (block/state :fire (assoc (block/props-of st) :age (keyword (str age)))))
 
 (def ^:private side-offsets
   {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0] :up [0 1 0]})
+
 (defn state-for ^long [chunks p]
   (let [below (max 0 (long (chunk/at-void chunks (mapv + p [0 -1 0]))))]
     (cond
@@ -129,6 +134,7 @@
       :else (concat aged (spread-changes chunks p ctx r a)))))
 
 (defn- fire-delay ^long [tick p] (+ (long tick) 30 (mod (long (hash [p tick])) 10)))
+
 (def rule
   {:name   :fire
    :match? (fn [_chunks st _p] (fire-state? st))

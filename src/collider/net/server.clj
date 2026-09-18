@@ -14,19 +14,27 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const out-queue-high 1024)
+
 (def ^:private ^:const writer-poll-ms 500)
+
 (def ^:private ^:const read-timeout-ms 30000)
+
 (def ^:private ^:const default-max-connections 256)
+
 (defrecord Conn [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
 
 (defn conn-state [^Conn c] (:state @(:st c)))
+
 (defn info [^Conn c] @(:st c))
+
 (defn put! [^Conn c k v] (swap! (:st c) assoc k v))
+
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
 
 (defn set-conn-state! [^Conn c s] (swap! (:st c) assoc :state s))
+
 (defn close!
   "Closes the connection c once everything already sent has gone out."
   [^Conn c]
@@ -38,7 +46,8 @@
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
 (defn compress!
-  "Compresses everything above threshold on the connection c from here on."
+  "Compresses everything above threshold on the connection c from
+  here on."
   [^Conn c ^long threshold]
   (.offer ^BlockingQueue (:q c) [:threshold threshold]))
 
@@ -162,7 +171,8 @@
         (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
 
 (defn close-all!
-  "Disconnects everyone with text and waits up to ms for it to reach them."
+  "Disconnects everyone with text and waits up to ms for it to
+  reach them."
   [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]

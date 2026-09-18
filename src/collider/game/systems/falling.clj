@@ -14,8 +14,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const half 0.49)
+
 (def ^:private ^:const height 0.98)
+
 (def ^:private ^:const max-time 600)
+
 (defn- block-at ^long [world [_ y _ :as pos]]
   (if (chunk/in-range? y) (chunk/chunks-get-block (:chunks world) pos) 0))
 
@@ -29,13 +32,14 @@
                                    {:item (block/block-of (:block e)) :count 1})]])))
 
 (defn- speleothem? [^long st] (= :pointed-dripstone (block/type-of st)))
+
 (defn- anvil? [^long st] (= :anvil (block/type-of st)))
 
 (defn- landed-state [world cell st cur concrete? stuck?]
   (let [continues? (and (support/free-below? (:chunks world) cell) (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
                (support/supported? (:chunks world) cell st))
-      (let [in-water? (= :water (block/liquid-class cur))
+      (let [in-water? (block/water? cur)
             st (if in-water? (block/with-water st) st)]
         (if (and concrete? in-water?) (block/concrete-of st) st)))))
 
@@ -55,12 +59,13 @@
 
 (defn- solid-here? [world cell]
   (let [st (block-at world cell)]
-    (and (pos? st) (not (block/liquid? st)) (block/blocks-motion? st))))
+    (and (pos? st) (not (block/liquid? st))
+         (block/blocks-motion? st))))
 
 (defn- water-source-here? [world cell]
   (let [st (block-at world cell)]
     (or (block/waterlogged? st)
-        (and (= :water (block/liquid-class st)) (block/source-state? st)))))
+        (block/water-source? st))))
 
 (defn- next-cell [from d cell]
   (let [ts (for [i (range 3)
@@ -84,7 +89,7 @@
 (defn- clipped-cell [world e pos [mx my mz]]
   (when (> (+ (* (double mx) (double mx)) (* (double my) (double my)) (* (double mz) (double mz))) 1.0)
     (when-let [hit (clip-cell world (:pos e) pos)]
-      (when (= :water (block/liquid-class (block-at world hit))) hit))))
+      (when (block/water? (block-at world hit)) hit))))
 
 (defn- landing [world e pos vel]
   (let [concrete? (= :concrete-powder (block/type-of (:block e)))
@@ -92,7 +97,7 @@
         cell (or clipped (cell-of pos))
         cur (block-at world cell)]
     [cell cur concrete?
-     (and concrete? (or (some? clipped) (= :water (block/liquid-class cur))))]))
+     (and concrete? (or (some? clipped) (block/water? cur)))]))
 
 (defn- fall-move ^Move [world e]
   (let [[vx vy vz] (:vel e)

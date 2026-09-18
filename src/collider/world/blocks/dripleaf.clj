@@ -7,16 +7,21 @@
 (set! *warn-on-reflection* true)
 
 (defn leaf? [^long st] (= :big-dripleaf (block/type-of st)))
+
 (defn stem? [^long st] (= :big-dripleaf-stem (block/type-of st)))
+
 (defn small? [^long st] (= :small-dripleaf (block/type-of st)))
+
 (defn dripleaf? [^long st] (or (leaf? st) (stem? st) (small? st)))
+
 (defn- half-of [^long st] (:half (block/props-of st)))
+
 (defn tilt-of [^long st] (:tilt (block/props-of st)))
 
 (defn- water-source? [^long st]
   (and (pos? st)
        (or (block/waterlogged? st)
-           (and (= :water (block/liquid-class st)) (block/source-state? st)))))
+           (block/water-source? st))))
 
 (defn leaf-supported? [chunks p]
   (let [b (chunk/at-void chunks (dir/down p))]
@@ -67,6 +72,7 @@
     (when (leaf-supported? chunks p) st')))
 
 (def ^:private next-tilt {:unstable :partial :partial :full :full :none})
+
 (def ^:private tilt-delay {:unstable 10 :partial 10 :full 100})
 
 (defn tilted ^long [^long st tilt]
@@ -79,8 +85,8 @@
     :big-dripleaf/tilt-down))
 
 (defn can-tilt?
-  "Returns true when something standing at height py rests on the leaf whose
-   block starts at y."
+  "Returns true when something standing at height py rests on the leaf
+  whose block starts at y."
   [[_ y _] py on-ground?]
   (and (boolean on-ground?) (> (double py) (+ (double y) 0.6875))))
 

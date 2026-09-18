@@ -1,5 +1,6 @@
 (ns collider.world.blocks.multiface
-  "Blocks that sit on the faces of their neighbours, and their spreading."
+  "Blocks that sit on the faces of their neighbours, and
+  their spreading."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
@@ -21,7 +22,7 @@
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- water-source? [^long st]
-  (and (pos? st) (= :water (block/liquid-class st)) (block/source-state? st)))
+  (and (pos? st) (block/water? st) (block/source-state? st)))
 
 (defn- replaceable? [^long st self]
   (or (zero? st) (and (pos? st) (= self (block/block-of st))) (water-source? st)))
@@ -43,8 +44,8 @@
     :wrap-around [(mapv + p (dir/offset spread-dir) (dir/offset from-face)) (dir/opposite spread-dir)]))
 
 (defn spread-toward
-  "Returns the [pos face] that st at p spreads onto when it goes from from-face
-   toward spread-dir, or nil when it cannot."
+  "Returns the [pos face] that st at p spreads onto when it goes from
+  from-face toward spread-dir, or nil when it cannot."
   [chunks p st from-face spread-dir]
   (when (and (not= (dir/axis spread-dir) (dir/axis from-face))
              (has-face? st from-face)

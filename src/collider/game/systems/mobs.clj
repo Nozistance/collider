@@ -22,7 +22,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private brains {:sheep sheep/brain :cow cow/brain :mooshroom mooshroom/brain})
+
 (def ^:private interactions [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas])
+
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
     (b world eid e t tempters)
@@ -36,13 +38,21 @@
                      (fn [w ev] (interact-deltas w ev t))))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
+
 (def ^:private ^:const gravity 0.08)
+
 (def ^:private ^:const jump-speed 0.42)
+
 (def ^:private ^:const ground-friction 0.546)
+
 (def ^:private ^:const air-friction 0.91)
+
 (def ^:private ^:const water-friction 0.8)
+
 (def ^:private ^:const air-accel 0.02)
+
 (def ^:private ^:const repath-interval 10)
+
 (defn- steering [e] (if (:follow e) :follow (get-in e [:task :kind])))
 
 (defn- steer-target [world e]
@@ -84,7 +94,8 @@
         i))))
 
 (defn- smooth-index
-  "Returns the furthest point of the route a mob can head straight for."
+  "Returns the furthest point of the route a mob can head
+  straight for."
   [world e half pth pi]
   (let [pi (long pi)
         fy (long (Math/floor (double (nth (:pos e) 1))))]
@@ -120,7 +131,7 @@
     (loop [cy (long (Math/floor (+ y 0.4)))]
       (cond
         (> cy y1) false
-        (= :water (block/liquid-class (sense/block-at world cx cy cz))) true
+        (block/water? (sense/block-at world cx cy cz)) true
         :else (recur (inc cy))))))
 
 (defn- water-above? [world p]
@@ -180,6 +191,7 @@
       (entity/mob-looked e hy hp look))))
 
 (def ^:private rest-vel (v/v3 0.0 (* 0.98 (- 0.0 0.08)) 0.0))
+
 (declare physics-move)
 
 (defn- dead-band ^double [^double a]
@@ -296,7 +308,9 @@
     (head-update world e height t moving?)))
 
 (def ^:private ^:const say-rest 120)
+
 (def ^:private ^:const say-mean 40)
+
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
     (+ base (* 0.2 (- (random/of-longs t eid (hash :p1))

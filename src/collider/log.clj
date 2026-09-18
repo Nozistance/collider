@@ -9,6 +9,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^DateTimeFormatter clock (DateTimeFormatter/ofPattern "HH:mm:ss"))
+
 (def ^:private ^PrintStream console System/out)
 
 (defn- thread-name ^String []

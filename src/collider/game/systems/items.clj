@@ -15,15 +15,25 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const despawn-age 6000)
+
 (def ^:private ^:const below-world (- chunk/min-y 64.0))
+
 (def ^:private ^:const throw-pickup-delay 40)
+
 (def ^:private ^:const throw-power 0.3)
+
 (def ^:private ^:const throw-spread 0.02)
+
 (def ^:private ^:const throw-lift 0.1)
+
 (def ^:private ^:const throw-jitter 0.1)
+
 (def ^:private ^:const around-power 0.5)
+
 (def ^:private ^:const around-lift 0.2)
+
 (def ^:private ^:const hand-height 1.32)
+
 (defn- item-entities [world]
   (sort-by key (filter (fn [[_ e]] (= :item (:type e))) (:entities world))))
 
@@ -113,25 +123,45 @@
   (mapcat #(spawn-one world %) (drops world events)))
 
 (def ^:private ^:const item-half 0.125)
+
 (def ^:private ^:const item-height 0.25)
+
 (def ^:private ^:const air-drag 0.98)
+
 (def ^:private ^:const ground-friction 0.588)
+
 (def ^:private ^:const gravity 0.04)
+
 (def ^:private ^:const water-drag 0.99)
+
 (def ^:private ^:const lava-drag 0.95)
+
 (def ^:private ^:const buoyancy 5.0E-4)
+
 (def ^:private ^:const buoyancy-below 0.06)
+
 (def ^:private ^:const fluid-depth 0.1)
+
 (def ^:private ^:const bounce -0.5)
+
 (def ^:private ^:const resting-speed-sq 1.0E-5)
+
 (def ^:private ^:const resting-period 4)
+
 (def ^:private ^:const merge-inflate 0.5)
+
 (def ^:private ^:const pickup-inflate 1.0)
+
 (def ^:private ^:const pickup-inflate-y 0.5)
+
 (def ^:private ^:const player-height 1.8)
+
 (def ^:private ^:const player-half 0.3)
+
 (def ^:private ^:const pickup-reach (+ player-half item-half pickup-inflate))
+
 (def ^:private ^:const pickup-bottom -1.0)
+
 (defn- fluid-movement [[vx vy vz] ^double drag]
   [(* (double vx) drag) (+ (double vy) (if (< (double vy) buoyancy-below) buoyancy 0.0)) (* (double vz) drag)])
 
@@ -286,8 +316,8 @@
 
 (defn filled-result-deltas
   "Returns the deltas that give stack to the player who used a
-   container. In creative mode the result is added only when the
-   player holds none already, unless always? asks for it anyway."
+  container. In creative mode the result is added only when the
+  player holds none already, unless always? asks for it anyway."
   ([world eid stack] (filled-result-deltas world eid stack false))
   ([world eid stack always?]
    (let [e (get-in world [:entities eid]) inv (:inventory e)]
@@ -345,6 +375,6 @@
 
 (defn pickups
   "Returns the deltas of players taking up the items they stand
-   next to."
+  next to."
   [world _d]
   [#(pickup-deltas world (active-items world))])

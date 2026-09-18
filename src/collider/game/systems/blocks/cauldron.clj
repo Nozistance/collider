@@ -26,7 +26,8 @@
        (= :water (get-in stack [:components :potion-contents :potion]))))
 
 (defn- cauldron-filled [world pos item]
-  (let [under-water? (= :water (block/liquid-class (edit/block-at world (mapv + pos [0 1 0]))))]
+  (let [above (edit/block-at world (mapv + pos [0 1 0]))
+        under-water? (block/water? above)]
     (case item
       :water-bucket [(block/state :water-cauldron {:level :3}) :bucket/empty]
       :lava-bucket (when-not under-water? [(block/state :lava-cauldron) :bucket/empty-lava])
@@ -56,8 +57,8 @@
         (block/state (block/block-of cur) {:level (keyword (str (inc lvl)))})))))
 
 (defn- used-deltas
-  "Returns the result item, the sound and the two stats a cauldron
-   use gives the player."
+  "Returns the result item, the sound and the two stats a cauldron use
+  gives the player."
   [world eid pos item result sound stat]
   (concat (items/filled-result-deltas world eid result)
           [(out/all (out/sound sound pos 1.0 1.0))
@@ -101,8 +102,8 @@
 
 (defn- wash-deltas
   "Returns the deltas for a dyed shulker box or a patterned banner
-   washed in a water cauldron. The cleaned item always joins the
-   inventory, even when the hand is already full."
+  washed in a water cauldron. The cleaned item always joins the
+  inventory, even when the hand is already full."
   [world eid pos cur stack cleaned stat]
   (when (= :water-cauldron (block/block-of cur))
     (concat

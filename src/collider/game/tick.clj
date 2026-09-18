@@ -85,8 +85,11 @@
             [(state/apply world input) input] phases)))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
+
 (def ^:private ^:const window-size 4096)
+
 (def ^:private ^:const tps-window 100)
+
 (defn- drain! [^ConcurrentLinkedQueue q]
   (loop [acc (transient [])]
     (if-some [e (.poll q)]
@@ -203,8 +206,9 @@
     (.start)))
 
 (defn start-ticker!
-  "Starts a daemon thread that ticks world-atom on the events from queue and
-   gives the deltas of each tick to deliver!. Returns a handle for the stop."
+  "Starts a daemon thread that ticks world-atom on the events from
+  queue and gives the deltas of each tick to deliver!. Returns a
+  handle for the stop."
   ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)

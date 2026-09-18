@@ -34,8 +34,8 @@
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
 
 (defn item
-  "Returns a dropped item entity of stack at pos with velocity vel and a pickup
-   delay in ticks."
+  "Returns a dropped item entity of stack at pos with velocity vel and
+  a pickup delay in ticks."
   ([pos vel stack] (item pos vel stack 10))
   ([pos vel stack delay]
    {:type  :item :pos pos :vel vel :yaw 0.0 :pitch 0.0 :on-ground false

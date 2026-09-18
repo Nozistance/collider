@@ -8,6 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
+
 (def layout 4)
 
 (def ^:private files
@@ -62,53 +63,70 @@
 (defn packets
   "Returns the packet ids by connection state, direction and name."
   [] (:packets @tables))
+
 (defn registries
   "Returns the ids of the entries the client knows, by registry."
   [] (:registries @tables))
+
 (defn blocks [] (:blocks @tables))
+
 (defn datapack
   "Returns the entries the server sends to the client, by registry."
   [] (:datapack @tables))
+
 (defn tags [] (:tags @tables))
+
 (defn items [] (:items @tables))
+
 (defn light
   "Returns how block states pass and emit light."
   [] (:light @tables))
+
 (defn fire
   "Returns how blocks catch fire and burn."
   [] (:fire @tables))
+
 (defn drops
   "Returns what blocks drop when broken."
   [] (:drops @tables))
+
 (defn recipes
-  "Returns the stonecutting recipes and the ingredients the client is told of."
+  "Returns the stonecutting recipes and the ingredients the client is
+  told of."
   [] (:recipes @tables))
+
 (defn cooking-recipes
   "Returns the smelting, blasting, smoking and campfire recipes, in
-   the order a furnace searches them."
+  the order a furnace searches them."
   [] (:cooking (recipes)))
+
 (defn fuel
   "Returns how many ticks each item burns for in a furnace."
   [] (:fuel (recipes)))
+
 (defn brewing
   "Returns the potion containers, the brewing mixes and the fuel of a
-   brewing stand."
+  brewing stand."
   [] (:brewing (recipes)))
+
 (defn sounds [] (:sounds @tables))
+
 (defn features
-  "Returns the worldgen features bone meal reaches and the ones each biome
-   grows."
+  "Returns the worldgen features bone meal reaches and the ones each
+  biome grows."
   [] (:features @tables))
+
 (defn potions
   "Returns the effect instances every potion gives."
   [] (:potions @tables))
+
 (defn mob-effects
   "Returns the colour, category and immediacy of every effect."
   [] (:effects @tables))
 
 (defn use-cooldown
   "Returns the cooldown group and the ticks item locks it for, or nil
-   when the item has no use_cooldown component."
+  when the item has no use_cooldown component."
   [item]
   (when-let [c (get-in (items) [item :use-cooldown])]
     [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
@@ -129,12 +147,14 @@
   (get-in (items) [item :patterns]))
 
 (defn compost
-  "Returns the chance item raises a composter, or nil when it does not."
+  "Returns the chance item raises a composter, or nil when it
+  does not."
   [item]
   (get-in (items) [item :compost]))
 
 (defn resists
-  "Returns the tag of the damage item shrugs off, or nil when it takes all."
+  "Returns the tag of the damage item shrugs off, or nil when it
+  takes all."
   [item]
   (get-in (items) [item :resists]))
 
@@ -170,8 +190,8 @@
           (datapack))))
 
 (defn datapack-id
-  "Returns the id of an entry the server sends to the client, not one the
-   client knows."
+  "Returns the id of an entry the server sends to the client, not one
+  the client knows."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
@@ -198,8 +218,11 @@
       :else (throw (ex-info "unknown registry id" {:registry registry :id id})))))
 
 (defn- prop-order [b] (vec (keys (:props b))))
+
 (defn- prop-sizes [b] (mapv #(count (get (:props b) %)) (prop-order b)))
+
 (defn- state-count ^long [b] (reduce * 1 (map count (vals (:props b)))))
+
 (defn- decode-props [b ^long offset]
   (let [order (prop-order b) sizes (prop-sizes b)]
     (loop [i 0, left offset, acc {}]
@@ -251,19 +274,26 @@
     a))
 
 (def ^:private ^:table shape-table (delay (object-table "shapes.edn")))
+
 (def ^:private ^:table outline-table (delay (object-table "outlines.edn")))
+
 (def ^:private ^:table sturdy-table (delay (byte-table "sturdy.edn" 63)))
+
 (def ^:private ^:table sturdy-center-table (delay (byte-table "sturdy-center.edn" 63)))
+
 (def ^:private ^:table sturdy-rigid-table (delay (byte-table "sturdy-rigid.edn" 63)))
+
 (def ^:private ^:table flag-table (delay (byte-table "flags.edn" 0)))
 
 (defn shapes
-  "Returns the collision boxes of every state, by id, nil for a full cube."
+  "Returns the collision boxes of every state, by id, nil for a
+  full cube."
   ^objects []
   @shape-table)
 
 (defn outlines
-  "Returns the outline boxes of every state, by id, nil for a full cube."
+  "Returns the outline boxes of every state, by id, nil for a
+  full cube."
   ^objects []
   @outline-table)
 
@@ -273,7 +303,8 @@
   @sturdy-table)
 
 (defn sturdy-center
-  "Returns which faces of every state hold things at their center, by id."
+  "Returns which faces of every state hold things at their center,
+  by id."
   ^bytes []
   @sturdy-center-table)
 
@@ -326,8 +357,8 @@
           (recur (inc i) (long (+ id (* idx tail)))))))))
 
 (defn state-id
-  "Returns the global state id of a block. Properties missing from wanted take
-   their default values."
+  "Returns the global state id of a block. Properties missing from
+  wanted take their default values."
   (^long [block-name] (long (:default (info block-name))))
   (^long [block-name wanted]
    (let [b (info block-name)]

@@ -12,8 +12,11 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private deep-sleep 100)
+
 (def ^:private day-length 24000)
+
 (defn- block-at [world pos] (chunk/chunks-get-block (:chunks world) pos))
+
 (defn sleepers-needed ^long [world]
   (let [players (count (state/player-entries world))
         share (long (get-in world [:rules :players-sleeping-percentage] 100))]

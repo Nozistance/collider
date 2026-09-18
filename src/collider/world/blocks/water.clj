@@ -10,10 +10,12 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private around6 [[0 -1 0] [0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
+
 (def ^:private kelp-types #{:kelp :kelp-plant})
+
 (def ^:private plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
 
-(defn- water? [st] (and (pos? st) (or (= :water (block/liquid-class st)) (block/waterlogged? st))))
+(defn- water? [st] (block/water? st))
 
 (defn coral-wet? [chunks p st]
   (or (block/waterlogged? st)
@@ -58,7 +60,7 @@
   (cond
     (contains? plants (block/type-of st)) 0
     (= :true (:waterlogged (block/props-of st))) (block/without-water st)
-    (= :water (block/liquid-class st)) 0))
+    (block/water? st) 0))
 
 (defn absorbed [chunks pos]
   (loop [queue (conj PersistentQueue/EMPTY [pos 0]) seen #{pos} acc []]

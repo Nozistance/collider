@@ -47,16 +47,17 @@
           (if (false? r) nil r))))))
 
 (defn wake-tick
-  "Returns the deltas the rule owning pos makes when a block changes there or
-   beside it, or nil when no rule owns pos. old is the state before the change.
-   self? is true when the change was at pos itself."
+  "Returns the deltas the rule owning pos makes when a block changes
+  there or beside it, or nil when no rule owns pos. old is the state
+  before the change. self? is true when the change was at pos
+  itself."
   [chunks st tick pos old self?]
   (when-let [r (rule-for st)]
     ((:wake r) chunks tick pos old self?)))
 
 (defn again-tick
-  "Returns the tick at which the rule owning pos wants to run again after a
-   tick that changed nothing, or nil when it is done."
+  "Returns the tick at which the rule owning pos wants to run again
+  after a tick that changed nothing, or nil when it is done."
   [chunks st pos tick]
   (when-let [r (rule-for st)]
     (when-let [f (:again r)]

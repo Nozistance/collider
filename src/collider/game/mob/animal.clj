@@ -11,31 +11,54 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const stroll-interval 120)
+
 (def ^:private ^:const stroll-idle 100)
+
 (def ^:private ^:const stroll-timeout 200)
+
 (def ^:private ^:const stroll-swim 0.001)
+
 (def ^:private ^:const look-chance 0.02)
+
 (def ^:private ^:const look-range-sq 36.0)
+
 (def ^:private ^:const look-ticks 40)
+
 (def ^:private ^:const look-around-ticks 20)
+
 (def ^:private ^:const love-ticks 600)
+
 (def ^:private ^:const mate-ticks 60)
+
 (def ^:private ^:const breed-cooldown 6000)
+
 (def ^:private ^:const baby-ticks 24000)
+
 (def ^:private ^:const breed-range-sq 64.0)
+
 (def ^:private ^:const breed-near-sq 9.0)
+
 (def ^:private ^:const tempt-range-sq 100.0)
+
 (def ^:private ^:const calm-ticks 100)
+
 (def ^:private ^:const follow-near-sq 9.0)
+
 (def ^:private ^:const follow-far-sq 256.0)
+
 (def ^:private ^:const idle-reset-sq 1024.0)
+
 (def ^:private ^:const ground-weight 10.0)
+
 (def ^:private ^:const feeding-speedup 0.1)
+
 (def ^:private ^:const ticks-per-second 20)
+
 (def ^:private ^:const tries 10)
 
 (defn rnd
-  "Returns a number from 0 to 1 that tick t, the mob eid and key k decide."
+  "Returns a number from 0 to 1 that tick t, the mob eid and key
+  k decide."
   (^double [t eid k] (random/of-longs (long t) (long eid) (hash k)))
   (^double [t eid k i] (random/of-longs (long t) (long eid) (hash k) (long i))))
 
@@ -44,7 +67,8 @@
   [t eid k ^long n]
   (zero? (long (* n (rnd t eid k)))))
 
-(defn- water? [world cell] (= :water (block/liquid-class (sense/block-at world cell))))
+(defn- water? [world cell] (block/water? (sense/block-at world cell)))
+
 (defn- solid? [world cell] (block/solid? (sense/block-at world cell)))
 
 (defn- random-offset [t eid k i h vert]
@@ -299,16 +323,17 @@
   (if (sense/nearest-player world (:pos e) idle-reset-sq) 0 (inc (long (or (:no-action e) 0)))))
 
 (defn spec
-  "Returns a breed's goal spec from its goals, highest priority first, and the
-   function that picks a newborn's colour from both parents."
+  "Returns a breed's goal spec from its goals, highest priority first,
+  and the function that picks a newborn's colour from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
    {:goals       (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
     :child-color child-color}))
 
 (defn brain
-  "Returns the mob and its deltas after one tick of its goals. Goals are chosen
-   and ticked on every second tick only, which tick decides eid."
+  "Returns the mob and its deltas after one tick of its goals. Goals
+  are chosen and ticked on every second tick only, which tick
+  decides eid."
   [spec world eid e t tempters]
   (let [e (assoc e :no-action (idle-count world e))]
     (if (even? (+ (long t) (long eid)))
@@ -319,9 +344,9 @@
       [e nil])))
 
 (defn on-interact
-  "Returns the deltas f gives for each interact event where the player and its
-   target both exist. f takes the player eid, the player, the target eid and
-   the target."
+  "Returns the deltas f gives for each interact event where the player
+  and its target both exist. f takes the player eid, the player, the
+  target eid and the target."
   [world events f]
   (mapcat (fn [[tag peid target]]
             (when (= :interact tag)

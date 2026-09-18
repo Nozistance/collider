@@ -6,12 +6,15 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:table grass (delay (block/state :grass-block)))
+
 (def ^:private ^:table dirt (delay (block/state :dirt)))
 
 (defn grass-state ^long [] @grass)
 
 (defn dirt-state ^long [] @dirt)
+
 (defn short-grass? [st] (= :short-grass (block/block-of (long st))))
+
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
     (chunk/chunks-get-block chunks p)

@@ -8,9 +8,10 @@
 (set! *warn-on-reflection* true)
 
 (def types #{:chest :trapped-chest :copper-chest :weathering-copper-chest})
-(def copper-types #{:copper-chest :weathering-copper-chest})
-(def ^:private ^:table copper-chests (delay (set (get-in (data/tags) ["block" "copper_chests"]))))
 
+(def copper-types #{:copper-chest :weathering-copper-chest})
+
+(def ^:private ^:table copper-chests (delay (set (get-in (data/tags) ["block" "copper_chests"]))))
 
 (defn state-at ^long [chunks pos]
   (chunk/chunks-get-block chunks pos))
@@ -74,8 +75,8 @@
     :else :single))
 
 (defn placed
-  "Returns the state of the chest st placed at pos against face. A sneaking
-   player pairs it only along that face."
+  "Returns the state of the chest st placed at pos against face. A
+  sneaking player pairs it only along that face."
   [chunks pos st face sneaking?]
   (let [props (block/props-of st)
         clicked (dir/from-index (long face))

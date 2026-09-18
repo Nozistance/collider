@@ -1,5 +1,6 @@
 (ns collider.world.blocks.liquid
-  "Water and lava, their spread and mixing, and their push on entities."
+  "Water and lava, their spread and mixing, and their push
+  on entities."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -25,14 +26,22 @@
   (delay (into {} (map (fn [[cls {:keys [bucket]}]] [bucket cls])) liquids)))
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
+
 (def ^:private ^:table water-source (delay (block/state :water)))
+
 (def ^:private liquid-state? block/liquid?)
+
 (def ^:private liquid-class block/liquid-class)
+
 (def ^:private level block/liquid-level)
+
 (defn liquid-state ^long [cls ^long level]
   (+ (long (@base cls)) level))
+
 (defn bucket->state [item] (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
+
 (defn delay-of [st] (long (get-in liquids [(liquid-class st) :delay])))
+
 (def ^:private source-state? block/source-state?)
 
 (defn mix-class? [st]
@@ -61,6 +70,7 @@
             (+ (long z) (long dz))))
 
 (defn- effective ^long [st] (let [m (level st)] (if (>= m 8) 0 m)))
+
 (defn- other-class? [cls st]
   (let [c (liquid-class st)]
     (and (some? c) (not= c cls))))
@@ -97,6 +107,7 @@
       :else 0)))
 
 (def ^:private side-face {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
+
 (defn- solid-face? [cls st d]
   (let [st (long st)]
     (and (pos? st)
@@ -182,14 +193,23 @@
           (fluid-around chunks pos half height)))
 
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
+
 (def ^:private horiz3+ [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
+
 (def ^:private opposite {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0] [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
+
 (def ^:private no-fluid-types #{:door :standing-sign :wall-sign :ladder :sugar-cane :bubble-column})
+
 (defn- amount ^long [st] (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
+
 (defn- falling? [st] (= 8 (level st)))
+
 (defn- same? [cls st] (= cls (liquid-class st)))
+
 (defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
+
 (defn- height ^double [st] (/ (double (amount st)) 9.0))
+
 (defn fluid-height-of [chunks [x y z] st mode]
   (let [cls (liquid-class st)]
     (when (and cls (or (not= mode :source-only) (source-of? cls st)))
@@ -197,6 +217,7 @@
         (if (same? cls above) 1.0 (height st))))))
 
 (defn- boxes [st] (if (pos? (long st)) (block/collision-boxes (long st)) []))
+
 (def ^:private ^ThreadLocal cover-rows
   (proxy [ThreadLocal] [] (initialValue [] (int-array 16))))
 
@@ -255,6 +276,7 @@
     true))
 
 (defn- can-hold? [cls st] (and (holds-any-fluid? st) (holds-specific? cls st)))
+
 (defn- replaceable-with? [tgt cls d]
   (case (liquid-class tgt)
     nil true
@@ -307,7 +329,7 @@
 
 (defn- slope-distance
   "Returns how many steps of falling ground lie ahead of a liquid
-   leaving p."
+  leaving p."
   ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
   (let [raw (raw-of env x y z)]
     (reduce (fn [lowest [dx _ dz :as d]]
@@ -329,7 +351,9 @@
     (block/state (if (zero? (long m)) (:source mix) (:flowing mix)))))
 
 (def ^:private contact-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0]])
+
 (def ^:private convert-dirs [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 -1 0]])
+
 (defn- touches-other? [chunks cls pos]
   (some (fn [d] (other-class? cls (shifted chunks pos d))) contact-dirs))
 
@@ -424,8 +448,11 @@
         horiz))
 
 (def ^:private ^:table basalt-state (delay (block/state :basalt)))
+
 (def ^:private ^:table soul-soil-state (delay (block/state :soul-soil)))
+
 (def ^:private ^:table blue-ice-state (delay (block/state :blue-ice)))
+
 (defn- mixed-state [cls mix st above sides below-raw]
   (when mix
     (cond
@@ -451,7 +478,9 @@
         positions))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
+
 (defn bubble-column? [st] (= :bubble-column (block/type-of (long st))))
+
 (defn- column-state [below]
   (cond
     (bubble-column? below) below
@@ -459,6 +488,7 @@
             (block/state :bubble-column {:drag drag}))))
 
 (defn- water-source? [st] (= (long st) @water-source))
+
 (defn- column-changes [chunks [x y z] col]
   (loop [y (long y) acc []]
     (let [st (long (raw-at chunks x y z))]
@@ -487,6 +517,7 @@
       vy)))
 
 (def ^:private conversion-rule {:water :water-source-conversion :lava :lava-source-conversion})
+
 (defn- flow-env [chunks cls rules]
   (let [{:keys [dropoff slope infinite? mix]} (liquids cls)]
     {:chunks    chunks :cls cls

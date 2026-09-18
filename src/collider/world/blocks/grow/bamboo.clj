@@ -32,8 +32,9 @@
   (when (air-at? chunks (dir/up p)) {:changes [[(dir/up p) (block/state :bamboo {:leaves :small})]]}))
 
 (defn meal
-  "Returns the bone meal result for the bamboo at p, or nil when it cannot grow.
-   The new segment goes on top of the whole stalk, not above p."
+  "Returns the bone meal result for the bamboo at p, or nil when it
+  cannot grow. The new segment goes on top of the whole stalk, not
+  above p."
   [chunks p _st roll]
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)

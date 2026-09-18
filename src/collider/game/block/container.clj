@@ -20,8 +20,11 @@
 (set! *warn-on-reflection* true)
 
 (def size 27)
+
 (def chest-types chest/types)
+
 (def bench-types #{:stonecutter :loom :crafting-table})
+
 (def container-types
   (into (conj chest/types :barrel :ender-chest :shulker-box) bench-types))
 
@@ -30,7 +33,9 @@
   (conj (into container-types be/furnace-kinds) :brewing-stand))
 
 (def state-at chest/state-at)
+
 (def connected-direction chest/connected-direction)
+
 (def copper-types chest/copper-types)
 
 (defn placed-state [chunks pos st face sneaking? yaw pitch]
@@ -52,10 +57,12 @@
       {:kind :block :rows 3 :type :generic-9x3 :title {:translate "container.chest"} :cells [pos]})))
 
 (def ^:private axis-index {:x 0 :y 1 :z 2})
+
 (def ^:private positive? #{:up :south :east})
 
 (defn- half-free?
-  "Returns true when nothing stands in the way of the lid on that side."
+  "Returns true when nothing stands in the way of the lid on
+  that side."
   [chunks pos facing]
   (let [st (state-at chunks (mapv + pos (dir/offset facing)))
         ax (long (axis-index (dir/axis facing)))
@@ -124,9 +131,13 @@
       (when-let [f (builders t)] (f world chunks pos st)))))
 
 (defn bench? [m] (= :bench (:kind m)))
+
 (defn lectern? [m] (= :lectern (:kind m)))
+
 (defn crafting? [m] (= :crafting-table (:type m)))
+
 (defn furnace? [m] (contains? be/furnace-kinds (:type m)))
+
 (defn brewing? [m] (= :brewing-stand (:type m)))
 
 (defn- menu-entity [world m] (be/at world (first (:cells m))))
@@ -334,6 +345,7 @@
        0.5 (pitch world pos :lid)))])
 
 (def ^:private ^:const recheck-delay 5)
+
 (def ^:private open-step (float 0.1))
 
 (defn- trigger-deltas [pos ^long after]

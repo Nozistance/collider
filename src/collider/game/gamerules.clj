@@ -40,6 +40,7 @@
                 (map (fn [[k [d lo hi]]] [k {:type :int :default d :min lo :max hi}]) integers))))
 
 (def defaults (into {} (map (fn [[k v]] [k (:default v)])) table))
+
 (defn wire-name ^String [rule]
   (data/wire rule))
 

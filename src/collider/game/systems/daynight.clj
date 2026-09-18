@@ -6,6 +6,7 @@
 (set! *warn-on-reflection* true)
 
 (def send-interval 20)
+
 (def ^:private sky-keyframes
   [[133 1.0] [11867 1.0] [13670 0.26666668] [22330 0.26666668] [24133 1.0]])
 
