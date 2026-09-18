@@ -12,7 +12,7 @@
 (def ^:private ^:const max-fall 3)
 
 (defn- water-at? [chunks x y z]
-  (= :water (block/liquid-class (chunk/block-state chunks x y z))))
+  (block/water? (chunk/block-state chunks x y z)))
 
 (defn- fence-at? [chunks [x y z]]
   (phys/fence-at? chunks x y z))

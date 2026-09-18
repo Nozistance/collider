@@ -164,6 +164,8 @@
 
 (defn water? [st] (= :water (liquid-class st)))
 
+(defn lava? [st] (= :lava (liquid-class st)))
+
 (defn water-source? [st] (and (water? st) (source-state? st)))
 
 (defn air? [^long st] (zero? st))

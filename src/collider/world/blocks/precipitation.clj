@@ -23,7 +23,7 @@
   (long (light/block-light-at chunks (nth p 0) (nth p 1) (nth p 2))))
 
 (defn- water? [chunks p]
-  (= :water (block/liquid-class (state-at chunks p))))
+  (block/water? (state-at chunks p)))
 
 (def ^:private sides [[-1 0 0] [1 0 0] [0 0 -1] [0 0 1]])
 

@@ -22,7 +22,7 @@
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- water-source? [^long st]
-  (and (pos? st) (block/water? st) (block/source-state? st)))
+  (and (pos? st) (block/water-source? st)))
 
 (defn- replaceable? [^long st self]
   (or (zero? st) (and (pos? st) (= self (block/block-of st))) (water-source? st)))

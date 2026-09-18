@@ -63,7 +63,7 @@
 
 (defn- scooped-item [kind st]
   (cond (= :powder-snow kind) :powder-snow-bucket
-        (= :lava (block/liquid-class st)) :lava-bucket
+        (block/lava? st) :lava-bucket
         :else :water-bucket))
 
 (defn scoop-deltas [world eid e]
@@ -71,7 +71,7 @@
     (let [st (edit/block-at world pos)
           sound (cond
                   (= :powder-snow kind) :bucket/fill-snow
-                  (= :lava (block/liquid-class st)) :bucket/fill-lava
+                  (block/lava? st) :bucket/fill-lava
                   :else :bucket/fill)]
       (concat (case kind
                 (:source :bubble-column) [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]

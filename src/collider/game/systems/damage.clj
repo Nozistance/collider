@@ -213,7 +213,7 @@
 
 (defn- mark-cell [chunks ^longs acc x y z inner?]
   (let [st (chunk/block-state chunks x y z)
-        lava? (= :lava (block/liquid-class st))]
+        lava? (block/lava? st)]
     (when lava? (aset acc 0 (bit-or (aget acc 0) lava-bit)))
     (when (block/fire? st) (aset acc 0 (bit-or (aget acc 0) fire-bit)))
     (when (and lava? inner?)

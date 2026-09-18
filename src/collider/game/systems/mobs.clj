@@ -134,10 +134,10 @@
         :else (recur (inc cy))))))
 
 (defn- water-above? [world p]
-  (= :water (block/liquid-class
-              (sense/block-at world (long (Math/floor (v/x p)))
-                              (long (Math/floor (+ (v/y p) 0.6)))
-                              (long (Math/floor (v/z p)))))))
+  (let [x (long (Math/floor (v/x p)))
+        y (long (Math/floor (+ (v/y p) 0.6)))
+        z (long (Math/floor (v/z p)))]
+    (block/water? (sense/block-at world x y z))))
 
 (defn- heading [p tgt]
   (let [dx (- (v/x tgt) (v/x p))

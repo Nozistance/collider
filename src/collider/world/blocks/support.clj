@@ -75,7 +75,7 @@
   (let [n (state-at chunks (mapv + pos d))]
     (and (pos? n)
          (or (block/blocks-motion? n)
-             (= :lava (block/liquid-class n))))))
+             (block/lava? n)))))
 
 (defn- cactus-supported? [chunks pos st below]
   (and (not (some #(cactus-blocked? chunks pos %)

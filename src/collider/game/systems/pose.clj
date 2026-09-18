@@ -68,7 +68,7 @@
 
 (defn- water-at? [chunks cx cy cz]
   (and (chunk/in-range? (long cy))
-       (= :water (block/liquid-class (st-at chunks cx cy cz)))))
+       (block/water? (st-at chunks cx cy cz))))
 
 (defn- eye-in-water? [chunks pos pose]
   (let [ey (+ (v/y pos) (double (pose-eye pose)))

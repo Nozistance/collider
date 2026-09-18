@@ -19,7 +19,7 @@
 (defn- flag [x] (if x :true :false))
 
 (defn placed [chunks pos st yaw]
-  (let [water? (= :water (block/liquid-class (at chunks pos)))]
+  (let [water? (block/water? (at chunks pos))]
     (with-props st {:facing      (dir/player-direction yaw)
                     :waterlogged (flag water?)
                     :lit         (flag (not water?))

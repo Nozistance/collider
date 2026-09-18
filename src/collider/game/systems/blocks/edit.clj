@@ -144,7 +144,7 @@
   (block/state (block/block-of st) (assoc (block/props-of st) :waterlogged (if logged? :true :false))))
 
 (defn waterlogged [world pos' state]
-  (if (and (= :water (block/liquid-class (block-at world pos')))
+  (if (and (block/water? (block-at world pos'))
            (contains? (block/props-of state) :waterlogged))
     (block/state (block/block-of state) (assoc (block/props-of state) :waterlogged :true))
     state))
