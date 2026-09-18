@@ -1,12 +1,16 @@
 (ns collider.game.systems.blocks.cauldron
   "Filling and emptying cauldrons."
-  (:require [collider.game.out :as out]
+  (:require [collider.data :as data]
+            [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]))
 
 (set! *warn-on-reflection* true)
+
+(def ^:private ^:table banners
+  (delay (set (data/tag-values "item" "banners"))))
 
 (def ^:private water-bottle
   {:item       :potion :count 1
@@ -79,10 +83,36 @@
             (used-deltas world eid pos item {:item :bucket :count 1}
                          sound :custom/fill-cauldron))))
 
+(defn- dyed-shulker? [item]
+  (and (not= :shulker-box item)
+       (= :shulker-box (:type (get (data/blocks) item)))))
+
+(defn- wash-deltas
+  "Returns the deltas for a dyed shulker box or a patterned banner
+   washed in a water cauldron: the cleaned item always joins the
+   inventory, as the unlimited createFilledResult does."
+  [world eid pos cur stack cleaned stat]
+  (when (= :water-cauldron (block/block-of cur))
+    (concat (edit/change-deltas world [[pos (cauldron-lowered cur)]])
+            (items/filled-result-deltas world eid (assoc cleaned :count 1) true)
+            [[:award eid stat 1]])))
+
+(defn- washed [world eid pos cur item stack]
+  (let [layers (get-in stack [:components :banner-patterns])]
+    (cond
+      (dyed-shulker? item)
+      (wash-deltas world eid pos cur stack (assoc stack :item :shulker-box)
+                   :custom/clean-shulker-box)
+      (and (contains? @banners item) (seq layers))
+      (wash-deltas world eid pos cur stack
+                   (assoc-in stack [:components :banner-patterns] (vec (butlast layers)))
+                   :custom/clean-banner))))
+
 (defn cauldron-deltas [world eid pos item stack]
   (let [cur (edit/block-at world pos)]
     (cond
       (and (= :potion item) (water-bottle? stack)) (pour-bottle-deltas world eid pos)
       (= :bucket item) (scoop-deltas world eid pos cur)
       (= :glass-bottle item) (bottle-deltas world eid pos)
-      :else (fill-deltas world eid pos item))))
+      :else (or (washed world eid pos cur item stack)
+                (fill-deltas world eid pos item)))))

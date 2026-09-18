@@ -181,4 +181,5 @@
              (cauldron/water-bottle? (edit/held-stack world eid)))
     (concat (edit/change-deltas world [[pos (block/state :mud)]])
             [(out/all (out/sound :splash pos 1.0 1.0))
-             (out/all (out/sound :bottle/empty pos 1.0 1.0))])))
+             (out/all (out/sound :bottle/empty pos 1.0 1.0))]
+            (items/filled-result-deltas world eid {:item :glass-bottle :count 1}))))

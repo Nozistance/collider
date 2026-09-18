@@ -288,13 +288,16 @@
 (defn filled-result-deltas
   "Returns the deltas of ItemUtils.createFilledResult for the player who
    used a container: in creative the hand keeps its stack and the result
-   is added only when none is held, else the result goes where it fits."
-  [world eid stack]
-  (let [e (get-in world [:entities eid]) inv (:inventory e)]
-    (when-not (and (state/infinite-materials? e) (holds? inv stack))
-      (let [[changes left] (add-stack inv stack)]
-        (concat (for [[slot s] changes] [:set-slot eid slot s])
-                (when left [[:spawn-entity (dropped world eid left)]]))))))
+   is added only when none is held, unless always? asks for it anyway."
+  ([world eid stack] (filled-result-deltas world eid stack false))
+  ([world eid stack always?]
+   (let [e (get-in world [:entities eid]) inv (:inventory e)]
+     (when-not (and (not always?) (state/infinite-materials? e)
+                    (holds? inv stack))
+       (let [[changes left] (add-stack inv stack)]
+         (concat (for [[slot s] changes] [:set-slot eid slot s])
+                 (when left [[:spawn-entity (dropped world eid left)]])))))))
+
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) px (v/x pp) py (v/y pp) pz (v/z pp)
         pi (:pos ie) ix (v/x pi) iy (v/y pi) iz (v/z pi)]

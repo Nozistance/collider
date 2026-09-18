@@ -59,6 +59,11 @@
         (liquid/source-state? st) [:source pos]
         (= :true (:waterlogged (block/props-of st))) [:waterlogged pos]))))
 
+(defn- scooped-item [kind st]
+  (cond (= :powder-snow kind) :powder-snow-bucket
+        (= :lava (liquid/liquid-class st)) :lava-bucket
+        :else :water-bucket))
+
 (defn scoop-deltas [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
     (let [st (edit/block-at world pos)
@@ -71,7 +76,10 @@
                 :powder-snow (edit/change-deltas world [[pos 0]])
                 :waterlogged (edit/change-deltas world [[pos (edit/with-water st false)]]))
               (when (= :powder-snow kind) [(out/all (out/level-event out/particles-destroy-block pos st))])
-              [(out/except eid (out/sound sound pos 1.0 1.0))]))))
+              [(out/except eid (out/sound sound pos 1.0 1.0))
+               [:award eid :used/bucket 1]]
+              (items/filled-result-deltas
+                world eid {:item (scooped-item kind st) :count 1})))))
 
 (defn lily-deltas [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
