@@ -89,6 +89,10 @@
 (defn fuel
   "Returns how many ticks each item burns for in a furnace."
   [] (:fuel (recipes)))
+(defn brewing
+  "Returns the potion containers, the brewing mixes and the fuel of a
+   brewing stand."
+  [] (:brewing (recipes)))
 (defn sounds [] (:sounds @tables))
 (defn features
   "Returns the worldgen features bone meal reaches and the ones each biome

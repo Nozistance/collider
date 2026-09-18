@@ -173,6 +173,7 @@
 (def ^:const sound-anvil-land 1031)
 (def ^:const sound-chorus-grow 1033)
 (def ^:const sound-chorus-death 1034)
+(def ^:const sound-brewing-stand-brew 1035)
 (def ^:const sound-page-turn 1043)
 (def ^:const sound-drip-lava-into-cauldron 1046)
 (def ^:const sound-drip-water-into-cauldron 1047)

@@ -27,20 +27,24 @@
    :lectern             :lectern
    :furnace             :furnace
    :blast-furnace       :blast-furnace
-   :smoker              :smoker})
+   :smoker              :smoker
+   :brewing-stand       :brewing-stand})
 
 (def ^:private silent
   #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
-    :shulker-box :lectern :furnace :blast-furnace :smoker})
+    :shulker-box :lectern :furnace :blast-furnace :smoker
+    :brewing-stand})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
 (def furnace-kinds #{:furnace :blast-furnace :smoker})
 
-(def menu-kinds (into container-kinds furnace-kinds))
+(def menu-kinds
+  (conj (into container-kinds furnace-kinds) :brewing-stand))
 
 (def spill-kinds
-  #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker})
+  #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker
+    :brewing-stand})
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -177,7 +181,10 @@
     :lectern {:kind :lectern :book nil :page 0}
     (:furnace :blast-furnace :smoker)
     {:kind  k :items [nil nil nil] :lit-remaining 0 :lit-total 0
-     :cook  0 :cook-total 0 :used {}}))
+     :cook  0 :cook-total 0 :used {}}
+    :brewing-stand
+    {:kind :brewing-stand :items (vec (repeat 5 nil))
+     :brew 0 :fuel 0}))
 
 (defn wire [entries]
   (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))

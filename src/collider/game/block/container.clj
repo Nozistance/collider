@@ -7,6 +7,7 @@
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.game.block.crafting :as crafting]
+            [collider.game.block.brewing :as brewing]
             [collider.game.block.furnace :as furnace]
             [collider.game.block.workbench :as workbench]
             [collider.world.block :as block]
@@ -26,7 +27,7 @@
 
 (def menu-types
   "Blocks whose use opens a menu, containers and furnaces alike."
-  (into container-types be/furnace-kinds))
+  (conj (into container-types be/furnace-kinds) :brewing-stand))
 
 (def state-at chest/state-at)
 (def connected-direction chest/connected-direction)
@@ -93,6 +94,10 @@
                                    {:kind  :lectern :type :lectern
                                     :title {:translate "container.lectern"}
                                     :cells [] :pos pos}))
+   :brewing-stand
+   (fn [_ _ pos _] {:kind  :block :type :brewing-stand :slots 5
+                    :title {:translate "container.brewing"}
+                    :cells [pos]})
    :loom        (fn [_ _ pos _] {:kind  :bench :type :loom :size 4 :result 3
                                  :title {:translate "container.loom"}
                                  :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})})
@@ -122,14 +127,19 @@
 (defn lectern? [m] (= :lectern (:kind m)))
 (defn crafting? [m] (= :crafting-table (:type m)))
 (defn furnace? [m] (contains? be/furnace-kinds (:type m)))
+(defn brewing? [m] (= :brewing-stand (:type m)))
+
+(defn- menu-entity [world m] (be/at world (first (:cells m))))
 
 (defn data-values
-  "Returns the four ContainerData values of a furnace menu."
+  "Returns the ContainerData values of a furnace or a brewing stand."
   [world m]
-  (when (furnace? m)
-    (let [e (be/at world (first (:cells m)))]
-      [(:lit-remaining e 0) (:lit-total e 0)
-       (:cook e 0) (:cook-total e 0)])))
+  (cond
+    (furnace? m) (let [e (menu-entity world m)]
+                   [(:lit-remaining e 0) (:lit-total e 0)
+                    (:cook e 0) (:cook-total e 0)])
+    (brewing? m) (let [e (menu-entity world m)]
+                   [(:brew e 0) (:fuel e 0)])))
 
 (defn player-slots? [m]
   (not (lectern? m)))
@@ -162,7 +172,7 @@
   ([items] (padded items size))
   ([items ^long n] (vec (take n (concat items (repeat nil))))))
 
-(defn- cell-size ^long [m] (if (furnace? m) 3 size))
+(defn- cell-size ^long [m] (long (:slots m size)))
 
 (defn cell-items
   ([world pos] (cell-items world pos size))
@@ -206,12 +216,11 @@
     (concat (when (not= old e) [[:set-block-entity pos e]])
             (when got [(award eid got)]))))
 
-(defn- cell-store [world items i pos]
+(defn- cell-store [world items n i pos]
   (let [old (be/at world pos)
-        i (long i)
-        part (padded (subvec (vec items) (* i size)
-                             (* (inc i) size)))]
-    (when (not= (padded (:items old)) part)
+        n (long n) i (long i)
+        part (padded (subvec (vec items) (* i n) (* (inc i) n)) n)]
+    (when (not= (padded (:items old) n) part)
       [:set-block-entity pos (assoc old :items part)])))
 
 (defn store-deltas [world eid m items]
@@ -220,7 +229,8 @@
     (bench? m) nil
     (= :ender (:kind m)) [[:merge-entity eid {:ender-items (vec items)}]]
     (furnace? m) (furnace-store world eid m items)
-    :else (keep-indexed #(cell-store world items %1 %2) (:cells m))))
+    :else (keep-indexed #(cell-store world items (cell-size m) %1 %2)
+                        (:cells m))))
 
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
@@ -316,11 +326,10 @@
                          [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
                          0.5 (pitch world pos :lid)))]))
 
-(defn- ender-sound [world pos open?]
-  (let [[x y z] pos]
-    [(out/all (out/sound (if open? :block.ender-chest.open :block.ender-chest.close)
-                         [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
-                         0.5 (pitch world pos :lid)))]))
+(defn- ender-sound [world [x y z :as pos] open?]
+  [(out/all (out/sound (if open? :block.ender-chest.open :block.ender-chest.close)
+                       [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+                       0.5 (pitch world pos :lid)))])
 
 (def ^:private ^:const recheck-delay 5)
 (def ^:private open-step (float 0.1))
@@ -481,12 +490,42 @@
       :max furnace-max
       :quick (fn [inv slot] (furnace-quick v kind inv slot)))))
 
+(defn- brewing-place? [slot stack]
+  (case (long slot)
+    (0 1 2) (contains? brewing/bottles (:item stack))
+    3 (brewing/ingredient? stack)
+    4 (brewing/fuel? stack)))
+
+(defn- brewing-max [slot _]
+  (when (< (long slot) 3) 1))
+
+(defn- brewing-quick [v inv slot]
+  (let [i (long (.indexOf ^List v slot))
+        stack (get inv slot)]
+    (cond
+      (< i 5) (span v 5 41 true)
+      (brewing/fuel? stack)
+      {:try  (span v 4 5 false)
+       :else (when (brewing/ingredient? stack) (span v 3 4 false))}
+      (brewing/ingredient? stack) (span v 3 4 false)
+      (contains? brewing/bottles (:item stack)) (span v 0 3 false)
+      (< 4 i 32) (span v 32 41 false)
+      :else (span v 5 32 false))))
+
+(defn- brewing-layout []
+  (let [base (menu/slots-layout 5 brewing-place?)
+        v (:visible base)]
+    (assoc base
+      :max brewing-max
+      :quick (fn [inv slot] (brewing-quick v inv slot)))))
+
 (defn layout
   ([m] (layout m {:held 0}))
   ([m ctx]
    (cond
      (lectern? m) (lectern-layout)
      (furnace? m) (furnace-layout m)
+     (brewing? m) (brewing-layout)
      :else
      (case (:type m)
        :stonecutter (cut-layout m)

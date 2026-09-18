@@ -1217,7 +1217,91 @@
     (apply dissoc (reduce add (sorted-map) fuel-values)
            (get-in tags ["item" "non_flammable_wood"] []))))
 
-(defn- recipes [zf tags dyes items]
+(def ^:private brewing-containers
+  [:potion :splash-potion :lingering-potion])
+
+(def ^:private container-recipes
+  [[:potion :gunpowder :splash-potion]
+   [:splash-potion :dragon-breath :lingering-potion]])
+
+(def ^:private potion-mixes
+  "PotionBrewing.addVanillaMixes, a :start row standing for addStartMix."
+  [[:water :glowstone-dust :thick]
+   [:water :redstone :mundane]
+   [:water :nether-wart :awkward]
+   [:start :breeze-rod :wind-charged]
+   [:start :slime-block :oozing]
+   [:start :stone :infested]
+   [:start :cobweb :weaving]
+   [:awkward :golden-carrot :night-vision]
+   [:night-vision :redstone :long-night-vision]
+   [:night-vision :fermented-spider-eye :invisibility]
+   [:long-night-vision :fermented-spider-eye :long-invisibility]
+   [:invisibility :redstone :long-invisibility]
+   [:start :magma-cream :fire-resistance]
+   [:fire-resistance :redstone :long-fire-resistance]
+   [:start :rabbit-foot :leaping]
+   [:leaping :redstone :long-leaping]
+   [:leaping :glowstone-dust :strong-leaping]
+   [:leaping :fermented-spider-eye :slowness]
+   [:long-leaping :fermented-spider-eye :long-slowness]
+   [:slowness :redstone :long-slowness]
+   [:slowness :glowstone-dust :strong-slowness]
+   [:awkward :turtle-helmet :turtle-master]
+   [:turtle-master :redstone :long-turtle-master]
+   [:turtle-master :glowstone-dust :strong-turtle-master]
+   [:swiftness :fermented-spider-eye :slowness]
+   [:long-swiftness :fermented-spider-eye :long-slowness]
+   [:start :sugar :swiftness]
+   [:swiftness :redstone :long-swiftness]
+   [:swiftness :glowstone-dust :strong-swiftness]
+   [:awkward :pufferfish :water-breathing]
+   [:water-breathing :redstone :long-water-breathing]
+   [:start :glistering-melon-slice :healing]
+   [:healing :glowstone-dust :strong-healing]
+   [:healing :fermented-spider-eye :harming]
+   [:strong-healing :fermented-spider-eye :strong-harming]
+   [:harming :glowstone-dust :strong-harming]
+   [:poison :fermented-spider-eye :harming]
+   [:long-poison :fermented-spider-eye :harming]
+   [:strong-poison :fermented-spider-eye :strong-harming]
+   [:start :spider-eye :poison]
+   [:poison :redstone :long-poison]
+   [:poison :glowstone-dust :strong-poison]
+   [:start :ghast-tear :regeneration]
+   [:regeneration :redstone :long-regeneration]
+   [:regeneration :glowstone-dust :strong-regeneration]
+   [:start :blaze-powder :strength]
+   [:strength :redstone :long-strength]
+   [:strength :glowstone-dust :strong-strength]
+   [:water :fermented-spider-eye :weakness]
+   [:weakness :redstone :long-weakness]
+   [:awkward :phantom-membrane :slow-falling]
+   [:slow-falling :redstone :long-slow-falling]])
+
+(defn- expand-mix [[from ingredient to]]
+  (if (= :start from)
+    [[:water ingredient :mundane] [:awkward ingredient to]]
+    [[from ingredient to]]))
+
+(defn- mix-entry [[from ingredient to]]
+  {:from from :ingredient ingredient :to to})
+
+(defn- mixes [rows known?]
+  (into [] (comp (filter #(every? known? %)) (map mix-entry)) rows))
+
+(defn- brewing [tags items potions]
+  (let [potion-mix? (fn [[from ingredient to]]
+                      (and (potions from) (items ingredient)
+                           (potions to)))]
+    {:containers      (filterv items brewing-containers)
+     :container-mixes (mixes container-recipes items)
+     :potion-mixes    (into [] (comp (filter potion-mix?)
+                                     (map mix-entry))
+                            (mapcat expand-mix potion-mixes))
+     :fuel            (vec (get-in tags ["item" "brewing_fuel"]))}))
+
+(defn- recipes [zf tags dyes items potions]
   (let [named (->> (jsons zf "data/minecraft/recipe/")
                    (remove #(str/includes? (key %) "/")))
         rs (map val named)]
@@ -1227,6 +1311,7 @@
      :crafting      (crafting named tags)
      :cooking       (cooking named)
      :fuel          (fuel tags items)
+     :brewing       (brewing tags items potions)
      :dyes          dyes}))
 
 (defn- tag-values [json]
@@ -1278,7 +1363,8 @@
                                     compost walls remainders banners)
             :features   (features zf placers)
             :recipes    (recipes zf tags dyes
-                                 (set (keys (get rs "item"))))
+                                 (set (keys (get rs "item")))
+                                 (set (keys (get rs "potion"))))
             :tags       tags})))
 
 (defn- write-tables! [^File server ^File dir out from-class]

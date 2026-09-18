@@ -29,8 +29,22 @@
 
 (defn- remote-of [stack]
   (when stack
-    {:item        (:item stack) :count (long (:count stack 1))
-     :components? (boolean (or (:components stack) (:components? stack)))}))
+    (cond-> {:item (:item stack) :count (long (:count stack 1))}
+            (:components stack) (assoc :components (:components stack))
+            (:components? stack) (assoc :components? true))))
+
+(defn- hashed [r]
+  (when r
+    (assoc (dissoc r :components)
+      :components? (boolean (or (:components r) (:components? r))))))
+
+(defn- remote-match?
+  "Returns true when the client already has stack in that slot. What it
+   told us of its own components is only whether it has any, so such a
+   slot matches every stack that agrees on that much."
+  [remote stack]
+  (let [r (remote-of stack)]
+    (if (:components? remote) (= remote (hashed r)) (= remote r))))
 
 (defn- count-deltas [world m ^long step]
   (mapcat (fn [pos]
@@ -130,7 +144,8 @@
    :loom           :custom/interact-with-loom
    :furnace        :custom/interact-with-furnace
    :blast-furnace  :custom/interact-with-blast-furnace
-   :smoker         :custom/interact-with-smoker})
+   :smoker         :custom/interact-with-smoker
+   :brewing-stand  :custom/interact-with-brewingstand})
 
 (defn- open-menu-deltas [world eid e m]
   (let [prev (close-deltas world eid e true)
@@ -158,7 +173,10 @@
 
 (defn- slot-diff-deltas [eid menu slots ^long base]
   (let [remote (:remote menu)
-        diff (keep-indexed (fn [i s] (when (not= (get remote i) (remote-of s)) [i s])) slots)]
+        diff (keep-indexed (fn [i s]
+                             (when-not (remote-match? (get remote i) s)
+                               [i s]))
+                           slots)]
     (reduce (fn [[ds ^long st] [i s]]
               [(conj ds (out/to eid (out/container-slot (:id menu) (inc st) i s))) (inc st)])
             [[] base] diff)))
@@ -170,7 +188,7 @@
        :menu   (synced menu (inc base) slots carried)}
       (let [[ds st] (slot-diff-deltas eid menu slots base)]
         {:deltas (cond-> ds
-                         (not= (:remote-carried menu) (remote-of carried))
+                         (not (remote-match? (:remote-carried menu) carried))
                          (conj (out/to eid (out/carried carried))))
          :menu   (synced menu st slots carried)}))))
 

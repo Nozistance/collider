@@ -6,6 +6,7 @@
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
+            [collider.game.systems.brewing :as brewing]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.consume :as consume]
@@ -65,7 +66,7 @@
 
 (def phases [[#'spawning/placing]
              [#'pose/pose]
-             [#'furnaces/furnace-cooking]
+             [#'furnaces/furnace-cooking #'brewing/brewing]
              [#'consume/consume]
              systems
              [#'explosions/explosions]
