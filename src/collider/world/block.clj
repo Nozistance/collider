@@ -95,6 +95,23 @@
 (defn liquid? [^long st] (and (known? st) (aget ^booleans @liquid-arr st)))
 (defn waterlogged? [^long st] (and (known? st) (aget ^booleans @waterlogged-arr st)))
 (defn emptied ^long [^long st] (if (waterlogged? st) @water-state 0))
+(def ^:private ^:table lava-state (delay (state :lava)))
+(defn liquid-class
+  "Returns :water or :lava for a liquid or a waterlogged state, else nil."
+  [st]
+  (let [st (long st)]
+    (cond
+      (liquid? st) (if (= (block-of st) :lava) :lava :water)
+      (waterlogged? st) :water)))
+(defn liquid-level
+  "Returns the level of a liquid state. A source is 0 and a fall is 8."
+  ^long [st]
+  (let [st (long st)]
+    (if (liquid? st)
+      (- st (long (if (= :lava (liquid-class st)) @lava-state @water-state)))
+      0)))
+(defn source-state? [st]
+  (and (liquid? (long st)) (zero? (liquid-level st))))
 (defn air? [^long st] (zero? st))
 (defn fire? [^long st] (= :fire (type-of st)))
 (defn tnt? [^long st] (= :tnt (type-of st)))
@@ -169,7 +186,6 @@
 (def ^:private full-mask (long-array 4 -1))
 (defn- full-face? [^longs m]
   (and (== -1 (aget m 0)) (== -1 (aget m 1)) (== -1 (aget m 2)) (== -1 (aget m 3))))
-
 
 (defn- faces-of-kind [kind]
   (mapv (fn [d]

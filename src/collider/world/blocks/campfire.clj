@@ -1,7 +1,6 @@
 (ns collider.world.blocks.campfire
   "Campfire placement, signal smoke, and dowsing."
   (:require [collider.world.block :as block]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]))
 
@@ -20,7 +19,7 @@
 (defn- flag [x] (if x :true :false))
 
 (defn placed [chunks pos st yaw]
-  (let [water? (= :water (liquid/liquid-class (at chunks pos)))]
+  (let [water? (= :water (block/liquid-class (at chunks pos)))]
     (with-props st {:facing      (dir/player-direction yaw)
                     :waterlogged (flag water?)
                     :lit         (flag (not water?))

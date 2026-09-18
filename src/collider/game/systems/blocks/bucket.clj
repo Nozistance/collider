@@ -15,13 +15,13 @@
 (set! *warn-on-reflection* true)
 
 (defn- break-drops [world pos cur may-replace?]
-  (when (and may-replace? (pos? cur) (not (liquid/liquid-state? cur))
+  (when (and may-replace? (pos? cur) (not (block/liquid? cur))
              (get-in world [:rules :block-drops] true))
     (map-indexed (fn [i stack] [:spawn-entity (items/popped world pos stack [:bucket i])])
                  (block/drops cur (fn [salt] (random/of-key (:tick world) pos salt))))))
 
 (defn- pour-deltas [world eid pos state relative]
-  (let [cur (edit/block-at world pos) water? (= :water (liquid/liquid-class state))
+  (let [cur (edit/block-at world pos) water? (= :water (block/liquid-class state))
         may-replace? (or (block/can-be-replaced? cur) (not (block/blocks-motion? cur)))
         holds? (and water? (edit/waterloggable? cur))
         shift? (get-in world [:entities eid :sneaking?])
@@ -46,7 +46,7 @@
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))
           hit (edit/block-at world pos)
-          target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (liquid/liquid-class state))) pos relative)]
+          target (if (and (contains? (block/props-of hit) :waterlogged) (= :water (block/liquid-class state))) pos relative)]
       (when (chunk/in-range? (target 1))
         (pour-deltas world eid target state (when (= target pos) relative))))))
 
@@ -56,12 +56,12 @@
       (cond
         (= :powder-snow (block/type-of st)) [:powder-snow pos]
         (liquid/bubble-column? st) [:bubble-column pos]
-        (liquid/source-state? st) [:source pos]
+        (block/source-state? st) [:source pos]
         (= :true (:waterlogged (block/props-of st))) [:waterlogged pos]))))
 
 (defn- scooped-item [kind st]
   (cond (= :powder-snow kind) :powder-snow-bucket
-        (= :lava (liquid/liquid-class st)) :lava-bucket
+        (= :lava (block/liquid-class st)) :lava-bucket
         :else :water-bucket))
 
 (defn scoop-deltas [world eid e]
@@ -69,7 +69,7 @@
     (let [st (edit/block-at world pos)
           sound (cond
                   (= :powder-snow kind) :bucket/fill-snow
-                  (= :lava (liquid/liquid-class st)) :bucket/fill-lava
+                  (= :lava (block/liquid-class st)) :bucket/fill-lava
                   :else :bucket/fill)]
       (concat (case kind
                 (:source :bubble-column) [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
@@ -86,7 +86,7 @@
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
           st (block/state :lily-pad)]
       (when (and (= :source kind)
-                 (= :water (liquid/liquid-class (edit/block-at world pos)))
+                 (= :water (block/liquid-class (edit/block-at world pos)))
                  (chunk/in-range? y')
                  (block/can-be-replaced? (edit/block-at world above))
                  (not (edit/obstructed? world above st))

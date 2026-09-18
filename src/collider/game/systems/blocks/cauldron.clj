@@ -4,8 +4,7 @@
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.items :as items]
-            [collider.world.block :as block]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -27,7 +26,7 @@
        (= :water (get-in stack [:components :potion-contents :potion]))))
 
 (defn- cauldron-filled [world pos item]
-  (let [under-water? (= :water (liquid/liquid-class (edit/block-at world (mapv + pos [0 1 0]))))]
+  (let [under-water? (= :water (block/liquid-class (edit/block-at world (mapv + pos [0 1 0]))))]
     (case item
       :water-bucket [(block/state :water-cauldron {:level :3}) :bucket/empty]
       :lava-bucket (when-not under-water? [(block/state :lava-cauldron) :bucket/empty-lava])

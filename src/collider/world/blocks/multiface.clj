@@ -2,11 +2,9 @@
   "Blocks that sit on the faces of their neighbours, and their spreading."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
-
 
 (defn shuffled [roll xs]
   (loop [v (vec xs) i (count v)]
@@ -23,7 +21,7 @@
     (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- water-source? [^long st]
-  (and (pos? st) (= :water (liquid/liquid-class st)) (liquid/source-state? st)))
+  (and (pos? st) (= :water (block/liquid-class st)) (block/source-state? st)))
 
 (defn- replaceable? [^long st self]
   (or (zero? st) (and (pos? st) (= self (block/block-of st))) (water-source? st)))

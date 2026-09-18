@@ -4,7 +4,6 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.light :as light]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.space.spawn :as spawn]
             [collider.world.blocks.support :as support]
             [collider.world.env.weather :as weather]))
@@ -23,7 +22,7 @@
   (long (light/block-light-at chunks (nth p 0) (nth p 1) (nth p 2))))
 
 (defn- water? [chunks p]
-  (= :water (liquid/liquid-class (state-at chunks p))))
+  (= :water (block/liquid-class (state-at chunks p))))
 
 (def ^:private sides [[-1 0 0] [1 0 0] [0 0 -1] [0 0 1]])
 
@@ -32,8 +31,8 @@
     (and (not (biome/warm-enough-to-rain? biome p))
          (chunk/in-range? (long (nth p 1)))
          (< (block-light chunks p) 10)
-         (liquid/liquid-state? st)
-         (= :water (liquid/liquid-class st))
+         (block/liquid? st)
+         (= :water (block/liquid-class st))
          (not (every? (fn [d] (water? chunks (mapv + p d))) sides)))))
 
 (defn- should-snow? [chunks biome p]

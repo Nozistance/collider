@@ -1,8 +1,7 @@
 (ns collider.world.space.spawn
   "Places to put a player: the world spawn and the room a body needs to stand."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -19,17 +18,17 @@
 
 (defn- air? [^long st] (contains? air-blocks (block/block-of st)))
 
-(defn- fluid? [^long st] (some? (liquid/liquid-class st)))
+(defn- fluid? [^long st] (some? (block/liquid-class st)))
 
 (defn- motion-blocking? [^long st] (or (block/blocks-motion? st) (fluid? st)))
 
 (defn- own-height ^double [^long st]
-  (let [l (liquid/level st)]
+  (let [l (block/liquid-level st)]
     (/ (double (if (or (zero? l) (>= l 8)) 8 (- 8 l))) 9.0)))
 
 (defn- fluid-height [chunks x y z st]
-  (if (= (liquid/liquid-class (long st))
-         (liquid/liquid-class (long (state-at chunks x (inc (long y)) z))))
+  (if (= (block/liquid-class (long st))
+         (block/liquid-class (long (state-at chunks x (inc (long y)) z))))
     1.0
     (own-height (long st))))
 

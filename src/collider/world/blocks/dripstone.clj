@@ -2,8 +2,7 @@
   "Pointed dripstone and sulfur spikes, their growth, and their drip."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -36,13 +35,13 @@
   (cond
     (not (pos? st)) nil
     (block/waterlogged? st) :water
-    :else (liquid/liquid-class st)))
+    :else (block/liquid-class st)))
 
 (defn- water-at? [chunks p] (= :water (fluid-of (chunk/at-void chunks p))))
 (defn- water-source-at? [chunks p]
   (let [st (chunk/at-void chunks p)]
     (and (= :water (fluid-of st))
-         (or (block/waterlogged? st) (liquid/source-state? st)))))
+         (or (block/waterlogged? st) (block/source-state? st)))))
 
 (defn valid-placement? [chunks p dir self]
   (let [b (chunk/at-void chunks (mapv + p (dir/offset (dir/opposite dir))))]

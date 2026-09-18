@@ -26,21 +26,14 @@
 
 (def ^:private horiz [[1 0] [-1 0] [0 1] [0 -1]])
 (def ^:private ^:table water-source (delay (block/state :water)))
-(defn liquid-state? [st] (block/liquid? (long st)))
-(defn liquid-class [st]
-  (cond
-    (liquid-state? st) (@class-of-block (block/block-of (long st)))
-    (block/waterlogged? (long st)) :water))
-(defn level
-  "Returns the level of a liquid state. A source is 0 and a fall is 8."
-  ^long [st]
-  (if (liquid-state? st) (- (long st) (long (@base (liquid-class st)))) 0))
+(def ^:private liquid-state? block/liquid?)
+(def ^:private liquid-class block/liquid-class)
+(def ^:private level block/liquid-level)
 (defn liquid-state ^long [cls ^long level]
   (+ (long (@base cls)) level))
 (defn bucket->state [item] (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
 (defn delay-of [st] (long (get-in liquids [(liquid-class st) :delay])))
-(defn source-state? [st]
-  (and (liquid-state? st) (zero? (level st))))
+(def ^:private source-state? block/source-state?)
 
 (defn mix-class? [st]
   (some? (get-in liquids [(liquid-class st) :mix])))
@@ -67,7 +60,6 @@
             (+ (long y) (long dy))
             (+ (long z) (long dz))))
 
-(defn- air? [st] (zero? (long st)))
 (defn- effective ^long [st] (let [m (level st)] (if (>= m 8) 0 m)))
 (defn- other-class? [cls st]
   (let [c (liquid-class st)]

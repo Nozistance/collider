@@ -44,14 +44,14 @@
        (or (not (dripstone/speleothem? old)) (dripstone/stalactite? old))))
 
 (defn- washed? [^long old ^long st]
-  (and (= :water (liquid/liquid-class st)) (not (block/waterlogged? old))))
+  (and (= :water (block/liquid-class st)) (not (block/waterlogged? old))))
 
 (defn- unsupported? [^long old ^long st]
   (and (= st (block/emptied old)) (= st (support/gone-state old))
        (not (block/fire? old)) (not (falling-entity? old))))
 
 (defn- destroyed? [^long old ^long st]
-  (and (pos? old) (not (liquid/liquid-state? old))
+  (and (pos? old) (not (block/liquid? old))
        (or (washed? old st) (unsupported? old st))))
 
 (defn- ticking-fires [chunks now]
@@ -83,8 +83,8 @@
 (defn- fizz-deltas [world changes]
   (for [[pos st] changes
         :let [old (chunk/chunks-get-block (:chunks world) pos)]
-        :when (or (and (liquid/liquid-state? old) (pos? (long st)) (nil? (liquid/liquid-class st)))
-                  (and (liquid/mix-class? st) (pos? (long old)) (nil? (liquid/liquid-class old))))
+        :when (or (and (block/liquid? old) (pos? (long st)) (nil? (block/liquid-class st)))
+                  (and (liquid/mix-class? st) (pos? (long old)) (nil? (block/liquid-class old))))
         d [(out/all (out/fizz pos))]]
     d))
 

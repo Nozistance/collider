@@ -10,7 +10,6 @@
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.fire :as fire]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.mushroom :as mushroom]
             [collider.world.blocks.support :as support]))
@@ -130,12 +129,12 @@
 
 (defn- water-source-state? [^long st]
   (or (block/waterlogged? st)
-      (and (= :water (liquid/liquid-class st)) (liquid/source-state? st))))
+      (and (= :water (block/liquid-class st)) (block/source-state? st))))
 
 (defn- source-if-fluid? [^long st]
-  (or (nil? (liquid/liquid-class st))
+  (or (nil? (block/liquid-class st))
       (block/waterlogged? st)
-      (liquid/source-state? st)))
+      (block/source-state? st)))
 
 (defn- sulfur-state [self ^long st at]
   (let [above (at [0 1 0]) below (at [0 -1 0])
@@ -175,7 +174,7 @@
   (let [props (block/props-of st)]
     (block/state self (assoc props :shape (stair-shape st at (:facing props) (:half props))))))
 
-(defn- water? [st] (or (= :water (liquid/liquid-class st)) (block/waterlogged? st)))
+(defn- water? [st] (or (= :water (block/liquid-class st)) (block/waterlogged? st)))
 (defn- touches-water? [st at]
   (or (and (water? st) (water? (at (dir/offset :down))))
       (some (fn [dir]

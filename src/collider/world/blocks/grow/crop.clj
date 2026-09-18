@@ -4,7 +4,6 @@
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.grow.common :refer [age aged air-at? chance? lit? pick water? with height-below]]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
@@ -118,7 +117,7 @@
 
 (defn kelp-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
-             (= :water (liquid/liquid-class (chunk/at chunks (dir/up p)))))
+             (= :water (block/liquid-class (chunk/at chunks (dir/up p)))))
     [[(dir/up p) (aged st (inc (age st)))]]))
 
 (defn cocoa-tick [_chunks p st roll _time _ctx]
@@ -145,7 +144,7 @@
 (defn cocoa-meal [_chunks p st _roll] (when (< (age st) 2) {:changes [[p (aged st (inc (age st)))]]}))
 
 (defn kelp-meal [chunks p st _roll]
-  (when (and (< (age st) 25) (= :water (liquid/liquid-class (chunk/at chunks (dir/up p)))))
+  (when (and (< (age st) 25) (= :water (block/liquid-class (chunk/at chunks (dir/up p)))))
     {:changes [[(dir/up p) (aged st (inc (age st)))]]}))
 
 (defn propagule-meal [_chunks p st _roll]

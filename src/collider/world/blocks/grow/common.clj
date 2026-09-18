@@ -2,8 +2,7 @@
   "Tests and helpers shared by the growth ticks."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.light :as light]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.light :as light]))
 
 (set! *warn-on-reflection* true)
 
@@ -11,7 +10,7 @@
 (defn lit? [chunks [x y z] ^long n] (>= (long (light/light-at chunks x y z)) n))
 (defn chance? [roll salt ^long n] (< (double (roll salt)) (/ 1.0 n)))
 (defn pick ^long [roll salt ^long n] (long (Math/floor (* (double (roll salt)) n))))
-(defn water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
+(defn water? [st] (and (pos? st) (or (= :water (block/liquid-class st)) (block/waterlogged? st))))
 (defn flag [b] (if b :true :false))
 (defn with
   "Returns st with the properties in kvs set. A value that is not a keyword

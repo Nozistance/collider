@@ -11,8 +11,7 @@
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.light :as light]
             [collider.world.blocks.moss :as moss]
-            [collider.world.blocks.mushroom :as mushroom]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.blocks.mushroom :as mushroom]))
 
 (set! *warn-on-reflection* true)
 
@@ -22,8 +21,8 @@
       (chunk/chunks-get-block chunks pos)
       -1)))
 
-(defn- water? [st] (and (pos? st) (or (= :water (liquid/liquid-class st)) (block/waterlogged? st))))
-(defn- water-source? [st] (and (pos? st) (or (block/waterlogged? st) (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
+(defn- water? [st] (and (pos? st) (or (= :water (block/liquid-class st)) (block/waterlogged? st))))
+(defn- water-source? [st] (and (pos? st) (or (block/waterlogged? st) (and (= :water (block/liquid-class st)) (block/source-state? st)))))
 (def ^:private kelp-types #{:kelp :kelp-plant})
 (defn- kelp-supported? [below]
   (or (contains? kelp-types (block/type-of below))
@@ -64,7 +63,7 @@
 (defn- cactus-supported? [chunks pos st below]
   (and (not (some (fn [d]
                     (let [n (state-at chunks (mapv + pos d))]
-                      (and (pos? n) (or (block/blocks-motion? n) (= :lava (liquid/liquid-class n))))))
+                      (and (pos? n) (or (block/blocks-motion? n) (= :lava (block/liquid-class n))))))
                   (vals dir/horizontal-offset)))
        (or (= (block/block-of below) (block/block-of st)) (block/tagged? below "supports_cactus"))
        (not (block/liquid? (max 0 (state-at chunks (mapv + pos [0 1 0])))))))
@@ -364,7 +363,7 @@
         above (state-at chunks (mapv + pos [0 1 0]))
         age (fn [^long n] (:age (block/props-of n)))]
     (when (and (let [cur (max 0 (state-at chunks pos))]
-                 (and (nil? (liquid/liquid-class cur)) (not (block/waterlogged? cur))))
+                 (and (nil? (block/liquid-class cur)) (not (block/waterlogged? cur))))
                (block/tagged? (max 0 below) "supports_bamboo"))
       (case (block/block-of (max 0 below))
         :bamboo-sapling (block/state :bamboo {:age :0})

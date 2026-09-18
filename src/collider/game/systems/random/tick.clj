@@ -25,7 +25,7 @@
 
 (defn- cell-result [world chunks p ^long st]
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
-    (if (= :lava (liquid/liquid-class st))
+    (if (= :lava (block/liquid-class st))
       (when (near-player? world (long (get-in world [:rules :fire-spread-radius-around-player] 128)) p)
         {:changes (liquid/lava-random-tick chunks p roll)})
       (let [drip (dripstone/drip chunks p st roll)]

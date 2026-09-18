@@ -57,7 +57,7 @@
         fh (when (not= :none fluids) (liquid/fluid-height-of (:chunks world) pos st fluids))
         fluid (when fh
                 [[(long x) (long y) (long z) (inc (long x)) (+ (long y) (double fh)) (inc (long z))]])]
-    (concat (when (and (pos? st) (not (liquid/liquid-state? st))) (map abs (block/outline-boxes st)))
+    (concat (when (and (pos? st) (not (block/liquid? st))) (map abs (block/outline-boxes st)))
             fluid)))
 
 (defn- axis-step ^long [dc] (if (neg? (double dc)) -1 1))

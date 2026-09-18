@@ -7,8 +7,7 @@
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
             [collider.random :as random]
-            [collider.world.block :as block]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -121,8 +120,8 @@
 
 (defn- water-at? [world pos]
   (let [st (edit/block-at world pos)]
-    (or (and (liquid/source-state? st)
-             (= :water (liquid/liquid-class st)))
+    (or (and (block/source-state? st)
+             (= :water (block/liquid-class st)))
         (= :true (:waterlogged (block/props-of st))))))
 
 (defn bottle-deltas

@@ -1,8 +1,8 @@
 (ns collider.world.space.path
   "Ground paths for mobs: walking from cell to cell around the blocks."
   (:require [collider.vec :as v]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
@@ -10,7 +10,7 @@
 (def ^:private ^:const max-nodes 200)
 (def ^:private ^:const max-fall 3)
 (defn- water-at? [chunks x y z]
-  (= :water (liquid/liquid-class (chunk/block-state chunks x y z))))
+  (= :water (block/liquid-class (chunk/block-state chunks x y z))))
 
 (defn- fence-at? [chunks [x y z]]
   (phys/fence-at? chunks x y z))

@@ -8,7 +8,6 @@
             [collider.world.blocks.grass :as grass]
             [collider.world.blocks.grow.common :refer [air-at? chance? flag pick water? with]]
             [collider.world.light :as light]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.support :as support]
@@ -53,7 +52,7 @@
 (defn- amethyst-next [^long target dir]
   (let [n (block/block-of target)]
     (cond
-      (or (zero? target) (and (= :water (liquid/liquid-class target)) (liquid/source-state? target))) :small-amethyst-bud
+      (or (zero? target) (and (= :water (block/liquid-class target)) (block/source-state? target))) :small-amethyst-bud
       (not= dir (block/facing-of target)) nil
       (= :small-amethyst-bud n) :medium-amethyst-bud
       (= :medium-amethyst-bud n) :large-amethyst-bud
@@ -151,7 +150,7 @@
                               :let [q [qx (+ (long qy) (long dy)) qz]]
                               :when (and (not= q p)
                                          (zero? (pick roll [:seed i dy] 6))
-                                         (= :water (liquid/liquid-class (chunk/at chunks q)))
+                                         (= :water (block/liquid-class (chunk/at chunks q)))
                                          (block/tagged? (chunk/at chunks (dir/down q)) "coral_blocks"))]
                           [q (block/state :sea-pickle {:pickles     (keyword (str (inc (pick roll [:n i dy] 4))))
                                                        :waterlogged :true})]))))

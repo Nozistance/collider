@@ -2,8 +2,7 @@
   "Big and small dripleaf: support, tilting and growth."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -17,7 +16,7 @@
 (defn- water-source? [^long st]
   (and (pos? st)
        (or (block/waterlogged? st)
-           (and (= :water (liquid/liquid-class st)) (liquid/source-state? st)))))
+           (and (= :water (block/liquid-class st)) (block/source-state? st)))))
 
 (defn leaf-supported? [chunks p]
   (let [b (chunk/at-void chunks (dir/down p))]

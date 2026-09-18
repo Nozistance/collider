@@ -1,8 +1,7 @@
 (ns collider.world.blocks.grass
   "Grass blocks: where grass spreads and where it stays alive."
   (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -50,5 +49,5 @@
     (cond
       (and (= :snow-layer (block/type-of a))
            (= :1 (:layers (block/props-of a)))) true
-      (and (liquid/liquid-state? a) (liquid/source-state? a)) false
+      (and (block/liquid? a) (block/source-state? a)) false
       :else (< (block/light-dampening-into st a :up (block/dampening a)) 15))))

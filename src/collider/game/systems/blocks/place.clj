@@ -9,7 +9,6 @@
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
@@ -22,7 +21,7 @@
   ([^long cur item]
    (cond
      (zero? cur) true
-     (liquid/liquid-state? cur) true
+     (block/liquid? cur) true
      (fire/fire-state? cur) true
      (= :snow-layer (block/type-of cur)) (let [n (block/prop-long cur :layers)]
                                            (if (= item :snow) (< n 8) (= n 1)))
@@ -58,8 +57,8 @@
 
 (defn- water-plant-ok? [world [_ y _ :as pos'] ^long state]
   (let [cur (edit/block-at world pos')]
-    (and (= :water (liquid/liquid-class cur))
-         (contains? #{0 8} (liquid/level cur))
+    (and (= :water (block/liquid-class cur))
+         (contains? #{0 8} (block/liquid-level cur))
          (pos? (long y))
          (support/supported? (:chunks world) pos' state))))
 
@@ -101,7 +100,7 @@
         props (block/props-of state)
         upper (block/state (block/block-of state) (assoc props :half :upper))
         upper (if (contains? props :waterlogged)
-                (edit/with-water upper (= :water (liquid/liquid-class (edit/block-at world above))))
+                (edit/with-water upper (= :water (block/liquid-class (edit/block-at world above))))
                 upper)]
     (second-cell-deltas world eid pos pos' state above upper
                         #(block/can-be-replaced? (edit/block-at world above)))))

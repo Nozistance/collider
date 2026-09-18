@@ -6,7 +6,6 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -45,7 +44,7 @@
   [t eid k ^long n]
   (zero? (long (* n (rnd t eid k)))))
 
-(defn- water? [world cell] (= :water (liquid/liquid-class (sense/block-at world cell))))
+(defn- water? [world cell] (= :water (block/liquid-class (sense/block-at world cell))))
 (defn- solid? [world cell] (block/solid? (sense/block-at world cell)))
 
 (defn- random-offset [t eid k i h vert]
