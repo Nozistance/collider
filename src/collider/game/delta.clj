@@ -1,6 +1,6 @@
 (ns collider.game.delta
-  "Schemas of delta tags and effect messages, and the optional check
-  against them."
+  "Schemas of delta tags and effect messages.
+  The check against them is optional."
   (:require [malli.core :as m]
             [malli.error :as me])
   (:import (collider.java V3)))

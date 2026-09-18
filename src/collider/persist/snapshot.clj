@@ -123,8 +123,8 @@
 (defn file-store [dir] (->FileStore dir))
 
 (defn snapshot
-  "Returns the world as a store keeps it, with every loaded chunk and
-  what belongs to it."
+  "Returns the world as a store keeps it.
+  It holds every loaded chunk and what belongs to it."
   [world]
   (let [entry (fn [id] [id (schema/chunk-payload world id)])]
     (assoc (schema/snapshot world)
@@ -150,8 +150,8 @@
   [:chunks :entities :block-ticks :block-entities])
 
 (defn world-of
-  "Returns the world a snapshot holds, with its chunks and what
-  belongs to them."
+  "Returns the world a snapshot holds.
+  It holds its chunks and what belongs to them."
   [snap]
   (let [empty-parts (select-keys schema/initial-world chunk-keys)
         base (schema/world-of (dissoc snap :chunks :stored))]
@@ -239,8 +239,8 @@
       state)))
 
 (defn store-chunk!
-  "Saves an unloaded chunk after every save and read asked for
-  before it."
+  "Saves an unloaded chunk.
+  The save waits for every save and read asked for before it."
   [saver store id payload]
   (send-off saver stored! store id payload))
 
@@ -256,8 +256,9 @@
   state)
 
 (defn fetch-chunk!
-  "Reads a saved chunk after every save asked for before it and gives
-  it to deliver, or nil when it cannot be read."
+  "Reads a saved chunk and gives it to deliver.
+  The read waits for every save asked for before it. deliver
+  gets nil when the chunk cannot be read."
   [saver store id deliver]
   (send-off saver fetched! store id deliver))
 

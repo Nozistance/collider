@@ -91,13 +91,13 @@
   [] (:drops @tables))
 
 (defn recipes
-  "Returns the stonecutting recipes and the ingredients the client is
-  told of."
+  "Returns the stonecutting recipes and their ingredients.
+  The client is told of the ingredients."
   [] (:recipes @tables))
 
 (defn cooking-recipes
-  "Returns the smelting, blasting, smoking and campfire recipes, in
-  the order a furnace searches them."
+  "Returns the cooking recipes in furnace search order.
+  They are the smelting, blasting, smoking and campfire recipes."
   [] (:cooking (recipes)))
 
 (defn fuel
@@ -105,15 +105,14 @@
   [] (:fuel (recipes)))
 
 (defn brewing
-  "Returns the potion containers, the brewing mixes and the fuel of a
-  brewing stand."
+  "Returns the containers, mixes and fuel of a brewing stand."
   [] (:brewing (recipes)))
 
 (defn sounds [] (:sounds @tables))
 
 (defn features
-  "Returns the worldgen features bone meal reaches and the ones each
-  biome grows."
+  "Returns the features bone meal reaches.
+  Also returns the features each biome grows."
   [] (:features @tables))
 
 (defn potions
@@ -125,8 +124,8 @@
   [] (:effects @tables))
 
 (defn use-cooldown
-  "Returns the cooldown group and the ticks item locks it for, or nil
-  when the item has no use_cooldown component."
+  "Returns the cooldown group and the ticks item locks it for.
+  Returns nil when the item has no cooldown."
   [item]
   (when-let [c (get-in (items) [item :use-cooldown])]
     [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
@@ -147,14 +146,12 @@
   (get-in (items) [item :patterns]))
 
 (defn compost
-  "Returns the chance item raises a composter, or nil when it
-  does not."
+  "Returns the chance item raises a composter, else nil."
   [item]
   (get-in (items) [item :compost]))
 
 (defn resists
-  "Returns the tag of the damage item shrugs off, or nil when it
-  takes all."
+  "Returns the tag of the damage item shrugs off, else nil."
   [item]
   (get-in (items) [item :resists]))
 
@@ -190,8 +187,8 @@
           (datapack))))
 
 (defn datapack-id
-  "Returns the id of an entry the server sends to the client, not one
-  the client knows."
+  "Returns the id of an entry the server sends to the client.
+  The client does not know the entry already."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
@@ -286,14 +283,14 @@
 (def ^:private ^:table flag-table (delay (byte-table "flags.edn" 0)))
 
 (defn shapes
-  "Returns the collision boxes of every state, by id, nil for a
-  full cube."
+  "Returns the collision boxes of every state, by id.
+  A state that is a full cube has nil instead."
   ^objects []
   @shape-table)
 
 (defn outlines
-  "Returns the outline boxes of every state, by id, nil for a
-  full cube."
+  "Returns the outline boxes of every state, by id.
+  A state that is a full cube has nil instead."
   ^objects []
   @outline-table)
 
@@ -303,8 +300,8 @@
   @sturdy-table)
 
 (defn sturdy-center
-  "Returns which faces of every state hold things at their center,
-  by id."
+  "Returns which faces of every state hold things, by id.
+  A thing is held at the center of the face."
   ^bytes []
   @sturdy-center-table)
 

@@ -49,8 +49,8 @@
   [[:merge-entity eid {:using-item? false :using nil}]])
 
 (defn- extra-deltas
-  "Returns the deltas that put the stack into the inventory, or drop
-  it when nothing fits."
+  "Returns the deltas that put the stack into the inventory.
+  The stack is dropped when nothing fits."
   [world eid e stack]
   (let [[changes left] (items/add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
@@ -126,8 +126,8 @@
         (= :true (:waterlogged (block/props-of st))))))
 
 (defn bottle-deltas
-  "Returns the deltas for a player who fills a glass bottle at the
-  water source in view."
+  "Returns the deltas for a player who fills a glass bottle.
+  The bottle fills at the water source in view."
   [world eid e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
     (when (water-at? world pos)

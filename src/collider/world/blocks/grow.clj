@@ -49,8 +49,8 @@
        (when (block/weathering? st) (weather/tick chunks p st roll))))))
 
 (defn random-drops
-  "Returns the drops of leaves that have grown too far from their log,
-  nil for any other block."
+  "Returns the drops of leaves too far from their log.
+  Returns nil for any other block."
   [^long st roll]
   (when (and (block/leaves? st)
              (= :false (:persistent (block/props-of st)))
@@ -87,8 +87,9 @@
           [[:seagrass] crop/seagrass-meal]]))
 
 (defn bonemeal
-  "Returns the result of bone meal on st at p, or nil when it does
-  nothing. The result holds block changes, drops, or both."
+  "Returns the result of bone meal on st at p.
+  Returns nil when it does nothing. The result holds block
+  changes, drops, or both."
   [chunks p st roll]
   (let [st (long st)]
     (when-let [f (meals (block/type-of st))]

@@ -1,6 +1,6 @@
 (ns collider.game.schema
-  "Schema of the world map and of the player profile, with their
-  stored forms."
+  "Schema of the world map and of the player profile.
+  Also their stored forms."
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
@@ -46,8 +46,9 @@
           (:block-ticks w))))
 
 (defn chunk-payload
-  "Returns chunk id with its block entities, the entities in it except
-  players, and its block ticks as delays from now."
+  "Returns chunk id with what belongs to it.
+  That is its block entities, the entities in it except players,
+  and its block ticks as delays from now."
   [w id]
   (let [id (long id)]
     {:chunk          (get (:chunks w) id)

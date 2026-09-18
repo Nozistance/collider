@@ -206,9 +206,9 @@
     (.start)))
 
 (defn start-ticker!
-  "Starts a daemon thread that ticks world-atom on the events from
-  queue and gives the deltas of each tick to deliver!. Returns a
-  handle for the stop."
+  "Starts a daemon thread that ticks world-atom.
+  It ticks on the events from queue and gives the deltas of each
+  tick to deliver!. Returns a handle for the stop."
   ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)

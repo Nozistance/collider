@@ -140,8 +140,8 @@
   {:msg :animation :eid eid :kind kind})
 
 (defn status
-  "Returns the effect that an entity does something brief, such as
-  being hurt."
+  "Returns the effect that an entity does something brief.
+  Being hurt is one such thing."
   [eid kind]
   {:msg :status :eid eid :kind kind})
 
@@ -243,7 +243,6 @@
   {:msg :bonemeal :pos pos})
 
 (defn cooldown
-  "Returns the effect that a cooldown group locked for that
-  many ticks."
+  "Returns the effect that a cooldown group locked for ticks."
   [group ticks]
   {:msg :cooldown :group group :ticks ticks})

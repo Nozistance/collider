@@ -1,6 +1,6 @@
 (ns collider.game.systems.damage
-  "Damage from attacks, fire, the void and falls, with death
-  and respawn."
+  "Damage from attacks, fire, the void and falls.
+  Also death and respawn."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.random :as random]
@@ -200,8 +200,8 @@
 (defn- floor-hi ^long [^double a] (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
 (defn- span
-  "Returns the blocks the body of an entity reaches into, shrunk by
-  the given margins."
+  "Returns the blocks the body of an entity reaches into.
+  The body is shrunk by the given margins."
   [p ^double half ^double height [sxz sy]]
   (let [px (v/x p) py (v/y p) pz (v/z p)
         sy (double sy)
@@ -294,8 +294,8 @@
 (def ^:private ^:const burn-sound-period 10)
 
 (defn- fire-proof-item?
-  "Returns true when the stack shrugs fire off, as netherite
-  gear does."
+  "Returns true when the stack shrugs fire off.
+  Netherite gear does."
   [e]
   (= "is_fire" (data/resists (:item (:stack e)))))
 
@@ -321,8 +321,9 @@
           0.0 deltas))
 
 (defn- burn-sound-deltas
-  "Returns the lava burn sound, played on the tick the item dies and
-  on every tenth tick of its age."
+  "Returns the lava burn sound of an item.
+  It plays on the tick the item dies and on every tenth tick
+  of its age."
   [world eid e ^double health]
   (when (or (<= (- health lava-damage) 0.0)
             (zero? (rem (inc (long (or (:age e) 0))) burn-sound-period)))
@@ -409,8 +410,8 @@
            (inc (bit-shift-right (+ c stand-up-reach) 4)))))
 
 (defn respawn-chunk-ids
-  "Returns the ids of the chunks the check of the respawn point of
-  player e reads."
+  "Returns the ids of the chunks the respawn check reads.
+  The check is of the respawn point of player e."
   [e]
   (when-let [{[x _ z] :pos} (respawn-config e)]
     (for [cx (reach-chunks x) cz (reach-chunks z)]
@@ -429,8 +430,8 @@
        yaw pitch])))
 
 (defn bed-respawn
-  "Returns [pos yaw pitch] at the respawn point of player e, or nil
-  when it has none or cannot be used."
+  "Returns [pos yaw pitch] at the respawn point of player e.
+  Returns nil when it has none or the point cannot be used."
   [chunks e]
   (when-let [cfg (respawn-config e)]
     (found-respawn chunks cfg)))
@@ -457,8 +458,9 @@
   (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))
 
 (defn respawn-deltas
-  "Returns the deltas that bring dead player eid back at pos, telling
-  it the respawn point it set was lost when lost? is true."
+  "Returns the deltas that bring dead player eid back at pos.
+  When lost? is true they tell it the respawn point it set
+  was lost."
   [world eid [pos yaw pitch lost?]]
   (let [e (get-in world [:entities eid])
         inv (apply dissoc (:inventory e) (range 5))]

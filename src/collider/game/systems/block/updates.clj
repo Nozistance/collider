@@ -22,8 +22,8 @@
 (set! *warn-on-reflection* true)
 
 (defn- lww-changes
-  "Returns the changes the ticking blocks ask for, at most one per
-  block. The last change wins."
+  "Returns the changes the ticking blocks ask for.
+  There is at most one per block and the last change wins."
   [chunks ctx cells]
   (into []
         (vals (into (sorted-map)
@@ -220,8 +220,8 @@
   [#(block-updates-deltas world d)])
 
 (defn- final-records
-  "Returns the last state of each block, in the order the blocks
-  first changed."
+  "Returns the last state of each block.
+  The order is the one in which the blocks first changed."
   [recs]
   (let [last (into {} recs)]
     (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))

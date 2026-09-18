@@ -341,8 +341,8 @@
       :else (spread m slots (long (:type quickcraft))))))
 
 (defn- quick-craft
-  "Returns the menu after a click that starts, continues or ends
-  a drag."
+  "Returns the menu after a click in a drag.
+  The click starts, continues or ends the drag."
   [{:keys [carried quickcraft] :as m} slot ^long button]
   (let [header (bit-and button 3) type (bit-and (bit-shift-right button 2) 3)
         status (long (:status quickcraft 0))]

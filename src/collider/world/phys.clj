@@ -129,10 +129,10 @@
     b))
 
 (defn move
-  "Returns the position, velocity and ground flag of a body moved by
-  vel from pos, stopped by the blocks it meets. The body is a box of
-  half width half and height height. step is how high it climbs
-  without jumping."
+  "Returns the position, velocity and ground flag of a body.
+  The body moves by vel from pos and the blocks it meets stop
+  it. The body is a box of half width half and height height.
+  step is how high it climbs without jumping."
   ([chunks pos vel half height]
    (move chunks pos vel half height 0.0))
   ([chunks pos vel half height step]

@@ -271,8 +271,9 @@
     (no-subcommand form nm sub)))
 
 (defn parse
-  "Returns the delta the typed command means, or the reason it cannot
-  run. Relative coordinates count from origin."
+  "Returns the delta the typed command means.
+  Returns the reason it cannot run instead. Relative coordinates
+  count from origin."
   ([text] (parse text nil))
   ([text origin]
    (let [[nm & more] (remove str/blank? (str/split (subs text 1) #"\s+"))
@@ -310,8 +311,8 @@
                        target)))
 
 (defn suggest
-  "Returns the completions for half-typed text, as a player standing
-  at target sees them."
+  "Returns the completions for half-typed text.
+  A player standing at target sees them."
   ([world text] (suggest world text nil))
   ([world text target]
    (let [text (or text "")]

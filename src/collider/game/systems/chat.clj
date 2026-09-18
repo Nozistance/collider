@@ -29,8 +29,7 @@
   (some (fn [[^String m st]] (when (.startsWith s m i) [m st])) markers))
 
 (defn parse-runs
-  "Returns the styled runs of a line written with the chat
-  markup marks."
+  "Returns the styled runs of a line with chat markup."
   ([s] (parse-runs s {}))
   ([^String s styles]
    (loop [i 0, plain (StringBuilder.), out []]

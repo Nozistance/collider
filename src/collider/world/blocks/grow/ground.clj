@@ -91,8 +91,8 @@
           [[p (block/state (potted-eyeblossom self))]])))))
 
 (defn leaves-tick
-  "Returns the change that removes leaves grown too far from their
-  log, or nil when they stay."
+  "Returns the change that removes leaves too far from their log.
+  Returns nil when they stay."
   [_chunks p st _roll _time _ctx]
   (when (and (= :false (:persistent (block/props-of st))) (= 7 (block/prop-long st :distance)))
     [[p (block/emptied st)]]))

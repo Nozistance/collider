@@ -56,8 +56,9 @@
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* reach reach))))
 
 (defn- later-positions
-  "Returns the positions of the nearby entities that step after this
-  TNT in the tick. The blast pushes them from these positions."
+  "Returns the positions of the nearby entities that step later.
+  They step after this TNT in the tick. The blast pushes them
+  from these positions."
   [world eid center]
   (let [reach (+ (* 2.0 tnt/power) 2.0)]
     (into {}

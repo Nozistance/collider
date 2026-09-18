@@ -80,8 +80,8 @@
                           :pour  (liquid/bucket->state item)}))))
 
 (defn- sequence-of
-  "Returns the sequence number the player sent with the action, for
-  the block ack."
+  "Returns the sequence number the player sent with the action.
+  The block ack carries it back."
   [tag args]
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))

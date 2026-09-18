@@ -85,8 +85,8 @@
     :big-dripleaf/tilt-down))
 
 (defn can-tilt?
-  "Returns true when something standing at height py rests on the leaf
-  whose block starts at y."
+  "Returns true when something at height py rests on the leaf.
+  The block of the leaf starts at y."
   [[_ y _] py on-ground?]
   (and (boolean on-ground?) (> (double py) (+ (double y) 0.6875))))
 

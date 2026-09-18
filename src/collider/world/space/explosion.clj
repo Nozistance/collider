@@ -1,6 +1,6 @@
 (ns collider.world.space.explosion
-  "Explosions, the blocks they break, their drops, and their reach
-  into a body."
+  "Explosions, the blocks they break and their drops.
+  Also their reach into a body."
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -192,9 +192,10 @@
     (when (and (pos? st) (not (block/tnt? st))) st)))
 
 (defn stacks
-  "Returns [pos stack] pairs of what the destroyed positions leave
-  behind, merged into few stacks. seed decides the random drops.
-  radius is the blast radius the drops depend on."
+  "Returns [pos stack] pairs of what the blast leaves behind.
+  The pairs come from the destroyed positions and are merged
+  into few stacks. seed decides the random drops. radius is the
+  blast radius the drops depend on."
   [^Region rg positions seed radius]
   (mapv (fn [[pos item n]] [pos {:item item :count n}])
         (reduce (fn [cs pos]

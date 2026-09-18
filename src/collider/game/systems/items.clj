@@ -315,9 +315,10 @@
         (vals inv)))
 
 (defn filled-result-deltas
-  "Returns the deltas that give stack to the player who used a
-  container. In creative mode the result is added only when the
-  player holds none already, unless always? asks for it anyway."
+  "Returns the deltas that give stack to the player.
+  The player used a container. In creative mode the result is
+  added only when the player holds none already, unless always?
+  asks for it anyway."
   ([world eid stack] (filled-result-deltas world eid stack false))
   ([world eid stack always?]
    (let [e (get-in world [:entities eid]) inv (:inventory e)]
@@ -374,7 +375,6 @@
         (conj #(merge-deltas act)))))
 
 (defn pickups
-  "Returns the deltas of players taking up the items they stand
-  next to."
+  "Returns the deltas of players taking up nearby items."
   [world _d]
   [#(pickup-deltas world (active-items world))])

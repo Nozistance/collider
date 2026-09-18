@@ -98,8 +98,8 @@
         weight))
 
 (defn- blend
-  "Returns the amplifier-weighted mean of the effect colours, nil for
-  no visible effect."
+  "Returns the amplifier-weighted mean of the effect colours.
+  Returns nil when no effect is visible."
   [effects]
   (let [rows (filterv visible? effects)
         w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
@@ -473,8 +473,8 @@
           (sort-by key (:entities world)))))
 
 (defn projectiles
-  "Returns the flight and the hits of the thrown things, and the life
-  of the lingering clouds."
+  "Returns the flight and the hits of the thrown things.
+  Also returns the life of the lingering clouds."
   [world _d]
   (-> (mapv (fn [[eid e]] #(step-deltas world eid e))
             (entries world entity/thrown-types))
@@ -482,8 +482,8 @@
             (entries world #{:area-effect-cloud}))))
 
 (defn first-step
-  "Returns the flight of the things thrown this tick, which move at
-  once in the tick of their throw."
+  "Returns the flight of the things thrown this tick.
+  They move at once in the tick of their throw."
   [world _d]
   (into []
         (comp (filter (fn [[_ e]] (zero? (long (:age e 0)))))

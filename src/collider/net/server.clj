@@ -46,8 +46,8 @@
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
 (defn compress!
-  "Compresses everything above threshold on the connection c from
-  here on."
+  "Compresses everything above threshold on connection c.
+  This holds from here on."
   [^Conn c ^long threshold]
   (.offer ^BlockingQueue (:q c) [:threshold threshold]))
 
@@ -171,8 +171,8 @@
         (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
 
 (defn close-all!
-  "Disconnects everyone with text and waits up to ms for it to
-  reach them."
+  "Disconnects everyone with text.
+  Waits up to ms for the text to reach them."
   [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]

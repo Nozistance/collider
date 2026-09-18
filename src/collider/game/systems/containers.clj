@@ -207,8 +207,8 @@
         (into (set (keys before)) (keys after))))
 
 (defn- stale-result
-  "Returns the menu with its result slot marked unseen when the
-  grid changed."
+  "Returns the menu with its result slot marked unseen.
+  The mark is set only when the grid changed."
   [m items items']
   (if (and (container/crafting? m)
            (not= (container/inputs m items)
@@ -394,8 +394,8 @@
     (and m (= :block (:kind m)) (valid? world m))))
 
 (defn broadcast
-  "Sends every viewer the slots and data of their menu that moved, as
-  AbstractContainerMenu.broadcastChanges does each player tick."
+  "Sends every viewer the slots and data of their menu that moved.
+  This happens once per player tick."
   [world _d]
   [#(mapcat (fn [[eid e]]
               (when (broadcasting? world e)

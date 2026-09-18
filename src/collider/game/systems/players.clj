@@ -444,8 +444,8 @@
         (:world d)))
 
 (defn late-tracking
-  "Returns the deltas that show players the entities that appeared
-  during this tick."
+  "Returns the deltas that show players the new entities.
+  These are the entities that appeared during this tick."
   [world d]
   (when (entities-changed? d)
     (let [by-chunk (entities-by-chunk (tracked-entries world))]

@@ -1,6 +1,6 @@
 (ns collider.game.block.crafting
-  "Crafting grids of the table and the player, their results and the
-  cost of a take."
+  "Crafting grids of the table and the player.
+  Their results and the cost of a take."
   (:require [collider.data :as data]
             [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
@@ -137,8 +137,9 @@
               (range (count reps))))))
 
 (defn place-back
-  "Returns a player's inventory with a stack put back into it as a
-  closing screen puts it, and what did not fit."
+  "Returns a player's inventory with a stack put back into it.
+  The stack goes back as a closing screen puts it. Also returns
+  what did not fit."
   [ctx inv stack]
   (loop [inv inv s stack]
     (if-let [slot (and s (or (space-slot ctx inv s)

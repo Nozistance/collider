@@ -104,9 +104,10 @@
       acc)))
 
 (defn find-path
-  "Returns the cells to walk from start to goal, or to the cell
-  closest to goal when goal cannot be reached, or nil when nothing
-  beats standing still. avoid-water? keeps the path dry."
+  "Returns the cells to walk from start to goal.
+  They lead to the cell closest to goal when goal cannot be
+  reached. Returns nil when nothing beats standing still.
+  avoid-water? keeps the path dry."
   [chunks start goal avoid-water?]
   (let [h (fn ^double [c] (dist c goal))]
     (loop [open (sorted-set [(h start) start]) closed #{} g {start 0.0} came {}

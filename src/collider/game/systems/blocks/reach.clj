@@ -34,8 +34,8 @@
      (* (Math/cos yaw) (Math/cos pitch))]))
 
 (defn box-entry
-  "Returns the ray fraction where the box is entered and the face
-  entered, or nil when the ray misses."
+  "Returns the ray fraction and face where the box is entered.
+  Returns nil when the ray misses."
   [[fx fy fz] [dx dy dz] [x0 y0 z0 x1 y1 z1]]
   (let [axis (fn [f d lo hi neg pos]
                (cond (pos? (double d)) [(/ (- (double lo) (double f)) (double d)) (/ (- (double hi) (double f)) (double d)) neg]
@@ -94,8 +94,8 @@
    (update t axis + (cross-delta (d axis)))])
 
 (defn clip
-  "Returns the block an entity looks at and the face it sees, or nil
-  when it looks at nothing."
+  "Returns the block an entity looks at and the face it sees.
+  Returns nil when it looks at nothing."
   [world e fluids]
   (let [from (eye-pos e)
         d (mapv #(* (state/block-reach e) (double %)) (look-dir e))]

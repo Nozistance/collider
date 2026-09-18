@@ -50,8 +50,8 @@
   (.firstAbove chunk (int si)))
 
 (defn nil-sky
-  "Returns the sky light a new section at si inherits from above at
-  lx lz."
+  "Returns the sky light a new section at si inherits at lx lz.
+  The light comes from above."
   ^long [chunk ^long si ^long lx ^long lz]
   (if-let [^Section s (first-above chunk si)]
     (.skyLight s (int (+ (* lz 16) lx)))
@@ -63,8 +63,8 @@
   (.fresh chunk (int si)))
 
 (defn nil-sky-array
-  "Returns the sky light a new section at si inherits from above, as a
-  fresh array."
+  "Returns a fresh array of the sky light a new section inherits.
+  The section is at si and the light comes from above."
   ^bytes [chunk ^long si]
   (.skyLightCopy ^Section (new-section chunk si)))
 
@@ -84,8 +84,8 @@
   (.with chunk (int si) s))
 
 (defn section-block
-  "Returns the block state at index idx of s, ordered y, then z,
-  then x."
+  "Returns the block state at index idx of s.
+  The order is y, then z, then x."
   ^long [^Section s ^long idx]
   (.block s (int idx)))
 
@@ -106,14 +106,16 @@
 (defn block-lit? [^Section s] (.hasBlockLight s))
 
 (defn heights!
-  "Fills the unset entries of the 256 heightmap columns in out with
-  the height above base of the topmost block of s that pred marks."
+  "Fills the unset entries of the 256 heightmap columns in out.
+  Each entry gets the height above base of the topmost block of
+  s that pred marks."
   [^Section s ^booleans pred ^ints out ^long base]
   (.heights s pred out (int base)))
 
 (defn write-section!
-  "Writes s to buf in wire form, counting the states fluid marks and
-  giving every block the biome."
+  "Writes s to buf in wire form.
+  It counts the states fluid marks and gives every block
+  the biome."
   [^Section s ^Buf buf ^booleans fluid ^long biome]
   (.write s buf fluid (int biome)))
 
@@ -135,8 +137,8 @@
     (.with chunk si (.with s (int idx) (int state)))))
 
 (defn get-block
-  "Returns the block state at local lx y lz, air where no
-  section exists."
+  "Returns the block state at local lx y lz.
+  Air comes back where no section exists."
   ^long [^Chunk chunk lx y lz]
   (if chunk
     (.block chunk (int lx) (int y) (int lz))
@@ -169,8 +171,7 @@
     (pos->id (+ cx dx) (+ cz dz))))
 
 (defn block-id-chunk
-  "Returns the id of the chunk that holds the block with packed
-  id bid."
+  "Returns the id of the chunk that holds packed block id bid."
   ^long [^long bid]
   (pos->id (bit-shift-right bid 42) (bit-shift-right (bit-shift-left bid 38) 42)))
 
@@ -247,8 +248,9 @@
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
 
 (defn with-chunks
-  "Returns chunks with each group of [[cp k] x] entries reduced by f
-  into the chunk at cp. A group for an absent chunk is dropped."
+  "Returns chunks with each group of entries reduced by f.
+  An entry is [[cp k] x] and its group is reduced into the chunk
+  at cp. A group for an absent chunk is dropped."
   ^ChunkIndex [^ChunkIndex chunks f groups]
   (let [gs (filterv (fn [g] (some? (.get chunks (long (ffirst (first g)))))) groups)
         ids (long-array (count gs))
@@ -261,8 +263,8 @@
     (.withAll chunks ids cs)))
 
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied, those in
-  absent chunks dropped."
+  "Returns chunks with the [pos state] changes applied.
+  Changes in absent chunks are dropped."
   [chunks changes]
   (if (empty? changes)
     chunks

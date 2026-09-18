@@ -67,7 +67,8 @@
                    [[:spawn-progress eid (assoc req :need need)]]))]))
 
 (defn placing
-  "Places the joining and respawning players whose spawn chunks are
-  loaded, loading the chunks the others wait for."
+  "Places the players whose spawn chunks are loaded.
+  They are the joining and respawning ones. The chunks the
+  others wait for are loaded."
   [world _]
   (second (reduce settle [world []] (sort-by key (:spawning world)))))

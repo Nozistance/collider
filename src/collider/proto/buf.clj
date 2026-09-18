@@ -73,8 +73,9 @@
   (long (.readableBytes b)))
 
 (defn clear!
-  "Resets read and write position; two-arg form also shrinks the
-  backing array down to keep bytes when it grew larger."
+  "Resets the read and write position.
+  The two-arg form also shrinks the backing array down to keep
+  bytes when it grew larger."
   ([^Buf b]
    (.clear b))
   ([^Buf b ^long keep]

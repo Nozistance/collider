@@ -163,8 +163,7 @@
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
 (defn joins
-  "Returns [:player-join eid name] for every player placed in
-  deltas d."
+  "Returns [:player-join eid name] for every player placed in d."
   [d]
   (for [[tag eid name] (:world d) :when (= :player-placed tag)]
     [:player-join eid name]))
@@ -272,8 +271,8 @@
   (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
 
 (defn- snapped
-  "Returns e turned to rot, the pose the client reports for the use of
-  an item."
+  "Returns e turned to rot.
+  The client reports rot for the use of an item."
   [e rot]
   (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
@@ -314,8 +313,9 @@
       (> (long (get-in e [:cooldowns group] 0)) tick))))
 
 (defn cooldown-deltas
-  "Returns the deltas that lock item's cooldown group and notify the
-  client, or nil when item carries no cooldown."
+  "Returns the deltas that lock item's cooldown group.
+  They also notify the client. Returns nil when item has
+  no cooldown."
   [eid e item ^long tick]
   (when-let [[group ticks] (data/use-cooldown item)]
     [[:merge-entity eid
@@ -467,8 +467,8 @@
        (> (v/y (:pos e')) (v/y (:pos e)))))
 
 (defn move-of
-  "Returns what a :move event did to its player, or nil when the event
-  moved no player."
+  "Returns what a :move event did to its player.
+  Returns nil when the event moved no player."
   [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) (:pos changes) (:pos e) e'
@@ -555,8 +555,8 @@
   (assoc e :health (double (long (- health amount)))))
 
 (defn hurt
-  "Returns entity e after amount of damage, knocked back from
-  direction dx dz when given."
+  "Returns entity e after amount of damage.
+  It is knocked back from direction dx dz when given."
   ([e ^double amount] (hurt e amount nil nil))
   ([e ^double amount dx dz]
    (let [health (double (or (:health e) 0.0))

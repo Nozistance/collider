@@ -78,8 +78,8 @@
       [[p st]])))
 
 (defn tick-precipitation
-  "Returns the changes the weather makes to the top of the column at x
-  z. max-height is the most snow layers allowed there. roll decides
+  "Returns the changes the weather makes at the top of column x z.
+  max-height is the most snow layers allowed there. roll decides
   whether a cauldron fills."
   [ctx chunks [x _ z] max-height roll]
   (let [top [(long x) (spawn/motion-blocking-height chunks x z) (long z)]

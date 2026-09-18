@@ -41,9 +41,9 @@
                            (+ (long cz) (long dz)))))))
 
 (defn loading-deltas
-  "Returns the deltas that bring the absent chunks among ids into the
-  world. A saved chunk is asked for and arrives in a later tick. Any
-  other chunk is generated now."
+  "Returns the deltas that bring the absent chunks into the world.
+  The chunks come from ids. A saved chunk is asked for and
+  arrives in a later tick. Any other chunk is generated now."
   [world ids]
   (for [id (set ids)
         :when (not (contains? (:chunks world) id))
@@ -156,8 +156,8 @@
    (out/all (out/store-chunk id (schema/chunk-payload world id)))])
 
 (defn unloading
-  "Unloads the chunks the world no longer needs and stores them as the
-  tick left them."
+  "Unloads the chunks the world no longer needs.
+  They are stored as the tick left them."
   [world _]
   (when (get-in world [:config :unload-chunks?])
     (let [keep? (needed-ids world)]

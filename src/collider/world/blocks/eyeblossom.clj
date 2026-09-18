@@ -28,8 +28,8 @@
     [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]))
 
 (defn cascade
-  "Returns the eyeblossoms near p that follow the one at p, grouped by
-  the tick they change on."
+  "Returns the eyeblossoms near p that follow the one at p.
+  They are grouped by the tick they change on."
   [chunks [x y z :as p] ^long old ^long tick]
   (reduce (fn [m [qx qy qz :as q]]
             (if (not= old (chunk/at chunks q))

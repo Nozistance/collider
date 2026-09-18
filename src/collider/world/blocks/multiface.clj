@@ -1,6 +1,6 @@
 (ns collider.world.blocks.multiface
-  "Blocks that sit on the faces of their neighbours, and
-  their spreading."
+  "Blocks that sit on the faces of their neighbours.
+  Also their spreading."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
@@ -44,8 +44,9 @@
     :wrap-around [(mapv + p (dir/offset spread-dir) (dir/offset from-face)) (dir/opposite spread-dir)]))
 
 (defn spread-toward
-  "Returns the [pos face] that st at p spreads onto when it goes from
-  from-face toward spread-dir, or nil when it cannot."
+  "Returns the [pos face] that st at p spreads onto.
+  It goes from from-face toward spread-dir. Returns nil
+  when it cannot."
   [chunks p st from-face spread-dir]
   (when (and (not= (dir/axis spread-dir) (dir/axis from-face))
              (has-face? st from-face)

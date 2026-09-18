@@ -1,6 +1,6 @@
 (ns collider.world.blocks.liquid
-  "Water and lava, their spread and mixing, and their push
-  on entities."
+  "Water and lava, their spread and mixing.
+  Also their push on entities."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -328,8 +328,7 @@
     (liquid-state cls (- 8 (long v)))))
 
 (defn- slope-distance
-  "Returns how many steps of falling ground lie ahead of a liquid
-  leaving p."
+  "Returns the steps of falling ground ahead of a liquid leaving p."
   ^long [{:keys [cls slope] :as env} [x y z :as p] ^long pass from]
   (let [raw (raw-of env x y z)]
     (reduce (fn [lowest [dx _ dz :as d]]

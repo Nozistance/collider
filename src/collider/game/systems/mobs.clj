@@ -94,8 +94,7 @@
         i))))
 
 (defn- smooth-index
-  "Returns the furthest point of the route a mob can head
-  straight for."
+  "Returns the furthest route point a mob can head straight for."
   [world e half pth pi]
   (let [pi (long pi)
         fy (long (Math/floor (double (nth (:pos e) 1))))]

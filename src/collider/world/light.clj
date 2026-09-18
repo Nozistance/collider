@@ -259,8 +259,8 @@
      (float (min (float 15.0) (max (float 0.0) v))))))
 
 (defn sky-darken
-  "Returns how much the sky light is dimmed, 0 to 15, at a time of day
-  and weather."
+  "Returns how much the sky light is dimmed, 0 to 15.
+  The time of day and the weather decide."
   (^long [^long time] (sky-darken time 0.0 0.0))
   (^long [^long time ^double rain-level ^double thunder-level]
    (long (int (float (- (float 15.0) (float (sky-light-level time rain-level thunder-level))))))))

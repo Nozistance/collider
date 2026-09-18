@@ -81,8 +81,9 @@
     (or found [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])))
 
 (defn look-yaw
-  "Returns the yaw in degrees, from -180 to 180, pointing from the
-  second position to the middle of the first."
+  "Returns the yaw in degrees, from -180 to 180.
+  It points from the second position to the middle of
+  the first."
   ^double [[x _ z] [fx _ fz]]
   (let [dx (- (+ (double x) 0.5) (double fx))
         dz (- (+ (double z) 0.5) (double fz))

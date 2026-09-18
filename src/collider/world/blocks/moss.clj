@@ -29,9 +29,9 @@
       :else :low)))
 
 (defn carpet-updated
-  "Returns the carpet st at p with each side set from what stands
-  beside it. When create-sides? is true, it also adds sides it does
-  not have yet."
+  "Returns the carpet st at p with its sides set.
+  Each side comes from what stands beside it. When create-sides?
+  is true, it also adds sides it does not have yet."
   ^long [chunks p ^long st create-sides?]
   (let [create? (or create-sides? (= :true (:bottom (block/props-of st))))]
     (reduce (fn [s dir] (with s dir (carpet-side chunks p s dir create?))) st wall-sides)))
@@ -53,9 +53,9 @@
       (if (carpet-faces? st') st' 0))))
 
 (defn carpet-topper
-  "Returns the carpet state to place above p, or nil when none fits
-  there. side? is a predicate on a direction and tells which sides it
-  may keep."
+  "Returns the carpet state to place above p.
+  Returns nil when none fits there. side? is a predicate on a
+  direction and tells which sides it may keep."
   [chunks p side?]
   (let [above (dir/up p) prev (chunk/at-void chunks above)
         carpet? (= :pale-moss-carpet (block/block-of prev))]

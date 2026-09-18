@@ -13,8 +13,7 @@
    :load    "Loading tables"})
 
 (defmulti render!
-  "Shows an event of the first start or of the server start to
-  the person."
+  "Shows a first start or server start event to the person."
   :event)
 
 (defmethod render! :default [_] nil)

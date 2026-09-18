@@ -41,8 +41,8 @@
          (str ", got " (pr-str (get settings k))))))
 
 (defn- checked
-  "Returns settings, or throws with a line per bad key when they do
-  not fit the schema."
+  "Returns the settings that fit the schema, or throws.
+  The error holds a line per bad key."
   [path settings]
   (if-let [errors (me/humanize (m/explain Settings settings))]
     (throw (ex-info (str "invalid " path)
@@ -61,8 +61,9 @@
   (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))
 
 (defn write-default!
-  "Writes the default settings to path, unless a file is already
-  there. Returns true when it wrote them."
+  "Writes the default settings to path.
+  Does nothing when a file is already there. Returns true
+  when it wrote them."
   ([] (write-default! "config.edn"))
   ([path]
    (let [f (io/file (str path))]

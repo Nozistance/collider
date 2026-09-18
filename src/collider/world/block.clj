@@ -9,8 +9,8 @@
 (def ^:const air 0)
 
 (defn state
-  "Returns the global state id of block with props, or of its
-  default state."
+  "Returns the global state id of block with props.
+  Without props it is the id of the default state."
   (^long [block] (data/state-id block))
   (^long [block props] (data/state-id block props)))
 
@@ -140,8 +140,8 @@
 (def ^:private ^:table lava-state (delay (state :lava)))
 
 (defn liquid-class
-  "Returns :water or :lava for a liquid or a waterlogged state,
-  else nil."
+  "Returns :water or :lava for a liquid state, else nil.
+  A waterlogged state answers :water."
   [st]
   (let [st (long st)]
     (cond
@@ -149,8 +149,8 @@
       (waterlogged? st) :water)))
 
 (defn liquid-level
-  "Returns the level of a liquid state, 0 for a source and 8 for
-  a fall."
+  "Returns the level of a liquid state.
+  A source is 0 and a fall is 8."
   ^long [st]
   (let [st (long st)]
     (if (liquid? st)
@@ -307,8 +307,9 @@
        (== -1 (bit-or (aget a 2) (aget b 2))) (== -1 (bit-or (aget a 3) (aget b 3)))))
 
 (defn shape-occludes?
-  "Returns true when the faces of from and to that meet along d leave
-  no light through."
+  "Returns true when the faces meeting along d seal.
+  The faces are those of from and to, and a seal lets no
+  light through."
   [^long from ^long to ^long d]
   (let [a (occlusion-face from d)
         b (occlusion-face to (aget ^ints dir/opposite-index d))]
@@ -325,8 +326,8 @@
   (if (touches? st d) (occlusion-face st d) nil))
 
 (defn light-dampening-into
-  "Returns the light cost of crossing from into to along dir, simple
-  when their faces do not seal."
+  "Returns the light cost of crossing from into to along dir.
+  The cost is simple when their faces do not seal."
   ^long [^long from ^long to dir ^long simple]
   (let [d (long (dir/index dir))
         a (merged-side from d)

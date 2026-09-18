@@ -1,6 +1,6 @@
 (ns collider.world.space.spawn
-  "Places to put a player: the world spawn and the room a body needs
-  to stand."
+  "Places to put a player.
+  The world spawn and the room a body needs to stand."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -49,8 +49,8 @@
                (if (block/blocks-motion? st) y floor))))))
 
 (defn motion-blocking-height
-  "Returns the y just above the highest block or fluid of the column
-  at x z."
+  "Returns the y just above the top of the column at x z.
+  The top is its highest block or fluid."
   ^long [chunks x z]
   (let [[_ motion _] (column-heights chunks x z)]
     (if (= (long motion) (long none)) (long chunk/min-y) (inc (long motion)))))
@@ -142,8 +142,8 @@
       (bottom-center pos))))
 
 (defn search-chunk-ids
-  "Returns the ids of the chunks a spawn search within radius of
-  suggestion reads."
+  "Returns the ids of the chunks a spawn search reads.
+  The search covers radius around suggestion."
   [suggestion radius]
   (let [r (max 0 (long radius))
         x (long (nth suggestion 0))
@@ -153,10 +153,10 @@
     (for [cx (span x) cz (span z)] (chunk/pos->id cx cz))))
 
 (defn find-spawn
-  "Returns a standing position with room for a player, looking at the
-  columns within radius of suggestion in an order decided by seed.
-  When no column is free, returns a position above or below
-  suggestion instead."
+  "Returns a standing position with room for a player.
+  It looks at the columns within radius of suggestion in an
+  order decided by seed. When no column is free, it returns a
+  position above or below suggestion instead."
   [chunks suggestion radius seed]
   (let [[_ _ n :as params] (scan-params radius seed)
         ox (long (nth suggestion 0)) oz (long (nth suggestion 2))]

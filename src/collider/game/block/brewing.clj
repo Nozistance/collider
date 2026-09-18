@@ -122,8 +122,9 @@
     [e false nil]))
 
 (defn tick
-  "Runs one server tick, returning the stand, whether it finished a
-  brew and what its ingredient remainder spilled."
+  "Returns the stand after one tick.
+  Also returns whether a brew finished and what its ingredient
+  remainder spilled."
   [e]
   (let [e (refuel e)
         left (dec (long (:brew e 0)))]

@@ -57,8 +57,7 @@
 (def ^:private ^:const tries 10)
 
 (defn rnd
-  "Returns a number from 0 to 1 that tick t, the mob eid and key
-  k decide."
+  "Returns a number from 0 to 1 decided by tick t, mob eid and key k."
   (^double [t eid k] (random/of-longs (long t) (long eid) (hash k)))
   (^double [t eid k i] (random/of-longs (long t) (long eid) (hash k) (long i))))
 
@@ -323,8 +322,9 @@
   (if (sense/nearest-player world (:pos e) idle-reset-sq) 0 (inc (long (or (:no-action e) 0)))))
 
 (defn spec
-  "Returns a breed's goal spec from its goals, highest priority first,
-  and the function that picks a newborn's colour from both parents."
+  "Returns a breed's goal spec from its goals.
+  The goals come highest priority first. Also returns the
+  function that picks a newborn's colour from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
    {:goals       (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
@@ -344,9 +344,9 @@
       [e nil])))
 
 (defn on-interact
-  "Returns the deltas f gives for each interact event where the player
-  and its target both exist. f takes the player eid, the player, the
-  target eid and the target."
+  "Returns the deltas f gives for each interact event.
+  The player and its target must both exist. f takes the player
+  eid, the player, the target eid and the target."
   [world events f]
   (mapcat (fn [[tag peid target]]
             (when (= :interact tag)

@@ -19,8 +19,8 @@
 (def ^:private growth-chance 0.011377778)
 
 (defn speleothem?
-  "Returns true when st is pointed dripstone or another spike that
-  grows from stone."
+  "Returns true when st is a spike that grows from stone.
+  Pointed dripstone is such a spike."
   [^long st] (block/tagged? st "speleothems"))
 
 (defn- dir-of [^long st] (:vertical-direction (block/props-of st)))
@@ -177,10 +177,10 @@
               {:tip tip :cauldron c :delay (+ 50 (- (long (tip 1)) (long (c 1))))})))))))
 
 (defn drip
-  "Returns the drip of the dripstone at p this tick, or nil when
-  nothing drips. The result holds the tip it falls from and
-  either block changes or the cauldron it fills and the delay
-  before it lands."
+  "Returns the drip of the dripstone at p this tick.
+  Returns nil when nothing drips. The result holds the tip it
+  falls from and either block changes or the cauldron it fills
+  and the delay before it lands."
   [chunks p ^long st roll]
   (when (= :pointed-dripstone (block/type-of st))
     (let [roll (double (roll :drip))]

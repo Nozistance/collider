@@ -40,8 +40,8 @@
                     splash))))
 
 (defn add
-  "Returns the deltas for a player who empties a bucket of state at
-  the block in view."
+  "Returns the deltas for a player who empties a bucket.
+  The bucket holds state and pours at the block in view."
   [world eid e state]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))

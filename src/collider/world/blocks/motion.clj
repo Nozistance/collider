@@ -29,8 +29,9 @@
       (chunk/at chunks [bx by bz]))))
 
 (defn stuck-speed
-  "Returns what the blocks a box at pos stands in multiply its next
-  move by, nil when none of them holds it."
+  "Returns what the blocks at pos multiply the next move by.
+  The blocks are the ones a box at pos stands in. Returns nil
+  when none of them holds it."
   [chunks pos half height]
   (when (some (fn [st] (= :web (block/type-of (long st))))
               (states-in chunks pos half height))
