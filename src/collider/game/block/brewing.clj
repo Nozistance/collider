@@ -8,7 +8,8 @@
 (def ^:const brew-time 400)
 (def ^:const fuel-uses 20)
 
-(def bottles #{:potion :splash-potion :lingering-potion :glass-bottle})
+(def bottles
+  #{:potion :splash-potion :lingering-potion :glass-bottle})
 
 (def ^:private ^:table index
   (delay (let [b (data/brewing)]
@@ -22,7 +23,7 @@
   (contains? (:fuel @index) (:item stack)))
 
 (defn ingredient?
-  "Returns true for an item some mix brews with, as isIngredient does."
+  "Returns true for an item that some mix brews with."
   [stack]
   (contains? (:ingredients @index) (:item stack)))
 
@@ -42,8 +43,7 @@
     (matching (:potion-mixes @index) p ingredient)))
 
 (defn has-mix?
-  "Returns true when brewing ingredient over source changes it, as
-   PotionBrewing.hasMix does: a container first, then its mixes."
+  "Returns true when brewing ingredient over source changes it."
   [source ingredient]
   (and (contains? (:containers @index) (:item source))
        (boolean (or (container-mix source ingredient)
@@ -83,8 +83,8 @@
       e)))
 
 (defn- spent
-  "Returns the ingredient slot and what its remainder spills, as doBrew
-   does: the remainder takes the slot only once the stack is used up."
+  "Returns the ingredient slot and what its remainder spills. The
+   remainder takes the slot only once the stack is used up."
   [ing]
   (let [n (dec (long (:count ing 1)))
         left (craft/remainder ing)]

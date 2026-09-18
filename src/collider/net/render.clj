@@ -66,8 +66,10 @@
      :egg           (data/registry-id "entity_type" :egg)
      :ender-pearl   (data/registry-id "entity_type" :ender-pearl)
      :splash-potion (data/registry-id "entity_type" :splash-potion)
-     :lingering-potion (data/registry-id "entity_type" :lingering-potion)
-     :area-effect-cloud (data/registry-id "entity_type" :area-effect-cloud)}))
+     :lingering-potion
+     (data/registry-id "entity_type" :lingering-potion)
+     :area-effect-cloud
+     (data/registry-id "entity_type" :area-effect-cloud)}))
 
 (def ^:private ^:table entity-effect-particle
   (delay (data/registry-id "particle_type" :entity-effect)))
@@ -96,7 +98,9 @@
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :pose) (conj [6 :pose (pose-id (:pose meta) 0)])
           (contains? meta :using-item?)
-          (conj [8 :byte (case (:using-item? meta) :off 0x03 (nil false) 0 0x01)])
+          (conj [8 :byte (case (:using-item? meta)
+                           :off 0x03 (nil false) 0
+                           0x01)])
           (contains? meta :sleeping-pos)
           (conj [14 :optional-block-pos (:sleeping-pos meta)])))
 
@@ -135,7 +139,7 @@
 (def ^:private equipment-slots [0 2 3 4 5])
 (defn- spawn-rotation
   "Returns the angle a thrown thing had when its tracking began, in
-   degrees; it flies in the tick of the throw, so the entity already
+   degrees. It flies in the tick of the throw, so the entity already
    turned. Everything else answers with the angle it holds now."
   [tr kind k now]
   (if-let [a (and tr (entity/thrown-types kind) (get tr k))]
@@ -303,7 +307,8 @@
 
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
-    {:packet :sound :sound id :pos (:pos m) :volume (:volume m) :pitch (:pitch m)
+    {:packet :sound :sound id :pos (:pos m)
+     :volume (:volume m) :pitch (:pitch m)
      :source (get sound-sources (:source m) src)}
     (once! [:sound (:kind m)])))
 

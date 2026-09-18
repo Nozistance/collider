@@ -19,8 +19,7 @@
   (random/of-key (:tick world) eid salt))
 
 (defn emits?
-  "Returns true when the tick with that many ticks left is heard, as
-   Consumable.shouldEmitParticlesAndSounds says."
+  "Returns true when the tick with that many ticks left is heard."
   [c ^long left]
   (let [total (state/consume-ticks c)
         wait (long (* total effects-start))]
@@ -50,8 +49,8 @@
   [[:merge-entity eid {:using-item? false :using nil}]])
 
 (defn- extra-deltas
-  "Returns the deltas that put the stack into the inventory, or drop it
-   when nothing fits, as Inventory.add and Player.drop do."
+  "Returns the deltas that put the stack into the inventory, or drop
+   it when nothing fits."
   [world eid e stack]
   (let [[changes left] (items/add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
@@ -59,8 +58,8 @@
               [[:spawn-entity (items/dropped world eid left)]]))))
 
 (defn- remainder-deltas
-  "Returns the deltas of UseRemainder.convertIntoRemainder. In creative
-   the stack is untouched and no remainder appears at all."
+  "Returns the deltas that turn the used stack into its remainder. In
+   creative the stack is untouched and no remainder appears at all."
   [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
     (when (and left (not (state/infinite-materials? e)))
@@ -104,15 +103,16 @@
 
 (def ^:private water-bottle
   {:item       :potion :count 1
-   :components {:potion-contents {:potion :water :custom-color nil
-                                  :custom-effects [] :custom-name nil}}})
+   :components {:potion-contents
+                {:potion :water :custom-color nil
+                 :custom-effects [] :custom-name nil}}})
 
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
 (defn- filled-deltas
-  "Returns the deltas of ItemUtils.createFilledResult: in creative the
-   hand keeps its stack and the new one is added only when none is held."
+  "Returns the deltas of filling the bottle. In creative the hand
+   keeps its stack and the new one is added only when none is held."
   [world eid e made]
   (if (state/infinite-materials? e)
     (when-not (some #(same-stack? made %) (vals (:inventory e)))
@@ -126,8 +126,8 @@
         (= :true (:waterlogged (block/props-of st))))))
 
 (defn bottle-deltas
-  "Returns the deltas for a player who fills a glass bottle at the water
-   source in view, as BottleItem.use does."
+  "Returns the deltas for a player who fills a glass bottle at the
+   water source in view."
   [world eid e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
     (when (water-at? world pos)

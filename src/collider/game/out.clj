@@ -144,8 +144,8 @@
   {:msg :collect :eid item-eid :collector collector-eid})
 
 (defn sound
-  "Returns the effect of a sound at pos. Source names the mixer channel when it
-   is not the one the sound is listed under."
+  "Returns the effect of a sound at pos. Source names the mixer
+   channel when it is not the one the sound is listed under."
   ([kind pos volume pitch] (sound kind pos volume pitch nil))
   ([kind pos volume pitch source]
    (cond-> {:msg :sound :kind kind :pos pos

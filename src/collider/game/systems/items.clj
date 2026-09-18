@@ -279,24 +279,25 @@
       [(conj changes [slot (assoc stack :count n)]) nil]
       [changes (when (pos? n) (assoc stack :count n))])))
 
-
 (defn- holds? [inv stack]
   (some #(and (= (:item %) (:item stack))
               (= (:components %) (:components stack)))
         (vals inv)))
 
 (defn filled-result-deltas
-  "Returns the deltas of ItemUtils.createFilledResult for the player who
-   used a container: in creative the hand keeps its stack and the result
-   is added only when none is held, unless always? asks for it anyway."
+  "Returns the deltas that give stack to the player who used a
+   container. In creative mode the result is added only when the
+   player holds none already, unless always? asks for it anyway."
   ([world eid stack] (filled-result-deltas world eid stack false))
   ([world eid stack always?]
    (let [e (get-in world [:entities eid]) inv (:inventory e)]
      (when-not (and (not always?) (state/infinite-materials? e)
                     (holds? inv stack))
-       (let [[changes left] (add-stack inv stack)]
+       (let [[changes left] (add-stack inv stack)
+             spawn (when left
+                     [:spawn-entity (dropped world eid left)])]
          (concat (for [[slot s] changes] [:set-slot eid slot s])
-                 (when left [[:spawn-entity (dropped world eid left)]])))))))
+                 (when spawn [spawn])))))))
 
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) px (v/x pp) py (v/y pp) pz (v/z pp)
@@ -343,7 +344,7 @@
         (conj #(merge-deltas act)))))
 
 (defn pickups
-  "Returns the deltas of players taking up items, after those of the
-   tick's own packets, as the level tick runs after them in vanilla."
+  "Returns the deltas of players taking up the items they stand
+   next to."
   [world _d]
   [#(pickup-deltas world (active-items world))])

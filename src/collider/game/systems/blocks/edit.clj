@@ -154,7 +154,8 @@
                (assoc (block/props-of st) :lit :false)))
 
 (defn candle-out-deltas
-  "Returns the deltas of AbstractCandleBlock.extinguish."
+  "Returns the deltas that put out a lit candle at pos, or nil when
+   it is already unlit."
   [world pos]
   (let [cur (block-at world pos)]
     (when (= :true (:lit (block/props-of cur)))
@@ -163,7 +164,8 @@
                                    1.0 1.0))]))))
 
 (defn campfire-out-deltas
-  "Returns the deltas of CampfireBlock.dowse with its level event."
+  "Returns the deltas that dowse a campfire at pos, with its level
+   event."
   [world pos]
   (when-let [st (campfire/dowsed (block-at world pos))]
     (concat (change-deltas world [[pos st]])
@@ -171,8 +173,8 @@
                         out/sound-extinguish-fire pos))])))
 
 (defn dowse-deltas
-  "Returns the deltas of a candle or a campfire going out under water,
-   as AbstractThrownPotion.dowseFire puts them out."
+  "Returns the deltas of a candle or a campfire going out under
+   water."
   [world pos]
   (case (block/type-of (block-at world pos))
     (:candle :candle-cake) (candle-out-deltas world pos)

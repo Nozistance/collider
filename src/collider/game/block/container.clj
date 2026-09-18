@@ -132,7 +132,7 @@
 (defn- menu-entity [world m] (be/at world (first (:cells m))))
 
 (defn data-values
-  "Returns the ContainerData values of a furnace or a brewing stand."
+  "Returns the synced numeric fields of a furnace or a brewing stand."
   [world m]
   (cond
     (furnace? m) (let [e (menu-entity world m)]
@@ -327,9 +327,11 @@
                          0.5 (pitch world pos :lid)))]))
 
 (defn- ender-sound [world [x y z :as pos] open?]
-  [(out/all (out/sound (if open? :block.ender-chest.open :block.ender-chest.close)
-                       [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
-                       0.5 (pitch world pos :lid)))])
+  [(out/all
+     (out/sound
+       (if open? :block.ender-chest.open :block.ender-chest.close)
+       [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+       0.5 (pitch world pos :lid)))])
 
 (def ^:private ^:const recheck-delay 5)
 (def ^:private open-step (float 0.1))
@@ -355,22 +357,32 @@
                   nil))))
           (:shulker-anim world)))
 
+(defn- edge-sound [world pos st t open?]
+  (cond
+    (contains? chest-types t) (chest-sound world pos st open?)
+    (= :barrel t) (barrel-sound world pos st open?)
+    (= :shulker-box t) (shulker-sound world pos open?)
+    (= :ender-chest t) (ender-sound world pos open?)))
+
+(defn- recheck-delta [world pos t before after]
+  (when (and (not= :barrel t) (not= :shulker-box t)
+             (zero? before) (pos? after))
+    [[:container-recheck pos
+      (+ (dec (long (:tick world))) recheck-delay)]]))
+
 (defn count-deltas [world pos ^long before ^long after]
   (let [st (state-at (:chunks world) pos)
-        t (block/type-of st)
-        edge (fn [open?] (cond
-                           (contains? chest-types t) (chest-sound world pos st open?)
-                           (= :barrel t) (barrel-sound world pos st open?)
-                           (= :shulker-box t) (shulker-sound world pos open?)
-                           (= :ender-chest t) (ender-sound world pos open?)))]
+        t (block/type-of st)]
     (when (contains? container-types t)
-     (concat
-      (when (and (zero? before) (pos? after)) (edge true))
-      (when (and (pos? before) (zero? after)) (edge false))
-      (when (not= :barrel t) [(out/all (out/block-event pos 1 (min 255 after)))])
-      (when (= :shulker-box t) (trigger-deltas pos after))
-      (when (and (not= :barrel t) (not= :shulker-box t) (zero? before) (pos? after))
-        [[:container-recheck pos (+ (dec (long (:tick world))) recheck-delay)]])))))
+      (concat
+        (when (and (zero? before) (pos? after))
+          (edge-sound world pos st t true))
+        (when (and (pos? before) (zero? after))
+          (edge-sound world pos st t false))
+        (when (not= :barrel t)
+          [(out/all (out/block-event pos 1 (min 255 after)))])
+        (when (= :shulker-box t) (trigger-deltas pos after))
+        (recheck-delta world pos t before after)))))
 
 (defn recheck-deltas [world]
   (let [t (long (:tick world))]

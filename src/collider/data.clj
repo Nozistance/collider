@@ -84,8 +84,8 @@
   "Returns the stonecutting recipes and the ingredients the client is told of."
   [] (:recipes @tables))
 (defn cooking-recipes
-  "Returns the smelting, blasting, smoking and campfire recipes, in the
-   order a furnace searches them."
+  "Returns the smelting, blasting, smoking and campfire recipes, in
+   the order a furnace searches them."
   [] (:cooking (recipes)))
 (defn fuel
   "Returns how many ticks each item burns for in a furnace."
@@ -103,7 +103,7 @@
   "Returns the effect instances every potion gives."
   [] (:potions @tables))
 (defn mob-effects
-  "Returns the colour, the category and the immediacy of every effect."
+  "Returns the colour, category and immediacy of every effect."
   [] (:effects @tables))
 
 (defn use-cooldown

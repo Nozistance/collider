@@ -30,8 +30,8 @@
 (defn- remote-of [stack]
   (when stack
     (cond-> {:item (:item stack) :count (long (:count stack 1))}
-            (:components stack) (assoc :components (:components stack))
-            (:components? stack) (assoc :components? true))))
+      (:components stack) (assoc :components (:components stack))
+      (:components? stack) (assoc :components? true))))
 
 (defn- hashed [r]
   (when r
@@ -39,8 +39,8 @@
       :components? (boolean (or (:components r) (:components? r))))))
 
 (defn- remote-match?
-  "Returns true when the client already has stack in that slot. What it
-   told us of its own components is only whether it has any, so such a
+  "Returns true when the client already has stack in that slot. What
+   it told us of its own components is only whether it has any, so a
    slot matches every stack that agrees on that much."
   [remote stack]
   (let [r (remote-of stack)]
@@ -73,7 +73,9 @@
     (= (:type m) (block/type-of (container/state-at (:chunks world) (:pos m))))
     (= :ender (:kind m)) true
     :else
-    (every? (fn [pos] (contains? be/menu-kinds (:kind (be/at world pos)))) (:cells m))))
+    (every? (fn [pos]
+              (contains? be/menu-kinds (:kind (be/at world pos))))
+            (:cells m))))
 
 (defn- put-back [ctx inv stacks]
   (reduce (fn [[inv drops] s]
@@ -188,8 +190,9 @@
        :menu   (synced menu (inc base) slots carried)}
       (let [[ds st] (slot-diff-deltas eid menu slots base)]
         {:deltas (cond-> ds
-                         (not (remote-match? (:remote-carried menu) carried))
-                         (conj (out/to eid (out/carried carried))))
+                   (not (remote-match?
+                          (:remote-carried menu) carried))
+                   (conj (out/to eid (out/carried carried))))
          :menu   (synced menu st slots carried)}))))
 
 (defn- with-client [menu changed carried]

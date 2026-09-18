@@ -1,5 +1,5 @@
 (ns collider.game.systems.projectiles
-  "Thrown snowballs, eggs, pearls and potions, and the lingering cloud."
+  "Thrown snowballs, eggs, pearls and potions, and lingering clouds."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
@@ -36,11 +36,15 @@
 (def ^:private ^:const cloud-reapply 20)
 
 (def throwables
-  "Shoot power and pitch offset of every item thrown by hand, by item."
-  {:snowball         {:power 1.5 :offset 0.0 :sound :snowball/throw}
-   :egg              {:power 1.5 :offset 0.0 :sound :egg/throw}
-   :ender-pearl      {:power 1.5 :offset 0.0 :sound :ender-pearl/throw}
-   :splash-potion    {:power 0.5 :offset -20.0 :sound :splash-potion/throw}
+  "Shoot power and pitch offset of every item thrown by hand."
+  {:snowball         {:power 1.5 :offset 0.0
+                      :sound :snowball/throw}
+   :egg              {:power 1.5 :offset 0.0
+                      :sound :egg/throw}
+   :ender-pearl      {:power 1.5 :offset 0.0
+                      :sound :ender-pearl/throw}
+   :splash-potion    {:power 0.5 :offset -20.0
+                      :sound :splash-potion/throw}
    :lingering-potion {:power 0.5 :offset -20.0
                       :sound :lingering-potion/throw}})
 
@@ -78,8 +82,8 @@
         weight))
 
 (defn- blend
-  "Returns the amplifier-weighted mean of the effect colours, as
-   PotionContents.getColorOptional does, nil for no visible effect."
+  "Returns the amplifier-weighted mean of the effect colours, nil for
+   no visible effect."
   [effects]
   (let [rows (filterv visible? effects)
         w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
@@ -89,8 +93,8 @@
               (channel rows 0 w)))))
 
 (defn potion-color
-  "Returns the colour the client paints the splash and the cloud with,
-   as PotionContents.getColor does."
+  "Returns the colour the client paints the splash and the cloud
+   with."
   ^long [stack]
   (let [c (contents stack)]
     (long (or (:custom-color c) (blend (all-effects c))
@@ -104,8 +108,8 @@
   (:instant? (get (data/mob-effects) (:effect e))))
 
 (defn has-instant-effects?
-  "Returns true when the potion itself acts at once, which is what
-   Potion.hasInstantEffects asks; custom effects do not count."
+  "Returns true when the potion itself acts at once. Custom effects
+   do not count."
   [stack]
   (boolean (some instant? (brewed (contents stack)))))
 
@@ -114,7 +118,8 @@
 
 (defn- triangle ^double [world eid k ^double dev]
   (let [t (:tick world)]
-    (* dev (- (random/of-key t eid [k 0]) (random/of-key t eid [k 1])))))
+    (* dev (- (random/of-key t eid [k 0])
+              (random/of-key t eid [k 1])))))
 
 (defn- aim [^double yaw ^double pitch ^double off]
   (let [y (Math/toRadians yaw) p (Math/toRadians pitch)]
@@ -134,7 +139,8 @@
      (* power (+ (double z) (triangle world eid :z inaccuracy)))]))
 
 (defn- carried
-  "Returns vel plus the motion of the thrower, as shootFromRotation adds it."
+  "Returns vel plus the motion of the thrower. The thrower's own fall
+   speed is left out while it stands on the ground."
   [e vel]
   (let [m (or (:client-vel e) [0.0 0.0 0.0])]
     (v/+ vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
@@ -142,7 +148,8 @@
 (defn- facing [vel]
   (let [x (v/x vel) y (v/y vel) z (v/z vel)
         d (Math/sqrt (+ (* x x) (* z z)))]
-    [(Math/toDegrees (Math/atan2 x z)) (Math/toDegrees (Math/atan2 y d))]))
+    [(Math/toDegrees (Math/atan2 x z))
+     (Math/toDegrees (Math/atan2 y d))]))
 
 (defn- thrown [world eid e stack]
   (let [{:keys [power offset]} (throwables (:item stack))
@@ -158,8 +165,9 @@
 
 (defn- throw-sound [world eid e stack]
   (when-let [snd (:sound (throwables (:item stack)))]
-    (let [r (random/of-key (:tick world) eid :throw)]
-      [(out/all (out/sound snd (:pos e) 0.5 (/ 0.4 (+ (* 0.4 r) 0.8))))])))
+    (let [r (random/of-key (:tick world) eid :throw)
+          pitch (/ 0.4 (+ (* 0.4 r) 0.8))]
+      [(out/all (out/sound snd (:pos e) 0.5 pitch))])))
 
 (defn- spent-deltas [eid e stack]
   (when-not (state/infinite-materials? e)
@@ -195,10 +203,14 @@
         dx (v/x d) dy (v/y d) dz (v/z d)]
     [(lo 0 dx) (lo 1 dy) (lo 2 dz) (hi 3 dx) (hi 4 dy) (hi 5 dz)]))
 
+(defn- axis-overlaps?
+  [^double lo1 ^double hi1 ^double lo2 ^double hi2]
+  (and (< lo1 hi2) (> hi1 lo2)))
+
 (defn- overlaps? [a b]
-  (and (< (double (a 0)) (double (b 3))) (> (double (a 3)) (double (b 0)))
-       (< (double (a 1)) (double (b 4))) (> (double (a 4)) (double (b 1)))
-       (< (double (a 2)) (double (b 5))) (> (double (a 5)) (double (b 2)))))
+  (and (axis-overlaps? (a 0) (a 3) (b 0) (b 3))
+       (axis-overlaps? (a 1) (a 4) (b 1) (b 4))
+       (axis-overlaps? (a 2) (a 5) (b 2) (b 5))))
 
 (defn- hittable? [e]
   (or (= :player (:type e)) (mobs/mob-type? (:type e))))
@@ -207,10 +219,12 @@
   (if (= :player (:type e))
     (box-of (:pos e) 0.3 1.8)
     (let [{:keys [half height]} (mobs/types (:type e))]
-      (box-of (:pos e) (double (or half 0.45)) (double (or height 1.3))))))
+      (box-of (:pos e) (double (or half 0.45))
+              (double (or height 1.3))))))
 
 (defn- nearer [best hit tail]
-  (if (and hit (or (nil? best) (< (double (hit 0)) (double (best 0)))))
+  (if (and hit (or (nil? best)
+                   (< (double (hit 0)) (double (best 0)))))
     (into [(hit 0)] (cons (hit 1) tail))
     best))
 
@@ -233,7 +247,9 @@
   (let [st (chunk/chunks-get-block chunks cell)]
     (when (block/solid? st)
       (reduce (fn [best b]
-                (nearer best (reach/box-entry from d (abs-box cell b)) nil))
+                (nearer best
+                        (reach/box-entry from d (abs-box cell b))
+                        nil))
               nil (block/collision-boxes st)))))
 
 (defn- block-clip [world from d]
@@ -245,19 +261,22 @@
           nil (cells from (v/+ from d))))
 
 (defn- skip? [eid e oid o]
-  (or (= (long oid) (long eid)) (not (hittable? o))
-      (and (not (:left-owner? e)) (= (long oid) (long (:owner e -1))))))
+  (or (= (long oid) (long eid))
+      (not (hittable? o))
+      (and (not (:left-owner? e))
+           (= (long oid) (long (:owner e -1))))))
 
 (defn- entity-clip [world eid e from d]
   (reduce (fn [best [oid o]]
             (if (skip? eid e oid o)
               best
-              (nearer best (reach/box-entry from d (target-box o)) [oid])))
+              (nearer best
+                      (reach/box-entry from d (target-box o))
+                      [oid])))
           nil (sort-by key (:entities world))))
 
 (defn- clip
-  "Returns the first thing the move from the projectile meets, as
-   ProjectileUtil.getHitResultOnMoveVector finds it."
+  "Returns the first thing the move from the projectile meets."
   [world eid e d]
   (let [from (:pos e)
         b (block-clip world from d)
@@ -286,10 +305,13 @@
   [(+ (v/x from) (* t (v/x d))) (+ (v/y from) (* t (v/y d)))
    (+ (v/z from) (* t (v/z d)))])
 
+(defn- wrapped ^double [^double old ^double new]
+  (cond (< (- new old) -180.0) (recur (- old 360.0) new)
+        (>= (- new old) 180.0) (recur (+ old 360.0) new)
+        :else old))
+
 (defn- lerp-rotation ^double [^double old ^double new]
-  (let [old (loop [o old] (cond (< (- new o) -180.0) (recur (- o 360.0))
-                                (>= (- new o) 180.0) (recur (+ o 360.0))
-                                :else o))]
+  (let [old (wrapped old new)]
     (+ old (* 0.2 (- new old)))))
 
 (defn- moved [e at d left?]
@@ -304,7 +326,8 @@
     (when (and o (pos? (double (:health o 0.0))) (not (:sleeping o)))
       (concat [[:teleport oid [(v/x p) (v/y p) (v/z p)]]
                (out/to oid (out/teleport [(v/x p) (v/y p) (v/z p)]
-                                         (:yaw o 0.0) (:pitch o 0.0)))]
+                                         (:yaw o 0.0)
+                                         (:pitch o 0.0)))]
               (when-not (damage/creative-proof? o)
                 [[:damage oid pearl-damage]])
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))
@@ -327,8 +350,8 @@
             [:set-blocks (mapv (fn [p] [p 0]) fires)]))))
 
 (defn- dowse-deltas
-  "Returns the deltas of AbstractThrownPotion.dowseFire over its cells:
-   the fire tag is destroyed, a candle or a campfire only goes out."
+  "Returns the deltas of dowsing fire around the hit. Actual fire is
+   destroyed, while a candle or a campfire only goes out."
   [world hit]
   (let [cells (filterv #(chunk/in-range? (nth % 1)) (dowse-cells hit))
         fires (filterv #(fire-at? (:chunks world) %) cells)]
@@ -337,7 +360,8 @@
           (remove (set fires) cells))))
 
 (defn- doused-deltas
-  "Returns the deltas of a water splash putting out the entities it soaks."
+  "Returns the deltas of a water splash putting out entities it
+   soaks."
   [world at]
   (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
     (for [[oid o] (sort-by key (:entities world))
@@ -352,7 +376,8 @@
      :yaw      0.0 :pitch 0.0 :on-ground false :owner (:owner e)
      :radius   3.0 :stack stack :color (potion-color stack)
      :waiting? false :age 0 :duration 600 :wait-time 10
-     :radius-per-tick (/ -3.0 600.0) :radius-on-use -0.5 :victims {}}))
+     :radius-per-tick (/ -3.0 600.0) :radius-on-use -0.5
+     :victims {}}))
 
 (defn- potion-deltas [world e at hit]
   (let [stack (:stack e) water? (water-potion? stack)]
@@ -379,7 +404,8 @@
         hit (clip world eid (assoc e :left-owner? left?) d)
         at (if hit (point (:pos e) d (:t hit)) (v/+ (:pos e) d))]
     (cond
-      hit (into [[:remove-entity eid]] (hit-deltas world eid e at hit))
+      hit (into [[:remove-entity eid]]
+                (hit-deltas world eid e at hit))
       (< (v/y at) below-world) [[:remove-entity eid]]
       :else [[:merge-entity eid (moved e at d left?)]])))
 
@@ -424,15 +450,17 @@
       (< age wait) [[:merge-entity eid {:age age :waiting? true}]]
       :else (cloud-active world eid e age))))
 
+(defn- live? [active kinds [_ e]]
+  (and (kinds (:type e)) (state/active-at? active (:pos e))))
+
 (defn- entries [world kinds]
   (let [active (state/active-chunks world)]
-    (into [] (filter (fn [[_ e]] (and (kinds (:type e))
-                                      (state/active-at? active (:pos e)))))
+    (into [] (filter (partial live? active kinds))
           (sort-by key (:entities world)))))
 
 (defn projectiles
-  "Returns the flight and the hits of the thrown things, and the life of the
-   lingering clouds."
+  "Returns the flight and the hits of the thrown things, and the
+   life of the lingering clouds."
   [world _d]
   (-> (mapv (fn [[eid e]] #(step-deltas world eid e))
             (entries world entity/thrown-types))
@@ -441,7 +469,7 @@
 
 (defn first-step
   "Returns the flight of the things thrown this tick, which move at
-   once as vanilla ticks a fresh projectile in the tick of its throw."
+   once in the tick of their throw."
   [world _d]
   (into []
         (comp (filter (fn [[_ e]] (zero? (long (:age e 0)))))

@@ -696,7 +696,8 @@
     (get e "sound") (assoc :sound (kw (get e "sound")))))
 
 (defn- consumable
-  "Returns the Consumable component with the defaults of its codec filled in."
+  "Returns how an item is eaten or drunk, with the defaults the game
+   assumes for what the recipe leaves out."
   [v]
   (sorted-map
     :seconds (flt (get v "consume_seconds" 1.6))
@@ -718,35 +719,45 @@
     (get v "cooldown_group")
     (assoc :group (kw (get v "cooldown_group")))))
 
-(defn- item [^File f]
-  (let [cs (get (json/read-str (slurp f)) "components")
-        n (get cs "minecraft:max_stack_size" 64)
+(defn- stack-fields [cs]
+  (let [n (get cs "minecraft:max_stack_size" 64)
         slot (get-in cs ["minecraft:equippable" "slot"])
         song (get cs "minecraft:jukebox_playable")
-        dye (get cs "minecraft:dye")
-        pat (get cs "minecraft:provides_banner_patterns")
-        egg (get-in cs ["minecraft:entity_data" "id"])
-        hit (attack-damage cs)
-        resists (get-in cs ["minecraft:damage_resistant" "types"])
-        eats (get cs "minecraft:consumable")
-        left (get cs "minecraft:use_remainder")
-        wait (get cs "minecraft:use_cooldown")
-        grub (get cs "minecraft:food")
-        tag #(str/replace (subs % 1) #"^minecraft:" "")]
+        dye (get cs "minecraft:dye")]
     (cond-> (sorted-map)
       (not= n 64) (assoc :max-stack n)
-      eats (assoc :consumable (consumable eats))
-      left (assoc :use-remainder (use-remainder left))
-      wait (assoc :use-cooldown (use-cooldown wait))
-      grub (assoc :food (food grub))
       slot (assoc :equip (kw slot))
       song (assoc :jukebox-song (kw song))
-      dye (assoc :dye (kw dye))
+      dye (assoc :dye (kw dye)))))
+
+(defn- combat-fields [cs]
+  (let [egg (get-in cs ["minecraft:entity_data" "id"])
+        hit (attack-damage cs)
+        resists (get-in cs ["minecraft:damage_resistant" "types"])
+        pat (get cs "minecraft:provides_banner_patterns")
+        tag #(str/replace (subs % 1) #"^minecraft:" "")]
+    (cond-> (sorted-map)
       egg (assoc :spawns (kw egg))
       (pos? hit) (assoc :attack-damage (flt hit))
       (string? resists) (assoc :resists (tag resists))
-      (string? pat) (assoc :patterns (tag pat))
-      :always (assoc :components (default-components cs)))))
+      (string? pat) (assoc :patterns (tag pat)))))
+
+(defn- consumable-fields [cs]
+  (let [eats (get cs "minecraft:consumable")
+        left (get cs "minecraft:use_remainder")
+        wait (get cs "minecraft:use_cooldown")
+        grub (get cs "minecraft:food")]
+    (cond-> (sorted-map)
+      eats (assoc :consumable (consumable eats))
+      left (assoc :use-remainder (use-remainder left))
+      wait (assoc :use-cooldown (use-cooldown wait))
+      grub (assoc :food (food grub)))))
+
+(defn- item [^File f]
+  (let [cs (get (json/read-str (slurp f)) "components")]
+    (merge (sorted-map :components (default-components cs))
+           (stack-fields cs) (combat-fields cs)
+           (consumable-fields cs))))
 
 (defn- vanilla-items [reports]
   (let [dir (io/file reports "minecraft" "components" "item")]
@@ -1225,7 +1236,7 @@
            (get-in tags ["item" "non_flammable_wood"] []))))
 
 (def ^:private effect-colors
-  "MobEffects.java: the colour and the category of every effect."
+  "The colour and the category of every effect."
   {:speed [3402751 :beneficial]
    :slowness [9154528 :harmful]
    :haste [14270531 :beneficial]
@@ -1268,11 +1279,12 @@
    :breath-of-the-nautilus [65518 :beneficial]})
 
 (def ^:private instant-effects
-  "The InstantaneousMobEffect subclasses: HealOrHarm and Saturation."
+  "The effects that apply once rather than over a duration."
   #{:instant-health :instant-damage :saturation})
 
 (def ^:private potion-effects
-  "Potions.java, each row [effect duration amplifier]."
+  "Every potion's effect rows, each a triple of effect, duration
+   and amplifier."
   {:water []
    :mundane []
    :thick []
@@ -1346,7 +1358,8 @@
    [:splash-potion :dragon-breath :lingering-potion]])
 
 (def ^:private potion-mixes
-  "PotionBrewing.addVanillaMixes, a :start row standing for addStartMix."
+  "Every ingredient mix that turns one potion into another. A
+   :start row expands into both its water and its awkward mix."
   [[:water :glowstone-dust :thick]
    [:water :redstone :mundane]
    [:water :nether-wart :awkward]

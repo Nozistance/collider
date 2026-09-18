@@ -13,9 +13,14 @@
   (delay (set (data/tag-values "item" "banners"))))
 
 (def ^:private water-bottle
-  {:item       :potion :count 1
-   :components {:potion-contents {:potion :water :custom-color nil
-                                  :custom-effects [] :custom-name nil}}})
+  {:item :potion
+   :count 1
+   :components
+   {:potion-contents
+    {:potion :water
+     :custom-color nil
+     :custom-effects []
+     :custom-name nil}}})
 
 (defn water-bottle? [stack]
   (and (= :potion (:item stack))
@@ -30,11 +35,15 @@
       nil)))
 
 (defn- cauldron-scooped [cur]
-  (let [n (block/block-of cur)]
+  (let [n (block/block-of cur)
+        full? (= 3 (block/prop-long cur :level))]
     (cond
-      (= :lava-cauldron n) [:lava-bucket :bucket/fill-lava]
-      (and (= :water-cauldron n) (= 3 (block/prop-long cur :level))) [:water-bucket :bucket/fill]
-      (and (= :powder-snow-cauldron n) (= 3 (block/prop-long cur :level))) [:powder-snow-bucket :bucket/fill-snow])))
+      (= :lava-cauldron n)
+      [:lava-bucket :bucket/fill-lava]
+      (and (= :water-cauldron n) full?)
+      [:water-bucket :bucket/fill]
+      (and (= :powder-snow-cauldron n) full?)
+      [:powder-snow-bucket :bucket/fill-snow])))
 
 (defn- cauldron-lowered ^long [cur]
   (let [lvl (block/prop-long cur :level)]
@@ -48,8 +57,8 @@
         (block/state (block/block-of cur) {:level (keyword (str (inc lvl)))})))))
 
 (defn- used-deltas
-  "Returns the deltas every cauldron use shares: the result item, the
-   sound and the two stats, as CauldronInteractions gives them."
+  "Returns the result item, the sound and the two stats a cauldron
+   use gives the player."
   [world eid pos item result sound stat]
   (concat (items/filled-result-deltas world eid result)
           [(out/all (out/sound sound pos 1.0 1.0))
@@ -59,17 +68,21 @@
 (defn- bottle-deltas [world eid pos]
   (let [cur (edit/block-at world pos)]
     (when (= :water-cauldron (block/block-of cur))
-      (concat (edit/change-deltas world [[pos (cauldron-lowered cur)]])
-              (used-deltas world eid pos :glass-bottle water-bottle
-                           :bottle/fill :custom/use-cauldron)))))
+      (concat
+        (edit/change-deltas world [[pos (cauldron-lowered cur)]])
+        (used-deltas world eid pos :glass-bottle water-bottle
+                     :bottle/fill :custom/use-cauldron)))))
 
 (defn- pour-bottle-deltas [world eid pos]
-  (let [cur (edit/block-at world pos)]
-    (when (contains? #{:cauldron :water-cauldron} (block/block-of cur))
+  (let [cur (edit/block-at world pos)
+        block (block/block-of cur)]
+    (when (contains? #{:cauldron :water-cauldron} block)
       (when-let [st (cauldron-raised cur)]
-        (concat (edit/change-deltas world [[pos st]])
-                (used-deltas world eid pos :potion {:item :glass-bottle :count 1}
-                             :bottle/empty :custom/use-cauldron))))))
+        (concat
+          (edit/change-deltas world [[pos st]])
+          (used-deltas world eid pos :potion
+                       {:item :glass-bottle :count 1}
+                       :bottle/empty :custom/use-cauldron))))))
 
 (defn- scoop-deltas [world eid pos cur]
   (when-let [[filled sound] (cauldron-scooped cur)]
@@ -89,29 +102,34 @@
 
 (defn- wash-deltas
   "Returns the deltas for a dyed shulker box or a patterned banner
-   washed in a water cauldron: the cleaned item always joins the
-   inventory, as the unlimited createFilledResult does."
+   washed in a water cauldron. The cleaned item always joins the
+   inventory, even when the hand is already full."
   [world eid pos cur stack cleaned stat]
   (when (= :water-cauldron (block/block-of cur))
-    (concat (edit/change-deltas world [[pos (cauldron-lowered cur)]])
-            (items/filled-result-deltas world eid (assoc cleaned :count 1) true)
-            [[:award eid stat 1]])))
+    (concat
+      (edit/change-deltas world [[pos (cauldron-lowered cur)]])
+      (items/filled-result-deltas
+        world eid (assoc cleaned :count 1) true)
+      [[:award eid stat 1]])))
 
 (defn- washed [world eid pos cur item stack]
   (let [layers (get-in stack [:components :banner-patterns])]
     (cond
       (dyed-shulker? item)
-      (wash-deltas world eid pos cur stack (assoc stack :item :shulker-box)
+      (wash-deltas world eid pos cur stack
+                   (assoc stack :item :shulker-box)
                    :custom/clean-shulker-box)
       (and (contains? @banners item) (seq layers))
       (wash-deltas world eid pos cur stack
-                   (assoc-in stack [:components :banner-patterns] (vec (butlast layers)))
+                   (assoc-in stack [:components :banner-patterns]
+                             (vec (butlast layers)))
                    :custom/clean-banner))))
 
 (defn cauldron-deltas [world eid pos item stack]
   (let [cur (edit/block-at world pos)]
     (cond
-      (and (= :potion item) (water-bottle? stack)) (pour-bottle-deltas world eid pos)
+      (and (= :potion item) (water-bottle? stack))
+      (pour-bottle-deltas world eid pos)
       (= :bucket item) (scoop-deltas world eid pos cur)
       (= :glass-bottle item) (bottle-deltas world eid pos)
       :else (or (washed world eid pos cur item stack)

@@ -274,7 +274,10 @@
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
 (defn use-origin [w [tag & args]]
-  (let [rot (case tag :place (nth args 6 nil) :use-item (nth args 3 nil) nil)]
+  (let [rot (case tag
+              :place (nth args 6 nil)
+              :use-item (nth args 3 nil)
+              nil)]
     (when (#{:place :use-item} tag)
       (when-let [e (get-in w [:entities (first args)])]
         (select-keys (snapped e rot) origin-keys)))))
@@ -288,7 +291,7 @@
   (get-in e [:inventory (hand-slot e hand)]))
 
 (defn consumable
-  "Returns the Consumable component of the stack, or nil when it has none."
+  "Returns the Consumable component of the stack, or nil without one."
   [stack]
   (when stack (get-in (data/items) [(:item stack) :consumable])))
 
@@ -296,16 +299,15 @@
   (long (* 20.0 (double (:seconds c)))))
 
 (defn on-cooldown?
-  "Returns true when the cooldown group of item is still locked, as
-   ItemCooldowns.isOnCooldown asks before any use."
+  "Returns true when the cooldown group of item is still locked."
   [e item ^long tick]
   (boolean
     (when-let [[group _] (data/use-cooldown item)]
       (> (long (get-in e [:cooldowns group] 0)) tick))))
 
 (defn cooldown-deltas
-  "Returns the deltas of ItemCooldowns.addCooldown and the packet it
-   sends, or nil when item has no use_cooldown component."
+  "Returns the deltas that lock item's cooldown group and notify the
+   client, or nil when item carries no cooldown."
   [eid e item ^long tick]
   (when-let [[group ticks] (data/use-cooldown item)]
     [[:merge-entity eid
@@ -433,9 +435,12 @@
    :client-settings (fn [w [_ eid sp]] (update-entity w eid assoc :skin-parts sp))
    :held-item       (fn [w [_ eid slot]] (held-item w eid slot))
    :creative-slot   (fn [w [_ eid slot stack]] (creative-slot w eid slot stack))
-   :place           (fn [w [_ eid _ face _ _ _ rot]] (placed w eid face rot))
-   :use-item        (fn [w [_ eid hand _ rot]] (use-item w eid hand rot))
-   :release-use     (fn [w [_ eid]] (update-entity w eid stopped-use))})
+   :place           (fn [w [_ eid _ face _ _ _ rot]]
+                      (placed w eid face rot))
+   :use-item        (fn [w [_ eid hand _ rot]]
+                      (use-item w eid hand rot))
+   :release-use     (fn [w [_ eid]]
+                      (update-entity w eid stopped-use))})
 
 (defn- unchanged [w _]
   w)
@@ -532,10 +537,7 @@
                    :hurt-resist max-resist)
           dx (knock-back (double dx) (double dz))))
 
-(defn- hurt-item
-  "Returns dropped item e after amount of damage. It has no resistance window
-   and keeps its health as a whole number."
-  [e ^double health ^double amount]
+(defn- hurt-item [e ^double health ^double amount]
   (assoc e :health (double (long (- health amount)))))
 
 (defn hurt
@@ -672,8 +674,8 @@
     [(apply world d) d]))
 
 (defn fold-events
-  "Returns the deltas f gives for each event in order, each event seeing
-   the world after the ones before it, as packets do in vanilla."
+  "Returns the deltas f gives for each event in order. Each event
+   sees the world after the ones before it were applied."
   [world events f]
   (loop [w world evs (seq events) acc []]
     (if-not evs
