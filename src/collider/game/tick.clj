@@ -63,6 +63,7 @@
                    #'weather-system/weather
                    #'falling/first-step
                    #'tnt/first-step
+                   #'projectiles/first-step
                    #'items/pickups
                    #'containers/broadcast])
 

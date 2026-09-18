@@ -133,11 +133,24 @@
       [])))
 
 (def ^:private equipment-slots [0 2 3 4 5])
+(defn- spawn-rotation
+  "Returns the angle a thrown thing had when its tracking began, in
+   degrees; it flies in the tick of the throw, so the entity already
+   turned. Everything else answers with the angle it holds now."
+  [tr kind k now]
+  (if-let [a (and tr (entity/thrown-types kind) (get tr k))]
+    (/ (* (double a) 360.0) 256.0)
+    now))
+
 (defn- add-entity-packet [eid e tr kind]
   {:packet :add-entity :eid eid :uuid (uuid-of eid e) :type (@entity-type kind)
    :pos    (if tr (mapv double (:pos tr)) (:pos e))
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
-   :yaw    (:yaw e 0.0) :pitch (:pitch e 0.0) :head-yaw (or (:head-yaw e) (:yaw e 0.0))
+   :yaw    (spawn-rotation tr kind :yaw (:yaw e 0.0))
+   :pitch  (spawn-rotation tr kind :pitch (:pitch e 0.0))
+   :head-yaw (if (entity/thrown-types kind)
+               0.0
+               (or (:head-yaw e) (:yaw e 0.0)))
    :data   (cond (= :falling-block kind) (:block e)
                  (entity/thrown-types kind) (long (:owner e 0))
                  :else 0)})
@@ -187,6 +200,8 @@
    :snowball/throw                [:entity.snowball.throw 6]
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
+   :splash-potion/throw           [:entity.splash-potion.throw 7]
+   :lingering-potion/throw        [:entity.lingering-potion.throw 7]
    :player/teleport               [:entity.player.teleport 7]
    :hoe/till                      [:item.hoe.till 4]
    :candle/extinguish             [:block.candle.extinguish 4]

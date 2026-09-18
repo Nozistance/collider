@@ -40,8 +40,9 @@
   {:snowball         {:power 1.5 :offset 0.0 :sound :snowball/throw}
    :egg              {:power 1.5 :offset 0.0 :sound :egg/throw}
    :ender-pearl      {:power 1.5 :offset 0.0 :sound :ender-pearl/throw}
-   :splash-potion    {:power 0.5 :offset -20.0}
-   :lingering-potion {:power 0.5 :offset -20.0}})
+   :splash-potion    {:power 0.5 :offset -20.0 :sound :splash-potion/throw}
+   :lingering-potion {:power 0.5 :offset -20.0
+                      :sound :lingering-potion/throw}})
 
 (def ^:private potion-types #{:splash-potion :lingering-potion})
 
@@ -285,9 +286,17 @@
   [(+ (v/x from) (* t (v/x d))) (+ (v/y from) (* t (v/y d)))
    (+ (v/z from) (* t (v/z d)))])
 
+(defn- lerp-rotation ^double [^double old ^double new]
+  (let [old (loop [o old] (cond (< (- new o) -180.0) (recur (- o 360.0))
+                                (>= (- new o) 180.0) (recur (+ o 360.0))
+                                :else o))]
+    (+ old (* 0.2 (- new old)))))
+
 (defn- moved [e at d left?]
   (let [[yaw pitch] (facing d)]
-    {:pos at :vel d :yaw yaw :pitch pitch :left-owner? left?
+    {:pos at :vel d :left-owner? left?
+     :yaw (lerp-rotation (double (:yaw e 0.0)) yaw)
+     :pitch (lerp-rotation (double (:pitch e 0.0)) pitch)
      :age (inc (long (:age e 0)))}))
 
 (defn- pearl-deltas [world e]
@@ -429,3 +438,12 @@
             (entries world entity/thrown-types))
       (into (map (fn [[eid e]] #(cloud-deltas world eid e)))
             (entries world #{:area-effect-cloud}))))
+
+(defn first-step
+  "Returns the flight of the things thrown this tick, which move at
+   once as vanilla ticks a fresh projectile in the tick of its throw."
+  [world _d]
+  (into []
+        (comp (filter (fn [[_ e]] (zero? (long (:age e 0)))))
+              (mapcat (fn [[eid e]] (step-deltas world eid e))))
+        (entries world entity/thrown-types)))
