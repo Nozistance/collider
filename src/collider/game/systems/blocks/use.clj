@@ -294,7 +294,7 @@
         (cond
           (poses? cur item) (fn [w _ pos _ _ _] (pose-deltas w pos))
           (contains? block/cauldron-types t)
-          (fn [w eid pos _ item _] (cauldron/cauldron-deltas w pos item (edit/held-stack w eid)))
+          (fn [w eid pos _ item _] (cauldron/cauldron-deltas w eid pos item (edit/held-stack w eid)))
           (sign/kind cur) (fn [w eid pos _ item _] (sign-use-deltas w eid pos item))
           (contains? container/menu-types t)
           (fn [w eid pos _ _ _] (containers/open-deltas w eid pos))
