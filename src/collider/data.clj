@@ -8,11 +8,11 @@
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
-(def layout 3)
+(def layout 4)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
-   "drops" "recipes" "sounds" "features"
+   "drops" "recipes" "sounds" "features" "potions" "effects"
    "shapes" "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
 (defn stamp []
@@ -53,7 +53,8 @@
       (edn/read (PushbackReader. r)))))
 
 (def ^:private table-names
-  [:packets :registries :blocks :datapack :tags :items :light :fire :drops :recipes :sounds :features])
+  [:packets :registries :blocks :datapack :tags :items :light :fire :drops
+   :recipes :sounds :features :potions :effects])
 
 (def ^:private ^:table tables
   (delay (into {} (map (fn [k] [k (read-edn (str (name k) ".edn"))])) table-names)))
@@ -98,6 +99,19 @@
   "Returns the worldgen features bone meal reaches and the ones each biome
    grows."
   [] (:features @tables))
+(defn potions
+  "Returns the effect instances every potion gives."
+  [] (:potions @tables))
+(defn mob-effects
+  "Returns the colour, the category and the immediacy of every effect."
+  [] (:effects @tables))
+
+(defn use-cooldown
+  "Returns the cooldown group and the ticks item locks it for, or nil
+   when the item has no use_cooldown component."
+  [item]
+  (when-let [c (get-in (items) [item :use-cooldown])]
+    [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
 
 (defn max-stack ^long [item]
   (long (get-in (items) [item :max-stack] 64)))

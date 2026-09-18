@@ -403,6 +403,11 @@
              (c/write-varint buf (count (:changes m)))
              (doseq [[at state] (:changes m)]
                (c/write-varlong buf (bit-or (bit-shift-left (long state) 12) (long at)))))}
+   [:play :cooldown]
+   {:schema [:map [:group Id] [:duration Varint]]
+    :write (fn [^Buf buf m]
+             (c/write-id buf (:group m))
+             (c/write-varint buf (long (:duration m))))}
    [:play :block-changed-ack]
    {:schema [:map [:sequence Varint]]
     :write (fn [^Buf buf m] (c/write-varint buf (long (:sequence m))))}

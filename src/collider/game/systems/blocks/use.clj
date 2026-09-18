@@ -34,12 +34,6 @@
                 (for [[slot s] changes] [:set-slot eid slot s])
                 (when left [[:spawn-entity (items/dropped world eid left)]]))))))
 
-(defn- candle-deltas [world pos]
-  (let [cur (edit/block-at world pos)]
-    (when (= :true (:lit (block/props-of cur)))
-      (concat (edit/change-deltas world [[pos (block/state (block/block-of cur) (assoc (block/props-of cur) :lit :false))]])
-              [(out/all (out/sound :candle/extinguish pos 1.0 1.0))]))))
-
 (defn- candle-item? [item]
   (= :candle (:type (get (data/blocks) item))))
 
@@ -272,8 +266,8 @@
 
 (def ^:private by-type
   {:flower-pot          (fn [w eid pos _ item _] (pot-deltas w eid pos item))
-   :candle              (fn [w _ pos _ item _] (when (nil? item) (candle-deltas w pos)))
-   :candle-cake         (fn [w _ pos _ item _] (when (nil? item) (candle-deltas w pos)))
+   :candle              (fn [w _ pos _ item _] (when (nil? item) (edit/candle-out-deltas w pos)))
+   :candle-cake         (fn [w _ pos _ item _] (when (nil? item) (edit/candle-out-deltas w pos)))
    :cake                (fn [w _ pos _ item _] (when (and item (candle-item? item)) (candle-cake-deltas w pos item)))
    :cave-vines          (fn [w _ pos _ item _] (when (nil? item) (berries-deltas w pos)))
    :cave-vines-plant    (fn [w _ pos _ item _] (when (nil? item) (berries-deltas w pos)))

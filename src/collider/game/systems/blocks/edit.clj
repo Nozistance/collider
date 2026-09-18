@@ -4,6 +4,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.world.block :as block]
+            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -147,3 +148,33 @@
            (contains? (block/props-of state) :waterlogged))
     (block/state (block/block-of state) (assoc (block/props-of state) :waterlogged :true))
     state))
+
+(defn- unlit [^long st]
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) :lit :false)))
+
+(defn candle-out-deltas
+  "Returns the deltas of AbstractCandleBlock.extinguish."
+  [world pos]
+  (let [cur (block-at world pos)]
+    (when (= :true (:lit (block/props-of cur)))
+      (concat (change-deltas world [[pos (unlit cur)]])
+              [(out/all (out/sound :candle/extinguish pos
+                                   1.0 1.0))]))))
+
+(defn campfire-out-deltas
+  "Returns the deltas of CampfireBlock.dowse with its level event."
+  [world pos]
+  (when-let [st (campfire/dowsed (block-at world pos))]
+    (concat (change-deltas world [[pos st]])
+            [(out/all (out/level-event
+                        out/sound-extinguish-fire pos))])))
+
+(defn dowse-deltas
+  "Returns the deltas of a candle or a campfire going out under water,
+   as AbstractThrownPotion.dowseFire puts them out."
+  [world pos]
+  (case (block/type-of (block-at world pos))
+    (:candle :candle-cake) (candle-out-deltas world pos)
+    :campfire (campfire-out-deltas world pos)
+    nil))

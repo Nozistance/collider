@@ -8,6 +8,7 @@
             [clojure.data.int-map :as i]
             [clojure.set :as set]
             [collider.game.entity :as entity]
+            [collider.game.out :as out]
             [collider.random :as random]
             [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
@@ -294,11 +295,29 @@
 (defn consume-ticks ^long [c]
   (long (* 20.0 (double (:seconds c)))))
 
+(defn on-cooldown?
+  "Returns true when the cooldown group of item is still locked, as
+   ItemCooldowns.isOnCooldown asks before any use."
+  [e item ^long tick]
+  (boolean
+    (when-let [[group _] (data/use-cooldown item)]
+      (> (long (get-in e [:cooldowns group] 0)) tick))))
+
+(defn cooldown-deltas
+  "Returns the deltas of ItemCooldowns.addCooldown and the packet it
+   sends, or nil when item has no use_cooldown component."
+  [eid e item ^long tick]
+  (when-let [[group ticks] (data/use-cooldown item)]
+    [[:merge-entity eid
+      {:cooldowns (assoc (:cooldowns e) group (+ tick ticks))}]
+     (out/to eid (out/cooldown group ticks))]))
+
 (defn- start-use [e hand ^long tick]
   (let [stack (hand-stack e hand)
         c (consumable stack)]
     (cond
       (:using e) e
+      (on-cooldown? e (:item stack) tick) e
       c (assoc e :using-item? true
                  :using {:hand hand :item (:item stack) :started tick
                          :remaining (consume-ticks c)})

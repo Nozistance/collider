@@ -124,6 +124,7 @@
    :close             []
    :joined            []
    :block-ack         [[:sequence :int]]
+   :cooldown          [[:group :keyword] [:ticks :int]]
    :set-slot          [[:slot :int] [:stack [:maybe Stack]]]
    :carried           [[:stack [:maybe Stack]]]
    :held-slot         [[:slot :int]]

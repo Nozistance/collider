@@ -1,9 +1,11 @@
 (ns collider.game.systems.projectiles
   "Thrown snowballs, eggs, pearls and potions, and the lingering cloud."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.data :as data]
+            [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.damage :as damage]
             [collider.random :as random]
@@ -42,8 +44,6 @@
    :lingering-potion {:power 0.5 :offset -20.0}})
 
 (def ^:private potion-types #{:splash-potion :lingering-potion})
-(def ^:private effectless #{:water :mundane :thick :awkward})
-(def ^:private instant #{:healing :strong-healing :harming :strong-harming})
 
 (defn- contents [stack]
   (get-in stack [:components :potion-contents]))
@@ -52,18 +52,64 @@
   (let [c (contents stack)]
     (and (= :water (:potion c)) (empty? (:custom-effects c)))))
 
-(defn- has-effects? [stack]
-  (let [c (contents stack)]
-    (boolean (or (seq (:custom-effects c))
-                 (when-let [p (:potion c)] (not (effectless p)))))))
+(defn- brewed [c]
+  (get (data/potions) (:potion c)))
+
+(defn- all-effects [c]
+  (concat (brewed c) (:custom-effects c)))
+
+(defn- visible? [e]
+  (get-in e [:details :show-particles] true))
+
+(defn- amplifier ^long [e]
+  (long (or (:amplifier e) (get-in e [:details :amplifier]) 0)))
+
+(defn- effect-color ^long [e]
+  (long (:color (get (data/mob-effects) (:effect e)) 0)))
+
+(defn- channel ^long [rows ^long shift ^long weight]
+  (quot (reduce (fn [^long a e]
+                  (+ a (* (inc (amplifier e))
+                          (bit-and (bit-shift-right (effect-color e)
+                                                    shift)
+                                   0xFF))))
+                0 rows)
+        weight))
+
+(defn- blend
+  "Returns the amplifier-weighted mean of the effect colours, as
+   PotionContents.getColorOptional does, nil for no visible effect."
+  [effects]
+  (let [rows (filterv visible? effects)
+        w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
+    (when (pos? w)
+      (bit-or -16777216 (bit-shift-left (channel rows 16 w) 16)
+              (bit-shift-left (channel rows 8 w) 8)
+              (channel rows 0 w)))))
 
 (defn potion-color
-  "Returns the colour the client paints the splash and the cloud with."
+  "Returns the colour the client paints the splash and the cloud with,
+   as PotionContents.getColor does."
   ^long [stack]
-  (long (or (:custom-color (contents stack)) base-potion-color)))
+  (let [c (contents stack)]
+    (long (or (:custom-color c) (blend (all-effects c))
+              base-potion-color))))
+
+(defn has-effects? [stack]
+  (let [c (contents stack)]
+    (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
+
+(defn- instant? [e]
+  (:instant? (get (data/mob-effects) (:effect e))))
+
+(defn has-instant-effects?
+  "Returns true when the potion itself acts at once, which is what
+   Potion.hasInstantEffects asks; custom effects do not count."
+  [stack]
+  (boolean (some instant? (brewed (contents stack)))))
 
 (defn- break-event ^long [stack]
-  (if (instant (:potion (contents stack))) 2007 2002))
+  (if (has-instant-effects? stack) 2007 2002))
 
 (defn- triangle ^double [world eid k ^double dev]
   (let [t (:tick world)]
@@ -128,7 +174,9 @@
       (concat (throw-sound world eid e stack)
               [[:spawn-entity (thrown world eid e stack)]
                [:award eid (keyword "used" (name (:item stack))) 1]]
-              (spent-deltas eid e stack)))))
+              (spent-deltas eid e stack)
+              (state/cooldown-deltas eid e (:item stack)
+                                     (:tick world))))))
 
 (defn- box-of [pos ^double w ^double h]
   (let [x (v/x pos) y (v/y pos) z (v/z pos)]
@@ -254,20 +302,30 @@
 
 (defn- dowse-cells [hit]
   (let [cell (:cell hit) at (mapv + cell (dir/offset (:face hit)))]
-    (into [at cell] (map #(mapv + at (dir/offset %))) dir/horizontal)))
+    (distinct (into [at cell] (map #(mapv + at (dir/offset %)))
+                    dir/horizontal))))
 
 (defn- fire-at? [chunks p]
   (and (chunk/in-range? (nth p 1))
        (block/fire? (chunk/chunks-get-block chunks p))))
 
-(defn- dowse-deltas [world hit]
-  (let [chunks (:chunks world)
-        fires (filterv #(fire-at? chunks %) (dowse-cells hit))]
+(defn- fire-out-deltas [world fires]
+  (let [chunks (:chunks world)]
     (when (seq fires)
       (conj (mapv #(out/all (out/break-effect
                               % (chunk/chunks-get-block chunks %)))
                   fires)
             [:set-blocks (mapv (fn [p] [p 0]) fires)]))))
+
+(defn- dowse-deltas
+  "Returns the deltas of AbstractThrownPotion.dowseFire over its cells:
+   the fire tag is destroyed, a candle or a campfire only goes out."
+  [world hit]
+  (let [cells (filterv #(chunk/in-range? (nth % 1)) (dowse-cells hit))
+        fires (filterv #(fire-at? (:chunks world) %) cells)]
+    (into (vec (fire-out-deltas world fires))
+          (mapcat #(edit/dowse-deltas world %))
+          (remove (set fires) cells))))
 
 (defn- doused-deltas
   "Returns the deltas of a water splash putting out the entities it soaks."

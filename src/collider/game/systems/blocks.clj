@@ -54,8 +54,11 @@
    [(constantly true) (on-args place/solid-place-deltas)]])
 
 (defn- item-deltas [ctx]
-  (when-let [[_ f] (first (filter (fn [[pred _]] (pred ctx)) item-actions))]
-    (f ctx)))
+  (when-not (state/on-cooldown? (:at ctx) (:item ctx)
+                                (:tick (:world ctx)))
+    (when-let [[_ f] (first (filter (fn [[pred _]] (pred ctx))
+                                    item-actions))]
+      (f ctx))))
 
 (defn- place-deltas [world [eid pos face item cursor] origin]
   (let [item (or item (sense/held-of (get-in world [:entities eid])))

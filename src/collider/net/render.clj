@@ -328,6 +328,8 @@
                               :values (map (fn [[k v]] [(rules/wire-name k) (rules/serialize k v)])
                                            (:rules m))}])
    :health        (fn [_ m] [{:packet :set-health :health (:health m) :food 20 :saturation 5.0}])
+   :cooldown      (fn [_ m] [{:packet :cooldown :group (:group m)
+                              :duration (:ticks m)}])
    :respawn       (fn [_ _] [{:packet :respawn :dimension-type @overworld :keep 0}
                              {:packet :game-event :event 13 :value 0.0}])
    :default-spawn (fn [_ m] [{:packet :set-default-spawn-position :pos (:pos m)}])

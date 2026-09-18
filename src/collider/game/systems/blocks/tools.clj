@@ -10,7 +10,6 @@
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow :as grow]
@@ -106,9 +105,7 @@
       (if-let [st (flattened-state world pos cur)]
         (concat (edit/change-deltas world [[pos st]])
                 [(out/all (out/sound :shovel/flatten pos 1.0 1.0))])
-        (when-let [st (campfire/dowsed cur)]
-          (concat (edit/change-deltas world [[pos st]])
-                  [(out/all (out/level-event out/sound-extinguish-fire pos))]))))))
+        (edit/campfire-out-deltas world pos)))))
 
 (defn- half-changes [world pos ^long st]
   (let [cur (edit/block-at world pos)]

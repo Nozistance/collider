@@ -82,6 +82,7 @@
               (food-sounds world eid e c))
             (effect-sounds e c)
             (remainder-deltas world eid e hand stack)
+            (state/cooldown-deltas eid e item (:tick world))
             (stopped eid))))
 
 (defn- step-deltas [world [eid _]]

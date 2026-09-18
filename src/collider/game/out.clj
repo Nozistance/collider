@@ -219,3 +219,8 @@
 
 (defn bonemeal [pos]
   {:msg :bonemeal :pos pos})
+
+(defn cooldown
+  "Returns the effect that a cooldown group locked for that many ticks."
+  [group ticks]
+  {:msg :cooldown :group group :ticks ticks})

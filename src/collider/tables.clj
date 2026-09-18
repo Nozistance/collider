@@ -713,6 +713,11 @@
 (defn- use-remainder [v]
   (sorted-map :item (kw (get v "id")) :count (get v "count" 1)))
 
+(defn- use-cooldown [v]
+  (cond-> (sorted-map :seconds (flt (get v "seconds")))
+    (get v "cooldown_group")
+    (assoc :group (kw (get v "cooldown_group")))))
+
 (defn- item [^File f]
   (let [cs (get (json/read-str (slurp f)) "components")
         n (get cs "minecraft:max_stack_size" 64)
@@ -725,12 +730,14 @@
         resists (get-in cs ["minecraft:damage_resistant" "types"])
         eats (get cs "minecraft:consumable")
         left (get cs "minecraft:use_remainder")
+        wait (get cs "minecraft:use_cooldown")
         grub (get cs "minecraft:food")
         tag #(str/replace (subs % 1) #"^minecraft:" "")]
     (cond-> (sorted-map)
       (not= n 64) (assoc :max-stack n)
       eats (assoc :consumable (consumable eats))
       left (assoc :use-remainder (use-remainder left))
+      wait (assoc :use-cooldown (use-cooldown wait))
       grub (assoc :food (food grub))
       slot (assoc :equip (kw slot))
       song (assoc :jukebox-song (kw song))
@@ -1217,6 +1224,120 @@
     (apply dissoc (reduce add (sorted-map) fuel-values)
            (get-in tags ["item" "non_flammable_wood"] []))))
 
+(def ^:private effect-colors
+  "MobEffects.java: the colour and the category of every effect."
+  {:speed [3402751 :beneficial]
+   :slowness [9154528 :harmful]
+   :haste [14270531 :beneficial]
+   :mining-fatigue [4866583 :harmful]
+   :strength [16762624 :beneficial]
+   :instant-health [16262179 :beneficial]
+   :instant-damage [11101546 :harmful]
+   :jump-boost [16646020 :beneficial]
+   :nausea [5578058 :harmful]
+   :regeneration [13458603 :beneficial]
+   :resistance [9520880 :beneficial]
+   :fire-resistance [16750848 :beneficial]
+   :water-breathing [10017472 :beneficial]
+   :invisibility [16185078 :beneficial]
+   :blindness [2039587 :harmful]
+   :night-vision [12779366 :beneficial]
+   :hunger [5797459 :harmful]
+   :weakness [4738376 :harmful]
+   :poison [8889187 :harmful]
+   :wither [7561558 :harmful]
+   :health-boost [16284963 :beneficial]
+   :absorption [2445989 :beneficial]
+   :saturation [16262179 :beneficial]
+   :glowing [9740385 :neutral]
+   :levitation [13565951 :harmful]
+   :luck [5882118 :beneficial]
+   :unluck [12624973 :harmful]
+   :slow-falling [15978425 :beneficial]
+   :conduit-power [1950417 :beneficial]
+   :dolphins-grace [8954814 :beneficial]
+   :bad-omen [745784 :neutral]
+   :hero-of-the-village [4521796 :beneficial]
+   :darkness [2696993 :harmful]
+   :trial-omen [1484454 :neutral]
+   :raid-omen [14565464 :neutral]
+   :wind-charged [12438015 :harmful]
+   :weaving [7891290 :harmful]
+   :oozing [10092451 :harmful]
+   :infested [9214860 :harmful]
+   :breath-of-the-nautilus [65518 :beneficial]})
+
+(def ^:private instant-effects
+  "The InstantaneousMobEffect subclasses: HealOrHarm and Saturation."
+  #{:instant-health :instant-damage :saturation})
+
+(def ^:private potion-effects
+  "Potions.java, each row [effect duration amplifier]."
+  {:water []
+   :mundane []
+   :thick []
+   :awkward []
+   :night-vision [[:night-vision 3600 0]]
+   :long-night-vision [[:night-vision 9600 0]]
+   :invisibility [[:invisibility 3600 0]]
+   :long-invisibility [[:invisibility 9600 0]]
+   :leaping [[:jump-boost 3600 0]]
+   :long-leaping [[:jump-boost 9600 0]]
+   :strong-leaping [[:jump-boost 1800 1]]
+   :fire-resistance [[:fire-resistance 3600 0]]
+   :long-fire-resistance [[:fire-resistance 9600 0]]
+   :swiftness [[:speed 3600 0]]
+   :long-swiftness [[:speed 9600 0]]
+   :strong-swiftness [[:speed 1800 1]]
+   :slowness [[:slowness 1800 0]]
+   :long-slowness [[:slowness 4800 0]]
+   :strong-slowness [[:slowness 400 3]]
+   :turtle-master [[:slowness 400 3] [:resistance 400 2]]
+   :long-turtle-master [[:slowness 800 3] [:resistance 800 2]]
+   :strong-turtle-master [[:slowness 400 5] [:resistance 400 3]]
+   :water-breathing [[:water-breathing 3600 0]]
+   :long-water-breathing [[:water-breathing 9600 0]]
+   :healing [[:instant-health 1 0]]
+   :strong-healing [[:instant-health 1 1]]
+   :harming [[:instant-damage 1 0]]
+   :strong-harming [[:instant-damage 1 1]]
+   :poison [[:poison 900 0]]
+   :long-poison [[:poison 1800 0]]
+   :strong-poison [[:poison 432 1]]
+   :regeneration [[:regeneration 900 0]]
+   :long-regeneration [[:regeneration 1800 0]]
+   :strong-regeneration [[:regeneration 450 1]]
+   :strength [[:strength 3600 0]]
+   :long-strength [[:strength 9600 0]]
+   :strong-strength [[:strength 1800 1]]
+   :weakness [[:weakness 1800 0]]
+   :long-weakness [[:weakness 4800 0]]
+   :luck [[:luck 6000 0]]
+   :slow-falling [[:slow-falling 1800 0]]
+   :long-slow-falling [[:slow-falling 4800 0]]
+   :wind-charged [[:wind-charged 3600 0]]
+   :weaving [[:weaving 3600 0]]
+   :oozing [[:oozing 3600 0]]
+   :infested [[:infested 3600 0]]})
+
+(defn- effect-table [known]
+  (into (sorted-map)
+        (keep (fn [[k [color category]]]
+                (when (known k)
+                  [k (sorted-map :category category :color color
+                                 :instant?
+                                 (contains? instant-effects k))])))
+        effect-colors))
+
+(defn- instance [[effect duration amplifier]]
+  (sorted-map :amplifier amplifier :duration duration :effect effect))
+
+(defn- potion-table [known]
+  (into (sorted-map)
+        (keep (fn [[k rows]]
+                (when (known k) [k (mapv instance rows)])))
+        potion-effects))
+
 (def ^:private brewing-containers
   [:potion :splash-potion :lingering-potion])
 
@@ -1365,6 +1486,8 @@
             :recipes    (recipes zf tags dyes
                                  (set (keys (get rs "item")))
                                  (set (keys (get rs "potion"))))
+            :potions    (potion-table (set (keys (get rs "potion"))))
+            :effects    (effect-table (set (keys (get rs "mob_effect"))))
             :tags       tags})))
 
 (defn- write-tables! [^File server ^File dir out from-class]
