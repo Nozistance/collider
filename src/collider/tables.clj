@@ -71,8 +71,8 @@
          (throw (unreachable url e)))))
 
 (defn- temp-dir ^File [name]
-  (.toFile (Files/createTempDirectory name
-                                      (make-array FileAttribute 0))))
+  (let [attrs (make-array FileAttribute 0)]
+    (.toFile (Files/createTempDirectory name attrs))))
 
 (defn- delete-tree! [^File dir]
   (doseq [^File f (reverse (file-seq dir))]
@@ -228,11 +228,12 @@
 (defn- field-value [obj f]
   (Reflector/getInstanceField obj f))
 
+(defn- field-name [^Field f] (.getName f))
+
 (defn- declared-fields [^Class c]
   (->> (iterate #(.getSuperclass ^Class %) c)
        (take-while some?)
-       (mapcat #(sort-by (fn [^Field f] (.getName f))
-                         (.getDeclaredFields ^Class %)))))
+       (mapcat #(sort-by field-name (.getDeclaredFields ^Class %)))))
 
 (defn- hidden-field [^Class c obj want]
   (let [match? (if (string? want)
@@ -289,8 +290,8 @@
 (def ^:private face-axis [1 1 2 2 0 0])
 
 (defn- block-states []
-  (let [reg (static-field "world.level.block.Block"
-                          "BLOCK_STATE_REGISTRY")]
+  (let [block-cls "world.level.block.Block"
+        reg (static-field block-cls "BLOCK_STATE_REGISTRY")]
     (mapv (fn [st] [(call reg "getId" st) st]) (elements reg))))
 
 (def ^:private flag-methods
@@ -319,13 +320,14 @@
                (collision-shape env st) up))
 
 (defn- state-flags [env st]
-  (unless-default 0 (mask (conj (mapv #(call st %) flag-methods)
-                                (full-top? env st)))))
+  (let [flags (conj (mapv #(call st %) flag-methods)
+                    (full-top? env st))]
+    (unless-default 0 (mask flags))))
 
 (defn- state-sturdy [{:keys [air zero dirs]} st & more]
-  (unless-default 63 (mask (for [d dirs]
-                             (apply call st "isFaceSturdy"
-                                    air zero d more)))))
+  (let [faces (for [d dirs]
+                (apply call st "isFaceSturdy" air zero d more))]
+    (unless-default 63 (mask faces))))
 
 (defn- state-shapes [states]
   (let [env (shape-env)]
@@ -446,14 +448,15 @@
 (def ^:private ref-fields
   {"deadBlock" :dead "concrete" :concrete "potted" :potted})
 
+(defn- block-ref [reg b [f k]]
+  (when-let [r (hidden-field (class b) b f)]
+    [k (key-of reg r)]))
+
 (defn- block-refs [reg]
   (into (sorted-map)
         (for [b (elements reg)
-              :let [m (into (sorted-map)
-                            (keep (fn [[f k]]
-                                    (when-let [r (hidden-field (class b) b f)]
-                                      [k (key-of reg r)])))
-                            ref-fields)]
+              :let [found (keep #(block-ref reg b %) ref-fields)
+                    m (into (sorted-map) found)]
               :when (seq m)]
           [(key-of reg b) m])))
 
@@ -482,10 +485,10 @@
   (some (fn [[block type open close hand?]]
           (when (.isInstance (cls block) b)
             (let [t (hidden-field (class b) b (cls type))
-                  event #(kw (str (call (call t %) "location")))]
+                  event #(kw (str (call (call t %) "location")))
+                  by-hand #(boolean (call t "canOpenByHand"))]
               (cond-> {:open (event open) :close (event close)}
-                hand? (assoc :hand?
-                             (boolean (call t "canOpenByHand")))))))
+                hand? (assoc :hand? (by-hand))))))
         toggles))
 
 (defn- own-props [by-type b]
@@ -495,16 +498,21 @@
             :class      (block-class b)}
            (toggle b))))
 
+(defn- weathering-pairs [reg]
+  (block-pairs reg "world.level.block.WeatheringCopper"
+               "NEXT_BY_BLOCK" :next :previous))
+
+(defn- waxable-pairs [reg]
+  (block-pairs reg "world.item.HoneycombItem"
+               "WAXABLES" :waxed :unwaxed))
+
 (defn- block-table [reg by-type]
-  (let [refs (block-refs reg)]
-    (merge-with merge
-                (into (sorted-map)
-                      (for [b (elements reg)]
-                        [(key-of reg b) (own-props by-type b)]))
-                (block-pairs reg "world.level.block.WeatheringCopper"
-                             "NEXT_BY_BLOCK" :next :previous)
-                (block-pairs reg "world.item.HoneycombItem"
-                             "WAXABLES" :waxed :unwaxed)
+  (let [refs (block-refs reg)
+        own (into (sorted-map)
+                  (for [b (elements reg)]
+                    [(key-of reg b) (own-props by-type b)]))]
+    (merge-with merge own
+                (weathering-pairs reg) (waxable-pairs reg)
                 (merge-with merge refs (pot-contents refs))
                 (strippables reg))))
 
@@ -571,9 +579,9 @@
         c (cls "world.item.BannerItem")]
     (into (sorted-map)
           (for [i (elements items) :when (.isInstance c i)]
-            [(key-of items i)
-             {:banner-color (kw (call (call i "getColor")
-                                      "getSerializedName"))}]))))
+            (let [dye (call i "getColor")
+                  color (call dye "getSerializedName")]
+              [(key-of items i) {:banner-color (kw color)}])))))
 
 (defn- dye-colors []
   (into (sorted-map)
@@ -628,13 +636,13 @@
         default (some #(when (get % "default") (get % "id")) states)
         props (into (sorted-map)
                     (map (fn [[p vs]] [(kw p) (mapv keyword vs)]))
-                    properties)]
+                    properties)
+        base {:first   first-id
+              :default (or default first-id)
+              :type    (kw (get definition "type"))}
+        own (into (sorted-map) (merge base (get extra (kw name))))]
     [(kw name)
-     (cond-> (into (sorted-map)
-                   (merge {:first   first-id
-                           :default (or default first-id)
-                           :type    (kw (get definition "type"))}
-                          (get extra (kw name))))
+     (cond-> own
        (not (contains? shaped default)) (assoc :full-cube? true)
        (seq props) (assoc :props props))]))
 
@@ -643,12 +651,15 @@
         (map #(block % extra shaped))
         (report-json reports "blocks.json")))
 
+(def ^:private attack-damage-modifier
+  ["minecraft:attack_damage" "add_value" "mainhand"])
+
 (defn- attack-damage ^double [components]
-  (reduce + 0.0
-          (for [a (get components "minecraft:attribute_modifiers")
-                :when (= (map a ["type" "operation" "slot"])
-                         ["minecraft:attack_damage" "add_value" "mainhand"])]
-            (double (get a "amount")))))
+  (let [mods (get components "minecraft:attribute_modifiers")
+        match? #(= (map % ["type" "operation" "slot"])
+                   attack-damage-modifier)]
+    (reduce + 0.0 (for [a mods :when (match? a)]
+                    (double (get a "amount"))))))
 
 (defn- unmodelled [v]
   (throw (ex-info "default component not modelled" {:value v})))
@@ -702,8 +713,8 @@
     (get e "sound") (assoc :sound (kw (get e "sound")))))
 
 (defn- consumable
-  "Returns how an item is eaten or drunk, with the defaults the game
-  assumes for what the recipe leaves out."
+  "Returns the eating and drinking of an item.
+  Fields the recipe leaves out take the game's defaults."
   [v]
   (sorted-map
     :seconds (flt (get v "consume_seconds" 1.6))
@@ -892,28 +903,30 @@
    "trim_pattern" "wolf_sound_variant" "wolf_variant" "world_clock"
    "zombie_nautilus_variant"])
 
+(def ^:private top-level-names
+  (comp (map first) (remove #(str/includes? % "/")) (map kw)))
+
+(defn- datapack-entry [zf reg]
+  (let [prefix (str "data/minecraft/" reg "/")
+        names (into (sorted-set) top-level-names (under zf prefix))]
+    (when (seq names) [reg (vec names)])))
+
 (defn- datapack-names [zf]
   (into (sorted-map)
-        (keep (fn [reg]
-                (let [prefix (str "data/minecraft/" reg "/")
-                      names (into (sorted-set)
-                                  (comp (map first)
-                                        (remove #(str/includes? % "/"))
-                                        (map kw))
-                                  (under zf prefix))]
-                  (when (seq names) [reg (vec names)]))))
+        (keep #(datapack-entry zf %))
         synchronized-registries))
 
 (defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
 
 (defn- json-name [k] (str/replace (name k) "-" "_"))
 
+(defn- feature-props [props]
+  (into (sorted-map) (map (fn [[k v]] [(kw k) (keyword v)])) props))
+
 (defn- state-value [m]
   (let [props (get m "Properties")]
     (cond-> (sorted-map :block (kw (get m "Name")))
-      props (assoc :props (into (sorted-map)
-                                (map (fn [[k v]] [(kw k) (keyword v)]))
-                                props)))))
+      props (assoc :props (feature-props props)))))
 
 (defn- feature-value [v]
   (cond
@@ -932,14 +945,14 @@
   #{"feature" "default_feature" "vegetation_feature"})
 
 (defn- placed-refs [v]
-  (cond
-    (and (map? v) (contains? v "placement")) [v]
-    (map? v) (mapcat (fn [[k x]]
-                       (if (and (string? x) (placed-fields k))
-                         [(plain x)]
-                         (placed-refs x)))
-                     v)
-    (vector? v) (mapcat placed-refs v)))
+  (let [ref (fn [[k x]]
+              (if (and (string? x) (placed-fields k))
+                [(plain x)]
+                (placed-refs x)))]
+    (cond
+      (and (map? v) (contains? v "placement")) [v]
+      (map? v) (mapcat ref v)
+      (vector? v) (mapcat placed-refs v))))
 
 (declare conf-features)
 
@@ -954,13 +967,16 @@
           (when (selector-types (get j "type"))
             (mapcat #(placed-features reg %) (placed-refs (get j "config")))))))
 
+(defn- biome-features [reg tagged j]
+  (let [xf (comp cat
+                 (mapcat #(placed-features reg (plain %)))
+                 (filter tagged))]
+    (into [] xf (get j "features"))))
+
 (defn- bone-meal-biomes [reg tagged]
   (into (sorted-map)
         (keep (fn [[nm j]]
-                (let [fs (into [] (comp cat
-                                        (mapcat #(placed-features reg (plain %)))
-                                        (filter tagged))
-                               (get j "features"))]
+                (let [fs (biome-features reg tagged j)]
                   (when (seq fs) [(kw nm) (mapv kw fs)]))))
         (:biomes reg)))
 
@@ -1006,38 +1022,39 @@
 
 (def ^:private property-sets
   (let [smithing #{"minecraft:smithing_transform"
-                   "minecraft:smithing_trim"}]
+                   "minecraft:smithing_trim"}
+        campfire #{"minecraft:campfire_cooking"}]
     {"furnace_input"       [#{"minecraft:smelting"} "ingredient"]
      "blast_furnace_input" [#{"minecraft:blasting"} "ingredient"]
      "smoker_input"        [#{"minecraft:smoking"} "ingredient"]
-     "campfire_input"      [#{"minecraft:campfire_cooking"}
-                            "ingredient"]
+     "campfire_input"      [campfire "ingredient"]
      "smithing_base"       [smithing "base"]
      "smithing_template"   [smithing "template"]
      "smithing_addition"   [smithing "addition"]}))
 
+(defn- stonecutting-entry [json]
+  (when (= "minecraft:stonecutting" (get json "type"))
+    (let [r (get json "result")
+          r (if (string? r) {"id" r} r)
+          n (get r "count" 1)]
+      {:in  (ingredient (get json "ingredient"))
+       :out (cond-> {:item (kw (get r "id"))}
+              (not= 1 n) (assoc :count n))})))
+
 (defn- stonecutting [recipes]
-  (into []
-        (keep (fn [json]
-                (when (= "minecraft:stonecutting" (get json "type"))
-                  (let [r (get json "result")
-                        r (if (string? r) {"id" r} r)
-                        n (get r "count" 1)]
-                    {:in  (ingredient (get json "ingredient"))
-                     :out (cond-> {:item (kw (get r "id"))}
-                            (not= 1 n) (assoc :count n))}))))
-        recipes))
+  (into [] (keep stonecutting-entry) recipes))
 
 (defn- property-set [tags recipes [types field]]
-  (into (sorted-set)
-        (mapcat (fn [json]
-                  (when (and (contains? types (get json "type"))
-                             (contains? json field))
-                    (let [i (ingredient (get json field))]
-                      (if (map? i)
-                        (get-in tags ["item" (:tag i)] [])
-                        i)))))
-        recipes))
+  (let [want? (fn [json]
+                (and (contains? types (get json "type"))
+                     (contains? json field)))
+        pick (fn [json]
+               (when (want? json)
+                 (let [i (ingredient (get json field))]
+                   (if (map? i)
+                     (get-in tags ["item" (:tag i)] [])
+                     i))))]
+    (into (sorted-set) (mapcat pick) recipes)))
 
 (def ^:private crafting-types
   {"minecraft:crafting_shaped"                    :shaped
@@ -1111,23 +1128,24 @@
             (range (- n bottom top))))))
 
 (defn- symmetric? [w h cells]
-  (or (= 1 w)
-      (every? (fn [[x y]] (= (nth cells (+ x (* y w)))
-                             (nth cells (+ (- w 1 x) (* y w)))))
-              (for [y (range h) x (range (quot w 2))] [x y]))))
+  (let [cell (fn [x y] (nth cells (+ x (* y w))))
+        mirrored? (fn [[x y]] (= (cell x y) (cell (- w 1 x) y)))
+        pairs (for [y (range h) x (range (quot w 2))] [x y])]
+    (or (= 1 w) (every? mirrored? pairs))))
+
+(defn- cell-key [json ch]
+  (when (not= \space ch)
+    (or (get-in json ["key" (str ch)])
+        (throw (ex-info "undefined symbol" {:symbol ch})))))
 
 (defn- shaped [tags json]
   (let [rows (shrink (get json "pattern"))
-        key-of-cell #(when (not= \space %)
-                       (or (get-in json ["key" (str %)])
-                           (throw (ex-info "undefined symbol" {:symbol %}))))
-        raw (mapv key-of-cell (apply str rows))
+        raw (mapv #(cell-key json %) (apply str rows))
         w (count (first rows))
-        h (count rows)]
-    {:w w :h h
-     :cells (mapv #(some->> % (item-set tags)) raw)
-     :symmetric? (symmetric? w h (mapv #(some-> % raw-ingredient)
-                                       raw))}))
+        h (count rows)
+        cells (mapv #(some->> % (item-set tags)) raw)
+        mirror (mapv #(some-> % raw-ingredient) raw)]
+    {:w w :h h :cells cells :symmetric? (symmetric? w h mirror)}))
 
 (def ^:private ingredient-fields
   {:transmute          ["input" "material"]
@@ -1290,8 +1308,8 @@
   #{:instant-health :instant-damage :saturation})
 
 (def ^:private potion-effects
-  "Every potion's effect rows, each a triple of effect, duration
-  and amplifier."
+  "Every potion's effect rows.
+  Each row is a triple of effect, duration and amplifier."
   {:water []
    :mundane []
    :thick []
@@ -1339,13 +1357,13 @@
    :oozing [[:oozing 3600 0]]
    :infested [[:infested 3600 0]]})
 
+(defn- effect-entry [[k [color category]]]
+  (sorted-map :category category :color color
+              :instant? (contains? instant-effects k)))
+
 (defn- effect-table [known]
   (into (sorted-map)
-        (keep (fn [[k [color category]]]
-                (when (known k)
-                  [k (sorted-map :category category :color color
-                                 :instant?
-                                 (contains? instant-effects k))])))
+        (keep (fn [[k :as e]] (when (known k) [k (effect-entry e)])))
         effect-colors))
 
 (defn- instance [[effect duration amplifier]]
@@ -1432,23 +1450,24 @@
   (into [] (comp (filter #(every? known? %)) (map mix-entry)) rows))
 
 (defn- brewing [tags items potions]
-  (let [potion-mix? (fn [[from ingredient to]]
-                      (and (potions from) (items ingredient)
-                           (potions to)))]
+  (let [mix? (fn [[from ingredient to]]
+               (and (potions from) (items ingredient) (potions to)))
+        xf (comp (filter mix?) (map mix-entry))
+        rows (mapcat expand-mix potion-mixes)]
     {:containers      (filterv items brewing-containers)
      :container-mixes (mixes container-recipes items)
-     :potion-mixes    (into [] (comp (filter potion-mix?)
-                                     (map mix-entry))
-                            (mapcat expand-mix potion-mixes))
+     :potion-mixes    (into [] xf rows)
      :fuel            (vec (get-in tags ["item" "brewing_fuel"]))}))
+
+(defn- property-sets-of [tags recipes]
+  (sorted-vals property-sets #(vec (property-set tags recipes %))))
 
 (defn- recipes [zf tags dyes items potions]
   (let [named (->> (jsons zf "data/minecraft/recipe/")
                    (remove #(str/includes? (key %) "/")))
         rs (map val named)]
     {:stonecutting  (stonecutting rs)
-     :property-sets (sorted-vals property-sets
-                                 #(vec (property-set tags rs %)))
+     :property-sets (property-sets-of tags rs)
      :crafting      (crafting named tags)
      :cooking       (cooking named)
      :fuel          (fuel tags items)
@@ -1491,7 +1510,12 @@
   (let [{:keys [props shapes compost walls placers remainders banners dyes]}
         from-class
         dp (datapack-names zf)
-        tags (tags-of zf (distinct (concat (keys rs) (keys dp))))]
+        tags (tags-of zf (distinct (concat (keys rs) (keys dp))))
+        item-names (set (keys (get rs "item")))
+        potion-names (set (keys (get rs "potion")))
+        items (merge-with
+               merge (vanilla-items reports)
+               compost walls remainders banners)]
     (merge (dissoc from-class :props :compost :walls :placers
                    :remainders :banners :dyes)
            {:packets    (packets reports)
@@ -1499,14 +1523,10 @@
             :registries rs
             :datapack   dp
             :drops      (block-drops zf)
-            :items      (merge-with merge
-                                    (vanilla-items reports)
-                                    compost walls remainders banners)
+            :items      items
             :features   (features zf placers)
-            :recipes    (recipes zf tags dyes
-                                 (set (keys (get rs "item")))
-                                 (set (keys (get rs "potion"))))
-            :potions    (potion-table (set (keys (get rs "potion"))))
+            :recipes    (recipes zf tags dyes item-names potion-names)
+            :potions    (potion-table potion-names)
             :effects    (effect-table (set (keys (get rs "mob_effect"))))
             :tags       tags})))
 
@@ -1520,9 +1540,9 @@
 
 (defn- generate-tables! [^File bundle ^File server ^File dir out]
   (let [libraries (temp-dir "libraries")]
-    (try (write-tables! server dir out
-                        (from-classes (unpack-libraries bundle libraries)
-                                      server))
+    (try (let [jars (unpack-libraries bundle libraries)
+               from (from-classes jars server)]
+           (write-tables! server dir out from))
          (finally (delete-tree! libraries)))))
 
 (defn generate! [{:keys [version out jar] :or {version version out "target/data"}}]
@@ -1536,8 +1556,8 @@
   (flush))
 
 (defn -main
-  "Generates the tables in this JVM and reports each event as edn
-  on stdout."
+  "Generates the tables in this JVM.
+  Each event is reported as edn on stdout."
   [opts]
   (binding [*progress* emit-edn!]
     (try (generate! (edn/read-string opts))

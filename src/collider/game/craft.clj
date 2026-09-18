@@ -22,12 +22,11 @@
 
 (defn- put [stack k v]
   (let [s (update stack :components dissoc k)]
-    (tidy (cond (= v (proto (:item stack) k))
-                (update s :removed disj k)
-                (nil? v) (update s :removed (fnil conj #{}) k)
-                :else (-> s
-                          (update :components assoc k v)
-                          (update :removed disj k))))))
+    (tidy (cond
+            (= v (proto (:item stack) k)) (update s :removed disj k)
+            (nil? v) (update s :removed (fnil conj #{}) k)
+            :else (-> (update s :components assoc k v)
+                      (update :removed disj k))))))
 
 (defn- with-patch [stack patch]
   (reduce #(put %1 %2 nil)
@@ -85,8 +84,8 @@
                :n (count (filter some? stacks))}))
 
 (defn trim
-  "Returns grid without its empty rows and columns, and where the
-  rest starts."
+  "Returns grid without its empty rows and columns.
+  The result also says where the rest starts."
   [{:keys [w h stacks] :as grid}]
   (if (or (zero? w) (zero? h))
     (merge grid empty-input)
@@ -96,8 +95,8 @@
           nh (inc (- b t))]
       (cond (or (<= nw 0) (<= nh 0)) (merge grid empty-input)
             (and (= nw w) (= nh h)) (positioned grid w h stacks l t)
-            :else (positioned grid nw nh
-                              (cut stacks w l t nw nh) l t)))))
+            :else (let [cs (cut stacks w l t nw nh)]
+                    (positioned grid nw nh cs l t))))))
 
 (defmulti matches?
   "Returns true if recipe crafts from input."
@@ -140,13 +139,12 @@
 
 (defn- fits? [ingredients k freq]
   (or (= k (count ingredients))
-      (let [ing (nth ingredients k)]
-        (boolean
-          (some (fn [[item _]]
-                  (and (contains? ing item)
-                       (fits? ingredients (inc k)
-                              (take-one freq item))))
-                freq)))))
+      (let [ing (nth ingredients k)
+            ok? (fn [[item _]]
+                  (when (contains? ing item)
+                    (let [f (take-one freq item)]
+                      (fits? ingredients (inc k) f))))]
+        (boolean (some ok? freq)))))
 
 (defmethod matches? :shapeless [{:keys [ingredients]} input]
   (let [{:keys [n stacks]} input]
@@ -275,8 +273,8 @@
   (let [{:keys [w h n stacks]} input]
     (and (= 3 w) (= 3 h) (= 9 n)
          (every? (fn [i]
-                   (test? (if (= 4 i) source material)
-                          (nth stacks i)))
+                   (let [ing (if (= 4 i) source material)]
+                     (test? ing (nth stacks i))))
                  (range 9)))))
 
 (defmethod assemble :imbue [recipe {:keys [w stacks]}]
@@ -312,15 +310,15 @@
 
 (defmethod matches? :banner-duplicate [{:keys [banner]} input]
   (and (= 2 (:n input))
-       (let [[_ src tgt] (reduce (partial banner-step banner)
-                                 [nil false false]
-                                 (:stacks input))]
+       (let [step (partial banner-step banner)
+             init [nil false false]
+             [_ src tgt] (reduce step init (:stacks input))]
          (boolean (and src tgt)))))
 
 (defmethod assemble :banner-duplicate [{:keys [result]} input]
-  (when-let [s (first (filter #(and % (<= 1 (layers %) 6))
-                              (:stacks input)))]
-    (create-over result (:count result) s)))
+  (let [layered? #(and % (<= 1 (layers %) 6))]
+    (when-let [s (first (filter layered? (:stacks input)))]
+      (create-over result (:count result) s))))
 
 (defmethod remainders :banner-duplicate [_ {:keys [stacks]}]
   (mapv (fn [s]
@@ -345,9 +343,8 @@
 
 (defmethod matches? :book-cloning [recipe {:keys [n stacks]}]
   (and (>= n 2)
-       (let [[src mat] (reduce (partial book-step recipe)
-                               [false false]
-                               stacks)]
+       (let [step (partial book-step recipe)
+             [src mat] (reduce step [false false] stacks)]
          (boolean (and src mat)))))
 
 (defn- book-parts [{:keys [source material]} stacks]
@@ -389,22 +386,21 @@
 
 (defmethod matches? :firework-rocket [recipe {:keys [n stacks]}]
   (and (>= n 2)
-       (let [[sh f] (reduce (partial rocket-step recipe)
-                            [false 0]
-                            stacks)]
+       (let [step (partial rocket-step recipe)
+             [sh f] (reduce step [false 0] stacks)]
          (boolean (and sh (pos? f))))))
 
 (defmethod assemble :firework-rocket [recipe input]
   (let [{:keys [fuel star result]} recipe
         ss (remove nil? (:stacks input))
         stars (remove #(test? fuel %) ss)
-        booms (vec (keep #(when (test? star %)
-                            (component % :firework-explosion))
-                         stars))
-        flight (- (count ss) (count stars))]
-    (create-over result (:count result)
-                 {:components {:fireworks {:flight-duration flight
-                                           :explosions booms}}})))
+        boom (fn [s] (when (test? star s)
+                       (component s :firework-explosion)))
+        booms (vec (keep boom stars))
+        flight (- (count ss) (count stars))
+        fw {:flight-duration flight :explosions booms}
+        comps {:components {:fireworks fw}}]
+    (create-over result (:count result) comps)))
 
 (defn- shape-of [{:keys [shapes]} s]
   (some (fn [[shape ing]] (when (test? ing s) shape)) shapes))
@@ -421,9 +417,9 @@
 
 (defmethod matches? :firework-star [recipe {:keys [n stacks]}]
   (and (>= n 2)
-       (let [[fu d] (reduce (partial star-step recipe)
-                            [false false false false false]
-                            stacks)]
+       (let [step (partial star-step recipe)
+             init [false false false false false]
+             [fu d] (reduce step init stacks)]
          (boolean (and fu d)))))
 
 (defn- firework-color [stack]
@@ -440,9 +436,9 @@
           :else [shape tr tw cs])))
 
 (defmethod assemble :firework-star [recipe {:keys [stacks]}]
-  (let [[shape tr tw cs] (reduce (partial star-part recipe)
-                                 [:small-ball false false []]
-                                 stacks)]
+  (let [step (partial star-part recipe)
+        init [:small-ball false false []]
+        [shape tr tw cs] (reduce step init stacks)]
     (some-> (create (:result recipe))
             (put :firework-explosion
                  {:shape shape :colors cs :fade-colors []
@@ -456,9 +452,8 @@
 
 (defmethod matches? :firework-star-fade [recipe {:keys [n stacks]}]
   (and (>= n 2)
-       (let [[d t] (reduce (partial fade-step recipe)
-                           [false false]
-                           stacks)]
+       (let [step (partial fade-step recipe)
+             [d t] (reduce step [false false] stacks)]
          (boolean (and d t)))))
 
 (def ^:private plain-explosion
@@ -564,9 +559,8 @@
 
 (defmethod matches? :shield-decoration [recipe {:keys [n stacks]}]
   (and (= 2 n)
-       (let [[clear pat] (reduce (partial shield-step recipe)
-                                 [false false]
-                                 stacks)]
+       (let [step (partial shield-step recipe)
+             [clear pat] (reduce step [false false] stacks)]
          (boolean (and clear pat)))))
 
 (defn- shield-parts [{:keys [banner target]} stacks]
@@ -602,13 +596,14 @@
 (defn index [] @crafting-index)
 
 (defn- candidates [idx {:keys [w h n]}]
-  (sort-by :order (concat (get-in idx [:shaped [w h n]])
-                          (get-in idx [:shapeless n])
-                          (:other idx))))
+  (let [rs (concat (get-in idx [:shaped [w h n]])
+                   (get-in idx [:shapeless n])
+                   (:other idx))]
+    (sort-by :order rs)))
 
 (defn find
-  "Returns the recipe that crafts input, the hinted recipe first if
-  it does."
+  "Returns the recipe that crafts input.
+  The hinted recipe comes first when it crafts input too."
   [idx input hint]
   (let [hinted (get-in idx [:by-id hint])]
     (if (and hinted (matches? hinted input))

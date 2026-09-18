@@ -61,8 +61,7 @@
 (def ^:private positive? #{:up :south :east})
 
 (defn- half-free?
-  "Returns true when nothing stands in the way of the lid on
-  that side."
+  "Returns true when nothing blocks the lid on that side."
   [chunks pos facing]
   (let [st (state-at chunks (mapv + pos (dir/offset facing)))
         ax (long (axis-index (dir/axis facing)))
@@ -80,34 +79,47 @@
       (half-free? (:chunks world) pos (:facing (block/props-of st)))))
 
 (def ^:private menu-builders
-  {:barrel      (fn [_ _ pos _] {:kind  :block :rows 3 :type :generic-9x3
-                                 :title {:translate "container.barrel"} :cells [pos]})
-   :shulker-box (fn [world _ pos st] (when (can-open? world pos st)
-                                       {:kind  :block :rows 3 :type :shulker-box
-                                        :title {:translate "container.shulkerBox"} :cells [pos]}))
-   :ender-chest (fn [_ chunks pos _] (when-not (blocked? chunks pos)
-                                       {:kind  :ender :rows 3 :type :generic-9x3
-                                        :title {:translate "container.enderchest"} :cells [] :pos pos}))
-   :stonecutter (fn [_ _ pos _] {:kind  :bench :type :stonecutter :size 2 :result 1
-                                 :title {:translate "container.stonecutter"}
-                                 :cells [] :pos pos :selected 0 :contents [nil nil]})
+  {:barrel
+   (fn [_ _ pos _]
+     {:kind :block :rows 3 :type :generic-9x3
+      :title {:translate "container.barrel"} :cells [pos]})
+   :shulker-box
+   (fn [world _ pos st]
+     (when (can-open? world pos st)
+       {:kind :block :rows 3 :type :shulker-box
+        :title {:translate "container.shulkerBox"} :cells [pos]}))
+   :ender-chest
+   (fn [_ chunks pos _]
+     (when-not (blocked? chunks pos)
+       {:kind :ender :rows 3 :type :generic-9x3
+        :title {:translate "container.enderchest"}
+        :cells [] :pos pos}))
+   :stonecutter
+   (fn [_ _ pos _]
+     {:kind :bench :type :stonecutter :size 2 :result 1
+      :title {:translate "container.stonecutter"}
+      :cells [] :pos pos :selected 0 :contents [nil nil]})
    :crafting-table
    (fn [_ _ pos _]
      {:kind :bench :type :crafting-table :screen :crafting
       :size 10 :result 0 :cells [] :pos pos
       :title {:translate "container.crafting"}
       :contents (vec (repeat 10 nil))})
-   :lectern     (fn [_ _ pos st] (when (lectern/has-book? st)
-                                   {:kind  :lectern :type :lectern
-                                    :title {:translate "container.lectern"}
-                                    :cells [] :pos pos}))
+   :lectern
+   (fn [_ _ pos st]
+     (when (lectern/has-book? st)
+       {:kind :lectern :type :lectern
+        :title {:translate "container.lectern"}
+        :cells [] :pos pos}))
    :brewing-stand
    (fn [_ _ pos _] {:kind  :block :type :brewing-stand :slots 5
                     :title {:translate "container.brewing"}
                     :cells [pos]})
-   :loom        (fn [_ _ pos _] {:kind  :bench :type :loom :size 4 :result 3
-                                 :title {:translate "container.loom"}
-                                 :cells [] :pos pos :selected 0 :patterns [] :contents [nil nil nil nil]})})
+   :loom
+   (fn [_ _ pos _]
+     {:kind :bench :type :loom :size 4 :result 3
+      :title {:translate "container.loom"} :cells [] :pos pos
+      :selected 0 :patterns [] :contents [nil nil nil nil]})})
 
 (def ^:private furnace-titles
   {:furnace       "container.furnace"
@@ -267,11 +279,12 @@
         e (be/at world pos)
         p (clamp-page want (page-count (:book e)))]
     (when (not= p (long (:page e 0)))
-      [[:set-block-entity pos (assoc e :page p)]
-       [:set-blocks [[pos (lectern/powered-state st true)]]]
-       [:schedule-ticks {(+ (long (:tick world)) lectern/impulse-ticks -1)
-                         [(chunk/block-pos->id pos)]}]
-       (out/all (out/level-event out/sound-page-turn pos 0))])))
+      (let [at (+ (long (:tick world)) lectern/impulse-ticks -1)
+            ids [(chunk/block-pos->id pos)]]
+        [[:set-block-entity pos (assoc e :page p)]
+         [:set-blocks [[pos (lectern/powered-state st true)]]]
+         [:schedule-ticks {at ids}]
+         (out/all (out/level-event out/sound-page-turn pos 0))]))))
 
 (defn dropped-book [world pos]
   (let [e (be/at world pos)
@@ -319,23 +332,26 @@
 
 (defn- chest-sound [world pos ^long st open?]
   (when (not= :left (:type (block/props-of st)))
-    [(out/all (out/sound (chest-sound-name st open?) (chest-sound-pos pos st)
-                         0.5 (pitch world pos :lid)))]))
+    (let [nm (chest-sound-name st open?)
+          p (chest-sound-pos pos st)]
+      [(out/all (out/sound nm p 0.5 (pitch world pos :lid)))])))
 
 (defn- barrel-sound [world pos ^long st open?]
   (let [[x y z] pos
-        [dx dy dz] (dir/offset (:facing (block/props-of st)))]
-    [(out/all (out/sound (if open? :block.barrel.open :block.barrel.close)
-                         [(+ (double x) 0.5 (* 0.5 (double dx)))
-                          (+ (double y) 0.5 (* 0.5 (double dy)))
-                          (+ (double z) 0.5 (* 0.5 (double dz)))]
-                         0.5 (pitch world pos :lid)))]))
+        [dx dy dz] (dir/offset (:facing (block/props-of st)))
+        p [(+ (double x) 0.5 (* 0.5 (double dx)))
+           (+ (double y) 0.5 (* 0.5 (double dy)))
+           (+ (double z) 0.5 (* 0.5 (double dz)))]
+        nm (if open? :block.barrel.open :block.barrel.close)]
+    [(out/all (out/sound nm p 0.5 (pitch world pos :lid)))]))
 
 (defn- shulker-sound [world pos open?]
-  (let [[x y z] pos]
-    [(out/all (out/sound (if open? :block.shulker-box.open :block.shulker-box.close)
-                         [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
-                         0.5 (pitch world pos :lid)))]))
+  (let [[x y z] pos
+        p [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)]
+        nm (if open?
+             :block.shulker-box.open
+             :block.shulker-box.close)]
+    [(out/all (out/sound nm p 0.5 (pitch world pos :lid)))]))
 
 (defn- ender-sound [world [x y z :as pos] open?]
   [(out/all
@@ -354,18 +370,25 @@
     (= 1 after) [[:shulker-anim pos {:status :opening}]]
     :else nil))
 
+(defn- shulker-step [status up down]
+  (case status
+    :opening (if (>= (float up) (float 1.0))
+               {:status :opened :progress (float 1.0)}
+               {:status :opening :progress up})
+    :closing (when (> (float down) (float 0.0))
+               {:status :closing :progress down})))
+
 (defn animate-deltas [world]
   (mapcat (fn [[pos {:keys [status progress]}]]
             (let [p (float progress)
-                  up (float (+ p open-step)) down (float (- p open-step))]
-              (if (not= :shulker-box (block/type-of (state-at (:chunks world) pos)))
+                  up (float (+ p open-step))
+                  down (float (- p open-step))
+                  st (state-at (:chunks world) pos)]
+              (if (not= :shulker-box (block/type-of st))
                 [[:shulker-anim pos nil]]
                 (case status
-                  :opening [[:shulker-anim pos (if (>= up (float 1.0))
-                                                 {:status :opened :progress (float 1.0)}
-                                                 {:status :opening :progress up})]]
-                  :closing [[:shulker-anim pos (when (> down (float 0.0))
-                                                 {:status :closing :progress down})]]
+                  (:opening :closing)
+                  [[:shulker-anim pos (shulker-step status up down)]]
                   nil))))
           (:shulker-anim world)))
 
@@ -396,16 +419,20 @@
         (when (= :shulker-box t) (trigger-deltas pos after))
         (recheck-delta world pos t before after)))))
 
+(defn- due-recheck [world ^long t [pos at]]
+  (when (<= (long at) t)
+    (let [st (state-at (:chunks world) pos)
+          type (block/type-of st)
+          open? (contains? container-types type)
+          n (if open? (viewers world pos) 0)
+          next-at (when (pos? n) (+ t recheck-delay))
+          event (when (not= :barrel type)
+                  [(out/all (out/block-event pos 1 (min 255 n)))])]
+      (cons [:container-recheck pos next-at] event))))
+
 (defn recheck-deltas [world]
   (let [t (long (:tick world))]
-    (mapcat (fn [[pos at]]
-              (when (<= (long at) t)
-                (let [st (state-at (:chunks world) pos)
-                      n (if (contains? container-types (block/type-of st)) (viewers world pos) 0)]
-                  (cons [:container-recheck pos (when (pos? n) (+ t recheck-delay))]
-                        (when (not= :barrel (block/type-of st))
-                          [(out/all (out/block-event pos 1 (min 255 n)))])))))
-            (:container-rechecks world))))
+    (mapcat #(due-recheck world t %) (:container-rechecks world))))
 
 (defn barrel-open-state [^long st open?]
   (block/state (block/block-of st) (assoc (block/props-of st) :open (if open? :true :false))))
@@ -593,8 +620,7 @@
 
 (defn take-sound [m]
   (when-let [kind (take-sounds (:type m))]
-    (let [[x y z] (:pos m)]
-      (out/all (out/sound kind
-                          [(+ (double x) 0.5) (+ (double y) 0.5)
-                           (+ (double z) 0.5)]
-                          1.0 1.0)))))
+    (let [[x y z] (:pos m)
+          p [(+ (double x) 0.5) (+ (double y) 0.5)
+             (+ (double z) 0.5)]]
+      (out/all (out/sound kind p 1.0 1.0)))))

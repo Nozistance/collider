@@ -1,6 +1,6 @@
 (ns collider.proto.codec
-  "Wire primitives of the protocol such as varints, NBT, item stacks
-  and framing."
+  "Wire primitives of the protocol.
+  Varints, NBT, item stacks and framing live here."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
             [collider.data :as data]
@@ -285,8 +285,8 @@
     (throw (ex-info "unknown NBT tag" {:tag t}))))
 
 (defn read-nbt
-  "Returns the NBT value at the read point, with compound keys as
-  keywords. Throws when it is too big or too deeply nested."
+  "Returns the NBT value at the read point, compound keys as keywords.
+  Throws when it is too big or too deeply nested."
   [^Buf buf]
   (let [in (ByteArrayInputStream. (.a buf) (.r buf) (- (.w buf) (.r buf)))
         d (DataInputStream. in)
@@ -313,19 +313,20 @@
       (let [scale (long (Math/ceil m))
             partial? (not= (bit-and scale 3) scale)
             markers (if partial? (bit-or (bit-and scale 3) 4) scale)
-            buffer (bit-or markers
-                           (bit-shift-left (lp-pack (/ x scale)) 3)
-                           (bit-shift-left (lp-pack (/ y scale)) 18)
-                           (bit-shift-left (lp-pack (/ z scale)) 33))]
+            px (bit-shift-left (lp-pack (/ x scale)) 3)
+            py (bit-shift-left (lp-pack (/ y scale)) 18)
+            pz (bit-shift-left (lp-pack (/ z scale)) 33)
+            buffer (bit-or markers px py pz)]
         (buf/write-byte! buf (unchecked-int buffer))
         (buf/write-byte! buf (unchecked-int (bit-shift-right buffer 8)))
         (buf/write-int! buf (unchecked-int (bit-shift-right buffer 16)))
         (when partial? (write-varint buf (bit-shift-right scale 2)))))))
 
 (defn write-block-pos [^Buf buf ^long x ^long y ^long z]
-  (buf/write-long! buf (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
-                          (bit-shift-left (bit-and z 0x3FFFFFF) 12)
-                          (bit-and y 0xFFF))))
+  (let [v (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
+                  (bit-shift-left (bit-and z 0x3FFFFFF) 12)
+                  (bit-and y 0xFFF))]
+    (buf/write-long! buf v)))
 
 (defn read-block-pos [^Buf buf]
   (let [v (buf/read-long buf)]
@@ -451,12 +452,14 @@
   (c-holder "sound_event" (record-codec :sound c-ident :range (c-opt c-float))))
 
 (def ^:private c-effect-details
-  (let [self (promise)]
-    @(deliver self
-              (record-codec :amplifier c-varint :duration c-varint :ambient c-bool
-                            :show-particles c-bool :show-icon c-bool
-                            :hidden (c-opt (codec (fn [^Buf b] ((:r @self) b))
-                                                  (fn [^Buf b v] ((:w @self) b v))))))))
+  (let [self (promise)
+        nested (codec (fn [^Buf b] ((:r @self) b))
+                      (fn [^Buf b v] ((:w @self) b v)))
+        details (record-codec
+                 :amplifier c-varint :duration c-varint
+                 :ambient c-bool :show-particles c-bool
+                 :show-icon c-bool :hidden (c-opt nested))]
+    @(deliver self details)))
 
 (def ^:private c-effect-instance
   (record-codec :effect (c-reg "mob_effect") :details c-effect-details))
@@ -511,18 +514,32 @@
 (def ^:private c-adventure (record-codec :predicates (c-list c-block-predicate)))
 
 (def ^:private c-attribute-display
-  (let [types {0 (record-codec) 1 (record-codec) 2 (record-codec :text c-text)}]
-    (codec (fn [^Buf b] (let [t (read-varint b)] (assoc ((:r (get types t)) b) :display t)))
-           (fn [^Buf b v] (let [t (long (:display v 0))]
-                            (write-varint b t) ((:w (get types t)) b v))))))
+  (let [types {0 (record-codec) 1 (record-codec)
+               2 (record-codec :text c-text)}
+        rd (fn [^Buf b]
+             (let [t (read-varint b)]
+               (assoc ((:r (get types t)) b) :display t)))
+        wr (fn [^Buf b v]
+             (let [t (long (:display v 0))]
+               (write-varint b t)
+               ((:w (get types t)) b v)))]
+    (codec rd wr)))
+
+(def ^:private attribute-operations
+  [:add-value :add-multiplied-base :add-multiplied-total])
+
+(def ^:private attribute-slots
+  [:any :mainhand :offhand :hand :feet :legs :chest :head :armor
+   :body :saddle])
+
+(def ^:private c-attribute-modifier
+  (record-codec :id c-ident :amount c-double
+                :operation (c-enum attribute-operations)))
 
 (def ^:private c-attribute-entry
   (record-codec :attribute (c-reg "attribute")
-                :modifier (record-codec :id c-ident :amount c-double
-                                        :operation (c-enum [:add-value :add-multiplied-base
-                                                            :add-multiplied-total]))
-                :slot (c-enum [:any :mainhand :offhand :hand :feet :legs :chest :head
-                               :armor :body :saddle])
+                :modifier c-attribute-modifier
+                :slot (c-enum attribute-slots)
                 :display c-attribute-display))
 
 (def ^:private c-tool-rule
@@ -545,21 +562,31 @@
 (def ^:private c-game-profile-properties
   (c-list (record-codec :name c-string :value c-string :signature (c-opt c-string))))
 
+(def ^:private c-named-profile
+  (record-codec :id c-uuid :name c-string
+                :properties c-game-profile-properties))
+
+(def ^:private c-partial-profile
+  (record-codec :name (c-opt c-string) :id (c-opt c-uuid)
+                :properties c-game-profile-properties))
+
+(def ^:private c-skin
+  (record-codec :body (c-opt c-ident) :cape (c-opt c-ident)
+                :elytra (c-opt c-ident)
+                :model (c-opt (c-enum [:wide :slim]))))
+
 (def ^:private c-profile
-  (record-codec
-    :profile (c-either (record-codec :id c-uuid :name c-string
-                                     :properties c-game-profile-properties)
-                       (record-codec :name (c-opt c-string) :id (c-opt c-uuid)
-                                     :properties c-game-profile-properties))
-    :skin (record-codec :body (c-opt c-ident) :cape (c-opt c-ident) :elytra (c-opt c-ident)
-                        :model (c-opt (c-enum [:wide :slim])))))
+  (record-codec :profile (c-either c-named-profile c-partial-profile)
+                :skin c-skin))
 
 (def ^:private c-typed-entity-data
   (fn [type-codec] (record-codec :type type-codec :data c-nbt)))
 
-(def ^:private c-instrument
-  (c-holder "instrument" (record-codec :sound c-sound :use-duration c-float
-                                       :range c-float :description c-text)))
+(def ^:private c-instrument-data
+  (record-codec :sound c-sound :use-duration c-float
+                :range c-float :description c-text))
+
+(def ^:private c-instrument (c-holder "instrument" c-instrument-data))
 
 (def ^:private c-material-assets
   (record-codec :base c-string
@@ -574,13 +601,133 @@
 (def ^:private c-banner-pattern
   (c-holder "banner_pattern" (record-codec :asset c-ident :translation-key c-string)))
 
+(def ^:private c-jukebox-song-data
+  (record-codec :sound c-sound :description c-text
+                :length c-float :comparator-output c-varint))
+
 (def ^:private c-jukebox-song
-  (c-holder "jukebox_song" (record-codec :sound c-sound :description c-text
-                                         :length c-float :comparator-output c-varint)))
+  (c-holder "jukebox_song" c-jukebox-song-data))
+
+(def ^:private c-painting-variant-data
+  (record-codec :width c-varint :height c-varint :asset c-ident
+                :title (c-opt c-text) :author (c-opt c-text)))
 
 (def ^:private c-painting-variant
-  (c-holder "painting_variant" (record-codec :width c-varint :height c-varint :asset c-ident
-                                             :title (c-opt c-text) :author (c-opt c-text))))
+  (c-holder "painting_variant" c-painting-variant-data))
+
+(def ^:private c-use-effects
+  (record-codec :can-sprint c-bool :interact-vibrations c-bool
+                :speed-multiplier c-float))
+
+(def ^:private c-custom-model-data
+  (record-codec :floats (c-list c-float) :flags (c-list c-bool)
+                :strings (c-list c-string) :colors (c-list c-int)))
+
+(def ^:private c-tooltip-display
+  (record-codec :hide-tooltip c-bool
+                :hidden (c-list (c-reg "data_component_type"))))
+
+(def ^:private c-food
+  (record-codec :nutrition c-varint :saturation c-float
+                :can-always-eat c-bool))
+
+(def ^:private consume-animations
+  [:none :eat :drink :block :bow :trident :crossbow :spyglass
+   :toot-horn :brush :bundle :spear])
+
+(def ^:private c-consumable
+  (record-codec :seconds c-float
+                :animation (c-enum consume-animations)
+                :sound c-sound :particles c-bool
+                :on-consume (c-list c-consume-effect)))
+
+(def ^:private c-tool
+  (record-codec :rules (c-list c-tool-rule)
+                :default-mining-speed c-float
+                :damage-per-block c-varint
+                :destroy-in-creative c-bool))
+
+(def ^:private c-weapon
+  (record-codec :damage-per-attack c-varint
+                :disable-blocking-seconds c-float))
+
+(def ^:private c-attack-range
+  (record-codec :min-reach c-float :max-reach c-float
+                :min-creative-reach c-float
+                :max-creative-reach c-float
+                :hitbox-margin c-float :mob-factor c-float))
+
+(def ^:private equipment-slots
+  [:mainhand :feet :legs :chest :head :offhand :body :saddle])
+
+(def ^:private c-equippable
+  (record-codec :slot (c-enum equipment-slots)
+                :equip-sound c-sound
+                :asset (c-opt c-ident)
+                :camera-overlay (c-opt c-ident)
+                :allowed-entities (c-opt (c-holder-set "entity_type"))
+                :dispensable c-bool :swappable c-bool
+                :damage-on-hurt c-bool :equip-on-interact c-bool
+                :can-be-sheared c-bool :shearing-sound c-sound))
+
+(def ^:private c-item-damage
+  (record-codec :threshold c-float :base c-float :factor c-float))
+
+(def ^:private c-blocks-attacks
+  (record-codec :block-delay-seconds c-float
+                :disable-cooldown-scale c-float
+                :damage-reductions (c-list c-damage-reduction)
+                :item-damage c-item-damage
+                :bypassed-by (c-opt (c-holder-set "damage_type"))
+                :block-sound (c-opt c-sound)
+                :disable-sound (c-opt c-sound)))
+
+(def ^:private c-piercing-weapon
+  (record-codec :deals-knockback c-bool :dismounts c-bool
+                :sound (c-opt c-sound) :hit-sound (c-opt c-sound)))
+
+(def ^:private c-kinetic-weapon
+  (record-codec :contact-cooldown-ticks c-varint
+                :delay-ticks c-varint
+                :dismount (c-opt c-kinetic-condition)
+                :knockback (c-opt c-kinetic-condition)
+                :damage (c-opt c-kinetic-condition)
+                :forward-movement c-float :damage-multiplier c-float
+                :sound (c-opt c-sound) :hit-sound (c-opt c-sound)))
+
+(def ^:private c-swing-animation
+  (record-codec :type (c-enum [:none :whack :stab])
+                :duration c-varint))
+
+(def ^:private c-potion-contents
+  (record-codec :potion (c-opt (c-reg "potion"))
+                :custom-color (c-opt c-int)
+                :custom-effects (c-list c-effect-instance)
+                :custom-name (c-opt c-string)))
+
+(def ^:private c-stew-effect
+  (record-codec :effect (c-reg "mob_effect") :duration c-varint))
+
+(def ^:private c-written-book
+  (record-codec :title (c-filterable c-string) :author c-string
+                :generation c-varint
+                :pages (c-list (c-filterable c-text))
+                :resolved c-bool))
+
+(def ^:private c-lodestone-target
+  (record-codec :dimension c-ident :pos c-block-pos))
+
+(def ^:private c-lodestone-tracker
+  (record-codec :target (c-opt c-lodestone-target) :tracked c-bool))
+
+(def ^:private c-fireworks
+  (record-codec :flight-duration c-varint
+                :explosions (c-list c-firework-explosion)))
+
+(def ^:private c-bee
+  (record-codec :data (c-typed-entity-data (c-reg "entity_type"))
+                :ticks-in-hive c-varint
+                :min-ticks-in-hive c-varint))
 
 (def components
   {:custom-data                 c-nbt
@@ -588,8 +735,7 @@
    :max-damage                  c-varint
    :damage                      c-varint
    :unbreakable                 c-unit
-   :use-effects                 (record-codec :can-sprint c-bool :interact-vibrations c-bool
-                                              :speed-multiplier c-float)
+   :use-effects                 c-use-effects
    :custom-name                 c-text
    :minimum-attack-charge       c-float
    :damage-type                 (c-reg "damage_type")
@@ -601,66 +747,30 @@
    :can-place-on                c-adventure
    :can-break                   c-adventure
    :attribute-modifiers         (c-list c-attribute-entry)
-   :custom-model-data           (record-codec :floats (c-list c-float) :flags (c-list c-bool)
-                                              :strings (c-list c-string) :colors (c-list c-int))
-   :tooltip-display             (record-codec :hide-tooltip c-bool
-                                              :hidden (c-list (c-reg "data_component_type")))
+   :custom-model-data           c-custom-model-data
+   :tooltip-display             c-tooltip-display
    :repair-cost                 c-varint
    :creative-slot-lock          c-unit
    :enchantment-glint-override  c-bool
    :intangible-projectile       c-nbt
-   :food                        (record-codec :nutrition c-varint :saturation c-float
-                                              :can-always-eat c-bool)
-   :consumable                  (record-codec :seconds c-float
-                                              :animation (c-enum [:none :eat :drink :block :bow
-                                                                  :trident :crossbow :spyglass
-                                                                  :toot-horn :brush :bundle :spear])
-                                              :sound c-sound :particles c-bool
-                                              :on-consume (c-list c-consume-effect))
+   :food                        c-food
+   :consumable                  c-consumable
    :use-remainder               (record-codec :convert-into c-template)
    :use-cooldown                (record-codec :seconds c-float :group (c-opt c-ident))
    :damage-resistant            (record-codec :types (c-holder-set "damage_type"))
-   :tool                        (record-codec :rules (c-list c-tool-rule)
-                                              :default-mining-speed c-float
-                                              :damage-per-block c-varint
-                                              :destroy-in-creative c-bool)
-   :weapon                      (record-codec :damage-per-attack c-varint
-                                              :disable-blocking-seconds c-float)
-   :attack-range                (record-codec :min-reach c-float :max-reach c-float
-                                              :min-creative-reach c-float :max-creative-reach c-float
-                                              :hitbox-margin c-float :mob-factor c-float)
+   :tool                        c-tool
+   :weapon                      c-weapon
+   :attack-range                c-attack-range
    :enchantable                 c-varint
-   :equippable                  (record-codec :slot (c-enum [:mainhand :feet :legs :chest :head
-                                                             :offhand :body :saddle])
-                                              :equip-sound c-sound
-                                              :asset (c-opt c-ident) :camera-overlay (c-opt c-ident)
-                                              :allowed-entities (c-opt (c-holder-set "entity_type"))
-                                              :dispensable c-bool :swappable c-bool
-                                              :damage-on-hurt c-bool :equip-on-interact c-bool
-                                              :can-be-sheared c-bool :shearing-sound c-sound)
+   :equippable                  c-equippable
    :repairable                  (record-codec :items (c-holder-set "item"))
    :glider                      c-unit
    :tooltip-style               c-ident
    :death-protection            (record-codec :death-effects (c-list c-consume-effect))
-   :blocks-attacks              (record-codec :block-delay-seconds c-float
-                                              :disable-cooldown-scale c-float
-                                              :damage-reductions (c-list c-damage-reduction)
-                                              :item-damage (record-codec :threshold c-float
-                                                                         :base c-float
-                                                                         :factor c-float)
-                                              :bypassed-by (c-opt (c-holder-set "damage_type"))
-                                              :block-sound (c-opt c-sound)
-                                              :disable-sound (c-opt c-sound))
-   :piercing-weapon             (record-codec :deals-knockback c-bool :dismounts c-bool
-                                              :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
-   :kinetic-weapon              (record-codec :contact-cooldown-ticks c-varint :delay-ticks c-varint
-                                              :dismount (c-opt c-kinetic-condition)
-                                              :knockback (c-opt c-kinetic-condition)
-                                              :damage (c-opt c-kinetic-condition)
-                                              :forward-movement c-float :damage-multiplier c-float
-                                              :sound (c-opt c-sound) :hit-sound (c-opt c-sound))
-   :swing-animation             (record-codec :type (c-enum [:none :whack :stab])
-                                              :duration c-varint)
+   :blocks-attacks              c-blocks-attacks
+   :piercing-weapon             c-piercing-weapon
+   :kinetic-weapon              c-kinetic-weapon
+   :swing-animation             c-swing-animation
    :additional-trade-cost       c-varint
    :stored-enchantments         (c-map (c-reg "enchantment") c-varint)
    :dye                         c-dye
@@ -671,18 +781,11 @@
    :map-post-processing         (c-enum [:lock :scale])
    :charged-projectiles         (c-list c-template)
    :bundle-contents             (c-list c-template)
-   :potion-contents             (record-codec :potion (c-opt (c-reg "potion"))
-                                              :custom-color (c-opt c-int)
-                                              :custom-effects (c-list c-effect-instance)
-                                              :custom-name (c-opt c-string))
+   :potion-contents             c-potion-contents
    :potion-duration-scale       c-float
-   :suspicious-stew-effects     (c-list (record-codec :effect (c-reg "mob_effect")
-                                                      :duration c-varint))
+   :suspicious-stew-effects     (c-list c-stew-effect)
    :writable-book-content       (c-list (c-filterable c-string))
-   :written-book-content        (record-codec :title (c-filterable c-string) :author c-string
-                                              :generation c-varint
-                                              :pages (c-list (c-filterable c-text))
-                                              :resolved c-bool)
+   :written-book-content        c-written-book
    :trim                        (record-codec :material c-trim-material :pattern c-trim-pattern)
    :debug-stick-state           c-nbt
    :entity-data                 (c-typed-entity-data (c-reg "entity_type"))
@@ -694,12 +797,9 @@
    :jukebox-playable            (record-codec :song c-jukebox-song)
    :provides-banner-patterns    (c-holder-set "banner_pattern")
    :recipes                     c-nbt
-   :lodestone-tracker           (record-codec :target (c-opt (record-codec :dimension c-ident
-                                                                           :pos c-block-pos))
-                                              :tracked c-bool)
+   :lodestone-tracker           c-lodestone-tracker
    :firework-explosion          c-firework-explosion
-   :fireworks                   (record-codec :flight-duration c-varint
-                                              :explosions (c-list c-firework-explosion))
+   :fireworks                   c-fireworks
    :profile                     c-profile
    :note-block-sound            c-ident
    :banner-patterns             (c-list (record-codec :pattern c-banner-pattern :color c-dye))
@@ -707,10 +807,7 @@
    :pot-decorations             (c-list (c-reg "item"))
    :container                   (c-list (c-opt c-template))
    :block-state                 (c-map c-string c-string)
-   :bees                        (c-list (record-codec :data (c-typed-entity-data
-                                                              (c-reg "entity_type"))
-                                                      :ticks-in-hive c-varint
-                                                      :min-ticks-in-hive c-varint))
+   :bees                        (c-list c-bee)
    :sulfur-cube-content         (record-codec :absorbed c-template)
    :lock                        c-nbt
    :container-loot              c-nbt
@@ -749,17 +846,20 @@
   (or (get components kw)
       (throw (ex-info "no codec for data component" {:component kw}))))
 
+(defn- read-component [^Buf buf]
+  (let [k (data/entry-name "data_component_type" (read-varint buf))]
+    [k ((:r (component-codec k)) buf)]))
+
+(defn- read-removed [^Buf buf]
+  (data/entry-name "data_component_type" (read-varint buf)))
+
 (defn read-patch [^Buf buf]
   (let [added (read-count buf)
         removed (read-count buf)]
     (if (and (zero? added) (zero? removed))
       nil
-      (let [cs (mapv (fn [_]
-                       (let [k (data/entry-name "data_component_type" (read-varint buf))]
-                         [k ((:r (component-codec k)) buf)]))
-                     (range added))
-            rs (mapv (fn [_] (data/entry-name "data_component_type" (read-varint buf)))
-                     (range removed))]
+      (let [cs (mapv (fn [_] (read-component buf)) (range added))
+            rs (mapv (fn [_] (read-removed buf)) (range removed))]
         (cond-> {}
                 (seq cs) (assoc :components (apply array-map (apply concat cs)))
                 (seq rs) (assoc :removed (set rs)))))))
@@ -788,9 +888,9 @@
         (merge {:item item :count n} (read-patch buf))))))
 
 (defn read-hashed-stack
-  "Returns the stack the client claims is in a slot, or nil when it is
-  empty. Component values arrive as hashes. The result only says
-  whether the stack has any."
+  "Returns the stack the client claims is in a slot.
+  An empty slot gives nil. Component values arrive as hashes, so the
+  result only says whether the stack has any."
   [^Buf buf]
   (when (buf/read-boolean buf)
     (let [item (read-varint buf)
@@ -802,27 +902,36 @@
         (cond-> {:item (data/entry-name "item" item) :count n}
                 (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
-(def ^:private data-types {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
-                           :optional-block-pos 11 :block-state 14 :particle 16 :pose 20})
+(def ^:private data-types
+  {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
+   :optional-block-pos 11 :block-state 14 :particle 16 :pose 20})
+
+(defn- write-data-pos [^Buf buf v]
+  (let [[x y z] v]
+    (write-block-pos buf (long x) (long y) (long z))))
+
+(defn- write-data-value [^Buf buf type v]
+  (case type
+    :byte (buf/write-byte! buf (int v))
+    :int (write-varint buf (long v))
+    :float (buf/write-float! buf (float v))
+    :item (write-item-stack buf v)
+    :boolean (buf/write-boolean! buf (boolean v))
+    :block-pos (write-data-pos buf v)
+    :optional-block-pos
+    (do (buf/write-boolean! buf (some? v))
+        (when v (write-data-pos buf v)))
+    :block-state (write-varint buf (long v))
+    :particle (let [[t c] v]
+                (write-varint buf (long t))
+                (buf/write-int! buf (int c)))
+    :pose (write-varint buf (long v))))
 
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
     (buf/write-byte! buf (int idx))
     (write-varint buf (data-types type))
-    (case type
-      :byte (buf/write-byte! buf (int v))
-      :int (write-varint buf (long v))
-      :float (buf/write-float! buf (float v))
-      :item (write-item-stack buf v)
-      :boolean (buf/write-boolean! buf (boolean v))
-      :block-pos (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))
-      :optional-block-pos (do (buf/write-boolean! buf (some? v))
-                              (when v (let [[x y z] v] (write-block-pos buf (long x) (long y) (long z)))))
-      :block-state (write-varint buf (long v))
-      :particle (let [[t c] v]
-                  (write-varint buf (long t))
-                  (buf/write-int! buf (int c)))
-      :pose (write-varint buf (long v))))
+    (write-data-value buf type v))
   (buf/write-byte! buf 0xFF))
 
 (defn offline-uuid ^UUID [^String name]
