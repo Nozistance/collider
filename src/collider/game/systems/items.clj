@@ -33,7 +33,7 @@
              (item-entities world))))
 
 (defn- same-stack? [a b]
-  (= (:item a) (:item b)))
+  (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
 (defn- throw-velocity [world eid]
   (let [e (get-in world [:entities eid])
