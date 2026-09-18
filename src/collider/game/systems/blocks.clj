@@ -13,6 +13,7 @@
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
+            [collider.game.systems.consume :as consume]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -36,6 +37,7 @@
    [(item-is :flint-and-steel) (when-hand (on-args tools/flint-deltas))]
    [(item-is :fire-charge) (when-hand (on-args tools/firecharge-deltas))]
    [(item-is :bucket) (when-use (fn [{:keys [world eid at]}] (bucket/scoop-deltas world eid at)))]
+   [(item-is :glass-bottle) (when-use (fn [{:keys [world eid at]}] (consume/bottle-deltas world eid at)))]
    [(item-is :lily-pad) (when-use (fn [{:keys [world eid at]}] (bucket/lily-deltas world eid at)))]
    [(item-is :potion) (when-hand (fn [{:keys [world eid pos face]}] (tools/mud-deltas world eid pos face)))]
    [(item-is :bone-meal) (when-hand (on-args tools/bonemeal-deltas))]
@@ -73,6 +75,7 @@
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
     :place (nth args 4 nil)
+    :use-item (nth args 1 nil)
     nil))
 
 (defn- acted-at [world eid origin pos]
@@ -102,6 +105,8 @@
   (case tag
     :dig (dig/dig-deltas world args)
     :place (place-deltas world args (get origins i))
+    :use-item (place-deltas world [(first args) [-1 -1 -1] 255 nil [0 0 0]]
+                            (get origins i))
     :sign-update (use/sign-update-deltas world args)
     nil))
 

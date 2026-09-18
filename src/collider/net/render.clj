@@ -86,7 +86,7 @@
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :pose) (conj [6 :pose (pose-id (:pose meta) 0)])
           (contains? meta :using-item?)
-          (conj [8 :byte (if (:using-item? meta) 0x01 0)])
+          (conj [8 :byte (case (:using-item? meta) :off 0x03 (nil false) 0 0x01)])
           (contains? meta :sleeping-pos)
           (conj [14 :optional-block-pos (:sleeping-pos meta)])))
 
@@ -257,9 +257,12 @@
       (when-let [id (get reg ev)] [id src])
       (when-let [id (get reg kind)] [id 4]))))
 
+(def ^:private sound-sources {:blocks 4 :neutral 6 :players 7})
+
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
-    {:packet :sound :sound id :source src :pos (:pos m) :volume (:volume m) :pitch (:pitch m)}
+    {:packet :sound :sound id :pos (:pos m) :volume (:volume m) :pitch (:pitch m)
+     :source (get sound-sources (:source m) src)}
     (once! [:sound (:kind m)])))
 
 (defn- explode-packet [m eid]

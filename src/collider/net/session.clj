@@ -60,11 +60,17 @@
      [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
      (:sequence m)]))
 
+(def ^:private ^:const release-use-item 5)
+(defn- dig-event [eid m]
+  (if (= release-use-item (long (:action m)))
+    [:release-use eid]
+    [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]))
+
 (def ^:private action-events
-  {:player-action         (fn [eid m] [:dig eid (:action m) (:pos m) (:face m) (:sequence m)])
+  {:player-action         dig-event
    :use-item-on           place-on-block
-   :use-item              (fn [eid m] [:place eid [-1 -1 -1] -1 nil [0 0 0] (:sequence m)
-                                       {:yaw (:yaw m) :pitch (:pitch m)}])
+   :use-item              (fn [eid m] [:use-item eid (if (zero? (long (:hand m))) :main :off)
+                                       (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}])
    :swing                 (fn [eid _] [:swing eid])
    :player-command        (fn [eid m] [:entity-action eid (:action m)])
    :interact              (fn [eid m] (case (long (:action m))

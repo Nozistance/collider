@@ -143,8 +143,14 @@
 (defn collect [item-eid collector-eid]
   {:msg :collect :eid item-eid :collector collector-eid})
 
-(defn sound [kind pos volume pitch]
-  {:msg :sound :kind kind :pos pos :volume (double volume) :pitch (double pitch)})
+(defn sound
+  "Returns the effect of a sound at pos. Source names the mixer channel when it
+   is not the one the sound is listed under."
+  ([kind pos volume pitch] (sound kind pos volume pitch nil))
+  ([kind pos volume pitch source]
+   (cond-> {:msg :sound :kind kind :pos pos
+            :volume (double volume) :pitch (double pitch)}
+           source (assoc :source source))))
 
 (defn particles [kind state pos count speed]
   {:msg :particles :kind kind :state state :pos pos :count count :speed (double speed)})

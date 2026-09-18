@@ -8,6 +8,7 @@
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.consume :as consume]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.dripleaf :as dripleaf]
@@ -65,6 +66,7 @@
 (def phases [[#'spawning/placing]
              [#'pose/pose]
              [#'furnaces/furnace-cooking]
+             [#'consume/consume]
              systems
              [#'explosions/explosions]
              post-systems

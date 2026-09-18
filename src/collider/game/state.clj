@@ -247,9 +247,18 @@
 (defn- sword? [item]
   (contains? @swords item))
 
+(defn- stopped-use [e]
+  (assoc e :using-item? false :using nil))
+
+(defn- switched [e ^long slot]
+  (cond-> (assoc e :held-slot slot)
+          (and (not= slot (long (or (:held-slot e) 0)))
+               (not= :off (get-in e [:using :hand])))
+          stopped-use))
+
 (defn- held-item [w eid slot]
   (if (<= 0 (long slot) 8)
-    (update-entity w eid assoc :held-slot (long slot) :using-item? false)
+    (update-entity w eid switched (long slot))
     w))
 
 (defn- wrap-degrees ^double [^double d]
@@ -262,23 +271,48 @@
     (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
+(def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
 (defn use-origin [w [tag & args]]
-  (when (= :place tag)
-    (let [[eid _ _ _ _ _ rot] args]
-      (when-let [e (get-in w [:entities eid])]
-        (select-keys (snapped e rot) [:pos :yaw :pitch :sneaking? :flying])))))
+  (let [rot (case tag :place (nth args 6 nil) :use-item (nth args 3 nil) nil)]
+    (when (#{:place :use-item} tag)
+      (when-let [e (get-in w [:entities (first args)])]
+        (select-keys (snapped e rot) origin-keys)))))
 
-(defn- use-item [w eid face item rot]
-  (let [w (update-entity w eid snapped rot)]
-    (if (and (= 255 (bit-and (long face) 0xFF))
-             (sword? item))
-      (update-entity w eid assoc :using-item? true)
-      w)))
+(defn hand-slot
+  "Returns the inventory slot the hand holds."
+  ^long [e hand]
+  (if (= :off hand) 45 (+ 36 (long (or (:held-slot e) 0)))))
 
-(defn- release-item [w eid status]
-  (if (= 5 (long status))
-    (update-entity w eid assoc :using-item? false)
-    w))
+(defn hand-stack [e hand]
+  (get-in e [:inventory (hand-slot e hand)]))
+
+(defn consumable
+  "Returns the Consumable component of the stack, or nil when it has none."
+  [stack]
+  (when stack (get-in (data/items) [(:item stack) :consumable])))
+
+(defn consume-ticks ^long [c]
+  (long (* 20.0 (double (:seconds c)))))
+
+(defn- start-use [e hand ^long tick]
+  (let [stack (hand-stack e hand)
+        c (consumable stack)]
+    (cond
+      (:using e) e
+      c (assoc e :using-item? true
+                 :using {:hand hand :item (:item stack) :started tick
+                         :remaining (consume-ticks c)})
+      (sword? (:item stack)) (assoc e :using-item? true)
+      :else e)))
+
+(defn- use-item [w eid hand rot]
+  (-> (update-entity w eid snapped rot)
+      (update-entity eid start-use hand (long (:tick w)))))
+
+(defn- placed [w eid face rot]
+  (if (= 255 (bit-and (long face) 0xFF))
+    (use-item w eid :main rot)
+    (update-entity w eid snapped rot)))
 
 (defn- set-slot [w eid slot stack]
   (update-entity w eid
@@ -380,8 +414,9 @@
    :client-settings (fn [w [_ eid sp]] (update-entity w eid assoc :skin-parts sp))
    :held-item       (fn [w [_ eid slot]] (held-item w eid slot))
    :creative-slot   (fn [w [_ eid slot stack]] (creative-slot w eid slot stack))
-   :place           (fn [w [_ eid _ face item _ _ rot]] (use-item w eid face item rot))
-   :dig             (fn [w [_ eid status]] (release-item w eid status))})
+   :place           (fn [w [_ eid _ face _ _ _ rot]] (placed w eid face rot))
+   :use-item        (fn [w [_ eid hand _ rot]] (use-item w eid hand rot))
+   :release-use     (fn [w [_ eid]] (update-entity w eid stopped-use))})
 
 (defn- unchanged [w _]
   w)

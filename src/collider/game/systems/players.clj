@@ -33,7 +33,8 @@
   (cond-> {:burning?    (boolean (:burning? e))
            :sneaking?   (boolean (:sneaking? e))
            :sprinting?  (boolean (:sprinting? e))
-           :using-item? (boolean (:using-item? e))
+           :using-item? (if (:using-item? e)
+                          (or (get-in e [:using :hand]) :main) false)
            :swimming?   (boolean (:swimming? e))
            :pose        (or (:pose e) :standing)
            :skin-parts  (long (or (:skin-parts e) 0))}

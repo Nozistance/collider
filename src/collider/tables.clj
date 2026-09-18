@@ -691,6 +691,28 @@
                 (when (contains? cs json) [k (f (get cs json))])))
         crafted-components))
 
+(defn- consume-effect [e]
+  (cond-> (sorted-map :type (kw (get e "type")))
+    (get e "sound") (assoc :sound (kw (get e "sound")))))
+
+(defn- consumable
+  "Returns the Consumable component with the defaults of its codec filled in."
+  [v]
+  (sorted-map
+    :seconds (flt (get v "consume_seconds" 1.6))
+    :animation (kw (get v "animation" "eat"))
+    :sound (kw (get v "sound" "minecraft:entity.generic.eat"))
+    :particles? (get v "has_consume_particles" true)
+    :effects (mapv consume-effect (get v "on_consume_effects"))))
+
+(defn- food [v]
+  (sorted-map :nutrition (get v "nutrition")
+              :saturation (flt (get v "saturation"))
+              :always? (get v "can_always_eat" false)))
+
+(defn- use-remainder [v]
+  (sorted-map :item (kw (get v "id")) :count (get v "count" 1)))
+
 (defn- item [^File f]
   (let [cs (get (json/read-str (slurp f)) "components")
         n (get cs "minecraft:max_stack_size" 64)
@@ -701,9 +723,15 @@
         egg (get-in cs ["minecraft:entity_data" "id"])
         hit (attack-damage cs)
         resists (get-in cs ["minecraft:damage_resistant" "types"])
+        eats (get cs "minecraft:consumable")
+        left (get cs "minecraft:use_remainder")
+        grub (get cs "minecraft:food")
         tag #(str/replace (subs % 1) #"^minecraft:" "")]
     (cond-> (sorted-map)
       (not= n 64) (assoc :max-stack n)
+      eats (assoc :consumable (consumable eats))
+      left (assoc :use-remainder (use-remainder left))
+      grub (assoc :food (food grub))
       slot (assoc :equip (kw slot))
       song (assoc :jukebox-song (kw song))
       dye (assoc :dye (kw dye))
