@@ -320,7 +320,6 @@
            :else (suggest-after-command form more target)))))))
 
 (def ^:private brigadier-integer (keyword "brigadier:integer"))
-(def ^:private brigadier-double (keyword "brigadier:double"))
 (def ^:private brigadier-bool (keyword "brigadier:bool"))
 (defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
   (case kind

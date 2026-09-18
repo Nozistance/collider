@@ -33,12 +33,6 @@
       (let [s (if (mobs/baby? e) 0.5 1.0)]
         [(* s (double (:half m))) (* s (double (:height m)))]))))
 
-(defn box-hits? [[x1 y1 z1 x2 y2 z2] [px py pz] [half h]]
-  (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
-    (and (> (+ px half) (double x1)) (< (- px half) (double x2))
-         (> (+ py h) (double y1)) (< py (double y2))
-         (> (+ pz half) (double z1)) (< (- pz half) (double z2)))))
-
 (defn- box-hits-at? [^doubles a ^long n [px py pz] [half h]]
   (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
     (loop [i 0]
@@ -144,7 +138,7 @@
   (block/state (block/block-of st) (assoc (block/props-of st) :waterlogged (if logged? :true :false))))
 
 (defn waterlogged [world pos' state]
-  (if (and (= :water (liquid/liquid-class (block-at world pos')))
+  (if (and (= :water (block/liquid-class (block-at world pos')))
            (contains? (block/props-of state) :waterlogged))
     (block/state (block/block-of state) (assoc (block/props-of state) :waterlogged :true))
     state))

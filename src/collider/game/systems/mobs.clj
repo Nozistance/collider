@@ -12,6 +12,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.state :as state]
             [collider.game.out :as out]
+            [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.space.path :as path]
             [collider.world.phys :as phys])
@@ -119,11 +120,11 @@
     (loop [cy (long (Math/floor (+ y 0.4)))]
       (cond
         (> cy y1) false
-        (= :water (liquid/liquid-class (sense/block-at world cx cy cz))) true
+        (= :water (block/liquid-class (sense/block-at world cx cy cz))) true
         :else (recur (inc cy))))))
 
 (defn- water-above? [world p]
-  (= :water (liquid/liquid-class
+  (= :water (block/liquid-class
               (sense/block-at world (long (Math/floor (v/x p)))
                               (long (Math/floor (+ (v/y p) 0.6)))
                               (long (Math/floor (v/z p)))))))
@@ -343,10 +344,6 @@
            (long (Math/floor (double old-walked))))
       (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
       acc)))
-
-(def ^:private mob-keys
-  [:pos :vel :yaw :pitch :on-ground :task :follow :no-action :baby-until
-   :tempt-cooldown-until :say-tick :walked :head-yaw :look :jump-cd :wet? :sheared?])
 
 (defmacro ^:private diff-fields
   [old new & ks]
