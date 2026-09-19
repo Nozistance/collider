@@ -1017,7 +1017,8 @@
         (cond-> {:item (data/entry-name "item" item) :count n}
                 (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
 
-(def ^:private data-types
+(def data-types
+  "Entity data type -> its place in the `EntityDataSerializers` order."
   {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
    :optional-block-pos 11 :block-state 14 :particle 16 :pose 20
    :cow-variant 23 :cow-sound-variant 24})

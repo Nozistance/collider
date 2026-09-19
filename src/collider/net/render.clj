@@ -10,6 +10,7 @@
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
             [collider.log :as log]
+            [collider.proto.entitydata :as ed]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -97,14 +98,17 @@
 (defn- using-item-byte ^long [meta]
   (case (:using-item? meta) :off 0x03 (nil false) 0 0x01))
 
-(defn- player-data [meta]
-  (cond-> []
-          (flags? meta) (conj [0 :byte (flags-byte meta)])
-          (contains? meta :pose) (conj [6 :pose (pose-id (:pose meta) 0)])
+(defn- common-fields [meta]
+  (cond-> {} (flags? meta) (assoc :shared-flags (flags-byte meta))))
+
+(defn- player-fields [meta]
+  (cond-> (common-fields meta)
+          (contains? meta :pose)
+          (assoc :pose (pose-id (:pose meta) 0))
           (contains? meta :using-item?)
-          (conj [8 :byte (using-item-byte meta)])
+          (assoc :living-flags (using-item-byte meta))
           (contains? meta :sleeping-pos)
-          (conj [14 :optional-block-pos (:sleeping-pos meta)])))
+          (assoc :sleeping-pos (:sleeping-pos meta))))
 
 (defn- color-byte ^long [meta]
   (bit-or (bit-and (long (or (:color meta) 0)) 15)
@@ -115,40 +119,65 @@
 (defn- voice-id ^long [v]
   (data/datapack-id "cow_sound_variant" v))
 
-(defn- animal-data [meta]
-  (cond-> []
-          (flags? meta) (conj [0 :byte (flags-byte meta)])
-          (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
-          (contains? meta :variant) (conj [18 :int (long (:variant meta))])
-          (contains? meta :cow-variant)
-          (conj [18 :cow-variant (coat-id (:cow-variant meta))])
-          (contains? meta :cow-sound)
-          (conj [19 :cow-sound-variant (voice-id (:cow-sound meta))])
-          (contains? meta :color)
-          (conj [18 :byte (color-byte meta)])))
+(defn- animal-fields [meta]
+  (cond-> (common-fields meta)
+          (contains? meta :baby?)
+          (assoc :baby (boolean (:baby? meta)))))
 
-(defn- cloud-data [meta]
-  (cond-> []
-          (contains? meta :radius) (conj [8 :float (:radius meta)])
-          (contains? meta :waiting?) (conj [9 :boolean (:waiting? meta)])
+(defn- cow-fields [meta]
+  (cond-> (animal-fields meta)
+          (contains? meta :cow-variant)
+          (assoc :variant (coat-id (:cow-variant meta)))
+          (contains? meta :cow-sound)
+          (assoc :sound-variant (voice-id (:cow-sound meta)))))
+
+(defn- stack-fields [meta]
+  (cond-> {} (contains? meta :stack) (assoc :item (:stack meta))))
+
+(defn- tnt-fields [meta]
+  (let [f (:fuse meta)]
+    (if (and f (not= f (ed/default :primed-tnt :fuse)))
+      {:fuse f}
+      {})))
+
+(defn- cloud-fields [meta]
+  (cond-> {}
+          (contains? meta :radius) (assoc :radius (:radius meta))
+          (contains? meta :waiting?) (assoc :waiting (:waiting? meta))
           (contains? meta :color)
-          (conj [10 :particle [@entity-effect-particle (:color meta)]])))
+          (assoc :particle [@entity-effect-particle (:color meta)])))
+
+(def ^:private entity-class
+  {:player :player :sheep :sheep :cow :cow :mooshroom :mushroom-cow
+   :item :item-entity :tnt :primed-tnt :falling-block :falling-block
+   :area-effect-cloud :area-effect-cloud})
+
+(defn- class-of [kind]
+  (or (entity-class kind)
+      (when (entity/thrown-types kind) :throwable-item-projectile)))
+
+(defn- entity-fields [kind meta]
+  (case kind
+    :player (player-fields meta)
+    :cow (cow-fields meta)
+    :sheep (cond-> (animal-fields meta)
+                   (contains? meta :color)
+                   (assoc :wool (color-byte meta)))
+    :mooshroom (cond-> (animal-fields meta)
+                       (contains? meta :variant)
+                       (assoc :type (long (:variant meta))))
+    :item (merge (common-fields meta) (stack-fields meta))
+    :tnt (tnt-fields meta)
+    :falling-block (cond-> {}
+                           (contains? meta :start)
+                           (assoc :start-pos (:start meta)))
+    :area-effect-cloud (cloud-fields meta)
+    (stack-fields meta)))
 
 (defn- entity-data [kind meta]
-  (case kind
-    :player (player-data meta)
-    (:sheep :cow :mooshroom) (animal-data meta)
-    :item (cond-> []
-                  (flags? meta) (conj [0 :byte (flags-byte meta)])
-                  (contains? meta :stack) (conj [8 :item (:stack meta)]))
-    :tnt (let [f (:fuse meta 80)]
-           (if (or (= 80 f) (not (contains? meta :fuse))) [] [[8 :int f]]))
-    :falling-block (if (contains? meta :start)
-                     [[8 :block-pos (:start meta)]] [])
-    :area-effect-cloud (cloud-data meta)
-    (if (entity/thrown-types kind)
-      (cond-> [] (contains? meta :stack) (conj [8 :item (:stack meta)]))
-      [])))
+  (if-let [cls (class-of kind)]
+    (ed/entries cls (entity-fields kind meta))
+    []))
 
 (def ^:private equipment-slots [0 2 3 4 5])
 
