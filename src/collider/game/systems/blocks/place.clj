@@ -75,8 +75,13 @@
                                                  (edit/held-stack world eid))]]
           (when (sign/kind state) [(out/to eid (out/sign-editor pos true))])))
 
-(defn- second-cell-deltas [world eid pos pos' state ppos pstate ok?]
-  (if (and (chunk/in-range? (ppos 1)) (ok?) (not (edit/obstructed? world ppos pstate)))
+(defn- second-cell-deltas
+  "Places a two-cell block. Only the clicked cell must be clear of
+  players; the other half goes down unchecked, as vanilla places it
+  after the fact."
+  [world eid pos pos' state ppos pstate ok?]
+  (if (and (chunk/in-range? (ppos 1)) (ok?)
+           (not (edit/obstructed? world pos' state)))
     (edit/placed-deltas world eid [[pos' state] [ppos pstate]])
     (edit/reject-deltas world eid pos pos')))
 
