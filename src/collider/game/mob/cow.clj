@@ -32,6 +32,6 @@
   "Returns the deltas for players who milk a cow with a bucket.
   A calf gives no milk."
   [world events _]
-  (let [f (fn [peid p _ e]
+  (let [f (fn [peid p _ e _]
             (when (milkable? p e) (milked world peid p)))]
     (animal/on-interact world events f)))

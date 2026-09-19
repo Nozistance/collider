@@ -121,9 +121,10 @@
                  (entity/item at (shear-vel t eid i) s)]))]
     (map-indexed one (singles (wool-stacks t eid e)))))
 
-(defn- sheared [t eid e]
+(defn- sheared [t peid hand eid e]
   (list* [:merge-entity eid {:sheared? true}]
          (out/all (out/sound :sheep/shear (:pos e) 1.0 1.0))
+         (animal/swing peid hand)
          (shorn-items t eid e)))
 
 (defn- dye-in-hand [hands]
@@ -138,9 +139,9 @@
 (defn- shearable? [e]
   (and (not (mobs/baby? e)) (not (:sheared? e))))
 
-(defn- used [t peid eid e hands]
+(defn- used [t peid hand eid e hands]
   (cond
-    (hands :shears) (when (shearable? e) (sheared t eid e))
+    (hands :shears) (when (shearable? e) (sheared t peid hand eid e))
     (:sheared? e) nil
     :else (when-let [c (dye-in-hand hands)] (dyed peid eid e c))))
 
@@ -149,9 +150,9 @@
   Shears take the wool of a grown unshorn sheep, and a dye of
   another colour recolours one that still wears its wool."
   [world events t]
-  (let [f (fn [peid p eid e]
+  (let [f (fn [peid p eid e hand]
             (when (= :sheep (:type e))
-              (used t peid eid e (sense/hands-of p))))]
+              (used t peid hand eid e (sense/hands-of p))))]
     (animal/on-interact world events f)))
 
 (def ^:private eat

@@ -469,7 +469,7 @@
    :tab-header        (fn [_ m] [{:packet :tab-list :header (:header m) :footer (:footer m)}])})
 
 (defn- animate-action ^long [kind]
-  (case kind :swing 0 :wake-up 2 :crit 4 0))
+  (case kind :swing 0 :wake-up 2 :swing-off 3 :crit 4 0))
 
 (def ^:private entity-fx
   {:move      (fn [_ m]

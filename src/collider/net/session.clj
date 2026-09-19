@@ -77,7 +77,7 @@
    :swing                 (fn [eid _] [:swing eid])
    :player-command        (fn [eid m] [:entity-action eid (:action m)])
    :interact              (fn [eid m] (case (long (:action m))
-                                        0 [:interact eid (:target m)]
+                                        0 [:interact eid (:target m) (:hand m)]
                                         1 [:attack eid (:target m)]
                                         nil))
    :pick-item-from-block  (fn [eid m] [:pick eid {:pos (:pos m) :include-data (:include-data m)}])

@@ -356,14 +356,21 @@
 (defn on-interact
   "Returns the deltas f gives for each interact event.
   The player and its target must both exist. f takes the player
-  eid, the player, the target eid and the target."
+  eid, the player, the target eid, the target and the hand used,
+  0 for the main hand."
   [world events f]
-  (mapcat (fn [[tag peid target]]
+  (mapcat (fn [[tag peid target hand]]
             (when (= :interact tag)
               (let [p (get-in world [:entities peid])
                     e (get-in world [:entities target])]
-                (when (and p e) (f peid p target e)))))
+                (when (and p e) (f peid p target e (or hand 0))))))
           events))
+
+(defn swing
+  "The arm swing the server plays for everyone, the player too, when
+  vanilla answers an interaction with SUCCESS_SERVER."
+  [peid hand]
+  (out/all (out/animation peid (if (= 1 (long hand)) :swing-off :swing))))
 
 (defn- feedable? [e t]
   (and (not (mobs/baby? e))
@@ -374,14 +381,15 @@
   (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
     (- remaining (* seconds ticks-per-second))))
 
-(defn- fed-deltas [t target e]
+(defn- fed-deltas [t peid hand target e]
   (cond
     (mobs/baby? e)
     (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
       [[:merge-entity target {:baby-until (+ (long t) (fed-growth remaining))}]])
     (feedable? e t)
     [[:merge-entity target {:love-until (+ (long t) love-ticks)}]
-     (out/all (out/status target :love))]))
+     (out/all (out/status target :love))
+     (swing peid hand)]))
 
 (defn egg-deltas
   "Returns the deltas for players who click a mob with its own spawn
@@ -389,14 +397,15 @@
   specs maps a mob type to its breed spec."
   [specs world events t]
   (on-interact world events
-               (fn [_ p eid e]
+               (fn [peid p eid e hand]
                  (when-let [spec (specs (:type e))]
                    (when (some #(= (:type e) (mobs/egg-type %)) (sense/hands-of p))
-                     [[:spawn-entity (newborn spec t eid e e)]])))))
+                     [[:spawn-entity (newborn spec t eid e e)]
+                      (swing peid hand)])))))
 
 (defn feed-deltas [world events t]
   (on-interact world events
-               (fn [_ p target e]
+               (fn [peid p target e hand]
                  (when (and (mobs/mob-type? (:type e))
                             (contains? (sense/hands-of p) (mobs/breeding-item (:type e))))
-                   (fed-deltas t target e)))))
+                   (fed-deltas t peid hand target e)))))

@@ -140,7 +140,7 @@
   The item is a bowl, shears or a flower and the mooshroom is
   grown. A bowl goes before shears and shears before a flower."
   [world events t]
-  (let [f (fn [peid p eid e]
+  (let [f (fn [peid p eid e _]
             (when (and (= :mooshroom (:type e))
                        (not (mobs/baby? e)))
               (used world peid eid e (sense/hands-of p) t)))]
