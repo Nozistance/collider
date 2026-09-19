@@ -388,7 +388,7 @@
                          ks)))))
 
 (def ^:private loose-keys
-  [:nav :move :jump :body :follow-at :in-lava?])
+  [:nav :move :jump :body :follow-at :in-lava? :float?])
 
 (defn- mob-changes
   "The fields of a mob that one tick left different.

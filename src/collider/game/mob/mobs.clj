@@ -83,15 +83,13 @@
    :sounds         :cow
    :sound-variants 2
    :breeding-item  :wheat
-   :spawn-color    cow-variant
-   :speeds         {:panic 2.0 :tempt 1.25 :follow 1.25}})
+   :spawn-color    cow-variant})
 
 (def types
   {:sheep     {:half          0.45 :height 1.3 :speed 0.23
                :max-health    8.0
                :sounds        :sheep
                :breeding-item :wheat
-               :speeds        {:panic 1.25 :tempt 1.1 :follow 1.1}
                :spawn-color   sheep-color}
    :cow       cow
    :mooshroom (-> (assoc cow :ground :mycelium :sound-variants 1)

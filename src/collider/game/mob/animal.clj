@@ -2,12 +2,13 @@
   "Farm animal goals and the selector that runs them by priority."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
+            [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
-            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -48,98 +49,80 @@
 
 (def ^:private ^:const idle-reset-sq 1024.0)
 
-(def ^:private ^:const ground-weight 10.0)
-
 (def ^:private ^:const feeding-speedup 0.1)
 
 (def ^:private ^:const ticks-per-second 20)
 
-(def ^:private ^:const tries 10)
+(def ^:private ^:const jump-threshold 0.4)
 
-(defn rnd
+(def ^:private ^:const float-jump-chance 0.8)
+
+(def rnd
   "Returns a number from 0 to 1 decided by tick t, mob eid and key k."
-  (^double [t eid k] (random/of-longs (long t) (long eid) (hash k)))
-  (^double [t eid k i] (random/of-longs (long t) (long eid) (hash k) (long i))))
+  pos/rnd)
 
-(defn one-in?
+(def one-in?
   "Returns true with a chance of one in n."
-  [t eid k ^long n]
-  (zero? (long (* n (rnd t eid k)))))
+  pos/one-in?)
 
-(defn- water? [world cell] (block/water? (sense/block-at world cell)))
-
-(defn- solid? [world cell] (block/solid? (sense/block-at world cell)))
-
-(defn- random-offset [t eid k i h vert]
-  (let [r (fn [j n] (- (long (* (inc (* 2 (long n))) (rnd t eid [k j] i))) (long n)))]
-    [(r :x h) (r :y vert) (r :z h)]))
-
-(defn- offset-cell [e [dx dy dz]]
-  (let [p (:pos e)]
-    [(long (Math/floor (+ (v/x p) (double dx))))
-     (long (Math/floor (+ (v/y p) (double dy))))
-     (long (Math/floor (+ (v/z p) (double dz))))]))
-
-(defn- up-out-of-solid [world [x y z :as cell]]
-  (if (solid? world cell)
-    (loop [y (inc (long y))]
-      (if (and (<= y chunk/max-y) (solid? world [x y z])) (recur (inc y)) [x y z]))
-    cell))
-
-(defn- stable? [world [x y z]]
-  (and (chunk/in-range? y) (solid? world [x (dec (long y)) z])))
-
-(defn- weight ^double [world e [x y z]]
-  (if (= (block/state (get-in mobs/types [(:type e) :ground] :grass-block))
-         (sense/block-at world [x (dec (long y)) z]))
-    ground-weight
-    0.0))
-
-(defn- candidate [world e t eid k i h vert land?]
-  (let [cell (offset-cell e (random-offset t eid k i h vert))]
-    (when (stable? world cell)
-      (if land?
-        (let [c (up-out-of-solid world cell)] (when-not (water? world c) c))
-        cell))))
-
-(defn- best-cell [world e t eid k h vert land?]
-  (loop [i 0 best nil best-w Double/NEGATIVE_INFINITY]
-    (if (= i tries)
-      best
-      (let [cell (candidate world e t eid k i h vert land?)
-            w (if cell (weight world e cell) Double/NEGATIVE_INFINITY)]
-        (if (and cell (> w best-w))
-          (recur (inc i) cell w)
-          (recur (inc i) best best-w))))))
+(def ^:private speeds
+  "How fast each goal walks each breed, as their registerGoals say.
+  A goal left out walks at one."
+  {:cow       {:panic 2.0 :tempt 1.25 :follow 1.25}
+   :mooshroom {:panic 2.0 :tempt 1.25 :follow 1.25}
+   :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}})
 
 (defn- goal-speed
   "Returns how fast the mob walks for the goal of kind k."
   ^double [e k]
-  (double (get-in mobs/types [(:type e) :speeds k] 1.0)))
+  (double (get-in speeds [(:type e) k] 1.0)))
 
 (defn- roaming?
   "A walk goes on while the navigation still has a path."
   [_ e _ _]
   (not (nav/done? e)))
 
-(defn- water-near [world e]
-  (let [[x y z :as here] (sense/feet-cell (:pos e))]
-    (when-not (solid? world here)
-      (->> (for [dx (range -5 6) dy (range -1 2) dz (range -5 6)
-                 :let [c [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]]
-                 :when (water? world c)]
-             c)
-           (sort-by (fn [[cx _ cz]] (v/dist-sq (:pos e) (+ (long cx) 0.5) (+ (long cz) 0.5))))
-           first))))
+(def ^:private ^:const water-reach 5)
+
+(def ^:private water-scan
+  "The cells BlockPos.findClosestMatch walks for a burning mob: by
+  growing Manhattan depth, five out and one up or down, and each
+  offset paired at once with its mirror across z."
+  (let [r water-reach]
+    (vec (for [d (range (+ r 1 r 1))
+               x (range (- (min r d)) (inc (min r d)))
+               :let [my (min 1 (- d (Math/abs (long x))))]
+               y (range (- my) (inc my))
+               :let [z (- d (Math/abs (long x)) (Math/abs (long y)))]
+               :when (<= z r)
+               dz (if (zero? z) [0] [z (- z)])]
+           [x y dz]))))
+
+(defn- look-for-water
+  "PanicGoal.lookForWater: the nearest water a burning mob may run
+  to. A mob stuck inside a block looks for none."
+  [world e]
+  (let [chunks (:chunks world)
+        [x y z :as here] (sense/feet-cell (:pos e))]
+    (when (empty? (block/collision-boxes
+                    (chunk/block-state chunks x y z)))
+      (first (keep (fn [[dx dy dz]]
+                     (let [c [(+ x (long dx)) (+ y (long dy))
+                              (+ z (long dz))]]
+                       (when (pos/water? chunks c) c)))
+                   water-scan)))))
 
 (defn- other [world e k] (get-in world [:entities (get-in e k)]))
 
 (defn- glance [e oid t] (assoc e :look {:target oid :until (+ (long t) 2)}))
 
+(defn- panic-pos [world eid e t]
+  (or (when (:burning? e) (look-for-water world e))
+      (pos/default-pos world e t eid :panic 5 4)))
+
 (defn- start-panic [world eid e t _]
   (when (mobs/panicking? e t)
-    (when-let [cell (or (when (:burning? e) (water-near world e))
-                        (best-cell world e t eid :panic 5 4 false))]
+    (when-let [cell (panic-pos world eid e t)]
       [(nav/move-to world (assoc e :task {:kind :panic}) cell
                     (goal-speed e :panic))
        nil])))
@@ -155,12 +138,15 @@
 (defn- start-mate [world eid e t _]
   (when (mobs/in-love? e t)
     (when-let [pid (partner-for world eid e t)]
-      [(assoc e :task {:kind :mate :partner pid :since t}) nil])))
+      [(assoc e :task {:kind :mate :partner pid :love 0}) nil])))
 
-(defn- mating? [world e t _]
+(defn- mating?
+  "BreedGoal.canContinueToUse: the partner is still in love and the
+  courting has not run its sixty goal ticks out."
+  [world e t _]
   (let [o (other world e [:task :partner])]
     (and o (mobs/in-love? o t) (not (mobs/panicking? o t))
-         (< (- (long t) (long (get-in e [:task :since]))) (* 2 mate-ticks)))))
+         (< (long (get-in e [:task :love] 0)) mate-ticks))))
 
 (defn- newborn [spec t eid e o]
   (assoc (mobs/new-mob (:type e) (:pos e) ((:child-color spec) t eid e o) t)
@@ -175,12 +161,17 @@
       (out/all (out/status eid :love))
       (out/all (out/status pid :love))]]))
 
-(defn- mate-tick [spec world eid e t _]
+(defn- mate-tick
+  "BreedGoal.tick: the pair looks at each other and walks together
+  anew every goal tick, and breeds on the sixtieth within three
+  blocks. Only the lower id breeds, or the calf would come twice."
+  [spec world eid e t _]
   (let [pid (get-in e [:task :partner])
         o (get-in world [:entities pid])
         e (nav/move-to-entity world (glance e pid t) o
-                              (goal-speed e :mate))]
-    (if (and (>= (- (long t) (long (get-in e [:task :since]))) mate-ticks)
+                              (goal-speed e :mate))
+        e (update-in e [:task :love] (fn [n] (inc (long n))))]
+    (if (and (>= (long (get-in e [:task :love])) mate-ticks)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
       (bred spec eid pid e o t)
@@ -254,16 +245,21 @@
     (and (mobs/baby? e) o
          (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o)) follow-far-sq))))
 
-(defn- stroll-cell [world eid e t]
+(defn- stroll-pos
+  "WaterAvoidingRandomStrollGoal.getPosition: dry land, save for the
+  one walk in a thousand that may end up wet."
+  [world eid e t]
   (cond
-    (:wet? e) (or (best-cell world e t eid :stroll 15 7 true) (best-cell world e t eid :stroll 10 7 false))
-    (>= (rnd t eid :swim) stroll-swim) (best-cell world e t eid :stroll 10 7 true)
-    :else (best-cell world e t eid :stroll 10 7 false)))
+    (:wet? e) (or (pos/land-pos world e t eid :stroll-wet 15 7)
+                  (pos/default-pos world e t eid :stroll 10 7))
+    (>= (rnd t eid :swim) stroll-swim)
+    (pos/land-pos world e t eid :stroll-land 10 7)
+    :else (pos/default-pos world e t eid :stroll 10 7)))
 
 (defn- start-wander [world eid e t _]
   (when (and (< (long (or (:no-action e) 0)) stroll-idle)
-             (one-in? t eid :stroll (quot stroll-interval 2)))
-    (when-let [cell (stroll-cell world eid e t)]
+             (one-in? t eid :stroll stroll-interval))
+    (when-let [cell (stroll-pos world eid e t)]
       [(nav/move-to world (assoc e :task {:kind :wander}) cell
                     (goal-speed e :wander))
        nil])))
@@ -292,9 +288,33 @@
 
 (defn- looking-around? [_ e t _] (>= (long (get-in e [:task :until])) (long t)))
 
+(defn- afloat?
+  "FloatGoal.canUse: the mob stands deep enough in water to swim,
+  or in lava at any depth."
+  [world e _ _]
+  (let [[half height] (mobs/box-of e)]
+    (or (> (liquid/fluid-height (:chunks world) (:pos e) half height
+                                :water)
+           jump-threshold)
+        (boolean (:in-lava? e)))))
+
+(defn- start-float [world eid e t tempters]
+  (when (afloat? world e t tempters) [(assoc e :float? true) nil]))
+
+(defn- float-tick
+  "FloatGoal.tick: four jumps in five keep the mob's head up."
+  [_ _ eid e t _]
+  [(cond-> e (< (rnd t eid :float) float-jump-chance)
+           (assoc :jump true))
+   nil])
+
 (def goals
   "The goals every farm animal has, highest priority first."
-  [{:kind :panic :flags #{:move} :start start-panic :continue? roaming?}
+  [{:kind     :float :flags #{:jump} :every-tick? true
+    :start    start-float :continue? afloat? :tick float-tick
+    :running? (fn [e _] (boolean (:float? e)))
+    :stop     (fn [e _] (assoc e :float? nil))}
+   {:kind :panic :flags #{:move} :start start-panic :continue? roaming?}
    {:kind :mate :flags #{:move :look} :start start-mate :continue? mating? :tick mate-tick}
    {:kind      :tempt :flags #{:move :look} :start start-tempt :tick tempt-tick
     :continue? (fn [_ e _ tempters] (some? (tempter e tempters)))
@@ -346,11 +366,11 @@
           (:goals spec)))
 
 (defn- ticked
-  "Every running goal ticks, highest priority first, as
-  GoalSelector.tickRunningGoals."
-  [spec world eid e t tempters]
+  "Every running goal that pred lets through ticks, highest priority
+  first, as GoalSelector.tickRunningGoals."
+  [spec world eid e t tempters pred]
   (reduce (fn [[e ds] g]
-            (if (and (:tick g) (running? g e t))
+            (if (and (:tick g) (pred g) (running? g e t))
               (let [[e2 ds2] ((:tick g) spec world eid e t tempters)]
                 [e2 (into ds (vec ds2))])
               [e ds]))
@@ -372,15 +392,15 @@
 (defn brain
   "Returns the mob and its deltas after one tick of its goals. Goals
   are chosen and ticked on every second tick only, which tick
-  decides eid."
+  decides eid; a goal that wants every tick gets every tick."
   [spec world eid e t tempters]
   (let [e (assoc e :no-action (idle-count world e))]
     (if (even? (+ (long t) (long eid)))
       (let [e (cleaned spec world e t tempters)
             [e ds] (selected spec world eid e t tempters)
-            [e ds2] (ticked spec world eid e t tempters)]
+            [e ds2] (ticked spec world eid e t tempters any?)]
         [e (concat ds ds2)])
-      [e nil])))
+      (ticked spec world eid e t tempters :every-tick?))))
 
 (defn egg-result
   "Returns what a spawn egg of the mob's own kind does to it: a baby
