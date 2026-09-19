@@ -61,7 +61,10 @@
   [e]
   (boolean (or (:wet? e) (:in-lava? e))))
 
-(defn- sped [m ^double s] (assoc m :speed s :zza s))
+(defn- sped
+  "Mob.setSpeed: the drive and the speed are one float value."
+  [m ^double s]
+  (let [s (double (float s))] (assoc m :speed s :zza s)))
 
 (defn- stuck-in-block?
   "Whether the block the mob stands in pushes it into a jump."

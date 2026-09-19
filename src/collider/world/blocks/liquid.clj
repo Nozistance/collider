@@ -147,18 +147,24 @@
       1.0
       (own-height (state-at chunks x y z)))))
 
+(def ^:private ^:const fluid-margin
+  "How far getFluidInteractionBox shrinks the box of a body."
+  0.001)
+
 (defn- cells-of [x y z half height]
-  (let [x (double x) y (double y) z (double z) half (double half) height (double height)]
-    (for [cx (range (long (Math/floor (- x half))) (long (Math/ceil (+ x half))))
-          cy (range (long (Math/floor y)) (long (Math/ceil (+ y height))))
-          cz (range (long (Math/floor (- z half))) (long (Math/ceil (+ z half))))]
+  (let [x (double x) y (double y) z (double z)
+        a (- (double half) fluid-margin)
+        y0 (+ y fluid-margin) y1 (- (+ y (double height)) fluid-margin)]
+    (for [cx (range (long (Math/floor (- x a))) (long (Math/ceil (+ x a))))
+          cy (range (long (Math/floor y0)) (long (Math/ceil y1)))
+          cz (range (long (Math/floor (- z a))) (long (Math/ceil (+ z a))))]
       [cx cy cz])))
 
 (defn- add-fluid [chunks y acc [cx cy cz :as c]]
   (let [st (state-at chunks cx cy cz)
         cls (when (pos? (long st)) (liquid-class st))
         h (when cls (- (+ (double cy) (height-in chunks cls c)) (double y)))]
-    (if (or (nil? cls) (neg? (double h)))
+    (if (or (nil? cls) (< (double h) fluid-margin))
       acc
       (let [h (max (double h) (double (get-in acc [cls :height] 0.0)))
             [fx fy fz] (or (flow-vector chunks c) [0.0 0.0 0.0])
@@ -176,7 +182,9 @@
 (defn fluid-height [chunks pos half height cls]
   (double (get-in (fluid-around chunks pos half height) [cls :height] 0.0)))
 
-(defn entity-push [chunks pos half height vel]
+(def ^:private ^:const min-current 0.0045000000000000005)
+
+(defn- current-push [around vel]
   (reduce (fn [[ax ay az] [cls {[fx fy fz] :flow n :n}]]
             (let [len2 (+ (* (double fx) (double fx)) (* (double fy) (double fy)) (* (double fz) (double fz)))
                   p (double (get-in liquids [cls :push] 0.0))]
@@ -185,12 +193,24 @@
                 (let [len (Math/sqrt len2)
                       [ix iy iz] [(* (/ (double fx) len) p) (* (/ (double fy) len) p) (* (/ (double fz) len) p)]
                       ilen (Math/sqrt (+ (* ix ix) (* iy iy) (* iz iz)))
-                      [ix iy iz] (if (and (< (Math/abs (v/x vel)) 0.003) (< (Math/abs (v/z vel)) 0.003) (< ilen 0.0045))
-                                   [(* (/ ix ilen) 0.0045) (* (/ iy ilen) 0.0045) (* (/ iz ilen) 0.0045)]
+                      [ix iy iz] (if (and (< (Math/abs (v/x vel)) 0.003) (< (Math/abs (v/z vel)) 0.003) (< ilen min-current))
+                                   [(* (/ ix ilen) min-current) (* (/ iy ilen) min-current) (* (/ iz ilen) min-current)]
                                    [ix iy iz])]
                   [(+ (double ax) ix) (+ (double ay) iy) (+ (double az) iz)]))))
           [0.0 0.0 0.0]
-          (fluid-around chunks pos half height)))
+          around))
+
+(defn entity-push [chunks pos half height vel]
+  (current-push (fluid-around chunks pos half height) vel))
+
+(defn fluid-info
+  "The water and lava standing over a body and the push of their
+  flow, all of one walk over the cells its box meets."
+  [chunks pos half height vel]
+  (let [around (fluid-around chunks pos half height)]
+    {:water (double (get-in around [:water :height] 0.0))
+     :lava  (double (get-in around [:lava :height] 0.0))
+     :push  (current-push around vel)}))
 
 (def ^:private horiz3 [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1]])
 

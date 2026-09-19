@@ -122,6 +122,34 @@
             (not (block/full-cube? st)) (recur cx cz (inc cy) (long (put-shape! a n st cx cy cz)) k blocks)
             :else (recur cx cz (inc cy) (long (put-cube! a n cx cy cz)) k blocks)))))))
 
+(defn- mth-equal?
+  "Mth.equal: the slack with which Entity.move calls an axis
+  stopped by a block."
+  [^double a ^double b]
+  (< (Math/abs (- b a)) 1.0E-5))
+
+(defn- overlaps? [^doubles a ^long o ^doubles box]
+  (and (> (aget a (+ o 3)) (aget box 0)) (> (aget box 3) (aget a o))
+       (> (aget a (+ o 4)) (aget box 1)) (> (aget box 4) (aget a (+ o 1)))
+       (> (aget a (+ o 5)) (aget box 2)) (> (aget box 5) (aget a (+ o 2)))))
+
+(defn free?
+  "Whether a body of that box meets no block when moved by d.
+  Entity.isFree: the shifted box is tested where it lands, not on
+  the way there."
+  [chunks pos half height dx dy dz]
+  (let [half (double half)
+        x (+ (v/x pos) (double dx)) y (+ (v/y pos) (double dy))
+        z (+ (v/z pos) (double dz))
+        box (double-array [(- x half) y (- z half)
+                           (+ x half) (+ y (double height)) (+ z half)])
+        ^Sweep sw (swept-boxes chunks box 0.0 0.0 0.0)
+        ^doubles a (.a sw)]
+    (loop [i 0]
+      (cond (>= i (.n sw)) true
+            (overlaps? a (* 6 i) box) false
+            :else (recur (inc i))))))
+
 (defn- shifted ^doubles [^doubles box ^long axis ^double d]
   (let [b (aclone box)]
     (aset b axis (+ (aget b axis) d))
@@ -166,7 +194,7 @@
                  (aset out 2 sz))))
          dx (aget out 0) dy (aget out 1) dz (aget out 2)]
      (Move. (v/v3 (+ x dx) (+ y dy) (+ z dz))
-            (v/v3 (if (= dx vx) vx 0.0)
+            (v/v3 (if (mth-equal? dx vx) vx 0.0)
                   (if hit-y? 0.0 vy)
-                  (if (= dz vz) vz 0.0))
+                  (if (mth-equal? dz vz) vz 0.0))
             grounded?))))

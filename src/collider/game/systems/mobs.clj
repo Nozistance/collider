@@ -1,6 +1,7 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
-  (:require [collider.random :as random]
+  (:require [collider.data :as data]
+            [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
             [collider.game.mob.animal :as animal]
@@ -118,52 +119,135 @@
   (state/fold-events world (filter #(= :interact (first %)) events)
                      (fn [w ev] (interact w ev t))))
 
-(def ^:private zero3 (v/v3 0.0 0.0 0.0))
+(def ^:private ^:const sin-scale 10430.378350470453)
+
+(def ^:private sin-table
+  (let [a (float-array 65536)]
+    (dotimes [i 65536]
+      (aset a i (float (Math/sin (/ (double i) sin-scale)))))
+    a))
+
+(defn- mth-sin ^double [^double a]
+  (aget ^floats sin-table
+        (int (bit-and (long (* a sin-scale)) 65535))))
+
+(defn- mth-cos ^double [^double a]
+  (aget ^floats sin-table
+        (int (bit-and (long (+ (* a sin-scale) 16384.0)) 65535))))
+
+(defn- fmul
+  "The product of two floats. The double product of two floats is
+  exact, so rounding it is the float product itself."
+  ^double [^double a ^double b] (double (float (* a b))))
+
+(defn- fsub ^double [^double a ^double b] (double (float (- a b))))
+
+(defn- fdiv ^double [^double a ^double b] (double (float (/ a b))))
+
+(def ^:private ^:const deg->rad (double (float (/ Math/PI 180.0))))
+
+(defn- yaw-radians
+  "The yaw in radians, rounded the way a float yRot rounds it."
+  ^double [^double yaw]
+  (double (float (* (double (float yaw)) deg->rad))))
+
+(defn- modified-friction
+  "computeModifiedFriction with the modifier of 1 a plain mob has.
+  It is not the identity: the two float steps shift the value."
+  ^double [^double f]
+  (Math/clamp (fsub 1.0 (fsub 1.0 f)) 0.0 1.0))
 
 (def ^:private ^:const gravity 0.08)
 
-(def ^:private ^:const jump-speed 0.42)
+(def ^:private ^:const jump-strength (double (float 0.42)))
 
-(def ^:private ^:const ground-friction 0.546)
+(def ^:private ^:const min-jump (double (float 1.0E-5)))
 
-(def ^:private ^:const air-friction 0.91)
+(def ^:private ^:const fluid-jump (double (float 0.04)))
 
-(def ^:private ^:const water-friction 0.8)
+(def ^:private ^:const fluid-drive (double (float 0.02)))
 
-(def ^:private ^:const air-accel 0.02)
+(def ^:private ^:const flying-speed (double (float 0.02)))
 
-(defn- in-liquid?
-  "Whether the box of a mob of that height meets the liquid kind.
-  As updateFluidHeightAndDoFluidPushing: any height above zero in
-  the box less its 0.4 margins counts."
-  [world p ^double height kind?]
-  (let [y (v/y p)
-        cx (long (Math/floor (v/x p)))
-        cz (long (Math/floor (v/z p)))
-        y1 (long (Math/floor (- (+ y (double height)) 0.4)))]
-    (loop [cy (long (Math/floor (+ y 0.4)))]
-      (cond
-        (> cy y1) false
-        (kind? (sense/block-at world cx cy cz)) true
-        :else (recur (inc cy))))))
+(def ^:private ^:const water-slowdown (double (float 0.8)))
 
-(defn- in-water? [world p height]
-  (in-liquid? world p (double height) block/water?))
+(def ^:private ^:const out-of-fluid (double (float 0.3)))
 
-(defn- in-lava? [world p height]
-  (in-liquid? world p (double height) block/lava?))
+(def ^:private ^:const out-of-fluid-reach (double (float 0.6)))
 
-(defn- water-above? [world p]
-  (let [x (long (Math/floor (v/x p)))
-        y (long (Math/floor (+ (v/y p) 0.6)))
-        z (long (Math/floor (v/z p)))]
-    (block/water? (sense/block-at world x y z))))
+(def ^:private ^:const walk-drive (double (float 0.21600002)))
 
-(defn- heading
-  "Returns the unit way the mob faces, the way travel drives it."
-  [e]
-  (let [r (Math/toRadians (double (:yaw e)))]
-    [(- (Math/sin r)) (Math/cos r)]))
+(def ^:private ^:const air-drag
+  (modified-friction (double (float 0.91))))
+
+(def ^:private ^:const vertical-drag
+  (modified-friction (double (float 0.98))))
+
+(def ^:private ^:const below-offset (double (float 0.500001)))
+
+(def ^:private ^:const jump-threshold 0.4)
+
+(def ^:private ^:const max-up-step 0.6)
+
+(defn- motion-table
+  "The factor of every block state, as a float widened the way
+  vanilla widens it: the table writes the value out in decimal."
+  ^doubles [k ^double default]
+  (let [a (double-array (data/block-state-count) default)]
+    (doseq [[_ b] (data/blocks)
+            :let [v (k b)] :when v
+            i (range (reduce * 1 (map count (vals (:props b)))))]
+      (aset a (+ (long (:first b)) (long i))
+            (double (float (double v)))))
+    a))
+
+(def ^:private ^:table frictions
+  (delay (motion-table :friction (double (float 0.6)))))
+
+(def ^:private ^:table speed-factors
+  (delay (motion-table :speed-factor 1.0)))
+
+(def ^:private ^:table jump-factors
+  (delay (motion-table :jump-factor 1.0)))
+
+(defn- factor-of ^double [^doubles a ^long st]
+  (if (< -1 st (alength a)) (aget a st) (aget a 0)))
+
+(defn- below-state
+  "The block getBlockPosBelowThatAffectsMyMovement points at."
+  ^long [world pos]
+  (sense/block-at world (long (Math/floor (v/x pos)))
+                  (long (Math/floor (- (v/y pos) below-offset)))
+                  (long (Math/floor (v/z pos)))))
+
+(defn- feet-state [world pos]
+  (sense/block-at world (long (Math/floor (v/x pos)))
+                  (long (Math/floor (v/y pos)))
+                  (long (Math/floor (v/z pos)))))
+
+(defn- below-friction
+  "Block.getFriction of the block that carries the mob."
+  ^double [world pos]
+  (modified-friction (factor-of @frictions (below-state world pos))))
+
+(defn- speed-factor
+  "getBlockSpeedFactor: the block the mob stands in slows it, or
+  the one below it when the one it stands in is an ordinary block."
+  ^double [world pos]
+  (let [^doubles a @speed-factors
+        st (feet-state world pos)
+        here (factor-of a st)]
+    (if (or (not (== here 1.0))
+            (block/water? st) (liquid/bubble-column? st))
+      here
+      (factor-of a (below-state world pos)))))
+
+(defn- jump-factor
+  "getBlockJumpFactor: honey underfoot or around shortens a jump."
+  ^double [world pos]
+  (let [^doubles a @jump-factors
+        here (factor-of a (feet-state world pos))]
+    (if (== here 1.0) (factor-of a (below-state world pos)) here)))
 
 (defn- look-toward [e height o]
   (let [[_ y _] (:pos e)
@@ -203,105 +287,188 @@
             (entity/mob-looked e hy hp look))]
     (control/body-tick e moved? (long t))))
 
-(def ^:private rest-vel (v/v3 0.0 (* 0.98 (- 0.0 0.08)) 0.0))
-
-(declare physics-move)
+(def ^:private rest-vel
+  (v/v3 0.0 (* (- 0.0 gravity) vertical-drag) 0.0))
 
 (defn- dead-band ^double [^double a]
-  (if (< (Math/abs a) 0.005) 0.0 a))
+  (if (< (Math/abs a) 0.003) 0.0 a))
 
-(defn- at-rest? [world e half moving? water? [vx0 vy0 vz0] [cx cz]]
+(defn- at-rest?
+  "Whether the tick would leave the mob exactly where it stands:
+  no drive, no fluid, no push, whole blocks under its feet."
+  [world e half moving? fluid? vel]
   (let [pos (:pos e)]
-    (and (not moving?) (boolean (:on-ground e)) (not water?)
-         (< (^[double] Math/abs (+ (double vx0) (double cx))) 0.005)
-         (< (^[double] Math/abs (+ (double vz0) (double cz))) 0.005)
-         (<= -0.0785 (double vy0) 0.0)
+    (and (not moving?) (boolean (:on-ground e)) (not fluid?)
+         (zero? (v/x vel)) (zero? (v/z vel)) (neg? (v/y vel))
          (phys/standing-on-cubes? (:chunks world)
                                   (v/x pos) (v/y pos) (v/z pos) half))))
 
 (defn- rest-step [world e height t]
   (head-update world
-               (entity/mob-moved e (:pos e) rest-vel true (:yaw e) false (:jump-cd e))
+               (entity/mob-moved e (:pos e) rest-vel true (:yaw e) false nil)
                height t false))
 
-(defn- lava-flagged
-  "The mob with :in-lava? fresh: isInLava of the tick just walked."
-  [e lava?]
-  (if (= (boolean (:in-lava? e)) lava?) e (assoc e :in-lava? lava?)))
+(defn- speed-of ^double [e] (double (:speed (:move e) 0.0)))
 
-(defn- physics [world index eid e half height]
-  (let [t (long (:tick world))
-        water? (in-water? world (:pos e) height)
-        moving? (not (zero? (double (:zza (:move e) 0.0))))
-        push (push/push index eid e t half height)
-        vel0 (:vel e)
-        vel [(dead-band (v/x vel0)) (v/y vel0) (dead-band (v/z vel0))]]
-    (lava-flagged
-      (if (at-rest? world e half moving? water? vel push)
-        (rest-step world e height t)
-        (physics-move world eid e water? vel push half height moving?))
-      (in-lava? world (:pos e) height))))
+(defn- driven
+  "moveRelative for a mob: only zza drives it, the yaw turns the
+  drive, and a drive past one is cut back to one."
+  [e vel ^double speed]
+  (let [zza (double (:zza (:move e) 0.0))
+        l (* zza zza)]
+    (if (< l 1.0E-7)
+      vel
+      (let [f (* (if (> l 1.0) (Math/signum zza) zza) speed)
+            r (yaw-radians (double (:yaw e)))]
+        (v/v3 (- (v/x vel) (* f (mth-sin r)))
+              (v/y vel)
+              (+ (v/z vel) (* f (mth-cos r))))))))
 
-(defn- water-push [world e half height water?]
-  (if water?
-    (liquid/entity-push (:chunks world) (:pos e) half height (:vel e))
-    zero3))
+(defn- friction-speed
+  "getFrictionInfluencedSpeed: what block friction leaves of the
+  drive. Plain blocks are slippery enough to take the branch."
+  ^double [og? ^double bf ^double speed]
+  (if og?
+    (if (> bf 0.6)
+      (fmul speed (fdiv walk-drive (fmul (fmul bf bf) bf)))
+      speed)
+    flying-speed))
 
-(defn- steer-axis ^double [^double v0 h ^double accel]
-  (+ v0 (if h (* (double h) accel) 0.0)))
+(defn- hit-wall?
+  "horizontalCollision: whether the blocks stopped the body sideways."
+  [drive vel]
+  (or (not= (v/x drive) (v/x vel)) (not= (v/z drive) (v/z vel))))
 
-(defn- drop-axis ^double [drop? ^double a]
-  (if (and drop? (< (Math/abs a) 0.005)) 0.0 a))
+(defn- fluid-fall
+  "getFluidFallingAdjustedMovement: the slow sink of a body left to
+  itself in a fluid."
+  ^double [^double g falling? ^double vy]
+  (if (zero? g)
+    vy
+    (if (and falling? (>= (Math/abs (- vy 0.005)) 0.003)
+             (< (Math/abs (- vy (/ g 16.0))) 0.003))
+      -0.003
+      (- vy (/ g 16.0)))))
 
-(defn- swim-bob ^double [^long t ^long eid]
-  (if (< (random/of-longs t eid (hash :swim)) 0.8) 0.04 0.0))
+(defn- stepped
+  "Entity.move with the step height of a walking mob."
+  ^Move [world pos vel half height]
+  (phys/move (:chunks world) pos vel half height max-up-step))
 
-(defn- steer-vel [world e t eid water? [hx hz] [vx0 vy0 vz0] [cx cz] half height moving?]
-  (let [mv (:move e)
-        og (boolean (:on-ground e))
-        accel (* (double (:zza mv 0.0))
-                 (if (and og (not water?))
-                   (double (:speed mv 0.0))
-                   air-accel))
-        wpush (water-push world e half height water?)
-        drop? (and (not moving?) (not water?))
-        ax (+ (steer-axis (double vx0) hx (double accel)) (double cx) (v/x wpush))
-        az (+ (steer-axis (double vz0) hz (double accel)) (double cz) (v/z wpush))]
-    (v/v3 (drop-axis drop? ax)
-          (if water?
-            (+ (double vy0) (v/y wpush) (swim-bob (long t) (long eid)))
-            (double vy0))
-          (drop-axis drop? az))))
+(defn- jumped-out
+  "jumpOutOfFluid: a body against a wall with room above it climbs
+  out of the fluid."
+  [world pos vel half height oy hit?]
+  (if (and hit?
+           (phys/free? (:chunks world) pos half height (v/x vel)
+                       (+ (v/y vel) out-of-fluid-reach
+                          (- (double oy) (v/y pos)))
+                       (v/z vel)))
+    (v/v3 (v/x vel) out-of-fluid (v/z vel))
+    vel))
 
-(defn- bumped? [moving? vx vz nx nz]
-  (and moving? (or (and (not (zero? (double vx))) (zero? (double nx)))
-                   (and (not (zero? (double vz))) (zero? (double nz))))))
+(defn- travel-air
+  "travelInAir: the drive, the step, gravity and the friction of
+  one tick out of any fluid."
+  [world e vel half height og?]
+  (let [bf (if og? (below-friction world (:pos e)) 1.0)
+        d (driven e vel (friction-speed og? bf (speed-of e)))
+        ^Move mv (stepped world (:pos e) d half height)
+        sf (speed-factor world (.pos mv))
+        f (fmul bf air-drag)
+        u (.vel mv)]
+    [(.pos mv)
+     (v/v3 (* (* (v/x u) sf) f)
+           (* (- (v/y u) gravity) vertical-drag)
+           (* (* (v/z u) sf) f))
+     (.on-ground mv)]))
 
-(defn- next-vy [world e ny water? bump? jump?]
-  (let [ny (double ny)]
-    (cond (and bump? water? (water-above? world (:pos e))) 0.3
-          jump? jump-speed
-          water? (- (* water-friction ny) 0.02)
-          :else (* 0.98 (- ny gravity)))))
+(defn- travel-water
+  "travelInWater: the slow drive, the step, the slowdown and the
+  sink of one tick under water."
+  [world e vel half height]
+  (let [falling? (<= (v/y vel) 0.0)
+        oy (v/y (:pos e))
+        d (driven e vel fluid-drive)
+        ^Move mv (stepped world (:pos e) d half height)
+        sf (speed-factor world (.pos mv))
+        u (.vel mv)
+        w (v/v3 (* (* (v/x u) sf) water-slowdown)
+                (fluid-fall gravity falling? (* (v/y u) water-slowdown))
+                (* (* (v/z u) sf) water-slowdown))]
+    [(.pos mv)
+     (jumped-out world (.pos mv) w half height oy (hit-wall? d u))
+     (.on-ground mv)]))
 
-(defn- friction ^double [og water?]
-  (cond water? water-friction og ground-friction :else air-friction))
+(defn- lava-slowed
+  "The slowdown travelInLava leaves: a shallow pool holds a body
+  the way water does, a deep one halves every axis."
+  [x y z falling? shallow?]
+  (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
+    (if shallow?
+      (v/v3 x (fluid-fall gravity falling? (* y water-slowdown)) z)
+      (v/v3 x (* y 0.5) z))))
 
-(defn- jump-now? [e ^Move mv t]
-  (and (.on-ground mv) (boolean (:jump e))
-       (>= (long t) (long (or (:jump-cd e) 0)))))
+(defn- travel-lava
+  "travelInLava: the slow drive, the step and the sink of one tick
+  in lava."
+  [world e vel half height shallow?]
+  (let [falling? (<= (v/y vel) 0.0)
+        oy (v/y (:pos e))
+        d (driven e vel fluid-drive)
+        ^Move mv (stepped world (:pos e) d half height)
+        sf (speed-factor world (.pos mv))
+        u (.vel mv)
+        w (lava-slowed (* (v/x u) sf) (v/y u) (* (v/z u) sf)
+                       falling? shallow?)
+        w (v/v3 (v/x w) (- (v/y w) (/ gravity 4.0)) (v/z w))]
+    [(.pos mv)
+     (jumped-out world (.pos mv) w half height oy (hit-wall? d u))
+     (.on-ground mv)]))
 
-(defn- bubbled-vy [world e ^Move mv water? bump? jump?]
-  (liquid/bubble-push (:chunks world) (.pos mv)
-                      (next-vy world e (v/y (.vel mv)) water? bump? jump?)))
+(defn- travelled
+  "LivingEntity.travel: the branch the fluids around the mob pick.
+  Water wins over lava when the mob stands in both."
+  [world e vel half height og? {:keys [water lava threshold]}]
+  (cond (pos? (double water)) (travel-water world e vel half height)
+        (pos? (double lava))
+        (travel-lava world e vel half height
+                     (<= (double lava) (double threshold)))
+        :else (travel-air world e vel half height og?)))
 
-(defn- mob-stepped [e ^Move mv ny fric water? jump? t]
-  (let [vel (.vel mv)]
-    (entity/mob-moved e (.pos mv)
-                      (v/v3 (* (double (v/x vel)) (double fric)) (double ny)
-                            (* (double (v/z vel)) (double fric)))
-                      (.on-ground mv) (:yaw e) water?
-                      (if jump? (+ (long t) 10) (:jump-cd e)))))
+(defn- jump-power
+  "Mob.getJumpPower: 0.42 shortened by the block under the mob."
+  ^double [world pos]
+  (fmul jump-strength (jump-factor world pos)))
+
+(defn- jump-off
+  "jumpFromGround: the push up that never slows a rising body."
+  [vel ^double p]
+  (if (<= p min-jump)
+    vel
+    (v/v3 (v/x vel) (Math/max p (v/y vel)) (v/z vel))))
+
+(defn- fluid-jumped
+  "Mob.jumpInLiquid for a mob that can float: a nudge upwards."
+  [vel]
+  (v/v3 (v/x vel) (+ (v/y vel) fluid-jump) (v/z vel)))
+
+(defn- jumping-vel
+  "The jump block of aiStep. Returns the velocity and whether the
+  mob spent a jump off the ground on it."
+  [world e vel og? {:keys [water lava threshold]} ready?]
+  (let [wh (double water) lh (double lava) thr (double threshold)
+        lava? (pos? lh)
+        fh (if lava? lh wh)
+        in-w? (and (pos? wh) (pos? fh))]
+    (cond
+      (not (or (not in-w?) (and og? (not (> fh thr)))))
+      [(fluid-jumped vel) false]
+      (not (or (not lava?) (and og? (<= lh thr))))
+      [(fluid-jumped vel) false]
+      (and (or og? (and in-w? (<= fh thr))) ready?)
+      [(jump-off vel (jump-power world (:pos e))) true]
+      :else [vel false])))
 
 (defn- shifted?
   "Whether the mob moved far enough this tick to carry its body."
@@ -309,19 +476,71 @@
   (let [dx (- (v/x to) (v/x from)) dz (- (v/z to) (v/z from))]
     (> (+ (* dx dx) (* dz dz)) 2.5000003E-7)))
 
-(defn- physics-move [world eid e water? vel0 push half height moving?]
+(defn- jump-delay [e ^long t jumped?]
+  (cond jumped? (+ t 10) (:jump e) (:jump-cd e)))
+
+(defn- physics-move [world e vel half height f]
   (let [t (long (:tick world))
         from (:pos e)
-        fric (friction (boolean (:on-ground e)) water?)
-        drive (steer-vel world e t eid water? (heading e)
-                         vel0 push half height moving?)
-        ^Move mv (phys/move (:chunks world) (:pos e) drive half height 0.6)
-        vel (.vel mv)
-        bump? (bumped? moving? (v/x drive) (v/z drive) (v/x vel) (v/z vel))
-        jump? (jump-now? e mv t)
-        ny (bubbled-vy world e mv water? bump? jump?)
-        e (mob-stepped e mv ny fric water? jump? t)]
-    (head-update world e height t (shifted? from (:pos e)))))
+        og? (boolean (:on-ground e))
+        [v jumped?] (if (:jump e)
+                      (jumping-vel world e vel og? f
+                                   (>= t (long (or (:jump-cd e) 0))))
+                      [vel false])
+        [pos w ground?] (travelled world e v half height og? f)
+        vy (liquid/bubble-push (:chunks world) pos (v/y w))]
+    (head-update world
+                 (entity/mob-moved e pos (v/v3 (v/x w) vy (v/z w)) ground?
+                                   (:yaw e) (:wet? e) (jump-delay e t jumped?))
+                 height t (shifted? from pos))))
+
+(defn- eye-height
+  "Where a mob of that height looks from. The default of
+  EntityDimensions; the kinds that name their own eye height name
+  one well clear of the only threshold that reads this."
+  ^double [^double height]
+  (* 0.85 height))
+
+(defn- fluid-threshold
+  "getFluidJumpThreshold: a mob with its eyes near the ground is
+  never held up by a fluid."
+  ^double [^double height]
+  (if (< (eye-height height) 0.4) 0.0 jump-threshold))
+
+(defn- flagged
+  "The mob with :wet? and :in-lava? of where it now stands: what
+  its goals and controls read in the next tick. A mob that stayed
+  put keeps the reading of this tick."
+  [world e half height kept]
+  (let [f (or kept (liquid/fluid-info (:chunks world) (:pos e)
+                                      half height (:vel e)))
+        w (pos? (double (:water f))) l (pos? (double (:lava f)))]
+    (cond-> e
+            (not= (boolean (:wet? e)) w) (assoc :wet? w)
+            (not= (boolean (:in-lava? e)) l) (assoc :in-lava? l))))
+
+(defn- pushed
+  "The velocity a tick starts with: the push of other mobs and of
+  the fluid current, then the dead band aiStep applies."
+  [vel push [cx cz]]
+  (v/v3 (dead-band (+ (v/x vel) (double (nth push 0)) (double cx)))
+        (dead-band (+ (v/y vel) (double (nth push 1))))
+        (dead-band (+ (v/z vel) (double (nth push 2)) (double cz)))))
+
+(defn- physics [world index eid e half height]
+  (let [t (long (:tick world))
+        f (assoc (liquid/fluid-info (:chunks world) (:pos e) half height
+                                    (:vel e))
+            :threshold (fluid-threshold height))
+        fluid? (or (pos? (double (:water f))) (pos? (double (:lava f))))
+        moving? (not (zero? (double (:zza (:move e) 0.0))))
+        vel (pushed (:vel e) (:push f) (push/push index eid e t half height))
+        rest? (at-rest? world e half moving? fluid? vel)]
+    (flagged world
+             (if rest?
+               (rest-step world e height t)
+               (physics-move world e vel half height f))
+             half height (when rest? f))))
 
 (def ^:private ^:const say-rest 120)
 
@@ -427,11 +646,19 @@
   [world e speed half]
   (control/tick world (nav/tick world e) speed (* 2.0 (double half))))
 
+(defn- spent-jump
+  "The mob as aiStep finds it: JumpControl.tick has handed over its
+  jump, and isImmobile leaves a dead mob without a drive."
+  [e dead?]
+  (cond-> e
+          (:jump e) (assoc :jump false)
+          dead? (assoc :move (assoc (:move e) :zza 0.0))))
+
 (defn- step-mob [world index tempters eid e t]
   (let [[half height] (mobs/box-of e)
         speed (get-in mobs/types [(:type e) :speed])
         dead? (not (pos? (double (:health e))))
-        e0 (cond-> e (:jump e) (assoc :jump false))
+        e0 (spent-jump e dead?)
         [e1 deltas say-deltas] (brain-step world eid e0 t tempters dead?)
         e1 (if dead? e1 (controlled world e1 speed half))
         was-wet? (boolean (:wet? e))

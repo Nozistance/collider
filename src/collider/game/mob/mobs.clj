@@ -77,8 +77,12 @@
         r (long (* rare-total (random/of-key ks)))]
     (color-id (or (weighted r rare) (common-color ks common)))))
 
+(defn- attr
+  "The value of an attribute vanilla declares as a float."
+  ^double [^double v] (double (float v)))
+
 (def ^:private cow
-  {:half           0.45 :height 1.4 :speed 0.2
+  {:half           0.45 :height 1.4 :speed (attr 0.2)
    :max-health     10.0
    :sounds         :cow
    :sound-variants 2
@@ -86,7 +90,7 @@
    :spawn-color    cow-variant})
 
 (def types
-  {:sheep     {:half          0.45 :height 1.3 :speed 0.23
+  {:sheep     {:half          0.45 :height 1.3 :speed (attr 0.23)
                :max-health    8.0
                :sounds        :sheep
                :breeding-item :wheat

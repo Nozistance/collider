@@ -31,7 +31,8 @@
   (progress! {:event :begin :step step})
   (let [t (System/nanoTime)
         v (f)]
-    (progress! (assoc v :event :end :step step :took (- (System/nanoTime) t)))
+    (progress! (assoc v :event :end :step step
+                      :took (- (System/nanoTime) t)))
     v))
 
 (defn cache-dir ^File [version]
@@ -60,8 +61,12 @@
   (ex-info (str "cannot reach " (.getHost (URL. (str url))))
            {:step    :jar
             :what    "failed to reach Mojang"
-            :why     (str "The exception was: " (.getSimpleName (class e)) ": " (.getMessage ^Throwable e))
-            :command (str "Download server.jar " version " yourself and start with '{:jar \"path/to/server.jar\"}'")}
+            :why     (str "The exception was: "
+                          (.getSimpleName (class e)) ": "
+                          (.getMessage ^Throwable e))
+            :command (str "Download server.jar " version
+                          " yourself and start with"
+                          " '{:jar \"path/to/server.jar\"}'")}
            e))
 
 (defn- fetch-json [url]
@@ -89,8 +94,10 @@
   (ex-info "sha1 mismatch"
            {:step    :jar
             :what    "server.jar is corrupt"
-            :why     "Its checksum does not match the one Mojang published"
-            :command (str "Delete " (cache-dir version) " and start again")
+            :why     (str "Its checksum does not match the one"
+                          " Mojang published")
+            :command (str "Delete " (cache-dir version)
+                          " and start again")
             :url url :want want :got got}))
 
 (defn- download! [url ^File to want]
@@ -122,7 +129,8 @@
            {:step :jar
             :what    "no such jar"
             :why     (str "There is no file at " local)
-            :command "Check :jar, or leave it out to download server.jar from Mojang"}))
+            :command (str "Check :jar, or leave it out to download"
+                          " server.jar from Mojang")}))
 
 (defn- copy-local! [local ^File jar]
   (when-not (.isFile (io/file local))
@@ -164,9 +172,11 @@
     out))
 
 (defn- generator-command ^String/1 [^File bundle]
-  (into-array String [(str (System/getProperty "java.home") "/bin/java")
-                      "-DbundlerMainClass=net.minecraft.data.Main"
-                      "-jar" (.getAbsolutePath bundle) "--reports"]))
+  (let [java (str (System/getProperty "java.home") "/bin/java")]
+    (into-array String [java
+                        "-DbundlerMainClass=net.minecraft.data.Main"
+                        "-jar" (.getAbsolutePath bundle)
+                        "--reports"])))
 
 (defn- file-count ^long [^File dir]
   (count (filter #(.isFile ^File %) (file-seq dir))))
@@ -220,7 +230,8 @@
   (Reflector/invokeInstanceMethod obj m (object-array args)))
 
 (defn- call-static [c m & args]
-  (^[Class String Object/1] Reflector/invokeStaticMethod (cls c) m (object-array args)))
+  (^[Class String Object/1] Reflector/invokeStaticMethod
+    (cls c) m (object-array args)))
 
 (defn- static-field [c f]
   (^[Class String] Reflector/getStaticField (cls c) f))
@@ -252,7 +263,8 @@
 
 (defn- elements [reg] (iterator-seq (.iterator ^Iterable reg)))
 
-(defn- flt ^double [v] (Double/parseDouble (Float/toString (float v))))
+(defn- flt ^double [v]
+  (Double/parseDouble (Float/toString (float v))))
 
 (defn- registry [name]
   (static-field "core.registries.BuiltInRegistries" name))
@@ -261,7 +273,8 @@
   (let [x (* 16.0 v)]
     (if (== x (Math/rint x)) (long x) x)))
 
-(def ^:private box-fields ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
+(def ^:private box-fields
+  ["minX" "minY" "minZ" "maxX" "maxY" "maxZ"])
 
 (defn- boxes [shape]
   (mapv (fn [a]
@@ -330,13 +343,14 @@
     (unless-default 63 (mask faces))))
 
 (defn- state-shapes [states]
-  (let [env (shape-env)]
-    {:shapes        (per-state states #(partial-box (collision-shape env %)))
-     :outlines      (per-state states #(partial-box (outline-shape env %)))
-     :flags         (per-state states #(state-flags env %))
-     :sturdy        (per-state states #(state-sturdy env %))
-     :sturdy-center (per-state states #(state-sturdy env % (:center env)))
-     :sturdy-rigid  (per-state states #(state-sturdy env % (:rigid env)))}))
+  (let [env (shape-env)
+        each (fn [f] (per-state states f))]
+    {:shapes (each #(partial-box (collision-shape env %)))
+     :outlines (each #(partial-box (outline-shape env %)))
+     :flags (each #(state-flags env %))
+     :sturdy (each #(state-sturdy env %))
+     :sturdy-center (each #(state-sturdy env % (:center env)))
+     :sturdy-rigid (each #(state-sturdy env % (:rigid env)))}))
 
 (defn- project-face [^long axis [x0 y0 z0 x1 y1 z1]]
   (case axis
@@ -376,7 +390,8 @@
 (defn- occlusion-faces [block-shape dirs st]
   (into (sorted-map)
         (keep (fn [d]
-                (let [shape (call st "getFaceOcclusionShape" (dirs d))]
+                (let [s (dirs d)
+                      shape (call st "getFaceOcclusionShape" s)]
                   (when-let [e (face-entry block-shape d shape)]
                     [(dir-names d) e]))))
         (range 6)))
@@ -403,9 +418,10 @@
 (defn- light-table [states]
   (let [shaped (occluding-states states)
         kinds (vec (sort-by pr-str (distinct (map second shaped))))
-        index (into {} (map-indexed (fn [i k] [k i])) kinds)]
-    {:dampening (light-values states "getLightDampening" #(not= 15 (long %)))
-     :emission  (light-values states "getLightEmission" #(pos? (long %)))
+        index (into {} (map-indexed (fn [i k] [k i])) kinds)
+        vals-of (fn [m p] (light-values states m p))]
+    {:dampening (vals-of "getLightDampening" #(not= 15 (long %)))
+     :emission (vals-of "getLightEmission" #(pos? (long %)))
      :occludes  (light-flags states occludes?)
      :use-shape (light-flags states shaped?)
      :kinds     kinds
@@ -468,7 +484,8 @@
 
 (defn- strippables [reg]
   (into (sorted-map)
-        (map (fn [[a b]] [(key-of reg a) {:stripped (key-of reg b)}]))
+        (map (fn [[a b]]
+               [(key-of reg a) {:stripped (key-of reg b)}]))
         (hidden-field (cls "world.item.AxeItem") nil "STRIPPABLES")))
 
 (def ^:private toggles
@@ -491,11 +508,28 @@
                 hand? (assoc :hand? (by-hand))))))
         toggles))
 
+(def ^:private motion-fields
+  [[:friction "friction" 0.6]
+   [:speed-factor "speedFactor" 1.0]
+   [:jump-factor "jumpFactor" 1.0]])
+
+(defn- motion-props
+  "The friction, speed and jump factors of a block that moves a
+  body differently from plain stone. The ordinary values are left
+  out of the table."
+  [field]
+  (into {}
+        (keep (fn [[k n ^double d]]
+                (let [v (flt (field n))]
+                  (when (not= v d) [k v]))))
+        motion-fields))
+
 (defn- own-props [by-type b]
   (let [field #(hidden-field (class b) b %)]
     (merge {:resistance (flt (field "explosionResistance"))
             :sound      (by-type (field "soundType"))
             :class      (block-class b)}
+           (motion-props field)
            (toggle b))))
 
 (defn- weathering-pairs [reg]
@@ -556,13 +590,15 @@
   (let [c (cls "world.level.block.BonemealableFeaturePlacerBlock")]
     (into (sorted-map)
           (for [b (elements reg) :when (.isInstance c b)]
-            [(key-of reg b)
-             (kw (str (call (hidden-field (class b) b "feature") "identifier")))]))))
+            (let [f (hidden-field (class b) b "feature")]
+              [(key-of reg b)
+               (kw (str (call f "identifier")))])))))
 
 (defn- template [reg t]
   (when t
     (when-not (call (call t "components") "isEmpty")
-      (throw (ex-info "remainder with components" {:template (str t)})))
+      (throw (ex-info "remainder with components"
+                      {:template (str t)})))
     {:item (key-of reg (call (call t "item") "value"))
      :count (call t "count")}))
 
