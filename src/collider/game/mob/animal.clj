@@ -1,6 +1,7 @@
 (ns collider.game.mob.animal
   "Farm animal goals and the selector that runs them by priority."
   (:require [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.nav :as nav]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
@@ -14,8 +15,6 @@
 (def ^:private ^:const stroll-interval 120)
 
 (def ^:private ^:const stroll-idle 100)
-
-(def ^:private ^:const stroll-timeout 200)
 
 (def ^:private ^:const stroll-swim 0.001)
 
@@ -113,18 +112,15 @@
           (recur (inc i) cell w)
           (recur (inc i) best best-w))))))
 
-(defn- roam-task [kind t [x _ z]]
-  {:kind kind :until (+ (long t) stroll-timeout) :target [(+ (long x) 0.5) (+ (long z) 0.5)]})
+(defn- goal-speed
+  "Returns how fast the mob walks for the goal of kind k."
+  ^double [e k]
+  (double (get-in mobs/types [(:type e) :speeds k] 1.0)))
 
-(defn- roam-done? [e t]
-  (let [{:keys [until target path path-i path-goal]} (:task e)
-        [tx tz] target]
-    (or (>= (long t) (long until))
-        (< (v/dist-sq (:pos e) (double tx) (double tz)) 0.36)
-        (and path-goal (nil? path))
-        (and path (>= (long (or path-i 0)) (count path))))))
-
-(defn- roaming? [_ e t _] (not (roam-done? e t)))
+(defn- roaming?
+  "A walk goes on while the navigation still has a path."
+  [_ e _ _]
+  (not (nav/done? e)))
 
 (defn- water-near [world e]
   (let [[x y z :as here] (sense/feet-cell (:pos e))]
@@ -144,7 +140,9 @@
   (when (mobs/panicking? e t)
     (when-let [cell (or (when (:burning? e) (water-near world e))
                         (best-cell world e t eid :panic 5 4 false))]
-      [(assoc e :task (roam-task :panic t cell)) nil])))
+      [(nav/move-to world (assoc e :task {:kind :panic}) cell
+                    (goal-speed e :panic))
+       nil])))
 
 (defn- partner-for [world eid e t]
   (second (sense/nearest world (:pos e) breed-range-sq
@@ -180,7 +178,8 @@
 (defn- mate-tick [spec world eid e t _]
   (let [pid (get-in e [:task :partner])
         o (get-in world [:entities pid])
-        e (glance e pid t)]
+        e (nav/move-to-entity world (glance e pid t) o
+                              (goal-speed e :mate))]
     (if (and (>= (- (long t) (long (get-in e [:task :since]))) mate-ticks)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
@@ -203,9 +202,17 @@
     (when-let [pid (tempter e tempters)]
       [(assoc e :task {:kind :tempt :player pid}) nil])))
 
-(defn- tempt-tick [_ _ _ e t tempters]
-  (let [pid (tempter e tempters)]
-    [(glance (assoc-in e [:task :player] pid) pid t) nil]))
+(def ^:private ^:const tempt-stop-sq 6.25)
+
+(defn- tempt-tick [_ world _ e t tempters]
+  (let [pid (tempter e tempters)
+        o (get-in world [:entities pid])
+        e (glance (assoc-in e [:task :player] pid) pid t)]
+    [(cond
+       (nil? o) e
+       (< (v/dist3-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
+       :else (nav/move-to-entity world e o (goal-speed e :tempt)))
+     nil]))
 
 (defn- parent-for [world eid e]
   (let [p (:pos e)]
@@ -218,17 +225,29 @@
                                                         (<= (Math/abs (- (v/z (:pos o)) (v/z p))) 8.0))))]
       (when (>= (double d2) follow-near-sq) oid))))
 
-(defn- start-follow [world eid e _ _]
+(def ^:private ^:const follow-repath 20)
+
+(defn- start-follow [world eid e t _]
   (when (mobs/baby? e)
     (when-let [oid (parent-for world eid e)]
-      [(assoc e :follow oid) nil])))
+      [(assoc e :follow oid :follow-at t) nil])))
+
+(defn- follow-tick
+  "FollowParentGoal.tick: the path to the parent is built anew every
+  tenth goal tick, that is every twentieth tick of the world."
+  [_ world _ e t _]
+  (let [o (other world e [:follow])]
+    [(if (and o (>= (long t) (long (:follow-at e 0))))
+       (assoc (nav/move-to-entity world e o (goal-speed e :follow))
+         :follow-at (+ (long t) follow-repath))
+       e)
+     nil]))
 
 (defn- unfollowed
-  "The mob after following ends. A stroll running underneath ends
-  with it: its path was taken over, so vanilla's navigation is done."
+  "The mob after following ends. The path it walked stays: vanilla's
+  FollowParentGoal has no stop of its own."
   [e _]
-  (cond-> (assoc e :follow nil)
-          (= :wander (get-in e [:task :kind])) (assoc :task nil)))
+  (assoc e :follow nil))
 
 (defn- following? [world e _ _]
   (let [o (other world e [:follow])]
@@ -245,7 +264,9 @@
   (when (and (< (long (or (:no-action e) 0)) stroll-idle)
              (one-in? t eid :stroll (quot stroll-interval 2)))
     (when-let [cell (stroll-cell world eid e t)]
-      [(assoc e :task (roam-task :wander t cell)) nil])))
+      [(nav/move-to world (assoc e :task {:kind :wander}) cell
+                    (goal-speed e :wander))
+       nil])))
 
 (defn- look-goal [e t]
   (let [l (:look e)]
@@ -277,11 +298,12 @@
    {:kind :mate :flags #{:move :look} :start start-mate :continue? mating? :tick mate-tick}
    {:kind      :tempt :flags #{:move :look} :start start-tempt :tick tempt-tick
     :continue? (fn [_ e _ tempters] (some? (tempter e tempters)))
-    :stop      (fn [e t] (assoc e :task nil :tempt-cooldown-until (+ (long t) calm-ticks)))}
+    :stop      (fn [e t] (nav/stop (assoc e :task nil :tempt-cooldown-until (+ (long t) calm-ticks))))}
    {:kind     :follow :flags #{} :start start-follow :continue? following?
-    :running? (fn [e _] (some? (:follow e)))
+    :running? (fn [e _] (some? (:follow e))) :tick follow-tick
     :stop     unfollowed}
-   {:kind :wander :flags #{:move} :start start-wander :continue? roaming?}
+   {:kind :wander :flags #{:move} :start start-wander :continue? roaming?
+    :stop (fn [e _] (nav/stop (assoc e :task nil)))}
    {:kind     :look-player :flags #{:look} :start start-look-player :continue? looking?
     :running? (fn [e t] (some? (look-goal e t)))
     :stop     (fn [e _] (assoc e :look nil))}
@@ -323,11 +345,17 @@
           [e []]
           (:goals spec)))
 
-(defn- ticked [spec world eid e t tempters]
-  (let [kind (get-in e [:task :kind])]
-    (if-let [f (some #(when (= kind (:kind %)) (:tick %)) (:goals spec))]
-      (f spec world eid e t tempters)
-      [e nil])))
+(defn- ticked
+  "Every running goal ticks, highest priority first, as
+  GoalSelector.tickRunningGoals."
+  [spec world eid e t tempters]
+  (reduce (fn [[e ds] g]
+            (if (and (:tick g) (running? g e t))
+              (let [[e2 ds2] ((:tick g) spec world eid e t tempters)]
+                [e2 (into ds (vec ds2))])
+              [e ds]))
+          [e []]
+          (:goals spec)))
 
 (defn- idle-count [world e]
   (if (sense/nearest-player world (:pos e) idle-reset-sq) 0 (inc (long (or (:no-action e) 0)))))

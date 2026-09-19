@@ -1,10 +1,8 @@
 (ns collider.world.space.path
   "Ground paths for mobs: the type of a cell and the A* over them."
   (:require [collider.data :as data]
-            [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.phys :as phys])
+            [collider.world.chunk :as chunk])
   (:import (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
@@ -872,68 +870,10 @@
       (let [hit (run-search ctx heap from targets maxlen reach maxv)]
         (if (seq hit) (pick hit true) (pick targets false))))))
 
-;;; The old entry, until the navigation moves over
-
-(defn- water-at? [chunks x y z]
-  (block/water? (chunk/block-state chunks x y z)))
-
-(defn- fence-at? [chunks [x y z]]
-  (phys/fence-at? chunks x y z))
-
-(defn- open? [chunks x y z]
-  (and (not (phys/solid? chunks x y z))
-       (not (phys/solid? chunks x (inc y) z))))
-
-(defn- supported? [chunks x y z]
-  (or (and (phys/solid? chunks x (dec y) z)
-           (not (fence-at? chunks [x (dec y) z]))
-           (not (fence-at? chunks [x (- (long y) 2) z])))
-      (water-at? chunks x (dec y) z)
-      (water-at? chunks x y z)))
-
-(defn- footprint-free? [chunks half px pz y]
-  (every? (fn [[ox oz]]
-            (let [cx (long (Math/floor (+ (double px) (double ox))))
-                  cz (long (Math/floor (+ (double pz) (double oz))))]
-              (and (open? chunks cx y cz)
-                   (supported? chunks cx y cz))))
-          (let [h (double half)]
-            [[(- h) (- h)] [(- h) h] [h (- h)] [h h]])))
-
-(defn direct?
-  "Returns true when the mob can walk straight to the waypoint."
-  [chunks pos half [wx wy wz]]
-  (let [half (double half)
-        x (v/x pos) z (v/z pos)
-        y (long wy)
-        dx (- (+ (double wx) 0.5) x) dz (- (+ (double wz) 0.5) z)
-        d (Math/sqrt (+ (* dx dx) (* dz dz)))
-        n (max 1 (long (Math/ceil (/ d 0.5))))]
-    (loop [i 1]
-      (cond
-        (> i n) true
-        (footprint-free? chunks half (+ x (/ (* dx i) n))
-                         (+ z (/ (* dz i) n)) y) (recur (inc i))
-        :else false))))
-
-(defn- cow-at [start avoid-water?]
-  (let [[x y z] start]
-    (cond-> (assoc cow :pos [(+ (long x) 0.5) (double (long y))
-                             (+ (long z) 0.5)]
-              :on-ground? true :in-water? false)
-      avoid-water? (assoc-in [:malus :water] -1.0))))
-
 (defn find-path
   "Returns the path of a mob to the closest of the goal cells.
   The path is a map of the nodes walked, whether a goal was
-  reached and how far its last node stays from the goal. The four
-  argument form answers the cells a cow walks to one goal, the
-  start cell left out, and nil when it stays where it is."
-  ([chunks start goal avoid-water?]
-   (let [p (search chunks (cow-at start avoid-water?) #{goal}
-                   16.0 1 1.0)]
-     (when (> (count (:nodes p)) 1)
-       (mapv (fn [n] [(:x n) (:y n) (:z n)]) (rest (:nodes p))))))
-  ([chunks mob goals max-path-length reach-range multiplier]
-   (search chunks mob goals (double max-path-length)
-           (long reach-range) (double multiplier))))
+  reached and how far its last node stays from the goal."
+  [chunks mob goals max-path-length reach-range multiplier]
+  (search chunks mob goals (double max-path-length)
+          (long reach-range) (double multiplier)))
