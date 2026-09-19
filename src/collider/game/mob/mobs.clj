@@ -1,39 +1,71 @@
 (ns collider.game.mob.mobs
   "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
-            [collider.random :as random]))
+            [collider.random :as random]
+            [collider.world.env.biome :as biome]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const black 15)
+(def dye-colors
+  "The dye colours by their id, as the loot tables name them."
+  [:white :orange :magenta :light-blue :yellow :lime :pink :gray
+   :light-gray :cyan :purple :blue :brown :green :red :black])
 
-(def ^:private ^:const gray 7)
+(def ^:private color-ids
+  (into {} (map-indexed (fn [i c] [c i])) dye-colors))
 
-(def ^:private ^:const light-gray 8)
+(defn color-id
+  "Returns the id of dye colour c, or nil when c is no dye colour."
+  [c] (color-ids c))
 
-(def ^:private ^:const brown 12)
+(def ^:private spawn-configs
+  {:temperate
+   {:rare [[5 :black] [5 :gray] [5 :light-gray] [3 :brown]]
+    :common :white}
+   :warm
+   {:rare [[5 :gray] [5 :light-gray] [5 :white] [3 :black]]
+    :common :brown}
+   :cold
+   {:rare [[5 :light-gray] [5 :gray] [5 :white] [3 :brown]]
+    :common :black}})
 
-(def ^:private ^:const pink 6)
+(defn- biome-tag [tag]
+  (delay (set (data/tag-values "worldgen/biome" tag))))
 
-(def ^:private ^:const white 0)
+(def ^:private ^:table warm-biomes
+  (biome-tag "spawns_warm_variant_farm_animals"))
 
-(def ^:private temperate-colors [[5 black] [5 gray] [5 light-gray] [3 brown]])
+(def ^:private ^:table cold-biomes
+  (biome-tag "spawns_cold_variant_farm_animals"))
 
-(def ^:private ^:const temperate-total 100.0)
+(defn- spawn-config [biome]
+  (let [n (:name biome)
+        k (cond (@warm-biomes n) :warm
+                (@cold-biomes n) :cold
+                :else :temperate)]
+    (spawn-configs k)))
+
+(def ^:private ^:const rare-total 100.0)
 
 (def ^:private ^:const common-total 500.0)
+
+(def ^:private ^:const common-weight 499)
 
 (defn- weighted [^long r entries]
   (loop [lo 0 [[w c] & more] entries]
     (when w
       (if (< r (+ lo (long w))) c (recur (+ lo (long w)) more)))))
 
-(defn- common-color [ks]
-  (if (zero? (long (* common-total (random/of-key (conj ks :pink))))) pink white))
+(defn- common-color [ks common]
+  (if (< (long (* common-total (random/of-key (conj ks :pink))))
+         common-weight)
+    common
+    :pink))
 
-(defn- sheep-color [ks]
-  (or (weighted (long (* temperate-total (random/of-key ks))) temperate-colors)
-      (common-color ks)))
+(defn- sheep-color [ks biome]
+  (let [{:keys [rare common]} (spawn-config biome)
+        r (long (* rare-total (random/of-key ks)))]
+    (color-id (or (weighted r rare) (common-color ks common)))))
 
 (defn- sounds [type]
   (into {} (for [k [:say :step :hurt :death]] [k (keyword (name type) (name k))])))
@@ -103,9 +135,9 @@
   "Returns a mob hatched from a spawn egg. The keys ks decide its
   colour and yaw."
   [type pos ks tick]
-  (let [color-fn (get-in types [type :spawn-color] (constantly 0))
+  (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)]
-    (assoc (new-mob type pos (color-fn ks) tick)
+    (assoc (new-mob type pos (color-fn ks (biome/at nil pos)) tick)
       :yaw yaw :head-yaw yaw)))
 
 (defn exp-delay ^long [mean ^long t ^long eid kind]
@@ -114,5 +146,23 @@
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
 (defn baby? [e] (some? (:baby-until e)))
+
+(defn box-of
+  "Returns the half width and the height of mob e.
+  A baby measures half a grown mob."
+  [e]
+  (let [{:keys [half height]} (types (:type e))]
+    (if (baby? e)
+      [(* 0.5 (double half)) (* 0.5 (double height))]
+      [half height])))
+
+(defn loot-entity
+  "Returns mob e as the predicates of its loot table see it."
+  [e]
+  (let [color (dye-colors (long (or (:color e) 0)))]
+    (cond-> {:type (:type e) :baby? (baby? e)
+             :sheared? (boolean (:sheared? e))}
+            (= :sheep (:type e))
+            (assoc :components {:sheep/color color}))))
 
 (defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))

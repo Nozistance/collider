@@ -197,6 +197,7 @@
    :sheep/step                    [:entity.sheep.step 6]
    :sheep/hurt                    [:entity.sheep.hurt 6]
    :sheep/death                   [:entity.sheep.death 6]
+   :sheep/shear                   [:entity.sheep.shear 7]
    :cow/say                       [:entity.cow.ambient 6]
    :cow/step                      [:entity.cow.step 6]
    :cow/hurt                      [:entity.cow.hurt 6]

@@ -11,12 +11,12 @@
 (defn- pushable-half ^double [e]
   (case (:type e)
     :player 0.3
-    (double (get-in mobs/types [(:type e) :half] 0.0))))
+    (double (or (first (mobs/box-of e)) 0.0))))
 
 (defn- pushable-height ^double [e]
   (case (:type e)
     :player 1.8
-    (double (get-in mobs/types [(:type e) :height] 1.0))))
+    (double (or (second (mobs/box-of e)) 1.0))))
 
 (deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
                    ^doubles halfs ^doubles heights])

@@ -9,7 +9,7 @@
 
 (def game "26.2")
 
-(def layout 5)
+(def layout 6)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
@@ -92,7 +92,9 @@
   [] (:drops @tables))
 
 (defn entity-drops
-  "Returns the loot tables of the mobs, in their vanilla shape."
+  "Returns the loot tables of the mobs, in their vanilla shape.
+  A shearing table is named after the mob with -shear, so that
+  shearing/sheep/black is :sheep-shear/black."
   [] (:entity-drops @tables))
 
 (defn recipes

@@ -3,6 +3,7 @@
   Also death and respawn."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
+            [collider.game.loot :as loot]
             [collider.random :as random]
             [collider.game.mob.mobs :as mobs]
             [collider.world.chunk :as chunk]
@@ -138,11 +139,15 @@
     [:push target [(* (- (Math/sin yaw)) knockback-attack-strength) knockback-lift
                    (* (Math/cos yaw) knockback-attack-strength)]]))
 
-(defn- hit-deltas [a t target crit?]
+(defn- hit-marks [a tick]
+  (cond-> {:love-until nil}
+          (= :player (:type a)) (assoc :hurt-by-player tick)))
+
+(defn- hit-deltas [a t target crit? tick]
   (cond-> [[:damage target (melee-damage a crit?)
             (- (v/x (:pos a)) (v/x (:pos t)))
             (- (v/z (:pos a)) (v/z (:pos t)))]
-           [:merge-entity target {:love-until nil}]]
+           [:merge-entity target (hit-marks a tick)]]
           (:sprinting? a) (conj (sprint-push a target))
           crit? (into [(out/all (out/animation target :crit))])))
 
@@ -150,7 +155,7 @@
   (let [a (get-in world [:entities eid])
         t (get-in world [:entities target])]
     (when (and (attackable? a t) (in-reach? world a t))
-      (hit-deltas a t target (crit? a t)))))
+      (hit-deltas a t target (crit? a t) (:tick world)))))
 
 (def ^:private ^:const fire-seconds 8)
 
@@ -166,7 +171,7 @@
   (case (:type e)
     :player [player-half player-height]
     :item [item-half item-height]
-    (let [{:keys [half height]} (mobs/types (:type e))] [half height])))
+    (mobs/box-of e)))
 
 (defn- near-edits?
   "Returns true when the entity stands in a chunk the world holds."
@@ -367,6 +372,37 @@
   (cond-> {:love-until nil :no-action 0}
           (>= (v/y (:pos e)) void-y) (assoc :panic-until (+ (long (:tick world)) panic-ticks))))
 
+(def ^:private ^:const player-kill-memory 100)
+
+(def ^:private ^:table drop-tables (delay (data/entity-drops)))
+
+(defn- killed-by-player? [world e]
+  (let [at (:hurt-by-player e)]
+    (boolean (and at (< (- (long (:tick world)) (long at))
+                        player-kill-memory)))))
+
+(defn- loot-ctx [world e]
+  (let [fire (long (or (:fire e) 0))]
+    {:on-fire? (or (pos? fire) (boolean (:burning? e)))
+     :killed-by-player? (killed-by-player? world e)
+     :damage-type nil
+     :looting 0
+     :entity (mobs/loot-entity e)}))
+
+(defn- loot-stacks [world eid e]
+  (loot/drops @drop-tables (:type e) (loot-ctx world e)
+              #(random/of-key (:tick world) eid %)))
+
+(defn- drop-deltas
+  "Returns the items mob e leaves where it died."
+  [world eid e]
+  (when (get @drop-tables (:type e))
+    (let [t (:tick world)
+          spawn (fn [i s]
+                  (let [v (entity/pop-velocity [t eid :loot i])]
+                    [:spawn-entity (entity/item (:pos e) v s)]))]
+      (map-indexed spawn (loot-stacks world eid e)))))
+
 (defn- report-deltas [world eid e]
   (let [health (double (:health e))
         shown (double (or (:health-sent e) health))]
@@ -378,6 +414,7 @@
         (when-let [snd (hurt-sound e)]
           [(out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e)))])
         [(out/all (out/status eid (if (pos? health) :hurt :death)))]
+        (when-not (pos? health) (drop-deltas world eid e))
         (when (= :player (:type e))
           [(out/to eid (out/health health))])))))
 

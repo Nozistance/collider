@@ -930,10 +930,18 @@
     (sequential? v) (mapv loot-node v)
     :else (loot-scalar v)))
 
+(defn- shear-name [n]
+  (if-let [i (str/index-of n "/")]
+    (str (subs n 0 i) "-shear" (subs n i))
+    (str n "-shear")))
+
 (defn- entity-drops [zf]
-  (into (sorted-map)
-        (map (fn [[name json]] [(kw name) (loot-node json)]))
-        (jsons zf "data/minecraft/loot_table/entities/")))
+  (let [dir "data/minecraft/loot_table/"
+        shear (jsons zf (str dir "shearing/"))]
+    (into (sorted-map)
+          (map (fn [[name json]] [(kw name) (loot-node json)]))
+          (concat (jsons zf (str dir "entities/"))
+                  (map (fn [[n j]] [(shear-name n) j]) shear)))))
 
 (def synchronized-registries
   ["banner_pattern" "worldgen/biome" "cat_sound_variant" "cat_variant"

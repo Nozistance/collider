@@ -23,7 +23,9 @@
 
 (def ^:private brains {:sheep sheep/brain :cow cow/brain :mooshroom mooshroom/brain})
 
-(def ^:private interactions [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas])
+(def ^:private interactions
+  [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas
+   sheep/interact-deltas])
 
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
@@ -393,7 +395,8 @@
     [(if (== walked walked') now (assoc now :walked walked')) walked walked']))
 
 (defn- step-mob [world index tempters eid e t]
-  (let [{:keys [half height speed]} (mobs/types (:type e))
+  (let [[half height] (mobs/box-of e)
+        speed (get-in mobs/types [(:type e) :speed])
         dead? (not (pos? (double (:health e))))
         [e1 deltas say-deltas] (brain-step world eid e t tempters dead?)
         was-wet? (boolean (:wet? e))
