@@ -259,10 +259,14 @@
     (when (not= lit? (boolean (:burning? e)))
       [[:merge-entity eid {:burning? lit?}]])))
 
-(defn- burn-tick-deltas [eid ^long fire wet?]
+(defn- burn-tick-deltas
+  "Counts the fire down and hurts every twentieth tick. Lava does the
+  hurting itself, so the fire tick only counts there."
+  [eid ^long fire wet? in-lava?]
   (when (and (pos? fire) (not wet?))
     (cond-> [[:merge-entity eid {:fire (dec fire)}]]
-            (zero? (rem fire fire-damage-period)) (conj [:damage eid 1.0]))))
+            (and (zero? (rem fire fire-damage-period)) (not in-lava?))
+            (conj [:damage eid 1.0]))))
 
 (defn- ignite-deltas [eid fire wet? damage seconds]
   (cond-> [[:damage eid (double damage)]]
@@ -281,11 +285,12 @@
         flags (probe world e)
         touch (not (zero? (bit-and flags (bit-or fire-bit lava-bit))))
         sunk? (not (zero? (bit-and flags sunk-bit)))
+        in-lava? (not (zero? (bit-and flags lava-bit)))
         flag (burning-flag eid e fire sunk?)]
     (if (creative-proof? e)
       (concat flag (when (pos? fire) [[:merge-entity eid {:fire 0}]]))
       (concat flag
-              (burn-tick-deltas eid fire wet?)
+              (burn-tick-deltas eid fire wet? in-lava?)
               (when touch (ignite-deltas eid fire wet? 1.0 fire-seconds))
               (when sunk? (ignite-deltas eid fire wet? lava-damage lava-seconds))
               (douse-deltas eid e fire wet?)))))
@@ -313,7 +318,8 @@
         wet? (boolean (and (or (pos? fire) (pos? flags))
                            (item-wet? world e)))]
     (concat (burning-flag eid e fire false)
-            (burn-tick-deltas eid fire wet?)
+            (burn-tick-deltas eid fire wet?
+                              (pos? (bit-and flags lava-bit)))
             (when (pos? (bit-and flags fire-bit))
               (ignite-deltas eid fire wet? 1.0 fire-seconds))
             (when (pos? (bit-and flags lava-bit))
