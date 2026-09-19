@@ -1,6 +1,7 @@
 (ns collider.net.server
   "Serving the players who connect."
-  (:require [collider.log :as log]
+  (:require [clojure.string :as str]
+            [collider.log :as log]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
@@ -104,6 +105,22 @@
       (finally
         (close-writer! w sock)))))
 
+(defn- hex-of ^String [^Buf frame]
+  (str/join " " (map #(format "%02x" (bit-and 255 (long %)))
+                     (buf/peek-bytes frame 64))))
+
+(defn- decode-logged
+  "Decodes the frame; a frame that does not parse is logged with its
+  connection state and first bytes before the error goes on."
+  [^Conn conn ^Buf frame]
+  (let [state (conn-state conn)
+        n (buf/readable-bytes frame)
+        hex (hex-of frame)]
+    (try (packets/decode state frame)
+         (catch Throwable t
+           (log/warn "bad frame from" (who conn) state n "bytes:" hex)
+           (throw t)))))
+
 (defn- reader-loop [^Conn conn io]
   (let [in (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
         buf (buf/buf 2048)
@@ -112,17 +129,18 @@
       (loop []
         (let [raw (c/read-frame! in buf)
               frame (c/decompress! raw (long (:threshold @(:st conn))) infl)]
-          (when-let [m (packets/decode (conn-state conn) frame)]
+          (when-let [m (decode-logged conn frame)]
             ((:on-packet io) conn io m)))
         (recur))
       (finally (.end infl)))))
 
 (defn- disconnected! [^Conn conn {:keys [conns ^ConcurrentLinkedQueue queue save!]}]
-  (when-let [eid (:eid (first (swap-vals! (:st conn) dissoc :eid)))]
-    (swap! conns dissoc eid)
-    (.offer queue [:player-quit eid])
-    (log/info "player disconnected: eid" eid)
-    (when save! (save!))))
+  (let [w (who conn)]
+    (when-let [eid (:eid (first (swap-vals! (:st conn) dissoc :eid)))]
+      (swap! conns dissoc eid)
+      (.offer queue [:player-quit eid])
+      (log/info "player disconnected:" w)
+      (when save! (save!)))))
 
 (defn- start-writer! [conn]
   (Thread/startVirtualThread

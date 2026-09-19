@@ -5,6 +5,7 @@
             [clojure.string :as str]
             [collider.cli :as cli]
             [collider.data :as data]
+            [collider.log :as log]
             [collider.tables :as tables])
   (:import (java.io File)
            (clojure.lang ExceptionInfo))
@@ -53,6 +54,7 @@
     (cli/render! {:event :data-ready})))
 
 (defn -main [& args]
+  (log/to-file! "logs")
   (when-not (data/dir)
     (try (first-run! args)
          (catch ExceptionInfo e

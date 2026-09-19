@@ -151,13 +151,13 @@
 (defn- safe-tick [world events]
   (try (tick world events)
        (catch Throwable t
-         (log/warn "tick error:" t)
+         (log/error-with "tick error:" t)
          [world deltas/empty-deltas])))
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (.out deltas)) (pos? (count (.entities deltas))))
     (try (deliver! world deltas)
-         (catch Throwable t (log/warn "deliver error:" t)))))
+         (catch Throwable t (log/error-with "deliver error:" t)))))
 
 (defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
   (let [events (drain! queue)

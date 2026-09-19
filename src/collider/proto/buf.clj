@@ -72,6 +72,14 @@
 (defn readable-bytes ^long [^Buf b]
   (long (.readableBytes b)))
 
+(defn peek-bytes
+  "Copies up to n unread bytes without moving the read point."
+  ^bytes [^Buf b ^long n]
+  (let [n (min n (long (.readableBytes b)))
+        dst (byte-array n)]
+    (System/arraycopy (.-a b) (.-r b) dst 0 n)
+    dst))
+
 (defn clear!
   "Resets the read and write position.
   The two-arg form also shrinks the backing array down to keep

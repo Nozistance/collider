@@ -167,6 +167,7 @@
          (System/exit 1))))
 
 (defn -main [& args]
+  (log/to-file! "logs")
   (let [written? (config/write-default!)
         opts (apply merge {} (map edn/read-string args))
         {:keys [^Thread accept]} (run! (assoc opts :config-written? written?))]

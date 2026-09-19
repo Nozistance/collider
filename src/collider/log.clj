@@ -1,8 +1,9 @@
 (ns collider.log
   "Console logging."
   (:require [clojure.string :as str])
-  (:import (java.io PrintStream)
-           (java.time LocalTime)
+  (:import (java.io File FileOutputStream PrintStream PrintWriter
+                    StringWriter)
+           (java.time Instant LocalDateTime LocalTime ZoneId)
            (java.time.format DateTimeFormatter)
            (java.util Locale)))
 
@@ -11,6 +12,33 @@
 (def ^:private ^DateTimeFormatter clock (DateTimeFormatter/ofPattern "HH:mm:ss"))
 
 (def ^:private ^PrintStream console System/out)
+
+(def ^:private file (atom nil))
+
+(def ^:private ^DateTimeFormatter stamp
+  (DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss"))
+
+(defn- ended-at ^String [^File f]
+  (.format stamp (LocalDateTime/ofInstant
+                   (Instant/ofEpochMilli (.lastModified f))
+                   (ZoneId/systemDefault))))
+
+(defn- rotate! [^File latest]
+  (when (and (.exists latest) (pos? (.length latest)))
+    (.renameTo latest (File. (.getParentFile latest)
+                             (str (ended-at latest) ".log")))))
+
+(defn to-file!
+  "Sends every line to dir/latest.log as well as the console.
+  The previous run's file moves aside under the time it ended."
+  [dir]
+  (when-not @file
+    (let [d (File. ^String dir)
+          latest (File. d "latest.log")]
+      (.mkdirs d)
+      (rotate! latest)
+      (reset! file (PrintStream. (FileOutputStream. latest true)
+                                 true "UTF-8")))))
 
 (defn- thread-name ^String []
   (let [n (.getName (Thread/currentThread))]
@@ -21,7 +49,8 @@
        (str/join " " (map print-str args))))
 
 (defn- emit! [^String s]
-  (.println console s))
+  (.println console s)
+  (when-let [^PrintStream f @file] (.println f s)))
 
 (defn info [& args]
   (emit! (line "INFO" args)))
@@ -31,6 +60,14 @@
 
 (defn error [& args]
   (emit! (line "ERROR" args)))
+
+(defn error-with
+  "Logs the message and the throwable's stack trace after it."
+  [msg ^Throwable t]
+  (let [sw (StringWriter.)]
+    (.printStackTrace t (PrintWriter. sw))
+    (error msg (str t))
+    (run! emit! (rest (str/split-lines (str sw))))))
 
 (defn seconds ^String [^long nanos]
   (String/format Locale/ROOT "(%.1fs)" (to-array [(/ nanos 1e9)])))
