@@ -82,21 +82,20 @@
     (c/write-varint buf (data/registry-id (stat-registry type) key))
     (c/write-varint buf (long n))))
 
-(defn- read-pair [^Buf buf]
-  [(c/read-string buf) (c/read-string buf)])
-
-(defn- read-vec3 [^Buf buf]
-  [(buf/read-double buf) (buf/read-double buf) (buf/read-double buf)])
-
-(defn- read-float-vec3 [^Buf buf]
-  [(buf/read-float buf) (buf/read-float buf) (buf/read-float buf)])
-
 (def ^:private Varint
   [:int {:min -2147483648 :max 2147483647}])
 
 (def ^:private Id [:or :keyword :string])
 
 (def ^:private Component [:or :string :map])
+
+(def ^:private Line [wire/string {:max 384}])
+
+(def ^:private Signature [wire/bytes 256])
+
+(def ^:private LastSeen
+  [:map [:offset wire/varint] [:acknowledged [wire/bitset 20]]
+   [:checksum wire/byte]])
 
 (def ^:private Stacks [:sequential [:maybe delta/Stack]])
 
@@ -226,7 +225,7 @@
    {:schema [:map [:flags :int]
              [:flying-speed {:optional true} number?]
              [:walking-speed {:optional true} number?]]
-    :read  (fn [^Buf buf] {:flags (buf/read-byte buf)})
+    :read  (wire/reader [:map [:flags wire/byte]])
     :write (fn [^Buf buf m]
              (buf/write-byte! buf (int (:flags m)))
              (buf/write-float! buf (float (:flying-speed m)))
@@ -276,8 +275,9 @@
                (c/write-string buf m)
                (buf/write-boolean! buf false)))}
    [:play :command-suggestion]
-   {:schema [:map [:id Varint] [:text [:string {:max 32500}]]]
-    :read (fn [^Buf buf] {:id (c/read-varint buf) :text (c/read-string buf 32500)})}
+   {:schema [:map [:id wire/varint]
+             [:text [wire/string {:max 32500}]]]
+    :read :wire}
    [:play :award-stats]
    {:schema [:map [:stats [:map-of :keyword :int]]]
     :write (fn [^Buf buf m]
@@ -291,13 +291,12 @@
                (c/write-string buf k)
                (c/write-string buf v)))}
    [:play :set-game-rule]
-   {:schema [:map [:entries [:sequential [:tuple :string :string]]]]
-    :read (fn [^Buf buf]
-            (let [n (c/read-count buf)]
-              {:entries (vec (repeatedly n #(read-pair buf)))}))}
+   {:schema [:map [:entries [:sequential
+                            [:tuple wire/string wire/string]]]]
+    :read :wire}
    [:play :ping-request]
-   {:schema [:map [:payload :int]]
-    :read (fn [^Buf buf] {:payload (buf/read-long buf)})}
+   {:schema [:map [:payload wire/long]]
+    :read :wire}
    [:play :pong-response]
    {:schema [:map [:payload :int]]
     :write (fn [^Buf buf m] (buf/write-long! buf (long (:payload m))))}
@@ -374,8 +373,8 @@
                (buf/write-float! buf (float (:pitch m 0.0)))
                (buf/write-int! buf (int (:relative m 0)))))}
    [:play :accept-teleportation]
-   {:schema [:map [:id Varint]]
-    :read (fn [^Buf buf] {:id (c/read-varint buf)})}
+   {:schema [:map [:id wire/varint]]
+    :read :wire}
    [:play :set-chunk-cache-center]
    {:schema [:map [:cx :int] [:cz :int]]
     :write (fn [^Buf buf m] (c/write-varint buf (long (:cx m))) (c/write-varint buf (long (:cz m))))}
@@ -416,8 +415,8 @@
    {:schema [:map [:size Varint]]
     :write (fn [^Buf buf m] (c/write-varint buf (long (:size m))))}
    [:play :chunk-batch-received]
-   {:schema [:map [:rate number?]]
-    :read (fn [^Buf buf] {:rate (buf/read-float buf)})}
+   {:schema [:map [:rate wire/float]]
+    :read :wire}
    [:play :keep-alive]
    {:schema [:map [:id wire/long]]
     :read  :wire
@@ -529,8 +528,8 @@
              (buf/write-short! buf (int (:id m)))
              (buf/write-short! buf (int (:value m))))}
    [:play :container-button-click]
-   {:schema [:map [:container Varint] [:button Varint]]
-    :read (fn [^Buf buf] {:container (c/read-varint buf) :button (c/read-varint buf)})}
+   {:schema [:map [:container wire/varint] [:button wire/varint]]
+    :read :wire}
    [:play :update-recipes]
    {:schema [:map
              [:property-sets [:map-of Id [:sequential :keyword]]]
@@ -552,9 +551,9 @@
                  (c/write-varint buf (long (:count out 1)))
                  (c/write-patch buf nil))))}
    [:play :container-close]
-   {:schema [:map [:container Varint]]
-    :read  (fn [^Buf buf] {:container (c/read-varint buf)})
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:container m))))}
+   {:schema [:map [:container wire/varint]]
+    :read  :wire
+    :write :wire}
    [:play :set-cursor-item]
    {:schema [:map [:stack [:maybe delta/Stack]]]
     :write (fn [^Buf buf m] (c/write-item-stack buf (:stack m)))}
@@ -716,98 +715,81 @@
                (buf/write-float! buf (float speed))
                (c/write-varint buf (long weight))))}
    [:play :chat]
-   {:schema [:map [:message [:string {:max 256}]]]
-    :read (fn [^Buf buf] {:message (c/read-string buf 256)})}
+   {:schema [:map [:message [wire/string {:max 256}]]
+             [:timestamp wire/long] [:salt wire/long]
+             [:signature [:maybe Signature]] [:last-seen LastSeen]]
+    :read :wire}
    [:play :chat-command]
-   {:schema [:map [:command :string]]
-    :read (fn [^Buf buf] {:command (c/read-string buf)})}
+   {:schema [:map [:command wire/string]]
+    :read :wire}
+   [:play :chat-command-signed]
+   {:schema [:map [:command wire/string]
+             [:timestamp wire/long] [:salt wire/long]
+             [:signatures [:sequential {:max 8}
+                           [:tuple [wire/string {:max 16}] Signature]]]
+             [:last-seen LastSeen]]
+    :read :wire}
    [:play :move-player-pos]
-   {:schema [:map [:pos delta/Vec3] [:flags :int]]
-    :read (fn [^Buf buf]
-            {:pos   (read-vec3 buf)
-             :flags (buf/read-byte buf)})}
+   {:schema [:map [:pos wire/vec3] [:flags wire/unsigned-byte]]
+    :read :wire}
    [:play :move-player-pos-rot]
-   {:schema [:map [:pos delta/Vec3] [:yaw number?]
-             [:pitch number?] [:flags :int]]
-    :read (fn [^Buf buf]
-            {:pos   (read-vec3 buf)
-             :yaw   (buf/read-float buf)
-             :pitch (buf/read-float buf)
-             :flags (buf/read-byte buf)})}
+   {:schema [:map [:pos wire/vec3] [:yaw wire/float]
+             [:pitch wire/float] [:flags wire/unsigned-byte]]
+    :read :wire}
    [:play :move-player-rot]
-   {:schema [:map [:yaw number?] [:pitch number?] [:flags :int]]
-    :read (fn [^Buf buf]
-            {:yaw   (buf/read-float buf)
-             :pitch (buf/read-float buf)
-             :flags (buf/read-byte buf)})}
+   {:schema [:map [:yaw wire/float] [:pitch wire/float]
+             [:flags wire/unsigned-byte]]
+    :read :wire}
    [:play :move-player-status-only]
-   {:schema [:map [:flags :int]]
-    :read (fn [^Buf buf] {:flags (buf/read-byte buf)})}
+   {:schema [:map [:flags wire/unsigned-byte]]
+    :read :wire}
    [:play :player-action]
-   {:schema [:map [:action Varint] [:pos delta/Pos]
-             [:face :int] [:sequence Varint]]
-    :read (fn [^Buf buf]
-            {:action   (c/read-varint buf)
-             :pos      (c/read-block-pos buf)
-             :face     (buf/read-unsigned-byte buf)
-             :sequence (c/read-varint buf)})}
+   {:schema [:map [:action wire/varint] [:pos wire/block-pos]
+             [:face wire/unsigned-byte] [:sequence wire/varint]]
+    :read :wire}
    [:play :use-item-on]
-   {:schema [:map [:hand Varint] [:pos delta/Pos] [:face Varint]
-             [:cursor delta/Vec3] [:inside :boolean] [:border :boolean]
-             [:sequence Varint]]
-    :read (fn [^Buf buf]
-            {:hand     (c/read-varint buf)
-             :pos      (c/read-block-pos buf)
-             :face     (c/read-varint buf)
-             :cursor   (read-float-vec3 buf)
-             :inside   (buf/read-boolean buf)
-             :border   (buf/read-boolean buf)
-             :sequence (c/read-varint buf)})}
+   {:schema [:map [:hand wire/varint] [:pos wire/block-pos]
+             [:face wire/varint] [:cursor wire/float-vec3]
+             [:inside wire/boolean] [:border wire/boolean]
+             [:sequence wire/varint]]
+    :read :wire}
    [:play :use-item]
-   {:schema [:map [:hand Varint] [:sequence Varint]
-             [:yaw number?] [:pitch number?]]
-    :read (fn [^Buf buf]
-            {:hand     (c/read-varint buf)
-             :sequence (c/read-varint buf)
-             :yaw      (buf/read-float buf)
-             :pitch    (buf/read-float buf)})}
+   {:schema [:map [:hand wire/varint] [:sequence wire/varint]
+             [:yaw wire/float] [:pitch wire/float]]
+    :read :wire}
    [:play :sign-update]
-   {:schema [:map [:pos delta/Pos] [:front? :boolean]
-             [:lines [:sequential [:string {:max 384}]]]]
-    :read (fn [^Buf buf]
-            {:pos    (c/read-block-pos buf)
-             :front? (buf/read-boolean buf)
-             :lines  (vec (repeatedly 4 #(c/read-string buf 384)))})}
+   {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]
+             [:lines [:tuple Line Line Line Line]]]
+    :read :wire}
    [:play :swing]
-   {:schema [:map [:hand Varint]]
-    :read (fn [^Buf buf] {:hand (c/read-varint buf)})}
+   {:schema [:map [:hand wire/varint]]
+    :read :wire}
+   [:play :attack]
+   {:schema [:map [:target wire/varint]]
+    :read :wire}
    [:play :player-command]
-   {:schema [:map [:eid Varint] [:action Varint] [:data Varint]]
-    :read (fn [^Buf buf]
-            {:eid    (c/read-varint buf)
-             :action (c/read-varint buf)
-             :data   (c/read-varint buf)})}
+   {:schema [:map [:eid wire/varint] [:action wire/varint]
+             [:data wire/varint]]
+    :read :wire}
    [:play :player-input]
-   {:schema [:map [:flags :int]]
-    :read (fn [^Buf buf] {:flags (buf/read-byte buf)})}
+   {:schema [:map [:flags wire/byte]]
+    :read :wire}
    [:play :pick-item-from-block]
-   {:schema [:map [:pos delta/Pos] [:include-data :boolean]]
-    :read (fn [^Buf buf]
-            {:pos          (c/read-block-pos buf)
-             :include-data (buf/read-boolean buf)})}
+   {:schema [:map [:pos wire/block-pos]
+             [:include-data wire/boolean]]
+    :read :wire}
    [:play :pick-item-from-entity]
-   {:schema [:map [:id Varint] [:include-data :boolean]]
-    :read (fn [^Buf buf]
-            {:id           (c/read-varint buf)
-             :include-data (buf/read-boolean buf)})}
+   {:schema [:map [:id wire/varint] [:include-data wire/boolean]]
+    :read :wire}
    [:play :set-carried-item]
-   {:schema [:map [:slot :int]]
-    :read (fn [^Buf buf] {:slot (buf/read-short buf)})}
+   {:schema [:map [:slot wire/short]]
+    :read :wire}
    [:play :container-click]
    {:schema [:map [:container wire/varint] [:state-id wire/varint]
              [:slot wire/short] [:button wire/byte]
              [:mode wire/varint]
-             [:changed [:map-of wire/short wire/hashed-stack]]
+             [:changed [:map-of {:max 128}
+                        wire/short wire/hashed-stack]]
              [:carried wire/hashed-stack]]
     :read :wire}
    [:play :set-creative-mode-slot]
@@ -815,22 +797,12 @@
              [:stack [wire/item-stack {:delimited true}]]]
     :read :wire}
    [:play :client-command]
-   {:schema [:map [:action Varint]]
-    :read (fn [^Buf buf] {:action (c/read-varint buf)})}
+   {:schema [:map [:action wire/varint]]
+    :read :wire}
    [:play :interact]
-   {:schema [:map [:target Varint] [:action Varint]
-             [:hand {:optional true} Varint]
-             [:at {:optional true} delta/Vec3] [:sneaking :boolean]]
-    :read (fn [^Buf buf]
-            (let [target (c/read-varint buf)
-                  action (c/read-varint buf)]
-              (case action
-                0 (let [hand (c/read-varint buf)]
-                    {:target target :action action :hand hand :sneaking (buf/read-boolean buf)})
-                2 (let [at [(buf/read-float buf) (buf/read-float buf) (buf/read-float buf)]
-                        hand (c/read-varint buf)]
-                    {:target target :action action :at at :hand hand :sneaking (buf/read-boolean buf)})
-                {:target target :action action :sneaking (buf/read-boolean buf)})))}})
+   {:schema [:map [:target wire/varint] [:hand wire/varint]
+             [:at wire/lp-vec3] [:sneaking wire/boolean]]
+    :read :wire}})
 
 (defn- compiled
   "Fills in the halves an entry leaves to its schema."

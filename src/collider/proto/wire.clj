@@ -1,8 +1,8 @@
 (ns collider.proto.wire
   "Wire types as malli schemas, and the readers and writers
   compiled from them."
-  (:refer-clojure :exclude [boolean byte double float int long short
-                            string])
+  (:refer-clojure :exclude [boolean byte bytes double float int long
+                            short string])
   (:require [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
@@ -55,9 +55,13 @@
 (def long
   (wire-type :wire/long int? buf/read-long buf/write-long! :int))
 
+(def ^:private float-gen
+  "Doubles a float keeps whole, so a round trip stays an equality."
+  [:enum 0.0 1.0 -1.0 0.5 -0.25 90.0 -1024.0 0.125])
+
 (def float
   (wire-type :wire/float number? buf/read-float buf/write-float!
-             double-range))
+             float-gen))
 
 (def double
   (wire-type :wire/double number? buf/read-double buf/write-double!
@@ -94,7 +98,17 @@
              (fn [b] [(buf/read-float b) (buf/read-float b)
                       (buf/read-float b)])
              (fn [b [x y z]] (buf/write-float! b x)
-               (buf/write-float! b y) (buf/write-float! b z))))
+               (buf/write-float! b y) (buf/write-float! b z))
+             [:tuple float-gen float-gen float-gen]))
+
+(def ^:private lp-gen
+  "The vectors quantization keeps whole: unit ends at scale one."
+  [:enum [0.0 0.0 0.0] [1.0 0.0 0.0] [0.0 -1.0 0.0] [0.0 0.0 1.0]
+   [1.0 -1.0 1.0] [-1.0 1.0 -1.0]])
+
+(def lp-vec3
+  (wire-type :wire/lp-vec3 vector? c/read-lp-vec3 c/write-lp-vec3
+             lp-gen))
 
 (def text
   (wire-type :wire/text #(or (string? %) (map? %)) nil
@@ -141,6 +155,40 @@
            :wire/write c/write-item-stack
            :gen/schema [:enum nil {:item :stone :count 1}
                         {:item :dirt :count 64}]}}))}))
+
+(defn- read-fixed [n]
+  (fn [b]
+    (let [a (byte-array n)]
+      (buf/read-bytes! b a)
+      (vec a))))
+
+(defn- write-fixed [b v]
+  (buf/write-bytes! b (byte-array v)))
+
+(def bytes
+  (m/-simple-schema
+    {:type :wire/bytes
+     :compile
+     (fn [_ [n] _]
+       {:pred #(and (vector? %) (= n (count %))) :min 1 :max 1
+        :type-properties
+        {:wire/read (read-fixed n)
+         :wire/write write-fixed
+         :gen/schema [:vector {:min n :max n}
+                      [:int {:min -128 :max 127}]]}})}))
+
+(def bitset
+  (m/-simple-schema
+    {:type :wire/bitset
+     :compile
+     (fn [_ [bits] _]
+       (let [n (quot (+ bits 7) 8)
+             top (dec (bit-shift-left 1 bits))]
+         {:pred int? :min 1 :max 1
+          :type-properties
+          {:wire/read (fn [b] (c/read-bits b n))
+           :wire/write (fn [b v] (c/write-bits b v n))
+           :gen/schema [:int {:min 0 :max top}]}}))}))
 
 (def reg
   (m/-simple-schema
@@ -197,27 +245,43 @@
   (let [rs (mapv -reader (m/children schema))]
     (fn [b] (mapv (fn [r] (r b)) rs))))
 
+(defn- limit [schema]
+  (:max (m/properties schema) Long/MAX_VALUE))
+
+(defn- fits
+  "The count of a wire collection, refused past the vanilla limit."
+  ^long [^long n ^long mx]
+  (if (> n mx)
+    (throw (ex-info "too many elements" {:count n :max mx}))
+    n))
+
 (defn- seq-writer [schema]
-  (let [w (-writer (first (m/children schema)))]
+  (let [w (-writer (first (m/children schema)))
+        mx (limit schema)]
     (fn [b xs]
-      (c/write-varint b (count xs))
+      (c/write-varint b (fits (count xs) mx))
       (run! (fn [x] (w b x)) xs))))
 
 (defn- seq-reader [schema]
-  (let [r (-reader (first (m/children schema)))]
-    (fn [b] (mapv (fn [_] (r b)) (range (c/read-count b))))))
+  (let [r (-reader (first (m/children schema)))
+        mx (limit schema)]
+    (fn [b]
+      (mapv (fn [_] (r b))
+            (range (fits (c/read-count b) mx))))))
 
 (defn- map-of-writer [schema]
-  (let [[kw vw] (mapv -writer (m/children schema))]
+  (let [[kw vw] (mapv -writer (m/children schema))
+        mx (limit schema)]
     (fn [b m]
-      (c/write-varint b (count m))
+      (c/write-varint b (fits (count m) mx))
       (run! (fn [[k v]] (kw b k) (vw b v)) m))))
 
 (defn- map-of-reader [schema]
-  (let [[kr vr] (mapv -reader (m/children schema))]
+  (let [[kr vr] (mapv -reader (m/children schema))
+        mx (limit schema)]
     (fn [b]
       (into {} (mapv (fn [_] [(kr b) (vr b)])
-                     (range (c/read-count b)))))))
+                     (range (fits (c/read-count b) mx)))))))
 
 (defn- maybe-writer [schema]
   (let [w (-writer (first (m/children schema)))]

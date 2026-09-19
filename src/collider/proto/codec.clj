@@ -322,6 +322,42 @@
         (buf/write-int! buf (unchecked-int (bit-shift-right buffer 16)))
         (when partial? (write-varint buf (bit-shift-right scale 2)))))))
 
+(defn- lp-unpack ^double [^long v]
+  (- (/ (* 2.0 (min (bit-and v 32767) 32766)) 32766.0) 1.0))
+
+(defn read-lp-vec3
+  "Reads a vector quantized to a direction and a whole scale."
+  [^Buf buf]
+  (let [lowest (buf/read-unsigned-byte buf)]
+    (if (zero? lowest)
+      [0.0 0.0 0.0]
+      (let [middle (buf/read-unsigned-byte buf)
+            high (bit-and (buf/read-int buf) 0xFFFFFFFF)
+            v (bit-or (bit-shift-left high 16)
+                      (bit-shift-left middle 8) lowest)
+            scale (cond-> (bit-and lowest 3)
+                    (pos? (bit-and lowest 4))
+                    (bit-or (bit-shift-left
+                              (bit-and (read-varint buf) 0xFFFFFFFF)
+                              2)))]
+        [(* scale (lp-unpack (bit-shift-right v 3)))
+         (* scale (lp-unpack (bit-shift-right v 18)))
+         (* scale (lp-unpack (bit-shift-right v 33)))]))))
+
+(defn read-bits
+  "Reads a bit set of n bytes, lowest byte first, as an integer."
+  ^long [^Buf buf ^long n]
+  (loop [i 0 v 0]
+    (if (= i n)
+      v
+      (recur (inc i)
+             (bit-or v (bit-shift-left (buf/read-unsigned-byte buf)
+                                       (* 8 i)))))))
+
+(defn write-bits [^Buf buf ^long v ^long n]
+  (dotimes [i n]
+    (buf/write-byte! buf (bit-and (bit-shift-right v (* 8 i)) 0xFF))))
+
 (defn write-block-pos [^Buf buf ^long x ^long y ^long z]
   (let [v (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
                   (bit-shift-left (bit-and z 0x3FFFFFF) 12)
