@@ -333,7 +333,7 @@
   (let [t (long t) eid (long eid) st (:say-tick e)]
     (if (and st (< t (long st)))
       [e nil]
-      (if-let [say (mobs/say-sound (:type e))]
+      (if-let [say (mobs/sound-of e :say)]
         (if (nil? st)
           [(assoc e :say-tick (next-say t eid)) nil]
           [(assoc e :say-tick (next-say t eid))
@@ -346,7 +346,7 @@
                         (water-vol (:vel e) 0.35)
                         (wide-pitch (long t) (long eid) :swm)))
     (when (:on-ground e)
-      (when-let [snd (mobs/step-sound (:type e))]
+      (when-let [snd (mobs/sound-of e :step)]
         (out/all (out/sound snd (:pos e) 0.15 1.0))))))
 
 (defn- movement-sounds [acc e was-wet? old-walked new-walked t eid]

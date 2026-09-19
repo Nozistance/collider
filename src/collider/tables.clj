@@ -895,9 +895,14 @@
 (defn- loot-id [s]
   (kw (str/replace (str s) #"^#" "")))
 
+(declare shear-name)
+
 (defn- table-ref [v]
   (let [s (str/replace (str v) #"^minecraft:" "")]
-    (if (str/starts-with? s "entities/") (kw (subs s 9)) s)))
+    (cond
+      (str/starts-with? s "entities/") (kw (subs s 9))
+      (str/starts-with? s "shearing/") (kw (shear-name (subs s 9)))
+      :else s)))
 
 (defn- loot-scalar [v]
   (cond

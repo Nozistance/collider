@@ -110,11 +110,20 @@
   (bit-or (bit-and (long (or (:color meta) 0)) 15)
           (if (:sheared? meta) 0x10 0)))
 
+(defn- coat-id ^long [v] (data/datapack-id "cow_variant" v))
+
+(defn- voice-id ^long [v]
+  (data/datapack-id "cow_sound_variant" v))
+
 (defn- animal-data [meta]
   (cond-> []
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
           (contains? meta :variant) (conj [17 :int (long (:variant meta))])
+          (contains? meta :cow-variant)
+          (conj [17 :cow-variant (coat-id (:cow-variant meta))])
+          (contains? meta :cow-sound)
+          (conj [18 :cow-sound-variant (voice-id (:cow-sound meta))])
           (contains? meta :color)
           (conj [18 :byte (color-byte meta)])))
 
@@ -202,11 +211,16 @@
    :cow/step                      [:entity.cow.step 6]
    :cow/hurt                      [:entity.cow.hurt 6]
    :cow/death                     [:entity.cow.death 6]
-   :cow/milk                      [:entity.cow.milk 6]
+   :cow/milk                      [:entity.cow.milk 7]
+   :cow-moody/say                 [:entity.cow-moody.ambient 6]
+   :cow-moody/step                [:entity.cow-moody.step 6]
+   :cow-moody/hurt                [:entity.cow-moody.hurt 6]
+   :cow-moody/death               [:entity.cow-moody.death 6]
    :mooshroom/milk                [:entity.mooshroom.milk 6]
    :mooshroom/suspicious          [:entity.mooshroom.suspicious-milk 6]
-   :mooshroom/shear               [:entity.mooshroom.shear 6]
+   :mooshroom/shear               [:entity.mooshroom.shear 7]
    :mooshroom/eat                 [:entity.mooshroom.eat 6]
+   :mooshroom/convert             [:entity.mooshroom.convert 6]
    :tnt/primed                    [:entity.tnt.primed 4]
    :snowball/throw                [:entity.snowball.throw 6]
    :egg/throw                     [:entity.egg.throw 7]

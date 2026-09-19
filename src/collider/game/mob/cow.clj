@@ -1,5 +1,5 @@
 (ns collider.game.mob.cow
-  "Cow milking."
+  "Cow milking and calf variants."
   (:require [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
@@ -8,26 +8,28 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private spec (animal/spec animal/goals))
+(defn- calf-variant [t eid a b]
+  (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
-(defn brain [world eid e t tempters] (animal/brain spec world eid e t tempters))
+(def ^:private spec (animal/spec animal/goals calf-variant))
 
-(defn- has? [p item]
-  (some #(= item (:item %)) (vals (:inventory p))))
+(defn brain [world eid e t tempters]
+  (animal/brain spec world eid e t tempters))
 
-(defn- milked [peid p e]
-  (cons (out/except peid (out/sound :cow/milk (:pos e) 1.0 1.0))
-        (when-not (has? p :milk-bucket)
-          (for [[slot stack] (first (items/add-stack (or (:inventory p) {}) {:item :milk-bucket :count 1}))]
-            [:set-slot peid slot stack]))))
+(def ^:private milk {:item :milk-bucket :count 1})
+
+(defn- milked [world peid p]
+  (cons (out/except peid (out/sound :cow/milk (:pos p) 1.0 1.0))
+        (items/filled-result-deltas world peid milk)))
+
+(defn- milkable? [p e]
+  (and (= :cow (:type e)) (not (mobs/baby? e))
+       (contains? (sense/hands-of p) :bucket)))
 
 (defn milk-deltas
-  "Returns the deltas for players who milk a cow. A player gets a milk
-  bucket only when the inventory has none yet. Nothing drops when it
-  is full."
+  "Returns the deltas for players who milk a cow with a bucket.
+  A calf gives no milk."
   [world events _]
-  (animal/on-interact world events
-                      (fn [peid p _ e]
-                        (when (and (= :cow (:type e)) (not (mobs/baby? e))
-                                   (contains? (sense/hands-of p) :bucket))
-                          (milked peid p e)))))
+  (let [f (fn [peid p _ e]
+            (when (milkable? p e) (milked world peid p)))]
+    (animal/on-interact world events f)))

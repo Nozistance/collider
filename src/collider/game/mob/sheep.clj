@@ -97,12 +97,8 @@
     (or (mobs/color-id (mixed ca cb))
         (if (< (animal/rnd t eid :mix) 0.5) (:color a) (:color b)))))
 
-(defn- shear-table [e]
-  (keyword "sheep-shear"
-           (name (mobs/dye-colors (long (or (:color e) 0))))))
-
 (defn- wool-stacks [t eid e]
-  (loot/drops @tables (shear-table e)
+  (loot/drops @tables :sheep-shear
               {:looting 0 :entity (mobs/loot-entity e)}
               #(random/of-key t eid [:shear %])))
 

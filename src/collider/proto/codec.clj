@@ -904,7 +904,8 @@
 
 (def ^:private data-types
   {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
-   :optional-block-pos 11 :block-state 14 :particle 16 :pose 20})
+   :optional-block-pos 11 :block-state 14 :particle 16 :pose 20
+   :cow-variant 23 :cow-sound-variant 24})
 
 (defn- write-data-pos [^Buf buf v]
   (let [[x y z] v]
@@ -925,7 +926,9 @@
     :particle (let [[t c] v]
                 (write-varint buf (long t))
                 (buf/write-int! buf (int c)))
-    :pose (write-varint buf (long v))))
+    :pose (write-varint buf (long v))
+    (:cow-variant :cow-sound-variant)
+    (write-varint buf (inc (long v)))))
 
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]

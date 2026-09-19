@@ -67,8 +67,8 @@
       (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
       :else :player/hurt)
     (if (pos? (double (:health e)))
-      (mobs/hurt-sound (:type e))
-      (mobs/death-sound (:type e)))))
+      (mobs/sound-of e :hurt)
+      (mobs/sound-of e :death))))
 
 (defn- sound-pitch ^double [world eid e]
   (let [t (long (:tick world))

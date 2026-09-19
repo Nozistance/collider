@@ -154,9 +154,10 @@
             at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
             pitch (+ 1.0 (* 0.2 (- (random/of-key t pos :p1) (random/of-key t pos :p2))))]
         (when (chunk/in-range? y)
-          (cons [:spawn-entity (mobs/egg-mob mob at [t pos] t)]
-                (when-let [say (mobs/say-sound mob)]
-                  [(out/all (out/sound say at 1.0 pitch))])))))))
+          (let [hatched (mobs/egg-mob mob at [t pos] t)]
+            (cons [:spawn-entity hatched]
+                  (when-let [say (mobs/sound-of hatched :say)]
+                    [(out/all (out/sound say at 1.0 pitch))]))))))))
 
 (defn carve-deltas [world eid pos face]
   (let [dir (if (<= (long face) 1)
