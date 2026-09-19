@@ -23,9 +23,11 @@
 
 (def ^:private brains {:sheep sheep/brain :cow cow/brain :mooshroom mooshroom/brain})
 
+(def ^:private specs {:sheep sheep/spec :cow cow/spec :mooshroom mooshroom/spec})
+
 (def ^:private interactions
-  [animal/feed-deltas cow/milk-deltas mooshroom/interact-deltas
-   sheep/interact-deltas])
+  [(partial animal/egg-deltas specs) animal/feed-deltas cow/milk-deltas
+   mooshroom/interact-deltas sheep/interact-deltas])
 
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]

@@ -158,7 +158,9 @@
   {:kind  :eat :flags #{:move :look} :start start-eat
    :continue? eating? :tick eat-tick})
 
-(def ^:private spec
+(def spec
+  "The sheep's goals with eating grass before strolling; a lamb
+  wears the parents' colours mixed."
   (let [before? #(not= :wander (:kind %))
         [before after] (split-with before? animal/goals)]
     (animal/spec (concat before [eat] after) lamb-color)))

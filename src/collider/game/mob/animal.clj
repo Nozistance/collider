@@ -163,11 +163,14 @@
     (and o (mobs/in-love? o t) (not (mobs/panicking? o t))
          (< (- (long t) (long (get-in e [:task :since]))) (* 2 mate-ticks)))))
 
+(defn- newborn [spec t eid e o]
+  (assoc (mobs/new-mob (:type e) (:pos e) ((:child-color spec) t eid e o) t)
+         :baby-until (+ (long t) baby-ticks)))
+
 (defn- bred [spec eid pid e o t]
   (let [cooled {:love-until 0 :breed-ready-at (+ (long t) breed-cooldown)}]
     [(assoc e :task nil)
-     [[:spawn-entity (assoc (mobs/new-mob (:type e) (:pos e) ((:child-color spec) t eid e o) t)
-                       :baby-until (+ (long t) baby-ticks))]
+     [[:spawn-entity (newborn spec t eid e o)]
       [:merge-entity eid cooled]
       [:merge-entity pid (assoc cooled :task nil)]
       (out/all (out/status eid :love))
@@ -372,6 +375,17 @@
     (feedable? e t)
     [[:merge-entity target {:love-until (+ (long t) love-ticks)}]
      (out/all (out/status target :love))]))
+
+(defn egg-deltas
+  "Returns the deltas for players who click a mob with its own spawn
+  egg: a baby appears at the parent, bred from the parent alone.
+  specs maps a mob type to its breed spec."
+  [specs world events t]
+  (on-interact world events
+               (fn [_ p eid e]
+                 (when-let [spec (specs (:type e))]
+                   (when (some #(= (:type e) (mobs/egg-type %)) (sense/hands-of p))
+                     [[:spawn-entity (newborn spec t eid e e)]])))))
 
 (defn feed-deltas [world events t]
   (on-interact world events

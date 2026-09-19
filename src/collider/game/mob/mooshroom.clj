@@ -36,7 +36,10 @@
         (< (animal/rnd t eid :variant) 0.5) (variant a)
         :else (variant b)))
 
-(def ^:private spec (animal/spec animal/goals calf-variant))
+(def spec
+  "The mooshroom's goals; a calf takes either parent's variant,
+  rarely the other one."
+  (animal/spec animal/goals calf-variant))
 
 (defn brain [world eid e t tempters]
   (animal/brain spec world eid e t tempters))

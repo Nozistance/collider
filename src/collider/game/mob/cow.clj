@@ -11,7 +11,9 @@
 (defn- calf-variant [t eid a b]
   (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
-(def ^:private spec (animal/spec animal/goals calf-variant))
+(def spec
+  "The cow's goals; a calf takes the coat of either parent."
+  (animal/spec animal/goals calf-variant))
 
 (defn brain [world eid e t tempters]
   (animal/brain spec world eid e t tempters))
