@@ -41,7 +41,9 @@
   rarely the other one."
   (animal/spec animal/goals calf-variant))
 
-(defn brain [world eid e t tempters]
+(defn brain
+  "Returns the mooshroom's next state and deltas for one tick."
+  [world eid e t tempters]
   (animal/brain spec world eid e t tempters))
 
 (def ^:private ^:table tables (delay (data/entity-drops)))
@@ -94,9 +96,8 @@
 
 (defn- converted
   "Returns the cow a shorn mooshroom becomes.
-  It keeps where it stood and how soon it breeds again; vanilla
-  gives the new body full health, a temperate coat and a classic
-  voice."
+  It keeps where it stood and how soon it breeds again, and is
+  otherwise a newborn cow."
   [e t]
   (merge (mobs/new-mob :cow (:pos e) nil t)
          (select-keys e kept-on-shear)))
@@ -129,14 +130,14 @@
 
 (defn bowl-result
   "Returns what a bowl does to a grown mooshroom: it fills with stew,
-  suspicious when a flower was fed, as MushroomCow.mobInteract."
+  suspicious when a flower was fed."
   [{:keys [world peid hand eid e item]}]
   (when (and (= :bowl item) (not (mobs/baby? e)))
     {:result :success :deltas (bowled world peid hand eid e)}))
 
 (defn shear-result
-  "Returns what shears do to a grown mooshroom: it turns into a cow
-  and its mushrooms fall, as MushroomCow.mobInteract."
+  "Returns what shears do to a grown mooshroom, which turns into a
+  cow while its mushrooms fall."
   [{:keys [t peid p hand eid e item]}]
   (when (and (= :shears item) (not (mobs/baby? e)))
     {:result :success
@@ -145,8 +146,8 @@
                      (sheared eid e t))}))
 
 (defn flower-result
-  "Returns what a stew flower does to a grown brown mooshroom: it
-  remembers the flower for its next stew, as MushroomCow.mobInteract.
+  "Returns what a stew flower does to a grown brown mooshroom, which
+  remembers the flower for its next stew.
   One that already holds a flower takes the click and nothing else."
   [{:keys [peid p hand eid e item]}]
   (when (and (= brown (variant e)) (not (mobs/baby? e)) (@stews item))

@@ -135,7 +135,7 @@
 
 (defn shear-result
   "Returns what shears do to a sheep: a grown unshorn one loses its
-  wool, as Sheep.mobInteract. Any other sheep swallows the click."
+  wool. Any other sheep swallows the click."
   [{:keys [t peid p hand eid e item]}]
   (when (= :shears item)
     (if (shearable? e)
@@ -148,8 +148,8 @@
           (items/consume-deltas peid p hand 1)))
 
 (defn dye-result
-  "Returns what a dye does to a sheep still wearing its wool: its
-  coat takes the colour, as DyeItem.interactLivingEntity."
+  "Returns what a dye does to a sheep still wearing its wool, whose
+  coat takes the colour."
   [{:keys [peid p hand eid e item]}]
   (when (and (= :sheep (:type e)) (not (:sheared? e)))
     (when-let [id (some-> (data/dye-color item) mobs/color-id)]
@@ -167,5 +167,7 @@
         [before after] (split-with before? animal/goals)]
     (animal/spec (concat before [eat] after) lamb-color)))
 
-(defn brain [world eid e t tempters]
+(defn brain
+  "Returns the sheep's next state and deltas for one tick."
+  [world eid e t tempters]
   (animal/brain spec world eid e t tempters))

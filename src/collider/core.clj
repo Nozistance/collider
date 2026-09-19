@@ -14,15 +14,20 @@
             [collider.persist.snapshot :as snapshot])
   (:import (clojure.lang ExceptionInfo)
            (collider.game.deltas Deltas)
-           (java.lang.management GarbageCollectorMXBean ManagementFactory)
+           (java.lang.management
+             GarbageCollectorMXBean ManagementFactory)
            (java.net BindException ServerSocket)
-           (java.util.concurrent ConcurrentLinkedQueue Executors
-                                 ScheduledExecutorService ThreadFactory TimeUnit))
+           (java.util.concurrent
+             ConcurrentLinkedQueue Executors
+             ScheduledExecutorService ThreadFactory TimeUnit))
   (:gen-class))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const shutdown-drain-ms 1000)
+
+(def ^:private shutdown-reason
+  {:translate "multiplayer.disconnect.server_shutdown"})
 
 (defn- on-loaded [^ConcurrentLinkedQueue queue id]
   #(.offer queue [:chunk-loaded id %]))
@@ -31,8 +36,8 @@
   (doseq [{:keys [msg id payload]} (.out deltas)]
     (case msg
       :store-chunk (snapshot/store-chunk! saver store id payload)
-      :load-chunk (snapshot/fetch-chunk! saver store id
-                                         (on-loaded queue id))
+      :load-chunk (let [done (on-loaded queue id)]
+                    (snapshot/fetch-chunk! saver store id done))
       nil)))
 
 (defn- deliver! [conns world deltas]
@@ -43,18 +48,28 @@
           (server/close! conn)
           (server/send! conn pkt))))))
 
-(defn- shutdown! [{:keys [^ServerSocket socket conns ticker saver store world]}]
+(defn- shutdown!
+  [{:keys [^ServerSocket socket conns ticker saver store world]}]
   (some-> socket .close)
   (some-> ticker tick/stop-ticker!)
-  (server/close-all! conns {:translate "multiplayer.disconnect.server_shutdown"} shutdown-drain-ms)
+  (server/close-all! conns shutdown-reason shutdown-drain-ms)
   (when saver (snapshot/stop-saver! saver store @world)))
 
-(defn- saver-scheduler ^ScheduledExecutorService [save! ^long period-ms]
-  (doto (Executors/newSingleThreadScheduledExecutor
-          (reify ThreadFactory
-            (newThread [_ r] (doto (Thread. ^Runnable r "collider-saver-timer")
-                               (.setDaemon true)))))
-    (.scheduleWithFixedDelay ^Runnable save! period-ms period-ms TimeUnit/MILLISECONDS)))
+(defn- saver-thread ^Thread [^Runnable r]
+  (doto (Thread. r "collider-saver-timer")
+    (.setDaemon true)))
+
+(defn- saver-factory ^ThreadFactory []
+  (reify ThreadFactory
+    (newThread [_ r] (saver-thread r))))
+
+(defn- saver-scheduler
+  ^ScheduledExecutorService [save! ^long period-ms]
+  (let [pool (Executors/newSingleThreadScheduledExecutor
+               (saver-factory))]
+    (.scheduleWithFixedDelay
+      pool ^Runnable save! period-ms period-ms TimeUnit/MILLISECONDS)
+    pool))
 
 (defn- shutdown-hook! [server]
   (let [t (Thread. ^Runnable #(shutdown! server) "collider-shutdown")]
@@ -66,25 +81,26 @@
       (when-let [dir (:save-dir cfg)] (snapshot/file-store dir))))
 
 (defn- world-config [cfg store]
-  (assoc (select-keys cfg [:view-distance :simulation-distance
-                           :max-players :motd])
-         :unload-chunks? (some? store)))
+  (let [ks [:view-distance :simulation-distance :max-players :motd]]
+    (assoc (select-keys cfg ks) :unload-chunks? (some? store))))
 
 (defn- open-world [opts]
   (let [cfg (merge (config/load-config) opts)
         store (open-store opts cfg)
         saved (when store (snapshot/load-snapshot store))
-        world (atom (assoc (merge state/initial-world saved)
-                           :config (world-config cfg store)))
-        saver (when store (snapshot/start-saver))]
-    {:cfg   cfg :store store :saved saved :world world :saver saver
-     :save! (when saver #(snapshot/request-save! saver store @world))}))
+        init (merge state/initial-world saved)
+        world (atom (assoc init :config (world-config cfg store)))
+        saver (when store (snapshot/start-saver))
+        save! (when saver
+                #(snapshot/request-save! saver store @world))]
+    {:cfg cfg :store store :saved saved :world world :saver saver
+     :save! save!}))
 
 (defn- open-net [{:keys [cfg world save!]}]
   (let [queue (ConcurrentLinkedQueue.)
         conns (atom {})
-        io {:queue     queue :conns conns :cfg cfg :save! save! :world world
-            :on-packet session/handle-packet}
+        io {:queue queue :conns conns :cfg cfg :save! save!
+            :world world :on-packet session/handle-packet}
         {:keys [socket accept]} (server/listen! io (:port cfg))]
     {:queue queue :conns conns :socket socket :accept accept}))
 
@@ -104,17 +120,21 @@
      :scheduler (when saver
                   (saver-scheduler save! (:save-period-ms cfg)))}))
 
+(defn- gc-name []
+  (let [beans (ManagementFactory/getGarbageCollectorMXBeans)
+        ^GarbageCollectorMXBean gc (first beans)]
+    (re-find #"\S+" (.getName gc))))
+
 (defn- host-event [saved config-written?]
-  (let [rt (Runtime/getRuntime)
-        ^GarbageCollectorMXBean gc (first (ManagementFactory/getGarbageCollectorMXBeans))]
+  (let [rt (Runtime/getRuntime)]
     {:event           :host
      :java            (System/getProperty "java.version")
      :cores           (.availableProcessors rt)
      :heap            (log/human-bytes (.maxMemory rt))
-     :gc              (re-find #"\S+" (.getName gc))
+     :gc              (gc-name)
      :data            (data/dir)
      :world           (:save-dir (config/load-config))
-     :chunks          (when (seq (:stored saved)) (count (:stored saved)))
+     :chunks          (some-> (:stored saved) seq count)
      :entities        (count (:entities saved))
      :config          "config.edn"
      :config-written? config-written?}))
@@ -130,28 +150,37 @@
   (* 1000000 (.getUptime (ManagementFactory/getRuntimeMXBean))))
 
 (defn- port-taken [port]
-  (ex-info "port taken"
-           {:what    "failed to bind to port"
-            :why     (str "Perhaps a server is already running on port " port "?")
-            :command (str "Set another port in config.edn: {:port " (inc (long port)) "}")}))
+  (let [why (str "Perhaps a server is already running on port "
+                 port "?")
+        cmd (str "Set another port in config.edn: {:port "
+                 (inc (long port)) "}")]
+    (ex-info "port taken"
+             {:what "failed to bind to port" :why why :command cmd})))
 
 (defn- listen [base]
   (try (open-net base)
        (catch BindException _
          (throw (port-taken (:port (:cfg base)))))))
 
-(defn start [opts]
+(defn start
+  "Starts the server on the configured port and returns its handle."
+  [opts]
   (let [report (:report opts (fn [_] nil))
         {:keys [store saved world saver] :as base} (open-world opts)]
     (report (host-event saved (:config-written? opts)))
     (timed report :load data/load!)
     (let [net (listen base)
           clocks (start-clocks base net)
-          server (merge {:world world :saver saver :store store} net clocks)]
-      (report {:event :ready :port (.getLocalPort ^ServerSocket (:socket net)) :took (uptime)})
+          held {:world world :saver saver :store store}
+          server (merge held net clocks)
+          port (.getLocalPort ^ServerSocket (:socket net))]
+      (report {:event :ready :port port :took (uptime)})
       (assoc server :shutdown-hook (shutdown-hook! server)))))
 
-(defn stop [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook] :as server}]
+(defn stop
+  "Stops a running server and everything it started."
+  [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook]
+    :as server}]
   (some-> scheduler .shutdownNow)
   (when shutdown-hook
     (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
@@ -170,5 +199,6 @@
   (log/to-file! "logs")
   (let [written? (config/write-default!)
         opts (apply merge {} (map edn/read-string args))
-        {:keys [^Thread accept]} (run! (assoc opts :config-written? written?))]
+        server (run! (assoc opts :config-written? written?))
+        ^Thread accept (:accept server)]
     (.join accept)))

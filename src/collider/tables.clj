@@ -58,16 +58,17 @@
     (.getInputStream c)))
 
 (defn- unreachable [url e]
-  (ex-info (str "cannot reach " (.getHost (URL. (str url))))
-           {:step    :jar
-            :what    "failed to reach Mojang"
-            :why     (str "The exception was: "
-                          (.getSimpleName (class e)) ": "
-                          (.getMessage ^Throwable e))
-            :command (str "Download server.jar " version
-                          " yourself and start with"
-                          " '{:jar \"path/to/server.jar\"}'")}
-           e))
+  (let [why (str "The exception was: "
+                 (.getSimpleName (class e)) ": "
+                 (.getMessage ^Throwable e))
+        cmd (str "Download server.jar " version
+                 " yourself and start with"
+                 " '{:jar \"path/to/server.jar\"}'")]
+    (ex-info (str "cannot reach " (.getHost (URL. (str url))))
+             {:step :jar
+              :what "failed to reach Mojang"
+              :why why :command cmd}
+             e)))
 
 (defn- fetch-json [url]
   (try (with-open [in (open-url url)]
@@ -91,14 +92,14 @@
       (io/copy f t))))
 
 (defn- corrupt [url want got]
-  (ex-info "sha1 mismatch"
-           {:step    :jar
-            :what    "server.jar is corrupt"
-            :why     (str "Its checksum does not match the one"
-                          " Mojang published")
-            :command (str "Delete " (cache-dir version)
-                          " and start again")
-            :url url :want want :got got}))
+  (let [why (str "Its checksum does not match the one"
+                 " Mojang published")
+        cmd (str "Delete " (cache-dir version) " and start again")]
+    (ex-info "sha1 mismatch"
+             {:step :jar
+              :what "server.jar is corrupt"
+              :why why :command cmd
+              :url url :want want :got got})))
 
 (defn- download! [url ^File to want]
   (io/make-parents to)
@@ -125,12 +126,13 @@
     {:source :mojang :bytes size}))
 
 (defn- no-such-jar [local]
-  (ex-info (str "no jar at " local)
-           {:step :jar
-            :what    "no such jar"
-            :why     (str "There is no file at " local)
-            :command (str "Check :jar, or leave it out to download"
-                          " server.jar from Mojang")}))
+  (let [cmd (str "Check :jar, or leave it out to download"
+                 " server.jar from Mojang")]
+    (ex-info (str "no jar at " local)
+             {:step :jar
+              :what "no such jar"
+              :why (str "There is no file at " local)
+              :command cmd})))
 
 (defn- copy-local! [local ^File jar]
   (when-not (.isFile (io/file local))
@@ -701,7 +703,8 @@
   (throw (ex-info "default component not modelled" {:value v})))
 
 (defn- empty-or-throw [k v]
-  (when (seq v) (throw (ex-info "default component not modelled" {k v})))
+  (when (seq v)
+    (throw (ex-info "default component not modelled" {k v})))
   v)
 
 (defn- potion-default [v]
@@ -867,7 +870,8 @@
   (case (get c "condition")
     "minecraft:survives_explosion" {:survives-explosion true}
     "minecraft:random_chance" {:chance (double (get c "chance"))}
-    "minecraft:table_bonus" {:chance (double (first (get c "chances")))}
+    "minecraft:table_bonus"
+    {:chance (double (first (get c "chances")))}
     "minecraft:block_state_property" (state-props c)
     "minecraft:entity_properties" {:entity? true}
     "minecraft:match_tool" :skip
@@ -901,7 +905,8 @@
   (let [type (get e "type")
         cs (loot-conditions (get e "conditions"))]
     (cond
-      (not (#{"minecraft:item" "minecraft:alternatives"} type)) :unknown
+      (not (#{"minecraft:item" "minecraft:alternatives"} type))
+      :unknown
       (keyword? cs) cs
       (= "minecraft:item" type) (item-entry e cs)
       :else
@@ -1028,7 +1033,9 @@
 (defn- feature-value [v]
   (cond
     (and (map? v) (contains? v "Name")) (state-value v)
-    (map? v) (into (sorted-map) (map (fn [[k x]] [(kw k) (feature-value x)])) v)
+    (map? v) (into (sorted-map)
+                   (map (fn [[k x]] [(kw k) (feature-value x)]))
+                   v)
     (vector? v) (mapv feature-value v)
     (not (string? v)) v
     (str/starts-with? v "#") {:tag (plain (subs v 1))}
@@ -1036,7 +1043,8 @@
 
 (def ^:private selector-types
   #{"minecraft:random_selector" "minecraft:weighted_random_selector"
-    "minecraft:simple_random_selector" "minecraft:random_boolean_selector"})
+    "minecraft:simple_random_selector"
+    "minecraft:random_boolean_selector"})
 
 (def ^:private placed-fields
   #{"feature" "default_feature" "vegetation_feature"})
@@ -1062,7 +1070,8 @@
   (let [j (get (:configured reg) nm)]
     (into [nm]
           (when (selector-types (get j "type"))
-            (mapcat #(placed-features reg %) (placed-refs (get j "config")))))))
+            (mapcat #(placed-features reg %)
+                    (placed-refs (get j "config")))))))
 
 (defn- biome-features [reg tagged j]
   (let [xf (comp cat
@@ -1093,15 +1102,21 @@
         names))
 
 (def ^:private bone-meal-tag
-  "data/minecraft/tags/worldgen/configured_feature/can_spawn_from_bone_meal.json")
+  (str "data/minecraft/tags/worldgen/configured_feature"
+       "/can_spawn_from_bone_meal.json"))
 
 (defn- feature-registries [zf]
-  (into {} (map (fn [[k dir]] [k (jsons zf (str "data/minecraft/worldgen/" dir "/"))]))
-        {:placed "placed_feature" :configured "configured_feature" :biomes "biome"}))
+  (let [dir-of (fn [dir] (str "data/minecraft/worldgen/" dir "/"))]
+    (into {}
+          (map (fn [[k dir]] [k (jsons zf (dir-of dir))]))
+          {:placed "placed_feature"
+           :configured "configured_feature"
+           :biomes "biome"})))
 
 (defn- features [zf placers]
   (let [reg (feature-registries zf)
-        tagged (into #{} (map plain) (get (read-json zf bone-meal-tag) "values"))
+        bone-meal (read-json zf bone-meal-tag)
+        tagged (into #{} (map plain) (get bone-meal "values"))
         roots (into tagged (map (comp json-name second)) placers)
         [cs ps] (closure reg roots #{"grass_bonemeal"})]
     {:configured (feature-set reg :configured cs)
@@ -1182,16 +1197,17 @@
 
 (defn- stew-effects [v]
   (mapv (fn [e]
-          {:effect (kw (get e "id")) :duration (get e "duration" 160)})
+          {:effect (kw (get e "id"))
+           :duration (get e "duration" 160)})
         v))
 
+(defn- result-component [[k v]]
+  (if (= k "minecraft:suspicious_stew_effects")
+    [:suspicious-stew-effects (stew-effects v)]
+    (throw (ex-info "result component not modelled" {k v}))))
+
 (defn- result-components [cs]
-  (into (sorted-map)
-        (map (fn [[k v]]
-               (if (= k "minecraft:suspicious_stew_effects")
-                 [:suspicious-stew-effects (stew-effects v)]
-                 (throw (ex-info "result component not modelled" {k v})))))
-        cs))
+  (into (sorted-map) (map result-component) cs))
 
 (defn- result [r]
   (let [r (if (string? r) {"id" r} r)
@@ -1208,8 +1224,8 @@
 
 (defn- shrink-step [[left right top bottom] [i ^String line]]
   (let [first-non (count (take-while #(= \space %) line))
-        last-non (- (count line) 1
-                    (count (take-while #(= \space %) (reverse line))))]
+        trail (count (take-while #(= \space %) (reverse line)))
+        last-non (- (count line) 1 trail)]
     [(min left first-non) (max right last-non)
      (if (and (neg? last-non) (= top i)) (inc top) top)
      (if (neg? last-non) (inc bottom) 0)]))
@@ -1260,7 +1276,8 @@
 (defn- extra-fields [tags type json]
   (case type
     :transmute
-    {:material-count (bounds (get json "material_count") {:min 1 :max 1})
+    {:material-count
+     (bounds (get json "material_count") {:min 1 :max 1})
      :add-material-count?
      (get json "add_material_count_to_result" false)}
     :book-cloning
@@ -1575,15 +1592,15 @@
   (mapv #(if (map? %) (get % "id") %) (get json "values")))
 
 (defn- resolve-tags [found vs seen]
-  (into []
-        (mapcat (fn [v]
-                  (if (str/starts-with? v "#")
-                    (let [t (str/replace (subs v 1) #"^minecraft:" "")]
-                      (if (seen t)
-                        []
-                        (resolve-tags found (found t []) (conj seen t))))
-                    [(kw v)])))
-        vs))
+  (let [tag (fn [t]
+              (if (seen t)
+                []
+                (resolve-tags found (found t []) (conj seen t))))
+        one (fn [v]
+              (if (str/starts-with? v "#")
+                (tag (plain (subs v 1)))
+                [(kw v)]))]
+    (into [] (mapcat one) vs)))
 
 (defn- tags-of [zf registries]
   (into (sorted-map)
@@ -1604,12 +1621,14 @@
         (.write ^Writer w "\n")))))
 
 (defn- tables [zf from-class reports rs]
-  (let [{:keys [props shapes compost walls placers remainders banners dyes]}
+  (let [{:keys [props shapes compost walls placers remainders
+                banners dyes]}
         from-class
         dp (datapack-names zf)
         tags (tags-of zf (distinct (concat (keys rs) (keys dp))))
         item-names (set (keys (get rs "item")))
         potion-names (set (keys (get rs "potion")))
+        effect-names (set (keys (get rs "mob_effect")))
         items (merge-with
                merge (vanilla-items reports)
                compost walls remainders banners)]
@@ -1625,7 +1644,7 @@
             :features   (features zf placers)
             :recipes    (recipes zf tags dyes item-names potion-names)
             :potions    (potion-table potion-names)
-            :effects    (effect-table (set (keys (get rs "mob_effect"))))
+            :effects    (effect-table effect-names)
             :tags       tags})))
 
 (defn- write-tables! [^File server ^File dir out from-class]
@@ -1643,7 +1662,9 @@
            (write-tables! server dir out from))
          (finally (delete-tree! libraries)))))
 
-(defn generate! [{:keys [version out jar] :or {version version out "target/data"}}]
+(defn generate!
+  [{:keys [version out jar]
+    :or {version version out "target/data"}}]
   (let [bundle (fetch version jar)
         server (inner-jar bundle)
         dir (reports bundle)]
@@ -1663,6 +1684,8 @@
            (emit-edn! (assoc (ex-data e) :event :error))
            (System/exit 1))
          (catch Exception e
-           (emit-edn! {:event :error :what "data generator failed" :why (str "The exception was: " e)})
+           (emit-edn! {:event :error
+                       :what "data generator failed"
+                       :why (str "The exception was: " e)})
            (System/exit 1))))
   (System/exit 0))

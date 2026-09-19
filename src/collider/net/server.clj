@@ -6,9 +6,13 @@
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
   (:import (collider.java Buf)
-           (java.io BufferedInputStream BufferedOutputStream EOFException)
-           (java.net ServerSocket Socket SocketException SocketTimeoutException)
-           (java.util.concurrent BlockingQueue ConcurrentLinkedQueue LinkedBlockingQueue TimeUnit)
+           (java.io BufferedInputStream BufferedOutputStream
+                    EOFException)
+           (java.net ServerSocket Socket SocketException
+                     SocketTimeoutException)
+           (java.util.concurrent
+             BlockingQueue ConcurrentLinkedQueue LinkedBlockingQueue
+             TimeUnit)
            (java.util.concurrent.atomic AtomicBoolean AtomicInteger)
            (java.util.zip Deflater Inflater)))
 
@@ -22,13 +26,23 @@
 
 (def ^:private ^:const default-max-connections 256)
 
-(defrecord Conn [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
+(defrecord Conn
+  [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
 
-(defn conn-state [^Conn c] (:state @(:st c)))
+(defn conn-state
+  "Returns the protocol state connection c is in."
+  [^Conn c]
+  (:state @(:st c)))
 
-(defn info [^Conn c] @(:st c))
+(defn info
+  "Returns everything known about connection c."
+  [^Conn c]
+  @(:st c))
 
-(defn put! [^Conn c k v] (swap! (:st c) assoc k v))
+(defn put!
+  "Remembers v under k on connection c."
+  [^Conn c k v]
+  (swap! (:st c) assoc k v))
 
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:st c)]
@@ -42,7 +56,9 @@
   (when (.compareAndSet ^AtomicBoolean (:closing c) false true)
     (.offer ^BlockingQueue (:q c) [:close])))
 
-(defn send! [^Conn c m]
+(defn send!
+  "Queues packet m for connection c, dropping it once c is closing."
+  [^Conn c m]
   (when-not (.get ^AtomicBoolean (:closing c))
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
@@ -61,16 +77,14 @@
       (log/warn "encode failed for" (:packet m) "-" (str t))
       false)))
 
-(defn- write-packet! [out payload body head threshold defl chunk state m]
-  (when (encode-packet! payload state m)
-    (c/write-frame! out payload body head (long threshold) defl chunk)))
-
 (defn- writer-wire [^BufferedOutputStream out]
-  {:out out :payload (buf/buf 1024) :body (buf/buf 1024) :head (buf/buf 5)
-   :defl (Deflater.) :chunk (byte-array 8192)})
+  {:out out :payload (buf/buf 1024) :body (buf/buf 1024)
+   :head (buf/buf 5) :defl (Deflater.) :chunk (byte-array 8192)})
 
 (defn- emit! [w ^long threshold state m]
-  (write-packet! (:out w) (:payload w) (:body w) (:head w) threshold (:defl w) (:chunk w) state m))
+  (when (encode-packet! (:payload w) state m)
+    (c/write-frame! (:out w) (:payload w) (:body w) (:head w)
+                    threshold (:defl w) (:chunk w))))
 
 (defn- close-writer! [w ^Socket sock]
   (let [^BufferedOutputStream out (:out w)]
@@ -97,11 +111,13 @@
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
         ^BlockingQueue q (:q c)
-        w (writer-wire (BufferedOutputStream. (.getOutputStream sock)))]
+        out (BufferedOutputStream. (.getOutputStream sock))
+        w (writer-wire out)]
     (try
       (loop [threshold -1]
-        (when-let [t (writer-step c w threshold (.poll q writer-poll-ms TimeUnit/MILLISECONDS))]
-          (recur (long t))))
+        (let [x (.poll q writer-poll-ms TimeUnit/MILLISECONDS)]
+          (when-let [t (writer-step c w threshold x)]
+            (recur (long t)))))
       (finally
         (close-writer! w sock)))))
 
@@ -122,20 +138,23 @@
            (throw t)))))
 
 (defn- reader-loop [^Conn conn io]
-  (let [in (BufferedInputStream. (.getInputStream ^Socket (:sock conn)))
+  (let [^Socket sock (:sock conn)
+        in (BufferedInputStream. (.getInputStream sock))
         buf (buf/buf 2048)
         infl (Inflater.)]
     (try
       (loop []
         (let [raw (c/read-frame! in buf)
-              frame (c/decompress! raw (long (:threshold @(:st conn))) infl)]
+              thr (long (:threshold @(:st conn)))
+              frame (c/decompress! raw thr infl)]
           (when-let [m (decode-logged conn frame)]
             ((:on-packet io) conn io m)))
         (recur))
       (finally (.end infl)))))
 
-(defn- disconnected! [^Conn conn {:keys [conns ^ConcurrentLinkedQueue queue save!]}]
-  (let [w (who conn)]
+(defn- disconnected! [^Conn conn io]
+  (let [{:keys [conns ^ConcurrentLinkedQueue queue save!]} io
+        w (who conn)]
     (when-let [eid (:eid (first (swap-vals! (:st conn) dissoc :eid)))]
       (swap! conns dissoc eid)
       (.offer queue [:player-quit eid])
@@ -176,17 +195,21 @@
         (disconnected! conn io)
         (close! conn)))))
 
-(defn writable-eids [conns]
-  (into #{}
-        (keep (fn [[eid ^Conn conn]]
-                (when (< (.size ^BlockingQueue (:q conn)) out-queue-high) eid)))
-        @conns))
+(defn writable-eids
+  "Returns the eids whose outgoing queue still has room."
+  [conns]
+  (let [room? (fn [^Conn conn]
+                (< (.size ^BlockingQueue (:q conn)) out-queue-high))]
+    (into #{}
+          (keep (fn [[eid conn]] (when (room? conn) eid)))
+          @conns)))
 
 (defn- drain! [conns ^long ms]
   (let [deadline (+ (System/currentTimeMillis) ms)]
     (doseq [[_ ^Conn conn] conns]
       (when-let [^Thread w (:writer @(:st conn))]
-        (^[long] Thread/.join w (max 1 (- deadline (System/currentTimeMillis))))))))
+        (let [left (- deadline (System/currentTimeMillis))]
+          (^[long] Thread/.join w (max 1 left)))))))
 
 (defn close-all!
   "Disconnects everyone with text.
@@ -200,31 +223,41 @@
     (drain! cs ms)
     (doseq [[_ ^Conn conn] cs] (.close ^Socket (:sock conn)))))
 
+(defn- refuse! [^Socket sock ^long limit]
+  (log/warn "connection limit" limit "reached, refusing"
+            (str (.getRemoteSocketAddress sock)))
+  (.close sock))
+
 (defn- admit! [^Socket sock ^AtomicInteger live ^long limit io]
   (if (> (.incrementAndGet live) limit)
     (do (.decrementAndGet live)
-        (log/warn "connection limit" limit "reached, refusing" (str (.getRemoteSocketAddress sock)))
-        (.close sock))
+        (refuse! sock limit))
     (Thread/startVirtualThread
-      #(try (serve-conn! sock io) (finally (.decrementAndGet live))))))
+      #(try (serve-conn! sock io)
+            (finally (.decrementAndGet live))))))
+
+(defn- accept-one [^ServerSocket srv]
+  (try (.accept srv)
+       (catch Throwable t
+         (when-not (.isClosed srv)
+           (log/warn "accept failed:" (str t))
+           (Thread/sleep 100))
+         nil)))
 
 (defn- accept-loop [^ServerSocket srv io ^AtomicInteger live]
-  (let [limit (long (:max-connections (:cfg io) default-max-connections))]
+  (let [cfg (:cfg io)
+        limit (long (:max-connections cfg default-max-connections))]
     (loop []
       (when-not (.isClosed srv)
-        (let [sock (try (.accept srv)
-                        (catch Throwable t
-                          (when-not (.isClosed srv)
-                            (log/warn "accept failed:" (str t))
-                            (Thread/sleep 100))
-                          nil))]
-          (when sock
-            (.setTcpNoDelay ^Socket sock true)
-            (.setSoTimeout ^Socket sock read-timeout-ms)
-            (admit! sock live limit io))
-          (recur))))))
+        (when-let [sock (accept-one srv)]
+          (.setTcpNoDelay ^Socket sock true)
+          (.setSoTimeout ^Socket sock read-timeout-ms)
+          (admit! sock live limit io))
+        (recur)))))
 
-(defn listen! [io port]
+(defn listen!
+  "Opens the port and starts accepting connections on it."
+  [io port]
   (let [srv (ServerSocket. (int port))
         live (AtomicInteger.)]
     {:socket srv

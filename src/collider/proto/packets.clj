@@ -117,10 +117,40 @@
                   [:= {:wire wire/boolean} false]]])))
 
 (def ^:private Abilities
-  "The clientbound half: the flags the client may read back are
-  followed by the two speeds it never sends."
   [:map [:flags wire/byte] [:flying-speed wire/float]
    [:walking-speed wire/float]])
+
+(defn- tag-entry-ids [registry entries]
+  (keep #(try (data/entry-id registry %)
+              (catch Exception _ nil))
+        entries))
+
+(defn- section-change-long ^long [state at]
+  (bit-or (bit-shift-left (long state) 12) (long at)))
+
+(defn- write-item-ref! [^Buf buf i]
+  (c/write-holder-ref buf (data/registry-id "item" i)))
+
+(defn- write-latency-entry! [^Buf buf {:keys [uuid ping]}]
+  (c/write-uuid buf uuid)
+  (c/write-varint buf (long (or ping 0))))
+
+(defn- write-player-entry! [^Buf buf p]
+  (let [{:keys [uuid name gamemode ping]} p]
+    (c/write-uuid buf uuid)
+    (c/write-string buf name)
+    (c/write-varint buf 0)
+    (c/write-varint buf (long (or gamemode 1)))
+    (buf/write-boolean! buf true)
+    (c/write-varint buf (long (or ping 0)))))
+
+(defn- write-player-info! [^Buf buf m]
+  (let [latency? (= :latency (:action m))
+        players (:players m)
+        one (if latency? write-latency-entry! write-player-entry!)]
+    (buf/write-byte! buf (if latency? 0x10 0x1D))
+    (c/write-varint buf (count players))
+    (doseq [p players] (one buf p))))
 
 (def ^:private table
   {[:handshake :intention]
@@ -162,15 +192,18 @@
    {:schema [:map [:features [:sequential wire/id]]]
     :write :wire}
    [:configuration :select-known-packs]
-   {:schema [:map [:packs [:sequential [:tuple wire/string wire/string
-                                        wire/string]]]]
+   {:schema [:map
+             [:packs [:sequential
+                      [:tuple wire/string wire/string wire/string]]]]
     :write :wire}
    [:configuration :registry-data]
    {:schema [:map [:registry wire/id]
              [:names [:sequential [wire/bare wire/id]]]]
     :write :wire}
    [:configuration :update-tags]
-   {:schema [:map [:tags [:map-of Id [:map-of Id [:sequential :keyword]]]]]
+   {:schema [:map
+             [:tags [:map-of Id
+                     [:map-of Id [:sequential :keyword]]]]]
     :write (fn [^Buf buf m]
              (let [tags (:tags m)]
                (c/write-varint buf (count tags))
@@ -179,7 +212,7 @@
                  (c/write-varint buf (count ts))
                  (doseq [[tag entries] ts]
                    (c/write-id buf tag)
-                   (let [ids (keep #(try (data/entry-id registry %) (catch Exception _ nil)) entries)]
+                   (let [ids (tag-entry-ids registry entries)]
                      (c/write-varint buf (count ids))
                      (doseq [id ids] (c/write-varint buf id)))))))}
    [:configuration :finish-configuration]
@@ -241,8 +274,9 @@
    {:schema [:map [:values [:map-of wire/string wire/string]]]
     :write :wire}
    [:play :set-game-rule]
-   {:schema [:map [:entries [:sequential
-                            [:tuple wire/string wire/string]]]]
+   {:schema [:map
+             [:entries [:sequential
+                        [:tuple wire/string wire/string]]]]
     :read :wire}
    [:play :ping-request]
    {:schema [:map [:payload wire/long]]
@@ -285,7 +319,8 @@
     :write (fn [^Buf buf m]
              (buf/write-long! buf (long (:age m)))
              (c/write-varint buf 1)
-             (c/write-varint buf (data/datapack-id "world_clock" :overworld))
+             (c/write-varint
+               buf (data/datapack-id "world_clock" :overworld))
              (c/write-varlong buf (long (:time m)))
              (buf/write-float! buf (float 0.0))
              (buf/write-float! buf (float 1.0)))}
@@ -303,7 +338,9 @@
    [:play :level-chunk-with-light]
    {:schema [:map [:cx :int] [:cz :int] [:chunk :any]
              [:block-entities {:optional true} [:maybe :any]]]
-    :write (fn [^Buf buf m] (chunk/write-chunk! buf (:cx m) (:cz m) (:chunk m) (:block-entities m)))}
+    :write (fn [^Buf buf m]
+             (chunk/write-chunk!
+               buf (:cx m) (:cz m) (:chunk m) (:block-entities m)))}
    [:play :open-sign-editor]
    {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]]
     :write :wire}
@@ -345,10 +382,11 @@
              [:changes [:sequential wire/section-change]]]
     :write (fn [^Buf buf m]
              (let [[sx sy sz] (:section m)]
-               (buf/write-long! buf (c/section-pos (long sx) (long sy) (long sz))))
+               (buf/write-long!
+                 buf (c/section-pos (long sx) (long sy) (long sz))))
              (c/write-varint buf (count (:changes m)))
              (doseq [[at state] (:changes m)]
-               (c/write-varlong buf (bit-or (bit-shift-left (long state) 12) (long at)))))}
+               (c/write-varlong buf (section-change-long state at))))}
    [:play :cooldown]
    {:schema [:map [:group wire/id] [:duration wire/varint]]
     :write :wire}
@@ -358,22 +396,7 @@
    [:play :player-info-update]
    {:schema [:map [:action {:optional true} :keyword]
              [:players [:sequential Player]]]
-    :write (fn [^Buf buf m]
-             (if (= :latency (:action m))
-               (do (buf/write-byte! buf 0x10)
-                   (c/write-varint buf (count (:players m)))
-                   (doseq [{:keys [uuid ping]} (:players m)]
-                     (c/write-uuid buf uuid)
-                     (c/write-varint buf (long (or ping 0)))))
-               (do (buf/write-byte! buf 0x1D)
-                   (c/write-varint buf (count (:players m)))
-                   (doseq [{:keys [uuid name gamemode ping]} (:players m)]
-                     (c/write-uuid buf uuid)
-                     (c/write-string buf name)
-                     (c/write-varint buf 0)
-                     (c/write-varint buf (long (or gamemode 1)))
-                     (buf/write-boolean! buf true)
-                     (c/write-varint buf (long (or ping 0)))))))}
+    :write write-player-info!}
    [:play :level-event]
    {:schema [:map [:event wire/int] [:pos wire/block-pos]
              [:data wire/int]
@@ -416,7 +439,7 @@
              [:stonecutting [:sequential Stonecutting]]]
     :write (fn [^Buf buf m]
              (let [sets (:property-sets m)
-                   item (fn [i] (c/write-holder-ref buf (data/registry-id "item" i)))]
+                   item (fn [i] (write-item-ref! buf i))]
                (c/write-varint buf (count sets))
                (doseq [[k items] sets]
                  (c/write-id buf (data/kebab k))
@@ -426,7 +449,8 @@
                (doseq [{:keys [in out]} (:stonecutting m)]
                  (c/write-varint buf (inc (count in)))
                  (run! item in)
-                 (c/write-varint buf (data/registry-id "slot_display" :item-stack))
+                 (c/write-varint
+                   buf (data/registry-id "slot_display" :item-stack))
                  (item (:item out))
                  (c/write-varint buf (long (:count out 1)))
                  (c/write-patch buf nil))))}
@@ -458,7 +482,9 @@
              [:dz wire/short] [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
-             (buf/write-short! buf (int (:dx m))) (buf/write-short! buf (int (:dy m))) (buf/write-short! buf (int (:dz m)))
+             (buf/write-short! buf (int (:dx m)))
+             (buf/write-short! buf (int (:dy m)))
+             (buf/write-short! buf (int (:dz m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :move-entity-pos-rot]
    {:schema [:map [:eid wire/varint] [:dx wire/short] [:dy wire/short]
@@ -466,15 +492,19 @@
              [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
-             (buf/write-short! buf (int (:dx m))) (buf/write-short! buf (int (:dy m))) (buf/write-short! buf (int (:dz m)))
-             (buf/write-byte! buf (int (:yaw m))) (buf/write-byte! buf (int (:pitch m)))
+             (buf/write-short! buf (int (:dx m)))
+             (buf/write-short! buf (int (:dy m)))
+             (buf/write-short! buf (int (:dz m)))
+             (buf/write-byte! buf (int (:yaw m)))
+             (buf/write-byte! buf (int (:pitch m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :move-entity-rot]
    {:schema [:map [:eid wire/varint] [:yaw wire/byte]
              [:pitch wire/byte] [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
-             (buf/write-byte! buf (int (:yaw m))) (buf/write-byte! buf (int (:pitch m)))
+             (buf/write-byte! buf (int (:yaw m)))
+             (buf/write-byte! buf (int (:pitch m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :rotate-head]
    {:schema [:map [:eid wire/varint] [:yaw wire/byte]]
@@ -489,12 +519,15 @@
     :write :wire}
    [:play :set-equipment]
    {:schema [:map [:eid wire/varint]
-             [:slots [:sequential [:tuple :int [:maybe delta/Stack]]]]]
+             [:slots [:sequential
+                      [:tuple :int [:maybe delta/Stack]]]]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (let [slots (vec (:slots m))]
                (doseq [[i [slot stack]] (map-indexed vector slots)]
-                 (buf/write-byte! buf (int (if (< (inc i) (count slots)) (bit-or (long slot) 0x80) slot)))
+                 (let [more? (< (inc i) (count slots))
+                       b (if more? (bit-or (long slot) 0x80) slot)]
+                   (buf/write-byte! buf (int b)))
                  (c/write-item-stack buf stack))))}
    [:play :animate]
    {:schema [:map [:eid wire/varint] [:action wire/unsigned-byte]]
@@ -516,8 +549,10 @@
     :write :wire}
    [:play :level-particles]
    {:schema [:map
-             [:limiter {:optional true} [:= {:wire wire/boolean} false]]
-             [:always {:optional true} [:= {:wire wire/boolean} false]]
+             [:limiter {:optional true}
+              [:= {:wire wire/boolean} false]]
+             [:always {:optional true}
+              [:= {:wire wire/boolean} false]]
              [:pos wire/vec3]
              [:dx {:optional true} [:= {:wire wire/float} 0.0]]
              [:dy {:optional true} [:= {:wire wire/float} 0.0]]
@@ -530,8 +565,9 @@
              [:blocks wire/int] [:knockback [:maybe wire/vec3]]
              [:particle wire/varint] [:sound wire/holder-ref]
              [:block-particles
-              [:sequential [:tuple wire/varint wire/float wire/float
-                            wire/varint]]]]
+              [:sequential
+               [:tuple wire/varint wire/float wire/float
+                wire/varint]]]]
     :write :wire}
    [:play :chat]
    {:schema [:map [:message [wire/string {:max 256}]]
@@ -544,8 +580,9 @@
    [:play :chat-command-signed]
    {:schema [:map [:command wire/string]
              [:timestamp wire/long] [:salt wire/long]
-             [:signatures [:sequential {:max 8}
-                           [:tuple [wire/string {:max 16}] Signature]]]
+             [:signatures
+              [:sequential {:max 8}
+               [:tuple [wire/string {:max 16}] Signature]]]
              [:last-seen LastSeen]]
     :read :wire}
    [:play :move-player-pos]
@@ -676,7 +713,13 @@
                  [state (state-outbound state dirs)]))
           (data/packets))))
 
-(defn decode [state ^Buf buf]
+(defn- no-writer [state m]
+  (ex-info "no writer for packet"
+           {:state state :packet (:packet m)}))
+
+(defn decode
+  "Returns the packet read from buf in the connection state."
+  [state ^Buf buf]
   (let [id (c/read-varint buf)]
     (when-let [e (get (get @inbound state) id)]
       (if-let [r (:read e)]
@@ -685,9 +728,11 @@
           (assoc m :packet (:packet e)))
         {:packet (:packet e)}))))
 
-(defn encode! [state ^Buf buf m]
+(defn encode!
+  "Writes packet m into buf with the id of the connection state."
+  [state ^Buf buf m]
   (let [e (or (get (get @outbound state) (:packet m))
-              (throw (ex-info "no writer for packet" {:state state :packet (:packet m)})))]
+              (throw (no-writer state m)))]
     (when-let [check (:check e)] (check m))
     (c/write-varint buf (long (:id e)))
     ((:write e) buf m)))

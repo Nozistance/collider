@@ -1,7 +1,5 @@
 (ns collider.game.mob.nav
-  "Ground navigation: the path a mob builds and how it walks it.
-  The whole state lives in :nav of the mob, and every function here
-  answers the mob it changed."
+  "Ground navigation: the path a mob builds, kept in its :nav."
   (:require [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
@@ -54,11 +52,9 @@
   (boolean (or (:on-ground e) (control/in-liquid? e))))
 
 (defn stop
-  "Returns mob e with its path dropped, as PathNavigation.stop."
+  "Returns mob e with its path dropped."
   [e]
   (if (:path (:nav e)) (assoc-in e [:nav :path] nil) e))
-
-;;; 5.2 Building a path
 
 (defn- air-at? [chunks ^long x ^long y ^long z]
   (block/air? (chunk/block-state chunks x y z)))
@@ -67,9 +63,10 @@
   (block/solid? (chunk/block-state chunks x y z)))
 
 (defn- loaded? [chunks ^long x ^long z]
-  (not (identical? chunk/empty-chunk
-                   (chunk/chunk-at chunks (bit-shift-right x 4)
-                                   (bit-shift-right z 4)))))
+  (let [cx (bit-shift-right x 4)
+        cz (bit-shift-right z 4)]
+    (not (identical? chunk/empty-chunk
+                     (chunk/chunk-at chunks cx cz)))))
 
 (defn- above-air ^long [chunks ^long x ^long y ^long z]
   (loop [cy (inc y)]
@@ -96,16 +93,31 @@
         y (long (if (air-at? chunks x (long y) z)
                   (column-y chunks x (long y) z)
                   y))]
-    (if (solid-at? chunks x y z) [x (above-solid chunks x y z) z]
-                                 [x y z])))
+    (if (solid-at? chunks x y z)
+      [x (above-solid chunks x y z) z]
+      [x y z])))
+
+(defn- search [world e cell ^long reach]
+  (path/find-path (:chunks world) (walker e) #{cell}
+                  max-path-length reach 1.0))
 
 (defn- searched [world e cell ^long reach]
-  (let [p (path/find-path (:chunks world) (walker e) #{cell}
-                          max-path-length reach 1.0)]
-    [(update e :nav merge {:target (:target p) :reach reach
-                           :timeout-node [0 0 0] :timeout-timer 0
-                           :timeout-limit 0.0})
-     p]))
+  (let [p (search world e cell reach)
+        nav {:target (:target p) :reach reach
+             :timeout-node [0 0 0] :timeout-timer 0
+             :timeout-limit 0.0}]
+    [(update e :nav merge nav) p]))
+
+(defn- keep-path? [e cell nav]
+  (and (:path nav) (not (done? e)) (= cell (:target nav))))
+
+(defn- pathed [world e cell ^long reach]
+  (let [nav (:nav e)]
+    (cond
+      (< (v/y (:pos e)) chunk/min-y) [e nil]
+      (not (can-update-path? e)) [e nil]
+      (keep-path? e cell nav) [e (:path nav)]
+      :else (searched world e cell reach))))
 
 (defn- create-path
   "Returns [mob path] for a walk to the cell, the path nil when none
@@ -114,18 +126,9 @@
   (let [chunks (:chunks world)
         e (assoc e :nav (nav-of e))
         [gx _ gz] cell]
-    (if-not (loaded? chunks gx gz)
-      [e nil]
-      (let [cell (surface-cell chunks cell)
-            nav (:nav e)]
-        (cond
-          (< (v/y (:pos e)) chunk/min-y) [e nil]
-          (not (can-update-path? e)) [e nil]
-          (and (:path nav) (not (done? e)) (= cell (:target nav)))
-          [e (:path nav)]
-          :else (searched world e cell reach))))))
-
-;;; 5.3 moveTo
+    (if (loaded? chunks gx gz)
+      (pathed world e (surface-cell chunks cell) reach)
+      [e nil])))
 
 (defn- cauldron? [chunks n]
   (block/tagged? (chunk/block-state chunks (:x n) (:y n) (:z n))
@@ -145,59 +148,60 @@
 (defn- trimmed
   "Returns the path with its nodes in cauldrons raised by one."
   [chunks p]
-  (assoc p :nodes
-           (reduce (fn [v i]
-                     (if (cauldron? chunks (nth v i)) (raised v i) v))
-                   (:nodes p)
-                   (range (count (:nodes p))))))
+  (let [nodes (:nodes p)
+        lift (fn [v i]
+               (if (cauldron? chunks (nth v i)) (raised v i) v))]
+    (assoc p :nodes (reduce lift nodes (range (count nodes))))))
+
+(defn- water-at? [chunks ^long x ^long y ^long z]
+  (= :water (block/block-of (chunk/block-state chunks x y z))))
 
 (defn- surface-y ^double [world e]
   (let [pos (:pos e)
+        chunks (:chunks world)
         x (long (Math/floor (v/x pos)))
         z (long (Math/floor (v/z pos)))
-        y0 (long (Math/floor (v/y pos)))]
-    (if (:wet? e)
+        y0 (long (Math/floor (v/y pos)))
+        water? (fn [^long cy] (water-at? chunks x cy z))]
+    (if-not (:wet? e)
+      (Math/floor (+ (v/y pos) 0.5))
       (loop [cy y0 steps 0]
-        (if (= :water (block/block-of
-                        (chunk/block-state (:chunks world) x cy z)))
-          (if (> (inc steps) max-surface-steps)
-            y0
-            (recur (inc cy) (inc steps)))
-          cy))
-      (Math/floor (+ (v/y pos) 0.5)))))
+        (cond (not (water? cy)) cy
+              (> (inc steps) max-surface-steps) y0
+              :else (recur (inc cy) (inc steps)))))))
 
 (defn- temp-mob-pos [world e]
   (let [pos (:pos e)] [(v/x pos) (surface-y world e) (v/z pos)]))
 
 (defn- moved-to [world e p ^double speed]
   (let [nav (nav-of e)
-        e (assoc e :nav (if (= (:nodes p) (:nodes (:path nav)))
-                          nav
-                          (assoc nav :path p :index 0)))]
+        same? (= (:nodes p) (:nodes (:path nav)))
+        e (assoc e :nav (if same? nav (assoc nav :path p :index 0)))]
     (if (done? e)
       e
-      (let [e (update-in e [:nav :path]
-                         (fn [q] (trimmed (:chunks world) q)))]
+      (let [trim (fn [q] (trimmed (:chunks world) q))
+            e (update-in e [:nav :path] trim)]
         (update e :nav assoc :speed speed
                 :stuck-check (:tick (:nav e))
                 :stuck-pos (temp-mob-pos world e))))))
 
+(defn- goal-cell [pos]
+  (mapv (fn [c] (long (Math/floor (double c)))) pos))
+
 (defn move-to
-  "Returns mob e walking to the cell at speed, as moveTo.
+  "Returns mob e walking to the cell at speed.
   A goal it cannot reach leaves it without a path."
   [world e pos ^double speed]
-  (let [cell (mapv (fn [c] (long (Math/floor (double c)))) pos)
-        [e p] (create-path world e cell 1)]
+  (let [[e p] (create-path world e (goal-cell pos) 1)]
     (if p
       (moved-to world e p speed)
       (stop (assoc e :nav (nav-of e))))))
 
 (defn move-to-entity
-  "Returns mob e walking to entity o at speed, as moveTo(Entity).
+  "Returns mob e walking to entity o at speed.
   A goal it cannot reach leaves the path it already walks."
   [world e o ^double speed]
-  (let [cell (mapv (fn [c] (long (Math/floor (double c)))) (:pos o))
-        [e p] (create-path world e cell 1)]
+  (let [[e p] (create-path world e (goal-cell (:pos o)) 1)]
     (if p (moved-to world e p speed) e)))
 
 (defn recompute-path
@@ -217,8 +221,6 @@
         (update e :nav assoc :path p :index 0 :recompute t
                 :delayed? false)))))
 
-;;; 5.5 and 5.6 Following the path
-
 (defn- node-of [e ^long i] (nth (:nodes (:path (:nav e))) i))
 
 (defn- current-node [e] (node-of e (long (:index (:nav e)))))
@@ -236,31 +238,36 @@
      (+ (double (long (:z n))) off)]))
 
 (defn cut-corner?
-  "Whether a node of type t may be walked past on a corner."
+  "Tests whether a node of type t may be walked past on a corner."
   [t]
   (not (contains? #{:fire-in-neighbor :damaging-in-neighbor
                     :walkable-door} t)))
 
+(defn- unit [p ^double l]
+  (mapv (fn [c] (/ (double c) l)) p))
+
+(defn- dot ^double [a b]
+  (double (reduce + (map * a b))))
+
 (defn- turned-back? [cur nxt mob-pos]
-  (let [to-cur (mapv - cur mob-pos) to-nxt (mapv - nxt mob-pos)
-        l2 (fn ^double [p] (v/dist3-sq [0.0 0.0 0.0] p))
-        cs (l2 to-cur) ns (l2 to-nxt)]
+  (let [origin [0.0 0.0 0.0]
+        to-cur (mapv - cur mob-pos)
+        to-nxt (mapv - nxt mob-pos)
+        cs (v/dist3-sq origin to-cur)
+        ns (v/dist3-sq origin to-nxt)]
     (and (or (< ns cs) (< cs 0.5))
-         (let [u (fn [p ^double l] (mapv (fn [c] (/ (double c) l)) p))
-               d (fn [a b] (reduce + (map * a b)))]
-           (neg? (double (d (u to-nxt (Math/sqrt ns))
-                            (u to-cur (Math/sqrt cs)))))))))
+         (neg? (dot (unit to-nxt (Math/sqrt ns))
+                    (unit to-cur (Math/sqrt cs)))))))
 
 (defn- target-next?
-  "Whether the mob has left the node it walks to behind."
+  "Tests whether the mob has left the node it walks to behind."
   [e mob-pos]
   (let [nav (:nav e) i (long (:index nav))]
     (and (< (inc i) (count (:nodes (:path nav))))
-         (let [cur (bottom-centre (cell-of (node-of e i)))]
+         (let [cur (bottom-centre (cell-of (node-of e i)))
+               nxt (bottom-centre (cell-of (node-of e (inc i))))]
            (and (< (v/dist3-sq mob-pos cur) 4.0)
-                (turned-back?
-                  cur (bottom-centre (cell-of (node-of e (inc i))))
-                  mob-pos))))))
+                (turned-back? cur nxt mob-pos))))))
 
 (defn- close-enough? [e]
   (let [n (current-node e) pos (:pos e)
@@ -273,22 +280,20 @@
          (< (Math/abs (- (v/y pos) (double (long (:y n)))))
             max-vertical-to-waypoint))))
 
-;;; 5.7 Stuck detection
-
 (defn- stuck-check [e mob-pos]
-  (let [nav (:nav e)]
-    (if (<= (- (long (:tick nav)) (long (:stuck-check nav)))
-            stuck-interval)
+  (let [nav (:nav e)
+        gap (- (long (:tick nav)) (long (:stuck-check nav)))]
+    (if (<= gap stuck-interval)
       e
       (let [s (double (:speed (:move e) 0.0))
             eff (if (>= s 1.0) s (* s s))
             thr (* eff (double stuck-interval) stuck-factor)
-            d (v/dist3-sq mob-pos (:stuck-pos nav))]
-        (assoc e :nav
-                 (assoc nav :stuck-check (:tick nav)
-                            :stuck-pos mob-pos
-                            :path (when (>= d (* thr thr))
-                                    (:path nav))))))))
+            d (v/dist3-sq mob-pos (:stuck-pos nav))
+            moved? (>= d (* thr thr))
+            nav (assoc nav :stuck-check (:tick nav)
+                       :stuck-pos mob-pos
+                       :path (when moved? (:path nav)))]
+        (assoc e :nav nav)))))
 
 (defn- timeout-of ^double [e mob-pos cell]
   (let [s (double (:speed (:move e) 0.0))]
@@ -304,29 +309,35 @@
     (update nav :timeout-timer +
             (- (long t) (long (:timeout-check nav))))
     (assoc nav :timeout-node cell
-               :timeout-limit (timeout-of e mob-pos cell))))
+           :timeout-limit (timeout-of e mob-pos cell))))
+
+(defn- timed-out? [nav]
+  (let [lim (double (:timeout-limit nav))]
+    (and (pos? lim)
+         (> (double (:timeout-timer nav)) (* 3.0 lim)))))
 
 (defn- node-timeout [world e mob-pos]
   (if (done? e)
     e
     (let [t (long (:tick world))
           cell (cell-of (current-node e))
-          nav (timed e (:nav e) mob-pos cell t)
-          nav (assoc nav :timeout-check t)
-          lim (double (:timeout-limit nav))]
-      (assoc e :nav
-               (if (and (pos? lim)
-                        (> (double (:timeout-timer nav)) (* 3.0 lim)))
-                 (assoc nav :path nil :timeout-node [0 0 0]
-                            :timeout-timer 0 :timeout-limit 0.0)
-                 nav)))))
+          nav (assoc (timed e (:nav e) mob-pos cell t)
+                     :timeout-check t)
+          nav (if-not (timed-out? nav)
+                nav
+                (assoc nav :path nil :timeout-node [0 0 0]
+                       :timeout-timer 0 :timeout-limit 0.0))]
+      (assoc e :nav nav))))
+
+(defn- advance? [e mob-pos]
+  (or (close-enough? e)
+      (and (cut-corner? (:type (current-node e)))
+           (target-next? e mob-pos))))
 
 (defn- follow-the-path [world e]
   (let [mob-pos (temp-mob-pos world e)
         e (cond-> e
-                  (or (close-enough? e)
-                      (and (cut-corner? (:type (current-node e)))
-                           (target-next? e mob-pos)))
+                  (advance? e mob-pos)
                   (update-in [:nav :index] inc))]
     (node-timeout world (stuck-check e mob-pos) mob-pos)))
 
@@ -339,8 +350,6 @@
             (long (Math/floor (double (nth pos 0)))))
          (= (long (Math/floor (double (nth mob-pos 2))))
             (long (Math/floor (double (nth pos 2))))))))
-
-;;; 5.4 The tick
 
 (defn- ground-y ^double [world [x y z]]
   (let [cx (long (Math/floor (double x)))
@@ -355,6 +364,12 @@
     (control/wanted e (nth p 0) (ground-y world p) (nth p 2)
                     (double (:speed (:nav e))))))
 
+(defn- stepped [world e]
+  (cond
+    (can-update-path? e) (follow-the-path world e)
+    (falling-past? world e) (update-in e [:nav :index] inc)
+    :else e))
+
 (defn tick
   "Runs one tick of the navigation of mob e.
   It walks the path on and tells the move control where to go."
@@ -363,9 +378,5 @@
         e (if (:delayed? (:nav e)) (recompute-path world e) e)]
     (if (done? e)
       e
-      (let [e (cond
-                (can-update-path? e) (follow-the-path world e)
-                (falling-past? world e)
-                (update-in e [:nav :index] inc)
-                :else e)]
+      (let [e (stepped world e)]
         (if (done? e) e (aimed world e))))))

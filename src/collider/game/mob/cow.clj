@@ -14,7 +14,9 @@
   "The cow's goals; a calf takes the coat of either parent."
   (animal/spec animal/goals calf-variant))
 
-(defn brain [world eid e t tempters]
+(defn brain
+  "Returns the cow's next state and deltas for one tick."
+  [world eid e t tempters]
   (animal/brain spec world eid e t tempters))
 
 (def ^:private milk {:item :milk-bucket :count 1})
@@ -24,8 +26,8 @@
         (items/filled-result-deltas world peid milk false hand)))
 
 (defn milk-result
-  "Returns what a bucket does to a grown cow: it fills with milk, as
-  AbstractCow.mobInteract. A calf gives none."
+  "Returns what a bucket does to a grown cow: it fills with milk.
+  A calf gives none."
   [{:keys [world peid p hand e item]}]
   (when (and (= :bucket item) (not (mobs/baby? e)))
     {:result :success :deltas (milked world peid p hand)}))

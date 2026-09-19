@@ -1,8 +1,8 @@
 (ns collider.proto.wire
   "Wire types as malli schemas, and the readers and writers
   compiled from them."
-  (:refer-clojure :exclude [boolean byte bytes double float int long
-                            short string])
+  (:refer-clojure
+    :exclude [boolean byte bytes double float int long short string])
   (:require [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
@@ -11,14 +11,15 @@
 (set! *warn-on-reflection* true)
 
 (defn- wire-type
-  "A leaf schema carrying its codec in the type properties."
+  "Returns a leaf schema carrying its codec in the properties."
   ([nm pred read write] (wire-type nm pred read write nil))
   ([nm pred read write gen]
    (m/-simple-schema
      {:type nm
       :pred pred
-      :type-properties (cond-> {:wire/read read :wire/write write}
-                         gen (assoc :gen/schema gen))})))
+      :type-properties
+      (cond-> {:wire/read read :wire/write write}
+        gen (assoc :gen/schema gen))})))
 
 (declare -reader -writer)
 
@@ -393,8 +394,8 @@
     (fn [b]
       (let [got (r b)]
         (when (not= v got)
-          (throw (ex-info "wire constant does not match"
-                          {:want v :got got})))
+          (let [data {:want v :got got}]
+            (throw (ex-info "wire constant does not match" data))))
         v))))
 
 (defn- -writer [schema]

@@ -16,8 +16,6 @@
   ^double [^double v]
   (double (float v)))
 
-;;; 1. Path types
-
 (def path-types
   "The path types in the order the game declares them."
   [:blocked :open :walkable :walkable-door :trapdoor :powder-snow
@@ -51,8 +49,6 @@
    :float? true :open-doors? false :pass-doors? true
    :walk-over-fences? false
    :malus  {:fire-in-neighbor 16.0 :fire -1.0}})
-
-;;; 2.1 The type of one block
 
 (defn- class-of [^long st]
   (:class (get (data/blocks) (block/block-of st))))
@@ -161,9 +157,9 @@
       :else :open)))
 
 (def ^:private ^:table type-arr
-  (delay (object-array (map (fn [st] (or (plant-type st)
-                                         (solid-type st)))
-                            (range (data/block-state-count))))))
+  (delay
+    (let [of (fn [st] (or (plant-type st) (solid-type st)))]
+      (object-array (map of (range (data/block-state-count)))))))
 
 (defn type-of-state
   "Returns the path type of a block state.
@@ -172,8 +168,6 @@
   (if (< -1 st (data/block-state-count))
     (aget ^objects @type-arr st)
     :open))
-
-;;; 2.2 and 2.3 The type of a cell for a mob one cell wide
 
 (defn- type-at [chunks ^long x ^long y ^long z]
   (type-of-state (chunk/block-state chunks x y z)))
@@ -194,12 +188,11 @@
 (defn check-neighbours
   "Returns the type the cells around x y z force upon it, else t."
   [chunks x y z t]
-  (or (first (keep (fn [[dx dy dz]]
-                     (neighbour-type
-                       (type-at chunks (+ x (long dx)) (+ y (long dy))
-                                (+ z (long dz)))))
-                   neighbour-offsets))
-      t))
+  (let [at (fn [[dx dy dz]]
+             (type-at chunks (+ x (long dx)) (+ y (long dy))
+                      (+ z (long dz))))
+        forced (fn [d] (neighbour-type (at d)))]
+    (or (first (keep forced neighbour-offsets)) t)))
 
 (defn- floor-type [chunks ^long x ^long y ^long z]
   (case (type-at chunks x (dec y) z)
@@ -221,8 +214,6 @@
       (floor-type chunks x y z)
       t)))
 
-;;; 2.5 and 2.6 The type of a cell for the whole mob
-
 (defn- bb-type [ctx ^long x ^long y ^long z]
   (let [{:keys [chunks mob]} ctx
         t (type-static chunks x y z)
@@ -243,10 +234,11 @@
   (let [mob (:mob ctx)
         w (long (:bb-w mob))
         x (long x) y (long y) z (long z)]
-    (into #{} (for [dx (range w) dy (range (long (:bb-h mob)))
-                    dz (range w)]
-                (bb-type ctx (+ x (long dx)) (+ y (long dy))
-                         (+ z (long dz)))))))
+    (into #{}
+          (for [dx (range w) dy (range (long (:bb-h mob)))
+                dz (range w)]
+            (bb-type ctx (+ x (long dx)) (+ y (long dy))
+                     (+ z (long dz)))))))
 
 (defn- highest-malus
   "Returns the costliest of types as [type malus stopped-early?]."
@@ -281,8 +273,6 @@
       :else (let [[t m early?] (highest-malus (:mob ctx) ts)]
               (if early? t (capped-type ctx x y z t (double m)))))))
 
-;;; 3.1 Nodes
-
 (defn- node-key ^long [^long x ^long y ^long z]
   (unchecked-int
     (bit-or (bit-and y 0xFF) (bit-shift-left (bit-and x 32767) 8)
@@ -296,11 +286,9 @@
 
 (defn- node-at [ctx x y z]
   (let [k (node-key x y z)
-        nodes (:nodes ctx)]
-    (or (get @nodes k)
-        (get (swap! nodes (fn [m] (if (get m k) m
-                                      (assoc m k (make-node x y z)))))
-             k))))
+        nodes (:nodes ctx)
+        add (fn [m] (if (get m k) m (assoc m k (make-node x y z))))]
+    (or (get @nodes k) (get (swap! nodes add) k))))
 
 (defn- nums ^doubles [n] (:num n))
 
@@ -356,8 +344,6 @@
   (fl (+ (Math/abs (- (long (:x b)) (long (:x a))))
          (Math/abs (- (long (:y b)) (long (:y a))))
          (Math/abs (- (long (:z b)) (long (:z a)))))))
-
-;;; 4 The heap, whose order at equal f decides the path
 
 (defn- heap-of [] {:a (atom (object-array 128)) :n (long-array 1)})
 
@@ -422,8 +408,6 @@
       (up-heap! h (heap-idx n))
       (down-heap! h (heap-idx n)))))
 
-;;; 3.7 Floor level and collisions
-
 (defn- shape-top ^double [chunks ^long x ^long y ^long z]
   (let [bs (block/collision-boxes (chunk/block-state chunks x y z))]
     (if (empty? bs)
@@ -457,11 +441,12 @@
              (long (Math/floor (- (aget b i) 1.0E-7))))
         hi (fn ^long [^long i]
              (long (Math/floor (+ (aget b i) 1.0E-7))))]
-    (boolean (some (fn [[x y z]] (cell-hits? chunks b x y z))
-                   (for [x (range (lo 0) (inc (hi 3)))
-                         y (range (lo 1) (inc (hi 4)))
-                         z (range (lo 2) (inc (hi 5)))]
-                     [x y z])))))
+    (boolean
+      (some (fn [[x y z]] (cell-hits? chunks b x y z))
+            (for [x (range (lo 0) (inc (hi 3)))
+                  y (range (lo 1) (inc (hi 4)))
+                  z (range (lo 2) (inc (hi 5)))]
+              [x y z])))))
 
 (defn- mob-box ^doubles [mob]
   (let [[x y z] (:pos mob) w (/ (double (:width mob)) 2.0)]
@@ -504,8 +489,6 @@
           (if (collides? (:chunks ctx) b)
             false
             (recur (inc i) b)))))))
-
-;;; 3.7 The node a step lands on
 
 (defn- node-with-cost [ctx x y z t cost]
   (let [n (node-at ctx x y z)]
@@ -556,9 +539,8 @@
         (let [t (type-of-mob ctx x cy z)]
           (if (not= :water t)
             best
-            (recur (dec cy)
-                   (node-with-cost ctx x cy z t
-                                   (path-type-malus mob t)))))))))
+            (let [m (path-type-malus mob t)]
+              (recur (dec cy) (node-with-cost ctx x cy z t m)))))))))
 
 (def ^:private dir-by-2d [[0 1] [-1 0] [0 -1] [1 0]])
 
@@ -582,8 +564,8 @@
        (+ (+ cz 0.5) hw)])))
 
 (defn- try-jump-on [ctx x y z jump nh dir cur]
-  (let [above (accepted-node ctx x (inc (long y)) z (dec jump) nh
-                             dir cur)
+  (let [up (inc (long y))
+        above (accepted-node ctx x up z (dec jump) nh dir cur)
         mob (:mob ctx)]
     (cond
       (nil? above) nil
@@ -628,8 +610,6 @@
         best
         (descend ctx x y z jump nh dir cur t best)))))
 
-;;; 3.5 and 3.6 Neighbours
-
 (defn- neighbor-valid? [n cur]
   (boolean (and n (not (closed? n))
                 (or (>= (malus n) 0.0) (neg? (malus cur))))))
@@ -668,12 +648,11 @@
 
 (defn- side-nodes [ctx pos js ph cur]
   (reduce (fn [a d]
-            (let [[dx dz] (nth dir-by-2d d)]
-              (assoc a d
-                (accepted-node ctx (+ (long (:x pos)) (long dx))
-                               (:y pos)
-                               (+ (long (:z pos)) (long dz))
-                               js ph d cur))))
+            (let [[dx dz] (nth dir-by-2d d)
+                  x (+ (long (:x pos)) (long dx))
+                  z (+ (long (:z pos)) (long dz))
+                  n (accepted-node ctx x (:y pos) z js ph d cur)]
+              (assoc a d n)))
           [nil nil nil nil] horizontal-order))
 
 (defn- diagonal [ctx pos side js ph cur d]
@@ -698,8 +677,6 @@
           (keep (fn [d] (diagonal ctx pos side js ph cur d))
                 horizontal-order))))
 
-;;; 3.3 The node the search starts from
-
 (defn- water-start? [^long st]
   (or (= :water (block/block-of st))
       (and (block/water? st) (zero? (block/liquid-level st)))))
@@ -714,11 +691,11 @@
   (contains? (:stand-on-fluid? mob) (block/liquid-class st)))
 
 (defn- fluid-top ^long [ctx ^long x ^long y ^long z]
-  (loop [cy y]
-    (if (stands-on-fluid? (:mob ctx)
-                          (chunk/block-state (:chunks ctx) x cy z))
-      (recur (inc cy))
-      cy)))
+  (let [mob (:mob ctx) chunks (:chunks ctx)]
+    (loop [cy y]
+      (if (stands-on-fluid? mob (chunk/block-state chunks x cy z))
+        (recur (inc cy))
+        cy))))
 
 (defn- air-drop ^long [ctx ^long x ^double py ^long z]
   (let [chunks (:chunks ctx)]
@@ -762,17 +739,14 @@
   (let [mob (:mob ctx)
         [bx _ bz] (:block-pos mob)
         y (start-y ctx)
+        ok? (fn [[x z]] (can-start-at? ctx x y z))
         [sx sz] (or (when-not (can-start-at? ctx bx y bz)
-                      (first (filter (fn [[x z]]
-                                       (can-start-at? ctx x y z))
-                                     (corners mob))))
+                      (first (filter ok? (corners mob))))
                     [bx bz])
         n (node-at ctx sx y sz)]
     (set-kind! n (type-of-mob ctx sx y sz))
     (set-malus! n (path-type-malus mob (kind n)))
     n))
-
-;;; 4 The search
 
 (defn- target-of [[x y z]]
   {:x    (long x) :y (long y) :z (long z)
@@ -813,8 +787,8 @@
       []
       (let [cur (heap-pop! heap)
             _ (close! cur)
-            hit (filterv (fn [t] (<= (manhattan cur t) reach))
-                         targets)]
+            near? (fn [t] (<= (manhattan cur t) reach))
+            hit (filterv near? targets)]
         (if (seq hit)
           hit
           (do (when (< (dist-to cur from) maxlen)
@@ -822,12 +796,13 @@
                   (relax! ctx targets heap maxlen cur n)))
               (recur (inc c))))))))
 
+(defn- node-map [n]
+  {:x (:x n) :y (:y n) :z (:z n) :type (kind n)})
+
 (defn- reconstruct [t reached?]
   (let [ns (loop [n (aget ^objects (:node t) 0) acc ()]
              (if n (recur (came n) (conj acc n)) (vec acc)))]
-    {:nodes          (mapv (fn [n] {:x (:x n) :y (:y n) :z (:z n)
-                                    :type (kind n)})
-                           ns)
+    {:nodes          (mapv node-map ns)
      :target         [(:x t) (:y t) (:z t)]
      :reached?       reached?
      :dist-to-target (if (empty? ns)
@@ -835,27 +810,25 @@
                        (manhattan (peek ns) t))}))
 
 (defn- pick [targets reached?]
-  (let [ps (mapv (fn [t] (reconstruct t reached?)) targets)]
+  (let [ps (mapv (fn [t] (reconstruct t reached?)) targets)
+        len (fn [p] (count (:nodes p)))]
     (first (if reached?
-             (sort-by (fn [p] (count (:nodes p))) ps)
-             (sort-by (juxt :dist-to-target
-                            (fn [p] (count (:nodes p))))
-                      ps)))))
+             (sort-by len ps)
+             (sort-by (juxt :dist-to-target len) ps)))))
 
 (defn context
   "Returns what one search over chunks knows about its mob.
   The mob carries its size, its own malus and where it stands."
   [chunks mob]
-  (let [w (double (:width mob)) [px py pz] (:pos mob)]
+  (let [w (double (:width mob))
+        [px py pz] (:pos mob)
+        cell (fn [c] (long (Math/floor (double c))))]
     {:chunks chunks
      :nodes  (atom {})
      :mob    (assoc mob
                :bb-w (long (Math/floor (+ w 1.0)))
-               :bb-h (long (Math/floor (+ (double (:height mob))
-                                          1.0)))
-               :block-pos [(long (Math/floor (double px)))
-                           (long (Math/floor (double py)))
-                           (long (Math/floor (double pz)))])}))
+               :bb-h (long (Math/floor (inc (double (:height mob)))))
+               :block-pos [(cell px) (cell py) (cell pz)])}))
 
 (defn- search [chunks mob goals maxlen reach mult]
   (let [ctx (context chunks mob)

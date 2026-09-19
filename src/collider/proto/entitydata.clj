@@ -4,10 +4,7 @@
 (set! *warn-on-reflection* true)
 
 (def classes
-  "Vanilla class -> its parent and its `defineId` fields, in order.
-  A field is a name, an `EntityDataSerializers` type and the default
-  from `defineSynchedData`; the wire index is the position of the
-  field in the chain of the class."
+  "Vanilla class -> its parent and its synched fields, in order."
   {:entity
    {:fields [[:shared-flags :byte 0]
              [:air-supply :int 300]
@@ -82,16 +79,14 @@
   [cls k]
   (nth (get-in fields [cls k]) 2))
 
+(defn- entry [cls fs [k v]]
+  (if-let [[i t] (fs k)]
+    [i t v]
+    (throw (ex-info "no such synched field" {:class cls :field k}))))
+
 (defn entries
-  "Metadata entries `[index type value]` of a class from named fields.
-  The order is the one `SynchedEntityData` packs them in."
+  "Returns the metadata entries `[index type value]` of a class for
+  the named fields, in wire index order."
   [cls m]
   (let [fs (fields cls)]
-    (->> m
-         (map (fn [[k v]]
-                (if-let [[i t] (fs k)]
-                  [i t v]
-                  (throw (ex-info "no such synched field"
-                                  {:class cls :field k})))))
-         (sort-by first)
-         vec)))
+    (vec (sort-by first (map #(entry cls fs %) m)))))

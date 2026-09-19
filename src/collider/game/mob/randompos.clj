@@ -1,7 +1,5 @@
 (ns collider.game.mob.randompos
-  "Where a mob picks a place to walk to.
-  RandomPos with its land and default flavours, and the GoalUtils
-  filters that turn a cell down."
+  "Where a mob picks a place to walk to, and what turns a cell down."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
@@ -30,44 +28,40 @@
 (defn- state-at ^long [chunks [x y z]]
   (chunk/block-state chunks (long x) (long y) (long z)))
 
-;;; GoalUtils
+(defn- state-below ^long [chunks [x y z]]
+  (chunk/block-state chunks (long x) (dec (long y)) (long z)))
 
 (defn solid?
-  "GoalUtils.isSolid: whether the block filling the cell is solid."
+  "Tests whether the block filling the cell is solid."
   [chunks cell]
   (block/solid? (state-at chunks cell)))
 
 (defn water?
-  "GoalUtils.isWater: whether water stands in the cell."
+  "Tests whether water stands in the cell."
   [chunks cell]
   (block/water? (state-at chunks cell)))
 
 (defn outside-limits?
-  "GoalUtils.isOutsideLimits: whether the cell left the world."
+  "Tests whether the cell left the world."
   [[_ y _]]
   (not (chunk/in-range? (long y))))
 
 (defn not-stable?
-  "GoalUtils.isNotStable: whether nothing solid holds the cell up."
-  [chunks [x y z]]
-  (not (block/solid-render?
-         (chunk/block-state chunks (long x) (dec (long y))
-                            (long z)))))
+  "Tests whether nothing solid holds the cell up."
+  [chunks cell]
+  (not (block/solid-render? (state-below chunks cell))))
 
 (defn has-malus?
-  "GoalUtils.hasMalus: whether the cell costs the mob anything.
-  Not «costs too much»: any malus but a plain zero turns the cell
-  down, so water, honey and the neighbourhood of lava are never
-  strolled to."
+  "Tests whether the cell costs the mob anything.
+  Any malus but a plain zero turns the cell down, so water, honey
+  and the neighbourhood of lava are never strolled to."
   [chunks [x y z]]
   (not (zero? (path/path-type-malus
                 path/cow (path/type-static chunks x y z)))))
 
-;;; RandomPos
-
 (defn direction
-  "RandomPos.generateRandomDirection: an offset up to h blocks away
-  and v up or down, drawn x, then y, then z."
+  "Returns an offset up to h blocks away and v up or down.
+  The x, the y and the z are drawn in that order."
   [t eid k i h v]
   (let [draw (fn [part n]
                (let [n (long n) span (inc (* 2 n))]
@@ -75,15 +69,14 @@
     [(draw :x h) (draw :y v) (draw :z h)]))
 
 (defn pos-toward-direction
-  "RandomPos.generateRandomPosTowardDirection: the offset laid on
-  the mob. A mob with a home would pull it homeward; ours has none."
+  "Returns the cell the offset lands on from where the mob stands."
   [pos [dx dy dz]]
   [(long (Math/floor (+ (v/x pos) (double dx))))
    (long (Math/floor (+ (v/y pos) (double dy))))
    (long (Math/floor (+ (v/z pos) (double dz))))])
 
 (defn move-up-out-of-solid
-  "RandomPos.moveUpOutOfSolid: the first cell above the solid ones."
+  "Returns the first cell at or above this one that is not solid."
   [chunks [x y z :as cell]]
   (if-not (solid? chunks cell)
     cell
@@ -92,28 +85,24 @@
         (recur (inc cy))
         [x cy z]))))
 
-;;; The weight of a cell
-
 (defn- light-cost
-  "LevelReader.getPathfindingCostFromLightLevels, in the float the
-  game would hold. The ambient light of the overworld is zero."
+  "Returns what the light of the cell adds to its weight.
+  The ambient light of the overworld is zero."
   ^double [world chunks [x y z]]
-  (let [lit (weather/brightness world chunks x y z
-                                (:time-of-day world 0))
+  (let [day (:time-of-day world 0)
+        lit (weather/brightness world chunks x y z day)
         b (float (/ (float lit) (float 15.0)))
-        curved (float (/ b (float (- (float 4.0)
-                                     (float (* (float 3.0) b))))))]
+        denom (float (- (float 4.0) (float (* (float 3.0) b))))
+        curved (float (/ b denom))]
     (double (float (- curved (float 0.5))))))
 
 (defn walk-target-value
-  "Animal.getWalkTargetValue: ten on the ground the breed grazes,
+  "Returns the weight of a cell: ten on the ground the breed grazes,
   else the light of the cell less a half."
-  ^double [world e [x y z :as cell]]
+  ^double [world e cell]
   (let [chunks (:chunks world)
         ground (get-in mobs/types [(:type e) :ground] :grass-block)]
-    (if (= ground (block/block-of
-                    (chunk/block-state chunks (long x) (dec (long y))
-                                       (long z))))
+    (if (= ground (block/block-of (state-below chunks cell)))
       ground-weight
       (light-cost world chunks cell))))
 
@@ -122,8 +111,9 @@
    (+ (double (long z)) 0.5)])
 
 (defn- best-pos
-  "RandomPos.generateRandomPos: ten tries, the heaviest cell wins
-  and the first of equals keeps it. The answer is its bottom centre."
+  "Returns the bottom centre of the heaviest of ten tried cells.
+  The first of equals keeps it, and nil comes back when no try
+  yielded a cell."
   [weight-of supply]
   (loop [i 0 best nil bw Double/NEGATIVE_INFINITY]
     (if (= i attempts)
@@ -135,24 +125,25 @@
           (recur (inc i) best bw))))))
 
 (defn- stable-cell
-  "The cell of one try, dropped when it left the world or hangs over
-  nothing the mob may stand on."
+  "Returns the cell of one try, nil when it left the world or hangs
+  over nothing the mob may stand on."
   [chunks pos dir]
   (let [cell (pos-toward-direction pos dir)]
     (when-not (or (outside-limits? cell) (not-stable? chunks cell))
       cell)))
 
 (defn- land-cell
-  "LandRandomPos.movePosUpOutOfSolid: out of the ground, and never
-  into water or a cell that costs the mob anything."
+  "Returns the cell lifted out of the ground, nil when it holds
+  water or costs the mob anything."
   [chunks cell]
   (when cell
     (let [c (move-up-out-of-solid chunks cell)]
       (when-not (or (water? chunks c) (has-malus? chunks c)) c))))
 
 (defn land-pos
-  "LandRandomPos.getPos: a walk goal on dry land, out of the ground
-  and off anything that costs the mob. Nil when ten tries found none."
+  "Returns a walk goal on dry land that costs the mob nothing.
+  It is lifted out of the ground, and nil comes back when ten tries
+  found none."
   [world e t eid k h v]
   (let [chunks (:chunks world) pos (:pos e)]
     (best-pos (fn [c] (walk-target-value world e c))
@@ -161,8 +152,8 @@
                   (land-cell chunks (stable-cell chunks pos d)))))))
 
 (defn default-pos
-  "DefaultRandomPos.getPos: a walk goal taken where it falls, with
-  no climbing out of the ground, but costing the mob nothing."
+  "Returns a walk goal taken where it falls, costing the mob nothing.
+  It is not lifted out of the ground."
   [world e t eid k h v]
   (let [chunks (:chunks world) pos (:pos e)]
     (best-pos (fn [c] (walk-target-value world e c))

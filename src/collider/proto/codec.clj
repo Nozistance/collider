@@ -6,7 +6,8 @@
             [collider.data :as data]
             [collider.proto.buf :as buf])
   (:import (collider.java Buf)
-           (java.io ByteArrayInputStream DataInputStream EOFException InputStream OutputStream)
+           (java.io ByteArrayInputStream DataInputStream
+                    EOFException InputStream OutputStream)
            (java.nio.charset StandardCharsets)
            (java.util UUID)
            (java.util.zip Deflater Inflater)))
@@ -21,7 +22,8 @@
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
       (buf/write-byte! buf (unchecked-int v))
-      (do (buf/write-byte! buf (unchecked-int (bit-or (bit-and v 0x7F) 0x80)))
+      (do (buf/write-byte!
+            buf (unchecked-int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
 (def ^:private ^:const max-varint-size 5)
@@ -32,7 +34,8 @@
           r (bit-or r (bit-shift-left (bit-and b 0x7F) (* 7 n)))]
       (cond
         (zero? (bit-and b 0x80)) (long (unchecked-int r))
-        (>= (inc n) max-varint-size) (throw (ex-info "VarInt too big" {:bytes (inc n)}))
+        (>= (inc n) max-varint-size)
+        (throw (ex-info "VarInt too big" {:bytes (inc n)}))
         :else (recur (inc n) r)))))
 
 (defn write-varlong [^Buf buf ^long v]
@@ -69,18 +72,22 @@
    (let [max (long max)
          n (read-varint buf)]
      (when (or (neg? n) (> n (* max 3)))
-       (throw (ex-info "encoded string too long" {:length n :max (* max 3)})))
+       (throw (ex-info "encoded string too long"
+                       {:length n :max (* max 3)})))
      (let [bs (byte-array n)]
        (buf/read-bytes! buf bs)
        (let [s (String. bs StandardCharsets/UTF_8)]
          (when (> (.length s) max)
-           (throw (ex-info "string too long" {:length (.length s) :max max})))
+           (let [info {:length (.length s) :max max}]
+             (throw (ex-info "string too long" info))))
          s)))))
 
 (defn read-count ^long [^Buf buf]
   (let [n (read-varint buf)]
     (when (or (neg? n) (> n (buf/readable-bytes buf)))
-      (throw (ex-info "count exceeds remaining bytes" {:count n :readable (buf/readable-bytes buf)})))
+      (throw (ex-info "count exceeds remaining bytes"
+                      {:count n
+                       :readable (buf/readable-bytes buf)})))
     n))
 
 (defn write-uuid [^Buf buf ^UUID u]
@@ -130,14 +137,17 @@
 (def ^:private long-array-class (Class/forName "[J"))
 
 (defn- write-nbt-string [^Buf buf ^String name ^String v]
-  (buf/write-byte! buf (int tag-string)) (buf/write-utf! buf name) (buf/write-utf! buf v))
+  (buf/write-byte! buf (int tag-string))
+  (buf/write-utf! buf name)
+  (buf/write-utf! buf v))
 
 (declare write-translatable)
 
 (defn- write-argument [^Buf buf a]
   (if (map? a)
     (write-translatable buf a)
-    (do (write-nbt-string buf "text" (str a)) (buf/write-byte! buf (int tag-end)))))
+    (do (write-nbt-string buf "text" (str a))
+        (buf/write-byte! buf (int tag-end)))))
 
 (defn- write-translatable [^Buf buf {:keys [translate with]}]
   (write-nbt-string buf "translate" translate)
@@ -145,13 +155,16 @@
     (buf/write-byte! buf (int tag-list)) (buf/write-utf! buf "with")
     (cond
       (every? number? with)
-      (do (buf/write-byte! buf (int tag-int)) (buf/write-int! buf (count with))
+      (do (buf/write-byte! buf (int tag-int))
+          (buf/write-int! buf (count with))
           (doseq [a with] (buf/write-int! buf (int a))))
       (every? string? with)
-      (do (buf/write-byte! buf (int tag-string)) (buf/write-int! buf (count with))
+      (do (buf/write-byte! buf (int tag-string))
+          (buf/write-int! buf (count with))
           (doseq [a with] (buf/write-utf! buf a)))
       :else
-      (do (buf/write-byte! buf (int tag-compound)) (buf/write-int! buf (count with))
+      (do (buf/write-byte! buf (int tag-compound))
+          (buf/write-int! buf (count with))
           (doseq [a with] (write-argument buf a)))))
   (buf/write-byte! buf (int tag-end)))
 
@@ -159,8 +172,10 @@
   "Writes a piece of text a client shows, plain or translated."
   [^Buf buf s]
   (if (map? s)
-    (do (buf/write-byte! buf (int tag-compound)) (write-translatable buf s))
-    (do (buf/write-byte! buf (int tag-string)) (buf/write-utf! buf (str s)))))
+    (do (buf/write-byte! buf (int tag-compound))
+        (write-translatable buf s))
+    (do (buf/write-byte! buf (int tag-string))
+        (buf/write-utf! buf (str s)))))
 
 (defn- nbt-type ^long [v]
   (cond (map? v) tag-compound
@@ -179,7 +194,8 @@
         :else (throw (ex-info "no NBT type" {:value v}))))
 
 (defn- list-type ^long [v]
-  (long (or (:nbt-type (meta v)) (if (empty? v) tag-end (nbt-type (first v))))))
+  (long (or (:nbt-type (meta v))
+            (if (empty? v) tag-end (nbt-type (first v))))))
 
 (defn- write-nbt-payload [^Buf buf v]
   (case (int (nbt-type v))
@@ -194,11 +210,14 @@
     4 (buf/write-long! buf (long v))
     5 (buf/write-float! buf (float v))
     6 (buf/write-double! buf (double v))
-    7 (do (buf/write-int! buf (alength ^bytes v)) (buf/write-bytes! buf ^bytes v))
+    7 (do (buf/write-int! buf (alength ^bytes v))
+          (buf/write-bytes! buf ^bytes v))
     11 (do (buf/write-int! buf (alength ^ints v))
-           (dotimes [i (alength ^ints v)] (buf/write-int! buf (aget ^ints v i))))
+           (dotimes [i (alength ^ints v)]
+             (buf/write-int! buf (aget ^ints v i))))
     12 (do (buf/write-int! buf (alength ^longs v))
-           (dotimes [i (alength ^longs v)] (buf/write-long! buf (aget ^longs v i))))
+           (dotimes [i (alength ^longs v)]
+             (buf/write-long! buf (aget ^longs v i))))
     3 (buf/write-int! buf (int v))
     9 (do (buf/write-byte! buf (int (list-type v)))
           (buf/write-int! buf (count v))
@@ -219,18 +238,21 @@
     (throw (ex-info "negative NBT size" {:size size})))
   (let [used (+ (aget acc 0) size)]
     (when (> used nbt-quota)
-      (throw (ex-info "NBT tag too big" {:usage used :quota nbt-quota})))
+      (throw (ex-info "NBT tag too big"
+                      {:usage used :quota nbt-quota})))
     (aset acc 0 used)))
 
 (defn- push-depth! [^longs acc]
   (when (>= (aget acc 1) nbt-max-depth)
-    (throw (ex-info "NBT tag too complex" {:max-depth nbt-max-depth})))
+    (throw (ex-info "NBT tag too complex"
+                    {:max-depth nbt-max-depth})))
   (aset acc 1 (inc (aget acc 1))))
 
 (defn- pop-depth! [^longs acc]
   (aset acc 1 (dec (aget acc 1))))
 
-(defn- read-nbt-string ^String [^DataInputStream d ^longs acc ^long base]
+(defn- read-nbt-string
+  ^String [^DataInputStream d ^longs acc ^long base]
   (account! acc base)
   (let [s (.readUTF d)]
     (account! acc (* 2 (.length s)))
@@ -245,7 +267,8 @@
     (let [et (long (.readByte d))
           n (long (.readInt d))]
       (account! acc (* 4 n))
-      (with-meta (mapv (fn [_] (read-nbt-payload d acc et)) (range n)) {:nbt-type et}))
+      (with-meta (mapv (fn [_] (read-nbt-payload d acc et)) (range n))
+                 {:nbt-type et}))
     (finally (pop-depth! acc))))
 
 (defn- read-nbt-compound [^DataInputStream d ^longs acc]
@@ -272,13 +295,17 @@
   (account! acc 24)
   (let [n (long (.readInt d))]
     (account! acc (* 4 n))
-    (let [a (int-array n)] (dotimes [i n] (aset a i (.readInt d))) a)))
+    (let [a (int-array n)]
+      (dotimes [i n] (aset a i (.readInt d)))
+      a)))
 
 (defn- read-nbt-longs [^DataInputStream d ^longs acc]
   (account! acc 24)
   (let [n (long (.readInt d))]
     (account! acc (* 8 n))
-    (let [a (long-array n)] (dotimes [i n] (aset a i (.readLong d))) a)))
+    (let [a (long-array n)]
+      (dotimes [i n] (aset a i (.readLong d)))
+      a)))
 
 (defn- read-nbt-payload [^DataInputStream d ^longs acc ^long t]
   (case (int t)
@@ -300,7 +327,8 @@
   "Returns the NBT value at the read point, compound keys as keywords.
   Throws when it is too big or too deeply nested."
   [^Buf buf]
-  (let [in (ByteArrayInputStream. (.a buf) (.r buf) (- (.w buf) (.r buf)))
+  (let [left (- (.w buf) (.r buf))
+        in (ByteArrayInputStream. (.a buf) (.r buf) left)
         d (DataInputStream. in)
         acc (long-array 2)
         t (long (.readByte d))
@@ -309,7 +337,8 @@
     v))
 
 (defn write-angle [^Buf buf ^double deg]
-  (buf/write-byte! buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
+  (buf/write-byte!
+    buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
 
 (defn read-angle
   "Returns in degrees the rotation one byte carries."
@@ -317,7 +346,9 @@
   (/ (* (buf/read-byte buf) 360.0) 256.0))
 
 (defn write-vec3 [^Buf buf [x y z]]
-  (buf/write-double! buf (double x)) (buf/write-double! buf (double y)) (buf/write-double! buf (double z)))
+  (buf/write-double! buf (double x))
+  (buf/write-double! buf (double y))
+  (buf/write-double! buf (double z)))
 
 (defn write-fixed-vec3
   "Writes a position as three ints of eighths of a block."
@@ -334,8 +365,8 @@
   "Writes one block of a section update: where it sits in the section
   and its state, both in one varlong."
   [^Buf buf [at state]]
-  (write-varlong buf (bit-or (bit-shift-left (long state) 12)
-                             (long at))))
+  (let [v (bit-or (bit-shift-left (long state) 12) (long at))]
+    (write-varlong buf v)))
 
 (defn read-section-change [^Buf buf]
   (let [v (read-varlong buf)]
@@ -357,9 +388,12 @@
             pz (bit-shift-left (lp-pack (/ z scale)) 33)
             buffer (bit-or markers px py pz)]
         (buf/write-byte! buf (unchecked-int buffer))
-        (buf/write-byte! buf (unchecked-int (bit-shift-right buffer 8)))
-        (buf/write-int! buf (unchecked-int (bit-shift-right buffer 16)))
-        (when partial? (write-varint buf (bit-shift-right scale 2)))))))
+        (buf/write-byte!
+          buf (unchecked-int (bit-shift-right buffer 8)))
+        (buf/write-int!
+          buf (unchecked-int (bit-shift-right buffer 16)))
+        (when partial?
+          (write-varint buf (bit-shift-right scale 2)))))))
 
 (defn- lp-unpack ^double [^long v]
   (- (/ (* 2.0 (min (bit-and v 32767) 32766)) 32766.0) 1.0))
@@ -374,11 +408,11 @@
             high (bit-and (buf/read-int buf) 0xFFFFFFFF)
             v (bit-or (bit-shift-left high 16)
                       (bit-shift-left middle 8) lowest)
-            scale (cond-> (bit-and lowest 3)
-                    (pos? (bit-and lowest 4))
-                    (bit-or (bit-shift-left
-                              (bit-and (read-varint buf) 0xFFFFFFFF)
-                              2)))]
+            more (fn [s]
+                   (let [n (bit-and (read-varint buf) 0xFFFFFFFF)]
+                     (bit-or s (bit-shift-left n 2))))
+            wide? (pos? (bit-and lowest 4))
+            scale (cond-> (bit-and lowest 3) wide? more)]
         [(* scale (lp-unpack (bit-shift-right v 3)))
          (* scale (lp-unpack (bit-shift-right v 18)))
          (* scale (lp-unpack (bit-shift-right v 33)))]))))
@@ -389,9 +423,8 @@
   (loop [i 0 v 0]
     (if (= i n)
       v
-      (recur (inc i)
-             (bit-or v (bit-shift-left (buf/read-unsigned-byte buf)
-                                       (* 8 i)))))))
+      (let [b (buf/read-unsigned-byte buf)]
+        (recur (inc i) (bit-or v (bit-shift-left b (* 8 i))))))))
 
 (defn write-bits [^Buf buf ^long v ^long n]
   (dotimes [i n]
@@ -444,37 +477,54 @@
   "Writes a statistic: its type, then its entry in the registry the
   type names."
   [^Buf buf k]
-  (let [type (keyword (namespace k))]
+  (let [type (keyword (namespace k))
+        reg (stat-registry type)]
     (write-varint buf (data/registry-id "stat_type" type))
-    (write-varint buf (data/registry-id (stat-registry type)
-                                        (keyword (name k))))))
+    (write-varint buf (data/registry-id reg (keyword (name k))))))
 
 (defn read-stat [^Buf buf]
   (let [type (data/entry-name "stat_type" (read-varint buf))
-        entry (data/entry-name (stat-registry type) (read-varint buf))]
+        reg (stat-registry type)
+        entry (data/entry-name reg (read-varint buf))]
     (keyword (name type) (name entry))))
 
 (declare components read-patch write-patch)
 
 (defn- codec [r w] {:r r :w w})
 
-(def ^:private c-bool (codec (fn [^Buf b] (buf/read-boolean b)) (fn [^Buf b v] (buf/write-boolean! b (boolean v)))))
+(def ^:private c-bool
+  (codec (fn [^Buf b] (buf/read-boolean b))
+         (fn [^Buf b v] (buf/write-boolean! b (boolean v)))))
 
-(def ^:private c-varint (codec (fn [^Buf b] (read-varint b)) (fn [^Buf b v] (write-varint b (long v)))))
+(def ^:private c-varint
+  (codec (fn [^Buf b] (read-varint b))
+         (fn [^Buf b v] (write-varint b (long v)))))
 
-(def ^:private c-int (codec (fn [^Buf b] (long (buf/read-int b))) (fn [^Buf b v] (buf/write-int! b (int v)))))
+(def ^:private c-int
+  (codec (fn [^Buf b] (long (buf/read-int b)))
+         (fn [^Buf b v] (buf/write-int! b (int v)))))
 
-(def ^:private c-float (codec (fn [^Buf b] (buf/read-float b)) (fn [^Buf b v] (buf/write-float! b (float v)))))
+(def ^:private c-float
+  (codec (fn [^Buf b] (buf/read-float b))
+         (fn [^Buf b v] (buf/write-float! b (float v)))))
 
-(def ^:private c-double (codec (fn [^Buf b] (buf/read-double b)) (fn [^Buf b v] (buf/write-double! b (double v)))))
+(def ^:private c-double
+  (codec (fn [^Buf b] (buf/read-double b))
+         (fn [^Buf b v] (buf/write-double! b (double v)))))
 
-(def ^:private c-string (codec (fn [^Buf b] (read-string b)) (fn [^Buf b v] (write-string b (str v)))))
+(def ^:private c-string
+  (codec (fn [^Buf b] (read-string b))
+         (fn [^Buf b v] (write-string b (str v)))))
 
 (def ^:private c-ident (codec read-id (fn [^Buf b v] (write-id b v))))
 
-(def ^:private c-uuid (codec (fn [^Buf b] (read-uuid b)) (fn [^Buf b v] (write-uuid b v))))
+(def ^:private c-uuid
+  (codec (fn [^Buf b] (read-uuid b))
+         (fn [^Buf b v] (write-uuid b v))))
 
-(def ^:private c-nbt (codec (fn [^Buf b] (read-nbt b)) (fn [^Buf b v] (write-nbt b v))))
+(def ^:private c-nbt
+  (codec (fn [^Buf b] (read-nbt b))
+         (fn [^Buf b v] (write-nbt b v))))
 
 (def ^:private c-text c-nbt)
 
@@ -482,43 +532,58 @@
 
 (def ^:private c-block-pos
   (codec (fn [^Buf b] (read-block-pos b))
-         (fn [^Buf b [x y z]] (write-block-pos b (long x) (long y) (long z)))))
+         (fn [^Buf b [x y z]]
+           (write-block-pos b (long x) (long y) (long z)))))
 
 (defn- c-opt [{:keys [r w]}]
   (codec (fn [^Buf b] (when (buf/read-boolean b) (r b)))
-         (fn [^Buf b v] (buf/write-boolean! b (some? v)) (when (some? v) (w b v)))))
+         (fn [^Buf b v]
+           (buf/write-boolean! b (some? v))
+           (when (some? v) (w b v)))))
 
 (defn- c-list [{:keys [r w]}]
-  (codec (fn [^Buf b] (let [n (read-count b)] (mapv (fn [_] (r b)) (range n))))
-         (fn [^Buf b v] (write-varint b (count v)) (doseq [x v] (w b x)))))
+  (codec (fn [^Buf b]
+           (let [n (read-count b)] (mapv (fn [_] (r b)) (range n))))
+         (fn [^Buf b v]
+           (write-varint b (count v))
+           (doseq [x v] (w b x)))))
 
 (defn- c-map [k v]
   (codec (fn [^Buf b]
-           (let [n (read-count b)]
-             (apply array-map (mapcat (fn [_] [((:r k) b) ((:r v) b)]) (range n)))))
+           (let [n (read-count b)
+                 pair (fn [_] [((:r k) b) ((:r v) b)])]
+             (apply array-map (mapcat pair (range n)))))
          (fn [^Buf b m]
            (write-varint b (count m))
            (doseq [[a x] m] ((:w k) b a) ((:w v) b x)))))
 
 (defn- c-either [l r]
-  (codec (fn [^Buf b] (if (buf/read-boolean b) {:left ((:r l) b)} {:right ((:r r) b)}))
+  (codec (fn [^Buf b]
+           (if (buf/read-boolean b)
+             {:left ((:r l) b)}
+             {:right ((:r r) b)}))
          (fn [^Buf b v]
            (if (contains? v :left)
              (do (buf/write-boolean! b true) ((:w l) b (:left v)))
-             (do (buf/write-boolean! b false) ((:w r) b (:right v)))))))
+             (do (buf/write-boolean! b false)
+                 ((:w r) b (:right v)))))))
 
 (defn- record-codec [& kvs]
   (let [fields (mapv vec (partition 2 kvs))
         ks (mapv first fields)]
     (codec (fn [^Buf b]
-             (apply array-map (interleave ks (mapv (fn [[_ c]] ((:r c) b)) fields))))
-           (fn [^Buf b v] (doseq [[k c] fields] ((:w c) b (get v k)))))))
+             (let [vs (mapv (fn [[_ c]] ((:r c) b)) fields)]
+               (apply array-map (interleave ks vs))))
+           (fn [^Buf b v]
+             (doseq [[k c] fields] ((:w c) b (get v k)))))))
 
 (defn- c-enum [names]
   (let [by-id (vec names)
         by-name (into {} (map-indexed (fn [i n] [n (long i)])) names)]
     (codec (fn [^Buf b] (let [i (read-varint b)] (get by-id i i)))
-           (fn [^Buf b v] (write-varint b (long (if (keyword? v) (get by-name v) v)))))))
+           (fn [^Buf b v]
+             (write-varint
+               b (long (if (keyword? v) (get by-name v) v)))))))
 
 (defn- c-reg [registry]
   (codec (fn [^Buf b] (data/entry-name registry (read-varint b)))
@@ -527,7 +592,9 @@
 (defn- c-holder [registry direct]
   (codec (fn [^Buf b]
            (let [i (read-varint b)]
-             (if (zero? i) {:direct ((:r direct) b)} (data/entry-name registry (dec i)))))
+             (if (zero? i)
+               {:direct ((:r direct) b)}
+               (data/entry-name registry (dec i)))))
          (fn [^Buf b v]
            (if (map? v)
              (do (write-varint b 0) ((:w direct) b (:direct v)))
@@ -538,14 +605,18 @@
            (let [n (dec (read-count b))]
              (if (neg? n)
                {:tag (read-id b)}
-               (mapv (fn [_] (data/entry-name registry (read-varint b))) (range n)))))
+               (mapv (fn [_]
+                       (data/entry-name registry (read-varint b)))
+                     (range n)))))
          (fn [^Buf b v]
            (if (map? v)
              (do (write-varint b 0) (write-id b (:tag v)))
              (do (write-varint b (inc (count v)))
-                 (doseq [x v] (write-varint b (data/entry-id registry x))))))))
+                 (doseq [x v]
+                   (write-varint b (data/entry-id registry x))))))))
 
-(defn- c-filterable [inner] (record-codec :raw inner :filtered (c-opt inner)))
+(defn- c-filterable [inner]
+  (record-codec :raw inner :filtered (c-opt inner)))
 
 (def ^:private dye-colors
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
@@ -554,7 +625,8 @@
 (def ^:private c-dye (c-enum dye-colors))
 
 (def ^:private c-sound
-  (c-holder "sound_event" (record-codec :sound c-ident :range (c-opt c-float))))
+  (c-holder "sound_event"
+            (record-codec :sound c-ident :range (c-opt c-float))))
 
 (def ^:private c-effect-details
   (let [self (promise)
@@ -567,56 +639,78 @@
     @(deliver self details)))
 
 (def ^:private c-effect-instance
-  (record-codec :effect (c-reg "mob_effect") :details c-effect-details))
+  (record-codec :effect (c-reg "mob_effect")
+                :details c-effect-details))
+
+(def ^:private c-apply-effects
+  (record-codec :effects (c-list c-effect-instance)
+                :probability c-float))
 
 (def ^:private consume-effects
-  {:apply-effects     (record-codec :effects (c-list c-effect-instance) :probability c-float)
-   :remove-effects    (record-codec :effects (c-holder-set "mob_effect"))
+  {:apply-effects c-apply-effects
+   :remove-effects (record-codec :effects (c-holder-set "mob_effect"))
    :clear-all-effects (record-codec)
    :teleport-randomly (record-codec :diameter c-float)
    :play-sound        (record-codec :sound c-sound)})
 
 (def ^:private c-consume-effect
   (codec (fn [^Buf b]
-           (let [t (data/entry-name "consume_effect_type" (read-varint b))]
+           (let [i (read-varint b)
+                 t (data/entry-name "consume_effect_type" i)]
              (assoc ((:r (get consume-effects t)) b) :type t)))
          (fn [^Buf b v]
-           (write-varint b (data/entry-id "consume_effect_type" (:type v)))
+           (write-varint
+             b (data/entry-id "consume_effect_type" (:type v)))
            ((:w (get consume-effects (:type v))) b v))))
+
+(def ^:private c-patch
+  (codec (fn [^Buf b] (read-patch b))
+         (fn [^Buf b v] (write-patch b v))))
 
 (def ^:private c-template
   (record-codec :item (c-reg "item") :count c-varint
-                :patch (codec (fn [^Buf b] (read-patch b)) (fn [^Buf b v] (write-patch b v)))))
+                :patch c-patch))
 
 (def ^:private c-typed-component
   (codec (fn [^Buf b]
-           (let [t (data/entry-name "data_component_type" (read-varint b))]
+           (let [i (read-varint b)
+                 t (data/entry-name "data_component_type" i)]
              [t ((:r (get components t)) b)]))
          (fn [^Buf b [t v]]
            (write-varint b (data/entry-id "data_component_type" t))
            ((:w (get components t)) b v))))
 
+(def ^:private no-predicates
+  "component predicates not supported")
+
 (def ^:private c-no-predicates
   (codec (fn [^Buf b]
            (let [n (read-varint b)]
-             (when (pos? n) (throw (ex-info "component predicates not supported" {:count n})))
+             (when (pos? n)
+               (throw (ex-info no-predicates {:count n})))
              []))
          (fn [^Buf b v]
-           (when (seq v) (throw (ex-info "component predicates not supported" {})))
+           (when (seq v) (throw (ex-info no-predicates {})))
            (write-varint b 0))))
 
+(def ^:private c-state-range
+  (record-codec :min (c-opt c-string) :max (c-opt c-string)))
+
 (def ^:private c-state-matcher
-  (c-either (record-codec :value c-string)
-            (record-codec :min (c-opt c-string) :max (c-opt c-string))))
+  (c-either (record-codec :value c-string) c-state-range))
+
+(def ^:private c-state-entry
+  (record-codec :name c-string :matcher c-state-matcher))
 
 (def ^:private c-block-predicate
   (record-codec :blocks (c-opt (c-holder-set "block"))
-                :state (c-opt (c-list (record-codec :name c-string :matcher c-state-matcher)))
+                :state (c-opt (c-list c-state-entry))
                 :nbt (c-opt c-nbt)
                 :exact (c-list c-typed-component)
                 :partial c-no-predicates))
 
-(def ^:private c-adventure (record-codec :predicates (c-list c-block-predicate)))
+(def ^:private c-adventure
+  (record-codec :predicates (c-list c-block-predicate)))
 
 (def ^:private c-attribute-display
   (let [types {0 (record-codec) 1 (record-codec)
@@ -657,15 +751,20 @@
                 :base c-float :factor c-float))
 
 (def ^:private c-kinetic-condition
-  (record-codec :max-duration-ticks c-varint :min-speed c-float :min-relative-speed c-float))
+  (record-codec :max-duration-ticks c-varint :min-speed c-float
+                :min-relative-speed c-float))
+
+(def ^:private firework-shapes
+  [:small-ball :large-ball :star :creeper :burst])
 
 (def ^:private c-firework-explosion
-  (record-codec :shape (c-enum [:small-ball :large-ball :star :creeper :burst])
+  (record-codec :shape (c-enum firework-shapes)
                 :colors (c-list c-int) :fade-colors (c-list c-int)
                 :trail c-bool :twinkle c-bool))
 
 (def ^:private c-game-profile-properties
-  (c-list (record-codec :name c-string :value c-string :signature (c-opt c-string))))
+  (c-list (record-codec :name c-string :value c-string
+                        :signature (c-opt c-string))))
 
 (def ^:private c-named-profile
   (record-codec :id c-uuid :name c-string
@@ -697,14 +796,23 @@
   (record-codec :base c-string
                 :overrides (c-map c-ident c-string)))
 
+(def ^:private c-trim-material-data
+  (record-codec :assets c-material-assets :description c-text))
+
 (def ^:private c-trim-material
-  (c-holder "trim_material" (record-codec :assets c-material-assets :description c-text)))
+  (c-holder "trim_material" c-trim-material-data))
+
+(def ^:private c-trim-pattern-data
+  (record-codec :asset c-ident :description c-text :decal c-bool))
 
 (def ^:private c-trim-pattern
-  (c-holder "trim_pattern" (record-codec :asset c-ident :description c-text :decal c-bool)))
+  (c-holder "trim_pattern" c-trim-pattern-data))
+
+(def ^:private c-banner-pattern-data
+  (record-codec :asset c-ident :translation-key c-string))
 
 (def ^:private c-banner-pattern
-  (c-holder "banner_pattern" (record-codec :asset c-ident :translation-key c-string)))
+  (c-holder "banner_pattern" c-banner-pattern-data))
 
 (def ^:private c-jukebox-song-data
   (record-codec :sound c-sound :description c-text
@@ -834,122 +942,141 @@
                 :ticks-in-hive c-varint
                 :min-ticks-in-hive c-varint))
 
+(def ^:private c-use-cooldown
+  (record-codec :seconds c-float :group (c-opt c-ident)))
+
+(def ^:private c-damage-resistant
+  (record-codec :types (c-holder-set "damage_type")))
+
+(def ^:private c-death-protection
+  (record-codec :death-effects (c-list c-consume-effect)))
+
+(def ^:private c-trim
+  (record-codec :material c-trim-material :pattern c-trim-pattern))
+
+(def ^:private c-block-entity-data
+  (c-typed-entity-data (c-reg "block_entity_type")))
+
+(def ^:private c-banner-patterns
+  (c-list (record-codec :pattern c-banner-pattern :color c-dye)))
+
 (def components
   {:custom-data                 c-nbt
-   :max-stack-size              c-varint
-   :max-damage                  c-varint
-   :damage                      c-varint
-   :unbreakable                 c-unit
-   :use-effects                 c-use-effects
-   :custom-name                 c-text
-   :minimum-attack-charge       c-float
-   :damage-type                 (c-reg "damage_type")
-   :item-name                   c-text
-   :item-model                  c-ident
-   :lore                        (c-list c-text)
-   :rarity                      (c-enum [:common :uncommon :rare :epic])
-   :enchantments                (c-map (c-reg "enchantment") c-varint)
-   :can-place-on                c-adventure
-   :can-break                   c-adventure
-   :attribute-modifiers         (c-list c-attribute-entry)
-   :custom-model-data           c-custom-model-data
-   :tooltip-display             c-tooltip-display
-   :repair-cost                 c-varint
-   :creative-slot-lock          c-unit
-   :enchantment-glint-override  c-bool
-   :intangible-projectile       c-nbt
-   :food                        c-food
-   :consumable                  c-consumable
-   :use-remainder               (record-codec :convert-into c-template)
-   :use-cooldown                (record-codec :seconds c-float :group (c-opt c-ident))
-   :damage-resistant            (record-codec :types (c-holder-set "damage_type"))
-   :tool                        c-tool
-   :weapon                      c-weapon
-   :attack-range                c-attack-range
-   :enchantable                 c-varint
-   :equippable                  c-equippable
-   :repairable                  (record-codec :items (c-holder-set "item"))
-   :glider                      c-unit
-   :tooltip-style               c-ident
-   :death-protection            (record-codec :death-effects (c-list c-consume-effect))
-   :blocks-attacks              c-blocks-attacks
-   :piercing-weapon             c-piercing-weapon
-   :kinetic-weapon              c-kinetic-weapon
-   :swing-animation             c-swing-animation
-   :additional-trade-cost       c-varint
-   :stored-enchantments         (c-map (c-reg "enchantment") c-varint)
-   :dye                         c-dye
-   :dyed-color                  c-int
-   :map-color                   c-int
-   :map-id                      c-varint
-   :map-decorations             c-nbt
-   :map-post-processing         (c-enum [:lock :scale])
-   :charged-projectiles         (c-list c-template)
-   :bundle-contents             (c-list c-template)
-   :potion-contents             c-potion-contents
-   :potion-duration-scale       c-float
-   :suspicious-stew-effects     (c-list c-stew-effect)
-   :writable-book-content       (c-list (c-filterable c-string))
-   :written-book-content        c-written-book
-   :trim                        (record-codec :material c-trim-material :pattern c-trim-pattern)
-   :debug-stick-state           c-nbt
-   :entity-data                 (c-typed-entity-data (c-reg "entity_type"))
-   :bucket-entity-data          c-nbt
-   :block-entity-data           (c-typed-entity-data (c-reg "block_entity_type"))
-   :instrument                  c-instrument
-   :provides-trim-material      c-trim-material
-   :ominous-bottle-amplifier    c-varint
-   :jukebox-playable            (record-codec :song c-jukebox-song)
-   :provides-banner-patterns    (c-holder-set "banner_pattern")
-   :recipes                     c-nbt
-   :lodestone-tracker           c-lodestone-tracker
-   :firework-explosion          c-firework-explosion
-   :fireworks                   c-fireworks
-   :profile                     c-profile
-   :note-block-sound            c-ident
-   :banner-patterns             (c-list (record-codec :pattern c-banner-pattern :color c-dye))
-   :base-color                  c-dye
-   :pot-decorations             (c-list (c-reg "item"))
-   :container                   (c-list (c-opt c-template))
-   :block-state                 (c-map c-string c-string)
-   :bees                        (c-list c-bee)
-   :sulfur-cube-content         (record-codec :absorbed c-template)
-   :lock                        c-nbt
-   :container-loot              c-nbt
-   :break-sound                 c-sound
-   :villager/variant            (c-reg "villager_type")
-   :wolf/variant                (c-reg "wolf_variant")
-   :wolf/sound-variant          (c-reg "wolf_sound_variant")
-   :wolf/collar                 c-dye
-   :fox/variant                 c-varint
-   :salmon/size                 c-varint
-   :parrot/variant              c-varint
-   :tropical-fish/pattern       c-varint
-   :tropical-fish/base-color    c-dye
+   :max-stack-size c-varint
+   :max-damage c-varint
+   :damage c-varint
+   :unbreakable c-unit
+   :use-effects c-use-effects
+   :custom-name c-text
+   :minimum-attack-charge c-float
+   :damage-type (c-reg "damage_type")
+   :item-name c-text
+   :item-model c-ident
+   :lore (c-list c-text)
+   :rarity (c-enum [:common :uncommon :rare :epic])
+   :enchantments (c-map (c-reg "enchantment") c-varint)
+   :can-place-on c-adventure
+   :can-break c-adventure
+   :attribute-modifiers (c-list c-attribute-entry)
+   :custom-model-data c-custom-model-data
+   :tooltip-display c-tooltip-display
+   :repair-cost c-varint
+   :creative-slot-lock c-unit
+   :enchantment-glint-override c-bool
+   :intangible-projectile c-nbt
+   :food c-food
+   :consumable c-consumable
+   :use-remainder (record-codec :convert-into c-template)
+   :use-cooldown c-use-cooldown
+   :damage-resistant c-damage-resistant
+   :tool c-tool
+   :weapon c-weapon
+   :attack-range c-attack-range
+   :enchantable c-varint
+   :equippable c-equippable
+   :repairable (record-codec :items (c-holder-set "item"))
+   :glider c-unit
+   :tooltip-style c-ident
+   :death-protection c-death-protection
+   :blocks-attacks c-blocks-attacks
+   :piercing-weapon c-piercing-weapon
+   :kinetic-weapon c-kinetic-weapon
+   :swing-animation c-swing-animation
+   :additional-trade-cost c-varint
+   :stored-enchantments (c-map (c-reg "enchantment") c-varint)
+   :dye c-dye
+   :dyed-color c-int
+   :map-color c-int
+   :map-id c-varint
+   :map-decorations c-nbt
+   :map-post-processing (c-enum [:lock :scale])
+   :charged-projectiles (c-list c-template)
+   :bundle-contents (c-list c-template)
+   :potion-contents c-potion-contents
+   :potion-duration-scale c-float
+   :suspicious-stew-effects (c-list c-stew-effect)
+   :writable-book-content (c-list (c-filterable c-string))
+   :written-book-content c-written-book
+   :trim c-trim
+   :debug-stick-state c-nbt
+   :entity-data (c-typed-entity-data (c-reg "entity_type"))
+   :bucket-entity-data c-nbt
+   :block-entity-data c-block-entity-data
+   :instrument c-instrument
+   :provides-trim-material c-trim-material
+   :ominous-bottle-amplifier c-varint
+   :jukebox-playable (record-codec :song c-jukebox-song)
+   :provides-banner-patterns (c-holder-set "banner_pattern")
+   :recipes c-nbt
+   :lodestone-tracker c-lodestone-tracker
+   :firework-explosion c-firework-explosion
+   :fireworks c-fireworks
+   :profile c-profile
+   :note-block-sound c-ident
+   :banner-patterns c-banner-patterns
+   :base-color c-dye
+   :pot-decorations (c-list (c-reg "item"))
+   :container (c-list (c-opt c-template))
+   :block-state (c-map c-string c-string)
+   :bees (c-list c-bee)
+   :sulfur-cube-content (record-codec :absorbed c-template)
+   :lock c-nbt
+   :container-loot c-nbt
+   :break-sound c-sound
+   :villager/variant (c-reg "villager_type")
+   :wolf/variant (c-reg "wolf_variant")
+   :wolf/sound-variant (c-reg "wolf_sound_variant")
+   :wolf/collar c-dye
+   :fox/variant c-varint
+   :salmon/size c-varint
+   :parrot/variant c-varint
+   :tropical-fish/pattern c-varint
+   :tropical-fish/base-color c-dye
    :tropical-fish/pattern-color c-dye
-   :mooshroom/variant           c-varint
-   :rabbit/variant              c-varint
-   :pig/variant                 (c-reg "pig_variant")
-   :pig/sound-variant           (c-reg "pig_sound_variant")
-   :cow/variant                 (c-reg "cow_variant")
-   :cow/sound-variant           (c-reg "cow_sound_variant")
-   :chicken/variant             (c-reg "chicken_variant")
-   :chicken/sound-variant       (c-reg "chicken_sound_variant")
-   :zombie-nautilus/variant     (c-reg "zombie_nautilus_variant")
-   :frog/variant                (c-reg "frog_variant")
-   :horse/variant               c-varint
-   :painting/variant            c-painting-variant
-   :llama/variant               c-varint
-   :axolotl/variant             c-varint
-   :cat/variant                 (c-reg "cat_variant")
-   :cat/sound-variant           (c-reg "cat_sound_variant")
-   :cat/collar                  c-dye
-   :sheep/color                 c-dye
-   :shulker/color               c-dye})
+   :mooshroom/variant c-varint
+   :rabbit/variant c-varint
+   :pig/variant (c-reg "pig_variant")
+   :pig/sound-variant (c-reg "pig_sound_variant")
+   :cow/variant (c-reg "cow_variant")
+   :cow/sound-variant (c-reg "cow_sound_variant")
+   :chicken/variant (c-reg "chicken_variant")
+   :chicken/sound-variant (c-reg "chicken_sound_variant")
+   :zombie-nautilus/variant (c-reg "zombie_nautilus_variant")
+   :frog/variant (c-reg "frog_variant")
+   :horse/variant c-varint
+   :painting/variant c-painting-variant
+   :llama/variant c-varint
+   :axolotl/variant c-varint
+   :cat/variant (c-reg "cat_variant")
+   :cat/sound-variant (c-reg "cat_sound_variant")
+   :cat/collar c-dye
+   :sheep/color c-dye
+   :shulker/color c-dye})
 
 (defn- component-codec [kw]
   (or (get components kw)
-      (throw (ex-info "no codec for data component" {:component kw}))))
+      (throw (ex-info "no codec for data component"
+                      {:component kw}))))
 
 (defn- read-component
   "Reads one component; delimited? means a byte length precedes the
@@ -969,21 +1096,24 @@
          removed (read-count buf)]
      (if (and (zero? added) (zero? removed))
        nil
-       (let [cs (mapv (fn [_] (read-component buf delimited?)) (range added))
-             rs (mapv (fn [_] (read-removed buf)) (range removed))]
+       (let [one (fn [_] (read-component buf delimited?))
+             cs (mapv one (range added))
+             rs (mapv (fn [_] (read-removed buf)) (range removed))
+             m (apply array-map (apply concat cs))]
          (cond-> {}
-                 (seq cs) (assoc :components (apply array-map (apply concat cs)))
+                 (seq cs) (assoc :components m)
                  (seq rs) (assoc :removed (set rs))))))))
 
 (defn write-patch [^Buf buf patch]
   (let [cs (:components patch)
-        rs (sort-by #(data/entry-id "data_component_type" %) (:removed patch))]
+        id-of #(data/entry-id "data_component_type" %)
+        rs (sort-by id-of (:removed patch))]
     (write-varint buf (count cs))
     (write-varint buf (count rs))
     (doseq [[k v] cs]
       (write-varint buf (data/entry-id "data_component_type" k))
       ((:w (component-codec k)) buf v))
-    (doseq [k rs] (write-varint buf (data/entry-id "data_component_type" k)))))
+    (doseq [k rs] (write-varint buf (id-of k)))))
 
 (defn write-item-stack [^Buf buf stack]
   (if (nil? stack)
@@ -1000,7 +1130,8 @@
    (let [n (read-varint buf)]
      (when (pos? n)
        (let [item (data/entry-name "item" (read-varint buf))]
-         (merge {:item item :count n} (read-patch buf delimited?)))))))
+         (merge {:item item :count n}
+                (read-patch buf delimited?)))))))
 
 (defn read-hashed-stack
   "Returns the stack the client claims is in a slot.
@@ -1015,10 +1146,11 @@
       (let [removed (read-count buf)]
         (dotimes [_ removed] (read-varint buf))
         (cond-> {:item (data/entry-name "item" item) :count n}
-                (or (pos? (long added)) (pos? (long removed))) (assoc :components? true))))))
+                (or (pos? (long added)) (pos? (long removed)))
+                (assoc :components? true))))))
 
 (def data-types
-  "Entity data type -> its place in the `EntityDataSerializers` order."
+  "Entity data type -> its place in the serializer order."
   {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
    :optional-block-pos 11 :block-state 14 :particle 16 :pose 20
    :cow-variant 23 :cow-sound-variant 24})
@@ -1055,6 +1187,9 @@
 (def ^:private data-type-names
   (into {} (map (fn [[k v]] [(long v) k])) data-types))
 
+(defn- read-optional-pos [^Buf buf]
+  (when (buf/read-boolean buf) (read-block-pos buf)))
+
 (defn- read-data-value [^Buf buf type]
   (case type
     :byte (buf/read-byte buf)
@@ -1063,7 +1198,7 @@
     :item (read-item-stack buf)
     :boolean (buf/read-boolean buf)
     :block-pos (read-block-pos buf)
-    :optional-block-pos (when (buf/read-boolean buf) (read-block-pos buf))
+    :optional-block-pos (read-optional-pos buf)
     :particle [(read-varint buf) (buf/read-int buf)]
     (:block-state :pose :cow-variant :cow-sound-variant)
     (read-varint buf)))
@@ -1077,11 +1212,13 @@
     (let [idx (buf/read-unsigned-byte buf)]
       (if (= entity-data-end idx)
         out
-        (let [type (data-type-names (read-varint buf))]
-          (recur (conj out [idx type (read-data-value buf type)])))))))
+        (let [type (data-type-names (read-varint buf))
+              v (read-data-value buf type)]
+          (recur (conj out [idx type v])))))))
 
 (defn offline-uuid ^UUID [^String name]
-  (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
+  (let [s (str "OfflinePlayer:" name)]
+    (UUID/nameUUIDFromBytes (.getBytes s StandardCharsets/UTF_8))))
 
 (def ^:private ^:const max-uncompressed 8388608)
 
@@ -1089,7 +1226,8 @@
   (loop [n 0 acc 0]
     (let [b (.read in)]
       (when (neg? b) (throw (EOFException. "end of stream")))
-      (let [acc (bit-or acc (bit-shift-left (bit-and b 0x7F) (* n 7)))]
+      (let [acc (bit-or acc
+                        (bit-shift-left (bit-and b 0x7F) (* n 7)))]
         (cond
           (zero? (bit-and b 0x80)) acc
           (>= n 2) (throw (ex-info "frame length varint too long" {}))
@@ -1103,20 +1241,27 @@
     (buf/read-from! buf in len)
     buf))
 
+(defn- bad-frame [info]
+  (ex-info "badly compressed packet" info))
+
+(defn- inflate! [^Buf buf ^Inflater inflater ^long n]
+  (let [dst (byte-array n)]
+    (.setInput inflater (.a buf) (.r buf) (buf/readable-bytes buf))
+    (let [got (try (.inflate inflater dst)
+                   (finally (.reset inflater)))]
+      (when (not= got n)
+        (throw (bad-frame {:got got :expected n}))))
+    (buf/adopt! buf dst n)))
+
 (defn decompress! ^Buf [^Buf buf ^long threshold ^Inflater inflater]
   (when-not (neg? threshold)
     (let [n (read-varint buf)]
       (when (pos? n)
         (when (< n threshold)
-          (throw (ex-info "badly compressed packet" {:size n :threshold threshold})))
+          (throw (bad-frame {:size n :threshold threshold})))
         (when (> n max-uncompressed)
-          (throw (ex-info "badly compressed packet" {:size n :max max-uncompressed})))
-        (let [dst (byte-array n)]
-          (.setInput inflater (.a buf) (.r buf) (buf/readable-bytes buf))
-          (let [got (try (.inflate inflater dst) (finally (.reset inflater)))]
-            (when (not= got n)
-              (throw (ex-info "badly compressed packet" {:got got :expected n}))))
-          (buf/adopt! buf dst n)))))
+          (throw (bad-frame {:size n :max max-uncompressed})))
+        (inflate! buf inflater n))))
   buf)
 
 (def ^:private ^:const deflate-step 8192)
@@ -1132,7 +1277,8 @@
 (defn write-frame!
   "Writes the payload to the stream as one packet. body and head are
   scratch buffers."
-  [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold ^Deflater deflater ^bytes chunk]
+  [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold
+   ^Deflater deflater ^bytes chunk]
   (buf/clear! body)
   (buf/clear! head)
   (if (neg? (long threshold))

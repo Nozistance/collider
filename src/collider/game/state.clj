@@ -70,9 +70,12 @@
       (assoc world :active-chunks
              (MapEntry/create k (compute-active-chunks world))))))
 
-(defn advance [world]
+(defn advance
+  "Returns the world one tick older."
+  [world]
   (cond-> (update world :tick inc)
-          (get-in world [:rules :advance-time] true) (update :time-of-day (fnil inc 0))))
+          (get-in world [:rules :advance-time] true)
+          (update :time-of-day (fnil inc 0))))
 
 (defn active-at? [active pos]
   (contains? active (chunk/pos-chunk pos)))
@@ -80,8 +83,11 @@
 (defn active-id? [active ^long bid]
   (contains? active (chunk/block-id-chunk bid)))
 
-(defn offline-uuid ^UUID [^String name]
-  (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
+(defn offline-uuid
+  "Returns the uuid an offline player of that name always gets."
+  ^UUID [^String name]
+  (let [s (str "OfflinePlayer:" name)]
+    (UUID/nameUUIDFromBytes (.getBytes s StandardCharsets/UTF_8))))
 
 (def initial-world schema/initial-world)
 
@@ -108,22 +114,31 @@
     (fn [bt [[x y z] old _]]
       (reduce
         (fn [bt [dx dy dz :as d]]
-          (let [p [(+ (long x) (long dx)) (+ (long y) (long dy)) (+ (long z) (long dz))]]
-            (if-let [at (wake-tick chunks tick p old (= [0 0 0] d))]
-              (update bt (max (long at) (long floor)) (fnil conj (i/int-set)) (chunk/block-pos->id p))
-              bt)))
+          (let [p [(+ (long x) (long dx))
+                   (+ (long y) (long dy))
+                   (+ (long z) (long dz))]
+                at (wake-tick chunks tick p old (= [0 0 0] d))]
+            (if-not at
+              bt
+              (update bt (max (long at) (long floor))
+                      (fnil conj (i/int-set))
+                      (chunk/block-pos->id p)))))
         bt
         around))
     bt
     changed))
 
+(defn- kind-changed? [old st]
+  (and (be/kind old)
+       (not= (block/block-of old) (block/block-of (long st)))
+       (not= (be/kind old) (be/kind (long st)))))
+
 (defn- drop-block-entities [w real]
   (reduce (fn [w [pos old st]]
-            (if (and (be/kind old)
-                     (not= (block/block-of old) (block/block-of (long st)))
-                     (not= (be/kind old) (be/kind (long st))))
-              (update-in w [:block-entities (chunk/block-chunk pos)] dissoc pos)
-              w))
+            (if-not (kind-changed? old st)
+              w
+              (let [cp (chunk/block-chunk pos)]
+                (update-in w [:block-entities cp] dissoc pos))))
           w real))
 
 (defn- real-changes [chunks changes]
@@ -134,30 +149,42 @@
         changes))
 
 (defn- with-derived [chunks tick real]
-  (let [chunks' (-> chunks
-                    (chunk/chunks-set-blocks (mapv (fn [[pos _ st]] [pos st]) real))
-                    (light/relight-batch real))
-        derived (connect/derived-changes chunks' (map first real) tick)
-        dropped (mapv (fn [[pos st]] [pos (chunk/chunks-get-block chunks' pos) st]) derived)]
+  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)
+        chunks' (-> chunks
+                   (chunk/chunks-set-blocks set-real)
+                   (light/relight-batch real))
+        poss (map first real)
+        derived (connect/derived-changes chunks' poss tick)
+        was (fn [[pos st]]
+              [pos (chunk/chunks-get-block chunks' pos) st])
+        dropped (mapv was derived)]
     [(-> chunks'
          (chunk/chunks-set-blocks derived)
          (light/relight-batch dropped))
      (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
 
 (defn- add-block-events [ev events]
-  (reduce (fn [ev [pos st]] (update ev (chunk/block-chunk pos) (fnil conj []) [pos st]))
+  (reduce (fn [ev [pos st]]
+            (update ev (chunk/block-chunk pos)
+                    (fnil conj []) [pos st]))
           (or ev (i/int-map)) events))
 
 (defn- apply-set-blocks [w changes ^long base]
   (let [real (real-changes (:chunks w) changes)]
     (if (empty? real)
       w
-      (let [[chunks' events] (with-derived (:chunks w) (:tick w) real)]
-        (-> w
-            (assoc :chunks chunks')
-            (drop-block-entities real)
-            (update :block-ticks schedule-updates base (inc (long (:tick w))) chunks' real)
-            (cond-> (seq events) (update :block-events add-block-events events)))))))
+      (let [tick (:tick w)
+            next-tick (inc (long tick))
+            [chunks' events] (with-derived (:chunks w) tick real)
+            sched (fn [bt]
+                    (schedule-updates bt base next-tick chunks' real))
+            w (-> w
+                  (assoc :chunks chunks')
+                  (drop-block-entities real)
+                  (update :block-ticks sched))]
+        (cond-> w
+                (seq events)
+                (update :block-events add-block-events events))))))
 
 (defn spawn-seed ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
@@ -172,8 +199,9 @@
   {:type         :player :name name :uuid (offline-uuid name)
    :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
    :chunk-pos    nil :sent-chunks (i/int-set) :needs-spawn? true
-   :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0 :batches-max 1
-   :tracking     (i/int-set) :track nil
+   :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
+   :batches-max  1
+   :tracking (i/int-set) :track nil
    :inventory    {} :held-slot 0
    :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
    :health       20.0
@@ -187,12 +215,12 @@
               (assoc :pos (get-in w [:profiles name :pos])))))
 
 (defn- player-placed [w eid name pos]
-  (-> w
-      (assoc-in [:entities eid]
-                (entity/of (merge (new-player name (:tick w) pos)
-                                  (get-in w [:profiles name]))))
-      (assoc-in [:players name] eid)
-      (update :spawning dissoc eid)))
+  (let [fresh (new-player name (:tick w) pos)
+        saved (get-in w [:profiles name])]
+    (-> w
+        (assoc-in [:entities eid] (entity/of (merge fresh saved)))
+        (assoc-in [:players name] eid)
+        (update :spawning dissoc eid))))
 
 (defn- respawn-requested [w eid]
   (let [e (get-in w [:entities eid])]
@@ -210,9 +238,8 @@
 (defn- drop-ticks [bt id]
   (into (i/int-map)
         (keep (fn [[at bids]]
-                (let [left (into (i/int-set)
-                                 (remove #(schema/chunk-tick? id %))
-                                 bids)]
+                (let [keep? (remove #(schema/chunk-tick? id %))
+                      left (into (i/int-set) keep? bids)]
                   (when (seq left) [at left]))))
         bt))
 
@@ -229,7 +256,9 @@
   (if-let [pos (get-in w [:entities eid :sleeping :pos])]
     (let [st (chunk/chunks-get-block (:chunks w) pos)]
       (if (= :bed (block/type-of st))
-        (apply-set-blocks w [[pos (block/state (block/block-of st) (assoc (block/props-of st) :occupied :false))]] (long (:tick w)))
+        (let [props (assoc (block/props-of st) :occupied :false)
+              free (block/state (block/block-of st) props)]
+          (apply-set-blocks w [[pos free]] (long (:tick w))))
         w))
     w))
 
@@ -240,15 +269,19 @@
         (update :inventory
                 #(clojure.core/apply dissoc % (range 5))))))
 
+(defn- forget-player [ps name eid]
+  (if (= eid (get ps name)) (dissoc ps name) ps))
+
 (defn- player-quit [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
     (cond-> (-> (vacated-bed w eid)
                 (update :spawning dissoc eid)
                 (update :entities dissoc eid)
-                (update :players (fn [ps] (if (= eid (get ps name)) (dissoc ps name) ps))))
+                (update :players forget-player name eid))
             name (assoc-in [:profiles name] (stored-profile e)))))
 
-(def ^:private ^:table swords (delay (set (data/tag-values "item" "swords"))))
+(def ^:private ^:table swords
+  (delay (set (data/tag-values "item" "swords"))))
 
 (defn- sword? [item]
   (contains? @swords item))
@@ -268,14 +301,22 @@
     w))
 
 (defn- wrap-degrees ^double [^double d]
-  (let [r (rem d 360.0)] (cond (>= r 180.0) (- r 360.0) (< r -180.0) (+ r 360.0) :else r)))
+  (let [r (rem d 360.0)]
+    (cond (>= r 180.0) (- r 360.0)
+          (< r -180.0) (+ r 360.0)
+          :else r)))
+
+(defn- held-item-of [e]
+  (let [slot (+ 36 (long (or (:held-slot e) 0)))]
+    (get-in e [:inventory slot :item])))
 
 (defn- snapped
   "Returns e turned to rot.
   The client reports rot for the use of an item."
   [e rot]
-  (if (and rot (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0))) :item]))
-    (assoc e :yaw (wrap-degrees (double (:yaw rot))) :pitch (wrap-degrees (double (:pitch rot))))
+  (if (and rot (held-item-of e))
+    (assoc e :yaw (wrap-degrees (double (:yaw rot)))
+             :pitch (wrap-degrees (double (:pitch rot))))
     e))
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
@@ -303,8 +344,9 @@
   "Returns how many ticks the swing of the item in hand lasts."
   ^long [e hand]
   (let [stack (hand-stack e hand)]
-    (long (get-in (data/items) [(:item stack) :components
-                                :swing-animation :duration]
+    (long (get-in (data/items)
+                  [(:item stack) :components :swing-animation
+                   :duration]
                   default-swing))))
 
 (defn- swing-free?
@@ -360,9 +402,10 @@
     (cond
       (:using e) e
       (on-cooldown? e (:item stack) tick) e
-      c (assoc e :using-item? true
-                 :using {:hand hand :item (:item stack) :started tick
-                         :remaining (consume-ticks c)})
+      c (assoc e
+          :using-item? true
+          :using {:hand hand :item (:item stack) :started tick
+                  :remaining (consume-ticks c)})
       (sword? (:item stack)) (assoc e :using-item? true)
       :else e)))
 
@@ -382,21 +425,29 @@
                      (assoc-in e [:inventory slot] stack)
                      (update e :inventory dissoc slot)))))
 
+(defn- seen-slots [m slots]
+  (reduce (fn [m [s st]] (if st (assoc m s st) (dissoc m s)))
+          (or m {})
+          slots))
+
 (defn- client-slots [e slots carried]
   (if-let [tr (:track e)]
     (assoc e :track (-> tr
-                        (update :slots (fn [m] (reduce (fn [m [s st]] (if st (assoc m s st) (dissoc m s))) (or m {}) slots)))
+                        (update :slots seen-slots slots)
                         (assoc :carried carried)))
     e))
 
 (defn- creative-slot [w eid slot stack]
-  (let [slot (long slot)]
+  (let [slot (long slot)
+        seen (fn [e]
+               (let [c (get-in e [:track :carried])]
+                 (client-slots e {slot stack} c)))]
     (if (and (<= 1 slot 45)
              (or (nil? stack)
                  (and (keyword? (:item stack))
                       (<= 1 (long (:count stack 1)) 64))))
       (-> (set-slot w eid slot stack)
-          (update-entity eid (fn [e] (client-slots e {slot stack} (get-in e [:track :carried])))))
+          (update-entity eid seen))
       w)))
 
 (def ^:private horizontal-limit 3.0E7)
@@ -411,8 +462,10 @@
 (defn- teleport-ack [w eid id]
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e -1))))
-      (update-entity w eid merge {:pos        (v/v3 (:tp-target e)) :tp-target nil :tp-id nil
-                                  :client-vel [0.0 0.0 0.0] :fall 0.0})
+      (update-entity w eid merge
+                     {:pos (v/v3 (:tp-target e))
+                      :tp-target nil :tp-id nil
+                      :client-vel [0.0 0.0 0.0] :fall 0.0})
       w)))
 
 (defn- fall-changes [e changes vel]
@@ -434,26 +487,36 @@
       (let [old (:pos e)
             new (some-> new clamped v/v3)
             vel (when (and old new)
-                  (v/v3 (- (v/x new) (v/x old)) (- (v/y new) (v/y old)) (- (v/z new) (v/z old))))
+                  (v/v3 (- (v/x new) (v/x old))
+                        (- (v/y new) (v/y old))
+                        (- (v/z new) (v/z old))))
             changes (cond-> changes new (assoc :pos new))]
-        (update-entity w eid merge changes (when vel {:client-vel vel}) (fall-changes e changes vel))))))
+        (update-entity w eid merge changes
+                       (when vel {:client-vel vel})
+                       (fall-changes e changes vel))))))
 
 (defn- chunk-batch-ack [w eid rate]
   (let [rate (double rate)
-        rate (if (Double/isNaN rate) 0.01 (-> rate (max 0.01) (min 64.0)))]
+        rate (if (Double/isNaN rate)
+               0.01
+               (-> rate (max 0.01) (min 64.0)))]
     (if-let [e (get-in w [:entities eid])]
-      (let [unacked (max 0 (dec (long (or (:batches-unacked e) 0))))]
-        (update-entity w eid merge (cond-> {:chunk-rate rate :batches-unacked unacked :batches-max 10}
-                                           (zero? unacked) (assoc :chunk-quota 1.0))))
+      (let [unacked (max 0 (dec (long (or (:batches-unacked e) 0))))
+            m {:chunk-rate rate :batches-max 10
+               :batches-unacked unacked}
+            m (cond-> m (zero? unacked) (assoc :chunk-quota 1.0))]
+        (update-entity w eid merge m))
       w)))
 
 (defn- keepalive-echo [w eid id]
   (let [e (get-in w [:entities eid])]
-    (if (and e (:keepalive-pending? e) (= (long id) (long (:keepalive-at e -1))))
-      (let [rtt (* 50 (- (long (:tick w)) (long id)))]
+    (if (and e (:keepalive-pending? e)
+             (= (long id) (long (:keepalive-at e -1))))
+      (let [rtt (* 50 (- (long (:tick w)) (long id)))
+            ping (quot (+ (* 3 (long (or (:ping e) 0))) rtt) 4)]
         (update-entity w eid assoc
                        :keepalive-pending? false
-                       :ping (quot (+ (* 3 (long (or (:ping e) 0))) rtt) 4)))
+                       :ping ping))
       w)))
 
 (def ^:private entity-actions
@@ -466,22 +529,24 @@
 
 (def input-apply
   {:player-join     (fn [w [_ eid name]] (player-join w eid name))
-   :player-quit     (fn [w [_ eid]] (player-quit w eid))
-   :move            (fn [w [_ eid changes]] (apply-move w eid changes))
-   :teleport-ack    (fn [w [_ eid id]] (teleport-ack w eid id))
-   :respawn         (fn [w [_ eid]] (respawn-requested w eid))
-   :keepalive-echo  (fn [w [_ eid id]] (keepalive-echo w eid id))
+   :player-quit (fn [w [_ eid]] (player-quit w eid))
+   :move (fn [w [_ eid changes]] (apply-move w eid changes))
+   :teleport-ack (fn [w [_ eid id]] (teleport-ack w eid id))
+   :respawn (fn [w [_ eid]] (respawn-requested w eid))
+   :keepalive-echo (fn [w [_ eid id]] (keepalive-echo w eid id))
    :chunk-batch-ack (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
-   :entity-action   (fn [w [_ eid action]] (entity-action w eid action))
-   :input           (fn [w [_ eid flags]] (update-entity w eid merge flags))
-   :client-settings (fn [w [_ eid sp]] (update-entity w eid assoc :skin-parts sp))
-   :held-item       (fn [w [_ eid slot]] (held-item w eid slot))
-   :creative-slot   (fn [w [_ eid slot stack]] (creative-slot w eid slot stack))
-   :place           (fn [w [_ eid _ face _ _ _ rot]]
+   :entity-action (fn [w [_ eid action]] (entity-action w eid action))
+   :input (fn [w [_ eid flags]] (update-entity w eid merge flags))
+   :client-settings (fn [w [_ eid sp]]
+                      (update-entity w eid assoc :skin-parts sp))
+   :held-item (fn [w [_ eid slot]] (held-item w eid slot))
+   :creative-slot (fn [w [_ eid slot stack]]
+                    (creative-slot w eid slot stack))
+   :place (fn [w [_ eid _ face _ _ _ rot]]
                       (placed w eid face rot))
-   :use-item        (fn [w [_ eid hand _ rot]]
+   :use-item (fn [w [_ eid hand _ rot]]
                       (use-item w eid hand rot))
-   :release-use     (fn [w [_ eid]]
+   :release-use (fn [w [_ eid]]
                       (update-entity w eid stopped-use))})
 
 (defn- unchanged [w _]
@@ -561,9 +626,12 @@
 (defn- flush-ticks [w t parked]
   (update w :block-ticks
           (fn [bt]
-            (let [stale (into [] (take-while #(<= (long %) (long t))) (keys bt))
+            (let [old? (take-while #(<= (long %) (long t)))
+                  stale (into [] old? (keys bt))
                   bt (reduce dissoc bt stale)]
-              (cond-> bt (seq parked) (assoc t (into (i/int-set) parked)))))))
+              (cond-> bt
+                      (seq parked)
+                      (assoc t (into (i/int-set) parked)))))))
 
 (def ^:const max-resist 20)
 
@@ -579,14 +647,16 @@
 (defn- hurt-again [e ^double health ^double amount]
   (let [last-d (double (or (:last-damage e) 0.0))]
     (if (> amount last-d)
-      (assoc e :health (- health (- amount last-d)) :last-damage amount)
+      (assoc e :health (- health (- amount last-d))
+               :last-damage amount)
       e)))
 
 (defn- hurt-fully [e health amount dx dz]
-  (cond-> (assoc e :health (max 0.0 (- (double health) (double amount)))
-                   :last-damage amount
-                   :hurt-resist max-resist)
-          dx (knock-back (double dx) (double dz))))
+  (let [left (max 0.0 (- (double health) (double amount)))]
+    (cond-> (assoc e :health left
+                     :last-damage amount
+                     :hurt-resist max-resist)
+            dx (knock-back (double dx) (double dz)))))
 
 (defn- hurt-item [e ^double health ^double amount]
   (assoc e :health (double (long (- health amount)))))
@@ -606,18 +676,26 @@
 
 (def entity-apply
   {:merge-entity (fn [_ e [_ _ m]] (merge e m))
-   :teleport     (fn [tick e [_ _ pos]] (assoc e :pos (v/v3 pos) :tp-target pos :tp-id tick))
-   :client-slots (fn [_ e [_ _ slots carried]] (client-slots e slots carried))
-   :award        (fn [_ e [_ _ k n]]
+   :teleport (fn [tick e [_ _ pos]]
+               (assoc e :pos (v/v3 pos) :tp-target pos
+                        :tp-id tick))
+   :client-slots (fn [_ e [_ _ slots carried]]
+                   (client-slots e slots carried))
+   :award (fn [_ e [_ _ k n]]
                    (update e :awards (fnil conj []) [k n]))
-   :track        (fn [_ e [_ _ tr]] (assoc e :track tr))
-   :tracking     (fn [_ e [_ _ add drop]] (update e :tracking merge-diff add drop))
-   :set-slot     (fn [_ e [_ _ slot stack]]
-                   (if stack (assoc-in e [:inventory slot] stack) (update e :inventory dissoc slot)))
-   :chunks-sent  (fn [_ e [_ _ add drop]] (update e :sent-chunks merge-diff add drop))
-   :damage       (fn [_ e [_ _ amount dx dz]] (hurt e amount dx dz))
-   :push         (fn [_ e [_ _ vel]]
-                   (update e (if (= :tnt (:type e)) :kb :vel) (fnil v/+ [0.0 0.0 0.0]) vel))})
+   :track (fn [_ e [_ _ tr]] (assoc e :track tr))
+   :tracking (fn [_ e [_ _ add drop]]
+               (update e :tracking merge-diff add drop))
+   :set-slot (fn [_ e [_ _ slot stack]]
+                   (if stack
+                     (assoc-in e [:inventory slot] stack)
+                     (update e :inventory dissoc slot)))
+   :chunks-sent (fn [_ e [_ _ add drop]]
+                  (update e :sent-chunks merge-diff add drop))
+   :damage (fn [_ e [_ _ amount dx dz]] (hurt e amount dx dz))
+   :push (fn [_ e [_ _ vel]]
+                   (let [k (if (= :tnt (:type e)) :kb :vel)]
+                     (update e k (fnil v/+ [0.0 0.0 0.0]) vel)))})
 
 (defn- apply-entity-delta [tick e delta]
   ((get entity-apply (nth delta 0)) tick e delta))
@@ -629,9 +707,9 @@
         (assoc :next-eid (inc eid)))))
 
 (defn- scheduled [w at-ids]
-  (update w :block-ticks
-          (fn [bt] (reduce (fn [bt [at ids]] (update bt (long at) (fnil into (i/int-set)) ids))
-                           bt at-ids))))
+  (let [add (fn [bt [at ids]]
+              (update bt (long at) (fnil into (i/int-set)) ids))]
+    (update w :block-ticks #(reduce add % at-ids))))
 
 (defn- rechecked [w pos at]
   (if at
@@ -640,7 +718,8 @@
 
 (defn- shulker-animated [w pos a]
   (if a
-    (update-in w [:shulker-anim pos] #(merge {:progress (float 0.0)} % a))
+    (let [base {:progress (float 0.0)}]
+      (update-in w [:shulker-anim pos] #(merge base % a)))
     (update w :shulker-anim dissoc pos)))
 
 (defn- chunk-added [w id c]
@@ -667,29 +746,32 @@
 
 (def world-apply
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
-   :listed               (fn [w [_ add drop]] (listed w add drop))
-   :spawn-entity         (fn [w [_ spec]] (spawned w spec))
-   :set-blocks           (fn [w [_ changes base]] (apply-set-blocks w changes (long (or base (:tick w)))))
-   :ticks-flushed        (fn [w [_ t parked]] (flush-ticks w t parked))
-   :schedule-ticks       (fn [w [_ at-ids]] (scheduled w at-ids))
-   :container-recheck    (fn [w [_ pos at]] (rechecked w pos at))
-   :shulker-anim         (fn [w [_ pos a]] (shulker-animated w pos a))
+   :listed (fn [w [_ add drop]] (listed w add drop))
+   :spawn-entity (fn [w [_ spec]] (spawned w spec))
+   :set-blocks (fn [w [_ changes base]]
+                 (let [at (long (or base (:tick w)))]
+                   (apply-set-blocks w changes at)))
+   :ticks-flushed (fn [w [_ t parked]] (flush-ticks w t parked))
+   :schedule-ticks (fn [w [_ at-ids]] (scheduled w at-ids))
+   :container-recheck (fn [w [_ pos at]] (rechecked w pos at))
+   :shulker-anim (fn [w [_ pos a]] (shulker-animated w pos a))
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
-   :set-time             (fn [w [_ t]] (assoc w :time-of-day (long t)))
-   :set-rule             (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
-   :set-world-spawn      (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
-   :add-chunk            (fn [w [_ id c]] (chunk-added w id c))
-   :chunk-requested      (fn [w [_ id]] (chunk-requested w id))
-   :restore-chunk        (fn [w [_ id p]] (chunk-restored w id p))
-   :unload-chunk         (fn [w [_ id]] (unloaded w id))
-   :player-placed        (fn [w [_ eid n p]] (player-placed w eid n p))
-   :spawn-progress       (fn [w [_ eid req]] (spawn-progress w eid req))
-   :set-weather          (fn [w [_ m]] (merge w (select-keys m weather/fields)))
-   :set-block-entity     (fn [w [_ pos e]] (block-entity-set w pos e))
-   :advance-tick         (fn [w _] (dissoc (advance w) :quits))
-   :advance-weather      (fn [w _] (merge w (weather/advance w)))
-   :observed             (fn [w [_ m]] (assoc w :observed m))
-   :explode              (fn [w _] w)})
+   :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))
+   :set-rule (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
+   :set-world-spawn (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
+   :add-chunk (fn [w [_ id c]] (chunk-added w id c))
+   :chunk-requested (fn [w [_ id]] (chunk-requested w id))
+   :restore-chunk (fn [w [_ id p]] (chunk-restored w id p))
+   :unload-chunk (fn [w [_ id]] (unloaded w id))
+   :player-placed (fn [w [_ eid n p]] (player-placed w eid n p))
+   :spawn-progress (fn [w [_ eid req]] (spawn-progress w eid req))
+   :set-weather (fn [w [_ m]]
+                  (merge w (select-keys m weather/fields)))
+   :set-block-entity (fn [w [_ pos e]] (block-entity-set w pos e))
+   :advance-tick (fn [w _] (dissoc (advance w) :quits))
+   :advance-weather (fn [w _] (merge w (weather/advance w)))
+   :observed (fn [w [_ m]] (assoc w :observed m))
+   :explode (fn [w _] w)})
 
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]
@@ -700,28 +782,40 @@
         w))))
 
 (defn- folded-entities [w entities pairs]
-  (r/fold fold-leaf (r/monoid i/merge i/int-map)
-          (fn [m [eid ds]]
-            (if-let [e (get entities eid)]
-              (assoc m eid (reduce #(apply-entity-delta (:tick w) %1 %2) e ds))
-              m))
-          pairs))
+  (let [t (:tick w)
+        step (fn [e ds] (reduce #(apply-entity-delta t %1 %2) e ds))]
+    (r/fold fold-leaf (r/monoid i/merge i/int-map)
+            (fn [m [eid ds]]
+              (if-let [e (get entities eid)]
+                (assoc m eid (step e ds))
+                m))
+            pairs)))
 
-(defn apply [world deltas]
-  (let [^Deltas d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))
-        [w removes] (reduce (fn [[w removes] delta]
-                              (if (identical? :remove-entity (nth delta 0))
-                                [w (conj removes (nth delta 1))]
-                                [(apply-world-delta w delta) removes]))
-                            [world []] (.world d))
+(defn- deltas-of [deltas]
+  (if (instance? Deltas deltas)
+    deltas
+    (deltas/add deltas/empty-deltas deltas)))
+
+(defn- world-step [[w removes] delta]
+  (if (identical? :remove-entity (nth delta 0))
+    [w (conj removes (nth delta 1))]
+    [(apply-world-delta w delta) removes]))
+
+(defn apply
+  "Returns the world with the deltas folded into it."
+  [world deltas]
+  (let [^Deltas d (deltas-of deltas)
+        [w removes] (reduce world-step [world []] (.world d))
         w (if (seq (.input d)) (applied-input w (.input d)) w)
         entities (:entities w)
         updated (folded-entities w entities (vec (.entities d)))
-        w (if (pos? (count updated)) (assoc w :entities (i/merge entities updated)) w)]
+        w (if (pos? (count updated))
+            (assoc w :entities (i/merge entities updated))
+            w)]
     (cache-active-chunks (reduce player-quit w removes))))
 
 (defn apply-deltas [world deltas]
-  (let [d (if (instance? Deltas deltas) deltas (deltas/add deltas/empty-deltas deltas))]
+  (let [d (deltas-of deltas)]
     [(apply world d) d]))
 
 (defn fold-events

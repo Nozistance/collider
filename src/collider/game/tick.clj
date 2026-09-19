@@ -77,7 +77,9 @@
              [#'chunks/unloading]
              [#'detector/observe]])
 
-(defn tick [world events]
+(defn tick
+  "Returns the world and the deltas after one tick of the events."
+  [world events]
   (let [input (deltas/input events)]
     (reduce (fn [[w d] phase]
               (let [d' (deltas/of phase w d)]
@@ -97,7 +99,8 @@
       (persistent! acc))))
 
 (defn- record! [^longs window ^AtomicLong counter ^long elapsed]
-  (aset window (int (rem (.getAndIncrement counter) window-size)) elapsed))
+  (let [i (int (rem (.getAndIncrement counter) window-size))]
+    (aset window i elapsed)))
 
 (defn- empty-ticks ^long [^long n world]
   (if (and (empty? (:players world)) (empty? (:spawning world)))
@@ -125,14 +128,15 @@
          :p99-ms (/ (aget arr (min (dec n) (int (* n 0.99)))) 1e6)
          :max-ms (/ (aget arr (dec n)) 1e6)}))))
 
-(defn- tps-of ^double [^longs stamps ^long i ^long now ^long target-tps]
+(defn- tps-of ^double [^longs stamps ^long i ^long now ^long tps]
   (let [n (min (inc i) tps-window)]
     (if (< n 2)
-      (double target-tps)
+      (double tps)
       (let [past (aget stamps (int (rem (- (inc i) n) tps-window)))]
         (if (<= now past)
-          (double target-tps)
-          (min (double target-tps) (/ (* 1.0E9 (dec n)) (- now past))))))))
+          (double tps)
+          (min (double tps)
+               (/ (* 1.0E9 (dec n)) (- now past))))))))
 
 (defn- pace ^long [^long next-ns ^long step-ns]
   (let [target (+ next-ns step-ns)
@@ -159,7 +163,8 @@
     (try (deliver! world deltas)
          (catch Throwable t (log/error-with "deliver error:" t)))))
 
-(defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver! perf io-input]
+(defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver!
+                  perf io-input]
   (let [events (drain! queue)
         world (tick-input world-atom perf (when io-input (io-input)))
         [world' deltas] (safe-tick world events)]
@@ -173,9 +178,11 @@
 
 (defn- perf-of [{:keys [window counter ^longs stamps]} i t0 tps]
   (when (zero? (rem (long i) 20))
-    (assoc (or (percentiles window counter) {}) :tps (tps-of stamps i t0 tps))))
+    (let [base (or (percentiles window counter) {})]
+      (assoc base :tps (tps-of stamps i t0 tps)))))
 
-(defn- one-tick! [{:keys [window counter]} world-atom queue deliver! perf t0 io-input]
+(defn- one-tick! [{:keys [window counter]} world-atom queue deliver!
+                  perf t0 io-input]
   (run-tick! world-atom queue deliver! perf io-input)
   (record! window counter (- (System/nanoTime) t0)))
 
@@ -199,21 +206,24 @@
                   at (pace next-ns nominal-tick-ns)]
               (recur at (inc i) p n))))))))
 
-(defn- ticker-thread ^Thread [st running world-atom queue deliver! opts]
-  (doto (Thread. ^Runnable #(ticker-loop st running world-atom queue deliver! opts)
-                 "collider-ticker")
-    (.setDaemon true)
-    (.start)))
+(defn- ticker-thread
+  ^Thread [st running world-atom queue deliver! opts]
+  (let [run #(ticker-loop st running world-atom queue deliver! opts)]
+    (doto (Thread. ^Runnable run "collider-ticker")
+      (.setDaemon true)
+      (.start))))
 
 (defn start-ticker!
   "Starts a daemon thread that ticks world-atom.
   It ticks on the events from queue and gives the deltas of each
   tick to deliver!. Returns a handle for the stop."
-  ([world-atom queue deliver!] (start-ticker! world-atom queue deliver! nil))
+  ([world-atom queue deliver!]
+   (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)
          running (AtomicBoolean. true)
-         thread (ticker-thread st running world-atom queue deliver! opts)]
+         thread (ticker-thread
+                  st running world-atom queue deliver! opts)]
      {:thread  thread
       :running running
       :stats   #(percentiles (:window st) (:counter st))})))

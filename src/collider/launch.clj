@@ -13,11 +13,15 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- java-bin ^String []
+  (str (System/getProperty "java.home") "/bin/java"))
+
 (defn- child-command ^String/1 [opts]
-  (into-array String [(str (System/getProperty "java.home") "/bin/java")
+  (into-array String [(java-bin)
                       "--sun-misc-unsafe-memory-access=allow"
                       "-cp" (System/getProperty "java.class.path")
-                      "clojure.main" "-m" "collider.tables" (pr-str opts)]))
+                      "clojure.main" "-m" "collider.tables"
+                      (pr-str opts)]))
 
 (defn- event [^String line]
   (when (str/starts-with? line "{")
@@ -37,7 +41,8 @@
 (defn- child-died [noise]
   (ex-info "generation failed"
            {:what "data generator failed"
-            :why  (str "Its last words: " (str/join " / " (take-last 3 noise)))}))
+            :why (str "Its last words: "
+                      (str/join " / " (take-last 3 noise)))}))
 
 (defn- generate! [opts]
   (let [p (.start (doto (ProcessBuilder. (child-command opts))

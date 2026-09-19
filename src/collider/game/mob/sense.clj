@@ -7,35 +7,48 @@
 (set! *warn-on-reflection* true)
 
 (defn block-at
+  "Returns the block state at a position."
   (^long [world p] (chunk/chunks-get-block (:chunks world) p))
   (^long [world x y z] (chunk/block-state (:chunks world) x y z)))
 
-(defn feet-cell [p]
-  [(long (Math/floor (v/x p))) (long (Math/floor (v/y p))) (long (Math/floor (v/z p)))])
+(defn feet-cell
+  "Returns the block cell a position stands in."
+  [p]
+  [(long (Math/floor (v/x p)))
+   (long (Math/floor (v/y p)))
+   (long (Math/floor (v/z p)))])
 
-(defn nearest-player [world pos r2]
-  (let [r2 (double r2) entities (:entities world)]
-    (reduce (fn [best oid]
-              (if-let [o (get entities oid)]
-                (let [d2 (v/dist-sq pos (:pos o))]
-                  (if (and (< d2 r2)
-                           (or (nil? best)
-                               (< d2 (double (best 0)))
-                               (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
-                    [d2 oid o]
-                    best))
-                best))
-            nil
-            (vals (:players world)))))
+(defn- closer? [best ^double d2 oid]
+  (or (nil? best)
+      (< d2 (double (best 0)))
+      (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
+
+(defn nearest-player
+  "Returns `[distance-squared id player]` of the nearest player
+  within r2, nil when none is that close."
+  [world pos r2]
+  (let [r2 (double r2)
+        entities (:entities world)
+        look (fn [best oid]
+               (if-let [o (get entities oid)]
+                 (let [d2 (v/dist-sq pos (:pos o))]
+                   (if (and (< d2 r2) (closer? best d2 oid))
+                     [d2 oid o]
+                     best))
+                 best))]
+    (reduce look nil (vals (:players world)))))
 
 (def ^:private ^:const cell-shift 2)
 
 (defn- cell-key ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
+  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
+          (bit-and cz 0xFFFFFFFF)))
+
+(defn- cell-at ^long [^double c]
+  (bit-shift-right (long (Math/floor c)) cell-shift))
 
 (defn- cell-of ^long [pos]
-  (cell-key (bit-shift-right (long (Math/floor (v/x pos))) cell-shift)
-            (bit-shift-right (long (Math/floor (v/z pos))) cell-shift)))
+  (cell-key (cell-at (v/x pos)) (cell-at (v/z pos))))
 
 (defn- build-index [entities]
   (persistent!
@@ -57,31 +70,32 @@
         (reset! index-cache [entities idx])
         idx))))
 
-(defn- closer? [best ^double d2 oid]
-  (or (nil? best)
-      (< d2 (double (best 0)))
-      (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
-
 (defn- scan-cell [best pos r2 pred entries]
   (reduce (fn [best [oid o]]
-            (if (pred oid o)
+            (if-not (pred oid o)
+              best
               (let [d2 (v/dist-sq pos (:pos o))]
-                (if (and (< d2 (double r2)) (closer? best d2 oid)) [d2 oid o] best))
-              best))
+                (if (and (< d2 (double r2)) (closer? best d2 oid))
+                  [d2 oid o]
+                  best))))
           best
           entries))
 
 (defn- cell-span [^double c ^double r]
-  [(bit-shift-right (long (Math/floor (- c r))) cell-shift)
-   (bit-shift-right (long (Math/floor (+ c r))) cell-shift)])
+  [(cell-at (- c r)) (cell-at (+ c r))])
 
 (defn- scan-row [index best pos r2 pred cx z0 z1]
   (loop [cz (long z0) best best]
     (if (> cz (long z1))
       best
-      (recur (inc cz) (scan-cell best pos r2 pred (get index (cell-key (long cx) cz)))))))
+      (recur (inc cz)
+             (scan-cell best pos r2 pred
+                        (get index (cell-key (long cx) cz)))))))
 
-(defn nearest [world pos r2 pred]
+(defn nearest
+  "Returns `[distance-squared id entity]` of the nearest entity
+  within r2 that pred accepts, nil when none is that close."
+  [world pos r2 pred]
   (let [r2 (double r2)
         index (entity-index (:entities world))
         r (Math/sqrt r2)
@@ -90,9 +104,12 @@
     (loop [cx (long x0) best nil]
       (if (> cx (long x1))
         best
-        (recur (inc cx) (scan-row index best pos r2 pred cx z0 z1))))))
+        (recur (inc cx)
+               (scan-row index best pos r2 pred cx z0 z1))))))
 
-(defn held-of [p]
+(defn held-of
+  "Returns the item in the player's selected hotbar slot."
+  [p]
   (get-in p [:inventory (+ 36 (long (or (:held-slot p) 0))) :item]))
 
 (defn in-hand
@@ -100,11 +117,15 @@
   [p hand]
   (:item (state/hand-stack p hand)))
 
-(defn hands-of [p]
+(defn hands-of
+  "Returns the set of items the player holds in either hand."
+  [p]
   (set (keep (fn [slot] (get-in p [:inventory slot :item]))
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
-(defn holders [world]
+(defn holders
+  "Returns `[id items pos]` for every player holding something."
+  [world]
   (into []
         (keep (fn [[pid p]]
                 (let [items (hands-of p)]
