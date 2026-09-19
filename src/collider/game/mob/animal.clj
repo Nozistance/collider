@@ -222,6 +222,13 @@
     (when-let [oid (parent-for world eid e)]
       [(assoc e :follow oid) nil])))
 
+(defn- unfollowed
+  "The mob after following ends. A stroll running underneath ends
+  with it: its path was taken over, so vanilla's navigation is done."
+  [e _]
+  (cond-> (assoc e :follow nil)
+          (= :wander (get-in e [:task :kind])) (assoc :task nil)))
+
 (defn- following? [world e _ _]
   (let [o (other world e [:follow])]
     (and (mobs/baby? e) o
@@ -272,7 +279,7 @@
     :stop      (fn [e t] (assoc e :task nil :tempt-cooldown-until (+ (long t) calm-ticks)))}
    {:kind     :follow :flags #{} :start start-follow :continue? following?
     :running? (fn [e _] (some? (:follow e)))
-    :stop     (fn [e _] (assoc e :follow nil))}
+    :stop     unfollowed}
    {:kind :wander :flags #{:move} :start start-wander :continue? roaming?}
    {:kind     :look-player :flags #{:look} :start start-look-player :continue? looking?
     :running? (fn [e t] (some? (look-goal e t)))
