@@ -314,21 +314,85 @@
               (= (:components %) (:components stack)))
         (vals inv)))
 
+(defn- shrunk [stack ^long n]
+  (let [left (- (long (:count stack 1)) n)]
+    (when (pos? left) (assoc stack :count left))))
+
+(defn- kept [world eid e stack]
+  (let [[changes left] (add-stack (:inventory e) stack)]
+    (concat (for [[slot s] changes] [:set-slot eid slot s])
+            (when left [[:spawn-entity (dropped world eid left)]]))))
+
+(defn- emptied [world eid e hand made]
+  (let [slot (state/hand-slot e hand)
+        left (shrunk (state/hand-stack e hand) 1)]
+    (if left
+      (cons [:set-slot eid slot left] (kept world eid e made))
+      [[:set-slot eid slot made]])))
+
 (defn filled-result-deltas
-  "Returns the deltas that give stack to the player.
-  The player used a container. In creative mode the result is
-  added only when the player holds none already, unless always?
-  asks for it anyway."
-  ([world eid stack] (filled-result-deltas world eid stack false))
+  "Returns the deltas of the container in hand turning into stack.
+  The last container of a stack becomes the filled item in the
+  hand, the rest of it keeps its place. In creative the container
+  stays and the result is added only when the player holds none
+  already, unless always? asks for it anyway."
+  ([world eid stack]
+   (filled-result-deltas world eid stack false :main))
   ([world eid stack always?]
-   (let [e (get-in world [:entities eid]) inv (:inventory e)]
-     (when-not (and (not always?) (state/infinite-materials? e)
-                    (holds? inv stack))
-       (let [[changes left] (add-stack inv stack)
-             spawn (when left
-                     [:spawn-entity (dropped world eid left)])]
-         (concat (for [[slot s] changes] [:set-slot eid slot s])
-                 (when spawn [spawn])))))))
+   (filled-result-deltas world eid stack always? :main))
+  ([world eid stack always? hand]
+   (let [e (get-in world [:entities eid])]
+     (if (state/infinite-materials? e)
+       (when (or always? (not (holds? (:inventory e) stack)))
+         (kept world eid e stack))
+       (emptied world eid e hand stack)))))
+
+(defn consume-deltas
+  "Returns the deltas of spending n of the item in hand.
+  A player with infinite materials spends nothing."
+  [eid e hand ^long n]
+  (when-not (state/infinite-materials? e)
+    [[:set-slot eid (state/hand-slot e hand)
+      (shrunk (state/hand-stack e hand) n)]]))
+
+(defn- remainder-deltas [world eid e hand stack left]
+  (let [over (dec (long (:count stack 1)))
+        made {:item (:item left) :count (long (:count left 1))}]
+    (if (pos? over)
+      (cons [:set-slot eid (state/hand-slot e hand)
+             (assoc stack :count over)]
+            (kept world eid e made))
+      [[:set-slot eid (state/hand-slot e hand) made]])))
+
+(defn use-item-deltas
+  "Returns the deltas of a player using one item from hand.
+  The remainder of an item that leaves one, an empty bucket for
+  milk, takes the hand or falls into the inventory."
+  [world eid e hand]
+  (let [stack (state/hand-stack e hand)
+        left (get-in (data/items) [(:item stack) :use-remainder])]
+    (if (and left (not (state/infinite-materials? e)))
+      (remainder-deltas world eid e hand stack left)
+      (consume-deltas eid e hand 1))))
+
+(defn- broken-deltas [eid e hand stack]
+  (let [fx (out/status eid (if (= :off hand) :break-off :break-main))]
+    [[:set-slot eid (state/hand-slot e hand) (shrunk stack 1)]
+     (out/all fx) (out/to eid fx)]))
+
+(defn hurt-item-deltas
+  "Returns the deltas of wearing the item in hand by n points.
+  An item worn past its last point breaks and leaves the hand;
+  a player with infinite materials wears nothing out."
+  [eid e hand ^long n]
+  (let [stack (state/hand-stack e hand)
+        most (long (get-in stack [:components :max-damage] 0))
+        worn (+ n (long (get-in stack [:components :damage] 0)))]
+    (when (and (pos? most) (not (state/infinite-materials? e)))
+      (if (>= worn most)
+        (broken-deltas eid e hand stack)
+        [[:set-slot eid (state/hand-slot e hand)
+          (assoc-in stack [:components :damage] worn)]]))))
 
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) px (v/x pp) py (v/y pp) pz (v/z pp)

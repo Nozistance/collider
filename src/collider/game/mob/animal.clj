@@ -3,6 +3,7 @@
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -353,24 +354,16 @@
         [e (concat ds ds2)])
       [e nil])))
 
-(defn on-interact
-  "Returns the deltas f gives for each interact event.
-  The player and its target must both exist. f takes the player
-  eid, the player, the target eid, the target and the hand used,
-  0 for the main hand."
-  [world events f]
-  (mapcat (fn [[tag peid target hand]]
-            (when (= :interact tag)
-              (let [p (get-in world [:entities peid])
-                    e (get-in world [:entities target])]
-                (when (and p e) (f peid p target e (or hand 0))))))
-          events))
-
-(defn swing
-  "The arm swing the server plays for everyone, the player too, when
-  vanilla answers an interaction with SUCCESS_SERVER."
-  [peid hand]
-  (out/all (out/animation peid (if (= 1 (long hand)) :swing-off :swing))))
+(defn egg-result
+  "Returns what a spawn egg of the mob's own kind does to it: a baby
+  bred from that one parent, as vanilla spawnOffspringFromSpawnEgg.
+  specs maps a mob type to its breed spec."
+  [specs {:keys [world t peid p eid e hand item]}]
+  (when-let [spec (specs (:type e))]
+    (when (= (:type e) (mobs/egg-type item))
+      {:result :success-server
+       :deltas (cons [:spawn-entity (newborn spec t eid e e)]
+                     (items/consume-deltas peid p hand 1))})))
 
 (defn- feedable? [e t]
   (and (not (mobs/baby? e))
@@ -381,31 +374,24 @@
   (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
     (- remaining (* seconds ticks-per-second))))
 
-(defn- fed-deltas [t peid hand target e]
-  (cond
-    (mobs/baby? e)
-    (let [remaining (max 0 (- (long (:baby-until e)) (long t)))]
-      [[:merge-entity target {:baby-until (+ (long t) (fed-growth remaining))}]])
-    (feedable? e t)
-    [[:merge-entity target {:love-until (+ (long t) love-ticks)}]
-     (out/all (out/status target :love))
-     (swing peid hand)]))
+(defn- grown [t target e]
+  (let [left (max 0 (- (long (:baby-until e)) (long t)))]
+    [[:merge-entity target
+      {:baby-until (+ (long t) (fed-growth left))}]]))
 
-(defn egg-deltas
-  "Returns the deltas for players who click a mob with its own spawn
-  egg: a baby appears at the parent, bred from the parent alone.
-  specs maps a mob type to its breed spec."
-  [specs world events t]
-  (on-interact world events
-               (fn [peid p eid e hand]
-                 (when-let [spec (specs (:type e))]
-                   (when (some #(= (:type e) (mobs/egg-type %)) (sense/hands-of p))
-                     [[:spawn-entity (newborn spec t eid e e)]
-                      (swing peid hand)])))))
+(defn- loved [t eid]
+  [[:merge-entity eid {:love-until (+ (long t) love-ticks)}]
+   (out/all (out/status eid :love))])
 
-(defn feed-deltas [world events t]
-  (on-interact world events
-               (fn [peid p target e hand]
-                 (when (and (mobs/mob-type? (:type e))
-                            (contains? (sense/hands-of p) (mobs/breeding-item (:type e))))
-                   (fed-deltas t peid hand target e)))))
+(defn feed-result
+  "Returns what the breeding food of the mob does to it: a grown one
+  falls in love, a baby grows up sooner, as Animal.mobInteract.
+  A mob that may do neither leaves the food alone."
+  [{:keys [world t peid p eid e hand item]}]
+  (when (= item (mobs/breeding-item (:type e)))
+    (let [used (items/use-item-deltas world peid p hand)]
+      (cond
+        (feedable? e t) {:result :success-server
+                         :deltas (concat used (loved t eid))}
+        (mobs/baby? e) {:result :success
+                        :deltas (concat used (grown t eid e))}))))

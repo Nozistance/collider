@@ -95,6 +95,11 @@
 (defn held-of [p]
   (get-in p [:inventory (+ 36 (long (or (:held-slot p) 0))) :item]))
 
+(defn in-hand
+  "Returns the item the player holds in hand, nil for an empty one."
+  [p hand]
+  (:item (state/hand-stack p hand)))
+
 (defn hands-of [p]
   (set (keep (fn [slot] (get-in p [:inventory slot :item]))
              [(+ 36 (long (or (:held-slot p) 0))) 45])))

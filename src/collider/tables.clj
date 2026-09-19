@@ -684,11 +684,16 @@
 
 (defn- levels [v] (into (sorted-map) (map (fn [[e n]] [(kw e) n])) v))
 
+(defn- swing-animation [v]
+  (sorted-map :type (kw (get v "type" "whack"))
+              :duration (get v "duration" 6)))
+
 (def ^:private crafted-components
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
    "minecraft:max_stack_size"       [:max-stack-size identity]
    "minecraft:dye"                  [:dye kw]
+   "minecraft:swing_animation"      [:swing-animation swing-animation]
    "minecraft:enchantments"         [:enchantments levels]
    "minecraft:stored_enchantments"  [:stored-enchantments levels]
    "minecraft:potion_contents"      [:potion-contents potion-default]

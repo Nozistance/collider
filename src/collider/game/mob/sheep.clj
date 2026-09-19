@@ -8,9 +8,11 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.grass :as grass]))
+            [collider.world.blocks.grass :as grass]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -121,39 +123,38 @@
                  (entity/item at (shear-vel t eid i) s)]))]
     (map-indexed one (singles (wool-stacks t eid e)))))
 
-(defn- sheared [t peid hand eid e]
-  (list* [:merge-entity eid {:sheared? true}]
-         (out/all (out/sound :sheep/shear (:pos e) 1.0 1.0))
-         (animal/swing peid hand)
-         (shorn-items t eid e)))
-
-(defn- dye-in-hand [hands]
-  (some data/dye-color hands))
-
-(defn- dyed [peid eid e color]
-  (let [id (mobs/color-id color)]
-    (when (not= (long id) (long (or (:color e) 0)))
-      [[:merge-entity eid {:color id}]
-       (out/except peid (out/sound :dye/use (:pos e) 1.0 1.0))])))
+(defn- sheared [t peid p hand eid e]
+  (concat [[:merge-entity eid {:sheared? true}]
+           (out/all (out/sound :sheep/shear (:pos e) 1.0 1.0))]
+          (signal/game-event :shear (:pos e) peid)
+          (items/hurt-item-deltas peid p hand 1)
+          (shorn-items t eid e)))
 
 (defn- shearable? [e]
   (and (not (mobs/baby? e)) (not (:sheared? e))))
 
-(defn- used [t peid hand eid e hands]
-  (cond
-    (hands :shears) (when (shearable? e) (sheared t peid hand eid e))
-    (:sheared? e) nil
-    :else (when-let [c (dye-in-hand hands)] (dyed peid eid e c))))
+(defn shear-result
+  "Returns what shears do to a sheep: a grown unshorn one loses its
+  wool, as Sheep.mobInteract. Any other sheep swallows the click."
+  [{:keys [t peid p hand eid e item]}]
+  (when (= :shears item)
+    (if (shearable? e)
+      {:result :success-server :deltas (sheared t peid p hand eid e)}
+      {:result :consume})))
 
-(defn interact-deltas
-  "Returns the deltas for players who shear or dye a sheep.
-  Shears take the wool of a grown unshorn sheep, and a dye of
-  another colour recolours one that still wears its wool."
-  [world events t]
-  (let [f (fn [peid p eid e hand]
-            (when (= :sheep (:type e))
-              (used t peid hand eid e (sense/hands-of p))))]
-    (animal/on-interact world events f)))
+(defn- dyed [peid p hand eid e id]
+  (concat [[:merge-entity eid {:color id}]
+           (out/except peid (out/sound :dye/use (:pos e) 1.0 1.0))]
+          (items/consume-deltas peid p hand 1)))
+
+(defn dye-result
+  "Returns what a dye does to a sheep still wearing its wool: its
+  coat takes the colour, as DyeItem.interactLivingEntity."
+  [{:keys [peid p hand eid e item]}]
+  (when (and (= :sheep (:type e)) (not (:sheared? e)))
+    (when-let [id (some-> (data/dye-color item) mobs/color-id)]
+      (when (not= (long id) (long (or (:color e) 0)))
+        {:result :success :deltas (dyed peid p hand eid e id)}))))
 
 (def ^:private eat
   {:kind  :eat :flags #{:move :look} :start start-eat

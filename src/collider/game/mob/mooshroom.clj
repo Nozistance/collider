@@ -5,10 +5,10 @@
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
-            [collider.random :as random]))
+            [collider.random :as random]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -71,11 +71,11 @@
             effects
             (assoc :components {:suspicious-stew-effects effects}))))
 
-(defn- bowled [world peid eid e]
+(defn- bowled [world peid hand eid e]
   (let [effects (:stew e)
         snd (if effects :mooshroom/suspicious :mooshroom/milk)
         s (stew effects)]
-    (concat (items/filled-result-deltas world peid s true)
+    (concat (items/filled-result-deltas world peid s true hand)
             [(out/all (out/sound snd (:pos e) 1.0 1.0))]
             (when effects [[:merge-entity eid {:stew nil}]]))))
 
@@ -112,14 +112,11 @@
              (out/all puff)]
             (shorn-items t eid e))))
 
-(defn- flower-in-hand [e hands]
-  (when (and (= brown (variant e)) (not (:stew e)))
-    (some #(when (@stews %) %) hands)))
-
-(defn- fed-flower [eid e hands]
-  (when-let [flower (flower-in-hand e hands)]
-    [[:merge-entity eid {:stew (@stews flower)}]
-     (out/all (out/sound :mooshroom/eat (:pos e) loud-volume 1.0))]))
+(defn- fed-flower [peid p hand eid e item]
+  (let [snd (out/sound :mooshroom/eat (:pos e) loud-volume 1.0)]
+    (concat [[:merge-entity eid {:stew (@stews item)}]
+             (out/all snd)]
+            (items/consume-deltas peid p hand 1))))
 
 (defn struck
   "Returns the deltas for a mooshroom that lightning bolt bid hits.
@@ -130,18 +127,29 @@
       [[:merge-entity eid {:color (- 1 (variant e)) :struck-by bid}]
        (out/all snd)])))
 
-(defn- used [world peid eid e hands t]
-  (cond (hands :bowl) (bowled world peid eid e)
-        (hands :shears) (sheared eid e t)
-        :else (fed-flower eid e hands)))
+(defn bowl-result
+  "Returns what a bowl does to a grown mooshroom: it fills with stew,
+  suspicious when a flower was fed, as MushroomCow.mobInteract."
+  [{:keys [world peid hand eid e item]}]
+  (when (and (= :bowl item) (not (mobs/baby? e)))
+    {:result :success :deltas (bowled world peid hand eid e)}))
 
-(defn interact-deltas
-  "Returns the deltas for players who use an item on a mooshroom.
-  The item is a bowl, shears or a flower and the mooshroom is
-  grown. A bowl goes before shears and shears before a flower."
-  [world events t]
-  (let [f (fn [peid p eid e _]
-            (when (and (= :mooshroom (:type e))
-                       (not (mobs/baby? e)))
-              (used world peid eid e (sense/hands-of p) t)))]
-    (animal/on-interact world events f)))
+(defn shear-result
+  "Returns what shears do to a grown mooshroom: it turns into a cow
+  and its mushrooms fall, as MushroomCow.mobInteract."
+  [{:keys [t peid p hand eid e item]}]
+  (when (and (= :shears item) (not (mobs/baby? e)))
+    {:result :success
+     :deltas (concat (signal/game-event :shear (:pos e) peid)
+                     (items/hurt-item-deltas peid p hand 1)
+                     (sheared eid e t))}))
+
+(defn flower-result
+  "Returns what a stew flower does to a grown brown mooshroom: it
+  remembers the flower for its next stew, as MushroomCow.mobInteract.
+  One that already holds a flower takes the click and nothing else."
+  [{:keys [peid p hand eid e item]}]
+  (when (and (= brown (variant e)) (not (mobs/baby? e)) (@stews item))
+    {:result :success
+     :deltas (when-not (:stew e)
+               (fed-flower peid p hand eid e item))}))

@@ -2,7 +2,6 @@
   "Cow milking and calf variants."
   (:require [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]))
 
@@ -20,18 +19,13 @@
 
 (def ^:private milk {:item :milk-bucket :count 1})
 
-(defn- milked [world peid p]
+(defn- milked [world peid p hand]
   (cons (out/except peid (out/sound :cow/milk (:pos p) 1.0 1.0))
-        (items/filled-result-deltas world peid milk)))
+        (items/filled-result-deltas world peid milk false hand)))
 
-(defn- milkable? [p e]
-  (and (= :cow (:type e)) (not (mobs/baby? e))
-       (contains? (sense/hands-of p) :bucket)))
-
-(defn milk-deltas
-  "Returns the deltas for players who milk a cow with a bucket.
-  A calf gives no milk."
-  [world events _]
-  (let [f (fn [peid p _ e _]
-            (when (milkable? p e) (milked world peid p)))]
-    (animal/on-interact world events f)))
+(defn milk-result
+  "Returns what a bucket does to a grown cow: it fills with milk, as
+  AbstractCow.mobInteract. A calf gives none."
+  [{:keys [world peid p hand e item]}]
+  (when (and (= :bucket item) (not (mobs/baby? e)))
+    {:result :success :deltas (milked world peid p hand)}))

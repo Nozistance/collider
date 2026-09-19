@@ -431,11 +431,16 @@
                  (out/to eid (out/teleport target (:yaw e 0.0) (:pitch e 0.0)))])))
           ps))
 
-(defn- swing-deltas [viewers events]
-  (keep (fn [[tag eid]]
-          (when (and (= :swing tag) (some? (viewers eid)))
-            (out/all (out/animation eid :swing))))
-        events))
+(defn- swing-deltas
+  "Returns the deltas of the swings the clients play themselves.
+  The server only passes them on, and only as often as an arm can
+  swing."
+  [world events]
+  (state/fold-events world (filter #(= :swing (first %)) events)
+                     (fn [w [_ eid hand]]
+                       (when-let [p (get-in w [:entities eid])]
+                         (state/swing-deltas eid p (or hand :main)
+                                             (:tick w) false)))))
 
 (defn- entities-changed? [d]
   (some (fn [delta]
@@ -460,7 +465,7 @@
     (conj (mapv (fn [batch]
                   #(into [] (mapcat (fn [entry] (move-deltas (long (:tick world)) viewers entry))) batch))
                 (partition-all 32 ts))
-          #(swing-deltas viewers events))))
+          #(swing-deltas world events))))
 
 (defn players [world d]
   (let [events (:input d)

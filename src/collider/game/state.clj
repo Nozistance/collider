@@ -297,6 +297,38 @@
 (defn hand-stack [e hand]
   (get-in e [:inventory (hand-slot e hand)]))
 
+(def ^:private ^:const default-swing 6)
+
+(defn swing-duration
+  "Returns how many ticks the swing of the item in hand lasts."
+  ^long [e hand]
+  (let [stack (hand-stack e hand)]
+    (long (get-in (data/items) [(:item stack) :components
+                                :swing-animation :duration]
+                  default-swing))))
+
+(defn- swing-free?
+  "Tells whether the arm is done enough with its last swing.
+  Vanilla lets a new one in halfway through the one before."
+  [e ^long t]
+  (if-let [at (:swing-at e)]
+    (let [k (- t (long at))]
+      (or (zero? k)
+          (>= (dec k) (quot (swing-duration e (:swing-hand e)) 2))))
+    true))
+
+(defn swing-deltas
+  "Returns the deltas of the arm swing of player eid, none while the
+  arm is still busy with the swing before it. The player sees its
+  own swing only when the server, not the client, started it."
+  [eid e hand t self?]
+  (when (swing-free? e (long t))
+    (let [fx (out/animation eid (if (= :off hand) :swing-off :swing))]
+      (cond-> [[:merge-entity eid
+                {:swing-at (long t) :swing-hand hand}]
+               (out/all fx)]
+        self? (conj (out/to eid fx))))))
+
 (defn consumable
   "Returns the Consumable component of the stack, or nil without one."
   [stack]
@@ -493,6 +525,11 @@
   (if (infinite-materials? player)
     (+ block-range creative-block-range)
     block-range))
+
+(defn entity-reach ^double [player]
+  (if (infinite-materials? player)
+    (+ entity-range creative-entity-range)
+    entity-range))
 
 (defn quit-of [w [tag eid]]
   (when (= :player-quit tag)

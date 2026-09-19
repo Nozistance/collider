@@ -69,17 +69,19 @@
     [:release-use eid]
     [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]))
 
+(defn- hand-of [m]
+  (if (zero? (long (or (:hand m) 0))) :main :off))
+
 (def ^:private action-events
   {:player-action         dig-event
    :use-item-on           place-on-block
-   :use-item              (fn [eid m] [:use-item eid (if (zero? (long (:hand m))) :main :off)
+   :use-item              (fn [eid m] [:use-item eid (hand-of m)
                                        (:sequence m) {:yaw (:yaw m) :pitch (:pitch m)}])
-   :swing                 (fn [eid _] [:swing eid])
+   :swing                 (fn [eid m] [:swing eid (hand-of m)])
    :player-command        (fn [eid m] [:entity-action eid (:action m)])
-   :interact              (fn [eid m] (case (long (:action m))
-                                        0 [:interact eid (:target m) (:hand m)]
-                                        1 [:attack eid (:target m)]
-                                        nil))
+   :interact              (fn [eid m] [:interact eid (:target m) (hand-of m)
+                                       (boolean (:sneaking m))])
+   :attack                (fn [eid m] [:attack eid (:target m)])
    :pick-item-from-block  (fn [eid m] [:pick eid {:pos (:pos m) :include-data (:include-data m)}])
    :pick-item-from-entity (fn [eid m] [:pick eid {:entity (:id m)}])})
 
@@ -101,6 +103,7 @@
    :command-suggestion   (fn [eid m] [:tab-complete eid (:text m) nil (:id m)])
    :chat                 (fn [eid m] [:chat eid (:message m)])
    :chat-command         (fn [eid m] [:chat eid (str "/" (:command m))])
+   :chat-command-signed  (fn [eid m] [:chat eid (str "/" (:command m))])
    :sign-update          (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])})
 
 (def ^:private event-table
@@ -114,7 +117,7 @@
   #{:client-information :player-loaded :client-tick-end :custom-payload
     :chat-session-update :chat-ack :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request
-    :chat-command-signed :pong :bundle-item-selected :block-entity-tag-query
+    :pong :bundle-item-selected :block-entity-tag-query
     :entity-tag-query :edit-book :jigsaw-generate :lock-difficulty
     :change-difficulty :move-vehicle :paddle-boat :place-recipe
     :recipe-book-change-settings :recipe-book-seen-recipe :rename-item
@@ -124,7 +127,7 @@
     :teleport-to-entity :test-instance-block-action})
 
 (def ^:private later
-  #{:container-slot-state-changed :attack :change-game-mode})
+  #{:container-slot-state-changed :change-game-mode})
 
 (def ^:private unhandled (atom #{}))
 

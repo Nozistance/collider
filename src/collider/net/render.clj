@@ -322,6 +322,8 @@
     :death {:packet :entity-event :eid (:eid m) :event 3}
     :break {:packet :entity-event :eid (:eid m) :event 3}
     :eat {:packet :entity-event :eid (:eid m) :event 10}
+    :break-main {:packet :entity-event :eid (:eid m) :event 47}
+    :break-off {:packet :entity-event :eid (:eid m) :event 48}
     :love {:packet :entity-event :eid (:eid m) :event 18}
     nil))
 

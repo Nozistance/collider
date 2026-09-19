@@ -14,6 +14,8 @@
             [collider.game.out :as out]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.game.systems.blocks.reach :as reach]
+            [collider.world.env.signal :as signal]
             [collider.world.space.path :as path]
             [collider.world.phys :as phys])
   (:import (collider.game.entity Mob)
@@ -25,21 +27,95 @@
 
 (def ^:private specs {:sheep sheep/spec :cow cow/spec :mooshroom mooshroom/spec})
 
-(def ^:private interactions
-  [(partial animal/egg-deltas specs) animal/feed-deltas cow/milk-deltas
-   mooshroom/interact-deltas sheep/interact-deltas])
-
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
     (b world eid e t tempters)
     [e nil]))
 
-(defn- interact-deltas [world ev t]
-  (into [] (mapcat (fn [f] (f world [ev] t))) interactions))
+(def ^:private ^:const reach-buffer 3.0)
 
-(defn- feed-deltas [world events t]
+(defn- in-reach?
+  "Tells whether the mob's box is within the player's entity reach.
+  Vanilla checks the same box from the eye, buffer and all."
+  [p e]
+  (let [[half height] (mobs/box-of e)
+        [ex ey ez] (reach/eye-pos p)
+        [x y z] (:pos e)
+        w (* 2.0 (double half))
+        dx (reach/axis-gap ex (- (double x) (double half)) w)
+        dy (reach/axis-gap ey (double y) (double height))
+        dz (reach/axis-gap ez (- (double z) (double half)) w)
+        r (+ (state/entity-reach p) reach-buffer)]
+    (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
+
+(defn- ctx-of
+  "Returns what an interact event gives its handlers, nil when the
+  click reaches nothing: no mob, or one too far away."
+  [world t [_ peid target hand sneaking?]]
+  (let [p (get-in world [:entities peid])
+        e (get-in world [:entities target])
+        hand (if (#{:off 1} hand) :off :main)]
+    (when (and p e (mobs/mob-type? (:type e)))
+      (let [p (assoc p :sneaking? (boolean sneaking?))]
+        (when (in-reach? p e)
+          {:world world :t t :peid peid :p p :eid target :e e
+           :hand hand :item (sense/in-hand p hand)})))))
+
+(defn- name-tag-result
+  "The place of the name tag in the chain; naming waits for its own
+  ticket and lets every other handler have the click."
+  [_ctx]
+  nil)
+
+(defn- leash-result
+  "The place of Entity.interact in the chain; the lead waits for its
+  own ticket."
+  [_ctx]
+  nil)
+
+(defn- equippable-result
+  "The place of wearable items in the chain; saddles and armour wait
+  for their own ticket."
+  [_ctx]
+  nil)
+
+(defn- species-result [ctx]
+  (let [fs (case (:type (:e ctx))
+             :sheep [sheep/shear-result animal/feed-result]
+             :cow [cow/milk-result animal/feed-result]
+             :mooshroom [mooshroom/bowl-result mooshroom/shear-result
+                         mooshroom/flower-result cow/milk-result
+                         animal/feed-result]
+             nil)]
+    (some (fn [f] (f ctx)) fs)))
+
+(def ^:private chain
+  [name-tag-result (partial animal/egg-result specs) leash-result
+   species-result sheep/dye-result equippable-result])
+
+(defn- answered
+  "Returns the deltas the whole chain leaves behind. A result that
+  takes the click is heard as a game event, and the server swings
+  the arm for the player when the client will not."
+  [{:keys [peid p e hand t]} {:keys [result deltas]}]
+  (cond-> (vec deltas)
+    (not= :pass result)
+    (into (signal/game-event :entity-interact (:pos e) peid))
+    (= :success-server result)
+    (into (state/swing-deltas peid p hand t true))))
+
+(defn- interact
+  "Returns the deltas of one player click on a mob. The handlers run
+  in the vanilla order and the first one that does not pass has the
+  click; one out of reach is dropped without a word."
+  [world ev t]
+  (if-let [ctx (ctx-of world t ev)]
+    (answered ctx (or (some (fn [f] (f ctx)) chain) {:result :pass}))
+    []))
+
+(defn- interact-deltas [world events t]
   (state/fold-events world (filter #(= :interact (first %)) events)
-                     (fn [w ev] (interact-deltas w ev t))))
+                     (fn [w ev] (interact w ev t))))
 
 (def ^:private zero3 (v/v3 0.0 0.0 0.0))
 
@@ -423,4 +499,4 @@
     (conj (mapv (fn [batch]
                   #(into [] (mapcat (fn [me] (step-mob world index tempters (key me) (val me) t))) batch))
                 (partition-all 32 herd))
-          #(feed-deltas world events t))))
+          #(interact-deltas world events t))))

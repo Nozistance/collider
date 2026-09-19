@@ -15,8 +15,11 @@
   (let [p (:pos e) crouch? (and (:sneaking? e) (not (:flying e)))]
     [(v/x p) (+ (v/y p) (if crouch? 1.27 1.62)) (v/z p)]))
 
-(defn axis-gap ^double [^double eye ^double lo]
-  (max (- lo eye) (- eye (+ lo 1.0)) 0.0))
+(defn axis-gap
+  "Returns how far the eye is from a box of size along one axis."
+  (^double [^double eye ^double lo] (axis-gap eye lo 1.0))
+  (^double [^double eye ^double lo ^double size]
+   (max (- lo eye) (- eye (+ lo size)) 0.0)))
 
 (defn in-reach? [e pos]
   (let [[ex ey ez] (eye-pos e)
