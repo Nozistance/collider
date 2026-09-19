@@ -5,6 +5,7 @@
             [collider.proto.buf :as buf]
             [collider.proto.chunk :as chunk]
             [collider.proto.codec :as c]
+            [collider.proto.wire :as wire]
             [malli.core :as m]
             [malli.error :as me])
   (:import (collider.java Buf)
@@ -90,12 +91,6 @@
 (defn- read-float-vec3 [^Buf buf]
   [(buf/read-float buf) (buf/read-float buf) (buf/read-float buf)])
 
-(defn- read-slot-change [^Buf buf]
-  [(long (buf/read-short buf)) (c/read-hashed-stack buf)])
-
-(defn- read-slot-changes [^Buf buf]
-  (into {} (repeatedly (c/read-varint buf) #(read-slot-change buf))))
-
 (def ^:private Varint
   [:int {:min -2147483648 :max 2147483647}])
 
@@ -135,39 +130,35 @@
                 [:enum :byte :int :float :item :boolean :block-pos
                  :optional-block-pos :block-state :particle :pose] :any]])
 
-(def packets
+(def ^:private table
   {[:handshake :intention]
-   {:schema [:map [:protocol Varint] [:address [:string {:max 255}]]
-             [:port [:int {:min 0 :max 65535}]] [:next Varint]]
-    :read (fn [^Buf buf]
-            {:protocol (c/read-varint buf)
-             :address  (c/read-string buf 255)
-             :port     (buf/read-unsigned-short buf)
-             :next     (c/read-varint buf)})}
+   {:schema [:map [:protocol wire/varint]
+             [:address [wire/string {:max 255}]]
+             [:port wire/unsigned-short] [:next wire/varint]]
+    :read :wire}
 
    [:status :status-response]
    {:schema [:map [:json :string]]
     :write (fn [^Buf buf m] (c/write-string buf (:json m)))}
    [:status :ping-request]
-   {:schema [:map [:payload :int]]
-    :read (fn [^Buf buf] {:payload (buf/read-long buf)})}
+   {:schema [:map [:payload wire/long]]
+    :read :wire}
    [:status :pong-response]
-   {:schema [:map [:payload :int]]
-    :write (fn [^Buf buf m] (buf/write-long! buf (long (:payload m))))}
+   {:schema [:map [:payload wire/long]]
+    :write :wire}
 
    [:login :hello]
-   {:schema [:map [:name [:string {:max 16}]] [:uuid :uuid]]
-    :read (fn [^Buf buf] {:name (c/read-string buf 16) :uuid (c/read-uuid buf)})}
+   {:schema [:map [:name [wire/string {:max 16}]] [:uuid wire/uuid]]
+    :read :wire}
    [:login :login-compression]
    {:schema [:map [:threshold Varint]]
     :write (fn [^Buf buf m] (c/write-varint buf (long (:threshold m))))}
    [:login :login-finished]
-   {:schema [:map [:uuid :uuid] [:name :string]]
-    :write (fn [^Buf buf m]
-             (c/write-uuid buf (:uuid m))
-             (c/write-string buf (:name m))
-             (c/write-varint buf 0)
-             (c/write-uuid buf (UUID. 0 0)))}
+   {:schema [:map [:uuid wire/uuid] [:name [wire/string {:max 16}]]
+             [:properties {:optional true} [:= {:wire wire/varint} 0]]
+             [:session {:optional true}
+              [:= {:wire wire/uuid} (UUID. 0 0)]]]
+    :write :wire}
    [:login :login-disconnect]
    {:schema [:map [:json :string]]
     :write (fn [^Buf buf m] (c/write-string buf (:json m)))}
@@ -428,9 +419,9 @@
    {:schema [:map [:rate number?]]
     :read (fn [^Buf buf] {:rate (buf/read-float buf)})}
    [:play :keep-alive]
-   {:schema [:map [:id :int]]
-    :read  (fn [^Buf buf] {:id (buf/read-long buf)})
-    :write (fn [^Buf buf m] (buf/write-long! buf (long (:id m))))}
+   {:schema [:map [:id wire/long]]
+    :read  :wire
+    :write :wire}
    [:play :disconnect]
    {:schema [:map [:text Component]]
     :write (fn [^Buf buf m] (c/write-component buf (:text m)))}
@@ -501,8 +492,8 @@
              (c/write-component buf (:header m))
              (c/write-component buf (:footer m)))}
    [:play :set-held-slot]
-   {:schema [:map [:slot Varint]]
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:slot m))))}
+   {:schema [:map [:slot wire/varint]]
+    :write :wire}
    [:play :container-set-content]
    {:schema [:map
              [:container {:optional true} Varint]
@@ -594,10 +585,8 @@
              (c/write-varint buf (count (:eids m)))
              (doseq [e (:eids m)] (c/write-varint buf (long e))))}
    [:play :set-entity-data]
-   {:schema [:map [:eid Varint] [:data EntityData]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (c/write-entity-data buf (:data m)))}
+   {:schema [:map [:eid wire/varint] [:data wire/entity-data]]
+    :write :wire}
    [:play :move-entity-pos]
    {:schema [:map [:eid Varint] [:dx :int] [:dy :int]
              [:dz :int] [:on-ground [:maybe :boolean]]]
@@ -815,25 +804,16 @@
    {:schema [:map [:slot :int]]
     :read (fn [^Buf buf] {:slot (buf/read-short buf)})}
    [:play :container-click]
-   {:schema [:map [:container Varint] [:state-id Varint]
-             [:slot :int] [:button :int] [:mode Varint]
-             [:changed [:map-of :int [:maybe delta/Stack]]]
-             [:carried [:maybe delta/Stack]]]
-    :read (fn [^Buf buf]
-            (let [container (c/read-varint buf)
-                  state-id (c/read-varint buf)
-                  slot (buf/read-short buf)
-                  button (buf/read-byte buf)
-                  mode (c/read-varint buf)
-                  changed (read-slot-changes buf)
-                  carried (c/read-hashed-stack buf)]
-              {:container container :state-id state-id :slot slot :button button
-               :mode      mode :changed changed :carried carried}))}
+   {:schema [:map [:container wire/varint] [:state-id wire/varint]
+             [:slot wire/short] [:button wire/byte]
+             [:mode wire/varint]
+             [:changed [:map-of wire/short wire/hashed-stack]]
+             [:carried wire/hashed-stack]]
+    :read :wire}
    [:play :set-creative-mode-slot]
-   {:schema [:map [:slot :int] [:stack [:maybe delta/Stack]]]
-    :read (fn [^Buf buf]
-            {:slot  (buf/read-short buf)
-             :stack (c/read-item-stack buf true)})}
+   {:schema [:map [:slot wire/short]
+             [:stack [wire/item-stack {:delimited true}]]]
+    :read :wire}
    [:play :client-command]
    {:schema [:map [:action Varint]]
     :read (fn [^Buf buf] {:action (c/read-varint buf)})}
@@ -851,6 +831,17 @@
                         hand (c/read-varint buf)]
                     {:target target :action action :at at :hand hand :sneaking (buf/read-boolean buf)})
                 {:target target :action action :sneaking (buf/read-boolean buf)})))}})
+
+(defn- compiled
+  "Fills in the halves an entry leaves to its schema."
+  [{:keys [schema] :as e}]
+  (cond-> e
+    (= :wire (:read e)) (assoc :read (wire/reader schema))
+    (= :wire (:write e)) (assoc :write (wire/writer schema))))
+
+(def packets
+  "Every packet by connection state and name."
+  (update-vals table compiled))
 
 (defn- checker
   "Returns a fn that throws on a message not fitting schema.
