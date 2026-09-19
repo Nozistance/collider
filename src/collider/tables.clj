@@ -892,6 +892,49 @@
                   (when (not= t []) [(kw name) t]))))
         (jsons zf "data/minecraft/loot_table/blocks/")))
 
+(defn- loot-id [s]
+  (kw (str/replace (str s) #"^#" "")))
+
+(defn- table-ref [v]
+  (let [s (str/replace (str v) #"^minecraft:" "")]
+    (if (str/starts-with? s "entities/") (kw (subs s 9)) s)))
+
+(defn- loot-scalar [v]
+  (cond
+    (string? v) (loot-id v)
+    (not (number? v)) v
+    (== (double v) (Math/rint (double v))) (long v)
+    :else v))
+
+(declare loot-node)
+
+(defn- loot-provider [m]
+  (case (:type m)
+    :uniform (select-keys m [:min :max])
+    :binomial (select-keys m [:n :p])
+    :constant (:value m)
+    m))
+
+(defn- loot-map [m]
+  (let [r (loot-provider
+           (into (sorted-map)
+                 (map (fn [[k v]] [(kw k) (loot-node v)]))
+                 m))]
+    (if (= :loot-table (:type r))
+      (assoc r :value (table-ref (get m "value")))
+      r)))
+
+(defn- loot-node [v]
+  (cond
+    (map? v) (loot-map v)
+    (sequential? v) (mapv loot-node v)
+    :else (loot-scalar v)))
+
+(defn- entity-drops [zf]
+  (into (sorted-map)
+        (map (fn [[name json]] [(kw name) (loot-node json)]))
+        (jsons zf "data/minecraft/loot_table/entities/")))
+
 (def synchronized-registries
   ["banner_pattern" "worldgen/biome" "cat_sound_variant" "cat_variant"
    "chat_type" "chicken_sound_variant" "chicken_variant"
@@ -1523,6 +1566,7 @@
             :registries rs
             :datapack   dp
             :drops      (block-drops zf)
+            :entity-drops (entity-drops zf)
             :items      items
             :features   (features zf placers)
             :recipes    (recipes zf tags dyes item-names potion-names)

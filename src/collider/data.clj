@@ -9,11 +9,12 @@
 
 (def game "26.2")
 
-(def layout 4)
+(def layout 5)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
-   "drops" "recipes" "sounds" "features" "potions" "effects"
+   "drops" "entity-drops" "recipes" "sounds" "features" "potions"
+   "effects"
    "shapes" "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
 (defn stamp []
@@ -55,7 +56,7 @@
 
 (def ^:private table-names
   [:packets :registries :blocks :datapack :tags :items :light :fire :drops
-   :recipes :sounds :features :potions :effects])
+   :entity-drops :recipes :sounds :features :potions :effects])
 
 (def ^:private ^:table tables
   (delay (into {} (map (fn [k] [k (read-edn (str (name k) ".edn"))])) table-names)))
@@ -89,6 +90,10 @@
 (defn drops
   "Returns what blocks drop when broken."
   [] (:drops @tables))
+
+(defn entity-drops
+  "Returns the loot tables of the mobs, in their vanilla shape."
+  [] (:entity-drops @tables))
 
 (defn recipes
   "Returns the stonecutting recipes and their ingredients.
