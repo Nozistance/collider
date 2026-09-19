@@ -20,6 +20,8 @@
       :type-properties (cond-> {:wire/read read :wire/write write}
                          gen (assoc :gen/schema gen))})))
 
+(declare -reader -writer)
+
 (def ^:private int-range
   [:int {:min -2147483648 :max 2147483647}])
 
@@ -31,7 +33,8 @@
              int-range))
 
 (def varlong
-  (wire-type :wire/varlong int? nil c/write-varlong :int))
+  (wire-type :wire/varlong int? c/read-varlong c/write-varlong
+             [:int {:min 0 :max 1000000}]))
 
 (def byte
   (wire-type :wire/byte int? buf/read-byte buf/write-byte!
@@ -83,18 +86,54 @@
    [:int {:min -1000 :max 1000}]])
 
 (def block-pos
-  (wire-type :wire/block-pos vector? c/read-block-pos
+  (wire-type :wire/block-pos sequential? c/read-block-pos
              (fn [b [x y z]] (c/write-block-pos b x y z)) pos-gen))
 
+(def ^:private section-gen
+  [:tuple [:int {:min -1000 :max 1000}] [:int {:min -64 :max 63}]
+   [:int {:min -1000 :max 1000}]])
+
+(def section-pos
+  (wire-type :wire/section-pos sequential? c/read-section-pos
+             (fn [b [x y z]]
+               (buf/write-long! b (c/section-pos x y z)))
+             section-gen))
+
+(def section-change
+  "One block of a section update: its place in the section and its
+  state, both in a single varlong."
+  (wire-type :wire/section-change sequential? c/read-section-change
+             c/write-section-change
+             [:tuple [:int {:min 0 :max 4095}]
+              [:int {:min 0 :max 30000}]]))
+
+(def ^:private angle-gen
+  "The degrees a byte of 256ths of a turn keeps whole."
+  [:enum 0.0 45.0 90.0 -45.0 -90.0 -180.0 1.40625 -1.40625])
+
+(def angle
+  (wire-type :wire/angle number? c/read-angle c/write-angle
+             angle-gen))
+
 (def vec3
-  (wire-type :wire/vec3 vector?
+  (wire-type :wire/vec3 sequential?
              (fn [b] [(buf/read-double b) (buf/read-double b)
                       (buf/read-double b)])
              c/write-vec3
              [:tuple double-range double-range double-range]))
 
+(def ^:private eighth-gen
+  "The coordinates a fixed point of eighths keeps whole."
+  [:enum 0.0 0.5 -0.125 64.0 -1024.25 3.375])
+
+(def fixed-vec3
+  "A position the wire carries as three ints of eighths of a block."
+  (wire-type :wire/fixed-vec3 sequential? c/read-fixed-vec3
+             c/write-fixed-vec3
+             [:tuple eighth-gen eighth-gen eighth-gen]))
+
 (def float-vec3
-  (wire-type :wire/float-vec3 vector?
+  (wire-type :wire/float-vec3 sequential?
              (fn [b] [(buf/read-float b) (buf/read-float b)
                       (buf/read-float b)])
              (fn [b [x y z]] (buf/write-float! b x)
@@ -107,16 +146,21 @@
    [1.0 -1.0 1.0] [-1.0 1.0 -1.0]])
 
 (def lp-vec3
-  (wire-type :wire/lp-vec3 vector? c/read-lp-vec3 c/write-lp-vec3
+  (wire-type :wire/lp-vec3 sequential? c/read-lp-vec3 c/write-lp-vec3
              lp-gen))
 
 (def text
-  (wire-type :wire/text #(or (string? %) (map? %)) nil
-             c/write-component :string))
+  (wire-type :wire/text #(or (string? %) (map? %)) c/read-nbt
+             c/write-component [:string {:max 32}]))
 
 (def nbt
-  (wire-type :wire/nbt some? c/read-nbt c/write-nbt
-             [:map-of :string :string]))
+  (wire-type :wire/nbt any? c/read-nbt c/write-nbt
+             [:maybe [:map-of [:enum :a :b :c] [:string {:max 5}]]]))
+
+(def stat
+  "A statistic named by its type and its entry: :mined/stone."
+  (wire-type :wire/stat qualified-keyword? c/read-stat c/write-stat
+             [:enum :custom/jump :mined/stone :killed/cow]))
 
 (def hashed-stack
   (wire-type :wire/hashed-stack #(or (nil? %) (map? %))
@@ -124,11 +168,13 @@
              [:enum nil {:item :stone :count 1}]))
 
 (def holder-ref
-  (wire-type :wire/holder-ref int? nil c/write-holder-ref
+  (wire-type :wire/holder-ref int? c/read-holder-ref
+             c/write-holder-ref
              [:int {:min 0 :max 100}]))
 
 (def entity-data
-  (wire-type :wire/entity-data sequential? nil c/write-entity-data
+  (wire-type :wire/entity-data sequential? c/read-entity-data
+             c/write-entity-data
              [:enum [] [[0 :byte 5]] [[0 :byte 5] [8 :float 20.0]]]))
 
 (def string
@@ -190,6 +236,37 @@
            :wire/write (fn [b v] (c/write-bits b v n))
            :gen/schema [:int {:min 0 :max top}]}}))}))
 
+(def bare
+  "A value the wire pairs with an optional we never fill: the data of
+  a registry entry, the tooltip of a command suggestion."
+  (m/-simple-schema
+    {:type :wire/bare
+     :compile
+     (fn [_ [child] options]
+       (let [s (m/schema child options)
+             r (-reader s) w (-writer s)]
+         {:pred any? :min 1 :max 1
+          :type-properties
+          {:wire/read (fn [b] (let [v (r b)] (buf/read-boolean b) v))
+           :wire/write (fn [b v] (w b v) (buf/write-boolean! b false))
+           :gen/schema child}}))}))
+
+(def tail
+  "A value taking whatever is left of the packet, nil when nothing
+  is: the options of a particle the client already knows the type of."
+  (m/-simple-schema
+    {:type :wire/tail
+     :compile
+     (fn [_ [child] options]
+       (let [s (m/schema child options)
+             r (-reader s) w (-writer s)]
+         {:pred any? :min 1 :max 1
+          :type-properties
+          {:wire/read (fn [b]
+                        (when (pos? (buf/readable-bytes b)) (r b)))
+           :wire/write (fn [b v] (when (some? v) (w b v)))
+           :gen/schema [:maybe child]}}))}))
+
 (def reg
   (m/-simple-schema
     {:type :wire/reg
@@ -202,8 +279,6 @@
          :wire/write
          (fn [b v]
            (c/write-varint b (data/entry-id registry v)))}})}))
-
-(declare -reader -writer)
 
 (defn- codec-of [schema kind]
   (or (kind (m/type-properties schema))
@@ -229,11 +304,17 @@
                  (m/children schema))]
     (fn [b m] (run! (fn [f] (f b m)) fs))))
 
+(defn- map-field-reader
+  "A filler is on the wire but not in the message, so its value is
+  checked and dropped."
+  [[k props _ :as e]]
+  (let [r (-reader (field e))]
+    (if (:optional props)
+      (fn [b m] (r b) m)
+      (fn [b m] (assoc m k (r b))))))
+
 (defn- map-reader [schema]
-  (let [fs (mapv (fn [[k _ _ :as e]]
-                   (let [r (-reader (field e))]
-                     (fn [b m] (assoc m k (r b)))))
-                 (m/children schema))]
+  (let [fs (mapv map-field-reader (m/children schema))]
     (fn [b] (reduce (fn [m f] (f b m)) {} fs))))
 
 (defn- tuple-writer [schema]

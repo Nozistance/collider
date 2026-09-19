@@ -13,24 +13,6 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- write-registry-entries! [^Buf buf names]
-  (c/write-varint buf (count names))
-  (doseq [n names]
-    (c/write-id buf n)
-    (buf/write-boolean! buf false)))
-
-(defn- write-spawn-info [^Buf buf m]
-  (c/write-holder-ref buf (long (:dimension-type m)))
-  (c/write-id buf :overworld)
-  (buf/write-long! buf 0)
-  (buf/write-byte! buf 1)
-  (buf/write-byte! buf -1)
-  (buf/write-boolean! buf false)
-  (buf/write-boolean! buf true)
-  (buf/write-boolean! buf false)
-  (c/write-varint buf 0)
-  (c/write-varint buf 63))
-
 (defn- node-flags ^long [type executable?]
   (bit-or (case type :root 0 :literal 1 :argument 2)
           (if executable? 4 0)))
@@ -68,26 +50,7 @@
     (when (not= :root type) (c/write-string buf name))
     (when (= :argument type) (write-parser! buf parser props))))
 
-(defn- stat-registry [type]
-  (case type
-    :custom "custom_stat"
-    :mined "block"
-    (:killed :killed-by) "entity_type"
-    "item"))
-
-(defn- write-stat! [^Buf buf k n]
-  (let [type (keyword (namespace k))
-        key (keyword (name k))]
-    (c/write-varint buf (data/registry-id "stat_type" type))
-    (c/write-varint buf (data/registry-id (stat-registry type) key))
-    (c/write-varint buf (long n))))
-
-(def ^:private Varint
-  [:int {:min -2147483648 :max 2147483647}])
-
 (def ^:private Id [:or :keyword :string])
-
-(def ^:private Component [:or :string :map])
 
 (def ^:private Line [wire/string {:max 384}])
 
@@ -97,14 +60,11 @@
   [:map [:offset wire/varint] [:acknowledged [wire/bitset 20]]
    [:checksum wire/byte]])
 
-(def ^:private Stacks [:sequential [:maybe delta/Stack]])
+(def ^:private Modifier
+  [:tuple wire/id wire/double wire/varint])
 
-(def ^:private Modifiers
-  [:maybe [:sequential [:tuple :keyword number? :int]]])
-
-(def ^:private Attributes
-  [:or [:map-of :keyword number?]
-   [:sequential [:tuple :keyword number? Modifiers]]])
+(def ^:private Attribute
+  [:tuple [wire/reg "attribute"] wire/double [:sequential Modifier]])
 
 (def ^:private Node
   [:map [:type [:enum :root :literal :argument]]
@@ -124,10 +84,43 @@
   [:map [:in [:sequential :keyword]]
    [:out [:map [:item :keyword] [:count {:optional true} :int]]]])
 
-(def ^:private EntityData
-  [:sequential [:tuple :int
-                [:enum :byte :int :float :item :boolean :block-pos
-                 :optional-block-pos :block-state :particle :pose] :any]])
+(def ^:private spawn-info
+  "The fields every join and respawn repeats about the world entered."
+  [[:dimension-type wire/holder-ref]
+   [:dimension {:optional true} [:= {:wire wire/id} :overworld]]
+   [:seed {:optional true} [:= {:wire wire/long} 0]]
+   [:gamemode {:optional true} [:= {:wire wire/byte} 1]]
+   [:last-gamemode {:optional true} [:= {:wire wire/byte} -1]]
+   [:debug? {:optional true} [:= {:wire wire/boolean} false]]
+   [:flat? {:optional true} [:= {:wire wire/boolean} true]]
+   [:death {:optional true} [:= {:wire wire/boolean} false]]
+   [:portal-cooldown {:optional true} [:= {:wire wire/varint} 0]]
+   [:sea-level {:optional true} [:= {:wire wire/varint} 63]]])
+
+(def ^:private Login
+  (into [:map [:eid wire/int]
+         [:hardcore {:optional true} [:= {:wire wire/boolean} false]]
+         [:levels {:optional true}
+          [:= {:wire [:sequential wire/id]} [:overworld]]]
+         [:max-players wire/varint] [:view-distance wire/varint]
+         [:simulation-distance wire/varint]
+         [:reduced-debug {:optional true}
+          [:= {:wire wire/boolean} false]]
+         [:death-screen {:optional true}
+          [:= {:wire wire/boolean} true]]
+         [:limited-crafting {:optional true}
+          [:= {:wire wire/boolean} false]]]
+        (concat spawn-info
+                [[:secure-chat {:optional true}
+                  [:= {:wire wire/boolean} false]]
+                 [:enforced {:optional true}
+                  [:= {:wire wire/boolean} false]]])))
+
+(def ^:private Abilities
+  "The clientbound half: the flags the client may read back are
+  followed by the two speeds it never sends."
+  [:map [:flags wire/byte] [:flying-speed wire/float]
+   [:walking-speed wire/float]])
 
 (def ^:private table
   {[:handshake :intention]
@@ -137,8 +130,8 @@
     :read :wire}
 
    [:status :status-response]
-   {:schema [:map [:json :string]]
-    :write (fn [^Buf buf m] (c/write-string buf (:json m)))}
+   {:schema [:map [:json wire/string]]
+    :write :wire}
    [:status :ping-request]
    {:schema [:map [:payload wire/long]]
     :read :wire}
@@ -150,8 +143,8 @@
    {:schema [:map [:name [wire/string {:max 16}]] [:uuid wire/uuid]]
     :read :wire}
    [:login :login-compression]
-   {:schema [:map [:threshold Varint]]
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:threshold m))))}
+   {:schema [:map [:threshold wire/varint]]
+    :write :wire}
    [:login :login-finished]
    {:schema [:map [:uuid wire/uuid] [:name [wire/string {:max 16}]]
              [:properties {:optional true} [:= {:wire wire/varint} 0]]
@@ -159,26 +152,23 @@
               [:= {:wire wire/uuid} (UUID. 0 0)]]]
     :write :wire}
    [:login :login-disconnect]
-   {:schema [:map [:json :string]]
-    :write (fn [^Buf buf m] (c/write-string buf (:json m)))}
+   {:schema [:map [:json [wire/string {:max 262144}]]]
+    :write :wire}
 
    [:configuration :custom-payload]
-   {:schema [:map [:channel Id] [:value :string]]
-    :write (fn [^Buf buf m] (c/write-id buf (:channel m)) (c/write-string buf (:value m)))}
+   {:schema [:map [:channel wire/id] [:value wire/string]]
+    :write :wire}
    [:configuration :update-enabled-features]
-   {:schema [:map [:features [:sequential Id]]]
-    :write (fn [^Buf buf m] (c/write-list buf (:features m) c/write-id))}
+   {:schema [:map [:features [:sequential wire/id]]]
+    :write :wire}
    [:configuration :select-known-packs]
-   {:schema [:map [:packs [:sequential [:sequential :string]]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (count (:packs m)))
-             (doseq [pack (:packs m)]
-               (doseq [s pack] (c/write-string buf s))))}
+   {:schema [:map [:packs [:sequential [:tuple wire/string wire/string
+                                        wire/string]]]]
+    :write :wire}
    [:configuration :registry-data]
-   {:schema [:map [:registry Id] [:names [:sequential Id]]]
-    :write (fn [^Buf buf m]
-             (c/write-id buf (:registry m))
-             (write-registry-entries! buf (:names m)))}
+   {:schema [:map [:registry wire/id]
+             [:names [:sequential [wire/bare wire/id]]]]
+    :write :wire}
    [:configuration :update-tags]
    {:schema [:map [:tags [:map-of Id [:map-of Id [:sequential :keyword]]]]]
     :write (fn [^Buf buf m]
@@ -194,69 +184,41 @@
                      (doseq [id ids] (c/write-varint buf id)))))))}
    [:configuration :finish-configuration]
    {:schema [:map]
-    :write (fn [_ _] nil)}
+    :write :wire}
    [:configuration :disconnect]
-   {:schema [:map [:text Component]]
-    :write (fn [^Buf buf m] (c/write-component buf (:text m)))}
+   {:schema [:map [:text wire/text]]
+    :write :wire}
 
    [:play :login]
-   {:schema [:map [:eid :int] [:max-players Varint]
-             [:view-distance Varint] [:simulation-distance Varint]
-             [:dimension-type :int]]
-    :write (fn [^Buf buf m]
-             (buf/write-int! buf (int (:eid m)))
-             (buf/write-boolean! buf false)
-             (c/write-list buf [:overworld] c/write-id)
-             (c/write-varint buf (long (:max-players m)))
-             (c/write-varint buf (long (:view-distance m)))
-             (c/write-varint buf (long (:simulation-distance m)))
-             (buf/write-boolean! buf false)
-             (buf/write-boolean! buf true)
-             (buf/write-boolean! buf false)
-             (write-spawn-info buf m)
-             (buf/write-boolean! buf false)
-             (buf/write-boolean! buf false))}
+   {:schema Login
+    :write :wire}
    [:play :respawn]
-   {:schema [:map [:dimension-type :int] [:keep {:optional true} :int]]
-    :write (fn [^Buf buf m]
-             (write-spawn-info buf m)
-             (buf/write-byte! buf (int (:keep m 0))))}
+   {:schema (into [:map] (conj spawn-info [:keep wire/byte]))
+    :write :wire}
    [:play :player-abilities]
    {:schema [:map [:flags :int]
              [:flying-speed {:optional true} number?]
              [:walking-speed {:optional true} number?]]
     :read  (wire/reader [:map [:flags wire/byte]])
-    :write (fn [^Buf buf m]
-             (buf/write-byte! buf (int (:flags m)))
-             (buf/write-float! buf (float (:flying-speed m)))
-             (buf/write-float! buf (float (:walking-speed m))))}
+    :write (wire/writer Abilities)}
    [:play :set-default-spawn-position]
-   {:schema [:map [:pos delta/Pos]
-             [:yaw {:optional true} number?]
-             [:pitch {:optional true} number?]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)]
-               (c/write-id buf :overworld)
-               (c/write-block-pos buf x y z)
-               (buf/write-float! buf (float (:yaw m 0.0)))
-               (buf/write-float! buf (float (:pitch m 0.0)))))}
+   {:schema [:map
+             [:dimension {:optional true}
+              [:= {:wire wire/id} :overworld]]
+             [:pos wire/block-pos] [:yaw wire/float]
+             [:pitch wire/float]]
+    :write :wire}
    [:play :set-health]
-   {:schema [:map [:health number?] [:food Varint] [:saturation number?]]
-    :write (fn [^Buf buf m]
-             (buf/write-float! buf (float (:health m)))
-             (c/write-varint buf (long (:food m)))
-             (buf/write-float! buf (float (:saturation m))))}
+   {:schema [:map [:health wire/float] [:food wire/varint]
+             [:saturation wire/float]]
+    :write :wire}
    [:play :set-experience]
-   {:schema [:map [:progress number?] [:level Varint] [:total Varint]]
-    :write (fn [^Buf buf m]
-             (buf/write-float! buf (float (:progress m)))
-             (c/write-varint buf (long (:level m)))
-             (c/write-varint buf (long (:total m))))}
+   {:schema [:map [:progress wire/float] [:level wire/varint]
+             [:total wire/varint]]
+    :write :wire}
    [:play :game-event]
-   {:schema [:map [:event :int] [:value {:optional true} number?]]
-    :write (fn [^Buf buf m]
-             (buf/write-byte! buf (int (:event m)))
-             (buf/write-float! buf (float (:value m 0.0))))}
+   {:schema [:map [:event wire/unsigned-byte] [:value wire/float]]
+    :write :wire}
    [:play :commands]
    {:schema [:map [:nodes [:sequential Node]]]
     :write (fn [^Buf buf {:keys [nodes]}]
@@ -264,32 +226,20 @@
              (doseq [node nodes] (write-node! buf node))
              (c/write-varint buf (dec (count nodes))))}
    [:play :command-suggestions]
-   {:schema [:map [:id Varint] [:start Varint]
-             [:length Varint] [:matches [:sequential :string]]]
-    :write (fn [^Buf buf {:keys [id start length matches]}]
-             (c/write-varint buf (long id))
-             (c/write-varint buf (long start))
-             (c/write-varint buf (long length))
-             (c/write-varint buf (count matches))
-             (doseq [m matches]
-               (c/write-string buf m)
-               (buf/write-boolean! buf false)))}
+   {:schema [:map [:id wire/varint] [:start wire/varint]
+             [:length wire/varint]
+             [:matches [:sequential [wire/bare wire/string]]]]
+    :write :wire}
    [:play :command-suggestion]
    {:schema [:map [:id wire/varint]
              [:text [wire/string {:max 32500}]]]
     :read :wire}
    [:play :award-stats]
-   {:schema [:map [:stats [:map-of :keyword :int]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (count (:stats m)))
-             (doseq [[k n] (:stats m)] (write-stat! buf k n)))}
+   {:schema [:map [:stats [:map-of wire/stat wire/varint]]]
+    :write :wire}
    [:play :game-rule-values]
-   {:schema [:map [:values [:map-of :string :string]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (count (:values m)))
-             (doseq [[k v] (:values m)]
-               (c/write-string buf k)
-               (c/write-string buf v)))}
+   {:schema [:map [:values [:map-of wire/string wire/string]]]
+    :write :wire}
    [:play :set-game-rule]
    {:schema [:map [:entries [:sequential
                             [:tuple wire/string wire/string]]]]
@@ -298,59 +248,40 @@
    {:schema [:map [:payload wire/long]]
     :read :wire}
    [:play :pong-response]
-   {:schema [:map [:payload :int]]
-    :write (fn [^Buf buf m] (buf/write-long! buf (long (:payload m))))}
+   {:schema [:map [:payload wire/long]]
+    :write :wire}
    [:play :change-difficulty]
-   {:schema [:map [:difficulty {:optional true} Varint]
-             [:locked {:optional true} [:maybe :boolean]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:difficulty m 0)))
-             (buf/write-boolean! buf (boolean (:locked m))))}
+   {:schema [:map [:difficulty wire/varint] [:locked wire/boolean]]
+    :write :wire}
    [:play :server-data]
-   {:schema [:map [:motd Component]]
-    :write (fn [^Buf buf m]
-             (c/write-component buf (:motd m))
-             (buf/write-boolean! buf false))}
+   {:schema [:map [:motd wire/text]
+             [:icon {:optional true} [:= {:wire wire/boolean} false]]]
+    :write :wire}
    [:play :initialize-border]
-   {:schema [:map [:size number?] [:max-size Varint]
-             [:center-x {:optional true} number?]
-             [:center-z {:optional true} number?]
-             [:warning-blocks {:optional true} Varint]
-             [:warning-time {:optional true} Varint]]
-    :write (fn [^Buf buf m]
-             (buf/write-double! buf (double (:center-x m 0.0)))
-             (buf/write-double! buf (double (:center-z m 0.0)))
-             (buf/write-double! buf (double (:size m)))
-             (buf/write-double! buf (double (:size m)))
-             (c/write-varlong buf 0)
-             (c/write-varint buf (long (:max-size m)))
-             (c/write-varint buf (long (:warning-blocks m 5)))
-             (c/write-varint buf (long (:warning-time m 15))))}
+   {:schema [:map [:center-x wire/double] [:center-z wire/double]
+             [:old-size wire/double] [:size wire/double]
+             [:lerp {:optional true} [:= {:wire wire/varlong} 0]]
+             [:max-size wire/varint] [:warning-blocks wire/varint]
+             [:warning-time wire/varint]]
+    :write :wire}
    [:play :ticking-state]
-   {:schema [:map [:rate {:optional true} number?]
-             [:frozen? {:optional true} [:maybe :boolean]]]
-    :write (fn [^Buf buf m]
-             (buf/write-float! buf (float (:rate m 20.0)))
-             (buf/write-boolean! buf (boolean (:frozen? m))))}
+   {:schema [:map [:rate wire/float] [:frozen? wire/boolean]]
+    :write :wire}
    [:play :ticking-step]
-   {:schema [:map [:steps {:optional true} Varint]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:steps m 0))))}
+   {:schema [:map [:steps wire/varint]]
+    :write :wire}
    [:play :update-attributes]
-   {:schema [:map [:eid Varint] [:attributes Attributes]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (c/write-varint buf (count (:attributes m)))
-             (doseq [[attr base mods] (:attributes m)]
-               (c/write-varint buf (data/registry-id "attribute" attr))
-               (buf/write-double! buf (double base))
-               (c/write-varint buf (count mods))
-               (doseq [[id amount op] mods]
-                 (c/write-string buf (data/wire id))
-                 (buf/write-double! buf (double amount))
-                 (c/write-varint buf (long op)))))}
+   {:schema [:map [:eid wire/varint]
+             [:attributes [:sequential Attribute]]]
+    :write :wire}
    [:play :set-time]
-   {:schema [:map [:age :int] [:time :int]]
+   {:schema [:map [:age wire/long]
+             [:clocks {:optional true} [:= {:wire wire/varint} 1]]
+             [:clock {:optional true}
+              [:= {:wire [wire/reg "world_clock"]} :overworld]]
+             [:time wire/varlong]
+             [:rate {:optional true} [:= {:wire wire/float} 0.0]]
+             [:scale {:optional true} [:= {:wire wire/float} 1.0]]]
     :write (fn [^Buf buf m]
              (buf/write-long! buf (long (:age m)))
              (c/write-varint buf 1)
@@ -359,61 +290,40 @@
              (buf/write-float! buf (float 0.0))
              (buf/write-float! buf (float 1.0)))}
    [:play :player-position]
-   {:schema [:map [:teleport-id Varint] [:pos delta/Vec3]
-             [:vel {:optional true} [:maybe delta/Vec3]]
-             [:yaw {:optional true} number?]
-             [:pitch {:optional true} number?]
-             [:relative {:optional true} :int]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m) [vx vy vz] (:vel m [0.0 0.0 0.0])]
-               (c/write-varint buf (long (:teleport-id m)))
-               (buf/write-double! buf (double x)) (buf/write-double! buf (double y)) (buf/write-double! buf (double z))
-               (buf/write-double! buf (double vx)) (buf/write-double! buf (double vy)) (buf/write-double! buf (double vz))
-               (buf/write-float! buf (float (:yaw m 0.0)))
-               (buf/write-float! buf (float (:pitch m 0.0)))
-               (buf/write-int! buf (int (:relative m 0)))))}
+   {:schema [:map [:teleport-id wire/varint] [:pos wire/vec3]
+             [:vel wire/vec3] [:yaw wire/float] [:pitch wire/float]
+             [:relative wire/int]]
+    :write :wire}
    [:play :accept-teleportation]
    {:schema [:map [:id wire/varint]]
     :read :wire}
    [:play :set-chunk-cache-center]
-   {:schema [:map [:cx :int] [:cz :int]]
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:cx m))) (c/write-varint buf (long (:cz m))))}
+   {:schema [:map [:cx wire/varint] [:cz wire/varint]]
+    :write :wire}
    [:play :level-chunk-with-light]
    {:schema [:map [:cx :int] [:cz :int] [:chunk :any]
              [:block-entities {:optional true} [:maybe :any]]]
     :write (fn [^Buf buf m] (chunk/write-chunk! buf (:cx m) (:cz m) (:chunk m) (:block-entities m)))}
    [:play :open-sign-editor]
-   {:schema [:map [:pos delta/Pos] [:front? [:maybe :boolean]]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
-             (buf/write-boolean! buf (boolean (:front? m))))}
+   {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]]
+    :write :wire}
    [:play :block-event]
-   {:schema [:map [:pos delta/Pos] [:action :int] [:param :int]
-             [:block Varint]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
-             (buf/write-byte! buf (int (:action m)))
-             (buf/write-byte! buf (int (:param m)))
-             (c/write-varint buf (long (:block m))))}
+   {:schema [:map [:pos wire/block-pos] [:action wire/unsigned-byte]
+             [:param wire/unsigned-byte] [:block wire/varint]]
+    :write :wire}
    [:play :block-entity-data]
-   {:schema [:map [:pos delta/Pos] [:type Varint]
-             [:nbt [:maybe :map]]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)] (c/write-block-pos buf (long x) (long y) (long z)))
-             (c/write-varint buf (long (:type m)))
-             (c/write-nbt buf (:nbt m)))}
+   {:schema [:map [:pos wire/block-pos] [:type wire/varint]
+             [:nbt wire/nbt]]
+    :write :wire}
    [:play :forget-level-chunk]
-   {:schema [:map [:cx :int] [:cz :int]]
-    :write (fn [^Buf buf m]
-             (let [lo (bit-and (long (:cx m)) 0xFFFFFFFF)
-                   hi (bit-shift-left (long (:cz m)) 32)]
-               (buf/write-long! buf (bit-or lo hi))))}
+   {:schema [:map [:cz wire/int] [:cx wire/int]]
+    :write :wire}
    [:play :chunk-batch-start]
    {:schema [:map]
-    :write (fn [_ _] nil)}
+    :write :wire}
    [:play :chunk-batch-finished]
-   {:schema [:map [:size Varint]]
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:size m))))}
+   {:schema [:map [:size wire/varint]]
+    :write :wire}
    [:play :chunk-batch-received]
    {:schema [:map [:rate wire/float]]
     :read :wire}
@@ -422,23 +332,17 @@
     :read  :wire
     :write :wire}
    [:play :disconnect]
-   {:schema [:map [:text Component]]
-    :write (fn [^Buf buf m] (c/write-component buf (:text m)))}
+   {:schema [:map [:text wire/text]]
+    :write :wire}
    [:play :system-chat]
-   {:schema [:map [:text Component]
-             [:overlay {:optional true} [:maybe :boolean]]]
-    :write (fn [^Buf buf m]
-             (c/write-component buf (:text m))
-             (buf/write-boolean! buf (boolean (:overlay m))))}
+   {:schema [:map [:text wire/text] [:overlay wire/boolean]]
+    :write :wire}
    [:play :block-update]
-   {:schema [:map [:pos delta/Pos] [:state :int]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)]
-               (c/write-block-pos buf (long x) (long y) (long z)))
-             (c/write-varint buf (long (:state m))))}
+   {:schema [:map [:pos wire/block-pos] [:state wire/varint]]
+    :write :wire}
    [:play :section-blocks-update]
-   {:schema [:map [:section delta/Pos]
-             [:changes [:sequential [:tuple :int :int]]]]
+   {:schema [:map [:section wire/section-pos]
+             [:changes [:sequential wire/section-change]]]
     :write (fn [^Buf buf m]
              (let [[sx sy sz] (:section m)]
                (buf/write-long! buf (c/section-pos (long sx) (long sy) (long sz))))
@@ -446,13 +350,11 @@
              (doseq [[at state] (:changes m)]
                (c/write-varlong buf (bit-or (bit-shift-left (long state) 12) (long at)))))}
    [:play :cooldown]
-   {:schema [:map [:group Id] [:duration Varint]]
-    :write (fn [^Buf buf m]
-             (c/write-id buf (:group m))
-             (c/write-varint buf (long (:duration m))))}
+   {:schema [:map [:group wire/id] [:duration wire/varint]]
+    :write :wire}
    [:play :block-changed-ack]
-   {:schema [:map [:sequence Varint]]
-    :write (fn [^Buf buf m] (c/write-varint buf (long (:sequence m))))}
+   {:schema [:map [:sequence wire/varint]]
+    :write :wire}
    [:play :player-info-update]
    {:schema [:map [:action {:optional true} :keyword]
              [:players [:sequential Player]]]
@@ -473,60 +375,38 @@
                      (buf/write-boolean! buf true)
                      (c/write-varint buf (long (or ping 0)))))))}
    [:play :level-event]
-   {:schema [:map [:event :int] [:pos delta/Pos] [:data :int]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)]
-               (buf/write-int! buf (int (:event m)))
-               (c/write-block-pos buf (long x) (long y) (long z))
-               (buf/write-int! buf (int (:data m)))
-               (buf/write-boolean! buf false)))}
+   {:schema [:map [:event wire/int] [:pos wire/block-pos]
+             [:data wire/int]
+             [:global {:optional true}
+              [:= {:wire wire/boolean} false]]]
+    :write :wire}
    [:play :player-info-remove]
-   {:schema [:map [:uuids [:sequential :uuid]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (count (:uuids m)))
-             (doseq [u (:uuids m)] (c/write-uuid buf u)))}
+   {:schema [:map [:uuids [:sequential wire/uuid]]]
+    :write :wire}
    [:play :tab-list]
-   {:schema [:map [:header Component] [:footer Component]]
-    :write (fn [^Buf buf m]
-             (c/write-component buf (:header m))
-             (c/write-component buf (:footer m)))}
+   {:schema [:map [:header wire/text] [:footer wire/text]]
+    :write :wire}
    [:play :set-held-slot]
    {:schema [:map [:slot wire/varint]]
     :write :wire}
    [:play :container-set-content]
-   {:schema [:map
-             [:container {:optional true} Varint]
-             [:state-id {:optional true} Varint]
-             [:items Stacks] [:carried [:maybe delta/Stack]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:container m 0)))
-             (c/write-varint buf (long (:state-id m 0)))
-             (c/write-varint buf (count (:items m)))
-             (doseq [st (:items m)] (c/write-item-stack buf st))
-             (c/write-item-stack buf (:carried m)))}
+   {:schema [:map [:container wire/varint] [:state-id wire/varint]
+             [:items [:sequential wire/item-stack]]
+             [:carried wire/item-stack]]
+    :write :wire}
    [:play :container-set-slot]
-   {:schema [:map
-             [:container {:optional true} Varint]
-             [:state-id {:optional true} Varint]
-             [:slot :int] [:stack [:maybe delta/Stack]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:container m 0)))
-             (c/write-varint buf (long (:state-id m 0)))
-             (buf/write-short! buf (int (:slot m)))
-             (c/write-item-stack buf (:stack m)))}
+   {:schema [:map [:container wire/varint] [:state-id wire/varint]
+             [:slot wire/short] [:stack wire/item-stack]]
+    :write :wire}
 
    [:play :open-screen]
-   {:schema [:map [:container Varint] [:menu Varint] [:title Component]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:container m)))
-             (c/write-varint buf (long (:menu m)))
-             (c/write-component buf (:title m)))}
+   {:schema [:map [:container wire/varint] [:menu wire/varint]
+             [:title wire/text]]
+    :write :wire}
    [:play :container-set-data]
-   {:schema [:map [:container Varint] [:id :int] [:value :int]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:container m)))
-             (buf/write-short! buf (int (:id m)))
-             (buf/write-short! buf (int (:value m))))}
+   {:schema [:map [:container wire/varint] [:id wire/short]
+             [:value wire/short]]
+    :write :wire}
    [:play :container-button-click]
    {:schema [:map [:container wire/varint] [:button wire/varint]]
     :read :wire}
@@ -555,85 +435,60 @@
     :read  :wire
     :write :wire}
    [:play :set-cursor-item]
-   {:schema [:map [:stack [:maybe delta/Stack]]]
-    :write (fn [^Buf buf m] (c/write-item-stack buf (:stack m)))}
+   {:schema [:map [:stack wire/item-stack]]
+    :write :wire}
 
    [:play :bundle-delimiter]
    {:schema [:map]
-    :write (fn [_ _] nil)}
+    :write :wire}
    [:play :add-entity]
-   {:schema [:map [:eid Varint] [:uuid :uuid] [:type Varint]
-             [:pos delta/Vec3] [:vel {:optional true} [:maybe delta/Vec3]]
-             [:pitch {:optional true} number?]
-             [:yaw {:optional true} number?]
-             [:head-yaw {:optional true} number?]
-             [:data {:optional true} Varint]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (c/write-uuid buf (:uuid m))
-             (c/write-varint buf (long (:type m)))
-             (c/write-vec3 buf (:pos m))
-             (c/write-lp-vec3 buf (:vel m [0.0 0.0 0.0]))
-             (c/write-angle buf (:pitch m 0.0))
-             (c/write-angle buf (:yaw m 0.0))
-             (c/write-angle buf (:head-yaw m 0.0))
-             (c/write-varint buf (long (:data m 0))))}
+   {:schema [:map [:eid wire/varint] [:uuid wire/uuid]
+             [:type wire/varint] [:pos wire/vec3] [:vel wire/lp-vec3]
+             [:pitch wire/angle] [:yaw wire/angle]
+             [:head-yaw wire/angle] [:data wire/varint]]
+    :write :wire}
    [:play :remove-entities]
-   {:schema [:map [:eids [:sequential :int]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (count (:eids m)))
-             (doseq [e (:eids m)] (c/write-varint buf (long e))))}
+   {:schema [:map [:eids [:sequential wire/varint]]]
+    :write :wire}
    [:play :set-entity-data]
    {:schema [:map [:eid wire/varint] [:data wire/entity-data]]
     :write :wire}
    [:play :move-entity-pos]
-   {:schema [:map [:eid Varint] [:dx :int] [:dy :int]
-             [:dz :int] [:on-ground [:maybe :boolean]]]
+   {:schema [:map [:eid wire/varint] [:dx wire/short] [:dy wire/short]
+             [:dz wire/short] [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (buf/write-short! buf (int (:dx m))) (buf/write-short! buf (int (:dy m))) (buf/write-short! buf (int (:dz m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :move-entity-pos-rot]
-   {:schema [:map [:eid Varint] [:dx :int] [:dy :int]
-             [:dz :int] [:yaw :int] [:pitch :int]
-             [:on-ground [:maybe :boolean]]]
+   {:schema [:map [:eid wire/varint] [:dx wire/short] [:dy wire/short]
+             [:dz wire/short] [:yaw wire/byte] [:pitch wire/byte]
+             [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (buf/write-short! buf (int (:dx m))) (buf/write-short! buf (int (:dy m))) (buf/write-short! buf (int (:dz m)))
              (buf/write-byte! buf (int (:yaw m))) (buf/write-byte! buf (int (:pitch m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :move-entity-rot]
-   {:schema [:map [:eid Varint] [:yaw :int] [:pitch :int]
-             [:on-ground [:maybe :boolean]]]
+   {:schema [:map [:eid wire/varint] [:yaw wire/byte]
+             [:pitch wire/byte] [:on-ground wire/boolean]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (buf/write-byte! buf (int (:yaw m))) (buf/write-byte! buf (int (:pitch m)))
              (buf/write-boolean! buf (boolean (:on-ground m))))}
    [:play :rotate-head]
-   {:schema [:map [:eid Varint] [:yaw :int]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (buf/write-byte! buf (int (:yaw m))))}
+   {:schema [:map [:eid wire/varint] [:yaw wire/byte]]
+    :write :wire}
    [:play :entity-position-sync]
-   {:schema [:map [:eid Varint] [:pos delta/Vec3]
-             [:vel {:optional true} [:maybe delta/Vec3]]
-             [:yaw {:optional true} number?]
-             [:pitch {:optional true} number?]
-             [:on-ground [:maybe :boolean]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (c/write-vec3 buf (:pos m))
-             (c/write-vec3 buf (:vel m [0.0 0.0 0.0]))
-             (buf/write-float! buf (float (:yaw m 0.0)))
-             (buf/write-float! buf (float (:pitch m 0.0)))
-             (buf/write-boolean! buf (boolean (:on-ground m))))}
+   {:schema [:map [:eid wire/varint] [:pos wire/vec3] [:vel wire/vec3]
+             [:yaw wire/float] [:pitch wire/float]
+             [:on-ground wire/boolean]]
+    :write :wire}
    [:play :set-entity-motion]
-   {:schema [:map [:eid Varint] [:vel delta/Vec3]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (c/write-lp-vec3 buf (:vel m)))}
+   {:schema [:map [:eid wire/varint] [:vel wire/lp-vec3]]
+    :write :wire}
    [:play :set-equipment]
-   {:schema [:map [:eid Varint]
+   {:schema [:map [:eid wire/varint]
              [:slots [:sequential [:tuple :int [:maybe delta/Stack]]]]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
@@ -642,78 +497,42 @@
                  (buf/write-byte! buf (int (if (< (inc i) (count slots)) (bit-or (long slot) 0x80) slot)))
                  (c/write-item-stack buf stack))))}
    [:play :animate]
-   {:schema [:map [:eid Varint] [:action :int]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (buf/write-byte! buf (int (:action m))))}
+   {:schema [:map [:eid wire/varint] [:action wire/unsigned-byte]]
+    :write :wire}
    [:play :hurt-animation]
-   {:schema [:map [:eid Varint] [:yaw {:optional true} number?]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (buf/write-float! buf (float (:yaw m 0.0))))}
+   {:schema [:map [:eid wire/varint] [:yaw wire/float]]
+    :write :wire}
    [:play :entity-event]
-   {:schema [:map [:eid :int] [:event :int]]
-    :write (fn [^Buf buf m]
-             (buf/write-int! buf (int (:eid m)))
-             (buf/write-byte! buf (int (:event m))))}
+   {:schema [:map [:eid wire/int] [:event wire/byte]]
+    :write :wire}
    [:play :take-item-entity]
-   {:schema [:map [:item Varint] [:collector Varint]
-             [:amount {:optional true} Varint]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:item m)))
-             (c/write-varint buf (long (:collector m)))
-             (c/write-varint buf (long (:amount m 1))))}
+   {:schema [:map [:item wire/varint] [:collector wire/varint]
+             [:amount wire/varint]]
+    :write :wire}
    [:play :sound]
-   {:schema [:map [:sound :int] [:source Varint] [:pos delta/Vec3]
-             [:volume number?] [:pitch number?]
-             [:seed {:optional true} :int]]
-    :write (fn [^Buf buf m]
-             (let [[x y z] (:pos m)]
-               (c/write-holder-ref buf (long (:sound m)))
-               (c/write-varint buf (long (:source m)))
-               (buf/write-int! buf (int (* 8.0 (double x))))
-               (buf/write-int! buf (int (* 8.0 (double y))))
-               (buf/write-int! buf (int (* 8.0 (double z))))
-               (buf/write-float! buf (float (:volume m)))
-               (buf/write-float! buf (float (:pitch m)))
-               (buf/write-long! buf (long (:seed m 0)))))}
+   {:schema [:map [:sound wire/holder-ref] [:source wire/varint]
+             [:pos wire/fixed-vec3] [:volume wire/float]
+             [:pitch wire/float] [:seed wire/long]]
+    :write :wire}
    [:play :level-particles]
-   {:schema [:map [:pos delta/Vec3] [:speed number?]
-             [:count :int] [:particle Varint]
-             [:state {:optional true} [:maybe :int]]]
-    :write (fn [^Buf buf m]
-             (buf/write-boolean! buf false)
-             (buf/write-boolean! buf false)
-             (c/write-vec3 buf (:pos m))
-             (buf/write-float! buf (float 0.0))
-             (buf/write-float! buf (float 0.0))
-             (buf/write-float! buf (float 0.0))
-             (buf/write-float! buf (float (:speed m)))
-             (buf/write-int! buf (int (:count m)))
-             (c/write-varint buf (long (:particle m)))
-             (when-some [st (:state m)] (c/write-varint buf (long st))))}
+   {:schema [:map
+             [:limiter {:optional true} [:= {:wire wire/boolean} false]]
+             [:always {:optional true} [:= {:wire wire/boolean} false]]
+             [:pos wire/vec3]
+             [:dx {:optional true} [:= {:wire wire/float} 0.0]]
+             [:dy {:optional true} [:= {:wire wire/float} 0.0]]
+             [:dz {:optional true} [:= {:wire wire/float} 0.0]]
+             [:speed wire/float] [:count wire/int]
+             [:particle wire/varint] [:state [wire/tail wire/varint]]]
+    :write :wire}
    [:play :explode]
-   {:schema [:map [:center delta/Vec3] [:radius number?]
-             [:blocks {:optional true} :int]
-             [:knockback {:optional true} [:maybe delta/Vec3]]
-             [:particle Varint] [:sound :int]
-             [:block-particles {:optional true}
-              [:sequential [:tuple :int number? number? :int]]]]
-    :write (fn [^Buf buf m]
-             (c/write-vec3 buf (:center m))
-             (buf/write-float! buf (float (:radius m)))
-             (buf/write-int! buf (int (:blocks m 0)))
-             (if-let [k (:knockback m)]
-               (do (buf/write-boolean! buf true) (c/write-vec3 buf k))
-               (buf/write-boolean! buf false))
-             (c/write-varint buf (long (:particle m)))
-             (c/write-holder-ref buf (long (:sound m)))
-             (c/write-varint buf (count (:block-particles m)))
-             (doseq [[id scaling speed weight] (:block-particles m)]
-               (c/write-varint buf (long id))
-               (buf/write-float! buf (float scaling))
-               (buf/write-float! buf (float speed))
-               (c/write-varint buf (long weight))))}
+   {:schema [:map [:center wire/vec3] [:radius wire/float]
+             [:blocks wire/int] [:knockback [:maybe wire/vec3]]
+             [:particle wire/varint] [:sound wire/holder-ref]
+             [:block-particles
+              [:sequential [:tuple wire/varint wire/float wire/float
+                            wire/varint]]]]
+    :write :wire}
    [:play :chat]
    {:schema [:map [:message [wire/string {:max 256}]]
              [:timestamp wire/long] [:salt wire/long]

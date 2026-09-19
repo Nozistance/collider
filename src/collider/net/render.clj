@@ -337,7 +337,7 @@
 
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
-    {:packet :sound :sound id :pos (:pos m)
+    {:packet :sound :sound id :pos (:pos m) :seed 0
      :volume (:volume m) :pitch (:pitch m)
      :source (get sound-sources (:source m) src)}
     (once! [:sound (:kind m)])))
@@ -373,8 +373,9 @@
   {:teleport      (fn [world m]
                     [{:packet :player-position
                       :teleport-id (long (:tick world))
-                      :pos (:pos m) :yaw (:yaw m)
-                      :pitch (:pitch m)}])
+                      :pos (:pos m) :vel [0.0 0.0 0.0]
+                      :yaw (:yaw m) :pitch (:pitch m)
+                      :relative 0}])
    :keepalive     (fn [_ m] [{:packet :keep-alive :id (:id m)}])
    :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
    :system-chat   (fn [_ m] [{:packet :system-chat :text (text-of (:runs m)) :overlay false}])
@@ -398,7 +399,9 @@
                     [{:packet :respawn :dimension-type @overworld
                       :keep 0}
                      {:packet :game-event :event 13 :value 0.0}])
-   :default-spawn (fn [_ m] [{:packet :set-default-spawn-position :pos (:pos m)}])
+   :default-spawn (fn [_ m]
+                    [{:packet :set-default-spawn-position
+                      :pos (:pos m) :yaw 0.0 :pitch 0.0}])
    :joined        (fn [_ _] nil)
    :close         (fn [_ _] [:close])})
 
@@ -455,7 +458,10 @@
    :id (:id m) :value (:value m)})
 
 (def ^:private container-fx
-  {:set-slot          (fn [_ m] [{:packet :container-set-slot :slot (:slot m) :stack (:stack m)}])
+  {:set-slot          (fn [_ m]
+                        [{:packet   :container-set-slot :container 0
+                          :state-id 0 :slot (:slot m)
+                          :stack    (:stack m)}])
    :carried           (fn [_ m] [{:packet :set-cursor-item :stack (:stack m)}])
    :open-screen       (fn [_ m] [(open-screen-packet m)])
    :container-content (fn [_ m] [(content-packet m)])
@@ -464,7 +470,10 @@
    :container-close   (fn [_ m] [{:packet :container-close :container (:container m)}])
    :held-slot         (fn [_ m] [{:packet :set-held-slot :slot (:slot m)}])
    :block-ack         (fn [_ m] [{:packet :block-changed-ack :sequence (:sequence m)}])
-   :inventory         (fn [_ m] [{:packet :container-set-content :items (:slots m) :carried (:carried m)}])
+   :inventory         (fn [_ m]
+                        [{:packet   :container-set-content :container 0
+                          :state-id 0 :items (:slots m)
+                          :carried  (:carried m)}])
    :tab-add           (fn [_ m] [{:packet :player-info-update :players (:entries m)}])
    :tab-remove        (fn [_ m] [{:packet :player-info-remove :uuids (:uuids m)}])
    :tab-latency       (fn [_ m] [{:packet :player-info-update :action :latency :players (:entries m)}])
@@ -489,7 +498,8 @@
                   :on-ground (:on-ground m)}])
    :sync-pos  (fn [_ m]
                 [{:packet :entity-position-sync :eid (:eid m)
-                  :pos (:pos m) :yaw (:yaw m) :pitch (:pitch m)
+                  :pos (:pos m) :vel [0.0 0.0 0.0]
+                  :yaw (:yaw m) :pitch (:pitch m)
                   :on-ground (:on-ground m)}])
    :head-look (fn [_ m] [{:packet :rotate-head :eid (:eid m) :yaw (:yaw m)}])
    :velocity  (fn [_ m] [{:packet :set-entity-motion :eid (:eid m) :vel (:vel m)}])
@@ -544,8 +554,12 @@
      {:packet :entity-event :eid eid :event (+ op-level-event 4)}
      {:packet :commands :nodes @command-tree}
      {:packet :server-data :motd motd}
-     {:packet :initialize-border :size world-border-size :max-size world-border-max}
-     {:packet :set-default-spawn-position :pos [x y z]}
+     {:packet     :initialize-border :center-x 0.0 :center-z 0.0
+      :old-size   world-border-size :size world-border-size
+      :max-size   world-border-max :warning-blocks 5
+      :warning-time 15}
+     {:packet :set-default-spawn-position :pos [x y z]
+      :yaw 0.0 :pitch 0.0}
      {:packet :game-event :event 13 :value 0.0}
      {:packet :ticking-state :rate 20.0 :frozen? false}
      {:packet :ticking-step :steps 0}]))

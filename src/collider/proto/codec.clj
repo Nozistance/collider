@@ -42,6 +42,18 @@
       (do (buf/write-byte! buf (int (bit-or (bit-and v 0x7F) 0x80)))
           (recur (unsigned-bit-shift-right v 7))))))
 
+(def ^:private ^:const max-varlong-size 10)
+
+(defn read-varlong ^long [^Buf buf]
+  (loop [n 0 r 0]
+    (let [b (long (buf/read-byte buf))
+          r (bit-or r (bit-shift-left (bit-and b 0x7F) (* 7 n)))]
+      (cond
+        (zero? (bit-and b 0x80)) r
+        (>= (inc n) max-varlong-size)
+        (throw (ex-info "VarLong too big" {:bytes (inc n)}))
+        :else (recur (inc n) r)))))
+
 (defn write-string [^Buf buf ^String s]
   (let [bs (.getBytes s StandardCharsets/UTF_8)]
     (write-varint buf (alength bs))
@@ -299,8 +311,35 @@
 (defn write-angle [^Buf buf ^double deg]
   (buf/write-byte! buf (unchecked-int (Math/floor (/ (* deg 256.0) 360.0)))))
 
+(defn read-angle
+  "Returns in degrees the rotation one byte carries."
+  ^double [^Buf buf]
+  (/ (* (buf/read-byte buf) 360.0) 256.0))
+
 (defn write-vec3 [^Buf buf [x y z]]
   (buf/write-double! buf (double x)) (buf/write-double! buf (double y)) (buf/write-double! buf (double z)))
+
+(defn write-fixed-vec3
+  "Writes a position as three ints of eighths of a block."
+  [^Buf buf [x y z]]
+  (buf/write-int! buf (long (* 8.0 (double x))))
+  (buf/write-int! buf (long (* 8.0 (double y))))
+  (buf/write-int! buf (long (* 8.0 (double z)))))
+
+(defn read-fixed-vec3 [^Buf buf]
+  [(/ (buf/read-int buf) 8.0) (/ (buf/read-int buf) 8.0)
+   (/ (buf/read-int buf) 8.0)])
+
+(defn write-section-change
+  "Writes one block of a section update: where it sits in the section
+  and its state, both in one varlong."
+  [^Buf buf [at state]]
+  (write-varlong buf (bit-or (bit-shift-left (long state) 12)
+                             (long at))))
+
+(defn read-section-change [^Buf buf]
+  (let [v (read-varlong buf)]
+    [(bit-and v 0xFFF) (bit-shift-right v 12)]))
 
 (defn- lp-pack ^long [^double v]
   (Math/round (* (+ (* v 0.5) 0.5) 32766.0)))
@@ -375,6 +414,12 @@
           (bit-shift-left (bit-and sz 0x3FFFFF) 20)
           (bit-and sy 0xFFFFF)))
 
+(defn read-section-pos [^Buf buf]
+  (let [v (buf/read-long buf)]
+    [(bit-shift-right v 42)
+     (bit-shift-right (bit-shift-left v 44) 44)
+     (bit-shift-right (bit-shift-left v 22) 42)]))
+
 (defn write-list [^Buf buf xs f]
   (write-varint buf (count xs))
   (doseq [x xs] (f buf x)))
@@ -382,8 +427,32 @@
 (defn write-holder-ref [^Buf buf ^long id]
   (write-varint buf (inc id)))
 
+(defn read-holder-ref ^long [^Buf buf]
+  (dec (read-varint buf)))
+
 (defn read-id [^Buf buf]
   (data/kebab (read-string buf)))
+
+(defn- stat-registry [type]
+  (case type
+    :custom "custom_stat"
+    :mined "block"
+    (:killed :killed-by) "entity_type"
+    "item"))
+
+(defn write-stat
+  "Writes a statistic: its type, then its entry in the registry the
+  type names."
+  [^Buf buf k]
+  (let [type (keyword (namespace k))]
+    (write-varint buf (data/registry-id "stat_type" type))
+    (write-varint buf (data/registry-id (stat-registry type)
+                                        (keyword (name k))))))
+
+(defn read-stat [^Buf buf]
+  (let [type (data/entry-name "stat_type" (read-varint buf))
+        entry (data/entry-name (stat-registry type) (read-varint buf))]
+    (keyword (name type) (name entry))))
 
 (declare components read-patch write-patch)
 
@@ -981,6 +1050,34 @@
     (write-varint buf (data-types type))
     (write-data-value buf type v))
   (buf/write-byte! buf 0xFF))
+
+(def ^:private data-type-names
+  (into {} (map (fn [[k v]] [(long v) k])) data-types))
+
+(defn- read-data-value [^Buf buf type]
+  (case type
+    :byte (buf/read-byte buf)
+    :int (read-varint buf)
+    :float (buf/read-float buf)
+    :item (read-item-stack buf)
+    :boolean (buf/read-boolean buf)
+    :block-pos (read-block-pos buf)
+    :optional-block-pos (when (buf/read-boolean buf) (read-block-pos buf))
+    :particle [(read-varint buf) (buf/read-int buf)]
+    (:block-state :pose :cow-variant :cow-sound-variant)
+    (read-varint buf)))
+
+(def ^:private ^:const entity-data-end 255)
+
+(defn read-entity-data
+  "Reads the tracked fields of an entity up to the end marker."
+  [^Buf buf]
+  (loop [out []]
+    (let [idx (buf/read-unsigned-byte buf)]
+      (if (= entity-data-end idx)
+        out
+        (let [type (data-type-names (read-varint buf))]
+          (recur (conj out [idx type (read-data-value buf type)])))))))
 
 (defn offline-uuid ^UUID [^String name]
   (UUID/nameUUIDFromBytes (.getBytes (str "OfflinePlayer:" name) StandardCharsets/UTF_8)))
