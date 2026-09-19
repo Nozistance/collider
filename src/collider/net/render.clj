@@ -119,11 +119,11 @@
   (cond-> []
           (flags? meta) (conj [0 :byte (flags-byte meta)])
           (contains? meta :baby?) (conj [16 :boolean (boolean (:baby? meta))])
-          (contains? meta :variant) (conj [17 :int (long (:variant meta))])
+          (contains? meta :variant) (conj [18 :int (long (:variant meta))])
           (contains? meta :cow-variant)
-          (conj [17 :cow-variant (coat-id (:cow-variant meta))])
+          (conj [18 :cow-variant (coat-id (:cow-variant meta))])
           (contains? meta :cow-sound)
-          (conj [18 :cow-sound-variant (voice-id (:cow-sound meta))])
+          (conj [19 :cow-sound-variant (voice-id (:cow-sound meta))])
           (contains? meta :color)
           (conj [18 :byte (color-byte meta)])))
 

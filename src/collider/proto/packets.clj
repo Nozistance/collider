@@ -833,7 +833,7 @@
    {:schema [:map [:slot :int] [:stack [:maybe delta/Stack]]]
     :read (fn [^Buf buf]
             {:slot  (buf/read-short buf)
-             :stack (c/read-item-stack buf)})}
+             :stack (c/read-item-stack buf true)})}
    [:play :client-command]
    {:schema [:map [:action Varint]]
     :read (fn [^Buf buf] {:action (c/read-varint buf)})}

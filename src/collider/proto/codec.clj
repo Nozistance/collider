@@ -846,23 +846,29 @@
   (or (get components kw)
       (throw (ex-info "no codec for data component" {:component kw}))))
 
-(defn- read-component [^Buf buf]
+(defn- read-component
+  "Reads one component; delimited? means a byte length precedes the
+  value, as in the untrusted stack of set-creative-mode-slot."
+  [^Buf buf delimited?]
   (let [k (data/entry-name "data_component_type" (read-varint buf))]
+    (when delimited? (read-varint buf))
     [k ((:r (component-codec k)) buf)]))
 
 (defn- read-removed [^Buf buf]
   (data/entry-name "data_component_type" (read-varint buf)))
 
-(defn read-patch [^Buf buf]
-  (let [added (read-count buf)
-        removed (read-count buf)]
-    (if (and (zero? added) (zero? removed))
-      nil
-      (let [cs (mapv (fn [_] (read-component buf)) (range added))
-            rs (mapv (fn [_] (read-removed buf)) (range removed))]
-        (cond-> {}
-                (seq cs) (assoc :components (apply array-map (apply concat cs)))
-                (seq rs) (assoc :removed (set rs)))))))
+(defn read-patch
+  ([^Buf buf] (read-patch buf false))
+  ([^Buf buf delimited?]
+   (let [added (read-count buf)
+         removed (read-count buf)]
+     (if (and (zero? added) (zero? removed))
+       nil
+       (let [cs (mapv (fn [_] (read-component buf delimited?)) (range added))
+             rs (mapv (fn [_] (read-removed buf)) (range removed))]
+         (cond-> {}
+                 (seq cs) (assoc :components (apply array-map (apply concat cs)))
+                 (seq rs) (assoc :removed (set rs))))))))
 
 (defn write-patch [^Buf buf patch]
   (let [cs (:components patch)
@@ -881,11 +887,15 @@
         (write-varint buf (data/registry-id "item" (:item stack)))
         (write-patch buf stack))))
 
-(defn read-item-stack [^Buf buf]
-  (let [n (read-varint buf)]
-    (when (pos? n)
-      (let [item (data/entry-name "item" (read-varint buf))]
-        (merge {:item item :count n} (read-patch buf))))))
+(defn read-item-stack
+  "Reads an optional stack. The client's creative stack is the
+  untrusted codec: every component value is length-prefixed."
+  ([^Buf buf] (read-item-stack buf false))
+  ([^Buf buf delimited?]
+   (let [n (read-varint buf)]
+     (when (pos? n)
+       (let [item (data/entry-name "item" (read-varint buf))]
+         (merge {:item item :count n} (read-patch buf delimited?)))))))
 
 (defn read-hashed-stack
   "Returns the stack the client claims is in a slot.
@@ -927,8 +937,7 @@
                 (write-varint buf (long t))
                 (buf/write-int! buf (int c)))
     :pose (write-varint buf (long v))
-    (:cow-variant :cow-sound-variant)
-    (write-varint buf (inc (long v)))))
+    (:cow-variant :cow-sound-variant) (write-varint buf (long v))))
 
 (defn write-entity-data [^Buf buf entries]
   (doseq [[idx type v] entries]
