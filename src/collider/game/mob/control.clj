@@ -1,7 +1,5 @@
 (ns collider.game.mob.control
-  "The move, jump and body rotation controls of a mob.
-  MoveControl and JumpControl live in :move and :jump, the body
-  rotation in :body."
+  "The move, jump and body rotation controls of a mob."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -21,8 +19,8 @@
 (def ^:private ^:const face-forward-delay 10)
 
 (defn rotlerp
-  "Returns a turned toward b by at most max degrees.
-  The answer is normalised the way MoveControl.rotlerp normalises."
+  "Returns a turned toward b by at most max degrees, brought back
+  into one turn around the circle."
   ^double [^double a ^double b ^double max]
   (let [d (Math/max (- max) (Math/min max (v/wrap-deg (- b a))))
         r (+ a d)]
@@ -44,25 +42,24 @@
   (+ (dec y) (shape-top chunks x (dec y) z)))
 
 (defn wanted
-  "Returns mob e told to walk to x y z, as setWantedPosition.
-  A jump under way keeps the control jumping."
+  "Returns mob e told to walk to x y z at that speed.
+  A jump under way keeps the mob jumping."
   [e x y z speed]
-  (let [m (:move e)]
-    (assoc e :move (assoc m :x (double x) :y (double y) :z (double z)
-                            :mult (double speed)
-                            :op (if (= :jumping (:op m))
-                                  :jumping
-                                  :move-to)))))
+  (let [m (:move e)
+        op (if (= :jumping (:op m)) :jumping :move-to)
+        m2 (assoc m :x (double x) :y (double y) :z (double z)
+                  :mult (double speed) :op op)]
+    (assoc e :move m2)))
 
 (defn in-liquid?
-  "Whether the mob stands in a liquid, as Entity.isInLiquid.
-  Both water and lava hold a mob up; :wet? and :in-lava? are the
-  flags the physics leaves behind."
+  "Returns true when the mob stands in water or in lava, either of
+  which holds it up."
   [e]
   (boolean (or (:wet? e) (:in-lava? e))))
 
 (defn- sped
-  "Mob.setSpeed: the drive and the speed are one float value."
+  "Returns the move control driving at s, which is also the speed
+  it reports, rounded to a float."
   [m ^double s]
   (let [s (double (float s))] (assoc m :speed s :zza s)))
 
@@ -79,9 +76,8 @@
          (not (block/tagged? st "fences")))))
 
 (defn- turned [e ^double xd ^double zd]
-  (assoc e :yaw (rotlerp (double (:yaw e))
-                         (- (Math/toDegrees (Math/atan2 zd xd)) 90.0)
-                         max-turn)))
+  (let [to (- (Math/toDegrees (Math/atan2 zd xd)) 90.0)]
+    (assoc e :yaw (rotlerp (double (:yaw e)) to max-turn))))
 
 (defn- jumps? [chunks e [xd yd zd] ^double width]
   (let [xd (double xd) yd (double yd) zd (double zd)]
@@ -98,15 +94,14 @@
       (assoc e :move (assoc m :op :wait :zza 0.0))
       (let [jump? (jumps? (:chunks world) e [xd yd zd] width)
             m (assoc (sped m (* (double (:mult m)) attr))
-                :op (if jump? :jumping :wait))]
+                     :op (if jump? :jumping :wait))]
         (cond-> (assoc (turned e xd zd) :move m)
-                jump? (assoc :jump true))))))
+          jump? (assoc :jump true))))))
 
 (defn- jumping-tick [e ^double attr]
-  (let [m (sped (:move e) (* (double (:mult (:move e))) attr))]
-    (assoc e :move (cond-> m
-                           (or (:on-ground e) (in-liquid? e))
-                           (assoc :op :wait)))))
+  (let [m (sped (:move e) (* (double (:mult (:move e))) attr))
+        landed? (or (:on-ground e) (in-liquid? e))]
+    (assoc e :move (cond-> m landed? (assoc :op :wait)))))
 
 (defn- waiting [e]
   (let [m (:move e)]
@@ -115,7 +110,7 @@
       e)))
 
 (defn tick
-  "Runs the move and jump controls of mob e for one tick.
+  "Returns mob e after one tick of its move and jump controls.
   attr is the movement speed of its kind, width its box width."
   [world e attr width]
   (case (:op (:move e) :wait)
@@ -123,28 +118,47 @@
     :jumping (jumping-tick e (double attr))
     (waiting e)))
 
-(defn- faced-forward ^double [^double yaw ^double hy ^long stable]
+(defn- flt ^double [^double a] (double (float a)))
+
+(defn rotate-if-necessary
+  "Returns target pulled back toward base by no more than max
+  degrees. Every step rounds to a float, as the angles are floats."
+  ^double [^double base ^double target ^double max]
+  (let [d (flt (v/wrap-deg (flt (- target base))))]
+    (flt (- target (Math/clamp d (- max) max)))))
+
+(defn- faced-forward
+  "Returns the yaw of a body that has stood still for that many
+  ticks. After ten the body starts to turn toward the head, and
+  ten ticks later it faces where the head looks."
+  ^double [^double yaw ^double hy ^long stable]
   (if (> stable face-forward-delay)
-    (let [f (Math/min 1.0 (/ (double (- stable face-forward-delay))
-                             (double face-forward-delay)))]
-      (v/limit-angle yaw hy (* max-head-y-rot (- 1.0 f))))
+    (let [n (- stable face-forward-delay)
+          f (Math/clamp (flt (/ (double n) 10.0)) 0.0 1.0)
+          r (flt (* max-head-y-rot (flt (- 1.0 f))))]
+      (rotate-if-necessary yaw hy r))
     yaw))
 
+(defn- turned-body [e ^double yaw ^double hy ^long t]
+  (assoc e :yaw (rotate-if-necessary yaw hy max-head-y-rot)
+         :body {:head hy :at t}))
+
+(defn- carried-head [e ^double yaw ^double hy ^long t]
+  (let [h (rotate-if-necessary hy yaw max-head-y-rot)]
+    (assoc e :head-yaw h :body {:head h :at t})))
+
 (defn body-tick
-  "Turns the body and head of e after its move.
+  "Returns e with its body and head turned after its move.
   moved? tells whether the mob shifted in the XZ plane this tick:
   a walking mob carries its head, a standing one turns its body
-  after its head, as BodyRotationControl."
+  after its head."
   [e moved? ^long t]
   (let [hy (double (or (:head-yaw e) (:yaw e)))
         yaw (double (:yaw e))
-        b (or (:body e) {:head 0.0 :at t})]
+        b (or (:body e) {:head 0.0 :at (dec t)})
+        stable (- t (long (:at b)))]
     (cond
-      moved? (let [hy (v/limit-angle hy yaw max-head-y-rot)]
-               (assoc e :head-yaw hy :body {:head hy :at t}))
+      moved? (carried-head e yaw hy t)
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
-      (assoc e :yaw (v/limit-angle yaw hy max-head-y-rot)
-               :body {:head hy :at t})
-      :else (assoc e :body b
-                     :yaw (faced-forward yaw hy
-                                         (- t (long (:at b))))))))
+      (turned-body e yaw hy t)
+      :else (assoc e :body b :yaw (faced-forward yaw hy stable)))))

@@ -1,12 +1,15 @@
 (ns collider.game.mob.push
-  "Crowd shoves between entities too close together."
+  "The shoves that bodies which overlap hand each other."
   (:require [clojure.data.int-map :as im]
             [collider.game.mob.mobs :as mobs]
             [collider.game.state :as state]
-            [collider.random :as random]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
+
+(def ^:private ^:const strength (double (float 0.05)))
+
+(def ^:private ^:const threshold (double (float 0.01)))
 
 (defn- pushable-half ^double [e]
   (case (:type e)
@@ -21,143 +24,172 @@
 (deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
                    ^doubles halfs ^doubles heights])
 
-(defn- push-cell-key ^long [pos]
-  (bit-or (bit-shift-left (bit-and (bit-shift-right (long (Math/floor (v/x pos))) 2) 0xFFFFFFFF) 32)
-          (bit-and (bit-shift-right (long (Math/floor (v/z pos))) 2) 0xFFFFFFFF)))
-
 (defn- cell-key ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32) (bit-and cz 0xFFFFFFFF)))
+  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
+          (bit-and cz 0xFFFFFFFF)))
 
-(def ^:private ^:const push-cap 16)
+(defn- cell-of ^long [^double x ^double z]
+  (cell-key (bit-shift-right (long (Math/floor x)) 2)
+            (bit-shift-right (long (Math/floor z)) 2)))
 
-(defn- pushable-groups [world active]
+(defn- pushable?
+  "Whether the body both shoves and is shoved: a player or a mob,
+  in a chunk the tick still runs. Items and primed TNT are never
+  pushed."
+  [active [_ e]]
+  (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
+       (state/active-at? active (:pos e))))
+
+(defn- bodies [world active]
+  (filter (fn [entry] (pushable? active entry)) (:entities world)))
+
+(defn- by-cell [entries]
   (persistent!
-    (reduce (fn [m [eid e]]
-              (if (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
-                       (state/active-at? active (:pos e)))
-                (let [k (push-cell-key (:pos e))]
-                  (assoc! m k (conj (get m k []) [eid e])))
-                m))
+    (reduce (fn [m entry]
+              (let [p (:pos (nth entry 1))
+                    k (cell-of (double (v/x p)) (double (v/z p)))]
+                (assoc! m k (conj (get m k []) entry))))
             (transient (im/int-map))
-            (:entities world))))
+            entries)))
 
 (defn- packed-cell ^PushCell [entries]
   (let [n (count entries)
         eids (long-array n) xs (double-array n) ys (double-array n)
-        zs (double-array n) halfs (double-array n) heights (double-array n)]
+        zs (double-array n) hs (double-array n) ts (double-array n)]
     (loop [i 0 es (seq entries)]
       (when es
-        (let [[eid e] (first es)
-              p (:pos e)]
+        (let [[eid e] (first es) p (:pos e)]
           (aset eids i (long eid))
-          (aset xs i (double (v/x p))) (aset ys i (double (v/y p))) (aset zs i (double (v/z p)))
-          (aset halfs i (pushable-half e)) (aset heights i (pushable-height e))
+          (aset xs i (double (v/x p)))
+          (aset ys i (double (v/y p)))
+          (aset zs i (double (v/z p)))
+          (aset hs i (pushable-half e))
+          (aset ts i (pushable-height e))
           (recur (inc i) (next es)))))
-    (PushCell. eids xs ys zs halfs heights)))
+    (PushCell. eids xs ys zs hs ts)))
 
-(deftype Hood [^objects cells ^longs sizes ^long n])
+(defn- hood ^objects [cells ^long k]
+  (let [cx (long (unchecked-int (bit-shift-right k 32)))
+        cz (long (unchecked-int k))
+        cs (object-array 9)]
+    (dotimes [c 9]
+      (let [k (cell-key (+ cx (dec (long (quot c 3))))
+                        (+ cz (dec (long (rem c 3)))))]
+        (aset cs c (get cells k))))
+    cs))
 
-(defn- hood ^Hood [cells ^long cx ^long cz]
-  (let [cs (object-array 9)
-        sizes (long-array 9)
-        n (loop [c 0 n 0]
-            (if (= c 9)
-              n
-              (let [^PushCell cell (get cells (cell-key (+ cx (dec (quot c 3))) (+ cz (dec (rem c 3)))))
-                    sz (long (if cell (alength ^longs (.eids cell)) 0))]
-                (aset cs c cell) (aset sizes c sz)
-                (recur (inc c) (+ n sz)))))]
-    (Hood. cs sizes n)))
+(defn- packed [cells]
+  (persistent!
+    (reduce-kv (fn [m k es]
+                 (assoc! m k (packed-cell (sort-by first es))))
+               (transient (im/int-map))
+               cells)))
+
+(defn index-of
+  "Returns the entries laid out so that a body finds every body
+  near enough to shove it."
+  [entries]
+  (let [cells (packed (by-cell entries))
+        f (fn [m k _] (assoc! m k (hood cells k)))]
+    (persistent! (reduce-kv f (transient (im/int-map)) cells))))
 
 (defn push-index [world active]
-  (let [cells (persistent!
-                (reduce-kv (fn [m k entries] (assoc! m k (packed-cell (sort-by first entries))))
-                           (transient (im/int-map))
-                           (pushable-groups world active)))]
-    (persistent!
-      (reduce-kv (fn [m k _]
-                   (assoc! m k (hood cells (long (unchecked-int (bit-shift-right (long k) 32)))
-                                     (long (unchecked-int (long k))))))
-                 (transient (im/int-map))
-                 cells))))
+  (index-of (bodies world active)))
 
-(deftype Window [^objects cells ^longs sizes ^long self-i ^long n])
+(defn- touching
+  "The cells whose bodies one still within this cell can reach after
+  a tick of movement: a cell is wider than that reach."
+  [^long k]
+  (let [cx (long (unchecked-int (bit-shift-right k 32)))
+        cz (long (unchecked-int k))]
+    (for [dx [-1 0 1] dz [-1 0 1]]
+      (cell-key (+ cx (long dx)) (+ cz (long dz))))))
 
-(def ^:private ^Window empty-window (Window. (object-array 9) (long-array 9) -1 0))
+(defn- blob
+  "The occupied cells reachable from k by steps to a touching cell."
+  [cells ^long k]
+  (loop [q [k] seen #{k}]
+    (if-let [c (peek q)]
+      (let [near (filter (fn [n] (contains? cells n)) (touching c))
+            cs (remove seen near)]
+        (recur (into (pop q) cs) (into seen cs)))
+      seen)))
 
-(defn- self-index ^long [^Hood h ^long eid]
-  (let [^PushCell own (aget ^objects (.cells h) 4)]
-    (if own
-      (let [^longs ids (.eids own)]
-        (loop [i 0]
-          (cond (= i (alength ids)) -1
-                (= (aget ids i) eid) i
-                :else (recur (inc i)))))
-      -1)))
+(defn- group-of [cells b]
+  (vec (sort-by first (mapcat (fn [k] (get cells k)) b))))
 
-(defn- push-window ^Window [index ^long cx ^long cz ^long eid]
-  (if-let [^Hood h (get index (cell-key cx cz))]
-    (let [self-i (self-index h eid)
-          ^longs sizes (aclone ^longs (.sizes h))]
-      (if (>= self-i 0)
-        (do (aset sizes 4 (dec (aget sizes 4)))
-            (Window. (.cells h) sizes self-i (dec (.n h))))
-        (Window. (.cells h) sizes self-i (.n h))))
-    empty-window))
+(defn- grouped [cells]
+  (loop [ks (keys cells) seen #{} out []]
+    (if-let [k (first ks)]
+      (if (contains? seen k)
+        (recur (next ks) seen out)
+        (let [b (blob cells (long k))]
+          (recur (next ks) (into seen b)
+                 (conj out (group-of cells b)))))
+      out)))
 
-(defn- add-impulse! [^doubles acc ^double dx ^double dz]
-  (let [m (max (Math/abs dx) (Math/abs dz))]
-    (when (>= m 0.01)
+(defn islands
+  "The pushable bodies split into groups that one tick of movement
+  cannot bring together, so each group steps on its own."
+  [world active]
+  (sort-by ffirst (grouped (by-cell (bodies world active)))))
+
+(defn- impulse!
+  "Adds to acc the shove of one body on another: 0.05 apart along
+  the line between them, cut by the root of their Chebyshev
+  distance and dropped altogether below 0.01."
+  [^doubles acc ^double dx ^double dz]
+  (let [m (Math/max (Math/abs dx) (Math/abs dz))]
+    (when (>= m threshold)
       (let [s (Math/sqrt m)
-            d3 (min 1.0 (/ 1.0 s))]
-        (aset acc 0 (+ (aget acc 0) (- (* (/ dx s) d3 0.1))))
-        (aset acc 1 (+ (aget acc 1) (- (* (/ dz s) d3 0.1))))))))
+            p (Math/min 1.0 (/ 1.0 s))]
+        (aset acc 0 (+ (aget acc 0) (* (* (/ dx s) p) strength)))
+        (aset acc 1 (+ (aget acc 1) (* (* (/ dz s) p) strength)))))))
 
-(defn- push-pair! [^doubles acc ^doubles me ^PushCell cell ^long j]
+(defn- shove-pair! [^doubles acc ^doubles me ^PushCell c ^long j]
   (let [x (aget me 0) y (aget me 1) z (aget me 2)
-        ox (aget ^doubles (.xs cell) j)
-        oy (aget ^doubles (.ys cell) j)
-        oz (aget ^doubles (.zs cell) j)
-        reach (+ (aget me 3) (aget ^doubles (.halfs cell) j) 0.2)]
-    (when (and (< (Math/abs (- ox x)) reach)
-               (< (Math/abs (- oz z)) reach)
+        ox (aget ^doubles (.xs c) j)
+        oy (aget ^doubles (.ys c) j)
+        oz (aget ^doubles (.zs c) j)
+        r (+ (aget me 3) (aget ^doubles (.halfs c) j))]
+    (when (and (< (Math/abs (- ox x)) r)
+               (< (Math/abs (- oz z)) r)
                (< oy (+ y (aget me 4)))
-               (> (+ oy (aget ^doubles (.heights cell) j)) y))
-      (add-impulse! acc (- ox x) (- oz z)))))
+               (> (+ oy (aget ^doubles (.heights c) j)) y))
+      (impulse! acc (- x ox) (- z oz)))))
 
-(defn- push-into! [^doubles acc ^Window w ^long i ^doubles me]
-  (let [^longs sizes (.sizes w)
-        ^objects cells (.cells w)]
-    (loop [c 0 i i]
-      (let [sz (aget sizes c)]
-        (if (< i sz)
-          (let [^PushCell cell (aget cells c)
-                j (if (and (= c 4) (>= (.self-i w) 0) (>= i (.self-i w))) (inc i) i)]
-            (push-pair! acc me cell j))
-          (recur (inc c) (- i sz)))))))
+(defn- shove-cell! [^doubles acc ^doubles me ^PushCell c ^long hi]
+  (let [^longs ids (.eids c)
+        eid (long (aget me 5))]
+    (dotimes [j (alength ids)]
+      (let [o (aget ids j)]
+        (when (and (not= o eid) (< o hi))
+          (shove-pair! acc me c j))))))
 
-(defn- push-span! [^doubles acc ^Window w from to ^doubles me]
-  (loop [i (long from)]
-    (when (< i (long to)) (push-into! acc w i me) (recur (inc i)))))
-
-(defn- push-window-of ^Window [index ^double x ^double z ^long eid]
-  (push-window index (bit-shift-right (long (Math/floor x)) 2)
-               (bit-shift-right (long (Math/floor z)) 2) eid))
-
-(defn- push-wrapped! [^doubles acc ^Window w ^doubles me ^long off]
-  (let [n (.n w) end (+ off push-cap)]
-    (if (<= end n)
-      (push-span! acc w off end me)
-      (do (push-span! acc w off n me)
-          (push-span! acc w 0 (- end n) me)))))
-
-(defn push [index eid e t half height]
-  (let [p (:pos e) x (double (v/x p)) y (v/y p) z (double (v/z p))
-        ^Window w (push-window-of index x z (long eid))
-        me (double-array [x (double y) z (double half) (double height)])
-        acc (double-array 2)
-        n (.n w)]
-    (if (<= n push-cap)
-      (push-span! acc w 0 n me)
-      (push-wrapped! acc w me (mod (random/mix64 (unchecked-add (random/mix64 t) (long eid))) n)))
+(defn- shove [index e eid hi half height]
+  (let [p (:pos e)
+        x (double (v/x p)) z (double (v/z p))
+        fields [x (double (v/y p)) z (double half)
+                (double height) (double (long eid))]
+        me (double-array fields)
+        acc (double-array 2)]
+    (when-let [^objects cs (get index (cell-of x z))]
+      (dotimes [c 9]
+        (when-let [cell (aget cs c)]
+          (shove-cell! acc me ^PushCell cell (long hi)))))
     [(aget acc 0) (aget acc 1)]))
+
+(defn before
+  "The shoves already in the mob's velocity when its tick starts.
+  A lower eid pushed earlier this tick against this same box, a
+  higher one pushed at the end of the last tick, when both stood
+  where the snapshot holds them."
+  [index eid e half height]
+  (shove index e (long eid)
+         (if (:ticked? e) Long/MAX_VALUE (long eid)) half height))
+
+(defn after
+  "The shove the mob hands out itself, the last thing its tick
+  does: its new box against every other box."
+  [index eid e half height]
+  (shove index e (long eid) Long/MAX_VALUE half height))
