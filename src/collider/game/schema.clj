@@ -65,6 +65,15 @@
 
 (defn- entity-entry [[eid e]] [(long eid) (entity/of e)])
 
+(defn refreshed
+  "Returns [payload next-eid] with the bodies of the payload under
+  ids no one has had yet. Only the uuid of a body outlives its
+  chunk; its id does not."
+  [w {:keys [entities] :as payload}]
+  (let [n (long (:next-eid w 1000000))
+        fresh (map-indexed (fn [i [_ e]] [(+ n (long i)) e]) entities)]
+    [(assoc payload :entities (into {} fresh)) (+ n (count entities))]))
+
 (defn- block-entity-entry [[p e]] [(vec p) e])
 
 (defn with-chunk
@@ -109,6 +118,7 @@
    :block-entities     {:default (i/int-map) :load identity}
    :stored             {:default (i/int-set)}
    :loading            {:default (i/int-set)}
+   :unknown            {:default (i/int-map)}
    :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity :schema [:tuple :int :int :int]}
    :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
    :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}

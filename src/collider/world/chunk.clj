@@ -170,6 +170,24 @@
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
 
+(defn tracked?
+  "Tells whether a chunk dx dz away is within view distance v.
+  The two rings nearest the axes count as distance zero, so the
+  set reaches v+1 along them and is cut at the corners."
+  [^long v ^long dx ^long dz]
+  (let [ax (max 0 (- (Math/abs dx) 2))
+        az (max 0 (- (Math/abs dz) 2))]
+    (< (+ (* ax ax) (* az az)) (* v v))))
+
+(defn tracked-ids
+  "Returns the ids of the chunks a viewer in cx cz with view
+  distance v keeps."
+  [^long cx ^long cz ^long v]
+  (for [dx (range (- -1 v) (+ v 2))
+        dz (range (- -1 v) (+ v 2))
+        :when (tracked? v dx dz)]
+    (pos->id (+ cx dx) (+ cz dz))))
+
 (defn block-id-chunk
   "Returns the id of the chunk that holds packed block id bid."
   ^long [^long bid]

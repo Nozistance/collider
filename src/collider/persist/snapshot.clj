@@ -10,7 +10,8 @@
             [collider.world.chunk :as chunk]
             [malli.core :as m]
             [malli.error :as me]
-            [taoensso.nippy :as nippy])
+            [taoensso.nippy :as nippy]
+            [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.java Chunk)
            (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption)
@@ -26,7 +27,7 @@
 (nippy/extend-thaw ::chunk [^DataInput in]
   (chunk/load-chunk in))
 
-(def ^:private freeze-opts {:compressor nippy/lz4-compressor})
+(def ^:private freeze-opts {:compressor lz4-compressor})
 
 (defprotocol Store
   (put-chunk! [this id payload])
@@ -261,6 +262,14 @@
   gets nil when the chunk cannot be read."
   [saver store id deliver]
   (send-off saver fetched! store id deliver))
+
+(defn fetch-chunk-now!
+  "Returns a saved chunk on the calling thread.
+  Every save asked for before it lands first. nil comes back
+  when the chunk cannot be read."
+  [saver store id]
+  (await saver)
+  (read-chunk store id))
 
 (defn request-save! [saver store world]
   (when saver

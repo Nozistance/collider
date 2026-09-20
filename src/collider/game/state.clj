@@ -38,37 +38,82 @@
 
 (def activation-radius 2)
 
-(defn- player-area [world e]
-  (let [[cx cz] (chunk/id->pos (chunk/pos-chunk (:pos e)))
-        r (long (get-in world [:config :simulation-distance]
-                        activation-radius))]
-    (filter #(contains? (:chunks world) %)
-            (chunk/around-ids (long cx) (long cz) r))))
+(defn view-radius ^long [world]
+  (-> (long (get-in world [:config :view-distance] 7))
+      (max 2)
+      (min 32)))
 
-(defn- compute-active-chunks [world]
-  (into (i/int-set)
-        (mapcat (fn [[_ e]]
-                  (when (= :player (:type e))
-                    (player-area world e))))
+(defn- player-chunks [world]
+  (into [] (keep (fn [[_ e]]
+                   (when (= :player (:type e))
+                     (chunk/id->pos (chunk/pos-chunk (:pos e))))))
         (:entities world)))
 
-(defn- fresh? [world cached]
+(defn- zone-at [world ^long r]
+  (into (i/int-set)
+        (mapcat (fn [[cx cz]]
+                  (chunk/around-ids (long cx) (long cz) r)))
+        (player-chunks world)))
+
+(defn loaded-zone
+  "Returns the ids of the chunks the players keep at full status.
+  A loading ticket reaches the view distance and its level climbs
+  by one per chunk beyond it, so two further rings still count."
+  [world]
+  (zone-at world (+ 2 (view-radius world))))
+
+(defn- sim-radius ^long [world]
+  (long (get-in world [:config :simulation-distance]
+                activation-radius)))
+
+(defn- compute-areas [world]
+  (let [zone (loaded-zone world)
+        s (sim-radius world)
+        live? #(and (contains? zone %)
+                    (contains? (:chunks world) %))
+        in? #(into (i/int-set) (filter live?) %)]
+    [(in? (zone-at world s)) (in? (zone-at world (inc s)))
+     (zone-at world (inc (view-radius world)))]))
+
+(defn- fresh?
+  "Whether the cached areas still describe this world. Their
+  reach is a config value, so a changed config outdates them as
+  surely as a body that moved or a chunk that came or went."
+  [world cached]
   (and cached
        (identical? (nth (key cached) 0) (:entities world))
-       (identical? (nth (key cached) 1) (:chunks world))))
+       (identical? (nth (key cached) 1) (:chunks world))
+       (identical? (nth (key cached) 2) (:config world))))
 
-(defn active-chunks [world]
+(defn- areas [world]
   (let [cached (:active-chunks world)]
-    (if (fresh? world cached)
-      (val cached)
-      (compute-active-chunks world))))
+    (if (fresh? world cached) (val cached) (compute-areas world))))
+
+(defn active-chunks
+  "Returns the chunks that run entity and random ticks."
+  [world]
+  (nth (areas world) 0))
+
+(defn ticking-chunks
+  "Returns the chunks that run scheduled block and fluid ticks.
+  They reach one chunk further than the entity ticking ones."
+  [world]
+  (nth (areas world) 1))
+
+(defn broadcast-chunks
+  "Returns the chunks whose block changes reach the clients.
+  A loading ticket puts the view distance and one ring past it
+  below the block ticking level; the ring after that is only
+  full, and a change there is never announced."
+  [world]
+  (nth (areas world) 2))
 
 (defn cache-active-chunks [world]
   (if (fresh? world (:active-chunks world))
     world
-    (let [k [(:entities world) (:chunks world)]]
+    (let [k [(:entities world) (:chunks world) (:config world)]]
       (assoc world :active-chunks
-             (MapEntry/create k (compute-active-chunks world))))))
+             (MapEntry/create k (compute-areas world))))))
 
 (defn advance
   "Returns the world one tick older."
@@ -250,6 +295,7 @@
         (update :block-entities dissoc id)
         (update :entities drop-entities id)
         (update :block-ticks drop-ticks id)
+        (update :unknown dissoc id)
         (update :stored (fnil conj (i/int-set)) id))))
 
 (defn- vacated-bed [w eid]
@@ -728,10 +774,14 @@
 (defn- chunk-requested [w id]
   (update w :loading (fnil conj (i/int-set)) id))
 
+(defn- chunk-ticketed [w id n]
+  (update w :unknown assoc (long id) (long n)))
+
 (defn- chunk-restored [w id payload]
   (if (contains? (:chunks w) id)
     (update w :loading disj id)
-    (schema/with-chunk w id payload)))
+    (let [[fresh n] (schema/refreshed w payload)]
+      (schema/with-chunk (assoc w :next-eid n) id fresh))))
 
 (defn- spawn-progress [w eid req]
   (if req
@@ -761,6 +811,8 @@
    :set-world-spawn (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
    :add-chunk (fn [w [_ id c]] (chunk-added w id c))
    :chunk-requested (fn [w [_ id]] (chunk-requested w id))
+   :chunk-ticket (fn [w [_ id n]] (chunk-ticketed w id n))
+   :purge-tickets (fn [w [_ held]] (assoc w :unknown held))
    :restore-chunk (fn [w [_ id p]] (chunk-restored w id p))
    :unload-chunk (fn [w [_ id]] (unloaded w id))
    :player-placed (fn [w [_ eid n p]] (player-placed w eid n p))

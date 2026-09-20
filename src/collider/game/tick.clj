@@ -71,10 +71,11 @@
              [#'pose/pose]
              [#'furnaces/furnace-cooking #'brewing/brewing]
              [#'consume/consume]
+             [#'chunks/chunk-loading]
              systems
+             [#'chunks/unloading]
              [#'explosions/explosions]
              post-systems
-             [#'chunks/unloading]
              [#'detector/observe]])
 
 (defn tick

@@ -5,6 +5,7 @@
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
@@ -138,7 +139,8 @@
 
 (defn- explosion-reader [world [cx cy cz]]
   (explosion/block-reader (:chunks world)
-                          [(long (double cx)) (long (double cy)) (long (double cz))]))
+                          [(long (double cx)) (long (double cy)) (long (double cz))]
+                          #(chunks/oracle world %)))
 
 (defn- break-cells [world rg affected gone primed source]
   (if (interacts? world source)
@@ -163,11 +165,14 @@
         [chains destroy] (break-cells world rg affected gone primed source)
         gone' (into gone destroy)
         [motions pushes] (blast-deltas rg index center power later)
-        fires (if fire? (fire-cells rg affected gone' seed) [])]
+        fires (if fire? (fire-cells rg affected gone' seed) [])
+        acc (into acc (chunks/oracle-deltas
+                        (explosion/loaded-payloads rg)))]
     [gone' (into primed chains)
-     (blast-acc world rg acc {:center center :power power :seed seed :source source
-                              :affected affected :destroy destroy :chains chains
-                              :fires fires :motions motions :pushes pushes})]))
+     (blast-acc world rg acc
+                {:center center :power power :seed seed :source source
+                 :affected affected :destroy destroy :chains chains
+                 :fires fires :motions motions :pushes pushes})]))
 
 (defn- requests [d]
   (into [] (comp (filter (fn [delta] (= :explode (nth delta 0)))) (map second)) (:world d)))

@@ -8,6 +8,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.gamerules :as rules]
             [collider.game.state :as state]
+            [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
             [collider.vec :as v]
             [collider.random :as random]
@@ -64,26 +65,52 @@
 (defn- say [eid key & with]
   [(out/to eid (out/system-chat [{:translate key :with (vec with)}]))])
 
-(defn- unloaded? [world positions]
-  (some #(not (contains? (:chunks world) (chunk/block-chunk %)))
-        positions))
+(defn- unloaded?
+  "Tells whether any position belongs to no chunk the world holds.
+  A chunk a player keeps counts even before its data arrives."
+  [world positions]
+  (let [held (chunks/needed-ids world)]
+    (some #(let [id (chunk/block-chunk %)]
+             (not (or (contains? (:chunks world) id)
+                      (contains? held id))))
+          positions)))
 
 (defn- box [[ax ay az bx by bz]]
   (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
 
-(defn- fill-changes [world [[x1 x2] [y1 y2] [z1 z2]] st]
+(defn- fill-changes [chunks [[x1 x2] [y1 y2] [z1 z2]] st]
   (vec (for [x (range x1 (inc x2))
              y (range y1 (inc y2))
              z (range z1 (inc z2))
-             :when (not= st (chunk/chunks-get-block (:chunks world) [x y z]))]
+             :when (not= st (chunk/chunks-get-block chunks [x y z]))]
          [[x y z] st])))
 
+(defn- box-ids [[[x1 x2] _ [z1 z2]]]
+  (for [cx (range (bit-shift-right (long x1) 4)
+                  (inc (bit-shift-right (long x2) 4)))
+        cz (range (bit-shift-right (long z1) 4)
+                  (inc (bit-shift-right (long z2) 4)))]
+    (chunk/pos->id cx cz)))
+
+(defn- fetched
+  "Returns [chunks deltas] with every absent chunk of the box read."
+  [world bounds]
+  (let [in? #(contains? (:chunks world) %)
+        read (fn [id] [id (chunks/oracle world id)])
+        loaded (into {} (comp (remove in?) (map read))
+                     (box-ids bounds))]
+    [(reduce-kv #(assoc %1 %2 (:chunk %3)) (:chunks world) loaded)
+     (chunks/oracle-deltas loaded)]))
+
 (defn- filled [world eid bounds block]
-  (let [changes (fill-changes world bounds (block/state block))]
-    (if (empty? changes)
-      (say eid "commands.fill.failed")
-      (cons [:set-blocks changes]
-            (say eid "commands.fill.success" (str (count changes)))))))
+  (let [[chunks adds] (fetched world bounds)
+        changes (fill-changes chunks bounds (block/state block))]
+    (concat adds
+            (if (empty? changes)
+              (say eid "commands.fill.failed")
+              (cons [:set-blocks changes]
+                    (say eid "commands.fill.success"
+                         (str (count changes))))))))
 
 (defn- fill-deltas [world eid [ax ay az bx by bz block]]
   (if (unloaded? world [[ax ay az] [bx by bz]])

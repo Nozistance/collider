@@ -54,6 +54,10 @@
    [:cat :int :any]
    :chunk-requested
    [:cat :int]
+   :chunk-ticket
+   [:cat :int :int]
+   :purge-tickets
+   [:cat [:map-of :int :int]]
    :restore-chunk
    [:cat :int :map]
    :player-placed

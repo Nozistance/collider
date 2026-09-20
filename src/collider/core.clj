@@ -105,8 +105,13 @@
         {:keys [socket accept]} (server/listen! io (:port cfg))]
     {:queue queue :conns conns :socket socket :accept accept}))
 
-(defn- ticker-opts [conns cfg save!]
-  {:io-input #(hash-map :writable (server/writable-eids conns))
+(defn- fetcher [{:keys [saver store]}]
+  (when saver #(snapshot/fetch-chunk-now! saver store %)))
+
+(defn- ticker-opts [base conns cfg save!]
+  {:io-input (let [fetch (fetcher base)]
+               #(hash-map :writable (server/writable-eids conns)
+                          :fetch-chunk fetch))
    :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
    :on-pause save!})
 
@@ -115,7 +120,7 @@
         out! (fn [w d]
                (when saver (chunk-io! base queue d))
                (deliver! conns w d))
-        opts (ticker-opts conns cfg save!)
+        opts (ticker-opts base conns cfg save!)
         ticker (tick/start-ticker! world queue out! opts)]
     {:ticker    ticker :tick-stats (:stats ticker)
      :scheduler (when saver

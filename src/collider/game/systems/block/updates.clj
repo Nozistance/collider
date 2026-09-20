@@ -203,7 +203,7 @@
   (let [t (long (:tick world))
         due (due-ticks world)]
     (when (seq due)
-      (let [active (state/active-chunks world)
+      (let [active (state/ticking-chunks world)
             now (into [] (comp (filter #(state/active-id? active %)) (map chunk/id->block-pos)) due)
             parked (into [] (remove #(or (state/active-id? active %)
                                          (not (contains? (:chunks world) (chunk/block-id-chunk %)))))
@@ -226,9 +226,16 @@
   (let [last (into {} recs)]
     (into [] (comp (map first) (distinct) (map (fn [pos] [pos (get last pos)]))) recs)))
 
+(defn- announced
+  "Keeps the changes clients hear about.
+  A chunk that is only full, never block ticking, is silent."
+  [w events]
+  (let [heard (state/broadcast-chunks w)]
+    (filter (fn [[cp _]] (contains? heard cp)) events)))
+
 (defn block-flush [w _d]
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]
-            (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) events)
+            (map (fn [[cp recs]] (out/all (out/blocks-changed cp (final-records recs)))) (announced w events))
             (for [[_ recs] events [pos _] recs :when (be/at w pos)]
               (out/all (out/block-entity pos))))))

@@ -9,36 +9,19 @@
 
 (set! *warn-on-reflection* true)
 
-(def view-radius 7)
-
 (def ^:const start-rate 9.0)
-
-(def ^:private ^:const loaded-border 2)
 
 (defn view-distance
   "Returns the view distance of the server in chunks."
   ^long [world]
-  (-> (long (get-in world [:config :view-distance] view-radius))
-      (max 2)
-      (min 32)))
-
-(defn- tracked? [^long v ^long dx ^long dz]
-  (let [ax (max 0 (- (Math/abs dx) 2))
-        az (max 0 (- (Math/abs dz) 2))]
-    (< (+ (* ax ax) (* az az)) (* v v))))
+  (state/view-radius world))
 
 (defn wanted-chunks
   "Returns the ids of the chunks a player in chunk cp sees."
   [world cp]
-  (let [v (view-distance world)
-        [cx cz] (chunk/id->pos cp)
-        span (range (- -1 v) (+ v 2))]
-    (into #{}
-          (for [dx span
-                dz span
-                :when (tracked? v dx dz)]
-            (chunk/pos->id (+ (long cx) (long dx))
-                           (+ (long cz) (long dz)))))))
+  (let [[cx cz] (chunk/id->pos cp)]
+    (into #{} (chunk/tracked-ids (long cx) (long cz)
+                                 (view-distance world)))))
 
 (defn loading-deltas
   "Returns the deltas that bring the absent chunks into the world.
@@ -53,25 +36,37 @@
             [[:add-chunk id (gen/flat-chunk)]])]
     d))
 
+(def ^:private ^:const unknown-timeout 1)
+
+(defn oracle
+  "Returns the payload of a chunk read while it is absent.
+  A saved chunk is read from the store there and then; any
+  other chunk is generated."
+  [world id]
+  (or (when (contains? (:stored world) id)
+        (when-let [fetch (:fetch-chunk world)] (fetch id)))
+      {:chunk (gen/flat-chunk)}))
+
+(defn oracle-deltas
+  "Returns the deltas that put the chunks read this way in place.
+  Their ticket keeps them one further tick and no longer."
+  [payloads]
+  (mapcat (fn [[id payload]]
+            [[:restore-chunk id payload]
+             [:chunk-ticket id unknown-timeout]])
+          payloads))
+
 (defn- restore-deltas [d]
   (for [[tag id payload] (:input d) :when (= :chunk-loaded tag)]
     [:restore-chunk id (or payload {:chunk (gen/flat-chunk)})]))
-
-(defn- player-zone [world [_ p]]
-  (when-let [pos (:pos p)]
-    (let [[cx cz] (chunk/id->pos (chunk/pos-chunk pos))]
-      (chunk/around-ids (long cx) (long cz)
-                        (+ (view-distance world) loaded-border)))))
 
 (defn needed-ids
   "Returns the ids of the chunks the world keeps loaded. They are the
   chunks around its players and the chunks joining and respawning
   players wait for."
   [world]
-  (let [players (state/player-entries world)]
-    (into (i/int-set)
-          (concat (mapcat #(player-zone world %) players)
-                  (mapcat :need (vals (:spawning world)))))))
+  (into (state/loaded-zone world)
+        (mapcat :need (vals (:spawning world)))))
 
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
@@ -145,23 +140,44 @@
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas eid pos yaw pitch)))))
 
-(defn chunk-streaming [world d]
+(defn chunk-loading
+  "Brings in the chunks the players need."
+  [world _d]
+  [#(loading-deltas world (needed-ids world))])
+
+(defn chunk-streaming
+  "Sends chunks to the players and takes in the saved ones that came
+  back. A body returning with its chunk waits for the next tick."
+  [world d]
   (conj (mapv (fn [entry] #(stream-deltas world entry))
               (state/player-entries world))
-        #(concat (restore-deltas d)
-                 (loading-deltas world (needed-ids world)))))
+        #(restore-deltas d)))
 
 (defn- unload-deltas [world id]
   [[:unload-chunk id]
    (out/all (out/store-chunk id (schema/chunk-payload world id)))])
 
+(defn- purged
+  "Returns the tickets left after one tick of their life.
+  A ticket goes when its count would fall below zero."
+  [tickets]
+  (reduce-kv (fn [m id n]
+               (if (pos? (long n)) (assoc m id (dec (long n))) m))
+             (i/int-map) tickets))
+
+(defn- dropped-ids [world held]
+  (let [keep? (needed-ids world)]
+    (into [] (remove #(or (contains? keep? %) (contains? held %)))
+          (keys (:chunks world)))))
+
 (defn unloading
-  "Unloads the chunks the world no longer needs.
-  They are stored as the tick left them."
+  "Drops the chunks the world no longer needs and ages the tickets
+  of the chunks a mid-tick read brought in.
+  The chunks are stored as the last tick left them."
   [world _]
-  (when (get-in world [:config :unload-chunks?])
-    (let [keep? (needed-ids world)]
-      (into []
-            (comp (remove #(contains? keep? %))
-                  (mapcat #(unload-deltas world %)))
-            (keys (:chunks world))))))
+  (let [old (or (:unknown world) (i/int-map))
+        held (purged old)]
+    (into (if (= held old) [] [[:purge-tickets held]])
+          (when (get-in world [:config :unload-chunks?])
+            (mapcat #(unload-deltas world %)
+                    (dropped-ids world held))))))

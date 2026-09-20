@@ -11,10 +11,20 @@
 
 (def ^:private ^:const region-r 10)
 
-(deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
-                 ^long ncx ^long ncz ^long nsy])
+(deftype Region [^objects grid ^objects cols ^long cx0 ^long cz0
+                 ^long sy0 ^long ncx ^long ncz ^long nsy
+                 oracle ^clojure.lang.Atom loaded])
 
 (defn- rg-grid ^objects [^Region rg] (.grid rg))
+
+(defn- rg-cols ^objects [^Region rg] (.cols rg))
+
+(defn- rg-oracle [^Region rg] (.oracle rg))
+
+(defn loaded-payloads
+  "Returns the chunks the reads pulled in, by id."
+  [^Region rg]
+  @(.loaded ^Region rg))
 
 (defn- rg-cx0 ^long [^Region rg] (.cx0 rg))
 
@@ -40,20 +50,43 @@
 (defn- section-at [col ^long sy]
   (chunk/chunk-section col (+ sy chunk/section-offset)))
 
-(defn- fill-grid [^objects grid chunks [cx0 cz0 sy0 ncx ncz nsy]]
-  (dotimes [ix (long ncx)]
-    (dotimes [iz (long ncz)]
-      (let [col (chunk/chunk-at chunks (+ (long cx0) ix)
-                                (+ (long cz0) iz))]
-        (dotimes [iy (long nsy)]
-          (aset grid (+ (* (+ (* ix (long ncz)) iz) (long nsy)) iy)
-                (section-at col (+ (long sy0) iy))))))))
+(defn- put-column [^Region rg ^long ix ^long iz col]
+  (aset ^objects (rg-cols rg) (+ (* ix (rg-ncz rg)) iz) col)
+  (when col
+    (dotimes [iy (rg-nsy rg)]
+      (aset ^objects (rg-grid rg)
+            (+ (* (+ (* ix (rg-ncz rg)) iz) (rg-nsy rg)) iy)
+            (section-at col (+ (rg-sy0 rg) iy))))))
 
-(defn block-reader ^Region [chunks pos]
-  (let [[cx0 cz0 sy0 ncx ncz nsy :as bounds] (region-bounds pos)
-        grid (object-array (* (long ncx) (long ncz) (long nsy)))]
-    (fill-grid grid chunks bounds)
-    (Region. grid cx0 cz0 sy0 ncx ncz nsy)))
+(defn- fill-grid [^Region rg chunks]
+  (dotimes [ix (rg-ncx rg)]
+    (dotimes [iz (rg-ncz rg)]
+      (put-column rg ix iz
+                  (get chunks (chunk/pos->id (+ (rg-cx0 rg) ix)
+                                             (+ (rg-cz0 rg) iz)))))))
+
+(defn block-reader
+  "Returns a reader over the blocks around pos.
+  An absent chunk is asked of oracle, which answers with the
+  payload it reads or generates, as a mid-tick read does."
+  (^Region [chunks pos] (block-reader chunks pos nil))
+  (^Region [chunks pos oracle]
+   (let [[cx0 cz0 sy0 ncx ncz nsy] (region-bounds pos)
+         n (* (long ncx) (long ncz))
+         rg (Region. (object-array (* n (long nsy))) (object-array n)
+                     cx0 cz0 sy0 ncx ncz nsy oracle (atom {}))]
+     (fill-grid rg chunks)
+     rg)))
+
+(defn- summon [^Region rg ^long ix ^long iz]
+  (let [id (chunk/pos->id (+ (rg-cx0 rg) ix) (+ (rg-cz0 rg) iz))
+        payload ((rg-oracle rg) id)]
+    (swap! (.loaded ^Region rg) assoc id payload)
+    (put-column rg ix iz (:chunk payload))))
+
+(defn- column-at [^Region rg ^long ix ^long iz]
+  (let [col (aget ^objects (rg-cols rg) (+ (* ix (rg-ncz rg)) iz))]
+    (when (and (nil? col) (rg-oracle rg)) (summon rg ix iz))))
 
 (defn read-block ^long [^Region rg ^long x ^long y ^long z]
   (let [ix (- (bit-shift-right x 4) (rg-cx0 rg))
@@ -63,13 +96,15 @@
             (neg? iz) (>= iz (rg-ncz rg))
             (neg? iy) (>= iy (rg-nsy rg)))
       0
-      (if-let [s (aget ^objects (rg-grid rg)
-                       (+ (* (+ (* ix (rg-ncz rg)) iz)
-                             (rg-nsy rg)) iy))]
-        (chunk/section-block s (+ (* (bit-and y 15) 256)
-                                   (* (bit-and z 15) 16)
-                                   (bit-and x 15)))
-        0))))
+      (do
+        (column-at rg ix iz)
+        (if-let [s (aget ^objects (rg-grid rg)
+                         (+ (* (+ (* ix (rg-ncz rg)) iz)
+                               (rg-nsy rg)) iy))]
+          (chunk/section-block s (+ (* (bit-and y 15) 256)
+                                    (* (bit-and z 15) 16)
+                                    (bit-and x 15)))
+          0)))))
 
 (def ^:private ^:const ray-w 21)
 
