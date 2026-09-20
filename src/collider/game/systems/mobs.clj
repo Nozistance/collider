@@ -555,43 +555,43 @@
       (not= (boolean (:in-lava? e)) l) (assoc :in-lava? l))))
 
 (defn- pushed
-  "The velocity a tick starts with: the push of other mobs and of
-  the fluid current, then the dead band that follows."
-  [vel push [cx cz]]
-  (v/v3 (dead-band (+ (v/x vel) (double (nth push 0)) (double cx)))
+  "The velocity a tick starts with: the push of the fluid current
+  on what other bodies have already shoved in, then the dead band
+  that follows."
+  [vel push]
+  (v/v3 (dead-band (+ (v/x vel) (double (nth push 0))))
         (dead-band (+ (v/y vel) (double (nth push 1))))
-        (dead-band (+ (v/z vel) (double (nth push 2)) (double cz)))))
+        (dead-band (+ (v/z vel) (double (nth push 2))))))
+
+(defn- taken
+  "The velocity after one shove: vanilla has no accumulator and
+  adds every increment to deltaMovement by itself."
+  [vel [_ dx dz]]
+  (v/v3 (+ (v/x vel) (double dx)) (v/y vel)
+        (+ (v/z vel) (double dz))))
 
 (defn- shoved
-  "The mob after it has shoved the others: the shove goes straight
-  into the velocity, and the dead band only meets it next tick."
-  [e [dx dz]]
-  (if (and (zero? (double dx)) (zero? (double dz)))
-    e
-    (let [vel (:vel e)
-          x (+ (v/x vel) (double dx))
-          z (+ (v/z vel) (double dz))]
-      (assoc e :vel (v/v3 x (v/y vel) z)))))
-
-(defn- ticked
-  "Marks the mob as having a tick behind it: before its first one
-  no shove of a higher eid carries over."
-  [e]
-  (if (:ticked? e) e (assoc e :ticked? true)))
+  "The mob after its own shove: it takes one increment from every
+  body it met, in that order, and the dead band only meets them
+  next tick."
+  [e shoves]
+  (if (seq shoves)
+    (assoc e :vel (reduce taken (:vel e) shoves))
+    e))
 
 (defn- physics [world index eid e half height]
   (let [t (long (:tick world))
+        half (double (float half)) height (double (float height))
         f (assoc (fluid-of world e half height)
                  :threshold (fluid-threshold height))
         moving? (not (zero? (double (:zza (:move e) 0.0))))
-        vel (pushed (:vel e) (:push f)
-                    (push/before index eid e half height))
+        shoves (push/before index eid e half height)
+        vel (pushed (reduce taken (:vel e) shoves) (:push f))
         rest? (at-rest? world e half moving? (in-fluid? f) vel)
         e1 (if rest?
              (rest-step e t)
              (physics-move world e vel half height f))
-        shove (push/after index eid e1 half height)
-        e2 (ticked (shoved e1 shove))]
+        e2 (shoved e1 (push/shoves index eid e1 half height))]
     (flagged world e2 half height (when rest? f))))
 
 (def ^:private ^:const say-rest 120)
@@ -660,7 +660,7 @@
 
 (def ^:private loose-keys
   [:nav :move :jump :body :follow-at :in-lava? :float? :support
-   :no-blocks? :ticked?])
+   :no-blocks?])
 
 (defn- mob-changes
   "The parts of a mob that one tick left different."
@@ -725,31 +725,97 @@
         acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))]
     [e2 (movement-sounds acc e2 was-wet? walked walked' t eid)]))
 
+(defn- ticks-at?
+  "Whether the body stands where entity ticks still run."
+  [active [_ e]]
+  (state/active-at? active (:pos e)))
+
+(defn- handed
+  "The island after the body at j took its half of a shove, the
+  opposite of what the body that shoved took. Players are left
+  alone: their own client moves them."
+  [es acc j [eid dx dz]]
+  (let [[_ e] (nth es j)]
+    (if (mobs/mob-type? (:type e))
+      (let [vel (:vel e)
+            v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
+                    (- (v/z vel) (double dz)))]
+        [(assoc es j [eid (assoc e :vel v)])
+         (conj acc [:merge-entity eid {:vel v}])])
+      [es acc])))
+
+(defn- takes-now?
+  "Whether the body at j takes the shove where it stands. One
+  that already stepped keeps it as the velocity its tick ends
+  with, and one whose chunk sits the tick out piles it up until
+  the chunk goes to disk with it as its motion. A body still to
+  step reads the shove off the index when its own turn comes."
+  [active es ^long i ^long j]
+  (or (< j i) (not (ticks-at? active (nth es j)))))
+
+(defn- steps?
+  "Whether the body takes a turn of its own this tick: a mob
+  whose chunk still runs entity ticks."
+  [active entry]
+  (and (mobs/mob-type? (:type (nth entry 1)))
+       (ticks-at? active entry)))
+
+(defn- handing [index active slots es i]
+  (let [[eid e] (nth es i)
+        [half height] (mobs/box-of e)
+        f (fn [[es acc] sh]
+            (let [j (get slots (nth sh 0))]
+              (if (and j (takes-now? active es i j))
+                (handed es acc j sh)
+                [es acc])))]
+    (reduce f [es []] (push/shoves index eid e half height))))
+
+(defn- handed-out
+  "The island after the body that just stepped ran its own shove
+  over everything it meets, as the last thing its tick does. A
+  body that did not step this tick shoves nobody."
+  [index active slots es i]
+  (if (steps? active (nth es i))
+    (handing index active slots es i)
+    [es nil]))
+
+(defn- turn
+  "The island after the body at i had its turn: its own step and
+  then its own shove, with the deltas the two leave and whether
+  the body stayed where it was."
+  [world active tempters t index slots es i]
+  (let [[eid e] (nth es i)
+        [e2 ds] (if (steps? active (nth es i))
+                  (step-mob world index tempters eid e t)
+                  [e nil])
+        [es hs] (handed-out index active slots
+                            (assoc es i [eid e2]) i)]
+    [es (into (vec ds) hs) (identical? (:pos e) (:pos e2))]))
+
 (defn- step-island
-  "One tick of an island: its mobs step in eid order, each of them
-  seeing the ones before it where this tick has left them."
-  [world tempters t es]
-  (loop [i 0 es (vec es) index (push/index-of es) acc []]
-    (if (= i (count es))
-      acc
-      (let [[eid e] (nth es i)
-            [e2 ds] (if (mobs/mob-type? (:type e))
-                      (step-mob world index tempters eid e t)
-                      [e nil])
-            moved? (not (identical? (:pos e) (:pos e2)))
-            es (if moved? (assoc es i [eid e2]) es)]
-        (recur (inc i) es (if moved? (push/index-of es) index)
-               (into acc ds))))))
+  "One tick of an island: its bodies step in eid order, each of
+  them seeing the ones before it where this tick has left them
+  and handing its own shove out as it goes. A body whose chunk
+  stopped ticking stands still among them and only takes shoves."
+  [world active tempters t es]
+  (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)]
+    (loop [i 0 es (vec es) index (push/index-of es) acc []]
+      (if (= i (count es))
+        acc
+        (let [[es ds still?] (turn world active tempters t index
+                                   slots es i)]
+          (recur (inc i) es (if still? index (push/index-of es))
+                 (into acc ds)))))))
 
 (defn- herds
   "The islands that have a mob to step; one of players alone moves
   nothing."
-  [world active]
+  [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
-          (push/islands world active)))
+          (push/islands world (state/loaded-zone world))))
 
-(defn- island-batch [world tempters t batch]
-  (into [] (mapcat (fn [es] (step-island world tempters t es)))
+(defn- island-batch [world active tempters t batch]
+  (into [] (mapcat (fn [es] (step-island world active tempters t es)))
         batch))
 
 (defn mobs-system
@@ -760,8 +826,8 @@
         t (long (:tick world))
         active (state/active-chunks world)
         tempters (sense/holders world)
-        batches (partition-all 32 (herds world active))]
+        batches (partition-all 32 (herds world))]
     (conj (mapv (fn [batch]
-                  #(island-batch world tempters t batch))
+                  #(island-batch world active tempters t batch))
                 batches)
           #(interact-deltas world events t))))

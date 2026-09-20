@@ -10,9 +10,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const tnt-half 0.49)
+(def ^:private ^:const tnt-half (double (float 0.49)))
 
-(def ^:private ^:const tnt-height 0.98)
+(def ^:private ^:const tnt-height (double (float 0.98)))
 
 (defn- liquid-push [world pos vel]
   (liquid/entity-push (:chunks world) pos tnt-half tnt-height vel))

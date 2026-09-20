@@ -21,6 +21,10 @@
 
 (def ^:private ^:const height 0.25)
 
+(def ^:private ^:const player-half (double (float 0.3)))
+
+(def ^:private ^:const player-height (double (float 1.8)))
+
 (def ^:private ^:const air-drag 0.99)
 
 (def ^:private ^:const water-drag 0.8)
@@ -232,10 +236,10 @@
 
 (defn- target-box [e]
   (if (= :player (:type e))
-    (box-of (:pos e) 0.3 1.8)
+    (box-of (:pos e) player-half player-height)
     (let [{:keys [half height]} (mobs/types (:type e))]
-      (box-of (:pos e) (double (or half 0.45))
-              (double (or height 1.3))))))
+      (box-of (:pos e) (double (or half (float 0.45)))
+              (double (or height (float 1.3)))))))
 
 (defn- nearer [best hit tail]
   (if (and hit (or (nil? best)

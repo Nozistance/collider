@@ -2,8 +2,8 @@
   "The shoves that bodies which overlap hand each other."
   (:require [clojure.data.int-map :as im]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.state :as state]
-            [collider.vec :as v]))
+            [collider.vec :as v]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -11,14 +11,18 @@
 
 (def ^:private ^:const threshold (double (float 0.01)))
 
+(def ^:private ^:const player-half (double (float 0.3)))
+
+(def ^:private ^:const player-height (double (float 1.8)))
+
 (defn- pushable-half ^double [e]
   (case (:type e)
-    :player 0.3
+    :player player-half
     (double (or (first (mobs/box-of e)) 0.0))))
 
 (defn- pushable-height ^double [e]
   (case (:type e)
-    :player 1.8
+    :player player-height
     (double (or (second (mobs/box-of e)) 1.0))))
 
 (deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
@@ -45,15 +49,16 @@
             (bit-shift-right (long (Math/floor z)) 2)))
 
 (defn- pushable?
-  "Whether the body both shoves and is shoved: a player or a mob,
-  in a chunk the tick still runs. Items and primed TNT are never
-  pushed."
-  [active [_ e]]
+  "Whether the body is shoved: a player or a mob in a chunk the
+  view still reaches. A chunk that stopped ticking keeps its
+  section reachable, so its bodies still take shoves. Items and
+  primed TNT are never pushed."
+  [held [_ e]]
   (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
-       (state/active-at? active (:pos e))))
+       (contains? held (chunk/pos-chunk (:pos e)))))
 
-(defn- bodies [world active]
-  (filter (fn [entry] (pushable? active entry)) (:entities world)))
+(defn- bodies [world held]
+  (filter (fn [entry] (pushable? held entry)) (:entities world)))
 
 (defn- by-cell [entries]
   (persistent!
@@ -105,8 +110,8 @@
         f (fn [m k _] (assoc! m k (hood cells k)))]
     (persistent! (reduce-kv f (transient (im/int-map)) cells))))
 
-(defn push-index [world active]
-  (index-of (bodies world active)))
+(defn push-index [world held]
+  (index-of (bodies world held)))
 
 (defn- touching
   "The cells whose bodies one still within this cell can reach after
@@ -143,65 +148,80 @@
 (defn islands
   "The pushable bodies split into groups that one tick of movement
   cannot bring together, so each group steps on its own."
-  [world active]
-  (sort-by ffirst (grouped (by-cell (bodies world active)))))
+  [world held]
+  (sort-by ffirst (grouped (by-cell (bodies world held)))))
 
-(defn- impulse!
-  "Adds to acc the shove of one body on another: 0.05 apart along
-  the line between them, cut by the root of their Chebyshev
-  distance and dropped altogether below 0.01."
-  [^doubles acc ^double dx ^double dz]
+(defn- impulse
+  "Puts into out the shove one body takes from another: 0.05
+  apart along the line between them, cut by the root of their
+  Chebyshev distance. Bodies nearer than 0.01 shove nothing, and
+  then there is no shove to report."
+  [^doubles out ^double dx ^double dz]
   (let [m (Math/max (Math/abs dx) (Math/abs dz))]
     (when (>= m threshold)
       (let [s (Math/sqrt m)
             p (Math/min 1.0 (/ 1.0 s))]
-        (aset acc 0 (+ (aget acc 0) (* (* (/ dx s) p) strength)))
-        (aset acc 1 (+ (aget acc 1) (* (* (/ dz s) p) strength)))))))
+        (aset out 0 (* (* (/ dx s) p) strength))
+        (aset out 1 (* (* (/ dz s) p) strength))
+        true))))
 
-(defn- shove-pair! [^doubles acc ^doubles me ^PushCell c ^long j]
+(defn- pair
+  "Whether body j of the cell meets this one, its shove in out."
+  [^doubles out ^doubles me ^PushCell c ^long j]
   (let [x (aget me 0) y (aget me 1) z (aget me 2)
         ox (aget (cell-xs c) j)
         oy (aget (cell-ys c) j)
         oz (aget (cell-zs c) j)
         r (+ (aget me 3) (aget (cell-halfs c) j))]
-    (when (and (< (Math/abs (- ox x)) r)
-               (< (Math/abs (- oz z)) r)
-               (< oy (+ y (aget me 4)))
-               (> (+ oy (aget (cell-heights c) j)) y))
-      (impulse! acc (- x ox) (- z oz)))))
+    (and (< (Math/abs (- ox x)) r)
+         (< (Math/abs (- oz z)) r)
+         (< oy (+ y (aget me 4)))
+         (> (+ oy (aget (cell-heights c) j)) y)
+         (impulse out (- x ox) (- z oz)))))
 
-(defn- shove-cell! [^doubles acc ^doubles me ^PushCell c ^long hi]
-  (let [ids (cell-eids c)
-        eid (long (aget me 5))]
-    (dotimes [j (alength ids)]
-      (let [o (aget ids j)]
-        (when (and (not= o eid) (< o hi))
-          (shove-pair! acc me c j))))))
+(defn- cell-shoves [^doubles out ^doubles me ^PushCell c hi acc]
+  (let [ids (cell-eids c) hi (long hi) eid (long (aget me 5))]
+    (loop [j 0 acc acc]
+      (if (= j (alength ids))
+        acc
+        (let [o (aget ids j)]
+          (recur (inc j)
+                 (if (and (not= o eid) (< o hi) (pair out me c j))
+                   (conj acc [o (aget out 0) (aget out 1)])
+                   acc)))))))
 
-(defn- shove [index e eid hi half height]
+(defn- scan
+  "The shoves between this body and the ones below hi, an
+  [eid dx dz] each in the order the lookup found them, where
+  dx dz is what this body takes and that one takes the opposite.
+  Nothing is summed: vanilla hands every increment to a velocity
+  of its own, one call at a time."
+  [index eid e half height hi]
   (let [p (:pos e)
         x (double (v/x p)) z (double (v/z p))
         fields [x (double (v/y p)) z (double half)
                 (double height) (double (long eid))]
         me (double-array fields)
-        acc (double-array 2)]
-    (when-let [^objects cs (get index (cell-of x z))]
-      (dotimes [c 9]
-        (when-let [cell (aget cs c)]
-          (shove-cell! acc me ^PushCell cell (long hi)))))
-    [(aget acc 0) (aget acc 1)]))
+        out (double-array 2)]
+    (if-let [^objects cs (get index (cell-of x z))]
+      (loop [c 0 acc []]
+        (if (= c 9)
+          acc
+          (recur (inc c)
+                 (if-let [cell (aget cs c)]
+                   (cell-shoves out me ^PushCell cell hi acc)
+                   acc))))
+      [])))
+
+(defn shoves
+  "One run of the body's own shove over every body it meets, the
+  last thing its tick does."
+  [index eid e half height]
+  (scan index eid e half height Long/MAX_VALUE))
 
 (defn before
-  "The shoves already in the mob's velocity when its tick starts.
-  A lower eid pushed earlier this tick against this same box, a
-  higher one pushed at the end of the last tick, when both stood
-  where the snapshot holds them."
+  "The shoves the bodies that stepped earlier this tick handed to
+  this one: each of them ran its own shove against this box, and
+  what it took this body takes the other way round."
   [index eid e half height]
-  (shove index e (long eid)
-         (if (:ticked? e) Long/MAX_VALUE (long eid)) half height))
-
-(defn after
-  "The shove the mob hands out itself, the last thing its tick
-  does: its new box against every other box."
-  [index eid e half height]
-  (shove index e (long eid) Long/MAX_VALUE half height))
+  (scan index eid e half height (long eid)))

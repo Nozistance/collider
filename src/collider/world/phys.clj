@@ -183,6 +183,12 @@
   [^double a ^double b]
   (< (Math/abs (- b a)) equal-slack))
 
+(defn- restituted
+  "The speed a stopped axis is left with: the reversed speed
+  scaled by a bounciness of zero, which keeps its sign bit."
+  ^double [^double v]
+  (* (- v) 0.0))
+
 (defn- overlaps? [^doubles a ^long o ^doubles box]
   (and (> (aget a (+ o 3)) (aget box 0))
        (> (aget box 3) (aget a o))
@@ -311,7 +317,7 @@
              (step-up! chunks box0 out vel step))
          dx (aget out 0) dy (aget out 1) dz (aget out 2)]
      (Move. (v/v3 (+ x dx) (+ y dy) (+ z dz))
-            (v/v3 (if (mth-equal? dx vx) vx 0.0)
-                  (if hit-y? 0.0 vy)
-                  (if (mth-equal? dz vz) vz 0.0))
+            (v/v3 (if (mth-equal? dx vx) vx (restituted vx))
+                  (if hit-y? (restituted vy) vy)
+                  (if (mth-equal? dz vz) vz (restituted vz)))
             grounded?))))

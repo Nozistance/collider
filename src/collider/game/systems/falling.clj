@@ -13,9 +13,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const half 0.49)
+(def ^:private ^:const half (double (float 0.49)))
 
-(def ^:private ^:const height 0.98)
+(def ^:private ^:const height (double (float 0.98)))
 
 (def ^:private ^:const max-time 600)
 
