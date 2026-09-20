@@ -5,6 +5,7 @@
             [collider.cli :as cli]
             [collider.config :as config]
             [collider.data :as data]
+            [collider.game.deltas :as deltas]
             [collider.game.state :as state]
             [collider.game.tick :as tick]
             [collider.log :as log]
@@ -33,7 +34,7 @@
   #(.offer queue [:chunk-loaded id %]))
 
 (defn- chunk-io! [{:keys [saver store]} queue ^Deltas deltas]
-  (doseq [{:keys [msg id payload]} (.out deltas)]
+  (doseq [{:keys [msg id payload]} (deltas/out-of deltas)]
     (case msg
       :store-chunk (snapshot/store-chunk! saver store id payload)
       :load-chunk (let [done (on-loaded queue id)]

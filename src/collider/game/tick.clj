@@ -159,7 +159,8 @@
          [world deltas/empty-deltas])))
 
 (defn- send-out! [deliver! world ^Deltas deltas]
-  (when (or (seq (.out deltas)) (pos? (count (.entities deltas))))
+  (when (or (seq (deltas/out-of deltas))
+            (pos? (count (deltas/entities-of deltas))))
     (try (deliver! world deltas)
          (catch Throwable t (log/error-with "deliver error:" t)))))
 

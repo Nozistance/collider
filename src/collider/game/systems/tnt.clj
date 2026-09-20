@@ -33,10 +33,12 @@
         drift [(double vx) (- (double vy) 0.04) (double vz)]
         ^Move mv (phys/move (:chunks world) (:pos e)
                             (if stuck (mapv * drift stuck) drift) tnt-half tnt-height)
-        pos (.pos mv) on-ground (.on-ground mv)
+        pos (phys/pos mv) on-ground (phys/on-ground? mv)
+        vel (phys/vel mv)
         moved (cond stuck [0.0 0.0 0.0]
-                    on-ground (motion/stepped-speed (:chunks world) pos (.vel mv))
-                    :else (.vel mv))
+                    on-ground (motion/stepped-speed
+                                (:chunks world) pos vel)
+                    :else vel)
         stuck' (motion/stuck-speed (:chunks world) pos tnt-half tnt-height)]
     (cond-> [[:merge-entity eid (cond-> {:pos       pos
                                          :vel       (stepped-vel world pos moved on-ground)
@@ -46,10 +48,10 @@
             kb (conj [:push eid (mapv - kb)]))))
 
 (defn- moved-pos [world e]
-  (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))]
-    (.pos ^Move (phys/move (:chunks world) (:pos e)
-                           [(double vx) (- (double vy) 0.04) (double vz)]
-                           tnt-half tnt-height))))
+  (let [[vx vy vz] (v/+ (:vel e) (or (:kb e) [0.0 0.0 0.0]))
+        drift [(double vx) (- (double vy) 0.04) (double vz)]]
+    (phys/pos (phys/move (:chunks world) (:pos e) drift
+                         tnt-half tnt-height))))
 
 (defn- within? [p [cx cy cz] ^double reach]
   (let [dx (- (v/x p) (double cx)) dy (- (v/y p) (double cy)) dz (- (v/z p) (double cz))]

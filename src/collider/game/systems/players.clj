@@ -98,9 +98,24 @@
       [(held-stack e) (get inv 8) (get inv 7)
        (get inv 6) (get inv 5)])))
 
+(defmacro ^:private readers
+  "Defines a prefixed reader per field of record type t.
+  Each one inlines, since the tracker reads them every tick."
+  [t prefix & fields]
+  `(do ~@(for [f fields
+               :let [dot (symbol (str "." f))]]
+           `(defn- ~(symbol (str prefix f))
+              {:inline (fn [~'r]
+                         (list '~dot (with-meta ~'r {:tag '~t})))}
+              [~(with-meta 'r {:tag t})]
+              (~dot ~'r)))))
+
 (defrecord Track
   [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots
    carried seen t0])
+
+(readers Track tr- pos yaw pitch head on-ground mdata equip vel-sent
+         since-tp slots carried t0)
 
 (defn- baseline [^long t {:keys [pos yaw pitch on-ground] :as e}]
   (let [[x y z] pos]
@@ -252,6 +267,11 @@
    equip-changed? vel-changed? equip-diff slot-diff carried-changed?
    first?])
 
+(readers Frame f- x y z dx dy dz yaw pitch head ground since due? vel
+         mdata mdiff equip moved? turned? rel? head-turned?
+         meta-changed? equip-changed? vel-changed? equip-diff
+         slot-diff carried-changed? first?)
+
 (def ^:private vel-threshold 1.0E-7)
 
 (def ^:private pos-threshold 7.6293945E-6)
@@ -264,7 +284,7 @@
 (defn- vel-changed? [^Track tr vel]
   (boolean
     (when vel
-      (let [sent (or (.vel-sent tr) vel-zero)
+      (let [sent (or (tr-vel-sent tr) vel-zero)
             dx (- (vv/x vel) (vv/x sent))
             dy (- (vv/y vel) (vv/y sent))
             dz (- (vv/z vel) (vv/z sent))
@@ -273,7 +293,7 @@
             (and (> d 0.0) (still? vel)))))))
 
 (defn- near-baseline? [e ^Track tr]
-  (let [[bx by bz] (.pos tr)
+  (let [[bx by bz] (tr-pos tr)
         p (:pos e)
         ex (- (vv/x p) (double bx))
         ey (- (vv/y p) (double by))
@@ -287,8 +307,8 @@
 
 (defn- turned-now? [^Track tr due? ^long yaw ^long pitch]
   (boolean (and due?
-                (or (not= yaw (long (.yaw tr)))
-                    (not= pitch (long (.pitch tr)))))))
+                (or (not= yaw (long (tr-yaw tr)))
+                    (not= pitch (long (tr-pitch tr)))))))
 
 (defn- in-rel-range? [^long dx ^long dy ^long dz]
   (and (<= (- rel-limit) dx rel-limit)
@@ -298,48 +318,48 @@
 (defn- equip-changes [equip ^Track tr]
   (into []
         (keep-indexed
-          (fn [i s] (when (not= s (get (.equip tr) i)) [i s])))
+          (fn [i s] (when (not= s (get (tr-equip tr) i)) [i s])))
         equip))
 
 (defn- carried-differs? [e ^Track tr self?]
   (boolean (and self?
                 (not= (as-seen (:carried e))
-                      (as-seen (.carried tr))))))
+                      (as-seen (tr-carried tr))))))
 
 (defn- self-slot-diff [e ^Track tr self?]
-  (when (and self? (not (identical? (:inventory e) (.slots tr))))
-    (slot-diff (or (:inventory e) {}) (.slots tr))))
+  (when (and self? (not (identical? (:inventory e) (tr-slots tr))))
+    (slot-diff (or (:inventory e) {}) (tr-slots tr))))
 
 (defn- frame ^Frame [e ^Track tr t due? mdata]
-  (let [[bx by bz] (.pos tr)
+  (let [[bx by bz] (tr-pos tr)
         p (:pos e)
         x (vv/x p) y (vv/y p) z (vv/z p)
         dx (- (fixed x) (fixed bx))
         dy (- (fixed y) (fixed by))
         dz (- (fixed z) (fixed bz))
-        ticks (- (long t) (long (.t0 tr)))
+        ticks (- (long t) (long (tr-t0 tr)))
         yaw (angle (:yaw e)) pitch (angle (:pitch e))
         head (angle (or (:head-yaw e) (:yaw e)))
         ground (boolean (:on-ground e))
         since (if due?
-                (inc (long (.since-tp tr)))
-                (long (.since-tp tr)))
+                (inc (long (tr-since-tp tr)))
+                (long (tr-since-tp tr)))
         vel (:vel e)
         equip (equipment-stacks e)
-        equip-changed? (not= equip (.equip tr))
+        equip-changed? (not= equip (tr-equip tr))
         self? (= :player (:type e))
         carried? (carried-differs? e tr self?)
         rel? (boolean
                (and (in-rel-range? dx dy dz)
                     (<= since forced-teleport)
-                    (= ground (boolean (.on-ground tr)))))]
+                    (= ground (boolean (tr-on-ground tr)))))]
     (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?)
-             vel mdata (meta-diff mdata (.mdata tr)) equip
+             vel mdata (meta-diff mdata (tr-mdata tr)) equip
              (moved-now? e tr due? ticks)
              (turned-now? tr due? yaw pitch)
              rel?
-             (boolean (and due? (not= head (long (.head tr)))))
-             (not= mdata (.mdata tr))
+             (boolean (and due? (not= head (long (tr-head tr)))))
+             (not= mdata (tr-mdata tr))
              equip-changed?
              (vel-changed? tr vel)
              (when equip-changed? (equip-changes equip tr))
@@ -348,67 +368,68 @@
              (zero? ticks))))
 
 (defn- move-msg [eid e ^Frame f]
-  (let [yaw (.yaw f) pitch (.pitch f) ground (.ground f)]
+  (let [yaw (f-yaw f) pitch (f-pitch f) ground (f-ground f)]
     (cond
-      (not (.rel? f))
+      (not (f-rel? f))
       (out/sync-pos eid (:pos e) (:yaw e) (:pitch e) ground)
-      (and (.moved? f) (.turned? f))
-      (out/move-look eid (.dx f) (.dy f) (.dz f) yaw pitch ground)
-      (.moved? f)
-      (out/move eid (.dx f) (.dy f) (.dz f) ground)
-      (.turned? f)
+      (and (f-moved? f) (f-turned? f))
+      (out/move-look eid (f-dx f) (f-dy f) (f-dz f) yaw pitch ground)
+      (f-moved? f)
+      (out/move eid (f-dx f) (f-dy f) (f-dz f) ground)
+      (f-turned? f)
       (out/look eid yaw pitch ground))))
 
 (defn- slot-msg [[slot s]] (out/set-slot slot s))
 
 (defn- self-msgs [eid e ^Frame f]
   (cond-> []
-          (.meta-changed? f)
-          (conj (out/meta eid (:type e) (.mdiff f)))
-          (.vel-changed? f) (conj (out/velocity eid (.vel f)))
-          (seq (.slot-diff f)) (into (map slot-msg) (.slot-diff f))
-          (.carried-changed? f) (conj (out/carried (:carried e)))))
+          (f-meta-changed? f)
+          (conj (out/meta eid (:type e) (f-mdiff f)))
+          (f-vel-changed? f) (conj (out/velocity eid (f-vel f)))
+          (seq (f-slot-diff f)) (into (map slot-msg) (f-slot-diff f))
+          (f-carried-changed? f) (conj (out/carried (:carried e)))))
 
 (defn- move-msgs [eid e ^Frame f]
-  (let [md (if (.first? f) (.mdata f) (.mdiff f))]
-    (cond-> (if-let [m (when (.due? f) (move-msg eid e f))] [m] [])
-            (.head-turned? f) (conj (out/head-look eid (.head f)))
-            (or (.meta-changed? f) (.first? f))
+  (let [md (if (f-first? f) (f-mdata f) (f-mdiff f))]
+    (cond-> (if-let [m (when (f-due? f) (move-msg eid e f))] [m] [])
+            (f-head-turned? f) (conj (out/head-look eid (f-head f)))
+            (or (f-meta-changed? f) (f-first? f))
             (conj (out/meta eid (:type e) md))
-            (and (.due? f) (.vel-changed? f))
-            (conj (out/velocity eid (.vel f)))
-            (seq (.equip-diff f))
+            (and (f-due? f) (f-vel-changed? f))
+            (conj (out/velocity eid (f-vel f)))
+            (seq (f-equip-diff f))
             (into (map (fn [[slot s]] (out/equipment eid slot s))
-                       (.equip-diff f))))))
+                       (f-equip-diff f))))))
 
 (def ^:private item-update-interval 20)
 
 (def ^:private mob-update-interval 3)
 
 (defn- track-idle? [^Frame f]
-  (and (not (.due? f))
-       (not (.head-turned? f)) (not (.meta-changed? f))
-       (not (.equip-changed? f)) (not (.vel-changed? f))
-       (empty? (.slot-diff f)) (not (.carried-changed? f))))
+  (and (not (f-due? f))
+       (not (f-head-turned? f)) (not (f-meta-changed? f))
+       (not (f-equip-changed? f)) (not (f-vel-changed? f))
+       (empty? (f-slot-diff f)) (not (f-carried-changed? f))))
 
 (defn- advance-pos [^Track tr ^Frame f]
-  (if (or (.rel? f) (not (.due? f)))
-    (cond-> (assoc tr :since-tp (.since f))
-            (.moved? f) (assoc :pos [(.x f) (.y f) (.z f)])
-            (.turned? f) (assoc :yaw (.yaw f) :pitch (.pitch f)))
-    (assoc tr :pos [(.x f) (.y f) (.z f)] :yaw (.yaw f)
-           :pitch (.pitch f) :on-ground (.ground f) :since-tp 0)))
+  (if (or (f-rel? f) (not (f-due? f)))
+    (cond-> (assoc tr :since-tp (f-since f))
+            (f-moved? f) (assoc :pos [(f-x f) (f-y f) (f-z f)])
+            (f-turned? f) (assoc :yaw (f-yaw f) :pitch (f-pitch f)))
+    (assoc tr :pos [(f-x f) (f-y f) (f-z f)] :yaw (f-yaw f)
+           :pitch (f-pitch f) :on-ground (f-ground f) :since-tp 0)))
 
 (defn- advance-track [^Track tr e ^Frame f]
   (if (track-idle? f)
     tr
     (cond-> (advance-pos tr f)
-            (.head-turned? f) (assoc :head (.head f))
-            (.meta-changed? f) (assoc :mdata (.mdata f))
-            (.equip-changed? f) (assoc :equip (.equip f))
-            (.vel-changed? f) (assoc :vel-sent (.vel f))
-            (seq (.slot-diff f)) (assoc :slots (or (:inventory e) {}))
-            (.carried-changed? f) (assoc :carried (:carried e)))))
+            (f-head-turned? f) (assoc :head (f-head f))
+            (f-meta-changed? f) (assoc :mdata (f-mdata f))
+            (f-equip-changed? f) (assoc :equip (f-equip f))
+            (f-vel-changed? f) (assoc :vel-sent (f-vel f))
+            (seq (f-slot-diff f))
+            (assoc :slots (or (:inventory e) {}))
+            (f-carried-changed? f) (assoc :carried (:carried e)))))
 
 (def ^:private cloud-update-interval Integer/MAX_VALUE)
 

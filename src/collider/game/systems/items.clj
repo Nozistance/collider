@@ -203,14 +203,16 @@
 (defn- item-moved [chunks pos [vx vy vz]]
   (let [v [(double vx) (double vy) (double vz)]
         ^Move mv (phys/move chunks pos v item-half item-height)
-        on-ground (.on-ground mv)
+        on-ground (phys/on-ground? mv)
         [mx my mz] (if on-ground
-                     (motion/stepped-speed chunks (.pos mv) (.vel mv))
-                     (.vel mv))
+                     (motion/stepped-speed chunks (phys/pos mv)
+                                           (phys/vel mv))
+                     (phys/vel mv))
         f (if on-ground ground-friction air-drag)
         my (* (double my) air-drag)
         my (if (and on-ground (neg? my)) (* my bounce) my)]
-    [(.pos mv) [(* (double mx) f) my (* (double mz) f)] on-ground]))
+    [(phys/pos mv)
+     [(* (double mx) f) my (* (double mz) f)] on-ground]))
 
 (defn- jolt-of ^double [vel' old]
   (let [dx (- (double (vel' 0)) (v/x old))

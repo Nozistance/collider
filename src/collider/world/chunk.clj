@@ -224,6 +224,10 @@
   (applyTo [_ s]
     (.apply s idx states (int n))))
 
+(defn- add-edit! [^Edits e ^long i ^long state] (.add e i state))
+
+(defn- edited ^Section [^Edits e ^Section s] (.applyTo e s))
+
 (defn- edits-of ^Edits [^HashMap cache cp si]
   (let [k [cp si]]
     (or (.get cache k)
@@ -234,7 +238,7 @@
 (defn- merge-section ^Chunk [^Chunk c [[_ si] edits]]
   (let [si (int si)
         s (or (.section c si) (.fresh c si))]
-    (.with c si (.applyTo ^Edits edits s))))
+    (.with c si (edited edits s))))
 
 (defn- apply-change! [^HashMap cache change]
   (let [[[x y z :as p] state] change
@@ -242,7 +246,8 @@
         cp (block-chunk p)
         idx (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
                (bit-and x 15))]
-    (.add (edits-of cache cp (section-index y)) idx (long state))))
+    (add-edit! (edits-of cache cp (section-index y))
+               idx (long state))))
 
 (defn- cache-order [^HashMap cache]
   (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))

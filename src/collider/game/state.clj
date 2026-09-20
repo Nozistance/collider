@@ -805,10 +805,12 @@
   "Returns the world with the deltas folded into it."
   [world deltas]
   (let [^Deltas d (deltas-of deltas)
-        [w removes] (reduce world-step [world []] (.world d))
-        w (if (seq (.input d)) (applied-input w (.input d)) w)
+        [w removes] (reduce world-step [world []] (deltas/world-of d))
+        inp (deltas/input-of d)
+        w (if (seq inp) (applied-input w inp) w)
         entities (:entities w)
-        updated (folded-entities w entities (vec (.entities d)))
+        updated (folded-entities
+                  w entities (vec (deltas/entities-of d)))
         w (if (pos? (count updated))
             (assoc w :entities (i/merge entities updated))
             w)]

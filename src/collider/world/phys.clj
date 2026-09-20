@@ -48,7 +48,22 @@
 
 (deftype Sweep [^doubles a ^long n])
 
+(defn- boxes ^doubles [^Sweep s] (.a s))
+
+(defn- box-count ^long [^Sweep s] (.n s))
+
 (deftype Move [pos vel ^boolean on-ground])
+
+(defn pos [^Move m] (.pos m))
+
+(defn vel [^Move m] (.vel m))
+
+(defn on-ground?
+  {:inline (fn [m]
+             `(.on-ground
+                ~(with-meta m {:tag 'collider.world.phys.Move})))}
+  [^Move m]
+  (.on-ground m))
 
 (defn- lo-bound ^long [^double c ^double v]
   (long (Math/floor (- (+ c (min 0.0 v)) eps))))
@@ -187,9 +202,9 @@
                  (+ x half) (+ y (double height)) (+ z half)]
         box (double-array corners)
         ^Sweep sw (swept-boxes chunks box 0.0 0.0 0.0)
-        ^doubles a (.a sw)]
+        a (boxes sw)]
     (loop [i 0]
-      (cond (>= i (.n sw)) true
+      (cond (>= i (box-count sw)) true
             (overlaps? a (* 6 i) box) false
             :else (recur (inc i))))))
 
@@ -219,9 +234,9 @@
                  (+ x half) y (+ z half)]
         box (double-array corners)
         ^Sweep sw (swept-boxes chunks box 0.0 0.0 0.0)
-        ^doubles a (.a sw)]
+        a (boxes sw)]
     (loop [i 0 best nil bd Double/MAX_VALUE]
-      (if (>= i (.n sw))
+      (if (>= i (box-count sw))
         best
         (let [o (* 6 i)
               bx (long (Math/floor (aget a o)))
@@ -257,7 +272,7 @@
         dy0 (aget out 1)
         ^doubles e (shifted box0 1 dy0)
         ^Sweep sb (swept-boxes chunks e vx step vz)
-        ^doubles a (.a sb) n (.n sb)
+        a (boxes sb) n (box-count sb)
         ^doubles s (double-array 3)
         _ (Phys/clampAxes a n e vx step vz s)
         sx (aget s 0) du (aget s 1) sz (aget s 2)
@@ -285,7 +300,8 @@
          box0 (double-array corners)
          sw (swept-boxes chunks box0 vx vy vz)
          out (double-array 3)
-         _ (Phys/clampAxes (.a sw) (.n sw) box0 vx vy vz out)
+         _ (Phys/clampAxes (boxes sw) (box-count sw) box0
+                           vx vy vz out)
          dy0 (aget out 1)
          hit-y? (not= dy0 vy)
          grounded? (and hit-y? (neg? vy))

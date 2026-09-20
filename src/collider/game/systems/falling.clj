@@ -114,15 +114,16 @@
 
 (defn- step-deltas [world eid e]
   (let [^Move mv (fall-move world e)
-        pos (.pos mv)
+        pos (phys/pos mv)
         time (inc (long (:time e)))
-        [cell cur concrete? stuck?] (landing world e pos (.vel mv))]
+        vel (phys/vel mv)
+        [cell cur concrete? stuck?] (landing world e pos vel)]
     (cond
-      (or (.on-ground mv) stuck?)
+      (or (phys/on-ground? mv) stuck?)
       (land-deltas world eid (assoc e :pos pos) cell cur concrete? stuck?)
       (or (> time max-time) (and (> time 100) (not (chunk/in-range? (cell 1)))))
       (cons [:remove-entity eid] (item-deltas world eid (assoc e :pos pos)))
-      :else (drift-deltas eid pos time (.vel mv) (:stuck e)
+      :else (drift-deltas eid pos time vel (:stuck e)
                           (motion/stuck-speed (:chunks world) pos half height)))))
 
 (defn first-step

@@ -14,6 +14,20 @@
 (deftype Region [^objects grid ^long cx0 ^long cz0 ^long sy0
                  ^long ncx ^long ncz ^long nsy])
 
+(defn- rg-grid ^objects [^Region rg] (.grid rg))
+
+(defn- rg-cx0 ^long [^Region rg] (.cx0 rg))
+
+(defn- rg-cz0 ^long [^Region rg] (.cz0 rg))
+
+(defn- rg-sy0 ^long [^Region rg] (.sy0 rg))
+
+(defn- rg-ncx ^long [^Region rg] (.ncx rg))
+
+(defn- rg-ncz ^long [^Region rg] (.ncz rg))
+
+(defn- rg-nsy ^long [^Region rg] (.nsy rg))
+
 (defn- region-bounds [[cx cy cz]]
   (let [cx0 (bit-shift-right (- (long cx) region-r) 4)
         cx1 (bit-shift-right (+ (long cx) region-r) 4)
@@ -42,15 +56,16 @@
     (Region. grid cx0 cz0 sy0 ncx ncz nsy)))
 
 (defn read-block ^long [^Region rg ^long x ^long y ^long z]
-  (let [ix (- (bit-shift-right x 4) (.cx0 rg))
-        iz (- (bit-shift-right z 4) (.cz0 rg))
-        iy (- (bit-shift-right y 4) (.sy0 rg))]
-    (if (or (neg? ix) (>= ix (.ncx rg))
-            (neg? iz) (>= iz (.ncz rg))
-            (neg? iy) (>= iy (.nsy rg)))
+  (let [ix (- (bit-shift-right x 4) (rg-cx0 rg))
+        iz (- (bit-shift-right z 4) (rg-cz0 rg))
+        iy (- (bit-shift-right y 4) (rg-sy0 rg))]
+    (if (or (neg? ix) (>= ix (rg-ncx rg))
+            (neg? iz) (>= iz (rg-ncz rg))
+            (neg? iy) (>= iy (rg-nsy rg)))
       0
-      (if-let [s (aget ^objects (.grid rg)
-                       (+ (* (+ (* ix (.ncz rg)) iz) (.nsy rg)) iy))]
+      (if-let [s (aget ^objects (rg-grid rg)
+                       (+ (* (+ (* ix (rg-ncz rg)) iz)
+                             (rg-nsy rg)) iy))]
         (chunk/section-block s (+ (* (bit-and y 15) 256)
                                    (* (bit-and z 15) 16)
                                    (bit-and x 15)))
@@ -118,9 +133,13 @@
     (hit-positions hit origin)))
 
 (defn- path-probe [^Region rg cx cy cz]
-  (let [^objects grid (.grid rg)
-        gx (unchecked-int (.cx0 rg)) gz (unchecked-int (.cz0 rg)) gy (unchecked-int (.sy0 rg))
-        nx (unchecked-int (.ncx rg)) nz (unchecked-int (.ncz rg)) ny (unchecked-int (.nsy rg))
+  (let [^objects grid (rg-grid rg)
+        gx (unchecked-int (rg-cx0 rg))
+        gz (unchecked-int (rg-cz0 rg))
+        gy (unchecked-int (rg-sy0 rg))
+        nx (unchecked-int (rg-ncx rg))
+        nz (unchecked-int (rg-ncz rg))
+        ny (unchecked-int (rg-nsy rg))
         cx (double cx) cy (double cy) cz (double cz)]
     (fn ^long [^double x ^double y ^double z]
       (long (Rays/clearPath grid gx gz gy nx nz ny ^booleans (block/solid-arr) cx cy cz x y z)))))

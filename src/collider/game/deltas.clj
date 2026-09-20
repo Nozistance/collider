@@ -25,6 +25,14 @@
 
 (defrecord Deltas [world entities out input])
 
+(defn world-of [^Deltas d] (.world d))
+
+(defn entities-of [^Deltas d] (.entities d))
+
+(defn out-of [^Deltas d] (.out d))
+
+(defn input-of [^Deltas d] (.input d))
+
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
 
 (defn input ^Deltas [events]
@@ -32,7 +40,9 @@
 
 (defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
-         w (transient (.world acc)) e (transient (.entities acc)) o (transient (.out acc))]
+         w (transient (world-of acc))
+         e (transient (entities-of acc))
+         o (transient (out-of acc))]
     (if ds
       (let [d (first ds) ds (next ds)]
         (case (nth d 0)
@@ -42,14 +52,15 @@
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))
-      (->Deltas (persistent! w) (persistent! e) (persistent! o) (.input acc)))))
+      (->Deltas (persistent! w) (persistent! e) (persistent! o)
+                (input-of acc)))))
 
 (defn merge
   (^Deltas [^Deltas a ^Deltas b]
-   (->Deltas (into (.world a) (.world b))
-             (i/merge-with into (.entities a) (.entities b))
-             (into (.out a) (.out b))
-             (into (.input a) (.input b))))
+   (->Deltas (into (world-of a) (world-of b))
+             (i/merge-with into (entities-of a) (entities-of b))
+             (into (out-of a) (out-of b))
+             (into (input-of a) (input-of b))))
   (^Deltas [a b & more] (reduce merge (merge a b) more)))
 
 (def merge-deltas merge)

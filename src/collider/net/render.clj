@@ -6,7 +6,7 @@
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.command.tree :as commands]
-            [collider.game.deltas]
+            [collider.game.deltas :as deltas]
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
             [collider.log :as log]
@@ -693,7 +693,7 @@
             (join-player-packets eid))))
 
 (defn- join-bursts [world ^Deltas deltas]
-  (for [m (.out deltas)
+  (for [m (deltas/out-of deltas)
         :when (= :joined (:msg m))
         p (join-packets world (:to m))]
     [(:to m) p]))
@@ -748,9 +748,11 @@
 
 (defn render [world ^Deltas deltas]
   (let [ps (players world)
-        viewers (delay (viewer-index world (.entities deltas) ps))]
+        es (deltas/entities-of deltas)
+        viewers (delay (viewer-index world es ps))]
     (concat
       (join-bursts world deltas)
-      (entity-delta-packets world (.entities deltas))
-      (mapcat (fn [m] (msg-packets world ps viewers m)) (.out deltas))
-      (forget-packets (.entities deltas)))))
+      (entity-delta-packets world (deltas/entities-of deltas))
+      (mapcat (fn [m] (msg-packets world ps viewers m))
+              (deltas/out-of deltas))
+      (forget-packets (deltas/entities-of deltas)))))

@@ -24,6 +24,18 @@
 (deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
                    ^doubles halfs ^doubles heights])
 
+(defn- cell-eids ^longs [^PushCell c] (.eids c))
+
+(defn- cell-xs ^doubles [^PushCell c] (.xs c))
+
+(defn- cell-ys ^doubles [^PushCell c] (.ys c))
+
+(defn- cell-zs ^doubles [^PushCell c] (.zs c))
+
+(defn- cell-halfs ^doubles [^PushCell c] (.halfs c))
+
+(defn- cell-heights ^doubles [^PushCell c] (.heights c))
+
 (defn- cell-key ^long [^long cx ^long cz]
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
           (bit-and cz 0xFFFFFFFF)))
@@ -148,18 +160,18 @@
 
 (defn- shove-pair! [^doubles acc ^doubles me ^PushCell c ^long j]
   (let [x (aget me 0) y (aget me 1) z (aget me 2)
-        ox (aget ^doubles (.xs c) j)
-        oy (aget ^doubles (.ys c) j)
-        oz (aget ^doubles (.zs c) j)
-        r (+ (aget me 3) (aget ^doubles (.halfs c) j))]
+        ox (aget (cell-xs c) j)
+        oy (aget (cell-ys c) j)
+        oz (aget (cell-zs c) j)
+        r (+ (aget me 3) (aget (cell-halfs c) j))]
     (when (and (< (Math/abs (- ox x)) r)
                (< (Math/abs (- oz z)) r)
                (< oy (+ y (aget me 4)))
-               (> (+ oy (aget ^doubles (.heights c) j)) y))
+               (> (+ oy (aget (cell-heights c) j)) y))
       (impulse! acc (- x ox) (- z oz)))))
 
 (defn- shove-cell! [^doubles acc ^doubles me ^PushCell c ^long hi]
-  (let [^longs ids (.eids c)
+  (let [ids (cell-eids c)
         eid (long (aget me 5))]
     (dotimes [j (alength ids)]
       (let [o (aget ids j)]

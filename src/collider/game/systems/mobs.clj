@@ -376,9 +376,9 @@
   under it. A move that found nothing looks again where the box
   came from."
   [world e ^Move mv half]
-  (if-not (.on-ground mv)
+  (if-not (phys/on-ground? mv)
     [nil false]
-    (let [ch (:chunks world) p (.pos mv) o (:pos e)
+    (let [ch (:chunks world) p (phys/pos mv) o (:pos e)
           sb (phys/supporting-block ch p half)
           s (or sb (when-not (:no-blocks? e)
                      (phys/supporting-block
@@ -406,14 +406,14 @@
         d (driven e vel (friction-speed og? bf (speed-of e)))
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
-        sf (speed-factor world (.pos mv) sup)
+        sf (speed-factor world (phys/pos mv) sup)
         f (fmul bf air-drag)
-        u (.vel mv)]
-    [(.pos mv)
+        u (phys/vel mv)]
+    [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) f)
            (* (- (v/y u) gravity) vertical-drag)
            (* (* (v/z u) sf) f))
-     (.on-ground mv) sup nb?]))
+     (phys/on-ground? mv) sup nb?]))
 
 (defn- travel-water
   "One tick of the slow drive, step, slowdown and sink in water."
@@ -422,14 +422,14 @@
         d (driven e vel fluid-drive)
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
-        sf (speed-factor world (.pos mv) sup)
-        u (.vel mv)
+        sf (speed-factor world (phys/pos mv) sup)
+        u (phys/vel mv)
         vy (fluid-fall gravity falling? (* (v/y u) water-slowdown))
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
-    [(.pos mv)
-     (jumped-out world (.pos mv) w half height oy (hit-wall? d u))
-     (.on-ground mv) sup nb?]))
+    [(phys/pos mv)
+     (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
+     (phys/on-ground? mv) sup nb?]))
 
 (defn- lava-slowed
   "The slowdown of lava: a shallow pool holds a body the way water
@@ -447,14 +447,14 @@
         d (driven e vel fluid-drive)
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
-        sf (speed-factor world (.pos mv) sup)
-        u (.vel mv)
+        sf (speed-factor world (phys/pos mv) sup)
+        u (phys/vel mv)
         w (lava-slowed (* (v/x u) sf) (v/y u) (* (v/z u) sf)
                        falling? shallow?)
         w (v/v3 (v/x w) (- (v/y w) (/ gravity 4.0)) (v/z w))]
-    [(.pos mv)
-     (jumped-out world (.pos mv) w half height oy (hit-wall? d u))
-     (.on-ground mv) sup nb?]))
+    [(phys/pos mv)
+     (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
+     (phys/on-ground? mv) sup nb?]))
 
 (defn- travelled
   "The branch the fluids around the mob pick. Water wins over lava
