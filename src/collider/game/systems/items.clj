@@ -2,6 +2,7 @@
   "Dropped item motion, merging and pickup."
   (:require [collider.data :as data]
             [collider.random :as random]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.state :as state]
             [collider.game.out :as out]
@@ -165,6 +166,12 @@
 
 (def ^:private ^:const merge-inflate 0.5)
 
+(def ^:private ^:const no-pickup-delay 32767)
+
+(def ^:private ^:const moved-rate 2)
+
+(def ^:private ^:const resting-rate 40)
+
 (def ^:private ^:const pickup-inflate 1.0)
 
 (def ^:private ^:const pickup-inflate-y 0.5)
@@ -252,11 +259,15 @@
       (> (jolt-of (:vel s) (:vel e)) 0.01)
       (not= (:on-ground s) (boolean (:on-ground e)))))
 
+(defn- delay-left ^long [e]
+  (let [d (long (or (:pickup-delay e) 0))]
+    (if (= no-pickup-delay d) d (max 0 (dec d)))))
+
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
         s (settled (:chunks world) e (long eid) age)
         stuck' (:stuck s)
-        delay' (max 0 (dec (long (or (:pickup-delay e) 0))))]
+        delay' (delay-left e)]
     (if (gone? e age (:pos s))
       [:remove-entity eid]
       [:merge-entity eid
@@ -280,15 +291,15 @@
          (near? (v/z pa) (v/z pb) flat)
          (near? (v/y pa) (v/y pb) tall))))
 
+(defn- fl ^long [^double a] (long (Math/floor a)))
+
 (defn- cell-key ^long [^long x ^long y ^long z]
   (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
           (bit-shift-left (bit-and z 0x3FFFFFF) 12)
           (bit-and y 0xFFF)))
 
 (defn- cell-of ^long [pos]
-  (cell-key (long (Math/floor (v/x pos)))
-            (long (Math/floor (v/y pos)))
-            (long (Math/floor (v/z pos)))))
+  (cell-key (fl (v/x pos)) (fl (v/y pos)) (fl (v/z pos))))
 
 (defn- merge-index [items]
   (persistent!
@@ -304,9 +315,9 @@
             (+ (long z) (dec (rem c 3)))))
 
 (defn- neighbour-idxs [index pos]
-  (let [x (long (Math/floor (v/x pos)))
-        y (long (Math/floor (v/y pos)))
-        z (long (Math/floor (v/z pos)))
+  (let [x (fl (v/x pos))
+        y (fl (v/y pos))
+        z (fl (v/z pos))
         at (fn [c] (get index (neighbour-key x y z c) []))]
     (sort (persistent!
             (reduce (fn [acc c] (reduce conj! acc (at c)))
@@ -327,14 +338,38 @@
     [[:merge-entity ea {:stack stack :age age}]
      [:remove-entity eb]]))
 
+(defn- crossed? [from to]
+  (or (not (== (fl (v/x from)) (fl (v/x to))))
+      (not (== (fl (v/y from)) (fl (v/y to))))
+      (not (== (fl (v/z from)) (fl (v/z to))))))
+
+(defn- merge-rate ^long [from to]
+  (if (crossed? from to) moved-rate resting-rate))
+
+(defn- merge-ready?
+  "Whether the item may take part in a merge at all."
+  [[_ e]]
+  (when e
+    (let [s (:stack e)]
+      (and (not= no-pickup-delay (long (or (:pickup-delay e) 0)))
+           (< (long (or (:age e) 0)) despawn-age)
+           (< (long (:count s 1))
+              (long (data/max-stack (:item s))))))))
+
+(defn- merge-due?
+  "Whether this tick is one of the item's own merge ticks."
+  [[_ e from]]
+  (zero? (rem (long (or (:age e) 0))
+              (merge-rate from (:pos e)))))
+
 (defn- merge-deltas [items]
-  (let [items (vec items)
+  (let [items (filterv merge-ready? items)
         index (merge-index items)]
     (loop [i 0 used #{} out []]
       (if (>= i (count items))
         out
         (let [[ea a] (items i)
-              found (when-not (used ea)
+              found (when (and (not (used ea)) (merge-due? (items i)))
                       (merge-partner items index (inc i) a used))]
           (if-let [[eb b] found]
             (recur (inc i) (conj used ea eb)
@@ -498,15 +533,24 @@
                    [[] #{}]
                    (state/player-entries world)))))
 
+(defn item-drops
+  "Returns the items the drop events of this tick throw."
+  [world d]
+  [#(spawn-deltas world (:input d))])
+
+(defn- stepped-item [world [eid e]]
+  (let [d (step-item world eid e)]
+    (if (= :remove-entity (nth d 0))
+      [eid nil (:pos e) d]
+      [eid (conj e (nth d 2)) (:pos e) d])))
+
 (defn items
   "Returns the tick steps of every dropped item in an active chunk."
-  [world d]
-  (let [events (:input d)
-        act (active-items world)]
-    (-> [#(spawn-deltas world events)]
-        (into (map (fn [[eid e]] #(vector (step-item world eid e))))
-              act)
-        (conj #(merge-deltas act)))))
+  [world _d]
+  (let [step #(vector (stepped-item world %))
+        act (deltas/pmapcat step (active-items world))]
+    [#(mapv (fn [s] (nth s 3)) act)
+     #(merge-deltas act)]))
 
 (defn pickups
   "Returns the deltas of players taking up nearby items."

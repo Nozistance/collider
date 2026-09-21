@@ -1,7 +1,6 @@
 (ns collider.game.systems.tnt
   "Primed TNT fuse, motion and blast."
-  (:require [collider.game.state :as state]
-            [collider.game.block.tnt :as tnt]
+  (:require [collider.game.block.tnt :as tnt]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -102,21 +101,8 @@
             (get-in world [:rules :tnt-explodes] true)
             (conj [:explode (explode-request world eid center)]))))
 
-(defn- fresh? [active e]
-  (and (= :tnt (:type e)) (:origin e)
-       (state/active-at? active (:pos e))))
-
 (defn- lit-deltas [world eid e]
   (into (unblock-deltas eid e) (step-deltas world eid e)))
-
-(defn first-step
-  "Returns the deltas for the TNT lit this tick."
-  [world _d]
-  (let [active (state/active-chunks world)]
-    (into []
-          (comp (filter (fn [[_ e]] (fresh? active e)))
-                (mapcat (fn [[eid e]] (lit-deltas world eid e))))
-          (sort-by key (:entities world)))))
 
 (defn- tnt-entries [world]
   (into [] (filter (fn [[_ e]] (= :tnt (:type e))))
@@ -126,16 +112,21 @@
   #(into [] (mapcat (fn [[eid e]] (explode-deltas world eid e)))
          due))
 
+(defn- due? [[_ e]]
+  (and (not (:origin e)) (<= (long (:fuse e)) 1)))
+
+(defn- tnt-step [world [eid e]]
+  (if (:origin e)
+    #(lit-deltas world eid e)
+    #(step-deltas world eid e)))
+
 (defn tnt-system
-  "Returns a step for every primed TNT this tick."
+  "Returns a step for every primed TNT this tick.
+  A TNT lit this tick is cut loose from its block and steps
+  like the rest."
   [world _d]
   (let [tnts (tnt-entries world)
-        fresh (filterv (fn [[_ e]] (:origin e)) tnts)
-        armed (into [] (remove (fn [[_ e]] (:origin e))) tnts)
-        due (filterv (fn [[_ e]] (<= (long (:fuse e)) 1)) armed)
-        moving (filterv (fn [[_ e]] (> (long (:fuse e)) 1)) armed)]
-    (-> []
-        (into (map (fn [[eid e]] #(unblock-deltas eid e))) fresh)
-        (cond-> (seq due) (conj (explode-step world due)))
-        (into (map (fn [[eid e]] #(step-deltas world eid e)))
-              moving))))
+        due (filterv due? tnts)]
+    (into (if (seq due) [(explode-step world due)] [])
+          (comp (remove due?) (map #(tnt-step world %)))
+          tnts)))

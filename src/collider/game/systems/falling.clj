@@ -170,18 +170,6 @@
   (and (= :falling-block (:type e))
        (state/active-at? active (:pos e))))
 
-(defn first-step
-  "Returns the deltas for the blocks that started to fall this tick."
-  [world _d]
-  (let [active (state/active-chunks world)
-        fresh? (fn [[_ e]]
-                 (and (falling? active e)
-                      (zero? (long (:time e 0)))))]
-    (into []
-          (comp (filter fresh?)
-                (mapcat (fn [[eid e]] (step-deltas world eid e))))
-          (sort-by key (:entities world)))))
-
 (defn falling-blocks
   "Returns a step for every falling block in an active chunk."
   [world _d]

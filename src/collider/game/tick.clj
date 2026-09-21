@@ -37,45 +37,52 @@
 
 (set! *warn-on-reflection* true)
 
-(def systems [#'chunks/chunk-streaming
-              #'players/players
-              #'blocks/block-edits
-              #'dripleaf/dripleaf-tilt
-              #'block-updates/block-updates
-              #'random-tick/random-ticks
-              #'items/items
-              #'jukebox/jukebox-songs
-              #'falling/falling-blocks
-              #'mobs/mobs-system
-              #'tnt/tnt-system
-              #'projectiles/projectiles
-              #'damage/damage
-              #'sleep/sleep
-              #'inventory/inventory
-              #'containers/containers
-              #'chat/chat
-              #'daynight/daynight
-              #'keepalive/keepalive])
+(def packet-systems
+  "The systems a player event drives. Vanilla runs them all
+  before the level tick."
+  [#'chunks/chunk-streaming
+   #'players/players
+   #'blocks/block-edits
+   #'items/item-drops
+   #'sleep/sleep
+   #'inventory/inventory
+   #'containers/containers
+   #'chat/chat
+   #'keepalive/keepalive])
 
-(def post-systems [#'players/late-tracking
-                   #'block-updates/block-flush
-                   #'blocks/acks
-                   #'weather-system/weather
-                   #'falling/first-step
-                   #'tnt/first-step
-                   #'projectiles/first-step
-                   #'items/pickups
-                   #'containers/broadcast])
+(def entity-systems
+  "The systems that step the entities of the level."
+  [#'items/items
+   #'falling/falling-blocks
+   #'mobs/mobs-system
+   #'tnt/tnt-system
+   #'projectiles/projectiles
+   #'damage/damage])
+
+(def systems
+  "Every system the level tick drives off the world it is given."
+  (into packet-systems entity-systems))
 
 (def phases [[#'spawning/placing]
              [#'pose/pose]
-             [#'furnaces/furnace-cooking #'brewing/brewing]
              [#'consume/consume]
              [#'chunks/chunk-loading]
-             systems
-             [#'chunks/unloading]
+             packet-systems
+             [#'daynight/daynight]
+             [#'block-updates/block-updates
+              #'dripleaf/dripleaf-tilt]
+             [#'chunks/unloading
+              #'random-tick/random-ticks
+              #'weather-system/weather]
+             [#'block-updates/block-flush
+              #'players/late-tracking]
+             entity-systems
              [#'explosions/explosions]
-             post-systems
+             [#'items/pickups #'containers/broadcast]
+             [#'furnaces/furnace-cooking
+              #'brewing/brewing
+              #'jukebox/jukebox-songs]
+             [#'blocks/acks]
              [#'detector/observe]])
 
 (defn tick

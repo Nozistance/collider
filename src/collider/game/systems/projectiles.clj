@@ -492,12 +492,3 @@
             (entries world entity/thrown-types))
       (into (map (fn [[eid e]] #(cloud-deltas world eid e)))
             (entries world #{:area-effect-cloud}))))
-
-(defn first-step
-  "Returns the flight of the things thrown this tick.
-  They move at once in the tick of their throw."
-  [world _d]
-  (into []
-        (comp (filter (fn [[_ e]] (zero? (long (:age e 0)))))
-              (mapcat (fn [[eid e]] (step-deltas world eid e))))
-        (entries world entity/thrown-types)))
