@@ -249,18 +249,21 @@
    :tracking (i/int-set) :track nil
    :inventory    {} :held-slot 0
    :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
+   :view-distance 2 :chunk-view nil
    :health       20.0
    :health-sent  20.0
    :keepalive-at tick :keepalive-pending? false})
 
-(defn- player-join [w eid name]
+(defn- player-join [w eid name settings]
   (assoc-in w [:spawning eid]
-            (cond-> {:name name :seed (spawn-seed w eid)}
+            (cond-> {:name name :seed (spawn-seed w eid)
+                     :settings settings}
               (get-in w [:profiles name :pos])
               (assoc :pos (get-in w [:profiles name :pos])))))
 
 (defn- player-placed [w eid name pos]
-  (let [fresh (new-player name (:tick w) pos)
+  (let [fresh (merge (new-player name (:tick w) pos)
+                     (get-in w [:spawning eid :settings]))
         saved (get-in w [:profiles name])]
     (-> w
         (assoc-in [:entities eid] (entity/of (merge fresh saved)))
@@ -574,7 +577,8 @@
     w))
 
 (def input-apply
-  {:player-join     (fn [w [_ eid name]] (player-join w eid name))
+  {:player-join
+   (fn [w [_ eid name settings]] (player-join w eid name settings))
    :player-quit (fn [w [_ eid]] (player-quit w eid))
    :move (fn [w [_ eid changes]] (apply-move w eid changes))
    :teleport-ack (fn [w [_ eid id]] (teleport-ack w eid id))
@@ -583,8 +587,11 @@
    :chunk-batch-ack (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
    :entity-action (fn [w [_ eid action]] (entity-action w eid action))
    :input (fn [w [_ eid flags]] (update-entity w eid merge flags))
-   :client-settings (fn [w [_ eid sp]]
-                      (update-entity w eid assoc :skin-parts sp))
+   :client-settings
+   (fn [w [_ eid {:keys [view-distance skin-parts]}]]
+     (update-entity w eid assoc
+                    :view-distance (long (or view-distance 2))
+                    :skin-parts (long (or skin-parts 0))))
    :held-item (fn [w [_ eid slot]] (held-item w eid slot))
    :creative-slot (fn [w [_ eid slot stack]]
                     (creative-slot w eid slot stack))

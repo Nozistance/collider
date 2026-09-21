@@ -55,13 +55,18 @@
   (server/send! conn {:packet :update-tags :tags (data/tags)})
   (server/send! conn {:packet :finish-configuration}))
 
+(defn- client-settings
+  "Returns the options a player entity keeps of the packet."
+  [m]
+  {:view-distance (:view-distance m) :skin-parts (:skin-parts m)})
+
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]
-  (let [nm (:name (server/info conn))
+  (let [{nm :name settings :settings} (server/info conn)
         eid (.incrementAndGet next-entity-id)]
     (server/put! conn :eid eid)
     (swap! conns assoc eid conn)
     (server/set-conn-state! conn :play)
-    (.offer queue [:player-join eid nm])
+    (.offer queue [:player-join eid nm settings])
     (log/info "player" nm "connected: eid" eid
               "addr" (:addr (server/info conn)))))
 
@@ -151,6 +156,8 @@
 
 (def ^:private session-events
   {:keep-alive (fn [eid m] [:keepalive-echo eid (:id m)])
+   :client-information
+   (fn [eid m] [:client-settings eid (client-settings m)])
    :chunk-batch-received (fn [eid m] [:chunk-batch-ack eid (:rate m)])
    :client-command client-command-event
    :set-game-rule (fn [eid m] [:set-rules eid (:entries m)])
@@ -171,7 +178,7 @@
     (f eid m)))
 
 (def ^:private ignored
-  #{:client-information :player-loaded :client-tick-end
+  #{:player-loaded :client-tick-end
     :custom-payload :chat-session-update :chat-ack
     :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request
@@ -294,6 +301,8 @@
     [:login :login-acknowledged]
     (do (server/set-conn-state! conn :configuration)
         (start-configuration! conn))
+    [:configuration :client-information]
+    (server/put! conn :settings (client-settings m))
     [:configuration :select-known-packs] (finish-configuration! conn)
     [:configuration :finish-configuration] (do-login! conn io)
     (play-packet! conn queue m)))

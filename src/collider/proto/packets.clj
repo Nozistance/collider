@@ -56,6 +56,17 @@
 
 (def ^:private Signature [wire/bytes 256])
 
+(def ^:private ClientInformation
+  [:map [:locale [wire/string {:max 16}]]
+   [:view-distance wire/byte]
+   [:chat-visibility wire/varint]
+   [:chat-colors wire/boolean]
+   [:skin-parts wire/unsigned-byte]
+   [:main-hand wire/varint]
+   [:text-filtering wire/boolean]
+   [:allows-listing wire/boolean]
+   [:particle-status wire/varint]])
+
 (def ^:private LastSeen
   [:map [:offset wire/varint] [:acknowledged [wire/bitset 20]]
    [:checksum wire/byte]])
@@ -185,6 +196,9 @@
    {:schema [:map [:json [wire/string {:max 262144}]]]
     :write :wire}
 
+   [:configuration :client-information]
+   {:schema ClientInformation
+    :read :wire}
    [:configuration :custom-payload]
    {:schema [:map [:channel wire/id] [:value wire/string]]
     :write :wire}
@@ -361,6 +375,9 @@
    [:play :chunk-batch-finished]
    {:schema [:map [:size wire/varint]]
     :write :wire}
+   [:play :client-information]
+   {:schema ClientInformation
+    :read :wire}
    [:play :chunk-batch-received]
    {:schema [:map [:rate wire/float]]
     :read :wire}

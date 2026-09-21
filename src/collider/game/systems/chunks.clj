@@ -16,11 +16,18 @@
   ^long [world]
   (state/view-radius world))
 
+(defn player-radius
+  "Returns the view distance a player is sent chunks for: what the
+  client asked for, held between two and the server value."
+  ^long [world p]
+  (-> (long (or (:view-distance p) 2))
+      (max 2)
+      (min (view-distance world))))
+
 (defn wanted-chunks
   "Returns the ids of the chunks a player in chunk cp sees."
-  [world cp]
-  (let [[cx cz] (chunk/id->pos cp)
-        r (view-distance world)]
+  [world cp ^long r]
+  (let [[cx cz] (chunk/id->pos cp)]
     (into #{} (chunk/tracked-ids (long cx) (long cz) r))))
 
 (defn loading-deltas
@@ -93,9 +100,9 @@
         quota (+ (double (or chunk-quota 0.0)) rate)]
     (if blocked 0.0 (min quota (max 1.0 rate)))))
 
-(defn- stream-plan [world eid cp p]
+(defn- stream-plan [world eid cp r p]
   (let [{:keys [sent-chunks chunk-rate chunk-quota batches-max]} p
-        want (wanted-chunks world cp)
+        want (wanted-chunks world cp r)
         missing (vec (remove #(contains? sent-chunks %) want))
         ready (filterv #(contains? (:chunks world) %) missing)
         unacked (long (or (:batches-unacked p) 0))
@@ -119,12 +126,14 @@
       (and (not blocked) pending)
       [[:merge-entity eid {:chunk-quota quota}]])))
 
-(defn- restream-deltas [world eid cp p]
-  (let [plan (stream-plan world eid cp p)
+(defn- restream-deltas [world eid cp r p]
+  (let [plan (stream-plan world eid cp r p)
         {:keys [add drop pending]} plan]
     (concat
-      (when (or (not= cp (:chunk-pos p)) (seq add) (seq drop))
-        [[:merge-entity eid {:chunk-pos cp :chunks-pending? pending}]
+      (when (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
+                (seq add) (seq drop))
+        [[:merge-entity eid
+          {:chunk-pos cp :chunk-view r :chunks-pending? pending}]
          [:chunks-sent eid add drop]])
       (quota-deltas eid plan))))
 
@@ -136,10 +145,12 @@
 
 (defn- stream-deltas [world [eid p]]
   (let [{:keys [pos yaw pitch sent-chunks needs-spawn?]} p
-        cp (chunk/pos-chunk pos)]
+        cp (chunk/pos-chunk pos)
+        r (player-radius world p)]
     (concat
-      (when (or (not= cp (:chunk-pos p)) (:chunks-pending? p))
-        (restream-deltas world eid cp p))
+      (when (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
+                (:chunks-pending? p))
+        (restream-deltas world eid cp r p))
       (when (and needs-spawn? (own-column? world eid sent-chunks cp))
         (spawn-look-deltas eid pos yaw pitch)))))
 
