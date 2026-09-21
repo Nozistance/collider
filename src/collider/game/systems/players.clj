@@ -105,8 +105,8 @@
   `(do ~@(for [f fields
                :let [dot (symbol (str "." f))]]
            `(defn- ~(symbol (str prefix f))
-              {:inline (fn [~'r]
-                         (list '~dot (with-meta ~'r {:tag '~t})))}
+              {:inline
+               (fn [~'r] (list '~dot (with-meta ~'r {:tag '~t})))}
               [~(with-meta 'r {:tag t})]
               (~dot ~'r)))))
 

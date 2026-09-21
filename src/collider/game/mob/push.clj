@@ -190,12 +190,20 @@
                    (conj acc [o (aget out 0) (aget out 1)])
                    acc)))))))
 
+(defn- hood-shoves [^objects cs ^doubles out ^doubles me hi]
+  (loop [c 0 acc []]
+    (if (= c 9)
+      acc
+      (recur (inc c)
+             (if-let [cell (aget cs c)]
+               (cell-shoves out me ^PushCell cell hi acc)
+               acc)))))
+
 (defn- scan
   "The shoves between this body and the ones below hi, an
-  [eid dx dz] each in the order the lookup found them, where
-  dx dz is what this body takes and that one takes the opposite.
-  Nothing is summed: vanilla hands every increment to a velocity
-  of its own, one call at a time."
+  [eid dx dz] each in the order the lookup found them, where dx dz
+  is what this body takes and that one the opposite. Nothing is
+  summed: vanilla hands each increment to a velocity of its own."
   [index eid e half height hi]
   (let [p (:pos e)
         x (double (v/x p)) z (double (v/z p))
@@ -204,13 +212,7 @@
         me (double-array fields)
         out (double-array 2)]
     (if-let [^objects cs (get index (cell-of x z))]
-      (loop [c 0 acc []]
-        (if (= c 9)
-          acc
-          (recur (inc c)
-                 (if-let [cell (aget cs c)]
-                   (cell-shoves out me ^PushCell cell hi acc)
-                   acc))))
+      (hood-shoves cs out me hi)
       [])))
 
 (defn shoves

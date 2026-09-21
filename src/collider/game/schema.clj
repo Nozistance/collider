@@ -1,6 +1,5 @@
 (ns collider.game.schema
-  "Schema of the world map and of the player profile.
-  Also their stored forms."
+  "Schema of the world map and of the player profile."
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
@@ -71,8 +70,10 @@
   chunk; its id does not."
   [w {:keys [entities] :as payload}]
   (let [n (long (:next-eid w 1000000))
-        fresh (map-indexed (fn [i [_ e]] [(+ n (long i)) e]) entities)]
-    [(assoc payload :entities (into {} fresh)) (+ n (count entities))]))
+        renumber (fn [i [_ e]] [(+ n (long i)) e])
+        fresh (map-indexed renumber entities)]
+    [(assoc payload :entities (into {} fresh))
+     (+ n (count entities))]))
 
 (defn- block-entity-entry [[p e]] [(vec p) e])
 
@@ -92,9 +93,12 @@
 
 (declare profile-of)
 
+(defn- named-player? [e]
+  (and (= :player (:type e)) (:name e)))
+
 (defn- store-profiles [profiles world]
   (into profiles
-        (for [[_ e] (:entities world) :when (and (= :player (:type e)) (:name e))]
+        (for [[_ e] (:entities world) :when (named-player? e)]
           [(:name e) (profile-of e)])))
 
 (defn- store-rain-level [_ world]
@@ -103,15 +107,30 @@
 (defn- store-thunder-level [_ world]
   (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
 
+(defn- store-long [v _] (long (or v 0)))
+
+(defn- load-long [v] (long (or v 0)))
+
+(defn- store-same [v _] v)
+
+(defn- store-boolean [v _] (boolean v))
+
+(defn- load-rules [v]
+  (merge rules/defaults (select-keys v (keys rules/defaults))))
+
 (def world
-  {:tick               {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
+  {:tick               {:default 0 :store store-long
+                        :load load-long :schema :int}
    :time-ms            {:default 0}
-   :time-of-day        {:default 0 :store (fn [v _] v) :load identity :schema :int}
-   :next-eid           {:default 1000000 :store (fn [v _] v) :load identity :schema :int}
-   :rules              {:default rules/defaults :store (fn [v _] v) :schema :map
-                        :load    #(merge rules/defaults
-                                         (select-keys % (keys rules/defaults)))}
-   :profiles           {:default {} :store store-profiles :load identity :schema [:map-of :string :map]}
+   :time-of-day        {:default 0 :store store-same
+                        :load identity :schema :int}
+   :next-eid           {:default 1000000 :store store-same
+                        :load identity :schema :int}
+   :rules              {:default rules/defaults :store store-same
+                        :load load-rules :schema :map}
+   :profiles           {:default {} :store store-profiles
+                        :load identity
+                        :schema [:map-of :string :map]}
    :chunks             {:default chunk/no-chunks :load identity}
    :entities           {:default (i/int-map) :load identity}
    :block-ticks        {:default (i/int-map) :load identity}
@@ -119,16 +138,27 @@
    :stored             {:default (i/int-set)}
    :loading            {:default (i/int-set)}
    :unknown            {:default (i/int-map)}
-   :world-spawn        {:default [24 4 8] :store (fn [v _] v) :load identity :schema [:tuple :int :int :int]}
-   :clear-weather-time {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
-   :rain-time          {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
-   :thunder-time       {:default 0 :store (fn [v _] (long (or v 0))) :load #(long (or % 0)) :schema :int}
-   :raining?           {:default false :store (fn [v _] (boolean v)) :load boolean :schema :boolean}
-   :thundering?        {:default false :store (fn [v _] (boolean v)) :load boolean :schema :boolean}
-   :rain-level         {:default 0.0 :store store-rain-level :load double :schema number?}
-   :o-rain-level       {:default 0.0 :store store-rain-level :load double :schema number?}
-   :thunder-level      {:default 0.0 :store store-thunder-level :load double :schema number?}
-   :o-thunder-level    {:default 0.0 :store store-thunder-level :load double :schema number?}
+   :world-spawn        {:default [24 4 8] :store store-same
+                        :load identity
+                        :schema [:tuple :int :int :int]}
+   :clear-weather-time {:default 0 :store store-long
+                        :load load-long :schema :int}
+   :rain-time          {:default 0 :store store-long
+                        :load load-long :schema :int}
+   :thunder-time       {:default 0 :store store-long
+                        :load load-long :schema :int}
+   :raining?           {:default false :store store-boolean
+                        :load boolean :schema :boolean}
+   :thundering?        {:default false :store store-boolean
+                        :load boolean :schema :boolean}
+   :rain-level         {:default 0.0 :store store-rain-level
+                        :load double :schema number?}
+   :o-rain-level       {:default 0.0 :store store-rain-level
+                        :load double :schema number?}
+   :thunder-level      {:default 0.0 :store store-thunder-level
+                        :load double :schema number?}
+   :o-thunder-level    {:default 0.0 :store store-thunder-level
+                        :load double :schema number?}
    :container-rechecks {:default {}}
    :shulker-anim       {:default {}}
    :players            {:default {}}
@@ -136,8 +166,10 @@
    :listed             {:default {}}})
 
 (def Meta
-  (into [:map {:closed true} [:format :int] [:stored {:optional true} [:fn set?]]]
-        (for [[k {s :schema}] world :when s] [k {:optional true} s])))
+  (into [:map {:closed true} [:format :int]
+         [:stored {:optional true} [:fn set?]]]
+        (for [[k {s :schema}] world :when s]
+          [k {:optional true} s])))
 
 (def initial-world (update-vals world :default))
 
@@ -146,12 +178,15 @@
              [k (store (k w) w)])))
 
 (defn- rebase-ticks [w]
-  (let [t (long (:tick w 0))]
-    (update w :block-ticks #(into (i/int-map) (map (fn [[dt s]] [(+ t (long dt)) s])) %))))
+  (let [t (long (:tick w 0))
+        due (fn [[dt s]] [(+ t (long dt)) s])]
+    (update w :block-ticks
+            #(into (i/int-map) (map due) %))))
 
 (defn world-of [m]
   (rebase-ticks
-    (into {} (for [[k {load :load default :default}] world :when load]
+    (into {} (for [[k {load :load default :default}] world
+                   :when load]
                [k (if (contains? m k) (load (k m)) default)]))))
 
 (def profile
@@ -166,8 +201,14 @@
    :pitch        {:default 0.0}
    :on-ground    {:default true :store boolean}})
 
+(defn- profile-kept? [player k]
+  (or (some? (get player k))
+      (contains? (profile k) :default)))
+
+(defn- profile-value [player k {store :store default :default}]
+  (let [v (get player k)]
+    (if (some? v) ((or store identity) v) default)))
+
 (defn profile-of [player]
-  (into {} (for [[k {store :store default :default}] profile
-                 :let [val (get player k)]
-                 :when (or (some? val) (contains? (profile k) :default))]
-             [k (if (some? val) ((or store identity) val) default)])))
+  (into {} (for [[k spec] profile :when (profile-kept? player k)]
+             [k (profile-value player k spec)])))

@@ -306,8 +306,8 @@
          box0 (double-array corners)
          sw (swept-boxes chunks box0 vx vy vz)
          out (double-array 3)
-         _ (Phys/clampAxes (boxes sw) (box-count sw) box0
-                           vx vy vz out)
+         a (boxes sw) n (box-count sw)
+         _ (Phys/clampAxes a n box0 vx vy vz out)
          dy0 (aget out 1)
          hit-y? (not= dy0 vy)
          grounded? (and hit-y? (neg? vy))

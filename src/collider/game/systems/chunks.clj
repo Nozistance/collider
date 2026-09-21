@@ -1,9 +1,9 @@
 (ns collider.game.systems.chunks
   "Chunk loading, streaming to players and unloading."
   (:require [clojure.data.int-map :as i]
+            [collider.game.out :as out]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
-            [collider.game.out :as out]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
 
@@ -19,9 +19,9 @@
 (defn wanted-chunks
   "Returns the ids of the chunks a player in chunk cp sees."
   [world cp]
-  (let [[cx cz] (chunk/id->pos cp)]
-    (into #{} (chunk/tracked-ids (long cx) (long cz)
-                                 (view-distance world)))))
+  (let [[cx cz] (chunk/id->pos cp)
+        r (view-distance world)]
+    (into #{} (chunk/tracked-ids (long cx) (long cz) r))))
 
 (defn loading-deltas
   "Returns the deltas that bring the absent chunks into the world.
@@ -107,12 +107,15 @@
      :n       n :quota quota :unacked unacked :blocked blocked
      :pending (when (> (count missing) n) true)}))
 
+(defn- spent-quota [quota ^long n ^long unacked]
+  {:chunk-quota (- (double quota) n)
+   :batches-unacked (inc unacked)})
+
 (defn- quota-deltas [eid plan]
   (let [{:keys [add n quota unacked blocked pending]} plan]
     (cond
       (seq add)
-      [[:merge-entity eid {:chunk-quota     (- (double quota) (long n))
-                           :batches-unacked (inc (long unacked))}]]
+      [[:merge-entity eid (spent-quota quota n unacked)]]
       (and (not blocked) pending)
       [[:merge-entity eid {:chunk-quota quota}]])))
 

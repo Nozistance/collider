@@ -204,10 +204,10 @@
   (let [v [(double vx) (double vy) (double vz)]
         ^Move mv (phys/move chunks pos v item-half item-height)
         on-ground (phys/on-ground? mv)
+        vel (phys/vel mv)
         [mx my mz] (if on-ground
-                     (motion/stepped-speed chunks (phys/pos mv)
-                                           (phys/vel mv))
-                     (phys/vel mv))
+                     (motion/stepped-speed chunks (phys/pos mv) vel)
+                     vel)
         f (if on-ground ground-friction air-drag)
         my (* (double my) air-drag)
         my (if (and on-ground (neg? my)) (* my bounce) my)]

@@ -17,12 +17,13 @@
 
 (defn in-range? [^long y] (<= min-y y max-y))
 
-(defn section-index ^long [^long y] (+ (bit-shift-right y 4) section-offset))
+(defn section-index ^long [^long y]
+  (+ (bit-shift-right y 4) section-offset))
 
 (def ^Section empty-section Section/EMPTY)
 
-(defn section ^Section [^shorts blocks ^bytes block-light ^bytes sky-light]
-  (Section/of blocks block-light sky-light))
+(defn section ^Section [^shorts blocks ^bytes bl ^bytes sl]
+  (Section/of blocks bl sl))
 
 (defn nibble-get ^long [^bytes arr ^long idx]
   (let [b (long (aget arr (bit-shift-right idx 1)))]
@@ -91,15 +92,18 @@
 
 (defn sky-light ^long [^Section s ^long idx] (.skyLight s (int idx)))
 
-(defn block-light ^long [^Section s ^long idx] (.blockLight s (int idx)))
+(defn block-light ^long [^Section s ^long idx]
+  (.blockLight s (int idx)))
 
 (defn sky-light-copy ^bytes [^Section s] (.skyLightCopy s))
 
 (defn block-light-copy ^bytes [^Section s] (.blockLightCopy s))
 
-(defn with-sky-light ^Section [^Section s ^bytes a] (.withSkyLight s a))
+(defn with-sky-light ^Section [^Section s ^bytes a]
+  (.withSkyLight s a))
 
-(defn with-block-light ^Section [^Section s ^bytes a] (.withBlockLight s a))
+(defn with-block-light ^Section [^Section s ^bytes a]
+  (.withBlockLight s a))
 
 (defn sky-lit? [^Section s] (.hasSkyLight s))
 
@@ -121,7 +125,8 @@
 
 (defn write-sky-light! [^Section s ^Buf buf] (.writeSkyLight s buf))
 
-(defn write-block-light! [^Section s ^Buf buf] (.writeBlockLight s buf))
+(defn write-block-light! [^Section s ^Buf buf]
+  (.writeBlockLight s buf))
 
 (defn write-full-light! [^Buf buf] (Section/writeFullLight buf))
 
@@ -191,7 +196,8 @@
 (defn block-id-chunk
   "Returns the id of the chunk that holds packed block id bid."
   ^long [^long bid]
-  (pos->id (bit-shift-right bid 42) (bit-shift-right (bit-shift-left bid 38) 42)))
+  (pos->id (bit-shift-right bid 42)
+           (bit-shift-right (bit-shift-left bid 38) 42)))
 
 (defn block-chunk
   "Returns the id of the chunk that holds the block at x y z."
@@ -207,12 +213,15 @@
 (defn chunks-get-block
   "Returns the block state at x y z, air where the chunk is absent."
   (^long [chunks [x y z]]
-   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y) (unchecked-int z)))
+   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
+                  (unchecked-int z)))
   ([chunks x y z]
-   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y) (unchecked-int z))))
+   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
+                  (unchecked-int z))))
 
 (definline block-state [chunks x y z]
-  `(long (Chunk/blockAt ~chunks (unchecked-int ~x) (unchecked-int ~y) (unchecked-int ~z))))
+  `(long (Chunk/blockAt ~chunks (unchecked-int ~x)
+                        (unchecked-int ~y) (unchecked-int ~z))))
 
 (defn at
   "Returns the block state at p, air outside the world height."
@@ -228,9 +237,10 @@
   (add [^long i ^long state])
   (applyTo [^collider.java.Section s]))
 
-(deftype ^:private Batch [^:unsynchronized-mutable ^ints idx
-                          ^:unsynchronized-mutable ^ints states
-                          ^:unsynchronized-mutable ^long n]
+(deftype ^:private Batch
+  [^:unsynchronized-mutable ^ints idx
+   ^:unsynchronized-mutable ^ints states
+   ^:unsynchronized-mutable ^long n]
   Edits
   (add [_ i state]
     (when (= n (alength idx))
@@ -268,19 +278,22 @@
                idx (long state))))
 
 (defn- cache-order [^HashMap cache]
-  (sort-by (fn [[[cp si] _]] [(long cp) (- (long si))]) (into {} cache)))
+  (let [order (fn [[[cp si] _]] [(long cp) (- (long si))])]
+    (sort-by order (into {} cache))))
+
+(defn- group-chunk ^long [g] (long (ffirst (first g))))
 
 (defn with-chunks
   "Returns chunks with each group of entries reduced by f.
   An entry is [[cp k] x] and its group is reduced into the chunk
   at cp. A group for an absent chunk is dropped."
   ^ChunkIndex [^ChunkIndex chunks f groups]
-  (let [gs (filterv (fn [g] (some? (.get chunks (long (ffirst (first g)))))) groups)
+  (let [gs (filterv #(some? (.get chunks (group-chunk %))) groups)
         ids (long-array (count gs))
         cs (object-array (count gs))]
     (dotimes [i (count gs)]
       (let [g (gs i)
-            cp (long (ffirst (first g)))]
+            cp (group-chunk g)]
         (aset ids i cp)
         (aset cs i (reduce f (.get chunks cp) g))))
     (.withAll chunks ids cs)))

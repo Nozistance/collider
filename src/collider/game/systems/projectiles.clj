@@ -92,14 +92,13 @@
 (defn- effect-color ^long [e]
   (long (:color (get (data/mob-effects) (:effect e)) 0)))
 
+(defn- color-byte ^long [e ^long shift]
+  (bit-and (bit-shift-right (effect-color e) shift) 0xFF))
+
 (defn- channel ^long [rows ^long shift ^long weight]
-  (quot (reduce (fn [^long a e]
-                  (+ a (* (inc (amplifier e))
-                          (bit-and (bit-shift-right (effect-color e)
-                                                    shift)
-                                   0xFF))))
-                0 rows)
-        weight))
+  (let [add (fn ^long [^long a e]
+              (+ a (* (inc (amplifier e)) (color-byte e shift))))]
+    (quot (reduce add 0 rows) weight)))
 
 (defn- blend
   "Returns the amplifier-weighted mean of the effect colours.
@@ -113,7 +112,7 @@
               (channel rows 0 w)))))
 
 (defn potion-color
-  "Returns the colour the client paints the splash and the cloud with."
+  "Returns the colour the client paints the splash and cloud with."
   ^long [stack]
   (let [c (contents stack)]
     (long (or (:custom-color c) (blend (all-effects c))
@@ -127,8 +126,8 @@
   (:instant? (get (data/mob-effects) (:effect e))))
 
 (defn has-instant-effects?
-  "Returns true when the potion itself acts at once. Custom effects do
-  not count."
+  "Returns true when the potion itself acts at once. Custom
+  effects do not count."
   [stack]
   (boolean (some instant? (brewed (contents stack)))))
 
@@ -197,22 +196,22 @@
 (defn throw-deltas
   "Returns the deltas of a player throwing what its main hand holds."
   [world eid e]
-  (let [stack (state/hand-stack e :main)]
-    (when (throwables (:item stack))
+  (let [stack (state/hand-stack e :main) item (:item stack)]
+    (when (throwables item)
       (concat (throw-sound world eid e stack)
               [[:spawn-entity (thrown world eid e stack)]
-               [:award eid (keyword "used" (name (:item stack))) 1]]
+               [:award eid (keyword "used" (name item)) 1]]
               (spent-deltas eid e stack)
-              (state/cooldown-deltas eid e (:item stack)
-                                     (:tick world))))))
+              (state/cooldown-deltas eid e item (:tick world))))))
 
 (defn- box-of [pos ^double w ^double h]
   (let [x (v/x pos) y (v/y pos) z (v/z pos)]
     [(- x w) y (- z w) (+ x w) (+ y h) (+ z w)]))
 
 (defn- inflated [b ^double dx ^double dy ^double dz]
-  [(- (double (b 0)) dx) (- (double (b 1)) dy) (- (double (b 2)) dz)
-   (+ (double (b 3)) dx) (+ (double (b 4)) dy) (+ (double (b 5)) dz)])
+  [(- (double (b 0)) dx) (- (double (b 1)) dy)
+   (- (double (b 2)) dz) (+ (double (b 3)) dx)
+   (+ (double (b 4)) dy) (+ (double (b 5)) dz)])
 
 (defn- swept [b d ^double m]
   (let [lo (fn ^double [^long i ^double c]
@@ -312,12 +311,14 @@
                         (target-box o)))
         true)))
 
+(defn- submerged? [world e]
+  (let [chunks (:chunks world)]
+    (pos? (liquid/fluid-height chunks (:pos e) half height :water))))
+
 (defn- drift [world e]
   (let [g (if (potion-types (:type e)) potion-gravity gravity)
         vel (:vel e)
-        wet? (pos? (liquid/fluid-height (:chunks world) (:pos e)
-                                        half height :water))
-        k (if wet? water-drag air-drag)]
+        k (if (submerged? world e) water-drag air-drag)]
     [(* k (v/x vel)) (* k (- (v/y vel) g)) (* k (v/z vel))]))
 
 (defn- point [from d ^double t]
@@ -340,13 +341,15 @@
      :pitch (lerp-rotation (double (:pitch e 0.0)) pitch)
      :age (inc (long (:age e 0)))}))
 
+(defn- teleport-packet [at o]
+  (out/teleport at (:yaw o 0.0) (:pitch o 0.0)))
+
 (defn- pearl-deltas [world e]
-  (let [oid (:owner e) o (get-in world [:entities oid]) p (:pos e)]
+  (let [oid (:owner e) o (get-in world [:entities oid]) p (:pos e)
+        at [(v/x p) (v/y p) (v/z p)]]
     (when (and o (pos? (double (:health o 0.0))) (not (:sleeping o)))
-      (concat [[:teleport oid [(v/x p) (v/y p) (v/z p)]]
-               (out/to oid (out/teleport [(v/x p) (v/y p) (v/z p)]
-                                         (:yaw o 0.0)
-                                         (:pitch o 0.0)))]
+      (concat [[:teleport oid at]
+               (out/to oid (teleport-packet at o))]
               (when-not (damage/creative-proof? o)
                 [[:damage oid pearl-damage]])
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))
@@ -360,26 +363,28 @@
   (and (chunk/in-range? (nth p 1))
        (block/fire? (chunk/chunks-get-block chunks p))))
 
+(defn- break-packet [chunks p]
+  (out/all (out/break-effect p (chunk/chunks-get-block chunks p))))
+
 (defn- fire-out-deltas [world fires]
   (let [chunks (:chunks world)]
     (when (seq fires)
-      (conj (mapv #(out/all (out/break-effect
-                              % (chunk/chunks-get-block chunks %)))
-                  fires)
+      (conj (mapv #(break-packet chunks %) fires)
             [:set-blocks (mapv (fn [p] [p 0]) fires)]))))
 
 (defn- dowse-deltas
   "Returns the deltas of dowsing fire around the hit. Actual fire is
   destroyed, while a candle or a campfire only goes out."
   [world hit]
-  (let [cells (filterv #(chunk/in-range? (nth % 1)) (dowse-cells hit))
+  (let [loaded? #(chunk/in-range? (nth % 1))
+        cells (filterv loaded? (dowse-cells hit))
         fires (filterv #(fire-at? (:chunks world) %) cells)]
     (into (vec (fire-out-deltas world fires))
           (mapcat #(edit/dowse-deltas world %))
           (remove (set fires) cells))))
 
 (defn- doused-deltas
-  "Returns the deltas of a water splash putting out entities it soaks."
+  "Returns the deltas of a water splash putting out soaked entities."
   [world at]
   (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
     (for [[oid o] (sort-by key (:entities world))
@@ -451,6 +456,10 @@
       [(+ r (* (count taken) (double (:radius-on-use e))))
        (into left taken)])))
 
+(defn- cloud-merge [eid ^long age r victims]
+  [[:merge-entity eid {:age age :waiting? false :radius r
+                       :victims victims}]])
+
 (defn- cloud-active [world eid e ^long age]
   (let [r (+ (double (:radius e)) (double (:radius-per-tick e)))]
     (if (< r cloud-min-radius)
@@ -458,8 +467,7 @@
       (let [[r' victims] (cloud-contact world e age r)]
         (if (< r' cloud-min-radius)
           [[:remove-entity eid]]
-          [[:merge-entity eid {:age age :waiting? false :radius r'
-                               :victims victims}]])))))
+          (cloud-merge eid age r' victims))))))
 
 (defn- cloud-deltas [world eid e]
   (let [age (inc (long (:age e 0))) wait (long (:wait-time e))]

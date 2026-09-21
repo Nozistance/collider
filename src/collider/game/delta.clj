@@ -1,6 +1,5 @@
 (ns collider.game.delta
-  "Schemas of delta tags and effect messages.
-  The check against them is optional."
+  "Schemas of delta tags and effect messages."
   (:require [malli.core :as m]
             [malli.error :as me])
   (:import (collider.java V3)))
@@ -83,8 +82,10 @@
    :observed
    [:cat :map]
    :explode
-   [:cat [:map [:center Vec3] [:power number?] [:source :keyword] [:fire? :boolean]
-          [:by {:optional true} [:maybe Eid]] [:later {:optional true} :map]]]})
+   [:cat [:map [:center Vec3] [:power number?]
+          [:source :keyword] [:fire? :boolean]
+          [:by {:optional true} [:maybe Eid]]
+          [:later {:optional true} :map]]]})
 
 (def entity-deltas
   {:merge-entity
@@ -113,11 +114,15 @@
    :load-chunk        [[:id :int]]
    :store-chunk       [[:id :int] [:payload :map]]
    :break-effect      [[:pos Pos] [:state State]]
-   :explosion         [[:center Vec3] [:radius number?] [:blocks :int] [:motions :map] [:pitch number?]]
+   :explosion         [[:center Vec3] [:radius number?]
+                       [:blocks :int] [:motions :map]
+                       [:pitch number?]]
    :sound             [[:kind :keyword] [:pos Vec3]
                        [:volume number?] [:pitch number?]
                        [:source {:optional true} :keyword]]
-   :particles         [[:kind :keyword] [:state [:maybe State]] [:pos Vec3] [:count :int] [:speed number?]]
+   :particles         [[:kind :keyword] [:state [:maybe State]]
+                       [:pos Vec3] [:count :int]
+                       [:speed number?]]
    :extinguish        [[:pos Pos]]
    :fizz              [[:pos Pos]]
    :bonemeal          [[:pos Pos]]
@@ -143,8 +148,10 @@
    :set-slot          [[:slot :int] [:stack [:maybe Stack]]]
    :carried           [[:stack [:maybe Stack]]]
    :held-slot         [[:slot :int]]
-   :inventory         [[:slots [:sequential :any]] [:carried [:maybe Stack]]]
-   :suggestions       [[:id :int] [:start :int] [:length :int] [:matches [:sequential :any]]]
+   :inventory         [[:slots [:sequential :any]]
+                       [:carried [:maybe Stack]]]
+   :suggestions       [[:id :int] [:start :int] [:length :int]
+                       [:matches [:sequential :any]]]
    :system-chat       [[:runs Runs]]
    :player-chat       [[:name :string] [:runs Runs]]
    :overlay           [[:runs Runs]]
@@ -154,35 +161,51 @@
    :tab-remove        [[:uuids [:sequential :uuid]]]
    :tab-latency       [[:entries [:sequential :map]]]
    :tab-header        [[:header :string] [:footer :string]]
-   :move              [[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:on-ground :boolean]]
-   :move-look         [[:eid Eid] [:dx :int] [:dy :int] [:dz :int] [:yaw :int] [:pitch :int] [:on-ground :boolean]]
-   :look              [[:eid Eid] [:yaw :int] [:pitch :int] [:on-ground :boolean]]
-   :sync-pos          [[:eid Eid] [:pos Vec3] [:yaw number?] [:pitch number?] [:on-ground :boolean]]
+   :move              [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
+                       [:on-ground :boolean]]
+   :move-look         [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
+                       [:yaw :int] [:pitch :int]
+                       [:on-ground :boolean]]
+   :look              [[:eid Eid] [:yaw :int] [:pitch :int]
+                       [:on-ground :boolean]]
+   :sync-pos          [[:eid Eid] [:pos Vec3] [:yaw number?]
+                       [:pitch number?] [:on-ground :boolean]]
    :head-look         [[:eid Eid] [:yaw number?]]
    :meta              [[:eid Eid] [:type :keyword] [:meta :map]]
    :velocity          [[:eid Eid] [:vel Vec3]]
-   :equipment         [[:eid Eid] [:slot :int] [:stack [:maybe Stack]]]
+   :equipment         [[:eid Eid] [:slot :int]
+                       [:stack [:maybe Stack]]]
    :animation         [[:eid Eid] [:kind :keyword]]
    :status            [[:eid Eid] [:kind :keyword]]
    :collect           [[:eid Eid] [:collector Eid]]
-   :open-screen       [[:container :int] [:menu :keyword] [:title :map]]
-   :container-content [[:container :int] [:state-id :int] [:items [:sequential [:maybe Stack]]] [:carried [:maybe Stack]]]
-   :container-slot    [[:container :int] [:state-id :int] [:slot :int] [:stack [:maybe Stack]]]
+   :open-screen       [[:container :int] [:menu :keyword]
+                       [:title :map]]
+   :container-content [[:container :int] [:state-id :int]
+                       [:items [:sequential [:maybe Stack]]]
+                       [:carried [:maybe Stack]]]
+   :container-slot    [[:container :int] [:state-id :int]
+                       [:slot :int] [:stack [:maybe Stack]]]
    :container-data    [[:container :int] [:id :int] [:value :int]]
    :container-close   [[:container :int]]})
 
 (defn- with-address [fields]
-  (into [:map [:msg :keyword] [:to {:optional true} Eid] [:except {:optional true} Eid]] fields))
+  (into [:map [:msg :keyword] [:to {:optional true} Eid]
+         [:except {:optional true} Eid]]
+        fields))
 
 (def Fx
   (into [:multi {:dispatch :msg}]
-        (for [[msg fields] fx-messages] [msg (with-address fields)])))
+        (for [[msg fields] fx-messages]
+          [msg (with-address fields)])))
 
 (def Delta
   (into [:multi {:dispatch first}]
-        (concat (for [[tag args] world-deltas] [tag (into [:cat [:= tag]] (rest args))])
-                (for [[tag args] entity-deltas] [tag (into [:cat [:= tag] Eid] (rest args))])
-                [[:fx [:cat [:= :fx] Fx]]])))
+        (concat
+          (for [[tag args] world-deltas]
+            [tag (into [:cat [:= tag]] (rest args))])
+          (for [[tag args] entity-deltas]
+            [tag (into [:cat [:= tag] Eid] (rest args))])
+          [[:fx [:cat [:= :fx] Fx]]])))
 
 (def ^:private delta-validator (delay (m/validator Delta)))
 
@@ -199,6 +222,7 @@
 (defn check! [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)
-      (throw (ex-info (str "invalid delta " (first d)) {:delta d :why (explain d)}))))
+      (throw (ex-info (str "invalid delta " (first d))
+                      {:delta d :why (explain d)}))))
   deltas)
 

@@ -788,8 +788,8 @@
         [e2 ds] (if (steps? active (nth es i))
                   (step-mob world index tempters eid e t)
                   [e nil])
-        [es hs] (handed-out index active slots
-                            (assoc es i [eid e2]) i)]
+        es (assoc es i [eid e2])
+        [es hs] (handed-out index active slots es i)]
     [es (into (vec ds) hs) (identical? (:pos e) (:pos e2))]))
 
 (defn- step-island
@@ -802,8 +802,8 @@
     (loop [i 0 es (vec es) index (push/index-of es) acc []]
       (if (= i (count es))
         acc
-        (let [[es ds still?] (turn world active tempters t index
-                                   slots es i)]
+        (let [[es ds still?]
+              (turn world active tempters t index slots es i)]
           (recur (inc i) es (if still? index (push/index-of es))
                  (into acc ds)))))))
 

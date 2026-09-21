@@ -108,10 +108,13 @@
 (defn- fetcher [{:keys [saver store]}]
   (when saver #(snapshot/fetch-chunk-now! saver store %)))
 
+(defn- io-input [base conns]
+  (let [fetch (fetcher base)]
+    #(hash-map :writable (server/writable-eids conns)
+               :fetch-chunk fetch)))
+
 (defn- ticker-opts [base conns cfg save!]
-  {:io-input (let [fetch (fetcher base)]
-               #(hash-map :writable (server/writable-eids conns)
-                          :fetch-chunk fetch))
+  {:io-input (io-input base conns)
    :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
    :on-pause save!})
 
@@ -156,10 +159,10 @@
   (* 1000000 (.getUptime (ManagementFactory/getRuntimeMXBean))))
 
 (defn- port-taken [port]
-  (let [why (str "Perhaps a server is already running on port "
-                 port "?")
-        cmd (str "Set another port in config.edn: {:port "
-                 (inc (long port)) "}")]
+  (let [why (format "Perhaps a server is already running on port %s?"
+                    port)
+        cmd (format "Set another port in config.edn: {:port %s}"
+                    (inc (long port)))]
     (ex-info "port taken"
              {:what "failed to bind to port" :why why :command cmd})))
 

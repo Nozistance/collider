@@ -124,9 +124,11 @@
              (name k))))
 
 (def ^:private sheep-meta
-  (into {} (for [color (range 16) baby [false true] burning [false true] sheared [false true]]
+  (into {} (for [color (range 16) baby [false true]
+                 burning [false true] sheared [false true]]
              [[color baby burning sheared]
-              (cond-> {:color color :baby? baby :burning? burning} sheared (assoc :sheared? true))])))
+              (cond-> {:color color :baby? baby :burning? burning}
+                sheared (assoc :sheared? true))])))
 
 (def ^:private cow-meta
   (into {} (for [v cow-variants s [:classic :moody]
@@ -177,7 +179,8 @@
       :yaw yaw :head-yaw yaw :sound-variant voice)))
 
 (defn exp-delay ^long [mean ^long t ^long eid kind]
-  (max 1 (long (* (double mean) (- (Math/log (max 1.0E-9 (random/of-longs t eid (hash kind)))))))))
+  (let [r (max 1.0E-9 (random/of-longs t eid (hash kind)))]
+    (max 1 (long (* (double mean) (- (Math/log r)))))))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
@@ -203,6 +206,6 @@
                      nil)]
     (cond-> {:type (:type e) :baby? (baby? e)
              :sheared? (boolean (:sheared? e))}
-            components (assoc :components components))))
+      components (assoc :components components))))
 
 (defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))

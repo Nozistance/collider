@@ -14,7 +14,8 @@
             [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.java Chunk)
            (java.io DataInput DataOutput File)
-           (java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption)
+           (java.nio.file CopyOption Files LinkOption)
+           (java.nio.file OpenOption Path StandardCopyOption)
            (java.nio.file.attribute FileAttribute)))
 
 (set! *warn-on-reflection* true)
@@ -36,16 +37,33 @@
   (load [this])
   (flush! [this]))
 
+(def ^:private no-attrs (make-array FileAttribute 0))
+
+(def ^:private no-links (make-array LinkOption 0))
+
+(defn- temp-file ^Path [^Path dir]
+  (Files/createTempFile dir "world-" ".tmp" no-attrs))
+
+(defn- write-bytes! [^Path p ^bytes data]
+  (let [^OpenOption/1 opts (make-array OpenOption 0)]
+    (Files/write p data opts)))
+
+(defn- move-atomically! [^Path tmp ^Path target]
+  (let [opts [StandardCopyOption/ATOMIC_MOVE
+              StandardCopyOption/REPLACE_EXISTING]]
+    (Files/move tmp target (into-array CopyOption opts))))
+
+(defn- parent-dir ^Path [^Path target]
+  (or (.getParent target) (.toPath (io/file "."))))
+
 (defn- write-atomically! ^long [file ^bytes data]
   (let [^Path target (.toPath (io/file file))
-        dir (or (.getParent target) (.toPath (io/file ".")))]
-    (Files/createDirectories dir (make-array FileAttribute 0))
-    (let [tmp (Files/createTempFile dir "world-" ".tmp" (make-array FileAttribute 0))
-          ^OpenOption/1 open-opts (make-array OpenOption 0)]
+        dir (parent-dir target)]
+    (Files/createDirectories dir no-attrs)
+    (let [tmp (temp-file dir)]
       (try
-        (Files/write tmp data open-opts)
-        (Files/move tmp target (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
-                                                       StandardCopyOption/REPLACE_EXISTING]))
+        (write-bytes! tmp data)
+        (move-atomically! tmp target)
         (catch Throwable t
           (Files/deleteIfExists tmp)
           (throw t))))
@@ -59,11 +77,11 @@
   (io/file dir "meta.edn"))
 
 (defn- backup-meta! [dir]
-  (let [^Path f (.toPath (meta-file dir))]
-    (when (Files/isRegularFile f (make-array LinkOption 0))
+  (let [^Path f (.toPath (meta-file dir))
+        opts [StandardCopyOption/REPLACE_EXISTING]]
+    (when (Files/isRegularFile f no-links)
       (Files/copy f (.resolveSibling f "meta.edn.bak")
-                  ^CopyOption/1
-                  (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING])))))
+                  ^CopyOption/1 (into-array CopyOption opts)))))
 
 (defn- read-frozen [^File f]
   (when (.isFile f)
@@ -76,31 +94,38 @@
 (defn- spaces ^String [^long n] (apply str (repeat n " ")))
 
 (defn- edn-lines [^StringBuilder sb v ^long col]
-  (if (map? v)
-    (let [keys (mapv pr-str (keys v))
-          width (long (reduce max 0 (map count keys)))]
+  (if-not (map? v)
+    (.append sb (pr-str v))
+    (let [ks (mapv pr-str (keys v))
+          width (long (reduce max 0 (map count ks)))]
       (.append sb "{")
-      (doseq [[i [k x]] (map-indexed vector (map vector keys (vals v)))]
-        (when (pos? (long i)) (.append sb "\n") (.append sb (spaces (inc col))))
+      (doseq [[i k x] (map vector (range) ks (vals v))]
+        (when (pos? (long i))
+          (.append sb "\n")
+          (.append sb (spaces (inc col))))
         (.append sb ^String k)
         (.append sb (spaces (inc (- width (count k)))))
         (edn-lines sb x (+ col 2 width)))
-      (.append sb "}"))
-    (.append sb (pr-str v))))
+      (.append sb "}"))))
 
 (defn- edn-bytes ^bytes [m]
   (let [sb (StringBuilder.)]
-    (binding [*print-length* nil *print-level* nil] (edn-lines sb m 0))
+    (binding [*print-length* nil *print-level* nil]
+      (edn-lines sb m 0))
     (.append sb "\n")
     (.getBytes (str sb) "UTF-8")))
 
 (defn- chunk-id-of [^File f]
-  (let [[cx cz] (.split (subs (.getName f) 0 (- (count (.getName f)) 6)) "_")]
+  (let [n (.getName f)
+        [cx cz] (.split (subs n 0 (- (count n) 6)) "_")]
     (chunk/pos->id (parse-long cx) (parse-long cz))))
 
+(defn- chunk-file? [^File f]
+  (re-matches #"-?\d+_-?\d+\.chunk" (.getName f)))
+
 (defn- chunk-files [dir]
-  (filter #(re-matches #"-?\d+_-?\d+\.chunk" (.getName ^File %))
-          (or (.listFiles (io/file dir "chunks")) (make-array File 0))))
+  (let [fs (.listFiles (io/file dir "chunks"))]
+    (filter chunk-file? (or fs (make-array File 0)))))
 
 (defn- stored-ids [dir]
   (into (i/int-set) (map chunk-id-of) (chunk-files dir)))
@@ -113,9 +138,13 @@
 
 (defrecord FileStore [dir]
   Store
-  (put-chunk! [_ id payload] (write-atomically! (chunk-file dir id) (nippy/freeze payload freeze-opts)))
+  (put-chunk! [_ id payload]
+    (write-atomically! (chunk-file dir id)
+                       (nippy/freeze payload freeze-opts)))
   (get-chunk [_ id] (read-frozen (chunk-file dir id)))
-  (put-meta! [_ m] (backup-meta! dir) (write-atomically! (meta-file dir) (edn-bytes m)))
+  (put-meta! [_ m]
+    (backup-meta! dir)
+    (write-atomically! (meta-file dir) (edn-bytes m)))
   (load [_] (read-store dir))
   (flush! [_] nil)
   Object
@@ -139,7 +168,8 @@
   (if (number? n) (long n) 0))
 
 (defn- write-chunks! [store chunks]
-  (reduce + 0 (map (fn [[id c]] (written (put-chunk! store id c))) chunks)))
+  (let [write! (fn [[id c]] (written (put-chunk! store id c)))]
+    (reduce + 0 (map write! chunks))))
 
 (defn write-snapshot!
   "Writes a snapshot to a store and returns how many bytes it took."
@@ -160,12 +190,18 @@
                (merge empty-parts base)
                (:chunks snap))))
 
+(defn- format-complaint [store m]
+  (str "snapshot " store " has format " (pr-str (:format m))
+       ", this server writes format " format-version
+       " - move the world aside or start with a fresh save"
+       " directory"))
+
 (defn- check-format! [store m]
   (when-not (= format-version (:format m))
-    (throw (ex-info (str "snapshot " store " has format " (pr-str (:format m))
-                         ", this server writes format " format-version
-                         " - move the world aside or start with a fresh save directory")
-                    {:found (:format m) :expected format-version :store (str store)}))))
+    (throw (ex-info (format-complaint store m)
+                    {:found (:format m)
+                     :expected format-version
+                     :store (str store)}))))
 
 (defn- complaint [m [k msgs]]
   (str k " " (str/join ", " msgs)
@@ -248,8 +284,8 @@
 (defn- read-chunk [store id]
   (try (get-chunk store id)
        (catch Throwable t
-         (log/warn (chunk-name id) "could not be read and starts over"
-                   "as a new chunk -" (.getMessage t))
+         (log/warn (chunk-name id) "could not be read and"
+                   "starts over as a new chunk -" (.getMessage t))
          nil)))
 
 (defn- fetched! [state store id deliver]
