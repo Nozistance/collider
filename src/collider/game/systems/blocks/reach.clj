@@ -27,15 +27,29 @@
   (^double [^double eye ^double lo ^double size]
    (max (- lo eye) (- eye (+ lo size)) 0.0)))
 
-(defn in-reach?
-  "Tests whether the entity may act on the block at pos."
-  [e pos]
+(def ^:private ^:const edit-buffer 4.0)
+
+(defn- gap-sq ^double [e pos]
   (let [[ex ey ez] (eye-pos e)
         dx (axis-gap ex (double (nth pos 0)))
         dy (axis-gap ey (double (nth pos 1)))
         dz (axis-gap ez (double (nth pos 2)))]
-    (< (+ (* dx dx) (* dy dy) (* dz dz))
-       (let [r (+ (state/block-reach e) use-buffer)] (* r r)))))
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
+(defn- within? [e pos ^double buffer]
+  (let [r (+ (state/block-reach e) buffer)]
+    (< (gap-sq e pos) (* r r))))
+
+(defn in-reach?
+  "Tests whether the entity may act on the block at pos."
+  [e pos]
+  (within? e pos use-buffer))
+
+(defn in-edit-range?
+  "Tests whether the entity is near enough to keep a sign open.
+  Player.isWithinBlockInteractionRange with a buffer of four."
+  [e pos]
+  (within? e pos edit-buffer))
 
 (defn look-dir
   "Returns the unit vector the entity looks along."

@@ -26,6 +26,7 @@
             [collider.game.systems.pose :as pose]
             [collider.game.systems.projectiles :as projectiles]
             [collider.game.systems.random.tick :as random-tick]
+            [collider.game.systems.signs :as signs]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tnt :as tnt]
@@ -82,7 +83,8 @@
              [#'items/pickups #'containers/broadcast]
              [#'furnaces/furnace-cooking
               #'brewing/brewing
-              #'jukebox/jukebox-songs]
+              #'jukebox/jukebox-songs
+              #'signs/sign-editors]
              [#'blocks/acks]
              [#'detector/observe]])
 
