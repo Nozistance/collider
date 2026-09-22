@@ -23,7 +23,9 @@
 (set! *warn-on-reflection* true)
 
 (defn- clicked-scaffolding? [{:keys [world pos item use-item?]}]
-  (and (= :scaffolding item) (not use-item?) (= :scaffolding (block/type-of (edit/block-at world pos)))))
+  (and (= :scaffolding item)
+       (not use-item?)
+       (= :scaffolding (block/type-of (edit/block-at world pos)))))
 
 (defn- when-use [f] (fn [c] (when (:use-item? c) (f c))))
 
@@ -35,49 +37,81 @@
 
 (defn- on-args [f] (fn [{:keys [world args]}] (f world args)))
 
+(defn- on-at [f]
+  (fn [{:keys [world eid at]}] (f world eid at)))
+
+(defn- axe-or-place [w args]
+  (or (tools/axe-deltas w args) (place/solid-place-deltas w args)))
+
+(defn- equip-deltas [{:keys [world eid item]}]
+  (let [slot (tools/armor-slot-of item)]
+    (tools/equip-armor-deltas world eid item slot)))
+
 (def ^:private item-actions
-  [[clicked-scaffolding? (fn [{:keys [world eid pos face]}] (place/scaffold-place-deltas world eid pos face))]
+  [[clicked-scaffolding?
+    (fn [{:keys [world eid pos face]}]
+      (place/scaffold-place-deltas world eid pos face))]
    [(comp nil? :item) (constantly nil)]
    [(comp projectiles/throwables :item)
-    (fn [{:keys [world eid at]}] (projectiles/throw-deltas world eid at))]
-   [:pour (when-use (fn [{:keys [world eid at pour]}] (bucket/add world eid at pour)))]
-   [(item-is :flint-and-steel) (when-hand (on-args tools/flint-deltas))]
-   [(item-is :fire-charge) (when-hand (on-args tools/firecharge-deltas))]
-   [(item-is :bucket) (when-use (fn [{:keys [world eid at]}] (bucket/scoop-deltas world eid at)))]
-   [(item-is :glass-bottle) (when-use (fn [{:keys [world eid at]}] (consume/bottle-deltas world eid at)))]
-   [(item-is :lily-pad) (when-use (fn [{:keys [world eid at]}] (bucket/lily-deltas world eid at)))]
-   [(item-is :potion) (when-hand (fn [{:keys [world eid pos face]}] (tools/mud-deltas world eid pos face)))]
+    (on-at projectiles/throw-deltas)]
+   [:pour
+    (when-use (fn [{:keys [world eid at pour]}]
+                (bucket/add world eid at pour)))]
+   [(item-is :flint-and-steel)
+    (when-hand (on-args tools/flint-deltas))]
+   [(item-is :fire-charge)
+    (when-hand (on-args tools/firecharge-deltas))]
+   [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
+   [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]
+   [(item-is :lily-pad) (when-use (on-at bucket/lily-deltas))]
+   [(item-is :potion)
+    (when-hand (fn [{:keys [world eid pos face]}]
+                 (tools/mud-deltas world eid pos face)))]
    [(item-is :bone-meal) (when-hand (on-args tools/bonemeal-deltas))]
    [(tool-is tools/hoes) (when-hand (on-args tools/till-deltas))]
    [(item-is :honeycomb) (when-hand (on-args tools/wax-deltas))]
-   [(tool-is tools/axes) (when-hand (on-args (fn [w args] (or (tools/axe-deltas w args) (place/solid-place-deltas w args)))))]
-   [(tool-is tools/shovels) (when-hand (on-args tools/flatten-deltas))]
-   [(comp mobs/egg-type :item) (when-hand (on-args tools/spawn-egg-deltas))]
-   [(fn [{:keys [item use-item?]}] (and use-item? (tools/armor-slot-of item)))
-    (fn [{:keys [world eid item]}] (tools/equip-armor-deltas world eid item (tools/armor-slot-of item)))]
+   [(tool-is tools/axes) (when-hand (on-args axe-or-place))]
+   [(tool-is tools/shovels)
+    (when-hand (on-args tools/flatten-deltas))]
+   [(comp mobs/egg-type :item)
+    (when-hand (on-args tools/spawn-egg-deltas))]
+   [(fn [{:keys [item use-item?]}]
+      (and use-item? (tools/armor-slot-of item)))
+    equip-deltas]
    [(constantly true) (on-args place/solid-place-deltas)]])
 
+(defn- fresh? [{:keys [at item world]}]
+  (not (state/on-cooldown? at item (:tick world))))
+
 (defn- item-deltas [ctx]
-  (when-not (state/on-cooldown? (:at ctx) (:item ctx)
-                                (:tick (:world ctx)))
-    (when-let [[_ f] (first (filter (fn [[pred _]] (pred ctx))
-                                    item-actions))]
-      (f ctx))))
+  (when (fresh? ctx)
+    (let [acts (filter (fn [[pred _]] (pred ctx)) item-actions)]
+      (when-let [[_ f] (first acts)] (f ctx)))))
+
+(defn- place-ctx [world at [eid pos face item cursor :as args]]
+  {:world     world :eid eid :pos pos :face face :item item :at at
+   :args      args :cursor cursor
+   :use-item? (= 255 (bit-and (long face) 0xFF))
+   :pour      (liquid/bucket->state item)})
+
+(defn- hand-deltas [ctx]
+  (let [{:keys [world eid pos face item cursor at use-item?]} ctx]
+    (when-not (or use-item? (and item (:sneaking? at)))
+      (use/deltas world eid pos face item cursor))))
 
 (defn- place-deltas [world [eid pos face item cursor] origin]
-  (let [item (or item (sense/held-of (get-in world [:entities eid])))
-        at (merge (get-in world [:entities eid]) origin)
+  (let [e (get-in world [:entities eid])
+        item (or item (sense/held-of e))
+        at (merge e origin)
         world (assoc-in world [:entities eid] at)
-        use-item? (= 255 (bit-and (long face) 0xFF))
-        used (when (and (not use-item?) (not (and item (:sneaking? at))))
-               (use/deltas world eid pos face item cursor))]
+        ctx (place-ctx world at [eid pos face item cursor])
+        use? (:use-item? ctx)]
     (cond
-      (door/opens? world eid pos item use-item?) (door/toggle-deltas world eid pos (edit/block-at world pos))
-      (bed/uses-bed? world eid pos item use-item?) (bed/sleep-deltas world eid pos)
-      used used
-      :else (item-deltas {:world world :eid eid :pos pos :face face :item item :at at
-                          :args  [eid pos face item cursor] :use-item? use-item?
-                          :pour  (liquid/bucket->state item)}))))
+      (door/opens? world eid pos item use?)
+      (door/toggle-deltas world eid pos (edit/block-at world pos))
+      (bed/uses-bed? world eid pos item use?)
+      (bed/sleep-deltas world eid pos)
+      :else (or (hand-deltas ctx) (item-deltas ctx)))))
 
 (defn- sequence-of
   "Returns the sequence number the player sent with the action.
@@ -92,39 +126,49 @@
 (defn- acted-at [world eid origin pos]
   (reach/in-reach? (merge (get-in world [:entities eid]) origin) pos))
 
+(defn- ack-changes [world eid pos off]
+  (let [pos' (mapv + pos off)]
+    (cond-> [(edit/own-change world eid pos)]
+            (chunk/in-range? (nth pos' 1))
+            (conj (edit/own-change world eid pos')))))
+
+(defn- one-ack [world origins [i [tag eid pos face]]]
+  (when-let [off (and (= :place tag)
+                      (dir/face-offset (bit-and (long face) 0xFF)))]
+    (when (and (chunk/in-range? (nth pos 1))
+               (acted-at world eid (get origins i) pos))
+      (ack-changes world eid pos off))))
+
 (defn- use-ack-deltas [world events origins]
-  (mapcat (fn [[i [tag eid pos face]]]
-            (when-let [off (and (= :place tag) (dir/face-offset (bit-and (long face) 0xFF)))]
-              (when (and (chunk/in-range? (nth pos 1))
-                         (acted-at world eid (get origins i) pos))
-                (let [pos' (mapv + pos off)]
-                  (cond-> [(edit/own-change world eid pos)]
-                          (chunk/in-range? (nth pos' 1)) (conj (edit/own-change world eid pos')))))))
-          (map-indexed vector events)))
+  (mapcat #(one-ack world origins %) (map-indexed vector events)))
+
+(defn- latest-sequences [events]
+  (reduce (fn [m [tag eid & args]]
+            (if-let [sq (sequence-of tag args)]
+              (update m eid (fnil max -1) (long sq))
+              m))
+          {} events))
 
 (defn acks [world d]
   (let [events (:input d)
-        latest (reduce (fn [m [tag eid & args]]
-                         (if-let [sq (sequence-of tag args)]
-                           (update m eid (fnil max -1) (long sq))
-                           m))
-                       {} events)]
-    (concat (map (fn [[eid sq]] (out/to eid (out/block-ack sq))) latest)
+        ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
+    (concat (map ack (latest-sequences events))
             (use-ack-deltas world events (:use-origins world)))))
 
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
     :dig (dig/dig-deltas world args)
     :place (place-deltas world args (get origins i))
-    :use-item (place-deltas world [(first args) [-1 -1 -1] 255 nil [0 0 0]]
-                            (get origins i))
+    :use-item (let [a [(first args) [-1 -1 -1] 255 nil [0 0 0]]]
+                (place-deltas world a (get origins i)))
     :sign-update (use/sign-update-deltas world args)
     nil))
 
 (defn- block-edits-deltas [world events]
   (let [origins (:use-origins world)]
     (state/fold-events world (map-indexed vector events)
-                       (fn [w [i ev]] (edit-deltas w i ev origins)))))
+                       (fn [w [i ev]] (edit-deltas w i ev origins))
+                       second)))
 
 (defn block-edits [world d]
   (let [events (:input d)]

@@ -339,15 +339,10 @@
   (assoc e :using-item? false :using nil))
 
 (defn- switched [e ^long slot]
-  (cond-> (assoc e :held-slot slot)
+  (cond-> {:held-slot slot}
           (and (not= slot (long (or (:held-slot e) 0)))
                (not= :off (get-in e [:using :hand])))
-          stopped-use))
-
-(defn- held-item [w eid slot]
-  (if (<= 0 (long slot) 8)
-    (update-entity w eid switched (long slot))
-    w))
+          (assoc :using-item? false :using nil)))
 
 (defn- wrap-degrees ^double [^double d]
   (let [r (rem d 360.0)]
@@ -467,13 +462,6 @@
     (use-item w eid :main rot)
     (update-entity w eid snapped rot)))
 
-(defn- set-slot [w eid slot stack]
-  (update-entity w eid
-                 (fn [e]
-                   (if stack
-                     (assoc-in e [:inventory slot] stack)
-                     (update e :inventory dissoc slot)))))
-
 (defn- seen-slots [m slots]
   (reduce (fn [m [s st]] (if st (assoc m s st) (dissoc m s)))
           (or m {})
@@ -486,18 +474,33 @@
                         (assoc :carried carried)))
     e))
 
-(defn- creative-slot [w eid slot stack]
-  (let [slot (long slot)
-        seen (fn [e]
-               (let [c (get-in e [:track :carried])]
-                 (client-slots e {slot stack} c)))]
-    (if (and (<= 1 slot 45)
-             (or (nil? stack)
-                 (and (keyword? (:item stack))
-                      (<= 1 (long (:count stack 1)) 64))))
-      (-> (set-slot w eid slot stack)
-          (update-entity eid seen))
-      w)))
+(defn- given? [^long slot stack]
+  (and (<= 1 slot 45)
+       (or (nil? stack)
+           (and (keyword? (:item stack))
+                (<= 1 (long (:count stack 1)) 64)))))
+
+(defn- creative-deltas [e eid ^long slot stack]
+  (when (given? slot stack)
+    [[:set-slot eid slot stack]
+     [:client-slots eid {slot stack} (get-in e [:track :carried])]]))
+
+(defn- held-deltas [e eid ^long slot]
+  (when (<= 0 slot 8)
+    [[:merge-entity eid (switched e slot)]]))
+
+(def ^:private slot-tags #{:held-item :creative-slot})
+
+(defn slot-deltas
+  "Returns the deltas of an event that touches the slots of its
+  player and nothing else. Every fold over the events of a tick
+  replays these; the packet systems alone give them out."
+  [world [tag eid slot stack]]
+  (when (contains? slot-tags tag)
+    (when-let [e (get-in world [:entities eid])]
+      (if (identical? :held-item tag)
+        (held-deltas e eid (long slot))
+        (creative-deltas e eid (long slot) stack)))))
 
 (def ^:private horizontal-limit 3.0E7)
 
@@ -592,9 +595,6 @@
      (update-entity w eid assoc
                     :view-distance (long (or view-distance 2))
                     :skin-parts (long (or skin-parts 0))))
-   :held-item (fn [w [_ eid slot]] (held-item w eid slot))
-   :creative-slot (fn [w [_ eid slot stack]]
-                    (creative-slot w eid slot stack))
    :place (fn [w [_ eid _ face _ _ _ rot]]
                       (placed w eid face rot))
    :use-item (fn [w [_ eid hand _ rot]]
@@ -891,11 +891,15 @@
 
 (defn fold-events
   "Returns the deltas f gives for each event in order. Each event sees
-  the world after the ones before it were applied."
-  [world events f]
-  (loop [w world evs (seq events) acc []]
-    (if-not evs
-      acc
-      (let [ds (vec (f w (first evs))) more (next evs)]
-        (recur (if (and more (seq ds)) (first (apply-deltas w ds)) w)
-               more (into acc ds))))))
+  the world after the ones before it were applied, and after the slot
+  events before it, whoever gives those out."
+  ([world events f] (fold-events world events f identity))
+  ([world events f event-of]
+   (loop [w world evs (seq events) acc []]
+     (if-not evs
+       acc
+       (let [x (first evs) more (next evs)
+             w (apply-entities w (slot-deltas w (event-of x)))
+             ds (vec (f w x))]
+         (recur (if (and more (seq ds)) (first (apply-deltas w ds)) w)
+                more (into acc ds)))))))

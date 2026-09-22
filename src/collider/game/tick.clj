@@ -65,10 +65,10 @@
   (into packet-systems entity-systems))
 
 (def phases [[#'spawning/placing]
-             [#'pose/pose]
-             [#'consume/consume]
              [#'chunks/chunk-loading]
              packet-systems
+             [#'consume/consume]
+             [#'pose/pose]
              [#'daynight/daynight]
              [#'block-updates/block-updates
               #'dripleaf/dripleaf-tilt]

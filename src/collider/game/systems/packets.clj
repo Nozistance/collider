@@ -9,12 +9,13 @@
 
 (def own-systems
   "The systems whose packet events touch the acting player only."
-  [#'inventory/event-deltas
+  [#'state/slot-deltas
+   #'inventory/event-deltas
    #'items/event-deltas
    #'players/swing-deltas])
 
 (def ^:private own-tags
-  #{:click :menu-click :pick :dig :creative-slot :swing})
+  #{:click :menu-click :pick :dig :creative-slot :swing :held-item})
 
 (defn- own? [ev]
   (and (contains? own-tags (nth ev 0))
