@@ -6,7 +6,8 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private recipe-types
-  {:furnace :smelting :blast-furnace :blasting :smoker :smoking})
+  {:furnace :smelting :blast-furnace :blasting :smoker :smoking
+   :campfire :campfire})
 
 (defn- in-items [in]
   (if (map? in) (data/tag-values "item" (:tag in)) in))
@@ -48,8 +49,8 @@
 
 (defn- grown [cur result]
   (if cur
-    (assoc cur :count (+ (long (:count cur 1))
-                         (long (:count result 1))))
+    (let [n (+ (long (:count cur 1)) (long (:count result 1)))]
+      (assoc cur :count n))
     result))
 
 (defn- burn [items result]

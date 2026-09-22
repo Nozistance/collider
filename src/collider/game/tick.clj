@@ -7,6 +7,7 @@
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.brewing :as brewing]
+            [collider.game.systems.campfires :as campfires]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.consume :as consume]
@@ -82,6 +83,7 @@
              [#'explosions/explosions]
              [#'items/pickups #'containers/broadcast]
              [#'furnaces/furnace-cooking
+              #'campfires/campfire-cooking
               #'brewing/brewing
               #'jukebox/jukebox-songs
               #'signs/sign-editors]

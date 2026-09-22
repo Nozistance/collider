@@ -28,7 +28,8 @@
    :furnace             :furnace
    :blast-furnace       :blast-furnace
    :smoker              :smoker
-   :brewing-stand       :brewing-stand})
+   :brewing-stand       :brewing-stand
+   :campfire            :campfire})
 
 (def ^:private silent
   #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
@@ -44,7 +45,7 @@
 
 (def spill-kinds
   #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker
-    :brewing-stand})
+    :brewing-stand :campfire})
 
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
@@ -119,6 +120,7 @@
     :skull (skull-nbt e)
     :decorated-pot (pot-nbt e)
     :shelf (shelf-nbt e)
+    :campfire {:Items (items-nbt (:items e))}
     {}))
 
 (defn on-wire? [e]
@@ -184,7 +186,10 @@
      :cook  0 :cook-total 0 :used {}}
     :brewing-stand
     {:kind :brewing-stand :items (vec (repeat 5 nil))
-     :brew 0 :fuel 0}))
+     :brew 0 :fuel 0}
+    :campfire
+    {:kind :campfire :items (vec (repeat 4 nil))
+     :cook [0 0 0 0] :cook-total [0 0 0 0]}))
 
 (defn wire [entries]
   (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))

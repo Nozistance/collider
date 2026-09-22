@@ -9,6 +9,7 @@
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.tools :as tools]
+            [collider.game.systems.campfires :as campfires]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.items :as items]
             [collider.random :as random]
@@ -102,6 +103,11 @@
       (concat (edit/change-deltas world [[pos (block/state :composter {:level :0})]])
               [[:spawn-entity (items/popped world (mapv + pos [0 1 0]) {:item :bone-meal :count 1} :compost)]
                (out/all (out/sound :composter/empty pos 1.0 1.0))]))))
+
+(defn- campfire-use-deltas [world _eid pos _face item _cursor]
+  (when-let [e (be/at world pos)]
+    (when-let [e' (and item (campfires/place-food e item))]
+      (edit/be-changed pos e'))))
 
 (defn- sign-use-deltas [world eid pos item]
   (let [st (edit/block-at world pos) e (sign/at world pos)
@@ -278,6 +284,7 @@
    :composter           (fn [w _ pos _ item _] (compost-deltas w pos item))
    :decorated-pot       (fn [w _ pos _ item _] (pot-use-deltas w pos item))
    :jukebox             (fn [w _ pos _ item _] (jukebox-use-deltas w pos item))
+   :campfire            campfire-use-deltas
    :shelf               (fn [w eid pos face _ cursor] (shelf-use-deltas w eid pos face cursor))
    :chiseled-book-shelf (fn [w eid pos face item cursor] (bookshelf-use-deltas w eid pos face item cursor))
    :bell                (fn [w _ pos face _ cursor] (bell-use-deltas w pos face cursor))
