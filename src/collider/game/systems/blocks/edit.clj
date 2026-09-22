@@ -30,7 +30,10 @@
   Returns nil when it never blocks placement."
   [e]
   (case (:type e)
-    :player [player-half (if (and (:sneaking? e) (not (:flying e))) crouching-height player-height)]
+    :player [player-half
+             (if (and (:sneaking? e) (not (:flying e)))
+               crouching-height
+               player-height)]
     (:tnt :falling-block) [tnt-half tnt-height]
     :item nil
     (when-let [m (get mobs/types (:type e))]
@@ -38,14 +41,18 @@
         [(* s (double (:half m))) (* s (double (:height m)))]))))
 
 (defn- box-hits-at? [^doubles a ^long n [px py pz] [half h]]
-  (let [px (double px) py (double py) pz (double pz) half (double half) h (double h)]
+  (let [px (double px) py (double py) pz (double pz)
+        half (double half) h (double h)]
     (loop [i 0]
       (if (= i n)
         false
         (let [o (* i 6)]
-          (if (and (> (+ px half) (aget a o)) (< (- px half) (aget a (+ o 3)))
-                   (> (+ py h) (aget a (+ o 1))) (< py (aget a (+ o 4)))
-                   (> (+ pz half) (aget a (+ o 2))) (< (- pz half) (aget a (+ o 5))))
+          (if (and (> (+ px half) (aget a o))
+                   (< (- px half) (aget a (+ o 3)))
+                   (> (+ py h) (aget a (+ o 1)))
+                   (< py (aget a (+ o 4)))
+                   (> (+ pz half) (aget a (+ o 2)))
+                   (< (- pz half) (aget a (+ o 5))))
             true
             (recur (inc i))))))))
 
@@ -66,19 +73,22 @@
 
 (defn obstructed? [world [x y z] state]
   (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
-        n (quot (alength a) 6)]
+        n (quot (alength a) 6)
+        hit (fn [_ _ e]
+              (if-let [dims (builder-box e)]
+                (if (box-hits-at? a n (:pos e) dims)
+                  (reduced true)
+                  false)
+                false))]
     (and (pos? n)
-         (boolean
-           (reduce-kv (fn [_ _ e]
-                        (if-let [dims (builder-box e)]
-                          (if (box-hits-at? a n (:pos e) dims) (reduced true) false)
-                          false))
-                      false (:entities world))))))
+         (boolean (reduce-kv hit false (:entities world))))))
 
 (defn own-change
   "Returns the effect that shows one player the true block at pos."
   [world eid pos]
-  (out/to eid (out/blocks-changed (chunk/block-chunk pos) [[pos (block-at world pos)]])))
+  (let [at (chunk/block-chunk pos)
+        changed [[pos (block-at world pos)]]]
+    (out/to eid (out/blocks-changed at changed))))
 
 (defn reject-deltas [world eid pos pos']
   (cond-> [(own-change world eid pos)]
@@ -90,7 +100,9 @@
   around them."
   [world changes]
   (let [chunks' (chunk/chunks-set-blocks (:chunks world) changes)
-        all (into (vec changes) (connect/derived-changes chunks' (map first changes) (:tick world)))
+        derived (connect/derived-changes
+                  chunks' (map first changes) (:tick world))
+        all (into (vec changes) derived)
         chunks'' (chunk/chunks-set-blocks chunks' all)
         mixed (liquid/mix-changes chunks'' (map first all))]
     (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
@@ -100,9 +112,11 @@
 (defn placed-deltas
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
-   (let [[pos state] (first changes)]
-     (conj (change-deltas world changes)
-           (out/except eid (out/sound (data/place-sound (block/block-of state)) pos 1.0 0.8))))))
+   (let [[pos state] (first changes)
+         deltas (change-deltas world changes)
+         placed (block/block-of state)
+         sound (out/sound (data/place-sound placed) pos 1.0 0.8)]
+     (conj deltas (out/except eid sound)))))
 
 (defn be-changed [pos e]
   [[:set-block-entity pos e] (out/all (out/block-entity pos))])
@@ -117,7 +131,9 @@
   "Returns where a click landed on a face, across and up.
   Both run from zero to one."
   [face [cx cy cz]]
-  (let [x (/ (double cx) 16.0) y (/ (double cy) 16.0) z (/ (double cz) 16.0)]
+  (let [x (/ (double cx) 16.0)
+        y (/ (double cy) 16.0)
+        z (/ (double cz) 16.0)]
     (case (long face)
       2 [(- 1.0 x) y]
       3 [x y]
@@ -135,18 +151,34 @@
   [st face cursor rows cols]
   (when (= (block/facing-of st) (dir/from-index (long face)))
     (when-let [[u v] (hit-uv face cursor)]
-      (+ (section (double u) (long cols)) (* (long cols) (section (- 1.0 (double v)) (long rows)))))))
+      (let [cols (long cols)
+            col (section (double u) cols)
+            row (section (- 1.0 (double v)) (long rows))]
+        (+ col (* cols row))))))
 
 (defn waterloggable? [st]
   (= :false (:waterlogged (block/props-of st))))
 
 (defn with-water [st logged?]
-  (block/state (block/block-of st) (assoc (block/props-of st) :waterlogged (if logged? :true :false))))
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) :waterlogged
+                      (if logged? :true :false))))
+
+(def ^:private full-water-types
+  "The classes that take a fall as well as a source, isFull.
+  Everywhere else a placed block holds only source water."
+  #{:conduit :coral-plant :coral-fan :coral-wall-fan
+    :base-coral-plant :base-coral-fan :base-coral-wall-fan})
+
+(defn- placed-wet? [st state]
+  (if (contains? full-water-types (block/type-of state))
+    (block/full-water? st)
+    (block/water-source? st)))
 
 (defn waterlogged [world pos' state]
-  (if (and (block/water? (block-at world pos'))
+  (if (and (placed-wet? (block-at world pos') state)
            (contains? (block/props-of state) :waterlogged))
-    (block/state (block/block-of state) (assoc (block/props-of state) :waterlogged :true))
+    (with-water state true)
     state))
 
 (defn- unlit [^long st]
@@ -159,9 +191,9 @@
   [world pos]
   (let [cur (block-at world pos)]
     (when (= :true (:lit (block/props-of cur)))
-      (concat (change-deltas world [[pos (unlit cur)]])
-              [(out/all (out/sound :candle/extinguish pos
-                                   1.0 1.0))]))))
+      (let [deltas (change-deltas world [[pos (unlit cur)]])
+            snuff (out/sound :candle/extinguish pos 1.0 1.0)]
+        (concat deltas [(out/all snuff)])))))
 
 (defn campfire-out-deltas
   "Returns the deltas that dowse a campfire at pos.
@@ -173,7 +205,7 @@
                         out/sound-extinguish-fire pos))])))
 
 (defn dowse-deltas
-  "Returns the deltas of a candle or a campfire going out under water."
+  "Returns the deltas of a candle or a campfire dowsed by water."
   [world pos]
   (case (block/type-of (block-at world pos))
     (:candle :candle-cake) (candle-out-deltas world pos)
