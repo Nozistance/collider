@@ -753,6 +753,16 @@
 (defn- apply-entity-delta [tick e delta]
   ((get entity-apply (nth delta 0)) tick e delta))
 
+(defn apply-entities
+  "Returns the world with only the entity deltas folded in."
+  [world deltas]
+  (let [one (fn [e d] (apply-entity-delta (:tick world) e d))
+        step (fn [w d]
+               (if (contains? entity-apply (nth d 0))
+                 (update-entity w (nth d 1) one d)
+                 w))]
+    (reduce step world deltas)))
+
 (defn- spawned [w spec]
   (let [eid (long (:next-eid w 1000000))]
     (-> w

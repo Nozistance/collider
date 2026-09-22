@@ -21,6 +21,7 @@
             [collider.game.systems.jukebox :as jukebox]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
+            [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
             [collider.game.systems.pose :as pose]
             [collider.game.systems.projectiles :as projectiles]
@@ -43,7 +44,7 @@
   [#'chunks/chunk-streaming
    #'players/players
    #'blocks/block-edits
-   #'items/item-drops
+   #'packets/by-player
    #'sleep/sleep
    #'inventory/inventory
    #'containers/containers

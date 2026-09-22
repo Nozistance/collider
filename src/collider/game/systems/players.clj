@@ -538,19 +538,15 @@
                 [[:teleport eid target] (out/to eid msg)])))
           ps))
 
-(defn- swing-deltas
-  "Returns the deltas of the swings the clients play themselves.
-  The server only passes them on, and only as often as an arm can
+(defn swing-deltas
+  "Returns the deltas of one swing a client plays itself.
+  The server only passes it on, and only as often as an arm can
   swing."
-  [world events]
-  (let [swing (fn [w [_ eid hand]]
-                (when-let [p (get-in w [:entities eid])]
-                  (let [hand (or hand :main)
-                        t (:tick w)]
-                    (state/swing-deltas eid p hand t false))))]
-    (state/fold-events world
-                       (filter #(= :swing (first %)) events)
-                       swing)))
+  [world [tag eid hand]]
+  (when (= :swing tag)
+    (when-let [p (get-in world [:entities eid])]
+      (let [t (:tick world)]
+        (vec (state/swing-deltas eid p (or hand :main) t false))))))
 
 (defn- entities-changed? [d]
   (some (fn [delta]
@@ -572,24 +568,22 @@
   (let [by-chunk (entities-by-chunk ts)]
     (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
 
-(defn- move-jobs [world ps ts events]
+(defn- move-jobs [world ps ts]
   (let [viewers (viewer-index ps)
         t (long (:tick world))
         job (fn [entry] (move-deltas t viewers entry))
         batch-job (fn [batch] #(into [] (mapcat job) batch))]
-    (conj (mapv batch-job (partition-all 32 ts))
-          #(swing-deltas world events))))
+    (mapv batch-job (partition-all 32 ts))))
 
 (defn players
   "Returns the tick steps of the player list and entity tracking."
   [world d]
-  (let [events (:input d)
-        ps (state/player-entries world)
+  (let [ps (state/player-entries world)
         ts (tracked-entries world)]
     [#(joined-deltas (state/joins d))
      #(duplicate-login-deltas world (state/joins d))
      #(list-deltas world ps)
      #(pending-teleport-deltas world ps)
      #(spawn-jobs world ps ts)
-     #(move-jobs world ps ts events)
+     #(move-jobs world ps ts)
      #(tab-header-deltas world (state/joins d))]))

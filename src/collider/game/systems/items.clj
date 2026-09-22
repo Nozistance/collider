@@ -125,9 +125,6 @@
                      {:thrower eid :stack b})
     nil))
 
-(defn- drops [world events]
-  (keep #(drop-of world %) events))
-
 (defn- spawn-one [world {:keys [thrower stack take-from]}]
   (cons [:spawn-entity (dropped world thrower stack)]
         (when take-from
@@ -135,8 +132,11 @@
            [:client-slots thrower {(take-from 0) (take-from 1)}
             (get-in world [:entities thrower :track :carried])]])))
 
-(defn- spawn-deltas [world events]
-  (mapcat #(spawn-one world %) (drops world events)))
+(defn event-deltas
+  "Returns the deltas of one drop event of its player."
+  [world ev]
+  (when-let [d (drop-of world ev)]
+    (vec (spawn-one world d))))
 
 (def ^:private ^:const item-half 0.125)
 
@@ -532,11 +532,6 @@
     (first (reduce (fn [acc entry] (player-pickups ready acc entry))
                    [[] #{}]
                    (state/player-entries world)))))
-
-(defn item-drops
-  "Returns the items the drop events of this tick throw."
-  [world d]
-  [#(spawn-deltas world (:input d))])
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item world eid e)]

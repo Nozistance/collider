@@ -13,14 +13,20 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- restore-deltas [world events]
-  (for [[tag eid] events
-        :when (= :player-join tag)
-        :let [e (get-in world [:entities eid])
-              inv (:inventory e)]
-        msg (cond-> [(out/to eid (out/held-slot (long (or (:held-slot e) 0))))]
-                    (seq inv) (conj (out/to eid (out/inventory (mapv inv (range menu/slot-count)) (:carried e)))))]
-    msg))
+(defn- join-msgs [world eid]
+  (let [e (get-in world [:entities eid])
+        inv (:inventory e)
+        held (long (or (:held-slot e) 0))
+        slots (mapv inv (range menu/slot-count))]
+    (cond-> [(out/to eid (out/held-slot held))]
+      (seq inv)
+      (conj (out/to eid (out/inventory slots (:carried e)))))))
+
+(defn- restore-deltas [world joins]
+  (into [] (mapcat (fn [[tag eid]]
+                     (when (= :player-join tag)
+                       (join-msgs world eid))))
+        joins))
 
 (defn- item-of [name]
   (when (contains? (get (data/registries) "item") name) name))
@@ -33,17 +39,24 @@
       (be/to-stack item e)
       {:item item :count 1})))
 
+(defn- picked-block [world pos include-data]
+  (let [st (chunk/chunks-get-block (:chunks world) pos)]
+    (when (pos? (long st))
+      (when-let [item (item-of (block/block-of (long st)))]
+        (if include-data
+          (cloned-stack world pos item)
+          {:item item :count 1})))))
+
+(defn- picked-entity [world id]
+  (when-let [t (get-in world [:entities id :type])]
+    (let [egg (keyword (str (name t) "-spawn-egg"))]
+      (when-let [item (item-of egg)]
+        {:item item :count 1}))))
+
 (defn- pick-item [world {:keys [pos entity include-data]}]
   (cond
-    pos (let [st (chunk/chunks-get-block (:chunks world) pos)]
-          (when (pos? (long st))
-            (when-let [item (item-of (block/block-of (long st)))]
-              (if include-data
-                (cloned-stack world pos item)
-                {:item item :count 1}))))
-    entity (when-let [t (get-in world [:entities entity :type])]
-             (when-let [item (item-of (keyword (str (name t) "-spawn-egg")))]
-               {:item item :count 1}))))
+    pos (picked-block world pos include-data)
+    entity (picked-entity world entity)))
 
 (def ^:private scan-order
   (vec (concat (range 36 45) (range 9 36))))
@@ -52,7 +65,9 @@
   (and (some? a) (= (dissoc a :count) (dissoc b :count))))
 
 (defn- slot-with [inv stack]
-  (some (fn [slot] (when (same-item? (get inv slot) stack) slot)) scan-order))
+  (some (fn [slot]
+          (when (same-item? (get inv slot) stack) slot))
+        scan-order))
 
 (defn- free-slot [inv]
   (some (fn [slot] (when-not (get inv slot) slot)) scan-order))
@@ -85,38 +100,51 @@
     (when-let [stack (pick-item world what)]
       (let [inv (:inventory e)
             held (long (or (:held-slot e) 0))
-            slot (slot-with inv stack)]
+            slot (slot-with inv stack)
+            n (suitable-hotbar inv held)]
         (cond
-          (and slot (<= 36 (long slot) 44)) (select-deltas eid (- (long slot) 36))
-          slot (swap-into-hotbar eid inv slot (suitable-hotbar inv held))
-          :else (stash-into-hotbar eid inv stack (suitable-hotbar inv held)))))))
+          (and slot (<= 36 (long slot) 44))
+          (select-deltas eid (- (long slot) 36))
+          slot (swap-into-hotbar eid inv slot n)
+          :else (stash-into-hotbar eid inv stack n))))))
 
 (defn- own-start [world e]
   {:inventory  (or (:inventory e) {})
    :carried    (:carried e)
    :quickcraft (:quickcraft e)
-   :layout     (crafting/player-layout (crafting/context world e))})
+   :layout     (crafting/player-layout
+                 (crafting/context world e))})
+
+(defn- drop-deltas [world eid after]
+  (map-indexed (fn [i stack]
+                 [:spawn-entity
+                  (items/dropped world eid stack true i)])
+               (:drops after)))
 
 (defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
-    (let [after (menu/click (own-start world e) m)]
+    (let [after (menu/click (own-start world e) m)
+          own (select-keys after [:inventory :carried :quickcraft])]
       (concat
-        [[:merge-entity eid (select-keys after [:inventory :carried :quickcraft])]
+        [[:merge-entity eid own]
          [:client-slots eid (or changed {}) carried]]
         (containers/craft-deltas world eid after)
-        (map-indexed (fn [i stack] [:spawn-entity (items/dropped world eid stack true i)])
-                     (:drops after))))))
+        (drop-deltas world eid after)))))
 
-(defn- event-deltas [world [tag :as ev]]
-  (case tag
-    :click (click-deltas world ev)
-    :pick (pick-deltas world ev)
-    nil))
+(defn- own-click-deltas [world [tag eid packet]]
+  (when (zero? (long (:container packet 0)))
+    (click-deltas world [tag eid (dissoc packet :container)])))
 
-(defn- inventory-deltas [world events joins]
-  (concat (restore-deltas world joins)
-          (state/fold-events world events event-deltas)))
+(defn event-deltas
+  "Returns the deltas of one inventory event of its player."
+  [world [tag :as ev]]
+  (vec (case tag
+         :click (click-deltas world ev)
+         :menu-click (own-click-deltas world ev)
+         :pick (pick-deltas world ev)
+         nil)))
 
-(defn inventory [world d]
-  (let [events (:input d)]
-    [#(inventory-deltas world events (state/joins d))]))
+(defn inventory
+  "Returns what a joining player is told about his inventory."
+  [world d]
+  [#(restore-deltas world (state/joins d))])
