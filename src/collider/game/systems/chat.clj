@@ -123,11 +123,11 @@
   "Returns [chunks deltas] with every absent chunk of the box read."
   [world bounds]
   (let [in? #(contains? (:chunks world) %)
-        read (fn [id] [id (chunks/oracle world id)])
+        read (fn [id] [id (chunks/read-absent world id)])
         loaded (into {} (comp (remove in?) (map read))
                      (box-ids bounds))]
     [(reduce-kv #(assoc %1 %2 (:chunk %3)) (:chunks world) loaded)
-     (chunks/oracle-deltas loaded)]))
+     (chunks/read-absent-deltas loaded)]))
 
 (defn- fill-result [eid changes]
   (if (empty? changes)

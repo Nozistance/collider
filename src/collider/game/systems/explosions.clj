@@ -188,8 +188,8 @@
 (defn- explosion-reader [world [cx cy cz]]
   (let [pos [(long (double cx)) (long (double cy))
              (long (double cz))]
-        oracle (fn [id] (chunks/oracle world id))]
-    (explosion/block-reader (:chunks world) pos oracle)))
+        read (fn [id] (chunks/read-absent world id))]
+    (explosion/block-reader (:chunks world) pos read)))
 
 (defn- break-cells [world rg affected gone primed source]
   (if (interacts? world source)
@@ -239,7 +239,7 @@
 (defn- request-deltas [world index [gone primed acc] req]
   (let [rg (explosion-reader world (:center req))
         b (blast-of world rg index req gone primed)
-        acc (into acc (chunks/oracle-deltas
+        acc (into acc (chunks/read-absent-deltas
                         (explosion/loaded-payloads rg)))]
     [(:gone b) (into primed (:chains b))
      (blast-acc world rg acc b)]))

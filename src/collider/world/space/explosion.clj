@@ -13,13 +13,13 @@
 
 (deftype Region [^objects grid ^objects cols ^long cx0 ^long cz0
                  ^long sy0 ^long ncx ^long ncz ^long nsy
-                 oracle ^clojure.lang.Atom loaded])
+                 read-absent ^clojure.lang.Atom loaded])
 
 (defn- rg-grid ^objects [^Region rg] (.grid rg))
 
 (defn- rg-cols ^objects [^Region rg] (.cols rg))
 
-(defn- rg-oracle [^Region rg] (.oracle rg))
+(defn- rg-read [^Region rg] (.read-absent rg))
 
 (defn- rg-loaded ^clojure.lang.Atom [^Region rg] (.loaded rg))
 
@@ -81,26 +81,27 @@
 
 (defn block-reader
   "Returns a reader over the blocks around pos.
-  An absent chunk is asked of oracle, which answers with the
-  payload it reads or generates, as a mid-tick read does."
+  An absent chunk is asked of read-absent, which answers with
+  the payload it reads or generates, as a mid-tick read does."
   (^Region [chunks pos] (block-reader chunks pos nil))
-  (^Region [chunks pos oracle]
+  (^Region [chunks pos read-absent]
    (let [[cx0 cz0 sy0 ncx ncz nsy] (region-bounds pos)
          n (* (long ncx) (long ncz))
          rg (Region. (object-array (* n (long nsy))) (object-array n)
-                     cx0 cz0 sy0 ncx ncz nsy oracle (atom {}))]
+                     cx0 cz0 sy0 ncx ncz nsy read-absent
+                     (atom {}))]
      (fill-grid rg chunks)
      rg)))
 
 (defn- summon [^Region rg ^long ix ^long iz]
   (let [id (region-id rg ix iz)
-        payload ((rg-oracle rg) id)]
+        payload ((rg-read rg) id)]
     (swap! (rg-loaded rg) assoc id payload)
     (put-column rg ix iz (:chunk payload))))
 
 (defn- column-at [^Region rg ^long ix ^long iz]
   (let [col (aget ^objects (rg-cols rg) (col-index rg ix iz))]
-    (when (and (nil? col) (rg-oracle rg)) (summon rg ix iz))))
+    (when (and (nil? col) (rg-read rg)) (summon rg ix iz))))
 
 (defn- outside? [^Region rg ^long ix ^long iz ^long iy]
   (or (neg? ix) (>= ix (rg-ncx rg))

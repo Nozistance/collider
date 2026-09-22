@@ -105,13 +105,13 @@
         {:keys [socket accept]} (server/listen! io (:port cfg))]
     {:queue queue :conns conns :socket socket :accept accept}))
 
-(defn- fetcher [{:keys [saver store]}]
+(defn- reader [{:keys [saver store]}]
   (when saver #(snapshot/fetch-chunk-now! saver store %)))
 
 (defn- io-input [base conns]
-  (let [fetch (fetcher base)]
+  (let [read (reader base)]
     #(hash-map :writable (server/writable-eids conns)
-               :fetch-chunk fetch)))
+               :read-chunk read)))
 
 (defn- ticker-opts [base conns cfg save!]
   {:io-input (io-input base conns)

@@ -45,16 +45,16 @@
 
 (def ^:private ^:const unknown-timeout 1)
 
-(defn oracle
+(defn read-absent
   "Returns the payload of a chunk read while it is absent.
   A saved chunk is read from the store there and then; any
   other chunk is generated."
   [world id]
   (or (when (contains? (:stored world) id)
-        (when-let [fetch (:fetch-chunk world)] (fetch id)))
+        (when-let [read (:read-chunk world)] (read id)))
       {:chunk (gen/flat-chunk)}))
 
-(defn oracle-deltas
+(defn read-absent-deltas
   "Returns the deltas that put the chunks read this way in place.
   Their ticket keeps them one further tick and no longer."
   [payloads]
