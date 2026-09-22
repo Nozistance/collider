@@ -630,6 +630,9 @@
    {:schema [:map [:hand wire/varint] [:sequence wire/varint]
              [:yaw wire/float] [:pitch wire/float]]
     :read :wire}
+   [:play :rename-item]
+   {:schema [:map [:name wire/string]]
+    :read :wire}
    [:play :sign-update]
    {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]
              [:lines [:tuple Line Line Line Line]]]

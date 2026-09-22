@@ -9,13 +9,13 @@
 
 (def game "26.2")
 
-(def layout 6)
+(def layout 7)
 
 (def ^:private files
-  ["packets" "registries" "blocks" "datapack" "tags" "items" "light" "fire"
-   "drops" "entity-drops" "recipes" "sounds" "features" "potions"
-   "effects"
-   "shapes" "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
+  ["packets" "registries" "blocks" "datapack" "tags" "items"
+   "light" "fire" "drops" "entity-drops" "recipes" "sounds"
+   "features" "potions" "effects" "enchantments" "shapes"
+   "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
 (defn stamp []
   {:game game :layout layout})
@@ -24,8 +24,11 @@
   (= (stamp) (try (edn/read-string (slurp (io/file d "stamp.edn")))
                   (catch Exception _ nil))))
 
-(defn complete? [d]
-  (and (every? #(.isFile (io/file d (str % ".edn"))) files) (stamped? d)))
+(defn complete?
+  "Returns true when d holds a full, stamped set of tables."
+  [d]
+  (and (every? #(.isFile (io/file d (str % ".edn"))) files)
+       (stamped? d)))
 
 (defn dir []
   (->> [(System/getProperty "collider.data") "target/data" "data"]
@@ -43,11 +46,15 @@
     @t))
 
 (defn- no-tables []
-  (ex-info "no tables"
-           {:what    "no game data"
-            :why     (str "No complete set of tables for " game " in target/data or data;"
-                          " the release jar generates it on its first start")
-            :command "From the source tree: clojure -T:build data"}))
+  (let [why (str "No complete set of tables for " game
+                 " in target/data or data; the release jar"
+                 " generates it on its first start")
+        how (str "From the source tree:"
+                 " clojure -T:build data")]
+    (ex-info "no tables"
+             {:what    "no game data"
+              :why     why
+              :command how})))
 
 (defn- read-edn [name]
   (let [d (or (dir) (throw (no-tables)))]
@@ -55,11 +62,15 @@
       (edn/read (PushbackReader. r)))))
 
 (def ^:private table-names
-  [:packets :registries :blocks :datapack :tags :items :light :fire :drops
-   :entity-drops :recipes :sounds :features :potions :effects])
+  [:packets :registries :blocks :datapack :tags :items :light
+   :fire :drops :entity-drops :recipes :sounds :features
+   :potions :effects :enchantments])
 
 (def ^:private ^:table tables
-  (delay (into {} (map (fn [k] [k (read-edn (str (name k) ".edn"))])) table-names)))
+  (delay (into {}
+               (map (fn [k]
+                      [k (read-edn (str (name k) ".edn"))]))
+               table-names)))
 
 (defn packets
   "Returns the packet ids by connection state, direction and name."
@@ -115,6 +126,16 @@
   "Returns the containers, mixes and fuel of a brewing stand."
   [] (:brewing (recipes)))
 
+(defn enchantments
+  "Returns the cost, reach and rivals of every enchantment."
+  [] (:enchantments @tables))
+
+(defn enchantment [name] (get (enchantments) name))
+
+(defn smithing-recipes
+  "Returns the transform and trim recipes of a smithing table."
+  [] (:smithing (recipes)))
+
 (defn sounds [] (:sounds @tables))
 
 (defn features
@@ -157,6 +178,21 @@
   [item]
   (get-in (items) [item :compost]))
 
+(defn item-name
+  "Returns the name an item shows when it has no custom one."
+  [item]
+  (get-in (items) [item :name]))
+
+(defn repairable
+  "Returns the items that mend item on an anvil, else nil."
+  [item]
+  (get-in (items) [item :repairable]))
+
+(defn trim-material
+  "Returns the trim material item gives, else nil."
+  [item]
+  (get-in (items) [item :trim-material]))
+
 (defn resists
   "Returns the tag of the damage item shrugs off, else nil."
   [item]
@@ -180,17 +216,22 @@
 
 (defn packet-id ^long [state dir name]
   (or (get-in (packets) [state dir name])
-      (throw (ex-info "unknown packet" {:state state :dir dir :name name}))))
+      (throw (ex-info "unknown packet"
+                      {:state state :dir dir :name name}))))
 
 (defn registry-id ^long [registry entry]
   (or (get-in (registries) [registry entry])
-      (throw (ex-info "unknown registry entry" {:registry registry :entry entry}))))
+      (throw (ex-info "unknown registry entry"
+                      {:registry registry :entry entry}))))
+
+(defn- index-entries [entries]
+  (into {} (map-indexed (fn [i e] [e (long i)])) entries))
 
 (def ^:private ^:table datapack-index
   (delay
     (into {}
           (map (fn [[registry entries]]
-                 [registry (into {} (map-indexed (fn [i e] [e (long i)])) entries)]))
+                 [registry (index-entries entries)]))
           (datapack))))
 
 (defn datapack-id
@@ -198,47 +239,69 @@
   The client does not know the entry already."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
-      (throw (ex-info "unknown datapack entry" {:registry registry :entry entry}))))
+      (throw (ex-info "unknown datapack entry"
+                      {:registry registry :entry entry}))))
 
 (defn entry-id ^long [registry entry]
   (if (contains? (registries) registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
 
+(defn- invert-ids [entries]
+  (into {} (map (fn [[k v]] [(long v) k])) entries))
+
 (def ^:private ^:table by-id
   (delay
     (into {}
           (map (fn [[registry entries]]
-                 [registry (into {} (map (fn [[k v]] [(long v) k])) entries)]))
+                 [registry (invert-ids entries)]))
           (registries))))
+
+(defn- unknown-id [registry ^long id]
+  (ex-info "unknown registry id" {:registry registry :id id}))
+
+(defn- unknown-registry [registry]
+  (ex-info "unknown registry" {:registry registry}))
 
 (defn entry-name [registry ^long id]
   (let [m (get @by-id registry)
         v (get (datapack) registry)]
     (cond
-      m (or (get m id) (throw (ex-info "unknown registry id" {:registry registry :id id})))
-      (nil? v) (throw (ex-info "unknown registry" {:registry registry}))
+      m (or (get m id) (throw (unknown-id registry id)))
+      (nil? v) (throw (unknown-registry registry))
       (< -1 id (count v)) (nth v id)
-      :else (throw (ex-info "unknown registry id" {:registry registry :id id})))))
+      :else (throw (unknown-id registry id)))))
 
 (defn- prop-order [b] (vec (keys (:props b))))
 
-(defn- prop-sizes [b] (mapv #(count (get (:props b) %)) (prop-order b)))
+(defn- prop-sizes [b]
+  (mapv #(count (get (:props b) %)) (prop-order b)))
 
-(defn- state-count ^long [b] (reduce * 1 (map count (vals (:props b)))))
+(defn- state-count ^long [b]
+  (reduce * 1 (map count (vals (:props b)))))
+
+(defn- tail-size ^long [sizes ^long i]
+  (long (reduce * 1 (subvec sizes (inc i)))))
 
 (defn- decode-props [b ^long offset]
-  (let [order (prop-order b) sizes (prop-sizes b)]
+  (let [order (prop-order b)
+        sizes (prop-sizes b)]
     (loop [i 0, left offset, acc {}]
       (if (= i (count order))
         acc
-        (let [tail (long (reduce * 1 (subvec sizes (inc i))))]
+        (let [prop (nth order i)
+              tail (tail-size sizes i)
+              v (nth (get (:props b) prop) (quot left tail))]
           (recur (inc i) (rem left tail)
-                 (assoc acc (nth order i)
-                            (nth (get (:props b) (nth order i)) (quot left tail)))))))))
+                 (assoc acc prop v)))))))
+
+(defn- state-last ^long [b]
+  (+ (long (:first b)) (state-count b)))
 
 (def ^:private ^:table state-total
-  (delay (long (reduce (fn [n [_ b]] (max n (+ (long (:first b)) (state-count b)))) 0 (blocks)))))
+  (delay
+    (long (reduce (fn [n [_ b]] (max n (state-last b)))
+                  0 (blocks)))))
 
 (defn block-state-count ^long []
   @state-total)
@@ -277,17 +340,23 @@
       (aset a (int (long k)) (byte (long v))))
     a))
 
-(def ^:private ^:table shape-table (delay (object-table "shapes.edn")))
+(def ^:private ^:table shape-table
+  (delay (object-table "shapes.edn")))
 
-(def ^:private ^:table outline-table (delay (object-table "outlines.edn")))
+(def ^:private ^:table outline-table
+  (delay (object-table "outlines.edn")))
 
-(def ^:private ^:table sturdy-table (delay (byte-table "sturdy.edn" 63)))
+(def ^:private ^:table sturdy-table
+  (delay (byte-table "sturdy.edn" 63)))
 
-(def ^:private ^:table sturdy-center-table (delay (byte-table "sturdy-center.edn" 63)))
+(def ^:private ^:table sturdy-center-table
+  (delay (byte-table "sturdy-center.edn" 63)))
 
-(def ^:private ^:table sturdy-rigid-table (delay (byte-table "sturdy-rigid.edn" 63)))
+(def ^:private ^:table sturdy-rigid-table
+  (delay (byte-table "sturdy-rigid.edn" 63)))
 
-(def ^:private ^:table flag-table (delay (byte-table "flags.edn" 0)))
+(def ^:private ^:table flag-table
+  (delay (byte-table "flags.edn" 0)))
 
 (defn shapes
   "Returns the collision boxes of every state, by id.
@@ -320,11 +389,13 @@
 (defn flags ^bytes []
   @flag-table)
 
+(defn- default-of [b]
+  (decode-props b (- (long (:default b)) (long (:first b)))))
+
 (def ^:private ^:table defaults
   (delay
     (into {}
-          (map (fn [[block b]]
-                 [block (decode-props b (- (long (:default b)) (long (:first b))))]))
+          (map (fn [[block b]] [block (default-of b)]))
           (blocks))))
 
 (defn default-props []
@@ -346,18 +417,21 @@
 (defn- prop-index ^long [block-name prop vs v]
   (let [idx (.indexOf ^List vs v)]
     (when (neg? idx)
-      (throw (ex-info "unknown property value" {:block block-name :prop prop :value v})))
+      (throw (ex-info "unknown property value"
+                      {:block block-name :prop prop :value v})))
     idx))
 
 (defn- state-offset ^long [block-name b wanted defaults]
-  (let [order (prop-order b) sizes (prop-sizes b)]
+  (let [order (prop-order b)
+        sizes (prop-sizes b)]
     (loop [i 0 id (long (:first b))]
       (if (= i (count order))
         id
         (let [prop (nth order i)
-              idx (prop-index block-name prop (get (:props b) prop)
-                              (get wanted prop (get defaults prop)))
-              tail (long (reduce * 1 (subvec sizes (inc i))))]
+              vs (get (:props b) prop)
+              want (get wanted prop (get defaults prop))
+              idx (prop-index block-name prop vs want)
+              tail (tail-size sizes i)]
           (recur (inc i) (long (+ id (* idx tail)))))))))
 
 (defn state-id
@@ -368,7 +442,8 @@
    (let [b (info block-name)]
      (if (empty? wanted)
        (state-id block-name)
-       (state-offset block-name b wanted (get (default-props) block-name))))))
+       (state-offset block-name b wanted
+                     (get (default-props) block-name))))))
 
 (defn state-block [^long id]
   (when (< -1 id (block-state-count)) (aget (block-of-state) id)))

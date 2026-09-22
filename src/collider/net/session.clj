@@ -168,7 +168,8 @@
    :chat-command-signed
    (fn [eid m] [:chat eid (str "/" (:command m))])
    :sign-update
-   (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])})
+   (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])
+   :rename-item (fn [eid m] [:rename-item eid (:name m)])})
 
 (def ^:private event-table
   (merge session-events move-events action-events container-events))
@@ -185,7 +186,7 @@
     :pong :bundle-item-selected :block-entity-tag-query
     :entity-tag-query :edit-book :jigsaw-generate :lock-difficulty
     :change-difficulty :move-vehicle :paddle-boat :place-recipe
-    :recipe-book-change-settings :recipe-book-seen-recipe :rename-item
+    :recipe-book-change-settings :recipe-book-seen-recipe
     :resource-pack :seen-advancements :select-trade :set-beacon
     :set-command-block :set-command-minecart :set-jigsaw-block
     :set-structure-block :set-test-block :spectator-action

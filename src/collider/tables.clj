@@ -731,6 +731,7 @@
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
    "minecraft:max_stack_size"       [:max-stack-size identity]
+   "minecraft:repair_cost"          [:repair-cost identity]
    "minecraft:dye"                  [:dye kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]
    "minecraft:enchantments"         [:enchantments levels]
@@ -814,20 +815,24 @@
       wait (assoc :use-cooldown (use-cooldown wait))
       grub (assoc :food (food grub)))))
 
-(defn- item [^File f]
-  (let [cs (get (json/read-str (slurp f)) "components")]
-    (merge (sorted-map :components (default-components cs))
-           (stack-fields cs) (combat-fields cs)
-           (consumable-fields cs))))
+(defn- item [cs]
+  (merge (sorted-map :components (default-components cs))
+         (stack-fields cs) (combat-fields cs)
+         (consumable-fields cs)))
+
+(defn- item-components [reports]
+  (let [dir (io/file reports "minecraft" "components" "item")]
+    (for [^File f (sort (.listFiles dir))
+          :when (str/ends-with? (.getName f) ".json")]
+      [(kw (str/replace (.getName f) #"\.json$" ""))
+       (get (json/read-str (slurp f)) "components")])))
 
 (defn- vanilla-items [reports]
-  (let [dir (io/file reports "minecraft" "components" "item")]
-    (into (sorted-map)
-          (for [^File f (sort (.listFiles dir))
-                :when (str/ends-with? (.getName f) ".json")
-                :let [m (item f)]
-                :when (seq m)]
-            [(kw (str/replace (.getName f) #"\.json$" "")) m]))))
+  (into (sorted-map)
+        (keep (fn [[name cs]]
+                (let [m (item cs)]
+                  (when (seq m) [name m]))))
+        (item-components reports)))
 
 (defn- under [zf prefix]
   (for [n (zip-names zf)
@@ -1101,6 +1106,8 @@
         (map (fn [n] [(kw n) (feature-value (get (kind reg) n))]))
         names))
 
+(def ^:private lang-file "assets/minecraft/lang/en_us.json")
+
 (def ^:private bone-meal-tag
   (str "data/minecraft/tags/worldgen/configured_feature"
        "/can_spawn_from_bone_meal.json"))
@@ -1192,6 +1199,51 @@
                 i)]
     (into (sorted-set) items)))
 
+(defn- shown-name [lang cs]
+  (let [v (get cs "minecraft:item_name")]
+    (if (map? v) (get lang (get v "translate")) v)))
+
+(defn- station-item [tags lang cs]
+  (let [rep (get cs "minecraft:repairable")
+        trim (get cs "minecraft:provides_trim_material")
+        nm (shown-name lang cs)]
+    (cond-> (sorted-map)
+      nm (assoc :name nm)
+      rep (assoc :repairable (item-set tags (get rep "items")))
+      trim (assoc :trim-material (kw trim)))))
+
+(defn- station-items
+  "Returns what each item shows as, repairs with and trims as."
+  [reports tags lang]
+  (into (sorted-map)
+        (keep (fn [[name cs]]
+                (let [m (station-item tags lang cs)]
+                  (when (seq m) [name m]))))
+        (item-components reports)))
+
+(defn- cost-of [v]
+  (sorted-map :base (get v "base" 0)
+              :per-level (get v "per_level_above_first" 0)))
+
+(defn- enchantment-set [tags v]
+  (into (sorted-set)
+        (if (and (string? v) (str/starts-with? v "#"))
+          (get-in tags ["enchantment" (plain (subs v 1))] [])
+          (map kw (if (string? v) [v] v)))))
+
+(defn- enchantment [tags json]
+  (sorted-map
+    :anvil-cost (get json "anvil_cost")
+    :max-level (get json "max_level")
+    :min-cost (cost-of (get json "min_cost"))
+    :supported (item-set tags (get json "supported_items"))
+    :exclusive (enchantment-set tags (get json "exclusive_set"))))
+
+(defn- enchantments [zf tags]
+  (into (sorted-map)
+        (map (fn [[name json]] [(kw name) (enchantment tags json)]))
+        (jsons zf "data/minecraft/enchantment/")))
+
 (defn- raw-ingredient [v]
   (let [i (ingredient v)] (if (map? i) [:tag (:tag i)] (vec i))))
 
@@ -1214,6 +1266,27 @@
         cs (get r "components")]
     (cond-> {:item (kw (get r "id")) :count (get r "count" 1)}
       (seq cs) (assoc :components (result-components cs)))))
+
+(def ^:private smithing-types
+  {"minecraft:smithing_transform" :transform
+   "minecraft:smithing_trim"      :trim})
+
+(defn- smithing-recipe [tags id json type]
+  (cond-> (sorted-map :id (kw id) :type type
+                      :base (item-set tags (get json "base")))
+    (get json "template")
+    (assoc :template (item-set tags (get json "template")))
+    (get json "addition")
+    (assoc :addition (item-set tags (get json "addition")))
+    (= :trim type) (assoc :pattern (kw (get json "pattern")))
+    (= :transform type) (assoc :result (result (get json "result")))))
+
+(defn- smithing [recipes tags]
+  (into []
+        (keep (fn [[id json]]
+                (when-let [t (smithing-types (get json "type"))]
+                  (smithing-recipe tags id json t))))
+        recipes))
 
 (defn- bounds [v default]
   (cond (nil? v) default
@@ -1584,6 +1657,7 @@
      :property-sets (property-sets-of tags rs)
      :crafting      (crafting named tags)
      :cooking       (cooking named)
+     :smithing      (smithing named tags)
      :fuel          (fuel tags items)
      :brewing       (brewing tags items potions)
      :dyes          dyes}))
@@ -1629,9 +1703,11 @@
         item-names (set (keys (get rs "item")))
         potion-names (set (keys (get rs "potion")))
         effect-names (set (keys (get rs "mob_effect")))
+        lang (read-json zf lang-file)
         items (merge-with
                merge (vanilla-items reports)
-               compost walls remainders banners)]
+               compost walls remainders banners
+               (station-items reports tags lang))]
     (merge (dissoc from-class :props :compost :walls :placers
                    :remainders :banners :dyes)
            {:packets    (packets reports)
@@ -1641,6 +1717,7 @@
             :drops      (block-drops zf)
             :entity-drops (entity-drops zf)
             :items      items
+            :enchantments (enchantments zf tags)
             :features   (features zf placers)
             :recipes    (recipes zf tags dyes item-names potion-names)
             :potions    (potion-table potion-names)

@@ -179,6 +179,8 @@
 
 (def ^:const sound-anvil-broken 1029)
 
+(def ^:const sound-anvil-used 1030)
+
 (def ^:const sound-anvil-land 1031)
 
 (def ^:const sound-chorus-grow 1033)
@@ -187,7 +189,11 @@
 
 (def ^:const sound-brewing-stand-brew 1035)
 
+(def ^:const sound-grindstone-used 1042)
+
 (def ^:const sound-page-turn 1043)
+
+(def ^:const sound-smithing-table-used 1044)
 
 (def ^:const sound-drip-lava-into-cauldron 1046)
 
