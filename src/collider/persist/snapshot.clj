@@ -227,8 +227,27 @@
     (assoc (world-of (dissoc m :chunks))
            :stored (or (:stored m) (i/int-set)))))
 
-(defn start-saver []
-  (agent {:chunks nil :meta nil :writes 0} :error-mode :continue))
+(defn start-saver
+  "Returns an agent that writes chunks and meta in the background.
+  Its meta holds the chunks handed to it but not written yet."
+  []
+  (agent {:chunks nil :meta nil :writes 0}
+         :error-mode :continue
+         :meta {:pending (atom {})}))
+
+(defn- pending-of [saver]
+  (:pending (meta saver)))
+
+(defn- hold! [saver id payload]
+  (when-let [p (pending-of saver)]
+    (swap! p assoc id payload)))
+
+(defn- release! [saver id payload]
+  (when-let [p (pending-of saver)]
+    (swap! p (fn [m]
+               (if (identical? payload (get m id))
+                 (dissoc m id)
+                 m)))))
 
 (defn changed-chunks [old new]
   (remove (fn [[k v]] (= v (get old k))) new))
@@ -266,30 +285,38 @@
 (defn- chunk-name ^String [id]
   (let [[cx cz] (chunk/id->pos id)] (str "chunk " cx "," cz)))
 
-(defn- stored! [state store id payload]
+(defn- stored! [state saver store id payload]
   (try
     (put-chunk! store id payload)
     (update state :chunks dissoc id)
     (catch Throwable t
       (log/warn (chunk-name id) "was unloaded but not saved,"
                 "its changes are lost -" (.getMessage t))
-      state)))
+      state)
+    (finally (release! saver id payload))))
 
 (defn store-chunk!
   "Saves an unloaded chunk.
-  The save waits for every save and read asked for before it."
+  A read sees it at once; the write waits for every save and
+  read asked for before it."
   [saver store id payload]
-  (send-off saver stored! store id payload))
+  (hold! saver id payload)
+  (send-off saver stored! saver store id payload))
 
-(defn- read-chunk [store id]
+(defn- read-stored [store id]
   (try (get-chunk store id)
        (catch Throwable t
          (log/warn (chunk-name id) "could not be read and"
                    "starts over as a new chunk -" (.getMessage t))
          nil)))
 
-(defn- fetched! [state store id deliver]
-  (deliver (read-chunk store id))
+(defn- read-chunk [saver store id]
+  (if-let [payload (some-> (pending-of saver) deref (get id))]
+    payload
+    (read-stored store id)))
+
+(defn- fetched! [state saver store id deliver]
+  (deliver (read-chunk saver store id))
   state)
 
 (defn fetch-chunk!
@@ -297,15 +324,14 @@
   The read waits for every save asked for before it. deliver
   gets nil when the chunk cannot be read."
   [saver store id deliver]
-  (send-off saver fetched! store id deliver))
+  (send-off saver fetched! saver store id deliver))
 
 (defn fetch-chunk-now!
   "Returns a saved chunk on the calling thread.
-  Every save asked for before it lands first. nil comes back
-  when the chunk cannot be read."
+  A chunk still waiting to be written comes back as it was
+  given. nil comes back when the chunk cannot be read."
   [saver store id]
-  (await saver)
-  (read-chunk store id))
+  (read-chunk saver store id))
 
 (defn request-save! [saver store world]
   (when saver
