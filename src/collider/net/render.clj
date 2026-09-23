@@ -396,14 +396,65 @@
      :sound     (first (sound-id :explosion))
      :block-particles @explosion-block-particles}))
 
+(defn- dist-sq [a b]
+  (let [dx (- (v/x a) (v/x b))
+        dy (- (v/y a) (v/y b))
+        dz (- (v/z a) (v/z b))]
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
 (def ^:private ^:const explosion-range-sq 4096.0)
 
 (defn- in-earshot? [world center eid]
   (when-let [p (get-in world [:entities eid :pos])]
-    (let [dx (- (v/x p) (double (center 0)))
-          dy (- (v/y p) (double (center 1)))
-          dz (- (v/z p) (double (center 2)))]
-      (< (+ (* dx dx) (* dy dy) (* dz dz)) explosion-range-sq))))
+    (< (dist-sq p center) explosion-range-sq)))
+
+(def ^:private ^:const level-range-sq (* 64.0 64.0))
+
+(defn- in-level-range? [world center eid]
+  (when-let [p (get-in world [:entities eid :pos])]
+    (< (dist-sq p center) level-range-sq)))
+
+(defn- sound-range-sq [volume]
+  (let [v (double volume)
+        r (if (> v 1.0) (* 16.0 v) 16.0)]
+    (* r r)))
+
+(defn- in-sound-range? [world center volume eid]
+  (when-let [p (get-in world [:entities eid :pos])]
+    (< (dist-sq p center) (sound-range-sq volume))))
+
+(def ^:private ^:const particle-range-sq (* 32.0 32.0))
+
+(defn- block-center [pos]
+  [(+ (Math/floor (v/x pos)) 0.5)
+   (+ (Math/floor (v/y pos)) 0.5)
+   (+ (Math/floor (v/z pos)) 0.5)])
+
+(defn- in-particle-range? [world center eid]
+  (when-let [p (get-in world [:entities eid :pos])]
+    (< (dist-sq (block-center p) center) particle-range-sq)))
+
+(defn- chunk-of-msg [m]
+  (case (:msg m)
+    :blocks-changed (:cp m)
+    :block-entity (chunk/block-chunk (:pos m))))
+
+(defn- tracking-chunk? [world cp eid]
+  (contains? (get-in world [:entities eid :sent-chunks]) cp))
+
+(defn- ranged-recipients [world ps m]
+  (case (:msg m)
+    (:blocks-changed :block-entity)
+    (let [cp (chunk-of-msg m)]
+      (filterv #(tracking-chunk? world cp %) ps))
+    (:level-event :break-effect :fizz :bonemeal :extinguish
+     :block-event)
+    (filterv #(in-level-range? world (:pos m) %) ps)
+    :sound
+    (filterv #(in-sound-range? world (:pos m) (:volume m) %) ps)
+    :particles
+    (filterv #(in-particle-range? world (:pos m) %) ps)
+    ps))
 
 (defn- explosion-packets [world ps m]
   (for [eid ps
@@ -721,12 +772,13 @@
   #{:move :move-look :look :sync-pos :head-look :velocity :meta
     :equipment :animation :status :collect})
 
-(defn- recipients [ps viewers m]
+(defn- recipients [world ps viewers m]
   (cond
     (:to m) [(:to m)]
-    (:except m) (remove #{(:except m)} ps)
     (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
-    :else ps))
+    :else
+    (let [base (ranged-recipients world ps m)]
+      (if (:except m) (remove #{(:except m)} base) base))))
 
 (defn- entity-delta-packets [world deltas]
   (for [[eid ds] deltas
@@ -742,7 +794,7 @@
     (explosion-packets world ps m)
     (let [pkts (fx-packets world m)]
       (when (seq pkts)
-        (for [eid (recipients ps viewers m)
+        (for [eid (recipients world ps viewers m)
               p pkts]
           [eid p])))))
 
