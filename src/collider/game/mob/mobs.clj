@@ -164,6 +164,7 @@
    :yaw         0.0 :pitch 0.0 :on-ground false
    :color       color
    :task        nil
+   :no-action   0
    :health      (max-health type)
    :health-sent (max-health type)})
 

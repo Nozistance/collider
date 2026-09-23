@@ -4,16 +4,9 @@
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk])
-  (:import (collider.java V3)))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
-
-(defn- plain [v] (if (instance? V3 v) (vec v) v))
-
-(defn- plain-entity [e]
-  (reduce-kv (fn [m k v] (assoc m k (plain v)))
-             {} (dissoc (into {} e) :track)))
 
 (defn chunk-entity?
   "Returns true when entity e belongs to chunk id. Players never do."
@@ -26,10 +19,10 @@
   [^long id ^long bid]
   (= id (chunk/block-id-chunk bid)))
 
-(defn- chunk-entities [w id]
+(defn- chunk-entities [w id t]
   (into {} (keep (fn [[eid e]]
                    (when (chunk-entity? id e)
-                     [eid (plain-entity e)])))
+                     [eid (entity/saved e t)])))
         (:entities w)))
 
 (defn- tick-positions [id bids]
@@ -49,10 +42,10 @@
   That is its block entities, the entities in it except players,
   and its block ticks as delays from now."
   [w id]
-  (let [id (long id)]
+  (let [id (long id) t (long (:tick w 0))]
     {:chunk          (get (:chunks w) id)
      :block-entities (into {} (get-in w [:block-entities id]))
-     :entities       (chunk-entities w id)
+     :entities       (chunk-entities w id t)
      :ticks          (chunk-ticks w id)}))
 
 (defn- ticks-back [bt ^long t ticks]
@@ -62,7 +55,10 @@
                     (map chunk/block-pos->id ps)))
           bt ticks))
 
-(defn- entity-entry [[eid e]] [(long eid) (entity/of e)])
+(defn- entity-entry [t]
+  (fn [[eid m]]
+    (when-let [e (entity/loaded m t)]
+      [(long eid) e])))
 
 (defn refreshed
   "Returns [payload next-eid] with the bodies of the payload under
@@ -83,10 +79,11 @@
   [w id {:keys [chunk block-entities entities ticks]}]
   (let [id (long id)
         t (long (:tick w 0))
+        es (keep (entity-entry t))
         bes (into {} (map block-entity-entry) block-entities)]
     (cond-> (-> w
                 (update :chunks assoc id chunk)
-                (update :entities into (map entity-entry) entities)
+                (update :entities into es entities)
                 (update :block-ticks ticks-back t ticks)
                 (update :loading disj id))
       (seq block-entities) (assoc-in [:block-entities id] bes))))

@@ -1,7 +1,9 @@
 (ns collider.game.entity
   "Entity records and their constructors."
-  (:require [collider.random :as random]
-            [collider.vec :as v]))
+  (:require [collider.game.mob.mobs :as mobs]
+            [collider.random :as random]
+            [collider.vec :as v]
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -95,3 +97,109 @@
   "Returns the mob e turned towards what it looks at."
   [e head-yaw pitch look]
   (assoc e :head-yaw head-yaw :pitch pitch :look look))
+
+(defn- plain [v] (if (v/v3? v) (vec v) v))
+
+(def ^:private thrown
+  #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
+
+(defn- kind [type]
+  (cond (contains? thrown type) :thrown
+        (#{:item :tnt :falling-block :area-effect-cloud} type) type
+        :else :mob))
+
+(def ^:private kept
+  {:mob [:health :death-time :color :sheared? :sound-variant]
+   :item [:stack :age :pickup-delay :health]
+   :tnt [:fuse :origin]
+   :falling-block [:block :time]
+   :thrown [:owner :left-owner? :stack]})
+
+(def ^:private defaults
+  {:mob {:death-time 0 :color 0 :sheared? false}
+   :item {:age 0 :pickup-delay 0 :health 5.0}
+   :tnt {:fuse 80}
+   :falling-block {:time 0}
+   :thrown {:left-owner? false}})
+
+(def ^:private fresh
+  {:mob {:task nil :no-action 0}
+   :thrown {:age 0}})
+
+(def ^:private timers [:love-until :baby-until :breed-ready-at])
+
+(def ^:private expired {:love-until 0 :breed-ready-at 0})
+
+(defn- base [e]
+  {:type (:type e) :pos (plain (:pos e)) :vel (plain (:vel e))
+   :yaw (:yaw e) :pitch (:pitch e) :on-ground (:on-ground e)})
+
+(defn- left [e k ^long tick]
+  (when-let [t (get e k)]
+    (let [dt (- (long t) tick)] (when (pos? dt) dt))))
+
+(defn- saved-timers [m e tick]
+  (reduce (fn [m k]
+            (if-let [dt (left e k tick)] (assoc m k dt) m))
+          m timers))
+
+(defn- with-knockback [e]
+  (if-let [kb (:kb e)] (update e :vel v/+ kb) e))
+
+(defn saved
+  "Returns entity e as the plain data vanilla keeps across a save
+  at game tick tick. The rest restarts fresh when loaded."
+  [e tick]
+  (let [k (kind (:type e))]
+    (if (= :area-effect-cloud k)
+      (-> (into {} e) (dissoc :track :victims)
+          (update :pos plain) (update :vel plain))
+      (cond-> (into (base (with-knockback e))
+                    (filter (comp some? val))
+                    (select-keys e (kept k)))
+        (= :mob k) (saved-timers e (long tick))))))
+
+(defn- still-axis ^double [^double a]
+  (if (> (Math/abs a) 10.0) 0.0 a))
+
+(defn- loaded-base [m]
+  {:pos (or (:pos m) [0.0 0.0 0.0])
+   :vel (mapv still-axis (or (:vel m) [0.0 0.0 0.0]))
+   :yaw (double (or (:yaw m) 0.0))
+   :pitch (double (or (:pitch m) 0.0))
+   :on-ground (boolean (:on-ground m))})
+
+(defn- loaded-timers [e m ^long tick]
+  (reduce (fn [e k]
+            (if-let [dt (get m k)]
+              (assoc e k (+ tick (long dt)))
+              (cond-> e (contains? expired k) (assoc k (expired k)))))
+          e timers))
+
+(defn- mob-extras [e m tick]
+  (let [top (mobs/max-health (:type m))]
+    (-> e
+        (assoc :head-yaw (:yaw e) :health-sent top
+               :health (or (:health m) top))
+        (loaded-timers m (long tick)))))
+
+(defn- kind-extras [e k m tick]
+  (case k
+    :mob (mob-extras e m tick)
+    :falling-block (update e :block #(or % (block/state :sand)))
+    e))
+
+(defn loaded
+  "Returns the entity saved as m back at game tick tick, or nil
+  when vanilla discards it on load."
+  [m tick]
+  (let [k (kind (:type m))]
+    (cond
+      (= :area-effect-cloud k)
+      (of (merge (dissoc m :victims) (loaded-base m)))
+      (and (= :item k) (not (pos? (long (:count (:stack m) 0)))))
+      nil
+      :else
+      (of (-> (merge (defaults k) (select-keys m (kept k)))
+              (merge (loaded-base m) (fresh k) {:type (:type m)})
+              (kind-extras k m tick))))))
