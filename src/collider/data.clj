@@ -14,7 +14,8 @@
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items"
    "light" "fire" "drops" "entity-drops" "recipes" "sounds"
-   "features" "potions" "effects" "enchantments" "shapes"
+   "features" "potions" "effects" "enchantments"
+   "dimension-types" "shapes"
    "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
 (defn stamp []
@@ -64,7 +65,7 @@
 (def ^:private table-names
   [:packets :registries :blocks :datapack :tags :items :light
    :fire :drops :entity-drops :recipes :sounds :features
-   :potions :effects :enchantments])
+   :potions :effects :enchantments :dimension-types])
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -131,6 +132,14 @@
   [] (:enchantments @tables))
 
 (defn enchantment [name] (get (enchantments) name))
+
+(defn dimension-types
+  "Returns the fields of every dimension type, by name."
+  [] (:dimension-types @tables))
+
+(defn dimension-type
+  "Returns the fields of a dimension type."
+  [dim] (get (dimension-types) dim))
 
 (defn smithing-recipes
   "Returns the transform and trim recipes of a smithing table."
