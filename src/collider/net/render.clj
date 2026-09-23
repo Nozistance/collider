@@ -799,7 +799,8 @@
           [eid p])))))
 
 (defn render [world ^Deltas deltas]
-  (let [ps (players world)
+  (let [world (state/level world :overworld)
+        ps (players world)
         es (deltas/entities-of deltas)
         viewers (delay (viewer-index world es ps))]
     (concat

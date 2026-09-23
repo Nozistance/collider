@@ -36,9 +36,11 @@
 (defn- chunk-io! [{:keys [saver store]} queue ^Deltas deltas]
   (doseq [{:keys [msg id payload]} (deltas/out-of deltas)]
     (case msg
-      :store-chunk (snapshot/store-chunk! saver store id payload)
-      :load-chunk (let [done (on-loaded queue id)]
-                    (snapshot/fetch-chunk! saver store id done))
+      :store-chunk
+      (snapshot/store-chunk! saver store :overworld id payload)
+      :load-chunk
+      (let [done (on-loaded queue id)]
+        (snapshot/fetch-chunk! saver store :overworld id done))
       nil)))
 
 (defn- deliver! [conns world deltas]
@@ -106,7 +108,7 @@
     {:queue queue :conns conns :socket socket :accept accept}))
 
 (defn- reader [{:keys [saver store]}]
-  (when saver #(snapshot/fetch-chunk-now! saver store %)))
+  (when saver #(snapshot/fetch-chunk-now! saver store :overworld %)))
 
 (defn- io-input [base conns]
   (let [read (reader base)]
@@ -135,7 +137,8 @@
     (re-find #"\S+" (.getName gc))))
 
 (defn- host-event [saved config-written?]
-  (let [rt (Runtime/getRuntime)]
+  (let [rt (Runtime/getRuntime)
+        lv (state/level saved :overworld)]
     {:event           :host
      :java            (System/getProperty "java.version")
      :cores           (.availableProcessors rt)
@@ -143,8 +146,8 @@
      :gc              (gc-name)
      :data            (data/dir)
      :world           (:save-dir (config/load-config))
-     :chunks          (some-> (:stored saved) seq count)
-     :entities        (count (:entities saved))
+     :chunks          (some-> (:stored lv) seq count)
+     :entities        (count (:entities lv))
      :config          "config.edn"
      :config-written? config-written?}))
 

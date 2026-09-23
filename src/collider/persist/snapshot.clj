@@ -6,6 +6,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.game.schema :as schema]
+            [collider.game.state :as state]
             [collider.log :as log]
             [collider.world.chunk :as chunk]
             [malli.core :as m]
@@ -20,8 +21,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const format-version 10)
-
 (nippy/extend-freeze Chunk ::chunk [^Chunk c ^DataOutput out]
   (chunk/save-chunk! c out))
 
@@ -31,8 +30,8 @@
 (def ^:private freeze-opts {:compressor lz4-compressor})
 
 (defprotocol Store
-  (put-chunk! [this id payload])
-  (get-chunk [this id])
+  (put-chunk! [this dim id payload])
+  (get-chunk [this dim id])
   (put-meta! [this m])
   (load [this])
   (flush! [this]))
@@ -69,9 +68,12 @@
           (throw t))))
     (alength data)))
 
-(defn- chunk-file ^File [dir id]
+(defn- dim-dir ^File [dir dim]
+  (io/file dir (name dim)))
+
+(defn- chunk-file ^File [dir dim id]
   (let [[cx cz] (chunk/id->pos id)]
-    (io/file dir "chunks" (str cx "_" cz ".chunk"))))
+    (io/file (dim-dir dir dim) "chunks" (str cx "_" cz ".chunk"))))
 
 (defn- meta-file ^File [dir]
   (io/file dir "meta.edn"))
@@ -123,25 +125,29 @@
 (defn- chunk-file? [^File f]
   (re-matches #"-?\d+_-?\d+\.chunk" (.getName f)))
 
-(defn- chunk-files [dir]
-  (let [fs (.listFiles (io/file dir "chunks"))]
+(defn- chunk-files [dir dim]
+  (let [fs (.listFiles (io/file (dim-dir dir dim) "chunks"))]
     (filter chunk-file? (or fs (make-array File 0)))))
 
-(defn- stored-ids [dir]
-  (into (i/int-set) (map chunk-id-of) (chunk-files dir)))
+(defn- stored-ids [dir dim]
+  (into (i/int-set) (map chunk-id-of) (chunk-files dir dim)))
+
+(defn- with-stored [dir levels]
+  (into {} (for [[dim lm] levels]
+             [dim (assoc lm :stored (stored-ids dir dim))])))
 
 (defn- read-store [dir]
   (let [^File d (io/file dir)]
     (when (.isDirectory d)
       (when-let [m (read-edn (meta-file d))]
-        (assoc m :stored (stored-ids d))))))
+        (update m :levels #(with-stored d %))))))
 
 (defrecord FileStore [dir]
   Store
-  (put-chunk! [_ id payload]
-    (write-atomically! (chunk-file dir id)
+  (put-chunk! [_ dim id payload]
+    (write-atomically! (chunk-file dir dim id)
                        (nippy/freeze payload freeze-opts)))
-  (get-chunk [_ id] (read-frozen (chunk-file dir id)))
+  (get-chunk [_ dim id] (read-frozen (chunk-file dir dim id)))
   (put-meta! [_ m]
     (backup-meta! dir)
     (write-atomically! (meta-file dir) (edn-bytes m)))
@@ -152,56 +158,68 @@
 
 (defn file-store [dir] (->FileStore dir))
 
+(defn- level-snapshot [world dim]
+  (let [lv (state/level world dim)
+        entry (fn [id] [id (schema/chunk-payload lv id)])]
+    (assoc (schema/snapshot lv :level)
+      :chunks (into {} (map entry) (keys (:chunks lv))))))
+
 (defn snapshot
   "Returns the world as a store keeps it.
-  It holds every loaded chunk and what belongs to it."
+  Each level holds every chunk it has loaded and what belongs to it."
   [world]
-  (let [entry (fn [id] [id (schema/chunk-payload world id)])]
-    (assoc (schema/snapshot world)
-      :format format-version
-      :chunks (into {} (map entry) (keys (:chunks world))))))
+  (assoc (schema/snapshot (state/level world :overworld) :shared)
+    :levels (into {} (for [dim (keys (:levels world))]
+                       [dim (level-snapshot world dim)]))))
+
+(defn- per-level [f levels]
+  (into {} (for [[dim lm] levels] [dim (f lm)])))
 
 (defn- meta-of [snap]
-  (assoc (dissoc snap :chunks) :format format-version))
+  (update snap :levels #(per-level (fn [lm] (dissoc lm :chunks)) %)))
 
 (defn- written [n]
   (if (number? n) (long n) 0))
 
-(defn- write-chunks! [store chunks]
-  (let [write! (fn [[id c]] (written (put-chunk! store id c)))]
+(defn- write-chunks! [store dim chunks]
+  (let [write! (fn [[id c]] (written (put-chunk! store dim id c)))]
     (reduce + 0 (map write! chunks))))
+
+(defn- write-levels! [store chunks-by-dim]
+  (reduce + 0 (for [[dim ch] chunks-by-dim]
+                (write-chunks! store dim ch))))
 
 (defn write-snapshot!
   "Writes a snapshot to a store and returns how many bytes it took."
   [store snap]
-  (+ (long (write-chunks! store (:chunks snap)))
-     (written (put-meta! store (meta-of snap)))))
+  (let [chunks (per-level :chunks (:levels snap))]
+    (+ (long (write-levels! store chunks))
+       (written (put-meta! store (meta-of snap))))))
 
 (def ^:private chunk-keys
   [:chunks :entities :block-ticks :block-entities])
 
+(def ^:private level-defaults
+  (get-in schema/initial-world [:levels :overworld]))
+
+(defn- level-world-of [tick lm]
+  (let [empty-parts (select-keys level-defaults chunk-keys)
+        bare (dissoc lm :chunks :stored)
+        base (assoc (schema/level-of tick bare) :tick tick)
+        start (merge empty-parts base)]
+    (-> (reduce-kv schema/with-chunk start (:chunks lm))
+        (dissoc :tick)
+        (assoc :stored (or (:stored lm) (i/int-set))))))
+
 (defn world-of
   "Returns the world a snapshot holds.
-  It holds its chunks and what belongs to them."
+  Each level holds its chunks and what belongs to them."
   [snap]
-  (let [empty-parts (select-keys schema/initial-world chunk-keys)
-        base (schema/world-of (dissoc snap :chunks :stored))]
-    (reduce-kv schema/with-chunk
-               (merge empty-parts base)
-               (:chunks snap))))
-
-(defn- format-complaint [store m]
-  (str "snapshot " store " has format " (pr-str (:format m))
-       ", this server writes format " format-version
-       " - move the world aside or start with a fresh save"
-       " directory"))
-
-(defn- check-format! [store m]
-  (when-not (= format-version (:format m))
-    (throw (ex-info (format-complaint store m)
-                    {:found (:format m)
-                     :expected format-version
-                     :store (str store)}))))
+  (let [shared (schema/shared-of (dissoc snap :levels))
+        tick (long (:tick shared 0))]
+    (assoc shared :levels
+           (into {} (for [[dim lm] (:levels snap)]
+                      [dim (level-world-of tick lm)])))))
 
 (defn- complaint [m [k msgs]]
   (str k " " (str/join ", " msgs)
@@ -222,10 +240,8 @@
 
 (defn load-snapshot [store]
   (when-let [m (read-meta store)]
-    (check-format! store m)
     (check-meta! store m)
-    (assoc (world-of (dissoc m :chunks))
-           :stored (or (:stored m) (i/int-set)))))
+    (world-of m)))
 
 (defn start-saver
   "Returns an agent that writes chunks and meta in the background.
@@ -238,19 +254,26 @@
 (defn- pending-of [saver]
   (:pending (meta saver)))
 
-(defn- hold! [saver id payload]
+(defn- hold! [saver dim id payload]
   (when-let [p (pending-of saver)]
-    (swap! p assoc id payload)))
+    (swap! p assoc [dim id] payload)))
 
-(defn- release! [saver id payload]
+(defn- release! [saver dim id payload]
   (when-let [p (pending-of saver)]
     (swap! p (fn [m]
-               (if (identical? payload (get m id))
-                 (dissoc m id)
+               (if (identical? payload (get m [dim id]))
+                 (dissoc m [dim id])
                  m)))))
 
 (defn changed-chunks [old new]
   (remove (fn [[k v]] (= v (get old k))) new))
+
+(defn- changed-levels [old-chunks levels]
+  (into {} (for [[dim lm] levels
+                 :let [old (get old-chunks dim)
+                       ch (changed-chunks old (:chunks lm))]
+                 :when (seq ch)]
+             [dim ch])))
 
 (def ^:private clock-keys [:tick :time-ms :time-of-day])
 
@@ -263,12 +286,14 @@
 
 (defn- write-changes! [state store snap m changed]
   (try
-    (let [n (+ (long (write-chunks! store changed))
-               (written (put-meta! store m)))]
-      (log/info "snapshot: saved" (count changed) "chunks,"
+    (let [n (+ (long (write-levels! store changed))
+               (written (put-meta! store m)))
+          n-chunks (reduce + 0 (map count (vals changed)))]
+      (log/info "snapshot: saved" n-chunks "chunks,"
                 (log/human-bytes n) "to" (str store))
       (-> state
-          (assoc :chunks (:chunks snap) :meta m)
+          (assoc :chunks (per-level :chunks (:levels snap))
+                 :meta m)
           (update :writes inc)))
     (catch Throwable t
       (log/warn "snapshot: write failed -" (.getMessage t))
@@ -277,7 +302,7 @@
 (defn- save! [state store world]
   (let [snap (snapshot world)
         m (meta-of snap)
-        changed (changed-chunks (:chunks state) (:chunks snap))]
+        changed (changed-levels (:chunks state) (:levels snap))]
     (if (and (empty? changed) (not (meta-changed? m (:meta state))))
       state
       (write-changes! state store snap m changed))))
@@ -285,53 +310,53 @@
 (defn- chunk-name ^String [id]
   (let [[cx cz] (chunk/id->pos id)] (str "chunk " cx "," cz)))
 
-(defn- stored! [state saver store id payload]
+(defn- stored! [state saver store dim id payload]
   (try
-    (put-chunk! store id payload)
-    (update state :chunks dissoc id)
+    (put-chunk! store dim id payload)
+    (update-in state [:chunks dim] dissoc id)
     (catch Throwable t
       (log/warn (chunk-name id) "was unloaded but not saved,"
                 "its changes are lost -" (.getMessage t))
       state)
-    (finally (release! saver id payload))))
+    (finally (release! saver dim id payload))))
 
 (defn store-chunk!
   "Saves an unloaded chunk.
   A read sees it at once; the write waits for every save and
   read asked for before it."
-  [saver store id payload]
-  (hold! saver id payload)
-  (send-off saver stored! saver store id payload))
+  [saver store dim id payload]
+  (hold! saver dim id payload)
+  (send-off saver stored! saver store dim id payload))
 
-(defn- read-stored [store id]
-  (try (get-chunk store id)
+(defn- read-stored [store dim id]
+  (try (get-chunk store dim id)
        (catch Throwable t
          (log/warn (chunk-name id) "could not be read and"
                    "starts over as a new chunk -" (.getMessage t))
          nil)))
 
-(defn- read-chunk [saver store id]
-  (if-let [payload (some-> (pending-of saver) deref (get id))]
+(defn- read-chunk [saver store dim id]
+  (if-let [payload (some-> (pending-of saver) deref (get [dim id]))]
     payload
-    (read-stored store id)))
+    (read-stored store dim id)))
 
-(defn- fetched! [state saver store id deliver]
-  (deliver (read-chunk saver store id))
+(defn- fetched! [state saver store dim id deliver]
+  (deliver (read-chunk saver store dim id))
   state)
 
 (defn fetch-chunk!
   "Reads a saved chunk and gives it to deliver.
   The read waits for every save asked for before it. deliver
   gets nil when the chunk cannot be read."
-  [saver store id deliver]
-  (send-off saver fetched! saver store id deliver))
+  [saver store dim id deliver]
+  (send-off saver fetched! saver store dim id deliver))
 
 (defn fetch-chunk-now!
   "Returns a saved chunk on the calling thread.
   A chunk still waiting to be written comes back as it was
   given. nil comes back when the chunk cannot be read."
-  [saver store id]
-  (read-chunk saver store id))
+  [saver store dim id]
+  (read-chunk saver store dim id))
 
 (defn request-save! [saver store world]
   (when saver

@@ -90,14 +90,23 @@
              [#'blocks/acks]
              [#'detector/observe]])
 
+(def dims
+  "The dimensions the tick runs, in a fixed order."
+  [:overworld])
+
+(defn- run-phase [[world d] phase]
+  (reduce (fn [[world d] dim]
+            (let [lv (state/level world dim)
+                  d' (deltas/of phase lv d)]
+              [(state/with-level world dim (state/apply lv d'))
+               (deltas/merge d d')]))
+          [world d] dims))
+
 (defn tick
   "Returns the world and the deltas after one tick of the events."
   [world events]
   (let [input (deltas/input events)]
-    (reduce (fn [[w d] phase]
-              (let [d' (deltas/of phase w d)]
-                [(state/apply w d') (deltas/merge d d')]))
-            [(state/apply world input) input] phases)))
+    (reduce run-phase [(state/apply world input) input] phases)))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 

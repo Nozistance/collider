@@ -136,6 +136,25 @@
 
 (def initial-world schema/initial-world)
 
+(defn level
+  "Returns the level dim of world: its shared keys plus the keys of
+  level dim, plus :dim."
+  [world dim]
+  (-> (dissoc world :levels)
+      (into (get-in world [:levels dim]))
+      (assoc :dim dim)))
+
+(defn with-level
+  "Returns world with level dim replaced by lv.
+  lv's non-level keys become the shared part of world, dropping
+  shared keys lv no longer has; lv's level keys become level dim."
+  [world dim lv]
+  (let [lv (dissoc lv :dim)
+        level-part (select-keys lv schema/level-keys)
+        shared-part (clojure.core/apply dissoc lv schema/level-keys)]
+    (assoc shared-part :levels
+           (assoc (:levels world) dim level-part))))
+
 (defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
     (clojure.core/apply update-in w [:entities eid] f args)
@@ -870,11 +889,10 @@
     [w (conj removes (nth delta 1))]
     [(apply-world-delta w delta) removes]))
 
-(defn apply
-  "Returns the world with the deltas folded into it."
-  [world deltas]
+(defn- apply-level
+  [lv deltas]
   (let [^Deltas d (deltas-of deltas)
-        [w removes] (reduce world-step [world []] (deltas/world-of d))
+        [w removes] (reduce world-step [lv []] (deltas/world-of d))
         inp (deltas/input-of d)
         w (if (seq inp) (applied-input w inp) w)
         entities (:entities w)
@@ -884,6 +902,16 @@
             (assoc w :entities (i/merge entities updated))
             w)]
     (cache-active-chunks (reduce player-quit w removes))))
+
+(defn apply
+  "Returns the world with the deltas folded into it.
+  world may be a level or a whole world; a whole world is folded
+  through its overworld level and put back."
+  [world deltas]
+  (if (contains? world :levels)
+    (with-level world :overworld
+                (apply-level (level world :overworld) deltas))
+    (apply-level world deltas)))
 
 (defn apply-deltas [world deltas]
   (let [d (deltas-of deltas)]

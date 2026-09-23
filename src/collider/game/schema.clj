@@ -117,74 +117,126 @@
 
 (def world
   {:tick               {:default 0 :store store-long
-                        :load load-long :schema :int}
-   :time-ms            {:default 0}
+                        :load load-long :schema :int
+                        :scope :shared}
+   :time-ms            {:default 0 :scope :shared}
    :time-of-day        {:default 0 :store store-same
-                        :load identity :schema :int}
+                        :load identity :schema :int
+                        :scope :shared}
    :next-eid           {:default 1000000 :store store-same
-                        :load identity :schema :int}
+                        :load identity :schema :int
+                        :scope :shared}
    :rules              {:default rules/defaults :store store-same
-                        :load load-rules :schema :map}
+                        :load load-rules :schema :map
+                        :scope :shared}
    :profiles           {:default {} :store store-profiles
                         :load identity
-                        :schema [:map-of :string :map]}
-   :chunks             {:default chunk/no-chunks :load identity}
-   :entities           {:default (i/int-map) :load identity}
-   :block-ticks        {:default (i/int-map) :load identity}
-   :block-entities     {:default (i/int-map) :load identity}
-   :stored             {:default (i/int-set)}
-   :loading            {:default (i/int-set)}
-   :unknown            {:default (i/int-map)}
+                        :schema [:map-of :string :map]
+                        :scope :shared}
+   :chunks             {:default chunk/no-chunks :load identity
+                        :scope :level}
+   :entities           {:default (i/int-map) :load identity
+                        :scope :level}
+   :block-ticks        {:default (i/int-map) :load identity
+                        :scope :level}
+   :block-entities     {:default (i/int-map) :load identity
+                        :scope :level}
+   :stored             {:default (i/int-set) :scope :level}
+   :loading            {:default (i/int-set) :scope :level}
+   :unknown            {:default (i/int-map) :scope :level}
    :world-spawn        {:default [24 4 8] :store store-same
                         :load identity
-                        :schema [:tuple :int :int :int]}
+                        :schema [:tuple :int :int :int]
+                        :scope :shared}
    :clear-weather-time {:default 0 :store store-long
-                        :load load-long :schema :int}
+                        :load load-long :schema :int
+                        :scope :shared}
    :rain-time          {:default 0 :store store-long
-                        :load load-long :schema :int}
+                        :load load-long :schema :int
+                        :scope :shared}
    :thunder-time       {:default 0 :store store-long
-                        :load load-long :schema :int}
+                        :load load-long :schema :int
+                        :scope :shared}
    :raining?           {:default false :store store-boolean
-                        :load boolean :schema :boolean}
+                        :load boolean :schema :boolean
+                        :scope :shared}
    :thundering?        {:default false :store store-boolean
-                        :load boolean :schema :boolean}
+                        :load boolean :schema :boolean
+                        :scope :shared}
    :rain-level         {:default 0.0 :store store-rain-level
-                        :load double :schema number?}
+                        :load double :schema number?
+                        :scope :level}
    :o-rain-level       {:default 0.0 :store store-rain-level
-                        :load double :schema number?}
+                        :load double :schema number?
+                        :scope :level}
    :thunder-level      {:default 0.0 :store store-thunder-level
-                        :load double :schema number?}
+                        :load double :schema number?
+                        :scope :level}
    :o-thunder-level    {:default 0.0 :store store-thunder-level
-                        :load double :schema number?}
-   :container-rechecks {:default {}}
-   :shulker-anim       {:default {}}
-   :players            {:default {}}
-   :spawning           {:default (i/int-map)}
-   :listed             {:default {}}})
+                        :load double :schema number?
+                        :scope :level}
+   :container-rechecks {:default {} :scope :level}
+   :shulker-anim       {:default {} :scope :level}
+   :players            {:default {} :scope :shared}
+   :spawning           {:default (i/int-map) :scope :shared}
+   :listed             {:default {} :scope :shared}})
 
-(def Meta
-  (into [:map {:closed true} [:format :int]
+(defn- of-scope [scope]
+  (into {} (for [[k v] world :when (= scope (:scope v))] [k v])))
+
+(def ^:private shared-table (of-scope :shared))
+
+(def ^:private level-table (of-scope :level))
+
+(def level-keys
+  "The keys of world that belong to a level, not the shared part.
+  Includes the transient keys the tick adds and drops."
+  (into #{:active-chunks :block-events} (keys level-table)))
+
+(def Level
+  (into [:map {:closed true}
          [:stored {:optional true} [:fn set?]]]
-        (for [[k {s :schema}] world :when s]
+        (for [[k {s :schema}] level-table :when s]
           [k {:optional true} s])))
 
-(def initial-world (update-vals world :default))
+(def Meta
+  (into [:map {:closed true}
+         [:levels {:optional true} [:map-of :keyword Level]]]
+        (for [[k {s :schema}] shared-table :when s]
+          [k {:optional true} s])))
 
-(defn snapshot [w]
-  (into {} (for [[k {store :store}] world :when store]
+(def initial-world
+  (assoc (update-vals shared-table :default)
+    :levels {:overworld (update-vals level-table :default)}))
+
+(defn snapshot
+  "Returns what w stores of the keys of scope, :shared or :level."
+  [w scope]
+  (into {} (for [[k {store :store s :scope}] world
+                 :when (and store (= scope s))]
              [k (store (k w) w)])))
 
-(defn- rebase-ticks [w]
-  (let [t (long (:tick w 0))
+(defn- rebase-ticks [tick w]
+  (let [t (long tick)
         due (fn [[dt s]] [(+ t (long dt)) s])]
     (update w :block-ticks
             #(into (i/int-map) (map due) %))))
 
-(defn world-of [m]
-  (rebase-ticks
-    (into {} (for [[k {load :load default :default}] world
-                   :when load]
-               [k (if (contains? m k) (load (k m)) default)]))))
+(defn- loaded-of [table m]
+  (into {} (for [[k {load :load default :default}] table
+                 :when load]
+             [k (if (contains? m k) (load (k m)) default)])))
+
+(defn shared-of
+  "Returns the shared keys of world a snapshot's meta holds."
+  [m]
+  (loaded-of shared-table m))
+
+(defn level-of
+  "Returns the level keys of world a snapshot's level meta holds.
+  Its block ticks come due at their saved delay after tick."
+  [tick m]
+  (rebase-ticks tick (loaded-of level-table m)))
 
 (def profile
   {:inventory    {:default {}}
