@@ -1,9 +1,9 @@
 (ns collider.game.block.crafting
   "Crafting grids of the table and the player.
   Their results and the cost of a take."
-  (:require [collider.data :as data]
-            [collider.game.block.menu :as menu]
+  (:require [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
+            [collider.game.stack :as stack]
             [collider.game.state :as state])
   (:import (java.util List)))
 
@@ -50,7 +50,7 @@
 
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
 
-(defn- max-of ^long [s] (long (data/max-stack (:item s))))
+(defn- max-of ^long [s] (stack/max-size s))
 
 (defn- own-slot ^long [ctx ^long i]
   (+ (long (:base ctx 0))
@@ -70,37 +70,12 @@
   (some #(when-not (get inv %) %)
         (map #(own-slot ctx %) (range 36))))
 
-(defn- add-once [ctx inv stack]
-  (if-let [slot (or (space-slot ctx inv stack) (free-slot ctx inv))]
-    (let [here (count-of (get inv slot))
-          put (min (count-of stack) (- (max-of stack) here))]
-      [(assoc inv slot (assoc stack :count (+ here put)))
-       (- (count-of stack) put)])
-    [inv (count-of stack)]))
-
-(defn- added [ctx inv stack]
-  (loop [inv inv n (count-of stack)]
-    (let [[inv' n'] (add-once ctx inv (assoc stack :count n))
-          n' (long n')]
-      (if (and (pos? n') (< n' n))
-        (recur inv' n')
-        [inv' n']))))
-
-(defn- damaged? [stack]
-  (pos? (long (get-in stack [:components :damage] 0))))
-
-(defn- added-damaged [ctx inv stack]
-  (if-let [slot (free-slot ctx inv)]
-    [(assoc inv slot stack) 0]
-    [inv (count-of stack)]))
-
 (defn- give [ctx m stack]
-  (let [add (if (damaged? stack) added-damaged added)
-        [inv ^long n] (add ctx (:inventory m) stack)
-        m (assoc m :inventory inv)]
-    (if (or (zero? n) (:infinite? ctx))
-      m
-      (update m :spills conj (assoc stack :count n)))))
+  (let [[inv left] (menu/add-to-inventory
+                     (:base ctx 0) (:held ctx 0) (:infinite? ctx)
+                     (:inventory m) stack)]
+    (cond-> (assoc m :inventory inv)
+      left (update :spills conj left))))
 
 (defn- shrink [inv slot]
   (let [s (get inv slot)
@@ -114,9 +89,8 @@
     (cond (nil? rep) m
           (nil? here) (assoc-in m [:inventory slot] rep)
           (same-kind? here rep)
-          (assoc-in m [:inventory slot]
-                    (assoc rep :count (+ (count-of rep)
-                                         (count-of here))))
+          (let [n (+ (count-of rep) (count-of here))]
+            (assoc-in m [:inventory slot] (assoc rep :count n)))
           :else (give ctx m rep))))
 
 (defn- cell-slot [grid ^long w input ^long i]
@@ -130,11 +104,14 @@
     (let [input (input-of (:inventory m) grid w)
           reps (remaining input)]
       (reduce (fn [m i]
-                (let [slot (cell-slot grid w input i)]
-                  (replaced ctx (update m :inventory shrink slot)
-                            slot (nth reps i))))
+                (let [slot (cell-slot grid w input i)
+                      m (update m :inventory shrink slot)]
+                  (replaced ctx m slot (nth reps i))))
               m
               (range (count reps))))))
+
+(defn- back-slot [ctx inv s]
+  (when s (or (space-slot ctx inv s) (free-slot ctx inv))))
 
 (defn place-back
   "Returns a player's inventory with a stack put back into it.
@@ -142,8 +119,7 @@
   what did not fit."
   [ctx inv stack]
   (loop [inv inv s stack]
-    (if-let [slot (and s (or (space-slot ctx inv s)
-                             (free-slot ctx inv)))]
+    (if-let [slot (back-slot ctx inv s)]
       (let [here (count-of (get inv slot))
             put (min (count-of s) (- (max-of s) here))
             left (- (count-of s) put)]
@@ -156,6 +132,7 @@
 (defn player-layout [ctx]
   (assoc menu/player-layout
     :result 0
+    :no-gather #{0}
     :grid player-grid
     :derive (deriving ctx 0 player-grid 2)
     :craft (consuming ctx player-grid 2)))
@@ -183,6 +160,7 @@
         ctx (assoc ctx :base 10)]
     (assoc base
       :result 0
+      :no-gather #{0}
       :grid table-grid
       :quick (fn [_ slot] (table-quick v slot))
       :derive (deriving ctx 0 table-grid 3)

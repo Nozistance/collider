@@ -258,6 +258,8 @@
                      (container/slot-count m))
    :carried    (:carried e)
    :quickcraft (:quickcraft e)
+   :held       (:held ctx)
+   :creative?  (:infinite? ctx)
    :layout     (container/layout m ctx)})
 
 (defn- menu-after [m m0 items items' packet]
@@ -294,19 +296,11 @@
                 (out/to eid (out/container-data id i v))))]
     (keep-indexed one (container/data-values world menu))))
 
-(defn- crafted-award [eid m ^long takes]
-  (when-let [s (nth (:contents m) (long (:result m)) nil)]
-    [[:award eid (keyword "crafted" (name (:item s)))
-      (* takes (long (:count s 1)))]]))
-
-(defn- take-deltas [world eid e m takes]
+(defn- take-deltas [world e m takes]
   (when (pos? (long takes))
     (case (:type m)
       :anvil (container/anvil-take-deltas
                world m (state/infinite-materials? e))
-      :smithing-table
-      (concat (crafted-award eid m (long takes))
-              [(container/take-sound m)])
       (keep identity [(container/take-sound m)]))))
 
 (defn- click-merge-deltas [eid e after inventory menu]
@@ -322,12 +316,6 @@
     (let [p (out/container-data (:id menu) 0 (:selected menu))]
       [(out/to eid p)])))
 
-(defn- drop-deltas [world eid after]
-  (let [one (fn [i s]
-              [:spawn-entity
-               (items/dropped world eid s true i)])]
-    (map-indexed one (:drops after))))
-
 (defn- click-result-deltas [world eid e m click]
   (let [{:keys [after inventory items deltas menu]} click]
     (concat
@@ -336,9 +324,9 @@
       deltas
       (selected-deltas eid m menu)
       (value-deltas world eid m menu)
-      (take-deltas world eid e m (long (:takes after 0)))
+      (take-deltas world e m (long (:takes after 0)))
       (craft-deltas world eid after)
-      (drop-deltas world eid after))))
+      (items/thrown-deltas world eid (:drops after)))))
 
 (defn- click-deltas [world [_ eid packet]]
   (when-let [e (get-in world [:entities eid])]

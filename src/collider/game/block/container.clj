@@ -289,10 +289,7 @@
         n (- (count-of before) (count-of (nth items 2)))]
     (when (pos? n) [(:item before) n])))
 
-(defn- award [eid [item n]]
-  [:award eid (keyword "crafted" (name item)) n])
-
-(defn- furnace-store [world eid m items]
+(defn- furnace-store [world m items]
   (let [pos (first (:cells m))
         old (be/at world pos)
         got (taken old items)
@@ -300,8 +297,7 @@
               (assoc-in [:items 1] (nth items 1))
               (assoc-in [:items 2] (nth items 2))
               (cond-> got (assoc :used {})))]
-    (concat (when (not= old e) [[:set-block-entity pos e]])
-            (when got [(award eid got)]))))
+    (when (not= old e) [[:set-block-entity pos e]])))
 
 (defn- cell-store [world items n i pos]
   (let [old (be/at world pos)
@@ -316,7 +312,7 @@
     (bench? m) nil
     (= :ender (:kind m))
     [[:merge-entity eid {:ender-items (vec items)}]]
-    (furnace? m) (furnace-store world eid m items)
+    (furnace? m) (furnace-store world m items)
     :else (keep-indexed #(cell-store world items (cell-size m) %1 %2)
                         (:cells m))))
 
@@ -564,6 +560,8 @@
         selected (long (:selected m))]
     (assoc base
       :result 1
+      :no-gather #{1}
+      :stat {:slot 1 :by :taken}
       :quick (fn [inv slot] (cut-quick v inv slot))
       :on-take (fn [inv] (shrink inv 0))
       :derive (fn [inv] (cut-derive inv selected)))))
@@ -675,6 +673,8 @@
         v (:visible base)]
     (assoc base
       :result 3
+      :no-gather #{3}
+      :stat {:slot 3 :by :taken}
       :quick (fn [inv slot] (smithing-quick v inv slot))
       :on-take (fn [inv] (-> inv (shrink 0) (shrink 1) (shrink 2)))
       :derive (fn [inv]
@@ -715,6 +715,7 @@
         kind (:type m)]
     (assoc base
       :max furnace-max
+      :stat {:slot 2 :by :removed}
       :quick (fn [inv slot] (furnace-quick v kind inv slot)))))
 
 (defn- brewing-place? [slot stack]

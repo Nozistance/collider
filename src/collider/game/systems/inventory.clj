@@ -109,17 +109,21 @@
           :else (stash-into-hotbar eid inv stack n))))))
 
 (defn- own-start [world e]
-  {:inventory  (or (:inventory e) {})
-   :carried    (:carried e)
-   :quickcraft (:quickcraft e)
-   :layout     (crafting/player-layout
-                 (crafting/context world e))})
+  (let [ctx (crafting/context world e)]
+    {:inventory  (or (:inventory e) {})
+     :carried    (:carried e)
+     :quickcraft (:quickcraft e)
+     :held       (:held ctx)
+     :creative?  (:infinite? ctx)
+     :layout     (crafting/player-layout ctx)}))
 
-(defn- drop-deltas [world eid after]
-  (map-indexed (fn [i stack]
-                 [:spawn-entity
-                  (items/dropped world eid stack true i)])
-               (:drops after)))
+(defn- equip-sound [pos s]
+  (let [kind (data/equip-sound (:item s))]
+    (out/all (out/sound kind pos 1.0 1.0 :players))))
+
+(defn- equip-deltas [world eid after]
+  (let [pos (get-in world [:entities eid :pos])]
+    (map #(equip-sound pos %) (:equipped after))))
 
 (defn- click-deltas [world [_ eid {:keys [changed carried] :as m}]]
   (when-let [e (get-in world [:entities eid])]
@@ -129,7 +133,8 @@
         [[:merge-entity eid own]
          [:client-slots eid (or changed {}) carried]]
         (containers/craft-deltas world eid after)
-        (drop-deltas world eid after)))))
+        (items/thrown-deltas world eid (:drops after))
+        (equip-deltas world eid after)))))
 
 (defn- own-click-deltas [world [tag eid packet]]
   (when (zero? (long (:container packet 0)))

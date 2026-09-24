@@ -10,7 +10,7 @@
 
 (def game "26.2")
 
-(def layout 8)
+(def layout 9)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items"
@@ -193,6 +193,9 @@
 
 (defn equip-slot [item]
   (get-in (items) [item :equip]))
+
+(defn equip-sound [item]
+  (get-in (items) [item :equip-sound] :item.armor.equip-generic))
 
 (defn dye-color [item]
   (get-in (items) [item :dye]))

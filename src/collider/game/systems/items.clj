@@ -45,15 +45,15 @@
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
-(defn- throw-velocity [world eid]
+(defn- throw-velocity [world eid salt]
   (let [e (get-in world [:entities eid])
         yaw (Math/toRadians (double (or (:yaw e) 0.0)))
         pitch (Math/toRadians (double (or (:pitch e) 0.0)))
         t (:tick world)
-        ang (* (random/of-key t eid :a) Math/PI 2.0)
-        mag (* throw-spread (random/of-key t eid :m))
-        jitter (- (random/of-key t eid :y1)
-                  (random/of-key t eid :y2))]
+        ang (* (random/of-key t eid salt :a) Math/PI 2.0)
+        mag (* throw-spread (random/of-key t eid salt :m))
+        jitter (- (random/of-key t eid salt :y1)
+                  (random/of-key t eid salt :y2))]
     [(+ (* (- throw-power) (Math/sin yaw) (Math/cos pitch))
         (* (Math/cos ang) mag))
      (+ (* (- throw-power) (Math/sin pitch)) throw-lift
@@ -75,8 +75,16 @@
          at [(double px) (+ (double py) hand-height) (double pz)]
          vel (if randomly?
                (around-velocity world thrower salt)
-               (throw-velocity world thrower))]
+               (throw-velocity world thrower salt))]
      (entity/item at vel stack throw-pickup-delay))))
+
+(defn thrown-deltas [world eid stacks]
+  (mapcat (fn [i s]
+            [[:spawn-entity (dropped world eid s false i)]
+             [:award eid (keyword "dropped" (name (:item s)))
+              (long (:count s 1))]
+             [:award eid :custom/drop 1]])
+          (range) stacks))
 
 (defn popped
   "Returns the item dropped by a broken block."

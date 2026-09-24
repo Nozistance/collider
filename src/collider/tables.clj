@@ -792,11 +792,13 @@
 (defn- stack-fields [cs]
   (let [n (get cs "minecraft:max_stack_size" 64)
         slot (get-in cs ["minecraft:equippable" "slot"])
+        sound (get-in cs ["minecraft:equippable" "equip_sound"])
         song (get cs "minecraft:jukebox_playable")
         dye (get cs "minecraft:dye")]
     (cond-> (sorted-map)
       (not= n 64) (assoc :max-stack n)
       slot (assoc :equip (kw slot))
+      (string? sound) (assoc :equip-sound (kw sound))
       song (assoc :jukebox-song (kw song))
       dye (assoc :dye (kw dye)))))
 
