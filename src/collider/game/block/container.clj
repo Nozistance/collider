@@ -705,7 +705,7 @@
       (= 2 i) (span v 3 39 true)
       (< i 2) (span v 3 39 false)
       (furnace/recipe kind stack) (span v 0 1 false)
-      (fuel? stack) (span v 1 2 false)
+      (pos? (furnace/burn-duration stack)) (span v 1 2 false)
       (< 2 i 30) (span v 30 39 false)
       :else (span v 3 30 false))))
 
