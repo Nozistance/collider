@@ -459,8 +459,16 @@
   (or (get (blocks) block)
       (throw (ex-info "unknown block" {:block block}))))
 
+(defn- single ^double [v] (double (float v)))
+
 (defn place-sound [block]
   (get-in (sounds) [(:sound (info block)) :place]))
+
+(defn placed-sound [block item]
+  (let [t (get (sounds) (:sound (info block)))]
+    {:kind   (or (get-in (items) [item :place-sound]) (:place t))
+     :volume (single (/ (+ 1.0 (single (:volume t 1.0))) 2.0))
+     :pitch  (single (* (single 0.8) (single (:pitch t 1.0))))}))
 
 (defn open-sound [block open?]
   (get (info block) (if open? :open :close)))

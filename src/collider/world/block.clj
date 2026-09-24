@@ -118,13 +118,15 @@
     :amethyst-cluster :hanging-moss :big-dripleaf
     :big-dripleaf-stem :small-dripleaf :azalea :wither-rose
     :nether-sprouts :nether-fungus :nether-roots
-    :mangrove-propagule :chorus-flower :chorus-plant})
+    :mangrove-propagule :chorus-flower :chorus-plant
+    :trip-wire-hook :repeater :comparator :frogspawn})
 
 (def stack-props
   {:candle :candles
    :sea-pickle :pickles
    :flower-bed :flower-amount
-   :leaf-litter :segment-amount})
+   :leaf-litter :segment-amount
+   :turtle-egg :eggs})
 
 (def replaceable-types
   (disj (into ground-types (concat torch-types wall-torch-types))
@@ -532,7 +534,8 @@
 
 (def ^:private standing-and-wall-types
   #{:standing-sign :skull :wither-skull :player-head :torch
-    :redstone-torch :banner :ceiling-hanging-sign})
+    :redstone-torch :banner :ceiling-hanging-sign :coral-fan
+    :base-coral-fan})
 
 (defn item->block [item face]
   (let [t (:type (get (data/blocks) item))]
@@ -550,16 +553,57 @@
   (let [n (/ (* (double yaw) 16.0) 360.0)]
     (bit-and (long (Math/floor (+ n 0.5))) 15)))
 
+(defn- orientation [front top]
+  (keyword (str (name front) "_" (name top))))
+
+(defn- crafter-top [front side]
+  (case front
+    :down (dir/opposite side)
+    :up side
+    :up))
+
+(defn- crafter-orientation [{:keys [look yaw]}]
+  (let [front (dir/opposite (first look))
+        top (crafter-top front (dir/player-direction yaw))]
+    {:orientation (orientation front top)}))
+
+(defn- jigsaw-orientation [{:keys [face yaw]}]
+  (let [front (dir/from-index face)
+        top (if (<= (long face) 1)
+              (dir/opposite (dir/player-direction yaw))
+              :up)]
+    {:orientation (orientation front top)}))
+
+(defn- rail-shape [{:keys [yaw]}]
+  {:shape (if (#{:east :west} (dir/player-direction yaw))
+            :east_west
+            :north_south)})
+
+(defn- hopper-facing [{:keys [face]}]
+  {:facing (if (<= (long face) 1)
+             :down
+             (dir/opposite (dir/from-index face)))})
+
 (def ^:private placement-rules
   [[(fn [t _b]
       (#{:rotated-pillar :infested-rotated-pillar :chain
-         :weathering-copper-chain} t))
+         :weathering-copper-chain :hay :creaking-heart} t))
     (fn [{:keys [face]}]
       {:axis (case (long face) (0 1) :y, (4 5) :x, :z)})]
    [(fn [t _b]
-      (#{:end-rod :weathering-lightning-rod :amethyst-cluster
-         :shulker-box} t))
+      (#{:end-rod :weathering-lightning-rod :lightning-rod
+         :amethyst-cluster :shulker-box} t))
     (fn [{:keys [face]}] {:facing (dir/from-index face)})]
+   [(fn [t _b] (#{:piston-base :dispenser :dropper :command} t))
+    (fn [{:keys [look]}] {:facing (dir/opposite (first look))})]
+   [(fn [t _b] (= :observer t))
+    (fn [{:keys [look]}] {:facing (first look)})]
+   [(fn [t _b] (= :crafter t)) crafter-orientation]
+   [(fn [t _b] (= :jigsaw t)) jigsaw-orientation]
+   [(fn [t _b] (= :hopper t)) hopper-facing]
+   [(fn [t _b] (#{:rail :powered-rail :detector-rail} t)) rail-shape]
+   [(fn [t _b] (= :calibrated-sculk-sensor t))
+    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw)})]
    [(fn [t _b]
       (#{:standing-sign :banner :ceiling-hanging-sign} t))
     (fn [{:keys [yaw]}]
@@ -615,23 +659,21 @@
     (when-let [[_ f] (first (filter match placement-rules))]
       (f ctx))))
 
-(defn placement
-  ([item face yaw cursor-y] (placement item face yaw cursor-y false))
-  ([item face yaw cursor-y replacing?]
-   (when-let [block (item->block item face)]
-     (let [b (data/info block)
-           face (long face)
-           top? (or (= face 0)
-                    (and (not= face 1) (> (long cursor-y) 8)))
-           ctx {:face face
-                :yaw yaw
-                :cursor-y cursor-y
-                :replacing? replacing?
-                :f (dir/player-index yaw)
-                :top? top?}
-           props (placement-props (:type b) b ctx)
-           props (merge {:waterlogged :false} props)]
-       (state block (select-keys props (keys (:props b))))))))
+(defn- placement-ctx [{:keys [face yaw pitch cursor-y] :as ctx}]
+  (let [face (long face)]
+    (assoc ctx
+           :face face
+           :f (dir/player-index yaw)
+           :look (dir/look-order yaw (or pitch 0.0))
+           :top? (or (= face 0)
+                     (and (not= face 1) (> (long cursor-y) 8))))))
+
+(defn placement [item ctx]
+  (when-let [block (item->block item (:face ctx))]
+    (let [b (data/info block)
+          props (placement-props (:type b) b (placement-ctx ctx))
+          props (merge {:waterlogged :false} props)]
+      (state block (select-keys props (keys (:props b)))))))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 

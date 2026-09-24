@@ -438,10 +438,12 @@
    :hit "Hit" :fall "Fall"})
 
 (defn- sound-events [o]
-  (sorted-vals sound-parts
-               (fn [part]
-                 (let [event (call o (str "get" part "Sound"))]
-                   (kw (str (call event "location")))))))
+  (-> (sorted-vals sound-parts
+                   (fn [part]
+                     (let [event (call o (str "get" part "Sound"))]
+                       (kw (str (call event "location"))))))
+      (assoc :volume (flt (call o "getVolume"))
+             :pitch (flt (call o "getPitch")))))
 
 (defn- sound-types []
   (let [c (cls "world.level.block.SoundType")]
@@ -530,12 +532,22 @@
                   (when (not= v d) [k v]))))
         motion-fields))
 
+(defn- instrument [st]
+  (let [i (call st "instrument")
+        k (keyword (call i "getSerializedName"))]
+    (cond-> {}
+      (not= :harp k) (assoc :instrument k)
+      (call i "worksAboveNoteBlock")
+      (assoc :instrument-above? true))))
+
 (defn- own-props [by-type b]
-  (let [field #(hidden-field (class b) b %)]
+  (let [field #(hidden-field (class b) b %)
+        st (call b "defaultBlockState")]
     (merge {:resistance (flt (field "explosionResistance"))
-            :sound      (by-type (field "soundType"))
+            :sound      (by-type (call st "getSoundType"))
             :class      (block-class b)}
            (motion-props field)
+           (instrument st)
            (toggle b))))
 
 (defn- weathering-pairs [reg]
@@ -573,6 +585,16 @@
                 :when (.isInstance c i)
                 :let [wall (hidden-field (class i) i "wallBlock")]]
             [(key-of items i) {:wall (key-of blocks wall)}]))))
+
+(defn- solid-buckets []
+  (let [items (registry "ITEM")
+        c (cls "world.item.SolidBucketItem")]
+    (into (sorted-map)
+          (for [i (elements items)
+                :when (.isInstance c i)
+                :let [e (hidden-field c i "placeSound")]]
+            [(key-of items i)
+             {:place-sound (kw (str (call e "location")))}]))))
 
 (defn- compostables []
   (let [items (registry "ITEM")]
@@ -648,7 +670,8 @@
       (merge (state-shapes states) (block-props)
              {:light (light-table states) :fire (fire-odds)
               :placers (placer-features (registry "BLOCK"))
-              :compost (compostables) :walls (wall-items)
+              :compost (compostables)
+              :walls (merge (wall-items) (solid-buckets))
               :remainders (remainders) :banners (banner-colors)
               :dyes (dye-colors) :synced (synced-registries)}))))
 

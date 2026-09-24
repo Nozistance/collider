@@ -16,28 +16,40 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private water-plant-types #{:kelp :seagrass})
+(def ^:private water-plant-types #{:kelp :kelp-plant :seagrass})
 
 (def ^:private face-directions
   {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east})
 
 (def ^:private horizontals #{:north :south :west :east})
 
-(defn- snow-replaceable? [^long cur item]
+(defn- snow-replaceable? [^long cur item face]
   (let [n (block/prop-long cur :layers)]
-    (if (= item :snow) (< n 8) (= n 1))))
+    (if (and (= item :snow) (< n 8))
+      (or (nil? face) (= 1 (long face)))
+      (= n 1))))
+
+(defn- piles? [^long cur item sneak?]
+  (and (block/stackable? cur item)
+       (not (and sneak? (block/stack-props (block/type-of cur))))))
+
+(defn- own-item? [^long cur item]
+  (= (block/block-of cur) (block/item->block item 1)))
 
 (defn replaceable-state?
   "Returns true when the state yields to a block put in its cell."
-  ([cur] (replaceable-state? cur nil))
-  ([^long cur item]
+  ([cur] (replaceable-state? cur nil nil))
+  ([cur item] (replaceable-state? cur item nil))
+  ([^long cur item {:keys [sneak? face]}]
    (cond
      (zero? cur) true
      (block/liquid? cur) true
      (fire/fire-state? cur) true
-     (= :snow-layer (block/type-of cur)) (snow-replaceable? cur item)
-     (block/stackable? cur item) true
-     :else (block/can-be-replaced? cur))))
+     (= :snow-layer (block/type-of cur))
+     (snow-replaceable? cur item face)
+     (piles? cur item sneak?) true
+     :else (and (block/can-be-replaced? cur)
+                (not (own-item? cur item))))))
 
 (defn replaceable?
   "Returns true when the block at the position yields to the item."
@@ -243,9 +255,13 @@
         st (if st (edit/waterlogged world pos' st) st)]
     (stacked world pos' st item)))
 
-(defn- rejected? [world pos' state item]
+(defn- relative-free? [world pos' item ctx]
+  (replaceable-state? (edit/block-at world pos') item
+                      (dissoc ctx :face)))
+
+(defn- rejected? [world pos' state item ctx over?]
   (or (nil? state)
-      (not (replaceable? world pos' item))
+      (not (or over? (relative-free? world pos' item ctx)))
       (and (contains? water-plant-types (block/type-of state))
            (not (water-plant-ok? world pos' state)))
       (edit/obstructed? world pos' state)))
@@ -268,30 +284,34 @@
       (be/kind state) (block-entity-place-deltas world eid pos' state)
       :else (edit/placed-deltas world eid pos' state))))
 
-(defn- placement-state [world eid pos face item cursor]
-  (let [cur (edit/block-at world pos)
-        yaw (get-in world [:entities eid :yaw] 0.0)]
-    (block/placement item face yaw (nth cursor 1)
-                     (replaceable-state? cur))))
+(defn- use-ctx [world eid face item cursor]
+  (let [e (get-in world [:entities eid])]
+    {:item item :face face :cursor cursor :cursor-y (nth cursor 1)
+     :yaw (:yaw e 0.0) :pitch (:pitch e 0.0)
+     :sneak? (boolean (:sneaking? e))}))
 
-(defn- place-pos [world eid pos off item]
-  (let [cur (edit/block-at world pos)
-        pile (when-not (get-in world [:entities eid :sneaking?]) item)
-        over? (replaceable-state? cur pile)
-        target (if over? pos (mapv + pos off))]
-    (when (chunk/in-level? world (nth target 1)) target)))
+(defn- target [world pos off over?]
+  (let [p (if over? pos (mapv + pos off))]
+    (when (chunk/in-level? world (nth p 1)) p)))
+
+(defn- attempt-deltas [world eid pos base ctx over?]
+  (let [{:keys [face item cursor]} ctx
+        pos' (target world pos (dir/face-offset face) over?)
+        st (when pos' (refined world eid pos pos' base face item))
+        merged (slab-merge world pos pos' face item)]
+    (cond
+      merged (merged-deltas world eid pos pos' merged)
+      (nil? pos') nil
+      (rejected? world pos' st item ctx over?)
+      (edit/reject-deltas world eid pos pos')
+      :else (kind-deltas world eid pos pos' st item cursor))))
 
 (defn solid-place-deltas
   "Returns the deltas for a held block put against a clicked face."
   [world [eid pos face item cursor]]
-  (when-let [off (dir/face-offset face)]
-    (when-let [base (placement-state world eid pos face item cursor)]
-      (let [pos' (place-pos world eid pos off item)
-            st (when pos' (refined world eid pos pos' base face item))
-            merged (slab-merge world pos pos' face item)]
-        (cond
-          merged (merged-deltas world eid pos pos' merged)
-          (nil? pos') nil
-          (rejected? world pos' st item)
-          (edit/reject-deltas world eid pos pos')
-          :else (kind-deltas world eid pos pos' st item cursor))))))
+  (when (dir/face-offset face)
+    (let [ctx (use-ctx world eid face item cursor)
+          cur (edit/block-at world pos)
+          over? (replaceable-state? cur item ctx)
+          base (block/placement item (assoc ctx :replacing? over?))]
+      (when base (attempt-deltas world eid pos base ctx over?)))))

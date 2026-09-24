@@ -148,22 +148,6 @@
         (into (map (fn [[p _]] (out/all (out/fizz p)))) mixed)
         (into fx))))
 
-(defn placed-deltas
-  "Returns the deltas of a player placing blocks, with the place
-  sound for everyone else."
-  ([world eid pos state] (placed-deltas world eid [[pos state]]))
-  ([world eid changes]
-   (let [deltas (change-deltas world changes)
-         [[pos state]] (first (dried world changes))
-         placed (block/block-of state)
-         sound (out/sound (data/place-sound placed) pos 1.0 0.8)]
-     (conj deltas (out/except eid sound)))))
-
-(defn be-changed
-  "Returns the deltas that set the block entity at pos and show it."
-  [pos e]
-  [[:set-block-entity pos e] (out/all (out/block-entity pos))])
-
 (defn held-slot
   "Returns the inventory slot of the item the player holds."
   ^long [world eid]
@@ -171,6 +155,35 @@
 
 (defn held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))
+
+(defn- placed-by-fx [pos ^long state]
+  (when (= :dried-ghast (block/type-of state))
+    (let [kind (if (block/waterlogged? state)
+                 :block.dried-ghast.place-in-water
+                 :block.dried-ghast.place)]
+      [(out/all (out/sound kind pos 1.0 1.0))])))
+
+(defn- place-sound [world eid pos state]
+  (let [item (:item (held-stack world eid))
+        {:keys [kind volume pitch]}
+        (data/placed-sound (block/block-of state) item)]
+    (out/except eid (out/sound kind pos volume pitch))))
+
+(defn placed-deltas
+  "Returns the deltas of a player placing blocks, with the place
+  sound for everyone else."
+  ([world eid pos state] (placed-deltas world eid [[pos state]]))
+  ([world eid changes]
+   (let [deltas (change-deltas world changes)
+         [[pos state]] (first (dried world changes))]
+     (-> deltas
+         (into (placed-by-fx pos state))
+         (conj (place-sound world eid pos state))))))
+
+(defn be-changed
+  "Returns the deltas that set the block entity at pos and show it."
+  [pos e]
+  [[:set-block-entity pos e] (out/all (out/block-entity pos))])
 
 (defn hit-uv
   "Returns where a click landed on a face, across and up.
@@ -230,7 +243,8 @@
   takes the water that stands there."
   [world pos' state]
   (if (and (placed-wet? (block-at world pos') state)
-           (contains? (block/props-of state) :waterlogged))
+           (contains? (block/props-of state) :waterlogged)
+           (not= :light (block/type-of state)))
     (with-water state true)
     state))
 

@@ -93,6 +93,10 @@
   (and (or (water? below) (block/tagged? below "supports_lily_pad"))
        (not (water? (max 0 (state-at chunks (mapv + pos [0 1 0])))))))
 
+(defn- frogspawn-supported? [chunks pos below]
+  (and (water-source? (max 0 below))
+       (nil? (block/liquid-class (max 0 (state-at chunks pos))))))
+
 (defn- snow-supported? [below]
   (cond
     (block/tagged? below "cannot_support_snow_layer") false
@@ -276,6 +280,9 @@
 (defn- rail-supported? [below]
   (or (neg? below) (block/face-holds-rigid? below :up)))
 
+(defn- diode-supported? [below]
+  (and (not (neg? below)) (block/face-holds-rigid? below :up)))
+
 (defn- plate-supported? [below]
   (or (neg? below)
       (block/face-holds-rigid? below :up)
@@ -325,6 +332,8 @@
     (fn [c p st below _a] (cactus-supported? c p st below))]
    [[:lily-pad]
     (fn [c p _st below _a] (lily-pad-supported? c p below))]
+   [[:frogspawn]
+    (fn [c p _st below _a] (frogspawn-supported? c p below))]
    [[:snow-layer]
     (fn [_c _p _st below _a] (snow-supported? below))]
    [[:wool-carpet :carpet]
@@ -352,8 +361,10 @@
     (fn [c p st _b _a] (cocoa-supported? c p st))]
    [[:spore-blossom]
     (fn [c p _st _b above] (spore-blossom-supported? c p above))]
-   [[:coral-wall-fan :base-coral-wall-fan]
+   [[:coral-wall-fan :base-coral-wall-fan :trip-wire-hook]
     (fn [c p st _b _a] (facing-attached? c p st))]
+   [[:repeater :comparator]
+    (fn [_c _p _st below _a] (diode-supported? below))]
    [[:vine]
     (fn [c p st _b _a] (pos? (vine-updated c p st)))]
    [[:glow-lichen :multiface :sculk-vein]
@@ -445,33 +456,9 @@
     (block/state :dirt)
     (block/emptied st)))
 
-(defn- nearest-axes
-  [^double ps ^double pc ^double ys ^double yc]
-  (let [ax (if (pos? ys) :east :west)
-        ay (if (neg? ps) :up :down)
-        az (if (pos? yc) :south :north)
-        xy (Math/abs ys) ym (Math/abs ps) zy (Math/abs yc)
-        xm (* xy pc) zm (* zy pc)]
-    (cond
-      (> xy zy) (cond (> ym xm) [ay ax az]
-                      (> zm ym) [ax az ay]
-                      :else [ax ay az])
-      (> ym zm) [ay az ax]
-      (> xm ym) [az ax ay]
-      :else [az ay ax])))
-
-(defn look-order
-  "Returns the six directions as a player sees them, nearest first.
-  The player looks along yaw and pitch."
-  [yaw pitch]
-  (let [p (Math/toRadians (double pitch))
-        y (Math/toRadians (- (double yaw)))
-        [a b c] (nearest-axes (Math/sin p) (Math/cos p)
-                    (Math/sin y) (Math/cos y))]
-    [a b c (dir/opposite c) (dir/opposite b) (dir/opposite a)]))
-
 (defn- horizontal-look-order [yaw]
-  (filterv #(contains? dir/horizontal-offset %) (look-order yaw 0.0)))
+  (filterv #(contains? dir/horizontal-offset %)
+           (dir/look-order yaw 0.0)))
 
 (defn attachable? [chunks pos dir]
   (let [n (state-at chunks (mapv + pos (dir/offset dir)))]
@@ -578,18 +565,29 @@
   (block/state (block/block-of st)
                (assoc (block/props-of st) dir :true)))
 
-(defn- vine-fitted [chunks pos st {:keys [yaw pitch]}]
+(defn- placement-order [yaw pitch face replacing?]
+  (let [order (dir/look-order yaw pitch)
+        first-dir (dir/opposite (dir/from-index face))]
+    (if replacing?
+      order
+      (into [first-dir] (remove #{first-dir}) order))))
+
+(defn- vine-fitted
+  [chunks pos st {:keys [yaw pitch face replacing?]}]
   (let [cur (state-at chunks pos)
         base (if (= (block/block-of cur) (block/block-of st)) cur st)
         free (fn [dir]
                (and (not= :down dir)
                     (= :false (get (block/props-of base) dir))
                     (vine-face-held? chunks pos base dir)))]
-    (if-let [dir (first (filter free (look-order yaw pitch)))]
+    (if-let [dir (->> (placement-order yaw pitch face replacing?)
+                      (filter free)
+                      first)]
       (with-face base dir)
       (when (= base cur) cur))))
 
-(defn- multiface-fitted [chunks pos st {:keys [yaw pitch]}]
+(defn- multiface-fitted
+  [chunks pos st {:keys [yaw pitch face replacing?]}]
   (let [cur (state-at chunks pos)
         same? (= (block/block-of cur) (block/block-of st))
         base (cond same? cur
@@ -598,8 +596,27 @@
         free (fn [dir]
                (and (= :false (get (block/props-of base) dir))
                     (attachable? chunks pos dir)))]
-    (when-let [dir (first (filter free (look-order yaw pitch)))]
+    (when-let [dir (->> (placement-order yaw pitch face replacing?)
+                        (filter free)
+                        first)]
       (with-face base dir))))
+
+(defn- hook-fitted [chunks pos st {:keys [yaw pitch face replacing?]}]
+  (let [self (block/block-of st) props (block/props-of st)
+        facing (fn [dir]
+                 (->> (assoc props :facing (dir/opposite dir))
+                      (block/state self)))]
+    (->> (placement-order yaw pitch face replacing?)
+         (filter dir/horizontal-offset)
+         (map facing)
+         (pick chunks pos))))
+
+(defn- kelp-fitted [chunks pos _st {:keys [tick]}]
+  (let [above (state-at chunks (mapv + pos [0 1 0]))
+        st' (if (contains? kelp-types (block/type-of above))
+              (block/state :kelp-plant)
+              (block/state :kelp {:age (plant-age tick pos)}))]
+    (when (supported? chunks pos st') st')))
 
 (defn- rod-fitted [chunks pos st {:keys [face]}]
   (let [f (block/facing-of st)
@@ -609,13 +626,6 @@
       (->> (assoc (block/props-of st) :facing (dir/opposite f))
            (block/state (block/block-of st)))
       st)))
-
-(defn- placement-order [yaw pitch face replacing?]
-  (let [order (look-order yaw pitch)
-        first-dir (dir/opposite (dir/from-index face))]
-    (if replacing?
-      order
-      (into [first-dir] (remove #{first-dir}) order))))
 
 (defn- standing-or-wall [order standing wall-state]
   (first (for [dir order :when (not= :up dir)
@@ -630,8 +640,9 @@
            (on-wall dir))))
 
 (defn- wall-state-of [st dir]
-  (let [wall (block/wall-block (block/block-of st))]
-    (block/state wall {:facing (dir/opposite dir)})))
+  (let [wall (block/wall-block (block/block-of st))
+        logged (select-keys (block/props-of st) [:waterlogged])]
+    (block/state wall (assoc logged :facing (dir/opposite dir)))))
 
 (defn- standing-or-wall-fitted
   [chunks pos st {:keys [yaw pitch face replacing?]}]
@@ -700,7 +711,7 @@
 
 (defn- hanging-sign-fitted [chunks pos st opts]
   (let [{:keys [yaw pitch sneaking?]} opts
-        order (look-order yaw pitch)
+        order (dir/look-order yaw pitch)
         on-wall (fn [dir] (wall-state-of st dir))
         held? (fn [dir] (hanging-sign-held? chunks pos (on-wall dir)))
         wall-state (first-wall order held? on-wall)
@@ -712,7 +723,7 @@
              cand))))
 
 (defn place-order [face yaw pitch replacing?]
-  (let [order (look-order yaw pitch)]
+  (let [order (dir/look-order yaw pitch)]
     (if replacing?
       order
       (let [first-dir (dir/opposite (nth dir/six (long face)))]
@@ -744,8 +755,11 @@
 
 (def ^:private fit-rules
   [[[:button :lever :grindstone] face-attached-fitted]
-   [[:standing-sign :torch :redstone-torch :banner]
+   [[:standing-sign :torch :redstone-torch :banner :coral-fan
+     :base-coral-fan]
     standing-or-wall-fitted]
+   [[:trip-wire-hook] hook-fitted]
+   [[:kelp] kelp-fitted]
    [[:skull :wither-skull :player-head] skull-fitted]
    [[:ceiling-hanging-sign] hanging-sign-fitted]
    [[:lantern :weathering-lantern] lantern-fitted]

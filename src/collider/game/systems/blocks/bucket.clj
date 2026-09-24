@@ -147,10 +147,10 @@
 (defn lily-deltas
   "Returns the deltas of a player placing a lily pad.
   It goes on the water source in view."
-  [world eid e]
+  [world eid e item]
   (when-let [[kind pos] (scoop-target world e)]
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
-          st (block/state :lily-pad)]
+          st (block/state item)]
       (when (and (= :source kind)
                  (block/water? (edit/block-at world pos))
                  (chunk/in-level? world y')

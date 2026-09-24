@@ -63,7 +63,9 @@
     (when-hand (on-args tools/firecharge-deltas))]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]
-   [(item-is :lily-pad) (when-use (on-at bucket/lily-deltas))]
+   [(comp #{:lily-pad :frogspawn} :item)
+    (when-use (fn [{:keys [world eid at item]}]
+                (bucket/lily-deltas world eid at item)))]
    [(item-is :potion)
     (when-hand (fn [{:keys [world eid pos face]}]
                  (tools/mud-deltas world eid pos face)))]
