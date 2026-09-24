@@ -30,17 +30,17 @@
 (def ^:private shutdown-reason
   {:translate "multiplayer.disconnect.server_shutdown"})
 
-(defn- on-loaded [^ConcurrentLinkedQueue queue id]
-  #(.offer queue [:chunk-loaded id %]))
+(defn- on-loaded [^ConcurrentLinkedQueue queue dim id]
+  #(.offer queue [:chunk-loaded dim id %]))
 
 (defn- chunk-io! [{:keys [saver store]} queue ^Deltas deltas]
-  (doseq [{:keys [msg id payload]} (deltas/out-of deltas)]
+  (doseq [{:keys [msg dim id payload]} (deltas/out-of deltas)]
     (case msg
       :store-chunk
-      (snapshot/store-chunk! saver store :overworld id payload)
+      (snapshot/store-chunk! saver store dim id payload)
       :load-chunk
-      (let [done (on-loaded queue id)]
-        (snapshot/fetch-chunk! saver store :overworld id done))
+      (let [done (on-loaded queue dim id)]
+        (snapshot/fetch-chunk! saver store dim id done))
       nil)))
 
 (defn- deliver! [conns world deltas]
@@ -108,7 +108,8 @@
     {:queue queue :conns conns :socket socket :accept accept}))
 
 (defn- reader [{:keys [saver store]}]
-  (when saver #(snapshot/fetch-chunk-now! saver store :overworld %)))
+  (when saver
+    #(snapshot/fetch-chunk-now! saver store %1 %2)))
 
 (defn- io-input [base conns]
   (let [read (reader base)]
@@ -207,7 +208,10 @@
          (cli/render! (assoc (ex-data e) :event :error))
          (System/exit 1))))
 
-(defn -main [& args]
+(defn -main
+  "Starts the server. Each argument is an edn map laid over the
+  config file."
+  [& args]
   (log/to-file! "logs")
   (let [written? (config/write-default!)
         opts (apply merge {} (map edn/read-string args))

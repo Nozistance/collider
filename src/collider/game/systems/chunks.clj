@@ -40,7 +40,7 @@
         :when (not (contains? (:loading world) id))
         d (if (contains? (:stored world) id)
             [[:chunk-requested id] (out/all (out/load-chunk id))]
-            [[:add-chunk id (gen/flat-chunk)]])]
+            [[:add-chunk id (gen/flat-chunk (:dim world))]])]
     d))
 
 (def ^:private ^:const unknown-timeout 1)
@@ -51,8 +51,9 @@
   other chunk is generated."
   [world id]
   (or (when (contains? (:stored world) id)
-        (when-let [read (:read-chunk world)] (read id)))
-      {:chunk (gen/flat-chunk)}))
+        (when-let [read (:read-chunk world)]
+          (read (:dim world) id)))
+      {:chunk (gen/flat-chunk (:dim world))}))
 
 (defn read-absent-deltas
   "Returns the deltas that put the chunks read this way in place.
@@ -63,9 +64,12 @@
              [:chunk-ticket id unknown-timeout]])
           payloads))
 
-(defn- restore-deltas [d]
-  (for [[tag id payload] (:input d) :when (= :chunk-loaded tag)]
-    [:restore-chunk id (or payload {:chunk (gen/flat-chunk)})]))
+(defn- restore-deltas [world d]
+  (let [dim (:dim world)]
+    (for [[tag _ id payload] (:input d)
+          :when (= :chunk-loaded tag)]
+      [:restore-chunk id
+       (or payload {:chunk (gen/flat-chunk dim)})])))
 
 (defn needed-ids
   "Returns the ids of the chunks the world keeps loaded. They are the
@@ -165,7 +169,7 @@
   [world d]
   (conj (mapv (fn [entry] #(stream-deltas world entry))
               (state/player-entries world))
-        #(restore-deltas d)))
+        #(restore-deltas world d)))
 
 (defn- unload-deltas [world id]
   [[:unload-chunk id]

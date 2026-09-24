@@ -156,7 +156,10 @@
   Object
   (toString [_] (str dir)))
 
-(defn file-store [dir] (->FileStore dir))
+(defn file-store
+  "Returns a store that keeps a world in directory dir."
+  [dir]
+  (->FileStore dir))
 
 (defn- level-snapshot [world dim]
   (let [lv (state/level world dim)
@@ -166,9 +169,10 @@
 
 (defn snapshot
   "Returns the world as a store keeps it.
-  Each level holds every chunk it has loaded and what belongs to it."
+  Each level holds every chunk it has loaded and what belongs to it;
+  the shared part holds the players of every level."
   [world]
-  (assoc (schema/snapshot (state/level world :overworld) :shared)
+  (assoc (schema/snapshot (state/server-view world) :shared)
     :levels (into {} (for [dim (keys (:levels world))]
                        [dim (level-snapshot world dim)]))))
 
@@ -240,7 +244,10 @@
                    "-" (.getMessage t))
          nil)))
 
-(defn load-snapshot [store]
+(defn load-snapshot
+  "Returns the world store holds, or nil when it holds none.
+  Throws when its meta breaks the schema."
+  [store]
   (when-let [m (read-meta store)]
     (check-meta! store m)
     (world-of m)))
@@ -267,7 +274,9 @@
                  (dissoc m [dim id])
                  m)))))
 
-(defn changed-chunks [old new]
+(defn changed-chunks
+  "Returns the entries of chunk map new that differ from old."
+  [old new]
   (remove (fn [[k v]] (= v (get old k))) new))
 
 (defn- changed-levels [old-chunks levels]
@@ -360,12 +369,16 @@
   [saver store dim id]
   (read-chunk saver store dim id))
 
-(defn request-save! [saver store world]
+(defn request-save!
+  "Asks the saver to write world to store in the background.
+  Returns nil when there is no saver."
+  [saver store world]
   (when saver
     (send-off saver save! store world)
     true))
 
 (defn await-saver!
+  "Waits up to ms for the saver to finish what it was given."
   ([saver] (await-saver! saver 2000))
   ([saver ms] (if saver (await-for ms saver) true)))
 

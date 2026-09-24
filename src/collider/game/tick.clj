@@ -110,10 +110,11 @@
 
 (def ^:private home (first dims))
 
-(def ^:private level-less #{:player-join :chunk-loaded})
-
-(defn- event-dim [world [tag eid]]
-  (or (when-not (level-less tag) (state/dim-of world eid)) home))
+(defn- event-dim [world [tag x]]
+  (case tag
+    :player-join home
+    :chunk-loaded x
+    (or (state/dim-of world x) home)))
 
 (defn- input-of [dim events]
   (if (= home dim)
@@ -348,7 +349,9 @@
       :running running
       :stats   #(percentiles (:window st) (:counter st))})))
 
-(defn stop-ticker! [{:keys [^Thread thread ^AtomicBoolean running]}]
+(defn stop-ticker!
+  "Stops the ticker and waits up to a second for its thread."
+  [{:keys [^Thread thread ^AtomicBoolean running]}]
   (.set running false)
   (.join thread 1000)
   nil)
