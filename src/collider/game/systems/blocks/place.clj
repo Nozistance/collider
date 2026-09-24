@@ -161,12 +161,15 @@
       (= 1 (long face)) (dir/player-direction (:yaw e 0.0))
       :else :up)))
 
-(defn- scaffold-target [world eid pos face]
-  (let [dir (scaffold-direction world eid face)
-        off (dir/offset dir)
-        horizontal? (contains? horizontals dir)]
-    (loop [p (mapv + pos off) n 0]
-      (when (and (chunk/in-level? world (p 1)) (< (long n) 7))
+(defn- scaffold-walk
+  "Returns the first cell from p along off that takes scaffolding,
+  past scaffolding already there. Only sideways steps count
+  toward the limit of seven."
+  [world p off horizontal?]
+  (loop [p p n 0]
+    (when (< (long n) 7)
+      (if-not (chunk/in-level? world (p 1))
+        p
         (let [st (edit/block-at world p)]
           (cond
             (= :scaffolding (block/type-of st))
@@ -174,18 +177,40 @@
             (block/can-be-replaced? st) p
             :else nil))))))
 
+(defn- scaffold-target
+  "Returns the cell where scaffolding goes, or nil when there is
+  none. A cell outside the level ends the walk and comes back."
+  [world eid pos face]
+  (let [dir (scaffold-direction world eid face)
+        off (dir/offset dir)]
+    (scaffold-walk world (mapv + pos off) off
+                   (contains? horizontals dir))))
+
+(defn- scaffold-out-deltas [world eid pos target]
+  (let [top (chunk/level-max-y world)]
+    (into (if (> (long (target 1)) top)
+            [(edit/build-limit eid true top)]
+            [])
+          (edit/reject-deltas world eid pos nil))))
+
+(defn- scaffold-in-deltas [world eid pos target]
+  (let [base (block/state :scaffolding)
+        st (support/scaffold-state (:chunks world) target base)
+        logged (edit/waterlogged world target st)]
+    (if (edit/obstructed? world target st)
+      (edit/reject-deltas world eid pos target)
+      (edit/placed-deltas world eid target logged))))
+
 (defn scaffold-place-deltas
   "Returns the deltas for placing scaffolding.
   It travels from the clicked cell until it reaches a free one."
   [world eid pos face]
-  (if-let [target (scaffold-target world eid pos face)]
-    (let [base (block/state :scaffolding)
-          st (support/scaffold-state (:chunks world) target base)
-          logged (edit/waterlogged world target st)]
-      (if (edit/obstructed? world target st)
-        (edit/reject-deltas world eid pos target)
-        (edit/placed-deltas world eid target logged)))
-    (edit/reject-deltas world eid pos nil)))
+  (let [target (scaffold-target world eid pos face)]
+    (cond
+      (nil? target) (edit/reject-deltas world eid pos nil)
+      (chunk/in-level? world (target 1))
+      (scaffold-in-deltas world eid pos target)
+      :else (scaffold-out-deltas world eid pos target))))
 
 (defn- player-pose [world eid]
   (let [e (get-in world [:entities eid])]

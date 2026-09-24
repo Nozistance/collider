@@ -28,7 +28,7 @@
 
 (defn- text-of [runs]
   (if-let [t (first (filter :translate runs))]
-    (select-keys t [:translate :with])
+    (select-keys t [:translate :with :color])
     (apply str (map :text runs))))
 
 (defn- chunk-packet [world id]

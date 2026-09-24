@@ -11,76 +11,83 @@
 
 (defn- block-kw [s] (data/kebab (str s)))
 
-(def commands [
-               [:time "change or query the time of day"
-                [:set "set the time" [[:value [:named-int {:min   0 :max 2147483647
-                                                           :names {"day" 1000 "night" 13000}}]]]
-                 [:world :time-set]]
-                [:add "advance the time" [[:value [:int {:min 0 :max 2147483647}]]]
-                 [:world :time-add]]
-                [:query "read the clock" [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
-                 [:world :time-query]]]
-               [:gamerule "read or set a game rule"
-                [[:rule [:rule {}]]
-                 [:value [:text {:default nil}]]]
-                [:world :gamerule]]
-               [:tp "teleport to a position (~ = where you are)"
-                [[:x [:dcoord {:axis 0}]]
-                 [:y [:dcoord {:axis 1}]]
-                 [:z [:dcoord {:axis 2}]]]
-                [:world :tp]]
-               [:give "give items to players"
-                [[:targets [:targets {:players? true}]]
-                 [:item [:item {}]]
-                 [:count [:int {:min 1 :max 6400 :default 1}]]]
-                [:world :give]]
-               [:kill "kill entities (yourself without a target)"
-                [[:targets [:targets {:default {:self true}}]]]
-                [:world :kill]]
-               [:summon "summon a mob (~ = where you are)"
-                [[:entity [:entity-type {}]]
-                 [:x [:dcoord {:axis 0 :default nil}]]
-                 [:y [:dcoord {:axis 1 :default nil}]]
-                 [:z [:dcoord {:axis 2 :default nil}]]]
-                [:world :summon]]
-               [:setblock "set one block (~ = your position)"
-                [[:x [:coord {:min -10000 :max 10000 :axis 0}]]
-                 [:y [:coord {:min -64 :max 319 :axis 1}]]
-                 [:z [:coord {:min -10000 :max 10000 :axis 2}]]
-                 [:block [:block {}]]]
-                [:world :setblock]]
-               [:setworldspawn "set the world spawn point (default: where you are)"
-                [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
-                 [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
-                 [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
-                [:world :setworldspawn]]
-               [:spawnpoint "set your respawn point (default: where you are)"
-                [[:x [:coord {:min -10000 :max 10000 :axis 0 :default nil}]]
-                 [:y [:coord {:min -64 :max 319 :axis 1 :default nil}]]
-                 [:z [:coord {:min -10000 :max 10000 :axis 2 :default nil}]]]
-                [:world :spawnpoint]]
-               [:weather "set the weather"
-                [:clear "clear the sky" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-                 [:world :weather-clear]]
-                [:rain "let it rain" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-                 [:world :weather-rain]]
-                [:thunder "let it storm" [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
-                 [:world :weather-thunder]]]
-               [:fill "fill a box with a block (~ = your position)"
-                [[:x1 [:coord {:min -10000 :max 10000 :axis 0}]]
-                 [:y1 [:coord {:min -64 :max 319 :axis 1}]]
-                 [:z1 [:coord {:min -10000 :max 10000 :axis 2}]]
-                 [:x2 [:coord {:min -10000 :max 10000 :axis 0}]]
-                 [:y2 [:coord {:min -64 :max 319 :axis 1}]]
-                 [:z2 [:coord {:min -10000 :max 10000 :axis 2}]]
-                 [:block [:block {:default :stone}]]]
-                [:world :fill]]])
+(def ^:private time-names {"day" 1000 "night" 13000})
+
+(def ^:private int-max 2147483647)
+
+(defn- weather-form [nm doc op]
+  [nm doc
+   [[:duration [:duration {:min 1 :max 1000000 :default 0}]]]
+   [:world op]])
+
+(defn- pos-args
+  ([] (pos-args :x :y :z {:node "pos"}))
+  ([x y z opts]
+   [[x [:coord (assoc opts :axis 0)]]
+    [y [:coord (assoc opts :axis 1)]]
+    [z [:coord (assoc opts :axis 2)]]]))
+
+(defn- vec-args [opts]
+  [[:x [:dcoord (assoc opts :axis 0)]]
+   [:y [:dcoord (assoc opts :axis 1)]]
+   [:z [:dcoord (assoc opts :axis 2)]]])
+
+(def commands
+  [[:time "change or query the time of day"
+    [:set "set the time"
+     [[:value [:named-int {:min 0 :max int-max :names time-names}]]]
+     [:world :time-set]]
+    [:add "advance the time"
+     [[:value [:int {:min 0 :max int-max}]]]
+     [:world :time-add]]
+    [:query "read the clock"
+     [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
+     [:world :time-query]]]
+   [:gamerule "read or set a game rule"
+    [[:rule [:rule {}]]
+     [:value [:text {:default nil}]]]
+    [:world :gamerule]]
+   [:tp "teleport to a position (~ = where you are)"
+    (vec-args {:node "location"})
+    [:world :tp]]
+   [:give "give items to players"
+    [[:targets [:targets {:players? true}]]
+     [:item [:item {}]]
+     [:count [:int {:min 1 :max 6400 :default 1}]]]
+    [:world :give]]
+   [:kill "kill entities (yourself without a target)"
+    [[:targets [:targets {:default {:self true}}]]]
+    [:world :kill]]
+   [:summon "summon a mob (~ = where you are)"
+    (into [[:entity [:entity-type {}]]]
+          (vec-args {:default nil :node "pos"}))
+    [:world :summon]]
+   [:setblock "set one block (~ = your position)"
+    (conj (pos-args) [:block [:block {}]])
+    [:world :setblock]]
+   [:setworldspawn
+    "set the world spawn point (default: where you are)"
+    (pos-args :x :y :z {:default nil :node "pos"})
+    [:world :setworldspawn]]
+   [:spawnpoint "set your respawn point (default: where you are)"
+    (pos-args :x :y :z {:default nil :node "pos"})
+    [:world :spawnpoint]]
+   [:weather "set the weather"
+    (weather-form :clear "clear the sky" :weather-clear)
+    (weather-form :rain "let it rain" :weather-rain)
+    (weather-form :thunder "let it storm" :weather-thunder)]
+   [:fill "fill a box with a block (~ = your position)"
+    (-> (pos-args :x1 :y1 :z1 {:node "from"})
+        (into (pos-args :x2 :y2 :z2 {:node "to"}))
+        (conj [:block [:block {:default :stone}]]))
+    [:world :fill]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 
 (defn- cmd-name [form] (name (first form)))
 
-(defn- find-form [forms nm] (first (filter #(= nm (cmd-name %)) forms)))
+(defn- find-form [forms nm]
+  (first (filter #(= nm (cmd-name %)) forms)))
 
 (defn- label [[nm [kind {:keys [min max]}]]]
   (case kind
@@ -91,54 +98,70 @@
 (defn- parse-long* [^String s]
   (try (Long/parseLong s) (catch NumberFormatException _ nil)))
 
+(defn- parse-int* [^String s]
+  (try (long (Integer/parseInt s))
+       (catch NumberFormatException _ nil)))
+
+(defn- parse-double* [^String s]
+  (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
+
 (defn- in-range [nm n {:keys [min max]}]
   (if (<= (long min) (long n) (long max))
     [:ok n]
-    [:err (str (name nm) ": give a value from " min " to " max ", not " n)]))
+    [:err (str (name nm) ": give a value from " min " to " max
+               ", not " n)]))
 
 (defn- as-int [nm s opts _origin]
   (if-let [n (parse-long* s)]
     (in-range nm n opts)
     [:err (str (name nm) ": give a whole number, not \"" s "\"")]))
 
+(defn- name-hint [names]
+  (str (str/join "/" (take 6 (sort (keys names))))
+       (when (> (count names) 6) "/...")))
+
 (defn- as-named-int [nm s {:keys [names] :as opts} _origin]
-  (if-let [n (let [k (str/lower-case (str/replace (str s) #"^minecraft:" ""))]
-               (or (get names k) (parse-long* s)))]
-    (in-range nm n opts)
-    [:err (str (name nm) ": give a whole number or "
-               (str/join "/" (take 6 (sort (keys names))))
-               (when (> (count names) 6) "/...")
-               ", not \"" s "\"")]))
+  (let [k (str/lower-case (str/replace (str s) #"^minecraft:" ""))]
+    (if-let [n (or (get names k) (parse-long* s))]
+      (in-range nm n opts)
+      [:err (str (name nm) ": give a whole number or "
+                 (name-hint names) ", not \"" s "\"")])))
 
-(defn- as-coord [nm s {:keys [axis] :as opts} origin]
-  (let [rel? (str/starts-with? s "~")
-        n (if rel?
-            (when origin
-              (when-let [off (if (= "~" s) 0 (parse-long* (subs s 1)))]
-                (+ (long (Math/floor (double (nth origin axis)))) (long off))))
-            (parse-long* s))]
-    (cond
-      (nil? n) [:err (str (name nm) ": give a whole number or ~, not \"" s "\"")]
-      (<= (long (:min opts)) (long n) (long (:max opts))) [:ok n]
-      :else [:err (str (name nm) ": " n " is out of " (:min opts) ".." (:max opts))])))
+(defn- offset-of [^String s]
+  (if (= "~" s) 0.0 (parse-double* (subs s 1))))
 
-(defn- parse-double* [^String s]
-  (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
+(defn- block-coord
+  "Returns the block coordinate text s names, or nil.
+  WorldCoordinate.parseInt: a ~ offset may have a fraction."
+  [^String s axis origin]
+  (if (str/starts-with? s "~")
+    (when origin
+      (when-let [off (offset-of s)]
+        (let [at (+ (double (nth origin axis)) (double off))]
+          (long (Math/floor at)))))
+    (parse-int* s)))
+
+(defn- as-coord [nm s {:keys [axis]} origin]
+  (if-let [n (block-coord s axis origin)]
+    [:ok n]
+    [:err (str (name nm) ": give a whole number or ~, not \"" s
+               "\"")]))
 
 (defn- centered ^double [^double n ^String s ^long axis]
   (if (and (not= 1 axis) (not (str/includes? s "."))) (+ n 0.5) n))
 
+(defn- exact-coord [^String s axis origin]
+  (if (str/starts-with? s "~")
+    (when origin
+      (when-let [off (offset-of s)]
+        (+ (double (nth origin axis)) (double off))))
+    (when-let [v (parse-double* s)]
+      (centered (double v) s (long axis)))))
+
 (defn- as-dcoord [nm s {:keys [axis]} origin]
-  (let [rel? (str/starts-with? s "~")
-        n (if rel?
-            (when origin
-              (when-let [off (if (= "~" s) 0.0 (parse-double* (subs s 1)))]
-                (+ (double (nth origin axis)) (double off))))
-            (when-let [v (parse-double* s)] (centered (double v) s (long axis))))]
-    (cond
-      (nil? n) [:err (str (name nm) ": give a number or ~, not \"" s "\"")]
-      (> (Math/abs (double n)) 3.0E7) [:err (str (name nm) ": " n " is too far")]
-      :else [:ok (double n)])))
+  (if-let [n (exact-coord s axis origin)]
+    [:ok (double n)]
+    [:err (str (name nm) ": give a number or ~, not \"" s "\"")]))
 
 (defn- as-item [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -147,21 +170,29 @@
       [:err (str (name nm) ": unknown item \"" s "\"")])))
 
 (defn- as-entity-type [nm s _opts _origin]
-  (let [k (block-kw s)]
+  (let [k (block-kw s)
+        known (str/join ", " (sort (map name (keys mobs/types))))]
     (if (mobs/mob-type? k)
       [:ok k]
-      [:err (str (name nm) ": cannot summon \"" s "\", only " (str/join ", " (sort (map name (keys mobs/types)))))])))
+      [:err (str (name nm) ": cannot summon \"" s "\", only "
+                 known)])))
+
+(def ^:private selectors
+  {"s" {:self true} "a" {:all true}
+   "p" {:nearest true} "e" {:entities true}})
 
 (defn- as-targets [nm s {:keys [players?]} _origin]
   (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
-        [_ negated type] (when args (re-find #"type=(!?)([a-z_:]+)" args))
+        type-re #"type=(!?)([a-z_:]+)"
+        [_ negated type] (when args (re-find type-re args))
         type (some-> type block-kw)]
     (cond
       (nil? sel) [:ok {:name s}]
-      (and players? (= "e" sel)) [:err (str (name nm) ": @e is not a player")]
-      :else [:ok (cond-> ({"s" {:self true} "a" {:all true} "p" {:nearest true} "e" {:entities true}} sel)
-                         type (assoc :type type)
-                         (= "!" negated) (assoc :not-type? true))])))
+      (and players? (= "e" sel))
+      [:err (str (name nm) ": @e is not a player")]
+      :else [:ok (cond-> (selectors sel)
+                   type (assoc :type type)
+                   (= "!" negated) (assoc :not-type? true))])))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -172,7 +203,8 @@
 (defn- as-enum [nm s {:keys [values]} _origin]
   (if (contains? values s)
     [:ok s]
-    [:err (str (name nm) ": give one of " (str/join ", " (sort values)) ", not \"" s "\"")]))
+    [:err (str (name nm) ": give one of "
+               (str/join ", " (sort values)) ", not \"" s "\"")]))
 
 (defn- as-rule [nm s _opts _origin]
   (if-let [r (rules/rule-of s)]
@@ -182,24 +214,32 @@
 (def ^:private time-units {"" 1 "t" 1 "s" 20 "d" 24000})
 
 (defn- as-duration [nm s opts _origin]
-  (let [[_ value unit] (re-matches #"(-?[0-9]*\.?[0-9]+)([a-z]*)" (str s))
-        factor (get time-units (or unit ""))]
+  (let [re #"(-?[0-9]*\.?[0-9]+)([a-z]*)"
+        [_ value unit] (re-matches re (str s))
+        factor (get time-units (or unit ""))
+        scale (double (or factor 1))
+        ticks #(Math/round (* (Double/parseDouble value) scale))]
     (cond
-      (nil? factor) [:err (str (name nm) ": give a duration in ticks, or with d, s or t, not \"" s "\"")]
-      (nil? value) [:err (str (name nm) ": give a duration, not \"" s "\"")]
-      :else (in-range nm (Math/round (* (Double/parseDouble value) (double (long factor)))) opts))))
+      (nil? factor)
+      [:err (str (name nm) ": give a duration in ticks, or with"
+                 " d, s or t, not \"" s "\"")]
+      (nil? value)
+      [:err (str (name nm) ": give a duration, not \"" s "\"")]
+      :else (in-range nm (ticks) opts))))
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
 
 (def ^:private coercers
-  {:int   as-int, :named-int as-named-int, :coord as-coord, :dcoord as-dcoord, :enum as-enum,
-   :block as-block, :item as-item, :entity-type as-entity-type, :targets as-targets,
-   :rule  as-rule, :text as-text, :duration as-duration})
+  {:int as-int :named-int as-named-int :coord as-coord
+   :dcoord as-dcoord :enum as-enum :block as-block :item as-item
+   :entity-type as-entity-type :targets as-targets :rule as-rule
+   :text as-text :duration as-duration})
 
 (defn- coerce [[nm [kind opts] :as arg] s origin]
-  (if (nil? s)
-    (if (contains? opts :default) [:ok (:default opts)] [:err (str "give the argument " (label arg))])
-    ((coercers kind as-enum) nm s opts origin)))
+  (cond
+    (some? s) ((coercers kind as-enum) nm s opts origin)
+    (contains? opts :default) [:ok (:default opts)]
+    :else [:err (str "give the argument " (label arg))]))
 
 (defn- int-values [{:keys [min max default]}]
   (->> [default min (quot (+ (long min) (long max)) 2) max]
@@ -217,22 +257,29 @@
 (defn- coord-values [target axis]
   (if target [(str (nth target axis))] []))
 
+(defn- rule-names []
+  (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table)))
+
+(defn- item-names []
+  (vec (sort (map block-name (keys (get (data/registries) "item"))))))
+
 (defn- arg-values [[_ [kind {:keys [values axis] :as opts}]] target]
   (case kind
     :duration ["1d" "1s" "100"]
     :int (int-values opts)
-    :coord (coord-values target axis)
+    (:coord :dcoord) (coord-values target axis)
     :named-int (named-int-values opts)
     :enum (vec (sort values))
-    :rule (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table))
+    :rule (rule-names)
     :text []
-    :dcoord (coord-values target axis)
-    :item (vec (sort (map block-name (keys (get (data/registries) "item")))))
+    :item (item-names)
     :entity-type (vec (sort (map name (keys mobs/types))))
     :targets ["@s" "@a" "@p" "@e"]
     :block (block-values opts)))
 
-(defn usage [path]
+(defn usage
+  "Returns the usage line of the command at path."
+  [path]
   (let [form (loop [forms commands, [nm & more] path]
                (let [f (find-form forms nm)]
                  (if (seq more) (recur (drop 2 f) more) f)))
@@ -262,7 +309,9 @@
       {:delta (into (nth form 3) (:args r))})))
 
 (defn- no-subcommand [form nm sub]
-  {:error (str (if sub (str "unknown subcommand \"" sub "\"") "give a subcommand")
+  {:error (str (if sub
+                 (str "unknown subcommand \"" sub "\"")
+                 "give a subcommand")
                "\n" (str/join "\n" (usage-lines form [nm])))})
 
 (defn- parse-subcommand [form nm [sub & arg-tokens] origin]
@@ -276,10 +325,12 @@
   count from origin."
   ([text] (parse text nil))
   ([text origin]
-   (let [[nm & more] (remove str/blank? (str/split (subs text 1) #"\s+"))
+   (let [words (str/split (subs text 1) #"\s+")
+         [nm & more] (remove str/blank? words)
          form (find-form commands nm)]
      (cond
-       (nil? form) {:error (str "unknown command" (when nm (str " \"/" nm "\"")))}
+       (nil? form)
+       {:error (str "unknown command" (when nm (str " \"/" nm "\"")))}
        (subcommands? form) (parse-subcommand form nm more origin)
        :else (delta-of form more [nm] origin)))))
 
@@ -291,7 +342,8 @@
   (starting-with prefix (sort (keys (:players world)))))
 
 (defn- suggest-command [prefix]
-  (mapv #(str "/" %) (starting-with prefix (sort (map cmd-name commands)))))
+  (mapv #(str "/" %)
+        (starting-with prefix (sort (map cmd-name commands)))))
 
 (defn- suggest-subcommand [form prefix]
   (starting-with prefix (sort (map cmd-name (drop 2 form)))))
@@ -303,7 +355,8 @@
 
 (defn- suggest-after-command [form tokens target]
   (cond
-    (not (subcommands? form)) (suggest-arg form tokens (dec (count tokens)) target)
+    (not (subcommands? form))
+    (suggest-arg form tokens (dec (count tokens)) target)
     (= 1 (count tokens)) (suggest-subcommand form (first tokens))
     :else (suggest-arg (find-form (drop 2 form) (first tokens))
                        tokens
@@ -329,31 +382,39 @@
 
 (def ^:private brigadier-bool (keyword "brigadier:bool"))
 
+(def ^:private brigadier-string (keyword "brigadier:string"))
+
 (defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
-  (case kind
-    :duration [[(name nm) :time {:min 1}]]
-    :int [[(name nm) brigadier-integer {:min min :max max}]]
-    :named-int [[(name nm) :time {:min 0}]]
-    :coord [[(name nm) :block-pos nil]]
-    :dcoord [[(name nm) :vec3 nil]]
-    :enum {:literals (sort values)}
-    :block [[(name nm) :block-state nil]]
-    :item [[(name nm) :item-stack nil]]
-    :entity-type [[(name nm) :resource {:registry "minecraft:entity_type"}]]
-    :targets [[(name nm) :entity {:single? false :players? false}]]
-    :text [[(name nm) (keyword "brigadier:string") {:kind 0}]]
-    :rule {:rules true}))
+  (let [n (name nm)]
+    (case kind
+      :duration [[n :time {:min 1}]]
+      :int [[n brigadier-integer {:min min :max max}]]
+      :named-int [[n :time {:min 0}]]
+      :coord [[n :block-pos nil]]
+      :dcoord [[n :vec3 nil]]
+      :enum {:literals (sort values)}
+      :block [[n :block-state nil]]
+      :item [[n :item-stack nil]]
+      :entity-type [[n :resource {:registry "minecraft:entity_type"}]]
+      :targets [[n :entity {:single? false :players? false}]]
+      :text [[n brigadier-string {:kind 0}]]
+      :rule {:rules true})))
 
 (defn- coords-merged [args]
   (loop [as args acc []]
     (if-let [[nm [kind opts] :as a] (first as)]
       (if (and (#{:coord :dcoord} kind) (= 0 (long (:axis opts 0))))
-        (recur (drop 3 as) (conj acc [nm [kind opts]]))
+        (recur (drop 3 as)
+               (conj acc [(keyword (:node opts nm)) [kind opts]]))
         (recur (rest as) (conj acc a)))
       acc)))
 
+(defn- optional? [[_ [_ opts]]] (contains? opts :default))
+
 (defn- optional-from [args]
-  (or (first (keep-indexed (fn [i _] (when (every? (fn [[_ [_ o]]] (contains? o :default)) (drop i args)) i)) args))
+  (or (first (keep-indexed
+               (fn [i _] (when (every? optional? (drop i args)) i))
+               args))
       (count args)))
 
 (declare add-chain)
@@ -362,45 +423,65 @@
   (swap! nodes conj node)
   (dec (count @nodes)))
 
+(defn- rule-value [{:keys [type min max]}]
+  {:type :argument :name "value" :executable? true
+   :parser (if (= :bool type) brigadier-bool brigadier-integer)
+   :props (when (= :int type) {:min min :max max})})
+
+(defn- rule-node! [nodes rule spec]
+  (let [value (add-node! nodes (rule-value spec))]
+    (add-node! nodes {:type :literal :executable? true
+                      :name (subs (rules/wire-name rule) 10)
+                      :children [value]})))
+
 (defn- add-rules! [nodes]
-  (vec (for [[rule {:keys [type min max]}] rules/table
-             :let [value (add-node! nodes {:type   :argument :name "value" :executable? true
-                                           :parser (if (= :bool type) brigadier-bool brigadier-integer)
-                                           :props  (when (= :int type) {:min min :max max})})]]
-         (add-node! nodes {:type :literal :name (subs (rules/wire-name rule) 10) :executable? true :children [value]}))))
+  (vec (for [[rule spec] rules/table] (rule-node! nodes rule spec))))
 
 (defn- add-literals! [nodes spec exec? tail-children]
-  (vec (for [l (:literals spec)]
-         (add-node! nodes {:type :literal :name l :executable? exec? :children tail-children}))))
+  (let [node {:type :literal :executable? exec?
+              :children tail-children}]
+    (vec (for [l (:literals spec)]
+           (add-node! nodes (assoc node :name l))))))
 
 (defn- add-argument! [nodes spec exec? tail-children]
-  [(add-node! nodes (let [[n parser props] (first spec)]
-                      {:type        :argument :name n :parser parser :props props
-                       :executable? exec? :children tail-children}))])
+  (let [[n parser props] (first spec)]
+    [(add-node! nodes {:type :argument :name n :parser parser
+                       :props props :executable? exec?
+                       :children tail-children})]))
+
+(defn- add-spec! [nodes spec exec? children]
+  (cond
+    (:rules spec) (add-rules! nodes)
+    (:literals spec) (add-literals! nodes spec exec? children)
+    :else (add-argument! nodes spec exec? children)))
 
 (defn- add-chain [nodes args i]
   (let [optional (optional-from args)]
     (if (>= i (count args))
       [[] true]
       (let [spec (argument-nodes (nth args i))
-            [tail-children tail-exec] (if (:rules spec) [[] true] (add-chain nodes args (inc i)))
-            exec? (or tail-exec (>= (inc i) optional))
-            mine? (>= i optional)]
-        (cond
-          (:rules spec) [(add-rules! nodes) mine?]
-          (:literals spec) [(add-literals! nodes spec exec? tail-children) mine?]
-          :else [(add-argument! nodes spec exec? tail-children) mine?])))))
+            [tail-children tail-exec]
+            (if (:rules spec)
+              [[] true]
+              (add-chain nodes args (inc i)))
+            exec? (or tail-exec (>= (inc i) optional))]
+        [(add-spec! nodes spec exec? tail-children)
+         (>= i optional)]))))
 
 (defn- add-form! [nodes form]
   (if (subcommands? form)
-    (add-node! nodes {:type     :literal :name (cmd-name form)
-                      :children (vec (map #(add-form! nodes %) (drop 2 form)))})
+    (let [kids (mapv #(add-form! nodes %) (drop 2 form))]
+      (add-node! nodes {:type :literal :name (cmd-name form)
+                        :children kids}))
     (let [args (coords-merged (nth form 2))
           [children exec?] (add-chain nodes args 0)]
-      (add-node! nodes {:type :literal :name (cmd-name form) :executable? exec? :children children}))))
+      (add-node! nodes {:type :literal :name (cmd-name form)
+                        :executable? exec? :children children}))))
 
-(defn tree []
+(defn tree
+  "Returns the command nodes a client gets, the root last."
+  []
   (let [nodes (atom [])
-        top (vec (map #(add-form! nodes %) commands))]
+        top (mapv #(add-form! nodes %) commands)]
     (add-node! nodes {:type :root :children top})
     @nodes))

@@ -113,6 +113,69 @@
       (bed/sleep-deltas world eid pos)
       :else (or (hand-deltas ctx) (item-deltas ctx)))))
 
+(def ^:private mob-buckets
+  #{:pufferfish-bucket :salmon-bucket :cod-bucket
+    :tropical-fish-bucket :axolotl-bucket :tadpole-bucket})
+
+(defn- placement-attempt?
+  "Tests whether item tries to put a block or a liquid.
+  ServerGamePacketListenerImpl.wasBlockPlacementAttempt."
+  [world e item]
+  (and item
+       (or (block/item->block item 1) (liquid/bucket->state item)
+           (contains? mob-buckets item))
+       (not (state/on-cooldown? e item (:tick world)))))
+
+(defn- consumed? [deltas]
+  (some (fn [[tag m]]
+          (not (and (= :fx tag)
+                    (#{:blocks-changed :overlay} (:msg m)))))
+        deltas))
+
+(defn- on-block? [cursor]
+  (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) 1.0000001)
+          cursor))
+
+(defn- barred
+  "Returns [high? y] when the use stops before the block is used.
+  The player then sees the limit in the message."
+  [world e pos]
+  (let [y (long (nth pos 1))
+        top (chunk/level-max-y world)
+        bottom (chunk/level-min-y world)]
+    (cond
+      (> y top) [true top]
+      (< y bottom) [false bottom]
+      (:tp-target e) [true top])))
+
+(defn- failed-limits
+  "Returns the limit messages after a use that did nothing.
+  Facing up at the top, vanilla checks twice and says it twice."
+  [world e [eid pos face item] deltas]
+  (let [y (long (nth pos 1))
+        top (chunk/level-max-y world)
+        bottom (chunk/level-min-y world)
+        item (or item (sense/held-of e))]
+    (when-not (or (consumed? deltas)
+                  (not (placement-attempt? world e item)))
+      (cond
+        (and (= 1 face) (>= y top))
+        (repeat 2 (edit/build-limit eid true top))
+        (and (= 0 face) (<= y bottom))
+        [(edit/build-limit eid false bottom)]))))
+
+(defn- use-on-deltas
+  "Returns the deltas for a use on the face of a block.
+  ServerGamePacketListenerImpl.handleUseItemOn."
+  [world [eid pos _ _ cursor :as args] origin]
+  (let [e (merge (get-in world [:entities eid]) origin)
+        valid? (and (reach/in-reach? e pos) (on-block? cursor))
+        [high? y :as bar] (when valid? (barred world e pos))]
+    (if bar
+      [(edit/build-limit eid high? y)]
+      (let [r (place-deltas world args origin)]
+        (concat r (when valid? (failed-limits world e args r)))))))
+
 (defn- sequence-of
   "Returns the sequence number the player sent with the action.
   The block ack carries it back."
@@ -162,7 +225,7 @@
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
     :dig (dig/dig-deltas world args)
-    :place (place-deltas world args (get origins i))
+    :place (use-on-deltas world args (get origins i))
     :use-item (let [a [(first args) [-1 -1 -1] 255 nil [0 0 0]]]
                 (place-deltas world a (get origins i)))
     :sign-update (use/sign-update-deltas world args)

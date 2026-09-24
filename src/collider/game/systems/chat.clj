@@ -140,15 +140,36 @@
         changes (fill-changes chunks bounds (block/state block))]
     (concat adds (fill-result eid changes))))
 
-(defn- outside? [world ps]
-  (not-every? #(chunk/in-level? world (long (% 1))) ps))
+(defn- flat-in? [^long x ^long z]
+  (and (<= -30000000 x) (< x 30000000)
+       (<= -30000000 z) (< z 30000000)))
+
+(defn- in-world?
+  "Level.isInWorldBounds: inside the height of the level and
+  the flat bounds of every level."
+  [world [x y z]]
+  (and (chunk/in-level? world (long y))
+       (flat-in? (long x) (long z))))
+
+(defn- pos-error
+  "Returns the key of the reason pos is no command target, or nil.
+  BlockPosArgument.getLoadedBlockPos."
+  [world pos]
+  (cond
+    (unloaded? world [pos]) "argument.pos.unloaded"
+    (not (in-world? world pos)) "argument.pos.outofworld"))
+
+(defn- spawnable?
+  "Level.isInSpawnableBounds for the block that holds pos."
+  [pos]
+  (let [[x y z] (mapv #(long (Math/floor (double %))) pos)]
+    (and (<= -20000000 (long y)) (< (long y) 20000000)
+         (flat-in? x z))))
 
 (defn- fill-deltas [world eid [ax ay az bx by bz block]]
-  (let [ps [[ax ay az] [bx by bz]]]
-    (cond
-      (unloaded? world ps) (say eid "argument.pos.unloaded")
-      (outside? world ps) (say eid "argument.pos.outofworld")
-      :else (filled world eid (box [ax ay az bx by bz]) block))))
+  (if-let [k (some #(pos-error world %) [[ax ay az] [bx by bz]])]
+    (say eid k)
+    (filled world eid (box [ax ay az bx by bz]) block)))
 
 (defn- rule-hint [rule]
   (if (= :bool (:type (rules/table rule)))
@@ -217,15 +238,19 @@
       entities (typed (keys (:entities world)))
       name (when-let [id (get-in world [:players name])] [id]))))
 
-(defn- tp-deltas [world eid [x y z]]
+(defn- teleported [world eid pos]
   (let [e (get-in world [:entities eid])
-        pos [x y z]
         at (mapv #(format "%.2f" (double %)) pos)
         msg {:translate "commands.teleport.success.location.single"
              :with (into [(:name e)] at)}]
     [[:teleport eid pos]
      (out/to eid (out/teleport pos (:yaw e 0.0) (:pitch e 0.0)))
      (out/to eid (out/system-chat [msg]))]))
+
+(defn- tp-deltas [world eid [x y z]]
+  (if (spawnable? [x y z])
+    (teleported world eid [x y z])
+    (say eid "commands.teleport.invalidPosition")))
 
 (defn- given [world eid id item n]
   (let [e (get-in world [:entities id])
@@ -262,23 +287,28 @@
       (concat (mapcat #(killed world %) ids)
               (kill-report world eid ids)))))
 
-(defn- summon-deltas [world eid [type x y z]]
-  (let [p (get-in world [:entities eid :pos])
-        at [(double (or x (v/x p)))
-            (double (or y (v/y p)))
-            (double (or z (v/z p)))]
-        t (:tick world)
+(defn- summoned [world eid type at]
+  (let [t (:tick world)
         kind {:translate (str "entity.minecraft." (name type))}
         msg {:translate "commands.summon.success" :with [kind]}]
     [[:spawn-entity (mobs/egg-mob type at [t eid :summon] t)]
      (out/to eid (out/system-chat [msg]))]))
 
+(defn- summon-deltas [world eid [type x y z]]
+  (let [p (get-in world [:entities eid :pos])
+        at [(double (or x (v/x p)))
+            (double (or y (v/y p)))
+            (double (or z (v/z p)))]]
+    (if (spawnable? at)
+      (summoned world eid type at)
+      (say eid "commands.summon.invalidPosition"))))
+
 (defn- setblock-deltas [world eid [x y z block]]
   (let [pos [x y z]
-        st (block/state block)]
+        st (block/state block)
+        k (pos-error world pos)]
     (cond
-      (unloaded? world [pos]) (say eid "argument.pos.unloaded")
-      (outside? world [pos]) (say eid "argument.pos.outofworld")
+      k (say eid k)
       (= st (chunk/chunks-get-block (:chunks world) pos))
       (say eid "commands.setblock.failed")
       :else (cons [:set-blocks [[pos st]]]
@@ -291,7 +321,15 @@
      (long (or y (Math/floor (v/y p))))
      (long (or z (Math/floor (v/z p))))]))
 
-(defn- setworldspawn-deltas [world eid args]
+(defn- spawn-pos-deltas
+  "Returns the deltas of f unless the given position is out of
+  bounds. BlockPosArgument.getSpawnablePos."
+  [f world eid args]
+  (if (or (some nil? args) (spawnable? args))
+    (f world eid args)
+    (say eid "argument.pos.outofbounds")))
+
+(defn- world-spawn-deltas [world eid args]
   (let [at (block-under world eid args)
         with (conj (mapv str at) "0.0" "0.0" "minecraft:overworld")
         msg {:translate "commands.setworldspawn.success"
@@ -300,7 +338,7 @@
      (out/all (out/default-spawn at))
      (out/to eid (out/system-chat [msg]))]))
 
-(defn- spawnpoint-deltas [world eid args]
+(defn- spawnpoint-set-deltas [world eid args]
   (let [at (block-under world eid args)
         e (get-in world [:entities eid])
         with (conj (mapv str at) "0.0" "0.0" "minecraft:overworld"
@@ -374,8 +412,9 @@
 (def ^:private commands
   {:tp tp-deltas :give give-deltas :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
-   :setworldspawn setworldspawn-deltas
-   :spawnpoint spawnpoint-deltas :fill fill-deltas})
+   :setworldspawn (partial spawn-pos-deltas world-spawn-deltas)
+   :spawnpoint (partial spawn-pos-deltas spawnpoint-set-deltas)
+   :fill fill-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
   (if-let [f (commands op)]

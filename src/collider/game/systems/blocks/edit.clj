@@ -71,7 +71,10 @@
             0 bs)
     a))
 
-(defn obstructed? [world [x y z] state]
+(defn obstructed?
+  "Returns true when a block of that state at the cell would
+  overlap an entity that stops building there."
+  [world [x y z] state]
   (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
         n (quot (alength a) 6)
         hit (fn [_ _ e]
@@ -90,7 +93,18 @@
         changed [[pos (block-at world pos)]]]
     (out/to eid (out/blocks-changed at changed))))
 
-(defn reject-deltas [world eid pos pos']
+(defn build-limit
+  "Returns the red line above the hotbar that names the height
+  limit of building, the top one when high? is true."
+  [eid high? ^long y]
+  (let [k (if high? "build.tooHigh" "build.tooLow")
+        text {:translate k :with [y] :color "red"}]
+    (out/to eid (out/overlay [text]))))
+
+(defn reject-deltas
+  "Returns the effects that show the player the true blocks at pos
+  and pos' after a refused change."
+  [world eid pos pos']
   (cond-> [(own-change world eid pos)]
           pos' (conj (own-change world eid pos'))))
 
@@ -110,6 +124,8 @@
           mixed)))
 
 (defn placed-deltas
+  "Returns the deltas of a player placing blocks, with the place
+  sound for everyone else."
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [[pos state] (first changes)
@@ -118,10 +134,14 @@
          sound (out/sound (data/place-sound placed) pos 1.0 0.8)]
      (conj deltas (out/except eid sound)))))
 
-(defn be-changed [pos e]
+(defn be-changed
+  "Returns the deltas that set the block entity at pos and show it."
+  [pos e]
   [[:set-block-entity pos e] (out/all (out/block-entity pos))])
 
-(defn held-slot ^long [world eid]
+(defn held-slot
+  "Returns the inventory slot of the item the player holds."
+  ^long [world eid]
   (+ 36 (long (or (get-in world [:entities eid :held-slot]) 0))))
 
 (defn held-stack [world eid]
@@ -156,10 +176,15 @@
             row (section (- 1.0 (double v)) (long rows))]
         (+ col (* cols row))))))
 
-(defn waterloggable? [st]
+(defn waterloggable?
+  "Returns true when the state can take water and holds none."
+  [st]
   (= :false (:waterlogged (block/props-of st))))
 
-(defn with-water [st logged?]
+(defn with-water
+  "Returns the state with water in it, or without when logged? is
+  false."
+  [st logged?]
   (block/state (block/block-of st)
                (assoc (block/props-of st) :waterlogged
                       (if logged? :true :false))))
@@ -175,7 +200,10 @@
     (block/full-water? st)
     (block/water-source? st)))
 
-(defn waterlogged [world pos' state]
+(defn waterlogged
+  "Returns the state to place at pos', with water in it when it
+  takes the water that stands there."
+  [world pos' state]
   (if (and (placed-wet? (block-at world pos') state)
            (contains? (block/props-of state) :waterlogged))
     (with-water state true)

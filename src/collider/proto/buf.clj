@@ -1,6 +1,8 @@
 (ns collider.proto.buf
   "Byte buffers of the wire format."
-  (:import (collider.java Buf)))
+  (:import (collider.java Buf)
+           (java.io ByteArrayInputStream InputStream)
+           (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
 
@@ -104,3 +106,32 @@
 
 (defn write-to! [^Buf b out]
   (.writeTo b out))
+
+(defn unread-stream
+  "Returns a stream over the unread bytes. The read point stays."
+  ^InputStream [^Buf b]
+  (ByteArrayInputStream. (.-a b) (.-r b) (.readableBytes b)))
+
+(defn leave-unread!
+  "Moves the read point so only the last n written bytes stay unread."
+  [^Buf b ^long n]
+  (set! (.-r b) (int (- (.-w b) n))))
+
+(defn inflate-input!
+  "Gives the unread bytes to the inflater. The read point stays."
+  [^Buf b ^Inflater i]
+  (.setInput i (.-a b) (.-r b) (.readableBytes b)))
+
+(defn deflate-input!
+  "Gives the unread bytes to the deflater and marks them read."
+  [^Buf b ^Deflater d]
+  (.setInput d (.-a b) (.-r b) (.readableBytes b))
+  (set! (.-r b) (.-w b)))
+
+(defn deflate!
+  "Writes what the deflater gives into the free room of the buffer."
+  [^Buf b ^Deflater d]
+  (let [a (.-a b)
+        w (.-w b)
+        k (.deflate d a w (- (alength a) w))]
+    (set! (.-w b) (int (+ w k)))))
