@@ -42,9 +42,9 @@
   (block/water? (state-at chunks cell)))
 
 (defn outside-limits?
-  "Tests whether the cell left the world."
-  [[_ y _]]
-  (not (chunk/in-range? (long y))))
+  "Tests whether the cell left the height of level lv."
+  [lv [_ y _]]
+  (not (chunk/in-level? lv (long y))))
 
 (defn not-stable?
   "Tests whether nothing solid holds the cell up."
@@ -52,12 +52,12 @@
   (not (block/solid-render? (state-below chunks cell))))
 
 (defn has-malus?
-  "Tests whether the cell costs the mob anything.
+  "Tests whether the cell of level lv costs the mob anything.
   Any malus but a plain zero turns the cell down, so water, honey
   and the neighbourhood of lava are never strolled to."
-  [chunks [x y z]]
+  [lv [x y z]]
   (not (zero? (path/path-type-malus
-                path/cow (path/type-static chunks x y z)))))
+                path/cow (path/type-static lv x y z)))))
 
 (defn direction
   "Returns an offset up to h blocks away and v up or down.
@@ -76,14 +76,16 @@
    (long (Math/floor (+ (v/z pos) (double dz))))])
 
 (defn move-up-out-of-solid
-  "Returns the first cell at or above this one that is not solid."
-  [chunks [x y z :as cell]]
-  (if-not (solid? chunks cell)
-    cell
-    (loop [cy (inc (long y))]
-      (if (and (<= cy chunk/max-y) (solid? chunks [x cy z]))
-        (recur (inc cy))
-        [x cy z]))))
+  "Returns the first cell of level lv at or above this one that is
+  not solid, or the one above the top of the level."
+  [lv [x y z :as cell]]
+  (let [chunks (:chunks lv) hi (chunk/level-max-y lv)]
+    (if-not (solid? chunks cell)
+      cell
+      (loop [cy (inc (long y))]
+        (if (and (<= cy hi) (solid? chunks [x cy z]))
+          (recur (inc cy))
+          [x cy z])))))
 
 (defn- light-cost
   "Returns what the light of the cell adds to its weight.
@@ -127,37 +129,39 @@
 (defn- stable-cell
   "Returns the cell of one try, nil when it left the world or hangs
   over nothing the mob may stand on."
-  [chunks pos dir]
+  [lv pos dir]
   (let [cell (pos-toward-direction pos dir)]
-    (when-not (or (outside-limits? cell) (not-stable? chunks cell))
+    (when-not (or (outside-limits? lv cell)
+                  (not-stable? (:chunks lv) cell))
       cell)))
 
 (defn- land-cell
   "Returns the cell lifted out of the ground, nil when it holds
   water or costs the mob anything."
-  [chunks cell]
+  [lv cell]
   (when cell
-    (let [c (move-up-out-of-solid chunks cell)]
-      (when-not (or (water? chunks c) (has-malus? chunks c)) c))))
+    (let [c (move-up-out-of-solid lv cell)]
+      (when-not (or (water? (:chunks lv) c) (has-malus? lv c))
+        c))))
 
 (defn land-pos
   "Returns a walk goal on dry land that costs the mob nothing.
   It is lifted out of the ground, and nil comes back when ten tries
   found none."
   [world e t eid k h v]
-  (let [chunks (:chunks world) pos (:pos e)]
+  (let [pos (:pos e)]
     (best-pos (fn [c] (walk-target-value world e c))
               (fn [i]
                 (let [d (direction t eid k i h v)]
-                  (land-cell chunks (stable-cell chunks pos d)))))))
+                  (land-cell world (stable-cell world pos d)))))))
 
 (defn default-pos
   "Returns a walk goal taken where it falls, costing the mob nothing.
   It is not lifted out of the ground."
   [world e t eid k h v]
-  (let [chunks (:chunks world) pos (:pos e)]
+  (let [pos (:pos e)]
     (best-pos (fn [c] (walk-target-value world e c))
               (fn [i]
                 (let [d (direction t eid k i h v)
-                      c (stable-cell chunks pos d)]
-                  (when (and c (not (has-malus? chunks c))) c))))))
+                      c (stable-cell world pos d)]
+                  (when (and c (not (has-malus? world c))) c))))))

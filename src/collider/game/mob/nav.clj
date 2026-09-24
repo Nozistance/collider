@@ -68,38 +68,41 @@
     (not (identical? chunk/empty-chunk
                      (chunk/chunk-at chunks cx cz)))))
 
-(defn- above-air ^long [chunks ^long x ^long y ^long z]
-  (loop [cy (inc y)]
-    (if (and (<= cy chunk/max-y) (air-at? chunks x cy z))
-      (recur (inc cy))
-      cy)))
+(defn- above-air ^long [lv ^long x ^long y ^long z]
+  (let [chunks (:chunks lv) hi (chunk/level-max-y lv)]
+    (loop [cy (inc y)]
+      (if (and (<= cy hi) (air-at? chunks x cy z))
+        (recur (inc cy))
+        cy))))
 
-(defn- column-y ^long [chunks ^long x ^long y ^long z]
-  (loop [cy (dec y)]
-    (cond (< cy chunk/min-y) (above-air chunks x y z)
-          (air-at? chunks x cy z) (recur (dec cy))
-          :else (inc cy))))
+(defn- column-y ^long [lv ^long x ^long y ^long z]
+  (let [chunks (:chunks lv) lo (chunk/level-min-y lv)]
+    (loop [cy (dec y)]
+      (cond (< cy lo) (above-air lv x y z)
+            (air-at? chunks x cy z) (recur (dec cy))
+            :else (inc cy)))))
 
-(defn- above-solid ^long [chunks ^long x ^long y ^long z]
-  (loop [cy (inc y)]
-    (if (and (<= cy chunk/max-y) (solid-at? chunks x cy z))
-      (recur (inc cy))
-      cy)))
+(defn- above-solid ^long [lv ^long x ^long y ^long z]
+  (let [chunks (:chunks lv) hi (chunk/level-max-y lv)]
+    (loop [cy (inc y)]
+      (if (and (<= cy hi) (solid-at? chunks x cy z))
+        (recur (inc cy))
+        cy))))
 
 (defn- surface-cell
   "Returns the goal cell lifted onto the surface above its column."
-  [chunks [x y z]]
-  (let [x (long x) z (long z)
+  [lv [x y z]]
+  (let [chunks (:chunks lv) x (long x) z (long z)
         y (long (if (air-at? chunks x (long y) z)
-                  (column-y chunks x (long y) z)
+                  (column-y lv x (long y) z)
                   y))]
     (if (solid-at? chunks x y z)
-      [x (above-solid chunks x y z) z]
+      [x (above-solid lv x y z) z]
       [x y z])))
 
 (defn- search [world e cell ^long reach]
-  (path/find-path (:chunks world) (walker e) #{cell}
-                  max-path-length reach 1.0))
+  (path/find-path world (walker e) #{cell} max-path-length reach
+                  1.0))
 
 (defn- searched [world e cell ^long reach]
   (let [p (search world e cell reach)
@@ -114,7 +117,7 @@
 (defn- pathed [world e cell ^long reach]
   (let [nav (:nav e)]
     (cond
-      (< (v/y (:pos e)) chunk/min-y) [e nil]
+      (< (v/y (:pos e)) (chunk/level-min-y world)) [e nil]
       (not (can-update-path? e)) [e nil]
       (keep-path? e cell nav) [e (:path nav)]
       :else (searched world e cell reach))))
@@ -127,7 +130,7 @@
         e (assoc e :nav (nav-of e))
         [gx _ gz] cell]
     (if (loaded? chunks gx gz)
-      (pathed world e (surface-cell chunks cell) reach)
+      (pathed world e (surface-cell world cell) reach)
       [e nil])))
 
 (defn- cauldron? [chunks n]
@@ -204,6 +207,12 @@
   (let [[e p] (create-path world e (goal-cell (:pos o)) 1)]
     (if p (moved-to world e p speed) e)))
 
+(defn- rebuilt [world e nav ^long t]
+  (let [e (assoc-in (assoc e :nav nav) [:nav :path] nil)
+        [e p] (create-path world e (:target nav) (:reach nav))]
+    (update e :nav assoc :path p :index 0 :recompute t
+            :delayed? false)))
+
 (defn recompute-path
   "Returns mob e with its path to the same goal built again.
   Sooner than 20 ticks after the last one it only asks for a later
@@ -215,11 +224,7 @@
           (not (can-update-path? e)))
       (assoc e :nav (assoc nav :delayed? true))
       (nil? (:target nav)) (assoc e :nav nav)
-      :else
-      (let [e (assoc-in (assoc e :nav nav) [:nav :path] nil)
-            [e p] (create-path world e (:target nav) (:reach nav))]
-        (update e :nav assoc :path p :index 0 :recompute t
-                :delayed? false)))))
+      :else (rebuilt world e nav t))))
 
 (defn- node-of [e ^long i] (nth (:nodes (:path (:nav e))) i))
 

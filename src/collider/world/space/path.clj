@@ -205,26 +205,31 @@
     :trapdoor :on-top-of-trapdoor
     (check-neighbours chunks x y z :walkable)))
 
-(defn type-static
-  "Returns the path type of the cell x y z for a mob one cell tall."
-  [chunks x y z]
+(defn- static-type [chunks lo x y z]
   (let [x (long x) y (long y) z (long z)
         t (type-at chunks x y z)]
-    (if (and (= :open t) (>= y (inc chunk/min-y)))
+    (if (and (= :open t) (>= y (inc (long lo))))
       (floor-type chunks x y z)
       t)))
 
+(defn type-static
+  "Returns the path type of the cell x y z of level lv for a mob one
+  cell tall."
+  [lv x y z]
+  (static-type (:chunks lv) (chunk/level-min-y lv) x y z))
+
 (defn- bb-type [ctx ^long x ^long y ^long z]
   (let [{:keys [chunks mob]} ctx
-        t (type-static chunks x y z)
+        lo (:min-y ctx)
+        t (static-type chunks lo x y z)
         [mx my mz] (:block-pos mob)]
     (cond
       (and (= :door-wood-closed t) (:open-doors? mob)
            (:pass-doors? mob)) :walkable-door
       (and (= :door-open t) (not (:pass-doors? mob))) :blocked
       (and (= :rail t)
-           (not= :rail (type-static chunks mx my mz))
-           (not= :rail (type-static chunks mx (dec (long my)) mz)))
+           (not= :rail (static-type chunks lo mx my mz))
+           (not= :rail (static-type chunks lo mx (dec (long my)) mz)))
       :unpassable-rail
       :else t)))
 
@@ -254,7 +259,7 @@
 
 (defn- capped-type [ctx x y z t m]
   (let [mob (:mob ctx)
-        cur (type-static (:chunks ctx) x y z)]
+        cur (static-type (:chunks ctx) (:min-y ctx) x y z)]
     (if (> (long (:bb-w mob)) 1)
       (if (and (< (path-type-malus mob cur) m)
                (< (path-type-malus mob :big-mobs-close-to-danger) m))
@@ -518,10 +523,10 @@
 (defn- ground-below
   "Returns the node the mob lands on when it falls from x y z."
   [ctx ^long x ^long y ^long z]
-  (let [mob (:mob ctx)]
+  (let [mob (:mob ctx) lo (long (:min-y ctx))]
     (loop [cy (dec y)]
       (cond
-        (< cy chunk/min-y) (blocked-node ctx x y z)
+        (< cy lo) (blocked-node ctx x y z)
         (> (- y cy) (long (:max-fall mob))) (blocked-node ctx x cy z)
         :else
         (let [t (type-of-mob ctx x cy z)
@@ -532,9 +537,9 @@
             :else (blocked-node ctx x cy z)))))))
 
 (defn- non-water-below [ctx x y z best]
-  (let [mob (:mob ctx)]
+  (let [mob (:mob ctx) lo (long (:min-y ctx))]
     (loop [cy (dec y) best best]
-      (if (<= cy chunk/min-y)
+      (if (<= cy lo)
         best
         (let [t (type-of-mob ctx x cy z)]
           (if (not= :water t)
@@ -698,10 +703,10 @@
         cy))))
 
 (defn- air-drop ^long [ctx ^long x ^double py ^long z]
-  (let [chunks (:chunks ctx)]
+  (let [chunks (:chunks ctx) lo (long (:min-y ctx))]
     (loop [cy (long (Math/floor (+ py 1.0)))
            best (long (Math/floor py))]
-      (if (<= cy chunk/min-y)
+      (if (<= cy lo)
         best
         (let [st (chunk/block-state chunks x (dec cy) z)]
           (if (or (block/air? st) (pathfindable? st))
@@ -817,21 +822,22 @@
              (sort-by (juxt :dist-to-target len) ps)))))
 
 (defn context
-  "Returns what one search over chunks knows about its mob.
+  "Returns what one search over level lv knows about its mob.
   The mob carries its size, its own malus and where it stands."
-  [chunks mob]
+  [lv mob]
   (let [w (double (:width mob))
         [px py pz] (:pos mob)
         cell (fn [c] (long (Math/floor (double c))))]
-    {:chunks chunks
+    {:chunks (:chunks lv)
+     :min-y  (chunk/level-min-y lv)
      :nodes  (atom {})
      :mob    (assoc mob
                :bb-w (long (Math/floor (+ w 1.0)))
                :bb-h (long (Math/floor (inc (double (:height mob)))))
                :block-pos [(cell px) (cell py) (cell pz)])}))
 
-(defn- search [chunks mob goals maxlen reach mult]
-  (let [ctx (context chunks mob)
+(defn- search [lv mob goals maxlen reach mult]
+  (let [ctx (context lv mob)
         from (start-node ctx)
         targets (mapv target-of goals)
         maxv (long (int (* (float max-visited-nodes) (float mult))))]
@@ -844,9 +850,9 @@
         (if (seq hit) (pick hit true) (pick targets false))))))
 
 (defn find-path
-  "Returns the path of a mob to the closest of the goal cells.
-  The path is a map of the nodes walked, whether a goal was
-  reached and how far its last node stays from the goal."
-  [chunks mob goals max-path-length reach-range multiplier]
-  (search chunks mob goals (double max-path-length)
+  "Returns the path of a mob over level lv to the closest of the
+  goal cells. The path is a map of the nodes walked, whether a goal
+  was reached and how far its last node stays from the goal."
+  [lv mob goals max-path-length reach-range multiplier]
+  (search lv mob goals (double max-path-length)
           (long reach-range) (double multiplier)))
