@@ -1,6 +1,7 @@
 (ns collider.world.block
   "Block states and their placement."
-  (:require [collider.data :as data]
+  (:require [clojure.string :as str]
+            [collider.data :as data]
             [collider.world.direction :as dir])
   (:import (java.util Arrays)))
 
@@ -43,6 +44,27 @@
 
 (defn block-of [^long st]
   (when (known? st) (aget ^objects @name-arr st)))
+
+(defn- clone-table []
+  (let [^objects a (block-table (fn [block b] (get b :clone block)))]
+    (doseq [[_ b] (data/blocks)
+            [st item] (:clones b)]
+      (aset a (long st) item))
+    a))
+
+(def ^:private ^:table clone-arr (delay (clone-table)))
+
+(defn clone-of [^long st]
+  (when (known? st)
+    (let [item (aget ^objects @clone-arr st)]
+      (when-not (= :air item) item))))
+
+(defn clone-props [^long st include-data]
+  (let [b (get (data/blocks) (block-of st))]
+    (cond-> (:clone-props b)
+      include-data (into (:data-props b)))))
+
+(defn prop-name [k] (str/replace (name k) "-" "_"))
 
 (def door-types #{:door :weathering-copper-door})
 

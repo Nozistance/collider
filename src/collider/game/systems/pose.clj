@@ -1,6 +1,7 @@
 (ns collider.game.systems.pose
   "Player water state, swimming and pose."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.entity :as entity]
+            [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -15,9 +16,6 @@
 (def ^:private pose-box
   {:standing [0.3 1.8] :crouching [0.3 1.5]
    :swimming [0.3 0.6] :sleeping [0.1 0.2]})
-
-(def ^:private pose-eye
-  {:standing 1.62 :crouching 1.27 :swimming 0.4 :sleeping 0.2})
 
 (defn- floor ^long [^double c] (long (Math/floor c)))
 
@@ -39,7 +37,7 @@
          (block/solid? st)
          (or (block/full-cube? st)
              (boolean (some #(box-hit? % cx cy cz lo hi)
-                            (block/collision-boxes st)))))))
+                        (block/collision-boxes st)))))))
 
 (defn- hits? [chunks lo hi]
   (let [c (fn [v i] (floor (double (nth v (long i)))))]
@@ -59,19 +57,18 @@
                 [(- (+ x half) e) (- (+ y h) e) (- (+ z half) e)]))))
 
 (defn- water-depth ^double [chunks pos pose]
-  (let [[half h] (pose-box pose) m fluid-margin]
-    (liquid/fluid-height chunks
-                         [(v/x pos) (+ (v/y pos) m) (v/z pos)]
-                         (- (double half) m)
-                         (- (double h) (* 2.0 m))
-                         :water)))
+  (let [[half h] (pose-box pose) m fluid-margin
+        from [(v/x pos) (+ (v/y pos) m) (v/z pos)]
+        width (- (double half) m)
+        height (- (double h) (* 2.0 m))]
+    (liquid/fluid-height chunks from width height :water)))
 
 (defn- water-at? [chunks cx cy cz]
   (and (chunk/in-range? (long cy))
        (block/water? (st-at chunks cx cy cz))))
 
 (defn- eye-in-water? [chunks pos pose]
-  (let [ey (+ (v/y pos) (double (pose-eye pose)))
+  (let [ey (+ (v/y pos) (double (entity/pose-eyes pose)))
         cx (floor (v/x pos)) cy (floor ey) cz (floor (v/z pos))]
     (boolean
       (when (water-at? chunks cx cy cz)
@@ -110,8 +107,8 @@
         pose (:pose e :standing)
         in? (pos? (water-depth chunks pos pose))
         under? (boolean (and (:eye-in-water? e) in?))
-        feet? (water-at? chunks (floor (v/x pos))
-                         (floor (v/y pos)) (floor (v/z pos)))
+        fx (floor (v/x pos)) fy (floor (v/y pos)) fz (floor (v/z pos))
+        feet? (water-at? chunks fx fy fz)
         swim? (swims? e in? under? feet?)]
     {:in-water?     in? :under-water? under? :swimming? swim?
      :eye-in-water? (eye-in-water? chunks pos pose)

@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
@@ -103,13 +104,6 @@
         text {:translate k :with [y] :color "red"}]
     (out/to eid (out/overlay text))))
 
-(defn reject-deltas
-  "Returns the effects that show the player the true blocks at pos
-  and pos' after a refused change."
-  [world eid pos pos']
-  (cond-> [(own-change world eid pos)]
-          pos' (conj (own-change world eid pos'))))
-
 (def ^:const ^:private sponge-dries 2009)
 
 (defn- drying? [world [_ st]]
@@ -151,7 +145,8 @@
 (defn held-slot
   "Returns the inventory slot of the item the player holds."
   ^long [world eid]
-  (+ 36 (long (or (get-in world [:entities eid :held-slot]) 0))))
+  (let [e (get-in world [:entities eid])]
+    (state/hand-slot e (:use-hand e))))
 
 (defn held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))

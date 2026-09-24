@@ -82,11 +82,14 @@
   [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
 
+(def pose-eyes
+  {:standing 1.62 :crouching 1.27 :swimming 0.4 :sleeping 0.2})
+
 (defn eye-height
   "Returns how far above its position the entity e looks out."
   ^double [e]
   (case (:type e)
-    :player 1.62
+    :player (double (pose-eyes (:pose e :standing)))
     :tnt 0.0
     :falling-block 0.0
     :item 0.21

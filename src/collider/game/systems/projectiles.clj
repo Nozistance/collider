@@ -190,13 +190,13 @@
 (defn- spent-deltas [eid e stack]
   (when-not (state/infinite-materials? e)
     (let [n (dec (long (:count stack 1)))]
-      [[:set-slot eid (state/hand-slot e :main)
+      [[:set-slot eid (state/hand-slot e (:use-hand e))
         (when (pos? n) (assoc stack :count n))]])))
 
 (defn throw-deltas
-  "Returns the deltas of a player throwing what its main hand holds."
+  "Returns the deltas of a player throwing what its hand holds."
   [world eid e]
-  (let [stack (state/hand-stack e :main) item (:item stack)]
+  (let [stack (state/hand-stack e (:use-hand e)) item (:item stack)]
     (when (throwables item)
       (concat (throw-sound world eid e stack)
               [[:spawn-entity (thrown world eid e stack)]

@@ -7,7 +7,7 @@
             [collider.data :as data])
   (:import (clojure.lang ExceptionInfo Reflector)
            (java.io File Writer)
-           (java.lang.reflect Field)
+           (java.lang.reflect Field InvocationHandler Proxy)
            (java.net HttpURLConnection URL URLClassLoader)
            (java.nio.file Files)
            (java.nio.file.attribute FileAttribute)
@@ -540,7 +540,61 @@
       (call i "worksAboveNoteBlock")
       (assoc :instrument-above? true))))
 
-(defn- own-props [by-type b]
+(defn- level-stub [access]
+  (Proxy/newProxyInstance
+    *loader* (into-array Class [(cls "world.level.LevelReader")])
+    (reify InvocationHandler
+      (invoke [_ _ m _]
+        (when (= "registryAccess" (call m "getName")) access)))))
+
+(defn- bind-bare-components! [items]
+  (let [bare (static-field "core.component.DataComponentMap" "EMPTY")]
+    (doseq [i (elements items)]
+      (call (call i "builtInRegistryHolder") "bindComponents" bare))))
+
+(defn- clone-env []
+  (let [reg (registry "REGISTRY")
+        access (call-static "core.RegistryAccess"
+                 "fromRegistryOfRegistries" reg)
+        block "world.level.block.Block"
+        components "core.component.DataComponents"]
+    {:level (level-stub access)
+     :zero (static-field "core.BlockPos" "ZERO")
+     :items (registry "ITEM")
+     :ids (static-field block "BLOCK_STATE_REGISTRY")
+     :state-kind (static-field components "BLOCK_STATE")}))
+
+(defn- cloned [{:keys [level zero]} st data?]
+  (call st "getCloneItemStack" level zero data?))
+
+(defn- clone-item [env st]
+  (key-of (:items env) (call (cloned env st false) "getItem")))
+
+(defn- stack-props [env stack]
+  (when-let [p (call stack "get" (:state-kind env))]
+    (into (sorted-set) (map kw) (keys (call p "properties")))))
+
+(defn- other-clones [env b item]
+  (into (sorted-map)
+        (keep (fn [st]
+                (let [i (clone-item env st)]
+                  (when (not= i item)
+                    [(call (:ids env) "getId" st) i]))))
+        (call (call b "getStateDefinition") "getPossibleStates")))
+
+(defn- clone-props [env reg b]
+  (let [st (call b "defaultBlockState")
+        item (clone-item env st)
+        own (stack-props env (cloned env st false))
+        data (reduce disj (stack-props env (cloned env st true)) own)
+        others (other-clones env b item)]
+    (cond-> {}
+      (not= item (key-of reg b)) (assoc :clone item)
+      (seq others) (assoc :clones others)
+      (seq own) (assoc :clone-props own)
+      (seq data) (assoc :data-props data))))
+
+(defn- own-props [by-type env reg b]
   (let [field #(hidden-field (class b) b %)
         st (call b "defaultBlockState")]
     (merge {:resistance (flt (field "explosionResistance"))
@@ -548,7 +602,8 @@
             :class      (block-class b)}
            (motion-props field)
            (instrument st)
-           (toggle b))))
+           (toggle b)
+           (clone-props env reg b))))
 
 (defn- weathering-pairs [reg]
   (block-pairs reg "world.level.block.WeatheringCopper"
@@ -560,9 +615,10 @@
 
 (defn- block-table [reg by-type]
   (let [refs (block-refs reg)
+        env (clone-env)
         own (into (sorted-map)
                   (for [b (elements reg)]
-                    [(key-of reg b) (own-props by-type b)]))]
+                    [(key-of reg b) (own-props by-type env reg b)]))]
     (merge-with merge own
                 (weathering-pairs reg) (waxable-pairs reg)
                 (merge-with merge refs (pot-contents refs))
@@ -630,6 +686,17 @@
     {:item (key-of reg (call (call t "item") "value"))
      :count (call t "count")}))
 
+(defn- non-breakers []
+  (let [items (registry "ITEM")
+        stone (call (static-field "world.level.block.Blocks" "STONE")
+                    "defaultBlockState")]
+    (into (sorted-map)
+          (for [i (elements items)
+                :let [s (call i "getDefaultInstance")
+                      args [s stone nil nil nil]]
+                :when (not (apply call i "canDestroyBlock" args))]
+            [(key-of items i) {:breaks? false}]))))
+
 (defn- remainders []
   (let [items (registry "ITEM")]
     (into (sorted-map)
@@ -666,8 +733,10 @@
   (binding [*loader* (class-loader jars server)]
     (call-static "SharedConstants" "tryDetectVersion")
     (call-static "server.Bootstrap" "bootStrap")
+    (bind-bare-components! (registry "ITEM"))
     (let [states (block-states)]
       (merge (state-shapes states) (block-props)
+             {:non-breakers (non-breakers)}
              {:light (light-table states) :fire (fire-odds)
               :placers (placer-features (registry "BLOCK"))
               :compost (compostables)
@@ -762,6 +831,7 @@
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
    "minecraft:max_stack_size"       [:max-stack-size identity]
+   "minecraft:block_state"          [:block-state identity]
    "minecraft:repair_cost"          [:repair-cost identity]
    "minecraft:dye"                  [:dye kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]
@@ -817,8 +887,11 @@
         slot (get-in cs ["minecraft:equippable" "slot"])
         sound (get-in cs ["minecraft:equippable" "equip_sound"])
         song (get cs "minecraft:jukebox_playable")
-        dye (get cs "minecraft:dye")]
+        dye (get cs "minecraft:dye")
+        tool (get cs "minecraft:tool")]
     (cond-> (sorted-map)
+      (false? (get tool "can_destroy_blocks_in_creative"))
+      (assoc :creative-break? false)
       (not= n 64) (assoc :max-stack n)
       slot (assoc :equip (kw slot))
       (string? sound) (assoc :equip-sound (kw sound))
@@ -1808,14 +1881,14 @@
 
 (defn- class-tables [zf from-class reports tags]
   (let [{:keys [props shapes compost walls placers remainders
-                banners]} from-class
+                banners non-breakers]} from-class
         lang (read-json zf lang-file)]
     {:blocks     (blocks reports props shapes)
      :drops      (block-drops zf)
      :entity-drops (entity-drops zf)
      :items      (merge-with
                   merge (vanilla-items reports)
-                  compost walls remainders banners
+                  compost walls remainders banners non-breakers
                   (station-items reports tags lang))
      :dimension-types (dimension-types zf)
      :biomes     (biomes zf)
@@ -1824,7 +1897,7 @@
 (defn- tables [zf from-class reports rs]
   (let [tagged (tagged-tables zf reports rs from-class)]
     (merge (dissoc from-class :props :compost :walls :placers
-                   :remainders :banners :dyes :synced)
+                   :remainders :banners :dyes :synced :non-breakers)
            tagged
            (class-tables zf from-class reports (:tags tagged)))))
 

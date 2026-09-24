@@ -10,7 +10,7 @@
 
 (def game "26.2")
 
-(def layout 9)
+(def layout 10)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items"

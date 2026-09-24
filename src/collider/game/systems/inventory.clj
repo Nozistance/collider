@@ -5,8 +5,10 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
+            [collider.game.stack :as stack]
             [collider.game.state :as state]
             [collider.game.systems.containers :as containers]
+            [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -31,21 +33,26 @@
 (defn- item-of [name]
   (when (contains? (get (data/registries) "item") name) name))
 
-(def ^:private cloned-kinds #{:banner :decorated-pot :shulker-box})
+(def ^:private own-kinds #{:banner :decorated-pot})
 
-(defn- cloned-stack [world pos item]
+(defn- with-entity [s world pos include-data]
   (let [e (be/at world pos)]
-    (if (contains? cloned-kinds (:kind e))
-      (be/to-stack item e)
-      {:item item :count 1})))
+    (if (or (contains? own-kinds (:kind e)) (and e include-data))
+      (be/to-stack (:item s) e)
+      s)))
+
+(defn- with-props [s st include-data]
+  (let [props (block/props-of st)
+        pair (fn [k] [(block/prop-name k) (name (get props k))])
+        v (into {} (map pair) (block/clone-props st include-data))]
+    (cond-> s (seq v) (stack/put :block-state v))))
 
 (defn- picked-block [world pos include-data]
   (let [st (chunk/chunks-get-block (:chunks world) pos)]
-    (when (pos? (long st))
-      (when-let [item (item-of (block/block-of (long st)))]
-        (if include-data
-          (cloned-stack world pos item)
-          {:item item :count 1})))))
+    (when-let [item (block/clone-of st)]
+      (-> {:item item :count 1}
+          (with-entity world pos include-data)
+          (with-props st include-data)))))
 
 (defn- picked-entity [world id]
   (when-let [t (get-in world [:entities id :type])]
@@ -53,9 +60,11 @@
       (when-let [item (item-of egg)]
         {:item item :count 1}))))
 
-(defn- pick-item [world {:keys [pos entity include-data]}]
+(defn- pick-item [world e {:keys [pos entity include-data]}]
   (cond
-    pos (picked-block world pos include-data)
+    (and pos (reach/in-reach? e pos))
+    (picked-block world pos
+                  (and (state/infinite-materials? e) include-data))
     entity (picked-entity world entity)))
 
 (def ^:private scan-order
@@ -72,10 +81,17 @@
 (defn- free-slot [inv]
   (some (fn [slot] (when-not (get inv slot) slot)) scan-order))
 
+(defn- enchanted? [s]
+  (boolean (seq (stack/component s :enchantments))))
+
+(defn- hotbar-where [inv ^long held pred]
+  (some (fn [i] (let [n (mod (+ held (long i)) 9)]
+                  (when (pred (get inv (+ 36 n))) n)))
+        (range 9)))
+
 (defn- suitable-hotbar [inv ^long held]
-  (or (some (fn [i] (let [n (mod (+ held (long i)) 9)]
-                      (when-not (get inv (+ 36 n)) n)))
-            (range 9))
+  (or (hotbar-where inv held nil?)
+      (hotbar-where inv held (complement enchanted?))
       held))
 
 (defn- select-deltas [eid ^long n]
@@ -97,7 +113,7 @@
 
 (defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
-    (when-let [stack (pick-item world what)]
+    (when-let [stack (pick-item world e what)]
       (let [inv (:inventory e)
             held (long (or (:held-slot e) 0))
             slot (slot-with inv stack)
@@ -106,7 +122,9 @@
           (and slot (<= 36 (long slot) 44))
           (select-deltas eid (- (long slot) 36))
           slot (swap-into-hotbar eid inv slot n)
-          :else (stash-into-hotbar eid inv stack n))))))
+          (state/infinite-materials? e)
+          (stash-into-hotbar eid inv stack n)
+          :else (select-deltas eid held))))))
 
 (defn- own-start [world e]
   (let [ctx (crafting/context world e)]

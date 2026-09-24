@@ -101,19 +101,24 @@
     (when-not (or use-item? (and item (:sneaking? at)))
       (use/deltas world eid pos face item cursor))))
 
-(defn- place-deltas [world [eid pos face item cursor] origin]
-  (let [e (get-in world [:entities eid])
-        item (or item (sense/held-of e))
-        at (merge e origin)
+(defn- without-item-deltas [{:keys [world eid pos item use-item?]}]
+  (cond
+    (door/opens? world eid pos item use-item?)
+    (door/toggle-deltas world eid pos (edit/block-at world pos))
+    (bed/uses-bed? world eid pos item use-item?)
+    (bed/sleep-deltas world eid pos)))
+
+(defn- place-deltas [world [eid pos face item cursor _ _ hand] origin]
+  (let [hand (or hand :main)
+        e (get-in world [:entities eid])
+        item (or item (sense/in-hand e hand))
+        at (assoc (merge e origin) :use-hand hand)
         world (assoc-in world [:entities eid] at)
-        ctx (place-ctx world at [eid pos face item cursor])
-        use? (:use-item? ctx)]
-    (cond
-      (door/opens? world eid pos item use?)
-      (door/toggle-deltas world eid pos (edit/block-at world pos))
-      (bed/uses-bed? world eid pos item use?)
-      (bed/sleep-deltas world eid pos)
-      :else (or (hand-deltas ctx) (item-deltas ctx)))))
+        ctx (place-ctx world at [eid pos face item cursor])]
+    (if (= :main hand)
+      (or (without-item-deltas ctx) (hand-deltas ctx)
+          (item-deltas ctx))
+      (when item (or (hand-deltas ctx) (item-deltas ctx))))))
 
 (def ^:private mob-buckets
   #{:pufferfish-bucket :salmon-bucket :cod-bucket
@@ -153,11 +158,11 @@
 (defn- failed-limits
   "Returns the limit messages after a use that did nothing.
   Facing up at the top, vanilla checks twice and says it twice."
-  [world e [eid pos face item] deltas]
+  [world e [eid pos face item _ _ _ hand] deltas]
   (let [y (long (nth pos 1))
         top (chunk/level-max-y world)
         bottom (chunk/level-min-y world)
-        item (or item (sense/held-of e))]
+        item (or item (sense/in-hand e (or hand :main)))]
     (when-not (or (consumed? deltas)
                   (not (placement-attempt? world e item)))
       (cond
@@ -169,14 +174,16 @@
 (defn- use-on-deltas
   "Returns the deltas for a use on the face of a block.
   ServerGamePacketListenerImpl.handleUseItemOn."
-  [world [eid pos _ _ cursor :as args] origin]
-  (let [e (merge (get-in world [:entities eid]) origin)
-        valid? (and (reach/in-reach? e pos) (on-block? cursor))
-        [high? y :as bar] (when valid? (barred world e pos))]
-    (if bar
-      [(edit/build-limit eid high? y)]
-      (let [r (place-deltas world args origin)]
-        (concat r (when valid? (failed-limits world e args r)))))))
+  [world [eid pos face _ cursor :as args] origin]
+  (let [e (merge (get-in world [:entities eid]) origin)]
+    (cond
+      (= 255 (bit-and (long face) 0xFF))
+      (place-deltas world args origin)
+      (and (reach/in-reach? e pos) (on-block? cursor))
+      (if-let [[high? y] (barred world e pos)]
+        [(edit/build-limit eid high? y)]
+        (let [r (place-deltas world args origin)]
+          (concat r (failed-limits world e args r)))))))
 
 (defn- sequence-of
   "Returns the sequence number the player sent with the action.
@@ -197,11 +204,12 @@
             (chunk/in-level? world (nth pos' 1))
             (conj (edit/own-change world eid pos')))))
 
-(defn- one-ack [world origins [i [tag eid pos face]]]
+(defn- one-ack [world origins [i [tag eid pos face _ cursor]]]
   (when-let [off (and (= :place tag)
                       (dir/face-offset (bit-and (long face) 0xFF)))]
     (when (and (chunk/in-level? world (nth pos 1))
-               (acted-at world eid (get origins i) pos))
+               (acted-at world eid (get origins i) pos)
+               (on-block? cursor))
       (ack-changes world eid pos off))))
 
 (defn- use-ack-deltas [world events origins]
@@ -228,7 +236,8 @@
   (case tag
     :dig (dig/dig-deltas world args)
     :place (use-on-deltas world args (get origins i))
-    :use-item (let [a [(first args) [-1 -1 -1] 255 nil [0 0 0]]]
+    :use-item (let [[eid hand] args
+                    a [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand]]
                 (place-deltas world a (get origins i)))
     :sign-update (use/sign-update-deltas world args)
     nil))

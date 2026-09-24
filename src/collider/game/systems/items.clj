@@ -6,6 +6,7 @@
             [collider.game.entity :as entity]
             [collider.game.state :as state]
             [collider.game.out :as out]
+            [collider.game.stack :as stack]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]
@@ -31,7 +32,7 @@
 
 (def ^:private ^:const around-lift 0.2)
 
-(def ^:private ^:const hand-height 1.32)
+(def ^:private ^:const hand-drop 0.3)
 
 (defn- item-entities [world]
   (let [item? (fn [[_ e]] (= :item (:type e)))]
@@ -71,8 +72,10 @@
   "Returns the item entity a player throws out of hand."
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
-   (let [[px py pz] (get-in world [:entities thrower :pos])
-         at [(double px) (+ (double py) hand-height) (double pz)]
+   (let [e (get-in world [:entities thrower])
+         [px py pz] (:pos e)
+         y (- (+ (double py) (entity/eye-height e)) hand-drop)
+         at [(double px) y (double pz)]
          vel (if randomly?
                (around-velocity world thrower salt)
                (throw-velocity world thrower salt))]
@@ -111,38 +114,39 @@
 
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
-        slot (+ 36 (long (or (:held-slot e) 0)))
+        slot (state/hand-slot e :main)
         s (get-in e [:inventory slot])]
     (when s
       (let [total (long (:count s 1))
             n (if (= 4 (long status)) 1 total)
             left (when (< n total) (assoc s :count (- total n)))]
-        {:thrower eid :stack (assoc s :count n)
-         :take-from [slot left]}))))
+        {:stack (assoc s :count n) :take-from [slot left]}))))
+
+(defn- creative-drop [s]
+  (when (and s (<= 1 (long (:count s 1)) (stack/max-size s)))
+    {:stack s}))
 
 (defn- alive? [world eid]
   (some? (get-in world [:entities eid])))
 
 (defn- drop-of [world [tag eid a b]]
-  (case tag
-    :dig (when (and (#{3 4} (long a)) (alive? world eid))
-           (held-drop world eid a))
-    :creative-slot (when (and (neg? (long a)) b (alive? world eid))
-                     {:thrower eid :stack b})
-    nil))
+  (when (alive? world eid)
+    (case tag
+      :dig (when (#{3 4} (long a)) (held-drop world eid a))
+      :creative-slot (when (neg? (long a)) (creative-drop b))
+      nil)))
 
-(defn- spawn-one [world {:keys [thrower stack take-from]}]
-  (cons [:spawn-entity (dropped world thrower stack)]
-        (when take-from
-          [[:set-slot thrower (take-from 0) (take-from 1)]
-           [:client-slots thrower {(take-from 0) (take-from 1)}
-            (get-in world [:entities thrower :track :carried])]])))
+(defn- taken [world eid [slot left]]
+  [[:set-slot eid slot left]
+   [:client-slots eid {slot left}
+    (get-in world [:entities eid :track :carried])]])
 
 (defn event-deltas
   "Returns the deltas of one drop event of its player."
-  [world ev]
-  (when-let [d (drop-of world ev)]
-    (vec (spawn-one world d))))
+  [world [_ eid :as ev]]
+  (when-let [{:keys [stack take-from]} (drop-of world ev)]
+    (vec (concat (thrown-deltas world eid [stack])
+                 (when take-from (taken world eid take-from))))))
 
 (def ^:private ^:const item-half 0.125)
 

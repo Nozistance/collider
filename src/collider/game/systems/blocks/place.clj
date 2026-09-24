@@ -124,11 +124,10 @@
   "Places a two-cell block.
   Players are cleared from the clicked cell only, since the other
   half goes down after the fact."
-  [world eid pos pos' state ppos pstate ok?]
-  (if (and (chunk/in-level? world (ppos 1)) (ok?)
-           (not (edit/obstructed? world pos' state)))
-    (edit/placed-deltas world eid [[pos' state] [ppos pstate]])
-    (edit/reject-deltas world eid pos pos')))
+  [world eid pos' state ppos pstate ok?]
+  (when (and (chunk/in-level? world (ppos 1)) (ok?)
+             (not (edit/obstructed? world pos' state)))
+    (edit/placed-deltas world eid [[pos' state] [ppos pstate]])))
 
 (defn- door-lower [world pos' state [cx _ cz]]
   (let [facing (block/facing-of state)
@@ -140,18 +139,18 @@
     (and (replaceable? world above)
          (block/face-sturdy? below :up))))
 
-(defn- door-place-deltas [world eid pos pos' state cursor]
+(defn- door-place-deltas [world eid pos' state cursor]
   (let [above (dir/up pos')
         lower (door-lower world pos' state cursor)
         upper (restated lower {:half :upper})
         ok? #(door-base-ok? world pos' above)]
-    (second-cell-deltas world eid pos pos' lower above upper ok?)))
+    (second-cell-deltas world eid pos' lower above upper ok?)))
 
-(defn- bed-place-deltas [world eid pos pos' state item]
+(defn- bed-place-deltas [world eid pos' state item]
   (let [head-pos (mapv + pos' (connect/partner-offset state))
         head (restated state {:part :head})
         ok? #(replaceable? world head-pos item)]
-    (second-cell-deltas world eid pos pos' state head-pos head ok?)))
+    (second-cell-deltas world eid pos' state head-pos head ok?)))
 
 (defn- pair-upper [world above state]
   (let [upper (restated state {:half :upper})
@@ -160,11 +159,11 @@
       (edit/with-water upper water?)
       upper)))
 
-(defn- pair-place-deltas [world eid pos pos' state]
+(defn- pair-place-deltas [world eid pos' state]
   (let [above (dir/up pos')
         upper (pair-upper world above state)
         ok? #(block/can-be-replaced? (edit/block-at world above))]
-    (second-cell-deltas world eid pos pos' state above upper ok?)))
+    (second-cell-deltas world eid pos' state above upper ok?)))
 
 (defn- scaffold-direction [world eid face]
   (let [e (get-in world [:entities eid])]
@@ -198,19 +197,16 @@
     (scaffold-walk world (mapv + pos off) off
                    (contains? horizontals dir))))
 
-(defn- scaffold-out-deltas [world eid pos target]
+(defn- scaffold-out-deltas [world eid target]
   (let [top (chunk/level-max-y world)]
-    (into (if (> (long (target 1)) top)
-            [(edit/build-limit eid true top)]
-            [])
-          (edit/reject-deltas world eid pos nil))))
+    (when (> (long (target 1)) top)
+      [(edit/build-limit eid true top)])))
 
-(defn- scaffold-in-deltas [world eid pos target]
+(defn- scaffold-in-deltas [world eid target]
   (let [base (block/state :scaffolding)
         st (support/scaffold-state (:chunks world) target base)
         logged (edit/waterlogged world target st)]
-    (if (edit/obstructed? world target st)
-      (edit/reject-deltas world eid pos target)
+    (when-not (edit/obstructed? world target st)
       (edit/placed-deltas world eid target logged))))
 
 (defn scaffold-place-deltas
@@ -219,10 +215,10 @@
   [world eid pos face]
   (let [target (scaffold-target world eid pos face)]
     (cond
-      (nil? target) (edit/reject-deltas world eid pos nil)
+      (nil? target) nil
       (chunk/in-level? world (target 1))
-      (scaffold-in-deltas world eid pos target)
-      :else (scaffold-out-deltas world eid pos target))))
+      (scaffold-in-deltas world eid target)
+      :else (scaffold-out-deltas world eid target))))
 
 (defn- player-pose [world eid]
   (let [e (get-in world [:entities eid])]
@@ -266,21 +262,20 @@
            (not (water-plant-ok? world pos' state)))
       (edit/obstructed? world pos' state)))
 
-(defn- merged-deltas [world eid pos pos' [mp ms]]
-  (if (edit/obstructed? world mp ms)
-    (edit/reject-deltas world eid pos pos')
+(defn- merged-deltas [world eid [mp ms]]
+  (when-not (edit/obstructed? world mp ms)
     (edit/placed-deltas world eid mp ms)))
 
-(defn- kind-deltas [world eid pos pos' state item cursor]
+(defn- kind-deltas [world eid pos' state item cursor]
   (let [type (block/type-of state)]
     (cond
       (contains? block/door-types type)
-      (door-place-deltas world eid pos pos' state cursor)
-      (= :bed type) (bed-place-deltas world eid pos pos' state item)
+      (door-place-deltas world eid pos' state cursor)
+      (= :bed type) (bed-place-deltas world eid pos' state item)
       (= :mossy-carpet type)
       (carpet-place-deltas world eid pos' state)
       (contains? connect/pair-types type)
-      (pair-place-deltas world eid pos pos' state)
+      (pair-place-deltas world eid pos' state)
       (be/kind state) (block-entity-place-deltas world eid pos' state)
       :else (edit/placed-deltas world eid pos' state))))
 
@@ -300,11 +295,10 @@
         st (when pos' (refined world eid pos pos' base face item))
         merged (slab-merge world pos pos' face item)]
     (cond
-      merged (merged-deltas world eid pos pos' merged)
+      merged (merged-deltas world eid merged)
       (nil? pos') nil
-      (rejected? world pos' st item ctx over?)
-      (edit/reject-deltas world eid pos pos')
-      :else (kind-deltas world eid pos pos' st item cursor))))
+      (rejected? world pos' st item ctx over?) nil
+      :else (kind-deltas world eid pos' st item cursor))))
 
 (defn solid-place-deltas
   "Returns the deltas for a held block put against a clicked face."

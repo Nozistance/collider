@@ -211,7 +211,7 @@
   [world eid item slot]
   (let [e (get-in world [:entities eid])]
     (when (and e (nil? (get-in e [:inventory slot])))
-      (let [held (+ 36 (long (or (:held-slot e) 0)))
+      (let [held (edit/held-slot world eid)
             stack (or (get-in e [:inventory held])
                       {:item item :count 1})]
         [[:set-slot eid slot stack]

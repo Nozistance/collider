@@ -12,6 +12,7 @@
             [collider.random :as random]
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
+            [collider.game.stack :as stack]
             [collider.game.deltas :as deltas]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -623,7 +624,8 @@
   (and (<= 1 slot 45)
        (or (nil? stack)
            (and (keyword? (:item stack))
-                (<= 1 (long (:count stack 1)) 64)))))
+                (<= 1 (long (:count stack 1))
+                    (stack/max-size stack))))))
 
 (defn- creative-deltas [e eid ^long slot stack]
   (when (given? slot stack)
@@ -634,18 +636,30 @@
   (when (<= 0 slot 8)
     [[:merge-entity eid (switched e slot)]]))
 
-(def ^:private slot-tags #{:held-item :creative-slot})
+(defn- swap-deltas [e eid]
+  [[:set-slot eid (hand-slot e :main) (hand-stack e :off)]
+   [:set-slot eid (hand-slot e :off) (hand-stack e :main)]
+   [:merge-entity eid {:using-item? false :using nil}]])
+
+(def ^:private ^:const swap-hands 6)
+
+(defn- slot-event? [tag action]
+  (case tag
+    (:held-item :creative-slot) true
+    :dig (= swap-hands (long action))
+    false))
 
 (defn slot-deltas
   "Returns the deltas of an event that touches only player slots.
   Every fold over the events of a tick replays these; the packet
   systems alone give them out."
   [world [tag eid slot stack]]
-  (when (contains? slot-tags tag)
+  (when (slot-event? tag slot)
     (when-let [e (get-in world [:entities eid])]
-      (if (identical? :held-item tag)
-        (held-deltas e eid (long slot))
-        (creative-deltas e eid (long slot) stack)))))
+      (case tag
+        :held-item (held-deltas e eid (long slot))
+        :creative-slot (creative-deltas e eid (long slot) stack)
+        :dig (swap-deltas e eid)))))
 
 (def ^:private horizontal-limit 3.0E7)
 

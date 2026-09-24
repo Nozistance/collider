@@ -99,11 +99,14 @@
    (fn [eid m]
      [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}])})
 
+(defn- hand-of [m]
+  (if (zero? (long (or (:hand m) 0))) :main :off))
+
 (defn- place-on-block [eid m]
   (let [[cx cy cz] (:cursor m)]
     [:place eid (:pos m) (:face m) nil
      [(* 16.0 (double cx)) (* 16.0 (double cy)) (* 16.0 (double cz))]
-     (:sequence m)]))
+     (:sequence m) nil (hand-of m)]))
 
 (def ^:private ^:const release-use-item 5)
 
@@ -111,9 +114,6 @@
   (if (= release-use-item (long (:action m)))
     [:release-use eid]
     [:dig eid (:action m) (:pos m) (:face m) (:sequence m)]))
-
-(defn- hand-of [m]
-  (if (zero? (long (or (:hand m) 0))) :main :off))
 
 (def ^:private action-events
   {:player-action dig-event
@@ -289,19 +289,23 @@
 (defn- pong [m]
   {:packet :pong-response :payload (:payload m)})
 
+(defn- last-pong! [conn m]
+  (server/send! conn (pong m))
+  (server/close! conn))
+
+(defn- login-acknowledged! [conn]
+  (server/set-conn-state! conn :configuration)
+  (start-configuration! conn))
+
 (defn- dispatch!
   [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention] (intention! conn m)
     [:status :status-request] (server/send! conn (status-response io))
-    [:status :ping-request]
-    (do (server/send! conn (pong m))
-        (server/close! conn))
+    [:status :ping-request] (last-pong! conn m)
     [:play :ping-request] (server/send! conn (pong m))
     [:login :hello] (hello! conn io cfg m)
-    [:login :login-acknowledged]
-    (do (server/set-conn-state! conn :configuration)
-        (start-configuration! conn))
+    [:login :login-acknowledged] (login-acknowledged! conn)
     [:configuration :client-information]
     (server/put! conn :settings (client-settings m))
     [:configuration :select-known-packs] (finish-configuration! conn)
