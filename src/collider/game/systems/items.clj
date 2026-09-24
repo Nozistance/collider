@@ -247,9 +247,9 @@
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
      :in-fluid? in-fluid? :stuck (if rest? (or st stuck) st)}))
 
-(defn- gone? [world e ^long age pos]
+(defn- gone? [world e ^long age]
   (or (>= age despawn-age)
-      (< (v/y pos) (chunk/void-y world))
+      (< (v/y (:pos e)) (chunk/void-y world))
       (not (pos? (double (:health e 1.0))))))
 
 (defn- needs-sync? [e s]
@@ -266,7 +266,7 @@
         s (settled (:chunks world) e (long eid) age)
         stuck' (:stuck s)
         delay' (delay-left e)]
-    (if (gone? world e age (:pos s))
+    (if (gone? world e age)
       [:remove-entity eid]
       [:merge-entity eid
        (cond-> {:pos          (:pos s)

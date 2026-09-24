@@ -53,7 +53,7 @@
         cz1 (bit-shift-right (+ (long cz) region-r) 4)
         [sy0 sy1] (section-range (long cy))]
     [cx0 cz0 sy0 (inc (- cx1 cx0)) (inc (- cz1 cz0))
-     (inc (- sy1 sy0))]))
+     (max 0 (inc (- sy1 sy0)))]))
 
 (defn- section-at [col ^long sy]
   (chunk/chunk-section col (+ sy chunk/section-offset)))
@@ -115,7 +115,9 @@
   (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
      (bit-and x 15)))
 
-(defn read-block ^long [^Region rg ^long x ^long y ^long z]
+(defn read-block
+  "Returns the block state at x y z in region rg, air outside it."
+  ^long [^Region rg ^long x ^long y ^long z]
   (let [ix (- (bit-shift-right x 4) (rg-cx0 rg))
         iz (- (bit-shift-right z 4) (rg-cz0 rg))
         iy (- (bit-shift-right y 4) (rg-sy0 rg))]

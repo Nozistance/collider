@@ -149,9 +149,11 @@
   (drift-deltas eid pos time vel (:stuck e) (stuck-now world pos)))
 
 (defn- expired? [world ^long time cell]
-  (or (> time max-time)
-      (and (> time 100)
-           (not (chunk/in-level? world (long (cell 1)))))))
+  (let [y (long (cell 1))]
+    (or (> time max-time)
+        (and (> time 100)
+             (or (<= y (chunk/level-min-y world))
+                 (> y (chunk/level-max-y world)))))))
 
 (defn- step-deltas [world eid e]
   (let [^Move mv (fall-move world e)

@@ -427,9 +427,9 @@
         hit (clip world eid (assoc e :left-owner? left?) d)
         at (if hit (point (:pos e) d (:t hit)) (v/+ (:pos e) d))]
     (cond
+      (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       hit (into [[:remove-entity eid]]
                 (hit-deltas world eid e at hit))
-      (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       :else [[:merge-entity eid (moved e at d left?)]])))
 
 (defn- cloud-box [e ^double r]
@@ -472,6 +472,7 @@
 (defn- cloud-deltas [world eid e]
   (let [age (inc (long (:age e 0))) wait (long (:wait-time e))]
     (cond
+      (< (v/y (:pos e)) (chunk/void-y world)) [[:remove-entity eid]]
       (>= (- age wait) (long (:duration e))) [[:remove-entity eid]]
       (< age wait) [[:merge-entity eid {:age age :waiting? true}]]
       :else (cloud-active world eid e age))))
