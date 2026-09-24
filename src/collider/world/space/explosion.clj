@@ -141,36 +141,39 @@
         d3 (Math/sqrt (+ (* d0 d0) (* d1 d1) (* d2 d2)))]
     [(/ d0 d3) (/ d1 d3) (/ d2 d3)]))
 
-(defn- mark-hit [^booleans hit origin bx by bz]
-  (let [ix (- (long bx) (long (origin 0)))
-        iy (- (long by) (long (origin 1)))
-        iz (- (long bz) (long (origin 2)))]
-    (when (and (< -1 ix ray-w) (< -1 iy ray-w) (< -1 iz ray-w))
-      (aset hit (+ (* (+ (* ix ray-w) iy) ray-w) iz) true))))
+(defn- hit-index ^long [^long ix ^long iy ^long iz]
+  (if (and (< -1 ix ray-w) (< -1 iy ray-w) (< -1 iz ray-w))
+    (+ (* (+ (* ix ray-w) iy) ray-w) iz)
+    -1))
 
 (defn- ray-left ^double [^double f ^long st]
   (if (zero? st) f (- f (* (+ (block/resist st) 0.3) 0.3))))
 
-(defn- cast-ray [^Region rg ^booleans hit origin center dir f0]
-  (let [[cx cy cz] center
-        [d0 d1 d2] dir
-        d0 (double d0) d1 (double d1) d2 (double d2)]
-    (loop [f (double f0) x (double cx) y (double cy) z (double cz)]
-      (when (pos? f)
-        (let [bx (long (Math/floor x)) by (long (Math/floor y))
-              bz (long (Math/floor z))
-              st (read-block rg bx by bz)
-              f (ray-left f st)]
-          (when (and (pos? f) (pos? st))
-            (mark-hit hit origin bx by bz))
-          (recur (- f 0.22500001) (+ x (* d0 0.3))
-                 (+ y (* d1 0.3)) (+ z (* d2 0.3))))))))
+(defn- mark-hit [^bytes hit ^long i ^long st]
+  (when (>= i 0)
+    (aset hit i (byte (if (zero? st) 1 2)))))
+
+(defn- cast-ray [rg hit [ox oy oz] [cx cy cz] [d0 d1 d2] f0]
+  (let [d0 (double d0) d1 (double d1) d2 (double d2)
+        ox (long ox) oy (long oy) oz (long oz)]
+    (loop [f (double f0) x (double cx) y (double cy) z (double cz)
+           prev -1 st 0]
+      (let [by (long (Math/floor y))]
+        (when (and (pos? f) (<= chunk/min-y by chunk/max-y))
+          (let [bx (long (Math/floor x)) bz (long (Math/floor z))
+                i (hit-index (- bx ox) (- by oy) (- bz oz))
+                same? (and (>= i 0) (= i prev))
+                st (if same? st (read-block rg bx by bz))
+                f (ray-left f st)]
+            (when (and (pos? f) (not same?)) (mark-hit hit i st))
+            (recur (- f 0.22500001) (+ x (* d0 0.3))
+                   (+ y (* d1 0.3)) (+ z (* d2 0.3)) i st)))))))
 
 (defn- ray-power [power seed-h j k l]
   (* (double power)
      (+ 0.7 (* 0.6 (random/of-longs (long seed-h) j k l)))))
 
-(defn- cast-shell [rg ^booleans hit origin center power seed-h]
+(defn- cast-shell [rg ^bytes hit origin center power seed-h]
   (dotimes [j 16]
     (dotimes [k 16]
       (dotimes [l 16]
@@ -178,16 +181,20 @@
           (cast-ray rg hit origin center (ray-dir j k l)
                     (ray-power power seed-h j k l)))))))
 
-(defn- hit-positions [^booleans hit origin]
+(defn- hit-positions [^bytes hit origin ^long least]
   (let [ox (long (origin 0)) oy (long (origin 1))
         oz (long (origin 2))
         out (transient [])]
     (dotimes [ix ray-w]
       (dotimes [iy ray-w]
         (dotimes [iz ray-w]
-          (when (aget hit (+ (* (+ (* ix ray-w) iy) ray-w) iz))
+          (when (>= (aget hit (+ (* (+ (* ix ray-w) iy) ray-w) iz))
+                    least)
             (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
     (persistent! out)))
+
+(defn- hit-count ^long [^bytes hit]
+  (areduce hit i n 0 (if (zero? (aget hit i)) n (inc n))))
 
 (defn- ray-origin [^double cx ^double cy ^double cz]
   [(- (long (Math/floor cx)) region-r)
@@ -195,14 +202,17 @@
    (- (long (Math/floor cz)) region-r)])
 
 (defn affected-blocks
-  "Returns the positions the blast of power reaches from the center."
+  "Returns what the blast of power reaches from the center: the
+  blocks, in :blocks, the count of cells air included, in :count,
+  and every cell, air included, in :cells, a delay."
   [^Region rg [cx cy cz] power seed]
   (let [center [(double cx) (double cy) (double cz)]
         origin (ray-origin (double cx) (double cy) (double cz))
-        hit (boolean-array (* ray-w ray-w ray-w))]
+        hit (byte-array (* ray-w ray-w ray-w))]
     (cast-shell rg hit origin center (double power)
                 (long (hash seed)))
-    (hit-positions hit origin)))
+    {:blocks (hit-positions hit origin 2) :count (hit-count hit)
+     :cells (delay (hit-positions hit origin 1))}))
 
 (defn- path-probe [^Region rg cx cy cz]
   (let [^objects grid (rg-grid rg)

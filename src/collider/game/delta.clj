@@ -89,6 +89,7 @@
    [:cat [:map [:center Vec3] [:power number?]
           [:source :keyword] [:fire? :boolean]
           [:by {:optional true} [:maybe Eid]]
+          [:with {:optional true} :keyword]
           [:later {:optional true} :map]]]})
 
 (def entity-deltas

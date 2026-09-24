@@ -7,6 +7,7 @@
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.env.attribute :as attribute]
             [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
@@ -17,6 +18,13 @@
 
 (defn- block-at [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
+
+(defn bed-rule [world]
+  (let [r (attribute/bed-rule (:dim world))
+        dark? (daynight/dark-outside? world)]
+    (assoc r
+           :sleep? (attribute/allows? (:can-sleep r) dark?)
+           :spawn? (attribute/allows? (:can-set-spawn r) dark?))))
 
 (defn sleepers-needed ^long [world]
   (let [players (count (state/player-entries world))
@@ -84,10 +92,10 @@
           [(announcement world (- (count asleep) (count waking)))]))
 
 (defn- sleep-deltas [world]
-  (let [dark? (daynight/dark? (:time-of-day world 0))
+  (let [sleep? (:sleep? (bed-rule world))
         asleep (sleepers world)
         needed (sleepers-needed world)
-        up? (fn [[_ e]] (or (:leave-bed? e) (not dark?)))
+        up? (fn [[_ e]] (or (:leave-bed? e) (not sleep?)))
         waking (filter up? asleep)]
     (cond
       (and (>= (count asleep) needed)

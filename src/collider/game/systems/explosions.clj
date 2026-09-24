@@ -79,16 +79,21 @@
             (transient (i/int-map))
             entries)))
 
-(defn- cell-keys [^long x ^long y ^long z]
-  (for [dx [-1 0 1] dy [-1 0 1] dz [-1 0 1]]
-    (kb-cell-key (+ x (* dx kb-cell)) (+ y (* dy kb-cell))
-                 (+ z (* dz kb-cell)))))
+(defn- cell-keys [^long x ^long y ^long z ^long n]
+  (let [ds (range (- n) (inc n))]
+    (for [dx ds dy ds dz ds]
+      (kb-cell-key (+ x (* (long dx) kb-cell))
+                   (+ y (* (long dy) kb-cell))
+                   (+ z (* (long dz) kb-cell))))))
 
-(defn- kb-candidates [index [cx cy cz]]
+(defn- cell-reach ^long [power]
+  (long (Math/ceil (/ (* 2.0 (double power)) kb-cell))))
+
+(defn- kb-candidates [index [cx cy cz] power]
   (let [x (long (Math/floor (double cx)))
         y (long (Math/floor (double cy)))
         z (long (Math/floor (double cz)))]
-    (->> (cell-keys x y z)
+    (->> (cell-keys x y z (cell-reach power))
          (map (fn [k] (get index k)))
          (apply concat)
          (sort-by first))))
@@ -110,7 +115,8 @@
 
 (defn- blast-one [[motions ds] [oid o] kb dmg]
   (cond
-    (= :player (:type o)) [(assoc motions oid kb) ds]
+    (= :player (:type o))
+    [(cond-> motions (not (:flying o)) (assoc oid kb)) ds]
     (item-dies? o dmg) [motions (conj ds [:remove-entity oid])]
     :else [motions (pushed-deltas ds oid o kb dmg)]))
 
@@ -123,7 +129,7 @@
                  (if-let [[kb dmg] (knockback read center o p power)]
                    (blast-one acc entry kb dmg)
                    acc)))]
-    (reduce step [{} []] (kb-candidates index center))))
+    (reduce step [{} []] (kb-candidates index center power))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1])
@@ -169,12 +175,17 @@
        (not (contains? gone (below-pos p)))
        (block/solid-render? below)))
 
+(defn- fire-on ^long [^long below]
+  (if (block/tagged? below "soul_fire_base_blocks")
+    (block/state :soul-fire)
+    (fire/fire-state 0)))
+
 (defn- fire-cells [rg affected gone seed]
   (into []
         (keep (fn [p]
                 (let [below (below-block rg p)]
                   (when (fire-here? rg gone p seed below)
-                    [p (fire/fire-state 0)]))))
+                    [p (fire-on below)]))))
         affected))
 
 (defn- chain-cells [rg affected gone primed tnt?]
@@ -191,11 +202,11 @@
         read (fn [id] (chunks/read-absent world id))]
     (explosion/block-reader (:chunks world) pos read)))
 
-(defn- break-cells [world rg affected gone primed source]
+(defn- break-cells [world rg cells gone primed source]
   (if (interacts? world source)
     (let [tnt? (get-in world [:rules :tnt-explodes] true)]
-      [(chain-cells rg affected gone primed tnt?)
-       (into [] (comp (remove primed) (remove gone)) affected)])
+      [(chain-cells rg cells gone primed tnt?)
+       (into [] (comp (remove primed) (remove gone)) cells)])
     [[] []]))
 
 (defn- destroy-delta [destroy]
@@ -208,7 +219,7 @@
   (map (fn [p] (chain-delta p seed)) chains))
 
 (defn- explosion-msg [{:keys [center power affected motions seed]}]
-  (let [n (count affected)
+  (let [n (:count affected)
         pitch (explosion-pitch seed)]
     (out/all (out/explosion center power n motions pitch))))
 
@@ -225,13 +236,15 @@
 (defn- blast-of [world rg index req gone primed]
   (let [{:keys [center power source fire? by later]} req
         power (double (or power tnt/power))
-        seed [(:tick world) by]
+        seed [(:tick world) (or by center)]
         affected (explosion/affected-blocks rg center power seed)
         [chains destroy]
-        (break-cells world rg affected gone primed source)
+        (break-cells world rg (:blocks affected) gone primed source)
         gone' (into gone destroy)
         [motions pushes] (blast-deltas rg index center power later)
-        fires (if fire? (fire-cells rg affected gone' seed) [])]
+        fires (if fire?
+                (fire-cells rg @(:cells affected) gone' seed)
+                [])]
     {:center center :power power :seed seed :source source
      :affected affected :destroy destroy :chains chains
      :fires fires :motions motions :pushes pushes :gone gone'}))
