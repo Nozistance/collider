@@ -3,7 +3,6 @@
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support])
   (:import (clojure.lang PersistentQueue)))
 
@@ -61,8 +60,7 @@
 
 (defn- kelp-due [chunks p ctx]
   (or (seq ((:due support/rule) chunks p nil))
-      (concat (kelp-grown chunks p ctx)
-              (liquid/update-cell chunks p ctx))))
+      (kelp-grown chunks p ctx)))
 
 (def kelp-rule
   {:name   :kelp

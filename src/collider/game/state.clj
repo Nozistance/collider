@@ -10,12 +10,14 @@
             [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.random :as random]
+            [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.climb :as climb]
             [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.light :as light]
             [collider.world.rules :as rules]
             [collider.world.space.spawn :as spawn]
@@ -218,32 +220,37 @@
     (chunk/chunks-get-block chunks p)
     0))
 
-(defn- wake-tick [chunks dim tick p old self?]
-  (let [st (block-or-zero chunks p)]
-    (when-not (zero? st)
-      (rules/wake-tick chunks dim st tick p old self?))))
-
 (defn- shifted [[x y z] [dx dy dz]]
   [(+ (long x) (long dx))
    (+ (long y) (long dy))
    (+ (long z) (long dz))])
 
-(defn- schedule-at [bt at floor p]
-  (update bt (max (long at) (long floor))
-          (fnil conj (i/int-set))
-          (chunk/block-pos->id p)))
+(defn- schedule-at [w k at floor p ty]
+  (if at
+    (update w k schedule/add (max (long at) (long floor))
+            (chunk/block-pos->id p) ty)
+    w))
 
-(defn- schedule-around [bt tick floor chunks dim [pos old _]]
-  (reduce
-    (fn [bt d]
-      (let [p (shifted pos d)
-            at (wake-tick chunks dim tick p old (= [0 0 0] d))]
-        (if at (schedule-at bt at floor p) bt)))
-    bt
-    around))
+(defn- woken [w chunks st tick floor dim p old self?]
+  (let [at (rules/wake-tick chunks dim st tick p old self?)
+        fat (rules/fluid-wake-tick chunks dim st tick p old self?)]
+    (-> w
+        (schedule-at :block-ticks at floor p (block/block-of st))
+        (schedule-at :fluid-ticks fat floor p (liquid/fluid-of st)))))
 
-(defn- schedule-updates [bt tick floor chunks dim changed]
-  (reduce #(schedule-around %1 tick floor chunks dim %2) bt changed))
+(defn- schedule-one [w tick floor dim pos old d]
+  (let [p (shifted pos d)
+        chunks (:chunks w)
+        st (block-or-zero chunks p)]
+    (if (zero? st)
+      w
+      (woken w chunks st tick floor dim p old (= [0 0 0] d)))))
+
+(defn- schedule-around [w tick floor dim [pos old _]]
+  (reduce #(schedule-one %1 tick floor dim pos old %2) w around))
+
+(defn- schedule-updates [w tick floor dim changed]
+  (reduce #(schedule-around %1 tick floor dim %2) w changed))
 
 (defn- kind-changed? [old st]
   (and (be/kind old)
@@ -297,13 +304,11 @@
   (let [tick (:tick w)
         next-tick (inc (long tick))
         [chunks' events] (with-derived w tick real)
-        dim (:dim w)
-        sched #(schedule-updates
-                 % base next-tick chunks' dim real)]
+        dim (:dim w)]
     (cond-> (-> w
                 (assoc :chunks chunks')
                 (drop-block-entities real)
-                (update :block-ticks sched))
+                (schedule-updates base next-tick dim real))
       (seq events)
       (update :block-events add-block-events events))))
 
@@ -417,21 +422,14 @@
                (if (schema/chunk-entity? id e) (dissoc es eid) es))
              es es))
 
-(defn- drop-ticks [bt id]
-  (into (i/int-map)
-        (keep (fn [[at bids]]
-                (let [keep? (remove #(schema/chunk-tick? id %))
-                      left (into (i/int-set) keep? bids)]
-                  (when (seq left) [at left]))))
-        bt))
-
 (defn- unloaded [w id]
   (let [id (long id)]
     (-> w
         (update :chunks dissoc id)
         (update :block-entities dissoc id)
         (update :entities drop-entities id)
-        (update :block-ticks drop-ticks id)
+        (update :block-ticks schedule/dropped id)
+        (update :fluid-ticks schedule/dropped id)
         (update :unknown dissoc id)
         (update :stored (fnil conj (i/int-set)) id))))
 
@@ -835,16 +833,6 @@
 (defn- listed [w add drop]
   (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
 
-(defn- flush-ticks [w t parked]
-  (update w :block-ticks
-          (fn [bt]
-            (let [old? (take-while #(<= (long %) (long t)))
-                  stale (into [] old? (keys bt))
-                  bt (reduce dissoc bt stale)]
-              (cond-> bt
-                      (seq parked)
-                      (assoc t (into (i/int-set) parked)))))))
-
 (def ^:const max-resist 20)
 
 (defn- knock-back [e ^double dx ^double dz]
@@ -938,10 +926,15 @@
         (assoc-in [:entities eid] (entity/of spec))
         (assoc :next-eid (inc eid)))))
 
+(defn- block-tick [w at id]
+  (let [p (chunk/id->block-pos id)
+        st (block-or-zero (:chunks w) p)]
+    (update w :block-ticks schedule/add at id (block/block-of st))))
+
 (defn- scheduled [w at-ids]
-  (let [add (fn [bt [at ids]]
-              (update bt (long at) (fnil into (i/int-set)) ids))]
-    (update w :block-ticks #(reduce add % at-ids))))
+  (reduce (fn [w [at ids]]
+            (reduce #(block-tick %1 at %2) w ids))
+          w at-ids))
 
 (defn- rechecked [w pos at]
   (if at
@@ -987,7 +980,8 @@
    :set-blocks (fn [w [_ changes base]]
                  (let [at (long (or base (:tick w)))]
                    (apply-set-blocks w changes at)))
-   :ticks-flushed (fn [w [_ t parked]] (flush-ticks w t parked))
+   :ticks-flushed (fn [w [_ k t parked]]
+                    (update w k schedule/flushed t parked))
    :schedule-ticks (fn [w [_ at-ids]] (scheduled w at-ids))
    :container-recheck (fn [w [_ pos at]] (rechecked w pos at))
    :shulker-anim (fn [w [_ pos a]] (shulker-animated w pos a))

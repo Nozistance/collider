@@ -78,6 +78,7 @@
              [#'daynight/daynight]
              [#'block-updates/block-updates
               #'dripleaf/dripleaf-tilt]
+             [#'block-updates/fluid-updates]
              [#'chunks/unloading
               #'random-tick/random-ticks
               #'weather-system/weather]

@@ -1,9 +1,9 @@
 (ns collider.game.systems.block.updates
   "Scheduled block ticks and their effects."
-  (:require [clojure.data.int-map :as i]
-            [collider.game.block.blockentity :as be]
+  (:require [collider.game.block.blockentity :as be]
             [collider.game.block.tnt :as tnt]
             [collider.game.out :as out]
+            [collider.game.schedule :as schedule]
             [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.items :as items]
@@ -23,15 +23,20 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- cell-changes [chunks ctx p]
-  (rules/cell-changes chunks (chunk/chunks-get-block chunks p)
-                      p ctx))
+(def ^:private lists
+  {:block-ticks {:type-of block/block-of :due rules/cell-changes}
+   :fluid-ticks {:type-of liquid/fluid-of :due rules/fluid-changes}})
+
+(defn- cell-changes [chunks ctx k p]
+  ((get-in lists [k :due])
+   chunks (chunk/chunks-get-block chunks p) p ctx))
 
 (defn- lww-changes
   "Returns the changes the ticking blocks ask for.
   There is at most one per block and the last change wins."
-  [chunks ctx cells]
-  (->> (mapcat #(cell-changes chunks ctx %) cells)
+  [chunks ctx k cells]
+  (->> cells
+       (mapcat #(cell-changes chunks ctx k %))
        (into (sorted-map) (map (fn [[pos st]] [pos [pos st]])))
        vals
        (into [])))
@@ -217,12 +222,6 @@
 (defn- ignite-deltas [world changes]
   (mapcat #(ignited world %) (burnt-tnt world changes)))
 
-(defn- due-ticks [world]
-  (let [t (long (:tick world))
-        due? (fn [[k _]] (<= (long k) t))]
-    (into (i/int-set) (comp (take-while due?) (mapcat val))
-          (:block-ticks world))))
-
 (defn- player-positions [world]
   (mapv (comp :pos val) (state/player-entries world)))
 
@@ -266,9 +265,15 @@
             (tilt-deltas world changes)
             (drip-fill-deltas world changes))))
 
-(defn- now-cells [active due]
-  (into [] (comp (filter #(state/active-id? active %))
-                 (map chunk/id->block-pos))
+(defn- still? [world k [id tys]]
+  (let [p (chunk/id->block-pos id)
+        st (chunk/chunks-get-block (:chunks world) p)]
+    (contains? tys ((get-in lists [k :type-of]) st))))
+
+(defn- now-cells [world k active due]
+  (into [] (comp (filter #(state/active-id? active (key %)))
+                 (filter #(still? world k %))
+                 (map (comp chunk/id->block-pos key)))
         due))
 
 (defn- parked-ids
@@ -277,34 +282,38 @@
   (let [chunks (:chunks world)
         loaded? #(contains? chunks (chunk/block-id-chunk %))
         skip? #(or (state/active-id? active %) (not (loaded? %)))]
-    (into [] (remove skip?) due)))
+    (into [] (comp (map key) (remove skip?)) due)))
 
 (defn- woken-ticks [world now changes]
   (merge-with into (again-schedule world now changes)
               (eyeblossom-schedules world changes)))
 
-(defn- due-deltas [world now parked changes]
+(defn- due-deltas [world k now parked changes]
   (let [t (long (:tick world))
-        woken (woken-ticks world now changes)]
-    (concat [[:ticks-flushed t parked]]
+        woken (when (= :block-ticks k)
+                (woken-ticks world now changes))]
+    (concat [[:ticks-flushed k t parked]]
             (when (seq woken) [[:schedule-ticks woken]])
             (when (seq changes) (change-deltas world now changes))
             (ignite-deltas world changes))))
 
-(defn- block-updates-deltas [world _events]
-  (let [due (due-ticks world)]
+(defn- ticks-deltas [world k]
+  (let [due (schedule/due (get world k) (:tick world))]
     (when (seq due)
       (let [active (state/ticking-chunks world)
-            now (now-cells active due)
+            now (now-cells world k active due)
             parked (parked-ids world active due)
             ctx (tick-ctx world)
-            changes (lww-changes (:chunks world) ctx now)]
-        (due-deltas world now parked changes)))))
+            changes (lww-changes (:chunks world) ctx k now)]
+        (due-deltas world k now parked changes)))))
 
 (defn block-updates
   "Runs the block ticks that are due."
-  [world d]
-  [#(block-updates-deltas world d)])
+  [world _d]
+  [#(ticks-deltas world :block-ticks)])
+
+(defn fluid-updates [world _d]
+  [#(ticks-deltas world :fluid-ticks)])
 
 (defn- final-records
   "Returns the last state of each block.

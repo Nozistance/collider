@@ -201,7 +201,7 @@
        (written (put-meta! store (meta-of snap))))))
 
 (def ^:private chunk-keys
-  [:chunks :entities :block-ticks :block-entities])
+  [:chunks :entities :block-ticks :fluid-ticks :block-entities])
 
 (def ^:private level-defaults
   (get-in schema/initial-world [:levels :overworld]))
@@ -209,7 +209,7 @@
 (defn- level-world-of [tick lm]
   (let [empty-parts (select-keys level-defaults chunk-keys)
         bare (dissoc lm :chunks :stored)
-        base (assoc (schema/level-of tick bare) :tick tick)
+        base (assoc (schema/level-of bare) :tick tick)
         start (merge empty-parts base)]
     (-> (reduce-kv schema/with-chunk start (:chunks lm))
         (dissoc :tick)
@@ -289,8 +289,7 @@
 (def ^:private clock-keys [:tick :time-ms :time-of-day])
 
 (defn- timeless [m]
-  (-> (apply dissoc m clock-keys)
-      (update :block-ticks #(into #{} (mapcat second) %))))
+  (apply dissoc m clock-keys))
 
 (defn- meta-changed? [a b]
   (not= (timeless a) (timeless b)))

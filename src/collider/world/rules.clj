@@ -1,6 +1,7 @@
 (ns collider.world.rules
   "Registry of the block rules and their tick hooks."
   (:require [collider.data :as data]
+            [collider.world.block :as block]
             [collider.world.blocks.composter :as composter]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
@@ -56,6 +57,10 @@
   (when-let [r (rule-for st)]
     ((:wake r) chunks dim tick pos old self?)))
 
+(defn fluid-wake-tick [chunks dim st tick pos old self?]
+  (when (block/liquid-class st)
+    (liquid/fluid-wake chunks dim tick pos old self?)))
+
 (defn again-tick
   "Returns the next tick the rule owning pos wants.
   It is asked after a tick that changed nothing. Returns nil
@@ -70,3 +75,7 @@
   [chunks st pos ctx]
   (when-let [r (rule-for st)]
     ((:due r) chunks pos ctx)))
+
+(defn fluid-changes [chunks st pos ctx]
+  (when (block/liquid-class st)
+    (liquid/update-cell chunks pos ctx)))

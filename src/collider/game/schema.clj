@@ -3,6 +3,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
+            [collider.game.schedule :as schedule]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather]))
@@ -15,46 +16,26 @@
   (and (not= :player (:type e))
        (= id (chunk/pos-chunk (:pos e)))))
 
-(defn chunk-tick?
-  "Returns true when the block with packed id bid lies in chunk id."
-  [^long id ^long bid]
-  (= id (chunk/block-id-chunk bid)))
-
 (defn- chunk-entities [w id t]
   (into {} (keep (fn [[eid e]]
                    (when (chunk-entity? id e)
                      [eid (entity/saved e t)])))
         (:entities w)))
 
-(defn- tick-positions [id bids]
-  (into [] (comp (filter #(chunk-tick? id %))
-                 (map chunk/id->block-pos))
-        bids))
-
-(defn- chunk-ticks [w ^long id]
-  (let [t (long (:tick w 0))]
-    (into [] (keep (fn [[at bids]]
-                     (let [ps (tick-positions id bids)]
-                       (when (seq ps) [(- (long at) t) ps]))))
-          (:block-ticks w))))
-
 (defn chunk-payload
   "Returns chunk id with what belongs to it.
   That is its block entities, the entities in it except players,
-  and its block ticks as delays from now."
+  and its block and fluid ticks as delays from now."
   [w id]
   (let [id (long id) t (long (:tick w 0))]
     {:chunk          (get (:chunks w) id)
      :block-entities (into {} (get-in w [:block-entities id]))
      :entities       (chunk-entities w id t)
-     :ticks          (chunk-ticks w id)}))
+     :block-ticks    (schedule/saved (:block-ticks w) id t)
+     :fluid-ticks    (schedule/saved (:fluid-ticks w) id t)}))
 
-(defn- ticks-back [bt ^long t ticks]
-  (reduce (fn [bt [dt ps]]
-            (update bt (+ t (max 1 (long dt)))
-                    (fnil into (i/int-set))
-                    (map chunk/block-pos->id ps)))
-          bt ticks))
+(defn- ticks-back [w k t saved]
+  (update w k schedule/restored t saved))
 
 (defn- entity-entry [t]
   (fn [[eid m]]
@@ -77,7 +58,7 @@
 (defn with-chunk
   "Returns w with the saved chunk id put back. Its block ticks come
   due after the delays they were saved with."
-  [w id {:keys [chunk block-entities entities ticks]}]
+  [w id {:keys [chunk block-entities entities] :as payload}]
   (let [id (long id)
         t (long (:tick w 0))
         es (keep (entity-entry t))
@@ -85,7 +66,8 @@
     (cond-> (-> w
                 (update :chunks assoc id chunk)
                 (update :entities into es entities)
-                (update :block-ticks ticks-back t ticks)
+                (ticks-back :block-ticks t (:block-ticks payload))
+                (ticks-back :fluid-ticks t (:fluid-ticks payload))
                 (update :loading disj id))
       (seq block-entities) (assoc-in [:block-entities id] bes))))
 
@@ -142,8 +124,8 @@
                         :scope :level}
    :entities           {:default (i/int-map) :load identity
                         :scope :level}
-   :block-ticks        {:default (i/int-map) :load identity
-                        :scope :level}
+   :block-ticks        {:default schedule/block-list :scope :level}
+   :fluid-ticks        {:default schedule/fluid-list :scope :level}
    :block-entities     {:default (i/int-map) :load identity
                         :scope :level}
    :stored             {:default (i/int-set) :scope :level}
@@ -234,12 +216,6 @@
                  :when (and store (= scope s))]
              [k (store (k w) w)])))
 
-(defn- rebase-ticks [tick w]
-  (let [t (long tick)
-        due (fn [[dt s]] [(+ t (long dt)) s])]
-    (update w :block-ticks
-            #(into (i/int-map) (map due) %))))
-
 (defn- loaded-of [table m]
   (into {} (for [[k {load :load default :default}] table
                  :when load]
@@ -251,10 +227,9 @@
   (loaded-of shared-table m))
 
 (defn level-of
-  "Returns the level keys of world a snapshot's level meta holds.
-  Its block ticks come due at their saved delay after tick."
-  [tick m]
-  (rebase-ticks tick (loaded-of level-table m)))
+  "Returns the level keys of world a snapshot's level meta holds."
+  [m]
+  (loaded-of level-table m))
 
 (def profile
   {:inventory    {:default {}}

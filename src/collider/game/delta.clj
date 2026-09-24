@@ -34,7 +34,7 @@
   {:set-blocks
    [:cat Records [:? :int]]
    :ticks-flushed
-   [:cat :int Coll]
+   [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
    :schedule-ticks
    [:cat [:map-of :int Coll]]
    :container-recheck

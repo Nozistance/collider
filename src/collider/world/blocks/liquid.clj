@@ -59,6 +59,13 @@
 (defn liquid-state ^long [cls ^long level]
   (+ (long (@base cls)) level))
 
+(defn fluid-of [st]
+  (when-let [cls (liquid-class st)]
+    (cond
+      (zero? (level st)) cls
+      (= :lava cls) :flowing-lava
+      :else :flowing-water)))
+
 (defn bucket->state [item]
   (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
 
@@ -502,14 +509,6 @@
 (defn- convert-neighbors [chunks cls p]
   (into [] (keep #(converted chunks cls p %)) convert-dirs))
 
-(defn mix-wake? [chunks pos]
-  (let [st (state-at chunks (pos 0) (pos 1) (pos 2))
-        cls (liquid-class st)]
-    (boolean
-      (and cls
-           (get-in liquids [cls :mix])
-           (touches-other? chunks cls pos)))))
-
 (defn- logged [traw]
   (let [traw (long traw)
         props (assoc (block/props-of traw) :waterlogged :true)]
@@ -603,12 +602,6 @@
        (* (long delay) (long decay-jitter))
        (long delay)))))
 
-(defn- side-states [chunks [x y z]]
-  (mapv (fn [[dx dz]]
-          (state-at chunks (+ (long x) (long dx)) y
-                    (+ (long z) (long dz))))
-        horiz))
-
 (def ^:private ^:table basalt-state (delay (block/state :basalt)))
 
 (def ^:private ^:table soul-soil-state
@@ -616,30 +609,24 @@
 
 (def ^:private ^:table blue-ice-state (delay (block/state :blue-ice)))
 
-(defn- basalt? [around below-raw]
-  (and (= (long below-raw) (long @soul-soil-state))
-       (some #(= (long %) (long @blue-ice-state)) around)))
+(def ^:private mix-dirs
+  [[0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
 
-(defn- mixed-state [cls mix st above sides below-raw]
-  (when mix
-    (let [around (cons above sides)]
-      (cond
-        (some #(other-class? cls %) around)
-        (mix-product mix (level st))
-        (basalt? around below-raw) @basalt-state
-        :else nil))))
+(defn- mixed-by [chunks cls mix st soul? p d]
+  (let [ns (shifted chunks p d)]
+    (cond
+      (other-class? cls ns) (mix-product mix (level st))
+      (and soul? (= (long ns) (long @blue-ice-state)))
+      @basalt-state)))
 
-(defn- cell-mixed [chunks mix cls st [x y z :as p]]
-  (let [above (shifted chunks p [0 1 0])
-        sides (side-states chunks p)
-        below-raw (raw-at chunks x (dec (long y)) z)]
-    (mixed-state cls mix st above sides below-raw)))
-
-(defn- solidified [chunks [x y z :as p]]
+(defn- mixed [chunks [x y z :as p]]
   (let [st (state-at chunks x y z)
-        cls (liquid-class st)]
-    (when-let [mix (and cls (get-in liquids [cls :mix]))]
-      (cell-mixed chunks mix cls st p))))
+        cls (liquid-class st)
+        mix (get-in liquids [cls :mix])
+        below (raw-at chunks x (dec (long y)) z)
+        soul? (= (long below) (long @soul-soil-state))]
+    (when (and mix (block/liquid? st))
+      (some #(mixed-by chunks cls mix st soul? p %) mix-dirs))))
 
 (defn- with-sides [p]
   (cons p (map #(mapv + p %) horiz3+)))
@@ -649,7 +636,7 @@
         (comp (mapcat with-sides)
               (distinct)
               (keep (fn [p]
-                      (when-let [st (solidified chunks p)] [p st]))))
+                      (when-let [st (mixed chunks p)] [p st]))))
         positions))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
@@ -720,7 +707,7 @@
                   (spread env p st')))))
 
 (defn update-cell
-  "Returns the changes of the liquid at p on its block tick.
+  "Returns the changes of the liquid at p on its fluid tick.
   ctx gives the dimension and the game rules."
   [chunks [x y z :as p] ctx]
   (let [st (state-at chunks x y z)
@@ -728,9 +715,7 @@
     (when cls
       (let [table (liquids-in (:dim ctx))
             env (flow-env chunks cls table (:rules ctx))]
-        (or (when-let [mixed (cell-mixed chunks (:mix env) cls st p)]
-              [[p mixed]])
-            (cell-flowed chunks env cls p st))))))
+        (cell-flowed chunks env cls p st)))))
 
 (defn- ground ^long [raw] (long (max 0 (long raw))))
 
@@ -797,17 +782,21 @@
 (defn- delay-of ^long [dim st]
   (long (get-in (liquids-in dim) [(liquid-class st) :delay])))
 
-(defn- wake [chunks dim tick p old self?]
+(defn fluid-wake [chunks dim tick p old self?]
   (let [st (chunk/chunks-get-block chunks p)]
-    (if (mix-wake? chunks p)
-      (inc (long tick))
-      (+ (long tick)
-         (if self?
-           (update-delay dim old st tick p)
-           (delay-of dim st))))))
+    (+ (long tick)
+       (if self?
+         (update-delay dim old st tick p)
+         (delay-of dim st)))))
+
+(defn- mix-wake [chunks _dim tick p _old _self?]
+  (when (mixed chunks p) (inc (long tick))))
+
+(defn- mix-due [chunks p _ctx]
+  (when-let [st (mixed chunks p)] [[p st]]))
 
 (def rule
   {:name   :liquid
-   :match? (fn [_chunks st _p] (some? (liquid-class st)))
-   :wake   wake
-   :due    update-cell})
+   :match? (fn [_chunks st _p] (block/liquid? (long st)))
+   :wake   mix-wake
+   :due    mix-due})
