@@ -10,9 +10,16 @@
 
 (defn except [eid msg] [:fx (assoc msg :except eid)])
 
+(defn everyone
+  "Returns msg as the server's effect: every player gets it,
+  whatever level they are in."
+  [msg]
+  [:fx (assoc msg :dim nil)])
+
 (defn load-chunk [id] {:msg :load-chunk :id id})
 
-(defn store-chunk [id payload] {:msg :store-chunk :id id :payload payload})
+(defn store-chunk [id payload]
+  {:msg :store-chunk :id id :payload payload})
 
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
@@ -77,7 +84,8 @@
   ([slots carried] {:msg :inventory :slots slots :carried carried}))
 
 (defn suggestions [id start length matches]
-  {:msg :suggestions :id id :start start :length length :matches (vec matches)})
+  {:msg :suggestions :id id :start start :length length
+   :matches (vec matches)})
 
 (defn system-chat [runs]
   {:msg :system-chat :runs runs})
@@ -116,13 +124,15 @@
 (defn move-look
   "Returns the effect that an entity moved a short way and turned."
   [eid dx dy dz yaw pitch on-ground]
-  {:msg :move-look :eid eid :dx dx :dy dy :dz dz :yaw yaw :pitch pitch :on-ground on-ground})
+  {:msg :move-look :eid eid :dx dx :dy dy :dz dz :yaw yaw
+   :pitch pitch :on-ground on-ground})
 
 (defn look [eid yaw pitch on-ground]
   {:msg :look :eid eid :yaw yaw :pitch pitch :on-ground on-ground})
 
 (defn sync-pos [eid pos yaw pitch on-ground]
-  {:msg :sync-pos :eid eid :pos pos :yaw yaw :pitch pitch :on-ground on-ground})
+  {:msg :sync-pos :eid eid :pos pos :yaw yaw :pitch pitch
+   :on-ground on-ground})
 
 (defn head-look [eid yaw]
   {:msg :head-look :eid eid :yaw yaw})
@@ -158,7 +168,8 @@
            source (assoc :source source))))
 
 (defn particles [kind state pos count speed]
-  {:msg :particles :kind kind :state state :pos pos :count count :speed (double speed)})
+  {:msg :particles :kind kind :state state :pos pos :count count
+   :speed (double speed)})
 
 (defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
@@ -215,13 +226,14 @@
 
 (defn level-event
   ([event pos] (level-event event pos 0))
-  ([event pos data] {:msg :level-event :event event :pos pos :data data}))
+  ([event pos data]
+   {:msg :level-event :event event :pos pos :data data}))
 
 (defn sign-editor [pos front?]
   {:msg :sign-editor :pos pos :front? (boolean front?)})
 
 (defn block-event
-  "Returns the effect of a block moving in place, such as a chest lid."
+  "Returns the effect of a block moving in place, like a chest lid."
   [pos action param]
   {:msg :block-event :pos pos :action action :param param})
 
@@ -229,10 +241,12 @@
   {:msg :open-screen :container container :menu menu :title title})
 
 (defn container-content [container state-id items carried]
-  {:msg :container-content :container container :state-id state-id :items (vec items) :carried carried})
+  {:msg :container-content :container container :state-id state-id
+   :items (vec items) :carried carried})
 
 (defn container-slot [container state-id slot stack]
-  {:msg :container-slot :container container :state-id state-id :slot slot :stack stack})
+  {:msg :container-slot :container container :state-id state-id
+   :slot slot :stack stack})
 
 (defn container-data
   "Returns the effect that a value an open menu shows has changed."

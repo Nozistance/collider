@@ -7,6 +7,7 @@
             [collider.data :as data]
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
+            [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
             [collider.log :as log]
@@ -158,21 +159,27 @@
   (or (entity-class kind)
       (when (entity/thrown-types kind) :throwable-item-projectile)))
 
+(defn- sheep-fields [meta]
+  (cond-> (animal-fields meta)
+    (contains? meta :color) (assoc :wool (color-byte meta))))
+
+(defn- mooshroom-fields [meta]
+  (cond-> (animal-fields meta)
+    (contains? meta :variant) (assoc :type (long (:variant meta)))))
+
+(defn- falling-fields [meta]
+  (cond-> {}
+    (contains? meta :start) (assoc :start-pos (:start meta))))
+
 (defn- entity-fields [kind meta]
   (case kind
     :player (player-fields meta)
     :cow (cow-fields meta)
-    :sheep (cond-> (animal-fields meta)
-                   (contains? meta :color)
-                   (assoc :wool (color-byte meta)))
-    :mooshroom (cond-> (animal-fields meta)
-                       (contains? meta :variant)
-                       (assoc :type (long (:variant meta))))
+    :sheep (sheep-fields meta)
+    :mooshroom (mooshroom-fields meta)
     :item (merge (common-fields meta) (stack-fields meta))
     :tnt (tnt-fields meta)
-    :falling-block (cond-> {}
-                     (contains? meta :start)
-                     (assoc :start-pos (:start meta)))
+    :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)
     (stack-fields meta)))
 
@@ -454,12 +461,9 @@
     (filterv #(in-sound-range? world (:pos m) (:volume m) %) ps)
     :particles
     (filterv #(in-particle-range? world (:pos m) %) ps)
+    :explosion
+    (filterv #(in-earshot? world (:center m) %) ps)
     ps))
-
-(defn- explosion-packets [world ps m]
-  (for [eid ps
-        :when (in-earshot? world (:center m) eid)]
-    [eid (explode-packet m eid)]))
 
 (defn- chat-text [m]
   (str "<" (:name m) "> " (text-of (:runs m))))
@@ -749,6 +753,32 @@
         p (join-packets world (:to m))]
     [(:to m) p]))
 
+(def ^:private home (first schema/dims))
+
+(def ^:private everyone
+  #{:time :rain-started :rain-stopped :player-chat :system-chat
+    :tab-add :tab-remove :tab-latency :tab-header :default-spawn
+    :game-rules})
+
+(defn- sight-of
+  "Returns what a render call needs of world: every level, the
+  dimension of each player and the players of each level."
+  [world]
+  (let [ps (players world)
+        dim-of #(or (state/dim-of world %) home)
+        of (into {} (map (fn [p] [p (dim-of p)])) ps)]
+    {:ps     ps
+     :of     of
+     :by-dim (group-by of ps)
+     :levels (into {} (map (fn [d] [d (state/level world d)]))
+                   schema/dims)}))
+
+(defn- level-of [sight dim]
+  (get (:levels sight) (or dim home)))
+
+(defn- own-level [sight eid]
+  (level-of sight (get (:of sight) eid)))
+
 (defn- forgotten [deltas pid]
   (for [[tag _ _ gone] (get deltas pid)
         :when (= :tracking tag)
@@ -758,54 +788,77 @@
 (defn- add-viewer [a eid pid]
   (assoc! a eid (conj (get a eid []) pid)))
 
-(defn- viewer-index [world deltas ps]
+(defn- viewer-index [sight deltas]
   (persistent!
     (reduce (fn [acc pid]
-              (let [seen (get-in world [:entities pid :tracking])
+              (let [lv (own-level sight pid)
+                    seen (get-in lv [:entities pid :tracking])
                     all (concat seen (forgotten deltas pid))]
                 (reduce (fn [a eid] (add-viewer a eid pid))
                         acc all)))
             (transient (i/int-map))
-            ps)))
+            (:ps sight))))
 
 (def ^:private entity-msgs
   #{:move :move-look :look :sync-pos :head-look :velocity :meta
     :equipment :animation :status :collect})
 
-(defn- recipients [world ps viewers m]
+(defn- level-audience [sight dim m]
+  (ranged-recipients (level-of sight dim)
+                     (get (:by-dim sight) dim []) m))
+
+(defn- audience
+  "Returns the players an effect m without an address reaches.
+  A level's effect stays in its level, the server's reaches every
+  level, and some kinds reach everyone whatever their level."
+  [sight m]
+  (let [dim (:dim m)]
+    (cond (everyone (:msg m)) (:ps sight)
+          (some? dim) (level-audience sight dim m)
+          :else (into [] (mapcat #(level-audience sight % m))
+                      schema/dims))))
+
+(defn- recipients [sight viewers m]
   (cond
     (:to m) [(:to m)]
     (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
     :else
-    (let [base (ranged-recipients world ps m)]
+    (let [base (audience sight m)]
       (if (:except m) (remove #{(:except m)} base) base))))
 
-(defn- entity-delta-packets [world deltas]
+(defn- entity-delta-packets [sight deltas]
   (for [[eid ds] deltas
+        :let [lv (own-level sight eid)]
         d ds
         p (case (first d)
-            :chunks-sent (chunk-packets world d)
-            :tracking (tracking-packets world d)
+            :chunks-sent (chunk-packets lv d)
+            :tracking (tracking-packets lv d)
             nil)]
     [eid p]))
 
-(defn- msg-packets [world ps viewers m]
+(defn- explosion-packets [sight m]
+  (for [eid (audience sight m)]
+    [eid (explode-packet m eid)]))
+
+(defn- msg-packets [sight viewers m]
   (if (= :explosion (:msg m))
-    (explosion-packets world ps m)
-    (let [pkts (fx-packets world m)]
+    (explosion-packets sight m)
+    (let [pkts (fx-packets (level-of sight (:dim m)) m)]
       (when (seq pkts)
-        (for [eid (recipients world ps viewers m)
+        (for [eid (recipients sight viewers m)
               p pkts]
           [eid p])))))
 
-(defn render [world ^Deltas deltas]
-  (let [world (state/level world :overworld)
-        ps (players world)
+(defn render
+  "Returns [eid packet] for every player from the world after a
+  tick and the deltas of that tick."
+  [world ^Deltas deltas]
+  (let [sight (sight-of world)
         es (deltas/entities-of deltas)
-        viewers (delay (viewer-index world es ps))]
+        viewers (delay (viewer-index sight es))]
     (concat
       (join-bursts world deltas)
-      (entity-delta-packets world (deltas/entities-of deltas))
-      (mapcat (fn [m] (msg-packets world ps viewers m))
+      (entity-delta-packets sight es)
+      (mapcat (fn [m] (msg-packets sight viewers m))
               (deltas/out-of deltas))
-      (forget-packets (deltas/entities-of deltas)))))
+      (forget-packets es))))

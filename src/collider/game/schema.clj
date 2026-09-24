@@ -4,7 +4,8 @@
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
 
@@ -98,11 +99,14 @@
         (for [[_ e] (:entities world) :when (named-player? e)]
           [(:name e) (profile-of e)])))
 
+(defn- wet? [world]
+  (and (:raining? world) (weather/can-have-weather? (:dim world))))
+
 (defn- store-rain-level [_ world]
-  (if (:raining? world) 1.0 0.0))
+  (if (wet? world) 1.0 0.0))
 
 (defn- store-thunder-level [_ world]
-  (if (and (:raining? world) (:thundering? world)) 1.0 0.0))
+  (if (and (wet? world) (:thundering? world)) 1.0 0.0))
 
 (defn- store-long [v _] (long (or v 0)))
 

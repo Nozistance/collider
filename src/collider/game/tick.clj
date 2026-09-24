@@ -98,15 +98,9 @@
   in each level. They see the players of every level."
   #{#'players/player-list #'daynight/daynight})
 
-(def only-in
-  "The dimensions a level system runs in, when not in all."
-  {#'weather-system/weather #{:overworld}})
-
 (def dims
   "The dimensions the tick runs, in a fixed order."
   schema/dims)
-
-(def ^:private dim-set (set dims))
 
 (def ^:private home (first dims))
 
@@ -140,8 +134,9 @@
   #(deltas/with-dim (deltas/run [(fn [] (s view d))]) nil))
 
 (defn- job [lv d server dim s]
-  (cond (server-systems s) (when (= home dim) (server-job s @server))
-        (contains? (get only-in s dim-set) dim) #(s lv d)))
+  (if (server-systems s)
+    (when (= home dim) (server-job s @server))
+    #(s lv d)))
 
 (defn- level-deltas [world ds server phase dim]
   (if (asleep? world dim)
