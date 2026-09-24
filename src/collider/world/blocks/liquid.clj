@@ -167,6 +167,12 @@
       1.0
       (own-height (state-at chunks x y z)))))
 
+(defn surface [chunks cls [x y z :as c]]
+  (let [st (state-at chunks x y z)]
+    (when (and (pos? st) (= cls (liquid-class st)))
+      (let [h (float (height-in chunks cls c))]
+        (double (float (+ (double (float y)) (double h))))))))
+
 (def ^:private ^:const fluid-margin
   "How far the fluid box of a body is shrunk on every side."
   0.001)

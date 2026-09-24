@@ -122,7 +122,7 @@
     (->Track [(double x) (double y) (double z)]
              (angle yaw) (angle pitch) (angle (or (:head-yaw e) yaw))
              (boolean on-ground)
-             (metadata e)
+             (or (:kept-mdata e) (metadata e))
              (equipment-stacks e)
              (:vel e)
              0

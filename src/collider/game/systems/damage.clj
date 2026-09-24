@@ -10,6 +10,7 @@
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.env.weather :as weather]
             [collider.world.phys :as phys]
             [collider.game.block.menu :as menu]
             [collider.game.systems.containers :as containers]
@@ -320,13 +321,104 @@
               (ignite-deltas eid fire wet? lava-damage lava-seconds))
             (douse-deltas eid e fire wet?))))
 
+(def ^:private ^:const fire-rest -20)
+
+(def ^:private ^:const inside-margin 1.0E-5)
+
+(def ^:private ^:const fluid-slack 1.0E-7)
+
+(defn- capped ^long [^long f] (min f 1))
+
+(defn- cell-span [^double lo ^double hi]
+  (range (long (Math/floor (+ lo inside-margin)))
+         (inc (long (Math/floor (- hi inside-margin))))))
+
+(defn- inside-cells [e]
+  (let [p (:pos e)
+        [half height] (box-of e)
+        h (double half)
+        x (v/x p) y (v/y p) z (v/z p)]
+    (for [cx (cell-span (- x h) (+ x h))
+          cy (cell-span y (+ y (double height)))
+          cz (cell-span (- z h) (+ z h))]
+      [cx cy cz])))
+
+(defn- in-fluid? [chunks e cls c]
+  (when-let [top (liquid/surface chunks cls c)]
+    (< (v/y (:pos e)) (- (double top) fluid-slack))))
+
+(defn- cell-state ^long [chunks [x y z]]
+  (chunk/block-state chunks x y z))
+
+(defn- contact [world e]
+  (let [chunks (:chunks world)
+        cs (inside-cells e)
+        of (fn [pred] (boolean (some pred cs)))]
+    {:fire? (of #(block/fire? (cell-state chunks %)))
+     :lava? (of #(in-fluid? chunks e :lava %))
+     :water? (of #(in-fluid? chunks e :water %))
+     :snow (filterv #(= :powder-snow
+                        (block/type-of (cell-state chunks %)))
+                    cs)}))
+
+(defn- rained-on? [world e]
+  (let [p (:pos e)
+        [_ height] (box-of e)
+        x (long (Math/floor (v/x p)))
+        z (long (Math/floor (v/z p)))
+        top (long (Math/floor (+ (v/y p) (double height))))
+        rain? #(weather/raining-at? world (:chunks world) %)]
+    (or (rain? [x (long (Math/floor (v/y p))) z]) (rain? [x top z]))))
+
+(defn- fire-touched ^long [^long f]
+  (let [f (if (neg? f) (inc f) (capped (inc f)))]
+    (if (neg? f)
+      f
+      (capped (max f (* ticks-per-second fire-seconds))))))
+
+(defn- lit-by ^long [^long f c]
+  (let [f (if (:fire? c) (fire-touched f) f)]
+    (if (:lava? c)
+      (capped (max f (* ticks-per-second lava-seconds)))
+      f)))
+
+(defn- player-fire [world e c]
+  (let [f0 (long (or (:fire e) 0))
+        f1 (if (pos? f0) (capped (dec f0)) f0)
+        lit (lit-by f1 c)
+        wet? (or (:water? c) (seq (:snow c)) (rained-on? world e))
+        f (if wet? (min 0 lit) lit)]
+    [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f)]))
+
+(defn- melt-effect [chunks c]
+  (out/all (out/break-effect c (cell-state chunks c))))
+
+(defn- melt-deltas [world cells]
+  (when (seq cells)
+    (cons [:set-blocks (mapv (fn [c] [c 0]) cells)]
+          (map #(melt-effect (:chunks world) %) cells))))
+
+(defn- put-out-sound [world eid e]
+  (let [t (long (:tick world))
+        r (- (random/of-longs t eid (hash :put-out1))
+             (random/of-longs t eid (hash :put-out2)))]
+    (out/all (out/sound :generic/extinguish-fire (:pos e) 0.7
+                        (+ 1.6 (* 0.4 r)) :players))))
+
+(defn- player-fire-deltas [world eid e]
+  (let [c (contact world e)
+        [f0 f1 lit f] (player-fire world e c)]
+    (concat (burning-flag eid e f1 false)
+            (when (not= f f0) [[:merge-entity eid {:fire f}]])
+            (when (pos? (long lit)) (melt-deltas world (:snow c)))
+            (when (and (pos? (long f1)) (<= (long f) 0))
+              [(put-out-sound world eid e)]))))
+
 (defn- fire-deltas [world eid e]
-  (let [fire (long (or (:fire e) 0))
-        flags (probe world e)]
-    (if (creative-proof? e)
-      (concat (burning-flag eid e fire (any-bit? flags sunk-bit))
-              (when (pos? fire) [[:merge-entity eid {:fire 0}]]))
-      (lit-deltas eid e fire (boolean (:wet? e)) flags))))
+  (if (creative-proof? e)
+    (player-fire-deltas world eid e)
+    (lit-deltas eid e (long (or (:fire e) 0)) (boolean (:wet? e))
+                (probe world e))))
 
 (def ^:private ^:const burn-volume 0.4)
 
@@ -579,7 +671,7 @@
   (let [health (double (or (:health e) 0.0))]
     (and (pos? health)
          (>= (v/y (:pos e)) (chunk/void-y world))
-         (zero? (long (or (:fire e) 0)))
+         (not (pos? (long (or (:fire e) 0))))
          (not (:burning? e))
          (zero? (long (or (:hurt-resist e) 0)))
          (nil? (:landed e))

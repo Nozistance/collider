@@ -186,7 +186,7 @@
         pd (into {} (map of) dims)]
     (if (some server-systems phase) (relocated world pd) pd)))
 
-(def ^:private left-behind #{:chunks-sent :tracking :track})
+(def ^:private left-behind #{:chunks-sent :tracking})
 
 (defn- left-behind?
   "Tells whether entity delta d is chunk work of the level a player

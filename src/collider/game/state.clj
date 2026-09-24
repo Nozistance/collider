@@ -902,7 +902,10 @@
                    (client-slots e slots carried))
    :award (fn [_ e [_ _ k n]]
                    (update e :awards (fnil conj []) [k n]))
-   :track (fn [_ e [_ _ tr]] (assoc e :track tr))
+   :track (fn [_ e [_ _ tr]]
+            (assoc (cond-> e
+                     (some? (:kept-mdata e)) (dissoc :kept-mdata))
+                   :track tr))
    :tracking (fn [_ e [_ _ add drop]]
                (update e :tracking merge-diff add drop))
    :set-slot (fn [_ e [_ _ slot stack]]
@@ -1072,7 +1075,8 @@
          :tp-target pos :tp-id (next-teleport-id e) :tp-at tick
          :chunk-view nil
          :chunk-pos (chunk/pos-chunk pos) :chunks-pending? nil
-         :sent-chunks (i/int-set) :tracking (i/int-set) :track nil))
+         :sent-chunks (i/int-set) :tracking (i/int-set) :track nil
+         :kept-mdata (:mdata (:track e))))
 
 (defn- crossed [world from [_ eid dim pos yaw pitch]]
   (if-let [e (get-in world [:levels from :entities eid])]
