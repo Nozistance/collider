@@ -109,10 +109,11 @@
             editor)))
 
 (defn- second-cell-deltas
-  "Places a two-cell block, clearing players from the clicked cell
-  only, since the other half goes down after the fact."
+  "Places a two-cell block.
+  Players are cleared from the clicked cell only, since the other
+  half goes down after the fact."
   [world eid pos pos' state ppos pstate ok?]
-  (if (and (chunk/in-range? (ppos 1)) (ok?)
+  (if (and (chunk/in-level? world (ppos 1)) (ok?)
            (not (edit/obstructed? world pos' state)))
     (edit/placed-deltas world eid [[pos' state] [ppos pstate]])
     (edit/reject-deltas world eid pos pos')))
@@ -165,7 +166,7 @@
         off (dir/offset dir)
         horizontal? (contains? horizontals dir)]
     (loop [p (mapv + pos off) n 0]
-      (when (and (chunk/in-range? (p 1)) (< (long n) 7))
+      (when (and (chunk/in-level? world (p 1)) (< (long n) 7))
         (let [st (edit/block-at world p)]
           (cond
             (= :scaffolding (block/type-of st))
@@ -174,8 +175,8 @@
             :else nil))))))
 
 (defn scaffold-place-deltas
-  "Returns the deltas for scaffolding, which travels from the clicked
-  cell until it reaches a free one."
+  "Returns the deltas for placing scaffolding.
+  It travels from the clicked cell until it reaches a free one."
   [world eid pos face]
   (if-let [target (scaffold-target world eid pos face)]
     (let [base (block/state :scaffolding)
@@ -253,7 +254,7 @@
         pile (when-not (get-in world [:entities eid :sneaking?]) item)
         over? (replaceable-state? cur pile)
         target (if over? pos (mapv + pos off))]
-    (when (chunk/in-range? (nth target 1)) target)))
+    (when (chunk/in-level? world (nth target 1)) target)))
 
 (defn solid-place-deltas
   "Returns the deltas for a held block put against a clicked face."

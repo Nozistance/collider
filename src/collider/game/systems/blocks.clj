@@ -129,13 +129,13 @@
 (defn- ack-changes [world eid pos off]
   (let [pos' (mapv + pos off)]
     (cond-> [(edit/own-change world eid pos)]
-            (chunk/in-range? (nth pos' 1))
+            (chunk/in-level? world (nth pos' 1))
             (conj (edit/own-change world eid pos')))))
 
 (defn- one-ack [world origins [i [tag eid pos face]]]
   (when-let [off (and (= :place tag)
                       (dir/face-offset (bit-and (long face) 0xFF)))]
-    (when (and (chunk/in-range? (nth pos 1))
+    (when (and (chunk/in-level? world (nth pos 1))
                (acted-at world eid (get origins i) pos))
       (ack-changes world eid pos off))))
 
@@ -149,7 +149,11 @@
               m))
           {} events))
 
-(defn acks [world d]
+(defn acks
+  "Returns the deltas that confirm the block actions of this tick.
+  Each player gets its last sequence, and the blocks of each place
+  go back to its player."
+  [world d]
   (let [events (:input d)
         ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
     (concat (map ack (latest-sequences events))
@@ -170,6 +174,8 @@
                        (fn [w [i ev]] (edit-deltas w i ev origins))
                        second)))
 
-(defn block-edits [world d]
+(defn block-edits
+  "Returns a step for the digs, places and sign edits of this tick."
+  [world d]
   (let [events (:input d)]
     [#(block-edits-deltas world events)]))

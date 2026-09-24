@@ -42,7 +42,10 @@
 
 (def activation-radius 2)
 
-(defn view-radius ^long [world]
+(defn view-radius
+  "Returns the view distance in chunks the config asks for.
+  It is kept between 2 and 32."
+  ^long [world]
   (-> (long (get-in world [:config :view-distance] 7))
       (max 2)
       (min 32)))
@@ -80,9 +83,9 @@
      (zone-at world (inc (view-radius world)))]))
 
 (defn- fresh?
-  "Whether the cached areas still describe this world. Their
-  reach is a config value, so a changed config outdates them as
-  surely as a body that moved or a chunk that came or went."
+  "Tells whether the areas still describe this world.
+  Their reach is a config value, so a changed config outdates them
+  as surely as a body that moved or a chunk that came or went."
   [world cached]
   (and cached
        (identical? (nth (key cached) 0) (:entities world))
@@ -112,7 +115,10 @@
   [world]
   (nth (areas world) 2))
 
-(defn cache-active-chunks [world]
+(defn cache-active-chunks
+  "Returns the world with its chunk areas up to date.
+  The areas follow its players and chunks."
+  [world]
   (if (fresh? world (:active-chunks world))
     world
     (let [k [(:entities world) (:chunks world) (:config world)]]
@@ -126,10 +132,14 @@
           (get-in world [:rules :advance-time] true)
           (update :time-of-day (fnil inc 0))))
 
-(defn active-at? [active pos]
+(defn active-at?
+  "Returns true when the chunk of block pos is in active."
+  [active pos]
   (contains? active (chunk/pos-chunk pos)))
 
-(defn active-id? [active ^long bid]
+(defn active-id?
+  "Returns true when the chunk of block id bid is in active."
+  [active ^long bid]
   (contains? active (chunk/block-id-chunk bid)))
 
 (defn offline-uuid
@@ -140,12 +150,21 @@
 
 (def initial-world schema/initial-world)
 
+(defn- bounds [dim]
+  (let [t (data/dimension-type dim)
+        lo (long (:min-y t chunk/min-y))]
+    {:min-y lo
+     :max-y (+ lo (long (:height t 384)) -1)
+     :sky? (:has-skylight t true)}))
+
 (defn level
-  "Returns the level dim of world: its shared keys plus the keys of
-  level dim, plus :dim."
+  "Returns the level dim of world.
+  It holds the shared keys of world, the keys of level dim, :dim
+  and the height and sky of its dimension."
   [world dim]
   (-> (dissoc world :levels)
       (into (get-in world [:levels dim]))
+      (into (bounds dim))
       (assoc :dim dim)))
 
 (defn with-level
@@ -153,15 +172,15 @@
   lv's non-level keys become the shared part of world, dropping
   shared keys lv no longer has; lv's level keys become level dim."
   [world dim lv]
-  (let [lv (dissoc lv :dim)
+  (let [lv (dissoc lv :dim :min-y :max-y :sky?)
         level-part (select-keys lv schema/level-keys)
         shared-part (clojure.core/apply dissoc lv schema/level-keys)]
     (assoc shared-part :levels
            (assoc (:levels world) dim level-part))))
 
 (defn idle?
-  "Whether level lv holds nothing a tick could change: no chunks,
-  no entities and no chunk on its way."
+  "Tells whether level lv holds nothing a tick could change.
+  Such a level has no chunks, no entities and no chunk on its way."
   [lv]
   (and (zero? (count (:chunks lv))) (zero? (count (:entities lv)))
        (empty? (:loading lv)) (empty? (:unknown lv))))
@@ -178,8 +197,8 @@
 (defn- player-type? [[_ e]] (= :player (:type e)))
 
 (defn server-view
-  "Returns the shared keys of world with the players of every level
-  as its entities."
+  "Returns the shared keys of world with all players as entities.
+  The players of every level are in it."
   [world]
   (let [players (comp (mapcat (comp :entities val))
                       (filter player-type?))]
@@ -204,24 +223,27 @@
     (when-not (zero? st)
       (rules/wake-tick chunks st tick p old self?))))
 
-(defn- schedule-updates [bt tick floor chunks changed]
+(defn- shifted [[x y z] [dx dy dz]]
+  [(+ (long x) (long dx))
+   (+ (long y) (long dy))
+   (+ (long z) (long dz))])
+
+(defn- schedule-at [bt at floor p]
+  (update bt (max (long at) (long floor))
+          (fnil conj (i/int-set))
+          (chunk/block-pos->id p)))
+
+(defn- schedule-around [bt tick floor chunks [pos old _]]
   (reduce
-    (fn [bt [[x y z] old _]]
-      (reduce
-        (fn [bt [dx dy dz :as d]]
-          (let [p [(+ (long x) (long dx))
-                   (+ (long y) (long dy))
-                   (+ (long z) (long dz))]
-                at (wake-tick chunks tick p old (= [0 0 0] d))]
-            (if-not at
-              bt
-              (update bt (max (long at) (long floor))
-                      (fnil conj (i/int-set))
-                      (chunk/block-pos->id p)))))
-        bt
-        around))
+    (fn [bt d]
+      (let [p (shifted pos d)
+            at (wake-tick chunks tick p old (= [0 0 0] d))]
+        (if at (schedule-at bt at floor p) bt)))
     bt
-    changed))
+    around))
+
+(defn- schedule-updates [bt tick floor chunks changed]
+  (reduce #(schedule-around %1 tick floor chunks %2) bt changed))
 
 (defn- kind-changed? [old st]
   (and (be/kind old)
@@ -236,26 +258,33 @@
                 (update-in w [:block-entities cp] dissoc pos))))
           w real))
 
-(defn- real-changes [chunks changes]
-  (into []
-        (keep (fn [[pos st]]
-                (let [old (chunk/chunks-get-block chunks pos)]
-                  (when (not= old (long st)) [pos old st]))))
-        changes))
+(defn- inside? [w [pos]] (chunk/in-level? w (long (pos 1))))
 
-(defn- with-derived [chunks tick real]
-  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)
-        chunks' (-> chunks
-                   (chunk/chunks-set-blocks set-real)
-                   (light/relight-batch real))
-        poss (map first real)
-        derived (connect/derived-changes chunks' poss tick)
+(defn- real-changes [w changes]
+  (let [chunks (:chunks w)
+        real (fn [[pos st]]
+               (let [old (chunk/chunks-get-block chunks pos)]
+                 (when (not= old (long st)) [pos old st])))]
+    (into [] (comp (filter #(inside? w %)) (keep real)) changes)))
+
+(defn- derived-in [w chunks tick real]
+  (let [poss (map first real)
+        changes (connect/derived-changes chunks poss tick)]
+    (filterv #(inside? w %) changes)))
+
+(defn- with-derived [w tick real]
+  (let [sky? (:sky? w true)
+        set-real (mapv (fn [[pos _ st]] [pos st]) real)
+        chunks' (-> (:chunks w)
+                    (chunk/chunks-set-blocks set-real)
+                    (light/relight-batch real sky?))
+        derived (derived-in w chunks' tick real)
         was (fn [[pos st]]
               [pos (chunk/chunks-get-block chunks' pos) st])
         dropped (mapv was derived)]
     [(-> chunks'
          (chunk/chunks-set-blocks derived)
-         (light/relight-batch dropped))
+         (light/relight-batch dropped sky?))
      (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
 
 (defn- add-block-events [ev events]
@@ -264,24 +293,25 @@
                     (fnil conj []) [pos st]))
           (or ev (i/int-map)) events))
 
-(defn- apply-set-blocks [w changes ^long base]
-  (let [real (real-changes (:chunks w) changes)]
-    (if (empty? real)
-      w
-      (let [tick (:tick w)
-            next-tick (inc (long tick))
-            [chunks' events] (with-derived (:chunks w) tick real)
-            sched (fn [bt]
-                    (schedule-updates bt base next-tick chunks' real))
-            w (-> w
-                  (assoc :chunks chunks')
-                  (drop-block-entities real)
-                  (update :block-ticks sched))]
-        (cond-> w
-                (seq events)
-                (update :block-events add-block-events events))))))
+(defn- with-changes [w base real]
+  (let [tick (:tick w)
+        next-tick (inc (long tick))
+        [chunks' events] (with-derived w tick real)
+        sched #(schedule-updates % base next-tick chunks' real)]
+    (cond-> (-> w
+                (assoc :chunks chunks')
+                (drop-block-entities real)
+                (update :block-ticks sched))
+      (seq events)
+      (update :block-events add-block-events events))))
 
-(defn spawn-seed ^double [w eid]
+(defn- apply-set-blocks [w changes ^long base]
+  (let [real (real-changes w changes)]
+    (if (empty? real) w (with-changes w base real))))
+
+(defn spawn-seed
+  "Returns the random seed of a spawn by entity eid this tick."
+  ^double [w eid]
   (random/of-longs (long (:tick w 0)) (long eid) (hash :spawn)))
 
 (defn joins
@@ -416,7 +446,10 @@
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
 
-(defn use-origin [w [tag & args]]
+(defn use-origin
+  "Returns the eye and look of the player behind an event.
+  Only place and use events have one; others give nil."
+  [w [tag & args]]
   (let [rot (case tag
               :place (nth args 6 nil)
               :use-item (nth args 3 nil)
@@ -430,7 +463,9 @@
   ^long [e hand]
   (if (= :off hand) 45 (+ 36 (long (or (:held-slot e) 0)))))
 
-(defn hand-stack [e hand]
+(defn hand-stack
+  "Returns the stack the player holds in hand."
+  [e hand]
   (get-in e [:inventory (hand-slot e hand)]))
 
 (def ^:private ^:const default-swing 6)
@@ -455,9 +490,10 @@
     true))
 
 (defn swing-deltas
-  "Returns the deltas of the arm swing of player eid, none while the
-  arm is still busy with the swing before it. The player sees its
-  own swing only when the server, not the client, started it."
+  "Returns the deltas of the arm swing of player eid.
+  There are none while the arm is still busy with the swing before
+  it. The player sees its own swing only when the server, not the
+  client, started it."
   [eid e hand t self?]
   (when (swing-free? e (long t))
     (let [fx (out/animation eid (if (= :off hand) :swing-off :swing))]
@@ -471,7 +507,9 @@
   [stack]
   (when stack (get-in (data/items) [(:item stack) :consumable])))
 
-(defn consume-ticks ^long [c]
+(defn consume-ticks
+  "Returns the ticks it takes to eat or drink with consumable c."
+  ^long [c]
   (long (* 20.0 (double (:seconds c)))))
 
 (defn on-cooldown?
@@ -543,9 +581,9 @@
 (def ^:private slot-tags #{:held-item :creative-slot})
 
 (defn slot-deltas
-  "Returns the deltas of an event that touches the slots of its
-  player and nothing else. Every fold over the events of a tick
-  replays these; the packet systems alone give them out."
+  "Returns the deltas of an event that touches only player slots.
+  Every fold over the events of a tick replays these; the packet
+  systems alone give them out."
   [world [tag eid slot stack]]
   (when (contains? slot-tags tag)
     (when-let [e (get-in world [:entities eid])]
@@ -580,23 +618,25 @@
       (neg? dy) {:fall (- fall dy) :landed nil}
       :else {:landed nil})))
 
+(defn- move-vel [old new]
+  (when (and old new)
+    (v/v3 (- (v/x new) (v/x old))
+          (- (v/y new) (v/y old))
+          (- (v/z new) (v/z old)))))
+
+(defn- free-move [w eid e changes]
+  (let [new (some-> (:pos changes) clamped v/v3)
+        vel (move-vel (:pos e) new)
+        changes (cond-> changes new (assoc :pos new))]
+    (update-entity w eid merge changes
+                   (when vel {:client-vel vel})
+                   (fall-changes e changes vel))))
+
 (defn- apply-move [w eid changes]
-  (let [e (get-in w [:entities eid])
-        new (:pos changes)]
-    (cond
-      (or (:tp-target e) (:sleeping e))
+  (let [e (get-in w [:entities eid])]
+    (if (or (:tp-target e) (:sleeping e))
       (update-entity w eid merge (dissoc changes :pos))
-      :else
-      (let [old (:pos e)
-            new (some-> new clamped v/v3)
-            vel (when (and old new)
-                  (v/v3 (- (v/x new) (v/x old))
-                        (- (v/y new) (v/y old))
-                        (- (v/z new) (v/z old))))
-            changes (cond-> changes new (assoc :pos new))]
-        (update-entity w eid merge changes
-                       (when vel {:client-vel vel})
-                       (fall-changes e changes vel))))))
+      (free-move w eid e changes))))
 
 (defn- chunk-batch-ack [w eid rate]
   (let [rate (double rate)
@@ -656,7 +696,9 @@
 (defn- unchanged [w _]
   w)
 
-(defn apply-event [world delta]
+(defn apply-event
+  "Returns the world after one input delta."
+  [world delta]
   ((get input-apply (nth delta 0) unchanged) world delta))
 
 (def ^:private move-keys
@@ -679,7 +721,9 @@
              :climbing?
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
-(defn infinite-materials? [_player]
+(defn infinite-materials?
+  "Returns true when the player builds without spending items."
+  [_player]
   true)
 
 (def ^:const block-range 4.5)
@@ -690,17 +734,24 @@
 
 (def ^:const creative-entity-range 2.0)
 
-(defn block-reach ^double [player]
+(defn block-reach
+  "Returns how far the player reaches blocks."
+  ^double [player]
   (if (infinite-materials? player)
     (+ block-range creative-block-range)
     block-range))
 
-(defn entity-reach ^double [player]
+(defn entity-reach
+  "Returns how far the player reaches entities."
+  ^double [player]
   (if (infinite-materials? player)
     (+ entity-range creative-entity-range)
     entity-range))
 
-(defn quit-of [w [tag eid]]
+(defn quit-of
+  "Returns the entity that leaves with a player quit event.
+  Any other event gives nil."
+  [w [tag eid]]
   (when (= :player-quit tag)
     (when-let [e (get-in w [:entities eid])]
       (assoc e :eid eid))))
@@ -961,14 +1012,16 @@
     (let [lv (clojure.core/apply dissoc (level world dim) input-keys)]
       (with-level world dim (apply-level lv deltas)))))
 
-(defn apply-deltas [world deltas]
+(defn apply-deltas
+  "Returns the world after deltas and the deltas as applied."
+  [world deltas]
   (let [d (deltas-of deltas)]
     [(apply world d) d]))
 
 (defn fold-events
-  "Returns the deltas f gives for each event in order. Each event sees
-  the world after the ones before it were applied, and after the slot
-  events before it, whoever gives those out."
+  "Returns the deltas f gives for each event in order.
+  Each event sees the world after the ones before it were applied,
+  and after the slot events before it, whoever gives those out."
   ([world events f] (fold-events world events f identity))
   ([world events f event-of]
    (loop [w world evs (seq events) acc []]

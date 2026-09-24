@@ -140,10 +140,15 @@
         changes (fill-changes chunks bounds (block/state block))]
     (concat adds (fill-result eid changes))))
 
+(defn- outside? [world ps]
+  (not-every? #(chunk/in-level? world (long (% 1))) ps))
+
 (defn- fill-deltas [world eid [ax ay az bx by bz block]]
-  (if (unloaded? world [[ax ay az] [bx by bz]])
-    (say eid "argument.pos.unloaded")
-    (filled world eid (box [ax ay az bx by bz]) block)))
+  (let [ps [[ax ay az] [bx by bz]]]
+    (cond
+      (unloaded? world ps) (say eid "argument.pos.unloaded")
+      (outside? world ps) (say eid "argument.pos.outofworld")
+      :else (filled world eid (box [ax ay az bx by bz]) block))))
 
 (defn- rule-hint [rule]
   (if (= :bool (:type (rules/table rule)))
@@ -273,6 +278,7 @@
         st (block/state block)]
     (cond
       (unloaded? world [pos]) (say eid "argument.pos.unloaded")
+      (outside? world [pos]) (say eid "argument.pos.outofworld")
       (= st (chunk/chunks-get-block (:chunks world) pos))
       (say eid "commands.setblock.failed")
       :else (cons [:set-blocks [[pos st]]]

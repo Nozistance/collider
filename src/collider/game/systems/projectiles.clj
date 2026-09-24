@@ -39,8 +39,6 @@
 
 (def ^:private ^:const eye-height 1.62)
 
-(def ^:private ^:const below-world (- chunk/min-y 64.0))
-
 (def ^:private ^:const base-potion-color -13083194)
 
 (def ^:private ^:const splash-range-sq 16.0)
@@ -118,7 +116,9 @@
     (long (or (:custom-color c) (blend (all-effects c))
               base-potion-color))))
 
-(defn has-effects? [stack]
+(defn has-effects?
+  "Returns true when the potion in stack carries any effect."
+  [stack]
   (let [c (contents stack)]
     (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
 
@@ -126,8 +126,8 @@
   (:instant? (get (data/mob-effects) (:effect e))))
 
 (defn has-instant-effects?
-  "Returns true when the potion itself acts at once. Custom
-  effects do not count."
+  "Returns true when the potion itself acts at once.
+  Custom effects do not count."
   [stack]
   (boolean (some instant? (brewed (contents stack)))))
 
@@ -157,8 +157,8 @@
      (* power (+ (double z) (triangle world eid :z inaccuracy)))]))
 
 (defn- carried
-  "Returns vel plus the motion of the thrower. The thrower's own fall
-  speed is left out while it stands on the ground."
+  "Returns vel plus the motion of the thrower.
+  Its fall speed is left out while it stands on the ground."
   [e vel]
   (let [m (or (:client-vel e) [0.0 0.0 0.0])]
     (v/+ vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
@@ -373,8 +373,8 @@
             [:set-blocks (mapv (fn [p] [p 0]) fires)]))))
 
 (defn- dowse-deltas
-  "Returns the deltas of dowsing fire around the hit. Actual fire is
-  destroyed, while a candle or a campfire only goes out."
+  "Returns the deltas of dowsing fire around the hit.
+  Fire itself is destroyed; a candle or a campfire only goes out."
   [world hit]
   (let [loaded? #(chunk/in-range? (nth % 1))
         cells (filterv loaded? (dowse-cells hit))
@@ -429,7 +429,7 @@
     (cond
       hit (into [[:remove-entity eid]]
                 (hit-deltas world eid e at hit))
-      (< (v/y at) below-world) [[:remove-entity eid]]
+      (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       :else [[:merge-entity eid (moved e at d left?)]])))
 
 (defn- cloud-box [e ^double r]

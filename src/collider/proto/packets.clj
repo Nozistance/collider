@@ -163,14 +163,15 @@
     (c/write-varint buf (count players))
     (doseq [p players] (one buf p))))
 
-(def ^:private table
+(def ^:private handshake-packets
   {[:handshake :intention]
    {:schema [:map [:protocol wire/varint]
              [:address [wire/string {:max 255}]]
              [:port wire/unsigned-short] [:next wire/varint]]
-    :read :wire}
+    :read :wire}})
 
-   [:status :status-response]
+(def ^:private status-packets
+  {[:status :status-response]
    {:schema [:map [:json wire/string]]
     :write :wire}
    [:status :ping-request]
@@ -178,9 +179,10 @@
     :read :wire}
    [:status :pong-response]
    {:schema [:map [:payload wire/long]]
-    :write :wire}
+    :write :wire}})
 
-   [:login :hello]
+(def ^:private login-packets
+  {[:login :hello]
    {:schema [:map [:name [wire/string {:max 16}]] [:uuid wire/uuid]]
     :read :wire}
    [:login :login-compression]
@@ -194,9 +196,10 @@
     :write :wire}
    [:login :login-disconnect]
    {:schema [:map [:json [wire/string {:max 262144}]]]
-    :write :wire}
+    :write :wire}})
 
-   [:configuration :client-information]
+(def ^:private configuration-packets
+  {[:configuration :client-information]
    {:schema ClientInformation
     :read :wire}
    [:configuration :custom-payload]
@@ -234,9 +237,10 @@
     :write :wire}
    [:configuration :disconnect]
    {:schema [:map [:text wire/text]]
-    :write :wire}
+    :write :wire}})
 
-   [:play :login]
+(def ^:private play-packets
+  {[:play :login]
    {:schema Login
     :write :wire}
    [:play :respawn]
@@ -351,10 +355,12 @@
     :write :wire}
    [:play :level-chunk-with-light]
    {:schema [:map [:cx :int] [:cz :int] [:chunk :any]
-             [:block-entities {:optional true} [:maybe :any]]]
+             [:block-entities {:optional true} [:maybe :any]]
+             [:level {:optional true} [:maybe :map]]]
     :write (fn [^Buf buf m]
              (chunk/write-chunk!
-               buf (:cx m) (:cz m) (:chunk m) (:block-entities m)))}
+               buf (:cx m) (:cz m) (:chunk m) (:block-entities m)
+               (:level m)))}
    [:play :open-sign-editor]
    {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]]
     :write :wire}
@@ -437,9 +443,10 @@
    [:play :container-set-slot]
    {:schema [:map [:container wire/varint] [:state-id wire/varint]
              [:slot wire/short] [:stack wire/item-stack]]
-    :write :wire}
+    :write :wire}})
 
-   [:play :open-screen]
+(def ^:private menu-packets
+  {[:play :open-screen]
    {:schema [:map [:container wire/varint] [:menu wire/varint]
              [:title wire/text]]
     :write :wire}
@@ -477,9 +484,10 @@
     :write :wire}
    [:play :set-cursor-item]
    {:schema [:map [:stack wire/item-stack]]
-    :write :wire}
+    :write :wire}})
 
-   [:play :bundle-delimiter]
+(def ^:private entity-packets
+  {[:play :bundle-delimiter]
    {:schema [:map]
     :write :wire}
    [:play :add-entity]
@@ -585,8 +593,10 @@
               [:sequential
                [:tuple wire/varint wire/float wire/float
                 wire/varint]]]]
-    :write :wire}
-   [:play :chat]
+    :write :wire}})
+
+(def ^:private input-packets
+  {[:play :chat]
    {:schema [:map [:message [wire/string {:max 256}]]
              [:timestamp wire/long] [:salt wire/long]
              [:signature [:maybe Signature]] [:last-seen LastSeen]]
@@ -679,6 +689,11 @@
    {:schema [:map [:target wire/varint] [:hand wire/varint]
              [:at wire/lp-vec3] [:sneaking wire/boolean]]
     :read :wire}})
+
+(def ^:private table
+  (merge handshake-packets status-packets login-packets
+         configuration-packets play-packets
+         menu-packets entity-packets input-packets))
 
 (defn- compiled
   "Fills in the halves an entry leaves to its schema."

@@ -15,23 +15,50 @@
 
 (def ^:const section-offset 4)
 
-(defn in-range? [^long y] (<= min-y y max-y))
+(defn in-range?
+  "Returns true when block y is inside the world height."
+  [^long y] (<= min-y y max-y))
 
-(defn section-index ^long [^long y]
+(defn level-min-y
+  "Returns the lowest block y of level lv."
+  ^long [lv] (long (:min-y lv min-y)))
+
+(defn level-max-y
+  "Returns the highest block y of level lv."
+  ^long [lv] (long (:max-y lv max-y)))
+
+(defn void-y
+  "Returns the y below which level lv takes what falls out."
+  ^double [lv] (- (double (level-min-y lv)) 64.0))
+
+(defn in-level?
+  "Returns true when block y is inside the height of level lv."
+  [lv ^long y]
+  (and (<= (level-min-y lv) y) (<= y (level-max-y lv))))
+
+(defn section-index
+  "Returns the index of the section holding block y."
+  ^long [^long y]
   (+ (bit-shift-right y 4) section-offset))
 
 (def ^Section empty-section Section/EMPTY)
 
-(defn section ^Section [^shorts blocks ^bytes bl ^bytes sl]
+(defn section
+  "Returns a section of block states and block and sky light."
+  ^Section [^shorts blocks ^bytes bl ^bytes sl]
   (Section/of blocks bl sl))
 
-(defn nibble-get ^long [^bytes arr ^long idx]
+(defn nibble-get
+  "Returns the light level at idx of the packed levels arr."
+  ^long [^bytes arr ^long idx]
   (let [b (long (aget arr (bit-shift-right idx 1)))]
     (if (zero? (bit-and idx 1))
       (bit-and b 0xF)
       (bit-and (bit-shift-right b 4) 0xF))))
 
-(defn nibble-set! [^bytes arr ^long idx ^long v]
+(defn nibble-set!
+  "Sets the light level at idx of the packed levels arr to v."
+  [^bytes arr ^long idx ^long v]
   (let [bi (bit-shift-right idx 1)
         b (long (aget arr bi))]
     (aset arr bi
@@ -44,10 +71,15 @@
 
 (def empty-chunk Chunk/EMPTY)
 
-(defn chunk-of ^Chunk [sections]
+(defn chunk-of
+  "Returns a chunk of sections, the lowest first."
+  ^Chunk [sections]
   (Chunk/of (object-array sections)))
 
-(defn first-above ^Section [^Chunk chunk ^long si]
+(defn first-above
+  "Returns the nearest section above index si of chunk.
+  It is nil when there is none."
+  ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
 (defn nil-sky
@@ -64,12 +96,15 @@
   (.fresh chunk (int si)))
 
 (defn nil-sky-array
-  "Returns a fresh array of the sky light a new section inherits.
-  The section is at si and the light comes from above."
+  "Returns the sky light a new section at si inherits.
+  The light comes from above, and each call gives new levels."
   ^bytes [chunk ^long si]
   (.skyLightCopy ^Section (new-section chunk si)))
 
-(defn chunk-at ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
+(defn chunk-at
+  "Returns the chunk at chunk coordinates cx cz.
+  It is nil where none is loaded."
+  ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
   (Chunk/at chunks (int cx) (int cz)))
 
 (defn section-at
@@ -78,10 +113,14 @@
   (Chunk/sectionAt chunks (unchecked-int x) (unchecked-int y)
                    (unchecked-int z)))
 
-(defn chunk-section ^Section [^Chunk chunk ^long si]
+(defn chunk-section
+  "Returns the section at index si of chunk, nil where none exists."
+  ^Section [^Chunk chunk ^long si]
   (.section chunk (int si)))
 
-(defn with-section ^Chunk [^Chunk chunk ^long si ^Section s]
+(defn with-section
+  "Returns chunk with section s at index si."
+  ^Chunk [^Chunk chunk ^long si ^Section s]
   (.with chunk (int si) s))
 
 (defn section-block
@@ -105,9 +144,13 @@
 (defn with-block-light ^Section [^Section s ^bytes a]
   (.withBlockLight s a))
 
-(defn sky-lit? [^Section s] (.hasSkyLight s))
+(defn sky-lit?
+  "Returns true when s holds its own sky light."
+  [^Section s] (.hasSkyLight s))
 
-(defn block-lit? [^Section s] (.hasBlockLight s))
+(defn block-lit?
+  "Returns true when s holds its own block light."
+  [^Section s] (.hasBlockLight s))
 
 (defn heights!
   "Fills the unset entries of the 256 heightmap columns in out.
@@ -128,13 +171,21 @@
 (defn write-block-light! [^Section s ^Buf buf]
   (.writeBlockLight s buf))
 
-(defn write-full-light! [^Buf buf] (Section/writeFullLight buf))
+(defn write-full-light!
+  "Writes a section of full light to buf."
+  [^Buf buf] (Section/writeFullLight buf))
 
-(defn save-chunk! [^Chunk chunk ^DataOutput out] (.save chunk out))
+(defn save-chunk!
+  "Writes chunk to out."
+  [^Chunk chunk ^DataOutput out] (.save chunk out))
 
-(defn load-chunk ^Chunk [^DataInput in] (Chunk/load in))
+(defn load-chunk
+  "Returns the chunk read from in."
+  ^Chunk [^DataInput in] (Chunk/load in))
 
-(defn set-block ^Chunk [^Chunk chunk lx y lz state]
+(defn set-block
+  "Returns chunk with the block at local lx y lz set to state."
+  ^Chunk [^Chunk chunk lx y lz state]
   (let [y (long y)
         si (int (section-index y))
         idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
@@ -150,6 +201,7 @@
     0))
 
 (defn block-pos->id
+  "Returns the block position packed into one long."
   (^long [[x y z]] (block-pos->id x y z))
   (^long [x y z]
    (let [x (long x) y (long y) z (long z)]
@@ -157,20 +209,28 @@
              (bit-shift-left (bit-and y 0xFFF) 26)
              (bit-and z 0x3FFFFFF)))))
 
-(defn id->block-pos [^long id]
+(defn id->block-pos
+  "Returns the block position packed in id."
+  [^long id]
   [(bit-shift-right id 38)
    (bit-shift-right (bit-shift-left id 26) 52)
    (bit-shift-right (bit-shift-left id 38) 38)])
 
-(defn pos->id ^long [cx cz]
+(defn pos->id
+  "Returns the chunk coordinates cx cz packed into one long."
+  ^long [cx cz]
   (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
           (bit-and (long cz) 0xFFFFFFFF)))
 
-(defn id->pos [chunk-id]
+(defn id->pos
+  "Returns the chunk coordinates packed in chunk-id."
+  [chunk-id]
   [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
    (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
 
-(defn around-ids [^long cx ^long cz ^long r]
+(defn around-ids
+  "Returns the ids of the chunks within r of chunk cx cz, a square."
+  [^long cx ^long cz ^long r]
   (for [dx (range (- r) (inc r))
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
@@ -185,8 +245,8 @@
     (< (+ (* ax ax) (* az az)) (* v v))))
 
 (defn tracked-ids
-  "Returns the ids of the chunks a viewer in cx cz with view
-  distance v keeps."
+  "Returns the ids of the chunks a viewer in cx cz keeps.
+  The view distance is v."
   [^long cx ^long cz ^long v]
   (for [dx (range (- -1 v) (+ v 2))
         dz (range (- -1 v) (+ v 2))

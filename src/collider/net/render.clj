@@ -35,7 +35,8 @@
   (let [[x z] (chunk/id->pos id)]
     {:packet         :level-chunk-with-light :cx x :cz z
      :chunk          (get-in world [:chunks id] chunk/empty-chunk)
-     :block-entities (be/wire (get-in world [:block-entities id]))}))
+     :block-entities (be/wire (get-in world [:block-entities id]))
+     :level          (select-keys world [:min-y :max-y :sky?])}))
 
 (defn- forget-chunk-packet [id]
   (let [[x z] (chunk/id->pos id)]
@@ -761,8 +762,9 @@
     :game-rules})
 
 (defn- sight-of
-  "Returns what a render call needs of world: every level, the
-  dimension of each player and the players of each level."
+  "Returns what a render call needs of world.
+  That is every level, the dimension of each player and the players
+  of each level."
   [world]
   (let [ps (players world)
         dim-of #(or (state/dim-of world %) home)
@@ -850,8 +852,8 @@
           [eid p])))))
 
 (defn render
-  "Returns [eid packet] for every player from the world after a
-  tick and the deltas of that tick."
+  "Returns [eid packet] for every player after a tick.
+  It reads the world after the tick and the deltas of that tick."
   [world ^Deltas deltas]
   (let [sight (sight-of world)
         es (deltas/entities-of deltas)

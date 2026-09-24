@@ -18,8 +18,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const void-y (- chunk/min-y 64.0))
-
 (def ^:private ^:const void-damage 4.0)
 
 (def ^:private ^:const death-ticks 20)
@@ -77,8 +75,8 @@
     (+ base (* voice-pitch-spread r))))
 
 (defn creative-proof?
-  "Returns true when nothing can hurt the entity. Players are always
-  in creative mode."
+  "Returns true when nothing can hurt the entity.
+  Players are always in creative mode."
   [e]
   (= :player (:type e)))
 
@@ -284,8 +282,8 @@
       [[:merge-entity eid {:burning? lit?}]])))
 
 (defn- burn-tick-deltas
-  "Counts the fire down and hurts every twentieth tick. Lava does the
-  hurting itself, so the fire tick only counts there."
+  "Counts the fire down and hurts every twentieth tick.
+  Lava hurts by itself, so there the fire tick only counts."
   [eid ^long fire wet? in-lava?]
   (when (and (pos? fire) (not wet?))
     (cond-> [[:merge-entity eid {:fire (dec fire)}]]
@@ -416,13 +414,14 @@
     (concat [[:merge-entity eid {:landed nil}]]
             (landing-particles world e (double fall)))))
 
-(defn- void-deltas [eid e]
-  (when (and (pos? (double (:health e))) (< (v/y (:pos e)) void-y))
+(defn- void-deltas [world eid e]
+  (when (and (pos? (double (:health e)))
+             (< (v/y (:pos e)) (chunk/void-y world)))
     [[:damage eid void-damage]]))
 
 (defn- panicked [world e]
   (cond-> {:love-until nil :no-action 0}
-          (>= (v/y (:pos e)) void-y)
+          (>= (v/y (:pos e)) (chunk/void-y world))
           (assoc :panic-until (+ (long (:tick world)) panic-ticks))))
 
 (def ^:private ^:const player-kill-memory 100)
@@ -576,10 +575,10 @@
       lost? (conj (out/to eid not-valid))
       true (into (reshow-deltas world eid)))))
 
-(defn- idle? [e]
+(defn- idle? [world e]
   (let [health (double (or (:health e) 0.0))]
     (and (pos? health)
-         (>= (v/y (:pos e)) void-y)
+         (>= (v/y (:pos e)) (chunk/void-y world))
          (zero? (long (or (:fire e) 0)))
          (not (:burning? e))
          (zero? (long (or (:hurt-resist e) 0)))
@@ -599,9 +598,9 @@
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
 (defn- mob-deltas [world eid e]
-  (let [busy? (not (idle? e))
+  (let [busy? (not (idle? world e))
         ds (concat (when busy? (timer-deltas eid e))
-                   (when busy? (void-deltas eid e))
+                   (when busy? (void-deltas world eid e))
                    (when busy? (landing-deltas world eid e))
                    (fire-deltas world eid e))]
     (concat ds (when busy?
@@ -615,7 +614,7 @@
 
 (defn- live? [world [_ e]]
   (and (some? (:health e))
-       (or (not (idle? e)) (near-edits? world e))))
+       (or (not (idle? world e)) (near-edits? world e))))
 
 (defn- live-entries [world]
   (into [] (filter (fn [entry] (live? world entry)))
@@ -635,6 +634,9 @@
                   (when (= :attack tag) (attack-deltas world ev))))
         events))
 
-(defn damage [world d]
+(defn damage
+  "Returns a step for every living entity and the damage events.
+  The events are those of this tick."
+  [world d]
   (let [events (:input d)]
     (conj (living-fns world) #(event-deltas world events))))

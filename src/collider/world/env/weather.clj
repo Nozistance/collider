@@ -28,15 +28,17 @@
                   (not= :the-end dim)))))
 
 (defn sample
-  "Returns a whole number of ticks within bounds, inclusive, picked
-  by roll in [0, 1)."
+  "Returns a whole number of ticks within bounds, inclusive.
+  The roll, in [0, 1), picks it."
   ^long [^double roll bounds]
   (let [lo (long (nth bounds 0))
         span (- (long (nth bounds 1)) lo)
         k (long (Math/floor (* roll (inc span))))]
     (+ lo (min span k))))
 
-(defn rain-level ^double [ctx]
+(defn rain-level
+  "Returns the rain level, 0.0 to 1.0."
+  ^double [ctx]
   (double (:rain-level ctx 0.0)))
 
 (defn thunder-level
@@ -45,21 +47,35 @@
   (let [th (float (:thunder-level ctx 0.0))]
     (double (float (* th (float (rain-level ctx)))))))
 
-(defn raw-thunder-level ^double [ctx]
+(defn raw-thunder-level
+  "Returns the thunder level, 0.0 to 1.0, not scaled by rain."
+  ^double [ctx]
   (double (:thunder-level ctx 0.0)))
 
-(defn raining? [ctx]
+(defn raining?
+  "Returns true when the rain level makes it rain."
+  [ctx]
   (> (rain-level ctx) 0.2))
 
-(defn thundering? [ctx]
+(defn thundering?
+  "Returns true when the thunder level makes it thunder."
+  [ctx]
   (> (thunder-level ctx) 0.9))
 
-(defn sky-darken ^long [ctx ^long time]
+(defn sky-darken
+  "Returns how much the weather and the time dim the sky light.
+  The value is 0 to 15."
+  ^long [ctx ^long time]
   (light/sky-darken time (rain-level ctx) (thunder-level ctx)))
 
-(defn brightness [ctx chunks x y z time]
+(defn brightness
+  "Returns the light level at x y z under the weather.
+  The time of day dims the sky part too."
+  [ctx chunks x y z time]
   (let [rain (rain-level ctx) thunder (thunder-level ctx)]
-    (long (light/brightness chunks x y z time rain thunder))))
+    (if (:sky? ctx true)
+      (long (light/brightness chunks x y z time rain thunder))
+      (long (light/block-light-at chunks x y z)))))
 
 (defn- can-see-sky? [chunks p]
   (let [[x y z] p]
@@ -69,14 +85,18 @@
   (let [[x y z] p]
     (> (spawn/motion-blocking-height chunks x z) (long y))))
 
-(defn precipitation-at [ctx chunks p]
+(defn precipitation-at
+  "Returns what falls at block p now: :none, :rain or :snow."
+  [ctx chunks p]
   (cond
     (not (raining? ctx)) :none
     (not (can-see-sky? chunks p)) :none
     (under-cover? chunks p) :none
     :else (biome/precipitation-at (biome/at chunks p) p)))
 
-(defn raining-at? [ctx chunks p]
+(defn raining-at?
+  "Returns true when rain falls at block p now."
+  [ctx chunks p]
   (= :rain (precipitation-at ctx chunks p)))
 
 (defn- step-level ^double [^double level raising?]
@@ -135,7 +155,9 @@
      :thundering?        (boolean (:thundering? w))
      :raining?           (boolean (:raining? w))}))
 
-(defn advance [w]
+(defn advance
+  "Returns the weather fields one tick later."
+  [w]
   (let [m (cycled w)
         thunder (double (:thunder-level w 0.0))
         rain (double (:rain-level w 0.0))]

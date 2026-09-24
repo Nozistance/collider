@@ -145,9 +145,13 @@
         m (cond-> m (or stuck' stuck) (assoc :stuck stuck'))]
     [[:merge-entity eid m]]))
 
-(defn- expired? [^long time cell]
+(defn- drift [world eid e pos time vel]
+  (drift-deltas eid pos time vel (:stuck e) (stuck-now world pos)))
+
+(defn- expired? [world ^long time cell]
   (or (> time max-time)
-      (and (> time 100) (not (chunk/in-range? (cell 1))))))
+      (and (> time 100)
+           (not (chunk/in-level? world (long (cell 1)))))))
 
 (defn- step-deltas [world eid e]
   (let [^Move mv (fall-move world e)
@@ -159,12 +163,10 @@
       (or (phys/on-ground? mv) stuck?)
       (land-deltas world eid (assoc e :pos pos)
                    cell cur concrete? stuck?)
-      (expired? time cell)
+      (expired? world time cell)
       (cons [:remove-entity eid]
             (item-deltas world eid (assoc e :pos pos)))
-      :else
-      (drift-deltas eid pos time vel (:stuck e)
-                    (stuck-now world pos)))))
+      :else (drift world eid e pos time vel))))
 
 (defn- falling? [active e]
   (and (= :falling-block (:type e))

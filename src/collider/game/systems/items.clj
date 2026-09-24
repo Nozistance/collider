@@ -17,8 +17,6 @@
 
 (def ^:private ^:const despawn-age 6000)
 
-(def ^:private ^:const below-world (- chunk/min-y 64.0))
-
 (def ^:private ^:const throw-pickup-delay 40)
 
 (def ^:private ^:const throw-power 0.3)
@@ -249,9 +247,9 @@
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
      :in-fluid? in-fluid? :stuck (if rest? (or st stuck) st)}))
 
-(defn- gone? [e ^long age pos]
+(defn- gone? [world e ^long age pos]
   (or (>= age despawn-age)
-      (< (v/y pos) below-world)
+      (< (v/y pos) (chunk/void-y world))
       (not (pos? (double (:health e 1.0))))))
 
 (defn- needs-sync? [e s]
@@ -268,7 +266,7 @@
         s (settled (:chunks world) e (long eid) age)
         stuck' (:stuck s)
         delay' (delay-left e)]
-    (if (gone? e age (:pos s))
+    (if (gone? world e age (:pos s))
       [:remove-entity eid]
       [:merge-entity eid
        (cond-> {:pos          (:pos s)
@@ -432,6 +430,10 @@
       (cons [:set-slot eid slot left] (kept world eid e made))
       [[:set-slot eid slot made]])))
 
+(defn- creative-filled [world eid e stack always?]
+  (when (or always? (not (holds? (:inventory e) stack)))
+    (kept world eid e stack)))
+
 (defn filled-result-deltas
   "Returns the deltas of the container in hand turning into stack.
   The last container of a stack becomes the filled item in the
@@ -445,8 +447,7 @@
   ([world eid stack always? hand]
    (let [e (get-in world [:entities eid])]
      (if (state/infinite-materials? e)
-       (when (or always? (not (holds? (:inventory e) stack)))
-         (kept world eid e stack))
+       (creative-filled world eid e stack always?)
        (emptied world eid e hand stack)))))
 
 (defn consume-deltas
