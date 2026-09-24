@@ -1,6 +1,8 @@
 (ns collider.game.tick
   "The tick and its ticker."
-  (:require [collider.game.state :as state]
+  (:require [clojure.data.int-map :as i]
+            [collider.game.state :as state]
+            [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
             [collider.log :as log]
@@ -44,6 +46,7 @@
   "The systems a player event drives. Vanilla runs them all
   before the level tick."
   [#'chunks/chunk-streaming
+   #'players/player-list
    #'players/players
    #'blocks/block-edits
    #'packets/by-player
@@ -90,23 +93,117 @@
              [#'blocks/acks]
              [#'detector/observe]])
 
+(def server-systems
+  "The systems of phases that run once for the whole server, not
+  in each level. They see the players of every level."
+  #{#'players/player-list #'daynight/daynight})
+
+(def only-in
+  "The dimensions a level system runs in, when not in all."
+  {#'weather-system/weather #{:overworld}})
+
 (def dims
   "The dimensions the tick runs, in a fixed order."
-  [:overworld])
+  schema/dims)
 
-(defn- run-phase [[world d] phase]
-  (reduce (fn [[world d] dim]
-            (let [lv (state/level world dim)
-                  d' (deltas/of phase lv d)]
-              [(state/with-level world dim (state/apply lv d'))
-               (deltas/merge d d')]))
-          [world d] dims))
+(def ^:private dim-set (set dims))
+
+(def ^:private home (first dims))
+
+(def ^:private level-less #{:player-join :chunk-loaded})
+
+(defn- event-dim [world [tag eid]]
+  (or (when-not (level-less tag) (state/dim-of world eid)) home))
+
+(defn- input-of [dim events]
+  (if (= home dim)
+    (deltas/input events)
+    (assoc deltas/empty-deltas :input (vec events))))
+
+(defn- begin [world events]
+  (let [by (group-by #(event-dim world %) events)
+        ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
+                 dims)]
+    [(reduce (fn [w dim] (state/enter w dim (ds dim))) world dims)
+     ds]))
+
+(defn- awaited? [world dim]
+  (some #(= dim (:dim (val %))) (:spawning world)))
+
+(defn- asleep? [world dim]
+  (and (not= home dim)
+       (state/idle? (get-in world [:levels dim]))
+       (not (awaited? world dim))))
+
+(defn- server-job [s [view d]]
+  #(deltas/with-dim (deltas/run [(fn [] (s view d))]) nil))
+
+(defn- job [lv d server dim s]
+  (cond (server-systems s) (when (= home dim) (server-job s @server))
+        (contains? (get only-in s dim-set) dim) #(s lv d)))
+
+(defn- level-deltas [world ds server phase dim]
+  (if (asleep? world dim)
+    deltas/empty-deltas
+    (let [lv (state/level world dim)
+          d (get ds dim)]
+      (-> (deltas/run (into [] (keep #(job lv d server dim %)) phase))
+          (deltas/with-dim dim)))))
+
+(defn- merged [ds] (reduce deltas/merge (map ds dims)))
+
+(defn- away [world eid]
+  (let [dim (state/dim-of world eid)]
+    (when (and dim (not= home dim)) dim)))
+
+(defn- stray-dim [world delta]
+  (when (identical? :remove-entity (nth delta 0))
+    (away world (nth delta 1))))
+
+(defn- part [ws es]
+  (deltas/->Deltas (vec ws) (into (i/int-map) es) [] []))
+
+(defn- rehomed [world ^Deltas d]
+  (let [ws (group-by #(stray-dim world %) (deltas/world-of d))
+        es (group-by #(away world (key %)) (deltas/entities-of d))
+        dims' (disj (into (set (keys ws)) (keys es)) nil)]
+    (into {home (assoc (part (ws nil) (es nil))
+                  :out (deltas/out-of d) :input (deltas/input-of d))}
+          (map (fn [dim] [dim (part (ws dim) (es dim))]))
+          dims')))
+
+(defn- strays? [world ^Deltas d]
+  (or (some #(away world %) (keys (deltas/entities-of d)))
+      (some #(stray-dim world %) (deltas/world-of d))))
+
+(defn- relocated [world pd]
+  (let [d (pd home)]
+    (if (strays? world d)
+      (merge-with deltas/merge (assoc pd home deltas/empty-deltas)
+                  (rehomed world d))
+      pd)))
+
+(defn- phase-deltas [world ds phase]
+  (let [server (delay [(state/server-view world) (merged ds)])
+        of (fn [dim] [dim (level-deltas world ds server phase dim)])
+        pd (into {} (map of) dims)]
+    (if (some server-systems phase) (relocated world pd) pd)))
+
+(defn- step [[world ds] dim d]
+  (if (identical? deltas/empty-deltas d)
+    [world ds]
+    [(if (deltas/inert? d) world (state/apply-in world dim d))
+     (update ds dim deltas/merge d)]))
+
+(defn- run-phase [[world ds] phase]
+  (let [pd (phase-deltas world ds phase)]
+    (reduce (fn [acc dim] (step acc dim (pd dim))) [world ds] dims)))
 
 (defn tick
   "Returns the world and the deltas after one tick of the events."
   [world events]
-  (let [input (deltas/input events)]
-    (reduce run-phase [(state/apply world input) input] phases)))
+  (let [[world' ds] (reduce run-phase (begin world events) phases)]
+    [world' (merged ds)]))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 

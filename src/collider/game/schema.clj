@@ -191,7 +191,13 @@
 (def level-keys
   "The keys of world that belong to a level, not the shared part.
   Includes the transient keys the tick adds and drops."
-  (into #{:active-chunks :block-events} (keys level-table)))
+  (into #{:active-chunks :block-events :use-origins :moves :quits
+          :observed}
+        (keys level-table)))
+
+(def dims
+  "The dimensions of the world, in the order the tick runs them."
+  [:overworld :the-nether :the-end])
 
 (def Level
   (into [:map {:closed true}
@@ -206,8 +212,9 @@
           [k {:optional true} s])))
 
 (def initial-world
-  (assoc (update-vals shared-table :default)
-    :levels {:overworld (update-vals level-table :default)}))
+  (let [lv (update-vals level-table :default)]
+    (assoc (update-vals shared-table :default)
+      :levels (zipmap dims (repeat lv)))))
 
 (defn snapshot
   "Returns what w stores of the keys of scope, :shared or :level."

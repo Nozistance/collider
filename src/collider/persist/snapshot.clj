@@ -213,13 +213,15 @@
 
 (defn world-of
   "Returns the world a snapshot holds.
-  Each level holds its chunks and what belongs to them."
+  Each level holds its chunks and what belongs to them; a level
+  the snapshot lacks is empty."
   [snap]
   (let [shared (schema/shared-of (dissoc snap :levels))
         tick (long (:tick shared 0))]
     (assoc shared :levels
-           (into {} (for [[dim lm] (:levels snap)]
-                      [dim (level-world-of tick lm)])))))
+           (into (:levels schema/initial-world)
+                 (for [[dim lm] (:levels snap)]
+                   [dim (level-world-of tick lm)])))))
 
 (defn- complaint [m [k msgs]]
   (str k " " (str/join ", " msgs)

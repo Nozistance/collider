@@ -27,10 +27,14 @@
 
 (set! *warn-on-reflection* true)
 
-(defn player-entries [world]
-  (let [entities (:entities world)]
-    (into [] (map (fn [eid] (MapEntry/create eid (get entities eid))))
-          (sort (vals (:players world))))))
+(defn player-entries
+  "Returns [eid entity] of the players world holds, by eid."
+  [world]
+  (let [entities (:entities world)
+        entry (fn [eid]
+                (when-let [e (get entities eid)]
+                  (MapEntry/create eid e)))]
+    (into [] (keep entry) (sort (vals (:players world))))))
 
 (def ^:private ^:const fold-leaf 64)
 
@@ -155,6 +159,33 @@
     (assoc shared-part :levels
            (assoc (:levels world) dim level-part))))
 
+(defn idle?
+  "Whether level lv holds nothing a tick could change: no chunks,
+  no entities and no chunk on its way."
+  [lv]
+  (and (zero? (count (:chunks lv))) (zero? (count (:entities lv)))
+       (empty? (:loading lv)) (empty? (:unknown lv))))
+
+(defn dim-of
+  "Returns the dimension whose level holds entity eid, or nil."
+  [world eid]
+  (when (integer? eid)
+    (let [holds? (fn [dim]
+                   (-> (get-in world [:levels dim :entities])
+                       (contains? eid)))]
+      (some #(when (holds? %) %) schema/dims))))
+
+(defn- player-type? [[_ e]] (= :player (:type e)))
+
+(defn server-view
+  "Returns the shared keys of world with the players of every level
+  as its entities."
+  [world]
+  (let [players (comp (mapcat (comp :entities val))
+                      (filter player-type?))]
+    (assoc (dissoc world :levels)
+      :entities (into (i/int-map) players (:levels world)))))
+
 (defn- update-entity [w eid f & args]
   (if (get-in w [:entities eid])
     (clojure.core/apply update-in w [:entities eid] f args)
@@ -276,7 +307,7 @@
 (defn- player-join [w eid name settings]
   (assoc-in w [:spawning eid]
             (cond-> {:name name :seed (spawn-seed w eid)
-                     :settings settings}
+                     :dim :overworld :settings settings}
               (get-in w [:profiles name :pos])
               (assoc :pos (get-in w [:profiles name :pos])))))
 
@@ -294,7 +325,8 @@
     (if (and e (not (pos? (double (:health e))))
              (not (get-in w [:spawning eid])))
       (assoc-in w [:spawning eid]
-                {:respawn? true :seed (spawn-seed w eid)})
+                {:respawn? true :seed (spawn-seed w eid)
+                 :dim :overworld})
       w)))
 
 (defn- drop-entities [es id]
@@ -903,15 +935,31 @@
             w)]
     (cache-active-chunks (reduce player-quit w removes))))
 
+(defn apply-in
+  "Returns world with the deltas folded into its level dim."
+  [world dim deltas]
+  (with-level world dim (apply-level (level world dim) deltas)))
+
 (defn apply
   "Returns the world with the deltas folded into it.
   world may be a level or a whole world; a whole world is folded
   through its overworld level and put back."
   [world deltas]
   (if (contains? world :levels)
-    (with-level world :overworld
-                (apply-level (level world :overworld) deltas))
+    (apply-in world :overworld deltas)
     (apply-level world deltas)))
+
+(def ^:private input-keys [:quits :moves :use-origins])
+
+(defn enter
+  "Returns world with the input deltas of level dim folded in.
+  What the last input of the level left behind is dropped first."
+  [world dim deltas]
+  (if (and (deltas/inert? deltas)
+           (not-any? (get-in world [:levels dim] {}) input-keys))
+    world
+    (let [lv (clojure.core/apply dissoc (level world dim) input-keys)]
+      (with-level world dim (apply-level lv deltas)))))
 
 (defn apply-deltas [world deltas]
   (let [d (deltas-of deltas)]

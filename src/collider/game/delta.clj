@@ -190,7 +190,8 @@
 
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid]
-         [:except {:optional true} Eid]]
+         [:except {:optional true} Eid]
+         [:dim {:optional true} [:maybe :keyword]]]
         fields))
 
 (def Fx

@@ -575,15 +575,21 @@
         batch-job (fn [batch] #(into [] (mapcat job) batch))]
     (mapv batch-job (partition-all 32 ts))))
 
-(defn players
-  "Returns the tick steps of the player list and entity tracking."
+(defn player-list
+  "Returns the tick steps of the player list of the server: joins,
+  duplicate logins, tab entries and the tab header."
   [world d]
-  (let [ps (state/player-entries world)
-        ts (tracked-entries world)]
+  (let [ps (state/player-entries world)]
     [#(joined-deltas (state/joins d))
      #(duplicate-login-deltas world (state/joins d))
      #(list-deltas world ps)
-     #(pending-teleport-deltas world ps)
-     #(spawn-jobs world ps ts)
-     #(move-jobs world ps ts)
      #(tab-header-deltas world (state/joins d))]))
+
+(defn players
+  "Returns the tick steps of entity tracking in the level."
+  [world _]
+  (let [ps (state/player-entries world)
+        ts (tracked-entries world)]
+    [#(pending-teleport-deltas world ps)
+     #(spawn-jobs world ps ts)
+     #(move-jobs world ps ts)]))

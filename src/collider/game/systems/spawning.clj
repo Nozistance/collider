@@ -66,9 +66,14 @@
                    (placed w eid req)
                    [[:spawn-progress eid (assoc req :need need)]]))]))
 
+(defn- here? [world [_ req]]
+  (= (:dim world :overworld) (:dim req :overworld)))
+
 (defn placing
-  "Places the players whose spawn chunks are loaded.
+  "Places the players of this level whose spawn chunks are loaded.
   They are the joining and respawning ones. The chunks the
   others wait for are loaded."
   [world _]
-  (second (reduce settle [world []] (sort-by key (:spawning world)))))
+  (let [reqs (filter #(here? world %)
+                     (sort-by key (:spawning world)))]
+    (second (reduce settle [world []] reqs))))

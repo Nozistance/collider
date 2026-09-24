@@ -65,6 +65,28 @@
 
 (def merge-deltas merge)
 
+(defn inert?
+  "Whether d changes nothing in the world it is applied to."
+  [^Deltas d]
+  (and (empty? (world-of d)) (zero? (count (entities-of d)))
+       (empty? (input-of d))))
+
+(defn- marked [dim m]
+  (if (contains? m :dim) m (assoc m :dim dim)))
+
+(defn with-dim
+  "Returns d with its unmarked effects marked as those of level dim.
+  An effect marked with no dimension is the server's."
+  ^Deltas [^Deltas d dim]
+  (if (empty? (out-of d))
+    d
+    (assoc d :out (mapv #(marked dim %) (out-of d)))))
+
+(defn dim-of
+  "Returns the dimension of the level effect m came from, or nil."
+  [m]
+  (:dim m))
+
 (defn fold [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
@@ -74,9 +96,9 @@
   ^Deltas [fs]
   (fold (fn [^Deltas acc f]
           (let [r (f)]
-            (if (fn? (first r))
-              (merge acc (run (vec r)))
-              (add acc r))))
+            (cond (instance? Deltas r) (merge acc r)
+                  (fn? (first r)) (merge acc (run (vec r)))
+                  :else (add acc r))))
         fs))
 
 (defn of ^Deltas [systems world deltas]
