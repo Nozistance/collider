@@ -51,6 +51,7 @@
   (cond (string? v) 8
         (map? v) (if (plain? v) 8 10)
         (boolean? v) 1
+        (instance? Byte v) 1
         (instance? Float v) 5
         (instance? Double v) 6
         (instance? UUID v) 11
@@ -115,7 +116,7 @@
   (case (tag v)
     8 (buf/write-utf! b (if (string? v) v (:text v)))
     10 (write-map b v)
-    1 (buf/write-byte! b (if v 1 0))
+    1 (buf/write-byte! b (if (boolean? v) (if v 1 0) (long v)))
     5 (buf/write-float! b (double v))
     6 (buf/write-double! b (double v))
     11 (write-uuid b v)

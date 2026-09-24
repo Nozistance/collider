@@ -473,8 +473,13 @@
   ^long [^Buf buf]
   (dec (read-varint buf)))
 
+(defn- full-id ^String [^String s]
+  (if (str/includes? s ":") s (str "minecraft:" s)))
+
 (defn read-id [^Buf buf]
-  (data/kebab (read-string buf)))
+  (let [s (read-string buf)
+        k (data/kebab s)]
+    (if (= (full-id s) (data/wire k)) k s)))
 
 (defn- stat-registry [type]
   (case type
