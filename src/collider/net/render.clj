@@ -496,7 +496,7 @@
 (def ^:private op-level-event 24)
 
 (defn- join-spawn [world]
-  (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
+  (let [[x y z] (state/respawn-at world)]
     [(long (Math/floor (double x)))
      (long (Math/floor (double y)))
      (long (Math/floor (double z)))]))
@@ -515,9 +515,10 @@
    :warning-time 300})
 
 (defn- spawn-pos-packet [world]
-  {:packet :set-default-spawn-position
-   :dimension (:world-spawn-dimension world :overworld)
-   :pos (join-spawn world) :yaw 0.0 :pitch 0.0})
+  (let [[yaw pitch] (state/spawn-turn world)]
+    {:packet :set-default-spawn-position
+     :dimension (:world-spawn-dimension world :overworld)
+     :pos (join-spawn world) :yaw yaw :pitch pitch}))
 
 (def ^:private ticking-packets
   [{:packet :ticking-state :rate 20.0 :frozen? false}
@@ -572,10 +573,10 @@
     :food 20 :saturation 5.0}
    {:packet :set-experience :progress 0.0 :level 0 :total 0}])
 
-(defn- arrival-packets [lv m]
-  [{:packet :player-position :teleport-id (long (:tick lv))
+(defn- arrival-packets [m]
+  [{:packet :player-position :teleport-id 0
     :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
-    :pitch (:pitch m) :relative 0}
+    :pitch (:pitch m) :relative (:relative m 0)}
    (center-packet (chunk/pos-chunk (:pos m)))
    abilities-packet])
 
@@ -589,14 +590,13 @@
        difficulty-packet]
       (permission-packets eid)
       (leave-packets m)
-      (arrival-packets lv m)
+      (arrival-packets m)
       (level-info-packets lv)
       (player-info-packets (get-in lv [:entities eid])))))
 
 (def ^:private session-fx
-  {:teleport      (fn [world m]
-                    [{:packet :player-position
-                      :teleport-id (long (:tick world))
+  {:teleport      (fn [_ m]
+                    [{:packet :player-position :teleport-id 0
                       :pos (:pos m) :vel [0.0 0.0 0.0]
                       :yaw (:yaw m) :pitch (:pitch m)
                       :relative (:relative m 0)}])
@@ -633,7 +633,7 @@
    :default-spawn (fn [_ m]
                     [{:packet :set-default-spawn-position
                       :dimension (:dimension m) :pos (:pos m)
-                      :yaw 0.0 :pitch 0.0}])
+                      :yaw (:yaw m 0.0) :pitch (:pitch m 0.0)}])
    :joined        (fn [_ _] nil)
    :close         (fn [_ _] [:close])})
 
@@ -930,8 +930,9 @@
     (let [base (audience sight m)]
       (if (:except m) (remove #{(:except m)} base) base))))
 
-(defn- entity-delta-packets [sight deltas]
+(defn- entity-delta-packets [sight deltas pick]
   (for [[eid ds] deltas
+        :when (pick eid)
         :let [lv (own-level sight eid)]
         d ds
         p (case (first d)
@@ -964,17 +965,60 @@
         p (resent-packets e)]
     [eid p]))
 
+(defn- arrivals
+  "Returns the players that entered a level in the tick of deltas."
+  [^Deltas deltas]
+  (into #{} (keep #(when (identical? :change-dimension (:msg %))
+                     (:to %)))
+        (deltas/out-of deltas)))
+
+(defn- position? [p]
+  (and (map? p) (identical? :player-position (:packet p))))
+
+(defn- teleport-id
+  "Returns the id of the teleport k before the last one player eid
+  was sent, as its connection counts them."
+  ^long [sight eid ^long k]
+  (let [e (get-in (own-level sight eid) [:entities eid])]
+    (mod (- (long (:tp-id e 1)) k) (long Integer/MAX_VALUE))))
+
+(defn- numbered
+  "Returns the pairs with the teleports in them numbered. The last
+  one a player is sent carries the id the world holds for it."
+  [sight pairs]
+  (let [of (fn [[eid p]] (when (position? p) eid))
+        left (frequencies (keep of pairs))
+        id #(assoc %2 :teleport-id (teleport-id sight %1 %3))
+        step (fn [[acc left] [eid p :as x]]
+               (if (position? p)
+                 (let [k (dec (long (left eid)))]
+                   [(conj acc [eid (id eid p k)]) (assoc left eid k)])
+                 [(conj acc x) left]))]
+    (if (empty? left) pairs (first (reduce step [[] left] pairs)))))
+
+(def ^:private moves-player #{:teleport :change-dimension})
+
+(defn- teleports? [^Deltas deltas]
+  (some #(moves-player (:msg %)) (deltas/out-of deltas)))
+
+(defn- ordered [world sight ^Deltas deltas]
+  (let [es (deltas/entities-of deltas)
+        viewers (delay (viewer-index sight es))
+        new (arrivals deltas)]
+    (vec (concat
+           (join-bursts world sight deltas)
+           (entity-delta-packets sight es (complement new))
+           (mapcat (fn [m] (msg-packets sight viewers m))
+                   (deltas/out-of deltas))
+           (entity-delta-packets sight es new)
+           (forget-packets es)
+           (level-entry-packets sight deltas)))))
+
 (defn render
   "Returns [eid packet] for every player after a tick.
-  It reads the world after the tick and the deltas of that tick."
+  It reads the world after the tick and the deltas of that tick.
+  A player entering a level gets its chunks after all else."
   [world ^Deltas deltas]
   (let [sight (sight-of world)
-        es (deltas/entities-of deltas)
-        viewers (delay (viewer-index sight es))]
-    (concat
-      (join-bursts world sight deltas)
-      (entity-delta-packets sight es)
-      (mapcat (fn [m] (msg-packets sight viewers m))
-              (deltas/out-of deltas))
-      (forget-packets es)
-      (level-entry-packets sight deltas))))
+        pairs (ordered world sight deltas)]
+    (if (teleports? deltas) (numbered sight pairs) pairs)))

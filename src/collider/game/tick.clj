@@ -72,6 +72,7 @@
 (def phases [[#'spawning/placing]
              [#'chunks/chunk-loading]
              packet-systems
+             [#'chunks/arrival-streaming]
              [#'consume/consume]
              [#'pose/pose]
              [#'daynight/daynight]
@@ -187,8 +188,17 @@
 
 (def ^:private left-behind #{:chunks-sent :tracking :track})
 
+(defn- left-behind?
+  "Tells whether entity delta d is chunk work of the level a player
+  leaves: sending, tracking, or the batch quota spent on them."
+  [d]
+  (let [tag (nth d 0)]
+    (or (contains? left-behind tag)
+        (and (identical? :merge-entity tag)
+             (contains? (nth d 2) :chunk-quota)))))
+
 (defn- stay [ds]
-  (filterv #(not (left-behind (nth % 0))) ds))
+  (filterv #(not (left-behind? %)) ds))
 
 (defn- departed
   "Returns d without the chunk and tracking work of the players

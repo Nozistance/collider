@@ -1,6 +1,7 @@
 (ns collider.game.systems.tnt
   "Primed TNT fuse, motion and blast."
   (:require [collider.game.block.tnt :as tnt]
+            [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -105,8 +106,11 @@
   (into (unblock-deltas eid e) (step-deltas world eid e)))
 
 (defn- tnt-entries [world]
-  (into [] (filter (fn [[_ e]] (= :tnt (:type e))))
-        (sort-by key (:entities world))))
+  (let [active (state/active-chunks world)
+        ticks? (fn [[_ e]]
+                 (and (= :tnt (:type e))
+                      (state/active-at? active (:pos e))))]
+    (into [] (filter ticks?) (sort-by key (:entities world)))))
 
 (defn- explode-step [world due]
   #(into [] (mapcat (fn [[eid e]] (explode-deltas world eid e)))

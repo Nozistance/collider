@@ -11,39 +11,48 @@
 (defn- radius ^long [w]
   (long (get-in w [:rules :respawn-radius] 10)))
 
-(defn- search-ids [w]
-  (spawn/search-chunk-ids (:world-spawn w) (radius w)))
+(defn- suggestion
+  "Returns where the spawn search for request req starts: the world
+  spawn for a joining player, as respawns see it for the others."
+  [w req]
+  (if (:respawn? req) (state/respawn-at w) (:world-spawn w)))
+
+(defn- search-ids [w req]
+  (spawn/search-chunk-ids (suggestion w req) (radius w)))
 
 (def ^:private ^:const arrival-radius 3)
 
 (defn- loaded? [w ids] (every? #(contains? (:chunks w) %) ids))
 
 (defn- found [w req]
-  (let [{:keys [chunks world-spawn]} w]
-    (spawn/find-spawn chunks world-spawn (radius w) (:seed req))))
+  (spawn/find-spawn (:chunks w) (suggestion w req) (radius w)
+                    (:seed req)))
 
 (defn- arrival-ids [pos]
   (let [[cx cz] (chunk/id->pos (chunk/pos-chunk pos))]
     (chunk/around-ids (long cx) (long cz) arrival-radius)))
 
 (defn- join-pos [w req]
-  (or (:pos req) (when (loaded? w (search-ids w)) (found w req))))
+  (or (:pos req)
+      (when (loaded? w (search-ids w req)) (found w req))))
 
 (defn- join-ids [w req]
   (if-let [pos (join-pos w req)]
-    (concat (when-not (:pos req) (search-ids w)) (arrival-ids pos))
-    (search-ids w)))
+    (concat (when-not (:pos req) (search-ids w req))
+            (arrival-ids pos))
+    (search-ids w req)))
 
 (defn- need-ids [w eid req]
   (if (:respawn? req)
     (concat (damage/respawn-chunk-ids (get-in w [:entities eid]))
-            (search-ids w))
+            (search-ids w req))
     (join-ids w req)))
 
 (defn- respawned [w eid req]
   (let [e (get-in w [:entities eid])
         bed (damage/bed-respawn (:chunks w) e)
-        [pos yaw pitch] (or bed [(found w req) 0.0 0.0])
+        [yaw pitch] (state/spawn-turn w)
+        [pos yaw pitch] (or bed [(found w req) yaw pitch])
         lost? (and (nil? bed) (some? (damage/respawn-config e)))]
     (conj (damage/respawn-deltas w eid [pos yaw pitch lost?])
           [:spawn-progress eid nil])))

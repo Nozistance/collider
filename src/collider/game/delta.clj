@@ -48,7 +48,7 @@
    :set-rule
    [:cat :keyword :any]
    :set-world-spawn
-   [:cat :keyword Pos]
+   [:cat :keyword Pos [:tuple number? number?] [:maybe Pos]]
    :add-chunk
    [:cat :int :any]
    :chunk-requested
@@ -140,8 +140,10 @@
    :health            [[:health number?]]
    :respawn           []
    :change-dimension  [[:pos Vec3] [:yaw number?] [:pitch number?]
+                       [:relative :int]
                        [:forget Coll] [:untrack Coll]]
-   :default-spawn     [[:dimension :keyword] [:pos Pos]]
+   :default-spawn     [[:dimension :keyword] [:pos Pos]
+                       [:yaw number?] [:pitch number?]]
    :rain-started      []
    :rain-stopped      []
    :rain-level        [[:level number?]]

@@ -616,9 +616,17 @@
   (and (some? (:health e))
        (or (not (idle? world e)) (near-edits? world e))))
 
+(defn- ticking?
+  "Tells whether entity e runs its tick: a player always, any other
+  only in a chunk that runs entity ticks."
+  [active e]
+  (or (= :player (:type e)) (state/active-at? active (:pos e))))
+
 (defn- live-entries [world]
-  (into [] (filter (fn [entry] (live? world entry)))
-        (:entities world)))
+  (let [active (state/active-chunks world)]
+    (into [] (filter (fn [[_ e :as entry]]
+                       (and (ticking? active e) (live? world entry))))
+          (:entities world))))
 
 (defn- living-batch-fn [world batch]
   #(into [] (mapcat (fn [[eid e]] (living-deltas world eid e)))

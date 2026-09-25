@@ -48,16 +48,19 @@
 
 (defn change-dimension
   "Returns the effect of a player entering level dim at pos.
-  It names the chunks and entities the player knew in the level
-  it left."
-  [dim pos yaw pitch forget untrack]
+  yaw, pitch and relative are as in a teleport. It names the
+  chunks and entities the player knew in the level it left."
+  [dim pos [yaw pitch relative] forget untrack]
   {:msg :change-dimension :dim dim :pos pos :yaw (double yaw)
-   :pitch (double pitch) :forget (vec forget) :untrack (vec untrack)})
+   :pitch (double pitch) :relative (long relative)
+   :forget (vec forget) :untrack (vec untrack)})
 
 (defn default-spawn
-  "Returns the effect that shows the world spawn in level dim."
-  [dim pos]
-  {:msg :default-spawn :dimension dim :pos pos})
+  "Returns the effect that shows the world spawn in level dim,
+  faced to yaw and pitch."
+  [dim pos yaw pitch]
+  {:msg :default-spawn :dimension dim :pos pos
+   :yaw (double yaw) :pitch (double pitch)})
 
 (defn rain-started []
   {:msg :rain-started})

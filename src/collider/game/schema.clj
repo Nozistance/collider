@@ -156,6 +156,12 @@
    :world-spawn-dimension
    {:default :overworld :store store-same :load identity
     :schema :keyword :scope :shared}
+   :world-spawn-turn
+   {:default [0.0 0.0] :store store-same :load identity
+    :schema [:tuple number? number?] :scope :shared}
+   :world-spawn-at
+   {:default nil :store store-same :load identity
+    :schema [:maybe [:tuple :int :int :int]] :scope :shared}
    :clear-weather-time {:default 0 :store store-long
                         :load load-long :schema :int
                         :scope :shared}

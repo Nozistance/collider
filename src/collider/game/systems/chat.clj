@@ -12,6 +12,7 @@
             [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
+            [collider.game.systems.sleep :as sleep]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -92,9 +93,19 @@
   (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
+(defn- success
+  "Returns the deltas ds of a command, their effects marked as the
+  report of its success."
+  [ds]
+  (mapv (fn [d]
+          (if (= :fx (nth d 0))
+            [:fx (assoc (nth d 1) :feedback true)]
+            d))
+        ds))
+
 (defn- say* [eid key with]
   (let [msg {:translate key :with (vec with)}]
-    [(out/to eid (out/system-chat [msg]))]))
+    (success [(out/to eid (out/system-chat [msg]))])))
 
 (defn- say [eid key & with] (say* eid key with))
 
@@ -352,13 +363,17 @@
     (keep identity [(by-uuid world true (:uuid sel))])
     (selected world eid sel)))
 
-(defn- crossed [lv eid dim pos yaw pitch]
+(declare rel-bits)
+
+(defn- crossed [lv eid dim pos [yaw pitch] rel]
   (let [e (get-in lv [:entities eid])
         known (sort-by chunk/id->pos (seq (:sent-chunks e)))
-        seen (sort (seq (:tracking e)))]
+        seen (sort (seq (:tracking e)))
+        sent (if (set? rel)
+               [0.0 0.0 (rel-bits rel false)]
+               [yaw pitch 0])]
     [[:change-dimension eid dim pos yaw pitch]
-     (out/to eid
-             (out/change-dimension dim pos yaw pitch known seen))]))
+     (out/to eid (out/change-dimension dim pos sent known seen))]))
 
 (defn- rel-bits
   "Returns the relative flags of a move whose axes rel count from
@@ -393,16 +408,56 @@
             at (packet-pos e pos rel)]
         [(out/to id (out/teleport at 0.0 0.0 bits))]))))
 
-(defn- player-moved [world id from e to pos [yaw pitch :as turn] rel]
-  (in-level
-    world from
-    (if (= from to)
-      (into [[:teleport id pos]
-             [:merge-entity id
-              {:yaw yaw :pitch pitch :head-yaw yaw :on-ground true
-               :vel (kept-vel e (if (set? rel) rel #{}) true)}]]
-            (player-teleport id e pos turn rel))
-      (crossed (level-view world from) id to pos yaw pitch))))
+(defn- stood
+  "Returns sleeping player e as the wake deltas ds leave it."
+  [ds e]
+  (let [of (fn [tag] (some #(when (= tag (nth % 0)) (nth % 2)) ds))]
+    (assoc e :pos (v/v3 (of :teleport)) :sleeping nil
+           :yaw (:yaw (of :merge-entity)) :pitch 0.0)))
+
+(defn- woken
+  "Returns [deltas e] of player e of id leaving its bed in level lv
+  before it is teleported, e as it then stands."
+  [lv id e]
+  (if (:sleeping e)
+    (let [ds (vec (sleep/wake-deltas lv id))
+          left (dec (count (sleep/sleepers lv)))]
+      [(conj (pop ds) (sleep/announcement lv left) (peek ds))
+       (stood ds e)])
+    [nil e]))
+
+(defn- shifted
+  "Returns pos with its axes rel counted from where e stands rather
+  than from where e0 stood."
+  [pos rel e0 e]
+  (let [from (xyz (:pos e0)) to (xyz (:pos e))]
+    (mapv (fn [a]
+            (if (contains? rel a)
+              (+ (- (double (nth pos a)) (double (nth from a)))
+                 (double (nth to a)))
+              (nth pos a)))
+          [0 1 2])))
+
+(defn- player-placed [id e pos [yaw pitch :as turn] rel]
+  (into [[:teleport id pos]
+         [:merge-entity id
+          {:yaw yaw :pitch pitch :head-yaw yaw :on-ground true
+           :vel (kept-vel e (if (set? rel) rel #{}) true)}]]
+        (player-teleport id e pos turn rel)))
+
+(defn- player-moved [world id from e0 to pos turn rel]
+  (let [lv (level-view world from)
+        [wake e] (woken lv id e0)
+        own? (set? rel)
+        turn (if own? [(:yaw e 0.0) (:pitch e 0.0)] turn)]
+    (in-level
+      world from
+      (concat
+        wake
+        (if (= from to)
+          (let [pos (if own? (shifted pos rel e0 e) pos)]
+            (player-placed id e pos turn rel))
+          (crossed lv id to pos turn rel))))))
 
 (defn- placed-props [e pos yaw pitch rel]
   (cond-> {:pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
@@ -561,7 +616,7 @@
         msg {:translate "commands.summon.success" :with [kind]}
         mob (mobs/egg-mob type at [t eid :summon] t dim)]
     (concat (in-level world dim [[:spawn-entity mob]])
-            [(out/to eid (out/system-chat [msg]))])))
+            (success [(out/to eid (out/system-chat [msg]))]))))
 
 (defn- summon-deltas [world eid [type x y z]]
   (let [p (source-pos world)
@@ -620,19 +675,21 @@
 (defn- out-of-bounds? [pos]
   (and (every? some? pos) (not (spawnable? pos))))
 
-(defn- same-spawn? [world dim at]
+(defn- same-spawn? [world dim at turn]
   (and (= dim (:world-spawn-dimension world :overworld))
-       (= at (vec (:world-spawn world)))))
+       (= at (vec (:world-spawn world)))
+       (= (mapv double turn) (state/spawn-turn world))))
 
-(defn- world-spawn-set [world eid at [yaw pitch]]
+(defn- world-spawn-set [world eid at [yaw pitch :as turn]]
   (let [dim (source-dim world)
         with (conj (mapv str at) (str yaw) (str pitch)
                    (dimension-id dim))
-        msg {:translate "commands.setworldspawn.success" :with with}]
-    (concat [[:set-world-spawn dim at]]
-            (when-not (same-spawn? world dim at)
-              [(out/all (out/default-spawn dim at))])
-            [(out/to eid (out/system-chat [msg]))])))
+        msg {:translate "commands.setworldspawn.success" :with with}
+        edge (state/border-spawn (:chunks (level-view world dim)) at)]
+    (concat [[:set-world-spawn dim at [yaw pitch] edge]]
+            (when-not (same-spawn? world dim at turn)
+              [(out/everyone (out/default-spawn dim at yaw pitch))])
+            (success [(out/to eid (out/system-chat [msg]))]))))
 
 (defn- world-spawn-deltas
   "Returns the deltas that move the world spawn to the level the
@@ -698,8 +755,8 @@
   (let [given (long (or given 0))
         m (weather-parameters world kind given)
         msg {:translate (str "commands.weather.set." (name kind))}]
-    [[:set-weather m]
-     (out/to eid (out/system-chat [msg]))]))
+    (cons [:set-weather m]
+          (success [(out/to eid (out/system-chat [msg]))]))))
 
 (defn- time-query [world what]
   (case what
@@ -710,18 +767,18 @@
 
 (defn- time-set-deltas [eid ^long t]
   (cons [:set-time t]
-        (tell eid (format "set the time to **%d**" t))))
+        (success (tell eid (format "set the time to **%d**" t)))))
 
 (defn- time-add-deltas [world eid amount]
   (let [t (+ (long (:time-of-day world 0)) (long amount))
         line (format "added **%d** to the time" amount)]
-    (cons [:set-time t] (tell eid line))))
+    (cons [:set-time t] (success (tell eid line)))))
 
 (defn- time-deltas [world eid op args]
   (case op
     :time-set (time-set-deltas eid (long (first args)))
     :time-add (time-add-deltas world eid (first args))
-    :time-query (tell eid (time-query world (first args)))))
+    :time-query (success (tell eid (time-query world (first args))))))
 
 (defn- weather-command-deltas [world eid op args]
   (let [given (first args)]
@@ -779,6 +836,27 @@
       (conj (->> (context-runs (subs text 1) cursor)
                  out/system-chat (out/to eid))))))
 
+(defn- feedback?
+  "Tells whether players hear of the success of commands once the
+  deltas ds of one are in."
+  [world ds]
+  (reduce (fn [on d]
+            (if (= [:set-rule :send-command-feedback] (take 2 d))
+              (nth d 2)
+              on))
+          (get-in world [:rules :send-command-feedback] true) ds))
+
+(defn- reported
+  "Returns the deltas ds of a command with its success reports kept
+  only while players hear of them."
+  [world ds]
+  (let [on? (feedback? world ds)
+        kept (fn [d]
+               (let [m (when (= :fx (nth d 0)) (nth d 1))]
+                 (cond (not (:feedback m)) d
+                       on? [:fx (dissoc m :feedback)])))]
+    (into [] (keep kept) ds)))
+
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
                  [(v/x p) (v/y p) (v/z p)])
@@ -786,8 +864,9 @@
     (cond
       (:failure r) (parse-failed eid text r)
       (:error r) (tell eid (:error r))
-      :else (let [w (sourced world r origin)]
-              (world-command-deltas w eid (:delta r))))))
+      :else (let [w (sourced world r origin)
+                  ds (world-command-deltas w eid (:delta r))]
+              (reported w ds)))))
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]

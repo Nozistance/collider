@@ -525,7 +525,7 @@
 (def ^:private teleport-retry 20)
 
 (defn- teleport-due? [world e]
-  (let [since (:tp-id e)]
+  (let [since (:tp-at e)]
     (and (:tp-target e) since
          (>= (- (long (:tick world)) (long since)) teleport-retry))))
 

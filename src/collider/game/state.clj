@@ -334,8 +334,34 @@
    :health-sent  20.0
    :keepalive-at tick :keepalive-pending? false})
 
-(defn- world-spawn-set [w dim pos]
-  (assoc w :world-spawn (vec pos) :world-spawn-dimension dim))
+(def ^:private border-edge 29999984)
+
+(defn- in-border? [[x _ z]]
+  (and (<= (- border-edge) (long x)) (< (long x) border-edge)
+       (<= (- border-edge) (long z)) (< (long z) border-edge)))
+
+(defn border-spawn
+  "Returns where players respawn instead of the world spawn pos of
+  a level with chunks, or nil when pos lies inside the world border.
+  That place is the top of the column at the border centre."
+  [chunks pos]
+  (when-not (in-border? pos)
+    [0 (spawn/motion-blocking-height chunks 0 0) 0]))
+
+(defn spawn-turn
+  "Returns [yaw pitch] of the world spawn."
+  [w]
+  (:world-spawn-turn w [0.0 0.0]))
+
+(defn respawn-at
+  "Returns the world spawn as players respawn at it, moved inside
+  the world border."
+  [w]
+  (or (:world-spawn-at w) (vec (:world-spawn w [24 4 8]))))
+
+(defn- world-spawn-set [w [_ dim pos turn at]]
+  (assoc w :world-spawn (vec pos) :world-spawn-dimension dim
+           :world-spawn-turn (mapv double turn) :world-spawn-at at))
 
 (defn- respawn-dimension
   "Returns the level of the world spawn, where a player with no
@@ -354,7 +380,9 @@
                 pos (assoc :pos pos)))))
 
 (defn- player-placed [w eid name pos]
-  (let [fresh (merge (new-player name (:tick w) pos)
+  (let [[yaw pitch] (spawn-turn w)
+        fresh (merge (new-player name (:tick w) pos)
+                     {:yaw yaw :pitch pitch}
                      (get-in w [:spawning eid :settings]))
         saved (dissoc (get-in w [:profiles name]) :dimension)]
     (-> w
@@ -619,10 +647,9 @@
 
 (defn- teleport-ack [w eid id]
   (let [e (get-in w [:entities eid])]
-    (if (and (:tp-target e) (= (long id) (long (:tp-id e -1))))
+    (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
       (update-entity w eid merge
-                     {:pos (v/v3 (:tp-target e))
-                      :tp-target nil :tp-id nil
+                     {:pos (v/v3 (:tp-target e)) :tp-target nil
                       :client-vel [0.0 0.0 0.0] :fall 0.0})
       w)))
 
@@ -846,11 +873,18 @@
        (> resist (/ max-resist 2.0)) (hurt-again e health amount)
        :else (hurt-fully e health amount dx dz)))))
 
+(defn next-teleport-id
+  "Returns the id of the next teleport a player is sent. The
+  connection counts them from 1, the join teleport, and wraps."
+  ^long [e]
+  (let [n (inc (long (:tp-id e 1)))]
+    (if (= n Integer/MAX_VALUE) 0 n)))
+
 (def entity-apply
   {:merge-entity (fn [_ e [_ _ m]] (merge e m))
    :teleport (fn [tick e [_ _ pos]]
                (assoc e :pos (v/v3 pos) :tp-target pos
-                        :tp-id tick))
+                        :tp-id (next-teleport-id e) :tp-at tick))
    :client-slots (fn [_ e [_ _ slots carried]]
                    (client-slots e slots carried))
    :award (fn [_ e [_ _ k n]]
@@ -944,7 +978,7 @@
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
    :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))
    :set-rule (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
-   :set-world-spawn (fn [w [_ dim pos]] (world-spawn-set w dim pos))
+   :set-world-spawn world-spawn-set
    :add-chunk (fn [w [_ id c]] (chunk-added w id c))
    :chunk-requested (fn [w [_ id]] (chunk-requested w id))
    :chunk-ticket (fn [w [_ id n]] (chunk-ticketed w id n))
@@ -1022,7 +1056,8 @@
 (defn- arrived [e tick pos yaw pitch]
   (assoc (stopped-use e)
          :pos (v/v3 pos) :yaw (double yaw) :pitch (double pitch)
-         :tp-target pos :tp-id tick :chunk-view nil
+         :tp-target pos :tp-id (next-teleport-id e) :tp-at tick
+         :chunk-view nil
          :chunk-pos (chunk/pos-chunk pos) :chunks-pending? nil
          :sent-chunks (i/int-set) :tracking (i/int-set) :track nil))
 

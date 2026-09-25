@@ -171,6 +171,18 @@
               (state/player-entries world))
         #(restore-deltas world d)))
 
+(defn- arrived [world d]
+  (keep #(when-let [e (get-in world [:entities (nth % 1)])]
+           [(nth % 1) e])
+        (state/changes-of d)))
+
+(defn arrival-streaming
+  "Sends the players that entered this level during the tick their
+  first chunks, as the tick ends for them."
+  [world d]
+  (mapv (fn [entry] #(stream-deltas world entry))
+        (arrived world d)))
+
 (defn- unload-deltas [world id]
   [[:unload-chunk id]
    (out/all (out/store-chunk id (schema/chunk-payload world id)))])
