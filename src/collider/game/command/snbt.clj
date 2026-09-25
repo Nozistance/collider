@@ -164,7 +164,8 @@
 
 (def ^:private suffix-rule
   (rule (apply alt
-               (sq (chs \u \U) (apply alt (typed-suffixes :unsigned)))
+               (sq (chs \u \U)
+                   (apply alt (typed-suffixes :unsigned)))
                (sq (chs \s \S) (apply alt (typed-suffixes :signed)))
                (typed-suffixes nil))
         (fn [_ f] (:suffix f))))
@@ -223,8 +224,8 @@
       (try ((if s? parse-signed parse-unsigned)
             t (digits-of lit) (:base lit))
            (catch NumberFormatException e
-             (store! st (mark st)
-                     (err "number_parse_failure" (ex-message e))))))))
+             (->> (err "number_parse_failure" (ex-message e))
+                  (store! st (mark st))))))))
 
 (def ^:private fsuffix-rule
   (rule (alt (sq (chs \f \F) (as :type :float))
@@ -232,7 +233,9 @@
         (fn [_ f] (:type f))))
 
 (def ^:private exp-rule
-  (rule (sq (chs \e \E) (opt (to sign-rule :sign)) (to dec-rule :dec))
+  (rule (sq (chs \e \E)
+            (opt (to sign-rule :sign))
+            (to dec-rule :dec))
         (fn [_ f] [(:sign f :plus) (:dec f)])))
 
 (defn- float-text [{:keys [sign whole fraction exp]}]
@@ -246,14 +249,19 @@
     v
     (store! st (mark st) (err "infinity_not_allowed"))))
 
-(defn- float-literal [st f]
+(defn- float-literal
+  "Returns the float or double of f. Zero loses its sign, as
+  FloatTag.valueOf and DoubleTag.valueOf give the shared ZERO."
+  [st f]
   (let [s (float-text f)]
     (if (= :float (:type f))
-      (finite st (Float/valueOf (Float/parseFloat s)))
-      (finite st (Double/valueOf (Double/parseDouble s))))))
+      (finite st (Float/valueOf
+                   (unchecked-float (+ 0.0 (Float/parseFloat s)))))
+      (finite st (Double/valueOf (+ 0.0 (Double/parseDouble s)))))))
 
 (def ^:private float-rule
-  (let [exp (opt (to exp-rule :exp)) typ (opt (to fsuffix-rule :type))
+  (let [exp (opt (to exp-rule :exp))
+        typ (opt (to fsuffix-rule :type))
         whole (to dec-rule :whole)]
     (rule (sq (opt (to sign-rule :sign))
               (alt (sq whole (ch \.) cut
@@ -320,7 +328,9 @@
         (fn [_ f] (str/join (:chunks f)))))
 
 (def ^:private quoted-rule
-  (rule (alt (sq (ch \") cut (opt (to (contents-rule \') :c)) (ch \"))
+  (rule (alt (sq (ch \") cut
+                 (opt (to (contents-rule \') :c))
+                 (ch \"))
              (sq (ch \') (opt (to (contents-rule \") :c)) (ch \')))
         (fn [_ f] (:c f))))
 
@@ -369,7 +379,8 @@
         builtin))
 
 (def ^:private key-rule
-  (rule (alt (to quoted-rule :k) (to unquoted :k)) (fn [_ f] (:k f))))
+  (rule (alt (to quoted-rule :k) (to unquoted :k))
+        (fn [_ f] (:k f))))
 
 (defn- map-entry [st {:keys [k v]}]
   (if (= "" k)
@@ -449,8 +460,9 @@
    :err (volatile! {:cursor -1}) :silent? false})
 
 (defn- failure [st]
-  (let [{:keys [cursor reason]} @(:err st)]
-    (assoc (or reason (err "failed")) :cursor cursor :input (:s st))))
+  (let [{:keys [cursor reason]} @(:err st)
+        reason (or reason (err "failed"))]
+    (assoc reason :cursor cursor :input (:s st))))
 
 (defn read-tag [rd]
   (let [st (state-of rd) v (literal st)]

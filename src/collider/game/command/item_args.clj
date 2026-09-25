@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.command.args :as args]
+            [collider.game.command.components :as cs]
             [collider.game.command.reader :as r]
             [collider.game.command.snbt :as snbt]
             [collider.game.stack :as stack]))
@@ -32,55 +33,6 @@
   "Components with no saved form, so commands cannot name them
   (DataComponents.java: no persistent codec)."
   #{:creative-slot-lock :additional-trade-cost :map-post-processing})
-
-(defn- int-in [lo hi why]
-  (fn [tag]
-    (if (number? tag)
-      (let [n (unchecked-int tag)]
-        (if (<= lo n hi) [:ok n] [:malformed (str why n)]))
-      [:malformed "Not a number"])))
-
-(defn- bool-of [tag]
-  (if (number? tag)
-    [:ok (not (zero? (double tag)))]
-    [:malformed "Not a number"]))
-
-(def ^:private suffixes
-  {Byte "b" Short "s" Integer "" Long "L" Float "f" Double "d"})
-
-(defn- plain? [s]
-  (every? #(and (<= 32 (int %) 126) (not (#{\\ \" \'} %))) s))
-
-(defn- printed
-  "Returns tag as SNBT for numbers and plain strings, else nil.
-  Printing other tags is not modelled."
-  [tag]
-  (if-let [sfx (suffixes (class tag))]
-    (str tag sfx)
-    (when (and (string? tag) (plain? tag)) (str "\"" tag "\""))))
-
-(defn- not-map
-  "Returns the error a map codec gives for tag, or tag kept raw."
-  [tag]
-  (if-let [p (printed tag)]
-    [:malformed (str "Not a map: " p)]
-    [:raw tag]))
-
-(defn- unit-of [tag] (if (map? tag) [:ok true] (not-map tag)))
-
-(def ^:private decoders
-  "The saved forms of components commands can check.
-  Others are kept as the raw tag, unchecked."
-  (let [n (int-in 0 Integer/MAX_VALUE "Value must be non-negative: ")
-        p (int-in 1 Integer/MAX_VALUE "Value must be positive: ")]
-    {:damage n :repair-cost n :max-damage p
-     :max-stack-size (int-in 1 99 "Value must be within range [1;99]: ")
-     :enchantment-glint-override bool-of
-     :unbreakable unit-of :glider unit-of
-     :intangible-projectile unit-of}))
-
-(defn- decode [k tag]
-  (if-let [f (decoders k)] (f tag) [:raw tag]))
 
 (defn- at? [[s n :as rd] c]
   (and (r/can-read? rd) (= c (nth s n))))
@@ -113,7 +65,7 @@
 
 (defn- read-value [k rd]
   (let [res (snbt/read-tag rd)
-        [op v] (when-not (r/error? res) (decode k (first res)))]
+        [op v] (when-not (r/error? res) (cs/decode k (first res)))]
     (case op
       nil res
       :malformed (r/error-at rd "arguments.item.component.malformed"
@@ -253,7 +205,7 @@
 (defn- bound [x] (when (number? x) (unchecked-int x)))
 
 (defn- not-range [tag]
-  (if-let [p (printed tag)]
+  (if-let [p (cs/printed tag)]
     [:malformed (str "Failed to parse either. First: Not a map: " p
                      "; Second: Not a number")]
     [:ok [:raw :count tag]]))
@@ -276,7 +228,7 @@
 (defn- component-test [k tag]
   (if (= :count k)
     (bounds tag)
-    (let [[op v] (decode k tag)]
+    (let [[op v] (cs/decode k tag)]
       (case op
         :ok [:ok [:equals k v]]
         :raw [:ok [:raw k v]]
@@ -290,7 +242,7 @@
   (let [record? (and (vector? c)
                      (or (= :exists (first c))
                          (map-predicates (peek c))))
-        [op v] (when record? (not-map tag))]
+        [op v] (when record? (cs/not-map tag))]
     (cond (= :count c) (bounds tag)
           (= :malformed op) [op v]
           (= :predicate (first c)) [:ok [:raw (peek c) tag]]
