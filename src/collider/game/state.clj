@@ -1020,10 +1020,11 @@
     (apply-level world deltas)))
 
 (defn- arrived [e tick pos yaw pitch]
-  (assoc e :pos (v/v3 pos) :yaw (double yaw) :pitch (double pitch)
-           :tp-target pos :tp-id tick :chunk-pos nil :chunk-view nil
-           :chunks-pending? nil :sent-chunks (i/int-set)
-           :tracking (i/int-set) :track nil))
+  (assoc (stopped-use e)
+         :pos (v/v3 pos) :yaw (double yaw) :pitch (double pitch)
+         :tp-target pos :tp-id tick :chunk-view nil
+         :chunk-pos (chunk/pos-chunk pos) :chunks-pending? nil
+         :sent-chunks (i/int-set) :tracking (i/int-set) :track nil))
 
 (defn- crossed [world from [_ eid dim pos yaw pitch]]
   (if-let [e (get-in world [:levels from :entities eid])]

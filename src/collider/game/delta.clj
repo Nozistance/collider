@@ -107,7 +107,7 @@
    :set-slot
    [:cat :int [:maybe Stack]]
    :chunks-sent
-   [:cat Coll Coll]
+   [:cat Coll Coll [:? [:maybe :int]]]
    :damage
    [:cat number? [:? [:cat number? number?]]]
    :push

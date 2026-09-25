@@ -132,13 +132,13 @@
 
 (defn- restream-deltas [world eid cp r p]
   (let [plan (stream-plan world eid cp r p)
-        {:keys [add drop pending]} plan]
+        {:keys [add drop pending]} plan
+        moved? (not= cp (:chunk-pos p))]
     (concat
-      (when (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
-                (seq add) (seq drop))
+      (when (or moved? (not= r (:chunk-view p)) (seq add) (seq drop))
         [[:merge-entity eid
           {:chunk-pos cp :chunk-view r :chunks-pending? pending}]
-         [:chunks-sent eid add drop]])
+         [:chunks-sent eid add drop (when moved? cp)]])
       (quota-deltas eid plan))))
 
 (defn- spawn-look-deltas [eid pos yaw pitch]

@@ -50,13 +50,18 @@
       (map #(chunk-packet world %) add)
       [{:packet :chunk-batch-finished :size (count add)}])))
 
-(defn- chunk-packets [world [_ eid add drop]]
-  (let [cp (get-in world [:entities eid :chunk-pos])
-        [cx cz] (chunk/id->pos cp)]
-    (concat
-      [{:packet :set-chunk-cache-center :cx cx :cz cz}]
-      (added-chunk-packets world add)
-      (map forget-chunk-packet drop))))
+(defn- center-packet [id]
+  (let [[cx cz] (chunk/id->pos id)]
+    {:packet :set-chunk-cache-center :cx cx :cz cz}))
+
+(defn- chunk-packets
+  "Returns the packets of one step of chunk sending. The view
+  center goes only when it moved."
+  [world [_ _ add drop center]]
+  (concat
+    (when center [(center-packet center)])
+    (added-chunk-packets world add)
+    (map forget-chunk-packet drop)))
 
 (def ^:private ^:table entity-type
   (delay
@@ -507,7 +512,7 @@
   {:packet     :initialize-border :center-x 0.0 :center-z 0.0
    :old-size   world-border-size :size world-border-size
    :max-size   world-border-max :warning-blocks 5
-   :warning-time 15})
+   :warning-time 300})
 
 (defn- spawn-pos-packet [world]
   {:packet :set-default-spawn-position
@@ -552,24 +557,27 @@
                (:untrack m))))
 
 (defn- player-info-packets
-  "PlayerList.sendAllPlayerInfo and the resent health and experience
-  of the next ServerPlayer.doTick."
+  "The inventory and held slot a player entering a level learns."
   [e]
   (let [inv (or (:inventory e) {})]
     [{:packet :container-set-content :container 0 :state-id 0
       :items (mapv inv (range menu/slot-count)) :carried (:carried e)}
-     {:packet :set-held-slot :slot (long (or (:held-slot e) 0))}
-     {:packet :set-health :health (double (:health e 20.0))
-      :food 20 :saturation 5.0}
-     {:packet :set-experience :progress 0.0 :level 0 :total 0}]))
+     {:packet :set-held-slot :slot (long (or (:held-slot e) 0))}]))
+
+(defn- resent-packets
+  "The health and experience a player entering a level learns once
+  the levels have ticked."
+  [e]
+  [{:packet :set-health :health (double (:health e 20.0))
+    :food 20 :saturation 5.0}
+   {:packet :set-experience :progress 0.0 :level 0 :total 0}])
 
 (defn- arrival-packets [lv m]
-  (let [[cx cz] (chunk/id->pos (chunk/pos-chunk (:pos m)))]
-    [{:packet :player-position :teleport-id (long (:tick lv))
-      :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
-      :pitch (:pitch m) :relative 0}
-     {:packet :set-chunk-cache-center :cx cx :cz cz}
-     abilities-packet]))
+  [{:packet :player-position :teleport-id (long (:tick lv))
+    :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
+    :pitch (:pitch m) :relative 0}
+   (center-packet (chunk/pos-chunk (:pos m)))
+   abilities-packet])
 
 (defn- change-dimension-packets
   "Returns the packets that move a player into level lv, in the
@@ -945,6 +953,17 @@
               p pkts]
           [eid p])))))
 
+(defn- level-entry-packets
+  "The health and experience resent to the players that entered a
+  level this tick, after all else the tick sends them."
+  [sight ^Deltas deltas]
+  (for [m (deltas/out-of deltas)
+        :when (identical? :change-dimension (:msg m))
+        :let [eid (:to m)
+              e (get-in (own-level sight eid) [:entities eid])]
+        p (resent-packets e)]
+    [eid p]))
+
 (defn render
   "Returns [eid packet] for every player after a tick.
   It reads the world after the tick and the deltas of that tick."
@@ -957,4 +976,5 @@
       (entity-delta-packets sight es)
       (mapcat (fn [m] (msg-packets sight viewers m))
               (deltas/out-of deltas))
-      (forget-packets es))))
+      (forget-packets es)
+      (level-entry-packets sight deltas))))
