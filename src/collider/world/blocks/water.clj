@@ -3,7 +3,8 @@
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.blocks.support :as support])
+            [collider.world.blocks.support :as support]
+            [collider.world.direction :as dir])
   (:import (clojure.lang PersistentQueue)))
 
 (set! *warn-on-reflection* true)
@@ -22,10 +23,24 @@
       (boolean
         (some #(water? (chunk/at chunks (mapv + p %))) around6))))
 
-(defn- coral-wake [chunks _dim tick p _old _self?]
-  (when-not (coral-wet? chunks p (chunk/at chunks p))
-    (let [roll (random/of-key tick p :coral)]
-      (+ (long tick) 60 (long (Math/floor (* 40.0 roll)))))))
+(defn- held-side
+  "Returns the side a coral stands on, or nil for a coral block."
+  [st]
+  (case (block/type-of st)
+    (:coral-plant :coral-fan) :down
+    :coral-wall-fan (dir/opposite (block/facing-of st))
+    nil))
+
+(defn- die-tick ^long [tick p]
+  (let [roll (random/of-key tick p :coral)]
+    (+ (long tick) 60 (long (Math/floor (* 40.0 roll))))))
+
+(defn- coral-wake [chunks _dim tick p _old side]
+  (let [st (chunk/at chunks p)]
+    (cond
+      (and side (= side (held-side st))
+           (not (support/supported? chunks p st))) :neighbor
+      (not (coral-wet? chunks p st)) (die-tick tick p))))
 
 (defn- coral-dies [chunks p _ctx]
   (let [st (chunk/at chunks p)]
@@ -33,11 +48,12 @@
       [[p (block/dead-coral st)]])))
 
 (def coral-rule
-  {:name   :coral
-   :match? (fn [_chunks st _p]
-             (contains? block/coral-types (block/type-of st)))
-   :wake   coral-wake
-   :due    coral-dies})
+  {:name    :coral
+   :match?  (fn [_chunks st _p]
+              (contains? block/coral-types (block/type-of st)))
+   :wake    coral-wake
+   :reshape (:due support/rule)
+   :due     coral-dies})
 
 (defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
 
@@ -55,18 +71,29 @@
         up? (kelp? (above chunks p))]
     (case (block/type-of st)
       :kelp (when up? [[p (block/state :kelp-plant)]])
-      :kelp-plant (when-not up? [[p (kelp-head-state (:tick ctx) p)]])
+      :kelp-plant (when-not up?
+                    [[p (kelp-head-state (:tick ctx) p)]])
       nil)))
 
-(defn- kelp-due [chunks p ctx]
-  (or (seq ((:due support/rule) chunks p nil))
-      (kelp-grown chunks p ctx)))
+(defn- kelp-wake
+  "GrowingPlantHeadBlock and GrowingPlantBodyBlock: a tick when the
+  block below no longer holds it, a new head or stem when the block
+  above or below changes. The change at pos itself asks for the tick
+  too: here a new head or stem comes a tick late, after the change
+  below, and the tick it had was for the old type."
+  [chunks _dim tick p _old side]
+  (let [held? (support/supported? chunks p (chunk/at chunks p))]
+    (cond
+      (and (contains? #{nil :down} side) (not held?))
+      (inc (long tick))
+      (contains? #{nil :up :down} side) :neighbor)))
 
 (def kelp-rule
-  {:name   :kelp
-   :match? (fn [_chunks st _p] (kelp? st))
-   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
-   :due    kelp-due})
+  {:name    :kelp
+   :match?  (fn [_chunks st _p] (kelp? st))
+   :wake    kelp-wake
+   :reshape kelp-grown
+   :due     (:due support/rule)})
 
 (defn- dried [st]
   (cond
@@ -82,6 +109,8 @@
                    (some? (dried (chunk/at chunks q))))]
     q))
 
+(defn- dried-at [chunks p] [p (dried (chunk/at chunks p))])
+
 (defn absorbed
   "Returns the changes of a sponge at pos soaking up water."
   [chunks pos]
@@ -94,11 +123,10 @@
             wet (when (< d 6) (wet-around chunks seen p))]
         (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
                (into seen wet)
-               (into acc (map #(vector % (dried (chunk/at chunks %))))
-                     wet))))))
+               (into acc (map #(dried-at chunks %)) wet))))))
 
 (def sponge-rule
-  {:name   :sponge
-   :match? (fn [_chunks st _p] (= :sponge (block/type-of st)))
-   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
-   :due    (fn [chunks p _ctx] (absorbed chunks p))})
+  {:name    :sponge
+   :match?  (fn [_chunks st _p] (= :sponge (block/type-of st)))
+   :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
+   :reshape (fn [chunks p _ctx] (absorbed chunks p))})

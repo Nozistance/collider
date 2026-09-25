@@ -182,12 +182,17 @@
     (stem? st) (stem-meal chunks p st)
     (small? st) (small-meal chunks p st roll)))
 
-(defn- wake [chunks _dim tick p _old self?]
+(defn- stem-unsupported? [chunks p side]
+  (and (#{:up :down} side) (not (stem-supported? chunks p))))
+
+(defn- wake [chunks _dim tick p _old side]
   (let [st (chunk/at-void chunks p)
         delay (tilt-delay (tilt-of st))]
     (cond
-      (stem? st) (inc (long tick))
-      (and self? (leaf? st) delay) (+ (long tick) (long delay)))))
+      (stem? st) (when (stem-unsupported? chunks p side)
+                   (inc (long tick)))
+      (and (nil? side) (leaf? st) delay)
+      (+ (long tick) (long delay)))))
 
 (defn- due [chunks p _ctx]
   (let [st (chunk/at-void chunks p)

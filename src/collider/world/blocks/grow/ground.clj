@@ -18,35 +18,45 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- snowy [chunks p]
-  (flag (block/tagged? (chunk/at chunks (dir/up p)) "snow")))
+(defn- seen
+  "Returns the state at q after the changes made so far."
+  ^long [chunks changes q]
+  (or (some (fn [[c st]] (when (= c q) st)) changes)
+      (chunk/at chunks q)))
 
-(defn- spread-target? [chunks fresh q]
-  (and (= :dirt (block/block-of (chunk/at chunks q)))
-       (grass/can-stay-alive? chunks fresh q)
-       (not (water? (chunk/at chunks (dir/up q))))))
+(defn- spread-target? [chunks changes fresh q]
+  (let [above (seen chunks changes (dir/up q))]
+    (and (= :dirt (block/block-of (seen chunks changes q)))
+         (grass/can-stay-alive? fresh above)
+         (not (water? above)))))
 
 (defn- spread-offset [roll i]
   [(dec (pick roll [:x i] 3))
    (- (pick roll [:y i] 5) 3)
    (dec (pick roll [:z i] 3))])
 
-(defn- spread-cell [chunks p self fresh roll i]
+(defn- spread-try [chunks p self fresh roll changes i]
   (let [q (mapv + p (spread-offset roll i))]
-    (when (and (chunk/in-range? (q 1))
-               (spread-target? chunks fresh q))
-      [q (block/state self {:snowy (snowy chunks q)})])))
+    (if (spread-target? chunks changes fresh q)
+      (let [up (seen chunks changes (dir/up q))
+            snowy (flag (block/tagged? up "snow"))]
+        (conj changes [q (block/state self {:snowy snowy})]))
+      changes)))
 
-(defn- spread-cells [chunks p st roll]
+(defn- spread-cells
+  "Returns the grass the four tries put around p. Each try
+  sees the grass the tries before it put."
+  [chunks p st roll]
   (let [self (block/block-of st) fresh (block/state self)]
-    (into [] (keep #(spread-cell chunks p self fresh roll %))
-          (range 4))))
+    (not-empty
+     (reduce #(spread-try chunks p self fresh roll %1 %2)
+             [] (range 4)))))
 
 (defn spread-tick
   "Returns the changes of a random tick of grass or mycelium at p."
   [chunks p st roll time ctx]
   (let [y (inc (long (p 1)))]
-    (if-not (grass/can-stay-alive? chunks st p)
+    (if-not (grass/can-stay-alive? st (chunk/at chunks (dir/up p)))
       [[p (block/state :dirt)]]
       (when (>= (weather/brightness ctx chunks (p 0) y (p 2) time) 9)
         (spread-cells chunks p st roll)))))

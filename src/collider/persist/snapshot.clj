@@ -201,7 +201,8 @@
        (written (put-meta! store (meta-of snap))))))
 
 (def ^:private chunk-keys
-  [:chunks :entities :block-ticks :fluid-ticks :block-entities])
+  [:chunks :entities :block-ticks :block-wakes :fluid-ticks
+   :block-entities])
 
 (def ^:private level-defaults
   (get-in schema/initial-world [:levels :overworld]))

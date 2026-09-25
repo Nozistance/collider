@@ -89,9 +89,12 @@
        (not (block/liquid?
              (max 0 (state-at chunks (mapv + pos [0 1 0])))))))
 
+(defn- water-above? [chunks pos]
+  (water? (max 0 (state-at chunks (mapv + pos [0 1 0])))))
+
 (defn- lily-pad-supported? [chunks pos below]
   (and (or (water? below) (block/tagged? below "supports_lily_pad"))
-       (not (water? (max 0 (state-at chunks (mapv + pos [0 1 0])))))))
+       (not (water-above? chunks pos))))
 
 (defn- frogspawn-supported? [chunks pos below]
   (and (water-source? (max 0 below))
@@ -181,7 +184,8 @@
          (or (contains? #{head body} (block/block-of n))
              (block/face-sturdy? n dir)))))
 
-(declare vine-updated multiface-updated scaffold-distance attachable?)
+(declare vine-updated multiface-updated scaffold-distance
+         attachable?)
 
 (defn- connected-direction
   [^long st]
@@ -319,7 +323,8 @@
     (fn [_c _p st below _a]
       (vegetation-supported? (block/type-of st) st below))]
    [[:mangrove-propagule]
-    (fn [_c _p st below above] (propagule-supported? st below above))]
+    (fn [_c _p st below above]
+      (propagule-supported? st below above))]
    [[:chorus-flower :chorus-plant]
     (fn [c p st _b _a] (chorus/supported? c p st))]
    [[:fire :soul-fire]
@@ -572,9 +577,9 @@
       order
       (into [first-dir] (remove #{first-dir}) order))))
 
-(defn- vine-fitted
-  [chunks pos st {:keys [yaw pitch face replacing?]}]
-  (let [cur (state-at chunks pos)
+(defn- vine-fitted [chunks pos st opts]
+  (let [{:keys [yaw pitch face replacing?]} opts
+        cur (state-at chunks pos)
         base (if (= (block/block-of cur) (block/block-of st)) cur st)
         free (fn [dir]
                (and (not= :down dir)
@@ -586,9 +591,9 @@
       (with-face base dir)
       (when (= base cur) cur))))
 
-(defn- multiface-fitted
-  [chunks pos st {:keys [yaw pitch face replacing?]}]
-  (let [cur (state-at chunks pos)
+(defn- multiface-fitted [chunks pos st opts]
+  (let [{:keys [yaw pitch face replacing?]} opts
+        cur (state-at chunks pos)
         same? (= (block/block-of cur) (block/block-of st))
         base (cond same? cur
                    (water-source? (max 0 cur)) (block/with-water st)
@@ -601,8 +606,9 @@
                         first)]
       (with-face base dir))))
 
-(defn- hook-fitted [chunks pos st {:keys [yaw pitch face replacing?]}]
-  (let [self (block/block-of st) props (block/props-of st)
+(defn- hook-fitted [chunks pos st opts]
+  (let [{:keys [yaw pitch face replacing?]} opts
+        self (block/block-of st) props (block/props-of st)
         facing (fn [dir]
                  (->> (assoc props :facing (dir/opposite dir))
                       (block/state self)))]
@@ -620,7 +626,8 @@
 
 (defn- rod-fitted [chunks pos st {:keys [face]}]
   (let [f (block/facing-of st)
-        clicked (state-at chunks (mapv - pos (dir/face-offset face)))]
+        back (mapv - pos (dir/face-offset face))
+        clicked (state-at chunks back)]
     (if (and (= (block/block-of clicked) (block/block-of st))
              (= f (block/facing-of clicked)))
       (->> (assoc (block/props-of st) :facing (dir/opposite f))
@@ -644,9 +651,9 @@
         logged (select-keys (block/props-of st) [:waterlogged])]
     (block/state wall (assoc logged :facing (dir/opposite dir)))))
 
-(defn- standing-or-wall-fitted
-  [chunks pos st {:keys [yaw pitch face replacing?]}]
-  (let [order (placement-order yaw pitch face replacing?)
+(defn- standing-or-wall-fitted [chunks pos st opts]
+  (let [{:keys [yaw pitch face replacing?]} opts
+        order (placement-order yaw pitch face replacing?)
         on-wall (fn [dir] (wall-state-of st dir))
         held? (fn [dir] (supported? chunks pos (on-wall dir)))
         standing (when (supported? chunks pos st) st)
@@ -657,9 +664,9 @@
   (let [q (mapv + pos (dir/horizontal-offset dir))]
     (not (block/can-be-replaced? (max 0 (state-at chunks q))))))
 
-(defn- skull-fitted
-  [chunks pos st {:keys [yaw pitch face replacing?]}]
-  (let [order (placement-order yaw pitch face replacing?)
+(defn- skull-fitted [chunks pos st opts]
+  (let [{:keys [yaw pitch face replacing?]} opts
+        order (placement-order yaw pitch face replacing?)
         on-wall (fn [dir] (wall-state-of st dir))
         free? (fn [dir] (skull-wall-free? chunks pos dir))]
     (standing-or-wall order st (first-wall order free? on-wall))))
@@ -713,7 +720,7 @@
   (let [{:keys [yaw pitch sneaking?]} opts
         order (dir/look-order yaw pitch)
         on-wall (fn [dir] (wall-state-of st dir))
-        held? (fn [dir] (hanging-sign-held? chunks pos (on-wall dir)))
+        held? #(hanging-sign-held? chunks pos (on-wall %))
         wall-state (first-wall order held? on-wall)
         ceiling (ceiling-sign chunks pos st yaw sneaking?)
         up (when (supported? chunks pos ceiling) ceiling)]
@@ -799,14 +806,41 @@
               (supported? chunks pos st))
       st)))
 
+(defn- any-side? [side] (some? side))
+
+(def ^:private tick-sides
+  "The blocks that leave on a tick one after they lose support,
+  each with the sides whose change asks for it. The updateShape of
+  vanilla schedules only for these. The other blocks leave in the
+  neighbour update."
+  (merge {:sugar-cane any-side? :cactus any-side?
+          :chorus-plant any-side? :bamboo-stalk any-side?
+          :hanging-moss any-side?
+          :chorus-flower #(and (some? %) (not= :up %))
+          :farmland #{:up} :dirt-path #{:up}
+          :twisting-vines #{:down} :twisting-vines-plant #{:down}}
+         (zipmap [:weeping-vines :weeping-vines-plant :cave-vines
+                  :cave-vines-plant]
+                 (repeat #{:up}))))
+
+(defn- wake [chunks _dim tick p _old side]
+  (let [st (chunk/chunks-get-block chunks p)]
+    (if-let [sides (tick-sides (block/type-of st))]
+      (when (and (sides side) (not (supported? chunks p st)))
+        (inc (long tick)))
+      :neighbor)))
+
+(defn- unsupported [chunks p _ctx]
+  (let [st (chunk/chunks-get-block chunks p)]
+    (when-not (supported? chunks p st)
+      [[p (gone-state st)]])))
+
 (def rule
-  {:name   :support
-   :match? (fn [_chunks st _p] (block/attached? st))
-   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
-   :due    (fn [chunks p _rules]
-             (let [st (chunk/chunks-get-block chunks p)]
-               (when-not (supported? chunks p st)
-                 [[p (gone-state st)]])))})
+  {:name    :support
+   :match?  (fn [_chunks st _p] (block/attached? st))
+   :wake    wake
+   :reshape unsupported
+   :due     unsupported})
 
 (defn free-below? [chunks [x y z]]
   (let [y' (dec (long y))]
@@ -824,22 +858,24 @@
   {:name   :falling
    :match? (fn [_chunks st _p]
              (and (block/falls? st) (not (scaffold? st))))
-   :wake   (fn [chunks _dim tick p _old _self?]
+   :wake   (fn [chunks _dim tick p _old _side]
              (+ (long tick) (place-delay chunks p)))
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
                (when (free-below? chunks p)
                  [[p (block/emptied st)]])))})
 
+(defn- too-far? [st] (= :7 (:distance (block/props-of st))))
+
 (defn- scaffold-due [chunks p _ctx]
   (let [st (chunk/chunks-get-block chunks p)
         st' (scaffold-state chunks p st)]
     (cond
-      (= :7 (:distance (block/props-of st'))) [[p (block/emptied st)]]
+      (too-far? st') [[p (block/emptied st)]]
       (not= st' st) [[p st']])))
 
 (def scaffold-rule
   {:name   :scaffold
    :match? (fn [_chunks st _p] (= :scaffolding (block/type-of st)))
-   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
+   :wake   (fn [_chunks _dim tick _p _old _side] (inc (long tick)))
    :due    scaffold-due})

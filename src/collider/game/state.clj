@@ -149,7 +149,8 @@
   "Returns the uuid an offline player of that name always gets."
   ^UUID [^String name]
   (let [s (str "OfflinePlayer:" name)]
-    (UUID/nameUUIDFromBytes (.getBytes s StandardCharsets/UTF_8))))
+    (UUID/nameUUIDFromBytes
+     (String/.getBytes s StandardCharsets/UTF_8))))
 
 (def initial-world schema/initial-world)
 
@@ -214,7 +215,10 @@
     w))
 
 (def ^:private around
-  [[0 0 0] [1 0 0] [-1 0 0] [0 1 0] [0 -1 0] [0 0 1] [0 0 -1]])
+  "The cells a change reaches, each with the side the change is on
+  as seen from it; nil for the cell of the change."
+  [[[0 0 0] nil] [[1 0 0] :west] [[-1 0 0] :east] [[0 1 0] :down]
+   [[0 -1 0] :up] [[0 0 1] :north] [[0 0 -1] :south]])
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
@@ -232,20 +236,27 @@
             (chunk/block-pos->id p) ty)
     w))
 
-(defn- woken [w chunks st tick floor dim p old self?]
-  (let [at (rules/wake-tick chunks dim st tick p old self?)
-        fat (rules/fluid-wake-tick chunks dim st tick p old self?)]
-    (-> w
-        (schedule-at :block-ticks at floor p (block/block-of st))
-        (schedule-at :fluid-ticks fat floor p (liquid/fluid-of st)))))
+(defn- block-woken [w tick floor p st at]
+  (if (= :neighbor at)
+    (schedule-at w :block-wakes (inc (long tick)) floor p
+                 (block/block-of st))
+    (schedule-at w :block-ticks at floor p (block/block-of st))))
 
-(defn- schedule-one [w tick floor dim pos old d]
+(defn- woken [w chunks st tick floor dim p old side]
+  (let [at (rules/wake-tick chunks dim st tick p old side)
+        fat (rules/fluid-wake-tick chunks dim st tick p old side)
+        fluid (liquid/fluid-of st)]
+    (-> w
+        (block-woken tick floor p st at)
+        (schedule-at :fluid-ticks fat floor p fluid))))
+
+(defn- schedule-one [w tick floor dim pos old [d side]]
   (let [p (shifted pos d)
         chunks (:chunks w)
         st (block-or-zero chunks p)]
     (if (zero? st)
       w
-      (woken w chunks st tick floor dim p old (= [0 0 0] d)))))
+      (woken w chunks st tick floor dim p old side))))
 
 (defn- schedule-around [w tick floor dim [pos old _]]
   (reduce #(schedule-one %1 tick floor dim pos old %2) w around))
@@ -430,6 +441,7 @@
         (update :block-entities dissoc id)
         (update :entities drop-entities id)
         (update :block-ticks schedule/dropped id)
+        (update :block-wakes schedule/dropped id)
         (update :fluid-ticks schedule/dropped id)
         (update :unknown dissoc id)
         (update :stored (fnil conj (i/int-set)) id))))
@@ -553,14 +565,15 @@
   client, started it."
   [eid e hand t self?]
   (when (swing-free? e (long t))
-    (let [fx (out/animation eid (if (= :off hand) :swing-off :swing))]
+    (let [kind (if (= :off hand) :swing-off :swing)
+          fx (out/animation eid kind)]
       (cond-> [[:merge-entity eid
                 {:swing-at (long t) :swing-hand hand}]
                (out/all fx)]
         self? (conj (out/to eid fx))))))
 
 (defn consumable
-  "Returns the Consumable component of the stack, or nil without one."
+  "Returns the Consumable component of the stack, or nil."
   [stack]
   (when stack (get-in (data/items) [(:item stack) :consumable])))
 
@@ -665,10 +678,13 @@
 
 (def ^:private vertical-limit 2.0E7)
 
+(defn- clamp [x limit]
+  (-> (double x) (max (- limit)) (min limit)))
+
 (defn- clamped [[x y z]]
-  [(-> (double x) (max (- horizontal-limit)) (min horizontal-limit))
-   (-> (double y) (max (- vertical-limit)) (min vertical-limit))
-   (-> (double z) (max (- horizontal-limit)) (min horizontal-limit))])
+  [(clamp x horizontal-limit)
+   (clamp y vertical-limit)
+   (clamp z horizontal-limit)])
 
 (defn- teleport-ack [w eid id]
   (let [e (get-in w [:entities eid])]
@@ -683,7 +699,8 @@
         dy (if vel (v/y vel) 0.0)]
     (cond
       (or (:flying e) (:flying changes)) {:fall 0.0 :landed nil}
-      (:on-ground changes) {:fall 0.0 :landed (when (pos? fall) fall)}
+      (:on-ground changes)
+      {:fall 0.0 :landed (when (pos? fall) fall)}
       (neg? dy) {:fall (- fall dy) :landed nil}
       :else {:landed nil})))
 
@@ -747,8 +764,10 @@
    :teleport-ack (fn [w [_ eid id]] (teleport-ack w eid id))
    :respawn (fn [w [_ eid]] (respawn-requested w eid))
    :keepalive-echo (fn [w [_ eid id]] (keepalive-echo w eid id))
-   :chunk-batch-ack (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
-   :entity-action (fn [w [_ eid action]] (entity-action w eid action))
+   :chunk-batch-ack
+   (fn [w [_ eid rate]] (chunk-batch-ack w eid rate))
+   :entity-action
+   (fn [w [_ eid action]] (entity-action w eid action))
    :input (fn [w [_ eid flags]] (update-entity w eid merge flags))
    :client-settings
    (fn [w [_ eid {:keys [view-distance skin-parts]}]]
@@ -786,7 +805,8 @@
     (when (and (= :move tag) (:pos changes) (:pos e) e'
                (not (:tp-target e)) (not (:sleeping e)))
       (assoc (select-keys e' move-keys)
-             :eid eid :from (:pos e) :to (:pos e') :jump? (jump? e e')
+             :eid eid :from (:pos e) :to (:pos e')
+             :jump? (jump? e e')
              :climbing?
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
@@ -1026,7 +1046,7 @@
     (if-let [f (get world-apply tag)]
       (f w delta)
       (if-let [g (get entity-apply tag)]
-        (update-entity w (nth delta 1) (fn [e] (g (:tick w) e delta)))
+        (update-entity w (nth delta 1) #(g (:tick w) % delta))
         w))))
 
 (defn- folded-entities [w entities pairs]
@@ -1049,8 +1069,7 @@
     [w (conj removes (nth delta 1))]
     [(apply-world-delta w delta) removes]))
 
-(defn- apply-level
-  [lv deltas]
+(defn- apply-level [lv deltas]
   (let [^Deltas d (deltas-of deltas)
         [w removes] (reduce world-step [lv []] (deltas/world-of d))
         inp (deltas/input-of d)
@@ -1123,7 +1142,7 @@
   (if (and (deltas/inert? deltas)
            (not-any? (get-in world [:levels dim] {}) input-keys))
     world
-    (let [lv (clojure.core/apply dissoc (level world dim) input-keys)]
+    (let [lv (reduce dissoc (level world dim) input-keys)]
       (with-level world dim (apply-level lv deltas)))))
 
 (defn apply-deltas
@@ -1143,6 +1162,7 @@
        acc
        (let [x (first evs) more (next evs)
              w (apply-entities w (slot-deltas w (event-of x)))
-             ds (vec (f w x))]
-         (recur (if (and more (seq ds)) (first (apply-deltas w ds)) w)
+             ds (vec (f w x))
+             step? (and more (seq ds))]
+         (recur (if step? (first (apply-deltas w ds)) w)
                 more (into acc ds)))))))

@@ -24,7 +24,8 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private lists
-  {:block-ticks {:type-of block/block-of :due rules/cell-changes}
+  {:block-wakes {:type-of block/block-of :due rules/reshape-changes}
+   :block-ticks {:type-of block/block-of :due rules/cell-changes}
    :fluid-ticks {:type-of liquid/fluid-of :due rules/fluid-changes}})
 
 (defn- cell-changes [chunks ctx k p]
@@ -306,6 +307,12 @@
             ctx (tick-ctx world)
             changes (lww-changes (:chunks world) ctx k now)]
         (due-deltas world k now parked changes)))))
+
+(defn neighbor-updates
+  "Runs the neighbour updates that are due. They go before the
+  block ticks, which then see what the updates did."
+  [world _d]
+  [#(ticks-deltas world :block-wakes)])
 
 (defn block-updates
   "Runs the block ticks that are due."

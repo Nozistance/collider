@@ -76,6 +76,7 @@
              [#'consume/consume]
              [#'pose/pose]
              [#'daynight/daynight]
+             [#'block-updates/neighbor-updates]
              [#'block-updates/block-updates
               #'dripleaf/dripleaf-tilt]
              [#'block-updates/fluid-updates]
@@ -144,9 +145,9 @@
   (if (asleep? world dim)
     deltas/empty-deltas
     (let [lv (assoc (state/level world dim) :server world)
-          d (get ds dim)]
-      (-> (deltas/run (into [] (keep #(job lv d server dim %)) phase))
-          (deltas/with-dim dim)))))
+          d (get ds dim)
+          jobs (into [] (keep #(job lv d server dim %)) phase)]
+      (deltas/with-dim (deltas/run jobs) dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 

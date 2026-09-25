@@ -4,9 +4,14 @@
 
 (set! *warn-on-reflection* true)
 
-(def block-list {:queue (i/int-map)})
+(def block-list {:queue (i/int-map) :index (i/int-map)})
 
 (def fluid-list {:queue (i/int-map) :index (i/int-map)})
+
+(def wake-list
+  "The queue of neighbour updates. It keeps each entry: the limit
+  of one tick for each block and type is not for these."
+  {:queue (i/int-map)})
 
 (defn- queued [q ^long at ^long id ty]
   (let [m (or (get q at) (i/int-map))]
@@ -47,10 +52,10 @@
   (let [t (long t)
         gone (due ticks t)
         q (reduce dissoc (:queue ticks) (map key (due-rows ticks t)))
-        index (flushed-index ticks gone)]
-    (reduce #(parked-back %1 t gone %2)
-            (cond-> (assoc ticks :queue q) index (assoc :index index))
-            parked)))
+        index (flushed-index ticks gone)
+        kept (cond-> (assoc ticks :queue q)
+               index (assoc :index index))]
+    (reduce #(parked-back %1 t gone %2) kept parked)))
 
 (defn- in-chunk? [^long cid ^long id]
   (= cid (chunk/block-id-chunk id)))

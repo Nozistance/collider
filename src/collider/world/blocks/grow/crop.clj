@@ -128,10 +128,11 @@
       (fruitless? chunks p st) [[p (detached st)]])))
 
 (def attached-stem-rule
-  {:name   :attached-stem
-   :match? (fn [_chunks st _p] (= :attached-stem (block/type-of st)))
-   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
-   :due    attached-due})
+  {:name    :attached-stem
+   :match?  (fn [_chunks st _p]
+              (= :attached-stem (block/type-of st)))
+   :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
+   :reshape attached-due})
 
 (defn cane-tick [chunks p st _roll _time _ctx]
   (let [h (height-below chunks p (block/block-of st) 3)]

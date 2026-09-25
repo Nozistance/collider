@@ -244,12 +244,18 @@
 
 (defn water-source? [st] (and (water? st) (source-state? st)))
 
-(defn full-water?
-  "Whether the state is water filling its cell whole.
-  A source does and so does a fall, FluidState.isFull."
+(defn full-fluid?
+  "Whether the fluid of the state fills its cell whole.
+  A source does, a fall does and held water does,
+  FluidState.isFull."
   [st]
-  (and (water? st)
+  (and (some? (liquid-class st))
        (let [l (liquid-level st)] (or (zero? l) (>= l 8)))))
+
+(defn full-water?
+  "Whether the state is water filling its cell whole."
+  [st]
+  (and (water? st) (full-fluid? st)))
 
 (defn air? [^long st] (zero? st))
 
@@ -671,7 +677,8 @@
    [(fn [t _b] (contains? wall-torch-types t))
     (fn [{:keys [face]}] {:facing (dir/face-facing face)})]
    [(fn [t _b] (contains? side-types t))
-    (fn [{:keys [face]}] {:facing (get dir/face-facing face :north)})]
+    (fn [{:keys [face]}]
+      {:facing (get dir/face-facing face :north)})]
    [(fn [_t b] (contains? (:props b) :facing))
     (fn [{:keys [f]}]
       {:facing (nth [:north :east :south :west] f)})]])

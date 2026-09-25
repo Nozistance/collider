@@ -19,7 +19,8 @@
   (block/state (block/block-of st) (merge (block/props-of st) m)))
 
 (defn reset-state [^long st book?]
-  (with-props st {:powered :false :has-book (if book? :true :false)}))
+  (let [has-book (if book? :true :false)]
+    (with-props st {:powered :false :has-book has-book})))
 
 (defn powered-state [^long st on?]
   (with-props st {:powered (if on? :true :false)}))
@@ -27,7 +28,7 @@
 (def rule
   {:name   :lectern
    :match? (fn [_chunks st _p] (lectern? st))
-   :wake   (fn [_chunks _dim _tick _p _old _self?] nil)
+   :wake   (fn [_chunks _dim _tick _p _old _side] nil)
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
                (when (and (lectern? st) (powered? st))

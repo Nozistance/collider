@@ -7,7 +7,6 @@
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fire :as fire]
-            [collider.world.blocks.grass :as grass]
             [collider.world.blocks.grow.crop :as crop]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.liquid :as liquid]
@@ -22,15 +21,14 @@
             fire/rule
             dripleaf/rule
             crop/attached-stem-rule
+            water/coral-rule
             support/rule
             dripstone/rule
             dripstone/cauldron-rule
             support/falling-rule
             water/sponge-rule
-            water/coral-rule
             support/scaffold-rule
             composter/rule
-            grass/rule
             lectern/rule])
 
 (defn- find-rule [st]
@@ -49,17 +47,20 @@
           (if (false? r) nil r))))))
 
 (defn wake-tick
-  "Returns the deltas the rule owning pos makes on a change.
-  The change is at pos or beside it. Returns nil when no rule
-  owns pos. old is the state before the change. self? is true
-  when the change was at pos itself. dim names the dimension."
-  [chunks dim st tick pos old self?]
+  "Returns what the rule owning pos asks for on a change.
+  That is the tick of a scheduled tick, one per block and type,
+  or :neighbor for a neighbour update on the next tick, or nil.
+  The change is at pos or beside it. old is the state before the
+  change. side is the side of the change seen from pos, as :up,
+  or nil when the change was at pos itself. dim names the
+  dimension."
+  [chunks dim st tick pos old side]
   (when-let [r (rule-for st)]
-    ((:wake r) chunks dim tick pos old self?)))
+    ((:wake r) chunks dim tick pos old side)))
 
-(defn fluid-wake-tick [chunks dim st tick pos old self?]
+(defn fluid-wake-tick [chunks dim st tick pos old side]
   (when (block/liquid-class st)
-    (liquid/fluid-wake chunks dim tick pos old self?)))
+    (liquid/fluid-wake chunks dim tick pos old side)))
 
 (defn again-tick
   "Returns the next tick the rule owning pos wants.
@@ -74,7 +75,14 @@
   "Returns the changes the rule owning pos makes on its tick."
   [chunks st pos ctx]
   (when-let [r (rule-for st)]
-    ((:due r) chunks pos ctx)))
+    (when-let [f (:due r)] (f chunks pos ctx))))
+
+(defn reshape-changes
+  "Returns the changes the rule owning pos makes on a neighbour
+  update, the updateShape or neighborChanged of vanilla."
+  [chunks st pos ctx]
+  (when-let [r (rule-for st)]
+    (when-let [f (:reshape r)] (f chunks pos ctx))))
 
 (defn fluid-changes [chunks st pos ctx]
   (when (block/liquid-class st)

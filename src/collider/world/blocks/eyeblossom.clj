@@ -52,20 +52,19 @@
                       (chunk/block-pos->id q))))
           {} (neighbours p)))
 
-(defn- wake [chunks _dim tick p _old _self?]
+(defn- wake [chunks _dim _tick p _old _side]
   (let [st (chunk/chunks-get-block chunks p)]
-    (when-not (support/supported? chunks p st)
-      (inc (long tick)))))
+    (when-not (support/supported? chunks p st) :neighbor)))
 
 (defn- switch-due [chunks p ctx]
   (let [st (chunk/chunks-get-block chunks p)
         time (long (:time-of-day ctx 0))]
-    (or (seq ((:due support/rule) chunks p nil))
-        (when-let [new (switched st time)]
-          [[p new]]))))
+    (when-let [new (switched st time)]
+      [[p new]])))
 
 (def rule
-  {:name   :eyeblossom
-   :match? (fn [_chunks st _p] (eyeblossom? st))
-   :wake   wake
-   :due    switch-due})
+  {:name    :eyeblossom
+   :match?  (fn [_chunks st _p] (eyeblossom? st))
+   :wake    wake
+   :reshape (:due support/rule)
+   :due     switch-due})

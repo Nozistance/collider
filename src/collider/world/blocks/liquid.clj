@@ -351,7 +351,7 @@
       :else (recur (inc i)))))
 
 (defn- face-covered? [first second ^long axis]
-  (let [^ints rows (.get cover-rows)
+  (let [^ints rows (ThreadLocal/.get cover-rows)
         u (if (= axis 0) 1 0)
         v (if (= axis 2) 1 2)]
     (Arrays/fill rows (int 0))
@@ -472,21 +472,23 @@
 (defn- slope-distance
   "Returns the steps of falling ground ahead of a liquid leaving p."
   ^long [{:keys [slope] :as env} p ^long pass from]
-  (let [raw (raw-by env p [0 0 0])]
+  (let [raw (raw-by env p [0 0 0])
+        n (inc pass)]
     (reduce (fn [lowest d]
               (let [tp (step p d)]
                 (cond
                   (or (= d from) (blocked? env raw tp d)) lowest
                   (hole? env tp) (reduced pass)
                   (< pass (long slope))
-                  (->> (slope-distance env tp (inc pass) (opposite d))
+                  (->> (slope-distance env tp n (opposite d))
                        (min (long lowest)))
                   :else lowest)))
             1000 horiz3)))
 
 (defn- mix-product [mix m]
   (when mix
-    (block/state (if (zero? (long m)) (:source mix) (:flowing mix)))))
+    (let [k (if (zero? (long m)) :source :flowing)]
+      (block/state (k mix)))))
 
 (def ^:private contact-dirs
   [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0]])
@@ -570,8 +572,9 @@
 (defn- spread-down [{:keys [cls] :as env} p st]
   (let [bp [(p 0) (dec (long (p 1))) (p 2)]
         braw (raw-by env bp [0 0 0])
-        b (state-of braw)]
-    (when (can-maybe-pass? cls (raw-by env p [0 0 0]) braw b [0 -1 0])
+        b (state-of braw)
+        raw (raw-by env p [0 0 0])]
+    (when (can-maybe-pass? cls raw braw b [0 -1 0])
       (when-let [v (new-liquid env bp)]
         (when (and (replaceable-with? b cls [0 -1 0])
                    (holds-specific? cls braw))
@@ -607,7 +610,8 @@
 (def ^:private ^:table soul-soil-state
   (delay (block/state :soul-soil)))
 
-(def ^:private ^:table blue-ice-state (delay (block/state :blue-ice)))
+(def ^:private ^:table blue-ice-state
+  (delay (block/state :blue-ice)))
 
 (def ^:private mix-dirs
   [[0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
@@ -782,21 +786,21 @@
 (defn- delay-of ^long [dim st]
   (long (get-in (liquids-in dim) [(liquid-class st) :delay])))
 
-(defn fluid-wake [chunks dim tick p old self?]
+(defn fluid-wake [chunks dim tick p old side]
   (let [st (chunk/chunks-get-block chunks p)]
     (+ (long tick)
-       (if self?
+       (if (nil? side)
          (update-delay dim old st tick p)
          (delay-of dim st)))))
 
-(defn- mix-wake [chunks _dim tick p _old _self?]
-  (when (mixed chunks p) (inc (long tick))))
+(defn- mix-wake [chunks _dim _tick p _old _side]
+  (when (mixed chunks p) :neighbor))
 
 (defn- mix-due [chunks p _ctx]
   (when-let [st (mixed chunks p)] [[p st]]))
 
 (def rule
-  {:name   :liquid
-   :match? (fn [_chunks st _p] (block/liquid? (long st)))
-   :wake   mix-wake
-   :due    mix-due})
+  {:name    :liquid
+   :match?  (fn [_chunks st _p] (block/liquid? (long st)))
+   :wake    mix-wake
+   :reshape mix-due})

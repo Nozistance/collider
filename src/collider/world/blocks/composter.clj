@@ -10,9 +10,9 @@
 (def rule
   {:name   :composter
    :match? (fn [_chunks st _p] (= :composter (block/type-of st)))
-   :wake   (fn [chunks _dim tick p _old self?]
+   :wake   (fn [chunks _dim tick p _old side]
              (let [st (chunk/chunks-get-block chunks p)]
-               (when (and self? (= 7 (level st)))
+               (when (and (nil? side) (= 7 (level st)))
                  (+ (long tick) 20))))
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]

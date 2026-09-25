@@ -34,7 +34,7 @@
   {:set-blocks
    [:cat Records [:? :int]]
    :ticks-flushed
-   [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
+   [:cat [:enum :block-ticks :block-wakes :fluid-ticks] :int Coll]
    :schedule-ticks
    [:cat [:map-of :int Coll]]
    :container-recheck
@@ -236,7 +236,8 @@
 (def validate? (Boolean/getBoolean "collider.validate"))
 
 (defn check!
-  "Returns deltas, or throws on the first one that breaks its schema."
+  "Returns deltas, or throws on the first one that breaks its
+  schema."
   [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)

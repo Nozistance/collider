@@ -164,8 +164,8 @@
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
 (defn- near-player? [ctx p]
-  (let [r (long (get-in ctx [:rules :fire-spread-radius-around-player]
-                        128))
+  (let [rule :fire-spread-radius-around-player
+        r (long (get-in ctx [:rules rule] 128))
         near? (fn [q] (< (far-sq q p) (double (* r r))))]
     (or (= -1 r) (boolean (some near? (:players ctx))))))
 
@@ -217,10 +217,12 @@
 (defn- fire-delay ^long [tick p]
   (+ (long tick) 30 (mod (long (hash [p tick])) 10)))
 
-(defn- wake-at [chunks _dim tick p _old _self?]
-  (if (support/supported? chunks p (chunk/chunks-get-block chunks p))
-    (fire-delay tick p)
-    (inc (long tick))))
+(defn- wake-at
+  "Returns the tick fire asks for when it is placed or its state
+  changes. Fire with no support is gone before this: the reshape
+  of the change takes it away."
+  [_chunks _dim tick p _old side]
+  (when (nil? side) (fire-delay tick p)))
 
 (def rule
   {:name   :fire

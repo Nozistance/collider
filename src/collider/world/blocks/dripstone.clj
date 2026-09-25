@@ -1,5 +1,5 @@
 (ns collider.world.blocks.dripstone
-  "Pointed dripstone and sulfur spikes, their growth, and their drip."
+  "Pointed dripstone and sulfur spikes, their growth and drip."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]
@@ -214,7 +214,10 @@
 
 (defn- transferred [chunks dim p st roll]
   (when-let [{:keys [pos state fluid]} (fluid-above chunks dim p st)]
-    (let [prob (case fluid :water water-chance :lava lava-chance nil)]
+    (let [prob (case fluid
+                 :water water-chance
+                 :lava lava-chance
+                 nil)]
       (when (and prob (< (double roll) (double prob)))
         (when-let [tip (find-tip chunks p st 11)]
           (if (and (= :mud (block/block-of (long state)))
@@ -313,10 +316,15 @@
         (let [acc (conj acc [q (block/emptied st)])]
           (if (tip? st true) acc (recur (dir/down q) acc)))))))
 
-(defn- wake [chunks _dim tick p _old _self?]
-  (let [st (chunk/at-void chunks p)]
-    (when-not (supported? chunks p st)
-      (+ (long tick) (if (stalactite? st) 2 1)))))
+(defn- wake
+  "SpeleothemBlock.updateShape: a tick when the block at the base
+  side changes and no longer holds it."
+  [chunks _dim tick p _old side]
+  (let [st (chunk/at-void chunks p)
+        down? (stalactite? st)]
+    (when (and (= side (if down? :up :down))
+               (not (supported? chunks p st)))
+      (+ (long tick) (if down? 2 1)))))
 
 (defn- fallen [chunks p _ctx]
   (let [st (chunk/at-void chunks p)]
@@ -342,5 +350,5 @@
   {:name   :cauldron-drip
    :match? (fn [_chunks st _p]
              (contains? cauldrons (block/type-of st)))
-   :wake   (fn [_chunks _dim _tick _p _old _self?] nil)
+   :wake   (fn [_chunks _dim _tick _p _old _side] nil)
    :due    cauldron-fill})
