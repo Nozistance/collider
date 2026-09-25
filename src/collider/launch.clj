@@ -21,7 +21,7 @@
                       "--sun-misc-unsafe-memory-access=allow"
                       "-cp" (System/getProperty "java.class.path")
                       "clojure.main" "-m" "collider.tables"
-                      (pr-str opts)]))
+                      (:out opts) (str (:jar opts))]))
 
 (defn- event [^String line]
   (when (str/starts-with? line "{")
@@ -41,8 +41,9 @@
 (defn- child-died [noise]
   (ex-info "generation failed"
            {:what "data generator failed"
-            :why (str "Its last words: "
-                      (str/join " / " (take-last 3 noise)))}))
+            :why (->> (take-last 3 noise)
+                      (str/join " / ")
+                      (str "Its last words: "))}))
 
 (defn- generate! [opts]
   (let [p (.start (doto (ProcessBuilder. (child-command opts))

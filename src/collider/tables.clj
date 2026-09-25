@@ -2,7 +2,6 @@
   "Generating the game data tables from the vanilla server."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
-            [clojure.edn :as edn]
             [clojure.string :as str]
             [collider.data :as data])
   (:import (clojure.lang ExceptionInfo Reflector)
@@ -60,9 +59,8 @@
     (.getInputStream c)))
 
 (defn- unreachable [url e]
-  (let [why (str "The exception was: "
-                 (.getSimpleName (class e)) ": "
-                 (.getMessage ^Throwable e))
+  (let [why (str "The exception was: " (.getSimpleName (class e))
+                 ": " (.getMessage ^Throwable e))
         cmd (str "Download server.jar " version
                  " yourself and start with"
                  " '{:jar \"path/to/server.jar\"}'")]
@@ -1930,11 +1928,12 @@
   (flush))
 
 (defn -main
-  "Generates the tables in this JVM.
-  Each event is reported as edn on stdout."
-  [opts]
+  "Generates the tables into out in this JVM.
+  jar is a local server jar, or empty to download one. Each
+  event is reported as edn on stdout."
+  [out jar]
   (binding [*progress* emit-edn!]
-    (try (generate! (edn/read-string opts))
+    (try (generate! {:out out :jar (not-empty jar)})
          (catch ExceptionInfo e
            (emit-edn! (assoc (ex-data e) :event :error))
            (System/exit 1))
