@@ -126,6 +126,27 @@
      (into [] (comp (filter dry?) (mapcat #(dried-fx world %)))
            changes)]))
 
+(def ^:private change-effects {:fizz out/fizz})
+
+(defn change-fx
+  "Returns the effects the changes carry. A change [pos st fx]
+  names them in fx, as [:fizz]; a change [pos st] has none."
+  [changes]
+  (for [[pos _ fx] changes
+        k fx]
+    (out/all ((change-effects k) pos))))
+
+(defn block-changes
+  "Returns the changes as [pos st], without their effects."
+  [changes]
+  (mapv (fn [[pos st]] [pos st]) changes))
+
+(defn- mixed-deltas [world all fx mixed]
+  (-> [[:set-blocks (into all (block-changes mixed))
+        (dec (long (:tick world)))]]
+      (into (change-fx mixed))
+      (into fx)))
+
 (defn change-deltas
   "Returns the deltas for the changes.
   It also covers the changes they cause in the blocks
@@ -136,11 +157,9 @@
         derived (connect/derived-changes
                   chunks' (map first changes) (:tick world))
         all (into (vec changes) derived)
-        chunks'' (chunk/chunks-set-blocks chunks' all)
-        mixed (liquid/mix-changes chunks'' (map first all))]
-    (-> [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
-        (into (map (fn [[p _]] (out/all (out/fizz p)))) mixed)
-        (into fx))))
+        chunks'' (chunk/chunks-set-blocks chunks' all)]
+    (mixed-deltas world all fx
+                  (liquid/mix-changes chunks'' (map first all)))))
 
 (defn held-slot
   "Returns the inventory slot of the item the player holds."

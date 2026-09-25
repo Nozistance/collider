@@ -38,7 +38,7 @@
   [chunks ctx k cells]
   (->> cells
        (mapcat #(cell-changes chunks ctx k %))
-       (into (sorted-map) (map (fn [[pos st]] [pos [pos st]])))
+       (into (sorted-map) (map (fn [[pos :as c]] [pos c])))
        vals
        (into [])))
 
@@ -104,18 +104,6 @@
     (for [[pos old] gone
           [i stack] (drops-of world pos old)]
       [:spawn-entity (items/popped world pos stack i)])))
-
-(defn- fizzed? [^long old ^long st]
-  (or (and (block/liquid? old) (pos? st)
-           (nil? (block/liquid-class st)))
-      (and (liquid/mix-class? st) (pos? old)
-           (nil? (block/liquid-class old)))))
-
-(defn- fizz-deltas [world changes]
-  (for [[pos st] changes
-        :let [old (chunk/chunks-get-block (:chunks world) pos)]
-        :when (fizzed? old (long st))]
-    (out/all (out/fizz pos))))
 
 (defn- falling-block [pos old]
   (let [[x y z] pos]
@@ -252,12 +240,13 @@
                     m))]
     (reduce at-tick {} now)))
 
-(defn- change-deltas [world now changes]
-  (let [gone (destroyed world now changes)
+(defn- change-deltas [world now records]
+  (let [changes (edit/block-changes records)
+        gone (destroyed world now changes)
         [changes dried] (edit/dried world changes)]
     (concat [[:set-blocks changes]]
             dried
-            (fizz-deltas world changes)
+            (edit/change-fx records)
             (destroyed-effects gone)
             (destroyed-drops world gone)
             (sponge-deltas world now changes)
@@ -289,13 +278,14 @@
   (merge-with into (again-schedule world now changes)
               (eyeblossom-schedules world changes)))
 
-(defn- due-deltas [world k now parked changes]
+(defn- due-deltas [world k now parked records]
   (let [t (long (:tick world))
+        changes (edit/block-changes records)
         woken (when (= :block-ticks k)
                 (woken-ticks world now changes))]
     (concat [[:ticks-flushed k t parked]]
             (when (seq woken) [[:schedule-ticks woken]])
-            (when (seq changes) (change-deltas world now changes))
+            (when (seq changes) (change-deltas world now records))
             (ignite-deltas world changes))))
 
 (defn- ticks-deltas [world k]

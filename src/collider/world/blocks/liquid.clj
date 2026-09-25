@@ -5,6 +5,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.env.attribute :as attribute])
   (:import (java.util Arrays)))
 
@@ -68,9 +69,6 @@
 
 (defn bucket->state [item]
   (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
-
-(defn mix-class? [st]
-  (some? (get-in liquids [(liquid-class st) :mix])))
 
 (defn- raw-at [chunks x y z]
   (let [y (long y)]
@@ -490,47 +488,82 @@
     (let [k (if (zero? (long m)) :source :flowing)]
       (block/state (k mix)))))
 
-(def ^:private contact-dirs
-  [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0]])
+(def ^:private ^:table basalt-state (delay (block/state :basalt)))
 
-(def ^:private convert-dirs
-  [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 -1 0]])
+(def ^:private ^:table soul-soil-state
+  (delay (block/state :soul-soil)))
 
-(defn- touches-other? [chunks cls pos]
-  (some #(other-class? cls (shifted chunks pos %)) contact-dirs))
+(def ^:private ^:table blue-ice-state
+  (delay (block/state :blue-ice)))
 
-(defn- converted [chunks cls p d]
-  (let [np (mapv #(+ (long %1) (long %2)) p d)
-        ns (state-at chunks (np 0) (np 1) (np 2))
-        nc (liquid-class ns)]
-    (when (and (some? nc) (not= nc cls))
-      (let [mix (get-in liquids [nc :mix])]
-        (when-let [prod (mix-product mix (level ns))]
-          [np prod])))))
+(def ^:private mix-dirs
+  [[0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
 
-(defn- convert-neighbors [chunks cls p]
-  (into [] (keep #(converted chunks cls p %)) convert-dirs))
+(defn- raw-over ^long [chunks over [x y z :as p]]
+  (if (= p (first over))
+    (long (second over))
+    (long (raw-at chunks x y z))))
+
+(defn- mixed-by [chunks over p st soul? d]
+  (let [n (raw-over chunks over (mapv + p d))]
+    (cond
+      (block/water? n)
+      (mix-product (get-in liquids [:lava :mix]) (level st))
+      (and soul? (== n (long @blue-ice-state))) @basalt-state)))
+
+(defn mixed
+  "Returns the block the lava at p turns into, or nil when it
+  stays. This is shouldSpreadLiquid of vanilla. over is a change
+  [q st] that is read in place of the block at q, or nil."
+  ([chunks p] (mixed chunks nil p))
+  ([chunks over [x y z :as p]]
+   (let [st (raw-over chunks over p)
+         below (raw-over chunks over [x (dec (long y)) z])
+         soul? (== below (long @soul-soil-state))]
+     (when (and (block/liquid? st) (block/lava? st))
+       (some #(mixed-by chunks over p st soul? %) mix-dirs)))))
+
+(def ^:private update-order
+  (mapv dir/offset [:west :east :down :up :north :south]))
+
+(defn- converted [chunks over p d]
+  (let [np (mapv + p d)]
+    (when-let [prod (mixed chunks over np)]
+      [np prod [:fizz]])))
+
+(defn- with-neighbors [chunks [tp st :as change]]
+  (into [change]
+        (keep #(converted chunks [tp st] tp %))
+        update-order))
 
 (defn- logged [traw]
   (let [traw (long traw)
         props (assoc (block/props-of traw) :waterlogged :true)]
     (block/state (block/block-of traw) props)))
 
-(defn- spread-plain [{:keys [chunks cls mix]} tp v]
-  (let [plain (liquid->state cls v)
-        st (if (and mix (touches-other? chunks cls tp))
-             (or (mix-product mix (level plain)) plain)
-             plain)]
-    (cons [tp st] (convert-neighbors chunks cls tp))))
+(def ^:private air-blocks #{:air :cave-air :void-air})
+
+(defn- destroys? [mix traw]
+  (and mix (pos? (long traw))
+       (not (contains? air-blocks (block/block-of (long traw))))))
+
+(defn- spread-plain [{:keys [chunks cls mix]} tp v traw]
+  (let [st (liquid->state cls v)
+        prod (mixed chunks [tp st] tp)
+        fx (cond-> []
+             (destroys? mix traw) (conj :fizz)
+             prod (conj :fizz))]
+    (with-neighbors chunks
+                    (cond-> [tp (or prod st)] (seq fx) (conj fx)))))
 
 (defn- spread-to [{:keys [mix] :as env} tp d v]
   (let [traw (raw-by env tp [0 0 0])]
     (cond
-      (and mix (= d [0 -1 0])
-           (= :water (liquid-class (state-of traw))))
-      [[tp (block/state (:smother mix))]]
-      (container? traw) [[tp (logged traw)]]
-      :else (spread-plain env tp v))))
+      (and mix (= d [0 -1 0]) (block/water? traw))
+      [[tp (block/state (:smother mix)) [:fizz]]]
+      (container? traw)
+      (with-neighbors (:chunks env) [tp (logged traw)])
+      :else (spread-plain env tp v traw))))
 
 (defn- target-of [{:keys [cls] :as env} raw p d]
   (let [tp (step p d)
@@ -605,33 +638,6 @@
        (* (long delay) (long decay-jitter))
        (long delay)))))
 
-(def ^:private ^:table basalt-state (delay (block/state :basalt)))
-
-(def ^:private ^:table soul-soil-state
-  (delay (block/state :soul-soil)))
-
-(def ^:private ^:table blue-ice-state
-  (delay (block/state :blue-ice)))
-
-(def ^:private mix-dirs
-  [[0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
-
-(defn- mixed-by [chunks cls mix st soul? p d]
-  (let [ns (shifted chunks p d)]
-    (cond
-      (other-class? cls ns) (mix-product mix (level st))
-      (and soul? (= (long ns) (long @blue-ice-state)))
-      @basalt-state)))
-
-(defn- mixed [chunks [x y z :as p]]
-  (let [st (state-at chunks x y z)
-        cls (liquid-class st)
-        mix (get-in liquids [cls :mix])
-        below (raw-at chunks x (dec (long y)) z)
-        soul? (= (long below) (long @soul-soil-state))]
-    (when (and mix (block/liquid? st))
-      (some #(mixed-by chunks cls mix st soul? p %) mix-dirs))))
-
 (defn- with-sides [p]
   (cons p (map #(mapv + p %) horiz3+)))
 
@@ -640,7 +646,8 @@
         (comp (mapcat with-sides)
               (distinct)
               (keep (fn [p]
-                      (when-let [st (mixed chunks p)] [p st]))))
+                      (when-let [st (mixed chunks p)]
+                        [p st [:fizz]]))))
         positions))
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
@@ -797,7 +804,7 @@
   (when (mixed chunks p) :neighbor))
 
 (defn- mix-due [chunks p _ctx]
-  (when-let [st (mixed chunks p)] [[p st]]))
+  (when-let [st (mixed chunks p)] [[p st [:fizz]]]))
 
 (def rule
   {:name    :liquid
