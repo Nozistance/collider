@@ -94,7 +94,9 @@
    :accept-teleportation
    (fn [eid m] [:teleport-ack eid (:id m)])
    :player-abilities
-   (fn [eid m] [:move eid {:flying (bit-test (long (:flags m)) 1)}])
+   (fn [eid m]
+     [:abilities eid {:flying (bit-test (long (:flags m)) 1)}])
+   :player-loaded (fn [eid _] [:player-loaded eid])
    :player-input
    (fn [eid m]
      [:input eid {:sneaking? (bit-test (long (:flags m)) 5)}])})
@@ -179,7 +181,7 @@
     (f eid m)))
 
 (def ^:private ignored
-  #{:player-loaded :client-tick-end
+  #{:client-tick-end
     :custom-payload :chat-session-update :chat-ack
     :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request

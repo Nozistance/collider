@@ -121,9 +121,11 @@
 (defn- begin [world events]
   (let [by (group-by #(event-dim world %) events)
         ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
-                 dims)]
-    [(reduce (fn [w dim] (state/enter w dim (ds dim))) world dims)
-     ds]))
+                 dims)
+        w (reduce (fn [w dim] (state/enter w dim (ds dim)))
+                  world dims)
+        heeded (fn [[dim d]] [dim (state/heeded w dim d)])]
+    [w (into {} (map heeded) ds)]))
 
 (defn- awaited? [world dim]
   (some #(= dim (:dim (val %))) (:spawning world)))

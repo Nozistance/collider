@@ -193,7 +193,7 @@
   "The keys of world that belong to a level, not the shared part.
   Includes the transient keys the tick adds and drops."
   (into #{:active-chunks :block-events :use-origins :moves :quits
-          :observed}
+          :heeded :resends :observed}
         (keys level-table)))
 
 (def dims

@@ -522,21 +522,11 @@
         (for [[tag eid] events :when (= :player-join tag)]
           (out/to eid msg))))))
 
-(def ^:private teleport-retry 20)
-
-(defn- teleport-due? [world e]
-  (let [since (:tp-at e)]
-    (and (:tp-target e) since
-         (>= (- (long (:tick world)) (long since)) teleport-retry))))
-
-(defn- pending-teleport-deltas [world ps]
-  (mapcat (fn [[eid e]]
-            (when (teleport-due? world e)
-              (let [target (:tp-target e)
-                    yaw (:yaw e 0.0)
-                    msg (out/teleport target yaw (:pitch e 0.0))]
-                [[:teleport eid target] (out/to eid msg)])))
-          ps))
+(defn- resend-deltas
+  "Returns the teleports the moves of the tick sent again."
+  [world]
+  (for [{:keys [eid pos yaw pitch]} (:resends world)]
+    (out/to eid (out/teleport pos yaw pitch))))
 
 (defn swing-deltas
   "Returns the deltas of one swing a client plays itself.
@@ -591,6 +581,6 @@
   [world _]
   (let [ps (state/player-entries world)
         ts (tracked-entries world)]
-    [#(pending-teleport-deltas world ps)
+    [#(resend-deltas world)
      #(spawn-jobs world ps ts)
      #(move-jobs world ps ts)]))

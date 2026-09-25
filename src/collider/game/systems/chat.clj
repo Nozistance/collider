@@ -651,9 +651,10 @@
 
 (defn- killed [world [id dim e]]
   (in-level world dim
-            (if (= :player (:type e))
-              [[:merge-entity id {:health 0.0}]]
-              [[:remove-entity id]])))
+            (cond
+              (not= :player (:type e)) [[:remove-entity id]]
+              (state/client-loaded? e (long (:tick world)))
+              [[:merge-entity id {:health 0.0}]])))
 
 (defn- kill-report [eid xs]
   (if (= 1 (count xs))

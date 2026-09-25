@@ -506,9 +506,17 @@
     (concat [[:merge-entity eid {:landed nil}]]
             (landing-particles world e (double fall)))))
 
+(defn- loading?
+  "Tells whether player e is not hurt yet: its client has not loaded
+  as of the end of its own tick."
+  [world e]
+  (and (= :player (:type e))
+       (not (state/client-loaded? e (inc (long (:tick world)))))))
+
 (defn- void-deltas [world eid e]
   (when (and (pos? (double (:health e)))
-             (< (v/y (:pos e)) (chunk/void-y world)))
+             (< (v/y (:pos e)) (chunk/void-y world))
+             (not (loading? world e)))
     [[:damage eid void-damage]]))
 
 (defn- panicked [world e]

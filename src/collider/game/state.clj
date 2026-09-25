@@ -409,6 +409,14 @@
                        :settings settings}
                 pos (assoc :pos pos)))))
 
+(def ^:private ^:const client-load-timeout 60)
+
+(defn- load-awaited
+  "Returns player e as its connection starts to wait, in tick, for
+  the client to load."
+  [e tick]
+  (assoc e :loaded-at (+ (long tick) client-load-timeout)))
+
 (defn- awaiting-join
   "Returns player e waiting for the ack of the teleport its
   connection sends first, the one to where it joins."
@@ -423,9 +431,11 @@
                      {:yaw yaw :pitch pitch}
                      (get-in w [:spawning eid :settings]))
         saved (dissoc (get-in w [:profiles name]) :dimension)
-        e (entity/of (merge fresh saved))]
+        e (entity/of (merge fresh saved))
+        tick (:tick w)]
     (-> w
-        (assoc-in [:entities eid] (awaiting-join e (:tick w)))
+        (assoc-in [:entities eid]
+                  (-> e (awaiting-join tick) (load-awaited tick)))
         (assoc-in [:players name] eid)
         (update :spawning dissoc eid))))
 
@@ -433,9 +443,11 @@
   (let [e (get-in w [:entities eid])]
     (if (and e (not (pos? (double (:health e))))
              (not (get-in w [:spawning eid])))
-      (assoc-in w [:spawning eid]
-                {:respawn? true :seed (spawn-seed w eid)
-                 :dim :overworld})
+      (-> w
+          (assoc-in [:spawning eid]
+                    {:respawn? true :seed (spawn-seed w eid)
+                     :dim :overworld})
+          (update-entity eid load-awaited (:tick w)))
       w)))
 
 (defn- drop-entities [es id]
@@ -695,6 +707,33 @@
    (clamp y vertical-limit)
    (clamp z horizontal-limit)])
 
+(defn next-teleport-id
+  "Returns the id of the next teleport a player is sent. The
+  connection counts them from 1, the join teleport, and wraps."
+  ^long [e]
+  (let [n (inc (long (:tp-id e 1)))]
+    (if (= n Integer/MAX_VALUE) 0 n)))
+
+(defn client-loaded?
+  "Tells whether the client of player e counts as loaded for what it
+  sends in tick t: it said so, or sixty ticks passed since it joined
+  or respawned. A dead player waits for its respawn first."
+  [e ^long t]
+  (and (pos? (double (:health e 0.0)))
+       (>= t (long (:loaded-at e 0)))))
+
+(def ^:private ^:const teleport-resend 20)
+
+(defn- resent
+  "Returns w after a move of player eid, which sends the teleport it
+  has not acked again once twenty ticks are past the last one."
+  [w eid]
+  (let [e (get-in w [:entities eid]) t (long (:tick w))]
+    (if (and (:tp-target e)
+             (> (- t (long (:tp-at e))) teleport-resend))
+      (update-entity w eid assoc :tp-id (next-teleport-id e) :tp-at t)
+      w)))
+
 (defn- teleport-ack [w eid id]
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
@@ -771,7 +810,11 @@
   {:player-join
    (fn [w [_ eid name settings]] (player-join w eid name settings))
    :player-quit (fn [w [_ eid]] (player-quit w eid))
-   :move (fn [w [_ eid changes]] (apply-move w eid changes))
+   :move (fn [w [_ eid changes]]
+           (apply-move (resent w eid) eid changes))
+   :abilities (fn [w [_ eid changes]] (apply-move w eid changes))
+   :player-loaded
+   (fn [w [_ eid]] (update-entity w eid dissoc :loaded-at))
    :teleport-ack (fn [w [_ eid id]] (teleport-ack w eid id))
    :respawn (fn [w [_ eid]] (respawn-requested w eid))
    :keepalive-echo (fn [w [_ eid id]] (keepalive-echo w eid id))
@@ -856,21 +899,62 @@
     (when-let [e (get-in w [:entities eid])]
       (assoc e :eid eid))))
 
-(defn- remembered [w quits]
-  (cond-> w (seq quits) (assoc :quits quits)))
+(defn- resend-of
+  "Returns the teleport a :move event sent again, nil when none.
+  It goes where the last one went, turned as the player was."
+  [w w' [tag eid]]
+  (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
+    (when (and (= :move tag) e' (not= (:tp-id e) (:tp-id e')))
+      {:eid eid :pos (:tp-target e)
+       :yaw (:yaw e) :pitch (:pitch e)})))
+
+(def ^:private load-gated
+  "The events of the packets ServerGamePacketListenerImpl takes only
+  from a client that has loaded."
+  #{:move :input :dig :release-use :place :use-item :entity-action
+    :attack :interact})
+
+(defn- heeded? [w [tag eid]]
+  (or (not (contains? load-gated tag))
+      (when-let [e (get-in w [:entities eid])]
+        (client-loaded? e (long (:tick w))))))
+
+(defn- heard
+  "Returns acc with event d, which took w to w', noted."
+  [acc w w' d]
+  (let [o (use-origin w d) m (move-of w w' d) q (quit-of w d)
+        r (resend-of w w' d)]
+    (cond-> (update acc :heeded conj d)
+      o (assoc-in [:use-origins (count (:heeded acc))] o)
+      m (update :moves conj m)
+      q (update :quits conj q)
+      r (update :resends conj r))))
+
+(def ^:private unheard
+  {:heeded [] :use-origins {} :moves [] :quits [] :resends []})
+
+(defn- remembered [w input {:keys [heeded quits resends] :as acc}]
+  (cond-> (merge w (select-keys acc [:use-origins :moves]))
+    (seq quits) (assoc :quits quits)
+    (seq resends) (assoc :resends resends)
+    (< (count heeded) (count input)) (assoc :heeded heeded)))
 
 (defn- applied-input [world input]
-  (loop [w world i 0 origins {} moves [] quits []]
-    (if-let [d (nth input i nil)]
-      (let [w' (apply-event w d) m (move-of w w' d) q (quit-of w d)]
-        (recur w' (inc i)
-               (if-let [o (use-origin w d)]
-                 (assoc origins i o)
-                 origins)
-               (cond-> moves m (conj m))
-               (cond-> quits q (conj q))))
-      (-> (assoc w :use-origins origins :moves moves)
-          (remembered quits)))))
+  (loop [w world acc unheard xs (seq input)]
+    (if-let [d (first xs)]
+      (if (heeded? w d)
+        (let [w' (apply-event w d)]
+          (recur w' (heard acc w w' d) (next xs)))
+        (recur w acc (next xs)))
+      (remembered w input acc))))
+
+(defn heeded
+  "Returns the input deltas d of level dim as world took them in:
+  without the events it did not heed."
+  [world dim d]
+  (if-let [h (get-in world [:levels dim :heeded])]
+    (assoc d :input h)
+    d))
 
 (defn- merge-diff [cur add drop]
   (set/difference (into (or cur (i/int-set)) add) (set drop)))
@@ -918,13 +1002,6 @@
        (= :item (:type e)) (hurt-item e health amount)
        (> resist (/ max-resist 2.0)) (hurt-again e health amount)
        :else (hurt-fully e health amount dx dz)))))
-
-(defn next-teleport-id
-  "Returns the id of the next teleport a player is sent. The
-  connection counts them from 1, the join teleport, and wraps."
-  ^long [e]
-  (let [n (inc (long (:tp-id e 1)))]
-    (if (= n Integer/MAX_VALUE) 0 n)))
 
 (def entity-apply
   {:merge-entity (fn [_ e [_ _ m]] (merge e m))
@@ -1144,7 +1221,8 @@
   [world from changes]
   (reduce #(crossed %1 from %2) world changes))
 
-(def ^:private input-keys [:quits :moves :use-origins])
+(def ^:private input-keys
+  [:quits :moves :use-origins :heeded :resends])
 
 (defn enter
   "Returns world with the input deltas of level dim folded in.
