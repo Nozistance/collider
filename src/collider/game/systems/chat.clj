@@ -252,6 +252,54 @@
     (teleported world eid [x y z])
     (say eid "commands.teleport.invalidPosition")))
 
+(defn- where
+  "Returns [dim entity] of entity id, in any level of the server.
+  A level seen alone knows only its own entities."
+  [world id]
+  (let [server (:server world)
+        dim (when server (state/dim-of server id))]
+    (if (and dim (not= dim (:dim world)))
+      [dim (get-in (state/level server dim) [:entities id])]
+      [(:dim world) (get-in world [:entities id])])))
+
+(defn- destination [world eid sel]
+  (if-let [nm (:name sel)]
+    (get-in world [:players nm])
+    (first (targets world eid sel))))
+
+(defn- display-name [e]
+  (if-let [nm (:name e)]
+    nm
+    {:translate (str "entity.minecraft." (name (:type e)))}))
+
+(defn- crossed [world eid dim pos yaw pitch]
+  (let [e (get-in world [:entities eid])
+        known (sort-by chunk/id->pos (seq (:sent-chunks e)))
+        seen (sort (seq (:tracking e)))]
+    [[:change-dimension eid dim pos yaw pitch]
+     (out/to eid
+             (out/change-dimension dim pos yaw pitch known seen))]))
+
+(defn- moved-to [world eid dim d]
+  (let [pos (vec (:pos d)) yaw (:yaw d 0.0) pitch (:pitch d 0.0)]
+    (if (= dim (:dim world))
+      [[:teleport eid pos] [:merge-entity eid {:yaw yaw :pitch pitch}]
+       (out/to eid (out/teleport pos yaw pitch))]
+      (crossed world eid dim pos yaw pitch))))
+
+(defn- tp-to-deltas [world eid [sel]]
+  (let [id (destination world eid sel)
+        [dim d] (when id (where world id))]
+    (cond
+      (nil? d) (say eid "argument.entity.notfound.entity")
+      (not (spawnable? (:pos d)))
+      (say eid "commands.teleport.invalidPosition")
+      :else
+      (concat (moved-to world eid dim d)
+              (say eid "commands.teleport.success.entity.single"
+                   (:name (get-in world [:entities eid]))
+                   (display-name d))))))
+
 (defn- given [world eid id item n]
   (let [e (get-in world [:entities id])
         inv (or (:inventory e) {})
@@ -410,7 +458,8 @@
       :weather-thunder (weather-deltas world eid :thunder given))))
 
 (def ^:private commands
-  {:tp tp-deltas :give give-deltas :kill kill-deltas
+  {:tp tp-deltas :tp-to tp-to-deltas :give give-deltas
+   :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn (partial spawn-pos-deltas world-spawn-deltas)
    :spawnpoint (partial spawn-pos-deltas spawnpoint-set-deltas)

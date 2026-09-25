@@ -172,7 +172,7 @@
   Each level holds every chunk it has loaded and what belongs to it;
   the shared part holds the players of every level."
   [world]
-  (assoc (schema/snapshot (state/server-view world) :shared)
+  (assoc (schema/snapshot world :shared)
     :levels (into {} (for [dim (keys (:levels world))]
                        [dim (level-snapshot world dim)]))))
 

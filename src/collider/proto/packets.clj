@@ -98,7 +98,7 @@
 (def ^:private spawn-info
   "The fields every join and respawn repeats about the world entered."
   [[:dimension-type wire/holder-ref]
-   [:dimension {:optional true} [:= {:wire wire/id} :overworld]]
+   [:dimension wire/id]
    [:seed {:optional true} [:= {:wire wire/long} 0]]
    [:gamemode {:optional true} [:= {:wire wire/byte} 1]]
    [:last-gamemode {:optional true} [:= {:wire wire/byte} -1]]
@@ -106,13 +106,12 @@
    [:flat? {:optional true} [:= {:wire wire/boolean} true]]
    [:death {:optional true} [:= {:wire wire/boolean} false]]
    [:portal-cooldown {:optional true} [:= {:wire wire/varint} 0]]
-   [:sea-level {:optional true} [:= {:wire wire/varint} 63]]])
+   [:sea-level wire/varint]])
 
 (def ^:private Login
   (into [:map [:eid wire/int]
          [:hardcore {:optional true} [:= {:wire wire/boolean} false]]
-         [:levels {:optional true}
-          [:= {:wire [:sequential wire/id]} [:overworld]]]
+         [:levels [:sequential wire/id]]
          [:max-players wire/varint] [:view-distance wire/varint]
          [:simulation-distance wire/varint]
          [:reduced-debug {:optional true}

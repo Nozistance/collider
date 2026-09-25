@@ -141,7 +141,7 @@
 (defn- level-deltas [world ds server phase dim]
   (if (asleep? world dim)
     deltas/empty-deltas
-    (let [lv (state/level world dim)
+    (let [lv (assoc (state/level world dim) :server world)
           d (get ds dim)]
       (-> (deltas/run (into [] (keep #(job lv d server dim %)) phase))
           (deltas/with-dim dim)))))
@@ -185,11 +185,41 @@
         pd (into {} (map of) dims)]
     (if (some server-systems phase) (relocated world pd) pd)))
 
+(def ^:private left-behind #{:chunks-sent :tracking :track})
+
+(defn- stay [ds]
+  (filterv #(not (left-behind (nth % 0))) ds))
+
+(defn- departed
+  "Returns d without the chunk and tracking work of the players
+  who leave the level in it. That work is for the level left."
+  ^Deltas [^Deltas d changes]
+  (let [gone (map #(nth % 1) changes)
+        es (deltas/entities-of d)
+        kept (fn [m eid]
+               (if-let [v (get m eid)] (assoc m eid (stay v)) m))
+        es' (reduce kept es gone)]
+    (assoc d :entities es')))
+
+(defn- arrivals [ds changes]
+  (reduce (fn [ds c]
+            (update ds (nth c 2) deltas/merge
+                    (deltas/->Deltas [c] (i/int-map) [] [])))
+          ds changes))
+
+(defn- crossing [[world ds] dim ^Deltas d changes]
+  (let [d (departed d changes)]
+    [(state/cross (state/apply-in world dim d) dim changes)
+     (arrivals (update ds dim deltas/merge d) changes)]))
+
 (defn- step [[world ds] dim d]
   (if (identical? deltas/empty-deltas d)
     [world ds]
-    [(if (deltas/inert? d) world (state/apply-in world dim d))
-     (update ds dim deltas/merge d)]))
+    (let [changes (state/changes-of d)]
+      (if (seq changes)
+        (crossing [world ds] dim d changes)
+        [(if (deltas/inert? d) world (state/apply-in world dim d))
+         (update ds dim deltas/merge d)]))))
 
 (defn- run-phase [[world ds] phase]
   (let [pd (phase-deltas world ds phase)]

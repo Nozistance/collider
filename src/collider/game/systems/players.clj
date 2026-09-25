@@ -552,7 +552,8 @@
   (some (fn [delta]
           (let [tag (nth delta 0)]
             (or (identical? :spawn-entity tag)
-                (identical? :remove-entity tag))))
+                (identical? :remove-entity tag)
+                (identical? :change-dimension tag))))
         (:world d)))
 
 (defn late-tracking

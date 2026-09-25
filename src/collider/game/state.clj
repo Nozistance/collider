@@ -172,7 +172,7 @@
   lv's non-level keys become the shared part of world, dropping
   shared keys lv no longer has; lv's level keys become level dim."
   [world dim lv]
-  (let [lv (dissoc lv :dim :min-y :max-y :sky?)
+  (let [lv (dissoc lv :dim :min-y :max-y :sky? :server)
         level-part (select-keys lv schema/level-keys)
         shared-part (clojure.core/apply dissoc lv schema/level-keys)]
     (assoc shared-part :levels
@@ -335,16 +335,17 @@
    :keepalive-at tick :keepalive-pending? false})
 
 (defn- player-join [w eid name settings]
-  (assoc-in w [:spawning eid]
-            (cond-> {:name name :seed (spawn-seed w eid)
-                     :dim :overworld :settings settings}
-              (get-in w [:profiles name :pos])
-              (assoc :pos (get-in w [:profiles name :pos])))))
+  (let [{:keys [pos dimension]} (get-in w [:profiles name])]
+    (assoc-in w [:spawning eid]
+              (cond-> {:name name :seed (spawn-seed w eid)
+                       :dim (or dimension :overworld)
+                       :settings settings}
+                pos (assoc :pos pos)))))
 
 (defn- player-placed [w eid name pos]
   (let [fresh (merge (new-player name (:tick w) pos)
                      (get-in w [:spawning eid :settings]))
-        saved (get-in w [:profiles name])]
+        saved (dissoc (get-in w [:profiles name]) :dimension)]
     (-> w
         (assoc-in [:entities eid] (entity/of (merge fresh saved)))
         (assoc-in [:players name] eid)
@@ -392,15 +393,20 @@
         w))
     w))
 
-(defn- stored-profile [e]
+(defn- stored-profile [e dim]
   (schema/profile-of
     (-> e
         (update-in [:stats :custom/leave-game] (fnil inc 0))
         (update :inventory
-                #(clojure.core/apply dissoc % (range 5))))))
+                #(clojure.core/apply dissoc % (range 5))))
+    dim))
 
 (defn- forget-player [ps name eid]
   (if (= eid (get ps name)) (dissoc ps name) ps))
+
+(defn- kept-profile [w name e]
+  (let [dim (:dim w :overworld)]
+    (assoc-in w [:profiles name] (stored-profile e dim))))
 
 (defn- player-quit [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
@@ -408,7 +414,7 @@
                 (update :spawning dissoc eid)
                 (update :entities dissoc eid)
                 (update :players forget-player name eid))
-            name (assoc-in [:profiles name] (stored-profile e)))))
+            name (kept-profile name e))))
 
 (def ^:private ^:table swords
   (delay (set (data/tag-values "item" "swords"))))
@@ -942,7 +948,8 @@
    :advance-tick (fn [w _] (dissoc (advance w) :quits))
    :advance-weather (fn [w _] (merge w (weather/advance w)))
    :observed (fn [w [_ m]] (assoc w :observed m))
-   :explode (fn [w _] w)})
+   :explode (fn [w _] w)
+   :change-dimension (fn [w _] w)})
 
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]
@@ -999,6 +1006,33 @@
   (if (contains? world :levels)
     (apply-in world :overworld deltas)
     (apply-level world deltas)))
+
+(defn- arrived [e tick pos yaw pitch]
+  (assoc e :pos (v/v3 pos) :yaw (double yaw) :pitch (double pitch)
+           :tp-target pos :tp-id tick :chunk-pos nil :chunk-view nil
+           :chunks-pending? nil :sent-chunks (i/int-set)
+           :tracking (i/int-set) :track nil))
+
+(defn- crossed [world from [_ eid dim pos yaw pitch]]
+  (if-let [e (get-in world [:levels from :entities eid])]
+    (-> world
+        (update-in [:levels from :entities] dissoc eid)
+        (assoc-in [:levels dim :entities eid]
+                  (arrived e (:tick world) pos yaw pitch)))
+    world))
+
+(defn changes-of
+  "Returns the dimension changes among the world deltas of d."
+  [^Deltas d]
+  (filterv #(identical? :change-dimension (nth % 0))
+           (deltas/world-of d)))
+
+(defn cross
+  "Returns world with the players that change dimension in d moved.
+  Each leaves level from for its new level with the same eid. It
+  knows no chunk and no entity there yet."
+  [world from changes]
+  (reduce #(crossed %1 from %2) world changes))
 
 (def ^:private input-keys [:quits :moves :use-origins])
 

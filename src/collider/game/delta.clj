@@ -73,6 +73,8 @@
    [:cat :map]
    :remove-entity
    [:cat Eid]
+   :change-dimension
+   [:cat Eid :keyword Vec3 number? number?]
    :listed
    [:cat [:map-of Eid :uuid] Coll]
    :advance-tick
@@ -134,6 +136,8 @@
    :teleport          [[:pos Vec3] [:yaw number?] [:pitch number?]]
    :health            [[:health number?]]
    :respawn           []
+   :change-dimension  [[:pos Vec3] [:yaw number?] [:pitch number?]
+                       [:forget Coll] [:untrack Coll]]
    :default-spawn     [[:pos Pos]]
    :rain-started      []
    :rain-stopped      []
@@ -212,15 +216,22 @@
 
 (def ^:private delta-explainer (delay (m/explainer Delta)))
 
-(defn valid? [delta] (@delta-validator delta))
+(defn valid?
+  "Returns true when delta matches the schema of its tag."
+  [delta]
+  (@delta-validator delta))
 
-(defn explain [delta]
+(defn explain
+  "Returns why delta breaks its schema, or nil when it does not."
+  [delta]
   (when-let [e (@delta-explainer delta)]
     (me/humanize e)))
 
 (def validate? (Boolean/getBoolean "collider.validate"))
 
-(defn check! [deltas]
+(defn check!
+  "Returns deltas, or throws on the first one that breaks its schema."
+  [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)
       (throw (ex-info (str "invalid delta " (first d))

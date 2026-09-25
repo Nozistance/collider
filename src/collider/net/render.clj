@@ -1,6 +1,7 @@
 (ns collider.net.render
   "Packets for each player from the tick."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.menu :as menu]
             [collider.game.entity :as entity]
             [clojure.data.int-map :as i]
             [collider.config :as config]
@@ -14,7 +15,8 @@
             [collider.proto.entitydata :as ed]
             [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
+            [collider.world.chunk :as chunk]
+            [collider.world.env.biome :as biome])
   (:import (collider.game.deltas Deltas)
            (java.util UUID)))
 
@@ -329,8 +331,13 @@
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})
 
-(def ^:private ^:table overworld
-  (delay (data/datapack-id "dimension_type" :overworld)))
+(defn- spawn-info
+  "Returns the fields a join or respawn gives of level lv.
+  ServerPlayer.createCommonSpawnInfo."
+  [lv]
+  (let [dim (:dim lv :overworld)]
+    {:dimension-type (data/datapack-id "dimension_type" dim)
+     :dimension dim :sea-level (biome/sea-level-of dim)}))
 
 (def ^:private ^:table explosion-block-particles
   (delay [[(data/registry-id "particle_type" :poof) 0.5 1.0 1]
@@ -472,6 +479,115 @@
 (defn- rule-pair [[k v]]
   [(rules/wire-name k) (rules/serialize k v)])
 
+(def ^:private difficulty-packet
+  {:packet :change-difficulty :difficulty 0 :locked false})
+
+(def ^:private abilities-packet
+  {:packet       :player-abilities :flags (bit-or 1 4 8)
+   :flying-speed 0.05 :walking-speed 0.1})
+
+(def ^:private ^:table command-tree (delay (commands/tree)))
+
+(def ^:private world-border-size 5.9999968E7)
+
+(def ^:private world-border-max 29999984)
+
+(def ^:private op-level-event 24)
+
+(defn- join-spawn [world]
+  (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
+    [(long (Math/floor (double x)))
+     (long (Math/floor (double y)))
+     (long (Math/floor (double z)))]))
+
+(defn- permission-packets
+  "PlayerList.sendPlayerPermissionLevel: the op level and the
+  commands it allows."
+  [eid]
+  [{:packet :entity-event :eid eid :event (+ op-level-event 4)}
+   {:packet :commands :nodes @command-tree}])
+
+(def ^:private border-packet
+  {:packet     :initialize-border :center-x 0.0 :center-z 0.0
+   :old-size   world-border-size :size world-border-size
+   :max-size   world-border-max :warning-blocks 5
+   :warning-time 15})
+
+(defn- spawn-pos-packet [world]
+  {:packet :set-default-spawn-position :pos (join-spawn world)
+   :yaw 0.0 :pitch 0.0})
+
+(def ^:private ticking-packets
+  [{:packet :ticking-state :rate 20.0 :frozen? false}
+   {:packet :ticking-step :steps 0}])
+
+(defn- set-time-packet [m]
+  {:packet :set-time :age (:age m) :time (:time m)})
+
+(defn- rain-packets
+  "The weather part of PlayerList.sendLevelInfo for level lv."
+  [lv]
+  (let [rain (double (:rain-level lv 0.0))
+        thunder (* rain (double (:thunder-level lv 0.0)))]
+    (when (> rain 0.2)
+      [{:packet :game-event :event 1 :value 0.0}
+       {:packet :game-event :event 7 :value rain}
+       {:packet :game-event :event 8 :value thunder}])))
+
+(defn- level-info-packets
+  "PlayerList.sendLevelInfo: what a player entering level lv learns
+  of it."
+  [lv]
+  (concat [border-packet
+           (set-time-packet
+             {:age (:tick lv) :time (:time-of-day lv 0)})
+           (spawn-pos-packet lv)]
+          (rain-packets lv)
+          [{:packet :game-event :event 13 :value 0.0}]
+          ticking-packets))
+
+(defn- leave-packets
+  "What the old level sends on the way out: the chunks and then the
+  entities the player knew there."
+  [m]
+  (concat (map forget-chunk-packet (:forget m))
+          (map (fn [id] {:packet :remove-entities :eids [id]})
+               (:untrack m))))
+
+(defn- player-info-packets
+  "PlayerList.sendAllPlayerInfo and the resent health and experience
+  of the next ServerPlayer.doTick."
+  [e]
+  (let [inv (or (:inventory e) {})]
+    [{:packet :container-set-content :container 0 :state-id 0
+      :items (mapv inv (range menu/slot-count)) :carried (:carried e)}
+     {:packet :set-held-slot :slot (long (or (:held-slot e) 0))}
+     {:packet :set-health :health (double (:health e 20.0))
+      :food 20 :saturation 5.0}
+     {:packet :set-experience :progress 0.0 :level 0 :total 0}]))
+
+(defn- arrival-packets [lv m]
+  (let [[cx cz] (chunk/id->pos (chunk/pos-chunk (:pos m)))]
+    [{:packet :player-position :teleport-id (long (:tick lv))
+      :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
+      :pitch (:pitch m) :relative 0}
+     {:packet :set-chunk-cache-center :cx cx :cz cz}
+     abilities-packet]))
+
+(defn- change-dimension-packets
+  "Returns the packets that move a player into level lv, in the
+  order the client expects them."
+  [lv m]
+  (let [eid (:to m)]
+    (concat
+      [(assoc (spawn-info lv) :packet :respawn :keep 3)
+       difficulty-packet]
+      (permission-packets eid)
+      (leave-packets m)
+      (arrival-packets lv m)
+      (level-info-packets lv)
+      (player-info-packets (get-in lv [:entities eid])))))
+
 (def ^:private session-fx
   {:teleport      (fn [world m]
                     [{:packet :player-position
@@ -505,9 +621,9 @@
    :cooldown      (fn [_ m]
                     [{:packet :cooldown :group (:group m)
                       :duration (:ticks m)}])
-   :respawn       (fn [_ _]
-                    [{:packet :respawn :dimension-type @overworld
-                      :keep 0}
+   :change-dimension change-dimension-packets
+   :respawn       (fn [lv _]
+                    [(assoc (spawn-info lv) :packet :respawn :keep 0)
                      {:packet :game-event :event 13 :value 0.0}])
    :default-spawn (fn [_ m]
                     [{:packet :set-default-spawn-position
@@ -532,9 +648,6 @@
 
 (defn- level-event-packet [event pos data]
   {:packet :level-event :event event :pos pos :data data})
-
-(defn- set-time-packet [m]
-  {:packet :set-time :age (:age m) :time (:time m)})
 
 (defn- sign-editor-packet [m]
   {:packet :open-sign-editor :pos (:pos m) :front? (:front? m)})
@@ -690,46 +803,26 @@
     (f world m)
     (once! (:msg m))))
 
-(def ^:private ^:table command-tree (delay (commands/tree)))
-
-(def ^:private world-border-size 5.9999968E7)
-
-(def ^:private world-border-max 29999984)
-
-(def ^:private op-level-event 24)
-
-(defn- join-spawn [world]
-  (let [[x y z] (or (:world-spawn world) state/spawn-pos)]
-    [(long (Math/floor (double x)))
-     (long (Math/floor (double y)))
-     (long (Math/floor (double z)))]))
-
-(defn- join-login-packets [cfg eid]
+(defn- join-login-packets [cfg lv eid]
   (let [{:keys [max-players view-distance simulation-distance]} cfg]
-    [{:packet              :login :eid eid
-      :max-players         (min 255 (long max-players))
-      :view-distance       view-distance
-      :simulation-distance simulation-distance
-      :dimension-type      @overworld}
-     {:packet :change-difficulty :difficulty 0 :locked false}
-     {:packet       :player-abilities :flags (bit-or 1 4 8)
-      :flying-speed 0.05 :walking-speed 0.1}]))
+    [(merge (spawn-info lv)
+            {:packet              :login :eid eid
+             :levels              schema/dims
+             :max-players         (min 255 (long max-players))
+             :view-distance       view-distance
+             :simulation-distance simulation-distance})
+     difficulty-packet
+     abilities-packet]))
 
 (defn- join-world-packets [world eid motd]
-  (let [[x y z] (join-spawn world)]
-    [(assoc (data/recipes) :packet :update-recipes)
-     {:packet :entity-event :eid eid :event (+ op-level-event 4)}
-     {:packet :commands :nodes @command-tree}
-     {:packet :server-data :motd motd}
-     {:packet     :initialize-border :center-x 0.0 :center-z 0.0
-      :old-size   world-border-size :size world-border-size
-      :max-size   world-border-max :warning-blocks 5
-      :warning-time 15}
-     {:packet :set-default-spawn-position :pos [x y z]
-      :yaw 0.0 :pitch 0.0}
-     {:packet :game-event :event 13 :value 0.0}
-     {:packet :ticking-state :rate 20.0 :frozen? false}
-     {:packet :ticking-step :steps 0}]))
+  (concat
+    [(assoc (data/recipes) :packet :update-recipes)]
+    (permission-packets eid)
+    [{:packet :server-data :motd motd}
+     border-packet
+     (spawn-pos-packet world)
+     {:packet :game-event :event 13 :value 0.0}]
+    ticking-packets))
 
 (defn- join-player-packets [eid]
   [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
@@ -742,17 +835,20 @@
      [:block-interaction-range state/block-range
       [[:creative-mode-block-range state/creative-block-range 0]]]]}])
 
-(defn- join-packets [world eid]
+(defn- join-packets [world lv eid]
   (let [cfg (merge config/defaults (:config world))]
-    (concat (join-login-packets cfg eid)
+    (concat (join-login-packets cfg lv eid)
             (join-world-packets world eid (:motd cfg))
             (join-player-packets eid))))
 
-(defn- join-bursts [world ^Deltas deltas]
+(declare own-level)
+
+(defn- join-bursts [world sight ^Deltas deltas]
   (for [m (deltas/out-of deltas)
         :when (= :joined (:msg m))
-        p (join-packets world (:to m))]
-    [(:to m) p]))
+        :let [eid (:to m)]
+        p (join-packets world (own-level sight eid) eid)]
+    [eid p]))
 
 (def ^:private home (first schema/dims))
 
@@ -859,7 +955,7 @@
         es (deltas/entities-of deltas)
         viewers (delay (viewer-index sight es))]
     (concat
-      (join-bursts world deltas)
+      (join-bursts world sight deltas)
       (entity-delta-packets sight es)
       (mapcat (fn [m] (msg-packets sight viewers m))
               (deltas/out-of deltas))

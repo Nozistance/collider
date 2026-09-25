@@ -139,7 +139,7 @@
 
 (defn- host-event [saved config-written?]
   (let [rt (Runtime/getRuntime)
-        lv (state/level saved :overworld)]
+        lv (some-> saved (state/level :overworld))]
     {:event           :host
      :java            (System/getProperty "java.version")
      :cores           (.availableProcessors rt)

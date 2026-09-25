@@ -47,9 +47,11 @@
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]
     [:world :gamerule]]
-   [:tp "teleport to a position (~ = where you are)"
+   [:tp "teleport to a position (~ = where you are) or an entity"
     (vec-args {:node "location"})
-    [:world :tp]]
+    [:world :tp]
+    [[:destination [:targets {:single? true}]]]
+    [:world :tp-to]]
    [:give "give items to players"
     [[:targets [:targets {:players? true}]]
      [:item [:item {}]]
@@ -181,7 +183,7 @@
   {"s" {:self true} "a" {:all true}
    "p" {:nearest true} "e" {:entities true}})
 
-(defn- as-targets [nm s {:keys [players?]} _origin]
+(defn- as-targets [nm s {:keys [players? single?]} _origin]
   (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
         type-re #"type=(!?)([a-z_:]+)"
         [_ negated type] (when args (re-find type-re args))
@@ -190,6 +192,8 @@
       (nil? sel) [:ok {:name s}]
       (and players? (= "e" sel))
       [:err (str (name nm) ": @e is not a player")]
+      (and single? (#{"a" "e"} sel))
+      [:err (str (name nm) ": give one entity, not @" sel)]
       :else [:ok (cond-> (selectors sel)
                    type (assoc :type type)
                    (= "!" negated) (assoc :not-type? true))])))
@@ -302,11 +306,18 @@
           (recur (next as) (next ts) (conj acc v))))
       {:args acc})))
 
+(defn- ways
+  "Returns the [args action] pairs of a form without subcommands."
+  [form]
+  (partition 2 (drop 2 form)))
+
+(defn- way-delta [[args action] tokens path origin]
+  (let [r (parse-args args tokens path origin)]
+    (if (:error r) r {:delta (into action (:args r))})))
+
 (defn- delta-of [form tokens path origin]
-  (let [r (parse-args (nth form 2) tokens path origin)]
-    (if (:error r)
-      r
-      {:delta (into (nth form 3) (:args r))})))
+  (let [rs (map #(way-delta % tokens path origin) (ways form))]
+    (or (first (filter :delta rs)) (first rs))))
 
 (defn- no-subcommand [form nm sub]
   {:error (str (if sub
@@ -384,21 +395,27 @@
 
 (def ^:private brigadier-string (keyword "brigadier:string"))
 
-(defn- argument-nodes [[nm [kind {:keys [min max values]}]]]
+(def ^:private plain-arguments
+  {:duration [:time {:min 1}]
+   :named-int [:time {:min 0}]
+   :coord [:block-pos nil]
+   :dcoord [:vec3 nil]
+   :block [:block-state nil]
+   :item [:item-stack nil]
+   :entity-type [:resource {:registry "minecraft:entity_type"}]
+   :text [brigadier-string {:kind 0}]})
+
+(defn- argument-nodes
+  [[nm [kind {:keys [min max values single?]}]]]
   (let [n (name nm)]
-    (case kind
-      :duration [[n :time {:min 1}]]
-      :int [[n brigadier-integer {:min min :max max}]]
-      :named-int [[n :time {:min 0}]]
-      :coord [[n :block-pos nil]]
-      :dcoord [[n :vec3 nil]]
-      :enum {:literals (sort values)}
-      :block [[n :block-state nil]]
-      :item [[n :item-stack nil]]
-      :entity-type [[n :resource {:registry "minecraft:entity_type"}]]
-      :targets [[n :entity {:single? false :players? false}]]
-      :text [[n brigadier-string {:kind 0}]]
-      :rule {:rules true})))
+    (if-let [[parser props] (plain-arguments kind)]
+      [[n parser props]]
+      (case kind
+        :int [[n brigadier-integer {:min min :max max}]]
+        :enum {:literals (sort values)}
+        :targets
+        [[n :entity {:single? (boolean single?) :players? false}]]
+        :rule {:rules true}))))
 
 (defn- coords-merged [args]
   (loop [as args acc []]
@@ -473,10 +490,11 @@
     (let [kids (mapv #(add-form! nodes %) (drop 2 form))]
       (add-node! nodes {:type :literal :name (cmd-name form)
                         :children kids}))
-    (let [args (coords-merged (nth form 2))
-          [children exec?] (add-chain nodes args 0)]
+    (let [chains (mapv #(add-chain nodes (coords-merged (first %)) 0)
+                       (ways form))]
       (add-node! nodes {:type :literal :name (cmd-name form)
-                        :executable? exec? :children children}))))
+                        :executable? (boolean (some second chains))
+                        :children (into [] (mapcat first) chains)}))))
 
 (defn tree
   "Returns the command nodes a client gets, the root last."

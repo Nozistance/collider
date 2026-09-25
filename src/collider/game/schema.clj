@@ -96,8 +96,9 @@
 
 (defn- store-profiles [profiles world]
   (into profiles
-        (for [[_ e] (:entities world) :when (named-player? e)]
-          [(:name e) (profile-of e)])))
+        (for [[dim lv] (:levels world)
+              [_ e] (:entities lv) :when (named-player? e)]
+          [(:name e) (profile-of e dim)])))
 
 (defn- wet? [world]
   (and (:raining? world) (weather/can-have-weather? (:dim world))))
@@ -259,7 +260,8 @@
    :pos          {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}
    :yaw          {:default 0.0}
    :pitch        {:default 0.0}
-   :on-ground    {:default true :store boolean}})
+   :on-ground    {:default true :store boolean}
+   :dimension    {:default :overworld}})
 
 (defn- profile-kept? [player k]
   (or (some? (get player k))
@@ -269,6 +271,9 @@
   (let [v (get player k)]
     (if (some? v) ((or store identity) v) default)))
 
-(defn profile-of [player]
-  (into {} (for [[k spec] profile :when (profile-kept? player k)]
-             [k (profile-value player k spec)])))
+(defn profile-of
+  "Returns what a profile keeps of player, who is in level dim."
+  [player dim]
+  (let [player (assoc player :dimension dim)]
+    (into {} (for [[k spec] profile :when (profile-kept? player k)]
+               [k (profile-value player k spec)]))))
