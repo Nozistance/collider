@@ -342,7 +342,7 @@
 (defn- new-player [name tick pos]
   {:type         :player :name name :uuid (offline-uuid name)
    :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
-   :chunk-pos    nil :sent-chunks (i/int-set) :needs-spawn? true
+   :chunk-pos    nil :sent-chunks (i/int-set)
    :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
    :batches-max  1
    :tracking (i/int-set) :track nil
@@ -409,14 +409,23 @@
                        :settings settings}
                 pos (assoc :pos pos)))))
 
+(defn- awaiting-join
+  "Returns player e waiting for the ack of the teleport its
+  connection sends first, the one to where it joins."
+  [e tick]
+  (let [p (:pos e)]
+    (assoc e :tp-target [(v/x p) (v/y p) (v/z p)] :tp-id 1
+             :tp-at tick)))
+
 (defn- player-placed [w eid name pos]
   (let [[yaw pitch] (spawn-turn w)
         fresh (merge (new-player name (:tick w) pos)
                      {:yaw yaw :pitch pitch}
                      (get-in w [:spawning eid :settings]))
-        saved (dissoc (get-in w [:profiles name]) :dimension)]
+        saved (dissoc (get-in w [:profiles name]) :dimension)
+        e (entity/of (merge fresh saved))]
     (-> w
-        (assoc-in [:entities eid] (entity/of (merge fresh saved)))
+        (assoc-in [:entities eid] (awaiting-join e (:tick w)))
         (assoc-in [:players name] eid)
         (update :spawning dissoc eid))))
 
@@ -720,9 +729,11 @@
 
 (defn- apply-move [w eid changes]
   (let [e (get-in w [:entities eid])]
-    (if (or (:tp-target e) (:sleeping e))
-      (update-entity w eid merge (dissoc changes :pos))
-      (free-move w eid e changes))))
+    (cond
+      (:tp-target e)
+      (update-entity w eid merge (dissoc changes :pos :on-ground))
+      (:sleeping e) (update-entity w eid merge (dissoc changes :pos))
+      :else (free-move w eid e changes))))
 
 (defn- chunk-batch-ack [w eid rate]
   (let [rate (double rate)

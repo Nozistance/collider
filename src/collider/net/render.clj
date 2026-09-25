@@ -815,11 +815,21 @@
      difficulty-packet
      abilities-packet]))
 
-(defn- join-world-packets [world eid motd]
+(defn- join-teleport-packet
+  "PlayerList.placeNewPlayer: the teleport to where player e joins,
+  the first one its connection counts."
+  [e]
+  (let [p (:pos e)]
+    {:packet :player-position :teleport-id (long (:tp-id e 1))
+     :pos [(v/x p) (v/y p) (v/z p)] :vel [0.0 0.0 0.0]
+     :yaw (double (:yaw e)) :pitch (double (:pitch e)) :relative 0}))
+
+(defn- join-world-packets [world e eid motd]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets eid)
-    [{:packet :server-data :motd motd}
+    [(join-teleport-packet e)
+     {:packet :server-data :motd motd}
      border-packet
      (spawn-pos-packet world)
      {:packet :game-event :event 13 :value 0.0}]
@@ -837,9 +847,10 @@
       [[:creative-mode-block-range state/creative-block-range 0]]]]}])
 
 (defn- join-packets [world lv eid]
-  (let [cfg (merge config/defaults (:config world))]
+  (let [cfg (merge config/defaults (:config world))
+        e (get-in lv [:entities eid])]
     (concat (join-login-packets cfg lv eid)
-            (join-world-packets world eid (:motd cfg))
+            (join-world-packets world e eid (:motd cfg))
             (join-player-packets eid))))
 
 (declare own-level)

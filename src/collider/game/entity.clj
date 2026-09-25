@@ -15,7 +15,7 @@
                 tempt-cooldown-until type color sheared? track])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
-                   tp-target chunk-pos sent-chunks needs-spawn?
+                   tp-target chunk-pos sent-chunks
                    tracking track health hurt-resist last-damage
                    death-time health-sent inventory held-slot
                    using-item? sneaking? sprinting? skin-parts

@@ -82,10 +82,6 @@
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
 
-(defn- own-column? [world eid sent-chunks cp]
-  (or (contains? (or sent-chunks #{}) cp)
-      (writable? world eid)))
-
 (defn- nearest-first [ids cp]
   (let [[pcx pcz] (chunk/id->pos cp)]
     (sort-by (fn [id]
@@ -141,22 +137,12 @@
          [:chunks-sent eid add drop (when moved? cp)]])
       (quota-deltas eid plan))))
 
-(defn- spawn-look-deltas [eid pos yaw pitch]
-  (let [[sx sy sz] (or pos state/spawn-pos)
-        look (out/teleport [sx sy sz] (or yaw 0.0) (or pitch 0.0))]
-    [(out/to eid look)
-     [:merge-entity eid {:needs-spawn? nil}]]))
-
 (defn- stream-deltas [world [eid p]]
-  (let [{:keys [pos yaw pitch sent-chunks needs-spawn?]} p
-        cp (chunk/pos-chunk pos)
+  (let [cp (chunk/pos-chunk (:pos p))
         r (player-radius world p)]
-    (concat
-      (when (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
-                (:chunks-pending? p))
-        (restream-deltas world eid cp r p))
-      (when (and needs-spawn? (own-column? world eid sent-chunks cp))
-        (spawn-look-deltas eid pos yaw pitch)))))
+    (when (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
+              (:chunks-pending? p))
+      (restream-deltas world eid cp r p))))
 
 (defn chunk-loading
   "Brings in the chunks the players need."
