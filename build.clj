@@ -23,9 +23,6 @@
 (defn- info [& args] (apply (requiring-resolve 'collider.log/info) args))
 (defn- step [doing done f] ((requiring-resolve 'collider.log/step) doing done f))
 
-(defn data [opts]
-  ((requiring-resolve 'collider.tables/generate!) opts))
-
 (defn- compile-clj []
   (b/compile-clj {:basis      basis
                   :src-dirs   ["src"]

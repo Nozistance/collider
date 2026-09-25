@@ -55,12 +55,15 @@
           t (tables-of ns)]
     @t))
 
-(defn- no-tables []
+(defn no-tables
+  "Returns the error for a missing or stale set of tables.
+  The server does not make tables. The vanilla-tables tool does."
+  []
   (let [why (str "No complete set of tables for " game
-                 " in target/data or data; the release jar"
-                 " generates it on its first start")
-        how (str "From the source tree:"
-                 " clojure -T:build data")]
+                 " in target/data or data")
+        how (str "Make them with:"
+                 " java -jar vanilla-tables.jar generate"
+                 " --out data")]
     (ex-info "no tables"
              {:what    "no game data"
               :why     why
