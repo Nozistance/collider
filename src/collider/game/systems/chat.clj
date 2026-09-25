@@ -8,6 +8,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.out :as out]
+            [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
@@ -91,8 +92,16 @@
   (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- say [eid key & with]
+(defn- say* [eid key with]
   (let [msg {:translate key :with (vec with)}]
+    [(out/to eid (out/system-chat [msg]))]))
+
+(defn- say [eid key & with] (say* eid key with))
+
+(defn- fail
+  "Returns the deltas that tell one player why a command failed."
+  [eid key & with]
+  (let [msg {:translate key :with (vec with) :color "red"}]
     [(out/to eid (out/system-chat [msg]))]))
 
 (defn- unloaded?
@@ -138,11 +147,10 @@
   [world]
   (get-in world [:source :dim] (:dim world)))
 
-(defn- source-pos [world eid]
-  (if (contains? (:source world) :pos)
-    (get-in world [:source :pos])
-    (when-let [p (get-in world [:entities eid :pos])]
-      [(v/x p) (v/y p) (v/z p)])))
+(defn- source-pos
+  "Returns the position a command runs at."
+  [world]
+  (get-in world [:source :pos]))
 
 (defn- level-view
   "Returns level dim as a command in world sees it."
@@ -169,7 +177,7 @@
         changes (fill-changes chunks bounds (block/state block))]
     (if (empty? changes)
       (concat (in-level world dim adds)
-              (say eid "commands.fill.failed"))
+              (fail eid "commands.fill.failed"))
       (concat (in-level world dim
                         (conj (vec adds) [:set-blocks changes]))
               (say eid "commands.fill.success"
@@ -204,7 +212,7 @@
 (defn- fill-deltas [world eid [ax ay az bx by bz block]]
   (if-let [k (some #(pos-error (source-level world) %)
                    [[ax ay az] [bx by bz]])]
-    (say eid k)
+    (fail eid k)
     (filled world eid (box [ax ay az bx by bz]) block)))
 
 (defn- rule-hint [rule]
@@ -249,45 +257,100 @@
 (defn- item-name [item]
   {:translate (str "item.minecraft." (data/snake item))})
 
-(defn- typed-ids [world type not-type? ids]
-  (if type
-    (filter #(= (boolean not-type?)
-                (not= type (get-in world [:entities % :type])))
-            ids)
-    ids))
+(defn- levels
+  "Returns [dim level] of every level of the server, in its order.
+  A level seen alone is the only one."
+  [world]
+  (if (:server world)
+    (map (fn [d] [d (level-view world d)]) schema/dims)
+    [[(:dim world) world]]))
 
-(defn- nearest-id [world eid ids]
-  (let [p (get-in world [:entities eid :pos])
-        at (fn [id] (get-in world [:entities id :pos]))
-        d (fn [id] [(v/dist-sq p (at id)) id])]
-    (when-let [near (first (sort-by d ids))]
-      [near])))
+(defn- player-entries [world]
+  (sort-by first
+           (for [[dim lv] (levels world)
+                 [id e] (state/player-entries lv)]
+             [id dim e])))
 
-(defn- targets [world eid sel]
-  (let [{:keys [self all nearest entities type not-type? name]} sel
-        players (map key (state/player-entries world))
-        typed #(typed-ids world type not-type? %)]
+(defn- entity-entries [world]
+  (for [[dim lv] (levels world)
+        [id e] (sort-by key (:entities lv))]
+    [id dim e]))
+
+(defn- alive? [e]
+  (not (and (:health e) (<= (double (:health e)) 0.0))))
+
+(defn- typed? [{:keys [type not-type?]} e]
+  (or (nil? type) (= (boolean not-type?) (not= type (:type e)))))
+
+(defn- xyz [p] [(v/x p) (v/y p) (v/z p)])
+
+(def ^:private still (v/v3 [0.0 0.0 0.0]))
+
+(defn- dist-sq ^double [from e]
+  (let [p (:pos e)
+        d #(- (double %1) (double (nth from %2)))
+        dx (d (v/x p) 0) dy (d (v/y p) 1) dz (d (v/z p) 2)]
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
+(defn- in-distance? [[lo hi] from e]
+  (let [d (dist-sq from e) sq #(* (double %) (double %))]
+    (and (or (nil? lo) (>= d (double (sq lo))))
+         (or (nil? hi) (<= d (double (sq hi)))))))
+
+(defn- near? [world sel dim e]
+  (let [d (:distance sel)]
+    (or (nil? d)
+        (and (= dim (source-dim world))
+             (in-distance? d (source-pos world) e)))))
+
+(defn- matches? [world sel [_ dim e]]
+  (and (typed? sel e)
+       (or (not (:entities sel)) (alive? e))
+       (near? world sel dim e)))
+
+(defn- picked
+  "Returns the entries a selector keeps, in the order it sorts."
+  [world sel xs]
+  (let [from (source-pos world)]
     (cond
-      self [eid]
-      all (typed players)
-      nearest (nearest-id world eid (typed players))
-      entities (typed (keys (:entities world)))
-      name (when-let [id (get-in world [:players name])] [id]))))
+      (:random sel)
+      (when (seq xs)
+        (let [r (random/of-key (:tick world) :selector)]
+          [(nth (vec xs) (long (* (double r) (count xs))))]))
+      (:nearest sel) (take 1 (sort-by #(dist-sq from (nth % 2)) xs))
+      :else xs)))
 
-(defn- where
-  "Returns [dim entity] of entity id, in any level of the server.
-  A level seen alone knows only its own entities."
-  [world id]
-  (let [server (:server world)
-        dim (when server (state/dim-of server id))]
-    (if (and dim (not= dim (:dim world)))
-      [dim (get-in (state/level server dim) [:entities id])]
-      [(:dim world) (get-in world [:entities id])])))
+(defn- by-uuid [world players? u]
+  (some (fn [[id _ e :as x]]
+          (when (= u (entity/uuid-of id e)) x))
+        (if players? (player-entries world) (entity-entries world))))
 
-(defn- destination [world eid sel]
-  (if-let [nm (:name sel)]
-    (get-in world [:players nm])
-    (first (targets world eid sel))))
+(defn- by-name [world nm]
+  (some #(when (= nm (:name (nth % 2))) %) (player-entries world)))
+
+(defn- self-entry [world eid sel]
+  (let [x [eid (:dim world) (get-in world [:entities eid])]]
+    (when (and (peek x) (matches? world (dissoc sel :entities) x))
+      [x])))
+
+(defn- selected
+  "Returns the [id dim entity] entries selector sel finds, as the
+  command source in world finds them."
+  [world eid sel]
+  (cond
+    (:self sel) (self-entry world eid sel)
+    (:name sel) (keep identity [(by-name world (:name sel))])
+    (:uuid sel) (keep identity [(by-uuid world false (:uuid sel))])
+    :else (->> (if (:entities sel)
+                 (entity-entries world)
+                 (player-entries world))
+               (filter #(matches? world sel %))
+               (picked world sel))))
+
+(defn- player-selected [world eid sel]
+  (if (:uuid sel)
+    (keep identity [(by-uuid world true (:uuid sel))])
+    (selected world eid sel)))
 
 (defn- crossed [lv eid dim pos yaw pitch]
   (let [e (get-in lv [:entities eid])
@@ -297,55 +360,96 @@
      (out/to eid
              (out/change-dimension dim pos yaw pitch known seen))]))
 
-(defn- player-moved [world id from e to pos yaw pitch]
+(defn- rel-bits
+  "Returns the relative flags of a move whose axes rel count from
+  where the entity is. Its turn stays; its motion stays on rel."
+  [rel same?]
+  (reduce (fn [^long b ^long a]
+            (cond-> (bit-or b (bit-shift-left 1 (+ 5 a)))
+              same? (bit-or (bit-shift-left 1 a))))
+          (bit-or 8 16) rel))
+
+(defn- kept-vel
+  "Returns the motion of e after a move whose axes rel count from
+  where it is: kept on rel, gone elsewhere; falling ends too
+  unless grounded? is false."
+  [e rel grounded?]
+  (let [old (or (:vel e) still)
+        at #(if (contains? rel %) (double (nth (xyz old) %)) 0.0)]
+    (v/v3 [(at 0) (if grounded? 0.0 (at 1)) (at 2)])))
+
+(defn- packet-pos [e pos rel]
+  (let [p (:pos e)]
+    (mapv (fn [a] (if (contains? rel a)
+                    (- (double (nth pos a)) (double (nth (xyz p) a)))
+                    (double (nth pos a))))
+          [0 1 2])))
+
+(defn- player-teleport [id e pos turn rel]
+  (let [[yaw pitch] turn]
+    (if (= :entity rel)
+      [(out/to id (out/teleport pos yaw pitch))]
+      (let [bits (rel-bits rel true)
+            at (packet-pos e pos rel)]
+        [(out/to id (out/teleport at 0.0 0.0 bits))]))))
+
+(defn- player-moved [world id from e to pos [yaw pitch :as turn] rel]
   (in-level
     world from
     (if (= from to)
-      (cond-> [[:teleport id pos]]
-        (not= [yaw pitch] [(:yaw e) (:pitch e)])
-        (conj [:merge-entity id {:yaw yaw :pitch pitch}])
-        :always (conj (out/to id (out/teleport pos yaw pitch))))
+      (into [[:teleport id pos]
+             [:merge-entity id
+              {:yaw yaw :pitch pitch :head-yaw yaw :on-ground true
+               :vel (kept-vel e (if (set? rel) rel #{}) true)}]]
+            (player-teleport id e pos turn rel))
       (crossed (level-view world from) id to pos yaw pitch))))
 
-(def ^:private still (v/v3 [0.0 0.0 0.0]))
-
-(defn- placed-props [e pos yaw pitch]
-  (cond-> {:pos (v/v3 pos) :yaw yaw :pitch pitch :vel still
-           :on-ground true}
+(defn- placed-props [e pos yaw pitch rel]
+  (cond-> {:pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
+           :vel (kept-vel e rel true) :on-ground true}
     (:nav e) (assoc :nav (:nav (nav/stop e)))))
 
 (defn- recreated
   "Returns entity e of id made anew at pos, as a level it enters
-  loads it. It keeps its uuid; the level gives it a new id."
-  [world id e pos yaw pitch]
+  loads it. It keeps its uuid and its motion on the axes rel; the
+  level gives it a new id."
+  [world id e pos yaw pitch rel]
   (let [t (:tick world)]
     (when-let [m (entity/loaded (entity/saved e t) t)]
-      (assoc m :pos (v/v3 pos) :yaw yaw :pitch pitch :vel still
+      (assoc m :pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
+             :vel (kept-vel e rel false)
              :uuid (entity/uuid-of id e)))))
 
-(defn- entity-moved [world id from e to pos yaw pitch]
-  (if (= from to)
-    (in-level world from
-              [[:merge-entity id (placed-props e pos yaw pitch)]])
-    (concat
-      (in-level world from [[:remove-entity id]])
-      (when-let [m (recreated world id e pos yaw pitch)]
-        (in-level world to [[:spawn-entity m]])))))
+(defn- arrival-chunk
+  "Returns the deltas that read the chunk at pos of level to when
+  it is absent, so the entity sent there stays with it."
+  [world to pos]
+  (let [lv (level-view world to)
+        cid (chunk/block-chunk (mapv #(long (Math/floor %)) pos))]
+    (when-not (or (contains? (:chunks lv) cid)
+                  (contains? (:loading lv) cid))
+      (chunks/read-absent-deltas {cid (chunks/read-absent lv cid)}))))
+
+(defn- entity-moved [world id from e to pos [yaw pitch] rel]
+  (let [rel (if (set? rel) rel #{})]
+    (if (= from to)
+      (let [m (placed-props e pos yaw pitch rel)]
+        (in-level world from [[:merge-entity id m]]))
+      (concat
+        (in-level world from [[:remove-entity id]])
+        (when-let [m (recreated world id e pos yaw pitch rel)]
+          (let [ds (arrival-chunk world to pos)]
+            (in-level world to (concat ds [[:spawn-entity m]]))))))))
 
 (defn- moved
-  "Returns the deltas that put entity id of level from at pos in
-  level to, turned to yaw and pitch."
-  [world [id from e] to pos [yaw pitch]]
-  (let [yaw (double yaw) pitch (double pitch)]
+  "Returns the deltas that put entry [id from e] at pos in level to,
+  turned to turn. rel is :entity for a move onto an entity, else
+  the axes of pos that count from the source."
+  [world [id from e] to pos [yaw pitch] rel]
+  (let [turn [(double yaw) (double pitch)]]
     (if (= :player (:type e))
-      (player-moved world id from e to pos yaw pitch)
-      (entity-moved world id from e to pos yaw pitch))))
-
-(defn- located [world ids]
-  (keep (fn [id]
-          (let [[dim e] (where world id)]
-            (when e [id dim e])))
-        ids))
+      (player-moved world id from e to pos turn rel)
+      (entity-moved world id from e to pos turn rel))))
 
 (defn- coord [x]
   (String/format Locale/ROOT "%f" (object-array [(double x)])))
@@ -360,15 +464,15 @@
 
 (defn- own-turn [[_ _ e]] [(:yaw e 0.0) (:pitch e 0.0)])
 
-(defn- tp-pos-deltas [world eid ids pos]
-  (let [placed (located world ids)
-        to (source-dim world)]
+(defn- tp-pos-deltas [world eid placed pos]
+  (let [to (source-dim world)
+        rel (get-in world [:source :relative] #{})]
     (cond
-      (empty? placed) (say eid "argument.entity.notfound.entity")
+      (empty? placed) (fail eid "argument.entity.notfound.entity")
       (not (spawnable? pos))
-      (say eid "commands.teleport.invalidPosition")
+      (fail eid "commands.teleport.invalidPosition")
       :else
-      (concat (mapcat #(moved world % to pos (own-turn %)) placed)
+      (concat (mapcat #(moved world % to pos (own-turn %) rel) placed)
               (pos-report eid placed pos)))))
 
 (defn- entity-report [eid placed d]
@@ -379,67 +483,76 @@
          (count placed) (entity-name d))))
 
 (defn- to-entity [world eid placed dim d]
-  (let [pos (vec (:pos d)) turn [(:yaw d 0.0) (:pitch d 0.0)]]
-    (concat (mapcat #(moved world % dim pos turn) placed)
+  (let [pos (vec (xyz (:pos d))) turn [(:yaw d 0.0) (:pitch d 0.0)]]
+    (concat (mapcat #(moved world % dim pos turn :entity) placed)
             (entity-report eid placed d))))
 
-(defn- tp-entity-deltas [world eid ids sel]
-  (let [id (destination world eid sel)
-        [dim d] (when id (where world id))
-        placed (located world ids)]
+(defn- tp-entity-deltas [world eid placed sel]
+  (let [[_ dim d] (first (selected world eid sel))]
     (cond
       (or (nil? d) (empty? placed))
-      (say eid "argument.entity.notfound.entity")
-      (not (spawnable? (:pos d)))
-      (say eid "commands.teleport.invalidPosition")
+      (fail eid "argument.entity.notfound.entity")
+      (not (spawnable? (xyz (:pos d))))
+      (fail eid "commands.teleport.invalidPosition")
       :else (to-entity world eid placed dim d))))
 
+(defn- self [world eid]
+  (selected world eid {:self true}))
+
 (defn- tp-deltas [world eid pos]
-  (tp-pos-deltas world eid [eid] (vec pos)))
+  (tp-pos-deltas world eid (self world eid) (vec pos)))
 
 (defn- tp-to-deltas [world eid [sel]]
-  (tp-entity-deltas world eid [eid] sel))
+  (tp-entity-deltas world eid (self world eid) sel))
 
 (defn- tp-targets-deltas [world eid [sel & pos]]
-  (tp-pos-deltas world eid (targets world eid sel) (vec pos)))
+  (tp-pos-deltas world eid (selected world eid sel) (vec pos)))
 
 (defn- tp-targets-to-deltas [world eid [sel dest]]
-  (tp-entity-deltas world eid (targets world eid sel) dest))
+  (tp-entity-deltas world eid (selected world eid sel) dest))
 
-(defn- given [world eid id item n]
-  (let [e (get-in world [:entities id])
+(defn- given [world eid [id dim e] item n]
+  (let [lv (level-view world dim)
         inv (or (:inventory e) {})
-        [changes left] (items/add-stack inv {:item item :count n})]
+        [changes left] (items/add-stack inv {:item item :count n})
+        drop #(items/dropped lv id % true 0)]
     (concat
-      (map (fn [[slot stack]] [:set-slot id slot stack]) changes)
-      (when left
-        [[:spawn-entity (items/dropped world id left true 0)]])
+      (in-level world dim
+                (concat
+                  (map (fn [[slot stack]] [:set-slot id slot stack])
+                       changes)
+                  (when left [[:spawn-entity (drop left)]])))
       (say eid "commands.give.success.single"
            n (item-name item) (:name e)))))
 
 (defn- give-deltas [world eid [sel item n]]
-  (let [ids (targets world eid sel)]
-    (if (empty? ids)
-      (say eid "argument.entity.notfound.player")
-      (mapcat #(given world eid % item n) ids))))
+  (let [xs (player-selected world eid sel)
+        most (* 100 (long (data/max-stack item)))]
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.player")
+      (> (long n) most)
+      (fail eid "commands.give.failed.toomanyitems" most
+            (item-name item))
+      :else (mapcat #(given world eid % item n) xs))))
 
-(defn- killed [world id]
-  (if (= :player (get-in world [:entities id :type]))
-    [[:merge-entity id {:health 0.0}]]
-    [[:remove-entity id]]))
+(defn- killed [world [id dim e]]
+  (in-level world dim
+            (if (= :player (:type e))
+              [[:merge-entity id {:health 0.0}]]
+              [[:remove-entity id]])))
 
-(defn- kill-report [world eid ids]
-  (if (= 1 (count ids))
+(defn- kill-report [eid xs]
+  (if (= 1 (count xs))
     (say eid "commands.kill.success.single"
-         (entity-name (get-in world [:entities (first ids)])))
-    (say eid "commands.kill.success.multiple" (count ids))))
+         (entity-name (nth (first xs) 2)))
+    (say eid "commands.kill.success.multiple" (count xs))))
 
 (defn- kill-deltas [world eid [sel]]
-  (let [ids (targets world eid sel)]
-    (if (empty? ids)
-      (say eid "argument.entity.notfound.entity")
-      (concat (mapcat #(killed world %) ids)
-              (kill-report world eid ids)))))
+  (let [xs (selected world eid sel)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.entity")
+      (concat (mapcat #(killed world %) xs)
+              (kill-report eid xs)))))
 
 (defn- summoned [world eid type at]
   (let [t (:tick world)
@@ -451,13 +564,13 @@
             [(out/to eid (out/system-chat [msg]))])))
 
 (defn- summon-deltas [world eid [type x y z]]
-  (let [p (source-pos world eid)
+  (let [p (source-pos world)
         at [(double (or x (nth p 0)))
             (double (or y (nth p 1)))
             (double (or z (nth p 2)))]]
     (if (spawnable? at)
       (summoned world eid type at)
-      (say eid "commands.summon.invalidPosition"))))
+      (fail eid "commands.summon.invalidPosition"))))
 
 (defn- block-set [world eid [x y z :as pos] st]
   (concat (in-level world (source-dim world)
@@ -471,55 +584,91 @@
         lv (source-level world)
         k (pos-error lv pos)]
     (cond
-      k (say eid k)
+      k (fail eid k)
       (= st (chunk/chunks-get-block (:chunks lv) pos))
-      (say eid "commands.setblock.failed")
+      (fail eid "commands.setblock.failed")
       :else (block-set world eid pos st))))
 
-(defn- block-under [world eid [x y z]]
-  (let [p (source-pos world eid)
+(defn- block-under [world [x y z]]
+  (let [p (source-pos world)
         at #(long (Math/floor (double (nth p %))))]
     [(long (or x (at 0))) (long (or y (at 1))) (long (or z (at 2)))]))
 
 (defn- dimension-id [dim] (str "minecraft:" (data/snake dim)))
 
-(defn- spawn-pos-deltas
-  "Returns the deltas of f unless the given position is out of
-  bounds. BlockPosArgument.getSpawnablePos."
-  [f world eid args]
-  (if (or (some nil? args) (spawnable? args))
-    (f world eid args)
-    (say eid "argument.pos.outofbounds")))
+(defn- wrapped
+  "Returns degrees a as a float angle within -180 and 180."
+  [a]
+  (let [r (float (rem (float a) (float 360.0)))]
+    (cond
+      (>= r (float 180.0)) (float (- r (float 360.0)))
+      (< r (float -180.0)) (float (+ r (float 360.0)))
+      :else r)))
+
+(defn- turn-of
+  "Returns [yaw pitch] of a spawn: yaw wrapped and pitch clamped,
+  each given one counted from the source turn when relative."
+  [world eid yaw pitch]
+  (let [e (get-in world [:entities eid])
+        get (fn [[rel? v] own]
+              (let [base (if rel? (double (or own 0.0)) 0.0)]
+                (float (+ (double v) base))))
+        y (if yaw (get yaw (:yaw e)) (float 0.0))
+        p (if pitch (get pitch (:pitch e)) (float 0.0))]
+    [(wrapped y) (float (max -90.0 (min 90.0 (double p))))]))
+
+(defn- out-of-bounds? [pos]
+  (and (every? some? pos) (not (spawnable? pos))))
 
 (defn- same-spawn? [world dim at]
   (and (= dim (:world-spawn-dimension world :overworld))
        (= at (vec (:world-spawn world)))))
 
-(defn- world-spawn-deltas
-  "Returns the deltas that move the world spawn to the level the
-  command runs in. Players hear of it only when it moves."
-  [world eid args]
-  (let [at (block-under world eid args)
-        dim (source-dim world)
-        with (conj (mapv str at) "0.0" "0.0" (dimension-id dim))
-        msg {:translate "commands.setworldspawn.success"
-             :with with}]
+(defn- world-spawn-set [world eid at [yaw pitch]]
+  (let [dim (source-dim world)
+        with (conj (mapv str at) (str yaw) (str pitch)
+                   (dimension-id dim))
+        msg {:translate "commands.setworldspawn.success" :with with}]
     (concat [[:set-world-spawn dim at]]
             (when-not (same-spawn? world dim at)
               [(out/all (out/default-spawn dim at))])
             [(out/to eid (out/system-chat [msg]))])))
 
-(defn- spawnpoint-set-deltas [world eid args]
-  (let [at (block-under world eid args)
-        dim (source-dim world)
-        e (get-in world [:entities eid])
-        with (conj (mapv str at) "0.0" "0.0" (dimension-id dim)
-                   (entity-name e))
-        spawn {:dimension dim :pos at :yaw 0.0 :pitch 0.0}
-        msg {:translate "commands.spawnpoint.success.single"
-             :with with}]
-    [[:merge-entity eid {:forced-spawn spawn}]
-     (out/to eid (out/system-chat [msg]))]))
+(defn- world-spawn-deltas
+  "Returns the deltas that move the world spawn to the level the
+  command runs in. Players hear of it only when it moves."
+  [world eid [x y z yaw pitch]]
+  (if (out-of-bounds? [x y z])
+    (fail eid "argument.pos.outofbounds")
+    (world-spawn-set world eid (block-under world [x y z])
+                     (turn-of world eid yaw pitch))))
+
+(defn- spawn-report [eid xs with]
+  (if (= 1 (count xs))
+    (say* eid "commands.spawnpoint.success.single"
+          (conj with (entity-name (nth (first xs) 2))))
+    (say* eid "commands.spawnpoint.success.multiple"
+          (conj with (count xs)))))
+
+(defn- spawnpoint-set [world eid xs at [yaw pitch]]
+  (let [dim (source-dim world)
+        spawn {:dimension dim :pos at :yaw (double yaw)
+               :pitch (double pitch)}
+        set (fn [[id d]]
+              (in-level world d
+                        [[:merge-entity id {:forced-spawn spawn}]]))
+        with (conj (mapv str at) (str yaw) (str pitch)
+                   (dimension-id dim))]
+    (concat (mapcat set xs) (spawn-report eid xs with))))
+
+(defn- spawnpoint-deltas [world eid [sel x y z yaw pitch]]
+  (let [xs (player-selected world eid sel)]
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.player")
+      (out-of-bounds? [x y z]) (fail eid "argument.pos.outofbounds")
+      :else (let [at (block-under world [x y z])
+                  turn (turn-of world eid yaw pitch)]
+              (spawnpoint-set world eid xs at turn)))))
 
 (defn- duration-of ^long [world ^long given bounds salt]
   (if (pos? given)
@@ -586,8 +735,7 @@
    :tp-targets-to tp-targets-to-deltas :give give-deltas
    :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
-   :setworldspawn (partial spawn-pos-deltas world-spawn-deltas)
-   :spawnpoint (partial spawn-pos-deltas spawnpoint-set-deltas)
+   :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
    :fill fill-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
@@ -603,19 +751,43 @@
 
 (defn- sourced
   "Returns world with the level and position the command r runs
-  at, as :source."
+  at, and the axes it gives relative to them, as :source."
   [world r origin]
   (let [pos (if (contains? r :origin) (:origin r) origin)]
-    (assoc world :source {:dim (:dim r (:dim world)) :pos pos})))
+    (assoc world :source
+           {:dim (:dim r (:dim world)) :pos pos
+            :relative (:relative r #{})})))
+
+(defn- context-runs
+  "Returns the runs that show where in the command text s the
+  parse failed: up to ten characters before cursor at, the rest."
+  [^String s at]
+  (let [c (min (long at) (count s))
+        before (subs s (max 0 (- c 10)) c)
+        here {:translate "command.context.here" :color "red"
+              :italic true}]
+    (cond-> [{:text (str (when (> c 10) "...") before)
+              :color "gray"}]
+      (< c (count s))
+      (conj {:text (subs s c) :color "red" :underlined true})
+      :always (conj here))))
+
+(defn- parse-failed [eid text {:keys [failure cursor]}]
+  (let [line (assoc failure :color "red")]
+    (cond-> [(out/to eid (out/system-chat [line]))]
+      cursor
+      (conj (->> (context-runs (subs text 1) cursor)
+                 out/system-chat (out/to eid))))))
 
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
                  [(v/x p) (v/y p) (v/z p)])
         r (cmd/parse text origin (:dim world :overworld))]
-    (if-let [error (:error r)]
-      (tell eid error)
-      (let [w (sourced world r origin)]
-        (world-command-deltas w eid (:delta r))))))
+    (cond
+      (:failure r) (parse-failed eid text r)
+      (:error r) (tell eid (:error r))
+      :else (let [w (sourced world r origin)]
+              (world-command-deltas w eid (:delta r))))))
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]

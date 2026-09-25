@@ -31,8 +31,14 @@
   {:msg     :explosion :center center :radius radius :blocks blocks
    :motions motions :pitch (double pitch)})
 
-(defn teleport [pos yaw pitch]
-  {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)})
+(defn teleport
+  "Returns the effect that moves a player to pos, turned to yaw and
+  pitch. Each bit of relative makes one of them an offset from
+  where the player is, or keeps its motion on one axis."
+  ([pos yaw pitch] (teleport pos yaw pitch 0))
+  ([pos yaw pitch relative]
+   {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)
+    :relative (long relative)}))
 
 (defn health [health]
   {:msg :health :health (double health)})

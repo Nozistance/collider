@@ -599,7 +599,7 @@
                       :teleport-id (long (:tick world))
                       :pos (:pos m) :vel [0.0 0.0 0.0]
                       :yaw (:yaw m) :pitch (:pitch m)
-                      :relative 0}])
+                      :relative (:relative m 0)}])
    :keepalive     (fn [_ m] [{:packet :keep-alive :id (:id m)}])
    :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
    :system-chat   (fn [_ m]

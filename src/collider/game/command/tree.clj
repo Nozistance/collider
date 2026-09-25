@@ -28,6 +28,10 @@
     [y [:coord (assoc opts :axis 1)]]
     [z [:coord (assoc opts :axis 2)]]]))
 
+(defn- turn-args []
+  [[:yaw [:angle {:default nil :axis 0 :node "rotation"}]]
+   [:pitch [:angle {:default nil :axis 1 :node "rotation"}]]])
+
 (defn- vec-args [opts]
   [[:x [:dcoord (assoc opts :axis 0)]]
    [:y [:dcoord (assoc opts :axis 1)]]
@@ -61,7 +65,7 @@
    [:give "give items to players"
     [[:targets [:targets {:players? true}]]
      [:item [:item {}]]
-     [:count [:int {:min 1 :max 6400 :default 1}]]]
+     [:count [:int {:min 1 :max int-max :default 1}]]]
     [:world :give]]
    [:kill "kill entities (yourself without a target)"
     [[:targets [:targets {:default {:self true}}]]]
@@ -75,10 +79,14 @@
     [:world :setblock]]
    [:setworldspawn
     "set the world spawn point (default: where you are)"
-    (pos-args :x :y :z {:default nil :node "pos"})
+    (into (pos-args :x :y :z {:default nil :node "pos"})
+          (turn-args))
     [:world :setworldspawn]]
-   [:spawnpoint "set your respawn point (default: where you are)"
-    (pos-args :x :y :z {:default nil :node "pos"})
+   [:spawnpoint "set respawn points (default: yours, here)"
+    (-> [[:targets
+          [:targets {:players? true :default {:self true}}]]]
+        (into (pos-args :x :y :z {:default nil :node "pos"}))
+        (into (turn-args)))
     [:world :spawnpoint]]
    [:weather "set the weather"
     (weather-form :clear "clear the sky" :weather-clear)
@@ -113,16 +121,21 @@
 (defn- parse-double* [^String s]
   (try (Double/parseDouble s) (catch NumberFormatException _ nil)))
 
-(defn- in-range [nm n {:keys [min max]}]
-  (if (<= (long min) (long n) (long max))
-    [:ok n]
-    [:err (str (name nm) ": give a value from " min " to " max
-               ", not " n)]))
+(defn- in-range [n {:keys [min max]}]
+  (cond
+    (< (long n) (long min)) [:fail "argument.integer.low" [min n]]
+    (> (long n) (long max)) [:fail "argument.integer.big" [max n]]
+    :else [:ok n]))
 
-(defn- as-int [nm s opts _origin]
-  (if-let [n (parse-long* s)]
-    (in-range nm n opts)
-    [:err (str (name nm) ": give a whole number, not \"" s "\"")]))
+(defn- int-failure [^String s]
+  (if (re-matches #"[-0-9.]+" s)
+    [:fail "parsing.int.invalid" [s]]
+    [:fail "parsing.int.expected" []]))
+
+(defn- as-int [_nm s opts _origin]
+  (if-let [n (parse-int* s)]
+    (in-range n opts)
+    (int-failure s)))
 
 (defn- name-hint [names]
   (str (str/join "/" (take 6 (sort (keys names))))
@@ -131,7 +144,7 @@
 (defn- as-named-int [nm s {:keys [names] :as opts} _origin]
   (let [k (str/lower-case (str/replace (str s) #"^minecraft:" ""))]
     (if-let [n (or (get names k) (parse-long* s))]
-      (in-range nm n opts)
+      (in-range n opts)
       [:err (str (name nm) ": give a whole number or "
                  (name-hint names) ", not \"" s "\"")])))
 
@@ -140,7 +153,7 @@
 
 (defn- block-coord
   "Returns the block coordinate text s names, or nil.
-  WorldCoordinate.parseInt: a ~ offset may have a fraction."
+  A ~ offset may have a fraction."
   [^String s axis origin]
   (if (str/starts-with? s "~")
     (when origin
@@ -149,11 +162,10 @@
           (long (Math/floor at)))))
     (parse-int* s)))
 
-(defn- as-coord [nm s {:keys [axis]} origin]
+(defn- as-coord [_nm s {:keys [axis]} origin]
   (if-let [n (block-coord s axis origin)]
     [:ok n]
-    [:err (str (name nm) ": give a whole number or ~, not \"" s
-               "\"")]))
+    (int-failure s)))
 
 (defn- centered ^double [^double n ^String s ^long axis]
   (if (and (not= 1 axis) (not (str/includes? s "."))) (+ n 0.5) n))
@@ -166,10 +178,19 @@
     (when-let [v (parse-double* s)]
       (centered (double v) s (long axis)))))
 
-(defn- as-dcoord [nm s {:keys [axis]} origin]
+(defn- as-dcoord [_nm ^String s {:keys [axis]} origin]
   (if-let [n (exact-coord s axis origin)]
-    [:ok (double n)]
-    [:err (str (name nm) ": give a number or ~, not \"" s "\"")]))
+    [:ok (double n) (str/starts-with? s "~")]
+    [:fail "parsing.double.expected" []]))
+
+(defn- as-angle
+  "Returns [relative? value] of an angle: relative to the turn of
+  the source when it starts with ~."
+  [_nm ^String s _opts _origin]
+  (let [rel? (str/starts-with? s "~")]
+    (if-let [v (if rel? (offset-of s) (parse-double* s))]
+      [:ok [rel? (double v)]]
+      [:fail "parsing.double.expected" []])))
 
 (defn- as-item [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -186,23 +207,66 @@
                  known)])))
 
 (def ^:private selectors
-  {"s" {:self true} "a" {:all true}
-   "p" {:nearest true} "e" {:entities true}})
+  {"s" {:self true} "a" {:all true} "p" {:nearest true}
+   "r" {:random true} "e" {:entities true}
+   "n" {:entities true :nearest true}})
 
-(defn- as-targets [nm s {:keys [players? single?]} _origin]
-  (let [[_ sel args] (re-matches #"@([saep])(?:\[(.*)\])?" s)
-        type-re #"type=(!?)([a-z_:]+)"
-        [_ negated type] (when args (re-find type-re args))
-        type (some-> type block-kw)]
+(defn- uuid-of [^String s]
+  (try (java.util.UUID/fromString s)
+       (catch IllegalArgumentException _ nil)))
+
+(defn- range-of
+  "Returns [min max] of a range such as 1..5, ..5, 3.. or 3."
+  [s]
+  (let [[_ a dots b] (re-matches #"([0-9.]*?)(\.\.)?([0-9.]*)" s)
+        n #(when (seq %) (parse-double* %))]
+    (if dots [(n a) (n b)] [(n b) (n b)])))
+
+(defn- typed [sel ^String v]
+  (cond-> (assoc sel :type (block-kw (str/replace v "!" "")))
+    (str/starts-with? v "!") (assoc :not-type? true)))
+
+(defn- option [sel ^String o]
+  (let [[_ k v] (re-matches #"\s*([a-z_]+)\s*=\s*(\S*)\s*" o)]
+    (case k
+      "type" (typed sel v)
+      "distance" (assoc sel :distance (range-of v))
+      (reduced [:fail "argument.entity.options.unknown"
+                [(or k (str/trim o))]]))))
+
+(defn- selector-of [c args]
+  (let [sel (selectors c)]
     (cond
-      (nil? sel) [:ok {:name s}]
-      (and players? (= "e" sel))
-      [:err (str (name nm) ": @e is not a player")]
-      (and single? (#{"a" "e"} sel))
-      [:err (str (name nm) ": give one entity, not @" sel)]
-      :else [:ok (cond-> (selectors sel)
-                   type (assoc :type type)
-                   (= "!" negated) (assoc :not-type? true))])))
+      (nil? sel)
+      [:fail "argument.entity.selector.unknown" [(str "@" c)]]
+      (str/blank? args) [:ok sel]
+      :else (let [r (reduce option sel (str/split args #","))]
+              (if (vector? r) r [:ok r])))))
+
+(defn- name-selector [^String s]
+  (cond
+    (uuid-of s) [:ok {:uuid (uuid-of s)}]
+    (<= 1 (count s) 16) [:ok {:name s}]
+    :else [:fail "argument.entity.invalid" []]))
+
+(defn- many? [sel]
+  (or (:all sel) (and (:entities sel) (not (:nearest sel)))))
+
+(defn- entities? [sel] (or (:uuid sel) (:entities sel)))
+
+(defn- checked-targets [sel {:keys [players? single?]}]
+  (cond
+    (and single? (many? sel))
+    [:fail (if players? "argument.player.toomany"
+               "argument.entity.toomany") [] 0]
+    (and players? (entities? sel))
+    [:fail "argument.player.entities" [] 0]
+    :else [:ok sel]))
+
+(defn- as-targets [_nm s opts _origin]
+  (let [[_ c args] (re-matches #"@(.)(?:\[(.*)\])?" s)
+        [st sel :as r] (if c (selector-of c args) (name-selector s))]
+    (if (= :ok st) (checked-targets sel opts) r)))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -223,19 +287,19 @@
 
 (def ^:private time-units {"" 1 "t" 1 "s" 20 "d" 24000})
 
-(defn- as-duration [nm s opts _origin]
+(defn- as-duration [nm s {:keys [min]} _origin]
   (let [re #"(-?[0-9]*\.?[0-9]+)([a-z]*)"
         [_ value unit] (re-matches re (str s))
         factor (get time-units (or unit ""))
-        scale (double (or factor 1))
-        ticks #(Math/round (* (Double/parseDouble value) scale))]
+        n #(Double/parseDouble value)
+        ticks #(Math/round (* (double factor) (double (n))))]
     (cond
-      (nil? factor)
-      [:err (str (name nm) ": give a duration in ticks, or with"
-                 " d, s or t, not \"" s "\"")]
       (nil? value)
       [:err (str (name nm) ": give a duration, not \"" s "\"")]
-      :else (in-range nm (ticks) opts))))
+      (nil? factor) [:fail "argument.time.invalid_unit" []]
+      (< (long (ticks)) (long min))
+      [:fail "argument.time.tick_count_too_low" [min (ticks)]]
+      :else [:ok (ticks)])))
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
 
@@ -243,13 +307,16 @@
   {:int as-int :named-int as-named-int :coord as-coord
    :dcoord as-dcoord :enum as-enum :block as-block :item as-item
    :entity-type as-entity-type :targets as-targets :rule as-rule
-   :text as-text :duration as-duration})
+   :text as-text :duration as-duration :angle as-angle})
 
-(defn- coerce [[nm [kind opts] :as arg] s origin]
-  (cond
-    (some? s) ((coercers kind as-enum) nm s opts origin)
-    (contains? opts :default) [:ok (:default opts)]
-    :else [:err (str "give the argument " (label arg))]))
+(defn- coerce
+  "Returns [:ok value relative?], [:fail key with cursor?] or
+  [:err line] of the text s of argument arg; nil s gives its
+  default."
+  [[nm [kind opts]] s origin]
+  (if (some? s)
+    ((coercers kind as-enum) nm s opts origin)
+    [:ok (:default opts)]))
 
 (defn- int-values [{:keys [min max default]}]
   (->> [default min (quot (+ (long min) (long max)) 2) max]
@@ -284,7 +351,8 @@
     :text []
     :item (item-names)
     :entity-type (vec (sort (map name (keys mobs/types))))
-    :targets ["@s" "@a" "@p" "@e"]
+    :angle []
+    :targets ["@s" "@a" "@p" "@r" "@e" "@n"]
     :block (block-values opts)))
 
 (defn usage
@@ -298,46 +366,91 @@
          (when (seq args) (str " " (str/join " " (map label args))))
          " - " doc)))
 
-(defn- usage-lines [form path]
-  (if (subcommands? form)
-    (mapcat #(usage-lines % (conj path (cmd-name %))) (drop 2 form))
-    [(usage path)]))
+(defn- failure
+  "Returns a parse failure: the message of key with, pointing at
+  cursor at of the command text when at is given."
+  ([key at] (failure key [] at))
+  ([key with at]
+   (cond-> {:failure {:translate key :with (vec with)}}
+     at (assoc :cursor at))))
 
-(defn- leftover [ts path]
-  {:error (str "unexpected \"" (first ts) "\"\n" (usage path))})
+(defn- unknown-command [cx]
+  (failure "command.unknown.command" (:end cx)))
 
-(defn- parse-args [args tokens path origin]
-  (loop [as args, ts tokens, acc []]
+(defn- axis-of [[_ [kind opts]]]
+  (when (#{:coord :dcoord :angle} kind) (long (:axis opts 0))))
+
+(defn- missing
+  "Returns the failure of an argument a with no text, or nil.
+  An axis left out after the first of its group is incomplete."
+  [[_ [kind opts] :as a] start cx]
+  (cond
+    (and start (pos? (long (or (axis-of a) 0))))
+    (failure (if (= :angle kind)
+               "argument.rotation.incomplete"
+               "argument.pos3d.incomplete") start)
+    (not (contains? opts :default)) (unknown-command cx)))
+
+(defn- coerced
+  "Returns [value relative?] of token [s at] for argument a, or
+  {:fail reason}."
+  [a [s at] path cx]
+  (let [[st v x c] (coerce a s (:origin cx))]
+    (case st
+      :ok [v x]
+      :fail {:fail (failure v x (if (some? c) c at))}
+      :err {:fail {:error (str v "\n" (usage path))}})))
+
+(defn- group-start [a [s at] start]
+  (let [axis (axis-of a)]
+    (cond
+      (nil? axis) nil
+      (zero? (long axis)) (when s at)
+      :else start)))
+
+(defn- leftover [ts acc rel]
+  (if-let [[_ at] (first ts)]
+    (failure "command.unknown.argument" at)
+    {:args acc :relative rel}))
+
+(defn- parse-args
+  "Returns the values of args in tokens as :args, and the axes of
+  vectors written relative to the source as :relative."
+  [args tokens path cx]
+  (loop [as args ts tokens acc [] rel #{} start nil]
     (if-let [a (first as)]
-      (let [[st v] (coerce a (first ts) origin)]
-        (if (= :err st)
-          {:error (str v "\n" (usage path))}
-          (recur (next as) (next ts) (conj acc v))))
-      (if (seq ts) (leftover ts path) {:args acc}))))
+      (let [t (first ts) start (group-start a t start)
+            m (when-not (first t) (missing a start cx))
+            r (when-not m (coerced a t path cx))]
+        (cond
+          m m
+          (map? r) (:fail r)
+          :else (recur (next as) (next ts) (conj acc (first r))
+                       (cond-> rel (second r) (conj (axis-of a)))
+                       start)))
+      (leftover ts acc rel))))
 
 (defn- ways
   "Returns the [args action] pairs of a form without subcommands."
   [form]
   (partition 2 (drop 2 form)))
 
-(defn- way-delta [[args action] tokens path origin]
-  (let [r (parse-args args tokens path origin)]
-    (if (:error r) r {:delta (into action (:args r))})))
+(defn- way-delta [[args action] tokens path cx]
+  (let [r (parse-args args tokens path cx)]
+    (if (:args r)
+      {:delta (into action (:args r)) :relative (:relative r)}
+      r)))
 
-(defn- delta-of [form tokens path origin]
-  (let [rs (map #(way-delta % tokens path origin) (ways form))]
+(defn- delta-of [form tokens path cx]
+  (let [rs (map #(way-delta % tokens path cx) (ways form))]
     (or (first (filter :delta rs)) (first rs))))
 
-(defn- no-subcommand [form nm sub]
-  {:error (str (if sub
-                 (str "unknown subcommand \"" sub "\"")
-                 "give a subcommand")
-               "\n" (str/join "\n" (usage-lines form [nm])))})
-
-(defn- parse-subcommand [form nm [sub & arg-tokens] origin]
+(defn- parse-subcommand [form nm [[sub at] & more] cx]
   (if-let [sform (find-form (drop 2 form) sub)]
-    (delta-of sform arg-tokens [nm sub] origin)
-    (no-subcommand form nm sub)))
+    (delta-of sform more [nm sub] cx)
+    (if sub
+      (failure "command.unknown.argument" at)
+      (unknown-command cx))))
 
 (def ^:private aliases {"tp" "teleport"})
 
@@ -361,42 +474,54 @@
 
 (declare parse-words parse-execute)
 
-(defn- parse-in [[d & more] origin dim]
+(defn- parse-in [[[d] & more :as ts] cx dim]
   (if-let [to (dimension-of d)]
-    (parse-execute more (scaled origin dim to) to)
-    {:error (if d
-              (str "dimension: unknown dimension \"" d "\"")
-              "give the argument <dimension>")}))
+    (parse-execute more (update cx :origin scaled dim to) to)
+    (if d
+      (failure "argument.dimension.invalid" [d] nil)
+      (unknown-command cx))))
 
-(defn- parse-execute [[w & more] origin dim]
+(defn- parse-execute [[[w at] & more] cx dim]
   (case w
-    "in" (parse-in more origin dim)
+    "in" (parse-in more cx dim)
     "run" (if (seq more)
-            (merge {:dim dim :origin origin}
-                   (parse-words more origin dim))
-            {:error "give a command to run"})
-    {:error "give in <dimension> or run <command>"}))
+            (merge {:dim dim :origin (:origin cx)}
+                   (parse-words more cx dim))
+            (unknown-command cx))
+    nil (unknown-command cx)
+    (failure "command.unknown.argument" at)))
 
-(defn- parse-words [[nm & more] origin dim]
+(defn- parse-words [[[nm at] & more] cx dim]
   (let [nm (get aliases nm nm)
         form (find-form commands nm)]
     (cond
-      (= "execute" nm) (parse-execute more origin dim)
-      (nil? form)
-      {:error (str "unknown command" (when nm (str " \"/" nm "\"")))}
-      (subcommands? form) (parse-subcommand form nm more origin)
-      :else (delta-of form more [nm] origin))))
+      (= "execute" nm) (parse-execute more cx dim)
+      (nil? form) (failure "command.unknown.command" at)
+      (subcommands? form) (parse-subcommand form nm more cx)
+      :else (delta-of form more [nm] cx))))
+
+(defn- words
+  "Returns [word start] of each word of s."
+  [^String s]
+  (let [m (re-matcher #"\S+" s)]
+    (loop [acc []]
+      (if (.find m)
+        (recur (conj acc [(.group m) (.start m)]))
+        acc))))
 
 (defn parse
-  "Returns the delta the typed command means.
-  Returns the reason it cannot run instead. Relative coordinates
-  count from origin, in level dim. A command run in another level
-  also returns that level as :dim and origin there as :origin."
+  "Returns the delta the typed command means, with the axes of its
+  vector written relative to the source as :relative.
+  Returns the reason it cannot run instead: a :failure message with
+  the :cursor it points at in the text after the slash, or an
+  :error line. Relative coordinates count from origin, in level
+  dim. A command run in another level also returns that level as
+  :dim and origin there as :origin."
   ([text] (parse text nil))
   ([text origin] (parse text origin :overworld))
   ([text origin dim]
-   (let [words (str/split (subs text 1) #"\s+")]
-     (parse-words (remove str/blank? words) origin dim))))
+   (let [s (subs text 1)]
+     (parse-words (words s) {:origin origin :end (count s)} dim))))
 
 (defn- starting-with [prefix xs]
   (let [p (str/lower-case prefix)]
@@ -456,6 +581,7 @@
    :named-int [:time {:min 0}]
    :coord [:block-pos nil]
    :dcoord [:vec3 nil]
+   :angle [:rotation nil]
    :block [:block-state nil]
    :item [:item-stack nil]
    :entity-type [:resource {:registry "minecraft:entity_type"}]
@@ -478,8 +604,9 @@
 (defn- coords-merged [args]
   (loop [as args acc []]
     (if-let [[nm [kind opts] :as a] (first as)]
-      (if (and (#{:coord :dcoord} kind) (= 0 (long (:axis opts 0))))
-        (recur (drop 3 as)
+      (if (and (#{:coord :dcoord :angle} kind)
+               (= 0 (long (:axis opts 0))))
+        (recur (drop (if (= :angle kind) 2 3) as)
                (conj acc [(keyword (:node opts nm)) [kind opts]]))
         (recur (rest as) (conj acc a)))
       acc)))

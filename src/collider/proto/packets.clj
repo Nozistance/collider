@@ -18,10 +18,17 @@
           (if executable? 4 0)
           (if redirect 8 0)))
 
-(defn- write-int-range! [^Buf buf props]
-  (buf/write-byte! buf 3)
-  (buf/write-int! buf (int (:min props)))
-  (buf/write-int! buf (int (:max props))))
+(defn- write-int-range!
+  "Writes the bounds of an integer argument; an unbounded side is
+  left out, its flag clear."
+  [^Buf buf props]
+  (let [lo (long (:min props Integer/MIN_VALUE))
+        hi (long (:max props Integer/MAX_VALUE))
+        lo? (not= lo Integer/MIN_VALUE)
+        hi? (not= hi Integer/MAX_VALUE)]
+    (buf/write-byte! buf (bit-or (if lo? 1 0) (if hi? 2 0)))
+    (when lo? (buf/write-int! buf (int lo)))
+    (when hi? (buf/write-int! buf (int hi)))))
 
 (defn- write-double-range! [^Buf buf props]
   (buf/write-byte! buf 3)
