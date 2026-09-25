@@ -213,6 +213,9 @@
   config file."
   [& args]
   (log/to-file! "logs")
+  (when-not (data/dir)
+    (cli/render! (assoc (ex-data (data/no-tables)) :event :error))
+    (System/exit 1))
   (let [written? (config/write-default!)
         opts (apply merge {} (map edn/read-string args))
         server (run! (assoc opts :config-written? written?))

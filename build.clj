@@ -27,14 +27,14 @@
   (b/compile-clj {:basis      basis
                   :src-dirs   ["src"]
                   :class-dir  class-dir
-                  :ns-compile '[collider.launch collider.core]
+                  :ns-compile '[collider.core]
                   :java-opts  ["-Dclojure.compiler.direct-linking=true"]}))
 
 (defn- uber []
   (b/uber {:class-dir class-dir
            :uber-file jar-file
            :basis     basis
-           :main      'collider.launch
+           :main      'collider.core
            :exclude   [".*\\.java$" ".*\\.cljs$"]}))
 
 (defn release [_]
