@@ -2,6 +2,8 @@
   "Chat lines, commands and tab completion."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.command.item-args :as item-args]
+            [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
@@ -9,6 +11,7 @@
             [collider.game.mob.nav :as nav]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
+            [collider.game.stack :as stack]
             [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
@@ -35,11 +38,11 @@
 
 (defn- marker-at [^String s ^long i]
   (some (fn [[^String m st]]
-          (when (.startsWith s m i) [m st]))
+          (when (String/.startsWith s m i) [m st]))
         markers))
 
 (defn- marked [^String s m st styles start close]
-  (let [inner (.substring s start close)]
+  (let [inner (String/.substring s start close)]
     (if (= m "`")
       [(merge styles st {:text inner})]
       (parse-runs inner (merge styles st)))))
@@ -49,33 +52,37 @@
   A marker that never closes stands for itself."
   [^String s styles ^StringBuilder plain ^long i]
   (when-let [[^String m st] (marker-at s i)]
-    (let [start (+ i (.length m))
+    (let [n (String/.length m)
+          start (+ i n)
           close (^[String int] String/.indexOf s m start)]
       (if (> close start)
-        [(+ close (.length m)) (marked s m st styles start close)]
-        (do (.append plain m) [start nil])))))
+        [(+ close n) (marked s m st styles start close)]
+        (do (^[String] StringBuilder/.append plain m)
+            [start nil])))))
 
 (defn- flushed [out styles ^StringBuilder plain]
-  (if (pos? (.length plain))
+  (if (pos? (StringBuilder/.length plain))
     (conj out (assoc styles :text (str plain)))
     out))
 
 (defn- escape-at? [^String s ^long i]
-  (and (= \\ (.charAt s i)) (< (inc i) (.length s))
+  (and (= \\ (String/.charAt s i))
+       (< (inc i) (String/.length s))
        (or (marker-at s (inc i))
-           (= \\ (.charAt s (inc i))))))
+           (= \\ (String/.charAt s (inc i))))))
 
 (defn- step
   "Returns the parse state after the markup at the index it holds."
   [^String s styles [i ^StringBuilder plain out]]
   (if (escape-at? s i)
-    (do (.append plain (.charAt s (inc i)))
+    (do (^[char] StringBuilder/.append plain
+                 (String/.charAt s (inc i)))
         [(+ 2 (long i)) plain out])
     (if-let [[end runs] (span s styles plain i)]
       (if runs
         [end (StringBuilder.) (into (flushed out styles plain) runs)]
         [end plain out])
-      (do (.append plain (.charAt s i))
+      (do (^[char] StringBuilder/.append plain (String/.charAt s i))
           [(inc (long i)) plain out]))))
 
 (defn parse-runs
@@ -83,7 +90,7 @@
   ([s] (parse-runs s {}))
   ([^String s styles]
    (loop [st [0 (StringBuilder.) []]]
-     (if (>= (long (first st)) (.length s))
+     (if (>= (long (first st)) (String/.length s))
        (flushed (peek st) styles (second st))
        (recur (step s styles st))))))
 
@@ -524,7 +531,8 @@
         cid (chunk/block-chunk (mapv #(long (Math/floor %)) pos))]
     (when-not (or (contains? (:chunks lv) cid)
                   (contains? (:loading lv) cid))
-      (chunks/read-absent-deltas {cid (chunks/read-absent lv cid)}))))
+      (chunks/read-absent-deltas
+       {cid (chunks/read-absent lv cid)}))))
 
 (defn- entity-moved [world id from e to pos [yaw pitch] rel]
   (let [rel (if (set? rel) rel #{})]
@@ -568,7 +576,8 @@
       (not (spawnable? pos))
       (fail eid "commands.teleport.invalidPosition")
       :else
-      (concat (mapcat #(moved world % to pos (own-turn %) rel) placed)
+      (concat (mapcat #(moved world % to pos (own-turn %) rel)
+                      placed)
               (pos-report eid placed pos)))))
 
 (defn- entity-report [eid placed d]
@@ -607,10 +616,11 @@
 (defn- tp-targets-to-deltas [world eid [sel dest]]
   (tp-entity-deltas world eid (selected world eid sel) dest))
 
-(defn- given [world eid [id dim e] item n]
+(defn- given [world eid [id dim e] proto n]
   (let [lv (level-view world dim)
         inv (or (:inventory e) {})
-        [changes left] (items/add-stack inv {:item item :count n})
+        item (:item proto)
+        [changes left] (items/add-stack inv (assoc proto :count n))
         drop #(items/dropped lv id % true 0)]
     (concat
       (in-level world dim
@@ -621,15 +631,23 @@
       (say eid "commands.give.success.single"
            n (item-name item) (entity-name e)))))
 
-(defn- give-deltas [world eid [sel item n]]
+(defn- give-limit
+  "Returns the most items of stack proto that one give hands out."
+  [proto]
+  (* 100 (long (or (stack/component proto :max-stack-size) 1))))
+
+(defn- give-deltas [world eid [sel input n]]
   (let [xs (player-selected world eid sel)
-        most (* 100 (long (data/max-stack item)))]
+        proto (item-args/item-stack input 1)
+        most (when-not (cmd-reader/error? proto) (give-limit proto))]
     (cond
       (empty? xs) (fail eid "argument.entity.notfound.player")
-      (> (long n) most)
+      (cmd-reader/error? proto)
+      (apply fail eid (:key proto) (:args proto))
+      (> (long n) (long most))
       (fail eid "commands.give.failed.toomanyitems" most
-            (item-name item))
-      :else (mapcat #(given world eid % item n) xs))))
+            (item-name (:item proto)))
+      :else (mapcat #(given world eid % proto n) xs))))
 
 (defn- killed [world [id dim e]]
   (in-level world dim
@@ -688,7 +706,9 @@
 (defn- block-under [world [x y z]]
   (let [p (source-pos world)
         at #(long (Math/floor (double (nth p %))))]
-    [(long (or x (at 0))) (long (or y (at 1))) (long (or z (at 2)))]))
+    [(long (or x (at 0)))
+     (long (or y (at 1)))
+     (long (or z (at 2)))]))
 
 (defn- dimension-id [dim] (str "minecraft:" (data/snake dim)))
 
@@ -940,7 +960,7 @@
       :else (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text target id]
-  (let [start (inc (.lastIndexOf ^String text " "))
+  (let [start (inc (^[String] String/.lastIndexOf text " "))
         len (- (count text) start)
         sug (cmd/suggest world text target)]
     [(out/to eid (out/suggestions (or id 0) start len sug))]))

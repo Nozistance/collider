@@ -2,9 +2,13 @@
   "Player commands, their arguments and their meaning."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.command.item-args :as items]
+            [collider.game.command.reader :as r]
             [collider.game.gamerules :as rules]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.schema :as schema]))
+            [collider.game.schema :as schema])
+  (:import (java.util UUID)
+           (java.util.regex Matcher)))
 
 (set! *warn-on-reflection* true)
 
@@ -145,8 +149,8 @@
   (let [k (str/lower-case (str/replace (str s) #"^minecraft:" ""))]
     (if-let [n (or (get names k) (parse-long* s))]
       (in-range n opts)
-      [:err (str (name nm) ": give a whole number or "
-                 (name-hint names) ", not \"" s "\"")])))
+      [:err (str (name nm) ": give a whole number or"
+                 \space (name-hint names) ", not \"" s "\"")])))
 
 (defn- offset-of [^String s]
   (if (= "~" s) 0.0 (parse-double* (subs s 1))))
@@ -192,19 +196,27 @@
       [:ok [rel? (double v)]]
       [:fail "parsing.double.expected" []])))
 
-(defn- as-item [nm s _opts _origin]
-  (let [k (block-kw s)]
-    (if (contains? (get (data/registries) "item") k)
-      [:ok k]
-      [:err (str (name nm) ": unknown item \"" s "\"")])))
+(defn- fail-at [res]
+  [:fail-at (:key res) (:args res) (:cursor res)])
+
+(defn- as-item
+  "Returns the item stack input of s, or its error with the cursor
+  counted from the start of s."
+  [_nm s _opts _origin]
+  (let [res ((:parse (items/item-stack-arg)) (r/reader s))
+        [v [_ end]] (when-not (r/error? res) res)]
+    (cond (r/error? res) (fail-at res)
+          (< (long end) (count s))
+          [:fail-at "command.expected.separator" [] end]
+          :else [:ok v])))
 
 (defn- as-entity-type [nm s _opts _origin]
   (let [k (block-kw s)
         known (str/join ", " (sort (map name (keys mobs/types))))]
     (if (mobs/mob-type? k)
       [:ok k]
-      [:err (str (name nm) ": cannot summon \"" s "\", only "
-                 known)])))
+      [:err (str (name nm) ": cannot summon \"" s
+                 "\", only " known)])))
 
 (def ^:private selectors
   {"s" {:self true} "a" {:all true} "p" {:nearest true}
@@ -212,7 +224,7 @@
    "n" {:entities true :nearest true}})
 
 (defn- uuid-of [^String s]
-  (try (java.util.UUID/fromString s)
+  (try (UUID/fromString s)
        (catch IllegalArgumentException _ nil)))
 
 (defn- range-of
@@ -277,8 +289,8 @@
 (defn- as-enum [nm s {:keys [values]} _origin]
   (if (contains? values s)
     [:ok s]
-    [:err (str (name nm) ": give one of "
-               (str/join ", " (sort values)) ", not \"" s "\"")]))
+    (let [vs (str/join ", " (sort values))]
+      [:err (str (name nm) ": give one of " vs ", not \"" s "\"")])))
 
 (defn- as-rule [nm s _opts _origin]
   (if-let [r (rules/rule-of s)]
@@ -310,9 +322,10 @@
    :text as-text :duration as-duration :angle as-angle})
 
 (defn- coerce
-  "Returns [:ok value relative?], [:fail key with cursor?] or
-  [:err line] of the text s of argument arg; nil s gives its
-  default."
+  "Returns [:ok value relative?], [:fail key with cursor?],
+  [:fail-at key with cursor-in-s] or [:err line] of the text s of
+  argument arg; nil s gives its default. A cursor below 0 in s
+  means the error points nowhere."
   [[nm [kind opts]] s origin]
   (if (some? s)
     ((coercers kind as-enum) nm s opts origin)
@@ -336,7 +349,10 @@
   (mapv (comp #(subs % 10) rules/wire-name) (keys rules/table)))
 
 (defn- item-names []
-  (vec (sort (map block-name (keys (get (data/registries) "item"))))))
+  (->> (keys (get (data/registries) "item"))
+       (map block-name)
+       sort
+       vec))
 
 (defn- arg-values [[_ [kind {:keys [values axis] :as opts}]] target]
   (case kind
@@ -397,6 +413,7 @@
     (case st
       :ok [v x]
       :fail {:fail (failure v x (if (some? c) c at))}
+      :fail-at {:fail (failure v x (when (>= (long c) 0) (+ at c)))}
       :err {:fail {:error (str v "\n" (usage path))}})))
 
 (defn- group-start [a [s at] start]
@@ -420,8 +437,7 @@
       (let [t (first ts) start (group-start a t start)
             m (when-not (first t) (missing a start cx))
             r (when-not m (coerced a t path cx))]
-        (cond
-          m m
+        (cond m m
           (map? r) (:fail r)
           :else (recur (next as) (next ts) (conj acc (first r))
                        (cond-> rel (second r) (conj (axis-of a)))
@@ -503,8 +519,8 @@
   [^String s]
   (let [m (re-matcher #"\S+" s)]
     (loop [acc []]
-      (if (.find m)
-        (recur (conj acc [(.group m) (.start m)]))
+      (if (Matcher/.find m)
+        (recur (conj acc [(Matcher/.group m) (Matcher/.start m)]))
         acc))))
 
 (defn parse
@@ -588,9 +604,9 @@
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})
 
-(defn- argument-nodes
-  [[nm [kind {:keys [min max values single? players?]}]]]
-  (let [n (name nm)]
+(defn- argument-nodes [[nm [kind opts]]]
+  (let [{:keys [min max values single? players?]} opts
+        n (name nm)]
     (if-let [[parser props] (plain-arguments kind)]
       [[n parser props]]
       (case kind
