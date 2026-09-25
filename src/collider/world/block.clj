@@ -313,31 +313,14 @@
 
 (defn solid-arr ^booleans [] @solid-table)
 
-(defn- each-run! [runs f]
-  (doseq [r runs]
-    (let [[lo hi] (if (number? r)
-                    [r r]
-                    [(nth r 0) (nth r (if (= 2 (count r)) 0 1))])
-          v (if (number? r) nil (peek r))]
-      (dotimes [i (inc (- (long hi) (long lo)))]
-        (let [id (+ (long lo) i)]
-          (when (< id (data/block-state-count)) (f id v)))))))
-
-(defn- flag-run! [runs f]
-  (doseq [r runs]
-    (let [[lo hi] (if (number? r) [r r] r)]
-      (dotimes [i (inc (- (long hi) (long lo)))]
-        (let [id (+ (long lo) i)]
-          (when (< id (data/block-state-count)) (f id)))))))
-
-(defn- int-runs [^long default runs]
+(defn- int-runs [^long default t]
   (let [a (int-array (data/block-state-count) (int default))]
-    (each-run! runs (fn [i v] (aset a (int i) (int v))))
+    (data/each-run! t (fn [i v] (aset a (int i) (int v))))
     a))
 
-(defn- bool-runs [runs]
+(defn- bool-runs [t]
   (let [a (boolean-array (data/block-state-count))]
-    (flag-run! runs (fn [i] (aset a (int i) true)))
+    (data/each-run! t (fn [i v] (aset a (int i) (boolean v))))
     a))
 
 (def ^:private ^:table dampening-arr
@@ -391,11 +374,15 @@
                 m)))
           0 (range 6)))
 
+(defn- by-kind [f]
+  (let [kinds (:palette (:faces (data/light)))]
+    (zipmap kinds (map f kinds))))
+
 (def ^:private ^:table kind-faces
-  (delay (mapv faces-of-kind (:kinds (data/light)))))
+  (delay (by-kind faces-of-kind)))
 
 (def ^:private ^:table kind-touch
-  (delay (int-array (map touch-of-kind (:kinds (data/light))))))
+  (delay (by-kind touch-of-kind)))
 
 (defn- set-faces! [^objects a ^long i faces]
   (let [o (* 6 i)]
@@ -404,18 +391,17 @@
 (def ^:private ^:table face-arr
   (delay
     (let [a (object-array (* (data/block-state-count) 6))]
-      (each-run! (:faces (data/light))
-                 (fn [i k]
-                   (set-faces! a (long i) (nth @kind-faces k))))
+      (data/each-run! (:faces (data/light))
+                      (fn [i k]
+                        (set-faces! a (long i) (@kind-faces k))))
       a)))
 
 (def ^:private ^:table touch-arr
   (delay
     (let [a (int-array (data/block-state-count))]
-      (each-run! (:faces (data/light))
-                 (fn [i k]
-                   (let [v (aget ^ints @kind-touch (int k))]
-                     (aset a (int i) v))))
+      (data/each-run! (:faces (data/light))
+                      (fn [i k]
+                        (aset a (int i) (int (@kind-touch k)))))
       a)))
 
 (defn dampening ^long [^long st]

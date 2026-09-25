@@ -4,30 +4,35 @@
             [clojure.java.io :as io])
   (:import (clojure.lang PersistentArrayMap)
            (java.io PushbackReader)
-           (java.util Arrays HashMap List)))
+           (java.util Arrays List)
+           (java.util.concurrent ExecutionException)))
 
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
 
-(def layout 10)
+(def layout 11)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items"
    "light" "fire" "drops" "entity-drops" "recipes" "sounds"
    "features" "potions" "effects" "enchantments"
    "dimension-types" "biomes" "shapes"
-   "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
+   "outlines" "sturdy" "flags"])
 
 (defn stamp
   "Returns the mark a set of tables carries: the game version and
-  the layout they were made for."
+  the layout they were made for. The mark can also name the server
+  jar the tables come from; collider does not check it."
   []
   {:game game :layout layout})
 
+(defn- stamp-of [d]
+  (try (edn/read-string (slurp (io/file d "stamp.edn")))
+       (catch Exception _ nil)))
+
 (defn- stamped? [d]
-  (= (stamp) (try (edn/read-string (slurp (io/file d "stamp.edn")))
-                  (catch Exception _ nil))))
+  (= (stamp) (select-keys (stamp-of d) [:game :layout])))
 
 (defn complete?
   "Returns true when d holds a full, stamped set of tables."
@@ -47,13 +52,21 @@
 (defn- tables-of [ns]
   (for [[_ v] (ns-interns ns) :when (:table (meta v))] @v))
 
+(defn- all-tables []
+  (for [ns (all-ns)
+        :when (.startsWith (str (ns-name ns)) "collider.")
+        t (tables-of ns)]
+    t))
+
+(defn- wait [f]
+  (try @f
+       (catch ExecutionException e (throw (ex-cause e)))))
+
 (defn load!
-  "Reads every table the loaded namespaces declare."
+  "Reads every table the loaded namespaces declare, all at once.
+  A table made from other tables waits for them."
   []
-  (doseq [ns (all-ns)
-          :when (.startsWith (str (ns-name ns)) "collider.")
-          t (tables-of ns)]
-    @t))
+  (run! wait (mapv #(future @%) (all-tables))))
 
 (defn no-tables
   "Returns the error for a missing or stale set of tables.
@@ -109,7 +122,8 @@
 (defn items [] (:items @tables))
 
 (defn light
-  "Returns how block states pass and emit light."
+  "Returns how block states pass and emit light, as tables that
+  each-run! walks."
   [] (:light @tables))
 
 (defn fire
@@ -373,45 +387,40 @@
 (defn block-of-state ^objects []
   @state-blocks)
 
-(defn- interned [^HashMap seen v]
-  (if (vector? v)
-    (let [v (mapv (fn [x] (interned seen x)) v)]
-      (or (.get seen v) (do (.put seen v v) v)))
-    v))
+(defn each-run!
+  "Calls f with the id and the value of each state that table t
+  gives a value. t has a palette of values and runs over it: the
+  run [from to i] gives the value i to the states from to to.
+  States past the last known one are skipped."
+  [{:keys [palette runs]} f]
+  (let [n (block-state-count)]
+    (doseq [[from to i] runs
+            :let [v (nth palette i)]
+            id (range from (inc (min (long to) (dec n))))]
+      (f id v))))
 
-(defn- object-table [name]
-  (let [a (object-array (block-state-count))
-        seen (HashMap.)]
-    (doseq [[k v] (read-edn name)
-            :when (< -1 (long k) (block-state-count))]
-      (aset a (int (long k)) (interned seen v)))
+(defn- object-table [t]
+  (let [a (object-array (block-state-count))]
+    (each-run! t (fn [id v] (aset a (int id) v)))
     a))
 
-(defn- byte-table [name ^long default]
+(defn- byte-table [t ^long default]
   (let [a (byte-array (block-state-count))]
     (Arrays/fill a (byte default))
-    (doseq [[k v] (read-edn name)
-            :when (< -1 (long k) (block-state-count))]
-      (aset a (int (long k)) (byte (long v))))
+    (each-run! t (fn [id v] (aset a (int id) (byte (long v)))))
     a))
 
 (def ^:private ^:table shape-table
-  (delay (object-table "shapes.edn")))
+  (delay (object-table (read-edn "shapes.edn"))))
 
 (def ^:private ^:table outline-table
-  (delay (object-table "outlines.edn")))
+  (delay (object-table (read-edn "outlines.edn"))))
 
-(def ^:private ^:table sturdy-table
-  (delay (byte-table "sturdy.edn" 63)))
-
-(def ^:private ^:table sturdy-center-table
-  (delay (byte-table "sturdy-center.edn" 63)))
-
-(def ^:private ^:table sturdy-rigid-table
-  (delay (byte-table "sturdy-rigid.edn" 63)))
+(def ^:private ^:table sturdy-tables
+  (delay (update-vals (read-edn "sturdy.edn") #(byte-table % 63))))
 
 (def ^:private ^:table flag-table
-  (delay (byte-table "flags.edn" 0)))
+  (delay (byte-table (read-edn "flags.edn") 0)))
 
 (defn shapes
   "Returns the collision boxes of every state, by id.
@@ -428,18 +437,18 @@
 (defn sturdy
   "Returns which faces of every state hold things, by id."
   ^bytes []
-  @sturdy-table)
+  (:full @sturdy-tables))
 
 (defn sturdy-center
   "Returns which faces of every state hold things, by id.
   A thing is held at the center of the face."
   ^bytes []
-  @sturdy-center-table)
+  (:center @sturdy-tables))
 
 (defn sturdy-rigid
   "Returns which faces of every state hold things rigidly, by id."
   ^bytes []
-  @sturdy-rigid-table)
+  (:rigid @sturdy-tables))
 
 (defn flags ^bytes []
   @flag-table)
