@@ -13,6 +13,7 @@
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.env.weather :as weather]
             [collider.world.blocks.support :as support]
             [collider.world.blocks.water :as water]
             [collider.world.chunk :as chunk]
@@ -214,11 +215,16 @@
     (into (i/int-set) (comp (take-while due?) (mapcat val))
           (:block-ticks world))))
 
+(defn- player-positions [world]
+  (mapv (comp :pos val) (state/player-entries world)))
+
 (defn- tick-ctx [world]
-  {:rules (:rules world)
-   :tick (long (:tick world))
-   :time-of-day (:time-of-day world 0)
-   :players (mapv (comp :pos val) (state/player-entries world))})
+  (merge (select-keys world weather/fields)
+         {:rules (:rules world)
+          :dim (:dim world)
+          :tick (long (:tick world))
+          :time-of-day (:time-of-day world 0)
+          :players (player-positions world)}))
 
 (defn- again-at [chunks ^long t changed p]
   (when-not (contains? changed p)
