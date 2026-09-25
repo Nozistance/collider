@@ -3,7 +3,8 @@
   (:require [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
-            [collider.world.block :as block]))
+            [collider.world.block :as block])
+  (:import (java.util UUID)))
 
 (set! *warn-on-reflection* true)
 
@@ -56,23 +57,30 @@
   (let [r (fn [k] (random/of-key (conj ks k)))]
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
+(defn- record-of [m]
+  (case (:type m)
+    :player (map->Player m)
+    :item (map->Item m)
+    :tnt (map->Tnt m)
+    :falling-block (map->FallingBlock m)
+    :area-effect-cloud (map->Cloud m)
+    (:snowball :egg :ender-pearl :splash-potion :lingering-potion)
+    (map->Projectile m)
+    (map->Mob m)))
+
 (defn of
   "Returns the entity m as the record its type calls for."
   [m]
   (if (record? m)
     m
-    (let [m (cond-> m
-                    (:pos m) (assoc :pos (v/v3 (:pos m)))
-                    (:vel m) (assoc :vel (v/v3 (:vel m))))]
-      (case (:type m)
-        :player (map->Player m)
-        :item (map->Item m)
-        :tnt (map->Tnt m)
-        :falling-block (map->FallingBlock m)
-        :area-effect-cloud (map->Cloud m)
-        (:snowball :egg :ender-pearl :splash-potion :lingering-potion)
-        (map->Projectile m)
-        (map->Mob m)))))
+    (record-of (cond-> m
+                 (:pos m) (assoc :pos (v/v3 (:pos m)))
+                 (:vel m) (assoc :vel (v/v3 (:vel m)))))))
+
+(defn uuid-of
+  "Returns the uuid of entity e, whose id is eid."
+  [eid e]
+  (or (:uuid e) (UUID. (long eid) (long eid))))
 
 (defn eye-height
   "Returns how far above its position the entity e looks out."

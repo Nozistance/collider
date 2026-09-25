@@ -17,8 +17,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome])
-  (:import (collider.game.deltas Deltas)
-           (java.util UUID)))
+  (:import (collider.game.deltas Deltas)))
 
 (set! *warn-on-reflection* true)
 
@@ -38,7 +37,7 @@
     {:packet         :level-chunk-with-light :cx x :cz z
      :chunk          (get-in world [:chunks id] chunk/empty-chunk)
      :block-entities (be/wire (get-in world [:block-entities id]))
-     :level          (select-keys world [:min-y :max-y :sky?])}))
+     :level          (select-keys world [:min-y :max-y :sky? :dim])}))
 
 (defn- forget-chunk-packet [id]
   (let [[x z] (chunk/id->pos id)]
@@ -83,9 +82,6 @@
 (defn- kind-of [e]
   (let [t (:type e)]
     (if (contains? @entity-type t) t :player)))
-
-(defn- uuid-of [eid e]
-  (or (:uuid e) (UUID. (long eid) (long eid))))
 
 (defn- flags-byte [meta]
   (bit-or (if (:burning? meta) 0x01 0)
@@ -203,7 +199,7 @@
     now))
 
 (defn- add-entity-packet [eid e tr kind]
-  {:packet :add-entity :eid eid :uuid (uuid-of eid e)
+  {:packet :add-entity :eid eid :uuid (entity/uuid-of eid e)
    :type   (@entity-type kind)
    :pos    (if tr (mapv double (:pos tr)) (:pos e))
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
@@ -514,8 +510,9 @@
    :warning-time 15})
 
 (defn- spawn-pos-packet [world]
-  {:packet :set-default-spawn-position :pos (join-spawn world)
-   :yaw 0.0 :pitch 0.0})
+  {:packet :set-default-spawn-position
+   :dimension (:world-spawn-dimension world :overworld)
+   :pos (join-spawn world) :yaw 0.0 :pitch 0.0})
 
 (def ^:private ticking-packets
   [{:packet :ticking-state :rate 20.0 :frozen? false}
@@ -627,7 +624,8 @@
                      {:packet :game-event :event 13 :value 0.0}])
    :default-spawn (fn [_ m]
                     [{:packet :set-default-spawn-position
-                      :pos (:pos m) :yaw 0.0 :pitch 0.0}])
+                      :dimension (:dimension m) :pos (:pos m)
+                      :yaw 0.0 :pitch 0.0}])
    :joined        (fn [_ _] nil)
    :close         (fn [_ _] [:close])})
 

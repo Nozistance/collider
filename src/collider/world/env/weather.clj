@@ -92,7 +92,7 @@
     (not (raining? ctx)) :none
     (not (can-see-sky? chunks p)) :none
     (under-cover? chunks p) :none
-    :else (biome/precipitation-at (biome/at chunks p) p)))
+    :else (biome/precipitation-at (biome/at (:dim ctx) p) p)))
 
 (defn raining-at?
   "Returns true when rain falls at block p now."

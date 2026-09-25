@@ -35,7 +35,9 @@
                       :took (- (System/nanoTime) t)))
     v))
 
-(defn cache-dir ^File [version]
+(defn cache-dir
+  "Returns where the server jar of version is kept."
+  ^File [version]
   (io/file "data" version))
 
 (defn- sha1 [^File f]
@@ -148,6 +150,8 @@
     :else (fetch! version jar)))
 
 (defn fetch
+  "Returns the server jar of version, downloaded once, or the local
+  jar when given."
   (^File [version] (fetch version nil))
   (^File [version local]
    (let [jar (io/file (cache-dir version) "server.jar")]
@@ -1264,27 +1268,31 @@
      :max (get v "max_inclusive")}
     v))
 
+(defn- dimension-shape [json]
+  (sorted-map
+   :min-y (get json "min_y")
+   :height (get json "height")
+   :logical-height (get json "logical_height")
+   :coordinate-scale (get json "coordinate_scale")
+   :has-skylight (get json "has_skylight")
+   :has-ceiling (get json "has_ceiling")
+   :has-ender-dragon-fight (get json "has_ender_dragon_fight" false)
+   :has-fixed-time (get json "has_fixed_time" false)))
+
+(defn- dimension-look [json]
+  (sorted-map
+   :ambient-light (get json "ambient_light")
+   :infiniburn (kw (subs (get json "infiniburn") 1))
+   :monster-spawn-light-level
+   (monster-spawn-light (get json "monster_spawn_light_level"))
+   :monster-spawn-block-light-limit
+   (get json "monster_spawn_block_light_limit")
+   :skybox (kw (get json "skybox" "overworld"))
+   :cardinal-light (kw (get json "cardinal_light" "default"))
+   :attributes (dimension-attrs json)))
+
 (defn- dimension-type [json]
-  (cond-> (sorted-map
-           :min-y (get json "min_y")
-           :height (get json "height")
-           :logical-height (get json "logical_height")
-           :coordinate-scale (get json "coordinate_scale")
-           :has-skylight (get json "has_skylight")
-           :has-ceiling (get json "has_ceiling")
-           :has-ender-dragon-fight
-           (get json "has_ender_dragon_fight" false)
-           :has-fixed-time (get json "has_fixed_time" false)
-           :ambient-light (get json "ambient_light")
-           :infiniburn (kw (subs (get json "infiniburn") 1))
-           :monster-spawn-light-level
-           (monster-spawn-light
-            (get json "monster_spawn_light_level"))
-           :monster-spawn-block-light-limit
-           (get json "monster_spawn_block_light_limit")
-           :skybox (kw (get json "skybox" "overworld"))
-           :cardinal-light (kw (get json "cardinal_light" "default"))
-           :attributes (dimension-attrs json))
+  (cond-> (merge (dimension-shape json) (dimension-look json))
     (contains? json "default_clock")
     (assoc :default-clock (kw (get json "default_clock")))))
 
@@ -1293,6 +1301,21 @@
         (map (fn [[name json]]
                [(kw name) (dimension-type json)]))
         (jsons zf "data/minecraft/dimension_type/")))
+
+(defn- biome [json]
+  (cond-> (sorted-map
+           :has-precipitation (get json "has_precipitation")
+           :temperature (get json "temperature")
+           :downfall (get json "downfall")
+           :attributes (dimension-attrs json))
+    (contains? json "temperature_modifier")
+    (assoc :temperature-modifier
+           (kw (get json "temperature_modifier")))))
+
+(defn- biomes [zf]
+  (into (sorted-map)
+        (map (fn [[name json]] [(kw name) (biome json)]))
+        (jsons zf "data/minecraft/worldgen/biome/")))
 
 (defn- raw-ingredient [v]
   (let [i (ingredient v)] (if (map? i) [:tag (:tag i)] (vec i))))
@@ -1744,36 +1767,42 @@
         (pr data)
         (.write ^Writer w "\n")))))
 
-(defn- tables [zf from-class reports rs]
-  (let [{:keys [props shapes compost walls placers remainders
-                banners dyes]}
-        from-class
-        dp (datapack-names zf)
+(defn- tagged-tables [zf reports rs dyes]
+  (let [dp (datapack-names zf)
         tags (tags-of zf (distinct (concat (keys rs) (keys dp))))
         item-names (set (keys (get rs "item")))
         potion-names (set (keys (get rs "potion")))
-        effect-names (set (keys (get rs "mob_effect")))
-        lang (read-json zf lang-file)
-        items (merge-with
-               merge (vanilla-items reports)
-               compost walls remainders banners
-               (station-items reports tags lang))]
+        effect-names (set (keys (get rs "mob_effect")))]
+    {:packets    (packets reports)
+     :registries rs
+     :datapack   dp
+     :enchantments (enchantments zf tags)
+     :recipes    (recipes zf tags dyes item-names potion-names)
+     :potions    (potion-table potion-names)
+     :effects    (effect-table effect-names)
+     :tags       tags}))
+
+(defn- class-tables [zf from-class reports tags]
+  (let [{:keys [props shapes compost walls placers remainders
+                banners]} from-class
+        lang (read-json zf lang-file)]
+    {:blocks     (blocks reports props shapes)
+     :drops      (block-drops zf)
+     :entity-drops (entity-drops zf)
+     :items      (merge-with
+                  merge (vanilla-items reports)
+                  compost walls remainders banners
+                  (station-items reports tags lang))
+     :dimension-types (dimension-types zf)
+     :biomes     (biomes zf)
+     :features   (features zf placers)}))
+
+(defn- tables [zf from-class reports rs]
+  (let [tagged (tagged-tables zf reports rs (:dyes from-class))]
     (merge (dissoc from-class :props :compost :walls :placers
                    :remainders :banners :dyes)
-           {:packets    (packets reports)
-            :blocks     (blocks reports props shapes)
-            :registries rs
-            :datapack   dp
-            :drops      (block-drops zf)
-            :entity-drops (entity-drops zf)
-            :items      items
-            :enchantments (enchantments zf tags)
-            :dimension-types (dimension-types zf)
-            :features   (features zf placers)
-            :recipes    (recipes zf tags dyes item-names potion-names)
-            :potions    (potion-table potion-names)
-            :effects    (effect-table effect-names)
-            :tags       tags})))
+           tagged
+           (class-tables zf from-class reports (:tags tagged)))))
 
 (defn- write-tables! [^File server ^File dir out from-class]
   (with-open [zf (ZipFile. server)]
@@ -1791,6 +1820,7 @@
          (finally (delete-tree! libraries)))))
 
 (defn generate!
+  "Writes every table of version into out."
   [{:keys [version out jar]
     :or {version version out "target/data"}}]
   (let [bundle (fetch version jar)

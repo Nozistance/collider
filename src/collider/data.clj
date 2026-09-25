@@ -15,10 +15,13 @@
   ["packets" "registries" "blocks" "datapack" "tags" "items"
    "light" "fire" "drops" "entity-drops" "recipes" "sounds"
    "features" "potions" "effects" "enchantments"
-   "dimension-types" "shapes"
+   "dimension-types" "biomes" "shapes"
    "outlines" "sturdy" "sturdy-center" "sturdy-rigid" "flags"])
 
-(defn stamp []
+(defn stamp
+  "Returns the mark a set of tables carries: the game version and
+  the layout they were made for."
+  []
   {:game game :layout layout})
 
 (defn- stamped? [d]
@@ -31,7 +34,10 @@
   (and (every? #(.isFile (io/file d (str % ".edn"))) files)
        (stamped? d)))
 
-(defn dir []
+(defn dir
+  "Returns the first place that holds a full set of tables of this
+  version, or nil when none does."
+  []
   (->> [(System/getProperty "collider.data") "target/data" "data"]
        (remove nil?)
        (filter complete?)
@@ -40,7 +46,9 @@
 (defn- tables-of [ns]
   (for [[_ v] (ns-interns ns) :when (:table (meta v))] @v))
 
-(defn load! []
+(defn load!
+  "Reads every table the loaded namespaces declare."
+  []
   (doseq [ns (all-ns)
           :when (.startsWith (str (ns-name ns)) "collider.")
           t (tables-of ns)]
@@ -65,7 +73,7 @@
 (def ^:private table-names
   [:packets :registries :blocks :datapack :tags :items :light
    :fire :drops :entity-drops :recipes :sounds :features
-   :potions :effects :enchantments :dimension-types])
+   :potions :effects :enchantments :dimension-types :biomes])
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -141,6 +149,10 @@
   "Returns the fields of a dimension type."
   [dim] (get (dimension-types) dim))
 
+(defn biomes
+  "Returns the climate and attributes of every biome, by name."
+  [] (:biomes @tables))
+
 (defn smithing-recipes
   "Returns the transform and trim recipes of a smithing table."
   [] (:smithing (recipes)))
@@ -210,13 +222,20 @@
 (defn tag-values [registry tag]
   (get-in (tags) [registry tag] []))
 
-(defn snake ^String [k]
+(defn snake
+  "Returns the name of k with dashes as underscores."
+  ^String [k]
   (.replace (name k) \- \_))
 
-(defn wire ^String [k]
+(defn wire
+  "Returns k as a resource location, minecraft by default."
+  ^String [k]
   (str (or (namespace k) "minecraft") ":" (snake k)))
 
-(defn kebab [^String s]
+(defn kebab
+  "Returns resource location s as a keyword: the namespace kept
+  unless it is minecraft, underscores as dashes."
+  [^String s]
   (let [s (.toLowerCase s)
         i (.indexOf s ":")
         ns (if (neg? i) "minecraft" (subs s 0 i))
@@ -251,7 +270,10 @@
       (throw (ex-info "unknown datapack entry"
                       {:registry registry :entry entry}))))
 
-(defn entry-id ^long [registry entry]
+(defn entry-id
+  "Returns the network id of entry in registry, built in or from
+  the datapack."
+  ^long [registry entry]
   (if (contains? (registries) registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
@@ -272,7 +294,9 @@
 (defn- unknown-registry [registry]
   (ex-info "unknown registry" {:registry registry}))
 
-(defn entry-name [registry ^long id]
+(defn entry-name
+  "Returns the entry of registry with network id id."
+  [registry ^long id]
   (let [m (get @by-id registry)
         v (get (datapack) registry)]
     (cond
@@ -410,7 +434,9 @@
 (defn default-props []
   @defaults)
 
-(defn info [block]
+(defn info
+  "Returns the facts known about block. Throws for an unknown one."
+  [block]
   (or (get (blocks) block)
       (throw (ex-info "unknown block" {:block block}))))
 
@@ -420,7 +446,9 @@
 (defn open-sound [block open?]
   (get (info block) (if open? :open :close)))
 
-(defn by-hand? [block]
+(defn by-hand?
+  "Returns true when block drops when broken without a tool."
+  [block]
   (get (info block) :hand? true))
 
 (defn- prop-index ^long [block-name prop vs v]
@@ -454,7 +482,9 @@
        (state-offset block-name b wanted
                      (get (default-props) block-name))))))
 
-(defn state-block [^long id]
+(defn state-block
+  "Returns the block of block state id, or nil for no such state."
+  [^long id]
   (when (< -1 id (block-state-count)) (aget (block-of-state) id)))
 
 (defn state-props [^long id]

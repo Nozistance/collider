@@ -4,7 +4,8 @@
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.env.biome :as biome]))
 
 (set! *warn-on-reflection* true)
 
@@ -53,29 +54,29 @@
 
 (def ^:private ^:table fluid-arr (delay (state-table fluid?)))
 
-(def ^:private ^:table plains
-  (delay (data/datapack-id "worldgen/biome" :plains)))
+(defn- write-section! [buf s ^long biome]
+  (chunk/write-section! s buf @fluid-arr biome))
 
-(defn- write-section! [buf s]
-  (chunk/write-section! s buf @fluid-arr @plains))
-
-(defn- write-biomes! [buf]
+(defn- write-biomes! [buf ^long biome]
   (buf/write-byte! buf 0)
-  (c/write-varint buf (long @plains)))
+  (c/write-varint buf biome))
 
-(defn- write-empty-section! [buf]
+(defn- write-empty-section! [buf ^long biome]
   (buf/write-short! buf 0)
   (buf/write-short! buf 0)
-  (buf/write-byte! buf 0) (c/write-varint buf block/air)
-  (write-biomes! buf))
+  (buf/write-byte! buf 0)
+  (c/write-varint buf block/air)
+  (write-biomes! buf biome))
 
 (defn- window
-  "Returns [first section, section count, sky?] of the level lv."
+  "Returns [first section, section count, sky?, biome id] of the
+  level lv."
   [lv]
   (let [lo (chunk/level-min-y lv)]
     [(chunk/section-index lo)
      (quot (- (inc (chunk/level-max-y lv)) lo) 16)
-     (:sky? lv true)]))
+     (:sky? lv true)
+     (biome/id (:dim lv))]))
 
 (defn- light-mask ^long [^long n pred]
   (loop [i 0 m 0]
@@ -118,12 +119,13 @@
     (c/write-varint buf (long type))
     (c/write-nbt buf nbt)))
 
-(defn- write-sections! [buf chunk [^long lo ^long n]]
-  (let [body (buf/buf 4096)]
+(defn- write-sections! [buf chunk [^long lo ^long n _ biome]]
+  (let [body (buf/buf 4096)
+        biome (long biome)]
     (dotimes [i n]
       (if-let [s (our-section chunk (+ lo i))]
-        (write-section! body s)
-        (write-empty-section! body)))
+        (write-section! body s biome)
+        (write-empty-section! body biome)))
     (c/write-varint buf (buf/readable-bytes body))
     (buf/write-bytes! buf body)))
 

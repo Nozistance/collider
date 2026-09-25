@@ -212,14 +212,28 @@
     [(state/cross (state/apply-in world dim d) dim changes)
      (arrivals (update ds dim deltas/merge d) changes)]))
 
-(defn- step [[world ds] dim d]
+(declare step)
+
+(defn- handed
+  "Returns [world ds] with the deltas d hands to other levels applied
+  there, after d itself."
+  [acc ^Deltas d]
+  (reduce (fn [acc [dim sub]]
+            (let [sd (deltas/add deltas/empty-deltas sub)]
+              (step acc dim (deltas/with-dim sd dim))))
+          acc (state/handoffs-of d)))
+
+(defn- own-step [[world ds] dim d]
+  (let [changes (state/changes-of d)]
+    (if (seq changes)
+      (crossing [world ds] dim d changes)
+      [(if (deltas/inert? d) world (state/apply-in world dim d))
+       (update ds dim deltas/merge d)])))
+
+(defn- step [acc dim d]
   (if (identical? deltas/empty-deltas d)
-    [world ds]
-    (let [changes (state/changes-of d)]
-      (if (seq changes)
-        (crossing [world ds] dim d changes)
-        [(if (deltas/inert? d) world (state/apply-in world dim d))
-         (update ds dim deltas/merge d)]))))
+    acc
+    (handed (own-step acc dim d) d)))
 
 (defn- run-phase [[world ds] phase]
   (let [pd (phase-deltas world ds phase)]

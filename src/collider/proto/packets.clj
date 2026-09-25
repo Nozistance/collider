@@ -13,9 +13,10 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- node-flags ^long [type executable?]
+(defn- node-flags ^long [type executable? redirect]
   (bit-or (case type :root 0 :literal 1 :argument 2)
-          (if executable? 4 0)))
+          (if executable? 4 0)
+          (if redirect 8 0)))
 
 (defn- write-int-range! [^Buf buf props]
   (buf/write-byte! buf 3)
@@ -43,10 +44,12 @@
     nil))
 
 (defn- write-node! [^Buf buf node]
-  (let [{:keys [type name parser props executable? children]} node]
-    (buf/write-byte! buf (int (node-flags type executable?)))
+  (let [{:keys [type name parser props executable? children
+                redirect]} node]
+    (buf/write-byte! buf (int (node-flags type executable? redirect)))
     (c/write-varint buf (count children))
     (doseq [c children] (c/write-varint buf (long c)))
+    (when redirect (c/write-varint buf (long redirect)))
     (when (not= :root type) (c/write-string buf name))
     (when (= :argument type) (write-parser! buf parser props))))
 
@@ -83,6 +86,7 @@
    [:parser {:optional true} :keyword]
    [:props {:optional true} [:maybe :map]]
    [:executable? {:optional true} [:maybe :boolean]]
+   [:redirect {:optional true} [:maybe :int]]
    [:children [:sequential :int]]])
 
 (def ^:private Player
@@ -253,8 +257,7 @@
     :write (wire/writer Abilities)}
    [:play :set-default-spawn-position]
    {:schema [:map
-             [:dimension {:optional true}
-              [:= {:wire wire/id} :overworld]]
+             [:dimension wire/id]
              [:pos wire/block-pos] [:yaw wire/float]
              [:pitch wire/float]]
     :write :wire}

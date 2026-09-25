@@ -102,7 +102,9 @@
    :mooshroom (-> (assoc cow :ground :mycelium :sound-variants 1)
                   (dissoc :spawn-color))})
 
-(defn egg-type [item]
+(defn egg-type
+  "Returns the mob kind spawn egg item hatches, or nil."
+  [item]
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
 
@@ -144,7 +146,9 @@
 
 (defn burning? [e] (boolean (:burning? e)))
 
-(defn metadata [e]
+(defn metadata
+  "Returns what clients see of mob e besides its movement."
+  [e]
   (case (:type e)
     :sheep (sheep-meta [(long (or (:color e) 0))
                         (some? (:baby-until e))
@@ -157,7 +161,10 @@
                 [(long (or (:color e) 0))
                  (some? (:baby-until e)) (burning? e)])))
 
-(defn new-mob [type pos color tick]
+(defn new-mob
+  "Returns a fresh mob of kind type at pos, with nothing on its
+  mind."
+  [type pos color tick]
   {:type        type
    :pos         pos
    :vel         [0.0 0.0 0.0]
@@ -169,17 +176,21 @@
    :health-sent (max-health type)})
 
 (defn egg-mob
-  "Returns a mob hatched from a spawn egg. The keys ks decide its
-  colour, voice and yaw."
-  [type pos ks tick]
+  "Returns a mob hatched from a spawn egg in level dim. The keys ks
+  decide its colour, voice and yaw."
+  [type pos ks tick dim]
   (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
         voices (long (get-in types [type :sound-variants] 1))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)
-        voice (long (* voices (random/of-key (conj ks :voice))))]
-    (assoc (new-mob type pos (color-fn ks (biome/at nil pos)) tick)
+        voice (long (* voices (random/of-key (conj ks :voice))))
+        color (color-fn ks (biome/at dim pos))]
+    (assoc (new-mob type pos color tick)
       :yaw yaw :head-yaw yaw :sound-variant voice)))
 
-(defn exp-delay ^long [mean ^long t ^long eid kind]
+(defn exp-delay
+  "Returns a wait of at least one tick, drawn from an exponential
+  law with the given mean."
+  ^long [mean ^long t ^long eid kind]
   (let [r (max 1.0E-9 (random/of-longs t eid (hash kind)))]
     (max 1 (long (* (double mean) (- (Math/log r)))))))
 

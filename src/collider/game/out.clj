@@ -48,8 +48,10 @@
   {:msg :change-dimension :dim dim :pos pos :yaw (double yaw)
    :pitch (double pitch) :forget (vec forget) :untrack (vec untrack)})
 
-(defn default-spawn [pos]
-  {:msg :default-spawn :pos pos})
+(defn default-spawn
+  "Returns the effect that shows the world spawn in level dim."
+  [dim pos]
+  {:msg :default-spawn :dimension dim :pos pos})
 
 (defn rain-started []
   {:msg :rain-started})

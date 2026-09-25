@@ -334,11 +334,22 @@
    :health-sent  20.0
    :keepalive-at tick :keepalive-pending? false})
 
+(defn- world-spawn-set [w dim pos]
+  (assoc w :world-spawn (vec pos) :world-spawn-dimension dim))
+
+(defn- respawn-dimension
+  "Returns the level of the world spawn, where a player with no
+  place of its own lands. The overworld stands in for a level the
+  server lacks."
+  [w]
+  (let [dim (:world-spawn-dimension w :overworld)]
+    (if (some #{dim} schema/dims) dim :overworld)))
+
 (defn- player-join [w eid name settings]
   (let [{:keys [pos dimension]} (get-in w [:profiles name])]
     (assoc-in w [:spawning eid]
               (cond-> {:name name :seed (spawn-seed w eid)
-                       :dim (or dimension :overworld)
+                       :dim (or dimension (respawn-dimension w))
                        :settings settings}
                 pos (assoc :pos pos)))))
 
@@ -933,7 +944,7 @@
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
    :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))
    :set-rule (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
-   :set-world-spawn (fn [w [_ pos]] (assoc w :world-spawn (vec pos)))
+   :set-world-spawn (fn [w [_ dim pos]] (world-spawn-set w dim pos))
    :add-chunk (fn [w [_ id c]] (chunk-added w id c))
    :chunk-requested (fn [w [_ id]] (chunk-requested w id))
    :chunk-ticket (fn [w [_ id n]] (chunk-ticketed w id n))
@@ -949,7 +960,8 @@
    :advance-weather (fn [w _] (merge w (weather/advance w)))
    :observed (fn [w [_ m]] (assoc w :observed m))
    :explode (fn [w _] w)
-   :change-dimension (fn [w _] w)})
+   :change-dimension (fn [w _] w)
+   :level-deltas (fn [w _] w)})
 
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]
@@ -1026,6 +1038,13 @@
   [^Deltas d]
   (filterv #(identical? :change-dimension (nth % 0))
            (deltas/world-of d)))
+
+(defn handoffs-of
+  "Returns the deltas d hands to other levels, as [dim deltas]."
+  [^Deltas d]
+  (into [] (keep #(when (identical? :level-deltas (nth % 0))
+                    [(nth % 1) (nth % 2)]))
+        (deltas/world-of d)))
 
 (defn cross
   "Returns world with the players that change dimension in d moved.

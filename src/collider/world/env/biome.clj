@@ -1,6 +1,7 @@
 (ns collider.world.env.biome
   "Biomes, and the temperature and precipitation they give a
-  position.")
+  position."
+  (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,14 +15,26 @@
   ^long [dim]
   (case dim :the-nether 32 :the-end 0 sea-level))
 
-(def plains
-  {:name                    :plains
-  :has-precipitation?      true
-  :temperature             0.8
-  :downfall                0.4
-  :increased-fire-burnout? false})
+(def ^:private flat-biomes
+  {:overworld :plains :the-nether :nether-wastes :the-end :the-end})
 
-(defn at [_chunks _p] plains)
+(defn- biome-in [dim n]
+  (assoc (get (data/biomes) n) :name n :dimension dim))
+
+(def ^:private ^:table flat
+  (delay (into {} (for [[dim n] flat-biomes]
+                    [dim (biome-in dim n)]))))
+
+(defn at
+  "Returns the biome of level dim at p.
+  Every column of a flat level has the biome of its generator."
+  [dim _p]
+  (get @flat (or dim :overworld)))
+
+(defn id
+  "Returns the network id of the biome of level dim."
+  ^long [dim]
+  (data/datapack-id "worldgen/biome" (:name (at dim nil))))
 
 (defn- temperature-noise ^double [^long _x ^long _z] 0.0)
 
@@ -45,10 +58,14 @@
   ^double [biome p]
   (height-adjusted-temperature biome p))
 
-(defn warm-enough-to-rain? [biome p]
+(defn warm-enough-to-rain?
+  "Tells whether what falls on biome at p is rain, not snow."
+  [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 
-(defn cold-enough-to-snow? [biome p]
+(defn cold-enough-to-snow?
+  "Tells whether what falls on biome at p is snow."
+  [biome p]
   (not (warm-enough-to-rain? biome p)))
 
 (defn precipitation-at
@@ -56,9 +73,15 @@
   :none."
   [biome p]
   (cond
-    (not (:has-precipitation? biome)) :none
+    (not (:has-precipitation biome)) :none
     (cold-enough-to-snow? biome p) :snow
     :else :rain))
 
-(defn increased-fire-burnout? [biome]
-  (boolean (:increased-fire-burnout? biome)))
+(defn- attribute [biome k]
+  (let [dim (data/dimension-type (:dimension biome))]
+    (get (:attributes biome) k (get (:attributes dim) k))))
+
+(defn increased-fire-burnout?
+  "Tells whether fire burns out faster in biome."
+  [biome]
+  (boolean (attribute biome :gameplay/increased-fire-burnout)))

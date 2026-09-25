@@ -1,9 +1,10 @@
 (ns collider.game.command.tree
   "Player commands, their arguments and their meaning."
-  (:require [collider.game.mob.mobs :as mobs]
+  (:require [clojure.string :as str]
+            [collider.data :as data]
             [collider.game.gamerules :as rules]
-            [clojure.string :as str]
-            [collider.data :as data]))
+            [collider.game.mob.mobs :as mobs]
+            [collider.game.schema :as schema]))
 
 (set! *warn-on-reflection* true)
 
@@ -47,11 +48,16 @@
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]
     [:world :gamerule]]
-   [:tp "teleport to a position (~ = where you are) or an entity"
+   [:teleport "teleport to a position (~ = where you are) or entity"
+    [[:destination [:targets {:single? true}]]]
+    [:world :tp-to]
     (vec-args {:node "location"})
     [:world :tp]
-    [[:destination [:targets {:single? true}]]]
-    [:world :tp-to]]
+    [[:targets [:targets {}]]
+     [:destination [:targets {:single? true}]]]
+    [:world :tp-targets-to]
+    (into [[:targets [:targets {}]]] (vec-args {:node "location"}))
+    [:world :tp-targets]]
    [:give "give items to players"
     [[:targets [:targets {:players? true}]]
      [:item [:item {}]]
@@ -297,6 +303,9 @@
     (mapcat #(usage-lines % (conj path (cmd-name %))) (drop 2 form))
     [(usage path)]))
 
+(defn- leftover [ts path]
+  {:error (str "unexpected \"" (first ts) "\"\n" (usage path))})
+
 (defn- parse-args [args tokens path origin]
   (loop [as args, ts tokens, acc []]
     (if-let [a (first as)]
@@ -304,7 +313,7 @@
         (if (= :err st)
           {:error (str v "\n" (usage path))}
           (recur (next as) (next ts) (conj acc v))))
-      {:args acc})))
+      (if (seq ts) (leftover ts path) {:args acc}))))
 
 (defn- ways
   "Returns the [args action] pairs of a form without subcommands."
@@ -330,20 +339,64 @@
     (delta-of sform arg-tokens [nm sub] origin)
     (no-subcommand form nm sub)))
 
+(def ^:private aliases {"tp" "teleport"})
+
+(defn- dimension-of [s]
+  (let [k (data/kebab (str/replace (str s) #"^minecraft:" ""))]
+    (some #{k} schema/dims)))
+
+(defn- scale ^double [from to]
+  (/ (double (:coordinate-scale (data/dimension-type from)))
+     (double (:coordinate-scale (data/dimension-type to)))))
+
+(defn- scaled
+  "Returns origin moved from level from to level to.
+  Only x and z scale, by the teleportation scale of the two."
+  [origin from to]
+  (if (or (nil? origin) (= from to))
+    origin
+    (let [k (scale from to)]
+      [(* k (double (nth origin 0))) (nth origin 1)
+       (* k (double (nth origin 2)))])))
+
+(declare parse-words parse-execute)
+
+(defn- parse-in [[d & more] origin dim]
+  (if-let [to (dimension-of d)]
+    (parse-execute more (scaled origin dim to) to)
+    {:error (if d
+              (str "dimension: unknown dimension \"" d "\"")
+              "give the argument <dimension>")}))
+
+(defn- parse-execute [[w & more] origin dim]
+  (case w
+    "in" (parse-in more origin dim)
+    "run" (if (seq more)
+            (merge {:dim dim :origin origin}
+                   (parse-words more origin dim))
+            {:error "give a command to run"})
+    {:error "give in <dimension> or run <command>"}))
+
+(defn- parse-words [[nm & more] origin dim]
+  (let [nm (get aliases nm nm)
+        form (find-form commands nm)]
+    (cond
+      (= "execute" nm) (parse-execute more origin dim)
+      (nil? form)
+      {:error (str "unknown command" (when nm (str " \"/" nm "\"")))}
+      (subcommands? form) (parse-subcommand form nm more origin)
+      :else (delta-of form more [nm] origin))))
+
 (defn parse
   "Returns the delta the typed command means.
   Returns the reason it cannot run instead. Relative coordinates
-  count from origin."
+  count from origin, in level dim. A command run in another level
+  also returns that level as :dim and origin there as :origin."
   ([text] (parse text nil))
-  ([text origin]
-   (let [words (str/split (subs text 1) #"\s+")
-         [nm & more] (remove str/blank? words)
-         form (find-form commands nm)]
-     (cond
-       (nil? form)
-       {:error (str "unknown command" (when nm (str " \"/" nm "\"")))}
-       (subcommands? form) (parse-subcommand form nm more origin)
-       :else (delta-of form more [nm] origin)))))
+  ([text origin] (parse text origin :overworld))
+  ([text origin dim]
+   (let [words (str/split (subs text 1) #"\s+")]
+     (parse-words (remove str/blank? words) origin dim))))
 
 (defn- starting-with [prefix xs]
   (let [p (str/lower-case prefix)]
@@ -352,9 +405,12 @@
 (defn- suggest-player [world prefix]
   (starting-with prefix (sort (keys (:players world)))))
 
+(defn- command-names []
+  (into ["execute"] (concat (keys aliases) (map cmd-name commands))))
+
 (defn- suggest-command [prefix]
   (mapv #(str "/" %)
-        (starting-with prefix (sort (map cmd-name commands)))))
+        (starting-with prefix (sort (command-names)))))
 
 (defn- suggest-subcommand [form prefix]
   (starting-with prefix (sort (map cmd-name (drop 2 form)))))
@@ -383,7 +439,7 @@
      (if-not (str/starts-with? text "/")
        (suggest-player world (last (str/split text #" " -1)))
        (let [[nm & more] (str/split (subs text 1) #" " -1)
-             form (find-form commands nm)]
+             form (find-form commands (get aliases nm nm))]
          (cond
            (empty? more) (suggest-command nm)
            (nil? form) []
@@ -405,16 +461,18 @@
    :entity-type [:resource {:registry "minecraft:entity_type"}]
    :text [brigadier-string {:kind 0}]})
 
+(defn- entity-props [single? players?]
+  {:single? (boolean single?) :players? (boolean players?)})
+
 (defn- argument-nodes
-  [[nm [kind {:keys [min max values single?]}]]]
+  [[nm [kind {:keys [min max values single? players?]}]]]
   (let [n (name nm)]
     (if-let [[parser props] (plain-arguments kind)]
       [[n parser props]]
       (case kind
         :int [[n brigadier-integer {:min min :max max}]]
         :enum {:literals (sort values)}
-        :targets
-        [[n :entity {:single? (boolean single?) :players? false}]]
+        :targets [[n :entity (entity-props single? players?)]]
         :rule {:rules true}))))
 
 (defn- coords-merged [args]
@@ -434,72 +492,110 @@
                args))
       (count args)))
 
-(declare add-chain)
-
-(defn- add-node! [nodes node]
-  (swap! nodes conj node)
-  (dec (count @nodes)))
-
 (defn- rule-value [{:keys [type min max]}]
   {:type :argument :name "value" :executable? true
    :parser (if (= :bool type) brigadier-bool brigadier-integer)
    :props (when (= :int type) {:min min :max max})})
 
-(defn- rule-node! [nodes rule spec]
-  (let [value (add-node! nodes (rule-value spec))]
-    (add-node! nodes {:type :literal :executable? true
-                      :name (subs (rules/wire-name rule) 10)
-                      :children [value]})))
+(defn- rule-nodes []
+  (vec (for [[rule spec] rules/table]
+         {:type :literal :executable? true
+          :name (subs (rules/wire-name rule) 10)
+          :children [(rule-value spec)]})))
 
-(defn- add-rules! [nodes]
-  (vec (for [[rule spec] rules/table] (rule-node! nodes rule spec))))
-
-(defn- add-literals! [nodes spec exec? tail-children]
-  (let [node {:type :literal :executable? exec?
-              :children tail-children}]
-    (vec (for [l (:literals spec)]
-           (add-node! nodes (assoc node :name l))))))
-
-(defn- add-argument! [nodes spec exec? tail-children]
-  (let [[n parser props] (first spec)]
-    [(add-node! nodes {:type :argument :name n :parser parser
-                       :props props :executable? exec?
-                       :children tail-children})]))
-
-(defn- add-spec! [nodes spec exec? children]
+(defn- spec-nodes [spec exec? children]
   (cond
-    (:rules spec) (add-rules! nodes)
-    (:literals spec) (add-literals! nodes spec exec? children)
-    :else (add-argument! nodes spec exec? children)))
+    (:rules spec) (rule-nodes)
+    (:literals spec)
+    (mapv (fn [l] {:type :literal :name l :executable? exec?
+                   :children children})
+          (:literals spec))
+    :else
+    (let [[n parser props] (first spec)]
+      [{:type :argument :name n :parser parser :props props
+        :executable? exec? :children children}])))
 
-(defn- add-chain [nodes args i]
-  (let [optional (optional-from args)]
-    (if (>= i (count args))
-      [[] true]
-      (let [spec (argument-nodes (nth args i))
-            [tail-children tail-exec]
-            (if (:rules spec)
-              [[] true]
-              (add-chain nodes args (inc i)))
-            exec? (or tail-exec (>= (inc i) optional))]
-        [(add-spec! nodes spec exec? tail-children)
-         (>= i optional)]))))
+(defn- chain
+  "Returns [nodes executable?] of the args from i on.
+  The flag tells whether the node before them can run."
+  [args ^long i]
+  (if (>= i (count args))
+    [[] true]
+    (let [optional (optional-from args)
+          spec (argument-nodes (nth args i))
+          tail (if (:rules spec) [[] true] (chain args (inc i)))
+          [kids tail-exec] tail
+          exec? (or tail-exec (>= (inc i) optional))]
+      [(spec-nodes spec exec? kids) (>= i optional)])))
 
-(defn- add-form! [nodes form]
+(defn- same-node? [a b]
+  (let [k #(dissoc % :children :executable?)]
+    (= (k a) (k b))))
+
+(defn- index-of [xs pred]
+  (first (keep-indexed (fn [i x] (when (pred x) i)) xs)))
+
+(declare merged-nodes)
+
+(defn- merged-node [a b]
+  (-> a
+      (update :executable? #(boolean (or % (:executable? b))))
+      (update :children
+              #(merged-nodes (into (vec %) (:children b))))))
+
+(defn- merged-nodes
+  "Returns sibling nodes with the same name folded into one.
+  Their children fold the same way."
+  [nodes]
+  (reduce (fn [acc n]
+            (if-let [i (index-of acc #(same-node? % n))]
+              (update acc i merged-node n)
+              (conj acc n)))
+          [] nodes))
+
+(defn- form-node [form]
   (if (subcommands? form)
-    (let [kids (mapv #(add-form! nodes %) (drop 2 form))]
-      (add-node! nodes {:type :literal :name (cmd-name form)
-                        :children kids}))
-    (let [chains (mapv #(add-chain nodes (coords-merged (first %)) 0)
+    {:type :literal :name (cmd-name form)
+     :children (mapv form-node (drop 2 form))}
+    (let [chains (mapv #(chain (coords-merged (first %)) 0)
                        (ways form))]
-      (add-node! nodes {:type :literal :name (cmd-name form)
-                        :executable? (boolean (some second chains))
-                        :children (into [] (mapcat first) chains)}))))
+      {:type :literal :name (cmd-name form)
+       :executable? (boolean (some second chains))
+       :children (merged-nodes (into [] (mapcat first) chains))})))
+
+(def ^:private dimension-node
+  {:type :argument :name "dimension" :parser :dimension :props nil
+   :children [] :redirect "execute"})
+
+(def ^:private execute-node
+  {:type :literal :name "execute"
+   :children [{:type :literal :name "in" :children [dimension-node]}
+              {:type :literal :name "run" :children []
+               :redirect :root}]})
+
+(defn- alias-node [[alias target]]
+  {:type :literal :name alias :children [] :redirect target})
+
+(defn- flat
+  "Returns nodes with node and what it holds added after them.
+  A node comes after its children; its index is returned too."
+  [nodes node]
+  (let [step (fn [[ns ks] c]
+               (let [[ns i] (flat ns c)] [ns (conj ks i)]))
+        [nodes kids] (reduce step [nodes []] (:children node))]
+    [(conj nodes (assoc node :children kids)) (count nodes)]))
+
+(defn- redirected [nodes]
+  (let [root (dec (count nodes))
+        top (into {} (map (fn [i] [(:name (nth nodes i)) i]))
+                  (:children (peek nodes)))
+        at #(if (= :root %) root (top %))]
+    (mapv #(if (:redirect %) (update % :redirect at) %) nodes)))
 
 (defn tree
   "Returns the command nodes a client gets, the root last."
   []
-  (let [nodes (atom [])
-        top (mapv #(add-form! nodes %) commands)]
-    (add-node! nodes {:type :root :children top})
-    @nodes))
+  (let [top (-> (mapv form-node commands)
+                (conj execute-node)
+                (into (map alias-node) aliases))]
+    (redirected (first (flat [] {:type :root :children top})))))

@@ -44,32 +44,45 @@
          (or (zero? st) (= :snow (block/block-of st)))
          (support/supported? chunks p (block/state :snow)))))
 
+(defn- more-snow [st p ^long max-height]
+  (let [layers (block/prop-long st :layers)
+        more (keyword (str (inc layers)))]
+    (when (< layers (min max-height 8))
+      [[p (block/state :snow {:layers more})]])))
+
 (defn- snow-change [chunks biome p ^long max-height]
   (when (and (pos? max-height) (should-snow? chunks biome p))
     (let [st (state-at chunks p)]
       (if (= :snow (block/block-of st))
-        (let [layers (block/prop-long st :layers)]
-          (when (< layers (min max-height 8))
-            [[p (block/state :snow {:layers (keyword (str (inc layers)))})]]))
+        (more-snow st p max-height)
         [[p (block/state :snow)]]))))
 
 (defn- fill-chance ^double [precipitation]
-  (case precipitation :rain rain-fill-chance :snow powder-snow-fill-chance 0.0))
+  (case precipitation
+    :rain rain-fill-chance
+    :snow powder-snow-fill-chance
+    0.0))
+
+(defn- empty-fill [precipitation]
+  (case precipitation
+    :rain (block/state :water-cauldron)
+    :snow (block/state :powder-snow-cauldron)
+    nil))
+
+(defn- layered-fill [^long st precipitation]
+  (let [level (block/prop-long st :level)
+        kind (case (block/block-of st)
+               :water-cauldron :rain
+               :powder-snow-cauldron :snow
+               nil)
+        more (keyword (str (inc level)))]
+    (when (and (not= 3 level) (= kind precipitation))
+      (block/state (block/block-of st) {:level more}))))
 
 (defn- cauldron-fill [^long st precipitation]
   (case (block/type-of st)
-    :cauldron (case precipitation
-                :rain (block/state :water-cauldron)
-                :snow (block/state :powder-snow-cauldron)
-                nil)
-    :layered-cauldron
-    (let [level (block/prop-long st :level)
-          kind (case (block/block-of st)
-                 :water-cauldron :rain
-                 :powder-snow-cauldron :snow
-                 nil)]
-      (when (and (not= 3 level) (= kind precipitation))
-        (block/state (block/block-of st) {:level (keyword (str (inc level)))})))
+    :cauldron (empty-fill precipitation)
+    :layered-cauldron (layered-fill st precipitation)
     nil))
 
 (defn- cauldron-change [chunks p precipitation ^double roll]
@@ -77,19 +90,24 @@
     (when-let [st (cauldron-fill (state-at chunks p) precipitation)]
       [[p st]])))
 
+(defn- rain-changes [chunks biome top below max-height roll]
+  (concat
+    (snow-change chunks biome top (long max-height))
+    (let [precipitation (biome/precipitation-at biome below)]
+      (when (not= :none precipitation)
+        (cauldron-change chunks below precipitation (double roll))))))
+
 (defn tick-precipitation
   "Returns the changes the weather makes at the top of column x z.
   max-height is the most snow layers allowed there. roll decides
   whether a cauldron fills."
   [ctx chunks [x _ z] max-height roll]
-  (let [top [(long x) (spawn/motion-blocking-height chunks x z) (long z)]
+  (let [top [(long x) (spawn/motion-blocking-height chunks x z)
+             (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]
-        biome (biome/at chunks top)]
+        biome (biome/at (:dim ctx) top)]
     (concat
-      (when (should-freeze? chunks biome below) [[below (block/state :ice)]])
+      (when (should-freeze? chunks biome below)
+        [[below (block/state :ice)]])
       (when (weather/raining? ctx)
-        (concat
-          (snow-change chunks biome top (long max-height))
-          (let [precipitation (biome/precipitation-at biome below)]
-            (when (not= :none precipitation)
-              (cauldron-change chunks below precipitation (double roll)))))))))
+        (rain-changes chunks biome top below max-height roll)))))

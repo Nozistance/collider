@@ -48,7 +48,7 @@
    :set-rule
    [:cat :keyword :any]
    :set-world-spawn
-   [:cat Pos]
+   [:cat :keyword Pos]
    :add-chunk
    [:cat :int :any]
    :chunk-requested
@@ -73,6 +73,8 @@
    [:cat :map]
    :remove-entity
    [:cat Eid]
+   :level-deltas
+   [:cat :keyword [:sequential :any]]
    :change-dimension
    [:cat Eid :keyword Vec3 number? number?]
    :listed
@@ -138,7 +140,7 @@
    :respawn           []
    :change-dimension  [[:pos Vec3] [:yaw number?] [:pitch number?]
                        [:forget Coll] [:untrack Coll]]
-   :default-spawn     [[:pos Pos]]
+   :default-spawn     [[:dimension :keyword] [:pos Pos]]
    :rain-started      []
    :rain-stopped      []
    :rain-level        [[:level number?]]

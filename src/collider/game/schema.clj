@@ -153,6 +153,9 @@
                         :load identity
                         :schema [:tuple :int :int :int]
                         :scope :shared}
+   :world-spawn-dimension
+   {:default :overworld :store store-same :load identity
+    :schema :keyword :scope :shared}
    :clear-weather-time {:default 0 :store store-long
                         :load load-long :schema :int
                         :scope :shared}

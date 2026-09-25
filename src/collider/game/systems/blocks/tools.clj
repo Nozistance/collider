@@ -114,7 +114,7 @@
 (defn- bonemealed [world pos]
   (let [st (edit/block-at world pos)
         salted #(random/of-key (:tick world) pos :meal %)]
-    (grow/bonemeal (:chunks world) pos st salted)))
+    (grow/bonemeal (:chunks world) pos st salted (:dim world))))
 
 (defn bonemeal-deltas
   "Returns the deltas of bone meal used on the block at pos."
@@ -223,7 +223,7 @@
 
 (defn- hatch-deltas [world pos mob at]
   (let [t (:tick world)
-        hatched (mobs/egg-mob mob at [t pos] t)
+        hatched (mobs/egg-mob mob at [t pos] t (:dim world))
         pitch (egg-pitch t pos)]
     (cons [:spawn-entity hatched]
           (when-let [say (mobs/sound-of hatched :say)]
