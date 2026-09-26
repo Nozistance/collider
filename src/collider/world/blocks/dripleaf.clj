@@ -23,18 +23,23 @@
        (or (block/waterlogged? st)
            (block/water-source? st))))
 
+(defn- big-base? [^long st]
+  (block/tagged? st "supports_big_dripleaf"))
+
 (defn leaf-supported? [chunks p]
   (let [b (chunk/at-void chunks (dir/down p))]
-    (or (leaf? b) (stem? b) (block/tagged? b "supports_big_dripleaf"))))
+    (or (leaf? b) (stem? b) (big-base? b))))
 
 (defn stem-supported? [chunks p]
-  (let [b (chunk/at-void chunks (dir/down p)) a (chunk/at-void chunks (dir/up p))]
-    (and (or (stem? b) (block/tagged? b "supports_big_dripleaf"))
+  (let [b (chunk/at-void chunks (dir/down p))
+        a (chunk/at-void chunks (dir/up p))]
+    (and (or (stem? b) (big-base? b))
          (or (stem? a) (leaf? a)))))
 
 (defn- may-place-small-on? [chunks p ^long below]
   (or (block/tagged? below "supports_small_dripleaf")
-      (and (water-source? (chunk/at-void chunks p)) (block/tagged? below "supports_vegetation"))))
+      (and (water-source? (chunk/at-void chunks p))
+           (block/tagged? below "supports_vegetation"))))
 
 (defn small-supported? [chunks p ^long st]
   (let [b (chunk/at-void chunks (dir/down p))]
@@ -52,31 +57,42 @@
   (cond
     (not (leaf-supported? chunks p)) 0
     (leaf? (chunk/at-void chunks (dir/up p)))
-    (block/state :big-dripleaf-stem (select-keys (block/props-of st) [:facing :waterlogged]))
+    (->> (select-keys (block/props-of st) [:facing :waterlogged])
+         (block/state :big-dripleaf-stem))
     :else st))
 
 (defn small-updated ^long [chunks p ^long st]
   (let [upper? (= :upper (half-of st))
-        partner (chunk/at-void chunks (if upper? (dir/down p) (dir/up p)))]
+        q (if upper? (dir/down p) (dir/up p))
+        partner (chunk/at-void chunks q)]
     (if (and (small? partner)
              (not= upper? (= :upper (half-of partner)))
              (small-supported? chunks p st))
       st
       0)))
 
-(defn leaf-placed [chunks p ^long st]
-  (let [b (chunk/at-void chunks (dir/down p))
-        st' (if (or (leaf? b) (stem? b))
-              (block/state (block/block-of st) (assoc (block/props-of st) :facing (block/facing-of b)))
-              st)]
-    (when (leaf-supported? chunks p) st')))
+(defn- facing ^long [^long st f]
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) :facing f)))
 
-(def ^:private next-tilt {:unstable :partial :partial :full :full :none})
+(defn leaf-placed
+  "Returns the placed leaf turned the way of the dripleaf under it,
+  or nil when nothing holds it."
+  [chunks p ^long st]
+  (let [b (chunk/at-void chunks (dir/down p))]
+    (when (leaf-supported? chunks p)
+      (if (or (leaf? b) (stem? b))
+        (facing st (block/facing-of b))
+        st))))
+
+(def ^:private next-tilt
+  {:unstable :partial :partial :full :full :none})
 
 (def ^:private tilt-delay {:unstable 10 :partial 10 :full 100})
 
 (defn tilted ^long [^long st tilt]
-  (block/state (block/block-of st) (assoc (block/props-of st) :tilt tilt)))
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) :tilt tilt)))
 
 (defn tilt-sound [^long st]
   (case (tilt-of st)
@@ -98,7 +114,9 @@
     (and (not (neg? st)) (can-replace? st))))
 
 (defn- watered [self chunks p props]
-  (block/state self (assoc props :waterlogged (if (water-source? (chunk/at-void chunks p)) :true :false))))
+  (let [wet? (water-source? (chunk/at-void chunks p))]
+    (block/state self
+                 (assoc props :waterlogged (if wet? :true :false)))))
 
 (defn- leaf-state ^long [chunks p facing]
   (watered :big-dripleaf chunks p {:facing facing :tilt :none}))
@@ -106,18 +124,33 @@
 (defn- stem-state ^long [chunks p facing]
   (watered :big-dripleaf-stem chunks p {:facing facing}))
 
-(defn column-changes [chunks [x y z] facing ^long desired]
-  (let [h (loop [n 0]
-            (if (and (< n desired) (can-place-at? chunks [x (+ (long y) n) z])) (recur (inc n)) n))
-        top (max (long y) (+ (long y) h -1))]
-    (conj (mapv (fn [q] [[x q z] (stem-state chunks [x q z] facing)]) (range (long y) top))
+(defn- free-height ^long [chunks [x y z] ^long desired]
+  (loop [n 0]
+    (if (and (< n desired)
+             (can-place-at? chunks [x (+ (long y) n) z]))
+      (recur (inc n))
+      n)))
+
+(defn column-changes
+  "Returns the changes that grow a big dripleaf column from p up to
+  the desired height, as far as free space allows: stems and a leaf
+  on top."
+  [chunks [x y z :as p] facing ^long desired]
+  (let [y (long y)
+        top (max y (+ y (free-height chunks p desired) -1))
+        stem (fn [q] [[x q z] (stem-state chunks [x q z] facing)])]
+    (conj (mapv stem (range y top))
           [[x top z] (leaf-state chunks [x top z] facing)])))
 
-(defn leaf-meal [chunks p ^long st]
-  (let [a (dir/up p)]
+(defn- raised [chunks h ^long st]
+  (let [f (block/facing-of st)
+        a (dir/up h)]
     (when (can-place-at? chunks a)
-      (let [f (block/facing-of st)]
-        {:changes [[p (stem-state chunks p f)] [a (leaf-state chunks a f)]]}))))
+      {:changes [[h (stem-state chunks h f)]
+                 [a (leaf-state chunks a f)]]})))
+
+(defn leaf-meal [chunks p ^long st]
+  (raised chunks p st))
 
 (defn- head-pos [chunks p]
   (loop [q (dir/up p)]
@@ -128,20 +161,20 @@
 
 (defn stem-meal [chunks p ^long st]
   (when-let [h (head-pos chunks p)]
-    (when (can-place-at? chunks (dir/up h))
-      (let [f (block/facing-of st) a (dir/up h)]
-        {:changes [[h (stem-state chunks h f)] [a (leaf-state chunks a f)]]}))))
+    (raised chunks h st)))
 
 (defn small-meal [chunks p ^long st roll]
   (let [lower (if (= :upper (half-of st)) (dir/down p) p)
         base (chunk/at-void chunks lower)
         a (dir/up lower)
-        cleared (if (block/waterlogged? (chunk/at-void chunks a)) (block/state :water) 0)]
+        wet? (block/waterlogged? (chunk/at-void chunks a))
+        cleared (if wet? (block/state :water) 0)]
     (when (small? base)
       (let [chunks' (chunk/chunks-set-blocks chunks [[a cleared]])
-            desired (+ 2 (long (Math/floor (* 4.0 (double (roll :height))))))]
-        {:changes (into [[a cleared]]
-                        (column-changes chunks' lower (block/facing-of base) desired))}))))
+            h (Math/floor (* 4.0 (double (roll :height))))
+            f (block/facing-of base)
+            col (column-changes chunks' lower f (+ 2 (long h)))]
+        {:changes (into [[a cleared]] col)}))))
 
 (defn meal [chunks p ^long st roll]
   (cond
@@ -149,16 +182,23 @@
     (stem? st) (stem-meal chunks p st)
     (small? st) (small-meal chunks p st roll)))
 
+(defn- wake [chunks _dim tick p _old self?]
+  (let [st (chunk/at-void chunks p)
+        delay (tilt-delay (tilt-of st))]
+    (cond
+      (stem? st) (inc (long tick))
+      (and self? (leaf? st) delay) (+ (long tick) (long delay)))))
+
+(defn- due [chunks p _ctx]
+  (let [st (chunk/at-void chunks p)
+        tilt (next-tilt (tilt-of st))]
+    (cond
+      (and (stem? st) (not (stem-supported? chunks p)))
+      [[p (block/emptied st)]]
+      (and (leaf? st) tilt) [[p (tilted st tilt)]])))
+
 (def rule
   {:name   :dripleaf
    :match? (fn [_chunks st _p] (dripleaf? st))
-   :wake   (fn [chunks tick p _old self?]
-             (let [st (chunk/at-void chunks p) delay (tilt-delay (tilt-of st))]
-               (cond
-                 (stem? st) (inc (long tick))
-                 (and self? (leaf? st) delay) (+ (long tick) (long delay)))))
-   :due    (fn [chunks p _ctx]
-             (let [st (chunk/at-void chunks p)]
-               (cond
-                 (and (stem? st) (not (stem-supported? chunks p))) [[p (block/emptied st)]]
-                 (and (leaf? st) (next-tilt (tilt-of st))) [[p (tilted st (next-tilt (tilt-of st)))]])))})
+   :wake   wake
+   :due    due})

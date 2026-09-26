@@ -5,6 +5,7 @@
             [collider.game.block.tnt :as tnt]
             [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -252,8 +253,10 @@
     (reduce at-tick {} now)))
 
 (defn- change-deltas [world now changes]
-  (let [gone (destroyed world now changes)]
+  (let [gone (destroyed world now changes)
+        [changes dried] (edit/dried world changes)]
     (concat [[:set-blocks changes]]
+            dried
             (fizz-deltas world changes)
             (destroyed-effects gone)
             (destroyed-drops world gone)

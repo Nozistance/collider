@@ -28,9 +28,13 @@
 
 (def ^:private kelp-types #{:kelp :kelp-plant})
 
+(defn- kelp-base? [below]
+  (and (block/face-sturdy? below :up)
+       (not (block/tagged? (max 0 below) "cannot_support_kelp"))))
+
 (defn- kelp-supported? [below]
   (or (contains? kelp-types (block/type-of below))
-      (and (block/face-sturdy? below :up) (not (block/tagged? (max 0 below) "cannot_support_kelp")))))
+      (kelp-base? below)))
 
 (defn- seagrass-supported? [below]
   (and (not (neg? below))
@@ -94,7 +98,8 @@
     (block/tagged? below "cannot_support_snow_layer") false
     (block/tagged? below "support_override_snow_layer") true
     :else (or (block/collision-face-full-up? below)
-              (and (= :snow-layer (block/type-of below)) (= :8 (:layers (block/props-of below)))))))
+              (and (= :snow-layer (block/type-of below))
+                   (= :8 (:layers (block/props-of below)))))))
 
 (defn- holds-center-below? [below]
   (or (neg? below) (block/face-holds-center? below :up)))
@@ -119,17 +124,27 @@
       (attached-to? chunks pos (:facing props)))))
 
 (def ^:private vegetation-tags
-  {:dry-vegetation "supports_dry_vegetation" :short-dry-grass "supports_dry_vegetation"
-   :tall-dry-grass "supports_dry_vegetation"
-   :crop           "supports_crops" :carrot "supports_crops" :potato "supports_crops"
-   :beetroot       "supports_crops" :torchflower-crop "supports_crops"
-   :stem           "supports_stem_crops" :attached-stem "supports_stem_crops"
-   :bamboo-stalk   "supports_bamboo" :bamboo-sapling "supports_bamboo"
-   :nether-wart    "supports_nether_wart" :azalea "supports_azalea"
-   :wither-rose    "supports_wither_rose" :nether-sprouts "supports_nether_sprouts"})
+  {:dry-vegetation   "supports_dry_vegetation"
+   :short-dry-grass  "supports_dry_vegetation"
+   :tall-dry-grass   "supports_dry_vegetation"
+   :crop             "supports_crops"
+   :carrot           "supports_crops"
+   :potato           "supports_crops"
+   :beetroot         "supports_crops"
+   :torchflower-crop "supports_crops"
+   :stem             "supports_stem_crops"
+   :attached-stem    "supports_stem_crops"
+   :bamboo-stalk     "supports_bamboo"
+   :bamboo-sapling   "supports_bamboo"
+   :nether-wart      "supports_nether_wart"
+   :azalea           "supports_azalea"
+   :wither-rose      "supports_wither_rose"
+   :nether-sprouts   "supports_nether_sprouts"})
 
 (def ^:private halved-vegetation
-  {:pitcher-crop "supports_crops" :double-plant "supports_vegetation" :tall-flower "supports_vegetation"})
+  {:pitcher-crop "supports_crops"
+   :double-plant "supports_vegetation"
+   :tall-flower  "supports_vegetation"})
 
 (defn- halved-supported? [t st below]
   (if (= :upper (:half (block/props-of st)))
@@ -148,14 +163,19 @@
       (= :cactus-flower t) (cactus-flower-supported? below)
       :else (block/tagged? below tag))))
 
-(defn plant-age [tick pos]
-  (keyword (str (long (Math/floor (* 25.0 (random/of-key tick pos :plant-age)))))))
+(defn plant-age
+  "Returns the random age a growing plant takes when placed at pos."
+  [tick pos]
+  (let [r (random/of-key tick pos :plant-age)]
+    (keyword (str (long (Math/floor (* 25.0 r)))))))
 
 (defn- growing-plant-supported? [chunks pos st]
-  (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
+  (let [{:keys [head body dir]}
+        (block/growing-plant (block/type-of st))
         n (state-at chunks (mapv - pos (dir/offset dir)))]
     (and (not (neg? n))
-         (or (contains? #{head body} (block/block-of n)) (block/face-sturdy? n dir)))))
+         (or (contains? #{head body} (block/block-of n))
+             (block/face-sturdy? n dir)))))
 
 (declare vine-updated multiface-updated scaffold-distance attachable?)
 
@@ -171,16 +191,25 @@
   (let [n (state-at chunks attach-pos)]
     (and (not (neg? n))
          (if (= :wall-hanging-sign (block/type-of n))
-           (= (#{:north :south} (block/facing-of n)) (#{:north :south} (block/facing-of st)))
+           (= (#{:north :south} (block/facing-of n))
+              (#{:north :south} (block/facing-of st)))
            (block/face-sturdy? n attach-face)))))
 
 (defn- hanging-sign-held? [chunks pos st]
-  (let [f (block/facing-of st) cw (dir/clockwise f) ccw (dir/counter-clockwise f)]
-    (or (hanging-sign-attaches? chunks st (mapv + pos (dir/horizontal-offset cw)) ccw)
-        (hanging-sign-attaches? chunks st (mapv + pos (dir/horizontal-offset ccw)) cw))))
+  (let [f (block/facing-of st)
+        cw (dir/clockwise f)
+        ccw (dir/counter-clockwise f)
+        side (fn [d] (mapv + pos (dir/horizontal-offset d)))]
+    (or (hanging-sign-attaches? chunks st (side cw) ccw)
+        (hanging-sign-attaches? chunks st (side ccw) cw))))
+
+(defn- behind [pos st]
+  (->> (dir/opposite (block/facing-of st))
+       dir/horizontal-offset
+       (mapv + pos)))
 
 (defn- wall-attached? [chunks pos st]
-  (block/blocks-motion? (max 0 (state-at chunks (mapv + pos (dir/horizontal-offset (dir/opposite (block/facing-of st))))))))
+  (block/blocks-motion? (max 0 (state-at chunks (behind pos st)))))
 
 (defn- tall-seagrass-supported? [st below]
   (if (= :upper (:half (block/props-of st)))
@@ -189,7 +218,8 @@
 
 (defn- propagule-supported? [st below above]
   (if (= :true (:hanging (block/props-of st)))
-    (block/tagged? (max 0 above) "supports_hanging_mangrove_propagule")
+    (block/tagged? (max 0 above)
+                   "supports_hanging_mangrove_propagule")
     (block/tagged? (max 0 below) "supports_mangrove_propagule")))
 
 (defn- lantern-supported? [st below above]
@@ -199,23 +229,30 @@
 
 (defn- cluster-supported? [chunks pos st]
   (let [f (block/facing-of st)
-        n (state-at chunks (mapv + pos (dir/offset (dir/opposite f))))]
+        back (dir/offset (dir/opposite f))
+        n (state-at chunks (mapv + pos back))]
     (and (not (neg? n)) (block/face-sturdy? n f))))
 
 (defn- cocoa-supported? [chunks pos st]
-  (block/tagged? (max 0 (state-at chunks (mapv + pos (dir/horizontal-offset (block/facing-of st))))) "supports_cocoa"))
+  (let [off (dir/horizontal-offset (block/facing-of st))]
+    (block/tagged? (max 0 (state-at chunks (mapv + pos off)))
+                   "supports_cocoa")))
 
 (defn- farmland-supported? [above]
-  (or (not (block/blocks-motion? (max 0 above))) (block/tagged? (max 0 above) "maintains_farmland")))
+  (or (not (block/blocks-motion? (max 0 above)))
+      (block/tagged? (max 0 above) "maintains_farmland")))
 
 (defn- dirt-path-supported? [above]
-  (or (not (block/blocks-motion? (max 0 above))) (= :fence-gate (block/type-of (max 0 above)))))
+  (or (not (block/blocks-motion? (max 0 above)))
+      (= :fence-gate (block/type-of (max 0 above)))))
 
 (defn- crop-supported? [chunks pos st below]
-  (and (crop-lit? chunks pos) (vegetation-supported? (block/type-of st) st below)))
+  (and (crop-lit? chunks pos)
+       (vegetation-supported? (block/type-of st) st below)))
 
 (defn- pitcher-supported? [chunks pos st below]
-  (and (or (= :upper (:half (block/props-of st))) (crop-lit? chunks pos))
+  (and (or (= :upper (:half (block/props-of st)))
+           (crop-lit? chunks pos))
        (vegetation-supported? (block/type-of st) st below)))
 
 (defn- sturdy-face? [st dir]
@@ -352,9 +389,12 @@
   (into {} (for [[classes f] support-rules, k classes] [k f])))
 
 (defn- default-supported? [t st below]
-  (if (block/needs-support? st) (vegetation-supported? t st below) true))
+  (or (not (block/needs-support? st))
+      (vegetation-supported? t st below)))
 
-(defn supported? [chunks pos st]
+(defn supported?
+  "Returns true when the blocks around pos hold st where it stands."
+  [chunks pos st]
   (let [st (long st) t (block/type-of st)
         below (state-at chunks (mapv + pos [0 -1 0]))
         above (state-at chunks (mapv + pos [0 1 0]))]
@@ -374,35 +414,60 @@
                 [hanging standing])]
     (pick chunks pos order)))
 
-(defn- bell-fitted [chunks pos st {:keys [face yaw]}]
-  (let [self (block/block-of st) props (block/props-of st)
-        face (long face)
-        with (fn [attachment facing] (block/state self (assoc props :attachment attachment :facing facing)))]
-    (if (<= face 1)
-      (pick chunks pos [(with (if (= 0 face) :ceiling :floor) (dir/player-direction yaw))])
-      (let [facing (dir/opposite (dir/face-facing face))
-            axis (if (#{:north :south} facing) [:north :south] [:west :east])
-            double? (every? #(attached-to? chunks pos %) axis)
-            wall (with (if double? :double_wall :single_wall) facing)
-            below (state-at chunks (mapv + pos [0 -1 0]))
-            fallback (with (if (and (not (neg? below)) (block/face-sturdy? below :up)) :floor :ceiling) facing)]
-        (pick chunks pos [wall fallback])))))
+(defn- bell-at [st attachment facing]
+  (->> (assoc (block/props-of st)
+              :attachment attachment :facing facing)
+       (block/state (block/block-of st))))
 
-(defn gone-state ^long [^long st]
-  (if (#{:farmland :dirt-path} (block/type-of st)) (block/state :dirt) (block/emptied st)))
+(defn- bell-on-wall [chunks pos st facing]
+  (let [axis (if (#{:north :south} facing)
+               [:north :south]
+               [:west :east])
+        double? (every? #(attached-to? chunks pos %) axis)
+        below (state-at chunks (mapv + pos [0 -1 0]))
+        floor? (sturdy-face? below :up)]
+    [(bell-at st (if double? :double_wall :single_wall) facing)
+     (bell-at st (if floor? :floor :ceiling) facing)]))
+
+(defn- bell-fitted [chunks pos st {:keys [face yaw]}]
+  (let [face (long face)
+        on (if (= 0 face) :ceiling :floor)]
+    (if (<= face 1)
+      (pick chunks pos [(bell-at st on (dir/player-direction yaw))])
+      (->> (dir/opposite (dir/face-facing face))
+           (bell-on-wall chunks pos st)
+           (pick chunks pos)))))
+
+(defn gone-state
+  "Returns the state a block leaves when it loses its support."
+  ^long [^long st]
+  (if (#{:farmland :dirt-path} (block/type-of st))
+    (block/state :dirt)
+    (block/emptied st)))
+
+(defn- nearest-axes
+  [^double ps ^double pc ^double ys ^double yc]
+  (let [ax (if (pos? ys) :east :west)
+        ay (if (neg? ps) :up :down)
+        az (if (pos? yc) :south :north)
+        xy (Math/abs ys) ym (Math/abs ps) zy (Math/abs yc)
+        xm (* xy pc) zm (* zy pc)]
+    (cond
+      (> xy zy) (cond (> ym xm) [ay ax az]
+                      (> zm ym) [ax az ay]
+                      :else [ax ay az])
+      (> ym zm) [ay az ax]
+      (> xm ym) [az ax ay]
+      :else [az ay ax])))
 
 (defn look-order
   "Returns the six directions as a player sees them, nearest first.
   The player looks along yaw and pitch."
   [yaw pitch]
-  (let [p (Math/toRadians (double pitch)) y (Math/toRadians (- (double yaw)))
-        ps (Math/sin p) pc (Math/cos p) ys (Math/sin y) yc (Math/cos y)
-        ax (if (pos? ys) :east :west) ay (if (neg? ps) :up :down) az (if (pos? yc) :south :north)
-        xy (Math/abs ys) ym (Math/abs ps) zy (Math/abs yc)
-        xm (* xy pc) zm (* zy pc)
-        [a b c] (if (> xy zy)
-                  (cond (> ym xm) [ay ax az] (> zm ym) [ax az ay] :else [ax ay az])
-                  (cond (> ym zm) [ay az ax] (> xm ym) [az ax ay] :else [az ay ax]))]
+  (let [p (Math/toRadians (double pitch))
+        y (Math/toRadians (- (double yaw)))
+        [a b c] (nearest-axes (Math/sin p) (Math/cos p)
+                    (Math/sin y) (Math/cos y))]
     [a b c (dir/opposite c) (dir/opposite b) (dir/opposite a)]))
 
 (defn- horizontal-look-order [yaw]
@@ -412,13 +477,16 @@
   (let [n (state-at chunks (mapv + pos (dir/offset dir)))]
     (and (not (neg? n)) (block/face-sturdy? n (dir/opposite dir)))))
 
+(defn- hung-from-above? [chunks pos st dir]
+  (let [above (state-at chunks (mapv + pos [0 1 0]))]
+    (and (= (block/block-of above) (block/block-of st))
+         (= :true (get (block/props-of above) dir)))))
+
 (defn- vine-face-held? [chunks pos st dir]
   (and (not= :down dir)
        (or (attachable? chunks pos dir)
            (and (contains? dir/horizontal-offset dir)
-                (let [above (state-at chunks (mapv + pos [0 1 0]))]
-                  (and (= (block/block-of above) (block/block-of st))
-                       (= :true (get (block/props-of above) dir))))))))
+                (hung-from-above? chunks pos st dir)))))
 
 (defn- vine-face-kept [chunks pos st m dir]
   (if (= :true (get m dir))
@@ -426,7 +494,10 @@
       (assoc m dir (if held? :true :false)))
     m))
 
-(defn vine-updated ^long [chunks pos ^long st]
+(defn vine-updated
+  "Returns the vine st without the faces nothing holds, or 0 when no
+  face is left."
+  ^long [chunks pos ^long st]
   (let [step (fn [m dir] (vine-face-kept chunks pos st m dir))
         props' (reduce step (block/props-of st)
                        [:up :north :south :west :east])
@@ -438,53 +509,74 @@
     (assoc m dir :false)
     m))
 
-(defn multiface-updated ^long [chunks pos ^long st]
+(defn multiface-updated
+  "Returns st without the faces that lost the block they cover."
+  ^long [chunks pos ^long st]
   (let [step (fn [m dir] (multiface-face-kept chunks pos m dir))
         props' (reduce step (block/props-of st) block/face-props)
         st' (block/state (block/block-of st) props')]
     (if (seq (block/faces-of st')) st' (block/emptied st))))
 
-(defn scaffold-distance ^long [chunks [x y z :as pos]]
+(defn- scaffold? [st]
+  (= :scaffolding (block/type-of (max 0 st))))
+
+(defn- scaffold-nearer [chunks pos d dir]
+  (let [n (state-at chunks (mapv + pos (dir/horizontal-offset dir)))]
+    (if (scaffold? n)
+      (min (long d) (inc (block/prop-long n :distance)))
+      d)))
+
+(defn scaffold-distance
+  "Returns how many steps a scaffolding at pos is from a block that
+  holds it from below, 7 when none holds it."
+  ^long [chunks [x y z :as pos]]
   (let [below (state-at chunks [x (dec (long y)) z])
-        scaffold? (fn [st] (= :scaffolding (block/type-of (max 0 st))))
-        dist (fn [st] (block/prop-long st :distance))]
-    (if (and (not (neg? below)) (not (scaffold? below)) (block/face-sturdy? below :up))
+        start (if (scaffold? below)
+                (block/prop-long below :distance)
+                7)]
+    (if (and (sturdy-face? below :up) (not (scaffold? below)))
       0
-      (reduce (fn [d dir]
-                (let [n (state-at chunks (mapv + pos (dir/horizontal-offset dir)))]
-                  (if (scaffold? n) (min (long d) (inc (dist n))) d)))
-              (if (scaffold? below) (dist below) 7)
-              dir/horizontal))))
+      (reduce (fn [d dir] (scaffold-nearer chunks pos d dir))
+              start dir/horizontal))))
 
 (defn scaffold-state ^long [chunks pos ^long st]
   (let [d (scaffold-distance chunks pos)
         below (state-at chunks (mapv + pos [0 -1 0]))
-        on-scaffold? (= :scaffolding (block/type-of (max 0 below)))
+        on-scaffold? (scaffold? below)
         bottom (if (and (pos? d) (not on-scaffold?)) :true :false)
         props (assoc (block/props-of st)
                      :distance (keyword (str d))
                      :bottom bottom)]
     (block/state (block/block-of st) props)))
 
+(defn- bamboo-age [^long n] (:age (block/props-of n)))
+
+(defn- bamboo-on [below above]
+  (case (block/block-of (max 0 below))
+    :bamboo-sapling (block/state :bamboo {:age :0})
+    :bamboo (let [young? (= :0 (bamboo-age below))]
+              (block/state :bamboo {:age (if young? :0 :1)}))
+    (if (= :bamboo (block/block-of (max 0 above)))
+      (block/state :bamboo {:age (bamboo-age above)})
+      (block/state :bamboo-sapling))))
+
 (defn- bamboo-fitted [chunks pos _st _opts]
   (let [below (state-at chunks (mapv + pos [0 -1 0]))
         above (state-at chunks (mapv + pos [0 1 0]))
-        age (fn [^long n] (:age (block/props-of n)))]
-    (when (and (let [cur (max 0 (state-at chunks pos))]
-                 (nil? (block/liquid-class cur)))
+        cur (max 0 (state-at chunks pos))]
+    (when (and (nil? (block/liquid-class cur))
                (block/tagged? (max 0 below) "supports_bamboo"))
-      (case (block/block-of (max 0 below))
-        :bamboo-sapling (block/state :bamboo {:age :0})
-        :bamboo (block/state :bamboo {:age (if (= :0 (age below)) :0 :1)})
-        (if (= :bamboo (block/block-of (max 0 above)))
-          (block/state :bamboo {:age (age above)})
-          (block/state :bamboo-sapling))))))
+      (bamboo-on below above))))
 
 (defn- cocoa-fitted [chunks pos st {:keys [yaw]}]
   (let [self (block/block-of st) props (block/props-of st)
         facing (fn [dir]
                  (block/state self (assoc props :facing dir)))]
     (pick chunks pos (map facing (horizontal-look-order yaw)))))
+
+(defn- with-face ^long [^long st dir]
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) dir :true)))
 
 (defn- vine-fitted [chunks pos st {:keys [yaw pitch]}]
   (let [cur (state-at chunks pos)
@@ -494,7 +586,7 @@
                     (= :false (get (block/props-of base) dir))
                     (vine-face-held? chunks pos base dir)))]
     (if-let [dir (first (filter free (look-order yaw pitch)))]
-      (block/state (block/block-of base) (assoc (block/props-of base) dir :true))
+      (with-face base dir)
       (when (= base cur) cur))))
 
 (defn- multiface-fitted [chunks pos st {:keys [yaw pitch]}]
@@ -503,20 +595,27 @@
         base (cond same? cur
                    (water-source? (max 0 cur)) (block/with-water st)
                    :else st)
-        free (fn [dir] (and (= :false (get (block/props-of base) dir)) (attachable? chunks pos dir)))]
+        free (fn [dir]
+               (and (= :false (get (block/props-of base) dir))
+                    (attachable? chunks pos dir)))]
     (when-let [dir (first (filter free (look-order yaw pitch)))]
-      (block/state (block/block-of base) (assoc (block/props-of base) dir :true)))))
+      (with-face base dir))))
 
 (defn- rod-fitted [chunks pos st {:keys [face]}]
   (let [f (block/facing-of st)
         clicked (state-at chunks (mapv - pos (dir/face-offset face)))]
-    (if (and (= (block/block-of clicked) (block/block-of st)) (= f (block/facing-of clicked)))
-      (block/state (block/block-of st) (assoc (block/props-of st) :facing (dir/opposite f)))
+    (if (and (= (block/block-of clicked) (block/block-of st))
+             (= f (block/facing-of clicked)))
+      (->> (assoc (block/props-of st) :facing (dir/opposite f))
+           (block/state (block/block-of st)))
       st)))
 
 (defn- placement-order [yaw pitch face replacing?]
-  (let [order (look-order yaw pitch) first-dir (dir/opposite (dir/from-index face))]
-    (if replacing? order (into [first-dir] (remove #{first-dir}) order))))
+  (let [order (look-order yaw pitch)
+        first-dir (dir/opposite (dir/from-index face))]
+    (if replacing?
+      order
+      (into [first-dir] (remove #{first-dir}) order))))
 
 (defn- standing-or-wall [order standing wall-state]
   (first (for [dir order :when (not= :up dir)
@@ -534,7 +633,8 @@
   (let [wall (block/wall-block (block/block-of st))]
     (block/state wall {:facing (dir/opposite dir)})))
 
-(defn- standing-or-wall-fitted [chunks pos st {:keys [yaw pitch face replacing?]}]
+(defn- standing-or-wall-fitted
+  [chunks pos st {:keys [yaw pitch face replacing?]}]
   (let [order (placement-order yaw pitch face replacing?)
         on-wall (fn [dir] (wall-state-of st dir))
         held? (fn [dir] (supported? chunks pos (on-wall dir)))
@@ -546,14 +646,16 @@
   (let [q (mapv + pos (dir/horizontal-offset dir))]
     (not (block/can-be-replaced? (max 0 (state-at chunks q))))))
 
-(defn- skull-fitted [chunks pos st {:keys [yaw pitch face replacing?]}]
+(defn- skull-fitted
+  [chunks pos st {:keys [yaw pitch face replacing?]}]
   (let [order (placement-order yaw pitch face replacing?)
         on-wall (fn [dir] (wall-state-of st dir))
         free? (fn [dir] (skull-wall-free? chunks pos dir))]
     (standing-or-wall order st (first-wall order free? on-wall))))
 
 (defn- growing-plant-fitted [chunks pos st {:keys [tick]}]
-  (let [{:keys [head body dir]} (block/growing-plant (block/type-of st))
+  (let [{:keys [head body dir]}
+        (block/growing-plant (block/type-of st))
         n (max 0 (state-at chunks (mapv + pos (dir/offset dir))))
         st' (if (contains? #{head body} (block/block-of n))
               (block/state body)
@@ -671,17 +773,22 @@
 (def ^:private fits
   (into {} (for [[classes f] fit-rules, k classes] [k f])))
 
-(defn fitted [chunks pos st face yaw pitch sneaking? tick replacing?]
+(defn fitted
+  "Returns the state st takes when a player places it at pos, or nil
+  when it cannot stand there."
+  [chunks pos st face yaw pitch sneaking? tick replacing?]
   (if-let [f (fits (block/type-of st))]
     (f chunks pos st {:face face :yaw yaw :pitch pitch
                       :sneaking? sneaking? :tick tick
                       :replacing? replacing?})
-    (when (or (not (block/attached? st)) (supported? chunks pos st)) st)))
+    (when (or (not (block/attached? st))
+              (supported? chunks pos st))
+      st)))
 
 (def rule
   {:name   :support
    :match? (fn [_chunks st _p] (block/attached? st))
-   :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
+   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
    :due    (fn [chunks p _rules]
              (let [st (chunk/chunks-get-block chunks p)]
                (when-not (supported? chunks p st)
@@ -692,26 +799,33 @@
     (and (chunk/in-range? y')
          (block/free? (chunk/chunks-get-block chunks [x y' z])))))
 
+(defn- egg? [st] (= :dragon-egg (block/type-of st)))
+
 (defn- place-delay ^long [chunks p]
-  (if (= :dragon-egg (block/type-of (chunk/chunks-get-block chunks p)))
+  (if (egg? (chunk/chunks-get-block chunks p))
     (dragonegg/delay-after-place)
     2))
 
 (def falling-rule
   {:name   :falling
-   :match? (fn [_chunks st _p] (and (block/falls? st) (not= :scaffolding (block/type-of st))))
-   :wake   (fn [chunks tick p _old _self?] (+ (long tick) (place-delay chunks p)))
+   :match? (fn [_chunks st _p]
+             (and (block/falls? st) (not (scaffold? st))))
+   :wake   (fn [chunks _dim tick p _old _self?]
+             (+ (long tick) (place-delay chunks p)))
    :due    (fn [chunks p _ctx]
-             (when (free-below? chunks p)
-               [[p (block/emptied (chunk/chunks-get-block chunks p))]]))})
+             (let [st (chunk/chunks-get-block chunks p)]
+               (when (free-below? chunks p)
+                 [[p (block/emptied st)]])))})
+
+(defn- scaffold-due [chunks p _ctx]
+  (let [st (chunk/chunks-get-block chunks p)
+        st' (scaffold-state chunks p st)]
+    (cond
+      (= :7 (:distance (block/props-of st'))) [[p (block/emptied st)]]
+      (not= st' st) [[p st']])))
 
 (def scaffold-rule
   {:name   :scaffold
    :match? (fn [_chunks st _p] (= :scaffolding (block/type-of st)))
-   :wake   (fn [_chunks tick _p _old _self?] (inc (long tick)))
-   :due    (fn [chunks p _ctx]
-             (let [st (chunk/chunks-get-block chunks p)
-                   st' (scaffold-state chunks p st)]
-               (cond
-                 (= :7 (:distance (block/props-of st'))) [[p (block/emptied st)]]
-                 (not= st' st) [[p st']])))})
+   :wake   (fn [_chunks _dim tick _p _old _self?] (inc (long tick)))
+   :due    scaffold-due})

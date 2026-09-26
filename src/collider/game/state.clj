@@ -218,10 +218,10 @@
     (chunk/chunks-get-block chunks p)
     0))
 
-(defn- wake-tick [chunks tick p old self?]
+(defn- wake-tick [chunks dim tick p old self?]
   (let [st (block-or-zero chunks p)]
     (when-not (zero? st)
-      (rules/wake-tick chunks st tick p old self?))))
+      (rules/wake-tick chunks dim st tick p old self?))))
 
 (defn- shifted [[x y z] [dx dy dz]]
   [(+ (long x) (long dx))
@@ -233,17 +233,17 @@
           (fnil conj (i/int-set))
           (chunk/block-pos->id p)))
 
-(defn- schedule-around [bt tick floor chunks [pos old _]]
+(defn- schedule-around [bt tick floor chunks dim [pos old _]]
   (reduce
     (fn [bt d]
       (let [p (shifted pos d)
-            at (wake-tick chunks tick p old (= [0 0 0] d))]
+            at (wake-tick chunks dim tick p old (= [0 0 0] d))]
         (if at (schedule-at bt at floor p) bt)))
     bt
     around))
 
-(defn- schedule-updates [bt tick floor chunks changed]
-  (reduce #(schedule-around %1 tick floor chunks %2) bt changed))
+(defn- schedule-updates [bt tick floor chunks dim changed]
+  (reduce #(schedule-around %1 tick floor chunks dim %2) bt changed))
 
 (defn- kind-changed? [old st]
   (and (be/kind old)
@@ -297,7 +297,9 @@
   (let [tick (:tick w)
         next-tick (inc (long tick))
         [chunks' events] (with-derived w tick real)
-        sched #(schedule-updates % base next-tick chunks' real)]
+        dim (:dim w)
+        sched #(schedule-updates
+                 % base next-tick chunks' dim real)]
     (cond-> (-> w
                 (assoc :chunks chunks')
                 (drop-block-entities real)

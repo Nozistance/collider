@@ -537,7 +537,8 @@
   (if (< (eye-height height) 0.4) 0.0 jump-threshold))
 
 (defn- fluid-of [world e half height]
-  (liquid/fluid-info (:chunks world) (:pos e) half height (:vel e)))
+  (liquid/fluid-info (:chunks world) (:pos e) half height (:vel e)
+                     (:dim world)))
 
 (defn- in-fluid? [{:keys [water lava]}]
   (or (pos? (double water)) (pos? (double lava))))

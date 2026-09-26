@@ -10,7 +10,8 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.env.attribute :as attribute]))
 
 (set! *warn-on-reflection* true)
 
@@ -44,20 +45,39 @@
 (defn- hold-deltas [world pos cur]
   (edit/change-deltas world [[pos (edit/with-water cur true)]]))
 
+(defn- fizz-pitch ^double [world pos]
+  (let [roll #(random/of-key (:tick world) pos %)]
+    (+ 2.6 (* (- (double (roll :fizz-a)) (double (roll :fizz-b)))
+              0.8))))
+
+(defn- evaporated
+  "Returns the hiss of water poured where it evaporates.
+  The pourer sees the smoke on its own."
+  [world eid pos]
+  (let [snd (out/sound :generic/extinguish-fire pos 0.5
+                       (fizz-pitch world pos))]
+    [(out/except eid snd)]))
+
+(defn- settled [world pos state cur replace? holds?]
+  (cond
+    (and (block/water? state) (campfire/drowned cur))
+    (drown-deltas world pos cur)
+    holds? (hold-deltas world pos cur)
+    :else (concat (break-drops world pos cur replace?)
+                  (edit/change-deltas world [[pos state]]))))
+
 (defn- pour-deltas [world eid pos state relative]
-  (let [cur (edit/block-at world pos) water? (block/water? state)
+  (let [cur (edit/block-at world pos)
+        water? (block/water? state)
         replace? (may-replace? cur)
-        holds? (and water? (edit/waterloggable? cur))
-        fx (splash eid pos water?)]
+        holds? (and water? (edit/waterloggable? cur))]
     (cond
       (not (pourable? world eid cur relative replace? holds?))
       (when relative (pour-deltas world eid relative state nil))
-      (and water? (campfire/drowned cur))
-      (concat (drown-deltas world pos cur) fx)
-      holds? (concat (hold-deltas world pos cur) fx)
-      :else (concat (break-drops world pos cur replace?)
-                    (edit/change-deltas world [[pos state]])
-                    fx))))
+      (and water? (attribute/water-evaporates? (:dim world)))
+      (evaporated world eid pos)
+      :else (concat (settled world pos state cur replace? holds?)
+                    (splash eid pos water?)))))
 
 (defn- into-hit? [hit state]
   (and (contains? (block/props-of hit) :waterlogged)

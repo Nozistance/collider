@@ -21,15 +21,15 @@
     0))
 
 (def ^:private neighborhood
-  (vec (for [dy [-1 0 1] [dx dz] [[1 0] [-1 0] [0 1] [0 -1]]] [dx dy dz])))
+  (vec (for [dy [-1 0 1] [dx dz] [[1 0] [-1 0] [0 1] [0 -1]]]
+         [dx dy dz])))
 
 (defn grass-neighbor? [chunks [x y z]]
   (boolean
     (some (fn [[dx dy dz]]
-            (= (grass-state)
-               (block-or-zero chunks [(+ (long x) (long dx))
-                                      (+ (long y) (long dy))
-                                      (+ (long z) (long dz))])))
+            (let [q [(+ (long x) (long dx)) (+ (long y) (long dy))
+                     (+ (long z) (long dz))]]
+              (= (grass-state) (block-or-zero chunks q))))
           neighborhood)))
 
 (defn regrowable-dirt? [chunks p]
@@ -41,9 +41,10 @@
 (def rule
   {:name   :grass
    :match? (fn [_chunks st _p] (= (dirt-state) st))
-   :wake   (fn [chunks tick p _old _self?]
+   :wake   (fn [chunks _dim tick p _old _self?]
              (when (regrowable-dirt? chunks p)
-               (+ (long tick) 1200 (mod (long (hash [p tick])) 2400))))
+               (+ (long tick) 1200
+                  (mod (long (hash [p tick])) 2400))))
    :due    (fn [chunks p _rules]
              (when (regrowable-dirt? chunks p) [[p (grass-state)]]))})
 
@@ -53,4 +54,5 @@
       (and (= :snow-layer (block/type-of a))
            (= :1 (:layers (block/props-of a)))) true
       (and (block/liquid? a) (block/source-state? a)) false
-      :else (< (block/light-dampening-into st a :up (block/dampening a)) 15))))
+      :else (let [d (block/dampening a)]
+              (< (block/light-dampening-into st a :up d) 15)))))

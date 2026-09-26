@@ -217,7 +217,7 @@
 (defn- fire-delay ^long [tick p]
   (+ (long tick) 30 (mod (long (hash [p tick])) 10)))
 
-(defn- wake-at [chunks tick p _old _self?]
+(defn- wake-at [chunks _dim tick p _old _self?]
   (if (support/supported? chunks p (chunk/chunks-get-block chunks p))
     (fire-delay tick p)
     (inc (long tick))))

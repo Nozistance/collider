@@ -27,7 +27,7 @@
 (def rule
   {:name   :lectern
    :match? (fn [_chunks st _p] (lectern? st))
-   :wake   (fn [_chunks _tick _p _old _self?] nil)
+   :wake   (fn [_chunks _dim _tick _p _old _self?] nil)
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
                (when (and (lectern? st) (powered? st))

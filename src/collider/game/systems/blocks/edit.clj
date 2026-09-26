@@ -3,12 +3,14 @@
   (:require [collider.data :as data]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.env.attribute :as attribute]))
 
 (set! *warn-on-reflection* true)
 
@@ -108,28 +110,51 @@
   (cond-> [(own-change world eid pos)]
           pos' (conj (own-change world eid pos'))))
 
+(def ^:const ^:private sponge-dries 2009)
+
+(defn- drying? [world [_ st]]
+  (and (= :wet-sponge (block/block-of (long st)))
+       (attribute/water-evaporates? (:dim world))))
+
+(defn- dried-fx [world [pos _]]
+  (let [roll (random/of-key (:tick world) pos :sponge-dries)
+        pitch (* (+ 1.0 (* (double roll) 0.2)) 0.7)]
+    [(out/all (out/level-event sponge-dries pos 0))
+     (out/all (out/sound :wet-sponge/dries pos 1.0 pitch))]))
+
+(defn dried
+  "Returns the changes with each wet sponge dried where water
+  evaporates, and the effects of its drying."
+  [world changes]
+  (let [dry? #(drying? world %)
+        sponge (block/state :sponge)]
+    [(mapv (fn [[pos :as c]] (if (dry? c) [pos sponge] c)) changes)
+     (into [] (comp (filter dry?) (mapcat #(dried-fx world %)))
+           changes)]))
+
 (defn change-deltas
   "Returns the deltas for the changes.
   It also covers the changes they cause in the blocks
   around them."
   [world changes]
-  (let [chunks' (chunk/chunks-set-blocks (:chunks world) changes)
+  (let [[changes fx] (dried world changes)
+        chunks' (chunk/chunks-set-blocks (:chunks world) changes)
         derived (connect/derived-changes
                   chunks' (map first changes) (:tick world))
         all (into (vec changes) derived)
         chunks'' (chunk/chunks-set-blocks chunks' all)
         mixed (liquid/mix-changes chunks'' (map first all))]
-    (into [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
-          (map (fn [[p _]] (out/all (out/fizz p))))
-          mixed)))
+    (-> [[:set-blocks (into all mixed) (dec (long (:tick world)))]]
+        (into (map (fn [[p _]] (out/all (out/fizz p)))) mixed)
+        (into fx))))
 
 (defn placed-deltas
   "Returns the deltas of a player placing blocks, with the place
   sound for everyone else."
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
-   (let [[pos state] (first changes)
-         deltas (change-deltas world changes)
+   (let [deltas (change-deltas world changes)
+         [[pos state]] (first (dried world changes))
          placed (block/block-of state)
          sound (out/sound (data/place-sound placed) pos 1.0 0.8)]
      (conj deltas (out/except eid sound)))))

@@ -322,6 +322,7 @@
    :fire/ignite                   [:item.flintandsteel.use 4]
    :firecharge/use                [:item.firecharge.use 4]
    :generic/extinguish-fire       [:entity.generic.extinguish-fire 4]
+   :wet-sponge/dries              [:block.wet-sponge.dries 4]
    :generic/burn                  [:entity.generic.burn 8]
    :explosion                     [:entity.generic.explode 4]
    :splash                        [:entity.generic.splash 6]

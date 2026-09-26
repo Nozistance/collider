@@ -194,8 +194,9 @@
 (defn- fluid-at [chunks pos kind]
   (liquid/fluid-height chunks pos item-half item-height kind))
 
-(defn- item-drift [chunks pos vel]
-  (let [push (liquid/entity-push chunks pos item-half item-height vel)
+(defn- item-drift [chunks dim pos vel]
+  (let [push (liquid/entity-push
+               chunks pos item-half item-height vel dim)
         pushed (v/+ vel push)
         water (fluid-at chunks pos :water)
         lava (fluid-at chunks pos :lava)]
@@ -231,9 +232,9 @@
          (<= (+ (* vx vx) (* vz vz)) resting-speed-sq)
          (not= 0 (rem (+ age eid) resting-period)))))
 
-(defn- settled [chunks e ^long eid ^long age]
+(defn- settled [chunks dim e eid age]
   (let [pos (:pos e)
-        [drift in-fluid?] (item-drift chunks pos (:vel e))
+        [drift in-fluid?] (item-drift chunks dim pos (:vel e))
         stuck (:stuck e)
         rest? (resting? e drift age eid)
         push (if stuck (mapv * drift stuck) drift)
@@ -263,7 +264,7 @@
 
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
-        s (settled (:chunks world) e (long eid) age)
+        s (settled (:chunks world) (:dim world) e (long eid) age)
         stuck' (:stuck s)
         delay' (delay-left e)]
     (if (gone? world e age)

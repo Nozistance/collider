@@ -33,7 +33,8 @@
             lectern/rule])
 
 (defn- find-rule [st]
-  (reduce (fn [_ r] (when ((:match? r) nil st nil) (reduced r))) nil rules))
+  (reduce (fn [_ r] (when ((:match? r) nil st nil) (reduced r)))
+          nil rules))
 
 (def ^:private by-state
   (delay (object-array (data/block-state-count))))
@@ -50,10 +51,10 @@
   "Returns the deltas the rule owning pos makes on a change.
   The change is at pos or beside it. Returns nil when no rule
   owns pos. old is the state before the change. self? is true
-  when the change was at pos itself."
-  [chunks st tick pos old self?]
+  when the change was at pos itself. dim names the dimension."
+  [chunks dim st tick pos old self?]
   (when-let [r (rule-for st)]
-    ((:wake r) chunks tick pos old self?)))
+    ((:wake r) chunks dim tick pos old self?)))
 
 (defn again-tick
   "Returns the next tick the rule owning pos wants.
@@ -64,6 +65,8 @@
     (when-let [f (:again r)]
       (f chunks tick pos))))
 
-(defn cell-changes [chunks st pos ctx]
+(defn cell-changes
+  "Returns the changes the rule owning pos makes on its tick."
+  [chunks st pos ctx]
   (when-let [r (rule-for st)]
     ((:due r) chunks pos ctx)))

@@ -12,6 +12,7 @@
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.support :as support]
+            [collider.world.env.attribute :as attribute]
             [collider.world.env.weather :as weather]
             [collider.world.feature :as feature]))
 
@@ -94,10 +95,13 @@
   (long (light/block-light-at chunks (p 0) (p 1) (p 2))))
 
 (defn ice-tick
-  "Returns the water that ice at p melts into in bright light."
-  [chunks p st _roll _time _ctx]
+  "Returns the water that ice at p melts into in bright light.
+  Where water evaporates, the ice leaves air."
+  [chunks p st _roll _time ctx]
   (when (> (block-light chunks p) (- 11 (block/dampening st)))
-    [[p (block/state :water)]]))
+    (if (attribute/water-evaporates? (:dim ctx))
+      [[p 0]]
+      [[p (block/state :water)]])))
 
 (defn snow-tick
   "Returns the change that melts snow at p in bright light."
