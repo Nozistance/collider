@@ -378,12 +378,30 @@
       (and (empty? (boxes src)) (empty? (boxes tgt))) true
       :else (faces-open? src tgt d))))
 
+(def ^:private holder-types
+  #{:kelp :kelp-plant :seagrass :tall-seagrass})
+
+(def ^:private refusing-types (conj holder-types :barrier))
+
+(def ^:private slab-types #{:slab :weathering-copper-slab})
+
+(def ^:private flowing {:water :flowing-water :lava :flowing-lava})
+
+(defn- fluid-type [cls v] (if (= :source v) cls (flowing cls)))
+
 (defn- container? [st]
   (let [st (long st)]
     (and (pos? st)
          (or (contains? (block/props-of st) :waterlogged)
-             (contains? block/water-holder-types
-                        (block/type-of st))))))
+             (contains? holder-types (block/type-of st))))))
+
+(defn- places? [fluid st]
+  (let [st (long st)
+        t (block/type-of st)]
+    (and (= :water fluid)
+         (not (contains? refusing-types t))
+         (not (and (contains? slab-types t)
+                   (= :double (:type (block/props-of st))))))))
 
 (defn- holds-any-fluid? [st]
   (let [st (long st)]
@@ -393,13 +411,11 @@
       (blocks-movement? st) false
       :else (not (contains? no-fluid-types (block/type-of st))))))
 
-(defn- holds-specific? [cls st]
-  (if (container? st)
-    (and (= :water cls) (not (block/waterlogged? (long st))))
-    true))
+(defn- holds-specific? [fluid st]
+  (if (container? st) (places? fluid st) true))
 
-(defn- can-hold? [cls st]
-  (and (holds-any-fluid? st) (holds-specific? cls st)))
+(defn- can-hold? [fluid st]
+  (and (holds-any-fluid? st) (holds-specific? fluid st)))
 
 (defn- replaceable-with? [tgt cls d]
   (case (liquid-class tgt)
@@ -426,7 +442,8 @@
   (let [raw (raw-by env p [0 0 0])
         braw (raw-by env p [0 -1 0])]
     (and (pass-wall? raw braw [0 -1 0])
-         (or (same? cls (state-of braw)) (can-hold? cls braw)))))
+         (or (same? cls (state-of braw))
+             (can-hold? (flowing cls) braw)))))
 
 (defn- horizontal-source-scan [{:keys [cls] :as env} raw p]
   (reduce (fn [[h s] d]
@@ -466,7 +483,7 @@
 
 (defn- passable? [cls raw traw d]
   (and (can-maybe-pass? cls raw traw (state-of traw) d)
-       (holds-specific? cls traw)))
+       (holds-specific? (flowing cls) traw)))
 
 (defn- blocked? [{:keys [cls] :as env} raw tp d]
   (not (passable? cls raw (raw-by env tp [0 0 0]) d)))
@@ -578,7 +595,7 @@
         t (state-of traw)
         v (and (can-maybe-pass? cls raw traw t d)
                (new-liquid env tp))]
-    (when (and v (holds-specific? cls traw))
+    (when (and v (holds-specific? (fluid-type cls v) traw))
       {:tp tp :t t :v v
        :dist (if (hole? env tp)
                0
@@ -635,7 +652,7 @@
     (when (can-maybe-pass? cls raw braw b [0 -1 0])
       (when-let [v (new-liquid env bp)]
         (when (and (replaceable-with? b cls [0 -1 0])
-                   (holds-specific? cls braw))
+                   (holds-specific? (fluid-type cls v) braw))
           (let [down (vec (spread-to env bp [0 -1 0] v))
                 env (over-with env down)]
             (into down
