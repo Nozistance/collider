@@ -108,7 +108,7 @@
 
 (def ^:private spawn-info
   "The fields every join and respawn repeats about the world entered."
-  [[:dimension-type wire/holder-ref]
+  [[:dimension-type wire/varint]
    [:dimension wire/id]
    [:seed {:optional true} [:= {:wire wire/long} 0]]
    [:gamemode {:optional true} [:= {:wire wire/byte} 1]]
@@ -150,7 +150,7 @@
   (bit-or (bit-shift-left (long state) 12) (long at)))
 
 (defn- write-item-ref! [^Buf buf i]
-  (c/write-holder-ref buf (data/registry-id "item" i)))
+  (c/write-varint buf (data/registry-id "item" i)))
 
 (defn- write-latency-entry! [^Buf buf {:keys [uuid ping]}]
   (c/write-uuid buf uuid)
