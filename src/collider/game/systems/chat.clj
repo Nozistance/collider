@@ -848,13 +848,20 @@
       :weather-rain (weather-deltas world eid :rain given)
       :weather-thunder (weather-deltas world eid :thunder given))))
 
+(defn- reload-deltas
+  "ReloadCommand: the report comes at once, the reread at the
+  edge."
+  [_world eid _args]
+  (cons (out/to eid (out/reload))
+        (say eid "commands.reload.success")))
+
 (def ^:private commands
   {:tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
    :tp-targets-to tp-targets-to-deltas :give give-deltas
    :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
-   :fill fill-deltas})
+   :fill fill-deltas :reload reload-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
   (if-let [f (commands op)]
@@ -972,9 +979,34 @@
     :tab-complete (tab-deltas world eid text target id)
     nil))
 
+(defn- distance-fx
+  "Returns the effect telling everyone the distance k of config
+  new, when it differs from the one of config old."
+  [old new k fx]
+  (let [n (get new k)]
+    (when (not= (get old k) n) [(out/everyone (fx n))])))
+
+(defn- config-loaded
+  "Returns the deltas that apply the world keys m of a reread
+  config, and what the players learn of it."
+  [world m]
+  (let [old (:config world)]
+    (concat [[:set-config (merge old m)]
+             (out/everyone (out/reloaded))]
+            (distance-fx old m :view-distance out/view-distance)
+            (distance-fx old m :simulation-distance
+              out/simulation-distance))))
+
+(defn- config-event-deltas [world [tag eid m]]
+  (case tag
+    :config-loaded (config-loaded world m)
+    :config-failed (fail eid "commands.reload.failure")
+    nil))
+
 (defn- one-deltas [world ev]
   (vec (concat (event-deltas world ev)
-               (rules-event-deltas world ev))))
+               (rules-event-deltas world ev)
+               (config-event-deltas world ev))))
 
 (defn- chat-deltas [world events]
   (state/fold-events world events one-deltas))

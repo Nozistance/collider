@@ -22,7 +22,8 @@
            (java.net BindException ServerSocket)
            (java.util.concurrent
              ConcurrentLinkedQueue Executors
-             ScheduledExecutorService ThreadFactory TimeUnit))
+             ScheduledExecutorService ScheduledFuture ThreadFactory
+             TimeUnit))
   (:gen-class))
 
 (set! *warn-on-reflection* true)
@@ -68,13 +69,69 @@
   (reify ThreadFactory
     (newThread [_ r] (saver-thread r))))
 
-(defn- saver-scheduler
-  ^ScheduledExecutorService [save! ^long period-ms]
-  (let [pool (Executors/newSingleThreadScheduledExecutor
-               (saver-factory))]
-    (.scheduleWithFixedDelay
-      pool ^Runnable save! period-ms period-ms TimeUnit/MILLISECONDS)
-    pool))
+(defn- autosave!
+  "Schedules the next save of saving the period of its settings
+  from now. A period of 0 schedules none."
+  [{:keys [^ScheduledExecutorService pool settings save! pending]
+    :as saving}]
+  (let [ms (long (:save-period-ms @settings))
+        run #(try (save!) (finally (autosave! saving)))
+        unit TimeUnit/MILLISECONDS]
+    (when (pos? ms)
+      (reset! pending (.schedule pool ^Runnable run ms unit)))))
+
+(defn- reschedule!
+  "Drops the save saving has scheduled and schedules the next one
+  by the period its settings hold now."
+  [{:keys [^ScheduledExecutorService pool pending] :as saving}]
+  (let [cancel #(some-> ^ScheduledFuture @pending (.cancel false))]
+    (.execute pool ^Runnable #(do (cancel) (autosave! saving)))))
+
+(defn- start-saving [save! settings]
+  (doto {:pool     (Executors/newSingleThreadScheduledExecutor
+                     (saver-factory))
+         :settings settings :save! save! :pending (atom nil)}
+    autosave!))
+
+(defn- restart-warning [old ks]
+  (log/warn "config.edn:" (str/join ", " (map pr-str ks))
+            "take a restart, keeping"
+            (pr-str (select-keys old ks))))
+
+(defn- reload-failure [e]
+  (let [{:keys [what why]} (ex-data e)]
+    (log/warn "reload failed:" (or what (ex-message e)))
+    (doseq [line why] (log/warn " " line))))
+
+(defn- applied!
+  "Puts the settings r of a reread in place and returns the event
+  that brings their world keys to the tick of player eid."
+  [{:keys [settings on-change]} r eid]
+  (let [old @settings
+        s (:settings r)]
+    (when-let [ks (seq (:restart r))] (restart-warning old ks))
+    (reset! settings s)
+    (on-change old s)
+    [:config-loaded eid (select-keys s config/world-keys)]))
+
+(defn- reloaded!
+  "Rereads the config for the reload player eid asked for. The
+  outcome goes to queue as an event for the tick; a bad file
+  leaves the settings as they were."
+  [{:keys [settings overlay path ^ConcurrentLinkedQueue queue]
+    :as edge} eid]
+  (let [reread #(config/reload @settings path overlay)]
+    (.offer queue
+            (try (applied! edge (reread) eid)
+                 (catch Exception e
+                   (reload-failure e)
+                   [:config-failed eid])))))
+
+(defn- reload-io! [reload ^Deltas deltas]
+  (doseq [m (deltas/out-of deltas)
+          :when (identical? :reload (:msg m))]
+    (Thread/startVirtualThread
+      ^Runnable #(reloaded! reload (:to m)))))
 
 (defn- shutdown-hook! [server]
   (let [t (Thread. ^Runnable #(shutdown! server) "collider-shutdown")]
@@ -101,9 +158,8 @@
               :commit)))
 
 (defn- world-config [cfg store]
-  (let [ks [:view-distance :simulation-distance :max-players :motd]]
-    (assoc (select-keys cfg ks)
-           :unload-chunks? (some? store) :commit (build-commit))))
+  (assoc (select-keys cfg config/world-keys)
+         :unload-chunks? (some? store) :commit (build-commit)))
 
 (defn- open-world [opts]
   (let [cfg (merge (config/load-config) opts)
@@ -114,15 +170,16 @@
         saver (when store (snapshot/start-saver))
         save! (when saver
                 #(snapshot/request-save! saver store @world))]
-    {:cfg cfg :store store :saved saved :world world :saver saver
-     :save! save!}))
+    {:settings (atom cfg) :opts opts :store store :saved saved
+     :world world :saver saver :save! save!}))
 
-(defn- open-net [{:keys [cfg world save!]}]
+(defn- open-net [{:keys [settings world save!]}]
   (let [queue (ConcurrentLinkedQueue.)
         conns (atom {})
-        io {:queue queue :conns conns :cfg cfg :save! save!
+        io {:queue queue :conns conns :settings settings :save! save!
             :world world :on-packet session/handle-packet}
-        {:keys [socket accept]} (server/listen! io (:port cfg))]
+        port (:port @settings)
+        {:keys [socket accept]} (server/listen! io port)]
     {:queue queue :conns conns :socket socket :accept accept}))
 
 (defn- reader [{:keys [saver store]}]
@@ -134,21 +191,34 @@
     #(hash-map :writable (server/writable-eids conns)
                :read-chunk read)))
 
-(defn- ticker-opts [base conns cfg save!]
+(defn- ticker-opts [base conns]
   {:io-input (io-input base conns)
-   :pause-when-empty-seconds (:pause-when-empty-seconds cfg)
-   :on-pause save!})
+   :settings (:settings base)
+   :on-pause (:save! base)})
+
+(defn- period-change [saving]
+  (fn [old new]
+    (when (and saving
+               (not= (:save-period-ms old) (:save-period-ms new)))
+      (reschedule! saving))))
+
+(defn- reload-edge [base queue saving]
+  {:settings  (:settings base) :overlay (:opts base)
+   :path      "config.edn" :queue queue
+   :on-change (period-change saving)})
 
 (defn- start-clocks [base {:keys [queue conns]}]
-  (let [{:keys [cfg world saver save!]} base
+  (let [{:keys [settings world saver save!]} base
+        saving (when saver (start-saving save! settings))
+        reload (reload-edge base queue saving)
         out! (fn [w d]
                (when saver (chunk-io! base queue d))
+               (reload-io! reload d)
                (deliver! conns w d))
-        opts (ticker-opts base conns cfg save!)
+        opts (ticker-opts base conns)
         ticker (tick/start-ticker! world queue out! opts)]
     {:ticker    ticker :tick-stats (:stats ticker)
-     :scheduler (when saver
-                  (saver-scheduler save! (:save-period-ms cfg)))}))
+     :scheduler (:pool saving)}))
 
 (defn- gc-name []
   (let [beans (ManagementFactory/getGarbageCollectorMXBeans)
@@ -191,7 +261,7 @@
 (defn- listen [base]
   (try (open-net base)
        (catch BindException _
-         (throw (port-taken (:port (:cfg base)))))))
+         (throw (port-taken (:port @(:settings base)))))))
 
 (defn start
   "Starts the server on the configured port and returns its handle."

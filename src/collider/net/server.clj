@@ -244,16 +244,21 @@
            (Thread/sleep 100))
          nil)))
 
+(defn- connection-limit
+  "Returns the connections io lets in at once, as its settings
+  hold it now."
+  ^long [io]
+  (let [s (some-> (:settings io) deref)]
+    (long (:max-connections s default-max-connections))))
+
 (defn- accept-loop [^ServerSocket srv io ^AtomicInteger live]
-  (let [cfg (:cfg io)
-        limit (long (:max-connections cfg default-max-connections))]
-    (loop []
-      (when-not (.isClosed srv)
-        (when-let [sock (accept-one srv)]
-          (.setTcpNoDelay ^Socket sock true)
-          (.setSoTimeout ^Socket sock read-timeout-ms)
-          (admit! sock live limit io))
-        (recur)))))
+  (loop []
+    (when-not (.isClosed srv)
+      (when-let [sock (accept-one srv)]
+        (.setTcpNoDelay ^Socket sock true)
+        (.setSoTimeout ^Socket sock read-timeout-ms)
+        (admit! sock live (connection-limit io) io))
+      (recur))))
 
 (defn listen!
   "Opens the port and starts accepting connections on it."

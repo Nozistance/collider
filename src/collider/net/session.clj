@@ -33,10 +33,11 @@
 (defn- login-kick-packet [reason]
   {:packet :login-disconnect :json (json/write-str reason)})
 
-(defn- status-body [{:keys [conns cfg]}]
-  {:version     {:name c/game-version :protocol c/protocol-version}
-   :players     {:max (:max-players cfg) :online (count @conns)}
-   :description {:text (:motd cfg)}})
+(defn- status-body [{:keys [conns settings]}]
+  (let [s @settings]
+    {:version     {:name c/game-version :protocol c/protocol-version}
+     :players     {:max (:max-players s) :online (count @conns)}
+     :description {:text (:motd s)}}))
 
 (def ^:private known-pack ["minecraft" "core" c/game-version])
 
@@ -300,13 +301,13 @@
   (start-configuration! conn))
 
 (defn- dispatch!
-  [conn {:keys [^ConcurrentLinkedQueue queue cfg] :as io} m]
+  [conn {:keys [^ConcurrentLinkedQueue queue settings] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
     [:handshake :intention] (intention! conn m)
     [:status :status-request] (server/send! conn (status-response io))
     [:status :ping-request] (last-pong! conn m)
     [:play :ping-request] (server/send! conn (pong m))
-    [:login :hello] (hello! conn io cfg m)
+    [:login :hello] (hello! conn io @settings m)
     [:login :login-acknowledged] (login-acknowledged! conn)
     [:configuration :client-information]
     (server/put! conn :settings (client-settings m))

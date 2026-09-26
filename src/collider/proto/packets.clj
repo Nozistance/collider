@@ -208,6 +208,21 @@
    {:schema [:map [:json [wire/string {:max 262144}]]]
     :write :wire}})
 
+(def ^:private tags-packet
+  {:schema [:map
+            [:tags [:map-of Id [:map-of Id [:sequential :keyword]]]]]
+   :write (fn [^Buf buf m]
+            (let [tags (:tags m)]
+              (c/write-varint buf (count tags))
+              (doseq [[registry ts] tags]
+                (c/write-id buf registry)
+                (c/write-varint buf (count ts))
+                (doseq [[tag entries] ts]
+                  (c/write-id buf tag)
+                  (let [ids (tag-entry-ids registry entries)]
+                    (c/write-varint buf (count ids))
+                    (run! #(c/write-varint buf %) ids))))))})
+
 (def ^:private configuration-packets
   {[:configuration :client-information]
    {:schema ClientInformation
@@ -227,21 +242,7 @@
    {:schema [:map [:registry wire/id]
              [:names [:sequential [wire/bare wire/id]]]]
     :write :wire}
-   [:configuration :update-tags]
-   {:schema [:map
-             [:tags [:map-of Id
-                     [:map-of Id [:sequential :keyword]]]]]
-    :write (fn [^Buf buf m]
-             (let [tags (:tags m)]
-               (c/write-varint buf (count tags))
-               (doseq [[registry ts] tags]
-                 (c/write-id buf registry)
-                 (c/write-varint buf (count ts))
-                 (doseq [[tag entries] ts]
-                   (c/write-id buf tag)
-                   (let [ids (tag-entry-ids registry entries)]
-                     (c/write-varint buf (count ids))
-                     (doseq [id ids] (c/write-varint buf id)))))))}
+   [:configuration :update-tags] tags-packet
    [:configuration :finish-configuration]
    {:schema [:map]
     :write :wire}
@@ -362,6 +363,13 @@
    [:play :set-chunk-cache-center]
    {:schema [:map [:cx wire/varint] [:cz wire/varint]]
     :write :wire}
+   [:play :set-chunk-cache-radius]
+   {:schema [:map [:radius wire/varint]]
+    :write :wire}
+   [:play :set-simulation-distance]
+   {:schema [:map [:distance wire/varint]]
+    :write :wire}
+   [:play :update-tags] tags-packet
    [:play :level-chunk-with-light]
    {:schema [:map [:cx :int] [:cz :int] [:chunk :any]
              [:block-entities {:optional true} [:maybe :any]]

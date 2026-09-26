@@ -284,8 +284,16 @@
     (inc n)
     0))
 
+(defn- pause-seconds
+  "Returns the seconds without players before the world pauses.
+  They come from the :settings of opts when it has them, read anew
+  each time, or else from opts."
+  ^long [opts]
+  (let [src (if-let [s (:settings opts)] @s opts)]
+    (long (or (:pause-when-empty-seconds src) 0))))
+
 (defn- paused? [opts ^long n]
-  (let [s (long (or (:pause-when-empty-seconds opts) 0))]
+  (let [s (pause-seconds opts)]
     (when (and (pos? s) (= n (* 20 s)))
       (log/info "no players for" s "s, world paused"
                 "until someone joins")

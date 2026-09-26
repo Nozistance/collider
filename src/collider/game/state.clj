@@ -1127,6 +1127,7 @@
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
    :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))
    :set-rule (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
+   :set-config (fn [w [_ m]] (assoc w :config m))
    :set-world-spawn world-spawn-set
    :add-chunk (fn [w [_ id c]] (chunk-added w id c))
    :chunk-requested (fn [w [_ id]] (chunk-requested w id))

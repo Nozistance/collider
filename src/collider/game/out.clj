@@ -117,6 +117,22 @@
 (defn game-rules [rules]
   {:msg :game-rules :rules rules})
 
+(defn reload
+  "Returns the request that the server reread its config."
+  []
+  {:msg :reload})
+
+(defn reloaded
+  "Returns the effect of a finished reload: the data a reload
+  resends to the players."
+  []
+  {:msg :reloaded})
+
+(defn view-distance [n] {:msg :view-distance :distance n})
+
+(defn simulation-distance [n]
+  {:msg :simulation-distance :distance n})
+
 (defn overlay
   "Returns the effect that shows a message above the hotbar."
   [text]

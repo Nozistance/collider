@@ -47,6 +47,8 @@
    [:cat :int]
    :set-rule
    [:cat :keyword :any]
+   :set-config
+   [:cat :map]
    :set-world-spawn
    [:cat :keyword Pos [:tuple number? number?]]
    :add-chunk
@@ -167,6 +169,10 @@
    :overlay           [[:text Text]]
    :stats             [[:stats :map]]
    :game-rules        [[:rules :map]]
+   :reload            []
+   :reloaded          []
+   :view-distance     [[:distance :int]]
+   :simulation-distance [[:distance :int]]
    :tab-add           [[:entries [:sequential :map]]]
    :tab-remove        [[:uuids [:sequential :uuid]]]
    :tab-latency       [[:entries [:sequential :map]]]

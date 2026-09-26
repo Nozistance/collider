@@ -100,7 +100,8 @@
     (-> (pos-args :x1 :y1 :z1 {:node "from"})
         (into (pos-args :x2 :y2 :z2 {:node "to"}))
         (conj [:block [:block {}]]))
-    [:world :fill]]])
+    [:world :fill]]
+   [:reload "reread config.edn" [] [:world :reload]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 

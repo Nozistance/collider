@@ -653,6 +653,12 @@
 (defn- sign-editor-packet [m]
   {:packet :open-sign-editor :pos (:pos m) :front? (:front? m)})
 
+(defn- reloaded-packets
+  "PlayerList.reloadResources: the tags, then the recipes."
+  []
+  [{:packet :update-tags :tags (data/tags)}
+   (assoc (data/recipes) :packet :update-recipes)])
+
 (def ^:private world-fx
   {:rain-started   (fn [_ _] [(game-event-packet 1 0.0)])
    :rain-stopped   (fn [_ _] [(game-event-packet 2 0.0)])
@@ -680,7 +686,15 @@
    :particles      (fn [_ m] [(particles-packet m)])
    :explosion      (fn [_ _] nil)
    :load-chunk     (fn [_ _] nil)
-   :store-chunk    (fn [_ _] nil)})
+   :store-chunk    (fn [_ _] nil)
+   :reload         (fn [_ _] nil)
+   :reloaded       (fn [_ _] (reloaded-packets))
+   :view-distance  (fn [_ m]
+                     [{:packet :set-chunk-cache-radius
+                       :radius (:distance m)}])
+   :simulation-distance
+   (fn [_ m]
+     [{:packet :set-simulation-distance :distance (:distance m)}])})
 
 (defn- open-screen-packet [m]
   {:packet :open-screen :container (:container m)
@@ -867,7 +881,7 @@
 (def ^:private everyone
   #{:time :rain-started :rain-stopped :player-chat :system-chat
     :tab-add :tab-remove :tab-latency :tab-header :default-spawn
-    :game-rules})
+    :game-rules :reloaded :view-distance :simulation-distance})
 
 (defn- sight-of
   "Returns what a render call needs of world.

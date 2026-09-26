@@ -57,8 +57,26 @@
           (when (.exists (io/file (str path)))
             (checked path (edn/read-string (slurp (str path))))))))
 
+(def world-keys
+  "The settings the world value holds, read by the tick."
+  [:view-distance :simulation-distance :max-players :motd])
+
+(def ^:private fixed-keys [:port :save-dir])
+
+(defn reload
+  "Returns the settings of path laid under overlay, as :settings.
+  The keys a running server cannot change keep their current
+  values; the ones the file changes are named as :restart. Throws
+  as load-config does when the file is bad."
+  [current path overlay]
+  (let [fresh (merge (load-config path) overlay)]
+    {:settings (merge fresh (select-keys current fixed-keys))
+     :restart  (filterv #(not= (current %) (fresh %)) fixed-keys)}))
+
+(defn- entry [[k v]] (str (pr-str k) " " (pr-str v)))
+
 (defn- render ^String [m]
-  (str "{" (str/join "\n " (map (fn [[k v]] (str (pr-str k) " " (pr-str v))) m)) "}\n"))
+  (str "{" (str/join "\n " (map entry m)) "}\n"))
 
 (defn write-default!
   "Writes the default settings to path.
@@ -72,5 +90,6 @@
          (spit f (render defaults))
          true
          (catch Exception e
-           (log/warn "could not write" (.getPath f) "-" (.getMessage e))
+           (log/warn "could not write" (.getPath f)
+                     "-" (.getMessage e))
            false))))))
