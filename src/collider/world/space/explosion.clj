@@ -4,10 +4,8 @@
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.space.explosion.region])
-  (:import (collider.java Rays)
-           (collider.world.space.explosion.region Region)))
+            [collider.world.chunk :as chunk])
+  (:import (collider.java Rays Region)))
 
 (set! *warn-on-reflection* true)
 
@@ -17,7 +15,7 @@
 
 (defn- rg-cols ^objects [^Region rg] (.cols rg))
 
-(defn- rg-read [^Region rg] (.read-absent rg))
+(defn- rg-read [^Region rg] (.readAbsent rg))
 
 (defn- rg-loaded ^clojure.lang.Atom [^Region rg] (.loaded rg))
 
@@ -86,7 +84,8 @@
    (let [[cx0 cz0 sy0 ncx ncz nsy] (region-bounds pos)
          n (* (long ncx) (long ncz))
          rg (Region. (object-array (* n (long nsy))) (object-array n)
-                     cx0 cz0 sy0 ncx ncz nsy read-absent
+                     (int cx0) (int cz0) (int sy0)
+                     (int ncx) (int ncz) (int nsy) read-absent
                      (atom {}))]
      (fill-grid rg chunks)
      rg)))

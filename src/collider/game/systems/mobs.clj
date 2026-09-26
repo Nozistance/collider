@@ -22,7 +22,7 @@
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
   (:import (collider.game.entity.records Mob)
-           (collider.world.phys.motion Move)))
+           (collider.java Move)))
 
 (set! *warn-on-reflection* true)
 

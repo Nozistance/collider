@@ -1,9 +1,7 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
-  (:require [collider.vec :as v]
-            [collider.world.chunk.batch])
-  (:import (collider.java Buf Chunk ChunkIndex Section)
-           (collider.world.chunk.batch Batch Edits)
+  (:require [collider.vec :as v])
+  (:import (collider.java Batch Buf Chunk ChunkIndex Section)
            (java.io DataInput DataOutput)
            (java.util HashMap)))
 
@@ -299,14 +297,14 @@
   ^long [chunks [_ y _ :as p]]
   (if (in-range? y) (chunks-get-block chunks p) -1))
 
-(defn- add-edit! [^Edits e ^long i ^long state] (.add e i state))
+(defn- add-edit! [^Batch e ^long i ^long state] (.add e i state))
 
-(defn- edited ^Section [^Edits e ^Section s] (.applyTo e s))
+(defn- edited ^Section [^Batch e ^Section s] (.applyTo e s))
 
-(defn- edits-of ^Edits [^HashMap cache cp si]
+(defn- edits-of ^Batch [^HashMap cache cp si]
   (let [k [cp si]]
     (or (.get cache k)
-        (let [e (Batch. (int-array 8) (int-array 8) 0)]
+        (let [e (Batch.)]
           (.put cache k e)
           e))))
 

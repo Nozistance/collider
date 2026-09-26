@@ -2,10 +2,8 @@
   "Collision of moving bodies with the blocks of the world."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.phys.motion])
-  (:import (collider.java Phys Section)
-           (collider.world.phys.motion Move Sweep)))
+            [collider.world.chunk :as chunk])
+  (:import (collider.java Move Phys Section Sweep V3)))
 
 (set! *warn-on-reflection* true)
 
@@ -56,19 +54,19 @@
 
 (defn pos
   "Returns the position a move ends at."
-  [^Move m] (.pos m))
+  ^V3 [^Move m] (.pos m))
 
 (defn vel
   "Returns the velocity a move leaves the body with."
-  [^Move m] (.vel m))
+  ^V3 [^Move m] (.vel m))
 
 (defn on-ground?
   "Returns true when a move ends on the ground."
   {:inline (fn [m]
-             (let [t 'collider.world.phys.motion.Move]
-               `(.on-ground ~(with-meta m {:tag t}))))}
+             (let [t 'collider.java.Move]
+               `(.onGround ~(with-meta m {:tag t}))))}
   [^Move m]
-  (.on-ground m))
+  (.onGround m))
 
 (defn- lo-bound ^long [^double c ^double v]
   (long (Math/floor (- (+ c (min 0.0 v)) eps))))

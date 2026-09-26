@@ -4,9 +4,8 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
-            [collider.game.mob.push.cell]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob.push.cell PushCell)))
+  (:import (collider.java PushCell)))
 
 (set! *warn-on-reflection* true)
 
