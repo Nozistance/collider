@@ -7,10 +7,10 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
-            [collider.game.systems.players.types
+            [collider.game.systems.players.track
              :refer [->Frame ->Track]]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.systems.players.types Frame Track)
+  (:import (collider.game.systems.players.track Frame Track)
            (java.util ArrayList Locale)))
 
 (set! *warn-on-reflection* true)

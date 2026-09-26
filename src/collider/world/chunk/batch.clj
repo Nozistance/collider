@@ -1,4 +1,4 @@
-(ns collider.world.chunk.types
+(ns collider.world.chunk.batch
   "The buffer that gathers the block edits of one section."
   (:import (java.util Arrays)))
 

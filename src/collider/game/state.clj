@@ -25,7 +25,7 @@
             [collider.world.space.spawn :as spawn]
             [collider.world.env.weather :as weather])
   (:import (clojure.lang MapEntry)
-           (collider.game.deltas.types Deltas)
+           (collider.game.deltas.record Deltas)
            (java.nio.charset StandardCharsets)
            (java.util UUID)))
 

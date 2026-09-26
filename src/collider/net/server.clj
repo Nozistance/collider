@@ -2,12 +2,12 @@
   "Serving the players who connect."
   (:require [clojure.string :as str]
             [collider.log :as log]
-            [collider.net.server.types :as types]
+            [collider.net.server.conn :as types]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
   (:import (collider.java Buf)
-           (collider.net.server.types Conn)
+           (collider.net.server.conn Conn)
            (java.io BufferedInputStream BufferedOutputStream
                     EOFException)
            (java.net ServerSocket Socket SocketException

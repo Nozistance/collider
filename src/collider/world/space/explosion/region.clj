@@ -1,4 +1,4 @@
-(ns collider.world.space.explosion.types
+(ns collider.world.space.explosion.region
   "The blocks an explosion may reach, read once.")
 
 (deftype Region [^objects grid ^objects cols ^long cx0 ^long cz0

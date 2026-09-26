@@ -1,4 +1,4 @@
-(ns collider.net.server.types
+(ns collider.net.server.conn
   "A connection of a player."
   (:import (java.net Socket)
            (java.util.concurrent BlockingQueue)

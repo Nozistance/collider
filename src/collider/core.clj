@@ -16,7 +16,7 @@
             [collider.net.session :as session]
             [collider.persist.snapshot :as snapshot])
   (:import (clojure.lang ExceptionInfo)
-           (collider.game.deltas.types Deltas)
+           (collider.game.deltas.record Deltas)
            (java.lang.management
              GarbageCollectorMXBean ManagementFactory)
            (java.net BindException ServerSocket URL)

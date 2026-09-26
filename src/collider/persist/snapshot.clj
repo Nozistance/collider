@@ -8,7 +8,7 @@
             [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.log :as log]
-            [collider.persist.snapshot.types :as types
+            [collider.persist.snapshot.store :as types
              :refer [Store put-chunk! get-chunk put-meta! load
                      flush!]]
             [collider.world.chunk :as chunk]
@@ -17,7 +17,7 @@
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.java Chunk)
-           (collider.persist.snapshot.types FileStore)
+           (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption)
            (java.nio.file OpenOption Path StandardCopyOption)

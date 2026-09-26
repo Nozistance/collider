@@ -1,9 +1,9 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
   (:require [collider.vec :as v]
-            [collider.world.chunk.types])
+            [collider.world.chunk.batch])
   (:import (collider.java Buf Chunk ChunkIndex Section)
-           (collider.world.chunk.types Batch Edits)
+           (collider.world.chunk.batch Batch Edits)
            (java.io DataInput DataOutput)
            (java.util HashMap)))
 

@@ -4,7 +4,7 @@
             [collider.game.state :as state]
             [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
-            [collider.game.deltas.types :as types]
+            [collider.game.deltas.record :as types]
             [collider.game.detector :as detector]
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
@@ -38,7 +38,7 @@
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.weather :as weather-system]
             [collider.game.systems.damage :as damage])
-  (:import (collider.game.deltas.types Deltas)
+  (:import (collider.game.deltas.record Deltas)
            (java.util Arrays)
            (java.util.concurrent ConcurrentLinkedQueue)
            (java.util.concurrent.atomic AtomicBoolean AtomicLong)))

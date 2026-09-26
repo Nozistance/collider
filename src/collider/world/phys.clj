@@ -3,9 +3,9 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.phys.types])
+            [collider.world.phys.motion])
   (:import (collider.java Phys Section)
-           (collider.world.phys.types Move Sweep)))
+           (collider.world.phys.motion Move Sweep)))
 
 (set! *warn-on-reflection* true)
 
@@ -65,7 +65,7 @@
 (defn on-ground?
   "Returns true when a move ends on the ground."
   {:inline (fn [m]
-             (let [t 'collider.world.phys.types.Move]
+             (let [t 'collider.world.phys.motion.Move]
                `(.on-ground ~(with-meta m {:tag t}))))}
   [^Move m]
   (.on-ground m))

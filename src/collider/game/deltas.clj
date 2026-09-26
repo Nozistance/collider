@@ -5,8 +5,8 @@
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
             [collider.game.delta :as delta]
-            [collider.game.deltas.types :refer [->Deltas]])
-  (:import (collider.game.deltas.types Deltas)))
+            [collider.game.deltas.record :refer [->Deltas]])
+  (:import (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
 

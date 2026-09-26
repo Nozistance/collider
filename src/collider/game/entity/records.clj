@@ -1,4 +1,4 @@
-(ns collider.game.entity.types
+(ns collider.game.entity.records
   "Entity records. Only the types live here, so a reload of the
   entity logic keeps the classes of the live entities.")
 

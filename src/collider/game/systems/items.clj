@@ -13,7 +13,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
-  (:import (collider.world.phys.types Move)))
+  (:import (collider.world.phys.motion Move)))
 
 (set! *warn-on-reflection* true)
 

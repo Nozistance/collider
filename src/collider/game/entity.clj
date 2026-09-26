@@ -1,6 +1,6 @@
 (ns collider.game.entity
   "Entity constructors, saving and loading."
-  (:require [collider.game.entity.types :as types]
+  (:require [collider.game.entity.records :as types]
             [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
