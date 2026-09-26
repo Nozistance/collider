@@ -70,7 +70,8 @@
     [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
 
 (defn dropped
-  "Returns the item entity a player throws out of hand."
+  "Returns the item entity a player throws out of hand. With
+  randomly? the item flies in a random direction."
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [e (get-in world [:entities thrower])
@@ -82,7 +83,10 @@
                (throw-velocity world thrower salt))]
      (entity/item at vel stack throw-pickup-delay))))
 
-(defn thrown-deltas [world eid stacks]
+(defn thrown-deltas
+  "Returns the deltas of player eid throwing the stacks, with the
+  stats of each throw."
+  [world eid stacks]
   (mapcat (fn [i s]
             [[:spawn-entity (dropped world eid s false i)]
              [:award eid (keyword "dropped" (name (:item s)))
@@ -128,8 +132,9 @@
     {:stack s}))
 
 (defn- drop-of
-  "handlePlayerAction drops nothing of a spectator; the creative
-  inventory throws only for a player with infinite materials."
+  "Returns the stack that a drop event throws and the slot change
+  it makes. A spectator drops nothing. The creative inventory
+  throws only for a player in creative."
   [world [tag eid a b]]
   (when-let [e (get-in world [:entities eid])]
     (case tag
@@ -363,7 +368,7 @@
   (if (crossed? from to) moved-rate resting-rate))
 
 (defn- merge-ready?
-  "Whether the item may take part in a merge at all."
+  "Returns true when the item may take part in a merge."
   [[_ e]]
   (when e
     (let [s (:stack e)]
@@ -373,7 +378,7 @@
               (long (data/max-stack (:item s))))))))
 
 (defn- merge-due?
-  "Whether this tick is one of the item's own merge ticks."
+  "Returns true when this tick is a merge tick of the item."
   [[_ e from]]
   (zero? (rem (long (or (:age e) 0))
               (merge-rate from (:pos e)))))
@@ -454,10 +459,10 @@
 
 (defn filled-result-deltas
   "Returns the deltas of the container in hand turning into stack.
-  The last container of a stack becomes the filled item in the
-  hand, the rest of it keeps its place. In creative the container
-  stays and the result is added only when the player holds none
-  already, unless always? asks for it anyway."
+  The last container becomes the filled item in the hand. From a
+  larger stack the filled item goes to the inventory. In creative
+  the container stays, and the filled item goes to the inventory
+  only when the player holds none or always? is true."
   ([world eid stack]
    (filled-result-deltas world eid stack false :main))
   ([world eid stack always?]
@@ -486,9 +491,9 @@
       [[:set-slot eid (state/hand-slot e hand) made]])))
 
 (defn use-item-deltas
-  "Returns the deltas of a player using one item from hand.
-  The remainder of an item that leaves one, an empty bucket for
-  milk, takes the hand or falls into the inventory."
+  "Returns the deltas of a player using one item from hand. Some
+  items leave a remainder, such as an empty bucket after milk. The
+  remainder takes the hand or goes to the inventory."
   [world eid e hand]
   (let [stack (state/hand-stack e hand)
         left (get-in (data/items) [(:item stack) :use-remainder])]
@@ -502,9 +507,9 @@
      (out/all fx) (out/to eid fx)]))
 
 (defn hurt-item-deltas
-  "Returns the deltas of wearing the item in hand by n points.
-  An item worn past its last point breaks and leaves the hand;
-  a player with infinite materials wears nothing out."
+  "Returns the deltas of wearing the item in hand by n points. An
+  item worn past its last point breaks and leaves the hand. A
+  player with infinite materials wears nothing out."
   [eid e hand ^long n]
   (let [stack (state/hand-stack e hand)
         most (long (get-in stack [:components :max-damage] 0))
@@ -545,10 +550,7 @@
         [out taken] (reduce take [out taken (:inventory pe)] ready)]
     [out taken]))
 
-(defn- takers
-  "The players that take items up: Player.aiStep leaves out
-  spectators."
-  [world]
+(defn- takers [world]
   (remove #(game-mode/spectator? (val %))
           (state/player-entries world)))
 

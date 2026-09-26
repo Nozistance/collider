@@ -41,8 +41,8 @@
 (def ^:private ^:const reach-buffer 3.0)
 
 (defn- in-reach?
-  "Tells whether the mob's box is within the player's entity reach,
-  measured from the eye and with the buffer a click may have."
+  "Returns true when the mob box is within the entity reach of p.
+  The reach starts at the eye and allows a slack for the click."
   [p e]
   (let [[half height] (mobs/box-of e)
         [ex ey ez] (reach/eye-pos p)
@@ -55,8 +55,8 @@
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
 
 (defn- ctx-of
-  "Returns what an interact event gives its handlers, nil when the
-  click reaches nothing: no mob, or one too far away."
+  "Returns what an interact event gives its handlers. Returns nil
+  when the click hits no mob or a mob out of reach."
   [world t [_ peid target hand sneaking?]]
   (let [p (get-in world [:entities peid])
         e (get-in world [:entities target])
@@ -68,19 +68,20 @@
            :hand hand :item (sense/in-hand p hand)})))))
 
 (defn- name-tag-result
-  "The place of the name tag in the chain; naming waits for its own
-  ticket and lets every other handler have the click."
+  "Returns nil, so the click goes on to the next handler. Name
+  tags do not name mobs yet."
   [_ctx]
   nil)
 
 (defn- leash-result
-  "The place of the lead in the chain; it waits for its own ticket."
+  "Returns nil, so the click goes on to the next handler. Leads
+  do not attach yet."
   [_ctx]
   nil)
 
 (defn- equippable-result
-  "The place of wearable items in the chain; saddles and armour wait
-  for their own ticket."
+  "Returns nil, so the click goes on to the next handler. Mobs do
+  not wear saddles or armour yet."
   [_ctx]
   nil)
 
@@ -100,9 +101,9 @@
    species-result sheep/dye-result equippable-result])
 
 (defn- answered
-  "Returns the deltas the whole chain leaves behind. A result that
-  takes the click is heard as a game event, and the server swings
-  the arm for the player when the client will not."
+  "Returns the deltas that the chain leaves. A result that takes
+  the click sends a game event. The server swings the arm of the
+  player when the client does not."
   [{:keys [peid p e hand t]} {:keys [result deltas]}]
   (cond-> (vec deltas)
     (not= :pass result)
@@ -110,15 +111,13 @@
     (= :success-server result)
     (into (state/swing-deltas peid p hand t true))))
 
-(defn- spectating?
-  "Player.interactOn: a spectator's click on a mob passes."
-  [world ev]
+(defn- spectating? [world ev]
   (game-mode/spectator? (get-in world [:entities (nth ev 1)])))
 
 (defn- interact
-  "Returns the deltas of one player click on a mob. The handlers run
-  in a fixed order and the first one that does not pass has the
-  click; one out of reach is dropped without a word."
+  "Returns the deltas of one player click on a mob. The handlers
+  run in a fixed order. The first handler that does not pass takes
+  the click. A click out of reach does nothing."
   [world ev t]
   (if-let [ctx (when-not (spectating? world ev) (ctx-of world t ev))]
     (answered ctx (or (some (fn [f] (f ctx)) chain) {:result :pass}))
@@ -145,8 +144,7 @@
         (int (bit-and (long (+ (* a sin-scale) 16384.0)) 65535))))
 
 (defn- fmul
-  "The product of two floats. The double product of two floats is
-  exact, so rounding it is the float product itself."
+  "Returns the product of two floats as a float."
   ^double [^double a ^double b] (double (float (* a b))))
 
 (defn- fsub ^double [^double a ^double b] (double (float (- a b))))
@@ -156,13 +154,13 @@
 (def ^:private ^:const deg->rad (double (float (/ Math/PI 180.0))))
 
 (defn- yaw-radians
-  "The yaw in radians, rounded the way a float yaw rounds it."
+  "Returns the yaw in radians with float precision."
   ^double [^double yaw]
   (double (float (* (double (float yaw)) deg->rad))))
 
 (defn- modified-friction
-  "The friction a plain mob feels underfoot. It is not the identity:
-  the two float steps shift the value."
+  "Returns the friction that a plain mob feels on a block of
+  friction f. The result is not always f."
   ^double [^double f]
   (Math/clamp (fsub 1.0 (fsub 1.0 f)) 0.0 1.0))
 
@@ -199,8 +197,8 @@
 (def ^:private ^:const max-up-step 0.6)
 
 (defn- motion-table
-  "The factor k names for every block state, each of them a float
-  widened again, as the value is written out in decimal."
+  "Returns the factor that key k names for every block state, or
+  default. Each factor has float precision."
   ^doubles [k ^double default]
   (let [a (double-array (data/block-state-count) default)]
     (doseq [[_ b] (data/blocks)
@@ -223,8 +221,8 @@
   (if (< -1 st (alength a)) (aget a st) (aget a 0)))
 
 (defn- below-state
-  "The block whose motion the mob feels: under the block it rests
-  on, not under its feet."
+  "Returns the block state whose motion the mob feels. It is below
+  the mob in the column of sup, the block the mob rests on."
   ^long [world pos sup]
   (let [y (long (Math/floor (- (v/y pos) below-offset)))]
     (if sup
@@ -238,14 +236,14 @@
                   (long (Math/floor (v/z pos)))))
 
 (defn- below-friction
-  "The friction of the block that carries the mob."
+  "Returns the friction of the block that carries the mob."
   ^double [world pos sup]
   (modified-friction
     (factor-of @frictions (below-state world pos sup))))
 
 (defn- speed-factor
-  "The block the mob stands in slows it, or the one below it when
-  the one it stands in is an ordinary block."
+  "Returns the speed factor of the block the mob stands in. When
+  that block is ordinary, returns the factor of the block below."
   ^double [world pos sup]
   (let [^doubles a @speed-factors
         st (feet-state world pos)
@@ -256,7 +254,8 @@
       (factor-of a (below-state world pos sup)))))
 
 (defn- jump-factor
-  "Honey underfoot or around shortens a jump."
+  "Returns the jump factor of the block the mob stands in. When
+  that block has none, returns the factor of the block below."
   ^double [world pos sup]
   (let [^doubles a @jump-factors
         here (factor-of a (feet-state world pos))]
@@ -293,8 +292,8 @@
        (let [op (:pitch e)] (and op (== (double op) hp)))))
 
 (defn- looked
-  "The mob with its head turned toward what it watches. It turns
-  with the other controls, before the mob travels."
+  "Returns the mob with its head turned toward what it watches.
+  The head turns before the mob travels."
   [world e height t]
   (let [look (active-look e (long t))
         [dyaw dpitch] (look-angles world e height look)
@@ -313,8 +312,8 @@
   (if (< (Math/abs a) 0.003) 0.0 a))
 
 (defn- at-rest?
-  "Whether the tick would leave the mob exactly where it stands:
-  no drive, no fluid, no push, whole blocks under its feet."
+  "Returns true when the tick leaves the mob where it stands. Such
+  a mob has no drive, fluid or push and stands on whole blocks."
   [world e half moving? fluid? vel]
   (let [pos (:pos e)
         x (v/x pos) y (v/y pos) z (v/z pos)
@@ -333,8 +332,8 @@
 (defn- speed-of ^double [e] (double (:speed (:move e) 0.0)))
 
 (defn- driven
-  "The velocity with the drive of the mob added. The yaw turns the
-  drive, and a drive past one is cut back to one."
+  "Returns vel with the drive of the mob added. The drive points
+  along the yaw. A drive stronger than one counts as one."
   [e vel ^double speed]
   (let [zza (double (:zza (:move e) 0.0))
         l (* zza zza)]
@@ -347,9 +346,8 @@
               (+ (v/z vel) (* f (mth-cos r))))))))
 
 (defn- friction-speed
-  "What block friction leaves of the drive. Plain ground is
-  slippery enough to take the branch, and a body in the air has a
-  speed of its own."
+  "Returns the drive speed that the block friction bf leaves. A
+  body in the air has a fixed speed of its own."
   ^double [og? ^double bf ^double speed]
   (if og?
     (if (> bf 0.6)
@@ -358,12 +356,12 @@
     flying-speed))
 
 (defn- hit-wall?
-  "Whether the blocks stopped the body sideways."
+  "Returns true when the blocks stop the body sideways."
   [drive vel]
   (or (not= (v/x drive) (v/x vel)) (not= (v/z drive) (v/z vel))))
 
 (defn- fluid-fall
-  "The slow sink of a body left to itself in a fluid."
+  "Returns the vertical speed of a body that sinks in a fluid."
   ^double [^double g falling? ^double vy]
   (if (zero? g)
     vy
@@ -373,14 +371,14 @@
       (- vy (/ g 16.0)))))
 
 (defn- stepped
-  "The move of a body with the step height of a walking mob."
+  "Returns the move of a body that climbs steps like a walking mob."
   ^Move [world pos vel half height]
   (phys/move (:chunks world) pos vel half height max-up-step))
 
 (defn- supported
-  "The block the box now rests on and whether nothing at all stood
-  under it. A move that found nothing looks again where the box
-  came from."
+  "Returns the block the box rests on after the move, and true
+  when no block is under the box. When the move finds nothing, it
+  looks again where the box came from."
   [world e ^Move mv half]
   (if-not (phys/on-ground? mv)
     [nil false]
@@ -398,15 +396,15 @@
                 (v/x vel) up (v/z vel))))
 
 (defn- jumped-out
-  "A body against a wall with room above it climbs out of the
-  fluid."
+  "Returns the velocity of a body that may climb out of a fluid.
+  Only a body against a wall with room above it climbs."
   [world pos vel half height oy hit?]
   (if (and hit? (climb-free? world pos vel half height oy))
     (v/v3 (v/x vel) out-of-fluid (v/z vel))
     vel))
 
 (defn- travel-air
-  "One tick of drive, step, gravity and friction out of any fluid."
+  "Returns one tick of travel of a body out of any fluid."
   [world e vel half height og?]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
         d (driven e vel (friction-speed og? bf (speed-of e)))
@@ -422,7 +420,7 @@
      (phys/on-ground? mv) sup nb?]))
 
 (defn- travel-water
-  "One tick of the slow drive, step, slowdown and sink in water."
+  "Returns one tick of travel of a body in water."
   [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         d (driven e vel fluid-drive)
@@ -438,8 +436,8 @@
      (phys/on-ground? mv) sup nb?]))
 
 (defn- lava-slowed
-  "The slowdown of lava: a shallow pool holds a body the way water
-  does, a deep one halves every axis."
+  "Returns the velocity x y z slowed by lava. Lava halves the speed
+  sideways. A shallow pool slows the fall as water does."
   [x y z falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
     (if shallow?
@@ -447,7 +445,7 @@
       (v/v3 x (* y 0.5) z))))
 
 (defn- travel-lava
-  "One tick of the slow drive, the step and the sink in lava."
+  "Returns one tick of travel of a body in lava."
   [world e vel half height shallow?]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         d (driven e vel fluid-drive)
@@ -463,8 +461,8 @@
      (phys/on-ground? mv) sup nb?]))
 
 (defn- travelled
-  "The branch the fluids around the mob pick. Water wins over lava
-  when the mob stands in both."
+  "Returns one tick of travel in the fluid around the mob. Water
+  wins over lava when the mob stands in both."
   [world e vel half height og? {:keys [water lava threshold]}]
   (cond (pos? (double water)) (travel-water world e vel half height)
         (pos? (double lava))
@@ -473,19 +471,20 @@
         :else (travel-air world e vel half height og?)))
 
 (defn- jump-power
-  "The jump of 0.42, shortened by the block under the mob."
+  "Returns the jump power that the block under the mob allows."
   ^double [world pos sup]
   (fmul jump-strength (jump-factor world pos sup)))
 
 (defn- jump-off
-  "The push up that never slows a rising body."
+  "Returns vel with a push up of p. The push never slows a body
+  that rises faster."
   [vel ^double p]
   (if (<= p min-jump)
     vel
     (v/v3 (v/x vel) (Math/max p (v/y vel)) (v/z vel))))
 
 (defn- fluid-jumped
-  "The nudge upwards a mob that floats gets in a fluid."
+  "Returns vel with the small push up that a mob gets in a fluid."
   [vel]
   (v/v3 (v/x vel) (+ (v/y vel) fluid-jump) (v/z vel)))
 
@@ -506,7 +505,8 @@
       :else [vel false])))
 
 (defn- shifted?
-  "Whether the mob moved far enough this tick to carry its body."
+  "Returns true when the mob moves far enough sideways this tick
+  to count as walking."
   [from to]
   (let [dx (- (v/x to) (v/x from)) dz (- (v/z to) (v/z from))]
     (> (+ (* dx dx) (* dz dz)) 2.5000003E-7)))
@@ -531,14 +531,14 @@
                        (shifted? from pos) t)))
 
 (defn- eye-height
-  "Where a mob of that height looks from. The kinds that name their
-  own eye height name one well clear of the only threshold that
-  reads this."
+  "Returns the eye height of a mob of that height. Kinds with their
+  own eye height fall on the same side of the fluid threshold."
   ^double [^double height]
   (* 0.85 height))
 
 (defn- fluid-threshold
-  "A mob with its eyes near the ground is never held up by a fluid."
+  "Returns the fluid depth above which a jumping mob swims up. A
+  mob with its eyes near the ground swims up in any fluid."
   ^double [^double height]
   (if (< (eye-height height) 0.4) 0.0 jump-threshold))
 
@@ -550,9 +550,9 @@
   (or (pos? (double water)) (pos? (double lava))))
 
 (defn- flagged
-  "The mob that knows the fluid it stands in now: what its goals
-  and controls read in the next tick. A mob that stayed put keeps
-  the reading of this tick."
+  "Returns the mob with flags for the fluid it stands in now. Its
+  goals and controls read the flags in the next tick. A mob at
+  rest keeps the fluid reading of this tick."
   [world e half height kept]
   (let [f (or kept (fluid-of world e half height))
         w (pos? (double (:water f)))
@@ -562,25 +562,23 @@
       (not= (boolean (:in-lava? e)) l) (assoc :in-lava? l))))
 
 (defn- pushed
-  "The velocity a tick starts with: the push of the fluid current
-  on what other bodies have already shoved in, then the dead band
-  that follows."
+  "Returns the velocity that a tick starts with. It adds the push
+  of the fluid current to vel and ignores very small speeds."
   [vel push]
   (v/v3 (dead-band (+ (v/x vel) (double (nth push 0))))
         (dead-band (+ (v/y vel) (double (nth push 1))))
         (dead-band (+ (v/z vel) (double (nth push 2))))))
 
 (defn- taken
-  "The velocity after one shove: vanilla has no accumulator and
-  adds every increment to deltaMovement by itself."
+  "Returns vel with one shove added."
   [vel [_ dx dz]]
   (v/v3 (+ (v/x vel) (double dx)) (v/y vel)
         (+ (v/z vel) (double dz))))
 
 (defn- shoved
-  "The mob after its own shove: it takes one increment from every
-  body it met, in that order, and the dead band only meets them
-  next tick."
+  "Returns the mob after its own shove. The mob takes one push
+  from each body it meets, in order. Very small speeds stay until
+  the next tick."
   [e shoves]
   (if (seq shoves)
     (assoc e :vel (reduce taken (:vel e) shoves))
@@ -635,9 +633,9 @@
 
 (defn- step-sound-delta [e t eid]
   (if (:wet? e)
-    (out/all (out/sound :swim (:pos e)
-                        (water-vol (:vel e) 0.35)
-                        (wide-pitch (long t) (long eid) :swm)))
+    (let [vol (water-vol (:vel e) 0.35)
+          pitch (wide-pitch (long t) (long eid) :swm)]
+      (out/all (out/sound :swim (:pos e) vol pitch)))
     (when (:on-ground e)
       (when-let [snd (mobs/sound-of e :step)]
         (out/all (out/sound snd (:pos e) 0.15 1.0))))))
@@ -670,7 +668,7 @@
    :no-blocks?])
 
 (defn- mob-changes
-  "The parts of a mob that one tick left different."
+  "Returns the parts of the mob that the tick changed."
   [old new]
   (let [changed (diff-fields
                   old new :pos :vel :yaw :pitch :on-ground :task
@@ -701,17 +699,17 @@
     [now walked walked']))
 
 (defn- sensed
-  "The mob after its navigation, its controls and its head have
-  run. The navigation aims the move in the same tick the move
-  reads it, and both run every tick."
+  "Returns the mob after its navigation, controls and head run.
+  The navigation aims the move in the same tick that the move
+  reads it."
   [world e speed half height t]
-  (let [n (control/tick world (nav/tick world e) speed
-                        (* 2.0 (double half)))]
+  (let [width (* 2.0 (double half))
+        n (control/tick world (nav/tick world e) speed width)]
     (looked world n height t)))
 
 (defn- spent-jump
-  "The mob with its jump handed over to the physics. A dead mob is
-  left without a drive."
+  "Returns the mob with its jump handed to the physics. A dead mob
+  loses its drive."
   [e dead?]
   (cond-> e
     (:jump e) (assoc :jump false)
@@ -733,14 +731,14 @@
     [e2 (movement-sounds acc e2 was-wet? walked walked' t eid)]))
 
 (defn- ticks-at?
-  "Whether the body stands where entity ticks still run."
+  "Returns true when the body stands where entity ticks run."
   [active [_ e]]
   (state/active-at? active (:pos e)))
 
 (defn- handed
-  "The island after the body at j took its half of a shove, the
-  opposite of what the body that shoved took. Players are left
-  alone: their own client moves them."
+  "Returns the island after the body at j takes its part of a
+  shove, the opposite of what the shoving body takes. Players do
+  not take it, because their client moves them."
   [es acc j [eid dx dz]]
   (let [[_ e] (nth es j)]
     (if (mobs/mob-type? (:type e))
@@ -752,17 +750,16 @@
       [es acc])))
 
 (defn- takes-now?
-  "Whether the body at j takes the shove where it stands. One
-  that already stepped keeps it as the velocity its tick ends
-  with, and one whose chunk sits the tick out piles it up until
-  the chunk goes to disk with it as its motion. A body still to
-  step reads the shove off the index when its own turn comes."
+  "Returns true when the body at j takes the shove now. A body
+  that already stepped ends its tick with the shove in its speed.
+  A body in a chunk that does not tick gathers the shoves in its
+  speed. A body still to step reads the shove on its own turn."
   [active es ^long i ^long j]
   (or (< j i) (not (ticks-at? active (nth es j)))))
 
 (defn- steps?
-  "Whether the body takes a turn of its own this tick: a mob
-  whose chunk still runs entity ticks."
+  "Returns true when the body takes a turn of its own this tick.
+  Only a mob in a chunk that runs entity ticks does."
   [active entry]
   (and (mobs/mob-type? (:type (nth entry 1)))
        (ticks-at? active entry)))
@@ -778,18 +775,18 @@
     (reduce f [es []] (push/shoves index eid e half height))))
 
 (defn- handed-out
-  "The island after the body that just stepped ran its own shove
-  over everything it meets, as the last thing its tick does. A
-  body that did not step this tick shoves nobody."
+  "Returns the island after the body at i shoves every body it
+  meets, as the last part of its tick. A body that did not step
+  this tick shoves nobody."
   [index active slots es i]
   (if (steps? active (nth es i))
     (handing index active slots es i)
     [es nil]))
 
 (defn- turn
-  "The island after the body at i had its turn: its own step and
-  then its own shove, with the deltas the two leave and whether
-  the body stayed where it was."
+  "Returns the island after the body at i takes its turn to step
+  and shove. The result also holds the deltas of the turn and
+  whether the body stayed in place."
   [world active tempters t index slots es i]
   (let [[eid e] (nth es i)
         [e2 ds] (if (steps? active (nth es i))
@@ -800,10 +797,10 @@
     [es (into (vec ds) hs) (identical? (:pos e) (:pos e2))]))
 
 (defn- step-island
-  "One tick of an island: its bodies step in eid order, each of
-  them seeing the ones before it where this tick has left them
-  and handing its own shove out as it goes. A body whose chunk
-  stopped ticking stands still among them and only takes shoves."
+  "Returns the deltas of one tick of an island. Its bodies step in
+  eid order. Each body sees the earlier bodies where this tick
+  left them, and gives out its shove on its turn. A body in a
+  chunk that does not tick stands still and only takes shoves."
   [world active tempters t es]
   (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)]
     (loop [i 0 es (vec es) index (push/index-of es) acc []]
@@ -815,8 +812,8 @@
                  (into acc ds)))))))
 
 (defn- herds
-  "The islands that have a mob to step; one of players alone moves
-  nothing."
+  "Returns the islands that have a mob to step. An island of
+  players only moves nothing."
   [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
           (push/islands world (state/loaded-zone world))))
@@ -826,8 +823,8 @@
         batch))
 
 (defn mobs-system
-  "The tasks of one tick: every island of mobs steps, and the
-  clicks players sent are answered."
+  "Returns the tasks of one tick. Each island of mobs steps, and
+  the clicks of players get answers."
   [world d]
   (let [events (:input d)
         t (long (:tick world))

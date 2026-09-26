@@ -1,20 +1,13 @@
 package collider.java;
 
-/// The bodies one cell of the push grid holds: id, position, half
-/// width and height of each, by index.
-public final class PushCell {
-
-    public final long[] eids;
-    public final double[] xs, ys, zs;
-    public final double[] halfs, heights;
-
-    public PushCell(long[] eids, double[] xs, double[] ys, double[] zs,
-                    double[] halfs, double[] heights) {
-        this.eids = eids;
-        this.xs = xs;
-        this.ys = ys;
-        this.zs = zs;
-        this.halfs = halfs;
-        this.heights = heights;
-    }
-}
+/// The bodies in one cell of the push grid. Index `i` of each
+/// component holds the same body.
+///
+/// @param eids The entity ids.
+/// @param halfs The half widths.
+/// @param heights The heights.
+/// @param xs The x coordinates.
+/// @param ys The y coordinates.
+/// @param zs The z coordinates.
+public record PushCell(long[] eids, double[] halfs, double[] heights,
+                       double[] xs, double[] ys, double[] zs) {}

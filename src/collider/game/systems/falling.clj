@@ -43,7 +43,10 @@
 (defn- land-event [sound cell]
   (out/all (out/level-event sound cell 0)))
 
-(defn- landed-state [world e cell cur concrete? stuck?]
+(defn- landed-state
+  "Returns the state that the falling block takes at cell when it
+  lands, nil when it breaks instead."
+  [world e cell cur concrete? stuck?]
   (let [st (:block e)
         free? (support/free-below? (:chunks world) cell)
         continues? (and free? (not (and concrete? stuck?)))]

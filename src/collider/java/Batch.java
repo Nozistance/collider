@@ -10,6 +10,7 @@ public final class Batch {
     private int[] states = new int[8];
     private int n;
 
+    /// Adds the edit that sets block `i` to `state`.
     public void add(int i, int state) {
         if (n == idx.length) {
             idx = Arrays.copyOf(idx, 2 * n);
@@ -20,6 +21,7 @@ public final class Batch {
         n++;
     }
 
+    /// Returns `s` with the edits applied in order.
     public Section applyTo(Section s) {
         return s.apply(idx, states, n);
     }

@@ -17,7 +17,7 @@
     (and (block/solid? st) (block/full-cube? st))))
 
 (defn standing-on-cubes?
-  "Whether whole blocks carry a box of that half width at x y z."
+  "Returns true when whole blocks carry the body box at x y z."
   [chunks x y z half]
   (let [x (double x) y (double y) z (double z) half (double half)
         yb (dec (long y))
@@ -171,14 +171,14 @@
 (def ^:private ^:const equal-slack (double (float 1.0E-5)))
 
 (defn- mth-equal?
-  "Whether the two speeds are close enough that a body counts as
-  stopped by a block on that axis."
+  "Returns true when the two speeds count as equal. A body with
+  equal speeds on an axis is not stopped on that axis."
   [^double a ^double b]
   (< (Math/abs (- b a)) equal-slack))
 
 (defn- restituted
-  "The speed a stopped axis is left with: the reversed speed
-  scaled by a bounciness of zero, which keeps its sign bit."
+  "Returns the speed that a stopped axis keeps. The speed is zero
+  with the sign of the reversed speed v."
   ^double [^double v]
   (* (- v) 0.0))
 
@@ -198,8 +198,8 @@
             :else (recur (inc i))))))
 
 (defn free?
-  "Whether a body of that size meets no block when moved by dx dy
-  dz, tested where it lands and not on the way there."
+  "Returns true when a body of that size meets no block after a
+  move by dx dy dz. Only the end position counts, not the path."
   [chunks pos half height dx dy dz]
   (let [half (double half)
         x (+ (v/x pos) (double dx)) y (+ (v/y pos) (double dy))
@@ -216,8 +216,8 @@
      (+ (* dx# dx#) (* dy# dy#) (* dz# dz#))))
 
 (defn- later-pos?
-  "Whether the block at bx by bz comes after the best one so far,
-  by y, then z, then x."
+  "Returns true when the block at bx by bz comes after best in the
+  order of y, z and x."
   [^long bx ^long by ^long bz best]
   (or (nil? best)
       (let [[ox oy oz] best]
@@ -235,8 +235,8 @@
          (and (== d# bd#) (later-pos? ~bx ~by ~bz ~best)))))
 
 (defn- nearest-cube
-  "Returns the cell of the box among the n in a that overlaps box
-  and has its centre nearest to pos."
+  "Returns the cell of the block box that overlaps box and has its
+  centre nearest to pos."
   [^doubles a ^long n ^doubles box pos]
   (let [x (v/x pos) y (v/y pos) z (v/z pos)]
     (loop [i 0 best nil bd Double/MAX_VALUE]
@@ -276,9 +276,8 @@
   (aset e 5 (+ (aget e 5) dz)))
 
 (defn- climb
-  "Moves box e up by step and then by vel sideways, and back down
-  onto what it meets. Returns the sideways and up motion and the
-  way back down."
+  "Moves box e up by step, sideways by vel and back down onto what
+  it meets. Returns the sideways and up motion and the drop."
   ^doubles [chunks ^doubles e vel step]
   (let [step (double step) vx (v/x vel) vz (v/z vel)
         ^Sweep sb (swept-boxes chunks e vx step vz)
@@ -290,9 +289,8 @@
     s))
 
 (defn- step-up!
-  "Puts into out the motion of a body that climbs the block in its
-  way, when the climb carries it further sideways than the motion
-  already there."
+  "Writes to out the motion of a body that climbs the block in its
+  way, but only when the climb takes the body further sideways."
   [chunks ^doubles box0 ^doubles out vel step]
   (let [dy0 (aget out 1)
         s (climb chunks (shifted box0 1 dy0) vel step)
@@ -305,7 +303,7 @@
 
 (defn- moved
   "Returns the move of a body at pos with velocity vel that went
-  by out. hit-y? tells that a block stopped it on the y axis."
+  by out. A true hit-y? means a block stops the body on the y axis."
   ^Move [pos vel ^doubles out hit-y?]
   (let [vx (v/x vel) vy (v/y vel) vz (v/z vel)
         dx (aget out 0) dy (aget out 1) dz (aget out 2)]
@@ -316,10 +314,7 @@
                  (if (mth-equal? dz vz) vz (restituted vz)))
            (boolean (and hit-y? (neg? vy))))))
 
-(defn- body-box
-  "Returns the box of a body of half width half and height height
-  standing at pos."
-  ^doubles [pos half height]
+(defn- body-box ^doubles [pos half height]
   (let [x (v/x pos) y (v/y pos) z (v/z pos) half (double half)]
     (double-array [(- x half) y (- z half)
                    (+ x half) (+ y (double height)) (+ z half)])))
@@ -334,8 +329,8 @@
     out))
 
 (defn- step-up?
-  "Whether a body that went by out landed on a block and was held
-  back sideways, so it tries to climb by step."
+  "Returns true when a body that went by out lands on a block and
+  is held back sideways. Such a body tries to climb by step."
   [^doubles out vel step hit-y?]
   (and (pos? (double step)) hit-y? (neg? (v/y vel))
        (or (not= (aget out 0) (v/x vel))

@@ -48,11 +48,10 @@
             (bit-shift-right (long (Math/floor z)) 2)))
 
 (defn- pushable?
-  "Whether the body is shoved: a player or a mob in a chunk the
-  view still reaches. A chunk that stopped ticking keeps its
-  section reachable, so its bodies still take shoves. Items and
-  primed TNT are never pushed, nor a spectator, which has no
-  physics (Entity.push, LivingEntity.isPushable)."
+  "Returns true when the body takes shoves. Only players and mobs
+  do, and a spectator never does. The body must stand in a held
+  chunk. A chunk that stops ticking stays held, so its bodies
+  still take shoves."
   [held [_ e]]
   (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
        (not (game-mode/spectator? e))
@@ -84,16 +83,16 @@
           (aset hs i (pushable-half e))
           (aset ts i (pushable-height e))
           (recur (inc i) (next es)))))
-    (PushCell. eids xs ys zs hs ts)))
+    (PushCell. eids hs ts xs ys zs)))
 
 (defn- hood ^objects [cells ^long k]
   (let [cx (long (unchecked-int (bit-shift-right k 32)))
         cz (long (unchecked-int k))
         cs (object-array 9)]
     (dotimes [c 9]
-      (let [k (cell-key (+ cx (dec (long (quot c 3))))
-                        (+ cz (dec (long (rem c 3)))))]
-        (aset cs c (get cells k))))
+      (let [dx (dec (long (quot c 3)))
+            dz (dec (long (rem c 3)))]
+        (aset cs c (get cells (cell-key (+ cx dx) (+ cz dz))))))
     cs))
 
 (defn- packed [cells]
@@ -111,12 +110,9 @@
         f (fn [m k _] (assoc! m k (hood cells k)))]
     (persistent! (reduce-kv f (transient (im/int-map)) cells))))
 
-(defn push-index [world held]
-  (index-of (bodies world held)))
-
 (defn- touching
-  "The cells whose bodies one still within this cell can reach after
-  a tick of movement: a cell is wider than that reach."
+  "Returns the cells that a body in cell k can reach in one tick.
+  A cell is wider than that reach."
   [^long k]
   (let [cx (long (unchecked-int (bit-shift-right k 32)))
         cz (long (unchecked-int k))]
@@ -124,7 +120,8 @@
       (cell-key (+ cx (long dx)) (+ cz (long dz))))))
 
 (defn- blob
-  "The occupied cells reachable from k by steps to a touching cell."
+  "Returns the occupied cells that k reaches by steps between
+  touching cells."
   [cells ^long k]
   (loop [q [k] seen #{k}]
     (if-let [c (peek q)]
@@ -147,16 +144,15 @@
       out)))
 
 (defn islands
-  "The pushable bodies split into groups that one tick of movement
-  cannot bring together, so each group steps on its own."
+  "Returns the pushable bodies in groups that one tick of movement
+  cannot bring together. Each group steps on its own."
   [world held]
   (sort-by ffirst (grouped (by-cell (bodies world held)))))
 
 (defn- impulse
-  "Puts into out the shove one body takes from another: 0.05
-  apart along the line between them, cut by the root of their
-  Chebyshev distance. Bodies nearer than 0.01 shove nothing, and
-  then there is no shove to report."
+  "Writes to out the shove that a body takes from another body at
+  offset dx dz. Returns true when there is a shove. Bodies that
+  almost coincide give no shove."
   [^doubles out ^double dx ^double dz]
   (let [m (Math/max (Math/abs dx) (Math/abs dz))]
     (when (>= m threshold)
@@ -167,7 +163,8 @@
         true))))
 
 (defn- pair
-  "Whether body j of the cell meets this one, its shove in out."
+  "Returns true when body j of the cell shoves this body. Writes
+  the shove to out."
   [^doubles out ^doubles me ^PushCell c ^long j]
   (let [x (aget me 0) y (aget me 1) z (aget me 2)
         ox (aget (cell-xs c) j)
@@ -201,10 +198,10 @@
                acc)))))
 
 (defn- scan
-  "The shoves between this body and the ones below hi, an
-  [eid dx dz] each in the order the lookup found them, where dx dz
-  is what this body takes and that one the opposite. Nothing is
-  summed: vanilla hands each increment to a velocity of its own."
+  "Returns the shoves between this body and each body with an id
+  below hi, in the order found. Each shove is [eid dx dz]. This
+  body takes dx dz and the other body takes the opposite. The
+  shoves are not summed."
   [index eid e half height hi]
   (let [p (:pos e)
         x (double (v/x p)) z (double (v/z p))
@@ -217,14 +214,14 @@
       [])))
 
 (defn shoves
-  "One run of the body's own shove over every body it meets, the
-  last thing its tick does."
+  "Returns the shoves of one run of the body over every body it
+  meets. The run is the last part of its tick."
   [index eid e half height]
   (scan index eid e half height Long/MAX_VALUE))
 
 (defn before
-  "The shoves the bodies that stepped earlier this tick handed to
-  this one: each of them ran its own shove against this box, and
-  what it took this body takes the other way round."
+  "Returns the shoves that the bodies which stepped earlier this
+  tick gave to this body. This body takes the opposite of what
+  each of them took."
   [index eid e half height]
   (scan index eid e half height (long eid)))

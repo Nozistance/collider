@@ -32,7 +32,7 @@
 (defn- rg-nsy ^long [^Region rg] (.nsy rg))
 
 (defn loaded-payloads
-  "Returns the chunks the reads pulled in, by id."
+  "Returns the chunks that the reads of rg load, by id."
   [^Region rg]
   @(rg-loaded rg))
 
@@ -76,9 +76,9 @@
       (put-column rg ix iz (get chunks (region-id rg ix iz))))))
 
 (defn block-reader
-  "Returns a reader over the blocks around pos.
-  An absent chunk is asked of read-absent, which answers with
-  the payload it reads or generates, as a mid-tick read does."
+  "Returns a reader over the blocks around pos. The reader asks
+  read-absent for each absent chunk it needs. The answer is the
+  payload of that chunk, read or generated."
   (^Region [chunks pos] (block-reader chunks pos nil))
   (^Region [chunks pos read-absent]
    (let [[cx0 cz0 sy0 ncx ncz nsy] (region-bounds pos)
@@ -199,9 +199,9 @@
    (- (long (Math/floor cz)) region-r)])
 
 (defn affected-blocks
-  "Returns what the blast of power reaches from the center: the
-  blocks, in :blocks, the count of cells air included, in :count,
-  and every cell, air included, in :cells, a delay."
+  "Returns the cells that a blast of power at center reaches.
+  :blocks holds the cells with a block. :count is the number of
+  all reached cells. :cells is a delay of all reached cells."
   [^Region rg [cx cy cz] power seed]
   (let [center [(double cx) (double cy) (double cz)]
         origin (ray-origin (double cx) (double cy) (double cz))
@@ -223,8 +223,8 @@
         cx (double cx) cy (double cy) cz (double cz)]
     (fn ^long [^double x ^double y ^double z]
       (long
-        (Rays/clearPath grid gx gz gy nx nz ny solid
-                        cx cy cz x y z)))))
+        (Rays/clearPath
+          grid gx gz gy nx nz ny solid cx cy cz x y z)))))
 
 (defn- density-steps [^double half ^double height]
   (let [sx (/ 1.0 (+ (* 4.0 half) 1.0))
@@ -300,10 +300,9 @@
     (when (and (pos? st) (not (block/tnt? st))) st)))
 
 (defn stacks
-  "Returns [pos stack] pairs of what the blast leaves behind.
-  The pairs come from the destroyed positions and are merged
-  into few stacks. seed decides the random drops. radius is the
-  blast radius the drops depend on."
+  "Returns [pos stack] pairs of what the blast leaves behind. The
+  drops of the destroyed positions merge into few stacks. seed
+  decides the random drops. The drops depend on the blast radius."
   [^Region rg positions seed radius]
   (let [add (fn [cs pos]
               (if-let [st (dropping? rg pos)]

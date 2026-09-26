@@ -1,5 +1,5 @@
 (ns collider.world.chunk
-  "Chunks: block states and light, and chunk and block ids."
+  "Chunks of block states and light, with chunk and block ids."
   (:require [collider.vec :as v])
   (:import (collider.java Batch Buf Chunk ChunkIndex Section)
            (java.io DataInput DataOutput)
@@ -49,7 +49,7 @@
   (Section/of blocks bl sl))
 
 (defn nibble-get
-  "Returns the light level at idx of the packed levels arr."
+  "Returns the light level at idx of the light levels arr."
   ^long [^bytes arr ^long idx]
   (let [b (long (aget arr (bit-shift-right idx 1)))]
     (if (zero? (bit-and idx 1))
@@ -57,7 +57,7 @@
       (bit-and (bit-shift-right b 4) 0xF))))
 
 (defn nibble-set!
-  "Sets the light level at idx of the packed levels arr to v."
+  "Sets the light level at idx of the light levels arr to v."
   [^bytes arr ^long idx ^long v]
   (let [bi (bit-shift-right idx 1)
         b (long (aget arr bi))]
@@ -77,8 +77,8 @@
   (Chunk/of (object-array sections)))
 
 (defn first-above
-  "Returns the nearest section above index si of chunk.
-  It is nil when there is none."
+  "Returns the nearest section above index si of chunk, nil when
+  there is none."
   ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
@@ -102,8 +102,7 @@
   (.skyLightCopy ^Section (new-section chunk si)))
 
 (defn chunk-at
-  "Returns the chunk at chunk coordinates cx cz.
-  It is nil where none is loaded."
+  "Returns the chunk at chunk coordinates cx cz, nil when absent."
   ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
   (Chunk/at chunks (int cx) (int cz)))
 
@@ -124,25 +123,34 @@
   (.with chunk (int si) s))
 
 (defn section-block
-  "Returns the block state at index idx of s.
-  The order is y, then z, then x."
+  "Returns the block state at index idx of s. The index runs over
+  x fastest and over y slowest."
   ^long [^Section s ^long idx]
   (.block s (int idx)))
 
-(defn sky-light ^long [^Section s ^long idx] (.skyLight s (int idx)))
+(defn sky-light
+  "Returns the sky light level at index idx of s."
+  ^long [^Section s ^long idx] (.skyLight s (int idx)))
 
-(defn block-light ^long [^Section s ^long idx]
-  (.blockLight s (int idx)))
+(defn block-light
+  "Returns the block light level at index idx of s."
+  ^long [^Section s ^long idx] (.blockLight s (int idx)))
 
-(defn sky-light-copy ^bytes [^Section s] (.skyLightCopy s))
+(defn sky-light-copy
+  "Returns the sky light levels of s, new on each call."
+  ^bytes [^Section s] (.skyLightCopy s))
 
-(defn block-light-copy ^bytes [^Section s] (.blockLightCopy s))
+(defn block-light-copy
+  "Returns the block light levels of s, new on each call."
+  ^bytes [^Section s] (.blockLightCopy s))
 
-(defn with-sky-light ^Section [^Section s ^bytes a]
-  (.withSkyLight s a))
+(defn with-sky-light
+  "Returns s with the sky light levels a."
+  ^Section [^Section s ^bytes a] (.withSkyLight s a))
 
-(defn with-block-light ^Section [^Section s ^bytes a]
-  (.withBlockLight s a))
+(defn with-block-light
+  "Returns s with the block light levels a."
+  ^Section [^Section s ^bytes a] (.withBlockLight s a))
 
 (defn sky-lit?
   "Returns true when s holds its own sky light."
@@ -164,16 +172,18 @@
   (.heights s pred out (int base)))
 
 (defn write-section!
-  "Writes s to buf in wire form.
-  It counts the states fluid marks and gives every block
-  the biome."
+  "Writes s to buf in wire form. It counts the states that fluid
+  marks and gives every block the biome."
   [^Section s ^Buf buf ^booleans fluid ^long biome]
   (.write s buf fluid (int biome)))
 
-(defn write-sky-light! [^Section s ^Buf buf] (.writeSkyLight s buf))
+(defn write-sky-light!
+  "Writes the sky light of s to buf."
+  [^Section s ^Buf buf] (.writeSkyLight s buf))
 
-(defn write-block-light! [^Section s ^Buf buf]
-  (.writeBlockLight s buf))
+(defn write-block-light!
+  "Writes the block light of s to buf."
+  [^Section s ^Buf buf] (.writeBlockLight s buf))
 
 (defn write-full-light!
   "Writes a section of full light to buf."
@@ -205,7 +215,7 @@
     0))
 
 (defn block-pos->id
-  "Returns the block position packed into one long."
+  "Returns the block position as one long id."
   (^long [[x y z]] (block-pos->id x y z))
   (^long [x y z]
    (let [x (long x) y (long y) z (long z)]
@@ -214,35 +224,36 @@
              (bit-and z 0x3FFFFFF)))))
 
 (defn id->block-pos
-  "Returns the block position packed in id."
+  "Returns the block position that id holds."
   [^long id]
   [(bit-shift-right id 38)
    (bit-shift-right (bit-shift-left id 26) 52)
    (bit-shift-right (bit-shift-left id 38) 38)])
 
 (defn pos->id
-  "Returns the chunk coordinates cx cz packed into one long."
+  "Returns the chunk coordinates cx cz as one long id."
   ^long [cx cz]
   (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
           (bit-and (long cz) 0xFFFFFFFF)))
 
 (defn id->pos
-  "Returns the chunk coordinates packed in chunk-id."
+  "Returns the chunk coordinates that chunk-id holds."
   [chunk-id]
   [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
    (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
 
 (defn around-ids
-  "Returns the ids of the chunks within r of chunk cx cz, a square."
+  "Returns the ids of the chunks in the square of radius r around
+  chunk cx cz."
   [^long cx ^long cz ^long r]
   (for [dx (range (- r) (inc r))
         dz (range (- r) (inc r))]
     (pos->id (+ cx dx) (+ cz dz))))
 
 (defn tracked?
-  "Tells whether a chunk dx dz away is within view distance v.
-  The two rings nearest the axes count as distance zero, so the
-  set reaches v+1 along them and is cut at the corners."
+  "Returns true when a chunk dx dz away is within view distance v.
+  The two rings nearest the axes count as distance zero. So the
+  view reaches v+1 along the axes and is cut at the corners."
   [^long v ^long dx ^long dz]
   (let [ax (max 0 (- (Math/abs dx) 2))
         az (max 0 (- (Math/abs dz) 2))]
@@ -258,7 +269,7 @@
     (pos->id (+ cx dx) (+ cz dz))))
 
 (defn block-id-chunk
-  "Returns the id of the chunk that holds packed block id bid."
+  "Returns the id of the chunk that holds the block with id bid."
   ^long [^long bid]
   (pos->id (bit-shift-right bid 42)
            (bit-shift-right (bit-shift-left bid 38) 42)))
@@ -283,9 +294,12 @@
    (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
                   (unchecked-int z))))
 
-(definline block-state [chunks x y z]
-  `(long (Chunk/blockAt ~chunks (unchecked-int ~x)
-                        (unchecked-int ~y) (unchecked-int ~z))))
+(definline block-state
+  "Returns the block state at x y z, air where the chunk is absent."
+  [chunks x y z]
+  `(long (Chunk/blockAt
+           ~chunks (unchecked-int ~x) (unchecked-int ~y)
+           (unchecked-int ~z))))
 
 (defn at
   "Returns the block state at p, air outside the world height."
