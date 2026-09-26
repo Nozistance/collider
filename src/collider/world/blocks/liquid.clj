@@ -411,12 +411,15 @@
        (holds-any-fluid? tgt-raw)
        (pass-wall? src-raw tgt-raw d)))
 
-(defn- raw-of ^long [{:keys [chunks]} x y z]
-  (long (raw-at chunks x y z)))
+(defn- raw-over ^long [chunks over [x y z :as p]]
+  (if-let [st (get over p)]
+    (long st)
+    (long (raw-at chunks x y z))))
 
-(defn- raw-by [env [x y z] [dx dy dz]]
-  (raw-of env (+ (long x) (long dx)) (+ (long y) (long dy))
-          (+ (long z) (long dz))))
+(defn- raw-by [{:keys [chunks over]} [x y z] [dx dy dz]]
+  (raw-over chunks over
+            [(+ (long x) (long dx)) (+ (long y) (long dy))
+             (+ (long z) (long dz))]))
 
 (defn- hole? [{:keys [cls] :as env} p]
   (let [raw (raw-by env p [0 0 0])
@@ -499,11 +502,6 @@
 (def ^:private mix-dirs
   [[0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
 
-(defn- raw-over ^long [chunks over [x y z :as p]]
-  (if (= p (first over))
-    (long (second over))
-    (long (raw-at chunks x y z))))
-
 (defn- mixed-by [chunks over p st soul? d]
   (let [n (raw-over chunks over (mapv + p d))]
     (cond
@@ -513,8 +511,8 @@
 
 (defn mixed
   "Returns the block the lava at p turns into, or nil when it
-  stays. This is shouldSpreadLiquid of vanilla. over is a change
-  [q st] that is read in place of the block at q, or nil."
+  stays. This is shouldSpreadLiquid of vanilla. over maps the
+  changed blocks to their states, read in place of the chunks."
   ([chunks p] (mixed chunks nil p))
   ([chunks over [x y z :as p]]
    (let [st (raw-over chunks over p)
@@ -531,10 +529,11 @@
     (when-let [prod (mixed chunks over np)]
       [np prod [:fizz]])))
 
-(defn- with-neighbors [chunks [tp st :as change]]
-  (into [change]
-        (keep #(converted chunks [tp st] tp %))
-        update-order))
+(defn- with-neighbors [{:keys [chunks over]} [tp st :as change]]
+  (let [over (assoc over tp st)]
+    (into [change]
+          (keep #(converted chunks over tp %))
+          update-order)))
 
 (defn- logged [traw]
   (let [traw (long traw)
@@ -552,14 +551,14 @@
                (not (contains? air-blocks (block/block-of traw))))
       (if mix :fizz [:drop traw]))))
 
-(defn- spread-plain [{:keys [chunks cls mix]} tp v traw]
+(defn- spread-plain [{:keys [chunks over cls mix] :as env} tp v traw]
   (let [st (liquid->state cls v)
-        prod (mixed chunks [tp st] tp)
+        prod (mixed chunks (assoc over tp st) tp)
         gone (destroying mix traw)
         fx (cond-> []
              gone (conj gone)
              prod (conj :fizz))]
-    (with-neighbors chunks
+    (with-neighbors env
                     (cond-> [tp (or prod st)] (seq fx) (conj fx)))))
 
 (defn- spread-to [{:keys [mix] :as env} tp d v]
@@ -568,7 +567,7 @@
       (and mix (= d [0 -1 0]) (block/water? traw))
       [[tp (block/state (:smother mix)) [:fizz]]]
       (container? traw)
-      (with-neighbors (:chunks env) [tp (logged traw)])
+      (with-neighbors env [tp (logged traw)])
       :else (spread-plain env tp v traw))))
 
 (defn- target-of [{:keys [cls] :as env} raw p d]
@@ -720,8 +719,9 @@
       (zero? (long st')) [[p 0]]
       (and (= :source v) (seq (bubble-changes chunks p)))
       (bubble-changes chunks p)
-      :else (into (if (not= (long st') (long st)) [[p st']] [])
-                  (spread env p st')))))
+      (= (long st') (long st)) (spread env p st')
+      :else (into [[p st']]
+                  (spread (assoc env :over {p st'}) p st')))))
 
 (defn update-cell
   "Returns the changes of the liquid at p on its fluid tick.
