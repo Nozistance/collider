@@ -101,15 +101,19 @@
   (mapv #(out/to eid (out/system-chat (joined (parse-runs %))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- success
+(defn- reports
   "Returns the deltas ds of a command, their effects marked as the
-  report of its success."
-  [ds]
+  report of its success, told to the other operators when admins?"
+  [ds admins?]
   (mapv (fn [d]
           (if (= :fx (nth d 0))
-            [:fx (assoc (nth d 1) :feedback true)]
+            [:fx (assoc (nth d 1) :feedback true :admins admins?)]
             d))
         ds))
+
+(defn- success [ds] (reports ds true))
+
+(defn- answer [ds] (reports ds false))
 
 (defn- say* [eid key with]
   (let [msg {:translate key :with (vec with)}]
@@ -254,11 +258,15 @@
           (say eid "commands.gamerule.set" id
                (rules/serialize rule v))))
 
+(defn- rule-query [world eid id rule]
+  (let [v (rules/serialize rule (get-in world [:rules rule]))
+        msg {:translate "commands.gamerule.query" :with [id v]}]
+    (answer [(out/to eid (out/system-chat msg))])))
+
 (defn- rule-deltas [world eid rule text]
   (let [id (subs (rules/wire-name rule) 10)]
     (if (nil? text)
-      (say eid "commands.gamerule.query" id
-           (rules/serialize rule (get-in world [:rules rule])))
+      (rule-query world eid id rule)
       (if-some [v (rules/parse rule text)]
         (rule-set world eid id rule v)
         (rule-error eid id rule text)))))
@@ -717,9 +725,8 @@
   (let [dim (source-dim world)
         with (conj (mapv str at) (str yaw) (str pitch)
                    (dimension-id dim))
-        msg {:translate "commands.setworldspawn.success" :with with}
-        edge (state/border-spawn (:chunks (level-view world dim)) at)]
-    (concat [[:set-world-spawn dim at [yaw pitch] edge]]
+        msg {:translate "commands.setworldspawn.success" :with with}]
+    (concat [[:set-world-spawn dim at [yaw pitch]]]
             (when-not (same-spawn? world dim at turn)
               [(out/everyone (out/default-spawn dim at yaw pitch))])
             (success [(out/to eid (out/system-chat msg))]))))
@@ -811,7 +818,7 @@
   (case op
     :time-set (time-set-deltas eid (long (first args)))
     :time-add (time-add-deltas world eid (first args))
-    :time-query (success (tell eid (time-query world (first args))))))
+    :time-query (answer (tell eid (time-query world (first args))))))
 
 (defn- weather-command-deltas [world eid op args]
   (let [given (first args)]
@@ -881,16 +888,32 @@
               on))
           (get-in world [:rules :send-command-feedback] true) ds))
 
+(defn- admin-report
+  "Returns the effect that shows the other operators the report m
+  of a command player eid ran."
+  [world eid m]
+  (when-let [e (get-in world [:entities eid])]
+    (out/except eid (out/system-chat
+                      {:translate "chat.type.admin"
+                       :with [(entity-name e) (:text m)]
+                       :color "gray" :italic true}))))
+
+(defn- report-deltas [world eid on? d]
+  (let [m (when (= :fx (nth d 0)) (nth d 1))]
+    (cond (not (:feedback m)) [d]
+          (not on?) nil
+          :else (cond-> [[:fx (dissoc m :feedback :admins)]]
+                  (:admins m) (conj (admin-report world eid m))))))
+
 (defn- reported
   "Returns the deltas ds of a command with its success reports kept
-  only while players hear of them."
-  [world ds]
-  (let [on? (feedback? world ds)
-        kept (fn [d]
-               (let [m (when (= :fx (nth d 0)) (nth d 1))]
-                 (cond (not (:feedback m)) d
-                       on? [:fx (dissoc m :feedback)])))]
-    (into [] (keep kept) ds)))
+  only while players hear of them. The other operators hear of the
+  reports that change the world."
+  [world eid ds]
+  (let [on? (feedback? world ds)]
+    (into [] (comp (mapcat #(report-deltas world eid on? %))
+                   (remove nil?))
+          ds)))
 
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
@@ -901,7 +924,7 @@
       (:error r) (tell eid (:error r))
       :else (let [w (sourced world r origin)
                   ds (world-command-deltas w eid (:delta r))]
-              (reported w ds)))))
+              (reported w eid ds)))))
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]

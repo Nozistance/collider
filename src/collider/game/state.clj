@@ -340,13 +340,31 @@
   (and (<= (- border-edge) (long x)) (< (long x) border-edge)
        (<= (- border-edge) (long z)) (< (long z) border-edge)))
 
-(defn border-spawn
-  "Returns where players respawn instead of the world spawn pos of
-  a level with chunks, or nil when pos lies inside the world border.
-  That place is the top of the column at the border centre."
-  [chunks pos]
-  (when-not (in-border? pos)
-    [0 (spawn/motion-blocking-height chunks 0 0) 0]))
+(defn- respawn-dimension
+  "Returns the level of the world spawn, where a player with no
+  place of its own lands. The overworld stands in for a level the
+  server lacks."
+  [w]
+  (let [dim (:world-spawn-dimension w :overworld)]
+    (if (some #{dim} schema/dims) dim :overworld)))
+
+(defn- respawn-level
+  "Returns the level of the world spawn as w sees it: w itself, the
+  level of the server w holds, or the level of w as a server."
+  [w]
+  (let [dim (respawn-dimension w)
+        server (or (:server w) (when (:levels w) w))]
+    (cond (= dim (:dim w)) w
+          server (level server dim)
+          :else (select-keys (bounds dim) [:min-y]))))
+
+(defn- centre-top
+  "Returns the top of the column at the border centre of level lv,
+  its lowest y while the chunk there is not loaded."
+  [lv]
+  [0 (max (long (:min-y lv chunk/min-y))
+          (spawn/motion-blocking-height (:chunks lv {}) 0 0))
+   0])
 
 (defn spawn-turn
   "Returns [yaw pitch] of the world spawn."
@@ -355,21 +373,14 @@
 
 (defn respawn-at
   "Returns the world spawn as players respawn at it, moved inside
-  the world border."
+  the world border as the chunks of its level stand now."
   [w]
-  (or (:world-spawn-at w) (vec (:world-spawn w [24 4 8]))))
+  (let [pos (vec (:world-spawn w [24 4 8]))]
+    (if (in-border? pos) pos (centre-top (respawn-level w)))))
 
-(defn- world-spawn-set [w [_ dim pos turn at]]
+(defn- world-spawn-set [w [_ dim pos turn]]
   (assoc w :world-spawn (vec pos) :world-spawn-dimension dim
-           :world-spawn-turn (mapv double turn) :world-spawn-at at))
-
-(defn- respawn-dimension
-  "Returns the level of the world spawn, where a player with no
-  place of its own lands. The overworld stands in for a level the
-  server lacks."
-  [w]
-  (let [dim (:world-spawn-dimension w :overworld)]
-    (if (some #{dim} schema/dims) dim :overworld)))
+           :world-spawn-turn (mapv double turn)))
 
 (defn- player-join [w eid name settings]
   (let [{:keys [pos dimension]} (get-in w [:profiles name])]

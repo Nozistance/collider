@@ -95,7 +95,7 @@
    [:fill "fill a box with a block (~ = your position)"
     (-> (pos-args :x1 :y1 :z1 {:node "from"})
         (into (pos-args :x2 :y2 :z2 {:node "to"}))
-        (conj [:block [:block {:default :stone}]]))
+        (conj [:block [:block {}]]))
     [:world :fill]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
@@ -326,10 +326,8 @@
   (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
     (into (if dn [dn] []) (sort (remove #{dn} (keys names))))))
 
-(defn- block-values [{:keys [default]}]
-  (into [(block-name default)]
-        (remove #{(block-name default)})
-        (sort (map block-name (keys (data/blocks))))))
+(defn- block-values []
+  (vec (sort (map block-name (keys (data/blocks))))))
 
 (defn- coord-values [target axis]
   (if target [(str (nth target axis))] []))
@@ -353,7 +351,7 @@
     :entity-type (vec (sort (map name (keys mobs/types))))
     :angle []
     :targets ["@s" "@a" "@p" "@r" "@e" "@n"]
-    :block (block-values opts)))
+    :block (block-values)))
 
 (defn usage
   "Returns the usage line of the command at path."

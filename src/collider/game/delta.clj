@@ -48,7 +48,7 @@
    :set-rule
    [:cat :keyword :any]
    :set-world-spawn
-   [:cat :keyword Pos [:tuple number? number?] [:maybe Pos]]
+   [:cat :keyword Pos [:tuple number? number?]]
    :add-chunk
    [:cat :int :any]
    :chunk-requested
