@@ -70,11 +70,13 @@
 (defn bucket->state [item]
   (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
 
+(def ^:private ^:table void-air (delay (block/state :void-air)))
+
 (defn- raw-at [chunks x y z]
   (let [y (long y)]
     (if (chunk/in-range? y)
       (chunk/chunks-get-block chunks x y z)
-      -1)))
+      @void-air)))
 
 (defn- state-of ^long [raw]
   (let [st (long raw)]
@@ -372,7 +374,6 @@
 (defn- pass-wall? [src tgt d]
   (let [src (long src) tgt (long tgt)]
     (cond
-      (or (neg? src) (neg? tgt)) false
       (or (block/full-cube? tgt) (block/full-cube? src)) false
       (and (empty? (boxes src)) (empty? (boxes tgt))) true
       :else (faces-open? src tgt d))))
@@ -438,7 +439,7 @@
           [0 0] horiz3))
 
 (defn- source-ground? [cls braw]
-  (or (block/solid? (long (max 0 (long braw))))
+  (or (block/solid? (long braw))
       (source-of? cls (state-of braw))))
 
 (defn- new-liquid [{:keys [cls dropoff infinite?] :as env} p]
@@ -564,6 +565,7 @@
 (defn- spread-to [{:keys [mix] :as env} tp d v]
   (let [traw (raw-by env tp [0 0 0])]
     (cond
+      (not (chunk/in-range? (long (tp 1)))) []
       (and mix (= d [0 -1 0]) (block/water? traw))
       [[tp (block/state (:smother mix)) [:fizz]]]
       (container? traw)
@@ -761,18 +763,16 @@
             env (flow-env chunks cls table (:rules ctx))]
         (cell-flowed chunks env cls p st)))))
 
-(defn- ground ^long [raw] (long (max 0 (long raw))))
-
 (defn- fire-sides [chunks p]
   (into {:age :0}
         (map (fn [[k d]]
-               (let [st (ground (shifted chunks p d))]
+               (let [st (shifted chunks p d)]
                  [k (if (block/burnable? st) :true :false)])))
         {:north [0 0 -1] :south [0 0 1] :west [-1 0 0]
          :east [1 0 0] :up [0 1 0]}))
 
 (defn- fire-state-at [chunks [x y z :as p]]
-  (let [below (ground (raw-at chunks x (dec (long y)) z))]
+  (let [below (long (raw-at chunks x (dec (long y)) z))]
     (cond
       (block/tagged? below "soul_fire_base_blocks")
       (block/state :soul-fire {:age :0})
@@ -781,8 +781,12 @@
       :else (block/state :fire (fire-sides chunks p)))))
 
 (defn- flammable-around? [chunks p]
-  (some #(block/ignited-by-lava? (ground (shifted chunks p %)))
+  (some #(block/ignited-by-lava? (shifted chunks p %))
         horiz3+))
+
+(defn- loaded? [chunks [_ y _ :as p]]
+  (and (chunk/in-range? (long y))
+       (contains? chunks (chunk/block-chunk p))))
 
 (defn- walk-step [tp r3 i]
   [(+ (long (tp 0)) (long (r3 [:x i])))
@@ -793,27 +797,36 @@
   (loop [tp p i 0]
     (when (< i (long passes))
       (let [tp' (walk-step tp r3 i)
-            st (raw-at chunks (tp' 0) (tp' 1) (tp' 2))]
+            st (long (raw-at chunks (tp' 0) (tp' 1) (tp' 2)))]
         (cond
-          (neg? st) nil
+          (not (loaded? chunks tp')) nil
           (zero? st) (if (flammable-around? chunks tp')
                        [[tp' (fire-state-at chunks tp')]]
                        (recur tp' (inc i)))
           (block/blocks-motion? st) nil
           :else (recur tp' (inc i)))))))
 
-(defn- spot-fire [chunks [x y z] r3 i]
-  (let [tp [(+ (long x) (long (r3 [:x i]))) y
-            (+ (long z) (long (r3 [:z i])))]
-        above [(tp 0) (inc (long y)) (tp 2)]
+(defn- spot-fire [chunks [_ y _] tp]
+  (let [above [(tp 0) (inc (long y)) (tp 2)]
         over (raw-at chunks (above 0) (above 1) (above 2))]
     (when (and (zero? (long over))
                (block/ignited-by-lava?
-                 (ground (raw-at chunks (tp 0) (tp 1) (tp 2)))))
+                 (long (raw-at chunks (tp 0) (tp 1) (tp 2)))))
       [above (fire-state-at chunks above)])))
 
+(defn- spot-at [[x y z] r3 i]
+  [(+ (long x) (long (r3 [:x i]))) y
+   (+ (long z) (long (r3 [:z i])))])
+
+(defn- spot-fires [chunks p tp acc]
+  (if-let [fire (spot-fire chunks p tp)] (conj acc fire) acc))
+
 (defn- lava-spot-fires [chunks p r3]
-  (into [] (keep #(spot-fire chunks p r3 %)) (range 3)))
+  (loop [i 0 acc []]
+    (let [tp (when (< i 3) (spot-at p r3 i))]
+      (if (and tp (loaded? chunks tp))
+        (recur (inc i) (spot-fires chunks p tp acc))
+        acc))))
 
 (defn lava-random-tick [chunks p roll]
   (let [r3 (fn [salt]
