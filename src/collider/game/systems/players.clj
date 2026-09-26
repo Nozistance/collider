@@ -507,15 +507,22 @@
   (String/format Locale/ROOT pattern
                  (to-array [(double (or v 0.0))])))
 
-(defn- tab-header-msg [{:keys [tps p50-ms p99-ms]}]
-  (out/tab-header "Collider"
+(defn- server-title [commit]
+  (if commit
+    (str "Collider Server (" commit ")")
+    "Collider Server"))
+
+(defn- tab-header-msg [commit {:keys [tps mspt p50-ms p99-ms]}]
+  (out/tab-header (server-title commit)
                   (str "TPS " (fmt "%.1f" (or tps 20.0))
-                       "  tick p50 " (fmt "%.2f" p50-ms)
-                       "ms  p99 " (fmt "%.2f" p99-ms) "ms")))
+                       "\nMSPT " (fmt "%.2f" mspt) " ms"
+                       "\np50 " (fmt "%.2f" p50-ms) " ms"
+                       "\np99 " (fmt "%.2f" p99-ms) " ms")))
 
 (defn- tab-header-deltas [world events]
   (when-let [perf (:perf world)]
-    (let [msg (tab-header-msg perf)]
+    (let [commit (get-in world [:config :commit])
+          msg (tab-header-msg commit perf)]
       (concat
         (when (zero? (rem (long (:tick world)) tab-header-interval))
           [(out/all msg)])

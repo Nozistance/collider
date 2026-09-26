@@ -37,8 +37,17 @@
            :main      'collider.core
            :exclude   [".*\\.java$" ".*\\.cljs$"]}))
 
+(defn- commit []
+  (b/git-process {:git-args "rev-parse --short=11 HEAD"}))
+
+(defn- write-build-info []
+  (let [f (io/file class-dir "collider" "build.edn")]
+    (io/make-parents f)
+    (spit f (pr-str {:commit (commit)}))))
+
 (defn release [_]
   (clean nil)
+  (write-build-info)
   (step "Compiling java" "Compiled java" #(javac nil))
   (step "Compiling clojure" "Compiled clojure" #(compile-clj))
   (step "Packing the jar" "Packed the jar" #(uber))

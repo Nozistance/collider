@@ -2,6 +2,8 @@
   "Starting and stopping the server."
   (:refer-clojure :exclude [run!])
   (:require [clojure.edn :as edn]
+            [clojure.java.io :as io]
+            [clojure.string :as str]
             [collider.cli :as cli]
             [collider.config :as config]
             [collider.data :as data]
@@ -83,9 +85,25 @@
   (or (:store opts)
       (when-let [dir (:save-dir cfg)] (snapshot/file-store dir))))
 
+(defn- run-out [& args]
+  (let [^"[Ljava.lang.String;" argv (into-array String args)
+        p (.start (ProcessBuilder. argv))
+        out (str/trim (slurp (.getInputStream p)))]
+    (when (and (zero? (.waitFor p)) (seq out)) out)))
+
+(defn- git-commit []
+  (try (run-out "git" "rev-parse" "--short=11" "HEAD")
+       (catch Exception _ nil)))
+
+(defn- build-commit []
+  (or (git-commit)
+      (some-> (io/resource "collider/build.edn") slurp edn/read-string
+              :commit)))
+
 (defn- world-config [cfg store]
   (let [ks [:view-distance :simulation-distance :max-players :motd]]
-    (assoc (select-keys cfg ks) :unload-chunks? (some? store))))
+    (assoc (select-keys cfg ks)
+           :unload-chunks? (some? store) :commit (build-commit))))
 
 (defn- open-world [opts]
   (let [cfg (merge (config/load-config) opts)

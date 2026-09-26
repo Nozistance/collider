@@ -267,6 +267,8 @@
 
 (def ^:private ^:const tps-window 100)
 
+(def ^:private ^:const mspt-window 100)
+
 (defn- drain! [^ConcurrentLinkedQueue q]
   (loop [acc (transient [])]
     (if-some [e (.poll q)]
@@ -293,12 +295,21 @@
 (defn- idle? [opts n ^ConcurrentLinkedQueue queue]
   (and (paused? opts n) (.isEmpty queue)))
 
+(defn- mean-ms ^double [^longs window ^long ticks]
+  (let [n (min ticks mspt-window)]
+    (loop [k 0 sum 0]
+      (if (< k n)
+        (let [i (int (rem (- ticks 1 k) window-size))]
+          (recur (inc k) (+ sum (aget window i))))
+        (/ (double sum) n 1e6)))))
+
 (defn- percentiles [^longs window ^AtomicLong counter]
   (let [n (int (min (.get counter) window-size))]
     (when (pos? n)
       (let [arr (Arrays/copyOf window n)]
         (Arrays/sort arr)
         {:ticks  (.get counter)
+         :mspt   (mean-ms window (.get counter))
          :p50-ms (/ (aget arr (quot n 2)) 1e6)
          :p99-ms (/ (aget arr (min (dec n) (int (* n 0.99)))) 1e6)
          :max-ms (/ (aget arr (dec n)) 1e6)}))))
