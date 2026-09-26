@@ -8,6 +8,7 @@
             [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow.crop :as crop]
+            [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.support :as support]
@@ -29,7 +30,8 @@
             water/sponge-rule
             support/scaffold-rule
             composter/rule
-            lectern/rule])
+            lectern/rule
+            leaves/rule])
 
 (defn- find-rule [st]
   (reduce (fn [_ r] (when ((:match? r) nil st nil) (reduced r)))
@@ -58,8 +60,14 @@
   (when-let [r (rule-for st)]
     ((:wake r) chunks dim tick pos old side)))
 
+(defn- still?
+  "Tells whether the water in st waits for a change at its own
+  cell: TallSeagrassBlock asks for no fluid tick in updateShape."
+  [st side]
+  (and (some? side) (= :tall-seagrass (block/type-of st))))
+
 (defn fluid-wake-tick [chunks dim st tick pos old side]
-  (when (block/liquid-class st)
+  (when (and (block/liquid-class st) (not (still? st side)))
     (liquid/fluid-wake chunks dim tick pos old side)))
 
 (defn again-tick

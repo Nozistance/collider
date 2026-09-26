@@ -10,6 +10,7 @@
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.mushroom :as mushroom]
             [collider.world.blocks.support :as support]))
@@ -161,22 +162,45 @@
   (block/state (block/block-of pst)
                (assoc (block/props-of pst) :half :upper)))
 
-(defn- door-state [chunks pos ^long st]
+(def ^:private side-of
+  (into {} (for [[k off] dir/offset] [off k])))
+
+(defn- partner-side [^long st] (side-of (partner-offset st)))
+
+(defn- door-state [chunks pos ^long st sides]
   (let [lower? (= :lower (:half (block/props-of st)))
         [_ pst] (partner chunks pos st)
         below (chunk/at chunks (dir/down pos))]
     (cond
+      (and lower? (contains? sides :down)
+           (not (block/face-sturdy? below :up))) 0
+      (not (contains? sides (partner-side st))) st
       (nil? pst) 0
-      (and lower? (not (block/face-sturdy? below :up))) 0
       lower? st
       :else (door-upper pst))))
 
-(defn- bed-state [chunks pos ^long st]
-  (if-let [[_ pst] (partner chunks pos st)]
-    (block/state (block/block-of st)
-                 (assoc (block/props-of st)
-                        :occupied (:occupied (block/props-of pst))))
-    0))
+(defn- bed-state [chunks pos ^long st sides]
+  (let [[_ pst] (partner chunks pos st)
+        occupied (:occupied (block/props-of (or pst 0)))]
+    (cond
+      (not (contains? sides (partner-side st))) st
+      (nil? pst) 0
+      :else (with-prop (block/block-of st) st :occupied occupied))))
+
+(defn- pair-state
+  "DoublePlantBlock.updateShape: the half goes with the other one,
+  when the change is there; without its break, which only a player
+  who breaks a half shows."
+  [chunks pos ^long st sides]
+  (if (and (contains? sides (partner-side st))
+           (nil? (partner chunks pos st)))
+    (block/emptied st)
+    st))
+
+(defn- pitcher-state [chunks pos ^long st sides]
+  (if (>= (block/prop-long st :age) 3)
+    (pair-state chunks pos st sides)
+    st))
 
 (defn- water-source-state? [^long st]
   (or (block/waterlogged? st)
@@ -250,13 +274,7 @@
     (block/concrete-of st)
     st))
 
-(defn- pair-state [chunks pos ^long st]
-  (if (partner chunks pos st) st (block/emptied st)))
-
-(defn- pitcher-state [chunks pos ^long st]
-  (if (>= (block/prop-long st :age) 3) (pair-state chunks pos st) st))
-
-(defn- growing-plant-state [pos st at tick]
+(defn- growing-plant-state [pos st at tick sides]
   (let [{:keys [head body dir]}
         (block/growing-plant (block/type-of st))
         next (block/block-of (at (dir/offset dir)))
@@ -265,23 +283,18 @@
         props (cond-> {} berries (assoc :berries berries))
         self (block/block-of st)]
     (cond
+      (not (some #(contains? sides %) [nil dir])) st
       (and (= head self) on?) (block/state body props)
       (and (= body self) (not on?))
       (block/state head
                    (assoc props :age (support/plant-age tick pos)))
       :else st)))
 
-(defn- leaf-distance ^long [^long st]
-  (cond
-    (block/tagged? st "prevents_nearby_leaf_decay") 0
-    (block/leaves? st) (block/prop-long st :distance)
-    :else 7))
-
-(defn- leaves-state [self st at]
-  (let [step (fn [d off]
-               (min (long d) (inc (leaf-distance (at off)))))
-        d (reduce step 7 neighbours)]
-    (with-prop self st :distance (keyword (str d)))))
+(defn- leaves-state
+  "The distance of leaves set at pos; a change beside asks for the
+  tick of the leaves rule instead."
+  [chunks pos st sides]
+  (if (contains? sides nil) (leaves/distance-state chunks pos st) st))
 
 (defn- snowy-state [self st at]
   (let [snowy? (block/tagged? (at [0 1 0]) "snow")]
@@ -321,11 +334,36 @@
         i (cond up? up down? :harp :else down)]
     (with-prop self st :instrument i)))
 
-(defn- vine-reshaped [chunks pos st]
-  (support/vine-updated chunks pos st))
+(defn- kept
+  "The new state, or st when the new state would leave the block
+  empty: the support rule removes it then, with its break."
+  ^long [^long st ^long new]
+  (if (seq (block/faces-of new)) new st))
 
-(defn- multiface-reshaped [chunks pos st]
-  (support/multiface-updated chunks pos st))
+(defn- vine-reshaped [chunks pos st sides]
+  (if (some #(not= :down %) sides)
+    (kept st (support/vine-updated chunks pos st))
+    st))
+
+(defn- multiface-reshaped [chunks pos st sides]
+  (kept st (support/multiface-sides-updated chunks pos st sides)))
+
+(defn- leaf-reshaped [chunks pos st sides]
+  (if (some #{nil :up} sides)
+    (dripleaf/leaf-topped chunks pos st)
+    st))
+
+(defn- carpet-reshaped [chunks pos st _sides]
+  (let [new (moss/carpet-reshaped chunks pos st)]
+    (if (zero? new) st new)))
+
+(defn- chorus-reshaped
+  "ChorusPlantBlock.updateShape: only the sides that changed."
+  [chunks pos st sides]
+  (let [full (block/props-of (chorus/connected chunks pos st))
+        dirs (if (contains? sides nil) dir/six (filter sides dir/six))
+        props (merge (block/props-of st) (select-keys full dirs))]
+    (block/state (block/block-of st) props)))
 
 (defn- fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st)
@@ -335,31 +373,36 @@
 (defn- soul-fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st) st 0))
 
-(def ^:private pos-reshapers
+(def ^:private sided-reshapers
   {:door                    door-state
    :weathering-copper-door  door-state
    :bed                     bed-state
-   :chest                   chest/updated
-   :trapped-chest           chest/updated
-   :copper-chest            chest/updated
-   :weathering-copper-chest chest/updated
-   :mossy-carpet            moss/carpet-reshaped
-   :hanging-moss            moss/hanging-tip
-   :pointed-dripstone       dripstone/updated
-   :sulfur-spike            dripstone/updated
+   :double-plant            pair-state
+   :tall-flower             pair-state
+   :tall-seagrass           pair-state
+   :small-dripleaf          pair-state
+   :pitcher-crop            pitcher-state
    :vine                    vine-reshaped
    :glow-lichen             multiface-reshaped
    :multiface               multiface-reshaped
    :sculk-vein              multiface-reshaped
-   :double-plant            pair-state
-   :tall-flower             pair-state
-   :tall-seagrass           pair-state
-   :big-dripleaf            dripleaf/leaf-updated
-   :small-dripleaf          dripleaf/small-updated
-   :pitcher-crop            pitcher-state
+   :big-dripleaf            leaf-reshaped
+   :mossy-carpet            carpet-reshaped
+   :chorus-plant            chorus-reshaped
+   :mangrove-leaves          leaves-state
+   :tinted-particle-leaves   leaves-state
+   :untinted-particle-leaves leaves-state})
+
+(def ^:private pos-reshapers
+  {:chest                   chest/updated
+   :trapped-chest           chest/updated
+   :copper-chest            chest/updated
+   :weathering-copper-chest chest/updated
+   :hanging-moss            moss/hanging-tip
+   :pointed-dripstone       dripstone/updated
+   :sulfur-spike            dripstone/updated
    :fire                    fire-reshaped
-   :soul-fire               soul-fire-reshaped
-   :chorus-plant            chorus/connected})
+   :soul-fire               soul-fire-reshaped})
 
 (def ^:private self-reshapers
   {:campfire                 campfire/updated
@@ -372,31 +415,35 @@
    :note                     note-state
    :grass                    snowy-state
    :mycelium                 snowy-state
-   :snowy-dirt               snowy-state
-   :mangrove-leaves          leaves-state
-   :tinted-particle-leaves   leaves-state
-   :untinted-particle-leaves leaves-state})
+   :snowy-dirt               snowy-state})
 
 (def ^:private growing-reshaped
   #{:weeping-vines :weeping-vines-plant :twisting-vines
     :twisting-vines-plant :cave-vines :cave-vines-plant})
 
-(defn- reshaped-state [t chunks pos st at tick]
+(defn- reshaped-state [t chunks pos st at tick sides]
   (let [self (block/block-of st)]
     (cond
+      (sided-reshapers t) ((sided-reshapers t) chunks pos st sides)
       (pos-reshapers t) ((pos-reshapers t) chunks pos st)
       (self-reshapers t) ((self-reshapers t) self st at)
       (= :concrete-powder t) (powder-state st at)
       (contains? growing-reshaped t)
-      (growing-plant-state pos st at tick)
+      (growing-plant-state pos st at tick sides)
       :else (sides-state t self st at))))
 
-(defn reshape [chunks pos ^long st tick]
+(defn- reshape-of [chunks pos st tick sides]
   (let [t (block/type-of st)]
     (when (contains? (connecting-types) t)
       (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
-            new (reshaped-state t chunks pos st at tick)]
-        (when (not= (long new) st) new)))))
+            new (reshaped-state t chunks pos st at tick sides)]
+        (when (not= (long new) (long st)) new)))))
+
+(defn reshape
+  "Returns the new state of st at pos after a change on sides of it
+  (nil among them for a change at pos itself), or nil for none."
+  ([chunks pos st tick] (reshape-of chunks pos st tick #{nil}))
+  ([chunks pos st tick sides] (reshape-of chunks pos st tick sides)))
 
 (defn- hinge-balance ^long [at left right]
   (let [full (fn [off] (if (block/full-cube? (at off)) 1 0))]
@@ -450,21 +497,37 @@
 (defn- bed-origin? [origin st p]
   (and (= :bed (block/type-of st)) (contains? @origin p)))
 
-(defn- reshape-step [chunks origin tick [seen acc :as r] p]
+(defn- side-toward
+  "The side of a cell next to a change that faces it, by the
+  offset d of the cell from the change."
+  [d]
+  (dir/opposite (side-of d)))
+
+(defn- touched
+  "Returns [cells sides]: the cells a change at positions reaches,
+  in the order first reached, and for each the sides of it that
+  changed; nil stands for the cell itself."
+  [positions]
+  (let [beside (fn [p d] [(mapv + p d) (side-toward d)])
+        reached #(cons [% nil] (map (partial beside %) neighbours))]
+    (reduce (fn [[order sides] [q side]]
+              [(if (contains? sides q) order (conj order q))
+               (update sides q (fnil conj #{}) side)])
+            [[] {}]
+            (mapcat reached positions))))
+
+(defn- reshape-step [chunks origin tick sides acc p]
   (let [st (connecting-at chunks p)]
-    (if (or (nil? st) (contains? seen p))
-      r
-      [(conj seen p)
-       (if-let [new (when-not (bed-origin? origin st p)
-                      (reshape chunks p st tick))]
-         (conj acc [p new])
-         acc)])))
+    (if-let [new (when (and st (not (bed-origin? origin st p)))
+                   (reshape chunks p st tick (sides p)))]
+      (conj acc [p new])
+      acc)))
 
 (defn- reshaped [chunks positions tick]
   (let [origin (delay (set positions))
-        cells (mapcat (fn [p] (cons p (around p))) positions)]
-    (peek (reduce #(reshape-step chunks origin tick %1 %2)
-                  [#{} []] cells))))
+        [cells sides] (touched positions)]
+    (reduce #(reshape-step chunks origin tick sides %1 %2)
+            [] cells)))
 
 (defn derived-changes [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]

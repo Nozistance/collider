@@ -17,6 +17,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private lists
+  "The lists of what is due, each run by its own rules. The changes
+  of a neighbour update count as made on the tick before, when the
+  change that woke it came: the updateShape of vanilla is at once."
   {:block-wakes {:type-of block/block-of :due rules/reshape-changes
                  :reach rules/reach :lit? rules/lit?}
    :block-ticks {:type-of block/block-of :due rules/cell-changes
@@ -105,14 +108,18 @@
           (update :dirty into (map (comp column first)) writes)
           (update :lit lit-writes writes)))))
 
-(defn- change-deltas [world records]
-  (into [[:set-blocks (edit/block-changes records)]]
-        (edit/change-fx world records)))
+(defn- change-deltas [world k records]
+  (let [changes (edit/block-changes records)
+        t (long (:tick world))]
+    (into [(if (= :block-wakes k)
+             [:set-blocks changes (dec t)]
+             [:set-blocks changes])]
+          (edit/change-fx world records))))
 
-(defn- tick-deltas [world [p] {:keys [changes again]}]
+(defn- tick-deltas [world k [p] {:keys [changes again]}]
   (cond-> []
     again (conj [:schedule-ticks {again [(chunk/block-pos->id p)]}])
-    (seq changes) (into (change-deltas world changes))))
+    (seq changes) (into (change-deltas world k changes))))
 
 (defn- stepped
   "Returns the pass after one tick. The tick keeps what it did on
@@ -124,7 +131,7 @@
                    (rerun pass ctx k tick)
                    [pass first-run])]
     (-> (applied pass (:changes r))
-        (update :out into (tick-deltas world tick r)))))
+        (update :out into (tick-deltas world k tick r)))))
 
 (defn- ordered [world k active]
   (let [runs? #(state/active-id? active %)

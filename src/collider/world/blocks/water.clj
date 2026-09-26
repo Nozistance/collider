@@ -79,7 +79,7 @@
 (defn- kelp-wake
   "GrowingPlantHeadBlock and GrowingPlantBodyBlock: a tick when the
   block below no longer holds it, a new head or stem when the block
-  above or below changes. The change at pos itself asks for the tick
+  above changes. The change at pos itself asks for the tick
   too: here a new head or stem comes a tick late, after the change
   below, and the tick it had was for the old type."
   [chunks _dim tick p _old side]
@@ -87,7 +87,7 @@
     (cond
       (and (contains? #{nil :down} side) (not held?))
       (inc (long tick))
-      (contains? #{nil :up :down} side) :neighbor)))
+      (contains? #{nil :up} side) :neighbor)))
 
 (def kelp-rule
   {:name    :kelp

@@ -89,12 +89,9 @@
        (not (block/liquid?
              (max 0 (state-at chunks (mapv + pos [0 1 0])))))))
 
-(defn- water-above? [chunks pos]
-  (water? (max 0 (state-at chunks (mapv + pos [0 1 0])))))
-
 (defn- lily-pad-supported? [chunks pos below]
   (and (or (water? below) (block/tagged? below "supports_lily_pad"))
-       (not (water-above? chunks pos))))
+       (nil? (block/liquid-class (max 0 (state-at chunks pos))))))
 
 (defn- frogspawn-supported? [chunks pos below]
   (and (water-source? (max 0 below))
@@ -373,11 +370,12 @@
    [[:vine]
     (fn [c p st _b _a] (pos? (vine-updated c p st)))]
    [[:glow-lichen :multiface :sculk-vein]
-    (fn [c p st _b _a] (pos? (multiface-updated c p st)))]
+    (fn [c p st _b _a]
+      (boolean (seq (block/faces-of (multiface-updated c p st)))))]
    [[:scaffolding]
     (fn [c p _st _b _a] (< (scaffold-distance c p) 7))]
    [[:mossy-carpet]
-    (fn [c p st _b _a] (moss/carpet-supported? c p st))]
+    (fn [c p st _b _a] (pos? (moss/carpet-reshaped c p st)))]
    [[:hanging-moss]
     (fn [c p st _b _a] (moss/hanging-supported? c p st))]
    [[:pointed-dripstone :sulfur-spike]
@@ -509,13 +507,24 @@
     (assoc m dir :false)
     m))
 
+(defn- multiface-kept ^long [chunks pos ^long st dirs]
+  (let [step (fn [m dir] (multiface-face-kept chunks pos m dir))
+        props' (reduce step (block/props-of st) dirs)
+        st' (block/state (block/block-of st) props')]
+    (if (seq (block/faces-of st')) st' (block/emptied st))))
+
 (defn multiface-updated
   "Returns st without the faces that lost the block they cover."
   ^long [chunks pos ^long st]
-  (let [step (fn [m dir] (multiface-face-kept chunks pos m dir))
-        props' (reduce step (block/props-of st) block/face-props)
-        st' (block/state (block/block-of st) props')]
-    (if (seq (block/faces-of st')) st' (block/emptied st))))
+  (multiface-kept chunks pos st block/face-props))
+
+(defn multiface-sides-updated
+  "Returns st without the faces on sides that lost the block they
+  cover; all faces for a change at pos itself (nil among sides)."
+  ^long [chunks pos ^long st sides]
+  (if (contains? sides nil)
+    (multiface-updated chunks pos st)
+    (multiface-kept chunks pos st (filter sides block/face-props))))
 
 (defn- scaffold? [st]
   (= :scaffolding (block/type-of (max 0 st))))
@@ -831,17 +840,88 @@
                   :cave-vines-plant]
                  (repeat #{:up}))))
 
+(defn- behind-side [st] (dir/opposite (block/facing-of st)))
+
+(defn- attach-side [st] (dir/opposite (connected-direction st)))
+
+(defn- lantern-side [st]
+  (if (= :true (:hanging (block/props-of st))) :up :down))
+
+(defn- bell-side [st]
+  (case (:attachment (block/props-of st))
+    :floor :down
+    :ceiling :up
+    :double_wall nil
+    (block/facing-of st)))
+
+(def ^:private shape-sides
+  "The side whose change makes the updateShape of vanilla ask
+  whether the block survives, by type. Other types ask on a change
+  of any side."
+  (merge
+    (zipmap [:torch :redstone-torch :standing-sign :banner
+             :cake :candle-cake :pressure-plate
+             :weighted-pressure-plate :base-coral-plant
+             :base-coral-fan]
+            (repeat (constantly :down)))
+    (zipmap [:ceiling-hanging-sign :hanging-roots :spore-blossom]
+            (repeat (constantly :up)))
+    (zipmap [:wall-torch :redstone-wall-torch :wall-sign :wall-banner
+             :ladder :trip-wire-hook :amethyst-cluster
+             :base-coral-wall-fan]
+            (repeat behind-side))
+    {:cocoa block/facing-of :button attach-side :lever attach-side
+     :lantern lantern-side :weathering-lantern lantern-side
+     :bell bell-side :wall-hanging-sign (constantly nil)
+     :candle (constantly nil)}))
+
+(def ^:private side-tests
+  "Types whose updateShape asks about survival for changes on more
+  than one side but not all."
+  {:vine (fn [_ side] (not= :down side))})
+
+(defn- shape-side? [st side]
+  (let [t (block/type-of st)]
+    (and (some? side)
+         (if-let [f (shape-sides t)]
+           (= side (f st))
+           (if-let [f (side-tests t)] (boolean (f st side)) true)))))
+
+(def ^:private multiface-types #{:glow-lichen :multiface :sculk-vein})
+
+(defn- popped?
+  "Tells whether the updateShape of vanilla removes st at p for a
+  change on side."
+  [chunks p st side]
+  (if (contains? multiface-types (block/type-of st))
+    (and (some? side)
+         (empty? (block/faces-of
+                   (multiface-sides-updated chunks p st #{side}))))
+    (and (shape-side? st side) (not (supported? chunks p st)))))
+
 (defn- wake [chunks _dim tick p _old side]
   (let [st (chunk/chunks-get-block chunks p)]
     (if-let [sides (tick-sides (block/type-of st))]
       (when (and (sides side) (not (supported? chunks p st)))
         (inc (long tick)))
-      :neighbor)))
+      (when (popped? chunks p st side) :neighbor))))
+
+(def ^:private removed-types
+  "The blocks that leave in neighborChanged, by removeBlock: they
+  drop but show no break."
+  #{:rail :powered-rail :detector-rail :repeater :comparator
+    :redstone-wire})
 
 (defn- unsupported [chunks p _ctx]
   (let [st (chunk/chunks-get-block chunks p)]
     (when-not (supported? chunks p st)
-      [(gone p st)])))
+      (if (removed-types (block/type-of st))
+        [[p (block/emptied st) [[:drop st]]]]
+        [(gone p st)]))))
+
+(def ^:private popped-types
+  "Blocks that leave in updateShape though they are not attached."
+  #{:mossy-carpet})
 
 (def ^:private lit-types
   "The blocks whose support needs light, or darkness."
@@ -850,7 +930,9 @@
 
 (def rule
   {:name    :support
-   :match?  (fn [_chunks st _p] (block/attached? st))
+   :match?  (fn [_chunks st _p]
+              (or (block/attached? st)
+                  (contains? popped-types (block/type-of st))))
    :lit?    (fn [st _ctx] (contains? lit-types (block/type-of st)))
    :wake    wake
    :reshape unsupported

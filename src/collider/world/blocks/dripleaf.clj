@@ -54,23 +54,19 @@
     (stem? st) (stem-supported? chunks p)
     :else (small-supported? chunks p st)))
 
-(defn leaf-updated ^long [chunks p ^long st]
-  (cond
-    (not (leaf-supported? chunks p)) 0
-    (leaf? (chunk/at-void chunks (dir/up p)))
+(defn leaf-topped
+  "Returns the leaf st turned stem under another leaf."
+  ^long [chunks p ^long st]
+  (if (leaf? (chunk/at-void chunks (dir/up p)))
     (->> (select-keys (block/props-of st) [:facing :waterlogged])
          (block/state :big-dripleaf-stem))
-    :else st))
+    st))
 
-(defn small-updated ^long [chunks p ^long st]
-  (let [upper? (= :upper (half-of st))
-        q (if upper? (dir/down p) (dir/up p))
-        partner (chunk/at-void chunks q)]
-    (if (and (small? partner)
-             (not= upper? (= :upper (half-of partner)))
-             (small-supported? chunks p st))
-      st
-      0)))
+(defn- small-gone? [chunks p ^long st side]
+  (and (some? side) (not (small-supported? chunks p st))))
+
+(defn- leaf-gone? [chunks p side]
+  (and (#{:down :any} side) (not (leaf-supported? chunks p))))
 
 (defn- facing ^long [^long st f]
   (block/state (block/block-of st)
@@ -192,6 +188,8 @@
     (cond
       (stem? st) (when (stem-unsupported? chunks p side)
                    (inc (long tick)))
+      (and (small? st) (small-gone? chunks p st side)) :neighbor
+      (and (leaf? st) (leaf-gone? chunks p side)) :neighbor
       (and (nil? side) (leaf? st) delay)
       (+ (long tick) (long delay)))))
 
@@ -210,8 +208,16 @@
       [(block/destroyed p st)]
       (and (leaf? st) tilt) [(tilt-change p st tilt ctx)])))
 
+(defn- gone [chunks p _ctx]
+  (let [st (chunk/at-void chunks p)]
+    (when (if (small? st)
+            (small-gone? chunks p st :any)
+            (and (leaf? st) (leaf-gone? chunks p :any)))
+      [(block/destroyed p st)])))
+
 (def rule
-  {:name   :dripleaf
-   :match? (fn [_chunks st _p] (dripleaf? st))
-   :wake   wake
-   :due    due})
+  {:name    :dripleaf
+   :match?  (fn [_chunks st _p] (dripleaf? st))
+   :wake    wake
+   :reshape gone
+   :due     due})
