@@ -1,6 +1,7 @@
 (ns collider.game.systems.pose
   "Player water state, swimming and pose."
   (:require [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -93,9 +94,11 @@
     :else :swimming))
 
 (defn- pose-of [chunks pos e swim?]
-  (if (fits? chunks pos :swimming)
-    (fitting-pose chunks pos (desired-pose e swim?))
-    (:pose e :standing)))
+  (let [want (desired-pose e swim?)]
+    (cond
+      (not (fits? chunks pos :swimming)) (:pose e :standing)
+      (game-mode/spectator? e) want
+      :else (fitting-pose chunks pos want))))
 
 (defn- changes [world e]
   (let [chunks (:chunks world)
