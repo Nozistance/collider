@@ -289,6 +289,9 @@
    [:play :game-event]
    {:schema [:map [:event wire/unsigned-byte] [:value wire/float]]
     :write :wire}
+   [:play :set-camera]
+   {:schema [:map [:id wire/varint]]
+    :write :wire}
    [:play :commands]
    {:schema [:map [:nodes [:sequential Node]]]
     :write (fn [^Buf buf {:keys [nodes]}]
@@ -713,6 +716,12 @@
     :read :wire}
    [:play :change-game-mode]
    {:schema [:map [:mode wire/varint]]
+    :read :wire}
+   [:play :spectator-action]
+   {:schema [:map [:target wire/varint]]
+    :read :wire}
+   [:play :teleport-to-entity]
+   {:schema [:map [:uuid wire/uuid]]
     :read :wire}
    [:play :interact]
    {:schema [:map [:target wire/varint] [:hand wire/varint]

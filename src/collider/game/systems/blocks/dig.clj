@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.dig
   "Breaking blocks."
   (:require [collider.data :as data]
+            [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.entity :as entity]
@@ -102,10 +103,18 @@
              (and (state/infinite-materials? e)
                   (false? (:creative-break? it)))))))
 
+(defn- restricted
+  "Player.blockActionRestricted for a spectator: a start shows the
+  block again, a stop does nothing."
+  [world eid status pos]
+  (when (zero? (long status)) [(edit/own-change world eid pos)]))
+
 (defn dig-deltas [world [eid status pos _face]]
-  (let [e (get-in world [:entities eid])]
+  (let [e (get-in world [:entities eid])
+        low? (<= (long (nth pos 1)) (chunk/level-max-y world))]
     (when (and (#{0 2} status) (reach/in-reach? e pos))
-      (if (and (<= (long (nth pos 1)) (chunk/level-max-y world))
-               (may-break? e))
-        (break-deltas world eid pos)
-        [(edit/own-change world eid pos)]))))
+      (cond
+        (not low?) [(edit/own-change world eid pos)]
+        (game-mode/spectator? e) (restricted world eid status pos)
+        (may-break? e) (break-deltas world eid pos)
+        :else [(edit/own-change world eid pos)]))))

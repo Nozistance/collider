@@ -648,6 +648,7 @@
    :change-dimension change-dimension-packets
    :respawn       respawn-packets
    :abilities     (fn [_ m] [(abilities-packet m)])
+   :camera        (fn [_ m] [{:packet :set-camera :id (:id m)}])
    :game-mode     (fn [_ m]
                     [{:packet :game-event :event 3
                       :value (double (game-mode/id (:mode m)))}])

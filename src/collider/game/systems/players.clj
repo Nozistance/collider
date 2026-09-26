@@ -253,9 +253,9 @@
 (defn- tracking-deltas [world by-chunk [oid o]]
   (let [seen (or (:sent-chunks o) (i/int-set))
         mine? (fn [eid] (= (long eid) (long oid)))
-        want (into (i/int-set)
-                   (comp (mapcat #(get by-chunk %)) (remove mine?))
-                   (seq seen))
+        shown? #(game-mode/shown-to? o (get-in world [:entities %]))
+        near (comp (mapcat #(get by-chunk %)) (remove mine?))
+        want (into (i/int-set) (comp near (filter shown?)) (seq seen))
         have (or (:tracking o) (i/int-set))
         add (into [] (remove #(contains? have %)) (seq want))
         gone (into [] (remove #(contains? want %)) (seq have))]

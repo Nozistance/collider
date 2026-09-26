@@ -1,6 +1,7 @@
 (ns collider.game.mob.animal
   "Farm animal goals and the selector that runs them by priority."
-  (:require [collider.game.mob.mobs :as mobs]
+  (:require [collider.game.game-mode :as game-mode]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
@@ -98,6 +99,10 @@
                dz (if (zero? z) [0] [z (- z)])]
            [x y dz]))))
 
+(defn- shifted [[x y z] [dx dy dz]]
+  [(+ (long x) (long dx)) (+ (long y) (long dy))
+   (+ (long z) (long dz))])
+
 (defn- look-for-water
   "PanicGoal.lookForWater: the nearest water a burning mob may run
   to. A mob stuck inside a block looks for none."
@@ -106,15 +111,13 @@
         [x y z :as here] (sense/feet-cell (:pos e))]
     (when (empty? (block/collision-boxes
                     (chunk/block-state chunks x y z)))
-      (first (keep (fn [[dx dy dz]]
-                     (let [c [(+ x (long dx)) (+ y (long dy))
-                              (+ z (long dz))]]
-                       (when (pos/water? chunks c) c)))
-                   water-scan)))))
+      (first (filter #(pos/water? chunks %)
+                     (map #(shifted here %) water-scan))))))
 
 (defn- other [world e k] (get-in world [:entities (get-in e k)]))
 
-(defn- glance [e oid t] (assoc e :look {:target oid :until (+ (long t) 2)}))
+(defn- glance [e oid t]
+  (assoc e :look {:target oid :until (+ (long t) 2)}))
 
 (defn- panic-pos [world eid e t]
   (or (when (:burning? e) (look-for-water world e))
@@ -127,13 +130,14 @@
                     (goal-speed e :panic))
        nil])))
 
+(defn- partner? [eid e t oid o]
+  (and (not= oid eid) (= (:type e) (:type o))
+       (mobs/in-love? o t) (not (mobs/panicking? o t))
+       (< (v/dist3-sq (:pos e) (:pos o)) breed-range-sq)))
+
 (defn- partner-for [world eid e t]
-  (second (sense/nearest world (:pos e) breed-range-sq
-                         (fn [oid o] (and (not= oid eid)
-                                          (= (:type e) (:type o))
-                                          (mobs/in-love? o t)
-                                          (not (mobs/panicking? o t))
-                                          (< (v/dist3-sq (:pos e) (:pos o)) breed-range-sq))))))
+  (let [pred #(partner? eid e t %1 %2)]
+    (second (sense/nearest world (:pos e) breed-range-sq pred))))
 
 (defn- start-mate [world eid e t _]
   (when (mobs/in-love? e t)
@@ -149,11 +153,13 @@
          (< (long (get-in e [:task :love] 0)) mate-ticks))))
 
 (defn- newborn [spec t eid e o]
-  (assoc (mobs/new-mob (:type e) (:pos e) ((:child-color spec) t eid e o) t)
-         :baby-until (+ (long t) baby-ticks)))
+  (let [color ((:child-color spec) t eid e o)]
+    (assoc (mobs/new-mob (:type e) (:pos e) color t)
+           :baby-until (+ (long t) baby-ticks))))
 
 (defn- bred [spec eid pid e o t]
-  (let [cooled {:love-until 0 :breed-ready-at (+ (long t) breed-cooldown)}]
+  (let [cooled {:love-until 0
+                :breed-ready-at (+ (long t) breed-cooldown)}]
     [(assoc e :task nil)
      [[:spawn-entity (newborn spec t eid e o)]
       [:merge-entity eid cooled]
@@ -168,8 +174,8 @@
   [spec world eid e t _]
   (let [pid (get-in e [:task :partner])
         o (get-in world [:entities pid])
-        e (nav/move-to-entity world (glance e pid t) o
-                              (goal-speed e :mate))
+        speed (goal-speed e :mate)
+        e (nav/move-to-entity world (glance e pid t) o speed)
         e (update-in e [:task :love] (fn [n] (inc (long n))))]
     (if (and (>= (long (get-in e [:task :love])) mate-ticks)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
@@ -205,15 +211,17 @@
        :else (nav/move-to-entity world e o (goal-speed e :tempt)))
      nil]))
 
+(defn- parent? [eid e p oid o]
+  (let [q (:pos o)
+        d (fn [f] (Math/abs (- (double (f q)) (double (f p)))))]
+    (and (not= oid eid) (= (:type e) (:type o)) (not (mobs/baby? o))
+         (<= (double (d v/y)) 4.0) (<= (double (d v/x)) 8.0)
+         (<= (double (d v/z)) 8.0))))
+
 (defn- parent-for [world eid e]
-  (let [p (:pos e)]
-    (when-let [[d2 oid] (sense/nearest world p follow-far-sq
-                                       (fn [oid o] (and (not= oid eid)
-                                                        (= (:type e) (:type o))
-                                                        (not (mobs/baby? o))
-                                                        (<= (Math/abs (- (v/y (:pos o)) (v/y p))) 4.0)
-                                                        (<= (Math/abs (- (v/x (:pos o)) (v/x p))) 8.0)
-                                                        (<= (Math/abs (- (v/z (:pos o)) (v/z p))) 8.0))))]
+  (let [p (:pos e)
+        pred #(parent? eid e p %1 %2)]
+    (when-let [[d2 oid] (sense/nearest world p follow-far-sq pred)]
       (when (>= (double d2) follow-near-sq) oid))))
 
 (def ^:private ^:const follow-repath 20)
@@ -243,7 +251,8 @@
 (defn- following? [world e _ _]
   (let [o (other world e [:follow])]
     (and (mobs/baby? e) o
-         (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o)) follow-far-sq))))
+         (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o))
+             follow-far-sq))))
 
 (defn- stroll-pos
   "WaterAvoidingRandomStrollGoal.getPosition: dry land, save for the
@@ -266,13 +275,25 @@
 
 (defn- look-goal [e t]
   (let [l (:look e)]
-    (when (and (= :look-player (:kind l)) (> (long (:until l)) (long t))) l)))
+    (when (and (= :look-player (:kind l))
+               (> (long (:until l)) (long t)))
+      l)))
+
+(defn- player-to-look-at
+  "LookAtPlayerGoal.canUse: the nearest player within six blocks
+  mobs can see."
+  [world e]
+  (sense/nearest-player world (:pos e) look-range-sq game-mode/seen?))
+
+(defn- look-until [t eid]
+  (+ (long t) look-ticks
+     (long (* look-ticks (rnd t eid :look-time)))))
 
 (defn- start-look-player [world eid e t _]
   (when (< (rnd t eid :look) look-chance)
-    (when-let [[_ pid] (sense/nearest-player world (:pos e) look-range-sq)]
+    (when-let [[_ pid] (player-to-look-at world e)]
       [(assoc e :look {:kind :look-player :target pid
-                       :until (+ (long t) look-ticks (long (* look-ticks (rnd t eid :look-time))))})
+                       :until (look-until t eid)})
        nil])))
 
 (defn- looking? [world e _ _]
@@ -281,22 +302,24 @@
 
 (defn- start-look-around [_ eid e t _]
   (when (< (rnd t eid :around) look-chance)
-    [(assoc e :task {:kind :look-around
-                     :until (+ (long t) look-around-ticks (long (* look-around-ticks (rnd t eid :around-time))))}
-              :look {:yaw (- (* 360.0 (rnd t eid :around-yaw)) 180.0) :until Long/MAX_VALUE})
-     nil]))
+    (let [n (* look-around-ticks (rnd t eid :around-time))
+          yaw (- (* 360.0 (rnd t eid :around-yaw)) 180.0)]
+      [(assoc e :task {:kind :look-around
+                       :until (+ (long t) look-around-ticks (long n))}
+              :look {:yaw yaw :until Long/MAX_VALUE})
+       nil])))
 
-(defn- looking-around? [_ e t _] (>= (long (get-in e [:task :until])) (long t)))
+(defn- looking-around? [_ e t _]
+  (>= (long (get-in e [:task :until])) (long t)))
 
 (defn- afloat?
   "FloatGoal.canUse: the mob stands deep enough in water to swim,
   or in lava at any depth."
   [world e _ _]
-  (let [[half height] (mobs/box-of e)]
-    (or (> (liquid/fluid-height (:chunks world) (:pos e) half height
-                                :water)
-           jump-threshold)
-        (boolean (:in-lava? e)))))
+  (let [[half height] (mobs/box-of e)
+        chunks (:chunks world)
+        h (liquid/fluid-height chunks (:pos e) half height :water)]
+    (or (> h jump-threshold) (boolean (:in-lava? e)))))
 
 (defn- start-float [world eid e t tempters]
   (when (afloat? world e t tempters) [(assoc e :float? true) nil]))
@@ -308,58 +331,86 @@
            (assoc :jump true))
    nil])
 
+(defn- calmed
+  "TemptGoal.stop: the mob stands still and is not tempted for a
+  while."
+  [e t]
+  (nav/stop (assoc e :task nil
+                   :tempt-cooldown-until (+ (long t) calm-ticks))))
+
 (def goals
   "The goals every farm animal has, highest priority first."
   [{:kind     :float :flags #{:jump} :every-tick? true
     :start    start-float :continue? afloat? :tick float-tick
     :running? (fn [e _] (boolean (:float? e)))
     :stop     (fn [e _] (assoc e :float? nil))}
-   {:kind :panic :flags #{:move} :start start-panic :continue? roaming?}
-   {:kind :mate :flags #{:move :look} :start start-mate :continue? mating? :tick mate-tick}
-   {:kind      :tempt :flags #{:move :look} :start start-tempt :tick tempt-tick
+   {:kind :panic :flags #{:move} :start start-panic
+    :continue? roaming?}
+   {:kind :mate :flags #{:move :look} :start start-mate
+    :continue? mating? :tick mate-tick}
+   {:kind :tempt :flags #{:move :look} :start start-tempt
+    :tick tempt-tick
     :continue? (fn [_ e _ tempters] (some? (tempter e tempters)))
-    :stop      (fn [e t] (nav/stop (assoc e :task nil :tempt-cooldown-until (+ (long t) calm-ticks))))}
-   {:kind     :follow :flags #{} :start start-follow :continue? following?
+    :stop calmed}
+   {:kind :follow :flags #{} :start start-follow :continue? following?
     :running? (fn [e _] (some? (:follow e))) :tick follow-tick
-    :stop     unfollowed}
-   {:kind :wander :flags #{:move} :start start-wander :continue? roaming?
+    :stop unfollowed}
+   {:kind :wander :flags #{:move} :start start-wander
+    :continue? roaming?
     :stop (fn [e _] (nav/stop (assoc e :task nil)))}
-   {:kind     :look-player :flags #{:look} :start start-look-player :continue? looking?
+   {:kind :look-player :flags #{:look} :start start-look-player
+    :continue? looking?
     :running? (fn [e t] (some? (look-goal e t)))
-    :stop     (fn [e _] (assoc e :look nil))}
-   {:kind :look-around :flags #{:move :look} :start start-look-around :continue? looking-around?
+    :stop (fn [e _] (assoc e :look nil))}
+   {:kind :look-around :flags #{:move :look} :start start-look-around
+    :continue? looking-around?
     :stop (fn [e _] (assoc e :task nil :look nil))}])
 
 (defn- running? [g e t]
-  (if-let [f (:running? g)] (f e t) (= (:kind g) (get-in e [:task :kind]))))
+  (if-let [f (:running? g)]
+    (f e t)
+    (= (:kind g) (get-in e [:task :kind]))))
 
 (defn- stopped [g e t]
   (if-let [f (:stop g)] (f e t) (assoc e :task nil)))
 
 (defn- locks [spec e t]
-  (into {} (for [g (:goals spec) :when (running? g e t) f (:flags g)] [f (:prio g)])))
+  (into {} (for [g (:goals spec) :when (running? g e t) f (:flags g)]
+             [f (:prio g)])))
 
 (defn- free? [locked prio flags]
-  (every? (fn [f] (let [p (locked f)] (or (nil? p) (< (long prio) (long p))))) flags))
+  (every? (fn [f] (let [p (locked f)]
+                    (or (nil? p) (< (long prio) (long p)))))
+          flags))
 
 (defn- displaced [spec e t flags]
-  (reduce (fn [e g] (if (and (running? g e t) (some (:flags g) flags)) (stopped g e t) e))
-          e
-          (:goals spec)))
-
-(defn- cleaned [spec world e t tempters]
   (reduce (fn [e g]
-            (if (and (running? g e t) (not ((:continue? g) world e t tempters)))
+            (if (and (running? g e t) (some (:flags g) flags))
               (stopped g e t)
               e))
           e
           (:goals spec)))
 
-(defn- selected [spec world eid e t tempters]
-  (reduce (fn [[e ds] {:keys [prio flags start] :as g}]
-            (if (or (running? g e t) (not (free? (locks spec e t) prio flags)))
+(defn- cleaned [spec world e t tempters]
+  (reduce (fn [e g]
+            (if (and (running? g e t)
+                     (not ((:continue? g) world e t tempters)))
+              (stopped g e t)
+              e))
+          e
+          (:goals spec)))
+
+(defn- blocked? [spec e t {:keys [prio flags] :as g}]
+  (or (running? g e t) (not (free? (locks spec e t) prio flags))))
+
+(defn- started [spec world eid e t ts g]
+  ((:start g) world eid (displaced spec e t (:flags g)) t ts))
+
+(defn- selected [spec world eid e t ts]
+  (reduce (fn [[e ds] g]
+            (if (blocked? spec e t g)
               [e ds]
-              (if-let [[e2 ds2] (start world eid (displaced spec e t flags) t tempters)]
+              (if-let [[e2 ds2] (started spec world eid e t ts g)]
                 [e2 (into ds ds2)]
                 [e ds])))
           [e []]
@@ -377,8 +428,14 @@
           [e []]
           (:goals spec)))
 
-(defn- idle-count [world e]
-  (if (sense/nearest-player world (:pos e) idle-reset-sq) 0 (inc (long (or (:no-action e) 0)))))
+(def ^:private watcher? (complement game-mode/spectator?))
+
+(defn- idle-count
+  "Mob.checkDespawn: a spectator never keeps a mob from idling."
+  [world e]
+  (if (sense/nearest-player world (:pos e) idle-reset-sq watcher?)
+    0
+    (inc (long (or (:no-action e) 0)))))
 
 (defn spec
   "Returns a breed's goal spec from its goals.
@@ -386,7 +443,7 @@
   function that picks a newborn's colour from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
-   {:goals       (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
+   {:goals (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
     :child-color child-color}))
 
 (defn brain
@@ -419,7 +476,8 @@
        (<= (long (or (:breed-ready-at e) 0)) (long t))))
 
 (defn- fed-growth ^long [^long remaining]
-  (let [seconds (long (* (double (quot remaining ticks-per-second)) feeding-speedup))]
+  (let [s (double (quot remaining ticks-per-second))
+        seconds (long (* s feeding-speedup))]
     (- remaining (* seconds ticks-per-second))))
 
 (defn- grown [t target e]
@@ -439,7 +497,7 @@
   (when (= item (mobs/breeding-item (:type e)))
     (let [used (items/use-item-deltas world peid p hand)]
       (cond
-        (feedable? e t) {:result :success-server
-                         :deltas (concat used (loved t eid))}
-        (mobs/baby? e) {:result :success
-                        :deltas (concat used (grown t eid e))}))))
+        (feedable? e t)
+        {:result :success-server :deltas (concat used (loved t eid))}
+        (mobs/baby? e)
+        {:result :success :deltas (concat used (grown t eid e))}))))

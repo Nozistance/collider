@@ -2,6 +2,7 @@
   "Player block actions such as digging, placing and using."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
+            [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.blocks.bed :as bed]
@@ -14,6 +15,7 @@
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
+            [collider.game.systems.containers :as containers]
             [collider.game.systems.projectiles :as projectiles]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -108,7 +110,7 @@
     (bed/uses-bed? world eid pos item use-item?)
     (bed/sleep-deltas world eid pos)))
 
-(defn- place-deltas [world [eid pos face item cursor _ _ hand] origin]
+(defn- play-deltas [world [eid pos face item cursor _ _ hand] origin]
   (let [hand (or hand :main)
         e (get-in world [:entities eid])
         item (or item (sense/in-hand e hand))
@@ -119,6 +121,18 @@
       (or (without-item-deltas ctx) (hand-deltas ctx)
           (item-deltas ctx))
       (when item (or (hand-deltas ctx) (item-deltas ctx))))))
+
+(defn- spectator-deltas
+  "ServerPlayerGameMode.useItem and useItemOn for a spectator: an
+  item use passes, a click on a block opens its menu or passes."
+  [world eid pos face]
+  (when-not (= 255 (bit-and (long face) 0xFF))
+    (seq (containers/spectator-open-deltas world eid pos))))
+
+(defn- place-deltas [world [eid pos face :as args] origin]
+  (if (game-mode/spectator? (get-in world [:entities eid]))
+    (spectator-deltas world eid pos face)
+    (play-deltas world args origin)))
 
 (def ^:private mob-buckets
   #{:pufferfish-bucket :salmon-bucket :cod-bucket

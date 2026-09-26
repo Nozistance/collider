@@ -1,6 +1,7 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
   (:require [collider.data :as data]
+            [collider.game.game-mode :as game-mode]
             [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -109,12 +110,17 @@
     (= :success-server result)
     (into (state/swing-deltas peid p hand t true))))
 
+(defn- spectating?
+  "Player.interactOn: a spectator's click on a mob passes."
+  [world ev]
+  (game-mode/spectator? (get-in world [:entities (nth ev 1)])))
+
 (defn- interact
   "Returns the deltas of one player click on a mob. The handlers run
   in a fixed order and the first one that does not pass has the
   click; one out of reach is dropped without a word."
   [world ev t]
-  (if-let [ctx (ctx-of world t ev)]
+  (if-let [ctx (when-not (spectating? world ev) (ctx-of world t ev))]
     (answered ctx (or (some (fn [f] (f ctx)) chain) {:result :pass}))
     []))
 

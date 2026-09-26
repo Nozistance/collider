@@ -53,6 +53,22 @@
 
 (defn spectator? [e] (= :spectator (:game-mode e)))
 
+(defn shown-to?
+  "ServerPlayer.broadcastToPlayer: whether viewer tracks entity e.
+  A spectator sees the players that look through their own eyes;
+  the others see no spectator."
+  [viewer e]
+  (or (not= :player (:type e))
+      (if (spectator? viewer)
+        (nil? (:camera e))
+        (not (spectator? e)))))
+
+(defn seen?
+  "LivingEntity.canBeSeenByAnyone: e is alive and no spectator,
+  so mobs may look at it, be tempted by it or target it."
+  [e]
+  (and (not (spectator? e)) (pos? (double (:health e 1.0)))))
+
 (defn may-fly?
   "Returns true when the mode of player e lets it fly."
   [e]

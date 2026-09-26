@@ -3,6 +3,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.systems.chunks :as chunks]
@@ -262,13 +263,19 @@
                  (map second))
         (:world d)))
 
+(defn- blastable
+  "ServerExplosion.hurtEntities takes the entities
+  Level.getEntities finds, which are no spectators."
+  [world]
+  (remove (comp game-mode/spectator? val) (:entities world)))
+
 (defn explosions
   "Returns the deltas for every blast requested this tick.
   They come in request order."
   [world d]
   (let [reqs (requests d)]
     (when (seq reqs)
-      (let [index (kb-index (:entities world))
+      (let [index (kb-index (blastable world))
             init [#{} (tnt/primed-origins world) []]]
         (nth (reduce (partial request-deltas world index) init reqs)
              2)))))

@@ -47,6 +47,9 @@
    [:y [:dcoord (assoc opts :axis 1)]]
    [:z [:dcoord (assoc opts :axis 2)]]])
 
+(def ^:private spectator-opts
+  {:single? true :players? true :default {:self true}})
+
 (def commands
   [[:time "change or query the time of day"
     [:set "set the time"
@@ -112,6 +115,10 @@
     [[:gamemode [:game-mode {}]]
      [:target [:targets {:players? true :default {:self true}}]]]
     [:world :gamemode]]
+   [:spectate "look through another entity (none: stop)"
+    [[:target [:targets {:single? true :default nil}]]
+     [:player [:targets spectator-opts]]]
+    [:world :spectate]]
    [:defaultgamemode "set the game mode of new players"
     [[:gamemode [:game-mode {}]]]
     [:world :defaultgamemode]]])

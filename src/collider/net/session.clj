@@ -175,7 +175,13 @@
    (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])
    :rename-item (fn [eid m] [:rename-item eid (:name m)])
    :change-game-mode
-   (fn [eid m] [:change-game-mode eid (game-mode/of-id (:mode m))])})
+   (fn [eid m] [:change-game-mode eid (game-mode/of-id (:mode m))])
+   :spectator-action
+   (fn [eid m]
+     (let [n (long (:target m))]
+       [:spectate eid (when (pos? n) (dec n))]))
+   :teleport-to-entity
+   (fn [eid m] [:teleport-to-entity eid (:uuid m)])})
 
 (def ^:private event-table
   (merge session-events move-events action-events container-events))
@@ -195,8 +201,8 @@
     :recipe-book-change-settings :recipe-book-seen-recipe
     :resource-pack :seen-advancements :select-trade :set-beacon
     :set-command-block :set-command-minecart :set-jigsaw-block
-    :set-structure-block :set-test-block :spectator-action
-    :teleport-to-entity :test-instance-block-action})
+    :set-structure-block :set-test-block
+    :test-instance-block-action})
 
 (def ^:private later
   #{:container-slot-state-changed})

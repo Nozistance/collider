@@ -159,6 +159,12 @@
   [uuid mode]
   {:msg :tab-game-mode :uuid uuid :mode mode})
 
+(defn camera
+  "Returns the effect that tells a spectator the entity of id it
+  looks through."
+  [id]
+  {:msg :camera :id id})
+
 (defn game-mode
   "Returns the effect that tells a player its new game mode."
   [mode]

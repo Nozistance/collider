@@ -4,6 +4,7 @@
             [collider.random :as random]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.state :as state]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
@@ -126,14 +127,18 @@
   (when (and s (<= 1 (long (:count s 1)) (stack/max-size s)))
     {:stack s}))
 
-(defn- alive? [world eid]
-  (some? (get-in world [:entities eid])))
-
-(defn- drop-of [world [tag eid a b]]
-  (when (alive? world eid)
+(defn- drop-of
+  "handlePlayerAction drops nothing of a spectator; the creative
+  inventory throws only for a player with infinite materials."
+  [world [tag eid a b]]
+  (when-let [e (get-in world [:entities eid])]
     (case tag
-      :dig (when (#{3 4} (long a)) (held-drop world eid a))
-      :creative-slot (when (neg? (long a)) (creative-drop b))
+      :dig (when (and (#{3 4} (long a))
+                      (not (game-mode/spectator? e)))
+             (held-drop world eid a))
+      :creative-slot
+      (when (and (neg? (long a)) (game-mode/creative? e))
+        (creative-drop b))
       nil)))
 
 (defn- taken [world eid [slot left]]
@@ -540,12 +545,19 @@
         [out taken] (reduce take [out taken (:inventory pe)] ready)]
     [out taken]))
 
+(defn- takers
+  "The players that take items up: Player.aiStep leaves out
+  spectators."
+  [world]
+  (remove #(game-mode/spectator? (val %))
+          (state/player-entries world)))
+
 (defn- pickup-deltas [world items]
   (let [ready? (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0))))
         ready (filterv ready? items)]
     (first (reduce (fn [acc entry] (player-pickups ready acc entry))
                    [[] #{}]
-                   (state/player-entries world)))))
+                   (takers world)))))
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item world eid e)]

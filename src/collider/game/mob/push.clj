@@ -1,6 +1,7 @@
 (ns collider.game.mob.push
   "The shoves that bodies which overlap hand each other."
   (:require [clojure.data.int-map :as im]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
@@ -52,9 +53,11 @@
   "Whether the body is shoved: a player or a mob in a chunk the
   view still reaches. A chunk that stopped ticking keeps its
   section reachable, so its bodies still take shoves. Items and
-  primed TNT are never pushed."
+  primed TNT are never pushed, nor a spectator, which has no
+  physics (Entity.push, LivingEntity.isPushable)."
   [held [_ e]]
   (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
+       (not (game-mode/spectator? e))
        (contains? held (chunk/pos-chunk (:pos e)))))
 
 (defn- bodies [world held]

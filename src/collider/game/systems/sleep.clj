@@ -1,6 +1,7 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.game-mode :as game-mode]
+            [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.daynight :as daynight]
             [collider.vec :as v]
@@ -26,8 +27,13 @@
            :sleep? (attribute/allows? (:can-sleep r) dark?)
            :spawn? (attribute/allows? (:can-set-spawn r) dark?))))
 
-(defn sleepers-needed ^long [world]
-  (let [players (count (state/player-entries world))
+(defn- counted [entries]
+  (remove (comp game-mode/spectator? val) entries))
+
+(defn sleepers-needed
+  "SleepStatus.sleepersNeeded: spectators do not count."
+  ^long [world]
+  (let [players (count (counted (state/player-entries world)))
         k [:rules :players-sleeping-percentage]
         share (long (get-in world k 100))]
     (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
@@ -66,9 +72,15 @@
        (out/to eid (out/animation eid :wake-up))
        (out/to eid (out/teleport up yaw 0.0))])))
 
-(defn sleepers [world]
+(defn- in-bed [world]
   (filter (fn [[_ e]] (and (= :player (:type e)) (:sleeping e)))
           (:entities world)))
+
+(defn sleepers
+  "SleepStatus.update: the sleeping players that count, which are
+  no spectators."
+  [world]
+  (counted (in-bed world)))
 
 (defn- deep-count ^long [world asleep]
   (let [now (long (:tick world))
@@ -88,19 +100,28 @@
             (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep))))
 
 (defn- waking-deltas [world asleep waking]
-  (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
-          [(announcement world (- (count asleep) (count waking)))]))
+  (let [left (count (counted waking))]
+    (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
+            (when (pos? left)
+              [(announcement world (- (count asleep) left))]))))
+
+(defn- night-passes?
+  "ServerLevel.tick: enough players that count sleep, and as many
+  of all sleep deeply (SleepStatus.areEnoughDeepSleeping counts
+  spectators too)."
+  [world all asleep]
+  (let [needed (sleepers-needed world)]
+    (and (>= (count asleep) needed)
+         (>= (deep-count world all) needed))))
 
 (defn- sleep-deltas [world]
   (let [sleep? (:sleep? (bed-rule world))
+        all (in-bed world)
         asleep (sleepers world)
-        needed (sleepers-needed world)
         up? (fn [[_ e]] (or (:leave-bed? e) (not sleep?)))
-        waking (filter up? asleep)]
+        waking (filter up? all)]
     (cond
-      (and (>= (count asleep) needed)
-           (>= (deep-count world asleep) needed))
-      (skip-night-deltas world asleep)
+      (night-passes? world all asleep) (skip-night-deltas world all)
       (seq waking) (waking-deltas world asleep waking))))
 
 (defn sleep [world _d]

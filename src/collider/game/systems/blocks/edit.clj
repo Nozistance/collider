@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.edit
   "Block edit checks and change deltas."
   (:require [collider.data :as data]
+            [collider.game.game-mode :as game-mode]
             [collider.game.block.tnt :as tnt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -31,15 +32,20 @@
 
 (def ^:private ^:const tnt-height 0.98)
 
+(defn- player-box [e]
+  [player-half
+   (if (and (:sneaking? e) (not (:flying e)))
+     crouching-height
+     player-height)])
+
 (defn builder-box
   "Returns the half width and height an entity blocks with.
-  Returns nil when it never blocks placement."
+  Returns nil when it never blocks placement, as a spectator
+  (Level.isUnobstructed, EntityGetter NO_SPECTATORS)."
   [e]
   (case (:type e)
-    :player [player-half
-             (if (and (:sneaking? e) (not (:flying e)))
-               crouching-height
-               player-height)]
+    :player (when-not (game-mode/spectator? e)
+              (player-box e))
     (:tnt :falling-block) [tnt-half tnt-height]
     :item nil
     (when-let [m (get mobs/types (:type e))]

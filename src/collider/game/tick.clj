@@ -9,6 +9,7 @@
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.brewing :as brewing]
+            [collider.game.systems.camera :as camera]
             [collider.game.systems.campfires :as campfires]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
@@ -49,6 +50,7 @@
   [#'chunks/chunk-streaming
    #'players/player-list
    #'players/players
+   #'camera/camera
    #'blocks/block-edits
    #'packets/by-player
    #'sleep/sleep

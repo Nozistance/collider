@@ -1,6 +1,7 @@
 (ns collider.game.mob.sense
   "A mob's senses of the blocks under it and the entities around it."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.game-mode :as game-mode]
+            [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
@@ -25,17 +26,18 @@
 
 (defn nearest-player
   "Returns `[distance-squared id player]` of the nearest player
-  within r2, nil when none is that close."
-  [world pos r2]
+  within r2 that pred accepts, nil when none is that close."
+  [world pos r2 pred]
   (let [r2 (double r2)
         entities (:entities world)
         look (fn [best oid]
-               (if-let [o (get entities oid)]
-                 (let [d2 (v/dist-sq pos (:pos o))]
-                   (if (and (< d2 r2) (closer? best d2 oid))
-                     [d2 oid o]
-                     best))
-                 best))]
+               (let [o (get entities oid)]
+                 (if (and o (pred o))
+                   (let [d2 (v/dist-sq pos (:pos o))]
+                     (if (and (< d2 r2) (closer? best d2 oid))
+                       [d2 oid o]
+                       best))
+                   best)))]
     (reduce look nil (vals (:players world)))))
 
 (def ^:private ^:const cell-shift 2)
@@ -124,10 +126,13 @@
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
 (defn holders
-  "Returns `[id items pos]` for every player holding something."
+  "Returns `[id items pos]` for every player holding something that
+  mobs can see (TemptGoal targets as LivingEntity.canBeSeenByAnyone
+  allows)."
   [world]
   (into []
         (keep (fn [[pid p]]
                 (let [items (hands-of p)]
-                  (when (seq items) [pid items (:pos p)]))))
+                  (when (and (seq items) (game-mode/seen? p))
+                    [pid items (:pos p)]))))
         (state/player-entries world)))

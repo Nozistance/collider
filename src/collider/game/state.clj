@@ -54,9 +54,17 @@
       (max 2)
       (min 32)))
 
+(defn- loads-chunks?
+  "ChunkMap.skipPlayer: a spectator holds no chunks when the
+  spectators_generate_chunks rule is off."
+  [world e]
+  (and (= :player (:type e))
+       (or (get-in world [:rules :spectators-generate-chunks] true)
+           (not (game-mode/spectator? e)))))
+
 (defn- player-chunks [world]
   (into [] (keep (fn [[_ e]]
-                   (when (= :player (:type e))
+                   (when (loads-chunks? world e)
                      (chunk/id->pos (chunk/pos-chunk (:pos e))))))
         (:entities world)))
 
@@ -94,7 +102,8 @@
   (and cached
        (identical? (nth (key cached) 0) (:entities world))
        (identical? (nth (key cached) 1) (:chunks world))
-       (identical? (nth (key cached) 2) (:config world))))
+       (identical? (nth (key cached) 2) (:config world))
+       (identical? (nth (key cached) 3) (:rules world))))
 
 (defn- areas [world]
   (let [cached (:active-chunks world)]
@@ -125,7 +134,8 @@
   [world]
   (if (fresh? world (:active-chunks world))
     world
-    (let [k [(:entities world) (:chunks world) (:config world)]]
+    (let [k [(:entities world) (:chunks world) (:config world)
+             (:rules world)]]
       (assoc world :active-chunks
              (MapEntry/create k (compute-areas world))))))
 
@@ -719,7 +729,8 @@
       (case tag
         :held-item (held-deltas e eid (long slot))
         :creative-slot (creative-deltas e eid (long slot) stack)
-        :dig (swap-deltas e eid)))))
+        :dig (when-not (game-mode/spectator? e)
+               (swap-deltas e eid))))))
 
 (def ^:private horizontal-limit 3.0E7)
 
@@ -945,7 +956,7 @@
   "The events of the packets ServerGamePacketListenerImpl takes only
   from a client that has loaded."
   #{:move :input :dig :release-use :place :use-item :entity-action
-    :attack :interact})
+    :attack :interact :spectate})
 
 (defn- heeded? [w [tag eid]]
   (or (not (contains? load-gated tag))

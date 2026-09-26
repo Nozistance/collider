@@ -1,6 +1,7 @@
 (ns collider.game.block.container
   "Containers and benches, their opening, contents, lids and viewers."
   (:require [collider.data :as data]
+            [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.entity :as entity]
             [collider.game.block.menu :as menu]
@@ -101,10 +102,13 @@
   {:kind :block :rows 3 :type :generic-9x3
    :title {:translate "container.barrel"} :cells [pos]})
 
-(defn- shulker-menu [world _ pos st]
+(defn- shulker-menu [_ _ pos _]
+  {:kind :block :rows 3 :type :shulker-box
+   :title {:translate "container.shulkerBox"} :cells [pos]})
+
+(defn- lidded-shulker-menu [world chunks pos st]
   (when (can-open? world pos st)
-    {:kind :block :rows 3 :type :shulker-box
-     :title {:translate "container.shulkerBox"} :cells [pos]}))
+    (shulker-menu world chunks pos st)))
 
 (defn- ender-menu [_ chunks pos _]
   (when-not (blocked? chunks pos)
@@ -158,7 +162,7 @@
 
 (def ^:private menu-builders
   {:barrel         barrel-menu
-   :shulker-box    shulker-menu
+   :shulker-box    lidded-shulker-menu
    :ender-chest    ender-menu
    :stonecutter    stonecutter-menu
    :crafting-table crafting-menu
@@ -189,6 +193,17 @@
     (if (contains? chest-types t)
       (chest-menu chunks pos st)
       (when-let [f (builders t)] (f world chunks pos st)))))
+
+(defn provider-at
+  "BlockState.getMenuProvider: the menu a spectator opens at pos.
+  An ender chest has none; a shulker box opens whatever blocks
+  its lid."
+  [world pos]
+  (let [st (state-at (:chunks world) pos)]
+    (case (block/type-of st)
+      :ender-chest nil
+      :shulker-box (shulker-menu world nil pos st)
+      (menu-at world pos))))
 
 (defn bench? [m] (= :bench (:kind m)))
 
@@ -370,9 +385,13 @@
 (defn covers? [m pos]
   (boolean (some #(= pos %) (positions m))))
 
-(defn viewers [world pos]
+(defn viewers
+  "ContainerOpenersCounter: the players with a menu of the container
+  at pos open, spectators left out."
+  [world pos]
   (let [sees? (fn [[_ e]]
-                (and (:menu e) (covers? (:menu e) pos)))]
+                (and (:menu e) (covers? (:menu e) pos)
+                     (not (game-mode/spectator? e))))]
     (count (filter sees? (:entities world)))))
 
 (defn- pitch [world pos salt]

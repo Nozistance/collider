@@ -2,6 +2,7 @@
   "Damage, death and respawn."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.loot :as loot]
             [collider.random :as random]
             [collider.game.mob.mobs :as mobs]
@@ -159,7 +160,8 @@
 (defn- attack-deltas [world [_ eid target]]
   (let [a (get-in world [:entities eid])
         t (get-in world [:entities target])]
-    (when (and (attackable? a t) (in-reach? world a t))
+    (when (and (not (game-mode/spectator? a))
+               (attackable? a t) (in-reach? world a t))
       (hit-deltas a t target (crit? a t) (:tick world)))))
 
 (def ^:private ^:const fire-seconds 8)

@@ -1,6 +1,7 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.game-mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
@@ -118,6 +119,14 @@
     (when carried [(out/to eid (out/carried nil))])
     (when notify? [(out/to eid (out/container-close (:id m)))])))
 
+(defn- opener-deltas
+  "ContainerOpenersCounter: a player opening or closing menu m
+  counts as an opener unless it is a spectator."
+  [world e m step]
+  (when-not (game-mode/spectator? e)
+    (concat (count-deltas world m step)
+            (barrel-deltas world m step))))
+
 (defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
     (let [[changes drops] (closed-inventory world eid e m)]
@@ -126,8 +135,7 @@
         (for [[slot s] changes] [:set-slot eid slot s])
         (for [s drops] [:spawn-entity (items/dropped world eid s)])
         (close-out-deltas eid m (:carried e) notify?)
-        (count-deltas world m -1)
-        (barrel-deltas world m -1)))))
+        (opener-deltas world e m -1)))))
 
 (defn- remote-slots [slots]
   (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots))
@@ -191,12 +199,20 @@
 
 (defn open-deltas [world eid pos]
   (if-let [m (container/menu-at world pos)]
-    (concat
-      (open-menu-deltas world eid (get-in world [:entities eid]) m)
-      (when-let [stat (open-stat world pos m)] [[:award eid stat 1]])
-      (count-deltas world m 1)
-      (barrel-deltas world m 1))
+    (let [e (get-in world [:entities eid])
+          stat (open-stat world pos m)]
+      (concat
+        (open-menu-deltas world eid e m)
+        (when stat [[:award eid stat 1]])
+        (opener-deltas world e m 1)))
     []))
+
+(defn spectator-open-deltas
+  "ServerPlayerGameMode.useItemOn for a spectator: the menu the
+  block provides opens, no stat, no opener; nil when it has none."
+  [world eid pos]
+  (when-let [m (container/provider-at world pos)]
+    (open-menu-deltas world eid (get-in world [:entities eid]) m)))
 
 (defn- synced [menu ^long st slots carried]
   (assoc menu :state-id st
@@ -328,6 +344,20 @@
       (craft-deltas world eid after)
       (items/thrown-deltas world eid (:drops after)))))
 
+(defn- all-data-deltas
+  "AbstractContainerMenu.sendAllDataToRemote: the whole menu m of
+  player e sent again under the next state id."
+  [world eid e m]
+  (let [st (bit-and (inc (long (:state-id m 1))) 32767)
+        slots (view m (container/items world eid m) (:inventory e))
+        data (container/data-values world m)
+        {:keys [deltas menu]}
+        (resync-deltas eid m slots (:carried e) st)
+        one (fn [i v] (out/to eid (out/container-data (:id m) i v)))
+        menu (assoc menu :remote-data data)]
+    (concat deltas (map-indexed one data)
+            [[:merge-entity eid {:menu menu}]])))
+
 (defn- click-deltas [world [_ eid packet]]
   (when-let [e (get-in world [:entities eid])]
     (let [m (:menu e)
@@ -335,6 +365,7 @@
           same? (and m (= (long want) (long (:id m))))]
       (cond
         (not same?) nil
+        (game-mode/spectator? e) (all-data-deltas world eid e m)
         (container/lectern? m) nil
         (not (valid? world m)) (close-deltas world eid e true)
         :else
@@ -407,7 +438,8 @@
 (defn- button-deltas [world [_ eid container id]]
   (when-let [e (get-in world [:entities eid])]
     (let [m (:menu e)]
-      (when (and m (= (long container) (long (:id m))))
+      (when (and m (= (long container) (long (:id m)))
+                 (not (game-mode/spectator? e)))
         (cond
           (container/lectern? m)
           (when (valid? world m)

@@ -179,6 +179,7 @@
    :tab-header        [[:header Text] [:footer Text]]
    :tab-game-mode     [[:uuid :uuid] [:mode :keyword]]
    :game-mode         [[:mode :keyword]]
+   :camera            [[:id :int]]
    :abilities         [[:invulnerable? :boolean] [:flying? :boolean]
                        [:may-fly? :boolean] [:instabuild? :boolean]]
    :move              [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]

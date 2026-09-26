@@ -2,6 +2,7 @@
   "Thrown snowballs, eggs, pearls and potions, and lingering clouds."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -278,9 +279,13 @@
                     [cell]))
           nil (cells from (v/+ from d))))
 
-(defn- skip? [eid e oid o]
+(defn- skip?
+  "Projectile.canHitEntity: a spectator is not pickable
+  (Player.isPickable)."
+  [eid e oid o]
   (or (= (long oid) (long eid))
       (not (hittable? o))
+      (game-mode/spectator? o)
       (and (not (:left-owner? e))
            (= (long oid) (long (:owner e -1))))))
 
@@ -438,7 +443,8 @@
 (defn- touched [world e ^double r ^long age]
   (let [box (cloud-box e r)]
     (for [[oid o] (sort-by key (:entities world))
-          :when (and (hittable? o) (not (contains? (:victims e) oid))
+          :when (and (hittable? o) (not (game-mode/spectator? o))
+                     (not (contains? (:victims e) oid))
                      (overlaps? box (target-box o))
                      (<= (v/dist-sq (:pos e) (:pos o)) (* r r)))]
       [oid (+ age cloud-reapply)])))

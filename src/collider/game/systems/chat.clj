@@ -2,6 +2,7 @@
   "Chat lines, commands and tab completion."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.camera :as camera]
             [collider.game.command.item-args :as item-args]
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
@@ -912,6 +913,57 @@
   (cons (out/to eid (out/reload))
         (say eid "commands.reload.success")))
 
+(defn- camera-set
+  "ServerPlayer.setCamera of player entry x to entry t, nil for its
+  own eyes. A camera in another level takes the player there."
+  [world [id dim e :as x] [tid tdim t]]
+  (if (or (nil? t) (= dim tdim))
+    (let [lv (level-view world dim)]
+      (in-level world dim (camera/set-deltas lv id e tid)))
+    (concat (moved world x tdim (vec (xyz (:pos t))) (own-turn x) #{})
+            (in-level world tdim
+                      [[:merge-entity id {:camera tid}]
+                       (out/to id (out/camera tid))]))))
+
+(defn- spectate-report
+  "SpectateCommand.spectate: the source alone hears it started on t,
+  or stopped for nil."
+  [eid t]
+  (let [k (if t "started" "stopped")
+        msg {:translate (str "commands.spectate.success." k)
+             :with (if t [(entity-name t)] [])}]
+    (answer [(out/to eid (out/system-chat msg))])))
+
+(defn- spectated
+  "SpectateCommand.spectate of entry t by player entry x."
+  [world eid [id _ e :as x] [tid _ t :as target]]
+  (cond
+    (= id tid) (fail eid "commands.spectate.self")
+    (not (game-mode/spectator? e))
+    (fail eid "commands.spectate.not_spectator" (entity-name e))
+    :else (concat (camera-set world x target)
+                  (spectate-report eid t))))
+
+(defn- spectate-deltas [world eid [target player]]
+  (let [x (first (player-selected world eid player))
+        t (when target (first (selected world eid target)))]
+    (cond
+      (nil? x) (fail eid "argument.entity.notfound.player")
+      (and target (nil? t))
+      (fail eid "argument.entity.notfound.entity")
+      :else (spectated world eid x t))))
+
+(defn- entity-tp-deltas
+  "handleTeleportToEntityPacket: a spectator goes to the entity of
+  uuid u in whichever level holds it, turned as it is."
+  [world eid u]
+  (let [x [eid (:dim world) (get-in world [:entities eid])]
+        [_ dim d] (by-uuid world false u)]
+    (when (and d (game-mode/spectator? (nth x 2)))
+      (concat (camera/set-deltas world eid (nth x 2) nil)
+              (moved world x dim (vec (xyz (:pos d)))
+                     [(:yaw d 0.0) (:pitch d 0.0)] :entity)))))
+
 (def ^:private commands
   {:tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
    :tp-targets-to tp-targets-to-deltas :give give-deltas
@@ -919,7 +971,8 @@
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
    :fill fill-deltas :reload reload-deltas
-   :gamemode gamemode-deltas :defaultgamemode default-mode-deltas})
+   :gamemode gamemode-deltas :defaultgamemode default-mode-deltas
+   :spectate spectate-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
   (if-let [f (commands op)]
@@ -1060,6 +1113,7 @@
     :chat (said-deltas world eid text)
     :tab-complete (tab-deltas world eid text target id)
     :change-game-mode (mode-changed world eid text)
+    :teleport-to-entity (entity-tp-deltas world eid text)
     nil))
 
 (defn- distance-fx
