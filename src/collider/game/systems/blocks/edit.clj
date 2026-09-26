@@ -10,6 +10,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -212,12 +213,31 @@
 (defn held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))
 
+(def ^:private eruption-sounds
+  {:erupting :block.potent-sulfur.geyser-eruption
+   :continuous :block.potent-sulfur.geyser-continuous-eruption})
+
+(defn sulfur-placed-fx
+  "Returns the effects of potent sulfur taking state st at pos,
+  PotentSulfurBlock.onPlace: a geyser that starts is heard and
+  runs its block event."
+  [[x y z :as pos] ^long st]
+  (when-let [kind (eruption-sounds (geyser/phase st))]
+    (let [at [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)]]
+      [(out/all (out/sound kind at 1.0 1.0))
+       (out/all (out/block-event pos 0 0))])))
+
+(defn- ghast-placed-fx [pos ^long state]
+  (let [kind (if (block/waterlogged? state)
+               :block.dried-ghast.place-in-water
+               :block.dried-ghast.place)]
+    [(out/all (out/sound kind pos 1.0 1.0))]))
+
 (defn- placed-by-fx [pos ^long state]
-  (when (= :dried-ghast (block/type-of state))
-    (let [kind (if (block/waterlogged? state)
-                 :block.dried-ghast.place-in-water
-                 :block.dried-ghast.place)]
-      [(out/all (out/sound kind pos 1.0 1.0))])))
+  (case (block/type-of state)
+    :dried-ghast (ghast-placed-fx pos state)
+    :potent-sulfur (sulfur-placed-fx pos state)
+    nil))
 
 (defn- place-sound [world eid pos state]
   (let [item (:item (held-stack world eid))

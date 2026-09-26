@@ -19,7 +19,8 @@
    :shelf               :shelf
    :chiseled-book-shelf :chiseled-bookshelf
    :bell                :bell
-   :chest               :chest :copper-chest :chest :weathering-copper-chest :chest
+   :chest               :chest :copper-chest :chest
+   :weathering-copper-chest :chest
    :trapped-chest       :trapped-chest
    :ender-chest         :ender-chest
    :barrel              :barrel
@@ -29,12 +30,13 @@
    :blast-furnace       :blast-furnace
    :smoker              :smoker
    :brewing-stand       :brewing-stand
-   :campfire            :campfire})
+   :campfire            :campfire
+   :potent-sulfur       :potent-sulfur})
 
 (def ^:private silent
-  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest :ender-chest :barrel
-    :shulker-box :lectern :furnace :blast-furnace :smoker
-    :brewing-stand})
+  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest
+    :ender-chest :barrel :shulker-box :lectern :furnace
+    :blast-furnace :smoker :brewing-stand :potent-sulfur})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
@@ -64,28 +66,32 @@
     {:id (identifier (:item stack)) :count (int (:count stack 1))}))
 
 (defn items-nbt [items]
-  (into [] (keep-indexed (fn [i s] (when s (assoc (stack-nbt s) :Slot (byte i))))) items))
+  (let [slot (fn [i s] (when s (assoc (stack-nbt s) :Slot (byte i))))]
+    (into [] (keep-indexed slot) items)))
 
 (defn- dye-name [color] (data/snake color))
 
 (defn- pattern-nbt [{:keys [pattern color]}]
   {:pattern (if (map? pattern)
-              {:asset_id        (identifier (:asset (:direct pattern)))
+              {:asset_id (identifier (:asset (:direct pattern)))
                :translation_key (:translation-key (:direct pattern))}
               (identifier pattern))
    :color   (dye-name color)})
 
 (defn- banner-nbt [e]
-  (cond-> {} (seq (:patterns e)) (assoc :patterns (mapv pattern-nbt (:patterns e)))))
+  (cond-> {}
+    (seq (:patterns e))
+    (assoc :patterns (mapv pattern-nbt (:patterns e)))))
 
 (defn- uuid-ints ^ints [^UUID u]
-  (int-array [(unsigned-bit-shift-right (.getMostSignificantBits u) 32)
-              (.getMostSignificantBits u)
-              (unsigned-bit-shift-right (.getLeastSignificantBits u) 32)
-              (.getLeastSignificantBits u)]))
+  (let [hi (.getMostSignificantBits u)
+        lo (.getLeastSignificantBits u)]
+    (int-array [(unsigned-bit-shift-right hi 32) hi
+                (unsigned-bit-shift-right lo 32) lo])))
 
 (defn- property-nbt [{:keys [name value signature]}]
-  (cond-> (array-map :name name :value value) signature (assoc :signature signature)))
+  (cond-> (array-map :name name :value value)
+    signature (assoc :signature signature)))
 
 (defn- skin-nbt [skin]
   (cond-> {}
@@ -94,24 +100,30 @@
           (:elytra skin) (assoc :elytra (identifier (:elytra skin)))
           (:model skin) (assoc :model (name (:model skin)))))
 
+(defn- properties-nbt [p]
+  (cond-> {}
+    (:name p) (assoc :name (:name p))
+    (:id p) (assoc :id (uuid-ints (:id p)))
+    (seq (:properties p))
+    (assoc :properties (mapv property-nbt (:properties p)))))
+
 (defn profile-nbt [profile]
   (let [p (or (:left (:profile profile)) (:right (:profile profile)))]
-    (merge (cond-> {}
-                   (:name p) (assoc :name (:name p))
-                   (:id p) (assoc :id (uuid-ints (:id p)))
-                   (seq (:properties p)) (assoc :properties (mapv property-nbt (:properties p))))
-           (skin-nbt (:skin profile)))))
+    (merge (properties-nbt p) (skin-nbt (:skin profile)))))
 
 (defn- skull-nbt [e]
-  (cond-> {} (:profile e) (assoc :profile (profile-nbt (:profile e)))))
+  (cond-> {}
+    (:profile e) (assoc :profile (profile-nbt (:profile e)))))
 
 (defn- pot-nbt [e]
   (cond-> {}
-          (seq (:sherds e)) (assoc :sherds (mapv identifier (:sherds e)))
+          (seq (:sherds e))
+          (assoc :sherds (mapv identifier (:sherds e)))
           (:item e) (assoc :item (stack-nbt (:item e)))))
 
 (defn- shelf-nbt [e]
-  {:Items (items-nbt (:items e)) :align_items_to_bottom (boolean (:align-bottom? e))})
+  {:Items (items-nbt (:items e))
+   :align_items_to_bottom (boolean (:align-bottom? e))})
 
 (defn nbt [e]
   (case (:kind e)
@@ -135,13 +147,16 @@
   (when stack
     (cond-> {:item (:item stack) :count (long (:count stack 1))}
             (or (:components stack) (:removed stack))
-            (assoc :patch (select-keys stack [:components :removed])))))
+            (assoc :patch
+                   (select-keys stack [:components :removed])))))
 
 (defn- from-template [t]
-  (when t (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
+  (when t
+    (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
 
 (defn contents [items]
-  (let [top (reduce (fn [acc [i s]] (if s (long i) acc)) -1 (map-indexed vector items))]
+  (let [last-at (fn [acc [i s]] (if s (long i) acc))
+        top (reduce last-at -1 (map-indexed vector items))]
     (mapv template (take (inc top) items))))
 
 (defn- items-of [cs size]
@@ -153,43 +168,50 @@
                  (assoc e field v)
                  e))
              (if (= :shulker-box (:kind e))
-               (assoc e :items (items-of (get-in stack [:components :container]) 27))
+               (let [cs (get-in stack [:components :container])]
+                 (assoc e :items (items-of cs 27)))
                e)
              (get component-fields (:kind e) {})))
 
+(defn- blank? [v] (or (nil? v) (and (coll? v) (empty? v))))
+
 (defn to-stack [item e]
-  (let [cs (reduce-kv (fn [m field component]
-                        (let [v (get e field)]
-                          (if (or (nil? v) (and (coll? v) (empty? v)))
-                            m
-                            (assoc m component v))))
-                      {} (get component-fields (:kind e) {}))]
+  (let [put (fn [m field component]
+              (let [v (get e field)]
+                (if (blank? v) m (assoc m component v))))
+        cs (reduce-kv put {} (get component-fields (:kind e) {}))]
     (cond-> {:item item :count 1}
-            (= :shulker-box (:kind e)) (assoc-in [:components :container] (contents (:items e)))
+            (= :shulker-box (:kind e))
+            (assoc-in [:components :container] (contents (:items e)))
             (seq cs) (update :components merge cs))))
+
+(def ^:private blank
+  {:banner             {:patterns []}
+   :skull              {}
+   :decorated-pot      {:sherds [] :item nil}
+   :jukebox            {:record nil}
+   :shelf              {:items [nil nil nil]}
+   :chiseled-bookshelf {:items (vec (repeat 6 nil)) :last-slot -1}
+   :bell               {}
+   :ender-chest        {}
+   :lectern            {:book nil :page 0}
+   :brewing-stand      {:items (vec (repeat 5 nil)) :brew 0 :fuel 0}
+   :campfire           {:items (vec (repeat 4 nil))
+                        :cook [0 0 0 0] :cook-total [0 0 0 0]}
+   :potent-sulfur      {:countdown -1}})
+
+(def ^:private blank-furnace
+  {:items [nil nil nil] :lit-remaining 0 :lit-total 0
+   :cook 0 :cook-total 0 :used {}})
 
 (defn fresh [k editor]
   (case k
     (:sign :hanging-sign) (sign/fresh k editor)
-    :banner {:kind :banner :patterns []}
-    :skull {:kind :skull}
-    :decorated-pot {:kind :decorated-pot :sherds [] :item nil}
-    :jukebox {:kind :jukebox :record nil}
-    :shelf {:kind :shelf :items [nil nil nil]}
-    :chiseled-bookshelf {:kind :chiseled-bookshelf :items [nil nil nil nil nil nil] :last-slot -1}
-    :bell {:kind :bell}
-    (:chest :trapped-chest :barrel :shulker-box) {:kind k :items (vec (repeat 27 nil))}
-    :ender-chest {:kind :ender-chest}
-    :lectern {:kind :lectern :book nil :page 0}
-    (:furnace :blast-furnace :smoker)
-    {:kind  k :items [nil nil nil] :lit-remaining 0 :lit-total 0
-     :cook  0 :cook-total 0 :used {}}
-    :brewing-stand
-    {:kind :brewing-stand :items (vec (repeat 5 nil))
-     :brew 0 :fuel 0}
-    :campfire
-    {:kind :campfire :items (vec (repeat 4 nil))
-     :cook [0 0 0 0] :cook-total [0 0 0 0]}))
+    (:chest :trapped-chest :barrel :shulker-box)
+    {:kind k :items (vec (repeat 27 nil))}
+    (:furnace :blast-furnace :smoker) (assoc blank-furnace :kind k)
+    (assoc (blank k) :kind k)))
 
 (defn wire [entries]
-  (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}])) entries))
+  (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}]))
+        entries))

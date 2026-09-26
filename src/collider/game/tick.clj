@@ -19,6 +19,7 @@
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.furnaces :as furnaces]
+            [collider.game.systems.geysers :as geysers]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.jukebox :as jukebox]
@@ -91,6 +92,7 @@
              [#'furnaces/furnace-cooking
               #'campfires/campfire-cooking
               #'brewing/brewing
+              #'geysers/geysers
               #'jukebox/jukebox-songs
               #'signs/sign-editors]
              [#'blocks/acks]
