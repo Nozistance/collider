@@ -106,8 +106,10 @@
   {:msg :suggestions :id id :start start :length length
    :matches (vec matches)})
 
-(defn system-chat [runs]
-  {:msg :system-chat :runs runs})
+(defn system-chat
+  "Returns the effect that shows the text component in chat."
+  [text]
+  {:msg :system-chat :text text})
 
 (defn stats [stats]
   {:msg :stats :stats stats})
@@ -117,11 +119,14 @@
 
 (defn overlay
   "Returns the effect that shows a message above the hotbar."
-  [runs]
-  {:msg :overlay :runs runs})
+  [text]
+  {:msg :overlay :text text})
 
-(defn player-chat [name runs]
-  {:msg :player-chat :name name :runs runs})
+(defn player-chat
+  "Returns the effect that shows a line a player said, the text
+  component already decorated with its sender."
+  [text]
+  {:msg :player-chat :text text})
 
 (defn tab-add [entries]
   {:msg :tab-add :entries entries})

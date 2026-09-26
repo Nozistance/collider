@@ -1207,12 +1207,20 @@
   (let [v (get cs "minecraft:item_name")]
     (if (map? v) (get lang (get v "translate")) v)))
 
+(defn- title
+  "Returns the text component an item is called by."
+  [cs]
+  (let [v (get cs "minecraft:item_name")]
+    (if (map? v) {:translate (get v "translate")} v)))
+
 (defn- station-item [tags lang cs]
   (let [rep (get cs "minecraft:repairable")
         trim (get cs "minecraft:provides_trim_material")
-        nm (shown-name lang cs)]
+        nm (shown-name lang cs)
+        rarity (get cs "minecraft:rarity" "common")]
     (cond-> (sorted-map)
-      nm (assoc :name nm)
+      nm (assoc :name nm :title (title cs))
+      (not= "common" rarity) (assoc :rarity (kw rarity))
       rep (assoc :repairable (item-set tags (get rep "items")))
       trim (assoc :trim-material (kw trim)))))
 

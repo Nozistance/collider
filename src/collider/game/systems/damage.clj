@@ -560,7 +560,7 @@
   (out/inventory (mapv inv (range menu/slot-count)) nil))
 
 (def ^:private not-valid
-  (out/overlay [{:translate "block.minecraft.spawn.not_valid"}]))
+  (out/overlay {:translate "block.minecraft.spawn.not_valid"}))
 
 (defn respawn-deltas
   "Returns the deltas that bring dead player eid back at pos.

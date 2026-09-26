@@ -87,10 +87,18 @@
        (flushed (peek st) styles (second st))
        (recur (step s styles st))))))
 
+(defn- joined
+  "Returns one text component of the runs."
+  [runs]
+  (case (count runs)
+    0 ""
+    1 (first runs)
+    {:text "" :extra runs}))
+
 (defn tell
   "Returns the deltas that show the lines to one player."
   [eid & lines]
-  (mapv (fn [line] (out/to eid (out/system-chat (parse-runs line))))
+  (mapv #(out/to eid (out/system-chat (joined (parse-runs %))))
         (mapcat #(str/split-lines (str %)) lines)))
 
 (defn- success
@@ -105,15 +113,20 @@
 
 (defn- say* [eid key with]
   (let [msg {:translate key :with (vec with)}]
-    (success [(out/to eid (out/system-chat [msg]))])))
+    (success [(out/to eid (out/system-chat msg))])))
 
 (defn- say [eid key & with] (say* eid key with))
+
+(defn- failure
+  "Returns the effect that reports the text component of a failed
+  command."
+  [text]
+  (out/system-chat {:text "" :color "red" :extra [text]}))
 
 (defn- fail
   "Returns the deltas that tell one player why a command failed."
   [eid key & with]
-  (let [msg {:translate key :with (vec with) :color "red"}]
-    [(out/to eid (out/system-chat [msg]))]))
+  [(out/to eid (failure {:translate key :with (vec with)}))])
 
 (defn- unloaded?
   "Tells whether any position belongs to no chunk the world holds.
@@ -260,13 +273,33 @@
     :set-rules (mapcat #(set-rule-delta world eid %) entries)
     nil))
 
-(defn- entity-name [e]
-  (if (= :player (:type e))
-    (:name e)
-    {:translate (str "entity.minecraft." (data/snake (:type e)))}))
+(defn- entity-name
+  "Returns the text component that names entity e in messages."
+  [e]
+  (let [k (str "entity.minecraft." (data/snake (:type e)))
+        nm (if (= :player (:type e)) (:name e) {:translate k})
+        hover {:action :show-entity :id (:type e) :uuid (:uuid e)
+               :name nm}]
+    (cond
+      (nil? (:uuid e)) nm
+      (= :player (:type e))
+      {:text nm :insertion nm :hover hover
+       :click {:action :suggest-command
+               :command (str "/tell " nm " ")}}
+      :else (assoc nm :hover hover :insertion (str (:uuid e))))))
 
-(defn- item-name [item]
-  {:translate (str "item.minecraft." (data/snake item))})
+(def ^:private rarity-colors
+  {:common "white" :uncommon "yellow" :rare "aqua"
+   :epic "light_purple"})
+
+(defn- item-name
+  "Returns the text component that names a stack of one item in
+  messages: its name in brackets, colored by rarity."
+  [item]
+  {:translate "chat.square_brackets"
+   :with [{:text "" :extra [(data/item-title item)]}]
+   :color (rarity-colors (data/rarity item))
+   :hover {:action :show-item :id item}})
 
 (defn- levels
   "Returns [dim level] of every level of the server, in its order.
@@ -578,7 +611,7 @@
                        changes)
                   (when left [[:spawn-entity (drop left)]])))
       (say eid "commands.give.success.single"
-           n (item-name item) (:name e)))))
+           n (item-name item) (entity-name e)))))
 
 (defn- give-deltas [world eid [sel item n]]
   (let [xs (player-selected world eid sel)
@@ -616,7 +649,7 @@
         msg {:translate "commands.summon.success" :with [kind]}
         mob (mobs/egg-mob type at [t eid :summon] t dim)]
     (concat (in-level world dim [[:spawn-entity mob]])
-            (success [(out/to eid (out/system-chat [msg]))]))))
+            (success [(out/to eid (out/system-chat msg))]))))
 
 (defn- summon-deltas [world eid [type x y z]]
   (let [p (source-pos world)
@@ -689,7 +722,7 @@
     (concat [[:set-world-spawn dim at [yaw pitch] edge]]
             (when-not (same-spawn? world dim at turn)
               [(out/everyone (out/default-spawn dim at yaw pitch))])
-            (success [(out/to eid (out/system-chat [msg]))]))))
+            (success [(out/to eid (out/system-chat msg))]))))
 
 (defn- world-spawn-deltas
   "Returns the deltas that move the world spawn to the level the
@@ -756,7 +789,7 @@
         m (weather-parameters world kind given)
         msg {:translate (str "commands.weather.set." (name kind))}]
     (cons [:set-weather m]
-          (success [(out/to eid (out/system-chat [msg]))]))))
+          (success [(out/to eid (out/system-chat msg))]))))
 
 (defn- time-query [world what]
   (case what
@@ -815,26 +848,28 @@
            {:dim (:dim r (:dim world)) :pos pos
             :relative (:relative r #{})})))
 
-(defn- context-runs
-  "Returns the runs that show where in the command text s the
-  parse failed: up to ten characters before cursor at, the rest."
-  [^String s at]
-  (let [c (min (long at) (count s))
-        before (subs s (max 0 (- c 10)) c)
-        here {:translate "command.context.here" :color "red"
-              :italic true}]
-    (cond-> [{:text (str (when (> c 10) "...") before)
-              :color "gray"}]
-      (< c (count s))
-      (conj {:text (subs s c) :color "red" :underlined true})
-      :always (conj here))))
+(def ^:private here
+  {:translate "command.context.here" :color "red" :italic true})
 
-(defn- parse-failed [eid text {:keys [failure cursor]}]
-  (let [line (assoc failure :color "red")]
-    (cond-> [(out/to eid (out/system-chat [line]))]
-      cursor
-      (conj (->> (context-runs (subs text 1) cursor)
-                 out/system-chat (out/to eid))))))
+(defn- context
+  "Returns the text component that shows where in the command
+  text s the parse failed: up to ten characters before cursor at,
+  the rest, a click that puts the command back in the chat box."
+  [^String s at]
+  (let [c (min (long at) (count s))]
+    {:text "" :color "gray"
+     :click {:action :suggest-command :command (str "/" s)}
+     :extra (cond-> (if (> c 10) ["..."] [])
+              :always (conj (subs s (max 0 (- c 10)) c))
+              (< c (count s))
+              (conj {:text (subs s c) :color "red"
+                     :underlined true})
+              :always (conj here))}))
+
+(defn- parse-failed [eid text r]
+  (let [at (:cursor r)]
+    (cond-> [(out/to eid (failure (:failure r)))]
+      at (conj (out/to eid (failure (context (subs text 1) at)))))))
 
 (defn- feedback?
   "Tells whether players hear of the success of commands once the
@@ -870,7 +905,9 @@
 
 (defn- public-deltas [world eid text]
   (when-let [e (get-in world [:entities eid])]
-    [(out/all (out/player-chat (:name e) (parse-runs text)))]))
+    [(out/all (out/player-chat
+                {:translate "chat.type.text"
+                 :with [(entity-name e) text]}))]))
 
 (defn- said-deltas [world eid raw]
   (let [text (str/trim (str raw))]

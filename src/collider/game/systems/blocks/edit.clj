@@ -99,7 +99,7 @@
   [eid high? ^long y]
   (let [k (if high? "build.tooHigh" "build.tooLow")
         text {:translate k :with [y] :color "red"}]
-    (out/to eid (out/overlay [text]))))
+    (out/to eid (out/overlay text))))
 
 (defn reject-deltas
   "Returns the effects that show the player the true blocks at pos

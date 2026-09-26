@@ -204,6 +204,16 @@
   [item]
   (get-in (items) [item :name]))
 
+(defn item-title
+  "Returns the text component an item is called by."
+  [item]
+  (get-in (items) [item :title]))
+
+(defn rarity
+  "Returns how rare an item is: :common, :uncommon, :rare or :epic."
+  [item]
+  (get-in (items) [item :rarity] :common))
+
 (defn repairable
   "Returns the items that mend item on an anvil, else nil."
   [item]

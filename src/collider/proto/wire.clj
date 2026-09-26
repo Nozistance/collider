@@ -6,6 +6,7 @@
   (:require [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
+            [collider.proto.text :as text]
             [malli.core :as m]))
 
 (set! *warn-on-reflection* true)
@@ -152,7 +153,7 @@
 
 (def text
   (wire-type :wire/text #(or (string? %) (map? %)) c/read-nbt
-             c/write-component [:string {:max 32}]))
+             text/write-component [:string {:max 32}]))
 
 (def nbt
   (wire-type :wire/nbt any? c/read-nbt c/write-nbt

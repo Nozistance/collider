@@ -4,7 +4,8 @@
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
             [collider.data :as data]
-            [collider.proto.buf :as buf])
+            [collider.proto.buf :as buf]
+            [collider.proto.text :as text])
   (:import (collider.java Buf)
            (java.io DataInputStream EOFException InputStream
                     OutputStream)
@@ -143,52 +144,6 @@
 (def ^:private int-array-class (Class/forName "[I"))
 
 (def ^:private long-array-class (Class/forName "[J"))
-
-(defn- write-nbt-string [^Buf buf ^String name ^String v]
-  (buf/write-byte! buf (int tag-string))
-  (buf/write-utf! buf name)
-  (buf/write-utf! buf v))
-
-(declare write-translatable)
-
-(defn- write-argument [^Buf buf a]
-  (if (map? a)
-    (write-translatable buf a)
-    (do (write-nbt-string buf "text" (str a))
-        (buf/write-byte! buf (int tag-end)))))
-
-(defn- write-list-head [^Buf buf ^long tag ^long n]
-  (buf/write-byte! buf tag)
-  (buf/write-int! buf n))
-
-(defn- write-arguments [^Buf buf with]
-  (buf/write-byte! buf (int tag-list))
-  (buf/write-utf! buf "with")
-  (cond
-    (every? number? with)
-    (do (write-list-head buf tag-int (count with))
-        (doseq [a with] (buf/write-int! buf (int a))))
-    (every? string? with)
-    (do (write-list-head buf tag-string (count with))
-        (doseq [a with] (buf/write-utf! buf a)))
-    :else
-    (do (write-list-head buf tag-compound (count with))
-        (doseq [a with] (write-argument buf a)))))
-
-(defn- write-translatable [^Buf buf {:keys [translate with color]}]
-  (write-nbt-string buf "translate" translate)
-  (when (seq with) (write-arguments buf with))
-  (when color (write-nbt-string buf "color" color))
-  (buf/write-byte! buf (int tag-end)))
-
-(defn write-component
-  "Writes a piece of text a client shows, plain or translated."
-  [^Buf buf s]
-  (if (map? s)
-    (do (buf/write-byte! buf (int tag-compound))
-        (write-translatable buf s))
-    (do (buf/write-byte! buf (int tag-string))
-        (buf/write-utf! buf (str s)))))
 
 (defn- nbt-type ^long [v]
   (cond (map? v) tag-compound
@@ -584,7 +539,9 @@
   (codec (fn [^Buf b] (read-nbt b))
          (fn [^Buf b v] (write-nbt b v))))
 
-(def ^:private c-text c-nbt)
+(def ^:private c-text
+  (codec (fn [^Buf b] (read-nbt b))
+         (fn [^Buf b v] (text/write-component b v))))
 
 (def ^:private c-unit (codec (fn [^Buf _] true) (fn [^Buf _ _] nil)))
 

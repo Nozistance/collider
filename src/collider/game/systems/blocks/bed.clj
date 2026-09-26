@@ -28,37 +28,57 @@
 
 (defn- bed-blocked? [world head]
   (let [st (edit/block-at world head)
-        above (mapv + head [0 1 0])]
+        above (mapv + head [0 1 0])
+        other (mapv + above (connect/partner-offset st))]
     (or (block/full-cube? (edit/block-at world above))
-        (block/full-cube? (edit/block-at world (mapv + above (connect/partner-offset st)))))))
+        (block/full-cube? (edit/block-at world other)))))
 
 (defn- spawn-deltas [world eid head]
   (when (not= head (get-in world [:entities eid :spawn]))
     [[:merge-entity eid {:spawn head}]
-     (out/to eid (out/system-chat [{:translate "block.minecraft.set_spawn"}]))]))
+     (out/to eid (out/system-chat
+                  {:translate "block.minecraft.set_spawn"}))]))
 
 (defn- say-deltas [eid k]
-  [(out/to eid (out/overlay [{:translate k}]))])
+  [(out/to eid (out/overlay {:translate k}))])
 
-(defn- lie-deltas [world eid head st]
+(defn- occupied [st]
+  (block/state (block/block-of st)
+               (assoc (block/props-of st) :occupied :true)))
+
+(defn- lying [world head]
   (let [[x y z] head
         lie [(+ (long x) 0.5) (+ (long y) 0.6875) (+ (long z) 0.5)]]
+    {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
+     :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}))
+
+(defn- lie-deltas [world eid head st]
+  (let [asleep (inc (count (sleep/sleepers world)))]
     (concat (spawn-deltas world eid head)
-            (edit/change-deltas world [[head (block/state (block/block-of st) (assoc (block/props-of st) :occupied :true))]])
-            [[:merge-entity eid {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
-                                 :vel      [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}]
-             (sleep/announcement world (inc (count (sleep/sleepers world))))])))
+            (edit/change-deltas world [[head (occupied st)]])
+            [[:merge-entity eid (lying world head)]
+             (sleep/announcement world asleep)])))
+
+(defn- refusal
+  "Returns why the player may not lie in the bed at head: a message
+  key, :asleep when it already sleeps, or nil."
+  [world eid head st]
+  (cond
+    (= :true (:occupied (block/props-of st)))
+    "block.minecraft.bed.occupied"
+    (get-in world [:entities eid :sleeping]) :asleep
+    (not (bed-in-range? world eid head))
+    "block.minecraft.bed.too_far_away"
+    (bed-blocked? world head) "block.minecraft.bed.obstructed"))
 
 (defn sleep-deltas [world eid pos]
   (let [head (bed/head-pos (:chunks world) pos)
         st (when head (edit/block-at world head))
-        say (fn [k] (say-deltas eid k))]
+        why (when head (refusal world eid head st))]
     (cond
-      (nil? head) nil
-      (= :true (:occupied (block/props-of st))) (say "block.minecraft.bed.occupied")
-      (get-in world [:entities eid :sleeping]) nil
-      (not (bed-in-range? world eid head)) (say "block.minecraft.bed.too_far_away")
-      (bed-blocked? world head) (say "block.minecraft.bed.obstructed")
+      (or (nil? head) (= :asleep why)) nil
+      why (say-deltas eid why)
       (not (daynight/dark? (:time-of-day world 0)))
-      (concat (spawn-deltas world eid head) (say "block.minecraft.bed.no_sleep"))
+      (concat (spawn-deltas world eid head)
+              (say-deltas eid "block.minecraft.bed.no_sleep"))
       :else (lie-deltas world eid head st))))

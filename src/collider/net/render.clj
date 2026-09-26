@@ -27,11 +27,6 @@
 (defn- players [world]
   (vec (sort (vals (:players world)))))
 
-(defn- text-of [runs]
-  (if-let [t (first (filter :translate runs))]
-    (select-keys t [:translate :with :color])
-    (apply str (map :text runs))))
-
 (defn- chunk-packet [world id]
   (let [[x z] (chunk/id->pos id)]
     {:packet         :level-chunk-with-light :cx x :cz z
@@ -474,9 +469,6 @@
     (filterv #(in-earshot? world (:center m) %) ps)
     ps))
 
-(defn- chat-text [m]
-  (str "<" (:name m) "> " (text-of (:runs m))))
-
 (defn- rule-pair [[k v]]
   [(rules/wire-name k) (rules/serialize k v)])
 
@@ -604,13 +596,13 @@
    :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
    :system-chat   (fn [_ m]
                     [{:packet :system-chat :overlay false
-                      :text (text-of (:runs m))}])
+                      :text (:text m)}])
    :overlay       (fn [_ m]
                     [{:packet :system-chat :overlay true
-                      :text (text-of (:runs m))}])
+                      :text (:text m)}])
    :player-chat   (fn [_ m]
-                    [{:packet :system-chat :text (chat-text m)
-                      :overlay false}])
+                    [{:packet :system-chat :overlay false
+                      :text (:text m)}])
    :stats         (fn [_ m]
                     [{:packet :award-stats :stats (:stats m)}])
    :suggestions   (fn [_ m]

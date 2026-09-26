@@ -28,7 +28,7 @@
 
 (def Coll [:fn coll?])
 
-(def Runs [:sequential [:or :string :map]])
+(def Text [:or :string :map])
 
 (def world-deltas
   {:set-blocks
@@ -149,7 +149,7 @@
    :rain-level        [[:level number?]]
    :thunder-level     [[:level number?]]
    :keepalive         [[:id :int]]
-   :disconnect        [[:text [:or :string :map]]]
+   :disconnect        [[:text Text]]
    :close             []
    :joined            []
    :block-ack         [[:sequence :int]]
@@ -161,15 +161,15 @@
                        [:carried [:maybe Stack]]]
    :suggestions       [[:id :int] [:start :int] [:length :int]
                        [:matches [:sequential :any]]]
-   :system-chat       [[:runs Runs]]
-   :player-chat       [[:name :string] [:runs Runs]]
-   :overlay           [[:runs Runs]]
+   :system-chat       [[:text Text]]
+   :player-chat       [[:text Text]]
+   :overlay           [[:text Text]]
    :stats             [[:stats :map]]
    :game-rules        [[:rules :map]]
    :tab-add           [[:entries [:sequential :map]]]
    :tab-remove        [[:uuids [:sequential :uuid]]]
    :tab-latency       [[:entries [:sequential :map]]]
-   :tab-header        [[:header :string] [:footer :string]]
+   :tab-header        [[:header Text] [:footer Text]]
    :move              [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
                        [:on-ground :boolean]]
    :move-look         [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
