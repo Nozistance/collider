@@ -1,6 +1,7 @@
 (ns collider.world.blocks.dripleaf
   "Big and small dripleaf: support, tilting and growth."
-  (:require [collider.world.block :as block]
+  (:require [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
 
@@ -194,13 +195,20 @@
       (and (nil? side) (leaf? st) delay)
       (+ (long tick) (long delay)))))
 
-(defn- due [chunks p _ctx]
+(defn- tilt-change
+  "BigDripleafBlock.setTilt and playTiltSound."
+  [p ^long st tilt ctx]
+  (let [st' (tilted st tilt)
+        pitch (random/pitch (:tick ctx) p :tilt)]
+    [p st' [[:sound (tilt-sound st') 1.0 pitch]]]))
+
+(defn- due [chunks p ctx]
   (let [st (chunk/at-void chunks p)
         tilt (next-tilt (tilt-of st))]
     (cond
       (and (stem? st) (not (stem-supported? chunks p)))
-      [[p (block/emptied st)]]
-      (and (leaf? st) tilt) [[p (tilted st tilt)]])))
+      [(block/destroyed p st)]
+      (and (leaf? st) tilt) [(tilt-change p st tilt ctx)])))
 
 (def rule
   {:name   :dripleaf

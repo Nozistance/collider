@@ -313,7 +313,7 @@
     (let [st (chunk/at-void chunks q)]
       (if-not (stalactite? st)
         acc
-        (let [acc (conj acc [q (block/emptied st)])]
+        (let [acc (conj acc [q (block/emptied st) [[:fall st]]])]
           (if (tip? st true) acc (recur (dir/down q) acc)))))))
 
 (defn- wake
@@ -329,7 +329,7 @@
 (defn- fallen [chunks p _ctx]
   (let [st (chunk/at-void chunks p)]
     (if (and (stalagmite? st) (not (supported? chunks p st)))
-      [[p (block/emptied st)]]
+      [(block/destroyed p st)]
       (seq (fall-changes chunks p)))))
 
 (def rule
@@ -344,7 +344,7 @@
       (let [st (chunk/at-void chunks p)]
         (when (receives? st fluid)
           (when-let [st' (filled st fluid)]
-            [[p st']]))))))
+            [[p st' [[:drip fluid]]]]))))))
 
 (def cauldron-rule
   {:name   :cauldron-drip

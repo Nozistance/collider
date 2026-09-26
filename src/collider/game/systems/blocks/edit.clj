@@ -1,9 +1,11 @@
 (ns collider.game.systems.blocks.edit
   "Block edit checks and change deltas."
   (:require [collider.data :as data]
+            [collider.game.block.tnt :as tnt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
@@ -110,7 +112,7 @@
   (and (= :wet-sponge (block/block-of (long st)))
        (attribute/water-evaporates? (:dim world))))
 
-(defn- dried-fx [world [pos _]]
+(defn- dried-fx [world pos]
   (let [roll (random/of-key (:tick world) pos :sponge-dries)
         pitch (* (+ 1.0 (* (double roll) 0.2)) 0.7)]
     [(out/all (out/level-event sponge-dries pos 0))
@@ -123,18 +125,58 @@
   (let [dry? #(drying? world %)
         sponge (block/state :sponge)]
     [(mapv (fn [[pos :as c]] (if (dry? c) [pos sponge] c)) changes)
-     (into [] (comp (filter dry?) (mapcat #(dried-fx world %)))
+     (into [] (comp (filter dry?) (map first)
+                    (mapcat #(dried-fx world %)))
            changes)]))
 
-(def ^:private change-effects {:fizz out/fizz})
+(defn- dropped [world pos [_ old]]
+  (when (get-in world [:rules :block-drops] true)
+    (let [salt (fn [salt] (random/of-key (:tick world) pos salt))]
+      (for [[i stack] (map-indexed vector (block/drops old salt))]
+        [:spawn-entity (items/popped world pos stack i)]))))
+
+(defn- falling-block [[x y z :as pos] [_ st]]
+  [[:spawn-entity
+    {:type :falling-block
+     :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+     :vel [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
+     :block (block/without-water st) :start pos :time 0}]])
+
+(defn- primed [world pos]
+  (when (get-in world [:rules :tnt-explodes] true)
+    (let [e (tnt/primed pos [(:tick world) pos])]
+      [[:spawn-entity e]
+       (out/all (out/sound :tnt/primed (:pos e) 1.0 1.0))])))
+
+(def ^:private drip-events
+  {:water out/sound-drip-water-into-cauldron
+   :lava out/sound-drip-lava-into-cauldron})
+
+(def ^:private change-effects
+  "What each effect a change names does, by its kind."
+  {:fizz (fn [_ pos _] [(out/all (out/fizz pos))])
+   :break (fn [_ pos [_ old]] [(out/all (out/break-effect pos old))])
+   :drop dropped
+   :fall (fn [_ pos e] (falling-block pos e))
+   :prime (fn [world pos _] (primed world pos))
+   :dry (fn [world pos _] (dried-fx world pos))
+   :sound (fn [_ pos [_ kind volume pitch]]
+            [(out/all (out/sound kind pos volume pitch))])
+   :drip (fn [_ pos [_ fluid]]
+           [(out/all (out/level-event (drip-events fluid) pos 0))])
+   :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])})
 
 (defn change-fx
-  "Returns the effects the changes carry. A change [pos st fx]
-  names them in fx, as [:fizz]; a change [pos st] has none."
-  [changes]
+  "Returns the deltas of the effects the changes carry. A change
+  [pos st fx] names them in fx, where each is a kind, as :fizz,
+  or a kind with its data, as [:drop st]. A change [pos st] has
+  none."
+  [world changes]
   (for [[pos _ fx] changes
-        k fx]
-    (out/all ((change-effects k) pos))))
+        e fx
+        :let [e (if (keyword? e) [e] e)]
+        d ((change-effects (first e)) world pos e)]
+    d))
 
 (defn block-changes
   "Returns the changes as [pos st], without their effects."
@@ -144,7 +186,7 @@
 (defn- mixed-deltas [world all fx mixed]
   (-> [[:set-blocks (into all (block-changes mixed))
         (dec (long (:tick world)))]]
-      (into (change-fx mixed))
+      (into (change-fx world mixed))
       (into fx)))
 
 (defn change-deltas

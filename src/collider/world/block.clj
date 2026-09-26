@@ -263,6 +263,16 @@
 
 (defn tnt? [^long st] (= :tnt (type-of st)))
 
+(defn destroyed
+  "Returns the change Level.destroyBlock makes at p. The block
+  leaves the fluid it holds and drops; it shows its break unless
+  it is a fire."
+  [p ^long st]
+  [p (emptied st)
+   (if (contains? #{:fire :soul-fire} (type-of st))
+     [[:drop st]]
+     [[:break st] [:drop st]])])
+
 (defn falls? [^long st]
   (and (known? st) (aget ^booleans @falls-arr st)))
 

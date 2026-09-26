@@ -543,15 +543,21 @@
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
-(defn- destroys? [mix traw]
-  (and mix (pos? (long traw))
-       (not (contains? air-blocks (block/block-of (long traw))))))
+(defn- destroying
+  "Returns what beforeDestroyingBlock does to traw, or nil for
+  air: lava fizzes, water drops the block."
+  [mix traw]
+  (let [traw (long traw)]
+    (when (and (pos? traw)
+               (not (contains? air-blocks (block/block-of traw))))
+      (if mix :fizz [:drop traw]))))
 
 (defn- spread-plain [{:keys [chunks cls mix]} tp v traw]
   (let [st (liquid->state cls v)
         prod (mixed chunks [tp st] tp)
+        gone (destroying mix traw)
         fx (cond-> []
-             (destroys? mix traw) (conj :fizz)
+             gone (conj gone)
              prod (conj :fizz))]
     (with-neighbors chunks
                     (cond-> [tp (or prod st)] (seq fx) (conj fx)))))

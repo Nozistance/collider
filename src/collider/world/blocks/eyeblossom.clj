@@ -60,7 +60,9 @@
   (let [st (chunk/chunks-get-block chunks p)
         time (long (:time-of-day ctx 0))]
     (when-let [new (switched st time)]
-      [[p new]])))
+      (let [kin (cascade chunks p st (:tick ctx))]
+        [[p new (cond-> [[:sound (sound-kind new false) 1.0 1.0]]
+                  (seq kin) (conj [:schedule kin]))]]))))
 
 (def rule
   {:name    :eyeblossom

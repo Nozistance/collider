@@ -101,14 +101,20 @@
                    (weather/raining-at? ctx chunks (mapv + p d)))
                  rain-sides)))
 
+(defn- burnt
+  "FireBlock.checkBurnOut: burnt TNT is primed."
+  [[q st'] ^long st]
+  (if (block/tnt? st) [q st' [:prime]] [q st']))
+
 (defn- burn-out [chunks ctx p d chance roll a]
   (let [q (mapv + p d) st (chunk/at-void chunks q)]
     (when (< (pick roll [:burn q] chance) (odds st :burn))
-      (if (and (< (pick roll [:burn-age q] (+ a 10)) 5)
-               (not (weather/raining-at? ctx chunks q)))
-        (let [aged (spread-age roll [:burn-spread q] a)]
-          [q (state-with-age chunks q aged)])
-        [q 0]))))
+      (burnt (if (and (< (pick roll [:burn-age q] (+ a 10)) 5)
+                      (not (weather/raining-at? ctx chunks q)))
+               (let [aged (spread-age roll [:burn-spread q] a)]
+                 [q (state-with-age chunks q aged)])
+               [q 0])
+             st))))
 
 (def ^:private burn-sides
   [[[1 0 0] 300] [[-1 0 0] 300] [[0 -1 0] 250] [[0 1 0] 250]

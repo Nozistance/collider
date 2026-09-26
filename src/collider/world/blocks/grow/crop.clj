@@ -124,7 +124,7 @@
   (let [st (chunk/at chunks p)]
     (cond
       (not (support/supported? chunks p st))
-      [[p (support/gone-state st)]]
+      [(support/gone p st)]
       (fruitless? chunks p st) [[p (detached st)]])))
 
 (def attached-stem-rule

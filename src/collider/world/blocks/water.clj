@@ -4,7 +4,8 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.support :as support]
-            [collider.world.direction :as dir])
+            [collider.world.direction :as dir]
+            [collider.world.env.attribute :as attribute])
   (:import (clojure.lang PersistentQueue)))
 
 (set! *warn-on-reflection* true)
@@ -109,16 +110,32 @@
                    (some? (dried (chunk/at chunks q))))]
     q))
 
-(defn- dried-at [chunks p] [p (dried (chunk/at chunks p))])
+(defn- dried-at
+  "SpongeBlock.removeWaterBreadthFirstSearch: a plant drops."
+  [chunks p]
+  (let [st (chunk/at chunks p)]
+    (if (contains? plants (block/type-of st))
+      [p (dried st) [[:drop st]]]
+      [p (dried st)])))
+
+(def ^:private absorb-sound [:sound :block.sponge.absorb 1.0 1.0])
+
+(defn- soaked
+  "SpongeBlock.tryAbsorbWater. Where water evaporates the wet
+  sponge dries at once, WetSpongeBlock.onPlace."
+  [pos dim]
+  (if (attribute/water-evaporates? dim)
+    [pos (block/state :sponge) [:dry absorb-sound]]
+    [pos (block/state :wet-sponge) [absorb-sound]]))
 
 (defn absorbed
-  "Returns the changes of a sponge at pos soaking up water."
-  [chunks pos]
+  "Returns the changes of a sponge at pos in dim soaking up water."
+  [chunks pos dim]
   (loop [queue (conj PersistentQueue/EMPTY [pos 0])
          seen #{pos}
          acc []]
     (if (or (empty? queue) (>= (count acc) 64))
-      (when (seq acc) (conj acc [pos (block/state :wet-sponge)]))
+      (when (seq acc) (conj acc (soaked pos dim)))
       (let [[p ^long d] (peek queue)
             wet (when (< d 6) (wet-around chunks seen p))]
         (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
@@ -129,4 +146,4 @@
   {:name    :sponge
    :match?  (fn [_chunks st _p] (= :sponge (block/type-of st)))
    :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
-   :reshape (fn [chunks p _ctx] (absorbed chunks p))})
+   :reshape (fn [chunks p ctx] (absorbed chunks p (:dim ctx)))})

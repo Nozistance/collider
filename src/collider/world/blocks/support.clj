@@ -461,6 +461,14 @@
     (block/state :dirt)
     (block/emptied st)))
 
+(defn gone
+  "Returns the change of the block st at p when it loses its
+  support. Farmland and paths turn to dirt; the rest is destroyed."
+  [p ^long st]
+  (if (#{:farmland :dirt-path} (block/type-of st))
+    [p (block/state :dirt)]
+    (block/destroyed p st)))
+
 (defn- horizontal-look-order [yaw]
   (filterv #(contains? dir/horizontal-offset %)
            (dir/look-order yaw 0.0)))
@@ -833,7 +841,7 @@
 (defn- unsupported [chunks p _ctx]
   (let [st (chunk/chunks-get-block chunks p)]
     (when-not (supported? chunks p st)
-      [[p (gone-state st)]])))
+      [(gone p st)])))
 
 (def rule
   {:name    :support
@@ -863,7 +871,7 @@
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
                (when (free-below? chunks p)
-                 [[p (block/emptied st)]])))})
+                 [[p (block/emptied st) [[:fall st]]]])))})
 
 (defn- too-far? [st] (= :7 (:distance (block/props-of st))))
 
@@ -871,8 +879,9 @@
   (let [st (chunk/chunks-get-block chunks p)
         st' (scaffold-state chunks p st)]
     (cond
-      (too-far? st') [[p (block/emptied st)]]
-      (not= st' st) [[p st']])))
+      (not (too-far? st')) (when (not= st' st) [[p st']])
+      (too-far? st) [[p (block/emptied st) [[:fall st']]]]
+      :else [(block/destroyed p st)])))
 
 (def scaffold-rule
   {:name   :scaffold
