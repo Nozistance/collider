@@ -82,6 +82,11 @@
   [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
 
+(def pose-box
+  "Returns [half-width height] of a player in each pose."
+  {:standing [0.3 1.8] :crouching [0.3 1.5]
+   :swimming [0.3 0.6] :sleeping [0.1 0.2]})
+
 (def pose-eyes
   {:standing 1.62 :crouching 1.27 :swimming 0.4 :sleeping 0.2})
 

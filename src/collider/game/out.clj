@@ -153,6 +153,23 @@
 (defn tab-latency [entries]
   {:msg :tab-latency :entries entries})
 
+(defn tab-game-mode
+  "Returns the effect that shows the game mode of the player with
+  uuid in the player list."
+  [uuid mode]
+  {:msg :tab-game-mode :uuid uuid :mode mode})
+
+(defn game-mode
+  "Returns the effect that tells a player its new game mode."
+  [mode]
+  {:msg :game-mode :mode mode})
+
+(defn abilities
+  "Returns the effect that tells a player what it may do: a map of
+  :invulnerable? :flying? :may-fly? and :instabuild?."
+  [m]
+  (assoc m :msg :abilities))
+
 (defn tab-header [header footer]
   {:msg :tab-header :header header :footer footer})
 
@@ -179,6 +196,12 @@
 
 (defn meta [eid type meta]
   {:msg :meta :eid eid :type type :meta meta})
+
+(defn attributes
+  "Returns the effect that shows the attributes of an entity, each
+  [name base modifiers]."
+  [eid attrs]
+  {:msg :attributes :eid eid :attributes attrs})
 
 (defn velocity [eid vel]
   {:msg :velocity :eid eid :vel vel})

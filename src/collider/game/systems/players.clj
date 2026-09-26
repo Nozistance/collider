@@ -2,6 +2,7 @@
   "Player list, entity tracking and movement updates."
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -61,11 +62,12 @@
            :pose        (or (:pose e) :standing)
            :skin-parts  (long (or (:skin-parts e) 0))}
           (:sleeping e)
-          (assoc :sleeping-pos (get-in e [:sleeping :pos]))))
+          (assoc :sleeping-pos (get-in e [:sleeping :pos]))
+          (game-mode/spectator? e) (assoc :invisible? true)))
 
 (def ^:private flag-keys
-  [:burning? :sneaking? :sprinting? :swimming? :color :sheared?
-   :variant])
+  [:burning? :sneaking? :sprinting? :swimming? :invisible? :color
+   :sheared? :variant])
 
 (defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
@@ -196,7 +198,8 @@
     (out/to eid (out/joined))))
 
 (defn- add-entry [e]
-  {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)})
+  {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)
+   :game-mode (:game-mode e)})
 
 (defn- join-list-deltas [joined all]
   (mapcat (fn [[eid e]]

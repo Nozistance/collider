@@ -111,8 +111,8 @@
   [[:dimension-type wire/varint]
    [:dimension wire/id]
    [:seed {:optional true} [:= {:wire wire/long} 0]]
-   [:gamemode {:optional true} [:= {:wire wire/byte} 1]]
-   [:last-gamemode {:optional true} [:= {:wire wire/byte} -1]]
+   [:gamemode wire/byte]
+   [:last-gamemode wire/byte]
    [:debug? {:optional true} [:= {:wire wire/boolean} false]]
    [:flat? {:optional true} [:= {:wire wire/boolean} true]]
    [:death {:optional true} [:= {:wire wire/boolean} false]]
@@ -165,11 +165,20 @@
     (buf/write-boolean! buf true)
     (c/write-varint buf (long (or ping 0)))))
 
+(defn- write-mode-entry! [^Buf buf {:keys [uuid gamemode]}]
+  (c/write-uuid buf uuid)
+  (c/write-varint buf (long gamemode)))
+
+(def ^:private info-actions
+  {:latency [0x10 write-latency-entry!]
+   :game-mode [0x04 write-mode-entry!]})
+
+(def ^:private add-action [0x1D write-player-entry!])
+
 (defn- write-player-info! [^Buf buf m]
-  (let [latency? (= :latency (:action m))
-        players (:players m)
-        one (if latency? write-latency-entry! write-player-entry!)]
-    (buf/write-byte! buf (if latency? 0x10 0x1D))
+  (let [[bits one] (info-actions (:action m) add-action)
+        players (:players m)]
+    (buf/write-byte! buf (int bits))
     (c/write-varint buf (count players))
     (doseq [p players] (one buf p))))
 
@@ -701,6 +710,9 @@
     :read :wire}
    [:play :client-command]
    {:schema [:map [:action wire/varint]]
+    :read :wire}
+   [:play :change-game-mode]
+   {:schema [:map [:mode wire/varint]]
     :read :wire}
    [:play :interact]
    {:schema [:map [:target wire/varint] [:hand wire/varint]

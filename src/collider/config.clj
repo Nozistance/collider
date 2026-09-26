@@ -19,7 +19,9 @@
    :compression-threshold    256
    :save-dir                 "world"
    :save-period-ms           300000
-   :pause-when-empty-seconds 60})
+   :pause-when-empty-seconds 60
+   :game-mode                :creative
+   :force-game-mode          false})
 
 (def ^:private Settings
   [:map {:closed true}
@@ -33,7 +35,10 @@
    [:save-dir {:optional true} :string]
    [:save-period-ms {:optional true} [:int {:min 0}]]
    [:pause-when-empty-seconds {:optional true}
-    [:int {:min 0}]]])
+    [:int {:min 0}]]
+   [:game-mode {:optional true}
+    [:enum :survival :creative :adventure :spectator]]
+   [:force-game-mode {:optional true} :boolean]])
 
 (defn- complaint [settings [k msgs]]
   (str k " " (str/join ", " msgs)
@@ -59,7 +64,8 @@
 
 (def world-keys
   "The settings the world value holds, read by the tick."
-  [:view-distance :simulation-distance :max-players :motd])
+  [:view-distance :simulation-distance :max-players :motd
+   :game-mode :force-game-mode])
 
 (def ^:private fixed-keys [:port :save-dir])
 

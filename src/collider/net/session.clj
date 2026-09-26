@@ -2,6 +2,7 @@
   "The login of a player, from handshake to play."
   (:require [clojure.data.json :as json]
             [collider.data :as data]
+            [collider.game.game-mode :as game-mode]
             [collider.log :as log]
             [collider.proto.codec :as c]
             [collider.net.server :as server])
@@ -172,7 +173,9 @@
    (fn [eid m] [:chat eid (str "/" (:command m))])
    :sign-update
    (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])
-   :rename-item (fn [eid m] [:rename-item eid (:name m)])})
+   :rename-item (fn [eid m] [:rename-item eid (:name m)])
+   :change-game-mode
+   (fn [eid m] [:change-game-mode eid (game-mode/of-id (:mode m))])})
 
 (def ^:private event-table
   (merge session-events move-events action-events container-events))
@@ -196,7 +199,7 @@
     :teleport-to-entity :test-instance-block-action})
 
 (def ^:private later
-  #{:container-slot-state-changed :change-game-mode})
+  #{:container-slot-state-changed})
 
 (def ^:private unhandled (atom #{}))
 

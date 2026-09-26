@@ -13,10 +13,6 @@
 
 (def ^:private ^:const fit-eps 1.0E-7)
 
-(def ^:private pose-box
-  {:standing [0.3 1.8] :crouching [0.3 1.5]
-   :swimming [0.3 0.6] :sleeping [0.1 0.2]})
-
 (defn- floor ^long [^double c] (long (Math/floor c)))
 
 (defn- axis-hit? [c b0 b1 lo hi]
@@ -49,7 +45,7 @@
               [cx cy cz])))))
 
 (defn- fits? [chunks pos pose]
-  (let [[half h] (pose-box pose)
+  (let [[half h] (entity/pose-box pose)
         x (v/x pos) y (v/y pos) z (v/z pos)
         half (double half) h (double h) e fit-eps]
     (not (hits? chunks
@@ -57,7 +53,7 @@
                 [(- (+ x half) e) (- (+ y h) e) (- (+ z half) e)]))))
 
 (defn- water-depth ^double [chunks pos pose]
-  (let [[half h] (pose-box pose) m fluid-margin
+  (let [[half h] (entity/pose-box pose) m fluid-margin
         from [(v/x pos) (+ (v/y pos) m) (v/z pos)]
         width (- (double half) m)
         height (- (double h) (* 2.0 m))]

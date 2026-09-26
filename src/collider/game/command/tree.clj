@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.command.item-args :as items]
+            [collider.game.game-mode :as game-mode]
             [collider.game.command.reader :as r]
             [collider.game.gamerules :as rules]
             [collider.game.mob.mobs :as mobs]
@@ -19,6 +20,11 @@
 (def ^:private time-names {"day" 1000 "night" 13000})
 
 (def ^:private int-max 2147483647)
+
+(def ^:const gamemaster
+  "Permissions.COMMANDS_GAMEMASTER: the level every command here
+  requires."
+  2)
 
 (defn- weather-form [nm doc op]
   [nm doc
@@ -101,7 +107,14 @@
         (into (pos-args :x2 :y2 :z2 {:node "to"}))
         (conj [:block [:block {}]]))
     [:world :fill]]
-   [:reload "reread config.edn" [] [:world :reload]]])
+   [:reload "reread config.edn" [] [:world :reload]]
+   [:gamemode "set the game mode of players (default: yours)"
+    [[:gamemode [:game-mode {}]]
+     [:target [:targets {:players? true :default {:self true}}]]]
+    [:world :gamemode]]
+   [:defaultgamemode "set the game mode of new players"
+    [[:gamemode [:game-mode {}]]]
+    [:world :defaultgamemode]]])
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 
@@ -316,11 +329,23 @@
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
 
+(defn- as-game-mode
+  "GameModeArgument: the unquoted word that names a mode."
+  [_nm ^String s _opts _origin]
+  (let [w (re-find #"^[0-9A-Za-z_.+-]*" s)
+        mode (game-mode/named w)]
+    (cond
+      (nil? mode) [:fail-at "argument.gamemode.invalid" [w] (count w)]
+      (< (count w) (count s))
+      [:fail-at "command.expected.separator" [] (count w)]
+      :else [:ok mode])))
+
 (def ^:private coercers
   {:int as-int :named-int as-named-int :coord as-coord
    :dcoord as-dcoord :enum as-enum :block as-block :item as-item
    :entity-type as-entity-type :targets as-targets :rule as-rule
-   :text as-text :duration as-duration :angle as-angle})
+   :text as-text :duration as-duration :angle as-angle
+   :game-mode as-game-mode})
 
 (defn- coerce
   "Returns [:ok value relative?], [:fail key with cursor?],
@@ -368,6 +393,7 @@
     :entity-type (vec (sort (map name (keys mobs/types))))
     :angle []
     :targets ["@s" "@a" "@p" "@r" "@e" "@n"]
+    :game-mode (mapv name (sort-by game-mode/id (keys game-mode/ids)))
     :block (block-values)))
 
 (defn usage
@@ -600,7 +626,8 @@
    :block [:block-state nil]
    :item [:item-stack nil]
    :entity-type [:resource {:registry "minecraft:entity_type"}]
-   :text [brigadier-string {:kind 0}]})
+   :text [brigadier-string {:kind 0}]
+   :game-mode [:gamemode nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

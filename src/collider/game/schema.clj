@@ -250,6 +250,9 @@
    :yaw          {:default 0.0}
    :pitch        {:default 0.0}
    :on-ground    {:default true :store boolean}
+   :game-mode    {}
+   :previous-game-mode {}
+   :flying       {:default false :store boolean}
    :dimension    {:default :overworld}})
 
 (defn- profile-kept? [player k]

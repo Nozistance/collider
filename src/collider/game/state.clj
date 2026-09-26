@@ -8,6 +8,7 @@
             [clojure.data.int-map :as i]
             [clojure.set :as set]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.game.schedule :as schedule]
@@ -442,13 +443,21 @@
     (assoc e :tp-target [(v/x p) (v/y p) (v/z p)] :tp-id 1
              :tp-at tick)))
 
+(defn- moded
+  "ServerPlayer.readAdditionalSaveData: the mode player e joins in
+  and the flight it keeps there."
+  [w e]
+  (let [mode (game-mode/joining-mode w (:game-mode e))]
+    (assoc e :game-mode mode
+             :flying (game-mode/flying-in mode (:flying e)))))
+
 (defn- player-placed [w eid name pos]
   (let [[yaw pitch] (spawn-turn w)
         fresh (merge (new-player name (:tick w) pos)
                      {:yaw yaw :pitch pitch}
                      (get-in w [:spawning eid :settings]))
         saved (dissoc (get-in w [:profiles name]) :dimension)
-        e (entity/of (merge fresh saved))
+        e (entity/of (moded w (merge fresh saved)))
         tick (:tick w)]
     (-> w
         (assoc-in [:entities eid]
@@ -679,7 +688,7 @@
                     (stack/max-size stack))))))
 
 (defn- creative-deltas [e eid ^long slot stack]
-  (when (given? slot stack)
+  (when (and (game-mode/creative? e) (given? slot stack))
     [[:set-slot eid slot stack]
      [:client-slots eid {slot stack} (get-in e [:track :carried])]]))
 
@@ -815,6 +824,14 @@
                        :ping ping))
       w)))
 
+(defn- flight-claimed
+  "handlePlayerAbilities: the player flies as its client says only
+  when its mode lets it fly."
+  [w eid changes]
+  (let [may? (game-mode/may-fly? (get-in w [:entities eid]))
+        flying (and may? (boolean (:flying changes)))]
+    (apply-move w eid {:flying flying})))
+
 (def ^:private entity-actions
   {0 [:leave-bed? true] 1 [:sprinting? true] 2 [:sprinting? false]})
 
@@ -829,7 +846,7 @@
    :player-quit (fn [w [_ eid]] (player-quit w eid))
    :move (fn [w [_ eid changes]]
            (apply-move (resent w eid) eid changes))
-   :abilities (fn [w [_ eid changes]] (apply-move w eid changes))
+   :abilities (fn [w [_ eid changes]] (flight-claimed w eid changes))
    :player-loaded
    (fn [w [_ eid]] (update-entity w eid dissoc :loaded-at))
    :teleport-ack (fn [w [_ eid id]] (teleport-ack w eid id))
@@ -882,31 +899,30 @@
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
 (defn infinite-materials?
-  "Returns true when the player builds without spending items."
-  [_player]
-  true)
+  "Returns true when the player builds without spending items.
+  Player.hasInfiniteMaterials: the instabuild of creative."
+  [player]
+  (game-mode/creative? player))
 
-(def ^:const block-range 4.5)
-
-(def ^:const creative-block-range 0.5)
-
-(def ^:const entity-range 3.0)
-
-(def ^:const creative-entity-range 2.0)
+(defn permission-level
+  "Returns the permission level of player e. Every player is an
+  operator of the top level unless it holds a level of its own."
+  ^long [e]
+  (long (:permission-level e 4)))
 
 (defn block-reach
   "Returns how far the player reaches blocks."
   ^double [player]
-  (if (infinite-materials? player)
-    (+ block-range creative-block-range)
-    block-range))
+  (if (game-mode/creative? player)
+    (+ game-mode/block-range game-mode/creative-block-range)
+    game-mode/block-range))
 
 (defn entity-reach
   "Returns how far the player reaches entities."
   ^double [player]
-  (if (infinite-materials? player)
-    (+ entity-range creative-entity-range)
-    entity-range))
+  (if (game-mode/creative? player)
+    (+ game-mode/entity-range game-mode/creative-entity-range)
+    game-mode/entity-range))
 
 (defn quit-of
   "Returns the entity that leaves with a player quit event.

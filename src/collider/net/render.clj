@@ -8,6 +8,7 @@
             [collider.data :as data]
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
+            [collider.game.game-mode :as game-mode]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
@@ -89,10 +90,11 @@
   (bit-or (if (:burning? meta) 0x01 0)
           (if (:sneaking? meta) 0x02 0)
           (if (:sprinting? meta) 0x08 0)
-          (if (:swimming? meta) 0x10 0)))
+          (if (:swimming? meta) 0x10 0)
+          (if (:invisible? meta) 0x20 0)))
 
 (def ^:private flag-keys
-  [:burning? :sneaking? :sprinting? :swimming?])
+  [:burning? :sneaking? :sprinting? :swimming? :invisible?])
 
 (defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
 
@@ -331,12 +333,14 @@
    :swim                          [:entity.generic.swim 6]})
 
 (defn- spawn-info
-  "Returns the fields a join or respawn gives of level lv.
+  "Returns the fields a join or respawn gives player e of level lv.
   ServerPlayer.createCommonSpawnInfo."
-  [lv]
+  [lv e]
   (let [dim (:dim lv :overworld)]
     {:dimension-type (data/datapack-id "dimension_type" dim)
-     :dimension dim :sea-level (biome/sea-level-of dim)}))
+     :dimension dim :sea-level (biome/sea-level-of dim)
+     :gamemode (game-mode/id (:game-mode e))
+     :last-gamemode (game-mode/id (:previous-game-mode e))}))
 
 (def ^:private ^:table explosion-block-particles
   (delay [[(data/registry-id "particle_type" :poof) 0.5 1.0 1]
@@ -478,9 +482,18 @@
 (def ^:private difficulty-packet
   {:packet :change-difficulty :difficulty 0 :locked false})
 
-(def ^:private abilities-packet
-  {:packet       :player-abilities :flags (bit-or 1 4 8)
+(defn- abilities-flags ^long [m]
+  (bit-or (if (:invulnerable? m) 1 0) (if (:flying? m) 2 0)
+          (if (:may-fly? m) 4 0) (if (:instabuild? m) 8 0)))
+
+(defn- abilities-packet
+  "ClientboundPlayerAbilitiesPacket of the abilities m."
+  [m]
+  {:packet       :player-abilities :flags (abilities-flags m)
    :flying-speed 0.05 :walking-speed 0.1})
+
+(defn- own-abilities [e]
+  (abilities-packet (game-mode/abilities e)))
 
 (def ^:private ^:table command-tree (delay (commands/tree)))
 
@@ -496,12 +509,18 @@
      (long (Math/floor (double y)))
      (long (Math/floor (double z)))]))
 
+(def ^:private no-commands [{:type :root :children []}])
+
 (defn- permission-packets
   "PlayerList.sendPlayerPermissionLevel: the op level and the
   commands it allows."
-  [eid]
-  [{:packet :entity-event :eid eid :event (+ op-level-event 4)}
-   {:packet :commands :nodes @command-tree}])
+  [eid e]
+  (let [level (state/permission-level e)]
+    [{:packet :entity-event :eid eid :event (+ op-level-event level)}
+     {:packet :commands
+      :nodes (if (< level (long commands/gamemaster))
+               no-commands
+               @command-tree)}]))
 
 (def ^:private border-packet
   {:packet     :initialize-border :center-x 0.0 :center-z 0.0
@@ -568,26 +587,31 @@
     :food 20 :saturation 5.0}
    {:packet :set-experience :progress 0.0 :level 0 :total 0}])
 
-(defn- arrival-packets [m]
+(defn- arrival-packets [m e]
   [{:packet :player-position :teleport-id 0
     :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
     :pitch (:pitch m) :relative (:relative m 0)}
    (center-packet (chunk/pos-chunk (:pos m)))
-   abilities-packet])
+   (own-abilities e)])
 
 (defn- change-dimension-packets
   "Returns the packets that move a player into level lv, in the
   order the client expects them."
   [lv m]
-  (let [eid (:to m)]
+  (let [eid (:to m) e (get-in lv [:entities eid])]
     (concat
-      [(assoc (spawn-info lv) :packet :respawn :keep 3)
+      [(assoc (spawn-info lv e) :packet :respawn :keep 3)
        difficulty-packet]
-      (permission-packets eid)
+      (permission-packets eid e)
       (leave-packets m)
-      (arrival-packets m)
+      (arrival-packets m e)
       (level-info-packets lv)
-      (player-info-packets (get-in lv [:entities eid])))))
+      (player-info-packets e))))
+
+(defn- respawn-packets [lv m]
+  (let [e (get-in lv [:entities (:to m)])]
+    [(assoc (spawn-info lv e) :packet :respawn :keep 0)
+     {:packet :game-event :event 13 :value 0.0}]))
 
 (def ^:private session-fx
   {:teleport      (fn [_ m]
@@ -622,9 +646,11 @@
                     [{:packet :cooldown :group (:group m)
                       :duration (:ticks m)}])
    :change-dimension change-dimension-packets
-   :respawn       (fn [lv _]
-                    [(assoc (spawn-info lv) :packet :respawn :keep 0)
-                     {:packet :game-event :event 13 :value 0.0}])
+   :respawn       respawn-packets
+   :abilities     (fn [_ m] [(abilities-packet m)])
+   :game-mode     (fn [_ m]
+                    [{:packet :game-event :event 3
+                      :value (double (game-mode/id (:mode m)))}])
    :default-spawn (fn [_ m]
                     [{:packet :set-default-spawn-position
                       :dimension (:dimension m) :pos (:pos m)
@@ -732,8 +758,17 @@
 (defn- block-ack-packet [m]
   {:packet :block-changed-ack :sequence (:sequence m)})
 
+(defn- listed [entry]
+  (-> entry
+      (dissoc :game-mode)
+      (assoc :gamemode (game-mode/id (:game-mode entry)))))
+
 (defn- tab-add-packet [m]
-  {:packet :player-info-update :players (:entries m)})
+  {:packet :player-info-update :players (mapv listed (:entries m))})
+
+(defn- tab-game-mode-packet [m]
+  {:packet :player-info-update :action :game-mode
+   :players [{:uuid (:uuid m) :gamemode (game-mode/id (:mode m))}]})
 
 (defn- tab-remove-packet [m]
   {:packet :player-info-remove :uuids (:uuids m)})
@@ -758,6 +793,7 @@
    :inventory         (fn [_ m] [(own-content-packet m)])
    :tab-add           (fn [_ m] [(tab-add-packet m)])
    :tab-remove        (fn [_ m] [(tab-remove-packet m)])
+   :tab-game-mode     (fn [_ m] [(tab-game-mode-packet m)])
    :tab-latency       (fn [_ m] [(tab-latency-packet m)])
    :tab-header        (fn [_ m] [(tab-header-packet m)])})
 
@@ -808,7 +844,10 @@
                 [{:packet :animate :eid (:eid m)
                   :action (animate-action (:kind m))}])
    :status    (fn [_ m] (when-let [p (status-packet m)] [p]))
-   :collect   (fn [_ m] [(collect-packet m)])})
+   :collect   (fn [_ m] [(collect-packet m)])
+   :attributes (fn [_ m]
+                 [{:packet :update-attributes :eid (:eid m)
+                   :attributes (:attributes m)}])})
 
 (def ^:private fx-table
   (merge session-fx world-fx container-fx entity-fx))
@@ -818,16 +857,16 @@
     (f world m)
     (once! (:msg m))))
 
-(defn- join-login-packets [cfg lv eid]
+(defn- join-login-packets [cfg lv eid e]
   (let [{:keys [max-players view-distance simulation-distance]} cfg]
-    [(merge (spawn-info lv)
+    [(merge (spawn-info lv e)
             {:packet              :login :eid eid
              :levels              schema/dims
              :max-players         (min 255 (long max-players))
              :view-distance       view-distance
              :simulation-distance simulation-distance})
      difficulty-packet
-     abilities-packet]))
+     (own-abilities e)]))
 
 (defn- join-teleport-packet
   "PlayerList.placeNewPlayer: the teleport to where player e joins,
@@ -841,7 +880,7 @@
 (defn- join-world-packets [world e eid motd]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
-    (permission-packets eid)
+    (permission-packets eid e)
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet
@@ -849,23 +888,19 @@
      {:packet :game-event :event 13 :value 0.0}]
     ticking-packets))
 
-(defn- join-player-packets [eid]
-  [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
-   {:packet :set-experience :progress 0.0 :level 0 :total 0}
-   {:packet     :update-attributes :eid eid
-    :attributes
-    [[:entity-interaction-range state/entity-range
-      [[:creative-mode-entity-range state/creative-entity-range 0]]]
-     [:movement-speed 0.1 []]
-     [:block-interaction-range state/block-range
-      [[:creative-mode-block-range state/creative-block-range 0]]]]}])
+(defn- join-player-packets [eid e]
+  (let [[entity block] (game-mode/reach-attributes e)]
+    [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+     {:packet :set-experience :progress 0.0 :level 0 :total 0}
+     {:packet     :update-attributes :eid eid
+      :attributes [entity [:movement-speed 0.1 []] block]}]))
 
 (defn- join-packets [world lv eid]
   (let [cfg (merge config/defaults (:config world))
         e (get-in lv [:entities eid])]
-    (concat (join-login-packets cfg lv eid)
+    (concat (join-login-packets cfg lv eid e)
             (join-world-packets world e eid (:motd cfg))
-            (join-player-packets eid))))
+            (join-player-packets eid e))))
 
 (declare own-level)
 
@@ -881,6 +916,7 @@
 (def ^:private everyone
   #{:time :rain-started :rain-stopped :player-chat :system-chat
     :tab-add :tab-remove :tab-latency :tab-header :default-spawn
+    :tab-game-mode
     :game-rules :reloaded :view-distance :simulation-distance})
 
 (defn- sight-of
@@ -925,7 +961,7 @@
 
 (def ^:private entity-msgs
   #{:move :move-look :look :sync-pos :head-look :velocity :meta
-    :equipment :animation :status :collect})
+    :equipment :animation :status :collect :attributes})
 
 (defn- level-audience [sight dim m]
   (ranged-recipients (level-of sight dim)

@@ -6,6 +6,7 @@
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
             [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.gamerules :as rules]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
@@ -848,6 +849,62 @@
       :weather-rain (weather-deltas world eid :rain given)
       :weather-thunder (weather-deltas world eid :thunder given))))
 
+(defn- mode-name [mode]
+  {:translate (str "gameMode." (name mode))})
+
+(defn- told-of-mode
+  "The message GameModeCommand sends the target of another player,
+  while players hear of commands."
+  [world id mode]
+  (when (get-in world [:rules :send-command-feedback] true)
+    [(out/to id (out/system-chat
+                  {:translate "gameMode.changed"
+                   :with [(mode-name mode)]}))]))
+
+(defn- mode-report
+  "GameModeCommand.logGamemodeChange."
+  [world eid [id _ e] mode]
+  (if (= id eid)
+    (say eid "commands.gamemode.success.self" (mode-name mode))
+    (concat (told-of-mode world id mode)
+            (say eid "commands.gamemode.success.other"
+                 (entity-name e) (mode-name mode)))))
+
+(defn- mode-change [world [id dim e] mode]
+  (game-mode/change (level-view world dim) id e mode))
+
+(defn- mode-set
+  "GameModeCommand.setGameMode: the change of the player entry x
+  and its report, nil when x is in mode already."
+  [world eid mode [_ dim :as x]]
+  (when-let [ds (seq (mode-change world x mode))]
+    (concat (in-level world dim ds) (mode-report world eid x mode))))
+
+(defn- gamemode-deltas [world eid [mode sel]]
+  (let [xs (player-selected world eid sel)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.player")
+      (mapcat #(mode-set world eid mode %) xs))))
+
+(defn- enforced
+  "MinecraftServer.enforceGameTypeForPlayers: every player put in
+  mode, none told of it."
+  [world mode]
+  (when mode
+    (mapcat (fn [[_ dim :as x]]
+              (in-level world dim (mode-change world x mode)))
+            (player-entries world))))
+
+(defn- default-mode-deltas
+  "DefaultGameModeCommands.setMode."
+  [world eid [mode]]
+  (let [cfg (assoc (:config world) :game-mode mode)
+        forced (game-mode/forced-mode (assoc world :config cfg))]
+    (concat [[:set-config cfg]]
+            (enforced world forced)
+            (say eid "commands.defaultgamemode.success"
+                 (mode-name mode)))))
+
 (defn- reload-deltas
   "ReloadCommand: the report comes at once, the reread at the
   edge."
@@ -861,7 +918,8 @@
    :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
-   :fill fill-deltas :reload reload-deltas})
+   :fill fill-deltas :reload reload-deltas
+   :gamemode gamemode-deltas :defaultgamemode default-mode-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
   (if-let [f (commands op)]
@@ -943,10 +1001,26 @@
                    (remove nil?))
           ds)))
 
+(defn- gamemaster? [world eid]
+  (when-let [e (get-in world [:entities eid])]
+    (<= (long cmd/gamemaster) (state/permission-level e))))
+
+(def ^:private hidden
+  {:failure {:translate "command.unknown.command" :with []}
+   :cursor 0})
+
+(defn- parsed
+  "Returns what the command text means to player eid: every command
+  asks for the gamemaster level, below it none is known."
+  [world eid text origin]
+  (if (gamemaster? world eid)
+    (cmd/parse text origin (:dim world :overworld))
+    hidden))
+
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
                  [(v/x p) (v/y p) (v/z p)])
-        r (cmd/parse text origin (:dim world :overworld))]
+        r (parsed world eid text origin)]
     (cond
       (:failure r) (parse-failed eid text r)
       (:error r) (tell eid (:error r))
@@ -973,10 +1047,19 @@
         sug (cmd/suggest world text target)]
     [(out/to eid (out/suggestions (or id 0) start len sug))]))
 
+(defn- mode-changed
+  "handleChangeGameMode: GameModeCommand.setGameMode of the player
+  itself, when it may run the command."
+  [world eid mode]
+  (when (gamemaster? world eid)
+    (let [x [eid (:dim world) (get-in world [:entities eid])]]
+      (reported world eid (mode-set world eid mode x)))))
+
 (defn- event-deltas [world [tag eid text target id]]
   (case tag
     :chat (said-deltas world eid text)
     :tab-complete (tab-deltas world eid text target id)
+    :change-game-mode (mode-changed world eid text)
     nil))
 
 (defn- distance-fx
