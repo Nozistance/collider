@@ -54,6 +54,14 @@
                        (items/split-drop world pos stack [:spill i]))))
               (map-indexed vector (:items e))))))
 
+(defn- break-shown
+  "Returns the effect others get of the break of old at pos: particles
+  and sound, or for fire only the hiss, which the breaker hears too."
+  [eid pos old]
+  (if (fire/fire-state? old)
+    [(out/all (out/extinguish pos))]
+    [(out/except eid (out/break-effect pos old))]))
+
 (defn dig-deltas [world [eid status pos _face]]
   (let [old (edit/block-at world pos)]
     (when (or (= 0 status) (= 2 status))
@@ -63,8 +71,7 @@
                            (lectern-break-deltas world pos)
                            (spill-deltas world pos)))
               (concat (edit/change-deltas world [[pos (block/emptied old)]])
-                      [(out/except eid (out/break-effect pos old))]
-                      (when (fire/fire-state? old) [(out/all (out/extinguish pos))])
+                      (break-shown eid pos old)
                       (keep identity [(bed-head-effect world eid pos old)
                                       (door-partner-effect world eid pos old)])))
         [(edit/own-change world eid pos)]))))

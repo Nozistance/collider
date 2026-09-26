@@ -75,10 +75,17 @@
           :let [old (chunk/chunks-get-block chunks pos)]
           :when (and (destroyed? old (long st))
                      (not (burnt? fires pos)))]
-      [pos old])))
+      [pos old st])))
+
+(defn- break-shown?
+  "Returns true when a block that went this way shows its break.
+  A washed block only drops; fire never shows one."
+  [old st]
+  (and (not (washed? old st)) (not (fire/fire-state? old))))
 
 (defn- destroyed-effects [gone]
-  (for [[pos old] gone]
+  (for [[pos old st] gone
+        :when (break-shown? old st)]
     (out/all (out/break-effect pos old))))
 
 (defn- drops-of [world pos old]
