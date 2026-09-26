@@ -84,6 +84,31 @@
   (when-let [r (rule-for st)]
     (when-let [f (:reshape r)] (f chunks pos ctx))))
 
+(def ^:const light-reach
+  "How far across a change moves the light: a block light fades in
+  15 steps, and so does the sky light that leaves a column."
+  15)
+
+(defn lit?
+  "Tells whether the tick of the rule owning st reads light."
+  [st ctx]
+  (let [r (rule-for st)]
+    (boolean (when-let [f (:lit? r)] (f st ctx)))))
+
+(defn reach
+  "Returns how far across the tick of the rule owning st reads.
+  Every block it reads is at most that many columns away from its
+  own, at any height; light it reads makes it light-reach more.
+  A rule reads its own column and the next ones unless it says
+  otherwise."
+  ^long [st ctx]
+  (if-let [r (rule-for st)]
+    (+ (long (:reach r 1)) (if (lit? st ctx) light-reach 0))
+    0))
+
+(defn fluid-reach ^long [st ctx]
+  (if (block/liquid-class st) (liquid/reach (:dim ctx)) 0))
+
 (defn fluid-changes [chunks st pos ctx]
   (when (block/liquid-class st)
     (liquid/update-cell chunks pos ctx)))

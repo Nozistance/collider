@@ -146,4 +146,5 @@
   {:name    :sponge
    :match?  (fn [_chunks st _p] (= :sponge (block/type-of st)))
    :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
+   :reach   6
    :reshape (fn [chunks p ctx] (absorbed chunks p (:dim ctx)))})

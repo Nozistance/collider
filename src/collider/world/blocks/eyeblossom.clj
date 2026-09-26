@@ -68,5 +68,6 @@
   {:name    :eyeblossom
    :match?  (fn [_chunks st _p] (eyeblossom? st))
    :wake    wake
+   :reach   3
    :reshape (:due support/rule)
    :due     switch-due})

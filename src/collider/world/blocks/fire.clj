@@ -235,6 +235,8 @@
    :match? (fn [_chunks st _p] (fire-state? st))
    :wake   wake-at
    :again  (fn [_chunks tick p] (fire-delay tick p))
+   :reach  2
+   :lit?   (fn [_st ctx] (weather/raining? ctx))
    :due    (fn [chunks p ctx]
              (when (near-player? ctx p)
                (tick-changes chunks p ctx)))})

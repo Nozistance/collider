@@ -216,9 +216,11 @@
 
 (def ^:private around
   "The cells a change reaches, each with the side the change is on
-  as seen from it; nil for the cell of the change."
-  [[[0 0 0] nil] [[1 0 0] :west] [[-1 0 0] :east] [[0 1 0] :down]
-   [[0 -1 0] :up] [[0 0 1] :north] [[0 0 -1] :south]])
+  as seen from it; nil for the cell of the change. They go in the
+  order of NeighborUpdater.UPDATE_ORDER: west, east, down, up,
+  north, south."
+  [[[0 0 0] nil] [[-1 0 0] :east] [[1 0 0] :west] [[0 -1 0] :up]
+   [[0 1 0] :down] [[0 0 -1] :south] [[0 0 1] :north]])
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
@@ -305,6 +307,21 @@
          (chunk/chunks-set-blocks derived)
          (light/relight-batch dropped sky?))
      (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
+
+(defn blocks-changed
+  "Returns [chunks writes]: the chunks of level w with the changes
+  and the shapes they cause set, the light left as it was, and
+  each block written as [pos old st]. The blocks are those a
+  :set-blocks of the changes leaves."
+  [w changes]
+  (let [real (real-changes w changes)
+        chunks' (chunk/chunks-set-blocks
+                  (:chunks w) (mapv (fn [[pos _ st]] [pos st]) real))
+        derived (derived-in w chunks' (:tick w) real)
+        was (fn [[pos st]]
+              [pos (chunk/chunks-get-block chunks' pos) st])]
+    [(chunk/chunks-set-blocks chunks' derived)
+     (into real (map was) derived)]))
 
 (defn- add-block-events [ev events]
   (reduce (fn [ev [pos st]]

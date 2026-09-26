@@ -596,12 +596,30 @@
                 best))
             [1000 []] horiz3)))
 
+(defn- over-with [env changes]
+  (update env :over (fnil into {})
+          (map (fn [[q st]] [q st])) changes))
+
+(defn- spread-each
+  "Returns the changes of the spread to each target in turn. Each
+  sees what the ones before it did, as spreadTo reads the level."
+  [env targets]
+  (first (reduce (fn [[acc env] [tp d v]]
+                   (let [cs (spread-to env tp d v)]
+                     [(into acc cs) (over-with env cs)]))
+                 [[] env] targets)))
+
+(def ^:private spread-rank
+  "The order getSpread gives its sides in, that of Direction: north,
+  south, west, east."
+  {[0 0 -1] 0 [0 0 1] 1 [-1 0 0] 2 [1 0 0] 3})
+
 (defn- spread-sides [{:keys [dropoff] :as env} p st]
   (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
     (when (pos? n)
-      (into []
-            (mapcat (fn [[tp d v]] (spread-to env tp d v)))
-            (lowest-targets env (raw-by env p [0 0 0]) p)))))
+      (->> (lowest-targets env (raw-by env p [0 0 0]) p)
+           (sort-by #(spread-rank (% 1)))
+           (spread-each env)))))
 
 (defn- source-neighbours ^long [{:keys [cls] :as env} p]
   (count (filter #(source-of? cls (state-of (raw-by env p %)))
@@ -616,9 +634,11 @@
       (when-let [v (new-liquid env bp)]
         (when (and (replaceable-with? b cls [0 -1 0])
                    (holds-specific? cls braw))
-          (into (vec (spread-to env bp [0 -1 0] v))
-                (when (>= (source-neighbours env p) 3)
-                  (spread-sides env p st))))))))
+          (let [down (vec (spread-to env bp [0 -1 0] v))
+                env (over-with env down)]
+            (into down
+                  (when (>= (source-neighbours env p) 3)
+                    (spread-sides env p st)))))))))
 
 (defn- spread [{:keys [cls] :as env} p st]
   (or (spread-down env p st)
@@ -722,6 +742,13 @@
       (= (long st') (long st)) (spread env p st')
       :else (into [[p st']]
                   (spread (assoc env :over {p st'}) p st')))))
+
+(defn reach
+  "Returns how far across a fluid tick in dimension dim reads: the
+  slope search goes that far less one, and looks at the block past
+  its last step."
+  ^long [dim]
+  (inc (long (reduce max (map :slope (vals (liquids-in dim)))))))
 
 (defn update-cell
   "Returns the changes of the liquid at p on its fluid tick.

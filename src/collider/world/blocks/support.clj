@@ -843,9 +843,15 @@
     (when-not (supported? chunks p st)
       [(gone p st)])))
 
+(def ^:private lit-types
+  "The blocks whose support needs light, or darkness."
+  #{:mushroom :crop :carrot :potato :beetroot :torchflower-crop
+    :pitcher-crop})
+
 (def rule
   {:name    :support
    :match?  (fn [_chunks st _p] (block/attached? st))
+   :lit?    (fn [st _ctx] (contains? lit-types (block/type-of st)))
    :wake    wake
    :reshape unsupported
    :due     unsupported})
