@@ -7,8 +7,11 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.players.types
+             :refer [->Frame ->Track]]
             [collider.world.chunk :as chunk])
-  (:import (java.util ArrayList Locale)))
+  (:import (collider.game.systems.players.types Frame Track)
+           (java.util ArrayList Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -111,10 +114,6 @@
                (fn [~'r] (list '~dot (with-meta ~'r {:tag '~t})))}
               [~(with-meta 'r {:tag t})]
               (~dot ~'r)))))
-
-(defrecord Track
-  [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots
-   carried seen t0])
 
 (readers Track tr- pos yaw pitch head on-ground mdata equip vel-sent
          since-tp slots carried t0)
@@ -263,12 +262,6 @@
       (into [[:tracking oid add gone]]
             (mapcat (fn [eid] (baseline-deltas world oid eid)))
             add))))
-
-(defrecord Frame
-  [x y z dx dy dz yaw pitch head ground since due? vel mdata mdiff
-   equip moved? turned? rel? head-turned? meta-changed?
-   equip-changed? vel-changed? equip-diff slot-diff carried-changed?
-   first?])
 
 (readers Frame f- x y z dx dy dz yaw pitch head ground since due? vel
          mdata mdiff equip moved? turned? rel? head-turned?

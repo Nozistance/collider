@@ -2,8 +2,10 @@
   "Collision of moving bodies with the blocks of the world."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
-  (:import (collider.java Phys Section)))
+            [collider.world.chunk :as chunk]
+            [collider.world.phys.types])
+  (:import (collider.java Phys Section)
+           (collider.world.phys.types Move Sweep)))
 
 (set! *warn-on-reflection* true)
 
@@ -48,13 +50,9 @@
              (and (> y chunk/min-y)
                   (fence-at? chunks x (dec y) z))))))
 
-(deftype Sweep [^doubles a ^long n])
-
 (defn- boxes ^doubles [^Sweep s] (.a s))
 
 (defn- box-count ^long [^Sweep s] (.n s))
-
-(deftype Move [pos vel ^boolean on-ground])
 
 (defn pos
   "Returns the position a move ends at."
@@ -67,8 +65,8 @@
 (defn on-ground?
   "Returns true when a move ends on the ground."
   {:inline (fn [m]
-             `(.on-ground
-                ~(with-meta m {:tag 'collider.world.phys.Move})))}
+             (let [t 'collider.world.phys.types.Move]
+               `(.on-ground ~(with-meta m {:tag t}))))}
   [^Move m]
   (.on-ground m))
 

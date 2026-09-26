@@ -4,7 +4,9 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk]))
+            [collider.game.mob.push.types]
+            [collider.world.chunk :as chunk])
+  (:import (collider.game.mob.push.types PushCell)))
 
 (set! *warn-on-reflection* true)
 
@@ -25,9 +27,6 @@
   (case (:type e)
     :player player-height
     (double (or (second (mobs/box-of e)) 1.0))))
-
-(deftype PushCell [^longs eids ^doubles xs ^doubles ys ^doubles zs
-                   ^doubles halfs ^doubles heights])
 
 (defn- cell-eids ^longs [^PushCell c] (.eids c))
 

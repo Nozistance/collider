@@ -4,6 +4,7 @@
             [collider.game.state :as state]
             [collider.game.schema :as schema]
             [collider.game.deltas :as deltas]
+            [collider.game.deltas.types :as types]
             [collider.game.detector :as detector]
             [collider.log :as log]
             [collider.game.systems.block.updates :as block-updates]
@@ -37,7 +38,7 @@
             [collider.game.systems.tnt :as tnt]
             [collider.game.systems.weather :as weather-system]
             [collider.game.systems.damage :as damage])
-  (:import (collider.game.deltas Deltas)
+  (:import (collider.game.deltas.types Deltas)
            (java.util Arrays)
            (java.util.concurrent ConcurrentLinkedQueue)
            (java.util.concurrent.atomic AtomicBoolean AtomicLong)))
@@ -166,7 +167,7 @@
     (away world (nth delta 1))))
 
 (defn- part [ws es]
-  (deltas/->Deltas (vec ws) (into (i/int-map) es) [] []))
+  (types/->Deltas (vec ws) (into (i/int-map) es) [] []))
 
 (defn- rehomed [world ^Deltas d]
   (let [ws (group-by #(stray-dim world %) (deltas/world-of d))
@@ -222,7 +223,7 @@
 (defn- arrivals [ds changes]
   (reduce (fn [ds c]
             (update ds (nth c 2) deltas/merge
-                    (deltas/->Deltas [c] (i/int-map) [] [])))
+                    (types/->Deltas [c] (i/int-map) [] [])))
           ds changes))
 
 (defn- crossing [[world ds] dim ^Deltas d changes]

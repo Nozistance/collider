@@ -1,9 +1,11 @@
 (ns collider.world.chunk
   "Chunks: block states and light, and chunk and block ids."
-  (:require [collider.vec :as v])
+  (:require [collider.vec :as v]
+            [collider.world.chunk.types])
   (:import (collider.java Buf Chunk ChunkIndex Section)
+           (collider.world.chunk.types Batch Edits)
            (java.io DataInput DataOutput)
-           (java.util Arrays HashMap)))
+           (java.util HashMap)))
 
 (set! *warn-on-reflection* true)
 
@@ -296,25 +298,6 @@
   "Returns the block state at p, -1 outside the world height."
   ^long [chunks [_ y _ :as p]]
   (if (in-range? y) (chunks-get-block chunks p) -1))
-
-(definterface Edits
-  (add [^long i ^long state])
-  (applyTo [^collider.java.Section s]))
-
-(deftype ^:private Batch
-  [^:unsynchronized-mutable ^ints idx
-   ^:unsynchronized-mutable ^ints states
-   ^:unsynchronized-mutable ^long n]
-  Edits
-  (add [_ i state]
-    (when (= n (alength idx))
-      (set! idx (Arrays/copyOf idx (int (* 2 n))))
-      (set! states (Arrays/copyOf states (int (* 2 n)))))
-    (aset idx n (int i))
-    (aset states n (int state))
-    (set! n (inc n)))
-  (applyTo [_ s]
-    (.apply s idx states (int n))))
 
 (defn- add-edit! [^Edits e ^long i ^long state] (.add e i state))
 

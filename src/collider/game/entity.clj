@@ -1,42 +1,13 @@
 (ns collider.game.entity
-  "Entity records and their constructors."
-  (:require [collider.game.mob.mobs :as mobs]
+  "Entity constructors, saving and loading."
+  (:require [collider.game.entity.types :as types]
+            [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
   (:import (java.util UUID)))
 
 (set! *warn-on-reflection* true)
-
-(defrecord Mob [pos vel on-ground yaw pitch head-yaw walked wet?
-                jump-cd task follow look no-action say-tick health
-                hurt-resist last-damage death-time health-sent
-                panic-until baby-until love-until breed-ready-at
-                tempt-cooldown-until type color sheared? track])
-
-(defrecord Player [type name uuid pos yaw pitch on-ground client-vel
-                   tp-target chunk-pos sent-chunks
-                   tracking track health hurt-resist last-damage
-                   death-time health-sent inventory held-slot
-                   using-item? sneaking? sprinting? skin-parts
-                   view-distance chunk-view ping
-                   keepalive-at keepalive-pending?])
-
-(defrecord Item [type pos vel yaw pitch on-ground stack age
-                 pickup-delay needs-sync? track])
-
-(defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb
-                track])
-
-(defrecord FallingBlock
-  [type pos vel yaw pitch on-ground block start time track])
-
-(defrecord Projectile [type pos vel yaw pitch on-ground stack owner
-                       age left-owner? track])
-
-(defrecord Cloud [type pos vel yaw pitch on-ground radius color
-                  waiting? age duration wait-time radius-per-tick
-                  radius-on-use victims track])
 
 (def thrown-types
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
@@ -59,14 +30,14 @@
 
 (defn- record-of [m]
   (case (:type m)
-    :player (map->Player m)
-    :item (map->Item m)
-    :tnt (map->Tnt m)
-    :falling-block (map->FallingBlock m)
-    :area-effect-cloud (map->Cloud m)
+    :player (types/map->Player m)
+    :item (types/map->Item m)
+    :tnt (types/map->Tnt m)
+    :falling-block (types/map->FallingBlock m)
+    :area-effect-cloud (types/map->Cloud m)
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion)
-    (map->Projectile m)
-    (map->Mob m)))
+    (types/map->Projectile m)
+    (types/map->Mob m)))
 
 (defn of
   "Returns the entity m as the record its type calls for."

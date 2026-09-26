@@ -1134,10 +1134,16 @@
             (distance-fx old m :simulation-distance
               out/simulation-distance))))
 
-(defn- config-event-deltas [world [tag eid m]]
+(defn- commit-synced
+  "Returns the delta that records the commit the code runs at."
+  [world [_ commit]]
+  [[:set-config (assoc (:config world) :commit commit)]])
+
+(defn- config-event-deltas [world [tag eid m :as ev]]
   (case tag
     :config-loaded (config-loaded world m)
     :config-failed (fail eid "commands.reload.failure")
+    :commit-synced (commit-synced world ev)
     nil))
 
 (defn- one-deltas [world ev]

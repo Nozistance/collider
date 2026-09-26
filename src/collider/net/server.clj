@@ -2,10 +2,12 @@
   "Serving the players who connect."
   (:require [clojure.string :as str]
             [collider.log :as log]
+            [collider.net.server.types :as types]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
   (:import (collider.java Buf)
+           (collider.net.server.types Conn)
            (java.io BufferedInputStream BufferedOutputStream
                     EOFException)
            (java.net ServerSocket Socket SocketException
@@ -25,9 +27,6 @@
 (def ^:private ^:const read-timeout-ms 30000)
 
 (def ^:private ^:const default-max-connections 256)
-
-(defrecord Conn
-  [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
 
 (defn conn-state
   "Returns the protocol state connection c is in."
@@ -170,7 +169,7 @@
             (log/warn "writer failed for" (who conn) "-" (str t))))))
 
 (defn- new-conn [^Socket sock]
-  (->Conn sock (LinkedBlockingQueue.)
+  (types/->Conn sock (LinkedBlockingQueue.)
           (atom {:state :handshake :threshold -1
                  :addr  (str (.getRemoteSocketAddress sock))})
           (AtomicBoolean. false)))

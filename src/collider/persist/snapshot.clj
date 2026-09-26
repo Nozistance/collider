@@ -8,12 +8,16 @@
             [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.log :as log]
+            [collider.persist.snapshot.types :as types
+             :refer [Store put-chunk! get-chunk put-meta! load
+                     flush!]]
             [collider.world.chunk :as chunk]
             [malli.core :as m]
             [malli.error :as me]
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.java Chunk)
+           (collider.persist.snapshot.types FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption)
            (java.nio.file OpenOption Path StandardCopyOption)
@@ -28,13 +32,6 @@
   (chunk/load-chunk in))
 
 (def ^:private freeze-opts {:compressor lz4-compressor})
-
-(defprotocol Store
-  (put-chunk! [this dim id payload])
-  (get-chunk [this dim id])
-  (put-meta! [this m])
-  (load [this])
-  (flush! [this]))
 
 (def ^:private no-attrs (make-array FileAttribute 0))
 
@@ -142,24 +139,23 @@
       (when-let [m (read-edn (meta-file d))]
         (update m :levels #(with-stored d %))))))
 
-(defrecord FileStore [dir]
+(extend-type FileStore
   Store
-  (put-chunk! [_ dim id payload]
+  (put-chunk! [{:keys [dir]} dim id payload]
     (write-atomically! (chunk-file dir dim id)
                        (nippy/freeze payload freeze-opts)))
-  (get-chunk [_ dim id] (read-frozen (chunk-file dir dim id)))
-  (put-meta! [_ m]
+  (get-chunk [{:keys [dir]} dim id]
+    (read-frozen (chunk-file dir dim id)))
+  (put-meta! [{:keys [dir]} m]
     (backup-meta! dir)
     (write-atomically! (meta-file dir) (edn-bytes m)))
-  (load [_] (read-store dir))
-  (flush! [_] nil)
-  Object
-  (toString [_] (str dir)))
+  (load [{:keys [dir]}] (read-store dir))
+  (flush! [_] nil))
 
 (defn file-store
   "Returns a store that keeps a world in directory dir."
   [dir]
-  (->FileStore dir))
+  (types/->FileStore dir))
 
 (defn- level-snapshot [world dim]
   (let [lv (state/level world dim)

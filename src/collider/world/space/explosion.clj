@@ -4,16 +4,14 @@
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
-  (:import (collider.java Rays)))
+            [collider.world.chunk :as chunk]
+            [collider.world.space.explosion.types])
+  (:import (collider.java Rays)
+           (collider.world.space.explosion.types Region)))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const region-r 10)
-
-(deftype Region [^objects grid ^objects cols ^long cx0 ^long cz0
-                 ^long sy0 ^long ncx ^long ncz ^long nsy
-                 read-absent ^clojure.lang.Atom loaded])
 
 (defn- rg-grid ^objects [^Region rg] (.grid rg))
 

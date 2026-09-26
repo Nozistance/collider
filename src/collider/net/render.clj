@@ -18,7 +18,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome])
-  (:import (collider.game.deltas Deltas)))
+  (:import (collider.game.deltas.types Deltas)))
 
 (set! *warn-on-reflection* true)
 

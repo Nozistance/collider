@@ -21,8 +21,8 @@
             [collider.game.systems.blocks.reach :as reach]
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
-  (:import (collider.game.entity Mob)
-           (collider.world.phys Move)))
+  (:import (collider.game.entity.types Mob)
+           (collider.world.phys.types Move)))
 
 (set! *warn-on-reflection* true)
 

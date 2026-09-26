@@ -16,10 +16,10 @@
             [collider.net.session :as session]
             [collider.persist.snapshot :as snapshot])
   (:import (clojure.lang ExceptionInfo)
-           (collider.game.deltas Deltas)
+           (collider.game.deltas.types Deltas)
            (java.lang.management
              GarbageCollectorMXBean ManagementFactory)
-           (java.net BindException ServerSocket)
+           (java.net BindException ServerSocket URL)
            (java.util.concurrent
              ConcurrentLinkedQueue Executors
              ScheduledExecutorService ScheduledFuture ThreadFactory
@@ -148,9 +148,17 @@
         out (str/trim (slurp (.getInputStream p)))]
     (when (and (zero? (.waitFor p)) (seq out)) out)))
 
+(defn- source-dir
+  "Returns the directory the sources run from, or nil in a jar."
+  []
+  (let [^URL u (io/resource "collider/core.clj")]
+    (when (= "file" (some-> u .getProtocol))
+      (.getParent (.getParentFile (io/file u))))))
+
 (defn- git-commit []
-  (try (run-out "git" "rev-parse" "--short=11" "HEAD")
-       (catch Exception _ nil)))
+  (when-let [dir (source-dir)]
+    (try (run-out "git" "-C" dir "rev-parse" "--short=11" "HEAD")
+         (catch Exception _ nil))))
 
 (defn- build-commit []
   (or (git-commit)
@@ -177,7 +185,7 @@
   (let [queue (ConcurrentLinkedQueue.)
         conns (atom {})
         io {:queue queue :conns conns :settings settings :save! save!
-            :world world :on-packet session/handle-packet}
+            :world world :on-packet #'session/handle-packet}
         port (:port @settings)
         {:keys [socket accept]} (server/listen! io port)]
     {:queue queue :conns conns :socket socket :accept accept}))
@@ -296,6 +304,9 @@
          (cli/render! (assoc (ex-data e) :event :error))
          (System/exit 1))))
 
+(defonce ^{:doc "The server -main started, for the REPL."} running
+  (atom nil))
+
 (defn -main
   "Starts the server. Each argument is an edn map laid over the
   config file."
@@ -308,4 +319,5 @@
         opts (apply merge {} (map edn/read-string args))
         server (run! (assoc opts :config-written? written?))
         ^Thread accept (:accept server)]
+    (reset! running server)
     (.join accept)))

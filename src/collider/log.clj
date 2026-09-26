@@ -14,7 +14,7 @@
 
 (def ^:private ^PrintStream console System/out)
 
-(def ^:private file (atom nil))
+(defonce ^:private file (atom nil))
 
 (def ^:private ^DateTimeFormatter stamp
   (DateTimeFormatter/ofPattern "yyyy-MM-dd_HH-mm-ss"))

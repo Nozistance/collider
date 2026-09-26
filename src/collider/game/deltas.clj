@@ -4,7 +4,9 @@
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
-            [collider.game.delta :as delta]))
+            [collider.game.delta :as delta]
+            [collider.game.deltas.types :refer [->Deltas]])
+  (:import (collider.game.deltas.types Deltas)))
 
 (set! *warn-on-reflection* true)
 
@@ -23,8 +25,6 @@
              (fn [acc x] (into acc (f x)))
              v))))
 
-(defrecord Deltas [world entities out input])
-
 (defn world-of [^Deltas d] (.world d))
 
 (defn entities-of [^Deltas d] (.entities d))
@@ -37,6 +37,10 @@
 
 (defn input ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
+
+(defn- built ^Deltas [w e o acc]
+  (->Deltas (persistent! w) (persistent! e) (persistent! o)
+            (input-of acc)))
 
 (defn add ^Deltas [^Deltas acc deltas]
   (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
@@ -52,8 +56,7 @@
           (let [eid (long (nth d 1))]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))
-      (->Deltas (persistent! w) (persistent! e) (persistent! o)
-                (input-of acc)))))
+      (built w e o acc))))
 
 (defn merge
   (^Deltas [^Deltas a ^Deltas b]
