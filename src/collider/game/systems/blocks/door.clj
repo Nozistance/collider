@@ -10,7 +10,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private openable-types (into #{:fence-gate} (concat block/door-types block/trapdoor-types)))
+(def ^:private openable-types
+  (into #{:fence-gate}
+        (concat block/door-types block/trapdoor-types)))
 
 (defn opens? [world eid pos item use-item?]
   (let [cur (edit/block-at world pos)]
@@ -19,24 +21,44 @@
          (data/by-hand? (block/block-of cur))
          (not (and item (get-in world [:entities eid :sneaking?]))))))
 
+(defn- flipped
+  "st with its open property flipped and the props in kvs set."
+  [st & kvs]
+  (let [props (block/props-of st)
+        open (if (= :true (:open props)) :false :true)]
+    (block/state (block/block-of st)
+                 (apply assoc props :open open kvs))))
+
+(defn- door-toggled [world pos state]
+  (let [st' (flipped state)]
+    (if-let [[ppos pst] (connect/partner (:chunks world) pos state)]
+      [[pos st'] [ppos (flipped pst)]]
+      [[pos st']])))
+
+(defn- gate-toggled [world eid pos state]
+  (let [{:keys [facing open]} (block/props-of state)
+        yaw (get-in world [:entities eid :yaw] 0.0)
+        dir (dir/player-direction yaw)
+        turn? (and (= :false open) (= facing (dir/opposite dir)))]
+    [[pos (flipped state :facing (if turn? dir facing))]]))
+
 (defn- toggled [world eid pos state]
-  (let [props (block/props-of state)
-        self (block/block-of state)
-        open? (= :true (:open props))]
-    (case (block/type-of state)
-      (:door :weathering-copper-door)
-      (let [st' (block/state self (assoc props :open (if open? :false :true)))]
-        (if-let [[ppos pst] (connect/partner (:chunks world) pos state)]
-          [[pos st'] [ppos (block/state self (assoc (block/props-of pst) :open (if open? :false :true)))]]
-          [[pos st']]))
-      (:trapdoor :weathering-copper-trapdoor) [[pos (block/state self (assoc props :open (if open? :false :true)))]]
-      :fence-gate (let [dir (dir/player-direction (get-in world [:entities eid :yaw] 0.0))
-                        facing (if (and (not open?) (= (:facing props) (dir/opposite dir))) dir (:facing props))]
-                    [[pos (block/state self (assoc props :open (if open? :false :true) :facing facing))]]))))
+  (case (block/type-of state)
+    (:door :weathering-copper-door) (door-toggled world pos state)
+    (:trapdoor :weathering-copper-trapdoor) [[pos (flipped state)]]
+    :fence-gate (gate-toggled world eid pos state)))
+
+(defn- open-sound
+  "DoorBlock, TrapDoorBlock and FenceGateBlock play it with a
+  BlockPos: at the centre of the block."
+  [world pos state open?]
+  (let [kind (data/open-sound (block/block-of state) open?)
+        pitch (random/hinge-pitch [(:tick world) pos :door])]
+    (out/block-sound kind pos 1.0 pitch)))
 
 (defn toggle-deltas [world eid pos state]
   (let [changes (toggled world eid pos state)
-        open? (= :true (:open (block/props-of (second (first changes)))))]
+        st' (second (first changes))
+        open? (= :true (:open (block/props-of st')))]
     (conj (edit/change-deltas world changes)
-          (out/except eid (out/sound (data/open-sound (block/block-of state) open?) pos 1.0
-                                     (random/hinge-pitch [(:tick world) pos :door]))))))
+          (out/except eid (open-sound world pos state open?)))))

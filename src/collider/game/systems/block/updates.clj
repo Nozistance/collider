@@ -85,12 +85,12 @@
 
 (defn- applied
   "Returns the pass with the changes of a tick set on its level as
-  they are, each with the updates it runs at once, and their
-  deltas."
+  they are, each with its flags or 3 and the updates it runs at
+  once, and their deltas."
   [world ctx pass changes]
   (if (empty? changes)
     pass
-    (let [ops (mapv (fn [c] [:set c 3]) changes)
+    (let [ops (mapv #(vector :set % (neighbors/flags-of % 3)) changes)
           s (neighbors/run (:chunks (:w pass)) ctx ops)
           writes (:writes s)]
       (-> pass

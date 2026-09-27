@@ -10,6 +10,7 @@
   (:require [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.geyser :as geyser]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.rules :as rules]))
 
@@ -90,24 +91,32 @@
         at (rules/fluid-wake-tick (:chunks s) dim st tick p old side)]
     (ticked s ctx :fluid-ticks at p (rules/fluid-of st))))
 
+(defn- column-woken
+  "LiquidBlock.tryScheduleBubbleBlockColumn: water at p over below
+  that makes a bubble column asks for its block tick."
+  [s ctx p below]
+  (let [st (block-at s p)
+        at (liquid/column-wake st below (:tick ctx))]
+    (ticked s ctx :block-ticks at p (block/block-of st))))
+
 (defn- liquid-woken
   "LiquidBlock.onPlace and neighborChanged: the liquid at p mixes,
-  or else asks for its tick."
+  or else asks for its tick, then for a bubble column."
   [s ctx p old side]
   (let [st (block-at s p)
         s' (rule-woken s ctx p old side (constantly 3) update-limit)]
     (if (= st (block-at s' p))
-      (fluid-woken s' ctx p old side)
+      (-> (fluid-woken s' ctx p old side)
+          (column-woken ctx p (block-at s' (shifted p [0 -1 0]))))
       s')))
 
 (defn- placed
-  "onPlace of the block now at p: its rule and its fluid see the
-  change at their own cell."
+  "onPlace of the block now at p: a liquid is woken, any other
+  block by its rule; no other block asks for a fluid tick."
   [s ctx p old]
   (if (block/liquid? (block-at s p))
     (liquid-woken s ctx p old nil)
-    (-> (rule-woken s ctx p old nil (constantly 3) update-limit)
-        (fluid-woken ctx p old nil))))
+    (rule-woken s ctx p old nil (constantly 3) update-limit)))
 
 (defn- neighbor-changed
   "neighborChanged of the block at q, for a change on side."
@@ -136,11 +145,12 @@
 
 (defn- liquid-shaped
   "LiquidBlock.updateShape: a tick when a source is on either
-  side of the change."
+  side of the change, then a bubble column from below."
   [s ctx q old side st nst]
-  (if (or (block/source-state? st) (source-fluid? nst))
-    (fluid-woken s ctx q old side)
-    s))
+  (cond-> s
+    (or (block/source-state? st) (source-fluid? nst))
+    (fluid-woken ctx q old side)
+    (= :down side) (column-woken ctx q nst)))
 
 (defn- shape-changed
   "updateShape of the block at q, for a change on side to nst."
@@ -213,8 +223,13 @@
         item #(shape-item p old nst limit %)]
     (reduce #(add-and-run %1 ctx (item %2)) s shape-order)))
 
+(defn- shown
+  "The effects of fx the clients see: all but :fluid-tick."
+  [fx]
+  (into [] (remove #{:fluid-tick}) fx))
+
 (defn- written [s p old st fx]
-  (let [fx (into (vec fx) (geyser/placed-fx st))]
+  (let [fx (into (shown fx) (geyser/placed-fx st))]
     (-> s
         (update :chunks chunk/chunks-set-blocks [[p st]])
         (update :records conj (if (seq fx) [p st fx] [p st]))
@@ -233,9 +248,24 @@
         (odd? (long flags)) (neighbors-changed ctx p old)
         (pos? limit) (shapes-changed ctx p old (dec limit))))))
 
+(defn- liquid-placed
+  "LiquidBlockContainer.placeLiquid, named :fluid-tick in the fx
+  of a change: the block that took the fluid asks for its tick
+  once it is set."
+  [s ctx p old fx]
+  (if (some #{:fluid-tick} fx)
+    (fluid-woken s ctx p old nil)
+    s))
+
 (defn- settable? [s p]
   (and (chunk/in-range? (long (p 1)))
        (contains? (:chunks s) (chunk/block-chunk p))))
+
+(defn flags-of
+  "Returns the setBlock flags a change [p st fx flags] carries,
+  or flags when it names none."
+  ^long [c ^long flags]
+  (long (get c 3 flags)))
 
 (defn set-block
   "Returns s after Level.setBlock of change [p st fx] with flags,
@@ -247,9 +277,11 @@
     (cond
       (not (settable? s p)) s
       (= old (long st))
-      (cond-> s (seq fx) (update :records conj [p st fx]))
+      (let [fx (shown fx)]
+        (cond-> s (seq fx) (update :records conj [p st fx])))
       :else (-> (written s p old st fx)
-                (updated ctx p old st flags limit)))))
+                (updated ctx p old st flags limit)
+                (liquid-placed ctx p old fx)))))
 
 (defn- placement-state
   "The state of a change as placed: the shape it takes from its

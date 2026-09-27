@@ -236,6 +236,15 @@
             :volume (double volume) :pitch (double pitch)}
            source (assoc :source source))))
 
+(defn block-sound
+  "Returns the effect of a sound at the centre of the block at
+  pos, as Level.playSound with a block position."
+  ([kind pos volume pitch] (block-sound kind pos volume pitch nil))
+  ([kind [x y z] volume pitch source]
+   (sound kind [(+ (double x) 0.5) (+ (double y) 0.5)
+                (+ (double z) 0.5)]
+          volume pitch source)))
+
 (defn particles [kind state pos count speed]
   {:msg :particles :kind kind :state state :pos pos :count count
    :speed (double speed)})

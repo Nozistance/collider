@@ -56,7 +56,7 @@
     (when (and (< (age st) (long (max-age t)))
                (not (gated? t roll))
                (grows-now? chunks p st roll))
-      [[p (older st)]])))
+      [[p (older st) nil 2]])))
 
 (defn- room-above? [chunks p ^long a]
   (or (< a 3)
@@ -68,7 +68,7 @@
              (chunk/in-range? (inc (long (p 1))))
              (room-above? chunks p a))
     (let [st' (aged st a)]
-      (cond-> [[p st']]
+      (cond-> [[p st' nil 2]]
         (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
 
 (defn- lower? [st] (= :lower (:half (block/props-of st))))
@@ -104,7 +104,7 @@
 (defn stem-tick [chunks p st roll _time _ctx]
   (when (grows-now? chunks p st roll)
     (if (< (age st) 7)
-      [[p (older st)]]
+      [[p (older st) nil 2]]
       (fruit-changes chunks p st roll))))
 
 (def ^:private stems
@@ -145,8 +145,8 @@
     (when (and (air-at? chunks (dir/up p)) (< (inc h) 3))
       (if (= 15 (age st))
         [[(dir/up p) (block/state (block/block-of st))]
-         [p (aged st 0)]]
-        [[p (older st)]]))))
+         [p (aged st 0) nil 260]]
+        [[p (older st) nil 260]]))))
 
 (defn- cactus-top [chunks p st roll a h]
   (let [up (dir/up p)
@@ -156,7 +156,7 @@
       (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1))
         [[up (block/state :cactus-flower)]])
       (and (= a 15) (< h 3))
-      [[up cactus] [p (aged st 0)]])))
+      [[up cactus] [p (aged st 0) nil 260]])))
 
 (defn cactus-tick [chunks p st roll _time _ctx]
   (when (air-at? chunks (dir/up p))
@@ -164,13 +164,13 @@
           h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
         (into (vec (cactus-top chunks p st roll a h))
-              (when (< a 15) [[p (aged st (inc a))]]))))))
+              (when (< a 15) [[p (aged st (inc a)) nil 260]]))))))
 
 (defn berry-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 3)
              (chance? roll :gate 5)
              (lit? chunks (dir/up p) 9))
-    [[p (older st)]]))
+    [[p (older st) nil 2]]))
 
 (defn kelp-tick [chunks p st roll _time _ctx]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
@@ -179,17 +179,17 @@
 
 (defn cocoa-tick [_chunks p st roll _time _ctx]
   (when (and (chance? roll :gate 5) (< (age st) 2))
-    [[p (older st)]]))
+    [[p (older st) nil 2]]))
 
 (defn nether-wart-tick [_chunks p st roll _time _ctx]
   (when (and (< (age st) 3) (chance? roll :gate 10))
-    [[p (older st)]]))
+    [[p (older st) nil 2]]))
 
 (defn- hanging? [st] (= :true (:hanging (block/props-of st))))
 
 (defn propagule-tick [_chunks p st _roll _time _ctx]
   (when (and (hanging? st) (< (age st) 4))
-    [[p (older st)]]))
+    [[p (older st) nil 2]]))
 
 (defn- meal-steps ^long [t roll]
   (case t

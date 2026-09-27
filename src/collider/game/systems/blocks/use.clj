@@ -21,6 +21,11 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- heard
+  "A sound of the block at pos for everyone, at volume 1."
+  [kind pos pitch]
+  (out/all (out/block-sound kind pos 1.0 pitch)))
+
 (defn- potted-block [item] (get-in (data/blocks) [item :pot]))
 
 (defn- set-at [world pos st]
@@ -57,7 +62,7 @@
     (when (and (= :0 (:bites (block/props-of cur)))
                (contains? (data/blocks) cake))
       (concat (set-at world pos (block/state cake))
-              [(out/all (out/sound :cake/add-candle pos 1.0 1.0))]))))
+              [(heard :cake/add-candle pos 1.0)]))))
 
 (defn- berries-deltas [world pos]
   (let [cur (edit/block-at world pos)
@@ -69,8 +74,7 @@
       (concat
         (set-at world pos picked)
         [[:spawn-entity (items/popped world pos berries :berries)]
-         (out/all
-           (out/sound :cave-vines/pick-berries pos 1.0 pitch))]))))
+         (heard :cave-vines/pick-berries pos pitch)]))))
 
 (def ^:private ^:const bush-max-age 3)
 
@@ -101,8 +105,7 @@
                      [:spawn-entity
                       (items/popped world pos stack [:bush i])])
                    stacks)
-      [(out/all
-         (out/sound :sweet-berry-bush/pick-berries pos 1.0 pitch))])))
+      [(heard :sweet-berry-bush/pick-berries pos pitch)])))
 
 (def ^:private statue-types
   #{:copper-golem-statue :weathering-copper-golem-statue})
@@ -121,8 +124,7 @@
         props (update (block/props-of cur) :copper-golem-pose
                       next-pose)]
     (concat (set-at world pos (with-props cur props))
-            [(out/all
-               (out/sound :copper-golem/statue pos 1.0 1.0))])))
+            [(heard :copper-golem/statue pos 1.0)])))
 
 (defn- compost-took? [world pos ^long lvl item]
   (or (zero? lvl)
@@ -143,7 +145,7 @@
     (concat (set-at world pos (block/state :composter {:level :0}))
             [[:spawn-entity
               (items/popped world at bone-meal :compost)]
-             (out/all (out/sound :composter/empty pos 1.0 1.0))])))
+             (heard :composter/empty pos 1.0)])))
 
 (defn- compost-deltas [world pos item]
   (let [cur (edit/block-at world pos)
@@ -169,7 +171,7 @@
             [(out/all
                (if (= :wax sound)
                  (out/level-event out/particles-and-sound-wax-on pos)
-                 (out/sound sound pos 1.0 1.0)))])))
+                 (out/block-sound sound pos 1.0 1.0)))])))
 
 (defn- sign-use-deltas [world eid pos item]
   (let [st (edit/block-at world pos) e (sign/at world pos)
@@ -181,7 +183,7 @@
       (and item (not (:waxed? e)) (not busy?))
       (sign-apply-deltas pos e front? item)
       (some? item) nil
-      (:waxed? e) [(out/all (out/sound :sign/waxed pos 1.0 1.0))]
+      (:waxed? e) [(heard :sign/waxed pos 1.0)]
       (not busy?) [[:set-block-entity pos (assoc e :editor eid)]
                    (out/to eid (out/sign-editor pos front?))])))
 
@@ -213,14 +215,14 @@
                :dust-plume nil plume dust-plume-particles 0.0)]
     (concat (edit/be-changed pos (assoc e :item stack))
             [(out/all (out/block-event pos 1 0))
-             (out/all (out/sound :decorated-pot/insert pos 1.0 pitch))
+             (heard :decorated-pot/insert pos pitch)
              (out/all dust)])))
 
 (defn- pot-use-deltas [world pos item]
   (when-let [e (be/at world pos)]
     (if (pot-insertable? e item)
       (pot-insert-deltas pos e item)
-      [(out/all (out/sound :decorated-pot/insert-fail pos 1.0 1.0))
+      [(heard :decorated-pot/insert-fail pos 1.0)
        (out/all (out/block-event pos 1 1))])))
 
 (defn- jukebox-eject-deltas [world pos e]
@@ -265,11 +267,10 @@
       removed (concat (edit/be-changed pos e')
                       [[:set-slot eid (edit/held-slot world eid)
                         removed]
-                       (out/all (out/sound taken pos 1.0 1.0))])
+                       (heard taken pos 1.0)])
       (nil? stack) nil
       :else (concat (edit/be-changed pos e')
-                    [(out/all
-                       (out/sound :shelf/place-item pos 1.0 1.0))]))))
+                    [(heard :shelf/place-item pos 1.0)]))))
 
 (defn- shelf-use-deltas [world eid pos face cursor]
   (let [st (edit/block-at world pos) e (be/at world pos)
@@ -303,7 +304,7 @@
     (concat (set-at world pos (bookshelf-state st items))
             [[:set-block-entity pos
               (assoc e :items items :last-slot slot)]
-             (out/all (out/sound sound pos 1.0 1.0))])))
+             (heard sound pos 1.0)])))
 
 (defn- bookshelf-take-deltas [world eid pos e slot]
   (let [st (edit/block-at world pos)
@@ -315,7 +316,7 @@
     (concat (set-at world pos (bookshelf-state st items))
             [[:set-block-entity pos
               (assoc e :items items :last-slot slot)]
-             (out/all (out/sound sound pos 1.0 1.0))]
+             (heard sound pos 1.0)]
             (stack-deltas world eid stack))))
 
 (defn- bookshelf-use-deltas [world eid pos face item cursor]
@@ -347,7 +348,7 @@
         side (get dir/index (dir/from-index (long face)))]
     (when (bell-hit? st face (double (nth cursor 1)))
       [(out/all (out/block-event pos 1 side))
-       (out/all (out/sound :bell/use pos 2.0 1.0))])))
+       (out/all (out/block-sound :bell/use pos 2.0 1.0))])))
 
 (defn- egg-deltas [world pos]
   (let [st (edit/block-at world pos)

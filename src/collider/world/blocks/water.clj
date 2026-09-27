@@ -58,6 +58,22 @@
 
 (defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
 
+(defn kelp-still?
+  "Tells whether kelp st at p asks for no fluid tick for a change
+  on side: GrowingPlantHeadBlock.updateShape turns a head with kelp
+  above into a body, GrowingPlantBodyBlock.updateShape a body with
+  none above into a head, and neither asks for one then."
+  [chunks p st side]
+  (let [above? (kelp? (chunk/at chunks (dir/up p)))
+        held? #(support/supported? chunks p st)]
+    (cond
+      (not (kelp? st)) false
+      (= :kelp-plant (block/type-of (long st)))
+      (and (= :up side) (not above?))
+      (= :up side) above?
+      (= :down side) (and above? (held?))
+      :else false)))
+
 (defn kelp-head-state ^long [tick pos]
   (block/state :kelp {:age (support/plant-age tick pos)}))
 

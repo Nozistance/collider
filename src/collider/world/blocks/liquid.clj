@@ -580,15 +580,17 @@
     (if (= :true (:lit props)) [tp out [extinguished]] [tp st])))
 
 (defn- held-liquid
-  "placeLiquid of the block traw at tp: it takes the water in, a
-  lit campfire goes out, a dried ghast is heard."
+  "placeLiquid of the block traw at tp: it takes the water in and
+  asks for its tick, a lit campfire goes out, a dried ghast is
+  heard."
   [tp traw]
   (let [traw (long traw)
-        st (logged traw)]
-    (case (block/type-of traw)
-      :campfire (doused tp st)
-      :dried-ghast [tp st [soaked-ghast]]
-      [tp st])))
+        st (logged traw)
+        [p st' fx] (case (block/type-of traw)
+                     :campfire (doused tp st)
+                     :dried-ghast [tp st [soaked-ghast]]
+                     [tp st])]
+    [p st' (conj (vec fx) :fluid-tick)]))
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
@@ -719,29 +721,85 @@
 (defn bubble-column? [st]
   (= :bubble-column (block/type-of (long st))))
 
-(defn- column-state [below]
-  (if (bubble-column? below)
-    below
-    (when-let [drag (get column-drag (block/type-of (long below)))]
-      (block/state :bubble-column {:drag drag}))))
-
 (defn- water-source? [st] (= (long st) @water-source))
 
-(defn- column-changes [chunks [x y z] col]
-  (loop [y (long y) acc []]
+(defn- makes-column? [below]
+  (contains? column-drag (block/type-of (long below))))
+
+(defn column-wake
+  "Returns the tick a bubble column is due over below at tick, or
+  nil: water st of a full source waits 20 ticks,
+  LiquidBlock.tryScheduleBubbleBlockColumn."
+  [st below tick]
+  (when (and (water-source? st) (makes-column? below))
+    (+ (long tick) 20)))
+
+(defn- can-occupy? [st]
+  (or (bubble-column? st) (water-source? st)))
+
+(defn- column-state
+  "BubbleColumnBlock.getColumnState: what a column over below
+  holds at a cell of occupy."
+  ^long [below occupy]
+  (cond
+    (bubble-column? below) (long below)
+    (makes-column? below)
+    (block/state :bubble-column
+                 {:drag (column-drag (block/type-of (long below)))})
+    (bubble-column? occupy) @water-source
+    :else (long occupy)))
+
+(defn- column-up [chunks [x y z] col]
+  (loop [y (inc (long y)) acc []]
     (let [st (long (raw-at chunks x y z))]
-      (if (or (water-source? st)
-              (and (bubble-column? st) (not= st (long col))))
-        (recur (inc y) (conj acc [[x y z] col]))
+      (if (and (can-occupy? st) (not= st col))
+        (recur (inc y) (conj acc [[x y z] col nil 2]))
         acc))))
 
-(defn- bubble-changes [chunks [x y z :as p]]
-  (let [raw (long (raw-at chunks x y z))
-        col (column-state (long (raw-at chunks x (dec (long y)) z)))]
-    (cond
-      (and (bubble-column? raw) (nil? col)) [[p @water-source]]
-      (and col (or (water-source? raw) (not= raw (long col))))
-      (column-changes chunks p col))))
+(defn column-changes
+  "BubbleColumnBlock.updateColumn at p: the column its block below
+  makes, set with flags 2 at p and up while it can occupy and
+  changes."
+  [chunks [x y z :as p]]
+  (let [occupy (long (raw-at chunks x y z))
+        below (raw-at chunks x (dec (long y)) z)]
+    (when (can-occupy? occupy)
+      (let [col (column-state below occupy)]
+        (into [[p col nil 2]] (column-up chunks p col))))))
+
+(defn- column-due
+  "The block tick of water or a bubble column: LiquidBlock.tick of
+  a full water source, BubbleColumnBlock.tick."
+  [chunks p _ctx]
+  (column-changes chunks p))
+
+(defn- column-survives? [below]
+  (or (bubble-column? below) (makes-column? below)))
+
+(defn- column-shaped?
+  "BubbleColumnBlock.updateShape asks for a block tick: it cannot
+  stay, or the change is below, or above where it may occupy."
+  [chunks [x y z :as p] side]
+  (let [below (raw-at chunks x (dec (long y)) z)
+        [dx dy dz] (when side (dir/offset side))
+        nst (when side
+              (raw-at chunks (+ (long x) (long dx))
+                      (+ (long y) (long dy)) (+ (long z) (long dz))))]
+    (or (not (column-survives? below))
+        (= :down side)
+        (and (= :up side) (not (bubble-column? nst))
+             (can-occupy? nst)))))
+
+(defn- column-rewake [chunks _dim tick p _old side]
+  (when (and side (column-shaped? chunks p side))
+    (+ (long tick) 5)))
+
+(def column-rule
+  {:name   :bubble-column
+   :match? (fn [_chunks st _p] (bubble-column? st))
+   :pass   :shape
+   :wake   column-rewake
+   :due    column-due})
 
 (defn- column-push ^double [drag? open? ^double vy]
   (cond
@@ -783,8 +841,6 @@
         st' (if v (liquid->state cls v) 0)]
     (cond
       (zero? (long st')) [[p 0]]
-      (and (= :source v) (seq (bubble-changes chunks p)))
-      (bubble-changes chunks p)
       (= (long st') (long st)) (spread env p st')
       :else (into [[p st']]
                   (spread (assoc env :over {p st'}) p st')))))
@@ -901,4 +957,5 @@
    :match?  (fn [_chunks st _p] (block/liquid? (long st)))
    :pass    :neighbor
    :wake    mix-wake
-   :reshape mix-due})
+   :reshape mix-due
+   :due     column-due})

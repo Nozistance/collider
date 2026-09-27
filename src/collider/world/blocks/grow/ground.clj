@@ -75,8 +75,8 @@
         above (chunk/at chunks (dir/up p))]
     (cond
       (near-water? chunks p)
-      (when (< m 7) [[p (with st :moisture 7)]])
-      (pos? m) [[p (with st :moisture (dec m))]]
+      (when (< m 7) [[p (with st :moisture 7) nil 2]])
+      (pos? m) [[p (with st :moisture (dec m)) nil 2]]
       (not (block/tagged? above "maintains_farmland"))
       [[p (block/state :dirt)]])))
 

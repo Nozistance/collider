@@ -22,16 +22,22 @@
      :custom-name nil}}})
 
 (defn water-bottle? [stack]
-  (and (= :potion (:item stack))
-       (= :water (get-in stack [:components :potion-contents :potion]))))
+  (let [path [:components :potion-contents :potion]]
+    (and (= :potion (:item stack))
+         (= :water (get-in stack path)))))
 
 (defn- cauldron-filled [world pos item]
   (let [above (edit/block-at world (mapv + pos [0 1 0]))
-        under-water? (block/water? above)]
+        dry? (not (block/water? above))]
     (case item
-      :water-bucket [(block/state :water-cauldron {:level :3}) :bucket/empty]
-      :lava-bucket (when-not under-water? [(block/state :lava-cauldron) :bucket/empty-lava])
-      :powder-snow-bucket (when-not under-water? [(block/state :powder-snow-cauldron {:level :3}) :bucket/empty-snow])
+      :water-bucket
+      [(block/state :water-cauldron {:level :3}) :bucket/empty]
+      :lava-bucket
+      (when dry? [(block/state :lava-cauldron) :bucket/empty-lava])
+      :powder-snow-bucket
+      (when dry?
+        [(block/state :powder-snow-cauldron {:level :3})
+         :bucket/empty-snow])
       nil)))
 
 (defn- cauldron-scooped [cur]
@@ -47,21 +53,25 @@
 
 (defn- cauldron-lowered ^long [cur]
   (let [lvl (block/prop-long cur :level)]
-    (if (= 1 lvl) (block/state :cauldron) (block/state (block/block-of cur) {:level (keyword (str (dec lvl)))}))))
+    (if (= 1 lvl)
+      (block/state :cauldron)
+      (block/state (block/block-of cur)
+                   {:level (keyword (str (dec lvl)))}))))
 
 (defn- cauldron-raised [cur]
   (if (= :cauldron (block/block-of cur))
     (block/state :water-cauldron)
     (let [lvl (block/prop-long cur :level)]
       (when (< lvl 3)
-        (block/state (block/block-of cur) {:level (keyword (str (inc lvl)))})))))
+        (block/state (block/block-of cur)
+                     {:level (keyword (str (inc lvl)))})))))
 
 (defn- used-deltas
   "Returns what a cauldron use gives the player.
   That is the result item, the sound and two stats."
   [world eid pos item result sound stat]
   (concat (items/filled-result-deltas world eid result)
-          [(out/all (out/sound sound pos 1.0 1.0))
+          [(out/all (out/block-sound sound pos 1.0 1.0))
            [:award eid stat 1]
            [:award eid (keyword "used" (name item)) 1]]))
 
@@ -86,15 +96,17 @@
 
 (defn- scoop-deltas [world eid pos cur]
   (when-let [[filled sound] (cauldron-scooped cur)]
-    (concat (edit/change-deltas world [[pos (block/state :cauldron)]])
-            (used-deltas world eid pos :bucket {:item filled :count 1}
-                         sound :custom/use-cauldron))))
+    (concat
+      (edit/change-deltas world [[pos (block/state :cauldron)]])
+      (used-deltas world eid pos :bucket {:item filled :count 1}
+                   sound :custom/use-cauldron))))
 
 (defn- fill-deltas [world eid pos item]
   (when-let [[st sound] (cauldron-filled world pos item)]
-    (concat (edit/change-deltas world [[pos st]])
-            (used-deltas world eid pos item {:item :bucket :count 1}
-                         sound :custom/fill-cauldron))))
+    (concat
+      (edit/change-deltas world [[pos st]])
+      (used-deltas world eid pos item {:item :bucket :count 1}
+                   sound :custom/fill-cauldron))))
 
 (defn- dyed-shulker? [item]
   (and (not= :shulker-box item)
@@ -121,10 +133,10 @@
                    (assoc stack :item :shulker-box)
                    :custom/clean-shulker-box)
       (and (contains? @banners item) (seq layers))
-      (wash-deltas world eid pos cur stack
-                   (assoc-in stack [:components :banner-patterns]
-                             (vec (butlast layers)))
-                   :custom/clean-banner))))
+      (let [path [:components :banner-patterns]]
+        (wash-deltas world eid pos cur stack
+                     (assoc-in stack path (vec (butlast layers)))
+                     :custom/clean-banner)))))
 
 (defn cauldron-deltas [world eid pos item stack]
   (let [cur (edit/block-at world pos)]

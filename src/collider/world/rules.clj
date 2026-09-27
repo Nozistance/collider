@@ -19,6 +19,7 @@
 (def rules [water/kelp-rule
             eyeblossom/rule
             liquid/rule
+            liquid/column-rule
             fire/rule
             dripleaf/rule
             crop/attached-stem-rule
@@ -75,13 +76,17 @@
   (liquid/fluid-of st))
 
 (defn- still?
-  "Tells whether the water in st waits for a change at its own
-  cell: TallSeagrassBlock asks for no fluid tick in updateShape."
-  [st side]
-  (and (some? side) (= :tall-seagrass (block/type-of st))))
+  "Tells whether the water in st at pos waits for a change on
+  side: TallSeagrassBlock asks for no fluid tick in updateShape,
+  kelp none when it turns between head and body."
+  [chunks pos st side]
+  (and (some? side)
+       (or (= :tall-seagrass (block/type-of st))
+           (water/kelp-still? chunks pos st side))))
 
 (defn fluid-wake-tick [chunks dim st tick pos old side]
-  (when (and (block/liquid-class st) (not (still? st side)))
+  (when (and (block/liquid-class st)
+             (not (still? chunks pos st side)))
     (liquid/fluid-wake chunks dim tick pos old side)))
 
 (defn again-tick

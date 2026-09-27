@@ -34,16 +34,21 @@
 
 (defn- splash [eid pos water?]
   (let [snd (if water? :bucket/empty :bucket/empty-lava)]
-    [(out/except eid (out/sound snd pos 1.0 1.0))]))
+    [(out/except eid (out/block-sound snd pos 1.0 1.0))]))
 
 (defn- drown-deltas [world pos cur]
-  (concat (edit/change-deltas world [[pos (campfire/drowned cur)]])
+  (concat (edit/change-deltas
+            world [[pos (campfire/drowned cur) [:fluid-tick]]])
           (when (= :true (:lit (block/props-of cur)))
             (let [snd :generic/extinguish-fire]
-              [(out/all (out/sound snd pos 1.0 1.0))]))))
+              [(out/all (out/block-sound snd pos 1.0 1.0))]))))
 
-(defn- hold-deltas [world pos cur]
-  (edit/change-deltas world [[pos (edit/with-water cur true)]]))
+(defn- hold-deltas
+  "SimpleWaterloggedBlock.placeLiquid: the block takes the water
+  and asks for its tick."
+  [world pos cur]
+  (let [st (edit/with-water cur true)]
+    (edit/change-deltas world [[pos st [:fluid-tick]]])))
 
 (defn- fizz-pitch ^double [world pos]
   (let [roll #(random/of-key (:tick world) pos %)]
@@ -54,7 +59,7 @@
   "Returns the hiss of water poured where it evaporates.
   The pourer sees the smoke on its own."
   [world eid pos]
-  (let [snd (out/sound :block.fire.extinguish pos 0.5
+  (let [snd (out/block-sound :block.fire.extinguish pos 0.5
                        (fizz-pitch world pos))]
     [(out/except eid snd)]))
 
@@ -116,8 +121,11 @@
     (block/lava? st) :bucket/fill-lava
     :else :bucket/fill))
 
-(defn- fill-fx [kind pos st]
-  (out/sound (fill-sound kind st) pos 1.0 1.0 :players))
+(defn- fill-fx
+  "Player.playSound of the filled bucket: at the player, for the
+  others around."
+  [kind e st]
+  (out/sound (fill-sound kind st) (:pos e) 1.0 1.0 :players))
 
 (defn- drained-deltas [world kind pos st]
   (case kind
@@ -140,7 +148,7 @@
           filled {:item (scooped-item kind st) :count 1}]
       (concat (drained-deltas world kind pos st)
               (snow-fx kind pos st)
-              [(out/except eid (fill-fx kind pos st))
+              [(out/except eid (fill-fx kind e st))
                [:award eid :used/bucket 1]]
               (items/filled-result-deltas world eid filled)))))
 

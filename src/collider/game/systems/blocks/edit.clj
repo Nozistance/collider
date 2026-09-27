@@ -123,7 +123,7 @@
   (let [roll (random/of-key (:tick world) pos :sponge-dries)
         pitch (* (+ 1.0 (* (double roll) 0.2)) 0.7)]
     [(out/all (out/level-event sponge-dries pos 0))
-     (out/all (out/sound :wet-sponge/dries pos 1.0 pitch))]))
+     (out/all (out/block-sound :wet-sponge/dries pos 1.0 pitch))]))
 
 (defn dried
   "Returns the changes with each wet sponge dried where water
@@ -190,7 +190,7 @@
    :prime (fn [world pos _] (primed world pos))
    :dry (fn [world pos _] (dried-fx world pos))
    :sound (fn [_ pos [_ kind volume pitch]]
-            [(out/all (out/sound kind pos volume pitch))])
+            [(out/all (out/block-sound kind pos volume pitch))])
    :drip (fn [_ pos [_ fluid]]
            [(out/all (out/level-event (drip-events fluid) pos 0))])
    :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])
@@ -236,13 +236,16 @@
     [(into (settled-deltas world s) fx) s]))
 
 (defn- as-given
-  "Level.setBlock with flags 3 of each change, the state as it is."
+  "Level.setBlock of each change, the state as it is, with the
+  flags it carries or 3."
   [chunks ctx changes]
-  (neighbors/run chunks ctx (mapv (fn [c] [:set c 3]) changes)))
+  (let [op (fn [c] [:set c (neighbors/flags-of c 3)])]
+    (neighbors/run chunks ctx (mapv op changes))))
 
 (defn change-deltas
   "Returns the deltas for the changes, each set as it is with the
-  updates it runs at once, as Level.setBlock with flags 3. base
+  updates it runs at once, as Level.setBlock with the flags a
+  change carries as its fourth element, 3 when none. base
   stands for the tick the changes are made on; a player's edit
   comes between ticks, after the tick before."
   ([world changes]
@@ -299,7 +302,7 @@
   (let [kind (if (block/waterlogged? state)
                :block.dried-ghast.place-in-water
                :block.dried-ghast.place)]
-    [(out/all (out/sound kind pos 1.0 1.0))]))
+    [(out/all (out/block-sound kind pos 1.0 1.0))]))
 
 (defn- placed-by-fx [pos ^long state]
   (case (block/type-of state)
@@ -310,7 +313,7 @@
   (let [item (:item (held-stack world eid))
         {:keys [kind volume pitch]}
         (data/placed-sound (block/block-of state) item)]
-    (out/except eid (out/sound kind pos volume pitch))))
+    (out/except eid (out/block-sound kind pos volume pitch))))
 
 (defn placed-deltas
   "Returns the deltas of a player placing blocks, with the place
@@ -403,7 +406,7 @@
   (let [cur (block-at world pos)]
     (when (= :true (:lit (block/props-of cur)))
       (let [deltas (change-deltas world [[pos (unlit cur)]])
-            snuff (out/sound :candle/extinguish pos 1.0 1.0)]
+            snuff (out/block-sound :candle/extinguish pos 1.0 1.0)]
         (concat deltas [(out/all snuff)])))))
 
 (defn campfire-out-deltas

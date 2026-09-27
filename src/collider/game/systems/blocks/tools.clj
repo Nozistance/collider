@@ -61,14 +61,14 @@
 
 (defn- flint-sound [world eid pos]
   (let [pitch (random/pitch (:tick world) pos :flint)]
-    (out/except eid (out/sound :fire/ignite pos 1.0 pitch))))
+    (out/except eid (out/block-sound :fire/ignite pos 1.0 pitch))))
 
 (defn- charge-sound [world pos]
   (let [t (:tick world)
         p (- (random/of-key t pos :charge-a)
              (random/of-key t pos :charge-b))
         pitch (+ 1.0 (* 0.2 (double p)))]
-    (out/all (out/sound :firecharge/use pos 1.0 pitch))))
+    (out/all (out/block-sound :firecharge/use pos 1.0 pitch))))
 
 (defn- sounded [world changes fx]
   (concat (edit/change-deltas world changes) fx))
@@ -140,7 +140,7 @@
         (concat
           (edit/change-deltas world [[pos (block/state to)]])
           (when freed (freed-drop world pos freed))
-          [(out/all (out/sound :hoe/till pos 1.0 1.0))])))))
+          [(out/all (out/block-sound :hoe/till pos 1.0 1.0))])))))
 
 (defn- flattened-state [world pos cur]
   (when (and (contains? grow/flattened (block/block-of cur))
@@ -153,8 +153,8 @@
   (let [cur (edit/block-at world pos)]
     (when (not= 0 (long face))
       (if-let [st (flattened-state world pos cur)]
-        (sounded world [[pos st]]
-                 [(out/all (out/sound :shovel/flatten pos 1.0 1.0))])
+        (let [snd (out/block-sound :shovel/flatten pos 1.0 1.0)]
+          (sounded world [[pos st]] [(out/all snd)]))
         (edit/campfire-out-deltas world pos)))))
 
 (defn- door-partner [world pos cur]
@@ -169,7 +169,7 @@
       [[pos st]])))
 
 (defn- copper-fx [pos snd particles]
-  (conj (if snd [(out/all (out/sound snd pos 1.0 1.0))] [])
+  (conj (if snd [(out/all (out/block-sound snd pos 1.0 1.0))] [])
         (out/all (out/level-event particles pos))))
 
 (defn wax-deltas
@@ -194,7 +194,7 @@
   (let [cur (edit/block-at world pos)]
     (if-let [st (block/stripped cur)]
       (sounded world [[pos st]]
-               [(out/all (out/sound :axe/strip pos 1.0 1.0))])
+               [(out/all (out/block-sound :axe/strip pos 1.0 1.0))])
       (copper-axe-deltas world pos cur))))
 
 (def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
@@ -264,7 +264,7 @@
     (concat
       (edit/change-deltas world [[pos carved]])
       [[:spawn-entity (seeds-drop world pos (dir/offset dir))]
-       (out/all (out/sound :pumpkin/carve pos 1.0 1.0))])))
+       (out/all (out/block-sound :pumpkin/carve pos 1.0 1.0))])))
 
 (def ^:private ^:table mud-blocks
   (delay (set (get-in (data/tags) ["block" "convertable_to_mud"]))))
@@ -279,7 +279,7 @@
              (muddable? world pos)
              (cauldron/water-bottle? (edit/held-stack world eid)))
     (concat (edit/change-deltas world [[pos (block/state :mud)]])
-            [(out/all (out/sound :splash pos 1.0 1.0 :blocks))
-             (out/all (out/sound :bottle/empty pos 1.0 1.0))]
+            [(out/all (out/block-sound :splash pos 1.0 1.0 :blocks))
+             (out/all (out/block-sound :bottle/empty pos 1.0 1.0))]
             (items/filled-result-deltas
               world eid {:item :glass-bottle :count 1}))))

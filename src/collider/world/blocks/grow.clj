@@ -43,15 +43,33 @@
       :untinted-particle-leaves] ground/leaves-tick]
     [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
 
+(def ^:private flags-2
+  "The classes whose randomTick sets every block with flags 2:
+  VineBlock, MushroomBlock, ChorusFlowerBlock."
+  #{:vine :mushroom :chorus-flower})
+
+(defn- flagged
+  "Returns the changes, each to be set with setBlock flags."
+  [flags changes]
+  (mapv (fn [[p st fx]] [p st fx flags]) changes))
+
+(defn- ticked [chunks p st roll time ctx]
+  (if-let [f (ticks (block/type-of st))]
+    (f chunks p st roll time ctx)
+    (when (block/weathering? st)
+      (weather/tick chunks p st roll))))
+
 (defn random-tick
-  "Returns the changes of a random tick of st at p."
+  "Returns the changes of a random tick of st at p. A change may
+  carry the setBlock flags of its vanilla randomTick as its fourth
+  element."
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
-   (let [st (long st)]
-     (if-let [f (ticks (block/type-of st))]
-       (f chunks p st roll time ctx)
-       (when (block/weathering? st)
-         (weather/tick chunks p st roll))))))
+   (let [st (long st)
+         cs (ticked chunks p st roll time ctx)]
+     (if (and (seq cs) (flags-2 (block/type-of st)))
+       (flagged 2 cs)
+       cs))))
 
 (defn random-drops
   "Returns the drops of leaves too far from their log.
