@@ -6,6 +6,7 @@
             [collider.game.entity :as entity]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.brewing :as brewing]
@@ -334,18 +335,29 @@
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
 
+(defn- below [[x y z]] [x (dec (long y)) z])
+
+(defn- lectern-set
+  "Returns the deltas of the lectern at pos taking st between
+  ticks: Level.setBlock with flags 3, then the cell below told of
+  it (LecternBlock.updateBelow)."
+  [world pos st]
+  (edit/flagged-deltas world [[pos st]] 3 [(below pos)]
+                       (dec (long (:tick world)))))
+
 (defn place-book-deltas [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))
         e' (assoc e :book (assoc stack :count 1) :page 0)]
-    [[:set-block-entity pos e']
-     [:set-blocks [[pos (lectern/reset-state st true)]]]
-     (out/all (out/sound :item.book.put (centre pos) 1.0 1.0))]))
+    (concat
+      [[:set-block-entity pos e']]
+      (lectern-set world pos (lectern/reset-state st true))
+      [(out/all (out/sound :item.book.put (centre pos) 1.0 1.0))])))
 
 (defn remove-book-deltas [world pos]
   (let [st (state-at (:chunks world) pos)
         e (be/at world pos)]
-    [[:set-block-entity pos (assoc e :book nil :page 0)]
-     [:set-blocks [[pos (lectern/reset-state st false)]]]]))
+    (cons [:set-block-entity pos (assoc e :book nil :page 0)]
+          (lectern-set world pos (lectern/reset-state st false)))))
 
 (defn next-page ^long [world m ^long want]
   (clamp-page want (page-count (book-of world m))))
@@ -358,10 +370,11 @@
     (when (not= p (long (:page e 0)))
       (let [at (+ (long (:tick world)) lectern/impulse-ticks -1)
             ids [(chunk/block-pos->id pos)]]
-        [[:set-block-entity pos (assoc e :page p)]
-         [:set-blocks [[pos (lectern/powered-state st true)]]]
-         [:schedule-ticks {at ids}]
-         (out/all (out/level-event out/sound-page-turn pos 0))]))))
+        (concat
+          [[:set-block-entity pos (assoc e :page p)]]
+          (lectern-set world pos (lectern/powered-state st true))
+          [[:schedule-ticks {at ids}]
+           (out/all (out/level-event out/sound-page-turn pos 0))])))))
 
 (defn dropped-book [world pos]
   (let [e (be/at world pos)
@@ -863,12 +876,16 @@
   (when-let [next (anvil/next-stage (block/block-of st))]
     (block/state next (block/props-of st))))
 
-(defn- wear-deltas [pos ^long st]
-  (if-let [next (worn-state st)]
-    [[:set-blocks [[pos next]]]
-     (out/all (out/level-event out/sound-anvil-used pos 0))]
-    [[:set-blocks [[pos (block/state :air)]]]
-     (out/all (out/level-event out/sound-anvil-broken pos 0))]))
+(defn- wear-deltas
+  "AnvilMenu.onTake: a worn anvil is set with flags 2, a spent one
+  removed (Level.removeBlock, flags 3), both between ticks."
+  [world pos ^long st]
+  (let [base (dec (long (:tick world)))
+        next (worn-state st)
+        c [pos (or next (block/emptied st))]
+        event (if next out/sound-anvil-used out/sound-anvil-broken)]
+    (concat (edit/flagged-deltas world [c] (if next 2 3) nil base)
+            [(out/all (out/level-event event pos 0))])))
 
 (defn anvil-take-deltas
   "Returns the wear and the sound of a result leaving an anvil."
@@ -877,5 +894,5 @@
         st (state-at (:chunks world) pos)
         roll (random/of-key (:tick world) pos :anvil)]
     (if (and (not creative?) (< roll wear-chance))
-      (wear-deltas pos st)
+      (wear-deltas world pos st)
       [(out/all (out/level-event out/sound-anvil-used pos 0))])))

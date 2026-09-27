@@ -255,17 +255,68 @@
               (connect/reshape chunks p st (:tick ctx)))]
     [p (or st' st) fx]))
 
+(def ^:private blank
+  {:records [] :writes [] :ticks [] :placed [] :stack () :added []
+   :count 0})
+
+(defn- placed-with [flags]
+  (fn [s ctx c]
+    (set-block s ctx (placement-state (:chunks s) ctx c)
+               flags update-limit)))
+
+(defn- run-each [chunks ctx changes f]
+  (reduce #(f %1 ctx %2) (assoc blank :chunks chunks) changes))
+
 (defn set-blocks
   "Returns {:chunks :records :writes :ticks}: chunks after each
-  change [pos st fx] was set in order with full updates, the
+  change [pos st fx] was placed in order with full updates, the
   changes as made, the reactions among them with their effects,
   each write as [pos old st], and the ticks asked for as
   [list at id type] in order. ctx gives :tick, :dim, :rules and
   what the rules read."
   [chunks ctx changes]
-  (reduce (fn [s c]
-            (set-block s ctx (placement-state (:chunks s) ctx c)
-                       3 update-limit))
-          {:chunks chunks :records [] :writes [] :ticks []
-           :stack () :added [] :count 0}
-          changes))
+  (run-each chunks ctx changes (placed-with 3)))
+
+(defn- op-run [s ctx [op x flags]]
+  (case op
+    :set (set-block s ctx x flags update-limit)
+    :notify (neighbors-changed s ctx x (block-at s x))))
+
+(defn run
+  "Returns what set-blocks does, for ops run in order: [:set c
+  flags], Level.setBlock of change c as it is, not shaped by its
+  neighbours; [:notify pos], Level.updateNeighborsAt, the six
+  around pos told of a change there."
+  [chunks ctx ops]
+  (run-each chunks ctx ops op-run))
+
+(defn- command-state
+  "The state BlockInput.place sets: the shape st takes from its
+  neighbours, st itself when that shape is air."
+  [chunks ctx [p st fx]]
+  (let [st' (when (chunk/in-range? (long (p 1)))
+              (connect/reshape chunks p st (:tick ctx)))]
+    [p (if (and st' (not (zero? (long st')))) st' st) fx]))
+
+(defn- command-placed
+  "BlockInput.place with flags 2 and 256: s with the change set,
+  its cell noted under :placed with the state it held, when the
+  place changed it."
+  [s ctx [p :as c]]
+  (let [n (count (:writes s))
+        c' (command-state (:chunks s) ctx c)
+        s' (set-block s ctx c' 2 update-limit)
+        [q old] (get (:writes s') n)]
+    (if (= p q)
+      (update s' :placed conj [p old])
+      s')))
+
+(defn commanded
+  "Returns what set-blocks does, with :placed, for the changes of
+  /setblock or /fill: each set with flags 2 and 256, then for each
+  that changed its cell, in order, updateNeighboursOnBlockSet, the
+  neighbours told of it. :placed holds those cells as [pos old]."
+  [chunks ctx changes]
+  (let [s (run-each chunks ctx changes command-placed)]
+    (reduce (fn [s [p old]] (neighbors-changed s ctx p old))
+            s (:placed s))))

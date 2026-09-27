@@ -8,6 +8,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -63,15 +64,20 @@
     (cond-> (assoc e :sheared? false)
             (mobs/baby? e) (assoc :baby-until grown))))
 
-(defn- bitten [world [x y z :as cell]]
-  (let [below [x (dec (long y)) z]]
+(defn- bitten
+  "EatBlockGoal.tick: grass at the feet is destroyed without drops;
+  else grass below turns to dirt with flags 2 after its 2001."
+  [world [x y z :as cell]]
+  (let [below [x (dec (long y)) z]
+        st (sense/block-at world cell)]
     (cond
       (edible? world cell)
-      [[:set-blocks [[cell 0]]]
-       (out/all (out/break-effect cell (sense/block-at world cell)))]
+      (edit/set-deltas world
+                       [[cell (block/emptied st) [[:break st]]]])
       (grass-at? world cell)
-      [[:set-blocks [[below (grass/dirt-state)]]]
-       (out/all (out/break-effect below (grass/grass-state)))])))
+      (let [grass [:break (grass/grass-state)]]
+        (edit/flagged-deltas
+          world [[below (grass/dirt-state) [grass]]] 2)))))
 
 (defn- bite-now? [e t]
   (= bite-at (- (long (get-in e [:task :until])) (long t))))

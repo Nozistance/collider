@@ -196,24 +196,52 @@
   (into [[:set-blocks (block-changes (:records s)) (:ticks s)]]
         (change-fx world (:records s))))
 
+(defn- run-deltas
+  "Returns the deltas of f, a run of neighbors over the chunks of
+  world, on the changes with wet sponges dried, and the ctx of
+  tick base."
+  [world changes base f]
+  (let [[changes fx] (dried world changes)
+        ctx (state/level-ctx world base)
+        s (f (:chunks world) ctx changes)]
+    [(into (settled-deltas world s) fx) s]))
+
 (defn change-deltas
-  "Returns the deltas for the changes, each set with the updates
-  it runs at once, as Level.setBlock. base stands for the tick
-  the changes are made on; a player's edit comes between ticks,
-  after the tick before."
+  "Returns the deltas for the changes, each placed with the updates
+  it runs at once, as Level.setBlock with flags 3. base stands for
+  the tick the changes are made on; a player's edit comes between
+  ticks, after the tick before."
   ([world changes]
    (change-deltas world changes (dec (long (:tick world)))))
   ([world changes base]
-   (let [[changes fx] (dried world changes)
-         ctx (state/level-ctx world base)
-         s (neighbors/set-blocks (:chunks world) ctx changes)]
-     (into (settled-deltas world s) fx))))
+   (first (run-deltas world changes base neighbors/set-blocks))))
 
 (defn set-deltas
   "Returns the deltas for changes the level makes in its tick, each
   set with the updates it runs at once."
   [world changes]
   (change-deltas world changes (:tick world)))
+
+(defn flagged-deltas
+  "Returns the deltas of Level.setBlock of each change as it is,
+  with flags, then Level.updateNeighborsAt of each cell of
+  notified. A change made between ticks has base one before the
+  tick of world."
+  ([world changes flags]
+   (flagged-deltas world changes flags nil (:tick world)))
+  ([world changes flags notified base]
+   (let [ops #(concat (map (fn [c] [:set c flags]) %)
+                      (map (fn [p] [:notify p]) notified))
+         run (fn [chunks ctx cs] (neighbors/run chunks ctx (ops cs)))]
+     (first (run-deltas world changes base run)))))
+
+(defn command-deltas
+  "Returns [deltas n] for the changes of /setblock or /fill, made
+  between ticks: n is how many cells they changed."
+  [world changes]
+  (let [base (dec (long (:tick world)))
+        [ds s] (run-deltas world changes base neighbors/commanded)]
+    [ds (count (:placed s))]))
 
 (defn held-slot
   "Returns the inventory slot of the item the player holds."

@@ -299,9 +299,10 @@
 
 (defn- apply-set-blocks
   "Returns level w after Level.setBlock of each change, with the
-  updates it runs. What the updates show is not heard: the
-  systems set blocks through neighbors/set-blocks themselves and
-  give the ticks with the changes."
+  updates it runs. What the updates show is not heard: this is an
+  edit from outside the game, as tests and tools make. Systems
+  set blocks through edit, which runs the updates itself and gives
+  the ticks with the changes."
   [w changes]
   (let [s (neighbors/set-blocks (:chunks w) (level-ctx w) changes)
         changes (mapv (fn [[p st]] [p st]) (:records s))]
@@ -453,16 +454,6 @@
         (update :unknown dissoc id)
         (update :stored (fnil conj (i/int-set)) id))))
 
-(defn- vacated-bed [w eid]
-  (if-let [pos (get-in w [:entities eid :sleeping :pos])]
-    (let [st (chunk/chunks-get-block (:chunks w) pos)]
-      (if (= :bed (block/type-of st))
-        (let [props (assoc (block/props-of st) :occupied :false)
-              free (block/state (block/block-of st) props)]
-          (apply-set-blocks w [[pos free]]))
-        w))
-    w))
-
 (defn- stored-profile [e dim]
   (schema/profile-of
     (-> e
@@ -480,7 +471,7 @@
 
 (defn- player-quit [w eid]
   (let [{:keys [name] :as e} (get-in w [:entities eid])]
-    (cond-> (-> (vacated-bed w eid)
+    (cond-> (-> w
                 (update :spawning dissoc eid)
                 (update :entities dissoc eid)
                 (update :players forget-player name eid))

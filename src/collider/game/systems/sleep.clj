@@ -115,6 +115,17 @@
     (and (>= (count asleep) needed)
          (>= (deep-count world all) needed))))
 
+(defn vacated-deltas
+  "Returns the deltas of the bed player e leaves as it goes, between
+  ticks: its head set free with flags 3, as ServerPlayer.disconnect
+  stops sleeping (LivingEntity.stopSleeping)."
+  [world e]
+  (let [head (get-in e [:sleeping :pos])
+        st (when head (block-at world head))
+        base (dec (long (:tick world)))]
+    (when (and st (= :bed (block/type-of st)))
+      (edit/flagged-deltas world [[head (vacated st)]] 3 nil base))))
+
 (defn- sleep-deltas [world]
   (let [sleep? (:sleep? (bed-rule world))
         all (in-bed world)
@@ -125,5 +136,8 @@
       (night-passes? world all asleep) (skip-night-deltas world all)
       (seq waking) (waking-deltas world asleep waking))))
 
+(defn- quit-deltas [world]
+  (mapcat #(vacated-deltas world %) (:quits world)))
+
 (defn sleep [world _d]
-  [#(sleep-deltas world)])
+  [#(concat (quit-deltas world) (sleep-deltas world))])

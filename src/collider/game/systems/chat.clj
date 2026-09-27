@@ -15,6 +15,7 @@
             [collider.game.schema :as schema]
             [collider.game.stack :as stack]
             [collider.game.state :as state]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.items :as items]
             [collider.game.systems.sleep :as sleep]
@@ -154,11 +155,13 @@
 (defn- box [[ax ay az bx by bz]]
   (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
 
-(defn- fill-changes [chunks [[x1 x2] [y1 y2] [z1 z2]] st]
-  (vec (for [x (range x1 (inc x2))
+(defn- fill-changes
+  "The cells of the box in the order of BlockPos.betweenClosed:
+  x fastest, then y, then z."
+  [[[x1 x2] [y1 y2] [z1 z2]] st]
+  (vec (for [z (range z1 (inc z2))
              y (range y1 (inc y2))
-             z (range z1 (inc z2))
-             :when (not= st (chunk/chunks-get-block chunks [x y z]))]
+             x (range x1 (inc x2))]
          [[x y z] st])))
 
 (defn- box-ids [[[x1 x2] _ [z1 z2]]]
@@ -210,15 +213,16 @@
 
 (defn- filled [world eid bounds block]
   (let [dim (source-dim world)
-        [chunks adds] (fetched (level-view world dim) bounds)
-        changes (fill-changes chunks bounds (block/state block))]
-    (if (empty? changes)
+        lv (level-view world dim)
+        [chunks adds] (fetched lv bounds)
+        changes (fill-changes bounds (block/state block))
+        lv (assoc lv :chunks chunks)
+        [ds n] (edit/command-deltas lv changes)]
+    (if (zero? (long n))
       (concat (in-level world dim adds)
               (fail eid "commands.fill.failed"))
-      (concat (in-level world dim
-                        (conj (vec adds) [:set-blocks changes]))
-              (say eid "commands.fill.success"
-                   (str (count changes)))))))
+      (concat (in-level world dim (into (vec adds) ds))
+              (say eid "commands.fill.success" (str n))))))
 
 (defn- flat-in? [^long x ^long z]
   (and (<= -30000000 x) (< x 30000000)
@@ -690,21 +694,21 @@
       (fail eid "commands.summon.invalidPosition"))))
 
 (defn- block-set [world eid [x y z :as pos] st]
-  (concat (in-level world (source-dim world)
-                    [[:set-blocks [[pos st]]]])
-          (say eid "commands.setblock.success"
-               (str x) (str y) (str z))))
+  (let [dim (source-dim world)
+        lv (level-view world dim)
+        [ds n] (edit/command-deltas lv [[pos st]])]
+    (if (zero? (long n))
+      (fail eid "commands.setblock.failed")
+      (concat (in-level world dim ds)
+              (say eid "commands.setblock.success"
+                   (str x) (str y) (str z))))))
 
 (defn- setblock-deltas [world eid [x y z block]]
   (let [pos [x y z]
-        st (block/state block)
-        lv (source-level world)
-        k (pos-error lv pos)]
-    (cond
-      k (fail eid k)
-      (= st (chunk/chunks-get-block (:chunks lv) pos))
-      (fail eid "commands.setblock.failed")
-      :else (block-set world eid pos st))))
+        k (pos-error (source-level world) pos)]
+    (if k
+      (fail eid k)
+      (block-set world eid pos (block/state block)))))
 
 (defn- block-under [world [x y z]]
   (let [p (source-pos world)

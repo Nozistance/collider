@@ -7,6 +7,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.state :as state]
+            [collider.game.systems.sleep :as sleep]
             [collider.game.systems.players.track
              :refer [->Frame ->Track]]
             [collider.world.chunk :as chunk])
@@ -173,10 +174,12 @@
 (def ^:private duplicate-login-reason
   "You logged in from another location")
 
-(defn- kicked-deltas [eid]
-  [(out/to eid (out/disconnect duplicate-login-reason))
-   (out/to eid (out/close))
-   [:remove-entity eid]])
+(defn- kicked-deltas [world eid]
+  (concat
+    (sleep/vacated-deltas world (get-in world [:entities eid]))
+    [(out/to eid (out/disconnect duplicate-login-reason))
+     (out/to eid (out/close))
+     [:remove-entity eid]]))
 
 (defn- other-logins [world pname]
   (let [owner (get-in world [:players pname])]
@@ -189,7 +192,8 @@
 (defn- duplicate-login-deltas [world events]
   (mapcat (fn [[tag _ pname]]
             (when (= :player-join tag)
-              (mapcat kicked-deltas (other-logins world pname))))
+              (mapcat #(kicked-deltas world %)
+                      (other-logins world pname))))
           events))
 
 (defn- joined-deltas [events]
