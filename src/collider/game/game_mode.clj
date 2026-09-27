@@ -3,6 +3,8 @@
   (:require [collider.config :as config]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
+            [collider.vec :as v]
+            [collider.world.chunk :as chunk]
             [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
@@ -52,6 +54,35 @@
 (defn creative? [e] (= :creative (:game-mode e)))
 
 (defn spectator? [e] (= :spectator (:game-mode e)))
+
+(defn- held? [chunks cx cz]
+  (contains? chunks (chunk/pos->id cx cz)))
+
+(defn- cells
+  "The chunk coordinates from lo to hi, block coordinates, rounded
+  out."
+  [^double lo ^double hi]
+  (range (bit-shift-right (long (Math/floor lo)) 4)
+         (inc (bit-shift-right (long (Math/ceil hi)) 4))))
+
+(defn- touching-unloaded?
+  "Entity.touchingUnloadedChunk: the box of e grown by a block on
+  each side reaches a chunk the level does not hold."
+  [chunks e]
+  (let [half (first (entity/pose-box (:pose e :standing)))
+        r (+ 1.0 (double half))
+        x (v/x (:pos e)) z (v/z (:pos e))]
+    (boolean
+      (some (fn [cx]
+              (some #(not (held? chunks cx %))
+                    (cells (- z r) (+ z r))))
+            (cells (- x r) (+ x r))))))
+
+(defn ticks?
+  "ServerPlayer.doTick: whether player e runs its player tick. A
+  spectator touching an unloaded chunk does not."
+  [chunks e]
+  (not (and (spectator? e) (touching-unloaded? chunks e))))
 
 (defn shown-to?
   "ServerPlayer.broadcastToPlayer: whether viewer tracks entity e.

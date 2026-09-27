@@ -4,6 +4,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
+            [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.state :as state]
@@ -154,16 +155,30 @@
         (items/thrown-deltas world eid (:drops after))
         (equip-deltas world eid after)))))
 
-(defn- own-click-deltas [world [tag eid packet]]
-  (when (zero? (long (:container packet 0)))
-    (click-deltas world [tag eid (dissoc packet :container)])))
+(defn- resent-deltas
+  "AbstractContainerMenu.sendAllDataToRemote for the inventory of
+  player e."
+  [eid e]
+  (let [inv (or (:inventory e) {})
+        slots (mapv inv (range menu/slot-count))]
+    [(out/to eid (out/inventory slots (:carried e)))]))
+
+(defn- own-click-deltas
+  "ServerGamePacketListenerImpl.handleContainerClick for the
+  inventory menu, which is open while no other menu is."
+  [world [tag eid packet]]
+  (let [e (get-in world [:entities eid])]
+    (when (and e (nil? (:menu e))
+               (zero? (long (:container packet 0))))
+      (if (game-mode/spectator? e)
+        (resent-deltas eid e)
+        (click-deltas world [tag eid (dissoc packet :container)])))))
 
 (defn event-deltas
   "Returns the deltas of one inventory event of its player."
   [world [tag :as ev]]
   (vec (case tag
-         :click (click-deltas world ev)
-         :menu-click (own-click-deltas world ev)
+         (:click :menu-click) (own-click-deltas world ev)
          :pick (pick-deltas world ev)
          nil)))
 

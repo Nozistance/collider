@@ -109,14 +109,16 @@
         fx (floor (v/x pos)) fy (floor (v/y pos)) fz (floor (v/z pos))
         feet? (water-at? chunks fx fy fz)
         swim? (swims? e in? under? feet?)]
-    {:in-water?     in? :under-water? under? :swimming? swim?
-     :eye-in-water? (eye-in-water? chunks pos pose)
-     :pose          (pose-of chunks pos e swim?)}))
+    (cond-> {:in-water?     in? :under-water? under? :swimming? swim?
+             :eye-in-water? (eye-in-water? chunks pos pose)
+             :pose          (pose-of chunks pos e swim?)}
+      (game-mode/spectator? e) (assoc :on-ground false))))
 
 (defn- player-deltas [world [eid e]]
-  (let [same? (fn [[k vl]] (= vl (get e k)))
-        m (into {} (remove same?) (changes world e))]
-    (when (seq m) [[:merge-entity eid m]])))
+  (when (game-mode/ticks? (:chunks world) e)
+    (let [same? (fn [[k vl]] (= vl (get e k)))
+          m (into {} (remove same?) (changes world e))]
+      (when (seq m) [[:merge-entity eid m]]))))
 
 (defn pose [world _]
   [#(into [] (mapcat (fn [entry] (player-deltas world entry)))

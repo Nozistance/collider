@@ -1,6 +1,7 @@
 (ns collider.game.detector
   "Observers of the finished tick."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.game-mode :as game-mode]
+            [collider.game.out :as out]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -54,11 +55,15 @@
       [:fall-one-cm (Math/round (* (double n) 100.0))])
     pair))
 
-(defn- tick-stats [e was-sleeping?]
+(defn- ticked-stats [e]
   (cond-> [[:play-time 1] [:total-world-time 1]]
     (pos? (double (:health e 20.0))) (conj [:time-since-death 1])
     (:sneaking? e) (conj [:sneak-time 1])
-    (not (:sleeping e)) (conj [:time-since-rest 1])
+    (not (:sleeping e)) (conj [:time-since-rest 1])))
+
+(defn- tick-stats [chunks e was-sleeping?]
+  (cond-> []
+    (game-mode/ticks? chunks e) (into (ticked-stats e))
     (and (:sleeping e) (not was-sleeping?)) (conj [:sleep-in-bed 1])))
 
 (defn- add-counts [stats pairs]
@@ -70,7 +75,7 @@
 (defn- player-stats [world moves eid e]
   (let [was (get-in world [:observed eid :sleeping])
         moved (mapcat move-stats (get moves eid))]
-    (into (tick-stats e was)
+    (into (tick-stats (:chunks world) e was)
           (keep #(fall-stat e %))
           moved)))
 
@@ -81,20 +86,22 @@
 (defn- players [world]
   (filter #(= :player (:type (val %))) (:entities world)))
 
+(defn- player-delta [world moves [eid e]]
+  (let [counted (player-stats world moves eid e)
+        stats (-> (or (:stats e) {})
+                  (add-counts counted)
+                  (add-awards (:awards e)))]
+    [:merge-entity eid
+     (cond-> {:stats stats} (:awards e) (assoc :awards nil))]))
+
+(defn- observed [world]
+  (into {} (map (fn [[eid e]] [eid (select-keys e [:sleeping])]))
+        (players world)))
+
 (defn- award [world _]
   (let [moves (group-by :eid (:moves world))]
-    (conj
-      (mapv (fn [[eid e]]
-              [:merge-entity eid
-               (cond-> {:stats (-> (or (:stats e) {})
-                                   (add-counts
-                                     (player-stats world moves eid e))
-                                   (add-awards (:awards e)))}
-                 (:awards e) (assoc :awards nil))])
-            (players world))
-      [:observed (into {} (map (fn [[eid e]]
-                                 [eid (select-keys e [:sleeping])]))
-                       (players world))])))
+    (conj (mapv #(player-delta world moves %) (players world))
+          [:observed (observed world)])))
 
 (defn- answer [world d]
   (for [[tag eid] (:input d) :when (= :stats-request tag)
