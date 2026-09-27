@@ -13,31 +13,16 @@
 
 (def layout 12)
 
-(def ^:private files
-  ["packets" "registries" "blocks" "datapack" "tags" "items"
-   "light" "fire" "drops" "entity-drops" "recipes" "sounds"
-   "features" "potions" "effects" "enchantments"
-   "dimension-types" "biomes" "shapes"
-   "outlines" "sturdy" "flags"])
-
-(defn stamp
-  "Returns the stamp of a set of tables.
-  The stamp names the game version and the table layout."
-  []
-  {:game game :layout layout})
-
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
        (catch Exception _ nil)))
 
-(defn- stamped? [d]
-  (= (stamp) (select-keys (stamp-of d) [:game :layout])))
-
 (defn complete?
-  "Returns true when d holds a full, stamped set of tables."
+  "Returns true when d holds a set of tables of this game and layout.
+  The generator writes the stamp last, so a stamp means a full set."
   [d]
-  (and (every? #(.isFile (io/file d (str % ".edn"))) files)
-       (stamped? d)))
+  (= {:game game :layout layout}
+     (select-keys (stamp-of d) [:game :layout])))
 
 (defn dir
   "Returns the first place that holds a full set of tables of this
@@ -73,8 +58,7 @@
   (let [why (str "No complete set of tables for " game
                  " in target/data or data")
         how (str "Make them with:"
-                 " java -jar vanilla-tables.jar generate"
-                 " --out data")]
+                 " clojure -T:build tables")]
     (ex-info "no tables"
              {:what    "no game data"
               :why     why
