@@ -54,7 +54,7 @@
   "Returns the hiss of water poured where it evaporates.
   The pourer sees the smoke on its own."
   [world eid pos]
-  (let [snd (out/sound :generic/extinguish-fire pos 0.5
+  (let [snd (out/sound :block.fire.extinguish pos 0.5
                        (fizz-pitch world pos))]
     [(out/except eid snd)]))
 
@@ -117,7 +117,7 @@
     :else :bucket/fill))
 
 (defn- fill-fx [kind pos st]
-  (out/sound (fill-sound kind st) pos 1.0 1.0))
+  (out/sound (fill-sound kind st) pos 1.0 1.0 :players))
 
 (defn- drained-deltas [world kind pos st]
   (case kind

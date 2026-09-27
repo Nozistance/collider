@@ -1174,6 +1174,62 @@
                 (or (pos? (long added)) (pos? (long removed)))
                 (assoc :components? true))))))
 
+(def ^:private particle-option-kinds
+  {:block :state :block-marker :state :falling-dust :state
+   :dust-pillar :state :block-crumble :state
+   :entity-effect :color :tinted-leaves :color :flash :color
+   :trail :trail
+   :geyser nil :geyser-base nil :geyser-poof nil :geyser-plume nil
+   :dragon-breath nil :dust nil :dust-color-transition nil
+   :effect nil :instant-effect nil :sculk-charge nil :item nil
+   :vibration nil :shriek nil})
+
+(defn- particle-entry [[k id]]
+  [(long id) [k (get particle-option-kinds k :none)]])
+
+(def ^:private ^:table particle-kinds
+  (delay (into {} (map particle-entry)
+               (get (data/registries) "particle_type"))))
+
+(defn- unmodelled [k]
+  (ex-info (str "particle options of " (name k) " not modelled")
+           {:particle k}))
+
+(defn- particle-kind [t]
+  (let [[k kind] (@particle-kinds (long t))]
+    (when-not k
+      (throw (ex-info "unknown particle type" {:particle t})))
+    (or kind (throw (unmodelled k)))))
+
+(defn write-particle
+  "Writes a particle as `[type options]`, the options by the type:
+  nil, a block state id, a color, or a trail `[target color ticks]`."
+  [^Buf buf [t opts]]
+  (write-varint buf (long t))
+  (case (particle-kind t)
+    :none nil
+    :state (write-varint buf (long opts))
+    :color (buf/write-int! buf (int opts))
+    :trail (let [[target color ticks] opts]
+             (write-vec3 buf target)
+             (buf/write-int! buf (int color))
+             (write-varint buf (long ticks)))))
+
+(defn- read-trail [^Buf buf]
+  [[(buf/read-double buf) (buf/read-double buf)
+    (buf/read-double buf)]
+   (buf/read-int buf) (read-varint buf)])
+
+(defn read-particle
+  "Reads a particle as `[type options]`."
+  [^Buf buf]
+  (let [t (read-varint buf)]
+    [t (case (particle-kind t)
+         :none nil
+         :state (read-varint buf)
+         :color (buf/read-int buf)
+         :trail (read-trail buf))]))
+
 (def data-types
   "Entity data type -> its place in the serializer order."
   {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
@@ -1183,10 +1239,6 @@
 (defn- write-data-pos [^Buf buf v]
   (let [[x y z] v]
     (write-block-pos buf (long x) (long y) (long z))))
-
-(defn- write-data-particle [^Buf buf [t c]]
-  (write-varint buf (long t))
-  (buf/write-int! buf (int c)))
 
 (defn- write-optional! [^Buf buf v write]
   (buf/write-boolean! buf (some? v))
@@ -1202,7 +1254,7 @@
     :boolean (buf/write-boolean! buf (boolean v))
     :block-pos (write-data-pos buf v)
     :optional-block-pos (write-optional! buf v write-data-pos)
-    :particle (write-data-particle buf v)
+    :particle (write-particle buf v)
     (:int :block-state :pose :cow-variant :cow-sound-variant)
     (write-varint buf (long v))))
 
@@ -1232,7 +1284,7 @@
     :boolean (buf/read-boolean buf)
     :block-pos (read-block-pos buf)
     :optional-block-pos (read-optional-pos buf)
-    :particle [(read-varint buf) (buf/read-int buf)]
+    :particle (read-particle buf)
     (:block-state :pose :cow-variant :cow-sound-variant)
     (read-varint buf)))
 

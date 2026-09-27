@@ -130,6 +130,8 @@
    :particles         [[:kind :keyword] [:state [:maybe State]]
                        [:pos Vec3] [:count :int]
                        [:speed number?]]
+   :trail             [[:pos Vec3] [:target Vec3] [:color :int]
+                       [:ticks :int]]
    :extinguish        [[:pos Pos]]
    :fizz              [[:pos Pos]]
    :bonemeal          [[:pos Pos]]

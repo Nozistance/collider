@@ -169,15 +169,15 @@
       [[pos st]])))
 
 (defn- copper-fx [pos snd particles]
-  [(out/all (out/sound snd pos 1.0 1.0))
-   (out/all (out/level-event particles pos))])
+  (conj (if snd [(out/all (out/sound snd pos 1.0 1.0))] [])
+        (out/all (out/level-event particles pos))))
 
 (defn wax-deltas
   "Returns the deltas of honeycomb used on the block at pos."
   [world [_ pos _ _ _]]
   (when-let [st (block/waxed (edit/block-at world pos))]
     (sounded world (half-changes world pos st)
-             (copper-fx pos :honeycomb/wax-on
+             (copper-fx pos nil
                         out/particles-and-sound-wax-on))))
 
 (defn- copper-axe-deltas [world pos cur]
@@ -279,7 +279,7 @@
              (muddable? world pos)
              (cauldron/water-bottle? (edit/held-stack world eid)))
     (concat (edit/change-deltas world [[pos (block/state :mud)]])
-            [(out/all (out/sound :splash pos 1.0 1.0))
+            [(out/all (out/sound :splash pos 1.0 1.0 :blocks))
              (out/all (out/sound :bottle/empty pos 1.0 1.0))]
             (items/filled-result-deltas
               world eid {:item :glass-bottle :count 1}))))

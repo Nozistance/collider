@@ -2,6 +2,7 @@
   "Block edit checks and change deltas."
   (:require [collider.data :as data]
             [collider.game.game-mode :as game-mode]
+            [collider.game.block.blockentity :as be]
             [collider.game.block.tnt :as tnt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -158,6 +159,28 @@
   {:water out/sound-drip-water-into-cauldron
    :lava out/sound-drip-lava-into-cauldron})
 
+(def ^:private eruption-sounds
+  {:erupting :block.potent-sulfur.geyser-eruption
+   :continuous :block.potent-sulfur.geyser-continuous-eruption})
+
+(defn sulfur-placed-fx
+  "Returns the effects of potent sulfur taking state st at pos,
+  PotentSulfurBlock.onPlace: a geyser that starts is heard and
+  runs its block event."
+  [[x y z :as pos] ^long st]
+  (when-let [kind (eruption-sounds (geyser/phase st))]
+    (let [at [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)]]
+      [(out/all (out/sound kind at 1.0 1.0))
+       (out/all (out/block-event pos 0 0))])))
+
+(defn- countdown-reset
+  "PotentSulfurBlockEntity.resetCountdown of the block entity at
+  pos, when there is one."
+  [world pos]
+  (when-let [e (be/at world pos)]
+    (when (= :potent-sulfur (:kind e))
+      [[:set-block-entity pos (assoc e :countdown -1)]])))
+
 (def ^:private change-effects
   "What each effect a change names does, by its kind."
   {:fizz (fn [_ pos _] [(out/all (out/fizz pos))])
@@ -170,7 +193,13 @@
             [(out/all (out/sound kind pos volume pitch))])
    :drip (fn [_ pos [_ fluid]]
            [(out/all (out/level-event (drip-events fluid) pos 0))])
-   :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])})
+   :schedule (fn [_ _ [_ at-ids]] [[:schedule-ticks at-ids]])
+   :event (fn [_ pos [_ id]] [(out/all (out/level-event id pos 0))])
+   :trail (fn [_ pos [_ target color ticks]]
+            (let [at (mapv #(+ (double %) 0.5) pos)]
+              [(out/all (out/trail at target color ticks))]))
+   :geyser-start (fn [_ pos [_ st]] (sulfur-placed-fx pos st))
+   :reset-countdown (fn [world pos _] (countdown-reset world pos))})
 
 (defn change-fx
   "Returns the deltas of the effects the changes carry. A change
@@ -206,21 +235,35 @@
         s (f (:chunks world) ctx changes)]
     [(into (settled-deltas world s) fx) s]))
 
+(defn- as-given
+  "Level.setBlock with flags 3 of each change, the state as it is."
+  [chunks ctx changes]
+  (neighbors/run chunks ctx (mapv (fn [c] [:set c 3]) changes)))
+
 (defn change-deltas
-  "Returns the deltas for the changes, each placed with the updates
-  it runs at once, as Level.setBlock with flags 3. base stands for
-  the tick the changes are made on; a player's edit comes between
-  ticks, after the tick before."
+  "Returns the deltas for the changes, each set as it is with the
+  updates it runs at once, as Level.setBlock with flags 3. base
+  stands for the tick the changes are made on; a player's edit
+  comes between ticks, after the tick before."
   ([world changes]
    (change-deltas world changes (dec (long (:tick world)))))
   ([world changes base]
-   (first (run-deltas world changes base neighbors/set-blocks))))
+   (first (run-deltas world changes base as-given))))
 
 (defn set-deltas
   "Returns the deltas for changes the level makes in its tick, each
-  set with the updates it runs at once."
+  set as it is with the updates it runs at once."
   [world changes]
   (change-deltas world changes (:tick world)))
+
+(defn shaped-deltas
+  "Returns the deltas for changes each placed in the shape it takes
+  from its neighbours, getStateForPlacement, with the updates it
+  runs at once. A change made between ticks has base one before
+  the tick of world."
+  ([world changes] (shaped-deltas world changes (:tick world)))
+  ([world changes base]
+   (first (run-deltas world changes base neighbors/set-blocks))))
 
 (defn flagged-deltas
   "Returns the deltas of Level.setBlock of each change as it is,
@@ -252,20 +295,6 @@
 (defn held-stack [world eid]
   (get-in world [:entities eid :inventory (held-slot world eid)]))
 
-(def ^:private eruption-sounds
-  {:erupting :block.potent-sulfur.geyser-eruption
-   :continuous :block.potent-sulfur.geyser-continuous-eruption})
-
-(defn sulfur-placed-fx
-  "Returns the effects of potent sulfur taking state st at pos,
-  PotentSulfurBlock.onPlace: a geyser that starts is heard and
-  runs its block event."
-  [[x y z :as pos] ^long st]
-  (when-let [kind (eruption-sounds (geyser/phase st))]
-    (let [at [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)]]
-      [(out/all (out/sound kind at 1.0 1.0))
-       (out/all (out/block-event pos 0 0))])))
-
 (defn- ghast-placed-fx [pos ^long state]
   (let [kind (if (block/waterlogged? state)
                :block.dried-ghast.place-in-water
@@ -275,7 +304,6 @@
 (defn- placed-by-fx [pos ^long state]
   (case (block/type-of state)
     :dried-ghast (ghast-placed-fx pos state)
-    :potent-sulfur (sulfur-placed-fx pos state)
     nil))
 
 (defn- place-sound [world eid pos state]
@@ -289,7 +317,8 @@
   sound for everyone else."
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
-   (let [deltas (change-deltas world changes)
+   (let [base (dec (long (:tick world)))
+         deltas (shaped-deltas world changes base)
          [[pos state]] (first (dried world changes))]
      (-> deltas
          (into (placed-by-fx pos state))

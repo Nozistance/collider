@@ -240,6 +240,12 @@
   {:msg :particles :kind kind :state state :pos pos :count count
    :speed (double speed)})
 
+(defn trail
+  "Returns the effect of a trail particle from pos to target, of
+  an rgb color, that lasts ticks."
+  [pos target color ticks]
+  {:msg :trail :pos pos :target target :color color :ticks ticks})
+
 (defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
 
@@ -283,7 +289,11 @@
 
 (def ^:const composter-fill 1500)
 
+(def ^:const lava-fizz 1501)
+
 (def ^:const dripstone-drip 1504)
+
+(def ^:const particles-and-sound-plant-growth 1505)
 
 (def ^:const particles-destroy-block 2001)
 

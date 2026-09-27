@@ -385,7 +385,8 @@
   (cond-> []
           (f-meta-changed? f)
           (conj (out/meta eid (:type e) (f-mdiff f)))
-          (f-vel-changed? f) (conj (out/velocity eid (f-vel f)))
+          (and (f-vel-changed? f) (not (:needs-sync? e)))
+          (conj (out/velocity eid (f-vel f)))
           (seq (f-slot-diff f)) (into (map slot-msg) (f-slot-diff f))
           (f-carried-changed? f) (conj (out/carried (:carried e)))))
 
@@ -446,7 +447,7 @@
 
 (defn- due-now? [^long t tr e dirty?]
   (or (zero? (rem (- t (long (:t0 tr))) (update-freq e)))
-      (and (= :item (:type e)) (boolean (:needs-sync? e)))
+      (boolean (:needs-sync? e))
       (boolean dirty?)))
 
 (defn- quiet? [tr e self? item? dirty?]

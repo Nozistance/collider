@@ -9,6 +9,7 @@
   them, and the ticks asked for, in the order they were asked."
   (:require [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.geyser :as geyser]
             [collider.world.chunk :as chunk]
             [collider.world.rules :as rules]))
 
@@ -124,7 +125,9 @@
   one that goes is destroyed."
   [s ctx q st side limit]
   (if-let [new (connect/reshape (:chunks s) q st (:tick ctx) #{side})]
-    (let [c (if (destroys? st new) (block/destroyed q st) [q new])]
+    (let [c (if (destroys? st new)
+              (block/destroyed q st)
+              [q new (some-> (geyser/shaped-fx st new) vector)])]
       (set-block s ctx c (shape-flags st new) limit))
     s))
 
@@ -211,10 +214,11 @@
     (reduce #(add-and-run %1 ctx (item %2)) s shape-order)))
 
 (defn- written [s p old st fx]
-  (-> s
-      (update :chunks chunk/chunks-set-blocks [[p st]])
-      (update :records conj (if fx [p st fx] [p st]))
-      (update :writes conj [p old st])))
+  (let [fx (into (vec fx) (geyser/placed-fx st))]
+    (-> s
+        (update :chunks chunk/chunks-set-blocks [[p st]])
+        (update :records conj (if (seq fx) [p st fx] [p st]))
+        (update :writes conj [p old st]))))
 
 (defn- updated
   "The updates of a block set at p: onPlace, then, while the block

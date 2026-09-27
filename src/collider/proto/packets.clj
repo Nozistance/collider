@@ -612,15 +612,15 @@
              [:dy {:optional true} [:= {:wire wire/float} 0.0]]
              [:dz {:optional true} [:= {:wire wire/float} 0.0]]
              [:speed wire/float] [:count wire/int]
-             [:particle wire/varint] [:state [wire/tail wire/varint]]]
+             [:particle wire/particle]]
     :write :wire}
    [:play :explode]
    {:schema [:map [:center wire/vec3] [:radius wire/float]
              [:blocks wire/int] [:knockback [:maybe wire/vec3]]
-             [:particle wire/varint] [:sound wire/holder-ref]
+             [:particle wire/particle] [:sound wire/holder-ref]
              [:block-particles
               [:sequential
-               [:tuple wire/varint wire/float wire/float
+               [:tuple wire/particle wire/float wire/float
                 wire/varint]]]]
     :write :wire}})
 

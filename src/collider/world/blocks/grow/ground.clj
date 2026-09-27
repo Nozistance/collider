@@ -120,10 +120,12 @@
     [[p 0]]))
 
 (defn eyeblossom-tick
-  "Returns the change that opens or closes an eyeblossom."
-  [_chunks p st _roll time _ctx]
+  "Returns the change that opens or closes an eyeblossom, with its
+  effects."
+  [chunks p st _roll time ctx]
   (when-let [new (eyeblossom/switched (long st) (long time))]
-    [[p new]]))
+    (let [t (long (:tick ctx 0))]
+      [[p new (eyeblossom/switch-fx chunks p st new t true)]])))
 
 (def ^:private potted-eyeblossom
   {:potted-open-eyeblossom   :potted-closed-eyeblossom

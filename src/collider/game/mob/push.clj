@@ -47,18 +47,29 @@
   (cell-key (bit-shift-right (long (Math/floor x)) 2)
             (bit-shift-right (long (Math/floor z)) 2)))
 
-(defn- pushable?
-  "Returns true when the body takes shoves. Only players and mobs
-  do, and a spectator never does. The body must stand in a held
-  chunk. A chunk that stops ticking stays held, so its bodies
-  still take shoves."
+(defn alive?
+  "Tells whether a body takes shoves: a dead one never does, though
+  it still steps and shoves the living (LivingEntity.isPushable)."
+  [e]
+  (pos? (double (:health e 1.0))))
+
+(defn- body?
+  "Returns true when the body steps with the bodies around it. Only
+  players and mobs do, and a spectator never does. The body must
+  stand in a held chunk. A chunk that stops ticking stays held, so
+  its bodies still take shoves."
   [held [_ e]]
   (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
        (not (game-mode/spectator? e))
        (contains? held (chunk/pos-chunk (:pos e)))))
 
+(defn- pushable?
+  "EntitySelector.pushableBy: a body that takes shoves."
+  [held [_ e :as entry]]
+  (and (body? held entry) (alive? e)))
+
 (defn- bodies [world held]
-  (filter (fn [entry] (pushable? held entry)) (:entities world)))
+  (filter (fn [entry] (body? held entry)) (:entities world)))
 
 (defn- by-cell [entries]
   (persistent!

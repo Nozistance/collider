@@ -56,13 +56,37 @@
   (let [st (chunk/chunks-get-block chunks p)]
     (when-not (support/supported? chunks p st) :neighbor)))
 
+(def ^:private colors
+  "EyeblossomBlock.Type particleColor, by the block it turns to."
+  {:open-eyeblossom 16545810 :closed-eyeblossom 6250335})
+
+(defn- trail
+  "Type.spawnTransformParticle: a trail rising from the middle of
+  p for half a second to a second and a half."
+  [[x y z :as p] ^long new ^long tick]
+  (let [r #(double (random/of-key tick p :eyeblossom-trail %))
+        life (+ 0.5 (r 0))
+        v [(- (r 1) 0.5) (+ (r 2) 1.0) (- (r 3) 0.5)]
+        target (mapv (fn [c d] (+ (double c) 0.5 (* (double d) life)))
+                     [x y z] v)]
+    [:trail target (colors (block/block-of new))
+     (long (* 20.0 life))]))
+
+(defn switch-fx
+  "Returns the effects of the eyeblossom st at p turning to new on
+  tick: its sound, long for a random tick, its trail and the
+  eyeblossoms like it around that follow."
+  [chunks p st new tick long?]
+  (let [kin (cascade chunks p st tick)]
+    (cond-> [(trail p new tick)
+             [:sound (sound-kind new long?) 1.0 1.0]]
+      (seq kin) (conj [:schedule kin]))))
+
 (defn- switch-due [chunks p ctx]
   (let [st (chunk/chunks-get-block chunks p)
         time (long (:time-of-day ctx 0))]
     (when-let [new (switched st time)]
-      (let [kin (cascade chunks p st (:tick ctx))]
-        [[p new (cond-> [[:sound (sound-kind new false) 1.0 1.0]]
-                  (seq kin) (conj [:schedule kin]))]]))))
+      [[p new (switch-fx chunks p st new (:tick ctx) false)]])))
 
 (def rule
   {:name    :eyeblossom

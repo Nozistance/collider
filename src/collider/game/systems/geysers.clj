@@ -2,6 +2,7 @@
   "Potent sulfur under water: geysers counting down and lifting
   what floats above them."
   (:require [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
@@ -19,12 +20,21 @@
 
 (defn- alive? [e] (pos? (double (:health e 1.0))))
 
+(def ^:private player-size [0.3 1.8])
+
+(defn- launched-player?
+  "A player the geyser lifts: alive, no spectator and not flying
+  (Player.canSimulateMovement holds on the server)."
+  [e]
+  (and (alive? e) (not (game-mode/spectator? e)) (not (:flying e))))
+
 (defn- size
   "Returns the half width and height of e, or nil for the entities
-  a geyser leaves alone: players move on their clients."
+  a geyser leaves alone."
   [e]
   (let [t (:type e)]
     (cond
+      (= :player t) (when (launched-player? e) player-size)
       (= :item t) [0.125 0.25]
       (#{:tnt :falling-block} t) [0.49 0.98]
       (contains? entity/thrown-types t) [0.125 0.25]
@@ -39,11 +49,14 @@
          (< (- ez half) (inc z)) (> (+ ez half) z))))
 
 (defn- slow? [e ^long depth]
-  (< (v/y (:vel e)) (+ base-speed (* depth 0.1))))
+  (< (v/y (or (:vel e) [0.0 0.0 0.0])) (+ base-speed (* depth 0.1))))
 
-(defn- lifted [eid e]
+(defn- lifted
+  "Entity.addDeltaMovement and needsSync: an item or a player is
+  synced to its viewers at once."
+  [eid e]
   (cond-> [[:push eid [0.0 lift 0.0]]]
-    (= :item (:type e))
+    (#{:item :player} (:type e))
     (conj [:merge-entity eid {:needs-sync? true}])))
 
 (defn- launch-deltas
@@ -59,9 +72,7 @@
       d)))
 
 (defn- turn-deltas [world pos st]
-  (let [st' (geyser/turned st)]
-    (into (edit/set-deltas world [[pos st']])
-          (edit/sulfur-placed-fx pos st'))))
+  (edit/set-deltas world [[pos (geyser/turned st)]]))
 
 (defn- countdown-deltas
   "PotentSulfurBlockEntity.SERVER_WAITING_COUNTDOWN_TICKER."
@@ -94,5 +105,20 @@
           :when (= :potent-sulfur (:kind e))]
       [pos e])))
 
+(defn- synced
+  "Clears needsSync of the players the geysers did not lift."
+  [world deltas]
+  (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
+                     deltas)]
+    (for [[eid e] (sort-by key (:entities world))
+          :when (and (= :player (:type e)) (:needs-sync? e)
+                     (not (lifted eid)))]
+      [:merge-entity eid {:needs-sync? false}])))
+
+(defn- all-deltas [world]
+  (let [ds (into [] (mapcat #(geyser-deltas world %))
+                 (sulfurs world))]
+    (into ds (synced world ds))))
+
 (defn geysers [world _d]
-  [#(mapcat (partial geyser-deltas world) (sulfurs world))])
+  [#(all-deltas world)])

@@ -12,6 +12,7 @@
             [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
+            [collider.game.out :as out]
             [collider.log :as log]
             [collider.proto.entitydata :as ed]
             [collider.vec :as v]
@@ -86,23 +87,29 @@
   (let [t (:type e)]
     (if (contains? @entity-type t) t :player)))
 
-(defn- flags-byte [meta]
-  (bit-or (if (:burning? meta) 0x01 0)
-          (if (:sneaking? meta) 0x02 0)
-          (if (:sprinting? meta) 0x08 0)
-          (if (:swimming? meta) 0x10 0)
-          (if (:invisible? meta) 0x20 0)))
+(def ^:private shared-flags
+  {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5})
 
-(def ^:private flag-keys
-  [:burning? :sneaking? :sprinting? :swimming? :invisible?])
+(defn- flags-byte ^long [meta]
+  (reduce-kv (fn [^long b k ^long bit]
+               (if (get meta k) (bit-or b (bit-shift-left 1 bit)) b))
+             0 shared-flags))
+
+(def ^:private flag-keys (vec (keys shared-flags)))
 
 (defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
 
 (def ^:private pose-id
   {:standing 0 :sleeping 2 :swimming 3 :crouching 5})
 
+(def ^:private living-flags {:is-using 1 :off-hand 2})
+
 (defn- using-item-byte ^long [meta]
-  (case (:using-item? meta) :off 0x03 (nil false) 0 0x01))
+  (let [using (long (:is-using living-flags))]
+    (case (:using-item? meta)
+      :off (bit-or using (long (:off-hand living-flags)))
+      (nil false) 0
+      using)))
 
 (defn- common-fields [meta]
   (cond-> {} (flags? meta) (assoc :shared-flags (flags-byte meta))))
@@ -273,7 +280,7 @@
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
    :splash-potion/throw           [:entity.splash-potion.throw 7]
-   :lingering-potion/throw        [:entity.lingering-potion.throw 7]
+   :lingering-potion/throw        [:entity.lingering-potion.throw 6]
    :player/teleport               [:entity.player.teleport 7]
    :hoe/till                      [:item.hoe.till 4]
    :candle/extinguish             [:block.candle.extinguish 4]
@@ -294,7 +301,6 @@
    :axe/strip                     [:item.axe.strip 4]
    :axe/scrape                    [:item.axe.scrape 4]
    :axe/wax-off                   [:item.axe.wax-off 4]
-   :honeycomb/wax-on              [:item.honeycomb.wax-on 4]
    :dye/use                       [:item.dye.use 4]
    :glow-ink/use                  [:item.glow-ink-sac.use 4]
    :ink-sac/use                   [:item.ink-sac.use 4]
@@ -318,8 +324,6 @@
    :bucket/empty-snow             [:item.bucket.empty-powder-snow 4]
    :bucket/fill-snow              [:item.bucket.fill-powder-snow 4]
    :pumpkin/carve                 [:block.pumpkin.carve 4]
-   :composter/fill                [:block.composter.fill 4]
-   :composter/fill-success        [:block.composter.fill-success 4]
    :composter/ready               [:block.composter.ready 4]
    :composter/empty               [:block.composter.empty 4]
    :shovel/flatten                [:item.shovel.flatten 4]
@@ -343,17 +347,25 @@
      :last-gamemode (game-mode/id (:previous-game-mode e))}))
 
 (def ^:private ^:table explosion-block-particles
-  (delay [[(data/registry-id "particle_type" :poof) 0.5 1.0 1]
-          [(data/registry-id "particle_type" :smoke) 1.0 1.0 1]]))
+  (delay (let [id #(data/registry-id "particle_type" %)]
+           [[[(id :poof) nil] 0.5 1.0 1]
+            [[(id :smoke) nil] 1.0 1.0 1]])))
 
 (def ^:private ^:table explosion-particle
-  (delay (data/registry-id "particle_type" :explosion-emitter)))
+  (delay [(data/registry-id "particle_type" :explosion-emitter) nil]))
 
 (defn- particles-packet [m]
   {:packet   :level-particles
-   :particle (data/registry-id "particle_type" (:kind m))
-   :state    (:state m)
+   :particle [(data/registry-id "particle_type" (:kind m)) (:state m)]
    :pos      (:pos m) :count (:count m) :speed (:speed m)})
+
+(def ^:private ^:table trail-particle
+  (delay (data/registry-id "particle_type" :trail)))
+
+(defn- trail-packet [m]
+  {:packet   :level-particles
+   :particle [@trail-particle [(:target m) (:color m) (:ticks m)]]
+   :pos      (:pos m) :count 1 :speed 0.0})
 
 (def ^:private unhandled (atom #{}))
 
@@ -379,24 +391,22 @@
       {:packet  :section-blocks-update :section [cx sy cz]
        :changes (map section-change recs)})))
 
+(def ^:private entity-events
+  {:death 3 :break 3 :eat 10 :break-main 47 :break-off 48 :love 18})
+
 (defn- status-packet [m]
-  (case (:kind m)
-    :hurt {:packet :hurt-animation :eid (:eid m) :yaw 0.0}
-    :death {:packet :entity-event :eid (:eid m) :event 3}
-    :break {:packet :entity-event :eid (:eid m) :event 3}
-    :eat {:packet :entity-event :eid (:eid m) :event 10}
-    :break-main {:packet :entity-event :eid (:eid m) :event 47}
-    :break-off {:packet :entity-event :eid (:eid m) :event 48}
-    :love {:packet :entity-event :eid (:eid m) :event 18}
-    nil))
+  (if (= :hurt (:kind m))
+    {:packet :hurt-animation :eid (:eid m) :yaw 0.0}
+    (when-let [ev (entity-events (:kind m))]
+      {:packet :entity-event :eid (:eid m) :event ev})))
+
+(def ^:private sound-sources {:blocks 4 :neutral 6 :players 7})
 
 (defn- sound-id [kind]
   (let [reg (get (data/registries) "sound_event")]
     (if-let [[ev src] (get sound-table kind)]
       (when-let [id (get reg ev)] [id src])
-      (when-let [id (get reg kind)] [id 4]))))
-
-(def ^:private sound-sources {:blocks 4 :neutral 6 :players 7})
+      (when-let [id (get reg kind)] [id (sound-sources :blocks)]))))
 
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
@@ -470,7 +480,7 @@
     (filterv #(in-level-range? world (:pos m) %) ps)
     :sound
     (filterv #(in-sound-range? world (:pos m) (:volume m) %) ps)
-    :particles
+    (:particles :trail)
     (filterv #(in-particle-range? world (:pos m) %) ps)
     :explosion
     (filterv #(in-earshot? world (:center m) %) ps)
@@ -502,6 +512,14 @@
 (def ^:private world-border-max 29999984)
 
 (def ^:private op-level-event 24)
+
+(def ^:private game-events
+  {:start-raining 1 :stop-raining 2 :change-game-mode 3
+   :rain-level-change 7 :thunder-level-change 8
+   :level-chunks-load-start 13})
+
+(defn- game-event-packet [event value]
+  {:packet :game-event :event (game-events event) :value value})
 
 (defn- join-spawn [world]
   (let [[x y z] (state/respawn-at world)]
@@ -547,9 +565,9 @@
   (let [rain (double (:rain-level lv 0.0))
         thunder (* rain (double (:thunder-level lv 0.0)))]
     (when (> rain 0.2)
-      [{:packet :game-event :event 1 :value 0.0}
-       {:packet :game-event :event 7 :value rain}
-       {:packet :game-event :event 8 :value thunder}])))
+      [(game-event-packet :start-raining 0.0)
+       (game-event-packet :rain-level-change rain)
+       (game-event-packet :thunder-level-change thunder)])))
 
 (defn- level-info-packets
   "PlayerList.sendLevelInfo: what a player entering level lv learns
@@ -560,7 +578,7 @@
              {:age (:tick lv) :time (:time-of-day lv 0)})
            (spawn-pos-packet lv)]
           (rain-packets lv)
-          [{:packet :game-event :event 13 :value 0.0}]
+          [(game-event-packet :level-chunks-load-start 0.0)]
           ticking-packets))
 
 (defn- leave-packets
@@ -611,7 +629,7 @@
 (defn- respawn-packets [lv m]
   (let [e (get-in lv [:entities (:to m)])]
     [(assoc (spawn-info lv e) :packet :respawn :keep 0)
-     {:packet :game-event :event 13 :value 0.0}]))
+     (game-event-packet :level-chunks-load-start 0.0)]))
 
 (def ^:private session-fx
   {:teleport      (fn [_ m]
@@ -650,8 +668,9 @@
    :abilities     (fn [_ m] [(abilities-packet m)])
    :camera        (fn [_ m] [{:packet :set-camera :id (:id m)}])
    :game-mode     (fn [_ m]
-                    [{:packet :game-event :event 3
-                      :value (double (game-mode/id (:mode m)))}])
+                    [(game-event-packet
+                       :change-game-mode
+                       (double (game-mode/id (:mode m))))])
    :default-spawn (fn [_ m]
                     [{:packet :set-default-spawn-position
                       :dimension (:dimension m) :pos (:pos m)
@@ -671,11 +690,16 @@
     (when (be/on-wire? e)
       [(block-entity-packet (:pos m) e)])))
 
-(defn- game-event-packet [event value]
-  {:packet :game-event :event event :value value})
+(def ^:private plant-growth-particles 15)
 
 (defn- level-event-packet [event pos data]
   {:packet :level-event :event event :pos pos :data data})
+
+(defn- level-fx [event]
+  (fn [_ m] [(game-event-packet event (:level m))]))
+
+(defn- level-event-fx [event data]
+  (fn [_ m] [(level-event-packet event (:pos m) (data m))]))
 
 (defn- sign-editor-packet [m]
   {:packet :open-sign-editor :pos (:pos m) :front? (:front? m)})
@@ -687,19 +711,21 @@
    (assoc (data/recipes) :packet :update-recipes)])
 
 (def ^:private world-fx
-  {:rain-started   (fn [_ _] [(game-event-packet 1 0.0)])
-   :rain-stopped   (fn [_ _] [(game-event-packet 2 0.0)])
-   :rain-level     (fn [_ m] [(game-event-packet 7 (:level m))])
-   :thunder-level  (fn [_ m] [(game-event-packet 8 (:level m))])
+  {:rain-started   (fn [_ _] [(game-event-packet :start-raining 0.0)])
+   :rain-stopped   (fn [_ _] [(game-event-packet :stop-raining 0.0)])
+   :rain-level     (level-fx :rain-level-change)
+   :thunder-level  (level-fx :thunder-level-change)
    :time           (fn [_ m] [(set-time-packet m)])
    :blocks-changed (fn [_ m]
                      (let [cp (chunk/id->pos (:cp m))]
                        (block-records cp (:records m))))
-   :break-effect   (fn [_ m]
-                     [(level-event-packet 2001 (:pos m) (:state m))])
-   :fizz           (fn [_ m] [(level-event-packet 1501 (:pos m) 0)])
-   :bonemeal       (fn [_ m] [(level-event-packet 1505 (:pos m) 15)])
-   :extinguish     (fn [_ m] [(level-event-packet 1009 (:pos m) 0)])
+   :break-effect   (level-event-fx out/particles-destroy-block :state)
+   :fizz           (level-event-fx out/lava-fizz (constantly 0))
+   :bonemeal
+   (level-event-fx out/particles-and-sound-plant-growth
+                   (constantly plant-growth-particles))
+   :extinguish
+   (level-event-fx out/sound-extinguish-fire (constantly 0))
    :level-event    (fn [_ m]
                      [(level-event-packet
                         (:event m) (:pos m) (:data m 0))])
@@ -711,6 +737,7 @@
    :block-entity   block-entity-fx
    :sound          (fn [_ m] (when-let [p (sound-packet m)] [p]))
    :particles      (fn [_ m] [(particles-packet m)])
+   :trail          (fn [_ m] [(trail-packet m)])
    :explosion      (fn [_ _] nil)
    :load-chunk     (fn [_ _] nil)
    :store-chunk    (fn [_ _] nil)
@@ -798,8 +825,11 @@
    :tab-latency       (fn [_ m] [(tab-latency-packet m)])
    :tab-header        (fn [_ m] [(tab-header-packet m)])})
 
+(def ^:private animate-actions
+  {:swing 0 :wake-up 2 :swing-off 3 :crit 4})
+
 (defn- animate-action ^long [kind]
-  (case kind :swing 0 :wake-up 2 :swing-off 3 :crit 4 0))
+  (get animate-actions kind 0))
 
 (defn- head-look-packet [m]
   {:packet :rotate-head :eid (:eid m) :yaw (:yaw m)})
@@ -886,7 +916,7 @@
      {:packet :server-data :motd motd}
      border-packet
      (spawn-pos-packet world)
-     {:packet :game-event :event 13 :value 0.0}]
+     (game-event-packet :level-chunks-load-start 0.0)]
     ticking-packets))
 
 (defn- join-player-packets [eid e]

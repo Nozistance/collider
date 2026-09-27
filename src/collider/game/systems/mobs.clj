@@ -584,19 +584,35 @@
     (assoc e :vel (reduce taken (:vel e) shoves))
     e))
 
+(defn- living-shoves
+  "Keeps the shoves with living bodies: a dead one is not pushed
+  and pushes back nothing."
+  [world shoves]
+  (filter #(push/alive? (get-in world [:entities (nth % 0)])) shoves))
+
+(defn- own-shoved
+  "Returns e1 after its own shove, none for a dead body."
+  [world index eid e1 half height]
+  (if (push/alive? e1)
+    (->> (push/shoves index eid e1 half height)
+         (living-shoves world)
+         (shoved e1))
+    e1))
+
 (defn- physics [world index eid e half height]
   (let [t (long (:tick world))
         half (double (float half)) height (double (float height))
         f (assoc (fluid-of world e half height)
                  :threshold (fluid-threshold height))
         moving? (not (zero? (double (:zza (:move e) 0.0))))
-        shoves (push/before index eid e half height)
+        shoves (when (push/alive? e)
+                 (push/before index eid e half height))
         vel (pushed (reduce taken (:vel e) shoves) (:push f))
         rest? (at-rest? world e half moving? (in-fluid? f) vel)
         e1 (if rest?
              (rest-step e t)
              (physics-move world e vel half height f))
-        e2 (shoved e1 (push/shoves index eid e1 half height))]
+        e2 (own-shoved world index eid e1 half height)]
     (flagged world e2 half height (when rest? f))))
 
 (def ^:private ^:const say-rest 120)
@@ -769,7 +785,8 @@
         [half height] (mobs/box-of e)
         f (fn [[es acc] sh]
             (let [j (get slots (nth sh 0))]
-              (if (and j (takes-now? active es i j))
+              (if (and j (takes-now? active es i j)
+                       (push/alive? (nth (nth es j) 1)))
                 (handed es acc j sh)
                 [es acc])))]
     (reduce f [es []] (push/shoves index eid e half height))))

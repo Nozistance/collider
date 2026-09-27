@@ -89,3 +89,22 @@
         props (block/props-of st)]
     (block/state (block/block-of st)
                  (assoc props :potent-sulfur-state ph))))
+
+(defn- geyser? [ph] (contains? #{:dormant :erupting} ph))
+
+(defn placed-fx
+  "Returns the effects of PotentSulfurBlock.onPlace of st: a geyser
+  that starts is heard and runs its block event."
+  [^long st]
+  (when (#{:erupting :continuous} (phase st))
+    [[:geyser-start st]]))
+
+(defn shaped-fx
+  "Returns the effects of updateShape turning sulfur old into st:
+  one that becomes a geyser starts its countdown anew,
+  PotentSulfurBlockEntity.resetCountdown."
+  [^long old ^long st]
+  (when (and (= :potent-sulfur (block/type-of old))
+             (not (geyser? (phase old)))
+             (geyser? (phase st)))
+    [:reset-countdown]))

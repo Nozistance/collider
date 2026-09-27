@@ -750,6 +750,13 @@
     open? (min 1.8 (+ vy 0.1))
     :else (min 0.7 (+ vy 0.06))))
 
+(defn open-above?
+  "Tells whether st above a bubble column leaves it open: no
+  collision and no fluid, BubbleColumnBlock.entityInside."
+  [^long st]
+  (and (empty? (block/collision-boxes st))
+       (nil? (block/liquid-class st))))
+
 (defn bubble-push ^double [chunks pos ^double vy]
   (let [x (long (Math/floor (v/x pos)))
         y (long (Math/floor (v/y pos)))
@@ -757,7 +764,7 @@
         st (long (raw-at chunks x y z))]
     (if (bubble-column? st)
       (column-push (= :true (:drag (block/props-of st)))
-                   (zero? (long (raw-at chunks x (inc y) z)))
+                   (open-above? (raw-at chunks x (inc y) z))
                    vy)
       vy)))
 

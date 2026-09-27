@@ -8,7 +8,6 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripstone :as dripstone]
-            [collider.world.blocks.eyeblossom :as eyeblossom]
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.precipitation :as precipitation]))
@@ -120,22 +119,6 @@
                       (into [] (mapcat #(at cid %)) n))))
           (seq (state/active-chunks world)))))
 
-(defn- eyeblossom-changes [changes]
-  (filter (fn [[_ st]] (eyeblossom/eyeblossom? (long st))) changes))
-
-(defn- eyeblossom-sounds [changes]
-  (for [[p st] (eyeblossom-changes changes)]
-    (let [kind (eyeblossom/sound-kind (long st) true)]
-      (out/all (out/sound kind p 1.0 1.0)))))
-
-(defn- eyeblossom-schedules [world changes]
-  (let [chunks (:chunks world) t (long (:tick world))]
-    (reduce (fn [m [p _]]
-              (let [old (chunk/chunks-get-block chunks p)
-                    woken (eyeblossom/cascade chunks p old t)]
-                (merge-with into m woken)))
-            {} (eyeblossom-changes changes))))
-
 (defn- drip-schedules [world drips]
   (reduce (fn [m {:keys [cauldron delay]}]
             (if cauldron
@@ -143,16 +126,6 @@
                       (fnil conj []) (chunk/block-pos->id cauldron))
               m))
           {} drips))
-
-(defn- chorus-event [st]
-  (if (= :5 (:age (block/props-of (long st))))
-    out/sound-chorus-death
-    out/sound-chorus-grow))
-
-(defn- chorus-events [changes]
-  (for [[p st] changes
-        :when (= :chorus-flower (block/type-of (long st)))]
-    (out/all (out/level-event (chorus-event st) p 0))))
 
 (defn- drip-events [drips]
   (for [{:keys [tip]} drips]
@@ -164,17 +137,10 @@
           [i stack] (map-indexed vector drops)]
       [:spawn-entity (items/popped world pos stack [:decay i])])))
 
-(defn- woken-ticks [world changes drips]
-  (merge-with into
-              (eyeblossom-schedules world changes)
-              (drip-schedules world drips)))
-
 (defn- result-deltas [world results changes drips]
-  (let [woken (woken-ticks world changes drips)]
+  (let [woken (drip-schedules world drips)]
     (concat (when (seq changes) (edit/set-deltas world changes))
             (when (seq woken) [[:schedule-ticks woken]])
-            (eyeblossom-sounds changes)
-            (chorus-events changes)
             (drip-events drips)
             (drop-spawns world results))))
 

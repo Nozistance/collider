@@ -17,4 +17,5 @@
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
                (when (= 7 (level st))
-                 [[p (block/state :composter {:level :8})]])))})
+                 [[p (block/state :composter {:level :8})
+                   [[:sound :block.composter.ready 1.0 1.0]]]])))})

@@ -223,8 +223,8 @@
   "The blocks the blast takes, then the fires it lights, each set
   with its updates, on the level as the blast read it."
   [world rg destroy fires]
-  (edit/set-deltas (with-read world rg)
-                   (into (mapv (fn [p] [p 0]) destroy) fires)))
+  (edit/shaped-deltas (with-read world rg)
+                      (into (mapv (fn [p] [p 0]) destroy) fires)))
 
 (defn- chain-delta [p seed]
   [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil)])

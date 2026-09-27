@@ -253,21 +253,16 @@
            :wire/write (fn [b v] (w b v) (buf/write-boolean! b false))
            :gen/schema child}}))}))
 
-(def tail
-  "A value taking whatever is left of the packet, nil when nothing
-  is: the options of a particle the client already knows the type of."
-  (m/-simple-schema
-    {:type :wire/tail
-     :compile
-     (fn [_ [child] options]
-       (let [s (m/schema child options)
-             r (-reader s) w (-writer s)]
-         {:pred any? :min 1 :max 1
-          :type-properties
-          {:wire/read (fn [b]
-                        (when (pos? (buf/readable-bytes b)) (r b)))
-           :wire/write (fn [b v] (when (some? v) (w b v)))
-           :gen/schema [:maybe child]}}))}))
+(def particle
+  "A particle as `[type options]`, the options read and written by
+  the type as the client does."
+  (wire-type :wire/particle vector? c/read-particle c/write-particle
+             [:tuple int-range
+              [:maybe
+               [:or int-range
+                [:tuple
+                 [:tuple double-range double-range double-range]
+                 int-range [:int {:min 1 :max 1000}]]]]]))
 
 (def reg
   (m/-simple-schema

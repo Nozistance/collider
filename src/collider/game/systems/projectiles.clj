@@ -280,11 +280,13 @@
           nil (cells from (v/+ from d))))
 
 (defn- skip?
-  "Projectile.canHitEntity: a spectator is not pickable
+  "Projectile.canHitEntity: a dead body is not hit
+  (Entity.canBeHitByProjectile), a spectator is not pickable
   (Player.isPickable)."
   [eid e oid o]
   (or (= (long oid) (long eid))
       (not (hittable? o))
+      (not (pos? (double (:health o 1.0))))
       (game-mode/spectator? o)
       (and (not (:left-owner? e))
            (= (long oid) (long (:owner e -1))))))
