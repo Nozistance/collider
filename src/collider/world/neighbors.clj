@@ -59,8 +59,11 @@
   (and (not (block/liquid? old))
        (or (zero? (long st)) (block/liquid? st))))
 
-(defn- shape-flags ^long [old st]
-  (if (destroys? old st) 3 2))
+(defn- shape-flags
+  "The flags Block.updateOrDestroy sets a change with: 3 through
+  destroyBlock, else the flags of the update less 32."
+  ^long [^long flags old st]
+  (if (destroys? old st) 3 (bit-and flags -33)))
 
 (defn- reacted
   "Returns s after the changes a block made in reply to a
@@ -136,12 +139,12 @@
 (defn- reshaped
   "The shape a connecting block at q takes for a change on side;
   one that goes is destroyed."
-  [s ctx q st side limit]
+  [s ctx q st side flags limit]
   (if-let [new (connect/reshape (:chunks s) q st (:tick ctx) #{side})]
     (let [c (if (destroys? st new)
               (block/destroyed q st)
               [q new (some-> (geyser/shaped-fx st new) vector)])]
-      (set-block s ctx c (shape-flags st new) limit))
+      (set-block s ctx c (shape-flags flags st new) limit))
     s))
 
 (defn- source-fluid? [st]
@@ -156,33 +159,39 @@
     (fluid-woken ctx q old side)
     (= :down side) (column-woken ctx q nst)))
 
+(defn- block-shaped
+  "updateShape of st, not a liquid, at q, for a change on side."
+  [s ctx q st old side flags limit]
+  (let [s (fluid-woken s ctx q old side)
+        f #(shape-flags flags %1 %2)
+        s (if (= :shape (rules/update-pass st))
+            (rule-woken s ctx q old side f limit)
+            s)]
+    (if (= st (block-at s q))
+      (reshaped s ctx q st side flags limit)
+      s)))
+
 (defn- shape-changed
-  "updateShape of the block at q, for a change on side to nst."
-  [s ctx q old side nst limit]
+  "updateShape of the block at q, for a change on side to nst,
+  its changes set with flags."
+  [s ctx q old side nst flags limit]
   (let [st (block-at s q)]
     (cond
       (zero? st) s
       (block/liquid? st) (liquid-shaped s ctx q old side st nst)
-      :else
-      (let [s (fluid-woken s ctx q old side)
-            s (if (= :shape (rules/update-pass st))
-                (rule-woken s ctx q old side shape-flags limit)
-                s)]
-        (if (= st (block-at s q))
-          (reshaped s ctx q st side limit)
-          s)))))
+      :else (block-shaped s ctx q st old side flags limit))))
 
 (defn- run-next
   "Runs the next update of item, NeighborUpdates.runNext. Returns
   [s item'], item' nil when the item is done."
-  [s ctx {:keys [kind p old i side nst limit st] :as item}]
+  [s ctx {:keys [kind p old i side nst flags limit st] :as item}]
   (case kind
     :multi (let [[d side] (nth update-order i)
                  s (neighbor-changed s ctx (shifted p d) old side)
                  i (inc (long i))]
              [s (when (< i (count update-order)) (assoc item :i i))])
     :full [(state-changed s ctx p st st nil) nil]
-    [(shape-changed s ctx p old side nst limit) nil]))
+    [(shape-changed s ctx p old side nst flags limit) nil]))
 
 (defn- run-top
   "Runs the item on top of the stack until it is done or adds
@@ -230,13 +239,17 @@
               s))
           s (filter vector? fx)))
 
-(defn- shape-item [p old nst limit [d side]]
+(defn- shape-item [p old nst flags limit [d side]]
   {:kind :shape :p (shifted p d) :old old :side side :nst nst
-   :limit limit})
+   :flags flags :limit limit})
 
-(defn- shapes-changed [s ctx p old limit]
+(defn- shapes-changed
+  "updateNeighbourShapes of the block at p, with the flags of its
+  write less 1 and 32."
+  [s ctx p old flags limit]
   (let [nst (block-at s p)
-        item #(shape-item p old nst limit %)]
+        f (bit-and (long flags) -34)
+        item #(shape-item p old nst f limit %)]
     (reduce #(add-and-run %1 ctx (item %2)) s shape-order)))
 
 (defn- run-by-level?
@@ -259,11 +272,11 @@
         (update :writes conj [p old st]))))
 
 (defn- updated
-  "The updates of a block set at p: onPlace, then, while the block
-  stays, neighborChanged with flag 1 and updateShape without flag
-  16 while the depth lasts."
+  "The updates of a block set at p: onPlace without flag 512,
+  then, while the block stays, neighborChanged with flag 1 and
+  updateShape without flag 16 while the depth lasts."
   [s ctx p old st flags limit]
-  (let [s (placed s ctx p old)
+  (let [s (if (bit-test (long flags) 9) s (placed s ctx p old))
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
@@ -271,7 +284,7 @@
         (bit-test (long flags) 1) (update :sent conj p)
         (odd? (long flags)) (neighbors-changed ctx p old)
         (and (pos? limit) (not (bit-test (long flags) 4)))
-        (shapes-changed ctx p old (dec limit))))))
+        (shapes-changed ctx p old flags (dec limit))))))
 
 (defn- liquid-placed
   "LiquidBlockContainer.placeLiquid, named :fluid-tick in the fx
@@ -310,7 +323,8 @@
 (defn set-block
   "Returns s after Level.setBlock of change [p st fx] with flags,
   1 for neighborChanged, 2 for the clients to hear of it, 16 for
-  no updateShape, and the depth left to it; then the
+  no updateShape, 512 for no onPlace, and the depth left to it;
+  the updateShape replies keep the flags less 1 and 32. Then the
   neighborChanged calls fx names. The cells the clients hear of
   go to :sent."
   [s ctx [_ _ fx :as c] flags limit]
@@ -369,13 +383,13 @@
     [p (if (and st' (not (zero? (long st')))) st' st) fx]))
 
 (defn- command-placed
-  "BlockInput.place with flags 2 and 256: s with the change set,
+  "BlockInput.place with flags 258: s with the change set,
   its cell noted under :placed with the state it held, when the
   place changed it."
   [s ctx [p :as c]]
   (let [n (count (:writes s))
         c' (command-state (:chunks s) ctx c)
-        s' (set-block s ctx c' 2 update-limit)
+        s' (set-block s ctx c' 258 update-limit)
         [q old] (get (:writes s') n)]
     (if (= p q)
       (update s' :placed conj [p old])
@@ -383,7 +397,7 @@
 
 (defn commanded
   "Returns what set-blocks does, with :placed, for the changes of
-  /setblock or /fill: each set with flags 2 and 256, then for each
+  /setblock or /fill: each set with flags 258, then for each
   that changed its cell, in order, updateNeighboursOnBlockSet, the
   neighbours told of it. :placed holds those cells as [pos old]."
   [chunks ctx changes]
