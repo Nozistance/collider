@@ -171,7 +171,7 @@
             h (Math/floor (* 4.0 (double (roll :height))))
             f (block/facing-of base)
             col (column-changes chunks' lower f (+ 2 (long h)))]
-        {:changes (into [[a cleared]] col)}))))
+        {:changes (into [[a cleared nil 18]] col)}))))
 
 (defn meal [chunks p ^long st roll]
   (cond

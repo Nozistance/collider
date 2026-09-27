@@ -155,6 +155,13 @@
   (chorus/flower-tick chunks p st
                       (fn [salt ^long n] (pick roll salt n))))
 
+(defn- set-with-2
+  "Returns the changes, each set with flags 2, as the features
+  bone meal places set their blocks (SimpleBlockFeature,
+  VegetationPatchFeature)."
+  [changes]
+  (mapv (fn [[p st fx]] [p st fx 2]) changes))
+
 (defn roots-meal
   "Returns the hanging roots bone meal grows under rooted dirt."
   [chunks [_ y _ :as p] _st _roll]
@@ -166,7 +173,7 @@
   "Returns the spread bone meal gives glow lichen."
   [chunks p st roll]
   (when-let [changes (multiface/spread-random chunks p st roll)]
-    {:changes changes}))
+    {:changes (set-with-2 changes)}))
 
 (defn carpet-meal
   "Returns the moss bone meal grows on a pale moss carpet."
@@ -255,7 +262,7 @@
   (when (and (= :true (:waterlogged (block/props-of st)))
              (coral-below? chunks p))
     {:changes (conj (pickle-spots chunks p roll)
-                    [p (with st :pickles 4)])}))
+                    [p (with st :pickles 4) nil 2])}))
 
 (defn- grown-tall [acc q ^long st]
   (let [fern? (= :fern (block/block-of st))
@@ -324,7 +331,7 @@
           n (:name biome)
           acc (reduce (fn [acc j] (turf-try acc self p j roll n))
                       (feature/start chunks) (range 128))]
-      {:changes (feature/cells acc)})))
+      {:changes (set-with-2 (feature/cells acc))})))
 
 (defn placer-meal
   "Returns the patch bone meal grows on a block that places one."
@@ -333,4 +340,4 @@
     (let [f (feature/placer-feature (block/block-of st))
           start (feature/start chunks)
           acc (feature/configured start f (dir/up p) roll [:patch])]
-      {:changes (feature/cells acc)})))
+      {:changes (set-with-2 (feature/cells acc))})))

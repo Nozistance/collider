@@ -118,16 +118,20 @@
     (liquid-woken s ctx p old nil)
     (rule-woken s ctx p old nil (constantly 3) update-limit)))
 
+(defn- state-changed
+  "neighborChanged of st at q, for a change on side."
+  [s ctx q st old side]
+  (cond
+    (zero? (long st)) s
+    (block/liquid? st) (liquid-woken s ctx q old side)
+    (= :neighbor (rules/update-pass st))
+    (rule-woken s ctx q old side (constantly 3) update-limit)
+    :else s))
+
 (defn- neighbor-changed
   "neighborChanged of the block at q, for a change on side."
   [s ctx q old side]
-  (let [st (block-at s q)]
-    (cond
-      (zero? st) s
-      (block/liquid? st) (liquid-woken s ctx q old side)
-      (= :neighbor (rules/update-pass st))
-      (rule-woken s ctx q old side (constantly 3) update-limit)
-      :else s)))
+  (state-changed s ctx q (block-at s q) old side))
 
 (defn- reshaped
   "The shape a connecting block at q takes for a change on side;
@@ -171,12 +175,13 @@
 (defn- run-next
   "Runs the next update of item, NeighborUpdates.runNext. Returns
   [s item'], item' nil when the item is done."
-  [s ctx {:keys [kind p old i side nst limit] :as item}]
-  (if (= :multi kind)
-    (let [[d side] (nth update-order i)
-          s (neighbor-changed s ctx (shifted p d) old side)
-          i (inc (long i))]
-      [s (when (< i (count update-order)) (assoc item :i i))])
+  [s ctx {:keys [kind p old i side nst limit st] :as item}]
+  (case kind
+    :multi (let [[d side] (nth update-order i)
+                 s (neighbor-changed s ctx (shifted p d) old side)
+                 i (inc (long i))]
+             [s (when (< i (count update-order)) (assoc item :i i))])
+    :full [(state-changed s ctx p st st nil) nil]
     [(shape-changed s ctx p old side nst limit) nil]))
 
 (defn- run-top
@@ -214,6 +219,17 @@
 (defn- neighbors-changed [s ctx p old]
   (add-and-run s ctx {:kind :multi :p p :old old :i 0}))
 
+(defn- called
+  "Level.neighborChanged(state, pos, ...) a change names in its fx
+  as [:neighbor-changed q st]: st at q hears of a change, as a
+  FullNeighborUpdate."
+  [s ctx fx]
+  (reduce (fn [s [k q st]]
+            (if (= :neighbor-changed k)
+              (add-and-run s ctx {:kind :full :p q :st st})
+              s))
+          s (filter vector? fx)))
+
 (defn- shape-item [p old nst limit [d side]]
   {:kind :shape :p (shifted p d) :old old :side side :nst nst
    :limit limit})
@@ -223,10 +239,17 @@
         item #(shape-item p old nst limit %)]
     (reduce #(add-and-run %1 ctx (item %2)) s shape-order)))
 
+(defn- run-by-level?
+  "Tells whether e is an effect the level runs, not the clients:
+  :fluid-tick or [:neighbor-changed q st]."
+  [e]
+  (or (= :fluid-tick e)
+      (and (vector? e) (= :neighbor-changed (e 0)))))
+
 (defn- shown
-  "The effects of fx the clients see: all but :fluid-tick."
+  "The effects of fx the clients see."
   [fx]
-  (into [] (remove #{:fluid-tick}) fx))
+  (into [] (remove run-by-level?) fx))
 
 (defn- written [s p old st fx]
   (let [fx (into (shown fx) (geyser/placed-fx st))]
@@ -237,16 +260,18 @@
 
 (defn- updated
   "The updates of a block set at p: onPlace, then, while the block
-  stays, neighborChanged with flag 1 and updateShape while the
-  depth lasts."
+  stays, neighborChanged with flag 1 and updateShape without flag
+  16 while the depth lasts."
   [s ctx p old st flags limit]
   (let [s (placed s ctx p old)
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
       (cond-> s
+        (bit-test (long flags) 1) (update :sent conj p)
         (odd? (long flags)) (neighbors-changed ctx p old)
-        (pos? limit) (shapes-changed ctx p old (dec limit))))))
+        (and (pos? limit) (not (bit-test (long flags) 4)))
+        (shapes-changed ctx p old (dec limit))))))
 
 (defn- liquid-placed
   "LiquidBlockContainer.placeLiquid, named :fluid-tick in the fx
@@ -267,11 +292,10 @@
   ^long [c ^long flags]
   (long (get c 3 flags)))
 
-(defn set-block
-  "Returns s after Level.setBlock of change [p st fx] with flags,
-  1 for neighborChanged and 2 without, and the depth left to
-  updateShape. A change to the state already there sets nothing
-  but still shows its effects."
+(defn- stored
+  "Returns s after Level.setBlock of change [p st fx]; a change to
+  the state already there sets nothing but still shows its
+  effects."
   [s ctx [p st fx] flags limit]
   (let [old (block-at s p)]
     (cond
@@ -283,6 +307,16 @@
                 (updated ctx p old st flags limit)
                 (liquid-placed ctx p old fx)))))
 
+(defn set-block
+  "Returns s after Level.setBlock of change [p st fx] with flags,
+  1 for neighborChanged, 2 for the clients to hear of it, 16 for
+  no updateShape, and the depth left to it; then the
+  neighborChanged calls fx names. The cells the clients hear of
+  go to :sent."
+  [s ctx [_ _ fx :as c] flags limit]
+  (-> (stored s ctx c flags limit)
+      (called ctx fx)))
+
 (defn- placement-state
   "The state of a change as placed: the shape it takes from its
   neighbours, getStateForPlacement of vanilla."
@@ -292,8 +326,8 @@
     [p (or st' st) fx]))
 
 (def ^:private blank
-  {:records [] :writes [] :ticks [] :placed [] :stack () :added []
-   :count 0})
+  {:records [] :writes [] :ticks [] :placed [] :sent [] :stack ()
+   :added [] :count 0})
 
 (defn- placed-with [flags]
   (fn [s ctx c]
@@ -304,12 +338,12 @@
   (reduce #(f %1 ctx %2) (assoc blank :chunks chunks) changes))
 
 (defn set-blocks
-  "Returns {:chunks :records :writes :ticks}: chunks after each
-  change [pos st fx] was placed in order with full updates, the
-  changes as made, the reactions among them with their effects,
-  each write as [pos old st], and the ticks asked for as
-  [list at id type] in order. ctx gives :tick, :dim, :rules and
-  what the rules read."
+  "Returns {:chunks :records :writes :ticks :sent}: chunks after
+  each change [pos st fx] was placed in order with full updates,
+  the changes as made, the reactions among them with their
+  effects, each write as [pos old st], the ticks asked for as
+  [list at id type] in order, and the cells the clients hear of.
+  ctx gives :tick, :dim, :rules and what the rules read."
   [chunks ctx changes]
   (run-each chunks ctx changes (placed-with 3)))
 

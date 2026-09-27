@@ -278,24 +278,36 @@
   (reduce (fn [w [k at id ty]] (update w k schedule/add at id ty))
           w ticks))
 
-(defn- with-changes [w real ticks]
-  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)]
+(defn- unquiet
+  "The changes the clients hear of: all but those at a cell of
+  quiet."
+  [changes quiet]
+  (if (seq quiet)
+    (let [quiet (set quiet)]
+      (filterv #(not (quiet (first %))) changes))
+    changes))
+
+(defn- with-changes [w real ticks quiet]
+  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)
+        told (unquiet set-real quiet)]
     (cond-> (-> w
                 (update :chunks chunk/chunks-set-blocks set-real)
                 (update :chunks light/relight-batch real
                         (:sky? w true))
                 (drop-block-entities real)
                 (ticks-added ticks))
-      (seq real) (update :block-events add-block-events set-real))))
+      (seq told) (update :block-events add-block-events told))))
 
 (defn- settled
   "Returns level w with the changes set and the ticks they asked
-  for added, in order."
-  [w changes ticks]
-  (let [real (real-changes w changes)]
-    (if (and (empty? real) (empty? ticks))
-      w
-      (with-changes w real ticks))))
+  for added, in order. The clients hear of no change at a cell of
+  quiet."
+  ([w changes ticks] (settled w changes ticks nil))
+  ([w changes ticks quiet]
+   (let [real (real-changes w changes)]
+     (if (and (empty? real) (empty? ticks))
+       w
+       (with-changes w real ticks quiet)))))
 
 (defn- apply-set-blocks
   "Returns level w after Level.setBlock of each change, with the
@@ -1089,9 +1101,9 @@
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
    :listed (fn [w [_ add drop]] (listed w add drop))
    :spawn-entity (fn [w [_ spec]] (spawned w spec))
-   :set-blocks (fn [w [_ changes ticks]]
+   :set-blocks (fn [w [_ changes ticks quiet]]
                  (if ticks
-                   (settled w changes ticks)
+                   (settled w changes ticks quiet)
                    (apply-set-blocks w changes)))
    :ticks-flushed (fn [w [_ k t parked]]
                     (update w k schedule/flushed t parked))

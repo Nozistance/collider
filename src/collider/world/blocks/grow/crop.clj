@@ -156,7 +156,9 @@
       (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1))
         [[up (block/state :cactus-flower)]])
       (and (= a 15) (< h 3))
-      [[up cactus] [p (aged st 0) nil 260]])))
+      (let [st' (aged st 0)]
+        [[up cactus]
+         [p st' [[:neighbor-changed up st']] 260]]))))
 
 (defn cactus-tick [chunks p st roll _time _ctx]
   (when (air-at? chunks (dir/up p))
@@ -205,13 +207,13 @@
             fruit? (and (= :stem t) (= a' 7)
                         (grows-now? chunks p st roll))
             fruit (when fruit? (fruit-changes chunks p st' roll))]
-        {:changes (into [[p st']] fruit)}))))
+        {:changes (into [[p st' nil 2]] fruit)}))))
 
 (defn berry-meal [_chunks p st _roll]
-  (when (< (age st) 3) {:changes [[p (older st)]]}))
+  (when (< (age st) 3) {:changes [[p (older st) nil 2]]}))
 
 (defn cocoa-meal [_chunks p st _roll]
-  (when (< (age st) 2) {:changes [[p (older st)]]}))
+  (when (< (age st) 2) {:changes [[p (older st) nil 2]]}))
 
 (defn kelp-meal [chunks p st _roll]
   (when (and (< (age st) 25)
@@ -220,12 +222,13 @@
 
 (defn propagule-meal [_chunks p st _roll]
   (when (and (hanging? st) (< (age st) 4))
-    {:changes [[p (older st)]]}))
+    {:changes [[p (older st) nil 2]]}))
 
 (defn seagrass-meal [chunks p _st _roll]
   (let [half (fn [h] (block/state :tall-seagrass {:half h}))]
     (when (water? (chunk/at chunks (dir/up p)))
-      {:changes [[p (half :lower)] [(dir/up p) (half :upper)]]})))
+      {:changes [[p (half :lower) nil 2]
+                 [(dir/up p) (half :upper) nil 2]]})))
 
 (defn tall-flower-meal [_chunks _p st _roll]
   (when (lower? st)
@@ -237,10 +240,10 @@
         upper (block/state (block/block-of tall) {:half :upper})]
     (when (and (air-at? chunks (dir/up p))
                (support/supported? chunks p tall))
-      {:changes [[p tall] [(dir/up p) upper]]})))
+      {:changes [[p tall nil 2] [(dir/up p) upper nil 2]]})))
 
 (defn petals-meal [_chunks p st _roll]
   (let [n (block/prop-long st :flower-amount)]
     (if (< n 4)
-      {:changes [[p (with st :flower-amount (inc n))]]}
+      {:changes [[p (with st :flower-amount (inc n)) nil 2]]}
       {:drops [{:item (block/block-of st) :count 1}]})))

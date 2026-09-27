@@ -32,7 +32,7 @@
 
 (def world-deltas
   {:set-blocks
-   [:cat Records [:? Coll]]
+   [:cat Records [:? Coll] [:? Coll]]
    :ticks-flushed
    [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
    :schedule-ticks

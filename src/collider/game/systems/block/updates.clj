@@ -159,11 +159,12 @@
   [#(ticks-deltas world :fluid-ticks)])
 
 (defn- final-records
-  "Returns the last state of each block.
-  The order is the one in which the blocks first changed."
-  [recs]
-  (let [end (into {} recs)
-        final (fn [pos] [pos (get end pos)])]
+  "Returns each block changed as it stands in w now, as
+  ChunkHolder.broadcastChanges reads it. The order is the one in
+  which the blocks first changed."
+  [w recs]
+  (let [at #(chunk/chunks-get-block (:chunks w) %)
+        final (fn [pos] [pos (at pos)])]
     (into [] (comp (map first) (distinct) (map final)) recs)))
 
 (defn- announced
@@ -173,8 +174,8 @@
   (let [heard (state/broadcast-chunks w)]
     (filter (fn [[cp _]] (contains? heard cp)) events)))
 
-(defn- changed-out [[cp recs]]
-  (out/all (out/blocks-changed cp (final-records recs))))
+(defn- changed-out [w [cp recs]]
+  (out/all (out/blocks-changed cp (final-records w recs))))
 
 (defn- entity-outs [w events]
   (for [[_ recs] events
@@ -187,5 +188,5 @@
   [w _d]
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]
-            (map changed-out (announced w events))
+            (map #(changed-out w %) (announced w events))
             (entity-outs w events))))

@@ -218,12 +218,22 @@
   [changes]
   (mapv (fn [[pos st]] [pos st]) changes))
 
+(defn- unheard
+  "The cells of the records no write of which the clients hear
+  of, setBlock without flag 2."
+  [{:keys [records sent]}]
+  (let [sent (set sent)]
+    (into [] (comp (map first) (remove sent) (distinct)) records)))
+
 (defn settled-deltas
   "Returns the deltas of s, what neighbors/set-blocks made: the
-  blocks and ticks it set, then the effects each change carries."
+  blocks and ticks it set, the cells the clients do not hear of
+  when there are any, then the effects each change carries."
   [world s]
-  (into [[:set-blocks (block-changes (:records s)) (:ticks s)]]
-        (change-fx world (:records s))))
+  (let [quiet (unheard s)
+        d [:set-blocks (block-changes (:records s)) (:ticks s)]]
+    (into [(cond-> d (seq quiet) (conj quiet))]
+          (change-fx world (:records s)))))
 
 (defn- run-deltas
   "Returns the deltas of f, a run of neighbors over the chunks of

@@ -80,6 +80,12 @@
              (= 7 (block/prop-long st :distance)))
     (block/drops st roll)))
 
+(defn- berries-meal
+  "CaveVines performBonemeal: the berries come with flags 2."
+  [chunks p st roll]
+  (some-> (vine/berries-meal chunks p st roll)
+          (update :changes #(flagged 2 %))))
+
 (def ^:private meals
   (table
    [[[:crop :carrot :potato :beetroot :torchflower-crop :stem]
@@ -97,7 +103,7 @@
     [[:kelp] crop/kelp-meal]
     [[:weeping-vines :twisting-vines] vine/plant-meal]
     [[:weeping-vines-plant :twisting-vines-plant] vine/body-meal]
-    [[:cave-vines :cave-vines-plant] vine/berries-meal]
+    [[:cave-vines :cave-vines-plant] berries-meal]
     [[:glow-lichen] ground/lichen-meal]
     [[:hanging-moss] ground/hanging-moss-meal]
     [[:mossy-carpet] ground/carpet-meal]
