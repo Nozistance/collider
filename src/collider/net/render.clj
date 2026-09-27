@@ -27,12 +27,14 @@
 (defn- players [world]
   (vec (sort (vals (:players world)))))
 
+(def ^:private chunk-level-keys [:min-y :max-y :sky? :dim :chunks])
+
 (defn- chunk-packet [world id]
   (let [[x z] (chunk/id->pos id)]
     {:packet         :level-chunk-with-light :cx x :cz z
      :chunk          (get-in world [:chunks id] chunk/empty-chunk)
      :block-entities (be/wire (get-in world [:block-entities id]))
-     :level          (select-keys world [:min-y :max-y :sky? :dim])}))
+     :level          (select-keys world chunk-level-keys)}))
 
 (defn- forget-chunk-packet [id]
   (let [[x z] (chunk/id->pos id)]

@@ -78,13 +78,6 @@
      (:sky? lv true)
      (biome/id (:dim lv))]))
 
-(defn- light-mask ^long [^long n pred]
-  (loop [i 0 m 0]
-    (if (= i (+ n 2))
-      m
-      (recur (inc i)
-             (if (pred i) (bit-or m (bit-shift-left 1 i)) m)))))
-
 (defn- our-section [chunk ^long si]
   (chunk/chunk-section chunk si))
 
@@ -129,63 +122,116 @@
     (c/write-varint buf (buf/readable-bytes body))
     (buf/write-bytes! buf body)))
 
-(defn- at-light [chunk ^long lo ^long li]
-  (our-section chunk (+ lo li -1)))
+(defn- filled-bits
+  "Returns a mask with bit i+1 set where section i of the window
+  holds a block other than air."
+  ^long [chunk ^long lo ^long n ^booleans solid]
+  (loop [i 0 m 0]
+    (if (= i n)
+      m
+      (let [s (our-section chunk (+ lo i))
+            hit? (and (some? s) (chunk/holds? s solid))]
+        (recur (inc i)
+               (if hit? (bit-or m (bit-shift-left 1 (inc i))) m))))))
 
-(defn- blk-pred [chunk [^long lo]]
-  (fn [li] (some? (at-light chunk lo li))))
+(defn- around-bits
+  "Returns the sections other than air in the eight chunks around
+  cx cz, as filled-bits gives them."
+  ^long [cs ^long cx ^long cz [lo n]]
+  (let [solid @surface-arr]
+    (loop [k 0 m 0]
+      (if (= k 9)
+        m
+        (let [x (+ cx (dec (quot k 3)))
+              z (+ cz (dec (rem k 3)))
+              c (when (and cs (not= k 4)) (chunk/chunk-at cs x z))]
+          (recur (inc k)
+                 (if c (bit-or m (filled-bits c lo n solid)) m)))))))
 
-(defn- top-section ^long [chunk [^long lo ^long n]]
-  (long (reduce (fn [^long acc ^long i]
-                  (if (some? (our-section chunk (+ lo i))) i acc))
-                -1 (range n))))
+(defn- spread
+  "Returns the light layers the client gets for the sections in m:
+  vanilla keeps one at each such section and at each next to it."
+  ^long [^long m]
+  (bit-or m (bit-shift-left m 1) (unsigned-bit-shift-right m 1)))
 
-(defn- sky-pred [chunk [_ _ sky? :as win] blk?]
-  (let [top (top-section chunk win)]
-    (fn [li]
-      (and sky?
-           (or (blk? li)
-               (and (>= top 0) (= (dec (long li)) (inc top))))))))
+(defn- dark-bottom? [s]
+  (loop [idx 0]
+    (cond
+      (= idx 256) true
+      (pos? (chunk/sky-light s idx)) false
+      :else (recur (inc idx)))))
 
-(defn- lit? [s channel]
-  (if (= channel :sky) (chunk/sky-lit? s) (chunk/block-lit? s)))
+(defn- dark-inherited?
+  "Returns true when the air section our light puts at si in chunk
+  has no sky light: it takes the bottom layer above it."
+  [chunk ^long si]
+  (if-let [s (chunk/first-above chunk si)]
+    (or (not (chunk/sky-lit? s)) (dark-bottom? s))
+    false))
 
-(defn- light-of [chunk [lo] pred li channel]
-  (when (pred li)
-    (if-let [s (at-light chunk lo li)]
-      (if (lit? s channel) s :empty)
-      :full)))
+(defn- sky-empty? [chunk ^long si]
+  (if-let [s (our-section chunk si)]
+    (not (chunk/sky-lit? s))
+    (dark-inherited? chunk si)))
 
-(defn- light-masks [chunk [_ n :as win] pred channel]
-  (let [of #(light-of chunk win pred % channel)]
-    [(light-mask n #(not (contains? #{nil :empty} (of %))))
-     (light-mask n #(= :empty (of %)))]))
+(defn- block-empty? [chunk ^long si]
+  (if-let [s (our-section chunk si)] (not (chunk/block-lit? s)) true))
 
-(defn- write-light-masks! [buf [sky sky-empty] [blk blk-empty]]
-  (doseq [m [sky blk sky-empty blk-empty]]
-    (if (zero? (long m))
-      (c/write-varint buf 0)
-      (do (c/write-varint buf 1) (buf/write-long! buf (long m))))))
+(defn- empty-mask ^long [chunk ^long lo ^long layers dark?]
+  (loop [li 0 m 0]
+    (if (= li 64)
+      m
+      (recur (inc li)
+             (if (and (bit-test layers li)
+                      (dark? chunk (+ lo li -1)))
+               (bit-or m (bit-shift-left 1 li))
+               m)))))
 
-(defn- write-light! [buf chunk [_ n :as win] pred channel mask]
-  (c/write-varint buf (Long/bitCount (long mask)))
-  (dotimes [li (+ (long n) 2)]
-    (when (bit-test (long mask) li)
+(defn- write-mask! [buf ^long m]
+  (if (zero? m)
+    (c/write-varint buf 0)
+    (do (c/write-varint buf 1) (buf/write-long! buf m))))
+
+(defn- write-masks! [buf ^long sky ^long blk]
+  (write-mask! buf sky)
+  (write-mask! buf blk))
+
+(defn- write-sky-layer! [buf chunk ^long si]
+  (chunk/write-sky-light!
+    (or (our-section chunk si) (chunk/new-section chunk si)) buf))
+
+(defn- write-block-layer! [buf chunk ^long si]
+  (chunk/write-block-light! (our-section chunk si) buf))
+
+(defn- write-sky! [buf chunk ^long lo ^long m]
+  (c/write-varint buf (Long/bitCount m))
+  (dotimes [li 64]
+    (when (bit-test m li)
       (c/write-varint buf 2048)
-      (let [l (light-of chunk win pred li channel)]
-        (cond
-          (= l :full) (chunk/write-full-light! buf)
-          (= channel :sky) (chunk/write-sky-light! l buf)
-          :else (chunk/write-block-light! l buf))))))
+      (write-sky-layer! buf chunk (+ lo li -1)))))
 
-(defn- write-lights! [buf chunk win]
-  (let [blk? (blk-pred chunk win)
-        sky? (sky-pred chunk win blk?)
-        sky (light-masks chunk win sky? :sky)
-        blk (light-masks chunk win blk? :block)]
-    (write-light-masks! buf sky blk)
-    (write-light! buf chunk win sky? :sky (first sky))
-    (write-light! buf chunk win blk? :block (first blk))))
+(defn- write-block! [buf chunk ^long lo ^long m]
+  (c/write-varint buf (Long/bitCount m))
+  (dotimes [li 64]
+    (when (bit-test m li)
+      (c/write-varint buf 2048)
+      (write-block-layer! buf chunk (+ lo li -1)))))
+
+(defn- write-lights!
+  "Writes the light of chunk as vanilla sends it: a layer it keeps
+  goes whole, or only in the empty mask when it is all dark."
+  [buf lv chunk cx cz [^long lo ^long n sky? :as win]]
+  (let [own (filled-bits chunk lo n @surface-arr)
+        near (around-bits (:chunks lv) cx cz win)
+        layers (spread (bit-or own near))
+        sky-empty (empty-mask chunk lo (if sky? layers 0) sky-empty?)
+        blk-empty (empty-mask chunk lo layers block-empty?)
+        sky-lit (bit-and-not (if sky? layers 0) sky-empty)
+        blk-lit (bit-and-not layers blk-empty)]
+    (write-masks! buf sky-lit blk-lit)
+    (write-masks! buf sky-empty blk-empty)
+    (write-sky! buf chunk lo sky-lit)
+    (write-block! buf chunk lo blk-lit)))
 
 (defn write-chunk!
   "Writes chunk at cx cz as the level lv shows it.
@@ -201,4 +247,4 @@
      (write-heightmaps! buf chunk win)
      (write-sections! buf chunk win)
      (write-block-entities! buf block-entities)
-     (write-lights! buf chunk win))))
+     (write-lights! buf lv chunk cx cz win))))

@@ -152,6 +152,10 @@
   "Returns true when s holds its own block light."
   [^Section s] (.hasBlockLight s))
 
+(defn holds?
+  "Returns true when s holds a state that the table pred marks."
+  [^Section s ^booleans pred] (.holds s pred))
+
 (defn heights!
   "Fills the unset entries of the 256 heightmap columns in out.
   Each entry gets the height above base of the topmost block of

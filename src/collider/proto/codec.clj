@@ -1171,9 +1171,9 @@
 
 (def data-types
   "Entity data type -> its place in the serializer order."
-  {:byte 0 :int 1 :float 3 :item 7 :boolean 8 :block-pos 10
-   :optional-block-pos 11 :block-state 14 :particle 16 :pose 20
-   :cow-variant 23 :cow-sound-variant 24})
+  {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
+   :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14
+   :particle 16 :pose 20 :cow-variant 23 :cow-sound-variant 24})
 
 (defn- write-data-pos [^Buf buf v]
   (let [[x y z] v]
@@ -1183,16 +1183,20 @@
   (write-varint buf (long t))
   (buf/write-int! buf (int c)))
 
+(defn- write-optional! [^Buf buf v write]
+  (buf/write-boolean! buf (some? v))
+  (when (some? v) (write buf v)))
+
 (defn- write-data-value [^Buf buf type v]
   (case type
     :byte (buf/write-byte! buf (int v))
     :float (buf/write-float! buf (float v))
+    :optional-component
+    (write-optional! buf v text/write-component)
     :item (write-item-stack buf v)
     :boolean (buf/write-boolean! buf (boolean v))
     :block-pos (write-data-pos buf v)
-    :optional-block-pos
-    (do (buf/write-boolean! buf (some? v))
-        (when v (write-data-pos buf v)))
+    :optional-block-pos (write-optional! buf v write-data-pos)
     :particle (write-data-particle buf v)
     (:int :block-state :pose :cow-variant :cow-sound-variant)
     (write-varint buf (long v))))
@@ -1210,11 +1214,15 @@
 (defn- read-optional-pos [^Buf buf]
   (when (buf/read-boolean buf) (read-block-pos buf)))
 
+(defn- read-optional-text [^Buf buf]
+  (when (buf/read-boolean buf) (read-nbt buf)))
+
 (defn- read-data-value [^Buf buf type]
   (case type
     :byte (buf/read-byte buf)
     :int (read-varint buf)
     :float (buf/read-float buf)
+    :optional-component (read-optional-text buf)
     :item (read-item-stack buf)
     :boolean (buf/read-boolean buf)
     :block-pos (read-block-pos buf)
