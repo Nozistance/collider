@@ -5,13 +5,9 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.java PushCell)))
+  (:import (collider.java Push PushCell)))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private ^:const strength (double (float 0.05)))
-
-(def ^:private ^:const threshold (double (float 0.01)))
 
 (def ^:private ^:const player-half (double (float 0.3)))
 
@@ -26,18 +22,6 @@
   (case (:type e)
     :player player-height
     (double (or (second (mobs/box-of e)) 1.0))))
-
-(defn- cell-eids ^longs [^PushCell c] (.eids c))
-
-(defn- cell-xs ^doubles [^PushCell c] (.xs c))
-
-(defn- cell-ys ^doubles [^PushCell c] (.ys c))
-
-(defn- cell-zs ^doubles [^PushCell c] (.zs c))
-
-(defn- cell-halfs ^doubles [^PushCell c] (.halfs c))
-
-(defn- cell-heights ^doubles [^PushCell c] (.heights c))
 
 (defn- cell-key ^long [^long cx ^long cz]
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
@@ -160,68 +144,16 @@
   [world held]
   (sort-by ffirst (grouped (by-cell (bodies world held)))))
 
-(defn- impulse
-  "Writes to out the shove that a body takes from another body at
-  offset dx dz. Returns true when there is a shove. Bodies that
-  almost coincide give no shove."
-  [^doubles out ^double dx ^double dz]
-  (let [m (Math/max (Math/abs dx) (Math/abs dz))]
-    (when (>= m threshold)
-      (let [s (Math/sqrt m)
-            p (Math/min 1.0 (/ 1.0 s))]
-        (aset out 0 (* (* (/ dx s) p) strength))
-        (aset out 1 (* (* (/ dz s) p) strength))
-        true))))
-
-(defn- pair
-  "Returns true when body j of the cell shoves this body. Writes
-  the shove to out."
-  [^doubles out ^doubles me ^PushCell c ^long j]
-  (let [x (aget me 0) y (aget me 1) z (aget me 2)
-        ox (aget (cell-xs c) j)
-        oy (aget (cell-ys c) j)
-        oz (aget (cell-zs c) j)
-        r (+ (aget me 3) (aget (cell-halfs c) j))]
-    (and (< (Math/abs (- ox x)) r)
-         (< (Math/abs (- oz z)) r)
-         (< oy (+ y (aget me 4)))
-         (> (+ oy (aget (cell-heights c) j)) y)
-         (impulse out (- x ox) (- z oz)))))
-
-(defn- cell-shoves [^doubles out ^doubles me ^PushCell c hi acc]
-  (let [ids (cell-eids c) hi (long hi) eid (long (aget me 5))]
-    (loop [j 0 acc acc]
-      (if (= j (alength ids))
-        acc
-        (let [o (aget ids j)]
-          (recur (inc j)
-                 (if (and (not= o eid) (< o hi) (pair out me c j))
-                   (conj acc [o (aget out 0) (aget out 1)])
-                   acc)))))))
-
-(defn- hood-shoves [^objects cs ^doubles out ^doubles me hi]
-  (loop [c 0 acc []]
-    (if (= c 9)
-      acc
-      (recur (inc c)
-             (if-let [cell (aget cs c)]
-               (cell-shoves out me ^PushCell cell hi acc)
-               acc)))))
-
 (defn- scan
   "Returns the shoves between this body and each body with an id
   below hi, in the order found. Each shove is [eid dx dz]. This
   body takes dx dz and the other body takes the opposite. The
   shoves are not summed."
   [index eid e half height hi]
-  (let [p (:pos e)
-        x (double (v/x p)) z (double (v/z p))
-        fields [x (double (v/y p)) z (double half)
-                (double height) (double (long eid))]
-        me (double-array fields)
-        out (double-array 2)]
+  (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
     (if-let [^objects cs (get index (cell-of x z))]
-      (hood-shoves cs out me hi)
+      (Push/shoves cs x (double (v/y p)) z (double half)
+                   (double height) (long eid) (long hi))
       [])))
 
 (defn shoves

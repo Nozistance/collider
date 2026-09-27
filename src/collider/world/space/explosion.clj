@@ -96,87 +96,16 @@
     (swap! (rg-loaded rg) assoc id payload)
     (put-column rg ix iz (:chunk payload))))
 
-(defn- column-at [^Region rg ^long ix ^long iz]
-  (let [col (aget ^objects (rg-cols rg) (col-index rg ix iz))]
-    (when (and (nil? col) (rg-read rg)) (summon rg ix iz))))
-
-(defn- outside? [^Region rg ^long ix ^long iz ^long iy]
-  (or (neg? ix) (>= ix (rg-ncx rg))
-      (neg? iz) (>= iz (rg-ncz rg))
-      (neg? iy) (>= iy (rg-nsy rg))))
-
-(defn- section-of [^Region rg ^long ix ^long iz ^long iy]
-  (aget ^objects (rg-grid rg) (cell-index rg ix iz iy)))
-
-(defn- block-index ^long [^long x ^long y ^long z]
-  (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
-     (bit-and x 15)))
+(defn- summoner [rg]
+  (fn [ix iz] (summon rg ix iz)))
 
 (defn read-block
   "Returns the block state at x y z in region rg, air outside it."
   ^long [^Region rg ^long x ^long y ^long z]
-  (let [ix (- (bit-shift-right x 4) (rg-cx0 rg))
-        iz (- (bit-shift-right z 4) (rg-cz0 rg))
-        iy (- (bit-shift-right y 4) (rg-sy0 rg))]
-    (if (outside? rg ix iz iy)
-      0
-      (do
-        (column-at rg ix iz)
-        (if-let [s (section-of rg ix iz iy)]
-          (chunk/section-block s (block-index x y z))
-          0)))))
+  (Rays/block rg (summoner rg) (unchecked-int x) (unchecked-int y)
+              (unchecked-int z)))
 
 (def ^:private ^:const ray-w 21)
-
-(defn- shell? [^long j ^long k ^long l]
-  (or (= j 0) (= j 15) (= k 0) (= k 15) (= l 0) (= l 15)))
-
-(defn- ray-dir [^long j ^long k ^long l]
-  (let [d0 (- (/ (double j) 7.5) 1.0)
-        d1 (- (/ (double k) 7.5) 1.0)
-        d2 (- (/ (double l) 7.5) 1.0)
-        d3 (Math/sqrt (+ (* d0 d0) (* d1 d1) (* d2 d2)))]
-    [(/ d0 d3) (/ d1 d3) (/ d2 d3)]))
-
-(defn- hit-index ^long [^long ix ^long iy ^long iz]
-  (if (and (< -1 ix ray-w) (< -1 iy ray-w) (< -1 iz ray-w))
-    (+ (* (+ (* ix ray-w) iy) ray-w) iz)
-    -1))
-
-(defn- ray-left ^double [^double f ^long st]
-  (if (zero? st) f (- f (* (+ (block/resist st) 0.3) 0.3))))
-
-(defn- mark-hit [^bytes hit ^long i ^long st]
-  (when (>= i 0)
-    (aset hit i (byte (if (zero? st) 1 2)))))
-
-(defn- cast-ray [rg hit [ox oy oz] [cx cy cz] [d0 d1 d2] f0]
-  (let [d0 (double d0) d1 (double d1) d2 (double d2)
-        ox (long ox) oy (long oy) oz (long oz)]
-    (loop [f (double f0) x (double cx) y (double cy) z (double cz)
-           prev -1 st 0]
-      (let [by (long (Math/floor y))]
-        (when (and (pos? f) (<= chunk/min-y by chunk/max-y))
-          (let [bx (long (Math/floor x)) bz (long (Math/floor z))
-                i (hit-index (- bx ox) (- by oy) (- bz oz))
-                same? (and (>= i 0) (= i prev))
-                st (if same? st (read-block rg bx by bz))
-                f (ray-left f st)]
-            (when (and (pos? f) (not same?)) (mark-hit hit i st))
-            (recur (- f 0.22500001) (+ x (* d0 0.3))
-                   (+ y (* d1 0.3)) (+ z (* d2 0.3)) i st)))))))
-
-(defn- ray-power [power seed-h j k l]
-  (* (double power)
-     (+ 0.7 (* 0.6 (random/of-longs (long seed-h) j k l)))))
-
-(defn- cast-shell [rg ^bytes hit origin center power seed-h]
-  (dotimes [j 16]
-    (dotimes [k 16]
-      (dotimes [l 16]
-        (when (shell? j k l)
-          (cast-ray rg hit origin center (ray-dir j k l)
-                    (ray-power power seed-h j k l)))))))
 
 (defn- hit-positions [^bytes hit origin ^long least]
   (let [ox (long (origin 0)) oy (long (origin 1))
@@ -190,9 +119,6 @@
             (conj! out [(+ ox ix) (+ oy iy) (+ oz iz)])))))
     (persistent! out)))
 
-(defn- hit-count ^long [^bytes hit]
-  (areduce hit i n 0 (if (zero? (aget hit i)) n (inc n))))
-
 (defn- ray-origin [^double cx ^double cy ^double cz]
   [(- (long (Math/floor cx)) region-r)
    (- (long (Math/floor cy)) region-r)
@@ -203,61 +129,31 @@
   :blocks holds the cells with a block. :count is the number of
   all reached cells. :cells is a delay of all reached cells."
   [^Region rg [cx cy cz] power seed]
-  (let [center [(double cx) (double cy) (double cz)]
-        origin (ray-origin (double cx) (double cy) (double cz))
+  (let [cx (double cx) cy (double cy) cz (double cz)
+        [ox oy oz :as origin] (ray-origin cx cy cz)
         hit (byte-array (* ray-w ray-w ray-w))]
-    (cast-shell rg hit origin center (double power)
-                (long (hash seed)))
-    {:blocks (hit-positions hit origin 2) :count (hit-count hit)
+    (Rays/cast rg (summoner rg) (block/resist-arr) hit (long ox)
+               (long oy) (long oz) cx cy cz (double power)
+               (long (hash seed)))
+    {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
      :cells (delay (hit-positions hit origin 1))}))
 
-(defn- path-probe [^Region rg cx cy cz]
-  (let [^objects grid (rg-grid rg)
-        ^booleans solid (block/solid-arr)
-        gx (unchecked-int (rg-cx0 rg))
-        gz (unchecked-int (rg-cz0 rg))
-        gy (unchecked-int (rg-sy0 rg))
-        nx (unchecked-int (rg-ncx rg))
-        nz (unchecked-int (rg-ncz rg))
-        ny (unchecked-int (rg-nsy rg))
-        cx (double cx) cy (double cy) cz (double cz)]
-    (fn ^long [^double x ^double y ^double z]
-      (long
-        (Rays/clearPath
-          grid gx gz gy nx nz ny solid cx cy cz x y z)))))
-
-(defn- density-steps [^double half ^double height]
-  (let [sx (/ 1.0 (+ (* 4.0 half) 1.0))
-        sy (/ 1.0 (+ (* 2.0 height) 1.0))]
-    [sx sy (/ (- 1.0 (* (Math/floor (/ 1.0 sx)) sx)) 2.0)]))
-
-(defn- density-share ^double [^long hit ^long total]
-  (if (zero? total) 0.0 (/ (double hit) (double total))))
-
-(defn- density-loop [probe [px py pz] half height [sx sy ox]]
-  (let [px (double px) py (double py) pz (double pz)
-        half (double half) height (double height)
-        sx (double sx) sy (double sy) ox (double ox)]
-    (loop [fx 0.0 fy 0.0 fz 0.0 hit 0 total 0]
-      (cond
-        (> fx 1.0) (density-share hit total)
-        (> fy 1.0) (recur (+ fx sx) 0.0 0.0 hit total)
-        (> fz 1.0) (recur fx (+ fy sy) 0.0 hit total)
-        :else
-        (let [x (+ (- px half) (* fx 2.0 half) ox)
-              y (+ py (* fy height))
-              z (+ (- pz half) (* fz 2.0 half) ox)]
-          (recur fx fy (+ fz sx) (+ hit (long (probe x y z)))
-                 (inc total)))))))
+(defn- density-form [rg center p half height]
+  `(let [[cx# cy# cz#] ~center [px# py# pz#] ~p]
+     (Rays/density ~(with-meta rg {:tag `Region}) (block/solid-arr)
+                   (double cx#) (double cy#) (double cz#)
+                   (double px#) (double py#) (double pz#)
+                   (double ~half) (double ~height))))
 
 (defn block-density
   "Returns the share, 0.0 to 1.0, of a body at p that the blast at
   the center reaches without a block in the way. The body is a box
   of half width half and height height."
-  [^Region rg [cx cy cz] p half height]
-  (let [half (double half) height (double height)
-        probe (path-probe rg cx cy cz)]
-    (density-loop probe p half height (density-steps half height))))
+  {:inline (fn [rg c p h t] (density-form rg c p h t))}
+  [^Region rg [cx cy cz] [px py pz] half height]
+  (Rays/density rg (block/solid-arr) (double cx) (double cy)
+                (double cz) (double px) (double py) (double pz)
+                (double half) (double height)))
 
 (defn shuffled
   "Returns v in the order seed shuffles it into."

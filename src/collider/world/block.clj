@@ -478,7 +478,7 @@
       (nil? b) (if (full-face? a) 16 simple)
       :else (if (covers-block? a b) 16 simple))))
 
-(def ^:private ^:table resist-arr
+(def ^:private ^:table resist-table
   (delay
     (let [a (double-array (data/block-state-count))]
       (Arrays/fill a 3.0)
@@ -490,8 +490,13 @@
 
 (defn resist ^double [^long st]
   (if (< -1 st (data/block-state-count))
-    (aget ^doubles @resist-arr st)
+    (aget ^doubles @resist-table st)
     3.0))
+
+(defn resist-arr
+  "Returns the blast resistance by block state."
+  ^doubles []
+  @resist-table)
 
 (defn- behind [facing] (dir/offset (dir/opposite facing)))
 
@@ -748,6 +753,27 @@
 
 (defn full-cube? [^long st]
   (and (known? st) (aget ^booleans @full-cube-arr st)))
+
+(defn cube-arr
+  "Returns the table of full cubes by block state."
+  ^booleans []
+  @full-cube-arr)
+
+(defn- block-units ^doubles [boxes]
+  (double-array (for [b boxes c b] (/ (double c) 16.0))))
+
+(def ^:private ^:table collision-table
+  (delay
+    (let [a (object-array (data/block-state-count))]
+      (dotimes [i (data/block-state-count)]
+        (aset a i (block-units (collision-boxes i))))
+      a)))
+
+(defn collision-arr
+  "Returns the collision boxes by block state. Each entry holds six
+  coordinates for each box, in blocks."
+  ^objects []
+  @collision-table)
 
 (defn- flags-of ^long [^long st]
   (long (aget ^bytes (data/flags) st)))
