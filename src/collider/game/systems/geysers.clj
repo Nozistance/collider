@@ -58,9 +58,9 @@
           d (lifted eid e)]
       d)))
 
-(defn- turn-deltas [pos st]
+(defn- turn-deltas [world pos st]
   (let [st' (geyser/turned st)]
-    (into [[:set-blocks [[pos st']]]]
+    (into (edit/set-deltas world [[pos st']])
           (edit/sulfur-placed-fx pos st'))))
 
 (defn- countdown-deltas
@@ -71,7 +71,7 @@
           c (geyser/counted pos ph depth (:countdown e))]
       (concat (when (not= c (:countdown e))
                 [[:set-block-entity pos (assoc e :countdown c)]])
-              (when (zero? c) (turn-deltas pos st))))))
+              (when (zero? c) (turn-deltas world pos st))))))
 
 (defn- geyser-deltas [world [pos e]]
   (let [st (chunk/chunks-get-block (:chunks world) pos)

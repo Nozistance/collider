@@ -80,7 +80,6 @@
              [#'consume/consume]
              [#'pose/pose]
              [#'daynight/daynight]
-             [#'block-updates/neighbor-updates]
              [#'block-updates/block-updates
               #'dripleaf/dripleaf-tilt]
              [#'block-updates/fluid-updates]

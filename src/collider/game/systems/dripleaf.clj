@@ -1,6 +1,7 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
   (:require [collider.game.state :as state]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]))
@@ -13,12 +14,15 @@
 
 (defn- floor ^long [^double a] (long (Math/floor a)))
 
+(defn- span [^double c]
+  (distinct [(floor (+ (- c half-width) epsilon))
+             (floor (- (+ c half-width) epsilon))]))
+
 (defn- foot-cells [e]
-  (let [p (:pos e) px (double (v/x p)) py (double (v/y p)) pz (double (v/z p))
-        y (floor py)
-        xs (distinct [(floor (+ (- px half-width) epsilon)) (floor (- (+ px half-width) epsilon))])
-        zs (distinct [(floor (+ (- pz half-width) epsilon)) (floor (- (+ pz half-width) epsilon))])]
-    (for [x xs z zs] [x y z])))
+  (let [p (:pos e)
+        y (floor (double (v/y p)))]
+    (for [x (span (double (v/x p))) z (span (double (v/z p)))]
+      [x y z])))
 
 (defn- tilt-cell [world e p]
   (when (chunk/in-range? (nth p 1))
@@ -39,7 +43,7 @@
 
 (defn- tilt-deltas [world]
   (let [changes (tilt-changes world)]
-    (when (seq changes) [[:set-blocks (vec changes)]])))
+    (when (seq changes) (edit/set-deltas world (vec changes)))))
 
 (defn dripleaf-tilt [world _d]
   [#(tilt-deltas world)])

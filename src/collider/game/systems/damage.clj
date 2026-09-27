@@ -1,6 +1,7 @@
 (ns collider.game.systems.damage
   "Damage, death and respawn."
   (:require [collider.data :as data]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.loot :as loot]
@@ -397,8 +398,8 @@
 
 (defn- melt-deltas [world cells]
   (when (seq cells)
-    (cons [:set-blocks (mapv (fn [c] [c 0]) cells)]
-          (map #(melt-effect (:chunks world) %) cells))))
+    (concat (edit/set-deltas world (mapv (fn [c] [c 0]) cells))
+            (map #(melt-effect (:chunks world) %) cells))))
 
 (defn- put-out-sound [world eid e]
   (let [t (long (:tick world))

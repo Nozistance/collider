@@ -829,7 +829,7 @@
   "The blocks that leave on a tick one after they lose support,
   each with the sides whose change asks for it. The updateShape of
   vanilla schedules only for these. The other blocks leave in the
-  neighbour update."
+  neighbour update itself."
   (merge {:sugar-cane any-side? :cactus any-side?
           :chorus-plant any-side? :bamboo-stalk any-side?
           :hanging-moss any-side?
@@ -934,6 +934,10 @@
               (or (block/attached? st)
                   (contains? popped-types (block/type-of st))))
    :lit?    (fn [st _ctx] (contains? lit-types (block/type-of st)))
+   :pass    (fn [st]
+              (if (removed-types (block/type-of st))
+                :neighbor
+                :shape))
    :wake    wake
    :reshape unsupported
    :due     unsupported})

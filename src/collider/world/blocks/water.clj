@@ -79,9 +79,8 @@
 (defn- kelp-wake
   "GrowingPlantHeadBlock and GrowingPlantBodyBlock: a tick when the
   block below no longer holds it, a new head or stem when the block
-  above changes. The change at pos itself asks for the tick
-  too: here a new head or stem comes a tick late, after the change
-  below, and the tick it had was for the old type."
+  above changes. The change at pos itself asks for both: the tick
+  it had was for the old type."
   [chunks _dim tick p _old side]
   (let [held? (support/supported? chunks p (chunk/at chunks p))]
     (cond
@@ -121,12 +120,14 @@
 (def ^:private absorb-sound [:sound :block.sponge.absorb 1.0 1.0])
 
 (defn- soaked
-  "SpongeBlock.tryAbsorbWater. Where water evaporates the wet
-  sponge dries at once, WetSpongeBlock.onPlace."
+  "SpongeBlock.tryAbsorbWater: the sponge turns wet, then is heard.
+  Where water evaporates the wet sponge dries at once, inside its
+  setBlock, WetSpongeBlock.onPlace."
   [pos dim]
   (if (attribute/water-evaporates? dim)
-    [pos (block/state :sponge) [:dry absorb-sound]]
-    [pos (block/state :wet-sponge) [absorb-sound]]))
+    [[pos (block/state :wet-sponge)]
+     [pos (block/state :sponge) [:dry absorb-sound]]]
+    [[pos (block/state :wet-sponge) [absorb-sound]]]))
 
 (defn absorbed
   "Returns the changes of a sponge at pos in dim soaking up water."
@@ -135,7 +136,7 @@
          seen #{pos}
          acc []]
     (if (or (empty? queue) (>= (count acc) 64))
-      (when (seq acc) (conj acc (soaked pos dim)))
+      (when (seq acc) (into acc (soaked pos dim)))
       (let [[p ^long d] (peek queue)
             wet (when (< d 6) (wet-around chunks seen p))]
         (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
@@ -145,6 +146,7 @@
 (def sponge-rule
   {:name    :sponge
    :match?  (fn [_chunks st _p] (= :sponge (block/type-of st)))
+   :pass    :neighbor
    :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
    :reach   6
    :reshape (fn [chunks p ctx] (absorbed chunks p (:dim ctx)))})

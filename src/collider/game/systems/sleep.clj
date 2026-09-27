@@ -1,6 +1,7 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
   (:require [collider.game.game-mode :as game-mode]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.daynight :as daynight]
@@ -64,7 +65,7 @@
         up (stand-up world e head bed?)
         yaw (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
     (concat
-      (when bed? [[:set-blocks [[head (vacated st)]]]])
+      (when bed? (edit/set-deltas world [[head (vacated st)]]))
       [[:merge-entity eid
         {:sleeping nil :leave-bed? nil :yaw yaw :pitch 0.0}]
        [:teleport eid up]

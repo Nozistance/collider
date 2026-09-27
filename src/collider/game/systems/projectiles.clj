@@ -374,8 +374,8 @@
 (defn- fire-out-deltas [world fires]
   (let [chunks (:chunks world)]
     (when (seq fires)
-      (conj (mapv #(break-packet chunks %) fires)
-            [:set-blocks (mapv (fn [p] [p 0]) fires)]))))
+      (into (mapv #(break-packet chunks %) fires)
+            (edit/set-deltas world (mapv (fn [p] [p 0]) fires))))))
 
 (defn- dowse-deltas
   "Returns the deltas of dowsing fire around the hit.

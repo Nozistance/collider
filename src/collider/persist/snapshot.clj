@@ -197,7 +197,7 @@
        (written (put-meta! store (meta-of snap))))))
 
 (def ^:private chunk-keys
-  [:chunks :entities :block-ticks :block-wakes :fluid-ticks
+  [:chunks :entities :block-ticks :fluid-ticks
    :block-entities])
 
 (def ^:private level-defaults

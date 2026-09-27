@@ -9,35 +9,20 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.env.weather :as weather]
             [collider.world.chunk :as chunk]
             [collider.world.light :as light]
+            [collider.world.neighbors :as neighbors]
             [collider.world.rules :as rules]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private lists
-  "The lists of what is due, each run by its own rules. The changes
-  of a neighbour update count as made on the tick before, when the
-  change that woke it came: the updateShape of vanilla is at once."
-  {:block-wakes {:type-of block/block-of :due rules/reshape-changes
-                 :reach rules/reach :lit? rules/lit?}
-   :block-ticks {:type-of block/block-of :due rules/cell-changes
+  "The lists of what is due, each run by its own rules."
+  {:block-ticks {:type-of block/block-of :due rules/cell-changes
                  :reach rules/reach :lit? rules/lit?}
    :fluid-ticks {:type-of liquid/fluid-of :due rules/fluid-changes
                  :reach rules/fluid-reach
                  :lit? (constantly false)}})
-
-(defn- player-positions [world]
-  (mapv (comp :pos val) (state/player-entries world)))
-
-(defn- tick-ctx [world]
-  (merge (select-keys world weather/fields)
-         {:rules (:rules world)
-          :dim (:dim world)
-          :tick (long (:tick world))
-          :time-of-day (:time-of-day world 0)
-          :players (player-positions world)}))
 
 (defn- again-at [k chunks ctx changes p st]
   (when (and (= :block-ticks k) (not-any? #(= p (first %)) changes))
@@ -98,28 +83,23 @@
             (assoc m p [(get-in m [p 0] old) st]))
           lit writes))
 
-(defn- applied [pass records]
-  (if (empty? records)
+(defn- applied
+  "Returns the pass with the changes of a tick set on its level,
+  each with the updates it runs at once, and their deltas."
+  [world ctx pass changes]
+  (if (empty? changes)
     pass
-    (let [changes (edit/block-changes records)
-          [chunks writes] (state/blocks-changed (:w pass) changes)]
+    (let [s (neighbors/set-blocks (:chunks (:w pass)) ctx changes)
+          writes (:writes s)]
       (-> pass
-          (assoc-in [:w :chunks] chunks)
+          (assoc-in [:w :chunks] (:chunks s))
           (update :dirty into (map (comp column first)) writes)
-          (update :lit lit-writes writes)))))
+          (update :lit lit-writes writes)
+          (update :out into (edit/settled-deltas world s))))))
 
-(defn- change-deltas [world k records]
-  (let [changes (edit/block-changes records)
-        t (long (:tick world))]
-    (into [(if (= :block-wakes k)
-             [:set-blocks changes (dec t)]
-             [:set-blocks changes])]
-          (edit/change-fx world records))))
-
-(defn- tick-deltas [world k [p] {:keys [changes again]}]
-  (cond-> []
-    again (conj [:schedule-ticks {again [(chunk/block-pos->id p)]}])
-    (seq changes) (into (change-deltas world k changes))))
+(defn- again-deltas [[p] {:keys [again]}]
+  (when again
+    [[:schedule-ticks {again [(chunk/block-pos->id p)]}]]))
 
 (defn- stepped
   "Returns the pass after one tick. The tick keeps what it did on
@@ -130,8 +110,8 @@
         [pass r] (if (touched? (:dirty pass) reach (first tick))
                    (rerun pass ctx k tick)
                    [pass first-run])]
-    (-> (applied pass (:changes r))
-        (update :out into (tick-deltas world k tick r)))))
+    (applied world ctx (update pass :out into (again-deltas tick r))
+             (:changes r))))
 
 (defn- ordered [world k active]
   (let [runs? #(state/active-id? active %)
@@ -145,7 +125,7 @@
   level at the start first; only those that read what an earlier
   one wrote run again."
   [world k ticks]
-  (let [ctx (tick-ctx world)
+  (let [ctx (state/level-ctx world)
         firsts (deltas/pmapcat (fn [t] [(ran world ctx k t)]) ticks)
         start {:w world :dirty (i/int-set) :lit {} :out []}]
     (:out (reduce #(stepped world ctx k %1 %2) start
@@ -167,12 +147,6 @@
             parked (parked-ids world active due)]
         (into [[:ticks-flushed k t parked]]
               (ticks-run world k (ordered world k active)))))))
-
-(defn neighbor-updates
-  "Runs the neighbour updates that are due. They go before the
-  block ticks, which then see what the updates did."
-  [world _d]
-  [#(ticks-deltas world :block-wakes)])
 
 (defn block-updates
   "Runs the block ticks that are due."

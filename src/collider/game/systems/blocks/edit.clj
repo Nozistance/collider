@@ -10,10 +10,9 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
-            [collider.world.blocks.connect :as connect]
             [collider.world.blocks.geyser :as geyser]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
+            [collider.world.neighbors :as neighbors]
             [collider.world.direction :as dir]
             [collider.world.env.attribute :as attribute]))
 
@@ -190,25 +189,31 @@
   [changes]
   (mapv (fn [[pos st]] [pos st]) changes))
 
-(defn- mixed-deltas [world all fx mixed]
-  (-> [[:set-blocks (into all (block-changes mixed))
-        (dec (long (:tick world)))]]
-      (into (change-fx world mixed))
-      (into fx)))
+(defn settled-deltas
+  "Returns the deltas of s, what neighbors/set-blocks made: the
+  blocks and ticks it set, then the effects each change carries."
+  [world s]
+  (into [[:set-blocks (block-changes (:records s)) (:ticks s)]]
+        (change-fx world (:records s))))
 
 (defn change-deltas
-  "Returns the deltas for the changes.
-  It also covers the changes they cause in the blocks
-  around them."
+  "Returns the deltas for the changes, each set with the updates
+  it runs at once, as Level.setBlock. base stands for the tick
+  the changes are made on; a player's edit comes between ticks,
+  after the tick before."
+  ([world changes]
+   (change-deltas world changes (dec (long (:tick world)))))
+  ([world changes base]
+   (let [[changes fx] (dried world changes)
+         ctx (state/level-ctx world base)
+         s (neighbors/set-blocks (:chunks world) ctx changes)]
+     (into (settled-deltas world s) fx))))
+
+(defn set-deltas
+  "Returns the deltas for changes the level makes in its tick, each
+  set with the updates it runs at once."
   [world changes]
-  (let [[changes fx] (dried world changes)
-        chunks' (chunk/chunks-set-blocks (:chunks world) changes)
-        derived (connect/derived-changes
-                  chunks' (map first changes) (:tick world))
-        all (into (vec changes) derived)
-        chunks'' (chunk/chunks-set-blocks chunks' all)]
-    (mixed-deltas world all fx
-                  (liquid/mix-changes chunks'' (map first all)))))
+  (change-deltas world changes (:tick world)))
 
 (defn held-slot
   "Returns the inventory slot of the item the player holds."

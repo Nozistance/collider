@@ -122,7 +122,7 @@
 (defn- drained-deltas [world kind pos st]
   (case kind
     (:source :bubble-column)
-    [[:set-blocks [[pos 0]] (dec (long (:tick world)))]]
+    (edit/change-deltas world [[pos 0]])
     :powder-snow (edit/change-deltas world [[pos 0]])
     :waterlogged
     (edit/change-deltas world [[pos (edit/with-water st false)]])))

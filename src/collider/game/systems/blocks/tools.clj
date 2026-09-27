@@ -57,8 +57,7 @@
     (when (and (chunk/in-level? world y')
                (zero? (edit/block-at world pos'))
                (support/supported? (:chunks world) pos' st))
-      [[:set-blocks [[pos' st]] (dec (long (:tick world)))]
-       (snd pos')])))
+      (conj (edit/change-deltas world [[pos' st]]) (snd pos')))))
 
 (defn- flint-sound [world eid pos]
   (let [pitch (random/pitch (:tick world) pos :flint)]

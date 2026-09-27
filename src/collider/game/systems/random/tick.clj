@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
   (:require [collider.game.out :as out]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
             [collider.random :as random]
@@ -170,7 +171,7 @@
 
 (defn- result-deltas [world results changes drips]
   (let [woken (woken-ticks world changes drips)]
-    (concat (when (seq changes) [[:set-blocks changes]])
+    (concat (when (seq changes) (edit/set-deltas world changes))
             (when (seq woken) [[:schedule-ticks woken]])
             (eyeblossom-sounds changes)
             (chorus-events changes)

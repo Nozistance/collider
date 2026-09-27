@@ -1,6 +1,7 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
@@ -64,8 +65,8 @@
         open? (pos? after)]
     (when (and (= :barrel (block/type-of st))
                (or (and (zero? before) open?) (zero? after)))
-      [[:set-blocks
-        [[pos (container/barrel-open-state st open?)]]]])))
+      (edit/set-deltas
+        world [[pos (container/barrel-open-state st open?)]]))))
 
 (defn- barrel-deltas [world m ^long step]
   (mapcat #(barrel-toggle world % step)

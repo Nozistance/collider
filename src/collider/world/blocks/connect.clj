@@ -58,7 +58,7 @@
             :hanging-moss :pointed-dripstone :sulfur-spike
             :big-dripleaf :fire :soul-fire :chest :trapped-chest
             :copper-chest :weathering-copper-chest :chorus-plant
-            :potent-sulfur :tripwire :note :pitcher-crop}
+            :potent-sulfur :tripwire :note :pitcher-crop :bell}
           (concat bar-types stair-types pair-types
                   block/growing-plant-types snowy-types
                   (block/leaves-types)))))
@@ -373,6 +373,28 @@
 (defn- soul-fire-reshaped [chunks pos st]
   (if (support/supported? chunks pos st) st 0))
 
+(defn- bell-props
+  "BellBlock.updateShape: a bell between two walls hangs on one
+  when the other goes, and on both when a wall comes behind it."
+  [{:keys [attachment facing]} side nst]
+  (cond
+    (and (= :double_wall attachment)
+         (not (block/face-sturdy? nst side)))
+    {:attachment :single_wall :facing (dir/opposite side)}
+    (and (= :single_wall attachment) (= side (dir/opposite facing))
+         (block/face-sturdy? nst facing))
+    {:attachment :double_wall}))
+
+(defn- bell-reshaped [chunks pos st sides]
+  (let [side (first (remove nil? sides))
+        props (block/props-of st)]
+    (if (and side (= (dir/axis side) (dir/axis (:facing props))))
+      (let [nst (chunk/at chunks (mapv + pos (dir/offset side)))]
+        (if-let [m (bell-props props side nst)]
+          (block/state (block/block-of st) (merge props m))
+          st))
+      st)))
+
 (def ^:private sided-reshapers
   {:door                    door-state
    :weathering-copper-door  door-state
@@ -389,6 +411,7 @@
    :big-dripleaf            leaf-reshaped
    :mossy-carpet            carpet-reshaped
    :chorus-plant            chorus-reshaped
+   :bell                    bell-reshaped
    :mangrove-leaves          leaves-state
    :tinted-particle-leaves   leaves-state
    :untinted-particle-leaves leaves-state})

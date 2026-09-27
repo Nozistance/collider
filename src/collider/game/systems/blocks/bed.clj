@@ -91,17 +91,13 @@
                 (lie-deltas world eid head st)
                 (say-deltas eid (:error-message rule)))))))
 
-(defn- broken-beds [chunks changes]
-  (for [[p st] changes
-        :let [old (chunk/chunks-get-block chunks p)]
-        :when (and (zero? (long st)) (= :bed (block/type-of old)))]
-    (out/all (out/break-effect p old))))
-
-(defn- removed [world pos]
+(defn- removed
+  "Level.removeBlock of the head: the foot goes by its
+  updateShape, with its break."
+  [world pos]
   (let [ds (edit/change-deltas world [[pos 0]])
         all (second (first ds))]
-    [(update world :chunks chunk/chunks-set-blocks all)
-     (concat ds (broken-beds (:chunks world) (rest all)))]))
+    [(update world :chunks chunk/chunks-set-blocks all) ds]))
 
 (defn- center-of [[x y z]]
   [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)])

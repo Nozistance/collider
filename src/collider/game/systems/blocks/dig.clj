@@ -17,17 +17,26 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- bed-head-effect [world eid pos old]
-  (when (= :foot (:part (block/props-of old)))
-    (when-let [[hpos head] (connect/partner (:chunks world) pos old)]
-      (out/except eid (out/break-effect hpos head)))))
+(def ^:private upper-types
+  (into block/door-types (conj connect/pair-types :pitcher-crop)))
 
-(defn- door-partner-effect [world eid pos old]
-  (when (contains? block/door-types (block/type-of old))
-    (when-let [[ppos st] (connect/partner (:chunks world) pos old)]
-      (if (= :lower (:half (block/props-of old)))
-        (out/all (out/break-effect ppos st))
-        (out/except eid (out/break-effect ppos st))))))
+(defn- first-half?
+  "Tells whether a player who drops nothing takes the other half
+  of old first."
+  [old]
+  (let [{:keys [half part]} (block/props-of old)
+        t (block/type-of old)]
+    (or (and (= :upper half) (contains? upper-types t))
+        (and (= :bed t) (= :foot part)))))
+
+(defn- kept-partner
+  "DoublePlantBlock.preventDropFromBottomPart and
+  BedBlock.playerWillDestroy: a player who drops nothing takes the
+  lower half, or the head of a bed, before the block itself, and
+  the others see it break. Returns [pos state] of that half."
+  [world e pos old]
+  (when (and (state/infinite-materials? e) (first-half? old))
+    (connect/partner (:chunks world) pos old)))
 
 (defn- jukebox-break-deltas [world pos]
   (let [e (be/at world pos)
@@ -83,18 +92,24 @@
                (lectern-break-deltas world pos)
                (spill-deltas world pos))))
 
-(defn- partner-effects [world eid pos old]
-  (keep identity [(bed-head-effect world eid pos old)
-                  (door-partner-effect world eid pos old)]))
+(defn- gone-deltas
+  "The block at pos and a half taken with it go, each with its
+  updates; the half the updates take show their own break."
+  [world eid pos old [ppos pst :as kept]]
+  (let [gone (cond->> [[pos (block/emptied old)]]
+               kept (cons [ppos (block/emptied pst)]))]
+    (concat
+      (break-shown eid pos old)
+      (edit/change-deltas world gone)
+      (when kept [(out/except eid (out/break-effect ppos pst))]))))
 
 (defn- break-deltas [world eid pos]
   (let [old (edit/block-at world pos)
-        gone [[pos (block/emptied old)]]]
+        e (get-in world [:entities eid])
+        kept (kept-partner world e pos old)]
     (if (pos? old)
       (into (entity-deltas world pos)
-            (concat (edit/change-deltas world gone)
-                    (break-shown eid pos old)
-                    (partner-effects world eid pos old)))
+            (gone-deltas world eid pos old kept))
       [(edit/own-change world eid pos)])))
 
 (defn- may-break? [e]

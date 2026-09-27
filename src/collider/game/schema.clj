@@ -25,15 +25,13 @@
 (defn chunk-payload
   "Returns chunk id with what belongs to it.
   That is its block entities, the entities in it except players,
-  and its block ticks, neighbour updates and fluid ticks as delays
-  from now."
+  and its block ticks and fluid ticks as delays from now."
   [w id]
   (let [id (long id) t (long (:tick w 0))]
     {:chunk          (get (:chunks w) id)
      :block-entities (into {} (get-in w [:block-entities id]))
      :entities       (chunk-entities w id t)
      :block-ticks    (schedule/saved (:block-ticks w) id t)
-     :block-wakes    (schedule/saved (:block-wakes w) id t)
      :fluid-ticks    (schedule/saved (:fluid-ticks w) id t)}))
 
 (defn- ticks-back [w k t saved]
@@ -60,7 +58,6 @@
 (defn- ticks-restored [w t payload]
   (-> w
       (ticks-back :block-ticks t (:block-ticks payload))
-      (ticks-back :block-wakes t (:block-wakes payload))
       (ticks-back :fluid-ticks t (:fluid-ticks payload))))
 
 (defn with-chunk
@@ -132,7 +129,6 @@
    :entities           {:default (i/int-map) :load identity
                         :scope :level}
    :block-ticks        {:default schedule/block-list :scope :level}
-   :block-wakes        {:default schedule/wake-list :scope :level}
    :fluid-ticks        {:default schedule/fluid-list :scope :level}
    :block-entities     {:default (i/int-map) :load identity
                         :scope :level}

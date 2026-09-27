@@ -542,10 +542,14 @@
 (def ^:private update-order
   (mapv dir/offset [:west :east :down :up :north :south]))
 
-(defn- converted [chunks over p d]
+(defn- converted
+  "The lava beside p that mixes once p is set, as its
+  neighborChanged does. The setBlock of p makes it; it is only
+  seen by the rest of the spread."
+  [chunks over p d]
   (let [np (mapv + p d)]
     (when-let [prod (mixed chunks over np)]
-      [np prod [:fizz]])))
+      (with-meta [np prod] {:seen true}))))
 
 (defn- with-neighbors [{:keys [chunks over]} [tp st :as change]]
   (let [over (assoc over tp st)]
@@ -553,10 +557,38 @@
           (keep #(converted chunks over tp %))
           update-order)))
 
+(defn- made [changes]
+  (into [] (remove (comp :seen meta)) changes))
+
 (defn- logged [traw]
   (let [traw (long traw)
         props (assoc (block/props-of traw) :waterlogged :true)]
     (block/state (block/block-of traw) props)))
+
+(def ^:private extinguished
+  [:sound :entity.generic.extinguish-fire 1.0 1.0])
+
+(def ^:private soaked-ghast
+  [:sound :block.dried-ghast.place-in-water 1.0 1.0])
+
+(defn- doused
+  "CampfireBlock.placeLiquid: a lit campfire goes out, heard."
+  [tp st]
+  (let [props (block/props-of st)
+        out (->> (assoc props :lit :false)
+                 (block/state (block/block-of st)))]
+    (if (= :true (:lit props)) [tp out [extinguished]] [tp st])))
+
+(defn- held-liquid
+  "placeLiquid of the block traw at tp: it takes the water in, a
+  lit campfire goes out, a dried ghast is heard."
+  [tp traw]
+  (let [traw (long traw)
+        st (logged traw)]
+    (case (block/type-of traw)
+      :campfire (doused tp st)
+      :dried-ghast [tp st [soaked-ghast]]
+      [tp st])))
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
@@ -586,7 +618,7 @@
       (and mix (= d [0 -1 0]) (block/water? traw))
       [[tp (block/state (:smother mix)) [:fizz]]]
       (container? traw)
-      (with-neighbors env [tp (logged traw)])
+      (with-neighbors env (held-liquid tp traw))
       :else (spread-plain env tp v traw))))
 
 (defn- target-of [{:keys [cls] :as env} raw p d]
@@ -682,18 +714,6 @@
        (* (long delay) (long decay-jitter))
        (long delay)))))
 
-(defn- with-sides [p]
-  (cons p (map #(mapv + p %) horiz3+)))
-
-(defn mix-changes [chunks positions]
-  (into []
-        (comp (mapcat with-sides)
-              (distinct)
-              (keep (fn [p]
-                      (when-let [st (mixed chunks p)]
-                        [p st [:fizz]]))))
-        positions))
-
 (def ^:private column-drag {:soul-sand :false :magma :true})
 
 (defn bubble-column? [st]
@@ -778,7 +798,7 @@
     (when cls
       (let [table (liquids-in (:dim ctx))
             env (flow-env chunks cls table (:rules ctx))]
-        (cell-flowed chunks env cls p st)))))
+        (made (cell-flowed chunks env cls p st))))))
 
 (defn- fire-sides [chunks p]
   (into {:age :0}
@@ -872,5 +892,6 @@
 (def rule
   {:name    :liquid
    :match?  (fn [_chunks st _p] (block/liquid? (long st)))
+   :pass    :neighbor
    :wake    mix-wake
    :reshape mix-due})

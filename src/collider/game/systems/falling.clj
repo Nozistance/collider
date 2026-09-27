@@ -1,6 +1,7 @@
 (ns collider.game.systems.falling
   "Falling blocks such as sand, gravel and anvils."
   (:require [collider.game.entity :as entity]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.vec :as v]
@@ -66,7 +67,8 @@
 
 (defn- land-deltas [world eid e cell cur concrete? stuck?]
   (if-let [st (landed-state world e cell cur concrete? stuck?)]
-    (cond-> [[:remove-entity eid] [:set-blocks [[cell st]]]]
+    (cond-> (into [[:remove-entity eid]]
+                  (edit/set-deltas world [[cell st]]))
             (anvil? st)
             (conj (land-event out/sound-anvil-land cell)))
     (broken-deltas world eid e cell)))

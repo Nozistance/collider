@@ -1,6 +1,7 @@
 (ns collider.game.systems.explosions
   "Explosion blast effects on blocks and entities."
   (:require [clojure.data.int-map :as i]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.tnt :as tnt]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
@@ -210,8 +211,20 @@
        (into [] (comp (remove primed) (remove gone)) cells)])
     [[] []]))
 
-(defn- destroy-delta [destroy]
-  [:set-blocks (mapv (fn [p] [p 0]) destroy)])
+(defn- with-read
+  "Returns world with the chunks the reads of rg loaded."
+  [world rg]
+  (let [absent (fn [[id _]] (not (contains? (:chunks world) id)))
+        payloads (filter absent (explosion/loaded-payloads rg))]
+    (update world :chunks into
+            (map (fn [[id p]] [id (:chunk p)])) payloads)))
+
+(defn- changed-deltas
+  "The blocks the blast takes, then the fires it lights, each set
+  with its updates, on the level as the blast read it."
+  [world rg destroy fires]
+  (edit/set-deltas (with-read world rg)
+                   (into (mapv (fn [p] [p 0]) destroy) fires)))
 
 (defn- chain-delta [p seed]
   [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil)])
@@ -227,12 +240,11 @@
 (defn- blast-acc [world rg acc b]
   (let [{:keys [destroy chains fires pushes seed source power]} b]
     (-> acc
-        (cond-> (seq destroy) (conj (destroy-delta destroy)))
+        (into (changed-deltas world rg destroy fires))
         (conj (explosion-msg b))
         (into pushes)
         (into (chain-deltas chains seed))
-        (into (drop-deltas world rg destroy seed source power))
-        (cond-> (seq fires) (conj [:set-blocks fires])))))
+        (into (drop-deltas world rg destroy seed source power)))))
 
 (defn- blast-of [world rg index req gone primed]
   (let [{:keys [center power source fire? by later]} req

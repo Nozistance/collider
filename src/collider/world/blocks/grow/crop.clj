@@ -120,18 +120,24 @@
 (defn- detached ^long [^long st]
   (block/state (second (stems (block/block-of st))) {:age :7}))
 
-(defn- attached-due [chunks p _ctx]
+(defn- attached-due
+  "AttachedStemBlock.updateShape: the stem lets go when the fruit
+  it faces is gone, else it needs its ground."
+  [chunks p ctx]
   (let [st (chunk/at chunks p)]
     (cond
+      (and (= (:side ctx) (block/facing-of st))
+           (fruitless? chunks p st))
+      [[p (detached st)]]
       (not (support/supported? chunks p st))
-      [(support/gone p st)]
-      (fruitless? chunks p st) [[p (detached st)]])))
+      [(support/gone p st)])))
 
 (def attached-stem-rule
   {:name    :attached-stem
    :match?  (fn [_chunks st _p]
               (= :attached-stem (block/type-of st)))
-   :wake    (fn [_chunks _dim _tick _p _old _side] :neighbor)
+   :wake    (fn [_chunks _dim _tick _p _old side]
+              (when side :neighbor))
    :reshape attached-due})
 
 (defn cane-tick [chunks p st _roll _time _ctx]

@@ -1,6 +1,7 @@
 (ns collider.game.systems.brewing
   "Brewing stands brewing in ticking chunks."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.brewing :as brewing]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -40,7 +41,7 @@
         [e' brewed? spill] (brewing/tick e)
         st' (with-bottles st (:items e'))]
     (concat (when (not= e e') [[:set-block-entity pos e']])
-            (when (not= st st') [[:set-blocks [[pos st']]]])
+            (when (not= st st') (edit/set-deltas world [[pos st']]))
             (when brewed? (brew-deltas world pos spill)))))
 
 (defn brewing [world _d]

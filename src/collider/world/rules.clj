@@ -51,7 +51,7 @@
 (defn wake-tick
   "Returns what the rule owning pos asks for on a change.
   That is the tick of a scheduled tick, one per block and type,
-  or :neighbor for a neighbour update on the next tick, or nil.
+  or :neighbor for its reply at once, or nil.
   The change is at pos or beside it. old is the state before the
   change. side is the side of the change seen from pos, as :up,
   or nil when the change was at pos itself. dim names the
@@ -59,6 +59,20 @@
   [chunks dim st tick pos old side]
   (when-let [r (rule-for st)]
     ((:wake r) chunks dim tick pos old side)))
+
+(defn update-pass
+  "Returns when the rule owning st hears of a change beside it:
+  :neighbor for neighborChanged, :shape for updateShape, nil
+  when no rule owns it."
+  [st]
+  (when-let [r (rule-for st)]
+    (let [p (:pass r :shape)]
+      (if (keyword? p) p (p st)))))
+
+(defn fluid-of
+  "Returns the fluid of st whose ticks it takes, or nil."
+  [st]
+  (liquid/fluid-of st))
 
 (defn- still?
   "Tells whether the water in st waits for a change at its own
@@ -87,7 +101,9 @@
 
 (defn reshape-changes
   "Returns the changes the rule owning pos makes on a neighbour
-  update, the updateShape or neighborChanged of vanilla."
+  update, the updateShape or neighborChanged of vanilla. The
+  :side of ctx is the side of the change seen from pos, nil for
+  a change at pos itself."
   [chunks st pos ctx]
   (when-let [r (rule-for st)]
     (when-let [f (:reshape r)] (f chunks pos ctx))))

@@ -18,10 +18,8 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.climb :as climb]
-            [collider.world.blocks.connect :as connect]
-            [collider.world.blocks.liquid :as liquid]
             [collider.world.light :as light]
-            [collider.world.rules :as rules]
+            [collider.world.neighbors :as neighbors]
             [collider.world.space.spawn :as spawn]
             [collider.world.env.weather :as weather])
   (:import (clojure.lang MapEntry)
@@ -225,58 +223,6 @@
     (clojure.core/apply update-in w [:entities eid] f args)
     w))
 
-(def ^:private around
-  "The cells a change reaches, each with the side the change is on
-  as seen from it; nil for the cell of the change. They go in the
-  order of NeighborUpdater.UPDATE_ORDER: west, east, down, up,
-  north, south."
-  [[[0 0 0] nil] [[-1 0 0] :east] [[1 0 0] :west] [[0 -1 0] :up]
-   [[0 1 0] :down] [[0 0 -1] :south] [[0 0 1] :north]])
-
-(defn- block-or-zero ^long [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y)
-    (chunk/chunks-get-block chunks p)
-    0))
-
-(defn- shifted [[x y z] [dx dy dz]]
-  [(+ (long x) (long dx))
-   (+ (long y) (long dy))
-   (+ (long z) (long dz))])
-
-(defn- schedule-at [w k at floor p ty]
-  (if at
-    (update w k schedule/add (max (long at) (long floor))
-            (chunk/block-pos->id p) ty)
-    w))
-
-(defn- block-woken [w tick floor p st at]
-  (if (= :neighbor at)
-    (schedule-at w :block-wakes (inc (long tick)) floor p
-                 (block/block-of st))
-    (schedule-at w :block-ticks at floor p (block/block-of st))))
-
-(defn- woken [w chunks st tick floor dim p old side]
-  (let [at (rules/wake-tick chunks dim st tick p old side)
-        fat (rules/fluid-wake-tick chunks dim st tick p old side)
-        fluid (liquid/fluid-of st)]
-    (-> w
-        (block-woken tick floor p st at)
-        (schedule-at :fluid-ticks fat floor p fluid))))
-
-(defn- schedule-one [w tick floor dim pos old [d side]]
-  (let [p (shifted pos d)
-        chunks (:chunks w)
-        st (block-or-zero chunks p)]
-    (if (zero? st)
-      w
-      (woken w chunks st tick floor dim p old side))))
-
-(defn- schedule-around [w tick floor dim [pos old _]]
-  (reduce #(schedule-one %1 tick floor dim pos old %2) w around))
-
-(defn- schedule-updates [w tick floor dim changed]
-  (reduce #(schedule-around %1 tick floor dim %2) w changed))
-
 (defn- kind-changed? [old st]
   (and (be/kind old)
        (not= (block/block-of old) (block/block-of (long st)))
@@ -292,47 +238,35 @@
 
 (defn- inside? [w [pos]] (chunk/in-level? w (long (pos 1))))
 
-(defn- real-changes [w changes]
-  (let [chunks (:chunks w)
-        real (fn [[pos st]]
-               (let [old (chunk/chunks-get-block chunks pos)]
-                 (when (not= old (long st)) [pos old st])))]
-    (into [] (comp (filter #(inside? w %)) (keep real)) changes)))
+(defn- real-step
+  "Adds change c to [acc now] when it changes the block, now
+  holding the blocks set so far."
+  [w [acc now] [pos st :as c]]
+  (let [old (long (or (get now pos)
+                      (chunk/chunks-get-block (:chunks w) pos)))]
+    (if (or (= old (long st)) (not (inside? w c)))
+      [acc now]
+      [(conj acc [pos old st]) (assoc now pos st)])))
 
-(defn- derived-in [w chunks tick real]
-  (let [poss (map first real)
-        changes (connect/derived-changes chunks poss tick)]
-    (filterv #(inside? w %) changes)))
-
-(defn- with-derived [w tick real]
-  (let [sky? (:sky? w true)
-        set-real (mapv (fn [[pos _ st]] [pos st]) real)
-        chunks' (-> (:chunks w)
-                    (chunk/chunks-set-blocks set-real)
-                    (light/relight-batch real sky?))
-        derived (derived-in w chunks' tick real)
-        was (fn [[pos st]]
-              [pos (chunk/chunks-get-block chunks' pos) st])
-        dropped (mapv was derived)]
-    [(-> chunks'
-         (chunk/chunks-set-blocks derived)
-         (light/relight-batch dropped sky?))
-     (concat (map (fn [[pos _ st]] [pos st]) real) derived)]))
-
-(defn blocks-changed
-  "Returns [chunks writes]: the chunks of level w with the changes
-  and the shapes they cause set, the light left as it was, and
-  each block written as [pos old st]. The blocks are those a
-  :set-blocks of the changes leaves."
+(defn- real-changes
+  "Returns the changes that change a block as [pos old st], each
+  seen after the ones before it."
   [w changes]
-  (let [real (real-changes w changes)
-        chunks' (chunk/chunks-set-blocks
-                  (:chunks w) (mapv (fn [[pos _ st]] [pos st]) real))
-        derived (derived-in w chunks' (:tick w) real)
-        was (fn [[pos st]]
-              [pos (chunk/chunks-get-block chunks' pos) st])]
-    [(chunk/chunks-set-blocks chunks' derived)
-     (into real (map was) derived)]))
+  (first (reduce #(real-step w %1 %2) [[] {}] changes)))
+
+(defn level-ctx
+  "Returns what the block rules of level w read besides its
+  blocks: the tick, the dimension, the rules, the weather, the
+  time of day and where the players stand. base, when given,
+  stands for the tick."
+  ([w] (level-ctx w (:tick w)))
+  ([w base]
+   (merge (select-keys w weather/fields)
+          {:rules (:rules w)
+           :dim (:dim w)
+           :tick (long base)
+           :time-of-day (:time-of-day w 0)
+           :players (mapv (comp :pos val) (player-entries w))})))
 
 (defn- add-block-events [ev events]
   (reduce (fn [ev [pos st]]
@@ -340,21 +274,38 @@
                     (fnil conj []) [pos st]))
           (or ev (i/int-map)) events))
 
-(defn- with-changes [w base real]
-  (let [tick (:tick w)
-        next-tick (inc (long tick))
-        [chunks' events] (with-derived w tick real)
-        dim (:dim w)]
-    (cond-> (-> w
-                (assoc :chunks chunks')
-                (drop-block-entities real)
-                (schedule-updates base next-tick dim real))
-      (seq events)
-      (update :block-events add-block-events events))))
+(defn- ticks-added [w ticks]
+  (reduce (fn [w [k at id ty]] (update w k schedule/add at id ty))
+          w ticks))
 
-(defn- apply-set-blocks [w changes ^long base]
+(defn- with-changes [w real ticks]
+  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)]
+    (cond-> (-> w
+                (update :chunks chunk/chunks-set-blocks set-real)
+                (update :chunks light/relight-batch real
+                        (:sky? w true))
+                (drop-block-entities real)
+                (ticks-added ticks))
+      (seq real) (update :block-events add-block-events set-real))))
+
+(defn- settled
+  "Returns level w with the changes set and the ticks they asked
+  for added, in order."
+  [w changes ticks]
   (let [real (real-changes w changes)]
-    (if (empty? real) w (with-changes w base real))))
+    (if (and (empty? real) (empty? ticks))
+      w
+      (with-changes w real ticks))))
+
+(defn- apply-set-blocks
+  "Returns level w after Level.setBlock of each change, with the
+  updates it runs. What the updates show is not heard: the
+  systems set blocks through neighbors/set-blocks themselves and
+  give the ticks with the changes."
+  [w changes]
+  (let [s (neighbors/set-blocks (:chunks w) (level-ctx w) changes)
+        changes (mapv (fn [[p st]] [p st]) (:records s))]
+    (settled w changes (:ticks s))))
 
 (defn spawn-seed
   "Returns the random seed of a spawn by entity eid this tick."
@@ -498,7 +449,6 @@
         (update :block-entities dissoc id)
         (update :entities drop-entities id)
         (update :block-ticks schedule/dropped id)
-        (update :block-wakes schedule/dropped id)
         (update :fluid-ticks schedule/dropped id)
         (update :unknown dissoc id)
         (update :stored (fnil conj (i/int-set)) id))))
@@ -509,7 +459,7 @@
       (if (= :bed (block/type-of st))
         (let [props (assoc (block/props-of st) :occupied :false)
               free (block/state (block/block-of st) props)]
-          (apply-set-blocks w [[pos free]] (long (:tick w))))
+          (apply-set-blocks w [[pos free]]))
         w))
     w))
 
@@ -1092,6 +1042,11 @@
         (assoc-in [:entities eid] (entity/of spec))
         (assoc :next-eid (inc eid)))))
 
+(defn- block-or-zero ^long [chunks [_ y _ :as p]]
+  (if (chunk/in-range? y)
+    (chunk/chunks-get-block chunks p)
+    0))
+
 (defn- block-tick [w at id]
   (let [p (chunk/id->block-pos id)
         st (block-or-zero (:chunks w) p)]
@@ -1143,9 +1098,10 @@
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
    :listed (fn [w [_ add drop]] (listed w add drop))
    :spawn-entity (fn [w [_ spec]] (spawned w spec))
-   :set-blocks (fn [w [_ changes base]]
-                 (let [at (long (or base (:tick w)))]
-                   (apply-set-blocks w changes at)))
+   :set-blocks (fn [w [_ changes ticks]]
+                 (if ticks
+                   (settled w changes ticks)
+                   (apply-set-blocks w changes)))
    :ticks-flushed (fn [w [_ k t parked]]
                     (update w k schedule/flushed t parked))
    :schedule-ticks (fn [w [_ at-ids]] (scheduled w at-ids))

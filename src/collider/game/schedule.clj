@@ -10,11 +10,6 @@
 
 (def fluid-list {:queue (i/int-map) :index (i/int-map) :next 0})
 
-(def wake-list
-  "The queue of neighbour updates. It keeps each entry: the limit
-  of one tick for each block and type is not for these."
-  {:queue (i/int-map) :next 0})
-
 (defn- queued [q at id ty order]
   (let [m (or (get q at) (i/int-map))
         tys (get m id {})]
