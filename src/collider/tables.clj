@@ -632,21 +632,25 @@
            {:firework (call d "getFireworkColor")
             :diffuse  (call d "getTextureDiffuseColor")}])))
 
+(defn- registry-path [data]
+  (-> (call data "key") (call "identifier") (call "getPath")))
+
+(defn- synced-registries []
+  (mapv registry-path
+        (static-field "resources.RegistryDataLoader"
+                      "SYNCHRONIZED_REGISTRIES")))
+
 (defn- from-classes [jars server]
   (binding [*loader* (class-loader jars server)]
     (call-static "SharedConstants" "tryDetectVersion")
     (call-static "server.Bootstrap" "bootStrap")
     (let [states (block-states)]
-      (merge (state-shapes states)
-             (block-props)
-             {:light   (light-table states)
+      (merge (state-shapes states) (block-props)
+             {:light (light-table states) :fire (fire-odds)
               :placers (placer-features (registry "BLOCK"))
-              :fire    (fire-odds)
-              :compost (compostables)
-              :walls   (wall-items)
-              :remainders (remainders)
-              :banners (banner-colors)
-              :dyes    (dye-colors)}))))
+              :compost (compostables) :walls (wall-items)
+              :remainders (remainders) :banners (banner-colors)
+              :dyes (dye-colors) :synced (synced-registries)}))))
 
 (defn- report-json [reports name]
   (json/read-str (slurp (io/file reports name))))
@@ -1003,17 +1007,6 @@
           (concat (jsons zf (str dir "entities/"))
                   (map (fn [[n j]] [(shear-name n) j]) shear)))))
 
-(def synchronized-registries
-  ["banner_pattern" "worldgen/biome" "cat_sound_variant" "cat_variant"
-   "chat_type" "chicken_sound_variant" "chicken_variant"
-   "cow_sound_variant" "cow_variant" "damage_type" "dialog"
-   "dimension_type" "enchantment"
-   "frog_variant" "instrument" "jukebox_song" "painting_variant"
-   "pig_sound_variant" "pig_variant" "sulfur_cube_archetype"
-   "test_environment" "test_instance" "timeline" "trim_material"
-   "trim_pattern" "wolf_sound_variant" "wolf_variant" "world_clock"
-   "zombie_nautilus_variant"])
-
 (def ^:private top-level-names
   (comp (map first) (remove #(str/includes? % "/")) (map kw)))
 
@@ -1022,10 +1015,8 @@
         names (into (sorted-set) top-level-names (under zf prefix))]
     (when (seq names) [reg (vec names)])))
 
-(defn- datapack-names [zf]
-  (into (sorted-map)
-        (keep #(datapack-entry zf %))
-        synchronized-registries))
+(defn- datapack-names [zf synced]
+  (into [] (keep #(datapack-entry zf %)) synced))
 
 (defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
 
@@ -1775,9 +1766,9 @@
         (pr data)
         (.write ^Writer w "\n")))))
 
-(defn- tagged-tables [zf reports rs dyes]
-  (let [dp (datapack-names zf)
-        tags (tags-of zf (distinct (concat (keys rs) (keys dp))))
+(defn- tagged-tables [zf reports rs {:keys [dyes synced]}]
+  (let [dp (datapack-names zf synced)
+        tags (tags-of zf (distinct (concat (keys rs) (map first dp))))
         item-names (set (keys (get rs "item")))
         potion-names (set (keys (get rs "potion")))
         effect-names (set (keys (get rs "mob_effect")))]
@@ -1806,9 +1797,9 @@
      :features   (features zf placers)}))
 
 (defn- tables [zf from-class reports rs]
-  (let [tagged (tagged-tables zf reports rs (:dyes from-class))]
+  (let [tagged (tagged-tables zf reports rs from-class)]
     (merge (dissoc from-class :props :compost :walls :placers
-                   :remainders :banners :dyes)
+                   :remainders :banners :dyes :synced)
            tagged
            (class-tables zf from-class reports (:tags tagged)))))
 

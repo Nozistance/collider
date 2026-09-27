@@ -2,14 +2,15 @@
   "The game data tables."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])
-  (:import (java.io PushbackReader)
+  (:import (clojure.lang PersistentArrayMap)
+           (java.io PushbackReader)
            (java.util Arrays HashMap List)))
 
 (set! *warn-on-reflection* true)
 
 (def game "26.2")
 
-(def layout 7)
+(def layout 8)
 
 (def ^:private files
   ["packets" "registries" "blocks" "datapack" "tags" "items"
@@ -91,9 +92,14 @@
 
 (defn blocks [] (:blocks @tables))
 
+(def ^:private ^:table datapack-map
+  (delay (PersistentArrayMap.
+          (object-array (into [] cat (:datapack @tables))))))
+
 (defn datapack
-  "Returns the entries the server sends to the client, by registry."
-  [] (:datapack @tables))
+  "Returns the entries the server sends to the client, by registry,
+  in the order the server sends them."
+  [] @datapack-map)
 
 (defn tags [] (:tags @tables))
 

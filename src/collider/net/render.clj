@@ -614,7 +614,7 @@
                       :matches (:matches m)}])
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
-                      :values (map rule-pair (:rules m))}])
+                      :values (into {} (map rule-pair) (:rules m))}])
    :health        (fn [_ m]
                     [{:packet :set-health :health (:health m)
                       :food 20 :saturation 5.0}])
