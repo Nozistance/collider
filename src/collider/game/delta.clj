@@ -39,6 +39,8 @@
    [:cat [:map-of :int Coll]]
    :container-recheck
    [:cat Pos [:maybe :int]]
+   :openers
+   [:cat Pos :int]
    :shulker-anim
    [:cat Pos [:maybe :map]]
    :block-events-flushed

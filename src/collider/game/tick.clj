@@ -81,7 +81,8 @@
              [#'pose/pose]
              [#'daynight/daynight]
              [#'block-updates/block-updates
-              #'dripleaf/dripleaf-tilt]
+              #'dripleaf/dripleaf-tilt
+              #'containers/rechecks]
              [#'block-updates/fluid-updates]
              [#'chunks/unloading
               #'random-tick/random-ticks

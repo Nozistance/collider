@@ -1,7 +1,6 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
   (:require [collider.game.block.blockentity :as be]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
@@ -50,27 +49,6 @@
   [remote stack]
   (let [r (remote-of stack)]
     (if (:components? remote) (= remote (hashed r)) (= remote r))))
-
-(defn- count-deltas [world m ^long step]
-  (let [at (fn [pos]
-             (let [before (container/viewers world pos)
-                   after (+ before step)]
-               (container/count-deltas world pos before after)))]
-    (mapcat at (container/positions m))))
-
-(defn- barrel-toggle [world pos ^long step]
-  (let [st (container/state-at (:chunks world) pos)
-        before (container/viewers world pos)
-        after (+ before step)
-        open? (pos? after)]
-    (when (and (= :barrel (block/type-of st))
-               (or (and (zero? before) open?) (zero? after)))
-      (edit/set-deltas
-        world [[pos (container/barrel-open-state st open?)]]))))
-
-(defn- barrel-deltas [world m ^long step]
-  (mapcat #(barrel-toggle world % step)
-          (container/positions m)))
 
 (defn- bench-valid? [world m]
   (let [st (container/state-at (:chunks world) (:pos m))]
@@ -121,12 +99,12 @@
     (when notify? [(out/to eid (out/container-close (:id m)))])))
 
 (defn- opener-deltas
-  "ContainerOpenersCounter: a player opening or closing menu m
-  counts as an opener unless it is a spectator."
+  "Container.startOpen and stopOpen of the cells of menu m. They
+  pass over a spectator."
   [world e m step]
   (when-not (game-mode/spectator? e)
-    (concat (count-deltas world m step)
-            (barrel-deltas world m step))))
+    (mapcat #(container/opener-deltas world % step)
+            (container/positions m))))
 
 (defn- close-deltas [world eid e notify?]
   (when-let [m (:menu e)]
@@ -474,8 +452,7 @@
     (concat
       (for [s (held-stacks world eid e)]
         [:spawn-entity (items/dropped world eid s)])
-      (when m (count-deltas world m -1))
-      (when m (barrel-deltas world m -1)))))
+      (when m (opener-deltas world e m -1)))))
 
 (defn removed-deltas [world eid e]
   (concat
@@ -543,9 +520,14 @@
   (concat
     (container/animate-deltas world)
     (quit-deltas world)
-    (state/fold-events world events event-deltas)
-    (container/recheck-deltas world)))
+    (state/fold-events world events event-deltas)))
 
 (defn containers [world d]
   (let [events (:input d)]
     [#(containers-deltas world events)]))
+
+(defn rechecks
+  "Runs the scheduled rechecks of the container openers that are
+  due."
+  [world _d]
+  [#(container/recheck-deltas world)])

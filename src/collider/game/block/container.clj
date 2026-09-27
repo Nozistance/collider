@@ -469,12 +469,6 @@
 
 (def ^:private open-step (float 0.1))
 
-(defn- trigger-deltas [pos ^long after]
-  (cond
-    (zero? after) [[:shulker-anim pos {:status :closing}]]
-    (= 1 after) [[:shulker-anim pos {:status :opening}]]
-    :else nil))
-
 (defn- shulker-step [status up down]
   (case status
     :opening (if (>= (float up) (float 1.0))
@@ -497,52 +491,128 @@
                   nil))))
           (:shulker-anim world)))
 
-(defn- edge-sound [world pos st t open?]
+(defn- trigger-deltas [pos ^long after]
   (cond
-    (contains? chest-types t) (chest-sound world pos st open?)
-    (= :barrel t) (barrel-sound world pos st open?)
-    (= :shulker-box t) (shulker-sound world pos open?)
-    (= :ender-chest t) (ender-sound world pos open?)))
+    (zero? after) [[:shulker-anim pos {:status :closing}]]
+    (= 1 after) [[:shulker-anim pos {:status :opening}]]
+    :else nil))
 
-(defn- recheck-delta [world pos t before after]
-  (when (and (not= :barrel t) (not= :shulker-box t)
-             (zero? before) (pos? after))
-    [[:container-recheck pos
-      (+ (dec (long (:tick world))) recheck-delay)]]))
+(defn- opener-count
+  "Returns the openers the container at pos counts. That is the
+  openCount of its ContainerOpenersCounter, or of a shulker box."
+  ^long [world pos]
+  (long (get-in world [:openers pos] 0)))
 
-(defn count-deltas [world pos ^long before ^long after]
-  (let [st (state-at (:chunks world) pos)
-        t (block/type-of st)]
-    (when (contains? container-types t)
-      (concat
-        (when (and (zero? before) (pos? after))
-          (edge-sound world pos st t true))
-        (when (and (pos? before) (zero? after))
-          (edge-sound world pos st t false))
-        (when (not= :barrel t)
-          [(out/all (out/block-event pos 1 (min 255 after)))])
-        (when (= :shulker-box t) (trigger-deltas pos after))
-        (recheck-delta world pos t before after)))))
-
-(defn- due-recheck [world ^long t [pos at]]
-  (when (<= (long at) t)
-    (let [st (state-at (:chunks world) pos)
-          type (block/type-of st)
-          open? (contains? container-types type)
-          n (if open? (viewers world pos) 0)
-          next-at (when (pos? n) (+ t recheck-delay))
-          event (when (not= :barrel type)
-                  [(out/all (out/block-event pos 1 (min 255 n)))])]
-      (cons [:container-recheck pos next-at] event))))
-
-(defn recheck-deltas [world]
-  (let [t (long (:tick world))]
-    (mapcat #(due-recheck world t %) (:container-rechecks world))))
+(def ^:private counted
+  "The containers with a ContainerOpenersCounter."
+  (conj chest-types :barrel :ender-chest))
 
 (defn barrel-open-state [^long st open?]
   (let [open (if open? :true :false)
         props (assoc (block/props-of st) :open open)]
     (block/state (block/block-of st) props)))
+
+(defn- edge-sound [world pos st t open?]
+  (cond
+    (contains? chest-types t) (chest-sound world pos st open?)
+    (= :barrel t) (barrel-sound world pos st open?)
+    (= :ender-chest t) (ender-sound world pos open?)))
+
+(defn- edge-deltas
+  "ContainerOpenersCounter.onOpen and onClose: the sound, and the
+  open of a barrel."
+  [world pos st t open?]
+  (concat
+    (edge-sound world pos st t open?)
+    (when (= :barrel t)
+      (edit/set-deltas world [[pos (barrel-open-state st open?)]]))))
+
+(defn- lid-event [pos ^long n]
+  (out/all (out/block-event pos 1 n)))
+
+(defn- changed-deltas
+  "ContainerOpenersCounter.openerCountChanged: a barrel shows
+  nothing, the others move their lid."
+  [pos t ^long n]
+  (when (not= :barrel t) [(lid-event pos n)]))
+
+(defn- schedule-recheck
+  "ContainerOpenersCounter.scheduleRecheck. A recheck already
+  pending stays, as Level.scheduleTick keeps it."
+  [world pos]
+  (when-not (get-in world [:container-rechecks pos])
+    [[:container-recheck pos
+      (+ (dec (long (:tick world))) recheck-delay)]]))
+
+(defn- counter-deltas
+  "ContainerOpenersCounter.incrementOpeners for step 1 and
+  decrementOpeners for step -1."
+  [world pos st t step]
+  (let [prev (opener-count world pos)
+        n (+ prev (long step))
+        opened? (and (pos? step) (zero? prev))]
+    (concat
+      [[:openers pos step]]
+      (cond
+        opened? (edge-deltas world pos st t true)
+        (and (neg? step) (zero? n))
+        (edge-deltas world pos st t false))
+      (when opened? (schedule-recheck world pos))
+      (changed-deltas pos t n))))
+
+(defn- shulker-deltas
+  "ShulkerBoxBlockEntity.startOpen for step 1 and stopOpen for
+  step -1."
+  [world pos ^long step]
+  (let [prev (opener-count world pos)
+        n (+ (if (pos? step) (max prev 0) prev) step)
+        heard? (if (pos? step) (= 1 n) (<= n 0))]
+    (concat
+      [[:openers pos (- n prev)]]
+      (when heard? (shulker-sound world pos (pos? step)))
+      [(lid-event pos n)]
+      (trigger-deltas pos n))))
+
+(defn opener-deltas
+  "Container.startOpen for step 1 and stopOpen for step -1 at pos,
+  by a player that is no spectator."
+  [world pos ^long step]
+  (let [st (state-at (:chunks world) pos)
+        t (block/type-of st)]
+    (cond
+      (= :shulker-box t) (shulker-deltas world pos step)
+      (contains? counted t) (counter-deltas world pos st t step))))
+
+(defn- recount-deltas
+  "ContainerOpenersCounter.recheckOpeners."
+  [world pos st t now]
+  (let [prev (opener-count world pos)
+        n (viewers world pos)]
+    (concat
+      (when (not= prev n)
+        (cons [:openers pos (- n prev)]
+              (cond
+                (and (pos? n) (zero? prev))
+                (edge-deltas world pos st t true)
+                (zero? n) (edge-deltas world pos st t false))))
+      (changed-deltas pos t n)
+      [[:container-recheck pos
+        (when (pos? n) (+ (long now) recheck-delay))]])))
+
+(defn- due-recheck
+  "The scheduled tick of the block at pos: a counted container
+  rechecks its openers, else the tick is dropped."
+  [world ^long now [pos at]]
+  (when (<= (long at) now)
+    (let [st (state-at (:chunks world) pos)
+          t (block/type-of st)]
+      (if (contains? counted t)
+        (recount-deltas world pos st t now)
+        [[:container-recheck pos nil]]))))
+
+(defn recheck-deltas [world]
+  (let [now (long (:tick world))]
+    (mapcat #(due-recheck world now %) (:container-rechecks world))))
 
 (defn fits-inside? [item]
   (not= :shulker-box (:type (get (data/blocks) item))))

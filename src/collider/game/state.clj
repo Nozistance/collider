@@ -228,12 +228,17 @@
        (not= (block/block-of old) (block/block-of (long st)))
        (not= (be/kind old) (be/kind (long st)))))
 
+(defn- openers-outside [openers id]
+  (into {} (remove #(= id (chunk/block-chunk (key %)))) openers))
+
+(defn- drop-block-entity [w pos]
+  (-> w
+      (update-in [:block-entities (chunk/block-chunk pos)] dissoc pos)
+      (update :openers dissoc pos)))
+
 (defn- drop-block-entities [w real]
   (reduce (fn [w [pos old st]]
-            (if-not (kind-changed? old st)
-              w
-              (let [cp (chunk/block-chunk pos)]
-                (update-in w [:block-entities cp] dissoc pos))))
+            (if (kind-changed? old st) (drop-block-entity w pos) w))
           w real))
 
 (defn- inside? [w [pos]] (chunk/in-level? w (long (pos 1))))
@@ -460,6 +465,7 @@
     (-> w
         (update :chunks dissoc id)
         (update :block-entities dissoc id)
+        (update :openers openers-outside id)
         (update :entities drop-entities id)
         (update :block-ticks schedule/dropped id)
         (update :fluid-ticks schedule/dropped id)
@@ -1092,10 +1098,15 @@
     (update w :spawning dissoc eid)))
 
 (defn- block-entity-set [w pos e]
-  (let [cp (chunk/block-chunk pos)]
-    (if (and e (be/kind (chunk/chunks-get-block (:chunks w) pos)))
-      (assoc-in w [:block-entities cp pos] e)
-      (update-in w [:block-entities cp] dissoc pos))))
+  (if (and e (be/kind (chunk/chunks-get-block (:chunks w) pos)))
+    (assoc-in w [:block-entities (chunk/block-chunk pos) pos] e)
+    (drop-block-entity w pos)))
+
+(defn- openers-counted [w pos ^long step]
+  (let [n (+ (long (get-in w [:openers pos] 0)) step)]
+    (if (zero? n)
+      (update w :openers dissoc pos)
+      (assoc-in w [:openers pos] n))))
 
 (def world-apply
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
@@ -1109,6 +1120,7 @@
                     (update w k schedule/flushed t parked))
    :schedule-ticks (fn [w [_ at-ids]] (scheduled w at-ids))
    :container-recheck (fn [w [_ pos at]] (rechecked w pos at))
+   :openers (fn [w [_ pos step]] (openers-counted w pos step))
    :shulker-anim (fn [w [_ pos a]] (shulker-animated w pos a))
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
    :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))

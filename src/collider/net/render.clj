@@ -732,7 +732,8 @@
    :sign-editor    (fn [_ m] [(sign-editor-packet m)])
    :block-event    (fn [world m]
                      [{:packet :block-event :pos (:pos m)
-                       :action (:action m) :param (:param m)
+                       :action (:action m)
+                       :param (bit-and (long (:param m)) 255)
                        :block  (event-block world (:pos m))}])
    :block-entity   block-entity-fx
    :sound          (fn [_ m] (when-let [p (sound-packet m)] [p]))
@@ -1088,6 +1089,23 @@
 (defn- teleports? [^Deltas deltas]
   (some #(moves-player (:msg %)) (deltas/out-of deltas)))
 
+(defn- block-event-key [m]
+  (when (= :block-event (:msg m))
+    [(:dim m) (:pos m) (:action m) (:param m)]))
+
+(defn- once-each
+  "ServerLevel.blockEvent keeps its events of a tick in a set, so
+  the same event twice in a tick is sent once."
+  [msgs]
+  (let [seen (volatile! #{})]
+    (filter (fn [m]
+              (let [k (block-event-key m)]
+                (or (nil? k)
+                    (when-not (contains? @seen k)
+                      (vswap! seen conj k)
+                      true))))
+            msgs)))
+
 (defn- ordered [world sight ^Deltas deltas]
   (let [es (deltas/entities-of deltas)
         viewers (delay (viewer-index sight es))
@@ -1096,7 +1114,7 @@
            (join-bursts world sight deltas)
            (entity-delta-packets sight es (complement new))
            (mapcat (fn [m] (msg-packets sight viewers m))
-                   (deltas/out-of deltas))
+                   (once-each (deltas/out-of deltas)))
            (entity-delta-packets sight es new)
            (forget-packets es)
            (level-entry-packets sight deltas)))))

@@ -173,6 +173,7 @@
                         :load double :schema number?
                         :scope :level}
    :container-rechecks {:default {} :scope :level}
+   :openers            {:default {} :scope :level}
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
    :spawning           {:default (i/int-map) :scope :shared}
