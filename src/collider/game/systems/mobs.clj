@@ -196,28 +196,18 @@
       (motion/jump-factor (below-state world pos sup))
       here)))
 
-(defn- look-toward [e height o]
-  (let [[_ y _] (:pos e)
-        [_ oy _] (:pos o)
-        oh (double (get-in mobs/types [(:type o) :height] 1.0))
-        eye (+ (double y) (* 0.95 (double height)))
-        oeye (+ (double oy)
+(defn- look-pitch ^double [e height o]
+  (let [pos (:pos e) opos (:pos o)
+        oh (double (get (get mobs/types (:type o)) :height 1.0))
+        eye (+ (v/y pos) (* 0.95 (double height)))
+        oeye (+ (v/y opos)
                 (if (= :player (:type o)) 1.62 (* 0.95 oh)))
-        dh (Math/sqrt (v/dist-sq (:pos e) (:pos o)))]
-    [(v/yaw-toward (:pos e) (:pos o))
-     (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))]))
+        dh (Math/sqrt (v/dist-sq pos opos))]
+    (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))))
 
 (defn- active-look [e ^long t]
   (let [look (:look e)]
     (when (and look (> (long (:until look 0)) t)) look)))
-
-(defn- look-angles [world e height look]
-  (let [oid (:target look)
-        target (when oid (get-in world [:entities oid]))]
-    (cond
-      target (look-toward e height target)
-      (and look (:yaw look)) [(:yaw look) 0.0]
-      :else [(:yaw e) 0.0])))
 
 (defn- head-same? [e look ^double hy ^double hp]
   (and (identical? look (:look e))
@@ -226,7 +216,12 @@
 
 (defn- looked [world e height t]
   (let [look (active-look e (long t))
-        [dyaw dpitch] (look-angles world e height look)
+        oid (:target look)
+        o (when oid (get (:entities world) oid))
+        dyaw (cond o (v/yaw-toward (:pos e) (:pos o))
+                   (and look (:yaw look)) (:yaw look)
+                   :else (:yaw e))
+        dpitch (if o (look-pitch e height o) 0.0)
         y0 (double (or (:head-yaw e) (:yaw e)))
         p0 (double (or (:pitch e) 0.0))
         hy (v/limit-angle y0 (double dyaw) 10.0)
@@ -586,15 +581,24 @@
       (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
       acc)))
 
+(defn- diff-step [o n a c c' k]
+  (let [g (symbol (str ".-" (name k)))]
+    [c' `(if (identical? (~g ~n) (~g ~o))
+           ~c
+           (do (aset ~a ~c ~k)
+               (aset ~a (unchecked-inc ~c) (~g ~n))
+               (unchecked-add ~c 2)))]))
+
 (defmacro ^:private diff-fields [old new & ks]
-  (let [o (with-meta (gensym) {:tag 'Mob})
-        n (with-meta (gensym) {:tag 'Mob})
-        f (fn [k]
-            (let [g (symbol (str ".-" (name k)))]
-              [`(not (identical? (~g ~n) (~g ~o)))
-               `(assoc ~k (~g ~n))]))]
-    `(let [~o ~old ~n ~new]
-       (cond-> {} ~@(mapcat f ks)))))
+  (let [o (with-meta (gensym "o") {:tag 'Mob})
+        n (with-meta (gensym "n") {:tag 'Mob})
+        a (with-meta (gensym "a") {:tag 'objects})
+        cs (vec (repeatedly (inc (count ks)) #(gensym "c")))
+        step (fn [i k] (diff-step o n a (cs i) (cs (inc i)) k))]
+    `(let [~o ~old ~n ~new ~a (object-array ~(* 2 (count ks)))
+           ~(cs 0) 0 ~@(mapcat step (range) ks)]
+       (clojure.lang.PersistentArrayMap.
+         (java.util.Arrays/copyOf ~a (int ~(peek cs)))))))
 
 (defn- mob-changes [old new]
   (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
@@ -634,7 +638,7 @@
 (defn- move-speed ^double [e]
   (if-let [fx (not-empty (:effects e))]
     (attribute/value e fx :movement-speed)
-    (double (get-in mobs/types [(:type e) :speed]))))
+    (double (:speed (get mobs/types (:type e))))))
 
 (defn- step-mob [world index tempters eid e t]
   (let [[half height] (mobs/box-of e)

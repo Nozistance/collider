@@ -1,6 +1,7 @@
 (ns collider.game.mob.nav
   "Ground navigation of mobs."
-  (:require [collider.game.mob.control :as control]
+  (:require [collider.game.entity :as entity]
+            [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -202,7 +203,7 @@
 (defn- aimed [world e nav]
   (let [m (Nav/aimed nav (:move e) (:chunks world)
                      (block/collision-arr) (half-of e))]
-    (assoc e :nav nav :move m)))
+    (entity/with e {:nav nav :move m})))
 
 (defn- walked-on [world e nav0 nav]
   (if (Nav/walked nav)

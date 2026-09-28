@@ -1033,7 +1033,7 @@
        :else (hurt-fully e health amount dx dz)))))
 
 (def entity-apply
-  {:merge-entity (fn [_ e [_ _ m]] (merge e m))
+  {:merge-entity (fn [_ e [_ _ m]] (entity/merged e m))
    :teleport (fn [tick e [_ _ pos]]
                (assoc e :pos (v/v3 pos) :tp-target pos
                         :tp-id (next-teleport-id e) :tp-at tick))

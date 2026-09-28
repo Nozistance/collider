@@ -3,8 +3,7 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.world.space Path PathHeap PathNode PathTarget)
-           (java.util HashMap)))
+  (:import (collider.world.space Path PathTarget)))
 
 (set! *warn-on-reflection* true)
 
@@ -30,7 +29,7 @@
    :leaves -1.0 :sticky-honey 8.0 :cocoa 0.0 :damage-cautious 0.0
    :on-top-of-trapdoor 0.0 :big-mobs-close-to-danger 4.0})
 
-(def ^:private type-order (zipmap path-types (range)))
+(def ^:private type-index (zipmap path-types (range)))
 
 (defn path-type-malus
   "Returns the malus mob puts on a path type."
@@ -158,9 +157,6 @@
     (aget ^objects @type-arr st)
     :open))
 
-(defn- type-at [chunks ^long x ^long y ^long z]
-  (type-of-state (chunk/block-state chunks x y z)))
-
 (defn- neighbour-type [t]
   (case t
     :damaging :damaging-in-neighbor
@@ -169,334 +165,72 @@
     :damage-cautious :damage-cautious
     nil))
 
-(def ^:private ^:table forced-arr
-  (delay (object-array (map neighbour-type @type-arr))))
+(def ^:private ^:table type-ids
+  (delay (int-array (map type-index @type-arr))))
 
-(defn check-neighbours
-  "Returns the type the cells around x y z force upon it, else t."
-  [chunks x y z t]
-  (or (Path/forced chunks @forced-arr (long x) (long y) (long z)) t))
+(defn- forced-id [t] (type-index (neighbour-type t) -1))
 
-(defn- floor-type [chunks ^long x ^long y ^long z]
-  (case (type-at chunks x (dec y) z)
-    (:open :water :lava :walkable) :open
-    :fire :fire
-    :damaging :damaging
-    :sticky-honey :sticky-honey
-    :powder-snow :on-top-of-powder-snow
-    :damage-cautious :damage-cautious
-    :trapdoor :on-top-of-trapdoor
-    (check-neighbours chunks x y z :walkable)))
+(def ^:private ^:table forced-ids
+  (delay (int-array (map forced-id @type-arr))))
 
-(defn- static-type [chunks lo x y z]
-  (let [x (long x) y (long y) z (long z)
-        t (type-at chunks x y z)]
-    (if (and (= :open t) (>= y (inc (long lo))))
-      (floor-type chunks x y z)
-      t)))
+(def ^:private ^:table water-arr
+  (delay
+    (boolean-array
+      (map block/water? (range (data/block-state-count))))))
 
 (defn type-static
   "Returns the path type of the cell x y z of level lv for a mob one
   cell tall."
   [lv x y z]
-  (static-type (:chunks lv) (chunk/level-min-y lv) x y z))
+  (nth path-types
+       (Path/staticType (:chunks lv) @type-ids @forced-ids
+                        (chunk/level-min-y lv) (long x) (long y)
+                        (long z))))
 
-(defn- bb-type [ctx ^long x ^long y ^long z]
-  (let [{:keys [chunks mob]} ctx
-        lo (:min-y ctx)
-        t (static-type chunks lo x y z)
-        [mx my mz] (:block-pos mob)]
-    (cond
-      (and (= :door-wood-closed t) (:open-doors? mob)
-           (:pass-doors? mob)) :walkable-door
-      (and (= :door-open t) (not (:pass-doors? mob))) :blocked
-      (and (= :rail t)
-           (not= :rail (static-type chunks lo mx my mz))
-           (not= :rail (static-type chunks lo mx (dec (long my)) mz)))
-      :unpassable-rail
-      :else t)))
+(defn- malus-arr ^doubles [mob]
+  (double-array (map #(path-type-malus mob %) path-types)))
 
-(defn- box-type [ctx x y z w h i]
-  (let [w (long w) h (long h) i (long i) r (quot i w)]
-    (bb-type ctx (+ (long x) (quot r h)) (+ (long y) (rem r h))
-             (+ (long z) (rem i w)))))
+(def ^:private base-malus (malus-arr {}))
 
-(defn type-within-bb
-  "Returns the set of path types the mob box at x y z covers."
-  [ctx x y z]
-  (let [mob (:mob ctx)
-        w (long (:bb-w mob)) h (long (:bb-h mob))
-        at (fn [s i] (conj! s (box-type ctx x y z w h i)))]
-    (persistent! (reduce at (transient #{}) (range (* w w h))))))
+(def ^:private cow-malus (malus-arr cow))
 
-(defn- highest-malus [mob types]
-  (reduce (fn [[bt bm] t]
-            (let [m (path-type-malus mob t)]
-              (cond
-                (neg? m) (reduced [t m true])
-                (>= m (double bm)) [t m]
-                :else [bt bm])))
-          [:blocked (path-type-malus mob :blocked)]
-          (sort-by type-order types)))
+(defn- flag ^long [x] (if x 1 0))
 
-(defn- capped-type [ctx x y z t m]
-  (let [mob (:mob ctx)
-        cur (static-type (:chunks ctx) (:min-y ctx) x y z)]
-    (if (> (long (:bb-w mob)) 1)
-      (if (and (< (path-type-malus mob cur) m)
-               (< (path-type-malus mob :big-mobs-close-to-danger) m))
-        :big-mobs-close-to-danger
-        t)
-      (if (and (= :open cur) (not= :open t) (zero? m)) :open t))))
+(defn- malus-of ^doubles [mob]
+  (if (identical? (:malus mob) (:malus cow))
+    cow-malus
+    (malus-arr mob)))
 
-(defn- typed-for-mob [ctx x y z]
-  (let [ts (type-within-bb ctx x y z)]
-    (cond
-      (= 1 (count ts)) (first ts)
-      (ts :fence) :fence
-      (ts :unpassable-rail) :unpassable-rail
-      :else (let [[t m early?] (highest-malus (:mob ctx) ts)]
-              (if early? t (capped-type ctx x y z t (double m)))))))
+(defn- sizes ^doubles [mob]
+  (let [[px py pz] (:pos mob)]
+    (double-array [px py pz (:width mob) (:height mob)
+                   (:max-up-step mob)])))
+
+(defn- flags ^longs [mob]
+  (long-array [(:max-fall mob) (flag (:float? mob))
+               (flag (:open-doors? mob)) (flag (:pass-doors? mob))
+               (flag (:walk-over-fences? mob))]))
+
+(defn- search-of [lv mob]
+  (Path. (:chunks lv) (chunk/level-min-y lv) @type-ids @forced-ids
+         @water-arr (block/collision-arr) (malus-of mob) base-malus
+         (sizes mob) (flags mob)))
+
+(defn context
+  "Returns what one search over level lv knows about its mob.
+  The mob carries its size, its own malus and where it stands."
+  [lv mob]
+  {:chunks (:chunks lv)
+   :min-y  (chunk/level-min-y lv)
+   :mob    mob
+   :search (search-of lv mob)})
 
 (defn type-of-mob
   "Returns the path type of the cell x y z for the mob of ctx.
   One search types each cell once, as WalkNodeEvaluator caches it."
   [ctx x y z]
-  (if-let [types (:types ctx)]
-    (let [x (long x) y (long y) z (long z)]
-      (or (Path/cachedType types x y z)
-          (Path/cacheType types x y z (typed-for-mob ctx x y z))))
-    (typed-for-mob ctx x y z)))
-
-(defn- node-at ^PathNode [ctx x y z]
-  (Path/node (:nodes ctx) (long x) (long y) (long z)))
-
-(defn- x-of ^long [^PathNode n] (.x n))
-
-(defn- y-of ^long [^PathNode n] (.y n))
-
-(defn- z-of ^long [^PathNode n] (.z n))
-
-(defn- malus ^double [^PathNode n] (.malus n))
-
-(defn- set-malus! [^PathNode n ^double v] (.setMalus n v))
-
-(defn- closed? [^PathNode n] (.closed n))
-
-(defn- close! [^PathNode n] (.close n))
-
-(defn- came [^PathNode n] (.came n))
-
-(defn- kind [^PathNode n] (.type n))
-
-(defn- set-kind! [^PathNode n t] (.setType n t))
-
-(defn- manhattan ^double [^PathNode n ^PathTarget t]
-  (.manhattan n (.x t) (.y t) (.z t)))
-
-(defn- shape-top ^double [chunks ^long x ^long y ^long z]
-  (Path/shapeTop (block/collision-arr)
-                 (chunk/block-state chunks x y z)))
-
-(defn- floor-level ^double [ctx x y z]
-  (let [x (long x) y (long y) z (long z)
-        chunks (:chunks ctx)]
-    (if (and (:float? (:mob ctx))
-             (block/water? (chunk/block-state chunks x y z)))
-      (+ y 0.5)
-      (+ (dec y) (shape-top chunks x (dec y) z)))))
-
-(defn- collides? [chunks ^doubles b]
-  (Path/collides chunks (block/collision-arr) b))
-
-(defn- can-reach? [ctx n]
-  (let [mob (:mob ctx) [px py pz] (:pos mob)]
-    (Path/canReach (:chunks ctx) (block/collision-arr) (double px)
-                   (double py) (double pz) (double (:width mob))
-                   (double (:height mob)) n)))
-
-(defn- node-with-cost [ctx x y z t cost]
-  (let [n (node-at ctx x y z)]
-    (set-kind! n t)
-    (set-malus! n (max (malus n) cost))
-    n))
-
-(defn- blocked-node [ctx x y z]
-  (let [n (node-at ctx x y z)]
-    (set-kind! n :blocked)
-    (set-malus! n -1.0)
-    n))
-
-(defn- closed-node [ctx x y z t]
-  (let [n (node-at ctx x y z)]
-    (close! n)
-    (set-kind! n t)
-    (set-malus! n (double (get default-malus t)))
-    n))
-
-(defn- partial-collision? [t]
-  (contains? #{:fence :door-wood-closed :door-iron-closed} t))
-
-(defn- jump-height ^double [mob]
-  (max 1.125 (double (:max-up-step mob))))
-
-(defn- ground-below [ctx ^long x ^long y ^long z]
-  (let [mob (:mob ctx) lo (long (:min-y ctx))]
-    (loop [cy (dec y)]
-      (cond
-        (< cy lo) (blocked-node ctx x y z)
-        (> (- y cy) (long (:max-fall mob))) (blocked-node ctx x cy z)
-        :else
-        (let [t (type-of-mob ctx x cy z)
-              m (path-type-malus mob t)]
-          (cond
-            (= :open t) (recur (dec cy))
-            (>= m 0.0) (node-with-cost ctx x cy z t m)
-            :else (blocked-node ctx x cy z)))))))
-
-(defn- non-water-below [ctx x y z best]
-  (let [mob (:mob ctx) lo (long (:min-y ctx))]
-    (loop [cy (dec y) best best]
-      (if (<= cy lo)
-        best
-        (let [t (type-of-mob ctx x cy z)]
-          (if (not= :water t)
-            best
-            (let [m (path-type-malus mob t)]
-              (recur (dec cy) (node-with-cost ctx x cy z t m)))))))))
-
-(def ^:private dir-by-2d [[0 1] [-1 0] [0 -1] [1 0]])
-
-(def ^:private horizontal-order [2 3 0 1])
-
-(def ^:private clockwise [1 2 3 0])
-
-(declare accepted-node)
-
-(defn- jump-box ^doubles [ctx x y z dir above]
-  (let [mob (:mob ctx)
-        [dx dz] (nth dir-by-2d dir)
-        cx (- x (long dx)) cz (- z (long dz))
-        hw (/ (double (:width mob)) 2.0)]
-    (double-array
-      [(- (+ cx 0.5) hw) (+ (floor-level ctx cx (inc y) cz) 0.001)
-       (- (+ cz 0.5) hw) (+ (+ cx 0.5) hw)
-       (- (+ (double (:height mob))
-             (floor-level ctx (x-of above) (y-of above) (z-of above)))
-          0.002)
-       (+ (+ cz 0.5) hw)])))
-
-(defn- try-jump-on [ctx x y z jump nh dir cur]
-  (let [up (inc (long y))
-        above (accepted-node ctx x up z (dec jump) nh dir cur)
-        mob (:mob ctx)]
-    (cond
-      (nil? above) nil
-      (>= (double (:width mob)) 1.0) above
-      (not (contains? #{:open :walkable} (kind above))) above
-      (collides? (:chunks ctx) (jump-box ctx x y z dir above)) nil
-      :else above)))
-
-(defn- best-at [ctx x y z cur]
-  (let [mob (:mob ctx)
-        t (type-of-mob ctx x y z)
-        m (path-type-malus mob t)
-        n (when (>= m 0.0) (node-with-cost ctx x y z t m))]
-    (if (and (partial-collision? cur) n (>= (malus n) 0.0)
-             (not (can-reach? ctx n)))
-      [t nil]
-      [t n])))
-
-(defn- jumpable? [ctx t best ^long jump]
-  (and (or (nil? best) (neg? (malus best))) (pos? jump)
-       (or (not= :fence t) (:walk-over-fences? (:mob ctx)))
-       (not= :unpassable-rail t) (not= :trapdoor t)
-       (not= :powder-snow t)))
-
-(defn- descend [ctx x y z jump nh dir cur t best]
-  (cond
-    (jumpable? ctx t best jump)
-    (try-jump-on ctx x y z jump nh dir cur)
-    (and (= :water t) (not (:float? (:mob ctx))))
-    (non-water-below ctx x y z best)
-    (= :open t) (ground-below ctx x y z)
-    (and (partial-collision? t) (nil? best)) (closed-node ctx x y z t)
-    :else best))
-
-(defn- accepted-node [ctx x y z jump nh dir cur]
-  (when (<= (- (floor-level ctx x y z) nh)
-            (jump-height (:mob ctx)))
-    (let [[t best] (best-at ctx x y z cur)]
-      (if (= :walkable t)
-        best
-        (descend ctx x y z jump nh dir cur t best)))))
-
-(defn- neighbor-valid? [n cur]
-  (boolean (and n (not (closed? n))
-                (or (>= (malus n) 0.0) (neg? (malus cur))))))
-
-(defn- posts-gap? [ctx ew ns]
-  (and (= :fence (kind ns)) (= :fence (kind ew))
-       (< (double (:width (:mob ctx))) 0.5)))
-
-(defn- corner-free? [ctx pos ew ns]
-  (let [gap (posts-gap? ctx ew ns) y (y-of pos)]
-    (and (or (< (y-of ns) y) (>= (malus ns) 0.0) gap)
-         (or (< (y-of ew) y) (>= (malus ew) 0.0) gap))))
-
-(defn- diagonal-ok? [ctx pos ew ns]
-  (let [w (double (:width (:mob ctx)))]
-    (cond
-      (or (nil? ns) (nil? ew) (> (y-of ns) (y-of pos))
-          (> (y-of ew) (y-of pos))) false
-      (or (= :walkable-door (kind ew))
-          (= :walkable-door (kind ns))) false
-      (and (> w 1.0) (or (pos? (malus ew)) (pos? (malus ns)))) false
-      :else (corner-free? ctx pos ew ns))))
-
-(defn- diagonal-node-ok? [n]
-  (boolean (and n (not (closed? n)) (not= :walkable-door (kind n))
-                (>= (malus n) 0.0))))
-
-(defn- jump-size ^long [ctx pos cur]
-  (let [mob (:mob ctx)
-        y (y-of pos)
-        above (type-of-mob ctx (x-of pos) (inc y) (z-of pos))]
-    (if (and (>= (path-type-malus mob above) 0.0)
-             (not= :sticky-honey cur))
-      (long (Math/floor (max 1.0 (double (:max-up-step mob)))))
-      0)))
-
-(defn- side-nodes [ctx pos js ph cur]
-  (reduce (fn [a d]
-            (let [[dx dz] (nth dir-by-2d d)
-                  x (+ (x-of pos) (long dx))
-                  z (+ (z-of pos) (long dz))
-                  n (accepted-node ctx x (y-of pos) z js ph d cur)]
-              (assoc a d n)))
-          [nil nil nil nil] horizontal-order))
-
-(defn- diagonal [ctx pos side js ph cur d]
-  (let [cw (nth clockwise d)
-        [dx dz] (nth dir-by-2d d)
-        [cx cz] (nth dir-by-2d cw)]
-    (when (diagonal-ok? ctx pos (nth side d) (nth side cw))
-      (let [n (accepted-node
-                ctx (+ (x-of pos) (long dx) (long cx)) (y-of pos)
-                (+ (z-of pos) (long dz) (long cz)) js ph d cur)]
-        (when (diagonal-node-ok? n) n)))))
-
-(defn neighbors
-  "Returns the nodes a mob standing on pos can step onto."
-  [ctx pos]
-  (let [cur (type-of-mob ctx (x-of pos) (y-of pos) (z-of pos))
-        js (jump-size ctx pos cur)
-        ph (floor-level ctx (x-of pos) (y-of pos) (z-of pos))
-        side (side-nodes ctx pos js ph cur)]
-    (into (filterv (fn [n] (neighbor-valid? n pos))
-                   (mapv (fn [d] (nth side d)) horizontal-order))
-          (keep (fn [d] (diagonal ctx pos side js ph cur d))
-                horizontal-order))))
+  (nth path-types
+       (Path/typeOf (:search ctx) (long x) (long y) (long z))))
 
 (defn- water-start? [^long st]
   (or (= :water (block/block-of st))
@@ -546,69 +280,43 @@
   (let [t (type-of-mob ctx x y z)]
     (and (not= :open t) (>= (path-type-malus (:mob ctx) t) 0.0))))
 
+(defn- cell-of ^long [c] (long (Math/floor (double c))))
+
 (defn- corners [mob]
   (let [[px _ pz] (:pos mob) w (/ (double (:width mob)) 2.0)
-        x0 (long (Math/floor (- (double px) w)))
-        x1 (long (Math/floor (+ (double px) w)))
-        z0 (long (Math/floor (- (double pz) w)))
-        z1 (long (Math/floor (+ (double pz) w)))]
+        x0 (cell-of (- (double px) w))
+        x1 (cell-of (+ (double px) w))
+        z0 (cell-of (- (double pz) w))
+        z1 (cell-of (+ (double pz) w))]
     [[x0 z0] [x0 z1] [x1 z0] [x1 z1]]))
 
 (defn start-node
   "Returns the node the mob of ctx stands on."
   [ctx]
   (let [mob (:mob ctx)
-        [bx _ bz] (:block-pos mob)
+        [px _ pz] (:pos mob)
+        bx (cell-of px) bz (cell-of pz)
         y (start-y ctx)
         ok? (fn [[x z]] (can-start-at? ctx x y z))
         [sx sz] (or (when-not (can-start-at? ctx bx y bz)
                       (first (filter ok? (corners mob))))
-                    [bx bz])
-        n (node-at ctx sx y sz)]
-    (set-kind! n (type-of-mob ctx sx y sz))
-    (set-malus! n (path-type-malus mob (kind n)))
-    n))
+                    [bx bz])]
+    (Path/startAt (:search ctx) (long sx) y (long sz))))
 
-(defn- targets-of ^"[Lcollider.world.space.PathTarget;" [goals]
-  (into-array PathTarget
-              (map (fn [[x y z]]
-                     (PathTarget. (long x) (long y) (long z)))
-                   goals)))
+(defn- targets-of [goals]
+  (mapv (fn [[x y z]] (PathTarget. (long x) (long y) (long z)))
+        goals))
 
-(defn- dist-to ^double [^PathNode a ^PathNode b]
-  (.distTo a (.x b) (.y b) (.z b)))
+(defn- node-map [^longs c ^long i]
+  {:x (aget c i) :y (aget c (+ i 1)) :z (aget c (+ i 2))
+   :type (nth path-types (aget c (+ i 3)))})
 
-(defn- heap-empty? [^PathHeap h] (.isEmpty h))
-
-(defn- heap-pop! ^PathNode [^PathHeap h] (.pop h))
-
-(defn- run-search [ctx heap from targets maxlen reach maxv]
-  (loop [c 0]
-    (if (or (heap-empty? heap) (>= (inc c) maxv))
-      []
-      (let [cur (heap-pop! heap)
-            _ (close! cur)
-            near? (fn [t] (<= (manhattan cur t) reach))
-            hit (filterv near? targets)]
-        (if (seq hit)
-          hit
-          (do (when (< (dist-to cur from) maxlen)
-                (doseq [n (neighbors ctx cur)]
-                  (Path/relax heap targets maxlen cur n)))
-              (recur (inc c))))))))
-
-(defn- node-map [n]
-  {:x (x-of n) :y (y-of n) :z (z-of n) :type (kind n)})
-
-(defn- reconstruct [^PathTarget t reached?]
-  (let [ns (loop [n (.node t) acc ()]
-             (if n (recur (came n) (conj acc n)) (vec acc)))]
-    {:nodes          (mapv node-map ns)
-     :target         [(.x t) (.y t) (.z t)]
+(defn- reconstruct [t reached?]
+  (let [c (Path/cells t)]
+    {:nodes          (mapv #(node-map c %) (range 0 (alength c) 4))
+     :target         (vec (Path/goal t))
      :reached?       reached?
-     :dist-to-target (if (empty? ns)
-                       (double Float/MAX_VALUE)
-                       (manhattan (peek ns) t))}))
+     :dist-to-target (Path/gap t)}))
 
 (defn- pick [targets reached?]
   (let [ps (mapv (fn [t] (reconstruct t reached?)) targets)
@@ -617,31 +325,14 @@
              (sort-by len ps)
              (sort-by (juxt :dist-to-target len) ps)))))
 
-(defn context
-  "Returns what one search over level lv knows about its mob.
-  The mob carries its size, its own malus and where it stands."
-  [lv mob]
-  (let [w (double (:width mob))
-        [px py pz] (:pos mob)
-        cell (fn [c] (long (Math/floor (double c))))]
-    {:chunks (:chunks lv)
-     :min-y  (chunk/level-min-y lv)
-     :nodes  (HashMap.)
-     :types  (HashMap.)
-     :mob    (assoc mob
-               :bb-w (long (Math/floor (+ w 1.0)))
-               :bb-h (long (Math/floor (inc (double (:height mob)))))
-               :block-pos [(cell px) (cell py) (cell pz)])}))
-
 (defn- search [lv mob goals maxlen reach mult]
   (let [ctx (context lv mob)
         from (start-node ctx)
         targets (targets-of goals)
         maxv (long (int (* (float max-visited-nodes) (float mult))))
-        heap (PathHeap.)]
-    (Path/start heap targets from)
-    (let [hit (run-search ctx heap from targets maxlen reach maxv)]
-      (if (seq hit) (pick hit true) (pick targets false)))))
+        arr (into-array PathTarget targets)
+        hit (Path/run (:search ctx) from arr maxlen reach maxv)]
+    (if hit (pick hit true) (pick targets false))))
 
 (defn find-path
   "Returns the path of a mob over level lv to the closest of the goal

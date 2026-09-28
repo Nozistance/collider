@@ -1,6 +1,7 @@
 (ns collider.game.mob.control
   "The move, jump and body rotation controls of a mob."
-  (:require [collider.vec :as v]
+  (:require [collider.game.entity :as entity]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider.game.mob Steer)
@@ -86,8 +87,8 @@
             m (Steer/driven m (* (double (:mult m)) attr) jump?)
             yaw (turned e xd zd)]
         (if jump?
-          (assoc e :yaw yaw :move m :jump true)
-          (assoc e :yaw yaw :move m))))))
+          (entity/with e {:yaw yaw :move m :jump true})
+          (entity/with e {:yaw yaw :move m}))))))
 
 (defn- jumping-tick [e ^double attr]
   (let [m (:move e)
@@ -128,12 +129,17 @@
     yaw))
 
 (defn- turned-body [e ^double yaw ^double hy ^long t]
-  (assoc e :yaw (rotate-if-necessary yaw hy max-head-y-rot)
-         :body {:head hy :at t}))
+  (entity/with e {:yaw (rotate-if-necessary yaw hy max-head-y-rot)
+                  :body {:head hy :at t}}))
 
 (defn- carried-head [e ^double yaw ^double hy ^long t]
   (let [h (rotate-if-necessary hy yaw max-head-y-rot)]
-    (assoc e :head-yaw h :body {:head h :at t})))
+    (entity/with e {:head-yaw h :body {:head h :at t}})))
+
+(defn- faced [e b yaw hy t]
+  (let [stable (- (long t) (long (:at b)))
+        yaw (faced-forward (double yaw) (double hy) stable)]
+    (entity/with e {:body b :yaw yaw})))
 
 (defn body-tick
   "Returns e with its body and head turned after its move.
@@ -143,10 +149,9 @@
   [e moved? ^long t]
   (let [hy (double (or (:head-yaw e) (:yaw e)))
         yaw (double (:yaw e))
-        b (or (:body e) {:head 0.0 :at (dec t)})
-        stable (- t (long (:at b)))]
+        b (or (:body e) {:head 0.0 :at (dec t)})]
     (cond
       moved? (carried-head e yaw hy t)
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
       (turned-body e yaw hy t)
-      :else (assoc e :body b :yaw (faced-forward yaw hy stable)))))
+      :else (faced e b yaw hy t))))

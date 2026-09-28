@@ -5,7 +5,8 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
-  (:import (java.util UUID)))
+  (:import (collider.game.entity.records Mob)
+           (java.util UUID)))
 
 (set! *warn-on-reflection* true)
 
@@ -78,21 +79,73 @@
      :experience-bottle) 0.2125
     1.19))
 
-(defn- put
-  "Returns e with k set to v, untouched when v is already there."
-  [e k v]
-  (if (identical? v (k e)) e (assoc e k v)))
+(def ^:private mob-fields (Mob/getBasis))
+
+(defn- field [e f] (list '. e (symbol (str "-" f))))
+
+(defn- same? [o vs]
+  `(and ~@(map (fn [[k s]] `(identical? ~s ~(field o (name k)))) vs)))
+
+(defn- rebuilt [o at]
+  `(new Mob ~@(map at mob-fields) (meta ~o) ~(field o "__extmap")))
+
+(defmacro with
+  "Returns entity e with the keys of the map kvs set to their values.
+  A mob takes them all in one copy and stays itself when it already
+  holds them. The keys are fields of Mob."
+  [e kvs]
+  (assert (every? (set (map keyword mob-fields)) (keys kvs)))
+  (let [x (gensym "e")
+        o (with-meta (gensym "m") {:tag `Mob})
+        vs (into {} (map (fn [[k _]] [k (gensym (name k))])) kvs)
+        at (fn [f] (get vs (keyword f) (field o f)))]
+    `(let [~x ~e ~@(mapcat (fn [[k v]] [(vs k) v]) kvs)]
+       (if (instance? Mob ~x)
+         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o at)))
+         (assoc ~x ~@(mapcat identity vs))))))
+
+(defn- filled [e]
+  (let [put (fn [i f] `(aset ~i ~(field e f)))]
+    `(doto (object-array ~(count mob-fields))
+       ~@(map-indexed put mob-fields))))
+
+(defn- put-field [a x k v]
+  (let [set (fn [i f] [(keyword f) `(do (aset ~a ~i ~v) ~x)])]
+    `(case ~k
+       ~@(apply concat (map-indexed set mob-fields))
+       (assoc ~x ~k ~v))))
+
+(defmacro ^:private mob-merger []
+  (let [e (with-meta (gensym "e") {:tag `Mob})
+        a (with-meta (gensym "a") {:tag 'objects})
+        [m x k v] (map gensym ["m" "x" "k" "v"])
+        got (fn [i] `(aget ~a ~i))
+        f `(fn [~x ~k ~v] ~(put-field a x k v))]
+    `(fn [~e ~m]
+       (let [~a ~(filled e)
+             ext# (reduce-kv ~f ~(field e "__extmap") ~m)]
+         (new Mob ~@(map got (range (count mob-fields))) (meta ~e)
+              ext#)))))
+
+(def ^:private mob-merged (mob-merger))
+
+(defn merged
+  "Returns entity e with the map m merged into it."
+  [e m]
+  (if (and (instance? Mob e) (< 1 (count m)))
+    (mob-merged e m)
+    (merge e m)))
 
 (defn mob-moved
   "Returns the mob e after a step of its own movement."
   [e pos vel on-ground yaw wet? jump-cd]
-  (-> e (put :pos pos) (put :vel vel) (put :on-ground on-ground)
-      (put :yaw yaw) (put :wet? wet?) (put :jump-cd jump-cd)))
+  (with e {:pos pos :vel vel :on-ground on-ground :yaw yaw :wet? wet?
+           :jump-cd jump-cd}))
 
 (defn mob-looked
   "Returns the mob e turned towards what it looks at."
   [e head-yaw pitch look]
-  (-> e (put :head-yaw head-yaw) (put :pitch pitch) (put :look look)))
+  (with e {:head-yaw head-yaw :pitch pitch :look look}))
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 

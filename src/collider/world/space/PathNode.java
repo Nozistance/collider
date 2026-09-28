@@ -1,12 +1,8 @@
 package collider.world.space;
 
-import clojure.lang.Keyword;
-
 /// A cell of one path search with its scores and its place in the
 /// open set. The scores hold float values.
 public final class PathNode {
-
-    private static final Object BLOCKED = Keyword.intern("blocked");
 
     public final long x;
 
@@ -22,7 +18,7 @@ public final class PathNode {
     int heapIdx = -1;
     private boolean closed;
     PathNode came;
-    private Object type = BLOCKED;
+    int kind;
 
     /// Makes the node of the cell `x`, `y`, `z`, of type blocked and
     /// out of the open set.
@@ -45,12 +41,14 @@ public final class PathNode {
         malus = fl(m);
     }
 
-    public Object type() {
-        return type;
+    /// Returns the path type of the cell, as its place in the order
+    /// the game declares them.
+    public int kind() {
+        return kind;
     }
 
-    public void setType(Object t) {
-        type = t;
+    public void setKind(int t) {
+        kind = t;
     }
 
     /// Returns true when the search is done with the node.

@@ -391,7 +391,7 @@
 (defn- idle-count [world e]
   (if (sense/player-within? world (:pos e) idle-reset-sq watcher?)
     0
-    (inc (long (or (:no-action e) 0)))))
+    (long (or (:no-action e) 0))))
 
 (def ^:private flag-bits
   "The bit of each goal flag, as Goal.Flag orders them."
@@ -427,8 +427,10 @@
   Goals run on every second tick, and eid decides which. A goal that
   wants every tick gets every tick."
   [spec world eid e t tempters]
-  (let [n (idle-count world e)
-        e (if (identical? n (:no-action e)) e (assoc e :no-action n))]
+  (let [n (inc (long (idle-count world e)))
+        e (if (== n (long (or (:no-action e) 0)))
+            e
+            (assoc e :no-action n))]
     (GoalSelector/think spec world eid e t tempters
                         (even? (+ (long t) (long eid))))))
 
