@@ -52,18 +52,30 @@
 (defn- parent-dir ^Path [^Path target]
   (or (.getParent target) (.toPath (io/file "."))))
 
-(defn- write-atomically! ^long [file ^bytes data]
-  (let [^Path target (.toPath (io/file file))
-        dir (parent-dir target)]
+(defn- placed! ^Path [^Path target ^bytes data check]
+  (let [dir (parent-dir target)]
     (Files/createDirectories dir no-attrs)
     (let [tmp (temp-file dir)]
       (try
         (write-bytes! tmp data)
-        (move-atomically! tmp target)
+        (check (Files/readAllBytes tmp))
+        tmp
         (catch Throwable t
           (Files/deleteIfExists tmp)
-          (throw t))))
-    (alength data)))
+          (throw t))))))
+
+(defn- write-atomically!
+  (^long [file data] (write-atomically! file data (fn [_]) (fn [])))
+  (^long [file ^bytes data check before-move]
+   (let [^Path target (.toPath (io/file file))
+         tmp (placed! target data check)]
+     (try
+       (before-move)
+       (move-atomically! tmp target)
+       (catch Throwable t
+         (Files/deleteIfExists tmp)
+         (throw t)))
+     (alength data))))
 
 (defn- dim-dir ^File [dir dim]
   (io/file dir (name dim)))
@@ -75,20 +87,50 @@
 (defn- meta-file ^File [dir]
   (io/file dir "meta.edn"))
 
-(defn- backup-meta! [dir]
-  (let [^Path f (.toPath (meta-file dir))
-        opts [StandardCopyOption/REPLACE_EXISTING]]
-    (when (Files/isRegularFile f no-links)
-      (Files/copy f (.resolveSibling f "meta.edn.bak")
-                  ^CopyOption/1 (into-array CopyOption opts)))))
+(defn- bak-file ^File [dir]
+  (io/file dir "meta.edn.bak"))
+
+(defn- corrupt-name ^Path [^Path p]
+  (let [base (str (.getFileName p) ".corrupt")
+        named (fn [s] (.resolveSibling p (str base s)))]
+    (->> (cons "" (map #(str "." %) (iterate inc 1)))
+         (map named)
+         (remove #(Files/exists % no-links))
+         first)))
+
+(defn- set-aside! ^Path [^Path p]
+  (let [target (corrupt-name p)]
+    (Files/move p target ^CopyOption/1 (make-array CopyOption 0))
+    target))
+
+(defn- kept-aside [^Throwable t ^Path aside]
+  (ex-info (str (.getMessage t) ", kept as " (.getFileName aside))
+           {:file (str aside)} t))
+
+(defn- thawed [^Path p ^bytes data]
+  (try (nippy/thaw data)
+       (catch Throwable t
+         (throw (kept-aside t (set-aside! p))))))
 
 (defn- read-frozen [^File f]
   (when (.isFile f)
-    (nippy/thaw (Files/readAllBytes (.toPath f)))))
+    (let [p (.toPath f)]
+      (thawed p (Files/readAllBytes p)))))
+
+(defn- edn-of [^bytes data]
+  (let [v (edn/read-string (String. data "UTF-8"))]
+    (if (map? v)
+      v
+      (throw (ex-info (str "holds " (pr-str (type v)) " not a map")
+                      {})))))
 
 (defn- read-edn [^File f]
-  (when (.isFile f)
-    (edn/read-string (slurp f))))
+  (edn-of (Files/readAllBytes (.toPath f))))
+
+(defn- readable? [^File f]
+  (and (.isFile f)
+       (try (read-edn f) true
+            (catch Throwable _ false))))
 
 (defn- spaces ^String [^long n] (apply str (repeat n " ")))
 
@@ -133,11 +175,55 @@
   (into {} (for [[dim lm] levels]
              [dim (assoc lm :stored (stored-ids dir dim))])))
 
+(defn- bak-line [dir]
+  (let [f (bak-file dir)]
+    (cond (readable? f) "meta.edn.bak can be read"
+          (.isFile f) "meta.edn.bak cannot be read either"
+          :else "there is no meta.edn.bak")))
+
+(defn- restore-command [dir]
+  (if (readable? (bak-file dir))
+    (str "Copy meta.edn.bak over meta.edn in " dir
+         " to start one save back, or move " dir " away")
+    (str "Repair meta.edn in " dir " or move " dir " away")))
+
+(defn- unreadable [dir why]
+  (ex-info "unreadable meta"
+           {:what    "the saved world cannot be read"
+            :why     [(str "meta.edn in " dir " " why) (bak-line dir)
+                      "nothing was changed on disk"]
+            :command (restore-command dir)}))
+
+(defn- saved-before? [dir]
+  (or (.isFile (bak-file dir))
+      (some #(seq (chunk-files dir %)) schema/dims)))
+
+(defn- checked-meta [dir]
+  (try (read-edn (meta-file dir))
+       (catch Throwable t
+         (let [why (str "cannot be read, " (.getMessage t))]
+           (throw (unreadable dir why))))))
+
+(defn- read-meta-file [dir]
+  (cond (.isFile (meta-file dir)) (checked-meta dir)
+        (saved-before? dir) (throw (unreadable dir "is missing"))
+        :else nil))
+
 (defn- read-store [dir]
   (let [^File d (io/file dir)]
     (when (.isDirectory d)
-      (when-let [m (read-edn (meta-file d))]
+      (when-let [m (read-meta-file d)]
         (update m :levels #(with-stored d %))))))
+
+(defn- backup-meta! [dir]
+  (let [f (meta-file dir)]
+    (when (readable? f)
+      (let [data (Files/readAllBytes (.toPath f))]
+        (write-atomically! (bak-file dir) data)))))
+
+(defn- write-meta! [dir m]
+  (write-atomically! (meta-file dir) (edn-bytes m) edn-of
+                     #(backup-meta! dir)))
 
 (extend-type FileStore
   Store
@@ -146,9 +232,7 @@
                        (nippy/freeze payload freeze-opts)))
   (get-chunk [{:keys [dir]} dim id]
     (read-frozen (chunk-file dir dim id)))
-  (put-meta! [{:keys [dir]} m]
-    (backup-meta! dir)
-    (write-atomically! (meta-file dir) (edn-bytes m)))
+  (put-meta! [{:keys [dir]} m] (write-meta! dir m))
   (load [{:keys [dir]}] (read-store dir))
   (flush! [_] nil))
 
@@ -233,18 +317,11 @@
                     {:what (str "snapshot " store " has bad meta")
                      :why  (map #(complaint m %) errors)}))))
 
-(defn- read-meta [store]
-  (try (load store)
-       (catch Throwable t
-         (log/warn "snapshot: read failed" (str store)
-                   "-" (.getMessage t))
-         nil)))
-
 (defn load-snapshot
   "Returns the world store holds, or nil when it holds none.
-  Throws when its meta breaks the schema."
+  Throws when its meta cannot be read or breaks the schema."
   [store]
-  (when-let [m (read-meta store)]
+  (when-let [m (load store)]
     (check-meta! store m)
     (world-of m)))
 
@@ -338,7 +415,7 @@
   (try (get-chunk store dim id)
        (catch Throwable t
          (log/warn (chunk-name id) "could not be read and"
-                   "starts over as a new chunk -" (.getMessage t))
+                   "starts over as a new chunk," (.getMessage t))
          nil)))
 
 (defn- read-chunk [saver store dim id]

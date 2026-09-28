@@ -140,20 +140,35 @@
        (state/idle? (get-in world [:levels dim]))
        (not (awaited? world dim))))
 
-(defn- server-job [s [view d]]
-  #(deltas/with-dim (deltas/run [(fn [] (s view d))]) nil))
+(defn- skipped! [world s dim ^Throwable t]
+  (let [unit (log/name-of s)
+        msg (str "system " unit " failed in " (name (or dim :server))
+                 ", its deltas this tick are dropped")]
+    (log/failure! unit msg t)
+    (some-> (:failures world) (swap! conj [unit t]))))
 
-(defn- job [lv d server dim s]
+(defn- guarded [world s dim f]
+  (fn []
+    (try (deltas/run [f])
+         (catch Throwable t
+           (skipped! world s dim t)
+           deltas/empty-deltas))))
+
+(defn- server-job [world s [view d]]
+  (let [f (guarded world s nil #(s view d))]
+    #(deltas/with-dim (f) nil)))
+
+(defn- job [world lv d server dim s]
   (if (server-systems s)
-    (when (= home dim) (server-job s @server))
-    #(s lv d)))
+    (when (= home dim) (server-job world s @server))
+    (guarded world s dim #(s lv d))))
 
 (defn- level-deltas [world ds server phase dim]
   (if (asleep? world dim)
     deltas/empty-deltas
     (let [lv (assoc (state/level world dim) :server world)
           d (get ds dim)
-          jobs (into [] (keep #(job lv d server dim %)) phase)]
+          jobs (into [] (keep #(job world lv d server dim %)) phase)]
       (deltas/with-dim (deltas/run jobs) dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
@@ -250,10 +265,12 @@
     (reduce (fn [acc dim] (step acc dim (pd dim))) [world ds] dims)))
 
 (defn tick
-  "Returns the world and the deltas after one tick of the events."
-  [world events]
-  (let [[world' ds] (reduce run-phase (begin world events) phases)]
-    [world' (merged ds)]))
+  "Returns the world and the deltas after one tick of the events.
+  A system that fails gives no deltas this tick, the others go on."
+  ([world events] (tick world events phases))
+  ([world events phases]
+   (let [[world' ds] (reduce run-phase (begin world events) phases)]
+     [world' (merged ds)])))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 
@@ -336,11 +353,14 @@
       (cond-> perf (assoc :perf perf)
               io (merge io))))
 
-(defn- safe-tick [world events]
-  (try (tick world events)
+(def ^:private ^:const crash-streak 20)
+
+(defn- safe-tick [world events phases]
+  (try (tick world events phases)
        (catch Throwable t
-         (log/error-with "tick error:" t)
-         [world deltas/empty-deltas])))
+         (log/failure! ::tick "tick failed, its events retry once" t)
+         (swap! (:failures world) conj ["the tick" t])
+         nil)))
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (deltas/out-of deltas))
@@ -348,34 +368,68 @@
     (try (deliver! world deltas)
          (catch Throwable t (log/error-with "deliver error:" t)))))
 
-(defn- run-tick! [world-atom ^ConcurrentLinkedQueue queue deliver!
-                  perf io-input]
-  (let [events (drain! queue)
-        world (tick-input world-atom perf (when io-input (io-input)))
-        [world' deltas] (safe-tick world events)]
-    (reset! world-atom world')
-    (send-out! deliver! world' deltas)))
+(defn- ticked-world [world-atom perf {:keys [io-input]}]
+  (-> (tick-input world-atom perf (when io-input (io-input)))
+      (assoc :failures (atom []))))
+
+(defn- run-tick! [{:keys [carried]} world-atom queue deliver! perf
+                  opts]
+  (let [fresh (drain! queue)
+        world (ticked-world world-atom perf opts)
+        events (into @carried fresh)
+        done (safe-tick world events (:phases opts phases))]
+    (if-let [[world' deltas] done]
+      (do (reset! carried [])
+          (reset! world-atom (dissoc world' :failures))
+          (send-out! deliver! world' deltas))
+      (reset! carried fresh))
+    @(:failures world)))
+
+(defn- streaks [old failures]
+  (let [n #(inc (long (first (old % [0]))))]
+    (into {} (map (fn [[unit t]] [unit [(n unit) t]])) failures)))
+
+(defn- crashing [streaks]
+  (some (fn [[unit [n t]]]
+          (when (<= crash-streak (long n)) [unit n t]))
+        streaks))
+
+(defn- crash! [{:keys [^AtomicBoolean running]} opts [unit n t]]
+  (log/error "**** THE SERVER CRASHED!")
+  (log/error unit "failed" n "ticks in a row")
+  (log/error-with "its last failure" t)
+  (log/error "saving the world and stopping")
+  (.set running false)
+  (when-let [f (:on-crash opts)] (f {:unit unit :ticks n :cause t})))
+
+(defn- supervised! [st opts failures]
+  (let [s (swap! (:streaks st) streaks failures)]
+    (when-let [c (crashing s)] (crash! st opts c))))
 
 (defn- ticker-state [_cfg]
   {:window  (long-array window-size)
    :counter (AtomicLong. 0)
-   :stamps  (long-array tps-window)})
+   :stamps  (long-array tps-window)
+   :carried (atom [])
+   :streaks (atom {})
+   :running (AtomicBoolean. true)})
 
 (defn- perf-of [{:keys [window counter ^longs stamps]} i t0 tps]
   (when (zero? (rem (long i) 20))
     (let [base (or (percentiles window counter) {})]
       (assoc base :tps (tps-of stamps i t0 tps)))))
 
-(defn- one-tick! [{:keys [window counter]} world-atom queue deliver!
-                  perf t0 io-input]
-  (run-tick! world-atom queue deliver! perf io-input)
-  (record! window counter (- (System/nanoTime) t0)))
+(defn- one-tick! [{:keys [window counter] :as st} world-atom queue
+                  deliver! perf t0 opts]
+  (let [failures (run-tick! st world-atom queue deliver! perf opts)]
+    (record! window counter (- (System/nanoTime) t0))
+    (supervised! st opts failures)))
 
 (defn- timed-tick! [st i perf world-atom queue deliver! opts]
   (let [t0 (System/nanoTime)
         p (or (perf-of st i t0 20) perf)]
     (aset ^longs (:stamps st) (int (rem (long i) tps-window)) t0)
-    (one-tick! st world-atom queue deliver! p t0 (:io-input opts))
+    (one-tick! st world-atom queue deliver! p t0 opts)
     p))
 
 (defn- running? [^AtomicBoolean running] (.get running))
@@ -401,12 +455,13 @@
 (defn start-ticker!
   "Starts a ticker of world-atom on the events from queue.
   It gives the deltas of each tick to deliver!. Returns a handle for
-  the stop."
+  the stop. A unit that fails twenty ticks in a row stops the ticker
+  and calls the :on-crash of opts."
   ([world-atom queue deliver!]
    (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
    (let [st (ticker-state opts)
-         running (AtomicBoolean. true)
+         running (:running st)
          thread (ticker-thread
                   st running world-atom queue deliver! opts)]
      {:thread  thread

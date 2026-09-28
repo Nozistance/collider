@@ -15,6 +15,7 @@
             [collider.game.schema :as schema]
             [collider.game.stack :as stack]
             [collider.game.deltas :as deltas]
+            [collider.log :as log]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.climb :as climb]
@@ -877,12 +878,24 @@
     (seq resends) (assoc :resends resends)
     (< (count heeded) (count input)) (assoc :heeded heeded)))
 
+(defn dropped!
+  "Logs that event ev failed in unit f and is dropped."
+  [f ev ^Throwable t]
+  (let [unit (log/name-of f)
+        msg (str "event " (pr-str ev) " failed in " unit
+                 ", the event is dropped")]
+    (log/failure! unit msg t)))
+
+(defn- heard-event [w acc d]
+  (try (when (heeded? w d)
+         (let [w' (apply-event w d)] [w' (heard acc w w' d)]))
+       (catch Throwable t (dropped! #'apply-event d t))))
+
 (defn- applied-input [world input]
   (loop [w world acc unheard xs (seq input)]
     (if-let [d (first xs)]
-      (if (heeded? w d)
-        (let [w' (apply-event w d)]
-          (recur w' (heard acc w w' d) (next xs)))
+      (if-let [[w' acc'] (heard-event w acc d)]
+        (recur w' acc' (next xs))
         (recur w acc (next xs)))
       (remembered w input acc))))
 
@@ -1190,18 +1203,29 @@
   (let [d (deltas-of deltas)]
     [(apply world d) d]))
 
+(defn slot-part
+  "Returns the slot deltas of event ev, none when they fail.
+  A failed event keeps this part in every fold of the tick."
+  [world ev]
+  (try (slot-deltas world ev)
+       (catch Throwable _ nil)))
+
+(defn- event-deltas [f w x ev]
+  (try (vec (f w x))
+       (catch Throwable t (dropped! f ev t) [])))
+
 (defn fold-events
   "Returns the deltas f gives for each event in order.
   Each event sees the world after the events and slot events
-  before it."
+  before it. An event that f fails on gives no deltas."
   ([world events f] (fold-events world events f identity))
   ([world events f event-of]
    (loop [w world evs (seq events) acc []]
      (if-not evs
        acc
-       (let [x (first evs) more (next evs)
-             w (apply-entities w (slot-deltas w (event-of x)))
-             ds (vec (f w x))
+       (let [x (first evs) more (next evs) ev (event-of x)
+             w (apply-entities w (slot-part w ev))
+             ds (event-deltas f w x ev)
              step? (and more (seq ds))]
          (recur (if step? (first (apply-deltas w ds)) w)
                 more (into acc ds)))))))

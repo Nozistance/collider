@@ -26,7 +26,10 @@
     (sort-by key (group-by eid-of (filter own? events)))))
 
 (defn- one-deltas [world ev]
-  (into [] (mapcat (fn [f] (f world ev))) own-systems))
+  (try (into [] (mapcat (fn [f] (f world ev))) own-systems)
+       (catch Throwable t
+         (state/dropped! #'one-deltas ev t)
+         (vec (state/slot-part world ev)))))
 
 (defn- fold-deltas [world events]
   (loop [w world evs (seq events) acc []]

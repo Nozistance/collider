@@ -168,7 +168,7 @@
         save! (when saver
                 #(snapshot/request-save! saver store @world))]
     {:settings (atom cfg) :opts opts :store store :saved saved
-     :world world :saver saver :save! save!}))
+     :world world :saver saver :save! save! :handle (promise)}))
 
 (defn- open-net [{:keys [settings world save!]}]
   (let [queue (ConcurrentLinkedQueue.)
@@ -188,10 +188,18 @@
     #(hash-map :writable (server/writable-eids conns)
                :read-chunk read)))
 
+(declare halt!)
+
+(defn- on-crash [handle]
+  (fn [_]
+    (let [exit! (fn [code] (System/exit code))]
+      (Thread/startVirtualThread ^Runnable #(halt! @handle exit!)))))
+
 (defn- ticker-opts [base conns]
   {:io-input (io-input base conns)
    :settings (:settings base)
-   :on-pause (:save! base)})
+   :on-pause (:save! base)
+   :on-crash (on-crash (:handle base))})
 
 (defn- period-change [saving]
   (fn [old new]
@@ -260,6 +268,11 @@
        (catch BindException _
          (throw (port-taken (:port @(:settings base)))))))
 
+(defn- hooked [{:keys [handle]} server]
+  (let [s (assoc server :shutdown-hook (shutdown-hook! server))]
+    (deliver handle s)
+    s))
+
 (defn start
   "Starts the server on the configured port and returns its handle."
   [opts]
@@ -273,7 +286,7 @@
           server (merge held net clocks)
           port (.getLocalPort ^ServerSocket (:socket net))]
       (report {:event :ready :port port :took (uptime)})
-      (assoc server :shutdown-hook (shutdown-hook! server)))))
+      (hooked base server))))
 
 (defn stop
   "Stops a running server and everything it started."
@@ -286,6 +299,12 @@
   (shutdown! server)
   (log/info "server stopped")
   nil)
+
+(defn- halt!
+  "Stops a server whose tick crashed, then exits with code 1."
+  [server exit!]
+  (stop server)
+  (exit! 1))
 
 (defn- run! [opts]
   (try (start (assoc opts :report cli/render!))

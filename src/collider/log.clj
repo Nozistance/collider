@@ -73,6 +73,36 @@
     (error msg (str t))
     (run! emit! (rest (str/split-lines (str sw))))))
 
+(defn name-of
+  "Returns the name of var or function f for a log line."
+  ^String [f]
+  (if (var? f)
+    (str (symbol f))
+    (Compiler/demunge (.getName (class f)))))
+
+(def ^:private ^:const quiet-ms 60000)
+
+(defonce ^:private failures (atom {}))
+
+(defn- tallied [^long now entry]
+  (if (or (nil? entry) (<= quiet-ms (- now (long (:at entry)))))
+    {:at now :n 0}
+    (update entry :n inc)))
+
+(defn failure!
+  "Logs that unit failed with t, with the stack trace the first time.
+  The same failure again within a minute is only counted. The count
+  shows with the next line logged for it."
+  [unit msg ^Throwable t]
+  (let [now (System/currentTimeMillis)
+        k [unit (class t)]
+        [old new] (swap-vals! failures update k #(tallied now %))
+        before (get old k)]
+    (when (zero? (long (:n (get new k))))
+      (if before
+        (error msg (str t) "and" (:n before) "more times since")
+        (error-with msg t)))))
+
 (defn seconds
   "Returns a duration in nanoseconds as `(1.2s)`."
   ^String [^long nanos]
