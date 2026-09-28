@@ -107,7 +107,9 @@
   "Returns the synched fields an entity would show a client."
   [e]
   (let [m (own-metadata e) fx (:effects e)]
-    (if (seq fx) (merge m (effect-metadata e fx)) m)))
+    (cond (seq fx) (merge m (effect-metadata e fx))
+          (:ambience e) (assoc m :effect-ambience true)
+          :else m)))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))

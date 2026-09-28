@@ -190,4 +190,5 @@
       :else
       (of (-> (merge (defaults k) (select-keys m (kept k)))
               (merge (loaded-base m) (fresh k) {:type (:type m)})
-              (kind-extras k m tick))))))
+              (kind-extras k m tick)
+              (assoc :born (long tick)))))))

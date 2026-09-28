@@ -393,7 +393,8 @@
         tick (:tick w)]
     (-> w
         (assoc-in [:entities eid]
-                  (-> e (awaiting-join tick) (load-awaited tick)))
+                  (-> e (awaiting-join tick) (load-awaited tick)
+                      (assoc :born tick)))
         (assoc-in [:players name] eid)
         (update :spawning dissoc eid))))
 
@@ -742,12 +743,21 @@
         flying (and may? (boolean (:flying changes)))]
     (apply-move w eid {:flying flying})))
 
-(def ^:private entity-actions
-  {0 [:leave-bed? true] 1 [:sprinting? true] 2 [:sprinting? false]})
+(defn- sprinted
+  "Returns player e sprinting or not. The sprint modifier comes off
+  its movement speed and goes back on when it sprints, which leaves
+  the attribute to sync unless it was not sprinting and does not.
+  This is LivingEntity.setSprinting."
+  [e on?]
+  (cond-> (assoc e :sprinting? on?)
+    (or on? (:sprinting? e))
+    (update :dirty-attributes (fnil conj #{}) :movement-speed)))
 
 (defn- entity-action [w eid action]
-  (if-let [[k v] (entity-actions (long action))]
-    (update-entity w eid assoc k v)
+  (case (long action)
+    0 (update-entity w eid assoc :leave-bed? true)
+    1 (update-entity w eid sprinted true)
+    2 (update-entity w eid sprinted false)
     w))
 
 (def input-apply
@@ -996,7 +1006,8 @@
 (defn- spawned [w spec]
   (let [eid (long (:next-eid w 1000000))]
     (-> w
-        (assoc-in [:entities eid] (entity/of spec))
+        (assoc-in [:entities eid]
+                  (entity/of (assoc spec :born (:tick w))))
         (assoc :next-eid (inc eid)))))
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]

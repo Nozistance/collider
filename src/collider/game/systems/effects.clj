@@ -152,15 +152,15 @@
     :updated (own acc (out/mob-effect (:eid acc) k i false))
     :gone (dropped acc k)))
 
-(defn- acted-on [tick acc k i]
-  (let [c (if (effect/endless? i) tick (long (:duration i)))
+(defn- acted-on [lived acc k i]
+  (let [c (if (effect/endless? i) lived (long (:duration i)))
         a (long (:amplifier i))]
     (if (effect/due? k c a) (acted acc k a) [true acc])))
 
-(defn- ticked [tick acc [k i]]
+(defn- ticked [lived acc [k i]]
   (if-not (effect/remaining? i)
     (dropped acc k)
-    (let [[kept? acc] (acted-on tick acc k i)
+    (let [[kept? acc] (acted-on lived acc k i)
           [i' evs] (effect/stepped i)]
       (if kept?
         (reduce #(event %1 k i' %2) (put-fx acc k i') evs)
@@ -176,29 +176,56 @@
   (let [a (:absorption (:e acc))]
     (when (not= a (:absorption e0)) {:absorption a})))
 
+(defn- ambience-kept
+  "The ambience the entity data keeps once the last effect is gone."
+  [acc e0]
+  (let [fx0 (:effects e0)]
+    (when (and (:changed? acc) (empty? (:fx acc)) (seq fx0))
+      {:ambience (effect/all-ambient? fx0)})))
+
 (defn deltas
   "Returns the deltas of the account against entity e0 it began at."
   [acc e0]
   (let [acc (refreshed acc)
         m (merge (when (:changed? acc) {:effects (:fx acc)})
-                 (absorption-change acc e0))]
+                 (absorption-change acc e0)
+                 (ambience-kept acc e0))]
     (concat (when (seq m) [[:merge-entity (:eid acc) m]])
             (:ds acc)
             (attribute-deltas acc))))
 
 (defn step
-  "Returns the account after one tick of its effects at game tick
-  tick. This is LivingEntity.tickEffects."
-  [acc tick]
-  (reduce #(ticked (long tick) %1 %2)
+  "Returns the account after one tick of its effects, its entity
+  lived ticks old. This is LivingEntity.tickEffects."
+  [acc lived]
+  (reduce #(ticked (long lived) %1 %2)
           acc (effect/in-order (:fx acc))))
 
+(defn- lived
+  "Returns how many ticks entity e has lived in the world at its
+  tick. This is Entity.tickCount."
+  ^long [world e]
+  (- (long (:tick world)) (long (or (:born e) 0))))
+
+(defn- synced
+  "Returns the account with the attributes entity e left to sync
+  since the last tick, and the deltas that clear them."
+  [acc e]
+  (if-let [ks (:dirty-attributes e)]
+    (-> acc
+        (update :dirty into ks)
+        (update :ds conj
+                [:merge-entity (:eid acc) {:dirty-attributes nil}]))
+    acc))
+
 (defn- entity-deltas [world [eid e]]
-  (deltas (step (account eid e) (:tick world)) e))
+  (deltas (step (synced (account eid e) e) (lived world e)) e))
+
+(defn- due? [e]
+  (and (or (seq (:effects e)) (:dirty-attributes e)) (living? e)))
 
 (defn- affected [world]
-  (filter (fn [[_ e]] (and (seq (:effects e)) (living? e)))
-          (:entities world)))
+  (filter (fn [[_ e]] (due? e)) (:entities world)))
 
 (defn effects
   "Returns a step that ticks the effects of every living entity."

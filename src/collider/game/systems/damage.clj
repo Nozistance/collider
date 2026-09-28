@@ -634,15 +634,16 @@
         :when (contains? (:tracking o) eid)]
     [:tracking oid [] [eid]]))
 
-(defn- fresh-marks [e]
+(defn- fresh-marks [e tick]
   (cond-> {:health player-health :health-sent player-health
-           :hurt-resist 0 :last-damage 0.0 :death-time 0}
+           :hurt-resist 0 :last-damage 0.0 :death-time 0
+           :born tick :ambience nil}
     (seq (:effects e)) (assoc :effects {})
     (:absorption e) (assoc :absorption nil)))
 
-(defn- revived [eid e pos yaw pitch]
+(defn- revived [eid e pos yaw pitch tick]
   [[:teleport eid pos]
-   [:merge-entity eid (fresh-marks e)]
+   [:merge-entity eid (fresh-marks e tick)]
    (out/to eid (out/respawn))
    (out/to eid (out/teleport pos yaw pitch))
    (out/to eid (out/health player-health))
@@ -661,7 +662,7 @@
   (let [e (get-in world [:entities eid])
         inv (apply dissoc (:inventory e) (range 5))]
     (cond-> (into (vec (containers/removed-deltas world eid e))
-                  (revived eid e pos yaw pitch))
+                  (revived eid e pos yaw pitch (:tick world)))
       (seq inv) (conj (out/to eid (own-slots inv)))
       lost? (conj (out/to eid not-valid))
       true (into (reshow-deltas world eid)))))

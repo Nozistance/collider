@@ -918,11 +918,12 @@
 
 (defn- join-player-packets [eid e]
   (let [[entity block] (game-mode/reach-attributes e)
-        speed (attribute/modifiers e (:effects e) :movement-speed)]
+        speed (attribute/modifiers e (:effects e) :movement-speed)
+        base (get (attribute/base-values e) :movement-speed)]
     (into [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
            {:packet :set-experience :progress 0.0 :level 0 :total 0}
            {:packet     :update-attributes :eid eid
-            :attributes [entity [:movement-speed 0.1 speed] block]}]
+            :attributes [entity [:movement-speed base speed] block]}]
           (effect-packets eid e))))
 
 (defn- join-packets [world lv eid]

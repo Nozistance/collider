@@ -1,6 +1,7 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.attribute :as attribute]
+            [collider.game.game-mode :as game-mode]
             [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -139,6 +140,12 @@
 
 (def ^:private ^:const gravity 0.08)
 
+(def ^:private ^:const slow-fall-gravity 0.01)
+
+(def ^:private ^:const levitation-rise 0.05)
+
+(def ^:private ^:const jump-boost (double (float 0.1)))
+
 (def ^:private ^:const jump-strength (double (float 0.42)))
 
 (def ^:private ^:const min-jump (double (float 1.0E-5)))
@@ -227,8 +234,32 @@
       e
       (entity/mob-looked e hy hp look))))
 
+(defn- fall-gravity
+  "Returns the gravity mob e falls by at vertical speed vy. This is
+  LivingEntity.getEffectiveGravity."
+  ^double [e ^double vy]
+  (if (and (<= vy 0.0) (contains? (:effects e) :slow-falling))
+    (Math/min gravity slow-fall-gravity)
+    gravity))
+
+(defn- levitation [e] (get (:effects e) :levitation))
+
+(defn- lifted
+  "Returns vertical speed vy of mob e after gravity or levitation,
+  as LivingEntity.travelInAir does."
+  ^double [e ^double vy]
+  (if-let [l (levitation e)]
+    (let [a (double (inc (long (:amplifier l))))]
+      (+ vy (* (- (* levitation-rise a) vy) 0.2)))
+    (- vy (fall-gravity e vy))))
+
 (def ^:private rest-vel
   (v/v3 0.0 (* (- 0.0 gravity) vertical-drag) 0.0))
+
+(defn- rest-vel-of [e]
+  (if (:effects e)
+    (v/v3 0.0 (* (- 0.0 (fall-gravity e 0.0)) vertical-drag) 0.0)
+    rest-vel))
 
 (defn- dead-band ^double [^double a]
   (if (< (Math/abs a) 0.003) 0.0 a))
@@ -240,12 +271,13 @@
                     (not fluid?) (not (:jump e))
                     (zero? (v/x vel)) (zero? (v/z vel))
                     (neg? (v/y vel)))]
-    (and still?
+    (and still? (nil? (levitation e))
          (phys/standing-on-cubes? (:chunks world) x y z half))))
 
 (defn- rest-step [e t]
   (control/body-tick
-    (entity/mob-moved e (:pos e) rest-vel true (:yaw e) false nil)
+    (entity/mob-moved e (:pos e) (rest-vel-of e) true (:yaw e) false
+                      nil)
     false (long t)))
 
 (defn- speed-of ^double [e] (double (:speed (:move e) 0.0)))
@@ -313,40 +345,42 @@
         u (phys/vel mv)]
     [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) f)
-           (* (- (v/y u) gravity) vertical-drag)
+           (* (lifted e (v/y u)) vertical-drag)
            (* (* (v/z u) sf) f))
      (phys/on-ground? mv) sup nb?]))
 
 (defn- travel-water [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
+        g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         u (phys/vel mv)
-        vy (fluid-fall gravity falling? (* (v/y u) water-slowdown))
+        vy (fluid-fall g falling? (* (v/y u) water-slowdown))
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
      (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
      (phys/on-ground? mv) sup nb?]))
 
-(defn- lava-slowed [x y z falling? shallow?]
+(defn- lava-slowed [x y z g falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
     (if shallow?
-      (v/v3 x (fluid-fall gravity falling? (* y water-slowdown)) z)
+      (v/v3 x (fluid-fall g falling? (* y water-slowdown)) z)
       (v/v3 x (* y 0.5) z))))
 
 (defn- travel-lava [world e vel half height shallow?]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
+        g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         u (phys/vel mv)
         w (lava-slowed (* (v/x u) sf) (v/y u) (* (v/z u) sf)
-                       falling? shallow?)
-        w (v/v3 (v/x w) (- (v/y w) (/ gravity 4.0)) (v/z w))]
+                       g falling? shallow?)
+        w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
      (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
      (phys/on-ground? mv) sup nb?]))
@@ -359,8 +393,16 @@
                      (<= (double lava) (double threshold)))
         :else (travel-air world e vel half height og?)))
 
-(defn- jump-power ^double [world pos sup]
-  (fmul jump-strength (jump-factor world pos sup)))
+(defn- boost-power ^double [e]
+  (if-let [b (get (:effects e) :jump-boost)]
+    (fmul jump-boost (double (float (inc (long (:amplifier b))))))
+    0.0))
+
+(defn- jump-power
+  "Returns how hard mob e jumps. This is LivingEntity.getJumpPower."
+  ^double [world e]
+  (let [f (jump-factor world (:pos e) (:support e))]
+    (double (float (+ (fmul jump-strength f) (boost-power e))))))
 
 (defn- jump-off [vel ^double p]
   (if (<= p min-jump)
@@ -381,7 +423,7 @@
       float-w? [(fluid-jumped vel) false]
       float-l? [(fluid-jumped vel) false]
       (and (or og? (and in-w? (<= fh thr))) ready?)
-      [(jump-off vel (jump-power world (:pos e) (:support e))) true]
+      [(jump-off vel (jump-power world e)) true]
       :else [vel false])))
 
 (defn- shifted? [from to]
@@ -576,9 +618,14 @@
     (:jump e) (assoc :jump false)
     dead? (assoc :move (assoc (:move e) :zza 0.0))))
 
+(defn- move-speed ^double [e]
+  (if-let [fx (not-empty (:effects e))]
+    (attribute/value e fx :movement-speed)
+    (double (get-in mobs/types [(:type e) :speed]))))
+
 (defn- step-mob [world index tempters eid e t]
   (let [[half height] (mobs/box-of e)
-        speed (get-in mobs/types [(:type e) :speed])
+        speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
