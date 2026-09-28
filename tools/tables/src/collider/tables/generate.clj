@@ -5,10 +5,9 @@
             [collider.tables.brewing :as brewing]
             [collider.tables.classes :as classes]
             [collider.tables.fetch :as fetch]
+            [collider.tables.fuel :as fuel]
             [collider.tables.files :as files]
             [collider.tables.items :as items]
-            [collider.tables.loot :as loot]
-            [collider.tables.recipes :as recipes]
             [collider.tables.registry :as registry]
             [collider.tables.reports :as reports]
             [collider.tables.stamp :as stamp]
@@ -32,7 +31,7 @@
         (pr data)
         (print "\n")))))
 
-(defn- tagged-tables [zf reports rs {:keys [dyes synced]}]
+(defn- tagged-tables [zf reports rs {:keys [synced]}]
   (let [regs (distinct (concat (keys rs) synced))
         tags (tags/tags-of zf regs)
         item-names (set (keys (get rs "item")))
@@ -41,7 +40,8 @@
     {:packets    (registry/packets reports)
      :registries rs
      :synced     synced
-     :recipes (recipes/recipes zf tags dyes item-names potion-names)
+     :fuel       (fuel/fuel tags item-names)
+     :brewing    (brewing/brewing tags item-names potion-names)
      :potions    (brewing/potion-table potion-names)
      :effects    (brewing/effect-table effect-names)
      :tags       tags}))
@@ -57,22 +57,19 @@
 (defn- class-tables [zf from-class reports tags]
   (let [{:keys [props shapes]} from-class]
     {:blocks     (registry/blocks reports props shapes)
-     :drops      (loot/block-drops zf)
-     :entity-drops (loot/entity-drops zf)
      :items      (item-table zf from-class reports tags)}))
 
 (defn- tables [zf from-class reports rs]
   (let [tagged (tagged-tables zf reports rs from-class)]
     (merge (dissoc from-class :props :compost :walls
-                   :remainders :banners :dyes :synced :non-breakers
-                   :pack :pack-tags)
+                   :remainders :banners :synced :non-breakers
+                   :pack :pack-tags :pack-reload)
            (dissoc tagged :tags)
            (class-tables zf from-class reports (:tags tagged)))))
 
-(defn- pack-tables [pack]
-  (when-not (= (set stamp/pack) (set (keys pack)))
-    (throw (unknown "registries of the pack"
-                    {:found (vec (keys pack))})))
+(defn- pack-tables [what known pack]
+  (when-not (= (set known) (set (keys pack)))
+    (throw (unknown what {:found (vec (keys pack))})))
   (map (fn [[path t]] [(str "pack/" path) t]) pack))
 
 (defn- tag-tables [tags]
@@ -102,14 +99,20 @@
             :when (not (known p))]
       (io/delete-file f))))
 
+(defn- pack-files [from-class]
+  (concat (pack-tables "registries of the pack"
+                       stamp/pack (:pack from-class))
+          (pack-tables "reloadable data of the pack"
+                       stamp/reloadable (:pack-reload from-class))
+          (tag-tables (:pack-tags from-class))))
+
 (defn- write-tables! [^File server ^File reports out from-class sha]
   (io/delete-file (io/file out "stamp.edn") true)
   (retire! (io/file out))
   (with-open [zf (ZipFile/new server)]
     (let [rs (registry/registries reports)
           ts (concat (tables zf from-class reports rs)
-                     (pack-tables (:pack from-class))
-                     (tag-tables (:pack-tags from-class)))
+                     (pack-files from-class))
           n (count ts)]
       (doseq [[i [k data]] (map-indexed vector ts)]
         (progress! {:event :progress :step :tables

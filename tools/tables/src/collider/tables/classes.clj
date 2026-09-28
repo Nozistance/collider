@@ -3,6 +3,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.tables.files :as files]
+            [collider.tables.load :as load]
             [collider.tables.pack :as pack]
             [collider.tables.reflect
              :refer [*loader* cls call call-static static-field]]
@@ -497,6 +498,13 @@
         (static-field "resources.RegistryDataLoader"
                       "SYNCHRONIZED_REGISTRIES")))
 
+(defn- loaded-pack []
+  (let [{:keys [resources managers access]} (load/load-world)]
+    (try {:pack (pack/registries access)
+          :pack-tags (pack/tags resources)
+          :pack-reload (pack/reloadable managers)}
+         (finally (call resources "close")))))
+
 (defn- from-classes [loader]
   (binding [*loader* loader]
     (call-static "SharedConstants" "tryDetectVersion")
@@ -509,8 +517,8 @@
               :compost (compostables)
               :walls (merge (wall-items) (solid-buckets))
               :remainders (remainders) :banners (banner-colors)
-              :dyes (dye-colors) :synced (synced-registries)
-              :pack (pack/registries) :pack-tags (pack/tags)}))))
+              :dyes (dye-colors) :synced (synced-registries)}
+             (loaded-pack)))))
 
 (def ^:private silent-log4j
   (str "<Configuration status=\"OFF\">"

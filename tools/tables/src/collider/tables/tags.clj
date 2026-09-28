@@ -7,7 +7,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn ingredient [v]
+(defn- ingredient [v]
   (cond
     (string? v) (if (str/starts-with? v "#")
                   {:tag (str/replace (subs v 1) #"^minecraft:" "")}

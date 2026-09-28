@@ -3,6 +3,8 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
+            [collider.data.loot :as loot]
+            [collider.data.recipes :as recipes]
             [collider.data.tags :as tags])
   (:import (clojure.lang PersistentArrayMap)
            (java.io File PushbackReader)
@@ -13,7 +15,7 @@
 
 (def game "26.2")
 
-(def layout 16)
+(def layout 17)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -79,8 +81,7 @@
 
 (def ^:private table-names
   [:packets :registries :blocks :synced :items :light
-   :fire :drops :entity-drops :recipes :sounds :potions
-   :effects])
+   :fire :fuel :brewing :dyes :sounds :potions :effects])
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -108,34 +109,19 @@
   "Returns how blocks catch fire and burn."
   [] (:fire @tables))
 
+(def ^:private ^:table loot-tables
+  (delay (let [t (pack "loot_table")]
+           {:drops (loot/block-drops t)
+            :entity-drops (loot/entity-drops t)})))
+
 (defn drops
   "Returns what blocks drop when broken."
-  [] (:drops @tables))
+  [] (:drops @loot-tables))
 
 (defn entity-drops
   "Returns the loot tables of the mobs.
   A shearing table has the name of the mob with the suffix -shear."
-  [] (:entity-drops @tables))
-
-(defn recipes
-  "Returns the stonecutting recipes and their ingredients."
-  [] (:recipes @tables))
-
-(defn cooking-recipes
-  "Returns the cooking recipes in search order."
-  [] (:cooking (recipes)))
-
-(defn fuel
-  "Returns how many ticks each item burns for in a furnace."
-  [] (:fuel (recipes)))
-
-(defn brewing
-  "Returns the containers, mixes and fuel of a brewing stand."
-  [] (:brewing (recipes)))
-
-(defn smithing-recipes
-  "Returns the transform and trim recipes of a smithing table."
-  [] (:smithing (recipes)))
+  [] (:entity-drops @loot-tables))
 
 (defn sounds [] (:sounds @tables))
 
@@ -357,6 +343,33 @@
 
 (defn tag-values [registry tag]
   (get (registry-tags registry) tag []))
+
+(def ^:private ^:table recipe-table
+  (delay
+    (let [items (registry-tags "item")]
+      (merge (recipes/recipes (pack "recipe") items)
+             (select-keys @tables [:fuel :brewing :dyes])))))
+
+(defn recipes
+  "Returns the recipes by kind, with the fuel, the brewing mixes and
+  the dye colours."
+  [] @recipe-table)
+
+(defn cooking-recipes
+  "Returns the cooking recipes in search order."
+  [] (:cooking (recipes)))
+
+(defn fuel
+  "Returns how many ticks each item burns for in a furnace."
+  [] (:fuel @tables))
+
+(defn brewing
+  "Returns the containers, mixes and fuel of a brewing stand."
+  [] (:brewing @tables))
+
+(defn smithing-recipes
+  "Returns the transform and trim recipes of a smithing table."
+  [] (:smithing (recipes)))
 
 (defn- prop-order [b] (vec (keys (:props b))))
 

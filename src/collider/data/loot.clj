@@ -1,8 +1,7 @@
-(ns collider.tables.loot
-  "Reading the loot tables of blocks and mobs."
+(ns collider.data.loot
+  "The drops of blocks and mobs read from the loot tables of a pack."
   (:require [clojure.string :as str]
-            [collider.tables.files :refer [jsons]]
-            [collider.tables.value :refer [kw]]))
+            [collider.data.pack :as pack]))
 
 (set! *warn-on-reflection* true)
 
@@ -16,7 +15,7 @@
 
 (defn- state-props [c]
   {:props (into {}
-                (map (fn [[k v]] [(kw k) (keyword v)]))
+                (map (fn [[k v]] [(pack/kw k) (keyword v)]))
                 (get c "properties"))})
 
 (defn- nested-condition [c]
@@ -61,7 +60,7 @@
 
 (defn- item-entry [e cs]
   (let [n (set-count e)]
-    [(cond-> (assoc cs :item (kw (get e "name")))
+    [(cond-> (assoc cs :item (pack/kw (get e "name")))
        n (assoc :count n))]))
 
 (defn- loot-entry [e]
@@ -88,29 +87,46 @@
                      (not= rolls [1 1]) (assoc :rolls rolls))
                   r))))
 
-(defn- loot-table [json]
+(defn- block-table [json]
   (let [rs (map loot-pool (get json "pools"))]
     (if (some #{:unknown} rs)
       :complex
       (into [] (mapcat #(if (= % :skip) [] %)) rs))))
 
-(defn block-drops [zf]
-  (into (sorted-map)
-        (keep (fn [[name json]]
-                (let [t (loot-table json)]
-                  (when (not= t []) [(kw name) t]))))
-        (jsons zf "data/minecraft/loot_table/blocks/")))
+(defn- under
+  "Returns the name and the table of every table of tables whose id
+  starts with dir, by name."
+  [tables dir]
+  (let [prefix (str "minecraft:" dir "/")]
+    (into (sorted-map)
+          (keep (fn [[id json]]
+                  (when (str/starts-with? id prefix)
+                    [(subs id (count prefix)) json])))
+          tables)))
+
+(defn block-drops
+  "Returns what each block drops, by block, from the loot tables of a
+  pack by id: the items with their counts and conditions, or :complex
+  for a table these words cannot tell. Blocks that drop nothing are
+  left out."
+  [tables]
+  (pack/plain
+   (into (sorted-map)
+         (keep (fn [[name json]]
+                 (let [t (block-table json)]
+                   (when (not= t []) [(pack/kw name) t]))))
+         (under tables "blocks"))))
 
 (defn- loot-id [s]
-  (kw (str/replace (str s) #"^#" "")))
+  (pack/kw (str/replace (str s) #"^#" "")))
 
 (declare shear-name)
 
 (defn- table-ref [v]
   (let [s (str/replace (str v) #"^minecraft:" "")]
     (cond
-      (str/starts-with? s "entities/") (kw (subs s 9))
-      (str/starts-with? s "shearing/") (kw (shear-name (subs s 9)))
+      (str/starts-with? s "entities/") (pack/kw (subs s 9))
+      (str/starts-with? s "shearing/") (pack/kw (shear-name (subs s 9)))
       :else s)))
 
 (defn- loot-scalar [v]
@@ -132,7 +148,7 @@
 (defn- loot-map [m]
   (let [r (loot-provider
            (into (sorted-map)
-                 (map (fn [[k v]] [(kw k) (loot-node v)]))
+                 (map (fn [[k v]] [(pack/kw k) (loot-node v)]))
                  m))]
     (if (= :loot-table (:type r))
       (assoc r :value (table-ref (get m "value")))
@@ -149,10 +165,14 @@
     (str (subs n 0 i) "-shear" (subs n i))
     (str n "-shear")))
 
-(defn entity-drops [zf]
-  (let [dir "data/minecraft/loot_table/"
-        shear (jsons zf (str dir "shearing/"))]
-    (into (sorted-map)
-          (map (fn [[name json]] [(kw name) (loot-node json)]))
-          (concat (jsons zf (str dir "entities/"))
-                  (map (fn [[n j]] [(shear-name n) j]) shear)))))
+(defn entity-drops
+  "Returns the loot tables of the mobs by name, from the loot tables
+  of a pack by id. A shearing table has the name of the mob with the
+  suffix -shear."
+  [tables]
+  (let [shear (under tables "shearing")]
+    (pack/plain
+     (into (sorted-map)
+           (map (fn [[name json]] [(pack/kw name) (loot-node json)]))
+           (concat (under tables "entities")
+                   (map (fn [[n j]] [(shear-name n) j]) shear))))))

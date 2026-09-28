@@ -1,13 +1,34 @@
-(ns collider.tables.recipes
-  "Reading the recipes of crafting, cooking and smithing."
+(ns collider.data.recipes
+  "The crafting, cooking, smithing and stonecutting recipes read from
+  the recipes of a pack."
   (:require [clojure.string :as str]
-            [collider.tables.brewing :as brewing]
-            [collider.tables.files :refer [jsons]]
-            [collider.tables.tags :refer [ingredient item-set]]
-            [collider.tables.value
-             :refer [flt kw sorted-vals unknown]]))
+            [collider.data.pack :as pack]))
 
 (set! *warn-on-reflection* true)
+
+(defn- flt
+  "Returns v as the double that prints like the float v."
+  ^double [v]
+  (Double/parseDouble (Float/toString (float v))))
+
+(defn- unknown [msg data]
+  (ex-info msg (assoc data :what "unknown vanilla data")))
+
+(defn- ingredient [v]
+  (cond
+    (string? v) (if (str/starts-with? v "#")
+                  {:tag (str/replace (subs v 1) #"^minecraft:" "")}
+                  [(pack/kw v)])
+    (sequential? v) (mapv pack/kw v)
+    :else (throw (unknown "unknown ingredient" {:value v}))))
+
+(defn- item-set [tags v]
+  (let [i (ingredient v)
+        items (if (map? i)
+                (or (tags (:tag i))
+                    (throw (unknown "unknown item tag" {:tag i})))
+                i)]
+    (into (sorted-set) items)))
 
 (def ^:private property-sets
   (let [smithing #{"minecraft:smithing_transform"
@@ -27,7 +48,7 @@
           r (if (string? r) {"id" r} r)
           n (get r "count" 1)]
       {:in  (ingredient (get json "ingredient"))
-       :out (cond-> {:item (kw (get r "id"))}
+       :out (cond-> {:item (pack/kw (get r "id"))}
               (not= 1 n) (assoc :count n))})))
 
 (defn- stonecutting [recipes]
@@ -40,9 +61,7 @@
         pick (fn [json]
                (when (want? json)
                  (let [i (ingredient (get json field))]
-                   (if (map? i)
-                     (get-in tags ["item" (:tag i)] [])
-                     i))))]
+                   (if (map? i) (or (tags (:tag i)) []) i))))]
     (into (sorted-set) (mapcat pick) recipes)))
 
 (def ^:private crafting-types
@@ -66,7 +85,7 @@
 
 (defn- stew-effects [v]
   (mapv (fn [e]
-          {:effect (kw (get e "id"))
+          {:effect (pack/kw (get e "id"))
            :duration (get e "duration" 160)})
         v))
 
@@ -81,7 +100,7 @@
 (defn- result [r]
   (let [r (if (string? r) {"id" r} r)
         cs (get r "components")]
-    (cond-> {:item (kw (get r "id")) :count (get r "count" 1)}
+    (cond-> {:item (pack/kw (get r "id")) :count (get r "count" 1)}
       (seq cs) (assoc :components (result-components cs)))))
 
 (def ^:private smithing-types
@@ -89,13 +108,13 @@
    "minecraft:smithing_trim"      :trim})
 
 (defn- smithing-recipe [tags id json type]
-  (cond-> (sorted-map :id (kw id) :type type
+  (cond-> (sorted-map :id (pack/kw id) :type type
                       :base (item-set tags (get json "base")))
     (get json "template")
     (assoc :template (item-set tags (get json "template")))
     (get json "addition")
     (assoc :addition (item-set tags (get json "addition")))
-    (= :trim type) (assoc :pattern (kw (get json "pattern")))
+    (= :trim type) (assoc :pattern (pack/kw (get json "pattern")))
     (= :transform type) (assoc :result (result (get json "result")))))
 
 (defn- smithing [recipes tags]
@@ -174,13 +193,13 @@
     {:allowed-generations
      (bounds (get json "allowed_generations") {:min 0 :max 1})}
     :firework-star
-    {:shapes (mapv (fn [[k v]] [(kw k) (item-set tags v)])
+    {:shapes (mapv (fn [[k v]] [(pack/kw k) (item-set tags v)])
                    (get json "shapes"))}
     {}))
 
 (defn- fields-of [tags type json]
   (into (extra-fields tags type json)
-        (map (fn [f] [(kw f) (item-set tags (get json f))]))
+        (map (fn [f] [(pack/kw f) (item-set tags (get json f))]))
         (ingredient-fields type)))
 
 (defn- shapeless [tags json]
@@ -189,7 +208,7 @@
 (defn- crafting-recipe [tags order [id json]]
   (let [type (crafting-types (get json "type"))
         r (get json "result")]
-    (cond-> (merge {:id (kw id) :order order :type type}
+    (cond-> (merge {:id (pack/kw id) :order order :type type}
                    (case type
                      :shaped (shaped tags json)
                      :shapeless (shapeless tags json)
@@ -210,13 +229,13 @@
 (defn- cooking-recipe [id json [type default]]
   (let [r (get json "result")
         r (if (string? r) {"id" r} r)]
-    {:id       (kw id)
+    {:id       (pack/kw id)
      :type     type
      :in       (ingredient (get json "ingredient"))
-     :out      {:item (kw (get r "id")) :count (get r "count" 1)}
+     :out      {:item (pack/kw (get r "id")) :count (get r "count" 1)}
      :time     (get json "cookingtime" default)
      :xp       (flt (get json "experience" 0.0))
-     :category (kw (get json "category" "misc"))}))
+     :category (pack/kw (get json "category" "misc"))}))
 
 (defn- cooking [recipes]
   (into []
@@ -225,57 +244,21 @@
                   (cooking-recipe id json t))))
         recipes))
 
-(def ^:private fuel-values
-  [[:lava-bucket 20000] [:coal-block 16000] [:blaze-rod 2400]
-   [:coal 1600] [:charcoal 1600]
-   [{:tag "logs"} 300] [{:tag "bamboo_blocks"} 300]
-   [{:tag "planks"} 300] [:bamboo-mosaic 300]
-   [{:tag "wooden_stairs"} 300] [:bamboo-mosaic-stairs 300]
-   [{:tag "wooden_slabs"} 150] [:bamboo-mosaic-slab 150]
-   [{:tag "wooden_trapdoors"} 300]
-   [{:tag "wooden_pressure_plates"} 300]
-   [{:tag "wooden_shelves"} 300] [{:tag "wooden_fences"} 300]
-   [{:tag "fence_gates"} 300] [:note-block 300] [:bookshelf 300]
-   [:chiseled-bookshelf 300] [:lectern 300] [:jukebox 300]
-   [:chest 300] [:trapped-chest 300] [:crafting-table 300]
-   [:daylight-detector 300] [{:tag "banners"} 300] [:bow 300]
-   [:fishing-rod 300] [:ladder 300]
-   [{:tag "signs"} 200] [{:tag "hanging_signs"} 800]
-   [:wooden-shovel 200] [:wooden-sword 200] [:wooden-spear 200]
-   [:wooden-hoe 200] [:wooden-axe 200] [:wooden-pickaxe 200]
-   [{:tag "wooden_doors"} 200] [{:tag "boats"} 1200]
-   [{:tag "wool"} 100] [{:tag "wooden_buttons"} 100] [:stick 100]
-   [{:tag "saplings"} 100] [:bowl 100]
-   [{:tag "wool_carpets"} 67] [:dried-kelp-block 4001]
-   [:crossbow 300] [:bamboo 50] [:dead-bush 100]
-   [:short-dry-grass 100] [:tall-dry-grass 100] [:scaffolding 50]
-   [:loom 300] [:barrel 300] [:cartography-table 300]
-   [:fletching-table 300] [:smithing-table 300] [:composter 300]
-   [:azalea 100] [:flowering-azalea 100] [:mangrove-roots 300]
-   [:leaf-litter 100]])
-
-(defn- fuel-targets [tags target]
-  (if (map? target) (get-in tags ["item" (:tag target)] []) [target]))
-
-(defn- fuel [tags items]
-  (let [add (fn [m [target time]]
-              (into m (comp (filter items) (map #(vector % time)))
-                    (fuel-targets tags target)))]
-    (apply dissoc (reduce add (sorted-map) fuel-values)
-           (get-in tags ["item" "non_flammable_wood"] []))))
-
 (defn- property-sets-of [tags recipes]
-  (sorted-vals property-sets #(vec (property-set tags recipes %))))
+  (into (sorted-map)
+        (map (fn [[k v]] [k (vec (property-set tags recipes v))]))
+        property-sets))
 
-(defn recipes [zf tags dyes items potions]
-  (let [named (->> (jsons zf "data/minecraft/recipe/")
-                   (remove #(str/includes? (key %) "/")))
+(defn recipes
+  "Returns the recipes of a pack by kind, from its recipes by id in
+  id order. Tags gives the items of an item tag by name, or nil for
+  no such tag."
+  [pack tags]
+  (let [named (sort-by key pack)
         rs (map val named)]
-    {:stonecutting  (stonecutting rs)
-     :property-sets (property-sets-of tags rs)
-     :crafting      (crafting named tags)
-     :cooking       (cooking named)
-     :smithing      (smithing named tags)
-     :fuel          (fuel tags items)
-     :brewing       (brewing/brewing tags items potions)
-     :dyes          dyes}))
+    (pack/plain
+     {:stonecutting  (stonecutting rs)
+      :property-sets (property-sets-of tags rs)
+      :crafting      (crafting named tags)
+      :cooking       (cooking named)
+      :smithing      (smithing named tags)})))

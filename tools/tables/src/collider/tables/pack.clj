@@ -1,13 +1,13 @@
 (ns collider.tables.pack
-  "The registries of the vanilla pack as their own codecs write them."
+  "The registries, the tags and the reloadable data of the vanilla
+  pack as their own codecs write them."
   (:require [clojure.data.json :as json]
             [collider.tables.reflect
-             :refer [any-class call call-static class-field cls
+             :refer [any-class call call-static class-field
                      static-field]]
             [collider.tables.value :refer [sorted-json unknown]])
-  (:import (clojure.lang Reflector)
-           (java.io Reader)
-           (java.util List Optional)))
+  (:import (java.io Reader)
+           (java.util Optional)))
 
 (set! *warn-on-reflection* true)
 
@@ -35,19 +35,49 @@
 (defn- registry-path [rd]
   (-> (call rd "key") (call "identifier") (call "getPath")))
 
+(defn- json-context [provider]
+  (let [json (class-field (any-class json-ops) "INSTANCE")]
+    (call provider "createSerializationContext" json)))
+
 (defn registries
-  "Returns every registry of the vanilla pack by path, each entry as
-  json by its identifier."
-  []
-  (let [vanilla "data.registries.VanillaRegistries"
-        provider (call-static vanilla "createLookup")
-        json (class-field (any-class json-ops) "INSTANCE")
-        ops (call provider "createSerializationContext" json)]
+  "Returns every worldgen registry that access holds by path, each
+  entry as json by its identifier."
+  [access]
+  (let [ops (json-context access)]
     (into (sorted-map)
-          (keep #(when-let [t (registry-table provider ops %)]
+          (keep #(when-let [t (registry-table access ops %)]
                    [(registry-path %) t]))
           (static-field "resources.RegistryDataLoader"
                         "WORLDGEN_REGISTRIES"))))
+
+(defn- key-path [k] (call (call k "identifier") "getPath"))
+
+(defn- loot-table [provider ops t]
+  (let [l (call provider "lookupOrThrow" (call t "registryKey"))
+        codec (call t "codec")]
+    [(key-path (call t "registryKey"))
+     (into (sorted-map) (map #(entry ops codec %)) (entries l))]))
+
+(defn- recipe-table [provider ops managers]
+  (let [codec (static-field "world.item.crafting.Recipe" "CODEC")
+        rm (call managers "getRecipeManager")
+        one (fn [h]
+              [(str (call (call h "id") "identifier"))
+               (encoded ops codec (call h "value"))])]
+    ["recipe" (into (sorted-map) (map one) (call rm "getRecipes"))]))
+
+(defn reloadable
+  "Returns the loot tables, predicates, item modifiers and recipes the
+  server loaded, by registry path, each entry as json by its id."
+  [managers]
+  (let [provider (call (call managers "fullRegistries") "lookup")
+        ops (json-context provider)
+        loot "world.level.storage.loot.LootDataType"
+        types (-> (call-static loot "values") (call "iterator")
+                  iterator-seq)]
+    (into (sorted-map)
+          (conj (mapv #(loot-table provider ops %) types)
+                (recipe-table provider ops managers)))))
 
 (defn- registry-keys []
   (let [loader "resources.RegistryDataLoader"
@@ -56,14 +86,6 @@
          (concat (static-field built-in "REGISTRY")
                  (static-field loader "WORLDGEN_REGISTRIES")
                  (static-field loader "DIMENSION_REGISTRIES")))))
-
-(defn- vanilla-resources []
-  (let [source "server.packs.repository.ServerPacksSource"
-        pack (call-static source "createVanillaPackSource")
-        data (static-field "server.packs.PackType" "SERVER_DATA")
-        c (cls "server.packs.resources.MultiPackResourceManager")
-        args (object-array [data (List/of pack)])]
-    (Reflector/invokeConstructor c args)))
 
 (defn- tag-file [tag-codec ops id stack]
   (when (not= 1 (count stack))
@@ -85,10 +107,10 @@
 
 (defn tags
   "Returns the tag files of the vanilla pack as TagFile.CODEC writes
-  them, by id, for every registry that has any, by path."
-  []
-  (let [rm (vanilla-resources)
-        ops (class-field (any-class json-ops) "INSTANCE")]
+  them, by id, for every registry that has any, by path. Reads them
+  from the resource manager rm."
+  [rm]
+  (let [ops (class-field (any-class json-ops) "INSTANCE")]
     (into (sorted-map)
           (keep (fn [k]
                   (let [t (registry-tags rm ops k)]

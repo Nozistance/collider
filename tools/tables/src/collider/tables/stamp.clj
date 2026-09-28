@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 16)
+(def layout 17)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -27,6 +27,9 @@
    "worldgen/template_pool" "worldgen/world_preset"
    "zombie_nautilus_variant"])
 
+(def reloadable
+  ["item_modifier" "loot_table" "predicate" "recipe"])
+
 (def tags
   ["banner_pattern" "block" "damage_type" "dialog" "enchantment"
    "entity_type" "fluid" "game_event" "instrument" "item"
@@ -37,9 +40,10 @@
 
 (def files
   (-> ["packets" "registries" "blocks" "synced" "items"
-       "light" "fire" "drops" "entity-drops" "recipes" "sounds"
+       "light" "fire" "fuel" "brewing" "dyes" "sounds"
        "potions" "effects" "shapes" "outlines" "sturdy" "flags"]
       (into (map #(str "pack/" %)) pack)
+      (into (map #(str "pack/" %)) reloadable)
       (into (map #(str "pack/tags/" %)) tags)))
 
 (defn stamp
