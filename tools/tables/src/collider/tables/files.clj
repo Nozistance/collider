@@ -1,8 +1,6 @@
 (ns collider.tables.files
   "Files, directories and the entries of a jar."
-  (:require [clojure.data.json :as json]
-            [clojure.java.io :as io]
-            [clojure.string :as str])
+  (:require [clojure.java.io :as io])
   (:import (java.io File InputStream)
            (java.nio.file Files Path)
            (java.nio.file.attribute FileAttribute)
@@ -41,21 +39,3 @@
   (with-open [in (entry-stream zf name)]
     (io/copy in to))
   to)
-
-(defn under
-  "Returns name and path pairs of the json entries below prefix."
-  [zf prefix]
-  (for [n (zip-names zf)
-        :when (str/starts-with? n prefix)
-        :when (str/ends-with? n ".json")]
-    [(subs n (count prefix) (- (count n) 5)) n]))
-
-(defn read-json [zf path]
-  (json/read-str (slurp (entry-stream zf path))))
-
-(defn jsons
-  "Returns the json entries of zf below prefix, read, by name."
-  [zf prefix]
-  (into (sorted-map)
-        (map (fn [[name path]] [name (read-json zf path)]))
-        (under zf prefix)))

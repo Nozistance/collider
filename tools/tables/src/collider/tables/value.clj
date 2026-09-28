@@ -18,10 +18,6 @@
   ^double [v]
   (Double/parseDouble (Float/toString (float v))))
 
-(defn plain [s] (str/replace (str s) #"^minecraft:" ""))
-
-(defn json-name [k] (str/replace (name k) "-" "_"))
-
 (defn sorted-vals
   "Returns m sorted by key, with f applied to every value."
   [m f]

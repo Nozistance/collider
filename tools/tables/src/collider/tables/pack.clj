@@ -4,7 +4,7 @@
   (:require [clojure.data.json :as json]
             [collider.tables.reflect
              :refer [any-class call call-static class-field
-                     static-field]]
+                     registry static-field]]
             [collider.tables.value :refer [sorted-json unknown]])
   (:import (java.io Reader)
            (java.util Optional)))
@@ -117,3 +117,23 @@
                     (when (seq t)
                       [(call (call k "identifier") "getPath") t]))))
           (registry-keys))))
+
+(defn- patch [components]
+  (-> (call-static "core.component.DataComponentPatch" "builder")
+      (call "set" components)
+      (call "build")))
+
+(defn components
+  "Returns the default components of every item that has any, as
+  DataComponentPatch.CODEC writes them, by id. The components come
+  from the items as the loaded server bound them."
+  [access]
+  (let [ops (json-context access)
+        patches "core.component.DataComponentPatch"
+        codec (static-field patches "CODEC")
+        one (fn [h]
+              (let [cs (call h "components")]
+                (when-not (call cs "isEmpty")
+                  [(str (call (call h "key") "identifier"))
+                   (encoded ops codec (patch cs))])))]
+    (into (sorted-map) (keep one) (entries (registry "ITEM")))))

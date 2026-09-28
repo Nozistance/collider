@@ -126,7 +126,8 @@
   (let [s (str/replace (str v) #"^minecraft:" "")]
     (cond
       (str/starts-with? s "entities/") (pack/kw (subs s 9))
-      (str/starts-with? s "shearing/") (pack/kw (shear-name (subs s 9)))
+      (str/starts-with? s "shearing/")
+      (pack/kw (shear-name (subs s 9)))
       :else s)))
 
 (defn- loot-scalar [v]

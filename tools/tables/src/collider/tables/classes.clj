@@ -2,11 +2,15 @@
   "Reading tables from the classes of the vanilla server."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [collider.tables.brewing :as brewing]
             [collider.tables.files :as files]
+            [collider.tables.fuel :as fuel]
+            [collider.tables.items :as items]
             [collider.tables.load :as load]
             [collider.tables.pack :as pack]
             [collider.tables.reflect
-             :refer [*loader* cls call call-static static-field]]
+             :refer [*loader* cls call call-static elements
+                     hidden-field key-of registry static-field]]
             [collider.tables.value
              :refer [kw flt sorted-vals unknown]])
   (:import (clojure.lang Reflector)
@@ -32,27 +36,6 @@
 
 (defn- field-value [obj f]
   (Reflector/getInstanceField obj f))
-
-(defn- field-name [^Field f] (Field/.getName f))
-
-(defn- declared-fields [^Class c]
-  (->> (iterate Class/.getSuperclass c)
-       (take-while some?)
-       (mapcat #(sort-by field-name (Class/.getDeclaredFields %)))))
-
-(defn- hidden-field [^Class c obj want]
-  (let [match? (if (string? want)
-                 #(= want (Field/.getName %))
-                 #(= want (Field/.getType %)))]
-    (when-let [^Field f (first (filter match? (declared-fields c)))]
-      (Field/.get (doto f (Field/.setAccessible true)) obj))))
-
-(defn- key-of [reg x] (kw (str (call reg "getKey" x))))
-
-(defn- elements [reg] (iterator-seq (Iterable/.iterator reg)))
-
-(defn- registry [name]
-  (static-field "core.registries.BuiltInRegistries" name))
 
 (defn- sixteenth [^double v]
   (let [x (* 16.0 v)]
@@ -409,33 +392,6 @@
                    (map (fn [[k _ evs]] [k evs]))
                    types)}))
 
-(defn- wall-items []
-  (let [items (registry "ITEM")
-        blocks (registry "BLOCK")
-        c (cls "world.item.StandingAndWallBlockItem")]
-    (into (sorted-map)
-          (for [i (elements items)
-                :when (Class/.isInstance c i)
-                :let [wall (hidden-field (class i) i "wallBlock")]]
-            [(key-of items i) {:wall (key-of blocks wall)}]))))
-
-(defn- solid-buckets []
-  (let [items (registry "ITEM")
-        c (cls "world.item.SolidBucketItem")]
-    (into (sorted-map)
-          (for [i (elements items)
-                :when (Class/.isInstance c i)
-                :let [e (hidden-field c i "placeSound")]]
-            [(key-of items i)
-             {:place-sound (kw (str (call e "location")))}]))))
-
-(defn- compostables []
-  (let [items (registry "ITEM")]
-    (into (sorted-map)
-          (map (fn [[i v]] [(key-of items i) {:compost (flt v)}]))
-          (static-field "world.level.block.ComposterBlock"
-                        "COMPOSTABLES"))))
-
 (defn- fire-odds []
   (let [fire (static-field "world.level.block.Blocks" "FIRE")
         blocks (registry "BLOCK")
@@ -446,42 +402,6 @@
     (merge-with merge
                 (table "igniteOdds" :ignite)
                 (table "burnOdds" :burn))))
-
-(defn- template [reg t]
-  (when t
-    (when-not (call (call t "components") "isEmpty")
-      (throw (unknown "remainder with components"
-                      {:template (str t)})))
-    {:item (key-of reg (call (call t "item") "value"))
-     :count (call t "count")}))
-
-(defn- non-breakers []
-  (let [items (registry "ITEM")
-        stone (call (static-field "world.level.block.Blocks" "STONE")
-                    "defaultBlockState")]
-    (into (sorted-map)
-          (for [i (elements items)
-                :let [s (call i "getDefaultInstance")
-                      args [s stone nil nil nil]]
-                :when (not (apply call i "canDestroyBlock" args))]
-            [(key-of items i) {:breaks? false}]))))
-
-(defn- remainders []
-  (let [items (registry "ITEM")]
-    (into (sorted-map)
-          (for [i (elements items)
-                :let [t (call i "getCraftingRemainder")]
-                :when t]
-            [(key-of items i) {:remainder (template items t)}]))))
-
-(defn- banner-colors []
-  (let [items (registry "ITEM")
-        c (cls "world.item.BannerItem")]
-    (into (sorted-map)
-          (for [i (elements items) :when (Class/.isInstance c i)]
-            (let [dye (call i "getColor")
-                  color (call dye "getSerializedName")]
-              [(key-of items i) {:banner-color (kw color)}])))))
 
 (defn- dye-colors []
   (into (sorted-map)
@@ -502,8 +422,22 @@
   (let [{:keys [resources managers access]} (load/load-world)]
     (try {:pack (pack/registries access)
           :pack-tags (pack/tags resources)
-          :pack-reload (pack/reloadable managers)}
+          :pack-reload (pack/reloadable managers)
+          :pack-components {"item" (pack/components access)}
+          :fuel (fuel/fuel access (load/features))
+          :item-names (items/item-names)}
          (finally (call resources "close")))))
+
+(defn- item-facts []
+  {:compost (items/compost) :wall-blocks (items/wall-blocks)
+   :place-sounds (items/place-sounds)
+   :remainders (items/remainders)
+   :banner-colors (items/banner-colors)
+   :non-breakers (items/non-breakers)})
+
+(defn- brewing-tables []
+  {:brewing (brewing/brewing (load/features))
+   :potions (brewing/potions) :effects (brewing/effects)})
 
 (defn- from-classes [loader]
   (binding [*loader* loader]
@@ -511,14 +445,10 @@
     (call-static "server.Bootstrap" "bootStrap")
     (bind-bare-components! (registry "ITEM"))
     (let [states (block-states)]
-      (merge (state-shapes states) (block-props)
-             {:non-breakers (non-breakers)}
+      (merge (state-shapes states) (block-props) (item-facts)
              {:light (light-table states) :fire (fire-odds)
-              :compost (compostables)
-              :walls (merge (wall-items) (solid-buckets))
-              :remainders (remainders) :banners (banner-colors)
               :dyes (dye-colors) :synced (synced-registries)}
-             (loaded-pack)))))
+             (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j
   (str "<Configuration status=\"OFF\">"

@@ -2,25 +2,18 @@
   "Generating the game data tables from the vanilla server."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
-            [collider.tables.brewing :as brewing]
             [collider.tables.classes :as classes]
             [collider.tables.fetch :as fetch]
-            [collider.tables.fuel :as fuel]
             [collider.tables.files :as files]
-            [collider.tables.items :as items]
             [collider.tables.registry :as registry]
             [collider.tables.reports :as reports]
             [collider.tables.stamp :as stamp]
-            [collider.tables.tags :as tags]
             [collider.tables.value :refer [unknown]]
             [collider.tables.progress :refer [progress! timed]])
   (:import (java.io File)
-           (java.nio.file Path)
-           (java.util.zip ZipFile)))
+           (java.nio.file Path)))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private lang-file "assets/minecraft/lang/en_us.json")
 
 (defn- write-edn! [dir k data]
   (let [f (io/file dir (str (name k) ".edn"))]
@@ -31,46 +24,22 @@
         (pr data)
         (print "\n")))))
 
-(defn- tagged-tables [zf reports rs {:keys [synced]}]
-  (let [regs (distinct (concat (keys rs) synced))
-        tags (tags/tags-of zf regs)
-        item-names (set (keys (get rs "item")))
-        potion-names (set (keys (get rs "potion")))
-        effect-names (set (keys (get rs "mob_effect")))]
-    {:packets    (registry/packets reports)
-     :registries rs
-     :synced     synced
-     :fuel       (fuel/fuel tags item-names)
-     :brewing    (brewing/brewing tags item-names potion-names)
-     :potions    (brewing/potion-table potion-names)
-     :effects    (brewing/effect-table effect-names)
-     :tags       tags}))
+(def ^:private pack-keys
+  [:props :pack :pack-tags :pack-reload :pack-components])
 
-(defn- item-table [zf from-class reports tags]
-  (let [{:keys [compost walls remainders banners
-                non-breakers]} from-class
-        lang (files/read-json zf lang-file)]
-    (merge-with merge (items/vanilla-items reports tags)
-                compost walls remainders banners non-breakers
-                (items/station-items reports tags lang))))
-
-(defn- class-tables [zf from-class reports tags]
+(defn- tables [from-class reports]
   (let [{:keys [props shapes]} from-class]
-    {:blocks     (registry/blocks reports props shapes)
-     :items      (item-table zf from-class reports tags)}))
+    (assoc (apply dissoc from-class pack-keys)
+           :packets (registry/packets reports)
+           :registries (registry/registries reports)
+           :blocks (registry/blocks reports props shapes))))
 
-(defn- tables [zf from-class reports rs]
-  (let [tagged (tagged-tables zf reports rs from-class)]
-    (merge (dissoc from-class :props :compost :walls
-                   :remainders :banners :synced :non-breakers
-                   :pack :pack-tags :pack-reload)
-           (dissoc tagged :tags)
-           (class-tables zf from-class reports (:tags tagged)))))
-
-(defn- pack-tables [what known pack]
-  (when-not (= (set known) (set (keys pack)))
-    (throw (unknown what {:found (vec (keys pack))})))
-  (map (fn [[path t]] [(str "pack/" path) t]) pack))
+(defn- pack-tables
+  ([what known pack] (pack-tables what known pack ""))
+  ([what known pack dir]
+   (when-not (= (set known) (set (keys pack)))
+     (throw (unknown what {:found (vec (keys pack))})))
+   (map (fn [[path t]] [(str "pack/" dir path) t]) pack)))
 
 (defn- tag-tables [tags]
   (when-not (= (set stamp/tags) (set (keys tags)))
@@ -104,22 +73,23 @@
                        stamp/pack (:pack from-class))
           (pack-tables "reloadable data of the pack"
                        stamp/reloadable (:pack-reload from-class))
-          (tag-tables (:pack-tags from-class))))
+          (tag-tables (:pack-tags from-class))
+          (pack-tables "components of the pack"
+                       stamp/components (:pack-components from-class)
+                       "components/")))
 
-(defn- write-tables! [^File server ^File reports out from-class sha]
+(defn- write-tables! [^File reports out from-class sha]
   (io/delete-file (io/file out "stamp.edn") true)
   (retire! (io/file out))
-  (with-open [zf (ZipFile/new server)]
-    (let [rs (registry/registries reports)
-          ts (concat (tables zf from-class reports rs)
-                     (pack-files from-class))
-          n (count ts)]
-      (doseq [[i [k data]] (map-indexed vector ts)]
-        (progress! {:event :progress :step :tables
-                    :done (inc i) :total n})
-        (write-edn! out k data))
-      (write-edn! out :stamp (assoc (stamp/stamp) :server-sha1 sha))
-      {:count n :dir (str out)})))
+  (let [ts (concat (tables from-class reports)
+                   (pack-files from-class))
+        n (count ts)]
+    (doseq [[i [k data]] (map-indexed vector ts)]
+      (progress! {:event :progress :step :tables
+                  :done (inc i) :total n})
+      (write-edn! out k data))
+    (write-edn! out :stamp (assoc (stamp/stamp) :server-sha1 sha))
+    {:count n :dir (str out)}))
 
 (defn generate!
   "Writes every table into out, from jar or from Mojang when nil."
@@ -130,6 +100,6 @@
         tmp (files/temp-dir "game")]
     (try (let [server (reports/game-jar bundle tmp)]
            (timed :tables
-             #(write-tables! server dir out
+             #(write-tables! dir out
                 (classes/read-classes bundle server) sha)))
          (finally (files/delete-tree! tmp)))))

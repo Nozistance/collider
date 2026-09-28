@@ -3,6 +3,7 @@
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
+            [collider.data.items :as items]
             [collider.data.loot :as loot]
             [collider.data.recipes :as recipes]
             [collider.data.tags :as tags])
@@ -15,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 17)
+(def layout 18)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -79,9 +80,14 @@
   [path]
   (read-edn (str "pack/" path ".edn")))
 
+(def ^:private item-facts
+  [:compost :wall-blocks :place-sounds :remainders :banner-colors
+   :non-breakers :item-names])
+
 (def ^:private table-names
-  [:packets :registries :blocks :synced :items :light
-   :fire :fuel :brewing :dyes :sounds :potions :effects])
+  (into [:packets :registries :blocks :synced :light :fire :fuel
+         :brewing :dyes :sounds :potions :effects]
+        item-facts))
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -98,8 +104,6 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
-
-(defn items [] (:items @tables))
 
 (defn light
   "Returns how block states pass and emit light."
@@ -132,66 +136,6 @@
 (defn mob-effects
   "Returns the colour, category and immediacy of every effect."
   [] (:effects @tables))
-
-(defn use-cooldown
-  "Returns the cooldown group and the ticks item locks it for.
-  Returns nil when the item has no cooldown."
-  [item]
-  (when-let [c (get-in (items) [item :use-cooldown])]
-    [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
-
-(defn max-stack ^long [item]
-  (long (get-in (items) [item :max-stack] 64)))
-
-(defn jukebox-song [item]
-  (get-in (items) [item :jukebox-song]))
-
-(defn equip-slot [item]
-  (get-in (items) [item :equip]))
-
-(defn equip-sound [item]
-  (get-in (items) [item :equip-sound] :item.armor.equip-generic))
-
-(defn dye-color [item]
-  (get-in (items) [item :dye]))
-
-(defn pattern-tag [item]
-  (get-in (items) [item :patterns]))
-
-(defn compost
-  "Returns the chance item raises a composter, else nil."
-  [item]
-  (get-in (items) [item :compost]))
-
-(defn item-name
-  "Returns the name an item shows when it has no custom one."
-  [item]
-  (get-in (items) [item :name]))
-
-(defn item-title
-  "Returns the text component an item is called by."
-  [item]
-  (get-in (items) [item :title]))
-
-(defn rarity
-  "Returns the rarity of an item."
-  [item]
-  (get-in (items) [item :rarity] :common))
-
-(defn repairable
-  "Returns the items that mend item on an anvil, else nil."
-  [item]
-  (get-in (items) [item :repairable]))
-
-(defn trim-material
-  "Returns the trim material item gives, else nil."
-  [item]
-  (get-in (items) [item :trim-material]))
-
-(defn resists
-  "Returns the tag of the damage item shrugs off, else nil."
-  [item]
-  (get-in (items) [item :resists]))
 
 (defn snake
   "Returns the name of k with dashes as underscores."
@@ -344,11 +288,16 @@
 (defn tag-values [registry tag]
   (get (registry-tags registry) tag []))
 
+(def ^:private ^:table brewing-table
+  (delay (assoc (:brewing @tables)
+                :fuel (tag-values "item" "brewing_fuel"))))
+
 (def ^:private ^:table recipe-table
   (delay
-    (let [items (registry-tags "item")]
+    (let [items (registry-tags "item")
+          own (select-keys @tables [:fuel :brewing :dyes])]
       (merge (recipes/recipes (pack "recipe") items)
-             (select-keys @tables [:fuel :brewing :dyes])))))
+             (assoc own :brewing @brewing-table)))))
 
 (defn recipes
   "Returns the recipes by kind, with the fuel, the brewing mixes and
@@ -365,11 +314,77 @@
 
 (defn brewing
   "Returns the containers, mixes and fuel of a brewing stand."
-  [] (:brewing @tables))
+  [] @brewing-table)
 
 (defn smithing-recipes
   "Returns the transform and trim recipes of a smithing table."
   [] (:smithing (recipes)))
+
+(def ^:private ^:table item-table
+  (delay (items/items (pack "components/item") registry-tags
+                      (select-keys @tables item-facts))))
+
+(defn items [] @item-table)
+
+(defn use-cooldown
+  "Returns the cooldown group and the ticks item locks it for.
+  Returns nil when the item has no cooldown."
+  [item]
+  (when-let [c (get-in (items) [item :use-cooldown])]
+    [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
+
+(defn max-stack ^long [item]
+  (long (get-in (items) [item :max-stack] 64)))
+
+(defn jukebox-song [item]
+  (get-in (items) [item :jukebox-song]))
+
+(defn equip-slot [item]
+  (get-in (items) [item :equip]))
+
+(defn equip-sound [item]
+  (get-in (items) [item :equip-sound] :item.armor.equip-generic))
+
+(defn dye-color [item]
+  (get-in (items) [item :dye]))
+
+(defn pattern-tag [item]
+  (get-in (items) [item :patterns]))
+
+(defn compost
+  "Returns the chance item raises a composter, else nil."
+  [item]
+  (get-in (items) [item :compost]))
+
+(defn item-name
+  "Returns the name an item shows when it has no custom one."
+  [item]
+  (get-in (items) [item :name]))
+
+(defn item-title
+  "Returns the text component an item is called by."
+  [item]
+  (get-in (items) [item :title]))
+
+(defn rarity
+  "Returns the rarity of an item."
+  [item]
+  (get-in (items) [item :rarity] :common))
+
+(defn repairable
+  "Returns the items that mend item on an anvil, else nil."
+  [item]
+  (get-in (items) [item :repairable]))
+
+(defn trim-material
+  "Returns the trim material item gives, else nil."
+  [item]
+  (get-in (items) [item :trim-material]))
+
+(defn resists
+  "Returns the tag of the damage item shrugs off, else nil."
+  [item]
+  (get-in (items) [item :resists]))
 
 (defn- prop-order [b] (vec (keys (:props b))))
 

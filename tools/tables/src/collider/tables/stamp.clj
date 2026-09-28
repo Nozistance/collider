@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 17)
+(def layout 18)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -38,13 +38,18 @@
    "worldgen/flat_level_generator_preset" "worldgen/structure"
    "worldgen/world_preset"])
 
+(def components ["item"])
+
 (def files
-  (-> ["packets" "registries" "blocks" "synced" "items"
-       "light" "fire" "fuel" "brewing" "dyes" "sounds"
-       "potions" "effects" "shapes" "outlines" "sturdy" "flags"]
+  (-> ["packets" "registries" "blocks" "synced" "light" "fire"
+       "fuel" "brewing" "dyes" "sounds" "potions" "effects"
+       "shapes" "outlines" "sturdy" "flags" "compost"
+       "wall-blocks" "place-sounds" "remainders" "banner-colors"
+       "non-breakers" "item-names"]
       (into (map #(str "pack/" %)) pack)
       (into (map #(str "pack/" %)) reloadable)
-      (into (map #(str "pack/tags/" %)) tags)))
+      (into (map #(str "pack/tags/" %)) tags)
+      (into (map #(str "pack/components/" %)) components)))
 
 (defn stamp
   "Returns the stamp that a set of tables of this tool carries."

@@ -1,34 +1,9 @@
 (ns collider.data.recipes
   "The crafting, cooking, smithing and stonecutting recipes read from
   the recipes of a pack."
-  (:require [clojure.string :as str]
-            [collider.data.pack :as pack]))
+  (:require [collider.data.pack :as pack]))
 
 (set! *warn-on-reflection* true)
-
-(defn- flt
-  "Returns v as the double that prints like the float v."
-  ^double [v]
-  (Double/parseDouble (Float/toString (float v))))
-
-(defn- unknown [msg data]
-  (ex-info msg (assoc data :what "unknown vanilla data")))
-
-(defn- ingredient [v]
-  (cond
-    (string? v) (if (str/starts-with? v "#")
-                  {:tag (str/replace (subs v 1) #"^minecraft:" "")}
-                  [(pack/kw v)])
-    (sequential? v) (mapv pack/kw v)
-    :else (throw (unknown "unknown ingredient" {:value v}))))
-
-(defn- item-set [tags v]
-  (let [i (ingredient v)
-        items (if (map? i)
-                (or (tags (:tag i))
-                    (throw (unknown "unknown item tag" {:tag i})))
-                i)]
-    (into (sorted-set) items)))
 
 (def ^:private property-sets
   (let [smithing #{"minecraft:smithing_transform"
@@ -47,7 +22,7 @@
     (let [r (get json "result")
           r (if (string? r) {"id" r} r)
           n (get r "count" 1)]
-      {:in  (ingredient (get json "ingredient"))
+      {:in  (pack/ingredient (get json "ingredient"))
        :out (cond-> {:item (pack/kw (get r "id"))}
               (not= 1 n) (assoc :count n))})))
 
@@ -60,7 +35,7 @@
                      (contains? json field)))
         pick (fn [json]
                (when (want? json)
-                 (let [i (ingredient (get json field))]
+                 (let [i (pack/ingredient (get json field))]
                    (if (map? i) (or (tags (:tag i)) []) i))))]
     (into (sorted-set) (mapcat pick) recipes)))
 
@@ -81,7 +56,7 @@
    "minecraft:crafting_special_shielddecoration"  :shield-decoration})
 
 (defn- raw-ingredient [v]
-  (let [i (ingredient v)] (if (map? i) [:tag (:tag i)] (vec i))))
+  (let [i (pack/ingredient v)] (if (map? i) [:tag (:tag i)] (vec i))))
 
 (defn- stew-effects [v]
   (mapv (fn [e]
@@ -92,7 +67,7 @@
 (defn- result-component [[k v]]
   (if (= k "minecraft:suspicious_stew_effects")
     [:suspicious-stew-effects (stew-effects v)]
-    (throw (unknown "result component not modelled" {k v}))))
+    (throw (pack/unknown "result component not modelled" {k v}))))
 
 (defn- result-components [cs]
   (into (sorted-map) (map result-component) cs))
@@ -109,11 +84,11 @@
 
 (defn- smithing-recipe [tags id json type]
   (cond-> (sorted-map :id (pack/kw id) :type type
-                      :base (item-set tags (get json "base")))
+                      :base (pack/item-set tags (get json "base")))
     (get json "template")
-    (assoc :template (item-set tags (get json "template")))
+    (assoc :template (pack/item-set tags (get json "template")))
     (get json "addition")
-    (assoc :addition (item-set tags (get json "addition")))
+    (assoc :addition (pack/item-set tags (get json "addition")))
     (= :trim type) (assoc :pattern (pack/kw (get json "pattern")))
     (= :transform type) (assoc :result (result (get json "result")))))
 
@@ -158,14 +133,14 @@
 (defn- cell-key [json ch]
   (when (not= \space ch)
     (or (get-in json ["key" (str ch)])
-        (throw (unknown "undefined symbol" {:symbol ch})))))
+        (throw (pack/unknown "undefined symbol" {:symbol ch})))))
 
 (defn- shaped [tags json]
   (let [rows (shrink (get json "pattern"))
         raw (mapv #(cell-key json %) (apply str rows))
         w (count (first rows))
         h (count rows)
-        cells (mapv #(some->> % (item-set tags)) raw)
+        cells (mapv #(some->> % (pack/item-set tags)) raw)
         mirror (mapv #(some-> % raw-ingredient) raw)]
     {:w w :h h :cells cells :symmetric? (symmetric? w h mirror)}))
 
@@ -193,17 +168,18 @@
     {:allowed-generations
      (bounds (get json "allowed_generations") {:min 0 :max 1})}
     :firework-star
-    {:shapes (mapv (fn [[k v]] [(pack/kw k) (item-set tags v)])
+    {:shapes (mapv (fn [[k v]] [(pack/kw k) (pack/item-set tags v)])
                    (get json "shapes"))}
     {}))
 
 (defn- fields-of [tags type json]
   (into (extra-fields tags type json)
-        (map (fn [f] [(pack/kw f) (item-set tags (get json f))]))
+        (map (fn [f] [(pack/kw f) (pack/item-set tags (get json f))]))
         (ingredient-fields type)))
 
 (defn- shapeless [tags json]
-  {:ingredients (mapv #(item-set tags %) (get json "ingredients"))})
+  {:ingredients (mapv #(pack/item-set tags %)
+                      (get json "ingredients"))})
 
 (defn- crafting-recipe [tags order [id json]]
   (let [type (crafting-types (get json "type"))
@@ -231,10 +207,10 @@
         r (if (string? r) {"id" r} r)]
     {:id       (pack/kw id)
      :type     type
-     :in       (ingredient (get json "ingredient"))
+     :in       (pack/ingredient (get json "ingredient"))
      :out      {:item (pack/kw (get r "id")) :count (get r "count" 1)}
      :time     (get json "cookingtime" default)
-     :xp       (flt (get json "experience" 0.0))
+     :xp       (pack/flt (get json "experience" 0.0))
      :category (pack/kw (get json "category" "misc"))}))
 
 (defn- cooking [recipes]

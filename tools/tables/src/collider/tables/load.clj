@@ -62,9 +62,14 @@
   {:resources resources :managers managers
    :access (call layers "compositeAccess")})
 
+(defn features
+  "Returns the features a world of the vanilla pack enables."
+  []
+  (call (data-config) "enabledFeatures"))
+
 (defn- finish-recipes! [managers]
   (call (call managers "getRecipeManager") "finalizeRecipeLoading"
-        (call (data-config) "enabledFeatures")))
+        (features)))
 
 (defn- supplier []
   (implement "server.WorldLoader$WorldDataSupplier" "get"

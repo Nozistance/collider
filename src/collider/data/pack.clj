@@ -22,3 +22,34 @@
     (set? v) (into #{} (map plain) v)
     (vector? v) (mapv plain v)
     :else v))
+
+(defn flt
+  "Returns v as the double that prints like the float v."
+  ^double [v]
+  (Double/parseDouble (Float/toString (float v))))
+
+(defn unknown
+  "Returns the error for pack data the tables have no words for."
+  [msg data]
+  (ex-info msg (assoc data :what "unknown vanilla data")))
+
+(defn ingredient
+  "Returns the items of holder set v, or {:tag name} for a tag."
+  [v]
+  (cond
+    (string? v) (if (str/starts-with? v "#")
+                  {:tag (str/replace (subs v 1) #"^minecraft:" "")}
+                  [(kw v)])
+    (sequential? v) (mapv kw v)
+    :else (throw (unknown "unknown ingredient" {:value v}))))
+
+(defn item-set
+  "Returns the items of holder set v as a sorted set. Tags gives the
+  items of an item tag by name, or nil for no such tag."
+  [tags v]
+  (let [i (ingredient v)
+        items (if (map? i)
+                (or (tags (:tag i))
+                    (throw (unknown "unknown item tag" {:tag i})))
+                i)]
+    (into (sorted-set) items)))
