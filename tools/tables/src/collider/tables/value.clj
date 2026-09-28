@@ -27,6 +27,14 @@
   [m f]
   (into (sorted-map) (map (fn [[k v]] [k (f v)])) m))
 
+(defn sorted-json
+  "Returns json v with every object sorted by key."
+  [v]
+  (cond
+    (map? v) (sorted-vals v sorted-json)
+    (vector? v) (mapv sorted-json v)
+    :else v))
+
 (defn unknown
   "Returns the error for vanilla data the tables cannot hold."
   [msg data]

@@ -381,6 +381,14 @@
   (block-pairs reg "world.item.HoneycombItem"
                "WAXABLES" :waxed :unwaxed))
 
+(defn- placer-features [reg]
+  (let [c (cls "world.level.block.BonemealableFeaturePlacerBlock")]
+    (into (sorted-map)
+          (for [b (elements reg) :when (Class/.isInstance c b)]
+            (let [f (hidden-field (class b) b "feature")]
+              [(key-of reg b)
+               {:feature (kw (str (call f "identifier")))}])))))
+
 (defn- block-table [reg by-type]
   (let [refs (block-refs reg)
         env (clone-env)
@@ -390,7 +398,7 @@
     (merge-with merge own
                 (weathering-pairs reg) (waxable-pairs reg)
                 (merge-with merge refs (pot-contents refs))
-                (strippables reg))))
+                (strippables reg) (placer-features reg))))
 
 (defn- block-props []
   (let [types (sound-types)
@@ -437,14 +445,6 @@
     (merge-with merge
                 (table "igniteOdds" :ignite)
                 (table "burnOdds" :burn))))
-
-(defn- placer-features [reg]
-  (let [c (cls "world.level.block.BonemealableFeaturePlacerBlock")]
-    (into (sorted-map)
-          (for [b (elements reg) :when (Class/.isInstance c b)]
-            (let [f (hidden-field (class b) b "feature")]
-              [(key-of reg b)
-               (kw (str (call f "identifier")))])))))
 
 (defn- template [reg t]
   (when t
@@ -506,7 +506,6 @@
       (merge (state-shapes states) (block-props)
              {:non-breakers (non-breakers)}
              {:light (light-table states) :fire (fire-odds)
-              :placers (placer-features (registry "BLOCK"))
               :compost (compostables)
               :walls (merge (wall-items) (solid-buckets))
               :remainders (remainders) :banners (banner-colors)

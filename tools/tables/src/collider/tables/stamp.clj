@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 14)
+(def layout 15)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -27,13 +27,14 @@
    "worldgen/template_pool" "worldgen/world_preset"
    "zombie_nautilus_variant"])
 
+(def tags ["worldgen/configured_feature"])
+
 (def files
-  (into ["packets" "registries" "blocks" "synced" "tags" "items"
-         "light" "fire" "drops" "entity-drops" "recipes" "sounds"
-         "features" "potions" "effects" "shapes" "outlines"
-         "sturdy" "flags"]
-        (map #(str "pack/" %))
-        pack))
+  (-> ["packets" "registries" "blocks" "synced" "tags" "items"
+       "light" "fire" "drops" "entity-drops" "recipes" "sounds"
+       "potions" "effects" "shapes" "outlines" "sturdy" "flags"]
+      (into (map #(str "pack/" %)) pack)
+      (into (map #(str "pack/tags/" %)) tags)))
 
 (defn stamp
   "Returns the stamp that a set of tables of this tool carries."

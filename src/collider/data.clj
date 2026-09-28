@@ -12,7 +12,7 @@
 
 (def game "26.2")
 
-(def layout 14)
+(def layout 15)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -78,8 +78,8 @@
 
 (def ^:private table-names
   [:packets :registries :blocks :synced :tags :items :light
-   :fire :drops :entity-drops :recipes :sounds :features
-   :potions :effects])
+   :fire :drops :entity-drops :recipes :sounds :potions
+   :effects])
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -139,11 +139,6 @@
   [] (:smithing (recipes)))
 
 (defn sounds [] (:sounds @tables))
-
-(defn features
-  "Returns the features that bone meal reaches and the features that
-  each biome grows."
-  [] (:features @tables))
 
 (defn potions
   "Returns the effect instances every potion gives."

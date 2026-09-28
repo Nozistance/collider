@@ -3,18 +3,11 @@
   (:require [clojure.data.json :as json]
             [collider.tables.reflect
              :refer [any-class call call-static class-field
-                     static-field]])
+                     static-field]]
+            [collider.tables.value :refer [sorted-json]])
   (:import (java.util Optional)))
 
 (set! *warn-on-reflection* true)
-
-(defn- sorted-json [v]
-  (cond
-    (map? v) (into (sorted-map)
-                   (map (fn [[k x]] [k (sorted-json x)]))
-                   v)
-    (vector? v) (mapv sorted-json v)
-    :else v))
 
 (defn- encoded [ops codec v]
   (let [e (call (call codec "encodeStart" ops v) "getOrThrow")]

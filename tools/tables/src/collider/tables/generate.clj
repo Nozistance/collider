@@ -1,6 +1,7 @@
 (ns collider.tables.generate
   "Generating the game data tables from the vanilla server."
   (:require [clojure.java.io :as io]
+            [clojure.string :as str]
             [collider.tables.brewing :as brewing]
             [collider.tables.classes :as classes]
             [collider.tables.fetch :as fetch]
@@ -13,9 +14,9 @@
             [collider.tables.stamp :as stamp]
             [collider.tables.tags :as tags]
             [collider.tables.value :refer [unknown]]
-            [collider.tables.worldgen :as worldgen]
             [collider.tables.progress :refer [progress! timed]])
   (:import (java.io File)
+           (java.nio.file Path)
            (java.util.zip ZipFile)))
 
 (set! *warn-on-reflection* true)
@@ -54,16 +55,15 @@
                 (items/station-items reports tags lang))))
 
 (defn- class-tables [zf from-class reports tags]
-  (let [{:keys [props shapes placers]} from-class]
+  (let [{:keys [props shapes]} from-class]
     {:blocks     (registry/blocks reports props shapes)
      :drops      (loot/block-drops zf)
      :entity-drops (loot/entity-drops zf)
-     :items      (item-table zf from-class reports tags)
-     :features   (worldgen/features zf placers)}))
+     :items      (item-table zf from-class reports tags)}))
 
 (defn- tables [zf from-class reports rs]
   (let [tagged (tagged-tables zf reports rs from-class)]
-    (merge (dissoc from-class :props :compost :walls :placers
+    (merge (dissoc from-class :props :compost :walls
                    :remainders :banners :dyes :synced :non-breakers
                    :pack)
            tagged
@@ -75,13 +75,40 @@
                     {:found (vec (keys pack))})))
   (map (fn [[path t]] [(str "pack/" path) t]) pack))
 
+(defn- tag-tables [zf]
+  (map (fn [path]
+         [(str "pack/tags/" path) (tags/pack-tags zf path)])
+       stamp/tags))
+
+(defn- table-files [^File out]
+  (let [pack (io/file out "pack")]
+    (concat (filter File/.isFile (File/.listFiles out))
+            (filter File/.isFile (file-seq pack)))))
+
+(defn- table-path [^File out ^File f]
+  (let [p (Path/.relativize (File/.toPath out) (File/.toPath f))]
+    (str/join "/" (map str (seq p)))))
+
+(defn- retire!
+  "Deletes the tables in out that a full set no longer holds.
+  Only edn files at the top and below pack/ are tables."
+  [^File out]
+  (let [known (into #{} (map #(str % ".edn"))
+                    (conj stamp/files "stamp"))]
+    (doseq [f (table-files out)
+            :let [p (table-path out f)]
+            :when (str/ends-with? p ".edn")
+            :when (not (known p))]
+      (io/delete-file f))))
+
 (defn- write-tables! [^File server ^File reports out from-class sha]
   (io/delete-file (io/file out "stamp.edn") true)
-  (files/delete-tree! (io/file out "pack"))
+  (retire! (io/file out))
   (with-open [zf (ZipFile/new server)]
     (let [rs (registry/registries reports)
           ts (concat (tables zf from-class reports rs)
-                     (pack-tables (:pack from-class)))
+                     (pack-tables (:pack from-class))
+                     (tag-tables zf))
           n (count ts)]
       (doseq [[i [k data]] (map-indexed vector ts)]
         (progress! {:event :progress :step :tables
