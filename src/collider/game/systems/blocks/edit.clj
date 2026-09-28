@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -218,13 +219,20 @@
   (let [sent (set sent)]
     (into [] (comp (map first) (remove sent) (distinct)) records)))
 
+(defn- removal-deltas [world writes]
+  (for [[p old st flags] writes
+        :when (spill/removed? old st flags)
+        d (spill/removed-deltas world p old)]
+    d))
+
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates."
   [world s]
   (let [quiet (unheard s)
         d [:set-blocks (block-changes (:records s)) (:ticks s)]]
-    (into [(cond-> d (seq quiet) (conj quiet))]
-          (change-fx world (:records s)))))
+    (-> [(cond-> d (seq quiet) (conj quiet))]
+        (into (removal-deltas world (:writes s)))
+        (into (change-fx world (:records s))))))
 
 (defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)

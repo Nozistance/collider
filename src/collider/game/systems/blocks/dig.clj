@@ -9,7 +9,6 @@
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
@@ -30,14 +29,6 @@
   (when (and (state/infinite-materials? e) (first-half? old))
     (connect/partner (:chunks world) pos old)))
 
-(defn- jukebox-break-deltas [world pos]
-  (let [e (be/at world pos)
-        above (mapv + pos [0 1 0])]
-    (when (and (= :jukebox (:kind e)) (:record e))
-      [[:spawn-entity (items/popped world above (:record e) :jukebox)]
-       (out/all (out/level-event
-                  out/sound-stop-jukebox-song pos 0))])))
-
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
 
@@ -56,30 +47,13 @@
         (when (some some? (:items e))
           [(shulker-drop world pos e)])))))
 
-(defn- lectern-break-deltas [world pos]
-  (for [e (container/dropped-book world pos)] [:spawn-entity e]))
-
-(defn- spilled [world pos i stack]
-  (map (fn [part]
-         [:spawn-entity (items/popped world pos part [:spill i])])
-       (items/split-drop world pos stack [:spill i])))
-
-(defn- spill-deltas [world pos]
-  (let [e (be/at world pos)]
-    (when (contains? be/spill-kinds (:kind e))
-      (mapcat (fn [[i s]] (when s (spilled world pos i s)))
-              (map-indexed vector (:items e))))))
-
 (defn- break-shown [eid pos old]
   (if (fire/fire-state? old)
     [(out/all (out/extinguish pos))]
     [(out/except eid (out/break-effect pos old))]))
 
 (defn- entity-deltas [world pos]
-  (vec (concat (jukebox-break-deltas world pos)
-               (shulker-break-deltas world pos)
-               (lectern-break-deltas world pos)
-               (spill-deltas world pos))))
+  (vec (shulker-break-deltas world pos)))
 
 (defn- gone-deltas
   [world eid pos old [ppos pst :as kept]]

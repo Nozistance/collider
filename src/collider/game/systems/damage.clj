@@ -528,8 +528,15 @@
   (loot/drops @drop-tables (:type e) (loot-ctx world e)
               #(random/of-key (:tick world) eid %)))
 
+(defn- drops-loot?
+  "LivingEntity.shouldDropLoot: not a baby, and the mob_drops rule."
+  [world e]
+  (and (get @drop-tables (:type e))
+       (not (mobs/baby? e))
+       (get-in world [:rules :mob-drops] true)))
+
 (defn- drop-deltas [world eid e]
-  (when (get @drop-tables (:type e))
+  (when (drops-loot? world e)
     (let [t (:tick world)
           spawn (fn [i s]
                   (let [v (entity/pop-velocity [t eid :loot i])]

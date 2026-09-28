@@ -1,7 +1,6 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
-  (:require [collider.data :as data]
-            [collider.game.game-mode :as game-mode]
+  (:require [collider.game.game-mode :as game-mode]
             [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -18,6 +17,7 @@
             [collider.game.out :as out]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.game.systems.blocks.reach :as reach]
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
@@ -163,39 +163,12 @@
 (def ^:private ^:const vertical-drag
   (modified-friction (double (float 0.98))))
 
-(def ^:private ^:const below-offset (double (float 0.500001)))
-
 (def ^:private ^:const jump-threshold 0.4)
 
 (def ^:private ^:const max-up-step 0.6)
 
-(defn- motion-table ^doubles [k ^double default]
-  (let [a (double-array (data/block-state-count) default)]
-    (doseq [[_ b] (data/blocks)
-            :let [v (k b)] :when v
-            i (range (reduce * 1 (map count (vals (:props b)))))]
-      (aset a (+ (long (:first b)) (long i))
-            (double (float (double v)))))
-    a))
-
-(def ^:private ^:table frictions
-  (delay (motion-table :friction (double (float 0.6)))))
-
-(def ^:private ^:table speed-factors
-  (delay (motion-table :speed-factor 1.0)))
-
-(def ^:private ^:table jump-factors
-  (delay (motion-table :jump-factor 1.0)))
-
-(defn- factor-of ^double [^doubles a ^long st]
-  (if (< -1 st (alength a)) (aget a st) (aget a 0)))
-
 (defn- below-state ^long [world pos sup]
-  (let [y (long (Math/floor (- (v/y pos) below-offset)))]
-    (if sup
-      (sense/block-at world (long (nth sup 0)) y (long (nth sup 2)))
-      (sense/block-at world (long (Math/floor (v/x pos))) y
-                      (long (Math/floor (v/z pos)))))))
+  (motion/below-state (:chunks world) pos sup))
 
 (defn- feet-state [world pos]
   (sense/block-at world (long (Math/floor (v/x pos)))
@@ -204,22 +177,15 @@
 
 (defn- below-friction ^double [world pos sup]
   (modified-friction
-    (factor-of @frictions (below-state world pos sup))))
+    (motion/friction (below-state world pos sup))))
 
 (defn- speed-factor ^double [world pos sup]
-  (let [^doubles a @speed-factors
-        st (feet-state world pos)
-        here (factor-of a st)]
-    (if (or (not (== here 1.0))
-            (block/water? st) (liquid/bubble-column? st))
-      here
-      (factor-of a (below-state world pos sup)))))
+  (motion/block-speed-factor (:chunks world) pos sup))
 
 (defn- jump-factor ^double [world pos sup]
-  (let [^doubles a @jump-factors
-        here (factor-of a (feet-state world pos))]
+  (let [here (motion/jump-factor (feet-state world pos))]
     (if (== here 1.0)
-      (factor-of a (below-state world pos sup))
+      (motion/jump-factor (below-state world pos sup))
       here)))
 
 (defn- look-toward [e height o]

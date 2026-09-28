@@ -125,13 +125,27 @@
   (set (keep (fn [slot] (get-in p [:inventory slot :item]))
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
+(defn visibility
+  "Returns how much of its range a mob sees player p at, as
+  LivingEntity.getVisibilityPercent: a sneaking player less."
+  ^double [p]
+  (if (:sneaking? p) 0.8 1.0))
+
+(defn in-range?
+  "Tells whether a mob at pos notices player p within range r, as
+  TargetingConditions.test: r shrinks with the player's visibility,
+  never below 2."
+  [pos p ^double r]
+  (let [d (max (* r (visibility p)) 2.0)]
+    (<= (v/dist3-sq pos (:pos p)) (* d d))))
+
 (defn holders
-  "Returns [id items pos] for every player that holds something and
-  that mobs can see."
+  "Returns [id items player] for every player that holds something
+  and that mobs can see."
   [world]
   (into []
         (keep (fn [[pid p]]
                 (let [items (hands-of p)]
                   (when (and (seq items) (game-mode/seen? p))
-                    [pid items (:pos p)]))))
+                    [pid items p]))))
         (state/player-entries world)))

@@ -82,6 +82,7 @@
 
 (def ^:private cow
   {:half           (attr 0.45) :height (attr 1.4)
+   :eye            (attr 1.3) :baby-eye (attr 0.69)
    :speed          (attr 0.2)
    :max-health     10.0
    :sounds         :cow
@@ -92,6 +93,8 @@
 (def types
   {:sheep     {:half          (attr 0.45)
                :height        (attr 1.3)
+               :eye           (attr 1.235)
+               :baby-eye      (attr 0.65625)
                :speed         (attr 0.23)
                :max-health    8.0
                :sounds        :sheep
@@ -204,6 +207,12 @@
     (if (baby? e)
       [(* 0.5 (double half)) (* 0.5 (double height))]
       [half height])))
+
+(defn eye-height
+  "Returns how far above its position mob e looks out."
+  ^double [e]
+  (let [m (types (:type e))]
+    (double (if (baby? e) (:baby-eye m) (:eye m)))))
 
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."

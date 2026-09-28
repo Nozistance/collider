@@ -110,40 +110,50 @@
     (block/without-water st)
     (block/water? st) 0))
 
-(defn- wet-around [chunks seen p]
-  (for [o around6
-        :let [q (mapv + p o)]
-        :when (and (not (seen q))
-                   (some? (dried (chunk/at chunks q))))]
-    q))
-
 (defn- dried-at [chunks p]
   (let [st (chunk/at chunks p)]
-    (if (contains? plants (block/type-of st))
-      [p (dried st) [[:drop st]]]
-      [p (dried st)])))
+    (when-let [st' (dried st)]
+      (if (contains? plants (block/type-of st))
+        [p st' [[:drop st]]]
+        [p st']))))
 
 (def ^:private absorb-sound [:sound :block.sponge.absorb 1.0 1.0])
 
 (defn- soaked [pos dim]
   (if (attribute/water-evaporates? dim)
-    [[pos (block/state :wet-sponge)]
+    [[pos (block/state :wet-sponge) nil 2]
      [pos (block/state :sponge) [:dry absorb-sound]]]
-    [[pos (block/state :wet-sponge) [absorb-sound]]]))
+    [[pos (block/state :wet-sponge) [absorb-sound] 2]]))
+
+(defn- spread [bfs p ^long d]
+  (let [n (inc (long (:n bfs)))
+        bfs (-> (assoc bfs :n n) (update :seen conj p))]
+    (cond
+      (>= n 65) (assoc bfs :queue [])
+      (< d 6) (update bfs :queue into
+                      (map (fn [o] [(mapv + p o) (inc d)]))
+                      around6)
+      :else bfs)))
+
+(defn- searched [chunks {:keys [pos queue seen] :as bfs}]
+  (if-let [[p d] (peek queue)]
+    (let [bfs (assoc bfs :queue (pop queue))
+          c (when-not (= p pos) (dried-at chunks p))]
+      (cond
+        (seen p) (recur chunks bfs)
+        c [c #(searched % (spread bfs p d))]
+        (= p pos) (recur chunks (spread bfs p d))
+        :else (recur chunks (update bfs :seen conj p))))
+    (when (> (long (:n bfs)) 1) (soaked pos (:dim bfs)))))
 
 (defn absorbed
-  "Returns the changes of a sponge at pos in dim soaking up water."
+  "Returns the changes of a sponge at pos in dim soaking up water,
+  as SpongeBlock.removeWaterBreadthFirstSearch finds them. Each
+  removal is set before the next cell is read, so the changes after
+  it are a step, a function of the level as the removal left it."
   [chunks pos dim]
-  (loop [queue (conj PersistentQueue/EMPTY [pos 0])
-         seen #{pos}
-         acc []]
-    (if (or (empty? queue) (>= (count acc) 64))
-      (when (seq acc) (into acc (soaked pos dim)))
-      (let [[p ^long d] (peek queue)
-            wet (when (< d 6) (wet-around chunks seen p))]
-        (recur (into (pop queue) (map (fn [q] [q (inc d)]) wet))
-               (into seen wet)
-               (into acc (map #(dried-at chunks %)) wet))))))
+  (searched chunks {:pos pos :dim dim :n 0 :seen #{}
+                    :queue (conj PersistentQueue/EMPTY [pos 0])}))
 
 (def sponge-rule
   {:name    :sponge

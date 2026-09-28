@@ -1,16 +1,19 @@
 (ns collider.game.mob.animal
   "Farm animal goals and their selector."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.entity :as entity]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.game.systems.items :as items]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.space.sight :as sight]))
 
 (set! *warn-on-reflection* true)
 
@@ -40,7 +43,11 @@
 
 (def ^:private ^:const breed-near-sq 9.0)
 
-(def ^:private ^:const tempt-range-sq 100.0)
+(def ^:private ^:const tempt-range 10.0)
+
+(def ^:private ^:const look-range 6.0)
+
+(def ^:private ^:const sight-range-sq 16384.0)
 
 (def ^:private ^:const calm-ticks 100)
 
@@ -65,6 +72,12 @@
 (def one-in?
   "Returns true with a chance of one in n."
   pos/one-in?)
+
+(defn- reduced-delay
+  "Goal.reducedTickDelay: ticks as goal selector passes, which come
+  every second tick."
+  ^long [^long ticks]
+  (quot (inc ticks) 2))
 
 (def ^:private speeds
   "The speed of each goal for each breed.
@@ -159,20 +172,23 @@
         o (get-in world [:entities pid])
         speed (goal-speed e :mate)
         e (nav/move-to-entity world (glance e pid t) o speed)
-        e (update-in e [:task :love] (fn [n] (inc (long n))))]
-    (if (and (>= (long (get-in e [:task :love])) mate-ticks)
+        e (update-in e [:task :love] (fn [n] (inc (long n))))
+        due (reduced-delay mate-ticks)]
+    (if (and (>= (long (get-in e [:task :love])) due)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
       (bred spec eid pid e o t)
       [e nil])))
 
+(defn- tempting [e item [pid items p]]
+  (when (and (contains? items item)
+             (sense/in-range? (:pos e) p tempt-range))
+    [(v/dist3-sq (:pos e) (:pos p)) pid]))
+
 (defn- tempter [e tempters]
   (let [item (mobs/breeding-item (:type e))]
     (->> tempters
-         (keep (fn [[pid items pos]]
-                 (when (contains? items item)
-                   (let [d2 (v/dist3-sq (:pos e) pos)]
-                     (when (< d2 tempt-range-sq) [d2 pid])))))
+         (keep #(tempting e item %))
          (sort-by first)
          first
          second)))
@@ -241,7 +257,7 @@
 
 (defn- start-wander [world eid e t _]
   (when (and (< (long (or (:no-action e) 0)) stroll-idle)
-             (one-in? t eid :stroll stroll-interval))
+             (one-in? t eid :stroll (reduced-delay stroll-interval)))
     (when-let [cell (stroll-pos world eid e t)]
       [(nav/move-to world (assoc e :task {:kind :wander}) cell
                     (goal-speed e :wander))
@@ -253,8 +269,34 @@
                (> (long (:until l)) (long t)))
       l)))
 
-(defn- player-to-look-at [world e]
-  (sense/nearest-player world (:pos e) look-range-sq game-mode/seen?))
+(defn- eye-of [e ^double h]
+  (let [p (:pos e)] [(v/x p) (+ (v/y p) h) (v/z p)]))
+
+(defn- in-sight? [world e o]
+  (let [from (eye-of e (mobs/eye-height e))
+        to (eye-of o (entity/eye-height o))]
+    (and (<= (v/dist3-sq from to) sight-range-sq)
+         (sight/clear? (:chunks world) from to))))
+
+(defn- noticed? [world e o]
+  (and (game-mode/seen? o)
+       (sense/in-range? (:pos e) o look-range)
+       (in-sight? world e o)))
+
+(defn- nearer [world e eye best [pid p]]
+  (let [d2 (v/dist3-sq eye (:pos p))]
+    (if (and (or (nil? best) (< d2 (double (best 0))))
+             (noticed? world e p))
+      [d2 pid p]
+      best)))
+
+(defn- player-to-look-at
+  "LookAtPlayerGoal.canUse: the player nearest the eyes of mob e
+  among those it notices, as [distance-squared id player]."
+  [world e]
+  (let [eye (eye-of e (mobs/eye-height e))]
+    (reduce #(nearer world e eye %1 %2) nil
+            (state/player-entries world))))
 
 (defn- look-until [t eid]
   (+ (long t) look-ticks

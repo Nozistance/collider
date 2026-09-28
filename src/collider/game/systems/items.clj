@@ -117,6 +117,40 @@
         (recur (- n got) (inc i)
                (conj acc (assoc stack :count got)))))))
 
+(def ^:private ^:const scatter-spread 0.11485000171139836)
+
+(defn- scatter-spot [pos roll]
+  (let [f #(Math/floor (double (nth pos %)))]
+    [(+ (f 0) (* (double (roll :x)) 0.75) 0.125)
+     (+ (f 1) (* (double (roll :y)) 0.75))
+     (+ (f 2) (* (double (roll :z)) 0.75) 0.125)]))
+
+(defn- scatter-axis ^double [roll i a ^double mode]
+  (let [r #(double (roll [:vel i %]))]
+    (+ mode (* scatter-spread (- (r a) (r (inc (long a))))))))
+
+(defn- scatter-speed [roll i]
+  [(scatter-axis roll i 0 0.0) (scatter-axis roll i 2 0.2)
+   (scatter-axis roll i 4 0.0)])
+
+(defn- pile ^long [roll i ^long left]
+  (min left (+ 10 (long (* 21.0 (double (roll [:split i])))))))
+
+(defn scattered
+  "Returns the items Containers.dropItemStack makes of stack at pos:
+  piles of 10 to 30 at one spot inside the cell, each thrown its own
+  way, none held back from pickup. roll gives a number in [0, 1)
+  for each key."
+  [pos stack roll]
+  (let [at (scatter-spot pos roll)]
+    (loop [n (long (:count stack 1)) i 0 acc []]
+      (if-not (pos? n)
+        acc
+        (let [got (pile roll i n)
+              s (assoc stack :count got)
+              it (entity/item at (scatter-speed roll i) s 0)]
+          (recur (- n got) (inc i) (conj acc it)))))))
+
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
         slot (state/hand-slot e :main)
@@ -159,9 +193,7 @@
 
 (def ^:private ^:const item-height 0.25)
 
-(def ^:private ^:const air-drag 0.98)
-
-(def ^:private ^:const ground-friction 0.588)
+(def ^:private ^:const air-drag (double (float 0.98)))
 
 (def ^:private ^:const gravity 0.04)
 
@@ -225,19 +257,43 @@
        :else [(v/x pushed) (- (v/y pushed) gravity) (v/z pushed)])
      (or (> water fluid-depth) (> lava fluid-depth))]))
 
-(defn- item-moved [chunks pos [vx vy vz]]
-  (let [v [(double vx) (double vy) (double vz)]
-        ^Move mv (phys/move chunks pos v item-half item-height)
-        on-ground (phys/on-ground? mv)
-        vel (phys/vel mv)
-        [mx my mz] (if on-ground
-                     (motion/stepped-speed chunks (phys/pos mv) vel)
-                     vel)
-        f (if on-ground ground-friction air-drag)
+(defn- supported [chunks e ^Move mv]
+  (if-not (phys/on-ground? mv)
+    [nil false]
+    (let [p (phys/pos mv)
+          sb (phys/supporting-block chunks p item-half)
+          o (:pos e)]
+      (if (or sb (:no-blocks? e))
+        [sb (nil? sb)]
+        (let [s (phys/supporting-block
+                  chunks (v/v3 (v/x o) (v/y p) (v/z o)) item-half)]
+          [s (nil? s)])))))
+
+(defn- ground-friction ^double [chunks pos sup]
+  (let [f (motion/friction (motion/below-state chunks pos sup))]
+    (double (float (* air-drag f)))))
+
+(defn- moved-speed [chunks ^Move mv sup on-ground]
+  (let [p (phys/pos mv)
+        sf (motion/block-speed-factor chunks p sup)
+        w (phys/vel mv)
+        vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
+    (if on-ground (motion/stepped-speed chunks p vel) vel)))
+
+(defn- dragged [chunks pos sup on-ground [mx my mz]]
+  (let [f (if on-ground (ground-friction chunks pos sup) air-drag)
         my (* (double my) air-drag)
         my (if (and on-ground (neg? my)) (* my bounce) my)]
-    [(phys/pos mv)
-     [(* (double mx) f) my (* (double mz) f)] on-ground]))
+    [(* (double mx) f) my (* (double mz) f)]))
+
+(defn- item-moved [chunks e vel]
+  (let [vel (mapv double vel)
+        ^Move mv (phys/move chunks (:pos e) vel item-half item-height)
+        og (phys/on-ground? mv)
+        [sup nb?] (supported chunks e mv)
+        p (phys/pos mv)]
+    [p (dragged chunks p sup og (moved-speed chunks mv sup og))
+     og sup nb?]))
 
 (defn- jolt-of ^double [vel' old]
   (let [dx (- (double (vel' 0)) (v/x old))
@@ -251,21 +307,24 @@
          (<= (+ (* vx vx) (* vz vz)) resting-speed-sq)
          (not= 0 (rem (+ age eid) resting-period)))))
 
+(defn- moved-or-resting [chunks e drift rest? push]
+  (if rest?
+    [(:pos e) drift true (:support e) (:no-blocks? e)]
+    (item-moved chunks e push)))
+
 (defn- settled [chunks dim e eid age]
-  (let [pos (:pos e)
-        [drift in-fluid?] (item-drift chunks dim pos (:vel e))
+  (let [[drift in-fluid?] (item-drift chunks dim (:pos e) (:vel e))
         stuck (:stuck e)
         rest? (resting? e drift age eid)
         push (if stuck (mapv * drift stuck) drift)
-        moved (if rest?
-                [pos drift true]
-                (item-moved chunks pos push))
-        [pos' v on-ground] moved
+        [pos' v on-ground sup nb?]
+        (moved-or-resting chunks e drift rest? push)
         v (if (and stuck (not rest?)) [0.0 0.0 0.0] v)
         vy (liquid/bubble-push chunks pos' (double (v 1)))
         st (motion/stuck-speed chunks pos' item-half item-height)]
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
-     :in-fluid? in-fluid? :stuck (if rest? (or st stuck) st)}))
+     :support sup :no-blocks? nb? :in-fluid? in-fluid?
+     :stuck (if rest? (or st stuck) st)}))
 
 (defn- gone? [world e ^long age]
   (or (>= age despawn-age)
@@ -281,21 +340,22 @@
   (let [d (long (or (:pickup-delay e) 0))]
     (if (= no-pickup-delay d) d (max 0 (dec d)))))
 
+(def ^:private stepped-keys
+  [:pos :vel :on-ground :support :no-blocks?])
+
+(defn- stepped [e s age]
+  (cond-> (assoc (select-keys s stepped-keys)
+                 :needs-sync? (needs-sync? e s)
+                 :age age
+                 :pickup-delay (delay-left e))
+    (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))
+
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
-        s (settled (:chunks world) (:dim world) e (long eid) age)
-        stuck' (:stuck s)
-        delay' (delay-left e)]
+        s (settled (:chunks world) (:dim world) e (long eid) age)]
     (if (gone? world e age)
       [:remove-entity eid]
-      [:merge-entity eid
-       (cond-> {:pos          (:pos s)
-                :vel          (:vel s)
-                :on-ground    (:on-ground s)
-                :needs-sync?  (needs-sync? e s)
-                :age          age
-                :pickup-delay delay'}
-               (or stuck' (:stuck e)) (assoc :stuck stuck'))])))
+      [:merge-entity eid (stepped e s age)])))
 
 (defn- mergeable? [ea eb]
   (let [pa (:pos ea) pb (:pos eb)

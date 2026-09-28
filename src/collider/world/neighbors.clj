@@ -45,10 +45,17 @@
 (defn- shape-flags ^long [^long flags old st]
   (if (destroys? old st) 3 (bit-and flags -33)))
 
-(defn- reacted [s ctx changes flags-of limit]
-  (reduce (fn [s [p st :as c]]
-            (let [old (block-at s p)]
-              (set-block s ctx c (flags-of old st) limit)))
+(defn- reacted
+  "Sets the changes of a rule in order. A change may name its own
+  flags. A step, a function of the level, gives the changes that
+  follow the ones before it."
+  [s ctx changes flags-of limit]
+  (reduce (fn [s c]
+            (if (fn? c)
+              (reacted s ctx (c (:chunks s)) flags-of limit)
+              (let [[p st] c
+                    f (get c 3 (flags-of (block-at s p) st))]
+                (set-block s ctx c f limit))))
           s changes))
 
 (defn- rule-woken [s ctx p old side flags-of limit]
@@ -191,12 +198,12 @@
 (defn- shown [fx]
   (into [] (remove run-by-level?) fx))
 
-(defn- written [s p old st fx]
+(defn- written [s p old st fx flags]
   (let [fx (into (shown fx) (geyser/placed-fx st))]
     (-> s
         (update :chunks chunk/chunks-set-blocks [[p st]])
         (update :records conj (if (seq fx) [p st fx] [p st]))
-        (update :writes conj [p old st]))))
+        (update :writes conj [p old st flags]))))
 
 (defn- updated [s ctx p old st flags limit]
   (let [s (if (bit-test (long flags) 9) s (placed s ctx p old))
@@ -232,7 +239,7 @@
       (= old (long st))
       (let [fx (shown fx)]
         (cond-> s (seq fx) (update :records conj [p st fx])))
-      :else (-> (written s p old st fx)
+      :else (-> (written s p old st fx flags)
                 (updated ctx p old st flags limit)
                 (liquid-placed ctx p old fx)))))
 
@@ -241,7 +248,8 @@
   Flag 1 tells the neighbours. Flag 2 tells the clients. Flag 16 skips
   shape updates. Flag 512 skips the placement reply. Shape replies
   keep the flags without 1 and 32. The neighbour calls that fx names
-  run last. The cells that the clients hear of go to :sent."
+  run last. The cells that the clients hear of go to :sent, and each
+  write to :writes as [p old st flags]."
   [s ctx [_ _ fx :as c] flags limit]
   (-> (stored s ctx c flags limit)
       (called ctx fx)))

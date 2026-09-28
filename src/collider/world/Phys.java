@@ -265,7 +265,8 @@ public final class Phys {
     /// height `height` from `px`, `py`, `pz` by the velocity `vx`,
     /// `vy`, `vz`. The blocks it meets stop it. A body that lands
     /// and is held back sideways climbs up to `step` when that
-    /// takes it further.
+    /// takes it further. A move under 1.0E-7 squared that the
+    /// blocks cut short leaves it where it was, as Entity.move.
     public static Move move(ChunkIndex chunks, boolean[] solid,
             boolean[] cube, Object[] shapes, double px, double py,
             double pz, double vx, double vy, double vz, double half,
@@ -281,7 +282,12 @@ public final class Phys {
             stepUp(chunks, solid, cube, shapes, box0, out, vx, vz, step);
         }
         double dx = out[0], dy = out[1], dz = out[2];
-        return new Move(new V3(px + dx, py + dy, pz + dz),
+        double moved = dx * dx + dy * dy + dz * dz;
+        double asked = vx * vx + vy * vy + vz * vz;
+        boolean kept = moved > 1.0E-7 || asked - moved < 1.0E-7;
+        V3 to = kept ? new V3(px + dx, py + dy, pz + dz)
+                     : new V3(px, py, pz);
+        return new Move(to,
                 new V3(equal(dx, vx) ? vx : restituted(vx),
                        hitY ? restituted(vy) : vy,
                        equal(dz, vz) ? vz : restituted(vz)),

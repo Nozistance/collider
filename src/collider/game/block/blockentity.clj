@@ -45,10 +45,6 @@
 (def menu-kinds
   (conj (into container-kinds furnace-kinds) :brewing-stand))
 
-(def spill-kinds
-  #{:chest :trapped-chest :barrel :furnace :blast-furnace :smoker
-    :brewing-stand :campfire})
-
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
 

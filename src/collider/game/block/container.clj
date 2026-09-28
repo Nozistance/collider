@@ -3,7 +3,6 @@
   (:require [collider.data :as data]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
-            [collider.game.entity :as entity]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
@@ -367,18 +366,6 @@
           (lectern-set world pos (lectern/powered-state st true))
           [[:schedule-ticks {at ids}]
            (out/all (out/level-event out/sound-page-turn pos 0))])))))
-
-(defn dropped-book [world pos]
-  (let [e (be/at world pos)
-        st (state-at (:chunks world) pos)]
-    (when (and (lectern/has-book? st) (:book e))
-      (let [[x y z] pos
-            [dx _ dz] (dir/offset (lectern/facing st))
-            p [(+ (double x) 0.5 (* 0.25 (double dx)))
-               (double (inc (long y)))
-               (+ (double z) 0.5 (* 0.25 (double dz)))]
-            v (entity/pop-velocity [(:tick world) pos :lectern])]
-        [(entity/item p v (:book e))]))))
 
 (defn positions [m]
   (cond
