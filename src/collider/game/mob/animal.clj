@@ -6,9 +6,11 @@
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
+            [collider.game.orb :as orb]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -157,15 +159,25 @@
     (assoc (mobs/new-mob (:type e) (:pos e) color t)
            :baby-until (+ (long t) baby-ticks))))
 
-(defn- bred [spec eid pid e o t]
+(defn- breeding-orb
+  "Returns the orb of 1 to 7 points that
+  Animal.finalizeSpawnChildFromBreeding drops where mob e stands."
+  [eid e t]
+  (let [roll #(random/of-key t eid [:breed-orb %])
+        value (inc (long (* 7.0 (double (roll :value)))))]
+    (orb/make (:pos e) value roll)))
+
+(defn- bred [spec world eid pid e o t]
   (let [cooled {:love-until 0
                 :breed-ready-at (+ (long t) breed-cooldown)}]
     [(assoc e :task nil)
-     [[:spawn-entity (newborn spec t eid e o)]
-      [:merge-entity eid cooled]
-      [:merge-entity pid (assoc cooled :task nil)]
-      (out/all (out/status eid :love))
-      (out/all (out/status pid :love))]]))
+     (cond-> [[:spawn-entity (newborn spec t eid e o)]
+              [:merge-entity eid cooled]
+              [:merge-entity pid (assoc cooled :task nil)]
+              (out/all (out/status eid :love))
+              (out/all (out/status pid :love))]
+       (get-in world [:rules :mob-drops] true)
+       (conj [:spawn-entity (breeding-orb eid e t)]))]))
 
 (defn- mate-tick [spec world eid e t _]
   (let [pid (get-in e [:task :partner])
@@ -177,7 +189,7 @@
     (if (and (>= (long (get-in e [:task :love])) due)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
-      (bred spec eid pid e o t)
+      (bred spec world eid pid e o t)
       [e nil])))
 
 (defn- tempting [e item [pid items p]]

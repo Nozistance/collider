@@ -251,6 +251,10 @@
    :flying       {:default false :store boolean}
    :effects      {}
    :absorption   {}
+   :xp-level     {:default 0}
+   :xp-progress  {:default 0.0}
+   :xp-total     {:default 0}
+   :score        {:default 0}
    :dimension    {:default :overworld}})
 
 (defn- profile-kept? [player k]

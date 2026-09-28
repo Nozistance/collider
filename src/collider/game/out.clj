@@ -43,6 +43,12 @@
 (defn health [health]
   {:msg :health :health (double health)})
 
+(defn experience
+  "Returns the effect that shows a player its experience bar."
+  [progress level total]
+  {:msg :experience :progress (double progress) :level (long level)
+   :total (long total)})
+
 (defn respawn []
   {:msg :respawn})
 

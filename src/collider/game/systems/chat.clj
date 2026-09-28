@@ -4,6 +4,7 @@
             [collider.data :as data]
             [collider.game.camera :as camera]
             [collider.game.effect :as effect]
+            [collider.game.experience :as xp]
             [collider.game.command.item-args :as item-args]
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
@@ -917,8 +918,64 @@
       (effect-run world eid xs f (str base ".failed")
                   #(str base ".success." %) with))))
 
+(defn- chimes [e acc]
+  (for [vol (:chimes acc)]
+    (out/all (out/sound :player/levelup (:pos e) vol 1.0))))
+
+(defn- xp-of [world e]
+  (xp/account e (- (long (:tick world)) (long (:born e 0)))))
+
+(defn- xp-changed [world [id dim e] f]
+  (let [acc (f (xp-of world e))
+        ds (cons [:merge-entity id (xp/marks acc)] (chimes e acc))]
+    (in-level world dim ds)))
+
+(defn- xp-unit [unit] (or unit "points"))
+
+(defn- xp-report [eid xs op unit amount]
+  (let [base (str "commands.experience." op "." unit ".success.")]
+    (if (= 1 (count xs))
+      (say eid (str base "single") amount
+           (entity-name (nth (first xs) 2)))
+      (say eid (str base "multiple") amount (count xs)))))
+
+(defn- xp-add-deltas [world eid [sel amount unit]]
+  (let [xs (player-selected world eid sel)
+        unit (xp-unit unit)
+        f (if (= "levels" unit) xp/give-levels xp/give-points)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.player")
+      (concat (mapcat #(xp-changed world % (fn [a] (f a amount))) xs)
+              (xp-report eid xs "add" unit amount)))))
+
+(defn- settable? [world unit amount [_ _ e]]
+  (or (= "levels" unit)
+      (< (long amount) (xp/needed (:level (xp-of world e))))))
+
+(defn- xp-set-deltas [world eid [sel amount unit]]
+  (let [xs (player-selected world eid sel)
+        unit (xp-unit unit)
+        f (if (= "levels" unit) xp/set-levels xp/set-points)
+        g (fn [a] (f a amount))
+        ok (filter #(settable? world unit amount %) xs)]
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.player")
+      (empty? ok) (fail eid "commands.experience.set.points.invalid")
+      :else (concat (mapcat #(xp-changed world % g) ok)
+                    (xp-report eid xs "set" unit amount)))))
+
+(defn- xp-query-deltas [world eid [sel unit]]
+  (if-let [[_ _ e] (first (player-selected world eid sel))]
+    (let [acc (xp-of world e)
+          n (if (= "levels" unit) (:level acc) (xp/points acc))]
+      (say eid (str "commands.experience.query." unit)
+           (entity-name e) n))
+    (fail eid "argument.entity.notfound.player")))
+
 (def ^:private commands
-  {:effect-give effect-give-deltas :effect-clear effect-clear-deltas
+  {:xp-add xp-add-deltas :xp-set xp-set-deltas
+   :xp-query xp-query-deltas
+   :effect-give effect-give-deltas :effect-clear effect-clear-deltas
    :tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
    :tp-targets-to tp-targets-to-deltas :give give-deltas
    :kill kill-deltas

@@ -32,6 +32,7 @@
   (case (:type m)
     :player (types/map->Player m)
     :item (types/map->Item m)
+    :experience-orb (types/map->Orb m)
     :tnt (types/map->Tnt m)
     :falling-block (types/map->FallingBlock m)
     :area-effect-cloud (types/map->Cloud m)
@@ -69,6 +70,7 @@
     :tnt 0.0
     :falling-block 0.0
     :item 0.21
+    :experience-orb 0.42500001192092896
     :area-effect-cloud 0.425
     (:snowball :egg :ender-pearl :splash-potion
      :lingering-potion) 0.2125
@@ -92,13 +94,15 @@
 
 (defn- kind [type]
   (cond (contains? thrown type) :thrown
-        (#{:item :tnt :falling-block :area-effect-cloud} type) type
+        (#{:item :tnt :falling-block :area-effect-cloud
+           :experience-orb} type) type
         :else :mob))
 
 (def ^:private kept
   {:mob [:health :death-time :color :sheared? :sound-variant
          :effects :absorption]
    :item [:stack :age :pickup-delay :health]
+   :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin]
    :falling-block [:block :time]
    :thrown [:owner :left-owner? :stack]})
@@ -106,6 +110,7 @@
 (def ^:private defaults
   {:mob {:death-time 0 :color 0 :sheared? false}
    :item {:age 0 :pickup-delay 0 :health 5.0}
+   :experience-orb {:value 0 :count 1 :age 0 :health 5.0}
    :tnt {:fuse 80}
    :falling-block {:time 0}
    :thrown {:left-owner? false}})

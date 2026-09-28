@@ -9,6 +9,7 @@
             [clojure.set :as set]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
+            [collider.game.orb :as orb]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.game.schedule :as schedule]
@@ -394,7 +395,7 @@
     (-> w
         (assoc-in [:entities eid]
                   (-> e (awaiting-join tick) (load-awaited tick)
-                      (assoc :born tick)))
+                      (assoc :born tick :xp-sent (:xp-total e 0))))
         (assoc-in [:players name] eid)
         (update :spawning dissoc eid))))
 
@@ -960,7 +961,8 @@
          resist (long (or (:hurt-resist e) 0))]
      (cond
        (not (pos? health)) e
-       (= :item (:type e)) (hurt-item e health amount)
+       (contains? #{:item :experience-orb} (:type e))
+       (hurt-item e health amount)
        (> resist (/ max-resist 2.0)) (hurt-again e health amount)
        :else (hurt-fully e health amount dx dz)))))
 
@@ -1009,6 +1011,11 @@
         (assoc-in [:entities eid]
                   (entity/of (assoc spec :born (:tick w))))
         (assoc :next-eid (inc eid)))))
+
+(defn- orbs-awarded [w pos amount salt]
+  (let [t (:tick w)]
+    (orb/awarded w spawned pos (long amount)
+                 #(random/of-key t pos salt %))))
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
@@ -1071,6 +1078,7 @@
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
    :listed (fn [w [_ add drop]] (listed w add drop))
    :spawn-entity (fn [w [_ spec]] (spawned w spec))
+   :xp-award (fn [w [_ pos n salt]] (orbs-awarded w pos n salt))
    :set-blocks (fn [w [_ changes ticks quiet]]
                  (if ticks
                    (settled w changes ticks quiet)

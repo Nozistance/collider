@@ -21,6 +21,8 @@
 
 (def ^:private int-max 2147483647)
 
+(def ^:private int-min -2147483648)
+
 (def ^:const gamemaster
   "The permission level every command requires."
   2)
@@ -130,6 +132,21 @@
       [:amplifier [:int {:min 0 :max 255 :default nil :quiet true}]]
       [:hideParticles [:bool {:default nil}]]]
      [:world :effect-give]]]
+   [:experience "add, set or read the experience of players"
+    [:add "give points or levels"
+     [[:target [:targets {:players? true}]]
+      [:amount [:int {:min int-min :max int-max}]]
+      [:unit [:enum {:values #{"points" "levels"} :default nil}]]]
+     [:world :xp-add]]
+    [:query "read the points or levels of a player"
+     [[:target [:targets {:players? true :single? true}]]
+      [:unit [:enum {:values #{"points" "levels"}}]]]
+     [:world :xp-query]]
+    [:set "set the points or levels"
+     [[:target [:targets {:players? true}]]
+      [:amount [:int {:min 0 :max int-max}]]
+      [:unit [:enum {:values #{"points" "levels"} :default nil}]]]
+     [:world :xp-set]]]
    [:defaultgamemode "set the game mode of new players"
     [[:gamemode [:game-mode {}]]]
     [:world :defaultgamemode]]])
@@ -522,7 +539,7 @@
       (failure "command.unknown.argument" at)
       (unknown-command cx))))
 
-(def ^:private aliases {"tp" "teleport"})
+(def ^:private aliases {"tp" "teleport" "xp" "experience"})
 
 (defn- dimension-of [s]
   (let [k (data/kebab (str/replace (str s) #"^minecraft:" ""))]

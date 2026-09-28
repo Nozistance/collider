@@ -2,6 +2,7 @@
   "What the block entity of a removed block leaves in the world, as
   BlockEntity.preRemoveSideEffects."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.furnace :as furnace]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.game.systems.items :as items]
@@ -58,6 +59,15 @@
            (not= (block/block-of old) (block/block-of (long st)))
            (not= k (be/kind (long st)))))))
 
+(def ^:private furnaces #{:furnace :blast-furnace :smoker})
+
+(defn- paid [world pos e]
+  (when (contains? furnaces (:kind e))
+    (let [t (:tick world)
+          centre (mapv #(+ (double %) 0.5) pos)
+          roll #(random/of-key t pos :spill-xp %)]
+      (furnace/award-deltas e centre roll :spill))))
+
 (defn removed-deltas
   "Returns the deltas of the block entity at pos going with its
   block old."
@@ -66,4 +76,4 @@
     (case (:kind e)
       :jukebox (record-popped world pos e)
       :lectern (book-dropped world pos old e)
-      (spilled world pos e))))
+      (concat (spilled world pos e) (paid world pos e)))))

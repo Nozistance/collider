@@ -99,15 +99,17 @@
 (defn below-state
   "Returns the state of the block under a body at pos that sets its
   friction and speed, as Entity.getBlockPosBelowThatAffectsMyMovement
-  finds it. sup is the block the body rests on, or nil."
-  ^long [chunks pos sup]
-  (let [y (floor-of (- (double (nth pos 1)) below-offset))
-        st (when sup (chunk/at chunks sup))
-        x (floor-of (nth (or sup pos) 0))
-        z (floor-of (nth (or sup pos) 2))]
-    (if (and sup (holds-support? st))
-      st
-      (chunk/at chunks [x y z]))))
+  finds it. sup is the block the body rests on, or nil. offset is
+  how far below the body Entity.getOnPos looks."
+  (^long [chunks pos sup] (below-state chunks pos sup below-offset))
+  (^long [chunks pos sup ^double offset]
+   (let [y (floor-of (- (double (nth pos 1)) offset))
+         st (when sup (chunk/at chunks sup))
+         x (floor-of (nth (or sup pos) 0))
+         z (floor-of (nth (or sup pos) 2))]
+     (if (and sup (holds-support? st))
+       st
+       (chunk/at chunks [x y z])))))
 
 (defn- feet-state ^long [chunks pos]
   (chunk/at chunks [(floor-of (nth pos 0)) (floor-of (nth pos 1))

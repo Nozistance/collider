@@ -39,6 +39,9 @@
 
 (defn- thrown-metadata [e] {:stack (:stack e)})
 
+(defn- orb-metadata [e]
+  (cond-> {:value (:value e)} (:burning? e) (assoc :burning? true)))
+
 (defn- item-metadata [e]
   (cond-> {:stack (:stack e)}
           (:burning? e) (assoc :burning? true)))
@@ -46,6 +49,7 @@
 (def ^:private simple-metadata
   (merge
     {:item          item-metadata
+     :experience-orb orb-metadata
      :tnt           (fn [e] {:fuse (:fuse e)})
      :falling-block (fn [e] {:start (:start e)})
      :area-effect-cloud
@@ -68,6 +72,8 @@
           (assoc :sleeping-pos (get-in e [:sleeping :pos]))
           (pos? (double (:absorption e 0.0)))
           (assoc :absorption (:absorption e))
+          (not (zero? (long (:score e 0))))
+          (assoc :score (:score e))
           (game-mode/spectator? e) (assoc :invisible? true)))
 
 (def ^:private flag-keys
@@ -164,7 +170,8 @@
 (defn- track-of [^long t e] (or (:track e) (baseline t e)))
 
 (def ^:private tracked-types
-  #{:player :item :tnt :falling-block :area-effect-cloud})
+  #{:player :item :tnt :falling-block :area-effect-cloud
+    :experience-orb})
 
 (defn- tracked? [e]
   (let [t (:type e)]
@@ -454,6 +461,7 @@
 
 (def ^:private update-freqs
   (merge {:item              item-update-interval
+          :experience-orb    item-update-interval
           :tnt               10
           :falling-block     20
           :area-effect-cloud cloud-update-interval
@@ -507,7 +515,7 @@
 (defn- move-deltas [t viewers [eid e]]
   (let [vs (viewers eid)
         self? (= :player (:type e))
-        item? (= :item (:type e))
+        item? (contains? #{:item :experience-orb} (:type e))
         tr (track-of (long t) e)
         mdata (metadata e)
         dirty? (not= mdata (:mdata tr))

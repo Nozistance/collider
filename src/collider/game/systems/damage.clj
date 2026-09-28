@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.entity :as entity]
+            [collider.game.experience :as xp]
             [collider.game.game-mode :as game-mode]
             [collider.game.loot :as loot]
             [collider.random :as random]
@@ -178,6 +179,7 @@
   (case (:type e)
     :player [player-half player-height]
     :item [item-half item-height]
+    :experience-orb [0.25 0.5]
     (mobs/box-of e)))
 
 (defn- chunk-x ^long [^double a]
@@ -425,8 +427,9 @@
   (= "is_fire" (data/resists (:item (:stack e)))))
 
 (defn- item-wet? [world e]
-  (pos? (liquid/fluid-height
-          (:chunks world) (:pos e) item-half item-height :water)))
+  (let [[half height] (box-of e)]
+    (pos? (liquid/fluid-height
+            (:chunks world) (:pos e) half height :water))))
 
 (defn- item-fire-deltas [world eid e ^long flags]
   (let [fire (long (or (:fire e) 0))
@@ -448,6 +451,7 @@
 
 (defn- burn-sound-deltas [world eid e ^double health]
   (when (or (<= (- health lava-damage) 0.0)
+            (= :experience-orb (:type e))
             (zero? (rem (inc (long (or (:age e) 0)))
                         burn-sound-period)))
     (let [r (random/of-key (:tick world) eid :burn)
@@ -543,6 +547,28 @@
                     [:spawn-entity (entity/item (:pos e) v s)]))]
       (map-indexed spawn (loot-stacks world eid e)))))
 
+(defn- keeps? [world] (get-in world [:rules :keep-inventory] false))
+
+(defn- mob-reward [world eid e]
+  (when (and (killed-by-player? world e) (not (mobs/baby? e))
+             (get-in world [:rules :mob-drops] true))
+    (let [r (random/of-key (:tick world) eid :xp-reward)]
+      (inc (long (* 3.0 r))))))
+
+(defn- player-reward [world e]
+  (xp/death-reward e (keeps? world) (game-mode/spectator? e)))
+
+(defn- death-orbs
+  "Returns the orbs LivingEntity.dropExperience leaves where e died.
+  Players drop some of their levels, animals a few points when a
+  player killed them."
+  [world eid e]
+  (let [n (if (= :player (:type e))
+            (player-reward world e)
+            (mob-reward world eid e))]
+    (when (and n (pos? (long n)))
+      [[:xp-award (vec (:pos e)) (long n) [:death eid]]])))
+
 (defn- hurt-marks [world e ^double health]
   (cond-> {:health-sent health}
           (not= :player (:type e)) (merge (panicked world e))))
@@ -557,7 +583,8 @@
           (let [p (sound-pitch world eid e)]
             [(out/all (out/sound snd (:pos e) 1.0 p))]))
         [(out/all (out/status eid (if (pos? health) :hurt :death)))]
-        (when-not (pos? health) (drop-deltas world eid e))
+        (when-not (pos? health)
+          (concat (drop-deltas world eid e) (death-orbs world eid e)))
         (when (= :player (:type e))
           [(out/to eid (out/health health))])))))
 
@@ -634,18 +661,29 @@
         :when (contains? (:tracking o) eid)]
     [:tracking oid [] [eid]]))
 
-(defn- fresh-marks [e tick]
+(def ^:private no-experience
+  {:xp-level 0 :xp-progress 0.0 :xp-total 0 :score 0})
+
+(defn- fresh-marks [e tick keep?]
   (cond-> {:health player-health :health-sent player-health
            :hurt-resist 0 :last-damage 0.0 :death-time 0
-           :born tick :ambience nil}
+           :born tick :ambience nil :xp-sent -1 :level-up-at 0
+           :xp-ready-at nil}
+    (not keep?) (merge no-experience)
     (seq (:effects e)) (assoc :effects {})
     (:absorption e) (assoc :absorption nil)))
 
-(defn- revived [eid e pos yaw pitch tick]
+(defn- shown-experience [e keep?]
+  (let [e (if keep? e (merge e no-experience))]
+    (out/experience (:xp-progress e 0.0) (:xp-level e 0)
+                    (:xp-total e 0))))
+
+(defn- revived [eid e pos yaw pitch tick keep?]
   [[:teleport eid pos]
-   [:merge-entity eid (fresh-marks e tick)]
+   [:merge-entity eid (fresh-marks e tick keep?)]
    (out/to eid (out/respawn))
    (out/to eid (out/teleport pos yaw pitch))
+   (out/to eid (shown-experience e keep?))
    (out/to eid (out/health player-health))
    (out/to eid (out/held-slot (long (or (:held-slot e) 0))))])
 
@@ -655,14 +693,18 @@
 (def ^:private not-valid
   (out/overlay {:translate "block.minecraft.spawn.not_valid"}))
 
+(defn- kept-xp? [world e]
+  (or (keeps? world) (game-mode/spectator? e)))
+
 (defn respawn-deltas
   "Returns the deltas that bring dead player eid back at pos.
   When lost? is true they tell it the respawn point it set was lost."
   [world eid [pos yaw pitch lost?]]
   (let [e (get-in world [:entities eid])
-        inv (apply dissoc (:inventory e) (range 5))]
-    (cond-> (into (vec (containers/removed-deltas world eid e))
-                  (revived eid e pos yaw pitch (:tick world)))
+        inv (apply dissoc (:inventory e) (range 5))
+        t (:tick world)
+        back (revived eid e pos yaw pitch t (kept-xp? world e))]
+    (cond-> (into (vec (containers/removed-deltas world eid e)) back)
       (seq inv) (conj (out/to eid (own-slots inv)))
       lost? (conj (out/to eid not-valid))
       true (into (reshow-deltas world eid)))))
@@ -697,7 +739,7 @@
                    world eid (hurt-now world eid e ds))))))
 
 (defn- living-deltas [world eid e]
-  (if (= :item (:type e))
+  (if (contains? #{:item :experience-orb} (:type e))
     (item-deltas world eid e)
     (mob-deltas world eid e)))
 

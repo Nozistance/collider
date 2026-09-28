@@ -77,6 +77,8 @@
    [:cat Pos [:maybe :map]]
    :spawn-entity
    [:cat :map]
+   :xp-award
+   [:cat Vec3 :int :any]
    :remove-entity
    [:cat Eid]
    :level-deltas
@@ -147,6 +149,8 @@
    :teleport          [[:pos Vec3] [:yaw number?] [:pitch number?]
                        [:relative :int]]
    :health            [[:health number?]]
+   :experience        [[:progress number?] [:level :int]
+                       [:total :int]]
    :respawn           []
    :change-dimension  [[:pos Vec3] [:yaw number?] [:pitch number?]
                        [:relative :int]

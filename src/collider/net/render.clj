@@ -69,6 +69,7 @@
      :cow           (data/registry-id "entity_type" :cow)
      :mooshroom     (data/registry-id "entity_type" :mooshroom)
      :item          (data/registry-id "entity_type" :item)
+     :experience-orb (data/registry-id "entity_type" :experience-orb)
      :tnt           (data/registry-id "entity_type" :tnt)
      :falling-block (data/registry-id "entity_type" :falling-block)
      :snowball      (data/registry-id "entity_type" :snowball)
@@ -124,7 +125,9 @@
           (contains? meta :sleeping-pos)
           (assoc :sleeping-pos (:sleeping-pos meta))
           (contains? meta :absorption)
-          (assoc :absorption (double (or (:absorption meta) 0.0)))))
+          (assoc :absorption (double (or (:absorption meta) 0.0)))
+          (contains? meta :score)
+          (assoc :score (long (or (:score meta) 0)))))
 
 (defn- color-byte ^long [meta]
   (bit-or (bit-and (long (or (:color meta) 0)) 15)
@@ -166,7 +169,8 @@
 (def ^:private entity-class
   {:player :player :sheep :sheep :cow :cow :mooshroom :mushroom-cow
    :item :item-entity :tnt :primed-tnt :falling-block :falling-block
-   :area-effect-cloud :area-effect-cloud})
+   :area-effect-cloud :area-effect-cloud
+   :experience-orb :experience-orb})
 
 (defn- class-of [kind]
   (or (entity-class kind)
@@ -195,6 +199,10 @@
     (contains? meta :effect-ambience)
     (assoc :effect-ambience (boolean (:effect-ambience meta)))))
 
+(defn- orb-fields [meta]
+  (cond-> (common-fields meta)
+    (contains? meta :value) (assoc :value (:value meta))))
+
 (defn- entity-fields [kind meta]
   (case kind
     :player (merge (player-fields meta) (living-fields meta))
@@ -205,6 +213,7 @@
     :tnt (tnt-fields meta)
     :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)
+    :experience-orb (orb-fields meta)
     (stack-fields meta)))
 
 (defn- entity-data [kind meta]
@@ -291,6 +300,7 @@
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
    :splash-potion/throw           [:entity.splash-potion.throw 7]
    :lingering-potion/throw        [:entity.lingering-potion.throw 6]
+   :player/levelup                [:entity.player.levelup 7]
    :player/teleport               [:entity.player.teleport 7]
    :hoe/till                      [:item.hoe.till 4]
    :candle/extinguish             [:block.candle.extinguish 4]
@@ -590,10 +600,14 @@
       :items (mapv inv (range menu/slot-count)) :carried (:carried e)}
      {:packet :set-held-slot :slot (long (or (:held-slot e) 0))}]))
 
+(defn- experience-packet [e]
+  {:packet :set-experience :progress (double (:xp-progress e 0.0))
+   :level (long (:xp-level e 0)) :total (long (:xp-total e 0))})
+
 (defn- resent-packets [e]
   [{:packet :set-health :health (double (:health e 20.0))
     :food 20 :saturation 5.0}
-   {:packet :set-experience :progress 0.0 :level 0 :total 0}])
+   (experience-packet e)])
 
 (defn- arrival-packets [m e]
   [{:packet :player-position :teleport-id 0
@@ -654,6 +668,9 @@
    :health        (fn [_ m]
                     [{:packet :set-health :health (:health m)
                       :food 20 :saturation 5.0}])
+   :experience    (fn [_ m]
+                    [{:packet :set-experience :progress (:progress m)
+                      :level (:level m) :total (:total m)}])
    :mob-effect    (fn [_ m]
                     [{:packet :update-mob-effect :eid (:eid m)
                       :effect (:effect m) :amplifier (:amplifier m)
@@ -921,7 +938,7 @@
         speed (attribute/modifiers e (:effects e) :movement-speed)
         base (get (attribute/base-values e) :movement-speed)]
     (into [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
-           {:packet :set-experience :progress 0.0 :level 0 :total 0}
+           (experience-packet e)
            {:packet     :update-attributes :eid eid
             :attributes [entity [:movement-speed base speed] block]}]
           (effect-packets eid e))))

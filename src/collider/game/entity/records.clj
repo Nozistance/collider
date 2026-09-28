@@ -18,6 +18,9 @@
 (defrecord Item [type pos vel yaw pitch on-ground stack age
                  pickup-delay needs-sync? track])
 
+(defrecord Orb [type pos vel yaw pitch on-ground value count age
+                health follow track])
+
 (defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb
                 track])
 

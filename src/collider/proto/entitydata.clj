@@ -47,6 +47,7 @@
              [:shoulder-parrot-left :optional-unsigned-int nil]
              [:shoulder-parrot-right :optional-unsigned-int nil]]}
    :item-entity {:parent :entity :fields [[:item :item nil]]}
+   :experience-orb {:parent :entity :fields [[:value :int 0]]}
    :primed-tnt
    {:parent :entity
     :fields [[:fuse :int 80] [:block-state :block-state :tnt]]}

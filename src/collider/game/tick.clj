@@ -19,6 +19,7 @@
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.effects :as effects]
+            [collider.game.systems.experience :as experience]
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.furnaces :as furnaces]
@@ -28,6 +29,7 @@
             [collider.game.systems.jukebox :as jukebox]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
+            [collider.game.systems.orbs :as orbs]
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
             [collider.game.systems.pose :as pose]
@@ -64,6 +66,7 @@
 (def entity-systems
   "The systems that step the entities of the level."
   [#'items/items
+   #'orbs/orbs
    #'falling/falling-blocks
    #'mobs/mobs-system
    #'tnt/tnt-system
@@ -93,14 +96,14 @@
               #'players/late-tracking]
              entity-systems
              [#'explosions/explosions]
-             [#'items/pickups #'containers/broadcast]
+             [#'items/pickups #'orbs/pickups #'containers/broadcast]
              [#'furnaces/furnace-cooking
               #'campfires/campfire-cooking
               #'brewing/brewing
               #'geysers/geysers
               #'jukebox/jukebox-songs
               #'signs/sign-editors]
-             [#'blocks/acks]
+             [#'blocks/acks #'experience/experience]
              [#'detector/observe]])
 
 (def server-systems

@@ -300,7 +300,13 @@
         n (- (count-of before) (count-of (nth items 2)))]
     (when (pos? n) [(:item before) n])))
 
-(defn- furnace-store [world m items]
+(defn- furnace-paid [world eid pos old]
+  (let [t (:tick world)
+        at (get-in world [:entities eid :pos])
+        roll #(random/of-key t pos :furnace-xp %)]
+    (furnace/award-deltas old at roll [:furnace eid])))
+
+(defn- furnace-store [world eid m items]
   (let [pos (first (:cells m))
         old (be/at world pos)
         got (taken old items)
@@ -308,7 +314,8 @@
               (assoc-in [:items 1] (nth items 1))
               (assoc-in [:items 2] (nth items 2))
               (cond-> got (assoc :used {})))]
-    (when (not= old e) [[:set-block-entity pos e]])))
+    (concat (when (not= old e) [[:set-block-entity pos e]])
+            (when got (furnace-paid world eid pos old)))))
 
 (defn- cell-store [world items n i pos]
   (let [old (be/at world pos)
@@ -323,7 +330,7 @@
     (bench? m) nil
     (= :ender (:kind m))
     [[:merge-entity eid {:ender-items (vec items)}]]
-    (furnace? m) (furnace-store world m items)
+    (furnace? m) (furnace-store world eid m items)
     :else (keep-indexed #(cell-store world items (cell-size m) %1 %2)
                         (:cells m))))
 
