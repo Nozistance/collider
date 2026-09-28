@@ -3,7 +3,8 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.world.direction :as dir])
-  (:import (java.util Arrays)))
+  (:import (collider.java Block BlockTables)
+           (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
 
@@ -39,11 +40,23 @@
 
 (defn- known? [^long st] (< -1 st (data/block-state-count)))
 
-(defn type-of [^long st]
-  (when (known? st) (aget ^objects @type-arr st)))
+(declare tables)
 
-(defn block-of [^long st]
-  (when (known? st) (aget ^objects @name-arr st)))
+(defn- via
+  "Returns the inline form of a lookup by state. The form calls the
+  Block method m on the tables, the state and args."
+  [m & args]
+  (fn [st] `(~m (tables) ~st ~@args)))
+
+(defn type-of
+  {:inline (via `Block/type)}
+  [^long st]
+  (Block/type (tables) st))
+
+(defn block-of
+  {:inline (via `Block/name)}
+  [^long st]
+  (Block/name (tables) st))
 
 (defn- clone-table []
   (let [^objects a (block-table (fn [block b] (get b :clone block)))]
@@ -154,12 +167,8 @@
   (disj (into ground-types (concat torch-types wall-torch-types))
         :standing-sign))
 
-(defn- boolean-table [pred]
-  (let [a (boolean-array (data/block-state-count))]
-    (dotimes [i (data/block-state-count)]
-      (when-let [t (aget ^objects @type-arr i)]
-        (aset a i (boolean (pred i t (aget ^objects @name-arr i))))))
-    a))
+(defn- boolean-table ^booleans [pred]
+  (Block/table @type-arr @name-arr pred))
 
 (def ^:private ^:table needs-support-arr
   (delay (boolean-table
@@ -196,20 +205,30 @@
 
 (defn leaves? [^long st] (contains? (leaves-types) (type-of st)))
 
-(defn needs-support? [^long st]
-  (and (known? st) (aget ^booleans @needs-support-arr st)))
+(defn needs-support?
+  {:inline (via `Block/needsSupport)}
+  [^long st]
+  (Block/needsSupport (tables) st))
 
-(defn attached? [^long st]
-  (and (known? st) (aget ^booleans @attached-arr st)))
+(defn attached?
+  {:inline (via `Block/attached)}
+  [^long st]
+  (Block/attached (tables) st))
 
-(defn replaceable? [^long st]
-  (and (known? st) (aget ^booleans @replaceable-arr st)))
+(defn replaceable?
+  {:inline (via `Block/replaceable)}
+  [^long st]
+  (Block/replaceable (tables) st))
 
-(defn liquid? [^long st]
-  (and (known? st) (aget ^booleans @liquid-arr st)))
+(defn liquid?
+  {:inline (via `Block/liquid)}
+  [^long st]
+  (Block/liquid (tables) st))
 
-(defn waterlogged? [^long st]
-  (and (known? st) (aget ^booleans @waterlogged-arr st)))
+(defn waterlogged?
+  {:inline (via `Block/waterlogged)}
+  [^long st]
+  (Block/waterlogged (tables) st))
 
 (defn emptied ^long [^long st] (if (waterlogged? st) @water-state 0))
 
@@ -273,12 +292,15 @@
      [[:drop st]]
      [[:break st] [:drop st]])])
 
-(defn falls? [^long st]
-  (and (known? st) (aget ^booleans @falls-arr st)))
+(defn falls?
+  {:inline (via `Block/falls)}
+  [^long st]
+  (Block/falls (tables) st))
 
-(defn can-be-replaced? [^long st]
-  (or (zero? st)
-      (and (known? st) (aget ^booleans @can-be-replaced-arr st))))
+(defn can-be-replaced?
+  {:inline (via `Block/canBeReplaced)}
+  [^long st]
+  (Block/canBeReplaced (tables) st))
 
 (defn free? [^long st]
   (or (zero? st) (fire? st) (liquid? st) (can-be-replaced? st)))
@@ -306,20 +328,27 @@
 (def ^:private ^:table shape-arr
   (delay (block-table (fn [_ b] (shape-type b)))))
 
-(defn shape-of [^long st]
-  (when (known? st) (aget ^objects @shape-arr st)))
+(defn shape-of
+  {:inline (via `Block/shape)}
+  [^long st]
+  (Block/shape (tables) st))
 
 (defn fence? [^long st] (= :fence (shape-of st)))
 
 (defn shaped? [^long st] (some? (shape-of st)))
 
-(defn solid? [^long st]
-  (and (pos? st) (known? st)
+(defn- stops? [^long st]
+  (and (pos? st)
        (not (aget ^booleans @liquid-arr st))
        (not (aget ^booleans @needs-support-arr st))))
 
 (def ^:private ^:table solid-table
-  (delay (boolean-table (fn [st _ _] (solid? st)))))
+  (delay (boolean-table (fn [st _ _] (stops? st)))))
+
+(defn solid?
+  {:inline (via `Block/solid)}
+  [^long st]
+  (Block/solid (tables) st))
 
 (defn solid-arr ^booleans [] @solid-table)
 
@@ -346,20 +375,11 @@
   (delay (bool-runs (:occludes (data/light)))))
 
 (defn- face-mask ^longs [boxes]
-  (let [m (long-array 4)]
-    (doseq [[u0 v0 u1 v1] boxes
-            v (range (long v0) (long v1))
-            u (range (long u0) (long u1))]
-      (let [b (+ (* 16 (long v)) (long u))
-            w (bit-shift-right b 6)]
-        (aset m w (bit-or (aget m w) (bit-shift-left 1 b)))))
-    m))
+  (Block/faceMask
+    (long-array (into [] (comp (mapcat #(take 4 %)) (map long))
+                      boxes))))
 
 (def ^:private full-mask (long-array 4 -1))
-
-(defn- full-face? [^longs m]
-  (and (== -1 (aget m 0)) (== -1 (aget m 1))
-       (== -1 (aget m 2)) (== -1 (aget m 3))))
 
 (defn- faces-of-kind [kind]
   (mapv (fn [d]
@@ -414,69 +434,44 @@
                         (aset a (int i) (int (@kind-touch k)))))
       a)))
 
-(defn dampening ^long [^long st]
-  (if (< -1 st (data/block-state-count))
-    (aget ^ints @dampening-arr st)
-    15))
+(defn dampening
+  {:inline (via `Block/dampening)}
+  ^long [^long st]
+  (Block/dampening (tables) st))
 
 (defn opacity ^long [^long st] (max 1 (dampening st)))
 
-(defn emits ^long [^long st]
-  (if (< -1 st (data/block-state-count))
-    (aget ^ints @emission-arr st)
-    0))
+(defn emits
+  {:inline (via `Block/emission)}
+  ^long [^long st]
+  (Block/emission (tables) st))
 
-(defn use-shape-for-light-occlusion? [^long st]
-  (and (< -1 st (data/block-state-count))
-       (aget ^booleans @use-shape-arr st)))
+(defn use-shape-for-light-occlusion?
+  {:inline (via `Block/useShape)}
+  [^long st]
+  (Block/useShape (tables) st))
 
-(defn can-occlude? [^long st]
-  (and (< -1 st (data/block-state-count))
-       (aget ^booleans @can-occlude-arr st)))
-
-(defn- occlusion-face ^longs [^long st ^long d]
-  (when (< -1 st (data/block-state-count))
-    (aget ^objects @face-arr (+ (* 6 st) d))))
-
-(defn- covers-block? [^longs a ^longs b]
-  (and (== -1 (bit-or (aget a 0) (aget b 0)))
-       (== -1 (bit-or (aget a 1) (aget b 1)))
-       (== -1 (bit-or (aget a 2) (aget b 2)))
-       (== -1 (bit-or (aget a 3) (aget b 3)))))
+(defn can-occlude?
+  {:inline (via `Block/canOcclude)}
+  [^long st]
+  (Block/canOcclude (tables) st))
 
 (defn shape-occludes?
   "Returns true when the faces meeting along d seal.
   The faces are those of from and to, and a seal lets no
   light through."
+  {:inline (fn [from to d] `(Block/occludes (tables) ~from ~to ~d))}
   [^long from ^long to ^long d]
-  (let [a (occlusion-face from d)
-        b (occlusion-face to (aget ^ints dir/opposite-index d))]
-    (cond
-      (and (nil? a) (nil? b)) false
-      (nil? a) (full-face? b)
-      (nil? b) (full-face? a)
-      :else (covers-block? a b))))
-
-(defn- touches? [^long st ^long d]
-  (and (< -1 st (data/block-state-count))
-       (pos? (bit-and (aget ^ints @touch-arr st)
-                      (bit-shift-left 1 d)))))
-
-(defn- merged-side ^longs [^long st ^long d]
-  (if (touches? st d) (occlusion-face st d) nil))
+  (Block/occludes (tables) from to d))
 
 (defn light-dampening-into
   "Returns the light cost of crossing from into to along dir.
   The cost is simple when their faces do not seal."
+  {:inline (fn [from to dir simple]
+             `(Block/dampeningInto
+                (tables) ~from ~to (dir/index ~dir) ~simple))}
   ^long [^long from ^long to dir ^long simple]
-  (let [d (long (dir/index dir))
-        a (merged-side from d)
-        b (merged-side to (aget ^ints dir/opposite-index d))]
-    (cond
-      (and (nil? a) (nil? b)) simple
-      (nil? a) (if (full-face? b) 16 simple)
-      (nil? b) (if (full-face? a) 16 simple)
-      :else (if (covers-block? a b) 16 simple))))
+  (Block/dampeningInto (tables) from to (dir/index dir) simple))
 
 (def ^:private ^:table resist-table
   (delay
@@ -488,10 +483,10 @@
               (double (:resistance b 3.0))))
       a)))
 
-(defn resist ^double [^long st]
-  (if (< -1 st (data/block-state-count))
-    (aget ^doubles @resist-table st)
-    3.0))
+(defn resist
+  {:inline (via `Block/resist)}
+  ^double [^long st]
+  (Block/resist (tables) st))
 
 (defn resist-arr
   "Returns the blast resistance by block state."
@@ -720,45 +715,6 @@
       (if (nil? v) full-box v))
     full-box))
 
-(defn- box-span [boxes ^long lo ^long hi]
-  (let [a (reduce min (map #(nth % lo) boxes))
-        b (reduce max (map #(nth % hi) boxes))]
-    (/ (- (double b) (double a)) 16.0)))
-
-(defn- legacy-solid-box? [boxes]
-  (let [xs (box-span boxes 0 3)
-        ys (box-span boxes 1 4)
-        zs (box-span boxes 2 5)]
-    (or (>= (/ (+ xs ys zs) 3.0) 0.7291666666666666)
-        (>= ys 1.0))))
-
-(def ^:private ^:table legacy-solid-arr
-  (delay
-    (let [a (boolean-array (data/block-state-count))]
-      (dotimes [i (data/block-state-count)]
-        (let [boxes (collision-boxes i)]
-          (when (seq boxes)
-            (aset a i (boolean (legacy-solid-box? boxes))))))
-      a)))
-
-(defn legacy-solid? [^long st]
-  (and (pos? st) (known? st) (aget ^booleans @legacy-solid-arr st)))
-
-(def ^:private ^:table full-cube-arr
-  (delay
-    (let [a (boolean-array (data/block-state-count))]
-      (dotimes [i (data/block-state-count)]
-        (aset a i (boolean (and (pos? i) (nil? (shape-at i))))))
-      a)))
-
-(defn full-cube? [^long st]
-  (and (known? st) (aget ^booleans @full-cube-arr st)))
-
-(defn cube-arr
-  "Returns the table of full cubes by block state."
-  ^booleans []
-  @full-cube-arr)
-
 (defn- block-units ^doubles [boxes]
   (double-array (for [b boxes c b] (/ (double c) 16.0))))
 
@@ -775,13 +731,56 @@
   ^objects []
   @collision-table)
 
-(defn- flags-of ^long [^long st]
-  (long (aget ^bytes (data/flags) st)))
+(def ^:private ^:table legacy-solid-arr
+  (delay (Block/legacySolids @collision-table)))
 
-(defn blocks-motion? [^long st]
-  (and (known? st)
-       (pos? (bit-and (flags-of st) 1))
-       (not (contains? #{:cobweb :bamboo-sapling} (block-of st)))))
+(defn legacy-solid?
+  {:inline (via `Block/legacySolid)}
+  [^long st]
+  (Block/legacySolid (tables) st))
+
+(def ^:private ^:table full-cube-arr
+  (delay (Block/fullCubes (data/shapes))))
+
+(defn full-cube?
+  {:inline (via `Block/fullCube)}
+  [^long st]
+  (Block/fullCube (tables) st))
+
+(defn cube-arr
+  "Returns the table of full cubes by block state."
+  ^booleans []
+  @full-cube-arr)
+
+(defn- motion? [^long st n]
+  (and (pos? (bit-and (long (aget ^bytes (data/flags) st)) 1))
+       (not (contains? #{:cobweb :bamboo-sapling} n))))
+
+(def ^:private ^:table blocks-motion-arr
+  (delay (boolean-table (fn [st _ n] (motion? st n)))))
+
+(def ^:private ^:table table-set
+  (delay
+    (BlockTables.
+      @type-arr @name-arr @shape-arr @needs-support-arr @attached-arr
+      @replaceable-arr @liquid-arr @waterlogged-arr @falls-arr
+      @can-be-replaced-arr @solid-table @legacy-solid-arr
+      @full-cube-arr @blocks-motion-arr @use-shape-arr
+      @can-occlude-arr @dampening-arr @emission-arr @touch-arr
+      @face-arr @resist-table (data/flags) (data/sturdy)
+      (data/sturdy-rigid) (data/sturdy-center))))
+
+(defn tables
+  "Returns the tables of the block states."
+  ^collider.java.BlockTables []
+  @table-set)
+
+(defn blocks-motion?
+  {:inline (via `Block/blocksMotion)}
+  [^long st]
+  (Block/blocksMotion (tables) st))
+
+(defn- flag? [^long st ^long mask] (Block/flag (tables) st mask))
 
 (def ^:private respawnable-types
   #{:banner :wall-banner :standing-sign :wall-sign
@@ -790,21 +789,27 @@
 
 (defn possible-to-respawn-in? [^long st]
   (or (contains? respawnable-types (type-of st))
-      (and (known? st)
-           (zero? (bit-and (flags-of st) 1))
-           (not (liquid? st)))))
+      (and (known? st) (not (flag? st 1)) (not (liquid? st)))))
 
-(defn ignited-by-lava? [^long st]
-  (and (known? st) (pos? (bit-and (flags-of st) 2))))
+(defn ignited-by-lava?
+  {:inline (via `Block/flag 2)}
+  [^long st]
+  (flag? st 2))
 
-(defn solid-render? [^long st]
-  (and (known? st) (pos? (bit-and (flags-of st) 8))))
+(defn solid-render?
+  {:inline (via `Block/flag 8)}
+  [^long st]
+  (flag? st 8))
 
-(defn collision-face-full-up? [^long st]
-  (and (known? st) (pos? (bit-and (flags-of st) 16))))
+(defn collision-face-full-up?
+  {:inline (via `Block/flag 16)}
+  [^long st]
+  (flag? st 16))
 
-(defn randomly-ticking? [^long st]
-  (and (known? st) (pos? (bit-and (flags-of st) 4))))
+(defn randomly-ticking?
+  {:inline (via `Block/flag 4)}
+  [^long st]
+  (flag? st 4))
 
 (defn burnable? [^long st]
   (let [ignite (get-in (data/fire) [(block-of st) :ignite] 0)]
@@ -843,20 +848,23 @@
              table)
        []))))
 
-(defn face-sturdy? [^long st face]
-  (and (known? st)
-       (pos? (bit-and (long (aget ^bytes (data/sturdy) st))
-                      (bit-shift-left 1 (long (dir/index face)))))))
+(defn- face-form [m]
+  (fn [st face] `(~m (tables) ~st (dir/index ~face))))
 
-(defn face-holds-rigid? [^long st face]
-  (and (known? st)
-       (pos? (bit-and (long (aget ^bytes (data/sturdy-rigid) st))
-                      (bit-shift-left 1 (long (dir/index face)))))))
+(defn face-sturdy?
+  {:inline (face-form `Block/sturdy)}
+  [^long st face]
+  (Block/sturdy (tables) st (dir/index face)))
 
-(defn face-holds-center? [^long st face]
-  (and (known? st)
-       (pos? (bit-and (long (aget ^bytes (data/sturdy-center) st))
-                      (bit-shift-left 1 (long (dir/index face)))))))
+(defn face-holds-rigid?
+  {:inline (face-form `Block/sturdyRigid)}
+  [^long st face]
+  (Block/sturdyRigid (tables) st (dir/index face)))
+
+(defn face-holds-center?
+  {:inline (face-form `Block/sturdyCenter)}
+  [^long st face]
+  (Block/sturdyCenter (tables) st (dir/index face)))
 
 (def ^:private tag-sets (atom {}))
 

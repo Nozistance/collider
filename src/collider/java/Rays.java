@@ -98,17 +98,6 @@ public final class Rays {
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
 
-    private static long mix64(long z) {
-        z = (z ^ (z >>> 30)) * -4658895280553007687L;
-        z = (z ^ (z >>> 27)) * -7723592293110705685L;
-        return z ^ (z >>> 31);
-    }
-
-    private static double unit(long a, long b, long c) {
-        long h = mix64(mix64(mix64(a) + b) + c);
-        return (double) (h & 0xFFFFFF) / 1.6777216E7;
-    }
-
     private static int cellIndex(long ix, long iy, long iz) {
         if (ix < 0 || ix >= W || iy < 0 || iy >= W || iz < 0
                 || iz >= W) return -1;
@@ -162,7 +151,8 @@ public final class Rays {
                         double d3 = Math.sqrt(d0 * d0 + d1 * d1
                                               + d2 * d2);
                         double f = power * (0.7 + 0.6
-                                * unit(seed, j, 31 * k + l));
+                                * RandomSupport.unit(seed, j,
+                                                     31 * k + l));
                         castRay(rg, summon, resist, hit, ox, oy, oz,
                                 cx, cy, cz, d0 / d3, d1 / d3, d2 / d3,
                                 f);

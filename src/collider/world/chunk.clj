@@ -102,7 +102,8 @@
   (.skyLightCopy ^Section (new-section chunk si)))
 
 (defn chunk-at
-  "Returns the chunk at chunk coordinates cx cz, nil when absent."
+  "Returns the chunk at chunk coordinates cx cz. An absent chunk
+  comes back as empty-chunk, never nil."
   ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
   (Chunk/at chunks (int cx) (int cz)))
 
@@ -207,8 +208,8 @@
     (.with chunk si (.with s (int idx) (int state)))))
 
 (defn get-block
-  "Returns the block state at local lx y lz.
-  Air comes back where no section exists."
+  "Returns the block state at local lx y lz. Air comes back where
+  no section exists, outside the world height and for no chunk."
   ^long [^Chunk chunk lx y lz]
   (if chunk
     (.block chunk (int lx) (int y) (int lz))
