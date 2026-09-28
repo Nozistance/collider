@@ -399,7 +399,8 @@
        :changes (map section-change recs)})))
 
 (def ^:private entity-events
-  {:death 3 :break 3 :eat 10 :break-main 47 :break-off 48 :love 18})
+  {:death 3 :break 3 :eat 10 :break-main 47 :break-off 48 :love 18
+   :teleport 46})
 
 (defn- status-packet [m]
   (if (= :hurt (:kind m))

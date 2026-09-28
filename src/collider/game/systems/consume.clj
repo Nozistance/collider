@@ -1,6 +1,8 @@
 (ns collider.game.systems.consume
   "Eating and drinking, and filling a glass bottle at water."
   (:require [collider.data :as data]
+            [collider.game.effect :as effect]
+            [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
@@ -8,7 +10,10 @@
             [collider.game.systems.effects :as effects]
             [collider.game.systems.items :as items]
             [collider.random :as random]
-            [collider.world.block :as block]))
+            [collider.vec :as v]
+            [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -44,18 +49,114 @@
      (out/all
       (out/sound :entity.player.burp pos 0.5 burp :players))]))
 
-(defn- effect-sounds [e c]
-  (for [{:keys [type sound]} (:effects c) :when (= :play-sound type)]
-    (out/all (out/sound sound (:pos e) 1.0 1.0 :players))))
+(def ^:private ^:const teleport-tries 16)
 
-(defn- on-consume [acc {:keys [type]}]
+(def ^:private ^:const kept-motion 504)
+
+(defn- sounded [acc kind]
+  (let [at (:pos (:e acc))]
+    (update acc :ds conj
+            (out/all (out/sound kind at 1.0 1.0 :players)))))
+
+(defn- instance-of [{:keys [duration amplifier] :as t}]
+  (effect/instance duration amplifier
+                   (:ambient? t) (:visible? t) (:icon? t)))
+
+(defn- landed-effects [acc {:keys [effects probability]} draw]
+  (if (>= (float (draw)) (float probability))
+    acc
+    (reduce #(effects/land %1 (:id %2) (instance-of %2))
+            acc effects)))
+
+(defn- top-y ^long [world]
+  (let [t (data/dimension-type (:dim world :overworld))]
+    (+ (chunk/level-min-y world) (long (:logical-height t 384)) -1)))
+
+(defn- target [world e ^double d draw]
+  (let [p (:pos e)
+        at #(+ (double %) (* (- (double (draw)) 0.5) d))
+        x (at (v/x p))
+        y (at (v/y p))
+        z (at (v/z p))
+        lo (double (chunk/level-min-y world))]
+    [x (if (< y lo) lo (min y (double (top-y world)))) z]))
+
+(defn- landing [world [x y z]]
+  (let [chunks (:chunks world) lo (chunk/level-min-y world)
+        bx (long (Math/floor x)) bz (long (Math/floor z))
+        solid? #(block/blocks-motion?
+                  (long (chunk/chunks-get-block chunks bx % bz)))]
+    (loop [by (long (Math/floor y)) y (double y)]
+      (cond
+        (<= by lo) nil
+        (solid? (dec by)) [x y z]
+        :else (recur (dec by) (dec y))))))
+
+(defn- wet? [chunks [x0 y0 z0 x1 y1 z1]]
+  (let [span #(range (long (Math/floor %1)) (long (Math/ceil %2)))
+        fluid? (fn [[x y z]]
+                 (block/liquid-class
+                   (chunk/chunks-get-block chunks x y z)))]
+    (some fluid? (for [x (span x0 x1) y (span y0 y1) z (span z0 z1)]
+                   [x y z]))))
+
+(defn- fits? [world e [x y z :as p]]
+  (let [[half h] (entity/pose-box (:pose e :standing))
+        w (double (float half)) h (double (float h))
+        chunks (:chunks world)
+        box [(- x w) y (- z w) (+ x w) (+ y h) (+ z w)]]
+    (and (phys/free? chunks (v/v3 p) w h 0.0 0.0 0.0)
+         (not (wet? chunks box)))))
+
+(defn- placed [acc p]
+  (let [eid (:eid acc)]
+    (-> (assoc-in acc [:e :pos] (v/v3 p))
+        (update :ds conj [:teleport eid p]
+                (out/to eid (out/teleport p 0.0 0.0 kept-motion))))))
+
+(defn- arrived [acc]
+  (let [eid (:eid acc) fx (out/status eid :teleport)]
+    (-> acc
+        (update :ds conj (out/all fx) (out/to eid fx))
+        (sounded :item.chorus-fruit.teleport)
+        (update :ds conj [:merge-entity eid {:fall 0.0}]))))
+
+(defn- teleported [world acc {:keys [diameter]} draw]
+  (let [o (:pos (:e acc)) home [(v/x o) (v/y o) (v/z o)]
+        loaded? #(contains? (:chunks world) (chunk/block-chunk %))]
+    (loop [n 0 acc acc]
+      (if (= n teleport-tries)
+        acc
+        (let [t (target world (:e acc) (double diameter) draw)
+              p (when (loaded? t) (landing world t))]
+          (cond
+            (nil? p) (recur (inc n) (placed acc home))
+            (fits? world (:e acc) p) (arrived (placed acc p))
+            :else (recur (inc n) (placed (placed acc p) home))))))))
+
+(defn- consumed [world draw acc {:keys [type] :as ce}]
   (case type
+    :apply-effects (landed-effects acc ce draw)
+    :remove-effects (reduce effects/take-off acc (:effects ce))
     :clear-all-effects (effects/take-all acc)
+    :teleport-randomly (teleported world acc ce draw)
+    :play-sound (sounded acc (:sound ce))
     acc))
 
-(defn- consume-effect-deltas [eid e c]
-  (let [acc (reduce on-consume (effects/account eid e) (:effects c))]
-    (when (:changed? acc) (effects/deltas acc e))))
+(defn effect-deltas
+  "Returns the deltas of the consume effects of consumable c on
+  player e with id eid, in their order. Draw returns the next number
+  from 0 to 1 each call. This is the loop of Consumable.onConsume
+  over its ConsumeEffects."
+  [world eid e c draw]
+  (let [acc (reduce #(consumed world draw %1 %2)
+                    (effects/account eid e) (:effects c))]
+    (when (or (:changed? acc) (seq (:ds acc)))
+      (effects/deltas acc e))))
+
+(defn- draws [world eid]
+  (let [n (volatile! -1)]
+    #(roll world eid [:consume-effect (vswap! n inc)])))
 
 (defn- stopped [eid]
   [[:merge-entity eid {:using-item? false :using nil}]])
@@ -85,8 +186,7 @@
              [:award eid (keyword "used" (name item)) 1]]
             (when (get-in (data/items) [item :food])
               (food-sounds world eid e c))
-            (effect-sounds e c)
-            (consume-effect-deltas eid e c)
+            (effect-deltas world eid e c (draws world eid))
             (remainder-deltas world eid e hand stack)
             (state/cooldown-deltas eid e item (:tick world))
             (stopped eid))))
