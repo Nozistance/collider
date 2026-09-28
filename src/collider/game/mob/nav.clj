@@ -237,21 +237,16 @@
   (not (contains? #{:fire-in-neighbor :damaging-in-neighbor
                     :walkable-door} t)))
 
-(defn- unit [p ^double l]
-  (mapv (fn [c] (/ (double c) l)) p))
-
-(defn- dot ^double [a b]
-  (double (reduce + (map * a b))))
-
 (defn- turned-back? [cur nxt mob-pos]
-  (let [origin [0.0 0.0 0.0]
-        to-cur (mapv - cur mob-pos)
-        to-nxt (mapv - nxt mob-pos)
-        cs (v/dist3-sq origin to-cur)
-        ns (v/dist3-sq origin to-nxt)]
+  (let [cx (- (v/x cur) (v/x mob-pos)) cy (- (v/y cur) (v/y mob-pos))
+        cz (- (v/z cur) (v/z mob-pos)) nx (- (v/x nxt) (v/x mob-pos))
+        ny (- (v/y nxt) (v/y mob-pos)) nz (- (v/z nxt) (v/z mob-pos))
+        cs (+ (* cx cx) (* cy cy) (* cz cz))
+        ns (+ (* nx nx) (* ny ny) (* nz nz))
+        cl (Math/sqrt cs) nl (Math/sqrt ns)]
     (and (or (< ns cs) (< cs 0.5))
-         (neg? (dot (unit to-nxt (Math/sqrt ns))
-                    (unit to-cur (Math/sqrt cs)))))))
+         (neg? (+ (* (/ nx nl) (/ cx cl)) (* (/ ny nl) (/ cy cl))
+                  (* (/ nz nl) (/ cz cl)))))))
 
 (defn- target-next? [e mob-pos]
   (let [nav (:nav e) i (long (:index nav))]

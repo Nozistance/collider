@@ -96,9 +96,39 @@
   "Returns the index in which a body finds every body near enough to
   shove it."
   [entries]
-  (let [cells (packed (by-cell entries))
-        f (fn [m k _] (assoc! m k (hood cells k)))]
-    (persistent! (reduce-kv f (transient (im/int-map)) cells))))
+  (packed (by-cell entries)))
+
+(defn- without ^PushCell [^PushCell c ^long eid]
+  (.without c eid))
+
+(defn- with ^PushCell [^PushCell c ^long eid e]
+  (let [p (:pos e)]
+    (.with c eid (pushable-half e) (pushable-height e)
+           (double (v/x p)) (double (v/y p)) (double (v/z p)))))
+
+(defn- size ^long [^PushCell c] (alength (.eids c)))
+
+(defn- taken-out [index ^long k ^long eid]
+  (let [c (without (get index k) eid)]
+    (if (zero? (size c)) (dissoc index k) (assoc index k c))))
+
+(def ^:private empty-cell
+  (PushCell. (long-array 0) (double-array 0) (double-array 0)
+             (double-array 0) (double-array 0) (double-array 0)))
+
+(defn- put-in [index ^long k ^long eid e]
+  (assoc index k (with (get index k empty-cell) eid e)))
+
+(defn moved
+  "Returns index after body eid moved from old-pos to its place in
+  entry e."
+  [index eid old-pos e]
+  (let [p (:pos e)
+        k0 (cell-of (double (v/x old-pos)) (double (v/z old-pos)))
+        k1 (cell-of (double (v/x p)) (double (v/z p)))]
+    (if (== k0 k1)
+      (put-in index k1 eid e)
+      (put-in (taken-out index k0 eid) k1 eid e))))
 
 (defn- touching [^long k]
   (let [cx (long (unchecked-int (bit-shift-right k 32)))
@@ -135,9 +165,9 @@
 
 (defn- scan [index eid e half height hi]
   (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
-    (if-let [^objects cs (get index (cell-of x z))]
-      (Push/shoves cs x (double (v/y p)) z (double half)
-                   (double height) (long eid) (long hi))
+    (if (contains? index (cell-of x z))
+      (Push/shoves (hood index (cell-of x z)) x (double (v/y p)) z
+                   (double half) (double height) (long eid) (long hi))
       [])))
 
 (defn shoves

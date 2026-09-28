@@ -488,14 +488,21 @@
 (defn- living-shoves [world shoves]
   (filter #(push/alive? (get-in world [:entities (nth % 0)])) shoves))
 
-(defn- own-shoved [world index eid e1 half height]
-  (if (push/alive? e1)
-    (->> (push/shoves index eid e1 half height)
-         (living-shoves world)
-         (shoved e1))
-    e1))
+(defn- own-shoved
+  "Returns mob e1 shoved by the bodies it ran into, and those shoves.
+  A dead body shoves them but takes nothing back."
+  [world index eid e1]
+  (let [[half height] (mobs/box-of e1)
+        shoves (push/shoves index eid e1 half height)]
+    [(if (push/alive? e1)
+       (shoved e1 (living-shoves world shoves))
+       e1)
+     shoves]))
 
-(defn- physics [world index eid e half height]
+(defn- physics-shoves
+  "Returns mob e after one tick of movement and the shoves it gave
+  the bodies it ran into."
+  [world index eid e half height]
   (let [t (long (:tick world))
         half (double (float half)) height (double (float height))
         f (assoc (fluid-of world e half height)
@@ -508,8 +515,11 @@
         e1 (if rest?
              (rest-step e t)
              (physics-move world e vel half height f))
-        e2 (own-shoved world index eid e1 half height)]
-    (flagged world e2 half height (when rest? f))))
+        [e2 shoves] (own-shoved world index eid e1)]
+    [(flagged world e2 half height (when rest? f)) shoves]))
+
+(defn- physics [world index eid e half height]
+  (nth (physics-shoves world index eid e half height) 0))
 
 (def ^:private ^:const say-rest 120)
 
@@ -631,12 +641,13 @@
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
         e1 (if dead? e1 (sensed world e1 speed half height t))
         was-wet? (boolean (:wet? e))
-        e2 (physics world index eid e1 half height)
+        [e2 shoves] (physics-shoves world index eid e1 half height)
         [e2 walked walked'] (walked-step e e1 e2)
         changes (mob-changes e e2)
         merged (when (seq changes) [[:merge-entity eid changes]])
-        acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))]
-    [e2 (movement-sounds acc e2 was-wet? walked walked' t eid)]))
+        acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))
+        sounds (movement-sounds acc e2 was-wet? walked walked' t eid)]
+    [e2 sounds shoves]))
 
 (defn- ticks-at?
   [active [_ e]]
@@ -649,7 +660,7 @@
       (let [vel (:vel e)
             v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
                     (- (v/z vel) (double dz)))]
-        [(assoc es j [eid (assoc e :vel v)])
+        [(assoc! es j [eid (assoc e :vel v)])
          (conj acc [:merge-entity eid {:vel v}])])
       [es acc])))
 
@@ -660,40 +671,40 @@
   (and (mobs/mob-type? (:type (nth entry 1)))
        (ticks-at? active entry)))
 
-(defn- handing [index active slots es i]
-  (let [[eid e] (nth es i)
-        [half height] (mobs/box-of e)
-        f (fn [[es acc] sh]
+(defn- handing [active slots es i shoves]
+  (let [f (fn [[es acc] sh]
             (let [j (get slots (nth sh 0))]
               (if (and j (takes-now? active es i j)
                        (push/alive? (nth (nth es j) 1)))
                 (handed es acc j sh)
                 [es acc])))]
-    (reduce f [es []] (push/shoves index eid e half height))))
-
-(defn- handed-out [index active slots es i]
-  (if (steps? active (nth es i))
-    (handing index active slots es i)
-    [es nil]))
+    (reduce f [es []] shoves)))
 
 (defn- turn [world active tempters t index slots es i]
   (let [[eid e] (nth es i)
-        [e2 ds] (if (steps? active (nth es i))
-                  (step-mob world index tempters eid e t)
-                  [e nil])
-        es (assoc es i [eid e2])
-        [es hs] (handed-out index active slots es i)]
-    [es (into (vec ds) hs) (identical? (:pos e) (:pos e2))]))
+        [e2 ds shoves] (if (steps? active (nth es i))
+                         (step-mob world index tempters eid e t)
+                         [e nil nil])
+        es (assoc! es i [eid e2])
+        [es hs] (handing active slots es i shoves)
+        from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
+    [es (if (seq hs) (into (vec ds) hs) ds) from]))
+
+(defn- reindexed [index es i from]
+  (if from
+    (let [[eid e] (nth es i)] (push/moved index eid from e))
+    index))
 
 (defn- step-island [world active tempters t es]
-  (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)]
-    (loop [i 0 es (vec es) index (push/index-of es) acc []]
-      (if (= i (count es))
-        acc
-        (let [[es ds still?]
+  (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)
+        es (vec es) n (count es) index (push/index-of es)]
+    (loop [i 0 es (transient es) index index acc (transient [])]
+      (if (= i n)
+        (persistent! acc)
+        (let [[es ds from]
               (turn world active tempters t index slots es i)]
-          (recur (inc i) es (if still? index (push/index-of es))
-                 (into acc ds)))))))
+          (recur (inc i) es (reindexed index es i from)
+                 (reduce conj! acc ds)))))))
 
 (defn- herds [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))

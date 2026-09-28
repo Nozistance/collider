@@ -89,7 +89,7 @@
    :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}})
 
 (defn- goal-speed ^double [e k]
-  (double (get-in speeds [(:type e) k] 1.0)))
+  (double (get (speeds (:type e)) k 1.0)))
 
 (defn- roaming? [_ e _ _]
   (not (nav/done? e)))
@@ -119,7 +119,7 @@
       (first (filter #(pos/water? chunks %)
                      (map #(shifted here %) water-scan))))))
 
-(defn- other [world e k] (get-in world [:entities (get-in e k)]))
+(defn- other [world oid] (get (:entities world) oid))
 
 (defn- glance [e oid t]
   (assoc e :look {:target oid :until (+ (long t) 2)}))
@@ -150,9 +150,9 @@
       [(assoc e :task {:kind :mate :partner pid :love 0}) nil])))
 
 (defn- mating? [world e t _]
-  (let [o (other world e [:task :partner])]
+  (let [o (other world (:partner (:task e)))]
     (and o (mobs/in-love? o t) (not (mobs/panicking? o t))
-         (< (long (get-in e [:task :love] 0)) mate-ticks))))
+         (< (long (:love (:task e) 0)) mate-ticks))))
 
 (defn- newborn [spec t eid e o]
   (let [color ((:child-color spec) t eid e o)]
@@ -180,13 +180,13 @@
        (conj [:spawn-entity (breeding-orb eid e t)]))]))
 
 (defn- mate-tick [spec world eid e t _]
-  (let [pid (get-in e [:task :partner])
-        o (get-in world [:entities pid])
+  (let [pid (:partner (:task e))
+        o (other world pid)
         speed (goal-speed e :mate)
         e (nav/move-to-entity world (glance e pid t) o speed)
         e (update-in e [:task :love] (fn [n] (inc (long n))))
         due (reduced-delay mate-ticks)]
-    (if (and (>= (long (get-in e [:task :love])) due)
+    (if (and (>= (long (:love (:task e))) due)
              (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
       (bred spec world eid pid e o t)
@@ -214,7 +214,7 @@
 
 (defn- tempt-tick [_ world _ e t tempters]
   (let [pid (tempter e tempters)
-        o (get-in world [:entities pid])
+        o (other world pid)
         e (glance (assoc-in e [:task :player] pid) pid t)]
     [(cond
        (nil? o) e
@@ -243,7 +243,7 @@
       [(assoc e :follow oid :follow-at t) nil])))
 
 (defn- follow-tick [_ world _ e t _]
-  (let [o (other world e [:follow])]
+  (let [o (other world (:follow e))]
     [(if (and o (>= (long t) (long (:follow-at e 0))))
        (assoc (nav/move-to-entity world e o (goal-speed e :follow))
          :follow-at (+ (long t) follow-repath))
@@ -254,7 +254,7 @@
   (assoc e :follow nil))
 
 (defn- following? [world e _ _]
-  (let [o (other world e [:follow])]
+  (let [o (other world (:follow e))]
     (and (mobs/baby? e) o
          (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o))
              follow-far-sq))))
@@ -322,7 +322,7 @@
        nil])))
 
 (defn- looking? [world e _ _]
-  (let [o (other world e [:look :target])]
+  (let [o (other world (:target (:look e)))]
     (and o (<= (v/dist3-sq (:pos e) (:pos o)) look-range-sq))))
 
 (defn- start-look-around [_ eid e t _]
@@ -335,7 +335,7 @@
        nil])))
 
 (defn- looking-around? [_ e t _]
-  (>= (long (get-in e [:task :until])) (long t)))
+  (>= (long (:until (:task e))) (long t)))
 
 (defn- afloat? [world e _ _]
   (let [[half height] (mobs/box-of e)
@@ -386,23 +386,45 @@
 (defn- running? [g e t]
   (if-let [f (:running? g)]
     (f e t)
-    (= (:kind g) (get-in e [:task :kind]))))
+    (= (:kind g) (:kind (:task e)))))
 
 (defn- stopped [g e t]
   (if-let [f (:stop g)] (f e t) (assoc e :task nil)))
 
-(defn- locks [spec e t]
-  (into {} (for [g (:goals spec) :when (running? g e t) f (:flags g)]
-             [f (:prio g)])))
+(defn- held-by ^longs [^longs held ^long mask ^long prio]
+  (dotimes [i 4] (when (bit-test mask i) (aset held i prio)))
+  held)
 
-(defn- free? [locked prio flags]
-  (every? (fn [f] (let [p (locked f)]
-                    (or (nil? p) (< (long prio) (long p)))))
-          flags))
+(defn- locks
+  "Returns the priority of the running goal that holds each flag,
+  indexed by flag bit, or -1 where no goal does. Of several goals
+  holding one flag the last in order counts."
+  ^longs [spec e t]
+  (reduce (fn [held g]
+            (if (running? g e t)
+              (held-by held (:mask g) (:prio g))
+              held))
+          (long-array 4 -1)
+          (:goals spec)))
 
-(defn- displaced [spec e t flags]
+(defn- free? [^longs locked ^long prio ^long mask]
+  (loop [i 0]
+    (cond (= i 4) true
+          (and (bit-test mask i)
+               (let [p (aget locked i)] (and (<= 0 p) (<= p prio))))
+          false
+          :else (recur (inc i)))))
+
+(defn- held? [^longs locked ^long mask]
+  (loop [i 0]
+    (cond (= i 4) false
+          (and (bit-test mask i) (<= 0 (aget locked i))) true
+          :else (recur (inc i)))))
+
+(defn- displaced [spec e t ^long mask]
   (reduce (fn [e g]
-            (if (and (running? g e t) (some (:flags g) flags))
+            (if (and (running? g e t)
+                     (pos? (bit-and (long (:mask g)) mask)))
               (stopped g e t)
               e))
           e
@@ -417,28 +439,37 @@
           e
           (:goals spec)))
 
-(defn- blocked? [spec e t {:keys [prio flags] :as g}]
-  (or (running? g e t) (not (free? (locks spec e t) prio flags))))
+(defn- blocked? [locked e t {:keys [prio mask] :as g}]
+  (or (running? g e t) (not (free? locked prio mask))))
 
-(defn- started [spec world eid e t ts g]
-  ((:start g) world eid (displaced spec e t (:flags g)) t ts))
+(defn- started
+  "Running goals give way only when they hold a flag of g, which is
+  exactly when locked has it, so the sweep is skipped otherwise."
+  [spec world eid e t ts locked g]
+  (let [mask (:mask g)
+        e (if (held? locked mask) (displaced spec e t mask) e)]
+    ((:start g) world eid e t ts)))
 
-(defn- selected [spec world eid e t ts]
-  (reduce (fn [[e ds] g]
-            (if (blocked? spec e t g)
-              [e ds]
-              (if-let [[e2 ds2] (started spec world eid e t ts g)]
-                [e2 (into ds ds2)]
-                [e ds])))
-          [e []]
+(defn- selected
+  "The locks change only when a goal starts, so they are read again
+  only after one did."
+  [spec world eid e t ts]
+  (reduce (fn [[e ds locked :as acc] g]
+            (if (blocked? locked e t g)
+              acc
+              (if-let [[e2 ds2]
+                       (started spec world eid e t ts locked g)]
+                [e2 (into ds ds2) (locks spec e2 t)]
+                acc)))
+          [e [] (locks spec e t)]
           (:goals spec)))
 
 (defn- ticked [spec world eid e t tempters pred]
-  (reduce (fn [[e ds] g]
+  (reduce (fn [[e ds :as acc] g]
             (if (and (:tick g) (pred g) (running? g e t))
               (let [[e2 ds2] ((:tick g) spec world eid e t tempters)]
-                [e2 (into ds (vec ds2))])
-              [e ds]))
+                [e2 (into ds ds2)])
+              acc))
           [e []]
           (:goals spec)))
 
@@ -449,12 +480,27 @@
     0
     (inc (long (or (:no-action e) 0)))))
 
+(def ^:private flag-bits
+  "The bit of each goal flag, as Goal.Flag orders them."
+  {:move 1 :look 2 :jump 4 :target 8})
+
+(defn- mask-of ^long [flags]
+  (reduce (fn [m f]
+            (if-let [b (flag-bits f)]
+              (bit-or (long m) (long b))
+              (throw (ex-info "unknown goal flag" {:flag f}))))
+          0 flags))
+
+(defn- ranked [i g]
+  (assoc g :prio i :mask (mask-of (:flags g))))
+
 (defn spec
   "Returns the spec of a breed from its goals, highest priority first.
-  The spec also picks the colour of a newborn from both parents."
+  Each goal gets its flags as a bit mask too. The spec also picks the
+  colour of a newborn from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
-   {:goals (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
+   {:goals (vec (map-indexed ranked goals))
     :child-color child-color}))
 
 (defn brain

@@ -110,11 +110,19 @@
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
 
-(defn max-health [type] (get-in types [type :max-health]))
+(def ^:private adult-boxes
+  (into {} (map (fn [[t m]] [t [(:half m) (:height m)]])) types))
+
+(def ^:private baby-boxes
+  (into {} (map (fn [[t [h hh]]] [t [(* 0.5 (double h))
+                                     (* 0.5 (double hh))]]))
+        adult-boxes))
+
+(defn max-health [type] (:max-health (types type)))
 
 (defn mob-type? [type] (contains? types type))
 
-(defn breeding-item [type] (get-in types [type :breeding-item]))
+(defn breeding-item [type] (:breeding-item (types type)))
 
 (defn- moody? [e]
   (pos? (long (or (:sound-variant e) 0))))
@@ -123,7 +131,7 @@
   "Returns the sound mob e makes for k, such as :say or :hurt.
   A moody cow has a voice of its own."
   [e k]
-  (when-let [s (get-in types [(:type e) :sounds])]
+  (when-let [s (:sounds (types (:type e)))]
     (keyword (name (if (and (= :cow s) (moody? e)) :cow-moody s))
              (name k))))
 
@@ -203,10 +211,7 @@
   "Returns the half width and the height of mob e.
   A baby measures half a grown mob."
   [e]
-  (let [{:keys [half height]} (types (:type e))]
-    (if (baby? e)
-      [(* 0.5 (double half)) (* 0.5 (double height))]
-      [half height])))
+  ((if (baby? e) baby-boxes adult-boxes) (:type e)))
 
 (defn eye-height
   "Returns how far above its position mob e looks out."

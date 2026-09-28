@@ -189,16 +189,14 @@
   (some? (get chunks (chunk/pos->id x z))))
 
 (defn- near-edits? [world e]
-  (let [chunks (:chunks world)]
-    (when (seq chunks)
-      (let [p (:pos e)
-            x0 (chunk-x (- (v/x p) 0.5)) x1 (chunk-x (+ (v/x p) 0.5))
-            z0 (chunk-x (- (v/z p) 0.5)) z1 (chunk-x (+ (v/z p) 0.5))]
-        (or (has-chunk? chunks x0 z0)
-            (and (not= x0 x1) (has-chunk? chunks x1 z0))
-            (and (not= z0 z1) (has-chunk? chunks x0 z1))
-            (and (not= x0 x1) (not= z0 z1)
-                 (has-chunk? chunks x1 z1)))))))
+  (let [chunks (:chunks world) p (:pos e)
+        x0 (chunk-x (- (v/x p) 0.5)) x1 (chunk-x (+ (v/x p) 0.5))
+        z0 (chunk-x (- (v/z p) 0.5)) z1 (chunk-x (+ (v/z p) 0.5))]
+    (or (has-chunk? chunks x0 z0)
+        (and (not= x0 x1) (has-chunk? chunks x1 z0))
+        (and (not= z0 z1) (has-chunk? chunks x0 z1))
+        (and (not= x0 x1) (not= z0 z1)
+             (has-chunk? chunks x1 z1)))))
 
 (def ^:private ^:const sunk-shrink-xz 0.1)
 

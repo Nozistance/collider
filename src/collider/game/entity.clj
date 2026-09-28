@@ -78,16 +78,21 @@
      :experience-bottle) 0.2125
     1.19))
 
+(defn- put
+  "Returns e with k set to v, untouched when v is already there."
+  [e k v]
+  (if (identical? v (k e)) e (assoc e k v)))
+
 (defn mob-moved
   "Returns the mob e after a step of its own movement."
   [e pos vel on-ground yaw wet? jump-cd]
-  (assoc e :pos pos :vel vel :on-ground on-ground :yaw yaw
-         :wet? wet? :jump-cd jump-cd))
+  (-> e (put :pos pos) (put :vel vel) (put :on-ground on-ground)
+      (put :yaw yaw) (put :wet? wet?) (put :jump-cd jump-cd)))
 
 (defn mob-looked
   "Returns the mob e turned towards what it looks at."
   [e head-yaw pitch look]
-  (assoc e :head-yaw head-yaw :pitch pitch :look look))
+  (-> e (put :head-yaw head-yaw) (put :pitch pitch) (put :look look)))
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
