@@ -2,6 +2,7 @@
   "Fire, where it catches, how it spreads and when it burns out."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.world.env.dimension :as dimension]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -197,7 +198,7 @@
 
 (defn- infiniburn-tag [ctx]
   (let [dim (or (:dim ctx) :overworld)
-        tag (:infiniburn (data/dimension-type dim))]
+        tag (:infiniburn (dimension/type-of dim))]
     (str/replace (name tag) "-" "_")))
 
 (defn- tick-changes [chunks p ctx]

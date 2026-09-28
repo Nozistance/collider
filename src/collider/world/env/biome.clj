@@ -1,7 +1,8 @@
 (ns collider.world.env.biome
   "Biomes, and the temperature and precipitation they give a
   position."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.world.env.dimension :as dimension]))
 
 (set! *warn-on-reflection* true)
 
@@ -14,11 +15,29 @@
   ^long [dim]
   (case dim :the-nether 32 :the-end 0 sea-level))
 
+(defn- biome [json]
+  (let [modifier (get json "temperature_modifier")]
+    (cond-> {:attributes (dimension/attributes json)
+             :downfall (get json "downfall")
+             :has-precipitation (get json "has_precipitation")
+             :temperature (get json "temperature")}
+      modifier (assoc :temperature-modifier (data/kebab modifier)))))
+
+(def ^:private ^:table biome-table
+  (delay (into {}
+               (map (fn [[id json]] [(data/kebab id) (biome json)]))
+               (data/pack "worldgen/biome"))))
+
+(defn biomes
+  "Returns the climate and attributes of every biome, by name."
+  []
+  @biome-table)
+
 (def ^:private flat-biomes
   {:overworld :plains :the-nether :nether-wastes :the-end :the-end})
 
 (defn- biome-in [dim n]
-  (assoc (get (data/biomes) n) :name n :dimension dim))
+  (assoc (get (biomes) n) :name n :dimension dim))
 
 (def ^:private ^:table flat
   (delay (into {} (for [[dim n] flat-biomes]
@@ -77,7 +96,7 @@
     :else :rain))
 
 (defn- attribute [biome k]
-  (let [dim (data/dimension-type (:dimension biome))]
+  (let [dim (dimension/type-of (:dimension biome))]
     (get (:attributes biome) k (get (:attributes dim) k))))
 
 (defn increased-fire-burnout?

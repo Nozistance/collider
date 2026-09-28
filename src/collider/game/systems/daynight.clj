@@ -1,6 +1,6 @@
 (ns collider.game.systems.daynight
   "The passing of the day."
-  (:require [collider.data :as data]
+  (:require [collider.world.env.dimension :as dimension]
             [collider.game.clock :as clock]
             [collider.game.out :as out]))
 
@@ -29,7 +29,7 @@
     (>= (long (- 15.0 (* 15.0 m))) 4)))
 
 (defn dark-outside? [world]
-  (and (not (:has-fixed-time (data/dimension-type (:dim world))))
+  (and (not (:has-fixed-time (dimension/type-of (:dim world))))
        (dark? (clock/day-ticks world))))
 
 (defn- daynight-deltas [world]

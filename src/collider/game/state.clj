@@ -3,6 +3,7 @@
   (:refer-clojure :exclude [apply])
   (:require [collider.game.block.blockentity :as be]
             [collider.data :as data]
+            [collider.world.env.dimension :as dimension]
             [clojure.core.reducers :as r]
             [collider.vec :as v]
             [clojure.data.int-map :as i]
@@ -157,7 +158,7 @@
 (def initial-world schema/initial-world)
 
 (defn- bounds [dim]
-  (let [t (data/dimension-type dim)
+  (let [t (dimension/type-of dim)
         lo (long (:min-y t chunk/min-y))]
     {:min-y lo
      :max-y (+ lo (long (:height t 384)) -1)

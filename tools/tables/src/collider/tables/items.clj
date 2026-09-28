@@ -1,9 +1,8 @@
 (ns collider.tables.items
-  "Reading items and enchantments from the reports and the jar."
+  "Reading items from the reports and the jar."
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [collider.tables.files :refer [jsons]]
             [collider.tables.tags :refer [item-set]]
             [collider.tables.value
              :refer [flt kw plain unknown]])
@@ -217,26 +216,3 @@
                 (let [m (station-item tags lang cs)]
                   (when (seq m) [name m]))))
         (item-components reports)))
-
-(defn- cost-of [v]
-  (sorted-map :base (get v "base" 0)
-              :per-level (get v "per_level_above_first" 0)))
-
-(defn- enchantment-set [tags v]
-  (into (sorted-set)
-        (if (and (string? v) (str/starts-with? v "#"))
-          (get-in tags ["enchantment" (plain (subs v 1))] [])
-          (map kw (if (string? v) [v] v)))))
-
-(defn- enchantment [tags json]
-  (sorted-map
-    :anvil-cost (get json "anvil_cost")
-    :max-level (get json "max_level")
-    :min-cost (cost-of (get json "min_cost"))
-    :supported (item-set tags (get json "supported_items"))
-    :exclusive (enchantment-set tags (get json "exclusive_set"))))
-
-(defn enchantments [zf tags]
-  (into (sorted-map)
-        (map (fn [[name json]] [(kw name) (enchantment tags json)]))
-        (jsons zf "data/minecraft/enchantment/")))

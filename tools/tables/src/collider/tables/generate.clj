@@ -12,6 +12,7 @@
             [collider.tables.reports :as reports]
             [collider.tables.stamp :as stamp]
             [collider.tables.tags :as tags]
+            [collider.tables.value :refer [unknown]]
             [collider.tables.worldgen :as worldgen]
             [collider.tables.progress :refer [progress! timed]])
   (:import (java.io File)
@@ -31,16 +32,14 @@
         (print "\n")))))
 
 (defn- tagged-tables [zf reports rs {:keys [dyes synced]}]
-  (let [dp (registry/datapack-names zf synced)
-        regs (distinct (concat (keys rs) (map first dp)))
+  (let [regs (distinct (concat (keys rs) synced))
         tags (tags/tags-of zf regs)
         item-names (set (keys (get rs "item")))
         potion-names (set (keys (get rs "potion")))
         effect-names (set (keys (get rs "mob_effect")))]
     {:packets    (registry/packets reports)
      :registries rs
-     :datapack   dp
-     :enchantments (items/enchantments zf tags)
+     :synced     synced
      :recipes (recipes/recipes zf tags dyes item-names potion-names)
      :potions    (brewing/potion-table potion-names)
      :effects    (brewing/effect-table effect-names)
@@ -60,8 +59,6 @@
      :drops      (loot/block-drops zf)
      :entity-drops (loot/entity-drops zf)
      :items      (item-table zf from-class reports tags)
-     :dimension-types (worldgen/dimension-types zf)
-     :biomes     (worldgen/biomes zf)
      :features   (worldgen/features zf placers)}))
 
 (defn- tables [zf from-class reports rs]
@@ -73,6 +70,9 @@
            (class-tables zf from-class reports (:tags tagged)))))
 
 (defn- pack-tables [pack]
+  (when-not (= (set stamp/pack) (set (keys pack)))
+    (throw (unknown "registries of the pack"
+                    {:found (vec (keys pack))})))
   (map (fn [[path t]] [(str "pack/" path) t]) pack))
 
 (defn- write-tables! [^File server ^File reports out from-class sha]

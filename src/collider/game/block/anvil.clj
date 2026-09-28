@@ -2,6 +2,7 @@
   "Anvil results, costs and names."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -12,7 +13,7 @@
 
 (def ^:private ^:const sacrifice-cost 2)
 
-(defn- of [name] (data/enchantment name))
+(defn- of [name] (enchantment/info name))
 
 (defn- max-level ^long [name] (long (:max-level (of name) 1)))
 

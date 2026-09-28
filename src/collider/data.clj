@@ -1,7 +1,8 @@
 (ns collider.data
   "Game data tables."
   (:require [clojure.edn :as edn]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [clojure.string :as str])
   (:import (clojure.lang PersistentArrayMap)
            (java.io PushbackReader)
            (java.util Arrays List)
@@ -11,7 +12,7 @@
 
 (def game "26.2")
 
-(def layout 13)
+(def layout 14)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -76,9 +77,9 @@
   (read-edn (str "pack/" path ".edn")))
 
 (def ^:private table-names
-  [:packets :registries :blocks :datapack :tags :items :light
+  [:packets :registries :blocks :synced :tags :items :light
    :fire :drops :entity-drops :recipes :sounds :features
-   :potions :effects :enchantments :dimension-types :biomes])
+   :potions :effects])
 
 (def ^:private ^:table tables
   (delay (into {}
@@ -95,15 +96,6 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
-
-(def ^:private ^:table datapack-map
-  (delay (PersistentArrayMap.
-          (object-array (into [] cat (:datapack @tables))))))
-
-(defn datapack
-  "Returns the entries the server sends to the client, by registry,
-  in the order the server sends them."
-  [] @datapack-map)
 
 (defn tags [] (:tags @tables))
 
@@ -141,24 +133,6 @@
 (defn brewing
   "Returns the containers, mixes and fuel of a brewing stand."
   [] (:brewing (recipes)))
-
-(defn enchantments
-  "Returns the cost, reach and rivals of every enchantment."
-  [] (:enchantments @tables))
-
-(defn enchantment [name] (get (enchantments) name))
-
-(defn dimension-types
-  "Returns the fields of every dimension type, by name."
-  [] (:dimension-types @tables))
-
-(defn dimension-type
-  "Returns the fields of a dimension type."
-  [dim] (get (dimension-types) dim))
-
-(defn biomes
-  "Returns the climate and attributes of every biome, by name."
-  [] (:biomes @tables))
 
 (defn smithing-recipes
   "Returns the transform and trim recipes of a smithing table."
@@ -271,6 +245,24 @@
   (or (get-in (registries) [registry entry])
       (throw (ex-info "unknown registry entry"
                       {:registry registry :entry entry}))))
+
+(defn- file-order [id]
+  (let [i (str/index-of id ":")]
+    [(str (subs id (inc i)) ".json") (subs id 0 i)]))
+
+(defn- entry-names [registry]
+  (into [] (map kebab) (sort-by file-order (keys (pack registry)))))
+
+(def ^:private ^:table datapack-map
+  (delay (PersistentArrayMap.
+          (object-array
+           (into [] (mapcat (fn [r] [r (entry-names r)]))
+                 (:synced @tables))))))
+
+(defn datapack
+  "Returns the entries the server sends to the client, by registry,
+  in the order the server sends them."
+  [] @datapack-map)
 
 (defn- index-entries [entries]
   (into {} (map-indexed (fn [i e] [e (long i)])) entries))

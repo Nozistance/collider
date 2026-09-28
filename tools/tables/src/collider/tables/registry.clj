@@ -3,7 +3,6 @@
   (:require [clojure.data.json :as json]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [collider.tables.files :refer [under]]
             [collider.tables.value :refer [kw]]))
 
 (set! *warn-on-reflection* true)
@@ -58,14 +57,3 @@
     (into (sorted-map)
           (map #(block % extra shaped))
           (report-json reports "blocks.json"))))
-
-(def ^:private top-level-names
-  (comp (map first) (remove #(str/includes? % "/")) (map kw)))
-
-(defn- datapack-entry [zf reg]
-  (let [prefix (str "data/minecraft/" reg "/")
-        names (into (sorted-set) top-level-names (under zf prefix))]
-    (when (seq names) [reg (vec names)])))
-
-(defn datapack-names [zf synced]
-  (into [] (keep #(datapack-entry zf %)) synced))

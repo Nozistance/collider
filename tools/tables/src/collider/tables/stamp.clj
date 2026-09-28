@@ -5,14 +5,35 @@
 
 (def game "26.2")
 
-(def layout 13)
+(def layout 14)
+
+(def pack
+  ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
+   "chicken_sound_variant" "chicken_variant" "cow_sound_variant"
+   "cow_variant" "damage_type" "dialog" "dimension_type"
+   "enchantment" "enchantment_provider" "frog_variant"
+   "instrument" "jukebox_song" "painting_variant"
+   "pig_sound_variant" "pig_variant" "sulfur_cube_archetype"
+   "test_environment" "test_instance" "timeline" "trade_set"
+   "trial_spawner" "trim_material" "trim_pattern"
+   "villager_trade" "wolf_sound_variant" "wolf_variant"
+   "world_clock" "worldgen/biome" "worldgen/configured_carver"
+   "worldgen/configured_feature" "worldgen/density_function"
+   "worldgen/flat_level_generator_preset"
+   "worldgen/multi_noise_biome_source_parameter_list"
+   "worldgen/noise" "worldgen/noise_settings"
+   "worldgen/placed_feature" "worldgen/processor_list"
+   "worldgen/structure" "worldgen/structure_set"
+   "worldgen/template_pool" "worldgen/world_preset"
+   "zombie_nautilus_variant"])
 
 (def files
-  ["packets" "registries" "blocks" "datapack" "tags" "items"
-   "light" "fire" "drops" "entity-drops" "recipes" "sounds"
-   "features" "potions" "effects" "enchantments"
-   "dimension-types" "biomes" "shapes"
-   "outlines" "sturdy" "flags"])
+  (into ["packets" "registries" "blocks" "synced" "tags" "items"
+         "light" "fire" "drops" "entity-drops" "recipes" "sounds"
+         "features" "potions" "effects" "shapes" "outlines"
+         "sturdy" "flags"]
+        (map #(str "pack/" %))
+        pack))
 
 (defn stamp
   "Returns the stamp that a set of tables of this tool carries."

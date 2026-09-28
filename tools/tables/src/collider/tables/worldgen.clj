@@ -1,5 +1,5 @@
 (ns collider.tables.worldgen
-  "Reading features, dimension types and biomes."
+  "Reading the features that bone meal and biomes grow."
   (:require [clojure.string :as str]
             [collider.tables.files :refer [jsons read-json]]
             [collider.tables.value :refer [kw plain json-name]]))
@@ -107,72 +107,3 @@
      :placed     (feature-set reg :placed ps)
      :bone-meal  (bone-meal-biomes reg tagged)
      :placers    placers}))
-
-(defn- dimension-attr-value [v]
-  (cond
-    (map? v)
-    (into (sorted-map)
-          (map (fn [[k x]] [(kw k) (dimension-attr-value x)]))
-          v)
-    (vector? v) (mapv dimension-attr-value v)
-    :else v))
-
-(defn- dimension-attrs [json]
-  (into (sorted-map)
-        (map (fn [[k v]] [(kw k) (dimension-attr-value v)]))
-        (get json "attributes")))
-
-(defn- monster-spawn-light [v]
-  (if (map? v)
-    {:min (get v "min_inclusive")
-     :max (get v "max_inclusive")}
-    v))
-
-(defn- dimension-shape [json]
-  (sorted-map
-   :min-y (get json "min_y")
-   :height (get json "height")
-   :logical-height (get json "logical_height")
-   :coordinate-scale (get json "coordinate_scale")
-   :has-skylight (get json "has_skylight")
-   :has-ceiling (get json "has_ceiling")
-   :has-ender-dragon-fight (get json "has_ender_dragon_fight" false)
-   :has-fixed-time (get json "has_fixed_time" false)))
-
-(defn- dimension-look [json]
-  (sorted-map
-   :ambient-light (get json "ambient_light")
-   :infiniburn (kw (subs (get json "infiniburn") 1))
-   :monster-spawn-light-level
-   (monster-spawn-light (get json "monster_spawn_light_level"))
-   :monster-spawn-block-light-limit
-   (get json "monster_spawn_block_light_limit")
-   :skybox (kw (get json "skybox" "overworld"))
-   :cardinal-light (kw (get json "cardinal_light" "default"))
-   :attributes (dimension-attrs json)))
-
-(defn- dimension-type [json]
-  (cond-> (merge (dimension-shape json) (dimension-look json))
-    (contains? json "default_clock")
-    (assoc :default-clock (kw (get json "default_clock")))))
-
-(defn dimension-types [zf]
-  (into (sorted-map)
-        (map (fn [[name json]]
-               [(kw name) (dimension-type json)]))
-        (jsons zf "data/minecraft/dimension_type/")))
-
-(defn- biome [json]
-  (cond-> (sorted-map
-           :has-precipitation (get json "has_precipitation")
-           :temperature (get json "temperature")
-           :downfall (get json "downfall")
-           :attributes (dimension-attrs json))
-    (contains? json "temperature_modifier")
-    (assoc :temperature-modifier
-           (kw (get json "temperature_modifier")))))
-
-(defn biomes [zf]
-  (into (sorted-map)
-        (map (fn [[name json]] [(kw name) (biome json)]))
-        (jsons zf "data/minecraft/worldgen/biome/")))

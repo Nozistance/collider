@@ -3,7 +3,8 @@
   A clock counts whole ticks and a partial tick. It runs at its
   rate unless paused or the advance_time rule is off. The day of
   every level follows the overworld clock."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.world.env.dimension :as dimension]))
 
 (set! *warn-on-reflection* true)
 
@@ -56,7 +57,7 @@
 (defn default-of
   "Returns the clock that level dim follows, or nil."
   [dim]
-  (:default-clock (data/dimension-type dim)))
+  (:default-clock (dimension/type-of dim)))
 
 (defn- as-float ^double [x] (unchecked-float (double x)))
 

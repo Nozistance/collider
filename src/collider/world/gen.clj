@@ -1,6 +1,6 @@
 (ns collider.world.gen
   "The flat chunk every new chunk of a dimension starts from."
-  (:require [collider.data :as data]
+  (:require [collider.world.env.dimension :as dimension]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -18,7 +18,7 @@
         (chunk/nibble-set! arr i 15)))
     arr))
 
-(defn- sky? [dim] (:has-skylight (data/dimension-type dim) true))
+(defn- sky? [dim] (:has-skylight (dimension/type-of dim) true))
 
 (defn- flat-section [dim]
   (let [bs (short-array 4096)

@@ -1,6 +1,6 @@
 (ns collider.world.env.weather
   "The rain and thunder cycle, and what falls at a position."
-  (:require [collider.data :as data]
+  (:require [collider.world.env.dimension :as dimension]
             [collider.random :as random]
             [collider.world.env.biome :as biome]
             [collider.world.light :as light]
@@ -23,7 +23,7 @@
 (defn can-have-weather?
   "Returns true when the level of dimension dim has rain and thunder."
   [dim]
-  (let [t (data/dimension-type dim)]
+  (let [t (dimension/type-of dim)]
     (boolean (and (:has-skylight t) (not (:has-ceiling t))
                   (not= :the-end dim)))))
 

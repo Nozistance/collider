@@ -2,6 +2,7 @@
   "Player commands, their arguments and their meaning."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.world.env.dimension :as dimension]
             [collider.game.clock :as clock]
             [collider.game.command.args :as args]
             [collider.game.command.item-args :as items]
@@ -656,8 +657,8 @@
     (some #{k} schema/dims)))
 
 (defn- scale ^double [from to]
-  (/ (double (:coordinate-scale (data/dimension-type from)))
-     (double (:coordinate-scale (data/dimension-type to)))))
+  (/ (double (:coordinate-scale (dimension/type-of from)))
+     (double (:coordinate-scale (dimension/type-of to)))))
 
 (defn- scaled [origin from to]
   (if (or (nil? origin) (= from to))

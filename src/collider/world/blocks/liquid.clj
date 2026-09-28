@@ -1,6 +1,6 @@
 (ns collider.world.blocks.liquid
   "Water and lava with their spread, mixing and push on entities."
-  (:require [collider.data :as data]
+  (:require [collider.world.env.dimension :as dimension]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -31,7 +31,7 @@
 (def ^:private ^:table by-dim
   (delay (into {}
                (map (fn [dim] [dim (dimension-liquids dim)]))
-               (keys (data/dimension-types)))))
+               (keys (dimension/types)))))
 
 (defn liquids-in
   "Returns the flow of water and lava in dimension dim.

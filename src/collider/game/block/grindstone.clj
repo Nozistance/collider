@@ -1,6 +1,7 @@
 (ns collider.game.block.grindstone
   "Grindstone results and the experience they free."
   (:require [collider.data :as data]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -78,7 +79,7 @@
             (when (stack/any-enchantments? item) (stripped item)))))
 
 (defn- min-cost ^long [name ^long level]
-  (let [c (:min-cost (data/enchantment name))]
+  (let [c (:min-cost (enchantment/info name))]
     (+ (long (:base c 0)) (* (long (:per-level c 0)) (dec level)))))
 
 (defn- worth ^long [^long sum name level]

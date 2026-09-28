@@ -1,6 +1,7 @@
 (ns collider.game.systems.consume
   "Eating and drinking, and filling a glass bottle at water."
   (:require [collider.data :as data]
+            [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
@@ -69,7 +70,7 @@
             acc effects)))
 
 (defn- top-y ^long [world]
-  (let [t (data/dimension-type (:dim world :overworld))]
+  (let [t (dimension/type-of (:dim world :overworld))]
     (+ (chunk/level-min-y world) (long (:logical-height t 384)) -1)))
 
 (defn- target [world e ^double d draw]
