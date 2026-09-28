@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
   (:require [collider.game.clock :as clock]
+            [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.state :as state]
@@ -71,25 +72,26 @@
     (into [] (keep #(cell-at t cid si (long %) c))
           (range (long speed)))))
 
-(defn- sections-of [c]
-  (map (fn [si] [si (chunk/chunk-section c si)])
-       (range chunk/section-count)))
-
 (defn- blank? [s] (or (nil? s) (identical? s chunk/empty-section)))
 
 (defn- chunk-cells [world chunks speed cid c]
-  (into []
-        (mapcat (fn [[si s]]
-                  (when-not (blank? s)
-                    (section-cells world chunks cid si speed))))
-        (sections-of c)))
+  (let [cells (fn [si]
+                (when-not (blank? (chunk/chunk-section c si))
+                  (section-cells world chunks cid si speed)))]
+    (into [] (mapcat cells) (range chunk/section-count))))
 
-(defn- world-cells [world chunks speed]
-  (into []
-        (mapcat (fn [cid]
-                  (when-let [c (get chunks cid)]
-                    (chunk-cells world chunks speed cid c))))
-        (seq (state/active-chunks world))))
+(def ^:private ^:const chunk-leaf 16)
+
+(defn- per-chunk [world speed f]
+  (let [chunks (:chunks world)
+        one #(f world chunks speed %)]
+    (deltas/pmapcat one (vec (state/active-chunks world))
+                    chunk-leaf 64)))
+
+(defn- chunk-results [world chunks speed cid]
+  (when-let [c (get chunks cid)]
+    (mapv (fn [[p st]] (cell-result world chunks p st))
+          (chunk-cells world chunks speed cid c))))
 
 (defn- roll-of ^double [t cid i salt]
   (random/of-longs t cid i (hash salt)))
@@ -110,15 +112,10 @@
 (defn- max-snow ^long [world]
   (long (get-in world [:rules :max-snow-accumulation-height] 1)))
 
-(defn- precipitation-changes [world chunks speed]
-  (let [t (long (:tick world))
-        h (max-snow world)
-        at (fn [cid i] (precipitation-at world chunks t cid h i))]
-    (into []
-          (mapcat (fn [cid]
-                    (let [cid (long cid) n (range (long speed))]
-                      (into [] (mapcat #(at cid %)) n))))
-          (seq (state/active-chunks world)))))
+(defn- chunk-fallen [world chunks speed cid]
+  (let [t (long (:tick world)) h (max-snow world) cid (long cid)]
+    (into [] (mapcat #(precipitation-at world chunks t cid h %))
+          (range (long speed)))))
 
 (defn- drip-schedules [world drips]
   (reduce (fn [m {:keys [cauldron delay]}]
@@ -145,17 +142,18 @@
             (drip-events drips)
             (drop-spawns world results))))
 
+(defn- ticked [world speed]
+  (let [results (per-chunk world speed chunk-results)
+        fallen (per-chunk world speed chunk-fallen)
+        changes (into fallen (mapcat :changes) results)
+        drips (into [] (keep :drip) results)]
+    (when (or (seq changes) (seq drips))
+      (result-deltas world results changes drips))))
+
 (defn- random-tick-deltas [world _events]
-  (let [speed (long (get-in world [:rules :random-tick-speed] 3))
-        chunks (:chunks world)
-        result (fn [[p st]] (cell-result world chunks p st))]
+  (let [speed (long (get-in world [:rules :random-tick-speed] 3))]
     (when (pos? speed)
-      (let [results (mapv result (world-cells world chunks speed))
-            fallen (precipitation-changes world chunks speed)
-            changes (into fallen (mapcat :changes) results)
-            drips (into [] (keep :drip) results)]
-        (when (or (seq changes) (seq drips))
-          (result-deltas world results changes drips))))))
+      (ticked world speed))))
 
 (defn random-ticks [world d]
   (let [events (:input d)]

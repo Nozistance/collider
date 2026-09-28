@@ -40,10 +40,20 @@
     1.0
     (own-height (long st))))
 
+(defn- blank-at? [chunks ^long x ^long y ^long z]
+  (let [id (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4))
+        c (get chunks id)
+        s (when c (chunk/chunk-section c (chunk/section-index y)))]
+    (or (nil? s) (identical? s chunk/empty-section))))
+
 (defn- column-heights [chunks x z]
   (loop [y (long chunk/max-y) surface none motion none floor none]
-    (if (or (< y (long chunk/min-y)) (not= floor none))
+    (cond
+      (or (< y (long chunk/min-y)) (not= floor none))
       [surface motion floor]
+      (blank-at? chunks x y z)
+      (recur (dec (bit-and y -16)) surface motion floor)
+      :else
       (let [st (long (state-at chunks x y z))
             top? (and (= motion none) (motion-blocking? st))]
         (recur (dec y)

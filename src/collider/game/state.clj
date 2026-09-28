@@ -62,54 +62,76 @@
            (not (game-mode/spectator? e)))))
 
 (defn- player-chunks [world]
-  (into [] (keep (fn [[_ e]]
-                   (when (loads-chunks? world e)
-                     (chunk/id->pos (chunk/pos-chunk (:pos e))))))
-        (player-entries world)))
+  (let [es (:entities world)
+        at (fn [eid]
+             (when-let [e (get es eid)]
+               (when (loads-chunks? world e)
+                 (chunk/pos-chunk (:pos e)))))]
+    (into [] (keep at) (sort (vals (:players world))))))
 
-(defn- zone-at [world ^long r]
+(defn- zone-at [ids ^long r]
   (into (i/int-set)
-        (mapcat (fn [[cx cz]]
-                  (chunk/around-ids (long cx) (long cz) r)))
-        (player-chunks world)))
-
-(defn loaded-zone
-  "Returns the ids of the chunks the players keep at full status.
-  That zone reaches two rings past the view distance."
-  [world]
-  (zone-at world (+ 2 (view-radius world))))
+        (mapcat (fn [id]
+                  (let [[cx cz] (chunk/id->pos id)]
+                    (chunk/around-ids (long cx) (long cz) r))))
+        ids))
 
 (defn- sim-radius ^long [world]
   (long (get-in world [:config :simulation-distance]
                 activation-radius)))
 
 (defn- compute-areas [world]
-  (let [zone (loaded-zone world)
+  (let [ps (player-chunks world)
+        zone (zone-at ps (+ 2 (view-radius world)))
         s (sim-radius world)
         live? #(and (contains? zone %)
                     (contains? (:chunks world) %))
-        in? #(into (i/int-set) (filter live?) %)]
-    [(in? (zone-at world s)) (in? (zone-at world (inc s)))
-     (zone-at world (inc (view-radius world)))]))
+        in? #(into (i/int-set) (filter live?) %)
+        absent (into (i/int-set)
+                     (remove #(contains? (:chunks world) %)) zone)]
+    [(in? (zone-at ps s)) (in? (zone-at ps (inc s)))
+     (zone-at ps (inc (view-radius world))) zone absent]))
 
 (defn- areas-key
   "Returns what the chunk areas of world are a function of.
-  Block writes keep the shape of chunks, so they do not count."
+  Block writes keep the shape of chunks, so they do not count.
+  The players and entities as they were stand last, for a check by
+  identity alone."
   [world]
   [(player-chunks world) (chunk/shape (:chunks world))
-   (:config world) (:rules world)])
+   (:config world) (:rules world) (:players world) (:entities world)])
+
+(defn- same-shape? [k world]
+  (and (identical? (nth k 1) (chunk/shape (:chunks world)))
+       (identical? (nth k 2) (:config world))
+       (identical? (nth k 3) (:rules world))))
+
+(defn- same? [k world]
+  (and (identical? (nth k 5) (:entities world))
+       (identical? (nth k 4) (:players world))
+       (same-shape? k world)))
 
 (defn- fresh? [world cached]
-  (and cached
-       (let [k (key cached) now (areas-key world)]
-         (and (= (nth k 0) (nth now 0))
-              (identical? (nth k 1) (nth now 1))
-              (identical? (nth k 2) (nth now 2))
-              (identical? (nth k 3) (nth now 3))))))
+  (when cached
+    (let [k (::key (meta cached))]
+      (or (same? k world)
+          (and (same-shape? k world)
+               (= (nth k 0) (player-chunks world)))))))
 
 (defn- areas [world]
   (let [cached (:active-chunks world)]
-    (if (fresh? world cached) (val cached) (compute-areas world))))
+    (if (fresh? world cached) cached (compute-areas world))))
+
+(defn loaded-zone
+  "Returns the ids of the chunks the players keep at full status.
+  That zone reaches two rings past the view distance."
+  [world]
+  (nth (areas world) 3))
+
+(defn absent-chunks
+  "Returns the ids of the loaded zone that world holds no chunk for."
+  [world]
+  (nth (areas world) 4))
 
 (defn active-chunks
   "Returns the chunks that run entity and random ticks."
@@ -128,14 +150,23 @@
   [world]
   (nth (areas world) 2))
 
+(defn- kept [world cached now]
+  (let [k (::key (meta cached))]
+    (if (and cached (same-shape? k world) (= (nth k 0) (nth now 0)))
+      cached
+      (compute-areas world))))
+
 (defn cache-active-chunks
   "Returns the world with its chunk areas up to date.
-  The areas follow its players and chunks."
+  The areas follow its players and chunks. The key they were made
+  from is metadata, so equal worlds stay equal."
   [world]
-  (if (fresh? world (:active-chunks world))
-    world
-    (assoc world :active-chunks
-           (MapEntry/create (areas-key world) (compute-areas world)))))
+  (let [cached (:active-chunks world)]
+    (if (and cached (same? (::key (meta cached)) world))
+      world
+      (let [now (areas-key world)]
+        (assoc world :active-chunks
+               (with-meta (kept world cached now) {::key now}))))))
 
 (defn advance
   "Returns the world one tick older."
@@ -168,7 +199,10 @@
         lo (long (:min-y t chunk/min-y))]
     {:min-y lo
      :max-y (+ lo (long (:height t 384)) -1)
-     :sky? (:has-skylight t true)}))
+     :sky? (:has-skylight t true)
+     :dim dim}))
+
+(def ^:private bounds-of (memoize bounds))
 
 (defn level
   "Returns the level dim of world.
@@ -177,19 +211,24 @@
   [world dim]
   (-> (dissoc world :levels)
       (into (get-in world [:levels dim]))
-      (into (bounds dim))
-      (assoc :dim dim)))
+      (into (bounds-of dim))))
+
+(def ^:private shared-out
+  (into schema/level-keys [:dim :min-y :max-y :sky? :server]))
+
+(defn- level-part [lv]
+  (persistent!
+    (reduce (fn [m k]
+              (if-let [e (find lv k)] (assoc! m k (val e)) m))
+            (transient {}) schema/level-keys)))
 
 (defn with-level
   "Returns world with level dim replaced by lv.
   The keys of lv that are not level keys become the shared part
   of world."
   [world dim lv]
-  (let [lv (dissoc lv :dim :min-y :max-y :sky? :server)
-        level-part (select-keys lv schema/level-keys)
-        shared-part (clojure.core/apply dissoc lv schema/level-keys)]
-    (assoc shared-part :levels
-           (assoc (:levels world) dim level-part))))
+  (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
+         :levels (assoc (:levels world) dim (level-part lv))))
 
 (defn idle?
   "Returns true when level lv holds nothing a tick could change.

@@ -57,12 +57,22 @@
           (recur ds (conj! w d) e o)))
       (built w e o acc))))
 
+(defn- joined [a b]
+  (cond (zero? (count b)) a
+        (zero? (count a)) b
+        :else (into a b)))
+
+(defn- joined-by-eid [a b]
+  (cond (zero? (count b)) a
+        (zero? (count a)) b
+        :else (i/merge-with into a b)))
+
 (defn merge
   (^Deltas [^Deltas a ^Deltas b]
-   (->Deltas (into (world-of a) (world-of b))
-             (i/merge-with into (entities-of a) (entities-of b))
-             (into (out-of a) (out-of b))
-             (into (input-of a) (input-of b))))
+   (->Deltas (joined (world-of a) (world-of b))
+             (joined-by-eid (entities-of a) (entities-of b))
+             (joined (out-of a) (out-of b))
+             (joined (input-of a) (input-of b))))
   (^Deltas [a b & more] (reduce merge (merge a b) more)))
 
 (def merge-deltas merge)
@@ -88,6 +98,12 @@
   "Returns the dimension of the level effect m came from, or nil."
   [m]
   (:dim m))
+
+(defn in-pool
+  "Returns (f) run in the pool of folds.
+  The folds inside f then fork without a handoff each."
+  [f]
+  (@#'r/fjinvoke f))
 
 (defn fold [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))

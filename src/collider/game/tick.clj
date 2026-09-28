@@ -274,8 +274,10 @@
   A system that fails gives no deltas this tick, the others go on."
   ([world events] (tick world events phases))
   ([world events phases]
-   (let [[world' ds] (reduce run-phase (begin world events) phases)]
-     [world' (merged ds)])))
+   (deltas/in-pool
+     #(let [acc (begin world events)
+            [world' ds] (reduce run-phase acc phases)]
+        [world' (merged ds)]))))
 
 (def ^:private ^:const nominal-tick-ns 50000000)
 
