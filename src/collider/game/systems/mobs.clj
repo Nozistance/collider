@@ -710,6 +710,17 @@
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
           (push/islands world (state/loaded-zone world))))
 
+(def ^:private ^:const batch-bodies 32)
+
+(defn- batches [islands]
+  (let [[acc b] (reduce (fn [[acc b ^long n] es]
+                          (let [b (conj b es) n (+ n (count es))]
+                            (if (>= n batch-bodies)
+                              [(conj acc b) [] 0]
+                              [acc b n])))
+                        [[] [] 0] islands)]
+    (cond-> acc (seq b) (conj b))))
+
 (defn- island-batch [world active tempters t batch]
   (into [] (mapcat (fn [es] (step-island world active tempters t es)))
         batch))
@@ -722,7 +733,7 @@
         t (long (:tick world))
         active (state/active-chunks world)
         tempters (sense/holders world)
-        batches (partition-all 32 (herds world))]
+        batches (batches (herds world))]
     (conj (mapv (fn [batch]
                   #(island-batch world active tempters t batch))
                 batches)

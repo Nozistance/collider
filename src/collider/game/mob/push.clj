@@ -5,7 +5,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Push PushCell)))
+  (:import (collider.game.mob Islands Push PushCell)))
 
 (set! *warn-on-reflection* true)
 
@@ -46,9 +46,6 @@
 (defn- pushable?
   [held [_ e :as entry]]
   (and (body? held entry) (alive? e)))
-
-(defn- bodies [world held]
-  (filter (fn [entry] (body? held entry)) (:entities world)))
 
 (defn- by-cell [entries]
   (persistent!
@@ -130,38 +127,22 @@
       (put-in index k1 eid e)
       (put-in (taken-out index k0 eid) k1 eid e))))
 
-(defn- touching [^long k]
-  (let [cx (long (unchecked-int (bit-shift-right k 32)))
-        cz (long (unchecked-int k))]
-    (for [dx [-1 0 1] dz [-1 0 1]]
-      (cell-key (+ cx (long dx)) (+ cz (long dz))))))
-
-(defn- blob [cells ^long k]
-  (loop [q [k] seen #{k}]
-    (if-let [c (peek q)]
-      (let [near (filter (fn [n] (contains? cells n)) (touching c))
-            cs (remove seen near)]
-        (recur (into (pop q) cs) (into seen cs)))
-      seen)))
-
-(defn- group-of [cells b]
-  (vec (sort-by first (mapcat (fn [k] (get cells k)) b))))
-
-(defn- grouped [cells]
-  (loop [ks (keys cells) seen #{} out []]
-    (if-let [k (first ks)]
-      (if (contains? seen k)
-        (recur (next ks) seen out)
-        (let [b (blob cells (long k))]
-          (recur (next ks) (into seen b)
-                 (conj out (group-of cells b)))))
-      out)))
+(defn- grouped [entries]
+  (let [n (count entries)
+        eids (long-array n) cells (long-array n)]
+    (dotimes [i n]
+      (let [[eid e] (nth entries i) p (:pos e)]
+        (aset eids i (long eid))
+        (aset cells i (cell-of (double (v/x p)) (double (v/z p))))))
+    (Islands/of eids cells)))
 
 (defn islands
   "Returns the pushable bodies in groups that one tick of movement
   cannot bring together. Each group steps on its own."
   [world held]
-  (sort-by ffirst (grouped (by-cell (bodies world held)))))
+  (let [entries (into [] (filter #(body? held %)) (:entities world))
+        group (fn [^ints g] (mapv #(nth entries %) g))]
+    (mapv group (grouped entries))))
 
 (defn- scan [index eid e half height hi]
   (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
