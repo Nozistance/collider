@@ -10,7 +10,8 @@
 (set! *warn-on-reflection* true)
 
 (def thrown-types
-  #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
+  #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
+    :experience-bottle})
 
 (defn item
   "Returns a dropped item entity of stack at pos.
@@ -36,7 +37,8 @@
     :tnt (types/map->Tnt m)
     :falling-block (types/map->FallingBlock m)
     :area-effect-cloud (types/map->Cloud m)
-    (:snowball :egg :ender-pearl :splash-potion :lingering-potion)
+    (:snowball :egg :ender-pearl :splash-potion :lingering-potion
+     :experience-bottle)
     (types/map->Projectile m)
     (types/map->Mob m)))
 
@@ -72,8 +74,8 @@
     :item 0.21
     :experience-orb 0.42500001192092896
     :area-effect-cloud 0.425
-    (:snowball :egg :ender-pearl :splash-potion
-     :lingering-potion) 0.2125
+    (:snowball :egg :ender-pearl :splash-potion :lingering-potion
+     :experience-bottle) 0.2125
     1.19))
 
 (defn mob-moved
@@ -89,11 +91,8 @@
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
-(def ^:private thrown
-  #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
-
 (defn- kind [type]
-  (cond (contains? thrown type) :thrown
+  (cond (contains? thrown-types type) :thrown
         (#{:item :tnt :falling-block :area-effect-cloud
            :experience-orb} type) type
         :else :mob))

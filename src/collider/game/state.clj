@@ -1012,10 +1012,10 @@
                   (entity/of (assoc spec :born (:tick w))))
         (assoc :next-eid (inc eid)))))
 
-(defn- orbs-awarded [w pos amount salt]
+(defn- orbs-awarded [w pos amount salt roughly]
   (let [t (:tick w)]
-    (orb/awarded w spawned pos (long amount)
-                 #(random/of-key t pos salt %))))
+    (orb/awarded w spawned pos (or roughly [0.0 0.0 0.0])
+                 (long amount) #(random/of-key t pos salt %))))
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
@@ -1078,7 +1078,8 @@
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
    :listed (fn [w [_ add drop]] (listed w add drop))
    :spawn-entity (fn [w [_ spec]] (spawned w spec))
-   :xp-award (fn [w [_ pos n salt]] (orbs-awarded w pos n salt))
+   :xp-award (fn [w [_ pos n salt dir]]
+               (orbs-awarded w pos n salt dir))
    :set-blocks (fn [w [_ changes ticks quiet]]
                  (if ticks
                    (settled w changes ticks quiet)

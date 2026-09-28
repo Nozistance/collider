@@ -78,7 +78,7 @@
    :spawn-entity
    [:cat :map]
    :xp-award
-   [:cat Vec3 :int :any]
+   [:cat Vec3 :int :any [:? Vec3]]
    :remove-entity
    [:cat Eid]
    :level-deltas

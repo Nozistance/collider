@@ -31,18 +31,30 @@
 
 (defn- fl ^long [^double a] (long (Math/floor a)))
 
+(defn- unit [d]
+  (let [x (double (nth d 0)) y (double (nth d 1)) z (double (nth d 2))
+        l (Math/sqrt (+ (* x x) (* y y) (* z z)))]
+    (if (< l 1.0E-5) [0.0 0.0 0.0] [(/ x l) (/ y l) (/ z l)])))
+
+(defn- dot ^double [a b]
+  (+ (* (double (nth a 0)) (double (nth b 0)))
+     (* (double (nth a 1)) (double (nth b 1)))
+     (* (double (nth a 2)) (double (nth b 2)))))
+
 (defn make
-  "Returns an orb of value at pos, as the ExperienceOrb constructor
-  with no rough direction: a random yaw, then a random push."
-  [pos ^long value roll]
-  (let [yaw (f32 (* (f32 (roll :yaw)) 360.0))
-        side #(* (- (* (double (roll %)) 0.2) 0.1) 2.0)
-        vx (side :vx)
-        vy (* (double (roll :vy)) 0.2 2.0)
-        vz (side :vz)]
-    {:type :experience-orb :pos (mapv double pos) :vel [vx vy vz]
-     :yaw yaw :pitch 0.0 :on-ground false :value value :count 1
-     :age 0 :health 5.0}))
+  "Returns an orb of value at pos, as the ExperienceOrb constructor:
+  a random yaw, then a random push turned to face roughly, the
+  rough direction, which also moves the orb half its size along."
+  ([pos value roll] (make pos [0.0 0.0 0.0] value roll))
+  ([pos roughly ^long value roll]
+   (let [yaw (f32 (* (f32 (roll :yaw)) 360.0))
+         side #(* (- (* (double (roll %)) 0.2) 0.1) 2.0)
+         push [(side :vx) (* (double (roll :vy)) 0.2 2.0) (side :vz)]
+         push (if (neg? (dot roughly push)) (mapv - push) push)
+         u (unit roughly)
+         at (mapv #(+ (double %1) (* (double %2) 0.25)) pos u)]
+     {:type :experience-orb :pos at :vel push :yaw yaw :pitch 0.0
+      :on-ground false :value value :count 1 :age 0 :health 5.0})))
 
 (defn- orb? [e] (= :experience-orb (:type e)))
 
@@ -69,21 +81,21 @@
              (inc (long (get-in w [:entities eid :count])))
              :age 0))
 
-(defn- award-one [spawn w pos value roll]
+(defn- award-one [spawn w pos roughly value roll]
   (let [id (long (* groups (double (roll :group))))
         value (long value)
         hit (first (filter #(joins? % id value pos) (orbs-of w)))]
     (if hit
       (joined w (key hit))
-      (spawn w (make pos value roll)))))
+      (spawn w (make pos roughly value roll)))))
 
 (defn awarded
   "Returns the level w after amount points drop at pos as orbs, as
-  ExperienceOrb.award. Each orb joins a near one of its value and
-  group, or spawns with spawn."
-  [w spawn pos amount roll]
+  ExperienceOrb.awardWithDirection towards roughly. Each orb joins
+  a near one of its value and group, or spawns with spawn."
+  [w spawn pos roughly amount roll]
   (reduce (fn [w [i value]]
-            (award-one spawn w pos value #(roll [i %])))
+            (award-one spawn w pos roughly value #(roll [i %])))
           w (map-indexed vector (xp/orb-values (long amount)))))
 
 (defn- box-near? [a b]

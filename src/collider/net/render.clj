@@ -76,6 +76,8 @@
      :egg           (data/registry-id "entity_type" :egg)
      :ender-pearl   (data/registry-id "entity_type" :ender-pearl)
      :splash-potion (data/registry-id "entity_type" :splash-potion)
+     :experience-bottle
+     (data/registry-id "entity_type" :experience-bottle)
      :lingering-potion
      (data/registry-id "entity_type" :lingering-potion)
      :area-effect-cloud
@@ -299,6 +301,7 @@
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
    :splash-potion/throw           [:entity.splash-potion.throw 7]
+   :experience-bottle/throw       [:entity.experience-bottle.throw 6]
    :lingering-potion/throw        [:entity.lingering-potion.throw 6]
    :player/levelup                [:entity.player.levelup 7]
    :player/teleport               [:entity.player.teleport 7]

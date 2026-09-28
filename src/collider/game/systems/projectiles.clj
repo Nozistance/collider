@@ -1,5 +1,6 @@
 (ns collider.game.systems.projectiles
-  "Thrown snowballs, eggs, pearls and potions, and lingering clouds."
+  "Thrown snowballs, eggs, pearls, potions and bottles o' enchanting,
+  and lingering clouds."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
@@ -26,19 +27,23 @@
 
 (def ^:private ^:const player-height (double (float 1.8)))
 
-(def ^:private ^:const air-drag 0.99)
+(def ^:private ^:const air-drag (double (float 0.99)))
 
-(def ^:private ^:const water-drag 0.8)
+(def ^:private ^:const water-drag (double (float 0.8)))
 
-(def ^:private ^:const gravity 0.03)
-
-(def ^:private ^:const potion-gravity 0.05)
+(def ^:private gravity
+  {:splash-potion 0.05 :lingering-potion 0.05
+   :experience-bottle 0.07})
 
 (def ^:private ^:const inaccuracy 0.0172275)
 
-(def ^:private ^:const eye-drop 0.1)
+(def ^:private ^:const eye-drop (double (float 0.1)))
 
-(def ^:private ^:const eye-height 1.62)
+(def ^:private ^:const bottle-xp-color -13083194)
+
+(def ^:private ^:const sin-scale 10430.378350470453)
+
+(def ^:private ^:const radians (float (/ Math/PI 180.0)))
 
 (def ^:private ^:const base-potion-color -13083194)
 
@@ -65,9 +70,9 @@
    :splash-potion    {:power 0.5 :offset -20.0
                       :sound :splash-potion/throw}
    :lingering-potion {:power 0.5 :offset -20.0
-                      :sound :lingering-potion/throw}})
-
-(def ^:private potion-types #{:splash-potion :lingering-potion})
+                      :sound :lingering-potion/throw}
+   :experience-bottle {:power 0.7 :offset -20.0
+                       :sound :experience-bottle/throw}})
 
 (defn- contents [stack]
   (get-in stack [:components :potion-contents]))
@@ -137,19 +142,40 @@
     (* dev (- (random/of-key t eid [k 0])
               (random/of-key t eid [k 1])))))
 
+(def ^:private sin-table
+  (delay (let [a (float-array 65536)]
+           (dotimes [i 65536]
+             (aset a i (float (Math/sin (/ (double i) sin-scale)))))
+           a)))
+
+(defn- sin-at ^double [^double k]
+  (aget ^floats @sin-table (int (bit-and (long k) 65535))))
+
+(defn- mth-sin ^double [^double a] (sin-at (* a sin-scale)))
+
+(defn- mth-cos ^double [^double a]
+  (sin-at (+ (* a sin-scale) 16384.0)))
+
+(defn- f32 ^double [^double a] (double (unchecked-float a)))
+
+(defn- f* ^double [^double a ^double b] (f32 (* a b)))
+
+(defn- rad ^double [^double deg] (f* (f32 deg) radians))
+
 (defn- aim [^double yaw ^double pitch ^double off]
-  (let [y (Math/toRadians yaw) p (Math/toRadians pitch)]
-    [(* (- (Math/sin y)) (Math/cos p))
-     (- (Math/sin (Math/toRadians (+ pitch off))))
-     (* (Math/cos y) (Math/cos p))]))
+  (let [y (rad yaw) p (rad pitch)
+        up (rad (f32 (+ (f32 pitch) off)))]
+    [(f* (- (mth-sin y)) (mth-cos p)) (- (mth-sin up))
+     (f* (mth-cos y) (mth-cos p))]))
 
 (defn- normalized [[x y z]]
   (let [x (double x) y (double y) z (double z)
         l (Math/sqrt (+ (* x x) (* y y) (* z z)))]
-    (if (< l 1.0E-4) [0.0 0.0 0.0] [(/ x l) (/ y l) (/ z l)])))
+    (if (< l 1.0E-5) [0.0 0.0 0.0] [(/ x l) (/ y l) (/ z l)])))
 
 (defn- shot-vel [world eid dir ^double power]
-  (let [[x y z] (normalized dir)]
+  (let [[x y z] (normalized dir)
+        power (f32 power)]
     [(* power (+ (double x) (triangle world eid :x inaccuracy)))
      (* power (+ (double y) (triangle world eid :y inaccuracy)))
      (* power (+ (double z) (triangle world eid :z inaccuracy)))]))
@@ -164,6 +190,8 @@
     [(Math/toDegrees (Math/atan2 x z))
      (Math/toDegrees (Math/atan2 y d))]))
 
+(defn- eye-y ^double [e] (f32 (entity/eye-height e)))
+
 (defn- thrown [world eid e stack]
   (let [{:keys [power offset]} (throwables (:item stack))
         p (:pos e)
@@ -172,14 +200,15 @@
         vel (carried e (shot-vel world eid dir (double power)))
         [yaw pitch] (facing vel)]
     {:type  (:item stack) :owner eid :age 0 :left-owner? false
-     :pos   [(v/x p) (- (+ (v/y p) eye-height) eye-drop) (v/z p)]
+     :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) eye-drop) (v/z p)]
      :vel   vel :yaw yaw :pitch pitch :on-ground false
      :stack (assoc stack :count 1)}))
 
 (defn- throw-sound [world eid e stack]
   (when-let [snd (:sound (throwables (:item stack)))]
-    (let [r (random/of-key (:tick world) eid :throw)
-          pitch (/ 0.4 (+ (* 0.4 r) 0.8))]
+    (let [r (f32 (random/of-key (:tick world) eid :throw))
+          d (f32 (+ (f* r (f32 0.4)) (f32 0.8)))
+          pitch (f32 (/ (f32 0.4) d))]
       [(out/all (out/sound snd (:pos e) 0.5 pitch))])))
 
 (defn- spent-deltas [eid e stack]
@@ -281,17 +310,27 @@
       (and (not (:left-owner? e))
            (= (long oid) (long (:owner e -1))))))
 
+(defn- margin ^double [e]
+  (let [lived (dec (long (:age e 0)))]
+    (max 0.0 (min (f32 0.3) (f32 (/ (f32 lived) 20.0))))))
+
 (defn- entity-clip [world eid e from d]
-  (reduce (fn [best [oid o]]
-            (if (skip? eid e oid o)
-              best
-              (nearer best
-                      (reach/box-entry from d (target-box o))
-                      [oid])))
-          nil (sort-by key (:entities world))))
+  (let [m (margin e)]
+    (reduce (fn [best [oid o]]
+              (if (skip? eid e oid o)
+                best
+                (let [box (inflated (target-box o) m m m)]
+                  (nearer best (reach/box-entry from d box) [oid]))))
+            nil (sort-by key (:entities world)))))
+
+(defn- span [from d]
+  (let [to (v/+ from d)]
+    [(- (v/x to) (v/x from)) (- (v/y to) (v/y from))
+     (- (v/z to) (v/z from))]))
 
 (defn- clip [world eid e d]
   (let [from (:pos e)
+        d (span from d)
         b (block-clip world from d)
         x (entity-clip world eid e from d)]
     (cond
@@ -311,7 +350,7 @@
     (pos? (liquid/fluid-height chunks (:pos e) half height :water))))
 
 (defn- drift [world e]
-  (let [g (if (potion-types (:type e)) potion-gravity gravity)
+  (let [g (double (gravity (:type e) 0.03))
         vel (:vel e)
         k (if (submerged? world e) water-drag air-drag)]
     [(* k (v/x vel)) (* k (- (v/y vel) g)) (* k (v/z vel))]))
@@ -405,21 +444,35 @@
                         (mapv #(long (Math/floor (double %))) at)
                         (potion-color stack)))])))
 
-(defn- hit-deltas [world eid e at hit]
+(defn- floored [at] (mapv #(long (Math/floor (double %))) at))
+
+(defn- bottle-deltas [world eid d at hit]
+  (let [roll #(random/of-key (:tick world) eid [:xp %])
+        n (+ 3 (long (* 5.0 (roll 0))) (long (* 5.0 (roll 1))))
+        rough (if (= :block (:kind hit))
+                (mapv double (dir/offset (:face hit)))
+                (mapv - d))]
+    [(out/all (out/level-event 2002 (floored at) bottle-xp-color))
+     [:xp-award (mapv double at) n [:bottle eid] rough]]))
+
+(defn- hit-deltas [world eid e d at hit]
   (case (:type e)
     (:snowball :egg) [(out/all (out/status eid :break))]
     :ender-pearl (pearl-deltas world e)
+    :experience-bottle (bottle-deltas world eid d at hit)
     (potion-deltas world (assoc e :pos at) at hit)))
 
 (defn- step-deltas [world eid e]
   (let [d (drift world e)
         left? (left-owner? world e d)
         hit (clip world eid (assoc e :left-owner? left?) d)
-        at (if hit (point (:pos e) d (:t hit)) (v/+ (:pos e) d))]
+        at (if hit
+             (point (:pos e) (span (:pos e) d) (:t hit))
+             (v/+ (:pos e) d))]
     (cond
       (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       hit (into [[:remove-entity eid]]
-                (hit-deltas world eid e at hit))
+                (hit-deltas world eid e d at hit))
       :else [[:merge-entity eid (moved e at d left?)]])))
 
 (defn- cloud-box [e ^double r]
