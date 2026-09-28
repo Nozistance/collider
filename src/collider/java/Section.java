@@ -181,12 +181,25 @@ public final class Section {
         d[c] = (d[c] & ~mask) | (((long) q) << off);
     }
 
+    /// Returns the light level at index `i` of the light levels `a`.
+    static int nibble(byte[] a, int i) {
+        return (a[i >> 1] >> ((i & 1) << 2)) & 15;
+    }
+
+    /// Sets the light level at index `i` of the light levels `a` to
+    /// `v`.
+    static void setNibble(byte[] a, int i, int v) {
+        int b = a[i >> 1];
+        a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v
+                            : (b & 0x0F) | (v << 4));
+    }
+
     public int blockLight(int i) {
-        return bl == null ? 0 : (bl[i >> 1] >> ((i & 1) << 2)) & 15;
+        return bl == null ? 0 : nibble(bl, i);
     }
 
     public int skyLight(int i) {
-        return sl == null ? 0 : (sl[i >> 1] >> ((i & 1) << 2)) & 15;
+        return sl == null ? 0 : nibble(sl, i);
     }
 
     public int bits() {

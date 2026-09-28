@@ -3,18 +3,12 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (java.util Arrays)))
+  (:import (collider.java Path PathHeap PathNode PathTarget)
+           (java.util HashMap)))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const max-visited-nodes 256)
-
-(def ^:private ^:const fudging 1.5)
-
-(defn- fl
-  "Returns v rounded to the float the game would hold."
-  ^double [^double v]
-  (double (float v)))
 
 (def path-types
   "The path types in the order the game declares them."
@@ -278,146 +272,35 @@
       :else (let [[t m early?] (highest-malus (:mob ctx) ts)]
               (if early? t (capped-type ctx x y z t (double m)))))))
 
-(defn- node-key ^long [^long x ^long y ^long z]
-  (unchecked-int
-    (bit-or (bit-and y 0xFF) (bit-shift-left (bit-and x 32767) 8)
-            (bit-shift-left (bit-and z 32767) 24)
-            (if (neg? x) Integer/MIN_VALUE 0)
-            (if (neg? z) 32768 0))))
+(defn- node-at ^PathNode [ctx x y z]
+  (Path/node (:nodes ctx) (long x) (long y) (long z)))
 
-(defn- make-node [^long x ^long y ^long z]
-  {:x   x :y y :z z :num (double-array 5)
-   :idx (long-array [-1 0]) :ref (object-array [nil :blocked])})
+(defn- x-of ^long [^PathNode n] (.x n))
 
-(defn- node-at [ctx x y z]
-  (let [k (node-key x y z)
-        nodes (:nodes ctx)
-        add (fn [m] (if (get m k) m (assoc m k (make-node x y z))))]
-    (or (get @nodes k) (get (swap! nodes add) k))))
+(defn- y-of ^long [^PathNode n] (.y n))
 
-(defn- nums ^doubles [n] (:num n))
+(defn- z-of ^long [^PathNode n] (.z n))
 
-(defn- flags ^longs [n] (:idx n))
+(defn- malus ^double [^PathNode n] (.malus n))
 
-(defn- refs ^objects [n] (:ref n))
+(defn- set-malus! [^PathNode n ^double v] (.setMalus n v))
 
-(defn- gscore ^double [n] (aget (nums n) 0))
+(defn- closed? [^PathNode n] (.closed n))
 
-(defn- set-gscore! [n ^double v] (aset (nums n) 0 (fl v)))
+(defn- close! [^PathNode n] (.close n))
 
-(defn- hscore ^double [n] (aget (nums n) 1))
+(defn- came [^PathNode n] (.came n))
 
-(defn- set-hscore! [n ^double v] (aset (nums n) 1 (fl v)))
+(defn- kind [^PathNode n] (.type n))
 
-(defn- fscore ^double [n] (aget (nums n) 2))
+(defn- set-kind! [^PathNode n t] (.setType n t))
 
-(defn- set-fscore! [n ^double v] (aset (nums n) 2 (fl v)))
-
-(defn- walked ^double [n] (aget (nums n) 3))
-
-(defn- set-walked! [n ^double v] (aset (nums n) 3 (fl v)))
-
-(defn- malus ^double [n] (aget (nums n) 4))
-
-(defn- set-malus! [n ^double v] (aset (nums n) 4 (fl v)))
-
-(defn- heap-idx ^long [n] (aget (flags n) 0))
-
-(defn- set-heap-idx! [n ^long v] (aset (flags n) 0 v))
-
-(defn- in-open? [n] (>= (heap-idx n) 0))
-
-(defn- closed? [n] (pos? (aget (flags n) 1)))
-
-(defn- close! [n] (aset (flags n) 1 1))
-
-(defn- came [n] (aget (refs n) 0))
-
-(defn- set-came! [n p] (aset (refs n) 0 p))
-
-(defn- kind [n] (aget (refs n) 1))
-
-(defn- set-kind! [n t] (aset (refs n) 1 t))
-
-(defn- dist-to ^double [a b]
-  (let [dx (- (long (:x b)) (long (:x a)))
-        dy (- (long (:y b)) (long (:y a)))
-        dz (- (long (:z b)) (long (:z a)))]
-    (fl (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz)))))))
-
-(defn- manhattan ^double [a b]
-  (fl (+ (Math/abs (- (long (:x b)) (long (:x a))))
-         (Math/abs (- (long (:y b)) (long (:y a))))
-         (Math/abs (- (long (:z b)) (long (:z a)))))))
-
-(defn- heap-of [] {:a (atom (object-array 128)) :n (long-array 1)})
-
-(defn- heap-arr ^objects [h] (deref (:a h)))
-
-(defn- heap-count ^long [h] (aget ^longs (:n h) 0))
-
-(defn- set-heap-count! [h ^long v] (aset ^longs (:n h) 0 v))
-
-(defn- heap-empty? [h] (zero? (heap-count h)))
-
-(defn- heap-put! [h ^long i n]
-  (aset (heap-arr h) i n)
-  (set-heap-idx! n i))
-
-(defn- up-heap! [h ^long idx]
-  (let [a (heap-arr h) n (aget a idx) c (fscore n)]
-    (loop [i idx]
-      (let [p (bit-shift-right (dec i) 1)]
-        (if (and (pos? i) (< c (fscore (aget a p))))
-          (do (heap-put! h i (aget a p)) (recur p))
-          (heap-put! h i n))))))
-
-(defn- lower-child ^long [h ^long i]
-  (let [a (heap-arr h) l (inc (* 2 i)) r (inc l) n (heap-count h)]
-    (cond
-      (>= l n) -1
-      (>= r n) l
-      (< (fscore (aget a l)) (fscore (aget a r))) l
-      :else r)))
-
-(defn- down-heap! [h ^long idx]
-  (let [a (heap-arr h) n (aget a idx) c (fscore n)]
-    (loop [i idx]
-      (let [j (lower-child h i)]
-        (if (and (not= -1 j) (< (fscore (aget a j)) c))
-          (do (heap-put! h i (aget a j)) (recur j))
-          (heap-put! h i n))))))
-
-(defn- heap-insert! [h n]
-  (let [i (heap-count h)
-        a (heap-arr h)]
-    (when (= i (alength a))
-      (reset! (:a h) (Arrays/copyOf a (int (* 2 i)))))
-    (heap-put! h i n)
-    (set-heap-count! h (inc i))
-    (up-heap! h i)))
-
-(defn- heap-pop! [h]
-  (let [a (heap-arr h) top (aget a 0) n (dec (heap-count h))]
-    (heap-put! h 0 (aget a n))
-    (aset a n nil)
-    (set-heap-count! h n)
-    (when (pos? n) (down-heap! h 0))
-    (set-heap-idx! top -1)
-    top))
-
-(defn- change-cost! [h n ^double cost]
-  (let [c (fl cost) old (fscore n)]
-    (set-fscore! n c)
-    (if (< c old)
-      (up-heap! h (heap-idx n))
-      (down-heap! h (heap-idx n)))))
+(defn- manhattan ^double [^PathNode n ^PathTarget t]
+  (.manhattan n (.x t) (.y t) (.z t)))
 
 (defn- shape-top ^double [chunks ^long x ^long y ^long z]
-  (let [bs (block/collision-boxes (chunk/block-state chunks x y z))]
-    (if (empty? bs)
-      0.0
-      (/ (double (reduce max (map (fn [b] (nth b 4)) bs))) 16.0))))
+  (Path/shapeTop (block/collision-arr)
+                 (chunk/block-state chunks x y z)))
 
 (defn- floor-level ^double [ctx x y z]
   (let [x (long x) y (long y) z (long z)
@@ -427,73 +310,18 @@
       (+ y 0.5)
       (+ (dec y) (shape-top chunks x (dec y) z)))))
 
-(defn- box-hit? [^doubles b cx cy cz box]
-  (let [s (fn ^double [^long i ^long o]
-            (+ o (/ (double (nth box i)) 16.0)))]
-    (and (> (s 3 cx) (aget b 0)) (< (s 0 cx) (aget b 3))
-         (> (s 4 cy) (aget b 1)) (< (s 1 cy) (aget b 4))
-         (> (s 5 cz) (aget b 2)) (< (s 2 cz) (aget b 5)))))
-
-(defn- cell-hits? [chunks ^doubles b x y z]
-  (let [st (chunk/block-state chunks x y z)]
-    (boolean (some (fn [box] (box-hit? b x y z box))
-                   (block/collision-boxes st)))))
-
 (defn- collides?
   "Returns true when the box b meets a collision shape."
   [chunks ^doubles b]
-  (let [lo (fn ^long [^long i]
-             (long (Math/floor (- (aget b i) 1.0E-7))))
-        hi (fn ^long [^long i]
-             (long (Math/floor (+ (aget b i) 1.0E-7))))]
-    (boolean
-      (some (fn [[x y z]] (cell-hits? chunks b x y z))
-            (for [x (range (lo 0) (inc (hi 3)))
-                  y (range (lo 1) (inc (hi 4)))
-                  z (range (lo 2) (inc (hi 5)))]
-              [x y z])))))
-
-(defn- mob-box ^doubles [mob]
-  (let [[x y z] (:pos mob) w (/ (double (:width mob)) 2.0)]
-    (double-array [(- (double x) w) (double y) (- (double z) w)
-                   (+ (double x) w)
-                   (+ (double y) (double (:height mob)))
-                   (+ (double z) w)])))
-
-(defn- moved ^doubles [^doubles b ^double dx ^double dy ^double dz]
-  (double-array [(+ (aget b 0) dx) (+ (aget b 1) dy) (+ (aget b 2) dz)
-                 (+ (aget b 3) dx) (+ (aget b 4) dy)
-                 (+ (aget b 5) dz)]))
-
-(defn- reach-steps ^long [mob ^double dx ^double dy ^double dz]
-  (let [w (double (:width mob))
-        size (/ (+ w (double (:height mob)) w) 3.0)
-        len (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
-    (long (Math/ceil (/ len size)))))
-
-(defn- reach-delta
-  "Returns how far the mob box centre travels to reach n."
-  [mob n]
-  (let [[px py pz] (:pos mob)
-        w (double (:width mob)) hg (double (:height mob))]
-    [(+ (- (long (:x n)) (double px)) (/ w 2.0))
-     (+ (- (long (:y n)) (double py)) (/ hg 2.0))
-     (+ (- (long (:z n)) (double pz)) (/ w 2.0))]))
+  (Path/collides chunks (block/collision-arr) b))
 
 (defn- can-reach?
   "Returns true when the mob box slides to n without a collision."
   [ctx n]
-  (let [mob (:mob ctx)
-        [dx dy dz] (reach-delta mob n)
-        steps (reach-steps mob dx dy dz)
-        k (double (float (/ 1.0 steps)))]
-    (loop [i 1 b (mob-box mob)]
-      (if (> i steps)
-        true
-        (let [b (moved b (* dx k) (* dy k) (* dz k))]
-          (if (collides? (:chunks ctx) b)
-            false
-            (recur (inc i) b)))))))
+  (let [mob (:mob ctx) [px py pz] (:pos mob)]
+    (Path/canReach (:chunks ctx) (block/collision-arr) (double px)
+                   (double py) (double pz) (double (:width mob))
+                   (double (:height mob)) n)))
 
 (defn- node-with-cost [ctx x y z t cost]
   (let [n (node-at ctx x y z)]
@@ -564,7 +392,7 @@
       [(- (+ cx 0.5) hw) (+ (floor-level ctx cx (inc y) cz) 0.001)
        (- (+ cz 0.5) hw) (+ (+ cx 0.5) hw)
        (- (+ (double (:height mob))
-             (floor-level ctx (:x above) (:y above) (:z above)))
+             (floor-level ctx (x-of above) (y-of above) (z-of above)))
           0.002)
        (+ (+ cz 0.5) hw)])))
 
@@ -624,15 +452,15 @@
        (< (double (:width (:mob ctx))) 0.5)))
 
 (defn- corner-free? [ctx pos ew ns]
-  (let [gap (posts-gap? ctx ew ns) y (long (:y pos))]
-    (and (or (< (long (:y ns)) y) (>= (malus ns) 0.0) gap)
-         (or (< (long (:y ew)) y) (>= (malus ew) 0.0) gap))))
+  (let [gap (posts-gap? ctx ew ns) y (y-of pos)]
+    (and (or (< (y-of ns) y) (>= (malus ns) 0.0) gap)
+         (or (< (y-of ew) y) (>= (malus ew) 0.0) gap))))
 
 (defn- diagonal-ok? [ctx pos ew ns]
   (let [w (double (:width (:mob ctx)))]
     (cond
-      (or (nil? ns) (nil? ew) (> (long (:y ns)) (long (:y pos)))
-          (> (long (:y ew)) (long (:y pos)))) false
+      (or (nil? ns) (nil? ew) (> (y-of ns) (y-of pos))
+          (> (y-of ew) (y-of pos))) false
       (or (= :walkable-door (kind ew))
           (= :walkable-door (kind ns))) false
       (and (> w 1.0) (or (pos? (malus ew)) (pos? (malus ns)))) false
@@ -644,8 +472,8 @@
 
 (defn- jump-size ^long [ctx pos cur]
   (let [mob (:mob ctx)
-        y (long (:y pos))
-        above (type-of-mob ctx (:x pos) (inc y) (:z pos))]
+        y (y-of pos)
+        above (type-of-mob ctx (x-of pos) (inc y) (z-of pos))]
     (if (and (>= (path-type-malus mob above) 0.0)
              (not= :sticky-honey cur))
       (long (Math/floor (max 1.0 (double (:max-up-step mob)))))
@@ -654,9 +482,9 @@
 (defn- side-nodes [ctx pos js ph cur]
   (reduce (fn [a d]
             (let [[dx dz] (nth dir-by-2d d)
-                  x (+ (long (:x pos)) (long dx))
-                  z (+ (long (:z pos)) (long dz))
-                  n (accepted-node ctx x (:y pos) z js ph d cur)]
+                  x (+ (x-of pos) (long dx))
+                  z (+ (z-of pos) (long dz))
+                  n (accepted-node ctx x (y-of pos) z js ph d cur)]
               (assoc a d n)))
           [nil nil nil nil] horizontal-order))
 
@@ -666,16 +494,16 @@
         [cx cz] (nth dir-by-2d cw)]
     (when (diagonal-ok? ctx pos (nth side d) (nth side cw))
       (let [n (accepted-node
-                ctx (+ (long (:x pos)) (long dx) (long cx)) (:y pos)
-                (+ (long (:z pos)) (long dz) (long cz)) js ph d cur)]
+                ctx (+ (x-of pos) (long dx) (long cx)) (y-of pos)
+                (+ (z-of pos) (long dz) (long cz)) js ph d cur)]
         (when (diagonal-node-ok? n) n)))))
 
 (defn neighbors
   "Returns the nodes a mob standing on pos can step onto."
   [ctx pos]
-  (let [cur (type-of-mob ctx (:x pos) (:y pos) (:z pos))
+  (let [cur (type-of-mob ctx (x-of pos) (y-of pos) (z-of pos))
         js (jump-size ctx pos cur)
-        ph (floor-level ctx (:x pos) (:y pos) (:z pos))
+        ph (floor-level ctx (x-of pos) (y-of pos) (z-of pos))
         side (side-nodes ctx pos js ph cur)]
     (into (filterv (fn [n] (neighbor-valid? n pos))
                    (mapv (fn [d] (nth side d)) horizontal-order))
@@ -753,40 +581,20 @@
     (set-malus! n (path-type-malus mob (kind n)))
     n))
 
-(defn- target-of [[x y z]]
-  {:x    (long x) :y (long y) :z (long z)
-   :best (double-array [(double Float/MAX_VALUE)])
-   :node (object-array 1)})
+(defn- targets-of ^"[Lcollider.java.PathTarget;" [goals]
+  (into-array PathTarget
+              (map (fn [[x y z]]
+                     (PathTarget. (long x) (long y) (long z)))
+                   goals)))
 
-(defn- update-best! [t ^double h n]
-  (when (< h (aget ^doubles (:best t) 0))
-    (aset ^doubles (:best t) 0 h)
-    (aset ^objects (:node t) 0 n)))
+(defn- dist-to ^double [^PathNode a ^PathNode b]
+  (.distTo a (.x b) (.y b) (.z b)))
 
-(defn- best-h ^double [targets n]
-  (reduce (fn [^double best t]
-            (let [h (dist-to n t)]
-              (update-best! t h n)
-              (min h best)))
-          (double Float/MAX_VALUE) targets))
+(defn- heap-empty? [^PathHeap h] (.isEmpty h))
 
-(defn- relax! [ctx targets heap maxlen cur n]
-  (let [d (dist-to cur n)
-        w (fl (+ (walked cur) d))
-        g (fl (+ (fl (+ (gscore cur) d)) (malus n)))]
-    (set-walked! n w)
-    (when (and (< w maxlen) (or (not (in-open? n)) (< g (gscore n))))
-      (let [open? (in-open? n)]
-        (set-came! n cur)
-        (set-gscore! n g)
-        (set-hscore! n (fl (* (best-h targets n) fudging)))
-        (if open?
-          (change-cost! heap n (+ (gscore n) (hscore n)))
-          (do (set-fscore! n (+ (gscore n) (hscore n)))
-              (heap-insert! heap n)))))))
+(defn- heap-pop! ^PathNode [^PathHeap h] (.pop h))
 
-(defn- run-search [ctx heap from targets maxlen reach
-                   maxv]
+(defn- run-search [ctx heap from targets maxlen reach maxv]
   (loop [c 0]
     (if (or (heap-empty? heap) (>= (inc c) maxv))
       []
@@ -798,17 +606,17 @@
           hit
           (do (when (< (dist-to cur from) maxlen)
                 (doseq [n (neighbors ctx cur)]
-                  (relax! ctx targets heap maxlen cur n)))
+                  (Path/relax heap targets maxlen cur n)))
               (recur (inc c))))))))
 
 (defn- node-map [n]
-  {:x (:x n) :y (:y n) :z (:z n) :type (kind n)})
+  {:x (x-of n) :y (y-of n) :z (z-of n) :type (kind n)})
 
-(defn- reconstruct [t reached?]
-  (let [ns (loop [n (aget ^objects (:node t) 0) acc ()]
+(defn- reconstruct [^PathTarget t reached?]
+  (let [ns (loop [n (.node t) acc ()]
              (if n (recur (came n) (conj acc n)) (vec acc)))]
     {:nodes          (mapv node-map ns)
-     :target         [(:x t) (:y t) (:z t)]
+     :target         [(.x t) (.y t) (.z t)]
      :reached?       reached?
      :dist-to-target (if (empty? ns)
                        (double Float/MAX_VALUE)
@@ -830,7 +638,7 @@
         cell (fn [c] (long (Math/floor (double c))))]
     {:chunks (:chunks lv)
      :min-y  (chunk/level-min-y lv)
-     :nodes  (atom {})
+     :nodes  (HashMap.)
      :mob    (assoc mob
                :bb-w (long (Math/floor (+ w 1.0)))
                :bb-h (long (Math/floor (inc (double (:height mob)))))
@@ -839,15 +647,12 @@
 (defn- search [lv mob goals maxlen reach mult]
   (let [ctx (context lv mob)
         from (start-node ctx)
-        targets (mapv target-of goals)
-        maxv (long (int (* (float max-visited-nodes) (float mult))))]
-    (set-gscore! from 0.0)
-    (set-hscore! from (best-h targets from))
-    (set-fscore! from (hscore from))
-    (let [heap (heap-of)]
-      (heap-insert! heap from)
-      (let [hit (run-search ctx heap from targets maxlen reach maxv)]
-        (if (seq hit) (pick hit true) (pick targets false))))))
+        targets (targets-of goals)
+        maxv (long (int (* (float max-visited-nodes) (float mult))))
+        heap (PathHeap.)]
+    (Path/start heap targets from)
+    (let [hit (run-search ctx heap from targets maxlen reach maxv)]
+      (if (seq hit) (pick hit true) (pick targets false)))))
 
 (defn find-path
   "Returns the path of a mob over level lv to the closest of the
