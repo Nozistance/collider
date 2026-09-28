@@ -6,6 +6,8 @@
             [clojure.data.int-map :as i]
             [collider.config :as config]
             [collider.data :as data]
+            [collider.game.attribute :as attribute]
+            [collider.game.effect :as effect]
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
@@ -86,7 +88,8 @@
     (if (contains? @entity-type t) t :player)))
 
 (def ^:private shared-flags
-  {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5})
+  {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5
+   :glowing? 6})
 
 (defn- flags-byte ^long [meta]
   (reduce-kv (fn [^long b k ^long bit]
@@ -119,7 +122,9 @@
           (contains? meta :using-item?)
           (assoc :living-flags (using-item-byte meta))
           (contains? meta :sleeping-pos)
-          (assoc :sleeping-pos (:sleeping-pos meta))))
+          (assoc :sleeping-pos (:sleeping-pos meta))
+          (contains? meta :absorption)
+          (assoc :absorption (double (or (:absorption meta) 0.0)))))
 
 (defn- color-byte ^long [meta]
   (bit-or (bit-and (long (or (:color meta) 0)) 15)
@@ -179,12 +184,23 @@
   (cond-> {}
     (contains? meta :start) (assoc :start-pos (:start meta))))
 
+(defn- effect-particle [[k c]]
+  [(data/registry-id "particle_type" k) c])
+
+(defn- living-fields [meta]
+  (cond-> {}
+    (contains? meta :effect-particles)
+    (assoc :effect-particles
+           (mapv effect-particle (:effect-particles meta)))
+    (contains? meta :effect-ambience)
+    (assoc :effect-ambience (boolean (:effect-ambience meta)))))
+
 (defn- entity-fields [kind meta]
   (case kind
-    :player (player-fields meta)
-    :cow (cow-fields meta)
-    :sheep (sheep-fields meta)
-    :mooshroom (mooshroom-fields meta)
+    :player (merge (player-fields meta) (living-fields meta))
+    :cow (merge (cow-fields meta) (living-fields meta))
+    :sheep (merge (sheep-fields meta) (living-fields meta))
+    :mooshroom (merge (mooshroom-fields meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
     :tnt (tnt-fields meta)
     :falling-block (falling-fields meta)
@@ -585,6 +601,12 @@
    (center-packet (chunk/pos-chunk (:pos m)))
    (own-abilities e)])
 
+(defn- effect-packets [eid e]
+  (for [[k i] (effect/in-order (:effects e))]
+    (-> (out/mob-effect eid k i false)
+        (dissoc :msg)
+        (assoc :packet :update-mob-effect))))
+
 (defn- change-dimension-packets [lv m]
   (let [eid (:to m) e (get-in lv [:entities eid])]
     (concat
@@ -594,7 +616,8 @@
       (leave-packets m)
       (arrival-packets m e)
       (level-info-packets lv)
-      (player-info-packets e))))
+      (player-info-packets e)
+      (effect-packets eid e))))
 
 (defn- respawn-packets [lv m]
   (let [e (get-in lv [:entities (:to m)])]
@@ -630,6 +653,13 @@
    :health        (fn [_ m]
                     [{:packet :set-health :health (:health m)
                       :food 20 :saturation 5.0}])
+   :mob-effect    (fn [_ m]
+                    [{:packet :update-mob-effect :eid (:eid m)
+                      :effect (:effect m) :amplifier (:amplifier m)
+                      :duration (:duration m) :flags (:flags m)}])
+   :mob-effect-gone (fn [_ m]
+                      [{:packet :remove-mob-effect :eid (:eid m)
+                        :effect (:effect m)}])
    :cooldown      (fn [_ m]
                     [{:packet :cooldown :group (:group m)
                       :duration (:ticks m)}])
@@ -886,11 +916,13 @@
     ticking-packets))
 
 (defn- join-player-packets [eid e]
-  (let [[entity block] (game-mode/reach-attributes e)]
-    [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
-     {:packet :set-experience :progress 0.0 :level 0 :total 0}
-     {:packet     :update-attributes :eid eid
-      :attributes [entity [:movement-speed 0.1 []] block]}]))
+  (let [[entity block] (game-mode/reach-attributes e)
+        speed (attribute/modifiers e (:effects e) :movement-speed)]
+    (into [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+           {:packet :set-experience :progress 0.0 :level 0 :total 0}
+           {:packet     :update-attributes :eid eid
+            :attributes [entity [:movement-speed 0.1 speed] block]}]
+          (effect-packets eid e))))
 
 (defn- join-packets [world lv eid]
   (let [cfg (merge config/defaults (:config world))

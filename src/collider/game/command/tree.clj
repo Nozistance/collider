@@ -118,6 +118,18 @@
     [[:target [:targets {:single? true :default nil}]]
      [:player [:targets spectator-opts]]]
     [:world :spectate]]
+   [:effect "give or clear mob effects"
+    [:clear "clear effects (default: yours, all)"
+     [[:targets [:targets {:default nil}]]
+      [:effect [:mob-effect {:default nil}]]]
+     [:world :effect-clear]]
+    [:give "give an effect"
+     [[:targets [:targets {}]]
+      [:effect [:mob-effect {}]]
+      [:seconds [:effect-seconds {:default nil}]]
+      [:amplifier [:int {:min 0 :max 255 :default nil :quiet true}]]
+      [:hideParticles [:bool {:default nil}]]]
+     [:world :effect-give]]]
    [:defaultgamemode "set the game mode of new players"
     [[:gamemode [:game-mode {}]]]
     [:world :defaultgamemode]]])
@@ -333,12 +345,44 @@
       [:fail-at "command.expected.separator" [] (count w)]
       :else [:ok mode])))
 
+(def ^:private id-chars #"^[0-9a-z_:/.-]*")
+
+(defn- as-mob-effect [_nm ^String s _opts _origin]
+  (let [w (re-find id-chars s)
+        [_ ns path] (re-matches #"(?:([^:]*):)?([^:]*)" w)
+        k (when path (data/kebab (str (or ns "minecraft") ":" path)))
+        id (str (or ns "minecraft") ":" path)]
+    (cond
+      (or (nil? path) (str/includes? (str ns) "/"))
+      [:fail-at "argument.id.invalid" [] 0]
+      (not (contains? (data/mob-effects) k))
+      [:fail-at "argument.resource.not_found"
+       [id "minecraft:mob_effect"] (count w)]
+      (< (count w) (count s))
+      [:fail-at "command.expected.separator" [] (count w)]
+      :else [:ok k])))
+
+(defn- as-effect-seconds [nm ^String s _opts origin]
+  (if (= "infinite" s)
+    [:ok :infinite]
+    (as-int nm s {:min 1 :max 1000000} origin)))
+
+(defn- as-bool [_nm ^String s _opts _origin]
+  (let [w (re-find #"^[0-9A-Za-z_.+-]*" s)]
+    (cond
+      (= "" w) [:fail "parsing.bool.expected" []]
+      (not (#{"true" "false"} w)) [:fail "parsing.bool.invalid" [w]]
+      (< (count w) (count s))
+      [:fail-at "command.expected.separator" [] (count w)]
+      :else [:ok (= "true" w)])))
+
 (def ^:private coercers
   {:int as-int :named-int as-named-int :coord as-coord
    :dcoord as-dcoord :enum as-enum :block as-block :item as-item
    :entity-type as-entity-type :targets as-targets :rule as-rule
    :text as-text :duration as-duration :angle as-angle
-   :game-mode as-game-mode})
+   :game-mode as-game-mode :mob-effect as-mob-effect
+   :effect-seconds as-effect-seconds :bool as-bool})
 
 (defn- coerce
   [[nm [kind opts]] s origin]
@@ -369,19 +413,26 @@
        sort
        vec))
 
+(defn- effect-names []
+  (->> (keys (data/mob-effects)) (map data/wire) sort vec))
+
+(def ^:private fixed-values
+  {:duration ["1d" "1s" "100"] :effect-seconds ["infinite"]
+   :bool ["false" "true"] :text [] :angle []
+   :targets ["@s" "@a" "@p" "@r" "@e" "@n"]})
+
 (defn- arg-values [[_ [kind {:keys [values axis] :as opts}]] target]
   (case kind
-    :duration ["1d" "1s" "100"]
-    :int (int-values opts)
+    (:duration :effect-seconds :bool :text :angle :targets)
+    (fixed-values kind)
+    :int (if (:quiet opts) [] (int-values opts))
+    :mob-effect (effect-names)
     (:coord :dcoord) (coord-values target axis)
     :named-int (named-int-values opts)
     :enum (vec (sort values))
     :rule (rule-names)
-    :text []
     :item (item-names)
     :entity-type (vec (sort (map name (keys mobs/types))))
-    :angle []
-    :targets ["@s" "@a" "@p" "@r" "@e" "@n"]
     :game-mode (mapv name (sort-by game-mode/id (keys game-mode/ids)))
     :block (block-values)))
 
@@ -554,9 +605,31 @@
 (defn- suggest-subcommand [form prefix]
   (starting-with prefix (sort (map cmd-name (drop 2 form)))))
 
+(defn- next-split [^String input ^long i]
+  (let [js (keep #(str/index-of input % i) [\. \_ \/])]
+    (when (seq js) (inc (long (reduce min js))))))
+
+(defn- sub-match? [^String pattern ^String input]
+  (loop [i 0]
+    (cond
+      (str/starts-with? (subs input i) pattern) true
+      :else (if-let [j (next-split input i)] (recur j) false))))
+
+(defn- resource-match? [^String typed ^String id]
+  (let [[ns path] (str/split id #":" 2)]
+    (if (str/includes? typed ":")
+      (sub-match? typed id)
+      (or (sub-match? typed ns) (sub-match? typed path)))))
+
+(defn- matching-resources [typed ids]
+  (let [t (str/lower-case typed)]
+    (filterv #(resource-match? t %) ids)))
+
 (defn- suggest-arg [form tokens i target]
-  (if-let [a (nth (nth form 2 []) i nil)]
-    (starting-with (last tokens) (arg-values a target))
+  (if-let [[_ [kind] :as a] (nth (nth form 2 []) i nil)]
+    (if (= :mob-effect kind)
+      (matching-resources (last tokens) (arg-values a target))
+      (starting-with (last tokens) (arg-values a target)))
     []))
 
 (defn- suggest-after-command [form tokens target]
@@ -600,7 +673,9 @@
    :item [:item-stack nil]
    :entity-type [:resource {:registry "minecraft:entity_type"}]
    :text [brigadier-string {:kind 0}]
-   :game-mode [:gamemode nil]})
+   :game-mode [:gamemode nil]
+   :mob-effect [:resource {:registry "minecraft:mob_effect"}]
+   :bool [brigadier-bool nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})
@@ -612,6 +687,9 @@
       [[n parser props]]
       (case kind
         :int [[n brigadier-integer {:min min :max max}]]
+        :effect-seconds
+        {:or-literals ["infinite"]
+         :arg [n brigadier-integer {:min 1 :max 1000000}]}
         :enum {:literals (sort values)}
         :targets [[n :entity (entity-props single? players?)]]
         :rule {:rules true}))))
@@ -645,9 +723,17 @@
           :name (subs (rules/wire-name rule) 10)
           :children [(rule-value spec)]})))
 
+(defn- literal-nodes [ls exec? children]
+  (mapv (fn [l] {:type :literal :name l :executable? exec?
+                 :children children})
+        ls))
+
 (defn- spec-nodes [spec exec? children]
   (cond
     (:rules spec) (rule-nodes)
+    (:or-literals spec)
+    (into (spec-nodes [(:arg spec)] exec? children)
+          (literal-nodes (:or-literals spec) exec? children))
     (:literals spec)
     (mapv (fn [l] {:type :literal :name l :executable? exec?
                    :children children})

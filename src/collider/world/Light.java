@@ -321,7 +321,7 @@ public final class Light {
         float v = 15.0F * skyFactor(time);
         if (r > 0) v = blend(v, 0.3125F, 4.0F, r);
         if (th > 0) v = blend(v, 0.52734375F, 4.0F, th);
-        return Math.min(15.0F, Math.max(0.0F, v));
+        return Math.clamp(v, 0.0F, 15.0F);
     }
 
     /// Returns how much the sky light is dimmed, 0 to 15, at `time`

@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.camera :as camera]
+            [collider.game.effect :as effect]
             [collider.game.command.item-args :as item-args]
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
@@ -17,6 +18,7 @@
             [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.effects :as effects]
             [collider.game.systems.items :as items]
             [collider.game.systems.sleep :as sleep]
             [collider.random :as random]
@@ -861,8 +863,63 @@
               (moved world x dim (vec (xyz (:pos d)))
                      [(:yaw d 0.0) (:pitch d 0.0)] :entity)))))
 
+(defn- effect-title [k]
+  {:translate (str "effect.minecraft." (data/snake k))})
+
+(defn- given-ticks ^long [k secs]
+  (cond
+    (nil? secs) (if (effect/instant? k) 1 600)
+    (= :infinite secs) effect/infinite
+    (effect/instant? k) (long secs)
+    :else (* 20 (long secs))))
+
+(defn- effect-changed [world [id dim e] f]
+  (when (effects/living? e)
+    (let [acc (f (effects/account id e))]
+      (when (:landed? acc)
+        (or (in-level world dim (effects/deltas acc e)) [])))))
+
+(defn- effect-report [eid xs n key-of with]
+  (if (= 1 (count xs))
+    (apply say eid (key-of "single")
+           (with (entity-name (nth (first xs) 2))))
+    (apply say eid (key-of "multiple") (with n))))
+
+(defn- effect-run [world eid xs f fail-key key-of with]
+  (let [dss (keep #(effect-changed world % f) xs)]
+    (if (empty? dss)
+      (fail eid fail-key)
+      (concat (apply concat dss)
+              (effect-report eid xs (count xs) key-of with)))))
+
+(defn- effect-give-deltas [world eid [sel k secs amp hide]]
+  (let [xs (selected world eid sel)
+        d (given-ticks k secs)
+        i (effect/instance d (or amp 0) false (not hide))
+        key-of #(str "commands.effect.give.success." %)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.entity")
+      (effect-run world eid xs #(effects/land % k i)
+                  "commands.effect.give.failed" key-of
+                  (fn [who] [(effect-title k) who (quot d 20)])))))
+
+(defn- clear-parts [k]
+  (if k
+    ["specific" #(effects/take-off % k) #(vector (effect-title k) %)]
+    ["everything" effects/take-all vector]))
+
+(defn- effect-clear-deltas [world eid [sel k]]
+  (let [xs (if sel (selected world eid sel) (self world eid))
+        [what f with] (clear-parts k)
+        base (str "commands.effect.clear." what)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.entity")
+      (effect-run world eid xs f (str base ".failed")
+                  #(str base ".success." %) with))))
+
 (def ^:private commands
-  {:tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
+  {:effect-give effect-give-deltas :effect-clear effect-clear-deltas
+   :tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
    :tp-targets-to tp-targets-to-deltas :give give-deltas
    :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas

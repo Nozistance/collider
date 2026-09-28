@@ -5,6 +5,7 @@
             [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
+            [collider.game.systems.effects :as effects]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]))
@@ -47,6 +48,15 @@
   (for [{:keys [type sound]} (:effects c) :when (= :play-sound type)]
     (out/all (out/sound sound (:pos e) 1.0 1.0 :players))))
 
+(defn- on-consume [acc {:keys [type]}]
+  (case type
+    :clear-all-effects (effects/take-all acc)
+    acc))
+
+(defn- consume-effect-deltas [eid e c]
+  (let [acc (reduce on-consume (effects/account eid e) (:effects c))]
+    (when (:changed? acc) (effects/deltas acc e))))
+
 (defn- stopped [eid]
   [[:merge-entity eid {:using-item? false :using nil}]])
 
@@ -76,6 +86,7 @@
             (when (get-in (data/items) [item :food])
               (food-sounds world eid e c))
             (effect-sounds e c)
+            (consume-effect-deltas eid e c)
             (remainder-deltas world eid e hand stack)
             (state/cooldown-deltas eid e item (:tick world))
             (stopped eid))))

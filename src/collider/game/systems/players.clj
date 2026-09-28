@@ -2,6 +2,7 @@
   "Player list, entity tracking and movement updates."
   (:require [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
+            [collider.game.effect :as effect]
             [collider.game.game-mode :as game-mode]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
@@ -65,11 +66,13 @@
            :skin-parts  (long (or (:skin-parts e) 0))}
           (:sleeping e)
           (assoc :sleeping-pos (get-in e [:sleeping :pos]))
+          (pos? (double (:absorption e 0.0)))
+          (assoc :absorption (:absorption e))
           (game-mode/spectator? e) (assoc :invisible? true)))
 
 (def ^:private flag-keys
-  [:burning? :sneaking? :sprinting? :swimming? :invisible? :color
-   :sheared? :variant])
+  [:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?
+   :color :sheared? :variant])
 
 (defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
@@ -81,14 +84,30 @@
       (into changed (select-keys mdata flag-keys))
       changed)))
 
-(defn metadata
-  "Returns the synched fields an entity would show a client."
-  [e]
+(defn- effect-particles [e fx]
+  (when-not (game-mode/spectator? e)
+    (not-empty (effect/particles fx))))
+
+(defn- effect-metadata [e fx]
+  (let [ps (effect-particles e fx)]
+    (cond-> {}
+      ps (assoc :effect-particles ps)
+      (effect/all-ambient? fx) (assoc :effect-ambience true)
+      (contains? fx :invisibility) (assoc :invisible? true)
+      (contains? fx :glowing) (assoc :glowing? true))))
+
+(defn- own-metadata [e]
   (if-let [f (simple-metadata (:type e))]
     (f e)
     (if (mobs/mob-type? (:type e))
       (mobs/metadata e)
       (player-metadata e))))
+
+(defn metadata
+  "Returns the synched fields an entity would show a client."
+  [e]
+  (let [m (own-metadata e) fx (:effects e)]
+    (if (seq fx) (merge m (effect-metadata e fx)) m)))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))

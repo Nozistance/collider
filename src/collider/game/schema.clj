@@ -249,6 +249,8 @@
    :game-mode    {}
    :previous-game-mode {}
    :flying       {:default false :store boolean}
+   :effects      {}
+   :absorption   {}
    :dimension    {:default :overworld}})
 
 (defn- profile-kept? [player k]

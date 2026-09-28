@@ -18,6 +18,7 @@
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.dripleaf :as dripleaf]
+            [collider.game.systems.effects :as effects]
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.furnaces :as furnaces]
@@ -77,6 +78,7 @@
              [#'chunks/chunk-loading]
              packet-systems
              [#'chunks/arrival-streaming]
+             [#'effects/effects]
              [#'consume/consume]
              [#'pose/pose]
              [#'daynight/daynight]

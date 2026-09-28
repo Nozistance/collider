@@ -435,6 +435,15 @@
              (c/write-varint buf (count (:changes m)))
              (doseq [[at state] (:changes m)]
                (c/write-varlong buf (section-change-long state at))))}
+   [:play :update-mob-effect]
+   {:schema [:map [:eid wire/varint] [:effect [wire/reg "mob_effect"]]
+             [:amplifier wire/varint] [:duration wire/varint]
+             [:flags wire/byte]]
+    :write :wire}
+   [:play :remove-mob-effect]
+   {:schema [:map [:eid wire/varint]
+             [:effect [wire/reg "mob_effect"]]]
+    :write :wire}
    [:play :cooldown]
    {:schema [:map [:group wire/id] [:duration wire/varint]]
     :write :wire}

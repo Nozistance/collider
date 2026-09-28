@@ -634,11 +634,15 @@
         :when (contains? (:tracking o) eid)]
     [:tracking oid [] [eid]]))
 
+(defn- fresh-marks [e]
+  (cond-> {:health player-health :health-sent player-health
+           :hurt-resist 0 :last-damage 0.0 :death-time 0}
+    (seq (:effects e)) (assoc :effects {})
+    (:absorption e) (assoc :absorption nil)))
+
 (defn- revived [eid e pos yaw pitch]
   [[:teleport eid pos]
-   [:merge-entity eid {:health      player-health
-                       :health-sent player-health
-                       :hurt-resist 0 :last-damage 0.0 :death-time 0}]
+   [:merge-entity eid (fresh-marks e)]
    (out/to eid (out/respawn))
    (out/to eid (out/teleport pos yaw pitch))
    (out/to eid (out/health player-health))

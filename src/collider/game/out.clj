@@ -353,3 +353,23 @@
   "Returns the effect that a cooldown group locked for ticks."
   [group ticks]
   {:msg :cooldown :group group :ticks ticks})
+
+(defn- effect-flags ^long [i blend?]
+  (cond-> 0
+    (:ambient? i) (bit-or 1)
+    (:visible? i) (bit-or 2)
+    (:icon? i) (bit-or 4)
+    blend? (bit-or 8)))
+
+(defn mob-effect
+  "Returns the effect that shows effect k of entity eid as instance
+  i. With blend? the client fades it in."
+  [eid k i blend?]
+  {:msg :mob-effect :eid eid :effect k
+   :amplifier (long (:amplifier i)) :duration (long (:duration i))
+   :flags (effect-flags i blend?)})
+
+(defn mob-effect-gone
+  "Returns the effect that effect k of entity eid ended."
+  [eid k]
+  {:msg :mob-effect-gone :eid eid :effect k})

@@ -96,7 +96,8 @@
         :else :mob))
 
 (def ^:private kept
-  {:mob [:health :death-time :color :sheared? :sound-variant]
+  {:mob [:health :death-time :color :sheared? :sound-variant
+         :effects :absorption]
    :item [:stack :age :pickup-delay :health]
    :tnt [:fuse :origin]
    :falling-block [:block :time]
