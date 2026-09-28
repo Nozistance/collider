@@ -66,10 +66,21 @@
     (game-mode/ticks? chunks e) (into (ticked-stats e))
     (and (:sleeping e) (not was-sleeping?)) (conj [:sleep-in-bed 1])))
 
+(def ^:private custom-keys
+  (into {}
+        (map (fn [k] [k (keyword "custom" (name k))]))
+        [:play-time :total-world-time :time-since-death :sneak-time
+         :time-since-rest :sleep-in-bed :jump :fall-one-cm
+         :sprint-one-cm :crouch-one-cm :walk-one-cm :swim-one-cm
+         :walk-under-water-one-cm :walk-on-water-one-cm :climb-one-cm
+         :fly-one-cm]))
+
+(defn- custom-key [k]
+  (or (custom-keys k) (keyword "custom" (name k))))
+
 (defn- add-counts [stats pairs]
   (reduce (fn [m [k n]]
-            (update m (keyword "custom" (name k))
-                    (fnil + 0) (long n)))
+            (update m (custom-key k) (fnil + 0) (long n)))
           stats pairs))
 
 (defn- player-stats [world moves eid e]
@@ -99,9 +110,12 @@
         (players world)))
 
 (defn- award [world _]
-  (let [moves (group-by :eid (:moves world))]
-    (conj (mapv #(player-delta world moves %) (players world))
-          [:observed (observed world)])))
+  (let [moves (group-by :eid (:moves world))
+        seen (observed world)
+        ds (mapv #(player-delta world moves %) (players world))]
+    (if (= seen (:observed world))
+      ds
+      (conj ds [:observed seen]))))
 
 (defn- answer [world d]
   (for [[tag eid] (:input d) :when (= :stats-request tag)

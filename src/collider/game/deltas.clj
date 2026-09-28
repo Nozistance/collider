@@ -41,8 +41,8 @@
   (->Deltas (persistent! w) (persistent! e) (persistent! o)
             (input-of acc)))
 
-(defn add ^Deltas [^Deltas acc deltas]
-  (loop [ds (seq (if delta/validate? (delta/check! deltas) deltas))
+(defn- added ^Deltas [^Deltas acc ds]
+  (loop [ds ds
          w (transient (world-of acc))
          e (transient (entities-of acc))
          o (transient (out-of acc))]
@@ -57,6 +57,11 @@
           (recur ds (conj! w d) e o)))
       (built w e o acc))))
 
+(defn add ^Deltas [^Deltas acc deltas]
+  (if-let [ds (seq (if delta/validate? (delta/check! deltas) deltas))]
+    (added acc ds)
+    acc))
+
 (defn- joined [a b]
   (cond (zero? (count b)) a
         (zero? (count a)) b
@@ -67,12 +72,21 @@
         (zero? (count a)) b
         :else (i/merge-with into a b)))
 
+(defn- blank? [^Deltas d]
+  (and (zero? (count (world-of d))) (zero? (count (entities-of d)))
+       (zero? (count (out-of d))) (zero? (count (input-of d)))))
+
+(defn- joined-deltas ^Deltas [^Deltas a ^Deltas b]
+  (->Deltas (joined (world-of a) (world-of b))
+            (joined-by-eid (entities-of a) (entities-of b))
+            (joined (out-of a) (out-of b))
+            (joined (input-of a) (input-of b))))
+
 (defn merge
   (^Deltas [^Deltas a ^Deltas b]
-   (->Deltas (joined (world-of a) (world-of b))
-             (joined-by-eid (entities-of a) (entities-of b))
-             (joined (out-of a) (out-of b))
-             (joined (input-of a) (input-of b))))
+   (cond (blank? b) a
+         (blank? a) b
+         :else (joined-deltas a b)))
   (^Deltas [a b & more] (reduce merge (merge a b) more)))
 
 (def merge-deltas merge)

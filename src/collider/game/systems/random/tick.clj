@@ -36,9 +36,8 @@
   (long (get-in world [:rules :fire-spread-radius-around-player]
                 128)))
 
-(defn- block-result [world chunks p st roll]
+(defn- block-result [world chunks time p st roll]
   (let [drip (dripstone/drip chunks p st roll (:dim world))
-        time (clock/day-ticks world)
         grown (grow/random-tick chunks p st roll time world)]
     {:drip    drip
      :drops   (grow/random-drops st roll)
@@ -47,50 +46,53 @@
                       (dripstone/random-changes chunks p st roll)
                       grown)}))
 
-(defn- cell-result [world chunks p ^long st]
+(defn- cell-result [world chunks time p st]
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (block/lava? st)
       (when (near-player? world (fire-radius world) p)
         {:changes (liquid/lava-random-tick chunks p roll)})
-      (block-result world chunks p st roll))))
+      (block-result world chunks time p st roll))))
 
-(defn- cell-at [t cid si i c]
-  (let [n (fn [^long k]
-            (let [r (random/of-longs t cid (+ k (* 3 si)) i)]
-              (long (Math/floor (* 16.0 r)))))
-        [cx cz] (chunk/id->pos cid)
-        y0 (* 16 (- (long si) (long chunk/section-offset)))
-        lx (n 0) ly (n 1) lz (n 2)
-        st (chunk/get-block c lx (+ y0 ly) lz)]
-    (when (block/randomly-ticking? st)
-      [[(+ (* 16 (long cx)) lx) (+ y0 ly) (+ (* 16 (long cz)) lz)]
-       st])))
+(defn- local ^long [^long t ^long cid ^long k ^long i]
+  (long (Math/floor (* 16.0 (random/of-longs t cid k i)))))
 
-(defn- section-cells [world chunks cid si speed]
-  (let [t (long (:tick world)) cid (long cid) si (long si)
-        c (get chunks cid)]
-    (into [] (keep #(cell-at t cid si (long %) c))
-          (range (long speed)))))
+(defn- section-cells [acc t cid si speed c x0 z0]
+  (let [t (long t) cid (long cid) si (long si) speed (long speed)
+        x0 (long x0) z0 (long z0)
+        y0 (* 16 (- si (long chunk/section-offset))) k (* 3 si)]
+    (loop [i 0 acc acc]
+      (if (= i speed)
+        acc
+        (let [lx (local t cid k i) ly (+ y0 (local t cid (+ k 1) i))
+              lz (local t cid (+ k 2) i)
+              st (chunk/get-block c lx ly lz)]
+          (recur (inc i)
+                 (if (block/randomly-ticking? st)
+                   (conj! acc [[(+ x0 lx) ly (+ z0 lz)] st])
+                   acc)))))))
 
 (defn- blank? [s] (or (nil? s) (identical? s chunk/empty-section)))
 
-(defn- chunk-cells [world chunks speed cid c]
-  (let [cells (fn [si]
-                (when-not (blank? (chunk/chunk-section c si))
-                  (section-cells world chunks cid si speed)))]
-    (into [] (mapcat cells) (range chunk/section-count))))
+(defn- chunk-cells [world _chunks speed cid c]
+  (let [t (long (:tick world)) cid (long cid)
+        [cx cz] (chunk/id->pos cid)
+        x0 (* 16 (long cx)) z0 (* 16 (long cz))]
+    (loop [si 0 acc (transient [])]
+      (if (= si (long chunk/section-count))
+        (persistent! acc)
+        (recur (inc si)
+               (if (blank? (chunk/chunk-section c si))
+                 acc
+                 (section-cells acc t cid si speed c x0 z0)))))))
 
 (def ^:private ^:const chunk-leaf 16)
 
-(defn- per-chunk [world speed f]
-  (let [chunks (:chunks world)
-        one #(f world chunks speed %)]
-    (deltas/pmapcat one (vec (state/active-chunks world))
-                    chunk-leaf 64)))
+(defn- per-chunk [cids f]
+  (deltas/pmapcat f cids chunk-leaf 64))
 
-(defn- chunk-results [world chunks speed cid]
+(defn- chunk-results [world chunks speed time cid]
   (when-let [c (get chunks cid)]
-    (mapv (fn [[p st]] (cell-result world chunks p st))
+    (mapv (fn [[p st]] (cell-result world chunks time p st))
           (chunk-cells world chunks speed cid c))))
 
 (defn- roll-of ^double [t cid i salt]
@@ -112,10 +114,15 @@
 (defn- max-snow ^long [world]
   (long (get-in world [:rules :max-snow-accumulation-height] 1)))
 
-(defn- chunk-fallen [world chunks speed cid]
-  (let [t (long (:tick world)) h (max-snow world) cid (long cid)]
-    (into [] (mapcat #(precipitation-at world chunks t cid h %))
-          (range (long speed)))))
+(defn- chunk-fallen [world chunks speed h cid]
+  (let [t (long (:tick world)) cid (long cid)]
+    (loop [i 0 acc []]
+      (if (= i (long speed))
+        acc
+        (recur (inc i)
+               (if-some [cs (precipitation-at world chunks t cid h i)]
+                 (into acc cs)
+                 acc))))))
 
 (defn- drip-schedules [world drips]
   (reduce (fn [m {:keys [cauldron delay]}]
@@ -143,8 +150,11 @@
             (drop-spawns world results))))
 
 (defn- ticked [world speed]
-  (let [results (per-chunk world speed chunk-results)
-        fallen (per-chunk world speed chunk-fallen)
+  (let [chunks (:chunks world) time (clock/day-ticks world)
+        h (max-snow world) cids (vec (state/active-chunks world))
+        result #(chunk-results world chunks speed time %)
+        results (per-chunk cids result)
+        fallen (per-chunk cids #(chunk-fallen world chunks speed h %))
         changes (into fallen (mapcat :changes) results)
         drips (into [] (keep :drip) results)]
     (when (or (seq changes) (seq drips))

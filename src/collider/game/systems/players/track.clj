@@ -3,7 +3,7 @@
 
 (defrecord Track
   [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots
-   carried seen t0])
+   carried t0])
 
 (defrecord Frame
   [x y z dx dy dz yaw pitch head ground since due? vel mdata mdiff

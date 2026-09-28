@@ -222,13 +222,43 @@
               (if-let [e (find lv k)] (assoc! m k (val e)) m))
             (transient {}) schema/level-keys)))
 
+(def ^:private none (Object.))
+
+(defn- same-part? [old lv]
+  (and (some? old)
+       (reduce (fn [_ k]
+                 (if (identical? (get old k none) (get lv k none))
+                   true
+                   (reduced false)))
+               true schema/level-keys)))
+
+(defn- shared-count ^long [lv]
+  (reduce (fn [^long n k] (if (contains? lv k) (dec n) n))
+          (count lv) shared-out))
+
+(defn- shared-same? [lv k v]
+  (or (identical? :levels k) (identical? v (get lv k none))))
+
+(defn- same-shared? [world lv]
+  (and (= (dec (count world)) (shared-count lv))
+       (reduce-kv (fn [_ k v]
+                    (if (shared-same? lv k v) true (reduced false)))
+                  true world)))
+
 (defn with-level
   "Returns world with level dim replaced by lv.
   The keys of lv that are not level keys become the shared part
   of world."
   [world dim lv]
-  (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
-         :levels (assoc (:levels world) dim (level-part lv))))
+  (let [levels (:levels world)
+        old (get levels dim)
+        part (if (same-part? old lv) old (level-part lv))]
+    (if (same-shared? world lv)
+      (if (identical? part old)
+        world
+        (assoc world :levels (assoc levels dim part)))
+      (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
+             :levels (assoc levels dim part)))))
 
 (defn idle?
   "Returns true when level lv holds nothing a tick could change.
@@ -1189,6 +1219,13 @@
             (assoc w :entities (i/merge entities updated))
             w)]
     (cache-active-chunks (reduce player-quit w removes))))
+
+(defn applied-in
+  "Returns world with the deltas folded into its level dim, and that
+  level. lv is the level dim of world."
+  [world dim lv deltas]
+  (let [lv' (apply-level lv deltas)]
+    [(with-level world dim lv') lv']))
 
 (defn apply-in
   "Returns world with the deltas folded into its level dim."

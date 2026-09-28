@@ -168,10 +168,13 @@
     (when (= home dim) (server-job world s @server))
     (guarded world s dim #(s lv d))))
 
-(defn- level-deltas [world ds server phase dim]
-  (if (asleep? world dim)
+(defn- view [world views dim]
+  (or (get views dim) (state/level world dim)))
+
+(defn- level-deltas [world views ds server phase dim]
+  (if (if views (not (contains? views dim)) (asleep? world dim))
     deltas/empty-deltas
-    (let [lv (assoc (state/level world dim) :server world)
+    (let [lv (assoc (view world views dim) :server world)
           d (get ds dim)
           jobs (into [] (keep #(job world lv d server dim %)) phase)]
       (deltas/with-dim (deltas/run jobs) dim))))
@@ -209,11 +212,14 @@
                   (rehomed world d))
       pd)))
 
-(defn- phase-deltas [world ds phase]
-  (let [server (delay [(state/server-view world) (merged ds)])
-        of (fn [dim] [dim (level-deltas world ds server phase dim)])
-        pd (into {} (map of) dims)]
-    (if (some server-systems phase) (relocated world pd) pd)))
+(defn- phase-deltas
+  ([world ds phase] (phase-deltas world nil ds phase))
+  ([world views ds phase]
+   (let [server (delay [(state/server-view world) (merged ds)])
+         of (fn [dim]
+              [dim (level-deltas world views ds server phase dim)])
+         pd (into {} (map of) dims)]
+     (if (some server-systems phase) (relocated world pd) pd))))
 
 (def ^:private left-behind #{:chunks-sent :tracking})
 
@@ -253,21 +259,33 @@
               (step acc dim (deltas/with-dim sd dim))))
           acc (state/handoffs-of d)))
 
-(defn- own-step [[world ds] dim d]
-  (let [changes (state/changes-of d)]
-    (if (seq changes)
-      (crossing [world ds] dim d changes)
-      [(if (deltas/inert? d) world (state/apply-in world dim d))
-       (update ds dim deltas/merge d)])))
+(defn- own-step [[world ds views] dim d]
+  (let [changes (state/changes-of d)
+        ds' (update ds dim deltas/merge d)]
+    (cond
+      (seq changes) (crossing [world ds] dim d changes)
+      (deltas/inert? d) [world ds' views]
+      :else (let [lv (view world views dim)
+                  [w lv'] (state/applied-in world dim lv d)]
+              [w ds' {dim lv'}]))))
 
 (defn- step [acc dim d]
   (if (identical? deltas/empty-deltas d)
     acc
     (handed (own-step acc dim d) d)))
 
-(defn- run-phase [[world ds] phase]
-  (let [pd (phase-deltas world ds phase)]
-    (reduce (fn [acc dim] (step acc dim (pd dim))) [world ds] dims)))
+(defn- awake-views [world views]
+  (reduce (fn [vs dim]
+            (cond (asleep? world dim) (dissoc vs dim)
+                  (contains? vs dim) vs
+                  :else (assoc vs dim (state/level world dim))))
+          (or views {}) dims))
+
+(defn- run-phase [[world ds views] phase]
+  (let [views (awake-views world views)
+        pd (phase-deltas world views ds phase)]
+    (reduce (fn [acc dim] (step acc dim (pd dim)))
+            [world ds views] dims)))
 
 (defn tick
   "Returns the world and the deltas after one tick of the events.
@@ -275,7 +293,7 @@
   ([world events] (tick world events phases))
   ([world events phases]
    (deltas/in-pool
-     #(let [acc (begin world events)
+     #(let [acc (conj (begin world events) nil)
             [world' ds] (reduce run-phase acc phases)]
         [world' (merged ds)]))))
 

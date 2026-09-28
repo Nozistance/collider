@@ -154,7 +154,6 @@
              0
              (when (= :player (:type e)) (or (:inventory e) {}))
              (:carried e)
-             e
              t)))
 
 (defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
@@ -245,7 +244,15 @@
 (defn- uuids-of [ps]
   (into {} (map (fn [[eid e]] [eid (:uuid e)])) ps))
 
-(defn- list-deltas [world ps]
+(defn- latency-deltas [world all]
+  (when (zero? (rem (long (:tick world)) latency-interval))
+    [(out/all (out/tab-latency (all)))]))
+
+(defn- listed-all? [listed ps]
+  (and (= (count listed) (count ps))
+       (every? (fn [[eid _]] (contains? listed eid)) ps)))
+
+(defn- list-changes [world ps]
   (let [listed (:listed world)
         cur (uuids-of ps)
         joined (remove (fn [[eid _]] (contains? listed eid)) ps)
@@ -254,10 +261,15 @@
     (concat
       (join-list-deltas joined all)
       (leave-list-deltas world (into #{} (map val) cur) left)
-      (when (zero? (rem (long (:tick world)) latency-interval))
-        [(out/all (out/tab-latency all))])
+      (latency-deltas world (constantly all))
       (when (or (seq joined) (seq left))
         [[:listed (uuids-of joined) left]]))))
+
+(defn- list-deltas [world ps]
+  (let [listed (:listed world)]
+    (if (listed-all? listed ps)
+      (latency-deltas world #(mapv (comp add-entry val) ps))
+      (list-changes world ps))))
 
 (defn- baseline-deltas [world pid eid]
   (let [e (get-in world [:entities eid])]
@@ -278,12 +290,18 @@
             (transient (i/int-map))
             ts)))
 
+(defn- near-eids [by-chunk seen]
+  (if (< (count by-chunk) (count seen))
+    (eduction (comp (filter #(contains? seen (key %))) (mapcat val))
+              by-chunk)
+    (eduction (mapcat #(get by-chunk %)) (seq seen))))
+
 (defn- tracking-deltas [world by-chunk [oid o]]
   (let [seen (or (:sent-chunks o) (i/int-set))
         mine? (fn [eid] (= (long eid) (long oid)))
         shown? #(game-mode/shown-to? o (get-in world [:entities %]))
-        near (comp (mapcat #(get by-chunk %)) (remove mine?))
-        want (into (i/int-set) (comp near (filter shown?)) (seq seen))
+        want (into (i/int-set) (comp (remove mine?) (filter shown?))
+                   (near-eids by-chunk seen))
         have (or (:tracking o) (i/int-set))
         add (into [] (remove #(contains? have %)) (seq want))
         gone (into [] (remove #(contains? want %)) (seq have))]
@@ -484,13 +502,6 @@
                 (= (:carried e) (:carried tr))))
        (or item? (not (vel-changed? tr (:vel e))))))
 
-(defn- settle-track [tr tr' e due? msgs]
-  (cond
-    (not (identical? tr tr')) (assoc tr' :seen e)
-    (and (empty? msgs) (not due?) (not (identical? e (:seen tr))))
-    (assoc tr :seen e)
-    :else tr'))
-
 (defn- collect-out [eid e vs self? track-delta msgs selfs]
   (let [out (transient [])
         out (if track-delta (conj! out track-delta) out)
@@ -506,27 +517,23 @@
 (defn- changed-deltas [t eid e vs self? tr mdata due?]
   (let [f (frame e tr (long t) due? mdata)
         tr' (advance-track tr e f)
-        msgs (move-msgs eid e f)
-        tr' (settle-track tr tr' e due? msgs)]
+        msgs (move-msgs eid e f)]
     (collect-out eid e vs self?
                  (when-not (identical? tr tr') [:track eid tr'])
                  msgs (self-msgs eid e f))))
 
 (defn- move-deltas [t viewers [eid e]]
   (let [vs (viewers eid)
-        self? (= :player (:type e))
-        item? (contains? #{:item :experience-orb} (:type e))
-        tr (track-of (long t) e)
-        mdata (metadata e)
-        dirty? (not= mdata (:mdata tr))
-        due? (due-now? (long t) tr e dirty?)
-        fresh? (and (not due?) (instance? Track tr))]
-    (when (and (or (some? vs) self?)
-               (not (and fresh? (identical? e (:seen tr)))))
-      (if (and fresh? (quiet? tr e self? item? dirty?))
-        (when-not (identical? e (:seen tr))
-          [[:track eid (assoc tr :seen e)]])
-        (changed-deltas (long t) eid e vs self? tr mdata due?)))))
+        self? (= :player (:type e))]
+    (when (or (some? vs) self?)
+      (let [item? (contains? #{:item :experience-orb} (:type e))
+            tr (track-of (long t) e)
+            mdata (metadata e)
+            dirty? (not= mdata (:mdata tr))
+            due? (due-now? (long t) tr e dirty?)
+            fresh? (and (not due?) (instance? Track tr))]
+        (when-not (and fresh? (quiet? tr e self? item? dirty?))
+          (changed-deltas (long t) eid e vs self? tr mdata due?))))))
 
 (def ^:private tab-header-interval 20)
 
@@ -591,27 +598,36 @@
   (let [by-chunk (entities-by-chunk ts)]
     (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
 
+(def ^:private ^:const move-batch 32)
+
 (defn- move-jobs [world ps ts]
   (let [viewers (viewer-index ps)
         t (long (:tick world))
         job (fn [entry] (move-deltas t viewers entry))
         batch-job (fn [batch] #(into [] (mapcat job) batch))]
-    (mapv batch-job (partition-all 32 ts))))
+    (mapv batch-job (partition-all move-batch ts))))
+
+(defn- inline [jobs] (into [] (mapcat #(%)) jobs))
 
 (defn player-list
   "Returns the tick steps of the player list of the server."
   [world d]
-  (let [ps (state/player-entries world)]
-    [#(joined-deltas (state/joins d))
-     #(duplicate-login-deltas world (state/joins d))
-     #(list-deltas world ps)
-     #(tab-header-deltas world (state/joins d))]))
+  (let [ps (state/player-entries world)
+        joins (state/joins d)]
+    (concat (joined-deltas joins)
+            (duplicate-login-deltas world joins)
+            (list-deltas world ps)
+            (tab-header-deltas world joins))))
 
 (defn players
   "Returns the tick steps of entity tracking in the level."
   [world _]
   (let [ps (state/player-entries world)
         ts (tracked-entries world)]
-    [#(resend-deltas world)
-     #(spawn-jobs world ps ts)
-     #(move-jobs world ps ts)]))
+    (if (<= (count ts) move-batch)
+      (concat (resend-deltas world)
+              (inline (spawn-jobs world ps ts))
+              (inline (move-jobs world ps ts)))
+      [#(resend-deltas world)
+       #(spawn-jobs world ps ts)
+       #(move-jobs world ps ts)])))

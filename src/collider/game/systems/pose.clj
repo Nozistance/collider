@@ -37,13 +37,16 @@
                         (block/collision-boxes st)))))))
 
 (defn- hits? [chunks lo hi]
-  (let [c (fn [v i] (floor (double (nth v (long i)))))]
-    (boolean
-      (some (fn [[cx cy cz]] (cell-hit? chunks cx cy cz lo hi))
-            (for [cx (range (c lo 0) (inc (c hi 0)))
-                  cy (range (c lo 1) (inc (c hi 1)))
-                  cz (range (c lo 2) (inc (c hi 2)))]
-              [cx cy cz])))))
+  (let [x0 (floor (nth lo 0)) y0 (floor (nth lo 1))
+        z0 (floor (nth lo 2)) x1 (floor (nth hi 0))
+        y1 (floor (nth hi 1)) z1 (floor (nth hi 2))]
+    (loop [cx x0 cy y0 cz z0]
+      (cond
+        (> cx x1) false
+        (> cy y1) (recur (inc cx) y0 z0)
+        (> cz z1) (recur cx (inc cy) z0)
+        (cell-hit? chunks cx cy cz lo hi) true
+        :else (recur cx cy (inc cz))))))
 
 (defn- fits? [chunks pos pose]
   (let [[half h] (entity/pose-box pose)
