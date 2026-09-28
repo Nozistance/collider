@@ -234,6 +234,23 @@
         (into (removal-deltas world (:writes s)))
         (into (change-fx world (:records s))))))
 
+(defn- joined [a b]
+  (let [[_ ca ta] a [_ cb tb] b]
+    [:set-blocks (into ca cb) (into ta tb)]))
+
+(defn- joinable? [d]
+  (and (= :set-blocks (first d)) (= 3 (count d)) (some? (d 2))))
+
+(defn sets-joined
+  "Returns out with each run of plain block writes joined into one."
+  [out]
+  (reduce (fn [acc d]
+            (let [top (peek acc)]
+              (if (and top (joinable? top) (joinable? d))
+                (conj (pop acc) (joined top d))
+                (conj acc d))))
+          [] out))
+
 (defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)
         ctx (state/level-ctx world base)

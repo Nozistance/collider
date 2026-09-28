@@ -19,10 +19,12 @@
 (def ^:private lists
   "The lists of what is due, each run by its own rules."
   {:block-ticks {:type-of block/block-of :due rules/cell-changes
-                 :reach rules/reach :lit? rules/lit?}
+                 :reach rules/reach :lit? rules/lit?
+                 :crowd (constantly 1)}
    :fluid-ticks {:type-of liquid/fluid-of :due rules/fluid-changes
                  :reach rules/fluid-reach
-                 :lit? (constantly false)}})
+                 :lit? (constantly false)
+                 :crowd #(liquid/reach (:dim %))}})
 
 (defn- again-at [k chunks ctx changes p st]
   (when (and (= :block-ticks k) (not-any? #(= p (first %)) changes))
@@ -39,9 +41,11 @@
          :again (again-at k chunks ctx changes p st)})
       {:reach 0})))
 
+(defn- packed ^long [^long x ^long z]
+  (bit-or (bit-shift-left x 32) (bit-and z 0xFFFFFFFF)))
+
 (defn- column ^long [[x _ z]]
-  (bit-or (bit-shift-left (long x) 32)
-          (bit-and (long z) 0xFFFFFFFF)))
+  (packed (long x) (long z)))
 
 (defn- near? [^long r [x _ z] ^long c]
   (and (<= (Math/abs (- (long x) (bit-shift-right c 32))) r)
@@ -77,30 +81,37 @@
             (assoc m p [(get-in m [p 0] old) st]))
           lit writes))
 
-(defn- applied [world ctx pass changes]
+(defn- written [world k pass s]
+  (let [writes (:writes s)]
+    (cond-> (-> pass
+                (assoc-in [:w :chunks] (:chunks s))
+                (update :dirty into (map (comp column first)) writes)
+                (update :out into (edit/settled-deltas world s)))
+      (= :block-ticks k) (update :lit lit-writes writes))))
+
+(defn- applied [world ctx k pass changes]
   (if (empty? changes)
     pass
-    (let [ops (mapv #(vector :set % (neighbors/flags-of % 3)) changes)
-          s (neighbors/run (:chunks (:w pass)) ctx ops)
-          writes (:writes s)]
-      (-> pass
-          (assoc-in [:w :chunks] (:chunks s))
-          (update :dirty into (map (comp column first)) writes)
-          (update :lit lit-writes writes)
-          (update :out into (edit/settled-deltas world s))))))
+    (let [op #(vector :set % (neighbors/flags-of % 3))
+          ops (mapv op changes)]
+      (written world k pass
+               (neighbors/run (:chunks (:w pass)) ctx ops)))))
 
 (defn- again-deltas [[p] {:keys [again]}]
   (when again
     [[:schedule-ticks {again [(chunk/block-pos->id p)]}]]))
 
+(defn- stale? [pass [p] first-run]
+  (or (nil? first-run)
+      (touched? (:dirty pass) (:reach first-run) p)))
+
 (defn- stepped
   [world ctx k pass [tick first-run]]
-  (let [reach (:reach first-run)
-        [pass r] (if (touched? (:dirty pass) reach (first tick))
+  (let [[pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
-                   [pass first-run])]
-    (applied world ctx (update pass :out into (again-deltas tick r))
-             (:changes r))))
+                   [pass first-run])
+        pass (update pass :out into (again-deltas tick r))]
+    (applied world ctx k pass (:changes r))))
 
 (defn- ordered [world k active]
   (let [runs? #(state/active-id? active %)
@@ -108,12 +119,39 @@
         order (schedule/run-order (get world k) (:tick world) runs?)]
     (mapv pos order)))
 
+(def ^:private around
+  (vec (for [dx [-1 0 1] dz [-1 0 1]] [dx dz])))
+
+(defn- bucket ^long [^long size [x _ z] [dx dz]]
+  (packed (+ (Math/floorDiv (long x) size) (long dx))
+          (+ (Math/floorDiv (long z) size) (long dz))))
+
+(defn- crowded? [seen ^long size p]
+  (some #(contains? seen (bucket size p %)) around))
+
+(defn- lone-flags [^long r ticks]
+  (let [size (+ r 2)]
+    (first (reduce (fn [[flags seen] [p]]
+                     [(conj! flags (not (crowded? seen size p)))
+                      (conj! seen (bucket size p [0 0]))])
+                   [(transient []) (transient (i/int-set))]
+                   ticks))))
+
+(defn- first-runs [world ctx k ticks]
+  (let [r ((get-in lists [k :crowd]) ctx)
+        lone (persistent! (lone-flags r ticks))
+        spec (fn [i] [(when (lone i) (ran world ctx k (ticks i)))])]
+    (if (some true? lone)
+      (deltas/pmapcat spec (vec (range (count ticks))))
+      (vec (repeat (count ticks) nil)))))
+
 (defn- ticks-run [world k ticks]
   (let [ctx (state/level-ctx world)
-        firsts (deltas/pmapcat (fn [t] [(ran world ctx k t)]) ticks)
+        firsts (first-runs world ctx k ticks)
         start {:w world :dirty (i/int-set) :lit {} :out []}]
-    (:out (reduce #(stepped world ctx k %1 %2) start
-                  (map vector ticks firsts)))))
+    (edit/sets-joined
+      (:out (reduce #(stepped world ctx k %1 %2) start
+                    (map vector ticks firsts))))))
 
 (defn- parked-ids [world active due]
   (let [chunks (:chunks world)

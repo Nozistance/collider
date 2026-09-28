@@ -74,8 +74,10 @@
 
 (defn- still? [chunks pos st side]
   (and (some? side)
-       (or (= :tall-seagrass (block/type-of st))
-           (water/kelp-still? chunks pos st side))))
+       (case (block/type-of st)
+         :tall-seagrass true
+         (:kelp :kelp-plant) (water/kelp-still? chunks pos st side)
+         false)))
 
 (defn fluid-wake-tick [chunks dim st tick pos old side]
   (when (and (block/liquid-class st)
