@@ -27,6 +27,47 @@ public final class Path {
                                      k -> new PathNode(x, y, z));
     }
 
+    private static long cell(long x, long y, long z) {
+        return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12)
+               | (y & 0xFFFL);
+    }
+
+    /// Returns the path type one search gave the cell `x`, `y`, `z`,
+    /// null when it has not typed that cell yet.
+    public static Object cachedType(HashMap<Long, Object> types, long x,
+            long y, long z) {
+        return types.get(cell(x, y, z));
+    }
+
+    /// Keeps `t` as the path type of the cell `x`, `y`, `z` for the
+    /// rest of one search and returns it.
+    public static Object cacheType(HashMap<Long, Object> types, long x,
+            long y, long z, Object t) {
+        types.put(cell(x, y, z), t);
+        return t;
+    }
+
+    /// Returns what the first cell around `x`, `y`, `z` forces upon
+    /// it through `forced`, the forced type of each block state, in
+    /// the order WalkNodeEvaluator scans them; null when none does.
+    public static Object forced(ChunkIndex chunks, Object[] forced,
+            long x, long y, long z) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) continue;
+                    int st = Chunk.blockAt(chunks, (int) (x + dx),
+                                           (int) (y + dy),
+                                           (int) (z + dz));
+                    if (st < 0 || st >= forced.length) continue;
+                    Object f = forced[st];
+                    if (f != null) return f;
+                }
+            }
+        }
+        return null;
+    }
+
     /// Returns the top of the collision shape of the block state
     /// `st`, in blocks, 0 when it has no shape.
     public static double shapeTop(Object[] shapes, int st) {

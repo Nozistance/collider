@@ -24,21 +24,18 @@
       (< d2 (double (best 0)))
       (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
 
-(defn nearest-player
-  "Returns [distance-squared id player] of the nearest player within
-  r2 that pred accepts, or nil."
+(defn- near? [pos ^double r2 pred o]
+  (and o (< (v/dist3-sq pos (:pos o)) r2) (pred o)))
+
+(defn player-within?
+  "Returns true when a player that pred accepts stands closer than
+  the root of r2 to pos."
   [world pos r2 pred]
-  (let [r2 (double r2)
-        entities (:entities world)
-        look (fn [best oid]
-               (let [o (get entities oid)]
-                 (if (and o (pred o))
-                   (let [d2 (v/dist-sq pos (:pos o))]
-                     (if (and (< d2 r2) (closer? best d2 oid))
-                       [d2 oid o]
-                       best))
-                   best)))]
-    (reduce look nil (vals (:players world)))))
+  (let [es (:entities world)
+        f (fn [_ _ oid]
+            (when (near? pos (double r2) pred (get es oid))
+              (reduced true)))]
+    (boolean (reduce-kv f nil (:players world)))))
 
 (def ^:private ^:const cell-shift 2)
 

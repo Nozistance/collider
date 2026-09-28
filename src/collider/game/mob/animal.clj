@@ -15,7 +15,9 @@
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.space.sight :as sight]))
+            [collider.world.space.sight :as sight])
+  (:import (clojure.lang IFn)
+           (collider.game.mob GoalSelector)))
 
 (set! *warn-on-reflection* true)
 
@@ -198,12 +200,13 @@
     [(v/dist3-sq (:pos e) (:pos p)) pid]))
 
 (defn- tempter [e tempters]
-  (let [item (mobs/breeding-item (:type e))]
-    (->> tempters
-         (keep #(tempting e item %))
-         (sort-by first)
-         first
-         second)))
+  (when (seq tempters)
+    (let [item (mobs/breeding-item (:type e))]
+      (->> tempters
+           (keep #(tempting e item %))
+           (sort-by first)
+           first
+           second))))
 
 (defn- start-tempt [_ _ e t tempters]
   (when (>= (long t) (long (or (:tempt-cooldown-until e) 0)))
@@ -383,100 +386,10 @@
     :continue? looking-around?
     :stop (fn [e _] (assoc e :task nil :look nil))}])
 
-(defn- running? [g e t]
-  (if-let [f (:running? g)]
-    (f e t)
-    (= (:kind g) (:kind (:task e)))))
-
-(defn- stopped [g e t]
-  (if-let [f (:stop g)] (f e t) (assoc e :task nil)))
-
-(defn- held-by ^longs [^longs held ^long mask ^long prio]
-  (dotimes [i 4] (when (bit-test mask i) (aset held i prio)))
-  held)
-
-(defn- locks
-  "Returns the priority of the running goal that holds each flag,
-  indexed by flag bit, or -1 where no goal does. Of several goals
-  holding one flag the last in order counts."
-  ^longs [spec e t]
-  (reduce (fn [held g]
-            (if (running? g e t)
-              (held-by held (:mask g) (:prio g))
-              held))
-          (long-array 4 -1)
-          (:goals spec)))
-
-(defn- free? [^longs locked ^long prio ^long mask]
-  (loop [i 0]
-    (cond (= i 4) true
-          (and (bit-test mask i)
-               (let [p (aget locked i)] (and (<= 0 p) (<= p prio))))
-          false
-          :else (recur (inc i)))))
-
-(defn- held? [^longs locked ^long mask]
-  (loop [i 0]
-    (cond (= i 4) false
-          (and (bit-test mask i) (<= 0 (aget locked i))) true
-          :else (recur (inc i)))))
-
-(defn- displaced [spec e t ^long mask]
-  (reduce (fn [e g]
-            (if (and (running? g e t)
-                     (pos? (bit-and (long (:mask g)) mask)))
-              (stopped g e t)
-              e))
-          e
-          (:goals spec)))
-
-(defn- cleaned [spec world e t tempters]
-  (reduce (fn [e g]
-            (if (and (running? g e t)
-                     (not ((:continue? g) world e t tempters)))
-              (stopped g e t)
-              e))
-          e
-          (:goals spec)))
-
-(defn- blocked? [locked e t {:keys [prio mask] :as g}]
-  (or (running? g e t) (not (free? locked prio mask))))
-
-(defn- started
-  "Running goals give way only when they hold a flag of g, which is
-  exactly when locked has it, so the sweep is skipped otherwise."
-  [spec world eid e t ts locked g]
-  (let [mask (:mask g)
-        e (if (held? locked mask) (displaced spec e t mask) e)]
-    ((:start g) world eid e t ts)))
-
-(defn- selected
-  "The locks change only when a goal starts, so they are read again
-  only after one did."
-  [spec world eid e t ts]
-  (reduce (fn [[e ds locked :as acc] g]
-            (if (blocked? locked e t g)
-              acc
-              (if-let [[e2 ds2]
-                       (started spec world eid e t ts locked g)]
-                [e2 (into ds ds2) (locks spec e2 t)]
-                acc)))
-          [e [] (locks spec e t)]
-          (:goals spec)))
-
-(defn- ticked [spec world eid e t tempters pred]
-  (reduce (fn [[e ds :as acc] g]
-            (if (and (:tick g) (pred g) (running? g e t))
-              (let [[e2 ds2] ((:tick g) spec world eid e t tempters)]
-                [e2 (into ds ds2)])
-              acc))
-          [e []]
-          (:goals spec)))
-
 (def ^:private watcher? (complement game-mode/spectator?))
 
 (defn- idle-count [world e]
-  (if (sense/nearest-player world (:pos e) idle-reset-sq watcher?)
+  (if (sense/player-within? world (:pos e) idle-reset-sq watcher?)
     0
     (inc (long (or (:no-action e) 0)))))
 
@@ -494,27 +407,30 @@
 (defn- ranked [i g]
   (assoc g :prio i :mask (mask-of (:flags g))))
 
+(defn- fns [gs k] (into-array IFn (map k gs)))
+
 (defn spec
   "Returns the spec of a breed from its goals, highest priority first.
   Each goal gets its flags as a bit mask too. The spec also picks the
   colour of a newborn from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
-   {:goals (vec (map-indexed ranked goals))
-    :child-color child-color}))
+   (let [gs (vec (map-indexed ranked goals))]
+     (GoalSelector.
+       gs child-color (count gs) (object-array (map :kind gs))
+       (long-array (map :mask gs)) (fns gs :running?) (fns gs :stop)
+       (fns gs :start) (fns gs :continue?) (fns gs :tick)
+       (boolean-array (map (comp boolean :every-tick?) gs))))))
 
 (defn brain
   "Returns the mob and its deltas after one tick of its goals.
   Goals run on every second tick, and eid decides which. A goal that
   wants every tick gets every tick."
   [spec world eid e t tempters]
-  (let [e (assoc e :no-action (idle-count world e))]
-    (if (even? (+ (long t) (long eid)))
-      (let [e (cleaned spec world e t tempters)
-            [e ds] (selected spec world eid e t tempters)
-            [e ds2] (ticked spec world eid e t tempters any?)]
-        [e (concat ds ds2)])
-      (ticked spec world eid e t tempters :every-tick?))))
+  (let [n (idle-count world e)
+        e (if (identical? n (:no-action e)) e (assoc e :no-action n))]
+    (GoalSelector/think spec world eid e t tempters
+                        (even? (+ (long t) (long eid))))))
 
 (defn egg-result
   "Returns what a spawn egg of the mob's own kind does to it.

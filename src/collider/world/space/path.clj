@@ -161,11 +161,6 @@
 (defn- type-at [chunks ^long x ^long y ^long z]
   (type-of-state (chunk/block-state chunks x y z)))
 
-(def ^:private neighbour-offsets
-  (vec (for [dx [-1 0 1] dy [-1 0 1] dz [-1 0 1]
-             :when (or (not= 0 dx) (not= 0 dz))]
-         [dx dy dz])))
-
 (defn- neighbour-type [t]
   (case t
     :damaging :damaging-in-neighbor
@@ -174,14 +169,13 @@
     :damage-cautious :damage-cautious
     nil))
 
+(def ^:private ^:table forced-arr
+  (delay (object-array (map neighbour-type @type-arr))))
+
 (defn check-neighbours
   "Returns the type the cells around x y z force upon it, else t."
   [chunks x y z t]
-  (let [at (fn [[dx dy dz]]
-             (type-at chunks (+ x (long dx)) (+ y (long dy))
-                      (+ z (long dz))))
-        forced (fn [d] (neighbour-type (at d)))]
-    (or (first (keep forced neighbour-offsets)) t)))
+  (or (Path/forced chunks @forced-arr (long x) (long y) (long z)) t))
 
 (defn- floor-type [chunks ^long x ^long y ^long z]
   (case (type-at chunks x (dec y) z)
@@ -222,17 +216,18 @@
       :unpassable-rail
       :else t)))
 
+(defn- box-type [ctx x y z w h i]
+  (let [w (long w) h (long h) i (long i) r (quot i w)]
+    (bb-type ctx (+ (long x) (quot r h)) (+ (long y) (rem r h))
+             (+ (long z) (rem i w)))))
+
 (defn type-within-bb
   "Returns the set of path types the mob box at x y z covers."
   [ctx x y z]
   (let [mob (:mob ctx)
-        w (long (:bb-w mob))
-        x (long x) y (long y) z (long z)]
-    (into #{}
-          (for [dx (range w) dy (range (long (:bb-h mob)))
-                dz (range w)]
-            (bb-type ctx (+ x (long dx)) (+ y (long dy))
-                     (+ z (long dz)))))))
+        w (long (:bb-w mob)) h (long (:bb-h mob))
+        at (fn [s i] (conj! s (box-type ctx x y z w h i)))]
+    (persistent! (reduce at (transient #{}) (range (* w w h))))))
 
 (defn- highest-malus [mob types]
   (reduce (fn [[bt bm] t]
@@ -254,9 +249,7 @@
         t)
       (if (and (= :open cur) (not= :open t) (zero? m)) :open t))))
 
-(defn type-of-mob
-  "Returns the path type of the cell x y z for the mob of ctx."
-  [ctx x y z]
+(defn- typed-for-mob [ctx x y z]
   (let [ts (type-within-bb ctx x y z)]
     (cond
       (= 1 (count ts)) (first ts)
@@ -264,6 +257,16 @@
       (ts :unpassable-rail) :unpassable-rail
       :else (let [[t m early?] (highest-malus (:mob ctx) ts)]
               (if early? t (capped-type ctx x y z t (double m)))))))
+
+(defn type-of-mob
+  "Returns the path type of the cell x y z for the mob of ctx.
+  One search types each cell once, as WalkNodeEvaluator caches it."
+  [ctx x y z]
+  (if-let [types (:types ctx)]
+    (let [x (long x) y (long y) z (long z)]
+      (or (Path/cachedType types x y z)
+          (Path/cacheType types x y z (typed-for-mob ctx x y z))))
+    (typed-for-mob ctx x y z)))
 
 (defn- node-at ^PathNode [ctx x y z]
   (Path/node (:nodes ctx) (long x) (long y) (long z)))
@@ -624,6 +627,7 @@
     {:chunks (:chunks lv)
      :min-y  (chunk/level-min-y lv)
      :nodes  (HashMap.)
+     :types  (HashMap.)
      :mob    (assoc mob
                :bb-w (long (Math/floor (+ w 1.0)))
                :bb-h (long (Math/floor (inc (double (:height mob)))))

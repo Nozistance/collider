@@ -5,7 +5,9 @@
                 jump-cd task follow look no-action say-tick health
                 hurt-resist last-damage death-time health-sent
                 panic-until baby-until love-until breed-ready-at
-                tempt-cooldown-until type color sheared? track])
+                tempt-cooldown-until type color sheared? track
+                nav move body jump float? support no-blocks? in-lava?
+                follow-at effects])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
                    tp-target chunk-pos sent-chunks

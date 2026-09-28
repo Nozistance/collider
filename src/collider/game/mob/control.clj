@@ -2,7 +2,9 @@
   "The move, jump and body rotation controls of a mob."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk])
+  (:import (collider.game.mob Steer)
+           (collider.world.space Path)))
 
 (set! *warn-on-reflection* true)
 
@@ -31,10 +33,8 @@
 (defn shape-top
   "Returns how high the collision shape of the cell x y z reaches."
   ^double [chunks ^long x ^long y ^long z]
-  (let [bs (block/collision-boxes (chunk/block-state chunks x y z))]
-    (if (empty? bs)
-      0.0
-      (/ (double (reduce max (map (fn [b] (nth b 4)) bs))) 16.0))))
+  (Path/shapeTop (block/collision-arr)
+                 (chunk/block-state chunks x y z)))
 
 (defn floor-level
   "Returns the height the floor under the cell x y z stands at."
@@ -45,20 +45,15 @@
   "Returns mob e told to walk to x y z at that speed.
   A jump under way keeps the mob jumping."
   [e x y z speed]
-  (let [m (:move e)
-        op (if (= :jumping (:op m)) :jumping :move-to)
-        m2 (assoc m :x (double x) :y (double y) :z (double z)
-                  :mult (double speed) :op op)]
-    (assoc e :move m2)))
+  (let [m (Steer/wanted (:move e) (double x) (double y) (double z)
+                        (double speed))]
+    (assoc e :move m)))
 
 (defn in-liquid?
   "Returns true when the mob stands in water or in lava, either of
   which holds it up."
   [e]
   (boolean (or (:wet? e) (:in-lava? e))))
-
-(defn- sped [m ^double s]
-  (let [s (double (float s))] (assoc m :speed s :zza s)))
 
 (defn- stuck-in-block? [chunks pos]
   (let [x (long (Math/floor (v/x pos)))
@@ -70,14 +65,14 @@
          (not (block/tagged? st "doors"))
          (not (block/tagged? st "fences")))))
 
-(defn- turned [e ^double xd ^double zd]
+(defn- turned ^double [e ^double xd ^double zd]
   (let [to (- (Math/toDegrees (Math/atan2 zd xd)) 90.0)]
-    (assoc e :yaw (rotlerp (double (:yaw e)) to max-turn))))
+    (rotlerp (double (:yaw e)) to max-turn)))
 
-(defn- jumps? [chunks e [xd yd zd] ^double width]
-  (let [xd (double xd) yd (double yd) zd (double zd)]
-    (or (and (> yd max-up-step)
-             (< (+ (* xd xd) (* zd zd)) (Math/max 1.0 width)))
+(defn- jumps? [chunks e xd yd zd width]
+  (let [xd (double xd) zd (double zd) w (double width)]
+    (or (and (> (double yd) max-up-step)
+             (< (+ (* xd xd) (* zd zd)) (Math/max 1.0 w)))
         (stuck-in-block? chunks (:pos e)))))
 
 (defn- move-to-tick [world e ^double attr ^double width]
@@ -86,32 +81,34 @@
         yd (- (double (:y m)) (v/y pos))
         zd (- (double (:z m)) (v/z pos))]
     (if (< (+ (* xd xd) (* yd yd) (* zd zd)) min-speed-sqr)
-      (assoc e :move (assoc m :op :wait :zza 0.0))
-      (let [jump? (jumps? (:chunks world) e [xd yd zd] width)
-            m (assoc (sped m (* (double (:mult m)) attr))
-                     :op (if jump? :jumping :wait))]
-        (cond-> (assoc (turned e xd zd) :move m)
-          jump? (assoc :jump true))))))
+      (assoc e :move (Steer/arrived m))
+      (let [jump? (boolean (jumps? (:chunks world) e xd yd zd width))
+            m (Steer/driven m (* (double (:mult m)) attr) jump?)
+            yaw (turned e xd zd)]
+        (if jump?
+          (assoc e :yaw yaw :move m :jump true)
+          (assoc e :yaw yaw :move m))))))
 
 (defn- jumping-tick [e ^double attr]
-  (let [m (sped (:move e) (* (double (:mult (:move e))) attr))
-        landed? (or (:on-ground e) (in-liquid? e))]
-    (assoc e :move (cond-> m landed? (assoc :op :wait)))))
+  (let [m (:move e)
+        landed? (boolean (or (:on-ground e) (in-liquid? e)))
+        s (* (double (:mult m)) attr)]
+    (assoc e :move (Steer/jumped m s landed?))))
 
 (defn- waiting [e]
-  (let [m (:move e)]
-    (if (and m (not (zero? (double (:zza m 0.0)))))
-      (assoc e :move (assoc m :zza 0.0))
-      e)))
+  (let [m (:move e) h (Steer/halted m)]
+    (if (identical? m h) e (assoc e :move h))))
 
 (defn tick
   "Returns mob e after one tick of its move and jump controls, for
   speed attribute attr and box width width."
   [world e attr width]
-  (case (:op (:move e) :wait)
-    :move-to (move-to-tick world e (double attr) (double width))
-    :jumping (jumping-tick e (double attr))
-    (waiting e)))
+  (let [op (:op (:move e) :wait)]
+    (cond
+      (identical? op Steer/MOVE_TO)
+      (move-to-tick world e (double attr) (double width))
+      (identical? op Steer/JUMPING) (jumping-tick e (double attr))
+      :else (waiting e))))
 
 (defn- flt ^double [^double a] (double (float a)))
 

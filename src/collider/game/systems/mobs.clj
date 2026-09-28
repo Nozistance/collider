@@ -23,6 +23,7 @@
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
   (:import (collider.game.entity.records Mob)
+           (collider.game.mob Steer)
            (collider.world Move)))
 
 (set! *warn-on-reflection* true)
@@ -499,18 +500,24 @@
        e1)
      shoves]))
 
+(defn- fluid-at [world e half height]
+  (assoc (fluid-of world e half height)
+         :threshold (fluid-threshold height)))
+
+(defn- own-vel [index eid e half height f]
+  (let [shoves (when (push/alive? e)
+                 (push/before index eid e half height))]
+    (pushed (reduce taken (:vel e) shoves) (:push f))))
+
 (defn- physics-shoves
   "Returns mob e after one tick of movement and the shoves it gave
   the bodies it ran into."
   [world index eid e half height]
   (let [t (long (:tick world))
         half (double (float half)) height (double (float height))
-        f (assoc (fluid-of world e half height)
-                 :threshold (fluid-threshold height))
+        f (fluid-at world e half height)
         moving? (not (zero? (double (:zza (:move e) 0.0))))
-        shoves (when (push/alive? e)
-                 (push/before index eid e half height))
-        vel (pushed (reduce taken (:vel e) shoves) (:push f))
+        vel (own-vel index eid e half height f)
         rest? (at-rest? world e half moving? (in-fluid? f) vel)
         e1 (if rest?
              (rest-step e t)
@@ -542,16 +549,20 @@
 (defn- next-say ^long [^long t ^long eid]
   (+ t say-rest (mobs/exp-delay say-mean t eid :say)))
 
-(defn- ambient [eid e t]
-  (let [t (long t) eid (long eid) st (:say-tick e)
-        say (mobs/sound-of e :say)]
-    (cond (and st (< t (long st))) [e nil]
-          (nil? say) [e nil]
+(defn- said [eid e t st]
+  (let [t (long t) eid (long eid) say (mobs/sound-of e :say)]
+    (cond (nil? say) [e nil]
           (nil? st) [(assoc e :say-tick (next-say t eid)) nil]
           :else
           (let [p (sound-pitch e t eid)
                 s (out/sound say (:pos e) 1.0 p)]
             [(assoc e :say-tick (next-say t eid)) [(out/all s)]]))))
+
+(defn- ambient [eid e t]
+  (let [st (:say-tick e)]
+    (if (and st (< (long t) (long st)))
+      [e nil]
+      (said eid e t st))))
 
 (defn- step-sound-delta [e t eid]
   (if (:wet? e)
@@ -585,20 +596,12 @@
     `(let [~o ~old ~n ~new]
        (cond-> {} ~@(mapcat f ks)))))
 
-(def ^:private loose-keys
-  [:nav :move :jump :body :follow-at :in-lava? :float? :support
-   :no-blocks?])
-
 (defn- mob-changes [old new]
-  (let [changed (diff-fields
-                  old new :pos :vel :yaw :pitch :on-ground :task
-                  :follow :no-action :baby-until
-                  :tempt-cooldown-until :say-tick :walked
-                  :head-yaw :look :jump-cd :wet? :sheared?)]
-    (reduce (fn [m k]
-              (if (identical? (k old) (k new)) m (assoc m k (k new))))
-            changed
-            loose-keys)))
+  (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
+               :no-action :baby-until :tempt-cooldown-until :say-tick
+               :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
+               :move :jump :body :follow-at :in-lava? :float? :support
+               :no-blocks?))
 
 (defn- age-up [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
@@ -626,7 +629,7 @@
 (defn- spent-jump [e dead?]
   (cond-> e
     (:jump e) (assoc :jump false)
-    dead? (assoc :move (assoc (:move e) :zza 0.0))))
+    dead? (assoc :move (Steer/halted (:move e)))))
 
 (defn- move-speed ^double [e]
   (if-let [fx (not-empty (:effects e))]
@@ -682,9 +685,10 @@
 
 (defn- turn [world active tempters t index slots es i]
   (let [[eid e] (nth es i)
-        [e2 ds shoves] (if (steps? active (nth es i))
-                         (step-mob world index tempters eid e t)
-                         [e nil nil])
+        [e2 ds shoves]
+        (if (steps? active (nth es i))
+          (step-mob world index tempters eid e t)
+          [e nil nil])
         es (assoc! es i [eid e2])
         [es hs] (handing active slots es i shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
