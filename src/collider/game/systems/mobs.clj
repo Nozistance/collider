@@ -320,29 +320,90 @@
                        ch (v/v3 (v/x o) (v/y p) (v/z o)) half)))]
       [(if (= s (:support e)) (:support e) s) (nil? sb)])))
 
+(defn- wet-state? [^long st]
+  (and (pos? st)
+       (or (some? (block/liquid-class st)) (block/waterlogged? st))))
+
+(defn- any-liquid? [world lo hi]
+  (let [xa (long (Math/floor (v/x lo))) xb (long (Math/ceil (v/x hi)))
+        ya (long (Math/floor (v/y lo))) yb (long (Math/ceil (v/y hi)))
+        za (long (Math/floor (v/z lo)))
+        zb (long (Math/ceil (v/z hi)))]
+    (loop [x xa y ya z za]
+      (cond (>= x xb) false
+            (>= y yb) (recur (inc x) ya za)
+            (>= z zb) (recur x (inc y) za)
+            (wet-state? (sense/block-at world x y z)) true
+            :else (recur x y (inc z))))))
+
 (defn- climb-free? [world pos vel half height oy]
   (let [up (+ (v/y vel) out-of-fluid-reach
-              (- (double oy) (v/y pos)))]
-    (phys/free? (:chunks world) pos half height
-                (v/x vel) up (v/z vel))))
+              (- (double oy) (v/y pos)))
+        x (v/x pos) y (v/y pos) z (v/z pos) half (double half)
+        dx (v/x vel) dz (v/z vel)]
+    (and (phys/free? (:chunks world) pos half height dx up dz)
+         (not (any-liquid?
+                world
+                (v/v3 (+ (- x half) dx) (+ y up) (+ (- z half) dz))
+                (v/v3 (+ (+ x half) dx) (+ (+ y (double height)) up)
+                      (+ (+ z half) dz)))))))
 
 (defn- jumped-out [world pos vel half height oy hit?]
   (if (and hit? (climb-free? world pos vel half height oy))
     (v/v3 (v/x vel) out-of-fluid (v/z vel))
     vel))
 
-(defn- travel-air [world e vel half height og?]
+(defn- in-fluid? [{:keys [water lava]}]
+  (or (pos? (double water)) (pos? (double lava))))
+
+(defn- same-span? [^double lo ^double hi ^double lo' ^double hi']
+  (and (== (Math/floor lo) (Math/floor lo'))
+       (== (Math/ceil hi) (Math/ceil hi'))))
+
+(defn- same-cells? [from to ^double half ^double height]
+  (let [a (- half 0.001) x (v/x from) y (v/y from) z (v/z from)
+        x' (v/x to) y' (v/y to) z' (v/z to)]
+    (and (<= y y')
+         (same-span? (- x a) (+ x a) (- x' a) (+ x' a))
+         (same-span? (- z a) (+ z a) (- z' a) (+ z' a))
+         (same-span? (+ y 0.001) (- (+ y height) 0.001)
+                     (+ y' 0.001) (- (+ y' height) 0.001)))))
+
+(defn- dry-still? [e ^Move mv half height f]
+  (and (not (in-fluid? f))
+       (same-cells? (:pos e) (phys/pos mv) half height)))
+
+(defn- current-axis ^double [^double asked ^double got ^double p]
+  (if (== got asked) (+ got p) (* (- (+ asked p)) 0.0)))
+
+(defn- carried [d u p]
+  (v/v3 (current-axis (v/x d) (v/x u) (double (nth p 0)))
+        (current-axis (v/y d) (v/y u) (double (nth p 1)))
+        (current-axis (v/z d) (v/z u) (double (nth p 2)))))
+
+(defn- moved-fluid
+  "Returns the fluid over mob e after the move mv by d and its
+  velocity with the push of that fluid. A mob out of water looks
+  again after it moves, as LivingEntity.checkFallDamage does."
+  [world e d ^Move mv half height f]
+  (if (dry-still? e mv half height f)
+    [f (phys/vel mv)]
+    (let [ch (:chunks world) p (phys/pos mv)
+          g (liquid/fluid-info ch p half height d (:dim world))]
+      [g (carried d (phys/vel mv) (:push g))])))
+
+(defn- travel-air [world e vel half height og? f]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
         d (driven e vel (friction-speed og? bf (speed-of e)))
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
-        f (fmul bf air-drag)
-        u (phys/vel mv)]
+        k (fmul bf air-drag)
+        [_ u] (moved-fluid world e d mv half height f)]
     [(phys/pos mv)
-     (v/v3 (* (* (v/x u) sf) f)
+     (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) vertical-drag)
-           (* (* (v/z u) sf) f))
+           (* (* (v/z u) sf) k))
      (phys/on-ground? mv) sup nb?]))
 
 (defn- travel-water [world e vel half height]
@@ -366,14 +427,15 @@
       (v/v3 x (fluid-fall g falling? (* y water-slowdown)) z)
       (v/v3 x (* y 0.5) z))))
 
-(defn- travel-lava [world e vel half height shallow?]
+(defn- travel-lava [world e vel half height f]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
         ^Move mv (stepped world (:pos e) d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
-        u (phys/vel mv)
+        [h u] (moved-fluid world e d mv half height f)
+        shallow? (<= (double (:lava h)) (double (:threshold f)))
         w (lava-slowed (* (v/x u) sf) (v/y u) (* (v/z u) sf)
                        g falling? shallow?)
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
@@ -382,12 +444,10 @@
      (phys/on-ground? mv) sup nb?]))
 
 (defn- travelled
-  [world e vel half height og? {:keys [water lava threshold]}]
+  [world e vel half height og? {:keys [water lava] :as f}]
   (cond (pos? (double water)) (travel-water world e vel half height)
-        (pos? (double lava))
-        (travel-lava world e vel half height
-                     (<= (double lava) (double threshold)))
-        :else (travel-air world e vel half height og?)))
+        (pos? (double lava)) (travel-lava world e vel half height f)
+        :else (travel-air world e vel half height og? f)))
 
 (defn- boost-power ^double [e]
   (if-let [b (get (:effects e) :jump-boost)]
@@ -454,9 +514,6 @@
 (defn- fluid-of [world e half height]
   (liquid/fluid-info (:chunks world) (:pos e) half height (:vel e)
                      (:dim world)))
-
-(defn- in-fluid? [{:keys [water lava]}]
-  (or (pos? (double water)) (pos? (double lava))))
 
 (defn- flagged [world e half height kept]
   (let [f (or kept (fluid-of world e half height))
@@ -687,12 +744,55 @@
                 [es acc])))]
     (reduce f [es []] shoves)))
 
+(def ^:private ^:const cramming-damage 6.0)
+
+(def ^:private ^:const cramming-key 0x63726d)
+
+(defn- max-cramming ^long [world]
+  (long (get-in world [:rules :max-entity-cramming] 24)))
+
+(defn- crowd [index slots es eid e]
+  (let [[half height] (mobs/box-of e)
+        alive? (fn [o] (push/alive? (nth (nth es (get slots o)) 1)))]
+    (count (filter alive? (push/touching index eid e half height)))))
+
+(defn- crammed?
+  "Returns true when mob e, crowded, takes cramming damage this tick,
+  as LivingEntity.pushEntities."
+  [world index slots es eid e t]
+  (let [m (max-cramming world)]
+    (and (pos? m) (push/alive? e)
+         (< (random/of-longs t eid cramming-key) 0.25)
+         (> (crowd index slots es eid e) (dec m)))))
+
+(defn- rested
+  "Returns mob e with the hurt resistance it has after the countdown
+  of this tick, which LivingEntity.baseTick makes before aiStep."
+  [e]
+  (let [r (long (or (:hurt-resist e) 0))]
+    (if (pos? r) (assoc e :hurt-resist (dec r)) e)))
+
+(defn- hurt-marks [h]
+  {:health (:health h) :last-damage (:last-damage h)
+   :hurt-resist (:hurt-resist h) :hurt-cause :cramming})
+
+(defn- cramming [world index slots es eid e t ds]
+  (let [h (when (crammed? world index slots es eid e t)
+            (state/hurt (rested e) cramming-damage))]
+    (if (and h (not= (:health h) (:health e)))
+      [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
+      [e ds])))
+
 (defn- turn [world active tempters t index slots es i]
   (let [[eid e] (nth es i)
+        stepping? (steps? active (nth es i))
         [e2 ds shoves]
-        (if (steps? active (nth es i))
+        (if stepping?
           (step-mob world index tempters eid e t)
           [e nil nil])
+        [e2 ds] (if stepping?
+                  (cramming world index slots es eid e2 t ds)
+                  [e2 ds])
         es (assoc! es i [eid e2])
         [es hs] (handing active slots es i shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]

@@ -112,9 +112,17 @@
       [0.0 0.0 0.0]
       [(/ x len) (/ y len) (/ z len)])))
 
-(defn- below-pull [chunks cls i [nx y nz]]
-  (let [j (decay chunks cls [nx (dec (long y)) nz])]
-    (if (>= j 0) (- j (- (long i) 8)) 0)))
+(defn- decay-height ^double [^long i]
+  (double (float (/ (double (- 8 i)) 9.0))))
+
+(defn- fsub ^double [^double a ^double b] (double (float (- a b))))
+
+(defn- below-pull ^double [chunks cls i [nx y nz]]
+  (let [j (decay chunks cls [nx (dec (long y)) nz])
+        drop (double (float 0.8888889))]
+    (if (>= j 0)
+      (fsub (decay-height i) (fsub (decay-height j) drop))
+      0.0)))
 
 (defn- neighbor-pull [chunks cls i [x y z] [dx dz]]
   (let [nx (+ (long x) (long dx))
@@ -122,11 +130,11 @@
         ns (state-at chunks nx y nz)
         j (decay chunks cls [nx y nz])]
     (cond
-      (other-class? cls ns) 0
-      (>= j 0) (- j (long i))
+      (other-class? cls ns) 0.0
+      (>= j 0) (fsub (decay-height i) (decay-height j))
       (not (blocks-movement? ns))
       (below-pull chunks cls (long i) [nx y nz])
-      :else 0)))
+      :else 0.0)))
 
 (def ^:private side-face
   {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
@@ -167,7 +175,7 @@
 (defn- own-height ^double [st]
   (let [l (level st)
         n (if (or (zero? l) (>= l 8)) 8 (- 8 l))]
-    (/ (double n) 9.0)))
+    (double (float (/ (double n) 9.0)))))
 
 (defn- height-in ^double [chunks cls [x y z]]
   (let [above (state-at chunks x (inc (long y)) z)]

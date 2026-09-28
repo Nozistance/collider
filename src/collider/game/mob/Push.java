@@ -29,6 +29,35 @@ public final class Push {
         return acc.persistent();
     }
 
+    /// Returns the ids of the bodies of the `cs` cells whose boxes
+    /// overlap the box of the body `eid` at `x`, `y`, `z`, as
+    /// Level.getEntities finds them.
+    public static Object touching(Object[] cs, double x, double y,
+            double z, double half, double height, long eid) {
+        ITransientCollection acc = PersistentVector.EMPTY.asTransient();
+        for (Object o : cs) {
+            if (o != null) {
+                PushCell c = (PushCell) o;
+                long[] ids = c.eids();
+                for (int j = 0; j < ids.length; j++) {
+                    if (ids[j] != eid && overlaps(c, j, x, y, z, half,
+                            height)) {
+                        acc.conj(ids[j]);
+                    }
+                }
+            }
+        }
+        return acc.persistent();
+    }
+
+    private static boolean overlaps(PushCell c, int j, double x,
+            double y, double z, double half, double height) {
+        double r = half + c.halfs()[j];
+        double oy = c.ys()[j];
+        return Math.abs(c.xs()[j] - x) < r && Math.abs(c.zs()[j] - z) < r
+                && oy < y + height && oy + c.heights()[j] > y;
+    }
+
     private static void cell(ITransientCollection acc, PushCell c,
             double x, double y, double z, double half, double height,
             long eid, long hi) {

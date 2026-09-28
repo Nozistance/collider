@@ -151,6 +151,14 @@
                    (double half) (double height) (long eid) (long hi))
       [])))
 
+(defn touching
+  "Returns the ids of the bodies whose boxes overlap the box of body
+  eid."
+  [index eid e half height]
+  (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
+    (Push/touching (hood index (cell-of x z)) x (double (v/y p)) z
+                   (double half) (double height) (long eid))))
+
 (defn shoves
   "Returns the shoves of one run of the body over every body it meets.
   The run is the last part of its tick."

@@ -504,10 +504,15 @@
              (not (loading? world e)))
     [[:damage eid void-damage]]))
 
+(defn- panics? [world e]
+  (and (>= (v/y (:pos e)) (chunk/void-y world))
+       (not= :cramming (:hurt-cause e))))
+
 (defn- panicked [world e]
   (cond-> {:love-until nil :no-action 0}
-          (>= (v/y (:pos e)) (chunk/void-y world))
-          (assoc :panic-until (+ (long (:tick world)) panic-ticks))))
+          (panics? world e)
+          (assoc :panic-until (+ (long (:tick world)) panic-ticks))
+          (:hurt-cause e) (assoc :hurt-cause nil)))
 
 (def ^:private ^:const player-kill-memory 100)
 
