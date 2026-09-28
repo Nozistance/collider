@@ -89,9 +89,9 @@
                names)))
 
 (defn- bone-meal-tagged []
-  (let [tags (data/pack "tags/worldgen/configured_feature")
-        tag (get tags "minecraft:can_spawn_from_bone_meal")]
-    (into #{} (map plain) (get tag "values"))))
+  (let [r "worldgen/configured_feature"]
+    (into #{} (map data/snake)
+          (data/tag-values r "can_spawn_from_bone_meal"))))
 
 (defn- placers []
   (by-key (keep (fn [[b m]] (when-let [f (:feature m)] [b f]))

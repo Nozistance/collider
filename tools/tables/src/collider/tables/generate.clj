@@ -65,8 +65,8 @@
   (let [tagged (tagged-tables zf reports rs from-class)]
     (merge (dissoc from-class :props :compost :walls
                    :remainders :banners :dyes :synced :non-breakers
-                   :pack)
-           tagged
+                   :pack :pack-tags)
+           (dissoc tagged :tags)
            (class-tables zf from-class reports (:tags tagged)))))
 
 (defn- pack-tables [pack]
@@ -75,10 +75,11 @@
                     {:found (vec (keys pack))})))
   (map (fn [[path t]] [(str "pack/" path) t]) pack))
 
-(defn- tag-tables [zf]
-  (map (fn [path]
-         [(str "pack/tags/" path) (tags/pack-tags zf path)])
-       stamp/tags))
+(defn- tag-tables [tags]
+  (when-not (= (set stamp/tags) (set (keys tags)))
+    (throw (unknown "registries with tags in the pack"
+                    {:found (vec (keys tags))})))
+  (map (fn [[path t]] [(str "pack/tags/" path) t]) tags))
 
 (defn- table-files [^File out]
   (let [pack (io/file out "pack")]
@@ -108,7 +109,7 @@
     (let [rs (registry/registries reports)
           ts (concat (tables zf from-class reports rs)
                      (pack-tables (:pack from-class))
-                     (tag-tables zf))
+                     (tag-tables (:pack-tags from-class)))
           n (count ts)]
       (doseq [[i [k data]] (map-indexed vector ts)]
         (progress! {:event :progress :step :tables

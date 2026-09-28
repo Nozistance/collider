@@ -2,9 +2,10 @@
   "Game data tables."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
-            [clojure.string :as str])
+            [clojure.string :as str]
+            [collider.data.tags :as tags])
   (:import (clojure.lang PersistentArrayMap)
-           (java.io PushbackReader)
+           (java.io File PushbackReader)
            (java.util Arrays List)
            (java.util.concurrent ExecutionException)))
 
@@ -12,7 +13,7 @@
 
 (def game "26.2")
 
-(def layout 15)
+(def layout 16)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -77,7 +78,7 @@
   (read-edn (str "pack/" path ".edn")))
 
 (def ^:private table-names
-  [:packets :registries :blocks :synced :tags :items :light
+  [:packets :registries :blocks :synced :items :light
    :fire :drops :entity-drops :recipes :sounds :potions
    :effects])
 
@@ -96,8 +97,6 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
-
-(defn tags [] (:tags @tables))
 
 (defn items [] (:items @tables))
 
@@ -208,9 +207,6 @@
   [item]
   (get-in (items) [item :resists]))
 
-(defn tag-values [registry tag]
-  (get-in (tags) [registry tag] []))
-
 (defn snake
   "Returns the name of k with dashes as underscores."
   ^String [k]
@@ -310,6 +306,57 @@
       (nil? v) (throw (unknown-registry registry))
       (< -1 id (count v)) (nth v id)
       :else (throw (unknown-id registry id)))))
+
+(defn- tag-paths
+  "Returns the registries the pack has tag files for, by path."
+  []
+  (let [root (io/file (or (dir) (throw (no-tables))) "pack" "tags")
+        skip (inc (count (str root)))]
+    (into (sorted-set)
+          (comp (map #(str/replace (str %) File/separatorChar \/))
+                (filter #(str/ends-with? % ".edn"))
+                (map #(subs % skip (- (count %) 4))))
+          (file-seq root))))
+
+(defn- element-exists [path]
+  (if-let [ids (get (registries) path)]
+    #(contains? ids (kebab %))
+    (let [ids (set (keys (pack path)))] #(contains? ids %))))
+
+(defn- tag-name [^String id]
+  (if (str/starts-with? id "minecraft:") (subs id 10) id))
+
+(defn- built-tags [path]
+  (let [files (pack (str "tags/" path))
+        built (tags/build files (element-exists path))]
+    (into {}
+          (map (fn [[id vs]] [(tag-name id) (mapv kebab vs)]))
+          (sort-by (comp tag-name key) built))))
+
+(def ^:private ^:table all-tags
+  (delay (into {} (map (fn [p] [p (built-tags p)])) (tag-paths))))
+
+(defn- sent-tags? [[path ts]]
+  (and (seq ts)
+       (or (contains? (registries) path)
+           (contains? (datapack) path))))
+
+(def ^:private ^:table sent-tags
+  (delay (into {} (filter sent-tags?) (sort-by key @all-tags))))
+
+(defn tags
+  "Returns the tags the server sends to the client, by registry: each
+  built-in or synced registry that has any."
+  [] @sent-tags)
+
+(defn registry-tags
+  "Returns the tags of registry path by name, each a vector of its
+  entries in the order vanilla builds it; nil when it has none."
+  [path]
+  (get @all-tags path))
+
+(defn tag-values [registry tag]
+  (get (registry-tags registry) tag []))
 
 (defn- prop-order [b] (vec (keys (:props b))))
 

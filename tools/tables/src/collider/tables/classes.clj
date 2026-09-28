@@ -510,7 +510,7 @@
               :walls (merge (wall-items) (solid-buckets))
               :remainders (remainders) :banners (banner-colors)
               :dyes (dye-colors) :synced (synced-registries)
-              :pack (pack/registries)}))))
+              :pack (pack/registries) :pack-tags (pack/tags)}))))
 
 (def ^:private silent-log4j
   (str "<Configuration status=\"OFF\">"

@@ -7,7 +7,7 @@
 
 (defn- tagged [registry ^String v]
   (let [tag (str/replace (subs v 1) #"^minecraft:" "")]
-    (or (get-in (data/tags) [registry tag])
+    (or (get (data/registry-tags registry) tag)
         (throw (ex-info "unknown tag"
                         {:registry registry :tag tag})))))
 

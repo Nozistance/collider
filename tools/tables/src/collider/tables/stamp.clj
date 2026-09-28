@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 15)
+(def layout 16)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -27,10 +27,16 @@
    "worldgen/template_pool" "worldgen/world_preset"
    "zombie_nautilus_variant"])
 
-(def tags ["worldgen/configured_feature"])
+(def tags
+  ["banner_pattern" "block" "damage_type" "dialog" "enchantment"
+   "entity_type" "fluid" "game_event" "instrument" "item"
+   "painting_variant" "point_of_interest_type" "potion" "timeline"
+   "villager_trade" "worldgen/biome" "worldgen/configured_feature"
+   "worldgen/flat_level_generator_preset" "worldgen/structure"
+   "worldgen/world_preset"])
 
 (def files
-  (-> ["packets" "registries" "blocks" "synced" "tags" "items"
+  (-> ["packets" "registries" "blocks" "synced" "items"
        "light" "fire" "drops" "entity-drops" "recipes" "sounds"
        "potions" "effects" "shapes" "outlines" "sturdy" "flags"]
       (into (map #(str "pack/" %)) pack)

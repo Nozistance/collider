@@ -3,7 +3,7 @@
   (:require [clojure.string :as str]
             [collider.tables.files :refer [jsons]]
             [collider.tables.value
-             :refer [kw plain sorted-json sorted-vals unknown]]))
+             :refer [kw plain sorted-vals unknown]]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,13 +46,3 @@
                   (when (seq found)
                     [reg (sorted-vals found resolved)]))))
         registries))
-
-(defn- pack-tag [[name json]]
-  [(str "minecraft:" name) (sorted-json json)])
-
-(defn pack-tags
-  "Returns the tags of registry path of the vanilla pack as the pack
-  holds them, by id."
-  [zf path]
-  (let [prefix (str "data/minecraft/tags/" path "/")]
-    (into (sorted-map) (map pack-tag) (jsons zf prefix))))

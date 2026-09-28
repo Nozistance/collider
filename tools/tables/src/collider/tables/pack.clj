@@ -2,10 +2,12 @@
   "The registries of the vanilla pack as their own codecs write them."
   (:require [clojure.data.json :as json]
             [collider.tables.reflect
-             :refer [any-class call call-static class-field
+             :refer [any-class call call-static class-field cls
                      static-field]]
-            [collider.tables.value :refer [sorted-json]])
-  (:import (java.util Optional)))
+            [collider.tables.value :refer [sorted-json unknown]])
+  (:import (clojure.lang Reflector)
+           (java.io Reader)
+           (java.util List Optional)))
 
 (set! *warn-on-reflection* true)
 
@@ -46,3 +48,50 @@
                    [(registry-path %) t]))
           (static-field "resources.RegistryDataLoader"
                         "WORLDGEN_REGISTRIES"))))
+
+(defn- registry-keys []
+  (let [loader "resources.RegistryDataLoader"
+        built-in "core.registries.BuiltInRegistries"]
+    (map #(call % "key")
+         (concat (static-field built-in "REGISTRY")
+                 (static-field loader "WORLDGEN_REGISTRIES")
+                 (static-field loader "DIMENSION_REGISTRIES")))))
+
+(defn- vanilla-resources []
+  (let [source "server.packs.repository.ServerPacksSource"
+        pack (call-static source "createVanillaPackSource")
+        data (static-field "server.packs.PackType" "SERVER_DATA")
+        c (cls "server.packs.resources.MultiPackResourceManager")
+        args (object-array [data (List/of pack)])]
+    (Reflector/invokeConstructor c args)))
+
+(defn- tag-file [tag-codec ops id stack]
+  (when (not= 1 (count stack))
+    (throw (unknown "a tag in many packs" {:tag (str id)})))
+  (with-open [^Reader r (call (first stack) "openAsReader")]
+    (let [json (call-static "util.StrictJsonParser" "parse" r)
+          tag (call (call tag-codec "parse" ops json) "getOrThrow")]
+      (encoded ops tag-codec tag))))
+
+(defn- registry-tags [rm ops k]
+  (let [dir (call-static "core.registries.Registries" "tagsDirPath" k)
+        lister (call-static "resources.FileToIdConverter" "json" dir)
+        codec (static-field "tags.TagFile" "CODEC")]
+    (into (sorted-map)
+          (map (fn [[file stack]]
+                 (let [id (call lister "fileToId" file)]
+                   [(str id) (tag-file codec ops id stack)])))
+          (call lister "listMatchingResourceStacks" rm))))
+
+(defn tags
+  "Returns the tag files of the vanilla pack as TagFile.CODEC writes
+  them, by id, for every registry that has any, by path."
+  []
+  (let [rm (vanilla-resources)
+        ops (class-field (any-class json-ops) "INSTANCE")]
+    (into (sorted-map)
+          (keep (fn [k]
+                  (let [t (registry-tags rm ops k)]
+                    (when (seq t)
+                      [(call (call k "identifier") "getPath") t]))))
+          (registry-keys))))
