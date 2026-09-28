@@ -2,7 +2,7 @@
   "Block light, sky light, and the sky brightness of the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Light)
+  (:import (collider.world Light)
            (java.util HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -10,8 +10,7 @@
 (defn- pass!
   "Spreads channel ch of the cells, [x y z level] each, into cache."
   [cache chunks ch cells]
-  (Light/pass cache chunks ch cells block/dampening block/emits
-              block/shape-occludes?))
+  (Light/pass cache chunks ch cells (block/tables)))
 
 (defn- relit [c [[_ k] ^bytes arr]]
   (let [k (long k)
@@ -114,7 +113,7 @@
 (defn- sky-source
   "Returns the lowest y of the column x z that the sky reaches."
   ^long [chunks ^long x ^long z]
-  (Light/skySource chunks x z block/dampening block/shape-occludes?))
+  (Light/skySource chunks x z (block/tables)))
 
 (defn- sky-column [chunks x z ys]
   (let [x (long x) z (long z)

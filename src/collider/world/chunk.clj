@@ -1,7 +1,8 @@
 (ns collider.world.chunk
   "Chunks of block states and light, with chunk and block ids."
   (:require [collider.vec :as v])
-  (:import (collider.java Batch Buf Chunk ChunkIndex Section)
+  (:import (collider.proto Buf)
+           (collider.world Batch Chunk ChunkIndex Section)
            (java.io DataInput DataOutput)
            (java.util HashMap)))
 
@@ -48,24 +49,10 @@
   ^Section [^shorts blocks ^bytes bl ^bytes sl]
   (Section/of blocks bl sl))
 
-(defn nibble-get
-  "Returns the light level at idx of the light levels arr."
-  ^long [^bytes arr ^long idx]
-  (let [b (long (aget arr (bit-shift-right idx 1)))]
-    (if (zero? (bit-and idx 1))
-      (bit-and b 0xF)
-      (bit-and (bit-shift-right b 4) 0xF))))
-
 (defn nibble-set!
   "Sets the light level at idx of the light levels arr to v."
   [^bytes arr ^long idx ^long v]
-  (let [bi (bit-shift-right idx 1)
-        b (long (aget arr bi))]
-    (aset arr bi
-          (unchecked-byte
-            (if (zero? (bit-and idx 1))
-              (bit-or (bit-and b 0xF0) v)
-              (bit-or (bit-and b 0x0F) (bit-shift-left v 4)))))))
+  (Section/setNibble arr (int idx) (int v)))
 
 (def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
 
@@ -82,36 +69,16 @@
   ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
-(defn nil-sky
-  "Returns the sky light a new section at si inherits at lx lz.
-  The light comes from above."
-  ^long [chunk ^long si ^long lx ^long lz]
-  (if-let [^Section s (first-above chunk si)]
-    (.skyLight s (int (+ (* lz 16) lx)))
-    15))
-
 (defn new-section
   "Returns an empty section at si with inherited sky light."
   ^Section [^Chunk chunk ^long si]
   (.fresh chunk (int si)))
-
-(defn nil-sky-array
-  "Returns the sky light a new section at si inherits.
-  The light comes from above, and each call gives new levels."
-  ^bytes [chunk ^long si]
-  (.skyLightCopy ^Section (new-section chunk si)))
 
 (defn chunk-at
   "Returns the chunk at chunk coordinates cx cz. An absent chunk
   comes back as empty-chunk, never nil."
   ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
   (Chunk/at chunks (int cx) (int cz)))
-
-(defn section-at
-  "Returns the section holding block x y z, nil where none exists."
-  ^Section [^ChunkIndex chunks ^long x ^long y ^long z]
-  (Chunk/sectionAt chunks (unchecked-int x) (unchecked-int y)
-                   (unchecked-int z)))
 
 (defn chunk-section
   "Returns the section at index si of chunk, nil where none exists."
@@ -132,18 +99,6 @@
 (defn sky-light
   "Returns the sky light level at index idx of s."
   ^long [^Section s ^long idx] (.skyLight s (int idx)))
-
-(defn block-light
-  "Returns the block light level at index idx of s."
-  ^long [^Section s ^long idx] (.blockLight s (int idx)))
-
-(defn sky-light-copy
-  "Returns the sky light levels of s, new on each call."
-  ^bytes [^Section s] (.skyLightCopy s))
-
-(defn block-light-copy
-  "Returns the block light levels of s, new on each call."
-  ^bytes [^Section s] (.blockLightCopy s))
 
 (defn with-sky-light
   "Returns s with the sky light levels a."

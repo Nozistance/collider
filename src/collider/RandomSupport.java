@@ -1,4 +1,4 @@
-package collider.java;
+package collider;
 
 /// Random numbers hashed from longs: the same longs always give the
 /// same number.

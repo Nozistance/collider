@@ -1,6 +1,6 @@
 (ns collider.proto.buf
   "Byte buffers of the wire format."
-  (:import (collider.java Buf)
+  (:import (collider.proto Buf)
            (java.io ByteArrayInputStream InputStream)
            (java.util.zip Deflater Inflater)))
 

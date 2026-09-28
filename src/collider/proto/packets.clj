@@ -8,7 +8,7 @@
             [collider.proto.wire :as wire]
             [malli.core :as m]
             [malli.error :as me])
-  (:import (collider.java Buf)
+  (:import (collider.proto Buf)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)

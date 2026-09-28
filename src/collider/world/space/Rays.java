@@ -1,5 +1,7 @@
-package collider.java;
+package collider.world.space;
 
+import collider.RandomSupport;
+import collider.world.Section;
 import clojure.lang.IFn;
 
 /// Line of sight through a rectangular grid of sections, and the

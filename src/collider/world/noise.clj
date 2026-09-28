@@ -1,6 +1,6 @@
 (ns collider.world.noise
   "Perlin noise fields of the feature placers."
-  (:import (collider.java Noise)))
+  (:import (collider.world Noise)))
 
 (set! *warn-on-reflection* true)
 

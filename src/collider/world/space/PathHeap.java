@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world.space;
 
 import java.util.Arrays;
 

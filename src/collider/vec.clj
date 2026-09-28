@@ -1,16 +1,17 @@
 (ns collider.vec
-  "Points and motions of three doubles, as V3 or as any three numbers."
+  "Points and motions of three doubles, as V3 or any three numbers."
   (:refer-clojure :exclude [+])
-  (:import (collider.java V3)))
+  (:import (collider V3)))
 
 (set! *warn-on-reflection* true)
 
 (defn v3? [v] (instance? V3 v))
 
 (defn v3
-  (^V3 [v] (if (v3? v)
-             v
-             (let [[a b c] v] (V3. (double a) (double b) (double c)))))
+  (^V3 [v]
+   (if (v3? v)
+     v
+     (let [[a b c] v] (V3. (double a) (double b) (double c)))))
   (^V3 [^double x ^double y ^double z] (V3. x y z)))
 
 (defn x ^double [v] (if (v3? v) (.x ^V3 v) (double (nth v 0))))
@@ -42,8 +43,8 @@
 (defn yaw-toward
   "Returns the yaw in degrees that looks from p at tgt."
   ^double [p tgt]
-  (Math/toDegrees (Math/atan2 (- (x p) (x tgt))
-                              (- (z tgt) (z p)))))
+  (let [dx (- (x p) (x tgt)) dz (- (z tgt) (z p))]
+    (Math/toDegrees (Math/atan2 dx dz))))
 
 (defn wrap-deg ^double [^double a]
   (let [a (rem a 360.0)]
@@ -54,4 +55,5 @@
 (defn limit-angle
   "Returns cur turned toward target by at most step degrees."
   ^double [^double cur ^double target ^double step]
-  (clojure.core/+ cur (Math/max (- step) (Math/min step (wrap-deg (- target cur))))))
+  (let [d (wrap-deg (- target cur))]
+    (clojure.core/+ cur (Math/max (- step) (Math/min step d)))))

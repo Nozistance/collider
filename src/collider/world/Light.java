@@ -1,6 +1,5 @@
-package collider.java;
+package collider.world;
 
-import clojure.lang.IFn;
 import clojure.lang.RT;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -12,9 +11,8 @@ import java.util.HashMap;
 /// A flood works on a cache of light arrays, one for each section and
 /// channel it touched, by the key `(chunk id << 6) | (section index <<
 /// 1) | channel`. Channel 0 is block light and channel 1 sky light.
-/// The block functions it takes are `dampening` and `emits`, which map
-/// a block state to a level, and `occludes`, which tells whether the
-/// faces of two states that meet along a direction seal.
+/// It reads the dampening, emission and face shapes of the blocks
+/// from the block tables.
 public final class Light {
 
     /// The channel of sky light.
@@ -50,22 +48,18 @@ public final class Light {
     private final HashMap<Long, byte[]> cache;
     private final ChunkIndex chunks;
     private final int ch;
-    private final IFn.LL dampening;
-    private final IFn.LL emits;
-    private final IFn.LLLO occludes;
+    private final BlockTables t;
     private long[] rq = new long[64];
     private int rqHead, rqTail;
     private long[] pq = new long[64];
     private int pqHead, pqTail;
 
     private Light(HashMap<Long, byte[]> cache, ChunkIndex chunks, int ch,
-            IFn.LL dampening, IFn.LL emits, IFn.LLLO occludes) {
+            BlockTables t) {
         this.cache = cache;
         this.chunks = chunks;
         this.ch = ch;
-        this.dampening = dampening;
-        this.emits = emits;
-        this.occludes = occludes;
+        this.t = t;
     }
 
     private static boolean inRange(long y) {
@@ -162,12 +156,12 @@ public final class Light {
     /// Returns the lowest y of the column `x`, `z` in `chunks` that
     /// the sky reaches straight down.
     public static long skySource(ChunkIndex chunks, long x, long z,
-            IFn.LL dampening, IFn.LLLO occludes) {
+            BlockTables t) {
         long top = 0;
         for (long y = MAX_Y; y >= MIN_Y; y--) {
             long b = block(chunks, x, y, z);
-            if (dampening.invokePrim(b) > 0
-                || RT.booleanCast(occludes.invokePrim(top, b, DOWN))) {
+            if (Block.dampening(t, b) > 0
+                || Block.occludes(t, top, b, DOWN)) {
                 return y + 1;
             }
             top = b;
@@ -179,10 +173,8 @@ public final class Light {
     /// is `[x y z level]`: the old light of every cell goes dark,
     /// then each cell shines at its level and the light floods out.
     public static void pass(HashMap<Long, byte[]> cache,
-            ChunkIndex chunks, long ch, Object cells, IFn.LL dampening,
-            IFn.LL emits, IFn.LLLO occludes) {
-        Light l = new Light(cache, chunks, (int) ch, dampening, emits,
-                            occludes);
+            ChunkIndex chunks, long ch, Object cells, BlockTables t) {
+        Light l = new Light(cache, chunks, (int) ch, t);
         for (Object c : (Iterable<?>) cells) l.clear(c);
         l.unlight();
         for (Object c : (Iterable<?>) cells) l.seed(c);
@@ -263,7 +255,7 @@ public final class Light {
     }
 
     private void reEmit(long x, long y, long z) {
-        long em = emits.invokePrim(block(chunks, x, y, z));
+        long em = Block.emission(t, block(chunks, x, y, z));
         if (em > 0 && ch == 0) {
             set(x, y, z, em);
             addP(pack(x, y, z, em));
@@ -305,9 +297,9 @@ public final class Light {
             int d) {
         if (!inRange(ny)) return;
         long to = block(chunks, nx, ny, nz);
-        long cand = l - Math.max(1, dampening.invokePrim(to));
+        long cand = l - Math.max(1, Block.dampening(t, to));
         if (cand > 0 && cand > get(nx, ny, nz)
-            && !RT.booleanCast(occludes.invokePrim(from, to, d))
+            && !Block.occludes(t, from, to, d)
             && set(nx, ny, nz, cand)) {
             addP(pack(nx, ny, nz, cand));
         }

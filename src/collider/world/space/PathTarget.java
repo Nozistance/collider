@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world.space;
 
 /// A goal cell of one path search, with the node that came closest
 /// to it so far.

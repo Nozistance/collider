@@ -1,4 +1,4 @@
-package collider.java;
+package collider.proto;
 
 import java.io.IOException;
 import java.io.InputStream;

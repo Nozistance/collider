@@ -1,4 +1,6 @@
-package collider.java;
+package collider.world;
+
+import collider.V3;
 
 /// The end of one move of a body through the blocks.
 ///

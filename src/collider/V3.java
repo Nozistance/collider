@@ -1,4 +1,4 @@
-package collider.java;
+package collider;
 
 import clojure.lang.Counted;
 import clojure.lang.IHashEq;

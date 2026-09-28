@@ -5,7 +5,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Push PushCell)))
+  (:import (collider.game.mob Push PushCell)))
 
 (set! *warn-on-reflection* true)
 

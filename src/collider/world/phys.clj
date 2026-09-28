@@ -3,7 +3,8 @@
   (:require [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java ChunkIndex Move Phys V3)))
+  (:import (collider V3)
+           (collider.world ChunkIndex Move Phys)))
 
 (set! *warn-on-reflection* true)
 
@@ -54,7 +55,7 @@
 (defn on-ground?
   "Returns true when a move ends on the ground."
   {:inline (fn [m]
-             (let [t 'collider.java.Move]
+             (let [t 'collider.world.Move]
                `(.onGround ~(with-meta m {:tag t}))))}
   [^Move m]
   (.onGround m))

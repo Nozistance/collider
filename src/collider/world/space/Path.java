@@ -1,5 +1,7 @@
-package collider.java;
+package collider.world.space;
 
+import collider.world.Chunk;
+import collider.world.ChunkIndex;
 import java.util.HashMap;
 
 /// The numeric core of the ground path search: node keys, the costs

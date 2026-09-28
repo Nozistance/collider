@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world;
 
 /// The block boxes that one sweep of a moving box meets.
 ///

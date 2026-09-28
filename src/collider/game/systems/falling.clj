@@ -10,7 +10,7 @@
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
             [collider.world.blocks.support :as support])
-  (:import (collider.java Move)))
+  (:import (collider.world Move)))
 
 (set! *warn-on-reflection* true)
 

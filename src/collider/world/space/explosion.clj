@@ -5,7 +5,7 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Rays Region)))
+  (:import (collider.world.space Rays Region)))
 
 (set! *warn-on-reflection* true)
 

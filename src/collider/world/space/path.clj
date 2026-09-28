@@ -3,7 +3,7 @@
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.java Path PathHeap PathNode PathTarget)
+  (:import (collider.world.space Path PathHeap PathNode PathTarget)
            (java.util HashMap)))
 
 (set! *warn-on-reflection* true)
@@ -581,7 +581,7 @@
     (set-malus! n (path-type-malus mob (kind n)))
     n))
 
-(defn- targets-of ^"[Lcollider.java.PathTarget;" [goals]
+(defn- targets-of ^"[Lcollider.world.space.PathTarget;" [goals]
   (into-array PathTarget
               (map (fn [[x y z]]
                      (PathTarget. (long x) (long y) (long z)))

@@ -3,7 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.world.direction :as dir])
-  (:import (collider.java Block BlockTables)
+  (:import (collider.world Block BlockTables)
            (java.util Arrays)))
 
 (set! *warn-on-reflection* true)
@@ -772,7 +772,7 @@
 
 (defn tables
   "Returns the tables of the block states."
-  ^collider.java.BlockTables []
+  ^collider.world.BlockTables []
   @table-set)
 
 (defn blocks-motion?

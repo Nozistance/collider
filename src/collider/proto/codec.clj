@@ -6,7 +6,7 @@
             [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.text :as text])
-  (:import (collider.java Buf)
+  (:import (collider.proto Buf)
            (java.io DataInputStream EOFException InputStream
                     OutputStream)
            (java.nio.charset StandardCharsets)

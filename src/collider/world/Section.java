@@ -1,5 +1,6 @@
-package collider.java;
+package collider.world;
 
+import collider.proto.Buf;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -182,13 +183,13 @@ public final class Section {
     }
 
     /// Returns the light level at index `i` of the light levels `a`.
-    static int nibble(byte[] a, int i) {
+    public static int nibble(byte[] a, int i) {
         return (a[i >> 1] >> ((i & 1) << 2)) & 15;
     }
 
     /// Sets the light level at index `i` of the light levels `a` to
     /// `v`.
-    static void setNibble(byte[] a, int i, int v) {
+    public static void setNibble(byte[] a, int i, int v) {
         int b = a[i >> 1];
         a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v
                             : (b & 0x0F) | (v << 4));

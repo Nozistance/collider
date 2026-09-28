@@ -2,7 +2,7 @@
   "Schemas of delta tags and effect messages."
   (:require [malli.core :as m]
             [malli.error :as me])
-  (:import (collider.java V3)))
+  (:import (collider V3)))
 
 (set! *warn-on-reflection* true)
 

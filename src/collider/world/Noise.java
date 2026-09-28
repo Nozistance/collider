@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world;
 
 /// A Perlin noise field built from a seed and its octave amplitudes.
 public final class Noise {

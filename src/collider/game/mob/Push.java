@@ -1,4 +1,4 @@
-package collider.java;
+package collider.game.mob;
 
 import clojure.lang.ITransientCollection;
 import clojure.lang.PersistentVector;

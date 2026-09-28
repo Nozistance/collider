@@ -6,7 +6,7 @@
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.packets :as packets])
-  (:import (collider.java Buf)
+  (:import (collider.proto Buf)
            (collider.net.server.conn Conn)
            (java.io BufferedInputStream BufferedOutputStream
                     EOFException)

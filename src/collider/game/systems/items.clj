@@ -13,7 +13,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
-  (:import (collider.java Move)))
+  (:import (collider.world Move)))
 
 (set! *warn-on-reflection* true)
 

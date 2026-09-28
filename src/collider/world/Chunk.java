@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world;
 
 import java.io.DataInput;
 import java.io.DataOutput;

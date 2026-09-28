@@ -1,4 +1,6 @@
-package collider.java;
+package collider.world;
+
+import collider.V3;
 
 /// Collision of a moving box against block boxes, one axis at a
 /// time.

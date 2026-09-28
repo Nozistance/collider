@@ -2,7 +2,7 @@
   "Random numbers drawn from keys.
   The same key always gives the same number."
   (:import (clojure.lang Murmur3 Util)
-           (collider.java RandomSupport)))
+           (collider RandomSupport)))
 
 (set! *warn-on-reflection* true)
 

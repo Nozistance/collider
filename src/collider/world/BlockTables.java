@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world;
 
 /// The tables of the block states, each indexed by state id.
 ///

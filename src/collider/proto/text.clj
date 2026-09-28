@@ -6,7 +6,7 @@
   :strikethrough :obfuscated :click :hover :insertion :font."
   (:require [clojure.string :as str]
             [collider.proto.buf :as buf])
-  (:import (collider.java Buf)
+  (:import (collider.proto Buf)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)

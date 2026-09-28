@@ -1,4 +1,4 @@
-package collider.java;
+package collider.world;
 
 import clojure.lang.IFn;
 import clojure.lang.RT;

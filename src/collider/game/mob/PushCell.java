@@ -1,4 +1,4 @@
-package collider.java;
+package collider.game.mob;
 
 /// The bodies in one cell of the push grid. Index `i` of each
 /// component holds the same body.

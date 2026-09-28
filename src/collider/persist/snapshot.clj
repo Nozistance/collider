@@ -16,7 +16,7 @@
             [malli.error :as me]
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
-  (:import (collider.java Chunk)
+  (:import (collider.world Chunk)
            (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.file CopyOption Files LinkOption)
