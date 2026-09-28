@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 12)
+(def layout 13)
 
 (def files
   ["packets" "registries" "blocks" "datapack" "tags" "items"

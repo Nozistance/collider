@@ -3,6 +3,9 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.tables.files :as files]
+            [collider.tables.pack :as pack]
+            [collider.tables.reflect
+             :refer [*loader* cls call call-static static-field]]
             [collider.tables.value
              :refer [kw flt sorted-vals unknown]])
   (:import (clojure.lang Reflector)
@@ -25,21 +28,6 @@
   (let [urls (map #(URI/.toURL (File/.toURI %)) (cons server jars))]
     (URLClassLoader/new (into-array URL urls)
                        (ClassLoader/getPlatformClassLoader))))
-
-(def ^:dynamic ^ClassLoader *loader*)
-
-(defn- cls ^Class [name]
-  (Class/forName (str "net.minecraft." name) true *loader*))
-
-(defn- call [obj m & args]
-  (Reflector/invokeInstanceMethod obj m (object-array args)))
-
-(defn- call-static [c m & args]
-  (^[Class String Object/1] Reflector/invokeStaticMethod
-    (cls c) m (object-array args)))
-
-(defn- static-field [c f]
-  (^[Class String] Reflector/getStaticField (cls c) f))
 
 (defn- field-value [obj f]
   (Reflector/getInstanceField obj f))
@@ -522,7 +510,8 @@
               :compost (compostables)
               :walls (merge (wall-items) (solid-buckets))
               :remainders (remainders) :banners (banner-colors)
-              :dyes (dye-colors) :synced (synced-registries)}))))
+              :dyes (dye-colors) :synced (synced-registries)
+              :pack (pack/registries)}))))
 
 (def ^:private silent-log4j
   (str "<Configuration status=\"OFF\">"

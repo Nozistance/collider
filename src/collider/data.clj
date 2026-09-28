@@ -11,7 +11,7 @@
 
 (def game "26.2")
 
-(def layout 12)
+(def layout 13)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -68,6 +68,12 @@
   (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
       (edn/read (PushbackReader. r)))))
+
+(defn pack
+  "Returns the entries of registry path of the vanilla pack by id, as
+  the codec of the registry writes them."
+  [path]
+  (read-edn (str "pack/" path ".edn")))
 
 (def ^:private table-names
   [:packets :registries :blocks :datapack :tags :items :light

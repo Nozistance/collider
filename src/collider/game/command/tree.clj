@@ -795,9 +795,9 @@
 
 (defn- timeline-ids [opts cx]
   (let [k (clock-in opts cx)]
-    (sort (for [[t {c :clock}] clock/timelines
+    (sort (for [[t {c :clock}] (clock/timelines)
                 :when (and k (= k c))]
-            (data/wire t)))))
+            t))))
 
 (defn- arg-suggestions [[_ [kind opts] :as a] w start cx]
   (case kind

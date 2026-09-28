@@ -67,15 +67,21 @@
 (defn- tables [zf from-class reports rs]
   (let [tagged (tagged-tables zf reports rs from-class)]
     (merge (dissoc from-class :props :compost :walls :placers
-                   :remainders :banners :dyes :synced :non-breakers)
+                   :remainders :banners :dyes :synced :non-breakers
+                   :pack)
            tagged
            (class-tables zf from-class reports (:tags tagged)))))
 
+(defn- pack-tables [pack]
+  (map (fn [[path t]] [(str "pack/" path) t]) pack))
+
 (defn- write-tables! [^File server ^File reports out from-class sha]
   (io/delete-file (io/file out "stamp.edn") true)
+  (files/delete-tree! (io/file out "pack"))
   (with-open [zf (ZipFile/new server)]
-    (let [ts (tables zf from-class reports
-                     (registry/registries reports))
+    (let [rs (registry/registries reports)
+          ts (concat (tables zf from-class reports rs)
+                     (pack-tables (:pack from-class)))
           n (count ts)]
       (doseq [[i [k data]] (map-indexed vector ts)]
         (progress! {:event :progress :step :tables

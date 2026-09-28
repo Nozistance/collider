@@ -11,18 +11,27 @@
   "The state of a clock nothing has moved yet."
   {:total-ticks 0 :partial-tick 0.0 :rate 1.0 :paused false})
 
-(def timelines
-  "The timelines of the vanilla pack.
+(defn- marker [period v]
+  (let [full? (map? v)]
+    {:ticks (if full? (get v "ticks") v)
+     :period period
+     :show? (and full? (get v "show_in_commands" false))}))
+
+(defn- timeline [{clock "clock" period "period_ticks"
+                  markers "time_markers"}]
+  (cond-> {:clock   (data/kebab clock)
+           :markers (update-vals markers #(marker period %))}
+    period (assoc :period period)))
+
+(def ^:private ^:table timeline-table
+  (delay (update-vals (data/pack "timeline") timeline)))
+
+(defn timelines
+  "Returns the timelines of the vanilla pack, by id.
   Each names the clock it reads, its period in ticks and its time
-  markers as the tick and whether commands offer the marker."
-  {:day {:clock :overworld :period 24000
-         :markers {:day [1000 true] :noon [6000 true]
-                   :night [13000 true] :midnight [18000 true]
-                   :wake-up-from-sleep [0 false]
-                   :roll-village-siege [18000 false]}}
-   :early-game {:clock :overworld}
-   :moon {:clock :overworld :period 192000}
-   :villager-schedule {:clock :overworld :period 24000}})
+  markers."
+  []
+  @timeline-table)
 
 (defn names
   "Returns the clocks of the world_clock registry."
@@ -109,10 +118,10 @@
   "Returns the time markers of clock, by id."
   [clock]
   (into {}
-        (for [[_ {c :clock p :period ms :markers}] timelines
-              :when (= c clock)
-              [k [t show?]] ms]
-          [(data/wire k) {:ticks t :period p :show? show?}])))
+        (for [[_ t] (timelines)
+              :when (= clock (:clock t))
+              m (:markers t)]
+          m)))
 
 (defn- ticks-to ^long [{:keys [ticks period]} ^long total]
   (if period
@@ -130,7 +139,7 @@
 (defn timeline-of
   "Returns the timeline of id, or nil."
   [id]
-  (some (fn [[k t]] (when (= id (data/wire k)) t)) timelines))
+  (get (timelines) id))
 
 (defn timeline-ticks
   "Returns where in its period timeline t stands at total ticks."
