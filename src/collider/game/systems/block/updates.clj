@@ -81,12 +81,18 @@
             (assoc m p [(get-in m [p 0] old) st]))
           lit writes))
 
+(defn- out-into [pass ds]
+  (if (seq ds)
+    (assoc pass :out (reduce conj! (:out pass) ds))
+    pass))
+
 (defn- written [world k pass s]
   (let [writes (:writes s)]
     (cond-> (-> pass
                 (assoc-in [:w :chunks] (:chunks s))
-                (update :dirty into (map (comp column first)) writes)
-                (update :out into (edit/settled-deltas world s)))
+                (out-into (edit/settled-deltas world s)))
+      (:dirty pass)
+      (update :dirty into (map (comp column first)) writes)
       (= :block-ticks k) (update :lit lit-writes writes))))
 
 (defn- applied [world ctx k pass changes]
@@ -110,7 +116,7 @@
   (let [[pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
                    [pass first-run])
-        pass (update pass :out into (again-deltas tick r))]
+        pass (out-into pass (again-deltas tick r))]
     (applied world ctx k pass (:changes r))))
 
 (defn- ordered [world k active]
@@ -148,10 +154,13 @@
 (defn- ticks-run [world k ticks]
   (let [ctx (state/level-ctx world)
         firsts (first-runs world ctx k ticks)
-        start {:w world :dirty (i/int-set) :lit {} :out []}]
+        w (update world :chunks chunk/editable)
+        dirty (when (some some? firsts) (i/int-set))
+        start {:w w :dirty dirty :lit {} :out (transient [])}]
     (edit/sets-joined
-      (:out (reduce #(stepped world ctx k %1 %2) start
-                    (map vector ticks firsts))))))
+      (persistent!
+        (:out (reduce #(stepped world ctx k %1 %2) start
+                      (map vector ticks firsts)))))))
 
 (defn- parked-ids [world active due]
   (let [chunks (:chunks world)

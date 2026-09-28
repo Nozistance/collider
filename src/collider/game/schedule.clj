@@ -33,9 +33,15 @@
   "Returns ticks with a tick of type ty at block id due at tick at.
   It comes after every tick added before it."
   [ticks at id ty]
-  (let [order (long (:next ticks 0))]
-    (-> (assoc ticks :next (inc order))
-        (added at id ty order))))
+  (let [order (long (:next ticks 0))
+        at (long at) id (long id)
+        index (:index ticks)
+        tys (get index id)
+        ticks (assoc ticks :next (inc order))]
+    (if (and index (some? (get tys ty)))
+      ticks
+      (cond-> (update ticks :queue queued at id ty order)
+        index (assoc :index (assoc index id (assoc tys ty at)))))))
 
 (defn- due-rows [ticks ^long t]
   (into [] (take-while (fn [[at _]] (<= (long at) t)))

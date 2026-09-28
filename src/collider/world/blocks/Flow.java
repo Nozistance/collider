@@ -32,6 +32,9 @@ public final class Flow {
     /// @param holdsSource True when the state may hold the source.
     /// @param holdsFlowing True when the state may hold the flow.
     /// @param ground True when a state below makes a new source.
+    /// @param container True when the state holds a fluid in itself.
+    /// @param drops True when a flow into the state drops it.
+    /// @param base The source state of the liquid.
     /// @param voidAir The state outside the world height.
     /// @param facesOpen Takes a source state, a target state and a
     ///        direction and tells whether the flow passes.
@@ -40,7 +43,8 @@ public final class Flow {
                          boolean[] holeFloor, boolean[] holdsAny,
                          boolean[] holdsSource,
                          boolean[] holdsFlowing,
-                         boolean[] ground, int voidAir,
+                         boolean[] ground, boolean[] container,
+                         boolean[] drops, int base, int voidAir,
                          IFn facesOpen) {}
 
     private static final int MIN_Y = -64;
@@ -60,21 +64,30 @@ public final class Flow {
     private static final ThreadLocal<long[]> CELLS =
             ThreadLocal.withInitial(() -> new long[SLOTS * 11 * 11]);
 
+    private static final ThreadLocal<int[]> MEMO =
+            ThreadLocal.withInitial(() -> new int[4 * 5 * 11 * 11]);
+
     private final Tables t;
 
     private final ChunkIndex chunks;
 
-    private final int[] ox, oy, oz, ost;
+    private int[] ox, oy, oz, ost;
 
-    private final int on;
+    private int on;
+
+    private int[] made;
+
+    private int mn;
 
     private int px, py, pz, r, w, slope;
 
     private long[] cells;
 
-    private Chunk last;
+    private final Chunk[] near = new Chunk[4];
 
-    private int lastX, lastZ;
+    private final int[] nearX = new int[4], nearZ = new int[4];
+
+    private int[] memo;
 
     private Flow(Tables t, ChunkIndex chunks, Object over) {
         this.t = t;
@@ -97,18 +110,38 @@ public final class Flow {
         on = n;
     }
 
+    private void put(int x, int y, int z, int st) {
+        for (int i = 0; i < on; i++) {
+            if (ox[i] == x && oy[i] == y && oz[i] == z) {
+                ost[i] = st;
+                return;
+            }
+        }
+        if (on == ox.length) {
+            int n = Math.max(8, 2 * on);
+            ox = Arrays.copyOf(ox, n);
+            oy = Arrays.copyOf(oy, n);
+            oz = Arrays.copyOf(oz, n);
+            ost = Arrays.copyOf(ost, n);
+        }
+        ox[on] = x; oy[on] = y; oz[on] = z; ost[on] = st;
+        on++;
+    }
+
     private int raw(int x, int y, int z) {
         for (int i = 0; i < on; i++) {
             if (ox[i] == x && oy[i] == y && oz[i] == z) return ost[i];
         }
         if (y < MIN_Y || y > MAX_Y) return t.voidAir();
-        int cx = x >> 4, cz = z >> 4;
-        if (last == null || cx != lastX || cz != lastZ) {
-            last = Chunk.at(chunks, cx, cz);
-            lastX = cx;
-            lastZ = cz;
+        int cx = x >> 4, cz = z >> 4, k = (cx & 1) | (cz & 1) << 1;
+        Chunk c = near[k];
+        if (c == null || nearX[k] != cx || nearZ[k] != cz) {
+            c = Chunk.at(chunks, cx, cz);
+            near[k] = c;
+            nearX[k] = cx;
+            nearZ[k] = cz;
         }
-        return last.block(x, y, z);
+        return c.block(x, y, z);
     }
 
     private boolean pass(int src, int tgt, int d) {
@@ -171,36 +204,21 @@ public final class Flow {
     public static int downLevel(Tables t, ChunkIndex chunks,
             Object over, int x, int y, int z, int dropoff,
             boolean infinite) {
-        Flow f = new Flow(t, chunks, over);
-        int raw = f.raw(x, y, z), braw = f.raw(x, y - 1, z);
-        if (f.source(braw) || !t.holdsAny()[braw]
-                || !f.pass(raw, braw, DOWN)) return -1;
-        int v = f.newLiquid(x, y - 1, z, dropoff, infinite);
-        if (v < 0 || !f.replaceableDown(braw)) return -1;
-        boolean[] holds = v == 0 ? t.holdsSource() : t.holdsFlowing();
-        return holds[braw] ? v : -1;
+        return new Flow(t, chunks, over)
+                .down(x, y, z, dropoff, infinite);
     }
 
     /// Returns true when the liquid at `x` `y` `z` has a hole below.
     public static boolean hole(Tables t, ChunkIndex chunks,
             Object over, int x, int y, int z) {
-        Flow f = new Flow(t, chunks, over);
-        int braw = f.raw(x, y - 1, z);
-        return f.pass(f.raw(x, y, z), braw, DOWN)
-                && t.holeFloor()[braw];
+        return new Flow(t, chunks, over).holeAt(x, y, z);
     }
 
     /// Returns true when lava is at one of the six cells around `x`
     /// `y` `z`.
     public static boolean lavaNear(Tables t, ChunkIndex chunks,
             Object over, int x, int y, int z) {
-        Flow f = new Flow(t, chunks, over);
-        for (int d = 0; d < 6; d++) {
-            int dy = d == UP ? 1 : d == DOWN ? -1 : 0;
-            if (t.fluid()[f.raw(x + DX[d], y + dy, z + DZ[d])] == 2)
-                return true;
-        }
-        return false;
+        return new Flow(t, chunks, over).lavaAround(x, y, z);
     }
 
     private int cell(int x, int z) {
@@ -243,6 +261,16 @@ public final class Flow {
     }
 
     private int slopeDistance(int i, int pass, int from) {
+        int m = (i * (slope + 1) + pass) * 4 + from;
+        int v = memo[m];
+        if (v < 0) {
+            v = slopeSearch(i, pass, from);
+            memo[m] = v;
+        }
+        return v;
+    }
+
+    private int slopeSearch(int i, int pass, int from) {
         int lowest = 1000;
         for (int d = 0; d < 4; d++) {
             int n = step(i, d);
@@ -286,6 +314,10 @@ public final class Flow {
         long[] c = CELLS.get();
         cells = n <= c.length ? c : new long[n];
         Arrays.fill(cells, 0, n, -1L);
+        int ms = 4 * (slope + 1) * w * w;
+        int[] mc = MEMO.get();
+        memo = ms <= mc.length ? mc : new int[ms];
+        Arrays.fill(memo, 0, ms, -1);
         int raw = raw(x, y, z);
         int[] levels = new int[4];
         boolean[] kept = new boolean[4];
@@ -317,5 +349,116 @@ public final class Flow {
             boolean infinite) {
         return new Flow(t, chunks, over)
                 .lowestTargets(x, y, z, dropoff, slope, infinite);
+    }
+
+    private void add(int x, int y, int z, int st, int dropped) {
+        if (5 * mn + 6 > made.length) {
+            made = Arrays.copyOf(made, 2 * made.length);
+        }
+        int k = 1 + 5 * mn++;
+        made[k] = x; made[k + 1] = y; made[k + 2] = z;
+        made[k + 3] = st; made[k + 4] = dropped;
+    }
+
+    private boolean spreadTo(int x, int y, int z, int v) {
+        if (y < MIN_Y || y > MAX_Y) return true;
+        int traw = raw(x, y, z);
+        if (t.container()[traw] || lavaAround(x, y, z)) return false;
+        int st = t.base() + v;
+        add(x, y, z, st, t.drops()[traw] ? traw : -1);
+        put(x, y, z, st);
+        return true;
+    }
+
+    private boolean lavaAround(int x, int y, int z) {
+        for (int d = 0; d < 6; d++) {
+            int dy = d == UP ? 1 : d == DOWN ? -1 : 0;
+            if (t.fluid()[raw(x + DX[d], y + dy, z + DZ[d])] == 2)
+                return true;
+        }
+        return false;
+    }
+
+    private int down(int x, int y, int z, int dropoff,
+            boolean infinite) {
+        int raw = raw(x, y, z), braw = raw(x, y - 1, z);
+        if (source(braw) || !t.holdsAny()[braw]
+                || !pass(raw, braw, DOWN)) return -1;
+        int v = newLiquid(x, y - 1, z, dropoff, infinite);
+        if (v < 0 || !replaceableDown(braw)) return -1;
+        boolean[] holds = v == 0 ? t.holdsSource() : t.holdsFlowing();
+        return holds[braw] ? v : -1;
+    }
+
+    private boolean holeAt(int x, int y, int z) {
+        int braw = raw(x, y - 1, z);
+        return pass(raw(x, y, z), braw, DOWN) && t.holeFloor()[braw];
+    }
+
+    private int sourcesAround(int x, int y, int z) {
+        int n = 0;
+        for (int d = 0; d < 4; d++) {
+            if (source(raw(x + DX[d], y, z + DZ[d]))) n++;
+        }
+        return n;
+    }
+
+    private boolean sides(int x, int y, int z, int l, int dropoff,
+            int slope, boolean infinite) {
+        int n = l == 8 ? 7 : (l == 0 ? 8 : 8 - l) - dropoff;
+        if (n <= 0) return true;
+        int[] found = lowestTargets(x, y, z, dropoff, slope, infinite);
+        for (int k = 0; k < found[0]; k++) {
+            int d = found[1 + 2 * k];
+            if (!spreadTo(x + DX[d], y, z + DZ[d], found[2 + 2 * k]))
+                return false;
+        }
+        return true;
+    }
+
+    private boolean spread(int x, int y, int z, int l, int dropoff,
+            int slope, boolean infinite) {
+        int v = down(x, y, z, dropoff, infinite);
+        if (v >= 0) {
+            return spreadTo(x, y - 1, z, v)
+                && (sourcesAround(x, y, z) < 3
+                    || sides(x, y, z, l, dropoff, slope, infinite));
+        }
+        if (l == 0 || !holeAt(x, y, z)) {
+            return sides(x, y, z, l, dropoff, slope, infinite);
+        }
+        return true;
+    }
+
+    private int[] cell(int x, int y, int z, int dropoff, int slope,
+            boolean infinite) {
+        int raw = raw(x, y, z);
+        if (!same(raw)) return null;
+        int l = t.level()[raw];
+        int v = l == 0 ? 0 : newLiquid(x, y, z, dropoff, infinite);
+        made = new int[16];
+        if (v < 0) {
+            add(x, y, z, 0, -1);
+        } else {
+            if (v != l) {
+                add(x, y, z, t.base() + v, -1);
+                put(x, y, z, t.base() + v);
+            }
+            if (!spread(x, y, z, v, dropoff, slope, infinite)) {
+                return null;
+            }
+        }
+        made[0] = mn;
+        return made;
+    }
+
+    /// Returns the changes of the liquid at `x` `y` `z` on its fluid
+    /// tick: their count, then x, y, z, the state and the state that
+    /// the flow drops or -1 each. Returns null when a change asks for
+    /// more: a container, a mix with lava or another liquid.
+    public static int[] cell(Tables t, ChunkIndex chunks, int x,
+            int y, int z, int dropoff, int slope, boolean infinite) {
+        return new Flow(t, chunks, null)
+                .cell(x, y, z, dropoff, slope, infinite);
     }
 }

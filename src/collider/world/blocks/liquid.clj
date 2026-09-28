@@ -470,6 +470,14 @@
 (defn- ground? [cls st]
   (or (block/solid? (long st)) (source-of? cls (state-of st))))
 
+(def ^:private air-blocks #{:air :cave-air :void-air})
+
+(defn- destroying [mix traw]
+  (let [traw (long traw)]
+    (when (and (pos? traw)
+               (not (contains? air-blocks (block/block-of traw))))
+      (if mix :fizz [:drop traw]))))
+
 (defn- tables-of [cls codes levels kinds]
   (Flow$Tables. (int (fluid-codes cls)) codes levels kinds
                 (state-table #(enterable? cls %))
@@ -478,7 +486,9 @@
                 (state-table #(holds-specific? cls %))
                 (state-table #(holds-specific? (flowing cls) %))
                 (state-table #(ground? cls %))
-                (int @void-air) faces-open-by))
+                (state-table container?)
+                (state-table #(some? (destroying nil %)))
+                (int (@base cls)) (int @void-air) faces-open-by))
 
 (def ^:private ^:table flow-tables
   (delay (let [codes (byte-table fluid-code)
@@ -592,14 +602,6 @@
                      :dried-ghast [tp st [soaked-ghast]]
                      [tp st])]
     [p st' (conj (vec fx) :fluid-tick)]))
-
-(def ^:private air-blocks #{:air :cave-air :void-air})
-
-(defn- destroying [mix traw]
-  (let [traw (long traw)]
-    (when (and (pos? traw)
-               (not (contains? air-blocks (block/block-of traw))))
-      (if mix :fizz [:drop traw]))))
 
 (defn- spread-plain [{:keys [chunks over cls mix] :as env} tp v traw]
   (let [st (liquid->state cls v)
@@ -824,6 +826,21 @@
   ^long [dim]
   (long (or (get @reaches dim) (reach-of liquids))))
 
+(defn- found-change [^ints found ^long k]
+  (let [i (inc (* 5 k))
+        at #(long (aget found (+ i (long %))))
+        g (at 4)]
+    (if (neg? g)
+      [[(at 0) (at 1) (at 2)] (at 3)]
+      [[(at 0) (at 1) (at 2)] (at 3) [[:drop g]]])))
+
+(defn- water-cell [chunks {:keys [dropoff slope infinite?]} [x y z]]
+  (when-let [found (Flow/cell
+                     (@flow-tables :water) chunks
+                     (int x) (int y) (int z) (int dropoff)
+                     (int slope) (boolean infinite?))]
+    (mapv #(found-change found %) (range (aget ^ints found 0)))))
+
 (defn update-cell
   "Returns the changes of the liquid at p on its fluid tick.
   ctx gives the dimension and the game rules."
@@ -833,7 +850,8 @@
     (when cls
       (let [table (liquids-in (:dim ctx))
             env (flow-env chunks cls table (:rules ctx))]
-        (made (cell-flowed chunks env cls p st))))))
+        (or (when (= :water cls) (water-cell chunks env p))
+            (made (cell-flowed chunks env cls p st)))))))
 
 (defn- fire-sides [chunks p]
   (into {:age :0}

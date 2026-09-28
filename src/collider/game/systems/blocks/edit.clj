@@ -212,27 +212,40 @@
 (defn block-changes
   "Returns the changes as [pos st], without their effects."
   [changes]
-  (mapv (fn [[pos st]] [pos st]) changes))
+  (mapv (fn [[pos st :as c]] (if (== 2 (count c)) c [pos st]))
+        changes))
+
+(defn- heard? [sent [p]]
+  (some #(= p %) sent))
 
 (defn- unheard
   [{:keys [records sent]}]
-  (let [sent (set sent)]
-    (into [] (comp (map first) (remove sent) (distinct)) records)))
+  (if (and (<= (count sent) 16) (every? #(heard? sent %) records))
+    []
+    (let [sent (set sent)]
+      (into [] (comp (map first) (remove sent) (distinct)) records))))
+
+(def ^:private ^:table holds-entity
+  (delay (let [n (inc (data/block-state-count))]
+           (boolean-array (map (comp some? be/kind) (range n))))))
+
+(defn- removed? [[_ old st flags]]
+  (and (aget ^booleans @holds-entity (long old))
+       (spill/removed? old st flags)))
 
 (defn- removal-deltas [world writes]
-  (for [[p old st flags] writes
-        :when (spill/removed? old st flags)
-        d (spill/removed-deltas world p old)]
-    d))
+  (let [gone (fn [[p old]] (spill/removed-deltas world p old))]
+    (into [] (comp (filter removed?) (mapcat gone)) writes)))
 
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates."
   [world s]
-  (let [quiet (unheard s)
-        d [:set-blocks (block-changes (:records s)) (:ticks s)]]
-    (-> [(cond-> d (seq quiet) (conj quiet))]
-        (into (removal-deltas world (:writes s)))
-        (into (change-fx world (:records s))))))
+  (let [recs (:records s)
+        quiet (unheard s)
+        d [:set-blocks (block-changes recs) (:ticks s)]]
+    (cond-> (into [(cond-> d (seq quiet) (conj quiet))]
+                  (removal-deltas world (:writes s)))
+      (some #(get % 2) recs) (into (change-fx world recs)))))
 
 (defn- joined [a b]
   (let [[_ ca ta] a [_ cb tb] b]
