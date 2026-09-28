@@ -5,6 +5,7 @@
             [collider.game.block.container :as container]
             [collider.game.block.jukebox :as jukebox]
             [collider.game.block.sign :as sign]
+            [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
@@ -54,13 +55,52 @@
 (defn- candle-item? [item]
   (= :candle (:type (get (data/blocks) item))))
 
-(defn- candle-cake-deltas [world pos item]
+(defn- candle-cake-deltas [world eid pos item]
   (let [cur (edit/block-at world pos)
-        cake (keyword (str (name item) "-cake"))]
-    (when (and (= :0 (:bites (block/props-of cur)))
+        cake (keyword (str (name item) "-cake"))
+        e (get-in world [:entities eid])]
+    (when (and (zero? (block/prop-long cur :bites))
                (contains? (data/blocks) cake))
-      (concat (set-at world pos (block/state cake))
-              [(heard :cake/add-candle pos 1.0)]))))
+      (concat (items/consume-deltas eid e (:use-hand e) 1)
+              (set-at world pos (block/state cake))
+              [(heard :cake/add-candle pos 1.0)
+               [:award eid (keyword "used" (name item)) 1]]))))
+
+(def ^:private ^:const max-bites 6)
+
+(defn- eats? [world eid]
+  (let [e (get-in world [:entities eid])]
+    (and (not= :off (:use-hand e))
+         (:invulnerable? (game-mode/abilities e)))))
+
+(defn- bitten ^long [^long st]
+  (let [bites (block/prop-long st :bites)]
+    (if (< bites max-bites)
+      (with-props st {:bites (keyword (str (inc bites)))})
+      0)))
+
+(defn- eat-deltas [world eid pos cake fx]
+  (when (eats? world eid)
+    (cons [:award eid :custom/eat-cake-slice 1]
+          (edit/change-deltas world [[pos (bitten cake) fx]]))))
+
+(defn- cake-use [w eid pos _ item _]
+  (or (when (candle-item? item) (candle-cake-deltas w eid pos item))
+      (eat-deltas w eid pos (edit/block-at w pos) nil)))
+
+(defn- candle-hit? [cursor]
+  (> (double (nth cursor 1)) 8.0))
+
+(defn- lit? [st] (= :true (:lit (block/props-of st))))
+
+(defn- candle-cake-use [w eid pos _ item cursor]
+  (let [cur (edit/block-at w pos)]
+    (cond
+      (#{:flint-and-steel :fire-charge} item) nil
+      (and (nil? item) (candle-hit? cursor) (lit? cur))
+      (edit/candle-out-deltas w pos)
+      :else
+      (eat-deltas w eid pos (block/state :cake) [[:drop cur]]))))
 
 (defn- berries-deltas [world pos]
   (let [cur (edit/block-at world pos)
@@ -384,10 +424,8 @@
 (def ^:private by-type
   {:flower-pot (fn [w eid pos _ item _] (pot-deltas w eid pos item))
    :candle candle-use
-   :candle-cake candle-use
-   :cake (fn [w _ pos _ item _]
-           (when (and item (candle-item? item))
-             (candle-cake-deltas w pos item)))
+   :candle-cake candle-cake-use
+   :cake cake-use
    :cave-vines berries-use
    :cave-vines-plant berries-use
    :sweet-berry-bush bush-use
