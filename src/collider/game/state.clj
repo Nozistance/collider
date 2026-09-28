@@ -280,18 +280,8 @@
             (if (kind-changed? old st) (drop-block-entity w pos) w))
           w real))
 
-(defn- inside? [w [pos]] (chunk/in-level? w (long (pos 1))))
-
-(defn- real-step
-  [w [acc now] [pos st :as c]]
-  (let [old (long (or (get now pos)
-                      (chunk/chunks-get-block (:chunks w) pos)))]
-    (if (or (= old (long st)) (not (inside? w c)))
-      [acc now]
-      [(conj acc [pos old st]) (assoc now pos st)])))
-
 (defn- real-changes [w changes]
-  (first (reduce #(real-step w %1 %2) [[] {}] changes)))
+  (chunk/changed (:chunks w) w changes))
 
 (defn level-ctx
   "Returns what the block rules of level w read besides its blocks.
@@ -306,10 +296,8 @@
            :players (mapv (comp :pos val) (player-entries w))})))
 
 (defn- add-block-events [ev events]
-  (reduce (fn [ev [pos st]]
-            (update ev (chunk/block-chunk pos)
-                    (fnil conj []) [pos st]))
-          (or ev (i/int-map)) events))
+  (reduce-kv (fn [ev k es] (update ev k #(if % (into % es) es)))
+             (or ev (i/int-map)) (chunk/by-chunk events)))
 
 (defn- ticks-added [w ticks]
   (reduce (fn [w [k at id ty]] (update w k schedule/add at id ty))
@@ -322,11 +310,10 @@
     changes))
 
 (defn- with-changes [w real ticks quiet]
-  (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)
-        told (unquiet set-real quiet)]
+  (let [told (unquiet real quiet)]
     (cond-> (-> w
                 (update :chunks chunk/editable)
-                (update :chunks chunk/chunks-set-blocks set-real)
+                (update :chunks chunk/chunks-set-blocks real 2)
                 (update :chunks light/relight-batch real
                         (:sky? w true))
                 (update :chunks chunk/frozen)

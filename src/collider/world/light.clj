@@ -2,29 +2,9 @@
   "Block light, sky light, and the sky brightness of the day cycle."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.world Light)
-           (java.util HashMap)))
+  (:import (collider.world Light)))
 
 (set! *warn-on-reflection* true)
-
-(defn- pass! [cache chunks ch cells]
-  (Light/pass cache chunks ch cells (block/tables)))
-
-(defn- relit [c [[_ k] ^bytes arr]]
-  (let [k (long k)
-        si (int (bit-and (bit-shift-right k 1) 31))
-        s (or (chunk/chunk-section c si) (chunk/new-section c si))]
-    (chunk/with-section c si
-      (if (= (bit-and k 1) Light/SKY)
-        (chunk/with-sky-light s arr)
-        (chunk/with-block-light s arr)))))
-
-(defn- rebuild [chunks ^HashMap cache]
-  (let [ks (reverse (sort (keys cache)))
-        entry (fn [k]
-                [[(bit-shift-right (long k) 6) k] (.get cache k)])]
-    (chunk/with-chunks chunks relit
-      (partition-by ffirst (map entry ks)))))
 
 (defn light-at
   "Returns the brighter of the sky and block light at x y z."
@@ -86,80 +66,12 @@
    (Light/brightness chunks (long x) (long y) (long z) (long time)
                      (double rain-level) (double thunder-level))))
 
-(defn- different? [^long old ^long new]
-  (and (not= old new)
-       (or (not= (block/dampening old) (block/dampening new))
-           (not= (block/emits old) (block/emits new))
-           (block/use-shape-for-light-occlusion? old)
-           (block/use-shape-for-light-occlusion? new))))
-
-(defn- sky-full? [chunks x y z]
-  (= 15 (Light/stored chunks Light/SKY x y z)))
-
-(defn- sky-drop [chunks ^long x ^long z ^long src]
-  (loop [yy (dec src) acc []]
-    (if (and (chunk/in-range? yy) (sky-full? chunks x yy z))
-      (recur (dec yy) (conj acc [x yy z 0]))
-      acc)))
-
-(defn- sky-add [chunks ^long x ^long z ^long src]
-  (loop [yy src acc []]
-    (if (and (<= yy chunk/max-y) (not (sky-full? chunks x yy z)))
-      (recur (inc yy) (conj acc [x yy z 15]))
-      acc)))
-
-(defn- sky-source ^long [chunks ^long x ^long z]
-  (Light/skySource chunks x z (block/tables)))
-
-(defn- sky-column [chunks x z ys]
-  (let [x (long x) z (long z)
-        src (sky-source chunks x z)
-        drop (sky-drop chunks x z src)
-        add (sky-add chunks x z src)
-        seen (into #{} (map second) (concat drop add))
-        cell (fn [y]
-               (when-not (seen y)
-                 [x y z (if (>= (long y) src) 15 0)]))]
-    (into (into drop add) (keep cell) ys)))
-
-(defn- columns [changed]
-  (let [m (HashMap.)]
-    (doseq [[[x y z] _ _] changed]
-      (let [k (chunk/pos->id x z)]
-        (.put m k (conj (.getOrDefault m k #{}) y))))
-    m))
-
-(defn- column-cells [chunks [k ys]]
-  (let [[x z] (chunk/id->pos k)]
-    (sky-column chunks x z ys)))
-
-(defn- sky-cells [chunks changed]
-  (into [] (mapcat #(column-cells chunks %)) (columns changed)))
-
-(defn- light-changed? [[_ old new]]
-  (different? (long old) (long new)))
-
-(defn- block-cells [changed]
-  (mapv (fn [[[x y z] _ new]] [x y z (block/emits (long new))])
-        changed))
-
-(defn- relight-changed [chunks changed bcells sky?]
-  (let [cache (HashMap.)]
-    (pass! cache chunks 0 bcells)
-    (when sky?
-      (pass! cache chunks Light/SKY (sky-cells chunks changed)))
-    (if (.isEmpty cache) chunks (rebuild chunks cache))))
-
 (defn relight-batch
   "Returns chunks relit after changes [pos old new].
   Sky light moves only when sky? is true."
   ([chunks changes] (relight-batch chunks changes true))
   ([chunks changes sky?]
-   (let [changed (filter light-changed? changes)
-         bcells (block-cells changed)]
-     (if (empty? bcells)
-       chunks
-       (relight-changed chunks changed bcells sky?)))))
+   (Light/relit chunks changes (boolean sky?) (block/tables))))
 
 (defn relight
   "Returns chunks relit after the block at pos changed state."

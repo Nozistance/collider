@@ -18,7 +18,7 @@
 
 (defn in-range?
   "Returns true when block y is inside the world height."
-  [^long y] (<= min-y y max-y))
+  [^long y] (and (<= min-y y) (<= y max-y)))
 
 (defn level-min-y
   "Returns the lowest block y of level lv."
@@ -61,6 +61,10 @@
   Edits of the result copy each index node once and then write it in
   place, until frozen. Only the index returned last is valid to read."
   ^ChunkIndex [^ChunkIndex chunks] (.editable chunks))
+
+(defn editing?
+  "Returns true when chunks are open for a window of edits."
+  [^ChunkIndex chunks] (.editing chunks))
 
 (defn frozen
   "Returns chunks closed as an immutable value again."
@@ -283,19 +287,12 @@
 
 (defn- add-edit! [^Batch e ^long i ^long state] (.add e i state))
 
-(defn- edited ^Section [^Batch e ^Section s] (.applyTo e s))
-
 (defn- edits-of ^Batch [^HashMap cache cp si]
   (let [k [cp si]]
     (or (.get cache k)
         (let [e (Batch.)]
           (.put cache k e)
           e))))
-
-(defn- merge-section ^Chunk [^Chunk c [[_ si] edits]]
-  (let [si (int si)
-        s (or (.section c si) (.fresh c si))]
-    (.with c si (edited edits s))))
 
 (defn- apply-change! [^HashMap cache change]
   (let [[[x y z :as p] state] change
@@ -310,42 +307,34 @@
   (let [order (fn [[[cp si] _]] [(long cp) (- (long si))])]
     (sort-by order (into {} cache))))
 
-(defn- group-chunk ^long [g] (long (ffirst (first g))))
-
-(defn with-chunks
-  "Returns chunks with each group of entries reduced by f.
-  An entry is [[cp k] x] and its group is reduced into the chunk
-  at cp. A group for an absent chunk is dropped."
-  ^ChunkIndex [^ChunkIndex chunks f groups]
-  (let [gs (filterv #(some? (.get chunks (group-chunk %))) groups)
-        ids (long-array (count gs))
-        cs (object-array (count gs))]
-    (dotimes [i (count gs)]
-      (let [g (gs i)
-            cp (group-chunk g)]
-        (aset ids i cp)
-        (aset cs i (reduce f (.get chunks cp) g))))
-    (.withAll chunks ids cs)))
-
 (defn chunks-set-block
   "Returns chunks with the block at p set to state.
   A change in an absent chunk is dropped. Equals chunks-set-blocks
-  of the one change without its batch machinery."
-  ^ChunkIndex [^ChunkIndex chunks [x y z :as p] state]
-  (let [id (block-chunk p)]
-    (if-some [c (.get chunks id)]
-      (.assoc chunks (Long/valueOf id)
-              (set-block c (bit-and (long x) 15) y
-                         (bit-and (long z) 15) state))
-      chunks)))
+  of the one change without its batch machinery. In a window of edits
+  the chunk and its section are written in place once owned."
+  ^ChunkIndex [^ChunkIndex chunks [x y z] state]
+  (.withBlock chunks (unchecked-int x) (unchecked-int y)
+              (unchecked-int z) (unchecked-int state)))
+
+(defn changed
+  "Returns the changes [pos st] that alter a block of chunks inside
+  the height of level lv, as [pos old st] in order. A change sees the
+  ones before it."
+  [chunks lv changes]
+  (Batch/changed chunks changes (level-min-y lv) (level-max-y lv)))
+
+(defn by-chunk
+  "Returns the changes [pos old st] as a map from chunk id to the
+  [pos st] of that chunk, in order."
+  [changes]
+  (Batch/byChunk changes))
 
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied.
-  Changes in absent chunks are dropped."
-  [chunks changes]
-  (if (empty? changes)
-    chunks
-    (let [cache (HashMap.)]
-      (doseq [change changes] (apply-change! cache change))
-      (with-chunks chunks merge-section
-        (partition-by ffirst (cache-order cache))))))
+  "Returns chunks with the [pos state] changes applied, or the
+  [pos old state] changes when at is 2. Changes in absent chunks are
+  dropped."
+  ([chunks changes] (chunks-set-blocks chunks changes 1))
+  ([chunks changes at]
+   (if (empty? changes)
+     chunks
+     (Batch/setBlocks chunks changes (int at)))))

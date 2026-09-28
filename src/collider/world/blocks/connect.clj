@@ -65,6 +65,11 @@
 
 (defn- connecting-types [] @connecting-set)
 
+(defn connecting?
+  "Returns true when st may change its shape with its neighbours."
+  [^long st]
+  (contains? (connecting-types) (block/type-of st)))
+
 (def ^:private half-types
   (into block/door-types (conj pair-types :pitcher-crop)))
 

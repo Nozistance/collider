@@ -2,7 +2,6 @@ package collider.world;
 
 import clojure.lang.RT;
 import java.util.Arrays;
-import java.util.HashMap;
 
 /// Block light and sky light, their flood after a change and the
 /// brightness of the sky over the day. Channel 0 is block light and
@@ -36,7 +35,9 @@ public final class Light {
     private static final float[] SEG_V = {DUSK, 1.0F, 1.0F, DUSK, DUSK,
                                           1.0F};
 
-    private final HashMap<Long, byte[]> cache;
+    private final LongMap<byte[]> cache;
+    private long lastKey = -1;
+    private byte[] last;
     private final ChunkIndex chunks;
     private final int ch;
     private final BlockTables t;
@@ -45,7 +46,7 @@ public final class Light {
     private long[] pq = new long[64];
     private int pqHead, pqTail;
 
-    private Light(HashMap<Long, byte[]> cache, ChunkIndex chunks, int ch,
+    private Light(LongMap<byte[]> cache, ChunkIndex chunks, int ch,
             BlockTables t) {
         this.cache = cache;
         this.chunks = chunks;
@@ -160,16 +161,115 @@ public final class Light {
         return MIN_Y;
     }
 
-    /// Spreads channel `ch` from the `cells` into `cache`. The old
-    /// light of every cell `[x y z level]` goes dark. Each cell
-    /// shines at its level and the light floods out.
-    public static void pass(HashMap<Long, byte[]> cache,
-            ChunkIndex chunks, long ch, Object cells, BlockTables t) {
-        Light l = new Light(cache, chunks, (int) ch, t);
-        for (Object c : (Iterable<?>) cells) l.clear(c);
-        l.unlight();
-        for (Object c : (Iterable<?>) cells) l.seed(c);
-        l.propagate();
+    /// Returns `chunks` relit after the changes `[pos old new]`, block
+    /// light always and sky light when `sky`. Every section the flood
+    /// touched takes its new light, the higher sections of a chunk
+    /// first so that a new section takes the sky light above it.
+    public static ChunkIndex relit(ChunkIndex chunks, Object changes,
+            boolean sky, BlockTables t) {
+        LongMap<byte[]> cache = relight(chunks, changes, sky, t);
+        if (cache == null || cache.isEmpty()) return chunks;
+        long[] ks = cache.sortedKeys();
+        long[] ids = new long[ks.length];
+        Object[] vals = new Object[ks.length];
+        int n = 0;
+        for (int i = ks.length - 1; i >= 0;) {
+            long id = ks[i] >> 6;
+            Chunk c = (Chunk) chunks.get(id);
+            for (; i >= 0 && (ks[i] >> 6) == id; i--) {
+                if (c == null) continue;
+                int si = (int) ((ks[i] >> 1) & 31);
+                Section s = c.section(si);
+                if (s == null) s = c.fresh(si);
+                byte[] a = cache.get(ks[i]);
+                c = c.with(si, (ks[i] & 1) == SKY ? s.withSkyLight(a)
+                                                  : s.withBlockLight(a));
+            }
+            if (c != null) {
+                ids[n] = id;
+                vals[n++] = c;
+            }
+        }
+        return chunks.withAll(Arrays.copyOf(ids, n),
+                              Arrays.copyOf(vals, n));
+    }
+
+    private static LongMap<byte[]> relight(ChunkIndex chunks,
+            Object changes, boolean sky, BlockTables t) {
+        long[] cells = new long[16];
+        int n = 0;
+        for (Object c : (Iterable<?>) changes) {
+            long old = nth(c, 1), now = nth(c, 2);
+            if (!different(t, old, now)) continue;
+            Object p = RT.nth(c, 0);
+            if (n == cells.length) cells = Arrays.copyOf(cells, 2 * n);
+            cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2),
+                              Block.emission(t, now));
+        }
+        if (n == 0) return null;
+        LongMap<byte[]> cache = new LongMap<>();
+        new Light(cache, chunks, 0, t).pass(cells, n);
+        if (sky) {
+            long[] sc = skyCells(chunks, cells, n, t);
+            new Light(cache, chunks, SKY, t).pass(sc, sc.length);
+        }
+        return cache;
+    }
+
+    private static boolean different(BlockTables t, long old, long now) {
+        return old != now
+            && (Block.dampening(t, old) != Block.dampening(t, now)
+                || Block.emission(t, old) != Block.emission(t, now)
+                || Block.useShape(t, old) || Block.useShape(t, now));
+    }
+
+    private void pass(long[] cells, int n) {
+        for (int k = 0; k < n; k++) clear(cells[k]);
+        unlight();
+        for (int k = 0; k < n; k++) seed(cells[k]);
+        propagate();
+    }
+
+    private static boolean skyFull(ChunkIndex chunks, long x, long y,
+            long z) {
+        return stored(chunks, SKY, x, y, z) == 15;
+    }
+
+    /// Returns the sky light cells of the columns that the changed
+    /// `cells` stand in. Where the sky now starts moved, the cells it
+    /// left go dark and the cells it reached turn full; every other
+    /// changed cell is full at or above the start and dark below it.
+    private static long[] skyCells(ChunkIndex chunks, long[] cells,
+            int n, BlockTables t) {
+        long[] ps = new long[n];
+        for (int k = 0; k < n; k++) ps[k] = cells[k] & ~0xFL;
+        Arrays.sort(ps);
+        long[] out = new long[n + 64];
+        int m = 0;
+        for (int a = 0; a < n;) {
+            int b = a;
+            while (b < n && (ps[b] >> 14) == (ps[a] >> 14)) b++;
+            long x = px(ps[a]), z = pz(ps[a]);
+            long src = skySource(chunks, x, z, t);
+            long lo = src, hi = src;
+            while (inRange(lo - 1) && skyFull(chunks, x, lo - 1, z)) lo--;
+            while (hi <= MAX_Y && !skyFull(chunks, x, hi, z)) hi++;
+            int need = m + (int) (hi - lo) + (b - a);
+            if (need > out.length) {
+                out = Arrays.copyOf(out, Math.max(need, 2 * out.length));
+            }
+            for (long y = src - 1; y >= lo; y--) out[m++] = pack(x, y, z, 0);
+            for (long y = src; y < hi; y++) out[m++] = pack(x, y, z, 15);
+            long prev = Long.MIN_VALUE;
+            for (int k = a; k < b; k++) {
+                long y = py(ps[k]);
+                if (y == prev || (lo <= y && y < hi)) continue;
+                prev = y;
+                out[m++] = pack(x, y, z, y >= src ? 15 : 0);
+            }
+            a = b;
+        }
+        return Arrays.copyOf(out, m);
     }
 
     private static long nth(Object c, int i) {
@@ -194,9 +294,17 @@ public final class Light {
         pq[pqTail++] = e;
     }
 
+    private byte[] cached(long k) {
+        if (k != lastKey) {
+            last = cache.get(k);
+            lastKey = k;
+        }
+        return last;
+    }
+
     private long get(long x, long y, long z) {
         if (!inRange(y)) return outside(ch, y);
-        byte[] a = cache.get(key(x, y, z, ch));
+        byte[] a = cached(key(x, y, z, ch));
         return a != null ? Section.nibble(a, idx(x, y, z))
                          : stored(chunks, ch, x, y, z);
     }
@@ -213,17 +321,18 @@ public final class Light {
     private boolean set(long x, long y, long z, long v) {
         if (!inRange(y)) return false;
         long k = key(x, y, z, ch);
-        byte[] a = cache.get(k);
+        byte[] a = cached(k);
         if (a == null) {
             a = fresh(x, y, z);
             cache.put(k, a);
+            last = a;
         }
         Section.setNibble(a, idx(x, y, z), (int) v);
         return true;
     }
 
-    private void clear(Object c) {
-        long x = nth(c, 0), y = nth(c, 1), z = nth(c, 2);
+    private void clear(long c) {
+        long x = px(c), y = py(c), z = pz(c);
         long cur = get(x, y, z);
         if (cur > 0) {
             set(x, y, z, 0);
@@ -231,9 +340,9 @@ public final class Light {
         }
     }
 
-    private void seed(Object c) {
-        long x = nth(c, 0), y = nth(c, 1), z = nth(c, 2);
-        long source = nth(c, 3);
+    private void seed(long c) {
+        long x = px(c), y = py(c), z = pz(c);
+        long source = c & 0xF;
         if (source > 0 && source > get(x, y, z)) {
             set(x, y, z, source);
             addP(pack(x, y, z, source));

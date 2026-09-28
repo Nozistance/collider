@@ -28,9 +28,16 @@ public final class Section {
     private final long[] data;
     private final byte[] bl;
     private final byte[] sl;
+    private final Object token;
 
     private Section(int bits, int[] pal, long[] data, byte[] bl,
                     byte[] sl) {
+        this(bits, pal, data, bl, sl, null);
+    }
+
+    private Section(int bits, int[] pal, long[] data, byte[] bl,
+                    byte[] sl, Object token) {
+        this.token = token;
         this.bits = bits;
         this.per = bits == 0 ? 0 : 64 / bits;
         this.mul = bits == 0 ? 0 : ((1L << 32) + per - 1) / per;
@@ -260,6 +267,27 @@ public final class Section {
 
     public Section with(int i, int state) {
         return apply(new int[] {i}, new int[] {state}, 1);
+    }
+
+    /// Returns this section with block `i` set to `state`, owned by
+    /// the edit window `token`. A section the window owns is written
+    /// in place and returned; any other is copied once and tagged.
+    /// Owned sections obey the invariant of `ChunkIndex`: once the
+    /// window is frozen, nothing writes them again.
+    public Section withOwned(int i, int state, Object token) {
+        if (token == null) return with(i, state);
+        if (this.token != token) return with(i, state).owned(token);
+        int q = find(pal, state);
+        if (q >= 0) {
+            put(data, i, q);
+            return this;
+        }
+        return run(new int[] {i}, new int[] {state}, 0, 1, data, pal)
+            .owned(token);
+    }
+
+    private Section owned(Object t) {
+        return t == token ? this : new Section(bits, pal, data, bl, sl, t);
     }
 
     /// Returns this section with the first n entries of `idx` set to

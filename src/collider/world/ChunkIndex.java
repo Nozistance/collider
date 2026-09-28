@@ -51,6 +51,11 @@ public final class ChunkIndex extends APersistentMap
                               new Object());
     }
 
+    /// Returns true when this index is open for a window of edits.
+    public boolean editing() {
+        return token != null;
+    }
+
     /// Returns this index without an owner token; the same object
     /// when it has none.
     public ChunkIndex frozen() {
@@ -162,6 +167,16 @@ public final class ChunkIndex extends APersistentMap
         Edit e = new Edit(this);
         e.remove(((Number) k).longValue());
         return e.done(meta);
+    }
+
+    /// Returns this index with the block at x y z set to `state`, the
+    /// same index when its chunk is absent or was written in place.
+    public ChunkIndex withBlock(int x, int y, int z, int state) {
+        Object c = find(root, span, pu, pv, x >> 4, z >> 4);
+        if (c == null) return this;
+        Chunk n = ((Chunk) c).withBlock(x, y, z, state, token);
+        if (n == c) return this;
+        return assoc(Long.valueOf(id(x >> 4, z >> 4)), n);
     }
 
     public ChunkIndex withAll(long[] ids, Object[] values) {

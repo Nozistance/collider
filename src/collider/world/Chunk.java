@@ -13,9 +13,15 @@ public final class Chunk {
     public static final Chunk EMPTY = new Chunk(new Section[COUNT]);
 
     private final Section[] sections;
+    private final Object token;
 
     private Chunk(Section[] sections) {
+        this(sections, null);
+    }
+
+    private Chunk(Section[] sections, Object token) {
         this.sections = sections;
+        this.token = token;
     }
 
     public static Chunk of(Object[] sections) {
@@ -39,6 +45,25 @@ public final class Chunk {
         Section[] a = sections.clone();
         a[si] = s;
         return new Chunk(a);
+    }
+
+    /// Returns this chunk with the block at chunk-relative x and z and
+    /// world y set to `state`, written in place where the edit window
+    /// `token` owns the chunk and its section, as `ChunkIndex` allows.
+    public Chunk withBlock(int x, int y, int z, int state, Object token) {
+        int si = (y >> 4) + OFFSET;
+        Section s = sections[si];
+        if (s == null) s = fresh(si);
+        int i = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
+        Section n = s.withOwned(i, state, token);
+        if (token == null) return with(si, n);
+        if (this.token == token) {
+            sections[si] = n;
+            return this;
+        }
+        Section[] a = sections.clone();
+        a[si] = n;
+        return new Chunk(a, token);
     }
 
     /// Returns the block state at chunk-relative x and z and world y.
