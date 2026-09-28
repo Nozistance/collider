@@ -56,6 +56,16 @@
 
 (def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
 
+(defn editable
+  "Returns chunks opened for a window of edits.
+  Edits of the result copy each index node once and then write it in
+  place, until frozen. Only the index returned last is valid to read."
+  ^ChunkIndex [^ChunkIndex chunks] (.editable chunks))
+
+(defn frozen
+  "Returns chunks closed as an immutable value again."
+  ^ChunkIndex [^ChunkIndex chunks] (.frozen chunks))
+
 (def empty-chunk Chunk/EMPTY)
 
 (defn chunk-of
@@ -196,6 +206,12 @@
   [(long (unchecked-int (bit-shift-right (long chunk-id) 32)))
    (long (unchecked-int (bit-and (long chunk-id) 0xFFFFFFFF)))])
 
+(defn shape
+  "Returns a token shared by every version of chunks with the same
+  set of chunk ids, whatever their blocks."
+  [^ChunkIndex chunks]
+  (.shape chunks))
+
 (defn around-ids
   "Returns the ids of the chunks in the square of radius r around
   chunk cx cz."
@@ -310,6 +326,18 @@
         (aset ids i cp)
         (aset cs i (reduce f (.get chunks cp) g))))
     (.withAll chunks ids cs)))
+
+(defn chunks-set-block
+  "Returns chunks with the block at p set to state.
+  A change in an absent chunk is dropped. Equals chunks-set-blocks
+  of the one change without its batch machinery."
+  ^ChunkIndex [^ChunkIndex chunks [x y z :as p] state]
+  (let [id (block-chunk p)]
+    (if-some [c (.get chunks id)]
+      (.assoc chunks (Long/valueOf id)
+              (set-block c (bit-and (long x) 15) y
+                         (bit-and (long z) 15) state))
+      chunks)))
 
 (defn chunks-set-blocks
   "Returns chunks with the [pos state] changes applied.

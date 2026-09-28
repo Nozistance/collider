@@ -153,7 +153,7 @@
 
 (defn set-state [acc p ^long st]
   (-> acc
-      (update :chunks chunk/chunks-set-blocks [[p st]])
+      (update :chunks chunk/chunks-set-block p st)
       (update :cells conj [p st])))
 
 (defn- air-at? [acc p]

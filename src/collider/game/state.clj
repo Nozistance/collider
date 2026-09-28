@@ -65,7 +65,7 @@
   (into [] (keep (fn [[_ e]]
                    (when (loads-chunks? world e)
                      (chunk/id->pos (chunk/pos-chunk (:pos e))))))
-        (:entities world)))
+        (player-entries world)))
 
 (defn- zone-at [world ^long r]
   (into (i/int-set)
@@ -92,12 +92,20 @@
     [(in? (zone-at world s)) (in? (zone-at world (inc s)))
      (zone-at world (inc (view-radius world)))]))
 
+(defn- areas-key
+  "Returns what the chunk areas of world are a function of.
+  Block writes keep the shape of chunks, so they do not count."
+  [world]
+  [(player-chunks world) (chunk/shape (:chunks world))
+   (:config world) (:rules world)])
+
 (defn- fresh? [world cached]
   (and cached
-       (identical? (nth (key cached) 0) (:entities world))
-       (identical? (nth (key cached) 1) (:chunks world))
-       (identical? (nth (key cached) 2) (:config world))
-       (identical? (nth (key cached) 3) (:rules world))))
+       (let [k (key cached) now (areas-key world)]
+         (and (= (nth k 0) (nth now 0))
+              (identical? (nth k 1) (nth now 1))
+              (identical? (nth k 2) (nth now 2))
+              (identical? (nth k 3) (nth now 3))))))
 
 (defn- areas [world]
   (let [cached (:active-chunks world)]
@@ -126,10 +134,8 @@
   [world]
   (if (fresh? world (:active-chunks world))
     world
-    (let [k [(:entities world) (:chunks world) (:config world)
-             (:rules world)]]
-      (assoc world :active-chunks
-             (MapEntry/create k (compute-areas world))))))
+    (assoc world :active-chunks
+           (MapEntry/create (areas-key world) (compute-areas world)))))
 
 (defn advance
   "Returns the world one tick older."
@@ -280,9 +286,11 @@
   (let [set-real (mapv (fn [[pos _ st]] [pos st]) real)
         told (unquiet set-real quiet)]
     (cond-> (-> w
+                (update :chunks chunk/editable)
                 (update :chunks chunk/chunks-set-blocks set-real)
                 (update :chunks light/relight-batch real
                         (:sky? w true))
+                (update :chunks chunk/frozen)
                 (drop-block-entities real)
                 (ticks-added ticks))
       (seq told) (update :block-events add-block-events told))))

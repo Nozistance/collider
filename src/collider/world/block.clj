@@ -18,11 +18,6 @@
 
 (defn name-of [^long st] (data/state-block st))
 
-(defn props-of [^long st] (second (data/state-props st)))
-
-(defn prop-long ^long [^long st k]
-  (Long/parseLong (name (get (props-of st) k :0))))
-
 (defn- block-table [f]
   (let [a (object-array (data/block-state-count))]
     (doseq [[block b] (data/blocks)
@@ -39,6 +34,20 @@
   (delay (block-table (fn [block _] block))))
 
 (defn- known? [^long st] (< -1 st (data/block-state-count)))
+
+(def ^:private ^:table props-arr
+  (delay
+    (let [n (data/block-state-count) a (object-array n)]
+      (dotimes [i n] (aset a i (second (data/state-props i))))
+      a)))
+
+(defn props-of
+  "Returns the properties of state st, or nil for no such state."
+  [^long st]
+  (when (known? st) (aget ^objects @props-arr st)))
+
+(defn prop-long ^long [^long st k]
+  (Long/parseLong (name (get (props-of st) k :0))))
 
 (declare tables)
 
@@ -189,6 +198,24 @@
            (fn [st t _]
              (or (contains? water-holder-types t)
                  (= :true (:waterlogged (props-of st))))))))
+
+(def ^:private ^:table has-waterlogged-arr
+  (delay (boolean-table
+           (fn [st _ _] (contains? (props-of st) :waterlogged)))))
+
+(defn has-waterlogged-prop?
+  "Returns true when the block of st declares waterlogged."
+  [^long st]
+  (and (known? st) (aget ^booleans @has-waterlogged-arr st)))
+
+(def ^:private ^:table double-slab-arr
+  (delay (boolean-table
+           (fn [st _ _] (= :double (:type (props-of st)))))))
+
+(defn double-slab?
+  "Returns true when the type property of st is double."
+  [^long st]
+  (and (known? st) (aget ^booleans @double-slab-arr st)))
 
 (def ^:private ^:table water-state (delay (state :water)))
 

@@ -103,7 +103,7 @@
   (< (double (random/of-key (:tick world) pos :moss dir)) 0.5))
 
 (defn- carpet-place-deltas [world eid pos state]
-  (let [chunks (chunk/chunks-set-blocks (:chunks world) [[pos state]])
+  (let [chunks (chunk/chunks-set-block (:chunks world) pos state)
         side? #(moss-side? world pos %)
         topper (moss/carpet-topper chunks pos side?)
         changes [[pos state] [(dir/up pos) topper]]]

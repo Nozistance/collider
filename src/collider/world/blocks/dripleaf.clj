@@ -166,7 +166,7 @@
         wet? (block/waterlogged? (chunk/at-void chunks a))
         cleared (if wet? (block/state :water) 0)]
     (when (small? base)
-      (let [chunks' (chunk/chunks-set-blocks chunks [[a cleared]])
+      (let [chunks' (chunk/chunks-set-block chunks a cleared)
             h (Math/floor (* 4.0 (double (roll :height))))
             f (block/facing-of base)
             col (column-changes chunks' lower f (+ 2 (long h)))]

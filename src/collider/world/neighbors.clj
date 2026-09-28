@@ -201,7 +201,7 @@
 (defn- written [s p old st fx flags]
   (let [fx (into (shown fx) (geyser/placed-fx st))]
     (-> s
-        (update :chunks chunk/chunks-set-blocks [[p st]])
+        (update :chunks chunk/chunks-set-block p st)
         (update :records conj (if (seq fx) [p st fx] [p st]))
         (update :writes conj [p old st flags]))))
 
@@ -269,8 +269,14 @@
     (set-block s ctx (placement-state (:chunks s) ctx c)
                flags update-limit)))
 
-(defn- run-each [chunks ctx changes f]
-  (reduce #(f %1 ctx %2) (assoc blank :chunks chunks) changes))
+(defn- run-each
+  "Runs f over the changes in one window of edits of chunks.
+  The index is copied once per node for the whole run and comes out
+  frozen again."
+  [chunks ctx changes f]
+  (let [s (assoc blank :chunks (chunk/editable chunks))]
+    (update (reduce #(f %1 ctx %2) s changes)
+            :chunks chunk/frozen)))
 
 (defn set-blocks
   "Returns the level after changes [pos st fx] are placed in order

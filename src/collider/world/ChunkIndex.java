@@ -7,6 +7,16 @@ import java.util.Iterator;
 import java.util.Map;
 
 /// A persistent map from chunk coordinates to chunk values.
+///
+/// An index may carry an owner `token`, opened by `editable()` and
+/// closed by `frozen()`. Every edit of such an index reuses its
+/// token, and `Edit.own` writes in place into nodes tagged with it.
+/// Invariant: a node tagged with token T is reachable only from
+/// indexes carrying T, the ones edits of that window returned. A
+/// frozen index has no token, an edit of it makes a fresh one, and no
+/// later window reuses T, so nodes tagged T are never written again:
+/// frozen indexes are immutable values. Inside a window only the
+/// index returned last is valid to read, as with a transient.
 public final class ChunkIndex extends APersistentMap
         implements IObj, IKVReduce, IReduceInit, IEditableCollection {
 
@@ -14,20 +24,45 @@ public final class ChunkIndex extends APersistentMap
     static final int LM = (1 << L) - 1, IM = (1 << I) - 1;
     static final int B = (1 << 3) + (1 << 9) + (1 << 15) + (1 << 21);
     public static final ChunkIndex EMPTY =
-            new ChunkIndex(null, L, -1, -1, 0, null);
+            new ChunkIndex(null, L, -1, -1, 0, null, new Object(), null);
 
     final Object[] root;
     final int span, pu, pv, count;
     final IPersistentMap meta;
+    final Object shape, token;
 
     ChunkIndex(Object[] root, int span, int pu, int pv, int count,
-               IPersistentMap meta) {
+               IPersistentMap meta, Object shape, Object token) {
         this.root = root;
         this.span = span;
         this.pu = pu;
         this.pv = pv;
         this.count = count;
         this.meta = meta;
+        this.shape = shape;
+        this.token = token;
+    }
+
+    /// Returns this index with a fresh owner token: edits of the
+    /// result and of their results copy each node once and then write
+    /// it in place until `frozen()`.
+    public ChunkIndex editable() {
+        return new ChunkIndex(root, span, pu, pv, count, meta, shape,
+                              new Object());
+    }
+
+    /// Returns this index without an owner token; the same object
+    /// when it has none.
+    public ChunkIndex frozen() {
+        if (token == null) return this;
+        return new ChunkIndex(root, span, pu, pv, count, meta, shape,
+                              null);
+    }
+
+    /// Returns a token that is the same object for every index with
+    /// this set of keys, however the values changed.
+    public Object shape() {
+        return shape;
     }
 
     static Object find(Object[] n, int span, int pu, int pv,
@@ -99,7 +134,8 @@ public final class ChunkIndex extends APersistentMap
 
     public ChunkIndex withMeta(IPersistentMap m) {
         if (m == meta) return this;
-        return new ChunkIndex(root, span, pu, pv, count, m);
+        return new ChunkIndex(root, span, pu, pv, count, m, shape,
+                              token);
     }
 
     public ChunkIndex empty() {
@@ -277,11 +313,12 @@ public final class ChunkIndex extends APersistentMap
     }
 
     static final class Edit {
-        final Object token = new Object();
+        final Object token, keep;
         final Object[][] path = new Object[4][];
         final int[] at = new int[4];
         Object[] root;
         int span, pu, pv, count;
+        Object shape;
 
         Edit(ChunkIndex x) {
             root = x.root;
@@ -289,11 +326,19 @@ public final class ChunkIndex extends APersistentMap
             pu = x.pu;
             pv = x.pv;
             count = x.count;
+            shape = x.shape;
+            keep = x.token;
+            token = keep == null ? new Object() : keep;
         }
 
         ChunkIndex done(IPersistentMap meta) {
             if (root == null) return EMPTY.withMeta(meta);
-            return new ChunkIndex(root, span, pu, pv, count, meta);
+            return new ChunkIndex(root, span, pu, pv, count, meta,
+                                  shape, keep);
+        }
+
+        void reshaped() {
+            shape = new Object();
         }
 
         Object get(long id) {
@@ -362,7 +407,10 @@ public final class ChunkIndex extends APersistentMap
             if (o == null || ((u | v) >>> D) != 0) throw bad(id, o);
             Object[] n = leaf(u, v);
             int k = ((u & LM) << L) | (v & LM);
-            if (n[k] == null) count++;
+            if (n[k] == null) {
+                count++;
+                reshaped();
+            }
             n[k] = o;
         }
 
@@ -390,6 +438,7 @@ public final class ChunkIndex extends APersistentMap
             int d = descend((int) (id >> 32) + B, (int) id + B);
             path[d][at[d]] = null;
             count--;
+            reshaped();
             while (d > 0 && vacant(path[d])) path[--d][at[d]] = null;
             if (d == 0 && vacant(path[0])) {
                 root = null;

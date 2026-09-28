@@ -1,6 +1,7 @@
 (ns collider.world.blocks.liquid
   "Water and lava with their spread, mixing and push on entities."
-  (:require [collider.world.env.dimension :as dimension]
+  (:require [collider.data :as data]
+            [collider.world.env.dimension :as dimension]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -71,17 +72,17 @@
 
 (def ^:private ^:table void-air (delay (block/state :void-air)))
 
-(defn- raw-at [chunks x y z]
-  (let [y (long y)]
-    (if (chunk/in-range? y)
-      (chunk/chunks-get-block chunks x y z)
-      @void-air)))
+(defn- raw-at ^long [chunks ^long x ^long y ^long z]
+  (if (chunk/in-range? y)
+    (long (chunk/chunks-get-block chunks x y z))
+    (long @void-air)))
 
-(defn- state-of ^long [raw]
-  (let [st (long raw)]
-    (if (and (pos? st) (block/waterlogged? st)) @water-source st)))
+(defn- state-of ^long [^long st]
+  (if (and (pos? st) (block/waterlogged? st))
+    (long @water-source)
+    st))
 
-(defn- state-at [chunks x y z]
+(defn- state-at ^long [chunks ^long x ^long y ^long z]
   (state-of (raw-at chunks x y z)))
 
 (defn- shifted [chunks [x y z] [dx dy dz]]
@@ -182,18 +183,9 @@
 (def ^:private ^:const fluid-margin
   0.001)
 
-(defn- span [^double lo ^double hi]
-  (range (long (Math/floor lo)) (long (Math/ceil hi))))
+(defn- floor ^long [^double v] (long (Math/floor v)))
 
-(defn- cells-of [x y z half height]
-  (let [x (double x) y (double y) z (double z)
-        a (- (double half) fluid-margin)
-        y0 (+ y fluid-margin)
-        y1 (- (+ y (double height)) fluid-margin)]
-    (for [cx (span (- x a) (+ x a))
-          cy (span y0 y1)
-          cz (span (- z a) (+ z a))]
-      [cx cy cz])))
+(defn- ceil ^long [^double v] (long (Math/ceil v)))
 
 (defn- scaled-add [[ax ay az] [fx fy fz] k]
   (let [k (double k)]
@@ -210,18 +202,35 @@
                     :flow   (scaled-add sum flow k)
                     :n      (inc (long (get-in acc [cls :n] 0)))})))
 
-(defn- add-fluid [chunks y acc [cx cy cz :as c]]
-  (let [st (state-at chunks cx cy cz)
-        cls (when (pos? (long st)) (liquid-class st))
-        h (when cls
-            (- (+ (double cy) (height-in chunks cls c)) (double y)))]
-    (if (or (nil? cls) (< (double h) fluid-margin))
-      acc
-      (with-cell acc cls h c chunks))))
+(defn- liquid-at [chunks ^long x ^long y ^long z]
+  (let [st (state-at chunks x y z)]
+    (when (pos? st) (liquid-class st))))
+
+(defn- wet-cell [chunks y acc cls [_ cy :as c]]
+  (let [h (- (+ (double cy) (height-in chunks cls c)) (double y))]
+    (if (< h fluid-margin) acc (with-cell acc cls h c chunks))))
+
+(defn- scan-cells [chunks y x0 x1 y0 y1 z0 z1]
+  (let [x1 (long x1) y0 (long y0) y1 (long y1)
+        z0 (long z0) z1 (long z1)]
+    (loop [cx (long x0) cy y0 cz z0 acc {}]
+      (cond
+        (>= cx x1) acc
+        (>= cy y1) (recur (inc cx) y0 z0 acc)
+        (>= cz z1) (recur cx (inc cy) z0 acc)
+        :else (recur cx cy (inc cz)
+                     (if-let [cls (liquid-at chunks cx cy cz)]
+                       (wet-cell chunks y acc cls [cx cy cz])
+                       acc))))))
 
 (defn- fluid-around [chunks [x y z] half height]
-  (reduce (partial add-fluid chunks y) {}
-          (cells-of x y z half height)))
+  (let [x (double x) yd (double y) z (double z)
+        a (- (double half) fluid-margin)
+        y0 (+ yd fluid-margin)
+        y1 (- (+ yd (double height)) fluid-margin)]
+    (scan-cells chunks y
+                (floor (- x a)) (ceil (+ x a)) (floor y0) (ceil y1)
+                (floor (- z a)) (ceil (+ z a)))))
 
 (defn fluid-height [chunks pos half height cls]
   (let [around (fluid-around chunks pos half height)]
@@ -287,9 +296,9 @@
 (def ^:private horiz3+
   [[1 0 0] [-1 0 0] [0 0 1] [0 0 -1] [0 1 0] [0 -1 0]])
 
-(def ^:private opposite
-  {[1 0 0] [-1 0 0] [-1 0 0] [1 0 0]
-   [0 0 1] [0 0 -1] [0 0 -1] [0 0 1]})
+(def ^:private ^"[J" dxs (long-array [1 -1 0 0]))
+
+(def ^:private ^"[J" dzs (long-array [0 0 1 -1]))
 
 (def ^:private no-fluid-types
   #{:door :standing-sign :wall-sign :ladder :sugar-cane
@@ -389,7 +398,7 @@
 (defn- container? [st]
   (let [st (long st)]
     (and (pos? st)
-         (or (contains? (block/props-of st) :waterlogged)
+         (or (block/has-waterlogged-prop? st)
              (contains? holder-types (block/type-of st))))))
 
 (defn- places? [fluid st]
@@ -398,7 +407,7 @@
     (and (= :water fluid)
          (not (contains? refusing-types t))
          (not (and (contains? slab-types t)
-                   (= :double (:type (block/props-of st))))))))
+                   (block/double-slab? st))))))
 
 (defn- holds-any-fluid? [st]
   (let [st (long st)]
@@ -430,17 +439,22 @@
     (long st)
     (long (raw-at chunks x y z))))
 
-(defn- raw-by [{:keys [chunks over]} [x y z] [dx dy dz]]
-  (raw-over chunks over
-            [(+ (long x) (long dx)) (+ (long y) (long dy))
-             (+ (long z) (long dz))]))
+(defn- raw-cell ^long [{:keys [chunks over]} ^long x ^long y ^long z]
+  (if (pos? (count over))
+    (raw-over chunks over [x y z])
+    (raw-at chunks x y z)))
+
+(defn- raw-by ^long [env [x y z] [dx dy dz]]
+  (raw-cell env (+ (long x) (long dx)) (+ (long y) (long dy))
+            (+ (long z) (long dz))))
+
+(defn- hole-of [cls raw braw]
+  (and (pass-wall? raw braw [0 -1 0])
+       (or (same? cls (state-of braw))
+           (can-hold? (flowing cls) braw))))
 
 (defn- hole? [{:keys [cls] :as env} p]
-  (let [raw (raw-by env p [0 0 0])
-        braw (raw-by env p [0 -1 0])]
-    (and (pass-wall? raw braw [0 -1 0])
-         (or (same? cls (state-of braw))
-             (can-hold? (flowing cls) braw)))))
+  (hole-of cls (raw-by env p [0 0 0]) (raw-by env p [0 -1 0])))
 
 (defn- horizontal-source-scan [{:keys [cls] :as env} raw p]
   (reduce (fn [[h s] d]
@@ -478,27 +492,150 @@
 (defn- step [[x y z] [dx _ dz]]
   [(+ (long x) (long dx)) y (+ (long z) (long dz))])
 
-(defn- passable? [cls raw traw d]
-  (and (can-maybe-pass? cls raw traw (state-of traw) d)
-       (holds-specific? (flowing cls) traw)))
+;; The slope search reads three facts of a state: whether the flow
+;; may enter it, whether a flow above it sees a hole, and what its
+;; wall is. Each is a table by state, built once from the predicates
+;; above, so the search never asks the block tables.
 
-(defn- blocked? [{:keys [cls] :as env} raw tp d]
-  (not (passable? cls raw (raw-by env tp [0 0 0]) d)))
+(defn- state-table ^booleans [f]
+  (let [n (data/block-state-count) a (boolean-array n)]
+    (dotimes [st n] (aset a st (boolean (f st))))
+    a))
+
+(defn- by-liquid [f]
+  (delay (into {}
+               (map (fn [cls] [cls (state-table (f cls))]))
+               (keys liquids))))
+
+(def ^:private ^:table enterable
+  (by-liquid (fn [cls]
+               #(and (not (source-of? cls (state-of %)))
+                     (holds-any-fluid? %)
+                     (holds-specific? (flowing cls) %)))))
+
+(def ^:private ^:table hole-floor
+  (by-liquid (fn [cls]
+               #(or (same? cls (state-of %))
+                    (can-hold? (flowing cls) %)))))
+
+(defn- wall-kind ^long [^long st]
+  (cond (block/full-cube? st) 0 (empty? (boxes st)) 1 :else 2))
+
+(def ^:private ^:table wall-kinds
+  (delay (let [n (data/block-state-count) a (byte-array n)]
+           (dotimes [st n] (aset a st (byte (wall-kind st))))
+           a)))
+
+(defn- wall-open? [^bytes kinds ^long src ^long tgt d]
+  (let [s (aget kinds src) t (aget kinds tgt)]
+    (cond
+      (or (zero? s) (zero? t)) false
+      (and (== s 1) (== t 1)) true
+      :else (faces-open? src tgt d))))
+
+;; The spread context of one lowest-targets call, as vanilla's
+;; SpreadContext: the env, the three tables of its liquid, the chunks
+;; and the overlay, and a flat long array, -1 where a value is still
+;; unknown. Header: origin x y z, reach r, width w, slope. Then seven
+;; slots per cell the search can reach: raw here, raw below, hole,
+;; passable from each side. The array is per thread and refilled.
+
+(def ^:private ^ThreadLocal spread-cells
+  (proxy [ThreadLocal] []
+    (initialValue [] (long-array (+ 6 (* 7 11 11))))))
+
+(defn- ctx-array ^"[J" [^long n]
+  (let [^longs a (ThreadLocal/.get spread-cells)]
+    (if (<= n (alength a)) a (long-array n))))
+
+(defn- new-ctx [{:keys [slope cls chunks over] :as env} [x y z]]
+  (let [r (inc (long slope)) w (inc (* 2 r))
+        n (+ 6 (* 7 w w))
+        ^longs c (ctx-array n)]
+    (Arrays/fill c 0 n -1)
+    (aset c 0 (long x)) (aset c 1 (long y)) (aset c 2 (long z))
+    (aset c 3 r) (aset c 4 w) (aset c 5 (long slope))
+    (object-array [c env (@enterable cls) (@hole-floor cls)
+                   @wall-kinds chunks over])))
+
+(defn- cells ^"[J" [^objects ctx] (aget ctx 0))
+
+(defn- ctx-enterable ^"[Z" [^objects ctx] (aget ctx 2))
+
+(defn- ctx-hole-floor ^"[Z" [^objects ctx] (aget ctx 3))
+
+(defn- ctx-kinds ^"[B" [^objects ctx] (aget ctx 4))
+
+(defn- ctx-block ^long [^objects ctx ^long x ^long y ^long z]
+  (let [chunks (aget ctx 5) over (aget ctx 6)]
+    (if (pos? (count over))
+      (raw-over chunks over [x y z])
+      (raw-at chunks x y z))))
+
+(defn- cell-at ^long [^long i] (+ 6 (* 7 i)))
+
+(defn- cell-of ^long [^longs c ^long x ^long z]
+  (let [r (aget c 3)]
+    (+ (* (+ (- x (aget c 0)) r) (aget c 4))
+       (+ (- z (aget c 2)) r))))
+
+(defn- cell-x ^long [^longs c ^long i]
+  (+ (- (aget c 0) (aget c 3)) (quot i (aget c 4))))
+
+(defn- cell-z ^long [^longs c ^long i]
+  (+ (- (aget c 2) (aget c 3)) (rem i (aget c 4))))
+
+(defn- cell-raw ^long [^objects ctx ^long i ^long dy]
+  (let [c (cells ctx)
+        k (+ (cell-at i) (if (zero? dy) 0 1))
+        v (aget c k)]
+    (if (>= v 0)
+      v
+      (let [v (ctx-block ctx (cell-x c i) (+ (aget c 1) dy)
+                         (cell-z c i))]
+        (aset c k v)
+        v))))
+
+(defn- cell-hole? [^objects ctx ^longs c ^long i]
+  (let [k (+ (cell-at i) 2) v (aget c k)]
+    (if (>= v 0)
+      (== v 1)
+      (let [raw (cell-raw ctx i 0) braw (cell-raw ctx i -1)
+            h (and (wall-open? (ctx-kinds ctx) raw braw [0 -1 0])
+                   (aget (ctx-hole-floor ctx) braw))]
+        (aset c k (if h 1 0))
+        h))))
+
+(defn- cell-step ^long [^longs c ^long i ^long di]
+  (+ i (* (aget dxs di) (aget c 4)) (aget dzs di)))
+
+(defn- cell-passable? [^objects ctx ^longs c ^long i ^long di]
+  (let [k (+ (cell-at i) 3 di) v (aget c k)]
+    (if (>= v 0)
+      (== v 1)
+      (let [traw (cell-raw ctx i 0)
+            raw (cell-raw ctx (cell-step c i (bit-xor di 1)) 0)
+            ok (and (aget (ctx-enterable ctx) traw)
+                    (wall-open? (ctx-kinds ctx) raw traw (horiz3 di)))]
+        (aset c k (if ok 1 0))
+        ok))))
 
 (defn- slope-distance
-  ^long [{:keys [slope] :as env} p ^long pass from]
-  (let [raw (raw-by env p [0 0 0])
-        n (inc pass)]
-    (reduce (fn [lowest d]
-              (let [tp (step p d)]
-                (cond
-                  (or (= d from) (blocked? env raw tp d)) lowest
-                  (hole? env tp) (reduced pass)
-                  (< pass (long slope))
-                  (->> (slope-distance env tp n (opposite d))
-                       (min (long lowest)))
-                  :else lowest)))
-            1000 horiz3)))
+  ^long [^objects ctx ^long i ^long pass ^long from]
+  (let [c (cells ctx)]
+    (loop [di 0 lowest 1000]
+      (if (= di 4)
+        lowest
+        (let [t (cell-step c i di)]
+          (cond
+            (or (= di from) (not (cell-passable? ctx c t di)))
+            (recur (inc di) lowest)
+            (cell-hole? ctx c t) pass
+            (< pass (aget c 5))
+            (recur (inc di)
+                   (min lowest (slope-distance ctx t (inc pass)
+                                               (bit-xor di 1))))
+            :else (recur (inc di) lowest)))))))
 
 (defn- mix-product [mix m]
   (when mix
@@ -605,31 +742,34 @@
       (with-neighbors env (held-liquid tp traw))
       :else (spread-plain env tp v traw))))
 
-(defn- target-of [{:keys [cls] :as env} raw p d]
-  (let [tp (step p d)
-        traw (raw-by env tp [0 0 0])
+(defn- target-of [{:keys [cls] :as env} ^objects ctx raw p di]
+  (let [di (long di) d (horiz3 di) tp (step p d)
+        i (cell-of (cells ctx) (tp 0) (tp 2))
+        traw (cell-raw ctx i 0)
         t (state-of traw)
         v (and (can-maybe-pass? cls raw traw t d)
                (new-liquid env tp))]
     (when (and v (holds-specific? (fluid-type cls v) traw))
       {:tp tp :t t :v v
-       :dist (if (hole? env tp)
+       :dist (if (cell-hole? ctx (cells ctx) i)
                0
-               (slope-distance env tp 1 (opposite d)))})))
+               (slope-distance ctx i 1 (bit-xor di 1)))})))
 
 (defn- lowest-targets [{:keys [cls] :as env} raw p]
-  (second
-    (reduce (fn [[lowest acc :as best] d]
-              (if-let [{:keys [tp t v dist]} (target-of env raw p d)]
-                (let [dist (long dist)
-                      acc (if (< dist (long lowest)) [] acc)]
-                  (cond
-                    (> dist (long lowest)) best
-                    (replaceable-with? t cls d)
-                    [dist (conj acc [tp d v])]
-                    :else [dist acc]))
-                best))
-            [1000 []] horiz3)))
+  (let [ctx (new-ctx env p)]
+    (second
+      (reduce (fn [[lowest acc :as best] di]
+                (if-let [{:keys [tp t v dist]}
+                         (target-of env ctx raw p di)]
+                  (let [dist (long dist)
+                        acc (if (< dist (long lowest)) [] acc)]
+                    (cond
+                      (> dist (long lowest)) best
+                      (replaceable-with? t cls (horiz3 di))
+                      [dist (conj acc [tp (horiz3 di) v])]
+                      :else [dist acc]))
+                  best))
+              [1000 []] (range 4)))))
 
 (defn- over-with [env changes]
   (update env :over (fnil into {})
