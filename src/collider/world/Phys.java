@@ -2,13 +2,11 @@ package collider.world;
 
 import collider.V3;
 
-/// Collision of a moving box against block boxes, one axis at a
-/// time.
-///
-/// The block tables that the methods take are indexed by block
-/// state: `solid` is true for a state that stops a body, `cube` is
-/// true for a full cube, and `shapes` holds for each other state its
-/// boxes as 6 doubles each, in blocks.
+/// Collision of a moving box against block boxes. The block tables
+/// that the methods take are indexed by block state. `solid` is true
+/// for a state that stops a body. `cube` is true for a full cube.
+/// `shapes` holds the boxes of each other state, six doubles each,
+/// in blocks.
 public final class Phys {
 
     private static final double EPS = 1.0E-7;
@@ -22,10 +20,9 @@ public final class Phys {
     private static final ThreadLocal<double[]> BUF =
             ThreadLocal.withInitial(() -> new double[1536]);
 
-    /// Returns `d` clamped so the box `ebox` moving by `d` along
+    /// Returns `d` clamped so that the box `ebox` moving by `d` along
     /// `axis` stops on the face of the nearest of the `n` boxes in
-    /// `a`, each stored as 6 consecutive doubles (min x, y, z, max
-    /// x, y, z).
+    /// `a`. Each box takes six doubles.
     public static double clampAll(double[] a, int n, double[] ebox,
             int eo, int axis, double d) {
         int p1 = (axis == 0) ? 1 : 0;
@@ -53,9 +50,9 @@ public final class Phys {
         return d;
     }
 
-    /// Writes into `out` the clamped x, y, z motion of `box` through
-    /// the velocity `vx`, `vy`, `vz` against the `n` boxes in `a`,
-    /// resolving y first and then the wider of x and z last.
+    /// Writes into `out` the clamped x, y, z motion of `box` with the
+    /// velocity `vx`, `vy`, `vz` against the `n` boxes in `a`. Y goes
+    /// first and the wider of x and z goes last.
     public static void clampAxes(double[] a, int n, double[] box,
             double vx, double vy, double vz, double[] out) {
         double b0 = box[0], b1 = box[1], b2 = box[2];
@@ -132,8 +129,8 @@ public final class Phys {
 
     /// Returns the boxes of the blocks in `chunks` that the box
     /// `ebox` meets on its way by `vx`, `vy`, `vz`, one block
-    /// lower included. The boxes live in a buffer of the thread,
-    /// good until its next sweep.
+    /// lower included. The result stays valid until the next sweep
+    /// of the caller.
     public static Sweep sweep(ChunkIndex chunks, boolean[] solid,
             boolean[] cube, Object[] shapes, double[] ebox,
             double vx, double vy, double vz) {
@@ -189,9 +186,9 @@ public final class Phys {
     }
 
     /// Returns the block x, y, z that a body with half width `half`
-    /// standing at `x`, `y`, `z` rests on, or null when none. Of the
-    /// blocks under the body, the one whose centre is nearest wins;
-    /// a tie goes to the last in the order of y, z and x.
+    /// standing at `x`, `y`, `z` rests on, or null when none. The
+    /// block under the body whose centre is nearest wins. A tie goes
+    /// to the last in the order of y, z and x.
     public static long[] support(ChunkIndex chunks, boolean[] solid,
             boolean[] cube, Object[] shapes, double x, double y,
             double z, double half) {
@@ -264,11 +261,11 @@ public final class Phys {
         }
     }
 
-    /// Returns the move of a body with half width `half` and height
-    /// `height` from `px`, `py`, `pz` by the velocity `vx`, `vy`,
-    /// `vz`. The blocks it meets stop it; a body that lands and is
-    /// held back sideways climbs up to `step` when that takes it
-    /// further.
+    /// Returns the move of a body with half width `half` and
+    /// height `height` from `px`, `py`, `pz` by the velocity `vx`,
+    /// `vy`, `vz`. The blocks it meets stop it. A body that lands
+    /// and is held back sideways climbs up to `step` when that
+    /// takes it further.
     public static Move move(ChunkIndex chunks, boolean[] solid,
             boolean[] cube, Object[] shapes, double px, double py,
             double pz, double vx, double vy, double vz, double half,

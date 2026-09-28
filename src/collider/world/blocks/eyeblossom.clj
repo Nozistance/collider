@@ -57,12 +57,9 @@
     (when-not (support/supported? chunks p st) :neighbor)))
 
 (def ^:private colors
-  "EyeblossomBlock.Type particleColor, by the block it turns to."
   {:open-eyeblossom 16545810 :closed-eyeblossom 6250335})
 
 (defn- trail
-  "Type.spawnTransformParticle: a trail rising from the middle of
-  p for half a second to a second and a half."
   [[x y z :as p] ^long new ^long tick]
   (let [r #(double (random/of-key tick p :eyeblossom-trail %))
         life (+ 0.5 (r 0))
@@ -74,8 +71,8 @@
 
 (defn switch-fx
   "Returns the effects of the eyeblossom st at p turning to new on
-  tick: its sound, long for a random tick, its trail and the
-  eyeblossoms like it around that follow."
+  tick. They hold its sound, its trail and the eyeblossoms around it
+  that follow."
   [chunks p st new tick long?]
   (let [kin (cascade chunks p st tick)]
     (cond-> [(trail p new tick)

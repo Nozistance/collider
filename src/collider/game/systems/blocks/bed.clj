@@ -65,10 +65,7 @@
             [[:merge-entity eid (lying world head)]
              (sleep-status world asleep eid)])))
 
-(defn- refusal
-  "Returns why the player may not lie in the bed at head: a message,
-  :quiet when there is none to say, or nil."
-  [world eid head st rule]
+(defn- refusal [world eid head st rule]
   (cond
     (= :true (:occupied (block/props-of st)))
     {:translate "block.minecraft.bed.occupied"}
@@ -91,10 +88,7 @@
                 (lie-deltas world eid head st)
                 (say-deltas eid (:error-message rule)))))))
 
-(defn- removed
-  "Level.removeBlock of the head: the foot goes by its
-  updateShape, with its break."
-  [world pos]
+(defn- removed [world pos]
   (let [ds (edit/change-deltas world [[pos 0]])
         all (second (first ds))]
     [(update world :chunks chunk/chunks-set-blocks all) ds]))

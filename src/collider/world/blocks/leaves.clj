@@ -1,5 +1,5 @@
 (ns collider.world.blocks.leaves
-  "Leaves: their distance from a log."
+  "Leaves and their distance from a log."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]))
@@ -13,8 +13,8 @@
     :else 7))
 
 (defn distance-state
-  "Returns the leaves st at p with the distance its neighbours
-  give, LeavesBlock.updateDistance."
+  "Returns the leaves st at p with the distance that its
+  neighbours give."
   ^long [chunks p ^long st]
   (let [at (fn [off] (chunk/at-void chunks (mapv + p off)))
         step (fn [d off] (min (long d) (inc (distance-at (at off)))))
@@ -23,10 +23,7 @@
                  (assoc (block/props-of st)
                         :distance (keyword (str d))))))
 
-(defn- wake
-  "LeavesBlock.updateShape: a tick next unless the block on side
-  is a log and the leaves already count one from it."
-  [chunks _dim tick p _old side]
+(defn- wake [chunks _dim tick p _old side]
   (when side
     (let [st (chunk/at-void chunks p)
           n (chunk/at-void chunks (mapv + p (dir/offset side)))

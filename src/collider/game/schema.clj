@@ -11,7 +11,8 @@
 (set! *warn-on-reflection* true)
 
 (defn chunk-entity?
-  "Returns true when entity e belongs to chunk id. Players never do."
+  "Returns true when entity e belongs to chunk id.
+  Players never do."
   [^long id e]
   (and (not= :player (:type e))
        (= id (chunk/pos-chunk (:pos e)))))
@@ -23,9 +24,8 @@
         (:entities w)))
 
 (defn chunk-payload
-  "Returns chunk id with what belongs to it.
-  That is its block entities, the entities in it except players,
-  and its block ticks and fluid ticks as delays from now."
+  "Returns chunk id with its block entities, entities and ticks.
+  Players do not belong to a chunk. Ticks count as delays from now."
   [w id]
   (let [id (long id) t (long (:tick w 0))]
     {:chunk          (get (:chunks w) id)
@@ -43,9 +43,8 @@
       [(long eid) e])))
 
 (defn refreshed
-  "Returns [payload next-eid] with the bodies of the payload under
-  ids no one has had yet. Only the uuid of a body outlives its
-  chunk; its id does not."
+  "Returns [payload next-eid] with the bodies of the payload under new
+  ids. Only the uuid of a body outlives its chunk."
   [w {:keys [entities] :as payload}]
   (let [n (long (:next-eid w 1000000))
         renumber (fn [i [_ e]] [(+ n (long i)) e])
@@ -61,8 +60,8 @@
       (ticks-back :fluid-ticks t (:fluid-ticks payload))))
 
 (defn with-chunk
-  "Returns w with the saved chunk id put back. Its block ticks come
-  due after the delays they were saved with."
+  "Returns w with the saved chunk id put back.
+  Its block ticks come due after the delays they were saved with."
   [w id {:keys [chunk block-entities entities] :as payload}]
   (let [id (long id)
         t (long (:tick w 0))
@@ -187,8 +186,8 @@
 (def ^:private level-table (of-scope :level))
 
 (def level-keys
-  "The keys of world that belong to a level, not the shared part.
-  Includes the transient keys the tick adds and drops."
+  "The keys of world that belong to a level and not to the shared
+  part. The transient keys of the tick count too."
   (into #{:active-chunks :block-events :use-origins :moves :quits
           :heeded :resends :observed}
         (keys level-table)))

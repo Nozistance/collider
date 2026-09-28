@@ -4,15 +4,9 @@ import clojure.lang.RT;
 import java.util.Arrays;
 import java.util.HashMap;
 
-/// Block light and sky light: the levels stored in the sections, the
-/// flood that spreads them after a change, and the brightness of the
-/// sky over the day.
-///
-/// A flood works on a cache of light arrays, one for each section and
-/// channel it touched, by the key `(chunk id << 6) | (section index <<
-/// 1) | channel`. Channel 0 is block light and channel 1 sky light.
-/// It reads the dampening, emission and face shapes of the blocks
-/// from the block tables.
+/// Block light and sky light, their flood after a change and the
+/// brightness of the sky over the day. Channel 0 is block light and
+/// channel 1 sky light.
 public final class Light {
 
     /// The channel of sky light.
@@ -34,14 +28,11 @@ public final class Light {
 
     private static final int DAY = 24000;
 
-    /// The times of day that bound the pieces of the sky level, one
-    /// piece before the first and one after the last wrap the day.
     private static final long[] SEG_T = {-1670, 133, 11867, 13670, 22330,
                                          24133};
 
     private static final float DUSK = 0.26666668F;
 
-    /// The sky level at each time of `SEG_T`.
     private static final float[] SEG_V = {DUSK, 1.0F, 1.0F, DUSK, DUSK,
                                           1.0F};
 
@@ -169,9 +160,9 @@ public final class Light {
         return MIN_Y;
     }
 
-    /// Spreads channel `ch` from the `cells` into `cache`. Each cell
-    /// is `[x y z level]`: the old light of every cell goes dark,
-    /// then each cell shines at its level and the light floods out.
+    /// Spreads channel `ch` from the `cells` into `cache`. The old
+    /// light of every cell `[x y z level]` goes dark. Each cell
+    /// shines at its level and the light floods out.
     public static void pass(HashMap<Long, byte[]> cache,
             ChunkIndex chunks, long ch, Object cells, BlockTables t) {
         Light l = new Light(cache, chunks, (int) ch, t);
@@ -321,8 +312,8 @@ public final class Light {
         return v + weight * (to - v);
     }
 
-    /// Returns the brightness of the sky, 0.0 to 15.0, at `time`
-    /// of day. The `rain` and `thunder` levels, 0.0 to 1.0, dim it.
+    /// Returns the sky brightness from 0.0 to 15.0 at `time` of day.
+    /// The `rain` and `thunder` levels from 0.0 to 1.0 dim it.
     public static double skyLevel(long time, double rain,
             double thunder) {
         float th = (float) thunder;

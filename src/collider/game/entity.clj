@@ -13,8 +13,8 @@
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion})
 
 (defn item
-  "Returns a dropped item entity of stack at pos. It moves with
-  velocity vel and cannot be picked up for delay ticks."
+  "Returns a dropped item entity of stack at pos.
+  It moves with velocity vel and cannot be picked up for delay ticks."
   ([pos vel stack] (item pos vel stack 10))
   ([pos vel stack delay]
    {:type :item :pos pos :vel vel :yaw 0.0 :pitch 0.0
@@ -22,8 +22,8 @@
     :health 5.0}))
 
 (defn pop-velocity
-  "Returns the velocity a stack leaves its holder with, drawn from
-  the random keys ks."
+  "Returns the velocity a stack leaves its holder with, drawn from the
+  random keys ks."
   [ks]
   (let [r (fn [k] (random/of-key (conj ks k)))]
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
@@ -54,7 +54,7 @@
   (or (:uuid e) (UUID. (long eid) (long eid))))
 
 (def pose-box
-  "Returns [half-width height] of a player in each pose."
+  "The half width and height of a player in each pose."
   {:standing [0.3 1.8] :crouching [0.3 1.5]
    :swimming [0.3 0.6] :sleeping [0.1 0.2]})
 
@@ -134,8 +134,8 @@
   (if-let [kb (:kb e)] (update e :vel v/+ kb) e))
 
 (defn saved
-  "Returns entity e as the plain data vanilla keeps across a save
-  at game tick tick. The rest restarts fresh when loaded."
+  "Returns entity e as the data a save keeps at game tick tick.
+  The rest starts fresh when loaded."
   [e tick]
   (let [k (kind (:type e))]
     (if (= :area-effect-cloud k)
@@ -177,8 +177,8 @@
     e))
 
 (defn loaded
-  "Returns the entity saved as m back at game tick tick, or nil
-  when vanilla discards it on load."
+  "Returns the entity saved as m back at game tick tick, or nil when
+  the entity does not survive a load."
   [m tick]
   (let [k (kind (:type m))]
     (cond

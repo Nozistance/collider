@@ -21,9 +21,7 @@
          (data/by-hand? (block/block-of cur))
          (not (and item (get-in world [:entities eid :sneaking?]))))))
 
-(defn- flipped
-  "st with its open property flipped and the props in kvs set."
-  [st & kvs]
+(defn- flipped [st & kvs]
   (let [props (block/props-of st)
         open (if (= :true (:open props)) :false :true)]
     (block/state (block/block-of st)
@@ -48,10 +46,7 @@
     (:trapdoor :weathering-copper-trapdoor) [[pos (flipped state)]]
     :fence-gate (gate-toggled world eid pos state)))
 
-(defn- open-sound
-  "DoorBlock, TrapDoorBlock and FenceGateBlock play it with a
-  BlockPos: at the centre of the block."
-  [world pos state open?]
+(defn- open-sound [world pos state open?]
   (let [kind (data/open-sound (block/block-of state) open?)
         pitch (random/hinge-pitch [(:tick world) pos :door])]
     (out/block-sound kind pos 1.0 pitch)))

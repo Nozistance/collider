@@ -187,11 +187,7 @@
       (nil? pst) 0
       :else (with-prop (block/block-of st) st :occupied occupied))))
 
-(defn- pair-state
-  "DoublePlantBlock.updateShape: the half goes with the other one,
-  when the change is there; without its break, which only a player
-  who breaks a half shows."
-  [chunks pos ^long st sides]
+(defn- pair-state [chunks pos ^long st sides]
   (if (and (contains? sides (partner-side st))
            (nil? (partner chunks pos st)))
     (block/emptied st)
@@ -290,10 +286,7 @@
                    (assoc props :age (support/plant-age tick pos)))
       :else st)))
 
-(defn- leaves-state
-  "The distance of leaves set at pos; a change beside asks for the
-  tick of the leaves rule instead."
-  [chunks pos st sides]
+(defn- leaves-state [chunks pos st sides]
   (if (contains? sides nil) (leaves/distance-state chunks pos st) st))
 
 (defn- snowy-state [self st at]
@@ -334,10 +327,7 @@
         i (cond up? up down? :harp :else down)]
     (with-prop self st :instrument i)))
 
-(defn- kept
-  "The new state, or st when the new state would leave the block
-  empty: the support rule removes it then, with its break."
-  ^long [^long st ^long new]
+(defn- kept ^long [^long st ^long new]
   (if (seq (block/faces-of new)) new st))
 
 (defn- vine-reshaped [chunks pos st sides]
@@ -357,9 +347,7 @@
   (let [new (moss/carpet-reshaped chunks pos st)]
     (if (zero? new) st new)))
 
-(defn- chorus-reshaped
-  "ChorusPlantBlock.updateShape: only the sides that changed."
-  [chunks pos st sides]
+(defn- chorus-reshaped [chunks pos st sides]
   (let [full (block/props-of (chorus/connected chunks pos st))
         dirs (if (contains? sides nil) dir/six (filter sides dir/six))
         props (merge (block/props-of st) (select-keys full dirs))]
@@ -374,8 +362,6 @@
   (if (support/supported? chunks pos st) st 0))
 
 (defn- bell-props
-  "BellBlock.updateShape: a bell between two walls hangs on one
-  when the other goes, and on both when a wall comes behind it."
   [{:keys [attachment facing]} side nst]
   (cond
     (and (= :double_wall attachment)
@@ -463,8 +449,8 @@
         (when (not= (long new) (long st)) new)))))
 
 (defn reshape
-  "Returns the new state of st at pos after a change on sides of it
-  (nil among them for a change at pos itself), or nil for none."
+  "Returns the new state of st at pos after a change on sides of it,
+  or nil for none. A nil side stands for a change at pos itself."
   ([chunks pos st tick] (reshape-of chunks pos st tick #{nil}))
   ([chunks pos st tick sides] (reshape-of chunks pos st tick sides)))
 
@@ -511,7 +497,6 @@
         neighbours))
 
 (defn- connecting-at
-  "Returns the block state at p when its type connects to neighbours."
   [chunks [_ y _ :as p]]
   (when (chunk/in-range? y)
     (let [st (chunk/chunks-get-block chunks p)]
@@ -520,17 +505,10 @@
 (defn- bed-origin? [origin st p]
   (and (= :bed (block/type-of st)) (contains? @origin p)))
 
-(defn- side-toward
-  "The side of a cell next to a change that faces it, by the
-  offset d of the cell from the change."
-  [d]
+(defn- side-toward [d]
   (dir/opposite (side-of d)))
 
-(defn- touched
-  "Returns [cells sides]: the cells a change at positions reaches,
-  in the order first reached, and for each the sides of it that
-  changed; nil stands for the cell itself."
-  [positions]
+(defn- touched [positions]
   (let [beside (fn [p d] [(mapv + p d) (side-toward d)])
         reached #(cons [% nil] (map (partial beside %) neighbours))]
     (reduce (fn [[order sides] [q side]]

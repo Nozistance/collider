@@ -316,10 +316,7 @@
         (let [acc (conj acc [q (block/emptied st) [[:fall st]]])]
           (if (tip? st true) acc (recur (dir/down q) acc)))))))
 
-(defn- wake
-  "SpeleothemBlock.updateShape: a tick when the block at the base
-  side changes and no longer holds it."
-  [chunks _dim tick p _old side]
+(defn- wake [chunks _dim tick p _old side]
   (let [st (chunk/at-void chunks p)
         down? (stalactite? st)]
     (when (and (= side (if down? :up :down))

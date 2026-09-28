@@ -4,8 +4,7 @@ import collider.RandomSupport;
 import collider.world.Section;
 import clojure.lang.IFn;
 
-/// Line of sight through a rectangular grid of sections, and the
-/// rays of a blast.
+/// Line of sight through a grid of sections and the rays of a blast.
 public final class Rays {
 
     private static final int MIN_Y = -64;
@@ -16,9 +15,9 @@ public final class Rays {
     public static final int W = 21;
 
     /// Returns the block state at `x`, `y`, `z` in a `grid` of
-    /// sections shaped `ncx` by `ncz` by `nsy`, whose first cell
-    /// covers section coordinates `cx0`, `cz0`, `sy0`, or 0 if
-    /// outside the grid.
+    /// sections shaped `ncx` by `ncz` by `nsy`, or 0 outside
+    /// the grid. The first cell covers the section at `cx0`,
+    /// `cz0`, `sy0`.
     public static int readBlock(Object[] grid, int cx0, int cz0, int sy0,
                                 int ncx, int ncz, int nsy,
                                 int x, int y, int z) {
@@ -53,10 +52,9 @@ public final class Rays {
         return 1;
     }
 
-    /// Returns the share, 0.0 to 1.0, of the points of a body box
-    /// at `px`, `py`, `pz` with half width `half` and height
-    /// `height` that `clearPath` joins to `cx`, `cy`, `cz` through
-    /// the sections of `rg`.
+    /// Returns the share from 0.0 to 1.0 of the points of a body box
+    /// at `px`, `py`, `pz` with half width `half` and height `height`
+    /// that see `cx`, `cy`, `cz` through the sections of `rg`.
     public static double density(Region rg, boolean[] solid,
             double cx, double cy, double cz, double px, double py,
             double pz, double half, double height) {
@@ -81,9 +79,9 @@ public final class Rays {
         return total == 0 ? 0.0 : (double) hit / (double) total;
     }
 
-    /// Returns the block state at `x`, `y`, `z` in `rg`, or 0
-    /// outside it. An absent column of a region that reads absent
-    /// chunks is first handed to `summon` as its grid x and z.
+    /// Returns the block state at `x`, `y`, `z` in `rg`, or 0 outside
+    /// it. An absent column of a region that reads absent chunks goes
+    /// to `summon` as its grid x and z.
     public static int block(Region rg, IFn summon, int x, int y,
             int z) {
         int ix = (x >> 4) - rg.cx0();
@@ -135,10 +133,10 @@ public final class Rays {
     }
 
     /// Casts the rays of a blast of `power` at `cx`, `cy`, `cz`
-    /// through `rg` and marks in `hit` each cell of the `W` cube
-    /// at `ox`, `oy`, `oz` that a ray reaches: 1 for air, 2 for a
-    /// block. `seed` varies the power of each ray; `resist` holds
-    /// the blast resistance by block state.
+    /// through `rg`. It marks in `hit` each cell of the `W` cube at
+    /// `ox`, `oy`, `oz` that a ray reaches, 1 for air and 2 for a
+    /// block. `seed` varies the power of each ray. `resist` holds the
+    /// blast resistance by block state.
     public static void cast(Region rg, IFn summon, double[] resist,
             byte[] hit, long ox, long oy, long oz, double cx,
             double cy, double cz, double power, long seed) {

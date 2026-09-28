@@ -37,9 +37,7 @@
       part (= part (data/equip-slot (:item stack)))
       :else true)))
 
-(defn- player-quick-slots
-  "Returns where a shift-click sends the stack, best slot first."
-  [inv slot]
+(defn- player-quick-slots [inv slot]
   (let [slot (long slot)
         equip (data/equip-slot (:item (get inv slot)))
         armor (some (fn [[k v]] (when (= v equip) k)) armor-slots)
@@ -515,8 +513,6 @@
     m))
 
 (defn- quick-craft
-  "Returns the menu after a click in a drag.
-  The click starts, continues or ends the drag."
   [{:keys [carried quickcraft] :as m} slot ^long button]
   (let [header (bit-and button 3)
         type (bit-and (bit-shift-right button 2) 3)

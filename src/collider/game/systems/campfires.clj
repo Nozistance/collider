@@ -22,8 +22,8 @@
   (first (keep-indexed (fn [i s] (when (nil? s) i)) items)))
 
 (defn place-food
-  "Returns the campfire with one piece of the item on its first
-  free slot, or nil when it takes nothing."
+  "Returns the campfire with one piece of the item on its first free
+  slot, or nil when it takes nothing."
   [e item]
   (when-let [i (free-slot (:items e))]
     (when-let [r (recipe item)]

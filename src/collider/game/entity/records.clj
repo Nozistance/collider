@@ -1,6 +1,5 @@
 (ns collider.game.entity.records
-  "Entity records. Only the types live here, so a reload of the
-  entity logic keeps the classes of the live entities.")
+  "Entity record types.")
 
 (defrecord Mob [pos vel on-ground yaw pitch head-yaw walked wet?
                 jump-cd task follow look no-action say-tick health

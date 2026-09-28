@@ -120,10 +120,7 @@
 (defn- detached ^long [^long st]
   (block/state (second (stems (block/block-of st))) {:age :7}))
 
-(defn- attached-due
-  "AttachedStemBlock.updateShape: the stem lets go when the fruit
-  it faces is gone, else it needs its ground."
-  [chunks p ctx]
+(defn- attached-due [chunks p ctx]
   (let [st (chunk/at chunks p)]
     (cond
       (and (= (:side ctx) (block/facing-of st))

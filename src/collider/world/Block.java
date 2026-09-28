@@ -3,11 +3,9 @@ package collider.world;
 import clojure.lang.IFn;
 import clojure.lang.RT;
 
-/// Lookups by block state over the `BlockTables`, and the loops
-/// that build the tables.
-///
-/// A state outside the tables is unknown: it answers false, null
-/// or the default of the table.
+/// Lookups by block state over the `BlockTables` and the builders of
+/// the tables. A state outside the tables is unknown. It answers
+/// false, null or the default of the table.
 public final class Block {
 
     private static boolean is(boolean[] a, long st) {
@@ -22,7 +20,6 @@ public final class Block {
         return st >= 0 && st < a.length && (a[(int) st] & b) != 0;
     }
 
-    /// Returns the type of `st`, or null.
     public static Object type(BlockTables t, long st) {
         return at(t.types(), st);
     }
@@ -47,12 +44,11 @@ public final class Block {
         return is(t.attached(), st);
     }
 
-    /// Returns true when `st` a placement replaces.
+    /// Returns true when a placement replaces `st`.
     public static boolean replaceable(BlockTables t, long st) {
         return is(t.replaceable(), st);
     }
 
-    /// Returns true when `st` is a liquid.
     public static boolean liquid(BlockTables t, long st) {
         return is(t.liquid(), st);
     }
@@ -62,7 +58,6 @@ public final class Block {
         return is(t.waterlogged(), st);
     }
 
-    /// Returns true when `st` falls.
     public static boolean falls(BlockTables t, long st) {
         return is(t.falls(), st);
     }
@@ -87,7 +82,6 @@ public final class Block {
         return is(t.fullCube(), st);
     }
 
-    /// Returns true when `st` blocks motion.
     public static boolean blocksMotion(BlockTables t, long st) {
         return is(t.blocksMotion(), st);
     }
@@ -97,7 +91,6 @@ public final class Block {
         return is(t.useShape(), st);
     }
 
-    /// Returns true when `st` can occlude.
     public static boolean canOcclude(BlockTables t, long st) {
         return is(t.canOcclude(), st);
     }
@@ -114,8 +107,7 @@ public final class Block {
         return st >= 0 && st < a.length ? a[(int) st] : 0;
     }
 
-    /// Returns the blast resistance of `st`, 3.0 for an unknown
-    /// state.
+    /// Returns the blast resistance of `st`, 3.0 when unknown.
     public static double resist(BlockTables t, long st) {
         double[] a = t.resist();
         return st >= 0 && st < a.length ? a[(int) st] : 3.0;
@@ -136,8 +128,7 @@ public final class Block {
         return bit(t.sturdyRigid(), st, 1L << d);
     }
 
-    /// Returns true when face `d` of `st` holds things at its
-    /// center.
+    /// Returns true when face `d` of `st` holds things at its center.
     public static boolean sturdyCenter(BlockTables t, long st,
             long d) {
         return bit(t.sturdyCenter(), st, 1L << d);
@@ -172,15 +163,15 @@ public final class Block {
     }
 
     /// Returns true when the face of `from` along `d` and the
-    /// opposite face of `to` seal: no light goes through.
+    /// opposite face of `to` seal and let no light through.
     public static boolean occludes(BlockTables t, long from, long to,
             long d) {
         return seals(face(t, from, (int) d), face(t, to, (int) d ^ 1));
     }
 
-    /// Returns the light cost of crossing from `from` into `to`
-    /// along `d`: 16 when the faces that the shapes touch seal,
-    /// `simple` otherwise.
+    /// Returns the light cost of crossing from `from` into `to` along
+    /// `d`. The cost is 16 when the faces that the shapes touch seal
+    /// and `simple` otherwise.
     public static long dampeningInto(BlockTables t, long from, long to,
             long d, long simple) {
         long[] a = side(t, from, (int) d);
@@ -189,8 +180,8 @@ public final class Block {
     }
 
     /// Returns the face of a shape as 16 by 16 bits in four longs.
-    /// `boxes` holds four numbers for each box: the low u and v
-    /// and the high u and v, in pixels.
+    /// `boxes` holds the low u and v and the high u and v of each
+    /// box, in pixels.
     public static long[] faceMask(long[] boxes) {
         long[] m = new long[4];
         for (int i = 0; i + 3 < boxes.length; i += 4) {
@@ -204,9 +195,9 @@ public final class Block {
         return m;
     }
 
-    /// Returns the table true for each state whose `pred` is
-    /// truthy. `pred` takes the state, its type and its block; a
-    /// state without a type is false.
+    /// Returns the table true for each state whose `pred` is truthy.
+    /// `pred` takes the state, its type and its block. A state
+    /// without a type is false.
     public static boolean[] table(Object[] types, Object[] names,
             IFn pred) {
         boolean[] a = new boolean[types.length];
@@ -219,15 +210,14 @@ public final class Block {
         return a;
     }
 
-    /// Returns the table true for each state but air whose
-    /// collision `shapes` entry is null: a full cube.
+    /// Returns the table true for each state but air that is a full
+    /// cube, with a null `shapes` entry.
     public static boolean[] fullCubes(Object[] shapes) {
         boolean[] a = new boolean[shapes.length];
         for (int i = 1; i < a.length; i++) a[i] = shapes[i] == null;
         return a;
     }
 
-    /// Returns the span of `boxes` along axis `lo`, in blocks.
     private static double span(double[] boxes, int lo) {
         double a = Double.POSITIVE_INFINITY;
         double b = Double.NEGATIVE_INFINITY;
@@ -239,9 +229,9 @@ public final class Block {
     }
 
     /// Returns the table true for each state solid by the legacy
-    /// rule: its boxes span on average at least 0.729 of a block,
-    /// or the full height. `boxes` holds the collision boxes of
-    /// each state, six doubles each, in blocks.
+    /// rule. The boxes of such a state span on average at least 0.729
+    /// of a block, or the full height. `boxes` holds the collision
+    /// boxes of each state, six doubles each, in blocks.
     public static boolean[] legacySolids(Object[] boxes) {
         boolean[] a = new boolean[boxes.length];
         for (int i = 0; i < a.length; i++) {

@@ -1,5 +1,5 @@
 (ns collider.world.blocks.lectern
-  "Lectern: its book and its redstone pulse."
+  "Lectern with its book and its redstone pulse."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 

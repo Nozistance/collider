@@ -1,6 +1,5 @@
 (ns collider.world.blocks.liquid
-  "Water and lava, their spread and mixing.
-  Also their push on entities."
+  "Water and lava with their spread, mixing and push on entities."
   (:require [collider.data :as data]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -181,7 +180,6 @@
         (double (float (+ (double (float y)) (double h))))))))
 
 (def ^:private ^:const fluid-margin
-  "How far the fluid box of a body is shrunk on every side."
   0.001)
 
 (defn- span [^double lo ^double hi]
@@ -275,8 +273,7 @@
                  (fluid-around chunks pos half height) vel)))
 
 (defn fluid-info
-  "The water and lava standing over a body and the push of their
-  flow, all of one walk over the cells its box meets."
+  "Returns the water and lava over a body and the push of their flow."
   ([chunks pos half height vel]
    (fluid-info chunks pos half height vel nil))
   ([chunks pos half height vel dim]
@@ -489,7 +486,6 @@
   (not (passable? cls raw (raw-by env tp [0 0 0]) d)))
 
 (defn- slope-distance
-  "Returns the steps of falling ground ahead of a liquid leaving p."
   ^long [{:keys [slope] :as env} p ^long pass from]
   (let [raw (raw-by env p [0 0 0])
         n (inc pass)]
@@ -528,9 +524,8 @@
       (and soul? (== n (long @blue-ice-state))) @basalt-state)))
 
 (defn mixed
-  "Returns the block the lava at p turns into, or nil when it
-  stays. This is shouldSpreadLiquid of vanilla. over maps the
-  changed blocks to their states, read in place of the chunks."
+  "Returns the block that the lava at p turns into, or nil when it
+  stays. over holds changed states that the chunks lack yet."
   ([chunks p] (mixed chunks nil p))
   ([chunks over [x y z :as p]]
    (let [st (raw-over chunks over p)
@@ -542,11 +537,7 @@
 (def ^:private update-order
   (mapv dir/offset [:west :east :down :up :north :south]))
 
-(defn- converted
-  "The lava beside p that mixes once p is set, as its
-  neighborChanged does. The setBlock of p makes it; it is only
-  seen by the rest of the spread."
-  [chunks over p d]
+(defn- converted [chunks over p d]
   (let [np (mapv + p d)]
     (when-let [prod (mixed chunks over np)]
       (with-meta [np prod] {:seen true}))))
@@ -571,19 +562,13 @@
 (def ^:private soaked-ghast
   [:sound :block.dried-ghast.place-in-water 1.0 1.0])
 
-(defn- doused
-  "CampfireBlock.placeLiquid: a lit campfire goes out, heard."
-  [tp st]
+(defn- doused [tp st]
   (let [props (block/props-of st)
         out (->> (assoc props :lit :false)
                  (block/state (block/block-of st)))]
     (if (= :true (:lit props)) [tp out [extinguished]] [tp st])))
 
-(defn- held-liquid
-  "placeLiquid of the block traw at tp: it takes the water in and
-  asks for its tick, a lit campfire goes out, a dried ghast is
-  heard."
-  [tp traw]
+(defn- held-liquid [tp traw]
   (let [traw (long traw)
         st (logged traw)
         [p st' fx] (case (block/type-of traw)
@@ -594,10 +579,7 @@
 
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
-(defn- destroying
-  "Returns what beforeDestroyingBlock does to traw, or nil for
-  air: lava fizzes, water drops the block."
-  [mix traw]
+(defn- destroying [mix traw]
   (let [traw (long traw)]
     (when (and (pos? traw)
                (not (contains? air-blocks (block/block-of traw))))
@@ -653,18 +635,13 @@
   (update env :over (fnil into {})
           (map (fn [[q st]] [q st])) changes))
 
-(defn- spread-each
-  "Returns the changes of the spread to each target in turn. Each
-  sees what the ones before it did, as spreadTo reads the level."
-  [env targets]
+(defn- spread-each [env targets]
   (first (reduce (fn [[acc env] [tp d v]]
                    (let [cs (spread-to env tp d v)]
                      [(into acc cs) (over-with env cs)]))
                  [[] env] targets)))
 
 (def ^:private spread-rank
-  "The order getSpread gives its sides in, that of Direction: north,
-  south, west, east."
   {[0 0 -1] 0 [0 0 1] 1 [-1 0 0] 2 [1 0 0] 3})
 
 (defn- spread-sides [{:keys [dropoff] :as env} p st]
@@ -727,9 +704,8 @@
   (contains? column-drag (block/type-of (long below))))
 
 (defn column-wake
-  "Returns the tick a bubble column is due over below at tick, or
-  nil: water st of a full source waits 20 ticks,
-  LiquidBlock.tryScheduleBubbleBlockColumn."
+  "Returns the tick at which a bubble column over below is due, or
+  nil. Water st of a full source waits 20 ticks."
   [st below tick]
   (when (and (water-source? st) (makes-column? below))
     (+ (long tick) 20)))
@@ -737,10 +713,7 @@
 (defn- can-occupy? [st]
   (or (bubble-column? st) (water-source? st)))
 
-(defn- column-state
-  "BubbleColumnBlock.getColumnState: what a column over below
-  holds at a cell of occupy."
-  ^long [below occupy]
+(defn- column-state ^long [below occupy]
   (cond
     (bubble-column? below) (long below)
     (makes-column? below)
@@ -757,9 +730,9 @@
         acc))))
 
 (defn column-changes
-  "BubbleColumnBlock.updateColumn at p: the column its block below
-  makes, set with flags 2 at p and up while it can occupy and
-  changes."
+  "Returns the changes of the bubble column at p that the block below
+  makes. They go up from p while the column can occupy and changes.
+  Each is set with flags 2."
   [chunks [x y z :as p]]
   (let [occupy (long (raw-at chunks x y z))
         below (raw-at chunks x (dec (long y)) z)]
@@ -767,18 +740,13 @@
       (let [col (column-state below occupy)]
         (into [[p col nil 2]] (column-up chunks p col))))))
 
-(defn- column-due
-  "The block tick of water or a bubble column: LiquidBlock.tick of
-  a full water source, BubbleColumnBlock.tick."
-  [chunks p _ctx]
+(defn- column-due [chunks p _ctx]
   (column-changes chunks p))
 
 (defn- column-survives? [below]
   (or (bubble-column? below) (makes-column? below)))
 
 (defn- column-shaped?
-  "BubbleColumnBlock.updateShape asks for a block tick: it cannot
-  stay, or the change is below, or above where it may occupy."
   [chunks [x y z :as p] side]
   (let [below (raw-at chunks x (dec (long y)) z)
         [dx dy dz] (when side (dir/offset side))
@@ -809,8 +777,8 @@
     :else (min 0.7 (+ vy 0.06))))
 
 (defn open-above?
-  "Tells whether st above a bubble column leaves it open: no
-  collision and no fluid, BubbleColumnBlock.entityInside."
+  "Returns true when st above a bubble column leaves it open.
+  Such a block has no collision and no fluid."
   [^long st]
   (and (empty? (block/collision-boxes st))
        (nil? (block/liquid-class st))))
@@ -846,9 +814,8 @@
                   (spread (assoc env :over {p st'}) p st')))))
 
 (defn reach
-  "Returns how far across a fluid tick in dimension dim reads: the
-  slope search goes that far less one, and looks at the block past
-  its last step."
+  "Returns how many columns across a fluid tick in dimension
+  dim reads."
   ^long [dim]
   (inc (long (reduce max (map :slope (vals (liquids-in dim)))))))
 

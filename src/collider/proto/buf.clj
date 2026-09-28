@@ -83,21 +83,21 @@
     dst))
 
 (defn clear!
-  "Resets the read and write position.
-  The two-arg form also shrinks the backing array down to keep
-  bytes when it grew larger."
+  "Resets the read and write positions.
+  With keep it also shrinks the capacity down to keep bytes when it
+  grew larger."
   ([^Buf b]
    (.clear b))
   ([^Buf b ^long keep]
    (.clear b (int keep))))
 
 (defn ensure!
-  "Grows the buffer so n more bytes can be written without resize."
+  "Makes room for n more bytes."
   [^Buf b ^long n]
   (.ensure b (int n)))
 
 (defn adopt!
-  "Replaces the backing array with src, read at 0 and write at len."
+  "Takes src as the content, read from 0 and written up to len."
   [^Buf b ^bytes src ^long len]
   (.adopt b src (int len)))
 
@@ -129,7 +129,7 @@
   (set! (.-r b) (.-w b)))
 
 (defn deflate!
-  "Writes what the deflater gives into the free room of the buffer."
+  "Writes what the deflater gives into the free room."
   [^Buf b ^Deflater d]
   (let [a (.-a b)
         w (.-w b)

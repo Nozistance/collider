@@ -1,6 +1,5 @@
 (ns collider.random
-  "Random numbers drawn from keys.
-  The same key always gives the same number."
+  "Random numbers drawn from keys."
   (:import (clojure.lang Murmur3 Util)
            (collider RandomSupport)))
 
@@ -31,8 +30,8 @@
   (^double [a b c] (+ 0.8 (* 0.4 (of-key a b c)))))
 
 (defn hinge-pitch
-  "Returns the narrower sound pitch of doors and other hinges.
-  The pitch comes from the given key or keys."
+  "Returns the narrower sound pitch of doors and other hinges for the
+  given key or keys."
   (^double [ks] (+ 0.9 (* 0.1 (of-key ks))))
   (^double [a b c] (+ 0.9 (* 0.1 (of-key a b c)))))
 

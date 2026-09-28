@@ -1,6 +1,5 @@
 (ns collider.proto.codec
-  "Wire primitives of the protocol.
-  Varints, NBT, item stacks and framing live here."
+  "Wire primitives of the protocol."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]
             [collider.data :as data]
@@ -105,7 +104,7 @@
   (UUID. (buf/read-long buf) (buf/read-long buf)))
 
 (defn write-id
-  "Writes a registry name, in the minecraft namespace by default."
+  "Writes a registry name, in the default namespace when it has none."
   [^Buf buf k]
   (write-string buf
                 (cond
@@ -345,8 +344,8 @@
    (/ (buf/read-int buf) 8.0)])
 
 (defn write-section-change
-  "Writes one block of a section update: where it sits in the section
-  and its state, both in one varlong."
+  "Writes one block of a section update as one varlong of its place
+  in the section and its state."
   [^Buf buf [at state]]
   (let [v (bit-or (bit-shift-left (long state) 12) (long at))]
     (write-varlong buf v)))
@@ -445,7 +444,7 @@
      (bit-shift-right (bit-shift-left v 26) 38)]))
 
 (defn section-pos
-  "Returns the section position packed in one long."
+  "Returns the section position as one long."
   ^long [^long sx ^long sy ^long sz]
   (bit-or (bit-shift-left (bit-and sx 0x3FFFFF) 42)
           (bit-shift-left (bit-and sz 0x3FFFFF) 20)
@@ -458,7 +457,7 @@
      (bit-shift-right (bit-shift-left v 22) 42)]))
 
 (defn write-list
-  "Writes the count of xs, then each of them with f."
+  "Writes the count of xs and each of them with f."
   [^Buf buf xs f]
   (write-varint buf (count xs))
   (doseq [x xs] (f buf x)))
@@ -489,8 +488,8 @@
     "item"))
 
 (defn write-stat
-  "Writes a statistic: its type, then its entry in the registry the
-  type names."
+  "Writes a statistic as its type and its entry in the registry that
+  the type names."
   [^Buf buf k]
   (let [type (keyword (namespace k))
         reg (stat-registry type)]
@@ -1098,10 +1097,7 @@
       (throw (ex-info "no codec for data component"
                       {:component kw}))))
 
-(defn- read-component
-  "Reads one component; delimited? means a byte length precedes the
-  value, as in the untrusted stack of set-creative-mode-slot."
-  [^Buf buf delimited?]
+(defn- read-component [^Buf buf delimited?]
   (let [k (data/entry-name "data_component_type" (read-varint buf))]
     (when delimited? (read-varint buf))
     [k ((:r (component-codec k)) buf)]))
@@ -1148,8 +1144,8 @@
         (write-patch buf stack))))
 
 (defn read-item-stack
-  "Reads an optional stack. The client's creative stack is the
-  untrusted codec: every component value is length-prefixed."
+  "Reads an optional stack whose component values each carry a
+  length."
   ([^Buf buf] (read-item-stack buf false))
   ([^Buf buf delimited?]
    (let [n (read-varint buf)]
@@ -1159,9 +1155,9 @@
                 (read-patch buf delimited?)))))))
 
 (defn read-hashed-stack
-  "Returns the stack the client claims is in a slot.
-  An empty slot gives nil. Component values arrive as hashes, so the
-  result only says whether the stack has any."
+  "Returns the stack that the client claims is in a slot, or nil for
+  an empty slot. Component values arrive as hashes. So the result only
+  tells whether the stack has any."
   [^Buf buf]
   (when (buf/read-boolean buf)
     (let [item (read-varint buf)
@@ -1202,8 +1198,8 @@
     (or kind (throw (unmodelled k)))))
 
 (defn write-particle
-  "Writes a particle as `[type options]`, the options by the type:
-  nil, a block state id, a color, or a trail `[target color ticks]`."
+  "Writes a particle as [type options].
+  The type decides the shape of the options."
   [^Buf buf [t opts]]
   (write-varint buf (long t))
   (case (particle-kind t)
@@ -1231,7 +1227,7 @@
          :trail (read-trail buf))]))
 
 (def data-types
-  "Entity data type -> its place in the serializer order."
+  "The place of each entity data type in serializer order."
   {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
    :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14
    :particle 16 :pose 20 :cow-variant 23 :cow-sound-variant 24})
@@ -1380,8 +1376,7 @@
     :else (compress-into! body payload deflater)))
 
 (defn write-frame!
-  "Writes the payload to the stream as one packet. body and head are
-  scratch buffers."
+  "Writes the payload to the stream as one packet."
   [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold
    ^Deflater deflater ^bytes chunk]
   (buf/clear! body)

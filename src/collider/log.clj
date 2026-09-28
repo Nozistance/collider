@@ -33,7 +33,7 @@
 
 (defn to-file!
   "Sends every line to dir/latest.log as well as the console.
-  The previous run's file moves aside under the time it ended."
+  The log of the previous run moves aside under its end time."
   [dir]
   (when-not @file
     (let [d (File. ^String dir)
@@ -79,7 +79,7 @@
   (String/format Locale/ROOT "(%.1fs)" (to-array [(/ nanos 1e9)])))
 
 (defn step
-  "Logs what is about to happen, runs f, then logs how long it took."
+  "Runs f and logs what it starts and how long it takes."
   [doing done f]
   (info (str doing "..."))
   (let [t (System/nanoTime)

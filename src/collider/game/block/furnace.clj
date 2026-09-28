@@ -1,5 +1,5 @@
 (ns collider.game.block.furnace
-  "Furnaces, blast furnaces and smokers: fuel, recipes and cooking."
+  "Furnace, blast furnace and smoker fuel, recipes and cooking."
   (:require [collider.data :as data]
             [collider.game.craft :as craft]))
 
@@ -100,7 +100,7 @@
       [e false])))
 
 (defn tick
-  "Runs one server tick, returning the furnace and whether it is lit."
+  "Returns the furnace after one tick and whether it is lit."
   [e]
   (let [[e lit?] (countdown e)
         items (:items e)
@@ -111,8 +111,9 @@
       :else (run e lit? (recipe (:kind e) input)))))
 
 (defn input-changed
-  "Sets the input slot to stack. A different item restarts the cooking
-  timer at the total time of its recipe."
+  "Returns the furnace with stack in its input slot.
+  A different item restarts the cooking timer at the total time of
+  its recipe."
   [e stack]
   (let [old (nth (:items e) 0)
         e (assoc-in e [:items 0] stack)]

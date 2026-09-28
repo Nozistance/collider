@@ -1,5 +1,5 @@
 (ns collider.game.block.brewing
-  "The brewing stand: its mixes, its fuel and its brewing timer."
+  "Brewing stand mixes, fuel and timer."
   (:require [collider.data :as data]
             [collider.game.craft :as craft]))
 
@@ -12,13 +12,16 @@
 (def bottles
   #{:potion :splash-potion :lingering-potion :glass-bottle})
 
+(defn- mix-ingredients [b]
+  (into #{} (map :ingredient)
+        (concat (:container-mixes b) (:potion-mixes b))))
+
 (def ^:private ^:table index
   (delay (let [b (data/brewing)]
-           (assoc b :containers (set (:containers b))
-                    :fuel (set (:fuel b))
-                    :ingredients (into #{} (map :ingredient)
-                                       (concat (:container-mixes b)
-                                               (:potion-mixes b)))))))
+           (assoc b
+                  :containers (set (:containers b))
+                  :fuel (set (:fuel b))
+                  :ingredients (mix-ingredients b)))))
 
 (defn fuel? [stack]
   (contains? (:fuel @index) (:item stack)))
@@ -52,10 +55,9 @@
 
 (defn- of-potion [item potion]
   {:item       item :count 1
-   :components {:potion-contents {:potion         potion
-                                  :custom-color   nil
-                                  :custom-effects []
-                                  :custom-name    nil}}})
+   :components {:potion-contents
+                {:potion potion :custom-color nil
+                 :custom-effects [] :custom-name nil}}})
 
 (defn mix
   "Returns what brewing ingredient over source leaves in its slot."
@@ -83,10 +85,7 @@
       (assoc e :fuel fuel-uses :items (shrink (:items e) 4))
       e)))
 
-(defn- spent
-  "Returns the ingredient slot and what its remainder spills. The
-  remainder takes the slot only once the stack is used up."
-  [ing]
+(defn- spent [ing]
   (let [n (dec (long (:count ing 1)))
         left (craft/remainder ing)]
     (if (pos? n)
@@ -123,7 +122,7 @@
 
 (defn tick
   "Returns the stand after one tick.
-  Also returns whether a brew finished and what its ingredient
+  It also returns whether a brew finished and what the ingredient
   remainder spilled."
   [e]
   (let [e (refuel e)

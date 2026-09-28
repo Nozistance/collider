@@ -57,9 +57,7 @@
   (server/send! conn {:packet :update-tags :tags (data/tags)})
   (server/send! conn {:packet :finish-configuration}))
 
-(defn- client-settings
-  "Returns the options a player entity keeps of the packet."
-  [m]
+(defn- client-settings [m]
   {:view-distance (:view-distance m) :skin-parts (:skin-parts m)})
 
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]

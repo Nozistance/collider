@@ -10,8 +10,7 @@
 (def ^:const snow-level (+ sea-level 17))
 
 (defn sea-level-of
-  "Returns the sea level of the generator of level dim.
-  The overworld is flat; the others keep their noise settings."
+  "Returns the sea level of the generator of level dim."
   ^long [dim]
   (case dim :the-nether 32 :the-end 0 sea-level))
 
@@ -59,18 +58,18 @@
   (height-adjusted-temperature biome p))
 
 (defn warm-enough-to-rain?
-  "Tells whether what falls on biome at p is rain, not snow."
+  "Returns true when what falls on biome at p is rain."
   [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 
 (defn cold-enough-to-snow?
-  "Tells whether what falls on biome at p is snow."
+  "Returns true when what falls on biome at p is snow."
   [biome p]
   (not (warm-enough-to-rain? biome p)))
 
 (defn precipitation-at
-  "Returns what falls from the sky of biome at p: :rain, :snow or
-  :none."
+  "Returns :rain, :snow or :none for what falls from the sky of biome
+  at p."
   [biome p]
   (cond
     (not (:has-precipitation biome)) :none
@@ -82,6 +81,6 @@
     (get (:attributes biome) k (get (:attributes dim) k))))
 
 (defn increased-fire-burnout?
-  "Tells whether fire burns out faster in biome."
+  "Returns true when fire burns out faster in biome."
   [biome]
   (boolean (attribute biome :gameplay/increased-fire-burnout)))

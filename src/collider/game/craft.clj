@@ -99,7 +99,7 @@
                     (positioned grid nw nh cs l t))))))
 
 (defmulti matches?
-  "Returns true if recipe crafts from input."
+  "Returns true when recipe crafts from input."
   (fn [recipe _] (:type recipe)))
 
 (defmulti assemble

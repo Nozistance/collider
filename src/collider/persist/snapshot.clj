@@ -165,8 +165,8 @@
 
 (defn snapshot
   "Returns the world as a store keeps it.
-  Each level holds every chunk it has loaded and what belongs to it;
-  the shared part holds the players of every level."
+  Each level holds every chunk it has loaded and what belongs to it.
+  The shared part holds the players of every level."
   [world]
   (assoc (schema/snapshot world :shared)
     :levels (into {} (for [dim (keys (:levels world))]
@@ -213,9 +213,8 @@
         (assoc :stored (or (:stored lm) (i/int-set))))))
 
 (defn world-of
-  "Returns the world a snapshot holds.
-  Each level holds its chunks and what belongs to them; a level
-  the snapshot lacks is empty."
+  "Returns the world that a snapshot holds.
+  A level that the snapshot lacks is empty."
   [snap]
   (let [shared (schema/shared-of (dissoc snap :levels))
         tick (long (:tick shared 0))]
@@ -250,7 +249,7 @@
     (world-of m)))
 
 (defn start-saver
-  "Returns an agent that writes chunks and meta in the background.
+  "Returns a saver of chunks and meta.
   Its meta holds the chunks handed to it but not written yet."
   []
   (agent {:chunks nil :meta nil :writes 0}
@@ -272,7 +271,7 @@
                  m)))))
 
 (defn changed-chunks
-  "Returns the entries of chunk map new that differ from old."
+  "Returns the entries of chunks new that differ from old."
   [old new]
   (remove (fn [[k v]] (= v (get old k))) new))
 
@@ -329,8 +328,8 @@
 
 (defn store-chunk!
   "Saves an unloaded chunk.
-  A read sees it at once; the write waits for every save and
-  read asked for before it."
+  A read sees it at once. The write waits for every save and read
+  asked for before it."
   [saver store dim id payload]
   (hold! saver dim id payload)
   (send-off saver stored! saver store dim id payload))
@@ -359,14 +358,14 @@
   (send-off saver fetched! saver store dim id deliver))
 
 (defn fetch-chunk-now!
-  "Returns a saved chunk on the calling thread.
-  A chunk still waiting to be written comes back as it was
-  given. nil comes back when the chunk cannot be read."
+  "Returns a saved chunk at once.
+  A chunk that waits for its write comes back as it was given. Returns
+  nil when the chunk cannot be read."
   [saver store dim id]
   (read-chunk saver store dim id))
 
 (defn request-save!
-  "Asks the saver to write world to store in the background.
+  "Asks the saver to write world to store.
   Returns nil when there is no saver."
   [saver store world]
   (when saver

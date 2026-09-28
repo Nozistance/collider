@@ -1,5 +1,5 @@
 (ns collider.game.block.container
-  "Containers and benches, their opening, contents, lids and viewers."
+  "Containers and benches with their menus and lids."
   (:require [collider.data :as data]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
@@ -37,7 +37,7 @@
         bench-types))
 
 (def menu-types
-  "Blocks whose use opens a menu, containers and furnaces alike."
+  "The blocks that open a menu when used."
   (conj (into container-types be/furnace-kinds) :brewing-stand))
 
 (def state-at chest/state-at)
@@ -80,9 +80,7 @@
 
 (def ^:private positive? #{:up :south :east})
 
-(defn- half-free?
-  "Returns true when nothing blocks the lid on that side."
-  [chunks pos facing]
+(defn- half-free? [chunks pos facing]
   (let [st (state-at chunks (mapv + pos (dir/offset facing)))
         ax (long (axis-index (dir/axis facing)))
         far? (contains? positive? facing)]
@@ -196,8 +194,8 @@
       (when-let [f (builders t)] (f world chunks pos st)))))
 
 (defn provider-at
-  "BlockState.getMenuProvider: the menu a spectator opens at pos.
-  An ender chest has none; a shulker box opens whatever blocks
+  "Returns the menu a spectator opens at pos.
+  An ender chest has none. A shulker box opens whatever blocks
   its lid."
   [world pos]
   (let [st (state-at (:chunks world) pos)]
@@ -298,9 +296,7 @@
 
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
 
-(defn- taken
-  "Returns [item n] of what a click removed from the result slot."
-  [old items]
+(defn- taken [old items]
   (let [before (nth (:items old) 2)
         n (- (count-of before) (count-of (nth items 2)))]
     (when (pos? n) [(:item before) n])))
@@ -337,11 +333,7 @@
 
 (defn- below [[x y z]] [x (dec (long y)) z])
 
-(defn- lectern-set
-  "Returns the deltas of the lectern at pos taking st between
-  ticks: Level.setBlock with flags 3, then the cell below told of
-  it (LecternBlock.updateBelow)."
-  [world pos st]
+(defn- lectern-set [world pos st]
   (edit/flagged-deltas world [[pos st]] 3 [(below pos)]
                        (dec (long (:tick world)))))
 
@@ -399,8 +391,8 @@
   (boolean (some #(= pos %) (positions m))))
 
 (defn viewers
-  "ContainerOpenersCounter: the players with a menu of the container
-  at pos open, spectators left out."
+  "Returns the players that have the menu of the container at pos
+  open. Spectators do not count."
   [world pos]
   (let [sees? (fn [[_ e]]
                 (and (:menu e) (covers? (:menu e) pos)
@@ -497,14 +489,11 @@
     (= 1 after) [[:shulker-anim pos {:status :opening}]]
     :else nil))
 
-(defn- opener-count
-  "Returns the openers the container at pos counts. That is the
-  openCount of its ContainerOpenersCounter, or of a shulker box."
-  ^long [world pos]
+(defn- opener-count ^long [world pos]
   (long (get-in world [:openers pos] 0)))
 
 (def ^:private counted
-  "The containers with a ContainerOpenersCounter."
+  "The containers that count their openers."
   (conj chest-types :barrel :ender-chest))
 
 (defn barrel-open-state [^long st open?]
@@ -518,10 +507,7 @@
     (= :barrel t) (barrel-sound world pos st open?)
     (= :ender-chest t) (ender-sound world pos open?)))
 
-(defn- edge-deltas
-  "ContainerOpenersCounter.onOpen and onClose: the sound, and the
-  open of a barrel."
-  [world pos st t open?]
+(defn- edge-deltas [world pos st t open?]
   (concat
     (edge-sound world pos st t open?)
     (when (= :barrel t)
@@ -530,24 +516,15 @@
 (defn- lid-event [pos ^long n]
   (out/all (out/block-event pos 1 n)))
 
-(defn- changed-deltas
-  "ContainerOpenersCounter.openerCountChanged: a barrel shows
-  nothing, the others move their lid."
-  [pos t ^long n]
+(defn- changed-deltas [pos t ^long n]
   (when (not= :barrel t) [(lid-event pos n)]))
 
-(defn- schedule-recheck
-  "ContainerOpenersCounter.scheduleRecheck. A recheck already
-  pending stays, as Level.scheduleTick keeps it."
-  [world pos]
+(defn- schedule-recheck [world pos]
   (when-not (get-in world [:container-rechecks pos])
     [[:container-recheck pos
       (+ (dec (long (:tick world))) recheck-delay)]]))
 
-(defn- counter-deltas
-  "ContainerOpenersCounter.incrementOpeners for step 1 and
-  decrementOpeners for step -1."
-  [world pos st t step]
+(defn- counter-deltas [world pos st t step]
   (let [prev (opener-count world pos)
         n (+ prev (long step))
         opened? (and (pos? step) (zero? prev))]
@@ -560,10 +537,7 @@
       (when opened? (schedule-recheck world pos))
       (changed-deltas pos t n))))
 
-(defn- shulker-deltas
-  "ShulkerBoxBlockEntity.startOpen for step 1 and stopOpen for
-  step -1."
-  [world pos ^long step]
+(defn- shulker-deltas [world pos ^long step]
   (let [prev (opener-count world pos)
         n (+ (if (pos? step) (max prev 0) prev) step)
         heard? (if (pos? step) (= 1 n) (<= n 0))]
@@ -574,8 +548,8 @@
       (trigger-deltas pos n))))
 
 (defn opener-deltas
-  "Container.startOpen for step 1 and stopOpen for step -1 at pos,
-  by a player that is no spectator."
+  "Returns the deltas of a player that opens the container at pos for
+  step 1 or closes it for step -1. The player is no spectator."
   [world pos ^long step]
   (let [st (state-at (:chunks world) pos)
         t (block/type-of st)]
@@ -583,9 +557,7 @@
       (= :shulker-box t) (shulker-deltas world pos step)
       (contains? counted t) (counter-deltas world pos st t step))))
 
-(defn- recount-deltas
-  "ContainerOpenersCounter.recheckOpeners."
-  [world pos st t now]
+(defn- recount-deltas [world pos st t now]
   (let [prev (opener-count world pos)
         n (viewers world pos)]
     (concat
@@ -600,8 +572,6 @@
         (when (pos? n) (+ (long now) recheck-delay))]])))
 
 (defn- due-recheck
-  "The scheduled tick of the block at pos: a counted container
-  rechecks its openers, else the tick is dropped."
   [world ^long now [pos at]]
   (when (<= (long at) now)
     (let [st (state-at (:chunks world) pos)
@@ -946,10 +916,7 @@
   (when-let [next (anvil/next-stage (block/block-of st))]
     (block/state next (block/props-of st))))
 
-(defn- wear-deltas
-  "AnvilMenu.onTake: a worn anvil is set with flags 2, a spent one
-  removed (Level.removeBlock, flags 3), both between ticks."
-  [world pos ^long st]
+(defn- wear-deltas [world pos ^long st]
   (let [base (dec (long (:tick world)))
         next (worn-state st)
         c [pos (or next (block/emptied st))]

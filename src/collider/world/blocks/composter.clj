@@ -1,5 +1,5 @@
 (ns collider.world.blocks.composter
-  "Composter: its fill level, and the settling of a full one."
+  "Composter fill levels and the settling of a full one."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 

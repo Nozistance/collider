@@ -1,5 +1,5 @@
 (ns collider.data
-  "The game data tables."
+  "Game data tables."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io])
   (:import (clojure.lang PersistentArrayMap)
@@ -21,9 +21,8 @@
    "outlines" "sturdy" "flags"])
 
 (defn stamp
-  "Returns the mark a set of tables carries: the game version and
-  the layout they were made for. The mark can also name the server
-  jar the tables come from; collider does not check it."
+  "Returns the stamp of a set of tables.
+  The stamp names the game version and the table layout."
   []
   {:game game :layout layout})
 
@@ -63,14 +62,13 @@
        (catch ExecutionException e (throw (ex-cause e)))))
 
 (defn load!
-  "Reads every table the loaded namespaces declare, all at once.
+  "Reads every table that the loaded namespaces declare.
   A table made from other tables waits for them."
   []
   (run! wait (mapv #(future @%) (all-tables))))
 
 (defn no-tables
-  "Returns the error for a missing or stale set of tables.
-  The server does not make tables. The vanilla-tables tool does."
+  "Returns the error for a missing or stale set of tables."
   []
   (let [why (str "No complete set of tables for " game
                  " in target/data or data")
@@ -122,8 +120,7 @@
 (defn items [] (:items @tables))
 
 (defn light
-  "Returns how block states pass and emit light, as tables that
-  each-run! walks."
+  "Returns how block states pass and emit light."
   [] (:light @tables))
 
 (defn fire
@@ -135,19 +132,16 @@
   [] (:drops @tables))
 
 (defn entity-drops
-  "Returns the loot tables of the mobs, in their vanilla shape.
-  A shearing table is named after the mob with -shear, so that
-  shearing/sheep/black is :sheep-shear/black."
+  "Returns the loot tables of the mobs.
+  A shearing table has the name of the mob with the suffix -shear."
   [] (:entity-drops @tables))
 
 (defn recipes
-  "Returns the stonecutting recipes and their ingredients.
-  The client is told of the ingredients."
+  "Returns the stonecutting recipes and their ingredients."
   [] (:recipes @tables))
 
 (defn cooking-recipes
-  "Returns the cooking recipes in furnace search order.
-  They are the smelting, blasting, smoking and campfire recipes."
+  "Returns the cooking recipes in search order."
   [] (:cooking (recipes)))
 
 (defn fuel
@@ -183,8 +177,8 @@
 (defn sounds [] (:sounds @tables))
 
 (defn features
-  "Returns the features bone meal reaches.
-  Also returns the features each biome grows."
+  "Returns the features that bone meal reaches and the features that
+  each biome grows."
   [] (:features @tables))
 
 (defn potions
@@ -236,7 +230,7 @@
   (get-in (items) [item :title]))
 
 (defn rarity
-  "Returns how rare an item is: :common, :uncommon, :rare or :epic."
+  "Returns the rarity of an item."
   [item]
   (get-in (items) [item :rarity] :common))
 
@@ -264,13 +258,13 @@
   (.replace (name k) \- \_))
 
 (defn wire
-  "Returns k as a resource location, minecraft by default."
+  "Returns k as a resource location with the default namespace."
   ^String [k]
   (str (or (namespace k) "minecraft") ":" (snake k)))
 
 (defn kebab
-  "Returns resource location s as a keyword: the namespace kept
-  unless it is minecraft, underscores as dashes."
+  "Returns resource location s as a keyword.
+  The default namespace goes away and underscores become dashes."
   [^String s]
   (let [s (.toLowerCase s)
         i (.indexOf s ":")
@@ -299,8 +293,7 @@
           (datapack))))
 
 (defn datapack-id
-  "Returns the id of an entry the server sends to the client.
-  The client does not know the entry already."
+  "Returns the id of an entry that the server sends to the client."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry"
@@ -389,9 +382,9 @@
 
 (defn each-run!
   "Calls f with the id and the value of each state that table t
-  gives a value. t has a palette of values and runs over it: the
-  run [from to i] gives the value i to the states from to to.
-  States past the last known one are skipped."
+  gives a value. Each run [from to i] gives the value i of the
+  palette to the states from to to. The walk skips states past the
+  last known one."
   [{:keys [palette runs]} f]
   (let [n (block-state-count)]
     (doseq [[from to i] runs
@@ -440,8 +433,8 @@
   (:full @sturdy-tables))
 
 (defn sturdy-center
-  "Returns which faces of every state hold things, by id.
-  A thing is held at the center of the face."
+  "Returns which faces of every state hold a thing at their center,
+  by id."
   ^bytes []
   (:center @sturdy-tables))
 

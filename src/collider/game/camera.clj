@@ -1,5 +1,5 @@
 (ns collider.game.camera
-  "The entity a spectator looks through, its camera."
+  "Spectator cameras."
   (:require [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -12,20 +12,16 @@
 
 (defn- xyz [p] [(v/x p) (v/y p) (v/z p)])
 
-(defn- placed
-  "ServerPlayer.teleportTo in its own level, turned as it stands:
-  player e of id eid put at pos."
-  [eid e pos]
+(defn- placed [eid e pos]
   (let [yaw (double (:yaw e 0.0)) pitch (double (:pitch e 0.0))]
     [[:teleport eid pos]
      [:merge-entity eid {:head-yaw yaw :vel still}]
      (out/to eid (out/teleport pos yaw pitch))]))
 
 (defn set-deltas
-  "ServerPlayer.setCamera: player e of id eid looks through the
-  entity of id cam in world, through its own eyes for nil or eid.
-  It is put where the camera is and told of it; nil when nothing
-  changes."
+  "Returns the deltas that make player e of id eid look through entity
+  cam. Nil or eid means its own eyes. The player moves to the camera
+  and learns of it. Returns nil when nothing changes."
   [world eid e cam]
   (let [cam (when-not (= cam eid) cam)]
     (when (not= cam (:camera e))
@@ -34,16 +30,13 @@
                 (placed eid e (xyz (:pos c)))
                 [(out/to eid (out/camera (or cam eid)))])))))
 
-(defn- alive?
-  "Entity.isAlive: not removed, and with health left when it has
-  health."
-  [e]
+(defn- alive? [e]
   (and e (or (nil? (:health e)) (pos? (double (:health e))))))
 
 (defn follow-deltas
-  "ServerPlayer.tick: player e of id eid snaps to its camera, and
-  looks through its own eyes again when the camera is gone or the
-  player sneaks."
+  "Returns the deltas that keep player e of id eid at its camera.
+  The player looks through its own eyes again when the camera is gone
+  or the player sneaks."
   [world eid e]
   (when-let [cam (:camera e)]
     (let [c (get-in world [:entities cam])]
@@ -55,10 +48,7 @@
                   (set-deltas world eid (merge e m) nil))))
         (set-deltas world eid e nil)))))
 
-(defn- box
-  "The half width and height of the pickable entity e, nil for one
-  a spectator cannot pick."
-  [e]
+(defn- box [e]
   (let [t (:type e)]
     (cond
       (= :player t)
@@ -69,10 +59,7 @@
 
 (def ^:private ^:const border 29999984.0)
 
-(defn- in-border?
-  "WorldBorder.isWithinBounds of the default border for the block
-  position of e."
-  [e]
+(defn- in-border? [e]
   (let [x (Math/floor (v/x (:pos e))) z (Math/floor (v/z (:pos e)))]
     (and (>= x (- border)) (< x border)
          (>= z (- border)) (< z border))))
@@ -81,8 +68,6 @@
   (max 0.0 (- lo p) (- p hi)))
 
 (defn- in-range?
-  "Player.isWithinEntityInteractionRange with a buffer of three:
-  the eye of player p near enough the box of entity t."
   [p t [half h]]
   (let [[ex ey ez] (xyz (:pos p))
         ey (+ (double ey) (entity/eye-height p))
@@ -95,8 +80,8 @@
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
 
 (defn spectate-deltas
-  "ServerGamePacketListenerImpl.handleSpectatorAction: spectator p
-  of id eid picks entity tid as its camera."
+  "Returns the deltas of spectator p of id eid that picks entity tid
+  as its camera."
   [world eid tid]
   (let [p (get-in world [:entities eid])
         t (when tid (get-in world [:entities tid]))]

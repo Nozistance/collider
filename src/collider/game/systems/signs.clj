@@ -1,5 +1,5 @@
 (ns collider.game.systems.signs
-  "The sign an editor holds open, and when he loses it."
+  "Signs that editors hold open."
   (:require [collider.game.state :as state]
             [collider.game.systems.blocks.reach :as reach]))
 
@@ -22,9 +22,8 @@
     [[:set-block-entity pos (assoc e :editor nil)]]))
 
 (defn sign-editors
-  "Returns the deltas taking a sign back from an editor who left.
-  SignBlockEntity.tick clears him the same way, without telling
-  anyone: the text on the sign did not change."
+  "Returns the deltas that take a sign back from an editor who left.
+  Nobody is told, as the text did not change."
   [world _d]
   (into [] (mapcat (fn [entry] (release-deltas world entry)))
         (edited world)))

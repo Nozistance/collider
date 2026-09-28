@@ -11,8 +11,8 @@
 (defn except [eid msg] [:fx (assoc msg :except eid)])
 
 (defn everyone
-  "Returns msg as the server's effect: every player gets it,
-  whatever level they are in."
+  "Returns msg as an effect of the server.
+  Every player gets it, whatever level it is in."
   [msg]
   [:fx (assoc msg :dim nil)])
 
@@ -33,8 +33,8 @@
 
 (defn teleport
   "Returns the effect that moves a player to pos, turned to yaw and
-  pitch. Each bit of relative makes one of them an offset from
-  where the player is, or keeps its motion on one axis."
+  pitch. Each bit of relative makes one of them an offset from where
+  the player is, or keeps its motion on one axis."
   ([pos yaw pitch] (teleport pos yaw pitch 0))
   ([pos yaw pitch relative]
    {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)
@@ -48,7 +48,7 @@
 
 (defn change-dimension
   "Returns the effect of a player entering level dim at pos.
-  yaw, pitch and relative are as in a teleport. It names the
+  Yaw, pitch and relative work as in a teleport. The effect names the
   chunks and entities the player knew in the level it left."
   [dim pos [yaw pitch relative] forget untrack]
   {:msg :change-dimension :dim dim :pos pos :yaw (double yaw)
@@ -56,8 +56,8 @@
    :forget (vec forget) :untrack (vec untrack)})
 
 (defn default-spawn
-  "Returns the effect that shows the world spawn in level dim,
-  faced to yaw and pitch."
+  "Returns the effect that shows the world spawn in level dim, faced
+  to yaw and pitch."
   [dim pos yaw pitch]
   {:msg :default-spawn :dimension dim :pos pos
    :yaw (double yaw) :pitch (double pitch)})
@@ -123,8 +123,8 @@
   {:msg :reload})
 
 (defn reloaded
-  "Returns the effect of a finished reload: the data a reload
-  resends to the players."
+  "Returns the effect of a finished reload.
+  It holds the data a reload resends to the players."
   []
   {:msg :reloaded})
 
@@ -139,8 +139,8 @@
   {:msg :overlay :text text})
 
 (defn player-chat
-  "Returns the effect that shows a line a player said, the text
-  component already decorated with its sender."
+  "Returns the effect that shows a line a player said.
+  The text component already carries its sender."
   [text]
   {:msg :player-chat :text text})
 
@@ -154,8 +154,8 @@
   {:msg :tab-latency :entries entries})
 
 (defn tab-game-mode
-  "Returns the effect that shows the game mode of the player with
-  uuid in the player list."
+  "Returns the effect that shows the game mode of the player with uuid
+  in the player list."
   [uuid mode]
   {:msg :tab-game-mode :uuid uuid :mode mode})
 
@@ -171,8 +171,7 @@
   {:msg :game-mode :mode mode})
 
 (defn abilities
-  "Returns the effect that tells a player what it may do: a map of
-  :invulnerable? :flying? :may-fly? and :instabuild?."
+  "Returns the effect that tells a player what it may do."
   [m]
   (assoc m :msg :abilities))
 
@@ -204,8 +203,8 @@
   {:msg :meta :eid eid :type type :meta meta})
 
 (defn attributes
-  "Returns the effect that shows the attributes of an entity, each
-  [name base modifiers]."
+  "Returns the effect that shows the attributes of an entity.
+  Each is [name base modifiers]."
   [eid attrs]
   {:msg :attributes :eid eid :attributes attrs})
 
@@ -228,8 +227,9 @@
   {:msg :collect :eid item-eid :collector collector-eid})
 
 (defn sound
-  "Returns the effect of a sound at pos. Source names the mixer
-  channel when it is not the one the sound is listed under."
+  "Returns the effect of a sound at pos.
+  Source names the mixer channel when it is not the one the sound is
+  listed under."
   ([kind pos volume pitch] (sound kind pos volume pitch nil))
   ([kind pos volume pitch source]
    (cond-> {:msg :sound :kind kind :pos pos
@@ -237,8 +237,7 @@
            source (assoc :source source))))
 
 (defn block-sound
-  "Returns the effect of a sound at the centre of the block at
-  pos, as Level.playSound with a block position."
+  "Returns the effect of a sound at the centre of the block at pos."
   ([kind pos volume pitch] (block-sound kind pos volume pitch nil))
   ([kind [x y z] volume pitch source]
    (sound kind [(+ (double x) 0.5) (+ (double y) 0.5)
@@ -250,8 +249,8 @@
    :speed (double speed)})
 
 (defn trail
-  "Returns the effect of a trail particle from pos to target, of
-  an rgb color, that lasts ticks."
+  "Returns the effect of a trail particle from pos to target, of an
+  rgb color, that lasts ticks."
   [pos target color ticks]
   {:msg :trail :pos pos :target target :color color :ticks ticks})
 

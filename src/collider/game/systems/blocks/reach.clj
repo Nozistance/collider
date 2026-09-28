@@ -41,13 +41,12 @@
     (< (gap-sq e pos) (* r r))))
 
 (defn in-reach?
-  "Tests whether the entity may act on the block at pos."
+  "Returns true when the entity may act on the block at pos."
   [e pos]
   (within? e pos use-buffer))
 
 (defn in-edit-range?
-  "Tests whether the entity is near enough to keep a sign open.
-  Player.isWithinBlockInteractionRange with a buffer of four."
+  "Returns true when the entity is near enough to keep a sign open."
   [e pos]
   (within? e pos edit-buffer))
 
@@ -60,10 +59,7 @@
      (- (Math/sin pitch))
      (* (Math/cos yaw) (Math/cos pitch))]))
 
-(defn- slab-span
-  "Returns the ray fractions entering and leaving the slab lo..hi
-  along one axis, with the face the ray enters by."
-  [f d lo hi neg pos]
+(defn- slab-span [f d lo hi neg pos]
   (let [f (double f) d (double d) lo (double lo) hi (double hi)]
     (cond
       (pos? d) [(/ (- lo f) d) (/ (- hi f) d) neg]
@@ -156,8 +152,7 @@
    (update t axis + (cross-delta (d axis)))])
 
 (defn clip
-  "Returns the block an entity looks at and the face it sees.
-  Returns nil when it looks at nothing."
+  "Returns the block and face an entity looks at, or nil."
   [world e fluids]
   (let [from (eye-pos e)
         d (mapv #(* (state/block-reach e) (double %)) (look-dir e))]

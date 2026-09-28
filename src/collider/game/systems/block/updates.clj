@@ -29,9 +29,6 @@
     (rules/again-tick chunks st p (:tick ctx))))
 
 (defn- ran
-  "Returns the tick of type ty at p run on level w: how far across
-  it reads, its changes and the tick it asks for again. A block no
-  longer of its type skips it, as tickBlock and tickFluid do."
   [w ctx k [p ty]]
   (let [{:keys [type-of due reach]} (lists k)
         chunks (:chunks w)
@@ -54,10 +51,7 @@
   (for [dx (range (- r) (inc r)) dz (range (- r) (inc r))]
     (column [(+ (long x) (long dx)) 0 (+ (long z) (long dz))])))
 
-(defn- touched?
-  "Tells whether a block was written this pass within r columns of
-  p, at any height."
-  [dirty ^long r p]
+(defn- touched? [dirty ^long r p]
   (let [side (inc (* 2 r))]
     (boolean
       (if (< (count dirty) (* side side))
@@ -83,11 +77,7 @@
             (assoc m p [(get-in m [p 0] old) st]))
           lit writes))
 
-(defn- applied
-  "Returns the pass with the changes of a tick set on its level as
-  they are, each with its flags or 3 and the updates it runs at
-  once, and their deltas."
-  [world ctx pass changes]
+(defn- applied [world ctx pass changes]
   (if (empty? changes)
     pass
     (let [ops (mapv #(vector :set % (neighbors/flags-of % 3)) changes)
@@ -104,9 +94,6 @@
     [[:schedule-ticks {again [(chunk/block-pos->id p)]}]]))
 
 (defn- stepped
-  "Returns the pass after one tick. The tick keeps what it did on
-  the level at the start unless a block it reads was written
-  since; then it runs again on the level as it is now."
   [world ctx k pass [tick first-run]]
   (let [reach (:reach first-run)
         [pass r] (if (touched? (:dirty pass) reach (first tick))
@@ -121,21 +108,14 @@
         order (schedule/run-order (get world k) (:tick world) runs?)]
     (mapv pos order)))
 
-(defn- ticks-run
-  "Returns the deltas of the ticks, each run on the level the ticks
-  before it left, as LevelTicks runs them. All run at once on the
-  level at the start first; only those that read what an earlier
-  one wrote run again."
-  [world k ticks]
+(defn- ticks-run [world k ticks]
   (let [ctx (state/level-ctx world)
         firsts (deltas/pmapcat (fn [t] [(ran world ctx k t)]) ticks)
         start {:w world :dirty (i/int-set) :lit {} :out []}]
     (:out (reduce #(stepped world ctx k %1 %2) start
                   (map vector ticks firsts)))))
 
-(defn- parked-ids
-  "Returns the due ids of loaded chunks that do not tick now."
-  [world active due]
+(defn- parked-ids [world active due]
   (let [chunks (:chunks world)
         loaded? #(contains? chunks (chunk/block-id-chunk %))
         skip? #(or (state/active-id? active %) (not (loaded? %)))]
@@ -158,19 +138,12 @@
 (defn fluid-updates [world _d]
   [#(ticks-deltas world :fluid-ticks)])
 
-(defn- final-records
-  "Returns each block changed as it stands in w now, as
-  ChunkHolder.broadcastChanges reads it. The order is the one in
-  which the blocks first changed."
-  [w recs]
+(defn- final-records [w recs]
   (let [at #(chunk/chunks-get-block (:chunks w) %)
         final (fn [pos] [pos (at pos)])]
     (into [] (comp (map first) (distinct) (map final)) recs)))
 
-(defn- announced
-  "Keeps the changes clients hear about.
-  A chunk that is only full, never block ticking, is silent."
-  [w events]
+(defn- announced [w events]
   (let [heard (state/broadcast-chunks w)]
     (filter (fn [[cp _]] (contains? heard cp)) events)))
 

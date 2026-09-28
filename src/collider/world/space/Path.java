@@ -4,12 +4,8 @@ import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import java.util.HashMap;
 
-/// The numeric core of the ground path search: node keys, the costs
-/// of a step, and the collision checks of a mob box on its way.
-///
-/// The table `shapes` that the methods take is indexed by block
-/// state and holds the collision boxes of the state as 6 doubles
-/// each, in blocks.
+/// The numeric core of the ground path search. `shapes` holds the
+/// collision boxes of each block state, six doubles each, in blocks.
 public final class Path {
 
     private static final double FUDGING = 1.5;
@@ -23,9 +19,8 @@ public final class Path {
                       | (z < 0 ? 32768 : 0));
     }
 
-    /// Returns the node of the cell `x`, `y`, `z` in `nodes`, made
-    /// and kept there when absent. Cells that share a key share a
-    /// node, as in the game.
+    /// Returns the node of the cell `x`, `y`, `z` in `nodes` and adds
+    /// it when absent. Cells that share a key share a node.
     public static PathNode node(HashMap<Long, PathNode> nodes, long x,
             long y, long z) {
         return nodes.computeIfAbsent(key(x, y, z),
@@ -57,8 +52,8 @@ public final class Path {
         return false;
     }
 
-    /// Returns true when the box `b` (min x, y, z, max x, y, z)
-    /// meets a collision shape of a block in `chunks`.
+    /// Returns true when the box `b` meets a collision shape of a
+    /// block in `chunks`. `b` holds min x, y, z and max x, y, z.
     public static boolean collides(ChunkIndex chunks, Object[] shapes,
             double[] b) {
         long x1 = (long) Math.floor(b[3] + EPS);

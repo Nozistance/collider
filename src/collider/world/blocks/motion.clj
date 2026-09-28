@@ -29,9 +29,8 @@
       (chunk/at chunks [bx by bz]))))
 
 (defn stuck-speed
-  "Returns what the blocks at pos multiply the next move by.
-  The blocks are the ones a box at pos stands in. Returns nil
-  when none of them holds it."
+  "Returns what the blocks that a box at pos stands in multiply the
+  next move by. Returns nil when none of them holds it."
   [chunks pos half height]
   (when (some (fn [st] (= :web (block/type-of (long st))))
               (states-in chunks pos half height))
@@ -42,9 +41,13 @@
                   (long (Math/floor (- (double y) step-offset)))
                   (long (Math/floor (double z)))]))
 
+(defn- on-slime? [chunks pos]
+  (= :slime (block/type-of (below-of chunks pos))))
+
 (defn stepped-speed [chunks pos vel]
   (let [ay (Math/abs (double (nth vel 1)))]
-    (if (and (= :slime (block/type-of (below-of chunks pos))) (< ay slow-fall))
+    (if (and (on-slime? chunks pos) (< ay slow-fall))
       (let [s (+ step-base (* ay step-slope))]
-        [(* (double (nth vel 0)) s) (nth vel 1) (* (double (nth vel 2)) s)])
+        [(* (double (nth vel 0)) s) (nth vel 1)
+         (* (double (nth vel 2)) s)])
       vel)))

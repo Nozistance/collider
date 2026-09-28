@@ -1,10 +1,10 @@
 (ns collider.proto.entitydata
-  "Synched fields of the vanilla entity classes we spawn.")
+  "Synched fields of the entity classes.")
 
 (set! *warn-on-reflection* true)
 
 (def classes
-  "Vanilla class -> its parent and its synched fields, in order."
+  "The parent and the synched fields of each entity class, in order."
   {:entity
    {:fields [[:shared-flags :byte 0]
              [:air-supply :int 300]
@@ -71,7 +71,7 @@
         (mapcat #(:fields (classes %)) (chain cls))))
 
 (def fields
-  "Vanilla class -> field name -> `[index type default]`."
+  "The index, type and default of each field, by class."
   (into {} (map (juxt identity numbered)) (keys classes)))
 
 (defn default
@@ -85,8 +85,8 @@
     (throw (ex-info "no such synched field" {:class cls :field k}))))
 
 (defn entries
-  "Returns the metadata entries `[index type value]` of a class for
-  the named fields, in wire index order."
+  "Returns the metadata entries [index type value] of a class for the
+  named fields, in index order."
   [cls m]
   (let [fs (fields cls)]
     (vec (sort-by first (map #(entry cls fs %) m)))))

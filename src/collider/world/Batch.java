@@ -2,8 +2,7 @@ package collider.world;
 
 import java.util.Arrays;
 
-/// The block edits of one section, gathered in order and applied
-/// at once.
+/// The block edits of one section, applied at once in order.
 public final class Batch {
 
     private int[] idx = new int[8];

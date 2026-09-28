@@ -10,7 +10,7 @@
 (set! *warn-on-reflection* true)
 
 (def ids
-  "GameType ids of the game modes."
+  "The ids of the game modes."
   {:survival 0 :creative 1 :adventure 2 :spectator 3})
 
 (def ^:private by-id
@@ -20,12 +20,12 @@
   (into {} (map (fn [k] [(name k) k])) (keys ids)))
 
 (defn of-id
-  "Returns the mode of GameType id n: survival for an unknown id."
+  "Returns the mode of id n, or survival for an unknown id."
   [n]
   (get by-id n :survival))
 
 (defn named
-  "Returns the mode GameType.byName finds for s, or nil."
+  "Returns the mode that s names, or nil."
   [s]
   (by-name s))
 
@@ -40,14 +40,13 @@
   (get-in world [:config :game-mode] (:game-mode config/defaults)))
 
 (defn forced-mode
-  "DedicatedServer.getForcedGameType: the default mode when
-  force-game-mode is on, else nil."
+  "Returns the default mode when force-game-mode is on, else nil."
   [world]
   (when (get-in world [:config :force-game-mode])
     (default-mode world)))
 
 (defn joining-mode
-  "ServerPlayer.calculateGameModeForNewPlayer for the saved mode."
+  "Returns the mode a player joins in, given its saved mode."
   [world saved]
   (or (forced-mode world) saved (default-mode world)))
 
@@ -58,17 +57,11 @@
 (defn- held? [chunks cx cz]
   (contains? chunks (chunk/pos->id cx cz)))
 
-(defn- cells
-  "The chunk coordinates from lo to hi, block coordinates, rounded
-  out."
-  [^double lo ^double hi]
+(defn- cells [^double lo ^double hi]
   (range (bit-shift-right (long (Math/floor lo)) 4)
          (inc (bit-shift-right (long (Math/ceil hi)) 4))))
 
-(defn- touching-unloaded?
-  "Entity.touchingUnloadedChunk: the box of e grown by a block on
-  each side reaches a chunk the level does not hold."
-  [chunks e]
+(defn- touching-unloaded? [chunks e]
   (let [half (first (entity/pose-box (:pose e :standing)))
         r (+ 1.0 (double half))
         x (v/x (:pos e)) z (v/z (:pos e))]
@@ -79,15 +72,15 @@
             (cells (- x r) (+ x r))))))
 
 (defn ticks?
-  "ServerPlayer.doTick: whether player e runs its player tick. A
-  spectator touching an unloaded chunk does not."
+  "Returns true when player e runs its player tick.
+  A spectator that touches an unloaded chunk does not."
   [chunks e]
   (not (and (spectator? e) (touching-unloaded? chunks e))))
 
 (defn shown-to?
-  "ServerPlayer.broadcastToPlayer: whether viewer tracks entity e.
-  A spectator sees the players that look through their own eyes;
-  the others see no spectator."
+  "Returns true when viewer tracks entity e.
+  A spectator sees the players that look through their own eyes. The
+  others see no spectator."
   [viewer e]
   (or (not= :player (:type e))
       (if (spectator? viewer)
@@ -95,8 +88,8 @@
         (not (spectator? e)))))
 
 (defn seen?
-  "LivingEntity.canBeSeenByAnyone: e is alive and no spectator,
-  so mobs may look at it, be tempted by it or target it."
+  "Returns true when e is alive and no spectator.
+  Mobs look at, follow and target only such an entity."
   [e]
   (and (not (spectator? e)) (pos? (double (:health e 1.0)))))
 
@@ -106,8 +99,7 @@
   (contains? #{:creative :spectator} (:game-mode e)))
 
 (defn flying-in
-  "GameType.updatePlayerAbilities: whether a player that flies as
-  flying? does in mode."
+  "Returns true when a player with flying? still flies in mode."
   [mode flying?]
   (case mode
     :creative (boolean flying?)
@@ -129,8 +121,8 @@
 (def ^:const creative-entity-range 2.0)
 
 (defn reach-attributes
-  "ServerPlayer.updatePlayerAttributes: the interaction ranges of
-  player e, the creative_mode modifiers only in creative."
+  "Returns the interaction ranges of player e.
+  The creative modifiers apply only in creative."
   [e]
   (let [c? (creative? e)
         mod (fn [k r] (if c? [[k r 0]] []))]
@@ -139,10 +131,7 @@
      [:block-interaction-range block-range
       (mod :creative-mode-block-range creative-block-range)]]))
 
-(defn- in-range-of-ground?
-  "ServerPlayerGameMode.isInRangeOfGround: no block in the body of
-  e, and one within a block below it."
-  [chunks e]
+(defn- in-range-of-ground? [chunks e]
   (let [[half h] (entity/pose-box (:pose e :standing))
         pos (:pos e)]
     (and (phys/free? chunks pos half h 0.0 0.0 0.0)
@@ -165,8 +154,8 @@
        (out/all (out/attributes eid attrs))])))
 
 (defn change
-  "ServerPlayer.setGameMode: returns the deltas that put player e of
-  id eid in mode, nil when it is in mode already."
+  "Returns the deltas that put player e of id eid in mode, or nil when
+  it is in mode already."
   [world eid e mode]
   (when (not= mode (:game-mode e))
     (let [m (changes (:chunks world) e mode)

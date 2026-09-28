@@ -32,7 +32,8 @@
   (remove (comp game-mode/spectator? val) entries))
 
 (defn sleepers-needed
-  "SleepStatus.sleepersNeeded: spectators do not count."
+  "Returns how many sleeping players the night needs.
+  Spectators do not count."
   ^long [world]
   (let [players (count (counted (state/player-entries world)))
         k [:rules :players-sleeping-percentage]
@@ -78,8 +79,7 @@
           (:entities world)))
 
 (defn sleepers
-  "SleepStatus.update: the sleeping players that count, which are
-  no spectators."
+  "Returns the sleeping players that count, which are no spectators."
   [world]
   (counted (in-bed world)))
 
@@ -106,19 +106,14 @@
             (when (pos? left)
               [(announcement world (- (count asleep) left))]))))
 
-(defn- night-passes?
-  "ServerLevel.tick: enough players that count sleep, and as many
-  of all sleep deeply (SleepStatus.areEnoughDeepSleeping counts
-  spectators too)."
-  [world all asleep]
+(defn- night-passes? [world all asleep]
   (let [needed (sleepers-needed world)]
     (and (>= (count asleep) needed)
          (>= (deep-count world all) needed))))
 
 (defn vacated-deltas
   "Returns the deltas of the bed player e leaves as it goes, between
-  ticks: its head set free with flags 3, as ServerPlayer.disconnect
-  stops sleeping (LivingEntity.stopSleeping)."
+  ticks. Its head is set free."
   [world e]
   (let [head (get-in e [:sleeping :pos])
         st (when head (block-at world head))

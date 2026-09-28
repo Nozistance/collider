@@ -1,5 +1,5 @@
 (ns collider.world.feature
-  "Placing the worldgen features that bone meal reaches."
+  "Placement of the features that bone meal reaches."
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -30,9 +30,9 @@
   {:chunks chunks :cells []})
 
 (defn cells [acc]
-  (let [final (into {} (:cells acc))]
-    (into [] (comp (map first) (distinct) (map (fn [p] [p (final p)])))
-          (:cells acc))))
+  (let [final (into {} (:cells acc))
+        cell (fn [p] [p (final p)])]
+    (into [] (comp (map first) (distinct) (map cell)) (:cells acc))))
 
 (defn chunks [acc]
   (:chunks acc))
@@ -49,7 +49,8 @@
   (and (chunk/in-range? (p 1)) (zero? (state-at acc p))))
 
 (defn- noise-key [m k]
-  (let [n (get m k)] [(long (:seed m)) (int (:firstOctave n)) (:amplitudes n)]))
+  (let [n (get m k)]
+    [(long (:seed m)) (int (:firstOctave n)) (:amplitudes n)]))
 
 (defn- noise-keys [m]
   (keep #(when (get m %) (noise-key m %)) [:noise :slow-noise]))
@@ -60,10 +61,14 @@
                      (mapcat deep-noises (vals v)))
     (vector? v) (mapcat deep-noises v)))
 
+(defn- noise-entry [[seed octave amps :as k]]
+  [k (noise/noise seed octave (double-array amps))])
+
+(defn- configured-noises []
+  (distinct (deep-noises (:configured (data/features)))))
+
 (def ^:private ^:table noises
-  (delay (into {} (map (fn [[seed octave amps :as k]]
-                         [k (noise/noise seed octave (double-array amps))]))
-               (distinct (deep-noises (:configured (data/features)))))))
+  (delay (into {} (map noise-entry) (configured-noises))))
 
 (defn- fast-noise ^double [m p]
   (noise/at (get @noises (noise-key m :noise))
@@ -74,14 +79,18 @@
                   (p 0) (p 1) (p 2) (:slow-scale m)))
 
 (defn- noise-state [states ^double v]
-  (nth states (long (* (min 0.9999 (max 0.0 (/ (+ 1.0 v) 2.0))) (count states)))))
+  (let [t (min 0.9999 (max 0.0 (/ (+ 1.0 v) 2.0)))]
+    (nth states (long (* t (count states))))))
+
+(defn- chance? [roll salt c]
+  (< (double (roll salt)) (double (float c))))
 
 (defn- threshold-provider [m p roll salt]
   (let [v (fast-noise m p)]
     (cond
       (< v (double (float (:threshold m))))
       (one-of (:low-states m) roll (conj salt :low))
-      (< (double (roll (conj salt :high))) (double (float (:high-chance m))))
+      (chance? roll (conj salt :high) (:high-chance m))
       (one-of (:high-states m) roll (conj salt :pick))
       :else (:default-state m))))
 
@@ -101,24 +110,30 @@
     (noise-state states (fast-noise m p))))
 
 (defn- weighted-provider [entries roll salt]
-  (loop [left (pick roll salt (reduce + (map :weight entries))) es entries]
-    (let [w (long (:weight (first es)))]
-      (if (< left w) (:data (first es)) (recur (- left w) (rest es))))))
+  (let [total (reduce + (map :weight entries))]
+    (loop [left (pick roll salt total) es entries]
+      (let [w (long (:weight (first es)))]
+        (if (< left w)
+          (:data (first es))
+          (recur (- left w) (rest es)))))))
 
 (defn- provide [m p roll salt]
   (case (:type m)
     :simple-state-provider (:state m)
-    :weighted-state-provider (weighted-provider (:entries m) roll salt)
+    :weighted-state-provider
+    (weighted-provider (:entries m) roll salt)
     :noise-provider (noise-state (:states m) (fast-noise m p))
-    :noise-threshold-provider (threshold-provider m p roll salt)
+    :noise-threshold-provider
+    (threshold-provider m p roll salt)
     :dual-noise-provider (dual-provider m p)))
 
 (defn- double-plant [acc p ^long st]
   (if-not (air-at? acc (dir/up p))
     acc
-    (let [self (block/block-of st)]
+    (let [self (block/block-of st)
+          lower (assoc (block/props-of st) :half :lower)]
       (-> acc
-          (set-state p (block/state self (assoc (block/props-of st) :half :lower)))
+          (set-state p (block/state self lower))
           (set-state (dir/up p) (block/state self {:half :upper}))))))
 
 (defn- mossy-carpet [acc p roll salt]
@@ -129,8 +144,9 @@
         top (moss/carpet-topper (:chunks acc) p side?)]
     (if (nil? top)
       acc
-      (let [acc (set-state acc (dir/up p) top)]
-        (set-state acc p (moss/carpet-updated (:chunks acc) p base true))))))
+      (let [acc (set-state acc (dir/up p) top)
+            base' (moss/carpet-updated (:chunks acc) p base true)]
+        (set-state acc p base')))))
 
 (defn- simple-block [acc cfg p roll salt]
   (let [st (state-of (provide (:to-place cfg) p roll salt))]
@@ -144,35 +160,46 @@
 (defn- sample ^long [v roll salt]
   (if (number? v)
     (long v)
-    (let [lo (long (:min-inclusive v))]
-      (+ lo (pick roll salt (inc (- (long (:max-inclusive v)) lo)))))))
+    (let [lo (long (:min-inclusive v))
+          hi (long (:max-inclusive v))]
+      (+ lo (pick roll salt (inc (- hi lo)))))))
 
 (defn- slide [acc p n want step]
   (loop [q p i 0]
-    (if (and (< i (long n)) (want (state-at acc q))) (recur (step q) (inc i)) q)))
+    (if (and (< i (long n)) (want (state-at acc q)))
+      (recur (step q) (inc i))
+      q)))
 
 (defn- patch-ground [acc cfg p]
   (let [n (long (:vertical-range cfg))
-        q (slide acc (slide acc p n zero? dir/down) n (complement zero?) dir/up)
+        top (slide acc p n zero? dir/down)
+        q (slide acc top n (complement zero?) dir/up)
         below (dir/down q)]
-    (when (and (air-at? acc q) (block/face-sturdy? (state-at acc below) :up))
+    (when (and (air-at? acc q)
+               (block/face-sturdy? (state-at acc below) :up))
       below)))
+
+(defn- ground-state ^long [cfg q roll salt]
+  (state-of (provide (:ground-state cfg) q roll salt)))
 
 (defn- place-ground [acc cfg below depth roll salt]
   (loop [acc acc q below i 0]
     (if (= i (long depth))
       [acc true]
-      (let [st (state-of (provide (:ground-state cfg) q roll (conj salt i)))
+      (let [st (ground-state cfg q roll (conj salt i))
             prev (state-at acc q)]
         (cond
-          (= (block/block-of st) (block/block-of prev)) (recur acc q (inc i))
-          (not (block/tagged? prev (tag-of (:replaceable cfg)))) [acc (not= 0 i)]
+          (= (block/block-of st) (block/block-of prev))
+          (recur acc q (inc i))
+          (not (block/tagged? prev (tag-of (:replaceable cfg))))
+          [acc (not= 0 i)]
           :else (recur (set-state acc q st) (dir/down q) (inc i)))))))
 
 (defn- patch-columns [^long xr ^long zr]
   (for [dx (range (- xr) (inc xr))
         dz (range (- zr) (inc zr))
-        :let [ex (or (= dx (- xr)) (= dx xr)) ez (or (= dz (- zr)) (= dz zr))]
+        :let [ex (or (= dx (- xr)) (= dx xr))
+              ez (or (= dz (- zr)) (= dz zr))]
         :when (not (and ex ez))]
     [dx dz (or ex ez)]))
 
@@ -180,8 +207,9 @@
   (let [c (double (:extra-edge-column-chance cfg))]
     (and (not (zero? c)) (<= (double (roll (conj salt :edge))) c))))
 
-(defn- patch-cell [[acc surface :as state] cfg p roll salt [dx dz edge?]]
-  (let [s (conj salt dx dz)
+(defn- patch-cell [[acc surface :as state] cfg p roll salt column]
+  (let [[dx dz edge?] column
+        s (conj salt dx dz)
         q (mapv + p [dx 0 dz])
         below (when (or (not edge?) (edge-column? cfg roll s))
                 (patch-ground acc cfg q))]
@@ -194,18 +222,20 @@
 (declare placed)
 
 (defn- vegetation [acc cfg surface roll salt]
-  (let [c (double (:vegetation-chance cfg))]
+  (let [c (double (:vegetation-chance cfg))
+        grow? #(and (pos? c) (< (roll (conj salt % :grow)) c))
+        feature (:vegetation-feature cfg)]
     (reduce (fn [acc q]
-              (if (and (pos? c) (< (double (roll (conj salt q :grow))) c))
-                (placed acc (:vegetation-feature cfg) (dir/up q) roll (conj salt q))
+              (if (grow? q)
+                (placed acc feature (dir/up q) roll (conj salt q))
                 acc))
             acc surface)))
 
 (defn- vegetation-patch [acc cfg p roll salt]
   (let [xr (inc (sample (:xz-radius cfg) roll (conj salt :xr)))
         zr (inc (sample (:xz-radius cfg) roll (conj salt :zr)))
-        [acc surface] (reduce #(patch-cell %1 cfg p roll salt %2)
-                              [acc []] (patch-columns xr zr))]
+        cell #(patch-cell %1 cfg p roll salt %2)
+        [acc surface] (reduce cell [acc []] (patch-columns xr zr))]
     (vegetation acc cfg surface roll salt)))
 
 (defn configured [acc feature p roll salt]

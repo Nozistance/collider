@@ -1,5 +1,5 @@
 (ns collider.game.mob.animal
-  "Farm animal goals and the selector that runs them by priority."
+  "Farm animal goals and their selector."
   (:require [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
@@ -67,28 +67,21 @@
   pos/one-in?)
 
 (def ^:private speeds
-  "How fast each goal walks each breed, as their registerGoals say.
+  "The speed of each goal for each breed.
   A goal left out walks at one."
   {:cow       {:panic 2.0 :tempt 1.25 :follow 1.25}
    :mooshroom {:panic 2.0 :tempt 1.25 :follow 1.25}
    :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}})
 
-(defn- goal-speed
-  "Returns how fast the mob walks for the goal of kind k."
-  ^double [e k]
+(defn- goal-speed ^double [e k]
   (double (get-in speeds [(:type e) k] 1.0)))
 
-(defn- roaming?
-  "A walk goes on while the navigation still has a path."
-  [_ e _ _]
+(defn- roaming? [_ e _ _]
   (not (nav/done? e)))
 
 (def ^:private ^:const water-reach 5)
 
 (def ^:private water-scan
-  "The cells BlockPos.findClosestMatch walks for a burning mob: by
-  growing Manhattan depth, five out and one up or down, and each
-  offset paired at once with its mirror across z."
   (let [r water-reach]
     (vec (for [d (range (+ r 1 r 1))
                x (range (- (min r d)) (inc (min r d)))
@@ -103,10 +96,7 @@
   [(+ (long x) (long dx)) (+ (long y) (long dy))
    (+ (long z) (long dz))])
 
-(defn- look-for-water
-  "PanicGoal.lookForWater: the nearest water a burning mob may run
-  to. A mob stuck inside a block looks for none."
-  [world e]
+(defn- look-for-water [world e]
   (let [chunks (:chunks world)
         [x y z :as here] (sense/feet-cell (:pos e))]
     (when (empty? (block/collision-boxes
@@ -144,10 +134,7 @@
     (when-let [pid (partner-for world eid e t)]
       [(assoc e :task {:kind :mate :partner pid :love 0}) nil])))
 
-(defn- mating?
-  "BreedGoal.canContinueToUse: the partner is still in love and the
-  courting has not run its sixty goal ticks out."
-  [world e t _]
+(defn- mating? [world e t _]
   (let [o (other world e [:task :partner])]
     (and o (mobs/in-love? o t) (not (mobs/panicking? o t))
          (< (long (get-in e [:task :love] 0)) mate-ticks))))
@@ -167,11 +154,7 @@
       (out/all (out/status eid :love))
       (out/all (out/status pid :love))]]))
 
-(defn- mate-tick
-  "BreedGoal.tick: the pair looks at each other and walks together
-  anew every goal tick, and breeds on the sixtieth within three
-  blocks. Only the lower id breeds, or the calf would come twice."
-  [spec world eid e t _]
+(defn- mate-tick [spec world eid e t _]
   (let [pid (get-in e [:task :partner])
         o (get-in world [:entities pid])
         speed (goal-speed e :mate)
@@ -231,10 +214,7 @@
     (when-let [oid (parent-for world eid e)]
       [(assoc e :follow oid :follow-at t) nil])))
 
-(defn- follow-tick
-  "FollowParentGoal.tick: the path to the parent is built anew every
-  tenth goal tick, that is every twentieth tick of the world."
-  [_ world _ e t _]
+(defn- follow-tick [_ world _ e t _]
   (let [o (other world e [:follow])]
     [(if (and o (>= (long t) (long (:follow-at e 0))))
        (assoc (nav/move-to-entity world e o (goal-speed e :follow))
@@ -242,10 +222,7 @@
        e)
      nil]))
 
-(defn- unfollowed
-  "The mob after following ends. The path it walked stays: vanilla's
-  FollowParentGoal has no stop of its own."
-  [e _]
+(defn- unfollowed [e _]
   (assoc e :follow nil))
 
 (defn- following? [world e _ _]
@@ -254,10 +231,7 @@
          (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o))
              follow-far-sq))))
 
-(defn- stroll-pos
-  "WaterAvoidingRandomStrollGoal.getPosition: dry land, save for the
-  one walk in a thousand that may end up wet."
-  [world eid e t]
+(defn- stroll-pos [world eid e t]
   (cond
     (:wet? e) (or (pos/land-pos world e t eid :stroll-wet 15 7)
                   (pos/default-pos world e t eid :stroll 10 7))
@@ -279,10 +253,7 @@
                (> (long (:until l)) (long t)))
       l)))
 
-(defn- player-to-look-at
-  "LookAtPlayerGoal.canUse: the nearest player within six blocks
-  mobs can see."
-  [world e]
+(defn- player-to-look-at [world e]
   (sense/nearest-player world (:pos e) look-range-sq game-mode/seen?))
 
 (defn- look-until [t eid]
@@ -312,10 +283,7 @@
 (defn- looking-around? [_ e t _]
   (>= (long (get-in e [:task :until])) (long t)))
 
-(defn- afloat?
-  "FloatGoal.canUse: the mob stands deep enough in water to swim,
-  or in lava at any depth."
-  [world e _ _]
+(defn- afloat? [world e _ _]
   (let [[half height] (mobs/box-of e)
         chunks (:chunks world)
         h (liquid/fluid-height chunks (:pos e) half height :water)]
@@ -324,17 +292,12 @@
 (defn- start-float [world eid e t tempters]
   (when (afloat? world e t tempters) [(assoc e :float? true) nil]))
 
-(defn- float-tick
-  "FloatGoal.tick: four jumps in five keep the mob's head up."
-  [_ _ eid e t _]
+(defn- float-tick [_ _ eid e t _]
   [(cond-> e (< (rnd t eid :float) float-jump-chance)
            (assoc :jump true))
    nil])
 
-(defn- calmed
-  "TemptGoal.stop: the mob stands still and is not tempted for a
-  while."
-  [e t]
+(defn- calmed [e t]
   (nav/stop (assoc e :task nil
                    :tempt-cooldown-until (+ (long t) calm-ticks))))
 
@@ -416,10 +379,7 @@
           [e []]
           (:goals spec)))
 
-(defn- ticked
-  "Every running goal that pred lets through ticks, highest priority
-  first, as GoalSelector.tickRunningGoals."
-  [spec world eid e t tempters pred]
+(defn- ticked [spec world eid e t tempters pred]
   (reduce (fn [[e ds] g]
             (if (and (:tick g) (pred g) (running? g e t))
               (let [[e2 ds2] ((:tick g) spec world eid e t tempters)]
@@ -430,26 +390,23 @@
 
 (def ^:private watcher? (complement game-mode/spectator?))
 
-(defn- idle-count
-  "Mob.checkDespawn: a spectator never keeps a mob from idling."
-  [world e]
+(defn- idle-count [world e]
   (if (sense/nearest-player world (:pos e) idle-reset-sq watcher?)
     0
     (inc (long (or (:no-action e) 0)))))
 
 (defn spec
-  "Returns a breed's goal spec from its goals.
-  The goals come highest priority first. Also returns the
-  function that picks a newborn's colour from both parents."
+  "Returns the spec of a breed from its goals, highest priority first.
+  The spec also picks the colour of a newborn from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
    {:goals (vec (map-indexed (fn [i g] (assoc g :prio i)) goals))
     :child-color child-color}))
 
 (defn brain
-  "Returns the mob and its deltas after one tick of its goals. Goals
-  are chosen and ticked on every second tick only, which tick
-  decides eid; a goal that wants every tick gets every tick."
+  "Returns the mob and its deltas after one tick of its goals.
+  Goals run on every second tick, and eid decides which. A goal that
+  wants every tick gets every tick."
   [spec world eid e t tempters]
   (let [e (assoc e :no-action (idle-count world e))]
     (if (even? (+ (long t) (long eid)))
@@ -460,9 +417,9 @@
       (ticked spec world eid e t tempters :every-tick?))))
 
 (defn egg-result
-  "Returns what a spawn egg of the mob's own kind does to it: a baby
-  bred from that one parent, as vanilla spawnOffspringFromSpawnEgg.
-  specs maps a mob type to its breed spec."
+  "Returns what a spawn egg of the mob's own kind does to it.
+  It hatches a baby bred from that one parent. The breed spec of each
+  mob type comes from specs."
   [specs {:keys [world t peid p eid e hand item]}]
   (when-let [spec (specs (:type e))]
     (when (= (:type e) (mobs/egg-type item))
@@ -490,9 +447,9 @@
    (out/all (out/status eid :love))])
 
 (defn feed-result
-  "Returns what the breeding food of the mob does to it: a grown one
-  falls in love, a baby grows up sooner, as Animal.mobInteract.
-  A mob that may do neither leaves the food alone."
+  "Returns what the breeding food of the mob does to it.
+  A grown mob falls in love and a baby grows up sooner. A mob that may
+  do neither leaves the food alone."
   [{:keys [world t peid p eid e hand item]}]
   (when (= item (mobs/breeding-item (:type e)))
     (let [used (items/use-item-deltas world peid p hand)]

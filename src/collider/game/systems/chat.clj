@@ -50,10 +50,7 @@
       [(merge styles st {:text inner})]
       (parse-runs inner (merge styles st)))))
 
-(defn- span
-  "Returns the end index and runs of the span opening at i.
-  A marker that never closes stands for itself."
-  [^String s styles ^StringBuilder plain ^long i]
+(defn- span [^String s styles ^StringBuilder plain ^long i]
   (when-let [[^String m st] (marker-at s i)]
     (let [n (String/.length m)
           start (+ i n)
@@ -75,7 +72,6 @@
            (= \\ (String/.charAt s (inc i))))))
 
 (defn- step
-  "Returns the parse state after the markup at the index it holds."
   [^String s styles [i ^StringBuilder plain out]]
   (if (escape-at? s i)
     (do (^[char] StringBuilder/.append plain
@@ -97,9 +93,7 @@
        (flushed (peek st) styles (second st))
        (recur (step s styles st))))))
 
-(defn- joined
-  "Returns one text component of the runs."
-  [runs]
+(defn- joined [runs]
   (case (count runs)
     0 ""
     1 (first runs)
@@ -111,10 +105,7 @@
   (mapv #(out/to eid (out/system-chat (joined (parse-runs %))))
         (mapcat #(str/split-lines (str %)) lines)))
 
-(defn- reports
-  "Returns the deltas ds of a command, their effects marked as the
-  report of its success, told to the other operators when admins?"
-  [ds admins?]
+(defn- reports [ds admins?]
   (mapv (fn [d]
           (if (= :fx (nth d 0))
             [:fx (assoc (nth d 1) :feedback true :admins admins?)]
@@ -131,21 +122,13 @@
 
 (defn- say [eid key & with] (say* eid key with))
 
-(defn- failure
-  "Returns the effect that reports the text component of a failed
-  command."
-  [text]
+(defn- failure [text]
   (out/system-chat {:text "" :color "red" :extra [text]}))
 
-(defn- fail
-  "Returns the deltas that tell one player why a command failed."
-  [eid key & with]
+(defn- fail [eid key & with]
   [(out/to eid (failure {:translate key :with (vec with)}))])
 
-(defn- unloaded?
-  "Tells whether any position belongs to no chunk the world holds.
-  A chunk a player keeps counts even before its data arrives."
-  [world positions]
+(defn- unloaded? [world positions]
   (let [held (chunks/needed-ids world)]
     (some #(let [id (chunk/block-chunk %)]
              (not (or (contains? (:chunks world) id)
@@ -156,8 +139,6 @@
   (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
 
 (defn- fill-changes
-  "The cells of the box in the order of BlockPos.betweenClosed:
-  x fastest, then y, then z."
   [[[x1 x2] [y1 y2] [z1 z2]] st]
   (vec (for [z (range z1 (inc z2))
              y (range y1 (inc y2))
@@ -171,9 +152,7 @@
                   (inc (bit-shift-right (long z2) 4)))]
     (chunk/pos->id cx cz)))
 
-(defn- fetched
-  "Returns [chunks deltas] with every absent chunk of the box read."
-  [world bounds]
+(defn- fetched [world bounds]
   (let [in? #(contains? (:chunks world) %)
         read (fn [id] [id (chunks/read-absent world id)])
         loaded (into {} (comp (remove in?) (map read))
@@ -181,29 +160,19 @@
     [(reduce-kv #(assoc %1 %2 (:chunk %3)) (:chunks world) loaded)
      (chunks/read-absent-deltas loaded)]))
 
-(defn- source-dim
-  "Returns the level a command runs in: its player's, unless the
-  command was run in another."
-  [world]
+(defn- source-dim [world]
   (get-in world [:source :dim] (:dim world)))
 
-(defn- source-pos
-  "Returns the position a command runs at."
-  [world]
+(defn- source-pos [world]
   (get-in world [:source :pos]))
 
-(defn- level-view
-  "Returns level dim as a command in world sees it."
-  [world dim]
+(defn- level-view [world dim]
   (let [server (:server world)]
     (if (or (= dim (:dim world)) (nil? server))
       world
       (assoc (state/level server dim) :server server))))
 
-(defn- in-level
-  "Returns deltas ds of level dim, handed over to it when the
-  command runs in another level."
-  [world dim ds]
+(defn- in-level [world dim ds]
   (cond
     (empty? ds) nil
     (= dim (:dim world)) (vec ds)
@@ -229,23 +198,16 @@
        (<= -30000000 z) (< z 30000000)))
 
 (defn- in-world?
-  "Level.isInWorldBounds: inside the height of the level and
-  the flat bounds of every level."
   [world [x y z]]
   (and (chunk/in-level? world (long y))
        (flat-in? (long x) (long z))))
 
-(defn- pos-error
-  "Returns the key of the reason pos is no command target, or nil.
-  BlockPosArgument.getLoadedBlockPos."
-  [world pos]
+(defn- pos-error [world pos]
   (cond
     (unloaded? world [pos]) "argument.pos.unloaded"
     (not (in-world? world pos)) "argument.pos.outofworld"))
 
-(defn- spawnable?
-  "Level.isInSpawnableBounds for the block that holds pos."
-  [pos]
+(defn- spawnable? [pos]
   (let [[x y z] (mapv #(long (Math/floor (double %))) pos)]
     (and (<= -20000000 (long y)) (< (long y) 20000000)
          (flat-in? x z))))
@@ -294,9 +256,7 @@
     :set-rules (mapcat #(set-rule-delta world eid %) entries)
     nil))
 
-(defn- entity-name
-  "Returns the text component that names entity e in messages."
-  [e]
+(defn- entity-name [e]
   (let [k (str "entity.minecraft." (data/snake (:type e)))
         nm (if (= :player (:type e)) (:name e) {:translate k})
         hover {:action :show-entity :id (:type e) :uuid (:uuid e)
@@ -313,19 +273,13 @@
   {:common "white" :uncommon "yellow" :rare "aqua"
    :epic "light_purple"})
 
-(defn- item-name
-  "Returns the text component that names a stack of one item in
-  messages: its name in brackets, colored by rarity."
-  [item]
+(defn- item-name [item]
   {:translate "chat.square_brackets"
    :with [{:text "" :extra [(data/item-title item)]}]
    :color (rarity-colors (data/rarity item))
    :hover {:action :show-item :id item}})
 
-(defn- levels
-  "Returns [dim level] of every level of the server, in its order.
-  A level seen alone is the only one."
-  [world]
+(defn- levels [world]
   (if (:server world)
     (map (fn [d] [d (level-view world d)]) schema/dims)
     [[(:dim world) world]]))
@@ -373,9 +327,7 @@
        (or (not (:entities sel)) (alive? e))
        (near? world sel dim e)))
 
-(defn- picked
-  "Returns the entries a selector keeps, in the order it sorts."
-  [world sel xs]
+(defn- picked [world sel xs]
   (let [from (source-pos world)]
     (cond
       (:random sel)
@@ -398,10 +350,7 @@
     (when (and (peek x) (matches? world (dissoc sel :entities) x))
       [x])))
 
-(defn- selected
-  "Returns the [id dim entity] entries selector sel finds, as the
-  command source in world finds them."
-  [world eid sel]
+(defn- selected [world eid sel]
   (cond
     (:self sel) (self-entry world eid sel)
     (:name sel) (keep identity [(by-name world (:name sel))])
@@ -429,20 +378,13 @@
     [[:change-dimension eid dim pos yaw pitch]
      (out/to eid (out/change-dimension dim pos sent known seen))]))
 
-(defn- rel-bits
-  "Returns the relative flags of a move whose axes rel count from
-  where the entity is. Its turn stays; its motion stays on rel."
-  [rel same?]
+(defn- rel-bits [rel same?]
   (reduce (fn [^long b ^long a]
             (cond-> (bit-or b (bit-shift-left 1 (+ 5 a)))
               same? (bit-or (bit-shift-left 1 a))))
           (bit-or 8 16) rel))
 
-(defn- kept-vel
-  "Returns the motion of e after a move whose axes rel count from
-  where it is: kept on rel, gone elsewhere; falling ends too
-  unless grounded? is false."
-  [e rel grounded?]
+(defn- kept-vel [e rel grounded?]
   (let [old (or (:vel e) still)
         at #(if (contains? rel %) (double (nth (xyz old) %)) 0.0)]
     (v/v3 [(at 0) (if grounded? 0.0 (at 1)) (at 2)])))
@@ -462,17 +404,12 @@
             at (packet-pos e pos rel)]
         [(out/to id (out/teleport at 0.0 0.0 bits))]))))
 
-(defn- stood
-  "Returns sleeping player e as the wake deltas ds leave it."
-  [ds e]
+(defn- stood [ds e]
   (let [of (fn [tag] (some #(when (= tag (nth % 0)) (nth % 2)) ds))]
     (assoc e :pos (v/v3 (of :teleport)) :sleeping nil
            :yaw (:yaw (of :merge-entity)) :pitch 0.0)))
 
-(defn- woken
-  "Returns [deltas e] of player e of id leaving its bed in level lv
-  before it is teleported, e as it then stands."
-  [lv id e]
+(defn- woken [lv id e]
   (if (:sleeping e)
     (let [ds (vec (sleep/wake-deltas lv id))
           left (dec (count (sleep/sleepers lv)))]
@@ -480,10 +417,7 @@
        (stood ds e)])
     [nil e]))
 
-(defn- shifted
-  "Returns pos with its axes rel counted from where e stands rather
-  than from where e0 stood."
-  [pos rel e0 e]
+(defn- shifted [pos rel e0 e]
   (let [from (xyz (:pos e0)) to (xyz (:pos e))]
     (mapv (fn [a]
             (if (contains? rel a)
@@ -518,21 +452,14 @@
            :vel (kept-vel e rel true) :on-ground true}
     (:nav e) (assoc :nav (:nav (nav/stop e)))))
 
-(defn- recreated
-  "Returns entity e of id made anew at pos, as a level it enters
-  loads it. It keeps its uuid and its motion on the axes rel; the
-  level gives it a new id."
-  [world id e pos yaw pitch rel]
+(defn- recreated [world id e pos yaw pitch rel]
   (let [t (:tick world)]
     (when-let [m (entity/loaded (entity/saved e t) t)]
       (assoc m :pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
              :vel (kept-vel e rel false)
              :uuid (entity/uuid-of id e)))))
 
-(defn- arrival-chunk
-  "Returns the deltas that read the chunk at pos of level to when
-  it is absent, so the entity sent there stays with it."
-  [world to pos]
+(defn- arrival-chunk [world to pos]
   (let [lv (level-view world to)
         cid (chunk/block-chunk (mapv #(long (Math/floor %)) pos))]
     (when-not (or (contains? (:chunks lv) cid)
@@ -552,9 +479,6 @@
             (in-level world to (concat ds [[:spawn-entity m]]))))))))
 
 (defn- moved
-  "Returns the deltas that put entry [id from e] at pos in level to,
-  turned to turn. rel is :entity for a move onto an entity, else
-  the axes of pos that count from the source."
   [world [id from e] to pos [yaw pitch] rel]
   (let [turn [(double yaw) (double pitch)]]
     (if (= :player (:type e))
@@ -637,9 +561,7 @@
       (say eid "commands.give.success.single"
            n (item-name item) (entity-name e)))))
 
-(defn- give-limit
-  "Returns the most items of stack proto that one give hands out."
-  [proto]
+(defn- give-limit [proto]
   (* 100 (long (or (stack/component proto :max-stack-size) 1))))
 
 (defn- give-deltas [world eid [sel input n]]
@@ -719,19 +641,14 @@
 
 (defn- dimension-id [dim] (str "minecraft:" (data/snake dim)))
 
-(defn- wrapped
-  "Returns degrees a as a float angle within -180 and 180."
-  [a]
+(defn- wrapped [a]
   (let [r (float (rem (float a) (float 360.0)))]
     (cond
       (>= r (float 180.0)) (float (- r (float 360.0)))
       (< r (float -180.0)) (float (+ r (float 360.0)))
       :else r)))
 
-(defn- turn-of
-  "Returns [yaw pitch] of a spawn: yaw wrapped and pitch clamped,
-  each given one counted from the source turn when relative."
-  [world eid yaw pitch]
+(defn- turn-of [world eid yaw pitch]
   (let [e (get-in world [:entities eid])
         get (fn [[rel? v] own]
               (let [base (if rel? (double (or own 0.0)) 0.0)]
@@ -759,8 +676,6 @@
             (success [(out/to eid (out/system-chat msg))]))))
 
 (defn- world-spawn-deltas
-  "Returns the deltas that move the world spawn to the level the
-  command runs in. Players hear of it only when it moves."
   [world eid [x y z yaw pitch]]
   (if (out-of-bounds? [x y z])
     (fail eid "argument.pos.outofbounds")
@@ -857,17 +772,13 @@
 (defn- mode-name [mode]
   {:translate (str "gameMode." (name mode))})
 
-(defn- told-of-mode
-  "The message GameModeCommand sends the target of another player,
-  while players hear of commands."
-  [world id mode]
+(defn- told-of-mode [world id mode]
   (when (get-in world [:rules :send-command-feedback] true)
     [(out/to id (out/system-chat
                   {:translate "gameMode.changed"
                    :with [(mode-name mode)]}))]))
 
 (defn- mode-report
-  "GameModeCommand.logGamemodeChange."
   [world eid [id _ e] mode]
   (if (= id eid)
     (say eid "commands.gamemode.success.self" (mode-name mode))
@@ -879,8 +790,6 @@
   (game-mode/change (level-view world dim) id e mode))
 
 (defn- mode-set
-  "GameModeCommand.setGameMode: the change of the player entry x
-  and its report, nil when x is in mode already."
   [world eid mode [_ dim :as x]]
   (when-let [ds (seq (mode-change world x mode))]
     (concat (in-level world dim ds) (mode-report world eid x mode))))
@@ -891,17 +800,13 @@
       (fail eid "argument.entity.notfound.player")
       (mapcat #(mode-set world eid mode %) xs))))
 
-(defn- enforced
-  "MinecraftServer.enforceGameTypeForPlayers: every player put in
-  mode, none told of it."
-  [world mode]
+(defn- enforced [world mode]
   (when mode
     (mapcat (fn [[_ dim :as x]]
               (in-level world dim (mode-change world x mode)))
             (player-entries world))))
 
 (defn- default-mode-deltas
-  "DefaultGameModeCommands.setMode."
   [world eid [mode]]
   (let [cfg (assoc (:config world) :game-mode mode)
         forced (game-mode/forced-mode (assoc world :config cfg))]
@@ -910,16 +815,11 @@
             (say eid "commands.defaultgamemode.success"
                  (mode-name mode)))))
 
-(defn- reload-deltas
-  "ReloadCommand: the report comes at once, the reread at the
-  edge."
-  [_world eid _args]
+(defn- reload-deltas [_world eid _args]
   (cons (out/to eid (out/reload))
         (say eid "commands.reload.success")))
 
 (defn- camera-set
-  "ServerPlayer.setCamera of player entry x to entry t, nil for its
-  own eyes. A camera in another level takes the player there."
   [world [id dim e :as x] [tid tdim t]]
   (if (or (nil? t) (= dim tdim))
     (let [lv (level-view world dim)]
@@ -929,17 +829,13 @@
                       [[:merge-entity id {:camera tid}]
                        (out/to id (out/camera tid))]))))
 
-(defn- spectate-report
-  "SpectateCommand.spectate: the source alone hears it started on t,
-  or stopped for nil."
-  [eid t]
+(defn- spectate-report [eid t]
   (let [k (if t "started" "stopped")
         msg {:translate (str "commands.spectate.success." k)
              :with (if t [(entity-name t)] [])}]
     (answer [(out/to eid (out/system-chat msg))])))
 
 (defn- spectated
-  "SpectateCommand.spectate of entry t by player entry x."
   [world eid [id _ e :as x] [tid _ t :as target]]
   (cond
     (= id tid) (fail eid "commands.spectate.self")
@@ -957,10 +853,7 @@
       (fail eid "argument.entity.notfound.entity")
       :else (spectated world eid x t))))
 
-(defn- entity-tp-deltas
-  "handleTeleportToEntityPacket: a spectator goes to the entity of
-  uuid u in whichever level holds it, turned as it is."
-  [world eid u]
+(defn- entity-tp-deltas [world eid u]
   (let [x [eid (:dim world) (get-in world [:entities eid])]
         [_ dim d] (by-uuid world false u)]
     (when (and d (game-mode/spectator? (nth x 2)))
@@ -989,10 +882,7 @@
       (time-deltas world eid op args)
       (tell eid (str "unknown world command: " op)))))
 
-(defn- sourced
-  "Returns world with the level and position the command r runs
-  at, and the axes it gives relative to them, as :source."
-  [world r origin]
+(defn- sourced [world r origin]
   (let [pos (if (contains? r :origin) (:origin r) origin)]
     (assoc world :source
            {:dim (:dim r (:dim world)) :pos pos
@@ -1001,11 +891,7 @@
 (def ^:private here
   {:translate "command.context.here" :color "red" :italic true})
 
-(defn- context
-  "Returns the text component that shows where in the command
-  text s the parse failed: up to ten characters before cursor at,
-  the rest, a click that puts the command back in the chat box."
-  [^String s at]
+(defn- context [^String s at]
   (let [c (min (long at) (count s))]
     {:text "" :color "gray"
      :click {:action :suggest-command :command (str "/" s)}
@@ -1021,20 +907,14 @@
     (cond-> [(out/to eid (failure (:failure r)))]
       at (conj (out/to eid (failure (context (subs text 1) at)))))))
 
-(defn- feedback?
-  "Tells whether players hear of the success of commands once the
-  deltas ds of one are in."
-  [world ds]
+(defn- feedback? [world ds]
   (reduce (fn [on d]
             (if (= [:set-rule :send-command-feedback] (take 2 d))
               (nth d 2)
               on))
           (get-in world [:rules :send-command-feedback] true) ds))
 
-(defn- admin-report
-  "Returns the effect that shows the other operators the report m
-  of a command player eid ran."
-  [world eid m]
+(defn- admin-report [world eid m]
   (when-let [e (get-in world [:entities eid])]
     (out/except eid (out/system-chat
                       {:translate "chat.type.admin"
@@ -1048,11 +928,7 @@
           :else (cond-> [[:fx (dissoc m :feedback :admins)]]
                   (:admins m) (conj (admin-report world eid m))))))
 
-(defn- reported
-  "Returns the deltas ds of a command with its success reports kept
-  only while players hear of them. The other operators hear of the
-  reports that change the world."
-  [world eid ds]
+(defn- reported [world eid ds]
   (let [on? (feedback? world ds)]
     (into [] (comp (mapcat #(report-deltas world eid on? %))
                    (remove nil?))
@@ -1066,10 +942,7 @@
   {:failure {:translate "command.unknown.command" :with []}
    :cursor 0})
 
-(defn- parsed
-  "Returns what the command text means to player eid: every command
-  asks for the gamemaster level, below it none is known."
-  [world eid text origin]
+(defn- parsed [world eid text origin]
   (if (gamemaster? world eid)
     (cmd/parse text origin (:dim world :overworld))
     hidden))
@@ -1104,10 +977,7 @@
         sug (cmd/suggest world text target)]
     [(out/to eid (out/suggestions (or id 0) start len sug))]))
 
-(defn- mode-changed
-  "handleChangeGameMode: GameModeCommand.setGameMode of the player
-  itself, when it may run the command."
-  [world eid mode]
+(defn- mode-changed [world eid mode]
   (when (gamemaster? world eid)
     (let [x [eid (:dim world) (get-in world [:entities eid])]]
       (reported world eid (mode-set world eid mode x)))))
@@ -1120,17 +990,11 @@
     :teleport-to-entity (entity-tp-deltas world eid text)
     nil))
 
-(defn- distance-fx
-  "Returns the effect telling everyone the distance k of config
-  new, when it differs from the one of config old."
-  [old new k fx]
+(defn- distance-fx [old new k fx]
   (let [n (get new k)]
     (when (not= (get old k) n) [(out/everyone (fx n))])))
 
-(defn- config-loaded
-  "Returns the deltas that apply the world keys m of a reread
-  config, and what the players learn of it."
-  [world m]
+(defn- config-loaded [world m]
   (let [old (:config world)]
     (concat [[:set-config (merge old m)]
              (out/everyone (out/reloaded))]
@@ -1139,7 +1003,6 @@
               out/simulation-distance))))
 
 (defn- commit-synced
-  "Returns the delta that records the commit the code runs at."
   [world [_ commit]]
   [[:set-config (assoc (:config world) :commit commit)]])
 

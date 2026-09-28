@@ -1,5 +1,5 @@
 (ns collider.game.block.anvil
-  "What an anvil makes of two items and a name, and what it asks."
+  "Anvil results, costs and names."
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.stack :as stack]))
@@ -35,9 +35,7 @@
   (min (stack/damage result)
        (quot (stack/max-damage result) 4)))
 
-(defn- mend
-  "Returns the mended stack and the units of material it spends."
-  [result ^long units]
+(defn- mend [result ^long units]
   (loop [r result n 0]
     (let [by (unit-repair r)]
       (if (or (zero? by) (>= n units))
@@ -187,8 +185,7 @@
         (taxed addition))))
 
 (defn work
-  "Returns what an anvil offers for its inputs and a name.
-  The map holds the result, its cost and what taking it spends."
+  "Returns what an anvil offers for its inputs and a name."
   [input addition text creative?]
   (if (nil? input)
     empty-work
@@ -213,6 +210,6 @@
   {:anvil :chipped-anvil :chipped-anvil :damaged-anvil})
 
 (defn next-stage
-  "Returns the block an anvil wears down to, nil when it breaks."
+  "Returns the block an anvil wears down to, or nil when it breaks."
   [block]
   (stages block))

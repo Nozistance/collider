@@ -1,5 +1,5 @@
 (ns collider.game.mob.nav
-  "Ground navigation: the path a mob builds, kept in its :nav."
+  "Ground navigation of mobs."
   (:require [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
@@ -32,9 +32,7 @@
 
 (defn- half-of ^double [e] (double (nth (mobs/box-of e) 0)))
 
-(defn- walker
-  "Returns mob e as the path search wants to know it."
-  [e]
+(defn- walker [e]
   (let [[half height] (mobs/box-of e)]
     (assoc path/cow
       :width (* 2.0 (double half)) :height height :pos (:pos e)
@@ -90,7 +88,6 @@
         cy))))
 
 (defn- surface-cell
-  "Returns the goal cell lifted onto the surface above its column."
   [lv [x y z]]
   (let [chunks (:chunks lv) x (long x) z (long z)
         y (long (if (air-at? chunks x (long y) z)
@@ -122,10 +119,7 @@
       (keep-path? e cell nav) [e (:path nav)]
       :else (searched world e cell reach))))
 
-(defn- create-path
-  "Returns [mob path] for a walk to the cell, the path nil when none
-  may be built now. A path under way to the same cell is kept."
-  [world e cell ^long reach]
+(defn- create-path [world e cell ^long reach]
   (let [chunks (:chunks world)
         e (assoc e :nav (nav-of e))
         [gx _ gz] cell]
@@ -137,10 +131,7 @@
   (block/tagged? (chunk/block-state chunks (:x n) (:y n) (:z n))
                  "cauldrons"))
 
-(defn- raised
-  "Returns the nodes with the one at i raised a block, and with it
-  the next one the mob would walk down to."
-  [v ^long i]
+(defn- raised [v ^long i]
   (let [n (nth v i) nx (get v (inc i))
         y (inc (long (:y n)))
         v (assoc v i (assoc n :y y))]
@@ -148,9 +139,7 @@
       (assoc v (inc i) (assoc nx :y y))
       v)))
 
-(defn- trimmed
-  "Returns the path with its nodes in cauldrons raised by one."
-  [chunks p]
+(defn- trimmed [chunks p]
   (let [nodes (:nodes p)
         lift (fn [v i]
                (if (cauldron? chunks (nth v i)) (raised v i) v))]
@@ -215,8 +204,8 @@
 
 (defn recompute-path
   "Returns mob e with its path to the same goal built again.
-  Sooner than 20 ticks after the last one it only asks for a later
-  recomputation."
+  Sooner than 20 ticks after the last one it only asks for a
+  later recomputation."
   [world e]
   (let [nav (nav-of e) t (long (:tick world))]
     (cond
@@ -243,7 +232,7 @@
      (+ (double (long (:z n))) off)]))
 
 (defn cut-corner?
-  "Tests whether a node of type t may be walked past on a corner."
+  "Returns true when a node of type t may be walked past on a corner."
   [t]
   (not (contains? #{:fire-in-neighbor :damaging-in-neighbor
                     :walkable-door} t)))
@@ -264,9 +253,7 @@
          (neg? (dot (unit to-nxt (Math/sqrt ns))
                     (unit to-cur (Math/sqrt cs)))))))
 
-(defn- target-next?
-  "Tests whether the mob has left the node it walks to behind."
-  [e mob-pos]
+(defn- target-next? [e mob-pos]
   (let [nav (:nav e) i (long (:index nav))]
     (and (< (inc i) (count (:nodes (:path nav))))
          (let [cur (bottom-centre (cell-of (node-of e i)))
@@ -307,9 +294,7 @@
          20.0)
       0.0)))
 
-(defn- timed
-  "Returns the navigation with the wait on its next node counted."
-  [e nav mob-pos cell t]
+(defn- timed [e nav mob-pos cell t]
   (if (= cell (:timeout-node nav))
     (update nav :timeout-timer +
             (- (long t) (long (:timeout-check nav))))
@@ -376,8 +361,8 @@
     :else e))
 
 (defn tick
-  "Runs one tick of the navigation of mob e.
-  It walks the path on and tells the move control where to go."
+  "Returns mob e after one tick of its navigation.
+  The mob walks its path on and tells its move control where to go."
   [world e]
   (let [e (cond-> e (:path (:nav e)) (update-in [:nav :tick] inc))
         e (if (:delayed? (:nav e)) (recompute-path world e) e)]

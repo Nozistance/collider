@@ -122,10 +122,7 @@
           (item-deltas ctx))
       (when item (or (hand-deltas ctx) (item-deltas ctx))))))
 
-(defn- spectator-deltas
-  "ServerPlayerGameMode.useItem and useItemOn for a spectator: an
-  item use passes, a click on a block opens its menu or passes."
-  [world eid pos face]
+(defn- spectator-deltas [world eid pos face]
   (when-not (= 255 (bit-and (long face) 0xFF))
     (seq (containers/spectator-open-deltas world eid pos))))
 
@@ -138,10 +135,7 @@
   #{:pufferfish-bucket :salmon-bucket :cod-bucket
     :tropical-fish-bucket :axolotl-bucket :tadpole-bucket})
 
-(defn- placement-attempt?
-  "Tests whether item tries to put a block or a liquid.
-  ServerGamePacketListenerImpl.wasBlockPlacementAttempt."
-  [world e item]
+(defn- placement-attempt? [world e item]
   (and item
        (or (block/item->block item 1) (liquid/bucket->state item)
            (contains? mob-buckets item))
@@ -157,10 +151,7 @@
   (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) 1.0000001)
           cursor))
 
-(defn- barred
-  "Returns [high? y] when the use stops before the block is used.
-  The player then sees the limit in the message."
-  [world e pos]
+(defn- barred [world e pos]
   (let [y (long (nth pos 1))
         top (chunk/level-max-y world)
         bottom (chunk/level-min-y world)]
@@ -170,8 +161,6 @@
       (:tp-target e) [true top])))
 
 (defn- failed-limits
-  "Returns the limit messages after a use that did nothing.
-  Facing up at the top, vanilla checks twice and says it twice."
   [world e [eid pos face item _ _ _ hand] deltas]
   (let [y (long (nth pos 1))
         top (chunk/level-max-y world)
@@ -186,8 +175,6 @@
         [(edit/build-limit eid false bottom)]))))
 
 (defn- use-on-deltas
-  "Returns the deltas for a use on the face of a block.
-  ServerGamePacketListenerImpl.handleUseItemOn."
   [world [eid pos face _ cursor :as args] origin]
   (let [e (merge (get-in world [:entities eid]) origin)]
     (cond
@@ -199,10 +186,7 @@
         (let [r (place-deltas world args origin)]
           (concat r (failed-limits world e args r)))))))
 
-(defn- sequence-of
-  "Returns the sequence number the player sent with the action.
-  The block ack carries it back."
-  [tag args]
+(defn- sequence-of [tag args]
   (case tag
     :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
     :place (nth args 4 nil)
@@ -238,8 +222,8 @@
 
 (defn acks
   "Returns the deltas that confirm the block actions of this tick.
-  Each player gets its last sequence, and the blocks of each place
-  go back to its player."
+  Each player gets its last sequence. The blocks of each place go back
+  to its player."
   [world d]
   (let [events (:input d)
         ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]

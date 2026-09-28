@@ -64,8 +64,7 @@
   (Chunk/of (object-array sections)))
 
 (defn first-above
-  "Returns the nearest section above index si of chunk, nil when
-  there is none."
+  "Returns the nearest section above index si of chunk, or nil."
   ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
@@ -75,8 +74,7 @@
   (.fresh chunk (int si)))
 
 (defn chunk-at
-  "Returns the chunk at chunk coordinates cx cz. An absent chunk
-  comes back as empty-chunk, never nil."
+  "Returns the chunk at cx cz, or an empty chunk when it is absent."
   ^Chunk [^ChunkIndex chunks ^long cx ^long cz]
   (Chunk/at chunks (int cx) (int cz)))
 
@@ -121,9 +119,9 @@
   [^Section s ^booleans pred] (.holds s pred))
 
 (defn heights!
-  "Fills the unset entries of the 256 heightmap columns in out.
-  Each entry gets the height above base of the topmost block of
-  s that pred marks."
+  "Fills the unset heightmap columns in out.
+  Each gets the height above base of the top block of s that
+  pred marks."
   [^Section s ^booleans pred ^ints out ^long base]
   (.heights s pred out (int base)))
 
@@ -208,16 +206,16 @@
 
 (defn tracked?
   "Returns true when a chunk dx dz away is within view distance v.
-  The two rings nearest the axes count as distance zero. So the
-  view reaches v+1 along the axes and is cut at the corners."
+  The two rings nearest the axes count as distance zero. So the view
+  reaches v+1 along the axes and is cut at the corners."
   [^long v ^long dx ^long dz]
   (let [ax (max 0 (- (Math/abs dx) 2))
         az (max 0 (- (Math/abs dz) 2))]
     (< (+ (* ax ax) (* az az)) (* v v))))
 
 (defn tracked-ids
-  "Returns the ids of the chunks a viewer in cx cz keeps.
-  The view distance is v."
+  "Returns the ids of the chunks that a viewer in cx cz keeps at view
+  distance v."
   [^long cx ^long cz ^long v]
   (for [dx (range (- -1 v) (+ v 2))
         dz (range (- -1 v) (+ v 2))

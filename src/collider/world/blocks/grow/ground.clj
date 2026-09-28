@@ -18,9 +18,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- seen
-  "Returns the state at q after the changes made so far."
-  ^long [chunks changes q]
+(defn- seen ^long [chunks changes q]
   (or (some (fn [[c st]] (when (= c q) st)) changes)
       (chunk/at chunks q)))
 
@@ -43,10 +41,7 @@
         (conj changes [q (block/state self {:snowy snowy})]))
       changes)))
 
-(defn- spread-cells
-  "Returns the grass the four tries put around p. Each try
-  sees the grass the tries before it put."
-  [chunks p st roll]
+(defn- spread-cells [chunks p st roll]
   (let [self (block/block-of st) fresh (block/state self)]
     (not-empty
      (reduce #(spread-try chunks p self fresh roll %1 %2)
@@ -155,11 +150,7 @@
   (chorus/flower-tick chunks p st
                       (fn [salt ^long n] (pick roll salt n))))
 
-(defn- set-with-2
-  "Returns the changes, each set with flags 2, as the features
-  bone meal places set their blocks (SimpleBlockFeature,
-  VegetationPatchFeature)."
-  [changes]
+(defn- set-with-2 [changes]
   (mapv (fn [[p st fx]] [p st fx 2]) changes))
 
 (defn roots-meal

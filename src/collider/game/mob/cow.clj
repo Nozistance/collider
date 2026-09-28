@@ -11,7 +11,8 @@
   (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
 (def spec
-  "The cow's goals; a calf takes the coat of either parent."
+  "The goals of a cow.
+  A calf takes the coat of either parent."
   (animal/spec animal/goals calf-variant))
 
 (defn brain
@@ -26,8 +27,8 @@
         (items/filled-result-deltas world peid milk false hand)))
 
 (defn milk-result
-  "Returns what a bucket does to a grown cow: it fills with milk.
-  A calf gives none."
+  "Returns what a bucket does to a cow.
+  A grown cow fills it with milk. A calf gives none."
   [{:keys [world peid p hand e item]}]
   (when (and (= :bucket item) (not (mobs/baby? e)))
     {:result :success :deltas (milked world peid p hand)}))

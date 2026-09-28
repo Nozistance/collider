@@ -43,10 +43,7 @@
             (let [snd :generic/extinguish-fire]
               [(out/all (out/block-sound snd pos 1.0 1.0))]))))
 
-(defn- hold-deltas
-  "SimpleWaterloggedBlock.placeLiquid: the block takes the water
-  and asks for its tick."
-  [world pos cur]
+(defn- hold-deltas [world pos cur]
   (let [st (edit/with-water cur true)]
     (edit/change-deltas world [[pos st [:fluid-tick]]])))
 
@@ -55,10 +52,7 @@
     (+ 2.6 (* (- (double (roll :fizz-a)) (double (roll :fizz-b)))
               0.8))))
 
-(defn- evaporated
-  "Returns the hiss of water poured where it evaporates.
-  The pourer sees the smoke on its own."
-  [world eid pos]
+(defn- evaporated [world eid pos]
   (let [snd (out/block-sound :block.fire.extinguish pos 0.5
                        (fizz-pitch world pos))]
     [(out/except eid snd)]))
@@ -121,10 +115,7 @@
     (block/lava? st) :bucket/fill-lava
     :else :bucket/fill))
 
-(defn- fill-fx
-  "Player.playSound of the filled bucket: at the player, for the
-  others around."
-  [kind e st]
+(defn- fill-fx [kind e st]
   (out/sound (fill-sound kind st) (:pos e) 1.0 1.0 :players))
 
 (defn- drained-deltas [world kind pos st]

@@ -17,8 +17,9 @@
   (state/view-radius world))
 
 (defn player-radius
-  "Returns the view distance a player is sent chunks for: what the
-  client asked for, held between two and the server value."
+  "Returns the view distance a player is sent chunks for.
+  It is what the client asked for, held between two and the
+  server value."
   ^long [world p]
   (-> (long (or (:view-distance p) 2))
       (max 2)
@@ -32,8 +33,8 @@
 
 (defn loading-deltas
   "Returns the deltas that bring the absent chunks into the world.
-  The chunks come from ids. A saved chunk is asked for and
-  arrives in a later tick. Any other chunk is generated now."
+  The chunks come from ids. A saved chunk is asked for and arrives in
+  a later tick. Any other chunk is generated now."
   [world ids]
   (for [id (set ids)
         :when (not (contains? (:chunks world) id))
@@ -47,8 +48,8 @@
 
 (defn read-absent
   "Returns the payload of a chunk read while it is absent.
-  A saved chunk is read from the store there and then; any
-  other chunk is generated."
+  A saved chunk is read from the store at once. Any other chunk
+  is generated."
   [world id]
   (or (when (contains? (:stored world) id)
         (when-let [read (:read-chunk world)]
@@ -56,8 +57,8 @@
       {:chunk (gen/flat-chunk (:dim world))}))
 
 (defn read-absent-deltas
-  "Returns the deltas that put the chunks read this way in place.
-  Their ticket keeps them one further tick and no longer."
+  "Returns the deltas that put chunks read while absent in place.
+  Their ticket keeps them one more tick."
   [payloads]
   (mapcat (fn [[id payload]]
             [[:restore-chunk id payload]
@@ -72,9 +73,9 @@
        (or payload {:chunk (gen/flat-chunk dim)})])))
 
 (defn needed-ids
-  "Returns the ids of the chunks the world keeps loaded. They are the
-  chunks around its players and the chunks joining and respawning
-  players wait for."
+  "Returns the ids of the chunks the world keeps loaded.
+  They are the chunks around its players and the chunks joining and
+  respawning players wait for."
   [world]
   (into (state/loaded-zone world)
         (mapcat :need (vals (:spawning world)))))
@@ -173,10 +174,7 @@
   [[:unload-chunk id]
    (out/all (out/store-chunk id (schema/chunk-payload world id)))])
 
-(defn- purged
-  "Returns the tickets left after one tick of their life.
-  A ticket goes when its count would fall below zero."
-  [tickets]
+(defn- purged [tickets]
   (reduce-kv (fn [m id n]
                (if (pos? (long n)) (assoc m id (dec (long n))) m))
              (i/int-map) tickets))
@@ -188,8 +186,8 @@
 
 (defn unloading
   "Drops the chunks the world no longer needs and ages the tickets
-  of the chunks a mid-tick read brought in.
-  The chunks are stored as the last tick left them."
+  of chunks read mid-tick. The chunks are stored as the last tick
+  left them."
   [world _]
   (let [old (or (:unknown world) (i/int-map))
         held (purged old)]

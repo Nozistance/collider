@@ -1,5 +1,5 @@
 (ns collider.core
-  "Starting and stopping the server."
+  "Server start and stop."
   (:refer-clojure :exclude [run!])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -70,8 +70,6 @@
     (newThread [_ r] (saver-thread r))))
 
 (defn- autosave!
-  "Schedules the next save of saving the period of its settings
-  from now. A period of 0 schedules none."
   [{:keys [^ScheduledExecutorService pool settings save! pending]
     :as saving}]
   (let [ms (long (:save-period-ms @settings))
@@ -81,8 +79,6 @@
       (reset! pending (.schedule pool ^Runnable run ms unit)))))
 
 (defn- reschedule!
-  "Drops the save saving has scheduled and schedules the next one
-  by the period its settings hold now."
   [{:keys [^ScheduledExecutorService pool pending] :as saving}]
   (let [cancel #(some-> ^ScheduledFuture @pending (.cancel false))]
     (.execute pool ^Runnable #(do (cancel) (autosave! saving)))))
@@ -104,8 +100,6 @@
     (doseq [line why] (log/warn " " line))))
 
 (defn- applied!
-  "Puts the settings r of a reread in place and returns the event
-  that brings their world keys to the tick of player eid."
   [{:keys [settings on-change]} r eid]
   (let [old @settings
         s (:settings r)]
@@ -115,9 +109,6 @@
     [:config-loaded eid (select-keys s config/world-keys)]))
 
 (defn- reloaded!
-  "Rereads the config for the reload player eid asked for. The
-  outcome goes to queue as an event for the tick; a bad file
-  leaves the settings as they were."
   [{:keys [settings overlay path ^ConcurrentLinkedQueue queue]
     :as edge} eid]
   (let [reread #(config/reload @settings path overlay)]
@@ -148,9 +139,7 @@
         out (str/trim (slurp (.getInputStream p)))]
     (when (and (zero? (.waitFor p)) (seq out)) out)))
 
-(defn- source-dir
-  "Returns the directory the sources run from, or nil in a jar."
-  []
+(defn- source-dir []
   (let [^URL u (io/resource "collider/core.clj")]
     (when (= "file" (some-> u .getProtocol))
       (.getParent (.getParentFile (io/file u))))))
@@ -308,8 +297,8 @@
   (atom nil))
 
 (defn -main
-  "Starts the server. Each argument is an edn map laid over the
-  config file."
+  "Starts the server.
+  Each argument is an edn map that overrides the config."
   [& args]
   (log/to-file! "logs")
   (when-not (data/dir)

@@ -66,10 +66,7 @@
         (block/state (block/block-of cur)
                      {:level (keyword (str (inc lvl)))})))))
 
-(defn- used-deltas
-  "Returns what a cauldron use gives the player.
-  That is the result item, the sound and two stats."
-  [world eid pos item result sound stat]
+(defn- used-deltas [world eid pos item result sound stat]
   (concat (items/filled-result-deltas world eid result)
           [(out/all (out/block-sound sound pos 1.0 1.0))
            [:award eid stat 1]
@@ -112,12 +109,7 @@
   (and (not= :shulker-box item)
        (= :shulker-box (:type (get (data/blocks) item)))))
 
-(defn- wash-deltas
-  "Returns the deltas for an item washed in a water cauldron.
-  The item is a dyed shulker box or a patterned banner. The
-  cleaned item always joins the inventory, even when the hand is
-  already full."
-  [world eid pos cur stack cleaned stat]
+(defn- wash-deltas [world eid pos cur stack cleaned stat]
   (when (= :water-cauldron (block/block-of cur))
     (concat
       (edit/change-deltas world [[pos (cauldron-lowered cur)]])

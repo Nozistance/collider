@@ -1,5 +1,5 @@
 (ns collider.world.space.path
-  "Ground paths for mobs: the type of a cell and the A* over them."
+  "Ground paths of mobs, the types of cells and the search over them."
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -61,7 +61,6 @@
     :untinted-particle-leaves-block})
 
 (def ^:private unpathfindable
-  "Block classes that answer false to isPathfindable for land."
   #{:abstract-cauldron-block :anvil-block :azalea-block
     :bamboo-stalk-block :bed-block :bell-block :brewing-stand-block
     :cactus-block :cake-block :calibrated-sculk-sensor-block
@@ -91,9 +90,7 @@
 
 (defn- open-prop? [^long st] (= :true (:open (block/props-of st))))
 
-(defn- pathfindable?
-  "Returns true when a land path may run through the state."
-  [^long st]
+(defn- pathfindable? [^long st]
   (let [c (class-of st)]
     (cond
       (or (door-classes c) (trapdoor-classes c)
@@ -111,9 +108,7 @@
              (= :true (:lit (block/props-of st))))
         (= :lava-cauldron b))))
 
-(defn- plant-type
-  "Returns the type of the states checked before the fluid ones."
-  [^long st]
+(defn- plant-type [^long st]
   (let [b (block/block-of st)]
     (cond
       (block/air? st) :open
@@ -239,9 +234,7 @@
             (bb-type ctx (+ x (long dx)) (+ y (long dy))
                      (+ z (long dz)))))))
 
-(defn- highest-malus
-  "Returns the costliest of types as [type malus stopped-early?]."
-  [mob types]
+(defn- highest-malus [mob types]
   (reduce (fn [[bt bm] t]
             (let [m (path-type-malus mob t)]
               (cond
@@ -310,14 +303,10 @@
       (+ y 0.5)
       (+ (dec y) (shape-top chunks x (dec y) z)))))
 
-(defn- collides?
-  "Returns true when the box b meets a collision shape."
-  [chunks ^doubles b]
+(defn- collides? [chunks ^doubles b]
   (Path/collides chunks (block/collision-arr) b))
 
-(defn- can-reach?
-  "Returns true when the mob box slides to n without a collision."
-  [ctx n]
+(defn- can-reach? [ctx n]
   (let [mob (:mob ctx) [px py pz] (:pos mob)]
     (Path/canReach (:chunks ctx) (block/collision-arr) (double px)
                    (double py) (double pz) (double (:width mob))
@@ -348,9 +337,7 @@
 (defn- jump-height ^double [mob]
   (max 1.125 (double (:max-up-step mob))))
 
-(defn- ground-below
-  "Returns the node the mob lands on when it falls from x y z."
-  [ctx ^long x ^long y ^long z]
+(defn- ground-below [ctx ^long x ^long y ^long z]
   (let [mob (:mob ctx) lo (long (:min-y ctx))]
     (loop [cy (dec y)]
       (cond
@@ -407,9 +394,7 @@
       (collides? (:chunks ctx) (jump-box ctx x y z dir above)) nil
       :else above)))
 
-(defn- best-at
-  "Returns [type node] for the cell x y z stepped into from cur."
-  [ctx x y z cur]
+(defn- best-at [ctx x y z cur]
   (let [mob (:mob ctx)
         t (type-of-mob ctx x y z)
         m (path-type-malus mob t)
@@ -655,9 +640,9 @@
       (if (seq hit) (pick hit true) (pick targets false)))))
 
 (defn find-path
-  "Returns the path of a mob over level lv to the closest of the
-  goal cells. The path is a map of the nodes walked, whether a goal
-  was reached and how far its last node stays from the goal."
+  "Returns the path of a mob over level lv to the closest of the goal
+  cells. The path holds the nodes walked, whether a goal was reached
+  and how far its last node stays from the goal."
   [lv mob goals max-path-length reach-range multiplier]
   (search lv mob goals (double max-path-length)
           (long reach-range) (double multiplier)))

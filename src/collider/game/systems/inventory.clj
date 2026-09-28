@@ -155,17 +155,12 @@
         (items/thrown-deltas world eid (:drops after))
         (equip-deltas world eid after)))))
 
-(defn- resent-deltas
-  "AbstractContainerMenu.sendAllDataToRemote for the inventory of
-  player e."
-  [eid e]
+(defn- resent-deltas [eid e]
   (let [inv (or (:inventory e) {})
         slots (mapv inv (range menu/slot-count))]
     [(out/to eid (out/inventory slots (:carried e)))]))
 
 (defn- own-click-deltas
-  "ServerGamePacketListenerImpl.handleContainerClick for the
-  inventory menu, which is open while no other menu is."
   [world [tag eid packet]]
   (let [e (get-in world [:entities eid])]
     (when (and e (nil? (:menu e))
@@ -183,6 +178,6 @@
          nil)))
 
 (defn inventory
-  "Returns what a joining player is told about his inventory."
+  "Returns what a joining player is told about its inventory."
   [world d]
   [#(restore-deltas world (state/joins d))])

@@ -1,5 +1,5 @@
 (ns collider.world.direction
-  "The six block faces: their offsets, turns, and wire indices.")
+  "The six block faces with their offsets, turns and wire indices.")
 
 (set! *warn-on-reflection* true)
 
@@ -61,8 +61,8 @@
       :else [az ay ax])))
 
 (defn look-order
-  "Returns the six directions as a player sees them, nearest first.
-  The player looks along yaw and pitch."
+  "Returns the six directions in the order that a player who looks
+  along yaw and pitch sees them, nearest first."
   [yaw pitch]
   (let [p (Math/toRadians (double pitch))
         y (Math/toRadians (- (double yaw)))

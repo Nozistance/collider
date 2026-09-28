@@ -249,10 +249,7 @@
     v
     (store! st (mark st) (err "infinity_not_allowed"))))
 
-(defn- float-literal
-  "Returns the float or double of f. Zero loses its sign, as
-  FloatTag.valueOf and DoubleTag.valueOf give the shared ZERO."
-  [st f]
+(defn- float-literal [st f]
   (let [s (float-text f)]
     (if (= :float (:type f))
       (finite st (Float/valueOf

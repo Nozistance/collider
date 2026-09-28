@@ -47,7 +47,7 @@
 (defn- spawn-config [biome] (spawn-configs (biome-kind biome)))
 
 (def cow-variants
-  "The cow variants by the id this project gives them."
+  "The cow variants by their ids."
   [:temperate :warm :cold])
 
 (def ^:private cow-variant-ids
@@ -78,7 +78,6 @@
     (color-id (or (weighted r rare) (common-color ks common)))))
 
 (defn- attr
-  "The value of a number vanilla declares as a float."
   ^double [^double v] (double (float v)))
 
 (def ^:private cow
@@ -118,8 +117,8 @@
   (pos? (long (or (:sound-variant e) 0))))
 
 (defn sound-of
-  "Returns the sound mob e makes for k, one of :say, :step, :hurt
-  and :death. A moody cow has a voice of its own."
+  "Returns the sound mob e makes for k, such as :say or :hurt.
+  A moody cow has a voice of its own."
   [e k]
   (when-let [s (get-in types [(:type e) :sounds])]
     (keyword (name (if (and (= :cow s) (moody? e)) :cow-moody s))
@@ -162,8 +161,7 @@
                  (some? (:baby-until e)) (burning? e)])))
 
 (defn new-mob
-  "Returns a fresh mob of kind type at pos, with nothing on its
-  mind."
+  "Returns a fresh mob of kind type at pos, with nothing on its mind."
   [type pos color tick]
   {:type        type
    :pos         pos
@@ -176,8 +174,8 @@
    :health-sent (max-health type)})
 
 (defn egg-mob
-  "Returns a mob hatched from a spawn egg in level dim. The keys ks
-  decide its colour, voice and yaw."
+  "Returns a mob hatched from a spawn egg in level dim.
+  The keys ks decide its colour, voice and yaw."
   [type pos ks tick dim]
   (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
         voices (long (get-in types [type :sound-variants] 1))
@@ -188,8 +186,8 @@
       :yaw yaw :head-yaw yaw :sound-variant voice)))
 
 (defn exp-delay
-  "Returns a wait of at least one tick, drawn from an exponential
-  law with the given mean."
+  "Returns a wait of at least one tick, drawn from an exponential law
+  with the given mean."
   ^long [mean ^long t ^long eid kind]
   (let [r (max 1.0E-9 (random/of-longs t eid (hash kind)))]
     (max 1 (long (* (double mean) (- (Math/log r)))))))

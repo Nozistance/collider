@@ -1,5 +1,5 @@
 (ns collider.game.block.smithing
-  "The smithing recipes and what they make of three items."
+  "Smithing recipes and their results."
   (:require [collider.data :as data]
             [collider.game.stack :as stack]))
 

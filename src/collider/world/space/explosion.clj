@@ -126,8 +126,8 @@
 
 (defn affected-blocks
   "Returns the cells that a blast of power at center reaches.
-  :blocks holds the cells with a block. :count is the number of
-  all reached cells. :cells is a delay of all reached cells."
+  The result holds the cells with a block and the count of all
+  reached cells."
   [^Region rg [cx cy cz] power seed]
   (let [cx (double cx) cy (double cy) cz (double cz)
         [ox oy oz :as origin] (ray-origin cx cy cz)

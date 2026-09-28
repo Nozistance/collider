@@ -99,10 +99,7 @@
               (+ a (* (inc (amplifier e)) (color-byte e shift))))]
     (quot (reduce add 0 rows) weight)))
 
-(defn- blend
-  "Returns the amplifier-weighted mean of the effect colours.
-  Returns nil when no effect is visible."
-  [effects]
+(defn- blend [effects]
   (let [rows (filterv visible? effects)
         w (reduce (fn [^long a e] (+ a (inc (amplifier e)))) 0 rows)]
     (when (pos? w)
@@ -157,10 +154,7 @@
      (* power (+ (double y) (triangle world eid :y inaccuracy)))
      (* power (+ (double z) (triangle world eid :z inaccuracy)))]))
 
-(defn- carried
-  "Returns vel plus the motion of the thrower.
-  Its fall speed is left out while it stands on the ground."
-  [e vel]
+(defn- carried [e vel]
   (let [m (or (:client-vel e) [0.0 0.0 0.0])]
     (v/+ vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
 
@@ -279,11 +273,7 @@
                     [cell]))
           nil (cells from (v/+ from d))))
 
-(defn- skip?
-  "Projectile.canHitEntity: a dead body is not hit
-  (Entity.canBeHitByProjectile), a spectator is not pickable
-  (Player.isPickable)."
-  [eid e oid o]
+(defn- skip? [eid e oid o]
   (or (= (long oid) (long eid))
       (not (hittable? o))
       (not (pos? (double (:health o 1.0))))
@@ -300,9 +290,7 @@
                       [oid])))
           nil (sort-by key (:entities world))))
 
-(defn- clip
-  "Returns the first thing the move from the projectile meets."
-  [world eid e d]
+(defn- clip [world eid e d]
   (let [from (:pos e)
         b (block-clip world from d)
         x (entity-clip world eid e from d)]
@@ -379,10 +367,7 @@
       (into (mapv #(break-packet chunks %) fires)
             (edit/set-deltas world (mapv (fn [p] [p 0]) fires))))))
 
-(defn- dowse-deltas
-  "Returns the deltas of dowsing fire around the hit.
-  Fire itself is destroyed; a candle or a campfire only goes out."
-  [world hit]
+(defn- dowse-deltas [world hit]
   (let [loaded? #(chunk/in-range? (nth % 1))
         cells (filterv loaded? (dowse-cells hit))
         fires (filterv #(fire-at? (:chunks world) %) cells)]
@@ -390,9 +375,7 @@
           (mapcat #(edit/dowse-deltas world %))
           (remove (set fires) cells))))
 
-(defn- doused-deltas
-  "Returns the deltas of a water splash putting out soaked entities."
-  [world at]
+(defn- doused-deltas [world at]
   (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
     (for [[oid o] (sort-by key (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))

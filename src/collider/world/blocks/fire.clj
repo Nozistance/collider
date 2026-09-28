@@ -1,5 +1,5 @@
 (ns collider.world.blocks.fire
-  "Fire: where it catches, how it spreads, and when it burns out."
+  "Fire, where it catches, how it spreads and when it burns out."
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.random :as random]
@@ -17,7 +17,7 @@
 (def ^:const ages 16)
 
 (defn fire-state?
-  "Tells whether st is a fire block."
+  "Returns true when st is a fire block."
   [st]
   (block/fire? (long st)))
 
@@ -102,7 +102,6 @@
                  rain-sides)))
 
 (defn- burnt
-  "FireBlock.checkBurnOut: burnt TNT is primed."
   [[q st'] ^long st]
   (if (block/tnt? st) [q st' [:prime]] [q st']))
 
@@ -196,10 +195,7 @@
   (let [a (age st)]
     (aged-change st a (min 15 (+ a (quot (pick r :age 3) 2))) p)))
 
-(defn- infiniburn-tag
-  "Returns the tag of the blocks fire burns on forever in the
-  level of ctx."
-  [ctx]
+(defn- infiniburn-tag [ctx]
   (let [dim (or (:dim ctx) :overworld)
         tag (:infiniburn (data/dimension-type dim))]
     (str/replace (name tag) "-" "_")))
@@ -223,11 +219,7 @@
 (defn- fire-delay ^long [tick p]
   (+ (long tick) 30 (mod (long (hash [p tick])) 10)))
 
-(defn- wake-at
-  "Returns the tick fire asks for when it is placed or its state
-  changes. Fire with no support is gone before this: the reshape
-  of the change takes it away."
-  [_chunks _dim tick p _old side]
+(defn- wake-at [_chunks _dim tick p _old side]
   (when (nil? side) (fire-delay tick p)))
 
 (def rule

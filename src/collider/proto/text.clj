@@ -1,9 +1,5 @@
 (ns collider.proto.text
-  "Text components on the wire.
-  A component is a string of plain text or a map: :text or
-  :translate with :with and :fallback, :extra children and the
-  style keys :color :shadow-color :bold :italic :underlined
-  :strikethrough :obfuscated :click :hover :insertion :font."
+  "Text components on the wire."
   (:require [clojure.string :as str]
             [collider.proto.buf :as buf])
   (:import (collider.proto Buf)
@@ -15,10 +11,7 @@
   (let [h (.hashCode s)]
     (bit-and (bit-xor h (unsigned-bit-shift-right h 16)) (dec cap))))
 
-(defn- hash-order
-  "Returns the entries [key name] in the order a hash table of
-  capacity cap walks them, ties kept in the given order."
-  [entries cap]
+(defn- hash-order [entries cap]
   (->> (map-indexed vector entries)
        (sort-by (fn [[i [_ s]]] [(bucket s cap) i]))
        (mapv second)))
@@ -43,7 +36,8 @@
 (def ^:private event-order (hash-order event-keys 16))
 
 (defn plain?
-  "Tells whether component c is bare text with no style or children."
+  "Returns true when component c is bare text with no style
+  or children."
   [c]
   (or (string? c) (and (= 1 (count c)) (string? (:text c)))))
 
@@ -123,8 +117,8 @@
     3 (buf/write-int! b (long v))))
 
 (defn write-component
-  "Writes component c as the network NBT of a text: bare text as a
-  string tag, anything else as a compound."
+  "Writes component c as the network NBT of a text.
+  Bare text goes as a string tag and anything else as a compound."
   [^Buf b c]
   (buf/write-byte! b (tag c))
   (write-payload b c))

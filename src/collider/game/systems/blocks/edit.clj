@@ -40,8 +40,7 @@
 
 (defn builder-box
   "Returns the half width and height an entity blocks with.
-  Returns nil when it never blocks placement, as a spectator
-  (Level.isUnobstructed, EntityGetter NO_SPECTATORS)."
+  Returns nil when it never blocks placement, as a spectator."
   [e]
   (case (:type e)
     :player (when-not (game-mode/spectator? e)
@@ -84,8 +83,8 @@
     a))
 
 (defn obstructed?
-  "Returns true when a block of that state at the cell would
-  overlap an entity that stops building there."
+  "Returns true when a block of that state at the cell would overlap
+  an entity that stops building there."
   [world [x y z] state]
   (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
         n (quot (alength a) 6)
@@ -106,8 +105,8 @@
     (out/to eid (out/blocks-changed at changed))))
 
 (defn build-limit
-  "Returns the red line above the hotbar that names the height
-  limit of building, the top one when high? is true."
+  "Returns the red line above the hotbar that names the height limit
+  of building, the top one when high? is true."
   [eid high? ^long y]
   (let [k (if high? "build.tooHigh" "build.tooLow")
         text {:translate k :with [y] :color "red"}]
@@ -164,19 +163,15 @@
    :continuous :block.potent-sulfur.geyser-continuous-eruption})
 
 (defn sulfur-placed-fx
-  "Returns the effects of potent sulfur taking state st at pos,
-  PotentSulfurBlock.onPlace: a geyser that starts is heard and
-  runs its block event."
+  "Returns the effects of potent sulfur taking state st at pos.
+  A geyser that starts is heard and runs its block event."
   [[x y z :as pos] ^long st]
   (when-let [kind (eruption-sounds (geyser/phase st))]
     (let [at [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)]]
       [(out/all (out/sound kind at 1.0 1.0))
        (out/all (out/block-event pos 0 0))])))
 
-(defn- countdown-reset
-  "PotentSulfurBlockEntity.resetCountdown of the block entity at
-  pos, when there is one."
-  [world pos]
+(defn- countdown-reset [world pos]
   (when-let [e (be/at world pos)]
     (when (= :potent-sulfur (:kind e))
       [[:set-block-entity pos (assoc e :countdown -1)]])))
@@ -202,10 +197,10 @@
    :reset-countdown (fn [world pos _] (countdown-reset world pos))})
 
 (defn change-fx
-  "Returns the deltas of the effects the changes carry. A change
-  [pos st fx] names them in fx, where each is a kind, as :fizz,
-  or a kind with its data, as [:drop st]. A change [pos st] has
-  none."
+  "Returns the deltas of the effects the changes carry.
+  A change [pos st fx] names them in fx. Each is a kind such as
+  :fizz, or a kind with its data such as [:drop st]. A change
+  [pos st] has none."
   [world changes]
   (for [[pos _ fx] changes
         e fx
@@ -219,45 +214,33 @@
   (mapv (fn [[pos st]] [pos st]) changes))
 
 (defn- unheard
-  "The cells of the records no write of which the clients hear
-  of, setBlock without flag 2."
   [{:keys [records sent]}]
   (let [sent (set sent)]
     (into [] (comp (map first) (remove sent) (distinct)) records)))
 
 (defn settled-deltas
-  "Returns the deltas of s, what neighbors/set-blocks made: the
-  blocks and ticks it set, the cells the clients do not hear of
-  when there are any, then the effects each change carries."
+  "Returns the deltas of s, the result of a run of block updates."
   [world s]
   (let [quiet (unheard s)
         d [:set-blocks (block-changes (:records s)) (:ticks s)]]
     (into [(cond-> d (seq quiet) (conj quiet))]
           (change-fx world (:records s)))))
 
-(defn- run-deltas
-  "Returns the deltas of f, a run of neighbors over the chunks of
-  world, on the changes with wet sponges dried, and the ctx of
-  tick base."
-  [world changes base f]
+(defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)
         ctx (state/level-ctx world base)
         s (f (:chunks world) ctx changes)]
     [(into (settled-deltas world s) fx) s]))
 
-(defn- as-given
-  "Level.setBlock of each change, the state as it is, with the
-  flags it carries or 3."
-  [chunks ctx changes]
+(defn- as-given [chunks ctx changes]
   (let [op (fn [c] [:set c (neighbors/flags-of c 3)])]
     (neighbors/run chunks ctx (mapv op changes))))
 
 (defn change-deltas
   "Returns the deltas for the changes, each set as it is with the
-  updates it runs at once, as Level.setBlock with the flags a
-  change carries as its fourth element, 3 when none. base
-  stands for the tick the changes are made on; a player's edit
-  comes between ticks, after the tick before."
+  updates it runs at once. The fourth element of a change holds its
+  flags, 3 when none. Base stands for the tick the changes are made
+  on. A player's edit comes between ticks, after the tick before."
   ([world changes]
    (change-deltas world changes (dec (long (:tick world)))))
   ([world changes base]
@@ -271,18 +254,16 @@
 
 (defn shaped-deltas
   "Returns the deltas for changes each placed in the shape it takes
-  from its neighbours, getStateForPlacement, with the updates it
-  runs at once. A change made between ticks has base one before
-  the tick of world."
+  from its neighbours, with the updates it runs at once. A change made
+  between ticks has base one before the tick of world."
   ([world changes] (shaped-deltas world changes (:tick world)))
   ([world changes base]
    (first (run-deltas world changes base neighbors/set-blocks))))
 
 (defn flagged-deltas
-  "Returns the deltas of Level.setBlock of each change as it is,
-  with flags, then Level.updateNeighborsAt of each cell of
-  notified. A change made between ticks has base one before the
-  tick of world."
+  "Returns the deltas that set each change as it is with flags and
+  update the neighbours of each cell of notified. A change made
+  between ticks has base one before the tick of world."
   ([world changes flags]
    (flagged-deltas world changes flags nil (:tick world)))
   ([world changes flags notified base]
@@ -293,7 +274,7 @@
 
 (defn command-deltas
   "Returns [deltas n] for the changes of /setblock or /fill, made
-  between ticks: n is how many cells they changed."
+  between ticks. The count n is how many cells they changed."
   [world changes]
   (let [base (dec (long (:tick world)))
         [ds s] (run-deltas world changes base neighbors/commanded)]
@@ -326,8 +307,8 @@
     (out/except eid (out/block-sound kind pos volume pitch))))
 
 (defn placed-deltas
-  "Returns the deltas of a player placing blocks, with the place
-  sound for everyone else."
+  "Returns the deltas of a player placing blocks, with the place sound
+  for everyone else."
   ([world eid pos state] (placed-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [base (dec (long (:tick world)))
@@ -377,15 +358,15 @@
   (= :false (:waterlogged (block/props-of st))))
 
 (defn with-water
-  "Returns the state with water in it, or without when logged? is
-  false."
+  "Returns the state with water in it, or without when logged?
+  is false."
   [st logged?]
   (block/state (block/block-of st)
                (assoc (block/props-of st) :waterlogged
                       (if logged? :true :false))))
 
 (def ^:private full-water-types
-  "The classes that take a fall as well as a source, isFull.
+  "The block classes that hold falling water as well as a source.
   Everywhere else a placed block holds only source water."
   #{:conduit :coral-plant :coral-fan :coral-wall-fan
     :base-coral-plant :base-coral-fan :base-coral-wall-fan})
@@ -396,8 +377,8 @@
     (block/water-source? st)))
 
 (defn waterlogged
-  "Returns the state to place at pos', with water in it when it
-  takes the water that stands there."
+  "Returns the state to place at pos', with water in it when it takes
+  the water that stands there."
   [world pos' state]
   (if (and (placed-wet? (block-at world pos') state)
            (contains? (block/props-of state) :waterlogged)

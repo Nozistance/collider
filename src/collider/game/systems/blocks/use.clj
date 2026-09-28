@@ -21,9 +21,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- heard
-  "A sound of the block at pos for everyone, at volume 1."
-  [kind pos pitch]
+(defn- heard [kind pos pitch]
   (out/all (out/block-sound kind pos 1.0 pitch)))
 
 (defn- potted-block [item] (get-in (data/blocks) [item :pot]))
@@ -188,8 +186,8 @@
                    (out/to eid (out/sign-editor pos front?))])))
 
 (defn sign-update-deltas
-  "Returns the deltas that write lines on one side of the sign at
-  pos, when player eid edits it and it is not waxed."
+  "Returns the deltas that write lines on one side of the sign at pos,
+  when player eid edits it and it is not waxed."
   [world [eid pos front? lines]]
   (let [e (sign/at world pos)]
     (when (and e (not (:waxed? e)) (= eid (:editor e)))
@@ -425,8 +423,8 @@
 
 (defn deltas
   "Returns the deltas of player eid using the block at pos on face,
-  with item in hand and the cursor at the hit point, or nil when
-  the block does nothing."
+  with item in hand and the cursor at the hit point, or nil when the
+  block does nothing."
   [world eid pos face item cursor]
   (let [cur (edit/block-at world pos)]
     (when-let [h (handler cur item)]

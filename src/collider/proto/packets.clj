@@ -18,10 +18,7 @@
           (if executable? 4 0)
           (if redirect 8 0)))
 
-(defn- write-int-range!
-  "Writes the bounds of an integer argument; an unbounded side is
-  left out, its flag clear."
-  [^Buf buf props]
+(defn- write-int-range! [^Buf buf props]
   (let [lo (long (:min props Integer/MIN_VALUE))
         hi (long (:max props Integer/MAX_VALUE))
         lo? (not= lo Integer/MIN_VALUE)
@@ -107,7 +104,6 @@
    [:out [:map [:item :keyword] [:count {:optional true} :int]]]])
 
 (def ^:private spawn-info
-  "The fields every join and respawn repeats about the world entered."
   [[:dimension-type wire/varint]
    [:dimension wire/id]
    [:seed {:optional true} [:= {:wire wire/long} 0]]
@@ -734,7 +730,6 @@
          menu-packets entity-packets input-packets))
 
 (defn- compiled
-  "Fills in the halves an entry leaves to its schema."
   [{:keys [schema] :as e}]
   (cond-> e
     (= :wire (:read e)) (assoc :read (wire/reader schema))
@@ -744,10 +739,7 @@
   "Every packet by connection state and name."
   (update-vals table compiled))
 
-(defn- checker
-  "Returns a fn that throws on a message not fitting schema.
-  With validation off it returns nil instead."
-  [nm schema]
+(defn- checker [nm schema]
   (when (and delta/validate? schema)
     (let [valid (delay (m/validator schema))
           explain (delay (m/explainer schema))]

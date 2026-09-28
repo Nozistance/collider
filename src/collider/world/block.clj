@@ -42,10 +42,7 @@
 
 (declare tables)
 
-(defn- via
-  "Returns the inline form of a lookup by state. The form calls the
-  Block method m on the tables, the state and args."
-  [m & args]
+(defn- via [m & args]
   (fn [st] `(~m (tables) ~st ~@args)))
 
 (defn type-of
@@ -264,15 +261,14 @@
 (defn water-source? [st] (and (water? st) (source-state? st)))
 
 (defn full-fluid?
-  "Whether the fluid of the state fills its cell whole.
-  A source does, a fall does and held water does,
-  FluidState.isFull."
+  "Returns true when the fluid of st fills its cell whole.
+  A source, a fall and held water do."
   [st]
   (and (some? (liquid-class st))
        (let [l (liquid-level st)] (or (zero? l) (>= l 8)))))
 
 (defn full-water?
-  "Whether the state is water filling its cell whole."
+  "Returns true when st is water that fills its cell whole."
   [st]
   (and (water? st) (full-fluid? st)))
 
@@ -283,9 +279,9 @@
 (defn tnt? [^long st] (= :tnt (type-of st)))
 
 (defn destroyed
-  "Returns the change Level.destroyBlock makes at p. The block
-  leaves the fluid it holds and drops; it shows its break unless
-  it is a fire."
+  "Returns the change that destroying the block at p makes.
+  The block leaves its fluid and drops. It shows its break unless it
+  is a fire."
   [p ^long st]
   [p (emptied st)
    (if (contains? #{:fire :soul-fire} (type-of st))
@@ -457,16 +453,14 @@
   (Block/canOcclude (tables) st))
 
 (defn shape-occludes?
-  "Returns true when the faces meeting along d seal.
-  The faces are those of from and to, and a seal lets no
-  light through."
+  "Returns true when the faces of from and to that meet along d seal
+  and let no light through."
   {:inline (fn [from to d] `(Block/occludes (tables) ~from ~to ~d))}
   [^long from ^long to ^long d]
   (Block/occludes (tables) from to d))
 
 (defn light-dampening-into
-  "Returns the light cost of crossing from into to along dir.
-  The cost is simple when their faces do not seal."
+  "Returns the light cost of crossing from into to along dir."
   {:inline (fn [from to dir simple]
              `(Block/dampeningInto
                 (tables) ~from ~to (dir/index ~dir) ~simple))}
@@ -726,8 +720,8 @@
       a)))
 
 (defn collision-arr
-  "Returns the collision boxes by block state. Each entry holds six
-  coordinates for each box, in blocks."
+  "Returns the collision boxes by block state.
+  Each box holds six coordinates in blocks."
   ^objects []
   @collision-table)
 
@@ -837,8 +831,8 @@
       (when (pos? n) {:item (:item e) :count n}))))
 
 (defn drops
-  "Returns the stacks st drops, rolled with roll. radius, when given,
-  is the radius of the explosion that broke it and lowers the drops."
+  "Returns the stacks that st drops, rolled with roll.
+  An explosion radius, when given, lowers the drops."
   ([^long st roll] (drops st roll nil))
   ([^long st roll radius]
    (let [table (get (data/drops) (block-of st))

@@ -1,6 +1,5 @@
 (ns collider.game.schedule
-  "Lists of scheduled ticks, as LevelTicks of vanilla. Each tick
-  keeps the order it was scheduled in, the subTickOrder."
+  "Lists of scheduled block ticks."
   (:require [clojure.data.int-map :as i]
             [collider.world.chunk :as chunk]))
 
@@ -79,10 +78,9 @@
 
 (defn run-order
   "Returns the ticks due at t whose block id runs? accepts, as
-  [id ty] in the order LevelTicks runs them. A chunk gives its
-  ticks by due tick, then by the order they were added in; the
-  chunks take turns by the order of their next tick. Ticks all
-  due at one tick simply go by their order."
+  [id ty] in run order. A chunk gives its ticks by due tick and by
+  the order they were added in. The chunks take turns by the order of
+  their next tick."
   [ticks t runs?]
   (let [rows (due-rows ticks (long t))
         due (comp (mapcat row-entries) (filter #(runs? (% 2))))
@@ -99,8 +97,8 @@
     (if (seq m') (assoc q at m') (dissoc q at))))
 
 (defn flushed
-  "Returns ticks without the ticks due at t, but for those of the
-  blocks in parked. These stay as they are, overdue."
+  "Returns ticks without the ticks due at t, except those of the
+  blocks in parked. These stay overdue."
   [ticks t parked]
   (let [rows (due-rows ticks (long t))
         parked (into (i/int-set) parked)
@@ -133,7 +131,7 @@
 
 (defn saved
   "Returns the ticks of chunk cid as [delay pos type], in the order
-  they were added in, as LevelChunkTicks.pack."
+  they were added in."
   [ticks cid t]
   (->> (mapcat row-entries (:queue ticks))
        (filter #(in-chunk? cid (% 2)))
@@ -142,8 +140,8 @@
 
 (defn restored
   "Returns ticks with the saved ticks back, due after their delays.
-  They come before every tick added after the load, and keep their
-  order among themselves, as LevelChunkTicks.unpack."
+  They come before every tick added after the load and keep their
+  order among themselves."
   [ticks t saved]
   (let [base (- (count saved))]
     (reduce (fn [ticks [n [dt p ty]]]

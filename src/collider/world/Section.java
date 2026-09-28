@@ -72,8 +72,8 @@ public final class Section {
         return (SIZE + per - 1) / per;
     }
 
-    /// Builds a section from 4096 block states, indexed y, then z,
-    /// then x, and optional light of 2048 bytes each.
+    /// Builds a section from 4096 block states in y, z, x order and
+    /// optional light of 2048 bytes each.
     public static Section of(short[] blocks, byte[] blockLight,
                              byte[] skyLight) {
         if (blocks.length != SIZE) {
@@ -159,7 +159,7 @@ public final class Section {
         return h;
     }
 
-    /// Returns the block state at index i, ordered y, then z, then x.
+    /// Returns the block state at index i in y, z, x order.
     public int block(int i) {
         if (bits == 0) return pal[0];
         int c = (int) ((i * mul) >>> 32);
@@ -188,7 +188,7 @@ public final class Section {
     }
 
     /// Sets the light level at index `i` of the light levels `a` to
-    /// `v`.
+    /// the level `v`.
     public static void setNibble(byte[] a, int i, int v) {
         int b = a[i >> 1];
         a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v
@@ -245,8 +245,8 @@ public final class Section {
         return new Section(bits, pal, data, bl, canon(a));
     }
 
-    /// Returns an all-air section carrying this section's bottom
-    /// layer of sky light spread across every layer.
+    /// Returns an all-air section with the bottom layer of sky light
+    /// of this section spread across every layer.
     public Section below() {
         if (sl == null || sl == FULL) {
             return single(0, null, sl);
@@ -369,7 +369,7 @@ public final class Section {
         return build(v, bl, sl);
     }
 
-    /// Returns true if any block id present in this section is true
+    /// Returns true when any block id in this section is true
     /// in `pred`.
     public boolean holds(boolean[] pred) {
         if (pal == null) return true;
@@ -379,9 +379,9 @@ public final class Section {
         return false;
     }
 
-    /// Sets each unset entry of the 256-column `out` to the height
-    /// above `base` of the topmost block in that column matching
-    /// `pred`, if this section holds one.
+    /// Sets each unset entry of the 256 columns of `out` to the
+    /// height above `base` of the top block in that column that
+    /// matches `pred`.
     public void heights(boolean[] pred, int[] out, int base) {
         if (!holds(pred)) return;
         boolean[] hit = hits(pred);
@@ -408,8 +408,9 @@ public final class Section {
         return 0;
     }
 
-    /// Writes this section to `buf` in network form, counting blocks
-    /// whose id is true in `fluid`, with `biome` as the sole biome.
+    /// Writes this section to `buf` in network form. It counts the
+    /// blocks whose id is true in `fluid` and gives every block
+    /// the `biome`.
     public void write(Buf buf, boolean[] fluid, int biome) {
         long t = tally(fluid);
         buf.writeShort((int) (t >>> 16));

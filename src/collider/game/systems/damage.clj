@@ -78,8 +78,7 @@
     (+ base (* voice-pitch-spread r))))
 
 (defn creative-proof?
-  "Returns true when nothing can hurt the entity.
-  Players are always in creative mode."
+  "Returns true when nothing can hurt the entity."
   [e]
   (= :player (:type e)))
 
@@ -187,9 +186,7 @@
 (defn- has-chunk? [chunks x z]
   (some? (get chunks (chunk/pos->id x z))))
 
-(defn- near-edits?
-  "Returns true when the entity stands in a chunk the world holds."
-  [world e]
+(defn- near-edits? [world e]
   (let [chunks (:chunks world)]
     (when (seq chunks)
       (let [p (:pos e)
@@ -223,8 +220,6 @@
   (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
 (defn- span
-  "Returns the blocks the body of an entity reaches into.
-  The body is shrunk by the given margins."
   [p ^double half ^double height [sxz sy]]
   (let [px (v/x p) py (v/y p) pz (v/z p)
         sy (double sy)
@@ -267,9 +262,7 @@
                 (and (>= x ix0) (< x ix1)))
         (recur (inc x))))))
 
-(defn- probe
-  "Returns the touch and sunk bits for an entity in fire or lava."
-  ^long [world e]
+(defn- probe ^long [world e]
   (let [[half height] (box-of e)
         p (:pos e)
         outer (span p (double half) (double height)
@@ -285,10 +278,7 @@
     (when (not= lit? (boolean (:burning? e)))
       [[:merge-entity eid {:burning? lit?}]])))
 
-(defn- burn-tick-deltas
-  "Counts the fire down and hurts every twentieth tick.
-  Lava hurts by itself, so there the fire tick only counts."
-  [eid ^long fire wet? in-lava?]
+(defn- burn-tick-deltas [eid ^long fire wet? in-lava?]
   (when (and (pos? fire) (not wet?))
     (cond-> [[:merge-entity eid {:fire (dec fire)}]]
             (and (zero? (rem fire fire-damage-period)) (not in-lava?))
@@ -431,10 +421,7 @@
 
 (def ^:private ^:const burn-sound-period 10)
 
-(defn- fire-proof-item?
-  "Returns true when the stack shrugs fire off.
-  Netherite gear does."
-  [e]
+(defn- fire-proof-item? [e]
   (= "is_fire" (data/resists (:item (:stack e)))))
 
 (defn- item-wet? [world e]
@@ -459,11 +446,7 @@
             (if (= :damage (nth d 0)) (+ s (double (nth d 2))) s))
           0.0 deltas))
 
-(defn- burn-sound-deltas
-  "Returns the lava burn sound of an item.
-  It plays on the tick the item dies and on every tenth tick
-  of its age."
-  [world eid e ^double health]
+(defn- burn-sound-deltas [world eid e ^double health]
   (when (or (<= (- health lava-damage) 0.0)
             (zero? (rem (inc (long (or (:age e) 0)))
                         burn-sound-period)))
@@ -509,10 +492,7 @@
     (concat [[:merge-entity eid {:landed nil}]]
             (landing-particles world e (double fall)))))
 
-(defn- loading?
-  "Tells whether player e is not hurt yet: its client has not loaded
-  as of the end of its own tick."
-  [world e]
+(defn- loading? [world e]
   (and (= :player (:type e))
        (not (state/client-loaded? e (inc (long (:tick world)))))))
 
@@ -548,9 +528,7 @@
   (loot/drops @drop-tables (:type e) (loot-ctx world e)
               #(random/of-key (:tick world) eid %)))
 
-(defn- drop-deltas
-  "Returns the items mob e leaves where it died."
-  [world eid e]
+(defn- drop-deltas [world eid e]
   (when (get @drop-tables (:type e))
     (let [t (:tick world)
           spawn (fn [i s]
@@ -609,8 +587,8 @@
            (inc (bit-shift-right (+ c stand-up-reach) 4)))))
 
 (defn respawn-chunk-ids
-  "Returns the ids of the chunks the respawn check reads.
-  The check is of the respawn point of player e."
+  "Returns the ids of the chunks the check of the respawn point of
+  player e reads."
   [e]
   (when-let [{[x _ z] :pos} (respawn-config e)]
     (for [cx (reach-chunks x) cz (reach-chunks z)]
@@ -667,8 +645,7 @@
 
 (defn respawn-deltas
   "Returns the deltas that bring dead player eid back at pos.
-  When lost? is true they tell it the respawn point it set
-  was lost."
+  When lost? is true they tell it the respawn point it set was lost."
   [world eid [pos yaw pitch lost?]]
   (let [e (get-in world [:entities eid])
         inv (apply dissoc (:inventory e) (range 5))]
@@ -694,10 +671,7 @@
     (g (:tick world) e d)
     e))
 
-(defn- hurt-now
-  "Returns e after the deltas its own tick lays on it.
-  Death is reported in the tick it happens, not the next one."
-  [world eid e ds]
+(defn- hurt-now [world eid e ds]
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
 (defn- mob-deltas [world eid e]
@@ -719,10 +693,7 @@
   (and (some? (:health e))
        (or (not (idle? world e)) (near-edits? world e))))
 
-(defn- ticking?
-  "Tells whether entity e runs its tick: a player always, any other
-  only in a chunk that runs entity ticks."
-  [active e]
+(defn- ticking? [active e]
   (or (= :player (:type e)) (state/active-at? active (:pos e))))
 
 (defn- live-entries [world]
@@ -746,8 +717,8 @@
         events))
 
 (defn damage
-  "Returns a step for every living entity and the damage events.
-  The events are those of this tick."
+  "Returns a step for every living entity and the damage events of
+  this tick."
   [world d]
   (let [events (:input d)]
     (conj (living-fns world) #(event-deltas world events))))

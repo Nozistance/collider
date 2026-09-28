@@ -21,15 +21,15 @@
    :rain-level :o-rain-level :thunder-level :o-thunder-level])
 
 (defn can-have-weather?
-  "Whether the level of dimension dim has rain and thunder."
+  "Returns true when the level of dimension dim has rain and thunder."
   [dim]
   (let [t (data/dimension-type dim)]
     (boolean (and (:has-skylight t) (not (:has-ceiling t))
                   (not= :the-end dim)))))
 
 (defn sample
-  "Returns a whole number of ticks within bounds, inclusive.
-  The roll, in [0, 1), picks it."
+  "Returns a whole number of ticks within bounds inclusive.
+  The roll picks it."
   ^long [^double roll bounds]
   (let [lo (long (nth bounds 0))
         span (- (long (nth bounds 1)) lo)
@@ -42,7 +42,7 @@
   (double (:rain-level ctx 0.0)))
 
 (defn thunder-level
-  "Returns the thunder level as a player sees it: scaled by rain."
+  "Returns the thunder level scaled by rain as a player sees it."
   ^double [ctx]
   (let [th (float (:thunder-level ctx 0.0))]
     (double (float (* th (float (rain-level ctx)))))))
@@ -63,8 +63,8 @@
   (> (thunder-level ctx) 0.9))
 
 (defn sky-darken
-  "Returns how much the weather and the time dim the sky light.
-  The value is 0 to 15."
+  "Returns how much the weather and the time dim the sky light, from 0
+  to 15."
   ^long [ctx ^long time]
   (light/sky-darken time (rain-level ctx) (thunder-level ctx)))
 
@@ -86,7 +86,7 @@
     (> (spawn/motion-blocking-height chunks x z) (long y))))
 
 (defn precipitation-at
-  "Returns what falls at block p now: :none, :rain or :snow."
+  "Returns :none, :rain or :snow for what falls at block p now."
   [ctx chunks p]
   (cond
     (not (raining? ctx)) :none

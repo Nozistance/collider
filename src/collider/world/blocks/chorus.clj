@@ -1,6 +1,6 @@
 (ns collider.world.blocks.chorus
-  "Chorus plants and flowers.
-  Their support, connections and growth."
+  "Chorus plants and flowers with their support, connections
+  and growth."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
@@ -15,11 +15,7 @@
 
 (defn- roots? [^long st] (block/tagged? st "supports_chorus_plant"))
 
-(defn- held-by
-  "How a plant beside p holds or blocks the plant at p: :blocked
-  when p is squeezed, :held when that plant stands on a plant or
-  roots, else nil."
-  [chunks p squeezed? d]
+(defn- held-by [chunks p squeezed? d]
   (let [q (off p d)]
     (when (plant? (chunk/at chunks q))
       (if squeezed?
@@ -37,10 +33,7 @@
       :held true
       (or (plant? below) (roots? below)))))
 
-(defn- one-plant-beside?
-  "Tells whether exactly one plant and nothing else stands beside
-  p."
-  [chunks p]
+(defn- one-plant-beside? [chunks p]
   (loop [ds dir/horizontal one? false]
     (if-let [d (first ds)]
       (let [n (chunk/at chunks (off p d))]
@@ -109,11 +102,9 @@
   {:north :south :south :north :west :east :east :west})
 
 (def ^:private ^:const grew
-  "The level event of ChorusFlowerBlock.placeGrownFlower."
   1033)
 
 (def ^:private ^:const died
-  "The level event of ChorusFlowerBlock.placeDeadFlower."
   1034)
 
 (defn- flower-of ^long [^long age]

@@ -460,8 +460,8 @@
     (block/emptied st)))
 
 (defn gone
-  "Returns the change of the block st at p when it loses its
-  support. Farmland and paths turn to dirt; the rest is destroyed."
+  "Returns the change of the block st at p when it loses its support.
+  Farmland and paths turn to dirt. Other blocks are destroyed."
   [p ^long st]
   (if (#{:farmland :dirt-path} (block/type-of st))
     [p (block/state :dirt)]
@@ -520,7 +520,8 @@
 
 (defn multiface-sides-updated
   "Returns st without the faces on sides that lost the block they
-  cover; all faces for a change at pos itself (nil among sides)."
+  cover. A nil side stands for a change at pos itself and checks
+  all faces."
   ^long [chunks pos ^long st sides]
   (if (contains? sides nil)
     (multiface-updated chunks pos st)
@@ -826,10 +827,6 @@
 (defn- any-side? [side] (some? side))
 
 (def ^:private tick-sides
-  "The blocks that leave on a tick one after they lose support,
-  each with the sides whose change asks for it. The updateShape of
-  vanilla schedules only for these. The other blocks leave in the
-  neighbour update itself."
   (merge {:sugar-cane any-side? :cactus any-side?
           :chorus-plant any-side? :bamboo-stalk any-side?
           :hanging-moss any-side?
@@ -855,9 +852,6 @@
     (block/facing-of st)))
 
 (def ^:private shape-sides
-  "The side whose change makes the updateShape of vanilla ask
-  whether the block survives, by type. Other types ask on a change
-  of any side."
   (merge
     (zipmap [:torch :redstone-torch :standing-sign :banner
              :cake :candle-cake :pressure-plate
@@ -876,8 +870,6 @@
      :candle (constantly nil)}))
 
 (def ^:private side-tests
-  "Types whose updateShape asks about survival for changes on more
-  than one side but not all."
   {:vine (fn [_ side] (not= :down side))})
 
 (defn- shape-side? [st side]
@@ -889,10 +881,7 @@
 
 (def ^:private multiface-types #{:glow-lichen :multiface :sculk-vein})
 
-(defn- popped?
-  "Tells whether the updateShape of vanilla removes st at p for a
-  change on side."
-  [chunks p st side]
+(defn- popped? [chunks p st side]
   (if (contains? multiface-types (block/type-of st))
     (and (some? side)
          (empty? (block/faces-of
@@ -907,8 +896,6 @@
       (when (popped? chunks p st side) :neighbor))))
 
 (def ^:private removed-types
-  "The blocks that leave in neighborChanged, by removeBlock: they
-  drop but show no break."
   #{:rail :powered-rail :detector-rail :repeater :comparator
     :redstone-wire})
 
@@ -920,11 +907,9 @@
         [(gone p st)]))))
 
 (def ^:private popped-types
-  "Blocks that leave in updateShape though they are not attached."
   #{:mossy-carpet})
 
 (def ^:private lit-types
-  "The blocks whose support needs light, or darkness."
   #{:mushroom :crop :carrot :potato :beetroot :torchflower-crop
     :pitcher-crop})
 

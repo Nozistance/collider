@@ -120,11 +120,7 @@
             [[:set-block-entity pos entity]]
             editor)))
 
-(defn- second-cell-deltas
-  "Places a two-cell block.
-  Players are cleared from the clicked cell only, since the other
-  half goes down after the fact."
-  [world eid pos' state ppos pstate ok?]
+(defn- second-cell-deltas [world eid pos' state ppos pstate ok?]
   (when (and (chunk/in-level? world (ppos 1)) (ok?)
              (not (edit/obstructed? world pos' state)))
     (edit/placed-deltas world eid [[pos' state] [ppos pstate]])))
@@ -172,11 +168,7 @@
       (= 1 (long face)) (dir/player-direction (:yaw e 0.0))
       :else :up)))
 
-(defn- scaffold-walk
-  "Returns the first cell from p along off that takes scaffolding,
-  past scaffolding already there. Only sideways steps count
-  toward the limit of seven."
-  [world p off horizontal?]
+(defn- scaffold-walk [world p off horizontal?]
   (loop [p p n 0]
     (when (< (long n) 7)
       (if-not (chunk/in-level? world (p 1))
@@ -188,10 +180,7 @@
             (block/can-be-replaced? st) p
             :else nil))))))
 
-(defn- scaffold-target
-  "Returns the cell where scaffolding goes, or nil when there is
-  none. A cell outside the level ends the walk and comes back."
-  [world eid pos face]
+(defn- scaffold-target [world eid pos face]
   (let [dir (scaffold-direction world eid face)
         off (dir/offset dir)]
     (scaffold-walk world (mapv + pos off) off

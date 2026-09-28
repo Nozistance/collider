@@ -1,6 +1,5 @@
 (ns collider.game.systems.players.track
-  "The records of the entity tracker: what a player was last told
-  of a body, and the frame of one update.")
+  "Entity tracker records of what a player last knew of a body.")
 
 (defrecord Track
   [pos yaw pitch head on-ground mdata equip vel-sent since-tp slots

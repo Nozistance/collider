@@ -45,17 +45,14 @@
 (def activation-radius 2)
 
 (defn view-radius
-  "Returns the view distance in chunks the config asks for.
-  It is kept between 2 and 32."
+  "Returns the view distance in chunks the config asks for, kept
+  between 2 and 32."
   ^long [world]
   (-> (long (get-in world [:config :view-distance] 7))
       (max 2)
       (min 32)))
 
-(defn- loads-chunks?
-  "ChunkMap.skipPlayer: a spectator holds no chunks when the
-  spectators_generate_chunks rule is off."
-  [world e]
+(defn- loads-chunks? [world e]
   (and (= :player (:type e))
        (or (get-in world [:rules :spectators-generate-chunks] true)
            (not (game-mode/spectator? e)))))
@@ -74,8 +71,7 @@
 
 (defn loaded-zone
   "Returns the ids of the chunks the players keep at full status.
-  A loading ticket reaches the view distance and its level climbs
-  by one per chunk beyond it, so two further rings still count."
+  That zone reaches two rings past the view distance."
   [world]
   (zone-at world (+ 2 (view-radius world))))
 
@@ -92,11 +88,7 @@
     [(in? (zone-at world s)) (in? (zone-at world (inc s)))
      (zone-at world (inc (view-radius world)))]))
 
-(defn- fresh?
-  "Tells whether the areas still describe this world.
-  Their reach is a config value, so a changed config outdates them
-  as surely as a body that moved or a chunk that came or went."
-  [world cached]
+(defn- fresh? [world cached]
   (and cached
        (identical? (nth (key cached) 0) (:entities world))
        (identical? (nth (key cached) 1) (:chunks world))
@@ -120,9 +112,7 @@
 
 (defn broadcast-chunks
   "Returns the chunks whose block changes reach the clients.
-  A loading ticket puts the view distance and one ring past it
-  below the block ticking level; the ring after that is only
-  full, and a change there is never announced."
+  They reach one ring past the view distance."
   [world]
   (nth (areas world) 2))
 
@@ -172,8 +162,8 @@
 
 (defn level
   "Returns the level dim of world.
-  It holds the shared keys of world, the keys of level dim, :dim
-  and the height and sky of its dimension."
+  It also holds the shared keys of world and the shape of
+  its dimension."
   [world dim]
   (-> (dissoc world :levels)
       (into (get-in world [:levels dim]))
@@ -182,8 +172,8 @@
 
 (defn with-level
   "Returns world with level dim replaced by lv.
-  lv's non-level keys become the shared part of world, dropping
-  shared keys lv no longer has; lv's level keys become level dim."
+  The keys of lv that are not level keys become the shared part
+  of world."
   [world dim lv]
   (let [lv (dissoc lv :dim :min-y :max-y :sky? :server)
         level-part (select-keys lv schema/level-keys)
@@ -192,7 +182,7 @@
            (assoc (:levels world) dim level-part))))
 
 (defn idle?
-  "Tells whether level lv holds nothing a tick could change.
+  "Returns true when level lv holds nothing a tick could change.
   Such a level has no chunks, no entities and no chunk on its way."
   [lv]
   (and (zero? (count (:chunks lv))) (zero? (count (:entities lv)))
@@ -210,8 +200,8 @@
 (defn- player-type? [[_ e]] (= :player (:type e)))
 
 (defn server-view
-  "Returns the shared keys of world with all players as entities.
-  The players of every level are in it."
+  "Returns the shared keys of world with the players of every level
+  as entities."
   [world]
   (let [players (comp (mapcat (comp :entities val))
                       (filter player-type?))]
@@ -244,8 +234,6 @@
 (defn- inside? [w [pos]] (chunk/in-level? w (long (pos 1))))
 
 (defn- real-step
-  "Adds change c to [acc now] when it changes the block, now
-  holding the blocks set so far."
   [w [acc now] [pos st :as c]]
   (let [old (long (or (get now pos)
                       (chunk/chunks-get-block (:chunks w) pos)))]
@@ -253,17 +241,12 @@
       [acc now]
       [(conj acc [pos old st]) (assoc now pos st)])))
 
-(defn- real-changes
-  "Returns the changes that change a block as [pos old st], each
-  seen after the ones before it."
-  [w changes]
+(defn- real-changes [w changes]
   (first (reduce #(real-step w %1 %2) [[] {}] changes)))
 
 (defn level-ctx
-  "Returns what the block rules of level w read besides its
-  blocks: the tick, the dimension, the rules, the weather, the
-  time of day and where the players stand. base, when given,
-  stands for the tick."
+  "Returns what the block rules of level w read besides its blocks.
+  When given, base stands for the tick."
   ([w] (level-ctx w (:tick w)))
   ([w base]
    (merge (select-keys w weather/fields)
@@ -283,10 +266,7 @@
   (reduce (fn [w [k at id ty]] (update w k schedule/add at id ty))
           w ticks))
 
-(defn- unquiet
-  "The changes the clients hear of: all but those at a cell of
-  quiet."
-  [changes quiet]
+(defn- unquiet [changes quiet]
   (if (seq quiet)
     (let [quiet (set quiet)]
       (filterv #(not (quiet (first %))) changes))
@@ -304,9 +284,6 @@
       (seq told) (update :block-events add-block-events told))))
 
 (defn- settled
-  "Returns level w with the changes set and the ticks they asked
-  for added, in order. The clients hear of no change at a cell of
-  quiet."
   ([w changes ticks] (settled w changes ticks nil))
   ([w changes ticks quiet]
    (let [real (real-changes w changes)]
@@ -314,13 +291,7 @@
        w
        (with-changes w real ticks quiet)))))
 
-(defn- apply-set-blocks
-  "Returns level w after Level.setBlock of each change, with the
-  updates it runs. What the updates show is not heard: this is an
-  edit from outside the game, as tests and tools make. Systems
-  set blocks through edit, which runs the updates itself and gives
-  the ticks with the changes."
-  [w changes]
+(defn- apply-set-blocks [w changes]
   (let [s (neighbors/set-blocks (:chunks w) (level-ctx w) changes)
         changes (mapv (fn [[p st]] [p st]) (:records s))]
     (settled w changes (:ticks s))))
@@ -356,28 +327,18 @@
   (and (<= (- border-edge) (long x)) (< (long x) border-edge)
        (<= (- border-edge) (long z)) (< (long z) border-edge)))
 
-(defn- respawn-dimension
-  "Returns the level of the world spawn, where a player with no
-  place of its own lands. The overworld stands in for a level the
-  server lacks."
-  [w]
+(defn- respawn-dimension [w]
   (let [dim (:world-spawn-dimension w :overworld)]
     (if (some #{dim} schema/dims) dim :overworld)))
 
-(defn- respawn-level
-  "Returns the level of the world spawn as w sees it: w itself, the
-  level of the server w holds, or the level of w as a server."
-  [w]
+(defn- respawn-level [w]
   (let [dim (respawn-dimension w)
         server (or (:server w) (when (:levels w) w))]
     (cond (= dim (:dim w)) w
           server (level server dim)
           :else (select-keys (bounds dim) [:min-y]))))
 
-(defn- centre-top
-  "Returns the top of the column at the border centre of level lv,
-  its lowest y while the chunk there is not loaded."
-  [lv]
+(defn- centre-top [lv]
   [0 (max (long (:min-y lv chunk/min-y))
           (spawn/motion-blocking-height (:chunks lv {}) 0 0))
    0])
@@ -388,8 +349,8 @@
   (:world-spawn-turn w [0.0 0.0]))
 
 (defn respawn-at
-  "Returns the world spawn as players respawn at it, moved inside
-  the world border as the chunks of its level stand now."
+  "Returns the world spawn as players respawn at it, moved inside the
+  world border as the chunks of its level stand now."
   [w]
   (let [pos (vec (:world-spawn w [24 4 8]))]
     (if (in-border? pos) pos (centre-top (respawn-level w)))))
@@ -408,24 +369,15 @@
 
 (def ^:private ^:const client-load-timeout 60)
 
-(defn- load-awaited
-  "Returns player e as its connection starts to wait, in tick, for
-  the client to load."
-  [e tick]
+(defn- load-awaited [e tick]
   (assoc e :loaded-at (+ (long tick) client-load-timeout)))
 
-(defn- awaiting-join
-  "Returns player e waiting for the ack of the teleport its
-  connection sends first, the one to where it joins."
-  [e tick]
+(defn- awaiting-join [e tick]
   (let [p (:pos e)]
     (assoc e :tp-target [(v/x p) (v/y p) (v/z p)] :tp-id 1
              :tp-at tick)))
 
-(defn- moded
-  "ServerPlayer.readAdditionalSaveData: the mode player e joins in
-  and the flight it keeps there."
-  [w e]
+(defn- moded [w e]
   (let [mode (game-mode/joining-mode w (:game-mode e))]
     (assoc e :game-mode mode
              :flying (game-mode/flying-in mode (:flying e)))))
@@ -520,10 +472,7 @@
   (let [slot (+ 36 (long (or (:held-slot e) 0)))]
     (get-in e [:inventory slot :item])))
 
-(defn- snapped
-  "Returns e turned to rot.
-  The client reports rot for the use of an item."
-  [e rot]
+(defn- snapped [e rot]
   (if (and rot (held-item-of e))
     (assoc e :yaw (wrap-degrees (double (:yaw rot)))
              :pitch (wrap-degrees (double (:pitch rot))))
@@ -533,7 +482,7 @@
 
 (defn use-origin
   "Returns the eye and look of the player behind an event.
-  Only place and use events have one; others give nil."
+  Only place and use events have one. Others give nil."
   [w [tag & args]]
   (let [rot (case tag
               :place (nth args 6 nil)
@@ -564,10 +513,7 @@
                    :duration]
                   default-swing))))
 
-(defn- swing-free?
-  "Tells whether the arm is done enough with its last swing.
-  Vanilla lets a new one in halfway through the one before."
-  [e ^long t]
+(defn- swing-free? [e ^long t]
   (if-let [at (:swing-at e)]
     (let [k (- t (long at))]
       (or (zero? k)
@@ -576,9 +522,9 @@
 
 (defn swing-deltas
   "Returns the deltas of the arm swing of player eid.
-  There are none while the arm is still busy with the swing before
-  it. The player sees its own swing only when the server, not the
-  client, started it."
+  There are none while the arm is still busy with the swing before it.
+  The player sees its own swing only when the server, not the client,
+  started it."
   [eid e hand t self?]
   (when (swing-free? e (long t))
     (let [kind (if (= :off hand) :swing-off :swing)
@@ -589,7 +535,7 @@
         self? (conj (out/to eid fx))))))
 
 (defn consumable
-  "Returns the Consumable component of the stack, or nil."
+  "Returns the consumable component of the stack, or nil."
   [stack]
   (when stack (get-in (data/items) [(:item stack) :consumable])))
 
@@ -606,9 +552,8 @@
       (> (long (get-in e [:cooldowns group] 0)) tick))))
 
 (defn cooldown-deltas
-  "Returns the deltas that lock item's cooldown group.
-  They also notify the client. Returns nil when item has
-  no cooldown."
+  "Returns the deltas that lock the cooldown group of item and tell
+  the client. Returns nil when item has no cooldown."
   [eid e item ^long tick]
   (when-let [[group ticks] (data/use-cooldown item)]
     [[:merge-entity eid
@@ -680,8 +625,8 @@
 
 (defn slot-deltas
   "Returns the deltas of an event that touches only player slots.
-  Every fold over the events of a tick replays these; the packet
-  systems alone give them out."
+  Every fold over the events of a tick replays them. Only the packet
+  systems give them out."
   [world [tag eid slot stack]]
   (when (slot-event? tag slot)
     (when-let [e (get-in world [:entities eid])]
@@ -704,15 +649,15 @@
    (clamp z horizontal-limit)])
 
 (defn next-teleport-id
-  "Returns the id of the next teleport a player is sent. The
-  connection counts them from 1, the join teleport, and wraps."
+  "Returns the id of the next teleport a player is sent.
+  The ids count from 1, the join teleport, and wrap."
   ^long [e]
   (let [n (inc (long (:tp-id e 1)))]
     (if (= n Integer/MAX_VALUE) 0 n)))
 
 (defn client-loaded?
-  "Tells whether the client of player e counts as loaded for what it
-  sends in tick t: it said so, or sixty ticks passed since it joined
+  "Returns true when the client of player e counts as loaded in tick
+  t. The client said so, or sixty ticks passed since the player joined
   or respawned. A dead player waits for its respawn first."
   [e ^long t]
   (and (pos? (double (:health e 0.0)))
@@ -720,10 +665,7 @@
 
 (def ^:private ^:const teleport-resend 20)
 
-(defn- resent
-  "Returns w after a move of player eid, which sends the teleport it
-  has not acked again once twenty ticks are past the last one."
-  [w eid]
+(defn- resent [w eid]
   (let [e (get-in w [:entities eid]) t (long (:tick w))]
     (if (and (:tp-target e)
              (> (- t (long (:tp-at e))) teleport-resend))
@@ -794,10 +736,7 @@
                        :ping ping))
       w)))
 
-(defn- flight-claimed
-  "handlePlayerAbilities: the player flies as its client says only
-  when its mode lets it fly."
-  [w eid changes]
+(defn- flight-claimed [w eid changes]
   (let [may? (game-mode/may-fly? (get-in w [:entities eid]))
         flying (and may? (boolean (:flying changes)))]
     (apply-move w eid {:flying flying})))
@@ -869,14 +808,15 @@
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
 (defn infinite-materials?
-  "Returns true when the player builds without spending items.
-  Player.hasInfiniteMaterials: the instabuild of creative."
+  "Returns true when the player builds without spending items, as
+  in creative."
   [player]
   (game-mode/creative? player))
 
 (defn permission-level
-  "Returns the permission level of player e. Every player is an
-  operator of the top level unless it holds a level of its own."
+  "Returns the permission level of player e.
+  Every player is an operator of the top level unless it holds a level
+  of its own."
   ^long [e]
   (long (:permission-level e 4)))
 
@@ -903,8 +843,6 @@
       (assoc e :eid eid))))
 
 (defn- resend-of
-  "Returns the teleport a :move event sent again, nil when none.
-  It goes where the last one went, turned as the player was."
   [w w' [tag eid]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) e' (not= (:tp-id e) (:tp-id e')))
@@ -912,8 +850,7 @@
        :yaw (:yaw e) :pitch (:pitch e)})))
 
 (def ^:private load-gated
-  "The events of the packets ServerGamePacketListenerImpl takes only
-  from a client that has loaded."
+  "The events that count only from a client that has loaded."
   #{:move :input :dig :release-use :place :use-item :entity-action
     :attack :interact :spectate})
 
@@ -922,9 +859,7 @@
       (when-let [e (get-in w [:entities eid])]
         (client-loaded? e (long (:tick w))))))
 
-(defn- heard
-  "Returns acc with event d, which took w to w', noted."
-  [acc w w' d]
+(defn- heard [acc w w' d]
   (let [o (use-origin w d) m (move-of w w' d) q (quit-of w d)
         r (resend-of w w' d)]
     (cond-> (update acc :heeded conj d)
@@ -952,8 +887,8 @@
       (remembered w input acc))))
 
 (defn heeded
-  "Returns the input deltas d of level dim as world took them in:
-  without the events it did not heed."
+  "Returns the input deltas d of level dim without the events the
+  world did not heed."
   [world dim d]
   (if-let [h (get-in world [:levels dim :heeded])]
     (assoc d :input h)
@@ -1193,8 +1128,7 @@
 
 (defn apply
   "Returns the world with the deltas folded into it.
-  world may be a level or a whole world; a whole world is folded
-  through its overworld level and put back."
+  The world may be a level or a whole world."
   [world deltas]
   (if (contains? world :levels)
     (apply-in world :overworld deltas)
@@ -1232,8 +1166,8 @@
 
 (defn cross
   "Returns world with the players that change dimension in d moved.
-  Each leaves level from for its new level with the same eid. It
-  knows no chunk and no entity there yet."
+  Each keeps its eid in the new level and knows no chunk and no entity
+  there yet."
   [world from changes]
   (reduce #(crossed %1 from %2) world changes))
 
@@ -1258,8 +1192,8 @@
 
 (defn fold-events
   "Returns the deltas f gives for each event in order.
-  Each event sees the world after the ones before it were applied,
-  and after the slot events before it, whoever gives those out."
+  Each event sees the world after the events and slot events
+  before it."
   ([world events f] (fold-events world events f identity))
   ([world events f event-of]
    (loop [w world evs (seq events) acc []]

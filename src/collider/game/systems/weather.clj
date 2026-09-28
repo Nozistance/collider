@@ -40,9 +40,8 @@
       (out/to eid msg))))
 
 (defn weather
-  "Returns the rain and thunder of a level that can have weather:
-  the step of the cycle, the messages of the change and the state
-  a player placed in the level sees."
+  "Returns the rain and thunder of a level that can have weather, with
+  the messages of the change."
   [world d]
   (when (weather/can-have-weather? (:dim world))
     (let [w (merge world (weather/advance world))]

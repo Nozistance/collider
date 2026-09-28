@@ -1,5 +1,5 @@
 (ns collider.world.blocks.geyser
-  "Potent sulfur under water: the geyser above it and its countdown."
+  "The geyser of potent sulfur under water and its countdown."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -7,23 +7,19 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const water-reach
-  "PotentSulfurBlock.ALLOWED_WATER_BLOCKS_ABOVE."
   4)
 
 (def ^:private ^:const reach-per-water 6)
 
 (defn phase
-  "Returns the potent sulfur state of st, as :dormant."
+  "Returns the potent sulfur phase of st, like :dormant."
   [^long st]
   (:potent-sulfur-state (block/props-of st)))
 
 (defn- water-source? [^long st]
   (or (block/waterlogged? st) (block/water-source? st)))
 
-(defn- passable?
-  "Tells whether a geyser passes st, seen from below the cell.
-  Scaffolding has no collision from below."
-  [^long st]
+(defn- passable? [^long st]
   (or (= :water (block/block-of st))
       (= :scaffolding (block/type-of st))
       (empty? (block/collision-boxes st))))
@@ -61,15 +57,11 @@
         (passable? (at i)) (recur (inc i))
         :else i))))
 
-(defn- drawn
-  "Returns a whole number from lo to hi fixed by pos and k."
-  ^long [pos k ^long lo ^long hi]
+(defn- drawn ^long [pos k ^long lo ^long hi]
   (let [r (random/of-key pos :geyser k)]
     (+ lo (long (* r (inc (- hi lo)))))))
 
-(defn- countdown-from
-  "Returns the countdown a geyser starts, by its phase and depth."
-  ^long [pos ph ^long depth]
+(defn- countdown-from ^long [pos ph ^long depth]
   (if (= :dormant ph)
     (+ (* 10 (dec depth)) (drawn pos 0 15 30))
     (+ (dec depth) (drawn pos 1 1 2))))
@@ -93,16 +85,15 @@
 (defn- geyser? [ph] (contains? #{:dormant :erupting} ph))
 
 (defn placed-fx
-  "Returns the effects of PotentSulfurBlock.onPlace of st: a geyser
-  that starts is heard and runs its block event."
+  "Returns the effects of placing st.
+  A geyser that starts is heard and runs its block event."
   [^long st]
   (when (#{:erupting :continuous} (phase st))
     [[:geyser-start st]]))
 
 (defn shaped-fx
-  "Returns the effects of updateShape turning sulfur old into st:
-  one that becomes a geyser starts its countdown anew,
-  PotentSulfurBlockEntity.resetCountdown."
+  "Returns the effects of a shape update that turns sulfur old into
+  st. A new geyser starts its countdown anew."
   [^long old ^long st]
   (when (and (= :potent-sulfur (block/type-of old))
              (not (geyser? (phase old)))

@@ -18,8 +18,8 @@
     (into ds (follow-deltas w))))
 
 (defn camera
-  "Returns a step for the spectator actions of this tick and for
-  the spectators that follow their cameras."
+  "Returns a step for the spectator actions of this tick and for the
+  spectators that follow their cameras."
   [world d]
   (let [events (:input d)]
     [#(camera-deltas world events)]))

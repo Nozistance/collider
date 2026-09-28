@@ -1,8 +1,5 @@
 (ns collider.game.command.components
-  "Saved forms of item components as commands read them.
-  A decoder takes a tag and returns [:ok value] with the value a
-  stack holds, [:malformed why] with the text of the codec error,
-  or [:raw tag] when the check is not modelled."
+  "Saved forms of item components as commands read them."
   (:require [collider.game.command.dfu :as dfu
              :refer [fixed from-file identifier named numbered
                      enum-of int-in float-in bool-of by-name]]
@@ -11,7 +8,7 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private fish-patterns
-  "TropicalFish.Pattern by name, to the id base | index << 8."
+  "The tropical fish patterns by name, to their ids."
   (named (zipmap ["kob" "sunstreak" "snooper" "dasher" "brinely"
                   "spotty" "flopper" "stripey" "glitter" "blockfish"
                   "betty" "clayfish"]
@@ -22,18 +19,12 @@
   (named {"brown" 0 "white" 1 "black" 2 "white_splotched" 3
           "gold" 4 "salt" 5 "evil" 99}))
 
-(defn- all-ok
-  "Returns the direct holder of the map of ks to the values of
-  results rs, or tag kept raw when one fails. Errors of inline
-  values are not modelled."
-  [tag ks rs]
+(defn- all-ok [tag ks rs]
   (if (every? #(= :ok (first %)) rs)
     [:ok {:direct (zipmap ks (map second rs))}]
     [:raw tag]))
 
-(defn- direct-sound
-  "Decodes an inline SoundEvent: sound_id and a lenient range."
-  [tag]
+(defn- direct-sound [tag]
   (if (map? tag)
     (let [rng (:range tag)
           r (all-ok tag [:sound] [(identifier (:sound_id tag))])]
@@ -42,16 +33,12 @@
         (assoc-in [1 :direct :range] (double (unchecked-float rng)))))
     (dfu/not-map tag)))
 
-(defn- inline-raw
-  "Keeps an inline value raw: its codec is not modelled."
-  [tag]
+(defn- inline-raw [tag]
   (if (map? tag) [:raw tag] (dfu/not-map tag)))
 
 (def ^:private sound (from-file "sound_event" direct-sound))
 
-(defn- direct-instrument
-  "Decodes an inline Instrument."
-  [tag]
+(defn- direct-instrument [tag]
   (if (map? tag)
     (let [p dfu/positive-float]
       (all-ok tag [:sound :use-duration :range :description]
@@ -74,17 +61,13 @@
   [:malformed (str "Failed to parse either. First: Not a number;"
                    " Second: Not a list: " (dfu/printed tag))])
 
-(defn- rgb
-  "Decodes RGB_COLOR_CODEC: an int, or three floats from 0 to 1.
-  Errors of a list of floats are not modelled."
-  [tag]
+(defn- rgb [tag]
   (cond (number? tag) [:ok (long (unchecked-int tag))]
         (floats3? tag) [:ok (argb tag)]
         (vector? tag) [:raw tag]
         :else (not-rgb tag)))
 
 (def ^:private food
-  "FoodProperties.DIRECT_CODEC."
   (dfu/record [:nutrition :nutrition dfu/non-negative :req]
               [:saturation :saturation dfu/float-of :req]
               [:can_always_eat :can-always-eat bool-of :opt false]))
@@ -143,8 +126,6 @@
                :opt []]))
 
 (def ^:private enchantments
-  "ItemEnchantments.CODEC. Several entries go in the order of our
-  map; the order of vanilla is the one of an identity hash."
   (dfu/unbounded-map (fixed "enchantment") (dfu/int-range 1 255)))
 
 (def ^:private stew-effects
@@ -159,14 +140,14 @@
                (from-file "trim_pattern" inline-raw) :req]))
 
 (def ^:private recipes
-  "Recipe.KEY_CODEC list, kept as the tag the codec writes."
   (dfu/listed (dfu/mapped identifier dfu/full-id)))
 
 (def ^:private block-state
   (dfu/unbounded-map dfu/string-of dfu/string-of))
 
 (def ^:private pot-decorations
-  "PotDecorations.CODEC: the four sides, brick where none is given."
+  "Decodes the four sides of a pot.
+  A side not given is brick."
   (dfu/mapped (dfu/limited (by-name "item") 4)
               #(vec (take 4 (concat % (repeat :brick))))))
 
@@ -184,8 +165,8 @@
    :light-gray :cyan :purple :blue :brown :green :red :black])
 
 (def ^:private decoders
-  "The saved forms of components commands check.
-  Others are kept as the raw tag, unchecked."
+  "The components that commands check.
+  Commands keep the others unchecked."
   (let [n dfu/non-negative p dfu/positive-int
         i (int-in Integer/MIN_VALUE Integer/MAX_VALUE "")
         dye (enum-of dyes)]

@@ -1,5 +1,5 @@
 (ns collider.config
-  "Server settings, read from config.edn."
+  "Server settings."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -45,10 +45,7 @@
        (when (contains? settings k)
          (str ", got " (pr-str (get settings k))))))
 
-(defn- checked
-  "Returns the settings that fit the schema, or throws.
-  The error holds a line per bad key."
-  [path settings]
+(defn- checked [path settings]
   (if-let [errors (me/humanize (m/explain Settings settings))]
     (throw (ex-info (str "invalid " path)
                     {:what (str path " has bad settings")
@@ -63,17 +60,17 @@
             (checked path (edn/read-string (slurp (str path))))))))
 
 (def world-keys
-  "The settings the world value holds, read by the tick."
+  "The settings that the world holds for the tick."
   [:view-distance :simulation-distance :max-players :motd
    :game-mode :force-game-mode])
 
 (def ^:private fixed-keys [:port :save-dir])
 
 (defn reload
-  "Returns the settings of path laid under overlay, as :settings.
-  The keys a running server cannot change keep their current
-  values; the ones the file changes are named as :restart. Throws
-  as load-config does when the file is bad."
+  "Returns the settings of path laid under overlay as :settings.
+  Keys that a running server cannot change keep their values.
+  Changed keys that need a restart go to :restart. Throws when the
+  config is bad."
   [current path overlay]
   (let [fresh (merge (load-config path) overlay)]
     {:settings (merge fresh (select-keys current fixed-keys))
@@ -85,9 +82,8 @@
   (str "{" (str/join "\n " (map entry m)) "}\n"))
 
 (defn write-default!
-  "Writes the default settings to path.
-  Does nothing when a file is already there. Returns true
-  when it wrote them."
+  "Writes the default settings to path unless path exists.
+  Returns true when it writes them."
   ([] (write-default! "config.edn"))
   ([path]
    (let [f (io/file (str path))]

@@ -1,5 +1,5 @@
 (ns collider.cli
-  "Talking to the person who runs the server."
+  "Messages to the person who runs the server."
   (:require [clojure.string :as str]
             [collider.log :as log]
             [collider.proto.codec :as c]))

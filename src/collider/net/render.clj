@@ -54,8 +54,6 @@
     {:packet :set-chunk-cache-center :cx cx :cz cz}))
 
 (defn- chunk-packets
-  "Returns the packets of one step of chunk sending. The view
-  center goes only when it moved."
   [world [_ _ add drop center]]
   (concat
     (when center [(center-packet center)])
@@ -200,11 +198,7 @@
 
 (def ^:private equipment-slots [0 2 3 4 5])
 
-(defn- spawn-rotation
-  "Returns in degrees the angle a thrown thing began with.
-  It flies in the tick of the throw, so the entity already turned.
-  Everything else answers with the angle it holds now."
-  [tr kind k now]
+(defn- spawn-rotation [tr kind k now]
   (if-let [a (and tr (entity/thrown-types kind) (get tr k))]
     (/ (* (double a) 360.0) 256.0)
     now))
@@ -336,10 +330,7 @@
    :splash                        [:entity.generic.splash 6]
    :swim                          [:entity.generic.swim 6]})
 
-(defn- spawn-info
-  "Returns the fields a join or respawn gives player e of level lv.
-  ServerPlayer.createCommonSpawnInfo."
-  [lv e]
+(defn- spawn-info [lv e]
   (let [dim (:dim lv :overworld)]
     {:dimension-type (data/datapack-id "dimension_type" dim)
      :dimension dim :sea-level (biome/sea-level-of dim)
@@ -496,9 +487,7 @@
   (bit-or (if (:invulnerable? m) 1 0) (if (:flying? m) 2 0)
           (if (:may-fly? m) 4 0) (if (:instabuild? m) 8 0)))
 
-(defn- abilities-packet
-  "ClientboundPlayerAbilitiesPacket of the abilities m."
-  [m]
+(defn- abilities-packet [m]
   {:packet       :player-abilities :flags (abilities-flags m)
    :flying-speed 0.05 :walking-speed 0.1})
 
@@ -529,10 +518,7 @@
 
 (def ^:private no-commands [{:type :root :children []}])
 
-(defn- permission-packets
-  "PlayerList.sendPlayerPermissionLevel: the op level and the
-  commands it allows."
-  [eid e]
+(defn- permission-packets [eid e]
   (let [level (state/permission-level e)]
     [{:packet :entity-event :eid eid :event (+ op-level-event level)}
      {:packet :commands
@@ -559,9 +545,7 @@
 (defn- set-time-packet [m]
   {:packet :set-time :age (:age m) :time (:time m)})
 
-(defn- rain-packets
-  "The weather part of PlayerList.sendLevelInfo for level lv."
-  [lv]
+(defn- rain-packets [lv]
   (let [rain (double (:rain-level lv 0.0))
         thunder (* rain (double (:thunder-level lv 0.0)))]
     (when (> rain 0.2)
@@ -569,10 +553,7 @@
        (game-event-packet :rain-level-change rain)
        (game-event-packet :thunder-level-change thunder)])))
 
-(defn- level-info-packets
-  "PlayerList.sendLevelInfo: what a player entering level lv learns
-  of it."
-  [lv]
+(defn- level-info-packets [lv]
   (concat [border-packet
            (set-time-packet
              {:age (:tick lv) :time (:time-of-day lv 0)})
@@ -581,26 +562,18 @@
           [(game-event-packet :level-chunks-load-start 0.0)]
           ticking-packets))
 
-(defn- leave-packets
-  "What the old level sends on the way out: the chunks and then the
-  entities the player knew there."
-  [m]
+(defn- leave-packets [m]
   (concat (map forget-chunk-packet (:forget m))
           (map (fn [id] {:packet :remove-entities :eids [id]})
                (:untrack m))))
 
-(defn- player-info-packets
-  "The inventory and held slot a player entering a level learns."
-  [e]
+(defn- player-info-packets [e]
   (let [inv (or (:inventory e) {})]
     [{:packet :container-set-content :container 0 :state-id 0
       :items (mapv inv (range menu/slot-count)) :carried (:carried e)}
      {:packet :set-held-slot :slot (long (or (:held-slot e) 0))}]))
 
-(defn- resent-packets
-  "The health and experience a player entering a level learns once
-  the levels have ticked."
-  [e]
+(defn- resent-packets [e]
   [{:packet :set-health :health (double (:health e 20.0))
     :food 20 :saturation 5.0}
    {:packet :set-experience :progress 0.0 :level 0 :total 0}])
@@ -612,10 +585,7 @@
    (center-packet (chunk/pos-chunk (:pos m)))
    (own-abilities e)])
 
-(defn- change-dimension-packets
-  "Returns the packets that move a player into level lv, in the
-  order the client expects them."
-  [lv m]
+(defn- change-dimension-packets [lv m]
   (let [eid (:to m) e (get-in lv [:entities eid])]
     (concat
       [(assoc (spawn-info lv e) :packet :respawn :keep 3)
@@ -704,9 +674,7 @@
 (defn- sign-editor-packet [m]
   {:packet :open-sign-editor :pos (:pos m) :front? (:front? m)})
 
-(defn- reloaded-packets
-  "PlayerList.reloadResources: the tags, then the recipes."
-  []
+(defn- reloaded-packets []
   [{:packet :update-tags :tags (data/tags)}
    (assoc (data/recipes) :packet :update-recipes)])
 
@@ -900,10 +868,7 @@
      difficulty-packet
      (own-abilities e)]))
 
-(defn- join-teleport-packet
-  "PlayerList.placeNewPlayer: the teleport to where player e joins,
-  the first one its connection counts."
-  [e]
+(defn- join-teleport-packet [e]
   (let [p (:pos e)]
     {:packet :player-position :teleport-id (long (:tp-id e 1))
      :pos [(v/x p) (v/y p) (v/z p)] :vel [0.0 0.0 0.0]
@@ -951,11 +916,7 @@
     :tab-game-mode
     :game-rules :reloaded :view-distance :simulation-distance})
 
-(defn- sight-of
-  "Returns what a render call needs of world.
-  That is every level, the dimension of each player and the players
-  of each level."
-  [world]
+(defn- sight-of [world]
   (let [ps (players world)
         dim-of #(or (state/dim-of world %) home)
         of (into {} (map (fn [p] [p (dim-of p)])) ps)]
@@ -999,11 +960,7 @@
   (ranged-recipients (level-of sight dim)
                      (get (:by-dim sight) dim []) m))
 
-(defn- audience
-  "Returns the players an effect m without an address reaches.
-  A level's effect stays in its level, the server's reaches every
-  level, and some kinds reach everyone whatever their level."
-  [sight m]
+(defn- audience [sight m]
   (let [dim (:dim m)]
     (cond (everyone (:msg m)) (:ps sight)
           (some? dim) (level-audience sight dim m)
@@ -1042,10 +999,7 @@
               p pkts]
           [eid p])))))
 
-(defn- level-entry-packets
-  "The health and experience resent to the players that entered a
-  level this tick, after all else the tick sends them."
-  [sight ^Deltas deltas]
+(defn- level-entry-packets [sight ^Deltas deltas]
   (for [m (deltas/out-of deltas)
         :when (identical? :change-dimension (:msg m))
         :let [eid (:to m)
@@ -1053,9 +1007,7 @@
         p (resent-packets e)]
     [eid p]))
 
-(defn- arrivals
-  "Returns the players that entered a level in the tick of deltas."
-  [^Deltas deltas]
+(defn- arrivals [^Deltas deltas]
   (into #{} (keep #(when (identical? :change-dimension (:msg %))
                      (:to %)))
         (deltas/out-of deltas)))
@@ -1063,17 +1015,11 @@
 (defn- position? [p]
   (and (map? p) (identical? :player-position (:packet p))))
 
-(defn- teleport-id
-  "Returns the id of the teleport k before the last one player eid
-  was sent, as its connection counts them."
-  ^long [sight eid ^long k]
+(defn- teleport-id ^long [sight eid ^long k]
   (let [e (get-in (own-level sight eid) [:entities eid])]
     (mod (- (long (:tp-id e 1)) k) (long Integer/MAX_VALUE))))
 
-(defn- numbered
-  "Returns the pairs with the teleports in them numbered. The last
-  one a player is sent carries the id the world holds for it."
-  [sight pairs]
+(defn- numbered [sight pairs]
   (let [of (fn [[eid p]] (when (position? p) eid))
         left (frequencies (keep of pairs))
         id #(assoc %2 :teleport-id (teleport-id sight %1 %3))
@@ -1093,10 +1039,7 @@
   (when (= :block-event (:msg m))
     [(:dim m) (:pos m) (:action m) (:param m)]))
 
-(defn- once-each
-  "ServerLevel.blockEvent keeps its events of a tick in a set, so
-  the same event twice in a tick is sent once."
-  [msgs]
+(defn- once-each [msgs]
   (let [seen (volatile! #{})]
     (filter (fn [m]
               (let [k (block-event-key m)]
@@ -1120,8 +1063,7 @@
            (level-entry-packets sight deltas)))))
 
 (defn render
-  "Returns [eid packet] for every player after a tick.
-  It reads the world after the tick and the deltas of that tick.
+  "Returns [eid packet] for every player after a tick of deltas.
   A player entering a level gets its chunks after all else."
   [world ^Deltas deltas]
   (let [sight (sight-of world)

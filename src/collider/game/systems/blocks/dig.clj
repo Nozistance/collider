@@ -20,21 +20,13 @@
 (def ^:private upper-types
   (into block/door-types (conj connect/pair-types :pitcher-crop)))
 
-(defn- first-half?
-  "Tells whether a player who drops nothing takes the other half
-  of old first."
-  [old]
+(defn- first-half? [old]
   (let [{:keys [half part]} (block/props-of old)
         t (block/type-of old)]
     (or (and (= :upper half) (contains? upper-types t))
         (and (= :bed t) (= :foot part)))))
 
-(defn- kept-partner
-  "DoublePlantBlock.preventDropFromBottomPart and
-  BedBlock.playerWillDestroy: a player who drops nothing takes the
-  lower half, or the head of a bed, before the block itself, and
-  the others see it break. Returns [pos state] of that half."
-  [world e pos old]
+(defn- kept-partner [world e pos old]
   (when (and (state/infinite-materials? e) (first-half? old))
     (connect/partner (:chunks world) pos old)))
 
@@ -78,10 +70,7 @@
       (mapcat (fn [[i s]] (when s (spilled world pos i s)))
               (map-indexed vector (:items e))))))
 
-(defn- break-shown
-  "Returns the effect others get of the break of old at pos: particles
-  and sound, or for fire only the hiss, which the breaker hears too."
-  [eid pos old]
+(defn- break-shown [eid pos old]
   (if (fire/fire-state? old)
     [(out/all (out/extinguish pos))]
     [(out/except eid (out/break-effect pos old))]))
@@ -93,8 +82,6 @@
                (spill-deltas world pos))))
 
 (defn- gone-deltas
-  "The block at pos and a half taken with it go, each with its
-  updates; the half the updates take show their own break."
   [world eid pos old [ppos pst :as kept]]
   (let [gone (cond->> [[pos (block/emptied old)]]
                kept (cons [ppos (block/emptied pst)]))]
@@ -118,10 +105,7 @@
              (and (state/infinite-materials? e)
                   (false? (:creative-break? it)))))))
 
-(defn- restricted
-  "Player.blockActionRestricted for a spectator: a start shows the
-  block again, a stop does nothing."
-  [world eid status pos]
+(defn- restricted [world eid status pos]
   (when (zero? (long status)) [(edit/own-change world eid pos)]))
 
 (defn dig-deltas [world [eid status pos _face]]

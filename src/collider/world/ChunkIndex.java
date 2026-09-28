@@ -49,7 +49,7 @@ public final class ChunkIndex extends APersistentMap
         return find(root, span, pu, pv, cx, cz);
     }
 
-    /// Returns the value at the key `id(cx, cz)` gives.
+    /// Returns the value of the chunk with key `id`.
     public Object get(long id) {
         return find(root, span, pu, pv, (int) (id >> 32), (int) id);
     }

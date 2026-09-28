@@ -1,6 +1,5 @@
 (ns collider.game.deltas
-  "Deltas of one tick and their jobs.
-  A job is a source of deltas or of more jobs."
+  "Deltas of one tick and the jobs that make them."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -69,7 +68,7 @@
 (def merge-deltas merge)
 
 (defn inert?
-  "Whether d changes nothing in the world it is applied to."
+  "Returns true when d changes nothing in the world it applies to."
   [^Deltas d]
   (and (empty? (world-of d)) (zero? (count (entities-of d)))
        (empty? (input-of d))))
@@ -94,7 +93,7 @@
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (defn run
-  "Returns the Deltas of the jobs run in parallel.
+  "Returns the deltas of the jobs run in parallel.
   The order is the same every time."
   ^Deltas [fs]
   (fold (fn [^Deltas acc f]

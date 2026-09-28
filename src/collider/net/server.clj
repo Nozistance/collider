@@ -1,5 +1,5 @@
 (ns collider.net.server
-  "Serving the players who connect."
+  "Player connections."
   (:require [clojure.string :as str]
             [collider.log :as log]
             [collider.net.server.conn :as types]
@@ -62,8 +62,7 @@
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
 (defn compress!
-  "Compresses everything above threshold on connection c.
-  This holds from here on."
+  "Compresses everything above threshold on connection c from now on."
   [^Conn c ^long threshold]
   (.offer ^BlockingQueue (:q c) [:threshold threshold]))
 
@@ -124,10 +123,7 @@
   (str/join " " (map #(format "%02x" (bit-and 255 (long %)))
                      (buf/peek-bytes frame 64))))
 
-(defn- decode-logged
-  "Decodes the frame; a frame that does not parse is logged with its
-  connection state and first bytes before the error goes on."
-  [^Conn conn ^Buf frame]
+(defn- decode-logged [^Conn conn ^Buf frame]
   (let [state (conn-state conn)
         n (buf/readable-bytes frame)
         hex (hex-of frame)]
@@ -211,8 +207,8 @@
           (^[long] Thread/.join w (max 1 left)))))))
 
 (defn close-all!
-  "Disconnects everyone with text.
-  Waits up to ms for the text to reach them."
+  "Disconnects everyone with text and waits up to ms for it to
+  reach them."
   [conns text ^long ms]
   (let [cs @conns]
     (doseq [[_ ^Conn conn] cs]
@@ -243,10 +239,7 @@
            (Thread/sleep 100))
          nil)))
 
-(defn- connection-limit
-  "Returns the connections io lets in at once, as its settings
-  hold it now."
-  ^long [io]
+(defn- connection-limit ^long [io]
   (let [s (some-> (:settings io) deref)]
     (long (:max-connections s default-max-connections))))
 

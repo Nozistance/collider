@@ -1,9 +1,5 @@
 (ns collider.game.command.dfu
-  "Decoders of tags as DataFixerUpper codecs read them in commands.
-  A decoder takes a tag and returns [:ok value], [:malformed why]
-  with the text of the codec error, [:partial why value] when the
-  error keeps a partial result, or [:raw tag] when the check is not
-  modelled. The error texts print tags as Tag.toString does."
+  "Decoders of tags in commands."
   (:require [clojure.string :as str]
             [collider.data :as data])
   (:import (clojure.lang IPersistentMap IPersistentVector)
@@ -14,9 +10,7 @@
 (def ^:private suffixes
   {Byte "b" Short "s" Integer "" Long "L" Float "f" Double "d"})
 
-(defn- control-escape
-  "Returns the escape of char c as SnbtGrammar gives it, or nil."
-  [c]
+(defn- control-escape [c]
   (case c
     \backspace "b" \tab "t" \newline "n" \formfeed "f" \return "r"
     (when (< (int c) 32) (format "x%02X" (int c)))))
@@ -32,8 +26,8 @@
           :else (str c))))
 
 (defn quoted
-  "Returns string s quoted and escaped as StringTag.quoteAndEscape
-  does: the quote is the one of the two that s does not start with."
+  "Returns string s quoted and escaped.
+  The quote is the kind that s does not start with."
   [s]
   (let [q (quote-char s)]
     (str q (apply str (map #(escaped q %) s)) q)))
@@ -65,8 +59,8 @@
       (str tag (suffixes (class tag))))))
 
 (defn printed
-  "Returns tag as Tag.toString in 26.2 does (StringTagVisitor): keys
-  of a compound in string order, numbers with their suffix."
+  "Returns tag as text.
+  Compound keys go in string order and numbers keep their suffix."
   [tag]
   (condp instance? tag
     String (quoted tag)
@@ -88,7 +82,7 @@
   (not-a "map" tag))
 
 (defn op-of
-  "Returns the kind of result r: :ok, :malformed, :partial or :raw."
+  "Returns the kind of result r, such as :ok or :malformed."
   [r]
   (first r))
 
@@ -106,9 +100,9 @@
 (defn- malformed? [r] (= :malformed (op-of r)))
 
 (defn errors
-  "Returns the error of results rs as DataResult joins them: the
-  last one first. It keeps a partial result when each one does.
-  The text is nil when one of them is not modelled."
+  "Returns the joined error of results rs, the last one first.
+  It keeps a partial result when each one has one. The text is nil
+  when one of them is not modelled."
   [rs]
   (let [fs (filter failed? rs)]
     [(if (some malformed? fs) :malformed :partial)
@@ -116,8 +110,9 @@
        (str/join "; " (map second (reverse fs))))]))
 
 (defn settled
-  "Returns result r of tag as a decoder gives it: an error is
-  malformed, or tag kept raw when its text is not modelled."
+  "Returns result r of tag as a decoder result.
+  An error is malformed. The tag stays raw when the error text is
+  not modelled."
   [tag [op v :as r]]
   (cond (not (failed? r)) r
         (nil? v) [:raw tag]
@@ -134,7 +129,8 @@
     (str "Failed to parse either. First: " xm "; Second: " ym)))
 
 (defn either
-  "Returns the result of Codec.either over results x and y."
+  "Returns the first of results x and y that decodes.
+  A partial result beats an error."
   [[xo xm :as x] [yo ym :as y]]
   (cond (#{:ok :raw} xo) x
         (#{:ok :raw} yo) y
@@ -143,8 +139,8 @@
         :else [:malformed (either-why xm ym)]))
 
 (defn list-of
-  "Decodes each element of list tag with f as ListCodec does. The
-  partial result counts the elements that decode."
+  "Decodes each element of list tag with f.
+  The partial result counts the elements that decode."
   [f tag]
   (if (vector? tag)
     (let [rs (mapv f tag)]
@@ -155,7 +151,7 @@
     (not-a "list" tag)))
 
 (defn non-empty
-  "Checks list result r as ExtraCodecs.nonEmptyList does."
+  "Returns list result r, or an error when the list is empty."
   [[op v n :as r]]
   (let [why "List must have contents"]
     (cond (and (= :ok op) (empty? v)) [:malformed why]
@@ -169,8 +165,8 @@
   (fn [tag] (settled tag (list-of f tag))))
 
 (defn field
-  "Decodes optional field k of m with f to [out value]. An error
-  keeps a partial result, as optionalFieldOf does."
+  "Decodes optional field k of m with f to [out value].
+  An error keeps a partial result."
   [m [k out f]]
   (if-some [tag (get m k)]
     (let [[op v :as r] (f tag)]
@@ -182,9 +178,6 @@
                    (printed m) "]")])
 
 (defn- record-field
-  "Decodes field [k out f how dflt] of map m to [out value]. How is
-  :req for fieldOf, :opt for optionalFieldOf and :lenient for
-  lenientOptionalFieldOf; a missing field gives dflt."
   [m [k out f how dflt]]
   (let [tag (get m k)
         [op v :as r] (when (some? tag) (f tag))]
@@ -198,9 +191,9 @@
           :else [:malformed v])))
 
 (defn record
-  "Returns the decoder of a RecordCodecBuilder codec over fields,
-  each [key-in-tag key-out decoder how default]. The value is the
-  map of the fields that have one."
+  "Returns the decoder of a record over fields.
+  Each field is [key-in-tag key-out decoder how default]. The value
+  holds the fields that have one."
   [& fields]
   (fn [tag]
     (if (map? tag)
@@ -211,16 +204,16 @@
       (not-map tag))))
 
 (defn checked
-  "Returns decoder f that also checks its value with ok?, else
-  gives the error why of the value."
+  "Returns decoder f that also checks its value with ok?.
+  A value that fails gives the error why."
   [f ok? why]
   (fn [tag]
     (let [[op v :as r] (f tag)]
       (if (and (= :ok op) (not (ok? v))) [:malformed (why v)] r))))
 
 (defn int-in
-  "Returns the decoder of an int from lo to hi. The error is why
-  followed by the value."
+  "Returns the decoder of an int from lo to hi.
+  The error is why followed by the value."
   [lo hi why]
   (fn [tag]
     (if (number? tag)
@@ -229,9 +222,8 @@
       [:malformed "Not a number"])))
 
 (defn float-in
-  "Returns the decoder of a float from lo to hi. The bounds compare
-  as Float.compareTo does, so -0.0 is below 0.0. When open, lo is
-  not in the range."
+  "Returns the decoder of a float from lo to hi.
+  Negative zero is below zero. When open, lo is not in the range."
   ([lo hi why] (float-in lo hi why false))
   ([lo hi why open]
    (fn [tag]
@@ -245,7 +237,8 @@
        [:malformed "Not a number"]))))
 
 (defn float-range
-  "Returns the decoder of Codec.floatRange, the one of DFU."
+  "Returns the decoder of a float from lo to hi.
+  The error names the range."
   [lo hi]
   (let [why (str " outside of range [" (float lo) ":" (float hi) "]")
         f (float-in lo hi "")]
@@ -268,19 +261,22 @@
   (float-in 0 Float/MAX_VALUE "Value must be positive: " true))
 
 (defn bool-of
-  "Decodes a boolean as a byte tag holds it: zero is false."
+  "Decodes a boolean from a byte tag.
+  Zero is false."
   [tag]
   (if (number? tag)
     [:ok (not (zero? (unchecked-byte tag)))]
     [:malformed "Not a number"]))
 
 (defn unit-of
-  "Decodes a unit component: any map, to true."
+  "Decodes a unit component.
+  Any map decodes to true."
   [tag]
   (if (map? tag) [:ok true] (not-map tag)))
 
 (defn tag-unit
-  "Decodes a unit value: any map, to the empty map."
+  "Decodes a unit value.
+  Any map decodes to the empty map."
   [tag]
   (if (map? tag) [:ok {}] (not-map tag)))
 
@@ -304,7 +300,7 @@
         "Non [a-z0-9/._-] character in path of location:"))
 
 (defn parse-id
-  "Returns [ns path] of string s as Identifier.parse splits it."
+  "Returns [ns path] of string s."
   [s]
   (let [i (str/index-of s \:)]
     [(if (and i (pos? (long i))) (subs s 0 i) "minecraft")
@@ -315,7 +311,7 @@
        \space why \space ns ":" path))
 
 (defn identifier
-  "Decodes a resource location as Identifier.CODEC does."
+  "Decodes a resource location."
   [tag]
   (if (string? tag)
     (let [[ns path] (parse-id tag)]
@@ -325,8 +321,7 @@
     [:malformed "Not a string"]))
 
 (defn named
-  "Returns the decoder of StringRepresentable.fromEnum: a name out
-  of the map by-name, to its value."
+  "Returns the decoder of a name in by-name, to its value."
   [by-name]
   (fn [tag]
     (cond (not (string? tag)) [:malformed "Not a string"]
@@ -349,8 +344,8 @@
     [v]))
 
 (defn reg-key
-  "Returns the key of id v in registry, built in or from the
-  datapack, or nil. A path with a slash is a keyword namespace."
+  "Returns the key of id v in registry, or nil.
+  The registry may be built in or come from the datapack."
   [registry v]
   (let [m (get (data/registries) registry)
         has? (or (when m (partial contains? m))
@@ -361,7 +356,8 @@
   [:malformed (str "Failed to get element " (full-id v))])
 
 (defn fixed
-  "Returns the decoder of RegistryFixedCodec over registry."
+  "Returns the decoder of an id of registry to its key.
+  An id not in registry gives a missing element error."
   [registry]
   (fn [tag]
     (let [[op v :as r] (identifier tag)]
@@ -374,8 +370,8 @@
                    registry " / " (full-id v) "]")])
 
 (defn from-file
-  "Returns the decoder of RegistryFileCodec over registry. A tag
-  that is not an identifier goes to direct, the inline value."
+  "Returns the decoder of an entry of registry by id.
+  A tag that is not an id decodes with direct."
   [registry direct]
   (fn [tag]
     (let [[op v :as r] (identifier tag)]
@@ -398,15 +394,13 @@
     [:malformed "Not a number"]))
 
 (defn int-range
-  "Returns the decoder of Codec.intRange, the one of DFU."
+  "Returns the decoder of an int from lo to hi.
+  The error names the range."
   [lo hi]
   (checked int-of #(<= lo % hi)
            #(str "Value " % " outside of range [" lo ":" hi "]")))
 
-(defn- decoded-until
-  "Decodes the elements of list tag with f until most of them give
-  a value, as ListCodec skips the ones past its size."
-  [f most tag]
+(defn- decoded-until [f most tag]
   (reduce (fn [rs x]
             (if (<= most (count (remove malformed? rs)))
               (reduced rs)
@@ -418,8 +412,7 @@
                    ", expected range [0-" most "]")])
 
 (defn limited
-  "Returns the decoder of a list of at most most elements of f, as
-  Codec.sizeLimitedListOf."
+  "Returns the decoder of a list of at most most elements of f."
   [f most]
   (fn [tag]
     (let [n (when (vector? tag) (count tag))]
@@ -434,7 +427,8 @@
                    "]: " (full-id v))])
 
 (defn by-name
-  "Returns the decoder of Registry.byNameCodec over registry."
+  "Returns the decoder of an id of registry to its key.
+  An id not in registry gives an unknown key error."
   [registry]
   (fn [tag]
     (let [[op v :as r] (identifier tag)]
@@ -442,9 +436,7 @@
             (reg-key registry v) [:ok (reg-key registry v)]
             :else (unknown-key registry v)))))
 
-(defn- tag-key
-  "Decodes TagKey.hashedCodec: #id, to the id."
-  [tag]
+(defn- tag-key [tag]
   (cond (not (string? tag)) [:malformed "Not a string"]
         (str/starts-with? tag "#") (identifier (subs tag 1))
         :else [:malformed "Not a tag id"]))
@@ -458,8 +450,9 @@
                        registry "'")])))
 
 (defn holder-set
-  "Returns the decoder of HolderSetCodec over registry: a tag #id,
-  a list of what element decodes, or one of them."
+  "Returns the decoder of a set of registry entries.
+  The set is a tag #id, a list of what element decodes, or one
+  of them."
   [registry element]
   (fn [tag]
     (let [[op v :as r] (tag-key tag)]
@@ -471,17 +464,13 @@
              (settled tag))))))
 
 (defn- entry-of
-  "Decodes one entry of an unbounded map to [key value]."
   [kf vf [k v]]
   (let [[ko kv :as kr] (kf k) [vo vv :as vr] (vf v)]
     (cond (raw-in? [kr vr]) [:raw v]
           (= :ok ko vo) [:ok [kv vv]]
           :else (errors [kr vr]))))
 
-(defn- hash-order
-  "Returns the entries of map m in the order a HashMap iterates
-  when its keys are put one by one."
-  [m]
+(defn- hash-order [m]
   (let [hm (HashMap.)]
     (doseq [[k v] m] (HashMap/.put hm (key-str k) v))
     (seq hm)))
@@ -497,9 +486,8 @@
 (defn- entries-map [rs] (apply array-map (mapcat second rs)))
 
 (defn unbounded-map
-  "Returns the decoder of Codec.unboundedMap: entries go in the
-  order a HashMap of the keys gives. The error names the entries
-  that fail as missed input."
+  "Returns the decoder of a map with any keys.
+  The error names the failed entries as missed input."
   [kf vf]
   (fn [tag]
     (if (map? tag)

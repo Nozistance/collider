@@ -31,11 +31,9 @@
 (def ^:const ^:private rel-limit 32767)
 
 (defn- fixed
-  "Returns a coordinate in the fixed point units of the protocol."
   ^long [v] (Math/round (* (double v) pos-unit)))
 
 (defn- angle
-  "Returns an angle in the 256 step units of the protocol."
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 
 (defn- thrown-metadata [e] {:stack (:stack e)})
@@ -105,8 +103,7 @@
        (get inv 6) (get inv 5)])))
 
 (defmacro ^:private readers
-  "Defines a prefixed reader per field of record type t.
-  Each one inlines, since the tracker reads them every tick."
+  "Defines a prefixed reader for each field of record type t."
   [t prefix & fields]
   `(do ~@(for [f fields
                :let [dot (symbol (str "." f))]]
@@ -530,16 +527,14 @@
         (for [[tag eid] events :when (= :player-join tag)]
           (out/to eid msg))))))
 
-(defn- resend-deltas
-  "Returns the teleports the moves of the tick sent again."
-  [world]
+(defn- resend-deltas [world]
   (for [{:keys [eid pos yaw pitch]} (:resends world)]
     (out/to eid (out/teleport pos yaw pitch))))
 
 (defn swing-deltas
   "Returns the deltas of one swing a client plays itself.
-  The server only passes it on, and only as often as an arm can
-  swing."
+  The server only passes it on, and only as often as an arm
+  can swing."
   [world [tag eid hand]]
   (when (= :swing tag)
     (when-let [p (get-in world [:entities eid])]
@@ -555,8 +550,8 @@
         (:world d)))
 
 (defn late-tracking
-  "Returns the deltas that show players the new entities.
-  These are the entities that appeared during this tick."
+  "Returns the deltas that show players the entities that appeared
+  during this tick."
   [world d]
   (when (entities-changed? d)
     (let [by-chunk (entities-by-chunk (tracked-entries world))
@@ -575,8 +570,7 @@
     (mapv batch-job (partition-all 32 ts))))
 
 (defn player-list
-  "Returns the tick steps of the player list of the server: joins,
-  duplicate logins, tab entries and the tab header."
+  "Returns the tick steps of the player list of the server."
   [world d]
   (let [ps (state/player-entries world)]
     [#(joined-deltas (state/joins d))

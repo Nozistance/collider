@@ -1,5 +1,5 @@
 (ns collider.game.mob.randompos
-  "Where a mob picks a place to walk to, and what turns a cell down."
+  "Random walk goals of mobs and the tests on their cells."
   (:require [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
@@ -32,29 +32,28 @@
   (chunk/block-state chunks (long x) (dec (long y)) (long z)))
 
 (defn solid?
-  "Tests whether the block filling the cell is solid."
+  "Returns true when the block in the cell is solid."
   [chunks cell]
   (block/solid? (state-at chunks cell)))
 
 (defn water?
-  "Tests whether water stands in the cell."
+  "Returns true when water stands in the cell."
   [chunks cell]
   (block/water? (state-at chunks cell)))
 
 (defn outside-limits?
-  "Tests whether the cell left the height of level lv."
+  "Returns true when the cell is outside the height of level lv."
   [lv [_ y _]]
   (not (chunk/in-level? lv (long y))))
 
 (defn not-stable?
-  "Tests whether nothing solid holds the cell up."
+  "Returns true when nothing solid holds the cell up."
   [chunks cell]
   (not (block/solid-render? (state-below chunks cell))))
 
 (defn has-malus?
-  "Tests whether the cell of level lv costs the mob anything.
-  Any malus but a plain zero turns the cell down, so water, honey
-  and the neighbourhood of lava are never strolled to."
+  "Returns true when the cell of level lv costs the mob anything.
+  Mobs never stroll to water, honey or the cells near lava."
   [lv [x y z]]
   (not (zero? (path/path-type-malus
                 path/cow (path/type-static lv x y z)))))
@@ -76,8 +75,8 @@
    (long (Math/floor (+ (v/z pos) (double dz))))])
 
 (defn move-up-out-of-solid
-  "Returns the first cell of level lv at or above this one that is
-  not solid, or the one above the top of the level."
+  "Returns the first cell of level lv at or above this one that is not
+  solid, or the one above the top of the level."
   [lv [x y z :as cell]]
   (let [chunks (:chunks lv) hi (chunk/level-max-y lv)]
     (if-not (solid? chunks cell)
@@ -88,8 +87,6 @@
           [x cy z])))))
 
 (defn- light-cost
-  "Returns what the light of the cell adds to its weight.
-  The ambient light of the overworld is zero."
   ^double [world chunks [x y z]]
   (let [day (:time-of-day world 0)
         lit (weather/brightness world chunks x y z day)
@@ -99,8 +96,9 @@
     (double (float (- curved (float 0.5))))))
 
 (defn walk-target-value
-  "Returns the weight of a cell: ten on the ground the breed grazes,
-  else the light of the cell less a half."
+  "Returns the weight of a cell.
+  It is ten on the ground the breed grazes, else the light of the cell
+  less a half."
   ^double [world e cell]
   (let [chunks (:chunks world)
         ground (get-in mobs/types [(:type e) :ground] :grass-block)]
@@ -112,11 +110,7 @@
   [(+ (double (long x)) 0.5) (double (long y))
    (+ (double (long z)) 0.5)])
 
-(defn- best-pos
-  "Returns the bottom centre of the heaviest of ten tried cells.
-  The first of equals keeps it, and nil comes back when no try
-  yielded a cell."
-  [weight-of supply]
+(defn- best-pos [weight-of supply]
   (loop [i 0 best nil bw Double/NEGATIVE_INFINITY]
     (if (= i attempts)
       (when best (bottom-centre best))
@@ -126,19 +120,13 @@
           (recur (inc i) cell w)
           (recur (inc i) best bw))))))
 
-(defn- stable-cell
-  "Returns the cell of one try, nil when it left the world or hangs
-  over nothing the mob may stand on."
-  [lv pos dir]
+(defn- stable-cell [lv pos dir]
   (let [cell (pos-toward-direction pos dir)]
     (when-not (or (outside-limits? lv cell)
                   (not-stable? (:chunks lv) cell))
       cell)))
 
-(defn- land-cell
-  "Returns the cell lifted out of the ground, nil when it holds
-  water or costs the mob anything."
-  [lv cell]
+(defn- land-cell [lv cell]
   (when cell
     (let [c (move-up-out-of-solid lv cell)]
       (when-not (or (water? (:chunks lv) c) (has-malus? lv c))
@@ -146,8 +134,8 @@
 
 (defn land-pos
   "Returns a walk goal on dry land that costs the mob nothing.
-  It is lifted out of the ground, and nil comes back when ten tries
-  found none."
+  The goal is lifted out of the ground. Returns nil when ten tries
+  find none."
   [world e t eid k h v]
   (let [pos (:pos e)]
     (best-pos (fn [c] (walk-target-value world e c))

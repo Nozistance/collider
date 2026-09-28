@@ -37,8 +37,8 @@
         :else (variant b)))
 
 (def spec
-  "The mooshroom's goals; a calf takes either parent's variant,
-  rarely the other one."
+  "The goals of a mooshroom.
+  A calf takes the variant of either parent, rarely the other one."
   (animal/spec animal/goals calf-variant))
 
 (defn brain
@@ -94,11 +94,7 @@
                 [:spawn-entity (entity/item at vel s 0)]))]
     (map-indexed one (mushrooms t eid e))))
 
-(defn- converted
-  "Returns the cow a shorn mooshroom becomes.
-  It keeps where it stood and how soon it breeds again, and is
-  otherwise a newborn cow."
-  [e t]
+(defn- converted [e t]
   (merge (mobs/new-mob :cow (:pos e) nil t)
          (select-keys e kept-on-shear)))
 
@@ -129,15 +125,16 @@
        (out/all snd)])))
 
 (defn bowl-result
-  "Returns what a bowl does to a grown mooshroom: it fills with stew,
-  suspicious when a flower was fed."
+  "Returns what a bowl does to a grown mooshroom.
+  It fills with stew, and the stew is suspicious when a flower
+  was fed."
   [{:keys [world peid hand eid e item]}]
   (when (and (= :bowl item) (not (mobs/baby? e)))
     {:result :success :deltas (bowled world peid hand eid e)}))
 
 (defn shear-result
-  "Returns what shears do to a grown mooshroom, which turns into a
-  cow while its mushrooms fall."
+  "Returns what shears do to a grown mooshroom.
+  It turns into a cow and its mushrooms fall."
   [{:keys [t peid p hand eid e item]}]
   (when (and (= :shears item) (not (mobs/baby? e)))
     {:result :success
@@ -146,9 +143,9 @@
                      (sheared eid e t))}))
 
 (defn flower-result
-  "Returns what a stew flower does to a grown brown mooshroom, which
-  remembers the flower for its next stew.
-  One that already holds a flower takes the click and nothing else."
+  "Returns what a stew flower does to a grown brown mooshroom.
+  It remembers the flower for its next stew. One that already holds a
+  flower takes the click and nothing else."
   [{:keys [peid p hand eid e item]}]
   (when (and (= brown (variant e)) (not (mobs/baby? e)) (@stews item))
     {:result :success

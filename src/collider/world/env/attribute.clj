@@ -6,8 +6,8 @@
 (set! *warn-on-reflection* true)
 
 (defn value?
-  "Tests whether the attribute attr of dimension dim is on.
-  An attribute the dimension does not set is off."
+  "Returns true when the attribute attr of dimension dim is on.
+  An attribute that the dimension does not set is off."
   [dim attr]
   (true? (get-in (data/dimension-type dim) [:attributes attr])))
 

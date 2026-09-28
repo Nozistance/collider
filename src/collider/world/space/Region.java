@@ -2,11 +2,9 @@ package collider.world.space;
 
 import clojure.lang.Atom;
 
-/// The sections that an explosion may reach, with the chunk columns
-/// they come from. The grid is `ncx` by `ncz` by `nsy` sections.
+/// The sections that an explosion may reach with the chunk columns
+/// they come from.
 ///
-/// @param grid The sections of the grid.
-/// @param cols The chunk columns of the grid.
 /// @param cx0 The chunk x of the first cell.
 /// @param cz0 The chunk z of the first cell.
 /// @param sy0 The section y of the first cell.

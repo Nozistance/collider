@@ -1,11 +1,10 @@
 package collider;
 
-/// Random numbers hashed from longs: the same longs always give the
+/// Random numbers hashed from longs. The same longs always give the
 /// same number.
 public final class RandomSupport {
 
-    /// Returns `z` mixed by the Stafford variant 13 finalizer, as
-    /// vanilla RandomSupport.mixStafford13.
+    /// Returns `z` mixed so that near longs give far apart ones.
     public static long mixStafford13(long z) {
         z = (z ^ (z >>> 30)) * -4658895280553007687L;
         z = (z ^ (z >>> 27)) * -7723592293110705685L;

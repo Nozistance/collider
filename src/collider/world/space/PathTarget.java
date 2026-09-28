@@ -4,20 +4,16 @@ package collider.world.space;
 /// to it so far.
 public final class PathTarget {
 
-    /// The block x of the cell.
     public final long x;
 
-    /// The block y of the cell.
     public final long y;
 
-    /// The block z of the cell.
     public final long z;
 
     private double best = Float.MAX_VALUE;
     private PathNode node;
 
-    /// Makes the goal cell `x`, `y`, `z`, which no node came near
-    /// yet.
+    /// Makes the goal cell `x`, `y`, `z` that no node came near yet.
     public PathTarget(long x, long y, long z) {
         this.x = x;
         this.y = y;

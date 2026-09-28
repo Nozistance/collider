@@ -42,11 +42,7 @@
     (assoc (dissoc r :components)
       :components? (boolean (or (:components r) (:components? r))))))
 
-(defn- remote-match?
-  "Returns true when the client already has stack in that slot. What
-  it told us of its own components is only whether it has any, so a
-  slot matches every stack that agrees on that much."
-  [remote stack]
+(defn- remote-match? [remote stack]
   (let [r (remote-of stack)]
     (if (:components? remote) (= remote (hashed r)) (= remote r))))
 
@@ -54,9 +50,7 @@
   (let [st (container/state-at (:chunks world) (:pos m))]
     (= (:type m) (block/type-of st))))
 
-(defn- valid?
-  "Returns true when the block a menu belongs to is still there."
-  [world m]
+(defn- valid? [world m]
   (cond
     (container/lectern? m)
     (and (= :lectern (:kind (be/at world (:pos m))))
@@ -98,10 +92,7 @@
     (when carried [(out/to eid (out/carried nil))])
     (when notify? [(out/to eid (out/container-close (:id m)))])))
 
-(defn- opener-deltas
-  "Container.startOpen and stopOpen of the cells of menu m. They
-  pass over a spectator."
-  [world e m step]
+(defn- opener-deltas [world e m step]
   (when-not (game-mode/spectator? e)
     (mapcat #(container/opener-deltas world % step)
             (container/positions m))))
@@ -187,8 +178,9 @@
     []))
 
 (defn spectator-open-deltas
-  "ServerPlayerGameMode.useItemOn for a spectator: the menu the
-  block provides opens, no stat, no opener; nil when it has none."
+  "Returns the deltas of a spectator using a block that provides a
+  menu. The menu opens with no stat and no opener. Returns nil when
+  the block has none."
   [world eid pos]
   (when-let [m (container/provider-at world pos)]
     (open-menu-deltas world eid (get-in world [:entities eid]) m)))
@@ -238,10 +230,7 @@
         ks (into (set (keys before)) (keys after))]
     (into {} (keep moved) ks)))
 
-(defn- stale-result
-  "Returns the menu with its result slot marked unseen.
-  The mark is set only when the grid changed."
-  [m items items']
+(defn- stale-result [m items items']
   (if (and (container/crafting? m)
            (not= (container/inputs m items)
                  (container/inputs m items')))
@@ -323,10 +312,7 @@
       (craft-deltas world eid after)
       (items/thrown-deltas world eid (:drops after)))))
 
-(defn- all-data-deltas
-  "AbstractContainerMenu.sendAllDataToRemote: the whole menu m of
-  player e sent again under the next state id."
-  [world eid e m]
+(defn- all-data-deltas [world eid e m]
   (let [st (bit-and (inc (long (:state-id m 1))) 32767)
         slots (view m (container/items world eid m) (:inventory e))
         data (container/data-values world m)
@@ -475,9 +461,7 @@
       (close-deltas world eid e false)
       (inventory-close-deltas world eid e))))
 
-(defn- data-deltas
-  "Diffs the data values of a menu against what the client was told."
-  [eid m values]
+(defn- data-deltas [eid m values]
   (let [old (:remote-data m)]
     [(keep-indexed (fn [i v]
                      (when (not= (nth old i nil) v)
@@ -527,7 +511,6 @@
     [#(containers-deltas world events)]))
 
 (defn rechecks
-  "Runs the scheduled rechecks of the container openers that are
-  due."
+  "Runs the scheduled rechecks of the container openers that are due."
   [world _d]
   [#(container/recheck-deltas world)])

@@ -25,8 +25,8 @@
       (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
 
 (defn nearest-player
-  "Returns `[distance-squared id player]` of the nearest player
-  within r2 that pred accepts, nil when none is that close."
+  "Returns [distance-squared id player] of the nearest player within
+  r2 that pred accepts, or nil."
   [world pos r2 pred]
   (let [r2 (double r2)
         entities (:entities world)
@@ -95,8 +95,8 @@
                         (get index (cell-key (long cx) cz)))))))
 
 (defn nearest
-  "Returns `[distance-squared id entity]` of the nearest entity
-  within r2 that pred accepts, nil when none is that close."
+  "Returns [distance-squared id entity] of the nearest entity within
+  r2 that pred accepts, or nil."
   [world pos r2 pred]
   (let [r2 (double r2)
         index (entity-index (:entities world))
@@ -126,9 +126,8 @@
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
 (defn holders
-  "Returns `[id items pos]` for every player holding something that
-  mobs can see (TemptGoal targets as LivingEntity.canBeSeenByAnyone
-  allows)."
+  "Returns [id items pos] for every player that holds something and
+  that mobs can see."
   [world]
   (into []
         (keep (fn [[pid p]]

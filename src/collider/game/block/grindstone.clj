@@ -1,5 +1,5 @@
 (ns collider.game.block.grindstone
-  "What a grindstone strips off items and the experience it frees."
+  "Grindstone results and the experience they free."
   (:require [collider.data :as data]
             [collider.game.stack :as stack]))
 
@@ -19,9 +19,7 @@
   (reduce (fn [^long c _] (stack/increased-repair-cost c))
           0 (range n)))
 
-(defn- stripped
-  "Returns item without any enchantment that is not a curse."
-  [item]
+(defn- stripped [item]
   (let [all (stack/enchantments item)
         kept (into {} (filter (comp curse? key)) all)
         held? (stack/has? item (stack/enchant-key item))
@@ -95,8 +93,7 @@
   (+ (item-experience input) (item-experience additional)))
 
 (defn reward
-  "Returns the experience taking the result frees, given a roll.
-  Nothing hands it out: the game has no experience orbs yet."
+  "Returns the experience that taking the result frees for a roll."
   [input additional ^double roll]
   (let [amount (experience input additional)]
     (if (pos? amount)

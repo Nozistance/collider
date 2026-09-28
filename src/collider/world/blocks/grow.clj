@@ -44,13 +44,9 @@
     [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
 
 (def ^:private flags-2
-  "The classes whose randomTick sets every block with flags 2:
-  VineBlock, MushroomBlock, ChorusFlowerBlock."
   #{:vine :mushroom :chorus-flower})
 
-(defn- flagged
-  "Returns the changes, each to be set with setBlock flags."
-  [flags changes]
+(defn- flagged [flags changes]
   (mapv (fn [[p st fx]] [p st fx flags]) changes))
 
 (defn- ticked [chunks p st roll time ctx]
@@ -60,9 +56,8 @@
       (weather/tick chunks p st roll))))
 
 (defn random-tick
-  "Returns the changes of a random tick of st at p. A change may
-  carry the setBlock flags of its vanilla randomTick as its fourth
-  element."
+  "Returns the changes of a random tick of st at p.
+  A change may carry its set flags as a fourth element."
   ([chunks p st roll time] (random-tick chunks p st roll time nil))
   ([chunks p st roll time ctx]
    (let [st (long st)
@@ -80,9 +75,7 @@
              (= 7 (block/prop-long st :distance)))
     (block/drops st roll)))
 
-(defn- berries-meal
-  "CaveVines performBonemeal: the berries come with flags 2."
-  [chunks p st roll]
+(defn- berries-meal [chunks p st roll]
   (some-> (vine/berries-meal chunks p st roll)
           (update :changes #(flagged 2 %))))
 

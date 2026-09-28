@@ -1,6 +1,5 @@
 (ns collider.world.space.spawn
-  "Places to put a player.
-  The world spawn and the room a body needs to stand."
+  "Places to put a player and the room a body needs to stand."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -19,13 +18,16 @@
 (def ^:private air-blocks #{:air :cave-air :void-air})
 
 (defn- state-at [chunks x y z]
-  (if (chunk/in-range? (long y)) (chunk/chunks-get-block chunks x y z) 0))
+  (if (chunk/in-range? (long y))
+    (chunk/chunks-get-block chunks x y z)
+    0))
 
 (defn- air? [^long st] (contains? air-blocks (block/block-of st)))
 
 (defn- fluid? [^long st] (some? (block/liquid-class st)))
 
-(defn- motion-blocking? [^long st] (or (block/blocks-motion? st) (fluid? st)))
+(defn- motion-blocking? [^long st]
+  (or (block/blocks-motion? st) (fluid? st)))
 
 (defn- own-height ^double [^long st]
   (let [l (block/liquid-level st)]
@@ -42,10 +44,11 @@
   (loop [y (long chunk/max-y) surface none motion none floor none]
     (if (or (< y (long chunk/min-y)) (not= floor none))
       [surface motion floor]
-      (let [st (long (state-at chunks x y z))]
+      (let [st (long (state-at chunks x y z))
+            top? (and (= motion none) (motion-blocking? st))]
         (recur (dec y)
                (if (and (= surface none) (not (air? st))) y surface)
-               (if (and (= motion none) (motion-blocking? st)) y motion)
+               (if top? y motion)
                (if (block/blocks-motion? st) y floor))))))
 
 (defn motion-blocking-height
@@ -53,7 +56,9 @@
   The top is its highest block or fluid."
   ^long [chunks x z]
   (let [[_ motion _] (column-heights chunks x z)]
-    (if (= (long motion) (long none)) (long chunk/min-y) (inc (long motion)))))
+    (if (= (long motion) (long none))
+      (long chunk/min-y)
+      (inc (long motion)))))
 
 (defn- overlaps? [lo box]
   (let [[x0 y0 z0 x1 y1 z1] lo [a b c d e f] box]
@@ -61,16 +66,22 @@
          (< (double y0) (double e)) (> (double y1) (double b))
          (< (double z0) (double f)) (> (double z1) (double c)))))
 
+(defn- box-at [^long x ^long y ^long z [a b c d e f]]
+  [(+ x (/ (double a) 16.0)) (+ y (/ (double b) 16.0))
+   (+ z (/ (double c) 16.0)) (+ x (/ (double d) 16.0))
+   (+ y (/ (double e) 16.0)) (+ z (/ (double f) 16.0))])
+
+(defn- fluid-box [chunks x y z st]
+  (let [x (long x) y (long y) z (long z)
+        h (double (fluid-height chunks x y z st))]
+    [(double x) (double y) (double z) (+ x 1.0) (+ y h) (+ z 1.0)]))
+
 (defn- cell-boxes [chunks x y z]
   (let [x (long x) y (long y) z (long z)
         st (long (state-at chunks x y z))
-        solid (mapv (fn [[a b c d e f]]
-                      [(+ x (/ (double a) 16.0)) (+ y (/ (double b) 16.0)) (+ z (/ (double c) 16.0))
-                       (+ x (/ (double d) 16.0)) (+ y (/ (double e) 16.0)) (+ z (/ (double f) 16.0))])
-                    (block/collision-boxes st))]
+        solid (mapv #(box-at x y z %) (block/collision-boxes st))]
     (if (fluid? st)
-      (conj solid [(double x) (double y) (double z)
-                   (+ x 1.0) (+ y (double (fluid-height chunks x y z st))) (+ z 1.0)])
+      (conj solid (fluid-box chunks x y z st))
       solid)))
 
 (defn- player-box [^long px ^long py ^long pz]
@@ -82,7 +93,8 @@
   (+ d (long (Math/floor (+ v (* d (double eps)))))))
 
 (defn- box-free? [chunks px py pz]
-  (let [[x0 y0 z0 x1 y1 z1 :as box] (player-box (long px) (long py) (long pz))
+  (let [box (player-box (long px) (long py) (long pz))
+        [x0 y0 z0 x1 y1 z1] box
         i0 (cell-edge x0 -1) i1 (cell-edge x1 1)
         j0 (cell-edge y0 -1) j1 (cell-edge y1 1)
         k0 (cell-edge z0 -1) k1 (cell-edge z1 1)]
@@ -97,10 +109,14 @@
 (defn- bottom-center [[x y z]]
   [(+ (long x) 0.5) (double y) (+ (long z) 0.5)])
 
+(defn- open-top? [surface top floor]
+  (not (and (<= (long surface) (long top))
+            (> (long surface) (long floor)))))
+
 (defn- level-respawn-pos [chunks x z]
   (let [[surface top floor] (column-heights chunks x z)]
     (when (and (>= (long top) (long chunk/min-y))
-               (not (and (<= (long surface) (long top)) (> (long surface) (long floor)))))
+               (open-top? surface top floor))
       (loop [y (inc (long top))]
         (when (>= y (long chunk/min-y))
           (let [st (long (state-at chunks x y z))]
@@ -109,36 +125,43 @@
               (block/collision-face-full-up? st) [x (inc y) z]
               :else (recur (dec y)))))))))
 
+(defn- rise [chunks x y z]
+  (loop [y (long y)]
+    (if (or (box-free? chunks x y z) (>= y (long chunk/max-y)))
+      y
+      (recur (inc y)))))
+
+(defn- sink [chunks x y z]
+  (loop [y (long y)]
+    (if (or (not (box-free? chunks x y z)) (<= y (long chunk/min-y)))
+      y
+      (recur (dec y)))))
+
 (defn- fixup-height [chunks [x y z]]
   (let [x (long x) z (long z)
-        up (loop [y (long y)]
-             (if (or (box-free? chunks x y z) (>= y (long chunk/max-y)))
-               y
-               (recur (inc y))))
-        down (loop [y (dec (long up))]
-               (if (or (not (box-free? chunks x y z)) (<= y (long chunk/min-y)))
-                 y
-                 (recur (dec y))))]
+        up (rise chunks x y z)
+        down (sink chunks x (dec (long up)) z)]
     (bottom-center [x (inc (long down)) z])))
 
 (defn- coprime
-  "Returns a stride that walks every one of n cells before repeating."
   ^long [^long n] (if (<= n 16) (dec n) 17))
 
 (defn- scan-params [radius seed]
   (let [radius (max 0 (long radius))
         side (inc (* 2 radius))
-        n (long (min (long max-attempts) (* (long side) (long side))))]
-    [radius side n (coprime n) (long (Math/floor (* (double seed) n)))]))
+        n (min (long max-attempts) (* side side))
+        offset (long (Math/floor (* (double seed) n)))]
+    [radius side n (coprime n) offset]))
 
-(defn- candidate-cell [[radius side n step offset] ^long ox ^long oz ^long i]
-  (let [value (rem (+ (long offset) (* (long step) i)) (long n))]
+(defn- candidate-cell [params ^long ox ^long oz ^long i]
+  (let [[radius side n step offset] params
+        value (rem (+ (long offset) (* (long step) i)) (long n))]
     [(+ ox (rem value (long side)) (- (long radius)))
      (+ oz (quot value (long side)) (- (long radius)))]))
 
 (defn- free-spawn [chunks x z]
-  (let [pos (level-respawn-pos chunks x z)]
-    (when (and pos (box-free? chunks (nth pos 0) (nth pos 1) (nth pos 2)))
+  (when-let [[px py pz :as pos] (level-respawn-pos chunks x z)]
+    (when (box-free? chunks px py pz)
       (bottom-center pos))))
 
 (defn search-chunk-ids
@@ -148,8 +171,9 @@
   (let [r (max 0 (long radius))
         x (long (nth suggestion 0))
         z (long (nth suggestion 2))
-        span (fn [^long c] (range (bit-shift-right (- c r) 4)
-                                  (inc (bit-shift-right (+ c r) 4))))]
+        span (fn [^long c]
+               (range (bit-shift-right (- c r) 4)
+                      (inc (bit-shift-right (+ c r) 4))))]
     (for [cx (span x) cz (span z)] (chunk/pos->id cx cz))))
 
 (defn find-spawn

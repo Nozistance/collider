@@ -21,9 +21,7 @@
 (defn- stuck-now [world pos]
   (motion/stuck-speed (:chunks world) pos tnt-half tnt-height))
 
-(defn- unblock-deltas
-  "Returns the deltas that cut fresh TNT loose from its origin block."
-  [eid e]
+(defn- unblock-deltas [eid e]
   [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
 
 (defn- stepped-vel [world pos [mx my mz] on-ground]
@@ -74,11 +72,7 @@
         dz (- (v/z p) (double cz))]
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* reach reach))))
 
-(defn- later-positions
-  "Returns the positions of the nearby entities that step later.
-  They step after this TNT in the tick. The blast pushes them
-  from these positions."
-  [world eid center]
+(defn- later-positions [world eid center]
   (let [reach (+ (* 2.0 tnt/power) 2.0)
         later? (fn [oid o]
                  (and (> (long oid) (long eid))
@@ -127,8 +121,8 @@
 
 (defn tnt-system
   "Returns a step for every primed TNT this tick.
-  A TNT lit this tick is cut loose from its block and steps
-  like the rest."
+  A TNT lit this tick is cut loose from its block and steps like
+  the rest."
   [world _d]
   (let [tnts (tnt-entries world)
         due (filterv due? tnts)]

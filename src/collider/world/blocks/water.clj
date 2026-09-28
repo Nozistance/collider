@@ -1,5 +1,5 @@
 (ns collider.world.blocks.water
-  "What water does to the blocks in it: coral, kelp and sponges."
+  "What water does to coral, kelp and sponges."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -24,9 +24,7 @@
       (boolean
         (some #(water? (chunk/at chunks (mapv + p %))) around6))))
 
-(defn- held-side
-  "Returns the side a coral stands on, or nil for a coral block."
-  [st]
+(defn- held-side [st]
   (case (block/type-of st)
     (:coral-plant :coral-fan) :down
     :coral-wall-fan (dir/opposite (block/facing-of st))
@@ -59,10 +57,9 @@
 (defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
 
 (defn kelp-still?
-  "Tells whether kelp st at p asks for no fluid tick for a change
-  on side: GrowingPlantHeadBlock.updateShape turns a head with kelp
-  above into a body, GrowingPlantBodyBlock.updateShape a body with
-  none above into a head, and neither asks for one then."
+  "Returns true when kelp st at p asks for no fluid tick for a change
+  on side. That is so when the change turns a head into a body or a
+  body into a head."
   [chunks p st side]
   (let [above? (kelp? (chunk/at chunks (dir/up p)))
         held? #(support/supported? chunks p st)]
@@ -92,12 +89,7 @@
                     [[p (kelp-head-state (:tick ctx) p)]])
       nil)))
 
-(defn- kelp-wake
-  "GrowingPlantHeadBlock and GrowingPlantBodyBlock: a tick when the
-  block below no longer holds it, a new head or stem when the block
-  above changes. The change at pos itself asks for both: the tick
-  it had was for the old type."
-  [chunks _dim tick p _old side]
+(defn- kelp-wake [chunks _dim tick p _old side]
   (let [held? (support/supported? chunks p (chunk/at chunks p))]
     (cond
       (and (contains? #{nil :down} side) (not held?))
@@ -125,9 +117,7 @@
                    (some? (dried (chunk/at chunks q))))]
     q))
 
-(defn- dried-at
-  "SpongeBlock.removeWaterBreadthFirstSearch: a plant drops."
-  [chunks p]
+(defn- dried-at [chunks p]
   (let [st (chunk/at chunks p)]
     (if (contains? plants (block/type-of st))
       [p (dried st) [[:drop st]]]
@@ -135,11 +125,7 @@
 
 (def ^:private absorb-sound [:sound :block.sponge.absorb 1.0 1.0])
 
-(defn- soaked
-  "SpongeBlock.tryAbsorbWater: the sponge turns wet, then is heard.
-  Where water evaporates the wet sponge dries at once, inside its
-  setBlock, WetSpongeBlock.onPlace."
-  [pos dim]
+(defn- soaked [pos dim]
   (if (attribute/water-evaporates? dim)
     [[pos (block/state :wet-sponge)]
      [pos (block/state :sponge) [:dry absorb-sound]]]

@@ -1,5 +1,5 @@
 (ns collider.vec
-  "Points and motions of three doubles, as V3 or any three numbers."
+  "Points and motions of three doubles."
   (:refer-clojure :exclude [+])
   (:import (collider V3)))
 

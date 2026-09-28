@@ -22,8 +22,7 @@
 (def ^:private int-max 2147483647)
 
 (def ^:const gamemaster
-  "Permissions.COMMANDS_GAMEMASTER: the level every command here
-  requires."
+  "The permission level every command requires."
   2)
 
 (defn- weather-form [nm doc op]
@@ -176,10 +175,7 @@
 (defn- offset-of [^String s]
   (if (= "~" s) 0.0 (parse-double* (subs s 1))))
 
-(defn- block-coord
-  "Returns the block coordinate text s names, or nil.
-  A ~ offset may have a fraction."
-  [^String s axis origin]
+(defn- block-coord [^String s axis origin]
   (if (str/starts-with? s "~")
     (when origin
       (when-let [off (offset-of s)]
@@ -208,10 +204,7 @@
     [:ok (double n) (str/starts-with? s "~")]
     [:fail "parsing.double.expected" []]))
 
-(defn- as-angle
-  "Returns [relative? value] of an angle: relative to the turn of
-  the source when it starts with ~."
-  [_nm ^String s _opts _origin]
+(defn- as-angle [_nm ^String s _opts _origin]
   (let [rel? (str/starts-with? s "~")]
     (if-let [v (if rel? (offset-of s) (parse-double* s))]
       [:ok [rel? (double v)]]
@@ -220,10 +213,7 @@
 (defn- fail-at [res]
   [:fail-at (:key res) (:args res) (:cursor res)])
 
-(defn- as-item
-  "Returns the item stack input of s, or its error with the cursor
-  counted from the start of s."
-  [_nm s _opts _origin]
+(defn- as-item [_nm s _opts _origin]
   (let [res ((:parse (items/item-stack-arg)) (r/reader s))
         [v [_ end]] (when-not (r/error? res) res)]
     (cond (r/error? res) (fail-at res)
@@ -248,9 +238,7 @@
   (try (UUID/fromString s)
        (catch IllegalArgumentException _ nil)))
 
-(defn- range-of
-  "Returns [min max] of a range such as 1..5, ..5, 3.. or 3."
-  [s]
+(defn- range-of [s]
   (let [[_ a dots b] (re-matches #"([0-9.]*?)(\.\.)?([0-9.]*)" s)
         n #(when (seq %) (parse-double* %))]
     (if dots [(n a) (n b)] [(n b) (n b)])))
@@ -336,9 +324,7 @@
 
 (defn- as-text [_nm s _opts _origin] [:ok s])
 
-(defn- as-game-mode
-  "GameModeArgument: the unquoted word that names a mode."
-  [_nm ^String s _opts _origin]
+(defn- as-game-mode [_nm ^String s _opts _origin]
   (let [w (re-find #"^[0-9A-Za-z_.+-]*" s)
         mode (game-mode/named w)]
     (cond
@@ -355,10 +341,6 @@
    :game-mode as-game-mode})
 
 (defn- coerce
-  "Returns [:ok value relative?], [:fail key with cursor?],
-  [:fail-at key with cursor-in-s] or [:err line] of the text s of
-  argument arg; nil s gives its default. A cursor below 0 in s
-  means the error points nowhere."
   [[nm [kind opts]] s origin]
   (if (some? s)
     ((coercers kind as-enum) nm s opts origin)
@@ -415,8 +397,6 @@
          " - " doc)))
 
 (defn- failure
-  "Returns a parse failure: the message of key with, pointing at
-  cursor at of the command text when at is given."
   ([key at] (failure key [] at))
   ([key with at]
    (cond-> {:failure {:translate key :with (vec with)}}
@@ -429,8 +409,6 @@
   (when (#{:coord :dcoord :angle} kind) (long (:axis opts 0))))
 
 (defn- missing
-  "Returns the failure of an argument a with no text, or nil.
-  An axis left out after the first of its group is incomplete."
   [[_ [kind opts] :as a] start cx]
   (cond
     (and start (pos? (long (or (axis-of a) 0))))
@@ -440,8 +418,6 @@
     (not (contains? opts :default)) (unknown-command cx)))
 
 (defn- coerced
-  "Returns [value relative?] of token [s at] for argument a, or
-  {:fail reason}."
   [a [s at] path cx]
   (let [[st v x c] (coerce a s (:origin cx))]
     (case st
@@ -462,10 +438,7 @@
     (failure "command.unknown.argument" at)
     {:args acc :relative rel}))
 
-(defn- parse-args
-  "Returns the values of args in tokens as :args, and the axes of
-  vectors written relative to the source as :relative."
-  [args tokens path cx]
+(defn- parse-args [args tokens path cx]
   (loop [as args ts tokens acc [] rel #{} start nil]
     (if-let [a (first as)]
       (let [t (first ts) start (group-start a t start)
@@ -478,9 +451,7 @@
                        start)))
       (leftover ts acc rel))))
 
-(defn- ways
-  "Returns the [args action] pairs of a form without subcommands."
-  [form]
+(defn- ways [form]
   (partition 2 (drop 2 form)))
 
 (defn- way-delta [[args action] tokens path cx]
@@ -510,10 +481,7 @@
   (/ (double (:coordinate-scale (data/dimension-type from)))
      (double (:coordinate-scale (data/dimension-type to)))))
 
-(defn- scaled
-  "Returns origin moved from level from to level to.
-  Only x and z scale, by the teleportation scale of the two."
-  [origin from to]
+(defn- scaled [origin from to]
   (if (or (nil? origin) (= from to))
     origin
     (let [k (scale from to)]
@@ -548,9 +516,7 @@
       (subcommands? form) (parse-subcommand form nm more cx)
       :else (delta-of form more [nm] cx))))
 
-(defn- words
-  "Returns [word start] of each word of s."
-  [^String s]
+(defn- words [^String s]
   (let [m (re-matcher #"\S+" s)]
     (loop [acc []]
       (if (Matcher/.find m)
@@ -558,13 +524,13 @@
         acc))))
 
 (defn parse
-  "Returns the delta the typed command means, with the axes of its
-  vector written relative to the source as :relative.
-  Returns the reason it cannot run instead: a :failure message with
-  the :cursor it points at in the text after the slash, or an
-  :error line. Relative coordinates count from origin, in level
-  dim. A command run in another level also returns that level as
-  :dim and origin there as :origin."
+  "Returns the delta the typed command means.
+  It also returns the axes written relative to the source as
+  :relative. A command that cannot run returns the reason instead. The
+  reason is a :failure message with the :cursor it points at, or an
+  :error line. Relative coordinates count from origin in level dim. A
+  command run in another level also returns that level as :dim and
+  origin there as :origin."
   ([text] (parse text nil))
   ([text origin] (parse text origin :overworld))
   ([text origin dim]
@@ -691,10 +657,7 @@
       [{:type :argument :name n :parser parser :props props
         :executable? exec? :children children}])))
 
-(defn- chain
-  "Returns [nodes executable?] of the args from i on.
-  The flag tells whether the node before them can run."
-  [args ^long i]
+(defn- chain [args ^long i]
   (if (>= i (count args))
     [[] true]
     (let [optional (optional-from args)
@@ -719,10 +682,7 @@
       (update :children
               #(merged-nodes (into (vec %) (:children b))))))
 
-(defn- merged-nodes
-  "Returns sibling nodes with the same name folded into one.
-  Their children fold the same way."
-  [nodes]
+(defn- merged-nodes [nodes]
   (reduce (fn [acc n]
             (if-let [i (index-of acc #(same-node? % n))]
               (update acc i merged-node n)
@@ -752,10 +712,7 @@
 (defn- alias-node [[alias target]]
   {:type :literal :name alias :children [] :redirect target})
 
-(defn- flat
-  "Returns nodes with node and what it holds added after them.
-  A node comes after its children; its index is returned too."
-  [nodes node]
+(defn- flat [nodes node]
   (let [step (fn [[ns ks] c]
                (let [[ns i] (flat ns c)] [ns (conj ks i)]))
         [nodes kids] (reduce step [nodes []] (:children node))]

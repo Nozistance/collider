@@ -31,8 +31,7 @@
                (get (data/tags) "item"))))
 
 (def ^:private unsaved
-  "Components with no saved form, so commands cannot name them: they
-  have no persistent codec."
+  "The components that commands cannot name."
   #{:creative-slot-lock :additional-trade-cost :map-post-processing})
 
 (defn- at? [[s n :as rd] c]
@@ -99,10 +98,7 @@
       at
       (r/error-at at no-component))))
 
-(defn- patch-step
-  "Reads one entry of patch at rd. Returns [patch rd] to go on,
-  or [patch-or-nil end] when the patch ends."
-  [patch rd]
+(defn- patch-step [patch rd]
   (let [rd (r/skip-whitespace rd)
         read (if (at? rd \!) read-removal read-set)
         res (read (set (map first patch)) rd)
@@ -130,8 +126,8 @@
           :else [{:item k :patch (or patch [])} (or after end)])))
 
 (defn item-stack-arg
-  "Returns the item_stack argument: an item and the changes to its
-  components, in input order."
+  "Returns the item stack argument.
+  It holds an item and the changes to its components in input order."
   []
   {:id "minecraft:item_stack" :parse parse-stack})
 
@@ -155,7 +151,6 @@
           :else s)))
 
 (defn- store!
-  "Keeps error e at c when no error reached further."
   [{:keys [err]} c e]
   (vswap! err (fn [{:keys [at] :as x}]
                 (cond (> (long c) (long at)) {:at c :e e}
@@ -231,10 +226,7 @@
   [:malformed (str "Swapped bounds in range: Optional[" lo
                    "] is higher than Optional[" hi "]")])
 
-(defn- bounds
-  "Returns the count test of tag: MinMaxBounds.Ints.CODEC.
-  A map with fields not numbers is kept raw."
-  [tag]
+(defn- bounds [tag]
   (let [lo (bound (:min tag)) hi (bound (:max tag))]
     (cond (number? tag) [:ok [:count (bound tag) (bound tag)]]
           (not (map? tag)) (not-range tag)
@@ -252,7 +244,7 @@
         [op v]))))
 
 (def ^:private map-predicates
-  "Predicate types whose codec is a record."
+  "The predicate types whose value is a record."
   #{:damage})
 
 (defn- record-test? [c]
@@ -274,8 +266,6 @@
         :else (component-id (peek c))))
 
 (defn- valued
-  "Returns [test end] of c followed by ch and a value, :cut when
-  the value fails, or nil when ch is not there."
   [st [c q] ch decide k]
   (when-let [q (lit st q ch)]
     (let [[tag end] (tag-at st q)
@@ -331,8 +321,8 @@
       (:e @(:err st)))))
 
 (defn item-predicate-arg
-  "Returns the item_predicate argument: an item, tag or any, and
-  the tests on its components."
+  "Returns the item predicate argument.
+  It holds an item, a tag or any, and the tests on its components."
   []
   {:id "minecraft:item_predicate" :parse parse-predicate})
 
@@ -341,8 +331,6 @@
        (or (nil? hi) (<= (long n) (long hi)))))
 
 (defn- passes?
-  "Tells whether stack s passes test t. A raw test never passes
-  until its codec is modelled."
   [s [kind k v :as t]]
   (case kind
     :has (stack/has? s k)
@@ -361,7 +349,7 @@
     :tag (contains? (@item-tags v) (:item s))))
 
 (defn matches?
-  "Tells whether stack s passes item predicate pred."
+  "Returns true when stack s passes item predicate pred."
   [{:keys [type tests]} s]
   (and (type? type s)
        (every? (fn [alts] (some #(term? s %) alts)) tests)))

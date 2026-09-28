@@ -1,5 +1,5 @@
 (ns collider.world.blocks.dripleaf
-  "Big and small dripleaf: support, tilting and growth."
+  "Big and small dripleaf with their support, tilt and growth."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.direction :as dir]
@@ -130,8 +130,7 @@
 
 (defn column-changes
   "Returns the changes that grow a big dripleaf column from p up to
-  the desired height, as far as free space allows: stems and a leaf
-  on top."
+  the desired height as far as free space allows."
   [chunks [x y z :as p] facing ^long desired]
   (let [y (long y)
         top (max y (+ y (free-height chunks p desired) -1))
@@ -193,9 +192,7 @@
       (and (nil? side) (leaf? st) delay)
       (+ (long tick) (long delay)))))
 
-(defn- tilt-change
-  "BigDripleafBlock.setTilt and playTiltSound."
-  [p ^long st tilt ctx]
+(defn- tilt-change [p ^long st tilt ctx]
   (let [st' (tilted st tilt)
         pitch (random/pitch (:tick ctx) p :tilt)]
     [p st' [[:sound (tilt-sound st') 1.0 pitch]]]))

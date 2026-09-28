@@ -1,6 +1,5 @@
 (ns collider.game.systems.geysers
-  "Potent sulfur under water: geysers counting down and lifting
-  what floats above them."
+  "Geysers of potent sulfur under water and what they lift."
   (:require [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -22,16 +21,10 @@
 
 (def ^:private player-size [0.3 1.8])
 
-(defn- launched-player?
-  "A player the geyser lifts: alive, no spectator and not flying
-  (Player.canSimulateMovement holds on the server)."
-  [e]
+(defn- launched-player? [e]
   (and (alive? e) (not (game-mode/spectator? e)) (not (:flying e))))
 
-(defn- size
-  "Returns the half width and height of e, or nil for the entities
-  a geyser leaves alone."
-  [e]
+(defn- size [e]
   (let [t (:type e)]
     (cond
       (= :player t) (when (launched-player? e) player-size)
@@ -51,16 +44,12 @@
 (defn- slow? [e ^long depth]
   (< (v/y (or (:vel e) [0.0 0.0 0.0])) (+ base-speed (* depth 0.1))))
 
-(defn- lifted
-  "Entity.addDeltaMovement and needsSync: an item or a player is
-  synced to its viewers at once."
-  [eid e]
+(defn- lifted [eid e]
   (cond-> [[:push eid [0.0 lift 0.0]]]
     (#{:item :player} (:type e))
     (conj [:merge-entity eid {:needs-sync? true}])))
 
 (defn- launch-deltas
-  "PotentSulfurBlockEntity.LAUNCH_ENTITY_TICKER."
   [world [x y z] depth]
   (let [n (geyser/reach (:chunks world) [x y z] depth)
         lo [x (+ (long y) 1 (min 0 (dec n))) z]
@@ -74,9 +63,7 @@
 (defn- turn-deltas [world pos st]
   (edit/set-deltas world [[pos (geyser/turned st)]]))
 
-(defn- countdown-deltas
-  "PotentSulfurBlockEntity.SERVER_WAITING_COUNTDOWN_TICKER."
-  [world pos st e depth]
+(defn- countdown-deltas [world pos st e depth]
   (when (zero? (rem (long (:tick world)) countdown-period))
     (let [ph (geyser/phase st)
           c (geyser/counted pos ph depth (:countdown e))]
@@ -105,9 +92,7 @@
           :when (= :potent-sulfur (:kind e))]
       [pos e])))
 
-(defn- synced
-  "Clears needsSync of the players the geysers did not lift."
-  [world deltas]
+(defn- synced [world deltas]
   (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
                      deltas)]
     (for [[eid e] (sort-by key (:entities world))

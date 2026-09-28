@@ -122,10 +122,7 @@
     (item-dies? o dmg) [motions (conj ds [:remove-entity oid])]
     :else [motions (pushed-deltas ds oid o kb dmg)]))
 
-(defn- blast-deltas
-  "Returns the knockback of each player and the deltas for every
-  other entity the blast moves."
-  [read index center power later]
+(defn- blast-deltas [read index center power later]
   (let [step (fn [acc [oid o :as entry]]
                (let [p (get later oid (:pos o))]
                  (if-let [[kb dmg] (knockback read center o p power)]
@@ -211,18 +208,13 @@
        (into [] (comp (remove primed) (remove gone)) cells)])
     [[] []]))
 
-(defn- with-read
-  "Returns world with the chunks the reads of rg loaded."
-  [world rg]
+(defn- with-read [world rg]
   (let [absent (fn [[id _]] (not (contains? (:chunks world) id)))
         payloads (filter absent (explosion/loaded-payloads rg))]
     (update world :chunks into
             (map (fn [[id p]] [id (:chunk p)])) payloads)))
 
-(defn- changed-deltas
-  "The blocks the blast takes, then the fires it lights, each set
-  with its updates, on the level as the blast read it."
-  [world rg destroy fires]
+(defn- changed-deltas [world rg destroy fires]
   (edit/shaped-deltas (with-read world rg)
                       (into (mapv (fn [p] [p 0]) destroy) fires)))
 
@@ -275,10 +267,7 @@
                  (map second))
         (:world d)))
 
-(defn- blastable
-  "ServerExplosion.hurtEntities takes the entities
-  Level.getEntities finds, which are no spectators."
-  [world]
+(defn- blastable [world]
   (remove (comp game-mode/spectator? val) (:entities world)))
 
 (defn explosions

@@ -4,8 +4,8 @@ import clojure.lang.ITransientCollection;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 
-/// The shoves between bodies that overlap, found in the cells of
-/// the push grid.
+/// The shoves between overlapping bodies in the cells of the
+/// push grid.
 public final class Push {
 
     private static final double STRENGTH = (double) 0.05F;
@@ -13,11 +13,11 @@ public final class Push {
     private static final double THRESHOLD = (double) 0.01F;
 
     /// Returns the shoves between a body and each body of the `cs`
-    /// cells, which may be null, that it overlaps and whose id is
-    /// below `hi`, in the order found. The body with id `eid` and
-    /// half width `half` and height `height` stands at `x`, `y`,
-    /// `z`. Each shove is `[id dx dz]`: this body takes dx dz and
-    /// the other body takes the opposite. The shoves are not summed.
+    /// cells that it overlaps and whose id is below `hi`, in the
+    /// order found. A cell may be null. The body with id `eid`, half
+    /// width `half` and height `height` stands at `x`, `y`, `z`. Each
+    /// shove `[id dx dz]` moves this body by dx dz and the other body
+    /// the opposite way. The shoves are not summed.
     public static Object shoves(Object[] cs, double x, double y,
             double z, double half, double height, long eid, long hi) {
         ITransientCollection acc = PersistentVector.EMPTY.asTransient();

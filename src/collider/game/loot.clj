@@ -1,5 +1,5 @@
 (ns collider.game.loot
-  "Rolling the vanilla loot tables of the mobs."
+  "Mob loot tables."
   (:require [collider.data :as data]
             [collider.game.block.furnace :as furnace]))
 
@@ -97,9 +97,7 @@
     :all-of (every? true? (all? (:terms c) ctx roll s))
     (fail "unknown condition" {:condition (:condition c)})))
 
-(defn- all?
-  "The verdicts of cs, one distinct salt each."
-  [cs ctx roll s]
+(defn- all? [cs ctx roll s]
   (map-indexed #(passes? %2 ctx roll (conj s %1)) cs))
 
 (defn- met? [cs ctx roll s]
@@ -157,9 +155,7 @@
 (defn- till-empty [xs]
   (vec (mapcat identity (take-while seq xs))))
 
-(defn- expand
-  "The singleton entries e yields, each with its own salt."
-  [e ctx roll s]
+(defn- expand [e ctx roll s]
   (if-not (met? (:conditions e) ctx roll s)
     []
     (case (:type e)
@@ -218,15 +214,9 @@
           (:pools t))))
 
 (defn drops
-  "The stacks table-id drops in ctx, in pool order.
-
-  ctx is {:on-fire? :killed-by-player? :damage-type :looting :entity},
-  where :entity is the dying mob: :type, :baby?, :sheared?, :captain?,
-  :size, :vehicle (the type ridden) and :components, the map the
-  predicates read, keyed as in the data: {:sheep/color :black}.
-  roll is (roll salt) -> [0,1); every decision gets its own salt.
-  Luck is zero, so bonus rolls and quality do not count; a
-  predicate on the killer or on equipment never holds yet."
+  "Returns the stacks table-id drops in ctx, in pool order.
+  The roll function gives a number from 0 to 1 for a salt. Every
+  decision draws its own salt."
   [tables table-id ctx roll]
   (filterv #(pos? (long (:count % 1)))
            (table-drops tables table-id ctx roll [table-id])))

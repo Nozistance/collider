@@ -35,11 +35,13 @@
 
 (defn- food-sounds [world eid e c]
   (let [a (roll world eid [:food 0]) b (roll world eid [:food 1])
-        c' (roll world eid [:food 2])]
-    [(out/all (out/sound (:sound c) (:pos e) 1.0
-                         (+ 1.0 (* 0.4 (- a b))) :neutral))
-     (out/all (out/sound :entity.player.burp (:pos e) 0.5
-                         (+ 0.9 (* 0.1 c')) :players))]))
+        c' (roll world eid [:food 2])
+        pos (:pos e)
+        eat (+ 1.0 (* 0.4 (- a b)))
+        burp (+ 0.9 (* 0.1 c'))]
+    [(out/all (out/sound (:sound c) pos 1.0 eat :neutral))
+     (out/all
+      (out/sound :entity.player.burp pos 0.5 burp :players))]))
 
 (defn- effect-sounds [e c]
   (for [{:keys [type sound]} (:effects c) :when (= :play-sound type)]
@@ -48,19 +50,13 @@
 (defn- stopped [eid]
   [[:merge-entity eid {:using-item? false :using nil}]])
 
-(defn- extra-deltas
-  "Returns the deltas that put the stack into the inventory.
-  The stack is dropped when nothing fits."
-  [world eid e stack]
+(defn- extra-deltas [world eid e stack]
   (let [[changes left] (items/add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
             (when left
               [[:spawn-entity (items/dropped world eid left)]]))))
 
-(defn- remainder-deltas
-  "Returns the deltas that turn the used stack into its remainder. In
-  creative the stack is untouched and no remainder appears at all."
-  [world eid e hand stack]
+(defn- remainder-deltas [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
     (when (and left (not (state/infinite-materials? e)))
       (let [over (dec (long (:count stack 1)))
@@ -84,6 +80,10 @@
             (state/cooldown-deltas eid e item (:tick world))
             (stopped eid))))
 
+(defn- advanced [eid e ^long left]
+  [[:merge-entity eid
+    {:using (assoc (:using e) :remaining (dec left))}]])
+
 (defn- step-deltas [world [eid _]]
   (let [e (get-in world [:entities eid])
         {:keys [hand item remaining]} (:using e)
@@ -97,9 +97,7 @@
       (concat (when (emits? c left) [(use-sound world eid e c left)])
               (if (= 1 left)
                 (finish-deltas world eid e)
-                [[:merge-entity eid
-                  {:using (assoc (:using e)
-                                 :remaining (dec left))}]])))))
+                (advanced eid e left))))))
 
 (def ^:private water-bottle
   {:item       :potion :count 1
@@ -110,10 +108,7 @@
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
-(defn- filled-deltas
-  "Returns the deltas of filling the bottle. In creative the hand
-  keeps its stack and the new one is added only when none is held."
-  [world eid e made]
+(defn- filled-deltas [world eid e made]
   (if (state/infinite-materials? e)
     (when-not (some #(same-stack? made %) (vals (:inventory e)))
       (extra-deltas world eid e made))
@@ -125,14 +120,16 @@
              (block/water? st))
         (= :true (:waterlogged (block/props-of st))))))
 
+(defn- fill-sound [eid e]
+  (out/except eid (out/sound :bottle/fill (:pos e) 1.0 1.0 :neutral)))
+
 (defn bottle-deltas
   "Returns the deltas for a player who fills a glass bottle.
   The bottle fills at the water source in view."
   [world eid e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
     (when (water-at? world pos)
-      (concat [(out/except eid (out/sound :bottle/fill (:pos e)
-                                          1.0 1.0 :neutral))
+      (concat [(fill-sound eid e)
                [:award eid :used/glass-bottle 1]]
               (filled-deltas world eid e water-bottle)))))
 

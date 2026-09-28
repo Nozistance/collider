@@ -46,8 +46,8 @@
 (set! *warn-on-reflection* true)
 
 (def packet-systems
-  "The systems a player event drives. Vanilla runs them all
-  before the level tick."
+  "The systems a player event drives.
+  They all run before the level tick."
   [#'chunks/chunk-streaming
    #'players/player-list
    #'players/players
@@ -102,8 +102,8 @@
              [#'detector/observe]])
 
 (def server-systems
-  "The systems of phases that run once for the whole server, not
-  in each level. They see the players of every level."
+  "The systems of phases that run once for the whole server, not in
+  each level. They see the players of every level."
   #{#'players/player-list #'daynight/daynight})
 
 (def dims
@@ -197,10 +197,7 @@
 
 (def ^:private left-behind #{:chunks-sent :tracking})
 
-(defn- left-behind?
-  "Tells whether entity delta d is chunk work of the level a player
-  leaves: sending, tracking, or the batch quota spent on them."
-  [d]
+(defn- left-behind? [d]
   (let [tag (nth d 0)]
     (or (contains? left-behind tag)
         (and (identical? :merge-entity tag)
@@ -209,10 +206,7 @@
 (defn- stay [ds]
   (filterv #(not (left-behind? %)) ds))
 
-(defn- departed
-  "Returns d without the chunk and tracking work of the players
-  who leave the level in it. That work is for the level left."
-  ^Deltas [^Deltas d changes]
+(defn- departed ^Deltas [^Deltas d changes]
   (let [gone (map #(nth % 1) changes)
         es (deltas/entities-of d)
         kept (fn [m eid]
@@ -233,10 +227,7 @@
 
 (declare step)
 
-(defn- handed
-  "Returns [world ds] with the deltas d hands to other levels applied
-  there, after d itself."
-  [acc ^Deltas d]
+(defn- handed [acc ^Deltas d]
   (reduce (fn [acc [dim sub]]
             (let [sd (deltas/add deltas/empty-deltas sub)]
               (step acc dim (deltas/with-dim sd dim))))
@@ -287,11 +278,7 @@
     (inc n)
     0))
 
-(defn- pause-seconds
-  "Returns the seconds without players before the world pauses.
-  They come from the :settings of opts when it has them, read anew
-  each time, or else from opts."
-  ^long [opts]
+(defn- pause-seconds ^long [opts]
   (let [src (if-let [s (:settings opts)] @s opts)]
     (long (or (:pause-when-empty-seconds src) 0))))
 
@@ -412,9 +399,9 @@
       (.start))))
 
 (defn start-ticker!
-  "Starts a daemon thread that ticks world-atom.
-  It ticks on the events from queue and gives the deltas of each
-  tick to deliver!. Returns a handle for the stop."
+  "Starts a ticker of world-atom on the events from queue.
+  It gives the deltas of each tick to deliver!. Returns a handle for
+  the stop."
   ([world-atom queue deliver!]
    (start-ticker! world-atom queue deliver! nil))
   ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
@@ -427,7 +414,7 @@
       :stats   #(percentiles (:window st) (:counter st))})))
 
 (defn stop-ticker!
-  "Stops the ticker and waits up to a second for its thread."
+  "Stops the ticker and waits up to a second for it to end."
   [{:keys [^Thread thread ^AtomicBoolean running]}]
   (.set running false)
   (.join thread 1000)

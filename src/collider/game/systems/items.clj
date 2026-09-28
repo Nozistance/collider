@@ -70,8 +70,8 @@
     [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
 
 (defn dropped
-  "Returns the item entity a player throws out of hand. With
-  randomly? the item flies in a random direction."
+  "Returns the item entity a player throws out of hand.
+  With randomly? the item flies in a random direction."
   ([world thrower stack] (dropped world thrower stack false 0))
   ([world thrower stack randomly? salt]
    (let [e (get-in world [:entities thrower])
@@ -132,9 +132,6 @@
     {:stack s}))
 
 (defn- drop-of
-  "Returns the stack that a drop event throws and the slot change
-  it makes. A spectator drops nothing. The creative inventory
-  throws only for a player in creative."
   [world [tag eid a b]]
   (when-let [e (get-in world [:entities eid])]
     (case tag
@@ -368,7 +365,6 @@
   (if (crossed? from to) moved-rate resting-rate))
 
 (defn- merge-ready?
-  "Returns true when the item may take part in a merge."
   [[_ e]]
   (when e
     (let [s (:stack e)]
@@ -378,7 +374,6 @@
               (long (data/max-stack (:item s))))))))
 
 (defn- merge-due?
-  "Returns true when this tick is a merge tick of the item."
   [[_ e from]]
   (zero? (rem (long (or (:age e) 0))
               (merge-rate from (:pos e)))))
@@ -460,9 +455,9 @@
 (defn filled-result-deltas
   "Returns the deltas of the container in hand turning into stack.
   The last container becomes the filled item in the hand. From a
-  larger stack the filled item goes to the inventory. In creative
-  the container stays, and the filled item goes to the inventory
-  only when the player holds none or always? is true."
+  larger stack the filled item goes to the inventory. In creative the
+  container stays, and the filled item goes to the inventory only when
+  the player holds none or always? is true."
   ([world eid stack]
    (filled-result-deltas world eid stack false :main))
   ([world eid stack always?]
@@ -491,9 +486,9 @@
       [[:set-slot eid (state/hand-slot e hand) made]])))
 
 (defn use-item-deltas
-  "Returns the deltas of a player using one item from hand. Some
-  items leave a remainder, such as an empty bucket after milk. The
-  remainder takes the hand or goes to the inventory."
+  "Returns the deltas of a player using one item from hand.
+  Some items leave a remainder, such as an empty bucket after milk.
+  The remainder takes the hand or goes to the inventory."
   [world eid e hand]
   (let [stack (state/hand-stack e hand)
         left (get-in (data/items) [(:item stack) :use-remainder])]
@@ -507,8 +502,8 @@
      (out/all fx) (out/to eid fx)]))
 
 (defn hurt-item-deltas
-  "Returns the deltas of wearing the item in hand by n points. An
-  item worn past its last point breaks and leaves the hand. A
+  "Returns the deltas of wearing the item in hand by n points.
+  An item worn past its last point breaks and leaves the hand. A
   player with infinite materials wears nothing out."
   [eid e hand ^long n]
   (let [stack (state/hand-stack e hand)

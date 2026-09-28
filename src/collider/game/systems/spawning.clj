@@ -11,10 +11,7 @@
 (defn- radius ^long [w]
   (long (get-in w [:rules :respawn-radius] 10)))
 
-(defn- suggestion
-  "Returns where the spawn search for request req starts: the world
-  spawn for a joining player, as respawns see it for the others."
-  [w req]
+(defn- suggestion [w req]
   (if (:respawn? req) (state/respawn-at w) (:world-spawn w)))
 
 (defn- search-ids [w req]
@@ -80,8 +77,8 @@
 
 (defn placing
   "Places the players of this level whose spawn chunks are loaded.
-  They are the joining and respawning ones. The chunks the
-  others wait for are loaded."
+  They are the joining and respawning ones. The chunks the others wait
+  for are loaded."
   [world _]
   (let [reqs (filter #(here? world %)
                      (sort-by key (:spawning world)))]

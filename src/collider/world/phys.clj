@@ -60,19 +60,13 @@
   [^Move m]
   (.onGround m))
 
-(defn- with-tables
-  "Returns the call of the Phys method m on chunks, the block
-  tables and args."
-  [m chunks args]
+(defn- with-tables [m chunks args]
   (let [c (with-meta (gensym "chunks") {:tag `ChunkIndex})]
     `(let [~c ~chunks]
        (~m ~c (block/solid-arr) (block/cube-arr)
            (block/collision-arr) ~@args))))
 
-(defn- at-form
-  "Returns the call of the Phys method m on chunks, the tables, the
-  coordinates of pos and args."
-  [m chunks pos args]
+(defn- at-form [m chunks pos args]
   (let [p (gensym "pos")]
     `(let [~p ~pos]
        ~(with-tables m chunks

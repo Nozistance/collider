@@ -68,10 +68,7 @@
   (c/write-varint buf block/air)
   (write-biomes! buf biome))
 
-(defn- window
-  "Returns [first section, section count, sky?, biome id] of the
-  level lv."
-  [lv]
+(defn- window [lv]
   (let [lo (chunk/level-min-y lv)]
     [(chunk/section-index lo)
      (quot (- (inc (chunk/level-max-y lv)) lo) 16)
@@ -122,10 +119,7 @@
     (c/write-varint buf (buf/readable-bytes body))
     (buf/write-bytes! buf body)))
 
-(defn- filled-bits
-  "Returns a mask with bit i+1 set where section i of the window
-  holds a block other than air."
-  ^long [chunk ^long lo ^long n ^booleans solid]
+(defn- filled-bits ^long [chunk ^long lo ^long n ^booleans solid]
   (loop [i 0 m 0]
     (if (= i n)
       m
@@ -135,8 +129,6 @@
                (if hit? (bit-or m (bit-shift-left 1 (inc i))) m))))))
 
 (defn- around-bits
-  "Returns the sections other than air in the eight chunks around
-  cx cz, as filled-bits gives them."
   ^long [cs ^long cx ^long cz [lo n]]
   (let [solid @surface-arr]
     (loop [k 0 m 0]
@@ -148,10 +140,7 @@
           (recur (inc k)
                  (if c (bit-or m (filled-bits c lo n solid)) m)))))))
 
-(defn- spread
-  "Returns the light layers the client gets for the sections in m:
-  vanilla keeps one at each such section and at each next to it."
-  ^long [^long m]
+(defn- spread ^long [^long m]
   (bit-or m (bit-shift-left m 1) (unsigned-bit-shift-right m 1)))
 
 (defn- dark-bottom? [s]
@@ -161,10 +150,7 @@
       (pos? (chunk/sky-light s idx)) false
       :else (recur (inc idx)))))
 
-(defn- dark-inherited?
-  "Returns true when the air section our light puts at si in chunk
-  has no sky light: it takes the bottom layer above it."
-  [chunk ^long si]
+(defn- dark-inherited? [chunk ^long si]
   (if-let [s (chunk/first-above chunk si)]
     (or (not (chunk/sky-lit? s)) (dark-bottom? s))
     false))
@@ -218,8 +204,6 @@
       (write-block-layer! buf chunk (+ lo li -1)))))
 
 (defn- write-lights!
-  "Writes the light of chunk as vanilla sends it: a layer it keeps
-  goes whole, or only in the empty mask when it is all dark."
   [buf lv chunk cx cz [^long lo ^long n sky? :as win]]
   (let [own (filled-bits chunk lo n @surface-arr)
         near (around-bits (:chunks lv) cx cz win)

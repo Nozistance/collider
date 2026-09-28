@@ -252,8 +252,7 @@
 (def validate? (Boolean/getBoolean "collider.validate"))
 
 (defn check!
-  "Returns deltas, or throws on the first one that breaks its
-  schema."
+  "Returns deltas, or throws on the first one that breaks its schema."
   [deltas]
   (doseq [d deltas]
     (when-not (@delta-validator d)

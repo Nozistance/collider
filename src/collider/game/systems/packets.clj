@@ -1,5 +1,5 @@
 (ns collider.game.systems.packets
-  "The packet events a player alone can reach, one job per player."
+  "Packet events that touch only their own player."
   (:require [collider.game.state :as state]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
@@ -38,7 +38,7 @@
                more (into acc ds))))))
 
 (defn by-player
-  "Returns one job per player, his events in the order they came."
+  "Returns one job per player with its events in the order they came."
   [world d]
   (mapv (fn [[_ events]] #(fold-deltas world events))
         (grouped (:input d))))

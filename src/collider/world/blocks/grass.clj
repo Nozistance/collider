@@ -1,5 +1,5 @@
 (ns collider.world.blocks.grass
-  "Grass blocks: their states and where they stay alive."
+  "Grass blocks, their states and where they stay alive."
   (:require [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
@@ -15,7 +15,7 @@
 (defn short-grass? [st] (= :short-grass (block/block-of (long st))))
 
 (defn can-stay-alive?
-  "Whether grass or mycelium st lives under the block above.
+  "Returns true when grass or mycelium st lives under the block above.
   One snow layer lets it live and a full fluid kills it."
   [^long st ^long above]
   (cond

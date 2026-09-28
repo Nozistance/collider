@@ -7,9 +7,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- pass!
-  "Spreads channel ch of the cells, [x y z level] each, into cache."
-  [cache chunks ch cells]
+(defn- pass! [cache chunks ch cells]
   (Light/pass cache chunks ch cells (block/tables)))
 
 (defn- relit [c [[_ k] ^bytes arr]]
@@ -50,8 +48,8 @@
   (Light/skyAt chunks (long x) (long y) (long z)))
 
 (defn sky-light-level
-  "Returns the brightness of the sky, 0.0 to 15.0, at a time of day.
-  The rain and thunder levels, 0.0 to 1.0, dim it."
+  "Returns the sky brightness from 0.0 to 15.0 at a time of day.
+  The rain and thunder levels from 0.0 to 1.0 dim it."
   {:inline (fn
              ([t] `(Light/skyLevel (long ~t) 0.0 0.0))
              ([t r h]
@@ -62,8 +60,8 @@
    (Light/skyLevel time rain-level thunder-level)))
 
 (defn sky-darken
-  "Returns how much the sky light is dimmed, 0 to 15.
-  The time of day and the weather decide."
+  "Returns how much the time of day and the weather dim the sky light,
+  from 0 to 15."
   {:inline (fn
              ([t] `(Light/darken (long ~t) 0.0 0.0))
              ([t r h]
@@ -110,9 +108,7 @@
       (recur (inc yy) (conj acc [x yy z 15]))
       acc)))
 
-(defn- sky-source
-  "Returns the lowest y of the column x z that the sky reaches."
-  ^long [chunks ^long x ^long z]
+(defn- sky-source ^long [chunks ^long x ^long z]
   (Light/skySource chunks x z (block/tables)))
 
 (defn- sky-column [chunks x z ys]
@@ -155,7 +151,7 @@
     (if (.isEmpty cache) chunks (rebuild chunks cache))))
 
 (defn relight-batch
-  "Returns chunks relit after changes, [pos old new] each.
+  "Returns chunks relit after changes [pos old new].
   Sky light moves only when sky? is true."
   ([chunks changes] (relight-batch chunks changes true))
   ([chunks changes sky?]

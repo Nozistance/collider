@@ -19,8 +19,8 @@
 (def ^:private ^:const face-forward-delay 10)
 
 (defn rotlerp
-  "Returns a turned toward b by at most max degrees, brought back
-  into one turn around the circle."
+  "Returns a turned toward b by at most max degrees, brought back into
+  one turn around the circle."
   ^double [^double a ^double b ^double max]
   (let [d (Math/max (- max) (Math/min max (v/wrap-deg (- b a))))
         r (+ a d)]
@@ -57,15 +57,10 @@
   [e]
   (boolean (or (:wet? e) (:in-lava? e))))
 
-(defn- sped
-  "Returns the move control driving at s, which is also the speed
-  it reports, rounded to a float."
-  [m ^double s]
+(defn- sped [m ^double s]
   (let [s (double (float s))] (assoc m :speed s :zza s)))
 
-(defn- stuck-in-block?
-  "Whether the block the mob stands in pushes it into a jump."
-  [chunks pos]
+(defn- stuck-in-block? [chunks pos]
   (let [x (long (Math/floor (v/x pos)))
         y (long (Math/floor (v/y pos)))
         z (long (Math/floor (v/z pos)))
@@ -110,8 +105,8 @@
       e)))
 
 (defn tick
-  "Returns mob e after one tick of its move and jump controls.
-  attr is the movement speed of its kind, width its box width."
+  "Returns mob e after one tick of its move and jump controls, for
+  speed attribute attr and box width width."
   [world e attr width]
   (case (:op (:move e) :wait)
     :move-to (move-to-tick world e (double attr) (double width))
@@ -121,17 +116,13 @@
 (defn- flt ^double [^double a] (double (float a)))
 
 (defn rotate-if-necessary
-  "Returns target pulled back toward base by no more than max
-  degrees. Every step rounds to a float, as the angles are floats."
+  "Returns target pulled back toward base by no more than max degrees.
+  Each step rounds to a float."
   ^double [^double base ^double target ^double max]
   (let [d (flt (v/wrap-deg (flt (- target base))))]
     (flt (- target (Math/clamp d (- max) max)))))
 
-(defn- faced-forward
-  "Returns the yaw of a body that has stood still for that many
-  ticks. After ten the body starts to turn toward the head, and
-  ten ticks later it faces where the head looks."
-  ^double [^double yaw ^double hy ^long stable]
+(defn- faced-forward ^double [^double yaw ^double hy ^long stable]
   (if (> stable face-forward-delay)
     (let [n (- stable face-forward-delay)
           f (Math/clamp (flt (/ (double n) 10.0)) 0.0 1.0)
@@ -149,8 +140,8 @@
 
 (defn body-tick
   "Returns e with its body and head turned after its move.
-  moved? tells whether the mob shifted in the XZ plane this tick:
-  a walking mob carries its head, a standing one turns its body
+  The flag moved? is true when the mob shifted in the XZ plane this
+  tick. A walking mob carries its head. A standing one turns its body
   after its head."
   [e moved? ^long t]
   (let [hy (double (or (:head-yaw e) (:yaw e)))

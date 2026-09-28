@@ -2,14 +2,13 @@ package collider.world.space;
 
 import java.util.Arrays;
 
-/// The open set of a path search: a binary heap of nodes, the node
-/// of the lowest total score on top. Each node knows its place.
+/// The open set of a path search with the node of the lowest total
+/// score on top.
 public final class PathHeap {
 
     private PathNode[] a = new PathNode[128];
     private int n;
 
-    /// Returns true when the heap holds no node.
     public boolean isEmpty() {
         return n == 0;
     }
@@ -70,8 +69,6 @@ public final class PathHeap {
         return top;
     }
 
-    /// Sets the total score of `node`, which the heap holds, to
-    /// `cost` and moves the node to its new place.
     void changeCost(PathNode node, double cost) {
         double c = PathNode.fl(cost), old = node.f;
         node.f = c;

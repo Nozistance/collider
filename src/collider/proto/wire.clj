@@ -12,7 +12,6 @@
 (set! *warn-on-reflection* true)
 
 (defn- wire-type
-  "Returns a leaf schema carrying its codec in the properties."
   ([nm pred read write] (wire-type nm pred read write nil))
   ([nm pred read write gen]
    (m/-simple-schema
@@ -61,7 +60,6 @@
   (wire-type :wire/long int? buf/read-long buf/write-long! :int))
 
 (def ^:private float-gen
-  "Doubles a float keeps whole, so a round trip stays an equality."
   [:enum 0.0 1.0 -1.0 0.5 -0.25 90.0 -1024.0 0.125])
 
 (def float
@@ -102,15 +100,14 @@
              section-gen))
 
 (def section-change
-  "One block of a section update: its place in the section and its
-  state, both in a single varlong."
+  "One block of a section update as one varlong of its place in the
+  section and its state."
   (wire-type :wire/section-change sequential? c/read-section-change
              c/write-section-change
              [:tuple [:int {:min 0 :max 4095}]
               [:int {:min 0 :max 30000}]]))
 
 (def ^:private angle-gen
-  "The degrees a byte of 256ths of a turn keeps whole."
   [:enum 0.0 45.0 90.0 -45.0 -90.0 -180.0 1.40625 -1.40625])
 
 (def angle
@@ -125,7 +122,6 @@
              [:tuple double-range double-range double-range]))
 
 (def ^:private eighth-gen
-  "The coordinates a fixed point of eighths keeps whole."
   [:enum 0.0 0.5 -0.125 64.0 -1024.25 3.375])
 
 (def fixed-vec3
@@ -143,7 +139,6 @@
              [:tuple float-gen float-gen float-gen]))
 
 (def ^:private lp-gen
-  "The vectors quantization keeps whole: unit ends at scale one."
   [:enum [0.0 0.0 0.0] [1.0 0.0 0.0] [0.0 -1.0 0.0] [0.0 0.0 1.0]
    [1.0 -1.0 1.0] [-1.0 1.0 -1.0]])
 
@@ -160,7 +155,7 @@
              [:maybe [:map-of [:enum :a :b :c] [:string {:max 5}]]]))
 
 (def stat
-  "A statistic named by its type and its entry: :mined/stone."
+  "A statistic named by its type and its entry, like :mined/stone."
   (wire-type :wire/stat qualified-keyword? c/read-stat c/write-stat
              [:enum :custom/jump :mined/stone :killed/cow]))
 
@@ -239,8 +234,7 @@
            :gen/schema [:int {:min 0 :max top}]}}))}))
 
 (def bare
-  "A value the wire pairs with an optional we never fill: the data of
-  a registry entry, the tooltip of a command suggestion."
+  "A value that the wire pairs with an optional that stays empty."
   (m/-simple-schema
     {:type :wire/bare
      :compile
@@ -254,8 +248,7 @@
            :gen/schema child}}))}))
 
 (def particle
-  "A particle as `[type options]`, the options read and written by
-  the type as the client does."
+  "A particle as [type options], the options shaped by the type."
   (wire-type :wire/particle vector? c/read-particle c/write-particle
              [:tuple int-range
               [:maybe
@@ -302,8 +295,6 @@
     (fn [b m] (run! (fn [f] (f b m)) fs))))
 
 (defn- map-field-reader
-  "A filler is on the wire but not in the message, so its value is
-  checked and dropped."
   [[k props _ :as e]]
   (let [r (-reader (field e))]
     (if (:optional props)
@@ -326,9 +317,7 @@
 (defn- limit [schema]
   (:max (m/properties schema) Long/MAX_VALUE))
 
-(defn- fits
-  "The count of a wire collection, refused past the vanilla limit."
-  ^long [^long n ^long mx]
+(defn- fits ^long [^long n ^long mx]
   (if (> n mx)
     (throw (ex-info "too many elements" {:count n :max mx}))
     n))
@@ -417,11 +406,11 @@
     (codec-of schema :wire/read)))
 
 (defn reader
-  "Compiles a fn taking the value of schema off a buffer."
+  "Returns a fn that reads a value of schema."
   [schema]
   (-reader (m/schema schema)))
 
 (defn writer
-  "Compiles a fn putting a value of schema on a buffer."
+  "Returns a fn that writes a value of schema."
   [schema]
   (-writer (m/schema schema)))

@@ -65,8 +65,6 @@
             (mobs/baby? e) (assoc :baby-until grown))))
 
 (defn- bitten
-  "EatBlockGoal.tick: grass at the feet is destroyed without drops;
-  else grass below turns to dirt with flags 2 after its 2001."
   [world [x y z :as cell]]
   (let [below [x (dec (long y)) z]
         st (sense/block-at world cell)]
@@ -90,9 +88,7 @@
 
 (defn- dye-item [color] (keyword (str (name color) "-dye")))
 
-(defn- mixed
-  "Returns the colour the two dyes craft into, else nil."
-  [a b]
+(defn- mixed [a b]
   (let [stacks [{:item (dye-item a) :count 1}
                 {:item (dye-item b) :count 1}]
         in (craft/trim {:w 2 :h 1 :stacks stacks})]
@@ -140,8 +136,9 @@
   (and (not (mobs/baby? e)) (not (:sheared? e))))
 
 (defn shear-result
-  "Returns what shears do to a sheep: a grown unshorn one loses its
-  wool. Any other sheep swallows the click."
+  "Returns what shears do to a sheep.
+  A grown sheep with wool loses it. Any other sheep swallows
+  the click."
   [{:keys [t peid p hand eid e item]}]
   (when (= :shears item)
     (if (shearable? e)
@@ -154,8 +151,8 @@
           (items/consume-deltas peid p hand 1)))
 
 (defn dye-result
-  "Returns what a dye does to a sheep still wearing its wool, whose
-  coat takes the colour."
+  "Returns what a dye does to a sheep that still wears its wool.
+  The coat takes the colour."
   [{:keys [peid p hand eid e item]}]
   (when (and (= :sheep (:type e)) (not (:sheared? e)))
     (when-let [id (some-> (data/dye-color item) mobs/color-id)]
@@ -167,8 +164,8 @@
    :continue? eating? :tick eat-tick})
 
 (def spec
-  "The sheep's goals with eating grass before strolling; a lamb
-  wears the parents' colours mixed."
+  "The goals of a sheep, with eating grass before strolling.
+  A lamb wears the colours of its parents mixed."
   (let [before? #(not= :wander (:kind %))
         [before after] (split-with before? animal/goals)]
     (animal/spec (concat before [eat] after) lamb-color)))
