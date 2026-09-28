@@ -92,23 +92,31 @@
     (let [acts (filter (fn [[pred _]] (pred ctx)) item-actions)]
       (when-let [[_ f] (first acts)] (f ctx)))))
 
+(defn- suppressed?
+  "Whether a sneaking player with something in either hand, item in
+  the hand that clicks, skips the use of the block clicked."
+  [at item]
+  (boolean (and (:sneaking? at)
+                (or item (seq (sense/hands-of at))))))
+
 (defn- place-ctx [world at [eid pos face item cursor :as args]]
-  {:world     world :eid eid :pos pos :face face :item item :at at
-   :args      args :cursor cursor
-   :use-item? (= 255 (bit-and (long face) 0xFF))
-   :pour      (liquid/bucket->state item)})
+  (let [use-item? (= 255 (bit-and (long face) 0xFF))]
+    {:world world :eid eid :pos pos :face face :item item :at at
+     :args args :cursor cursor :use-item? use-item?
+     :use-block? (not (or use-item? (suppressed? at item)))
+     :pour (liquid/bucket->state item)}))
 
 (defn- hand-deltas [ctx]
-  (let [{:keys [world eid pos face item cursor at use-item?]} ctx]
-    (when-not (or use-item? (and item (:sneaking? at)))
+  (let [{:keys [world eid pos face item cursor use-block?]} ctx]
+    (when use-block?
       (use/deltas world eid pos face item cursor))))
 
-(defn- without-item-deltas [{:keys [world eid pos item use-item?]}]
-  (cond
-    (door/opens? world eid pos item use-item?)
-    (door/toggle-deltas world eid pos (edit/block-at world pos))
-    (bed/uses-bed? world eid pos item use-item?)
-    (bed/sleep-deltas world eid pos)))
+(defn- without-item-deltas [{:keys [world eid pos use-block?]}]
+  (when use-block?
+    (cond
+      (door/opens? world pos)
+      (door/toggle-deltas world eid pos (edit/block-at world pos))
+      (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos))))
 
 (defn- play-deltas [world [eid pos face item cursor _ _ hand] origin]
   (let [hand (or hand :main)

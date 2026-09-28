@@ -14,12 +14,10 @@
   (into #{:fence-gate}
         (concat block/door-types block/trapdoor-types)))
 
-(defn opens? [world eid pos item use-item?]
+(defn opens? [world pos]
   (let [cur (edit/block-at world pos)]
-    (and (not use-item?)
-         (contains? openable-types (block/type-of cur))
-         (data/by-hand? (block/block-of cur))
-         (not (and item (get-in world [:entities eid :sneaking?]))))))
+    (and (contains? openable-types (block/type-of cur))
+         (data/by-hand? (block/block-of cur)))))
 
 (defn- flipped [st & kvs]
   (let [props (block/props-of st)

@@ -68,9 +68,15 @@
 
 (def ^:private ^:const max-bites 6)
 
+(defn- main-hand?
+  "Whether player eid uses the block with the main hand, the only
+  hand that uses a block without its item."
+  [world eid]
+  (not= :off (get-in world [:entities eid :use-hand])))
+
 (defn- eats? [world eid]
   (let [e (get-in world [:entities eid])]
-    (and (not= :off (:use-hand e))
+    (and (main-hand? world eid)
          (:invulnerable? (game-mode/abilities e)))))
 
 (defn- bitten ^long [^long st]
@@ -442,6 +448,9 @@
    :dragon-egg (fn [w _ pos _ _ _] (egg-deltas w pos))
    :light (fn [w _ pos _ _ _] (light-deltas w pos))})
 
+(defn- open-use [w eid pos _ _ _]
+  (when (main-hand? w eid) (containers/open-deltas w eid pos)))
+
 (defn- cauldron-use [w eid pos _ item _]
   (cauldron/cauldron-deltas w eid pos item (edit/held-stack w eid)))
 
@@ -453,8 +462,7 @@
           (contains? block/cauldron-types t) cauldron-use
           (sign/kind cur)
           (fn [w eid pos _ item _] (sign-use-deltas w eid pos item))
-          (contains? container/menu-types t)
-          (fn [w eid pos _ _ _] (containers/open-deltas w eid pos))
+          (contains? container/menu-types t) open-use
           (and (= :pumpkin (block/block-of cur)) (= :shears item))
           (fn [w eid pos face _ _]
             (tools/carve-deltas w eid pos face))))))

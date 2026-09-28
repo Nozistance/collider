@@ -11,10 +11,8 @@
 
 (set! *warn-on-reflection* true)
 
-(defn uses-bed? [world eid pos item use-item?]
-  (and (not use-item?)
-       (= :bed (block/type-of (edit/block-at world pos)))
-       (not (and item (get-in world [:entities eid :sneaking?])))))
+(defn uses-bed? [world pos]
+  (= :bed (block/type-of (edit/block-at world pos))))
 
 (defn- bed-in-range? [world eid head]
   (let [p (get-in world [:entities eid :pos])
