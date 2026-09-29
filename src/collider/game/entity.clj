@@ -136,12 +136,6 @@
     (mob-merged e m)
     (merge e m)))
 
-(defn mob-moved
-  "Returns the mob e after a step of its own movement."
-  [e pos vel on-ground yaw wet? jump-cd]
-  (with e {:pos pos :vel vel :on-ground on-ground :yaw yaw :wet? wet?
-           :jump-cd jump-cd}))
-
 (defn mob-looked
   "Returns the mob e turned towards what it looks at."
   [e head-yaw pitch look]

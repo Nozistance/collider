@@ -1210,15 +1210,43 @@
         (update-entity w (nth delta 1) #(g (:tick w) % delta))
         w))))
 
-(defn- folded-entities [w entities pairs]
-  (let [t (:tick w)
-        step (fn [e ds] (reduce #(apply-entity-delta t %1 %2) e ds))]
-    (r/fold fold-leaf (r/monoid i/merge i/int-map)
-            (fn [m [eid ds]]
-              (if-let [e (get entities eid)]
-                (assoc m eid (step e ds))
-                m))
-            pairs)))
+(defn- merged-in [e m] (if m (entity/merged e m) e))
+
+(defn- kept-mdata? [e m]
+  (or (some? (:kept-mdata e)) (contains? m :kept-mdata)))
+
+(defn- merge-of
+  "Returns delta d on entity e under the pending merge m as a map to
+  merge, or nil when it does more than set keys."
+  [e m d]
+  (case (nth d 0)
+    :merge-entity (nth d 2)
+    :track (when-not (kept-mdata? e m) {:track (nth d 2)})
+    nil))
+
+(defn- entity-folded [t e ds]
+  (loop [e e m nil ds (seq ds)]
+    (if ds
+      (let [d (first ds)]
+        (if-let [dm (merge-of e m d)]
+          (recur e (if m (merge m dm) dm) (next ds))
+          (recur (apply-entity-delta t (merged-in e m) d) nil
+                 (next ds))))
+      (merged-in e m))))
+
+(defn- stepped [entities t]
+  (fn [m [eid ds]]
+    (if-let [e (get entities eid)]
+      (assoc m eid (entity-folded t e ds))
+      m)))
+
+(defn- folded-entities [w entities by-eid]
+  (let [step (stepped entities (:tick w))]
+    (if (< (count by-eid) fold-leaf)
+      (reduce step entities by-eid)
+      (i/merge entities
+               (r/fold fold-leaf (r/monoid i/merge i/int-map) step
+                       (vec by-eid))))))
 
 (defn- deltas-of [deltas]
   (if (instance? Deltas deltas)
@@ -1235,11 +1263,10 @@
         [w removes] (reduce world-step [lv []] (deltas/world-of d))
         inp (deltas/input-of d)
         w (if (seq inp) (applied-input w inp) w)
-        entities (:entities w)
-        updated (folded-entities
-                  w entities (vec (deltas/entities-of d)))
-        w (if (pos? (count updated))
-            (assoc w :entities (i/merge entities updated))
+        by-eid (deltas/entities-of d)
+        w (if-not (deltas/vacant? by-eid)
+            (assoc w :entities
+                   (folded-entities w (:entities w) by-eid))
             w)]
     (cache-active-chunks (reduce player-quit w removes))))
 

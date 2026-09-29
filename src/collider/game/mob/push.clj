@@ -1,11 +1,10 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
-  (:require [clojure.data.int-map :as im]
-            [collider.game.game-mode :as game-mode]
+  (:require [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Islands Push PushCell)))
+  (:import (collider.game.mob Islands PushGrid)))
 
 (set! *warn-on-reflection* true)
 
@@ -47,85 +46,33 @@
   [held [_ e :as entry]]
   (and (body? held entry) (alive? e)))
 
-(defn- by-cell [entries]
-  (persistent!
-    (reduce (fn [m entry]
-              (let [p (:pos (nth entry 1))
-                    k (cell-of (double (v/x p)) (double (v/z p)))]
-                (assoc! m k (conj (get m k []) entry))))
-            (transient (im/int-map))
-            entries)))
-
-(defn- packed-cell ^PushCell [entries]
-  (let [n (count entries)
+(defn- filled ^PushGrid [es]
+  (let [n (count es)
         eids (long-array n) xs (double-array n) ys (double-array n)
         zs (double-array n) hs (double-array n) ts (double-array n)]
-    (loop [i 0 es (seq entries)]
-      (when es
-        (let [[eid e] (first es) p (:pos e)]
-          (aset eids i (long eid))
-          (aset xs i (double (v/x p)))
-          (aset ys i (double (v/y p)))
-          (aset zs i (double (v/z p)))
-          (aset hs i (pushable-half e))
-          (aset ts i (pushable-height e))
-          (recur (inc i) (next es)))))
-    (PushCell. eids hs ts xs ys zs)))
-
-(defn- hood ^objects [cells ^long k]
-  (let [cx (long (unchecked-int (bit-shift-right k 32)))
-        cz (long (unchecked-int k))
-        cs (object-array 9)]
-    (dotimes [c 9]
-      (let [dx (dec (long (quot c 3)))
-            dz (dec (long (rem c 3)))]
-        (aset cs c (get cells (cell-key (+ cx dx) (+ cz dz))))))
-    cs))
-
-(defn- packed [cells]
-  (persistent!
-    (reduce-kv (fn [m k es]
-                 (assoc! m k (packed-cell (sort-by first es))))
-               (transient (im/int-map))
-               cells)))
+    (dotimes [i n]
+      (let [[eid e] (nth es i) p (:pos e)]
+        (aset eids i (long eid))
+        (aset xs i (double (v/x p)))
+        (aset ys i (double (v/y p)))
+        (aset zs i (double (v/z p)))
+        (aset hs i (pushable-half e))
+        (aset ts i (pushable-height e))))
+    (PushGrid. eids hs ts xs ys zs)))
 
 (defn index-of
   "Returns the index in which a body finds every body near enough to
-  shove it."
-  [entries]
-  (packed (by-cell entries)))
-
-(defn- without ^PushCell [^PushCell c ^long eid]
-  (.without c eid))
-
-(defn- with ^PushCell [^PushCell c ^long eid e]
-  (let [p (:pos e)]
-    (.with c eid (pushable-half e) (pushable-height e)
-           (double (v/x p)) (double (v/y p)) (double (v/z p)))))
-
-(defn- size ^long [^PushCell c] (alength (.eids c)))
-
-(defn- taken-out [index ^long k ^long eid]
-  (let [c (without (get index k) eid)]
-    (if (zero? (size c)) (dissoc index k) (assoc index k c))))
-
-(def ^:private empty-cell
-  (PushCell. (long-array 0) (double-array 0) (double-array 0)
-             (double-array 0) (double-array 0) (double-array 0)))
-
-(defn- put-in [index ^long k ^long eid e]
-  (assoc index k (with (get index k empty-cell) eid e)))
+  shove it. Each move of a body changes it in place."
+  ^PushGrid [entries]
+  (filled (vec (sort-by first entries))))
 
 (defn moved
-  "Returns index after body eid moved from old-pos to its place in
-  entry e."
-  [index eid old-pos e]
-  (let [p (:pos e)
-        k0 (cell-of (double (v/x old-pos)) (double (v/z old-pos)))
-        k1 (cell-of (double (v/x p)) (double (v/z p)))]
-    (if (== k0 k1)
-      (put-in index k1 eid e)
-      (put-in (taken-out index k0 eid) k1 eid e))))
+  "Returns index after body eid moved to its place in entry e."
+  [^PushGrid index eid _old-pos e]
+  (let [p (:pos e)]
+    (PushGrid/moved index (long eid) (pushable-half e)
+                    (pushable-height e) (double (v/x p))
+                    (double (v/y p)) (double (v/z p)))))
 
 (defn- grouped [entries]
   (let [n (count entries)
@@ -144,30 +91,36 @@
         group (fn [^ints g] (mapv #(nth entries %) g))]
     (mapv group (grouped entries))))
 
-(defn- scan [index eid e half height hi]
-  (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
-    (if (contains? index (cell-of x z))
-      (Push/shoves (hood index (cell-of x z)) x (double (v/y p)) z
-                   (double half) (double height) (long eid) (long hi))
-      [])))
+(defn- scan [^PushGrid index eid p half height hi]
+  (if index
+    (PushGrid/shoves index (double (v/x p)) (double (v/y p))
+                     (double (v/z p)) (double half) (double height)
+                     (long eid) (long hi))
+    []))
 
 (defn touching
   "Returns the ids of the bodies whose boxes overlap the box of body
   eid."
-  [index eid e half height]
-  (let [p (:pos e) x (double (v/x p)) z (double (v/z p))]
-    (Push/touching (hood index (cell-of x z)) x (double (v/y p)) z
-                   (double half) (double height) (long eid))))
+  [^PushGrid index eid e half height]
+  (let [p (:pos e)]
+    (PushGrid/touching index (double (v/x p)) (double (v/y p))
+                       (double (v/z p)) (double half) (double height)
+                       (long eid))))
 
 (defn shoves
   "Returns the shoves of one run of the body over every body it meets.
   The run is the last part of its tick."
   [index eid e half height]
-  (scan index eid e half height Long/MAX_VALUE))
+  (scan index eid (:pos e) half height Long/MAX_VALUE))
+
+(defn shoves-at
+  "Returns the shoves of body eid run to pos, as shoves does."
+  [index eid pos half height]
+  (scan index eid pos half height Long/MAX_VALUE))
 
 (defn before
   "Returns the shoves that the bodies which stepped earlier this tick
   gave to this body. This body takes the opposite of what each of
   them took."
   [index eid e half height]
-  (scan index eid e half height (long eid)))
+  (scan index eid (:pos e) half height (long eid)))

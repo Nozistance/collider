@@ -214,21 +214,31 @@
        (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
        (let [op (:pitch e)] (and op (== (double op) hp)))))
 
-(defn- looked [world e height t]
+(defn- look-aim [world e height look]
+  (let [oid (:target look)
+        o (when oid (get (:entities world) oid))]
+    [(cond o (v/yaw-toward (:pos e) (:pos o))
+           (and look (:yaw look)) (:yaw look)
+           :else (:yaw e))
+     (if o (look-pitch e height o) 0.0)]))
+
+(defn- look-of
+  "Returns the head yaw, head pitch and look of mob e turned towards
+  what it looks at, or nil when its head stays."
+  [world e height t]
   (let [look (active-look e (long t))
-        oid (:target look)
-        o (when oid (get (:entities world) oid))
-        dyaw (cond o (v/yaw-toward (:pos e) (:pos o))
-                   (and look (:yaw look)) (:yaw look)
-                   :else (:yaw e))
-        dpitch (if o (look-pitch e height o) 0.0)
+        [dyaw dpitch] (look-aim world e height look)
         y0 (double (or (:head-yaw e) (:yaw e)))
         p0 (double (or (:pitch e) 0.0))
         hy (v/limit-angle y0 (double dyaw) 10.0)
         hp (v/limit-angle p0 (double dpitch) 40.0)]
-    (if (head-same? e look (double hy) (double hp))
-      e
-      (entity/mob-looked e hy hp look))))
+    (when-not (head-same? e look (double hy) (double hp))
+      [hy hp look])))
+
+(defn- looked [world e height t]
+  (if-let [[hy hp look] (look-of world e height t)]
+    (entity/mob-looked e hy hp look)
+    e))
 
 (defn- fall-gravity
   "Returns the gravity mob e falls by at vertical speed vy. This is
@@ -269,12 +279,6 @@
                     (neg? (v/y vel)))]
     (and still? (nil? (levitation e))
          (phys/standing-on-cubes? (:chunks world) x y z half))))
-
-(defn- rest-step [e t]
-  (control/body-tick
-    (entity/mob-moved e (:pos e) (rest-vel-of e) true (:yaw e) false
-                      nil)
-    false (long t)))
 
 (defn- speed-of ^double [e] (double (:speed (:move e) 0.0)))
 
@@ -491,19 +495,19 @@
 
 (defn- physics-move [world e vel half height f]
   (let [t (long (:tick world))
-        from (:pos e) og? (boolean (:on-ground e))
+        og? (boolean (:on-ground e))
         ready? (>= t (long (or (:jump-cd e) 0)))
         [v jumped?] (if (:jump e)
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
         [pos w ground? sup nb?]
         (travelled world e v half height og? f)
-        vy (liquid/bubble-push (:chunks world) pos (v/y w))
-        v2 (v/v3 (v/x w) vy (v/z w))
-        cd (jump-delay e t jumped?)
-        e (entity/mob-moved e pos v2 ground? (:yaw e) (:wet? e) cd)]
-    (control/body-tick (assoc e :support sup :no-blocks? nb?)
-                       (shifted? from pos) t)))
+        vy (liquid/bubble-push (:chunks world) pos (v/y w))]
+    [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
+     sup nb?]))
+
+(defn- rest-move [e]
+  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e)])
 
 (defn- eye-height ^double [^double height]
   (* 0.85 height))
@@ -515,13 +519,11 @@
   (liquid/fluid-info (:chunks world) (:pos e) half height (:vel e)
                      (:dim world)))
 
-(defn- flagged [world e half height kept]
-  (let [f (or kept (fluid-of world e half height))
-        w (pos? (double (:water f)))
-        l (pos? (double (:lava f)))]
-    (cond-> e
-      (not= (boolean (:wet? e)) w) (assoc :wet? w)
-      (not= (boolean (:in-lava? e)) l) (assoc :in-lava? l))))
+(defn- fluid-after [world pos h ht v]
+  (liquid/fluid-info (:chunks world) pos h ht v (:dim world)))
+
+(defn- flag [old now]
+  (if (= (boolean old) now) old now))
 
 (defn- pushed [vel push]
   (v/v3 (dead-band (+ (v/x vel) (double (nth push 0))))
@@ -533,24 +535,13 @@
   (v/v3 (+ (v/x vel) (double dx)) (v/y vel)
         (+ (v/z vel) (double dz))))
 
-(defn- shoved [e shoves]
-  (if (seq shoves)
-    (assoc e :vel (reduce taken (:vel e) shoves))
-    e))
-
-(defn- living-shoves [world shoves]
-  (filter #(push/alive? (get-in world [:entities (nth % 0)])) shoves))
-
-(defn- own-shoved
-  "Returns mob e1 shoved by the bodies it ran into, and those shoves.
-  A dead body shoves them but takes nothing back."
-  [world index eid e1]
-  (let [[half height] (mobs/box-of e1)
-        shoves (push/shoves index eid e1 half height)]
-    [(if (push/alive? e1)
-       (shoved e1 (living-shoves world shoves))
-       e1)
-     shoves]))
+(defn- shoved [world e vel shoves]
+  (if (and (seq shoves) (push/alive? e))
+    (let [es (:entities world)]
+      (reduce (fn [v sh]
+                (if (push/alive? (get es (nth sh 0))) (taken v sh) v))
+              vel shoves))
+    vel))
 
 (defn- fluid-at [world e half height]
   (assoc (fluid-of world e half height)
@@ -561,24 +552,58 @@
                  (push/before index eid e half height))]
     (pushed (reduce taken (:vel e) shoves) (:push f))))
 
+(defn- walked-to ^double [e pos]
+  (+ (double (or (:walked e) 0.0))
+     (* 0.6 (Math/sqrt (v/dist3-sq (:pos e) pos)))))
+
+(defn- walk-of [e prev pos]
+  (let [w (if prev (walked-to prev pos) 0.0)]
+    (if (and prev (not (== w (double (or (:walked prev) 0.0)))))
+      w
+      (:walked e))))
+
+(defn- travel-of
+  "Returns the position, speed, ground, jump cooldown, support and
+  no-blocks flag of mob e after its move this tick, then the fluid
+  it stood in and whether it rested."
+  [world index eid e h ht]
+  (let [f (fluid-at world e h ht)
+        moving? (not (zero? (double (:zza (:move e) 0.0))))
+        vel (own-vel index eid e h ht f)
+        rest? (at-rest? world e h moving? (in-fluid? f) vel)]
+    (conj (if rest? (rest-move e) (physics-move world e vel h ht f))
+          f rest?)))
+
+(defn- settled
+  [e [pos _ og cd sup nb?] v g rest? [yaw hy body] look walked]
+  (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
+    (entity/with e {:pos pos :vel v :on-ground og :jump-cd cd
+                    :support sup :no-blocks? nb?
+                    :wet? (flag (if rest? false (:wet? e)) w)
+                    :in-lava? (flag (:in-lava? e) l)
+                    :yaw yaw :head-yaw hy :body body
+                    :pitch (if look (nth look 1) (:pitch e))
+                    :look (if look (nth look 2) (:look e))
+                    :walked walked})))
+
 (defn- physics-shoves
   "Returns mob e after one tick of movement and the shoves it gave
-  the bodies it ran into."
-  [world index eid e half height]
-  (let [t (long (:tick world))
-        half (double (float half)) height (double (float height))
-        f (fluid-at world e half height)
-        moving? (not (zero? (double (:zza (:move e) 0.0))))
-        vel (own-vel index eid e half height f)
-        rest? (at-rest? world e half moving? (in-fluid? f) vel)
-        e1 (if rest?
-             (rest-step e t)
-             (physics-move world e vel half height f))
-        [e2 shoves] (own-shoved world index eid e1)]
-    [(flagged world e2 half height (when rest? f)) shoves]))
+  the bodies it ran into. The mob also takes the head of look, as
+  look-of returns it, and the walk from prev, when given."
+  [world index eid e half height look prev]
+  (let [h (double (float half)) ht (double (float height))
+        tr (travel-of world index eid e h ht)
+        pos (nth tr 0) rest? (nth tr 7)
+        shoves (push/shoves-at index eid pos half height)
+        v (shoved world e (nth tr 1) shoves)
+        g (if rest? (nth tr 6) (fluid-after world pos h ht v))
+        moved? (shifted? (:pos e) pos)
+        head (if look (nth look 0) (:head-yaw e))
+        hd (control/body-turn e head moved? (:tick world))]
+    [(settled e tr v g rest? hd look (walk-of e prev pos)) shoves]))
 
 (defn- physics [world index eid e half height]
-  (nth (physics-shoves world index eid e half height) 0))
+  (nth (physics-shoves world index eid e half height nil nil) 0))
 
 (def ^:private ^:const say-rest 120)
 
@@ -675,27 +700,29 @@
         [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))]
     [e1 deltas say-deltas]))
 
-(defn- walked-step [e prev now]
-  (let [walked (double (or (:walked e) 0.0))
-        d (Math/sqrt (v/dist3-sq (:pos prev) (:pos now)))
-        walked' (+ walked (* 0.6 d))
-        now (if (== walked walked') now (assoc now :walked walked'))]
-    [now walked walked']))
+(defn- steered [world e speed half]
+  (control/tick world (nav/tick world e) speed (* 2.0 (double half))))
 
 (defn- sensed [world e speed half height t]
-  (let [width (* 2.0 (double half))
-        n (control/tick world (nav/tick world e) speed width)]
-    (looked world n height t)))
+  (looked world (steered world e speed half) height t))
 
 (defn- spent-jump [e dead?]
   (cond-> e
-    (:jump e) (assoc :jump false)
-    dead? (assoc :move (Steer/halted (:move e)))))
+    (:jump e) (entity/with {:jump false})
+    dead? (entity/with {:move (Steer/halted (:move e))})))
 
 (defn- move-speed ^double [e]
   (if-let [fx (not-empty (:effects e))]
     (attribute/value e fx :movement-speed)
     (double (:speed (get mobs/types (:type e))))))
+
+(defn- stepped-deltas [eid e e2 ds say-ds t]
+  (let [changes (mob-changes e e2)
+        merged (when (seq changes) [[:merge-entity eid changes]])
+        acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))]
+    (movement-sounds acc e2 (boolean (:wet? e))
+                     (double (or (:walked e) 0.0))
+                     (double (or (:walked e2) 0.0)) t eid)))
 
 (defn- step-mob [world index tempters eid e t]
   (let [[half height] (mobs/box-of e)
@@ -703,46 +730,36 @@
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
-        e1 (if dead? e1 (sensed world e1 speed half height t))
-        was-wet? (boolean (:wet? e))
-        [e2 shoves] (physics-shoves world index eid e1 half height)
-        [e2 walked walked'] (walked-step e e1 e2)
-        changes (mob-changes e e2)
-        merged (when (seq changes) [[:merge-entity eid changes]])
-        acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))
-        sounds (movement-sounds acc e2 was-wet? walked walked' t eid)]
-    [e2 sounds shoves]))
-
-(defn- ticks-at?
-  [active [_ e]]
-  (state/active-at? active (:pos e)))
+        e1 (if dead? e1 (steered world e1 speed half))
+        look (when-not dead? (look-of world e1 height t))
+        [e2 shoves]
+        (physics-shoves world index eid e1 half height look e)]
+    [e2 (stepped-deltas eid e e2 ds say-ds t) shoves]))
 
 (defn- handed
-  [es acc j [eid dx dz]]
-  (let [[_ e] (nth es j)]
+  "Returns acc with the shove sh handed to the mob in slot j, whose
+  speed this tick so far is in vels."
+  [es ^objects vels acc j [eid dx dz]]
+  (let [e (nth (nth es j) 1)]
     (if (mobs/mob-type? (:type e))
-      (let [vel (:vel e)
+      (let [vel (or (aget vels j) (:vel e))
             v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
                     (- (v/z vel) (double dz)))]
-        [(assoc! es j [eid (assoc e :vel v)])
-         (conj acc [:merge-entity eid {:vel v}])])
-      [es acc])))
+        (aset vels j v)
+        (conj acc [:merge-entity eid {:vel v}]))
+      acc)))
 
-(defn- takes-now? [active es ^long i ^long j]
-  (or (< j i) (not (ticks-at? active (nth es j)))))
+(defn- takes-now? [^booleans ticking ^long i ^long j]
+  (or (< j i) (not (aget ticking j))))
 
-(defn- steps? [active entry]
-  (and (mobs/mob-type? (:type (nth entry 1)))
-       (ticks-at? active entry)))
-
-(defn- handing [active slots es i shoves]
-  (let [f (fn [[es acc] sh]
+(defn- handing [ticking vels slots es i shoves]
+  (let [f (fn [acc sh]
             (let [j (get slots (nth sh 0))]
-              (if (and j (takes-now? active es i j)
+              (if (and j (takes-now? ticking i j)
                        (push/alive? (nth (nth es j) 1)))
-                (handed es acc j sh)
-                [es acc])))]
-    (reduce f [es []] shoves)))
+                (handed es vels acc j sh)
+                acc)))]
+    (reduce f [] shoves)))
 
 (def ^:private ^:const cramming-damage 6.0)
 
@@ -760,10 +777,10 @@
   "Returns true when mob e, crowded, takes cramming damage this tick,
   as LivingEntity.pushEntities."
   [world index slots es eid e t]
-  (let [m (max-cramming world)]
-    (and (pos? m) (push/alive? e)
-         (< (random/of-longs t eid cramming-key) 0.25)
-         (> (crowd index slots es eid e) (dec m)))))
+  (and (push/alive? e)
+       (< (random/of-longs t eid cramming-key) 0.25)
+       (let [m (max-cramming world)]
+         (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
 
 (defn- rested
   "Returns mob e with the hurt resistance it has after the countdown
@@ -783,9 +800,9 @@
       [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
       [e ds])))
 
-(defn- turn [world active tempters t index slots es i]
+(defn- turn [world ^booleans ticking vels tempters t index slots es i]
   (let [[eid e] (nth es i)
-        stepping? (steps? active (nth es i))
+        stepping? (and (aget ticking i) (mobs/mob-type? (:type e)))
         [e2 ds shoves]
         (if stepping?
           (step-mob world index tempters eid e t)
@@ -794,7 +811,7 @@
                   (cramming world index slots es eid e2 t ds)
                   [e2 ds])
         es (assoc! es i [eid e2])
-        [es hs] (handing active slots es i shoves)
+        hs (handing ticking vels slots es i shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
     [es (if (seq hs) (into (vec ds) hs) ds) from]))
 
@@ -803,14 +820,22 @@
     (let [[eid e] (nth es i)] (push/moved index eid from e))
     index))
 
+(defn- ticking-of [active es]
+  (let [a (boolean-array (count es))]
+    (dotimes [i (count es)]
+      (let [p (:pos (nth (nth es i) 1))]
+        (aset a i (boolean (state/active-at? active p)))))
+    a))
+
 (defn- step-island [world active tempters t es]
   (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)
-        es (vec es) n (count es) index (push/index-of es)]
+        es (vec es) n (count es) index (push/index-of es)
+        ticking (ticking-of active es) vels (object-array n)]
     (loop [i 0 es (transient es) index index acc (transient [])]
       (if (= i n)
         (persistent! acc)
         (let [[es ds from]
-              (turn world active tempters t index slots es i)]
+              (turn world ticking vels tempters t index slots es i)]
           (recur (inc i) es (reindexed index es i from)
                  (reduce conj! acc ds)))))))
 

@@ -128,30 +128,22 @@
       (rotate-if-necessary yaw hy r))
     yaw))
 
-(defn- turned-body [e ^double yaw ^double hy ^long t]
-  (entity/with e {:yaw (rotate-if-necessary yaw hy max-head-y-rot)
-                  :body {:head hy :at t}}))
-
-(defn- carried-head [e ^double yaw ^double hy ^long t]
+(defn- carried [^double yaw ^double hy ^long t]
   (let [h (rotate-if-necessary hy yaw max-head-y-rot)]
-    (entity/with e {:head-yaw h :body {:head h :at t}})))
+    [yaw h {:head h :at t}]))
 
-(defn- faced [e b yaw hy t]
-  (let [stable (- (long t) (long (:at b)))
-        yaw (faced-forward (double yaw) (double hy) stable)]
-    (entity/with e {:body b :yaw yaw})))
-
-(defn body-tick
-  "Returns e with its body and head turned after its move.
-  The flag moved? is true when the mob shifted in the XZ plane this
-  tick. A walking mob carries its head. A standing one turns its body
-  after its head."
-  [e moved? ^long t]
-  (let [hy (double (or (:head-yaw e) (:yaw e)))
-        yaw (double (:yaw e))
+(defn body-turn
+  "Returns the yaw, head yaw and body of mob e after its move, for
+  head yaw head. The flag moved? is true when the mob shifted in the
+  XZ plane this tick. A walking mob carries its head. A standing one
+  turns its body after its head."
+  [e head moved? t]
+  (let [yaw (double (:yaw e)) t (long t)
+        hy (double (or head yaw))
         b (or (:body e) {:head 0.0 :at (dec t)})]
     (cond
-      moved? (carried-head e yaw hy t)
+      moved? (carried yaw hy t)
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
-      (turned-body e yaw hy t)
-      :else (faced e b yaw hy t))))
+      [(rotate-if-necessary yaw hy max-head-y-rot) head
+       {:head hy :at t}]
+      :else [(faced-forward yaw hy (- t (long (:at b)))) head b])))
