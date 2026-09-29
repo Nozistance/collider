@@ -113,10 +113,11 @@
 (def ^:private adult-boxes
   (into {} (map (fn [[t m]] [t [(:half m) (:height m)]])) types))
 
+(defn- halved [[t [h hh]]]
+  [t [(* 0.5 (double h)) (* 0.5 (double hh))]])
+
 (def ^:private baby-boxes
-  (into {} (map (fn [[t [h hh]]] [t [(* 0.5 (double h))
-                                     (* 0.5 (double hh))]]))
-        adult-boxes))
+  (into {} (map halved) adult-boxes))
 
 (defn max-health [type] (:max-health (types type)))
 
@@ -206,6 +207,15 @@
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
 (defn baby? [e] (some? (:baby-until e)))
+
+(def ^:const death-ticks 20)
+
+(defn death-ends?
+  "Returns true when dead mob e leaves at the start of this tick, as
+  LivingEntity.tickDeath, before its step."
+  [e]
+  (and (not (pos? (double (:health e 1.0))))
+       (>= (inc (long (or (:death-time e) 0))) death-ticks)))
 
 (defn box-of
   "Returns the half width and the height of mob e.

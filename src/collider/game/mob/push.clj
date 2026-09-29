@@ -38,7 +38,9 @@
 
 (defn- body?
   [held [_ e]]
-  (and (or (= :player (:type e)) (mobs/mob-type? (:type e)))
+  (and (or (= :player (:type e))
+           (and (mobs/mob-type? (:type e))
+                (not (mobs/death-ends? e))))
        (not (game-mode/spectator? e))
        (contains? held (chunk/pos-chunk (:pos e)))))
 

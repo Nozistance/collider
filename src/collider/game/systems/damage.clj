@@ -25,8 +25,6 @@
 
 (def ^:private ^:const void-damage 4.0)
 
-(def ^:private ^:const death-ticks 20)
-
 (def ^:private ^:const panic-ticks 40)
 
 (def ^:private ^:const player-health 20.0)
@@ -629,7 +627,7 @@
 (defn- timer-deltas [eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
-        gone? (and death (>= (long death) death-ticks)
+        gone? (and death (>= (long death) mobs/death-ticks)
                    (not= :player (:type e)))]
     (concat
       (when death [[:merge-entity eid {:death-time death}]])
