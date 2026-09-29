@@ -98,7 +98,8 @@
           [:source :keyword] [:fire? :boolean]
           [:by {:optional true} [:maybe Eid]]
           [:with {:optional true} :keyword]
-          [:later {:optional true} :map]]]})
+          [:later {:optional true} :map]
+          [:after {:optional true} Eid]]]})
 
 (def entity-deltas
   {:merge-entity

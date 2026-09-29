@@ -96,7 +96,7 @@
              [#'block-updates/block-flush
               #'players/late-tracking]
              entity-systems
-             [#'explosions/explosions]
+             [#'explosions/blasts]
              [#'items/pickups #'orbs/pickups #'containers/broadcast]
              [#'furnaces/furnace-cooking
               #'campfires/campfire-cooking

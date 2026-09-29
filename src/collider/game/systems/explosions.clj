@@ -3,6 +3,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.tnt :as tnt]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -39,27 +40,18 @@
         [[(* (/ dx d13) k) (* (/ dy d13) k) (* (/ dz d13) k)]
          (blast-damage k (double power))]))))
 
-(defn- blast-distance ^double [p [cx cy cz] ^double power]
-  (let [dx (- (double (v/x p)) (double cx))
-        dy (- (double (v/y p)) (double cy))
-        dz (- (double (v/z p)) (double cz))]
-    (/ (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
-       (* 2.0 power))))
-
-(defn- entity-density [read center e p]
+(defn- entity-density [seen center e p]
   (let [[half height] (entity-box e)]
-    (explosion/block-density read center p half height)))
+    (explosion/exposed seen center p half height)))
 
 (defn- impulse-at [center e p d12 density power]
   (let [ey (+ (double (v/y p)) (entity/eye-height e))]
     (blast-impulse center (v/x p) ey (v/z p) d12 density power)))
 
-(defn- knockback [read center e p power]
-  (let [d12 (blast-distance p center (double power))]
-    (when (<= d12 1.0)
-      (let [density (entity-density read center e p)]
-        (when (pos? density)
-          (impulse-at center e p d12 density power))))))
+(defn- knockback [seen center e p d12 power]
+  (let [density (entity-density seen center e p)]
+    (when (pos? density)
+      (impulse-at center e p d12 density power))))
 
 (def ^:private ^:const kb-cell 8)
 
@@ -91,14 +83,34 @@
 (defn- cell-reach ^long [power]
   (long (Math/ceil (/ (* 2.0 (double power)) kb-cell))))
 
-(defn- kb-candidates [index [cx cy cz] power]
+(defn- dist-sq ^double [p ^double cx ^double cy ^double cz]
+  (let [dx (- (double (v/x p)) cx)
+        dy (- (double (v/y p)) cy)
+        dz (- (double (v/z p)) cz)]
+    (+ (* dx dx) (* dy dy) (* dz dz))))
+
+(defn- reach-of [{:keys [later after]} [cx cy cz] power]
+  (let [cx (double cx) cy (double cy) cz (double cz)
+        power (double power)
+        reach (+ (* 2.0 power) 2.0)
+        reach-sq (* reach reach)
+        after (if after (long after) Long/MIN_VALUE)
+        start (fn [oid]
+                (when (> (long oid) after)
+                  (when-some [p (get later oid)]
+                    (when (< (dist-sq p cx cy cz) reach-sq) p))))]
+    (fn [[oid o]]
+      (let [p (or (start oid) (:pos o))
+            d12 (/ (Math/sqrt (dist-sq p cx cy cz)) (* 2.0 power))]
+        (when (<= d12 1.0) [oid o p d12])))))
+
+(defn- kb-candidates [index [cx cy cz] power reach]
   (let [x (long (Math/floor (double cx)))
         y (long (Math/floor (double cy)))
         z (long (Math/floor (double cz)))]
-    (->> (cell-keys x y z (cell-reach power))
-         (map (fn [k] (get index k)))
-         (apply concat)
-         (sort-by first))))
+    (sort-by first
+             (into [] (comp (mapcat #(get index %)) (keep reach))
+                   (cell-keys x y z (cell-reach power))))))
 
 (defn- blast-proof? [e]
   (and (= :item (:type e))
@@ -122,13 +134,15 @@
     (item-dies? o dmg) [motions (conj ds [:remove-entity oid])]
     :else [motions (pushed-deltas ds oid o kb dmg)]))
 
-(defn- blast-deltas [read index center power later]
-  (let [step (fn [acc [oid o :as entry]]
-               (let [p (get later oid (:pos o))]
-                 (if-let [[kb dmg] (knockback read center o p power)]
-                   (blast-one acc entry kb dmg)
-                   acc)))]
-    (reduce step [{} []] (kb-candidates index center power))))
+(defn- blast-deltas [read index center power req]
+  (let [seen (explosion/exposure read center)
+        reach (reach-of req center power)
+        kb (fn [o p d12] (knockback seen center o p d12 power))
+        step (fn [acc [oid o p d12]]
+               (if-let [[v dmg] (kb o p d12)]
+                 (blast-one acc [oid o] v dmg)
+                 acc))]
+    (reduce step [{} []] (kb-candidates index center power reach))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1])
@@ -238,15 +252,25 @@
         (into (chain-deltas chains seed))
         (into (drop-deltas world rg destroy seed source power)))))
 
-(defn- blast-of [world rg index req gone primed]
-  (let [{:keys [center power source fire? by later]} req
+(defn- body-of [world index req]
+  (let [{:keys [center power by]} req
         power (double (or power tnt/power))
         seed [(:tick world) (or by center)]
+        rg (explosion-reader world center)
         affected (explosion/affected-blocks rg center power seed)
+        [motions pushes] (blast-deltas rg index center power req)]
+    {:rg rg :power power :seed seed :affected affected
+     :motions motions :pushes pushes}))
+
+(defn- bodies [world index reqs]
+  (deltas/pmapcat (fn [req] [(body-of world index req)]) reqs 1 1))
+
+(defn- blast-of [world body req gone primed]
+  (let [{:keys [center source fire?]} req
+        {:keys [rg power seed affected motions pushes]} body
         [chains destroy]
         (break-cells world rg (:blocks affected) gone primed source)
         gone' (into gone destroy)
-        [motions pushes] (blast-deltas rg index center power later)
         fires (if fire?
                 (fire-cells rg @(:cells affected) gone' seed)
                 [])]
@@ -254,13 +278,14 @@
      :affected affected :destroy destroy :chains chains
      :fires fires :motions motions :pushes pushes :gone gone'}))
 
-(defn- request-deltas [world index [gone primed acc] req]
-  (let [rg (explosion-reader world (:center req))
-        b (blast-of world rg index req gone primed)
-        acc (into acc (chunks/read-absent-deltas
-                        (explosion/loaded-payloads rg)))]
-    [(:gone b) (into primed (:chains b))
-     (blast-acc world rg acc b)]))
+(defn- request-blasts [world [gone primed blasts] [req body]]
+  (let [rg (:rg body)
+        b (blast-of world body req gone primed)
+        b (assoc b :rg rg :loaded (explosion/loaded-payloads rg))]
+    [(:gone b) (into primed (:chains b)) (conj blasts b)]))
+
+(defn- blast-deltas-of [world {:keys [rg loaded] :as b}]
+  (blast-acc world rg (vec (chunks/read-absent-deltas loaded)) b))
 
 (defn- requests [d]
   (into [] (comp (filter (fn [delta] (= :explode (nth delta 0))))
@@ -270,13 +295,30 @@
 (defn- blastable [world]
   (remove (comp game-mode/spectator? val) (:entities world)))
 
-(defn explosions
-  "Returns the deltas for every blast requested this tick.
-  They come in request order."
+(def ^:private ^:const job-count 12)
+
+(defn- job-size ^long [^long n]
+  (max 1 (quot (+ n (dec job-count)) job-count)))
+
+(defn- job [world bs]
+  #(into [] (mapcat (partial blast-deltas-of world)) bs))
+
+(defn blasts
+  "Returns the jobs that give the deltas of every blast requested
+  this tick. The deltas come in request order."
   [world d]
   (let [reqs (requests d)]
     (when (seq reqs)
       (let [index (kb-index (blastable world))
-            init [#{} (tnt/primed-origins world) []]]
-        (nth (reduce (partial request-deltas world index) init reqs)
-             2)))))
+            init [#{} (tnt/primed-origins world) []]
+            pairs (map vector reqs (bodies world index reqs))
+            step (partial request-blasts world)
+            done (nth (reduce step init pairs) 2)]
+        (mapv (partial job world)
+              (partition-all (job-size (count done)) done))))))
+
+(defn explosions
+  "Returns the deltas for every blast requested this tick.
+  They come in request order."
+  [world d]
+  (deltas/run-seq (blasts world d)))

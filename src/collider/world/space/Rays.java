@@ -4,7 +4,7 @@ import collider.RandomSupport;
 import collider.world.Section;
 import clojure.lang.IFn;
 
-/// Line of sight through a grid of sections and the rays of a blast.
+/// The rays of a blast through a grid of sections.
 public final class Rays {
 
     private static final int MIN_Y = -64;
@@ -28,55 +28,6 @@ public final class Rays {
         Section s = (Section) grid[(ix * ncz + iz) * nsy + iy];
         if (s == null) return 0;
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
-    }
-    /// Returns 1 if the straight path from `cx`, `cy`, `cz` to
-    /// `px`, `py`, `pz` crosses no block whose state is `true` in
-    /// `solid`, otherwise 0.
-    public static long clearPath(Object[] grid, int cx0, int cz0, int sy0,
-                                 int ncx, int ncz, int nsy, boolean[] solid,
-                                 double cx, double cy, double cz,
-                                 double px, double py, double pz) {
-        double dx = px - cx, dy = py - cy, dz = pz - cz;
-        double len = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        if (len < 0.3) return 1;
-        long steps = (long) (len / 0.3);
-        double sx = dx / len, sy = dy / len, sz = dz / len;
-        for (long i = 1; i <= steps; i++) {
-            double t = i * 0.3;
-            int st = readBlock(grid, cx0, cz0, sy0, ncx, ncz, nsy,
-                               (int) Math.floor(cx + sx * t),
-                               (int) Math.floor(cy + sy * t),
-                               (int) Math.floor(cz + sz * t));
-            if (st < solid.length && solid[st]) return 0;
-        }
-        return 1;
-    }
-
-    /// Returns the share from 0.0 to 1.0 of the points of a body box
-    /// at `px`, `py`, `pz` with half width `half` and height `height`
-    /// that see `cx`, `cy`, `cz` through the sections of `rg`.
-    public static double density(Region rg, boolean[] solid,
-            double cx, double cy, double cz, double px, double py,
-            double pz, double half, double height) {
-        double sx = 1.0 / (4.0 * half + 1.0);
-        double sy = 1.0 / (2.0 * height + 1.0);
-        double ox = (1.0 - Math.floor(1.0 / sx) * sx) / 2.0;
-        long hit = 0, total = 0;
-        for (double fx = 0.0; fx <= 1.0; fx += sx) {
-            for (double fy = 0.0; fy <= 1.0; fy += sy) {
-                for (double fz = 0.0; fz <= 1.0; fz += sx) {
-                    double x = px - half + fx * 2.0 * half + ox;
-                    double y = py + fy * height;
-                    double z = pz - half + fz * 2.0 * half + ox;
-                    hit += clearPath(rg.grid(), rg.cx0(), rg.cz0(),
-                                     rg.sy0(), rg.ncx(), rg.ncz(),
-                                     rg.nsy(), solid, cx, cy, cz,
-                                     x, y, z);
-                    total++;
-                }
-            }
-        }
-        return total == 0 ? 0.0 : (double) hit / (double) total;
     }
 
     /// Returns the block state at `x`, `y`, `z` in `rg`, or 0 outside

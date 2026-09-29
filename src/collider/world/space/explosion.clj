@@ -5,7 +5,7 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.world.space Rays Region)))
+  (:import (collider.world.space Exposure Rays Region)))
 
 (set! *warn-on-reflection* true)
 
@@ -138,22 +138,29 @@
     {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
      :cells (delay (hit-positions hit origin 1))}))
 
-(defn- density-form [rg center p half height]
-  `(let [[cx# cy# cz#] ~center [px# py# pz#] ~p]
-     (Rays/density ~(with-meta rg {:tag `Region}) (block/solid-arr)
-                   (double cx#) (double cy#) (double cz#)
-                   (double px#) (double py#) (double pz#)
-                   (double ~half) (double ~height))))
+(defn exposure
+  "Returns what a blast at center sees through rg. The bodies that
+  one blast reaches share it."
+  ^Exposure [^Region rg [cx cy cz]]
+  (Exposure/of rg (block/solid-arr) (double cx) (double cy)
+               (double cz)))
+
+(defn exposed
+  "Returns the share, 0.0 to 1.0, of a body at p that the blast at
+  the center reaches without a block in the way. The body is a box
+  of half width half and height height. e is the exposure of the
+  blast."
+  [^Exposure e [cx cy cz] [px py pz] half height]
+  (Exposure/density e (double cx) (double cy) (double cz) (double px)
+                    (double py) (double pz) (double half)
+                    (double height)))
 
 (defn block-density
   "Returns the share, 0.0 to 1.0, of a body at p that the blast at
-  the center reaches without a block in the way. The body is a box
-  of half width half and height height."
-  {:inline (fn [rg c p h t] (density-form rg c p h t))}
-  [^Region rg [cx cy cz] [px py pz] half height]
-  (Rays/density rg (block/solid-arr) (double cx) (double cy)
-                (double cz) (double px) (double py) (double pz)
-                (double half) (double height)))
+  the center reaches through rg without a block in the way. The body
+  is a box of half width half and height height."
+  [^Region rg center p half height]
+  (exposed (exposure rg center) center p half height))
 
 (defn shuffled
   "Returns v in the order seed shuffles it into."

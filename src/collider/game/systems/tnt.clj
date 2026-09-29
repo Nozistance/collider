@@ -1,6 +1,7 @@
 (ns collider.game.systems.tnt
   "Primed TNT fuse, motion and blast."
-  (:require [collider.game.block.tnt :as tnt]
+  (:require [clojure.data.int-map :as i]
+            [collider.game.block.tnt :as tnt]
             [collider.game.state :as state]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
@@ -66,36 +67,28 @@
   (phys/pos (phys/move (:chunks world) (:pos e) (drift e)
                        tnt-half tnt-height)))
 
-(defn- within? [p [cx cy cz] ^double reach]
-  (let [dx (- (v/x p) (double cx))
-        dy (- (v/y p) (double cy))
-        dz (- (v/z p) (double cz))]
-    (< (+ (* dx dx) (* dy dy) (* dz dz)) (* reach reach))))
+(defn- start-positions [world]
+  (persistent!
+    (reduce (fn [m [oid o]] (assoc! m oid (:pos o)))
+            (transient (i/int-map))
+            (:entities world))))
 
-(defn- later-positions [world eid center]
-  (let [reach (+ (* 2.0 tnt/power) 2.0)
-        later? (fn [oid o]
-                 (and (> (long oid) (long eid))
-                      (within? (:pos o) center reach)))]
-    (into {}
-          (keep (fn [[oid o]] (when (later? oid o) [oid (:pos o)])))
-          (:entities world))))
-
-(defn- explode-request [world eid center]
+(defn- explode-request [starts eid center]
   {:center center
    :power tnt/power
    :source :tnt
    :fire? false
    :by eid
-   :later (later-positions world eid center)})
+   :later starts
+   :after eid})
 
-(defn- explode-deltas [world eid e]
+(defn- explode-deltas [world starts eid e]
   (let [[x y z] (moved-pos world e)
         center [(double x) (+ (double y) (/ tnt-height 16.0))
                 (double z)]]
     (cond-> [[:remove-entity eid]]
             (get-in world [:rules :tnt-explodes] true)
-            (conj [:explode (explode-request world eid center)]))))
+            (conj [:explode (explode-request starts eid center)]))))
 
 (defn- lit-deltas [world eid e]
   (into (unblock-deltas eid e) (step-deltas world eid e)))
@@ -105,9 +98,8 @@
         ticks? (fn [[_ e]] (state/active-at? active (:pos e)))]
     (into [] (filter ticks?) (state/of-types world [:tnt]))))
 
-(defn- explode-step [world due]
-  #(into [] (mapcat (fn [[eid e]] (explode-deltas world eid e)))
-         due))
+(defn- explode-step [world starts [eid e]]
+  #(explode-deltas world @starts eid e))
 
 (defn- due? [[_ e]]
   (and (not (:origin e)) (<= (long (:fuse e)) 1)))
@@ -123,7 +115,8 @@
   the rest."
   [world _d]
   (let [tnts (tnt-entries world)
-        due (filterv due? tnts)]
-    (into (if (seq due) [(explode-step world due)] [])
+        due (filterv due? tnts)
+        starts (delay (start-positions world))]
+    (into (mapv #(explode-step world starts %) due)
           (comp (remove due?) (map #(tnt-step world %)))
           tnts)))
