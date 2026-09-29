@@ -55,7 +55,7 @@
       (place/scaffold-place-deltas world eid pos face))]
    [(comp nil? :item) (constantly nil)]
    [(comp projectiles/throwables :item)
-    (on-at projectiles/throw-deltas)]
+    (when-use (on-at projectiles/throw-deltas))]
    [:pour
     (when-use (fn [{:keys [world eid at pour]}]
                 (bucket/add world eid at pour)))]
