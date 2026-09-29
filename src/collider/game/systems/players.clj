@@ -343,6 +343,17 @@
         (or (> d vel-threshold)
             (and (> d 0.0) (still? vel)))))))
 
+(def ^:private deltas-untracked
+  #{:player :llama-spit :wither :bat :item-frame :glow-item-frame
+    :leash-knot :painting :end-crystal :evoker-fangs})
+
+(defn- vel-due? [e self? due?]
+  (boolean
+    (or self?
+        (and due?
+             (or (:needs-sync? e)
+                 (not (contains? deltas-untracked (:type e))))))))
+
 (defn- near-baseline? [e ^Track tr]
   (let [[bx by bz] (tr-pos tr)
         p (:pos e)
@@ -414,7 +425,7 @@
          (boolean (and due? (not= head (long (tr-head tr)))))
          meta-changed?
          equip-changed?
-         (vel-changed? tr vel)
+         (and (vel-due? e self? due?) (vel-changed? tr vel))
          (when equip-changed? (equip-changes equip tr))
          (self-slot-diff e tr self?)
          carried?
@@ -444,13 +455,15 @@
           (f-carried-changed? f) (conj (out/carried (:carried e)))))
 
 (defn- move-msgs [eid e ^Frame f]
-  (let [md (if (f-first? f) (f-mdata f) (f-mdiff f))]
-    (cond-> (if-let [m (when (f-due? f) (move-msg eid e f))] [m] [])
+  (let [md (if (f-first? f) (f-mdata f) (f-mdiff f))
+        m (when (f-due? f) (move-msg eid e f))]
+    (cond-> []
+            (and (f-due? f) (f-vel-changed? f))
+            (conj (out/velocity eid (f-vel f)))
+            m (conj m)
             (f-head-turned? f) (conj (out/head-look eid (f-head f)))
             (or (f-meta-changed? f) (f-first? f))
             (conj (out/meta eid (:type e) md))
-            (and (f-due? f) (f-vel-changed? f))
-            (conj (out/velocity eid (f-vel f)))
             (seq (f-equip-diff f))
             (into (map (fn [[slot s]] (out/equipment eid slot s))
                        (f-equip-diff f))))))
@@ -504,13 +517,13 @@
       (boolean (:needs-sync? e))
       (boolean dirty?)))
 
-(defn- quiet? [tr e self? item? dirty? equip-same?]
+(defn- quiet? [tr e self? dirty? equip-same?]
   (and (not dirty?)
        equip-same?
        (or (not self?)
            (and (identical? (:inventory e) (:slots tr))
-                (= (:carried e) (:carried tr))))
-       (or item? (not (vel-changed? tr (:vel e))))))
+                (= (:carried e) (:carried tr))
+                (not (vel-changed? tr (:vel e)))))))
 
 (defn- collect-out [eid e vs self? track-delta msgs selfs]
   (let [out (transient [])
@@ -534,14 +547,9 @@
 
 (defn- tracked-deltas [t eid e vs self? tr mdata dirty? due?]
   (let [fresh? (and (not due?) (instance? Track tr))
-        item? (contains? #{:item :experience-orb} (:type e))
         same? (and fresh? (= (equipment-stacks e) (:equip tr)))]
-    (cond
-      (not fresh?) (changed-deltas t eid e vs self? tr mdata due?)
-      (quiet? tr e self? item? dirty? same?) nil
-      (and same? (not self?) (not dirty?))
-      [[:track eid (assoc tr :vel-sent (:vel e))]]
-      :else (changed-deltas t eid e vs self? tr mdata due?))))
+    (when-not (and fresh? (quiet? tr e self? dirty? same?))
+      (changed-deltas t eid e vs self? tr mdata due?))))
 
 (defn- move-deltas [t viewers [eid e]]
   (let [vs (contains? viewers eid)

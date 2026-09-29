@@ -68,6 +68,7 @@
   [#'items/items
    #'orbs/orbs
    #'falling/falling-blocks
+   #'damage/countdown
    #'mobs/mobs-system
    #'tnt/tnt-system
    #'projectiles/projectiles

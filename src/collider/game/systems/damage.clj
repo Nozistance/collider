@@ -620,20 +620,18 @@
         (when (= :player (:type e))
           [(out/to eid (out/health health))])))))
 
-(defn- timer-marks [^long resist death]
-  (cond-> {}
-          (pos? resist) (assoc :hurt-resist (dec resist))
-          death (assoc :death-time death)))
+(defn- rest-deltas [eid e]
+  (let [resist (long (or (:hurt-resist e) 0))]
+    (when (pos? resist)
+      [[:merge-entity eid {:hurt-resist (dec resist)}]])))
 
 (defn- timer-deltas [eid e]
-  (let [resist (long (or (:hurt-resist e) 0))
-        dead? (not (pos? (double (:health e))))
+  (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
         gone? (and death (>= (long death) death-ticks)
                    (not= :player (:type e)))]
     (concat
-      (when (or (pos? resist) death)
-        [[:merge-entity eid (timer-marks resist death)]])
+      (when death [[:merge-entity eid {:death-time death}]])
       (when gone? [[:remove-entity eid]]))))
 
 (defn respawn-config
@@ -765,10 +763,12 @@
         ds (concat (when busy? (timer-deltas eid e))
                    (when busy? (void-deltas world eid e))
                    (when busy? (landing-deltas world eid e))
-                   (fire-deltas world eid e))]
+                   (fire-deltas world eid e))
+        rested (when busy? (rest-deltas eid e))]
     (concat ds (when busy?
                  (report-deltas
-                   world eid (hurt-now world eid e ds))))))
+                   world eid
+                   (hurt-now world eid e (concat rested ds)))))))
 
 (defn- living-deltas [world eid e]
   (if (contains? #{:item :experience-orb} (:type e))
@@ -801,6 +801,19 @@
         (mapcat (fn [[tag :as ev]]
                   (when (= :attack tag) (attack-deltas world ev))))
         events))
+
+(defn- resting? [active [_ e]]
+  (and (pos? (long (or (:hurt-resist e) 0))) (ticking? active e)))
+
+(defn countdown
+  "Returns a step that counts down the hurt resistance of every living
+  entity, as LivingEntity.baseTick before aiStep. It runs before the
+  mobs, whose hurts this tick write the resistance after it."
+  [world _d]
+  (let [active (state/active-chunks world)]
+    [#(into [] (comp (filter (fn [entry] (resting? active entry)))
+                     (mapcat (fn [[eid e]] (rest-deltas eid e))))
+            (:entities world))]))
 
 (defn damage
   "Returns a step for every living entity and the damage events of
