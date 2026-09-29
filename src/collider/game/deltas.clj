@@ -226,9 +226,11 @@
   The jobs whose keys ks took long the last ticks run in parallel,
   the rest one after another in this thread."
   ^Deltas [ks fs]
-  (let [last (reduce #(if (heavy? %2) %2 %1) nil ks)
-        tasks (mapv #(forked last %1 %2) ks fs)]
-    (merge-all (joined-all tasks (inline tasks ks fs)))))
+  (if (= 1 (count fs))
+    ((nth fs 0))
+    (let [last (reduce #(if (heavy? %2) %2 %1) nil ks)
+          tasks (mapv #(forked last %1 %2) ks fs)]
+      (merge-all (joined-all tasks (inline tasks ks fs))))))
 
 (defn of ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))

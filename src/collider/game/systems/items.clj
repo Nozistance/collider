@@ -37,11 +37,8 @@
 
 (defn- active-items [world]
   (let [active (state/active-chunks world)
-        item? (fn [[_ e]]
-                (and (= :item (:type e))
-                     (state/active-at? active (:pos e))))
-        xf (filter item?)]
-    (deltas/select xf (deltas/keyed (:entities world)))))
+        live? (fn [[_ e]] (state/active-at? active (:pos e)))]
+    (into [] (filter live?) (state/of-types world [:item]))))
 
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))

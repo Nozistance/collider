@@ -98,7 +98,7 @@
 (defn- synced [world deltas]
   (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
                      deltas)]
-    (for [[eid _] (sort-by key (filter synced? (:entities world)))
+    (for [[eid _] (filter synced? (state/of-types world [:player]))
           :when (not (lifted eid))]
       [:merge-entity eid {:needs-sync? false}])))
 

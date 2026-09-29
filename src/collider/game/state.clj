@@ -18,6 +18,7 @@
             [collider.game.schema :as schema]
             [collider.game.stack :as stack]
             [collider.game.deltas :as deltas]
+            [collider.game.delta :as delta]
             [collider.log :as log]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -216,9 +217,13 @@
   It also holds the shared keys of world and the shape of
   its dimension."
   [world dim]
-  (-> (dissoc world :levels)
-      (into (get-in world [:levels dim]))
-      (into (bounds-of dim))))
+  (let [part (get-in world [:levels dim])
+        lv (-> (dissoc world :levels)
+               (into part)
+               (into (bounds-of dim)))]
+    (if-let [t (::types (meta part))]
+      (vary-meta lv assoc ::types t)
+      lv)))
 
 (def ^:private shared-out
   (into schema/level-keys [:dim :min-y :max-y :sky? :server]))
@@ -243,6 +248,13 @@
                         :else (assoc! (edited t old) k v))))
           t (reduce put nil schema/level-keys)]
       (if t (persistent! t) old))))
+
+(defn- typed-part [part lv]
+  (let [t (::types (meta lv))]
+    (if (or (nil? t) (identical? t (::types (meta part)))
+            (not (identical? (:entities part) (nth t 0))))
+      part
+      (vary-meta part assoc ::types t))))
 
 (def ^:private bound-keys [:dim :min-y :max-y :sky? :server])
 
@@ -272,7 +284,7 @@
   [world dim lv]
   (let [levels (:levels world)
         old (get levels dim)
-        part (part-of old lv)
+        part (typed-part (part-of old lv) lv)
         w (when (= (dec (count world)) (shared-count lv part))
             (shared-into world lv))]
     (cond (nil? w) (split-off lv levels dim part)
@@ -295,14 +307,39 @@
                        (contains? eid)))]
       (some #(when (holds? %) %) schema/dims))))
 
-(defn- player-type? [[_ e]] (= :player (:type e)))
+(defn- by-type [entities]
+  (persistent!
+    (reduce-kv (fn [m eid e]
+                 (let [t (:type e)]
+                   (assoc! m t (conj (get m t (i/int-set)) eid))))
+               (transient {}) entities)))
+
+(defn- types-by [lv]
+  (let [t (::types (meta lv))]
+    (when (and t (identical? (:entities lv) (nth t 0)))
+      (nth t 1))))
+
+(defn- ids-of [by ts]
+  (reduce (fn [acc t]
+            (if-let [s (get by t)] (if acc (i/union acc s) s) acc))
+          nil ts))
+
+(defn of-types
+  "Returns [eid entity] of the entities of level lv whose type is one
+  of ts, by eid."
+  [lv ts]
+  (let [es (:entities lv)
+        ids (ids-of (or (types-by lv) (by-type es)) ts)
+        entry (fn [eid] (MapEntry/create eid (get es eid)))]
+    (into [] (map entry) ids)))
+
+(def ^:private player-type #{:player})
 
 (defn server-view
   "Returns the shared keys of world with the players of every level
   as entities."
   [world]
-  (let [players (comp (mapcat (comp :entities val))
-                      (filter player-type?))]
+  (let [players (mapcat #(of-types (val %) player-type))]
     (assoc (dissoc world :levels)
       :entities (into (i/int-map) players (:levels world)))))
 
@@ -1267,22 +1304,70 @@
     deltas
     (deltas/add deltas/empty-deltas deltas)))
 
-(defn- world-step [[w removes] delta]
+(defn- untyped [by t eid]
+  (let [s (disj (get by t) eid)]
+    (if (seq s) (assoc by t s) (dissoc by t))))
+
+(defn- retyped [by e0 e1 eid]
+  (let [a (get e0 eid) b (get e1 eid)]
+    (if (and a b (identical? (:type a) (:type b)))
+      by
+      (cond-> by
+        a (untyped (:type a) eid)
+        b (update (:type b) (fnil conj (i/int-set)) eid)))))
+
+(defn- moved [by w w' eids]
+  (let [e0 (:entities w) e1 (:entities w')]
+    (if (or (nil? by) (identical? e0 e1))
+      by
+      (when eids (reduce #(retyped %1 e0 e1 %2) by eids)))))
+
+(defn- next-eid ^long [w] (long (:next-eid w 1000000)))
+
+(defn- touched [w w' delta]
+  (let [tag (nth delta 0)]
+    (case tag
+      (:spawn-entity :xp-award) (range (next-eid w) (next-eid w'))
+      :player-placed [(nth delta 1)]
+      (when (contains? entity-apply tag) []))))
+
+(defn- world-step [[w removes by] delta]
   (if (identical? :remove-entity (nth delta 0))
-    [w (conj removes (nth delta 1))]
-    [(apply-world-delta w delta) removes]))
+    [w (conj removes (nth delta 1)) by]
+    (let [w' (apply-world-delta w delta)]
+      [w' removes (moved by w w' (touched w w' delta))])))
+
+(defn- input-eids [inp]
+  (into [] (keep #(let [x (nth % 1 nil)] (when (integer? x) x))) inp))
+
+(defn- checked [es by]
+  (when (and by (not= by (by-type es)))
+    (throw (ex-info "the type index strayed from the entities"
+                    {:index by :entities (by-type es)})))
+  by)
+
+(defn- typed [w by]
+  (let [es (:entities w)
+        by (if delta/validate? (checked es by) by)]
+    (if (and by (identical? es (nth (::types (meta w)) 0 nil)))
+      w
+      (vary-meta w assoc ::types [es (or by (by-type es))]))))
+
+(defn- folded-in [w by-eid]
+  (if (deltas/vacant? by-eid)
+    w
+    (assoc w :entities (folded-entities w (:entities w) by-eid))))
 
 (defn- apply-level [lv deltas]
   (let [^Deltas d (deltas-of deltas)
-        [w removes] (reduce world-step [lv []] (deltas/world-of d))
+        ws (deltas/world-of d)
+        [w removes by] (reduce world-step [lv [] (types-by lv)] ws)
         inp (deltas/input-of d)
-        w (if (seq inp) (applied-input w inp) w)
-        by-eid (deltas/entities-of d)
-        w (if-not (deltas/vacant? by-eid)
-            (assoc w :entities
-                   (folded-entities w (:entities w) by-eid))
-            w)]
-    (cache-active-chunks (reduce player-quit w removes))))
+        w' (if (seq inp) (applied-input w inp) w)
+        by (moved by w w' (input-eids inp))
+        w (folded-in w' (deltas/entities-of d))
+        w' (reduce player-quit w removes)]
+    (cache-active-chunks (typed w' (moved by w w' removes)))))
 
 (defn applied-in
   "Returns world with the deltas folded into its level dim, and that

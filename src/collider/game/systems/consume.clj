@@ -2,7 +2,6 @@
   "Eating and drinking, and filling a glass bottle at water."
   (:require [collider.data :as data]
             [collider.world.env.dimension :as dimension]
-            [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
@@ -247,7 +246,8 @@
               (filled-deltas world eid e water-bottle)))))
 
 (defn- using-entries [world]
-  (deltas/select (filter (fn [[_ e]] (:using e))) (:entities world)))
+  (into [] (filter (fn [[_ e]] (:using e)))
+        (state/of-types world [:player])))
 
 (defn consume [world _]
   [#(state/fold-events world (using-entries world) step-deltas)])

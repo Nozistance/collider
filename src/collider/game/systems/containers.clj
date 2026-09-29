@@ -5,7 +5,6 @@
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
-            [collider.game.deltas :as deltas]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -491,7 +490,7 @@
   (let [one (fn [[eid e]]
               (when (broadcasting? world e)
                 (broadcast-deltas world (long eid) e)))]
-    [#(deltas/select (mapcat one) (:entities world))]))
+    [#(into [] (mapcat one) (state/of-types world [:player]))]))
 
 (defn- event-deltas [world [tag :as ev]]
   (case tag

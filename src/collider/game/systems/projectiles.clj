@@ -322,7 +322,7 @@
                 best
                 (let [box (inflated (target-box o) m m m)]
                   (nearer best (reach/box-entry from d box) [oid]))))
-            nil (sort-by key (:entities world)))))
+            nil (deltas/keyed (:entities world)))))
 
 (defn- span [from d]
   (let [to (v/+ from d)]
@@ -417,7 +417,7 @@
 
 (defn- doused-deltas [world at]
   (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
-    (for [[oid o] (sort-by key (:entities world))
+    (for [[oid o] (deltas/keyed (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))
                      (overlaps? box (target-box o))
                      (< (v/dist3-sq at (:pos o)) splash-range-sq))]
@@ -481,7 +481,7 @@
 
 (defn- touched [world e ^double r ^long age]
   (let [box (cloud-box e r)]
-    (for [[oid o] (sort-by key (:entities world))
+    (for [[oid o] (deltas/keyed (:entities world))
           :when (and (hittable? o) (not (game-mode/spectator? o))
                      (not (contains? (:victims e) oid))
                      (overlaps? box (target-box o))
@@ -522,8 +522,8 @@
       (< age wait) [[:merge-entity eid {:age age :waiting? true}]]
       :else (cloud-active world eid e age))))
 
-(defn- live? [active kinds [_ e]]
-  (and (kinds (:type e)) (state/active-at? active (:pos e))))
+(defn- live? [active [_ e]]
+  (state/active-at? active (:pos e)))
 
 (def ^:private flying (conj entity/thrown-types :area-effect-cloud))
 
@@ -534,8 +534,8 @@
   Also returns the life of the lingering clouds."
   [world _d]
   (let [active (state/active-chunks world)
-        xf (filter (partial live? active flying))
-        es (deltas/select xf (deltas/keyed (:entities world)))
+        es (into [] (filter (partial live? active))
+                 (state/of-types world flying))
         step (fn [[eid e]] #(step-deltas world eid e))
         cloud (fn [[eid e]] #(cloud-deltas world eid e))]
     (-> (into [] (comp (remove cloud?) (map step)) es)

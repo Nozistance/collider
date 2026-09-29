@@ -1,8 +1,8 @@
 (ns collider.game.detector
   "Observers of the finished tick."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+  (:require [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -96,8 +96,7 @@
   (reduce (fn [m [k n]] (added m k n)) stats awards))
 
 (defn- players [world]
-  (deltas/select (filter #(= :player (:type (val %))))
-                 (:entities world)))
+  (state/of-types world [:player]))
 
 (defn- player-delta [world moves [eid e]]
   (let [counted (player-stats world moves eid e)
