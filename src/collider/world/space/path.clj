@@ -2,7 +2,8 @@
   "Ground paths of mobs, the types of cells and the search over them."
   (:require [collider.data :as data]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
+            [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys])
   (:import (collider.world.space Path PathTarget)))
 
 (set! *warn-on-reflection* true)
@@ -213,8 +214,8 @@
 
 (defn- search-of [lv mob]
   (Path. (:chunks lv) (chunk/level-min-y lv) @type-ids @forced-ids
-         @water-arr (block/collision-arr) (malus-of mob) base-malus
-         (sizes mob) (flags mob)))
+         @water-arr (block/collision-arr) (phys/kinds) (malus-of mob)
+         base-malus (sizes mob) (flags mob) (int (:ctx mob 0))))
 
 (defn context
   "Returns what one search over level lv knows about its mob.

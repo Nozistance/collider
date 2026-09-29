@@ -145,15 +145,17 @@
     [:push target [(* (- (Math/sin yaw)) k) knockback-lift
                    (* (Math/cos yaw) k)]]))
 
-(defn- hit-marks [a tick]
+(defn- hit-marks [a t tick]
   (cond-> {:love-until nil}
-          (= :player (:type a)) (assoc :hurt-by-player tick)))
+          (= :player (:type a)) (assoc :hurt-by-player tick)
+          (and (= :player (:type a)) (mobs/mob-type? (:type t)))
+          (assoc :hurt-cause :player-attack)))
 
 (defn- hit-deltas [a t target crit? tick]
   (cond-> [[:damage target (melee-damage a crit?)
             (- (v/x (:pos a)) (v/x (:pos t)))
             (- (v/z (:pos a)) (v/z (:pos t)))]
-           [:merge-entity target (hit-marks a tick)]]
+           [:merge-entity target (hit-marks a t tick)]]
           (:sprinting? a) (conj (sprint-push a target))
           crit? (into [(out/all (out/animation target :crit))])))
 
@@ -277,17 +279,22 @@
     (when (not= lit? (boolean (:burning? e)))
       [[:merge-entity eid {:burning? lit?}]])))
 
-(defn- burn-tick-deltas [eid ^long fire wet? in-lava?]
+(defn- caused [ds eid cause]
+  (cond-> ds cause (conj [:merge-entity eid {:hurt-cause cause}])))
+
+(defn- burn-tick-deltas [eid fire wet? in-lava? cause]
   (when (and (pos? fire) (not wet?))
-    (cond-> [[:merge-entity eid {:fire (dec fire)}]]
-            (and (zero? (rem fire fire-damage-period)) (not in-lava?))
-            (conj [:damage eid 1.0]))))
+    (let [c (cause :on-fire)
+          due? (and (zero? (rem fire fire-damage-period))
+                    (not in-lava?))]
+      (cond-> [[:merge-entity eid {:fire (dec fire)}]]
+              due? (-> (conj [:damage eid 1.0]) (caused eid c))))))
 
 (defn- fire-ticks ^long [fire seconds]
   (max (long fire) (* ticks-per-second (long seconds))))
 
-(defn- ignite-deltas [eid fire wet? damage seconds]
-  (cond-> [[:damage eid (double damage)]]
+(defn- ignite-deltas [eid fire wet? damage seconds cause]
+  (cond-> (caused [[:damage eid (double damage)]] eid cause)
           (not wet?)
           (conj [:merge-entity eid
                  {:fire (fire-ticks fire seconds)}])))
@@ -301,16 +308,20 @@
     (cons [:merge-entity eid {:fire 0 :burning? false}]
           [(out/all (out/fizz (fizz-cell e)))])))
 
+(defn- cause-of [e]
+  (if (mobs/mob-type? (:type e)) identity (constantly nil)))
+
 (defn- lit-deltas [eid e fire wet? flags]
   (let [touch (any-bit? flags (bit-or fire-bit lava-bit))
         sunk? (any-bit? flags sunk-bit)
-        in-lava? (any-bit? flags lava-bit)]
+        in-lava? (any-bit? flags lava-bit)
+        cause (cause-of e)
+        ignite (fn [d s k]
+                 (ignite-deltas eid fire wet? d s (cause k)))]
     (concat (burning-flag eid e fire sunk?)
-            (burn-tick-deltas eid fire wet? in-lava?)
-            (when touch
-              (ignite-deltas eid fire wet? 1.0 fire-seconds))
-            (when sunk?
-              (ignite-deltas eid fire wet? lava-damage lava-seconds))
+            (burn-tick-deltas eid fire wet? in-lava? cause)
+            (when touch (ignite 1.0 fire-seconds :in-fire))
+            (when sunk? (ignite lava-damage lava-seconds :lava))
             (douse-deltas eid e fire wet?))))
 
 (def ^:private ^:const fire-rest -20)
@@ -461,13 +472,13 @@
   (let [fire (long (or (:fire e) 0))
         touched? (or (pos? fire) (pos? flags))
         wet? (boolean (and touched? (item-wet? world e)))
-        lava? (pos? (bit-and flags lava-bit))]
+        lava? (pos? (bit-and flags lava-bit))
+        ignite (fn [d s] (ignite-deltas eid fire wet? d s nil))]
     (concat (burning-flag eid e fire false)
-            (burn-tick-deltas eid fire wet? lava?)
+            (burn-tick-deltas eid fire wet? lava? (constantly nil))
             (when (pos? (bit-and flags fire-bit))
-              (ignite-deltas eid fire wet? 1.0 fire-seconds))
-            (when lava?
-              (ignite-deltas eid fire wet? lava-damage lava-seconds))
+              (ignite 1.0 fire-seconds))
+            (when lava? (ignite lava-damage lava-seconds))
             (douse-deltas eid e fire wet?))))
 
 (defn- damage-sum ^double [deltas]
@@ -530,16 +541,22 @@
   (when (and (pos? (double (:health e)))
              (< (v/y (:pos e)) (chunk/void-y world))
              (not (loading? world e)))
-    [[:damage eid void-damage]]))
+    (caused [[:damage eid void-damage]] eid
+            ((cause-of e) :out-of-world))))
 
-(defn- panics? [world e]
-  (and (>= (v/y (:pos e)) (chunk/void-y world))
-       (not= :cramming (:hurt-cause e))))
+(def ^:private ^:table panic-causes
+  (delay (set (data/tag-values "damage_type" "panic_causes"))))
+
+(defn- panics? [e]
+  (let [c (:hurt-cause e)]
+    (or (nil? c) (contains? @panic-causes c))))
+
+(defn- panic-until [world e]
+  (when (panics? e) (+ (long (:tick world)) panic-ticks)))
 
 (defn- panicked [world e]
-  (cond-> {:love-until nil :no-action 0}
-          (panics? world e)
-          (assoc :panic-until (+ (long (:tick world)) panic-ticks))
+  (cond-> {:love-until nil :no-action 0
+           :panic-until (panic-until world e)}
           (:hurt-cause e) (assoc :hurt-cause nil)))
 
 (def ^:private ^:const player-kill-memory 100)

@@ -59,7 +59,7 @@
        [(out/all (out/status eid :eat))]])))
 
 (defn- eating? [_ e t _]
-  (> (long (get-in e [:task :until])) (long t)))
+  (> (long (get-in e [:task :until])) (inc (long t))))
 
 (defn- ate [e t]
   (let [left (long (or (:baby-until e) t))
@@ -88,6 +88,12 @@
 
 (defn- bite-now? [e t]
   (= bite-at (animation-left e t)))
+
+(defn biting?
+  "Returns true when sheep e may bite what it eats at tick t, the one
+  way a sheep changes a block."
+  [e t]
+  (and (= :eat (get-in e [:task :kind])) (bite-now? e t)))
 
 (defn- eat-tick [_ world _ e t _]
   (if-let [ds (when (bite-now? e t)

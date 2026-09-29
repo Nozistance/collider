@@ -2,6 +2,7 @@ package collider.world.space;
 
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
+import collider.world.Collision;
 import collider.world.LongMap;
 
 /// The numeric core of the ground path search. `shapes` holds the
@@ -32,6 +33,8 @@ public final class Path {
     private final int[] forced;
     private final boolean[] water;
     private final Object[] shapes;
+    private final byte[] kinds;
+    private final int ctx;
     private final double[] malus;
     private final double[] baseMalus;
     private final long minY;
@@ -49,14 +52,17 @@ public final class Path {
     /// height and max up step; `flags` max fall, then floats, opens
     /// doors, passes doors and walks over fences as 0 or 1.
     public Path(ChunkIndex chunks, long minY, int[] types, int[] forced,
-            boolean[] water, Object[] shapes, double[] malus,
-            double[] baseMalus, double[] mob, long[] flags) {
+            boolean[] water, Object[] shapes, byte[] kinds,
+            double[] malus, double[] baseMalus, double[] mob,
+            long[] flags, int ctx) {
         this.chunks = chunks;
         this.minY = minY;
         this.types = types;
         this.forced = forced;
         this.water = water;
         this.shapes = shapes;
+        this.kinds = kinds;
+        this.ctx = ctx;
         this.malus = malus;
         this.baseMalus = baseMalus;
         px = mob[0];
@@ -267,7 +273,7 @@ public final class Path {
                       height + floorLevel(above.x, above.y, above.z)
                       - 0.002,
                       cz + 0.5 + hw};
-        return collides(chunks, shapes, b) ? null : above;
+        return collides(b) ? null : above;
     }
 
     private PathNode accepted(long x, long y, long z, long jump,
@@ -279,8 +285,7 @@ public final class Path {
         double m = malus[t];
         PathNode best = m >= 0.0 ? withCost(x, y, z, t, m) : null;
         if (partial(cur) && best != null && best.malus() >= 0.0
-            && !canReach(chunks, shapes, px, py, pz, width, height,
-                         best)) {
+            && !canReach(best)) {
             best = null;
         }
         if (t == WALKABLE) return best;
@@ -451,9 +456,9 @@ public final class Path {
         return top;
     }
 
-    private static boolean cellHits(Object[] shapes, int st, double[] b,
-            long x, long y, long z) {
-        double[] s = (double[]) shapes[st];
+    private static boolean cellHits(double[] s, double[] b, long x,
+            long y, long z) {
+        if (s == null) return false;
         for (int k = 0; k < s.length; k += 6) {
             if (x + s[k + 3] > b[0] && x + s[k] < b[3]
                 && y + s[k + 4] > b[1] && y + s[k + 1] < b[4]
@@ -465,9 +470,9 @@ public final class Path {
     }
 
     /// Returns true when the box `b` meets a collision shape of a
-    /// block in `chunks`. `b` holds min x, y, z and max x, y, z.
-    public static boolean collides(ChunkIndex chunks, Object[] shapes,
-            double[] b) {
+    /// block as the mob meets it, `WalkNodeEvaluator.hasCollisions`.
+    /// `b` holds min x, y, z and max x, y, z.
+    private boolean collides(double[] b) {
         long x1 = (long) Math.floor(b[3] + EPS);
         long y1 = (long) Math.floor(b[4] + EPS);
         long z1 = (long) Math.floor(b[5] + EPS);
@@ -477,19 +482,18 @@ public final class Path {
                      z++) {
                     int st = Chunk.blockAt(chunks, (int) x, (int) y,
                                            (int) z);
-                    if (cellHits(shapes, st, b, x, y, z)) return true;
+                    double[] s = Collision.shape(shapes, kinds, st,
+                        (int) x, (int) y, (int) z, py, ctx);
+                    if (cellHits(s, b, x, y, z)) return true;
                 }
             }
         }
         return false;
     }
 
-    /// Returns true when a mob box of `width` and `height` standing
-    /// at `px`, `py`, `pz` slides to the node `n` without meeting a
-    /// collision shape in `chunks`.
-    public static boolean canReach(ChunkIndex chunks, Object[] shapes,
-            double px, double py, double pz, double width,
-            double height, PathNode n) {
+    /// Returns true when the mob box slides from where it stands to
+    /// the node `n` without meeting a collision shape.
+    private boolean canReach(PathNode n) {
         double dx = (n.x - px) + width / 2.0;
         double dy = (n.y - py) + height / 2.0;
         double dz = (n.z - pz) + width / 2.0;
@@ -507,7 +511,7 @@ public final class Path {
             b[3] += sx;
             b[4] += sy;
             b[5] += sz;
-            if (collides(chunks, shapes, b)) return false;
+            if (collides(b)) return false;
         }
         return true;
     }

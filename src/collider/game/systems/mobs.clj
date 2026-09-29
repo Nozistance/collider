@@ -312,17 +312,19 @@
       -0.003
       (- vy (/ g 16.0)))))
 
-(defn- stepped ^Move [world pos vel half height]
-  (phys/move (:chunks world) pos vel half height max-up-step))
+(defn- stepped ^Move [world e vel half height]
+  (phys/move (:chunks world) (:pos e) vel half height max-up-step
+             (phys/context e)))
 
 (defn- supported [world e ^Move mv half]
   (if-not (phys/on-ground? mv)
     [nil false]
     (let [ch (:chunks world) p (phys/pos mv) o (:pos e)
-          sb (phys/supporting-block ch p half)
+          c (phys/context e)
+          sb (phys/supporting-block ch p half c)
           s (or sb (when-not (:no-blocks? e)
                      (phys/supporting-block
-                       ch (v/v3 (v/x o) (v/y p) (v/z o)) half)))]
+                       ch (v/v3 (v/x o) (v/y p) (v/z o)) half c)))]
       [(if (= s (:support e)) (:support e) s) (nil? sb)])))
 
 (defn- wet-state? [^long st]
@@ -341,20 +343,22 @@
             (wet-state? (sense/block-at world x y z)) true
             :else (recur x y (inc z))))))
 
-(defn- climb-free? [world pos vel half height oy]
+(defn- climb-free? [world e pos vel half height oy]
   (let [up (+ (v/y vel) out-of-fluid-reach
               (- (double oy) (v/y pos)))
         x (v/x pos) y (v/y pos) z (v/z pos) half (double half)
         dx (v/x vel) dz (v/z vel)]
-    (and (phys/free? (:chunks world) pos half height dx up dz)
+    (and (phys/free? (:chunks world) pos half height dx up dz
+                     (phys/context e))
          (not (any-liquid?
                 world
                 (v/v3 (+ (- x half) dx) (+ y up) (+ (- z half) dz))
                 (v/v3 (+ (+ x half) dx) (+ (+ y (double height)) up)
                       (+ (+ z half) dz)))))))
 
-(defn- jumped-out [world pos vel half height oy hit?]
-  (if (and hit? (climb-free? world pos vel half height oy))
+(defn- jumped-out [world e ^Move mv vel half height oy hit?]
+  (if (and hit?
+           (climb-free? world e (phys/pos mv) vel half height oy))
     (v/v3 (v/x vel) out-of-fluid (v/z vel))
     vel))
 
@@ -410,7 +414,7 @@
 (defn- travel-air [world e vel half height og? f]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
         d (driven e vel (friction-speed og? bf (speed-of e)))
-        ^Move mv (stepped world (:pos e) d half height)
+        ^Move mv (stepped world e d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         k (fmul bf air-drag)
@@ -425,7 +429,7 @@
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
-        ^Move mv (stepped world (:pos e) d half height)
+        ^Move mv (stepped world e d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         u (phys/vel mv)
@@ -433,7 +437,7 @@
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
-     (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
+     (jumped-out world e mv w half height oy (hit-wall? d u))
      (phys/on-ground? mv) sup nb?]))
 
 (defn- lava-slowed [x y z g falling? shallow?]
@@ -446,7 +450,7 @@
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
-        ^Move mv (stepped world (:pos e) d half height)
+        ^Move mv (stepped world e d half height)
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         [h u] (moved-fluid world e d mv half height f)
@@ -455,7 +459,7 @@
                        g falling? shallow?)
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
-     (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
+     (jumped-out world e mv w half height oy (hit-wall? d u))
      (phys/on-ground? mv) sup nb? h]))
 
 (defn- travelled
@@ -875,8 +879,16 @@
         [e2 ds] (if hit? (crammed eid e2 ds) [e2 ds])]
     [e2 ds shoves]))
 
+(defn- live
+  "Returns world as mob eid sees it in its turn: with the blocks the
+  mobs before it bit this tick."
+  [world ^long eid]
+  (let [f (fn [w [b bw]] (if (< (long b) eid) bw (reduced w)))]
+    (reduce f world (::bites world))))
+
 (defn- turn [world ticking vels tempters t index slots es i]
   (let [[eid e] (nth es i)
+        world (live world eid)
         [e2 ds shoves]
         (if (stepping? ticking es i)
           (run-turn world index t slots es i
@@ -929,8 +941,9 @@
   (fn [i]
     (let [i (int i)]
       (when (stepping? ticking es i)
-        (let [[eid e] (nth es i)]
-          (aset minds i (minded world tempters eid e t)))))))
+        (let [[eid e] (nth es i)
+              m (minded (live world eid) tempters eid e t)]
+          (aset minds i m))))))
 
 (defn- placed! [index ^objects cur i eid e e2]
   (when-not (identical? (:pos e) (:pos e2))
@@ -947,7 +960,8 @@
     (let [i (int i) m (aget minds i)]
       (when m
         (let [[eid e] (nth cur i)
-              [e2 ds shoves] (run-turn world index t slots cur i m)]
+              [e2 ds shoves]
+              (run-turn (live world eid) index t slots cur i m)]
           (when-not (ok? e e2) (aset ^booleans out 0 true))
           (placed! index cur i eid e e2)
           (aset runs i [ds (takers ticking slots cur i shoves)]))))))
@@ -1023,17 +1037,49 @@
 (defn- island-batch [world active tempters t batch]
   (into [] (mapcat #(island-deltas world active tempters t %)) batch))
 
+(def ^:private biters {:sheep sheep/biting?})
+
+(defn- biting? [active t [_ e]]
+  (when-let [f (biters (:type e))]
+    (and (f e t) (state/active-at? active (:pos e)))))
+
+(defn- bitten [world ds]
+  (let [f (fn [w d]
+            (if-let [g (state/world-apply (nth d 0))] (g w d) w))]
+    (reduce f world ds)))
+
+(defn- bitten-worlds [world tempters t cs]
+  (loop [cs cs w world acc []]
+    (if-let [[eid e] (first cs)]
+      (let [w' (bitten w (nth (minded w tempters eid e t) 2))
+            acc (if (identical? w w') acc (conj acc [eid w']))]
+        (recur (rest cs) w' acc))
+      (not-empty acc))))
+
+(defn- bites
+  "Returns the worlds that follow the bites of this tick, as [eid
+  world] in the order of the mobs that bit. A mob bites in its turn
+  and sees the bites of each mob before it, as in the level."
+  [world tempters t active islands]
+  (let [xf (comp cat (filter #(biting? active t %)))]
+    (->> (into [] xf islands) (sort-by first)
+         (bitten-worlds world tempters t))))
+
+(defn- seen [world tempters t active islands]
+  (let [world (assoc world :watchers (animal/watchers world))]
+    (assoc world ::bites (bites world tempters t active islands))))
+
 (defn mobs-system
   "Returns the tasks of one tick.
   Each island of mobs steps, and the clicks of players get answers."
   [world d]
   (let [events (:input d)
-        world (assoc world :watchers (animal/watchers world))
         t (long (:tick world))
         active (state/active-chunks world)
         tempters (sense/holders world)
-        batches (batches (herds world))]
+        hs (herds world)
+        world (seen world tempters t active hs)]
     (conj (mapv (fn [batch]
                   #(island-batch world active tempters t batch))
-                batches)
+                (batches hs))
           #(interact-deltas world events t))))

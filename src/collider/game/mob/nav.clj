@@ -6,6 +6,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]
             [collider.world.space.path :as path])
   (:import (collider.game.mob Nav)))
 
@@ -34,7 +35,7 @@
     (assoc path/cow
       :max-visited visits
       :width (* 2.0 (double half)) :height height :pos (:pos e)
-      :on-ground? (boolean (:on-ground e))
+      :on-ground? (boolean (:on-ground e)) :ctx (phys/context e)
       :in-water? (boolean (:wet? e)))))
 
 (defn done?
