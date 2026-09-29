@@ -151,6 +151,54 @@
   ^Deltas [fs]
   (reduce ran empty-deltas fs))
 
+(defn merge-all
+  "Returns the deltas of vector v merged in order, pairwise."
+  ^Deltas [v]
+  (let [n (count v)]
+    (case n
+      0 empty-deltas
+      1 (nth v 0)
+      (let [h (quot n 2)]
+        (merge (merge-all (subvec v 0 h))
+               (merge-all (subvec v h)))))))
+
+(def ^:private ^:const fork-ns 40000)
+
+(def ^:private weights (atom {}))
+
+(defn- weight ^long [k] (long (get @weights k 0)))
+
+(defn- weighed! [k ^long ns]
+  (swap! weights assoc k (quot (+ (* 3 (weight k)) ns) 4)))
+
+(defn- timed [k f]
+  (fn []
+    (let [t0 (System/nanoTime)
+          r (f)]
+      (weighed! k (- (System/nanoTime) t0))
+      r)))
+
+(defn- heavy? [k] (< fork-ns (weight k)))
+
+(defn- forked [last k f]
+  (when (and (heavy? k) (not (identical? k last)))
+    (@#'r/fjfork (r/fjtask (timed k f)))))
+
+(defn- inline [tasks ks fs]
+  (mapv (fn [t k f] (when-not t ((timed k f)))) tasks ks fs))
+
+(defn- joined-all [tasks rs]
+  (mapv (fn [t r] (if t (@#'r/fjjoin t) r)) tasks rs))
+
+(defn run-weighed
+  "Returns the deltas of jobs fs merged in their order.
+  The jobs whose keys ks took long the last ticks run in parallel,
+  the rest one after another in this thread."
+  ^Deltas [ks fs]
+  (let [last (reduce #(if (heavy? %2) %2 %1) nil ks)
+        tasks (mapv #(forked last %1 %2) ks fs)]
+    (merge-all (joined-all tasks (inline tasks ks fs)))))
+
 (defn of ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 

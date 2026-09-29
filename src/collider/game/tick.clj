@@ -175,8 +175,11 @@
 
 (defn- job [world lv d server dim s]
   (if (server-systems s)
-    (when (= home dim) (server-job world s @server))
+    (server-job world s @server)
     (guarded world s dim #(s lv d))))
+
+(defn- runs-in? [dim s]
+  (or (identical? home dim) (not (server-systems s))))
 
 (defn- view [world views dim]
   (or (get views dim) (state/level world dim)))
@@ -186,8 +189,9 @@
     deltas/empty-deltas
     (let [lv (assoc (view world views dim) :server world)
           d (get ds dim)
-          jobs (into [] (keep #(job world lv d server dim %)) phase)]
-      (deltas/with-dim (deltas/run-each jobs) dim))))
+          ks (filterv #(runs-in? dim %) phase)
+          jobs (mapv #(job world lv d server dim %) ks)]
+      (deltas/with-dim (deltas/run-weighed ks jobs) dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 

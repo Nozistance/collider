@@ -1240,13 +1240,27 @@
       (assoc m eid (entity-folded t e ds))
       m)))
 
+(defn- eid-at ^long [v ^long k] (long (key (nth v k))))
+
+(defn- leaf-of [step entities v ^long j]
+  (let [n (count v)
+        a (* j fold-leaf)
+        b (min n (+ a fold-leaf))
+        lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
+        hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
+    (reduce step (i/range entities lo hi) (subvec v a b))))
+
+(defn- leaves [^long n]
+  (vec (range (quot (+ n (dec fold-leaf)) fold-leaf))))
+
 (defn- folded-entities [w entities by-eid]
-  (let [step (stepped entities (:tick w))]
-    (if (< (count by-eid) fold-leaf)
+  (let [step (stepped entities (:tick w))
+        n (count by-eid)]
+    (if (< n fold-leaf)
       (reduce step entities by-eid)
-      (i/merge entities
-               (r/fold fold-leaf (r/monoid i/merge i/int-map) step
-                       (vec by-eid))))))
+      (let [v (vec by-eid)
+            leaf #(i/merge %1 (leaf-of step entities v %2))]
+        (r/fold 1 (r/monoid i/merge i/int-map) leaf (leaves n))))))
 
 (defn- deltas-of [deltas]
   (if (instance? Deltas deltas)
