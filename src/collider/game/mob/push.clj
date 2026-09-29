@@ -4,7 +4,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Islands PushGrid)))
+  (:import (collider.game.mob Islands PushGrid Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -60,11 +60,21 @@
         (aset ts i (pushable-height e))))
     (PushGrid. eids hs ts xs ys zs)))
 
+(defn- by-id? [es]
+  (and (vector? es)
+       (loop [i 1]
+         (or (>= i (count es))
+             (and (< (long (nth (nth es (dec i)) 0))
+                     (long (nth (nth es i) 0)))
+                  (recur (inc i)))))))
+
 (defn index-of
   "Returns the index in which a body finds every body near enough to
   shove it. Each move of a body changes it in place."
   ^PushGrid [entries]
-  (filled (vec (sort-by first entries))))
+  (filled (if (by-id? entries)
+            entries
+            (vec (sort-by first entries)))))
 
 (defn moved
   "Returns index after body eid moved to its place in entry e."
@@ -124,3 +134,27 @@
   them took."
   [index eid e half height]
   (scan index eid (:pos e) half height (long eid)))
+
+(defn pinned
+  "Returns index, which keeps each body in the column it stands in,
+  so threads may read it while bodies move no further than reach."
+  ^PushGrid [^PushGrid index reach]
+  (PushGrid/pinned index (double reach)))
+
+(defn turns
+  "Calls mind and then body with the index of each body of the
+  pinned index, in parallel. The call of body with a body waits for
+  the calls with each body of lower id that it could meet in a tick
+  in which no body moves further than reach along x or z."
+  [^PushGrid index reach mind body]
+  (Turns/run index (double reach) mind body))
+
+(defn within?
+  "Returns true when body e, now e2, kept its box and moved no
+  further than reach along x or z."
+  [e e2 reach]
+  (let [p (:pos e) q (:pos e2) r (double reach)]
+    (and (<= (Math/abs (- (v/x q) (v/x p))) r)
+         (<= (Math/abs (- (v/z q) (v/z p))) r)
+         (== (pushable-half e) (pushable-half e2))
+         (== (pushable-height e) (pushable-height e2)))))

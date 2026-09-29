@@ -1,6 +1,8 @@
 package collider.game.mob;
 
 import java.util.Arrays;
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
 
 /// The groups of bodies that one tick of movement cannot bring
 /// together. Bodies share a group when their cells of the push grid
@@ -8,6 +10,14 @@ import java.util.Arrays;
 public final class Islands {
 
     private Islands() {
+    }
+
+    /// Returns the number of threads that the folds started from the
+    /// calling thread share, where a thread outside any pool folds in
+    /// `pool`.
+    public static int threads(ForkJoinPool pool) {
+        ForkJoinPool p = ForkJoinTask.getPool();
+        return (p == null ? pool : p).getParallelism();
     }
 
     private static long key(long cx, long cz) {

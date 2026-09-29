@@ -11,9 +11,9 @@ import java.util.Set;
 
 /// The bodies of one island by the block column they stand in, for
 /// the shoves between overlapping bodies. It changes in place as the
-/// bodies move, so one island steps with one grid. Hits come in the
-/// order of the push cells of four by four columns around the body,
-/// then by id.
+/// bodies move, so one island steps with one grid. Threads may read
+/// it at once while no body moves. Hits come in the order of the push
+/// cells of four by four columns around the body, then by id.
 public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private static final double STRENGTH = (double) 0.05F;
@@ -26,8 +26,10 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private long[] keys;
     private int[] heads;
     private int used;
-    private double widest;
-    private int[] hits = new int[16];
+    private double widest, slack;
+    private double[] px, pz, ph;
+    private static final ThreadLocal<int[]> HITS =
+            ThreadLocal.withInitial(() -> new int[16]);
 
     /// Returns the grid of bodies `eids`, ascending, each with half
     /// width, height and position at the same index.
@@ -137,33 +139,50 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private PushGrid move(long eid, double half, double height,
                           double x, double y, double z) {
         int s = Arrays.binarySearch(eids, eid);
-        boolean same = column(x, z) == column(xs[s], zs[s]);
+        boolean same = slack > 0.0
+                || column(x, z) == column(xs[s], zs[s]);
         if (!same) unlink(s);
         halfs[s] = half;
         heights[s] = height;
         xs[s] = x;
         ys[s] = y;
         zs[s] = z;
-        widest = Math.max(widest, half);
+        if (slack == 0.0) widest = Math.max(widest, half);
         if (!same) link(s);
         return this;
     }
 
+    /// Keeps each body of grid `g` in the column it stands in now,
+    /// for the moves of a tick in which no body moves further than
+    /// `reach` along x or z, and no body changes its box. Threads may
+    /// then read it while bodies move, and returns `g`.
+    public static PushGrid pinned(PushGrid g, double reach) {
+        g.slack = reach;
+        g.px = g.xs.clone();
+        g.pz = g.zs.clone();
+        g.ph = g.halfs.clone();
+        return g;
+    }
+
+    private static long cell(double c) {
+        return Math.floorDiv((long) Math.floor(c), 4);
+    }
+
     private int overlapping(double x, double y, double z, double half,
                             double height, long eid, long hi) {
-        double r = half + widest;
-        long x0 = (long) Math.floor(x - r), x1 = (long) Math.floor(x + r);
-        long z0 = (long) Math.floor(z - r), z1 = (long) Math.floor(z + r);
-        long cx = Math.floorDiv((long) Math.floor(x), 4);
-        long cz = Math.floorDiv((long) Math.floor(z), 4);
+        double r = half + widest, w = r + slack;
+        long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
+        long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
+        long cx = cell(x), cz = cell(z);
+        boolean pinned = slack > 0.0;
+        int[] hits = HITS.get();
         int n = 0;
         for (long bx = x0; bx <= x1; bx++) {
             long dx = Math.floorDiv(bx, 4) - cx;
-            if (dx < -1 || dx > 1) continue;
+            if (!pinned && (dx < -1 || dx > 1)) continue;
             for (long bz = z0; bz <= z1; bz++) {
                 long dz = Math.floorDiv(bz, 4) - cz;
-                if (dz < -1 || dz > 1) continue;
-                int order = (int) ((dx + 1) * 3 + dz + 1) * eids.length;
+                if (!pinned && (dz < -1 || dz > 1)) continue;
                 for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
                     long o = eids[j];
                     if (o == eid || o >= hi) continue;
@@ -172,10 +191,14 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                     if (Math.abs(xs[j] - x) < rj
                             && Math.abs(zs[j] - z) < rj
                             && oy < y + height && oy + heights[j] > y) {
+                        long ox = cell(xs[j]) - cx, oz = cell(zs[j]) - cz;
+                        if (ox < -1 || ox > 1 || oz < -1 || oz > 1) continue;
                         if (n == hits.length) {
                             hits = Arrays.copyOf(hits, n * 2);
+                            HITS.set(hits);
                         }
-                        hits[n++] = order + j;
+                        int order = (int) ((ox + 1) * 3 + oz + 1);
+                        hits[n++] = order * eids.length + j;
                     }
                 }
             }
@@ -198,6 +221,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private Object shoved(double x, double y, double z, double half,
                           double height, long eid, long hi) {
         int n = overlapping(x, y, z, half, height, eid, hi);
+        int[] hits = HITS.get();
         ITransientCollection acc = PersistentVector.EMPTY.asTransient();
         int k = eids.length;
         for (int i = 0; i < n; i++) {
@@ -226,10 +250,47 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private Object touched(double x, double y, double z, double half,
                            double height, long eid) {
         int n = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
+        int[] hits = HITS.get();
         ITransientCollection acc = PersistentVector.EMPTY.asTransient();
         int k = eids.length;
         for (int i = 0; i < n; i++) acc.conj(eids[hits[i] % k]);
         return acc.persistent();
+    }
+
+    /// Returns the number of bodies of lower id that body `s` could
+    /// meet in a tick in which no body moves further than half of
+    /// `far` along x or z, then the indices of such bodies of higher
+    /// id. It reads the places the bodies had when the grid was
+    /// pinned.
+    int[] near(int s, double far) {
+        double x = px[s], z = pz[s], r = ph[s] + widest + far;
+        long x0 = (long) Math.floor(x - r), x1 = (long) Math.floor(x + r);
+        long z0 = (long) Math.floor(z - r), z1 = (long) Math.floor(z + r);
+        int[] acc = new int[5];
+        int n = 1;
+        for (long bx = x0; bx <= x1; bx++) {
+            for (long bz = z0; bz <= z1; bz++) {
+                for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
+                    double rj = ph[s] + ph[j] + far;
+                    if (j != s && Math.abs(px[j] - x) < rj
+                            && Math.abs(pz[j] - z) < rj) {
+                        if (j < s) {
+                            acc[0]++;
+                        } else {
+                            if (n == acc.length) {
+                                acc = Arrays.copyOf(acc, n * 2);
+                            }
+                            acc[n++] = j;
+                        }
+                    }
+                }
+            }
+        }
+        return Arrays.copyOf(acc, n);
+    }
+
+    int bodies() {
+        return eids.length;
     }
 
     /// Returns the bodies of each push cell of four by four columns,

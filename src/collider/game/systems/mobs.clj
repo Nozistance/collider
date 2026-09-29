@@ -1,6 +1,7 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
-  (:require [collider.game.attribute :as attribute]
+  (:require [clojure.core.reducers :as r]
+            [collider.game.attribute :as attribute]
             [collider.game.game-mode :as game-mode]
             [collider.random :as random]
             [collider.game.entity :as entity]
@@ -23,7 +24,7 @@
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
   (:import (collider.game.entity.records Mob)
-           (collider.game.mob Steer)
+           (collider.game.mob Islands Steer Turns)
            (collider.world Move)))
 
 (set! *warn-on-reflection* true)
@@ -729,14 +730,21 @@
                      (double (or (:walked e) 0.0))
                      (double (or (:walked e2) 0.0)) t eid)))
 
-(defn- step-mob [world index tempters eid e t]
+(defn- minded
+  "Returns mob e after it thought and steered this tick, the head it
+  turns, and its deltas and sounds. Other bodies do not move it yet."
+  [world tempters eid e t]
   (let [[half height] (mobs/box-of e)
         speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
         e1 (if dead? e1 (steered world e1 speed half))
-        look (when-not dead? (look-of world e1 height t))
+        look (when-not dead? (look-of world e1 height t))]
+    [e1 look ds say-ds]))
+
+(defn- step-mob [world index eid e [e1 look ds say-ds] t]
+  (let [[half height] (mobs/box-of e)
         [e2 shoves]
         (physics-shoves world index eid e1 half height look e)]
     [e2 (stepped-deltas eid e e2 ds say-ds t) shoves]))
@@ -757,14 +765,26 @@
 (defn- takes-now? [^booleans ticking ^long i ^long j]
   (or (< j i) (not (aget ticking j))))
 
+(defn- taker [ticking slots es i sh]
+  (let [j (get slots (nth sh 0))]
+    (when (and j (takes-now? ticking i j)
+               (push/alive? (nth (nth es j) 1)))
+      j)))
+
 (defn- handing [ticking vels slots es i shoves]
   (let [f (fn [acc sh]
-            (let [j (get slots (nth sh 0))]
-              (if (and j (takes-now? ticking i j)
-                       (push/alive? (nth (nth es j) 1)))
-                (handed es vels acc j sh)
-                acc)))]
+            (if-let [j (taker ticking slots es i sh)]
+              (handed es vels acc j sh)
+              acc))]
     (reduce f [] shoves)))
+
+(defn- takers
+  "Returns the slot and the shove of each body that takes a shove
+  of mob i now."
+  [ticking slots es i shoves]
+  (let [f (fn [sh]
+            (when-let [j (taker ticking slots es i sh)] [j sh]))]
+    (into [] (keep f) shoves)))
 
 (def ^:private ^:const cramming-damage 6.0)
 
@@ -775,7 +795,8 @@
 
 (defn- crowd [index slots es eid e]
   (let [[half height] (mobs/box-of e)
-        alive? (fn [o] (push/alive? (nth (nth es (get slots o)) 1)))
+        alive? (fn [o]
+                 (push/alive? (nth (nth es (get slots o)) 1)))
         f (fn [^long n o] (if (alive? o) (inc n) n))]
     (reduce f 0 (push/touching index eid e half height))))
 
@@ -806,16 +827,25 @@
       [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
       [e ds])))
 
-(defn- turn [world ^booleans ticking vels tempters t index slots es i]
+(defn- stepping? [^booleans ticking es ^long i]
+  (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
+
+(defn- run-turn
+  "Returns mob i of es after its step from mind, as minded returns
+  it, and its cramming, its deltas and the shoves it gave."
+  [world index t slots es i mind]
   (let [[eid e] (nth es i)
-        stepping? (and (aget ticking i) (mobs/mob-type? (:type e)))
+        [e2 ds shoves] (step-mob world index eid e mind t)
+        [e2 ds] (cramming world index slots es eid e2 t ds)]
+    [e2 ds shoves]))
+
+(defn- turn [world ticking vels tempters t index slots es i]
+  (let [[eid e] (nth es i)
         [e2 ds shoves]
-        (if stepping?
-          (step-mob world index tempters eid e t)
+        (if (stepping? ticking es i)
+          (run-turn world index t slots es i
+                    (minded world tempters eid e t))
           [e nil nil])
-        [e2 ds] (if stepping?
-                  (cramming world index slots es eid e2 t ds)
-                  [e2 ds])
         es (assoc! es i [eid e2])
         hs (handing ticking vels slots es i shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
@@ -833,17 +863,112 @@
         (aset a i (boolean (state/active-at? active p)))))
     a))
 
-(defn- step-island [world active tempters t es]
-  (let [slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)
-        es (vec es) n (count es) index (push/index-of es)
-        ticking (ticking-of active es) vels (object-array n)]
+(defn- island [active es]
+  (let [es (vec es)]
+    {:es es :index (push/index-of es) :ticking (ticking-of active es)
+     :slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)}))
+
+(defn- walk
+  "Returns the deltas of the island isl stepped in the order of its
+  bodies."
+  [world tempters t {:keys [es index ticking slots]}]
+  (let [vels (object-array (count es))]
     (loop [i 0 es (transient es) index index acc (transient [])]
-      (if (= i n)
+      (if (= i (count es))
         (persistent! acc)
         (let [[es ds from]
               (turn world ticking vels tempters t index slots es i)]
           (recur (inc i) es (reindexed index es i from)
                  (reduce conj! acc ds)))))))
+
+(defn- step-island [world active tempters t es]
+  (walk world tempters t (island active es)))
+
+(def ^:private ^:const step-reach 0.5)
+
+(defn- mind-of
+  "Returns the fn that keeps in minds what mob i of the island isl
+  thinks."
+  [world tempters t {:keys [es ticking]} ^objects minds]
+  (fn [i]
+    (let [i (int i)]
+      (when (stepping? ticking es i)
+        (let [[eid e] (nth es i)]
+          (aset minds i (minded world tempters eid e t)))))))
+
+(defn- placed! [index ^objects cur i eid e e2]
+  (when-not (identical? (:pos e) (:pos e2))
+    (push/moved index eid (:pos e) e2))
+  (aset cur i [eid e2]))
+
+(defn- body-of
+  "Returns the fn that moves mob i of the island isl as it thought,
+  and keeps its run in runs. It marks out when ok? finds the mob out
+  of reach."
+  [world t {:keys [ticking index slots]}
+   [^objects minds cur ^objects runs] out ok?]
+  (fn [i]
+    (let [i (int i) m (aget minds i)]
+      (when m
+        (let [[eid e] (nth cur i)
+              [e2 ds shoves] (run-turn world index t slots cur i m)]
+          (when-not (ok? e e2) (aset ^booleans out 0 true))
+          (placed! index cur i eid e e2)
+          (aset runs i [ds (takers ticking slots cur i shoves)]))))))
+
+(defn- turn-runs
+  "Returns the run of each mob of the island isl, with the takers of
+  its shoves, or nil when ok? finds a mob out of reach. Each mob
+  thinks in parallel and moves as soon as the mobs it could meet
+  before it moved. The array cur ends with the bodies after the tick."
+  [world tempters t isl cur ok?]
+  (let [n (count (:es isl)) runs (object-array n)
+        minds (object-array n) out (boolean-array 1)
+        isl (update isl :index push/pinned step-reach)]
+    (push/turns (:index isl) step-reach
+                (mind-of world tempters t isl minds)
+                (body-of world t isl [minds cur runs] out ok?))
+    (when-not (aget out 0) (vec runs))))
+
+(defn- joined
+  "Returns the deltas of runs in the order of their mobs, each with
+  the shoves it hands to the bodies before it, which end the tick as
+  cur."
+  [cur runs]
+  (let [vels (object-array (count runs))
+        hand (fn [acc [j sh]] (handed cur vels acc j sh))]
+    (persistent!
+      (reduce (fn [acc run]
+                (if run
+                  (let [acc (reduce conj! acc (nth run 0))]
+                    (reduce conj! acc (reduce hand [] (nth run 1))))
+                  acc))
+              (transient []) runs))))
+
+(defn- near-start? [e e2] (push/within? e e2 step-reach))
+
+(defn- ahead-island
+  "Returns the deltas of the island es as step-island steps it, and
+  the count of runs that ran again. Mobs that cannot meet run in
+  parallel, and the island keeps the runs when ok? finds every mob
+  in reach; else it steps again in order."
+  [world active tempters t es ok?]
+  (let [isl (island active es) cur (object-array (:es isl))
+        runs (turn-runs world tempters t isl cur ok?)]
+    (if runs
+      [(joined cur runs) 0]
+      [(step-island world active tempters t es)
+       (count (filter (fn [[_ e]] (mobs/mob-type? (:type e))) es))])))
+
+(def ^:private ^:const ahead-bodies 64)
+
+(defn- ahead? [es]
+  (and (>= (count es) ahead-bodies) (> (Islands/threads @r/pool) 1)))
+
+(defn- island-deltas [world active tempters t es]
+  (if (ahead? es)
+    (nth (ahead-island world active tempters t es near-start?) 0)
+    (step-island world active tempters t es)))
 
 (defn- herds [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
@@ -860,8 +985,7 @@
     (cond-> acc (seq b) (conj b))))
 
 (defn- island-batch [world active tempters t batch]
-  (into [] (mapcat (fn [es] (step-island world active tempters t es)))
-        batch))
+  (into [] (mapcat #(island-deltas world active tempters t %)) batch))
 
 (defn mobs-system
   "Returns the tasks of one tick.
