@@ -301,6 +301,23 @@
 
 (defn air? [^long st] (zero? st))
 
+(def ^:private air-types #{:air :cave-air :void-air})
+
+(defn air-type?
+  "Returns true when st is air of any kind."
+  [^long st]
+  (contains? air-types (block-of st)))
+
+(defn state-table
+  "Returns an array of kind k that holds (f st) at each block state.
+  The kind is :boolean, :byte or :long."
+  [k f]
+  (let [xs (map f (range (data/block-state-count)))]
+    (case k
+      :boolean (boolean-array (map boolean xs))
+      :byte (byte-array (map byte xs))
+      :long (long-array (map long xs)))))
+
 (defn fire? [^long st] (= :fire (type-of st)))
 
 (defn tnt? [^long st] (= :tnt (type-of st)))

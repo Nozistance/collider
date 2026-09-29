@@ -106,8 +106,6 @@
     [:merge-entity eid
      (cond-> {:stats stats} (:awards e) (assoc :awards nil))]))
 
-(def ^:private none (Object.))
-
 (defn- seen-of [e] (select-keys e [:sleeping]))
 
 (defn- observed [ps]
@@ -116,7 +114,7 @@
 (defn- still? [world ps]
   (let [was (:observed world)]
     (and (some? was) (= (count was) (count ps))
-         (every? (fn [[eid e]] (= (get was eid none) (seen-of e)))
+         (every? (fn [[eid e]] (= (get was eid ::none) (seen-of e)))
                  ps))))
 
 (defn- award [world _]
@@ -134,5 +132,7 @@
 
 (def channels [award answer])
 
-(defn observe [world d]
+(defn observe
+  "Returns what the detector channels make of the tick."
+  [world d]
   (into [] (mapcat (fn [c] (c world d))) channels))

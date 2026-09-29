@@ -176,8 +176,6 @@
 (defn falling-blocks
   "Returns a step for every falling block in an active chunk."
   [world _d]
-  (let [active (state/active-chunks world)
-        live? (fn [[_ e]] (state/active-at? active (:pos e)))
-        step (fn [[eid e]] #(step-deltas world eid e))]
-    (into [] (comp (filter live?) (map step))
-          (state/of-types world [:falling-block]))))
+  (let [step (fn [[eid e]] #(step-deltas world eid e))]
+    (into [] (map step)
+          (state/active-of-types world [:falling-block]))))

@@ -145,10 +145,9 @@
     acc))
 
 (defn effect-deltas
-  "Returns the deltas of the consume effects of consumable c on
-  player e with id eid, in their order. Draw returns the next number
-  from 0 to 1 each call. This is the loop of Consumable.onConsume
-  over its ConsumeEffects."
+  "Returns the deltas of the consume effects of c on player eid.
+  They come in their order. Draw returns the next number from 0 to 1
+  each call."
   [world eid e c draw]
   (let [acc (reduce #(consumed world draw %1 %2)
                     (effects/account eid e) (:effects c))]
@@ -249,5 +248,7 @@
   (into [] (filter (fn [[_ e]] (:using e)))
         (state/of-types world [:player])))
 
-(defn consume [world _]
+(defn consume
+  "Returns a step that runs the eating and drinking of players."
+  [world _]
   [#(state/fold-events world (using-entries world) step-deltas)])

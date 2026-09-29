@@ -15,16 +15,14 @@
 
 (def ^:private ^:const none -65)
 
-(def ^:private air-blocks #{:air :cave-air :void-air})
-
 (defn- state-at [chunks x y z]
   (if (chunk/in-range? (long y))
     (chunk/chunks-get-block chunks x y z)
     0))
 
-(defn- air? [^long st] (contains? air-blocks (block/block-of st)))
-
 (defn- fluid? [^long st] (some? (block/liquid-class st)))
+
+(defn- air? [^long st] (block/air-type? st))
 
 (defn- motion-blocking? [^long st]
   (or (block/blocks-motion? st) (fluid? st)))

@@ -167,7 +167,9 @@
       [[:merge-entity eid {:menu menu :container-counter id}]]
       (open-screen-deltas world eid m id slots (:carried e')))))
 
-(defn open-deltas [world eid pos]
+(defn open-deltas
+  "Returns the deltas of player eid opening the menu of block pos."
+  [world eid pos]
   (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
           stat (open-stat world pos m)]
@@ -178,9 +180,9 @@
     []))
 
 (defn spectator-open-deltas
-  "Returns the deltas of a spectator using a block that provides a
-  menu. The menu opens with no stat and no opener. Returns nil when
-  the block has none."
+  "Returns the deltas of a spectator using a block with a menu.
+  The menu opens with no stat and no opener. Returns nil when the
+  block has none."
   [world eid pos]
   (when-let [m (container/provider-at world pos)]
     (open-menu-deltas world eid (get-in world [:entities eid]) m)))
@@ -265,7 +267,9 @@
         synced (sync-deltas eid m' slots (:carried after) resync?)]
     (assoc synced :after after :inventory inv' :items items')))
 
-(defn craft-deltas [world eid after]
+(defn craft-deltas
+  "Returns the stats and spills of player eid crafting."
+  [world eid after]
   (concat
     (for [[item n] (:crafted after)]
       [:award eid (keyword "crafted" (name item)) n])
@@ -440,7 +444,9 @@
         [:spawn-entity (items/dropped world eid s)])
       (when m (opener-deltas world e m -1)))))
 
-(defn removed-deltas [world eid e]
+(defn removed-deltas
+  "Returns the deltas that close the menu of player e as it leaves."
+  [world eid e]
   (concat
     (when (or (:menu e) (:carried e))
       [[:merge-entity eid {:menu nil :carried nil}]])
@@ -506,7 +512,9 @@
     (quit-deltas world)
     (state/fold-events world events event-deltas)))
 
-(defn containers [world d]
+(defn containers
+  "Returns a step that runs the menus and containers of the tick."
+  [world d]
   (let [events (:input d)]
     [#(containers-deltas world events)]))
 

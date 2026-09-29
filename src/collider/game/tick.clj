@@ -3,6 +3,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.state :as state]
             [collider.game.schema :as schema]
+            [collider.game.cost :as cost]
             [collider.game.deltas :as deltas]
             [collider.game.deltas.record :as types]
             [collider.game.detector :as detector]
@@ -108,13 +109,12 @@
              [#'detector/observe]])
 
 (def server-systems
-  "The systems of phases that run once for the whole server, not in
-  each level. They see the players of every level."
+  "The systems that run once for the whole server, not per level.
+  They see the players of every level."
   #{#'players/player-list #'daynight/daynight})
 
 (defn- server-phase? [phase]
-  (reduce (fn [_ s] (if (server-systems s) (reduced true) false))
-          false phase))
+  (boolean (some server-systems phase)))
 
 (def dims
   "The dimensions the tick runs, in a fixed order."
@@ -169,13 +169,13 @@
            (skipped! world s dim t)
            deltas/empty-deltas))))
 
-(defn- server-job [world s [view d]]
+(defn- server-thunk [world s [view d]]
   (let [f (guarded world s nil #(s view d))]
     #(deltas/with-dim (f) nil)))
 
-(defn- job [world lv d server dim s]
+(defn- thunk [world lv d server dim s]
   (if (server-systems s)
-    (server-job world s @server)
+    (server-thunk world s @server)
     (guarded world s dim #(s lv d))))
 
 (defn- runs-in? [dim s]
@@ -184,14 +184,21 @@
 (defn- view [world views dim]
   (or (get views dim) (state/level world dim)))
 
+(defn- skipped? [world views dim]
+  (if views
+    (not (contains? views dim))
+    (asleep? world dim)))
+
 (defn- level-deltas [world views ds server phase dim]
-  (if (if views (not (contains? views dim)) (asleep? world dim))
+  (if (skipped? world views dim)
     deltas/empty-deltas
     (let [lv (assoc (view world views dim) :server world)
           d (get ds dim)
           ks (filterv #(runs-in? dim %) phase)
-          jobs (mapv #(job world lv d server dim %) ks)]
-      (deltas/with-dim (deltas/run-weighed ks jobs) dim))))
+          thunks (mapv #(thunk world lv d server dim %) ks)]
+      (deltas/with-dim
+       (deltas/run-weighed cost/heavy? cost/timed ks thunks)
+       dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
@@ -319,14 +326,26 @@
 
 (def ^:private ^:const mspt-window 100)
 
-(defn- drain! [^ConcurrentLinkedQueue q]
+(defn- poll! [^ConcurrentLinkedQueue q] (.poll q))
+
+(defn- queue-empty? [^ConcurrentLinkedQueue q] (.isEmpty q))
+
+(defn- count-up! ^long [^AtomicLong c] (.getAndIncrement c))
+
+(defn- count-of ^long [^AtomicLong c] (.get c))
+
+(defn- running? [^AtomicBoolean running] (.get running))
+
+(defn- stop! [^AtomicBoolean running] (.set running false))
+
+(defn- drain! [q]
   (loop [acc (transient [])]
-    (if-some [e (.poll q)]
+    (if-some [e (poll! q)]
       (recur (conj! acc e))
       (persistent! acc))))
 
-(defn- record! [^longs window ^AtomicLong counter ^long elapsed]
-  (let [i (int (rem (.getAndIncrement counter) window-size))]
+(defn- record! [^longs window counter ^long elapsed]
+  (let [i (int (rem (count-up! counter) window-size))]
     (aset window i elapsed)))
 
 (defn- empty-ticks ^long [^long n world]
@@ -346,8 +365,8 @@
       (when-let [f (:on-pause opts)] (f)))
     (and (pos? s) (>= n (* 20 s)))))
 
-(defn- idle? [opts n ^ConcurrentLinkedQueue queue]
-  (and (paused? opts n) (.isEmpty queue)))
+(defn- idle? [opts n queue]
+  (and (paused? opts n) (queue-empty? queue)))
 
 (defn- mean-ms ^double [^longs window ^long ticks]
   (let [n (min ticks mspt-window)]
@@ -357,13 +376,13 @@
           (recur (inc k) (+ sum (aget window i))))
         (/ (double sum) n 1e6)))))
 
-(defn- percentiles [^longs window ^AtomicLong counter]
-  (let [n (int (min (.get counter) window-size))]
+(defn- percentiles [^longs window counter]
+  (let [n (int (min (count-of counter) window-size))]
     (when (pos? n)
       (let [arr (Arrays/copyOf window n)]
         (Arrays/sort arr)
-        {:ticks  (.get counter)
-         :mspt   (mean-ms window (.get counter))
+        {:ticks  (count-of counter)
+         :mspt   (mean-ms window (count-of counter))
          :p50-ms (/ (aget arr (quot n 2)) 1e6)
          :p99-ms (/ (aget arr (min (dec n) (int (* n 0.99)))) 1e6)
          :max-ms (/ (aget arr (dec n)) 1e6)}))))
@@ -433,12 +452,12 @@
           (when (<= crash-streak (long n)) [unit n t]))
         streaks))
 
-(defn- crash! [{:keys [^AtomicBoolean running]} opts [unit n t]]
+(defn- crash! [{:keys [running]} opts [unit n t]]
   (log/error "**** THE SERVER CRASHED!")
   (log/error unit "failed" n "ticks in a row")
   (log/error-with "its last failure" t)
   (log/error "saving the world and stopping")
-  (.set running false)
+  (stop! running)
   (when-let [f (:on-crash opts)] (f {:unit unit :ticks n :cause t})))
 
 (defn- supervised! [st opts failures]
@@ -471,8 +490,6 @@
     (one-tick! st world-atom queue deliver! p t0 opts)
     p))
 
-(defn- running? [^AtomicBoolean running] (.get running))
-
 (defn- ticker-loop [st running world-atom queue deliver! opts]
   (let [tick! #(timed-tick! st %1 %2 world-atom queue deliver! opts)]
     (loop [next-ns (System/nanoTime) i 0 perf nil empty 0]
@@ -484,21 +501,26 @@
                   at (pace next-ns nominal-tick-ns)]
               (recur at (inc i) p n))))))))
 
+(defn- daemon! ^Thread [^Runnable f ^String name]
+  (doto (Thread. f name)
+    (.setDaemon true)
+    (.start)))
+
+(defn- joined! [^Thread t ^long ms] (.join t ms))
+
 (defn- ticker-thread
   ^Thread [st running world-atom queue deliver! opts]
   (let [run #(ticker-loop st running world-atom queue deliver! opts)]
-    (doto (Thread. ^Runnable run "collider-ticker")
-      (.setDaemon true)
-      (.start))))
+    (daemon! run "collider-ticker")))
 
 (defn start-ticker!
-  "Starts a ticker of world-atom on the events from queue.
-  It gives the deltas of each tick to deliver!. Returns a handle for
-  the stop. A unit that fails twenty ticks in a row stops the ticker
-  and calls the :on-crash of opts."
+  "Starts ticking world-atom on the events of queue.
+  Each tick hands its deltas to deliver!. Returns a handle to stop
+  it with. A unit that fails twenty ticks in a row stops the ticker
+  and calls the crash callback of opts."
   ([world-atom queue deliver!]
    (start-ticker! world-atom queue deliver! nil))
-  ([world-atom ^ConcurrentLinkedQueue queue deliver! opts]
+  ([world-atom queue deliver! opts]
    (let [st (ticker-state opts)
          running (:running st)
          thread (ticker-thread
@@ -509,7 +531,7 @@
 
 (defn stop-ticker!
   "Stops the ticker and waits up to a second for it to end."
-  [{:keys [^Thread thread ^AtomicBoolean running]}]
-  (.set running false)
-  (.join thread 1000)
+  [{:keys [thread running]}]
+  (stop! running)
+  (joined! thread 1000)
   nil)

@@ -73,7 +73,7 @@
 
 (defn- blank? [s] (or (nil? s) (identical? s chunk/empty-section)))
 
-(defn- chunk-cells [world _chunks speed cid c]
+(defn- chunk-cells [world speed cid c]
   (let [t (long (:tick world)) cid (long cid)
         [cx cz] (chunk/id->pos cid)
         x0 (* 16 (long cx)) z0 (* 16 (long cz))]
@@ -87,13 +87,15 @@
 
 (def ^:private ^:const chunk-leaf 16)
 
+(def ^:private ^:const chunk-threshold 64)
+
 (defn- per-chunk [cids f]
-  (deltas/pmapcat f cids chunk-leaf 64))
+  (deltas/pmapv f cids chunk-leaf chunk-threshold))
 
 (defn- chunk-results [world chunks speed time cid]
   (when-let [c (get chunks cid)]
     (mapv (fn [[p st]] (cell-result world chunks time p st))
-          (chunk-cells world chunks speed cid c))))
+          (chunk-cells world speed cid c))))
 
 (defn- roll-of ^double [t cid i salt]
   (random/of-longs t cid i (hash salt)))
@@ -153,11 +155,11 @@
   (let [chunks (:chunks world) time (clock/day-ticks world)
         h (max-snow world) cids (state/active-chunk-ids world)
         both (fn [cid]
-               [[(chunk-results world chunks speed time cid)
-                 (chunk-fallen world chunks speed h cid)]])
+               [(chunk-results world chunks speed time cid)
+                (chunk-fallen world chunks speed h cid)])
         pairs (per-chunk cids both)
-        results (into [] (mapcat first) pairs)
-        fallen (into [] (mapcat second) pairs)
+        results (into [] (mapcat #(nth % 0)) pairs)
+        fallen (into [] (mapcat #(nth % 1)) pairs)
         changes (into fallen (mapcat :changes) results)
         drips (into [] (keep :drip) results)]
     (when (or (seq changes) (seq drips))
@@ -168,6 +170,8 @@
     (when (pos? speed)
       (ticked world speed))))
 
-(defn random-ticks [world d]
+(defn random-ticks
+  "Returns a step that runs the random ticks of the active chunks."
+  [world d]
   (let [events (:input d)]
     [#(random-tick-deltas world events)]))

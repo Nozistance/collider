@@ -1,5 +1,5 @@
 (ns collider.game.deltas
-  "Deltas of one tick and the jobs that make them."
+  "Deltas of one tick and the thunks that make them."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -11,6 +11,12 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const fold-leaf 64)
+
+(defn- fork [f] (@#'r/fjfork (r/fjtask f)))
+
+(defn- join [task] (@#'r/fjjoin task))
+
+(defn- invoke [f] (@#'r/fjinvoke f))
 
 (def ^:private ^:const fold-threshold 64)
 
@@ -25,17 +31,42 @@
              (fn [acc x] (into acc (f x)))
              v))))
 
-(defn world-of [^Deltas d] (.world d))
+(defn pmapv
+  "Returns the map of f over vector v as a vector.
+  The work runs in parallel when v is longer than threshold."
+  ([f v] (pmapv f v fold-leaf fold-threshold))
+  ([f v leaf threshold]
+   (if (<= (count v) (long threshold))
+     (mapv f v)
+     (r/fold (long leaf) (r/monoid into vector)
+             (fn [acc x] (conj acc (f x)))
+             v))))
 
-(defn entities-of [^Deltas d] (.entities d))
+(defn world-of
+  "Returns the deltas of d that change the level as a whole."
+  [^Deltas d]
+  (.world d))
 
-(defn out-of [^Deltas d] (.out d))
+(defn entities-of
+  "Returns the deltas of d that change one entity, by eid."
+  [^Deltas d]
+  (.entities d))
 
-(defn input-of [^Deltas d] (.input d))
+(defn out-of
+  "Returns the effects of d."
+  [^Deltas d]
+  (.out d))
+
+(defn input-of
+  "Returns the input deltas of d, the events of the tick."
+  [^Deltas d]
+  (.input d))
 
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
 
-(defn input ^Deltas [events]
+(defn input
+  "Returns the deltas that start a tick with events as input."
+  ^Deltas [events]
   (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
 
 (defn- built ^Deltas [w e o acc]
@@ -58,7 +89,9 @@
           (recur ds (conj! w d) e o)))
       (built w e o acc))))
 
-(defn add ^Deltas [^Deltas acc deltas]
+(defn add
+  "Returns acc with the deltas added after its own."
+  ^Deltas [^Deltas acc deltas]
   (if-let [ds (seq (if delta/validate? (delta/check! deltas) deltas))]
     (added acc ds)
     acc))
@@ -85,9 +118,9 @@
   (if (<= (count m) leaf)
     (reduce rf [] m)
     (let [[a b] (halves m)
-          t (@#'r/fjfork (r/fjtask #(folded rf b leaf)))
+          t (fork #(folded rf b leaf))
           l (folded rf a leaf)]
-      (joined l (@#'r/fjjoin t)))))
+      (joined l (join t)))))
 
 (defn select
   "Returns (into [] xf m) for a transducer xf that keeps no state.
@@ -95,13 +128,11 @@
   ([xf m] (select xf m select-leaf))
   ([xf m leaf]
    (if (instance? PersistentIntMap m)
-     (@#'r/fjinvoke #(folded (xf conj) m leaf))
+     (invoke #(folded (xf conj) m leaf))
      (into [] xf m))))
 
 (defn vacant?
-  "Returns true when map m holds no entry.
-  It reads one entry at most, where count and seq walk a whole
-  int-map."
+  "Returns true when map m holds no entry."
   [m]
   (reduce-kv (fn [_ _ _] (reduced false)) true m))
 
@@ -121,6 +152,7 @@
             (joined (input-of a) (input-of b))))
 
 (defn merge
+  "Returns the deltas of a followed by those of b."
   (^Deltas [^Deltas a ^Deltas b]
    (cond (blank? b) a
          (blank? a) b
@@ -152,12 +184,13 @@
   (:dim m))
 
 (defn in-pool
-  "Returns (f) run in the pool of folds.
-  The folds inside f then fork without a handoff each."
+  "Returns (f) run so that the folds inside it run in parallel."
   [f]
-  (@#'r/fjinvoke f))
+  (invoke f))
 
-(defn fold [reducef v]
+(defn fold
+  "Returns the deltas of reducef over vector v, folded in parallel."
+  [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
 (declare run)
@@ -165,11 +198,11 @@
 (defn- ran ^Deltas [^Deltas acc f]
   (let [r (f)]
     (cond (instance? Deltas r) (merge acc r)
-          (fn? (first r)) (merge acc (run (vec r)))
+          (fn? (nth r 0 nil)) (merge acc (run (vec r)))
           :else (add acc r))))
 
 (defn run
-  "Returns the deltas of the jobs run in parallel.
+  "Returns the deltas of the thunks run in parallel.
   The order is the same every time."
   ^Deltas [fs]
   (if (< (count fs) 2)
@@ -177,8 +210,8 @@
     (fold ran fs)))
 
 (defn run-each
-  "Returns the deltas of the jobs run one after another.
-  The jobs a job hands back run in parallel."
+  "Returns the deltas of the thunks run one after another.
+  The thunks a thunk hands back run in parallel."
   ^Deltas [fs]
   (reduce ran empty-deltas fs))
 
@@ -193,50 +226,36 @@
         (merge (merge-all (subvec v 0 h))
                (merge-all (subvec v h)))))))
 
-(def ^:private ^:const fork-ns 40000)
+(defn- forked [heavy? timed heaviest k f]
+  (when (and (heavy? k) (not (identical? k heaviest)))
+    (fork (timed k f))))
 
-(def ^:private weights (atom {}))
-
-(defn- weight ^long [k] (long (get @weights k 0)))
-
-(defn- weighed! [k ^long ns]
-  (swap! weights assoc k (quot (+ (* 3 (weight k)) ns) 4)))
-
-(defn- timed [k f]
-  (fn []
-    (let [t0 (System/nanoTime)
-          r (f)]
-      (weighed! k (- (System/nanoTime) t0))
-      r)))
-
-(defn- heavy? [k] (< fork-ns (weight k)))
-
-(defn- forked [last k f]
-  (when (and (heavy? k) (not (identical? k last)))
-    (@#'r/fjfork (r/fjtask (timed k f)))))
-
-(defn- inline [tasks ks fs]
+(defn- ran-here [timed tasks ks fs]
   (mapv (fn [t k f] (when-not t ((timed k f)))) tasks ks fs))
 
 (defn- joined-all [tasks rs]
-  (mapv (fn [t r] (if t (@#'r/fjjoin t) r)) tasks rs))
+  (mapv (fn [t r] (if t (join t) r)) tasks rs))
 
 (defn run-weighed
-  "Returns the deltas of jobs fs merged in their order.
-  The jobs whose keys ks took long the last ticks run in parallel,
-  the rest one after another in this thread."
-  ^Deltas [ks fs]
+  "Returns the deltas of thunks fs merged in their order.
+  The thunks whose keys ks are heavy? run in parallel, the rest in
+  order; timed wraps a thunk so its key keeps its weight."
+  ^Deltas [heavy? timed ks fs]
   (if (= 1 (count fs))
     ((nth fs 0))
-    (let [last (reduce #(if (heavy? %2) %2 %1) nil ks)
-          tasks (mapv #(forked last %1 %2) ks fs)]
-      (merge-all (joined-all tasks (inline tasks ks fs))))))
+    (let [heaviest (reduce #(if (heavy? %2) %2 %1) nil ks)
+          tasks (mapv #(forked heavy? timed heaviest %1 %2) ks fs)]
+      (merge-all (joined-all tasks (ran-here timed tasks ks fs))))))
 
-(defn of ^Deltas [systems world deltas]
+(defn of
+  "Returns the deltas of the systems over world and deltas."
+  ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
-(defn run-seq [fs]
+(defn run-seq
+  "Returns the deltas of thunks fs in order, as one vector."
+  [fs]
   (into [] (mapcat (fn [f]
                      (let [r (f)]
-                       (if (fn? (first r)) (run-seq (vec r)) r))))
+                       (if (fn? (nth r 0 nil)) (run-seq (vec r)) r))))
         fs))

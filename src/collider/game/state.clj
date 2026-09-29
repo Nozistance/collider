@@ -50,8 +50,8 @@
 (def activation-radius 2)
 
 (defn view-radius
-  "Returns the view distance in chunks the config asks for, kept
-  between 2 and 32."
+  "Returns the view distance in chunks the config asks for.
+  It stays between 2 and 32."
   ^long [world]
   (-> (long (get-in world [:config :view-distance] 7))
       (max 2)
@@ -92,76 +92,79 @@
                      (remove #(contains? (:chunks world) %)) zone)
         active (in? (zone-at ps s))
         broadcast (zone-at ps (inc (view-radius world)))]
-    [active (in? (zone-at ps (inc s))) broadcast zone absent
-     (vec active)]))
+    {:active active :ticking (in? (zone-at ps (inc s)))
+     :broadcast broadcast :zone zone :absent absent
+     :active-ids (vec active)}))
 
 (defn- areas-key
   "Returns what the chunk areas of world are a function of.
-  Block writes keep the shape of chunks, so they do not count.
-  The players and entities as they were stand last, for a check by
-  identity alone."
+  Block writes keep the shape of chunks, so they do not count."
   [world]
-  [(player-chunks world) (chunk/shape (:chunks world))
-   (:config world) (:rules world) (:players world) (:entities world)])
+  {:player-chunks (player-chunks world)
+   :shape (chunk/shape (:chunks world))
+   :config (:config world) :rules (:rules world)
+   :players (:players world) :entities (:entities world)})
 
 (defn- same-shape? [k world]
-  (and (identical? (nth k 1) (chunk/shape (:chunks world)))
-       (identical? (nth k 2) (:config world))
-       (identical? (nth k 3) (:rules world))))
+  (and (identical? (:shape k) (chunk/shape (:chunks world)))
+       (identical? (:config k) (:config world))
+       (identical? (:rules k) (:rules world))))
 
 (defn- same? [k world]
-  (and (identical? (nth k 5) (:entities world))
-       (identical? (nth k 4) (:players world))
+  (and (identical? (:entities k) (:entities world))
+       (identical? (:players k) (:players world))
        (same-shape? k world)))
 
-(defn- fresh? [world cached]
-  (when cached
-    (let [k (::key (meta cached))]
+(defn- reusable? [k world ps]
+  (and (same-shape? k world) (= (:player-chunks k) ps)))
+
+(defn- fresh? [world had]
+  (when had
+    (let [k (::key (meta had))]
       (or (same? k world)
-          (and (same-shape? k world)
-               (= (nth k 0) (player-chunks world)))))))
+          (reusable? k world (player-chunks world))))))
 
 (defn- areas [world]
-  (let [cached (:active-chunks world)]
-    (if (fresh? world cached) cached (compute-areas world))))
+  (let [had (:active-chunks world)]
+    (if (fresh? world had) had (compute-areas world))))
 
 (defn loaded-zone
   "Returns the ids of the chunks the players keep at full status.
   That zone reaches two rings past the view distance."
   [world]
-  (nth (areas world) 3))
+  (:zone (areas world)))
 
 (defn absent-chunks
   "Returns the ids of the loaded zone that world holds no chunk for."
   [world]
-  (nth (areas world) 4))
+  (:absent (areas world)))
 
 (defn active-chunks
   "Returns the chunks that run entity and random ticks."
   [world]
-  (nth (areas world) 0))
+  (:active (areas world)))
 
 (defn active-chunk-ids
   "Returns the active chunks as a vector, in the order of the set."
   [world]
-  (nth (areas world) 5))
+  (:active-ids (areas world)))
 
 (defn ticking-chunks
   "Returns the chunks that run scheduled block and fluid ticks.
   They reach one chunk further than the entity ticking ones."
   [world]
-  (nth (areas world) 1))
+  (:ticking (areas world)))
 
 (defn broadcast-chunks
   "Returns the chunks whose block changes reach the clients.
   They reach one ring past the view distance."
   [world]
-  (nth (areas world) 2))
+  (:broadcast (areas world)))
 
-(defn- kept [world cached now]
-  (let [k (::key (meta cached))]
-    (if (and cached (same-shape? k world) (= (nth k 0) (nth now 0)))
-      cached
+(defn- kept [world had now]
+  (let [k (::key (meta had))]
+    (if (and had (reusable? k world (:player-chunks now)))
+      had
       (compute-areas world))))
 
 (defn cache-active-chunks
@@ -169,12 +172,12 @@
   The areas follow its players and chunks. The key they were made
   from is metadata, so equal worlds stay equal."
   [world]
-  (let [cached (:active-chunks world)]
-    (if (and cached (same? (::key (meta cached)) world))
+  (let [had (:active-chunks world)]
+    (if (and had (same? (::key (meta had)) world))
       world
       (let [now (areas-key world)]
         (assoc world :active-chunks
-               (with-meta (kept world cached now) {::key now}))))))
+               (with-meta (kept world had now) {::key now}))))))
 
 (defn advance
   "Returns the world one tick older."
@@ -210,7 +213,11 @@
      :sky? (:has-skylight t true)
      :dim dim}))
 
-(def ^:private bounds-of (memoize bounds))
+(def ^:private dim-bounds
+  (into {} (map (fn [dim] [dim (delay (bounds dim))])) schema/dims))
+
+(defn- bounds-of [dim]
+  (if-let [b (get dim-bounds dim)] @b (bounds dim)))
 
 (defn level
   "Returns the level dim of world.
@@ -234,18 +241,21 @@
               (if-let [e (find lv k)] (assoc! m k (val e)) m))
             (transient {}) schema/level-keys)))
 
-(def ^:private none (Object.))
+(defn- transient-of [t m] (or t (transient m)))
 
-(defn- edited [t m] (or t (transient m)))
+(defn- got [m k] (get m k ::none))
 
-(defn- part-of [old lv]
+(defn- part-of
+  "Returns the level keys of lv as a level part, old when they match."
+  [old lv]
   (if (nil? old)
     (level-part lv)
     (let [put (fn [t k]
-                (let [v (get lv k none)]
-                  (cond (identical? v (get old k none)) t
-                        (identical? v none) (dissoc! (edited t old) k)
-                        :else (assoc! (edited t old) k v))))
+                (let [v (got lv k)]
+                  (cond (identical? v (got old k)) t
+                        (identical? v ::none)
+                        (dissoc! (transient-of t old) k)
+                        :else (assoc! (transient-of t old) k v))))
           t (reduce put nil schema/level-keys)]
       (if t (persistent! t) old))))
 
@@ -258,22 +268,31 @@
 
 (def ^:private bound-keys [:dim :min-y :max-y :sky? :server])
 
-(defn- shared-count ^long [lv part]
+(defn- shared-count
+  "Returns how many keys of lv are shared keys of the world."
+  ^long [lv part]
   (reduce (fn [^long n k] (if (contains? lv k) (dec n) n))
           (- (count lv) (count part)) bound-keys))
 
-(defn- shared-into [world lv]
+(defn- shared-into
+  "Returns world with the shared keys of lv, or nil if one is gone."
+  [world lv]
   (let [put (fn [t k v]
-              (let [v' (if (identical? :levels k) v (get lv k none))]
+              (let [v' (if (identical? :levels k) v (got lv k))]
                 (cond (identical? v v') t
-                      (identical? v' none) (reduced none)
-                      :else (assoc! (edited t world) k v'))))
+                      (identical? v' ::none) (reduced ::none)
+                      :else (assoc! (transient-of t world) k v'))))
         t (reduce-kv put nil world)]
     (cond (nil? t) world
-          (identical? none t) nil
+          (identical? ::none t) nil
           :else (persistent! t))))
 
-(defn- split-off [lv levels dim part]
+(defn- same-shared-keys? [world lv part]
+  (= (dec (count world)) (shared-count lv part)))
+
+(defn- split-off
+  "Returns the shared keys of lv as a world with part as level dim."
+  [lv levels dim part]
   (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
          :levels (assoc levels dim part)))
 
@@ -285,7 +304,7 @@
   (let [levels (:levels world)
         old (get levels dim)
         part (typed-part (part-of old lv) lv)
-        w (when (= (dec (count world)) (shared-count lv part))
+        w (when (same-shared-keys? world lv part)
             (shared-into world lv))]
     (cond (nil? w) (split-off lv levels dim part)
           (identical? part old) w
@@ -319,25 +338,31 @@
     (when (and t (identical? (:entities lv) (nth t 0)))
       (nth t 1))))
 
-(defn- ids-of [by ts]
+(defn- ids-of [types ts]
   (reduce (fn [acc t]
-            (if-let [s (get by t)] (if acc (i/union acc s) s) acc))
+            (if-let [s (get types t)] (if acc (i/union acc s) s) acc))
           nil ts))
 
 (defn of-types
-  "Returns [eid entity] of the entities of level lv whose type is one
-  of ts, by eid."
+  "Returns [eid entity] of the entities of lv whose type is in ts.
+  They come by eid."
   [lv ts]
   (let [es (:entities lv)
         ids (ids-of (or (types-by lv) (by-type es)) ts)
         entry (fn [eid] (MapEntry/create eid (get es eid)))]
     (into [] (map entry) ids)))
 
+(defn active-of-types
+  "Returns the entries of type ts whose entity is in an active chunk."
+  [world ts]
+  (let [active (active-chunks world)
+        live? (fn [[_ e]] (active-at? active (:pos e)))]
+    (into [] (filter live?) (of-types world ts))))
+
 (def ^:private player-type #{:player})
 
 (defn server-view
-  "Returns the shared keys of world with the players of every level
-  as entities."
+  "Returns the shared keys of world with all players as entities."
   [world]
   (let [players (mapcat #(of-types (val %) player-type))]
     (assoc (dissoc world :levels)
@@ -473,8 +498,9 @@
   (:world-spawn-turn w [0.0 0.0]))
 
 (defn respawn-at
-  "Returns the world spawn as players respawn at it, moved inside the
-  world border as the chunks of its level stand now."
+  "Returns the world spawn as players respawn at it.
+  It moves inside the world border as the chunks of its level stand
+  now."
   [w]
   (let [pos (vec (:world-spawn w [24 4 8]))]
     (if (in-border? pos) pos (centre-top (respawn-level w)))))
@@ -677,8 +703,8 @@
       (> (long (get-in e [:cooldowns group] 0)) tick))))
 
 (defn cooldown-deltas
-  "Returns the deltas that lock the cooldown group of item and tell
-  the client. Returns nil when item has no cooldown."
+  "Returns the deltas that lock the cooldown group of item.
+  They tell the client too. Returns nil when item has no cooldown."
   [eid e item ^long tick]
   (when-let [[group ticks] (data/use-cooldown item)]
     [[:merge-entity eid
@@ -781,8 +807,8 @@
     (if (= n Integer/MAX_VALUE) 0 n)))
 
 (defn client-loaded?
-  "Returns true when the client of player e counts as loaded in tick
-  t. The client said so, or sixty ticks passed since the player joined
+  "Returns true when the client of player e counts as loaded at t.
+  The client said so, or sixty ticks passed since the player joined
   or respawned. A dead player waits for its respawn first."
   [e ^long t]
   (and (pos? (double (:health e 0.0)))
@@ -867,10 +893,10 @@
     (apply-move w eid {:flying flying})))
 
 (defn- sprinted
-  "Returns player e sprinting or not. The sprint modifier comes off
-  its movement speed and goes back on when it sprints, which leaves
-  the attribute to sync unless it was not sprinting and does not.
-  This is LivingEntity.setSprinting."
+  "Returns player e sprinting or not.
+  The sprint modifier comes off its movement speed and goes back on
+  when it sprints. The attribute is left to sync unless it was not
+  sprinting and does not."
   [e on?]
   (cond-> (assoc e :sprinting? on?)
     (or on? (:sprinting? e))
@@ -942,8 +968,7 @@
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
 (defn infinite-materials?
-  "Returns true when the player builds without spending items, as
-  in creative."
+  "Returns true when the player builds without spending items."
   [player]
   (game-mode/creative? player))
 
@@ -1033,8 +1058,7 @@
       (remembered w input acc))))
 
 (defn heeded
-  "Returns the input deltas d of level dim without the events the
-  world did not heed."
+  "Returns the input deltas d of level dim that the world heeds."
   [world dim d]
   (if-let [h (get-in world [:levels dim :heeded])]
     (assoc d :input h)
@@ -1253,8 +1277,8 @@
   (or (some? (:kept-mdata e)) (contains? m :kept-mdata)))
 
 (defn- merge-of
-  "Returns delta d on entity e under the pending merge m as a map to
-  merge, or nil when it does more than set keys."
+  "Returns delta d as a map to merge into entity e, or nil.
+  It is nil when d does more than set keys under the pending merge m."
   [e m d]
   (case (nth d 0)
     :merge-entity (nth d 2)
@@ -1304,23 +1328,23 @@
     deltas
     (deltas/add deltas/empty-deltas deltas)))
 
-(defn- untyped [by t eid]
-  (let [s (disj (get by t) eid)]
-    (if (seq s) (assoc by t s) (dissoc by t))))
+(defn- untyped [types t eid]
+  (let [s (disj (get types t) eid)]
+    (if (seq s) (assoc types t s) (dissoc types t))))
 
-(defn- retyped [by e0 e1 eid]
+(defn- retyped [types e0 e1 eid]
   (let [a (get e0 eid) b (get e1 eid)]
     (if (and a b (identical? (:type a) (:type b)))
-      by
-      (cond-> by
+      types
+      (cond-> types
         a (untyped (:type a) eid)
         b (update (:type b) (fnil conj (i/int-set)) eid)))))
 
-(defn- moved [by w w' eids]
+(defn- retyped-index [types w w' eids]
   (let [e0 (:entities w) e1 (:entities w')]
-    (if (or (nil? by) (identical? e0 e1))
-      by
-      (when eids (reduce #(retyped %1 e0 e1 %2) by eids)))))
+    (if (or (nil? types) (identical? e0 e1))
+      types
+      (when eids (reduce #(retyped %1 e0 e1 %2) types eids)))))
 
 (defn- next-eid ^long [w] (long (:next-eid w 1000000)))
 
@@ -1331,27 +1355,28 @@
       :player-placed [(nth delta 1)]
       (when (contains? entity-apply tag) []))))
 
-(defn- world-step [[w removes by] delta]
+(defn- world-step [[w removes types] delta]
   (if (identical? :remove-entity (nth delta 0))
-    [w (conj removes (nth delta 1)) by]
+    [w (conj removes (nth delta 1)) types]
     (let [w' (apply-world-delta w delta)]
-      [w' removes (moved by w w' (touched w w' delta))])))
+      [w' removes
+       (retyped-index types w w' (touched w w' delta))])))
 
 (defn- input-eids [inp]
   (into [] (keep #(let [x (nth % 1 nil)] (when (integer? x) x))) inp))
 
-(defn- checked [es by]
-  (when (and by (not= by (by-type es)))
+(defn- checked [es types]
+  (when (and types (not= types (by-type es)))
     (throw (ex-info "the type index strayed from the entities"
-                    {:index by :entities (by-type es)})))
-  by)
+                    {:index types :entities (by-type es)})))
+  types)
 
-(defn- typed [w by]
+(defn- typed [w types]
   (let [es (:entities w)
-        by (if delta/validate? (checked es by) by)]
-    (if (and by (identical? es (nth (::types (meta w)) 0 nil)))
+        types (if delta/validate? (checked es types) types)]
+    (if (and types (identical? es (nth (::types (meta w)) 0 nil)))
       w
-      (vary-meta w assoc ::types [es (or by (by-type es))]))))
+      (vary-meta w assoc ::types [es (or types (by-type es))]))))
 
 (defn- folded-in [w by-eid]
   (if (deltas/vacant? by-eid)
@@ -1361,17 +1386,19 @@
 (defn- apply-level [lv deltas]
   (let [^Deltas d (deltas-of deltas)
         ws (deltas/world-of d)
-        [w removes by] (reduce world-step [lv [] (types-by lv)] ws)
+        init [lv [] (types-by lv)]
+        [lv1 removes types] (reduce world-step init ws)
         inp (deltas/input-of d)
-        w' (if (seq inp) (applied-input w inp) w)
-        by (moved by w w' (input-eids inp))
-        w (folded-in w' (deltas/entities-of d))
-        w' (reduce player-quit w removes)]
-    (cache-active-chunks (typed w' (moved by w w' removes)))))
+        applied (if (seq inp) (applied-input lv1 inp) lv1)
+        types (retyped-index types lv1 applied (input-eids inp))
+        folded (folded-in applied (deltas/entities-of d))
+        quit (reduce player-quit folded removes)
+        types (retyped-index types folded quit removes)]
+    (cache-active-chunks (typed quit types))))
 
 (defn applied-in
-  "Returns world with the deltas folded into its level dim, and that
-  level. lv is the level dim of world."
+  "Returns world with the deltas in level dim, and that level.
+  lv is the level dim of world."
   [world dim lv deltas]
   (let [lv' (apply-level lv deltas)]
     [(with-level world dim lv') lv']))
@@ -1430,9 +1457,9 @@
   [:quits :moves :use-origins :heeded :resends])
 
 (defn entered
-  "Returns world with the input deltas of level dim folded in, and
-  that level, or nil when it stays as it was. What the last input of
-  the level left behind is dropped first."
+  "Returns world with the input deltas of level dim, and that level.
+  Returns nil when it stays as it was. What the last input of the
+  level left behind is dropped first."
   [world dim deltas]
   (if (and (deltas/inert? deltas)
            (not-any? (get-in world [:levels dim] {}) input-keys))

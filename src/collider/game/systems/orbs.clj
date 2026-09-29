@@ -15,9 +15,8 @@
 (set! *warn-on-reflection* true)
 
 (defn- active-orbs [world]
-  (let [active (state/active-chunks world)
-        xf (filter #(state/active-at? active (:pos (val %))))]
-    (into (sorted-map) xf (state/of-types world [:experience-orb]))))
+  (into (sorted-map)
+        (state/active-of-types world [:experience-orb])))
 
 (defn- followers [world]
   (into [] (remove #(game-mode/spectator? (val %)))
@@ -102,8 +101,8 @@
       out)))
 
 (defn orbs
-  "Returns the deltas of every experience orb in an active chunk
-  after one tick, the orbs stepping one by one in id order."
+  "Returns the deltas of every orb in an active chunk after a tick.
+  The orbs step one by one in id order."
   [world _d]
   [#(let [start (active-orbs world)]
       (when (seq start)
@@ -146,8 +145,8 @@
     [:remove-entity oid]))
 
 (defn taken-deltas
-  "Returns the deltas of player pid taking one point pile of orb oid,
-  as ExperienceOrb.playerTouch, and the orb left."
+  "Returns the deltas of player pid taking one pile of orb oid.
+  The orb that is left comes with them."
   [world pid p oid o]
   (let [acc (xp/account p (lived world p))
         acc (xp/give-points acc (long (:value o)))
@@ -175,7 +174,7 @@
         (second (reduce step [orbs []] (takers world)))))))
 
 (defn pickups
-  "Returns the deltas of players taking up the orbs they touch, one
-  orb a tick each, one player after another."
+  "Returns the deltas of players taking up the orbs they touch.
+  Each takes one orb a tick, one player after another."
   [world _d]
   [#(pickup-deltas world)])

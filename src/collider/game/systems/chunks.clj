@@ -164,7 +164,7 @@
                (not (stalled? world eid cp r p)))
       (restream-deltas world eid cp r p))))
 
-(defn- stream-job [world [_ p :as entry]]
+(defn- stream-thunk [world [_ p :as entry]]
   (when (streams? p (chunk/pos-chunk (:pos p))
                   (player-radius world p))
     #(stream-deltas world entry)))
@@ -182,10 +182,10 @@
   [#(when (loads? world) (loading-deltas world (needed-ids world)))])
 
 (defn chunk-streaming
-  "Sends chunks to the players and takes in the saved ones that came
-  back. A body returning with its chunk waits for the next tick."
+  "Sends chunks to the players and takes in the saved ones.
+  A body returning with its chunk waits for the next tick."
   [world d]
-  (cond-> (into [] (keep #(stream-job world %))
+  (cond-> (into [] (keep #(stream-thunk world %))
                 (state/player-entries world))
     (some loaded-event? (:input d)) (conj #(restore-deltas world d))))
 
@@ -195,8 +195,8 @@
         (state/changes-of d)))
 
 (defn arrival-streaming
-  "Sends the players that entered this level during the tick their
-  first chunks, as the tick ends for them."
+  "Sends their first chunks to the players who entered the level.
+  They get them as the tick ends for them."
   [world d]
   (mapv (fn [entry] #(stream-deltas world entry))
         (arrived world d)))
@@ -216,9 +216,9 @@
           (keys (:chunks world)))))
 
 (defn unloading
-  "Drops the chunks the world no longer needs and ages the tickets
-  of chunks read mid-tick. The chunks are stored as the last tick
-  left them."
+  "Drops the chunks the world no longer needs.
+  It ages the tickets of chunks read mid-tick. The chunks are stored
+  as the last tick left them."
   [world _]
   (let [old (or (:unknown world) (i/int-map))
         held (purged old)]

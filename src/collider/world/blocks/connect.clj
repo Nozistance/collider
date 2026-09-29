@@ -77,7 +77,9 @@
   (dir/horizontal-offset
     (if (= :foot part) facing (dir/opposite facing))))
 
-(defn partner-offset [^long st]
+(defn partner-offset
+  "Returns the offset to the other half of the two-block st, or nil."
+  [^long st]
   (let [{:keys [half] :as props} (block/props-of st)
         t (block/type-of st)]
     (cond
@@ -94,7 +96,9 @@
            (not= (k (block/props-of st))
                  (k (block/props-of other)))))))
 
-(defn partner [chunks pos ^long st]
+(defn partner
+  "Returns [pos state] of the other half of st at pos, or nil."
+  [chunks pos ^long st]
   (when-let [off (partner-offset st)]
     (let [p (mapv + pos off) o (chunk/at chunks p)]
       (when (paired? st o) [p o]))))
@@ -294,28 +298,24 @@
 (defn- leaves-state [chunks pos st sides]
   (if (contains? sides nil) (leaves/distance-state chunks pos st) st))
 
-(defn- snowy-table [f]
-  (let [n (inc (data/block-state-count))
-        a (long-array n)]
-    (dotimes [st n] (aset a st (long (f st))))
-    a))
-
 (defn- snowy-as [v]
   (fn [^long st]
     (if (contains? snowy-types (block/type-of st))
       (with-prop (block/block-of st) st :snowy v)
       st)))
 
+(defn- snow? [st] (block/tagged? st "snow"))
+
 (def ^:private ^:table snowy-states
-  (delay [(snowy-table (snowy-as :false))
-          (snowy-table (snowy-as :true))
-          (snowy-table #(if (block/tagged? % "snow") 1 0))]))
+  (delay {:off (block/state-table :long (snowy-as :false))
+          :on (block/state-table :long (snowy-as :true))
+          :snow (block/state-table :boolean snow?)}))
 
 (defn- snowy-state [chunks [x y z] ^long st sides]
   (when (or (contains? sides nil) (contains? sides :up))
-    (let [[off on snow] @snowy-states
+    (let [{:keys [off on snow]} @snowy-states
           above (chunk/at chunks [x (inc (long y)) z])
-          ^longs to (if (== 1 (aget ^longs snow above)) on off)
+          ^longs to (if (aget ^booleans snow above) on off)
           new (aget to st)]
       (when (not= new st) new))))
 
@@ -474,8 +474,8 @@
           (when (not= (long new) (long st)) new))))))
 
 (defn reshape
-  "Returns the new state of st at pos after a change on sides of it,
-  or nil for none. A nil side stands for a change at pos itself."
+  "Returns the new state of st at pos after a change on its sides.
+  Returns nil for none. A nil side stands for a change at pos itself."
   ([chunks pos st tick] (reshape-of chunks pos st tick #{nil}))
   ([chunks pos st tick sides] (reshape-of chunks pos st tick sides)))
 
@@ -514,7 +514,9 @@
         (cursor-hinge facing (/ (double cursor-x) 16.0)
                       (/ (double cursor-z) 16.0)))))
 
-(defn around [[x y z]]
+(defn around
+  "Returns the cells next to the cell x y z."
+  [[x y z]]
   (mapv (fn [[dx dy dz]]
           [(+ (long x) (long dx))
            (+ (long y) (long dy))
@@ -555,7 +557,10 @@
     (reduce #(reshape-step chunks origin tick sides %1 %2)
             [] cells)))
 
-(defn derived-changes [chunks positions tick]
+(defn derived-changes
+  "Returns the shape changes that the blocks at positions set off.
+  They follow each other at most eight rounds deep."
+  [chunks positions tick]
   (loop [chunks chunks positions positions acc [] n 0]
     (let [changes (reshaped chunks positions tick)]
       (if (or (empty? changes) (= n 8))

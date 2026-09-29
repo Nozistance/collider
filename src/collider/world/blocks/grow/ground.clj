@@ -22,11 +22,9 @@
   (or (some (fn [[c st]] (when (= c q) st)) changes)
       (chunk/at chunks q)))
 
-(defn- above [p] [(p 0) (inc (long (p 1))) (p 2)])
-
 (defn- spread-target? [chunks changes self q]
   (and (= :dirt (block/block-of (seen chunks changes q)))
-       (let [up (seen chunks changes (above q))]
+       (let [up (seen chunks changes (dir/up q))]
          (and (grass/can-stay-alive? (block/state self) up)
               (not (water? up))))))
 
@@ -42,7 +40,7 @@
 (defn- spread-try [chunks p self roll changes i]
   (let [q (spread-offset p roll i)]
     (if (spread-target? chunks changes self q)
-      (let [up (seen chunks changes (above q))
+      (let [up (seen chunks changes (dir/up q))
             snowy (flag (block/tagged? up "snow"))]
         (conj changes [q (block/state self {:snowy snowy})]))
       changes)))
@@ -50,7 +48,7 @@
 (defn- spread-cells [chunks p st roll]
   (let [self (block/block-of st)]
     (loop [i 0 changes []]
-      (if (= i 4)
+      (if (= i (count spread-salts))
         (not-empty changes)
         (recur (inc i) (spread-try chunks p self roll changes i))))))
 
@@ -58,7 +56,7 @@
   "Returns the changes of a random tick of grass or mycelium at p."
   [chunks p st roll time ctx]
   (let [y (inc (long (p 1)))]
-    (if-not (grass/can-stay-alive? st (chunk/at chunks (above p)))
+    (if-not (grass/can-stay-alive? st (chunk/at chunks (dir/up p)))
       [[p (block/state :dirt)]]
       (when (>= (weather/brightness ctx chunks (p 0) y (p 2) time) 9)
         (spread-cells chunks p st roll)))))
@@ -122,8 +120,8 @@
     [[p 0]]))
 
 (defn eyeblossom-tick
-  "Returns the change that opens or closes an eyeblossom, with its
-  effects."
+  "Returns the change that opens or closes an eyeblossom.
+  The change carries its effects."
   [chunks p st _roll time ctx]
   (when-let [new (eyeblossom/switched (long st) (long time))]
     (let [t (long (:tick ctx 0))]
@@ -157,7 +155,7 @@
   (chorus/flower-tick chunks p st
                       (fn [salt ^long n] (pick roll salt n))))
 
-(defn- set-with-2 [changes]
+(defn- with-flags-2 [changes]
   (mapv (fn [[p st fx]] [p st fx 2]) changes))
 
 (defn roots-meal
@@ -171,7 +169,7 @@
   "Returns the spread bone meal gives glow lichen."
   [chunks p st roll]
   (when-let [changes (multiface/spread-random chunks p st roll)]
-    {:changes (set-with-2 changes)}))
+    {:changes (with-flags-2 changes)}))
 
 (defn carpet-meal
   "Returns the moss bone meal grows on a pale moss carpet."
@@ -321,15 +319,15 @@
     acc))
 
 (defn turf-meal
-  "Returns the bone meal result for a grass block at p. It puts grass,
-  tall grass and the flowers of biome around it."
+  "Returns the bone meal result for a grass block at p.
+  It puts grass, tall grass and the flowers of biome around it."
   [chunks p st roll biome]
   (when (air-at? chunks (dir/up p))
     (let [self (block/block-of st)
           n (:name biome)
           acc (reduce (fn [acc j] (turf-try acc self p j roll n))
                       (feature/start chunks) (range 128))]
-      {:changes (set-with-2 (feature/cells acc))})))
+      {:changes (with-flags-2 (feature/cells acc))})))
 
 (defn placer-meal
   "Returns the patch bone meal grows on a block that places one."
@@ -338,4 +336,4 @@
     (let [f (feature/placer-feature (block/block-of st))
           start (feature/start chunks)
           acc (feature/configured start f (dir/up p) roll [:patch])]
-      {:changes (set-with-2 (feature/cells acc))})))
+      {:changes (with-flags-2 (feature/cells acc))})))

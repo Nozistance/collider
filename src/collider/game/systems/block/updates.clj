@@ -95,10 +95,12 @@
       (update :dirty into (map (comp column first)) writes)
       (= :block-ticks k) (update :lit lit-writes writes))))
 
+(def ^:private ^:const update-all 3)
+
 (defn- applied [world ctx k pass changes]
   (if (empty? changes)
     pass
-    (let [op #(vector :set % (neighbors/flags-of % 3))
+    (let [op #(vector :set % (neighbors/flags-of % update-all))
           ops (mapv op changes)]
       (written world k pass
                (neighbors/run (:chunks (:w pass)) ctx ops)))))
@@ -137,18 +139,22 @@
 
 (defn- lone-flags [^long r ticks]
   (let [size (+ r 2)]
-    (first (reduce (fn [[flags seen] [p]]
-                     [(conj! flags (not (crowded? seen size p)))
-                      (conj! seen (bucket size p [0 0]))])
-                   [(transient []) (transient (i/int-set))]
-                   ticks))))
+    (loop [ts (seq ticks)
+           flags (transient [])
+           seen (transient (i/int-set))]
+      (if ts
+        (let [p (nth (first ts) 0)]
+          (recur (next ts)
+                 (conj! flags (not (crowded? seen size p)))
+                 (conj! seen (bucket size p [0 0]))))
+        flags))))
 
 (defn- first-runs [world ctx k ticks]
   (let [r ((get-in lists [k :crowd]) ctx)
         lone (persistent! (lone-flags r ticks))
-        spec (fn [i] [(when (lone i) (ran world ctx k (ticks i)))])]
+        first-run #(when (lone %) (ran world ctx k (ticks %)))]
     (if (some true? lone)
-      (deltas/pmapcat spec (vec (range (count ticks))))
+      (deltas/pmapv first-run (vec (range (count ticks))))
       (vec (repeat (count ticks) nil)))))
 
 (defn- ticks-run [world k ticks]
@@ -159,7 +165,7 @@
         start {:w w :dirty dirty :lit {} :out (transient [])}]
     (persistent!
       (:out (reduce #(stepped world ctx k %1 %2) start
-                    (map vector ticks firsts))))))
+                    (mapv vector ticks firsts))))))
 
 (defn- parked-ids [world active due]
   (let [chunks (:chunks world)
@@ -181,7 +187,9 @@
   [world _d]
   [#(ticks-deltas world :block-ticks)])
 
-(defn fluid-updates [world _d]
+(defn fluid-updates
+  "Runs the fluid ticks that are due."
+  [world _d]
   [#(ticks-deltas world :fluid-ticks)])
 
 (defn- final-records [w recs]

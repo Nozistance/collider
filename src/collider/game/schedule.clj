@@ -47,7 +47,9 @@
   (into [] (take-while (fn [[at _]] (<= (long at) t)))
         (:queue ticks)))
 
-(defn due [ticks t]
+(defn due
+  "Returns the ticks due by tick t, by block id."
+  [ticks t]
   (transduce (map val) (completing #(merge-with into %1 %2))
              (i/int-map) (due-rows ticks (long t))))
 
@@ -83,10 +85,10 @@
       c)))
 
 (defn run-order
-  "Returns the ticks due at t whose block id runs? accepts, as
-  [id ty] in run order. A chunk gives its ticks by due tick and by
-  the order they were added in. The chunks take turns by the order of
-  their next tick."
+  "Returns [id ty] of the ticks due at t, in run order.
+  Only the ticks whose block id runs? accepts count. A chunk gives
+  its ticks by due tick and by the order they were added in. The
+  chunks take turns by the order of their next tick."
   [ticks t runs?]
   (let [rows (due-rows ticks (long t))
         due (comp (mapcat row-entries) (filter #(runs? (% 2))))
@@ -104,8 +106,8 @@
     (if (seq m') (assoc q at m') (dissoc q at))))
 
 (defn flushed
-  "Returns ticks without the ticks due at t, except those of the
-  blocks in parked. These stay overdue."
+  "Returns ticks without the ticks due at t.
+  The ticks of the blocks in parked stay, overdue."
   [ticks t parked]
   (let [rows (due-rows ticks (long t))
         parked (into (i/int-set) parked)
@@ -122,7 +124,9 @@
 (defn- outside [^long cid m]
   (into (i/int-map) (remove #(in-chunk? cid (key %))) m))
 
-(defn dropped [ticks cid]
+(defn dropped
+  "Returns ticks without the ticks of chunk cid."
+  [ticks cid]
   (let [cid (long cid)
         row (fn [[at m]]
               (let [m (outside cid m)] (when (seq m) [at m])))
@@ -130,15 +134,17 @@
     (cond-> (assoc ticks :queue q)
       (:index ticks) (update :index #(outside cid %)))))
 
-(defn entries [ticks]
+(defn entries
+  "Returns each tick of ticks as [at id ty]."
+  [ticks]
   (for [[at m] (:queue ticks) [id tys] m ty (keys tys)] [at id ty]))
 
 (defn- relative [^long t [at _ id ty]]
   [(- (long at) t) (chunk/id->block-pos id) ty])
 
 (defn saved
-  "Returns the ticks of chunk cid as [delay pos type], in the order
-  they were added in."
+  "Returns the ticks of chunk cid as [delay pos type].
+  They come in the order they were added in."
   [ticks cid t]
   (->> (mapcat row-entries (:queue ticks))
        (filter #(in-chunk? cid (% 2)))

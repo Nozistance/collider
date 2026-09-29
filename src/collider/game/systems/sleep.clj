@@ -22,7 +22,9 @@
 (defn- block-at [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
 
-(defn bed-rule [world]
+(defn bed-rule
+  "Returns the bed rule of the level with what it allows now."
+  [world]
   (let [r (attribute/bed-rule (:dim world))
         dark? (daynight/dark-outside? world)]
     (assoc r
@@ -41,7 +43,9 @@
         share (long (get-in world k 100))]
     (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
 
-(defn announcement [world ^long asleep]
+(defn announcement
+  "Returns the message that counts the sleeping players."
+  [world ^long asleep]
   (let [needed (sleepers-needed world)]
     (out/all (out/overlay
                (if (>= asleep needed)
@@ -59,7 +63,17 @@
   (block/state (block/block-of st)
                (assoc (block/props-of st) :occupied :false)))
 
-(defn wake-deltas [world eid]
+(defn- woken-deltas [eid up yaw]
+  [[:merge-entity eid
+    {:sleeping nil :leave-bed? nil :yaw yaw :pitch 0.0}]
+   [:teleport eid up]
+   (out/all (out/animation eid :wake-up))
+   (out/to eid (out/animation eid :wake-up))
+   (out/to eid (out/teleport up yaw 0.0))])
+
+(defn wake-deltas
+  "Returns the deltas of player eid waking up."
+  [world eid]
   (let [e (get-in world [:entities eid])
         head (get-in e [:sleeping :pos])
         st (block-at world head)
@@ -68,12 +82,7 @@
         yaw (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
     (concat
       (when bed? (edit/set-deltas world [[head (vacated st)]]))
-      [[:merge-entity eid
-        {:sleeping nil :leave-bed? nil :yaw yaw :pitch 0.0}]
-       [:teleport eid up]
-       (out/all (out/animation eid :wake-up))
-       (out/to eid (out/animation eid :wake-up))
-       (out/to eid (out/teleport up yaw 0.0))])))
+      (woken-deltas eid up yaw))))
 
 (defn- in-bed [world]
   (filter (fn [[_ e]] (and (= :player (:type e)) (:sleeping e)))
@@ -119,8 +128,8 @@
          (>= (deep-count world all) needed))))
 
 (defn vacated-deltas
-  "Returns the deltas of the bed player e leaves as it goes, between
-  ticks. Its head is set free."
+  "Returns the deltas of the bed that player e leaves between ticks.
+  Its head is set free."
   [world e]
   (let [head (get-in e [:sleeping :pos])
         st (when head (block-at world head))
@@ -141,5 +150,7 @@
 (defn- quit-deltas [world]
   (mapcat #(vacated-deltas world %) (:quits world)))
 
-(defn sleep [world _d]
+(defn sleep
+  "Returns a step that runs sleeping and waking in the level."
+  [world _d]
   [#(concat (quit-deltas world) (sleep-deltas world))])

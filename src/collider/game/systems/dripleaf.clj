@@ -50,5 +50,7 @@
   (let [changes (tilt-changes world)]
     (when (seq changes) (edit/set-deltas world (vec changes)))))
 
-(defn dripleaf-tilt [world _d]
+(defn dripleaf-tilt
+  "Returns a step that tips big dripleaves under players."
+  [world _d]
   [#(tilt-deltas world)])

@@ -39,11 +39,16 @@
 
 (def ^:private player-order [:south :west :north :east])
 
-(defn player-index ^long [yaw]
+(defn player-index
+  "Returns the index of the horizontal way yaw faces, south first."
+  ^long [yaw]
   (let [q (/ (* (double yaw) 4.0) 360.0)]
     (bit-and (long (Math/floor (+ q 0.5))) 3)))
 
-(defn player-direction [yaw] (nth player-order (player-index yaw)))
+(defn player-direction
+  "Returns the horizontal direction a player with that yaw faces."
+  [yaw]
+  (nth player-order (player-index yaw)))
 
 (defn- nearest-axes
   [^double ps ^double pc ^double ys ^double yc]
@@ -61,8 +66,8 @@
       :else [az ay ax])))
 
 (defn look-order
-  "Returns the six directions in the order that a player who looks
-  along yaw and pitch sees them, nearest first."
+  "Returns the six directions as a player looking along yaw sees them.
+  The nearest comes first, and pitch counts too."
   [yaw pitch]
   (let [p (Math/toRadians (double pitch))
         y (Math/toRadians (- (double yaw)))
@@ -70,6 +75,12 @@
                     (Math/sin y) (Math/cos y))]
     [a b c (opposite c) (opposite b) (opposite a)]))
 
-(defn up [p] [(nth p 0) (inc (nth p 1)) (nth p 2)])
+(defn up
+  "Returns the cell above cell p."
+  [p]
+  [(nth p 0) (inc (nth p 1)) (nth p 2)])
 
-(defn down [p] [(nth p 0) (dec (nth p 1)) (nth p 2)])
+(defn down
+  "Returns the cell below cell p."
+  [p]
+  [(nth p 0) (dec (nth p 1)) (nth p 2)])

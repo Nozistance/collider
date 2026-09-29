@@ -35,11 +35,6 @@
 
 (def ^:private ^:const hand-drop 0.3)
 
-(defn- active-items [world]
-  (let [active (state/active-chunks world)
-        live? (fn [[_ e]] (state/active-at? active (:pos e)))]
-    (into [] (filter live?) (state/of-types world [:item]))))
-
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
@@ -80,8 +75,8 @@
      (entity/item at vel stack throw-pickup-delay))))
 
 (defn thrown-deltas
-  "Returns the deltas of player eid throwing the stacks, with the
-  stats of each throw."
+  "Returns the deltas of player eid throwing the stacks.
+  The stats of each throw come with them."
   [world eid stacks]
   (mapcat (fn [i s]
             [[:spawn-entity (dropped world eid s false i)]
@@ -133,9 +128,9 @@
   (min left (+ 10 (long (* 21.0 (double (roll [:split i])))))))
 
 (defn scattered
-  "Returns the items Containers.dropItemStack makes of stack at pos:
-  piles of 10 to 30 at one spot inside the cell, each thrown its own
-  way, none held back from pickup. roll gives a number in [0, 1)
+  "Returns the items that stack at pos scatters into.
+  Piles of 10 to 30 leave one spot inside the cell, each thrown its
+  own way, none held back from pickup. roll gives a number in [0, 1)
   for each key."
   [pos stack roll]
   (let [at (scatter-spot pos roll)]
@@ -609,9 +604,12 @@
   (let [ready? (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0))))
         ready (filterv ready? items)]
     (when (seq ready)
-      (first (reduce (fn [acc entry] (player-pickups ready acc entry))
-                     [[] #{}]
-                     (takers world))))))
+      (loop [ps (seq (takers world)) out [] taken #{}]
+        (if ps
+          (let [p (first ps)
+                [out taken] (player-pickups ready [out taken] p)]
+            (recur (next ps) out taken))
+          out)))))
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item world eid e)]
@@ -623,7 +621,8 @@
   "Returns the tick steps of every dropped item in an active chunk."
   [world _d]
   (let [step #(vector (stepped-item world %))
-        act (deltas/pmapcat step (active-items world))]
+        items (state/active-of-types world [:item])
+        act (deltas/pmapcat step items)]
     (when (pos? (count act))
       [#(mapv (fn [s] (nth s 3)) act)
        #(merge-deltas act)])))
@@ -631,4 +630,4 @@
 (defn pickups
   "Returns the deltas of players taking up nearby items."
   [world _d]
-  [#(pickup-deltas world (active-items world))])
+  [#(pickup-deltas world (state/active-of-types world [:item]))])

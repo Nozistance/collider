@@ -1,7 +1,6 @@
 (ns collider.world.blocks.liquid
   "Water and lava with their spread, mixing and push on entities."
-  (:require [collider.data :as data]
-            [collider.world.env.dimension :as dimension]
+  (:require [collider.world.env.dimension :as dimension]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -58,17 +57,23 @@
 
 (def ^:private level block/liquid-level)
 
-(defn liquid-state ^long [cls ^long level]
+(defn liquid-state
+  "Returns the state of liquid class cls at that level."
+  ^long [cls ^long level]
   (+ (long (@base cls)) level))
 
-(defn fluid-of [st]
+(defn fluid-of
+  "Returns the fluid of state st, or nil when it holds none."
+  [st]
   (when-let [cls (liquid-class st)]
     (cond
       (zero? (level st)) cls
       (= :lava cls) :flowing-lava
       :else :flowing-water)))
 
-(defn bucket->state [item]
+(defn bucket->state
+  "Returns the liquid state that bucket item places, or nil."
+  [item]
   (when-let [cls (@bucket->class item)] (liquid-state cls 0)))
 
 (def ^:private ^:table void-air (delay (block/state :void-air)))
@@ -117,11 +122,12 @@
 
 (defn- fsub ^double [^double a ^double b] (double (float (- a b))))
 
+(def ^:private ^:const fall-drop (double (float 0.8888889)))
+
 (defn- below-pull ^double [chunks cls i [nx y nz]]
-  (let [j (decay chunks cls [nx (dec (long y)) nz])
-        drop (double (float 0.8888889))]
+  (let [j (decay chunks cls [nx (dec (long y)) nz])]
     (if (>= j 0)
-      (fsub (decay-height i) (fsub (decay-height j) drop))
+      (fsub (decay-height i) (fsub (decay-height j) fall-drop))
       0.0)))
 
 (defn- neighbor-pull [chunks cls i [x y z] [dx dz]]
@@ -139,11 +145,13 @@
 (def ^:private side-face
   {[1 0] :east [-1 0] :west [0 1] :south [0 -1] :north})
 
+(def ^:private ice-types #{:ice :frosted-ice})
+
 (defn- solid-face? [cls st d]
   (let [st (long st)]
     (and (pos? st)
          (not= cls (liquid-class st))
-         (not (#{:ice :frosted-ice} (block/type-of st)))
+         (not (contains? ice-types (block/type-of st)))
          (block/face-sturdy? st (side-face d)))))
 
 (defn- walled? [chunks cls [x y z]]
@@ -163,7 +171,9 @@
           [0.0 0.0]
           horiz))
 
-(defn flow-vector [chunks [x y z :as p]]
+(defn flow-vector
+  "Returns the unit vector the liquid at p flows along, or nil."
+  [chunks [x y z :as p]]
   (let [st (state-at chunks x y z)]
     (when-let [cls (when (pos? (long st)) (liquid-class st))]
       (let [[vx vz] (pull-sum chunks cls (decay chunks cls p) p)]
@@ -183,7 +193,9 @@
       1.0
       (own-height (state-at chunks x y z)))))
 
-(defn surface [chunks cls [x y z :as c]]
+(defn surface
+  "Returns the height of the top of liquid cls in cell c, or nil."
+  [chunks cls [x y z :as c]]
   (let [st (state-at chunks x y z)]
     (when (and (pos? st) (= cls (liquid-class st)))
       (let [h (float (height-in chunks cls c))]
@@ -241,7 +253,9 @@
                 (floor (- x a)) (ceil (+ x a)) (floor y0) (ceil y1)
                 (floor (- z a)) (ceil (+ z a)))))
 
-(defn fluid-height [chunks pos half height cls]
+(defn fluid-height
+  "Returns how deep in fluid cls a body of that size at pos stands."
+  [chunks pos half height cls]
   (let [around (fluid-around chunks pos half height)]
     (double (get-in around [cls :height] 0.0))))
 
@@ -326,7 +340,10 @@
       (chunk/chunks-get-block chunks [x up z])
       0)))
 
-(defn fluid-height-of [chunks p st mode]
+(defn fluid-height-of
+  "Returns the height of the fluid of st at p, or nil.
+  With mode :source-only only a source counts."
+  [chunks p st mode]
   (let [cls (liquid-class st)]
     (when (and cls (or (not= mode :source-only) (source-of? cls st)))
       (if (same? cls (above-at chunks p)) 1.0 (height st)))))
@@ -433,15 +450,9 @@
   (raw-cell env (+ (long x) (long dx)) (+ (long y) (long dy))
             (+ (long z) (long dz))))
 
-(defn- state-table ^booleans [f]
-  (let [n (data/block-state-count) a (boolean-array n)]
-    (dotimes [st n] (aset a st (boolean (f st))))
-    a))
+(defn- state-table ^booleans [f] (block/state-table :boolean f))
 
-(defn- byte-table ^bytes [f]
-  (let [n (data/block-state-count) a (byte-array n)]
-    (dotimes [st n] (aset a st (byte (f st))))
-    a))
+(defn- byte-table ^bytes [f] (block/state-table :byte f))
 
 (def ^:private fluid-codes {:water 1 :lava 2})
 
@@ -456,7 +467,7 @@
 (defn- wall-kind ^long [^long st]
   (cond (block/full-cube? st) 0 (empty? (boxes st)) 1 :else 2))
 
-(defn- faces-open-by [src tgt d]
+(defn- faces-open-toward? [src tgt d]
   (faces-open? (long src) (long tgt) (horiz3+ d)))
 
 (defn- enterable? [cls st]
@@ -470,12 +481,10 @@
 (defn- ground? [cls st]
   (or (block/solid? (long st)) (source-of? cls (state-of st))))
 
-(def ^:private air-blocks #{:air :cave-air :void-air})
-
 (defn- destroying [mix traw]
   (let [traw (long traw)]
     (when (and (pos? traw)
-               (not (contains? air-blocks (block/block-of traw))))
+               (not (block/air-type? traw)))
       (if mix :fizz [:drop traw]))))
 
 (defn- tables-of [cls codes levels kinds]
@@ -488,7 +497,7 @@
                 (state-table #(ground? cls %))
                 (state-table container?)
                 (state-table #(some? (destroying nil %)))
-                (int (@base cls)) (int @void-air) faces-open-by))
+                (int (@base cls)) (int @void-air) faces-open-toward?))
 
 (def ^:private ^:table flow-tables
   (delay (let [codes (byte-table fluid-code)
@@ -547,8 +556,8 @@
       (and soul? (== n (long @blue-ice-state))) @basalt-state)))
 
 (defn mixed
-  "Returns the block that the lava at p turns into, or nil when it
-  stays. over holds changed states that the chunks lack yet."
+  "Returns the block that the lava at p turns into, or nil.
+  over holds changed states that the chunks lack yet."
   ([chunks p] (mixed chunks nil p))
   ([chunks over [x y z :as p]]
    (let [st (raw-over chunks over p)]
@@ -682,8 +691,8 @@
        (> (height new) (height old))))
 
 (defn update-delay
-  "Returns the ticks until a liquid that went from old to new
-  moves again. Lava that rises waits longer, at random."
+  "Returns the ticks until a liquid that went from old to new moves.
+  Lava that rises waits longer, at random."
   ([old new tick pos] (update-delay nil old new tick pos))
   ([dim old new tick pos]
    (let [cls (liquid-class new)
@@ -696,7 +705,9 @@
 
 (def ^:private column-drag {:soul-sand :false :magma :true})
 
-(defn bubble-column? [st]
+(defn bubble-column?
+  "Returns true when st is a bubble column."
+  [st]
   (= :bubble-column (block/type-of (long st))))
 
 (defn- water-source? [st] (= (long st) @water-source))
@@ -705,8 +716,8 @@
   (contains? column-drag (block/type-of (long below))))
 
 (defn column-wake
-  "Returns the tick at which a bubble column over below is due, or
-  nil. Water st of a full source waits 20 ticks."
+  "Returns the tick at which a bubble column over below is due.
+  Water st of a full source waits 20 ticks. Returns nil for others."
   [st below tick]
   (when (and (water-source? st) (makes-column? below))
     (+ (long tick) 20)))
@@ -731,9 +742,9 @@
         acc))))
 
 (defn column-changes
-  "Returns the changes of the bubble column at p that the block below
-  makes. They go up from p while the column can occupy and changes.
-  Each is set with flags 2."
+  "Returns the changes that the block below makes to the column at p.
+  They go up from p while the column can occupy and changes. Each is
+  set with flags 2."
   [chunks [x y z :as p]]
   (let [occupy (long (raw-at chunks x y z))
         below (raw-at chunks x (dec (long y)) z)]
@@ -784,7 +795,9 @@
   (and (empty? (block/collision-boxes st))
        (nil? (block/liquid-class st))))
 
-(defn bubble-push ^double [chunks pos ^double vy]
+(defn bubble-push
+  "Returns the vertical speed vy of a body at pos after bubbles push."
+  ^double [chunks pos ^double vy]
   (let [x (long (Math/floor (v/x pos)))
         y (long (Math/floor (v/y pos)))
         z (long (Math/floor (v/z pos)))
@@ -815,14 +828,13 @@
                   (spread (assoc env :over {p st'}) p st')))))
 
 (defn- reach-of ^long [table]
-  (inc (long (reduce max (map :slope (vals table))))))
+  (inc (long (transduce (map :slope) max 0 (vals table)))))
 
 (def ^:private ^:table reaches
   (delay (update-vals @by-dim reach-of)))
 
 (defn reach
-  "Returns how many columns across a fluid tick in dimension
-  dim reads."
+  "Returns how many columns a fluid tick reads in dimension dim."
   ^long [dim]
   (long (or (get @reaches dim) (reach-of liquids))))
 
@@ -918,7 +930,9 @@
         (recur (inc i) (spot-fires chunks p tp acc))
         acc))))
 
-(defn lava-random-tick [chunks p roll]
+(defn lava-random-tick
+  "Returns the fires the lava at p sets on a random tick."
+  [chunks p roll]
   (let [r3 (fn [salt]
              (dec (long (Math/floor (* 3.0 (double (roll salt)))))))
         passes (long (Math/floor (* 3.0 (double (roll :passes)))))]
@@ -929,7 +943,9 @@
 (defn- delay-of ^long [dim st]
   (long (get-in (liquids-in dim) [(liquid-class st) :delay])))
 
-(defn fluid-wake [chunks dim tick p old side]
+(defn fluid-wake
+  "Returns the tick at which the liquid at p moves next."
+  [chunks dim tick p old side]
   (let [st (chunk/chunks-get-block chunks p)]
     (+ (long tick)
        (if (nil? side)

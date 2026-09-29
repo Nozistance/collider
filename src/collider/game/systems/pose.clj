@@ -123,6 +123,8 @@
           m (into {} (remove same?) (changes world e))]
       (when (seq m) [[:merge-entity eid m]]))))
 
-(defn pose [world _]
+(defn pose
+  "Returns a step that sets the pose of each player."
+  [world _]
   [#(into [] (mapcat (fn [entry] (player-deltas world entry)))
           (state/player-entries world))])

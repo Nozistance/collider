@@ -107,5 +107,7 @@
                  (sulfurs world))]
     (into ds (synced world ds))))
 
-(defn geysers [world _d]
+(defn geysers
+  "Returns a step that runs the geysers of the level."
+  [world _d]
   [#(all-deltas world)])

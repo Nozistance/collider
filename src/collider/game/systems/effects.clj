@@ -76,9 +76,8 @@
 (defn- refreshed [acc] (clamp-absorption (clamp-health acc)))
 
 (defn land
-  "Returns the account after instance i of effect k lands, and
-  :landed? true when it changed anything. This is addEffect with
-  onEffectAdded, onEffectUpdated and onEffectStarted."
+  "Returns the account after instance i of effect k lands.
+  The account has :landed? true when it changed anything."
   [acc k i]
   (let [eid (:eid acc)
         [fx what] (effect/added (:fx acc) k i)
@@ -99,16 +98,16 @@
       refreshed))
 
 (defn take-off
-  "Returns the account without effect k, and :landed? true when it
-  had it. This is removeEffect."
+  "Returns the account without effect k.
+  The account has :landed? true when it had k."
   [acc k]
   (if (contains? (:fx acc) k)
     (assoc (dropped acc k) :landed? true)
     (assoc acc :landed? false)))
 
 (defn take-all
-  "Returns the account without any effect, and :landed? true when
-  it had one. This is removeAllEffects."
+  "Returns the account without any effect.
+  The account has :landed? true when it had one."
   [acc]
   (let [ks (map key (effect/in-order (:fx acc)))]
     (assoc (reduce dropped acc ks) :landed? (boolean (seq ks)))))
@@ -196,21 +195,20 @@
             (attribute-deltas acc))))
 
 (defn step
-  "Returns the account after one tick of its effects, its entity
-  lived ticks old. This is LivingEntity.tickEffects."
+  "Returns the account after one tick of its effects.
+  Its entity is lived ticks old."
   [acc lived]
   (reduce #(ticked (long lived) %1 %2)
           acc (effect/in-order (:fx acc))))
 
 (defn- lived
-  "Returns how many ticks entity e has lived in the world at its
-  tick. This is Entity.tickCount."
+  "Returns how many ticks entity e has lived in the world."
   ^long [world e]
   (- (long (:tick world)) (long (or (:born e) 0))))
 
 (defn- synced
-  "Returns the account with the attributes entity e left to sync
-  since the last tick, and the deltas that clear them."
+  "Returns the account with the attributes entity e left to sync.
+  The deltas that clear them come with it."
   [acc e]
   (if-let [ks (:dirty-attributes e)]
     (-> acc

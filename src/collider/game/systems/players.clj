@@ -110,7 +110,7 @@
       (player-metadata e))))
 
 (defn metadata
-  "Returns the synched fields an entity would show a client."
+  "Returns the metadata that entity e shows a client."
   [e]
   (let [m (own-metadata e) fx (:effects e)]
     (cond (seq fx) (merge m (effect-metadata e fx))
@@ -130,7 +130,7 @@
        (get inv 6) (get inv 5)])))
 
 (defmacro ^:private readers
-  "Defines a prefixed reader for each field of record type t."
+  "Defines fast readers of record type t, named with prefix."
   [t prefix & fields]
   `(do ~@(for [f fields
                :let [dot (symbol (str "." f))]]
@@ -343,16 +343,15 @@
         (or (> d vel-threshold)
             (and (> d 0.0) (still? vel)))))))
 
-(def ^:private deltas-untracked
+(def ^:private no-delta-types
   #{:player :llama-spit :wither :bat :item-frame :glow-item-frame
     :leash-knot :painting :end-crystal :evoker-fangs})
 
 (defn- vel-due? [e self? due?]
-  (boolean
-    (or self?
-        (and due?
-             (or (:needs-sync? e)
-                 (not (contains? deltas-untracked (:type e))))))))
+  (or self?
+      (and due?
+           (or (:needs-sync? e)
+               (not (contains? no-delta-types (:type e)))))))
 
 (defn- near-baseline? [e ^Track tr]
   (let [[bx by bz] (tr-pos tr)
@@ -613,38 +612,37 @@
         (:world d)))
 
 (defn late-tracking
-  "Returns the deltas that show players the entities that appeared
-  during this tick."
+  "Returns the deltas that show players the entities new this tick."
   [world d]
   (when (entities-changed? d)
     (let [near (near-index (tracked-entries world))
-          job (fn [entry] (tracking-deltas world near entry))]
-      (into [] (mapcat job) (state/player-entries world)))))
+          track (fn [entry] (tracking-deltas world near entry))]
+      (into [] (mapcat track) (state/player-entries world)))))
 
-(defn- spawn-jobs [world ps ts]
+(defn- spawn-thunks [world ps ts]
   (let [near (near-index ts)]
     (mapv (fn [entry] #(tracking-deltas world near entry)) ps)))
 
 (def ^:private ^:const move-batch 32)
 
-(defn- move-jobs [world ps ts]
+(defn- move-thunks [world ps ts]
   (let [viewers (viewed ps)
         t (long (:tick world))
-        job (fn [entry] (move-deltas t viewers entry))
-        batch-job (fn [batch] #(into [] (mapcat job) batch))]
-    (mapv batch-job (partition-all move-batch ts))))
+        moved (fn [entry] (move-deltas t viewers entry))
+        batch-thunk (fn [batch] #(into [] (mapcat moved) batch))]
+    (mapv batch-thunk (partition-all move-batch ts))))
 
-(defn- inline [jobs] (into [] (mapcat #(%)) jobs))
+(defn- ran-here [thunks] (into [] (mapcat #(%)) thunks))
 
 (defn player-list
   "Returns the tick steps of the player list of the server."
   [world d]
   (let [ps (state/player-entries world)
         joins (state/joins d)]
-    (concat (joined-deltas joins)
-            (duplicate-login-deltas world joins)
-            (list-deltas world ps)
-            (tab-header-deltas world joins))))
+    (into [] cat [(joined-deltas joins)
+                  (duplicate-login-deltas world joins)
+                  (list-deltas world ps)
+                  (tab-header-deltas world joins)])))
 
 (defn players
   "Returns the tick steps of entity tracking in the level."
@@ -652,9 +650,9 @@
   (let [ps (state/player-entries world)
         ts (tracked-entries world)]
     (if (<= (count ts) move-batch)
-      (concat (resend-deltas world)
-              (inline (spawn-jobs world ps ts))
-              (inline (move-jobs world ps ts)))
+      (into [] cat [(resend-deltas world)
+                    (ran-here (spawn-thunks world ps ts))
+                    (ran-here (move-thunks world ps ts))])
       [#(resend-deltas world)
-       #(spawn-jobs world ps ts)
-       #(move-jobs world ps ts)])))
+       #(spawn-thunks world ps ts)
+       #(move-thunks world ps ts)])))
