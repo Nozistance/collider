@@ -612,9 +612,10 @@
 (defn- pickup-deltas [world items]
   (let [ready? (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0))))
         ready (filterv ready? items)]
-    (first (reduce (fn [acc entry] (player-pickups ready acc entry))
-                   [[] #{}]
-                   (takers world)))))
+    (when (seq ready)
+      (first (reduce (fn [acc entry] (player-pickups ready acc entry))
+                     [[] #{}]
+                     (takers world))))))
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item world eid e)]
@@ -627,8 +628,9 @@
   [world _d]
   (let [step #(vector (stepped-item world %))
         act (deltas/pmapcat step (active-items world))]
-    [#(mapv (fn [s] (nth s 3)) act)
-     #(merge-deltas act)]))
+    (when (pos? (count act))
+      [#(mapv (fn [s] (nth s 3)) act)
+       #(merge-deltas act)])))
 
 (defn pickups
   "Returns the deltas of players taking up nearby items."

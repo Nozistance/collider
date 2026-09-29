@@ -67,7 +67,7 @@
              (when-let [e (get es eid)]
                (when (loads-chunks? world e)
                  (chunk/pos-chunk (:pos e)))))]
-    (into [] (keep at) (sort (vals (:players world))))))
+    (into (i/int-set) (keep at) (vals (:players world)))))
 
 (defn- zone-at [ids ^long r]
   (into (i/int-set)
@@ -88,9 +88,11 @@
                     (contains? (:chunks world) %))
         in? #(into (i/int-set) (filter live?) %)
         absent (into (i/int-set)
-                     (remove #(contains? (:chunks world) %)) zone)]
-    [(in? (zone-at ps s)) (in? (zone-at ps (inc s)))
-     (zone-at ps (inc (view-radius world))) zone absent]))
+                     (remove #(contains? (:chunks world) %)) zone)
+        active (in? (zone-at ps s))
+        broadcast (zone-at ps (inc (view-radius world)))]
+    [active (in? (zone-at ps (inc s))) broadcast zone absent
+     (vec active)]))
 
 (defn- areas-key
   "Returns what the chunk areas of world are a function of.
@@ -137,6 +139,11 @@
   "Returns the chunks that run entity and random ticks."
   [world]
   (nth (areas world) 0))
+
+(defn active-chunk-ids
+  "Returns the active chunks as a vector, in the order of the set."
+  [world]
+  (nth (areas world) 5))
 
 (defn ticking-chunks
   "Returns the chunks that run scheduled block and fluid ticks.
@@ -224,26 +231,39 @@
 
 (def ^:private none (Object.))
 
-(defn- same-part? [old lv]
-  (and (some? old)
-       (reduce (fn [_ k]
-                 (if (identical? (get old k none) (get lv k none))
-                   true
-                   (reduced false)))
-               true schema/level-keys)))
+(defn- edited [t m] (or t (transient m)))
 
-(defn- shared-count ^long [lv]
+(defn- part-of [old lv]
+  (if (nil? old)
+    (level-part lv)
+    (let [put (fn [t k]
+                (let [v (get lv k none)]
+                  (cond (identical? v (get old k none)) t
+                        (identical? v none) (dissoc! (edited t old) k)
+                        :else (assoc! (edited t old) k v))))
+          t (reduce put nil schema/level-keys)]
+      (if t (persistent! t) old))))
+
+(def ^:private bound-keys [:dim :min-y :max-y :sky? :server])
+
+(defn- shared-count ^long [lv part]
   (reduce (fn [^long n k] (if (contains? lv k) (dec n) n))
-          (count lv) shared-out))
+          (- (count lv) (count part)) bound-keys))
 
-(defn- shared-same? [lv k v]
-  (or (identical? :levels k) (identical? v (get lv k none))))
+(defn- shared-into [world lv]
+  (let [put (fn [t k v]
+              (let [v' (if (identical? :levels k) v (get lv k none))]
+                (cond (identical? v v') t
+                      (identical? v' none) (reduced none)
+                      :else (assoc! (edited t world) k v'))))
+        t (reduce-kv put nil world)]
+    (cond (nil? t) world
+          (identical? none t) nil
+          :else (persistent! t))))
 
-(defn- same-shared? [world lv]
-  (and (= (dec (count world)) (shared-count lv))
-       (reduce-kv (fn [_ k v]
-                    (if (shared-same? lv k v) true (reduced false)))
-                  true world)))
+(defn- split-off [lv levels dim part]
+  (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
+         :levels (assoc levels dim part)))
 
 (defn with-level
   "Returns world with level dim replaced by lv.
@@ -252,20 +272,19 @@
   [world dim lv]
   (let [levels (:levels world)
         old (get levels dim)
-        part (if (same-part? old lv) old (level-part lv))]
-    (if (same-shared? world lv)
-      (if (identical? part old)
-        world
-        (assoc world :levels (assoc levels dim part)))
-      (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
-             :levels (assoc levels dim part)))))
+        part (part-of old lv)
+        w (when (= (dec (count world)) (shared-count lv part))
+            (shared-into world lv))]
+    (cond (nil? w) (split-off lv levels dim part)
+          (identical? part old) w
+          :else (assoc w :levels (assoc levels dim part)))))
 
 (defn idle?
   "Returns true when level lv holds nothing a tick could change.
   Such a level has no chunks, no entities and no chunk on its way."
   [lv]
-  (and (zero? (count (:chunks lv))) (zero? (count (:entities lv)))
-       (empty? (:loading lv)) (empty? (:unknown lv))))
+  (and (zero? (count (:chunks lv))) (deltas/vacant? (:entities lv))
+       (empty? (:loading lv)) (deltas/vacant? (:unknown lv))))
 
 (defn dim-of
   "Returns the dimension whose level holds entity eid, or nil."
@@ -1140,6 +1159,10 @@
       (update w :openers dissoc pos)
       (assoc-in w [:openers pos] n))))
 
+(defn- weather-advanced [w]
+  (reduce-kv (fn [w k v] (if (= v (get w k)) w (assoc w k v)))
+             w (weather/advance w)))
+
 (def world-apply
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
    :listed (fn [w [_ add drop]] (listed w add drop))
@@ -1173,7 +1196,7 @@
                   (merge w (select-keys m weather/fields)))
    :set-block-entity (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick (fn [w _] (dissoc (advance w) :quits))
-   :advance-weather (fn [w _] (merge w (weather/advance w)))
+   :advance-weather (fn [w _] (weather-advanced w))
    :observed (fn [w [_ m]] (assoc w :observed m))
    :explode (fn [w _] w)
    :change-dimension (fn [w _] w)
@@ -1280,15 +1303,23 @@
 (def ^:private input-keys
   [:quits :moves :use-origins :heeded :resends])
 
+(defn entered
+  "Returns world with the input deltas of level dim folded in, and
+  that level, or nil when it stays as it was. What the last input of
+  the level left behind is dropped first."
+  [world dim deltas]
+  (if (and (deltas/inert? deltas)
+           (not-any? (get-in world [:levels dim] {}) input-keys))
+    [world nil]
+    (let [lv (reduce dissoc (level world dim) input-keys)
+          lv' (apply-level lv deltas)]
+      [(with-level world dim lv') lv'])))
+
 (defn enter
   "Returns world with the input deltas of level dim folded in.
   What the last input of the level left behind is dropped first."
   [world dim deltas]
-  (if (and (deltas/inert? deltas)
-           (not-any? (get-in world [:levels dim] {}) input-keys))
-    world
-    (let [lv (reduce dissoc (level world dim) input-keys)]
-      (with-level world dim (apply-level lv deltas)))))
+  (nth (entered world dim deltas) 0))
 
 (defn apply-deltas
   "Returns the world after deltas and the deltas as applied."

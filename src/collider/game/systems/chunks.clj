@@ -153,13 +153,23 @@
                  (:batches-max p))
        (every? #(sees? cp r %) (:sent-chunks p))))
 
+(defn- streams? [p cp r]
+  (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
+      (:chunks-pending? p)))
+
 (defn- stream-deltas [world [eid p]]
   (let [cp (chunk/pos-chunk (:pos p))
         r (player-radius world p)]
-    (when (and (or (not= cp (:chunk-pos p)) (not= r (:chunk-view p))
-                   (:chunks-pending? p))
+    (when (and (streams? p cp r)
                (not (stalled? world eid cp r p)))
       (restream-deltas world eid cp r p))))
+
+(defn- stream-job [world [_ p :as entry]]
+  (when (streams? p (chunk/pos-chunk (:pos p))
+                  (player-radius world p))
+    #(stream-deltas world entry)))
+
+(defn- loaded-event? [ev] (= :chunk-loaded (nth ev 0)))
 
 (defn- loads? [world]
   (or (seq (state/absent-chunks world))
@@ -175,9 +185,9 @@
   "Sends chunks to the players and takes in the saved ones that came
   back. A body returning with its chunk waits for the next tick."
   [world d]
-  (conj (mapv (fn [entry] #(stream-deltas world entry))
-              (state/player-entries world))
-        #(restore-deltas world d)))
+  (cond-> (into [] (keep #(stream-job world %))
+                (state/player-entries world))
+    (some loaded-event? (:input d)) (conj #(restore-deltas world d))))
 
 (defn- arrived [world d]
   (keep #(when-let [e (get-in world [:entities (nth % 1)])]

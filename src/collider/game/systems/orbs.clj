@@ -110,8 +110,10 @@
   "Returns the deltas of every experience orb in an active chunk
   after one tick, the orbs stepping one by one in id order."
   [world _d]
-  [#(tick-all world (followers world) (active-orbs world)
-              (partial roll-of world))])
+  [#(let [start (active-orbs world)]
+      (when (seq start)
+        (tick-all world (followers world) start
+                  (partial roll-of world))))])
 
 (defn- touches? [p o]
   (let [[half h] (entity/pose-box (:pose p :standing))

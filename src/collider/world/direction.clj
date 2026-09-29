@@ -70,6 +70,6 @@
                     (Math/sin y) (Math/cos y))]
     [a b c (opposite c) (opposite b) (opposite a)]))
 
-(defn up [p] (mapv + p [0 1 0]))
+(defn up [p] [(nth p 0) (inc (nth p 1)) (nth p 2)])
 
-(defn down [p] (mapv + p [0 -1 0]))
+(defn down [p] [(nth p 0) (dec (nth p 1)) (nth p 2)])

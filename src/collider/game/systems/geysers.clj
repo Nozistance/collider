@@ -92,12 +92,14 @@
           :when (= :potent-sulfur (:kind e))]
       [pos e])))
 
+(defn- synced? [[_ e]]
+  (and (= :player (:type e)) (:needs-sync? e)))
+
 (defn- synced [world deltas]
   (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
                      deltas)]
-    (for [[eid e] (sort-by key (:entities world))
-          :when (and (= :player (:type e)) (:needs-sync? e)
-                     (not (lifted eid)))]
+    (for [[eid _] (sort-by key (filter synced? (:entities world)))
+          :when (not (lifted eid))]
       [:merge-entity eid {:needs-sync? false}])))
 
 (defn- all-deltas [world]

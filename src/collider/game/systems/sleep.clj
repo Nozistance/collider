@@ -129,14 +129,14 @@
       (edit/flagged-deltas world [[head (vacated st)]] 3 nil base))))
 
 (defn- sleep-deltas [world]
-  (let [sleep? (:sleep? (bed-rule world))
-        all (in-bed world)
-        asleep (sleepers world)
-        up? (fn [[_ e]] (or (:leave-bed? e) (not sleep?)))
-        waking (filter up? all)]
-    (cond
-      (night-passes? world all asleep) (skip-night-deltas world all)
-      (seq waking) (waking-deltas world asleep waking))))
+  (when-let [all (seq (in-bed world))]
+    (let [sleep? (:sleep? (bed-rule world))
+          asleep (counted all)
+          up? (fn [[_ e]] (or (:leave-bed? e) (not sleep?)))
+          waking (filter up? all)]
+      (cond
+        (night-passes? world all asleep) (skip-night-deltas world all)
+        (seq waking) (waking-deltas world asleep waking)))))
 
 (defn- quit-deltas [world]
   (mapcat #(vacated-deltas world %) (:quits world)))

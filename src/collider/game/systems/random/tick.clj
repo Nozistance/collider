@@ -151,7 +151,7 @@
 
 (defn- ticked [world speed]
   (let [chunks (:chunks world) time (clock/day-ticks world)
-        h (max-snow world) cids (vec (state/active-chunks world))
+        h (max-snow world) cids (state/active-chunk-ids world)
         result #(chunk-results world chunks speed time %)
         results (per-chunk cids result)
         fallen (per-chunk cids #(chunk-fallen world chunks speed h %))

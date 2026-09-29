@@ -111,6 +111,10 @@
   each level. They see the players of every level."
   #{#'players/player-list #'daynight/daynight})
 
+(defn- server-phase? [phase]
+  (reduce (fn [_ s] (if (server-systems s) (reduced true) false))
+          false phase))
+
 (def dims
   "The dimensions the tick runs, in a fixed order."
   schema/dims)
@@ -128,21 +132,26 @@
     (deltas/input events)
     (assoc deltas/empty-deltas :input (vec events))))
 
+(defn- entered [ds [w views] dim]
+  (let [[w' lv] (state/entered w dim (ds dim))]
+    [w' (if lv {dim lv} views)]))
+
 (defn- begin [world events]
   (let [by (group-by #(event-dim world %) events)
         ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
                  dims)
-        w (reduce (fn [w dim] (state/enter w dim (ds dim)))
-                  world dims)
+        [w views] (reduce #(entered ds %1 %2) [world nil] dims)
         heeded (fn [[dim d]] [dim (state/heeded w dim d)])]
-    [w (into {} (map heeded) ds)]))
+    [w (into {} (map heeded) ds) views]))
 
 (defn- awaited? [world dim]
-  (some #(= dim (:dim (val %))) (:spawning world)))
+  (let [spawning (:spawning world)]
+    (and (not (deltas/vacant? spawning))
+         (some #(= dim (:dim (val %))) spawning))))
 
 (defn- asleep? [world dim]
-  (and (not= home dim)
-       (state/idle? (get-in world [:levels dim]))
+  (and (not (identical? home dim))
+       (state/idle? (get (:levels world) dim))
        (not (awaited? world dim))))
 
 (defn- skipped! [world s dim ^Throwable t]
@@ -177,7 +186,7 @@
     (let [lv (assoc (view world views dim) :server world)
           d (get ds dim)
           jobs (into [] (keep #(job world lv d server dim %)) phase)]
-      (deltas/with-dim (deltas/run jobs) dim))))
+      (deltas/with-dim (deltas/run-each jobs) dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
@@ -219,7 +228,7 @@
          of (fn [dim]
               [dim (level-deltas world views ds server phase dim)])
          pd (into {} (map of) dims)]
-     (if (some server-systems phase) (relocated world pd) pd))))
+     (if (server-phase? phase) (relocated world pd) pd))))
 
 (def ^:private left-behind #{:chunks-sent :tracking})
 
@@ -293,7 +302,7 @@
   ([world events] (tick world events phases))
   ([world events phases]
    (deltas/in-pool
-     #(let [acc (conj (begin world events) nil)
+     #(let [acc (begin world events)
             [world' ds] (reduce run-phase acc phases)]
         [world' (merged ds)]))))
 
@@ -389,7 +398,7 @@
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (deltas/out-of deltas))
-            (pos? (count (deltas/entities-of deltas))))
+            (not (deltas/vacant? (deltas/entities-of deltas))))
     (try (deliver! world deltas)
          (catch Throwable t (log/error-with "deliver error:" t)))))
 

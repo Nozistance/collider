@@ -67,13 +67,20 @@
         (zero? (count a)) b
         :else (into a b)))
 
+(defn vacant?
+  "Returns true when map m holds no entry.
+  It reads one entry at most, where count and seq walk a whole
+  int-map."
+  [m]
+  (reduce-kv (fn [_ _ _] (reduced false)) true m))
+
 (defn- joined-by-eid [a b]
-  (cond (zero? (count b)) a
-        (zero? (count a)) b
+  (cond (vacant? b) a
+        (vacant? a) b
         :else (i/merge-with into a b)))
 
 (defn- blank? [^Deltas d]
-  (and (zero? (count (world-of d))) (zero? (count (entities-of d)))
+  (and (zero? (count (world-of d))) (vacant? (entities-of d))
        (zero? (count (out-of d))) (zero? (count (input-of d)))))
 
 (defn- joined-deltas ^Deltas [^Deltas a ^Deltas b]
@@ -94,7 +101,7 @@
 (defn inert?
   "Returns true when d changes nothing in the world it applies to."
   [^Deltas d]
-  (and (empty? (world-of d)) (zero? (count (entities-of d)))
+  (and (empty? (world-of d)) (vacant? (entities-of d))
        (empty? (input-of d))))
 
 (defn- marked [dim m]
@@ -122,16 +129,27 @@
 (defn fold [reducef v]
   (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
 
+(declare run)
+
+(defn- ran ^Deltas [^Deltas acc f]
+  (let [r (f)]
+    (cond (instance? Deltas r) (merge acc r)
+          (fn? (first r)) (merge acc (run (vec r)))
+          :else (add acc r))))
+
 (defn run
   "Returns the deltas of the jobs run in parallel.
   The order is the same every time."
   ^Deltas [fs]
-  (fold (fn [^Deltas acc f]
-          (let [r (f)]
-            (cond (instance? Deltas r) (merge acc r)
-                  (fn? (first r)) (merge acc (run (vec r)))
-                  :else (add acc r))))
-        fs))
+  (if (< (count fs) 2)
+    (reduce ran empty-deltas fs)
+    (fold ran fs)))
+
+(defn run-each
+  "Returns the deltas of the jobs run one after another.
+  The jobs a job hands back run in parallel."
+  ^Deltas [fs]
+  (reduce ran empty-deltas fs))
 
 (defn of ^Deltas [systems world deltas]
   (run (mapv (fn [s] (fn [] (s world deltas))) systems)))

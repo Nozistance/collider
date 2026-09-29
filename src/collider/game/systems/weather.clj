@@ -44,7 +44,7 @@
   the messages of the change."
   [world d]
   (when (weather/can-have-weather? (:dim world))
-    (let [w (merge world (weather/advance world))]
+    (let [w (weather/advance world)]
       (concat [[:advance-weather]] (level-messages w)
               (switch-messages w)
               (join-messages w (state/joins d))))))

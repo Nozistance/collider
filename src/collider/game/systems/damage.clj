@@ -343,7 +343,31 @@
 (defn- cell-state ^long [chunks [x y z]]
   (chunk/block-state chunks x y z))
 
-(defn- contact [world e]
+(defn- lo-cell ^long [^double a]
+  (long (Math/floor (+ a inside-margin))))
+
+(defn- hi-cell ^long [^double a]
+  (long (Math/floor (- a inside-margin))))
+
+(defn- all-air? [chunks e]
+  (let [p (:pos e)
+        [half height] (box-of e)
+        h (double half) x (v/x p) y (v/y p) z (v/z p)
+        x1 (hi-cell (+ x h)) y0 (lo-cell y)
+        y1 (hi-cell (+ y (double height)))
+        z0 (lo-cell (- z h)) z1 (hi-cell (+ z h))]
+    (loop [cx (lo-cell (- x h)) cy y0 cz z0]
+      (cond (> cx x1) true
+            (> cy y1) (recur (inc cx) y0 z0)
+            (> cz z1) (recur cx (inc cy) z0)
+            (zero? (chunk/block-state chunks cx cy cz))
+            (recur cx cy (inc cz))
+            :else false))))
+
+(def ^:private calm
+  {:fire? false :lava? false :water? false :snow []})
+
+(defn- touched [world e]
   (let [chunks (:chunks world)
         cs (inside-cells e)
         of (fn [pred] (boolean (some pred cs)))]
@@ -353,6 +377,11 @@
      :snow (filterv #(= :powder-snow
                         (block/type-of (cell-state chunks %)))
                     cs)}))
+
+(defn- contact [world e]
+  (if (all-air? (:chunks world) e)
+    calm
+    (touched world e)))
 
 (defn- rained-on? [world e]
   (let [p (:pos e)
@@ -778,4 +807,6 @@
   this tick."
   [world d]
   (let [events (:input d)]
-    (conj (living-fns world) #(event-deltas world events))))
+    (cond-> (living-fns world)
+      (some #(= :attack (nth % 0)) events)
+      (conj #(event-deltas world events)))))

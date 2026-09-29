@@ -78,10 +78,11 @@
 (defn- custom-key [k]
   (or (custom-keys k) (keyword "custom" (name k))))
 
+(defn- added [m k n]
+  (assoc m k (+ (or (get m k) 0) (long n))))
+
 (defn- add-counts [stats pairs]
-  (reduce (fn [m [k n]]
-            (update m (custom-key k) (fnil + 0) (long n)))
-          stats pairs))
+  (reduce (fn [m [k n]] (added m (custom-key k) n)) stats pairs))
 
 (defn- player-stats [world moves eid e]
   (let [was (get-in world [:observed eid :sleeping])
@@ -91,11 +92,10 @@
           moved)))
 
 (defn- add-awards [stats awards]
-  (reduce (fn [m [k n]] (update m k (fnil + 0) (long n)))
-          stats awards))
+  (reduce (fn [m [k n]] (added m k n)) stats awards))
 
 (defn- players [world]
-  (filter #(= :player (:type (val %))) (:entities world)))
+  (into [] (filter #(= :player (:type (val %)))) (:entities world)))
 
 (defn- player-delta [world moves [eid e]]
   (let [counted (player-stats world moves eid e)
@@ -105,17 +105,26 @@
     [:merge-entity eid
      (cond-> {:stats stats} (:awards e) (assoc :awards nil))]))
 
-(defn- observed [world]
-  (into {} (map (fn [[eid e]] [eid (select-keys e [:sleeping])]))
-        (players world)))
+(def ^:private none (Object.))
+
+(defn- seen-of [e] (select-keys e [:sleeping]))
+
+(defn- observed [ps]
+  (into {} (map (fn [[eid e]] [eid (seen-of e)])) ps))
+
+(defn- still? [world ps]
+  (let [was (:observed world)]
+    (and (some? was) (= (count was) (count ps))
+         (every? (fn [[eid e]] (= (get was eid none) (seen-of e)))
+                 ps))))
 
 (defn- award [world _]
   (let [moves (group-by :eid (:moves world))
-        seen (observed world)
-        ds (mapv #(player-delta world moves %) (players world))]
-    (if (= seen (:observed world))
+        ps (players world)
+        ds (mapv #(player-delta world moves %) ps)]
+    (if (still? world ps)
       ds
-      (conj ds [:observed seen]))))
+      (conj ds [:observed (observed ps)]))))
 
 (defn- answer [world d]
   (for [[tag eid] (:input d) :when (= :stats-request tag)
