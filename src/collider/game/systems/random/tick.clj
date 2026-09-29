@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.clock :as clock]
+            [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
@@ -36,7 +37,7 @@
 
 (defn- block-result [world chunks p st roll]
   (let [drip (dripstone/drip chunks p st roll (:dim world))
-        time (:time-of-day world 0)
+        time (clock/day-ticks world)
         grown (grow/random-tick chunks p st roll time world)]
     {:drip    drip
      :drops   (grow/random-drops st roll)

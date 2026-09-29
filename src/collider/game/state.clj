@@ -7,6 +7,7 @@
             [collider.vec :as v]
             [clojure.data.int-map :as i]
             [clojure.set :as set]
+            [collider.game.clock :as clock]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.orb :as orb]
@@ -133,8 +134,8 @@
   "Returns the world one tick older."
   [world]
   (cond-> (update world :tick inc)
-          (get-in world [:rules :advance-time] true)
-          (update :time-of-day (fnil inc 0))))
+          (clock/advancing? world)
+          (update :clocks clock/advanced)))
 
 (defn active-at?
   "Returns true when the chunk of block pos is in active."
@@ -255,7 +256,7 @@
           {:rules (:rules w)
            :dim (:dim w)
            :tick (long base)
-           :time-of-day (:time-of-day w 0)
+           :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 
 (defn- add-block-events [ev events]
@@ -1091,7 +1092,7 @@
    :openers (fn [w [_ pos step]] (openers-counted w pos step))
    :shulker-anim (fn [w [_ pos a]] (shulker-animated w pos a))
    :block-events-flushed (fn [w _] (assoc w :block-events nil))
-   :set-time (fn [w [_ t]] (assoc w :time-of-day (long t)))
+   :set-clock (fn [w [_ k m]] (update-in w [:clocks k] merge m))
    :set-rule (fn [w [_ rule value]] (assoc-in w [:rules rule] value))
    :set-config (fn [w [_ m]] (assoc w :config m))
    :set-world-spawn world-spawn-set

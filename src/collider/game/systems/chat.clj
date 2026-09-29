@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.camera :as camera]
+            [collider.game.clock :as clock]
             [collider.game.effect :as effect]
             [collider.game.experience :as xp]
             [collider.game.command.item-args :as item-args]
@@ -230,11 +231,18 @@
   (tell eid (str id ": give " (rule-hint rule)
                  ", not \"" text "\"")))
 
+(defn- clocks-resent [world rule]
+  (when (= :advance-time rule)
+    [(out/all (out/time (long (:tick world))
+                        (clock/full-sync world)))]))
+
 (defn- rule-set [world eid id rule v]
-  (concat [[:set-rule rule v]
-           (out/all (out/game-rules (assoc (:rules world) rule v)))]
-          (say eid "commands.gamerule.set" id
-               (rules/serialize rule v))))
+  (let [w (assoc-in world [:rules rule] v)]
+    (concat [[:set-rule rule v]
+             (out/all (out/game-rules (:rules w)))]
+            (clocks-resent w rule)
+            (say eid "commands.gamerule.set" id
+                 (rules/serialize rule v)))))
 
 (defn- rule-query [world eid id rule]
   (let [v (rules/serialize rule (get-in world [:rules rule]))
@@ -743,27 +751,80 @@
     (cons [:set-weather m]
           (success [(out/to eid (out/system-chat msg))]))))
 
-(defn- time-query [world what]
-  (case what
-    "daytime" (format "the time is **%d**"
-                      (long (:time-of-day world 0)))
-    "gametime" (format "the game time is **%d**"
-                       (long (:tick world 0)))))
+(defn- clock-sent [world k c]
+  (let [on (clock/advancing? world)]
+    [[:set-clock k c]
+     (out/all (out/time (long (:tick world))
+                        {k (clock/network-state c on)}))]))
 
-(defn- time-set-deltas [eid ^long t]
-  (cons [:set-time t]
-        (success (tell eid (format "set the time to **%d**" t)))))
+(defn- marker-key [id]
+  (str "ResourceKey[minecraft:clock_time_marker / " id "]"))
 
-(defn- time-add-deltas [world eid amount]
-  (let [t (+ (long (:time-of-day world 0)) (long amount))
-        line (format "added **%d** to the time" amount)]
-    (cons [:set-time t] (success (tell eid line)))))
+(defn- to-marker [world eid k id]
+  (let [c0 (clock/state world k)
+        c (clock/moved-to c0 k id)]
+    (concat (clock-sent world k (or c c0))
+            (if c
+              (say eid "commands.time.set.time_marker"
+                   (data/wire k) id)
+              (fail eid "commands.time.no_time_marker_found"
+                    (marker-key id) (data/wire k))))))
 
-(defn- time-deltas [world eid op args]
-  (case op
-    :time-set (time-set-deltas eid (long (first args)))
-    :time-add (time-add-deltas world eid (first args))
-    :time-query (answer (tell eid (time-query world (first args))))))
+(defn- paused [p] (fn [c _] (assoc c :paused p)))
+
+(def ^:private clock-edits
+  {:time-set [clock/set-ticks "commands.time.set.absolute"
+              (fn [_ v] [v])]
+   :time-add [clock/added "commands.time.set.absolute"
+              (fn [c _] [(bigint (:total-ticks c))])]
+   :time-pause [(paused true) "commands.time.pause" (fn [_ _] [])]
+   :time-resume [(paused false) "commands.time.resume"
+                 (fn [_ _] [])]
+   :time-rate [(fn [c v] (assoc c :rate (double v)))
+               "commands.time.rate" (fn [_ v] [v])]})
+
+(defn- clock-changed [world eid k v [f key with]]
+  (let [c (f (clock/state world k) v)]
+    (concat (clock-sent world k c)
+            (say* eid key (into [(data/wire k)] (with c v))))))
+
+(defn- in-timeline [world eid k id f key]
+  (let [t (clock/timeline-of (data/wire id))
+        n (clock/ticks world k)]
+    (if (= k (:clock t))
+      (answer (say eid key (data/wire id) (bigint (f t n))))
+      (fail eid "commands.time.wrong_timeline_for_clock"
+            (data/wire id) (data/wire k)))))
+
+(def ^:private timeline-reads
+  {:time-timeline [clock/timeline-ticks
+                   "commands.time.query.timeline"]
+   :time-repetition [clock/repetitions
+                     "commands.time.query.timeline.repetitions"]})
+
+(defn- clock-query [world eid k]
+  (answer (say eid "commands.time.query.absolute" (data/wire k)
+               (bigint (clock/ticks world k)))))
+
+(defn- clock-deltas [world eid op k v]
+  (if-let [e (clock-edits op)]
+    (clock-changed world eid k v e)
+    (case op
+      :time-marker (to-marker world eid k v)
+      :time-query (clock-query world eid k)
+      (let [[f key] (timeline-reads op)]
+        (in-timeline world eid k v f key)))))
+
+(defn- time-deltas [world eid op [k v]]
+  (let [dim (source-dim world)
+        k (or k (clock/default-of dim))]
+    (cond
+      (= :time-gametime op)
+      (answer (say eid "commands.time.query.gametime"
+                   (bigint (:tick world))))
+      (nil? k) (fail eid "commands.time.no_default_clock"
+                     (data/wire dim))
+      :else (clock-deltas world eid op k v))))
 
 (defn- weather-command-deltas [world eid op args]
   (let [given (first args)]
@@ -992,7 +1053,9 @@
       :gamerule (rule-deltas world eid (first args) (second args))
       (:weather-clear :weather-rain :weather-thunder)
       (weather-command-deltas world eid op args)
-      (:time-set :time-add :time-query)
+      (:time-set :time-add :time-marker :time-pause :time-resume
+       :time-rate :time-query :time-timeline :time-repetition
+       :time-gametime)
       (time-deltas world eid op args)
       (tell eid (str "unknown world command: " op)))))
 
@@ -1086,10 +1149,9 @@
       :else (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text target id]
-  (let [start (inc (^[String] String/.lastIndexOf text " "))
-        len (- (count text) start)
-        sug (cmd/suggest world text target)]
-    [(out/to eid (out/suggestions (or id 0) start len sug))]))
+  (let [{:keys [start texts]} (cmd/suggestions world text target)
+        len (- (count text) (long start))]
+    [(out/to eid (out/suggestions (or id 0) start len texts))]))
 
 (defn- mode-changed [world eid mode]
   (when (gamemaster? world eid)

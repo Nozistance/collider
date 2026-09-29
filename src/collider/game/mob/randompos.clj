@@ -1,6 +1,7 @@
 (ns collider.game.mob.randompos
   "Random walk goals of mobs and the tests on their cells."
-  (:require [collider.game.mob.mobs :as mobs]
+  (:require [collider.game.clock :as clock]
+            [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -88,7 +89,7 @@
 
 (defn- light-cost
   ^double [world chunks [x y z]]
-  (let [day (:time-of-day world 0)
+  (let [day (clock/day-ticks world)
         lit (weather/brightness world chunks x y z day)
         b (float (/ (float lit) (float 15.0)))
         denom (float (- (float 4.0) (float (* (float 3.0) b))))

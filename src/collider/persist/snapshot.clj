@@ -359,7 +359,7 @@
                  :when (seq ch)]
              [dim ch])))
 
-(def ^:private clock-keys [:tick :time-ms :time-of-day])
+(def ^:private clock-keys [:tick :time-ms :clocks])
 
 (defn- timeless [m]
   (apply dissoc m clock-keys))

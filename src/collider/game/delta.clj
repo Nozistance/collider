@@ -47,8 +47,8 @@
    [:cat Pos [:maybe :map]]
    :block-events-flushed
    [:cat]
-   :set-time
-   [:cat :int]
+   :set-clock
+   [:cat :keyword :map]
    :set-rule
    [:cat :keyword :any]
    :set-config
@@ -145,7 +145,7 @@
    :sign-editor       [[:pos Pos] [:front? :boolean]]
    :block-event       [[:pos Pos] [:action :int] [:param :int]]
    :block-entity      [[:pos Pos]]
-   :time              [[:age :int] [:time :int]]
+   :time              [[:age :int] [:clocks :map]]
    :teleport          [[:pos Vec3] [:yaw number?] [:pitch number?]
                        [:relative :int]]
    :health            [[:health number?]]

@@ -110,8 +110,8 @@
                         :load load-long :schema :int
                         :scope :shared}
    :time-ms            {:default 0 :scope :shared}
-   :time-of-day        {:default 0 :store store-same
-                        :load identity :schema :int
+   :clocks             {:default {} :store store-same
+                        :load identity :schema :map
                         :scope :shared}
    :next-eid           {:default 1000000 :store store-same
                         :load identity :schema :int

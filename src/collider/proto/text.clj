@@ -1,8 +1,11 @@
 (ns collider.proto.text
-  "Text components on the wire."
+  "Text components on the wire.
+  A whole number argument goes as an int tag, a BigInt one as the
+  long tag vanilla gives a long."
   (:require [clojure.string :as str]
             [collider.proto.buf :as buf])
-  (:import (collider.proto Buf)
+  (:import (clojure.lang BigInt)
+           (collider.proto Buf)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -49,6 +52,7 @@
         (instance? Float v) 5
         (instance? Double v) 6
         (instance? UUID v) 11
+        (instance? BigInt v) 4
         :else 3))
 
 (defn- list-tag ^long [xs]
@@ -114,6 +118,7 @@
     5 (buf/write-float! b (double v))
     6 (buf/write-double! b (double v))
     11 (write-uuid b v)
+    4 (buf/write-long! b (long v))
     3 (buf/write-int! b (long v))))
 
 (defn write-component

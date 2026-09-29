@@ -24,8 +24,12 @@
 (defn blocks-changed [cp records]
   {:msg :blocks-changed :cp cp :records records})
 
-(defn time [age time-of-day]
-  {:msg :time :age age :time time-of-day})
+(defn time
+  "Returns the effect that sets the game time age and the clocks,
+  their network state by clock. No clocks leaves the clocks of the
+  client running."
+  [age clocks]
+  {:msg :time :age age :clocks clocks})
 
 (defn explosion [center radius blocks motions pitch]
   {:msg     :explosion :center center :radius radius :blocks blocks

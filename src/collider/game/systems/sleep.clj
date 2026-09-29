@@ -1,6 +1,7 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.clock :as clock]
+            [collider.game.game-mode :as game-mode]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -16,7 +17,7 @@
 
 (def ^:private deep-sleep 100)
 
-(def ^:private day-length 24000)
+(def ^:private wake-marker "minecraft:wake_up_from_sleep")
 
 (defn- block-at [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
@@ -90,15 +91,21 @@
                     deep-sleep))]
     (count (filter deep? asleep))))
 
+(defn- morning-deltas [world]
+  (when-let [k (and (clock/advancing? world)
+                    (clock/default-of (:dim world)))]
+    (let [c0 (clock/state world k)
+          c (or (clock/moved-to c0 k wake-marker) c0)
+          sent {k (clock/network-state c true)}]
+      [[:set-clock k c]
+       (out/all (out/time (long (:tick world)) sent))])))
+
 (defn- skip-night-deltas [world asleep]
-  (let [day (quot (long (:time-of-day world 0)) day-length)
-        t (* day-length (inc day))]
-    (concat [[:set-time t]
-             (out/all (out/time (long (:tick world)) t))]
-            (when (and (get-in world [:rules :advance-weather] true)
-                       (weather/raining? world))
-              [[:set-weather weather/reset-cycle]])
-            (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep))))
+  (concat (morning-deltas world)
+          (when (and (get-in world [:rules :advance-weather] true)
+                     (weather/raining? world))
+            [[:set-weather weather/reset-cycle]])
+          (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep)))
 
 (defn- waking-deltas [world asleep waking]
   (let [left (count (counted waking))]

@@ -13,10 +13,11 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- node-flags ^long [type executable? redirect]
+(defn- node-flags ^long [type executable? redirect suggests]
   (bit-or (case type :root 0 :literal 1 :argument 2)
           (if executable? 4 0)
-          (if redirect 8 0)))
+          (if redirect 8 0)
+          (if suggests 16 0)))
 
 (defn- write-int-range! [^Buf buf props]
   (let [lo (long (:min props Integer/MIN_VALUE))
@@ -26,6 +27,15 @@
     (buf/write-byte! buf (bit-or (if lo? 1 0) (if hi? 2 0)))
     (when lo? (buf/write-int! buf (int lo)))
     (when hi? (buf/write-int! buf (int hi)))))
+
+(defn- write-float-range! [^Buf buf props]
+  (let [lo (double (:min props (- Float/MAX_VALUE)))
+        hi (double (:max props Float/MAX_VALUE))
+        lo? (not= lo (double (- Float/MAX_VALUE)))
+        hi? (not= hi (double Float/MAX_VALUE))]
+    (buf/write-byte! buf (bit-or (if lo? 1 0) (if hi? 2 0)))
+    (when lo? (buf/write-float! buf lo))
+    (when hi? (buf/write-float! buf hi))))
 
 (defn- write-double-range! [^Buf buf props]
   (buf/write-byte! buf 3)
@@ -40,6 +50,7 @@
     (c/write-varint buf id))
   (case (name parser)
     "brigadier:integer" (write-int-range! buf props)
+    "brigadier:float" (write-float-range! buf props)
     "brigadier:double" (write-double-range! buf props)
     "brigadier:string" (c/write-varint buf (long (:kind props 0)))
     "time" (buf/write-int! buf (int (:min props 0)))
@@ -49,13 +60,15 @@
 
 (defn- write-node! [^Buf buf node]
   (let [{:keys [type name parser props executable? children
-                redirect]} node]
-    (buf/write-byte! buf (int (node-flags type executable? redirect)))
+                redirect suggests]} node]
+    (buf/write-byte!
+      buf (int (node-flags type executable? redirect suggests)))
     (c/write-varint buf (count children))
     (doseq [c children] (c/write-varint buf (long c)))
     (when redirect (c/write-varint buf (long redirect)))
     (when (not= :root type) (c/write-string buf name))
-    (when (= :argument type) (write-parser! buf parser props))))
+    (when (= :argument type) (write-parser! buf parser props))
+    (when suggests (c/write-string buf suggests))))
 
 (def ^:private Id [:or :keyword :string])
 
@@ -91,6 +104,7 @@
    [:props {:optional true} [:maybe :map]]
    [:executable? {:optional true} [:maybe :boolean]]
    [:redirect {:optional true} [:maybe :int]]
+   [:suggests {:optional true} [:maybe :string]]
    [:children [:sequential :int]]])
 
 (def ^:private Player
@@ -346,20 +360,11 @@
     :write :wire}
    [:play :set-time]
    {:schema [:map [:age wire/long]
-             [:clocks {:optional true} [:= {:wire wire/varint} 1]]
-             [:clock {:optional true}
-              [:= {:wire [wire/reg "world_clock"]} :overworld]]
-             [:time wire/varlong]
-             [:rate {:optional true} [:= {:wire wire/float} 0.0]]
-             [:scale {:optional true} [:= {:wire wire/float} 1.0]]]
-    :write (fn [^Buf buf m]
-             (buf/write-long! buf (long (:age m)))
-             (c/write-varint buf 1)
-             (c/write-varint
-               buf (data/datapack-id "world_clock" :overworld))
-             (c/write-varlong buf (long (:time m)))
-             (buf/write-float! buf (float 0.0))
-             (buf/write-float! buf (float 1.0)))}
+             [:clocks [:map-of [wire/reg "world_clock"]
+                       [:map [:total-ticks wire/varlong]
+                        [:partial-tick wire/float]
+                        [:rate wire/float]]]]]
+    :write :wire}
    [:play :player-position]
    {:schema [:map [:teleport-id wire/varint] [:pos wire/vec3]
              [:vel wire/vec3] [:yaw wire/float] [:pitch wire/float]

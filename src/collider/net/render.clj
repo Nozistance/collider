@@ -7,6 +7,7 @@
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.attribute :as attribute]
+            [collider.game.clock :as clock]
             [collider.game.effect :as effect]
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
@@ -76,10 +77,10 @@
      :egg           (data/registry-id "entity_type" :egg)
      :ender-pearl   (data/registry-id "entity_type" :ender-pearl)
      :splash-potion (data/registry-id "entity_type" :splash-potion)
-     :experience-bottle
-     (data/registry-id "entity_type" :experience-bottle)
      :lingering-potion
      (data/registry-id "entity_type" :lingering-potion)
+     :experience-bottle
+     (data/registry-id "entity_type" :experience-bottle)
      :area-effect-cloud
      (data/registry-id "entity_type" :area-effect-cloud)}))
 
@@ -301,8 +302,8 @@
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
    :splash-potion/throw           [:entity.splash-potion.throw 7]
-   :experience-bottle/throw       [:entity.experience-bottle.throw 6]
    :lingering-potion/throw        [:entity.lingering-potion.throw 6]
+   :experience-bottle/throw       [:entity.experience-bottle.throw 6]
    :player/levelup                [:entity.player.levelup 7]
    :player/teleport               [:entity.player.teleport 7]
    :hoe/till                      [:item.hoe.till 4]
@@ -573,7 +574,10 @@
    {:packet :ticking-step :steps 0}])
 
 (defn- set-time-packet [m]
-  {:packet :set-time :age (:age m) :time (:time m)})
+  {:packet :set-time :age (:age m) :clocks (:clocks m)})
+
+(defn- clock-sync-packet [lv]
+  (set-time-packet {:age (:tick lv) :clocks (clock/full-sync lv)}))
 
 (defn- rain-packets [lv]
   (let [rain (double (:rain-level lv 0.0))
@@ -584,10 +588,7 @@
        (game-event-packet :thunder-level-change thunder)])))
 
 (defn- level-info-packets [lv]
-  (concat [border-packet
-           (set-time-packet
-             {:age (:tick lv) :time (:time-of-day lv 0)})
-           (spawn-pos-packet lv)]
+  (concat [border-packet (clock-sync-packet lv) (spawn-pos-packet lv)]
           (rain-packets lv)
           [(game-event-packet :level-chunks-load-start 0.0)]
           ticking-packets))
@@ -640,6 +641,7 @@
 (defn- respawn-packets [lv m]
   (let [e (get-in lv [:entities (:to m)])]
     [(assoc (spawn-info lv e) :packet :respawn :keep 0)
+     (clock-sync-packet lv)
      (game-event-packet :level-chunks-load-start 0.0)]))
 
 (def ^:private session-fx
@@ -932,6 +934,7 @@
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet
+     (clock-sync-packet world)
      (spawn-pos-packet world)
      (game-event-packet :level-chunks-load-start 0.0)]
     ticking-packets))

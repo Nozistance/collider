@@ -2,6 +2,8 @@
   "Player commands, their arguments and their meaning."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.clock :as clock]
+            [collider.game.command.args :as args]
             [collider.game.command.item-args :as items]
             [collider.game.game-mode :as game-mode]
             [collider.game.command.reader :as r]
@@ -16,8 +18,6 @@
 (defn- block-name [kw] (data/snake kw))
 
 (defn- block-kw [s] (data/kebab (str s)))
-
-(def ^:private time-names {"day" 1000 "night" 13000})
 
 (def ^:private int-max 2147483647)
 
@@ -51,17 +51,45 @@
 (def ^:private spectator-opts
   {:single? true :players? true :default {:self true}})
 
+(defn- lit [nm] [(keyword nm) [:literal {:name nm}]])
+
+(def ^:private clock-ways
+  [["set" [[:time [:ticks {:min 0}]]] :time-set]
+   ["set" [[:timemarker [:marker {}]]] :time-marker]
+   ["add" [[:time [:ticks {:min int-min}]]] :time-add]
+   ["pause" [] :time-pause]
+   ["resume" [] :time-resume]
+   ["rate" [[:rate [:float {:min 1.0E-5 :max 1000.0}]]] :time-rate]
+   ["query" [(lit "time")] :time-query]
+   ["query" [[:timeline [:timeline {}]]] :time-timeline]
+   ["query" [[:timeline [:timeline {}]] (lit "repetition")]
+    :time-repetition]])
+
+(defn- own-clock [[nm [kind opts]]]
+  [nm [kind (cond-> opts (#{:marker :timeline} kind)
+              (assoc :clock-arg 0))]])
+
+(defn- of-way [[sub as op]]
+  [(into [[:clock [:clock {}]] (lit sub)] (map own-clock) as)
+   [:world op]])
+
+(defn- default-form [sub]
+  (into [(keyword sub) (str sub " the clock of this level")]
+        (comp (filter #(= sub (first %)))
+              (mapcat (fn [[_ as op]] [as [:world op nil]])))
+        clock-ways))
+
+(def ^:private time-form
+  (-> [:time "change or query the clocks"]
+      (into (map default-form)
+            ["set" "add" "pause" "resume" "rate"])
+      (conj (conj (default-form "query")
+                  [(lit "gametime")] [:world :time-gametime]))
+      (conj (into [:of "change or query a clock"]
+                  (mapcat of-way) clock-ways))))
+
 (def commands
-  [[:time "change or query the time of day"
-    [:set "set the time"
-     [[:value [:named-int {:min 0 :max int-max :names time-names}]]]
-     [:world :time-set]]
-    [:add "advance the time"
-     [[:value [:int {:min 0 :max int-max}]]]
-     [:world :time-add]]
-    [:query "read the clock"
-     [[:clock [:enum {:values #{"daytime" "gametime"}}]]]
-     [:world :time-query]]]
+  [time-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
      [:value [:text {:default nil}]]]
@@ -164,9 +192,6 @@
     :int (str "<" (name nm) " " min "-" max ">")
     (str "<" (name nm) ">")))
 
-(defn- parse-long* [^String s]
-  (try (Long/parseLong s) (catch NumberFormatException _ nil)))
-
 (defn- parse-int* [^String s]
   (try (long (Integer/parseInt s))
        (catch NumberFormatException _ nil)))
@@ -189,17 +214,6 @@
   (if-let [n (parse-int* s)]
     (in-range n opts)
     (int-failure s)))
-
-(defn- name-hint [names]
-  (str (str/join "/" (take 6 (sort (keys names))))
-       (when (> (count names) 6) "/...")))
-
-(defn- as-named-int [nm s {:keys [names] :as opts} _origin]
-  (let [k (str/lower-case (str/replace (str s) #"^minecraft:" ""))]
-    (if-let [n (or (get names k) (parse-long* s))]
-      (in-range n opts)
-      [:err (str (name nm) ": give a whole number or"
-                 \space (name-hint names) ", not \"" s "\"")])))
 
 (defn- offset-of [^String s]
   (if (= "~" s) 0.0 (parse-double* (subs s 1))))
@@ -393,13 +407,38 @@
       [:fail-at "command.expected.separator" [] (count w)]
       :else [:ok (= "true" w)])))
 
+(defn- as-read [_nm ^String s {:keys [arg]} _origin]
+  (let [res ((:parse arg) (r/reader s))
+        [v [_ end]] (when-not (r/error? res) res)]
+    (cond (r/error? res) (fail-at res)
+          (< (long end) (count s))
+          [:fail-at "command.expected.separator" [] end]
+          :else [:ok v])))
+
+(defn- as-literal [_nm s {:keys [name]} _origin]
+  (if (= name s) [:ok s] [:miss]))
+
+(def ^:private readers
+  {:ticks #(args/time-arg (:min %))
+   :float #(r/float-arg (:min %) (:max %))
+   :marker (fn [_] (args/id-arg))
+   :clock (fn [_] (args/resource-arg "world_clock"))
+   :timeline (fn [_] (args/resource-arg "timeline"))})
+
+(defn- as-kind [kind]
+  (fn [nm s opts origin]
+    (as-read nm s {:arg ((readers kind) opts)} origin)))
+
 (def ^:private coercers
-  {:int as-int :named-int as-named-int :coord as-coord
+  {:int as-int :coord as-coord
    :dcoord as-dcoord :enum as-enum :block as-block :item as-item
    :entity-type as-entity-type :targets as-targets :rule as-rule
    :text as-text :duration as-duration :angle as-angle
    :game-mode as-game-mode :mob-effect as-mob-effect
-   :effect-seconds as-effect-seconds :bool as-bool})
+   :effect-seconds as-effect-seconds :bool as-bool
+   :literal as-literal :ticks (as-kind :ticks)
+   :float (as-kind :float) :marker (as-kind :marker)
+   :clock (as-kind :clock) :timeline (as-kind :timeline)})
 
 (defn- coerce
   [[nm [kind opts]] s origin]
@@ -410,10 +449,6 @@
 (defn- int-values [{:keys [min max default]}]
   (->> [default min (quot (+ (long min) (long max)) 2) max]
        (remove nil?) (map str) distinct vec))
-
-(defn- named-int-values [{:keys [default names]}]
-  (let [dn (some (fn [[k v]] (when (= v default) k)) names)]
-    (into (if dn [dn] []) (sort (remove #{dn} (keys names))))))
 
 (defn- block-values []
   (vec (sort (map block-name (keys (data/blocks))))))
@@ -445,7 +480,6 @@
     :int (if (:quiet opts) [] (int-values opts))
     :mob-effect (effect-names)
     (:coord :dcoord) (coord-values target axis)
-    :named-int (named-int-values opts)
     :enum (vec (sort values))
     :rule (rule-names)
     :item (item-names)
@@ -470,6 +504,9 @@
    (cond-> {:failure {:translate key :with (vec with)}}
      at (assoc :cursor at))))
 
+(defn- unknown-argument [at]
+  (failure "command.unknown.argument" at))
+
 (defn- unknown-command [cx]
   (failure "command.unknown.command" (:end cx)))
 
@@ -490,6 +527,7 @@
   (let [[st v x c] (coerce a s (:origin cx))]
     (case st
       :ok [v x]
+      :miss {:fail (assoc (unknown-argument at) :miss? true)}
       :fail {:fail (failure v x (if (some? c) c at))}
       :fail-at {:fail (failure v x (when (>= (long c) 0) (+ at c)))}
       :err {:fail {:error (str v "\n" (usage path))}})))
@@ -501,23 +539,33 @@
       (zero? (long axis)) (when s at)
       :else start)))
 
-(defn- leftover [ts acc rel]
+(defn- leftover [ts acc rel i]
   (if-let [[_ at] (first ts)]
-    (failure "command.unknown.argument" at)
+    (assoc (unknown-argument at) :depth i :miss? true)
     {:args acc :relative rel}))
 
+(defn- marked [f _args i] (assoc f :depth i))
+
+(defn- missing-at [a start cx args i]
+  (when-let [m (missing a start cx)]
+    (cond-> (assoc (marked m args i) :end? true)
+      (= (unknown-command cx) m) (assoc :missing? true))))
+
+(defn- kept [acc [_ [kind]] v]
+  (if (= :literal kind) acc (conj acc v)))
+
 (defn- parse-args [args tokens path cx]
-  (loop [as args ts tokens acc [] rel #{} start nil]
-    (if-let [a (first as)]
+  (loop [i 0 ts tokens acc [] rel #{} start nil]
+    (if-let [a (nth args i nil)]
       (let [t (first ts) start (group-start a t start)
-            m (when-not (first t) (missing a start cx))
+            m (when-not (first t) (missing-at a start cx args i))
             r (when-not m (coerced a t path cx))]
         (cond m m
-          (map? r) (:fail r)
-          :else (recur (next as) (next ts) (conj acc (first r))
+          (map? r) (marked (:fail r) args i)
+          :else (recur (inc i) (next ts) (kept acc a (first r))
                        (cond-> rel (second r) (conj (axis-of a)))
                        start)))
-      (leftover ts acc rel))))
+      (leftover ts acc rel i))))
 
 (defn- ways [form]
   (partition 2 (drop 2 form)))
@@ -528,9 +576,71 @@
       {:delta (into action (:args r)) :relative (:relative r)}
       r)))
 
+(defn- node-at [[args] i]
+  (when-let [[nm [kind opts]] (nth (vec args) i nil)]
+    [nm kind (:name opts)]))
+
+(defn- span
+  "How many words the node at i reads: a position is one node."
+  ^long [[args] i]
+  (let [[_ [kind] :as a] (nth (vec args) i nil)]
+    (cond (not= 0 (axis-of a)) 1
+          (= :angle kind) 2
+          :else 3)))
+
+(defn- passed? [[w r] i]
+  (or (:delta r) (> (long (:depth r)) (+ (long i) (span w i) -1))))
+
+(defn- rank
+  "Brigadier's order of parse results: read to the end first, then
+  those without an error."
+  [r]
+  [(if (or (:delta r) (:end? r)) 0 1)
+   (if (or (:delta r) (:missing? r) (:miss? r)) 0 1)])
+
+(declare index-of)
+
+(defn- grouped [pairs i]
+  (reduce (fn [acc [w :as p]]
+            (let [n (node-at w i) j (index-of acc #(= n (first %)))]
+              (cond (nil? n) acc
+                    j (update-in acc [j 1] conj p)
+                    :else (conj acc [n [p]]))))
+          [] pairs))
+
+(defn- relevant [groups word]
+  (let [lit? (fn [[[_ k]]] (= :literal k))
+        hit (filter (fn [[[_ _ l] :as g]] (and (lit? g) (= l word)))
+                    groups)]
+    (if (seq hit) hit (remove lit? groups))))
+
+(declare chosen)
+
+(defn- failed-at [groups at]
+  (if (= 1 (count groups))
+    (second (first (second (first groups))))
+    (assoc (unknown-argument at) :miss? (empty? groups))))
+
+(defn- chosen
+  "The result brigadier keeps of the ways in pairs, [way result],
+  that agree up to token i."
+  [pairs i tokens]
+  (if (= i (count tokens))
+    (let [rs (map second pairs)]
+      (or (first (filter :delta rs)) (first rs)))
+    (let [[word at] (nth tokens i)
+          gs (relevant (grouped pairs i) word)
+          ok (filter #(passed? (first (second %)) i) gs)
+          deeper #(chosen (second %) (inc i) tokens)]
+      (if (seq ok)
+        (first (sort-by rank (map deeper ok)))
+        (failed-at gs at)))))
+
 (defn- delta-of [form tokens path cx]
-  (let [rs (map #(way-delta % tokens path cx) (ways form))]
-    (or (first (filter :delta rs)) (first rs))))
+  (let [ws (ways form)
+        rs (map #(way-delta % tokens path cx) ws)]
+    (-> (chosen (map vector ws rs) 0 (vec tokens))
+        (dissoc :depth :miss? :missing? :end?))))
 
 (defn- parse-subcommand [form nm [[sub at] & more] cx]
   (if-let [sform (find-form (drop 2 form) sub)]
@@ -591,6 +701,25 @@
         (recur (conj acc [(Matcher/.group m) (Matcher/.start m)]))
         acc))))
 
+(defn- open-at?
+  "True when parse result r read everything up to end: brigadier
+  then stops at the space after it."
+  [r end]
+  (or (contains? r :delta)
+      (= (failure "command.unknown.command" end) r)))
+
+(defn- parsed
+  "The result of s with its trailing space as brigadier reads it:
+  an alias redirects and reads the space as a separator."
+  [s origin dim]
+  (let [t (str/trimr s)
+        r (parse-words (words t) {:origin origin :end (count t)} dim)]
+    (cond
+      (= (count t) (count s)) r
+      (contains? aliases t) (unknown-command {:end (count s)})
+      (open-at? r (count t)) (unknown-argument (count t))
+      :else r)))
+
 (defn parse
   "Returns the delta the typed command means.
   It also returns the axes written relative to the source as
@@ -601,16 +730,19 @@
   origin there as :origin."
   ([text] (parse text nil))
   ([text origin] (parse text origin :overworld))
-  ([text origin dim]
-   (let [s (subs text 1)]
-     (parse-words (words s) {:origin origin :end (count s)} dim))))
+  ([text origin dim] (parsed (subs text 1) origin dim)))
 
-(defn- starting-with [prefix xs]
+(defn- prefixed [prefix xs]
   (let [p (str/lower-case prefix)]
     (vec (filter #(str/starts-with? (str/lower-case %) p) xs))))
 
+(defn- starting-with
+  "The completions xs of prefix: brigadier drops the one equal to it."
+  [prefix xs]
+  (filterv #(not= prefix %) (prefixed prefix xs)))
+
 (defn- suggest-player [world prefix]
-  (starting-with prefix (sort (keys (:players world)))))
+  (prefixed prefix (sort (keys (:players world)))))
 
 (defn- command-names []
   (into ["execute"] (concat (keys aliases) (map cmd-name commands))))
@@ -640,39 +772,114 @@
 
 (defn- matching-resources [typed ids]
   (let [t (str/lower-case typed)]
-    (filterv #(resource-match? t %) ids)))
+    (filterv #(and (not= typed %) (resource-match? t %)) ids)))
 
-(defn- suggest-arg [form tokens i target]
-  (if-let [[_ [kind] :as a] (nth (nth form 2 []) i nil)]
-    (if (= :mob-effect kind)
-      (matching-resources (last tokens) (arg-values a target))
-      (starting-with (last tokens) (arg-values a target)))
-    []))
+(defn- sugg [start texts] {:start start :texts texts})
 
-(defn- suggest-after-command [form tokens target]
-  (cond
-    (not (subcommands? form))
-    (suggest-arg form tokens (dec (count tokens)) target)
-    (= 1 (count tokens)) (suggest-subcommand form (first tokens))
-    :else (suggest-arg (find-form (drop 2 form) (first tokens))
-                       tokens
-                       (- (count tokens) 2)
-                       target)))
+(defn- unit-suggestions [w start]
+  (let [res (r/read-float (r/reader w))]
+    (when-not (r/error? res)
+      (let [n (long (second (second res)))]
+        (sugg (+ (long start) n)
+              (starting-with (subs w n) ["d" "s" "t"]))))))
+
+(defn- clock-in [opts cx]
+  (if-let [i (:clock-arg opts)]
+    (nth (:values cx) i)
+    (clock/default-of (:dim cx))))
+
+(defn- marker-ids [opts cx]
+  (let [k (clock-in opts cx)]
+    (sort (for [[id m] (when k (clock/markers k)) :when (:show? m)]
+            id))))
+
+(defn- timeline-ids [opts cx]
+  (let [k (clock-in opts cx)]
+    (sort (for [[t {c :clock}] clock/timelines
+                :when (and k (= k c))]
+            (data/wire t)))))
+
+(defn- arg-suggestions [[_ [kind opts] :as a] w start cx]
+  (case kind
+    :ticks (unit-suggestions w start)
+    :float nil
+    :marker (sugg start (matching-resources w (marker-ids opts cx)))
+    :timeline
+    (sugg start (matching-resources w (timeline-ids opts cx)))
+    :clock (let [ids (map data/wire (clock/names))]
+             (sugg start (matching-resources w ids)))
+    :literal (sugg start (starting-with w [(:name opts)]))
+    :mob-effect
+    (sugg start (matching-resources w (arg-values a (:target cx))))
+    (sugg start (starting-with w (arg-values a (:target cx))))))
+
+(def ^:private loose #{:coord :dcoord :angle})
+
+(defn- prior-values
+  "The values of the words before the last, nil when one fails."
+  [args words]
+  (reduce (fn [acc [[_ [kind] :as a] w]]
+            (let [[st v] (if (loose kind) [:ok nil] (coerce a w nil))]
+              (if (= :ok st) (conj acc v) (reduced nil))))
+          [] (map vector args words)))
+
+(defn- way-suggestions [cx [args _] words start]
+  (when-let [a (nth (vec args) (dec (count words)) nil)]
+    (when-let [vs (prior-values args (pop words))]
+      (arg-suggestions a (peek words) start (assoc cx :values vs)))))
+
+(defn- expanded [^String text lo {:keys [start texts]}]
+  (map #(str (subs text lo start) %) texts))
+
+(defn- merged
+  "The suggestions of several arguments as one list, the way
+  brigadier merges them: one range, sorted ignoring case."
+  [text ss start]
+  (let [ss (filter (comp seq :texts) ss)
+        lo (if (seq ss) (reduce min (map :start ss)) start)]
+    (sugg lo (->> ss (mapcat #(expanded text lo %)) distinct
+                  (sort String/CASE_INSENSITIVE_ORDER) vec))))
+
+(defn- form-suggestions [form words start cx text]
+  (merged text (keep #(way-suggestions cx % words start) (ways form))
+          start))
+
+(defn- after-command [form words start cx text]
+  (let [sub (when (subcommands? form)
+              (find-form (drop 2 form) (first words)))]
+    (cond
+      (not (subcommands? form))
+      (form-suggestions form words start cx text)
+      (= 1 (count words))
+      (sugg start (suggest-subcommand form (first words)))
+      sub (form-suggestions sub (subvec words 1) start cx text)
+      :else (sugg start []))))
+
+(defn- command-suggestions [text start cx]
+  (let [[nm & more] (str/split (subs text 1) #" " -1)
+        form (find-form commands (get aliases nm nm))]
+    (cond
+      (empty? more) (sugg start (suggest-command nm))
+      (nil? form) (sugg start [])
+      :else (after-command form (vec more) start cx text))))
+
+(defn suggestions
+  "Returns the completions for half-typed text as :texts that
+  replace it from index :start. A player standing at target sees
+  them."
+  ([world text] (suggestions world text nil))
+  ([world text target]
+   (let [text (or text "")
+         start (inc (long (or (str/last-index-of text " ") -1)))
+         cx {:dim (:dim world :overworld) :target target}]
+     (if (str/starts-with? text "/")
+       (command-suggestions text start cx)
+       (sugg start (suggest-player world (subs text start)))))))
 
 (defn suggest
-  "Returns the completions for half-typed text.
-  A player standing at target sees them."
+  "Returns the texts of the completions for half-typed text."
   ([world text] (suggest world text nil))
-  ([world text target]
-   (let [text (or text "")]
-     (if-not (str/starts-with? text "/")
-       (suggest-player world (last (str/split text #" " -1)))
-       (let [[nm & more] (str/split (subs text 1) #" " -1)
-             form (find-form commands (get aliases nm nm))]
-         (cond
-           (empty? more) (suggest-command nm)
-           (nil? form) []
-           :else (suggest-after-command form more target)))))))
+  ([world text target] (:texts (suggestions world text target))))
 
 (def ^:private brigadier-integer (keyword "brigadier:integer"))
 
@@ -680,9 +887,12 @@
 
 (def ^:private brigadier-string (keyword "brigadier:string"))
 
+(def ^:private brigadier-float (keyword "brigadier:float"))
+
+(def ^:private ask-server "minecraft:ask_server")
+
 (def ^:private plain-arguments
   {:duration [:time {:min 1}]
-   :named-int [:time {:min 0}]
    :coord [:block-pos nil]
    :dcoord [:vec3 nil]
    :angle [:rotation nil]
@@ -697,6 +907,15 @@
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})
 
+(defn- clock-nodes [n kind {:keys [min max]}]
+  (case kind
+    :ticks [[n :time {:min min}]]
+    :float [[n brigadier-float {:min min :max max}]]
+    :marker [[n :resource-location nil ask-server]]
+    :clock [[n :resource {:registry "minecraft:world_clock"}]]
+    :timeline [[n :resource {:registry "minecraft:timeline"}
+                ask-server]]))
+
 (defn- argument-nodes [[nm [kind opts]]]
   (let [{:keys [min max values single? players?]} opts
         n (name nm)]
@@ -708,8 +927,10 @@
         {:or-literals ["infinite"]
          :arg [n brigadier-integer {:min 1 :max 1000000}]}
         :enum {:literals (sort values)}
+        :literal {:literals [(:name opts)]}
         :targets [[n :entity (entity-props single? players?)]]
-        :rule {:rules true}))))
+        :rule {:rules true}
+        (clock-nodes n kind opts)))))
 
 (defn- coords-merged [args]
   (loop [as args acc []]
@@ -756,9 +977,10 @@
                    :children children})
           (:literals spec))
     :else
-    (let [[n parser props] (first spec)]
-      [{:type :argument :name n :parser parser :props props
-        :executable? exec? :children children}])))
+    (let [[n parser props suggests] (first spec)]
+      [(cond-> {:type :argument :name n :parser parser :props props
+                :executable? exec? :children children}
+         suggests (assoc :suggests suggests))])))
 
 (defn- chain [args ^long i]
   (if (>= i (count args))
