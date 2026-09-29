@@ -8,6 +8,8 @@ public final class Craters {
 
     private final LongMap<Integer> states = new LongMap<>();
     private final LongMap<long[]> buckets = new LongMap<>();
+    private int[] held = new int[4];
+    private int kinds;
     private int n;
 
     private static long key(int x, int y, int z) {
@@ -45,6 +47,24 @@ public final class Craters {
             n++;
         }
         states.put(k, st);
+        hold(st);
+    }
+
+    private void hold(int st) {
+        for (int i = 0; i < kinds; i++) {
+            if (held[i] == st) return;
+        }
+        if (kinds == held.length) held = java.util.Arrays.copyOf(held, 2 * kinds);
+        held[kinds++] = st;
+    }
+
+    /// Returns true when no changed cell holds a state that `collides`
+    /// accepts.
+    public boolean clears(java.util.function.IntPredicate collides) {
+        for (int i = 0; i < kinds; i++) {
+            if (collides.test(held[i])) return false;
+        }
+        return true;
     }
 
     private static int bit(int x, int y, int z) {

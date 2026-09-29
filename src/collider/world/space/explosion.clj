@@ -183,12 +183,33 @@
   [^Region rg center power seed]
   (reached (rays rg center power seed) (craters) center))
 
+(defn- hanging? [^long st]
+  (let [ps (block/props-of st)]
+    (and (= "true" (name (get ps :bottom :false)))
+         (not= "0" (name (get ps :distance :0))))))
+
+(defn- shape-kind [^long st]
+  (case (block/type-of st)
+    :scaffolding (if (hanging? st)
+                   Exposure/SCAFFOLDING_HANGING
+                   Exposure/SCAFFOLDING)
+    :powder-snow Exposure/POWDER_SNOW
+    :bamboo-stalk Exposure/OFFSET_QUARTER
+    (:pointed-dripstone :sulfur-spike) Exposure/OFFSET_EIGHTH
+    Exposure/PLAIN))
+
+(def ^:private ^:table kind-table
+  (delay
+    (let [a (byte-array (data/block-state-count))]
+      (dotimes [i (alength a)] (aset a i (byte (shape-kind i))))
+      a)))
+
 (defn exposure
   "Returns what a blast at center sees through rg. The bodies that
   one blast reaches share it."
   ^Exposure [^Region rg [cx cy cz]]
-  (Exposure/of rg (block/collision-arr) (double cx) (double cy)
-               (double cz)))
+  (Exposure/of rg (block/collision-arr) ^bytes @kind-table (double cx)
+               (double cy) (double cz)))
 
 (defn stale?
   "Returns true when the cells of c may change what a body at p sees
@@ -198,27 +219,47 @@
   (Exposure/stale e c (double px) (double py) (double pz)
                   (double half) (double height)))
 
+(defn look
+  "Returns what each sample point of a body at p sees of the blast of
+  e before the blasts of the tick. The body is a box of half width
+  half and height height; flags tell how it meets the blocks whose
+  shape depends on the body."
+  ^longs [^Exposure e [px py pz] half height flags]
+  (Exposure/look e (double px) (double py) (double pz) (double half)
+                 (double height) (int flags)))
+
+(defn look-share
+  "Returns the share, 0.0 to 1.0, of the sample points in look that
+  see the blast."
+  ^double [^longs look]
+  (Double/longBitsToDouble (aget look 0)))
+
 (defn exposed
   "Returns the share, 0.0 to 1.0, of a body at p that the blast of e
   at the center reaches without a block in the way. The body is a box
-  of half width half and height height."
-  [^Exposure e _center [px py pz] half height]
-  (Exposure/density e nil (double px) (double py) (double pz)
-                    (double half) (double height)))
+  of half width half and height height; flags tell how it meets the
+  blocks whose shape depends on the body."
+  ([e center p half height] (exposed e center p half height 0))
+  ([^Exposure e _center [px py pz] half height flags]
+   (Exposure/density e nil (double px) (double py) (double pz)
+                     (double half) (double height) (int flags))))
 
 (defn exposed-now
   "Returns what exposed does once the earlier blasts of the tick left
-  the cells of c."
-  [^Exposure e ^Craters c [px py pz] half height]
-  (Exposure/density e c (double px) (double py) (double pz)
-                    (double half) (double height)))
+  the cells of c. look is what the body saw before them, or nil."
+  [^Exposure e ^Craters c look [px py pz] half height flags]
+  (Exposure/densityNow e c look (double px) (double py) (double pz)
+                       (double half) (double height) (int flags)))
 
 (defn block-density
   "Returns the share, 0.0 to 1.0, of a body at p that the blast at
   the center reaches through rg without a block in the way. The body
-  is a box of half width half and height height."
-  [^Region rg center p half height]
-  (exposed (exposure rg center) center p half height))
+  is a box of half width half and height height; flags tell how it
+  meets the blocks whose shape depends on the body."
+  ([rg center p half height]
+   (block-density rg center p half height 0))
+  ([^Region rg center p half height flags]
+   (exposed (exposure rg center) center p half height flags)))
 
 (defn shuffled
   "Returns v in the order seed shuffles it into."

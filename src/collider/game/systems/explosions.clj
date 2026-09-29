@@ -16,7 +16,8 @@
             [collider.data :as data]
             [collider.world.blocks.fire :as fire]
             [collider.world.block :as block]
-            [collider.world.space.explosion :as explosion]))
+            [collider.world.space.explosion :as explosion])
+  (:import (collider.world.space Exposure)))
 
 (set! *warn-on-reflection* true)
 
@@ -29,27 +30,44 @@
       [(or half 0.45) (or height 1.3)])))
 
 (defn- blast-damage ^double [^double k ^double power]
-  (Math/floor (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 2.0 power))))
+  (let [twice (double (float (* 2.0 power)))]
+    (double (float (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 twice))))))
+
+(def ^:private ^:const unit-least (double (float 1.0E-5)))
 
 (defn- blast-impulse [center px ey pz d12 density power]
   (let [dx (- (double px) (double (center 0)))
         dy (- (double ey) (double (center 1)))
         dz (- (double pz) (double (center 2)))
-        d13 (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
-    (when (pos? d13)
-      (let [k (* (- 1.0 (double d12)) (double density))]
-        [[(* (/ dx d13) k) (* (/ dy d13) k) (* (/ dz d13) k)]
-         (blast-damage k (double power))]))))
+        d13 (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
+        k (* (- 1.0 (double d12)) (double density))
+        dmg (blast-damage k (double power))]
+    (if (< d13 unit-least)
+      [[0.0 0.0 0.0] dmg]
+      [[(* (/ dx d13) k) (* (/ dy d13) k) (* (/ dz d13) k)] dmg])))
 
-(defn- entity-density [seen center e p]
-  (let [[half height] (entity-box e)]
-    (explosion/exposed seen center p half height)))
+(def ^:private walker-tag "powder_snow_walkable_mobs")
 
-(defn- density-now [seen craters e p spec]
-  (let [[half height] (entity-box e)]
-    (if (explosion/stale? seen craters p half height)
-      (explosion/exposed-now seen craters p half height)
-      spec)))
+(def ^:private ^:table walkers
+  (delay (set (data/tag-values "entity_type" walker-tag))))
+
+(defn- walker? [e]
+  (or (contains? @walkers (:type e))
+      (= :leather-boots (get-in e [:inventory 8 :item]))))
+
+(defn- descends? [e]
+  (and (= :player (:type e)) (:sneaking? e)))
+
+(defn- body-flags ^long [e]
+  (cond-> 0
+    (descends? e) (bit-or Exposure/DESCENDING)
+    (> (double (or (:fall e) 0.0)) 2.5) (bit-or Exposure/FALLING)
+    (walker? e) (bit-or Exposure/WALKER)))
+
+(defn- density-now [seen craters e p look]
+  (let [[half height] (entity-box e)
+        flags (body-flags e)]
+    (explosion/exposed-now seen craters look p half height flags)))
 
 (defn- impulse-at [center e p d12 density power]
   (let [ey (+ (double (v/y p)) (entity/eye-height e))]
@@ -123,16 +141,20 @@
 
 (defn- item-dies? [e dmg]
   (and (= :item (:type e)) (hurtable? e)
-       (>= (double dmg) (double (:health e)))))
-
-(defn- pushed-deltas [ds oid o kb dmg]
-  (cond-> (conj ds [:push oid kb])
-          (hurtable? o) (conj [:damage oid dmg])))
+       (not (pos? (double (:health (state/hurt e (double dmg))))))))
 
 (defn- hurt-item [hurt oid o dmg]
   (cond-> hurt
           (and (= :item (:type o)) (hurtable? o))
           (assoc oid (state/hurt o (double dmg)))))
+
+(defn- moving? [[x y z]]
+  (not (every? (fn [c] (zero? (double c))) [x y z])))
+
+(defn- pushed-deltas [ds oid o kb dmg]
+  (cond-> ds
+          (moving? kb) (conj [:push oid kb])
+          (hurtable? o) (conj [:damage oid dmg])))
 
 (defn- blast-one [[motions ds hurt] [oid o] kb dmg]
   (cond
@@ -143,26 +165,76 @@
     :else [motions (pushed-deltas ds oid o kb dmg)
            (hurt-item hurt oid o dmg)]))
 
-(defn- seen-bodies [seen center cands]
-  (mapv (fn [[_ o p :as c]] (conj c (entity-density seen center o p)))
-        cands))
+(defn- seen-body [seen [_ o p :as c]]
+  (let [[half height] (entity-box o)
+        flags (body-flags o)]
+    (conj c (explosion/look seen p half height flags)
+          half height flags)))
 
-(defn- knock [seen craters center power o p d12 spec]
-  (let [density (density-now seen craters o p spec)]
-    (when (pos? (double density))
-      (impulse-at center o p d12 density power))))
+(defn- seen-bodies [seen cands]
+  (mapv (partial seen-body seen) cands))
+
+(defn- knock [seen craters center power o p d12 look]
+  (let [density (density-now seen craters o p look)]
+    (impulse-at center o p d12 density power)))
+
+(defn- item-step [center power hurt oid o p d12 density]
+  (let [[v dmg] (impulse-at center o p d12 density power)
+        [_ ds hurt] (blast-one [{} [] hurt] [oid o] v dmg)]
+    [hurt ds]))
+
+(defn- body-now [seen craters center power hurt cand]
+  (let [[oid o p d12 look half height flags] cand
+        o (get hurt oid o)
+        density (when-not (= :gone o)
+                  (explosion/exposed-now seen craters look p half
+                    height flags))]
+    (cond
+      (nil? density) [hurt nil]
+      (= :item (:type o))
+      (item-step center power hurt oid o p d12 density)
+      :else [hurt density])))
 
 (defn- blast-step [seen craters center power]
-  (fn [acc [oid o p d12 spec]]
-    (let [o (get (nth acc 2) oid o)
-          kb (when-not (= :gone o)
-               (knock seen craters center power o p d12 spec))]
-      (if-let [[v dmg] kb]
-        (blast-one acc [oid o] v dmg)
-        acc))))
+  (fn [[hurt outs] cand]
+    (let [[hurt out] (body-now seen craters center power hurt cand)]
+      [hurt (conj outs out)])))
+
+(defn- body-deltas [center power [motions ds] [[oid o p d12] out]]
+  (cond
+    (nil? out) [motions ds]
+    (vector? out) [motions (into ds out)]
+    :else (let [[v dmg] (impulse-at center o p d12 out power)]
+            (pop (blast-one [motions ds nil] [oid o] v dmg)))))
+
+(defn- knocks [{:keys [center power cands outs]}]
+  (reduce (partial body-deltas center power) [{} []]
+          (map vector cands outs)))
+
+(def ^:private add-kb (fnil v/+ [0.0 0.0 0.0]))
+
+(defn- fresh-hit [o kb dmg]
+  (if (item-dies? o dmg)
+    :gone
+    (cond-> o
+      (moving? kb) (update (if (= :tnt (:type o)) :kb :vel) add-kb kb)
+      (hurtable? o) (state/hurt (double dmg)))))
+
+(defn- fresh-step [seen craters center power reach]
+  (fn [fresh i]
+    (let [o (nth fresh i)]
+      (if-let [[_ _ p d12] (when-not (= :gone o) (reach [i o]))]
+        (let [[kb dmg] (knock seen craters center power o p d12 nil)]
+          (assoc fresh i (fresh-hit o kb dmg)))
+        fresh))))
 
 (defn- blast-deltas [craters hurt {:keys [seen cands power]} center]
-  (reduce (blast-step seen craters center power) [{} [] hurt] cands))
+  (reduce (blast-step seen craters center power) [hurt []] cands))
+
+(defn- fresh-blast [craters fresh {:keys [seen power]} center]
+  (let [reach (reach-of {} center power)]
+    (reduce (fresh-step seen craters center power reach) fresh
+            (range (count fresh)))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1])
@@ -185,12 +257,11 @@
 (defn- interacts? [world source]
   (or (not= :mob source) (get-in world [:rules :mob-griefing] true)))
 
-(defn- drop-deltas [world rg destroy seed source power]
+(defn- drop-specs [world rg destroy seed source power]
   (when (get-in world [:rules :block-drops] true)
     (let [radius (decay-radius world source power)
           stacks (explosion/stacks rg destroy seed radius)]
-      (map-indexed (fn [i [pos stack]]
-                     [:spawn-entity (items/popped world pos stack i)])
+      (map-indexed (fn [i [p stack]] (items/popped world p stack i))
                    stacks))))
 
 (defn- here-block ^long [[rg craters] [x y z]]
@@ -252,25 +323,32 @@
   (edit/shaped-deltas (with-read world rg)
                       (into (mapv (fn [p] [p 0]) destroy) fires)))
 
-(defn- chain-delta [p seed]
-  [:spawn-entity (assoc (tnt/chain-primed p seed) :origin nil)])
+(defn- chain-spec [p seed]
+  (assoc (tnt/chain-primed p seed) :origin nil))
 
-(defn- chain-deltas [chains seed]
-  (map (fn [p] (chain-delta p seed)) chains))
+(defn- spawn-specs [world rg b]
+  (let [{:keys [destroy chains seed source power]} b]
+    (-> []
+        (into (map (fn [p] (chain-spec p seed))) chains)
+        (into (drop-specs world rg destroy seed source power)))))
 
-(defn- explosion-msg [{:keys [center power affected motions seed]}]
+(defn- spawn-deltas [fresh [from to]]
+  (into [] (comp (remove #{:gone}) (map (fn [e] [:spawn-entity e])))
+        (subvec fresh from to)))
+
+(defn- explosion-msg [{:keys [center power affected seed]} motions]
   (let [n (:count affected)
         pitch (explosion-pitch seed)]
     (out/all (out/explosion center power n motions pitch))))
 
-(defn- blast-acc [world rg acc b]
-  (let [{:keys [destroy chains fires pushes seed source power]} b]
+(defn- blast-acc [world rg fresh acc b]
+  (let [{:keys [destroy fires spawned]} b
+        [motions pushes] (knocks b)]
     (-> acc
         (into (changed-deltas world rg destroy fires))
-        (conj (explosion-msg b))
+        (conj (explosion-msg b motions))
         (into pushes)
-        (into (chain-deltas chains seed))
-        (into (drop-deltas world rg destroy seed source power)))))
+        (into (spawn-deltas fresh spawned)))))
 
 (defn- body-of [world index req]
   (let [{:keys [center power by]} req
@@ -282,14 +360,14 @@
         reach (reach-of req center power)
         cands (kb-candidates index center power reach)]
     {:rg rg :power power :seed seed :rays rays :seen seen
-     :cands (seen-bodies seen center cands)}))
+     :cands (seen-bodies seen cands)}))
 
 (defn- bodies [world index reqs]
   (deltas/pmapcat (fn [req] [(body-of world index req)]) reqs 1 1))
 
 (defn- blast-of [world body req gone primed craters]
   (let [{:keys [center source fire?]} req
-        {:keys [rg power seed affected motions pushes]} body
+        {:keys [rg power seed affected cands outs]} body
         now [rg craters]
         [chains destroy]
         (break-cells world now (:blocks affected) gone primed source)
@@ -299,29 +377,35 @@
                 [])]
     {:center center :power power :seed seed :source source
      :affected affected :destroy destroy :chains chains
-     :fires fires :motions motions :pushes pushes :gone gone'}))
+     :fires fires :cands cands :outs outs :gone gone'}))
 
 (defn- crater! [craters {:keys [destroy fires]}]
   (doseq [[x y z] destroy] (explosion/crater! craters x y z 0))
   (doseq [[[x y z] st] fires] (explosion/crater! craters x y z st)))
 
-(defn- reached-body [craters hurt body req]
+(defn- reached-body [craters hurt fresh body req]
   (let [center (:center req)
-        [motions pushes hurt] (blast-deltas craters hurt body center)
+        [hurt outs] (blast-deltas craters hurt body center)
+        fresh (fresh-blast craters fresh body center)
         affected (explosion/reached (:rays body) craters center)]
-    [(assoc body :motions motions :pushes pushes :affected affected)
-     hurt]))
+    [(assoc body :outs outs :affected affected) hurt fresh]))
 
-(defn- request-blasts [world craters [gone primed hurt bs] [req body]]
+(defn- request-blasts [world craters [gone primed hurt bs fresh]
+                       [req body]]
   (let [rg (:rg body)
-        [body hurt] (reached-body craters hurt body req)
+        [body hurt fresh] (reached-body craters hurt fresh body req)
         b (blast-of world body req gone primed craters)
-        b (assoc b :rg rg :loaded (explosion/loaded-payloads rg))]
+        specs (spawn-specs world rg b)
+        n (count fresh)
+        b (assoc b :rg rg :loaded (explosion/loaded-payloads rg)
+                   :spawned [n (+ n (count specs))])]
     (crater! craters b)
-    [(:gone b) (into primed (:chains b)) hurt (conj bs b)]))
+    [(:gone b) (into primed (:chains b)) hurt (conj bs b)
+     (into fresh specs)]))
 
-(defn- blast-deltas-of [world {:keys [rg loaded] :as b}]
-  (blast-acc world rg (vec (chunks/read-absent-deltas loaded)) b))
+(defn- blast-deltas-of [world fresh {:keys [rg loaded] :as b}]
+  (let [acc (vec (chunks/read-absent-deltas loaded))]
+    (blast-acc world rg fresh acc b)))
 
 (defn- requests [d]
   (into [] (comp (filter (fn [delta] (= :explode (nth delta 0))))
@@ -336,8 +420,8 @@
 (defn- job-size ^long [^long n]
   (max 1 (quot (+ n (dec job-count)) job-count)))
 
-(defn- job [world bs]
-  #(into [] (mapcat (partial blast-deltas-of world)) bs))
+(defn- job [world fresh bs]
+  #(into [] (mapcat (partial blast-deltas-of world fresh)) bs))
 
 (defn blasts
   "Returns the jobs that give the deltas of every blast requested
@@ -346,11 +430,11 @@
   (let [reqs (requests d)]
     (when (seq reqs)
       (let [index (kb-index (blastable world))
-            init [#{} (tnt/primed-origins world) {} []]
+            init [#{} (tnt/primed-origins world) {} [] []]
             pairs (map vector reqs (bodies world index reqs))
             step (partial request-blasts world (explosion/craters))
-            done (nth (reduce step init pairs) 3)]
-        (mapv (partial job world)
+            [_ _ _ done fresh] (reduce step init pairs)]
+        (mapv (partial job world fresh)
               (partition-all (job-size (count done)) done))))))
 
 (defn explosions
