@@ -4,7 +4,8 @@
   (:require [collider.data :as data]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
+            [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys])
   (:import (collider.world.space Craters Exposure Rays Region)))
 
 (set! *warn-on-reflection* true)
@@ -183,32 +184,11 @@
   [^Region rg center power seed]
   (reached (rays rg center power seed) (craters) center))
 
-(defn- hanging? [^long st]
-  (let [ps (block/props-of st)]
-    (and (= "true" (name (get ps :bottom :false)))
-         (not= "0" (name (get ps :distance :0))))))
-
-(defn- shape-kind [^long st]
-  (case (block/type-of st)
-    :scaffolding (if (hanging? st)
-                   Exposure/SCAFFOLDING_HANGING
-                   Exposure/SCAFFOLDING)
-    :powder-snow Exposure/POWDER_SNOW
-    :bamboo-stalk Exposure/OFFSET_QUARTER
-    (:pointed-dripstone :sulfur-spike) Exposure/OFFSET_EIGHTH
-    Exposure/PLAIN))
-
-(def ^:private ^:table kind-table
-  (delay
-    (let [a (byte-array (data/block-state-count))]
-      (dotimes [i (alength a)] (aset a i (byte (shape-kind i))))
-      a)))
-
 (defn exposure
   "Returns what a blast at center sees through rg. The bodies that
   one blast reaches share it."
   ^Exposure [^Region rg [cx cy cz]]
-  (Exposure/of rg (block/collision-arr) ^bytes @kind-table (double cx)
+  (Exposure/of rg (block/collision-arr) (phys/kinds) (double cx)
                (double cy) (double cz)))
 
 (defn stale?

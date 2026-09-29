@@ -3,10 +3,11 @@ package collider.world;
 import collider.V3;
 
 /// Collision of a moving box against block boxes. The block tables
-/// that the methods take are indexed by block state. `solid` is true
-/// for a state that stops a body. `cube` is true for a full cube.
+/// that the methods take are indexed by block state. `kinds` holds
+/// the `Collision` kind of each state. `cube` is true for a full cube.
 /// `shapes` holds the boxes of each other state, six doubles each,
-/// in blocks.
+/// in blocks. `bottom` and `flags` are the body as `Collision.shape`
+/// takes it.
 public final class Phys {
 
     private static final double EPS = 1.0E-7;
@@ -100,40 +101,44 @@ public final class Phys {
     }
 
     private static int putBlock(double[] a, int n, int st,
-            boolean[] solid, boolean[] cube, Object[] shapes,
-            long x, long y, long z) {
-        if (st <= 0 || st >= solid.length || !solid[st]) return n;
-        if (!cube[st]) {
-            double[] s = (double[]) shapes[st];
-            for (int k = 0; k < s.length; k += 6) {
-                int o = n * 6;
-                a[o] = x + s[k];
-                a[o + 1] = y + s[k + 1];
-                a[o + 2] = z + s[k + 2];
-                a[o + 3] = x + s[k + 3];
-                a[o + 4] = y + s[k + 4];
-                a[o + 5] = z + s[k + 5];
-                n++;
-            }
-            return n;
+            byte[] kinds, boolean[] cube, Object[] shapes, long x,
+            long y, long z, double bottom, int flags) {
+        if (st <= 0) return n;
+        if (st < cube.length && cube[st]) {
+            int o = n * 6;
+            a[o] = x;
+            a[o + 1] = y;
+            a[o + 2] = z;
+            a[o + 3] = x + 1.0;
+            a[o + 4] = y + 1.0;
+            a[o + 5] = z + 1.0;
+            return n + 1;
         }
-        int o = n * 6;
-        a[o] = x;
-        a[o + 1] = y;
-        a[o + 2] = z;
-        a[o + 3] = x + 1.0;
-        a[o + 4] = y + 1.0;
-        a[o + 5] = z + 1.0;
-        return n + 1;
+        double[] s = Collision.kind(kinds, st) == Collision.PLAIN
+            ? Collision.boxes(shapes, st)
+            : Collision.shape(shapes, kinds, st, (int) x, (int) y,
+                              (int) z, bottom, flags);
+        if (s == null) return n;
+        for (int k = 0; k < s.length; k += 6) {
+            int o = n * 6;
+            a[o] = x + s[k];
+            a[o + 1] = y + s[k + 1];
+            a[o + 2] = z + s[k + 2];
+            a[o + 3] = x + s[k + 3];
+            a[o + 4] = y + s[k + 4];
+            a[o + 5] = z + s[k + 5];
+            n++;
+        }
+        return n;
     }
 
     /// Returns the boxes of the blocks in `chunks` that the box
     /// `ebox` meets on its way by `vx`, `vy`, `vz`, one block
     /// lower included. The result stays valid until the next sweep
     /// of the caller.
-    public static Sweep sweep(ChunkIndex chunks, boolean[] solid,
+    public static Sweep sweep(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double[] ebox,
-            double vx, double vy, double vz) {
+            double vx, double vy, double vz, double bottom, int flags) {
         long x1 = loBound(ebox[0], vx), x2 = hiBound(ebox[3], vx);
         long y1 = Math.max(MIN_Y, loBound(ebox[1], vy) - 1);
         long y2 = Math.min(MAX_Y, hiBound(ebox[4], vy));
@@ -156,8 +161,8 @@ public final class Phys {
                     int st = s == null ? 0 : s.block(
                             (int) (((y & 15) << 8) | ((z & 15) << 4)
                                    | (x & 15)));
-                    n = putBlock(a, n, st, solid, cube, shapes,
-                                 x, y, z);
+                    n = putBlock(a, n, st, kinds, cube, shapes,
+                                 x, y, z, bottom, flags);
                 }
             }
         }
@@ -200,12 +205,14 @@ public final class Phys {
 
     /// Returns true when a body with half width `half` and height
     /// `height` standing at `x`, `y`, `z` meets no block.
-    public static boolean free(ChunkIndex chunks, boolean[] solid,
+    public static boolean free(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double x, double y,
-            double z, double half, double height) {
+            double z, double half, double height, double bottom,
+            int flags) {
         double[] box = {x - half, y, z - half,
                         x + half, y + height, z + half};
-        Sweep sw = sweep(chunks, solid, cube, shapes, box, 0.0, 0.0, 0.0);
+        Sweep sw = sweep(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0,
+                         bottom, flags);
         double[] a = sw.a();
         for (int i = 0; i < sw.n(); i++) {
             if (overlaps(a, 6 * i, box)) return false;
@@ -217,12 +224,13 @@ public final class Phys {
     /// standing at `x`, `y`, `z` rests on, or null when none. The
     /// block under the body whose centre is nearest wins. A tie goes
     /// to the last in the order of y, z and x.
-    public static long[] support(ChunkIndex chunks, boolean[] solid,
+    public static long[] support(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double x, double y,
-            double z, double half) {
+            double z, double half, int flags) {
         double[] box = {x - half, y - 1.0E-6, z - half,
                         x + half, y, z + half};
-        Sweep sw = sweep(chunks, solid, cube, shapes, box, 0.0, 0.0, 0.0);
+        Sweep sw = sweep(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0,
+                         y, flags);
         double[] a = sw.a();
         long[] best = null;
         double bd = Double.MAX_VALUE;
@@ -269,14 +277,15 @@ public final class Phys {
         e[5] += dz;
     }
 
-    private static void stepUp(ChunkIndex chunks, boolean[] solid,
+    private static void stepUp(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double[] box0,
-            double[] out, double vx, double vz, double step) {
+            double[] out, double vx, double vz, double step, int flags) {
         double dy0 = out[1];
         double[] e = box0.clone();
         e[1] += dy0;
         e[4] += dy0;
-        Sweep sw = sweep(chunks, solid, cube, shapes, e, vx, step, vz);
+        Sweep sw = sweep(chunks, kinds, cube, shapes, e, vx, step, vz,
+                         box0[1], flags);
         double[] s = new double[3];
         clampAxes(sw.a(), sw.n(), e, vx, step, vz, s);
         shift(e, s[0], s[1], s[2]);
@@ -295,19 +304,21 @@ public final class Phys {
     /// and is held back sideways climbs up to `step` when that
     /// takes it further. A move under 1.0E-7 squared that the
     /// blocks cut short leaves it where it was, as Entity.move.
-    public static Move move(ChunkIndex chunks, boolean[] solid,
+    public static Move move(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double px, double py,
             double pz, double vx, double vy, double vz, double half,
-            double height, double step) {
+            double height, double step, int flags) {
         double[] box0 = {px - half, py, pz - half,
                          px + half, py + height, pz + half};
-        Sweep sw = sweep(chunks, solid, cube, shapes, box0, vx, vy, vz);
+        Sweep sw = sweep(chunks, kinds, cube, shapes, box0, vx, vy, vz,
+                         py, flags);
         double[] out = new double[3];
         clampAxes(sw.a(), sw.n(), box0, vx, vy, vz, out);
         boolean hitY = out[1] != vy;
         if (step > 0.0 && hitY && vy < 0.0
                 && (out[0] != vx || out[2] != vz)) {
-            stepUp(chunks, solid, cube, shapes, box0, out, vx, vz, step);
+            stepUp(chunks, kinds, cube, shapes, box0, out, vx, vz, step,
+                   flags);
         }
         double dx = out[0], dy = out[1], dz = out[2];
         double moved = dx * dx + dy * dy + dz * dz;

@@ -130,7 +130,8 @@
   (let [[vx vy vz] (:vel e)
         d [(double vx) (- (double vy) 0.04) (double vz)]]
     (phys/move (:chunks world) (:pos e)
-               (if (:stuck e) (mapv * d (:stuck e)) d) half height)))
+               (if (:stuck e) (mapv * d (:stuck e)) d) half height
+               0.0 (phys/context e))))
 
 (defn- drift-vel [stuck [mx my mz]]
   (if stuck

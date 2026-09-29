@@ -1,5 +1,7 @@
 package collider.world.space;
 
+import collider.world.Collision;
+
 /// The cells around a blast that may block its sight, to share among
 /// the bodies it reaches. Sight follows `ServerExplosion.getSeenPercent`:
 /// a clip from each sample point of the body to the blast against the
@@ -11,21 +13,19 @@ public final class Exposure {
 
     private static final int S = W + 1;
 
-    private static final double[] CUBE = {0, 0, 0, 1, 1, 1};
-
-    private static final double[] UNSTABLE_BOTTOM = {0, 0, 0, 1, 0.125, 1};
-
-    private static final double[] SNOW_FALLING = {0, 0, 0, 1, 0.9F, 1};
-
     /// The kind of a block state whose collision shape depends on the
     /// body that looks or on the position of the block.
-    public static final byte PLAIN = 0, SCAFFOLDING = 1,
-        SCAFFOLDING_HANGING = 2, POWDER_SNOW = 3, OFFSET_QUARTER = 4,
-        OFFSET_EIGHTH = 5;
+    public static final byte PLAIN = Collision.PLAIN,
+        SCAFFOLDING = Collision.SCAFFOLDING,
+        SCAFFOLDING_HANGING = Collision.SCAFFOLDING_HANGING,
+        POWDER_SNOW = Collision.POWDER_SNOW,
+        OFFSET_QUARTER = Collision.OFFSET_QUARTER,
+        OFFSET_EIGHTH = Collision.OFFSET_EIGHTH;
 
     /// The flags of a body that looks: it descends, it falls more
     /// than 2.5 blocks, it walks on powder snow.
-    public static final int DESCENDING = 1, FALLING = 2, WALKER = 4;
+    public static final int DESCENDING = Collision.DESCENDING,
+        FALLING = Collision.FALLING, WALKER = Collision.WALKER;
 
     private final Region rg;
     private final Object[] shapes;
@@ -81,75 +81,13 @@ public final class Exposure {
                               rg.ncx(), rg.ncz(), rg.nsy(), x, y, z);
     }
 
-    private double[] boxes(int st) {
-        if (st <= 0) return null;
-        if (st >= shapes.length) return CUBE;
-        double[] b = (double[]) shapes[st];
-        return b.length == 0 ? null : b;
-    }
-
-    private int kind(int st) {
-        return st > 0 && st < kinds.length ? kinds[st] : PLAIN;
-    }
-
     private boolean mayCollide(int st) {
-        return boxes(st) != null || kind(st) == POWDER_SNOW;
-    }
-
-    private static boolean above(double bottom, int y, double top) {
-        return bottom > (double) y + top - 1.0E-5F;
-    }
-
-    private static long seed(int x, int z) {
-        long seed = (long) (x * 3129871) ^ (long) z * 116129781L;
-        seed = seed * seed * 42317861L + seed * 11L;
-        return seed >> 16;
-    }
-
-    private static double offset(long bits, double max) {
-        double v = ((double) ((float) (bits & 15L) / 15.0F) - 0.5) * 0.5;
-        return v < -max ? -max : Math.min(v, max);
-    }
-
-    private static double[] moved(double[] b, double max, int x, int z) {
-        long seed = seed(x, z);
-        double dx = offset(seed, max), dz = offset(seed >> 8, max);
-        double[] m = b.clone();
-        for (int k = 0; k < m.length; k += 6) {
-            m[k] = (b[k] + max) + dx;
-            m[k + 2] = (b[k + 2] + max) + dz;
-            m[k + 3] = (b[k + 3] + max) + dx;
-            m[k + 5] = (b[k + 5] + max) + dz;
-        }
-        return m;
+        return Collision.mayCollide(shapes, kinds, st);
     }
 
     private double[] shape(int st, int x, int y, int z, double bottom,
             int flags) {
-        switch (kind(st)) {
-            case SCAFFOLDING, SCAFFOLDING_HANGING -> {
-                boolean still = (flags & DESCENDING) == 0;
-                if (still && above(bottom, y, 1.0)) return boxes(st);
-                return kind(st) == SCAFFOLDING_HANGING
-                    && above(bottom, y, 0.0) ? UNSTABLE_BOTTOM : null;
-            }
-            case POWDER_SNOW -> {
-                if ((flags & FALLING) != 0) return SNOW_FALLING;
-                return (flags & WALKER) != 0 && above(bottom, y, 1.0)
-                    && (flags & DESCENDING) == 0 ? CUBE : null;
-            }
-            case OFFSET_QUARTER -> {
-                double[] b = boxes(st);
-                return b == null ? null : moved(b, 0.25F, x, z);
-            }
-            case OFFSET_EIGHTH -> {
-                double[] b = boxes(st);
-                return b == null ? null : moved(b, 0.125F, x, z);
-            }
-            default -> {
-                return boxes(st);
-            }
-        }
+        return Collision.shape(shapes, kinds, st, x, y, z, bottom, flags);
     }
 
     private static int sumIndex(int ix, int iy, int iz) {
