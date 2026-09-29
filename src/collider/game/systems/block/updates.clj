@@ -83,7 +83,7 @@
 
 (defn- out-into [pass ds]
   (if (seq ds)
-    (assoc pass :out (reduce conj! (:out pass) ds))
+    (assoc pass :out (reduce edit/joined-into (:out pass) ds))
     pass))
 
 (defn- written [world k pass s]
@@ -157,10 +157,9 @@
         w (update world :chunks chunk/editable)
         dirty (when (some some? firsts) (i/int-set))
         start {:w w :dirty dirty :lit {} :out (transient [])}]
-    (edit/sets-joined
-      (persistent!
-        (:out (reduce #(stepped world ctx k %1 %2) start
-                      (map vector ticks firsts)))))))
+    (persistent!
+      (:out (reduce #(stepped world ctx k %1 %2) start
+                    (map vector ticks firsts))))))
 
 (defn- parked-ids [world active due]
   (let [chunks (:chunks world)

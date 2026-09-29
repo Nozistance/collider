@@ -99,7 +99,8 @@
     (if (seq left) (assoc index id left) (dissoc index id))))
 
 (defn- kept-row [q [at m] parked]
-  (let [m' (into (i/int-map) (filter #(contains? parked (key %))) m)]
+  (let [kept (filter #(contains? parked (key %)))
+        m' (when (seq parked) (into (i/int-map) kept m))]
     (if (seq m') (assoc q at m') (dissoc q at))))
 
 (defn flushed

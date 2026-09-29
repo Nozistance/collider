@@ -254,15 +254,15 @@
 (defn- joinable? [d]
   (and (= :set-blocks (first d)) (= 3 (count d)) (some? (d 2))))
 
-(defn sets-joined
-  "Returns out with each run of plain block writes joined into one."
-  [out]
-  (reduce (fn [acc d]
-            (let [top (peek acc)]
-              (if (and top (joinable? top) (joinable? d))
-                (conj (pop acc) (joined top d))
-                (conj acc d))))
-          [] out))
+(defn joined-into
+  "Returns out, a transient vector of deltas, with d added. A run of
+  plain block writes joins into one."
+  [out d]
+  (let [n (count out)
+        top (when (pos? n) (nth out (dec n)))]
+    (if (and top (joinable? top) (joinable? d))
+      (conj! (pop! out) (joined top d))
+      (conj! out d))))
 
 (defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)

@@ -21,6 +21,8 @@ public final class Neighbors {
     private static final int[] DX = {-1, 1, 0, 0, 0, 0};
     private static final int[] DY = {0, 0, -1, 1, 0, 0};
     private static final int[] DZ = {0, 0, 0, 0, -1, 1};
+    private static final int[] SY = {0, 0, 0, 0, -1, 1};
+    private static final int[] SZ = {0, 0, -1, 1, 0, 0};
 
     public Object chunks;
     private ITransientCollection records, writes, ticks, sent;
@@ -176,7 +178,9 @@ public final class Neighbors {
             added.clear();
             if (stack.isEmpty()) break;
             for (;;) {
-                Object next = step.invoke(this, stack.pop());
+                Object top = stack.pop();
+                Object next = top instanceof Pass p ? p.step(this)
+                    : step.invoke(this, top);
                 if (next == null) break;
                 stack.push(next);
                 if (!added.isEmpty()) break;
@@ -184,6 +188,53 @@ public final class Neighbors {
         }
         count = 0;
         return this;
+    }
+
+    /// Adds a pass over the six blocks beside `x` `y` `z` and runs it
+    /// like `addAndRun`. The pass goes in the order of shape updates
+    /// when `shape` is true, else of neighbour updates, and runs
+    /// `(told run pos side st)` for each block that `deaf` does not
+    /// mark when it comes to it, `st` being its state then. `sides`
+    /// names the side of each step as seen from the block told.
+    /// Outside the height counts as air.
+    public Neighbors pass(long x, long y, long z, boolean shape,
+            boolean[] deaf, Object[] sides, IFn told, IFn step,
+            int minY, int maxY) {
+        return addAndRun(new Pass(x, y, z, shape ? SY : DY,
+                                  shape ? SZ : DZ, deaf, sides, told,
+                                  minY, maxY), step);
+    }
+
+    private static final class Pass {
+        private final long x, y, z;
+        private final int[] dy, dz;
+        private final boolean[] deaf;
+        private final Object[] sides;
+        private final IFn told;
+        private final int minY, maxY;
+        private int i;
+
+        Pass(long x, long y, long z, int[] dy, int[] dz, boolean[] deaf,
+                Object[] sides, IFn told, int minY, int maxY) {
+            this.x = x; this.y = y; this.z = z;
+            this.dy = dy; this.dz = dz;
+            this.deaf = deaf; this.sides = sides; this.told = told;
+            this.minY = minY; this.maxY = maxY;
+        }
+
+        Object step(Neighbors s) {
+            while (i < 6) {
+                int d = i++;
+                long nx = x + DX[d], ny = y + dy[d], nz = z + dz[d];
+                int st = ny < minY || ny > maxY ? 0
+                    : Chunk.blockAt((ChunkIndex) s.chunks, (int) nx,
+                                    (int) ny, (int) nz);
+                if (deaf[st]) continue;
+                told.invoke(s, vec(nx, ny, nz), sides[d], (long) st);
+                break;
+            }
+            return i < 6 ? this : null;
+        }
     }
 
     private static Object vec(Object... xs) {

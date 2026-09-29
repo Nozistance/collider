@@ -143,7 +143,7 @@
   (let [st (long st)]
     (and (pos? st)
          (not= cls (liquid-class st))
-         (not (block/tagged? st "ice"))
+         (not (#{:ice :frosted-ice} (block/type-of st)))
          (block/face-sturdy? st (side-face d)))))
 
 (defn- walled? [chunks cls [x y z]]

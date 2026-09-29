@@ -294,9 +294,30 @@
 (defn- leaves-state [chunks pos st sides]
   (if (contains? sides nil) (leaves/distance-state chunks pos st) st))
 
-(defn- snowy-state [self st at]
-  (let [snowy? (block/tagged? (at [0 1 0]) "snow")]
-    (with-prop self st :snowy (if snowy? :true :false))))
+(defn- snowy-table [f]
+  (let [n (inc (data/block-state-count))
+        a (long-array n)]
+    (dotimes [st n] (aset a st (long (f st))))
+    a))
+
+(defn- snowy-as [v]
+  (fn [^long st]
+    (if (contains? snowy-types (block/type-of st))
+      (with-prop (block/block-of st) st :snowy v)
+      st)))
+
+(def ^:private ^:table snowy-states
+  (delay [(snowy-table (snowy-as :false))
+          (snowy-table (snowy-as :true))
+          (snowy-table #(if (block/tagged? % "snow") 1 0))]))
+
+(defn- snowy-state [chunks [x y z] ^long st sides]
+  (when (or (contains? sides nil) (contains? sides :up))
+    (let [[off on snow] @snowy-states
+          above (chunk/at chunks [x (inc (long y)) z])
+          ^longs to (if (== 1 (aget ^longs snow above)) on off)
+          new (aget to st)]
+      (when (not= new st) new))))
 
 (defn- side-value [t c]
   (if (= :wall t) (if c :low :none) (if c :true :false)))
@@ -426,10 +447,7 @@
    :stair                    stair-state
    :weathering-copper-stair  stair-state
    :tripwire                 tripwire-state
-   :note                     note-state
-   :grass                    snowy-state
-   :mycelium                 snowy-state
-   :snowy-dirt               snowy-state})
+   :note                     note-state})
 
 (def ^:private growing-reshaped
   #{:weeping-vines :weeping-vines-plant :twisting-vines
@@ -448,10 +466,12 @@
 
 (defn- reshape-of [chunks pos st tick sides]
   (let [t (block/type-of st)]
-    (when (contains? (connecting-types) t)
-      (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
-            new (reshaped-state t chunks pos st at tick sides)]
-        (when (not= (long new) (long st)) new)))))
+    (if (contains? snowy-types t)
+      (snowy-state chunks pos st sides)
+      (when (contains? (connecting-types) t)
+        (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
+              new (reshaped-state t chunks pos st at tick sides)]
+          (when (not= (long new) (long st)) new))))))
 
 (defn reshape
   "Returns the new state of st at pos after a change on sides of it,

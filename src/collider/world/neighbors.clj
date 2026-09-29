@@ -11,13 +11,11 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private update-order
-  [[[-1 0 0] :east] [[1 0 0] :west] [[0 -1 0] :up]
-   [[0 1 0] :down] [[0 0 -1] :south] [[0 0 1] :north]])
+(def ^:private update-sides
+  (object-array [:east :west :up :down :south :north]))
 
-(def ^:private shape-order
-  [[[-1 0 0] :east] [[1 0 0] :west] [[0 0 -1] :south]
-   [[0 0 1] :north] [[0 -1 0] :up] [[0 1 0] :down]])
+(def ^:private shape-sides
+  (object-array [:east :west :south :north :up :down]))
 
 (def ^:const update-limit
   "How deep shape updates go."
@@ -79,12 +77,6 @@
 
 (defn- marked? [k ^long st]
   (aget ^booleans (k @states) st))
-
-(defn- deaf-to-shape?
-  "Returns true when a shape update of a block in state st changes
-  nothing."
-  [^long st]
-  (marked? :shape st))
 
 (defn- deaf-to-neighbor?
   "Returns true when a neighbour update of a block in state st
@@ -157,7 +149,9 @@
 
 (defn- liquid-woken [s ctx p old side]
   (let [st (block-at s p)
-        s' (rule-woken s ctx p old side (constantly 3) update-limit)]
+        s' (if (block/lava? st)
+             (rule-woken s ctx p old side (constantly 3) update-limit)
+             s)]
     (if (= st (block-at s' p))
       (-> (fluid-woken s' ctx p old side)
           (column-woken ctx p (block-at s' (shifted p [0 -1 0]))))
@@ -175,9 +169,6 @@
     (= :neighbor (rules/update-pass st))
     (rule-woken s ctx q old side (constantly 3) update-limit)
     :else s))
-
-(defn- neighbor-changed [s ctx q old side]
-  (state-changed s ctx q (block-at s q) old side))
 
 (defn- reshaped [s ctx q st side flags limit]
   (if-let [new (connect/reshape (chunks s) q st (:tick ctx) #{side})]
@@ -206,29 +197,32 @@
       (reshaped s ctx q st side flags limit)
       s)))
 
-(defn- shape-changed [s ctx q old side nst flags limit]
-  (let [st (block-at s q)]
-    (cond
-      (zero? st) s
-      (block/liquid? st) (liquid-shaped s ctx q old side st nst)
-      :else (block-shaped s ctx q st old side flags limit))))
+(defn- shape-changed [s ctx q st old side nst flags limit]
+  (cond
+    (zero? (long st)) s
+    (block/liquid? st) (liquid-shaped s ctx q old side st nst)
+    :else (block-shaped s ctx q st old side flags limit)))
 
-(defn- run-next [s ctx [kind p old i side nst flags limit :as item]]
-  (case kind
-    :multi (let [[d side] (nth update-order i)
-                 s (neighbor-changed s ctx (shifted p d) old side)
-                 i (inc (long i))]
-             (when (< i (count update-order)) (assoc item 3 i)))
-    :full (do (state-changed s ctx p old old nil) nil)
-    (do (shape-changed s ctx p old side nst flags limit) nil)))
+(defn- run-next [s ctx [_ p old]]
+  (state-changed s ctx p old old nil)
+  nil)
+
+(defn- stepper [ctx]
+  (fn [s item] (run-next s ctx item)))
 
 (defn- add-and-run [^Neighbors s ctx item]
-  (.addAndRun s item (fn [s item] (run-next s ctx item))))
+  (.addAndRun s item (stepper ctx)))
+
+(defn- passed [^Neighbors s ctx p shape? told]
+  (let [^booleans deaf ((if shape? :shape :neighbor) @states)
+        ^objects sides (if shape? shape-sides update-sides)]
+    (.pass s (long (p 0)) (long (p 1)) (long (p 2)) (boolean shape?)
+           deaf sides told (stepper ctx) chunk/min-y chunk/max-y)))
 
 (defn- neighbors-changed [s ctx p old]
   (if (and (not (running? s)) (deaf-around? s :neighbor p))
     s
-    (add-and-run s ctx [:multi p old 0])))
+    (passed s ctx p false #(state-changed %1 ctx %2 %4 old %3))))
 
 (defn- called [s ctx fx]
   (if (seq fx)
@@ -240,22 +234,13 @@
             s (filter vector? fx))
     s))
 
-(defn- shape-item [q old nst flags limit side]
-  [:shape q old 0 side nst flags limit])
-
-(defn- shape-told [s ctx p old nst flags limit [d side]]
-  (let [q (shifted p d)]
-    (if (and (not (running? s)) (deaf-to-shape? (block-at s q)))
-      s
-      (add-and-run s ctx (shape-item q old nst flags limit side)))))
-
 (defn- shapes-changed [s ctx p old flags limit]
   (if (and (not (running? s)) (deaf-around? s :shape p))
     s
     (let [nst (block-at s p)
           f (bit-and (long flags) -34)]
-      (reduce #(shape-told %1 ctx p old nst f limit %2)
-              s shape-order))))
+      (passed s ctx p true
+              #(shape-changed %1 ctx %2 %4 old %3 nst f limit)))))
 
 (defn- run-by-level? [e]
   (or (= :fluid-tick e)
