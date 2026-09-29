@@ -10,10 +10,10 @@
             [collider.game.state :as state]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.players.track
-             :refer [->Frame ->Track]]
+             :refer [->Track]]
             [collider.world.chunk :as chunk])
   (:import (collider.game.systems.players.track Frame Track)
-           (java.util ArrayList Locale)))
+           (java.util Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -181,19 +181,9 @@
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]] (tracked? e))) (:entities world)))
 
-(defn- add-viewer [a eid oid]
-  (if-let [^ArrayList l (get a eid)]
-    (do (.add l oid) a)
-    (assoc! a eid (doto (ArrayList. 4) (.add oid)))))
-
-(defn- viewer-index [ps]
-  (persistent!
-    (reduce (fn [acc [oid o]]
-              (reduce (fn [a eid] (add-viewer a eid oid))
-                      acc
-                      (seq (:tracking o))))
-            (transient (i/int-map))
-            ps)))
+(defn- viewed [ps]
+  (transduce (keep #(:tracking (val %))) (completing i/union)
+             (i/int-set) ps))
 
 (def ^:private duplicate-login-reason
   "You logged in from another location")
@@ -282,29 +272,47 @@
           (conj base (out/to pid (out/meta eid (:type e) mdata)))
           base)))))
 
+(defn- joined [m ^long c run]
+  (if run
+    (let [es (persistent! run)]
+      (assoc! m c (if-let [had (get m c)] (i/union had es) es)))
+    m))
+
+(defn- run-of [eid] (conj! (transient (i/int-set)) eid))
+
 (defn- entities-by-chunk [ts]
-  (persistent!
-    (reduce (fn [m [eid e]]
-              (let [c (chunk/pos-chunk (:pos e))]
-                (assoc! m c (conj (get m c []) eid))))
-            (transient (i/int-map))
-            ts)))
+  (loop [m (transient (i/int-map)) c 0 run nil ts (seq ts)]
+    (if-let [[eid e] (first ts)]
+      (let [c' (chunk/pos-chunk (:pos e))]
+        (if (and run (= c c'))
+          (recur m c (conj! run eid) (next ts))
+          (recur (joined m c run) c' (run-of eid) (next ts))))
+      (persistent! (joined m c run)))))
 
-(defn- near-eids [by-chunk seen]
+(defn- near-index [ts]
+  [(entities-by-chunk ts)
+   (filterv #(identical? :player (:type (val %))) ts)])
+
+(defn- near-set [by-chunk seen]
   (if (< (count by-chunk) (count seen))
-    (eduction (comp (filter #(contains? seen (key %))) (mapcat val))
-              by-chunk)
-    (eduction (mapcat #(get by-chunk %)) (seq seen))))
+    (reduce (fn [acc [c es]]
+              (if (contains? seen c) (i/union acc es) acc))
+            (i/int-set) by-chunk)
+    (reduce (fn [acc c]
+              (if-let [es (get by-chunk c)] (i/union acc es) acc))
+            (i/int-set) seen)))
 
-(defn- tracking-deltas [world by-chunk [oid o]]
-  (let [seen (or (:sent-chunks o) (i/int-set))
-        mine? (fn [eid] (= (long eid) (long oid)))
-        shown? #(game-mode/shown-to? o (get-in world [:entities %]))
-        want (into (i/int-set) (comp (remove mine?) (filter shown?))
-                   (near-eids by-chunk seen))
+(defn- hidden-from [oid o bodies]
+  (into (i/int-set [oid])
+        (keep (fn [[eid e]] (when-not (game-mode/shown-to? o e) eid)))
+        bodies))
+
+(defn- tracking-deltas [world [by-chunk bodies] [oid o]]
+  (let [near (near-set by-chunk (or (:sent-chunks o) (i/int-set)))
+        want (i/difference near (hidden-from oid o bodies))
         have (or (:tracking o) (i/int-set))
-        add (into [] (remove #(contains? have %)) (seq want))
-        gone (into [] (remove #(contains? want %)) (seq have))]
+        add (into [] (i/difference want have))
+        gone (into [] (i/difference have want))]
     (when (or (seq add) (seq gone))
       (into [[:tracking oid add gone]]
             (mapcat (fn [eid] (baseline-deltas world oid eid)))
@@ -389,26 +397,28 @@
                 (long (tr-since-tp tr)))
         vel (:vel e)
         equip (equipment-stacks e)
+        meta-changed? (not= mdata (tr-mdata tr))
         equip-changed? (not= equip (tr-equip tr))
         self? (= :player (:type e))
         carried? (carried-differs? e tr self?)
         rel? (boolean
                (and (in-rel-range? dx dy dz)
                     (<= since forced-teleport)
-                    (= ground (boolean (tr-on-ground tr)))))]
-    (->Frame x y z dx dy dz yaw pitch head ground since (boolean due?)
-             vel mdata (meta-diff mdata (tr-mdata tr)) equip
-             (moved-now? e tr due? ticks)
-             (turned-now? tr due? yaw pitch)
-             rel?
-             (boolean (and due? (not= head (long (tr-head tr)))))
-             (not= mdata (tr-mdata tr))
-             equip-changed?
-             (vel-changed? tr vel)
-             (when equip-changed? (equip-changes equip tr))
-             (self-slot-diff e tr self?)
-             carried?
-             (zero? ticks))))
+                    (= ground (boolean (tr-on-ground tr)))))
+        mdiff (when meta-changed? (meta-diff mdata (tr-mdata tr)))]
+    (new Frame x y z dx dy dz yaw pitch head ground since
+         (boolean due?) vel mdata mdiff equip
+         (moved-now? e tr due? ticks)
+         (turned-now? tr due? yaw pitch)
+         rel?
+         (boolean (and due? (not= head (long (tr-head tr)))))
+         meta-changed?
+         equip-changed?
+         (vel-changed? tr vel)
+         (when equip-changed? (equip-changes equip tr))
+         (self-slot-diff e tr self?)
+         carried?
+         (zero? ticks))))
 
 (defn- move-msg [eid e ^Frame f]
   (let [yaw (f-yaw f) pitch (f-pitch f) ground (f-ground f)]
@@ -494,9 +504,9 @@
       (boolean (:needs-sync? e))
       (boolean dirty?)))
 
-(defn- quiet? [tr e self? item? dirty?]
+(defn- quiet? [tr e self? item? dirty? equip-same?]
   (and (not dirty?)
-       (= (equipment-stacks e) (:equip tr))
+       equip-same?
        (or (not self?)
            (and (identical? (:inventory e) (:slots tr))
                 (= (:carried e) (:carried tr))))
@@ -505,7 +515,7 @@
 (defn- collect-out [eid e vs self? track-delta msgs selfs]
   (let [out (transient [])
         out (if track-delta (conj! out track-delta) out)
-        out (if (some? vs)
+        out (if vs
               (reduce (fn [out m] (conj! out (out/all m))) out msgs)
               out)
         out (if self?
@@ -522,18 +532,27 @@
                  (when-not (identical? tr tr') [:track eid tr'])
                  msgs (self-msgs eid e f))))
 
+(defn- tracked-deltas [t eid e vs self? tr mdata dirty? due?]
+  (let [fresh? (and (not due?) (instance? Track tr))
+        item? (contains? #{:item :experience-orb} (:type e))
+        same? (and fresh? (= (equipment-stacks e) (:equip tr)))]
+    (cond
+      (not fresh?) (changed-deltas t eid e vs self? tr mdata due?)
+      (quiet? tr e self? item? dirty? same?) nil
+      (and same? (not self?) (not dirty?))
+      [[:track eid (assoc tr :vel-sent (:vel e))]]
+      :else (changed-deltas t eid e vs self? tr mdata due?))))
+
 (defn- move-deltas [t viewers [eid e]]
-  (let [vs (viewers eid)
+  (let [vs (contains? viewers eid)
         self? (= :player (:type e))]
-    (when (or (some? vs) self?)
-      (let [item? (contains? #{:item :experience-orb} (:type e))
-            tr (track-of (long t) e)
+    (when (or vs self?)
+      (let [tr (track-of (long t) e)
             mdata (metadata e)
             dirty? (not= mdata (:mdata tr))
-            due? (due-now? (long t) tr e dirty?)
-            fresh? (and (not due?) (instance? Track tr))]
-        (when-not (and fresh? (quiet? tr e self? item? dirty?))
-          (changed-deltas (long t) eid e vs self? tr mdata due?))))))
+            due? (due-now? (long t) tr e dirty?)]
+        (tracked-deltas (long t) eid e vs self? tr mdata dirty?
+                        due?)))))
 
 (def ^:private tab-header-interval 20)
 
@@ -590,18 +609,18 @@
   during this tick."
   [world d]
   (when (entities-changed? d)
-    (let [by-chunk (entities-by-chunk (tracked-entries world))
-          job (fn [entry] (tracking-deltas world by-chunk entry))]
+    (let [near (near-index (tracked-entries world))
+          job (fn [entry] (tracking-deltas world near entry))]
       (into [] (mapcat job) (state/player-entries world)))))
 
 (defn- spawn-jobs [world ps ts]
-  (let [by-chunk (entities-by-chunk ts)]
-    (mapv (fn [entry] #(tracking-deltas world by-chunk entry)) ps)))
+  (let [near (near-index ts)]
+    (mapv (fn [entry] #(tracking-deltas world near entry)) ps)))
 
 (def ^:private ^:const move-batch 32)
 
 (defn- move-jobs [world ps ts]
-  (let [viewers (viewer-index ps)
+  (let [viewers (viewed ps)
         t (long (:tick world))
         job (fn [entry] (move-deltas t viewers entry))
         batch-job (fn [batch] #(into [] (mapcat job) batch))]
