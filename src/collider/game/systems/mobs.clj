@@ -519,10 +519,11 @@
         (travelled world e v half height og? f)
         vy (liquid/bubble-push (:chunks world) pos (v/y w))]
     [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
-     sup nb? h]))
+     sup nb? h f false]))
 
 (defn- rest-move [e f]
-  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f])
+  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f
+   f true])
 
 (defn- eye-height ^double [^double height]
   (* 0.85 height))
@@ -580,8 +581,7 @@
         moving? (not (zero? (double (:zza (:move e) 0.0))))
         vel (own-vel index eid e h ht f)
         rest? (at-rest? world e h moving? (in-fluid? f) vel)]
-    (conj (if rest? (rest-move e f) (physics-move world e vel h ht f))
-          f rest?)))
+    (if rest? (rest-move e f) (physics-move world e vel h ht f))))
 
 (defn- settled
   [e [pos _ og cd sup nb?] v g rest? [yaw hy body] look walked came]
@@ -606,7 +606,7 @@
   at pos and takes their push back, the shoves, and whether cram
   hurt it first; live? says which bodies are alive now."
   [world index eid e [half height pos vel] cram live?]
-  (let [hurt (when cram (cram (assoc e :pos pos)))
+  (let [hurt (when cram (cram e pos))
         shoves (push/shoves-at index eid pos half height)
         v (shoved world (or hurt e) vel shoves live?)]
     [v shoves (some? hurt)]))
@@ -696,16 +696,21 @@
                (aset ~a (unchecked-inc ~c) (~g ~n))
                (unchecked-add ~c 2)))]))
 
+(defn- diff-size [o n k]
+  (let [g (symbol (str ".-" (name k)))]
+    `(if (identical? (~g ~n) (~g ~o)) 0 2)))
+
 (defmacro ^:private diff-fields [old new & ks]
   (let [o (with-meta (gensym "o") {:tag 'Mob})
         n (with-meta (gensym "n") {:tag 'Mob})
         a (with-meta (gensym "a") {:tag 'objects})
         cs (vec (repeatedly (inc (count ks)) #(gensym "c")))
-        step (fn [i k] (diff-step o n a (cs i) (cs (inc i)) k))]
-    `(let [~o ~old ~n ~new ~a (object-array ~(* 2 (count ks)))
+        step (fn [i k] (diff-step o n a (cs i) (cs (inc i)) k))
+        add (fn [acc k] `(unchecked-add ~acc ~(diff-size o n k)))
+        size (reduce add 0 ks)]
+    `(let [~o ~old ~n ~new ~a (object-array ~size)
            ~(cs 0) 0 ~@(mapcat step (range) ks)]
-       (clojure.lang.PersistentArrayMap.
-         (java.util.Arrays/copyOf ~a (int ~(peek cs)))))))
+       (clojure.lang.PersistentArrayMap. ~a))))
 
 (defn- mob-changes [old new]
   (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
@@ -742,10 +747,15 @@
     (attribute/value e fx :movement-speed)
     (double (:speed (get mobs/types (:type e))))))
 
+(defn- joined-into [acc more]
+  (if (zero? (count more)) acc (into acc more)))
+
 (defn- stepped-deltas [eid e e2 ds say-ds t]
   (let [changes (mob-changes e e2)
-        merged (when (seq changes) [[:merge-entity eid changes]])
-        acc (cond-> (vec merged) ds (into ds) say-ds (into say-ds))]
+        merged (if (pos? (count changes))
+                 [[:merge-entity eid changes]]
+                 [])
+        acc (-> merged (joined-into ds) (joined-into say-ds))]
     (movement-sounds acc e2 (boolean (:wet? e))
                      (double (or (:walked e) 0.0))
                      (double (or (:walked e2) 0.0)) t eid)))
@@ -806,9 +816,11 @@
   "Returns the slot and the shove of each body that takes a shove
   of mob i now."
   [ticking slots es i shoves]
-  (let [f (fn [sh]
-            (when-let [j (taker ticking slots es i sh)] [j sh]))]
-    (into [] (keep f) shoves)))
+  (let [f (fn [acc sh]
+            (if-let [j (taker ticking slots es i sh)]
+              (conj (or acc []) [j sh])
+              acc))]
+    (reduce f nil shoves)))
 
 (def ^:private ^:const cramming-damage 6.0)
 
@@ -829,10 +841,11 @@
 (defn- crammed?
   "Returns true when mob e, crowded, takes cramming damage this tick,
   as LivingEntity.pushEntities."
-  [world index slots es eid e t]
+  [world index slots es eid e pos t]
   (and (push/alive? e)
        (< (random/of-longs t eid cramming-key) 0.25)
-       (let [m (max-cramming world)]
+       (let [m (max-cramming world)
+             e (assoc e :pos pos)]
          (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
 
 (defn- rested
@@ -853,7 +866,7 @@
       [e ds])))
 
 (defn- cramming [world index slots es eid e t ds]
-  (if (crammed? world index slots es eid e t)
+  (if (crammed? world index slots es eid e (:pos e) t)
     (crammed eid e ds)
     [e ds]))
 
@@ -861,9 +874,9 @@
   "Returns the fn that hurts mob eid of es when it stands crammed,
   as LivingEntity.pushEntities does before it pushes."
   [world index slots es eid t]
-  (fn [e]
-    (when (crammed? world index slots es eid e t)
-      (state/hurt (rested e) cramming-damage))))
+  (fn [e pos]
+    (when (crammed? world index slots es eid e pos t)
+      (state/hurt (rested (assoc e :pos pos)) cramming-damage))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))

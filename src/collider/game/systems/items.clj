@@ -331,14 +331,12 @@
   (let [d (long (or (:pickup-delay e) 0))]
     (if (= no-pickup-delay d) d (max 0 (dec d)))))
 
-(def ^:private stepped-keys
-  [:pos :vel :on-ground :support :no-blocks?])
-
 (defn- stepped [e s age]
-  (cond-> (assoc (select-keys s stepped-keys)
-                 :needs-sync? (needs-sync? e s)
-                 :age age
-                 :pickup-delay (delay-left e))
+  (cond-> {:pos (:pos s) :vel (:vel s) :on-ground (:on-ground s)
+           :support (:support s) :no-blocks? (:no-blocks? s)
+           :needs-sync? (needs-sync? e s)
+           :age age
+           :pickup-delay (delay-left e)}
     (or (:stuck s) (:stuck e)) (assoc :stuck (:stuck s))))
 
 (defn- step-item [world eid e]
@@ -615,7 +613,7 @@
   (let [d (step-item world eid e)]
     (if (= :remove-entity (nth d 0))
       [eid nil (:pos e) d]
-      [eid (conj e (nth d 2)) (:pos e) d])))
+      [eid (entity/merged e (nth d 2)) (:pos e) d])))
 
 (defn items
   "Returns the tick steps of every dropped item in an active chunk."

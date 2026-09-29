@@ -1065,7 +1065,9 @@
     d))
 
 (defn- merge-diff [cur add drop]
-  (set/difference (into (or cur (i/int-set)) add) (set drop)))
+  (let [s (or cur (i/int-set))
+        s (if (seq add) (into s add) s)]
+    (if (seq drop) (set/difference s (set drop)) s)))
 
 (defn- listed [w add drop]
   (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
@@ -1298,7 +1300,7 @@
 (defn- stepped [entities t]
   (fn [m [eid ds]]
     (if-let [e (get entities eid)]
-      (assoc m eid (entity-folded t e ds))
+      (assoc! m eid (entity-folded t e ds))
       m)))
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
@@ -1309,7 +1311,9 @@
         b (min n (+ a fold-leaf))
         lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
         hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
-    (reduce step (i/range entities lo hi) (subvec v a b))))
+    (persistent!
+      (reduce step (transient (i/range entities lo hi))
+              (subvec v a b)))))
 
 (defn- leaves [^long n]
   (vec (range (quot (+ n (dec fold-leaf)) fold-leaf))))
@@ -1318,7 +1322,7 @@
   (let [step (stepped entities (:tick w))
         n (count by-eid)]
     (if (< n fold-leaf)
-      (reduce step entities by-eid)
+      (persistent! (reduce step (transient entities) by-eid))
       (let [v (vec by-eid)
             leaf #(i/merge %1 (leaf-of step entities v %2))]
         (r/fold 1 (r/monoid i/merge i/int-map) leaf (leaves n))))))

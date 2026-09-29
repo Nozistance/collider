@@ -1,6 +1,6 @@
 package collider.game.mob;
 
-import clojure.lang.ITransientCollection;
+import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 import java.util.AbstractMap;
@@ -264,8 +264,10 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private Object shoved(double x, double y, double z, double half,
                           double height, long eid, long hi) {
         int n = overlapping(x, y, z, half, height, eid, hi);
+        if (n == 0) return PersistentVector.EMPTY;
         int[] hits = HITS.get();
-        ITransientCollection acc = PersistentVector.EMPTY.asTransient();
+        Object[] acc = new Object[n];
+        int k = 0;
         for (int i = 0; i < n; i++) {
             int j = hits[i];
             double dx = x - xs[j], dz = z - zs[j];
@@ -273,11 +275,11 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             if (m >= THRESHOLD) {
                 double s = Math.sqrt(m);
                 double p = Math.min(1.0, 1.0 / s);
-                acc.conj(RT.vector(eids[j], dx / s * p * STRENGTH,
-                                   dz / s * p * STRENGTH));
+                acc[k++] = RT.vector(eids[j], dx / s * p * STRENGTH,
+                                     dz / s * p * STRENGTH);
             }
         }
-        return acc.persistent();
+        return vector(acc, k);
     }
 
     /// Returns the ids of the bodies whose boxes overlap the box of
@@ -293,9 +295,15 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                            double height, long eid) {
         int n = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
         int[] hits = HITS.get();
-        ITransientCollection acc = PersistentVector.EMPTY.asTransient();
-        for (int i = 0; i < n; i++) acc.conj(eids[hits[i]]);
-        return acc.persistent();
+        Object[] acc = new Object[n];
+        for (int i = 0; i < n; i++) acc[i] = eids[hits[i]];
+        return vector(acc, n);
+    }
+
+    private static Object vector(Object[] a, int n) {
+        if (n == 0) return PersistentVector.EMPTY;
+        if (n < a.length) a = Arrays.copyOf(a, n);
+        return LazilyPersistentVector.createOwning(a);
     }
 
     /// Returns the number of bodies of lower id that body `s` could

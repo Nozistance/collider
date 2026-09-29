@@ -68,7 +68,7 @@
               st (chunk/get-block c lx ly lz)]
           (recur (inc i)
                  (if (block/randomly-ticking? st)
-                   (conj! acc [[(+ x0 lx) ly (+ z0 lz)] st])
+                   (conj acc [[(+ x0 lx) ly (+ z0 lz)] st])
                    acc)))))))
 
 (defn- blank? [s] (or (nil? s) (identical? s chunk/empty-section)))
@@ -77,9 +77,9 @@
   (let [t (long (:tick world)) cid (long cid)
         [cx cz] (chunk/id->pos cid)
         x0 (* 16 (long cx)) z0 (* 16 (long cz))]
-    (loop [si 0 acc (transient [])]
+    (loop [si 0 acc []]
       (if (= si (long chunk/section-count))
-        (persistent! acc)
+        acc
         (recur (inc si)
                (if (blank? (chunk/chunk-section c si))
                  acc
@@ -94,8 +94,11 @@
 
 (defn- chunk-results [world chunks speed time cid]
   (when-let [c (get chunks cid)]
-    (mapv (fn [[p st]] (cell-result world chunks time p st))
-          (chunk-cells world speed cid c))))
+    (let [cells (chunk-cells world speed cid c)]
+      (if (zero? (count cells))
+        cells
+        (mapv (fn [[p st]] (cell-result world chunks time p st))
+              cells)))))
 
 (defn- roll-of ^double [t cid i salt]
   (random/of-longs t cid i (hash salt)))

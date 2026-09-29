@@ -15,12 +15,12 @@
 (defn- pushable-half ^double [e]
   (case (:type e)
     :player player-half
-    (double (or (first (mobs/box-of e)) 0.0))))
+    (double (or (nth (mobs/box-of e) 0 nil) 0.0))))
 
 (defn- pushable-height ^double [e]
   (case (:type e)
     :player player-height
-    (double (or (second (mobs/box-of e)) 1.0))))
+    (double (or (nth (mobs/box-of e) 1 nil) 1.0))))
 
 (defn- cell-key ^long [^long cx ^long cz]
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)

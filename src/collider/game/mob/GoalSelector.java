@@ -6,6 +6,7 @@ import clojure.lang.IPersistentVector;
 import clojure.lang.Keyword;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
+import clojure.lang.Tuple;
 
 /// The goals of a breed, highest priority first, and the selector
 /// that stops, starts and ticks them as GoalSelector does. Each goal
@@ -133,7 +134,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
             b = bits(e, t);
             locked = locks(b);
         }
-        return PersistentVector.create(e, ds);
+        return Tuple.create(e, ds);
     }
 
     private IPersistentVector ticked(Object w, Object eid, Object e,
@@ -146,7 +147,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
                 ds = into(ds, RT.nth(r, 1));
             }
         }
-        return PersistentVector.create(e, ds);
+        return Tuple.create(e, ds);
     }
 
     /// Returns `[e deltas]` after one tick of the goals of mob `e`

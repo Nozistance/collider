@@ -93,7 +93,7 @@
 
 (defn- walker? [e]
   (or (contains? @walkers (:type e))
-      (= :leather-boots (get-in e [:inventory 8 :item]))))
+      (= :leather-boots (:item (get (:inventory e) 8)))))
 
 (defn- descends? [e]
   (and (= :player (:type e)) (:sneaking? e)))

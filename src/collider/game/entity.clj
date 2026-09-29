@@ -5,7 +5,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
-  (:import (collider.game.entity.records Mob)
+  (:import (collider.game.entity.records Item Mob Orb)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -104,37 +104,47 @@
          (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o at)))
          (assoc ~x ~@(mapcat identity vs))))))
 
-(defn- filled [e]
-  (let [put (fn [i f] `(aset ~i ~(field e f)))]
-    `(doto (object-array ~(count mob-fields))
-       ~@(map-indexed put mob-fields))))
+(defn- fields-of [cls]
+  (eval (list (symbol (str cls) "getBasis"))))
 
-(defn- put-field [a x k v]
+(defn- filled [e fields]
+  (let [put (fn [i f] `(aset ~i ~(field e f)))]
+    `(doto (object-array ~(count fields))
+       ~@(map-indexed put fields))))
+
+(defn- put-field [a x k v fields]
   (let [set (fn [i f] [(keyword f) `(do (aset ~a ~i ~v) ~x)])]
     `(case ~k
-       ~@(apply concat (map-indexed set mob-fields))
+       ~@(apply concat (map-indexed set fields))
        (assoc ~x ~k ~v))))
 
-(defmacro ^:private mob-merger []
-  (let [e (with-meta (gensym "e") {:tag `Mob})
+(defmacro ^:private merger [cls]
+  (let [fields (fields-of cls)
+        e (with-meta (gensym "e") {:tag cls})
         a (with-meta (gensym "a") {:tag 'objects})
         [m x k v] (map gensym ["m" "x" "k" "v"])
         got (fn [i] `(aget ~a ~i))
-        f `(fn [~x ~k ~v] ~(put-field a x k v))]
+        f `(fn [~x ~k ~v] ~(put-field a x k v fields))]
     `(fn [~e ~m]
-       (let [~a ~(filled e)
+       (let [~a ~(filled e fields)
              ext# (reduce-kv ~f ~(field e "__extmap") ~m)]
-         (new Mob ~@(map got (range (count mob-fields))) (meta ~e)
+         (new ~cls ~@(map got (range (count fields))) (meta ~e)
               ext#)))))
 
-(def ^:private mob-merged (mob-merger))
+(def ^:private mob-merged (merger Mob))
+
+(def ^:private item-merged (merger Item))
+
+(def ^:private orb-merged (merger Orb))
 
 (defn merged
   "Returns entity e with the map m merged into it."
   [e m]
-  (if (and (instance? Mob e) (< 1 (count m)))
-    (mob-merged e m)
-    (merge e m)))
+  (cond (< (count m) 2) (merge e m)
+        (instance? Mob e) (mob-merged e m)
+        (instance? Item e) (item-merged e m)
+        (instance? Orb e) (orb-merged e m)
+        :else (merge e m)))
 
 (defn mob-looked
   "Returns the mob e turned towards what it looks at."

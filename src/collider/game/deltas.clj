@@ -84,7 +84,7 @@
           :fx (recur ds w e (conj! o (nth d 1)))
           (:merge-entity :track :tracking :set-slot :chunks-sent :push
            :damage :teleport :client-slots :award)
-          (let [eid (long (nth d 1))]
+          (let [eid (nth d 1)]
             (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
           (recur ds (conj! w d) e o)))
       (built w e o acc))))
@@ -236,6 +236,13 @@
 (defn- joined-all [tasks rs]
   (mapv (fn [t r] (if t (join t) r)) tasks rs))
 
+(defn- run-all [timed ks fs]
+  (merge-all (mapv (fn [k f] ((timed k f))) ks fs)))
+
+(defn- run-forked [heavy? timed heaviest ks fs]
+  (let [tasks (mapv #(forked heavy? timed heaviest %1 %2) ks fs)]
+    (merge-all (joined-all tasks (ran-here timed tasks ks fs)))))
+
 (defn run-weighed
   "Returns the deltas of thunks fs merged in their order.
   The thunks whose keys ks are heavy? run in parallel, the rest in
@@ -243,9 +250,10 @@
   ^Deltas [heavy? timed ks fs]
   (if (= 1 (count fs))
     ((nth fs 0))
-    (let [heaviest (reduce #(if (heavy? %2) %2 %1) nil ks)
-          tasks (mapv #(forked heavy? timed heaviest %1 %2) ks fs)]
-      (merge-all (joined-all tasks (ran-here timed tasks ks fs))))))
+    (let [heaviest (reduce #(if (heavy? %2) %2 %1) nil ks)]
+      (if (nil? heaviest)
+        (run-all timed ks fs)
+        (run-forked heavy? timed heaviest ks fs)))))
 
 (defn of
   "Returns the deltas of the systems over world and deltas."

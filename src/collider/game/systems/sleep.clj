@@ -85,8 +85,7 @@
       (woken-deltas eid up yaw))))
 
 (defn- in-bed [world]
-  (filter (fn [[_ e]] (and (= :player (:type e)) (:sleeping e)))
-          (:entities world)))
+  (filter (fn [[_ e]] (:sleeping e)) (state/player-entries world)))
 
 (defn sleepers
   "Returns the sleeping players that count, which are no spectators."

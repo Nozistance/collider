@@ -221,14 +221,15 @@
   (long (Math/floor (+ (- a fluid-margin) 1.0))))
 
 (defn- span
-  [p ^double half ^double height [sxz sy]]
+  ^longs [p ^double half ^double height [sxz sy]]
   (let [px (v/x p) py (v/y p) pz (v/z p)
         sy (double sy)
         h (- half (double sxz))]
-    [(floor-lo (- px h)) (floor-hi (+ px h))
-     (max chunk/min-y (floor-lo (+ py sy)))
-     (min (inc chunk/max-y) (floor-hi (- (+ py height) sy)))
-     (floor-lo (- pz h)) (floor-hi (+ pz h))]))
+    (doto (long-array 6)
+      (aset 0 (floor-lo (- px h))) (aset 1 (floor-hi (+ px h)))
+      (aset 2 (max chunk/min-y (floor-lo (+ py sy))))
+      (aset 3 (min (inc chunk/max-y) (floor-hi (- (+ py height) sy))))
+      (aset 4 (floor-lo (- pz h))) (aset 5 (floor-hi (+ pz h))))))
 
 (defn- mark-cell [chunks ^longs acc x y z inner?]
   (let [st (chunk/block-state chunks x y z)
@@ -239,25 +240,25 @@
     (when (and lava? inner?)
       (aset acc 0 (bit-or (aget acc 0) sunk-bit)))))
 
-(defn- scan-z [chunks ^longs acc outer inner x y yin?]
-  (let [z1 (outer 5) iz0 (inner 4) iz1 (inner 5)]
-    (loop [z (outer 4)]
+(defn- scan-z [chunks ^longs acc ^longs outer ^longs inner x y yin?]
+  (let [z1 (aget outer 5) iz0 (aget inner 4) iz1 (aget inner 5)]
+    (loop [z (aget outer 4)]
       (when (and (< z z1) (not= all-bits (aget acc 0)))
         (mark-cell chunks acc x y z
                    (and yin? (>= z iz0) (< z iz1)))
         (recur (inc z))))))
 
-(defn- scan-y [chunks ^longs acc outer inner x xin?]
-  (let [y1 (outer 3) iy0 (inner 2) iy1 (inner 3)]
-    (loop [y (outer 2)]
+(defn- scan-y [chunks ^longs acc ^longs outer ^longs inner x xin?]
+  (let [y1 (aget outer 3) iy0 (aget inner 2) iy1 (aget inner 3)]
+    (loop [y (aget outer 2)]
       (when (and (< y y1) (not= all-bits (aget acc 0)))
         (scan-z chunks acc outer inner x y
                 (and xin? (>= y iy0) (< y iy1)))
         (recur (inc y))))))
 
-(defn- scan-x [chunks ^longs acc outer inner]
-  (let [x1 (outer 1) ix0 (inner 0) ix1 (inner 1)]
-    (loop [x (outer 0)]
+(defn- scan-x [chunks ^longs acc ^longs outer ^longs inner]
+  (let [x1 (aget outer 1) ix0 (aget inner 0) ix1 (aget inner 1)]
+    (loop [x (aget outer 0)]
       (when (and (< x x1) (not= all-bits (aget acc 0)))
         (scan-y chunks acc outer inner x
                 (and (>= x ix0) (< x ix1)))
@@ -311,7 +312,7 @@
 (defn- cause-of [e]
   (if (mobs/mob-type? (:type e)) identity (constantly nil)))
 
-(defn- lit-deltas [eid e fire wet? flags]
+(defn- lit-by-deltas [eid e fire wet? flags]
   (let [touch (any-bit? flags (bit-or fire-bit lava-bit))
         sunk? (any-bit? flags sunk-bit)
         in-lava? (any-bit? flags lava-bit)
@@ -323,6 +324,10 @@
             (when touch (ignite 1.0 fire-seconds :in-fire))
             (when sunk? (ignite lava-damage lava-seconds :lava))
             (douse-deltas eid e fire wet?))))
+
+(defn- lit-deltas [eid e fire wet? flags]
+  (when (or (pos? (long fire)) (pos? (long flags)) (:burning? e))
+    (lit-by-deltas eid e fire wet? flags)))
 
 (def ^:private ^:const fire-rest -20)
 
@@ -496,18 +501,27 @@
       [(out/all
          (out/sound :generic/burn (:pos e) burn-volume pitch))])))
 
+(defn- item-burn-deltas [world eid e ^long flags]
+  (let [ds (item-fire-deltas world eid e flags)
+        health (double (:health e))]
+    (concat ds
+            (when (pos? (bit-and flags lava-bit))
+              (burn-sound-deltas world eid e health))
+            (when (>= (damage-sum ds) health)
+              [[:remove-entity eid]]))))
+
+(defn- unlit? [e ^long flags]
+  (and (zero? flags) (not (pos? (long (or (:fire e) 0))))
+       (not (:burning? e))))
+
 (defn- item-deltas [world eid e]
   (if (fire-proof-item? e)
     (when (pos? (long (or (:fire e) 0)))
       [[:merge-entity eid {:fire 0}]])
-    (let [flags (probe world e)
-          ds (item-fire-deltas world eid e flags)
-          health (double (:health e))]
-      (concat ds
-              (when (pos? (bit-and flags lava-bit))
-                (burn-sound-deltas world eid e health))
-              (when (>= (damage-sum ds) health)
-                [[:remove-entity eid]])))))
+    (let [flags (probe world e)]
+      (if (unlit? e flags)
+        (when (>= 0.0 (double (:health e))) [[:remove-entity eid]])
+        (item-burn-deltas world eid e flags)))))
 
 (def ^:private ^:const safe-fall 3.0)
 
@@ -774,17 +788,20 @@
 (defn- hurt-now [world eid e ds]
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
-(defn- mob-deltas [world eid e]
-  (let [busy? (not (idle? world e))
-        ds (concat (when busy? (timer-deltas eid e))
-                   (when busy? (void-deltas world eid e))
-                   (when busy? (landing-deltas world eid e))
+(defn- busy-deltas [world eid e]
+  (let [ds (concat (timer-deltas eid e)
+                   (void-deltas world eid e)
+                   (landing-deltas world eid e)
                    (fire-deltas world eid e))
-        rested (when busy? (rest-deltas eid e))]
-    (concat ds (when busy?
-                 (report-deltas
-                   world eid
-                   (hurt-now world eid e (concat rested ds)))))))
+        rested (rest-deltas eid e)]
+    (concat ds (report-deltas
+                 world eid
+                 (hurt-now world eid e (concat rested ds))))))
+
+(defn- mob-deltas [world eid e]
+  (if (idle? world e)
+    (fire-deltas world eid e)
+    (busy-deltas world eid e)))
 
 (defn- living-deltas [world eid e]
   (if (contains? #{:item :experience-orb} (:type e))

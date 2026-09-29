@@ -22,25 +22,34 @@
 
 (defn- hi ^long [^double v] (long (Math/floor (- v deflate))))
 
-(defn- states-in [chunks [x y z] ^double half ^double height]
-  (let [x (double x) y (double y) z (double z)]
-    (for [bx (range (lo (- x half)) (inc (hi (+ x half))))
-          by (range (lo y) (inc (hi (+ y height))))
-          bz (range (lo (- z half)) (inc (hi (+ z half))))]
-      (chunk/at chunks [bx by bz]))))
+(defn- state-at ^long [chunks ^long x ^long y ^long z]
+  (if (chunk/in-range? y) (chunk/block-state chunks x y z) 0))
+
+(defn- web? [chunks ^long x ^long y ^long z]
+  (= :web (block/type-of (state-at chunks x y z))))
+
+(defn- webbed? [chunks [x y z] ^double half ^double height]
+  (let [x (double x) y (double y) z (double z)
+        x1 (hi (+ x half)) y0 (lo y) y1 (hi (+ y height))
+        z0 (lo (- z half)) z1 (hi (+ z half))]
+    (loop [bx (lo (- x half)) by y0 bz z0]
+      (cond (> bx x1) false
+            (> by y1) (recur (inc bx) y0 z0)
+            (> bz z1) (recur bx (inc by) z0)
+            (web? chunks bx by bz) true
+            :else (recur bx by (inc bz))))))
 
 (defn stuck-speed
   "Returns what the blocks that a box at pos stands in multiply the
   next move by. Returns nil when none of them holds it."
   [chunks pos half height]
-  (when (some (fn [st] (= :web (block/type-of (long st))))
-              (states-in chunks pos half height))
+  (when (webbed? chunks pos (double half) (double height))
     web-speed))
 
-(defn- below-of [chunks [x y z]]
-  (chunk/at chunks [(long (Math/floor (double x)))
-                  (long (Math/floor (- (double y) step-offset)))
-                  (long (Math/floor (double z)))]))
+(defn- below-of ^long [chunks [x y z]]
+  (state-at chunks (long (Math/floor (double x)))
+            (long (Math/floor (- (double y) step-offset)))
+            (long (Math/floor (double z)))))
 
 (defn- on-slime? [chunks pos]
   (= :slime (block/type-of (below-of chunks pos))))
@@ -72,7 +81,7 @@
   (delay (motion-table :jump-factor 1.0)))
 
 (defn- factor-of ^double [^doubles a ^long st]
-  (if (< -1 st (alength a)) (aget a st) (aget a 0)))
+  (if (and (< -1 st) (< st (alength a))) (aget a st) (aget a 0)))
 
 (defn friction
   "Returns the friction of the block of state st, a float."
@@ -109,11 +118,11 @@
          z (floor-of (nth (or sup pos) 2))]
      (if (and sup (holds-support? st))
        st
-       (chunk/at chunks [x y z])))))
+       (state-at chunks x y z)))))
 
 (defn- feet-state ^long [chunks pos]
-  (chunk/at chunks [(floor-of (nth pos 0)) (floor-of (nth pos 1))
-                    (floor-of (nth pos 2))]))
+  (state-at chunks (floor-of (nth pos 0)) (floor-of (nth pos 1))
+            (floor-of (nth pos 2))))
 
 (defn block-speed-factor
   "Returns what the blocks at and under a body at pos multiply its
