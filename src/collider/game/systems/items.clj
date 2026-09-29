@@ -35,14 +35,13 @@
 
 (def ^:private ^:const hand-drop 0.3)
 
-(defn- item-entities [world]
-  (let [item? (fn [[_ e]] (= :item (:type e)))]
-    (sort-by key (filter item? (:entities world)))))
-
 (defn- active-items [world]
-  (let [active (state/active-chunks world)]
-    (filterv (fn [[_ e]] (state/active-at? active (:pos e)))
-             (item-entities world))))
+  (let [active (state/active-chunks world)
+        item? (fn [[_ e]]
+                (and (= :item (:type e))
+                     (state/active-at? active (:pos e))))
+        xf (filter item?)]
+    (deltas/select xf (deltas/keyed (:entities world)))))
 
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))

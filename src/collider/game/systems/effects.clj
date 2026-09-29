@@ -3,6 +3,7 @@
   A change runs on a running account of one entity, its effects,
   the attributes they touched and the deltas so far."
   (:require [collider.game.attribute :as attribute]
+            [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -224,11 +225,9 @@
 (defn- due? [e]
   (and (or (seq (:effects e)) (:dirty-attributes e)) (living? e)))
 
-(defn- affected [world]
-  (filter (fn [[_ e]] (due? e)) (:entities world)))
-
 (defn effects
   "Returns a step that ticks the effects of every living entity."
   [world _]
-  [#(into [] (mapcat (fn [x] (entity-deltas world x)))
-          (affected world))])
+  (let [xf (comp (filter (fn [[_ e]] (due? e)))
+                 (mapcat (fn [x] (entity-deltas world x))))]
+    [#(deltas/select xf (:entities world))]))

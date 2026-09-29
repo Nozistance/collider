@@ -2,6 +2,7 @@
   "Thrown snowballs, eggs, pearls, potions and bottles o' enchanting,
   and lingering clouds."
   (:require [collider.data :as data]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -524,16 +525,18 @@
 (defn- live? [active kinds [_ e]]
   (and (kinds (:type e)) (state/active-at? active (:pos e))))
 
-(defn- entries [world kinds]
-  (let [active (state/active-chunks world)]
-    (into [] (filter (partial live? active kinds))
-          (sort-by key (:entities world)))))
+(def ^:private flying (conj entity/thrown-types :area-effect-cloud))
+
+(defn- cloud? [[_ e]] (= :area-effect-cloud (:type e)))
 
 (defn projectiles
   "Returns the flight and the hits of the thrown things.
   Also returns the life of the lingering clouds."
   [world _d]
-  (-> (mapv (fn [[eid e]] #(step-deltas world eid e))
-            (entries world entity/thrown-types))
-      (into (map (fn [[eid e]] #(cloud-deltas world eid e)))
-            (entries world #{:area-effect-cloud}))))
+  (let [active (state/active-chunks world)
+        xf (filter (partial live? active flying))
+        es (deltas/select xf (deltas/keyed (:entities world)))
+        step (fn [[eid e]] #(step-deltas world eid e))
+        cloud (fn [[eid e]] #(cloud-deltas world eid e))]
+    (-> (into [] (comp (remove cloud?) (map step)) es)
+        (into (comp (filter cloud?) (map cloud)) es))))

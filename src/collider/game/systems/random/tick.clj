@@ -152,9 +152,12 @@
 (defn- ticked [world speed]
   (let [chunks (:chunks world) time (clock/day-ticks world)
         h (max-snow world) cids (state/active-chunk-ids world)
-        result #(chunk-results world chunks speed time %)
-        results (per-chunk cids result)
-        fallen (per-chunk cids #(chunk-fallen world chunks speed h %))
+        both (fn [cid]
+               [[(chunk-results world chunks speed time cid)
+                 (chunk-fallen world chunks speed h cid)]])
+        pairs (per-chunk cids both)
+        results (into [] (mapcat first) pairs)
+        fallen (into [] (mapcat second) pairs)
         changes (into fallen (mapcat :changes) results)
         drips (into [] (keep :drip) results)]
     (when (or (seq changes) (seq drips))

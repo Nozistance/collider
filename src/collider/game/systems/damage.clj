@@ -2,6 +2,7 @@
   "Damage, death and respawn."
   (:require [collider.data :as data]
             [collider.game.systems.blocks.edit :as edit]
+            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.experience :as xp]
             [collider.game.game-mode :as game-mode]
@@ -782,19 +783,16 @@
 (defn- ticking? [active e]
   (or (= :player (:type e)) (state/active-at? active (:pos e))))
 
-(defn- live-entries [world]
+(defn- living [world]
   (let [active (state/active-chunks world)]
-    (into [] (filter (fn [[_ e :as entry]]
-                       (and (ticking? active e) (live? world entry))))
-          (:entities world))))
+    (comp (filter (fn [[_ e :as entry]]
+                    (and (ticking? active e) (live? world entry))))
+          (mapcat (fn [[eid e]] (living-deltas world eid e))))))
 
-(defn- living-batch-fn [world batch]
-  #(into [] (mapcat (fn [[eid e]] (living-deltas world eid e)))
-         batch))
+(def ^:private ^:const living-leaf 64)
 
 (defn- living-fns [world]
-  (mapv (fn [batch] (living-batch-fn world batch))
-        (partition-all 32 (live-entries world))))
+  [#(deltas/select (living world) (:entities world) living-leaf)])
 
 (defn- event-deltas [world events]
   (into []
@@ -810,10 +808,10 @@
   entity, as LivingEntity.baseTick before aiStep. It runs before the
   mobs, whose hurts this tick write the resistance after it."
   [world _d]
-  (let [active (state/active-chunks world)]
-    [#(into [] (comp (filter (fn [entry] (resting? active entry)))
-                     (mapcat (fn [[eid e]] (rest-deltas eid e))))
-            (:entities world))]))
+  (let [active (state/active-chunks world)
+        xf (comp (filter (fn [entry] (resting? active entry)))
+                 (mapcat (fn [[eid e]] (rest-deltas eid e))))]
+    [#(deltas/select xf (:entities world))]))
 
 (defn damage
   "Returns a step for every living entity and the damage events of

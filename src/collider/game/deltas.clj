@@ -5,7 +5,8 @@
             [clojure.data.int-map :as i]
             [collider.game.delta :as delta]
             [collider.game.deltas.record :refer [->Deltas]])
-  (:import (collider.game.deltas.record Deltas)))
+  (:import (clojure.data.int_map PersistentIntMap)
+           (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
 
@@ -66,6 +67,36 @@
   (cond (zero? (count b)) a
         (zero? (count a)) b
         :else (into a b)))
+
+(def ^:private ^:const select-leaf 4096)
+
+(defn keyed
+  "Returns map m as an int-map, which runs by key."
+  [m]
+  (if (instance? PersistentIntMap m) m (into (i/int-map) m)))
+
+(defn- halves [m]
+  (let [lo (long (key (first m)))
+        hi (long (key (first (rseq m))))
+        mid (+ lo (quot (- hi lo) 2))]
+    [(i/range m lo mid) (i/range m (inc mid) hi)]))
+
+(defn- folded [rf m ^long leaf]
+  (if (<= (count m) leaf)
+    (reduce rf [] m)
+    (let [[a b] (halves m)
+          t (@#'r/fjfork (r/fjtask #(folded rf b leaf)))
+          l (folded rf a leaf)]
+      (joined l (@#'r/fjjoin t)))))
+
+(defn select
+  "Returns (into [] xf m) for a transducer xf that keeps no state.
+  The runs of more than leaf entries of an int-map go in parallel."
+  ([xf m] (select xf m select-leaf))
+  ([xf m leaf]
+   (if (instance? PersistentIntMap m)
+     (@#'r/fjinvoke #(folded (xf conj) m leaf))
+     (into [] xf m))))
 
 (defn vacant?
   "Returns true when map m holds no entry.

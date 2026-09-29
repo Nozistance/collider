@@ -5,6 +5,7 @@
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
+            [collider.game.deltas :as deltas]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -487,10 +488,10 @@
   "Sends every viewer the slots and data of their menu that moved.
   This happens once per player tick."
   [world _d]
-  [#(mapcat (fn [[eid e]]
+  (let [one (fn [[eid e]]
               (when (broadcasting? world e)
-                (broadcast-deltas world (long eid) e)))
-            (:entities world))])
+                (broadcast-deltas world (long eid) e)))]
+    [#(deltas/select (mapcat one) (:entities world))]))
 
 (defn- event-deltas [world [tag :as ev]]
   (case tag
