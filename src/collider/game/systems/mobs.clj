@@ -385,6 +385,17 @@
         (current-axis (v/y d) (v/y u) (double (nth p 1)))
         (current-axis (v/z d) (v/z u) (double (nth p 2)))))
 
+(def ^:private dry {:water 0.0 :lava 0.0 :push [0.0 0.0 0.0]})
+
+(defn- fluid-after [world pos h ht v]
+  (let [ch (:chunks world)]
+    (if (phys/dry? ch pos h ht)
+      dry
+      (liquid/fluid-info ch pos h ht v (:dim world)))))
+
+(defn- fluid-of [world e half height]
+  (fluid-after world (:pos e) half height (:vel e)))
+
 (defn- moved-fluid
   "Returns the fluid over mob e after the move mv by d and its
   velocity with the push of that fluid. A mob out of water looks
@@ -392,8 +403,7 @@
   [world e d ^Move mv half height f]
   (if (dry-still? e mv half height f)
     [f (phys/vel mv)]
-    (let [ch (:chunks world) p (phys/pos mv)
-          g (liquid/fluid-info ch p half height d (:dim world))]
+    (let [g (fluid-after world (phys/pos mv) half height d)]
       [g (carried d (phys/vel mv) (:push g))])))
 
 (defn- travel-air [world e vel half height og? f]
@@ -403,12 +413,12 @@
         [sup nb?] (supported world e mv half)
         sf (speed-factor world (phys/pos mv) sup)
         k (fmul bf air-drag)
-        [_ u] (moved-fluid world e d mv half height f)]
+        [h u] (moved-fluid world e d mv half height f)]
     [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) vertical-drag)
            (* (* (v/z u) sf) k))
-     (phys/on-ground? mv) sup nb?]))
+     (phys/on-ground? mv) sup nb? h]))
 
 (defn- travel-water [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
@@ -445,7 +455,7 @@
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
      (jumped-out world (phys/pos mv) w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb?]))
+     (phys/on-ground? mv) sup nb? h]))
 
 (defn- travelled
   [world e vel half height og? {:keys [water lava] :as f}]
@@ -500,27 +510,20 @@
         [v jumped?] (if (:jump e)
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
-        [pos w ground? sup nb?]
+        [pos w ground? sup nb? h]
         (travelled world e v half height og? f)
         vy (liquid/bubble-push (:chunks world) pos (v/y w))]
     [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
-     sup nb?]))
+     sup nb? h]))
 
-(defn- rest-move [e]
-  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e)])
+(defn- rest-move [e f]
+  [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f])
 
 (defn- eye-height ^double [^double height]
   (* 0.85 height))
 
 (defn- fluid-threshold ^double [^double height]
   (if (< (eye-height height) 0.4) 0.0 jump-threshold))
-
-(defn- fluid-of [world e half height]
-  (liquid/fluid-info (:chunks world) (:pos e) half height (:vel e)
-                     (:dim world)))
-
-(defn- fluid-after [world pos h ht v]
-  (liquid/fluid-info (:chunks world) pos h ht v (:dim world)))
 
 (defn- flag [old now]
   (if (= (boolean old) now) old now))
@@ -564,14 +567,15 @@
 
 (defn- travel-of
   "Returns the position, speed, ground, jump cooldown, support and
-  no-blocks flag of mob e after its move this tick, then the fluid
-  it stood in and whether it rested."
+  no-blocks flag of mob e after its move this tick, the fluid over
+  it after the move when the move looked, then the fluid it stood in
+  and whether it rested."
   [world index eid e h ht]
   (let [f (fluid-at world e h ht)
         moving? (not (zero? (double (:zza (:move e) 0.0))))
         vel (own-vel index eid e h ht f)
         rest? (at-rest? world e h moving? (in-fluid? f) vel)]
-    (conj (if rest? (rest-move e) (physics-move world e vel h ht f))
+    (conj (if rest? (rest-move e f) (physics-move world e vel h ht f))
           f rest?)))
 
 (defn- settled
@@ -593,10 +597,10 @@
   [world index eid e half height look prev]
   (let [h (double (float half)) ht (double (float height))
         tr (travel-of world index eid e h ht)
-        pos (nth tr 0) rest? (nth tr 7)
+        pos (nth tr 0) rest? (nth tr 8)
         shoves (push/shoves-at index eid pos half height)
         v (shoved world e (nth tr 1) shoves)
-        g (if rest? (nth tr 6) (fluid-after world pos h ht v))
+        g (or (nth tr 6) (fluid-after world pos h ht v))
         moved? (shifted? (:pos e) pos)
         head (if look (nth look 0) (:head-yaw e))
         hd (control/body-turn e head moved? (:tick world))]
@@ -701,7 +705,8 @@
     [e1 deltas say-deltas]))
 
 (defn- steered [world e speed half]
-  (control/tick world (nav/tick world e) speed (* 2.0 (double half))))
+  (let [[e nav m] (nav/aim world e)]
+    (control/tick world e speed (* 2.0 (double half)) nav m)))
 
 (defn- sensed [world e speed half height t]
   (looked world (steered world e speed half) height t))
@@ -770,8 +775,9 @@
 
 (defn- crowd [index slots es eid e]
   (let [[half height] (mobs/box-of e)
-        alive? (fn [o] (push/alive? (nth (nth es (get slots o)) 1)))]
-    (count (filter alive? (push/touching index eid e half height)))))
+        alive? (fn [o] (push/alive? (nth (nth es (get slots o)) 1)))
+        f (fn [^long n o] (if (alive? o) (inc n) n))]
+    (reduce f 0 (push/touching index eid e half height))))
 
 (defn- crammed?
   "Returns true when mob e, crowded, takes cramming damage this tick,
@@ -845,13 +851,12 @@
 
 (def ^:private ^:const batch-bodies 32)
 
+(defn- batched [[acc b ^long n] es]
+  (let [b (conj b es) n (+ n (count es))]
+    (if (>= n batch-bodies) [(conj acc b) [] 0] [acc b n])))
+
 (defn- batches [islands]
-  (let [[acc b] (reduce (fn [[acc b ^long n] es]
-                          (let [b (conj b es) n (+ n (count es))]
-                            (if (>= n batch-bodies)
-                              [(conj acc b) [] 0]
-                              [acc b n])))
-                        [[] [] 0] islands)]
+  (let [[acc b] (reduce batched [[] [] 0] islands)]
     (cond-> acc (seq b) (conj b))))
 
 (defn- island-batch [world active tempters t batch]
@@ -863,6 +868,7 @@
   Each island of mobs steps, and the clicks of players get answers."
   [world d]
   (let [events (:input d)
+        world (assoc world :watchers (animal/watchers world))
         t (long (:tick world))
         active (state/active-chunks world)
         tempters (sense/holders world)

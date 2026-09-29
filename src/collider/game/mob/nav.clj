@@ -201,21 +201,21 @@
                  (long (:tick world)))))
 
 (defn- aimed [world e nav]
-  (let [m (Nav/aimed nav (:move e) (:chunks world)
-                     (block/collision-arr) (half-of e))]
-    (entity/with e {:nav nav :move m})))
+  (Nav/aimed nav (:move e) (:chunks world) (block/collision-arr)
+             (half-of e)))
 
 (defn- walked-on [world e nav0 nav]
   (if (Nav/walked nav)
-    (if (identical? nav nav0) e (assoc e :nav nav))
+    [(if (identical? nav nav0) e (assoc e :nav nav)) nil nil]
     (let [nav2 (stepped world e nav)]
-      (cond (not (Nav/walked nav2)) (aimed world e nav2)
-            (identical? nav0 nav2) e
-            :else (assoc e :nav nav2)))))
+      (cond (not (Nav/walked nav2)) [e nav2 (aimed world e nav2)]
+            (identical? nav0 nav2) [e nil nil]
+            :else [(assoc e :nav nav2) nil nil]))))
 
-(defn tick
-  "Returns mob e after one tick of its navigation.
-  The mob walks its path on and tells its move control where to go."
+(defn aim
+  "Returns mob e after one tick of its navigation, then the path
+  state and the move it aims at when it walks a path, or nils.
+  The caller sets both on the mob."
   [world e]
   (let [nav0 (:nav e)
         nav (Nav/ticked nav0)]
@@ -223,3 +223,10 @@
       (let [e (recompute-path world (assoc e :nav nav))]
         (walked-on world e (:nav e) (:nav e)))
       (walked-on world e nav0 nav))))
+
+(defn tick
+  "Returns mob e after one tick of its navigation.
+  The mob walks its path on and tells its move control where to go."
+  [world e]
+  (let [[e nav m] (aim world e)]
+    (if nav (entity/with e {:nav nav :move m}) e)))

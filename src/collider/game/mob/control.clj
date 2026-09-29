@@ -76,40 +76,45 @@
              (< (+ (* xd xd) (* zd zd)) (Math/max 1.0 w)))
         (stuck-in-block? chunks (:pos e)))))
 
-(defn- move-to-tick [world e ^double attr ^double width]
-  (let [m (:move e) pos (:pos e)
+(defn- move-to-tick [world e nav m attr width]
+  (let [pos (:pos e) attr (double attr)
         xd (- (double (:x m)) (v/x pos))
         yd (- (double (:y m)) (v/y pos))
         zd (- (double (:z m)) (v/z pos))]
     (if (< (+ (* xd xd) (* yd yd) (* zd zd)) min-speed-sqr)
-      (assoc e :move (Steer/arrived m))
+      (entity/with e {:nav nav :move (Steer/arrived m)})
       (let [jump? (boolean (jumps? (:chunks world) e xd yd zd width))
             m (Steer/driven m (* (double (:mult m)) attr) jump?)
             yaw (turned e xd zd)]
         (if jump?
-          (entity/with e {:yaw yaw :move m :jump true})
-          (entity/with e {:yaw yaw :move m}))))))
+          (entity/with e {:nav nav :yaw yaw :move m :jump true})
+          (entity/with e {:nav nav :yaw yaw :move m}))))))
 
-(defn- jumping-tick [e ^double attr]
-  (let [m (:move e)
-        landed? (boolean (or (:on-ground e) (in-liquid? e)))
+(defn- jumping-tick [e nav m ^double attr]
+  (let [landed? (boolean (or (:on-ground e) (in-liquid? e)))
         s (* (double (:mult m)) attr)]
-    (assoc e :move (Steer/jumped m s landed?))))
+    (entity/with e {:nav nav :move (Steer/jumped m s landed?)})))
 
-(defn- waiting [e]
-  (let [m (:move e) h (Steer/halted m)]
-    (if (identical? m h) e (assoc e :move h))))
+(defn- waiting [e nav m]
+  (let [h (Steer/halted m)]
+    (if (and (identical? h (:move e)) (identical? nav (:nav e)))
+      e
+      (entity/with e {:nav nav :move h}))))
 
 (defn tick
   "Returns mob e after one tick of its move and jump controls, for
-  speed attribute attr and box width width."
-  [world e attr width]
-  (let [op (:op (:move e) :wait)]
-    (cond
-      (identical? op Steer/MOVE_TO)
-      (move-to-tick world e (double attr) (double width))
-      (identical? op Steer/JUMPING) (jumping-tick e (double attr))
-      :else (waiting e))))
+  speed attribute attr and box width width. The path state nav and
+  the move m the navigation aims at, when given, go in the same copy."
+  ([world e attr width] (tick world e attr width nil nil))
+  ([world e attr width nav m]
+   (let [nav (or nav (:nav e)) m (or m (:move e))
+         op (:op m :wait)]
+     (cond
+       (identical? op Steer/MOVE_TO)
+       (move-to-tick world e nav m attr width)
+       (identical? op Steer/JUMPING)
+       (jumping-tick e nav m (double attr))
+       :else (waiting e nav m)))))
 
 (defn- flt ^double [^double a] (double (float a)))
 

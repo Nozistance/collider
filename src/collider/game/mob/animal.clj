@@ -14,6 +14,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.phys :as phys]
             [collider.world.chunk :as chunk]
             [collider.world.space.sight :as sight])
   (:import (clojure.lang IFn)
@@ -343,7 +344,9 @@
 (defn- afloat? [world e _ _]
   (let [[half height] (mobs/box-of e)
         chunks (:chunks world)
-        h (liquid/fluid-height chunks (:pos e) half height :water)]
+        h (if (phys/dry? chunks (:pos e) half height)
+            0.0
+            (liquid/fluid-height chunks (:pos e) half height :water))]
     (or (> h jump-threshold) (boolean (:in-lava? e)))))
 
 (defn- start-float [world eid e t tempters]
@@ -388,10 +391,19 @@
 
 (def ^:private watcher? (complement game-mode/spectator?))
 
+(defn watchers
+  "Returns the players that keep mobs from idling, as sense/watchers
+  gives them, for the key :watchers of the world a brain sees."
+  [world]
+  (sense/watchers world watcher?))
+
+(defn- watched? [world e]
+  (if-let [ws (:watchers world)]
+    (sense/watched? ws (:pos e) idle-reset-sq)
+    (sense/player-within? world (:pos e) idle-reset-sq watcher?)))
+
 (defn- idle-count [world e]
-  (if (sense/player-within? world (:pos e) idle-reset-sq watcher?)
-    0
-    (long (or (:no-action e) 0))))
+  (if (watched? world e) 0 (long (or (:no-action e) 0))))
 
 (def ^:private flag-bits
   "The bit of each goal flag, as Goal.Flag orders them."

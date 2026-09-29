@@ -164,6 +164,34 @@ public final class Phys {
         return new Sweep(a, n);
     }
 
+    /// Returns true when no cell a body box of half width `half` and
+    /// that height touches, less the fluid margin, holds water or lava.
+    public static boolean dry(ChunkIndex chunks, BlockTables t, double x,
+            double y, double z, double half, double height) {
+        double a = half - 0.001;
+        long x0 = (long) Math.floor(x - a), x1 = (long) Math.ceil(x + a);
+        long y0 = (long) Math.floor(y + 0.001);
+        long y1 = (long) Math.ceil((y + height) - 0.001);
+        long z0 = (long) Math.floor(z - a), z1 = (long) Math.ceil(z + a);
+        for (long cx = x0; cx < x1; cx++) {
+            for (long cy = Math.max(y0, MIN_Y); cy < y1 && cy <= MAX_Y;
+                 cy++) {
+                for (long cz = z0; cz < z1; cz++) {
+                    Section s = Chunk.sectionAt(chunks, (int) cx,
+                                                (int) cy, (int) cz);
+                    int st = s == null ? 0 : s.block(
+                            (int) (((cy & 15) << 8) | ((cz & 15) << 4)
+                                   | (cx & 15)));
+                    if (st > 0 && (Block.liquid(t, st)
+                                   || Block.waterlogged(t, st))) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
     private static boolean overlaps(double[] a, int o, double[] box) {
         return a[o + 3] > box[0] && box[3] > a[o]
             && a[o + 4] > box[1] && box[4] > a[o + 1]

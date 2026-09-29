@@ -37,6 +37,29 @@
               (reduced true)))]
     (boolean (reduce-kv f nil (:players world)))))
 
+(defn watchers
+  "Returns the x, y and z of every player that pred accepts, one
+  player after another."
+  ^doubles [world pred]
+  (let [es (:entities world)
+        at (fn [o] (let [p (:pos o)] [(v/x p) (v/y p) (v/z p)]))]
+    (double-array
+      (into [] (comp (keep (fn [[_ oid]] (get es oid)))
+                     (filter pred) (mapcat at))
+            (:players world)))))
+
+(defn watched?
+  "Returns true when a player of ws, as watchers gives them, stands
+  closer than the root of r2 to pos."
+  [^doubles ws pos ^double r2]
+  (let [x (v/x pos) y (v/y pos) z (v/z pos) n (alength ws)]
+    (loop [i 0]
+      (and (< i n)
+           (let [dx (- (aget ws i) x) dy (- (aget ws (inc i)) y)
+                 dz (- (aget ws (+ i 2)) z)]
+             (or (< (+ (* dx dx) (* dy dy) (* dz dz)) r2)
+                 (recur (+ i 3))))))))
+
 (def ^:private ^:const cell-shift 2)
 
 (defn- cell-key ^long [^long cx ^long cz]

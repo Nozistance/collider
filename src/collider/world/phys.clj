@@ -80,6 +80,13 @@
            `(+ (v/z ~p) (double ~dz)) `(double ~half)
            `(double ~height)]))))
 
+(defn dry?
+  "Returns true when no water or lava touches a body of that size
+  at pos, as the fluid scan of liquid/fluid-info sees it."
+  [chunks pos half height]
+  (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
+            (double half) (double height)))
+
 (defn free?
   "Returns true when a body of that size meets no block after a
   move by dx dy dz. Only the end position counts, not the path."
