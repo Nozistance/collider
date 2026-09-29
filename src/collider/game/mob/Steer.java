@@ -24,6 +24,8 @@ public record Steer(Keyword op, double x, double y, double z,
     private static final Keyword SPEED = Keyword.intern("speed");
     private static final Keyword ZZA = Keyword.intern("zza");
 
+    private static final double DEGREES = 180.0F / (float) Math.PI;
+
     private static final double FRAC_BIAS =
         Double.longBitsToDouble(4805340802404319232L);
     private static final double[] ASIN_TAB = new double[257];
@@ -87,8 +89,7 @@ public record Steer(Keyword op, double x, double y, double z,
     /// `max` degrees, in floats as MoveControl.tick and rotlerp.
     public static double turned(double yaw, double xd, double zd,
             double max) {
-        float to = (float) (atan2(zd, xd) * 180.0F / (float) Math.PI)
-                - 90.0F;
+        float to = (float) (atan2(zd, xd) * DEGREES) - 90.0F;
         return rotlerp(yaw, to, max);
     }
 

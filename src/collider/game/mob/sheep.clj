@@ -6,6 +6,7 @@
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.nav :as nav]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
@@ -23,7 +24,7 @@
 
 (def ^:private ^:const baby-eat-chance 50)
 
-(def ^:private ^:const bite-at 4)
+(def ^:private ^:const bite-at 2)
 
 (def ^:private ^:const bite-growth 1200)
 
@@ -48,11 +49,13 @@
 (defn- eat-odds ^long [e]
   (quot (if (mobs/baby? e) baby-eat-chance eat-chance) 2))
 
+(defn- eat-task [t] {:kind :eat :until (+ (long t) eat-ticks)})
+
 (defn- start-eat [world eid e t _]
   (let [cell (sense/feet-cell (:pos e))]
     (when (and (animal/one-in? t eid :eat (eat-odds e))
                (or (edible? world cell) (grass-at? world cell)))
-      [(assoc e :task {:kind :eat :until (+ (long t) eat-ticks)})
+      [(nav/stop (assoc e :task (eat-task t)))
        [(out/all (out/status eid :eat))]])))
 
 (defn- eating? [_ e t _]
@@ -77,8 +80,14 @@
         (edit/flagged-deltas
           world [[below (grass/dirt-state) [grass]]] 2)))))
 
+(defn- animation-left
+  "EatBlockGoal.eatAnimationTick after the goal ticked at tick t: it
+  counts goal selector passes, which come every second tick."
+  ^long [e t]
+  (quot (- (long (get-in e [:task :until])) (long t) 2) 2))
+
 (defn- bite-now? [e t]
-  (= bite-at (- (long (get-in e [:task :until])) (long t))))
+  (= bite-at (animation-left e t)))
 
 (defn- eat-tick [_ world _ e t _]
   (if-let [ds (when (bite-now? e t)
@@ -160,7 +169,7 @@
         {:result :success :deltas (dyed peid p hand eid e id)}))))
 
 (def ^:private eat
-  {:kind  :eat :flags #{:move :look} :start start-eat
+  {:kind  :eat :flags #{:move :look :jump} :start start-eat
    :continue? eating? :tick eat-tick})
 
 (def spec

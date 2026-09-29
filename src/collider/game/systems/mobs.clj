@@ -220,7 +220,7 @@
         o (when oid (get (:entities world) oid))]
     [(cond o (v/yaw-toward (:pos e) (:pos o))
            (and look (:yaw look)) (:yaw look)
-           :else (:yaw e))
+           :else (control/body-yaw e))
      (if o (look-pitch e height o) 0.0)]))
 
 (defn- look-of
@@ -539,11 +539,11 @@
   (v/v3 (+ (v/x vel) (double dx)) (v/y vel)
         (+ (v/z vel) (double dz))))
 
-(defn- shoved [world e vel shoves]
+(defn- shoved [world e vel shoves live?]
   (if (and (seq shoves) (push/alive? e))
-    (let [es (:entities world)]
-      (reduce (fn [v sh]
-                (if (push/alive? (get es (nth sh 0))) (taken v sh) v))
+    (let [es (:entities world)
+          live? (or live? #(push/alive? (get es %)))]
+      (reduce (fn [v sh] (if (live? (nth sh 0)) (taken v sh) v))
               vel shoves))
     vel))
 
@@ -597,24 +597,34 @@
         head (if look (nth look 0) (:head-yaw e))]
     (control/body-turn e head moved? (:tick world))))
 
+(defn- pushed-back
+  "Returns the speed of mob e after it shoves the bodies it touches
+  at pos and takes their push back, the shoves, and whether cram
+  hurt it first; live? says which bodies are alive now."
+  [world index eid e [half height pos vel] cram live?]
+  (let [hurt (when cram (cram (assoc e :pos pos)))
+        shoves (push/shoves-at index eid pos half height)
+        v (shoved world (or hurt e) vel shoves live?)]
+    [v shoves (some? hurt)]))
+
 (defn- physics-shoves
-  "Returns mob e after one tick of movement and the shoves it gave
-  the bodies it ran into. The mob also takes the head of look, as
-  look-of returns it, and the walk from prev, when given."
-  [world index eid e half height look prev]
+  "Returns mob e after one tick of movement, the shoves it gave and
+  whether cramming hurt it, as pushed-back gives them."
+  [world index eid e half height [look prev cram live?]]
   (let [h (double (float half)) ht (double (float height))
         tr (travel-of world index eid e h ht)
         pos (nth tr 0) rest? (nth tr 8)
-        shoves (push/shoves-at index eid pos half height)
-        v (shoved world e (nth tr 1) shoves)
+        [v shoves hit?]
+        (pushed-back world index eid e [half height pos (nth tr 1)]
+                     cram live?)
         g (or (nth tr 6) (fluid-after world pos h ht v))
         hd (body-of-move world e pos look)]
     [(settled e tr v g rest? hd look (walk-of e prev pos)
               (push/arrived e pos (:tick world) eid))
-     shoves]))
+     shoves hit?]))
 
 (defn- physics [world index eid e half height]
-  (nth (physics-shoves world index eid e half height nil nil) 0))
+  (nth (physics-shoves world index eid e half height nil) 0))
 
 (def ^:private ^:const say-rest 120)
 
@@ -749,11 +759,15 @@
         look (when-not dead? (look-of world e1 height t))]
     [e1 look ds say-ds]))
 
-(defn- step-mob [world index eid e [e1 look ds say-ds] t]
-  (let [[half height] (mobs/box-of e)
-        [e2 shoves]
-        (physics-shoves world index eid e1 half height look e)]
-    [e2 (stepped-deltas eid e e2 ds say-ds t) shoves]))
+(defn- step-mob
+  ([world index eid e mind t]
+   (step-mob world index eid e mind t nil nil))
+  ([world index eid e [e1 look ds say-ds] t cram live?]
+   (let [[half height] (mobs/box-of e)
+         more [look e cram live?]
+         [e2 shoves hit?]
+         (physics-shoves world index eid e1 half height more)]
+     [e2 (stepped-deltas eid e e2 ds say-ds t) shoves hit?])))
 
 (defn- handed
   "Returns acc with the shove sh handed to the mob in slot j, whose
@@ -799,10 +813,12 @@
 (defn- max-cramming ^long [world]
   (long (get-in world [:rules :max-entity-cramming] 24)))
 
+(defn- live-of [slots es]
+  (fn [o] (push/alive? (nth (nth es (get slots o)) 1))))
+
 (defn- crowd [index slots es eid e]
   (let [[half height] (mobs/box-of e)
-        alive? (fn [o]
-                 (push/alive? (nth (nth es (get slots o)) 1)))
+        alive? (live-of slots es)
         f (fn [^long n o] (if (alive? o) (inc n) n))]
     (reduce f 0 (push/touching index eid e half height))))
 
@@ -826,12 +842,24 @@
   {:health (:health h) :last-damage (:last-damage h)
    :hurt-resist (:hurt-resist h) :hurt-cause :cramming})
 
-(defn- cramming [world index slots es eid e t ds]
-  (let [h (when (crammed? world index slots es eid e t)
-            (state/hurt (rested e) cramming-damage))]
-    (if (and h (not= (:health h) (:health e)))
+(defn- crammed [eid e ds]
+  (let [h (state/hurt (rested e) cramming-damage)]
+    (if (not= (:health h) (:health e))
       [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
       [e ds])))
+
+(defn- cramming [world index slots es eid e t ds]
+  (if (crammed? world index slots es eid e t)
+    (crammed eid e ds)
+    [e ds]))
+
+(defn- cram-of
+  "Returns the fn that hurts mob eid of es when it stands crammed,
+  as LivingEntity.pushEntities does before it pushes."
+  [world index slots es eid t]
+  (fn [e]
+    (when (crammed? world index slots es eid e t)
+      (state/hurt (rested e) cramming-damage))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
@@ -841,8 +869,10 @@
   it, and its cramming, its deltas and the shoves it gave."
   [world index t slots es i mind]
   (let [[eid e] (nth es i)
-        [e2 ds shoves] (step-mob world index eid e mind t)
-        [e2 ds] (cramming world index slots es eid e2 t ds)]
+        cram (cram-of world index slots es eid t)
+        [e2 ds shoves hit?]
+        (step-mob world index eid e mind t cram (live-of slots es))
+        [e2 ds] (if hit? (crammed eid e2 ds) [e2 ds])]
     [e2 ds shoves]))
 
 (defn- turn [world ticking vels tempters t index slots es i]

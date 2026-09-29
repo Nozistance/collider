@@ -11,7 +11,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const max-path-length 16.0)
+(def ^:private ^:const follow-range 16.0)
 
 (def ^:private ^:const recompute-gap 20)
 
@@ -19,9 +19,20 @@
 
 (defn- half-of ^double [e] (double (nth (mobs/box-of e) 0)))
 
+(defn- path-length
+  "PathNavigation.getMaxPathLength: the follow range of mob e with the
+  bonus Mob.finalizeSpawn drew, never under the 16 a path needs."
+  ^double [e]
+  (let [b (double (or (:follow-bonus e) 0.0))
+        v (float (+ follow-range (* follow-range b)))]
+    (double (Math/max v (float follow-range)))))
+
 (defn- walker [e]
-  (let [[half height] (mobs/box-of e)]
+  (let [[half height] (mobs/box-of e)
+        len (float (path-length e))
+        visits (long (Math/floor (* len (float 16.0))))]
     (assoc path/cow
+      :max-visited visits
       :width (* 2.0 (double half)) :height height :pos (:pos e)
       :on-ground? (boolean (:on-ground e))
       :in-water? (boolean (:wet? e)))))
@@ -83,7 +94,7 @@
       [x y z])))
 
 (defn- search [world e cell ^long reach]
-  (path/find-path world (walker e) #{cell} max-path-length reach
+  (path/find-path world (walker e) #{cell} (path-length e) reach
                   1.0))
 
 (defn- searched [world e cell ^long reach]

@@ -186,9 +186,18 @@
    :health-sent (max-health type)
    :arrived     [(inc (* 2 (long tick))) nil]})
 
+(def ^:private ^:const follow-spread 0.11485000000000001)
+
+(defn- follow-bonus
+  "Returns the share of follow range Mob.finalizeSpawn adds, drawn as
+  RandomSource.triangle around zero from the keys ks."
+  ^double [ks]
+  (* follow-spread (- (random/of-key (conj ks :follow))
+                      (random/of-key (conj ks :follow-2)))))
+
 (defn egg-mob
   "Returns a mob hatched from a spawn egg in level dim.
-  The keys ks decide its colour, voice and yaw."
+  The keys ks decide its colour, voice, yaw and follow range."
   [type pos ks tick dim]
   (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
         voices (long (get-in types [type :sound-variants] 1))
@@ -196,7 +205,8 @@
         voice (long (* voices (random/of-key (conj ks :voice))))
         color (color-fn ks (biome/at dim pos))]
     (assoc (new-mob type pos color tick)
-      :yaw yaw :head-yaw yaw :sound-variant voice)))
+      :yaw yaw :head-yaw yaw :sound-variant voice
+      :follow-bonus (follow-bonus ks))))
 
 (defn command-mob
   "Returns a mob summoned by a command in level dim. It faces as its

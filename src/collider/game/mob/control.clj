@@ -130,7 +130,21 @@
 
 (defn- carried [^double yaw ^double hy ^long t]
   (let [h (rotate-if-necessary hy yaw max-head-y-rot)]
-    [yaw h {:head h :at t}]))
+    [yaw h {:head h :at t :yaw yaw}]))
+
+(defn body-yaw
+  "Returns the yaw of the body of mob e, which a standing mob turns
+  after its head without turning itself."
+  ^double [e]
+  (double (or (:yaw (:body e)) (:yaw e))))
+
+(defn- faced [e b ^double hy ^long t]
+  (let [by (body-yaw e)
+        f (faced-forward by hy (- t (long (:at b))))]
+    (if (and (:yaw b) (== f by)) b (assoc b :yaw f))))
+
+(defn- body-after [e ^double hy]
+  (rotate-if-necessary (body-yaw e) hy max-head-y-rot))
 
 (defn body-turn
   "Returns the yaw, head yaw and body of mob e after its move, for
@@ -144,6 +158,5 @@
     (cond
       moved? (carried yaw hy t)
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
-      [(rotate-if-necessary yaw hy max-head-y-rot) head
-       {:head hy :at t}]
-      :else [(faced-forward yaw hy (- t (long (:at b)))) head b])))
+      [yaw head {:head hy :at t :yaw (body-after e hy)}]
+      :else [yaw head (faced e b hy t)])))

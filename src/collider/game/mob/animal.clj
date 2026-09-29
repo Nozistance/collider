@@ -435,9 +435,17 @@
        (fns gs :start) (fns gs :continue?) (fns gs :tick)
        (boolean-array (map (comp boolean :every-tick?) gs))))))
 
+(defn- full-pass?
+  "Mob.serverAiStep: goals run on every second tick, and eid decides
+  which, but on each of the first two ticks of a mob."
+  [eid e t]
+  (let [b (:born e)]
+    (or (even? (+ (long t) (long eid)))
+        (and (some? b) (<= (- (long t) (long b)) 1)))))
+
 (defn brain
   "Returns the mob and its deltas after one tick of its goals.
-  Goals run on every second tick, and eid decides which. A goal that
+  Goals run on every second tick, and on the first two. A goal that
   wants every tick gets every tick."
   [spec world eid e t tempters]
   (let [n (inc (long (idle-count world e)))
@@ -445,7 +453,7 @@
             e
             (assoc e :no-action n))]
     (GoalSelector/think spec world eid e t tempters
-                        (even? (+ (long t) (long eid))))))
+                        (full-pass? eid e t))))
 
 (defn egg-result
   "Returns what a spawn egg of the mob's own kind does to it.

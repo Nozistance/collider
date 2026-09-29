@@ -329,7 +329,8 @@
   (let [ctx (context lv mob)
         from (start-node ctx)
         targets (targets-of goals)
-        maxv (long (int (* (float max-visited-nodes) (float mult))))
+        visits (:max-visited mob max-visited-nodes)
+        maxv (long (int (* (float visits) (float mult))))
         arr (into-array PathTarget targets)
         hit (Path/run (:search ctx) from arr maxlen reach maxv)]
     (if hit (pick hit true) (pick targets false))))
