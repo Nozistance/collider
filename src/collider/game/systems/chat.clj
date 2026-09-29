@@ -613,7 +613,7 @@
         dim (source-dim world)
         kind {:translate (str "entity.minecraft." (name type))}
         msg {:translate "commands.summon.success" :with [kind]}
-        mob (mobs/egg-mob type at [t eid :summon] t dim)]
+        mob (mobs/command-mob type at [t eid :summon at] t dim)]
     (concat (in-level world dim [[:spawn-entity mob]])
             (success [(out/to eid (out/system-chat msg))]))))
 

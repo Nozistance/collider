@@ -48,8 +48,22 @@
   [held [_ e :as entry]]
   (and (body? held entry) (alive? e)))
 
+(defn- came ^long [e]
+  (if-let [a (:arrived e)] (long (nth a 0)) Long/MIN_VALUE))
+
+(defn- rank ^long [eid e]
+  (if-let [r (nth (:arrived e) 1 nil)] (long r) (* 2 (long eid))))
+
+(defn- arrivals [es]
+  (let [n (count es) cs (long-array n) rs (long-array n)]
+    (dotimes [i n]
+      (let [[eid e] (nth es i)]
+        (aset cs i (came e))
+        (aset rs i (rank eid e))))
+    [cs rs]))
+
 (defn- filled ^PushGrid [es]
-  (let [n (count es)
+  (let [n (count es) [cs rs] (arrivals es)
         eids (long-array n) xs (double-array n) ys (double-array n)
         zs (double-array n) hs (double-array n) ts (double-array n)]
     (dotimes [i n]
@@ -60,7 +74,7 @@
         (aset zs i (double (v/z p)))
         (aset hs i (pushable-half e))
         (aset ts i (pushable-height e))))
-    (PushGrid. eids hs ts xs ys zs)))
+    (PushGrid. eids hs ts xs ys zs cs rs)))
 
 (defn- by-id? [es]
   (and (vector? es)
@@ -84,7 +98,25 @@
   (let [p (:pos e)]
     (PushGrid/moved index (long eid) (pushable-half e)
                     (pushable-height e) (double (v/x p))
-                    (double (v/y p)) (double (v/z p)))))
+                    (double (v/y p)) (double (v/z p)) (came e)
+                    (rank eid e))))
+
+(defn- same-section? [c c']
+  (== (bit-shift-right (long (Math/floor (double c))) 4)
+      (bit-shift-right (long (Math/floor (double c'))) 4)))
+
+(defn arrived
+  "Returns when body e, which moves to to in tick t, came into its
+  entity section, as the order of Level.getPushableEntities follows
+  it: its old arrival when it stays in its section, else this tick
+  after the bodies of lower id."
+  [e to t eid]
+  (let [from (:pos e)]
+    (if (and (same-section? (v/x from) (v/x to))
+             (same-section? (v/y from) (v/y to))
+             (same-section? (v/z from) (v/z to)))
+      (:arrived e)
+      [(* 2 (long t)) (inc (* 2 (long eid)))])))
 
 (defn- grouped [entries]
   (let [n (count entries)

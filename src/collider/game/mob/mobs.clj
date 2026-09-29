@@ -183,7 +183,8 @@
    :task        nil
    :no-action   0
    :health      (max-health type)
-   :health-sent (max-health type)})
+   :health-sent (max-health type)
+   :arrived     [(inc (* 2 (long tick))) nil]})
 
 (defn egg-mob
   "Returns a mob hatched from a spawn egg in level dim.
@@ -196,6 +197,15 @@
         color (color-fn ks (biome/at dim pos))]
     (assoc (new-mob type pos color tick)
       :yaw yaw :head-yaw yaw :sound-variant voice)))
+
+(defn command-mob
+  "Returns a mob summoned by a command in level dim. It faces as its
+  constructor turns it, less than 2 pi degrees; the keys ks decide
+  its colour and voice."
+  [type pos ks tick dim]
+  (let [r (double (float (random/of-key (conj ks :yaw))))
+        yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
+    (assoc (egg-mob type pos ks tick dim) :yaw yaw :head-yaw yaw)))
 
 (defn exp-delay
   "Returns a wait of at least one tick, drawn from an exponential law

@@ -580,9 +580,10 @@
           f rest?)))
 
 (defn- settled
-  [e [pos _ og cd sup nb?] v g rest? [yaw hy body] look walked]
+  [e [pos _ og cd sup nb?] v g rest? [yaw hy body] look walked came]
   (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
     (entity/with e {:pos pos :vel v :on-ground og :jump-cd cd
+                    :arrived came
                     :support sup :no-blocks? nb?
                     :wet? (flag (if rest? false (:wet? e)) w)
                     :in-lava? (flag (:in-lava? e) l)
@@ -590,6 +591,11 @@
                     :pitch (if look (nth look 1) (:pitch e))
                     :look (if look (nth look 2) (:look e))
                     :walked walked})))
+
+(defn- body-of-move [world e pos look]
+  (let [moved? (shifted? (:pos e) pos)
+        head (if look (nth look 0) (:head-yaw e))]
+    (control/body-turn e head moved? (:tick world))))
 
 (defn- physics-shoves
   "Returns mob e after one tick of movement and the shoves it gave
@@ -602,10 +608,10 @@
         shoves (push/shoves-at index eid pos half height)
         v (shoved world e (nth tr 1) shoves)
         g (or (nth tr 6) (fluid-after world pos h ht v))
-        moved? (shifted? (:pos e) pos)
-        head (if look (nth look 0) (:head-yaw e))
-        hd (control/body-turn e head moved? (:tick world))]
-    [(settled e tr v g rest? hd look (walk-of e prev pos)) shoves]))
+        hd (body-of-move world e pos look)]
+    [(settled e tr v g rest? hd look (walk-of e prev pos)
+              (push/arrived e pos (:tick world) eid))
+     shoves]))
 
 (defn- physics [world index eid e half height]
   (nth (physics-shoves world index eid e half height nil nil) 0))
@@ -692,7 +698,7 @@
                :no-action :baby-until :tempt-cooldown-until :say-tick
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
-               :no-blocks?))
+               :no-blocks? :arrived))
 
 (defn- age-up [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))

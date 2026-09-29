@@ -12,8 +12,11 @@ import java.util.Set;
 /// The bodies of one island by the block column they stand in, for
 /// the shoves between overlapping bodies. It changes in place as the
 /// bodies move, so one island steps with one grid. Threads may read
-/// it at once while no body moves. Hits come in the order of the push
-/// cells of four by four columns around the body, then by id.
+/// it at once while no body moves. A body meets the others as
+/// Level.getPushableEntities lists them: by entity section in the
+/// order EntitySectionStorage walks them, then in the order they
+/// came into their section. Shoves from the bodies that stepped
+/// before come in the order they stepped, by id.
 public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private static final double STRENGTH = (double) 0.05F;
@@ -22,6 +25,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private final long[] eids;
     private final double[] halfs, heights, xs, ys, zs;
+    private final long[] came, ranks;
     private final int[] next;
     private long[] keys;
     private int[] heads;
@@ -32,10 +36,14 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             ThreadLocal.withInitial(() -> new int[16]);
 
     /// Returns the grid of bodies `eids`, ascending, each with half
-    /// width, height and position at the same index.
+    /// width, height, position, and the tick and rank in it at which
+    /// it came into its section at the same index.
     public PushGrid(long[] eids, double[] halfs, double[] heights,
-                    double[] xs, double[] ys, double[] zs) {
+                    double[] xs, double[] ys, double[] zs, long[] came,
+                    long[] ranks) {
         this.eids = eids;
+        this.came = came;
+        this.ranks = ranks;
         this.halfs = halfs;
         this.heights = heights;
         this.xs = xs;
@@ -129,16 +137,19 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     }
 
     /// Moves the body `eid` of grid `g` to `x`, `y`, `z` with half width `half`
-    /// and height `height`, and returns this grid.
+    /// and height `height`, come into its section at tick `c` and rank
+    /// `r`, and returns this grid.
     public static PushGrid moved(PushGrid g, long eid, double half,
                                  double height, double x, double y,
-                                 double z) {
-        return g.move(eid, half, height, x, y, z);
+                                 double z, long c, long r) {
+        return g.move(eid, half, height, x, y, z, c, r);
     }
 
     private PushGrid move(long eid, double half, double height,
-                          double x, double y, double z) {
+                          double x, double y, double z, long c, long r) {
         int s = Arrays.binarySearch(eids, eid);
+        came[s] = c;
+        ranks[s] = r;
         boolean same = slack > 0.0
                 || column(x, z) == column(xs[s], zs[s]);
         if (!same) unlink(s);
@@ -197,14 +208,46 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                             hits = Arrays.copyOf(hits, n * 2);
                             HITS.set(hits);
                         }
-                        int order = (int) ((ox + 1) * 3 + oz + 1);
-                        hits[n++] = order * eids.length + j;
+                        hits[n++] = j;
                     }
                 }
             }
         }
-        Arrays.sort(hits, 0, n);
+        if (hi == Long.MAX_VALUE) {
+            listed(hits, n);
+        } else {
+            Arrays.sort(hits, 0, n);
+        }
         return n;
+    }
+
+    private static long section(double c) {
+        return Math.floorDiv((long) Math.floor(c), 16);
+    }
+
+    private int compareListed(int a, int b) {
+        int c = Long.compare(section(xs[a]), section(xs[b]));
+        if (c != 0) return c;
+        c = Long.compare(section(zs[a]) & 0x3FFFFFL,
+                         section(zs[b]) & 0x3FFFFFL);
+        if (c != 0) return c;
+        c = Long.compare(section(ys[a]) & 0xFFFFFL,
+                         section(ys[b]) & 0xFFFFFL);
+        if (c != 0) return c;
+        c = Long.compare(came[a], came[b]);
+        return c != 0 ? c : Long.compare(ranks[a], ranks[b]);
+    }
+
+    private void listed(int[] hits, int n) {
+        for (int i = 1; i < n; i++) {
+            int h = hits[i];
+            int k = i - 1;
+            while (k >= 0 && compareListed(hits[k], h) > 0) {
+                hits[k + 1] = hits[k];
+                k--;
+            }
+            hits[k + 1] = h;
+        }
     }
 
     /// Returns the shoves between the body `eid` of half width `half`
@@ -223,9 +266,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         int n = overlapping(x, y, z, half, height, eid, hi);
         int[] hits = HITS.get();
         ITransientCollection acc = PersistentVector.EMPTY.asTransient();
-        int k = eids.length;
         for (int i = 0; i < n; i++) {
-            int j = hits[i] % k;
+            int j = hits[i];
             double dx = x - xs[j], dz = z - zs[j];
             double m = Math.max(Math.abs(dx), Math.abs(dz));
             if (m >= THRESHOLD) {
@@ -252,8 +294,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         int n = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
         int[] hits = HITS.get();
         ITransientCollection acc = PersistentVector.EMPTY.asTransient();
-        int k = eids.length;
-        for (int i = 0; i < n; i++) acc.conj(eids[hits[i] % k]);
+        for (int i = 0; i < n; i++) acc.conj(eids[hits[i]]);
         return acc.persistent();
     }
 

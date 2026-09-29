@@ -160,7 +160,8 @@
 (defn- newborn [spec t eid e o]
   (let [color ((:child-color spec) t eid e o)]
     (assoc (mobs/new-mob (:type e) (:pos e) color t)
-           :baby-until (+ (long t) baby-ticks))))
+           :baby-until (+ (long t) baby-ticks)
+           :arrived [(* 2 (long t)) (* 2 (long eid))])))
 
 (defn- breeding-orb
   "Returns the orb of 1 to 7 points that

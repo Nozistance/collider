@@ -7,7 +7,7 @@
                 panic-until baby-until love-until breed-ready-at
                 tempt-cooldown-until type color sheared? track
                 nav move body jump float? support no-blocks? in-lava?
-                follow-at effects])
+                follow-at effects arrived])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
                    tp-target chunk-pos sent-chunks

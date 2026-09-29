@@ -25,11 +25,7 @@
   "Returns a turned toward b by at most max degrees, brought back into
   one turn around the circle."
   ^double [^double a ^double b ^double max]
-  (let [d (Math/max (- max) (Math/min max (v/wrap-deg (- b a))))
-        r (+ a d)]
-    (cond (< r 0.0) (+ r 360.0)
-          (> r 360.0) (- r 360.0)
-          :else r)))
+  (Steer/rotlerp a b max))
 
 (defn shape-top
   "Returns how high the collision shape of the cell x y z reaches."
@@ -67,8 +63,7 @@
          (not (block/tagged? st "fences")))))
 
 (defn- turned ^double [e ^double xd ^double zd]
-  (let [to (- (Math/toDegrees (Math/atan2 zd xd)) 90.0)]
-    (rotlerp (double (:yaw e)) to max-turn)))
+  (Steer/turned (double (:yaw e)) xd zd max-turn))
 
 (defn- jumps? [chunks e xd yd zd width]
   (let [xd (double xd) zd (double zd) w (double width)]
