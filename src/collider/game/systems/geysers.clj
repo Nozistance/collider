@@ -1,6 +1,7 @@
 (ns collider.game.systems.geysers
   "Geysers of potent sulfur under water and what they lift."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.state :as state]
@@ -108,7 +109,7 @@
     (into ds (synced world ds))))
 
 (defn geysers
-  "Returns a step that runs the geysers of the level."
+  "Returns the deltas of the geysers of the level."
   {:wake {:keys [:block-entities] :types #{:player}}}
   [world _d]
-  [#(all-deltas world)])
+  (deltas/of-vec (all-deltas world)))

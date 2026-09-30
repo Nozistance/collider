@@ -1,6 +1,7 @@
 (ns collider.game.systems.packets
   "Packet events that touch only their own player."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.state :as state]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.players :as players]))
@@ -41,8 +42,8 @@
                more (into acc ds))))))
 
 (defn by-player
-  "Returns one job per player with its events in the order they came."
+  "Returns the deltas of the events of each player in their order."
   {:wake {:events own-tags}}
   [world d]
-  (mapv (fn [[_ events]] #(fold-deltas world events))
-        (grouped (:input d))))
+  (deltas/fold (fn [[_ events]] (fold-deltas world events))
+               (vec (grouped (:input d)))))

@@ -4,6 +4,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
+            [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
@@ -181,4 +182,4 @@
   "Returns what a joining player is told about its inventory."
   {:wake {:deltas #{:player-placed}}}
   [world d]
-  [#(restore-deltas world (state/joins d))])
+  (deltas/of-vec (restore-deltas world (state/joins d))))

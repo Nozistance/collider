@@ -1,6 +1,7 @@
 (ns collider.game.systems.jukebox
   "Jukeboxes and the end of their songs."
   (:require [collider.game.block.jukebox :as jukebox]
+            [collider.game.deltas :as deltas]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
@@ -21,4 +22,5 @@
 (defn jukebox-songs
   {:wake {:keys [:block-entities]}}
   [world _d]
-  [#(mapcat (partial stop-deltas world) (playing world))])
+  (deltas/of-vec
+    (mapcat (partial stop-deltas world) (playing world))))

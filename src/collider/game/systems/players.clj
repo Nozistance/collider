@@ -1,6 +1,7 @@
 (ns collider.game.systems.players
   "Player list, entity tracking and movement updates."
-  (:require [clojure.data.int-map :as i]
+  (:require [collider.game.deltas :as deltas]
+            [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.effect :as effect]
             [collider.game.game-mode :as game-mode]
@@ -616,47 +617,43 @@
   {:wake {:deltas #{:spawn-entity :remove-entity
                     :change-dimension}}}
   [world d]
-  (when (entities-changed? d)
-    (let [near (near-index (tracked-entries world))
-          track (fn [entry] (tracking-deltas world near entry))]
-      (into [] (mapcat track) (state/player-entries world)))))
+  (deltas/of-vec
+    (when (entities-changed? d)
+      (let [near (near-index (tracked-entries world))
+            track (fn [entry] (tracking-deltas world near entry))]
+        (into [] (mapcat track) (state/player-entries world))))))
 
-(defn- spawn-thunks [world ps ts]
+(defn- spawn-deltas [world ps ts]
   (let [near (near-index ts)]
-    (mapv (fn [entry] #(tracking-deltas world near entry)) ps)))
+    (deltas/fold #(tracking-deltas world near %) ps)))
 
 (def ^:private ^:const move-batch 32)
 
-(defn- move-thunks [world ps ts]
+(defn- moves-deltas [world ps ts]
   (let [viewers (viewed ps)
         t (long (:tick world))
-        moved (fn [entry] (move-deltas t viewers entry))
-        batch-thunk (fn [batch] #(into [] (mapcat moved) batch))]
-    (mapv batch-thunk (partition-all move-batch ts))))
-
-(defn- ran-here [thunks] (into [] (mapcat #(%)) thunks))
+        moved (fn [entry] (move-deltas t viewers entry))]
+    (deltas/fold #(into [] (mapcat moved) %)
+                 (into [] (partition-all move-batch) ts))))
 
 (defn player-list
-  "Returns the tick steps of the player list of the server."
+  "Returns the deltas of the player list of the server."
   {:wake :always}
   [world d]
   (let [ps (state/player-entries world)
         joins (state/joins d)]
-    (into [] cat [(joined-deltas joins)
-                  (duplicate-login-deltas world joins)
-                  (list-deltas world ps)
-                  (tab-header-deltas world joins)])))
+    (deltas/of-vec
+      (into [] cat [(joined-deltas joins)
+                    (duplicate-login-deltas world joins)
+                    (list-deltas world ps)
+                    (tab-header-deltas world joins)]))))
 
 (defn players
-  "Returns the tick steps of entity tracking in the level."
+  "Returns the deltas of entity tracking in the level."
   {:wake {:keys [:entities :resends]}}
   [world _]
   (let [ps (state/player-entries world)
         ts (tracked-entries world)]
-    (if (<= (count ts) move-batch)
-      (into [] cat [(resend-deltas world)
-                    (ran-here (spawn-thunks world ps ts))
-                    (ran-here (move-thunks world ps ts))])
-      [#(resend-deltas world)
-       #(spawn-thunks world ps ts)
-       #(move-thunks world ps ts)])))
+    (deltas/merge (deltas/of-vec (resend-deltas world))
+                  (spawn-deltas world ps ts)
+                  (moves-deltas world ps ts))))

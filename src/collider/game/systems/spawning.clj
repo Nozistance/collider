@@ -1,6 +1,7 @@
 (ns collider.game.systems.spawning
   "Placement of joining and respawning players."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.damage :as damage]
             [collider.world.chunk :as chunk]
@@ -83,4 +84,4 @@
   [world _]
   (let [reqs (filter #(here? world %)
                      (sort-by key (:spawning world)))]
-    (second (reduce settle [world []] reqs))))
+    (deltas/of-vec (second (reduce settle [world []] reqs)))))

@@ -4,6 +4,7 @@
             [collider.data :as data]
             [collider.game.camera :as camera]
             [collider.game.clock :as clock]
+            [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
             [collider.game.experience :as xp]
             [collider.game.command.item-args :as item-args]
@@ -1204,4 +1205,4 @@
                     :config-loaded :config-failed :commit-synced}}}
   [world d]
   (let [events (:input d)]
-    [#(chat-deltas world events)]))
+    (deltas/of-vec (chat-deltas world events))))

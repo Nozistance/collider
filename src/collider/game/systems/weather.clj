@@ -1,6 +1,7 @@
 (ns collider.game.systems.weather
   "Rain and thunder."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.world.env.weather :as weather]))
 
@@ -44,8 +45,9 @@
   The messages of the change come with them."
   {:wake :always}
   [world d]
-  (when (weather/can-have-weather? (:dim world))
-    (let [w (weather/advance world)]
-      (concat [[:advance-weather w]] (level-messages w)
-              (switch-messages w)
-              (join-messages w (state/joins d))))))
+  (deltas/of-vec
+    (when (weather/can-have-weather? (:dim world))
+      (let [w (weather/advance world)]
+        (concat [[:advance-weather w]] (level-messages w)
+                (switch-messages w)
+                (join-messages w (state/joins d)))))))

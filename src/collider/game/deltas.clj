@@ -1,5 +1,5 @@
 (ns collider.game.deltas
-  "Deltas of one tick and the thunks that make them."
+  "Deltas of one tick and the folds that make them."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
             [clojure.data.int-map :as i]
@@ -89,12 +89,15 @@
           (recur ds (conj! w d) e o)))
       (built w e o acc))))
 
-(defn add
-  "Returns acc with the deltas added after its own."
-  ^Deltas [^Deltas acc deltas]
-  (if-let [ds (seq (if delta/validate? (delta/check! deltas) deltas))]
+(defn- add ^Deltas [^Deltas acc v]
+  (if-let [ds (seq (if delta/validate? (delta/check! v) v))]
     (added acc ds)
     acc))
+
+(defn of-vec
+  "Returns the deltas of vector v, in its order."
+  ^Deltas [v]
+  (add empty-deltas v))
 
 (defn- joined [a b]
   (cond (zero? (count b)) a
@@ -181,26 +184,17 @@
   [f]
   (invoke f))
 
+(defn- folded-into [f]
+  (fn [acc x] (add acc (f x))))
+
 (defn fold
-  "Returns the deltas of reducef over vector v, folded in parallel."
-  [reducef v]
-  (r/fold 1 (r/monoid merge (constantly empty-deltas)) reducef v))
-
-(declare run)
-
-(defn- ran ^Deltas [^Deltas acc f]
-  (let [r (f)]
-    (cond (instance? Deltas r) (merge acc r)
-          (fn? (nth r 0 nil)) (merge acc (run (vec r)))
-          :else (add acc r))))
-
-(defn run
-  "Returns the deltas of the thunks run in parallel.
-  The order is the same every time."
-  ^Deltas [fs]
-  (if (< (count fs) 2)
-    (reduce ran empty-deltas fs)
-    (fold ran fs)))
+  "Returns the deltas f gives for each batch of vector v, in order.
+  The batches run in parallel."
+  ^Deltas [f v]
+  (if (< (count v) 2)
+    (reduce (folded-into f) empty-deltas v)
+    (r/fold 1 (r/monoid merge (constantly empty-deltas))
+            (folded-into f) v)))
 
 (defn merge-all
   "Returns the deltas of vector v merged in order, pairwise."
@@ -241,11 +235,3 @@
       (if (nil? heaviest)
         (run-all timed ks fs)
         (run-forked heavy? timed heaviest ks fs)))))
-
-(defn run-seq
-  "Returns the deltas of thunks fs in order, as one vector."
-  [fs]
-  (into [] (mapcat (fn [f]
-                     (let [r (f)]
-                       (if (fn? (nth r 0 nil)) (run-seq (vec r)) r))))
-        fs))

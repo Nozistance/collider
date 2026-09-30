@@ -795,9 +795,6 @@
 
 (def ^:private ^:const living-leaf 64)
 
-(defn- living-fns [world]
-  [#(deltas/select (living world) (:entities world) living-leaf)])
-
 (defn- event-deltas [world events]
   (into []
         (mapcat (fn [[tag :as ev]]
@@ -808,22 +805,26 @@
   (and (pos? (long (or (:hurt-resist e) 0))) (ticking? active e)))
 
 (defn countdown
-  "Returns a step that counts down the hurt resistance of every living
-  entity, as LivingEntity.baseTick before aiStep. It runs before the
-  mobs, whose hurts this tick write the resistance after it."
+  "Returns the deltas that count down the hurt resistance of every
+  living entity, as LivingEntity.baseTick before aiStep. It runs
+  before the mobs, whose hurts this tick write the resistance after
+  it."
   {:wake {:keys [:entities]}}
   [world _d]
   (let [active (state/active-chunks world)
         xf (comp (filter (fn [entry] (resting? active entry)))
                  (mapcat (fn [[eid e]] (rest-deltas eid e))))]
-    [#(deltas/select xf (:entities world))]))
+    (deltas/of-vec (deltas/select xf (:entities world)))))
 
 (defn damage
-  "Returns a step for every living entity and the damage events of
-  this tick."
+  "Returns the deltas of every living entity and of the damage
+  events of this tick."
   {:wake {:keys [:entities] :events #{:attack}}}
   [world d]
-  (let [events (:input d)]
-    (cond-> (living-fns world)
+  (let [events (:input d)
+        es (:entities world)
+        ds (deltas/of-vec
+             (deltas/select (living world) es living-leaf))]
+    (cond-> ds
       (some #(= :attack (nth % 0)) events)
-      (conj #(event-deltas world events)))))
+      (deltas/merge (deltas/of-vec (event-deltas world events))))))

@@ -174,8 +174,8 @@
       (ticked world speed))))
 
 (defn random-ticks
-  "Returns a step that runs the random ticks of the active chunks."
+  "Returns the deltas of the random ticks of the active chunks."
   {:wake {:types #{:player}}}
   [world d]
   (let [events (:input d)]
-    [#(random-tick-deltas world events)]))
+    (deltas/of-vec (random-tick-deltas world events))))

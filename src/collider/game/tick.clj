@@ -168,7 +168,7 @@
 
 (defn- guarded [world s dim f]
   (fn []
-    (try (deltas/run [f])
+    (try (f)
          (catch Throwable t
            (skipped! world s dim t)
            deltas/empty-deltas))))
@@ -323,7 +323,7 @@
 
 (defn- handed [acc ^Deltas d]
   (reduce (fn [acc [dim sub]]
-            (let [sd (deltas/add deltas/empty-deltas sub)]
+            (let [sd (deltas/of-vec sub)]
               (step acc dim (deltas/with-dim sd dim))))
           acc (state/handoffs-of d)))
 

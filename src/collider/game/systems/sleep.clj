@@ -1,6 +1,7 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
   (:require [collider.game.clock :as clock]
+            [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
@@ -150,7 +151,7 @@
   (mapcat #(vacated-deltas world %) (:quits world)))
 
 (defn sleep
-  "Returns a step that runs sleeping and waking in the level."
+  "Returns the deltas of sleeping and waking in the level."
   {:wake {:types #{:player} :keys [:quits]}}
   [world _d]
-  [#(concat (quit-deltas world) (sleep-deltas world))])
+  (deltas/of-vec (concat (quit-deltas world) (sleep-deltas world))))

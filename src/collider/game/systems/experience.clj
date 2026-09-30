@@ -1,7 +1,8 @@
 (ns collider.game.systems.experience
   "Showing players their experience bar when it changed, as the
   lastSentExp check of ServerPlayer.doTick."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.out :as out]
             [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
@@ -18,4 +19,5 @@
   its bar."
   {:wake {:types #{:player}}}
   [world _d]
-  [#(into [] (mapcat shown-deltas) (state/player-entries world))])
+  (deltas/of-vec
+    (into [] (mapcat shown-deltas) (state/player-entries world))))

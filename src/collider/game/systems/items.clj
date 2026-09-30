@@ -616,18 +616,19 @@
       [eid (entity/merged e (nth d 2)) (:pos e) d])))
 
 (defn items
-  "Returns the tick steps of every dropped item in an active chunk."
+  "Returns the deltas of every dropped item in an active chunk."
   {:wake {:types #{:item}}}
   [world _d]
   (let [step #(vector (stepped-item world %))
         items (state/active-of-types world [:item])
         act (deltas/pmapcat step items)]
-    (when (pos? (count act))
-      [#(mapv (fn [s] (nth s 3)) act)
-       #(merge-deltas act)])))
+    (deltas/of-vec
+      (when (pos? (count act))
+        (into (mapv (fn [s] (nth s 3)) act) (merge-deltas act))))))
 
 (defn pickups
   "Returns the deltas of players taking up nearby items."
   {:wake {:types #{:item}}}
   [world _d]
-  [#(pickup-deltas world (state/active-of-types world [:item]))])
+  (deltas/of-vec
+    (pickup-deltas world (state/active-of-types world [:item]))))

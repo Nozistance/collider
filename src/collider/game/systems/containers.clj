@@ -1,6 +1,7 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
@@ -497,7 +498,8 @@
   (let [one (fn [[eid e]]
               (when (broadcasting? world e)
                 (broadcast-deltas world (long eid) e)))]
-    [#(into [] (mapcat one) (state/of-types world [:player]))]))
+    (deltas/of-vec
+      (into [] (mapcat one) (state/of-types world [:player])))))
 
 (defn- event-deltas [world [tag :as ev]]
   (case tag
@@ -514,16 +516,16 @@
     (state/fold-events world events event-deltas)))
 
 (defn containers
-  "Returns a step that runs the menus and containers of the tick."
+  "Returns the deltas of the menus and containers of the tick."
   {:wake {:events #{:menu-click :menu-close :menu-button
                     :rename-item}
           :keys [:shulker-anim :quits]}}
   [world d]
   (let [events (:input d)]
-    [#(containers-deltas world events)]))
+    (deltas/of-vec (containers-deltas world events))))
 
 (defn rechecks
   "Runs the scheduled rechecks of the container openers that are due."
   {:wake {:keys [:container-rechecks]}}
   [world _d]
-  [#(container/recheck-deltas world)])
+  (deltas/of-vec (container/recheck-deltas world)))

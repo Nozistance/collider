@@ -1,6 +1,7 @@
 (ns collider.game.systems.brewing
   "Brewing stands brewing in ticking chunks."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.deltas :as deltas]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.brewing :as brewing]
             [collider.game.out :as out]
@@ -47,4 +48,5 @@
 (defn brewing
   {:wake {:keys [:block-entities]}}
   [world _d]
-  [#(mapcat (partial stand-deltas world) (stands world))])
+  (deltas/of-vec
+    (mapcat (partial stand-deltas world) (stands world))))

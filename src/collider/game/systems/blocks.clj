@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks
   "Player block actions such as digging, placing and using."
-  (:require [collider.game.mob.mobs :as mobs]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
@@ -236,8 +237,9 @@
   [world d]
   (let [events (:input d)
         ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
-    (concat (map ack (latest-sequences events))
-            (use-ack-deltas world events (:use-origins world)))))
+    (deltas/of-vec
+      (concat (map ack (latest-sequences events))
+              (use-ack-deltas world events (:use-origins world))))))
 
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
@@ -256,8 +258,8 @@
                        second)))
 
 (defn block-edits
-  "Returns a step for the digs, places and sign edits of this tick."
+  "Returns the deltas of the digs, places and sign edits of the tick."
   {:wake {:events #{:dig :place :use-item :sign-update}}}
   [world d]
   (let [events (:input d)]
-    [#(block-edits-deltas world events)]))
+    (deltas/of-vec (block-edits-deltas world events))))

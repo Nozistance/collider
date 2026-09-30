@@ -1,6 +1,7 @@
 (ns collider.game.systems.tnt
   "Primed TNT fuse, motion and blast."
-  (:require [clojure.data.int-map :as i]
+  (:require [collider.game.deltas :as deltas]
+            [clojure.data.int-map :as i]
             [collider.game.block.tnt :as tnt]
             [collider.game.state :as state]
             [collider.vec :as v]
@@ -98,26 +99,21 @@
         ticks? (fn [[_ e]] (state/active-at? active (:pos e)))]
     (into [] (filter ticks?) (state/of-types world [:tnt]))))
 
-(defn- explode-step [world starts [eid e]]
-  #(explode-deltas world @starts eid e))
-
 (defn- due? [[_ e]]
   (and (not (:origin e)) (<= (long (:fuse e)) 1)))
 
-(defn- tnt-step [world [eid e]]
-  (if (:origin e)
-    #(lit-deltas world eid e)
-    #(step-deltas world eid e)))
+(defn- tnt-deltas [world starts [eid e :as entry]]
+  (cond (due? entry) (explode-deltas world @starts eid e)
+        (:origin e) (lit-deltas world eid e)
+        :else (step-deltas world eid e)))
 
 (defn tnt-system
-  "Returns a step for every primed TNT this tick.
+  "Returns the deltas of every primed TNT this tick.
   A TNT lit this tick is cut loose from its block and steps like
   the rest."
   {:wake {:types #{:tnt}}}
   [world _d]
   (let [tnts (tnt-entries world)
-        due (filterv due? tnts)
         starts (delay (start-positions world))]
-    (into (mapv #(explode-step world starts %) due)
-          (comp (remove due?) (map #(tnt-step world %)))
-          tnts)))
+    (deltas/fold #(tnt-deltas world starts %)
+                 (into (filterv due? tnts) (remove due?) tnts))))

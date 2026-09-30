@@ -1,6 +1,7 @@
 (ns collider.game.systems.pose
   "Player water state, swimming and pose."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.state :as state]
             [collider.vec :as v]
@@ -124,8 +125,9 @@
       (when (seq m) [[:merge-entity eid m]]))))
 
 (defn pose
-  "Returns a step that sets the pose of each player."
+  "Returns the deltas that set the pose of each player."
   {:wake {:types #{:player}}}
   [world _]
-  [#(into [] (mapcat (fn [entry] (player-deltas world entry)))
-          (state/player-entries world))])
+  (deltas/of-vec
+    (into [] (mapcat (fn [entry] (player-deltas world entry)))
+          (state/player-entries world))))

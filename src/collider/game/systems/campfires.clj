@@ -1,6 +1,7 @@
 (ns collider.game.systems.campfires
   "Campfires cooking the food laid on them."
   (:require [collider.game.block.furnace :as furnace]
+            [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.items :as items]
@@ -93,4 +94,5 @@
 (defn campfire-cooking
   {:wake {:keys [:block-entities]}}
   [world _d]
-  [#(mapcat (partial campfire-deltas world) (campfires world))])
+  (deltas/of-vec
+    (mapcat (partial campfire-deltas world) (campfires world))))

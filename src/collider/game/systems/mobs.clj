@@ -1,6 +1,7 @@
 (ns collider.game.systems.mobs
   "Mob thinking, movement and sounds."
-  (:require [clojure.core.reducers :as r]
+  (:require [collider.game.deltas :as deltas]
+            [clojure.core.reducers :as r]
             [collider.game.attribute :as attribute]
             [collider.game.game-mode :as game-mode]
             [collider.random :as random]
@@ -1083,7 +1084,7 @@
     (assoc world ::bites (bites world tempters t active islands))))
 
 (defn mobs-system
-  "Returns the tasks of one tick.
+  "Returns the deltas of the mobs in one tick.
   Each island of mobs steps, and the clicks of players get answers."
   {:wake {:types (set (keys mobs/types)) :events #{:interact}}}
   [world d]
@@ -1093,7 +1094,7 @@
         tempters (sense/holders world)
         hs (herds world)
         world (seen world tempters t active hs)]
-    (conj (mapv (fn [batch]
-                  #(island-batch world active tempters t batch))
-                (batches hs))
-          #(interact-deltas world events t))))
+    (deltas/merge
+      (deltas/fold #(island-batch world active tempters t %)
+                   (batches hs))
+      (deltas/of-vec (interact-deltas world events t)))))

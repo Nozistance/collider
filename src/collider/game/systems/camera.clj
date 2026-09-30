@@ -1,6 +1,7 @@
 (ns collider.game.systems.camera
   "Spectators looking through the eyes of other entities."
   (:require [collider.game.camera :as camera]
+            [collider.game.deltas :as deltas]
             [collider.game.state :as state]))
 
 (set! *warn-on-reflection* true)
@@ -18,9 +19,9 @@
     (into ds (follow-deltas w))))
 
 (defn camera
-  "Returns a step for the spectator actions of this tick and for the
+  "Returns the deltas of the spectator actions of this tick and of the
   spectators that follow their cameras."
   {:wake {:types #{:player} :events #{:spectate}}}
   [world d]
   (let [events (:input d)]
-    [#(camera-deltas world events)]))
+    (deltas/of-vec (camera-deltas world events))))

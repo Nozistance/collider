@@ -420,26 +420,22 @@
 (defn- job-size ^long [^long n]
   (max 1 (quot (+ n (dec job-count)) job-count)))
 
-(defn- job [world fresh bs]
-  #(into [] (mapcat (partial blast-deltas-of world fresh)) bs))
+(defn- requested-deltas [world reqs]
+  (let [index (kb-index (blastable world))
+        init [#{} (tnt/primed-origins world) {} [] []]
+        pairs (map vector reqs (bodies world index reqs))
+        step (partial request-blasts world (explosion/craters))
+        [_ _ _ done fresh] (reduce step init pairs)
+        blast #(blast-deltas-of world fresh %)
+        jobs (partition-all (job-size (count done)))]
+    (deltas/fold #(into [] (mapcat blast) %) (into [] jobs done))))
 
 (defn blasts
-  "Returns the jobs that give the deltas of every blast requested
-  this tick. The deltas come in request order."
+  "Returns the deltas of every blast requested this tick.
+  They come in request order."
   {:wake {:deltas #{:explode}}}
   [world d]
   (let [reqs (requests d)]
-    (when (seq reqs)
-      (let [index (kb-index (blastable world))
-            init [#{} (tnt/primed-origins world) {} [] []]
-            pairs (map vector reqs (bodies world index reqs))
-            step (partial request-blasts world (explosion/craters))
-            [_ _ _ done fresh] (reduce step init pairs)]
-        (mapv (partial job world fresh)
-              (partition-all (job-size (count done)) done))))))
-
-(defn explosions
-  "Returns the deltas for every blast requested this tick.
-  They come in request order."
-  [world d]
-  (deltas/run-seq (blasts world d)))
+    (if (seq reqs)
+      (requested-deltas world reqs)
+      deltas/empty-deltas)))

@@ -186,13 +186,13 @@
   "Runs the block ticks that are due."
   {:wake {:keys [[:block-ticks :queue]]}}
   [world _d]
-  [#(ticks-deltas world :block-ticks)])
+  (deltas/of-vec (ticks-deltas world :block-ticks)))
 
 (defn fluid-updates
   "Runs the fluid ticks that are due."
   {:wake {:keys [[:fluid-ticks :queue]]}}
   [world _d]
-  [#(ticks-deltas world :fluid-ticks)])
+  (deltas/of-vec (ticks-deltas world :fluid-ticks)))
 
 (defn- final-records [w recs]
   (let [at #(chunk/chunks-get-block (:chunks w) %)
@@ -216,7 +216,8 @@
   "Tells the clients about the blocks that changed this tick."
   {:wake {:keys [:block-events]}}
   [w _d]
-  (when-let [events (:block-events w)]
-    (concat [[:block-events-flushed]]
-            (map #(changed-out w %) (announced w events))
-            (entity-outs w events))))
+  (deltas/of-vec
+    (when-let [events (:block-events w)]
+      (concat [[:block-events-flushed]]
+              (map #(changed-out w %) (announced w events))
+              (entity-outs w events)))))

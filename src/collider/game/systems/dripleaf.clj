@@ -1,6 +1,7 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -51,7 +52,7 @@
     (when (seq changes) (edit/set-deltas world (vec changes)))))
 
 (defn dripleaf-tilt
-  "Returns a step that tips big dripleaves under players."
+  "Returns the deltas that tip big dripleaves under players."
   {:wake {:types #{:player}}}
   [world _d]
-  [#(tilt-deltas world)])
+  (deltas/of-vec (tilt-deltas world)))

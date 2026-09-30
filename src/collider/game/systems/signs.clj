@@ -1,6 +1,7 @@
 (ns collider.game.systems.signs
   "Signs that editors hold open."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.state :as state]
             [collider.game.systems.blocks.reach :as reach]))
 
 (set! *warn-on-reflection* true)
@@ -26,5 +27,6 @@
   Nobody is told, as the text did not change."
   {:wake {:keys [:block-entities]}}
   [world _d]
-  (into [] (mapcat (fn [entry] (release-deltas world entry)))
-        (edited world)))
+  (deltas/of-vec
+    (into [] (mapcat (fn [entry] (release-deltas world entry)))
+          (edited world))))

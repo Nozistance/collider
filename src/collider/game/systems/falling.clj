@@ -1,6 +1,7 @@
 (ns collider.game.systems.falling
   "Falling blocks such as sand, gravel and anvils."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.state :as state]
@@ -174,9 +175,8 @@
       :else (drift world eid e pos time vel))))
 
 (defn falling-blocks
-  "Returns a step for every falling block in an active chunk."
+  "Returns the deltas of every falling block in an active chunk."
   {:wake {:types #{:falling-block}}}
   [world _d]
-  (let [step (fn [[eid e]] #(step-deltas world eid e))]
-    (into [] (map step)
-          (state/active-of-types world [:falling-block]))))
+  (deltas/fold (fn [[eid e]] (step-deltas world eid e))
+               (state/active-of-types world [:falling-block])))

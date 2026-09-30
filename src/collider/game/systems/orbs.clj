@@ -1,6 +1,7 @@
 (ns collider.game.systems.orbs
   "Experience orb motion and merging, and players taking orbs up."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.experience :as xp]
             [collider.game.game-mode :as game-mode]
             [collider.game.orb :as orb]
@@ -105,10 +106,11 @@
   The orbs step one by one in id order."
   {:wake {:types #{:experience-orb}}}
   [world _d]
-  [#(let [start (active-orbs world)]
+  (let [start (active-orbs world)]
+    (deltas/of-vec
       (when (seq start)
         (tick-all world (followers world) start
-                  (partial roll-of world))))])
+                  (partial roll-of world))))))
 
 (defn- touches? [p o]
   (let [[half h] (entity/pose-box (:pose p :standing))
@@ -179,4 +181,4 @@
   Each takes one orb a tick, one player after another."
   {:wake {:types #{:experience-orb}}}
   [world _d]
-  [#(pickup-deltas world)])
+  (deltas/of-vec (pickup-deltas world)))

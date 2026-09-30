@@ -537,7 +537,10 @@
   (let [active (state/active-chunks world)
         es (into [] (filter (partial live? active))
                  (state/of-types world flying))
-        step (fn [[eid e]] #(step-deltas world eid e))
-        cloud (fn [[eid e]] #(cloud-deltas world eid e))]
-    (-> (into [] (comp (remove cloud?) (map step)) es)
-        (into (comp (filter cloud?) (map cloud)) es))))
+        step (fn [[eid e :as entry]]
+               (if (cloud? entry)
+                 (cloud-deltas world eid e)
+                 (step-deltas world eid e)))
+        order (-> (into [] (remove cloud?) es)
+                  (into (filter cloud?) es))]
+    (deltas/fold step order)))

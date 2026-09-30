@@ -1,6 +1,7 @@
 (ns collider.game.systems.furnaces
   "Furnaces, blast furnaces and smokers cooking in ticking chunks."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.deltas :as deltas]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.furnace :as furnace]
             [collider.game.state :as state]
@@ -32,4 +33,5 @@
 (defn furnace-cooking
   {:wake {:keys [:block-entities]}}
   [world _d]
-  [#(mapcat (partial furnace-deltas world) (furnaces world))])
+  (deltas/of-vec
+    (mapcat (partial furnace-deltas world) (furnaces world))))

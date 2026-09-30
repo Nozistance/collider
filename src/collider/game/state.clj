@@ -1335,7 +1335,7 @@
 (defn- deltas-of [deltas]
   (if (instance? Deltas deltas)
     deltas
-    (deltas/add deltas/empty-deltas deltas)))
+    (deltas/of-vec deltas)))
 
 (defn- untyped [types t eid]
   (let [s (disj (get types t) eid)]

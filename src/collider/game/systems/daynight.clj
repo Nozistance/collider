@@ -1,6 +1,7 @@
 (ns collider.game.systems.daynight
   "The passing of the day."
-  (:require [collider.world.env.dimension :as dimension]
+  (:require [collider.game.deltas :as deltas]
+            [collider.world.env.dimension :as dimension]
             [collider.game.clock :as clock]
             [collider.game.out :as out]))
 
@@ -39,4 +40,4 @@
 (defn daynight
   {:wake {:every send-interval}}
   [world _d]
-  [#(daynight-deltas world)])
+  (deltas/of-vec (daynight-deltas world)))

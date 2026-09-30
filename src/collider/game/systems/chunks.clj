@@ -1,6 +1,7 @@
 (ns collider.game.systems.chunks
   "Chunk loading, streaming to players and unloading."
   (:require [clojure.data.int-map :as i]
+            [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
@@ -164,10 +165,8 @@
                (not (stalled? world eid cp r p)))
       (restream-deltas world eid cp r p))))
 
-(defn- stream-thunk [world [_ p :as entry]]
-  (when (streams? p (chunk/pos-chunk (:pos p))
-                  (player-radius world p))
-    #(stream-deltas world entry)))
+(defn- streaming? [world [_ p]]
+  (streams? p (chunk/pos-chunk (:pos p)) (player-radius world p)))
 
 (defn- loaded-event? [ev] (= :chunk-loaded (nth ev 0)))
 
@@ -180,16 +179,21 @@
   "Brings in the chunks the players need."
   {:wake {:types #{:player} :keys [:spawning]}}
   [world _d]
-  [#(when (loads? world) (loading-deltas world (needed-ids world)))])
+  (deltas/of-vec
+    (when (loads? world)
+      (loading-deltas world (needed-ids world)))))
 
 (defn chunk-streaming
   "Sends chunks to the players and takes in the saved ones.
   A body returning with its chunk waits for the next tick."
   {:wake {:types #{:player} :events #{:chunk-loaded}}}
   [world d]
-  (cond-> (into [] (keep #(stream-thunk world %))
-                (state/player-entries world))
-    (some loaded-event? (:input d)) (conj #(restore-deltas world d))))
+  (let [ps (into [] (filter #(streaming? world %))
+                 (state/player-entries world))
+        sent (deltas/fold #(stream-deltas world %) ps)]
+    (if (some loaded-event? (:input d))
+      (deltas/merge sent (deltas/of-vec (restore-deltas world d)))
+      sent)))
 
 (defn- arrived [world d]
   (keep #(when-let [e (get-in world [:entities (nth % 1)])]
@@ -201,8 +205,7 @@
   They get them as the tick ends for them."
   {:wake {:deltas #{:change-dimension}}}
   [world d]
-  (mapv (fn [entry] #(stream-deltas world entry))
-        (arrived world d)))
+  (deltas/fold #(stream-deltas world %) (vec (arrived world d))))
 
 (defn- unload-deltas [world id]
   [[:unload-chunk id]
@@ -226,7 +229,8 @@
   [world _]
   (let [old (or (:unknown world) (i/int-map))
         held (purged old)]
-    (into (if (= held old) [] [[:purge-tickets held]])
-          (when (get-in world [:config :unload-chunks?])
-            (mapcat #(unload-deltas world %)
-                    (dropped-ids world held))))))
+    (deltas/of-vec
+      (into (if (= held old) [] [[:purge-tickets held]])
+            (when (get-in world [:config :unload-chunks?])
+              (mapcat #(unload-deltas world %)
+                      (dropped-ids world held)))))))

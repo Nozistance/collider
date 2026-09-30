@@ -1,6 +1,7 @@
 (ns collider.game.systems.keepalive
   "Keepalive pings and timeouts."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.game.systems.sleep :as sleep]))
 
@@ -29,4 +30,4 @@
   {:wake {:types #{:player}}}
   [world d]
   (let [events (:input d)]
-    [#(keepalive-deltas world events)]))
+    (deltas/of-vec (keepalive-deltas world events))))

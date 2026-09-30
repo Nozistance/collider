@@ -1,6 +1,7 @@
 (ns collider.game.systems.consume
   "Eating and drinking, and filling a glass bottle at water."
   (:require [collider.data :as data]
+            [collider.game.deltas :as deltas]
             [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
@@ -249,7 +250,8 @@
         (state/of-types world [:player])))
 
 (defn consume
-  "Returns a step that runs the eating and drinking of players."
+  "Returns the deltas of the eating and drinking of players."
   {:wake {:types #{:player}}}
   [world _]
-  [#(state/fold-events world (using-entries world) step-deltas)])
+  (deltas/of-vec
+    (state/fold-events world (using-entries world) step-deltas)))

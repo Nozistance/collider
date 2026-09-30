@@ -1,6 +1,7 @@
 (ns collider.game.detector
   "Observers of the finished tick."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.deltas :as deltas]
+            [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.state :as state]
             [collider.vec :as v]))
@@ -136,4 +137,4 @@
   "Returns what the detector channels make of the tick."
   {:wake :always}
   [world d]
-  (into [] (mapcat (fn [c] (c world d))) channels))
+  (deltas/of-vec (into [] (mapcat (fn [c] (c world d))) channels)))
