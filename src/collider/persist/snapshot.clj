@@ -4,6 +4,7 @@
   (:require [clojure.data.int-map :as i]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
+            [clojure.pprint :as pp]
             [clojure.string :as str]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
@@ -132,29 +133,13 @@
        (try (read-edn f) true
             (catch Throwable _ false))))
 
-(defn- spaces ^String [^long n] (apply str (repeat n " ")))
-
-(defn- edn-lines [^StringBuilder sb v ^long col]
-  (if-not (map? v)
-    (.append sb (pr-str v))
-    (let [ks (mapv pr-str (keys v))
-          width (long (reduce max 0 (map count ks)))]
-      (.append sb "{")
-      (doseq [[i k x] (map vector (range) ks (vals v))]
-        (when (pos? (long i))
-          (.append sb "\n")
-          (.append sb (spaces (inc col))))
-        (.append sb ^String k)
-        (.append sb (spaces (inc (- width (count k)))))
-        (edn-lines sb x (+ col 2 width)))
-      (.append sb "}"))))
-
 (defn- edn-bytes ^bytes [m]
-  (let [sb (StringBuilder.)]
-    (binding [*print-length* nil *print-level* nil]
-      (edn-lines sb m 0))
-    (.append sb "\n")
-    (.getBytes (str sb) "UTF-8")))
+  (binding [*print-length* nil
+            *print-level* nil
+            *print-namespace-maps* false
+            pp/*print-right-margin* 80]
+    (let [s (with-out-str (pp/pprint m))]
+      (.getBytes ^String s "UTF-8"))))
 
 (defn- chunk-id-of [^File f]
   (let [n (.getName f)
