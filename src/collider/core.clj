@@ -9,7 +9,7 @@
             [collider.data :as data]
             [collider.game.deltas :as deltas]
             [collider.game.state :as state]
-            [collider.game.tick :as tick]
+            [collider.game.ticker :as ticker]
             [collider.log :as log]
             [collider.net.render :as render]
             [collider.net.server :as server]
@@ -57,7 +57,7 @@
 (defn- shutdown!
   [{:keys [^ServerSocket socket conns ticker saver store world]}]
   (some-> socket .close)
-  (some-> ticker tick/stop-ticker!)
+  (some-> ticker ticker/stop-ticker!)
   (server/close-all! conns shutdown-reason shutdown-drain-ms)
   (when saver (snapshot/stop-saver! saver store @world)))
 
@@ -221,7 +221,7 @@
                (reload-io! reload d)
                (deliver! conns w d))
         opts (ticker-opts base conns)
-        ticker (tick/start-ticker! world queue out! opts)]
+        ticker (ticker/start-ticker! world queue out! opts)]
     {:ticker    ticker :tick-stats (:stats ticker)
      :scheduler (:pool saving)}))
 

@@ -249,11 +249,6 @@
 
 (def ^:private delta-explainer (delay (m/explainer Delta)))
 
-(defn valid?
-  "Returns true when delta matches the schema of its tag."
-  [delta]
-  (@delta-validator delta))
-
 (defn explain
   "Returns why delta breaks its schema, or nil when it does not."
   [delta]

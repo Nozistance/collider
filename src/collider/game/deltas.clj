@@ -159,8 +159,6 @@
          :else (joined-deltas a b)))
   (^Deltas [a b & more] (reduce merge (merge a b) more)))
 
-(def merge-deltas merge)
-
 (defn inert?
   "Returns true when d changes nothing in the world it applies to."
   [^Deltas d]
@@ -177,11 +175,6 @@
   (if (empty? (out-of d))
     d
     (assoc d :out (mapv #(marked dim %) (out-of d)))))
-
-(defn dim-of
-  "Returns the dimension of the level effect m came from, or nil."
-  [m]
-  (:dim m))
 
 (defn in-pool
   "Returns (f) run so that the folds inside it run in parallel."
@@ -208,12 +201,6 @@
   (if (< (count fs) 2)
     (reduce ran empty-deltas fs)
     (fold ran fs)))
-
-(defn run-each
-  "Returns the deltas of the thunks run one after another.
-  The thunks a thunk hands back run in parallel."
-  ^Deltas [fs]
-  (reduce ran empty-deltas fs))
 
 (defn merge-all
   "Returns the deltas of vector v merged in order, pairwise."
@@ -254,11 +241,6 @@
       (if (nil? heaviest)
         (run-all timed ks fs)
         (run-forked heavy? timed heaviest ks fs)))))
-
-(defn of
-  "Returns the deltas of the systems over world and deltas."
-  ^Deltas [systems world deltas]
-  (run (mapv (fn [s] (fn [] (s world deltas))) systems)))
 
 (defn run-seq
   "Returns the deltas of thunks fs in order, as one vector."

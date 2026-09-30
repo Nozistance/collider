@@ -45,9 +45,7 @@
 
 (def ^:private ^:const fold-leaf 64)
 
-(def spawn-pos [24.5 4.0 8.5])
-
-(def activation-radius 2)
+(def ^:private activation-radius 2)
 
 (defn view-radius
   "Returns the view distance in chunks the config asks for.
@@ -641,7 +639,7 @@
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
 
-(defn use-origin
+(defn- use-origin
   "Returns the eye and look of the player behind an event.
   Only place and use events have one. Others give nil."
   [w [tag & args]]
@@ -964,7 +962,7 @@
   (and (:on-ground e) (not (:on-ground e'))
        (> (v/y (:pos e')) (v/y (:pos e)))))
 
-(defn move-of
+(defn- move-of
   "Returns what a :move event did to its player.
   Returns nil when the event moved no player."
   [w w' [tag eid changes]]
@@ -1003,7 +1001,7 @@
     (+ game-mode/entity-range game-mode/creative-entity-range)
     game-mode/entity-range))
 
-(defn quit-of
+(defn- quit-of
   "Returns the entity that leaves with a player quit event.
   Any other event gives nil."
   [w [tag eid]]
@@ -1082,7 +1080,7 @@
 (defn- listed [w add drop]
   (update w :listed #(clojure.core/apply dissoc (merge % add) drop)))
 
-(def ^:const max-resist 20)
+(def ^:private ^:const max-resist 20)
 
 (defn- knock-back [e ^double dx ^double dz]
   (let [f (Math/sqrt (+ (* dx dx) (* dz dz)))
@@ -1270,10 +1268,7 @@
    :set-block-entity (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick (fn [w _] (dissoc (advance w) :quits))
    :advance-weather (fn [w [_ m]] (weather-advanced w m))
-   :observed (fn [w [_ m]] (assoc w :observed m))
-   :explode (fn [w _] w)
-   :change-dimension (fn [w _] w)
-   :level-deltas (fn [w _] w)})
+   :observed (fn [w [_ m]] (assoc w :observed m))})
 
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]
@@ -1481,12 +1476,6 @@
     (let [lv (reduce dissoc (level world dim) input-keys)
           lv' (apply-level lv deltas)]
       [(with-level world dim lv') lv'])))
-
-(defn enter
-  "Returns world with the input deltas of level dim folded in.
-  What the last input of the level left behind is dropped first."
-  [world dim deltas]
-  (nth (entered world dim deltas) 0))
 
 (defn apply-deltas
   "Returns the world after deltas and the deltas as applied."
