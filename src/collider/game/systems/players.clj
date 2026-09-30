@@ -283,12 +283,12 @@
       (latency-deltas world #(mapv (comp add-entry val) ps))
       (list-changes world ps))))
 
-(defn- baseline-deltas [world pid eid]
+(defn- baseline-deltas [world t0 pid eid]
   (let [e (get-in world [:entities eid])]
     (when-not (:track e)
       (let [mdata (metadata e)
             ground (boolean (:on-ground e))
-            base [[:track eid (baseline (long (:tick world)) e)]
+            base [[:track eid (baseline t0 e)]
                   (out/to pid (out/move eid 0 0 0 ground))]]
         (if (seq mdata)
           (conj base (out/to pid (out/meta eid (:type e) mdata)))
@@ -329,7 +329,7 @@
         (keep (fn [[eid e]] (when-not (game-mode/shown-to? o e) eid)))
         bodies))
 
-(defn- tracking-deltas [world [by-chunk bodies] [oid o]]
+(defn- tracking-deltas [world t0 [by-chunk bodies] [oid o]]
   (let [near (near-set by-chunk (or (:sent-chunks o) (i/int-set)))
         want (i/difference near (hidden-from oid o bodies))
         have (or (:tracking o) (i/int-set))
@@ -337,7 +337,7 @@
         gone (into [] (i/difference have want))]
     (when (or (seq add) (seq gone))
       (into [[:tracking oid add gone]]
-            (mapcat (fn [eid] (baseline-deltas world oid eid)))
+            (mapcat (fn [eid] (baseline-deltas world t0 oid eid)))
             add))))
 
 (readers Frame f- x y z dx dy dz yaw pitch head ground since due? vel
@@ -649,12 +649,13 @@
   (deltas/of-vec
     (when (entities-changed? d)
       (let [near (near-index (tracked-entries world))
-            track (fn [entry] (tracking-deltas world near entry))]
+            t0 (inc (long (:tick world)))
+            track (fn [entry] (tracking-deltas world t0 near entry))]
         (into [] (mapcat track) (level/player-entries world))))))
 
 (defn- spawn-deltas [world ps ts]
   (let [near (near-index ts)]
-    (deltas/fold #(tracking-deltas world near %) ps)))
+    (deltas/fold #(tracking-deltas world (:tick world) near %) ps)))
 
 (def ^:private ^:const move-batch 32)
 

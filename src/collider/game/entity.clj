@@ -304,6 +304,13 @@
                      (min 0.4 (+ (/ (v/y v) 2.0) 0.4))
                      (- (/ (v/z v) 2.0) (* (/ dz f) 0.4))]))))
 
+(defn rested
+  "Returns entity e with its hurt resistance one tick lower, as
+  LivingEntity.baseTick counts it down."
+  [e]
+  (let [r (long (or (:hurt-resist e) 0))]
+    (if (pos? r) (assoc e :hurt-resist (dec r)) e)))
+
 (defn- hurt-again [e ^double health ^double amount]
   (let [last-d (double (or (:last-damage e) 0.0))]
     (if (> amount last-d)

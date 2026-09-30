@@ -10,6 +10,7 @@
             [collider.game.deltas.record :as types]
             [collider.game.detector :as detector]
             [collider.log :as log]
+            [collider.game.systems.block.events :as block-events]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.brewing :as brewing]
@@ -56,11 +57,9 @@
   They all run before the level tick."
   [#'chunks/chunk-streaming
    #'players/player-list
-   #'players/players
    #'camera/camera
    #'blocks/block-edits
    #'packets/by-player
-   #'sleep/sleep
    #'inventory/inventory
    #'containers/containers
    #'chat/chat
@@ -85,22 +84,20 @@
 (def phases [[#'spawning/placing]
              [#'chunks/chunk-loading]
              packet-systems
-             [#'hanging/hanging-uses]
+             [#'hanging/hanging-uses #'damage/attacks]
              [#'chunks/arrival-streaming]
-             [#'effects/effects]
-             [#'consume/consume #'compasses/compasses]
-             [#'pose/pose]
-             [#'daynight/daynight]
-             [#'block-updates/block-updates
-              #'dripleaf/dripleaf-tilt
-              #'containers/rechecks]
+             [#'daynight/daynight #'weather-system/weather]
+             [#'sleep/sleep]
+             [#'block-updates/block-updates]
              [#'block-updates/fluid-updates]
              [#'chunks/unloading
               #'natural/natural-spawns
-              #'random-tick/random-ticks
-              #'weather-system/weather]
-             [#'block-updates/block-flush
-              #'players/late-tracking]
+              #'random-tick/random-ticks]
+             [#'block-updates/block-flush #'players/players]
+             [#'block-events/block-events]
+             [#'effects/effects]
+             [#'consume/consume #'compasses/compasses]
+             [#'pose/pose]
              entity-systems
              [#'explosions/blasts]
              [#'items/pickups #'orbs/pickups #'containers/broadcast]
@@ -110,7 +107,9 @@
               #'geysers/geysers
               #'jukebox/jukebox-songs
               #'signs/sign-editors]
-             [#'blocks/acks #'experience/experience]
+             [#'blocks/acks #'experience/experience
+              #'dripleaf/dripleaf-tilt]
+             [#'players/late-tracking]
              [#'detector/observe]])
 
 (def server-systems

@@ -515,10 +515,9 @@
 (defn- changed-deltas [pos t ^long n]
   (when (not= :barrel t) [(lid-event pos n)]))
 
-(defn- schedule-recheck [world pos]
-  (when-not (get-in world [:container-rechecks pos])
-    [[:container-recheck pos
-      (+ (dec (long (:tick world))) recheck-delay)]]))
+(defn- recheck-at [pos ^long base]
+  (let [id (chunk/block-pos->id pos)]
+    [:schedule-ticks {(+ base recheck-delay) [id]}]))
 
 (defn- counter-deltas [world pos st t step]
   (let [prev (opener-count world pos)
@@ -530,7 +529,7 @@
         opened? (edge-deltas world pos st t true)
         (and (neg? step) (zero? n))
         (edge-deltas world pos st t false))
-      (when opened? (schedule-recheck world pos))
+      (when opened? [(recheck-at pos (dec (long (:tick world))))])
       (changed-deltas pos t n))))
 
 (defn- shulker-deltas [world pos ^long step]
@@ -553,32 +552,31 @@
       (= :shulker-box t) (shulker-deltas world pos step)
       (contains? counted t) (counter-deltas world pos st t step))))
 
-(defn- recount-deltas [world pos st t now]
-  (let [prev (opener-count world pos)
-        n (viewers world pos)]
-    (concat
-      (when (not= prev n)
-        (cons [:openers pos (- n prev)]
-              (cond
-                (and (pos? n) (zero? prev))
-                (edge-deltas world pos st t true)
-                (zero? n) (edge-deltas world pos st t false))))
-      (changed-deltas pos t n)
-      [[:container-recheck pos
-        (when (pos? n) (+ (long now) recheck-delay))]])))
+(defn- edge [^long prev ^long n]
+  (when (not= prev n)
+    (cond (zero? prev) true
+          (zero? n) false)))
 
-(defn- due-recheck
-  [world ^long now [pos at]]
-  (when (<= (long at) now)
-    (let [st (state-at (:chunks world) pos)
-          t (block/type-of st)]
-      (if (contains? counted t)
-        (recount-deltas world pos st t now)
-        [[:container-recheck pos nil]]))))
+(defn- recount-deltas [world pos st t prev n open?]
+  (concat (when (not= prev n) [[:openers pos (- n prev)]])
+          (when (some? open?) (edge-sound world pos st t open?))
+          (changed-deltas pos t n)
+          (when (pos? n) [(recheck-at pos (:tick world))])))
 
-(defn recheck-deltas [world]
-  (let [now (long (:tick world))]
-    (mapcat #(due-recheck world now %) (:container-rechecks world))))
+(defn recheck
+  "Returns the block changes and the deltas of the recheck of the
+  openers of the container at pos in its block tick, or nil for a
+  block that does not count them."
+  [world pos st]
+  (let [t (block/type-of st)]
+    (when (contains? counted t)
+      (let [prev (opener-count world pos)
+            n (viewers world pos)
+            open? (edge prev n)]
+        {:reach 0
+         :changes (when (and (some? open?) (= :barrel t))
+                    [[pos (barrel-open-state st open?)]])
+         :deltas (recount-deltas world pos st t prev n open?)}))))
 
 (defn fits-inside? [item]
   (not= :shulker-box (:type (get (data/blocks) item))))

@@ -265,7 +265,7 @@
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 
-(defn- add-block-events [ev events]
+(defn- add-changed [ev events]
   (reduce-kv (fn [ev k es] (update ev k #(if % (into % es) es)))
              (or ev (i/int-map)) (chunk/by-chunk events)))
 
@@ -291,7 +291,7 @@
                 (update :chunks chunk/frozen)
                 (block-entities-changed real)
                 (ticks-added ticks))
-      (seq told) (update :block-events add-block-events told))))
+      (seq told) (update :changed-blocks add-changed told))))
 
 (defn- settled
   ([w changes ticks] (settled w changes ticks nil))
@@ -354,13 +354,6 @@
   (reduce (fn [w [at ids]]
             (reduce #(block-tick %1 at %2) w ids))
           w at-ids))
-
-(defn container-recheck
-  "Returns level w after the delta [:container-recheck pos at]."
-  [w [_ pos at]]
-  (if at
-    (assoc-in w [:container-rechecks pos] (long at))
-    (update w :container-rechecks dissoc pos)))
 
 (defn openers
   "Returns level w after the delta [:openers pos step]."

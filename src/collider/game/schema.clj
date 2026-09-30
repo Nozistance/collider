@@ -22,13 +22,12 @@
   "Returns the payload of chunk c at game tick t from its parts.
   Its entities come as [eid entity] entries."
   [c block-entities entities block-ticks fluid-ticks t]
-  {:chunk          c
-   :block-entities (into {} (map (fn [[p e]] [p (be/saved e t)]))
-                         block-entities)
-   :entities       (into {} (map (fn [[eid e]] [eid (entity/saved e t)]))
-                         entities)
-   :block-ticks    (or block-ticks [])
-   :fluid-ticks    (or fluid-ticks [])})
+  (let [saved (fn [f] (map (fn [[k v]] [k (f v t)])))]
+    {:chunk c
+     :block-entities (into {} (saved be/saved) block-entities)
+     :entities (into {} (saved entity/saved) entities)
+     :block-ticks (or block-ticks [])
+     :fluid-ticks (or fluid-ticks [])}))
 
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
@@ -180,7 +179,6 @@
    :o-thunder-level    {:default 0.0 :store store-thunder-level
                         :load double :schema number?
                         :scope :level}
-   :container-rechecks {:default {} :scope :level}
    :openers            {:default {} :scope :level}
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
@@ -197,7 +195,8 @@
 (def level-keys
   "The keys of world that belong to a level and not to the shared
   part. The transient keys of the tick count too."
-  (into #{:active-chunks :block-events :input :observed}
+  (into #{:active-chunks :block-events :changed-blocks :input
+          :observed}
         (keys level-table)))
 
 (def dims

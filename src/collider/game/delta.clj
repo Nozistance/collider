@@ -68,15 +68,15 @@
    :schedule-ticks
    {:scope :level :schema [:cat [:map-of :int Coll]]
     :apply level/schedule-ticks}
-   :container-recheck
-   {:scope :level :schema [:cat Pos [:maybe :int]]
-    :apply level/container-recheck}
    :openers
    {:scope :level :schema [:cat Pos :int] :apply level/openers}
    :shulker-anim
    {:scope :level :schema [:cat Pos [:maybe :map]]
     :apply level/shulker-anim}
-   :block-events-flushed
+   :changed-blocks-flushed
+   {:scope :level :schema [:cat]
+    :apply (fn [w _] (assoc w :changed-blocks nil))}
+   :block-events-run
    {:scope :level :schema [:cat]
     :apply (fn [w _] (assoc w :block-events nil))}
    :set-clock
@@ -200,6 +200,9 @@
    :damage
    {:scope :entity :schema [:cat number? [:? [:cat number? number?]]]
     :apply (fn [_ e [_ _ amount dx dz]] (entity/hurt e amount dx dz))}
+   :rest
+   {:scope :entity :schema [:cat]
+    :apply (fn [_ e _] (entity/rested e))}
    :push
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [_ e [_ _ vel]]

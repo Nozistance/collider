@@ -66,7 +66,8 @@
 
 (defn- woken-deltas [eid up yaw]
   [[:merge-entity eid
-    {:sleeping nil :leave-bed? nil :yaw yaw :pitch 0.0}]
+    {:sleeping nil :leave-bed? nil :pose :standing :yaw yaw
+     :pitch 0.0}]
    [:teleport eid up]
    (out/all (out/animation eid :wake-up))
    (out/to eid (out/animation eid :wake-up))

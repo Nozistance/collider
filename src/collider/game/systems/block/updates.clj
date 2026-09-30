@@ -2,6 +2,7 @@
   "Scheduled block ticks and their effects."
   (:require [clojure.data.int-map :as i]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.container :as container]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schedule :as schedule]
@@ -31,16 +32,22 @@
   (when (and (= :block-ticks k) (not-any? #(= p (first %)) changes))
     (rules/again-tick chunks st p (:tick ctx))))
 
+(defn- ruled [w ctx k p st]
+  (let [{:keys [due reach]} (lists k)
+        chunks (:chunks w)
+        changes (due chunks st p ctx)]
+    {:reach (reach st ctx) :changes changes
+     :again (again-at k chunks ctx changes p st)}))
+
 (defn- ran
   [w ctx k [p ty]]
-  (let [{:keys [type-of due reach]} (lists k)
-        chunks (:chunks w)
-        st (chunk/chunks-get-block chunks p)]
-    (if (= ty (type-of st))
-      (let [changes (due chunks st p ctx)]
-        {:reach (reach st ctx) :changes changes
-         :again (again-at k chunks ctx changes p st)})
-      {:reach 0})))
+  (let [st (chunk/chunks-get-block (:chunks w) p)
+        type-of (get-in lists [k :type-of])]
+    (cond
+      (not= ty (type-of st)) {:reach 0}
+      (= :block-ticks k)
+      (or (container/recheck w p st) (ruled w ctx k p st))
+      :else (ruled w ctx k p st))))
 
 (defn- packed ^long [^long x ^long z]
   (bit-or (bit-shift-left x 32) (bit-and z 0xFFFFFFFF)))
@@ -119,7 +126,8 @@
   (let [[pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
                    [pass first-run])
-        pass (out-into pass (again-deltas tick r))]
+        ds (concat (again-deltas tick r) (:deltas r))
+        pass (out-into pass ds)]
     (applied world ctx k pass (:changes r))))
 
 (defn- ordered [world k active]
@@ -215,10 +223,10 @@
 
 (defn block-flush
   "Tells the clients about the blocks that changed this tick."
-  {:wake {:keys [:block-events]}}
+  {:wake {:keys [:changed-blocks]}}
   [w _d]
   (deltas/of-vec
-    (when-let [events (:block-events w)]
-      (concat [[:block-events-flushed]]
+    (when-let [events (:changed-blocks w)]
+      (concat [[:changed-blocks-flushed]]
               (map #(changed-out w %) (announced w events))
               (entity-outs w events)))))

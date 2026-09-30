@@ -525,9 +525,3 @@
   [world d]
   (let [events (:input d)]
     (deltas/of-vec (containers-deltas world events))))
-
-(defn rechecks
-  "Runs the scheduled rechecks of the container openers that are due."
-  {:wake {:keys [:container-rechecks]}}
-  [world _d]
-  (deltas/of-vec (container/recheck-deltas world)))

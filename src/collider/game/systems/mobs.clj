@@ -623,15 +623,13 @@
   [world index eid e half height [look prev cram live?]]
   (let [h (double (float half)) ht (double (float height))
         tr (travel-of world index eid e h ht)
-        pos (nth tr 0) rest? (nth tr 8)
-        [v shoves hit?]
-        (pushed-back world index eid e [half height pos (nth tr 1)]
-                     cram live?)
+        pos (nth tr 0) box [half height pos (nth tr 1)]
+        [v shoves hit?] (pushed-back world index eid e box cram live?)
         g (or (nth tr 6) (fluid-after world pos h ht v))
-        hd (body-of-move world e pos look)]
-    [(cond-> (settled e tr v g rest? hd look (walk-of e prev pos)
-                      (push/arrived e pos (:tick world) eid))
-       (identical? :rabbit (:type e))
+        hd (body-of-move world e pos look)
+        e2 (settled e tr v g (nth tr 8) hd look (walk-of e prev pos)
+                    (push/arrived e pos (:tick world) eid))]
+    [(cond-> e2 (identical? :rabbit (:type e))
        (rabbit/bumped (nth tr 9 nil) (nth tr 10 nil)))
      shoves hit?]))
 
@@ -677,10 +675,9 @@
 (defn- step-state ^long [world e]
   (let [ch (:chunks world) p (:pos e)
         st (motion/below-state ch p (:support e) 0.2)
-        [x y z] (or (:support e) (mapv #(Math/floor (double %)) p))
-        up (sense/block-at world (long x) (inc (long (Math/floor
-                                                       (- (v/y p) 0.2))))
-                           (long z))]
+        [x _ z] (or (:support e) (mapv #(Math/floor (double %)) p))
+        y (inc (long (Math/floor (- (v/y p) 0.2))))
+        up (sense/block-at world (long x) y (long z))]
     (if (or (block/tagged? up "inside_step_sound_blocks")
             (block/tagged? up "combination_step_sound_blocks"))
       up
@@ -689,7 +686,8 @@
 (defn- block-step [world e]
   (let [st (step-state world e)]
     (when-not (block/air? st)
-      (let [s (get (data/sounds) (:sound (data/info (block/block-of st))))
+      (let [info (data/info (block/block-of st))
+            s (get (data/sounds) (:sound info))
             vol (double (float (* (float (:volume s)) (float 0.15))))]
         (out/all (out/sound (:step s) (:pos e) vol (:pitch s)))))))
 
@@ -887,21 +885,11 @@
              e (assoc e :pos pos)]
          (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
 
-(defn- rested
-  "Returns mob e with the hurt resistance it has after the countdown
-  of this tick, which LivingEntity.baseTick makes before aiStep."
-  [e]
-  (let [r (long (or (:hurt-resist e) 0))]
-    (if (pos? r) (assoc e :hurt-resist (dec r)) e)))
-
-(defn- hurt-marks [h]
-  {:health (:health h) :last-damage (:last-damage h)
-   :hurt-resist (:hurt-resist h) :hurt-cause :cramming})
-
 (defn- crammed [eid e ds]
-  (let [h (entity/hurt (rested e) cramming-damage)]
+  (let [h (entity/hurt (entity/rested e) cramming-damage)]
     (if (not= (:health h) (:health e))
-      [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
+      [h (conj (vec ds) [:damage eid cramming-damage]
+               [:merge-entity eid {:hurt-cause :cramming}])]
       [e ds])))
 
 (defn- cramming [world index slots es eid e t ds]
@@ -915,7 +903,8 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (entity/hurt (rested (assoc e :pos pos)) cramming-damage))))
+      (-> (assoc e :pos pos) entity/rested
+          (entity/hurt cramming-damage)))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))

@@ -1,6 +1,7 @@
 (ns collider.game.systems.damage
   "Damage, death and respawn."
   (:require [collider.data :as data]
+            [collider.game.apply :as apply]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -153,21 +154,6 @@
           (and (= :player (:type a)) (mobs/mob-type? (:type t)))
           (assoc :hurt-cause :player-attack)))
 
-(defn- hit-deltas [a t target crit? tick]
-  (cond-> [[:damage target (melee-damage a crit?)
-            (- (v/x (:pos a)) (v/x (:pos t)))
-            (- (v/z (:pos a)) (v/z (:pos t)))]
-           [:merge-entity target (hit-marks a t tick)]]
-          (:sprinting? a) (conj (sprint-push a target))
-          crit? (into [(out/all (out/animation target :crit))])))
-
-(defn- attack-deltas [world [_ eid target]]
-  (let [a (get-in world [:entities eid])
-        t (get-in world [:entities target])]
-    (when (and (not (game-mode/spectator? a))
-               (attackable? a t) (in-reach? world a t))
-      (hit-deltas a t target (crit? a t) (:tick world)))))
-
 (def ^:private ^:const fire-seconds 8)
 
 (def ^:private ^:const lava-seconds 15)
@@ -289,12 +275,10 @@
 (defn- lit-by-deltas [eid e fire wet? flags]
   (let [touch (any-bit? flags (bit-or fire-bit lava-bit))
         sunk? (any-bit? flags sunk-bit)
-        in-lava? (any-bit? flags lava-bit)
         cause (cause-of e)
         ignite (fn [d s k]
                  (ignite-deltas eid fire wet? d s (cause k)))]
     (concat (burning-flag eid e fire sunk?)
-            (burn-tick-deltas eid fire wet? in-lava? cause)
             (when touch (ignite 1.0 fire-seconds :in-fire))
             (when sunk? (ignite lava-damage lava-seconds :lava))
             (douse-deltas eid e fire wet?))))
@@ -624,11 +608,6 @@
         (when (= :player (:type e))
           [(out/to eid (out/health health))])))))
 
-(defn- rest-deltas [eid e]
-  (let [resist (long (or (:hurt-resist e) 0))]
-    (when (pos? resist)
-      [[:merge-entity eid {:hurt-resist (dec resist)}]])))
-
 (defn- timer-deltas [eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
@@ -762,15 +741,31 @@
 (defn- hurt-now [world eid e ds]
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
+(defn- burn-deltas [world eid e]
+  (let [fire (long (or (:fire e) 0))]
+    (when (and (pos? fire) (not (creative-proof? e)))
+      (burn-tick-deltas eid fire (boolean (:wet? e))
+                        (any-bit? (probe world e) lava-bit)
+                        (cause-of e)))))
+
+(defn- base-deltas
+  "Returns the deltas of living entity eid that LivingEntity.baseTick
+  makes before the countdown of its hurt resistance: the fire it
+  burns in (Entity.baseTick:546-556), then the void
+  (Entity.checkBelowWorld:564), then the countdown (:483)."
+  [world eid e]
+  (-> (vec (burn-deltas world eid e))
+      (into (void-deltas world eid e))
+      (conj [:rest eid])))
+
 (defn- busy-deltas [world eid e]
   (let [ds (concat (timer-deltas eid e)
-                   (void-deltas world eid e)
                    (landing-deltas world eid e)
-                   (fire-deltas world eid e))
-        rested (rest-deltas eid e)]
-    (concat ds (report-deltas
-                 world eid
-                 (hurt-now world eid e (concat rested ds))))))
+                   (fire-deltas world eid e))]
+    (->> (concat (base-deltas world eid e) ds)
+         (hurt-now world eid e)
+         (report-deltas world eid)
+         (concat ds))))
 
 (defn- mob-deltas [world eid e]
   (if (idle? world e)
@@ -797,36 +792,58 @@
 
 (def ^:private ^:const living-leaf 64)
 
-(defn- event-deltas [world events]
-  (into []
-        (mapcat (fn [[tag :as ev]]
-                  (when (= :attack tag) (attack-deltas world ev))))
-        events))
+(defn- hit-deltas [world a t target crit?]
+  (let [hit [:damage target (melee-damage a crit?)
+             (- (v/x (:pos a)) (v/x (:pos t)))
+             (- (v/z (:pos a)) (v/z (:pos t)))]
+        h (hurt-now world target t [hit])]
+    (when-not (identical? h t)
+      (let [marks [:merge-entity target (hit-marks a t (:tick world))]
+            h (hurt-now world target h [marks])]
+        (cond-> (into [hit marks] (report-deltas world target h))
+          (:sprinting? a) (conj (sprint-push a target))
+          crit? (conj (out/all (out/animation target :crit))))))))
 
-(defn- resting? [active [_ e]]
-  (and (pos? (long (or (:hurt-resist e) 0))) (ticking? active e)))
+(defn- attack-deltas [world [_ eid target]]
+  (let [a (get-in world [:entities eid])
+        t (get-in world [:entities target])]
+    (when (and (not (game-mode/spectator? a))
+               (attackable? a t) (in-reach? world a t))
+      (hit-deltas world a t target (crit? a t)))))
+
+(defn attacks
+  "Returns the deltas of the players hitting living entities this
+  tick, one after another, as ServerGamePacketListenerImpl
+  .handleInteract runs Player.attack when the packet comes."
+  {:wake {:events #{:attack}}}
+  [world d]
+  (let [evs (filterv #(= :attack (nth % 0)) (:input d))]
+    (deltas/of-vec (when (seq evs)
+                     (apply/fold-events world evs attack-deltas)))))
+
+(defn- based? [world active [_ e]]
+  (and (ticking? active e)
+       (not (contains? #{:item :experience-orb} (:type e)))
+       (or (pos? (long (or (:hurt-resist e) 0)))
+           (pos? (long (or (:fire e) 0)))
+           (and (:health e)
+                (< (v/y (:pos e)) (chunk/void-y world))))))
 
 (defn countdown
-  "Returns the deltas that count down the hurt resistance of every
-  living entity, as LivingEntity.baseTick before aiStep. It runs
-  before the mobs, whose hurts this tick write the resistance after
-  it."
+  "Returns the deltas of every living entity from the start of
+  LivingEntity.baseTick: fire, void, then the countdown of its hurt
+  resistance. It runs before the mobs, whose hurts this tick come
+  after it."
   {:wake {:keys [:entities]}}
   [world _d]
   (let [active (areas/active-chunks world)
-        xf (comp (filter (fn [entry] (resting? active entry)))
-                 (mapcat (fn [[eid e]] (rest-deltas eid e))))]
+        xf (comp (filter (fn [entry] (based? world active entry)))
+                 (mapcat (fn [[eid e]] (base-deltas world eid e))))]
     (deltas/of-vec (deltas/select xf (:entities world)))))
 
 (defn damage
-  "Returns the deltas of every living entity and of the damage
-  events of this tick."
-  {:wake {:keys [:entities] :events #{:attack}}}
-  [world d]
-  (let [events (:input d)
-        es (:entities world)
-        ds (deltas/of-vec
-             (deltas/select (living world) es living-leaf))]
-    (cond-> ds
-      (some #(= :attack (nth % 0)) events)
-      (deltas/merge (deltas/of-vec (event-deltas world events))))))
+  "Returns the deltas of every living entity this tick."
+  {:wake {:keys [:entities]}}
+  [world _d]
+  (deltas/of-vec
+    (deltas/select (living world) (:entities world) living-leaf)))
