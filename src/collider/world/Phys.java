@@ -237,6 +237,14 @@ public final class Phys {
             int flags) {
         double[] box = {x - half, y, z - half,
                         x + half, y + height, z + half};
+        return freeBox(chunks, kinds, cube, shapes, box, bottom, flags);
+    }
+
+    /// Returns true when the box `box`, six doubles in blocks, meets
+    /// no block. `bottom` is the foot of the body it belongs to.
+    public static boolean freeBox(ChunkIndex chunks, byte[] kinds,
+            boolean[] cube, Object[] shapes, double[] box, double bottom,
+            int flags) {
         Sweep sw = sweep(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0,
                          bottom, flags);
         double[] a = sw.a();

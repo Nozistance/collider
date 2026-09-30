@@ -158,6 +158,7 @@
 
 (def ^:private session-events
   {:keep-alive (fn [eid m] [:keepalive-echo eid (:id m)])
+   :client-tick-end (fn [eid _] [:client-tick-end eid])
    :client-information
    (fn [eid m] [:client-settings eid (client-settings m)])
    :chunk-batch-received (fn [eid m] [:chunk-batch-ack eid (:rate m)])
@@ -172,6 +173,9 @@
    :sign-update
    (fn [eid m] [:sign-update eid (:pos m) (:front? m) (:lines m)])
    :rename-item (fn [eid m] [:rename-item eid (:name m)])
+   :edit-book
+   (fn [eid m]
+     [:edit-book eid (:slot m) (select-keys m [:pages :title])])
    :change-game-mode
    (fn [eid m] [:change-game-mode eid (game-mode/of-id (:mode m))])
    :spectator-action
@@ -189,12 +193,11 @@
     (f eid m)))
 
 (def ^:private ignored
-  #{:client-tick-end
-    :custom-payload :chat-session-update :chat-ack
+  #{:custom-payload :chat-session-update :chat-ack
     :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request
     :pong :bundle-item-selected :block-entity-tag-query
-    :entity-tag-query :edit-book :jigsaw-generate :lock-difficulty
+    :entity-tag-query :jigsaw-generate :lock-difficulty
     :change-difficulty :move-vehicle :paddle-boat :place-recipe
     :recipe-book-change-settings :recipe-book-seen-recipe
     :resource-pack :seen-advancements :select-trade :set-beacon

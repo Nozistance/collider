@@ -5,17 +5,22 @@
             [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.stack :as stack]
+            [collider.game.state :as state]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
+            [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow :as grow]
+            [collider.world.blocks.grow.underwater :as underwater]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.env.biome :as biome]))
 
 (set! *warn-on-reflection* true)
 
@@ -115,14 +120,95 @@
         salted #(random/of-key (:tick world) pos :meal %)]
     (grow/bonemeal (:chunks world) pos st salted (:dim world))))
 
-(defn bonemeal-deltas
-  "Returns the deltas of bone meal used on the block at pos."
-  [world [_eid pos _ _ _]]
+(defn- crop-deltas [world pos]
   (when-let [{:keys [changes drops]} (bonemealed world pos)]
     (concat
       (when (seq changes) (edit/change-deltas world changes))
       (meal-drops world pos drops)
       [(out/all (out/bonemeal pos))])))
+
+(def ^:private ^:table coral-biomes
+  (delay (let [tag "produces_corals_from_bonemeal"]
+           (set (data/tag-values "worldgen/biome" tag)))))
+
+(defn- corals-at [world]
+  (fn [p]
+    (let [biome (biome/at (:dim world) p)]
+      (contains? @coral-biomes (:name biome)))))
+
+(defn- seabed-deltas [world pos face]
+  (let [side (dir/from-index face)
+        at (mapv + pos (dir/offset side))
+        roll #(random/of-key (:tick world) at :seabed %)
+        corals? (corals-at world)
+        grow #(underwater/meal (:chunks world) at side roll corals?)]
+    (when (block/face-sturdy? (edit/block-at world pos) side)
+      (when-let [cs (grow)]
+        (concat (edit/change-deltas world cs)
+                [(out/all (out/bonemeal at))])))))
+
+(defn bonemeal-deltas
+  "Returns the deltas of bone meal used on the block at pos.
+  On a floor under water it sprouts seagrass and coral."
+  [world [eid pos face _ _]]
+  (let [e (get-in world [:entities eid])]
+    (when-let [ds (or (crop-deltas world pos)
+                      (seabed-deltas world pos face))]
+      (concat ds (items/consume-deltas eid e (:use-hand e) 1)
+              [[:award eid :used/bone-meal 1]]))))
+
+(def ^:private plant-heads
+  #{:kelp :weeping-vines :twisting-vines :cave-vines})
+
+(defn- grown-tip [st]
+  (let [props (assoc (block/props-of st) :age :25)]
+    (block/state (block/block-of st) props)))
+
+(defn shear-deltas
+  "Returns the deltas of shears used on the tip of a growing plant.
+  The tip stops growing."
+  [world [eid pos _ _ _]]
+  (let [st (edit/block-at world pos)
+        e (get-in world [:entities eid])
+        kind :block.growing-plant.crop
+        snd (out/block-sound kind pos 1.0 1.0 :blocks)]
+    (when (and (contains? plant-heads (block/type-of st))
+               (not= :25 (:age (block/props-of st))))
+      (concat
+        [(out/except eid snd)]
+        (edit/change-deltas world [[pos (grown-tip st)]])
+        (items/hurt-item-deltas eid e (:use-hand e) 1)
+        [[:award eid :used/shears 1]]))))
+
+(defn- tracker [world pos]
+  {:target {:dimension (:dim world) :pos pos} :tracked true})
+
+(defn- bound-compass [world eid e stack t]
+  (let [one (stack/put (assoc stack :count 1) :lodestone-tracker t)]
+    (concat (items/consume-deltas eid e (:use-hand e) 1)
+            (items/kept world eid e one))))
+
+(defn- lock-sound [pos]
+  (out/block-sound :item.lodestone-compass.lock pos 1.0 1.0
+                   :players))
+
+(defn compass-deltas
+  "Returns the deltas of a compass used on a lodestone.
+  The compass points at it from then on."
+  [world [eid pos _ _ _]]
+  (when (= :lodestone (block/block-of (edit/block-at world pos)))
+    (let [e (get-in world [:entities eid])
+          hand (:use-hand e)
+          stack (state/hand-stack e hand)
+          t (tracker world pos)]
+      (concat
+        [(out/all (lock-sound pos))]
+        (if (and (not (state/infinite-materials? e))
+                 (= 1 (stack/size stack)))
+          [[:set-slot eid (state/hand-slot e hand)
+            (stack/put stack :lodestone-tracker t)]]
+          (bound-compass world eid e stack t))
+        [[:award eid :used/compass 1]]))))
 
 (defn- air-above? [world pos]
   (zero? (edit/block-at world (mapv + pos [0 1 0]))))
@@ -197,25 +283,6 @@
                [(out/all (out/block-sound :axe/strip pos 1.0 1.0))])
       (copper-axe-deltas world pos cur))))
 
-(def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
-
-(defn armor-slot-of
-  "Returns the inventory slot item is worn in, nil for no armor."
-  [item]
-  (armor-slot (data/equip-slot item)))
-
-(defn equip-armor-deltas
-  "Returns the deltas that put on the held armor item.
-  It goes into slot only when slot is empty."
-  [world eid item slot]
-  (let [e (get-in world [:entities eid])]
-    (when (and e (nil? (get-in e [:inventory slot])))
-      (let [held (edit/held-slot world eid)
-            stack (or (get-in e [:inventory held])
-                      {:item item :count 1})]
-        [[:set-slot eid slot stack]
-         [:set-slot eid held nil]]))))
-
 (defn- egg-pitch ^double [t pos]
   (let [p (- (random/of-key t pos :p1) (random/of-key t pos :p2))]
     (+ 1.0 (* 0.2 p))))
@@ -228,16 +295,34 @@
           (when-let [say (mobs/sound-of hatched :say)]
             [(out/all (out/sound say at 1.0 pitch))]))))
 
+(defn- egg-deltas [world eid pos mob at]
+  (let [e (get-in world [:entities eid])]
+    (concat (hatch-deltas world pos mob at)
+            (items/consume-deltas eid e (:use-hand e) 1))))
+
 (defn spawn-egg-deltas
   "Returns the deltas of a spawn egg used on a block face.
   The mob hatches next to the block at pos."
-  [world [_ pos face item]]
+  [world [eid pos face item]]
   (when-let [off (dir/face-offset face)]
     (when-let [mob (mobs/egg-type item)]
       (let [[x y z] (mapv + pos off)
             at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]]
         (when (chunk/in-range? y)
-          (hatch-deltas world pos mob at))))))
+          (concat (egg-deltas world eid pos mob at)
+                  [[:award eid (keyword "used" (name item)) 1]]))))))
+
+(defn fluid-egg-deltas
+  "Returns the deltas of a spawn egg used at a liquid source in
+  view. The mob hatches in the liquid."
+  [world eid e item]
+  (when-let [mob (mobs/egg-type item)]
+    (when-let [{:keys [pos]} (reach/clip world e :source-only)]
+      (when (block/liquid? (edit/block-at world pos))
+        (let [[x y z] pos
+              at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]]
+          (concat (egg-deltas world eid pos mob at)
+                  [[:award eid (keyword "used" (name item)) 1]]))))))
 
 (defn- carve-facing [world eid face]
   (if (<= (long face) 1)

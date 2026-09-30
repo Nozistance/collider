@@ -700,7 +700,7 @@
   (cond-> {:health player-health :health-sent player-health
            :hurt-resist 0 :last-damage 0.0 :death-time 0
            :born tick :ambience nil :xp-sent -1 :level-up-at 0
-           :xp-ready-at nil}
+           :xp-ready-at nil :client-vel [0.0 0.0 0.0]}
     (not keep?) (merge no-experience)
     (seq (:effects e)) (assoc :effects {})
     (:absorption e) (assoc :absorption nil)))

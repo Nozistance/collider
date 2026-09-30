@@ -48,9 +48,7 @@
               (player-box e))
     (:tnt :falling-block) [tnt-half tnt-height]
     :item nil
-    (when-let [m (get mobs/types (:type e))]
-      (let [s (if (mobs/baby? e) 0.5 1.0)]
-        [(* s (double (:half m))) (* s (double (:height m)))]))))
+    (when (mobs/mob-type? (:type e)) (mobs/box-of e))))
 
 (defn- box-hits-at? [^doubles a ^long n [px py pz] [half h]]
   (let [px (double px) py (double py) pz (double pz)
@@ -116,7 +114,8 @@
 (def ^:const ^:private sponge-dries 2009)
 
 (defn- drying? [world [_ st]]
-  (and (= :wet-sponge (block/block-of (long st)))
+  (and (number? st)
+       (= :wet-sponge (block/block-of (long st)))
        (attribute/water-evaporates? (:dim world))))
 
 (defn- dried-fx [world pos]
@@ -276,13 +275,15 @@
     [(into (settled-deltas world s) fx) s]))
 
 (defn- as-given [chunks ctx changes]
-  (let [op (fn [c] [:set c (neighbors/flags-of c 3)])]
+  (let [op (fn [c]
+             (if (keyword? (c 0)) c [:set c (neighbors/flags-of c 3)]))]
     (neighbors/run chunks ctx (mapv op changes))))
 
 (defn change-deltas
   "Returns the deltas for the changes, each set as it is.
   Each runs its updates at once. The fourth element of a change
-  holds its flags, 3 when none. Base is the tick the changes are
+  holds its flags, 3 when none. A change that starts with a keyword
+  is an op of neighbors/run. Base is the tick the changes are
   made on. A player's edit comes between ticks, after tick base."
   ([world changes]
    (change-deltas world changes (dec (long (:tick world)))))

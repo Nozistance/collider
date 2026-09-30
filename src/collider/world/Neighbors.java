@@ -33,29 +33,35 @@ public final class Neighbors {
 
     public Neighbors(Object chunks) {
         this.chunks = chunks;
-        records = PersistentVector.EMPTY.asTransient();
-        writes = PersistentVector.EMPTY.asTransient();
-        ticks = PersistentVector.EMPTY.asTransient();
-        sent = PersistentVector.EMPTY.asTransient();
+    }
+
+    private static ITransientCollection conj(ITransientCollection v,
+            Object x) {
+        if (v == null) v = PersistentVector.EMPTY.asTransient();
+        return v.conj(x);
+    }
+
+    private static Object done(ITransientCollection v) {
+        return v == null ? PersistentVector.EMPTY : v.persistent();
     }
 
     public Neighbors record(Object x) {
-        records = records.conj(x);
+        records = conj(records, x);
         return this;
     }
 
     public Neighbors write(Object x) {
-        writes = writes.conj(x);
+        writes = conj(writes, x);
         return this;
     }
 
     public Neighbors tick(Object x) {
-        ticks = ticks.conj(x);
+        ticks = conj(ticks, x);
         return this;
     }
 
     public Neighbors send(Object x) {
-        sent = sent.conj(x);
+        sent = conj(sent, x);
         return this;
     }
 
@@ -65,7 +71,7 @@ public final class Neighbors {
     }
 
     public int writeCount() {
-        return ((Counted) writes).count();
+        return writes == null ? 0 : ((Counted) writes).count();
     }
 
     public Object writeAt(int n) {
@@ -75,8 +81,8 @@ public final class Neighbors {
     /// Returns what the run collected as vectors: records, writes,
     /// ticks, sent and placed. The run ends here.
     public Object[] collected() {
-        return new Object[] {records.persistent(), writes.persistent(),
-                             ticks.persistent(), sent.persistent(),
+        return new Object[] {done(records), done(writes), done(ticks),
+                             done(sent),
                              PersistentVector.create(placed)};
     }
 
@@ -93,9 +99,9 @@ public final class Neighbors {
         long old = Chunk.blockAt(c, x, y, z);
         if (old == st) return -1;
         chunks = c.withBlock(x, y, z, (int) st);
-        records = records.conj(vec(p, st));
-        writes = writes.conj(vec(p, old, st, flags));
-        if ((flags & 2) != 0) sent = sent.conj(p);
+        records = conj(records, vec(p, st));
+        writes = conj(writes, vec(p, old, st, flags));
+        if ((flags & 2) != 0) sent = conj(sent, p);
         return old;
     }
 

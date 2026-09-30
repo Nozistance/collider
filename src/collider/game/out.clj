@@ -148,6 +148,38 @@
   [text]
   {:msg :overlay :text text})
 
+(defn title
+  "Returns the effect that shows text as the title, the subtitle or
+  the action bar, by kind."
+  [kind text]
+  {:msg :title :kind kind :text text})
+
+(defn title-times
+  "Returns the effect that sets how many ticks titles fade in, stay
+  and fade out."
+  [fade-in stay fade-out]
+  {:msg :title-times :fade-in (long fade-in) :stay (long stay)
+   :fade-out (long fade-out)})
+
+(defn clear-titles
+  "Returns the effect that hides the titles; reset? also forgets
+  their text and times."
+  [reset?]
+  {:msg :clear-titles :reset (boolean reset?)})
+
+(defn player-rotation
+  "Returns the effect that turns a player to yaw and pitch; a
+  relative one is added to where the player looks."
+  [yaw relative-yaw? pitch relative-pitch?]
+  {:msg :player-rotation :yaw (double yaw) :relative-yaw relative-yaw?
+   :pitch (double pitch) :relative-pitch relative-pitch?})
+
+(defn look-at
+  "Returns the effect that turns a player from its anchor from to
+  pos, or to the given anchor of the entity of id when there is one."
+  [from pos id anchor]
+  {:msg :look-at :from from :pos pos :id id :anchor anchor})
+
 (defn player-chat
   "Returns the effect that shows a line a player said.
   The text component already carries its sender."
@@ -246,6 +278,30 @@
             :volume (double volume) :pitch (double pitch)}
            source (assoc :source source))))
 
+(def sound-sources
+  "The mixer channels of sounds, in the order the client numbers
+  them."
+  ["master" "music" "record" "weather" "block" "hostile" "neutral"
+   "player" "ambient" "voice" "ui"])
+
+(defn named-sound
+  "Returns the effect of the sound named id, registered or not, on
+  mixer channel source at pos. Seed picks its variant."
+  [id source pos volume pitch seed]
+  {:msg :named-sound :id id :source source :pos pos
+   :volume (double volume) :pitch (double pitch) :seed (long seed)})
+
+(defn stop-sound
+  "Returns the effect that stops the sound named id on channel source;
+  nil for either stops all of them."
+  [id source]
+  {:msg :stop-sound :id id :source source})
+
+(defn entity-sound
+  "Returns the effect of a sound that follows entity eid at pos."
+  [kind eid pos volume pitch source]
+  (assoc (sound kind pos volume pitch source) :entity eid))
+
 (defn block-sound
   "Returns the effect of a sound at the centre of the block at pos."
   ([kind pos volume pitch] (block-sound kind pos volume pitch nil))
@@ -328,6 +384,8 @@
 
 (defn sign-editor [pos front?]
   {:msg :sign-editor :pos pos :front? (boolean front?)})
+
+(defn open-book [hand] {:msg :open-book :hand hand})
 
 (defn block-event
   "Returns the effect of a block moving in place, like a chest lid."

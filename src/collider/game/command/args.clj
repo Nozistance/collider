@@ -1,7 +1,8 @@
 (ns collider.game.command.args
   (:require [clojure.string :as str]
             [collider.data :as data]
-            [collider.game.command.reader :as r]))
+            [collider.game.command.reader :as r]
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
@@ -116,24 +117,6 @@
    :parse #(pair % (repeat 2 (double-coord false))
                  "argument.rotation.incomplete" identity)})
 
-(def ^:private ^:const sin-scale 10430.378350470453)
-
-(def ^:private sin-table
-  (let [a (float-array 65536)]
-    (dotimes [i 65536]
-      (aset a i (unchecked-float
-                 (Math/sin (/ (double i) sin-scale)))))
-    a))
-
-(defn- sin-at ^double [^double i]
-  (let [k (bit-and (unchecked-long i) 65535)]
-    (aget ^floats sin-table (unchecked-int k))))
-
-(defn- mth-sin ^double [^double a] (sin-at (* a sin-scale)))
-
-(defn- mth-cos ^double [^double a]
-  (sin-at (+ (* a sin-scale) 16384.0)))
-
 (def ^:private deg (unchecked-float (/ Math/PI 180.0)))
 
 (defn- f* ^double [^double a ^double b] (unchecked-float (* a b)))
@@ -148,9 +131,9 @@
   (let [ya (f* (f+ yaw 90.0) deg)
         xa (f* (- (double pitch)) deg)
         ua (f* (f+ (- (double pitch)) 90.0) deg)
-        yc (mth-cos ya) ys (mth-sin ya)
-        xc (mth-cos xa) xs (mth-sin xa)
-        uc (mth-cos ua) us (mth-sin ua)
+        yc (v/cos ya) ys (v/sin ya)
+        xc (v/cos xa) xs (v/sin xa)
+        uc (v/cos ua) us (v/sin ua)
         fw [(f* yc xc) xs (f* ys xc)]
         up [(f* yc uc) us (f* ys uc)]]
     [fw up (mapv #(* (double %) -1.0) (cross fw up))]))

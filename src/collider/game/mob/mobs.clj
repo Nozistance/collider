@@ -1,8 +1,10 @@
 (ns collider.game.mob.mobs
   "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
+            [collider.game.entity.size :as size]
             [collider.random :as random]
-            [collider.world.env.biome :as biome]))
+            [collider.world.env.biome :as biome]
+            [collider.world.space.path :as path]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,14 +48,15 @@
 
 (defn- spawn-config [biome] (spawn-configs (biome-kind biome)))
 
-(def cow-variants
-  "The cow variants by their ids."
+(def coats
+  "The coats of the farm animals that come in a warm and a cold
+  variant, by their ids."
   [:temperate :warm :cold])
 
-(def ^:private cow-variant-ids
+(def ^:private coat-ids
   {:temperate 0 :warm 1 :cold 2})
 
-(defn- cow-variant [_ biome] (cow-variant-ids (biome-kind biome)))
+(defn- coat [_ biome] (coat-ids (biome-kind biome)))
 
 (def ^:private ^:const rare-total 100.0)
 
@@ -81,28 +84,44 @@
   ^double [^double v] (double (float v)))
 
 (def ^:private cow
-  {:half           (attr 0.45) :height (attr 1.4)
-   :eye            (attr 1.3) :baby-eye (attr 0.69)
-   :speed          (attr 0.2)
+  {:speed          (attr 0.2)
    :max-health     10.0
    :sounds         :cow
-   :sound-variants 2
-   :breeding-item  :wheat
-   :spawn-color    cow-variant})
+   :voices         [:classic :moody]
+   :food           "cow_food"
+   :spawn-color    coat})
+
+(def ^:private water-walker
+  (update path/cow :malus assoc :water 0.0))
 
 (def types
-  {:sheep     {:half          (attr 0.45)
-               :height        (attr 1.3)
-               :eye           (attr 1.235)
-               :baby-eye      (attr 0.65625)
-               :speed         (attr 0.23)
+  {:sheep     {:speed         (attr 0.23)
                :max-health    8.0
                :sounds        :sheep
-               :breeding-item :wheat
+               :food          "sheep_food"
                :spawn-color   sheep-color}
    :cow       cow
-   :mooshroom (-> (assoc cow :ground :mycelium :sound-variants 1)
-                  (dissoc :spawn-color))})
+   :mooshroom (-> (assoc cow :ground :mycelium :voices [:classic])
+                  (dissoc :spawn-color))
+   :pig       {:speed       (attr 0.25)
+               :max-health  10.0
+               :sounds      :pig
+               :baby-sounds :baby-pig
+               :voices      [:classic :big :mini]
+               :shared      #{:step}
+               :eats-aloud? true
+               :food        "pig_food"
+               :spawn-color coat}
+   :chicken   {:speed       (attr 0.25)
+               :max-health  4.0
+               :sounds      :chicken
+               :baby-sounds :baby-chicken
+               :voices      [:classic :picky]
+               :shared      #{:step}
+               :food        "chicken_food"
+               :fall-drag   0.6
+               :walker      water-walker
+               :spawn-color coat}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -110,31 +129,45 @@
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
 
-(def ^:private adult-boxes
-  (into {} (map (fn [[t m]] [t [(:half m) (:height m)]])) types))
-
-(defn- halved [[t [h hh]]]
-  [t [(* 0.5 (double h)) (* 0.5 (double hh))]])
-
-(def ^:private baby-boxes
-  (into {} (map halved) adult-boxes))
-
 (defn max-health [type] (:max-health (types type)))
 
 (defn mob-type? [type] (contains? types type))
 
-(defn breeding-item [type] (:breeding-item (types type)))
+(defn- food-of [[t m]]
+  (when-let [tag (:food m)]
+    [t (set (data/tag-values "item" tag))]))
 
-(defn- moody? [e]
-  (pos? (long (or (:sound-variant e) 0))))
+(def ^:private ^:table foods
+  (delay (into {} (keep food-of) types)))
+
+(defn food
+  "Returns the set of items mob kind type eats and breeds on."
+  [type] (@foods type))
+
+(defn walker
+  "Returns the path parameters of mob kind type."
+  [type] (get-in types [type :walker] path/cow))
+
+(defn- voice-of [m e]
+  (get (:voices m) (long (or (:sound-variant e) 0)) :classic))
+
+(defn- voiced [s voice]
+  (if (= :classic voice) s (keyword (str (name s) "-" (name voice)))))
+
+(defn- sound-set [m e k]
+  (cond (and (some? (:baby-until e)) (:baby-sounds m))
+        (:baby-sounds m)
+        (contains? (:shared m) k) (:sounds m)
+        :else (voiced (:sounds m) (voice-of m e))))
 
 (defn sound-of
   "Returns the sound mob e makes for k, such as :say or :hurt.
-  A moody cow has a voice of its own."
+  Each voice of a breed has sounds of its own, and a baby may sound
+  as a baby."
   [e k]
-  (when-let [s (:sounds (types (:type e)))]
-    (keyword (name (if (and (= :cow s) (moody? e)) :cow-moody s))
-             (name k))))
+  (let [m (types (:type e))]
+    (when (:sounds m)
+      (keyword (name (sound-set m e k)) (name k)))))
 
 (def ^:private sheep-metas
   (vec (for [color (range 16) baby [false true]
@@ -152,12 +185,22 @@
                    (bit (some? (:baby-until e)) 4)
                    (bit (:burning? e) 2) (bit (:sheared? e) 1))))))
 
-(def ^:private cow-meta
-  (into {} (for [v cow-variants s [:classic :moody]
+(defn eating-sound
+  "Returns the sound mob e eats with, or nil for a breed that eats
+  in silence."
+  [e]
+  (when (:eats-aloud? (types (:type e))) (sound-of e :eat)))
+
+(defn- coat-metas [type ck vk]
+  (into {} (for [c coats v (:voices (types type))
                  baby [false true] burning [false true]]
-             [[v s baby burning]
-              {:cow-variant v :cow-sound s
-               :baby? baby :burning? burning}])))
+             [[c v baby burning]
+              {ck c vk v :baby? baby :burning? burning}])))
+
+(def ^:private coat-meta
+  {:cow (coat-metas :cow :cow-variant :cow-sound)
+   :pig (coat-metas :pig :pig-variant :pig-sound)
+   :chicken (coat-metas :chicken :chicken-variant :chicken-sound)})
 
 (def ^:private mooshroom-meta
   (into {} (for [v [0 1] baby [false true] burning [false true]]
@@ -171,9 +214,10 @@
   [e]
   (case (:type e)
     :sheep (sheep-meta e)
-    :cow (cow-meta [(cow-variants (long (or (:color e) 0)))
-                    (if (moody? e) :moody :classic)
-                    (some? (:baby-until e)) (burning? e)])
+    (:cow :pig :chicken)
+    ((coat-meta (:type e))
+     [(coats (long (or (:color e) 0))) (voice-of (types (:type e)) e)
+      (some? (:baby-until e)) (burning? e)])
     :mooshroom (mooshroom-meta
                 [(long (or (:color e) 0))
                  (some? (:baby-until e)) (burning? e)])))
@@ -206,7 +250,7 @@
   The keys ks decide its colour, voice, yaw and follow range."
   [type pos ks tick dim]
   (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
-        voices (long (get-in types [type :sound-variants] 1))
+        voices (count (get-in types [type :voices] [:classic]))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)
         voice (long (* voices (random/of-key (conj ks :voice))))
         color (color-fn ks (biome/at dim pos))]
@@ -244,16 +288,14 @@
        (>= (inc (long (or (:death-time e) 0))) death-ticks)))
 
 (defn box-of
-  "Returns the half width and the height of mob e.
-  A baby measures half a grown mob."
+  "Returns the half width and the height of mob e."
   [e]
-  ((if (baby? e) baby-boxes adult-boxes) (:type e)))
+  (size/box e))
 
 (defn eye-height
   "Returns how far above its position mob e looks out."
   ^double [e]
-  (let [m (types (:type e))]
-    (double (if (baby? e) (:baby-eye m) (:eye m)))))
+  (size/eye e))
 
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."
@@ -263,6 +305,8 @@
         components (case (:type e)
                      :sheep {:sheep/color (dye-colors n)}
                      :mooshroom {:mooshroom/variant shroom}
+                     :chicken {:chicken/variant (coats n)}
+                     :pig {:pig/variant (coats n)}
                      nil)]
     (cond-> {:type (:type e) :baby? (baby? e)
              :sheared? (boolean (:sheared? e))}

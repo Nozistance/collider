@@ -5,6 +5,7 @@
             [collider.game.entity :as entity]
             [collider.game.effect :as effect]
             [collider.game.game-mode :as game-mode]
+            [collider.game.hanging :as hanging]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -47,8 +48,26 @@
   (cond-> {:stack (:stack e)}
           (:burning? e) (assoc :burning? true)))
 
+(defn- facing-metadata [e]
+  (let [f (:facing e)]
+    (if (= :south f) {} {:facing f})))
+
+(defn- painting-metadata [e]
+  (let [v (:variant e)]
+    (cond-> (facing-metadata e)
+      (not= v (hanging/default-variant)) (assoc :variant v))))
+
+(defn- frame-metadata [e]
+  (let [r (long (or (:rotation e) 0))]
+    (cond-> (facing-metadata e)
+      (:stack e) (assoc :stack (:stack e))
+      (pos? r) (assoc :rotation r))))
+
 (def ^:private simple-metadata
   (merge
+    {:painting painting-metadata
+     :item-frame frame-metadata
+     :glow-item-frame frame-metadata}
     {:item          item-metadata
      :experience-orb orb-metadata
      :tnt           (fn [e] {:fuse (:fuse e)})
@@ -177,6 +196,7 @@
   (let [t (:type e)]
     (or (tracked-types t)
         (entity/thrown-types t)
+        (hanging/types t)
         (mobs/mob-type? t))))
 
 (defn- tracked-entries [world]
@@ -498,24 +518,32 @@
             (assoc :slots (or (:inventory e) {}))
             (f-carried-changed? f) (assoc :carried (:carried e)))))
 
-(def ^:private cloud-update-interval Integer/MAX_VALUE)
+(def ^:private still-update-interval Integer/MAX_VALUE)
 
 (def ^:private update-freqs
   (merge {:item              item-update-interval
           :experience-orb    item-update-interval
           :tnt               10
           :falling-block     20
-          :area-effect-cloud cloud-update-interval
+          :area-effect-cloud still-update-interval
           :player            update-interval}
-         (zipmap entity/thrown-types (repeat 10))))
+         (zipmap entity/thrown-types (repeat 10))
+         (zipmap hanging/types (repeat still-update-interval))))
 
 (defn- update-freq ^long [e]
   (long (get update-freqs (:type e) mob-update-interval)))
 
+(def ^:private ^:const frame-flush-interval 10)
+
+(defn- flushed? [e ^long ticks]
+  (and (contains? hanging/frames (:type e))
+       (zero? (rem ticks frame-flush-interval))))
+
 (defn- due-now? [^long t tr e dirty?]
-  (or (zero? (rem (- t (long (:t0 tr))) (update-freq e)))
-      (boolean (:needs-sync? e))
-      (boolean dirty?)))
+  (let [ticks (- t (long (:t0 tr)))]
+    (or (zero? (rem ticks (update-freq e)))
+        (boolean (:needs-sync? e))
+        (and (boolean dirty?) (not (flushed? e ticks))))))
 
 (defn- quiet? [tr e self? dirty? equip-same?]
   (and (not dirty?)

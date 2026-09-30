@@ -166,14 +166,17 @@
     (str (subs n 0 i) "-shear" (subs n i))
     (str n "-shear")))
 
+(defn- gift? [[_ json]] (= "minecraft:gift" (get json "type")))
+
 (defn entity-drops
   "Returns the loot tables of the mobs by name, from the loot tables
   of a pack by id. A shearing table has the name of the mob with the
-  suffix -shear."
+  suffix -shear, and a gift table its own name."
   [tables]
   (let [shear (under tables "shearing")]
     (pack/plain
      (into (sorted-map)
            (map (fn [[name json]] [(pack/kw name) (loot-node json)]))
            (concat (under tables "entities")
-                   (map (fn [[n j]] [(shear-name n) j]) shear))))))
+                   (map (fn [[n j]] [(shear-name n) j]) shear)
+                   (filter gift? (under tables "gameplay")))))))

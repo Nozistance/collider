@@ -2,7 +2,9 @@
   "Reading tables from the classes of the vanilla server."
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
+            [collider.tables.blockentities :as blockentities]
             [collider.tables.brewing :as brewing]
+            [collider.tables.entities :as entities]
             [collider.tables.files :as files]
             [collider.tables.fuel :as fuel]
             [collider.tables.items :as items]
@@ -99,7 +101,8 @@
 
 (defn- state-flags [env st]
   (let [flags (conj (mapv #(call st %) flag-methods)
-                    (full-top? env st))]
+                    (full-top? env st)
+                    (call st "isSignalSource") (call st "isSolid"))]
     (unless-default 0 (mask flags))))
 
 (defn- state-sturdy [{:keys [air zero dirs]} st & more]
@@ -373,6 +376,40 @@
               [(key-of reg b)
                {:feature (kw (str (call f "identifier")))}])))))
 
+(def ^:private grower-class "world.level.block.grower.TreeGrower")
+
+(defn- grower-name [g]
+  (kw (hidden-field (class g) g "name")))
+
+(defn- tree-growers [reg]
+  (let [c (cls grower-class)]
+    (into (sorted-map)
+          (for [b (elements reg)
+                :let [g (hidden-field (class b) b c)]
+                :when g]
+            [(key-of reg b) {:grower (grower-name g)}]))))
+
+(defn- feature-key [opt]
+  (when (call opt "isPresent")
+    (kw (str (call (call opt "get") "identifier")))))
+
+(def ^:private grower-features
+  {:mega "megaTree" :secondary-mega "secondaryMegaTree" :tree "tree"
+   :secondary-tree "secondaryTree" :flowers "flowers"
+   :secondary-flowers "secondaryFlowers"})
+
+(defn- grower-table [g]
+  (let [field #(hidden-field (class g) g %)]
+    (into {:secondary-chance (flt (field "secondaryChance"))}
+          (keep (fn [[k f]] (some->> (feature-key (field f)) (vector k))))
+          grower-features)))
+
+(defn- growers []
+  (let [c (cls grower-class)]
+    (into (sorted-map)
+          (map (fn [g] [(grower-name g) (grower-table g)]))
+          (vals (hidden-field c nil "GROWERS")))))
+
 (defn- block-table [reg by-type]
   (let [refs (block-refs reg)
         env (clone-env)
@@ -382,7 +419,8 @@
     (merge-with merge own
                 (weathering-pairs reg) (waxable-pairs reg)
                 (merge-with merge refs (pot-contents refs))
-                (strippables reg) (placer-features reg))))
+                (strippables reg) (placer-features reg)
+                (tree-growers reg))))
 
 (defn- block-props []
   (let [types (sound-types)
@@ -425,12 +463,14 @@
           :pack-reload (pack/reloadable managers)
           :pack-components {"item" (pack/components access)}
           :fuel (fuel/fuel access (load/features))
+          :block-entities (blockentities/block-entities access)
           :item-names (items/item-names)}
          (finally (call resources "close")))))
 
 (defn- item-facts []
   {:compost (items/compost) :wall-blocks (items/wall-blocks)
    :place-sounds (items/place-sounds)
+   :mob-buckets (items/mob-buckets)
    :remainders (items/remainders)
    :banner-colors (items/banner-colors)
    :non-breakers (items/non-breakers)})
@@ -438,6 +478,23 @@
 (defn- brewing-tables []
   {:brewing (brewing/brewing (load/features))
    :potions (brewing/potions) :effects (brewing/effects)})
+
+(defn- pack-format [v kind]
+  (let [t (static-field "server.packs.PackType" kind)]
+    (str (call v "packVersion" t))))
+
+(defn- version-facts
+  "What /version tells of the game (VersionCommand.dumpVersion)."
+  []
+  (let [v (call-static "SharedConstants" "getCurrentVersion")
+        dv (call v "dataVersion")]
+    {:id (call v "id") :name (call v "name")
+     :data (call dv "version") :series (call dv "series")
+     :protocol (call v "protocolVersion")
+     :build-time (call (call v "buildTime") "getTime")
+     :resource-pack (pack-format v "CLIENT_RESOURCES")
+     :data-pack (pack-format v "SERVER_DATA")
+     :stable (call v "stable")}))
 
 (defn- from-classes [loader]
   (binding [*loader* loader]
@@ -447,7 +504,9 @@
     (let [states (block-states)]
       (merge (state-shapes states) (block-props) (item-facts)
              {:light (light-table states) :fire (fire-odds)
-              :dyes (dye-colors) :synced (synced-registries)}
+              :dyes (dye-colors) :synced (synced-registries)
+              :entities (entities/entities)
+              :version (version-facts) :growers (growers)}
              (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j

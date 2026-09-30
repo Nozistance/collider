@@ -184,12 +184,6 @@
   (when (and (< (age st) 3) (chance? roll :gate 10))
     [[p (older st) nil 2]]))
 
-(defn- hanging? [st] (= :true (:hanging (block/props-of st))))
-
-(defn propagule-tick [_chunks p st _roll _time _ctx]
-  (when (and (hanging? st) (< (age st) 4))
-    [[p (older st) nil 2]]))
-
 (defn- meal-steps ^long [t roll]
   (case t
     :beetroot (quot (+ 2 (pick roll :meal 4)) 3)
@@ -216,10 +210,6 @@
   (when (and (< (age st) 25)
              (block/water? (chunk/at chunks (dir/up p))))
     {:changes [[(dir/up p) (older st)]]}))
-
-(defn propagule-meal [_chunks p st _roll]
-  (when (and (hanging? st) (< (age st) 4))
-    {:changes [[p (older st) nil 2]]}))
 
 (defn seagrass-meal [chunks p _st _roll]
   (let [half (fn [h] (block/state :tall-seagrass {:half h}))]

@@ -1,6 +1,7 @@
 (ns collider.game.block.container
   "Containers and benches with their menus and lids."
   (:require [collider.data :as data]
+            [collider.game.book :as book]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
@@ -345,7 +346,8 @@
 
 (defn place-book-deltas [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))
-        e' (assoc e :book (assoc stack :count 1) :page 0)]
+        one (book/resolved (assoc stack :count 1))
+        e' (assoc e :book one :page 0)]
     (concat
       [[:set-block-entity pos e']]
       (lectern-set world pos (lectern/reset-state st true))

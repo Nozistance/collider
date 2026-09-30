@@ -12,6 +12,8 @@
             [collider.game.mob.nav :as nav]
             [collider.game.mob.sheep :as sheep]
             [collider.game.mob.cow :as cow]
+            [collider.game.mob.chicken :as chicken]
+            [collider.game.mob.pig :as pig]
             [collider.game.mob.mooshroom :as mooshroom]
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
@@ -32,10 +34,13 @@
 
 (def ^:private brains
   {:sheep sheep/brain :cow cow/brain
-   :mooshroom mooshroom/brain})
+   :mooshroom mooshroom/brain :pig pig/brain :chicken chicken/brain})
 
 (def ^:private specs
-  {:sheep sheep/spec :cow cow/spec :mooshroom mooshroom/spec})
+  {:sheep sheep/spec :cow cow/spec :mooshroom mooshroom/spec
+   :pig pig/spec :chicken chicken/spec})
+
+(def ^:private ai-steps {:chicken chicken/ai-step})
 
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
@@ -83,6 +88,7 @@
              :sheep [sheep/shear-result animal/feed-result]
              :cow [cow/milk-result animal/feed-result]
              :mooshroom mushroom
+             (:pig :chicken) [animal/feed-result]
              nil)]
     (some (fn [f] (f ctx)) fs)))
 
@@ -109,22 +115,6 @@
 (defn- interact-deltas [world events t]
   (state/fold-events world (filter #(= :interact (first %)) events)
                      (fn [w ev] (interact w ev t))))
-
-(def ^:private ^:const sin-scale 10430.378350470453)
-
-(def ^:private sin-table
-  (let [a (float-array 65536)]
-    (dotimes [i 65536]
-      (aset a i (float (Math/sin (/ (double i) sin-scale)))))
-    a))
-
-(defn- mth-sin ^double [^double a]
-  (aget ^floats sin-table
-        (int (bit-and (long (* a sin-scale)) 65535))))
-
-(defn- mth-cos ^double [^double a]
-  (aget ^floats sin-table
-        (int (bit-and (long (+ (* a sin-scale) 16384.0)) 65535))))
 
 (defn- fmul
   ^double [^double a ^double b] (double (float (* a b))))
@@ -200,7 +190,7 @@
 
 (defn- look-pitch ^double [e height o]
   (let [pos (:pos e) opos (:pos o)
-        oh (double (get (get mobs/types (:type o)) :height 1.0))
+        oh (double (nth (or (mobs/box-of o) [0.0 1.0]) 1))
         eye (+ (v/y pos) (* 0.95 (double height)))
         oeye (+ (v/y opos)
                 (if (= :player (:type o)) 1.62 (* 0.95 oh)))
@@ -291,9 +281,9 @@
       vel
       (let [f (* (if (> l 1.0) (Math/signum zza) zza) speed)
             r (yaw-radians (double (:yaw e)))]
-        (v/v3 (- (v/x vel) (* f (mth-sin r)))
+        (v/v3 (- (v/x vel) (* f (v/sin r)))
               (v/y vel)
-              (+ (v/z vel) (* f (mth-cos r))))))))
+              (+ (v/z vel) (* f (v/cos r))))))))
 
 (defn- friction-speed ^double [og? ^double bf ^double speed]
   (if og?
@@ -716,6 +706,7 @@
 (defn- mob-changes [old new]
   (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
                :no-action :baby-until :tempt-cooldown-until :say-tick
+               :stick-cooldown-until :egg-at
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
                :no-blocks? :arrived))
@@ -781,8 +772,12 @@
    (let [[half height] (mobs/box-of e)
          more [look e cram live?]
          [e2 shoves hit?]
-         (physics-shoves world index eid e1 half height more)]
-     [e2 (stepped-deltas eid e e2 ds say-ds t) shoves hit?])))
+         (physics-shoves world index eid e1 half height more)
+         [e2 own] (if-let [f (ai-steps (:type e))]
+                    (f eid e2 t)
+                    [e2 nil])]
+     [e2 (joined-into (stepped-deltas eid e e2 ds say-ds t) own)
+      shoves hit?])))
 
 (defn- handed
   "Returns acc with the shove sh handed to the mob in slot j, whose

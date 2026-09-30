@@ -32,6 +32,20 @@
                    [k (kw (str (call e "location")))])))
           (instances "world.item.SolidBucketItem"))))
 
+(defn mob-buckets
+  "Returns the fluid each bucket of a mob pours and the sound it
+  empties with."
+  []
+  (let [c (cls "world.item.MobBucketItem")
+        fluids (registry "FLUID")
+        sound #(kw (str (call % "location")))
+        fact (fn [i]
+               {:fluid (key-of fluids (hidden-field c i "content"))
+                :sound (sound (hidden-field c i "emptySound"))})]
+    (into (sorted-map)
+          (map (fn [[k i]] [k (fact i)]))
+          (instances "world.item.MobBucketItem"))))
+
 (defn compost
   "Returns the chance each item raises a composter by."
   []

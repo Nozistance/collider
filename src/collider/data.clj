@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 18)
+(def layout 19)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -69,10 +69,15 @@
               :why     why
               :command how})))
 
+(def ^:private nbt-readers
+  {'nbt/b byte 'nbt/s short 'nbt/i int 'nbt/l long 'nbt/f float
+   'nbt/d double 'nbt/B byte-array 'nbt/I int-array
+   'nbt/L long-array})
+
 (defn- read-edn [name]
   (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
-      (edn/read (PushbackReader. r)))))
+      (edn/read {:readers nbt-readers} (PushbackReader. r)))))
 
 (defn pack
   "Returns the entries of registry path of the vanilla pack by id, as
@@ -82,11 +87,12 @@
 
 (def ^:private item-facts
   [:compost :wall-blocks :place-sounds :remainders :banner-colors
-   :non-breakers :item-names])
+   :non-breakers :item-names :mob-buckets])
 
 (def ^:private table-names
   (into [:packets :registries :blocks :synced :light :fire :fuel
-         :brewing :dyes :sounds :potions :effects]
+         :brewing :dyes :sounds :potions :effects :entities
+         :version :block-entities :growers]
         item-facts))
 
 (def ^:private ^:table tables
@@ -99,11 +105,22 @@
   "Returns the packet ids by connection state, direction and name."
   [] (:packets @tables))
 
+(defn version
+  "Returns what the game tells of its version: :id, :name, :data,
+  :series, :protocol, :build-time in epoch millis, :resource-pack,
+  :data-pack and :stable."
+  [] (:version @tables))
+
 (defn registries
   "Returns the ids of the entries the client knows, by registry."
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
+
+(defn growers
+  "Returns the tree growers by name: the chance of the secondary
+  trees and the features of each tree."
+  [] (:growers @tables))
 
 (defn light
   "Returns how block states pass and emit light."
@@ -128,6 +145,16 @@
   [] (:entity-drops @loot-tables))
 
 (defn sounds [] (:sounds @tables))
+
+(defn entities
+  "Returns the width, height and eye height of each entity type, and
+  of its baby as :baby."
+  [] (:entities @tables))
+
+(defn block-entities
+  "Returns the tags a fresh block entity of each type saves and sends,
+  and whether it sends a block entity data packet."
+  [] (:block-entities @tables))
 
 (defn potions
   "Returns the effect instances every potion gives."
@@ -333,6 +360,11 @@
   (when-let [c (get-in (items) [item :use-cooldown])]
     [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
 
+(defn cooldown-group
+  "Returns the group whose cooldown locks item."
+  [item]
+  (get-in (items) [item :use-cooldown :group] item))
+
 (defn max-stack ^long [item]
   (long (get-in (items) [item :max-stack] 64)))
 
@@ -341,6 +373,16 @@
 
 (defn equip-slot [item]
   (get-in (items) [item :equip]))
+
+(defn swap-slot
+  "Returns the slot a player puts item on by using it, or nil."
+  [item]
+  (get-in (items) [item :swap]))
+
+(defn mob-bucket
+  "Returns the fluid and the sound of a bucket of a mob, or nil."
+  [item]
+  (get-in (items) [item :mob-bucket]))
 
 (defn equip-sound [item]
   (get-in (items) [item :equip-sound] :item.armor.equip-generic))

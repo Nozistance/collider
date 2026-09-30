@@ -97,6 +97,11 @@
   (by-key (keep (fn [[b m]] (when-let [f (:feature m)] [b f]))
                 (data/blocks))))
 
+(defn- grown-trees []
+  (into #{} (comp (mapcat #(vals (dissoc % :secondary-chance)))
+                  (map data/snake))
+        (vals (data/growers))))
+
 (defn- feature-registries []
   {:placed (by-name "worldgen/placed_feature")
    :configured (by-name "worldgen/configured_feature")
@@ -106,7 +111,9 @@
   (let [reg (feature-registries)
         tagged (bone-meal-tagged)
         placers (placers)
-        roots (into tagged (map (comp data/snake val)) placers)
+        roots (-> tagged
+                  (into (map (comp data/snake val)) placers)
+                  (into (grown-trees)))
         [cs ps] (closure reg roots #{"grass_bonemeal"})]
     {:configured (feature-set reg :configured cs)
      :placed (feature-set reg :placed ps)
@@ -375,6 +382,11 @@
 
 (defn bone-meal-features [biome]
   (get-in (features) [:bone-meal biome]))
+
+(defn configured-feature
+  "Returns the configured feature named k that bone meal reaches."
+  [k]
+  (get-in (features) [:configured k]))
 
 (defn placer-feature [block]
   (get-in (features) [:placers block]))

@@ -1,5 +1,6 @@
 (ns collider.game.systems.consume
-  "Eating and drinking, and filling a glass bottle at water."
+  "Eating, drinking and other items held in use, and filling a
+  glass bottle at water."
   (:require [collider.data :as data]
             [collider.game.deltas :as deltas]
             [collider.world.env.dimension :as dimension]
@@ -196,20 +197,37 @@
   [[:merge-entity eid
     {:using (assoc (:using e) :remaining (dec left))}]])
 
+(defn- spyglass-stop [eid e]
+  (let [snd (out/sound :item.spyglass.stop-using (:pos e) 1.0 1.0
+                       :players)]
+    [(out/except eid snd)]))
+
+(defn- release-deltas [{:keys [eid item] :as u}]
+  (when (= :spyglass item) (spyglass-stop eid u)))
+
+(defn- held-deltas [eid e item ^long left]
+  (if (= 1 left)
+    (concat (when (= :spyglass item) (spyglass-stop eid e))
+            (stopped eid))
+    (advanced eid e left)))
+
+(defn- eaten-deltas [world eid e c left]
+  (concat (when (emits? c left) [(use-sound world eid e c left)])
+          (if (= 1 (long left))
+            (finish-deltas world eid e)
+            (advanced eid e left))))
+
 (defn- step-deltas [world [eid _]]
   (let [e (get-in world [:entities eid])
         {:keys [hand item remaining]} (:using e)
         left (long (or remaining 0))
-        c (state/consumable (state/hand-stack e hand))]
+        stack (state/hand-stack e hand)
+        c (state/consumable stack)]
     (cond
       (nil? (:using e)) nil
-      (or (nil? c) (not= item (:item (state/hand-stack e hand))))
-      (stopped eid)
-      :else
-      (concat (when (emits? c left) [(use-sound world eid e c left)])
-              (if (= 1 left)
-                (finish-deltas world eid e)
-                (advanced eid e left))))))
+      (not= item (:item stack)) (stopped eid)
+      c (eaten-deltas world eid e c left)
+      :else (held-deltas eid e item left))))
 
 (def ^:private water-bottle
   {:item       :potion :count 1
@@ -254,4 +272,5 @@
   {:wake {:types #{:player}}}
   [world _]
   (deltas/of-vec
-    (state/fold-events world (using-entries world) step-deltas)))
+    (into (into [] (mapcat release-deltas) (:releases world))
+          (state/fold-events world (using-entries world) step-deltas))))

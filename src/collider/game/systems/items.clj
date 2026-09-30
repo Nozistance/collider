@@ -485,7 +485,10 @@
   (let [left (- (long (:count stack 1)) n)]
     (when (pos? left) (assoc stack :count left))))
 
-(defn- kept [world eid e stack]
+(defn kept
+  "Returns the deltas that put stack into the inventory of player
+  eid, and throw out what does not fit."
+  [world eid e stack]
   (let [[changes left] (add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
             (when left [[:spawn-entity (dropped world eid left)]]))))
@@ -556,13 +559,13 @@
   player with infinite materials wears nothing out."
   [eid e hand ^long n]
   (let [stack (state/hand-stack e hand)
-        most (long (get-in stack [:components :max-damage] 0))
-        worn (+ n (long (get-in stack [:components :damage] 0)))]
-    (when (and (pos? most) (not (state/infinite-materials? e)))
-      (if (>= worn most)
+        worn (+ n (stack/damage stack))]
+    (when (and (stack/damageable? stack)
+               (not (state/infinite-materials? e)))
+      (if (>= worn (stack/max-damage stack))
         (broken-deltas eid e hand stack)
         [[:set-slot eid (state/hand-slot e hand)
-          (assoc-in stack [:components :damage] worn)]]))))
+          (stack/with-damage stack worn)]]))))
 
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) pi (:pos ie)

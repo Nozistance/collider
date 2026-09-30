@@ -12,6 +12,7 @@
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
+            [collider.game.hanging :as hanging]
             [collider.game.schema :as schema]
             [collider.game.state :as state]
             [collider.game.gamerules :as rules]
@@ -21,6 +22,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.env.biome :as biome])
   (:import (collider.game.deltas.record Deltas)))
 
@@ -35,10 +37,11 @@
 (def ^:private chunk-level-keys [:min-y :max-y :sky? :dim :chunks])
 
 (defn- chunk-packet [world id]
-  (let [[x z] (chunk/id->pos id)]
+  (let [[x z] (chunk/id->pos id)
+        bes (get-in world [:block-entities id])]
     {:packet         :level-chunk-with-light :cx x :cz z
      :chunk          (get-in world [:chunks id] chunk/empty-chunk)
-     :block-entities (be/wire (get-in world [:block-entities id]))
+     :block-entities (be/wire bes (:tick world))
      :level          (select-keys world chunk-level-keys)}))
 
 (defn- forget-chunk-packet [id]
@@ -69,6 +72,8 @@
      :sheep         (data/registry-id "entity_type" :sheep)
      :cow           (data/registry-id "entity_type" :cow)
      :mooshroom     (data/registry-id "entity_type" :mooshroom)
+     :pig           (data/registry-id "entity_type" :pig)
+     :chicken       (data/registry-id "entity_type" :chicken)
      :item          (data/registry-id "entity_type" :item)
      :experience-orb (data/registry-id "entity_type" :experience-orb)
      :tnt           (data/registry-id "entity_type" :tnt)
@@ -82,7 +87,11 @@
      :experience-bottle
      (data/registry-id "entity_type" :experience-bottle)
      :area-effect-cloud
-     (data/registry-id "entity_type" :area-effect-cloud)}))
+     (data/registry-id "entity_type" :area-effect-cloud)
+     :painting      (data/registry-id "entity_type" :painting)
+     :item-frame    (data/registry-id "entity_type" :item-frame)
+     :glow-item-frame
+     (data/registry-id "entity_type" :glow-item-frame)}))
 
 (def ^:private ^:table entity-effect-particle
   (delay (data/registry-id "particle_type" :entity-effect)))
@@ -136,22 +145,29 @@
   (bit-or (bit-and (long (or (:color meta) 0)) 15)
           (if (:sheared? meta) 0x10 0)))
 
-(defn- coat-id ^long [v] (data/datapack-id "cow_variant" v))
-
-(defn- voice-id ^long [v]
-  (data/datapack-id "cow_sound_variant" v))
-
 (defn- animal-fields [meta]
   (cond-> (common-fields meta)
           (contains? meta :baby?)
           (assoc :baby (boolean (:baby? meta)))))
 
-(defn- cow-fields [meta]
-  (cond-> (animal-fields meta)
-          (contains? meta :cow-variant)
-          (assoc :variant (coat-id (:cow-variant meta)))
-          (contains? meta :cow-sound)
-          (assoc :sound-variant (voice-id (:cow-sound meta)))))
+(def ^:private coat-keys
+  {:cow [:cow-variant :cow-sound]
+   :pig [:pig-variant :pig-sound]
+   :chicken [:chicken-variant :chicken-sound]})
+
+(defn- coat-fields
+  "Returns the coat and the voice of a cow, a pig or a chicken as the
+  ids of their registries."
+  [kind meta]
+  (let [[ck vk] (coat-keys kind)
+        n (name kind)]
+    (cond-> (animal-fields meta)
+      (contains? meta ck)
+      (assoc :variant
+             (data/datapack-id (str n "_variant") (ck meta)))
+      (contains? meta vk)
+      (assoc :sound-variant
+             (data/datapack-id (str n "_sound_variant") (vk meta))))))
 
 (defn- stack-fields [meta]
   (cond-> {} (contains? meta :stack) (assoc :item (:stack meta))))
@@ -171,9 +187,11 @@
 
 (def ^:private entity-class
   {:player :player :sheep :sheep :cow :cow :mooshroom :mushroom-cow
+   :pig :pig :chicken :chicken
    :item :item-entity :tnt :primed-tnt :falling-block :falling-block
    :area-effect-cloud :area-effect-cloud
-   :experience-orb :experience-orb})
+   :experience-orb :experience-orb :painting :painting
+   :item-frame :item-frame :glow-item-frame :item-frame})
 
 (defn- class-of [kind]
   (or (entity-class kind)
@@ -206,10 +224,21 @@
   (cond-> (common-fields meta)
     (contains? meta :value) (assoc :value (:value meta))))
 
+(defn- hanging-fields [meta]
+  (cond-> {}
+    (contains? meta :facing)
+    (assoc :direction (dir/index (or (:facing meta) :south)))
+    (contains? meta :stack) (assoc :item (:stack meta))
+    (contains? meta :rotation)
+    (assoc :rotation (long (or (:rotation meta) 0)))
+    (contains? meta :variant)
+    (assoc :variant (or (:variant meta) (hanging/default-variant)))))
+
 (defn- entity-fields [kind meta]
   (case kind
     :player (merge (player-fields meta) (living-fields meta))
-    :cow (merge (cow-fields meta) (living-fields meta))
+    (:cow :pig :chicken)
+    (merge (coat-fields kind meta) (living-fields meta))
     :sheep (merge (sheep-fields meta) (living-fields meta))
     :mooshroom (merge (mooshroom-fields meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
@@ -217,6 +246,7 @@
     :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)
     :experience-orb (orb-fields meta)
+    (:painting :item-frame :glow-item-frame) (hanging-fields meta)
     (stack-fields meta)))
 
 (defn- entity-data [kind meta]
@@ -231,19 +261,31 @@
     (/ (* (double a) 360.0) 256.0)
     now))
 
+(defn- spawn-pos [e tr kind]
+  (cond (hanging/types kind) (mapv double (:block-pos e))
+        tr (mapv double (:pos tr))
+        :else (:pos e)))
+
+(defn- spawn-data [e kind]
+  (cond (= :falling-block kind) (:block e)
+        (entity/thrown-types kind) (long (:owner e 0))
+        (hanging/types kind) (dir/index (:facing e))
+        :else 0))
+
+(defn- spawn-head-yaw [e kind]
+  (if (or (entity/thrown-types kind) (hanging/types kind))
+    0.0
+    (or (:head-yaw e) (:yaw e 0.0))))
+
 (defn- add-entity-packet [eid e tr kind]
   {:packet :add-entity :eid eid :uuid (entity/uuid-of eid e)
    :type   (@entity-type kind)
-   :pos    (if tr (mapv double (:pos tr)) (:pos e))
+   :pos    (spawn-pos e tr kind)
    :vel    (or (when tr (:vel-sent tr)) (:vel e) [0.0 0.0 0.0])
    :yaw    (spawn-rotation tr kind :yaw (:yaw e 0.0))
    :pitch  (spawn-rotation tr kind :pitch (:pitch e 0.0))
-   :head-yaw (if (entity/thrown-types kind)
-               0.0
-               (or (:head-yaw e) (:yaw e 0.0)))
-   :data   (cond (= :falling-block kind) (:block e)
-                 (entity/thrown-types kind) (long (:owner e 0))
-                 :else 0)})
+   :head-yaw (spawn-head-yaw e kind)
+   :data   (spawn-data e kind)})
 
 (defn- equipment-of [tr]
   (let [equip (if tr (:equip tr) [])]
@@ -297,6 +339,36 @@
    :mooshroom/shear               [:entity.mooshroom.shear 7]
    :mooshroom/eat                 [:entity.mooshroom.eat 6]
    :mooshroom/convert             [:entity.mooshroom.convert 6]
+   :pig/say                       [:entity.pig.ambient 6]
+   :pig/step                      [:entity.pig.step 6]
+   :pig/hurt                      [:entity.pig.hurt 6]
+   :pig/death                     [:entity.pig.death 6]
+   :pig/eat                       [:entity.pig.eat 6]
+   :pig-big/say                   [:entity.pig-big.ambient 6]
+   :pig-big/hurt                  [:entity.pig-big.hurt 6]
+   :pig-big/death                 [:entity.pig-big.death 6]
+   :pig-big/eat                   [:entity.pig-big.eat 6]
+   :pig-mini/say                  [:entity.pig-mini.ambient 6]
+   :pig-mini/hurt                 [:entity.pig-mini.hurt 6]
+   :pig-mini/death                [:entity.pig-mini.death 6]
+   :pig-mini/eat                  [:entity.pig-mini.eat 6]
+   :baby-pig/say                  [:entity.baby-pig.ambient 6]
+   :baby-pig/step                 [:entity.baby-pig.step 6]
+   :baby-pig/hurt                 [:entity.baby-pig.hurt 6]
+   :baby-pig/death                [:entity.baby-pig.death 6]
+   :baby-pig/eat                  [:entity.baby-pig.eat 6]
+   :chicken/say                   [:entity.chicken.ambient 6]
+   :chicken/step                  [:entity.chicken.step 6]
+   :chicken/hurt                  [:entity.chicken.hurt 6]
+   :chicken/death                 [:entity.chicken.death 6]
+   :chicken/egg                   [:entity.chicken.egg 6]
+   :chicken-picky/say             [:entity.chicken-picky.ambient 6]
+   :chicken-picky/hurt            [:entity.chicken-picky.hurt 6]
+   :chicken-picky/death           [:entity.chicken-picky.death 6]
+   :baby-chicken/say              [:entity.baby-chicken.ambient 6]
+   :baby-chicken/step             [:entity.baby-chicken.step 6]
+   :baby-chicken/hurt             [:entity.baby-chicken.hurt 6]
+   :baby-chicken/death            [:entity.baby-chicken.death 6]
    :tnt/primed                    [:entity.tnt.primed 4]
    :snowball/throw                [:entity.snowball.throw 6]
    :egg/throw                     [:entity.egg.throw 7]
@@ -422,7 +494,8 @@
     (when-let [ev (entity-events (:kind m))]
       {:packet :entity-event :eid (:eid m) :event ev})))
 
-(def ^:private sound-sources {:blocks 4 :neutral 6 :players 7})
+(def ^:private sound-sources
+  {:records 2 :blocks 4 :neutral 6 :players 7})
 
 (defn- sound-id [kind]
   (let [reg (get (data/registries) "sound_event")]
@@ -432,10 +505,32 @@
 
 (defn- sound-packet [m]
   (if-let [[id src] (sound-id (:kind m))]
-    {:packet :sound :sound id :pos (:pos m) :seed 0
-     :volume (:volume m) :pitch (:pitch m)
-     :source (get sound-sources (:source m) src)}
+    (let [p {:sound id :seed 0 :volume (:volume m) :pitch (:pitch m)
+             :source (get sound-sources (:source m) src)}]
+      (if-let [eid (:entity m)]
+        (assoc p :packet :sound-entity :eid eid)
+        (assoc p :packet :sound :pos (:pos m))))
     (once! [:sound (:kind m)])))
+
+(def ^:private anchors {:feet 0 :eyes 1})
+
+(defn- rotation-packet [m]
+  (assoc (select-keys m [:yaw :relative-yaw :pitch :relative-pitch])
+         :packet :player-rotation))
+
+(defn- look-at-packet [m]
+  {:packet :player-look-at :from (anchors (:from m)) :pos (:pos m)
+   :id (:id m) :to (some-> (:anchor m) anchors)})
+
+(def ^:private source-ids (zipmap out/sound-sources (range)))
+
+(defn- named-sound-packet [m]
+  {:packet :sound :sound (:id m)
+   :source (source-ids (:source m)) :pos (:pos m)
+   :volume (:volume m) :pitch (:pitch m) :seed (:seed m)})
+
+(defn- stop-sound-packet [m]
+  {:packet :stop-sound :id (:id m) :source (source-ids (:source m))})
 
 (defn- explode-packet [m eid]
   (let [k (get (:motions m) eid)]
@@ -527,6 +622,8 @@
 
 (def ^:private ^:table command-tree (delay (commands/tree)))
 
+(def ^:private ^:table open-command-tree (delay (commands/tree 0)))
+
 (def ^:private world-border-size 5.9999968E7)
 
 (def ^:private world-border-max 29999984)
@@ -547,14 +644,12 @@
      (long (Math/floor (double y)))
      (long (Math/floor (double z)))]))
 
-(def ^:private no-commands [{:type :root :children []}])
-
 (defn- permission-packets [eid e]
   (let [level (state/permission-level e)]
     [{:packet :entity-event :eid eid :event (+ op-level-event level)}
      {:packet :commands
       :nodes (if (< level (long commands/gamemaster))
-               no-commands
+               @open-command-tree
                @command-tree)}]))
 
 (def ^:private border-packet
@@ -644,6 +739,10 @@
      (clock-sync-packet lv)
      (game-event-packet :level-chunks-load-start 0.0)]))
 
+(def ^:private title-packets
+  {:title :set-title-text :subtitle :set-subtitle-text
+   :actionbar :set-action-bar-text})
+
 (def ^:private session-fx
   {:teleport      (fn [_ m]
                     [{:packet :player-position :teleport-id 0
@@ -658,6 +757,18 @@
    :overlay       (fn [_ m]
                     [{:packet :system-chat :overlay true
                       :text (:text m)}])
+   :title         (fn [_ m]
+                    [{:packet (title-packets (:kind m))
+                      :text (:text m)}])
+   :title-times   (fn [_ m]
+                    [(assoc (select-keys m [:fade-in :stay :fade-out])
+                            :packet :set-titles-animation)])
+   :named-sound   (fn [_ m] [(named-sound-packet m)])
+   :player-rotation (fn [_ m] [(rotation-packet m)])
+   :look-at       (fn [_ m] [(look-at-packet m)])
+   :stop-sound    (fn [_ m] [(stop-sound-packet m)])
+   :clear-titles  (fn [_ m]
+                    [{:packet :clear-titles :reset (:reset m)}])
    :player-chat   (fn [_ m]
                     [{:packet :system-chat :overlay false
                       :text (:text m)}])
@@ -704,14 +815,14 @@
 (defn- event-block [world pos]
   (data/registry-id "block" (block/block-of (block-state world pos))))
 
-(defn- block-entity-packet [pos e]
+(defn- block-entity-packet [pos e t]
   {:packet :block-entity-data :pos pos
-   :type (be/type-id e) :nbt (be/nbt e)})
+   :type (be/type-id e) :nbt (be/nbt e t)})
 
 (defn- block-entity-fx [world m]
   (when-let [e (be/at world (:pos m))]
     (when (be/on-wire? e)
-      [(block-entity-packet (:pos m) e)])))
+      [(block-entity-packet (:pos m) e (:tick world))])))
 
 (def ^:private plant-growth-particles 15)
 
@@ -726,6 +837,9 @@
 
 (defn- sign-editor-packet [m]
   {:packet :open-sign-editor :pos (:pos m) :front? (:front? m)})
+
+(defn- open-book-packet [m]
+  {:packet :open-book :hand (if (= :off (:hand m)) 1 0)})
 
 (defn- reloaded-packets []
   [{:packet :update-tags :tags (data/tags)}
@@ -751,6 +865,7 @@
                      [(level-event-packet
                         (:event m) (:pos m) (:data m 0))])
    :sign-editor    (fn [_ m] [(sign-editor-packet m)])
+   :open-book      (fn [_ m] [(open-book-packet m)])
    :block-event    (fn [world m]
                      [{:packet :block-event :pos (:pos m)
                        :action (:action m)

@@ -769,8 +769,11 @@
   ^objects []
   @collision-table)
 
+(defn- flagged? [^long st ^long mask]
+  (pos? (bit-and (long (aget ^bytes (data/flags) st)) mask)))
+
 (def ^:private ^:table legacy-solid-arr
-  (delay (Block/legacySolids @collision-table)))
+  (delay (boolean-table (fn [st _ _] (flagged? st 64)))))
 
 (defn legacy-solid?
   {:inline (via `Block/legacySolid)}
@@ -791,7 +794,7 @@
   @full-cube-arr)
 
 (defn- motion? [^long st n]
-  (and (pos? (bit-and (long (aget ^bytes (data/flags) st)) 1))
+  (and (flagged? st 1)
        (not (contains? #{:cobweb :bamboo-sapling} n))))
 
 (def ^:private ^:table blocks-motion-arr
@@ -843,6 +846,11 @@
   {:inline (via `Block/flag 16)}
   [^long st]
   (flag? st 16))
+
+(defn signal-source?
+  {:inline (via `Block/flag 32)}
+  [^long st]
+  (flag? st 32))
 
 (defn randomly-ticking?
   {:inline (via `Block/flag 4)}

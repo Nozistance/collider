@@ -74,6 +74,8 @@
 
 (def ^:private Line [wire/string {:max 384}])
 
+(def ^:private Page [wire/string {:max 1024}])
+
 (def ^:private Signature [wire/bytes 256])
 
 (def ^:private ClientInformation
@@ -391,6 +393,9 @@
              (chunk/write-chunk!
                buf (:cx m) (:cz m) (:chunk m) (:block-entities m)
                (:level m)))}
+   [:play :open-book]
+   {:schema [:map [:hand wire/varint]]
+    :write :wire}
    [:play :open-sign-editor]
    {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]]
     :write :wire}
@@ -426,6 +431,43 @@
     :write :wire}
    [:play :system-chat]
    {:schema [:map [:text wire/text] [:overlay wire/boolean]]
+    :write :wire}
+   [:play :player-rotation]
+   {:schema [:map [:yaw wire/float] [:relative-yaw wire/boolean]
+             [:pitch wire/float] [:relative-pitch wire/boolean]]
+    :write :wire}
+   [:play :player-look-at]
+   {:schema [:map [:from :int] [:pos :any] [:id [:maybe :int]]
+             [:to [:maybe :int]]]
+    :write (fn [^Buf buf {:keys [from pos id to]}]
+             (c/write-varint buf from)
+             (run! #(buf/write-double! buf (double %)) pos)
+             (buf/write-boolean! buf (some? id))
+             (when id
+               (c/write-varint buf id)
+               (c/write-varint buf to)))}
+   [:play :stop-sound]
+   {:schema [:map [:source [:maybe :int]] [:id [:maybe :string]]]
+    :write (fn [^Buf buf {:keys [source id]}]
+             (buf/write-byte! buf (bit-or (if source 1 0)
+                                          (if id 2 0)))
+             (when source (c/write-varint buf source))
+             (when id (c/write-string buf id)))}
+   [:play :set-title-text]
+   {:schema [:map [:text wire/text]]
+    :write :wire}
+   [:play :set-subtitle-text]
+   {:schema [:map [:text wire/text]]
+    :write :wire}
+   [:play :set-action-bar-text]
+   {:schema [:map [:text wire/text]]
+    :write :wire}
+   [:play :set-titles-animation]
+   {:schema [:map [:fade-in wire/int] [:stay wire/int]
+             [:fade-out wire/int]]
+    :write :wire}
+   [:play :clear-titles]
+   {:schema [:map [:reset wire/boolean]]
     :write :wire}
    [:play :block-update]
    {:schema [:map [:pos wire/block-pos] [:state wire/varint]]
@@ -607,8 +649,13 @@
              [:amount wire/varint]]
     :write :wire}
    [:play :sound]
-   {:schema [:map [:sound wire/holder-ref] [:source wire/varint]
+   {:schema [:map [:sound wire/sound-holder] [:source wire/varint]
              [:pos wire/fixed-vec3] [:volume wire/float]
+             [:pitch wire/float] [:seed wire/long]]
+    :write :wire}
+   [:play :sound-entity]
+   {:schema [:map [:sound wire/holder-ref] [:source wire/varint]
+             [:eid wire/varint] [:volume wire/float]
              [:pitch wire/float] [:seed wire/long]]
     :write :wire}
    [:play :level-particles]
@@ -681,6 +728,11 @@
     :read :wire}
    [:play :rename-item]
    {:schema [:map [:name wire/string]]
+    :read :wire}
+   [:play :edit-book]
+   {:schema [:map [:slot wire/varint]
+             [:pages [:sequential {:max 100} Page]]
+             [:title [:maybe [wire/string {:max 32}]]]]
     :read :wire}
    [:play :sign-update]
    {:schema [:map [:pos wire/block-pos] [:front? wire/boolean]

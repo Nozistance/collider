@@ -10,11 +10,13 @@ import clojure.lang.Tuple;
 
 /// The goals of a breed, highest priority first, and the selector
 /// that stops, starts and ticks them as GoalSelector does. Each goal
-/// holds its kind, its flags as a bit mask and its functions; a goal
+/// holds its kind, its priority, its flags as a bit mask and its
+/// functions; goals of one priority never displace each other; a goal
 /// without a running function runs while the task of the mob has
 /// its kind.
 public record GoalSelector(Object goals, Object childColor, int n,
-        Object[] kinds, long[] masks, IFn[] runnings, IFn[] stops,
+        Object[] kinds, long[] prios, long[] masks, IFn[] runnings,
+        IFn[] stops,
         IFn[] starts, IFn[] continues, IFn[] ticks, boolean[] every)
         implements ILookup {
 
@@ -62,13 +64,13 @@ public record GoalSelector(Object goals, Object childColor, int n,
         for (int i = 0; i < n; i++) {
             if ((b & (1L << i)) == 0) continue;
             for (int f = 0; f < 4; f++) {
-                if ((masks[i] & (1L << f)) != 0) held[f] = i;
+                if ((masks[i] & (1L << f)) != 0) held[f] = prios[i];
             }
         }
         return held;
     }
 
-    private static boolean free(long[] locked, int prio, long mask) {
+    private static boolean free(long[] locked, long prio, long mask) {
         for (int f = 0; f < 4; f++) {
             long p = locked[f];
             if ((mask & (1L << f)) != 0 && p >= 0 && p <= prio) {
@@ -126,7 +128,8 @@ public record GoalSelector(Object goals, Object childColor, int n,
         long b = bits(e, t);
         long[] locked = locks(b);
         for (int i = 0; i < n; i++) {
-            if ((b & (1L << i)) != 0 || !free(locked, i, masks[i])) continue;
+            boolean busy = (b & (1L << i)) != 0;
+            if (busy || !free(locked, prios[i], masks[i])) continue;
             Object r = started(w, eid, e, t, ts, locked, i);
             if (r == null) continue;
             e = RT.nth(r, 0);

@@ -1,6 +1,7 @@
 (ns collider.game.schema
   "Schema of the world map and of the player profile."
   (:require [clojure.data.int-map :as i]
+            [collider.game.block.blockentity :as be]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.game.schedule :as schedule]
@@ -23,13 +24,17 @@
                      [eid (entity/saved e t)])))
         (:entities w)))
 
+(defn- chunk-block-entities [w id t]
+  (into {} (map (fn [[p e]] [p (be/saved e t)]))
+        (get-in w [:block-entities id])))
+
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
   Players do not belong to a chunk. Ticks count as delays from now."
   [w id]
   (let [id (long id) t (long (:tick w 0))]
     {:chunk          (get (:chunks w) id)
-     :block-entities (into {} (get-in w [:block-entities id]))
+     :block-entities (chunk-block-entities w id t)
      :entities       (chunk-entities w id t)
      :block-ticks    (schedule/saved (:block-ticks w) id t)
      :fluid-ticks    (schedule/saved (:fluid-ticks w) id t)}))
@@ -52,7 +57,8 @@
     [(assoc payload :entities (into {} fresh))
      (+ n (count entities))]))
 
-(defn- block-entity-entry [[p e]] [(vec p) e])
+(defn- block-entity-entry [t]
+  (fn [[p e]] [(vec p) (be/loaded e t)]))
 
 (defn- ticks-restored [w t payload]
   (-> w
@@ -66,7 +72,7 @@
   (let [id (long id)
         t (long (:tick w 0))
         es (keep (entity-entry t))
-        bes (into {} (map block-entity-entry) block-entities)]
+        bes (into {} (map (block-entity-entry t)) block-entities)]
     (cond-> (-> w
                 (update :chunks assoc id chunk)
                 (update :entities into es entities)
@@ -189,7 +195,7 @@
   "The keys of world that belong to a level and not to the shared
   part. The transient keys of the tick count too."
   (into #{:active-chunks :block-events :use-origins :moves :quits
-          :heeded :resends :observed}
+          :heeded :resends :releases :observed}
         (keys level-table)))
 
 (def dims

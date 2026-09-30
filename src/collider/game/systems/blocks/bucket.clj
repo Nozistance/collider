@@ -1,6 +1,8 @@
 (ns collider.game.systems.blocks.bucket
   "Filling and emptying buckets."
-  (:require [collider.game.out :as out]
+  (:require [collider.data :as data]
+            [collider.game.out :as out]
+            [collider.game.state :as state]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
@@ -32,9 +34,15 @@
         (and (or replace? holds?)
              (or (not shift?) (nil? relative))))))
 
-(defn- splash [eid pos water?]
-  (let [snd (if water? :bucket/empty :bucket/empty-lava)]
-    [(out/except eid (out/block-sound snd pos 1.0 1.0))]))
+(defn- mob-splash [snd pos]
+  (out/block-sound snd pos 1.0 1.0 :neutral))
+
+(defn- splash [eid pos water? mob-sound]
+  (let [snd (if water? :bucket/empty :bucket/empty-lava)
+        fx (if mob-sound
+             (mob-splash mob-sound pos)
+             (out/block-sound snd pos 1.0 1.0))]
+    [(out/except eid fx)]))
 
 (defn- drown-deltas [world pos cur]
   (concat (edit/change-deltas
@@ -65,34 +73,64 @@
     :else (concat (break-drops world pos cur replace?)
                   (edit/change-deltas world [[pos state]]))))
 
-(defn- pour-deltas [world eid pos state relative]
+(defn- pour-deltas [world eid pos state relative snd]
   (let [cur (edit/block-at world pos)
         water? (block/water? state)
         replace? (may-replace? cur)
         holds? (and water? (edit/waterloggable? cur))]
     (cond
       (not (pourable? world eid cur relative replace? holds?))
-      (when relative (pour-deltas world eid relative state nil))
+      (when relative (pour-deltas world eid relative state nil snd))
       (and water? (attribute/water-evaporates? (:dim world)))
       (evaporated world eid pos)
       :else (concat (settled world pos state cur replace? holds?)
-                    (splash eid pos water?)))))
+                    (splash eid pos water? snd)))))
 
 (defn- into-hit? [hit state]
   (and (contains? (block/props-of hit) :waterlogged)
        (block/water? state)))
 
-(defn add
-  "Returns the deltas for a player who empties a bucket.
-  The bucket holds state and pours at the block in view."
-  [world eid e state]
+(defn- poured [world eid e state snd]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))
           hit (edit/block-at world pos)
           target (if (into-hit? hit state) pos relative)
           next-pos (when (= target pos) relative)]
       (when (chunk/in-level? world (target 1))
-        (pour-deltas world eid target state next-pos)))))
+        (pour-deltas world eid target state next-pos snd)))))
+
+(defn- emptied [world eid e item ds]
+  (when (seq ds)
+    (concat ds
+            [[:award eid (keyword "used" (name item)) 1]]
+            (when-not (state/infinite-materials? e)
+              (items/filled-result-deltas
+                world eid {:item :bucket :count 1} false
+                (:use-hand e))))))
+
+(defn add
+  "Returns the deltas for a player who empties a bucket.
+  The bucket holds state and pours at the block in view. Out of
+  creative the bucket in hand is left empty."
+  [world eid e item state]
+  (emptied world eid e item (poured world eid e state nil)))
+
+(defn- mob-sound [world eid e snd]
+  (when-let [{:keys [pos face]} (reach/clip world e :none)]
+    (let [at (mapv + pos (dir/offset face))]
+      [(out/except eid (mob-splash snd at))])))
+
+(defn mob-deltas
+  "Returns the deltas for a player who empties a bucket that holds a
+  mob. Its water pours like a water bucket, with the sound of the
+  bucket."
+  [world eid e item]
+  (let [{:keys [fluid sound]} (data/mob-bucket item)]
+    (emptied world eid e item
+             (if (= :empty fluid)
+               (mob-sound world eid e sound)
+               (poured world eid e (liquid/liquid-state fluid 0)
+                       sound)))))
 
 (defn- scoop-target [world e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]

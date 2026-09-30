@@ -1,6 +1,7 @@
 (ns collider.game.systems.chat
   "Chat lines, commands and tab completion."
   (:require [clojure.string :as str]
+            [collider.config :as config]
             [collider.data :as data]
             [collider.game.camera :as camera]
             [collider.game.clock :as clock]
@@ -29,7 +30,8 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather])
-  (:import (java.util Locale)))
+  (:import (collider.game.mob Steer)
+           (java.util Date Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -396,8 +398,11 @@
               same? (bit-or (bit-shift-left 1 a))))
           (bit-or 8 16) rel))
 
+(defn- known-vel [e]
+  (if (= :player (:type e)) (:client-vel e) (:vel e)))
+
 (defn- kept-vel [e rel grounded?]
-  (let [old (or (:vel e) still)
+  (let [old (or (known-vel e) still)
         at #(if (contains? rel %) (double (nth (xyz old) %)) 0.0)]
     (v/v3 [(at 0) (if grounded? 0.0 (at 1)) (at 2)])))
 
@@ -1034,6 +1039,430 @@
            (entity-name e) n))
     (fail eid "argument.entity.notfound.player")))
 
+(def ^:private separator {:text ", " :color "gray"})
+
+(defn- name-list [names]
+  (case (count names)
+    0 ""
+    1 (first names)
+    {:text "" :extra (vec (interpose separator names))}))
+
+(defn- names-of [world eid sel]
+  (name-list (map #(entity-name (nth % 2)) (selected world eid sel))))
+
+(defn- message-step [world eid ^String text]
+  (fn [[acc at] [a b sel]]
+    [(cond-> acc
+       (< (long at) (long a)) (conj (subs text at a))
+       :always (conj (names-of world eid sel)))
+     b]))
+
+(defn- message-content
+  "The text of a message argument with its selectors named."
+  [world eid {:keys [^String text parts]}]
+  (if (empty? parts)
+    text
+    (let [s0 (first (first parts))
+          step (message-step world eid text)
+          [extra end] (reduce step [[] s0] parts)
+          tail? (< (long end) (count text))]
+      {:text (subs text 0 s0)
+       :extra (cond-> extra tail? (conj (subs text end)))})))
+
+(defn- decorated
+  "The chat line of chat type id with params by name."
+  [id params]
+  (let [pack (get (data/pack "chat_type") (str "minecraft:" id))
+        {:strs [translation_key parameters style]} (get pack "chat")]
+    (merge {:translate translation_key :with (mapv params parameters)}
+           (update-keys style data/kebab))))
+
+(defn- sender-name [world eid]
+  (entity-name (get-in world [:entities eid])))
+
+(defn- broadcast [id]
+  (fn [world eid [m]]
+    (let [content (message-content world eid m)
+          who (sender-name world eid)
+          line (decorated id {"sender" who "content" content})]
+      [(out/everyone (out/player-chat line))])))
+
+(defn- whispered [who content [id _ e]]
+  (let [to {"target" (entity-name e) "content" content}
+        from {"sender" (:name who) "content" content}
+        line #(out/player-chat (decorated %1 %2))]
+    [(out/to (:eid who) (line "msg_command_outgoing" to))
+     (out/to id (line "msg_command_incoming" from))]))
+
+(defn- msg-deltas [world eid [sel m]]
+  (let [xs (player-selected world eid sel)
+        who {:eid eid :name (sender-name world eid)}]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.player")
+      (mapcat #(whispered who (message-content world eid m) %) xs))))
+
+(defn- tellraw-deltas [world eid [sel text]]
+  (let [xs (player-selected world eid sel)]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.player")
+      (mapv (fn [[id]] (out/to id (out/system-chat text))) xs))))
+
+(defn- name-and-id [[id _ e]]
+  {:translate "commands.list.nameAndId"
+   :with [(:name e) (str (entity/uuid-of id e))]})
+
+(defn- list-deltas [f]
+  (fn [world eid _]
+    (let [xs (player-entries world)
+          cfg (merge config/defaults (:config world))
+          most (:max-players cfg)]
+      (answer (say eid "commands.list.players" (count xs) most
+                   (name-list (map f xs)))))))
+
+(defn- title-report [eid xs key]
+  (if (= 1 (count xs))
+    (say eid (str key ".single") (entity-name (nth (first xs) 2)))
+    (say eid (str key ".multiple") (count xs))))
+
+(defn- titled [key fx]
+  (fn [world eid [sel & more]]
+    (let [xs (player-selected world eid sel)
+          m (apply fx more)]
+      (if (empty? xs)
+        (fail eid "argument.entity.notfound.player")
+        (concat (map (fn [[id]] (out/to id m)) xs)
+                (title-report eid xs key))))))
+
+(defn- shown [kind]
+  (titled (str "commands.title.show." (name kind))
+          #(out/title kind %)))
+
+(defn- help-deltas [world eid [text]]
+  (let [lv (state/permission-level (get-in world [:entities eid]))
+        lines (cmd/help-lines lv text (source-pos world))]
+    (if (nil? lines)
+      (fail eid "commands.help.failed")
+      (answer (mapv #(out/to eid (out/system-chat %)) lines)))))
+
+(defn- sound-range-sq ^double [volume]
+  (let [v (float volume)
+        r (float (if (> v (float 1.0)) (* (float 16.0) v) 16.0))]
+    (double (* r r))))
+
+(defn- heard
+  "The position and volume player e hears a sound at, nil when out of
+  range (PlaySoundCommand.playSound)."
+  [e pos volume min-volume]
+  (let [[px py pz] (xyz (:pos e))
+        d (mapv - pos [px py pz])
+        sq (reduce + (map * d d))]
+    (cond
+      (<= sq (sound-range-sq volume)) [pos volume]
+      (<= (double min-volume) 0.0) nil
+      :else (let [n (Math/sqrt sq)]
+              [(mapv #(+ %1 (* (/ %2 n) 2.0)) [px py pz] d)
+               min-volume]))))
+
+(defn- sound-listeners [world eid sel]
+  (let [dim (source-dim world)
+        xs (if sel (player-selected world eid sel) (self world eid))]
+    (filter #(= dim (nth % 1)) xs)))
+
+(defn- sound-report [eid played id]
+  (if (= 1 (count played))
+    (say eid "commands.playsound.success.single" id
+         (entity-name (nth (first played) 2)))
+    (say eid "commands.playsound.success.multiple" id
+         (count played))))
+
+(defn- playsound-deltas
+  [world eid [src id sel x y z volume pitch min-volume]]
+  (let [pos (if (some? x) [x y z] (vec (source-pos world)))
+        volume (float (or volume 1.0))
+        least (or min-volume 0.0)
+        seed (random/mix64 (hash [(:tick world) eid id]))
+        src (or src "master") pitch (or pitch 1.0)
+        sound #(out/named-sound id src %1 %2 pitch seed)
+        play (fn [[pid _ e :as x]]
+               (when-let [[at v] (heard e pos volume least)]
+                 [x (out/to pid (sound at v))]))
+        played (keep play (sound-listeners world eid sel))]
+    (cond
+      (and sel (empty? (player-selected world eid sel)))
+      (fail eid "argument.entity.notfound.player")
+      (empty? played) (fail eid "commands.playsound.failed")
+      :else (concat (map second played)
+                    (sound-report eid (map first played) id)))))
+
+(defn- stop-report [src id]
+  (let [src (when (not= "*" src) src)]
+    (cond
+      (and src id) ["commands.stopsound.success.source.sound" id src]
+      src ["commands.stopsound.success.source.any" src]
+      id ["commands.stopsound.success.sourceless.sound" id]
+      :else ["commands.stopsound.success.sourceless.any"])))
+
+(defn- stopsound-deltas [world eid [src sel id]]
+  (let [xs (player-selected world eid sel)
+        m (out/stop-sound id (when (not= "*" src) src))]
+    (if (empty? xs)
+      (fail eid "argument.entity.notfound.player")
+      (concat (map (fn [[pid]] (out/to pid m)) xs)
+              (apply say eid (stop-report src id))))))
+
+(def ^:private inventory-order
+  "Menu slots in the order Inventory counts them: hotbar, main,
+  feet to head, offhand, then the crafting grid."
+  (vec (concat (range 36 45) (range 9 36) [8 7 6 5 45] [1 2 3 4])))
+
+(defn- taken ^long [pred ^long limit ^long counted stack]
+  (let [n (stack/size stack)]
+    (cond
+      (not (and stack (item-args/matches? pred stack))) 0
+      (zero? limit) n
+      (neg? (- limit counted)) n
+      :else (min (- limit counted) n))))
+
+(defn- shrunk [stack ^long k]
+  (when (< k (stack/size stack)) (update stack :count - k)))
+
+(defn- clear-step [pred limit]
+  (fn [[n changes] [slot stack]]
+    (let [k (taken pred limit n stack)]
+      [(+ (long n) k)
+       (cond-> changes
+         (and (pos? k) (not (zero? (long limit))))
+         (conj [slot (shrunk stack k)]))])))
+
+(defn- cleared
+  "How many items pred matches on player e, and the slot changes
+  that take at most limit of them; limit 0 only counts, -1 takes
+  all (Inventory.clearOrCountMatchingItems)."
+  [e pred limit]
+  (let [inv (:inventory e)
+        stacks (conj (mapv (fn [s] [s (get inv s)]) inventory-order)
+                     [:carried (:carried e)])]
+    (reduce (clear-step (or pred {:type nil :tests []}) limit)
+            [0 []] stacks)))
+
+(defn- clear-change [id [slot stack]]
+  (if (= :carried slot)
+    [:merge-entity id {:carried stack}]
+    [:set-slot id slot stack]))
+
+(defn- clear-report [eid xs n limit]
+  (let [kind (if (zero? (long limit)) "test" "success")]
+    (if (= 1 (count xs))
+      (say eid (str "commands.clear." kind ".single") n
+           (entity-name (nth (first xs) 2)))
+      (say eid (str "commands.clear." kind ".multiple") n
+           (count xs)))))
+
+(defn- clear-failure [eid xs]
+  (if (= 1 (count xs))
+    (fail eid "clear.failed.single" (:name (nth (first xs) 2)))
+    (fail eid "clear.failed.multiple" (count xs))))
+
+(defn- cleared-deltas [world [id dim [_ cs]]]
+  (in-level world dim (map #(clear-change id %) cs)))
+
+(defn- clear-deltas [world eid [sel pred limit]]
+  (let [xs (if sel (player-selected world eid sel) (self world eid))
+        limit (long (or limit -1))
+        rs (map (fn [[id dim e]] [id dim (cleared e pred limit)]) xs)
+        n (reduce + (map #(first (nth % 2)) rs))]
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.player")
+      (zero? (long n)) (clear-failure eid xs)
+      :else (concat (mapcat #(cleared-deltas world %) rs)
+                    (clear-report eid xs n limit)))))
+
+(def ^:private tag-limit 1024)
+
+(defn- tag-added [world name [id dim e]]
+  (let [tags (or (:tags e) #{})]
+    (when-not (or (contains? tags name)
+                  (>= (count tags) (long tag-limit)))
+      (in-level world dim
+                [[:merge-entity id {:tags (conj tags name)}]]))))
+
+(defn- tag-removed [world name [id dim e]]
+  (when (contains? (:tags e) name)
+    (in-level world dim
+              [[:merge-entity id {:tags (disj (:tags e) name)}]])))
+
+(defn- tag-report [eid xs base name]
+  (if (= 1 (count xs))
+    (say eid (str base "single") name
+         (entity-name (nth (first xs) 2)))
+    (say eid (str base "multiple") name (count xs))))
+
+(defn- tag-changed [f op]
+  (fn [world eid [sel name]]
+    (let [xs (selected world eid sel)
+          dss (keep #(f world name %) xs)
+          base (str "commands.tag." op ".success.")]
+      (cond
+        (empty? xs) (fail eid "argument.entity.notfound.entity")
+        (empty? dss) (fail eid (str "commands.tag." op ".failed"))
+        :else (concat (apply concat dss)
+                      (tag-report eid xs base name))))))
+
+(defn- tag-names [tags]
+  (name-list (mapv (fn [t] {:text t :color "green"}) (sort tags))))
+
+(defn- tag-list-deltas [world eid [sel]]
+  (let [xs (selected world eid sel)
+        tags (into #{} (mapcat #(:tags (nth % 2))) xs)
+        one? (= 1 (count xs))
+        who (when one? (entity-name (nth (first xs) 2)))
+        n (count tags)]
+    (answer
+      (cond
+        (empty? xs) (fail eid "argument.entity.notfound.entity")
+        (and one? (zero? n))
+        (say eid "commands.tag.list.single.empty" who)
+        one? (say eid "commands.tag.list.single.success" who n
+                  (tag-names tags))
+        (zero? n)
+        (say eid "commands.tag.list.multiple.empty" (count xs))
+        :else (say eid "commands.tag.list.multiple.success" (count xs)
+                   n (tag-names tags))))))
+
+(defn- swung [world hand [id dim e]]
+  (when (effects/living? e)
+    (let [ds (state/swing-deltas id e hand (:tick world) true)]
+      (or (in-level world dim ds) []))))
+
+(defn- swing-report [eid xs n]
+  (if (= 1 n)
+    (say eid "commands.swing.success.single"
+         (entity-name (nth (first xs) 2)))
+    (say eid "commands.swing.success.multiple" n)))
+
+(defn- swing-deltas [world eid [hand sel]]
+  (let [xs (if sel (selected world eid sel) (self world eid))
+        dss (keep #(swung world (or hand :main) %) xs)]
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.entity")
+      (empty? dss) (fail eid "commands.swing.failed.notliving")
+      :else (concat (apply concat dss)
+                    (swing-report eid xs (count dss))))))
+
+(defn- f32 ^double [x] (double (float x)))
+
+(defn- pitch-set ^double [x]
+  (f32 (max -90.0 (min 90.0 (f32 (rem (float x) (float 360.0)))))))
+
+(defn- turned-to
+  "The yaw and pitch of Entity.forceSetRotation from the rotation
+  argument, and the values the player packet carries."
+  [world eid e [ry yv] [rp pv]]
+  (let [src (get-in world [:entities eid])
+        arg #(f32 (if %1 (+ (double %2) (double (or %3 0.0))) %2))
+        y (arg ry yv (:yaw src)) x (arg rp pv (:pitch src))
+        dy (if ry (f32 (- y (f32 (:yaw e 0.0)))) y)
+        dx (if rp (f32 (- x (f32 (:pitch e 0.0)))) x)
+        ay (if ry (f32 (+ (f32 (:yaw e 0.0)) dy)) dy)
+        ax (if rp (f32 (+ (f32 (:pitch e 0.0)) dx)) dx)
+        sent [dy (boolean ry) dx (boolean rp)]]
+    [ay (pitch-set (max -90.0 (min 90.0 ax))) sent]))
+
+(defn- rotated [world id dim yaw pitch fx]
+  (let [turn {:yaw yaw :head-yaw yaw :pitch pitch}]
+    (in-level world dim
+              (cond-> [[:merge-entity id turn]]
+                fx (conj (out/to id fx))))))
+
+(defn- rotate-report [eid e]
+  (say eid "commands.rotate.success" (entity-name e)))
+
+(defn- rotate-deltas [world eid [sel yaw pitch]]
+  (if-let [[id dim e] (first (selected world eid sel))]
+    (let [[ay ax sent] (turned-to world eid e yaw pitch)
+          fx (when (= :player (:type e))
+               (apply out/player-rotation sent))]
+      (concat (rotated world id dim ay ax fx) (rotate-report eid e)))
+    (fail eid "argument.entity.notfound.entity")))
+
+(def ^:private deg (f32 (/ 180.0 (f32 Math/PI))))
+
+(defn- look-angles
+  "The yaw and pitch of Entity.lookAt from feet at from to pos."
+  [[fx fy fz] [px py pz]]
+  (let [xd (- (double px) (double fx)) yd (- (double py) (double fy))
+        zd (- (double pz) (double fz))
+        sd (Math/sqrt (+ (* xd xd) (* zd zd)))
+        pitch (wrapped (float (- (* (Steer/atan2 yd sd) deg))))
+        turn (float (* (Steer/atan2 zd xd) deg))
+        yaw (wrapped (- turn (float 90.0)))]
+    [(f32 yaw) (pitch-set pitch)]))
+
+(defn- anchored [e anchor]
+  (let [[x y z] (xyz (:pos e))]
+    (if (= :eyes anchor)
+      [x (+ (double y) (double (float (entity/eye-height e)))) z]
+      [x y z])))
+
+(defn- faced [world eid [id dim e] pos fx]
+  (let [[yaw pitch] (look-angles (xyz (:pos e)) pos)]
+    (concat (rotated world id dim yaw pitch
+                     (when (= :player (:type e)) fx))
+            (rotate-report eid e))))
+
+(defn- facing-deltas [world eid [sel x y z]]
+  (if-let [x0 (first (selected world eid sel))]
+    (faced world eid x0 [x y z] (out/look-at :feet [x y z] nil nil))
+    (fail eid "argument.entity.notfound.entity")))
+
+(defn- facing-entity-deltas [world eid [sel other anchor]]
+  (let [x0 (first (selected world eid sel))
+        [oid _ o] (first (selected world eid other))
+        anchor (or anchor :feet)]
+    (if (and x0 o)
+      (let [pos (anchored o anchor)]
+        (faced world eid x0 pos (out/look-at :feet pos oid anchor)))
+      (fail eid "argument.entity.notfound.entity"))))
+
+(defn- version-lines
+  "The lines of VersionCommand.dumpVersion after its header."
+  [{:keys [id data series protocol build-time resource-pack data-pack
+           stable] :as v}]
+  (let [t (fn [k with]
+            {:translate (str "commands.version." k) :with with})
+        stability (if stable "yes" "no")]
+    [(t "id" [id]) (t "name" [(:name v)]) (t "data" [data])
+     (t "series" [series])
+     (t "protocol" [protocol (str "0x" (Long/toHexString protocol))])
+     (t "build_time" [(str (Date. (long build-time)))])
+     (t "pack.resource" [resource-pack]) (t "pack.data" [data-pack])
+     {:translate (str "commands.version.stable." stability)}]))
+
+(defn- version-deltas [_world eid _]
+  (mapv #(out/to eid (out/system-chat %))
+        (cons {:translate "commands.version.header"}
+              (version-lines (data/version)))))
+
+(def ^:private chat-commands
+  {:say (broadcast "say_command") :me (broadcast "emote_command")
+   :msg msg-deltas :tellraw tellraw-deltas :help help-deltas
+   :playsound playsound-deltas :stopsound stopsound-deltas
+   :clear clear-deltas
+   :tag-add (tag-changed tag-added "add")
+   :tag-remove (tag-changed tag-removed "remove")
+   :tag-list tag-list-deltas :swing swing-deltas
+   :rotate rotate-deltas :rotate-facing facing-deltas
+   :rotate-facing-entity facing-entity-deltas :version version-deltas
+   :list (list-deltas #(entity-name (nth % 2)))
+   :list-uuids (list-deltas name-and-id)
+   :title-clear (titled "commands.title.cleared"
+                        #(out/clear-titles false))
+   :title-reset (titled "commands.title.reset"
+                        #(out/clear-titles true))
+   :title-title (shown :title) :title-subtitle (shown :subtitle)
+   :title-actionbar (shown :actionbar)
+   :title-times (titled "commands.title.times" out/title-times)})
+
 (def ^:private commands
   {:xp-add xp-add-deltas :xp-set xp-set-deltas
    :xp-query xp-query-deltas
@@ -1048,7 +1477,7 @@
    :spectate spectate-deltas})
 
 (defn- world-command-deltas [world eid [_ op & args]]
-  (if-let [f (commands op)]
+  (if-let [f (or (commands op) (chat-commands op))]
     (f world eid args)
     (case op
       :gamerule (rule-deltas world eid (first args) (second args))
@@ -1116,14 +1545,11 @@
   (when-let [e (get-in world [:entities eid])]
     (<= (long cmd/gamemaster) (state/permission-level e))))
 
-(def ^:private hidden
-  {:failure {:translate "command.unknown.command" :with []}
-   :cursor 0})
+(defn- level [world eid]
+  (state/permission-level (get-in world [:entities eid])))
 
 (defn- parsed [world eid text origin]
-  (if (gamemaster? world eid)
-    (cmd/parse text origin (:dim world :overworld))
-    hidden))
+  (cmd/parse text origin (:dim world :overworld) (level world eid)))
 
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
@@ -1150,7 +1576,8 @@
       :else (public-deltas world eid text))))
 
 (defn- tab-deltas [world eid text target id]
-  (let [{:keys [start texts]} (cmd/suggestions world text target)
+  (let [lv (level world eid)
+        {:keys [start texts]} (cmd/suggestions world text target lv)
         len (- (count text) (long start))]
     [(out/to eid (out/suggestions (or id 0) start len texts))]))
 

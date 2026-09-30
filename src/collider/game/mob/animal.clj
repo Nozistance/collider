@@ -89,7 +89,9 @@
   A goal left out walks at one."
   {:cow       {:panic 2.0 :tempt 1.25 :follow 1.25}
    :mooshroom {:panic 2.0 :tempt 1.25 :follow 1.25}
-   :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}})
+   :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}
+   :pig       {:panic 1.25 :tempt 1.2 :stick-tempt 1.2 :follow 1.1}
+   :chicken   {:panic 1.4 :follow 1.1}})
 
 (defn- goal-speed ^double [e k]
   (double (get (speeds (:type e)) k 1.0)))
@@ -196,36 +198,48 @@
       (bred spec world eid pid e o t)
       [e nil])))
 
-(defn- tempting [e item [pid items p]]
-  (when (and (contains? items item)
+(defn- tempting [e lure? [pid items p]]
+  (when (and (some lure? items)
              (sense/in-range? (:pos e) p tempt-range))
     [(v/dist3-sq (:pos e) (:pos p)) pid]))
 
-(defn- tempter [e tempters]
+(defn- tempter [e lures tempters]
   (when (seq tempters)
-    (let [item (mobs/breeding-item (:type e))]
+    (let [lure? (lures (:type e))]
       (->> tempters
-           (keep #(tempting e item %))
+           (keep #(tempting e lure? %))
            (sort-by first)
            first
            second))))
 
-(defn- start-tempt [_ _ e t tempters]
-  (when (>= (long t) (long (or (:tempt-cooldown-until e) 0)))
-    (when-let [pid (tempter e tempters)]
-      [(assoc e :task {:kind :tempt :player pid}) nil])))
-
 (def ^:private ^:const tempt-stop-sq 6.25)
 
-(defn- tempt-tick [_ world _ e t tempters]
-  (let [pid (tempter e tempters)
-        o (other world pid)
-        e (glance (assoc-in e [:task :player] pid) pid t)]
-    [(cond
-       (nil? o) e
-       (< (v/dist3-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
-       :else (nav/move-to-entity world e o (goal-speed e :tempt)))
-     nil]))
+(defn- tempt-tick [kind lures]
+  (fn [_ world _ e t tempters]
+    (let [pid (tempter e lures tempters)
+          o (other world pid)
+          e (glance (assoc-in e [:task :player] pid) pid t)]
+      [(cond
+         (nil? o) e
+         (< (v/dist3-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
+         :else (nav/move-to-entity world e o (goal-speed e kind)))
+       nil])))
+
+(defn tempt
+  "TemptGoal: follows the nearest player holding what lures gives
+  for the breed, and calms down for a while under key calm when it
+  lets go."
+  [kind calm lures]
+  {:kind kind :flags #{:move :look}
+   :start (fn [_ _ e t tempters]
+            (when (>= (long t) (long (or (get e calm) 0)))
+              (when-let [pid (tempter e lures tempters)]
+                [(assoc e :task {:kind kind :player pid}) nil])))
+   :tick (tempt-tick kind lures)
+   :continue? (fn [_ e _ tempters] (some? (tempter e lures tempters)))
+   :stop (fn [e t]
+           (let [until (+ (long t) calm-ticks)]
+             (nav/stop (assoc e :task nil calm until))))})
 
 (defn- parent? [eid e p oid o]
   (let [q (:pos o)
@@ -358,10 +372,6 @@
            (assoc :jump true))
    nil])
 
-(defn- calmed [e t]
-  (nav/stop (assoc e :task nil
-                   :tempt-cooldown-until (+ (long t) calm-ticks))))
-
 (def goals
   "The goals every farm animal has, highest priority first."
   [{:kind     :float :flags #{:jump} :every-tick? true
@@ -372,10 +382,7 @@
     :continue? roaming?}
    {:kind :mate :flags #{:move :look} :start start-mate
     :continue? mating? :tick mate-tick}
-   {:kind :tempt :flags #{:move :look} :start start-tempt
-    :tick tempt-tick
-    :continue? (fn [_ e _ tempters] (some? (tempter e tempters)))
-    :stop calmed}
+   (tempt :tempt :tempt-cooldown-until mobs/food)
    {:kind :follow :flags #{} :start start-follow :continue? following?
     :running? (fn [e _] (some? (:follow e))) :tick follow-tick
     :stop unfollowed}
@@ -418,20 +425,22 @@
           0 flags))
 
 (defn- ranked [i g]
-  (assoc g :prio i :mask (mask-of (:flags g))))
+  (assoc g :prio (:prio g i) :mask (mask-of (:flags g))))
 
 (defn- fns [gs k] (into-array IFn (map k gs)))
 
 (defn spec
   "Returns the spec of a breed from its goals, highest priority first.
-  Each goal gets its flags as a bit mask too. The spec also picks the
+  A goal ranks by its place unless it names its priority. Each goal
+  gets its flags as a bit mask too. The spec also picks the
   colour of a newborn from both parents."
   ([goals] (spec goals (fn [_ _ a _] (:color a))))
   ([goals child-color]
    (let [gs (vec (map-indexed ranked goals))]
      (GoalSelector.
        gs child-color (count gs) (object-array (map :kind gs))
-       (long-array (map :mask gs)) (fns gs :running?) (fns gs :stop)
+       (long-array (map :prio gs)) (long-array (map :mask gs))
+       (fns gs :running?) (fns gs :stop)
        (fns gs :start) (fns gs :continue?) (fns gs :tick)
        (boolean-array (map (comp boolean :every-tick?) gs))))))
 
@@ -485,15 +494,28 @@
   [[:merge-entity eid {:love-until (+ (long t) love-ticks)}]
    (out/all (out/status eid :love))])
 
+(defn- eaten
+  "Animal.playEatingSound: the breeds that eat aloud do it in the
+  voice of mob e."
+  [t eid e]
+  (when-let [snd (mobs/eating-sound e)]
+    (let [r #(random/of-key t eid [:eat %])
+          base (if (mobs/baby? e) 1.5 1.0)
+          pitch (+ base (* 0.2 (- (double (r 1)) (double (r 2)))))]
+      [(out/all (out/sound snd (:pos e) 1.0 pitch))])))
+
 (defn feed-result
   "Returns what the breeding food of the mob does to it.
   A grown mob falls in love and a baby grows up sooner. A mob that may
   do neither leaves the food alone."
   [{:keys [world t peid p eid e hand item]}]
-  (when (= item (mobs/breeding-item (:type e)))
-    (let [used (items/use-item-deltas world peid p hand)]
+  (when (contains? (mobs/food (:type e)) item)
+    (let [used (items/use-item-deltas world peid p hand)
+          ate (eaten t eid e)]
       (cond
         (feedable? e t)
-        {:result :success-server :deltas (concat used (loved t eid))}
+        {:result :success-server
+         :deltas (concat used (loved t eid) ate)}
         (mobs/baby? e)
-        {:result :success :deltas (concat used (grown t eid e))}))))
+        {:result :success
+         :deltas (concat used (grown t eid e) ate)}))))

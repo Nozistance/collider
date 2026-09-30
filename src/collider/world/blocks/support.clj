@@ -480,9 +480,26 @@
     (and (= (block/block-of above) (block/block-of st))
          (= :true (get (block/props-of above) dir)))))
 
+(defn- face-covered? [box side]
+  (let [a ({:west 0 :east 0 :down 1 :up 1 :north 2 :south 2} side)
+        low? (#{:west :down :north} side)]
+    (and (== (long (box (if low? a (+ 3 (long a))))) (if low? 0 16))
+         (every? #(and (<= (long (box %)) 0) (>= (long (box (+ 3 %))) 16))
+                 (remove #{a} [0 1 2])))))
+
+(defn- clung?
+  "MultifaceBlock.canAttachTo: the face of the neighbour on dir is
+  sturdy, or its collision shape covers it."
+  [chunks pos dir]
+  (or (attachable? chunks pos dir)
+      (let [n (state-at chunks (mapv + pos (dir/offset dir)))]
+        (and (pos? n)
+             (boolean (some #(face-covered? % (dir/opposite dir))
+                            (block/collision-boxes n)))))))
+
 (defn- vine-face-held? [chunks pos st dir]
   (and (not= :down dir)
-       (or (attachable? chunks pos dir)
+       (or (clung? chunks pos dir)
            (and (contains? dir/horizontal-offset dir)
                 (hung-from-above? chunks pos st dir)))))
 
@@ -896,8 +913,7 @@
       (when (popped? chunks p st side) :neighbor))))
 
 (def ^:private removed-types
-  #{:rail :powered-rail :detector-rail :repeater :comparator
-    :redstone-wire})
+  #{:repeater :comparator :redstone-wire})
 
 (defn- unsupported [chunks p _ctx]
   (let [st (chunk/chunks-get-block chunks p)]

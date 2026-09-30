@@ -6,6 +6,7 @@
             [collider.world.blocks.grow.crop :as crop]
             [collider.world.blocks.grow.ground :as ground]
             [collider.world.blocks.grow.mushroom :as mushroom]
+            [collider.world.blocks.grow.sapling :as sapling]
             [collider.world.blocks.grow.vine :as vine]
             [collider.world.blocks.grow.weather :as weather]
             [collider.world.env.biome :as biome]))
@@ -37,7 +38,8 @@
     [[:eyeblossom] ground/eyeblossom-tick]
     [[:flower-pot] ground/potted-tick]
     [[:nether-wart] crop/nether-wart-tick]
-    [[:mangrove-propagule] crop/propagule-tick]
+    [[:sapling] sapling/tick]
+    [[:mangrove-propagule] sapling/propagule-tick]
     [[:chorus-flower] ground/chorus-tick]
     [[:mangrove-leaves :tinted-particle-leaves
       :untinted-particle-leaves] ground/leaves-tick]
@@ -106,7 +108,9 @@
     [[:tall-dry-grass] ground/tall-dry-grass-meal]
     [[:bamboo-stalk] bamboo/meal]
     [[:sea-pickle] ground/pickle-meal]
-    [[:mangrove-propagule] crop/propagule-meal]
+    [[:sapling] sapling/meal]
+    [[:azalea] sapling/azalea-meal]
+    [[:mangrove-propagule] sapling/propagule-meal]
     [[:seagrass] crop/seagrass-meal]]))
 
 (defn bonemeal

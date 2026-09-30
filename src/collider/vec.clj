@@ -57,3 +57,24 @@
   ^double [^double cur ^double target ^double step]
   (let [d (wrap-deg (- target cur))]
     (clojure.core/+ cur (Math/max (- step) (Math/min step d)))))
+
+(def ^:private ^:const sin-scale 10430.378350470453)
+
+(def ^:private sin-table
+  (let [a (float-array 65536)]
+    (dotimes [i 65536]
+      (aset a i (float (Math/sin (/ (double i) sin-scale)))))
+    a))
+
+(defn- sin-at ^double [^double i]
+  (aget ^floats sin-table
+        (unchecked-int (bit-and (unchecked-long i) 65535))))
+
+(defn sin
+  "Returns the sine of a in radians from the table of Mth.sin."
+  ^double [^double a] (sin-at (* a sin-scale)))
+
+(defn cos
+  "Returns the cosine of a in radians from the table of Mth.cos."
+  ^double [^double a]
+  (sin-at (clojure.core/+ (* a sin-scale) 16384.0)))

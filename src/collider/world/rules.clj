@@ -11,6 +11,7 @@
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.rail :as rail]
             [collider.world.blocks.support :as support]
             [collider.world.blocks.water :as water]))
 
@@ -24,6 +25,7 @@
             dripleaf/rule
             crop/attached-stem-rule
             water/coral-rule
+            rail/rule
             support/rule
             dripstone/rule
             dripstone/cauldron-rule

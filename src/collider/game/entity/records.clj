@@ -7,7 +7,8 @@
                 panic-until baby-until love-until breed-ready-at
                 tempt-cooldown-until type color sheared? track
                 nav move body jump float? support no-blocks? in-lava?
-                follow-at effects arrived])
+                follow-at effects arrived stick-cooldown-until
+                egg-at])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
                    tp-target chunk-pos sent-chunks
@@ -35,3 +36,6 @@
 (defrecord Cloud [type pos vel yaw pitch on-ground radius color
                   waiting? age duration wait-time radius-per-tick
                   radius-on-use victims track])
+
+(defrecord Hanging [type pos vel yaw pitch on-ground block-pos facing
+                    variant stack rotation check-at track])

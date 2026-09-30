@@ -43,6 +43,34 @@
       (cond-> (update ticks :queue queued at id ty order)
         index (assoc :index (assoc index id (assoc tys ty at)))))))
 
+(defn- queued! [q at id ty order]
+  (let [m (or (get q at) (i/int-map))
+        tys (get m id {})]
+    (if (contains? tys ty)
+      q
+      (assoc! q at (assoc m id (assoc tys ty order))))))
+
+(defn- added-to [[q ix ^long n] [at id ty]]
+  (let [at (long at) id (long id)
+        tys (when ix (get ix id))]
+    (if (and ix (some? (get tys ty)))
+      [q ix (inc n)]
+      [(queued! q at id ty n)
+       (if ix (assoc! ix id (assoc tys ty at)) ix)
+       (inc n)])))
+
+(defn add-all
+  "Returns ticks with each tick [at id ty] of entries added in
+  order, as add adds them one by one."
+  [ticks entries]
+  (let [index (:index ticks)
+        start [(transient (or (:queue ticks) (i/int-map)))
+               (some-> index transient)
+               (long (:next ticks 0))]
+        [q ix n] (reduce added-to start entries)]
+    (cond-> (assoc ticks :queue (persistent! q) :next n)
+      ix (assoc :index (persistent! ix)))))
+
 (defn- due-rows [ticks ^long t]
   (into [] (take-while (fn [[at _]] (<= (long at) t)))
         (:queue ticks)))
@@ -79,10 +107,18 @@
       (persistent! acc))))
 
 (defn- by-order [[_ o1 id1] [_ o2 id2]]
-  (let [c (compare o1 o2)]
+  (let [c (Long/compare (long o1) (long o2))]
     (if (zero? c)
-      (compare (chunk/block-id-chunk id1) (chunk/block-id-chunk id2))
+      (Long/compare (chunk/block-id-chunk (long id1))
+                    (chunk/block-id-chunk (long id2)))
       c)))
+
+(defn- due-into [acc [at m] runs?]
+  (let [kept (fn [acc id tys]
+               (if (runs? id)
+                 (reduce-kv #(conj! %1 [at %3 id %2]) acc tys)
+                 acc))]
+    (reduce-kv kept acc m)))
 
 (defn run-order
   "Returns [id ty] of the ticks due at t, in run order.
@@ -91,14 +127,17 @@
   chunks take turns by the order of their next tick."
   [ticks t runs?]
   (let [rows (due-rows ticks (long t))
-        due (comp (mapcat row-entries) (filter #(runs? (% 2))))
-        es (into [] due rows)]
+        es (persistent! (reduce #(due-into %1 %2 runs?)
+                                (transient []) rows))]
     (mapv (fn [[_ _ id ty]] [id ty])
           (if (next rows) (merged (lanes es)) (sort by-order es)))))
 
-(defn- unindexed [index [id tys]]
+(defn- unindexed! [index [id tys]]
   (let [left (reduce dissoc (get index id) (keys tys))]
-    (if (seq left) (assoc index id left) (dissoc index id))))
+    (if (seq left) (assoc! index id left) (dissoc! index id))))
+
+(defn- unindexed [index gone]
+  (persistent! (reduce unindexed! (transient index) gone)))
 
 (defn- kept-row [q [at m] parked]
   (let [kept (filter #(contains? parked (key %)))
@@ -116,7 +155,7 @@
                    :when (not (contains? parked id))]
                [id tys])]
     (cond-> (assoc ticks :queue q)
-      (:index ticks) (update :index #(reduce unindexed % gone)))))
+      (:index ticks) (update :index unindexed gone))))
 
 (defn- in-chunk? [^long cid ^long id]
   (= cid (chunk/block-id-chunk id)))

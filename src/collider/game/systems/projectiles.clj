@@ -42,8 +42,6 @@
 
 (def ^:private ^:const bottle-xp-color -13083194)
 
-(def ^:private ^:const sin-scale 10430.378350470453)
-
 (def ^:private ^:const radians (float (/ Math/PI 180.0)))
 
 (def ^:private ^:const base-potion-color -13083194)
@@ -143,20 +141,6 @@
     (* dev (- (random/of-key t eid [k 0])
               (random/of-key t eid [k 1])))))
 
-(def ^:private sin-table
-  (delay (let [a (float-array 65536)]
-           (dotimes [i 65536]
-             (aset a i (float (Math/sin (/ (double i) sin-scale)))))
-           a)))
-
-(defn- sin-at ^double [^double k]
-  (aget ^floats @sin-table (int (bit-and (long k) 65535))))
-
-(defn- mth-sin ^double [^double a] (sin-at (* a sin-scale)))
-
-(defn- mth-cos ^double [^double a]
-  (sin-at (+ (* a sin-scale) 16384.0)))
-
 (defn- f32 ^double [^double a] (double (unchecked-float a)))
 
 (defn- f* ^double [^double a ^double b] (f32 (* a b)))
@@ -166,8 +150,8 @@
 (defn- aim [^double yaw ^double pitch ^double off]
   (let [y (rad yaw) p (rad pitch)
         up (rad (f32 (+ (f32 pitch) off)))]
-    [(f* (- (mth-sin y)) (mth-cos p)) (- (mth-sin up))
-     (f* (mth-cos y) (mth-cos p))]))
+    [(f* (- (v/sin y)) (v/cos p)) (- (v/sin up))
+     (f* (v/cos y) (v/cos p))]))
 
 (defn- normalized [[x y z]]
   (let [x (double x) y (double y) z (double z)
@@ -261,9 +245,8 @@
 (defn- target-box [e]
   (if (= :player (:type e))
     (box-of (:pos e) player-half player-height)
-    (let [{:keys [half height]} (mobs/types (:type e))]
-      (box-of (:pos e) (double (or half (float 0.45)))
-              (double (or height (float 1.3)))))))
+    (let [[half height] (mobs/box-of e)]
+      (box-of (:pos e) (double half) (double height)))))
 
 (defn- nearer [best hit tail]
   (if (and hit (or (nil? best)

@@ -31,12 +31,18 @@
    :smoker              :smoker
    :brewing-stand       :brewing-stand
    :campfire            :campfire
-   :potent-sulfur       :potent-sulfur})
-
-(def ^:private silent
-  #{:chiseled-bookshelf :bell :jukebox :chest :trapped-chest
-    :ender-chest :barrel :shulker-box :lectern :furnace
-    :blast-furnace :smoker :brewing-stand :potent-sulfur})
+   :potent-sulfur       :potent-sulfur
+   :enchantment-table   :enchanting-table
+   :end-portal          :end-portal
+   :end-gateway         :end-gateway
+   :beacon              :beacon
+   :conduit             :conduit
+   :spawner             :mob-spawner
+   :trial-spawner       :trial-spawner
+   :vault               :vault
+   :brushable           :brushable-block
+   :copper-golem-statue :copper-golem-statue
+   :weathering-copper-golem-statue :copper-golem-statue})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
@@ -121,7 +127,13 @@
   {:Items (items-nbt (:items e))
    :align_items_to_bottom (boolean (:align-bottom? e))})
 
-(defn nbt [e]
+(defn- fresh-tags [k] (get (data/block-entities) k))
+
+(defn- tags [e which] (get (fresh-tags (:kind e)) which))
+
+(defn- age ^long [e t] (- (long t) (long (:born e))))
+
+(defn nbt [e t]
   (case (:kind e)
     (:sign :hanging-sign) (sign/nbt e)
     :banner (banner-nbt e)
@@ -129,10 +141,25 @@
     :decorated-pot (pot-nbt e)
     :shelf (shelf-nbt e)
     :campfire {:Items (items-nbt (:items e))}
-    {}))
+    :end-gateway (assoc (tags e :update) :Age (age e t))
+    (tags e :update)))
+
+(def ^:private fixed
+  #{:beacon :conduit :mob-spawner :trial-spawner :vault
+    :brushable-block :copper-golem-statue :enchanting-table
+    :end-portal})
+
+(defn- custom [e t]
+  (cond
+    (= :end-gateway (:kind e)) (assoc (tags e :custom) :Age (age e t))
+    (fixed (:kind e)) (tags e :custom)))
+
+(defn entity-data [e t]
+  (when-let [d (not-empty (custom e t))]
+    {:type (:kind e) :data d}))
 
 (defn on-wire? [e]
-  (not (contains? silent (:kind e))))
+  (boolean (tags e :update-packet?)))
 
 (def ^:private component-fields
   {:banner        {:patterns :banner-patterns}
@@ -181,33 +208,61 @@
             (assoc-in [:components :container] (contents (:items e)))
             (seq cs) (update :components merge cs))))
 
+(def ^:private blank-furnace {:items [nil nil nil] :used {}})
+
 (def ^:private blank
   {:banner             {:patterns []}
-   :skull              {}
    :decorated-pot      {:sherds [] :item nil}
    :jukebox            {:record nil}
    :shelf              {:items [nil nil nil]}
-   :chiseled-bookshelf {:items (vec (repeat 6 nil)) :last-slot -1}
-   :bell               {}
-   :ender-chest        {}
+   :chiseled-bookshelf {:items (vec (repeat 6 nil))}
    :lectern            {:book nil :page 0}
-   :brewing-stand      {:items (vec (repeat 5 nil)) :brew 0 :fuel 0}
-   :campfire           {:items (vec (repeat 4 nil))
-                        :cook [0 0 0 0] :cook-total [0 0 0 0]}
-   :potent-sulfur      {:countdown -1}})
+   :brewing-stand      {:items (vec (repeat 5 nil))}
+   :campfire           {:items (vec (repeat 4 nil))}
+   :furnace            blank-furnace
+   :blast-furnace      blank-furnace
+   :smoker             blank-furnace})
 
-(def ^:private blank-furnace
-  {:items [nil nil nil] :lit-remaining 0 :lit-total 0
-   :cook 0 :cook-total 0 :used {}})
+(def ^:private furnace-fields
+  {:lit-remaining :lit_time_remaining :lit-total :lit_total_time
+   :cook :cooking_time_spent :cook-total :cooking_total_time})
+
+(def ^:private tag-fields
+  {:chiseled-bookshelf {:last-slot :last_interacted_slot}
+   :potent-sulfur      {:countdown :countdown}
+   :brewing-stand      {:brew :BrewTime :fuel :Fuel}
+   :campfire           {:cook :CookingTimes
+                        :cook-total :CookingTotalTimes}
+   :furnace            furnace-fields
+   :blast-furnace      furnace-fields
+   :smoker             furnace-fields})
+
+(defn- tag-value [v] (if (number? v) (long v) (mapv long v)))
+
+(defn- from-tags [k]
+  (let [kept (:custom (fresh-tags k))]
+    (update-vals (get tag-fields k {}) #(tag-value (get kept %)))))
 
 (defn fresh [k editor]
   (case k
     (:sign :hanging-sign) (sign/fresh k editor)
     (:chest :trapped-chest :barrel :shulker-box)
     {:kind k :items (vec (repeat 27 nil))}
-    (:furnace :blast-furnace :smoker) (assoc blank-furnace :kind k)
-    (assoc (blank k) :kind k)))
+    (merge (blank k) (from-tags k) {:kind k})))
 
-(defn wire [entries]
-  (into {} (map (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e)}]))
-        entries))
+(defn made [k t]
+  (cond-> (fresh k nil) (= :end-gateway k) (assoc :born t)))
+
+(defn saved [e t]
+  (if (= :end-gateway (:kind e))
+    (-> e (dissoc :born) (assoc :age (age e t)))
+    e))
+
+(defn loaded [e t]
+  (if (= :end-gateway (:kind e))
+    (-> e (dissoc :age) (assoc :born (- (long t) (long (:age e)))))
+    e))
+
+(defn wire [entries t]
+  (let [entry (fn [[pos e]] [pos {:type (type-id e) :nbt (nbt e t)}])]
+    (into {} (map entry) entries)))

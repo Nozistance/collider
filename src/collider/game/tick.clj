@@ -15,6 +15,7 @@
             [collider.game.systems.campfires :as campfires]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.compasses :as compasses]
             [collider.game.systems.consume :as consume]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
@@ -24,6 +25,7 @@
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.furnaces :as furnaces]
+            [collider.game.systems.hanging :as hanging]
             [collider.game.systems.geysers :as geysers]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
@@ -70,6 +72,7 @@
    #'mobs/mobs-system
    #'tnt/tnt-system
    #'projectiles/projectiles
+   #'hanging/hanging-checks
    #'damage/damage])
 
 (def systems
@@ -79,9 +82,10 @@
 (def phases [[#'spawning/placing]
              [#'chunks/chunk-loading]
              packet-systems
+             [#'hanging/hanging-uses]
              [#'chunks/arrival-streaming]
              [#'effects/effects]
-             [#'consume/consume]
+             [#'consume/consume #'compasses/compasses]
              [#'pose/pose]
              [#'daynight/daynight]
              [#'block-updates/block-updates

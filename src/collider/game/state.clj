@@ -2,6 +2,7 @@
   "The world value and the application of deltas to it."
   (:refer-clojure :exclude [apply])
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.book :as book]
             [collider.data :as data]
             [collider.world.env.dimension :as dimension]
             [clojure.core.reducers :as r]
@@ -17,6 +18,7 @@
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
             [collider.game.stack :as stack]
+            [collider.game.using :as using]
             [collider.game.deltas :as deltas]
             [collider.game.delta :as delta]
             [collider.log :as log]
@@ -394,10 +396,20 @@
       (update-in [:block-entities (chunk/block-chunk pos)] dissoc pos)
       (update :openers dissoc pos)))
 
-(defn- drop-block-entities [w real]
-  (reduce (fn [w [pos old st]]
-            (if (kind-changed? old st) (drop-block-entity w pos) w))
-          w real))
+(defn- made-block-entity [w pos k]
+  (if (be/at w pos)
+    w
+    (assoc-in w [:block-entities (chunk/block-chunk pos) pos]
+              (be/made k (:tick w)))))
+
+(defn- block-entity-changed [w [pos old st]]
+  (let [k (be/kind st)]
+    (cond-> w
+      (kind-changed? old st) (drop-block-entity pos)
+      k (made-block-entity pos k))))
+
+(defn- block-entities-changed [w real]
+  (reduce block-entity-changed w real))
 
 (defn- real-changes [w changes]
   (chunk/changed (:chunks w) w changes))
@@ -419,8 +431,10 @@
              (or ev (i/int-map)) (chunk/by-chunk events)))
 
 (defn- ticks-added [w ticks]
-  (reduce (fn [w [k at id ty]] (update w k schedule/add at id ty))
-          w ticks))
+  (reduce-kv (fn [w k es]
+               (update w k schedule/add-all
+                       (mapv (fn [[_ at id ty]] [at id ty]) es)))
+             w (group-by first ticks)))
 
 (defn- unquiet [changes quiet]
   (if (seq quiet)
@@ -436,7 +450,7 @@
                 (update :chunks light/relight-batch real
                         (:sky? w true))
                 (update :chunks chunk/frozen)
-                (drop-block-entities real)
+                (block-entities-changed real)
                 (ticks-added ticks))
       (seq told) (update :block-events add-block-events told))))
 
@@ -467,6 +481,7 @@
 (defn- new-player [name tick pos]
   {:type         :player :name name :uuid (offline-uuid name)
    :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
+   :client-vel   [0.0 0.0 0.0]
    :chunk-pos    nil :sent-chunks (i/int-set)
    :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
    :batches-max  1
@@ -707,7 +722,7 @@
   "Returns true when the cooldown group of item is still locked."
   [e item ^long tick]
   (boolean
-    (when-let [[group _] (data/use-cooldown item)]
+    (let [group (data/cooldown-group item)]
       (> (long (get-in e [:cooldowns group] 0)) tick))))
 
 (defn cooldown-deltas
@@ -721,14 +736,14 @@
 
 (defn- start-use [e hand ^long tick]
   (let [stack (hand-stack e hand)
-        c (consumable stack)]
+        n (using/ticks stack)]
     (cond
       (:using e) e
       (on-cooldown? e (:item stack) tick) e
-      c (assoc e
+      n (assoc e
           :using-item? true
           :using {:hand hand :item (:item stack) :started tick
-                  :remaining (consume-ticks c)})
+                  :remaining n})
       (sword? (:item stack)) (assoc e :using-item? true)
       :else e)))
 
@@ -778,7 +793,7 @@
 
 (defn- slot-event? [tag action]
   (case tag
-    (:held-item :creative-slot) true
+    (:held-item :creative-slot :edit-book) true
     :dig (= swap-hands (long action))
     false))
 
@@ -792,6 +807,7 @@
       (case tag
         :held-item (held-deltas e eid (long slot))
         :creative-slot (creative-deltas e eid (long slot) stack)
+        :edit-book (book/edit-deltas e eid (long slot) stack)
         :dig (when-not (game-mode/spectator? e)
                (swap-deltas e eid))))))
 
@@ -836,7 +852,7 @@
     (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
       (update-entity w eid merge
                      {:pos (v/v3 (:tp-target e)) :tp-target nil
-                      :client-vel [0.0 0.0 0.0] :fall 0.0})
+                      :fall 0.0})
       w)))
 
 (defn- fall-changes [e changes vel]
@@ -855,21 +871,38 @@
           (- (v/y new) (v/y old))
           (- (v/z new) (v/z old)))))
 
-(defn- free-move [w eid e changes]
+(def ^:private still (v/v3 0.0 0.0 0.0))
+
+(defn- still? [m]
+  (and m (== 0.0 (v/x m) (v/y m) (v/z m))))
+
+(defn- known-move [vel]
+  {:client-vel (or vel still) :client-moved? true})
+
+(defn- free-move [w eid e changes client?]
   (let [new (some-> (:pos changes) clamped v/v3)
         vel (move-vel (:pos e) new)
         changes (cond-> changes new (assoc :pos new))]
     (update-entity w eid merge changes
-                   (when vel {:client-vel vel})
+                   (when client? (known-move vel))
                    (fall-changes e changes vel))))
 
-(defn- apply-move [w eid changes]
+(defn- apply-move [w eid changes client?]
   (let [e (get-in w [:entities eid])]
     (cond
       (:tp-target e)
       (update-entity w eid merge (dissoc changes :pos :on-ground))
       (:sleeping e) (update-entity w eid merge (dissoc changes :pos))
-      :else (free-move w eid e changes))))
+      :else (free-move w eid e changes client?))))
+
+(defn- client-tick-end [w eid]
+  (let [e (get-in w [:entities eid])]
+    (cond
+      (nil? e) w
+      (:client-moved? e)
+      (update-entity w eid assoc :client-moved? false)
+      (still? (:client-vel e)) w
+      :else (update-entity w eid assoc :client-vel still))))
 
 (defn- chunk-batch-ack [w eid rate]
   (let [rate (double rate)
@@ -898,7 +931,7 @@
 (defn- flight-claimed [w eid changes]
   (let [may? (game-mode/may-fly? (get-in w [:entities eid]))
         flying (and may? (boolean (:flying changes)))]
-    (apply-move w eid {:flying flying})))
+    (apply-move w eid {:flying flying} false)))
 
 (defn- sprinted
   "Returns player e sprinting or not.
@@ -922,7 +955,8 @@
    (fn [w [_ eid name settings]] (player-join w eid name settings))
    :player-quit (fn [w [_ eid]] (player-quit w eid))
    :move (fn [w [_ eid changes]]
-           (apply-move (resent w eid) eid changes))
+           (apply-move (resent w eid) eid changes true))
+   :client-tick-end (fn [w [_ eid]] (client-tick-end w eid))
    :abilities (fn [w [_ eid changes]] (flight-claimed w eid changes))
    :player-loaded
    (fn [w [_ eid]] (update-entity w eid dissoc :loaded-at))
@@ -1016,6 +1050,16 @@
       {:eid eid :pos (:tp-target e)
        :yaw (:yaw e) :pitch (:pitch e)})))
 
+(defn- release-of
+  "Returns the use a release event lets go of, with its player.
+  Any other event, or an item no longer in hand, gives nil."
+  [w [tag eid]]
+  (when (= :release-use tag)
+    (let [e (get-in w [:entities eid])
+          {:keys [hand item] :as u} (:using e)]
+      (when (and u (= item (:item (hand-stack e hand))))
+        (assoc u :eid eid :pos (:pos e))))))
+
 (def ^:private load-gated
   "The events that count only from a client that has loaded."
   #{:move :input :dig :release-use :place :use-item :entity-action
@@ -1028,20 +1072,24 @@
 
 (defn- heard [acc w w' d]
   (let [o (use-origin w d) m (move-of w w' d) q (quit-of w d)
-        r (resend-of w w' d)]
+        r (resend-of w w' d) u (release-of w d)]
     (cond-> (update acc :heeded conj d)
       o (assoc-in [:use-origins (count (:heeded acc))] o)
       m (update :moves conj m)
       q (update :quits conj q)
-      r (update :resends conj r))))
+      r (update :resends conj r)
+      u (update :releases conj u))))
 
 (def ^:private unheard
-  {:heeded [] :use-origins {} :moves [] :quits [] :resends []})
+  {:heeded [] :use-origins {} :moves [] :quits [] :resends []
+   :releases []})
 
-(defn- remembered [w input {:keys [heeded quits resends] :as acc}]
+(defn- remembered
+  [w input {:keys [heeded quits resends releases] :as acc}]
   (cond-> (merge w (select-keys acc [:use-origins :moves]))
     (seq quits) (assoc :quits quits)
     (seq resends) (assoc :resends resends)
+    (seq releases) (assoc :releases releases)
     (< (count heeded) (count input)) (assoc :heeded heeded)))
 
 (defn dropped!
@@ -1463,7 +1511,7 @@
   (reduce #(crossed %1 from %2) world changes))
 
 (def ^:private input-keys
-  [:quits :moves :use-origins :heeded :resends])
+  [:quits :moves :use-origins :heeded :resends :releases])
 
 (defn entered
   "Returns world with the input deltas of level dim, and that level.

@@ -53,11 +53,12 @@
   (not (block/solid-render? (state-below chunks cell))))
 
 (defn has-malus?
-  "Returns true when the cell of level lv costs the mob anything.
-  Mobs never stroll to water, honey or the cells near lava."
-  [lv [x y z]]
-  (not (zero? (path/path-type-malus
-                path/cow (path/type-static lv x y z)))))
+  "Returns true when the cell of level lv costs a walker anything,
+  a cow unless told. Mobs never stroll to the cells that cost."
+  ([lv cell] (has-malus? lv path/cow cell))
+  ([lv walker [x y z]]
+   (not (zero? (path/path-type-malus
+                 walker (path/type-static lv x y z))))))
 
 (defn direction
   "Returns an offset up to h blocks away and v up or down.
@@ -127,10 +128,10 @@
                   (not-stable? (:chunks lv) cell))
       cell)))
 
-(defn- land-cell [lv cell]
+(defn- land-cell [lv walker cell]
   (when cell
     (let [c (move-up-out-of-solid lv cell)]
-      (when-not (or (water? (:chunks lv) c) (has-malus? lv c))
+      (when-not (or (water? (:chunks lv) c) (has-malus? lv walker c))
         c))))
 
 (defn land-pos
@@ -138,19 +139,19 @@
   The goal is lifted out of the ground. Returns nil when ten tries
   find none."
   [world e t eid k h v]
-  (let [pos (:pos e)]
+  (let [pos (:pos e) w (mobs/walker (:type e))]
     (best-pos (fn [c] (walk-target-value world e c))
               (fn [i]
                 (let [d (direction t eid k i h v)]
-                  (land-cell world (stable-cell world pos d)))))))
+                  (land-cell world w (stable-cell world pos d)))))))
 
 (defn default-pos
   "Returns a walk goal taken where it falls, costing the mob nothing.
   It is not lifted out of the ground."
   [world e t eid k h v]
-  (let [pos (:pos e)]
+  (let [pos (:pos e) w (mobs/walker (:type e))]
     (best-pos (fn [c] (walk-target-value world e c))
               (fn [i]
                 (let [d (direction t eid k i h v)
                       c (stable-cell world pos d)]
-                  (when (and c (not (has-malus? world c))) c))))))
+                  (when (and c (not (has-malus? world w c))) c))))))

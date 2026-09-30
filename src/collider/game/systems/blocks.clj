@@ -1,6 +1,8 @@
 (ns collider.game.systems.blocks
   "Player block actions such as digging, placing and using."
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.data :as data]
+            [collider.game.book :as book]
+            [collider.game.deltas :as deltas]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.game-mode :as game-mode]
@@ -11,12 +13,14 @@
             [collider.game.systems.blocks.dig :as dig]
             [collider.game.systems.blocks.door :as door]
             [collider.game.systems.blocks.edit :as edit]
+            [collider.game.systems.blocks.held :as held]
             [collider.game.systems.blocks.place :as place]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
             [collider.game.systems.containers :as containers]
+            [collider.game.systems.hanging :as hanging]
             [collider.game.systems.projectiles :as projectiles]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -46,9 +50,21 @@
 (defn- axe-or-place [w args]
   (or (tools/axe-deltas w args) (place/solid-place-deltas w args)))
 
-(defn- equip-deltas [{:keys [world eid item]}]
-  (let [slot (tools/armor-slot-of item)]
-    (tools/equip-armor-deltas world eid item slot)))
+(defn- equip-deltas [world eid e held]
+  (held/equip-deltas world eid e (:use-hand e) held))
+
+(defn- held-deltas [f]
+  (fn [{:keys [world eid at]}]
+    (f world eid at (state/hand-stack at (:use-hand at)))))
+
+(defn- egg-deltas [{:keys [world eid at item use-item?] :as c}]
+  (if use-item?
+    (tools/fluid-egg-deltas world eid at item)
+    (tools/spawn-egg-deltas world (:args c))))
+
+(defn- read-deltas [{:keys [eid at]}]
+  (let [hand (:use-hand at)]
+    (book/open-deltas at eid hand (state/hand-slot at hand))))
 
 (def ^:private item-actions
   [[clicked-scaffolding?
@@ -58,13 +74,17 @@
    [(comp projectiles/throwables :item)
     (when-use (on-at projectiles/throw-deltas))]
    [:pour
-    (when-use (fn [{:keys [world eid at pour]}]
-                (bucket/add world eid at pour)))]
+    (when-use (fn [{:keys [world eid at item pour]}]
+                (bucket/add world eid at item pour)))]
+   [(comp data/mob-bucket :item)
+    (when-use (fn [{:keys [world eid at item]}]
+                (bucket/mob-deltas world eid at item)))]
    [(item-is :flint-and-steel)
     (when-hand (on-args tools/flint-deltas))]
    [(item-is :fire-charge)
     (when-hand (on-args tools/firecharge-deltas))]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
+   [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]
    [(comp #{:lily-pad :frogspawn} :item)
     (when-use (fn [{:keys [world eid at item]}]
@@ -78,11 +98,16 @@
    [(tool-is tools/axes) (when-hand (on-args axe-or-place))]
    [(tool-is tools/shovels)
     (when-hand (on-args tools/flatten-deltas))]
-   [(comp mobs/egg-type :item)
-    (when-hand (on-args tools/spawn-egg-deltas))]
-   [(fn [{:keys [item use-item?]}]
-      (and use-item? (tools/armor-slot-of item)))
-    equip-deltas]
+   [(item-is :shears) (when-hand (on-args tools/shear-deltas))]
+   [(item-is :compass) (when-hand (on-args tools/compass-deltas))]
+   [(comp mobs/egg-type :item) egg-deltas]
+   [(comp #{:painting :item-frame :glow-item-frame} :item)
+    (when-hand (fn [{:keys [world eid at pos face]}]
+                 (hanging/place-deltas world eid at pos face)))]
+   [(item-is :spyglass)
+    (when-use (fn [{:keys [eid at]}] (held/spyglass-deltas eid at)))]
+   [(item-is :goat-horn) (when-use (held-deltas held/horn-deltas))]
+   [(comp held/swap-slot :item) (when-use (held-deltas equip-deltas))]
    [(constantly true) (on-args place/solid-place-deltas)]])
 
 (defn- fresh? [{:keys [at item world]}]
@@ -140,14 +165,10 @@
     (spectator-deltas world eid pos face)
     (play-deltas world args origin)))
 
-(def ^:private mob-buckets
-  #{:pufferfish-bucket :salmon-bucket :cod-bucket
-    :tropical-fish-bucket :axolotl-bucket :tadpole-bucket})
-
 (defn- placement-attempt? [world e item]
   (and item
        (or (block/item->block item 1) (liquid/bucket->state item)
-           (contains? mob-buckets item))
+           (data/mob-bucket item))
        (not (state/on-cooldown? e item (:tick world)))))
 
 (defn- consumed? [deltas]

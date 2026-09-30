@@ -169,6 +169,17 @@
              c/write-holder-ref
              [:int {:min 0 :max 100}]))
 
+(defn- write-sound-holder [b v]
+  (if (string? v)
+    (do (c/write-varint b 0) (c/write-string b v)
+        (buf/write-boolean! b false))
+    (c/write-holder-ref b v)))
+
+(def sound-holder
+  (wire-type :wire/sound-holder #(or (int? %) (string? %))
+             c/read-holder-ref write-sound-holder
+             [:int {:min 0 :max 100}]))
+
 (def entity-data
   (wire-type :wire/entity-data sequential? c/read-entity-data
              c/write-entity-data

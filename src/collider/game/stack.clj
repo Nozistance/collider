@@ -1,6 +1,7 @@
 (ns collider.game.stack
   "Stack components read and written over the item defaults."
-  (:require [collider.data :as data]))
+  (:require [clojure.string :as str]
+            [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
 
@@ -76,10 +77,16 @@
 
 (defn custom-name [stack] (component stack :custom-name))
 
+(defn- book-title [stack]
+  (let [t (:raw (:title (component stack :written-book-content)))]
+    (when-not (str/blank? t) t)))
+
 (defn hover-name
-  "Returns the name shown on stack, custom or the item's own."
+  "Returns the name shown on stack: custom, the book title, or the
+  item's own."
   [stack]
-  (or (custom-name stack) (data/item-name (:item stack))))
+  (or (custom-name stack) (book-title stack)
+      (data/item-name (:item stack))))
 
 (defn transmute
   "Returns stack turned into item, keeping the components it carries."

@@ -48,7 +48,7 @@
   (let [[x y z] head
         lie [(+ (long x) 0.5) (+ (long y) 0.6875) (+ (long z) 0.5)]]
     {:sleeping {:pos head :since (:tick world)} :pos (v/v3 lie)
-     :vel [0.0 0.0 0.0] :client-vel [0.0 0.0 0.0] :leave-bed? nil}))
+     :vel [0.0 0.0 0.0] :leave-bed? nil}))
 
 (defn- sleep-status [world asleep eid]
   (if (<= (long (get-in world [:rules :players-sleeping-percentage]

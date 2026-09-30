@@ -48,6 +48,8 @@
 
 (defn- no-patterns [v] (empty-or-throw "banner_patterns" (vec v)))
 
+(defn- no-pages [v] (empty-or-throw "pages" (vec (get v "pages"))))
+
 (def ^:private crafted-components
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
@@ -55,6 +57,7 @@
    "minecraft:block_state"          [:block-state identity]
    "minecraft:repair_cost"          [:repair-cost identity]
    "minecraft:dye"                  [:dye kw]
+   "minecraft:instrument"           [:instrument kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]
    "minecraft:enchantments"         [:enchantments levels]
    "minecraft:stored_enchantments"  [:stored-enchantments levels]
@@ -63,6 +66,7 @@
    "minecraft:pot_decorations"      [:pot-decorations pot-default]
    "minecraft:fireworks"            [:fireworks fireworks-default]
    "minecraft:firework_explosion"   [:firework-explosion unmodelled]
+   "minecraft:writable_book_content" [:writable-book-content no-pages]
    "minecraft:written_book_content" [:written-book-content unmodelled]
    "minecraft:map_id"               [:map-id unmodelled]
    "minecraft:dyed_color"           [:dyed-color unmodelled]
@@ -150,6 +154,21 @@
       song (assoc :jukebox-song (kw song))
       dye (assoc :dye (kw dye)))))
 
+(defn- worn-by-player? [tags v]
+  (let [one #(if (str/starts-with? % "#")
+               (get (tags "entity_type") (tag-name (subs % 1)))
+               [(kw %)])]
+    (or (nil? v)
+        (boolean (some #{:player}
+                       (mapcat one (if (string? v) [v] v)))))))
+
+(defn- equip-fields [tags cs]
+  (let [e (get cs "minecraft:equippable")]
+    (cond-> (sorted-map)
+      (and e (get e "swappable" true)
+           (worn-by-player? tags (get e "allowed_entities")))
+      (assoc :swap (kw (get e "slot"))))))
+
 (defn- combat-fields [cs]
   (let [egg (get-in cs ["minecraft:entity_data" "id"])
         hit (attack-damage cs)
@@ -190,19 +209,20 @@
 
 (defn- item [tags cs]
   (merge (sorted-map :components (default-components cs))
-         (stack-fields cs) (combat-fields cs)
+         (stack-fields cs) (equip-fields tags cs) (combat-fields cs)
          (consumable-fields tags cs) (station-fields tags cs)))
 
 (defn- fact [k t] (update-vals t #(hash-map k %)))
 
 (defn- class-facts [facts]
   (let [{:keys [compost wall-blocks place-sounds remainders
-                banner-colors non-breakers item-names]} facts]
+                banner-colors non-breakers item-names
+                mob-buckets]} facts]
     [(fact :compost compost) (fact :wall wall-blocks)
      (fact :place-sound place-sounds) (fact :remainder remainders)
      (fact :banner-color banner-colors)
      (zipmap non-breakers (repeat {:breaks? false}))
-     (fact :name item-names)]))
+     (fact :name item-names) (fact :mob-bucket mob-buckets)]))
 
 (defn items
   "Returns the facts of every item by name, from the default

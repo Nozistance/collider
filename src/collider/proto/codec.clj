@@ -1229,8 +1229,11 @@
 (def data-types
   "The place of each entity data type in serializer order."
   {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
-   :boolean 8 :block-pos 10 :optional-block-pos 11 :block-state 14
-   :particle 16 :pose 20 :cow-variant 23 :cow-sound-variant 24})
+   :boolean 8 :block-pos 10 :optional-block-pos 11 :direction 12
+   :block-state 14 :particle 16 :pose 20 :cow-variant 23
+   :cow-sound-variant 24 :pig-variant 28 :pig-sound-variant 29
+   :chicken-variant 30 :chicken-sound-variant 31
+   :painting-variant 34})
 
 (defn- write-data-pos [^Buf buf v]
   (let [[x y z] v]
@@ -1251,7 +1254,10 @@
     :block-pos (write-data-pos buf v)
     :optional-block-pos (write-optional! buf v write-data-pos)
     :particle (write-particle buf v)
-    (:int :block-state :pose :cow-variant :cow-sound-variant)
+    :painting-variant ((:w c-painting-variant) buf v)
+    (:int :direction :block-state :pose :cow-variant
+     :cow-sound-variant :pig-variant :pig-sound-variant
+     :chicken-variant :chicken-sound-variant)
     (write-varint buf (long v))))
 
 (defn write-entity-data [^Buf buf entries]
@@ -1281,7 +1287,10 @@
     :block-pos (read-block-pos buf)
     :optional-block-pos (read-optional-pos buf)
     :particle (read-particle buf)
-    (:block-state :pose :cow-variant :cow-sound-variant)
+    :painting-variant ((:r c-painting-variant) buf)
+    (:direction :block-state :pose :cow-variant :cow-sound-variant
+     :pig-variant :pig-sound-variant :chicken-variant
+     :chicken-sound-variant)
     (read-varint buf)))
 
 (def ^:private ^:const entity-data-end 255)

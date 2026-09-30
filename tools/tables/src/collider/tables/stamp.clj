@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 18)
+(def layout 19)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"
@@ -45,7 +45,8 @@
        "fuel" "brewing" "dyes" "sounds" "potions" "effects"
        "shapes" "outlines" "sturdy" "flags" "compost"
        "wall-blocks" "place-sounds" "remainders" "banner-colors"
-       "non-breakers" "item-names"]
+       "non-breakers" "item-names" "entities" "version"
+       "block-entities" "growers" "mob-buckets"]
       (into (map #(str "pack/" %)) pack)
       (into (map #(str "pack/" %)) reloadable)
       (into (map #(str "pack/tags/" %)) tags)

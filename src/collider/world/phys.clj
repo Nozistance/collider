@@ -156,6 +156,13 @@
               (+ (v/z pos) (double dz)) (double half) (double height)
               (v/y pos) (int ctx))))
 
+(defn box-free?
+  "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block.
+  bottom is the foot of the body the box belongs to."
+  [chunks box bottom]
+  (Phys/freeBox chunks (kinds) (block/cube-arr) (block/collision-arr)
+                (double-array box) (double bottom) 0))
+
 (defn- support-form [chunks pos half ctx]
   (let [c (gensym "cell")
         call (at-form `Phys/support chunks pos

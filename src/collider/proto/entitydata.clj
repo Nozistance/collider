@@ -36,6 +36,15 @@
     :fields [[:variant :cow-variant :temperate]
              [:sound-variant :cow-sound-variant :classic]]}
    :mushroom-cow {:parent :abstract-cow :fields [[:type :int 0]]}
+   :pig
+   {:parent :animal
+    :fields [[:boost-time :int 0]
+             [:variant :pig-variant :temperate]
+             [:sound-variant :pig-sound-variant :classic]]}
+   :chicken
+   {:parent :animal
+    :fields [[:variant :chicken-variant :temperate]
+             [:sound-variant :chicken-sound-variant :classic]]}
    :avatar
    {:parent :living
     :fields [[:main-hand :humanoid-arm :right]
@@ -57,6 +66,14 @@
    :throwable-projectile {:parent :projectile :fields []}
    :throwable-item-projectile
    {:parent :throwable-projectile :fields [[:item :item nil]]}
+   :hanging-entity
+   {:parent :entity :fields [[:direction :direction 3]]}
+   :item-frame
+   {:parent :hanging-entity
+    :fields [[:item :item nil] [:rotation :int 0]]}
+   :painting
+   {:parent :hanging-entity
+    :fields [[:variant :painting-variant nil]]}
    :area-effect-cloud
    {:parent :entity
     :fields [[:radius :float 3.0]

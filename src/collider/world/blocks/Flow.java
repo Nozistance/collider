@@ -61,11 +61,20 @@ public final class Flow {
 
     private static final int SLOTS = 7;
 
-    private static final ThreadLocal<long[]> CELLS =
-            ThreadLocal.withInitial(() -> new long[SLOTS * 11 * 11]);
+    private static final long HI = 0xFFFFFFFF00000000L;
 
-    private static final ThreadLocal<int[]> MEMO =
-            ThreadLocal.withInitial(() -> new int[4 * 5 * 11 * 11]);
+    /// The per-thread arrays of the slope search. An entry holds its
+    /// value in the low half and the epoch of the search that wrote
+    /// it in the high half; entries of older searches count as unset.
+    private static final class Scratch {
+        long[] cells = new long[SLOTS * 11 * 11];
+        long[] seen = new long[11 * 11];
+        int[] queue = new int[11 * 11];
+        long epoch;
+    }
+
+    private static final ThreadLocal<Scratch> SCRATCH =
+            ThreadLocal.withInitial(Scratch::new);
 
     private final Tables t;
 
@@ -81,13 +90,15 @@ public final class Flow {
 
     private int px, py, pz, r, w, slope;
 
-    private long[] cells;
+    private long[] cells, seen;
+
+    private int[] queue;
+
+    private long stamp;
 
     private final Chunk[] near = new Chunk[4];
 
     private final int[] nearX = new int[4], nearZ = new int[4];
-
-    private int[] memo;
 
     private Flow(Tables t, ChunkIndex chunks, Object over) {
         this.t = t;
@@ -228,20 +239,20 @@ public final class Flow {
     private int cellRaw(int i, int dy) {
         int k = i * SLOTS + (dy == 0 ? 0 : 1);
         long v = cells[k];
-        if (v >= 0) return (int) v;
+        if ((v & HI) == stamp) return (int) v;
         int s = raw(px - r + i / w, py + dy, pz - r + i % w);
-        cells[k] = s;
+        cells[k] = stamp | s;
         return s;
     }
 
     private boolean hole(int i) {
         int k = i * SLOTS + 2;
         long v = cells[k];
-        if (v >= 0) return v == 1;
+        if ((v & HI) == stamp) return (int) v == 1;
         int braw = cellRaw(i, -1);
         boolean h = pass(cellRaw(i, 0), braw, DOWN)
                 && t.holeFloor()[braw];
-        cells[k] = h ? 1 : 0;
+        cells[k] = stamp | (h ? 1 : 0);
         return h;
     }
 
@@ -252,36 +263,32 @@ public final class Flow {
     private boolean passable(int i, int d) {
         int k = i * SLOTS + 3 + d;
         long v = cells[k];
-        if (v >= 0) return v == 1;
+        if ((v & HI) == stamp) return (int) v == 1;
         int traw = cellRaw(i, 0);
         boolean ok = t.enterable()[traw]
                 && pass(cellRaw(step(i, d ^ 1), 0), traw, d);
-        cells[k] = ok ? 1 : 0;
+        cells[k] = stamp | (ok ? 1 : 0);
         return ok;
     }
 
-    private int slopeDistance(int i, int pass, int from) {
-        int m = (i * (slope + 1) + pass) * 4 + from;
-        int v = memo[m];
-        if (v < 0) {
-            v = slopeSearch(i, pass, from);
-            memo[m] = v;
-        }
-        return v;
-    }
-
-    private int slopeSearch(int i, int pass, int from) {
-        int lowest = 1000;
-        for (int d = 0; d < 4; d++) {
-            int n = step(i, d);
-            if (d == from || !passable(n, d)) continue;
-            if (hole(n)) return pass;
-            if (pass < slope) {
-                lowest = Math.min(lowest,
-                        slopeDistance(n, pass + 1, d ^ 1));
+    private int slopeDistance(int c, int back, long mark) {
+        seen[c] = mark;
+        queue[0] = c;
+        int head = 0, tail = 1;
+        for (int pass = 1; pass <= slope; pass++) {
+            for (int end = tail; head < end; head++) {
+                int i = queue[head];
+                for (int d = 0; d < 4; d++) {
+                    int n = step(i, d);
+                    if (i == c && d == back || seen[n] == mark
+                            || !passable(n, d)) continue;
+                    if (hole(n)) return pass;
+                    seen[n] = mark;
+                    queue[tail++] = n;
+                }
             }
         }
-        return lowest;
+        return 1000;
     }
 
     private boolean replaceable(int st) {
@@ -291,48 +298,80 @@ public final class Flow {
         return t.cls() == 1 && amount(st) / 9.0 >= 0.44444445;
     }
 
-    private int distance(int raw, int d, int[] out, int dropoff,
+    private boolean candidate(int raw, int d, int[] out, int dropoff,
             boolean infinite) {
         int tx = px + DX[d], tz = pz + DZ[d];
-        int i = cell(tx, tz);
-        int traw = cellRaw(i, 0);
+        int traw = cellRaw(cell(tx, tz), 0);
         if (source(traw) || !t.holdsAny()[traw]
-                || !pass(raw, traw, d)) return -1;
+                || !pass(raw, traw, d)) return false;
         int v = newLiquid(tx, py, tz, dropoff, infinite);
-        if (v < 0) return -1;
+        if (v < 0) return false;
         boolean[] holds = v == 0 ? t.holdsSource() : t.holdsFlowing();
-        if (!holds[traw]) return -1;
+        if (!holds[traw]) return false;
         out[d] = v;
-        return hole(i) ? 0 : slopeDistance(i, 1, d ^ 1);
+        return true;
+    }
+
+    private int side(int d) {
+        return cell(px + DX[d], pz + DZ[d]);
+    }
+
+    private void begin(int x, int y, int z, int slope) {
+        px = x; py = y; pz = z; this.slope = slope;
+        r = slope + 1; w = 2 * r + 1;
+        Scratch sc = SCRATCH.get();
+        if (++sc.epoch == Integer.MAX_VALUE) {
+            Arrays.fill(sc.cells, 0L);
+            Arrays.fill(sc.seen, 0L);
+            sc.epoch = 1;
+        }
+        stamp = sc.epoch << 32;
+        int n = w * w;
+        boolean fit = n <= sc.seen.length;
+        cells = fit ? sc.cells : new long[SLOTS * n];
+        seen = fit ? sc.seen : new long[n];
+        queue = fit ? sc.queue : new int[n];
+    }
+
+    private void distances(int[] levels, int[] dist) {
+        boolean holes = false;
+        for (int d = 0; d < 4; d++) {
+            dist[d] = levels[d] >= 0 && hole(side(d)) ? 0 : 1000;
+            holes |= dist[d] == 0;
+        }
+        for (int d = 0; d < 4 && !holes; d++) {
+            if (levels[d] < 0) continue;
+            dist[d] = slopeDistance(side(d), d ^ 1, stamp | (d + 1));
+        }
     }
 
     private int[] lowestTargets(int x, int y, int z, int dropoff,
             int slope, boolean infinite) {
-        px = x; py = y; pz = z; this.slope = slope;
-        r = slope + 1; w = 2 * r + 1;
-        int n = SLOTS * w * w;
-        long[] c = CELLS.get();
-        cells = n <= c.length ? c : new long[n];
-        Arrays.fill(cells, 0, n, -1L);
-        int ms = 4 * (slope + 1) * w * w;
-        int[] mc = MEMO.get();
-        memo = ms <= mc.length ? mc : new int[ms];
-        Arrays.fill(memo, 0, ms, -1);
+        begin(x, y, z, slope);
         int raw = raw(x, y, z);
-        int[] levels = new int[4];
-        boolean[] kept = new boolean[4];
-        int lowest = 1000;
+        int[] levels = {-1, -1, -1, -1};
+        boolean[] fits = new boolean[4];
+        int open = 0, fit = 0;
         for (int d = 0; d < 4; d++) {
-            int dist = distance(raw, d, levels, dropoff, infinite);
-            if (dist < 0 || dist > lowest) continue;
-            if (dist < lowest) Arrays.fill(kept, false);
-            lowest = dist;
-            int i = cell(x + DX[d], z + DZ[d]);
-            kept[d] = replaceable(cellRaw(i, 0));
+            if (!candidate(raw, d, levels, dropoff, infinite)) continue;
+            open++;
+            fits[d] = replaceable(cellRaw(side(d), 0));
+            if (fits[d]) fit++;
+        }
+        if (fit > 0 && open > 1) {
+            int[] dist = new int[4];
+            distances(levels, dist);
+            int lowest = 1000;
+            for (int d = 0; d < 4; d++) {
+                if (levels[d] >= 0) lowest = Math.min(lowest, dist[d]);
+            }
+            for (int d = 0; d < 4; d++) {
+                fits[d] = fits[d] && dist[d] == lowest;
+            }
         }
         int[] out = new int[9];
         for (int d = 3; d >= 0; d--) {
-            if (kept[d]) {
+            if (fits[d]) {
                 out[1 + 2 * out[0]] = d;
                 out[2 + 2 * out[0]] = levels[d];
                 out[0]++;

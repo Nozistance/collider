@@ -16,7 +16,8 @@
    #'players/swing-deltas])
 
 (def ^:private own-tags
-  #{:click :menu-click :pick :dig :creative-slot :swing :held-item})
+  #{:click :menu-click :pick :dig :creative-slot :swing :held-item
+    :edit-book})
 
 (defn- own? [ev]
   (and (contains? own-tags (nth ev 0))

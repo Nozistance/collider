@@ -1,6 +1,8 @@
 (ns collider.game.entity
   "Entity constructors, saving and loading."
   (:require [collider.game.entity.records :as types]
+            [collider.game.entity.size :as size]
+            [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
@@ -60,6 +62,7 @@
     :tnt (types/map->Tnt m)
     :falling-block (types/map->FallingBlock m)
     :area-effect-cloud (types/map->Cloud m)
+    (:painting :item-frame :glow-item-frame) (types/map->Hanging m)
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
      :experience-bottle)
     (types/map->Projectile m)
@@ -90,16 +93,16 @@
 (defn eye-height
   "Returns how far above its position the entity e looks out."
   ^double [e]
-  (case (:type e)
-    :player (double (pose-eyes (:pose e :standing)))
-    :tnt 0.0
-    :falling-block 0.0
-    :item 0.21
-    :experience-orb 0.42500001192092896
-    :area-effect-cloud 0.425
-    (:snowball :egg :ender-pearl :splash-potion :lingering-potion
-     :experience-bottle) 0.2125
-    1.19))
+  (if (= :player (:type e))
+    (double (pose-eyes (:pose e :standing)))
+    (size/eye e)))
+
+(defn box
+  "Returns the half width and the height of entity e."
+  [e]
+  (if (= :player (:type e))
+    (pose-box (:pose e :standing))
+    (size/box e)))
 
 (defn- same? [o vs]
   `(and ~@(map (fn [[k s]] `(identical? ~s ~(field o (name k)))) vs)))
@@ -173,6 +176,7 @@
 
 (defn- kind [type]
   (cond (contains? thrown-types type) :thrown
+        (contains? hanging/types type) :hanging
         (#{:item :tnt :falling-block :area-effect-cloud
            :experience-orb} type) type
         :else :mob))
@@ -184,7 +188,8 @@
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin]
    :falling-block [:block :time]
-   :thrown [:owner :left-owner? :stack]})
+   :thrown [:owner :left-owner? :stack]
+   :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults
   {:mob {:death-time 0 :color 0 :sheared? false}
@@ -198,13 +203,15 @@
   {:mob {:task nil :no-action 0}
    :thrown {:age 0}})
 
-(def ^:private timers [:love-until :baby-until :breed-ready-at])
+(def ^:private timers
+  [:love-until :baby-until :breed-ready-at :egg-at])
 
 (def ^:private expired {:love-until 0 :breed-ready-at 0})
 
 (defn- base [e]
-  {:type (:type e) :pos (plain (:pos e)) :vel (plain (:vel e))
-   :yaw (:yaw e) :pitch (:pitch e) :on-ground (:on-ground e)})
+  (cond-> {:type (:type e) :pos (plain (:pos e)) :vel (plain (:vel e))
+           :yaw (:yaw e) :pitch (:pitch e) :on-ground (:on-ground e)}
+    (seq (:tags e)) (assoc :tags (:tags e))))
 
 (defn- left [e k ^long tick]
   (when-let [t (get e k)]
@@ -235,11 +242,12 @@
   (if (> (Math/abs a) 10.0) 0.0 a))
 
 (defn- loaded-base [m]
-  {:pos (or (:pos m) [0.0 0.0 0.0])
-   :vel (mapv still-axis (or (:vel m) [0.0 0.0 0.0]))
-   :yaw (double (or (:yaw m) 0.0))
-   :pitch (double (or (:pitch m) 0.0))
-   :on-ground (boolean (:on-ground m))})
+  (cond-> {:pos (or (:pos m) [0.0 0.0 0.0])
+           :vel (mapv still-axis (or (:vel m) [0.0 0.0 0.0]))
+           :yaw (double (or (:yaw m) 0.0))
+           :pitch (double (or (:pitch m) 0.0))
+           :on-ground (boolean (:on-ground m))}
+    (seq (:tags m)) (assoc :tags (set (:tags m)))))
 
 (defn- loaded-timers [e m ^long tick]
   (reduce (fn [e k]
@@ -259,6 +267,7 @@
   (case k
     :mob (mob-extras e m tick)
     :falling-block (update e :block #(or % (block/state :sand)))
+    :hanging (assoc e :check-at (hanging/first-check-at tick))
     e))
 
 (defn loaded

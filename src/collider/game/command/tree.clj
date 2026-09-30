@@ -8,6 +8,9 @@
             [collider.game.command.item-args :as items]
             [collider.game.game-mode :as game-mode]
             [collider.game.command.reader :as r]
+            [collider.game.command.snbt :as snbt]
+            [collider.game.command.text-codec :as tc]
+            [collider.game.out :as out]
             [collider.game.gamerules :as rules]
             [collider.game.mob.mobs :as mobs]
             [collider.game.schema :as schema])
@@ -25,8 +28,23 @@
 (def ^:private int-min -2147483648)
 
 (def ^:const gamemaster
-  "The permission level every command requires."
+  "The permission level most commands require."
   2)
+
+(def ^:private open-commands
+  "The commands every player may run, as Commands.java requires."
+  #{"me" "msg" "tell" "w" "list" "help"})
+
+(defn level-of
+  "Returns the permission level command nm requires."
+  ^long [nm]
+  (if (open-commands nm) 0 gamemaster))
+
+(defn- allowed? [level nm]
+  (>= (long (or level gamemaster)) (level-of nm)))
+
+(defn- selectors? [opts]
+  (>= (long (or (:level opts) gamemaster)) gamemaster))
 
 (defn- weather-form [nm doc op]
   [nm doc
@@ -89,7 +107,109 @@
       (conj (into [:of "change or query a clock"]
                   (mapcat of-way) clock-ways))))
 
-(def commands
+(def ^:private players-arg
+  [:targets [:targets {:players? true}]])
+
+(defn- title-way [kind]
+  [[players-arg (lit kind) [:title [:component {}]]]
+   [:world (keyword (str "title-" kind))]])
+
+(defn- bare-title-way [kind]
+  [[players-arg (lit kind)] [:world (keyword (str "title-" kind))]])
+
+(def ^:private title-form
+  (-> [:title "show titles to players"]
+      (into (mapcat bare-title-way) ["clear" "reset"])
+      (into (mapcat title-way) ["title" "subtitle" "actionbar"])
+      (conj [players-arg (lit "times") [:fadeIn [:ticks {:min 0}]]
+             [:stay [:ticks {:min 0}]]
+             [:fadeOut [:ticks {:min 0}]]]
+            [:world :title-times])))
+
+(def ^:private sound-arg [:sound [:sound {}]])
+
+(defn- float-arg [nm lo hi]
+  [nm [:float {:min lo :max hi :default nil}]])
+
+(def ^:private sound-tail
+  (-> [[:targets [:targets {:players? true :default nil}]]]
+      (into (vec-args {:default nil :node "pos"}))
+      (conj (float-arg :volume 0.0 (double Float/MAX_VALUE))
+            (float-arg :pitch 0.0 2.0)
+            (float-arg :minVolume 0.0 1.0))))
+
+(defn- playsound-way [src]
+  [(into [sound-arg (lit src)] sound-tail) [:world :playsound src]])
+
+(def ^:private playsound-form
+  (into [:playsound "play a sound to players"
+         [sound-arg] [:world :playsound nil]]
+        (mapcat playsound-way)
+        out/sound-sources))
+
+(defn- stop-way [src sound]
+  [[players-arg (lit src) sound] [:world :stopsound src]])
+
+(def ^:private stopsound-form
+  (-> [:stopsound "stop sounds of players"
+       [players-arg] [:world :stopsound nil]]
+      (into (stop-way "*" sound-arg))
+      (into (mapcat #(stop-way % [:sound [:sound {:default nil}]]))
+            out/sound-sources)))
+
+(def ^:private entities-arg [:targets [:targets {}]])
+
+(def ^:private tag-form
+  [:tag "tag entities"
+   [entities-arg (lit "add") [:name [:word {}]]] [:world :tag-add]
+   [entities-arg (lit "remove") [:name [:word {:tags true}]]]
+   [:world :tag-remove]
+   [entities-arg (lit "list")] [:world :tag-list]])
+
+(def ^:private one-arg [:target [:targets {:single? true}]])
+
+(def ^:private rotate-form
+  [:rotate "turn an entity"
+   [one-arg [:yaw [:angle {:axis 0 :node "rotation"}]]
+    [:pitch [:angle {:axis 1 :node "rotation"}]]]
+   [:world :rotate]
+   [one-arg (lit "facing") (lit "entity")
+    [:facingEntity [:targets {:single? true}]]
+    [:facingAnchor [:anchor {:default nil}]]]
+   [:world :rotate-facing-entity]
+   (into [one-arg (lit "facing")] (vec-args {:node "facingLocation"}))
+   [:world :rotate-facing]])
+
+(def ^:private swing-form
+  [:swing "swing the arms of living entities (default: yours)"
+   [[:targets [:targets {:default nil}]]] [:world :swing nil]
+   [entities-arg (lit "mainhand")] [:world :swing :main]
+   [entities-arg (lit "offhand")] [:world :swing :off]])
+
+(def ^:private chat-forms
+  [[:say "say a message to everyone"
+    [[:message [:message {}]]] [:world :say]]
+   [:me "tell everyone what you do"
+    [[:action [:message {}]]] [:world :me]]
+   [:msg "whisper to players"
+    [players-arg [:message [:message {}]]] [:world :msg]]
+   [:tellraw "show a text component to players"
+    [players-arg [:message [:component {}]]] [:world :tellraw]]
+   [:help "show how to use the commands"
+    [] [:world :help] [[:command [:greedy {}]]] [:world :help]]
+   [:list "list the players online"
+    [] [:world :list] [(lit "uuids")] [:world :list-uuids]]
+   title-form playsound-form stopsound-form
+   [:clear "clear items from players (default: yours, all)"
+    [[:targets [:targets {:players? true :default nil}]]
+     [:item [:item-predicate {:default nil}]]
+     [:maxCount [:int {:min 0 :max int-max :default nil
+                       :quiet true}]]]
+    [:world :clear]]
+   tag-form rotate-form swing-form
+   [:version "show the version of the game" [] [:world :version]]])
+
+(def ^:private base-forms
   [time-form
    [:gamerule "read or set a game rule"
     [[:rule [:rule {}]]
@@ -179,6 +299,8 @@
    [:defaultgamemode "set the game mode of new players"
     [[:gamemode [:game-mode {}]]]
     [:world :defaultgamemode]]])
+
+(def commands (into base-forms chat-forms))
 
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 
@@ -331,7 +453,76 @@
 (defn- as-targets [_nm s opts _origin]
   (let [[_ c args] (re-matches #"@(.)(?:\[(.*)\])?" s)
         [st sel :as r] (if c (selector-of c args) (name-selector s))]
-    (if (= :ok st) (checked-targets sel opts) r)))
+    (cond
+      (and (str/starts-with? s "@") (not (selectors? opts)))
+      [:fail-at "argument.entity.selector.not_allowed" [] 0]
+      (= :ok st) (checked-targets sel opts)
+      :else r)))
+
+(def ^:private message-limit 256)
+
+(defn- option-at ^long [^String opts [k]]
+  (+ 3 (long (or (str/index-of opts (str k)) 0))))
+
+(defn- message-part [^String s ^long i]
+  (let [[m c opts] (re-find #"^@(.)(?:\[([^\]]*)\])?" (subs s i))]
+    (when (and m (selectors c))
+      (let [[st sel k] (selector-of c opts)]
+        (if (= :ok st)
+          [i (+ i (count m)) sel]
+          [:fail-at sel k (+ i (option-at opts k))])))))
+
+(defn- message-parts [^String s]
+  (loop [i 0 acc []]
+    (let [j (str/index-of s "@" i)
+          p (when j (message-part s j))]
+      (cond (nil? j) [:ok {:text s :parts acc}]
+            (nil? p) (recur (inc (long j)) acc)
+            (= :fail-at (first p)) p
+            :else (recur (long (second p)) (conj acc p))))))
+
+(defn- as-message [_nm ^String s opts _origin]
+  (cond
+    (> (count s) (long message-limit))
+    [:fail-at "argument.message.too_long"
+     [(count s) message-limit] -1]
+    (selectors? opts) (message-parts s)
+    :else [:ok {:text s :parts []}]))
+
+(defn- trailing [^String s ^long end]
+  (if (= \space (nth s end))
+    [:fail-at "command.unknown.argument" [] (inc end)]
+    [:fail-at "command.expected.separator" [] end]))
+
+(defn- decoded [tag end s]
+  (let [[op v] (tc/text-of tag)]
+    (case op
+      :ok (if (< (long end) (count s)) (trailing s end) [:ok v])
+      :raw [:err "text: this component is not supported yet"]
+      [:fail-at "argument.component.invalid" [v] 0])))
+
+(defn- as-component [_nm ^String s _opts _origin]
+  (let [res (snbt/read-tag (r/reader s))]
+    (if (r/error? res)
+      (fail-at res)
+      (let [[tag [_ end]] res] (decoded tag end s)))))
+
+(def ^:private word-chars #"^[0-9A-Za-z_.+-]*")
+
+(defn- as-word [_nm ^String s _opts _origin]
+  (let [w (re-find word-chars s)]
+    (if (< (count w) (count s))
+      [:fail-at "command.expected.separator" [] (count w)]
+      [:ok w])))
+
+(defn- as-anchor [_nm ^String s _opts _origin]
+  (let [w (re-find word-chars s)]
+    (cond
+      (not (#{"eyes" "feet"} w))
+      [:fail-at "argument.anchor.invalid" [w] 0]
+      (< (count w) (count s))
+      [:fail-at "command.expected.separator" [] (count w)]
+      :else [:ok (keyword w)])))
 
 (defn- as-block [nm s _opts _origin]
   (let [k (block-kw s)]
@@ -423,6 +614,8 @@
   {:ticks #(args/time-arg (:min %))
    :float #(r/float-arg (:min %) (:max %))
    :marker (fn [_] (args/id-arg))
+   :sound (fn [_] (args/id-arg))
+   :item-predicate (fn [_] (items/item-predicate-arg))
    :clock (fn [_] (args/resource-arg "world_clock"))
    :timeline (fn [_] (args/resource-arg "timeline"))})
 
@@ -438,7 +631,10 @@
    :game-mode as-game-mode :mob-effect as-mob-effect
    :effect-seconds as-effect-seconds :bool as-bool
    :literal as-literal :ticks (as-kind :ticks)
+   :message as-message :component as-component :greedy as-text
+   :word as-word :anchor as-anchor
    :float (as-kind :float) :marker (as-kind :marker)
+   :sound (as-kind :sound) :item-predicate (as-kind :item-predicate)
    :clock (as-kind :clock) :timeline (as-kind :timeline)})
 
 (defn- coerce
@@ -471,12 +667,15 @@
 
 (def ^:private fixed-values
   {:duration ["1d" "1s" "100"] :effect-seconds ["infinite"]
-   :bool ["false" "true"] :text [] :angle []
+   :bool ["false" "true"] :text [] :angle [] :message [] :greedy []
+   :word [] :anchor ["eyes" "feet"]
+   :component []
    :targets ["@s" "@a" "@p" "@r" "@e" "@n"]})
 
 (defn- arg-values [[_ [kind {:keys [values axis] :as opts}]] target]
   (case kind
-    (:duration :effect-seconds :bool :text :angle :targets)
+    (:duration :effect-seconds :bool :text :angle :targets :message
+     :component :greedy :word :anchor)
     (fixed-values kind)
     :int (if (:quiet opts) [] (int-values opts))
     :mob-effect (effect-names)
@@ -484,6 +683,7 @@
     :enum (vec (sort values))
     :rule (rule-names)
     :item (item-names)
+    :item-predicate []
     :entity-type (vec (sort (map name (keys mobs/types))))
     :game-mode (mapv name (sort-by game-mode/id (keys game-mode/ids)))
     :block (block-values)))
@@ -525,7 +725,8 @@
 
 (defn- coerced
   [a [s at] path cx]
-  (let [[st v x c] (coerce a s (:origin cx))]
+  (let [a (update-in a [1 1] assoc :level (:level cx))
+        [st v x c] (coerce a s (:origin cx))]
     (case st
       :ok [v x]
       :miss {:fail (assoc (unknown-argument at) :miss? true)}
@@ -555,15 +756,29 @@
 (defn- kept [acc [_ [kind]] v]
   (if (= :literal kind) acc (conj acc v)))
 
+(def ^:private rest-kinds #{:message :component :greedy})
+
+(defn- rest-token
+  "The input from token t to the end, as a greedy argument reads it."
+  [[_ at] {:keys [text end]}]
+  (let [start (if at
+                (inc (count (str/trimr (subs text 0 at))))
+                (inc (long end)))]
+    (when (< start (count text)) [(subs text start) start])))
+
+(defn- token-of [[_ [kind]] ts cx]
+  (if (rest-kinds kind) (rest-token (first ts) cx) (first ts)))
+
 (defn- parse-args [args tokens path cx]
   (loop [i 0 ts tokens acc [] rel #{} start nil]
     (if-let [a (nth args i nil)]
-      (let [t (first ts) start (group-start a t start)
+      (let [t (token-of a ts cx) start (group-start a t start)
             m (when-not (first t) (missing-at a start cx args i))
-            r (when-not m (coerced a t path cx))]
+            r (when-not m (coerced a t path cx))
+            more (if (rest-kinds (first (second a))) nil (next ts))]
         (cond m m
           (map? r) (marked (:fail r) args i)
-          :else (recur (inc i) (next ts) (kept acc a (first r))
+          :else (recur (inc i) more (kept acc a (first r))
                        (cond-> rel (second r) (conj (axis-of a)))
                        start)))
       (leftover ts acc rel i))))
@@ -571,10 +786,14 @@
 (defn- ways [form]
   (partition 2 (drop 2 form)))
 
+(defn- greedy-way? [args]
+  (some (fn [[_ [kind]]] (rest-kinds kind)) args))
+
 (defn- way-delta [[args action] tokens path cx]
   (let [r (parse-args args tokens path cx)]
     (if (:args r)
-      {:delta (into action (:args r)) :relative (:relative r)}
+      (cond-> {:delta (into action (:args r)) :relative (:relative r)}
+        (greedy-way? args) (assoc :greedy true))
       r)))
 
 (defn- node-at [[args] i]
@@ -617,6 +836,11 @@
 
 (declare chosen)
 
+(defn- after-group
+  "The token after group g at i: a greedy argument reads them all."
+  [[[_ kind]] i tokens]
+  (if (rest-kinds kind) (count tokens) (inc (long i))))
+
 (defn- failed-at [groups at]
   (if (= 1 (count groups))
     (second (first (second (first groups))))
@@ -632,7 +856,7 @@
     (let [[word at] (nth tokens i)
           gs (relevant (grouped pairs i) word)
           ok (filter #(passed? (first (second %)) i) gs)
-          deeper #(chosen (second %) (inc i) tokens)]
+          deeper #(chosen (second %) (after-group % i tokens) tokens)]
       (if (seq ok)
         (first (sort-by rank (map deeper ok)))
         (failed-at gs at)))))
@@ -650,7 +874,8 @@
       (failure "command.unknown.argument" at)
       (unknown-command cx))))
 
-(def ^:private aliases {"tp" "teleport" "xp" "experience"})
+(def ^:private aliases
+  {"tp" "teleport" "xp" "experience" "tell" "msg" "w" "msg"})
 
 (defn- dimension-of [s]
   (let [k (data/kebab (str/replace (str s) #"^minecraft:" ""))]
@@ -686,10 +911,12 @@
     nil (unknown-command cx)
     (failure "command.unknown.argument" at)))
 
-(defn- parse-words [[[nm at] & more] cx dim]
-  (let [nm (get aliases nm nm)
+(defn- parse-words [[[typed at] & more] cx dim]
+  (let [nm (get aliases typed typed)
         form (find-form commands nm)]
     (cond
+      (not (allowed? (:level cx) typed))
+      (failure "command.unknown.command" at)
       (= "execute" nm) (parse-execute more cx dim)
       (nil? form) (failure "command.unknown.command" at)
       (subcommands? form) (parse-subcommand form nm more cx)
@@ -712,11 +939,13 @@
 (defn- parsed
   "The result of s with its trailing space as brigadier reads it:
   an alias redirects and reads the space as a separator."
-  [s origin dim]
+  [s origin dim level]
   (let [t (str/trimr s)
-        r (parse-words (words t) {:origin origin :end (count t)} dim)]
+        cx {:origin origin :end (count t) :text s :level level}
+        r (parse-words (words t) cx dim)]
     (cond
       (= (count t) (count s)) r
+      (:greedy r) r
       (contains? aliases t) (unknown-command {:end (count s)})
       (open-at? r (count t)) (unknown-argument (count t))
       :else r)))
@@ -731,7 +960,9 @@
   origin there as :origin."
   ([text] (parse text nil))
   ([text origin] (parse text origin :overworld))
-  ([text origin dim] (parsed (subs text 1) origin dim)))
+  ([text origin dim] (parse text origin dim gamemaster))
+  ([text origin dim level]
+   (dissoc (parsed (subs text 1) origin dim level) :greedy)))
 
 (defn- prefixed [prefix xs]
   (let [p (str/lower-case prefix)]
@@ -745,12 +976,14 @@
 (defn- suggest-player [world prefix]
   (prefixed prefix (sort (keys (:players world)))))
 
-(defn- command-names []
-  (into ["execute"] (concat (keys aliases) (map cmd-name commands))))
+(defn- command-names [level]
+  (filterv #(allowed? level %)
+           (into ["execute"]
+                 (concat (keys aliases) (map cmd-name commands)))))
 
-(defn- suggest-command [prefix]
+(defn- suggest-command [prefix level]
   (mapv #(str "/" %)
-        (starting-with prefix (sort (command-names)))))
+        (starting-with prefix (sort (command-names level)))))
 
 (defn- suggest-subcommand [form prefix]
   (starting-with prefix (sort (map cmd-name (drop 2 form)))))
@@ -800,6 +1033,8 @@
                 :when (and k (= k c))]
             t))))
 
+(defn- sound-events [] (get (data/registries) "sound_event"))
+
 (defn- arg-suggestions [[_ [kind opts] :as a] w start cx]
   (case kind
     :ticks (unit-suggestions w start)
@@ -807,11 +1042,15 @@
     :marker (sugg start (matching-resources w (marker-ids opts cx)))
     :timeline
     (sugg start (matching-resources w (timeline-ids opts cx)))
+    :sound (let [ids (map data/wire (keys (sound-events)))]
+             (sugg start (matching-resources w (sort ids))))
     :clock (let [ids (map data/wire (clock/names))]
              (sugg start (matching-resources w ids)))
     :literal (sugg start (starting-with w [(:name opts)]))
     :mob-effect
     (sugg start (matching-resources w (arg-values a (:target cx))))
+    :targets (let [vs (when (selectors? cx) (arg-values a nil))]
+               (sugg start (starting-with w vs)))
     (sugg start (starting-with w (arg-values a (:target cx))))))
 
 (def ^:private loose #{:coord :dcoord :angle})
@@ -860,19 +1099,21 @@
   (let [[nm & more] (str/split (subs text 1) #" " -1)
         form (find-form commands (get aliases nm nm))]
     (cond
-      (empty? more) (sugg start (suggest-command nm))
-      (nil? form) (sugg start [])
+      (empty? more) (sugg start (suggest-command nm (:level cx)))
+      (or (nil? form) (not (allowed? (:level cx) nm))) (sugg start [])
       :else (after-command form (vec more) start cx text))))
 
 (defn suggestions
   "Returns the completions for half-typed text as :texts that
   replace it from index :start. A player standing at target sees
-  them."
+  them. A player of permission level sees the commands it may run."
   ([world text] (suggestions world text nil))
-  ([world text target]
+  ([world text target] (suggestions world text target gamemaster))
+  ([world text target level]
    (let [text (or text "")
          start (inc (long (or (str/last-index-of text " ") -1)))
-         cx {:dim (:dim world :overworld) :target target}]
+         cx {:dim (:dim world :overworld) :target target
+             :level level}]
      (if (str/starts-with? text "/")
        (command-suggestions text start cx)
        (sugg start (suggest-player world (subs text start)))))))
@@ -903,7 +1144,12 @@
    :text [brigadier-string {:kind 0}]
    :game-mode [:gamemode nil]
    :mob-effect [:resource {:registry "minecraft:mob_effect"}]
-   :bool [brigadier-bool nil]})
+   :bool [brigadier-bool nil]
+   :greedy [brigadier-string {:kind 2}]
+   :item-predicate [:item-predicate nil]
+   :anchor [:entity-anchor nil]
+   :message [:message nil]
+   :component [:component nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})
@@ -912,7 +1158,7 @@
   (case kind
     :ticks [[n :time {:min min}]]
     :float [[n brigadier-float {:min min :max max}]]
-    :marker [[n :resource-location nil ask-server]]
+    (:marker :sound) [[n :resource-location nil ask-server]]
     :clock [[n :resource {:registry "minecraft:world_clock"}]]
     :timeline [[n :resource {:registry "minecraft:timeline"}
                 ask-server]]))
@@ -930,6 +1176,9 @@
         :enum {:literals (sort values)}
         :literal {:literals [(:name opts)]}
         :targets [[n :entity (entity-props single? players?)]]
+        :word (cond-> [n brigadier-string {:kind 0}]
+                (:tags opts) (conj ask-server)
+                :always vector)
         :rule {:rules true}
         (clock-nodes n kind opts)))))
 
@@ -991,7 +1240,9 @@
           tail (if (:rules spec) [[] true] (chain args (inc i)))
           [kids tail-exec] tail
           exec? (or tail-exec (>= (inc i) optional))]
-      [(spec-nodes spec exec? kids) (>= i optional)])))
+      [(mapv #(with-meta % {:arg (nth args i)})
+             (spec-nodes spec exec? kids))
+       (>= i optional)])))
 
 (defn- same-node? [a b]
   (let [k #(dissoc % :children :executable?)]
@@ -1052,9 +1303,105 @@
     (mapv #(if (:redirect %) (update % :redirect at) %) nodes)))
 
 (defn tree
-  "Returns the command nodes a client gets, the root last."
-  []
-  (let [top (-> (mapv form-node commands)
-                (conj execute-node)
-                (into (map alias-node) aliases))]
-    (redirected (first (flat [] {:type :root :children top})))))
+  "Returns the command nodes a client of permission level gets, the
+  root last."
+  ([] (tree gamemaster))
+  ([level]
+   (let [ok? #(allowed? level %)
+         forms (filter (comp ok? cmd-name) commands)
+         top (-> (mapv form-node forms)
+                 (cond-> (ok? "execute") (conj execute-node))
+                 (into (comp (filter (comp ok? key)) (map alias-node))
+                       aliases))]
+     (redirected (first (flat [] {:type :root :children top}))))))
+
+(defn- usage-text [n]
+  (if (= :argument (:type n)) (str "<" (:name n) ">") (:name n)))
+
+(defn- redirect-usage [nodes n]
+  (let [to (:redirect n)]
+    (if (= to (dec (count nodes)))
+      "..."
+      (str "-> " (usage-text (nth nodes to))))))
+
+(declare smart-usage)
+
+(defn- alternatives [nodes kids opt?]
+  (let [us (distinct (map #(smart-usage nodes % opt? true) kids))
+        [open close] (if opt? ["[" "]"] ["(" ")"])]
+    (if (= 1 (count us))
+      (if opt? (str "[" (first us) "]") (first us))
+      (str open (str/join "|" (map #(usage-text (nth nodes %)) kids))
+           close))))
+
+(defn- smart-usage
+  "The usage of node i as CommandDispatcher.getSmartUsage writes it."
+  [nodes i optional? deep?]
+  (let [n (nth nodes i)
+        self (cond->> (usage-text n) optional? (format "[%s]"))
+        opt? (boolean (:executable? n))
+        kids (:children n)]
+    (cond
+      deep? self
+      (:redirect n) (str self " " (redirect-usage nodes n))
+      (= 1 (count kids))
+      (str self " " (smart-usage nodes (first kids) opt? opt?))
+      (seq kids) (str self " " (alternatives nodes kids opt?))
+      :else self)))
+
+(defn- width [[_ [kind]]]
+  (case kind (:coord :dcoord) 3 :angle 2 1))
+
+(defn- read-ok? [a w axis origin]
+  (let [a (cond-> a axis (assoc-in [1 1 :axis] axis))]
+    (= :ok (first (coerce a w origin)))))
+
+(defn- reader-of [a n origin]
+  (fn [k [w]] (read-ok? a w (when (< 1 (long n)) k) origin)))
+
+(defn- arg-read
+  "The tokens left after argument node c reads ts, nil when it
+  cannot."
+  [c ts text origin]
+  (let [[_ [kind] :as a] (:arg (meta c))
+        n (width a)]
+    (cond
+      (nil? a) (rest ts)
+      (rest-kinds kind)
+      (when (read-ok? a (subs text (second (first ts))) nil origin)
+        [])
+      (< (count ts) n) nil
+      (every? true? (map-indexed (reader-of a n origin) (take n ts)))
+      (drop n ts))))
+
+(defn- step-node [nodes n [[w] :as ts] text origin]
+  (let [kids (map nodes (:children n))
+        named? #(and (= :literal (:type %)) (= w (:name %)))
+        lit (some #(when (named? %) %) kids)
+        arg #(when-let [more (arg-read % ts text origin)] [% more])]
+    (if lit
+      [lit (rest ts)]
+      (some arg (filter #(= :argument (:type %)) kids)))))
+
+(defn- last-node
+  "The index of the last node brigadier reads of text, nil for none."
+  [nodes text origin]
+  (loop [n (peek nodes) ts (words text) at nil]
+    (if-let [[c more] (when (and (seq ts) (not (:redirect n)))
+                        (step-node nodes n ts text origin))]
+      (recur c more (index-of nodes #(identical? c %)))
+      at)))
+
+(defn help-lines
+  "Returns the lines /help shows a player of permission level, for
+  command text or for every command when text is nil. Returns nil
+  when text names no command."
+  [level text origin]
+  (let [nodes (tree level)
+        i (if text (last-node nodes text origin) (dec (count nodes)))
+        n (when i (nth nodes i))
+        head (if text (str "/" text " ") "/")]
+    (when n
+      (let [opt? (boolean (:executable? n))]
+        (mapv #(str head (smart-usage nodes % opt? false))
+              (:children n))))))

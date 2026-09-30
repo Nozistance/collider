@@ -5,7 +5,9 @@
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.rail :as rail]
             [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
             [collider.world.rules :as rules])
   (:import (collider.world ChunkIndex Neighbors)))
 
@@ -73,7 +75,8 @@
 (def ^:private states
   (delay {:shape (by-state shape-deaf?)
           :neighbor (by-state neighbor-deaf?)
-          :plain (by-state plain?)}))
+          :plain (by-state plain?)
+          :rail (by-state rail/rail?)}))
 
 (defn- marked? [k ^long st]
   (aget ^booleans (k @states) st))
@@ -131,7 +134,7 @@
         st (block-at s p)
         at (rules/wake-tick cs dim st tick p old side)]
     (if (= :neighbor at)
-      (let [ctx' (assoc ctx :side side)]
+      (let [ctx' (assoc ctx :side side :old old)]
         (reacted s ctx (rules/reshape-changes cs st p ctx')
                  flags-of limit))
       (ticked s ctx :block-ticks at p (block/block-of st)))))
@@ -266,6 +269,23 @@
         (and (pos? limit) (not (bit-test (long flags) 4)))
         (shapes-changed ctx p old flags (dec limit))))))
 
+(defn- removed
+  "Returns s after a rail old that st replaced at p tells the cells
+  around it, as its affectNeighborsAfterRemoval does."
+  [s ctx p old st flags]
+  (let [flags (long flags)]
+    (if (and (marked? :rail old) (odd? flags) (not (bit-test flags 6))
+             (not= (block/block-of old) (block/block-of st)))
+      (reduce #(neighbors-changed %1 ctx %2 old) s
+              (rail/removal-notified p old))
+      s)))
+
+(defn- kept?
+  "Tells whether p still holds the block of st after old left it."
+  [s p old st]
+  (or (not (marked? :rail old))
+      (= (block/block-of st) (block/block-of (block-at s p)))))
+
 (defn- liquid-placed [s ctx p old fx]
   (if (some #{:fluid-tick} fx)
     (fluid-woken s ctx p old nil)
@@ -289,15 +309,19 @@
       (= old (long st))
       (let [fx (shown fx)]
         (cond-> s (seq fx) (add-record [p st fx])))
-      :else (-> (written s p old st fx flags)
-                (updated ctx p old st flags limit)
-                (liquid-placed ctx p old fx)))))
+      :else (let [s (-> (written s p old st fx flags)
+                        (removed ctx p old st flags))]
+              (if (kept? s p old st)
+                (-> (updated s ctx p old st flags limit)
+                    (liquid-placed ctx p old fx))
+                s)))))
 
 (defn- plain-set [s ctx p st flags limit]
   (let [old (place! s p st flags)
         flags (long flags)
-        limit (long limit)]
-    (if (neg? old)
+        limit (long limit)
+        s (if (neg? old) s (removed s ctx p old st flags))]
+    (if (or (neg? old) (not (kept? s p old st)))
       s
       (cond-> s
         (odd? flags) (neighbors-changed ctx p old)
@@ -354,16 +378,30 @@
   [chunks ctx changes]
   (run-each chunks ctx changes (placed-with 3)))
 
-(defn- op-run [s ctx [op x flags]]
+(defn- edged
+  "StructureTemplate.updateShapeAtEdge on one face: p takes the shape
+  that the cell on side gives, then that cell the shape p gives."
+  [s ctx p side]
+  (let [q (shifted p (dir/offset side))
+        n (block-at s q)
+        s (shape-changed s ctx p (block-at s p) n side n 2 update-limit)
+        st (block-at s p)]
+    (shape-changed s ctx q n st (dir/opposite side) st 2 update-limit)))
+
+(defn- op-run [s ctx [op x y]]
   (case op
-    :set (set-block s ctx x flags update-limit)
-    :notify (neighbors-changed s ctx x (block-at s x))))
+    :set (set-block s ctx x y update-limit)
+    :notify (neighbors-changed s ctx x (block-at s x))
+    :edge (edged s ctx x y)
+    :send (add-sent s x)))
 
 (defn run
   "Returns the level after ops run in order.
   An op [:set c flags] sets change c as it is, not shaped by its
   neighbours. An op [:notify pos] tells the six blocks around pos of a
-  change there."
+  change there. An op [:edge pos side] updates the shapes of pos and
+  the cell on side against each other with flags 2. An op [:send pos]
+  tells the clients of pos."
   [chunks ctx ops]
   (run-each chunks ctx ops op-run))
 

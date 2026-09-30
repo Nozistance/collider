@@ -217,31 +217,4 @@ public final class Block {
         for (int i = 1; i < a.length; i++) a[i] = shapes[i] == null;
         return a;
     }
-
-    private static double span(double[] boxes, int lo) {
-        double a = Double.POSITIVE_INFINITY;
-        double b = Double.NEGATIVE_INFINITY;
-        for (int i = 0; i < boxes.length; i += 6) {
-            a = Math.min(a, boxes[i + lo]);
-            b = Math.max(b, boxes[i + lo + 3]);
-        }
-        return b - a;
-    }
-
-    /// Returns the table true for each state solid by the legacy
-    /// rule. The boxes of such a state span on average at least 0.729
-    /// of a block, or the full height. `boxes` holds the collision
-    /// boxes of each state, six doubles each, in blocks.
-    public static boolean[] legacySolids(Object[] boxes) {
-        boolean[] a = new boolean[boxes.length];
-        for (int i = 0; i < a.length; i++) {
-            double[] b = (double[]) boxes[i];
-            if (b.length > 0) {
-                double ys = span(b, 1);
-                double avg = (span(b, 0) + ys + span(b, 2)) / 3.0;
-                a[i] = avg >= 0.7291666666666666 || ys >= 1.0;
-            }
-        }
-        return a;
-    }
 }
