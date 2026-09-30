@@ -1,9 +1,7 @@
 (ns collider.game.systems.pose
   "Player water state, swimming and pose."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.entity :as entity]
+  (:require [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
-            [collider.game.level :as level]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -118,16 +116,11 @@
              :pose          (pose-of chunks pos e swim?)}
       (game-mode/spectator? e) (assoc :on-ground false))))
 
-(defn- player-deltas [world [eid e]]
+(defn player-deltas
+  "Returns the deltas that set the water state and the pose of
+  player p, an entry."
+  [world [eid e]]
   (when (game-mode/ticks? (:chunks world) e)
     (let [same? (fn [[k vl]] (= vl (get e k)))
           m (into {} (remove same?) (changes world e))]
       (when (seq m) [[:merge-entity eid m]]))))
-
-(defn pose
-  "Returns the deltas that set the pose of each player."
-  {:wake {:types #{:player}}}
-  [world _]
-  (deltas/of-vec
-    (into [] (mapcat (fn [entry] (player-deltas world entry)))
-          (level/player-entries world))))

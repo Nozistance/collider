@@ -1,10 +1,8 @@
 (ns collider.game.systems.geysers
   "Geysers of potent sulfur under water and what they lift."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.entity :as entity]
+  (:require [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
@@ -73,7 +71,9 @@
                 [[:set-block-entity pos (assoc e :countdown c)]])
               (when (zero? c) (turn-deltas world pos st))))))
 
-(defn- geyser-deltas [world [pos e]]
+(defn tick-deltas
+  "Returns the deltas of one tick of the potent sulfur e at pos."
+  [world [pos e]]
   (let [st (chunk/chunks-get-block (:chunks world) pos)
         ph (geyser/phase st)
         q (when (#{:dormant :erupting :continuous} ph)
@@ -86,31 +86,10 @@
         (when (#{:dormant :erupting} ph)
           (countdown-deltas world pos st e depth))))))
 
-(defn- sulfurs [world]
-  (let [active (areas/active-chunks world)]
-    (for [[cid entries] (:block-entities world)
-          :when (contains? active cid)
-          [pos e] entries
-          :when (= :potent-sulfur (:kind e))]
-      [pos e])))
-
-(defn- synced? [[_ e]]
-  (and (= :player (:type e)) (:needs-sync? e)))
-
-(defn- synced [world deltas]
-  (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
-                     deltas)]
-    (for [[eid _] (filter synced? (level/of-types world [:player]))
-          :when (not (lifted eid))]
-      [:merge-entity eid {:needs-sync? false}])))
-
-(defn- all-deltas [world]
-  (let [ds (into [] (mapcat #(geyser-deltas world %))
-                 (sulfurs world))]
-    (into ds (synced world ds))))
-
-(defn geysers
-  "Returns the deltas of the geysers of the level."
-  {:wake {:keys [:block-entities] :types #{:player}}}
-  [world _d]
-  (deltas/of-vec (all-deltas world)))
+(defn unsynced
+  "Returns the deltas that end the lift of every player lifted
+  before, ahead of the geysers of this tick."
+  [world]
+  (for [[eid e] (level/of-types world [:player])
+        :when (:needs-sync? e)]
+    [:merge-entity eid {:needs-sync? false}]))

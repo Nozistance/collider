@@ -1,26 +1,17 @@
 (ns collider.game.systems.jukebox
   "Jukeboxes and the end of their songs."
   (:require [collider.game.block.jukebox :as jukebox]
-            [collider.game.deltas :as deltas]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
 
-(defn- playing [world]
-  (for [[_ entries] (:block-entities world)
-        [pos e] entries
-        :when (and (= :jukebox (:kind e)) (:song e))]
-    [pos e]))
-
-(defn- stop-deltas [world [pos e]]
-  (let [age (- (long (:tick world)) (long (:started e)))]
-    (when (jukebox/finished? (:song e) age)
-      [[:set-block-entity pos (assoc e :song nil :started nil)]
-       (out/all
-         (out/level-event out/sound-stop-jukebox-song pos 0))])))
-
-(defn jukebox-songs
-  {:wake {:keys [:block-entities]}}
-  [world _d]
-  (deltas/of-vec
-    (mapcat (partial stop-deltas world) (playing world))))
+(defn tick-deltas
+  "Returns the deltas of one tick of the jukebox e at pos: the end
+  of its song."
+  [world [pos e]]
+  (when (:song e)
+    (let [age (- (long (:tick world)) (long (:started e)))]
+      (when (jukebox/finished? (:song e) age)
+        [[:set-block-entity pos (assoc e :song nil :started nil)]
+         (out/all
+           (out/level-event out/sound-stop-jukebox-song pos 0))]))))

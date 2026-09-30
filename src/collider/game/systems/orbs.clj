@@ -126,12 +126,6 @@
          (< (- (- pz half) 1.0) (+ oz orb/half))
          (> (+ (+ pz half) 1.0) (- oz orb/half)))))
 
-(defn- takers [world]
-  (filterv (fn [[_ p]]
-             (and (pos? (double (:health p 20.0)))
-                  (not (game-mode/spectator? p))))
-           (level/player-entries world)))
-
 (defn- ready? [world p]
   (>= (long (:tick world)) (long (or (:xp-ready-at p) 0))))
 
@@ -148,38 +142,25 @@
     [:merge-entity oid {:count left}]
     [:remove-entity oid]))
 
-(defn taken-deltas
-  "Returns the deltas of player pid taking one pile of orb oid.
-  The orb that is left comes with them."
-  [world pid p oid o]
+(defn- taken-deltas [world pid p oid o]
   (let [acc (xp/account p (lived world p))
         acc (xp/give-points acc (long (:value o)))
-        left (dec (long (:count o)))
         ready (+ 2 (long (:tick world)))
         marks (assoc (xp/marks acc) :xp-ready-at ready)]
-    [(concat [(out/all (out/collect oid pid))
-              [:merge-entity pid marks]
-              (orb-left oid left)]
-             (map #(chime (:pos p) %) (:chimes acc)))
-     (when (pos? left) (assoc o :count left))]))
+    (concat [(out/all (out/collect oid pid))
+             [:merge-entity pid marks]
+             (orb-left oid (dec (long (:count o))))]
+            (map #(chime (:pos p) %) (:chimes acc)))))
 
-(defn- touch [world [orbs out] [pid p]]
-  (let [touching (filterv #(touches? p (val %)) orbs)]
-    (if (and (seq touching) (ready? world p))
-      (let [[oid o] (picked world pid touching)
-            [ds o'] (taken-deltas world pid p oid o)]
-        [(if o' (assoc orbs oid o') (dissoc orbs oid)) (into out ds)])
-      [orbs out])))
-
-(defn- pickup-deltas [world]
-  (let [orbs (active-orbs world)]
-    (when (seq orbs)
-      (let [step #(touch world %1 %2)]
-        (second (reduce step [orbs []] (takers world)))))))
-
-(defn pickups
-  "Returns the deltas of players taking up the orbs they touch.
-  Each takes one orb a tick, one player after another."
-  {:wake {:types #{:experience-orb}}}
-  [world _d]
-  (deltas/of-vec (pickup-deltas world)))
+(defn player-pickup
+  "Returns the deltas of player p, an entry, taking up one of the orbs
+  it touches."
+  [world [pid p]]
+  (when (and (pos? (double (:health p 20.0)))
+             (not (game-mode/spectator? p))
+             (ready? world p))
+    (let [near #(touches? p (val %))
+          touching (filterv near (active-orbs world))]
+      (when (seq touching)
+        (let [[oid o] (picked world pid touching)]
+          (taken-deltas world pid p oid o))))))

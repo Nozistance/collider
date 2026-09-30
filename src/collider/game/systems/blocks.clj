@@ -233,41 +233,34 @@
             (chunk/in-level? world (nth pos' 1))
             (conj (edit/own-change world eid pos')))))
 
-(defn- one-ack [world origins [i [tag eid pos face _ cursor]]]
-  (when-let [off (and (= :place tag)
-                      (dir/face-offset (bit-and (long face) 0xFF)))]
+(defn- ack-offset [world origin [eid pos face _ cursor]]
+  (when-let [off (dir/face-offset (bit-and (long face) 0xFF))]
     (when (and (chunk/in-level? world (nth pos 1))
-               (acted-at world eid (get origins i) pos)
+               (acted-at world eid origin pos)
                (on-block? cursor))
-      (ack-changes world eid pos off))))
+      off)))
 
-(defn- use-ack-deltas [world events origins]
-  (mapcat #(one-ack world origins %) (map-indexed vector events)))
+(defn- placed-deltas [world [eid pos :as args] origin]
+  (let [ds (vec (use-on-deltas world args origin))]
+    (if-let [off (ack-offset world origin args)]
+      (let [w (first (apply/deltas world ds))]
+        (into ds (ack-changes w eid pos off)))
+      ds)))
 
-(defn- latest-sequences [events]
+(defn sequences
+  "Returns the last block action sequence of each player in events,
+  as a map of eid to sequence."
+  [events]
   (reduce (fn [m [tag eid & args]]
             (if-let [sq (sequence-of tag args)]
               (update m eid (fnil max -1) (long sq))
               m))
           {} events))
 
-(defn acks
-  "Returns the deltas that confirm the block actions of this tick.
-  Each player gets its last sequence. The blocks of each place go back
-  to its player."
-  {:wake {:events #{:dig :place :use-item}}}
-  [world d]
-  (let [events (:input d)
-        origins (get-in world [:input :use-origins])
-        ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
-    (deltas/of-vec
-      (concat (map ack (latest-sequences events))
-              (use-ack-deltas world events origins)))))
-
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
     :dig (dig/dig-deltas world args)
-    :place (use-on-deltas world args (get origins i))
+    :place (placed-deltas world args (get origins i))
     :use-item (let [[eid hand] args
                     a [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand]]
                 (place-deltas world a (get origins i)))

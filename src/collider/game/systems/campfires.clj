@@ -1,9 +1,7 @@
 (ns collider.game.systems.campfires
   "Campfires cooking the food laid on them."
   (:require [collider.game.block.furnace :as furnace]
-            [collider.game.deltas :as deltas]
             [collider.game.out :as out]
-            [collider.game.areas :as areas]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -78,21 +76,9 @@
   (let [st (chunk/chunks-get-block (:chunks world) pos)]
     (= :true (:lit (block/props-of st)))))
 
-(defn- campfire-deltas [world [pos e]]
+(defn tick-deltas
+  "Returns the deltas of one tick of the campfire e at pos."
+  [world [pos e]]
   (if (lit? world pos)
     (cook-deltas world pos e)
     (cool-deltas pos e)))
-
-(defn- campfires [world]
-  (let [active (areas/active-chunks world)]
-    (for [[cid entries] (:block-entities world)
-          :when (contains? active cid)
-          [pos e] entries
-          :when (= :campfire (:kind e))]
-      [pos e])))
-
-(defn campfire-cooking
-  {:wake {:keys [:block-entities]}}
-  [world _d]
-  (deltas/of-vec
-    (mapcat (partial campfire-deltas world) (campfires world))))

@@ -1,8 +1,6 @@
 (ns collider.game.systems.compasses
   "Lodestone compasses that lose their lodestone."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.stack :as stack]
-            [collider.game.level :as level]
+  (:require [collider.game.stack :as stack]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -35,14 +33,9 @@
          (stack/put s :lodestone-tracker
                     {:target nil :tracked true})]))))
 
-(defn- player-deltas [world [eid e]]
+(defn player-deltas
+  "Returns the deltas that clear the target of each compass in the
+  inventory of player p, an entry, whose lodestone is gone."
+  [world [eid e]]
   (let [inv (:inventory e)]
     (keep #(slot-delta world eid inv %) ticked-slots)))
-
-(defn compasses
-  "Returns the deltas that clear the target of each compass in a
-  player inventory whose lodestone is gone."
-  {:wake {:types #{:player}}}
-  [world _]
-  (deltas/of-vec (into [] (mapcat #(player-deltas world %))
-                       (level/of-types world [:player]))))

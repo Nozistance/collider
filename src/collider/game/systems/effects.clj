@@ -224,12 +224,19 @@
 (defn- due? [e]
   (and (or (seq (:effects e)) (:dirty-attributes e)) (living? e)))
 
+(defn player-deltas
+  "Returns the deltas that tick the effects of player p, an entry."
+  [world p]
+  (when (due? (val p)) (entity-deltas world p)))
+
 (defn effects
-  "Returns the deltas that tick the effects of every living entity."
+  "Returns the deltas that tick the effects of every living mob."
   {:wake {:keys [:entities]}}
   [world _]
   (let [due (fn [acc eid e]
-              (if (due? e) (conj acc (MapEntry/create eid e)) acc))
+              (if (and (due? e) (not (player? e)))
+                (conj acc (MapEntry/create eid e))
+                acc))
         one (fn [x] (entity-deltas world x))]
     (deltas/of-vec
       (into [] (mapcat one) (reduce-kv due [] (:entities world))))))

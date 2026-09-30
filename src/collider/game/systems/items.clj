@@ -584,35 +584,31 @@
       [(out/all (out/collect ieid peid))
        [:remove-entity ieid]])))
 
-(defn- pickup-one [[peid pe] [out taken inv :as acc] [ieid ie]]
-  (if (or (contains? taken ieid) (not (in-pickup-range? pe ie)))
-    acc
+(defn- pickup-one [[peid pe] [out inv :as acc] [ieid ie]]
+  (if (in-pickup-range? pe ie)
     (let [[changes remaining] (add-stack inv (:stack ie))]
       (if (seq changes)
         [(into out (collect-deltas ieid peid changes remaining))
-         (conj taken ieid)
          (into inv changes)]
-        acc))))
+        acc))
+    acc))
 
-(defn- player-pickups [ready [out taken] [_ pe :as entry]]
-  (let [take (fn [acc item] (pickup-one entry acc item))
-        [out taken] (reduce take [out taken (:inventory pe)] ready)]
-    [out taken]))
+(defn- ready? [[_ ie]]
+  (zero? (long (or (:pickup-delay ie) 0))))
 
-(defn- takers [world]
-  (remove #(game-mode/spectator? (val %))
-          (level/player-entries world)))
+(defn- takes? [pe]
+  (and (pos? (double (:health pe 20.0)))
+       (not (game-mode/spectator? pe))))
 
-(defn- pickup-deltas [world items]
-  (let [ready? (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0))))
-        ready (filterv ready? items)]
-    (when (seq ready)
-      (loop [ps (seq (takers world)) out [] taken #{}]
-        (if ps
-          (let [p (first ps)
-                [out taken] (player-pickups ready [out taken] p)]
-            (recur (next ps) out taken))
-          out)))))
+(defn player-pickups
+  "Returns the deltas of player p, an entry, taking up the items it
+  touches, one after another."
+  [world p]
+  (when (takes? (val p))
+    (let [items (filterv ready? (areas/active-of-types world [:item]))
+          take (fn [acc item] (pickup-one p acc item))]
+      (when (seq items)
+        (first (reduce take [[] (:inventory (val p))] items))))))
 
 (defn- stepped-item [world [eid e]]
   (let [d (step-item world eid e)]
@@ -630,10 +626,3 @@
     (deltas/of-vec
       (when (pos? (count act))
         (into (mapv (fn [s] (nth s 3)) act) (merge-deltas act))))))
-
-(defn pickups
-  "Returns the deltas of players taking up nearby items."
-  {:wake {:types #{:item}}}
-  [world _d]
-  (deltas/of-vec
-    (pickup-deltas world (areas/active-of-types world [:item]))))

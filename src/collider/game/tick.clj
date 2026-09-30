@@ -10,39 +10,29 @@
             [collider.game.deltas.record :as types]
             [collider.game.detector :as detector]
             [collider.log :as log]
+            [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.events :as block-events]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
-            [collider.game.systems.brewing :as brewing]
             [collider.game.systems.camera :as camera]
-            [collider.game.systems.campfires :as campfires]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
-            [collider.game.systems.compasses :as compasses]
-            [collider.game.systems.consume :as consume]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
-            [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.effects :as effects]
-            [collider.game.systems.experience :as experience]
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
-            [collider.game.systems.furnaces :as furnaces]
             [collider.game.systems.hanging :as hanging]
-            [collider.game.systems.geysers :as geysers]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
-            [collider.game.systems.jukebox :as jukebox]
-            [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
             [collider.game.systems.natural :as natural]
             [collider.game.systems.orbs :as orbs]
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
-            [collider.game.systems.pose :as pose]
+            [collider.game.systems.players.tick :as player-tick]
             [collider.game.systems.projectiles :as projectiles]
             [collider.game.systems.random.tick :as random-tick]
-            [collider.game.systems.signs :as signs]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tnt :as tnt]
@@ -62,8 +52,7 @@
    #'packets/by-player
    #'inventory/inventory
    #'containers/containers
-   #'chat/chat
-   #'keepalive/keepalive])
+   #'chat/chat])
 
 (def entity-systems
   "The systems that step the entities of the level."
@@ -96,19 +85,11 @@
              [#'block-updates/block-flush #'players/players]
              [#'block-events/block-events]
              [#'effects/effects]
-             [#'consume/consume #'compasses/compasses]
-             [#'pose/pose]
              entity-systems
              [#'explosions/blasts]
-             [#'items/pickups #'orbs/pickups #'containers/broadcast]
-             [#'furnaces/furnace-cooking
-              #'campfires/campfire-cooking
-              #'brewing/brewing
-              #'geysers/geysers
-              #'jukebox/jukebox-songs
-              #'signs/sign-editors]
-             [#'blocks/acks #'experience/experience
-              #'dripleaf/dripleaf-tilt]
+             [#'containers/broadcast]
+             [#'block-entities/block-entities]
+             [#'player-tick/player-tick]
              [#'players/late-tracking]
              [#'detector/observe]])
 

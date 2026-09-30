@@ -2,13 +2,10 @@
   "Eating, drinking and other items held in use, and filling a
   glass bottle at water."
   (:require [collider.data :as data]
-            [collider.game.deltas :as deltas]
             [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
-            [collider.game.apply :as apply]
-            [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
@@ -265,16 +262,11 @@
                [:award eid :used/glass-bottle 1]]
               (filled-deltas world eid e water-bottle)))))
 
-(defn- using-entries [world]
-  (into [] (filter (fn [[_ e]] (:using e)))
-        (level/of-types world [:player])))
-
-(defn consume
-  "Returns the deltas of the eating and drinking of players."
-  {:wake {:types #{:player}}}
-  [world _]
-  (let [releases (get-in world [:input :releases])
-        uses (using-entries world)]
-    (deltas/of-vec
-      (into (into [] (mapcat release-deltas) releases)
-            (apply/fold-events world uses step-deltas)))))
+(defn player-deltas
+  "Returns the deltas of the item player p, an entry, holds in use
+  this tick, and of the uses it let go."
+  [world p]
+  (let [eid (key p)
+        mine #(when (= eid (:eid %)) (release-deltas %))]
+    (concat (mapcat mine (get-in world [:input :releases]))
+            (when (:using (val p)) (step-deltas world p)))))

@@ -277,3 +277,10 @@
          (recur (if step? (first (deltas w ds)) w)
                 more (into acc ds)))))))
 
+(defn then
+  "Returns [world' d'] after deltas ds: world with ds applied and
+  the deltas d with ds added."
+  [[world d] ds]
+  (let [x (deltas/of-vec (vec ds))]
+    [(if (deltas/inert? x) world (first (deltas world x)))
+     (deltas/merge d x)]))

@@ -1,6 +1,7 @@
 (ns collider.game.level
   "A level of the world: its view, its entities and its writes."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.block.tickers :as tickers]
             [clojure.data.int-map :as i]
             [collider.game.clock :as clock]
             [collider.game.entity :as entity]
@@ -233,7 +234,14 @@
 (defn- drop-block-entity [w pos]
   (-> w
       (update-in [:block-entities (chunk/block-chunk pos)] dissoc pos)
-      (update :openers dissoc pos)))
+      (update :openers dissoc pos)
+      (update :tickers tickers/without pos)))
+
+(defn- reticked [w pos]
+  (let [e (be/at w pos)
+        st (chunk/chunks-get-block (:chunks w) pos)]
+    (update w :tickers tickers/bound pos
+            (and e (tickers/ticks? e st)))))
 
 (defn- made-block-entity [w pos k]
   (if (be/at w pos)
@@ -245,7 +253,8 @@
   (let [k (be/kind st)]
     (cond-> w
       (kind-changed? old st) (drop-block-entity pos)
-      k (made-block-entity pos k))))
+      k (made-block-entity pos k)
+      (or k (be/kind old)) (reticked pos))))
 
 (defn- block-entities-changed [w real]
   (reduce block-entity-changed w real))
@@ -384,11 +393,16 @@
     (let [[fresh n] (schema/refreshed w payload)]
       (schema/with-chunk (assoc w :next-eid n) id fresh))))
 
+(defn- tickers-outside [w id]
+  (reduce tickers/without (:tickers w)
+          (keys (get-in w [:block-entities id]))))
+
 (defn unload-chunk
   "Returns level w after the delta [:unload-chunk id]."
   [w [_ id]]
   (let [id (long id)]
     (-> w
+        (assoc :tickers (tickers-outside w id))
         (update :chunks dissoc id)
         (update :block-entities dissoc id)
         (update :openers openers-outside id)
@@ -402,7 +416,9 @@
   "Returns level w after the delta [:set-block-entity pos e]."
   [w [_ pos e]]
   (if (and e (be/kind (chunk/chunks-get-block (:chunks w) pos)))
-    (assoc-in w [:block-entities (chunk/block-chunk pos) pos] e)
+    (-> w
+        (assoc-in [:block-entities (chunk/block-chunk pos) pos] e)
+        (reticked pos))
     (drop-block-entity w pos)))
 
 (defn advance-weather

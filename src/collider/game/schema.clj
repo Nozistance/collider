@@ -2,6 +2,7 @@
   "Schema of the world map and of the player profile."
   (:require [clojure.data.int-map :as i]
             [collider.game.block.blockentity :as be]
+            [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
             [collider.game.gamerules :as rules]
             [collider.game.schedule :as schedule]
@@ -67,6 +68,12 @@
       (ticks-back :block-ticks t (:block-ticks payload))
       (ticks-back :fluid-ticks t (:fluid-ticks payload))))
 
+(defn- with-block-entities [w id bes]
+  (let [st #(chunk/at (:chunks w) %)]
+    (-> w
+        (assoc-in [:block-entities id] bes)
+        (update :tickers tickers/loaded bes st))))
+
 (defn with-chunk
   "Returns w with the saved chunk id put back.
   Its block ticks come due after the delays they were saved with."
@@ -80,7 +87,7 @@
                 (update :entities into es entities)
                 (ticks-restored t payload)
                 (update :loading disj id))
-      (seq block-entities) (assoc-in [:block-entities id] bes))))
+      (seq block-entities) (with-block-entities id bes))))
 
 (declare profile-of)
 
@@ -180,6 +187,7 @@
                         :load double :schema number?
                         :scope :level}
    :openers            {:default {} :scope :level}
+   :tickers            {:default tickers/none :scope :level}
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
    :spawning           {:default (i/int-map) :scope :shared}

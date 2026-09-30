@@ -1,8 +1,6 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.level :as level]
-            [collider.game.systems.blocks.edit :as edit]
+  (:require [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]))
@@ -42,17 +40,10 @@
               acc))
           acc (foot-cells e)))
 
-(defn- tilt-changes [world]
-  (reduce (fn [acc [_ e]]
-            (if (:on-ground e) (tilted-under world acc e) acc))
-          (sorted-map) (level/player-entries world)))
-
-(defn- tilt-deltas [world]
-  (let [changes (tilt-changes world)]
-    (when (seq changes) (edit/set-deltas world (vec changes)))))
-
-(defn dripleaf-tilt
-  "Returns the deltas that tip big dripleaves under players."
-  {:wake {:types #{:player}}}
-  [world _d]
-  (deltas/of-vec (tilt-deltas world)))
+(defn player-deltas
+  "Returns the deltas that tip the big dripleaves under player p,
+  an entry."
+  [world [_ e]]
+  (when (:on-ground e)
+    (let [changes (tilted-under world (sorted-map) e)]
+      (when (seq changes) (edit/set-deltas world (vec changes))))))
