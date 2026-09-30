@@ -67,6 +67,10 @@
    :schedule-ticks
    {:scope :level :schema [:cat [:map-of :int Coll]]
     :apply level/schedule-ticks}
+   :schedule-copied
+   {:scope :level :schema [:cat Coll]
+    :apply (fn [w [_ es]]
+             (update w :block-ticks schedule/add-ordered es))}
    :openers
    {:scope :level :schema [:cat Pos :int] :apply level/openers}
    :shulker-anim

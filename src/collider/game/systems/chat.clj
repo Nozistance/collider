@@ -8,6 +8,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
             [collider.game.experience :as xp]
+            [collider.game.command.args :as cmd-args]
             [collider.game.command.item-args :as item-args]
             [collider.game.command.block-args :as block-args]
             [collider.game.command.reader :as cmd-reader]
@@ -23,6 +24,7 @@
             [collider.game.apply :as apply]
             [collider.game.level :as level]
             [collider.game.player :as player]
+            [collider.game.systems.blocks.clone :as clone]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.effects :as effects]
@@ -214,6 +216,21 @@
                                            changes opts)]
     [(in-level world dim adds) (in-level world dim ds) n placed]))
 
+(defn- area ^long [[[x1 x2] [y1 y2] [z1 z2]]]
+  (* (inc (- (long x2) (long x1))) (inc (- (long y2) (long y1)))
+     (inc (- (long z2) (long z1)))))
+
+(defn- rule-value [world k]
+  (get-in world [:rules k] (rules/defaults k)))
+
+(defn- too-big
+  "The error of a command that would change more cells than the
+  rule max_block_modifications allows, FillCommand and CloneCommands."
+  [world eid k bounds]
+  (let [limit (long (rule-value world :max-block-modifications))
+        n (area bounds)]
+    (when (> n limit) (fail eid k limit n))))
+
 (defn- filled [world eid bounds block mode test]
   (let [changes (fill-changes bounds (:state block) mode)
         [adds ds n] (edited world changes (mode-opts mode test))]
@@ -241,10 +258,12 @@
          (flat-in? x z))))
 
 (defn- fill-by [world eid corners block mode test]
-  (if-let [k (some #(pos-error (source-level world) %)
-                   [(subvec corners 0 3) (subvec corners 3 6)])]
-    (fail eid k)
-    (filled world eid (box corners) block mode test)))
+  (let [bounds (box corners)]
+    (if-let [k (some #(pos-error (source-level world) %)
+                     [(subvec corners 0 3) (subvec corners 3 6)])]
+      (fail eid k)
+      (or (too-big world eid "commands.fill.toobig" bounds)
+          (filled world eid bounds block mode test)))))
 
 (defn- fill-deltas [world eid [ax ay az bx by bz block mode]]
   (fill-by world eid [ax ay az bx by bz] block mode nil))
@@ -253,6 +272,118 @@
   [world eid [ax ay az bx by bz block _ filter mode]]
   (fill-by world eid [ax ay az bx by bz] block mode
            #(block-args/matches? filter % nil)))
+
+(defn- clone-args [[{:keys [from? to?]} & xs]]
+  (let [[sd xs] (if from? [(first xs) (rest xs)] [nil xs])
+        [x1 y1 z1 x2 y2 z2 & xs] xs
+        [td xs] (if to? [(first xs) (rest xs)] [nil xs])
+        [x y z f m] xs]
+    {:from sd :to td :begin [x1 y1 z1] :end [x2 y2 z2]
+     :dest [x y z] :filter f :mode m}))
+
+(defn- dim-of [world id]
+  (if id (cmd-args/dimension id schema/dims) (source-dim world)))
+
+(defn- dim-error [d]
+  (when (cmd-reader/error? d) (into [(:key d)] (:args d))))
+
+(defn- corner-error [world dim pos]
+  (when-let [k (pos-error (level-view world dim) pos)] [k]))
+
+(defn- clone-error
+  "The first error CloneCommands meets reading its arguments: the
+  source level, its corners, the target level, the destination."
+  [world {:keys [begin end dest]} fd td]
+  (or (dim-error fd)
+      (corner-error world fd begin)
+      (corner-error world fd end)
+      (dim-error td)
+      (corner-error world td dest)))
+
+(defn- moved-by [[lo hi] o]
+  [(+ (long lo) (long o)) (+ (long hi) (long o))])
+
+(defn- clone-boxes [{:keys [begin end dest]}]
+  (let [b (box (into begin end))
+        off (mapv (fn [[lo] d] (- (long d) (long lo))) b dest)]
+    [b off (mapv moved-by b off)]))
+
+(defn- meet? [[lo hi] [lo' hi']]
+  (and (<= (long lo') (long hi)) (<= (long lo) (long hi'))))
+
+(defn- overlap? [b d] (every? true? (map meet? b d)))
+
+(defn- chunk-corners [[x0 _ z0] [x1 _ z1]]
+  (let [c #(bit-shift-right (long %) 4)]
+    (for [cx (range (c x0) (inc (c x1)))
+          cz (range (c z0) (inc (c z1)))]
+      [(* 16 cx) 0 (* 16 cz)])))
+
+(defn- chunks-at?
+  "LevelReader.hasChunksAt between corners a and b as given."
+  [lv [_ y0 _ :as a] [_ y1 _ :as b]]
+  (and (>= (long y1) (chunk/level-min-y lv))
+       (<= (long y0) (chunk/level-max-y lv))
+       (not (unloaded? lv (chunk-corners a b)))))
+
+(defn- opened-level [world dim boxes]
+  (reduce (fn [[lv adds] bounds]
+            (let [[chunks more] (fetched lv bounds)]
+              [(assoc lv :chunks chunks) (into adds more)]))
+          [(level-view world dim) []] boxes))
+
+(defn- clone-test [{:keys [filter]} filtered?]
+  (cond filtered? (fn [st _] (block-args/matches? filter st nil))
+        (= "masked" filter) (fn [st _] (not (block/air-type? st)))))
+
+(defn- copied-tail [p]
+  (cond-> (into [] (mapcat (fn [[q e]] (edit/be-changed q e)))
+                (:entities p))
+    (seq (:ticks p)) (conj [:schedule-copied (:ticks p)])))
+
+(defn- clone-run
+  "The deltas of a clone planned as p and the cells it set."
+  [world [fd from fadds] [td to tadds] p]
+  (if (= fd td)
+    (let [ops (into (vec (:clear p)) (:place p))
+          [ds n] (edit/ops-deltas to ops)]
+      [(in-level world td (concat tadds ds (copied-tail p))) n])
+    (let [[cds] (when (seq (:clear p))
+                  (edit/ops-deltas from (:clear p)))
+          [ds n] (edit/ops-deltas to (:place p))]
+      [(concat (in-level world fd (concat fadds cds))
+               (in-level world td (concat tadds ds (copied-tail p))))
+       n])))
+
+(defn- cloned [world eid a opts fd td [b off d]]
+  (let [[from fadds] (opened-level world fd (if (= fd td) [b d] [b]))
+        [to tadds] (if (= fd td) [from fadds]
+                       (opened-level world td [d]))
+        p (clone/plan from to b off (clone-test a (:filtered? opts))
+                      (:mode a) (:strict? opts))
+        [ds n] (clone-run world [fd from fadds] [td to tadds] p)]
+    (if (zero? (long n))
+      (concat ds (fail eid "commands.clone.failed"))
+      (concat ds (say eid "commands.clone.success" n)))))
+
+(defn- clone-loaded? [world a fd td [_ _ d]]
+  (and (chunks-at? (level-view world fd) (:begin a) (:end a))
+       (chunks-at? (level-view world td) (:dest a) (mapv peek d))))
+
+(defn- clone-deltas [world eid [opts :as xs]]
+  (let [a (clone-args xs)
+        fd (dim-of world (:from a))
+        td (dim-of world (:to a))
+        [b _ d :as boxes] (clone-boxes a)]
+    (if-let [[k & with] (clone-error world a fd td)]
+      (apply fail eid k with)
+      (or (when (and (not (#{"force" "move"} (:mode a))) (= fd td)
+                     (overlap? b d))
+            (fail eid "commands.clone.overlap"))
+          (too-big world eid "commands.clone.toobig" b)
+          (when-not (clone-loaded? world a fd td boxes)
+            (fail eid "argument.pos.unloaded"))
+          (cloned world eid a opts fd td boxes)))))
 
 (defn- rule-hint [rule]
   (if (= :bool (:type (rules/table rule)))
@@ -1664,6 +1795,7 @@
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
    :fill fill-deltas :fill-where fill-where-deltas
+   :clone clone-deltas
    :reload reload-deltas
    :gamemode gamemode-deltas :defaultgamemode default-mode-deltas
    :spectate spectate-deltas})

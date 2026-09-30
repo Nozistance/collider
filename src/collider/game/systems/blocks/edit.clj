@@ -320,6 +320,14 @@
          [ds s] (run-deltas world changes base f)]
      [ds (:count s) (count (:placed s))])))
 
+(defn ops-deltas
+  "Returns [deltas n] for the ops of neighbors/run-counted, made
+  between ticks. n counts the puts that changed their cell."
+  [world ops]
+  (let [base (dec (long (:tick world)))
+        [ds s] (run-deltas world ops base neighbors/run-counted)]
+    [ds (:count s)]))
+
 (def ^:private game-master-types
   #{:command :structure :jigsaw :test :test-instance})
 

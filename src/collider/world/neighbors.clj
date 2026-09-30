@@ -388,22 +388,46 @@
         st (block-at s p)]
     (shape-changed s ctx q n st (dir/opposite side) st 2 update-limit)))
 
+(defn- set-told
+  "ServerLevel.updateNeighboursOnBlockSet: the cells around p hear of
+  the change there from old."
+  [s ctx p old]
+  (-> (removed s ctx p old (block-at s p) 1)
+      (neighbors-changed ctx p old)))
+
 (defn- op-run [s ctx [op x y]]
   (case op
-    :set (set-block s ctx x y update-limit)
+    (:set :put) (set-block s ctx x y update-limit)
     :notify (neighbors-changed s ctx x (block-at s x))
+    :tell (set-told s ctx x y)
     :edge (edged s ctx x y)
     :send (add-sent s x)))
 
 (defn run
   "Returns the level after ops run in order.
   An op [:set c flags] sets change c as it is, not shaped by its
-  neighbours. An op [:notify pos] tells the six blocks around pos of a
-  change there. An op [:edge pos side] updates the shapes of pos and
-  the cell on side against each other with flags 2. An op [:send pos]
-  tells the clients of pos."
+  neighbours; [:put c flags] does the same. An op [:notify pos] tells
+  the six blocks around pos of a change there, [:tell pos old] of a
+  change from old. An op [:edge pos side] updates the shapes of pos
+  and the cell on side against each other with flags 2. An op
+  [:send pos] tells the clients of pos."
   [chunks ctx ops]
   (run-each chunks ctx ops op-run))
+
+(defn- op-counted [[s n] ctx [op :as o]]
+  (let [w (write-count s)
+        s (op-run s ctx o)]
+    [s (if (and (= :put op) (< w (write-count s)))
+         (inc (long n))
+         n)]))
+
+(defn run-counted
+  "Returns the level after ops run in order, as run does. Its :count
+  holds the ops [:put c flags] that changed their cell."
+  [chunks ctx ops]
+  (let [start [(opened chunks) 0]
+        [s n] (reduce #(op-counted %1 ctx %2) start ops)]
+    (assoc (level s (chunk/editing? chunks)) :count n)))
 
 (defn- command-state
   [chunks ctx [p st fx]]

@@ -78,6 +78,30 @@
 
 (defn- lit [nm] [(keyword nm) [:literal {:name nm}]])
 
+(def ^:private clone-then
+  [:then [:enum {:values #{"force" "move" "normal"} :default nil}]])
+
+(defn- clone-way [[from? to? strict? filtered?]]
+  [(cond-> []
+     from? (conj (lit "from") [:sourceDimension [:dimension {}]])
+     :always (into (pos-args :x1 :y1 :z1 {:node "begin"}))
+     :always (into (pos-args :x2 :y2 :z2 {:node "end"}))
+     to? (conj (lit "to") [:targetDimension [:dimension {}]])
+     :always (into (pos-args :x :y :z {:node "destination"}))
+     strict? (conj (lit "strict"))
+     filtered? (conj (lit "filtered") [:filter [:block-predicate {}]])
+     (not filtered?) (conj (mode-arg #{"masked" "replace"}))
+     :always (conj clone-then))
+   [:world :clone {:from? from? :to? to? :strict? strict?
+                   :filtered? filtered?}]])
+
+(def ^:private clone-form
+  (into [:clone "copy a box of blocks to another place"]
+        (mapcat clone-way)
+        (for [from? [false true] to? [false true]
+              strict? [false true] filtered? [false true]]
+          [from? to? strict? filtered?])))
+
 (def ^:private clock-ways
   [["set" [[:time [:ticks {:min 0}]]] :time-set]
    ["set" [[:timemarker [:marker {}]]] :time-marker]
@@ -285,6 +309,7 @@
                                    "strict"}
                          :default nil}]])
     [:world :fill-where]]
+   clone-form
    [:reload "reread config.edn" [] [:world :reload]]
    [:gamemode "set the game mode of players (default: yours)"
     [[:gamemode [:game-mode {}]]
@@ -399,7 +424,8 @@
    :block-predicate [:block-predicate nil]
    :anchor [:entity-anchor nil]
    :message [:message nil]
-   :component [:component nil]})
+   :component [:component nil]
+   :dimension [:dimension nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

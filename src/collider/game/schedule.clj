@@ -178,6 +178,28 @@
   [ticks]
   (for [[at m] (:queue ticks) [id tys] m ty (keys tys)] [at id ty]))
 
+(defn copied
+  "Returns the ticks that LevelTicks.copyAreaFrom copies, each as
+  [at id ty order]: every tick of a block id that in? accepts, moved
+  to (moved id). They keep their order among themselves and follow
+  the last of them."
+  [ticks in? moved]
+  (let [xf (comp (mapcat row-entries) (filter #(in? (% 2))))
+        es (into [] xf (:queue ticks))
+        orders (map second es)
+        lo (long (reduce min Long/MAX_VALUE orders))
+        hi (long (reduce max Long/MIN_VALUE orders))]
+    (mapv (fn [[at order id ty]]
+            [at (moved id) ty (+ (- (long order) lo) hi 1)])
+          es)))
+
+(defn add-ordered
+  "Returns ticks with each tick [at id ty order] of entries added in
+  its own order. A block keeps a tick of a type it already has."
+  [ticks entries]
+  (reduce (fn [t [at id ty order]] (added t at id ty order))
+          ticks entries))
+
 (defn- relative [^long t [at _ id ty]]
   [(- (long at) t) (chunk/id->block-pos id) ty])
 
