@@ -208,7 +208,7 @@
 
 (defn- active-look [e ^long t]
   (let [look (:look e)]
-    (when (and look (> (long (:until look 0)) t)) look)))
+    (when (and look (> (long (or (:until look) 0)) t)) look)))
 
 (defn- head-same? [e look ^double hy ^double hp]
   (and (identical? look (:look e))
@@ -312,15 +312,13 @@
       -0.003
       (- vy (/ g 16.0)))))
 
-(defn- stepped ^Move [world e vel half height]
-  (phys/move (:chunks world) (:pos e) vel half height max-up-step
-             (phys/context e)))
+(defn- stepped ^Move [world e vel half height c]
+  (phys/move (:chunks world) (:pos e) vel half height max-up-step c))
 
-(defn- supported [world e ^Move mv half]
+(defn- supported [world e ^Move mv half c]
   (if-not (phys/on-ground? mv)
     [nil false]
     (let [ch (:chunks world) p (phys/pos mv) o (:pos e)
-          c (phys/context e)
           sb (phys/supporting-block ch p half c)
           s (or sb (when-not (:no-blocks? e)
                      (phys/supporting-block
@@ -414,8 +412,9 @@
 (defn- travel-air [world e vel half height og? f]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
         d (driven e vel (friction-speed og? bf (speed-of e)))
-        ^Move mv (stepped world e d half height)
-        [sup nb?] (supported world e mv half)
+        c (phys/context e)
+        ^Move mv (stepped world e d half height c)
+        [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         k (fmul bf air-drag)
         [h u] (moved-fluid world e d mv half height f)]
@@ -429,8 +428,9 @@
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
         d (driven e vel fluid-drive)
-        ^Move mv (stepped world e d half height)
-        [sup nb?] (supported world e mv half)
+        c (phys/context e)
+        ^Move mv (stepped world e d half height c)
+        [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         u (phys/vel mv)
         vy (fluid-fall g falling? (* (v/y u) water-slowdown))
@@ -449,9 +449,9 @@
 (defn- travel-lava [world e vel half height f]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
         g (fall-gravity e (v/y vel))
-        d (driven e vel fluid-drive)
-        ^Move mv (stepped world e d half height)
-        [sup nb?] (supported world e mv half)
+        d (driven e vel fluid-drive) c (phys/context e)
+        ^Move mv (stepped world e d half height c)
+        [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         [h u] (moved-fluid world e d mv half height f)
         shallow? (<= (double (:lava h)) (double (:threshold f)))
@@ -800,8 +800,8 @@
   (or (< j i) (not (aget ticking j))))
 
 (defn- taker [ticking slots es i sh]
-  (let [j (get slots (nth sh 0))]
-    (when (and j (takes-now? ticking i j)
+  (let [j (push/slot slots (nth sh 0))]
+    (when (and (>= j 0) (takes-now? ticking i j)
                (push/alive? (nth (nth es j) 1)))
       j)))
 
@@ -827,10 +827,10 @@
 (def ^:private ^:const cramming-key 0x63726d)
 
 (defn- max-cramming ^long [world]
-  (long (get-in world [:rules :max-entity-cramming] 24)))
+  (long (get (:rules world) :max-entity-cramming 24)))
 
 (defn- live-of [slots es]
-  (fn [o] (push/alive? (nth (nth es (get slots o)) 1))))
+  (fn [o] (push/alive? (nth (nth es (push/slot slots o)) 1))))
 
 (defn- crowd [index slots es eid e]
   (let [[half height] (mobs/box-of e)
@@ -927,7 +927,7 @@
 (defn- island [active es]
   (let [es (vec es)]
     {:es es :index (push/index-of es) :ticking (ticking-of active es)
-     :slots (into {} (map-indexed (fn [i [eid _]] [eid i])) es)}))
+     :slots (push/slots es)}))
 
 (defn- walk
   "Returns the deltas of the island isl stepped in the order of its

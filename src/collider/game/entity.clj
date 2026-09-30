@@ -5,7 +5,8 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
-  (:import (collider.game.entity.records Item Mob Orb)
+  (:import (clojure.lang PersistentHashMap)
+           (collider.game.entity.records Item Mob Orb)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -30,6 +31,27 @@
   (let [r (fn [k] (random/of-key (conj ks k)))]
     [(- (* 0.2 (r :vx)) 0.1) 0.2 (- (* 0.2 (r :vz)) 0.1)]))
 
+(def ^:private mob-fields (Mob/getBasis))
+
+(defn- field [e f] (list '. e (symbol (str "-" f))))
+
+(defmacro ^:private with-extmap [e x]
+  (let [o (with-meta (gensym "m") {:tag `Mob})]
+    `(let [~o ~e]
+       (new Mob ~@(map #(field o %) mob-fields) (meta ~o) ~x))))
+
+(defmacro ^:private extmap [e]
+  (field (with-meta e {:tag `Mob}) "__extmap"))
+
+(defn- compact
+  "Returns mob e with its few keys beyond its fields in an array map,
+  which finds a key without hashing it."
+  [e]
+  (let [x (extmap e)]
+    (if (and (instance? PersistentHashMap x) (<= (count x) 8))
+      (with-extmap e (into {} x))
+      e)))
+
 (defn- record-of [m]
   (case (:type m)
     :player (types/map->Player m)
@@ -41,7 +63,7 @@
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
      :experience-bottle)
     (types/map->Projectile m)
-    (types/map->Mob m)))
+    (compact (types/map->Mob m))))
 
 (defn of
   "Returns the entity m as the record its type calls for."
@@ -78,10 +100,6 @@
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
      :experience-bottle) 0.2125
     1.19))
-
-(def ^:private mob-fields (Mob/getBasis))
-
-(defn- field [e f] (list '. e (symbol (str "-" f))))
 
 (defn- same? [o vs]
   `(and ~@(map (fn [[k s]] `(identical? ~s ~(field o (name k)))) vs)))

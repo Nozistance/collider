@@ -32,8 +32,6 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private int used;
     private double widest, slack;
     private double[] px, pz, ph;
-    private static final ThreadLocal<int[]> HITS =
-            ThreadLocal.withInitial(() -> new int[16]);
 
     /// Returns the grid of bodies `eids`, ascending, each with half
     /// width, height, position, and the tick and rank in it at which
@@ -179,14 +177,15 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
 
-    private int overlapping(double x, double y, double z, double half,
-                            double height, long eid, long hi) {
+    private int[] overlapping(double x, double y, double z,
+                              double half, double height, long eid,
+                              long hi) {
         double r = half + widest, w = r + slack;
         long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
         long cx = cell(x), cz = cell(z);
         boolean pinned = slack > 0.0;
-        int[] hits = HITS.get();
+        int[] hits = new int[16];
         int n = 0;
         for (long bx = x0; bx <= x1; bx++) {
             long dx = Math.floorDiv(bx, 4) - cx;
@@ -206,7 +205,6 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                         if (ox < -1 || ox > 1 || oz < -1 || oz > 1) continue;
                         if (n == hits.length) {
                             hits = Arrays.copyOf(hits, n * 2);
-                            HITS.set(hits);
                         }
                         hits[n++] = j;
                     }
@@ -218,7 +216,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         } else {
             Arrays.sort(hits, 0, n);
         }
-        return n;
+        return Arrays.copyOf(hits, n);
     }
 
     private static long section(double c) {
@@ -263,9 +261,9 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private Object shoved(double x, double y, double z, double half,
                           double height, long eid, long hi) {
-        int n = overlapping(x, y, z, half, height, eid, hi);
+        int[] hits = overlapping(x, y, z, half, height, eid, hi);
+        int n = hits.length;
         if (n == 0) return PersistentVector.EMPTY;
-        int[] hits = HITS.get();
         Object[] acc = new Object[n];
         int k = 0;
         for (int i = 0; i < n; i++) {
@@ -293,8 +291,9 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private Object touched(double x, double y, double z, double half,
                            double height, long eid) {
-        int n = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
-        int[] hits = HITS.get();
+        int[] hits = overlapping(x, y, z, half, height, eid,
+                                 Long.MAX_VALUE);
+        int n = hits.length;
         Object[] acc = new Object[n];
         for (int i = 0; i < n; i++) acc[i] = eids[hits[i]];
         return vector(acc, n);

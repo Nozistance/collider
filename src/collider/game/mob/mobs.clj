@@ -136,12 +136,21 @@
     (keyword (name (if (and (= :cow s) (moody? e)) :cow-moody s))
              (name k))))
 
-(def ^:private sheep-meta
-  (into {} (for [color (range 16) baby [false true]
-                 burning [false true] sheared [false true]]
-             [[color baby burning sheared]
-              (cond-> {:color color :baby? baby :burning? burning}
-                sheared (assoc :sheared? true))])))
+(def ^:private sheep-metas
+  (vec (for [color (range 16) baby [false true]
+             burning [false true] sheared [false true]]
+         (cond-> {:color color :baby? baby :burning? burning}
+           sheared (assoc :sheared? true)))))
+
+(defn- bit ^long [b ^long v] (if b v 0))
+
+(defn- sheep-meta [e]
+  (let [c (long (or (:color e) 0))]
+    (when (and (<= 0 c) (< c 16))
+      (nth sheep-metas
+           (bit-or (bit-shift-left c 3)
+                   (bit (some? (:baby-until e)) 4)
+                   (bit (:burning? e) 2) (bit (:sheared? e) 1))))))
 
 (def ^:private cow-meta
   (into {} (for [v cow-variants s [:classic :moody]
@@ -161,10 +170,7 @@
   "Returns what clients see of mob e besides its movement."
   [e]
   (case (:type e)
-    :sheep (sheep-meta [(long (or (:color e) 0))
-                        (some? (:baby-until e))
-                        (burning? e)
-                        (boolean (:sheared? e))])
+    :sheep (sheep-meta e)
     :cow (cow-meta [(cow-variants (long (or (:color e) 0)))
                     (if (moody? e) :moody :classic)
                     (some? (:baby-until e)) (burning? e)])

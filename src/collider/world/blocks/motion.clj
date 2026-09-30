@@ -2,7 +2,8 @@
   "What the blocks an entity touches do to the speed it keeps."
   (:require [collider.data :as data]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
@@ -100,10 +101,25 @@
 
 (def ^:private ^:const below-offset (double (float 0.500001)))
 
-(defn- holds-support? [st]
-  (contains? #{:wall :fence-gate} (block/type-of (long st))))
+(defn- state-table ^booleans [ok?]
+  (let [a (boolean-array (data/block-state-count))]
+    (dotimes [st (alength a)] (aset a st (boolean (ok? st))))
+    a))
 
-(defn- floor-of ^long [v] (long (Math/floor (double v))))
+(def ^:private ^:table supports
+  (delay (state-table #(#{:wall :fence-gate} (block/type-of %)))))
+
+(def ^:private ^:table watery
+  (delay (state-table
+           #(#{:water :bubble-column} (block/block-of %)))))
+
+(defn- flagged? [^booleans a ^long st]
+  (and (< -1 st) (< st (alength a)) (aget a st)))
+
+(defn- holds-support? [st]
+  (flagged? @supports (long st)))
+
+(defn- floor-of ^long [^double v] (long (Math/floor v)))
 
 (defn below-state
   "Returns the state of the block under a body at pos that sets its
@@ -112,17 +128,18 @@
   how far below the body Entity.getOnPos looks."
   (^long [chunks pos sup] (below-state chunks pos sup below-offset))
   (^long [chunks pos sup ^double offset]
-   (let [y (floor-of (- (double (nth pos 1)) offset))
+   (let [y (floor-of (- (v/y pos) offset))
          st (when sup (chunk/at chunks sup))
-         x (floor-of (nth (or sup pos) 0))
-         z (floor-of (nth (or sup pos) 2))]
+         xz (or sup pos)
+         x (floor-of (v/x xz))
+         z (floor-of (v/z xz))]
      (if (and sup (holds-support? st))
        st
        (state-at chunks x y z)))))
 
 (defn- feet-state ^long [chunks pos]
-  (state-at chunks (floor-of (nth pos 0)) (floor-of (nth pos 1))
-            (floor-of (nth pos 2))))
+  (state-at chunks (floor-of (v/x pos)) (floor-of (v/y pos))
+            (floor-of (v/z pos))))
 
 (defn block-speed-factor
   "Returns what the blocks at and under a body at pos multiply its
@@ -132,6 +149,6 @@
   (let [st (feet-state chunks pos)
         here (speed-factor st)]
     (if (or (not (== here 1.0))
-            (contains? #{:water :bubble-column} (block/block-of st)))
+            (flagged? @watery st))
       here
       (speed-factor (below-state chunks pos sup)))))

@@ -200,9 +200,9 @@
 
 (defn pos->id
   "Returns the chunk coordinates cx cz as one long id."
-  ^long [cx cz]
-  (bit-or (bit-shift-left (bit-and (long cx) 0xFFFFFFFF) 32)
-          (bit-and (long cz) 0xFFFFFFFF)))
+  ^long [^long cx ^long cz]
+  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
+          (bit-and cz 0xFFFFFFFF)))
 
 (defn id->pos
   "Returns the chunk coordinates that chunk-id holds."

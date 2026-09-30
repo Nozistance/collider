@@ -4,7 +4,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Islands PushGrid Turns)))
+  (:import (collider.game.mob Islands PushGrid Slots Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -12,15 +12,20 @@
 
 (def ^:private ^:const player-height (double (float 1.8)))
 
-(defn- pushable-half ^double [e]
+(def ^:private player-box [player-half player-height])
+
+(def ^:private no-box [0.0 1.0])
+
+(defn- pushable-box [e]
   (case (:type e)
-    :player player-half
-    (double (or (nth (mobs/box-of e) 0 nil) 0.0))))
+    :player player-box
+    (or (mobs/box-of e) no-box)))
+
+(defn- pushable-half ^double [e]
+  (double (nth (pushable-box e) 0)))
 
 (defn- pushable-height ^double [e]
-  (case (:type e)
-    :player player-height
-    (double (or (nth (mobs/box-of e) 1 nil) 1.0))))
+  (double (nth (pushable-box e) 1)))
 
 (defn- cell-key ^long [^long cx ^long cz]
   (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
@@ -34,7 +39,7 @@
   "Returns true when a body takes shoves.
   A dead body takes none but still steps and shoves the living."
   [e]
-  (pos? (double (:health e 1.0))))
+  (let [h (:health e)] (or (nil? h) (pos? (double h)))))
 
 (defn- body?
   [held [_ e]]
@@ -95,9 +100,9 @@
 (defn moved
   "Returns index after body eid moved to its place in entry e."
   [^PushGrid index eid _old-pos e]
-  (let [p (:pos e)]
-    (PushGrid/moved index (long eid) (pushable-half e)
-                    (pushable-height e) (double (v/x p))
+  (let [p (:pos e) [h t] (pushable-box e)]
+    (PushGrid/moved index (long eid) (double h) (double t)
+                    (double (v/x p))
                     (double (v/y p)) (double (v/z p)) (came e)
                     (rank eid e))))
 
@@ -117,6 +122,20 @@
              (same-section? (v/z from) (v/z to)))
       (:arrived e)
       [(* 2 (long t)) (inc (* 2 (long eid)))])))
+
+(defn slots
+  "Returns the place of each body of entries by its id."
+  ^Slots [entries]
+  (let [n (count entries) eids (long-array n)]
+    (dotimes [i n] (aset eids i (long (nth (nth entries i) 0))))
+    (Slots/of eids)))
+
+(defn slot
+  "Returns the index of body eid in slots, or -1 when it has none."
+  {:inline (fn [s eid]
+             `(Slots/slot ~(with-meta s {:tag `Slots}) (long ~eid)))}
+  ^long [^Slots s eid]
+  (Slots/slot s (long eid)))
 
 (defn- grouped [entries]
   (let [n (count entries)

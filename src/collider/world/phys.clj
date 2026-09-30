@@ -134,6 +134,13 @@
   (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
             (double half) (double height)))
 
+(defn burns
+  "Returns the bits of bits of each cell the span outer touches, and
+  bit 4 when a cell of the span inner holds bit 2. Each span is x0
+  x1 y0 y1 z0 z1 with the ends left out."
+  ^long [chunks ^bytes bits ^longs outer ^longs inner]
+  (Phys/burns chunks bits outer inner))
+
 (defn free?
   "Returns true when a body of that size meets no block after a
   move by dx dy dz. Only the end position counts, not the path.

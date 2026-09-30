@@ -209,8 +209,6 @@
 
 (def ^:private ^:const sunk-bit 4)
 
-(def ^:private ^:const all-bits 7)
-
 (defn- any-bit? [^long flags ^long mask]
   (not (zero? (bit-and flags mask))))
 
@@ -231,38 +229,14 @@
       (aset 3 (min (inc chunk/max-y) (floor-hi (- (+ py height) sy))))
       (aset 4 (floor-lo (- pz h))) (aset 5 (floor-hi (+ pz h))))))
 
-(defn- mark-cell [chunks ^longs acc x y z inner?]
-  (let [st (chunk/block-state chunks x y z)
-        lava? (block/lava? st)]
-    (when lava? (aset acc 0 (bit-or (aget acc 0) lava-bit)))
-    (when (block/fire? st)
-      (aset acc 0 (bit-or (aget acc 0) fire-bit)))
-    (when (and lava? inner?)
-      (aset acc 0 (bit-or (aget acc 0) sunk-bit)))))
+(defn- burn-bit ^long [st]
+  (cond (block/lava? st) lava-bit (block/fire? st) fire-bit :else 0))
 
-(defn- scan-z [chunks ^longs acc ^longs outer ^longs inner x y yin?]
-  (let [z1 (aget outer 5) iz0 (aget inner 4) iz1 (aget inner 5)]
-    (loop [z (aget outer 4)]
-      (when (and (< z z1) (not= all-bits (aget acc 0)))
-        (mark-cell chunks acc x y z
-                   (and yin? (>= z iz0) (< z iz1)))
-        (recur (inc z))))))
-
-(defn- scan-y [chunks ^longs acc ^longs outer ^longs inner x xin?]
-  (let [y1 (aget outer 3) iy0 (aget inner 2) iy1 (aget inner 3)]
-    (loop [y (aget outer 2)]
-      (when (and (< y y1) (not= all-bits (aget acc 0)))
-        (scan-z chunks acc outer inner x y
-                (and xin? (>= y iy0) (< y iy1)))
-        (recur (inc y))))))
-
-(defn- scan-x [chunks ^longs acc ^longs outer ^longs inner]
-  (let [x1 (aget outer 1) ix0 (aget inner 0) ix1 (aget inner 1)]
-    (loop [x (aget outer 0)]
-      (when (and (< x x1) (not= all-bits (aget acc 0)))
-        (scan-y chunks acc outer inner x
-                (and (>= x ix0) (< x ix1)))
-        (recur (inc x))))))
+(def ^:private ^:table burn-bits
+  (delay
+    (let [a (byte-array (data/block-state-count))]
+      (dotimes [st (alength a)] (aset a st (byte (burn-bit st))))
+      a)))
 
 (defn- probe ^long [world e]
   (let [[half height] (box-of e)
@@ -270,10 +244,8 @@
         outer (span p (double half) (double height)
                     [fluid-margin fluid-margin])
         inner (span p (double half) (double height)
-                    [sunk-shrink-xz sunk-shrink-y])
-        ^longs acc (long-array 1)]
-    (scan-x (:chunks world) acc outer inner)
-    (aget acc 0)))
+                    [sunk-shrink-xz sunk-shrink-y])]
+    (phys/burns (:chunks world) @burn-bits outer inner)))
 
 (defn- burning-flag [eid e ^long fire sunk?]
   (let [lit? (boolean (or (pos? fire) sunk?))]

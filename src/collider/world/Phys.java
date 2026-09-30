@@ -197,6 +197,32 @@ public final class Phys {
         return true;
     }
 
+    /// Returns the bits of `bits` of each cell from `outer` touches,
+    /// each span `{x0 x1 y0 y1 z0 z1}` with the ends left out, and
+    /// the bits of `inner` shifted by two for lava in a cell of
+    /// `inner`. Bit 1 is fire, 2 lava.
+    public static long burns(ChunkIndex chunks, byte[] bits,
+                             long[] outer, long[] inner) {
+        long acc = 0;
+        for (long x = outer[0]; x < outer[1] && acc != 7; x++) {
+            boolean xin = x >= inner[0] && x < inner[1];
+            for (long y = outer[2]; y < outer[3] && acc != 7; y++) {
+                boolean yin = xin && y >= inner[2] && y < inner[3];
+                for (long z = outer[4]; z < outer[5] && acc != 7; z++) {
+                    int st = Chunk.blockAt(chunks, (int) x, (int) y,
+                                           (int) z);
+                    long b = st >= 0 && st < bits.length ? bits[st] : 0;
+                    acc |= b;
+                    if ((b & 2) != 0 && yin && z >= inner[4]
+                            && z < inner[5]) {
+                        acc |= 4;
+                    }
+                }
+            }
+        }
+        return acc;
+    }
+
     private static boolean overlaps(double[] a, int o, double[] box) {
         return a[o + 3] > box[0] && box[3] > a[o]
             && a[o + 4] > box[1] && box[4] > a[o + 1]
