@@ -426,6 +426,7 @@
 (defn blasts
   "Returns the jobs that give the deltas of every blast requested
   this tick. The deltas come in request order."
+  {:wake {:deltas #{:explode}}}
   [world d]
   (let [reqs (requests d)]
     (when (seq reqs)

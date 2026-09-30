@@ -24,6 +24,7 @@
 (defn sign-editors
   "Returns the deltas that take a sign back from an editor who left.
   Nobody is told, as the text did not change."
+  {:wake {:keys [:block-entities]}}
   [world _d]
   (into [] (mapcat (fn [entry] (release-deltas world entry)))
         (edited world)))

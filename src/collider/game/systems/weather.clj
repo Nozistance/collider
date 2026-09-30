@@ -42,9 +42,10 @@
 (defn weather
   "Returns the rain and thunder of a level that can have weather.
   The messages of the change come with them."
+  {:wake :always}
   [world d]
   (when (weather/can-have-weather? (:dim world))
     (let [w (weather/advance world)]
-      (concat [[:advance-weather]] (level-messages w)
+      (concat [[:advance-weather w]] (level-messages w)
               (switch-messages w)
               (join-messages w (state/joins d))))))

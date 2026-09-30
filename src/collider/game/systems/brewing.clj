@@ -44,5 +44,7 @@
             (when (not= st st') (edit/set-deltas world [[pos st']]))
             (when brewed? (brew-deltas world pos spill)))))
 
-(defn brewing [world _d]
+(defn brewing
+  {:wake {:keys [:block-entities]}}
+  [world _d]
   [#(mapcat (partial stand-deltas world) (stands world))])

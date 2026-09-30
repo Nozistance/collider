@@ -225,9 +225,10 @@
   its dimension."
   [world dim]
   (let [part (get-in world [:levels dim])
-        lv (-> (dissoc world :levels)
-               (into part)
-               (into (bounds-of dim)))]
+        lv (as-> (dissoc! (transient world) :levels) t
+             (reduce-kv assoc! t part)
+             (persistent! (reduce-kv assoc! t (bounds-of dim))))
+        lv (if-let [m (meta world)] (with-meta lv m) lv)]
     (if-let [t (::types (meta part))]
       (vary-meta lv assoc ::types t)
       lv)))
@@ -351,6 +352,15 @@
         ids (ids-of (or (types-by lv) (by-type es)) ts)
         entry (fn [eid] (MapEntry/create eid (get es eid)))]
     (into [] (map entry) ids)))
+
+(defn holds-types?
+  "Returns true when lv holds an entity whose type is in set ts."
+  [lv ts]
+  (let [held? (fn [_ t _] (if (contains? ts t) (reduced true) false))]
+    (if-let [types (types-by lv)]
+      (reduce-kv held? false types)
+      (reduce-kv (fn [_ _ e] (held? nil (:type e) nil))
+                 false (:entities lv)))))
 
 (defn active-of-types
   "Returns the entries of type ts whose entity is in an active chunk."
@@ -1222,9 +1232,9 @@
       (update w :openers dissoc pos)
       (assoc-in w [:openers pos] n))))
 
-(defn- weather-advanced [w]
+(defn- weather-advanced [w m]
   (reduce-kv (fn [w k v] (if (= v (get w k)) w (assoc w k v)))
-             w (weather/advance w)))
+             w (or m (weather/advance w))))
 
 (def world-apply
   {:remove-entity        (fn [w [_ eid]] (player-quit w eid))
@@ -1259,7 +1269,7 @@
                   (merge w (select-keys m weather/fields)))
    :set-block-entity (fn [w [_ pos e]] (block-entity-set w pos e))
    :advance-tick (fn [w _] (dissoc (advance w) :quits))
-   :advance-weather (fn [w _] (weather-advanced w))
+   :advance-weather (fn [w [_ m]] (weather-advanced w m))
    :observed (fn [w [_ m]] (assoc w :observed m))
    :explode (fn [w _] w)
    :change-dimension (fn [w _] w)

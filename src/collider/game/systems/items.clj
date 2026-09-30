@@ -617,6 +617,7 @@
 
 (defn items
   "Returns the tick steps of every dropped item in an active chunk."
+  {:wake {:types #{:item}}}
   [world _d]
   (let [step #(vector (stepped-item world %))
         items (state/active-of-types world [:item])
@@ -627,5 +628,6 @@
 
 (defn pickups
   "Returns the deltas of players taking up nearby items."
+  {:wake {:types #{:item}}}
   [world _d]
   [#(pickup-deltas world (state/active-of-types world [:item]))])

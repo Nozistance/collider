@@ -113,6 +113,7 @@
   "Returns a step for every primed TNT this tick.
   A TNT lit this tick is cut loose from its block and steps like
   the rest."
+  {:wake {:types #{:tnt}}}
   [world _d]
   (let [tnts (tnt-entries world)
         due (filterv due? tnts)

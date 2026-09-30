@@ -134,5 +134,6 @@
 
 (defn observe
   "Returns what the detector channels make of the tick."
+  {:wake :always}
   [world d]
   (into [] (mapcat (fn [c] (c world d))) channels))

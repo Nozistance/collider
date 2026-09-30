@@ -178,12 +178,14 @@
 
 (defn chunk-loading
   "Brings in the chunks the players need."
+  {:wake {:types #{:player} :keys [:spawning]}}
   [world _d]
   [#(when (loads? world) (loading-deltas world (needed-ids world)))])
 
 (defn chunk-streaming
   "Sends chunks to the players and takes in the saved ones.
   A body returning with its chunk waits for the next tick."
+  {:wake {:types #{:player} :events #{:chunk-loaded}}}
   [world d]
   (cond-> (into [] (keep #(stream-thunk world %))
                 (state/player-entries world))
@@ -197,6 +199,7 @@
 (defn arrival-streaming
   "Sends their first chunks to the players who entered the level.
   They get them as the tick ends for them."
+  {:wake {:deltas #{:change-dimension}}}
   [world d]
   (mapv (fn [entry] #(stream-deltas world entry))
         (arrived world d)))
@@ -219,6 +222,7 @@
   "Drops the chunks the world no longer needs.
   It ages the tickets of chunks read mid-tick. The chunks are stored
   as the last tick left them."
+  {:wake {:keys [:unknown [:config :unload-chunks?]]}}
   [world _]
   (let [old (or (:unknown world) (i/int-map))
         held (purged old)]

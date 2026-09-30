@@ -16,5 +16,6 @@
 (defn experience
   "Returns the deltas that show each player whose experience changed
   its bar."
+  {:wake {:types #{:player}}}
   [world _d]
   [#(into [] (mapcat shown-deltas) (state/player-entries world))])

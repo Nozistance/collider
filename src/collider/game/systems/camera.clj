@@ -20,6 +20,7 @@
 (defn camera
   "Returns a step for the spectator actions of this tick and for the
   spectators that follow their cameras."
+  {:wake {:types #{:player} :events #{:spectate}}}
   [world d]
   (let [events (:input d)]
     [#(camera-deltas world events)]))

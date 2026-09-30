@@ -137,14 +137,6 @@
   (let [[w' lv] (state/entered w dim (ds dim))]
     [w' (if lv {dim lv} views)]))
 
-(defn- begin [world events]
-  (let [by (group-by #(event-dim world %) events)
-        ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
-                 dims)
-        [w views] (reduce #(entered ds %1 %2) [world nil] dims)
-        heeded (fn [[dim d]] [dim (state/heeded w dim d)])]
-    [w (into {} (map heeded) ds) views]))
-
 (defn- awaited? [world dim]
   (let [spawning (:spawning world)]
     (and (not (deltas/vacant? spawning))
@@ -154,6 +146,21 @@
   (and (not (identical? home dim))
        (state/idle? (get (:levels world) dim))
        (not (awaited? world dim))))
+
+(defn- awake-views [world views]
+  (reduce (fn [vs dim]
+            (cond (asleep? world dim) (dissoc vs dim)
+                  (contains? vs dim) vs
+                  :else (assoc vs dim (state/level world dim))))
+          (or views {}) dims))
+
+(defn- begin [world events]
+  (let [by (group-by #(event-dim world %) events)
+        ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
+                 dims)
+        [w views] (reduce #(entered ds %1 %2) [world nil] dims)
+        heeded (fn [[dim d]] [dim (state/heeded w dim d)])]
+    [w (into {} (map heeded) ds) (awake-views w views)]))
 
 (defn- skipped! [world s dim ^Throwable t]
   (let [unit (log/name-of s)
@@ -181,24 +188,61 @@
 (defn- runs-in? [dim s]
   (or (identical? home dim) (not (server-systems s))))
 
+(defn- held? [v]
+  (if (coll? v) (not (empty? v)) (boolean v)))
+
+(defn- tagged? [tags ds]
+  (loop [i (dec (count ds))]
+    (cond (neg? i) false
+          (contains? tags (nth (nth ds i) 0)) true
+          :else (recur (dec i)))))
+
+(defn- kept? [lv ks]
+  (loop [i (dec (count ks))]
+    (cond (neg? i) false
+          (let [k (nth ks i)]
+            (held? (if (vector? k) (get-in lv k) (get lv k))))
+          true
+          :else (recur (dec i)))))
+
+(defn- due? [lv n]
+  (zero? (rem (long (:tick lv)) (long n))))
+
+(defn- woken? [w lv d]
+  (let [types (:types w) events (:events w) ds (:deltas w)
+        ks (:keys w) every (:every w)]
+    (boolean
+      (or (and every (due? lv every))
+          (and types (state/holds-types? lv types))
+          (and events (tagged? events (deltas/input-of d)))
+          (and ds (tagged? ds (deltas/world-of d)))
+          (and ks (kept? lv ks))))))
+
+(defn awake?
+  "Returns true when system s may have work in level lv on deltas d.
+  Its :wake names the events, the deltas, the entity types, the keys
+  of the level and the period in ticks that are its work. A system
+  with no :wake, or the :wake :always, never sleeps."
+  [s lv d]
+  (let [w (:wake (meta s))]
+    (or (not (map? w)) (woken? w lv d))))
+
+(defn- awake-in [lv d dim phase]
+  (filterv #(and (runs-in? dim %) (awake? % lv d)) phase))
+
+(defn- level-deltas [world lv ds server phase dim]
+  (let [d (get ds dim)
+        ks (awake-in lv d dim phase)]
+    (when (pos? (count ks))
+      (let [lv (assoc lv :server world)
+            fs (mapv #(thunk world lv d server dim %) ks)
+            timed (cost/timer (:tick world))]
+        (deltas/with-dim
+         (deltas/run-weighed cost/heavy? timed ks fs)
+         dim)))))
+
 (defn- view [world views dim]
   (or (get views dim) (state/level world dim)))
-
-(defn- skipped? [world views dim]
-  (if views
-    (not (contains? views dim))
-    (asleep? world dim)))
-
-(defn- level-deltas [world views ds server phase dim]
-  (if (skipped? world views dim)
-    deltas/empty-deltas
-    (let [lv (assoc (view world views dim) :server world)
-          d (get ds dim)
-          ks (filterv #(runs-in? dim %) phase)
-          thunks (mapv #(thunk world lv d server dim %) ks)]
-      (deltas/with-dim
-       (deltas/run-weighed cost/heavy? cost/timed ks thunks)
-       dim))))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
@@ -234,13 +278,19 @@
       pd)))
 
 (defn- phase-deltas
-  ([world ds phase] (phase-deltas world nil ds phase))
+  ([world ds phase]
+   (phase-deltas world (awake-views world nil) ds phase))
   ([world views ds phase]
    (let [server (delay [(state/server-view world) (merged ds)])
-         of (fn [dim]
-              [dim (level-deltas world views ds server phase dim)])
-         pd (into {} (map of) dims)]
-     (if (server-phase? phase) (relocated world pd) pd))))
+         of (fn [pd dim]
+              (let [lv (get views dim)
+                    d (when lv
+                        (level-deltas world lv ds server phase dim))]
+                (if d (assoc pd dim d) pd)))
+         pd (reduce of {} dims)]
+     (if (and (contains? pd home) (server-phase? phase))
+       (relocated world pd)
+       pd))))
 
 (def ^:private left-behind #{:chunks-sent :tracking})
 
@@ -291,22 +341,22 @@
               [w ds' {dim lv'}]))))
 
 (defn- step [acc dim d]
-  (if (identical? deltas/empty-deltas d)
+  (if (or (nil? d) (identical? deltas/empty-deltas d))
     acc
     (handed (own-step acc dim d) d)))
 
-(defn- awake-views [world views]
-  (reduce (fn [vs dim]
-            (cond (asleep? world dim) (dissoc vs dim)
-                  (contains? vs dim) vs
-                  :else (assoc vs dim (state/level world dim))))
-          (or views {}) dims))
+(defn- fresh [[w ds vs :as acc] world views]
+  (if (and (identical? w world) (identical? vs views))
+    acc
+    [w ds (awake-views w vs)]))
 
-(defn- run-phase [[world ds views] phase]
-  (let [views (awake-views world views)
-        pd (phase-deltas world views ds phase)]
-    (reduce (fn [acc dim] (step acc dim (pd dim)))
-            [world ds views] dims)))
+(defn- run-phase [[world ds views :as acc] phase]
+  (let [pd (phase-deltas world views ds phase)]
+    (if (zero? (count pd))
+      acc
+      (fresh (reduce (fn [acc dim] (step acc dim (get pd dim)))
+                     acc dims)
+             world views))))
 
 (defn tick
   "Returns the world and the deltas after one tick of the events.

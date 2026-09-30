@@ -39,15 +39,22 @@
   []
   (get (data/datapack) "world_clock"))
 
+(defn- whole [c]
+  (if (and (== 4 (count c)) (contains? c :total-ticks)
+           (contains? c :partial-tick) (contains? c :rate)
+           (contains? c :paused))
+    c
+    (merge fresh c)))
+
 (defn state
   "Returns the state of clock in world."
   [world clock]
-  (merge fresh (get-in world [:clocks clock])))
+  (whole (get (:clocks world) clock)))
 
 (defn ticks
   "Returns the whole ticks clock has counted in world."
   ^long [world clock]
-  (long (:total-ticks (state world clock))))
+  (long (get (get (:clocks world) clock) :total-ticks 0)))
 
 (defn day-ticks
   "Returns the ticks of the overworld clock."
@@ -76,7 +83,7 @@
   "Returns clocks, every clock of the registry one tick on."
   [clocks]
   (into {}
-        (map (fn [k] [k (ticked (merge fresh (get clocks k)))]))
+        (map (fn [k] [k (ticked (whole (get clocks k)))]))
         (names)))
 
 (defn advancing?

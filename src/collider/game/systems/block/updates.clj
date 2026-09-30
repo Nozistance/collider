@@ -184,11 +184,13 @@
 
 (defn block-updates
   "Runs the block ticks that are due."
+  {:wake {:keys [[:block-ticks :queue]]}}
   [world _d]
   [#(ticks-deltas world :block-ticks)])
 
 (defn fluid-updates
   "Runs the fluid ticks that are due."
+  {:wake {:keys [[:fluid-ticks :queue]]}}
   [world _d]
   [#(ticks-deltas world :fluid-ticks)])
 
@@ -212,6 +214,7 @@
 
 (defn block-flush
   "Tells the clients about the blocks that changed this tick."
+  {:wake {:keys [:block-events]}}
   [w _d]
   (when-let [events (:block-events w)]
     (concat [[:block-events-flushed]]

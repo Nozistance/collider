@@ -250,5 +250,6 @@
 
 (defn consume
   "Returns a step that runs the eating and drinking of players."
+  {:wake {:types #{:player}}}
   [world _]
   [#(state/fold-events world (using-entries world) step-deltas)])

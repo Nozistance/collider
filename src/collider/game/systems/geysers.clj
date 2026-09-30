@@ -109,5 +109,6 @@
 
 (defn geysers
   "Returns a step that runs the geysers of the level."
+  {:wake {:keys [:block-entities] :types #{:player}}}
   [world _d]
   [#(all-deltas world)])

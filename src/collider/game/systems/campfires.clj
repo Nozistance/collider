@@ -90,5 +90,7 @@
           :when (= :campfire (:kind e))]
       [pos e])))
 
-(defn campfire-cooking [world _d]
+(defn campfire-cooking
+  {:wake {:keys [:block-entities]}}
+  [world _d]
   [#(mapcat (partial campfire-deltas world) (campfires world))])

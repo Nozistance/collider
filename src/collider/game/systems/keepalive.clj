@@ -25,6 +25,8 @@
     (into [] (mapcat #(player-deltas world t %))
           (state/player-entries world))))
 
-(defn keepalive [world d]
+(defn keepalive
+  {:wake {:types #{:player}}}
+  [world d]
   (let [events (:input d)]
     [#(keepalive-deltas world events)]))

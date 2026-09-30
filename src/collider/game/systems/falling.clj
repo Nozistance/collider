@@ -175,6 +175,7 @@
 
 (defn falling-blocks
   "Returns a step for every falling block in an active chunk."
+  {:wake {:types #{:falling-block}}}
   [world _d]
   (let [step (fn [[eid e]] #(step-deltas world eid e))]
     (into [] (map step)

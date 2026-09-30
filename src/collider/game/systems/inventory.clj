@@ -179,5 +179,6 @@
 
 (defn inventory
   "Returns what a joining player is told about its inventory."
+  {:wake {:deltas #{:player-placed}}}
   [world d]
   [#(restore-deltas world (state/joins d))])

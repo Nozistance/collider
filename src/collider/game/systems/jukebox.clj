@@ -12,9 +12,13 @@
     [pos e]))
 
 (defn- stop-deltas [world [pos e]]
-  (when (jukebox/finished? (:song e) (- (long (:tick world)) (long (:started e))))
-    [[:set-block-entity pos (assoc e :song nil :started nil)]
-     (out/all (out/level-event out/sound-stop-jukebox-song pos 0))]))
+  (let [age (- (long (:tick world)) (long (:started e)))]
+    (when (jukebox/finished? (:song e) age)
+      [[:set-block-entity pos (assoc e :song nil :started nil)]
+       (out/all
+         (out/level-event out/sound-stop-jukebox-song pos 0))])))
 
-(defn jukebox-songs [world _d]
+(defn jukebox-songs
+  {:wake {:keys [:block-entities]}}
+  [world _d]
   [#(mapcat (partial stop-deltas world) (playing world))])

@@ -839,6 +839,7 @@
   "Returns a step that counts down the hurt resistance of every living
   entity, as LivingEntity.baseTick before aiStep. It runs before the
   mobs, whose hurts this tick write the resistance after it."
+  {:wake {:keys [:entities]}}
   [world _d]
   (let [active (state/active-chunks world)
         xf (comp (filter (fn [entry] (resting? active entry)))
@@ -848,6 +849,7 @@
 (defn damage
   "Returns a step for every living entity and the damage events of
   this tick."
+  {:wake {:keys [:entities] :events #{:attack}}}
   [world d]
   (let [events (:input d)]
     (cond-> (living-fns world)

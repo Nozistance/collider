@@ -29,5 +29,7 @@
             (when (not= lit? (= :true (:lit (block/props-of st))))
               (edit/set-deltas world [[pos (with-lit st lit?)]])))))
 
-(defn furnace-cooking [world _d]
+(defn furnace-cooking
+  {:wake {:keys [:block-entities]}}
+  [world _d]
   [#(mapcat (partial furnace-deltas world) (furnaces world))])

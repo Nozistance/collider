@@ -25,3 +25,13 @@
   "Returns true when the thunks under key k took long the last ticks."
   [k]
   (< fork-ns (weight k)))
+
+(def ^:private ^:const sample-mask 15)
+
+(defn- bare [_ f] f)
+
+(defn timer
+  "Returns what wraps the thunks of tick t. One tick in sixteen they
+  are timed, the others run bare."
+  [t]
+  (if (zero? (bit-and (long t) sample-mask)) timed bare))

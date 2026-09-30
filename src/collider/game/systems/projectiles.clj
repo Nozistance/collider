@@ -532,6 +532,7 @@
 (defn projectiles
   "Returns the flight and the hits of the thrown things.
   Also returns the life of the lingering clouds."
+  {:wake {:types flying}}
   [world _d]
   (let [active (state/active-chunks world)
         es (into [] (filter (partial live? active))

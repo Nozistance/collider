@@ -90,7 +90,7 @@
    :advance-tick
    [:cat]
    :advance-weather
-   [:cat]
+   [:cat [:? :map]]
    :observed
    [:cat :map]
    :explode

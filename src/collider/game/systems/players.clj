@@ -613,6 +613,8 @@
 
 (defn late-tracking
   "Returns the deltas that show players the entities new this tick."
+  {:wake {:deltas #{:spawn-entity :remove-entity
+                    :change-dimension}}}
   [world d]
   (when (entities-changed? d)
     (let [near (near-index (tracked-entries world))
@@ -636,6 +638,7 @@
 
 (defn player-list
   "Returns the tick steps of the player list of the server."
+  {:wake :always}
   [world d]
   (let [ps (state/player-entries world)
         joins (state/joins d)]
@@ -646,6 +649,7 @@
 
 (defn players
   "Returns the tick steps of entity tracking in the level."
+  {:wake {:keys [:entities :resends]}}
   [world _]
   (let [ps (state/player-entries world)
         ts (tracked-entries world)]

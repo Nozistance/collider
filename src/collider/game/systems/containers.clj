@@ -492,6 +492,7 @@
 (defn broadcast
   "Sends every viewer the slots and data of their menu that moved.
   This happens once per player tick."
+  {:wake {:types #{:player}}}
   [world _d]
   (let [one (fn [[eid e]]
               (when (broadcasting? world e)
@@ -514,11 +515,15 @@
 
 (defn containers
   "Returns a step that runs the menus and containers of the tick."
+  {:wake {:events #{:menu-click :menu-close :menu-button
+                    :rename-item}
+          :keys [:shulker-anim :quits]}}
   [world d]
   (let [events (:input d)]
     [#(containers-deltas world events)]))
 
 (defn rechecks
   "Runs the scheduled rechecks of the container openers that are due."
+  {:wake {:keys [:container-rechecks]}}
   [world _d]
   [#(container/recheck-deltas world)])

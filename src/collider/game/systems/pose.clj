@@ -125,6 +125,7 @@
 
 (defn pose
   "Returns a step that sets the pose of each player."
+  {:wake {:types #{:player}}}
   [world _]
   [#(into [] (mapcat (fn [entry] (player-deltas world entry)))
           (state/player-entries world))])

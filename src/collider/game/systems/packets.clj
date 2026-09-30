@@ -42,6 +42,7 @@
 
 (defn by-player
   "Returns one job per player with its events in the order they came."
+  {:wake {:events own-tags}}
   [world d]
   (mapv (fn [[_ events]] #(fold-deltas world events))
         (grouped (:input d))))

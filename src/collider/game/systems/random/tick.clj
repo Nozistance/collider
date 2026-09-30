@@ -175,6 +175,7 @@
 
 (defn random-ticks
   "Returns a step that runs the random ticks of the active chunks."
+  {:wake {:types #{:player}}}
   [world d]
   (let [events (:input d)]
     [#(random-tick-deltas world events)]))

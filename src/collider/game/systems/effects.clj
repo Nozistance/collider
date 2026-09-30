@@ -225,6 +225,7 @@
 
 (defn effects
   "Returns a step that ticks the effects of every living entity."
+  {:wake {:keys [:entities]}}
   [world _]
   (let [due (fn [acc eid e]
               (if (due? e) (conj acc (MapEntry/create eid e)) acc))

@@ -103,6 +103,7 @@
 (defn orbs
   "Returns the deltas of every orb in an active chunk after a tick.
   The orbs step one by one in id order."
+  {:wake {:types #{:experience-orb}}}
   [world _d]
   [#(let [start (active-orbs world)]
       (when (seq start)
@@ -176,5 +177,6 @@
 (defn pickups
   "Returns the deltas of players taking up the orbs they touch.
   Each takes one orb a tick, one player after another."
+  {:wake {:types #{:experience-orb}}}
   [world _d]
   [#(pickup-deltas world)])

@@ -79,6 +79,7 @@
   "Places the players of this level whose spawn chunks are loaded.
   They are the joining and respawning ones. The chunks the others wait
   for are loaded."
+  {:wake {:keys [:spawning]}}
   [world _]
   (let [reqs (filter #(here? world %)
                      (sort-by key (:spawning world)))]

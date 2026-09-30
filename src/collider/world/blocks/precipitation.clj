@@ -97,11 +97,11 @@
       (when (not= :none precipitation)
         (cauldron-change chunks below precipitation (double roll))))))
 
-(defn tick-precipitation
-  "Returns the changes the weather makes at the top of column x z.
-  max-height is the most snow layers allowed there. roll decides
-  whether a cauldron fills."
-  [ctx chunks [x _ z] max-height roll]
+(defn- mild? [ctx x z]
+  (let [p [(long x) (long chunk/max-y) (long z)]]
+    (biome/warm-enough-to-rain? (biome/at (:dim ctx) p) p)))
+
+(defn- column-changes [ctx chunks x z max-height roll]
   (let [top [(long x) (spawn/motion-blocking-height chunks x z)
              (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]
@@ -111,3 +111,11 @@
         [[below (block/state :ice)]])
       (when (weather/raining? ctx)
         (rain-changes chunks biome top below max-height roll)))))
+
+(defn tick-precipitation
+  "Returns the changes the weather makes at the top of column x z.
+  max-height is the most snow layers allowed there. roll decides
+  whether a cauldron fills."
+  [ctx chunks [x _ z] max-height roll]
+  (when (or (weather/raining? ctx) (not (mild? ctx x z)))
+    (column-changes ctx chunks x z max-height roll)))

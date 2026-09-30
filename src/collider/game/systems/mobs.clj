@@ -1085,6 +1085,7 @@
 (defn mobs-system
   "Returns the tasks of one tick.
   Each island of mobs steps, and the clicks of players get answers."
+  {:wake {:types (set (keys mobs/types)) :events #{:interact}}}
   [world d]
   (let [events (:input d)
         t (long (:tick world))

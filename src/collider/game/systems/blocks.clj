@@ -232,6 +232,7 @@
   "Returns the deltas that confirm the block actions of this tick.
   Each player gets its last sequence. The blocks of each place go back
   to its player."
+  {:wake {:events #{:dig :place :use-item}}}
   [world d]
   (let [events (:input d)
         ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
@@ -256,6 +257,7 @@
 
 (defn block-edits
   "Returns a step for the digs, places and sign edits of this tick."
+  {:wake {:events #{:dig :place :use-item :sign-update}}}
   [world d]
   (let [events (:input d)]
     [#(block-edits-deltas world events)]))

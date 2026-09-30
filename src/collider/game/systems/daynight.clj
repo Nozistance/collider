@@ -36,5 +36,7 @@
   (when (zero? (rem (long (:tick world)) send-interval))
     [(out/all (out/time (long (:tick world)) {}))]))
 
-(defn daynight [world _d]
+(defn daynight
+  {:wake {:every send-interval}}
+  [world _d]
   [#(daynight-deltas world)])

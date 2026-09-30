@@ -52,5 +52,6 @@
 
 (defn dripleaf-tilt
   "Returns a step that tips big dripleaves under players."
+  {:wake {:types #{:player}}}
   [world _d]
   [#(tilt-deltas world)])

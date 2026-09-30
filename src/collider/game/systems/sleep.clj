@@ -151,5 +151,6 @@
 
 (defn sleep
   "Returns a step that runs sleeping and waking in the level."
+  {:wake {:types #{:player} :keys [:quits]}}
   [world _d]
   [#(concat (quit-deltas world) (sleep-deltas world))])
