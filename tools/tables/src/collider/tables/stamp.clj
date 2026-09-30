@@ -5,7 +5,7 @@
 
 (def game "26.2")
 
-(def layout 21)
+(def layout 22)
 
 (def pack
   ["banner_pattern" "cat_sound_variant" "cat_variant" "chat_type"

@@ -1,6 +1,7 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.entity.size :as size]
+            [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
@@ -8,17 +9,11 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const player-half (double (float 0.3)))
-
-(def ^:private ^:const player-height (double (float 1.8)))
-
-(def ^:private player-box [player-half player-height])
-
 (def ^:private no-box [0.0 1.0])
 
 (defn- pushable-box [e]
   (case (:type e)
-    :player player-box
+    :player (size/type-box :player)
     (or (mobs/box-of e) no-box)))
 
 (defn- pushable-half ^double [e]

@@ -82,27 +82,25 @@
   [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
 
-(def pose-box
-  "The half width and height of a player in each pose."
-  {:standing [0.3 1.8] :crouching [0.3 1.5]
-   :swimming [0.3 0.6] :sleeping [0.1 0.2]})
+(defn pose-box
+  "Returns the half width and height of a player in pose."
+  [pose]
+  (size/type-box :player pose))
 
-(def pose-eyes
-  {:standing 1.62 :crouching 1.27 :swimming 0.4 :sleeping 0.2})
+(defn pose-eye
+  "Returns the eye height of a player in pose."
+  ^double [pose]
+  (size/pose-eye :player pose))
 
 (defn eye-height
   "Returns how far above its position the entity e looks out."
   ^double [e]
-  (if (= :player (:type e))
-    (double (pose-eyes (:pose e :standing)))
-    (size/eye e)))
+  (size/eye e))
 
 (defn box
   "Returns the half width and the height of entity e."
   [e]
-  (if (= :player (:type e))
-    (pose-box (:pose e :standing))
-    (size/box e)))
+  (size/box e))
 
 (defn- same? [o vs]
   `(and ~@(map (fn [[k s]] `(identical? ~s ~(field o (name k)))) vs)))

@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.edit
   "Block edit checks and change deltas."
   (:require [collider.data :as data]
+            [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.spill :as spill]
@@ -25,21 +26,9 @@
 (defn block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
 
-(def ^:private ^:const player-half 0.3)
-
-(def ^:private ^:const player-height 1.8)
-
-(def ^:private ^:const crouching-height 1.5)
-
-(def ^:private ^:const tnt-half 0.49)
-
-(def ^:private ^:const tnt-height 0.98)
-
 (defn- player-box [e]
-  [player-half
-   (if (and (:sneaking? e) (not (:flying e)))
-     crouching-height
-     player-height)])
+  (entity/pose-box
+   (if (and (:sneaking? e) (not (:flying e))) :crouching :standing)))
 
 (defn builder-box
   "Returns the half width and height an entity blocks with.
@@ -48,7 +37,7 @@
   (case (:type e)
     :player (when-not (game-mode/spectator? e)
               (player-box e))
-    (:tnt :falling-block) [tnt-half tnt-height]
+    (:tnt :falling-block) (entity/box e)
     :item nil
     (when (mobs/mob-type? (:type e)) (mobs/box-of e))))
 

@@ -2,8 +2,8 @@
   "Attributes of living entities as their effects change them.
   A modifier is [id amount operation], the operation 0 to add, 1 to
   add a share of the base and 2 to multiply the total."
-  (:require [collider.game.effect :as effect]
-            [collider.game.mob.mobs :as mobs]))
+  (:require [collider.data :as data]
+            [collider.game.effect :as effect]))
 
 (set! *warn-on-reflection* true)
 
@@ -37,22 +37,11 @@
   #{:movement-speed :attack-speed :safe-fall-distance :max-health
     :max-absorption :luck})
 
-(def ^:private player-bases
-  {:movement-speed (f 0.1) :attack-speed 4.0 :attack-damage 1.0
-   :safe-fall-distance 3.0 :waypoint-transmit-range 6.0E7
-   :max-health 20.0 :max-absorption 0.0 :luck 0.0})
-
-(defn- mob-bases [type]
-  (let [m (mobs/types type)]
-    {:movement-speed (double (:speed m)) :safe-fall-distance 3.0
-     :waypoint-transmit-range 0.0
-     :max-health (double (:max-health m)) :max-absorption 0.0}))
-
 (defn base-values
-  "Returns the base of every attribute effects touch that entity e
-  has. A mob has no attack, attack speed or luck."
+  "Returns the base of every attribute that entity e has, as
+  DefaultAttributes gives them for its kind."
   [e]
-  (if (= :player (:type e)) player-bases (mob-bases (:type e))))
+  (get (data/attributes) (:type e)))
 
 (defn effect-attributes
   "Returns the attributes effect k changes."

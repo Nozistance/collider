@@ -19,19 +19,18 @@
 
 (defn- alive? [e] (pos? (double (:health e 1.0))))
 
-(def ^:private player-size [0.3 1.8])
-
 (defn- launched-player? [e]
   (and (alive? e) (not (game-mode/spectator? e)) (not (:flying e))))
 
-(defn- size [e]
+(defn- launched? [e]
   (let [t (:type e)]
     (cond
-      (= :player t) (when (launched-player? e) player-size)
-      (= :item t) [0.125 0.25]
-      (#{:tnt :falling-block} t) [0.49 0.98]
-      (contains? entity/thrown-types t) [0.125 0.25]
-      (and (mobs/mob-type? t) (alive? e)) (mobs/box-of e))))
+      (= :player t) (launched-player? e)
+      (#{:item :tnt :falling-block} t) true
+      (contains? entity/thrown-types t) true
+      :else (and (mobs/mob-type? t) (alive? e)))))
+
+(defn- size [e] (when (launched? e) (entity/box e)))
 
 (defn- inside? [[x lo z] ^double hi e [half h]]
   (let [[ex ey ez] (:pos e)

@@ -4,6 +4,7 @@
             [collider.random :as random]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.game-mode :as game-mode]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
@@ -35,7 +36,7 @@
 
 (def ^:private ^:const around-lift 0.2)
 
-(def ^:private ^:const hand-drop 0.3)
+(def ^:private ^:const hand-drop (double (float 0.3)))
 
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
@@ -182,9 +183,9 @@
     (vec (concat (thrown-deltas world eid [stack])
                  (when take-from (taken world eid take-from))))))
 
-(def ^:private ^:const item-half 0.125)
+(defn- item-half ^double [] (size/half :item))
 
-(def ^:private ^:const item-height 0.25)
+(defn- item-height ^double [] (size/height :item))
 
 (def ^:private ^:const air-drag (double (float 0.98)))
 
@@ -218,15 +219,6 @@
 
 (def ^:private ^:const pickup-inflate-y 0.5)
 
-(def ^:private ^:const player-height 1.8)
-
-(def ^:private ^:const player-half 0.3)
-
-(def ^:private ^:const pickup-reach
-  (+ player-half item-half pickup-inflate))
-
-(def ^:private ^:const pickup-bottom -1.0)
-
 (defn- near? [^double a ^double b ^double d]
   (< (Math/abs (- a b)) d))
 
@@ -236,11 +228,11 @@
     [(* (double vx) drag) (+ vy lift) (* (double vz) drag)]))
 
 (defn- fluid-at [chunks pos kind]
-  (liquid/fluid-height chunks pos item-half item-height kind))
+  (liquid/fluid-height chunks pos (item-half) (item-height) kind))
 
 (defn- item-drift [chunks dim pos vel]
   (let [push (liquid/entity-push
-               chunks pos item-half item-height vel dim)
+               chunks pos (item-half) (item-height) vel dim)
         pushed (v/+ vel push)
         water (fluid-at chunks pos :water)
         lava (fluid-at chunks pos :lava)]
@@ -254,12 +246,12 @@
   (if-not (phys/on-ground? mv)
     [nil false]
     (let [p (phys/pos mv)
-          sb (phys/supporting-block chunks p item-half)
+          sb (phys/supporting-block chunks p (item-half))
           o (:pos e)]
       (if (or sb (:no-blocks? e))
         [sb (nil? sb)]
         (let [s (phys/supporting-block
-                  chunks (v/v3 (v/x o) (v/y p) (v/z o)) item-half)]
+                  chunks (v/v3 (v/x o) (v/y p) (v/z o)) (item-half))]
           [s (nil? s)])))))
 
 (defn- ground-friction ^double [chunks pos sup]
@@ -281,7 +273,8 @@
 
 (defn- item-moved [chunks e vel]
   (let [vel (mapv double vel)
-        ^Move mv (phys/move chunks (:pos e) vel item-half item-height)
+        ^Move mv (phys/move chunks (:pos e) vel (item-half)
+                            (item-height))
         og (phys/on-ground? mv)
         [sup nb?] (supported chunks e mv)
         p (phys/pos mv)]
@@ -314,7 +307,7 @@
         (moved-or-resting chunks e drift rest? push)
         v (if (and stuck (not rest?)) [0.0 0.0 0.0] v)
         vy (liquid/bubble-push chunks pos' (double (v 1)))
-        st (motion/stuck-speed chunks pos' item-half item-height)]
+        st (motion/stuck-speed chunks pos' (item-half) (item-height))]
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
      :support sup :no-blocks? nb? :in-fluid? in-fluid?
      :stuck (if rest? (or st stuck) st)}))
@@ -351,8 +344,8 @@
 (defn- mergeable? [ea eb]
   (let [pa (:pos ea) pb (:pos eb)
         sa (:stack ea) sb (:stack eb)
-        flat (+ item-half item-half merge-inflate)
-        tall (+ item-height item-height)]
+        flat (+ (item-half) (item-half) merge-inflate)
+        tall (item-height)]
     (and (same-stack? sa sb)
          (<= (+ (long (:count sa 1)) (long (:count sb 1)))
              (data/max-stack (:item sb)))
@@ -571,10 +564,13 @@
 
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) pi (:pos ie)
+        [half h] (entity/box pe)
+        reach (+ (double half) (item-half) pickup-inflate)
         dy (- (double (v/y pi)) (double (v/y pp)))]
-    (and (near? (v/x pi) (v/x pp) pickup-reach)
-         (near? (v/z pi) (v/z pp) pickup-reach)
-         (< pickup-bottom dy (+ player-height pickup-inflate-y)))))
+    (and (near? (v/x pi) (v/x pp) reach)
+         (near? (v/z pi) (v/z pp) reach)
+         (< (- (+ (item-height) pickup-inflate-y)) dy
+            (+ (double h) pickup-inflate-y)))))
 
 (defn- collect-deltas [ieid peid changes remaining]
   (concat

@@ -1,15 +1,12 @@
 (ns collider.world.space.spawn
   "Places to put a player and the room a body needs to stand."
-  (:require [collider.world.block :as block]
+  (:require [collider.data :as data]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const max-attempts 1024)
-
-(def ^:private ^:const player-half 0.3)
-
-(def ^:private ^:const player-height 1.8)
 
 (def ^:private ^:const eps 1.0E-7)
 
@@ -98,10 +95,15 @@
       (conj solid (fluid-box chunks x y z st))
       solid)))
 
+(def ^:private ^:table player-size
+  (delay (let [{:keys [width height]} (:player (data/entities))]
+           [(* 0.5 (double (float width))) (double (float height))])))
+
 (defn- player-box [^long px ^long py ^long pz]
-  (let [cx (+ px 0.5) cz (+ pz 0.5)]
-    [(- cx player-half) (double py) (- cz player-half)
-     (+ cx player-half) (+ py player-height) (+ cz player-half)]))
+  (let [cx (+ px 0.5) cz (+ pz 0.5)
+        w (double (nth @player-size 0))
+        h (double (nth @player-size 1))]
+    [(- cx w) (double py) (- cz w) (+ cx w) (+ py h) (+ cz w)]))
 
 (defn- cell-edge ^long [^double v ^long d]
   (+ d (long (Math/floor (+ v (* d (double eps)))))))

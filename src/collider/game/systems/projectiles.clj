@@ -4,6 +4,7 @@
   (:require [collider.data :as data]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
@@ -21,14 +22,6 @@
             [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private ^:const half 0.125)
-
-(def ^:private ^:const height 0.25)
-
-(def ^:private ^:const player-half (double (float 0.3)))
-
-(def ^:private ^:const player-height (double (float 1.8)))
 
 (def ^:private ^:const air-drag (double (float 0.99)))
 
@@ -51,8 +44,6 @@
 (def ^:private ^:const splash-range-sq 16.0)
 
 (def ^:private ^:const pearl-damage 5.0)
-
-(def ^:private ^:const cloud-height 0.5)
 
 (def ^:private ^:const cloud-min-radius 0.5)
 
@@ -219,6 +210,9 @@
   (let [x (v/x pos) y (v/y pos) z (v/z pos)]
     [(- x w) y (- z w) (+ x w) (+ y h) (+ z w)]))
 
+(defn- body-box [e pos]
+  (let [[w h] (entity/box e)] (box-of pos (double w) (double h))))
+
 (defn- inflated [b ^double dx ^double dy ^double dz]
   [(- (double (b 0)) dx) (- (double (b 1)) dy)
    (- (double (b 2)) dz) (+ (double (b 3)) dx)
@@ -244,11 +238,7 @@
 (defn- hittable? [e]
   (or (= :player (:type e)) (mobs/mob-type? (:type e))))
 
-(defn- target-box [e]
-  (if (= :player (:type e))
-    (box-of (:pos e) player-half player-height)
-    (let [[half height] (mobs/box-of e)]
-      (box-of (:pos e) (double half) (double height)))))
+(defn- target-box [e] (body-box e (:pos e)))
 
 (defn- nearer [best hit tail]
   (if (and hit (or (nil? best)
@@ -327,13 +317,14 @@
 (defn- left-owner? [world e d]
   (or (boolean (:left-owner? e))
       (if-let [o (get-in world [:entities (:owner e)])]
-        (not (overlaps? (swept (box-of (:pos e) half height) d 1.0)
+        (not (overlaps? (swept (body-box e (:pos e)) d 1.0)
                         (target-box o)))
         true)))
 
 (defn- submerged? [world e]
   (let [chunks (:chunks world)]
-    (pos? (liquid/fluid-height chunks (:pos e) half height :water))))
+    (pos? (let [[w h] (entity/box e)]
+            (liquid/fluid-height chunks (:pos e) w h :water)))))
 
 (defn- drift [world e]
   (let [g (double (gravity (:type e) 0.03))
@@ -400,8 +391,8 @@
           (mapcat #(edit/dowse-deltas world %))
           (remove (set fires) cells))))
 
-(defn- doused-deltas [world at]
-  (let [box (inflated (box-of at half height) 4.0 2.0 4.0)]
+(defn- doused-deltas [world e at]
+  (let [box (inflated (body-box e at) 4.0 2.0 4.0)]
     (for [[oid o] (deltas/keyed (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))
                      (overlaps? box (target-box o))
@@ -421,7 +412,7 @@
   (let [stack (:stack e) water? (water-potion? stack)]
     (concat (when (and water? (= :block (:kind hit)))
               (dowse-deltas world hit))
-            (when water? (doused-deltas world at))
+            (when water? (doused-deltas world e at))
             (when (and (not water?) (has-effects? stack)
                        (= :lingering-potion (:type e)))
               [[:spawn-entity (cloud-spec e at)]])
@@ -462,7 +453,7 @@
       :else [[:merge-entity eid (moved e at d left?)]])))
 
 (defn- cloud-box [e ^double r]
-  (box-of (:pos e) r cloud-height))
+  (box-of (:pos e) r (size/height :area-effect-cloud)))
 
 (defn- touched [world e ^double r ^long age]
   (let [box (cloud-box e r)]

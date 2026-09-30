@@ -3,6 +3,7 @@
   (:require [collider.game.deltas :as deltas]
             [clojure.data.int-map :as i]
             [collider.game.block.tnt :as tnt]
+            [collider.game.entity.size :as size]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.vec :as v]
@@ -13,16 +14,16 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const tnt-half (double (float 0.49)))
+(defn- tnt-half ^double [] (size/half :tnt))
 
-(def ^:private ^:const tnt-height (double (float 0.98)))
+(defn- tnt-height ^double [] (size/height :tnt))
 
 (defn- liquid-push [world pos vel]
-  (liquid/entity-push (:chunks world) pos tnt-half tnt-height vel
+  (liquid/entity-push (:chunks world) pos (tnt-half) (tnt-height) vel
                       (:dim world)))
 
 (defn- stuck-now [world pos]
-  (motion/stuck-speed (:chunks world) pos tnt-half tnt-height))
+  (motion/stuck-speed (:chunks world) pos (tnt-half) (tnt-height)))
 
 (defn- unblock-deltas [eid e]
   [[:merge-entity eid {:origin nil :fuse (dec (long (:fuse e)))}]])
@@ -40,8 +41,8 @@
 (defn- tnt-move ^Move [world e]
   (let [stuck (:stuck e)
         d (drift e)]
-    (phys/move (:chunks world) (:pos e)
-               (if stuck (mapv * d stuck) d) tnt-half tnt-height)))
+    (phys/move (:chunks world) (:pos e) (if stuck (mapv * d stuck) d)
+               (tnt-half) (tnt-height))))
 
 (defn- moved-speed [world mv pos on-ground stuck]
   (let [vel (phys/vel mv)]
@@ -67,7 +68,7 @@
 
 (defn- moved-pos [world e]
   (phys/pos (phys/move (:chunks world) (:pos e) (drift e)
-                       tnt-half tnt-height)))
+                       (tnt-half) (tnt-height))))
 
 (defn- start-positions [world]
   (persistent!
@@ -86,7 +87,7 @@
 
 (defn- explode-deltas [world starts eid e]
   (let [[x y z] (moved-pos world e)
-        center [(double x) (+ (double y) (/ tnt-height 16.0))
+        center [(double x) (+ (double y) (/ (tnt-height) 16.0))
                 (double z)]]
     (cond-> [[:remove-entity eid]]
             (get-in world [:rules :tnt-explodes] true)

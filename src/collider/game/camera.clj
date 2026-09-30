@@ -53,9 +53,9 @@
     (cond
       (= :player t)
       (when-not (game-mode/spectator? e)
-        (entity/pose-box (:pose e :standing)))
+        (entity/box e))
       (mobs/mob-type? t) (mobs/box-of e)
-      (#{:tnt :falling-block} t) [0.49 0.98])))
+      (#{:tnt :falling-block} t) (entity/box e))))
 
 (def ^:private ^:const border 29999984.0)
 

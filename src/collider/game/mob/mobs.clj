@@ -104,13 +104,8 @@
           (@gold-rabbit-biomes n) 4
           :else (mixed-rabbit r))))
 
-(defn- attr
-  ^double [^double v] (double (float v)))
-
 (def ^:private cow
-  {:speed          (attr 0.2)
-   :max-health     10.0
-   :sounds         :cow
+  {:sounds         :cow
    :voices         [:classic :moody]
    :food           "cow_food"
    :spawns-on      "animals_spawnable_on"
@@ -120,9 +115,7 @@
   (update path/cow :malus assoc :water 0.0))
 
 (def types
-  {:sheep     {:speed         (attr 0.23)
-               :max-health    8.0
-               :sounds        :sheep
+  {:sheep     {:sounds        :sheep
                :food          "sheep_food"
                :spawns-on     "animals_spawnable_on"
                :spawn-color   sheep-color}
@@ -130,9 +123,7 @@
    :mooshroom (-> (assoc cow :ground :mycelium :voices [:classic]
                          :spawns-on "mooshrooms_spawnable_on")
                   (dissoc :spawn-color))
-   :pig       {:speed       (attr 0.25)
-               :max-health  10.0
-               :sounds      :pig
+   :pig       {:sounds      :pig
                :baby-sounds :baby-pig
                :voices      [:classic :big :mini]
                :shared      #{:step}
@@ -140,9 +131,7 @@
                :food        "pig_food"
                :spawns-on   "animals_spawnable_on"
                :spawn-color coat}
-   :chicken   {:speed       (attr 0.25)
-               :max-health  4.0
-               :sounds      :chicken
+   :chicken   {:sounds      :chicken
                :baby-sounds :baby-chicken
                :voices      [:classic :picky]
                :shared      #{:step}
@@ -151,9 +140,7 @@
                :walker      water-walker
                :spawns-on   "animals_spawnable_on"
                :spawn-color coat}
-   :rabbit    {:speed       (attr 0.3)
-               :max-health  3.0
-               :sounds      :rabbit
+   :rabbit    {:sounds      :rabbit
                :block-steps? true
                :food        "rabbit_food"
                :spawns-on   "rabbits_spawnable_on"
@@ -165,7 +152,18 @@
   (let [t (get-in (data/items) [item :spawns])]
     (when (contains? types t) t)))
 
-(defn max-health [type] (:max-health (types type)))
+(defn attribute
+  "Returns the base value of attribute k of mob kind type, as
+  DefaultAttributes gives it, or zero when the kind has none."
+  ^double [type k]
+  (double (get-in (data/attributes) [type k] 0.0)))
+
+(defn max-health [type] (attribute type :max-health))
+
+(defn speed
+  "Returns the base movement speed of mob kind type."
+  ^double [type]
+  (attribute type :movement-speed))
 
 (defn mob-type? [type] (contains? types type))
 
@@ -184,16 +182,11 @@
   "Returns the path parameters of mob kind type."
   [type] (get-in types [type :walker] path/cow))
 
-(def ^:private ^:table step-heights
-  (delay (update-vals (data/attributes)
-                      #(double (float (:step-height % 0.0))))))
-
 (defn step-height
   "Returns how high a mob of kind type climbs without jumping, the
   step height attribute as LivingEntity.maxUpStep reads it."
   ^double [type]
-  (double (get @step-heights type 0.0)))
-
+  (double (float (attribute type :step-height))))
 
 (defn- voice-of [m e]
   (get (:voices m) (long (or (:sound-variant e) 0)) :classic))

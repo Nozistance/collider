@@ -12,7 +12,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const follow-range 16.0)
+(def ^:private ^:const required-length 16.0)
 
 (def ^:private ^:const recompute-gap 20)
 
@@ -25,8 +25,9 @@
   bonus Mob.finalizeSpawn drew, never under the 16 a path needs."
   ^double [e]
   (let [b (double (or (:follow-bonus e) 0.0))
-        v (float (+ follow-range (* follow-range b)))]
-    (double (Math/max v (float follow-range)))))
+        r (mobs/attribute (:type e) :follow-range)
+        v (float (+ r (* r b)))]
+    (double (Math/max v (float required-length)))))
 
 (defn- walker [e]
   (let [[half height] (mobs/box-of e)

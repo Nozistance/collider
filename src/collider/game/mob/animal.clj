@@ -46,8 +46,6 @@
 
 (def ^:private ^:const breed-near-sq 9.0)
 
-(def ^:private ^:const tempt-range 10.0)
-
 (def ^:private ^:const default-look-range 6.0)
 
 (def ^:private ^:const sight-range-sq 16384.0)
@@ -208,9 +206,12 @@
       (bred spec world eid pid e o t)
       [e nil])))
 
+(defn- tempt-range ^double [e]
+  (mobs/attribute (:type e) :tempt-range))
+
 (defn- tempting [e lure? [pid items p]]
   (when (and (some lure? items)
-             (sense/in-range? (:pos e) p tempt-range))
+             (sense/in-range? (:pos e) p (tempt-range e)))
     [(v/dist3-sq (:pos e) (:pos p)) pid]))
 
 (defn- tempter [e lures tempters]

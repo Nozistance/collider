@@ -67,7 +67,7 @@
        (block/water? (st-at chunks cx cy cz))))
 
 (defn- eye-in-water? [chunks pos pose]
-  (let [ey (+ (v/y pos) (double (entity/pose-eyes pose)))
+  (let [ey (+ (v/y pos) (entity/pose-eye pose))
         cx (floor (v/x pos)) cy (floor ey) cz (floor (v/z pos))]
     (boolean
       (when (water-at? chunks cx cy cz)

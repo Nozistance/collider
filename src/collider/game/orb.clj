@@ -3,6 +3,7 @@
   them. The functions take a roll that answers a number in [0, 1)
   for each key, in the order the entity random draws them."
   (:require [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.experience :as xp]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -13,9 +14,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def half 0.25)
+(defn half ^double [] (size/half :experience-orb))
 
-(def height 0.5)
+(defn height ^double [] (size/height :experience-orb))
 
 (def lifetime 6000)
 
@@ -27,7 +28,7 @@
 
 (defn- f32 ^double [^double x] (double (unchecked-float x)))
 
-(def ^:private eye (f32 (* 0.5 (f32 0.85))))
+(defn- eye ^double [] (size/pose-eye :experience-orb nil))
 
 (defn- fl ^long [^double a] (long (Math/floor a)))
 
@@ -63,10 +64,10 @@
 (defn- touches-cube? [p o]
   (let [px (double (nth p 0)) py (double (nth p 1))
         pz (double (nth p 2))
-        ox (v/x o) oy (v/y o) oz (v/z o)]
-    (and (< (- px 0.5) (+ ox half)) (> (+ px 0.5) (- ox half))
-         (< (- py 0.5) (+ oy height)) (> (+ py 0.5) oy)
-         (< (- pz 0.5) (+ oz half)) (> (+ pz 0.5) (- oz half)))))
+        ox (v/x o) oy (v/y o) oz (v/z o) w (half)]
+    (and (< (- px 0.5) (+ ox w)) (> (+ px 0.5) (- ox w))
+         (< (- py 0.5) (+ oy (height))) (> (+ py 0.5) oy)
+         (< (- pz 0.5) (+ oz w)) (> (+ pz 0.5) (- oz w)))))
 
 (defn- joins? [[eid e] ^long id ^long value pos]
   (and (zero? (jmod (- (long eid) id)))
@@ -100,13 +101,13 @@
 
 (defn- box-near? [a b]
   (let [ax (v/x a) ay (v/y a) az (v/z a)
-        bx (v/x b) by (v/y b) bz (v/z b)]
-    (and (< (- (- ax half) 0.5) (+ bx half))
-         (> (+ (+ ax half) 0.5) (- bx half))
-         (< (- ay 0.5) (+ by height))
-         (> (+ (+ ay height) 0.5) by)
-         (< (- (- az half) 0.5) (+ bz half))
-         (> (+ (+ az half) 0.5) (- bz half)))))
+        bx (v/x b) by (v/y b) bz (v/z b) w (half) h (height)]
+    (and (< (- (- ax w) 0.5) (+ bx w))
+         (> (+ (+ ax w) 0.5) (- bx w))
+         (< (- ay 0.5) (+ by h))
+         (> (+ (+ ay h) 0.5) by)
+         (< (- (- az w) 0.5) (+ bz w))
+         (> (+ (+ az w) 0.5) (- bz w)))))
 
 (defn- mergeable? [eid e [oid o]]
   (and (not= (long eid) (long oid))
@@ -181,7 +182,7 @@
   "Returns true when the eye of an orb at pos is in water, as
   Entity.isEyeInFluid."
   [chunks pos]
-  (let [ey (+ (v/y pos) eye)
+  (let [ey (+ (v/y pos) (eye))
         x (fl (v/x pos)) y (fl ey) z (fl (v/z pos))
         st (cell-state chunks x y z)]
     (boolean
@@ -199,7 +200,8 @@
   "Returns true when an orb at pos, moved by d, meets a block."
   ([chunks pos] (colliding? chunks pos [0.0 0.0 0.0]))
   ([chunks pos d]
-   (not (phys/free? chunks pos half height (v/x d) (v/y d) (v/z d)))))
+   (not (phys/free? chunks pos (half) (height)
+                    (v/x d) (v/y d) (v/z d)))))
 
 (defn swum
   "Returns velocity vel of an orb whose eye is in water."
@@ -248,7 +250,7 @@
   towards the nearest open side, as Entity.moveTowardsClosestSpace."
   [chunks pos vel roll]
   (let [y0 (v/y pos)
-        x (v/x pos) y (/ (+ y0 (+ y0 height)) 2.0) z (v/z pos)
+        x (v/x pos) y (/ (+ y0 (+ y0 (height))) 2.0) z (v/z pos)
         [a s] (closest-side chunks x y z)
         speed (f32 (+ (f32 (* (f32 (roll :shove)) (f32 0.2)))
                       (f32 0.1)))
@@ -268,7 +270,7 @@
 
 (defn- supported [chunks mv]
   (when (phys/on-ground? mv)
-    (phys/supporting-block chunks (phys/pos mv) half)))
+    (phys/supporting-block chunks (phys/pos mv) (half))))
 
 (defn- sped [chunks mv sup on-ground]
   (let [p (phys/pos mv)
@@ -282,7 +284,7 @@
   after it moves by vel. stuck is what a cobweb left on the move."
   [chunks pos vel stuck]
   (let [push (if stuck (mapv * vel stuck) vel)
-        mv (phys/move chunks pos push half height)
+        mv (phys/move chunks pos push (half) (height))
         og (phys/on-ground? mv)
         sup (supported chunks mv)]
     [(phys/pos mv)

@@ -33,8 +33,9 @@
 (defn- pushed [world e]
   (let [{:keys [pos vel]} e
         cs (:chunks world)
-        h orb/height
-        push (liquid/entity-push cs pos orb/half h vel (:dim world))]
+        h (orb/height)
+        push (liquid/entity-push cs pos (orb/half) h vel
+                                 (:dim world))]
     (v/+ vel push)))
 
 (defn- driven [world e hit? roll]
@@ -63,7 +64,7 @@
   (let [chunks (:chunks world)
         [p w og sup] (orb/moved chunks (:pos e) vel (:stuck e))
         w (assoc w 1 (liquid/bubble-push chunks p (double (w 1))))
-        st (motion/stuck-speed chunks p orb/half orb/height)]
+        st (motion/stuck-speed chunks p (orb/half) (orb/height))]
     {:pos p :vel (orb/slowed chunks p w og sup (v/y vel))
      :on-ground og :follow pid
      :needs-sync? sync? :stuck st
@@ -119,12 +120,12 @@
         px (v/x pp) py (v/y pp) pz (v/z pp)
         ox (v/x op) oy (v/y op) oz (v/z op)
         half (double half)]
-    (and (< (- (- px half) 1.0) (+ ox orb/half))
-         (> (+ (+ px half) 1.0) (- ox orb/half))
-         (< (- py 0.5) (+ oy orb/height))
+    (and (< (- (- px half) 1.0) (+ ox (orb/half)))
+         (> (+ (+ px half) 1.0) (- ox (orb/half)))
+         (< (- py 0.5) (+ oy (orb/height)))
          (> (+ (+ py (double h)) 0.5) oy)
-         (< (- (- pz half) 1.0) (+ oz orb/half))
-         (> (+ (+ pz half) 1.0) (- oz orb/half)))))
+         (< (- (- pz half) 1.0) (+ oz (orb/half)))
+         (> (+ (+ pz half) 1.0) (- oz (orb/half))))))
 
 (defn- ready? [world p]
   (>= (long (:tick world)) (long (or (:xp-ready-at p) 0))))

@@ -1,9 +1,11 @@
 (ns collider.tables.entities
   "The sizes of the entity types."
-  (:require [collider.tables.reflect
+  (:require [clojure.string :as str]
+            [collider.tables.reflect
              :refer [call cls elements hidden-field key-of registry]]
-            [collider.tables.value :refer [flt]])
-  (:import (java.lang.reflect Field Method ParameterizedType)))
+            [collider.tables.value :refer [flt kw]])
+  (:import (java.lang.reflect Field Method ParameterizedType)
+           (java.util Map)))
 
 (set! *warn-on-reflection* true)
 
@@ -43,14 +45,24 @@
       (when (and (aged? c) (not (own-dimensions? c)))
         (size (call dims "scale" (float 0.5)))))))
 
+(defn- pose-key [p] (kw (str/lower-case (call p "name"))))
+
+(defn- poses [c]
+  (when-let [m (some-> c (hidden-field nil "POSES"))]
+    (into (sorted-map)
+          (for [[p d] (Map/.entrySet m)] [(pose-key p) (size d)]))))
+
+(defn- measured [c dims]
+  (let [b (baby c dims) ps (poses c)]
+    (cond-> (size dims) b (assoc :baby b) ps (assoc :poses ps))))
+
 (defn entities
-  "Returns the width, height and eye height of each entity type, and
-  of its baby when it has one."
+  "Returns the width, height and eye height of each entity type, of
+  its baby when it has one and of each pose that has its own size."
   []
   (let [reg (registry "ENTITY_TYPE")
         by-type (classes)]
     (into (sorted-map)
-          (for [t (elements reg)
-                :let [dims (call t "getDimensions")
-                      b (baby (by-type t) dims)]]
-            [(key-of reg t) (cond-> (size dims) b (assoc :baby b))]))))
+          (for [t (elements reg)]
+            [(key-of reg t)
+             (measured (by-type t) (call t "getDimensions"))]))))

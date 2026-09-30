@@ -2,6 +2,7 @@
   "Falling blocks such as sand, gravel and anvils."
   (:require [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
@@ -15,9 +16,9 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const half (double (float 0.49)))
+(defn- half ^double [] (size/half :falling-block))
 
-(def ^:private ^:const height (double (float 0.98)))
+(defn- height ^double [] (size/height :falling-block))
 
 (def ^:private ^:const max-time 600)
 
@@ -131,7 +132,7 @@
   (let [[vx vy vz] (:vel e)
         d [(double vx) (- (double vy) 0.04) (double vz)]]
     (phys/move (:chunks world) (:pos e)
-               (if (:stuck e) (mapv * d (:stuck e)) d) half height
+               (if (:stuck e) (mapv * d (:stuck e)) d) (half) (height)
                0.0 (phys/context e))))
 
 (defn- drift-vel [stuck [mx my mz]]
@@ -141,7 +142,7 @@
      (* (double mz) 0.98)]))
 
 (defn- stuck-now [world pos]
-  (motion/stuck-speed (:chunks world) pos half height))
+  (motion/stuck-speed (:chunks world) pos (half) (height)))
 
 (defn- drift-deltas [eid pos time vel stuck stuck']
   (let [m {:pos pos :on-ground false :time time

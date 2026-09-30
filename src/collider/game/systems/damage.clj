@@ -56,10 +56,6 @@
 
 (def ^:private ^:const ticks-per-second 20)
 
-(def ^:private ^:const player-half 0.3)
-
-(def ^:private ^:const player-height 1.8)
-
 (defn- weapon-damage ^double [item]
   (double (get-in (data/items) [item :attack-damage] 0.0)))
 
@@ -160,16 +156,7 @@
 
 (def ^:private ^:const lava-damage 4.0)
 
-(def ^:private ^:const item-half 0.125)
-
-(def ^:private ^:const item-height 0.25)
-
-(defn- box-of [e]
-  (case (:type e)
-    :player [player-half player-height]
-    :item [item-half item-height]
-    :experience-orb [0.25 0.5]
-    (mobs/box-of e)))
+(defn- box-of [e] (entity/box e))
 
 (defn- chunk-x ^long [^double a]
   (bit-shift-right (long (Math/floor a)) 4))

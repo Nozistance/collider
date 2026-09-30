@@ -775,7 +775,7 @@
 (defn- move-speed ^double [e]
   (if-let [fx (not-empty (:effects e))]
     (attribute/value e fx :movement-speed)
-    (double (:speed (get mobs/types (:type e))))))
+    (mobs/speed (:type e))))
 
 (defn- joined-into [acc more]
   (if (zero? (count more)) acc (into acc more)))
