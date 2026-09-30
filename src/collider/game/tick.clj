@@ -1,9 +1,11 @@
 (ns collider.game.tick
   "The tick: its phases and how they run."
   (:require [clojure.data.int-map :as i]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.level :as level]
             [collider.game.schema :as schema]
             [collider.game.cost :as cost]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.deltas.record :as types]
             [collider.game.detector :as detector]
@@ -127,7 +129,7 @@
   (case tag
     :player-join home
     :chunk-loaded x
-    (or (state/dim-of world x) home)))
+    (or (level/dim-of world x) home)))
 
 (defn- input-of [dim events]
   (if (= home dim)
@@ -135,7 +137,7 @@
     (assoc deltas/empty-deltas :input (vec events))))
 
 (defn- entered [ds [w views] dim]
-  (let [[w' lv] (state/entered w dim (ds dim))]
+  (let [[w' lv] (apply/entered w dim (ds dim))]
     [w' (if lv {dim lv} views)]))
 
 (defn- awaited? [world dim]
@@ -145,14 +147,14 @@
 
 (defn- asleep? [world dim]
   (and (not (identical? home dim))
-       (state/idle? (get (:levels world) dim))
+       (level/idle? (get (:levels world) dim))
        (not (awaited? world dim))))
 
 (defn- awake-views [world views]
   (reduce (fn [vs dim]
             (cond (asleep? world dim) (dissoc vs dim)
                   (contains? vs dim) vs
-                  :else (assoc vs dim (state/level world dim))))
+                  :else (assoc vs dim (level/level world dim))))
           (or views {}) dims))
 
 (defn- begin [world events]
@@ -160,7 +162,7 @@
         ds (into {} (map (fn [dim] [dim (input-of dim (by dim))]))
                  dims)
         [w views] (reduce #(entered ds %1 %2) [world nil] dims)
-        heeded (fn [[dim d]] [dim (state/heeded w dim d)])]
+        heeded (fn [[dim d]] [dim (apply/heeded w dim d)])]
     [w (into {} (map heeded) ds) (awake-views w views)]))
 
 (defn- skipped! [world s dim ^Throwable t]
@@ -214,7 +216,7 @@
         ks (:keys w) every (:every w)]
     (boolean
       (or (and every (due? lv every))
-          (and types (state/holds-types? lv types))
+          (and types (level/holds-types? lv types))
           (and events (tagged? events (deltas/input-of d)))
           (and ds (tagged? ds (deltas/world-of d)))
           (and ks (kept? lv ks))))))
@@ -243,16 +245,16 @@
          dim)))))
 
 (defn- view [world views dim]
-  (or (get views dim) (state/level world dim)))
+  (or (get views dim) (level/level world dim)))
 
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
 (defn- away [world eid]
-  (let [dim (state/dim-of world eid)]
+  (let [dim (level/dim-of world eid)]
     (when (and dim (not= home dim)) dim)))
 
 (defn- stray-dim [world delta]
-  (when (identical? :remove-entity (nth delta 0))
+  (when (:by-eid (get delta/registry (nth delta 0)))
     (away world (nth delta 1))))
 
 (defn- part [ws es]
@@ -282,7 +284,7 @@
   ([world ds phase]
    (phase-deltas world (awake-views world nil) ds phase))
   ([world views ds phase]
-   (let [server (delay [(state/server-view world) (merged ds)])
+   (let [server (delay [(level/server-view world) (merged ds)])
          of (fn [pd dim]
               (let [lv (get views dim)
                     d (when lv
@@ -293,11 +295,9 @@
        (relocated world pd)
        pd))))
 
-(def ^:private left-behind #{:chunks-sent :tracking})
-
 (defn- left-behind? [d]
   (let [tag (nth d 0)]
-    (or (contains? left-behind tag)
+    (or (:left-behind (get delta/registry tag))
         (and (identical? :merge-entity tag)
              (contains? (nth d 2) :chunk-quota)))))
 
@@ -320,7 +320,7 @@
 
 (defn- crossing [[world ds] dim ^Deltas d changes]
   (let [d (departed d changes)]
-    [(state/cross (state/apply-in world dim d) dim changes)
+    [(apply/cross (apply/in world dim d) dim changes)
      (arrivals (update ds dim deltas/merge d) changes)]))
 
 (declare step)
@@ -329,16 +329,16 @@
   (reduce (fn [acc [dim sub]]
             (let [sd (deltas/of-vec sub)]
               (step acc dim (deltas/with-dim sd dim))))
-          acc (state/handoffs-of d)))
+          acc (apply/handoffs-of d)))
 
 (defn- own-step [[world ds views] dim d]
-  (let [changes (state/changes-of d)
+  (let [changes (apply/changes-of d)
         ds' (update ds dim deltas/merge d)]
     (cond
       (seq changes) (crossing [world ds] dim d changes)
       (deltas/inert? d) [world ds' views]
       :else (let [lv (view world views dim)
-                  [w lv'] (state/applied-in world dim lv d)]
+                  [w lv'] (apply/applied-in world dim lv d)]
               [w ds' {dim lv'}]))))
 
 (defn- step [acc dim d]

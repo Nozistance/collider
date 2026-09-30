@@ -3,7 +3,7 @@
   (:require [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
             [collider.game.stack :as stack]
-            [collider.game.state :as state])
+            [collider.game.player :as player])
   (:import (java.util List)))
 
 (set! *warn-on-reflection* true)
@@ -17,7 +17,7 @@
   {:limited?  (boolean (get-in world [:rules :limited-crafting]))
    :known     (or (:known-recipes e) #{})
    :held      (long (or (:held-slot e) 0))
-   :infinite? (state/infinite-materials? e)})
+   :infinite? (player/infinite-materials? e)})
 
 (defn- allowed? [ctx recipe]
   (or (contains? special (:type recipe))

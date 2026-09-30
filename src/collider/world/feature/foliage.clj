@@ -2,7 +2,7 @@
   "The foliage placers of trees: the leaves around each attachment."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.feature.level :as lv]
+            [collider.world.feature.worldgen :as lv]
             [collider.world.feature.trunk :refer [off]]))
 
 (set! *warn-on-reflection* true)

@@ -7,7 +7,8 @@
             [collider.game.block.tnt :as tnt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -270,13 +271,15 @@
 
 (defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)
-        ctx (state/level-ctx world base)
+        ctx (level/level-ctx world base)
         s (f (:chunks world) ctx changes)]
     [(into (settled-deltas world s) fx) s]))
 
 (defn- as-given [chunks ctx changes]
   (let [op (fn [c]
-             (if (keyword? (c 0)) c [:set c (neighbors/flags-of c 3)]))]
+             (if (keyword? (c 0))
+               c
+               [:set c (neighbors/flags-of c 3)]))]
     (neighbors/run chunks ctx (mapv op changes))))
 
 (defn change-deltas
@@ -328,7 +331,7 @@
   "Returns the inventory slot of the item the player holds."
   ^long [world eid]
   (let [e (get-in world [:entities eid])]
-    (state/hand-slot e (:use-hand e))))
+    (player/hand-slot e (:use-hand e))))
 
 (defn held-stack
   "Returns the stack in the hand that player eid uses."

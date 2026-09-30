@@ -3,7 +3,7 @@
   (:require [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -130,4 +130,4 @@
   [world _]
   (deltas/of-vec
     (into [] (mapcat (fn [entry] (player-deltas world entry)))
-          (state/player-entries world))))
+          (level/player-entries world))))

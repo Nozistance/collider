@@ -1,6 +1,14 @@
 (ns collider.game.delta
-  "Schemas of delta tags and effect messages."
-  (:require [malli.core :as m]
+  "The delta tags, what each means, and the effect messages."
+  (:require [clojure.data.int-map :as i]
+            [clojure.set :as set]
+            [collider.game.entity :as entity]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
+            [collider.game.schedule :as schedule]
+            [collider.vec :as v]
+            [collider.world.env.weather :as weather]
+            [malli.core :as m]
             [malli.error :as me])
   (:import (collider V3)))
 
@@ -32,96 +40,212 @@
 
 (def Text [:or :string :map])
 
-(def world-deltas
-  {:set-blocks
-   [:cat Records [:? Coll] [:? Coll]]
-   :ticks-flushed
-   [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
-   :schedule-ticks
-   [:cat [:map-of :int Coll]]
-   :container-recheck
-   [:cat Pos [:maybe :int]]
-   :openers
-   [:cat Pos :int]
-   :shulker-anim
-   [:cat Pos [:maybe :map]]
-   :block-events-flushed
-   [:cat]
-   :set-clock
-   [:cat :keyword :map]
-   :set-rule
-   [:cat :keyword :any]
-   :set-config
-   [:cat :map]
-   :set-world-spawn
-   [:cat :keyword Pos [:tuple number? number?]]
-   :add-chunk
-   [:cat :int :any]
-   :chunk-requested
-   [:cat :int]
-   :chunk-ticket
-   [:cat :int :int]
-   :purge-tickets
-   [:cat [:map-of :int :int]]
-   :restore-chunk
-   [:cat :int :map]
-   :player-placed
-   [:cat Eid :string Vec3]
-   :spawn-progress
-   [:cat Eid [:maybe :map]]
-   :unload-chunk
-   [:cat :int]
-   :set-weather
-   [:cat :map]
-   :set-block-entity
-   [:cat Pos [:maybe :map]]
-   :spawn-entity
-   [:cat :map]
-   :xp-award
-   [:cat Vec3 :int :any [:? Vec3]]
-   :remove-entity
-   [:cat Eid]
-   :level-deltas
-   [:cat :keyword [:sequential :any]]
-   :change-dimension
-   [:cat Eid :keyword Vec3 number? number?]
-   :listed
-   [:cat [:map-of Eid :uuid] Coll]
-   :advance-tick
-   [:cat]
-   :advance-weather
-   [:cat [:? :map]]
-   :observed
-   [:cat :map]
-   :explode
-   [:cat [:map [:center Vec3] [:power number?]
-          [:source :keyword] [:fire? :boolean]
-          [:by {:optional true} [:maybe Eid]]
-          [:with {:optional true} :keyword]
-          [:later {:optional true} :map]
-          [:after {:optional true} Eid]]]})
+(defn- merge-diff [cur add drop]
+  (let [s (or cur (i/int-set))
+        s (if (seq add) (into s add) s)]
+    (if (seq drop) (set/difference s (set drop)) s)))
 
-(def entity-deltas
-  {:merge-entity
-   [:cat :map]
+(defn- new-eids [w w' _]
+  (range (long (:next-eid w 1000000)) (long (:next-eid w' 1000000))))
+
+(def registry
+  "What each delta tag means: its :schema, its :scope and its :apply.
+  A :world delta changes the world as a whole, a :level one the level
+  it is applied to, an :entity one the entity of its eid and an :input
+  one is an event of a player. :apply takes the world and the delta,
+  for an :entity delta the tick, the entity and the delta. :eids tells
+  which entities a delta may add, :by-eid that it belongs to the level
+  of its eid and :left-behind that it stays with the level a player
+  leaves."
+  {:set-blocks
+   {:scope :level :schema [:cat Records [:? Coll] [:? Coll]]
+    :apply level/set-blocks}
+   :ticks-flushed
+   {:scope :level
+    :schema [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
+    :apply (fn [w [_ k t parked]]
+             (update w k schedule/flushed t parked))}
+   :schedule-ticks
+   {:scope :level :schema [:cat [:map-of :int Coll]]
+    :apply level/schedule-ticks}
+   :container-recheck
+   {:scope :level :schema [:cat Pos [:maybe :int]]
+    :apply level/container-recheck}
+   :openers
+   {:scope :level :schema [:cat Pos :int] :apply level/openers}
+   :shulker-anim
+   {:scope :level :schema [:cat Pos [:maybe :map]]
+    :apply level/shulker-anim}
+   :block-events-flushed
+   {:scope :level :schema [:cat]
+    :apply (fn [w _] (assoc w :block-events nil))}
+   :set-clock
+   {:scope :world :schema [:cat :keyword :map]
+    :apply (fn [w [_ k m]] (update-in w [:clocks k] merge m))}
+   :set-rule
+   {:scope :world :schema [:cat :keyword :any]
+    :apply (fn [w [_ rule value]] (assoc-in w [:rules rule] value))}
+   :set-config
+   {:scope :world :schema [:cat :map]
+    :apply (fn [w [_ m]] (assoc w :config m))}
+   :set-world-spawn
+   {:scope :world
+    :schema [:cat :keyword Pos [:tuple number? number?]]
+    :apply player/set-world-spawn}
+   :add-chunk
+   {:scope :level :schema [:cat :int :any] :apply level/add-chunk}
+   :chunk-requested
+   {:scope :level :schema [:cat :int]
+    :apply (fn [w [_ id]]
+             (update w :loading (fnil conj (i/int-set)) id))}
+   :chunk-ticket
+   {:scope :level :schema [:cat :int :int]
+    :apply (fn [w [_ id n]]
+             (update w :unknown assoc (long id) (long n)))}
+   :purge-tickets
+   {:scope :level :schema [:cat [:map-of :int :int]]
+    :apply (fn [w [_ held]] (assoc w :unknown held))}
+   :restore-chunk
+   {:scope :level :schema [:cat :int :map]
+    :apply level/restore-chunk}
+   :player-placed
+   {:scope :level :schema [:cat Eid :string Vec3]
+    :apply player/placed :eids (fn [_ _ d] [(nth d 1)])}
+   :spawn-progress
+   {:scope :world :schema [:cat Eid [:maybe :map]]
+    :apply (fn [w [_ eid req]]
+             (if req
+               (assoc-in w [:spawning eid] req)
+               (update w :spawning dissoc eid)))}
+   :unload-chunk
+   {:scope :level :schema [:cat :int] :apply level/unload-chunk}
+   :set-weather
+   {:scope :level :schema [:cat :map]
+    :apply (fn [w [_ m]] (merge w (select-keys m weather/fields)))}
+   :set-block-entity
+   {:scope :level :schema [:cat Pos [:maybe :map]]
+    :apply level/set-block-entity}
+   :spawn-entity
+   {:scope :level :schema [:cat :map] :apply level/spawn-entity
+    :eids new-eids}
+   :xp-award
+   {:scope :level :schema [:cat Vec3 :int :any [:? Vec3]]
+    :apply level/xp-award :eids new-eids}
+   :remove-entity
+   {:scope :level :schema [:cat Eid] :by-eid true
+    :apply (fn [w [_ eid]] (player/quit w eid))}
+   :level-deltas
+   {:scope :world :schema [:cat :keyword [:sequential :any]]}
+   :change-dimension
+   {:scope :world :schema [:cat Eid :keyword Vec3 number? number?]}
+   :listed
+   {:scope :world :schema [:cat [:map-of Eid :uuid] Coll]
+    :apply (fn [w [_ add drop]]
+             (update w :listed #(apply dissoc (merge % add) drop)))}
+   :advance-tick
+   {:scope :world :schema [:cat]
+    :apply (fn [w _] (dissoc (level/advance w) :input))}
+   :advance-weather
+   {:scope :level :schema [:cat [:? :map]]
+    :apply level/advance-weather}
+   :observed
+   {:scope :level :schema [:cat :map]
+    :apply (fn [w [_ m]] (assoc w :observed m))}
+   :explode
+   {:scope :level
+    :schema [:cat [:map [:center Vec3] [:power number?]
+                   [:source :keyword] [:fire? :boolean]
+                   [:by {:optional true} [:maybe Eid]]
+                   [:with {:optional true} :keyword]
+                   [:later {:optional true} :map]
+                   [:after {:optional true} Eid]]]}
+   :merge-entity
+   {:scope :entity :schema [:cat :map]
+    :apply (fn [_ e [_ _ m]] (entity/merged e m))}
    :teleport
-   [:cat Vec3]
+   {:scope :entity :schema [:cat Vec3]
+    :apply (fn [tick e [_ _ pos]]
+             (assoc e :pos (v/v3 pos) :tp-target pos :tp-at tick
+                      :tp-id (player/next-teleport-id e)))}
    :client-slots
-   [:cat [:map-of :int [:maybe Stack]] [:maybe Stack]]
+   {:scope :entity
+    :schema [:cat [:map-of :int [:maybe Stack]] [:maybe Stack]]
+    :apply (fn [_ e [_ _ slots carried]]
+             (player/client-slots e slots carried))}
    :award
-   [:cat :keyword :int]
+   {:scope :entity :schema [:cat :keyword :int]
+    :apply (fn [_ e [_ _ k n]]
+             (update e :awards (fnil conj []) [k n]))}
    :track
-   [:cat :map]
+   {:scope :entity :schema [:cat :map]
+    :apply (fn [_ e [_ _ tr]]
+             (assoc (cond-> e
+                      (some? (:kept-mdata e)) (dissoc :kept-mdata))
+                    :track tr))}
    :tracking
-   [:cat Coll Coll]
+   {:scope :entity :schema [:cat Coll Coll] :left-behind true
+    :apply (fn [_ e [_ _ add drop]]
+             (update e :tracking merge-diff add drop))}
    :set-slot
-   [:cat :int [:maybe Stack]]
+   {:scope :entity :schema [:cat :int [:maybe Stack]]
+    :apply (fn [_ e [_ _ slot stack]]
+             (if stack
+               (assoc-in e [:inventory slot] stack)
+               (update e :inventory dissoc slot)))}
    :chunks-sent
-   [:cat Coll Coll [:? [:maybe :int]]]
+   {:scope :entity :schema [:cat Coll Coll [:? [:maybe :int]]]
+    :left-behind true
+    :apply (fn [_ e [_ _ add drop]]
+             (update e :sent-chunks merge-diff add drop))}
    :damage
-   [:cat number? [:? [:cat number? number?]]]
+   {:scope :entity :schema [:cat number? [:? [:cat number? number?]]]
+    :apply (fn [_ e [_ _ amount dx dz]] (entity/hurt e amount dx dz))}
    :push
-   [:cat Vec3]})
+   {:scope :entity :schema [:cat Vec3]
+    :apply (fn [_ e [_ _ vel]]
+             (let [k (if (= :tnt (:type e)) :kb :vel)]
+               (update e k (fnil v/+ [0.0 0.0 0.0]) vel)))}
+   :player-join {:scope :input :apply player/join}
+   :player-quit
+   {:scope :input :apply (fn [w [_ eid]] (player/quit w eid))}
+   :move {:scope :input :apply player/move}
+   :client-tick-end {:scope :input :apply player/client-tick-end}
+   :abilities {:scope :input :apply player/abilities}
+   :player-loaded
+   {:scope :input
+    :apply (fn [w [_ eid]]
+             (level/update-entity w eid dissoc :loaded-at))}
+   :teleport-ack {:scope :input :apply player/teleport-ack}
+   :respawn {:scope :input :apply player/respawn}
+   :keepalive-echo {:scope :input :apply player/keepalive-echo}
+   :chunk-batch-ack {:scope :input :apply player/chunk-batch-ack}
+   :entity-action {:scope :input :apply player/entity-action}
+   :input
+   {:scope :input
+    :apply (fn [w [_ eid flags]]
+             (level/update-entity w eid merge flags))}
+   :client-settings {:scope :input :apply player/client-settings}
+   :place {:scope :input :apply player/place}
+   :use-item {:scope :input :apply player/use-item}
+   :release-use {:scope :input :apply player/release-use}})
+
+(defn- applies [scopes]
+  (into {} (keep (fn [[tag {:keys [scope apply]}]]
+                   (when (and apply (contains? scopes scope))
+                     [tag apply])))
+        registry))
+
+(def world-apply
+  "Returns the apply of a :world or :level tag, by tag."
+  (applies #{:world :level}))
+
+(def entity-apply
+  "Returns the apply of an :entity tag, by tag."
+  (applies #{:entity}))
+
+(def input-apply
+  "Returns the apply of an :input tag, by tag."
+  (applies #{:input}))
 
 (def fx-messages
   {:blocks-changed    [[:cp :int] [:records Records]]
@@ -255,10 +379,10 @@
 (def Delta
   (into [:multi {:dispatch first}]
         (concat
-          (for [[tag args] world-deltas]
-            [tag (into [:cat [:= tag]] (rest args))])
-          (for [[tag args] entity-deltas]
-            [tag (into [:cat [:= tag] Eid] (rest args))])
+          (for [[tag {:keys [scope schema]}] registry :when schema]
+            [tag (if (identical? :entity scope)
+                   (into [:cat [:= tag] Eid] (rest schema))
+                   (into [:cat [:= tag]] (rest schema)))])
           [[:fx [:cat [:= :fx] Fx]]])))
 
 (def ^:private delta-validator (delay (m/validator Delta)))

@@ -7,7 +7,7 @@
             [clojure.pprint :as pp]
             [clojure.string :as str]
             [collider.game.schema :as schema]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.log :as log]
             [collider.persist.snapshot.store :as types
              :refer [Store put-chunk! get-chunk put-meta! load
@@ -227,7 +227,7 @@
   (types/->FileStore dir))
 
 (defn- level-snapshot [world dim]
-  (let [lv (state/level world dim)
+  (let [lv (level/level world dim)
         entry (fn [id] [id (schema/chunk-payload lv id)])]
     (assoc (schema/snapshot lv :level)
       :chunks (into {} (map entry) (keys (:chunks lv))))))

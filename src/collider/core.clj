@@ -8,7 +8,8 @@
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.deltas :as deltas]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
+            [collider.game.schema :as schema]
             [collider.game.ticker :as ticker]
             [collider.log :as log]
             [collider.net.render :as render]
@@ -162,7 +163,7 @@
   (let [cfg (merge (config/load-config) opts)
         store (open-store opts cfg)
         saved (when store (snapshot/load-snapshot store))
-        init (merge state/initial-world saved)
+        init (merge schema/initial-world saved)
         world (atom (assoc init :config (world-config cfg store)))
         saver (when store (snapshot/start-saver))
         save! (when saver
@@ -232,7 +233,7 @@
 
 (defn- host-event [saved config-written?]
   (let [rt (Runtime/getRuntime)
-        lv (some-> saved (state/level :overworld))]
+        lv (some-> saved (level/level :overworld))]
     {:event           :host
      :java            (System/getProperty "java.version")
      :cores           (.availableProcessors rt)

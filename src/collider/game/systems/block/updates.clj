@@ -5,7 +5,8 @@
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schedule :as schedule]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.game.systems.blocks.edit :as edit]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -122,7 +123,7 @@
     (applied world ctx k pass (:changes r))))
 
 (defn- ordered [world k active]
-  (let [runs? #(state/active-id? active %)
+  (let [runs? #(areas/active-id? active %)
         pos (fn [[id ty]] [(chunk/id->block-pos id) ty])
         order (schedule/run-order (get world k) (:tick world) runs?)]
     (mapv pos order)))
@@ -158,7 +159,7 @@
       (vec (repeat (count ticks) nil)))))
 
 (defn- ticks-run [world k ticks]
-  (let [ctx (state/level-ctx world)
+  (let [ctx (level/level-ctx world)
         firsts (first-runs world ctx k ticks)
         w (update world :chunks chunk/editable)
         dirty (when (some some? firsts) (i/int-set))
@@ -170,14 +171,14 @@
 (defn- parked-ids [world active due]
   (let [chunks (:chunks world)
         loaded? #(contains? chunks (chunk/block-id-chunk %))
-        skip? #(or (state/active-id? active %) (not (loaded? %)))]
+        skip? #(or (areas/active-id? active %) (not (loaded? %)))]
     (into [] (comp (map key) (remove skip?)) due)))
 
 (defn- ticks-deltas [world k]
   (let [t (long (:tick world))
         due (schedule/due (get world k) t)]
     (when (seq due)
-      (let [active (state/ticking-chunks world)
+      (let [active (areas/ticking-chunks world)
             parked (parked-ids world active due)]
         (into [[:ticks-flushed k t parked]]
               (ticks-run world k (ordered world k active)))))))
@@ -200,7 +201,7 @@
     (into [] (comp (map first) (distinct) (map final)) recs)))
 
 (defn- announced [w events]
-  (let [heard (state/broadcast-chunks w)]
+  (let [heard (areas/broadcast-chunks w)]
     (filter (fn [[cp _]] (contains? heard cp)) events)))
 
 (defn- changed-out [w [cp recs]]

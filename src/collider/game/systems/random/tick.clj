@@ -4,7 +4,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -156,7 +156,7 @@
 
 (defn- ticked [world speed]
   (let [chunks (:chunks world) time (clock/day-ticks world)
-        h (max-snow world) cids (state/active-chunk-ids world)
+        h (max-snow world) cids (areas/active-chunk-ids world)
         both (fn [cid]
                [(chunk-results world chunks speed time cid)
                 (chunk-fallen world chunks speed h cid)])

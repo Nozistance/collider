@@ -6,7 +6,8 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.orb :as orb]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
@@ -17,11 +18,11 @@
 
 (defn- active-orbs [world]
   (into (sorted-map)
-        (state/active-of-types world [:experience-orb])))
+        (areas/active-of-types world [:experience-orb])))
 
 (defn- followers [world]
   (into [] (remove #(game-mode/spectator? (val %)))
-        (state/player-entries world)))
+        (level/player-entries world)))
 
 (defn- lived ^long [world e]
   (- (long (:tick world)) (long (or (:born e) 0))))
@@ -129,7 +130,7 @@
   (filterv (fn [[_ p]]
              (and (pos? (double (:health p 20.0)))
                   (not (game-mode/spectator? p))))
-           (state/player-entries world)))
+           (level/player-entries world)))
 
 (defn- ready? [world p]
   (>= (long (:tick world)) (long (or (:xp-ready-at p) 0))))

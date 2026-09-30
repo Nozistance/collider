@@ -194,8 +194,7 @@
 (def level-keys
   "The keys of world that belong to a level and not to the shared
   part. The transient keys of the tick count too."
-  (into #{:active-chunks :block-events :use-origins :moves :quits
-          :heeded :resends :releases :observed}
+  (into #{:active-chunks :block-events :input :observed}
         (keys level-table)))
 
 (def dims

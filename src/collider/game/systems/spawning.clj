@@ -1,7 +1,8 @@
 (ns collider.game.systems.spawning
   "Placement of joining and respawning players."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.player :as player]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.damage :as damage]
             [collider.world.chunk :as chunk]
@@ -13,7 +14,7 @@
   (long (get-in w [:rules :respawn-radius] 10)))
 
 (defn- suggestion [w req]
-  (if (:respawn? req) (state/respawn-at w) (:world-spawn w)))
+  (if (:respawn? req) (player/respawn-at w) (:world-spawn w)))
 
 (defn- search-ids [w req]
   (spawn/search-chunk-ids (suggestion w req) (radius w)))
@@ -49,7 +50,7 @@
 (defn- respawned [w eid req]
   (let [e (get-in w [:entities eid])
         bed (damage/bed-respawn (:chunks w) e)
-        [yaw pitch] (state/spawn-turn w)
+        [yaw pitch] (player/spawn-turn w)
         [pos yaw pitch] (or bed [(found w req) yaw pitch])
         lost? (and (nil? bed) (some? (damage/respawn-config e)))]
     (conj (damage/respawn-deltas w eid [pos yaw pitch lost?])
@@ -62,7 +63,7 @@
 
 (defn- loading [[w acc] need]
   (let [ds (vec (chunks/loading-deltas w need))
-        w' (if (seq ds) (first (state/apply-deltas w ds)) w)]
+        w' (if (seq ds) (first (apply/deltas w ds)) w)]
     [w' (into acc ds)]))
 
 (defn- settle [[world acc] [eid req]]

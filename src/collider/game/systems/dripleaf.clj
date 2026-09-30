@@ -1,7 +1,7 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
@@ -45,7 +45,7 @@
 (defn- tilt-changes [world]
   (reduce (fn [acc [_ e]]
             (if (:on-ground e) (tilted-under world acc e) acc))
-          (sorted-map) (state/player-entries world)))
+          (sorted-map) (level/player-entries world)))
 
 (defn- tilt-deltas [world]
   (let [changes (tilt-changes world)]

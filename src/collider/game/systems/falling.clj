@@ -4,7 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -179,4 +179,4 @@
   {:wake {:types #{:falling-block}}}
   [world _d]
   (deltas/fold (fn [[eid e]] (step-deltas world eid e))
-               (state/active-of-types world [:falling-block])))
+               (areas/active-of-types world [:falling-block])))

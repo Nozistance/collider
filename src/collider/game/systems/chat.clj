@@ -19,7 +19,9 @@
             [collider.game.out :as out]
             [collider.game.schema :as schema]
             [collider.game.stack :as stack]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.effects :as effects]
@@ -177,7 +179,7 @@
   (let [server (:server world)]
     (if (or (= dim (:dim world)) (nil? server))
       world
-      (assoc (state/level server dim) :server server))))
+      (assoc (level/level server dim) :server server))))
 
 (defn- in-level [world dim ds]
   (cond
@@ -301,7 +303,7 @@
 (defn- player-entries [world]
   (sort-by first
            (for [[dim lv] (levels world)
-                 [id e] (state/player-entries lv)]
+                 [id e] (level/player-entries lv)]
              [id dim e])))
 
 (defn- entity-entries [world]
@@ -598,7 +600,7 @@
   (in-level world dim
             (cond
               (not= :player (:type e)) [[:remove-entity id]]
-              (state/client-loaded? e (long (:tick world)))
+              (player/client-loaded? e (long (:tick world)))
               [[:merge-entity id {:health 0.0}]])))
 
 (defn- kill-report [eid xs]
@@ -680,7 +682,7 @@
 (defn- same-spawn? [world dim at turn]
   (and (= dim (:world-spawn-dimension world :overworld))
        (= at (vec (:world-spawn world)))
-       (= (mapv double turn) (state/spawn-turn world))))
+       (= (mapv double turn) (player/spawn-turn world))))
 
 (defn- world-spawn-set [world eid at [yaw pitch :as turn]]
   (let [dim (source-dim world)
@@ -1138,7 +1140,7 @@
           #(out/title kind %)))
 
 (defn- help-deltas [world eid [text]]
-  (let [lv (state/permission-level (get-in world [:entities eid]))
+  (let [lv (player/permission-level (get-in world [:entities eid]))
         lines (cmd/help-lines lv text (source-pos world))]
     (if (nil? lines)
       (fail eid "commands.help.failed")
@@ -1175,6 +1177,14 @@
     (say eid "commands.playsound.success.multiple" id
          (count played))))
 
+(defn- playsound-result [world eid sel id played]
+  (cond
+    (and sel (empty? (player-selected world eid sel)))
+    (fail eid "argument.entity.notfound.player")
+    (empty? played) (fail eid "commands.playsound.failed")
+    :else (concat (map second played)
+                  (sound-report eid (map first played) id))))
+
 (defn- playsound-deltas
   [world eid [src id sel x y z volume pitch min-volume]]
   (let [pos (if (some? x) [x y z] (vec (source-pos world)))
@@ -1187,12 +1197,7 @@
                (when-let [[at v] (heard e pos volume least)]
                  [x (out/to pid (sound at v))]))
         played (keep play (sound-listeners world eid sel))]
-    (cond
-      (and sel (empty? (player-selected world eid sel)))
-      (fail eid "argument.entity.notfound.player")
-      (empty? played) (fail eid "commands.playsound.failed")
-      :else (concat (map second played)
-                    (sound-report eid (map first played) id)))))
+    (playsound-result world eid sel id played)))
 
 (defn- stop-report [src id]
   (let [src (when (not= "*" src) src)]
@@ -1311,27 +1316,29 @@
 (defn- tag-names [tags]
   (name-list (mapv (fn [t] {:text t :color "green"}) (sort tags))))
 
-(defn- tag-list-deltas [world eid [sel]]
-  (let [xs (selected world eid sel)
-        tags (into #{} (mapcat #(:tags (nth % 2))) xs)
-        one? (= 1 (count xs))
+(defn- tag-list [eid xs tags]
+  (let [one? (= 1 (count xs))
         who (when one? (entity-name (nth (first xs) 2)))
         n (count tags)]
-    (answer
-      (cond
-        (empty? xs) (fail eid "argument.entity.notfound.entity")
-        (and one? (zero? n))
-        (say eid "commands.tag.list.single.empty" who)
-        one? (say eid "commands.tag.list.single.success" who n
-                  (tag-names tags))
-        (zero? n)
-        (say eid "commands.tag.list.multiple.empty" (count xs))
-        :else (say eid "commands.tag.list.multiple.success" (count xs)
-                   n (tag-names tags))))))
+    (cond
+      (empty? xs) (fail eid "argument.entity.notfound.entity")
+      (and one? (zero? n))
+      (say eid "commands.tag.list.single.empty" who)
+      one? (say eid "commands.tag.list.single.success" who n
+                (tag-names tags))
+      (zero? n)
+      (say eid "commands.tag.list.multiple.empty" (count xs))
+      :else (say eid "commands.tag.list.multiple.success" (count xs)
+                 n (tag-names tags)))))
+
+(defn- tag-list-deltas [world eid [sel]]
+  (let [xs (selected world eid sel)
+        tags (into #{} (mapcat #(:tags (nth % 2))) xs)]
+    (answer (tag-list eid xs tags))))
 
 (defn- swung [world hand [id dim e]]
   (when (effects/living? e)
-    (let [ds (state/swing-deltas id e hand (:tick world) true)]
+    (let [ds (player/swing-deltas id e hand (:tick world) true)]
       (or (in-level world dim ds) []))))
 
 (defn- swing-report [eid xs n]
@@ -1543,10 +1550,10 @@
 
 (defn- gamemaster? [world eid]
   (when-let [e (get-in world [:entities eid])]
-    (<= (long cmd/gamemaster) (state/permission-level e))))
+    (<= (long cmd/gamemaster) (player/permission-level e))))
 
 (defn- level [world eid]
-  (state/permission-level (get-in world [:entities eid])))
+  (player/permission-level (get-in world [:entities eid])))
 
 (defn- parsed [world eid text origin]
   (cmd/parse text origin (:dim world :overworld) (level world eid)))
@@ -1623,7 +1630,7 @@
                (config-event-deltas world ev))))
 
 (defn- chat-deltas [world events]
-  (state/fold-events world events one-deltas))
+  (apply/fold-events world events one-deltas))
 
 (defn chat
   "Turns the chat lines and commands of this tick into deltas."

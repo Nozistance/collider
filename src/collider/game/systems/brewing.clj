@@ -5,7 +5,7 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.block.brewing :as brewing]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -13,7 +13,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- stands [world]
-  (let [active (state/active-chunks world)]
+  (let [active (areas/active-chunks world)]
     (for [[cid entries] (:block-entities world)
           :when (contains? active cid)
           [pos e] entries

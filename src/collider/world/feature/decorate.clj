@@ -1,7 +1,7 @@
 (ns collider.world.feature.decorate
   "The root placer and the decorators of trees."
   (:require [collider.world.block :as block]
-            [collider.world.feature.level :as lv]
+            [collider.world.feature.worldgen :as lv]
             [collider.world.feature.trunk :refer [off]]))
 
 (set! *warn-on-reflection* true)

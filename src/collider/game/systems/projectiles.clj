@@ -7,7 +7,9 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.damage :as damage]
@@ -197,21 +199,21 @@
       [(out/all (out/sound snd (:pos e) 0.5 pitch))])))
 
 (defn- spent-deltas [eid e stack]
-  (when-not (state/infinite-materials? e)
+  (when-not (player/infinite-materials? e)
     (let [n (dec (long (:count stack 1)))]
-      [[:set-slot eid (state/hand-slot e (:use-hand e))
+      [[:set-slot eid (player/hand-slot e (:use-hand e))
         (when (pos? n) (assoc stack :count n))]])))
 
 (defn throw-deltas
   "Returns the deltas of a player throwing what its hand holds."
   [world eid e]
-  (let [stack (state/hand-stack e (:use-hand e)) item (:item stack)]
+  (let [stack (player/hand-stack e (:use-hand e)) item (:item stack)]
     (when (throwables item)
       (concat (throw-sound world eid e stack)
               [[:spawn-entity (thrown world eid e stack)]
                [:award eid (keyword "used" (name item)) 1]]
               (spent-deltas eid e stack)
-              (state/cooldown-deltas eid e item (:tick world))))))
+              (player/cooldown-deltas eid e item (:tick world))))))
 
 (defn- box-of [pos ^double w ^double h]
   (let [x (v/x pos) y (v/y pos) z (v/z pos)]
@@ -506,7 +508,7 @@
       :else (cloud-active world eid e age))))
 
 (defn- live? [active [_ e]]
-  (state/active-at? active (:pos e)))
+  (areas/active-at? active (:pos e)))
 
 (def ^:private flying (conj entity/thrown-types :area-effect-cloud))
 
@@ -517,9 +519,9 @@
   Also returns the life of the lingering clouds."
   {:wake {:types flying}}
   [world _d]
-  (let [active (state/active-chunks world)
+  (let [active (areas/active-chunks world)
         es (into [] (filter (partial live? active))
-                 (state/of-types world flying))
+                 (level/of-types world flying))
         step (fn [[eid e :as entry]]
                (if (cloud? entry)
                  (cloud-deltas world eid e)

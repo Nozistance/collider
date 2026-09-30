@@ -6,7 +6,10 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
             [collider.random :as random]
@@ -17,7 +20,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- others [world]
-  (state/of-types world hanging/types))
+  (level/of-types world hanging/types))
 
 (defn- sound [e what]
   (let [k (keyword (str "entity." (name (:type e)) "." what))]
@@ -40,7 +43,7 @@
   (get-in world [:rules :entity-drops] true))
 
 (defn- endless? [causer]
-  (boolean (and causer (state/infinite-materials? causer))))
+  (boolean (and causer (player/infinite-materials? causer))))
 
 (defn- frame-drops [world eid e causer with-frame?]
   (when (and (drops? world) (not (endless? causer)))
@@ -83,17 +86,17 @@
          (into (dropped world eid e nil nil)))]))
 
 (defn- turn [world active t [live acc :as s] [eid e :as entry]]
-  (if (state/active-at? active (:pos e))
+  (if (areas/active-at? active (:pos e))
     (checked world t s entry)
     [live (conj acc [:merge-entity eid
                      {:check-at (inc (long (:check-at e)))}])]))
 
 (defn- busy? [active t [_ e]]
   (or (<= (long (:check-at e)) (long t))
-      (not (state/active-at? active (:pos e)))))
+      (not (areas/active-at? active (:pos e)))))
 
 (defn- turns [world entries]
-  (let [active (state/active-chunks world)
+  (let [active (areas/active-chunks world)
         t (long (:tick world))
         busy (filterv #(busy? active t %) entries)
         step (fn [s entry] (turn world active t s entry))]
@@ -144,7 +147,7 @@
   the face of the block at pos, as HangingEntityItem.useOn."
   [world eid p pos face]
   (let [hand (:use-hand p :main)
-        stack (state/hand-stack p hand)
+        stack (player/hand-stack p hand)
         item (:item stack)
         face (dir/from-index face)
         at (mapv + pos (dir/offset face))]
@@ -163,7 +166,7 @@
 (def ^:private ^:const reach-buffer 3.0)
 
 (defn- range-of ^double [p]
-  (+ (state/entity-reach p) reach-buffer))
+  (+ (player/entity-reach p) reach-buffer))
 
 (defn- in-use-range? [p e]
   (let [r (range-of p)]
@@ -186,7 +189,7 @@
             (signal/game-event :block-change (:pos e) peid))))
 
 (defn- frame-use [peid p eid e hand]
-  (let [stack (state/hand-stack p hand)]
+  (let [stack (player/hand-stack p hand)]
     (cond (:stack e) (turn-item-deltas peid eid e)
           stack (put-deltas peid p eid e hand stack))))
 
@@ -232,4 +235,4 @@
   [world d]
   (let [evs (filterv #(aimed? world %) (:input d))]
     (deltas/of-vec (when (seq evs)
-                     (state/fold-events world evs event-deltas)))))
+                     (apply/fold-events world evs event-deltas)))))

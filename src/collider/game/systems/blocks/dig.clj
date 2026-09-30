@@ -5,7 +5,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.entity :as entity]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
@@ -26,7 +26,7 @@
         (and (= :bed t) (= :foot part)))))
 
 (defn- kept-partner [world e pos old]
-  (when (and (state/infinite-materials? e) (first-half? old))
+  (when (and (player/infinite-materials? e) (first-half? old))
     (connect/partner (:chunks world) pos old)))
 
 (defn- centre [[x y z]]
@@ -74,9 +74,9 @@
       [(edit/own-change world eid pos)])))
 
 (defn- may-break? [e]
-  (let [it (get (data/items) (:item (state/hand-stack e :main)))]
+  (let [it (get (data/items) (:item (player/hand-stack e :main)))]
     (not (or (false? (:breaks? it))
-             (and (state/infinite-materials? e)
+             (and (player/infinite-materials? e)
                   (false? (:creative-break? it)))))))
 
 (defn- restricted [world eid status pos]

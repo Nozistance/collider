@@ -18,7 +18,10 @@
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
+            [collider.game.delta :as delta]
+            [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -57,7 +60,7 @@
         dx (reach/axis-gap ex (- (double x) (double half)) w)
         dy (reach/axis-gap ey (double y) (double height))
         dz (reach/axis-gap ez (- (double z) (double half)) w)
-        r (+ (state/entity-reach p) reach-buffer)]
+        r (+ (player/entity-reach p) reach-buffer)]
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
 
 (defn- ctx-of
@@ -102,7 +105,7 @@
     (not= :pass result)
     (into (signal/game-event :entity-interact (:pos e) peid))
     (= :success-server result)
-    (into (state/swing-deltas peid p hand t true))))
+    (into (player/swing-deltas peid p hand t true))))
 
 (defn- spectating? [world ev]
   (game-mode/spectator? (get-in world [:entities (nth ev 1)])))
@@ -113,7 +116,7 @@
     []))
 
 (defn- interact-deltas [world events t]
-  (state/fold-events world (filter #(= :interact (first %)) events)
+  (apply/fold-events world (filter #(= :interact (first %)) events)
                      (fn [w ev] (interact w ev t))))
 
 (defn- fmul
@@ -856,7 +859,7 @@
    :hurt-resist (:hurt-resist h) :hurt-cause :cramming})
 
 (defn- crammed [eid e ds]
-  (let [h (state/hurt (rested e) cramming-damage)]
+  (let [h (entity/hurt (rested e) cramming-damage)]
     (if (not= (:health h) (:health e))
       [h (conj (vec ds) [:merge-entity eid (hurt-marks h)])]
       [e ds])))
@@ -872,7 +875,7 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (state/hurt (rested (assoc e :pos pos)) cramming-damage))))
+      (entity/hurt (rested (assoc e :pos pos)) cramming-damage))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
@@ -917,7 +920,7 @@
   (let [a (boolean-array (count es))]
     (dotimes [i (count es)]
       (let [p (:pos (nth (nth es i) 1))]
-        (aset a i (boolean (state/active-at? active p)))))
+        (aset a i (boolean (areas/active-at? active p)))))
     a))
 
 (defn- island [active es]
@@ -1031,7 +1034,7 @@
 
 (defn- herds [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
-          (push/islands world (state/loaded-zone world))))
+          (push/islands world (areas/loaded-zone world))))
 
 (def ^:private ^:const batch-bodies 32)
 
@@ -1050,11 +1053,11 @@
 
 (defn- biting? [active t [_ e]]
   (when-let [f (biters (:type e))]
-    (and (f e t) (state/active-at? active (:pos e)))))
+    (and (f e t) (areas/active-at? active (:pos e)))))
 
 (defn- bitten [world ds]
   (let [f (fn [w d]
-            (if-let [g (state/world-apply (nth d 0))] (g w d) w))]
+            (if-let [g (delta/world-apply (nth d 0))] (g w d) w))]
     (reduce f world ds)))
 
 (defn- bitten-worlds [world tempters t cs]
@@ -1085,7 +1088,7 @@
   [world d]
   (let [events (:input d)
         t (long (:tick world))
-        active (state/active-chunks world)
+        active (areas/active-chunks world)
         tempters (sense/holders world)
         hs (herds world)
         world (seen world tempters t active hs)]

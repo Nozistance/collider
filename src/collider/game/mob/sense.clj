@@ -1,7 +1,8 @@
 (ns collider.game.mob.sense
   "A mob's senses of the blocks under it and the entities around it."
   (:require [collider.game.game-mode :as game-mode]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 
@@ -137,7 +138,7 @@
 (defn in-hand
   "Returns the item the player holds in hand, nil for an empty one."
   [p hand]
-  (:item (state/hand-stack p hand)))
+  (:item (player/hand-stack p hand)))
 
 (defn hands-of
   "Returns the set of items the player holds in either hand."
@@ -168,4 +169,4 @@
                 (let [items (hands-of p)]
                   (when (and (seq items) (game-mode/seen? p))
                     [pid items p]))))
-        (state/player-entries world)))
+        (level/player-entries world)))

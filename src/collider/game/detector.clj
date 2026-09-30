@@ -3,7 +3,7 @@
   (:require [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -97,7 +97,7 @@
   (reduce (fn [m [k n]] (added m k n)) stats awards))
 
 (defn- players [world]
-  (state/of-types world [:player]))
+  (level/of-types world [:player]))
 
 (defn- player-delta [world moves [eid e]]
   (let [counted (player-stats world moves eid e)
@@ -119,7 +119,7 @@
                  ps))))
 
 (defn- award [world _]
-  (let [moves (group-by :eid (:moves world))
+  (let [moves (group-by :eid (get-in world [:input :moves]))
         ps (players world)
         ds (mapv #(player-delta world moves %) ps)]
     (if (still? world ps)

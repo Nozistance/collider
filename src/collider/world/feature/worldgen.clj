@@ -1,4 +1,4 @@
-(ns collider.world.feature.level
+(ns collider.world.feature.worldgen
   "The level a tree reads and changes while it grows: the cells it
   sees, the writes it makes in order, and the draws of its random
   source."

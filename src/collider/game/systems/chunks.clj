@@ -4,7 +4,9 @@
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.world.chunk :as chunk]
             [collider.world.gen :as gen]))
 
@@ -15,7 +17,7 @@
 (defn view-distance
   "Returns the view distance of the server in chunks."
   ^long [world]
-  (state/view-radius world))
+  (areas/view-radius world))
 
 (defn player-radius
   "Returns the view distance a player is sent chunks for.
@@ -78,7 +80,7 @@
   They are the chunks around its players and the chunks joining and
   respawning players wait for."
   [world]
-  (into (state/loaded-zone world)
+  (into (areas/loaded-zone world)
         (mapcat :need (vals (:spawning world)))))
 
 (defn- writable? [world eid]
@@ -171,7 +173,7 @@
 (defn- loaded-event? [ev] (= :chunk-loaded (nth ev 0)))
 
 (defn- loads? [world]
-  (or (seq (state/absent-chunks world))
+  (or (seq (areas/absent-chunks world))
       (not-every? #(contains? (:chunks world) %)
                   (mapcat :need (vals (:spawning world))))))
 
@@ -189,7 +191,7 @@
   {:wake {:types #{:player} :events #{:chunk-loaded}}}
   [world d]
   (let [ps (into [] (filter #(streaming? world %))
-                 (state/player-entries world))
+                 (level/player-entries world))
         sent (deltas/fold #(stream-deltas world %) ps)]
     (if (some loaded-event? (:input d))
       (deltas/merge sent (deltas/of-vec (restore-deltas world d)))
@@ -198,7 +200,7 @@
 (defn- arrived [world d]
   (keep #(when-let [e (get-in world [:entities (nth % 1)])]
            [(nth % 1) e])
-        (state/changes-of d)))
+        (apply/changes-of d)))
 
 (defn arrival-streaming
   "Sends their first chunks to the players who entered the level.

@@ -2,7 +2,8 @@
   "Spectators looking through the eyes of other entities."
   (:require [collider.game.camera :as camera]
             [collider.game.deltas :as deltas]
-            [collider.game.state :as state]))
+            [collider.game.apply :as apply]
+            [collider.game.level :as level]))
 
 (set! *warn-on-reflection* true)
 
@@ -11,11 +12,11 @@
 
 (defn- follow-deltas [world]
   (into [] (mapcat (fn [[eid e]] (camera/follow-deltas world eid e)))
-        (state/player-entries world)))
+        (level/player-entries world)))
 
 (defn- camera-deltas [world events]
-  (let [ds (state/fold-events world events event-deltas)
-        w (state/apply-entities world ds)]
+  (let [ds (apply/fold-events world events event-deltas)
+        w (apply/entities world ds)]
     (into ds (follow-deltas w))))
 
 (defn camera

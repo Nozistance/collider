@@ -5,7 +5,9 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.vec :as v]
@@ -144,7 +146,7 @@
 
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
-        slot (state/hand-slot e :main)
+        slot (player/hand-slot e :main)
         s (get-in e [:inventory slot])]
     (when s
       (let [total (long (:count s 1))
@@ -494,8 +496,8 @@
             (when left [[:spawn-entity (dropped world eid left)]]))))
 
 (defn- emptied [world eid e hand made]
-  (let [slot (state/hand-slot e hand)
-        left (shrunk (state/hand-stack e hand) 1)]
+  (let [slot (player/hand-slot e hand)
+        left (shrunk (player/hand-stack e hand) 1)]
     (if left
       (cons [:set-slot eid slot left] (kept world eid e made))
       [[:set-slot eid slot made]])))
@@ -516,7 +518,7 @@
    (filled-result-deltas world eid stack always? :main))
   ([world eid stack always? hand]
    (let [e (get-in world [:entities eid])]
-     (if (state/infinite-materials? e)
+     (if (player/infinite-materials? e)
        (creative-filled world eid e stack always?)
        (emptied world eid e hand stack)))))
 
@@ -524,33 +526,33 @@
   "Returns the deltas of spending n of the item in hand.
   A player with infinite materials spends nothing."
   [eid e hand ^long n]
-  (when-not (state/infinite-materials? e)
-    [[:set-slot eid (state/hand-slot e hand)
-      (shrunk (state/hand-stack e hand) n)]]))
+  (when-not (player/infinite-materials? e)
+    [[:set-slot eid (player/hand-slot e hand)
+      (shrunk (player/hand-stack e hand) n)]]))
 
 (defn- remainder-deltas [world eid e hand stack left]
   (let [over (dec (long (:count stack 1)))
         made {:item (:item left) :count (long (:count left 1))}]
     (if (pos? over)
-      (cons [:set-slot eid (state/hand-slot e hand)
+      (cons [:set-slot eid (player/hand-slot e hand)
              (assoc stack :count over)]
             (kept world eid e made))
-      [[:set-slot eid (state/hand-slot e hand) made]])))
+      [[:set-slot eid (player/hand-slot e hand) made]])))
 
 (defn use-item-deltas
   "Returns the deltas of a player using one item from hand.
   Some items leave a remainder, such as an empty bucket after milk.
   The remainder takes the hand or goes to the inventory."
   [world eid e hand]
-  (let [stack (state/hand-stack e hand)
+  (let [stack (player/hand-stack e hand)
         left (get-in (data/items) [(:item stack) :use-remainder])]
-    (if (and left (not (state/infinite-materials? e)))
+    (if (and left (not (player/infinite-materials? e)))
       (remainder-deltas world eid e hand stack left)
       (consume-deltas eid e hand 1))))
 
 (defn- broken-deltas [eid e hand stack]
   (let [fx (out/status eid (if (= :off hand) :break-off :break-main))]
-    [[:set-slot eid (state/hand-slot e hand) (shrunk stack 1)]
+    [[:set-slot eid (player/hand-slot e hand) (shrunk stack 1)]
      (out/all fx) (out/to eid fx)]))
 
 (defn hurt-item-deltas
@@ -558,13 +560,13 @@
   An item worn past its last point breaks and leaves the hand. A
   player with infinite materials wears nothing out."
   [eid e hand ^long n]
-  (let [stack (state/hand-stack e hand)
+  (let [stack (player/hand-stack e hand)
         worn (+ n (stack/damage stack))]
     (when (and (stack/damageable? stack)
-               (not (state/infinite-materials? e)))
+               (not (player/infinite-materials? e)))
       (if (>= worn (stack/max-damage stack))
         (broken-deltas eid e hand stack)
-        [[:set-slot eid (state/hand-slot e hand)
+        [[:set-slot eid (player/hand-slot e hand)
           (stack/with-damage stack worn)]]))))
 
 (defn- in-pickup-range? [pe ie]
@@ -599,7 +601,7 @@
 
 (defn- takers [world]
   (remove #(game-mode/spectator? (val %))
-          (state/player-entries world)))
+          (level/player-entries world)))
 
 (defn- pickup-deltas [world items]
   (let [ready? (fn [[_ ie]] (zero? (long (or (:pickup-delay ie) 0))))
@@ -623,7 +625,7 @@
   {:wake {:types #{:item}}}
   [world _d]
   (let [step #(vector (stepped-item world %))
-        items (state/active-of-types world [:item])
+        items (areas/active-of-types world [:item])
         act (deltas/pmapcat step items)]
     (deltas/of-vec
       (when (pos? (count act))
@@ -634,4 +636,4 @@
   {:wake {:types #{:item}}}
   [world _d]
   (deltas/of-vec
-    (pickup-deltas world (state/active-of-types world [:item]))))
+    (pickup-deltas world (areas/active-of-types world [:item]))))

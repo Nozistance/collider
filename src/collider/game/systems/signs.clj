@@ -1,13 +1,13 @@
 (ns collider.game.systems.signs
   "Signs that editors hold open."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
             [collider.game.systems.blocks.reach :as reach]))
 
 (set! *warn-on-reflection* true)
 
 (defn- edited [world]
-  (let [active (state/active-chunks world)]
+  (let [active (areas/active-chunks world)]
     (for [[cid entries] (:block-entities world)
           :when (contains? active cid)
           [pos e] entries

@@ -7,7 +7,7 @@
             [collider.game.effect :as effect]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.entity :as entity]
             [collider.game.systems.damage :as damage])
   (:import (clojure.lang MapEntry)))
 
@@ -125,7 +125,7 @@
     (if (or (damage/creative-proof? e) (not (pos? (health acc))))
       acc
       (-> acc
-          (assoc :e (state/hurt e amount) :hurt? true)
+          (assoc :e (entity/hurt e amount) :hurt? true)
           (update :ds conj [:damage (:eid acc) amount])))))
 
 (defn- regenerated [acc]

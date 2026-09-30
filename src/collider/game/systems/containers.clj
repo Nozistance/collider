@@ -8,7 +8,9 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]))
 
@@ -289,7 +291,7 @@
   (when (pos? (long takes))
     (case (:type m)
       :anvil (container/anvil-take-deltas
-               world m (state/infinite-materials? e))
+               world m (player/infinite-materials? e))
       (keep identity [(container/take-sound m)]))))
 
 (defn- click-merge-deltas [eid e after inventory menu]
@@ -460,7 +462,7 @@
             (let [eid (:eid e)
                   w (assoc-in world [:entities eid] e)]
               (left-behind-deltas w eid e)))
-          (:quits world)))
+          (get-in world [:input :quits])))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]
@@ -499,7 +501,7 @@
               (when (broadcasting? world e)
                 (broadcast-deltas world (long eid) e)))]
     (deltas/of-vec
-      (into [] (mapcat one) (state/of-types world [:player])))))
+      (into [] (mapcat one) (level/of-types world [:player])))))
 
 (defn- event-deltas [world [tag :as ev]]
   (case tag
@@ -513,13 +515,13 @@
   (concat
     (container/animate-deltas world)
     (quit-deltas world)
-    (state/fold-events world events event-deltas)))
+    (apply/fold-events world events event-deltas)))
 
 (defn containers
   "Returns the deltas of the menus and containers of the tick."
   {:wake {:events #{:menu-click :menu-close :menu-button
                     :rename-item}
-          :keys [:shulker-anim :quits]}}
+          :keys [:shulker-anim [:input :quits]]}}
   [world d]
   (let [events (:input d)]
     (deltas/of-vec (containers-deltas world events))))

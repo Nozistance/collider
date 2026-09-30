@@ -5,7 +5,7 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.game.systems.daynight :as daynight]
             [collider.vec :as v]
             [collider.world.blocks.bed :as bed]
@@ -39,7 +39,7 @@
   "Returns how many sleeping players the night needs.
   Spectators do not count."
   ^long [world]
-  (let [players (count (counted (state/player-entries world)))
+  (let [players (count (counted (level/player-entries world)))
         k [:rules :players-sleeping-percentage]
         share (long (get-in world k 100))]
     (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
@@ -86,7 +86,7 @@
       (woken-deltas eid up yaw))))
 
 (defn- in-bed [world]
-  (filter (fn [[_ e]] (:sleeping e)) (state/player-entries world)))
+  (filter (fn [[_ e]] (:sleeping e)) (level/player-entries world)))
 
 (defn sleepers
   "Returns the sleeping players that count, which are no spectators."
@@ -148,10 +148,10 @@
         (seq waking) (waking-deltas world asleep waking)))))
 
 (defn- quit-deltas [world]
-  (mapcat #(vacated-deltas world %) (:quits world)))
+  (mapcat #(vacated-deltas world %) (get-in world [:input :quits])))
 
 (defn sleep
   "Returns the deltas of sleeping and waking in the level."
-  {:wake {:types #{:player} :keys [:quits]}}
+  {:wake {:types #{:player} :keys [[:input :quits]]}}
   [world _d]
   (deltas/of-vec (concat (quit-deltas world) (sleep-deltas world))))

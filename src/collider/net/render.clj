@@ -14,7 +14,8 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.schema :as schema]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.gamerules :as rules]
             [collider.game.out :as out]
             [collider.log :as log]
@@ -524,6 +525,10 @@
 
 (def ^:private source-ids (zipmap out/sound-sources (range)))
 
+(defn- title-times-packet [m]
+  (assoc (select-keys m [:fade-in :stay :fade-out])
+         :packet :set-titles-animation))
+
 (defn- named-sound-packet [m]
   {:packet :sound :sound (:id m)
    :source (source-ids (:source m)) :pos (:pos m)
@@ -639,13 +644,13 @@
   {:packet :game-event :event (game-events event) :value value})
 
 (defn- join-spawn [world]
-  (let [[x y z] (state/respawn-at world)]
+  (let [[x y z] (player/respawn-at world)]
     [(long (Math/floor (double x)))
      (long (Math/floor (double y)))
      (long (Math/floor (double z)))]))
 
 (defn- permission-packets [eid e]
-  (let [level (state/permission-level e)]
+  (let [level (player/permission-level e)]
     [{:packet :entity-event :eid eid :event (+ op-level-event level)}
      {:packet :commands
       :nodes (if (< level (long commands/gamemaster))
@@ -659,7 +664,7 @@
    :warning-time 300})
 
 (defn- spawn-pos-packet [world]
-  (let [[yaw pitch] (state/spawn-turn world)]
+  (let [[yaw pitch] (player/spawn-turn world)]
     {:packet :set-default-spawn-position
      :dimension (:world-spawn-dimension world :overworld)
      :pos (join-spawn world) :yaw yaw :pitch pitch}))
@@ -760,9 +765,7 @@
    :title         (fn [_ m]
                     [{:packet (title-packets (:kind m))
                       :text (:text m)}])
-   :title-times   (fn [_ m]
-                    [(assoc (select-keys m [:fade-in :stay :fade-out])
-                            :packet :set-titles-animation)])
+   :title-times   (fn [_ m] [(title-times-packet m)])
    :named-sound   (fn [_ m] [(named-sound-packet m)])
    :player-rotation (fn [_ m] [(rotation-packet m)])
    :look-at       (fn [_ m] [(look-at-packet m)])
@@ -1090,12 +1093,12 @@
 
 (defn- sight-of [world]
   (let [ps (players world)
-        dim-of #(or (state/dim-of world %) home)
+        dim-of #(or (level/dim-of world %) home)
         of (into {} (map (fn [p] [p (dim-of p)])) ps)]
     {:ps     ps
      :of     of
      :by-dim (group-by of ps)
-     :levels (into {} (map (fn [d] [d (state/level world d)]))
+     :levels (into {} (map (fn [d] [d (level/level world d)]))
                    schema/dims)}))
 
 (defn- level-of [sight dim]

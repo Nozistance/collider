@@ -3,7 +3,7 @@
   lastSentExp check of ServerPlayer.doTick."
   (:require [collider.game.deltas :as deltas]
             [collider.game.out :as out]
-            [collider.game.state :as state]))
+            [collider.game.level :as level]))
 
 (set! *warn-on-reflection* true)
 
@@ -20,4 +20,4 @@
   {:wake {:types #{:player}}}
   [world _d]
   (deltas/of-vec
-    (into [] (mapcat shown-deltas) (state/player-entries world))))
+    (into [] (mapcat shown-deltas) (level/player-entries world))))

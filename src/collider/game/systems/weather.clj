@@ -2,7 +2,7 @@
   "Rain and thunder."
   (:require [collider.game.deltas :as deltas]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.world.env.weather :as weather]))
 
 (set! *warn-on-reflection* true)
@@ -50,4 +50,4 @@
       (let [w (weather/advance world)]
         (concat [[:advance-weather w]] (level-messages w)
                 (switch-messages w)
-                (join-messages w (state/joins d)))))))
+                (join-messages w (player/joins d)))))))

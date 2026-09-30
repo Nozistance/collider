@@ -6,7 +6,7 @@
             [collider.world.direction :as dir]
             [collider.world.env.weather :as weather]
             [collider.world.feature :as feature]
-            [collider.world.feature.level :as lv]
+            [collider.world.feature.worldgen :as lv]
             [collider.world.feature.tree :as tree]
             [collider.world.feature.trunk :refer [off]]
             [collider.world.blocks.grow.common

@@ -4,7 +4,8 @@
             [collider.game.entity :as entity]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.blocks.geyser :as geyser]
@@ -86,7 +87,7 @@
           (countdown-deltas world pos st e depth))))))
 
 (defn- sulfurs [world]
-  (let [active (state/active-chunks world)]
+  (let [active (areas/active-chunks world)]
     (for [[cid entries] (:block-entities world)
           :when (contains? active cid)
           [pos e] entries
@@ -99,7 +100,7 @@
 (defn- synced [world deltas]
   (let [lifted (into #{} (keep (fn [[k eid]] (when (= :push k) eid)))
                      deltas)]
-    (for [[eid _] (filter synced? (state/of-types world [:player]))
+    (for [[eid _] (filter synced? (level/of-types world [:player]))
           :when (not (lifted eid))]
       [:merge-entity eid {:needs-sync? false}])))
 

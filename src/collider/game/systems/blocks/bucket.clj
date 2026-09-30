@@ -2,7 +2,7 @@
   "Filling and emptying buckets."
   (:require [collider.data :as data]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
@@ -103,7 +103,7 @@
   (when (seq ds)
     (concat ds
             [[:award eid (keyword "used" (name item)) 1]]
-            (when-not (state/infinite-materials? e)
+            (when-not (player/infinite-materials? e)
               (items/filled-result-deltas
                 world eid {:item :bucket :count 1} false
                 (:use-hand e))))))

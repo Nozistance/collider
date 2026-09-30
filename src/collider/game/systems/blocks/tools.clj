@@ -6,7 +6,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
@@ -192,22 +192,24 @@
   (out/block-sound :item.lodestone-compass.lock pos 1.0 1.0
                    :players))
 
+(defn- tracked-deltas [world eid e t]
+  (let [hand (:use-hand e)
+        stack (player/hand-stack e hand)]
+    (if (and (not (player/infinite-materials? e))
+             (= 1 (stack/size stack)))
+      [[:set-slot eid (player/hand-slot e hand)
+        (stack/put stack :lodestone-tracker t)]]
+      (bound-compass world eid e stack t))))
+
 (defn compass-deltas
   "Returns the deltas of a compass used on a lodestone.
   The compass points at it from then on."
   [world [eid pos _ _ _]]
   (when (= :lodestone (block/block-of (edit/block-at world pos)))
-    (let [e (get-in world [:entities eid])
-          hand (:use-hand e)
-          stack (state/hand-stack e hand)
-          t (tracker world pos)]
+    (let [e (get-in world [:entities eid])]
       (concat
         [(out/all (lock-sound pos))]
-        (if (and (not (state/infinite-materials? e))
-                 (= 1 (stack/size stack)))
-          [[:set-slot eid (state/hand-slot e hand)
-            (stack/put stack :lodestone-tracker t)]]
-          (bound-compass world eid e stack t))
+        (tracked-deltas world eid e (tracker world pos))
         [[:award eid :used/compass 1]]))))
 
 (defn- air-above? [world pos]

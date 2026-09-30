@@ -3,7 +3,7 @@
   (:require [collider.game.block.furnace :as furnace]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
             [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -84,7 +84,7 @@
     (cool-deltas pos e)))
 
 (defn- campfires [world]
-  (let [active (state/active-chunks world)]
+  (let [active (areas/active-chunks world)]
     (for [[cid entries] (:block-entities world)
           :when (contains? active cid)
           [pos e] entries

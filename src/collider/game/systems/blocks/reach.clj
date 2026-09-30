@@ -1,6 +1,6 @@
 (ns collider.game.systems.blocks.reach
   "Reach and block raycasts from the eye."
-  (:require [collider.game.state :as state]
+  (:require [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -37,7 +37,7 @@
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
 (defn- within? [e pos ^double buffer]
-  (let [r (+ (state/block-reach e) buffer)]
+  (let [r (+ (player/block-reach e) buffer)]
     (< (gap-sq e pos) (* r r))))
 
 (defn in-reach?
@@ -155,7 +155,7 @@
   "Returns the block and face an entity looks at, or nil."
   [world e fluids]
   (let [from (eye-pos e)
-        d (mapv #(* (state/block-reach e) (double %)) (look-dir e))]
+        d (mapv #(* (player/block-reach e) (double %)) (look-dir e))]
     (loop [cell (mapv #(long (Math/floor (double %))) from)
            t (first-crosses from d)
            n 0]

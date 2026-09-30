@@ -2,7 +2,7 @@
   "Keepalive pings and timeouts."
   (:require [collider.game.deltas :as deltas]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.game.systems.sleep :as sleep]))
 
 (set! *warn-on-reflection* true)
@@ -24,7 +24,7 @@
 (defn- keepalive-deltas [world _events]
   (let [t (long (:tick world))]
     (into [] (mapcat #(player-deltas world t %))
-          (state/player-entries world))))
+          (level/player-entries world))))
 
 (defn keepalive
   {:wake {:types #{:player}}}

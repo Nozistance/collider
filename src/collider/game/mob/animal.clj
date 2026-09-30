@@ -8,7 +8,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.orb :as orb]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
@@ -327,7 +327,7 @@
   [world e]
   (let [eye (eye-of e (mobs/eye-height e))]
     (reduce #(nearer world e eye %1 %2) nil
-            (state/player-entries world))))
+            (level/player-entries world))))
 
 (defn- look-until [t eid]
   (+ (long t) look-ticks

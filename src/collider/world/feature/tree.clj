@@ -6,7 +6,7 @@
             [collider.world.direction :as dir]
             [collider.world.feature.decorate :as decorate]
             [collider.world.feature.foliage :as foliage]
-            [collider.world.feature.level :as lv]
+            [collider.world.feature.worldgen :as lv]
             [collider.world.feature.trunk :as trunk])
   (:import (collider.world.feature Cells)))
 

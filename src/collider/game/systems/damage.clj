@@ -10,7 +10,9 @@
             [collider.random :as random]
             [collider.game.mob.mobs :as mobs]
             [collider.world.chunk :as chunk]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.delta :as delta]
+            [collider.game.player :as player]
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -521,7 +523,7 @@
 
 (defn- loading? [world e]
   (and (= :player (:type e))
-       (not (state/client-loaded? e (inc (long (:tick world)))))))
+       (not (player/client-loaded? e (inc (long (:tick world)))))))
 
 (defn- void-deltas [world eid e]
   (when (and (pos? (double (:health e)))
@@ -753,7 +755,7 @@
 
 (defn- own-apply [world eid e d]
   (if-let [g (and (= eid (nth d 1 nil))
-                  (get state/entity-apply (nth d 0)))]
+                  (get delta/entity-apply (nth d 0)))]
     (g (:tick world) e d)
     e))
 
@@ -785,10 +787,10 @@
        (or (not (idle? world e)) (near-edits? world e))))
 
 (defn- ticking? [active e]
-  (or (= :player (:type e)) (state/active-at? active (:pos e))))
+  (or (= :player (:type e)) (areas/active-at? active (:pos e))))
 
 (defn- living [world]
-  (let [active (state/active-chunks world)]
+  (let [active (areas/active-chunks world)]
     (comp (filter (fn [[_ e :as entry]]
                     (and (ticking? active e) (live? world entry))))
           (mapcat (fn [[eid e]] (living-deltas world eid e))))))
@@ -811,7 +813,7 @@
   it."
   {:wake {:keys [:entities]}}
   [world _d]
-  (let [active (state/active-chunks world)
+  (let [active (areas/active-chunks world)
         xf (comp (filter (fn [entry] (resting? active entry)))
                  (mapcat (fn [[eid e]] (rest-deltas eid e))))]
     (deltas/of-vec (deltas/select xf (:entities world)))))

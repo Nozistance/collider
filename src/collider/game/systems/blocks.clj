@@ -7,7 +7,8 @@
             [collider.game.mob.sense :as sense]
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.bed :as bed]
             [collider.game.systems.blocks.bucket :as bucket]
             [collider.game.systems.blocks.dig :as dig]
@@ -55,7 +56,7 @@
 
 (defn- held-deltas [f]
   (fn [{:keys [world eid at]}]
-    (f world eid at (state/hand-stack at (:use-hand at)))))
+    (f world eid at (player/hand-stack at (:use-hand at)))))
 
 (defn- egg-deltas [{:keys [world eid at item use-item?] :as c}]
   (if use-item?
@@ -64,7 +65,7 @@
 
 (defn- read-deltas [{:keys [eid at]}]
   (let [hand (:use-hand at)]
-    (book/open-deltas at eid hand (state/hand-slot at hand))))
+    (book/open-deltas at eid hand (player/hand-slot at hand))))
 
 (def ^:private item-actions
   [[clicked-scaffolding?
@@ -111,7 +112,7 @@
    [(constantly true) (on-args place/solid-place-deltas)]])
 
 (defn- fresh? [{:keys [at item world]}]
-  (not (state/on-cooldown? at item (:tick world))))
+  (not (player/on-cooldown? at item (:tick world))))
 
 (defn- item-deltas [ctx]
   (when (fresh? ctx)
@@ -169,7 +170,7 @@
   (and item
        (or (block/item->block item 1) (liquid/bucket->state item)
            (data/mob-bucket item))
-       (not (state/on-cooldown? e item (:tick world)))))
+       (not (player/on-cooldown? e item (:tick world)))))
 
 (defn- consumed? [deltas]
   (some (fn [[tag m]]
@@ -257,10 +258,11 @@
   {:wake {:events #{:dig :place :use-item}}}
   [world d]
   (let [events (:input d)
+        origins (get-in world [:input :use-origins])
         ack (fn [[eid sq]] (out/to eid (out/block-ack sq)))]
     (deltas/of-vec
       (concat (map ack (latest-sequences events))
-              (use-ack-deltas world events (:use-origins world))))))
+              (use-ack-deltas world events origins)))))
 
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
@@ -273,8 +275,8 @@
     nil))
 
 (defn- block-edits-deltas [world events]
-  (let [origins (:use-origins world)]
-    (state/fold-events world (map-indexed vector events)
+  (let [origins (get-in world [:input :use-origins])]
+    (apply/fold-events world (map-indexed vector events)
                        (fn [w [i ev]] (edit-deltas w i ev origins))
                        second)))
 

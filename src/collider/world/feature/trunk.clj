@@ -2,7 +2,7 @@
   "The trunk placers of trees: the logs, and where foliage goes."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.feature.level :as lv]
+            [collider.world.feature.worldgen :as lv]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)

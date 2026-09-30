@@ -3,7 +3,8 @@
   (:require [collider.game.deltas :as deltas]
             [clojure.data.int-map :as i]
             [collider.game.block.tnt :as tnt]
-            [collider.game.state :as state]
+            [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -95,9 +96,9 @@
   (into (unblock-deltas eid e) (step-deltas world eid e)))
 
 (defn- tnt-entries [world]
-  (let [active (state/active-chunks world)
-        ticks? (fn [[_ e]] (state/active-at? active (:pos e)))]
-    (into [] (filter ticks?) (state/of-types world [:tnt]))))
+  (let [active (areas/active-chunks world)
+        ticks? (fn [[_ e]] (areas/active-at? active (:pos e)))]
+    (into [] (filter ticks?) (level/of-types world [:tnt]))))
 
 (defn- due? [[_ e]]
   (and (not (:origin e)) (<= (long (:fuse e)) 1)))

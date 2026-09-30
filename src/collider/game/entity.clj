@@ -285,3 +285,45 @@
               (merge (loaded-base m) (fresh k) {:type (:type m)})
               (kind-extras k m tick)
               (assoc :born (long tick)))))))
+
+(def ^:private ^:const max-resist 20)
+
+(defn- knock-back [e ^double dx ^double dz]
+  (let [f (Math/sqrt (+ (* dx dx) (* dz dz)))
+        v (or (:vel e) [0.0 0.0 0.0])]
+    (if (zero? f)
+      e
+      (assoc e :vel [(- (/ (v/x v) 2.0) (* (/ dx f) 0.4))
+                     (min 0.4 (+ (/ (v/y v) 2.0) 0.4))
+                     (- (/ (v/z v) 2.0) (* (/ dz f) 0.4))]))))
+
+(defn- hurt-again [e ^double health ^double amount]
+  (let [last-d (double (or (:last-damage e) 0.0))]
+    (if (> amount last-d)
+      (assoc e :health (- health (- amount last-d))
+               :last-damage amount)
+      e)))
+
+(defn- hurt-fully [e health amount dx dz]
+  (let [left (max 0.0 (- (double health) (double amount)))]
+    (cond-> (assoc e :health left
+                     :last-damage amount
+                     :hurt-resist max-resist)
+            dx (knock-back (double dx) (double dz)))))
+
+(defn- hurt-item [e ^double health ^double amount]
+  (assoc e :health (double (long (- health amount)))))
+
+(defn hurt
+  "Returns entity e after amount of damage.
+  It is knocked back from direction dx dz when given."
+  ([e ^double amount] (hurt e amount nil nil))
+  ([e ^double amount dx dz]
+   (let [health (double (or (:health e) 0.0))
+         resist (long (or (:hurt-resist e) 0))]
+     (cond
+       (not (pos? health)) e
+       (contains? #{:item :experience-orb} (:type e))
+       (hurt-item e health amount)
+       (> resist (/ max-resist 2.0)) (hurt-again e health amount)
+       :else (hurt-fully e health amount dx dz)))))

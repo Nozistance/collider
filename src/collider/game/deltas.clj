@@ -80,13 +80,13 @@
          o (transient (out-of acc))]
     (if ds
       (let [d (first ds) ds (next ds)]
-        (case (nth d 0)
-          :fx (recur ds w e (conj! o (nth d 1)))
-          (:merge-entity :track :tracking :set-slot :chunks-sent :push
-           :damage :teleport :client-slots :award)
-          (let [eid (nth d 1)]
-            (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
-          (recur ds (conj! w d) e o)))
+        (let [tag (nth d 0)]
+          (cond
+            (identical? :fx tag) (recur ds w e (conj! o (nth d 1)))
+            (contains? delta/entity-apply tag)
+            (let [eid (nth d 1)]
+              (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
+            :else (recur ds (conj! w d) e o))))
       (built w e o acc))))
 
 (defn- add ^Deltas [^Deltas acc v]

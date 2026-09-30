@@ -5,7 +5,7 @@
             [collider.data.pack :refer [kw]]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.game.systems.items :as items]
             [collider.game.using :as using]))
 
@@ -35,7 +35,7 @@
        (= (:removed a) (:removed b))))
 
 (defn- swappable? [e held worn]
-  (and (or (state/infinite-materials? e) (not (binding? worn)))
+  (and (or (player/infinite-materials? e) (not (binding? worn)))
        (not (same-stack? held worn))))
 
 (defn- equip-sound [e item]
@@ -43,8 +43,8 @@
                       :players)))
 
 (defn- hand-after [world eid e hand held worn]
-  (let [creative? (state/infinite-materials? e)
-        slot (state/hand-slot e hand)]
+  (let [creative? (player/infinite-materials? e)
+        slot (player/hand-slot e hand)]
     (if (<= (stack/size held) 1)
       [[:set-slot eid slot (cond worn worn creative? held)]]
       (concat (when worn (items/kept world eid e worn))

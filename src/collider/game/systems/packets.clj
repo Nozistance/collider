@@ -1,7 +1,8 @@
 (ns collider.game.systems.packets
   "Packet events that touch only their own player."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.player :as player]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.items :as items]
             [collider.game.systems.players :as players]))
@@ -10,7 +11,7 @@
 
 (def own-systems
   "The systems whose packet events touch the acting player only."
-  [#'state/slot-deltas
+  [#'player/slot-deltas
    #'inventory/event-deltas
    #'items/event-deltas
    #'players/swing-deltas])
@@ -30,8 +31,8 @@
 (defn- one-deltas [world ev]
   (try (into [] (mapcat (fn [f] (f world ev))) own-systems)
        (catch Throwable t
-         (state/dropped! #'one-deltas ev t)
-         (vec (state/slot-part world ev)))))
+         (apply/dropped! #'one-deltas ev t)
+         (vec (player/slot-part world ev)))))
 
 (defn- fold-deltas [world events]
   (loop [w world evs (seq events) acc []]
@@ -39,7 +40,7 @@
       acc
       (let [ds (one-deltas w (first evs))
             more (next evs)]
-        (recur (if (and more (seq ds)) (state/apply-entities w ds) w)
+        (recur (if (and more (seq ds)) (apply/entities w ds) w)
                more (into acc ds))))))
 
 (defn by-player

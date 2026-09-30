@@ -9,7 +9,8 @@
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.players.track
              :refer [->Track]]
@@ -619,7 +620,7 @@
           (out/to eid msg))))))
 
 (defn- resend-deltas [world]
-  (for [{:keys [eid pos yaw pitch]} (:resends world)]
+  (for [{:keys [eid pos yaw pitch]} (get-in world [:input :resends])]
     (out/to eid (out/teleport pos yaw pitch))))
 
 (defn swing-deltas
@@ -630,7 +631,7 @@
   (when (= :swing tag)
     (when-let [p (get-in world [:entities eid])]
       (let [t (:tick world)]
-        (vec (state/swing-deltas eid p (or hand :main) t false))))))
+        (vec (player/swing-deltas eid p (or hand :main) t false))))))
 
 (defn- entities-changed? [d]
   (some (fn [delta]
@@ -649,7 +650,7 @@
     (when (entities-changed? d)
       (let [near (near-index (tracked-entries world))
             track (fn [entry] (tracking-deltas world near entry))]
-        (into [] (mapcat track) (state/player-entries world))))))
+        (into [] (mapcat track) (level/player-entries world))))))
 
 (defn- spawn-deltas [world ps ts]
   (let [near (near-index ts)]
@@ -668,8 +669,8 @@
   "Returns the deltas of the player list of the server."
   {:wake :always}
   [world d]
-  (let [ps (state/player-entries world)
-        joins (state/joins d)]
+  (let [ps (level/player-entries world)
+        joins (player/joins d)]
     (deltas/of-vec
       (into [] cat [(joined-deltas joins)
                     (duplicate-login-deltas world joins)
@@ -678,9 +679,9 @@
 
 (defn players
   "Returns the deltas of entity tracking in the level."
-  {:wake {:keys [:entities :resends]}}
+  {:wake {:keys [:entities [:input :resends]]}}
   [world _]
-  (let [ps (state/player-entries world)
+  (let [ps (level/player-entries world)
         ts (tracked-entries world)]
     (deltas/merge (deltas/of-vec (resend-deltas world))
                   (spawn-deltas world ps ts)

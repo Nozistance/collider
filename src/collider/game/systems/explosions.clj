@@ -8,7 +8,6 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.hanging :as hanging]
-            [collider.game.state :as state]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.hanging :as hanging-system]
             [collider.game.systems.items :as items]
@@ -117,12 +116,12 @@
 
 (defn- item-dies? [e dmg]
   (and (= :item (:type e)) (hurtable? e)
-       (not (pos? (double (:health (state/hurt e (double dmg))))))))
+       (not (pos? (double (:health (entity/hurt e (double dmg))))))))
 
 (defn- hurt-item [hurt oid o dmg]
   (cond-> hurt
           (and (= :item (:type o)) (hurtable? o))
-          (assoc oid (state/hurt o (double dmg)))))
+          (assoc oid (entity/hurt o (double dmg)))))
 
 (defn- moving? [[x y z]]
   (not (every? (fn [c] (zero? (double c))) [x y z])))
@@ -199,7 +198,7 @@
     :gone
     (cond-> o
       (moving? kb) (update (if (= :tnt (:type o)) :kb :vel) add-kb kb)
-      (hurtable? o) (state/hurt (double dmg)))))
+      (hurtable? o) (entity/hurt (double dmg)))))
 
 (defn- fresh-step [seen craters center power reach]
   (fn [fresh i]
@@ -371,8 +370,8 @@
 
 (defn- reached-body [world craters hurt fresh body req]
   (let [center (:center req)
-        [hurt outs] (blast-deltas (broken-by world) craters hurt body
-                                  center)
+        broken (broken-by world)
+        [hurt outs] (blast-deltas broken craters hurt body center)
         fresh (fresh-blast craters fresh body center)
         affected (explosion/reached (:rays body) craters center)]
     [(assoc body :outs outs :affected affected) hurt fresh]))

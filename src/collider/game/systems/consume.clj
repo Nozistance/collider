@@ -7,7 +7,9 @@
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
-            [collider.game.state :as state]
+            [collider.game.apply :as apply]
+            [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.effects :as effects]
@@ -30,7 +32,7 @@
 (defn emits?
   "Returns true when the tick with that many ticks left is heard."
   [c ^long left]
-  (let [total (state/consume-ticks c)
+  (let [total (player/consume-ticks c)
         wait (long (* total effects-start))]
     (and (> (- total left) wait)
          (zero? (rem left effects-interval)))))
@@ -171,9 +173,9 @@
 
 (defn- remainder-deltas [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
-    (when (and left (not (state/infinite-materials? e)))
+    (when (and left (not (player/infinite-materials? e)))
       (let [over (dec (long (:count stack 1)))
-            slot (state/hand-slot e hand)
+            slot (player/hand-slot e hand)
             made {:item (:item left) :count (long (:count left 1))}]
         (if (pos? over)
           (cons [:set-slot eid slot (assoc stack :count over)]
@@ -182,15 +184,15 @@
 
 (defn- finish-deltas [world eid e]
   (let [{:keys [hand item]} (:using e)
-        stack (state/hand-stack e hand)
-        c (state/consumable stack)]
+        stack (player/hand-stack e hand)
+        c (player/consumable stack)]
     (concat [(use-sound world eid e c :finish)
              [:award eid (keyword "used" (name item)) 1]]
             (when (get-in (data/items) [item :food])
               (food-sounds world eid e c))
             (effect-deltas world eid e c (draws world eid))
             (remainder-deltas world eid e hand stack)
-            (state/cooldown-deltas eid e item (:tick world))
+            (player/cooldown-deltas eid e item (:tick world))
             (stopped eid))))
 
 (defn- advanced [eid e ^long left]
@@ -221,8 +223,8 @@
   (let [e (get-in world [:entities eid])
         {:keys [hand item remaining]} (:using e)
         left (long (or remaining 0))
-        stack (state/hand-stack e hand)
-        c (state/consumable stack)]
+        stack (player/hand-stack e hand)
+        c (player/consumable stack)]
     (cond
       (nil? (:using e)) nil
       (not= item (:item stack)) (stopped eid)
@@ -239,7 +241,7 @@
   (and (= (:item a) (:item b)) (= (:components a) (:components b))))
 
 (defn- filled-deltas [world eid e made]
-  (if (state/infinite-materials? e)
+  (if (player/infinite-materials? e)
     (when-not (some #(same-stack? made %) (vals (:inventory e)))
       (extra-deltas world eid e made))
     (extra-deltas world eid e made)))
@@ -265,12 +267,14 @@
 
 (defn- using-entries [world]
   (into [] (filter (fn [[_ e]] (:using e)))
-        (state/of-types world [:player])))
+        (level/of-types world [:player])))
 
 (defn consume
   "Returns the deltas of the eating and drinking of players."
   {:wake {:types #{:player}}}
   [world _]
-  (deltas/of-vec
-    (into (into [] (mapcat release-deltas) (:releases world))
-          (state/fold-events world (using-entries world) step-deltas))))
+  (let [releases (get-in world [:input :releases])
+        uses (using-entries world)]
+    (deltas/of-vec
+      (into (into [] (mapcat release-deltas) releases)
+            (apply/fold-events world uses step-deltas)))))

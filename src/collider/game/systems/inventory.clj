@@ -8,7 +8,7 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
-            [collider.game.state :as state]
+            [collider.game.player :as player]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
@@ -78,7 +78,7 @@
   (cond
     (and pos (reach/in-reach? e pos))
     (picked-block world pos
-                  (and (state/infinite-materials? e) include-data))
+                  (and (player/infinite-materials? e) include-data))
     entity (picked-entity world entity)))
 
 (def ^:private scan-order
@@ -136,7 +136,7 @@
           (and slot (<= 36 (long slot) 44))
           (select-deltas eid (- (long slot) 36))
           slot (swap-into-hotbar eid inv slot n)
-          (state/infinite-materials? e)
+          (player/infinite-materials? e)
           (stash-into-hotbar eid inv stack n)
           :else (select-deltas eid held))))))
 
@@ -194,4 +194,4 @@
   "Returns what a joining player is told about its inventory."
   {:wake {:deltas #{:player-placed}}}
   [world d]
-  (deltas/of-vec (restore-deltas world (state/joins d))))
+  (deltas/of-vec (restore-deltas world (player/joins d))))

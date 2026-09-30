@@ -2,7 +2,7 @@
   "Lodestone compasses that lose their lodestone."
   (:require [collider.game.deltas :as deltas]
             [collider.game.stack :as stack]
-            [collider.game.state :as state]
+            [collider.game.level :as level]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -45,4 +45,4 @@
   {:wake {:types #{:player}}}
   [world _]
   (deltas/of-vec (into [] (mapcat #(player-deltas world %))
-                       (state/of-types world [:player]))))
+                       (level/of-types world [:player]))))
