@@ -18,26 +18,29 @@
   (and (not= :player (:type e))
        (= id (chunk/pos-chunk (:pos e)))))
 
-(defn- chunk-entities [w id t]
-  (into {} (keep (fn [[eid e]]
-                   (when (chunk-entity? id e)
-                     [eid (entity/saved e t)])))
-        (:entities w)))
-
-(defn- chunk-block-entities [w id t]
-  (into {} (map (fn [[p e]] [p (be/saved e t)]))
-        (get-in w [:block-entities id])))
+(defn payload-of
+  "Returns the payload of chunk c at game tick t from its parts.
+  Its entities come as [eid entity] entries."
+  [c block-entities entities block-ticks fluid-ticks t]
+  {:chunk          c
+   :block-entities (into {} (map (fn [[p e]] [p (be/saved e t)]))
+                         block-entities)
+   :entities       (into {} (map (fn [[eid e]] [eid (entity/saved e t)]))
+                         entities)
+   :block-ticks    (or block-ticks [])
+   :fluid-ticks    (or fluid-ticks [])})
 
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
   Players do not belong to a chunk. Ticks count as delays from now."
   [w id]
   (let [id (long id) t (long (:tick w 0))]
-    {:chunk          (get (:chunks w) id)
-     :block-entities (chunk-block-entities w id t)
-     :entities       (chunk-entities w id t)
-     :block-ticks    (schedule/saved (:block-ticks w) id t)
-     :fluid-ticks    (schedule/saved (:fluid-ticks w) id t)}))
+    (payload-of (get (:chunks w) id)
+                (get-in w [:block-entities id])
+                (filter #(chunk-entity? id (val %)) (:entities w))
+                (schedule/saved (:block-ticks w) id t)
+                (schedule/saved (:fluid-ticks w) id t)
+                t)))
 
 (defn- ticks-back [w k t saved]
   (update w k schedule/restored t saved))

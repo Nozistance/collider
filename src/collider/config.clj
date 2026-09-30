@@ -18,7 +18,7 @@
    :simulation-distance      2
    :compression-threshold    256
    :save-dir                 "world"
-   :save-period-ms           300000
+   :commit-period-ms         10000
    :pause-when-empty-seconds 60
    :game-mode                :creative
    :force-game-mode          false})
@@ -33,7 +33,7 @@
    [:simulation-distance {:optional true} [:int {:min 2 :max 32}]]
    [:compression-threshold {:optional true} [:int {:min -1}]]
    [:save-dir {:optional true} :string]
-   [:save-period-ms {:optional true} [:int {:min 0}]]
+   [:commit-period-ms {:optional true} [:int {:min 0}]]
    [:pause-when-empty-seconds {:optional true}
     [:int {:min 0}]]
    [:game-mode {:optional true}

@@ -190,6 +190,13 @@
        (sort-by second)
        (mapv #(relative t %))))
 
+(defn saved-by-chunk
+  "Returns the ticks of every chunk as saved, by chunk id."
+  [ticks t]
+  (update-vals (group-by #(chunk/block-id-chunk (% 2))
+                         (mapcat row-entries (:queue ticks)))
+               #(mapv (partial relative t) (sort-by second %))))
+
 (defn restored
   "Returns ticks with the saved ticks back, due after their delays.
   They come before every tick added after the load and keep their

@@ -37,11 +37,11 @@
 (defn- on-loaded [^ConcurrentLinkedQueue queue dim id]
   #(.offer queue [:chunk-loaded dim id %]))
 
-(defn- chunk-io! [{:keys [saver store]} queue ^Deltas deltas]
+(defn- chunk-io! [{:keys [saver store]} queue world ^Deltas deltas]
   (doseq [{:keys [msg dim id payload]} (deltas/out-of deltas)]
     (case msg
       :store-chunk
-      (snapshot/store-chunk! saver store dim id payload)
+      (snapshot/store-chunk! saver dim id (:tick world) payload)
       :load-chunk
       (let [done (on-loaded queue dim id)]
         (snapshot/fetch-chunk! saver store dim id done))
@@ -73,7 +73,7 @@
 (defn- autosave!
   [{:keys [^ScheduledExecutorService pool settings save! pending]
     :as saving}]
-  (let [ms (long (:save-period-ms @settings))
+  (let [ms (long (:commit-period-ms @settings))
         run #(try (save!) (finally (autosave! saving)))
         unit TimeUnit/MILLISECONDS]
     (when (pos? ms)
@@ -166,8 +166,7 @@
         init (merge schema/initial-world saved)
         world (atom (assoc init :config (world-config cfg store)))
         saver (when store (snapshot/start-saver))
-        save! (when saver
-                #(snapshot/request-save! saver store @world))]
+        save! (when saver #(snapshot/want-commit! saver))]
     {:settings (atom cfg) :opts opts :store store :saved saved
      :world world :saver saver :save! save! :handle (promise)}))
 
@@ -184,10 +183,11 @@
   (when saver
     #(snapshot/fetch-chunk-now! saver store %1 %2)))
 
-(defn- io-input [base conns]
+(defn- io-input [{:keys [saver store world] :as base} conns]
   (let [read (reader base)]
-    #(hash-map :writable (server/writable-eids conns)
-               :read-chunk read)))
+    #(do (when saver (snapshot/commit-due! saver store world))
+         (hash-map :writable (server/writable-eids conns)
+                   :read-chunk read))))
 
 (declare halt!)
 
@@ -196,16 +196,19 @@
     (let [exit! (fn [code] (System/exit code))]
       (Thread/startVirtualThread ^Runnable #(halt! @handle exit!)))))
 
+(defn- commit-now [{:keys [saver store world]}]
+  (when saver #(snapshot/request-save! saver store @world)))
+
 (defn- ticker-opts [base conns]
   {:io-input (io-input base conns)
    :settings (:settings base)
-   :on-pause (:save! base)
+   :on-pause (commit-now base)
    :on-crash (on-crash (:handle base))})
 
 (defn- period-change [saving]
   (fn [old new]
     (when (and saving
-               (not= (:save-period-ms old) (:save-period-ms new)))
+               (not= (:commit-period-ms old) (:commit-period-ms new)))
       (reschedule! saving))))
 
 (defn- reload-edge [base queue saving]
@@ -218,7 +221,7 @@
         saving (when saver (start-saving save! settings))
         reload (reload-edge base queue saving)
         out! (fn [w d]
-               (when saver (chunk-io! base queue d))
+               (when saver (chunk-io! base queue w d))
                (reload-io! reload d)
                (deliver! conns w d))
         opts (ticker-opts base conns)

@@ -222,6 +222,11 @@
             (if-let [dt (left e k tick)] (assoc m k dt) m))
           m timers))
 
+(defn timed?
+  "Returns true when what a save keeps of e depends on the tick."
+  [e]
+  (boolean (some #(get e %) timers)))
+
 (defn- with-knockback [e]
   (if-let [kb (:kb e)] (update e :vel v/+ kb) e))
 

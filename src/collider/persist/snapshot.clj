@@ -6,23 +6,26 @@
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
             [clojure.string :as str]
+            [collider.data :as data]
+            [collider.game.entity :as entity]
+            [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
             [collider.game.level :as level]
             [collider.log :as log]
+            [collider.persist.region :as region]
             [collider.persist.snapshot.store :as types
-             :refer [Store put-chunk! get-chunk put-meta! load
-                     flush!]]
+             :refer [Store get-chunk commit! load close!]]
             [collider.world.chunk :as chunk]
             [malli.core :as m]
             [malli.error :as me]
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
-  (:import (collider.world Chunk)
+  (:import (clojure.lang MapEntry)
+           (collider.world Chunk)
            (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
-           (java.nio.file CopyOption Files LinkOption)
-           (java.nio.file OpenOption Path StandardCopyOption)
-           (java.nio.file.attribute FileAttribute)))
+           (java.nio.channels ClosedChannelException)
+           (java.nio.file Files)))
 
 (set! *warn-on-reflection* true)
 
@@ -34,89 +37,14 @@
 
 (def ^:private freeze-opts {:compressor lz4-compressor})
 
-(def ^:private no-attrs (make-array FileAttribute 0))
-
-(def ^:private no-links (make-array LinkOption 0))
-
-(defn- temp-file ^Path [^Path dir]
-  (Files/createTempFile dir "world-" ".tmp" no-attrs))
-
-(defn- write-bytes! [^Path p ^bytes data]
-  (let [^OpenOption/1 opts (make-array OpenOption 0)]
-    (Files/write p data opts)))
-
-(defn- move-atomically! [^Path tmp ^Path target]
-  (let [opts [StandardCopyOption/ATOMIC_MOVE
-              StandardCopyOption/REPLACE_EXISTING]]
-    (Files/move tmp target (into-array CopyOption opts))))
-
-(defn- parent-dir ^Path [^Path target]
-  (or (.getParent target) (.toPath (io/file "."))))
-
-(defn- placed! ^Path [^Path target ^bytes data check]
-  (let [dir (parent-dir target)]
-    (Files/createDirectories dir no-attrs)
-    (let [tmp (temp-file dir)]
-      (try
-        (write-bytes! tmp data)
-        (check (Files/readAllBytes tmp))
-        tmp
-        (catch Throwable t
-          (Files/deleteIfExists tmp)
-          (throw t))))))
-
-(defn- write-atomically!
-  (^long [file data] (write-atomically! file data (fn [_]) (fn [])))
-  (^long [file ^bytes data check before-move]
-   (let [^Path target (.toPath (io/file file))
-         tmp (placed! target data check)]
-     (try
-       (before-move)
-       (move-atomically! tmp target)
-       (catch Throwable t
-         (Files/deleteIfExists tmp)
-         (throw t)))
-     (alength data))))
-
 (defn- dim-dir ^File [dir dim]
   (io/file dir (name dim)))
-
-(defn- chunk-file ^File [dir dim id]
-  (let [[cx cz] (chunk/id->pos id)]
-    (io/file (dim-dir dir dim) "chunks" (str cx "_" cz ".chunk"))))
 
 (defn- meta-file ^File [dir]
   (io/file dir "meta.edn"))
 
 (defn- bak-file ^File [dir]
   (io/file dir "meta.edn.bak"))
-
-(defn- corrupt-name ^Path [^Path p]
-  (let [base (str (.getFileName p) ".corrupt")
-        named (fn [s] (.resolveSibling p (str base s)))]
-    (->> (cons "" (map #(str "." %) (iterate inc 1)))
-         (map named)
-         (remove #(Files/exists % no-links))
-         first)))
-
-(defn- set-aside! ^Path [^Path p]
-  (let [target (corrupt-name p)]
-    (Files/move p target ^CopyOption/1 (make-array CopyOption 0))
-    target))
-
-(defn- kept-aside [^Throwable t ^Path aside]
-  (ex-info (str (.getMessage t) ", kept as " (.getFileName aside))
-           {:file (str aside)} t))
-
-(defn- thawed [^Path p ^bytes data]
-  (try (nippy/thaw data)
-       (catch Throwable t
-         (throw (kept-aside t (set-aside! p))))))
-
-(defn- read-frozen [^File f]
-  (when (.isFile f)
-    (let [p (.toPath f)]
-      (thawed p (Files/readAllBytes p)))))
 
 (defn- edn-of [^bytes data]
   (let [v (edn/read-string (String. data "UTF-8"))]
@@ -141,25 +69,6 @@
     (let [s (with-out-str (pp/pprint m))]
       (.getBytes ^String s "UTF-8"))))
 
-(defn- chunk-id-of [^File f]
-  (let [n (.getName f)
-        [cx cz] (.split (subs n 0 (- (count n) 6)) "_")]
-    (chunk/pos->id (parse-long cx) (parse-long cz))))
-
-(defn- chunk-file? [^File f]
-  (re-matches #"-?\d+_-?\d+\.chunk" (.getName f)))
-
-(defn- chunk-files [dir dim]
-  (let [fs (.listFiles (io/file (dim-dir dir dim) "chunks"))]
-    (filter chunk-file? (or fs (make-array File 0)))))
-
-(defn- stored-ids [dir dim]
-  (into (i/int-set) (map chunk-id-of) (chunk-files dir dim)))
-
-(defn- with-stored [dir levels]
-  (into {} (for [[dim lm] levels]
-             [dim (assoc lm :stored (stored-ids dir dim))])))
-
 (defn- bak-line [dir]
   (let [f (bak-file dir)]
     (cond (readable? f) "meta.edn.bak can be read"
@@ -169,7 +78,7 @@
 (defn- restore-command [dir]
   (if (readable? (bak-file dir))
     (str "Copy meta.edn.bak over meta.edn in " dir
-         " to start one save back, or move " dir " away")
+         " to start one commit back, or move " dir " away")
     (str "Repair meta.edn in " dir " or move " dir " away")))
 
 (defn- unreadable [dir why]
@@ -181,7 +90,7 @@
 
 (defn- saved-before? [dir]
   (or (.isFile (bak-file dir))
-      (some #(seq (chunk-files dir %)) schema/dims)))
+      (some #(.isDirectory (dim-dir dir %)) schema/dims)))
 
 (defn- checked-meta [dir]
   (try (read-edn (meta-file dir))
@@ -194,37 +103,158 @@
         (saved-before? dir) (throw (unreadable dir "is missing"))
         :else nil))
 
-(defn- read-store [dir]
-  (let [^File d (io/file dir)]
-    (when (.isDirectory d)
-      (when-let [m (read-meta-file d)]
-        (update m :levels #(with-stored d %))))))
+(def ^:private stamp {:game data/game :layout data/layout})
+
+(defn- stamp-line [{:keys [game layout]}]
+  (str "tables " game " layout " layout))
+
+(defn- other-tables [dir found]
+  (let [saved (if found (stamp-line found) "no stamp")
+        command (str "Start the build that saved it, with its"
+                     " tables from: clojure -T:build tables,"
+                     " or move " dir " away")]
+    (ex-info "other tables"
+             {:what    "the saved world needs other tables"
+              :why     [(str dir " was saved with " saved)
+                        (str "this server reads " (stamp-line stamp))
+                        "block and item ids differ between them"
+                        "nothing was changed on disk"]
+              :command command})))
+
+(defn- stamped [dir m]
+  (if (= stamp (:stamp m))
+    m
+    (throw (other-tables dir (:stamp m)))))
+
+(defn- opened-level [dir m dim]
+  (let [gen (long (get-in m [:levels dim :regions-gen] 0))
+        d (dim-dir dir dim)]
+    (region/sweep! d gen)
+    {:gen     gen
+     :regions (into {} (map (fn [r] [(region/key-of r) r]))
+                    (region/open-all d gen))}))
+
+(defn- open-levels! [{:keys [dir levels]} m]
+  (let [open (fn [dim] [dim (opened-level dir m dim)])]
+    (reset! levels (into {} (map open) schema/dims))))
+
+(defn- levels-of [{:keys [dir levels] :as store}]
+  (or @levels (open-levels! store (read-meta-file dir))))
+
+(defn- stored-ids [{:keys [regions]}]
+  (into (i/int-set) (mapcat region/chunks) (vals regions)))
+
+(defn- with-stored [levels opened]
+  (into {} (for [[dim lm] levels]
+             [dim (-> (dissoc lm :regions-gen)
+                      (assoc :stored (stored-ids (opened dim))))])))
+
+(defn- read-store [{:keys [dir] :as store}]
+  (when-let [m (read-meta-file dir)]
+    (let [opened (open-levels! store (stamped dir m))]
+      (-> (dissoc m :stamp)
+          (update :levels with-stored opened)))))
+
+(defn- frozen ^bytes [payload]
+  (if (bytes? payload) payload (nippy/freeze payload freeze-opts)))
+
+(defn- appended [dir gen old k chunks]
+  (let [r (if old (region/copy old) (region/create dir k gen))]
+    (doseq [[id p] chunks] (region/append! r id (frozen p)))
+    (if (region/sparse? r) (region/compact r gen) r)))
+
+(defn- replaced? [old r]
+  (and old (not= (region/gen-of old) (region/gen-of r))))
+
+(defn- retired [regions news]
+  (keep (fn [[k r]] (let [old (get regions k)]
+                      (when (replaced? old r) old)))
+        news))
+
+(defn- by-region [chunks]
+  (group-by #(region/of (first %)) chunks))
+
+(defn- written-level [dir {:keys [gen regions]} chunks]
+  (let [g (inc (long gen))
+        news (into {} (for [[k cs] (by-region chunks)]
+                        [k (appended dir g (get regions k) k cs)]))]
+    {:gen g :regions (merge regions news) :news (vals news)
+     :retired (retired regions news)}))
+
+(defn- touched-levels [{:keys [dir] :as store} chunks-by-dim]
+  (let [levels (levels-of store)
+        level (fn [[dim chunks]]
+                (let [lv (get levels dim {:gen 0})]
+                  [dim (written-level (dim-dir dir dim) lv chunks)]))]
+    (into {} (comp (filter (comp seq val)) (map level))
+          chunks-by-dim)))
+
+(defn- forced! [touched]
+  (doseq [{:keys [news]} (vals touched)] (run! region/force! news)))
+
+(defn- manifests! [{:keys [dir]} touched]
+  (doseq [[dim {:keys [gen regions]}] touched]
+    (region/write-manifest! (dim-dir dir dim) gen (vals regions))))
 
 (defn- backup-meta! [dir]
   (let [f (meta-file dir)]
     (when (readable? f)
-      (let [data (Files/readAllBytes (.toPath f))]
-        (write-atomically! (bak-file dir) data)))))
+      (region/put! (bak-file dir) (Files/readAllBytes (.toPath f))))))
 
 (defn- write-meta! [dir m]
-  (write-atomically! (meta-file dir) (edn-bytes m) edn-of
-                     #(backup-meta! dir)))
+  (let [data (edn-bytes m)]
+    (edn-of data)
+    (backup-meta! dir)
+    (region/put! (meta-file dir) data)
+    (alength data)))
+
+(defn- with-gens [m levels]
+  (reduce-kv (fn [m dim {:keys [gen]}]
+               (if (pos? (long gen))
+                 (assoc-in m [:levels dim :regions-gen] gen)
+                 m))
+             m levels))
+
+(defn- root! [{:keys [dir] :as store} m touched]
+  (let [levels (merge (levels-of store) touched)]
+    (write-meta! dir (assoc (with-gens m levels) :stamp stamp))))
+
+(defn- published! [{:keys [dir levels]} touched]
+  (swap! levels merge
+         (update-vals touched #(select-keys % [:gen :regions])))
+  (doseq [[dim {:keys [gen retired]}] touched]
+    (run! region/close! retired)
+    (region/sweep! (dim-dir dir dim) gen)))
+
+(defn- stored-bytes [store dim id]
+  (some-> (get-in (levels-of store) [dim :regions (region/of id)])
+          (region/chunk-bytes id)))
+
+(defn- close-all! [{:keys [levels]}]
+  (doseq [lv (vals @levels) r (vals (:regions lv))] (region/close! r))
+  (reset! levels nil))
 
 (extend-type FileStore
   Store
-  (put-chunk! [{:keys [dir]} dim id payload]
-    (write-atomically! (chunk-file dir dim id)
-                       (nippy/freeze payload freeze-opts)))
-  (get-chunk [{:keys [dir]} dim id]
-    (read-frozen (chunk-file dir dim id)))
-  (put-meta! [{:keys [dir]} m] (write-meta! dir m))
-  (load [{:keys [dir]}] (read-store dir))
-  (flush! [_] nil))
+  (get-chunk [store dim id]
+    (some-> (try (stored-bytes store dim id)
+                 (catch ClosedChannelException _
+                   (stored-bytes store dim id)))
+            nippy/thaw))
+  (commit! [store m chunks-by-dim]
+    (let [touched (touched-levels store chunks-by-dim)]
+      (forced! touched)
+      (manifests! store touched)
+      (let [n (root! store m touched)]
+        (published! store touched)
+        n)))
+  (load [store] (read-store store))
+  (close! [store] (close-all! store)))
 
 (defn file-store
   "Returns a store that keeps a world in directory dir."
   [dir]
-  (types/->FileStore dir))
+  (types/->FileStore dir (atom nil)))
 
 (defn- level-snapshot [world dim]
   (let [lv (level/level world dim)
@@ -241,29 +271,22 @@
     :levels (into {} (for [dim (keys (:levels world))]
                        [dim (level-snapshot world dim)]))))
 
+(defn- meta-of-world [world]
+  (let [level #(schema/snapshot (level/level world %) :level)]
+    (assoc (schema/snapshot world :shared)
+      :levels (into {} (map (fn [dim] [dim (level dim)]))
+                    (keys (:levels world))))))
+
 (defn- per-level [f levels]
   (into {} (for [[dim lm] levels] [dim (f lm)])))
 
 (defn- meta-of [snap]
   (update snap :levels #(per-level (fn [lm] (dissoc lm :chunks)) %)))
 
-(defn- written [n]
-  (if (number? n) (long n) 0))
-
-(defn- write-chunks! [store dim chunks]
-  (let [write! (fn [[id c]] (written (put-chunk! store dim id c)))]
-    (reduce + 0 (map write! chunks))))
-
-(defn- write-levels! [store chunks-by-dim]
-  (reduce + 0 (for [[dim ch] chunks-by-dim]
-                (write-chunks! store dim ch))))
-
 (defn write-snapshot!
-  "Writes a snapshot to a store and returns how many bytes it took."
+  "Commits a snapshot to a store."
   [store snap]
-  (let [chunks (per-level :chunks (:levels snap))]
-    (+ (long (write-levels! store chunks))
-       (written (put-meta! store (meta-of snap))))))
+  (commit! store (meta-of snap) (per-level :chunks (:levels snap))))
 
 (def ^:private chunk-keys
   [:chunks :entities :block-ticks :fluid-ticks
@@ -312,37 +335,138 @@
 
 (defn start-saver
   "Returns a saver of chunks and meta.
-  Its meta holds the chunks handed to it but not written yet."
+  Its meta holds the chunks unloaded since the last commit and
+  whether a commit is wanted."
   []
-  (agent {:chunks nil :meta nil :writes 0}
+  (agent {:last nil :meta nil :writes 0 :held 0 :built 0}
          :error-mode :continue
-         :meta {:pending (atom {})}))
+         :meta {:pending (atom {}) :wanted (atom false)}))
 
 (defn- pending-of [saver]
   (:pending (meta saver)))
 
-(defn- hold! [saver dim id payload]
-  (when-let [p (pending-of saver)]
-    (swap! p assoc [dim id] payload)))
+(def ^:private ^:const pending-limit (* 8 1024 1024))
 
-(defn- release! [saver dim id payload]
-  (when-let [p (pending-of saver)]
-    (swap! p (fn [m]
-               (if (identical? payload (get m [dim id]))
-                 (dissoc m [dim id])
-                 m)))))
+(defn- held-bytes ^long [m]
+  (transduce (keep (fn [[_ [_ v]]]
+                     (when (bytes? v) (alength ^bytes v))))
+             + 0 m))
 
-(defn changed-chunks
-  "Returns the entries of chunks new that differ from old."
-  [old new]
-  (remove (fn [[k v]] (= v (get old k))) new))
+(defn want-commit!
+  "Asks for a commit at the start of the next tick."
+  [saver]
+  (some-> saver meta :wanted (reset! true)))
 
-(defn- changed-levels [old-chunks levels]
-  (into {} (for [[dim lm] levels
-                 :let [old (get old-chunks dim)
-                       ch (changed-chunks old (:chunks lm))]
-                 :when (seq ch)]
-             [dim ch])))
+(defn- frozen! [state saver k payload]
+  (let [data (frozen payload)
+        n (+ (long (:held state)) (alength data))
+        keep! (fn [m] (if (identical? payload (peek (get m k)))
+                        (assoc-in m [k 1] data)
+                        m))]
+    (swap! (pending-of saver) keep!)
+    (when (< pending-limit n) (want-commit! saver))
+    (assoc state :held n)))
+
+(defn store-chunk!
+  "Holds a chunk unloaded at tick until the next commit.
+  A read sees it at once."
+  [saver dim id tick payload]
+  (swap! (pending-of saver) assoc [dim id] [tick payload])
+  (send-off saver frozen! saver [dim id] payload))
+
+(defn- held-at? [^long tick [_ [t]]]
+  (<= (long t) tick))
+
+(defn- with-held [changed levels held]
+  (reduce (fn [m [[dim id] [_ v]]]
+            (if (contains? (get-in levels [dim :chunks]) id)
+              m
+              (update m dim (fnil conj []) [id v])))
+          changed held))
+
+(defn- released! [state saver tick]
+  (let [m (swap! (pending-of saver)
+                 #(into {} (remove (partial held-at? tick)) %))]
+    (assoc state :held (held-bytes m))))
+
+(defn- grouped [m eid e]
+  (if (= :player (:type e))
+    m
+    (let [id (chunk/pos-chunk (:pos e))]
+      (assoc! m id (conj (get m id []) (MapEntry/create eid e))))))
+
+(defn- entity-groups [entities]
+  (persistent! (reduce-kv grouped (transient {}) entities)))
+
+(defn- saved-ticks [old lv k t]
+  (let [ticks (k lv)
+        [was by] (get old k)]
+    (if (and (identical? ticks was) (= t (:t old)))
+      [was by]
+      [ticks (schedule/saved-by-chunk ticks t)])))
+
+(defn- level-parts [old world dim]
+  (let [lv (level/level world dim)
+        t (long (:tick world 0))]
+    {:t           t
+     :chunks      (:chunks lv)
+     :bes         (:block-entities lv)
+     :groups      (entity-groups (:entities lv))
+     :block-ticks (saved-ticks old lv :block-ticks t)
+     :fluid-ticks (saved-ticks old lv :fluid-ticks t)}))
+
+(defn- same-entry? [a b]
+  (and (= (key a) (key b)) (identical? (val a) (val b))))
+
+(defn- same-entries? [a b]
+  (or (identical? a b)
+      (and (= (count a) (count b))
+           (every? true? (map same-entry? a b)))))
+
+(defn- by-id [parts k]
+  (let [v (get parts k)] (if (vector? v) (peek v) v)))
+
+(defn- differs [old new k same?]
+  (let [a (by-id new k)
+        b (by-id old k)]
+    (when-not (identical? a b)
+      (fn [id] (not (same? (get a id) (get b id)))))))
+
+(defn- touched [old new moved?]
+  (let [groups (:groups new)
+        tests (->> [[:chunks identical?] [:bes identical?]
+                    [:groups same-entries?] [:block-ticks =]
+                    [:fluid-ticks =]]
+                   (keep (fn [[k same?]] (differs old new k same?)))
+                   vec)
+        timed? #(some (comp entity/timed? val) (get groups %))]
+    (fn [id]
+      (or (some #(% id) tests)
+          (and moved? (timed? id))))))
+
+(defn- payload [new id t]
+  (let [part #(get (by-id new %) id)]
+    (schema/payload-of (part :chunks) (part :bes) (part :groups)
+                       (part :block-ticks) (part :fluid-ticks) t)))
+
+(defn- loaded-only [payloads chunks]
+  (reduce-kv (fn [m id _] (if (contains? chunks id) m (dissoc m id)))
+             payloads payloads))
+
+(defn- built [old new moved? t]
+  (into {} (comp (filter (touched old new moved?))
+                 (map (fn [id] [id (payload new id t)])))
+        (keys (:chunks new))))
+
+(defn- level-changes [old world dim moved?]
+  (let [new (level-parts old world dim)
+        built (built old new moved? (long (:tick world 0)))
+        before (:payloads old)
+        payloads (merge (loaded-only before (:chunks new)) built)]
+    {:parts   (assoc new :payloads payloads)
+     :built   (count built)
+     :changed (into [] (remove (fn [[id p]] (= p (get before id))))
+                    built)}))
 
 (def ^:private clock-keys [:tick :time-ms :clocks])
 
@@ -352,49 +476,45 @@
 (defn- meta-changed? [a b]
   (not= (timeless a) (timeless b)))
 
-(defn- write-changes! [state store snap m changed]
+(defn- write-changes! [state store m changed]
   (try
-    (let [n (+ (long (write-levels! store changed))
-               (written (put-meta! store m)))
-          n-chunks (reduce + 0 (map count (vals changed)))]
-      (log/info "snapshot: saved" n-chunks "chunks,"
-                (log/human-bytes n) "to" (str store))
-      (-> state
-          (assoc :chunks (per-level :chunks (:levels snap))
-                 :meta m)
-          (update :writes inc)))
+    (commit! store m changed)
+    (update state :writes inc)
     (catch Throwable t
-      (log/warn "snapshot: write failed -" (.getMessage t))
-      state)))
+      (log/warn "snapshot: commit failed, the next one retries -"
+                (.getMessage t))
+      nil)))
 
-(defn- save! [state store world]
-  (let [snap (snapshot world)
-        m (meta-of snap)
-        changed (changed-levels (:chunks state) (:levels snap))]
-    (if (and (empty? changed) (not (meta-changed? m (:meta state))))
-      state
-      (write-changes! state store snap m changed))))
+(defn- all-changes [state world moved?]
+  (let [level (fn [dim]
+                (let [old (get-in state [:last dim])]
+                  [dim (level-changes old world dim moved?)]))]
+    (into {} (map level) (keys (:levels world)))))
+
+(defn- changed-chunks [levels]
+  (into {} (keep (fn [[dim {c :changed}]] (when (seq c) [dim c])))
+        levels))
+
+(defn- save! [state saver store world]
+  (let [tick (long (:tick world 0))
+        moved? (not= tick (:tick state))
+        m (meta-of-world world)
+        levels (all-changes state world moved?)
+        parts (update-vals levels :parts)
+        held (filter (partial held-at? tick) @(pending-of saver))
+        changed (with-held (changed-chunks levels) parts held)
+        state' (if (and (empty? changed)
+                        (not (meta-changed? m (:meta state))))
+                 state
+                 (write-changes! state store m changed))]
+    (if state'
+      (-> (assoc state' :last parts :tick tick :meta m
+                 :built (reduce + (map :built (vals levels))))
+          (released! saver tick))
+      (assoc state :last nil :meta nil))))
 
 (defn- chunk-name ^String [id]
   (let [[cx cz] (chunk/id->pos id)] (str "chunk " cx "," cz)))
-
-(defn- stored! [state saver store dim id payload]
-  (try
-    (put-chunk! store dim id payload)
-    (update-in state [:chunks dim] dissoc id)
-    (catch Throwable t
-      (log/warn (chunk-name id) "was unloaded but not saved,"
-                "its changes are lost -" (.getMessage t))
-      state)
-    (finally (release! saver dim id payload))))
-
-(defn store-chunk!
-  "Saves an unloaded chunk.
-  A read sees it at once. The write waits for every save and read
-  asked for before it."
-  [saver store dim id payload]
-  (hold! saver dim id payload)
-  (send-off saver stored! saver store dim id payload))
 
 (defn- read-stored [store dim id]
   (try (get-chunk store dim id)
@@ -404,9 +524,9 @@
          nil)))
 
 (defn- read-chunk [saver store dim id]
-  (if-let [payload (some-> (pending-of saver) deref (get [dim id]))]
-    payload
-    (read-stored store dim id)))
+  (let [held (some-> (pending-of saver) deref (get [dim id]))
+        v (if held (peek held) (read-stored store dim id))]
+    (if (bytes? v) (nippy/thaw v) v)))
 
 (defn- fetched! [state saver store dim id deliver]
   (deliver (read-chunk saver store dim id))
@@ -427,12 +547,20 @@
   (read-chunk saver store dim id))
 
 (defn request-save!
-  "Asks the saver to write world to store.
+  "Asks the saver to commit world to store.
+  The commit holds the chunks unloaded up to the tick of world.
   Returns nil when there is no saver."
   [saver store world]
   (when saver
-    (send-off saver save! store world)
+    (send-off saver save! saver store world)
     true))
+
+(defn commit-due!
+  "Asks the saver to commit the world of world-ref when a commit
+  is wanted. Call it between two ticks."
+  [saver store world-ref]
+  (when (compare-and-set! (:wanted (meta saver)) true false)
+    (request-save! saver store @world-ref)))
 
 (defn await-saver!
   "Waits up to ms for the saver to finish what it was given."
@@ -445,5 +573,5 @@
   [saver store world]
   (request-save! saver store world)
   (let [ok (await-saver! saver)]
-    (flush! store)
+    (when ok (close! store))
     ok))

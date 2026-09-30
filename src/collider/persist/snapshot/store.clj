@@ -3,12 +3,11 @@
   (:refer-clojure :exclude [load]))
 
 (defprotocol Store
-  (put-chunk! [this dim id payload])
   (get-chunk [this dim id])
-  (put-meta! [this m])
+  (commit! [this m chunks-by-dim])
   (load [this])
-  (flush! [this]))
+  (close! [this]))
 
-(defrecord FileStore [dir]
+(defrecord FileStore [dir levels]
   Object
   (toString [_] (str dir)))
