@@ -168,8 +168,6 @@
 
 (def ^:private ^:const jump-threshold 0.4)
 
-(def ^:private ^:const max-up-step 0.6)
-
 (defn- below-state ^long [world pos sup]
   (motion/below-state (:chunks world) pos sup))
 
@@ -307,7 +305,8 @@
       (- vy (/ g 16.0)))))
 
 (defn- stepped ^Move [world e vel half height c]
-  (phys/move (:chunks world) (:pos e) vel half height max-up-step c))
+  (phys/move (:chunks world) (:pos e) vel half height
+             (mobs/step-height (:type e)) (boolean (:on-ground e)) c))
 
 (defn- supported [world e ^Move mv half c]
   (if-not (phys/on-ground? mv)

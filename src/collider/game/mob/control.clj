@@ -1,6 +1,7 @@
 (ns collider.game.mob.control
   "The move, jump and body rotation controls of a mob."
   (:require [collider.game.entity :as entity]
+            [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -12,8 +13,6 @@
 (def ^:private ^:const min-speed-sqr 2.5000003E-7)
 
 (def ^:private ^:const max-turn 90.0)
-
-(def ^:private ^:const max-up-step 0.6)
 
 (def ^:private ^:const max-head-y-rot 75.0)
 
@@ -67,7 +66,7 @@
 
 (defn- jumps? [chunks e xd yd zd width]
   (let [xd (double xd) zd (double zd) w (double width)]
-    (or (and (> (double yd) max-up-step)
+    (or (and (> (double yd) (mobs/step-height (:type e)))
              (< (+ (* xd xd) (* zd zd)) (Math/max 1.0 w)))
         (stuck-in-block? chunks (:pos e)))))
 

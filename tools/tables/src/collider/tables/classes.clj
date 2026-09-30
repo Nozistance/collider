@@ -3,6 +3,7 @@
   (:require [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.tables.blockentities :as blockentities]
+            [collider.tables.attributes :as attributes]
             [collider.tables.brewing :as brewing]
             [collider.tables.entities :as entities]
             [collider.tables.files :as files]
@@ -180,12 +181,34 @@
      :use-shape (light-flags states shaped?)
      :faces     (palette-runs (occluding-states states))}))
 
+(defn- y-coords [shape]
+  (vec (call shape "getCoords"
+             (static-field "core.Direction$Axis" "Y"))))
+
+(defn- state-y-coords [env st]
+  (let [shape (collision-shape env st)]
+    (when-not (call shape "isEmpty")
+      (unless-default [0.0 1.0] (y-coords shape)))))
+
+(defn- block-shape [c f]
+  (hidden-field (cls (str "world.level.block." c)) nil f))
+
+(defn- collision-ys [env each]
+  {:states (each #(state-y-coords env %))
+   :block (y-coords (call-static "world.phys.shapes.Shapes" "block"))
+   :scaffolding-bottom
+   (y-coords (block-shape "ScaffoldingBlock" "SHAPE_UNSTABLE_BOTTOM"))
+   :powder-snow-falling
+   (y-coords
+     (block-shape "PowderSnowBlock" "FALLING_COLLISION_SHAPE"))})
+
 (defn- state-shapes [states]
   (let [env (shape-env)
         each (fn [f] (palette-runs (per-state states f)))
         sturdy (fn [& more]
                  (each #(apply state-sturdy env % more)))]
     {:shapes (each #(partial-box (collision-shape env %)))
+     :collision-ys (collision-ys env each)
      :outlines (each #(partial-box (outline-shape env %)))
      :flags (each #(state-flags env %))
      :sturdy {:full (sturdy)
@@ -506,7 +529,8 @@
              {:light (light-table states) :fire (fire-odds)
               :dyes (dye-colors) :synced (synced-registries)
               :entities (entities/entities)
-              :version (version-facts) :growers (growers)}
+              :version (version-facts) :growers (growers)
+              :attributes (attributes/attributes)}
              (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j

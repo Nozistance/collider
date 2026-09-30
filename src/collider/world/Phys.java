@@ -1,6 +1,7 @@
 package collider.world;
 
 import collider.V3;
+import java.util.Arrays;
 
 /// Collision of a moving box against block boxes. The block tables
 /// that the methods take are indexed by block state. `kinds` holds
@@ -100,6 +101,32 @@ public final class Phys {
         return (id << 5) | ((y >> 4) + 4);
     }
 
+    private static double[] shapeOf(int st, byte[] kinds,
+            boolean[] cube, Object[] shapes, long x, long y, long z,
+            double bottom, int flags) {
+        if (st <= 0) return null;
+        if (st < cube.length && cube[st]) return Collision.CUBE;
+        return Collision.kind(kinds, st) == Collision.PLAIN
+            ? Collision.boxes(shapes, st)
+            : Collision.shape(shapes, kinds, st, (int) x, (int) y,
+                              (int) z, bottom, flags);
+    }
+
+    private static int putBoxes(double[] a, int n, double[] s, long x,
+            long y, long z) {
+        for (int k = 0; k < s.length; k += 6) {
+            int o = n * 6;
+            a[o] = x + s[k];
+            a[o + 1] = y + s[k + 1];
+            a[o + 2] = z + s[k + 2];
+            a[o + 3] = x + s[k + 3];
+            a[o + 4] = y + s[k + 4];
+            a[o + 5] = z + s[k + 5];
+            n++;
+        }
+        return n;
+    }
+
     private static int putBlock(double[] a, int n, int st,
             byte[] kinds, boolean[] cube, Object[] shapes, long x,
             long y, long z, double bottom, int flags) {
@@ -114,22 +141,34 @@ public final class Phys {
             a[o + 5] = z + 1.0;
             return n + 1;
         }
-        double[] s = Collision.kind(kinds, st) == Collision.PLAIN
-            ? Collision.boxes(shapes, st)
-            : Collision.shape(shapes, kinds, st, (int) x, (int) y,
-                              (int) z, bottom, flags);
-        if (s == null) return n;
-        for (int k = 0; k < s.length; k += 6) {
-            int o = n * 6;
-            a[o] = x + s[k];
-            a[o + 1] = y + s[k + 1];
-            a[o + 2] = z + s[k + 2];
-            a[o + 3] = x + s[k + 3];
-            a[o + 4] = y + s[k + 4];
-            a[o + 5] = z + s[k + 5];
-            n++;
+        double[] s = shapeOf(st, kinds, cube, shapes, x, y, z, bottom,
+                             flags);
+        return s == null ? n : putBoxes(a, n, s, x, y, z);
+    }
+
+    private static final class Heights {
+        final YCoords ys;
+        final double base;
+        final float step, skip;
+        float[] h = new float[16];
+        int k;
+
+        Heights(YCoords ys, double base, float step, float skip) {
+            this.ys = ys;
+            this.base = base;
+            this.step = step;
+            this.skip = skip;
         }
-        return n;
+
+        void add(double[] cs, long y) {
+            for (double c : cs) {
+                float r = (float) ((c + y) - base);
+                if (r < 0.0F || r == skip) continue;
+                if (r > step) return;
+                if (k == h.length) h = Arrays.copyOf(h, 2 * k);
+                h[k++] = r;
+            }
+        }
     }
 
     /// Returns the boxes of the blocks in `chunks` that the box
@@ -163,6 +202,53 @@ public final class Phys {
                                    | (x & 15)));
                     n = putBlock(a, n, st, kinds, cube, shapes,
                                  x, y, z, bottom, flags);
+                }
+            }
+        }
+        return new Sweep(a, n);
+    }
+
+    private static boolean meets(double[] a, int from, int to,
+            double[] box) {
+        for (int i = from; i < to; i++) {
+            if (overlaps(a, 6 * i, box)) return true;
+        }
+        return false;
+    }
+
+    private static Sweep colliders(ChunkIndex chunks, byte[] kinds,
+            boolean[] cube, Object[] shapes, double[] ebox,
+            double bottom, int flags, Heights hs) {
+        long x1 = loBound(ebox[0], 0.0), x2 = hiBound(ebox[3], 0.0);
+        long y1 = Math.max(MIN_Y, loBound(ebox[1], 0.0) - 1);
+        long y2 = Math.min(MAX_Y, hiBound(ebox[4], 0.0));
+        long z1 = loBound(ebox[2], 0.0), z2 = hiBound(ebox[5], 0.0);
+        long cells = (x2 - x1 + 1) * (Math.max(y1, y2) - y1 + 1)
+                * (z2 - z1 + 1);
+        double[] a = buffer(96 * Math.max(1, cells));
+        int n = 0;
+        long ckey = -1;
+        Section s = null;
+        for (long x = x1; x <= x2; x++) {
+            for (long z = z1; z <= z2; z++) {
+                for (long y = y1; y <= y2; y++) {
+                    long k = sectionKey(x, y, z);
+                    if (k != ckey) {
+                        s = Chunk.sectionAt(chunks, (int) x, (int) y,
+                                            (int) z);
+                        ckey = k;
+                    }
+                    int st = s == null ? 0 : s.block(
+                            (int) (((y & 15) << 8) | ((z & 15) << 4)
+                                   | (x & 15)));
+                    double[] b = shapeOf(st, kinds, cube, shapes, x, y,
+                                         z, bottom, flags);
+                    if (b == null) continue;
+                    int m = putBoxes(a, n, b, x, y, z);
+                    if (meets(a, n, m, ebox)) {
+                        hs.add(Collision.ys(hs.ys, st, b), y);
+                        n = m;
+                    }
                 }
             }
         }
@@ -311,50 +397,68 @@ public final class Phys {
         e[5] += dz;
     }
 
+    private static double[] towards(double[] b, double x, double y,
+            double z) {
+        double[] e = b.clone();
+        e[x < 0.0 ? 0 : 3] += x;
+        e[y < 0.0 ? 1 : 4] += y;
+        e[z < 0.0 ? 2 : 5] += z;
+        return e;
+    }
+
     private static void stepUp(ChunkIndex chunks, byte[] kinds,
-            boolean[] cube, Object[] shapes, double[] box0,
-            double[] out, double vx, double vz, double step, int flags) {
-        double dy0 = out[1];
-        double[] e = box0.clone();
-        e[1] += dy0;
-        e[4] += dy0;
-        Sweep sw = sweep(chunks, kinds, cube, shapes, e, vx, step, vz,
-                         box0[1], flags);
+            boolean[] cube, Object[] shapes, YCoords ys, double[] box0,
+            double[] out, double vx, double vz, float step,
+            boolean landed, int flags) {
+        double[] g = box0.clone();
+        if (landed) shift(g, 0.0, out[1], 0.0);
+        double[] up = towards(g, vx, step, vz);
+        if (!landed) up[1] += (double) -1.0E-5F;
+        Heights hs = new Heights(ys, g[1], step, (float) out[1]);
+        Sweep sw = colliders(chunks, kinds, cube, shapes, up, box0[1],
+                             flags, hs);
+        float[] h = hs.h;
+        Arrays.sort(h, 0, hs.k);
         double[] s = new double[3];
-        clampAxes(sw.a(), sw.n(), e, vx, step, vz, s);
-        shift(e, s[0], s[1], s[2]);
-        double drop = clampAll(sw.a(), sw.n(), e, 0, 1, -s[1]);
-        double sx = s[0], sz = s[2], ox = out[0], oz = out[2];
-        if (sx * sx + sz * sz > ox * ox + oz * oz) {
-            out[0] = sx;
-            out[1] = dy0 + s[1] + drop;
-            out[2] = sz;
+        double far = out[0] * out[0] + out[2] * out[2];
+        for (int i = 0; i < hs.k; i++) {
+            if (i > 0 && h[i] == h[i - 1]) continue;
+            clampAxes(sw.a(), sw.n(), g, vx, h[i], vz, s);
+            if (s[0] * s[0] + s[2] * s[2] > far) {
+                out[0] = s[0];
+                out[1] = s[1] - (box0[1] - g[1]);
+                out[2] = s[2];
+                return;
+            }
         }
     }
 
     /// Returns the move of a body with half width `half` and
     /// height `height` from `px`, `py`, `pz` by the velocity `vx`,
-    /// `vy`, `vz`. The blocks it meets stop it. A body that lands
-    /// and is held back sideways climbs up to `step` when that
-    /// takes it further. A move under 1.0E-7 squared that the
+    /// `vy`, `vz`. The blocks it meets stop it. A body held back
+    /// sideways that lands or stood on the ground, as `ground`
+    /// tells, climbs to the lowest y coordinate of the shapes in
+    /// `ys` up to `step` that takes it further. A move under 1.0E-7 squared that the
     /// blocks cut short leaves it where it was, as Entity.move.
     public static Move move(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double px, double py,
             double pz, double vx, double vy, double vz, double half,
-            double height, double step, int flags) {
+            double height, double step, boolean ground, int flags,
+            YCoords ys) {
         double[] box0 = {px - half, py, pz - half,
                          px + half, py + height, pz + half};
         Sweep sw = sweep(chunks, kinds, cube, shapes, box0, vx, vy, vz,
                          py, flags);
         double[] out = new double[3];
         clampAxes(sw.a(), sw.n(), box0, vx, vy, vz, out);
-        boolean hitY = out[1] != vy;
-        if (step > 0.0 && hitY && vy < 0.0
+        boolean landed = out[1] != vy && vy < 0.0;
+        if ((float) step > 0.0F && (landed || ground)
                 && (out[0] != vx || out[2] != vz)) {
-            stepUp(chunks, kinds, cube, shapes, box0, out, vx, vz, step,
-                   flags);
+            stepUp(chunks, kinds, cube, shapes, ys, box0, out, vx, vz,
+                   (float) step, landed, flags);
         }
         double dx = out[0], dy = out[1], dz = out[2];
+        boolean hitY = dy != vy;
         double moved = dx * dx + dy * dy + dz * dz;
         double asked = vx * vx + vy * vy + vz * vz;
         boolean kept = moved > 1.0E-7 || asked - moved < 1.0E-7;

@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 19)
+(def layout 20)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -92,7 +92,8 @@
 (def ^:private table-names
   (into [:packets :registries :blocks :synced :light :fire :fuel
          :brewing :dyes :sounds :potions :effects :entities
-         :version :block-entities :growers]
+         :version :block-entities :growers
+         :attributes]
         item-facts))
 
 (def ^:private ^:table tables
@@ -129,6 +130,10 @@
 (defn fire
   "Returns how blocks catch fire and burn."
   [] (:fire @tables))
+
+(defn attributes
+  "Returns the default attribute values of each living entity type."
+  [] (:attributes @tables))
 
 (def ^:private ^:table loot-tables
   (delay (let [t (pack "loot_table")]
@@ -499,6 +504,15 @@
 
 (def ^:private ^:table shape-table
   (delay (object-table (read-edn "shapes.edn"))))
+
+(def ^:private ^:table y-coords-table
+  (delay (update (read-edn "collision-ys.edn") :states object-table)))
+
+(defn collision-ys
+  "Returns the y coordinates of the collision shapes: :states by
+  state id, nil for a full cube, and :block, :scaffolding-bottom and
+  :powder-snow-falling."
+  [] @y-coords-table)
 
 (def ^:private ^:table outline-table
   (delay (object-table (read-edn "outlines.edn"))))

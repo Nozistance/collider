@@ -5,7 +5,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (collider V3)
-           (collider.world ChunkIndex Collision Move Phys)))
+           (collider.world ChunkIndex Collision Move Phys YCoords)))
 
 (set! *warn-on-reflection* true)
 
@@ -85,6 +85,20 @@
 (defn kinds
   "Returns the Collision kind of each block state."
   ^bytes [] @kind-table)
+
+(defn- doubles-of [v] (when v (double-array v)))
+
+(def ^:private ^:table y-coords-table
+  (delay
+    (let [t (data/collision-ys)]
+      (YCoords. (object-array (map doubles-of (:states t)))
+                (doubles-of (:block t))
+                (doubles-of (:scaffolding-bottom t))
+                (doubles-of (:powder-snow-falling t))))))
+
+(defn y-coords
+  "Returns the y coordinates of the collision shapes."
+  ^YCoords [] @y-coords-table)
 
 (def ^:private walker-tag "powder_snow_walkable_mobs")
 
@@ -186,31 +200,38 @@
    (when-let [c (support-cell chunks pos half ctx)]
      [(aget c 0) (aget c 1) (aget c 2)])))
 
-(defn- move-form [chunks pos vel half height step ctx]
+(defn- move-form [chunks pos vel half height step ground? ctx]
   (let [v (gensym "vel")]
     `(let [~v ~vel]
        ~(at-form `Phys/move chunks pos
           [`(v/x ~v) `(v/y ~v) `(v/z ~v) `(double ~half)
-           `(double ~height) `(double ~step) `(int ~ctx)]))))
+           `(double ~height) `(double ~step) `(boolean ~ground?)
+           `(int ~ctx) `(y-coords)]))))
 
-(defn- moved ^Move [chunks pos vel half height step ctx]
+(defn- moved ^Move [chunks pos vel half height step ground? ctx]
   (Phys/move chunks (kinds) (block/cube-arr) (block/collision-arr)
              (v/x pos) (v/y pos) (v/z pos) (v/x vel) (v/y vel)
              (v/z vel) (double half) (double height) (double step)
-             (int ctx)))
+             (boolean ground?) (int ctx) (y-coords)))
 
 (defn move
   "Returns the position, velocity and ground flag of a body.
   The body moves by vel from pos and the blocks it meets stop
   it. The body is a box of half width half and height height.
-  step is how high it climbs without jumping. ctx is the context
-  of the body."
-  {:inline (fn [c p v h t & [s x]]
-             (move-form c p v h t (or s 0.0) (or x 0)))
-   :inline-arities #{5 6 7}}
+  step is how high it climbs without jumping, ground? whether it
+  stood on the ground before the move. ctx is the context of the
+  body."
+  {:inline (fn
+             ([c p v h t] (move-form c p v h t 0.0 false 0))
+             ([c p v h t s] (move-form c p v h t s false 0))
+             ([c p v h t s x] (move-form c p v h t s false x))
+             ([c p v h t s g x] (move-form c p v h t s g x)))
+   :inline-arities #{5 6 7 8}}
   ([chunks pos vel half height]
-   (moved chunks pos vel half height 0.0 0))
+   (moved chunks pos vel half height 0.0 false 0))
   ([chunks pos vel half height step]
-   (moved chunks pos vel half height step 0))
+   (moved chunks pos vel half height step false 0))
   ([chunks pos vel half height step ctx]
-   (moved chunks pos vel half height step ctx)))
+   (moved chunks pos vel half height step false ctx))
+  ([chunks pos vel half height step ground? ctx]
+   (moved chunks pos vel half height step ground? ctx)))

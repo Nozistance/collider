@@ -75,6 +75,17 @@ public final class Collision {
         return m;
     }
 
+    /// Returns the y coordinates of `shape`, the boxes that `shape`
+    /// or `boxes` gave for `st`, in `ys`.
+    public static double[] ys(YCoords ys, int st, double[] shape) {
+        if (shape == UNSTABLE_BOTTOM) return ys.scaffoldingBottom();
+        if (shape == SNOW_FALLING) return ys.snowFalling();
+        Object[] t = ys.states();
+        double[] c = shape == CUBE || st >= t.length ? null
+                   : (double[]) t[st];
+        return c == null ? ys.block() : c;
+    }
+
     /// Returns the boxes of `st` at `x`, `y`, `z`, relative to the
     /// cell, that a body with its bottom at `bottom` and the `flags`
     /// meets, or null when none.

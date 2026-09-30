@@ -33,7 +33,7 @@
         len (float (path-length e))
         visits (long (Math/floor (* len (float 16.0))))]
     (assoc (mobs/walker (:type e))
-      :max-visited visits
+      :max-visited visits :max-up-step (mobs/step-height (:type e))
       :width (* 2.0 (double half)) :height height :pos (:pos e)
       :on-ground? (boolean (:on-ground e)) :ctx (phys/context e)
       :in-water? (boolean (:wet? e)))))

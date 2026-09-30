@@ -148,6 +148,17 @@
   "Returns the path parameters of mob kind type."
   [type] (get-in types [type :walker] path/cow))
 
+(def ^:private ^:table step-heights
+  (delay (update-vals (data/attributes)
+                      #(double (float (:step-height % 0.0))))))
+
+(defn step-height
+  "Returns how high a mob of kind type climbs without jumping, the
+  step height attribute as LivingEntity.maxUpStep reads it."
+  ^double [type]
+  (double (get @step-heights type 0.0)))
+
+
 (defn- voice-of [m e]
   (get (:voices m) (long (or (:sound-variant e) 0)) :classic))
 
