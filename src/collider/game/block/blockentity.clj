@@ -43,6 +43,7 @@
    :brushable           :brushable-block
    :copper-golem-statue :copper-golem-statue
    :weathering-copper-golem-statue :copper-golem-statue
+   :command             :command-block
    :structure           :structure-block
    :jigsaw              :jigsaw
    :test                :test-block

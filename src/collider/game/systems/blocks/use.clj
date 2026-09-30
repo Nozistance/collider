@@ -42,15 +42,19 @@
             (when left
               [[:spawn-entity (items/dropped world eid left)]]))))
 
-(defn- pot-deltas [world eid pos item]
-  (let [n (block/block-of (edit/block-at world pos))]
-    (cond
-      (and (= :flower-pot n) item (potted-block item))
-      (set-at world pos (block/state (potted-block item)))
-      (and (not= :flower-pot n) (nil? item))
-      (let [plant (:potted (get (data/blocks) n))]
-        (concat (set-at world pos (block/state :flower-pot))
-                (stack-deltas world eid {:item plant :count 1}))))))
+(defn- consume-deltas [world eid]
+  (let [e (get-in world [:entities eid])]
+    (items/consume-deltas eid e (:use-hand e) 1)))
+
+(defn- plant-deltas [world eid pos plant]
+  (concat (set-at world pos (block/state plant))
+          [[:award eid :custom/pot-flower 1]]
+          (consume-deltas world eid)))
+
+(defn- unpot-deltas [world eid pos n]
+  (let [plant (:potted (get (data/blocks) n))]
+    (concat (set-at world pos (block/state :flower-pot))
+            (stack-deltas world eid {:item plant :count 1}))))
 
 (defn- candle-item? [item]
   (= :candle (:type (get (data/blocks) item))))
@@ -73,6 +77,21 @@
   hand that uses a block without its item."
   [world eid]
   (not= :off (get-in world [:entities eid :use-hand])))
+
+(defn- pot-deltas
+  "FlowerPotBlock.useItemOn: a plant goes into an empty pot, and
+  takes the click of a full one; the main hand with anything else
+  takes the plant out of a full pot and the click of an empty one."
+  [world eid pos item]
+  (let [n (block/block-of (edit/block-at world pos))
+        plant (potted-block item)
+        empty? (= :flower-pot n)]
+    (cond
+      (and plant empty?) (plant-deltas world eid pos plant)
+      plant []
+      (not (main-hand? world eid)) nil
+      empty? []
+      :else (unpot-deltas world eid pos n))))
 
 (defn- eats? [world eid]
   (let [e (get-in world [:entities eid])]
@@ -217,19 +236,38 @@
                  (out/level-event out/particles-and-sound-wax-on pos)
                  (out/block-sound sound pos 1.0 1.0)))])))
 
-(defn- sign-use-deltas [world eid pos item]
+(defn- sign-hand-deltas [world eid pos e front? busy?]
+  (when (main-hand? world eid)
+    (cond
+      (:waxed? e) [(heard :sign/waxed pos 1.0)]
+      (not busy?) [[:set-block-entity pos (assoc e :editor eid)]
+                   (out/to eid (out/sign-editor pos front?))])))
+
+(defn- chains?
+  "Whether a hanging sign item clicked on face of the hanging sign st
+  places another sign instead (CeilingHangingSignBlock.java:90-96,
+  WallHangingSignBlock.java:78-88)."
+  [^long st face item]
+  (let [d (dir/from-index (long face))
+        across? (not= (dir/axis d) (dir/axis (block/facing-of st)))]
+    (and (= :ceiling-hanging-sign (:type (get (data/blocks) item)))
+         (case (block/type-of st)
+           :ceiling-hanging-sign (= :down d)
+           :wall-hanging-sign across?
+           false))))
+
+(defn- sign-use-deltas
+  "SignBlock.useItemOn: an applicator changes the side faced, else
+  the main hand edits it."
+  [world eid pos face item]
   (let [st (edit/block-at world pos) e (sign/at world pos)
         at (get-in world [:entities eid :pos])
         front? (sign/front? st pos at)
         busy? (sign-busy? world eid e)]
-    (cond
-      (nil? e) nil
-      (and item (not (:waxed? e)) (not busy?))
-      (sign-apply-deltas pos e front? item)
-      (some? item) nil
-      (:waxed? e) [(heard :sign/waxed pos 1.0)]
-      (not busy?) [[:set-block-entity pos (assoc e :editor eid)]
-                   (out/to eid (out/sign-editor pos front?))])))
+    (when (and e (not (chains? st face item)))
+      (or (when (and item (not (:waxed? e)) (not busy?))
+            (sign-apply-deltas pos e front? item))
+          (sign-hand-deltas world eid pos e front? busy?)))))
 
 (defn sign-update-deltas
   "Returns the deltas that write lines on one side of the sign at pos,
@@ -428,13 +466,21 @@
         props (assoc (block/props-of st) :level (keyword (str lvl)))]
     (set-at world pos (with-props st props))))
 
-(defn- lectern-use-deltas [world eid pos]
+(defn- lectern-use-deltas
+  "LecternBlock.useItemOn: the main hand reads the book on it; a
+  book goes on an empty one, anything else in the main hand takes
+  the click."
+  [world eid pos item]
   (let [st (edit/block-at world pos)
-        stack (edit/held-stack world eid)]
+        stack (edit/held-stack world eid)
+        main? (main-hand? world eid)]
     (cond
-      (lectern/has-book? st) (containers/open-deltas world eid pos)
+      (lectern/has-book? st)
+      (when main? (containers/open-deltas world eid pos))
       (container/book? stack)
-      (container/place-book-deltas world pos st stack))))
+      (concat (container/place-book-deltas world pos st stack)
+              (consume-deltas world eid))
+      (and main? item) [])))
 
 (defn- candle-use [w _ pos _ item _]
   (when (nil? item) (edit/candle-out-deltas w pos)))
@@ -463,7 +509,8 @@
    :chiseled-book-shelf bookshelf-use-deltas
    :bell (fn [w _ pos face _ cursor]
            (bell-use-deltas w pos face cursor))
-   :lectern (fn [w eid pos _ _ _] (lectern-use-deltas w eid pos))
+   :lectern (fn [w eid pos _ item _]
+              (lectern-use-deltas w eid pos item))
    :dragon-egg (fn [w _ pos _ _ _] (egg-deltas w pos))
    :light (fn [w _ pos _ _ _] (light-deltas w pos))})
 
@@ -474,6 +521,22 @@
   (when (and (main-hand? w eid) (be/at w pos)
              (edit/game-master? (get-in w [:entities eid])))
     []))
+
+(def ^:private menu-stats
+  "The blocks whose menus are not built yet, with the stat their use
+  awards: the main hand still takes the click (useWithoutItem)."
+  {:enchantment-table nil
+   :beacon :custom/interact-with-beacon
+   :cartography-table :custom/interact-with-cartography-table
+   :hopper :custom/inspect-hopper
+   :dispenser :custom/inspect-dispenser
+   :dropper :custom/inspect-dropper
+   :crafter nil})
+
+(defn- menu-use [w eid pos _ _ _]
+  (when (main-hand? w eid)
+    (let [t (block/type-of (edit/block-at w pos))]
+      (if-let [stat (menu-stats t)] [[:award eid stat 1]] []))))
 
 (defn- open-use [w eid pos _ _ _]
   (when (main-hand? w eid) (containers/open-deltas w eid pos)))
@@ -489,8 +552,10 @@
           (contains? block/cauldron-types t) cauldron-use
           (edit/game-master-block? cur) game-master-use
           (sign/kind cur)
-          (fn [w eid pos _ item _] (sign-use-deltas w eid pos item))
+          (fn [w eid pos face item _]
+            (sign-use-deltas w eid pos face item))
           (contains? container/menu-types t) open-use
+          (contains? menu-stats t) menu-use
           (and (= :pumpkin (block/block-of cur)) (= :shears item))
           (fn [w eid pos face _ _]
             (tools/carve-deltas w eid pos face))))))
