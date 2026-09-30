@@ -218,9 +218,12 @@
                (into [] (filter #(streaming? world %))
                      (level/player-entries world))))
 
-(defn- unload-deltas [world id]
-  [[:unload-chunk id]
-   (out/all (out/store-chunk id (schema/chunk-payload world id)))])
+(defn- unload-deltas [world ids]
+  (let [groups (when (seq ids) (schema/chunk-entities (:entities world)))]
+    (mapcat (fn [id]
+              (let [p (schema/chunk-payload world id (get groups id))]
+                [[:unload-chunk id] (out/all (out/store-chunk id p))]))
+            ids)))
 
 (defn- purged [tickets]
   (reduce-kv (fn [m id n]
@@ -243,5 +246,4 @@
     (deltas/of-vec
       (into (if (= held old) [] [[:purge-tickets held]])
             (when (get-in world [:config :unload-chunks?])
-              (mapcat #(unload-deltas world %)
-                      (dropped-ids world held)))))))
+              (unload-deltas world (dropped-ids world held)))))))

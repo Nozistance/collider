@@ -20,12 +20,12 @@
             [malli.error :as me]
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
-  (:import (clojure.lang MapEntry)
-           (collider.world Chunk)
+  (:import (collider.world Chunk)
            (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.channels ClosedChannelException)
-           (java.nio.file Files)))
+           (java.nio.file Files)
+           (java.util.zip DataFormatException)))
 
 (set! *warn-on-reflection* true)
 
@@ -138,8 +138,11 @@
   (let [open (fn [dim] [dim (opened-level dir m dim)])]
     (reset! levels (into {} (map open) schema/dims))))
 
+(defn- stamped-meta [dir]
+  (some->> (read-meta-file dir) (stamped dir)))
+
 (defn- levels-of [{:keys [dir levels] :as store}]
-  (or @levels (open-levels! store (read-meta-file dir))))
+  (or @levels (open-levels! store (stamped-meta dir))))
 
 (defn- stored-ids [{:keys [regions]}]
   (into (i/int-set) (mapcat region/chunks) (vals regions)))
@@ -150,18 +153,19 @@
                       (assoc :stored (stored-ids (opened dim))))])))
 
 (defn- read-store [{:keys [dir] :as store}]
-  (when-let [m (read-meta-file dir)]
-    (let [opened (open-levels! store (stamped dir m))]
+  (when-let [m (stamped-meta dir)]
+    (let [opened (open-levels! store m)]
       (-> (dissoc m :stamp)
           (update :levels with-stored opened)))))
 
 (defn- frozen ^bytes [payload]
   (if (bytes? payload) payload (nippy/freeze payload freeze-opts)))
 
-(defn- appended [dir gen old k chunks]
-  (let [r (if old (region/copy old) (region/create dir k gen))]
+(defn- appended [made dir gen old k chunks]
+  (let [made! #(do (vswap! made conj %) %)
+        r (if old (region/copy old) (made! (region/create dir k gen)))]
     (doseq [[id p] chunks] (region/append! r id (frozen p)))
-    (if (region/sparse? r) (region/compact r gen) r)))
+    (if (region/sparse? r) (made! (region/compact r gen)) r)))
 
 (defn- replaced? [old r]
   (and old (not= (region/gen-of old) (region/gen-of r))))
@@ -174,20 +178,29 @@
 (defn- by-region [chunks]
   (group-by #(region/of (first %)) chunks))
 
-(defn- written-level [dir {:keys [gen regions]} chunks]
+(defn- written-level [made dir {:keys [gen regions]} chunks]
   (let [g (inc (long gen))
-        news (into {} (for [[k cs] (by-region chunks)]
-                        [k (appended dir g (get regions k) k cs)]))]
+        add (fn [[k cs]] [k (appended made dir g (get regions k) k cs)])
+        news (into {} (map add) (by-region chunks))]
     {:gen g :regions (merge regions news) :news (vals news)
      :retired (retired regions news)}))
 
 (defn- touched-levels [{:keys [dir] :as store} chunks-by-dim]
   (let [levels (levels-of store)
+        made (volatile! [])
         level (fn [[dim chunks]]
                 (let [lv (get levels dim {:gen 0})]
-                  [dim (written-level (dim-dir dir dim) lv chunks)]))]
-    (into {} (comp (filter (comp seq val)) (map level))
-          chunks-by-dim)))
+                  [dim (written-level made (dim-dir dir dim) lv chunks)]))]
+    (try (into {} (comp (filter (comp seq val)) (map level))
+               chunks-by-dim)
+         (catch Throwable t
+           (run! region/close! @made)
+           (throw t)))))
+
+(defn- abandoned! [touched]
+  (doseq [{:keys [gen news]} (vals touched) r news
+          :when (= gen (region/gen-of r))]
+    (region/close! r)))
 
 (defn- forced! [touched]
   (doseq [{:keys [news]} (vals touched)] (run! region/force! news)))
@@ -242,12 +255,15 @@
                    (stored-bytes store dim id)))
             nippy/thaw))
   (commit! [store m chunks-by-dim]
-    (let [touched (touched-levels store chunks-by-dim)]
-      (forced! touched)
-      (manifests! store touched)
-      (let [n (root! store m touched)]
-        (published! store touched)
-        n)))
+    (let [touched (touched-levels store chunks-by-dim)
+          n (try (forced! touched)
+                 (manifests! store touched)
+                 (root! store m touched)
+                 (catch Throwable t
+                   (abandoned! touched)
+                   (throw t)))]
+      (published! store touched)
+      n))
   (load [store] (read-store store))
   (close! [store] (close-all! store)))
 
@@ -258,7 +274,8 @@
 
 (defn- level-snapshot [world dim]
   (let [lv (level/level world dim)
-        entry (fn [id] [id (schema/chunk-payload lv id)])]
+        groups (schema/chunk-entities (:entities lv))
+        entry (fn [id] [id (schema/chunk-payload lv id (groups id))])]
     (assoc (schema/snapshot lv :level)
       :chunks (into {} (map entry) (keys (:chunks lv))))))
 
@@ -389,15 +406,6 @@
                  #(into {} (remove (partial held-at? tick)) %))]
     (assoc state :held (held-bytes m))))
 
-(defn- grouped [m eid e]
-  (if (= :player (:type e))
-    m
-    (let [id (chunk/pos-chunk (:pos e))]
-      (assoc! m id (conj (get m id []) (MapEntry/create eid e))))))
-
-(defn- entity-groups [entities]
-  (persistent! (reduce-kv grouped (transient {}) entities)))
-
 (defn- saved-ticks [old lv k t]
   (let [ticks (k lv)
         [was by] (get old k)]
@@ -411,7 +419,7 @@
     {:t           t
      :chunks      (:chunks lv)
      :bes         (:block-entities lv)
-     :groups      (entity-groups (:entities lv))
+     :groups      (schema/chunk-entities (:entities lv))
      :block-ticks (saved-ticks old lv :block-ticks t)
      :fluid-ticks (saved-ticks old lv :fluid-ticks t)}))
 
@@ -518,9 +526,9 @@
 
 (defn- read-stored [store dim id]
   (try (get-chunk store dim id)
-       (catch Throwable t
-         (log/warn (chunk-name id) "could not be read and"
-                   "starts over as a new chunk," (.getMessage t))
+       (catch DataFormatException e
+         (log/warn (chunk-name id) "has no readable record and"
+                   "starts over as a new chunk," (.getMessage e))
          nil)))
 
 (defn- read-chunk [saver store dim id]
@@ -528,21 +536,37 @@
         v (if held (peek held) (read-stored store dim id))]
     (if (bytes? v) (nippy/thaw v) v)))
 
+(declare fetch-chunk!)
+
+(defn- retried! [saver store dim id deliver ^Throwable t]
+  (Thread/interrupted)
+  (log/warn (chunk-name id) "could not be read, reading it again"
+            "in a second," (.getMessage t))
+  (Thread/startVirtualThread
+    #(do (Thread/sleep 1000)
+         (fetch-chunk! saver store dim id deliver))))
+
 (defn- fetched! [state saver store dim id deliver]
-  (deliver (read-chunk saver store dim id))
-  state)
+  (let [v (try (read-chunk saver store dim id)
+               (catch Throwable t
+                 (retried! saver store dim id deliver t)
+                 ::failed))]
+    (when-not (identical? ::failed v) (deliver v))
+    state))
 
 (defn fetch-chunk!
   "Reads a saved chunk and gives it to deliver.
-  The read waits for every save asked for before it. deliver
-  gets nil when the chunk cannot be read."
+  The read waits for every save asked for before it. deliver gets nil
+  when no record of the chunk reads. A read that fails otherwise is
+  tried again until it succeeds."
   [saver store dim id deliver]
   (send-off saver fetched! saver store dim id deliver))
 
 (defn fetch-chunk-now!
   "Returns a saved chunk at once.
   A chunk that waits for its write comes back as it was given. Returns
-  nil when the chunk cannot be read."
+  nil when no record of the chunk reads and throws when the read fails
+  otherwise."
   [saver store dim id]
   (read-chunk saver store dim id))
 

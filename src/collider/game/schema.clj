@@ -8,7 +8,8 @@
             [collider.game.schedule :as schedule]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
-            [collider.world.env.weather :as weather]))
+            [collider.world.env.weather :as weather])
+  (:import (clojure.lang MapEntry)))
 
 (set! *warn-on-reflection* true)
 
@@ -30,17 +31,33 @@
      :block-ticks (or block-ticks [])
      :fluid-ticks (or fluid-ticks [])}))
 
+(defn- grouped [m eid e]
+  (if (= :player (:type e))
+    m
+    (let [id (chunk/pos-chunk (:pos e))]
+      (assoc! m id (conj (get m id []) (MapEntry/create eid e))))))
+
+(defn chunk-entities
+  "Returns the entities as [eid entity] entries by chunk id.
+  Players do not belong to a chunk."
+  [entities]
+  (persistent! (reduce-kv grouped (transient {}) entities)))
+
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
-  Players do not belong to a chunk. Ticks count as delays from now."
-  [w id]
-  (let [id (long id) t (long (:tick w 0))]
-    (payload-of (get (:chunks w) id)
-                (get-in w [:block-entities id])
-                (filter #(chunk-entity? id (val %)) (:entities w))
-                (schedule/saved (:block-ticks w) id t)
-                (schedule/saved (:fluid-ticks w) id t)
-                t)))
+  Players do not belong to a chunk. Ticks count as delays from now.
+  The entities come from entries when given, as chunk-entities
+  groups them."
+  ([w id]
+   (chunk-payload w id (filter #(chunk-entity? id (val %)) (:entities w))))
+  ([w id entries]
+   (let [id (long id) t (long (:tick w 0))]
+     (payload-of (get (:chunks w) id)
+                 (get-in w [:block-entities id])
+                 entries
+                 (schedule/saved (:block-ticks w) id t)
+                 (schedule/saved (:fluid-ticks w) id t)
+                 t))))
 
 (defn- ticks-back [w k t saved]
   (update w k schedule/restored t saved))

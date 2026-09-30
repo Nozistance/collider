@@ -6,6 +6,7 @@ import collider.world.ChunkIndex;
 import java.io.EOFException;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ClosedChannelException;
 import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -15,6 +16,7 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.zip.CRC32;
+import java.util.zip.DataFormatException;
 
 /// The log of a region, 32 by 32 chunks, in one append-only file.
 ///
@@ -28,18 +30,57 @@ public final class Region {
     static final int HEAD = 16, SIDE = 32, ENTRY = 24;
 
     public final long key, gen;
-    private final Path path;
-    private final FileChannel ch;
+    private final Log log;
     private final long[] at;
     private final int[] size;
     private long end, live;
 
-    private Region(Path path, long key, long gen, FileChannel ch,
+    /// The file of a region, shared by its copies. An interrupt closes
+    /// the channel under every thread; the next use opens it again.
+    private static final class Log {
+        final Path path;
+        volatile FileChannel ch;
+        private boolean shut;
+
+        Log(Path path, FileChannel ch) {
+            this.path = path;
+            this.ch = ch;
+        }
+
+        synchronized FileChannel reopen(FileChannel dead)
+                throws IOException {
+            if (shut) throw new ClosedChannelException();
+            if (ch == dead) ch = FileChannel.open(path, READ, WRITE);
+            return ch;
+        }
+
+        synchronized void close() throws IOException {
+            shut = true;
+            ch.close();
+        }
+    }
+
+    private interface Op<T> {
+        T on(FileChannel c) throws IOException;
+    }
+
+    private <T> T io(Op<T> op) throws IOException {
+        FileChannel c = log.ch;
+        while (true) {
+            try {
+                return op.on(c);
+            } catch (ClosedChannelException e) {
+                if (Thread.currentThread().isInterrupted()) throw e;
+                c = log.reopen(c);
+            }
+        }
+    }
+
+    private Region(Log log, long key, long gen,
             long[] at, int[] size, long end, long live) {
-        this.path = path;
+        this.log = log;
         this.key = key;
         this.gen = gen;
-        this.ch = ch;
         this.at = at;
         this.size = size;
         this.end = end;
@@ -67,7 +108,7 @@ public final class Region {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE,
                 TRUNCATE_EXISTING);
-        return new Region(p, key, gen, ch, new long[SIDE * SIDE],
+        return new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE],
                 new int[SIDE * SIDE], 0, 0);
     }
 
@@ -75,9 +116,14 @@ public final class Region {
             throws IOException {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, READ, WRITE);
-        Region r = new Region(p, key, gen, ch, new long[SIDE * SIDE],
-                new int[SIDE * SIDE], 0, 0);
-        r.scan(end);
+        Region r = new Region(new Log(p, ch), key, gen,
+                new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
+        try {
+            r.scan(end);
+        } catch (IOException | RuntimeException e) {
+            r.close();
+            throw e;
+        }
         return r;
     }
 
@@ -103,15 +149,15 @@ public final class Region {
     private ByteBuffer read(long off, int n) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(n);
         while (b.hasRemaining()) {
-            if (ch.read(b, off + b.position()) < 0) {
-                throw new EOFException(path + " ends at " + off);
+            if (io(c -> c.read(b, off + b.position())) < 0) {
+                throw new EOFException(log.path + " ends at " + off);
             }
         }
         return b.flip();
     }
 
     private void scan(long limit) throws IOException {
-        long stop = Math.min(limit, ch.size());
+        long stop = Math.min(limit, io(FileChannel::size));
         while (end + HEAD <= stop) {
             ByteBuffer h = read(end, HEAD);
             long id = ChunkIndex.id(h.getInt(0), h.getInt(4));
@@ -126,8 +172,8 @@ public final class Region {
 
     /// Returns a region with its own index over the same file.
     public Region copy() {
-        return new Region(path, key, gen, ch, at.clone(), size.clone(),
-                end, live);
+        return new Region(log, key, gen, at.clone(), size.clone(), end,
+                live);
     }
 
     private static int crc(byte[] data) {
@@ -142,7 +188,7 @@ public final class Region {
         b.putInt((int) (id >> 32)).putInt((int) id).putInt(data.length);
         b.putInt(crc(data)).put(data).flip();
         long off = end;
-        while (b.hasRemaining()) ch.write(b, off + b.position());
+        while (b.hasRemaining()) io(c -> c.write(b, off + b.position()));
         index(id, off, b.capacity());
     }
 
@@ -157,7 +203,8 @@ public final class Region {
         return crc(data) == h.getInt(12) ? data : null;
     }
 
-    private byte[] older(long before, long id) throws IOException {
+    private byte[] older(long before, long id)
+            throws IOException, DataFormatException {
         long[] offs = new long[8];
         int n = 0;
         for (long off = 0; off < before; ) {
@@ -173,12 +220,14 @@ public final class Region {
             byte[] data = record(offs[--n], id);
             if (data != null) return data;
         }
-        throw new IOException("no record of it reads in " + path);
+        throw new DataFormatException("no record of it reads in "
+                + log.path);
     }
 
     /// Returns the bytes of chunk `id`, or null when it has no record.
+    /// Throws DataFormatException when no record of it reads.
     /// A record whose crc fails gives way to the one before it.
-    public byte[] get(long id) throws IOException {
+    public byte[] get(long id) throws IOException, DataFormatException {
         long a = at[slot(id)];
         if (a == 0) return null;
         byte[] data = record(a - 1, id);
@@ -201,26 +250,34 @@ public final class Region {
     /// Returns a new region of generation `gen` with the live records
     /// alone. A chunk that no record of reads is left out.
     public Region compact(long gen) throws IOException {
-        Region r = create(path.getParent(), key, gen);
-        for (long id : chunks()) {
-            byte[] data;
-            try {
-                data = get(id);
-            } catch (IOException e) {
-                continue;
+        Region r = create(log.path.getParent(), key, gen);
+        try {
+            for (long id : chunks()) {
+                byte[] data;
+                try {
+                    data = get(id);
+                } catch (DataFormatException e) {
+                    continue;
+                }
+                r.append(id, data);
             }
-            r.append(id, data);
+        } catch (IOException | RuntimeException e) {
+            r.close();
+            throw e;
         }
         return r;
     }
 
     /// Makes the written records durable.
     public void force() throws IOException {
-        ch.force(false);
+        io(c -> {
+            c.force(false);
+            return null;
+        });
     }
 
     public void close() throws IOException {
-        ch.close();
+        log.close();
     }
 
     /// Writes the manifest of generation `gen` that names `regions`
@@ -246,8 +303,14 @@ public final class Region {
         if (gen == 0) return new Region[0];
         ByteBuffer b = entries(dir, gen);
         Region[] rs = new Region[b.remaining() / ENTRY];
-        for (int i = 0; i < rs.length; i++) {
-            rs[i] = open(dir, b.getLong(), b.getLong(), b.getLong());
+        int i = 0;
+        try {
+            for (; i < rs.length; i++) {
+                rs[i] = open(dir, b.getLong(), b.getLong(), b.getLong());
+            }
+        } catch (IOException | RuntimeException e) {
+            while (i > 0) rs[--i].close();
+            throw e;
         }
         return rs;
     }
