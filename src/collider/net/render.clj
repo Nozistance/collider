@@ -75,6 +75,7 @@
      :mooshroom     (data/registry-id "entity_type" :mooshroom)
      :pig           (data/registry-id "entity_type" :pig)
      :chicken       (data/registry-id "entity_type" :chicken)
+     :rabbit        (data/registry-id "entity_type" :rabbit)
      :item          (data/registry-id "entity_type" :item)
      :experience-orb (data/registry-id "entity_type" :experience-orb)
      :tnt           (data/registry-id "entity_type" :tnt)
@@ -188,7 +189,7 @@
 
 (def ^:private entity-class
   {:player :player :sheep :sheep :cow :cow :mooshroom :mushroom-cow
-   :pig :pig :chicken :chicken
+   :pig :pig :chicken :chicken :rabbit :rabbit
    :item :item-entity :tnt :primed-tnt :falling-block :falling-block
    :area-effect-cloud :area-effect-cloud
    :experience-orb :experience-orb :painting :painting
@@ -203,6 +204,10 @@
     (contains? meta :color) (assoc :wool (color-byte meta))))
 
 (defn- mooshroom-fields [meta]
+  (cond-> (animal-fields meta)
+    (contains? meta :variant) (assoc :type (long (:variant meta)))))
+
+(defn- rabbit-fields [meta]
   (cond-> (animal-fields meta)
     (contains? meta :variant) (assoc :type (long (:variant meta)))))
 
@@ -242,6 +247,7 @@
     (merge (coat-fields kind meta) (living-fields meta))
     :sheep (merge (sheep-fields meta) (living-fields meta))
     :mooshroom (merge (mooshroom-fields meta) (living-fields meta))
+    :rabbit (merge (rabbit-fields meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
     :tnt (tnt-fields meta)
     :falling-block (falling-fields meta)
@@ -358,6 +364,10 @@
    :baby-pig/hurt                 [:entity.baby-pig.hurt 6]
    :baby-pig/death                [:entity.baby-pig.death 6]
    :baby-pig/eat                  [:entity.baby-pig.eat 6]
+   :rabbit/say                    [:entity.rabbit.ambient 6]
+   :rabbit/hurt                   [:entity.rabbit.hurt 6]
+   :rabbit/death                  [:entity.rabbit.death 6]
+   :rabbit/jump                   [:entity.rabbit.jump 6]
    :chicken/say                   [:entity.chicken.ambient 6]
    :chicken/step                  [:entity.chicken.step 6]
    :chicken/hurt                  [:entity.chicken.hurt 6]
@@ -486,8 +496,8 @@
        :changes (map section-change recs)})))
 
 (def ^:private entity-events
-  {:death 3 :break 3 :eat 10 :break-main 47 :break-off 48 :love 18
-   :teleport 46})
+  {:hop 1 :death 3 :break 3 :eat 10 :break-main 47 :break-off 48
+   :love 18 :teleport 46})
 
 (defn- status-packet [m]
   (if (= :hurt (:kind m))

@@ -7,7 +7,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- calf-variant [t eid a b]
+(defn- calf-variant [_ t eid a b]
   (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
 (def spec

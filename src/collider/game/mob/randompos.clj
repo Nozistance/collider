@@ -7,7 +7,8 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather]
-            [collider.world.space.path :as path]))
+            [collider.world.space.path :as path])
+  (:import (collider.game.mob Steer)))
 
 (set! *warn-on-reflection* true)
 
@@ -155,3 +156,36 @@
                 (let [d (direction t eid k i h v)
                       c (stable-cell world pos d)]
                   (when (and c (not (has-malus? world w c))) c))))))
+
+(def ^:private quarter-turn (double (float (/ Math/PI 2.0))))
+
+(def ^:private sqrt-2 (double (float (Math/sqrt 2.0))))
+
+(defn- away-direction
+  "RandomPos.generateRandomDirectionWithinRadians: an offset up to h
+  blocks within a quarter turn of the direction dx dz, or nil."
+  [t eid k i h v dx dz]
+  (let [h (long h) v (long v)
+        c (- (Steer/atan2 (double dz) (double dx)) quarter-turn)
+        f (float (rnd t eid [k :angle] i))
+        a (+ c (* (double (float (- (float (* 2.0 f)) 1.0)))
+                  quarter-turn))
+        d (* (* (Math/sqrt (rnd t eid [k :dist] i)) (double h)) sqrt-2)
+        xt (- (* d (Math/sin a))) zt (* d (Math/cos a))]
+    (when-not (or (> (Math/abs xt) h) (> (Math/abs zt) h))
+      (let [span (inc (* 2 v))]
+        [(long (Math/floor xt)) (- (long (* span (rnd t eid [k :y] i))) v)
+         (long (Math/floor zt))]))))
+
+(defn pos-away
+  "DefaultRandomPos.getPosAway: a walk goal up to h blocks away and v
+  up or down, within a quarter turn of the direction dx dz, costing
+  the mob nothing."
+  [world e t eid k h v dx dz]
+  (let [pos (:pos e) w (mobs/walker (:type e))]
+    (best-pos (fn [c] (walk-target-value world e c))
+              (fn [i]
+                (when-let [d (away-direction t eid k i h v dx dz)]
+                  (let [c (stable-cell world pos d)]
+                    (when (and c (not (has-malus? world w c)))
+                      c)))))))

@@ -19,7 +19,7 @@
     (concat before [(assoc stick :prio n) (assoc food :prio n)]
             after)))
 
-(defn- piglet-coat [t eid a b]
+(defn- piglet-coat [_ t eid a b]
   (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
 (def spec

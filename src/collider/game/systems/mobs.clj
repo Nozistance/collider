@@ -14,6 +14,7 @@
             [collider.game.mob.cow :as cow]
             [collider.game.mob.chicken :as chicken]
             [collider.game.mob.pig :as pig]
+            [collider.game.mob.rabbit :as rabbit]
             [collider.game.mob.mooshroom :as mooshroom]
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
@@ -23,6 +24,7 @@
             [collider.game.delta :as delta]
             [collider.game.player :as player]
             [collider.game.out :as out]
+            [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -37,13 +39,15 @@
 
 (def ^:private brains
   {:sheep sheep/brain :cow cow/brain
-   :mooshroom mooshroom/brain :pig pig/brain :chicken chicken/brain})
+   :mooshroom mooshroom/brain :pig pig/brain :chicken chicken/brain
+   :rabbit rabbit/brain})
 
 (def ^:private specs
   {:sheep sheep/spec :cow cow/spec :mooshroom mooshroom/spec
-   :pig pig/spec :chicken chicken/spec})
+   :pig pig/spec :chicken chicken/spec :rabbit rabbit/spec})
 
-(def ^:private ai-steps {:chicken chicken/ai-step})
+(def ^:private ai-steps
+  {:chicken chicken/ai-step :rabbit rabbit/ai-step})
 
 (defn- think [world eid e t tempters]
   (if-let [b (brains (:type e))]
@@ -91,7 +95,7 @@
              :sheep [sheep/shear-result animal/feed-result]
              :cow [cow/milk-result animal/feed-result]
              :mooshroom mushroom
-             (:pig :chicken) [animal/feed-result]
+             (:pig :chicken :rabbit) [animal/feed-result]
              nil)]
     (some (fn [f] (f ctx)) fs)))
 
@@ -194,7 +198,7 @@
         oh (double (nth (or (mobs/box-of o) [0.0 1.0]) 1))
         eye (+ (v/y pos) (* 0.95 (double height)))
         oeye (+ (v/y opos)
-                (if (= :player (:type o)) 1.62 (* 0.95 oh)))
+                (case (:type o) :player 1.62 :point 0.0 (* 0.95 oh)))
         dh (Math/sqrt (v/dist-sq pos opos))]
     (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))))
 
@@ -209,7 +213,9 @@
 
 (defn- look-aim [world e height look]
   (let [oid (:target look)
-        o (when oid (get (:entities world) oid))]
+        at (:at look)
+        o (cond oid (get (:entities world) oid)
+                at {:pos at :type :point})]
     [(cond o (v/yaw-toward (:pos e) (:pos o))
            (and look (:yaw look)) (:yaw look)
            :else (control/body-yaw e))
@@ -415,7 +421,7 @@
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) vertical-drag)
            (* (* (v/z u) sf) k))
-     (phys/on-ground? mv) sup nb? h]))
+     (phys/on-ground? mv) sup nb? h d (phys/vel mv)]))
 
 (defn- travel-water [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
@@ -431,7 +437,7 @@
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb?]))
+     (phys/on-ground? mv) sup nb? nil d u]))
 
 (defn- lava-slowed [x y z g falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
@@ -453,7 +459,7 @@
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb? h]))
+     (phys/on-ground? mv) sup nb? h d (phys/vel mv)]))
 
 (defn- travelled
   [world e vel half height og? {:keys [water lava] :as f}]
@@ -466,11 +472,15 @@
     (fmul jump-boost (double (float (inc (long (:amplifier b))))))
     0.0))
 
+(defn- jump-share ^double [e]
+  (if (identical? :rabbit (:type e)) (rabbit/jump-share e) 1.0))
+
 (defn- jump-power
   "Returns how hard mob e jumps. This is LivingEntity.getJumpPower."
   ^double [world e]
-  (let [f (jump-factor world (:pos e) (:support e))]
-    (double (float (+ (fmul jump-strength f) (boost-power e))))))
+  (let [f (jump-factor world (:pos e) (:support e))
+        s (fmul jump-strength (jump-share e))]
+    (double (float (+ (fmul s f) (boost-power e))))))
 
 (defn- jump-off [vel ^double p]
   (if (<= p min-jump)
@@ -479,6 +489,9 @@
 
 (defn- fluid-jumped [vel]
   (v/v3 (v/x vel) (+ (v/y vel) fluid-jump) (v/z vel)))
+
+(defn- hop-off [e vel]
+  (if (identical? :rabbit (:type e)) (rabbit/hopped e vel) vel))
 
 (defn- jumping-vel
   [world e vel og? {:keys [water lava threshold]} ready?]
@@ -491,7 +504,7 @@
       float-w? [(fluid-jumped vel) false]
       float-l? [(fluid-jumped vel) false]
       (and (or og? (and in-w? (<= fh thr))) ready?)
-      [(jump-off vel (jump-power world e)) true]
+      [(hop-off e (jump-off vel (jump-power world e))) true]
       :else [vel false])))
 
 (defn- shifted? [from to]
@@ -508,11 +521,11 @@
         [v jumped?] (if (:jump e)
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
-        [pos w ground? sup nb? h]
+        [pos w ground? sup nb? h d u]
         (travelled world e v half height og? f)
         vy (liquid/bubble-push (:chunks world) pos (v/y w))]
     [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
-     sup nb? h f false]))
+     sup nb? h f false d u]))
 
 (defn- rest-move [e f]
   [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f
@@ -616,8 +629,10 @@
                      cram live?)
         g (or (nth tr 6) (fluid-after world pos h ht v))
         hd (body-of-move world e pos look)]
-    [(settled e tr v g rest? hd look (walk-of e prev pos)
-              (push/arrived e pos (:tick world) eid))
+    [(cond-> (settled e tr v g rest? hd look (walk-of e prev pos)
+                      (push/arrived e pos (:tick world) eid))
+       (identical? :rabbit (:type e))
+       (rabbit/bumped (nth tr 9 nil) (nth tr 10 nil)))
      shoves hit?]))
 
 (defn- physics [world index eid e half height]
@@ -659,26 +674,49 @@
       [e nil]
       (said eid e t st))))
 
-(defn- step-sound-delta [e t eid]
-  (if (:wet? e)
+(defn- step-state ^long [world e]
+  (let [ch (:chunks world) p (:pos e)
+        st (motion/below-state ch p (:support e) 0.2)
+        [x y z] (or (:support e) (mapv #(Math/floor (double %)) p))
+        up (sense/block-at world (long x) (inc (long (Math/floor
+                                                       (- (v/y p) 0.2))))
+                           (long z))]
+    (if (or (block/tagged? up "inside_step_sound_blocks")
+            (block/tagged? up "combination_step_sound_blocks"))
+      up
+      st)))
+
+(defn- block-step [world e]
+  (let [st (step-state world e)]
+    (when-not (block/air? st)
+      (let [s (get (data/sounds) (:sound (data/info (block/block-of st))))
+            vol (double (float (* (float (:volume s)) (float 0.15))))]
+        (out/all (out/sound (:step s) (:pos e) vol (:pitch s)))))))
+
+(defn- step-sound-delta [world e t eid]
+  (cond
+    (:wet? e)
     (let [vol (water-vol (:vel e) 0.35)
           pitch (wide-pitch (long t) (long eid) :swm)]
       (out/all (out/sound :swim (:pos e) vol pitch)))
-    (when (:on-ground e)
-      (when-let [snd (mobs/sound-of e :step)]
-        (out/all (out/sound snd (:pos e) 0.15 1.0))))))
+    (not (:on-ground e)) nil
+    (:block-steps? (mobs/types (:type e))) (block-step world e)
+    :else
+    (when-let [snd (mobs/sound-of e :step)]
+      (out/all (out/sound snd (:pos e) 0.15 1.0)))))
 
 (defn- splash-delta [e t eid]
   (out/all (out/sound :splash (:pos e) (water-vol (:vel e) 0.2)
                       (wide-pitch (long t) (long eid) :spl))))
 
-(defn- movement-sounds [acc e was-wet? old-walked new-walked t eid]
+(defn- movement-sounds
+  [world acc e was-wet? old-walked new-walked t eid]
   (let [acc (if (and (:wet? e) (not was-wet?))
               (conj acc (splash-delta e t eid))
               acc)]
     (if (> (long (Math/floor (double new-walked)))
            (long (Math/floor (double old-walked))))
-      (if-let [d (step-sound-delta e t eid)] (conj acc d) acc)
+      (if-let [d (step-sound-delta world e t eid)] (conj acc d) acc)
       acc)))
 
 (defn- diff-step [o n a c c' k]
@@ -711,7 +749,7 @@
                :stick-cooldown-until :egg-at
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
-               :no-blocks? :arrived))
+               :no-blocks? :arrived :hop))
 
 (defn- age-up [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
@@ -744,13 +782,13 @@
 (defn- joined-into [acc more]
   (if (zero? (count more)) acc (into acc more)))
 
-(defn- stepped-deltas [eid e e2 ds say-ds t]
+(defn- stepped-deltas [world eid e e2 ds say-ds t]
   (let [changes (mob-changes e e2)
         merged (if (pos? (count changes))
                  [[:merge-entity eid changes]]
                  [])
         acc (-> merged (joined-into ds) (joined-into say-ds))]
-    (movement-sounds acc e2 (boolean (:wet? e))
+    (movement-sounds world acc e2 (boolean (:wet? e))
                      (double (or (:walked e) 0.0))
                      (double (or (:walked e2) 0.0)) t eid)))
 
@@ -763,7 +801,10 @@
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
-        e1 (if dead? e1 (steered world e1 speed half))
+        e1 (cond dead? e1
+                 (identical? :rabbit (:type e1))
+                 (rabbit/steered world eid e1 speed half)
+                 :else (steered world e1 speed half))
         look (when-not dead? (look-of world e1 height t))]
     [e1 look ds say-ds]))
 
@@ -778,7 +819,7 @@
          [e2 own] (if-let [f (ai-steps (:type e))]
                     (f eid e2 t)
                     [e2 nil])]
-     [e2 (joined-into (stepped-deltas eid e e2 ds say-ds t) own)
+     [e2 (joined-into (stepped-deltas world eid e e2 ds say-ds t) own)
       shoves hit?])))
 
 (defn- handed
@@ -1048,7 +1089,7 @@
 (defn- island-batch [world active tempters t batch]
   (into [] (mapcat #(island-deltas world active tempters t %)) batch))
 
-(def ^:private biters {:sheep sheep/biting?})
+(def ^:private biters {:sheep sheep/biting? :rabbit rabbit/raiding?})
 
 (defn- biting? [active t [_ e]]
   (when-let [f (biters (:type e))]

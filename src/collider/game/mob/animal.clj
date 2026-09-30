@@ -30,8 +30,6 @@
 
 (def ^:private ^:const look-chance 0.02)
 
-(def ^:private ^:const look-range-sq 36.0)
-
 (def ^:private ^:const look-ticks 40)
 
 (def ^:private ^:const look-around-ticks 20)
@@ -50,7 +48,7 @@
 
 (def ^:private ^:const tempt-range 10.0)
 
-(def ^:private ^:const look-range 6.0)
+(def ^:private ^:const default-look-range 6.0)
 
 (def ^:private ^:const sight-range-sq 16384.0)
 
@@ -91,9 +89,21 @@
    :mooshroom {:panic 2.0 :tempt 1.25 :follow 1.25}
    :sheep     {:panic 1.25 :tempt 1.1 :follow 1.1}
    :pig       {:panic 1.25 :tempt 1.2 :stick-tempt 1.2 :follow 1.1}
-   :chicken   {:panic 1.4 :follow 1.1}})
+   :chicken   {:panic 1.4 :follow 1.1}
+   :rabbit    {:panic 2.2 :mate 0.8 :tempt 1.0 :avoid 2.2
+               :raid (double (float 0.7)) :wander 0.6}})
 
-(defn- goal-speed ^double [e k]
+(def ^:private look-ranges
+  "The range of LookAtPlayerGoal for each breed that looks further
+  than six blocks."
+  {:rabbit 10.0})
+
+(defn- look-range ^double [e]
+  (double (get look-ranges (:type e) default-look-range)))
+
+(defn goal-speed
+  "Returns the speed modifier mob e walks goal k at."
+  ^double [e k]
   (double (get (speeds (:type e)) k 1.0)))
 
 (defn- roaming? [_ e _ _]
@@ -159,8 +169,8 @@
     (and o (mobs/in-love? o t) (not (mobs/panicking? o t))
          (< (long (:love (:task e) 0)) mate-ticks))))
 
-(defn- newborn [spec t eid e o]
-  (let [color ((:child-color spec) t eid e o)]
+(defn- newborn [spec world t eid e o]
+  (let [color ((:child-color spec) world t eid e o)]
     (assoc (mobs/new-mob (:type e) (:pos e) color t)
            :baby-until (+ (long t) baby-ticks)
            :arrived [(* 2 (long t)) (* 2 (long eid))])))
@@ -177,7 +187,7 @@
   (let [cooled {:love-until 0
                 :breed-ready-at (+ (long t) breed-cooldown)}]
     [(assoc e :task nil)
-     (cond-> [[:spawn-entity (newborn spec t eid e o)]
+     (cond-> [[:spawn-entity (newborn spec world t eid e o)]
               [:merge-entity eid cooled]
               [:merge-entity pid (assoc cooled :task nil)]
               (out/all (out/status eid :love))
@@ -303,7 +313,9 @@
 (defn- eye-of [e ^double h]
   (let [p (:pos e)] [(v/x p) (+ (v/y p) h) (v/z p)]))
 
-(defn- in-sight? [world e o]
+(defn in-sight?
+  "Returns true when mob e sees the eyes of o from its own."
+  [world e o]
   (let [from (eye-of e (mobs/eye-height e))
         to (eye-of o (entity/eye-height o))]
     (and (<= (v/dist3-sq from to) sight-range-sq)
@@ -311,7 +323,7 @@
 
 (defn- noticed? [world e o]
   (and (game-mode/seen? o)
-       (sense/in-range? (:pos e) o look-range)
+       (sense/in-range? (:pos e) o (look-range e))
        (in-sight? world e o)))
 
 (defn- nearer [world e eye best [pid p]]
@@ -342,7 +354,8 @@
 
 (defn- looking? [world e _ _]
   (let [o (other world (:target (:look e)))]
-    (and o (<= (v/dist3-sq (:pos e) (:pos o)) look-range-sq))))
+    (and o (<= (v/dist3-sq (:pos e) (:pos o))
+               (let [r (look-range e)] (* r r))))))
 
 (defn- start-look-around [_ eid e t _]
   (when (< (rnd t eid :around) look-chance)
@@ -397,6 +410,11 @@
     :continue? looking-around?
     :stop (fn [e _] (assoc e :task nil :look nil))}])
 
+(defn goal
+  "Returns the farm animal goal of kind k."
+  [k]
+  (first (filter #(= k (:kind %)) goals)))
+
 (def ^:private watcher? (complement game-mode/spectator?))
 
 (defn watchers
@@ -434,7 +452,7 @@
   A goal ranks by its place unless it names its priority. Each goal
   gets its flags as a bit mask too. The spec also picks the
   colour of a newborn from both parents."
-  ([goals] (spec goals (fn [_ _ a _] (:color a))))
+  ([goals] (spec goals (fn [_ _ _ a _] (:color a))))
   ([goals child-color]
    (let [gs (vec (map-indexed ranked goals))]
      (GoalSelector.
@@ -472,7 +490,7 @@
   (when-let [spec (specs (:type e))]
     (when (= (:type e) (mobs/egg-type item))
       {:result :success-server
-       :deltas (cons [:spawn-entity (newborn spec t eid e e)]
+       :deltas (cons [:spawn-entity (newborn spec world t eid e e)]
                      (items/consume-deltas peid p hand 1))})))
 
 (defn- feedable? [e t]

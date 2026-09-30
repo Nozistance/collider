@@ -18,7 +18,7 @@
 
 (def ^:private ^:table tables (delay (data/entity-drops)))
 
-(defn- chick-coat [t eid a b]
+(defn- chick-coat [_ t eid a b]
   (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
 
 (def spec

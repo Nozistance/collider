@@ -41,6 +41,7 @@
     :fields [[:boost-time :int 0]
              [:variant :pig-variant :temperate]
              [:sound-variant :pig-sound-variant :classic]]}
+   :rabbit {:parent :animal :fields [[:type :int 0]]}
    :chicken
    {:parent :animal
     :fields [[:variant :chicken-variant :temperate]

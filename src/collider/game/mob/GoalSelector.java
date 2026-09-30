@@ -13,7 +13,8 @@ import clojure.lang.Tuple;
 /// holds its kind, its priority, its flags as a bit mask and its
 /// functions; goals of one priority never displace each other; a goal
 /// without a running function runs while the task of the mob has
-/// its kind.
+/// its kind. A start that returns `[e deltas false]` declines to
+/// start but keeps what it changed on the mob.
 public record GoalSelector(Object goals, Object childColor, int n,
         Object[] kinds, long[] prios, long[] masks, IFn[] runnings,
         IFn[] stops,
@@ -111,8 +112,12 @@ public record GoalSelector(Object goals, Object childColor, int n,
     private Object started(Object w, Object eid, Object e, Object t,
             Object ts, long[] locked, int i) {
         Object r = starts[i].invoke(w, eid, e, t, ts);
-        if (r == null || !held(locked, masks[i])) return r;
+        if (r == null || declined(r) || !held(locked, masks[i])) return r;
         return starts[i].invoke(w, eid, displaced(e, t, masks[i]), t, ts);
+    }
+
+    private static boolean declined(Object r) {
+        return RT.count(r) > 2 && !RT.booleanCast(RT.nth(r, 2));
     }
 
     private static IPersistentVector into(IPersistentVector ds, Object more) {
@@ -133,6 +138,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
             Object r = started(w, eid, e, t, ts, locked, i);
             if (r == null) continue;
             e = RT.nth(r, 0);
+            if (declined(r)) continue;
             ds = into(ds, RT.nth(r, 1));
             b = bits(e, t);
             locked = locks(b);

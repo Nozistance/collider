@@ -110,7 +110,7 @@
     (when-let [r (craft/find (craft/index) in nil)]
       (data/dye-color (get-in r [:result :item])))))
 
-(defn- lamb-color [t eid a b]
+(defn- lamb-color [_ t eid a b]
   (let [ca (mobs/dye-colors (long (:color a)))
         cb (mobs/dye-colors (long (:color b)))]
     (or (mobs/color-id (mixed ca cb))

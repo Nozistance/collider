@@ -173,6 +173,13 @@
       (moved-to world e p speed)
       (stop (assoc e :nav (nav-of e))))))
 
+(defn path-to
+  "Returns mob e walking to the cell at speed, which it takes to be
+  reached within reach, or nil when no path leads there."
+  [world e pos speed reach]
+  (let [[e p] (create-path world e (goal-cell pos) (long reach))]
+    (when p (moved-to world e p (double speed)))))
+
 (defn move-to-entity
   "Returns mob e walking to entity o at speed.
   A goal it cannot reach leaves the path it already walks."

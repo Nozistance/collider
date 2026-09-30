@@ -31,7 +31,7 @@
   (and (= (variant a) (variant b))
        (animal/one-in? t eid :mutate mutate-chance)))
 
-(defn- calf-variant [t eid a b]
+(defn- calf-variant [_ t eid a b]
   (cond (mutates? t eid a b) (- 1 (variant a))
         (< (animal/rnd t eid :variant) 0.5) (variant a)
         :else (variant b)))

@@ -80,6 +80,30 @@
         r (long (* rare-total (random/of-key ks)))]
     (color-id (or (weighted r rare) (common-color ks common)))))
 
+(def ^:private ^:table white-rabbit-biomes
+  (biome-tag "spawns_white_rabbits"))
+
+(def ^:private ^:table gold-rabbit-biomes
+  (biome-tag "spawns_gold_rabbits"))
+
+(def rabbit-variants
+  "The rabbit variants by their ids."
+  {0 :brown 1 :white 2 :black 3 :white-splotched 4 :gold 5 :salt
+   99 :evil})
+
+(defn- mixed-rabbit ^long [^long r]
+  (cond (< r 50) 0 (< r 90) 5 :else 2))
+
+(defn rabbit-variant
+  "Rabbit.getRandomRabbitVariant: the variant a rabbit takes in biome,
+  drawn from the keys ks."
+  [ks biome]
+  (let [n (:name biome)
+        r (long (* 100.0 (random/of-key (conj ks :rabbit))))]
+    (cond (@white-rabbit-biomes n) (if (< r 80) 1 3)
+          (@gold-rabbit-biomes n) 4
+          :else (mixed-rabbit r))))
+
 (defn- attr
   ^double [^double v] (double (float v)))
 
@@ -121,7 +145,13 @@
                :food        "chicken_food"
                :fall-drag   0.6
                :walker      water-walker
-               :spawn-color coat}})
+               :spawn-color coat}
+   :rabbit    {:speed       (attr 0.3)
+               :max-health  3.0
+               :sounds      :rabbit
+               :block-steps? true
+               :food        "rabbit_food"
+               :spawn-color rabbit-variant}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -218,6 +248,12 @@
              [[v baby burning]
               {:variant v :baby? baby :burning? burning}])))
 
+(def ^:private rabbit-metas
+  (into {} (for [v (keys rabbit-variants) baby [false true]
+                 burning [false true]]
+             [[v baby burning]
+              {:variant v :baby? baby :burning? burning}])))
+
 (defn burning? [e] (boolean (:burning? e)))
 
 (defn metadata
@@ -231,21 +267,25 @@
       (some? (:baby-until e)) (burning? e)])
     :mooshroom (mooshroom-meta
                 [(long (or (:color e) 0))
-                 (some? (:baby-until e)) (burning? e)])))
+                 (some? (:baby-until e)) (burning? e)])
+    :rabbit (rabbit-metas
+             [(long (or (:color e) 0))
+              (some? (:baby-until e)) (burning? e)])))
 
 (defn new-mob
   "Returns a fresh mob of kind type at pos, with nothing on its mind."
   [type pos color tick]
-  {:type        type
-   :pos         pos
-   :vel         [0.0 0.0 0.0]
-   :yaw         0.0 :pitch 0.0 :on-ground false
-   :color       color
-   :task        nil
-   :no-action   0
-   :health      (max-health type)
-   :health-sent (max-health type)
-   :arrived     [(inc (* 2 (long tick))) nil]})
+  (cond-> {:type        type
+           :pos         pos
+           :vel         [0.0 0.0 0.0]
+           :yaw         0.0 :pitch 0.0 :on-ground false
+           :color       color
+           :task        nil
+           :no-action   0
+           :health      (max-health type)
+           :health-sent (max-health type)
+           :arrived     [(inc (* 2 (long tick))) nil]}
+    (= :rabbit type) (assoc :hop {})))
 
 (def ^:private ^:const follow-spread 0.11485000000000001)
 
@@ -320,7 +360,7 @@
                      :pig {:pig/variant (coats n)}
                      nil)]
     (cond-> {:type (:type e) :baby? (baby? e)
-             :sheared? (boolean (:sheared? e))}
+           :sheared? (boolean (:sheared? e))}
       components (assoc :components components))))
 
 (defn panicking? [e t] (< (long t) (long (or (:panic-until e) 0))))

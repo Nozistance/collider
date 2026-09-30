@@ -241,7 +241,8 @@
       (cond-> (into (base (with-knockback e))
                     (filter (comp some? val))
                     (select-keys e (kept k)))
-        (= :mob k) (saved-timers e (long tick))))))
+        (= :mob k) (saved-timers e (long tick))
+        (:carrots (:hop e)) (assoc :carrots (:carrots (:hop e)))))))
 
 (defn- still-axis ^double [^double a]
   (if (> (Math/abs a) 10.0) 0.0 a))
@@ -266,6 +267,7 @@
     (-> e
         (assoc :head-yaw (:yaw e) :health-sent top
                :health (or (:health m) top))
+        (cond-> (:carrots m) (assoc :hop {:carrots (:carrots m)}))
         (loaded-timers m (long tick)))))
 
 (defn- kind-extras [e k m tick]
