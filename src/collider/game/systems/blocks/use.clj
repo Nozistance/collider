@@ -339,39 +339,58 @@
         props (reduce occupied (block/props-of st) (range 6))]
     (with-props st props)))
 
-(defn- bookshelf-add-deltas [world pos e slot item]
-  (let [st (edit/block-at world pos)
-        items (assoc (:items e) slot {:item item :count 1})
+(defn- occupied? [^long st slot]
+  (= :true (get (block/props-of st) (slot-prop slot))))
+
+(defn- shelved [world pos e slot stack]
+  (let [items (assoc (:items e) slot stack)
+        st (bookshelf-state (edit/block-at world pos) items)]
+    (concat (set-at world pos st)
+            [[:set-block-entity pos
+              (assoc e :items items :last-slot slot)]])))
+
+(defn- one-held [world eid item]
+  (let [held (edit/held-stack world eid)]
+    (assoc (if (= item (:item held)) held {:item item}) :count 1)))
+
+(defn- bookshelf-add-deltas [world eid pos e slot item]
+  (let [at (get-in world [:entities eid])
+        stack (one-held world eid item)
         sound (if (= :enchanted-book item)
                 :bookshelf/insert-enchanted
                 :bookshelf/insert)]
-    (concat (set-at world pos (bookshelf-state st items))
-            [[:set-block-entity pos
-              (assoc e :items items :last-slot slot)]
-             (heard sound pos 1.0)])))
+    (concat [[:award eid (keyword "used" (name item)) 1]]
+            (items/consume-deltas eid at (:use-hand at) 1)
+            (shelved world pos e slot stack)
+            [(heard sound pos 1.0)])))
 
 (defn- bookshelf-take-deltas [world eid pos e slot]
-  (let [st (edit/block-at world pos)
-        stack (nth (:items e) slot)
-        items (assoc (:items e) slot nil)
+  (let [stack (nth (:items e) slot)
         sound (if (= :enchanted-book (:item stack))
                 :bookshelf/pickup-enchanted
                 :bookshelf/pickup)]
-    (concat (set-at world pos (bookshelf-state st items))
-            [[:set-block-entity pos
-              (assoc e :items items :last-slot slot)]
-             (heard sound pos 1.0)]
-            (stack-deltas world eid stack))))
+    (concat (when stack (shelved world pos e slot nil))
+            [(heard sound pos 1.0)]
+            (when stack (stack-deltas world eid stack)))))
+
+(defn- bookshelf-hand-deltas
+  "ChiseledBookShelfBlock.useWithoutItem: an empty slot takes the
+  click and does nothing."
+  [world eid pos e slot full?]
+  (when (and slot (main-hand? world eid))
+    (if full? (bookshelf-take-deltas world eid pos e slot) [])))
 
 (defn- bookshelf-use-deltas [world eid pos face item cursor]
   (let [st (edit/block-at world pos) e (be/at world pos)
-        slot (edit/hit-slot st face cursor 2 3)]
-    (when (and e slot)
-      (let [taken (nth (:items e) slot)]
-        (cond
-          (and (book-item? item) (nil? taken))
-          (bookshelf-add-deltas world pos e slot item)
-          taken (bookshelf-take-deltas world eid pos e slot))))))
+        slot (edit/hit-slot st face cursor 2 3)
+        full? (and slot (occupied? st slot))]
+    (when e
+      (cond
+        (not (book-item? item))
+        (bookshelf-hand-deltas world eid pos e slot full?)
+        (nil? slot) nil
+        full? (bookshelf-hand-deltas world eid pos e slot full?)
+        :else (bookshelf-add-deltas world eid pos e slot item)))))
 
 (defn- bell-side? [^long st dir]
   (let [same? (= (dir/axis (block/facing-of st)) (dir/axis dir))]
@@ -448,6 +467,14 @@
    :dragon-egg (fn [w _ pos _ _ _] (egg-deltas w pos))
    :light (fn [w _ pos _ _ _] (light-deltas w pos))})
 
+(defn- game-master-use
+  "Game master blocks take the click of a game master, whose client
+  opens their screen itself."
+  [w eid pos _ _ _]
+  (when (and (main-hand? w eid) (be/at w pos)
+             (edit/game-master? (get-in w [:entities eid])))
+    []))
+
 (defn- open-use [w eid pos _ _ _]
   (when (main-hand? w eid) (containers/open-deltas w eid pos)))
 
@@ -460,6 +487,7 @@
         (cond
           (poses? cur item) (fn [w _ pos _ _ _] (pose-deltas w pos))
           (contains? block/cauldron-types t) cauldron-use
+          (edit/game-master-block? cur) game-master-use
           (sign/kind cur)
           (fn [w eid pos _ item _] (sign-use-deltas w eid pos item))
           (contains? container/menu-types t) open-use

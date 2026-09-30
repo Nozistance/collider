@@ -113,7 +113,9 @@
 
 (defn- block-entity-place-deltas [world eid pos state]
   (let [stack (edit/held-stack world eid)
-        entity (be/from-stack (be/fresh (be/kind state) eid) stack)
+        entity (-> (be/fresh (be/kind state) eid)
+                   (be/from-stack stack)
+                   (be/placed-by (get-in world [:entities eid])))
         editor (when (sign/kind state)
                  [(out/to eid (out/sign-editor pos true))])]
     (concat (edit/placed-deltas world eid pos state)
@@ -289,6 +291,10 @@
       (rejected? world pos' st item ctx over?) nil
       :else (kind-deltas world eid pos' st item cursor))))
 
+(defn- may-place? [world eid base]
+  (or (not (edit/game-master-block? base))
+      (edit/game-master? (get-in world [:entities eid]))))
+
 (defn solid-place-deltas
   "Returns the deltas for a held block put against a clicked face."
   [world [eid pos face item cursor]]
@@ -297,4 +303,5 @@
           cur (edit/block-at world pos)
           over? (replaceable-state? cur item ctx)
           base (block/placement item (assoc ctx :replacing? over?))]
-      (when base (attempt-deltas world eid pos base ctx over?)))))
+      (when (and base (may-place? world eid base))
+        (attempt-deltas world eid pos base ctx over?)))))

@@ -42,7 +42,11 @@
    :vault               :vault
    :brushable           :brushable-block
    :copper-golem-statue :copper-golem-statue
-   :weathering-copper-golem-statue :copper-golem-statue})
+   :weathering-copper-golem-statue :copper-golem-statue
+   :structure           :structure-block
+   :jigsaw              :jigsaw
+   :test                :test-block
+   :test-instance       :test-instance-block})
 
 (def container-kinds #{:chest :trapped-chest :barrel :shulker-box})
 
@@ -142,6 +146,7 @@
     :shelf (shelf-nbt e)
     :campfire {:Items (items-nbt (:items e))}
     :end-gateway (assoc (tags e :update) :Age (age e t))
+    :structure-block (assoc (tags e :update) :author (:author e ""))
     (tags e :update)))
 
 (def ^:private fixed
@@ -195,6 +200,13 @@
                  (assoc e :items (items-of cs 27)))
                e)
              (get component-fields (:kind e) {})))
+
+(defn placed-by
+  "Returns e as its block placed by player p leaves it: a structure
+  block keeps the name of its author."
+  [e p]
+  (cond-> e
+    (= :structure-block (:kind e)) (assoc :author (:name p))))
 
 (defn- blank? [v] (or (nil? v) (and (coll? v) (empty? v))))
 

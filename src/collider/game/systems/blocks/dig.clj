@@ -79,6 +79,10 @@
              (and (player/infinite-materials? e)
                   (false? (:creative-break? it)))))))
 
+(defn- may-dig? [world e pos]
+  (or (not (edit/game-master-block? (edit/block-at world pos)))
+      (edit/game-master? e)))
+
 (defn- restricted [world eid status pos]
   (when (zero? (long status)) [(edit/own-change world eid pos)]))
 
@@ -89,5 +93,6 @@
       (cond
         (not low?) [(edit/own-change world eid pos)]
         (game-mode/spectator? e) (restricted world eid status pos)
-        (may-break? e) (break-deltas world eid pos)
+        (and (may-break? e) (may-dig? world e pos))
+        (break-deltas world eid pos)
         :else [(edit/own-change world eid pos)]))))

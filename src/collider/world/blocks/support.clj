@@ -11,6 +11,7 @@
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.light :as light]
             [collider.world.blocks.moss :as moss]
+            [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.mushroom :as mushroom]))
 
 (set! *warn-on-reflection* true)
@@ -480,32 +481,17 @@
     (and (= (block/block-of above) (block/block-of st))
          (= :true (get (block/props-of above) dir)))))
 
-(defn- face-covered? [box side]
-  (let [a ({:west 0 :east 0 :down 1 :up 1 :north 2 :south 2} side)
-        low? (#{:west :down :north} side)]
-    (and (== (long (box (if low? a (+ 3 (long a))))) (if low? 0 16))
-         (every? #(and (<= (long (box %)) 0) (>= (long (box (+ 3 %))) 16))
-                 (remove #{a} [0 1 2])))))
-
-(defn- clung?
-  "MultifaceBlock.canAttachTo: the face of the neighbour on dir is
-  sturdy, or its collision shape covers it."
-  [chunks pos dir]
-  (or (attachable? chunks pos dir)
-      (let [n (state-at chunks (mapv + pos (dir/offset dir)))]
-        (and (pos? n)
-             (boolean (some #(face-covered? % (dir/opposite dir))
-                            (block/collision-boxes n)))))))
-
 (defn- vine-face-held? [chunks pos st dir]
   (and (not= :down dir)
-       (or (clung? chunks pos dir)
+       (or (multiface/attaches? chunks pos dir)
            (and (contains? dir/horizontal-offset dir)
                 (hung-from-above? chunks pos st dir)))))
 
 (defn- vine-face-kept [chunks pos st m dir]
   (if (= :true (get m dir))
-    (let [held? (vine-face-held? chunks pos st dir)]
+    (let [held? (if (= :up dir)
+                  (multiface/face-held? chunks (dir/up pos) :up)
+                  (vine-face-held? chunks pos st dir))]
       (assoc m dir (if held? :true :false)))
     m))
 
@@ -520,7 +506,8 @@
     (if (seq (block/faces-of st')) st' 0)))
 
 (defn- multiface-face-kept [chunks pos m dir]
-  (if (and (= :true (get m dir)) (not (attachable? chunks pos dir)))
+  (if (and (= :true (get m dir))
+           (not (multiface/attaches? chunks pos dir)))
     (assoc m dir :false)
     m))
 
@@ -635,7 +622,7 @@
                    :else st)
         free (fn [dir]
                (and (= :false (get (block/props-of base) dir))
-                    (attachable? chunks pos dir)))]
+                    (multiface/attaches? chunks pos dir)))]
     (when-let [dir (->> (placement-order yaw pitch face replacing?)
                         (filter free)
                         first)]

@@ -17,9 +17,37 @@
 (defn- has-face? [^long st dir]
   (= :true (get (block/props-of st) dir)))
 
-(defn- attachable? [chunks p dir]
-  (let [n (chunk/at-void chunks (mapv + p (dir/offset dir)))]
-    (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
+(def ^:private face-axes
+  {:west [0 1 2] :east [0 1 2] :down [1 0 2] :up [1 0 2]
+   :north [2 0 1] :south [2 0 1]})
+
+(defn- spans? [box ^long i]
+  (and (== 0 (double (box i))) (== 16 (double (box (+ 3 i))))))
+
+(defn- box-full? [box side]
+  (let [[a u v] (face-axes side)
+        a (long a) lo (double (box a)) hi (double (box (+ 3 a)))]
+    (and (if (#{:east :up :south} side)
+           (and (< lo 16.0) (>= hi 16.0))
+           (and (<= lo 0.0) (> hi 0.0)))
+         (spans? box u) (spans? box v))))
+
+(defn- collision-full? [^long st side]
+  (boolean (some #(box-full? % side) (block/collision-boxes st))))
+
+(defn face-held?
+  "Whether the block at q holds a face on side by its support shape
+  or by one box of its collision shape, as MultifaceBlock.canAttachTo
+  asks."
+  [chunks q side]
+  (let [n (chunk/at-void chunks q)]
+    (and (pos? n)
+         (or (block/face-sturdy? n side) (collision-full? n side)))))
+
+(defn attaches?
+  "Whether the neighbour of p on dir holds a face toward p."
+  [chunks p dir]
+  (face-held? chunks (mapv + p (dir/offset dir)) (dir/opposite dir)))
 
 (defn- water-source? [^long st]
   (and (pos? st) (block/water-source? st)))
@@ -33,7 +61,7 @@
   (let [old (max 0 (long old))]
     (and (or (not= self (block/block-of old))
              (not (has-face? old dir)))
-         (attachable? chunks p dir))))
+         (attaches? chunks p dir))))
 
 (defn- spread-into? [chunks [q dir] self]
   (let [existing (chunk/at-void chunks q)]

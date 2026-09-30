@@ -2,7 +2,8 @@
   "Pale moss carpet and hanging moss."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.blocks.multiface :as multiface]))
 
 (set! *warn-on-reflection* true)
 
@@ -10,10 +11,6 @@
 
 (defn- with ^long [^long st k v]
   (block/state (block/block-of st) (assoc (block/props-of st) k v)))
-
-(defn- attachable? [chunks p dir]
-  (let [n (chunk/at-void chunks (mapv + p (dir/offset dir)))]
-    (and (pos? n) (block/face-sturdy? n (dir/opposite dir)))))
 
 (defn- carpet-at? [chunks p dir pred]
   (let [n (chunk/at-void chunks p)]
@@ -28,7 +25,7 @@
 
 (defn- carpet-side [chunks p st dir create?]
   (let [st (long st) props (block/props-of st)
-        side (if (attachable? chunks p dir)
+        side (if (multiface/attaches? chunks p dir)
                (if create? :low (get props dir))
                :none)]
     (cond
@@ -95,7 +92,7 @@
 
 (defn hanging-supported? [chunks p ^long st]
   (let [above (chunk/at-void chunks (dir/up p))]
-    (or (attachable? chunks p :up)
+    (or (multiface/attaches? chunks p :up)
         (= (block/block-of st) (block/block-of above)))))
 
 (defn hanging-end [chunks p self]

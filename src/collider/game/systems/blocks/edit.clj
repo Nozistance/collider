@@ -5,6 +5,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
+            [collider.game.command.tree :as cmd]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.level :as level]
@@ -326,6 +327,21 @@
   (let [base (dec (long (:tick world)))
         [ds s] (run-deltas world changes base neighbors/commanded)]
     [ds (count (:placed s))]))
+
+(def ^:private game-master-types
+  #{:command :structure :jigsaw :test :test-instance})
+
+(defn game-master-block?
+  "Whether st is a block only game masters place, use and break."
+  [^long st]
+  (contains? game-master-types (block/type-of st)))
+
+(defn game-master?
+  "Whether player e may place, use and break game master blocks: a
+  creative player of the game master permission level."
+  [e]
+  (and (game-mode/creative? e)
+       (<= (long cmd/gamemaster) (player/permission-level e))))
 
 (defn held-slot
   "Returns the inventory slot of the item the player holds."
