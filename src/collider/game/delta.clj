@@ -54,9 +54,8 @@
   it is applied to, an :entity one the entity of its eid and an :input
   one is an event of a player. :apply takes the world and the delta,
   for an :entity delta the tick, the entity and the delta. :eids tells
-  which entities a delta may add, :by-eid that it belongs to the level
-  of its eid and :left-behind that it stays with the level a player
-  leaves."
+  which entities a delta may add and :by-eid that it belongs to the
+  level of its eid."
   {:set-blocks
    {:scope :level :schema [:cat Records [:? Coll] [:? Coll]]
     :apply level/set-blocks}
@@ -183,7 +182,7 @@
                       (some? (:kept-mdata e)) (dissoc :kept-mdata))
                     :track tr))}
    :tracking
-   {:scope :entity :schema [:cat Coll Coll] :left-behind true
+   {:scope :entity :schema [:cat Coll Coll]
     :apply (fn [_ e [_ _ add drop]]
              (update e :tracking merge-diff add drop))}
    :set-slot
@@ -194,7 +193,6 @@
                (update e :inventory dissoc slot)))}
    :chunks-sent
    {:scope :entity :schema [:cat Coll Coll [:? [:maybe :int]]]
-    :left-behind true
     :apply (fn [_ e [_ _ add drop]]
              (update e :sent-chunks merge-diff add drop))}
    :damage

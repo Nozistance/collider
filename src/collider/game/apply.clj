@@ -230,24 +230,6 @@
   (let [home (homes world dim)]
     (if (and home (strays? home d)) (rehomed home d) [d nil])))
 
-(defn- left-behind? [d]
-  (let [tag (nth d 0)]
-    (or (:left-behind (get delta/registry tag))
-        (and (identical? :merge-entity tag)
-             (contains? (nth d 2) :chunk-quota)))))
-
-(defn- departed ^Deltas [^Deltas d changes]
-  (let [stay (fn [ds] (filterv #(not (left-behind? %)) ds))
-        kept (fn [m [_ eid]]
-               (if-let [v (get m eid)] (assoc m eid (stay v)) m))]
-    (assoc d :entities (reduce kept (deltas/entities-of d) changes))))
-
-(defn changes-of
-  "Returns the dimension changes among the world deltas of d."
-  [^Deltas d]
-  (filterv #(identical? :change-dimension (nth % 0))
-           (deltas/world-of d)))
-
 (defn- handoffs-of [^Deltas d]
   (into [] (keep #(when (identical? :level-deltas (nth % 0))
                     [(nth % 1) (nth % 2)]))
@@ -271,23 +253,27 @@
        (level/with-level world dim lv)))
    (noted ds dim d)])
 
-(defn- crossing [[world ds] from changes]
-  [(reduce #(crossed %1 from %2) world changes)
-   (reduce #(noted %1 (nth %2 2) (deltas/of-vec [%2])) ds changes)])
+(defn- crossing [acc from ^Deltas d]
+  (reduce (fn [[world ds :as acc] x]
+            (if (identical? :change-dimension (nth x 0))
+              [(crossed world from x)
+               (noted ds (nth x 2) (deltas/of-vec [x]))]
+              acc))
+          acc (deltas/world-of d)))
+
+(declare taken)
+
+(defn- handed [acc [dim sub]]
+  (taken acc dim (deltas/with-dim (deltas/of-vec sub) dim)))
 
 (defn- taken [acc dim d]
   (if (or (nil? d) (identical? deltas/empty-deltas d))
     acc
     (let [[d strays] (routed (nth acc 0) dim d)
-          changes (changes-of d)
-          d (if (seq changes) (departed d changes) d)
           acc (reduce #(taken %1 (nth %2 0) (nth %2 1))
                       (own acc dim d) strays)
-          acc (reduce (fn [acc [dim sub]]
-                        (taken acc dim (deltas/with-dim
-                                         (deltas/of-vec sub) dim)))
-                      acc (handoffs-of d))]
-      (if (seq changes) (crossing acc dim changes) acc))))
+          acc (reduce handed acc (handoffs-of d))]
+      (crossing acc dim d))))
 
 (defn in
   "Returns world with deltas d applied to its level dim.
