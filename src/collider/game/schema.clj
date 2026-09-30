@@ -208,7 +208,8 @@
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
    :spawning           {:default (i/int-map) :scope :shared}
-   :listed             {:default {} :scope :shared}})
+   :listed             {:default {} :scope :shared}
+   :config             {:scope :shared}})
 
 (defn- of-scope [scope]
   (into {} (for [[k v] world :when (= scope (:scope v))] [k v])))
@@ -217,12 +218,9 @@
 
 (def ^:private level-table (of-scope :level))
 
-(def level-keys
-  "The keys of world that belong to a level and not to the shared
-  part. The transient keys of the tick count too."
-  (into #{:active-chunks :block-events :changed-blocks :input
-          :observed}
-        (keys level-table)))
+(def shared-keys
+  "The keys of world that its levels share."
+  (vec (keys shared-table)))
 
 (def dims
   "The dimensions of the world, in the order the tick runs them."
@@ -241,9 +239,11 @@
           [k {:optional true} s])))
 
 (def initial-world
-  (let [lv (update-vals level-table :default)]
-    (assoc (update-vals shared-table :default)
-      :levels (zipmap dims (repeat lv)))))
+  (let [lv (update-vals level-table :default)
+        top (into {} (for [[k v] shared-table
+                           :when (contains? v :default)]
+                       [k (:default v)]))]
+    (assoc top :levels (zipmap dims (repeat lv)))))
 
 (defn snapshot
   "Returns what w stores of the keys of scope, :shared or :level."

@@ -52,97 +52,73 @@
   [dim]
   (if-let [b (get dim-bounds dim)] @b (made-bounds dim)))
 
+(defn- bounded [lv dim]
+  (if (contains? lv :dim) lv (reduce-kv assoc lv (bounds dim))))
+
+(defn- kept [lv k v]
+  (if (or (identical? :levels k) (identical? v (get lv k ::none)))
+    lv
+    (assoc lv k v)))
+
+(defn- holding [world lv dim]
+  (reduce-kv kept (bounded lv dim) world))
+
 (defn level
   "Returns the level dim of world.
   It also holds the shared keys of world and the shape of
   its dimension."
   [world dim]
-  (let [part (get-in world [:levels dim])
-        lv (as-> (dissoc! (transient world) :levels) t
-             (reduce-kv assoc! t part)
-             (persistent! (reduce-kv assoc! t (bounds dim))))
-        lv (if-let [m (meta world)] (with-meta lv m) lv)]
-    (if-let [t (::types (meta part))]
-      (vary-meta lv assoc ::types t)
-      lv)))
+  (holding world (get (:levels world) dim {}) dim))
 
-(def ^:private shared-out
-  (into schema/level-keys [:dim :min-y :max-y :sky? :server]))
+(defn synced
+  "Returns world whose levels hold its shared keys as they are."
+  [world]
+  (let [held (fn [w dim lv]
+               (let [lv' (holding world lv dim)]
+                 (if (identical? lv lv')
+                   w
+                   (assoc-in w [:levels dim] lv'))))]
+    (reduce-kv held world (:levels world))))
 
-(defn- level-part [lv]
-  (persistent!
-    (reduce (fn [m k]
-              (if-let [e (find lv k)] (assoc! m k (val e)) m))
-            (transient {}) schema/level-keys)))
+(defn- changed [world lv]
+  (let [top (fn [ks k v]
+              (if (or (identical? :levels k)
+                      (identical? v (get lv k v)))
+                ks
+                (conj ks k)))
+        added (fn [ks k]
+                (if (or (contains? world k) (not (contains? lv k)))
+                  ks
+                  (conj ks k)))]
+    (reduce added (reduce-kv top [] world) schema/shared-keys)))
 
-(defn- transient-of [t m] (or t (transient m)))
-
-(defn- got [m k] (get m k ::none))
-
-(defn- part-of
-  "Returns the level keys of lv as a level part, old when they match."
-  [old lv]
-  (if (nil? old)
-    (level-part lv)
-    (let [put (fn [t k]
-                (let [v (got lv k)]
-                  (cond (identical? v (got old k)) t
-                        (identical? v ::none)
-                        (dissoc! (transient-of t old) k)
-                        :else (assoc! (transient-of t old) k v))))
-          t (reduce put nil schema/level-keys)]
-      (if t (persistent! t) old))))
-
-(defn- typed-part [part lv]
-  (let [t (::types (meta lv))]
-    (if (or (nil? t) (identical? t (::types (meta part)))
-            (not (identical? (:entities part) (nth t 0))))
-      part
-      (vary-meta part assoc ::types t))))
-
-(def ^:private bound-keys [:dim :min-y :max-y :sky? :server])
-
-(defn- shared-count
-  "Returns how many keys of lv are shared keys of the world."
-  ^long [lv part]
-  (reduce (fn [^long n k] (if (contains? lv k) (dec n) n))
-          (- (count lv) (count part)) bound-keys))
-
-(defn- shared-into
-  "Returns world with the shared keys of lv, or nil if one is gone."
-  [world lv]
-  (let [put (fn [t k v]
-              (let [v' (if (identical? :levels k) v (got lv k))]
-                (cond (identical? v v') t
-                      (identical? v' ::none) (reduced ::none)
-                      :else (assoc! (transient-of t world) k v'))))
-        t (reduce-kv put nil world)]
-    (cond (nil? t) world
-          (identical? ::none t) nil
-          :else (persistent! t))))
-
-(defn- same-shared-keys? [world lv part]
-  (= (dec (count world)) (shared-count lv part)))
-
-(defn- split-off
-  "Returns the shared keys of lv as a world with part as level dim."
-  [lv levels dim part]
-  (assoc (persistent! (reduce dissoc! (transient lv) shared-out))
-         :levels (assoc levels dim part)))
+(defn- refreshed [lv from ks]
+  (reduce #(assoc %1 %2 (get from %2)) lv ks))
 
 (defn with-level
-  "Returns world with level dim replaced by lv.
-  The keys of lv that are not level keys become the shared part
-  of world."
+  "Returns world with lv as its level dim.
+  The shared keys that lv changed go to the top of world and to its
+  other levels."
   [world dim lv]
-  (let [levels (:levels world)
-        old (get levels dim)
-        part (typed-part (part-of old lv) lv)
-        w (when (same-shared-keys? world lv part)
-            (shared-into world lv))]
-    (cond (nil? w) (split-off lv levels dim part)
-          (identical? part old) w
-          :else (assoc w :levels (assoc levels dim part)))))
+  (let [ks (changed world lv)
+        w (refreshed world lv ks)
+        lv (if (contains? lv :dim) lv (holding w lv dim))
+        levels (assoc (:levels world) dim lv)
+        other (fn [ls d l]
+                (if (identical? d dim) ls
+                    (assoc ls d (refreshed l lv ks))))]
+    (assoc w :levels (if (zero? (count ks))
+                       levels
+                       (reduce-kv other levels levels)))))
+
+(defn shared-kept!
+  "Throws when a level of world holds a shared key unlike its top."
+  [world]
+  (doseq [[dim lv] (:levels world)
+          [k v] world
+          :when (and (not= :levels k) (not (identical? v (get lv k))))]
+    (throw (ex-info "a level strayed from the shared keys"
+                    {:dim dim :key k}))))
 
 (defn- vacant? [m]
   (reduce-kv (fn [_ _ _] (reduced false)) true m))

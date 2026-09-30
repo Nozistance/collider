@@ -668,7 +668,7 @@
 
 (defn player-list
   "Returns the deltas of the player list of the server."
-  {:wake :always}
+  {:wake :always :once true}
   [world d]
   (let [ps (level/player-entries world)
         joins (player/joins d)]

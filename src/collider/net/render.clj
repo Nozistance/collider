@@ -1119,8 +1119,7 @@
     {:ps     ps
      :of     of
      :by-dim (group-by of ps)
-     :levels (into {} (map (fn [d] [d (level/level world d)]))
-                   schema/dims)}))
+     :levels (:levels (level/synced world))}))
 
 (defn- level-of [sight dim]
   (get (:levels sight) (or dim home)))

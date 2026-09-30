@@ -8,6 +8,7 @@
             [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.player :as player]
+            [collider.game.schema :as schema]
             [collider.log :as log])
   (:import (collider.game.deltas.record Deltas)))
 
@@ -194,18 +195,63 @@
         types (retyped-index types folded quit removes)]
     (areas/cache-active-chunks (typed quit types))))
 
-(defn applied-in
-  "Returns world with ds in level dim, and that level.
-  lv is the level dim of world."
-  [world dim lv ds]
-  (let [lv' (apply-level lv ds)]
-    [(level/with-level world dim lv') lv']))
+(defn- inhabited? [world dim]
+  (not (deltas/vacant? (:entities (get (:levels world) dim)))))
 
-(defn in
-  "Returns world with ds folded into its level dim."
-  [world dim ds]
-  (let [lv (apply-level (level/level world dim) ds)]
-    (level/with-level world dim lv)))
+(defn- homes [world dim]
+  (when (some #(and (not (identical? % dim)) (inhabited? world %))
+              schema/dims)
+    (let [es (:entities (get (:levels world) dim))]
+      (fn [eid]
+        (when-not (contains? es eid) (level/dim-of world eid))))))
+
+(defn- stray-dim [home delta]
+  (when (:by-eid (get delta/registry (nth delta 0)))
+    (home (nth delta 1))))
+
+(defn- strays? [home ^Deltas d]
+  (or (some #(home (key %)) (deltas/entities-of d))
+      (some #(stray-dim home %) (deltas/world-of d))))
+
+(defn- part [ws es]
+  (assoc deltas/empty-deltas
+    :world (vec ws) :entities (into (i/int-map) es)))
+
+(defn- rehomed [home ^Deltas d]
+  (let [ws (group-by #(stray-dim home %) (deltas/world-of d))
+        es (group-by #(home (key %)) (deltas/entities-of d))
+        away (disj (into (set (keys ws)) (keys es)) nil)]
+    [(assoc (part (ws nil) (es nil))
+       :out (deltas/out-of d) :input (deltas/input-of d))
+     (into [] (keep #(when (away %) [% (part (ws %) (es %))]))
+           schema/dims)]))
+
+(defn- routed [world dim ^Deltas d]
+  (let [home (homes world dim)]
+    (if (and home (strays? home d)) (rehomed home d) [d nil])))
+
+(defn- left-behind? [d]
+  (let [tag (nth d 0)]
+    (or (:left-behind (get delta/registry tag))
+        (and (identical? :merge-entity tag)
+             (contains? (nth d 2) :chunk-quota)))))
+
+(defn- departed ^Deltas [^Deltas d changes]
+  (let [stay (fn [ds] (filterv #(not (left-behind? %)) ds))
+        kept (fn [m [_ eid]]
+               (if-let [v (get m eid)] (assoc m eid (stay v)) m))]
+    (assoc d :entities (reduce kept (deltas/entities-of d) changes))))
+
+(defn changes-of
+  "Returns the dimension changes among the world deltas of d."
+  [^Deltas d]
+  (filterv #(identical? :change-dimension (nth % 0))
+           (deltas/world-of d)))
+
+(defn- handoffs-of [^Deltas d]
+  (into [] (keep #(when (identical? :level-deltas (nth % 0))
+                    [(nth % 1) (nth % 2)]))
+        (deltas/world-of d)))
 
 (defn- crossed [world from [_ eid dim pos yaw pitch]]
   (if-let [e (get-in world [:levels from :entities eid])]
@@ -215,37 +261,58 @@
                   (player/arrived e (:tick world) pos yaw pitch)))
     world))
 
-(defn changes-of
-  "Returns the dimension changes among the world deltas of d."
-  [^Deltas d]
-  (filterv #(identical? :change-dimension (nth % 0))
-           (deltas/world-of d)))
+(defn- noted [ds dim d]
+  (update ds dim (fnil deltas/merge deltas/empty-deltas) d))
 
-(defn handoffs-of
-  "Returns the deltas d hands to other levels, as [dim deltas]."
-  [^Deltas d]
-  (into [] (keep #(when (identical? :level-deltas (nth % 0))
-                    [(nth % 1) (nth % 2)]))
-        (deltas/world-of d)))
+(defn- own [[world ds] dim ^Deltas d]
+  [(if (deltas/inert? d)
+     world
+     (let [lv (apply-level (get (:levels world) dim) d)]
+       (level/with-level world dim lv)))
+   (noted ds dim d)])
 
-(defn cross
-  "Returns world with the players that change dimension in d moved.
-  Each keeps its eid in the new level and knows no chunk and no entity
-  there yet."
-  [world from changes]
-  (reduce #(crossed %1 from %2) world changes))
+(defn- crossing [[world ds] from changes]
+  [(reduce #(crossed %1 from %2) world changes)
+   (reduce #(noted %1 (nth %2 2) (deltas/of-vec [%2])) ds changes)])
+
+(defn- taken [acc dim d]
+  (if (or (nil? d) (identical? deltas/empty-deltas d))
+    acc
+    (let [[d strays] (routed (nth acc 0) dim d)
+          changes (changes-of d)
+          d (if (seq changes) (departed d changes) d)
+          acc (reduce #(taken %1 (nth %2 0) (nth %2 1))
+                      (own acc dim d) strays)
+          acc (reduce (fn [acc [dim sub]]
+                        (taken acc dim (deltas/with-dim
+                                         (deltas/of-vec sub) dim)))
+                      acc (handoffs-of d))]
+      (if (seq changes) (crossing acc dim changes) acc))))
+
+(defn in
+  "Returns world with deltas d applied to its level dim.
+  The shared keys the level changed go to the top of world and to its
+  other levels. The deltas of an entity in another level, those d
+  hands to another level and the players that change dimension go
+  where they belong, in that order. Given ds, the deltas each level
+  took so far by dimension, returns [world ds] with d noted where it
+  applied."
+  ([world dim d]
+   (nth (in (level/synced world) dim (deltas-of d) {}) 0))
+  ([world dim d ds]
+   (let [acc (taken [world ds] dim d)]
+     (when delta/validate? (level/shared-kept! (nth acc 0)))
+     acc)))
 
 (defn entered
-  "Returns world with the input deltas of level dim, and that level.
-  Returns nil when it stays as it was. What the last input of the
-  level left behind is dropped first."
-  [world dim ds]
-  (if (and (deltas/inert? ds)
+  "Returns world with the input deltas d of level dim.
+  What the last input of the level left behind is dropped first."
+  [world dim d]
+  (if (and (deltas/inert? d)
            (nil? (get-in world [:levels dim :input])))
-    [world nil]
-    (let [lv (dissoc (level/level world dim) :input)
-          lv' (apply-level lv ds)]
-      [(level/with-level world dim lv') lv'])))
+    world
+    (let [lv (dissoc (get (:levels world) dim) :input)]
+      (level/with-level world dim (apply-level lv d)))))
 
 (defn deltas
   "Returns the world after ds and ds as applied.

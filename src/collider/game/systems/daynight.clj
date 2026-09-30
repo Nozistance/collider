@@ -38,6 +38,6 @@
     [(out/all (out/time (long (:tick world)) {}))]))
 
 (defn daynight
-  {:wake {:every send-interval}}
+  {:wake {:every send-interval} :once true}
   [world _d]
   (deltas/of-vec (daynight-deltas world)))
