@@ -2,6 +2,7 @@
   "Eating, drinking and other items held in use, and filling a
   glass bottle at water."
   (:require [collider.data :as data]
+            [collider.game.bundle :as bundle]
             [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
@@ -11,6 +12,7 @@
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.effects :as effects]
             [collider.game.systems.items :as items]
+            [collider.game.using :as using]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -210,6 +212,39 @@
             (stopped eid))
     (advanced eid e left)))
 
+(def ^:private ^:const first-throw-wait 10)
+
+(defn- drops? [stack ^long left]
+  (let [n (long (using/ticks stack))]
+    (or (= left n)
+        (and (< left (- n first-throw-wait)) (even? left)))))
+
+(defn- bundle-sound [world eid kind pos salt]
+  (let [p (+ 0.8 (* 0.4 (roll world eid [:bundle salt])))]
+    (out/sound kind pos 0.8 p :players)))
+
+(defn- block-centre [pos]
+  (mapv #(+ 0.5 (Math/floor (double %))) pos))
+
+(defn- dropped-deltas [world eid e hand b s]
+  (let [pos (:pos e)
+        one :item.bundle.remove-one
+        all :item.bundle.drop-contents]
+    (concat
+      [(out/except eid (bundle-sound world eid one pos 0))
+       [:set-slot eid (player/hand-slot e hand) b]]
+      (items/thrown-deltas world eid [s])
+      [(out/all (bundle-sound world eid all (block-centre pos) 1))
+       [:award eid (keyword "used" (name (:item b))) 1]])))
+
+(defn- unloaded-deltas
+  "Returns the deltas of a bundle in use dropping its next stack
+  (BundleItem.onUseTick)."
+  [world eid e hand stack left]
+  (when (and (bundle/bundle? stack) (drops? stack left))
+    (let [[b s] (bundle/remove-one stack)]
+      (when s (dropped-deltas world eid e hand b s)))))
+
 (defn- eaten-deltas [world eid e c left]
   (concat (when (emits? c left) [(use-sound world eid e c left)])
           (if (= 1 (long left))
@@ -226,7 +261,8 @@
       (nil? (:using e)) nil
       (not= item (:item stack)) (stopped eid)
       c (eaten-deltas world eid e c left)
-      :else (held-deltas eid e item left))))
+      :else (concat (unloaded-deltas world eid e hand stack left)
+                    (held-deltas eid e item left)))))
 
 (def ^:private water-bottle
   {:item       :potion :count 1

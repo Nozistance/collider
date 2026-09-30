@@ -165,6 +165,7 @@
         [[:merge-entity eid own]
          [:client-slots eid (or changed {}) carried]]
         (containers/craft-deltas world eid after)
+        (containers/sound-deltas world eid after)
         (items/thrown-deltas world eid (:drops after))
         (equip-deltas world eid after)))))
 
@@ -182,11 +183,18 @@
         (resent-deltas eid e)
         (click-deltas world [tag eid (dissoc packet :container)])))))
 
+(defn- bundle-select-deltas [world [_ eid slot i]]
+  (let [e (get-in world [:entities eid])]
+    (when (and e (nil? (:menu e)))
+      (let [after (menu/select-bundle (own-start world e) slot i)]
+        [[:merge-entity eid (select-keys after [:inventory])]]))))
+
 (defn event-deltas
   "Returns the deltas of one inventory event of its player."
   [world [tag :as ev]]
   (vec (case tag
          (:click :menu-click) (own-click-deltas world ev)
+         :bundle-select (bundle-select-deltas world ev)
          :pick (pick-deltas world ev)
          nil)))
 

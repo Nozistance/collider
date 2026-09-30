@@ -22,12 +22,18 @@
   {:base (get v "base" 0)
    :per-level (get v "per_level_above_first" 0)})
 
+(defn- primary [json]
+  (some->> (get json "primary_items") (holders "item")))
+
 (defn- enchantment [json]
   {:anvil-cost (get json "anvil_cost")
    :exclusive (holders "enchantment" (get json "exclusive_set" []))
    :max-level (get json "max_level")
    :min-cost (cost (get json "min_cost"))
-   :supported (holders "item" (get json "supported_items"))})
+   :max-cost (cost (get json "max_cost"))
+   :weight (get json "weight")
+   :supported (holders "item" (get json "supported_items"))
+   :primary (primary json)})
 
 (def ^:private ^:table table
   (delay (into {}

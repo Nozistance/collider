@@ -1,6 +1,7 @@
 (ns collider.game.block.menu
   "Menus and the effect of a player's clicks on their slots."
   (:require [collider.data :as data]
+            [collider.game.bundle :as bundle]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -220,13 +221,81 @@
         [m got] (take-out m slot (count-of clicked) room)]
     (assoc m :carried (sized carried (+ have (count-of got))))))
 
-(defn- pickup [{:keys [inventory carried] :as m} slot primary?]
+(defn- heard [m kind] (update m :sounds conj kind))
+
+(defn- inserted [m n]
+  (heard m (if (pos? (long n)) :insert :insert-fail)))
+
+(defn- transfer [m slot b clicked]
+  (let [mx (if (bundle/fits-inside? (:item clicked))
+             (bundle/room-for b clicked)
+             0)
+        [m got] (take-out m slot (count-of clicked) mx)
+        [b n] (bundle/insert b got)]
+    (inserted (assoc m :carried b) n)))
+
+(defn- unload-into [m layout slot b]
+  (let [[b s] (bundle/remove-one b)
+        inv (:inventory m)
+        [inv left] (if s
+                     (insert layout inv slot s (count-of s))
+                     [inv nil])
+        b (if left (first (bundle/insert b left)) b)]
+    (cond-> (assoc m :inventory inv :carried b)
+      (and s (nil? left)) (heard :remove-one))))
+
+(defn- stacked-on-other [m layout slot clicked b primary?]
+  (cond
+    (and primary? clicked) (transfer m slot b clicked)
+    (and (not primary?) (nil? clicked))
+    (unload-into m layout slot b)))
+
+(defn- modifiable? [layout slot here]
+  ((:place layout) slot here))
+
+(defn- fill-bundle [m layout slot b carried]
+  (let [[b' n] (if (modifiable? layout slot b)
+                 (bundle/insert b carried)
+                 [b 0])]
+    (-> (assoc m :inventory (assoc (:inventory m) slot b'))
+        (assoc :carried (sized carried (- (count-of carried) n)))
+        (inserted n))))
+
+(defn- empty-bundle [m layout slot b]
+  (let [[b' s] (if (modifiable? layout slot b)
+                 (bundle/remove-one b)
+                 [b nil])]
+    (cond-> (assoc m :inventory (assoc (:inventory m) slot b'))
+      s (-> (assoc :carried s) (heard :remove-one)))))
+
+(defn- deselected [m slot b]
+  [(assoc-in m [:inventory slot] (bundle/select b -1)) false])
+
+(defn- other-stacked-on-me [m layout slot b carried primary?]
+  (cond
+    (not (bundle/bundle? b)) [m false]
+    (and primary? carried)
+    [(fill-bundle m layout slot b carried) true]
+    (and (not primary?) (nil? carried))
+    [(empty-bundle m layout slot b) true]
+    :else (deselected m slot b)))
+
+(defn- overridden
+  "Returns the click as a bundle takes it, and whether it did
+  (AbstractContainerMenu.tryItemClickBehaviourOverride)."
+  [m layout slot clicked carried primary?]
+  (if-let [m' (when (bundle/bundle? carried)
+                (stacked-on-other
+                  m layout slot clicked carried primary?))]
+    [m' true]
+    (if clicked
+      (other-stacked-on-me m layout slot clicked carried primary?)
+      [m false])))
+
+(defn- plain-pickup [{:keys [inventory carried] :as m} slot primary?]
   (let [layout (layout-of m)
         clicked (get inventory slot)]
     (cond
-      (= outside (long slot))
-      (if carried (drop-carried m carried primary?) m)
-      (neg? (long slot)) m
       (nil? clicked)
       (if carried (place-carried m slot carried primary?) m)
       (nil? carried) (take-carried m slot clicked primary?)
@@ -235,6 +304,17 @@
       (same? clicked carried)
       (gather-onto-carried m slot clicked carried)
       :else m)))
+
+(defn- pickup [{:keys [inventory carried] :as m} slot primary?]
+  (let [here (get inventory slot)]
+    (cond
+      (= outside (long slot))
+      (if carried (drop-carried m carried primary?) m)
+      (neg? (long slot)) m
+      :else
+      (let [lay (layout-of m)
+            [m done?] (overridden m lay slot here carried primary?)]
+        (if done? m (plain-pickup m slot primary?))))))
 
 (defn- move-onto [layout inv stack slots]
   (reduce (fn [[inv s :as acc] slot]
@@ -565,7 +645,8 @@
           (sort (:equip (layout-of m))))))
 
 (defn click [{:keys [quickcraft] :as m} {:keys [slot button mode]}]
-  (let [m (assoc m :drops [] :takes 0 :crafted [] :spills [])
+  (let [m (assoc m :drops [] :takes 0 :crafted [] :spills []
+                   :sounds [])
         before (:inventory m)
         visible (:visible (layout-of m))
         menu (long slot) button (long button) mode (long mode)
@@ -574,3 +655,13 @@
         m' (click-acted m quickcraft slot menu button mode in-range?)
         m' (if (:settled m') (dissoc m' :settled) (settle m' before))]
     (dissoc (assoc m' :equipped (vec (equipped m' before))) :direct)))
+
+(defn select-bundle
+  "Returns m with the stack at index i picked in the bundle in menu
+  slot slot (AbstractContainerMenu.setSelectedBundleItemIndex)."
+  [m slot i]
+  (let [visible (:visible (layout-of m))
+        slot (long slot)
+        k (when (< -1 slot (count visible)) (nth visible slot))
+        b (get (:inventory m) k)]
+    (cond-> m b (assoc-in [:inventory k] (bundle/select b i)))))

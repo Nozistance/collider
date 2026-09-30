@@ -6,12 +6,14 @@
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
+            [collider.game.block.enchanting :as enchanting]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.apply :as apply]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.systems.items :as items]
+            [collider.random :as random]
             [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
@@ -161,7 +163,8 @@
                      (container/state-at (:chunks world) pos)))))
 
 (defn- open-menu-deltas [world eid e m]
-  (let [prev (close-deltas world eid e true)
+  (let [m (container/for-player m e)
+        prev (close-deltas world eid e true)
         e' (cond-> e prev (assoc :carried nil :menu nil))
         id (inc (mod (long (:container-counter e 0)) 100))
         {:keys [menu slots]} (opened world eid e' m id)]
@@ -256,9 +259,14 @@
       (with-client (:changed packet) (:carried packet))
       (stale-result items items')))
 
+(defn- menu-context [world e m]
+  (cond-> (crafting/context world e)
+    (container/enchanting? m)
+    (assoc :shelves (enchanting/shelves world (:pos m)))))
+
 (defn- clicked [world eid e m packet]
   (let [items (container/items world eid m)
-        ctx (crafting/context world e)
+        ctx (menu-context world e m)
         after (menu/click (click-start e m items ctx) packet)
         n (container/slot-count m)
         [items0 inv'] (split-flat (:inventory after) n)
@@ -278,6 +286,25 @@
       [:award eid (keyword "crafted" (name item)) n])
     (for [s (:spills after)]
       [:spawn-entity (items/dropped world eid s)])))
+
+(def ^:private bundle-sounds
+  {:insert      :item.bundle.insert
+   :insert-fail :item.bundle.insert-fail
+   :remove-one  :item.bundle.remove-one})
+
+(defn- bundle-sound [world eid pos i kind]
+  (let [r (random/of-key (:tick world) eid :bundle i)
+        fail? (= :insert-fail kind)
+        snd (out/sound (bundle-sounds kind) pos (if fail? 1.0 0.8)
+                       (if fail? 1.0 (+ 0.8 (* 0.4 r))) :players)]
+    (out/except eid snd)))
+
+(defn sound-deltas
+  "Returns the sounds a click of player eid made bundles play."
+  [world eid after]
+  (let [pos (get-in world [:entities eid :pos])]
+    (map-indexed #(bundle-sound world eid pos %1 %2)
+                 (:sounds after))))
 
 (defn- value-deltas [world eid m menu]
   (let [old (container/data-values world m)
@@ -317,6 +344,7 @@
       (value-deltas world eid m menu)
       (take-deltas world e m (long (:takes after 0)))
       (craft-deltas world eid after)
+      (sound-deltas world eid after)
       (items/thrown-deltas world eid (:drops after)))))
 
 (defn- all-data-deltas [world eid e m]
@@ -388,6 +416,55 @@
           (:deltas synced)
           [(out/to eid p)])))))
 
+(defn- enchant-sound [world pos]
+  (let [r (random/of-key (:tick world) pos :enchant)
+        at (mapv #(+ 0.5 (double %)) pos)]
+    (out/all (out/sound :block.enchantment-table.use at 1.0
+                        (+ 0.9 (* 0.1 r))))))
+
+(defn- levels-paid [e ^long cost]
+  (let [n (- (long (:xp-level e 0)) cost)]
+    (cond-> {:xp-level (max n 0) :xp-sent nil}
+      (neg? n) (assoc :xp-progress 0.0 :xp-total 0))))
+
+(defn- enchant-deltas [world eid e m enchanted lapis cost]
+  (let [seed (enchanting/next-seed
+               (random/of-key (:tick world) eid :enchantment-seed))
+        items [enchanted lapis]
+        shelves (enchanting/shelves world (:pos m))
+        m' (merge (assoc m :contents items :seed seed)
+                  (enchanting/offers seed shelves enchanted))
+        slots (view m' items (:inventory e))
+        synced (sync-deltas eid m' slots (:carried e) false)
+        {:keys [deltas menu]} synced
+        paid (assoc (levels-paid e cost) :enchantment-seed seed)]
+    (concat
+      [[:merge-entity eid (assoc paid :menu menu)]]
+      deltas
+      (value-deltas world eid m menu)
+      [[:award eid :custom/enchant-item 1]
+       (enchant-sound world (:pos m))])))
+
+(defn- paid-lapis [e lapis ^long n]
+  (if (player/infinite-materials? e)
+    lapis
+    (let [left (- (long (:count lapis 0)) n)]
+      (when (pos? left) (assoc lapis :count left)))))
+
+(defn- enchant-button-deltas [world eid e m id]
+  (let [[item lapis] (:contents m)
+        id (long id)
+        n (inc id)
+        cost (long (nth (:costs m) id 0))
+        free? (player/infinite-materials? e)
+        level (long (:xp-level e 0))]
+    (when (and (< -1 id 3)
+               (or free? (>= (long (:count lapis 0)) n))
+               (pos? cost) item
+               (or free? (and (>= level n) (>= level cost))))
+      (when-let [s (enchanting/enchanted (:seed m) id cost item)]
+        (enchant-deltas world eid e m s (paid-lapis e lapis n) n)))))
+
 (defn- renamed-deltas [world eid e m]
   (let [ctx (crafting/context world e)
         [m' items] (container/settled m (:contents m) ctx)
@@ -416,6 +493,9 @@
           (container/lectern? m)
           (when (valid? world m)
             (lectern-button-deltas world eid e m (long id)))
+          (container/enchanting? m)
+          (when (valid? world m)
+            (enchant-button-deltas world eid e m (long id)))
           (container/bench? m)
           (bench-button-deltas eid e m (long id)))))))
 
@@ -503,12 +583,30 @@
     (deltas/of-vec
       (into [] (mapcat one) (level/of-types world [:player])))))
 
+(defn- selected-bundle-deltas [world eid e m slot i]
+  (let [items (container/items world eid m)
+        ctx (crafting/context world e)
+        start (click-start e m items ctx)
+        after (menu/select-bundle start slot i)
+        n (container/slot-count m)
+        [items' inv] (split-flat (:inventory after) n)
+        m' (cond-> m (container/bench? m) (assoc :contents items'))]
+    (cons [:merge-entity eid {:inventory inv :menu m'}]
+          (container/store-deltas world eid m items'))))
+
+(defn- bundle-select-deltas [world [_ eid slot i]]
+  (let [e (get-in world [:entities eid])
+        m (:menu e)]
+    (when (and m (not (container/lectern? m)) (valid? world m))
+      (selected-bundle-deltas world eid e m slot i))))
+
 (defn- event-deltas [world [tag :as ev]]
   (case tag
     :menu-click (click-deltas world ev)
     :menu-close (close-event-deltas world ev)
     :menu-button (button-deltas world ev)
     :rename-item (rename-deltas world ev)
+    :bundle-select (bundle-select-deltas world ev)
     nil))
 
 (defn- containers-deltas [world events]
@@ -520,7 +618,7 @@
 (defn containers
   "Returns the deltas of the menus and containers of the tick."
   {:wake {:events #{:menu-click :menu-close :menu-button
-                    :rename-item}
+                    :rename-item :bundle-select}
           :keys [:shulker-anim [:input :quits]]}}
   [world d]
   (let [events (:input d)]

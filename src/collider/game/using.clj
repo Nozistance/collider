@@ -3,11 +3,14 @@
   instrument of a horn."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
+            [collider.game.bundle :as bundle]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const spyglass-ticks 1200)
+
+(def ^:private ^:const bundle-ticks 200)
 
 (defn- sound-id [v]
   (kw (if (map? v) (get v "sound_id") v)))
@@ -53,4 +56,4 @@
       (case item
         :spyglass spyglass-ticks
         :goat-horn (some-> (instrument-of stack) instrument-ticks)
-        nil))))
+        (when (bundle/bundle-item? stack) bundle-ticks)))))

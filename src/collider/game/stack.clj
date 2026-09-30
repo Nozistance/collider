@@ -92,3 +92,17 @@
   "Returns stack turned into item, keeping the components it carries."
   [stack item]
   (assoc stack :item item))
+
+(defn template
+  "Returns the item, count and component patch of stack."
+  [stack]
+  (when stack
+    (cond-> {:item (:item stack) :count (long (:count stack 1))}
+      (or (:components stack) (:removed stack))
+      (assoc :patch (select-keys stack [:components :removed])))))
+
+(defn of-template
+  "Returns the stack template t describes."
+  [t]
+  (when t
+    (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))

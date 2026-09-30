@@ -147,7 +147,9 @@
    :container-click click-event
    :container-close (fn [eid m] [:menu-close eid (:container m)])
    :container-button-click
-   (fn [eid m] [:menu-button eid (:container m) (:button m)])})
+   (fn [eid m] [:menu-button eid (:container m) (:button m)])
+   :bundle-item-selected
+   (fn [eid m] [:bundle-select eid (:slot m) (:selected m)])})
 
 (defn- client-command-event [eid m]
   (case (long (:action m))
@@ -196,7 +198,7 @@
   #{:custom-payload :chat-session-update :chat-ack
     :configuration-acknowledged
     :cookie-response :custom-click-action :debug-subscription-request
-    :pong :bundle-item-selected :block-entity-tag-query
+    :pong :block-entity-tag-query
     :entity-tag-query :jigsaw-generate :lock-difficulty
     :change-difficulty :move-vehicle :paddle-boat :place-recipe
     :recipe-book-change-settings :recipe-book-seen-recipe

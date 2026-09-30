@@ -535,6 +535,9 @@
    [:play :container-button-click]
    {:schema [:map [:container wire/varint] [:button wire/varint]]
     :read :wire}
+   [:play :bundle-item-selected]
+   {:schema [:map [:slot wire/varint] [:selected wire/varint]]
+    :read :wire}
    [:play :update-recipes]
    {:schema [:map
              [:property-sets [:map-of Id [:sequential :keyword]]]

@@ -50,12 +50,16 @@
 
 (defn- no-pages [v] (empty-or-throw "pages" (vec (get v "pages"))))
 
+(defn- no-contents [v] (empty-or-throw "bundle_contents" (vec v)))
+
 (def ^:private crafted-components
   {"minecraft:damage"               [:damage identity]
    "minecraft:max_damage"           [:max-damage identity]
    "minecraft:max_stack_size"       [:max-stack-size identity]
    "minecraft:block_state"          [:block-state identity]
    "minecraft:repair_cost"          [:repair-cost identity]
+   "minecraft:enchantable"          [:enchantable #(get % "value")]
+   "minecraft:bundle_contents"      [:bundle-contents no-contents]
    "minecraft:dye"                  [:dye kw]
    "minecraft:instrument"           [:instrument kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]

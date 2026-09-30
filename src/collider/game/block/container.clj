@@ -5,6 +5,8 @@
             [collider.game.game-mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
+            [collider.game.bundle :as bundle]
+            [collider.game.block.enchanting :as enchanting]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
@@ -30,7 +32,7 @@
 
 (def bench-types
   #{:stonecutter :loom :crafting-table :anvil :grindstone
-    :smithing-table})
+    :smithing-table :enchantment-table})
 
 (def container-types
   (into (conj chest/types :barrel :ender-chest :shulker-box)
@@ -159,6 +161,13 @@
    :title {:translate "container.upgrade"}
    :recipe-error? false :contents [nil nil nil nil]})
 
+(defn- enchanting-menu [_ _ pos _]
+  (merge {:kind :bench :type :enchantment-table :screen :enchantment
+          :size 2 :cells [] :pos pos :seed 0
+          :title {:translate "container.enchant"}
+          :contents [nil nil]}
+         enchanting/blank))
+
 (def ^:private menu-builders
   {:barrel         barrel-menu
    :shulker-box    lidded-shulker-menu
@@ -170,7 +179,8 @@
    :loom           loom-menu
    :anvil          anvil-menu
    :grindstone     grindstone-menu
-   :smithing-table smithing-menu})
+   :smithing-table smithing-menu
+   :enchantment-table enchanting-menu})
 
 (def ^:private furnace-titles
   {:furnace       "container.furnace"
@@ -216,10 +226,21 @@
 
 (defn- menu-entity [world m] (be/at world (first (:cells m))))
 
+(defn enchanting? [m] (= :enchantment-table (:type m)))
+
+(defn for-player
+  "Returns menu m as player e opens it."
+  [m e]
+  (cond-> m
+    (enchanting? m) (assoc :seed (long (:enchantment-seed e 0)))))
+
 (defn- bench-values [m]
   (case (:type m)
     :anvil [(long (:cost m 0))]
     :smithing-table [(if (:recipe-error? m) 1 0)]
+    :enchantment-table
+    (-> (:costs m) (conj (:seed m))
+        (into (:clues m)) (into (:levels m)))
     nil))
 
 (defn data-values
@@ -578,11 +599,8 @@
                     [[pos (barrel-open-state st open?)]])
          :deltas (recount-deltas world pos st t prev n open?)}))))
 
-(defn fits-inside? [item]
-  (not= :shulker-box (:type (get (data/blocks) item))))
-
 (defn- may-place? [_ stack]
-  (fits-inside? (:item stack)))
+  (bundle/fits-inside? (:item stack)))
 
 (defn- shrink [inv slot]
   (let [n (dec (long (:count (get inv slot) 1)))]
@@ -748,6 +766,26 @@
                   (assoc inv 3 r)
                   (dissoc inv 3))))))
 
+(defn- enchant-place? [slot stack]
+  (or (zero? (long slot)) (= :lapis-lazuli (:item stack))))
+
+(defn- enchant-max [slot _] (when (zero? (long slot)) 1))
+
+(defn- enchant-quick [v inv slot]
+  (let [i (long (.indexOf ^List v slot))]
+    (cond
+      (< i 2) (span v 2 38 true)
+      (= :lapis-lazuli (:item (get inv slot))) (span v 1 2 true)
+      :else (span v 0 1 false))))
+
+(defn- enchant-layout []
+  (let [base (menu/slots-layout 2 enchant-place?)
+        v (:visible base)]
+    (assoc base
+      :max enchant-max
+      :derive identity
+      :quick (fn [inv slot] (enchant-quick v inv slot)))))
+
 (defn- lectern-layout []
   {:count 1 :visible [0]
    :place (fn [_ _] false)
@@ -820,6 +858,7 @@
     :anvil (anvil-layout m ctx)
     :grindstone (grindstone-layout)
     :smithing-table (smithing-layout)
+    :enchantment-table (enchant-layout)
     :crafting-table (crafting/table-layout ctx)
     :shulker-box
     (menu/container-layout (long (:rows m)) may-place?)
@@ -857,10 +896,17 @@
                   (nil? (apply smithing/result ins)))]
     (assoc m :recipe-error? (boolean bad?))))
 
+(defn- enchant-changed [m items ctx]
+  (if (= (:contents m) items)
+    m
+    (let [shelves (:shelves ctx 0)]
+      (merge m (enchanting/offers (:seed m) shelves (nth items 0))))))
+
 (defn slots-changed
   ([m items] (slots-changed m items plain-ctx))
   ([m items ctx]
    (case (:type m)
+     :enchantment-table (enchant-changed m items ctx)
      :stonecutter (workbench/cut-changed m items)
      :loom (workbench/loom-changed m items)
      :anvil (anvil-changed m items ctx)

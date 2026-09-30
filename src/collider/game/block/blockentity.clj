@@ -2,6 +2,7 @@
   "Block entities, the data of a block besides its state."
   (:require [collider.data :as data]
             [collider.game.block.sign :as sign]
+            [collider.game.stack :as stack]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
   (:import (java.util UUID)))
@@ -172,24 +173,13 @@
    :skull         {:profile :profile}
    :decorated-pot {:sherds :pot-decorations}})
 
-(defn- template [stack]
-  (when stack
-    (cond-> {:item (:item stack) :count (long (:count stack 1))}
-            (or (:components stack) (:removed stack))
-            (assoc :patch
-                   (select-keys stack [:components :removed])))))
-
-(defn- from-template [t]
-  (when t
-    (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
-
 (defn contents [items]
   (let [last-at (fn [acc [i s]] (if s (long i) acc))
         top (reduce last-at -1 (map-indexed vector items))]
-    (mapv template (take (inc top) items))))
+    (mapv stack/template (take (inc top) items))))
 
 (defn- items-of [cs size]
-  (vec (take size (concat (map from-template cs) (repeat nil)))))
+  (vec (take size (concat (map stack/of-template cs) (repeat nil)))))
 
 (defn from-stack [e stack]
   (reduce-kv (fn [e field component]
