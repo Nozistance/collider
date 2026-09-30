@@ -430,11 +430,47 @@
   (.tell s (:neighbor @states) #(neighbors-changed %1 ctx %2 %3)
          chunk/min-y chunk/max-y))
 
+(defn- cell-destroyed [s ctx p]
+  (let [old (block-at s p) n (write-count s)]
+    (if (block/air-type? old)
+      [s false]
+      (let [s (set-block s ctx (block/destroyed p old) 3 update-limit)]
+        [s (< n (write-count s))]))))
+
+(defn- cell-placed [s ctx [p st :as c] strict?]
+  (let [n (write-count s)
+        c (if strict? c (command-state (chunks s) ctx c))
+        s (set-block s ctx c (if strict? 818 258) update-limit)
+        [q old] (when (< n (write-count s)) (write-at s n))]
+    (if (= p q) [(add-placed s [p old]) true] [s false])))
+
+(defn- cell [ctx {:keys [strict? destroy? test]}]
+  (fn [[s n] [p st :as c]]
+    (if (and test (not (test (block-at s p))))
+      [s n]
+      (let [[s hit] (if destroy? (cell-destroyed s ctx p) [s false])
+            [s put] (if st (cell-placed s ctx c strict?) [s false])]
+        [s (if (or hit put) (inc (long n)) n)]))))
+
+(defn- commanded-by [chunks ctx changes opts]
+  (let [[s n] (reduce (cell ctx opts) [(opened chunks) 0] changes)
+        s (if (:strict? opts) s (told s ctx))]
+    (assoc (level s (chunk/editing? chunks)) :count n)))
+
 (defn commanded
   "Returns the level after the changes of a command.
   Each change is set with flags 258. Each change that alters its cell
   tells its neighbours once all changes are set. :placed holds those
-  cells as [pos old]."
-  [chunks ctx changes]
-  (level (told (commanded-each (opened chunks) ctx changes) ctx)
-         (chunk/editing? chunks)))
+  cells as [pos old] and :count the cells the command affected. With
+  :test only cells whose state passes it change. With :destroy? each
+  cell is first destroyed with its drops. With :strict? each change is
+  set as it is with flags 818 and tells no one. A change of state nil
+  places nothing."
+  ([chunks ctx changes] (commanded chunks ctx changes nil))
+  ([chunks ctx changes opts]
+   (if (seq opts)
+     (commanded-by chunks ctx changes opts)
+     (let [l (level (told (commanded-each (opened chunks) ctx changes)
+                          ctx)
+                    (chunk/editing? chunks))]
+       (assoc l :count (count (:placed l)))))))

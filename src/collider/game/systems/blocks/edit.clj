@@ -310,12 +310,15 @@
      (first (run-deltas world changes base run)))))
 
 (defn command-deltas
-  "Returns [deltas n] for the changes of /setblock or /fill.
-  They are made between ticks. n counts the cells they changed."
-  [world changes]
-  (let [base (dec (long (:tick world)))
-        [ds s] (run-deltas world changes base neighbors/commanded)]
-    [ds (count (:placed s))]))
+  "Returns [deltas n placed] for the changes of /setblock or /fill.
+  They are made between ticks with the options of neighbors/commanded.
+  n counts the cells they affected, placed the cells they set."
+  ([world changes] (command-deltas world changes nil))
+  ([world changes opts]
+   (let [base (dec (long (:tick world)))
+         f #(neighbors/commanded %1 %2 %3 opts)
+         [ds s] (run-deltas world changes base f)]
+     [ds (:count s) (count (:placed s))])))
 
 (def ^:private game-master-types
   #{:command :structure :jigsaw :test :test-instance})

@@ -9,6 +9,7 @@
             [collider.game.effect :as effect]
             [collider.game.experience :as xp]
             [collider.game.command.item-args :as item-args]
+            [collider.game.command.block-args :as block-args]
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
             [collider.game.entity :as entity]
@@ -147,12 +148,20 @@
 (defn- box [[ax ay az bx by bz]]
   (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
 
+(defn- shell? [[[x1 x2] [y1 y2] [z1 z2]] [x y z]]
+  (or (= x x1) (= x x2) (= y y1) (= y y2) (= z z1) (= z z2)))
+
 (defn- fill-changes
-  [[[x1 x2] [y1 y2] [z1 z2]] st]
-  (vec (for [z (range z1 (inc z2))
-             y (range y1 (inc y2))
-             x (range x1 (inc x2))]
-         [[x y z] st])))
+  [[[x1 x2] [y1 y2] [z1 z2] :as bounds] st mode]
+  (into [] (keep (fn [p]
+                   (cond (shell? bounds p) [p st]
+                         (= "outline" mode) nil
+                         (= "hollow" mode) [p 0]
+                         :else [p st])))
+        (for [z (range z1 (inc z2))
+              y (range y1 (inc y2))
+              x (range x1 (inc x2))]
+          [x y z])))
 
 (defn- box-ids [[[x1 x2] _ [z1 z2]]]
   (for [cx (range (bit-shift-right (long x1) 4)
@@ -189,18 +198,28 @@
 
 (defn- source-level [world] (level-view world (source-dim world)))
 
-(defn- filled [world eid bounds block]
+(defn- mode-opts [mode test]
+  (cond-> {}
+    test (assoc :test test)
+    (= "keep" mode) (assoc :test block/air-type?)
+    (= "destroy" mode) (assoc :destroy? true)
+    (= "strict" mode) (assoc :strict? true)))
+
+(defn- edited [world changes opts]
   (let [dim (source-dim world)
         lv (level-view world dim)
-        [chunks adds] (fetched lv bounds)
-        changes (fill-changes bounds (block/state block))
-        lv (assoc lv :chunks chunks)
-        [ds n] (edit/command-deltas lv changes)]
+        [chunks adds] (fetched lv (box (into (ffirst changes)
+                                             (first (peek changes)))))
+        [ds n placed] (edit/command-deltas (assoc lv :chunks chunks)
+                                           changes opts)]
+    [(in-level world dim adds) (in-level world dim ds) n placed]))
+
+(defn- filled [world eid bounds block mode test]
+  (let [changes (fill-changes bounds (:state block) mode)
+        [adds ds n] (edited world changes (mode-opts mode test))]
     (if (zero? (long n))
-      (concat (in-level world dim adds)
-              (fail eid "commands.fill.failed"))
-      (concat (in-level world dim (into (vec adds) ds))
-              (say eid "commands.fill.success" (str n))))))
+      (concat adds (fail eid "commands.fill.failed"))
+      (concat adds ds (say eid "commands.fill.success" n)))))
 
 (defn- flat-in? [^long x ^long z]
   (and (<= -30000000 x) (< x 30000000)
@@ -221,11 +240,19 @@
     (and (<= -20000000 (long y)) (< (long y) 20000000)
          (flat-in? x z))))
 
-(defn- fill-deltas [world eid [ax ay az bx by bz block]]
+(defn- fill-by [world eid corners block mode test]
   (if-let [k (some #(pos-error (source-level world) %)
-                   [[ax ay az] [bx by bz]])]
+                   [(subvec corners 0 3) (subvec corners 3 6)])]
     (fail eid k)
-    (filled world eid (box [ax ay az bx by bz]) block)))
+    (filled world eid (box corners) block mode test)))
+
+(defn- fill-deltas [world eid [ax ay az bx by bz block mode]]
+  (fill-by world eid [ax ay az bx by bz] block mode nil))
+
+(defn- fill-where-deltas
+  [world eid [ax ay az bx by bz block _ filter mode]]
+  (fill-by world eid [ax ay az bx by bz] block mode
+           #(block-args/matches? filter % nil)))
 
 (defn- rule-hint [rule]
   (if (= :bool (:type (rules/table rule)))
@@ -324,9 +351,6 @@
 (defn- alive? [e]
   (not (and (:health e) (<= (double (:health e)) 0.0))))
 
-(defn- typed? [{:keys [type not-type?]} e]
-  (or (nil? type) (= (boolean not-type?) (not= type (:type e)))))
-
 (defn- xyz [p] [(v/x p) (v/y p) (v/z p)])
 
 (def ^:private still (v/v3 [0.0 0.0 0.0]))
@@ -342,26 +366,87 @@
     (and (or (nil? lo) (>= d (double (sq lo))))
          (or (nil? hi) (<= d (double (sq hi)))))))
 
-(defn- near? [world sel dim e]
-  (let [d (:distance sel)]
-    (or (nil? d)
-        (and (= dim (source-dim world))
-             (in-distance? d (source-pos world) e)))))
+(defn- in-bounds? [[lo hi] v]
+  (and (or (nil? lo) (>= (double v) (double lo)))
+       (or (nil? hi) (<= (double v) (double hi)))))
 
-(defn- matches? [world sel [_ dim e]]
-  (and (typed? sel e)
-       (or (not (:entities sel)) (alive? e))
-       (near? world sel dim e)))
+(declare wrapped)
 
-(defn- picked [world sel xs]
-  (let [from (source-pos world)]
+(defn- turned? [[lo hi] rot]
+  (let [a (wrapped (or lo 0.0)) b (wrapped (or hi 359.0))
+        r (wrapped rot)]
+    (if (> a b) (or (>= r a) (<= r b)) (and (>= r a) (<= r b)))))
+
+(defn- type-tagged? [id t]
+  (let [tag (get (data/tags) "entity_type")]
+    (some #{t} (get tag (str/replace id #"^minecraft:" "")))))
+
+(defn- tagged? [tag e]
+  (if (= "" tag) (empty? (:tags e)) (contains? (:tags e) tag)))
+
+(defn- pred? [[k a inv] e]
+  (let [f #(not= (boolean inv) (boolean %))]
+    (case k
+      :alive (alive? e)
+      :name (f (= a (when (= :player (:type e)) (:name e))))
+      :gamemode (and (= :player (:type e)) (f (= a (:game-mode e))))
+      :team (f (= a ""))
+      :type (f (= a (:type e)))
+      :type-tag (f (type-tagged? a (:type e)))
+      :tag (f (tagged? a e))
+      false)))
+
+(declare xp-of)
+
+(defn- leveled? [world sel e]
+  (or (nil? (:level sel))
+      (and (= :player (:type e))
+           (in-bounds? (:level sel) (:level (xp-of world e))))))
+
+(defn- entity-box [e]
+  (let [[hw h] (entity/box e) [x y z] (xyz (:pos e))
+        hw (double hw)]
+    [[(- x hw) (+ x hw)] [y (+ y (double h))] [(- z hw) (+ z hw)]]))
+
+(defn- overlaps? [a b]
+  (every? (fn [[[a0 a1] [b0 b1]]]
+            (and (< (double a0) (double b1))
+                 (> (double a1) (double b0))))
+          (map vector a b)))
+
+(defn- sel-pos [world sel]
+  (let [p (source-pos world) o (:pos sel)]
+    (mapv #(double (get o % (nth p %))) [0 1 2])))
+
+(defn- sel-box [sel pos]
+  (let [d (:delta sel) hi (second (:range sel))]
     (cond
-      (:random sel)
-      (when (seq xs)
-        (let [r (random/of-key (:tick world) :selector)]
-          [(nth (vec xs) (long (* (double r) (count xs))))]))
-      (:nearest sel) (take 1 (sort-by #(dist-sq from (nth % 2)) xs))
-      :else xs)))
+      (seq d) (mapv (fn [i]
+                      (let [v (double (get d i 0.0))
+                            c (double (pos i))]
+                        [(+ c (min v 0.0)) (+ c (max v 0.0) 1.0)]))
+                    [0 1 2])
+      hi (mapv #(vector (- (double %) (double hi))
+                        (+ (double %) (double hi) 1.0))
+               pos))))
+
+(defn- selects? [world sel pos box [_ _ e]]
+  (and (every? #(pred? % e) (:preds sel))
+       (or (nil? (:type sel)) (= (:type sel) (:type e)))
+       (or (nil? (:rot-x sel)) (turned? (:rot-x sel) (:pitch e 0.0)))
+       (or (nil? (:rot-y sel)) (turned? (:rot-y sel) (:yaw e 0.0)))
+       (leveled? world sel e)
+       (or (nil? box) (overlaps? box (entity-box e)))
+       (or (nil? (:range sel)) (in-distance? (:range sel) pos e))))
+
+(defn- ordered [world sel pos xs]
+  (case (:order sel)
+    :nearest (sort-by #(dist-sq pos (nth % 2)) xs)
+    :furthest (sort-by #(- (dist-sq pos (nth % 2))) xs)
+    :random (sort-by #(random/of-key [(:tick world) :selector
+                                      (first %)])
+                     xs)
+    xs))
 
 (defn- by-uuid [world players? u]
   (some (fn [[id _ e :as x]]
@@ -371,21 +456,32 @@
 (defn- by-name [world nm]
   (some #(when (= nm (:name (nth % 2))) %) (player-entries world)))
 
-(defn- self-entry [world eid sel]
+(defn- self-entry [world eid sel ok?]
   (let [x [eid (:dim world) (get-in world [:entities eid])]]
-    (when (and (peek x) (matches? world (dissoc sel :entities) x))
+    (when (and (peek x) (ok? x)
+               (or (:entities? sel) (= :player (:type (peek x)))))
       [x])))
 
-(defn- selected [world eid sel]
-  (cond
-    (:self sel) (self-entry world eid sel)
-    (:name sel) (keep identity [(by-name world (:name sel))])
-    (:uuid sel) (keep identity [(by-uuid world false (:uuid sel))])
-    :else (->> (if (:entities sel)
-                 (entity-entries world)
-                 (player-entries world))
-               (filter #(matches? world sel %))
-               (picked world sel))))
+(defn- candidates [world sel]
+  (let [xs (if (:entities? sel)
+             (entity-entries world)
+             (player-entries world))
+        dim (source-dim world)]
+    (if (:world? sel) (filter #(= dim (second %)) xs) xs)))
+
+(defn- selected
+  "EntitySelector.findEntities, and findPlayers when sel includes no
+  other entities."
+  [world eid sel]
+  (let [pos (sel-pos world sel) box (sel-box sel pos)
+        ok? #(selects? world sel pos box %)]
+    (cond
+      (:name sel) (keep identity [(by-name world (:name sel))])
+      (:uuid sel) (keep identity [(by-uuid world false (:uuid sel))])
+      (:self? sel) (self-entry world eid sel ok?)
+      :else (->> (filter ok? (candidates world sel))
+                 (ordered world sel pos)
+                 (take (:limit sel))))))
 
 (defn- player-selected [world eid sel]
   (if (:uuid sel)
@@ -408,7 +504,15 @@
   (reduce (fn [^long b ^long a]
             (cond-> (bit-or b (bit-shift-left 1 (+ 5 a)))
               same? (bit-or (bit-shift-left 1 a))))
-          (bit-or 8 16) rel))
+          (cond-> 0 (:y-rot rel) (bit-or 8) (:x-rot rel) (bit-or 16))
+          (filter int? rel)))
+
+(defn- sent-angle [rel? v old]
+  (if rel? (wrapped (- (double v) (double old))) v))
+
+(defn- sent-turn [e [yaw pitch] rel]
+  [(sent-angle (:y-rot rel) yaw (:yaw e 0.0))
+   (sent-angle (:x-rot rel) pitch (:pitch e 0.0))])
 
 (defn- known-vel [e]
   (if (= :player (:type e)) (:client-vel e) (:vel e)))
@@ -430,8 +534,9 @@
     (if (= :entity rel)
       [(out/to id (out/teleport pos yaw pitch))]
       (let [bits (rel-bits rel true)
-            at (packet-pos e pos rel)]
-        [(out/to id (out/teleport at 0.0 0.0 bits))]))))
+            at (packet-pos e pos rel)
+            [y p] (sent-turn e turn rel)]
+        [(out/to id (out/teleport at y p bits))]))))
 
 (defn- stood [ds e]
   (let [of (fn [tag] (some #(when (= tag (nth % 0)) (nth % 2)) ds))]
@@ -466,7 +571,7 @@
   (let [lv (level-view world from)
         [wake e] (woken lv id e0)
         own? (set? rel)
-        turn (if own? [(:yaw e 0.0) (:pitch e 0.0)] turn)]
+        turn (if (:own-turn rel) [(:yaw e 0.0) (:pitch e 0.0)] turn)]
     (in-level
       world from
       (concat
@@ -527,17 +632,33 @@
 
 (defn- own-turn [[_ _ e]] [(:yaw e 0.0) (:pitch e 0.0)])
 
-(defn- tp-pos-deltas [world eid placed pos]
+(def ^:private own-rotation #{:y-rot :x-rot :own-turn})
+
+(defn- tp-moves [world placed pos turn-of look]
   (let [to (source-dim world)
         rel (get-in world [:source :relative] #{})]
-    (cond
-      (empty? placed) (fail eid "argument.entity.notfound.entity")
-      (not (spawnable? pos))
-      (fail eid "commands.teleport.invalidPosition")
-      :else
-      (concat (mapcat #(moved world % to pos (own-turn %) rel)
-                      placed)
-              (pos-report eid placed pos)))))
+    (mapcat (fn [x]
+              (let [[t r] (turn-of x)]
+                (concat (moved world x to pos t (into rel r))
+                        (when look (look x pos)))))
+            placed)))
+
+(defn- tp-at
+  ([world eid placed pos] (tp-at world eid placed pos nil nil))
+  ([world eid placed pos turn-of look]
+   (cond
+     (empty? placed) (fail eid "argument.entity.notfound.entity")
+     (not (spawnable? pos))
+     (fail eid "commands.teleport.invalidPosition")
+     :else
+     (concat (tp-moves world placed pos
+                       (or turn-of
+                           (fn [x] [(own-turn x) own-rotation]))
+                       look)
+             (pos-report eid placed pos)))))
+
+(defn- tp-pos-deltas [world eid placed pos]
+  (tp-at world eid placed pos))
 
 (defn- entity-report [eid placed d]
   (if (= 1 (count placed))
@@ -561,7 +682,7 @@
       :else (to-entity world eid placed dim d))))
 
 (defn- self [world eid]
-  (selected world eid {:self true}))
+  (selected world eid {:self? true :entities? true :limit 1}))
 
 (defn- tp-deltas [world eid pos]
   (tp-pos-deltas world eid (self world eid) (vec pos)))
@@ -571,6 +692,45 @@
 
 (defn- tp-targets-deltas [world eid [sel & pos]]
   (tp-pos-deltas world eid (selected world eid sel) (vec pos)))
+
+(declare f32 pitch-set look-angles anchored rotated)
+
+(defn- source-turn [world eid [ry yv] [rp pv]]
+  (let [src (get-in world [:entities eid])]
+    [(f32 (+ (double yv) (if ry (double (:yaw src 0.0)) 0.0)))
+     (f32 (+ (double pv) (if rp (double (:pitch src 0.0)) 0.0)))]))
+
+(defn- rotated-turn [[_ _ e] [yaw pitch] ry rp]
+  (let [old-y (double (:yaw e 0.0)) old-p (double (:pitch e 0.0))]
+    [[(if ry (+ old-y (wrapped (- (double yaw) old-y))) (wrapped yaw))
+      (pitch-set (if rp (+ old-p (wrapped (- (double pitch) old-p)))
+                     (wrapped pitch)))]
+     (cond-> #{} ry (conj :y-rot) rp (conj :x-rot))]))
+
+(defn- tp-rotated-deltas [world eid [sel x y z yaw pitch]]
+  (let [turn (source-turn world eid yaw pitch)]
+    (tp-at world eid (selected world eid sel) [x y z]
+           #(rotated-turn % turn (first yaw) (first pitch)) nil)))
+
+(defn- look-from [world target fx-of]
+  (fn [[id dim e] pos]
+    (let [[yaw pitch] (look-angles pos target)]
+      (rotated world id dim yaw pitch
+               (when (= :player (:type e)) (fx-of target))))))
+
+(defn- tp-facing-deltas [world eid [sel x y z fx fy fz]]
+  (let [target [fx fy fz]]
+    (tp-at world eid (selected world eid sel) [x y z] nil
+           (look-from world target #(out/look-at :feet % nil nil)))))
+
+(defn- tp-facing-entity-deltas [world eid [sel x y z other anchor]]
+  (let [[oid _ o] (first (selected world eid other))
+        anchor (or anchor :feet)]
+    (if o
+      (tp-at world eid (selected world eid sel) [x y z] nil
+             (look-from world (anchored o anchor)
+                        #(out/look-at :feet % oid anchor)))
+      (fail eid "argument.entity.notfound.entity"))))
 
 (defn- tp-targets-to-deltas [world eid [sel dest]]
   (tp-entity-deltas world eid (selected world eid sel) dest))
@@ -640,26 +800,35 @@
         at [(double (or x (nth p 0)))
             (double (or y (nth p 1)))
             (double (or z (nth p 2)))]]
-    (if (spawnable? at)
-      (summoned world eid type at)
-      (fail eid "commands.summon.invalidPosition"))))
+    (cond
+      (not (mobs/mob-type? type)) (fail eid "commands.summon.failed")
+      (spawnable? at) (summoned world eid type at)
+      :else (fail eid "commands.summon.invalidPosition"))))
 
-(defn- block-set [world eid [x y z :as pos] st]
-  (let [dim (source-dim world)
-        lv (level-view world dim)
-        [ds n] (edit/command-deltas lv [[pos st]])]
-    (if (zero? (long n))
+(defn- place-needed? [world pos st mode]
+  (let [old (edit/block-at (source-level world) pos)
+        left (if (block/air-type? old) old (block/emptied old))]
+    (or (not= "destroy" mode) (not (block/air-type? st))
+        (not (block/air-type? left)))))
+
+(defn- block-set [world eid [x y z :as pos] st mode]
+  (let [put? (place-needed? world pos st mode)
+        [_ ds _ placed] (edited world [[pos (when put? st)]]
+                                (mode-opts mode nil))]
+    (if (and put? (zero? (long placed)))
       (fail eid "commands.setblock.failed")
-      (concat (in-level world dim ds)
-              (say eid "commands.setblock.success"
-                   (str x) (str y) (str z))))))
+      (concat ds (say eid "commands.setblock.success" x y z)))))
 
-(defn- setblock-deltas [world eid [x y z block]]
+(defn- setblock-deltas [world eid [x y z block mode]]
   (let [pos [x y z]
-        k (pos-error (source-level world) pos)]
-    (if k
-      (fail eid k)
-      (block-set world eid pos (block/state block)))))
+        lv (source-level world)
+        k (pos-error lv pos)]
+    (cond
+      k (fail eid k)
+      (and (= "keep" mode)
+           (not (block/air-type? (edit/block-at lv pos))))
+      (fail eid "commands.setblock.failed")
+      :else (block-set world eid pos (:state block) mode))))
 
 (defn- block-under [world [x y z]]
   (let [p (source-pos world)
@@ -906,7 +1075,8 @@
   (if (or (nil? t) (= dim tdim))
     (let [lv (level-view world dim)]
       (in-level world dim (camera/set-deltas lv id e tid)))
-    (concat (moved world x tdim (vec (xyz (:pos t))) (own-turn x) #{})
+    (concat (moved world x tdim (vec (xyz (:pos t))) (own-turn x)
+                   own-rotation)
             (in-level world tdim
                       [[:merge-entity id {:camera tid}]
                        (out/to id (out/camera tid))]))))
@@ -1485,11 +1655,16 @@
    :xp-query xp-query-deltas
    :effect-give effect-give-deltas :effect-clear effect-clear-deltas
    :tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
-   :tp-targets-to tp-targets-to-deltas :give give-deltas
+   :tp-targets-to tp-targets-to-deltas
+   :tp-targets-rotated tp-rotated-deltas
+   :tp-targets-facing tp-facing-deltas
+   :tp-targets-facing-entity tp-facing-entity-deltas
+   :give give-deltas
    :kill kill-deltas
    :summon summon-deltas :setblock setblock-deltas
    :setworldspawn world-spawn-deltas :spawnpoint spawnpoint-deltas
-   :fill fill-deltas :reload reload-deltas
+   :fill fill-deltas :fill-where fill-where-deltas
+   :reload reload-deltas
    :gamemode gamemode-deltas :defaultgamemode default-mode-deltas
    :spectate spectate-deltas})
 

@@ -215,3 +215,16 @@
          (tag-match? pred state)
          (block-match? pred state))
        (nbt-match? pred nbt)))
+
+(defn ids
+  "Returns the block ids a block argument completes, with the block
+  tags as #ids when tags? is true."
+  [tags?]
+  (cond-> (vec (sort (keys @block-ids)))
+    tags? (into (map #(str "#" %)) (sort (keys @block-tags)))))
+
+(defn varying?
+  "Whether the blocks that parsed value v names have properties."
+  [{:keys [tag state]}]
+  (let [bs (if tag (@block-tags tag) [(block/name-of state)])]
+    (boolean (some #(seq (get-in (data/blocks) [% :props])) bs))))
