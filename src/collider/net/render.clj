@@ -497,7 +497,7 @@
 
 (def ^:private entity-events
   {:hop 1 :death 3 :break 3 :eat 10 :break-main 47 :break-off 48
-   :love 18 :teleport 46})
+   :love 18 :teleport 46 :reduced-debug 22 :full-debug 23})
 
 (defn- status-packet [m]
   (if (= :hurt (:kind m))
@@ -648,6 +648,7 @@
 (def ^:private game-events
   {:start-raining 1 :stop-raining 2 :change-game-mode 3
    :rain-level-change 7 :thunder-level-change 8
+   :immediate-respawn 11 :limited-crafting 12
    :level-chunks-load-start 13})
 
 (defn- game-event-packet [event value]
@@ -859,7 +860,10 @@
    (assoc (data/recipes) :packet :update-recipes)])
 
 (def ^:private world-fx
-  {:rain-started   (fn [_ _] [(game-event-packet :start-raining 0.0)])
+  {:rule-flag      (fn [_ m]
+                     [(game-event-packet (:kind m)
+                                         (if (:on? m) 1.0 0.0))])
+   :rain-started   (fn [_ _] [(game-event-packet :start-raining 0.0)])
    :rain-stopped   (fn [_ _] [(game-event-packet :stop-raining 0.0)])
    :rain-level     (level-fx :rain-level-change)
    :thunder-level  (level-fx :thunder-level-change)
@@ -1038,9 +1042,15 @@
     (f world m)
     (once! (:msg m))))
 
+(defn- rule-flags [lv]
+  (let [on? #(boolean (get-in lv [:rules %]))]
+    {:reduced-debug    (on? :reduced-debug-info)
+     :death-screen     (not (on? :immediate-respawn))
+     :limited-crafting (on? :limited-crafting)}))
+
 (defn- join-login-packets [cfg lv eid e]
   (let [{:keys [max-players view-distance simulation-distance]} cfg]
-    [(merge (spawn-info lv e)
+    [(merge (spawn-info lv e) (rule-flags lv)
             {:packet              :login :eid eid
              :levels              schema/dims
              :max-players         (min 255 (long max-players))
@@ -1099,7 +1109,8 @@
   #{:time :rain-started :rain-stopped :player-chat :system-chat
     :tab-add :tab-remove :tab-latency :tab-header :default-spawn
     :tab-game-mode
-    :game-rules :reloaded :view-distance :simulation-distance})
+    :game-rules :reloaded :view-distance :simulation-distance
+    :rule-flag})
 
 (defn- sight-of [world]
   (let [ps (players world)

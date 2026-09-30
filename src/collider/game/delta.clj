@@ -284,6 +284,7 @@
                        [:forget Coll] [:untrack Coll]]
    :default-spawn     [[:dimension :keyword] [:pos Pos]
                        [:yaw number?] [:pitch number?]]
+   :rule-flag         [[:kind :keyword] [:on? :boolean]]
    :rain-started      []
    :rain-stopped      []
    :rain-level        [[:level number?]]

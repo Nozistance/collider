@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 20)
+(def layout 21)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -93,7 +93,7 @@
   (into [:packets :registries :blocks :synced :light :fire :fuel
          :brewing :dyes :sounds :potions :effects :entities
          :version :block-entities :growers
-         :attributes]
+         :attributes :spawns]
         item-facts))
 
 (def ^:private ^:table tables
@@ -117,6 +117,12 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
+
+(defn spawns
+  "Returns what natural spawning reads: the mob categories in their
+  order, the spawn facts of the entity types, the states each type
+  stands on and the ones that hurt it, and the redstone conductors."
+  [] (:spawns @tables))
 
 (defn growers
   "Returns the tree growers by name: the chance of the secondary

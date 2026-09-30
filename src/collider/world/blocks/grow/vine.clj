@@ -105,8 +105,9 @@
 
 (defn tick
   "VineBlock.randomTick: the cells a vine at p grows into."
-  [chunks p st roll _time _ctx]
-  (when (chance? roll :gate 4)
+  [chunks p st roll _time ctx]
+  (when (and (get-in ctx [:rules :spread-vines] true)
+             (chance? roll :gate 4))
     (let [dir (dir/six (pick roll :dir 6))]
       (cond
         (and (contains? dir/horizontal-offset dir)

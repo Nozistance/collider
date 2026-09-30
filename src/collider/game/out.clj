@@ -72,6 +72,12 @@
   {:msg :default-spawn :dimension dim :pos pos
    :yaw (double yaw) :pitch (double pitch)})
 
+(defn rule-flag
+  "Returns the effect that the rule kind, :immediate-respawn or
+  :limited-crafting, is now on? for the clients."
+  [kind on?]
+  {:msg :rule-flag :kind kind :on? (boolean on?)})
+
 (defn rain-started []
   {:msg :rain-started})
 

@@ -59,6 +59,12 @@
                (if top? y motion)
                (if (block/blocks-motion? st) y floor))))))
 
+(defn surface-top
+  "Returns the y of the highest block of the column at x z that is
+  not air, one below the lowest y when there is none."
+  ^long [chunks x z]
+  (long (nth (column-heights chunks x z) 0)))
+
 (defn motion-blocking-height
   "Returns the y just above the top of the column at x z.
   The top is its highest block or fluid."

@@ -34,6 +34,7 @@
             [collider.game.systems.jukebox :as jukebox]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.mobs :as mobs]
+            [collider.game.systems.natural :as natural]
             [collider.game.systems.orbs :as orbs]
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
@@ -95,6 +96,7 @@
               #'containers/rechecks]
              [#'block-updates/fluid-updates]
              [#'chunks/unloading
+              #'natural/natural-spawns
               #'random-tick/random-ticks
               #'weather-system/weather]
              [#'block-updates/block-flush

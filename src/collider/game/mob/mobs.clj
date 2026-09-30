@@ -113,6 +113,7 @@
    :sounds         :cow
    :voices         [:classic :moody]
    :food           "cow_food"
+   :spawns-on      "animals_spawnable_on"
    :spawn-color    coat})
 
 (def ^:private water-walker
@@ -123,9 +124,11 @@
                :max-health    8.0
                :sounds        :sheep
                :food          "sheep_food"
+               :spawns-on     "animals_spawnable_on"
                :spawn-color   sheep-color}
    :cow       cow
-   :mooshroom (-> (assoc cow :ground :mycelium :voices [:classic])
+   :mooshroom (-> (assoc cow :ground :mycelium :voices [:classic]
+                         :spawns-on "mooshrooms_spawnable_on")
                   (dissoc :spawn-color))
    :pig       {:speed       (attr 0.25)
                :max-health  10.0
@@ -135,6 +138,7 @@
                :shared      #{:step}
                :eats-aloud? true
                :food        "pig_food"
+               :spawns-on   "animals_spawnable_on"
                :spawn-color coat}
    :chicken   {:speed       (attr 0.25)
                :max-health  4.0
@@ -145,12 +149,14 @@
                :food        "chicken_food"
                :fall-drag   0.6
                :walker      water-walker
+               :spawns-on   "animals_spawnable_on"
                :spawn-color coat}
    :rabbit    {:speed       (attr 0.3)
                :max-health  3.0
                :sounds      :rabbit
                :block-steps? true
                :food        "rabbit_food"
+               :spawns-on   "rabbits_spawnable_on"
                :spawn-color rabbit-variant}})
 
 (defn egg-type
@@ -317,6 +323,18 @@
   (let [r (double (float (random/of-key (conj ks :yaw))))
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
     (assoc (egg-mob type pos ks tick dim) :yaw yaw :head-yaw yaw)))
+
+(def ^:private ^:const baby-start 24000)
+
+(defn natural-mob
+  "Returns a mob that NaturalSpawner puts at pos in level dim. Its
+  body faces yaw and its head stays at zero; it is a baby when baby?
+  says AgeableMob.finalizeSpawn made it one. The keys ks decide its
+  colour, voice and follow range."
+  [type pos ks tick dim yaw baby?]
+  (cond-> (assoc (egg-mob type pos ks tick dim)
+            :yaw (double yaw) :head-yaw 0.0)
+    baby? (assoc :baby-until (+ (long tick) baby-start))))
 
 (defn exp-delay
   "Returns a wait of at least one tick, drawn from an exponential law

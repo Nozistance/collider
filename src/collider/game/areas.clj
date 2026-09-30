@@ -22,7 +22,10 @@
        (or (get-in world [:rules :spectators-generate-chunks] true)
            (not (game-mode/spectator? e)))))
 
-(defn- player-chunks [world]
+(defn player-chunks
+  "Returns the ids of the chunks that the players who load chunks
+  stand in."
+  [world]
   (let [es (:entities world)
         at (fn [eid]
              (when-let [e (get es eid)]

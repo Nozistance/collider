@@ -241,10 +241,20 @@
     [(out/all (out/time (long (:tick world))
                         (clock/full-sync world)))]))
 
+(defn- rule-shown [world rule v]
+  (case rule
+    (:immediate-respawn :limited-crafting)
+    [(out/all (out/rule-flag rule v))]
+    :reduced-debug-info
+    (for [p (vals (:players world))]
+      (out/to p (out/status p (if v :reduced-debug :full-debug))))
+    nil))
+
 (defn- rule-set [world eid id rule v]
   (let [w (assoc-in world [:rules rule] v)]
     (concat [[:set-rule rule v]
              (out/all (out/game-rules (:rules w)))]
+            (rule-shown w rule v)
             (clocks-resent w rule)
             (say eid "commands.gamerule.set" id
                  (rules/serialize rule v)))))

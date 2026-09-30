@@ -15,9 +15,18 @@
   ^long [dim]
   (case dim :the-nether 32 :the-end 0 sea-level))
 
+(defn- spawner [m]
+  {:type (data/kebab (get m "type")) :weight (get m "weight")
+   :min (get m "minCount") :max (get m "maxCount")})
+
+(defn- spawners [json]
+  (into {} (map (fn [[k v]] [(data/kebab k) (mapv spawner v)]))
+        (get json "spawners")))
+
 (defn- biome [json]
   (let [modifier (get json "temperature_modifier")]
     (cond-> {:attributes (dimension/attributes json)
+             :spawners (spawners json)
              :downfall (get json "downfall")
              :has-precipitation (get json "has_precipitation")
              :temperature (get json "temperature")}

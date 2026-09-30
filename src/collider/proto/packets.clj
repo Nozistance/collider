@@ -137,12 +137,9 @@
          [:levels [:sequential wire/id]]
          [:max-players wire/varint] [:view-distance wire/varint]
          [:simulation-distance wire/varint]
-         [:reduced-debug {:optional true}
-          [:= {:wire wire/boolean} false]]
-         [:death-screen {:optional true}
-          [:= {:wire wire/boolean} true]]
-         [:limited-crafting {:optional true}
-          [:= {:wire wire/boolean} false]]]
+         [:reduced-debug wire/boolean]
+         [:death-screen wire/boolean]
+         [:limited-crafting wire/boolean]]
         (concat spawn-info
                 [[:secure-chat {:optional true}
                   [:= {:wire wire/boolean} false]]

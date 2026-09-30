@@ -11,6 +11,7 @@
             [collider.tables.items :as items]
             [collider.tables.load :as load]
             [collider.tables.pack :as pack]
+            [collider.tables.spawns :as spawns]
             [collider.tables.reflect
              :refer [*loader* cls call call-static elements
                      hidden-field key-of registry static-field]]
@@ -487,7 +488,7 @@
           :pack-components {"item" (pack/components access)}
           :fuel (fuel/fuel access (load/features))
           :block-entities (blockentities/block-entities access)
-          :item-names (items/item-names)}
+          :item-names (items/item-names) :spawns (spawns/spawns)}
          (finally (call resources "close")))))
 
 (defn- item-facts []
