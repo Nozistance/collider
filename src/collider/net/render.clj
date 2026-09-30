@@ -64,8 +64,8 @@
   [world [_ _ add drop center]]
   (concat
     (when center [(center-packet center)])
-    (added-chunk-packets world add)
-    (map forget-chunk-packet drop)))
+    (map forget-chunk-packet drop)
+    (added-chunk-packets world add)))
 
 (def ^:private ^:table entity-type
   (delay

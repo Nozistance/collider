@@ -45,8 +45,7 @@
 (def packet-systems
   "The systems a player event drives.
   They all run before the level tick."
-  [#'chunks/chunk-streaming
-   #'players/player-list
+  [#'players/player-list
    #'camera/camera
    #'blocks/block-edits
    #'packets/by-player
@@ -74,14 +73,14 @@
              [#'chunks/chunk-loading]
              packet-systems
              [#'hanging/hanging-uses #'damage/attacks]
-             [#'chunks/arrival-streaming]
              [#'daynight/daynight #'weather-system/weather]
              [#'sleep/sleep]
              [#'block-updates/block-updates]
              [#'block-updates/fluid-updates]
              [#'chunks/unloading
               #'natural/natural-spawns
-              #'random-tick/random-ticks]
+              #'random-tick/random-ticks
+              #'chunks/chunk-views]
              [#'block-updates/block-flush #'players/players]
              [#'block-events/block-events]
              [#'effects/effects]
@@ -91,6 +90,7 @@
              [#'block-entities/block-entities]
              [#'player-tick/player-tick]
              [#'players/late-tracking]
+             [#'chunks/chunk-streaming]
              [#'detector/observe]])
 
 (def server-systems

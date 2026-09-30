@@ -4,7 +4,6 @@
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
-            [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.world.chunk :as chunk]
@@ -112,6 +111,9 @@
         quota (+ (double (or chunk-quota 0.0)) rate)]
     (if blocked 0.0 (min quota (max 1.0 rate)))))
 
+(defn- dropped [cp r sent]
+  (sort (remove #(sees? cp r %) sent)))
+
 (defn- stream-plan [world eid cp r p]
   (let [{:keys [sent-chunks chunk-rate chunk-quota batches-max]} p
         [cx cz] (chunk/id->pos cp)
@@ -123,7 +125,7 @@
         quota (stream-quota chunk-rate chunk-quota blocked)
         n (min (long (Math/floor quota)) (count ready))]
     {:add     (into [] (take n) (nearest-first ready cp))
-     :drop    (sort (remove #(sees? cp r %) sent-chunks))
+     :drop    (dropped cp r sent-chunks)
      :n       n :quota quota :unacked unacked :blocked blocked
      :pending (when (> (count missing) n) true)}))
 
@@ -144,7 +146,8 @@
         {:keys [add drop pending]} plan
         moved? (not= cp (:chunk-pos p))]
     (concat
-      (when (or moved? (not= r (:chunk-view p)) (seq add) (seq drop))
+      (when (or moved? (not= r (:chunk-view p)) (seq add) (seq drop)
+                (not= pending (:chunks-pending? p)))
         [[:merge-entity eid
           {:chunk-pos cp :chunk-view r :chunks-pending? pending}]
          [:chunks-sent eid add drop (when moved? cp)]])
@@ -167,6 +170,16 @@
                (not (stalled? world eid cp r p)))
       (restream-deltas world eid cp r p))))
 
+(defn- view-deltas [world [eid p]]
+  (let [cp (chunk/pos-chunk (:pos p))
+        r (player-radius world p)
+        moved? (not= cp (:chunk-pos p))]
+    (when (or moved? (not= r (:chunk-view p)))
+      [[:merge-entity eid
+        {:chunk-pos cp :chunk-view r :chunks-pending? true}]
+       [:chunks-sent eid [] (dropped cp r (:sent-chunks p))
+        (when moved? cp)]])))
+
 (defn- streaming? [world [_ p]]
   (streams? p (chunk/pos-chunk (:pos p)) (player-radius world p)))
 
@@ -178,36 +191,32 @@
                   (mapcat :need (vals (:spawning world))))))
 
 (defn chunk-loading
-  "Brings in the chunks the players need."
-  {:wake {:types #{:player} :keys [:spawning]}}
+  "Brings in the chunks the players need and takes in the saved ones."
+  {:wake {:types #{:player} :keys [:spawning]
+          :events #{:chunk-loaded}}}
+  [world d]
+  (deltas/of-vec
+    (concat (when (some loaded-event? (:input d))
+              (restore-deltas world d))
+            (when (loads? world)
+              (loading-deltas world (needed-ids world))))))
+
+(defn chunk-views
+  "Moves the views of the players to their chunks.
+  The chunks out of view are forgotten, the new ones wait."
+  {:wake {:types #{:player}}}
   [world _d]
   (deltas/of-vec
-    (when (loads? world)
-      (loading-deltas world (needed-ids world)))))
+    (into [] (mapcat #(view-deltas world %))
+          (level/player-entries world))))
 
 (defn chunk-streaming
-  "Sends chunks to the players and takes in the saved ones.
-  A body returning with its chunk waits for the next tick."
-  {:wake {:types #{:player} :events #{:chunk-loaded}}}
-  [world d]
-  (let [ps (into [] (filter #(streaming? world %))
-                 (level/player-entries world))
-        sent (deltas/fold #(stream-deltas world %) ps)]
-    (if (some loaded-event? (:input d))
-      (deltas/merge sent (deltas/of-vec (restore-deltas world d)))
-      sent)))
-
-(defn- arrived [world d]
-  (keep #(when-let [e (get-in world [:entities (nth % 1)])]
-           [(nth % 1) e])
-        (apply/changes-of d)))
-
-(defn arrival-streaming
-  "Sends their first chunks to the players who entered the level.
-  They get them as the tick ends for them."
-  {:wake {:deltas #{:change-dimension}}}
-  [world d]
-  (deltas/fold #(stream-deltas world %) (vec (arrived world d))))
+  "Sends chunks to the players as the tick ends."
+  {:wake {:types #{:player}}}
+  [world _d]
+  (deltas/fold #(stream-deltas world %)
+               (into [] (filter #(streaming? world %))
+                     (level/player-entries world))))
 
 (defn- unload-deltas [world id]
   [[:unload-chunk id]
