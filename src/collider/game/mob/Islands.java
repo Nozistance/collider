@@ -39,7 +39,32 @@ public final class Islands {
         }
     }
 
-    private static int[] linked(long[] cells) {
+    private static int[] table(long[] cells) {
+        int size = Integer.highestOneBit(Math.max(4, cells.length * 4));
+        int[] t = new int[size];
+        Arrays.fill(t, -1);
+        for (int i = 0; i < cells.length; i++) {
+            int h = slot(cells[i], size);
+            while (t[h] >= 0) h = (h + 1) & (size - 1);
+            t[h] = i;
+        }
+        return t;
+    }
+
+    private static int slot(long k, int size) {
+        long h = k * 0x9E3779B97F4A7C15L;
+        return (int) (h >>> 40) & (size - 1);
+    }
+
+    private static int find(int[] t, long[] cells, long k) {
+        int size = t.length;
+        for (int h = slot(k, size); t[h] >= 0; h = (h + 1) & (size - 1)) {
+            if (cells[t[h]] == k) return t[h];
+        }
+        return -1;
+    }
+
+    private static int[] linked(long[] cells, int[] t) {
         int m = cells.length;
         int[] up = new int[m];
         for (int i = 0; i < m; i++) up[i] = i;
@@ -47,7 +72,7 @@ public final class Islands {
             long cx = (int) (cells[i] >> 32), cz = (int) cells[i];
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    int j = Arrays.binarySearch(cells, key(cx + dx, cz + dz));
+                    int j = find(t, cells, key(cx + dx, cz + dz));
                     if (j > i) join(up, i, j);
                 }
             }
@@ -87,7 +112,8 @@ public final class Islands {
     public static int[][] of(long[] eids, long[] keys) {
         int n = eids.length;
         long[] cells = distinct(keys);
-        int[] up = linked(cells);
+        int[] t = table(cells);
+        int[] up = linked(cells, t);
         int[] order = byId(eids);
         int[] group = new int[cells.length];
         Arrays.fill(group, -1);
@@ -96,7 +122,7 @@ public final class Islands {
         int g = 0;
         for (int k = 0; k < n; k++) {
             int i = order[k];
-            int r = root(up, Arrays.binarySearch(cells, keys[i]));
+            int r = root(up, find(t, cells, keys[i]));
             if (group[r] < 0) group[r] = g++;
             of[k] = group[r];
             sizes[of[k]]++;
