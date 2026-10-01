@@ -8,6 +8,7 @@
             [collider.game.out :as out]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
+            [collider.game.turn.overlay :as overlay]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
@@ -95,7 +96,8 @@
     (if-let [eid (first ids)]
       (if-let [e (get orbs eid)]
         (let [roll (roll-for eid)
-              [e' taken] (stepped world players orbs eid e roll)
+              w (overlay/seen world eid)
+              [e' taken] (stepped w players orbs eid e roll)
               orbs (cond-> (apply dissoc orbs taken)
                      e' (assoc eid e') (nil? e') (dissoc eid))
               out (into out (orb-deltas eid e' taken))]

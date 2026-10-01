@@ -20,9 +20,9 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.turn.living :as living]
+            [collider.game.turn.overlay :as overlay]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
-            [collider.game.delta :as delta]
             [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.data :as data]
@@ -926,10 +926,12 @@
 
 (defn- live
   "Returns world as mob eid sees it in its turn: with the blocks the
-  mobs before it bit this tick."
+  turns before it wrote this tick."
   [world ^long eid]
-  (let [f (fn [w [b bw]] (if (< (long b) eid) bw (reduced w)))]
-    (reduce f world (::bites world))))
+  (let [w (overlay/seen world eid)]
+    (if (identical? w world)
+      w
+      (assoc w :watchers (:watchers world)))))
 
 (defn- turn [world ticking vels tempters t index slots es i]
   (let [[eid e] (nth es i)
@@ -1088,31 +1090,19 @@
   (when-let [f (biters (:type e))]
     (and (f e t) (areas/active-at? active (:pos e)))))
 
-(defn- bitten [world ds]
-  (let [f (fn [w d]
-            (if-let [g (delta/world-apply (nth d 0))] (g w d) w))]
-    (reduce f world ds)))
+(defn- bitten [world tempters t [eid e]]
+  (let [ds (nth (minded (live world eid) tempters eid e t) 2)]
+    (overlay/wrote world eid ds)))
 
-(defn- bitten-worlds [world tempters t cs]
-  (loop [cs cs w world acc []]
-    (if-let [[eid e] (first cs)]
-      (let [w' (bitten w (nth (minded w tempters eid e t) 2))
-            acc (if (identical? w w') acc (conj acc [eid w']))]
-        (recur (rest cs) w' acc))
-      (not-empty acc))))
-
-(defn- bites
-  "Returns the worlds that follow the bites of this tick, as [eid
-  world] in the order of the mobs that bit. A mob bites in its turn
-  and sees the bites of each mob before it, as in the level."
+(defn- seen
+  "Returns world with the bites of this tick in the overlay. A mob
+  bites in its turn and sees the writes of each turn before it, as
+  in the level."
   [world tempters t active islands]
-  (let [xf (comp cat (filter #(biting? active t %)))]
-    (->> (into [] xf islands) (sort-by first)
-         (bitten-worlds world tempters t))))
-
-(defn- seen [world tempters t active islands]
-  (let [world (assoc world :watchers (animal/watchers world))]
-    (assoc world ::bites (bites world tempters t active islands))))
+  (let [world (assoc world :watchers (animal/watchers world))
+        xf (comp cat (filter #(biting? active t %)))
+        bf (fn [w m] (bitten w tempters t m))]
+    (reduce bf world (sort-by first (into [] xf islands)))))
 
 (defn- ended? [active [_ e]]
   (and (mobs/mob-type? (:type e)) (mobs/death-ends? e)

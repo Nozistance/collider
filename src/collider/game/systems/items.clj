@@ -15,7 +15,8 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
-            [collider.world.phys :as phys])
+            [collider.world.phys :as phys]
+            [collider.game.turn.overlay :as overlay])
   (:import (collider.world Move)))
 
 (set! *warn-on-reflection* true)
@@ -646,7 +647,7 @@
         (first (reduce take [[] (:inventory (val p))] items))))))
 
 (defn- stepped-item [world [eid e]]
-  (let [d (step-item world eid e)]
+  (let [d (step-item (overlay/seen world eid) eid e)]
     (if (= :remove-entity (nth d 0))
       [eid nil (:pos e) d]
       [eid (entity/merged e (nth d 2)) (:pos e) d])))

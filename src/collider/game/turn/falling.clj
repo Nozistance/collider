@@ -1,11 +1,11 @@
-(ns collider.game.systems.falling
-  "Falling blocks such as sand, gravel and anvils."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.entity :as entity]
+(ns collider.game.turn.falling
+  "The turn of a falling block such as sand, gravel or an anvil."
+  (:require [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
+            [collider.game.turn.overlay :as overlay]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -175,9 +175,15 @@
             (item-deltas world eid (assoc e :pos pos)))
       :else (drift world eid e pos time vel))))
 
-(defn falling-blocks
-  "Returns the deltas of every falling block in an active chunk."
-  {:wake {:types #{:falling-block}}}
-  [world _d]
-  (deltas/fold (fn [[eid e]] (step-deltas world eid e))
-               (areas/active-of-types world [:falling-block])))
+(defn- turn [[world out] [eid e]]
+  (let [ds (step-deltas (overlay/seen world eid) eid e)]
+    [(overlay/wrote world eid ds) (into out ds)]))
+
+(defn turns
+  "Returns world with the blocks that falling blocks set in their
+  turns, and the deltas of every falling block in an active chunk.
+  Each lands with setBlock as FallingBlockEntity.tick:196, so the
+  turns after it see the block."
+  [world]
+  (reduce turn [world []]
+          (areas/active-of-types world [:falling-block])))

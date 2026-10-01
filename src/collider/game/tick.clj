@@ -18,7 +18,6 @@
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.entities :as entities]
             [collider.game.systems.explosions :as explosions]
-            [collider.game.systems.falling :as falling]
             [collider.game.systems.hanging :as hanging]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.natural :as natural]
@@ -48,8 +47,7 @@
 
 (def entity-systems
   "The systems that step the entities of the level."
-  [#'falling/falling-blocks
-   #'damage/countdown
+  [#'damage/countdown
    #'entities/entities
    #'tnt/tnt-system
    #'projectiles/projectiles
