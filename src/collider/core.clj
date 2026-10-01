@@ -10,12 +10,14 @@
             [collider.game.deltas :as deltas]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
+            [collider.game.tick :as tick]
             [collider.game.ticker :as ticker]
             [collider.log :as log]
             [collider.net.render :as render]
             [collider.net.server :as server]
             [collider.net.session :as session]
-            [collider.persist.snapshot :as snapshot])
+            [collider.persist.snapshot :as snapshot]
+            [collider.plugin :as plugin])
   (:import (clojure.lang ExceptionInfo)
            (collider.game.deltas.record Deltas)
            (java.lang.management
@@ -56,11 +58,13 @@
           (server/send! conn pkt))))))
 
 (defn- shutdown!
-  [{:keys [^ServerSocket socket conns ticker saver store world]}]
+  [{:keys [^ServerSocket socket conns ticker saver store world]
+    :as server}]
   (some-> socket .close)
   (some-> ticker ticker/stop-ticker!)
   (server/close-all! conns shutdown-reason shutdown-drain-ms)
-  (when saver (snapshot/stop-saver! saver store @world)))
+  (when saver (snapshot/stop-saver! saver store @world))
+  (plugin/stop-all! (:plugins server)))
 
 (defn- saver-thread ^Thread [^Runnable r]
   (doto (Thread. r "collider-saver-timer")
@@ -200,10 +204,11 @@
   (when saver #(snapshot/request-save! saver store @world)))
 
 (defn- ticker-opts [base conns]
-  {:io-input (io-input base conns)
-   :settings (:settings base)
-   :on-pause (commit-now base)
-   :on-crash (on-crash (:handle base))})
+  (cond-> {:io-input (io-input base conns)
+           :settings (:settings base)
+           :on-pause (commit-now base)
+           :on-crash (on-crash (:handle base))}
+    (:phases base) (assoc :phases (:phases base))))
 
 (defn- period-change [saving]
   (fn [old new]
@@ -277,20 +282,47 @@
     (deliver handle s)
     s))
 
+(defn- plugin-env [mode opts cfg store]
+  {:dir (:plugins-dir opts "plugins") :mode mode :settings cfg
+   :store store})
+
+(defn- with-adds [cfg {:keys [commands event-filters delta-filters]}]
+  (cond-> cfg
+    (seq commands) (assoc :plugin-commands commands)
+    (seq event-filters) (assoc :event-filters event-filters)
+    (seq delta-filters) (assoc :delta-filters delta-filters)))
+
+(defn- plugged [{:keys [opts settings store world] :as base} report]
+  (let [ps (plugin/load-all (plugin-env :server opts @settings store))
+        adds (plugin/contributions ps)
+        systems (:systems adds)]
+    (report {:event :plugins :loaded (map :manifest ps)})
+    (swap! world update :config with-adds adds)
+    (cond-> (assoc base :plugins ps :adds adds)
+      (seq systems)
+      (assoc :phases (plugin/phases tick/phases systems)))))
+
+(defn- prepared [opts report]
+  (let [opened (open-world opts)]
+    (report (host-event (:saved opened) (:config-written? opts)))
+    (let [base (plugged opened report)]
+      (timed report :load data/load!)
+      base)))
+
 (defn start
-  "Starts the server on the configured port and returns its handle."
+  "Starts the server on the configured port and returns its handle.
+  The plugins load first, from :plugins-dir or plugins."
   [opts]
   (let [report (:report opts (fn [_] nil))
-        {:keys [store saved world saver] :as base} (open-world opts)]
-    (report (host-event saved (:config-written? opts)))
-    (timed report :load data/load!)
-    (let [net (listen base)
-          clocks (start-clocks base net)
-          held {:world world :saver saver :store store}
-          server (merge held net clocks)
-          port (.getLocalPort ^ServerSocket (:socket net))]
-      (report {:event :ready :port port :took (uptime)})
-      (hooked base server))))
+        {:keys [store world saver plugins] :as base}
+        (prepared opts report)
+        net (listen base)
+        clocks (start-clocks base net)
+        held {:world world :saver saver :store store :plugins plugins}
+        server (merge held net clocks)
+        port (.getLocalPort ^ServerSocket (:socket net))]
+    (report {:event :ready :port port :took (uptime)})
+    (hooked base server)))
 
 (defn stop
   "Stops a running server and everything it started."
@@ -319,10 +351,7 @@
 (defonce ^{:doc "The server -main started, for the REPL."} running
   (atom nil))
 
-(defn -main
-  "Starts the server.
-  Each argument is an edn map that overrides the config."
-  [& args]
+(defn- serve! [args]
   (log/to-file! "logs")
   (when-not (data/dir)
     (cli/render! (assoc (ex-data (data/no-tables)) :event :error))
@@ -333,3 +362,70 @@
         ^Thread accept (:accept server)]
     (reset! running server)
     (.join accept)))
+
+(defn- failed! [e]
+  (cli/render! (assoc (ex-data e) :event :error)))
+
+(defn- not-built [c]
+  (ex-info (str c " is not built yet")
+           {:what (str "collider " c " is not built yet")
+            :why  ["Worlds come from the server itself for now."]}))
+
+(defn- unknown [c]
+  (ex-info (str "unknown command " c)
+           {:what (str "unknown command " c)
+            :why  ["See the commands with: collider help"]
+            :exit 2}))
+
+(defn- cli-commands [dir]
+  (into {} (for [{m :manifest} (plugin/scan dir), c (keys (:cli m))]
+             [c (:id m)])))
+
+(defn- help [opts]
+  (let [dir (:plugins-dir opts "plugins")
+        cs (when (.isDirectory (io/file dir)) (cli-commands dir))]
+    (cli/render! {:event :help :commands cs})
+    0))
+
+(defn- plugin-command [c args opts]
+  (let [dir (:plugins-dir opts "plugins")]
+    (when-not (and (.isDirectory (io/file dir))
+                   (contains? (cli-commands dir) c))
+      (throw (unknown c))))
+  (let [cfg (merge (config/load-config) opts)
+        ps (plugin/load-all
+             (plugin-env :cli opts cfg (open-store opts cfg)))]
+    (try (plugin/run-cli! ps c args)
+         (finally (plugin/stop-all! ps)))))
+
+(defn- version []
+  (cli/render! {:event :version :commit (build-commit)})
+  0)
+
+(defn command
+  "Runs command line command c with args and returns the exit code:
+  0 when it succeeds, 1 when it fails, 2 when there is no such
+  command. A plugin command runs with the plugins in :plugins-dir of
+  opts, without the network and the tick."
+  [c args opts]
+  (try
+    (case c
+      ("help" "-h" "--help") (help opts)
+      ("version" "--version") (version)
+      ("gen" "import" "export") (throw (not-built c))
+      (plugin-command c args opts))
+    (catch ExceptionInfo e
+      (failed! e)
+      (:exit (ex-data e) 1))))
+
+(defn- edn-arg? [s] (str/starts-with? (str/triml s) "{"))
+
+(defn -main
+  "Starts the server, or runs another command of the command line.
+  With no command or run, each argument is an edn map that overrides
+  the config."
+  [& args]
+  (let [[c & more] args]
+    (cond (or (nil? c) (edn-arg? c)) (serve! args)
+          (= "run" c) (serve! more)
+          :else (System/exit (command c more {})))))

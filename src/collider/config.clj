@@ -38,7 +38,8 @@
     [:int {:min 0}]]
    [:game-mode {:optional true}
     [:enum :survival :creative :adventure :spectator]]
-   [:force-game-mode {:optional true} :boolean]])
+   [:force-game-mode {:optional true} :boolean]
+   [:plugins {:optional true} [:map-of :keyword :any]]])
 
 (defn- complaint [settings [k msgs]]
   (str k " " (str/join ", " msgs)
@@ -64,7 +65,7 @@
   [:view-distance :simulation-distance :max-players :motd
    :game-mode :force-game-mode])
 
-(def ^:private fixed-keys [:port :save-dir])
+(def ^:private fixed-keys [:port :save-dir :plugins])
 
 (defn reload
   "Returns the settings of path laid under overlay as :settings.

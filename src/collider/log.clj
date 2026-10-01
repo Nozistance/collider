@@ -56,6 +56,11 @@
   (.println console s)
   (when-let [^PrintStream f @file] (.println f s)))
 
+(defn plain
+  "Logs a line without the time and the thread, for the command line."
+  [& args]
+  (emit! (str/join " " (map print-str args))))
+
 (defn info [& args]
   (emit! (line "INFO" args)))
 

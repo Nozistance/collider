@@ -1452,7 +1452,8 @@
 
 (defn- help-deltas [world eid [text]]
   (let [lv (player/permission-level (get-in world [:entities eid]))
-        lines (cmd/help-lines lv text (source-pos world))]
+        extra (cmd/extra-of world)
+        lines (cmd/help-lines lv text (source-pos world) extra)]
     (if (nil? lines)
       (fail eid "commands.help.failed")
       (answer (mapv #(out/to eid (out/system-chat %)) lines)))))
@@ -1800,8 +1801,10 @@
    :gamemode gamemode-deltas :defaultgamemode default-mode-deltas
    :spectate spectate-deltas})
 
-(defn- world-command-deltas [world eid [_ op & args]]
-  (if-let [f (or (commands op) (chat-commands op))]
+(defn- world-command-deltas [world eid [tag op & args]]
+  (if-let [f (if (identical? :plugin tag)
+               op
+               (or (commands op) (chat-commands op)))]
     (f world eid args)
     (case op
       :gamerule (rule-deltas world eid (first args) (second args))
@@ -1873,7 +1876,8 @@
   (player/permission-level (get-in world [:entities eid])))
 
 (defn- parsed [world eid text origin]
-  (cmd/parse text origin (:dim world :overworld) (level world eid)))
+  (cmd/parse text origin (:dim world :overworld) (level world eid)
+             [0.0 0.0] (cmd/extra-of world)))
 
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]

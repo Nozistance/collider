@@ -352,6 +352,11 @@
 
 (def commands (into base-forms chat-forms))
 
+(defn extra-of
+  "Returns the command forms that plugins add to world."
+  [world]
+  (:plugin-commands (:config world)))
+
 (defn- subcommands? [form] (keyword? (first (nth form 2))))
 
 (defn- cmd-name [form] (name (first form)))
@@ -591,9 +596,9 @@
         at #(if (= :root %) root (top %))]
     (mapv #(if (:redirect %) (update % :redirect at) %) nodes)))
 
-(defn- root-node [level]
+(defn- root-node [level extra]
   (let [ok? #(allowed? level %)
-        forms (filter (comp ok? cmd-name) commands)
+        forms (filter (comp ok? cmd-name) (into commands extra))
         alias-nodes (into [] (comp (filter (comp ok? key))
                                    (map alias-node))
                           aliases)]
@@ -603,10 +608,12 @@
                    (into alias-nodes))}))
 
 (defn tree
-  "Returns the command nodes a client of permission level gets, the
-  root last."
+  "Returns the command nodes a client of permission level gets with
+  the command forms extra, the root last."
   ([] (tree gamemaster))
-  ([level] (redirected (first (flat [] (root-node level))))))
+  ([level] (tree level nil))
+  ([level extra]
+   (redirected (first (flat [] (root-node level extra))))))
 
 (defn- usage-text [n]
   (if (= :argument (:type n)) (str "<" (:name n) ">") (:name n)))
@@ -904,12 +911,19 @@
 (defn- usable-top [n]
   (assoc n :usable? #(allowed? (:level %) (:name n))))
 
-(def ^:private ^:table graph
-  (delay (let [root (-> (with-paths (root-node 4) [])
-                        engine-node
-                        (update :children #(mapv usable-top %)))]
-           (into {:root root} (map (fn [n] [(:name n) n]))
-                 (:children root)))))
+(defn- graph-of [extra]
+  (let [root (-> (with-paths (root-node 4 extra) [])
+                 engine-node
+                 (update :children #(mapv usable-top %)))]
+    (into {:root root} (map (fn [n] [(:name n) n]))
+          (:children root))))
+
+(def ^:private ^:table base-graph (delay (graph-of nil)))
+
+(def ^:private extra-graph (memoize graph-of))
+
+(defn- graph [extra]
+  (if (empty? extra) @base-graph (extra-graph extra)))
 
 (defn- arg-width ^long [[_ [kind]]]
   (case kind (:coord :dcoord) 3 :angle 2 1))
@@ -980,6 +994,16 @@
              :relative (relative-axes (:nodes ctx))}
       (next chain) (assoc :dim (:dim src) :origin (:pos src)))))
 
+(defn- parsed [g text origin dim level rot]
+  (let [res (d/parse g (subs text 1) 0 {:level level})
+        err (d/failure res)
+        chain (d/chain (:ctx res))
+        src {:pos (or origin [0.0 0.0 0.0]) :rot rot :dim dim}
+        src (when-not err (final-source chain src))]
+    (cond err (failed err)
+          (r/error? src) (failed src)
+          :else (meaning chain src))))
+
 (defn parse
   "Returns the delta the typed command means.
   It also returns the axes written relative to the source as
@@ -987,20 +1011,15 @@
   :failure message with the :cursor it points at. Relative
   coordinates count from origin in level dim, local ones from the
   rotation rot too. A command run through a redirect also returns
-  the level and origin it runs in as :dim and :origin."
+  the level and origin it runs in as :dim and :origin. Forms extra
+  add the commands of plugins."
   ([text] (parse text nil))
   ([text origin] (parse text origin :overworld))
   ([text origin dim] (parse text origin dim gamemaster))
   ([text origin dim level] (parse text origin dim level [0.0 0.0]))
-  ([text origin dim level rot]
-   (let [res (d/parse @graph (subs text 1) 0 {:level level})
-         err (d/failure res)
-         chain (d/chain (:ctx res))
-         src {:pos (or origin [0.0 0.0 0.0]) :rot rot :dim dim}
-         src (when-not err (final-source chain src))]
-     (cond err (failed err)
-           (r/error? src) (failed src)
-           :else (meaning chain src)))))
+  ([text origin dim level rot] (parse text origin dim level rot nil))
+  ([text origin dim level rot extra]
+   (parsed (graph extra) text origin dim level rot)))
 
 (defn suggestions
   "Returns the completions for half-typed text as :texts that
@@ -1014,7 +1033,8 @@
          cx {:level level :dim (:dim world :overworld)
              :players (sort (keys (:players world)))}]
      (if (str/starts-with? text "/")
-       (d/suggestions (d/parse @graph text 1 cx) text cx)
+       (d/suggestions (d/parse (graph (extra-of world)) text 1 cx)
+                      text cx)
        (sugg start (suggest-player world (subs text start)))))))
 
 (defn suggest
@@ -1022,22 +1042,26 @@
   ([world text] (suggest world text nil))
   ([world text target] (:texts (suggestions world text target))))
 
-(defn- help-node [nodes text level]
-  (let [res (d/parse @graph text 0 {:level level})
+(defn- help-node [nodes text level extra]
+  (let [res (d/parse (graph extra) text 0 {:level level})
         l (peek (:nodes (:ctx res)))]
     (when l (index-of nodes #(= (:path %) (:path (:node l)))))))
 
+(defn- help-of [nodes n text]
+  (let [head (if text (str "/" text " ") "/")
+        opt? (boolean (:executable? n))]
+    (mapv #(str head (smart-usage nodes % opt? false))
+          (:children n))))
+
 (defn help-lines
   "Returns the lines /help shows a player of permission level, for
-  command text or for every command when text is nil. Returns nil
-  when text names no command."
-  [level text _origin]
-  (let [root (with-paths (root-node level) [])
-        nodes (redirected (first (flat [] root)))
-        i (if text (help-node nodes text level) (dec (count nodes)))
-        n (when i (nth nodes i))
-        head (if text (str "/" text " ") "/")]
-    (when n
-      (let [opt? (boolean (:executable? n))]
-        (mapv #(str head (smart-usage nodes % opt? false))
-              (:children n))))))
+  command text or for every command when text is nil, with the
+  command forms extra. Returns nil when text names no command."
+  ([level text origin] (help-lines level text origin nil))
+  ([level text _origin extra]
+   (let [root (with-paths (root-node level extra) [])
+         nodes (redirected (first (flat [] root)))
+         i (if text
+             (help-node nodes text level extra)
+             (dec (count nodes)))]
+     (when i (help-of nodes (nth nodes i) text)))))

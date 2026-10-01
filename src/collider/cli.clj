@@ -38,6 +38,39 @@
   (log/info "Starting Collider server on" (str "*:" port))
   (log/info "Done" (str (log/seconds took) "!")))
 
+(defn- plugin-name [{:keys [id version]}]
+  (str (name id) " " version))
+
+(defmethod render! :plugins [{:keys [loaded]}]
+  (when (seq loaded)
+    (log/info "Loaded" (count loaded)
+              (str (if (next loaded) "plugins" "plugin") ":")
+              (str/join ", " (map plugin-name loaded)))))
+
+(def ^:private usage
+  ["Usage: collider [run] [{edn settings}...]"
+   "       collider <command> [args...]"
+   "Commands:"
+   "  run      start the server; each edn map overrides config.edn"
+   "  help     show this"
+   "  version  show the version"
+   "  gen      generate a world (not built yet)"
+   "  import   import a world from Anvil (not built yet)"
+   "  export   export a world to Anvil (not built yet)"])
+
+(defn- plugin-line [[c id]]
+  (format "  %-8s from plugin %s" c (name id)))
+
+(defmethod render! :help [{:keys [commands]}]
+  (run! log/plain usage)
+  (when (seq commands)
+    (log/plain "Plugin commands:")
+    (run! (comp log/plain plugin-line) (sort commands))))
+
+(defmethod render! :version [{:keys [commit]}]
+  (log/plain (str "Collider for Minecraft " c/game-version
+                  (when commit (str ", commit " commit)))))
+
 (defmethod render! :error [{:keys [what why command]}]
   (log/error (str "**** " (str/upper-case what) "!"))
   (doseq [l (if (string? why) [why] why)] (log/error l))
