@@ -330,10 +330,11 @@
 
 (defn- tracking-deltas [world t0 [by-chunk bodies] [oid o]]
   (let [near (near-set by-chunk (or (:sent-chunks o) (i/int-set)))
-        want (i/difference near (hidden-from oid o bodies))
+        hidden (hidden-from oid o bodies)
+        want (into (i/int-set) (remove #(contains? hidden %)) near)
         have (or (:tracking o) (i/int-set))
-        add (into [] (i/difference want have))
-        gone (into [] (i/difference have want))]
+        add (into [] (remove #(contains? have %)) want)
+        gone (into [] (remove #(contains? want %)) have)]
     (when (or (seq add) (seq gone))
       (into [[:tracking oid add gone]]
             (mapcat (fn [eid] (baseline-deltas world t0 oid eid)))
