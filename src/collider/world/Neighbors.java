@@ -70,6 +70,10 @@ public final class Neighbors {
         return this;
     }
 
+    public int recordCount() {
+        return records == null ? 0 : ((Counted) records).count();
+    }
+
     public int writeCount() {
         return writes == null ? 0 : ((Counted) writes).count();
     }

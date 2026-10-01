@@ -40,19 +40,21 @@
 
 (defn- block-result [world chunks time p st roll]
   (let [drip (dripstone/drip chunks p st roll (:dim world))
-        grown (grow/random-tick chunks p st roll time world)]
-    {:drip    drip
-     :drops   (grow/random-drops st roll)
-     :pos     p
-     :changes (concat (:changes drip)
-                      (dripstone/random-changes chunks p st roll)
-                      grown)}))
+        grown (grow/random-tick chunks p st roll time world)
+        drops (grow/random-drops st roll)
+        changes (concat (:changes drip)
+                        (dripstone/random-changes chunks p st roll)
+                        grown)]
+    (when (or drip (seq drops) (seq changes))
+      {:drip drip :drops drops :pos p :with (block/block-of st)
+       :changes changes})))
 
 (defn- cell-result [world chunks time p st]
   (let [roll (fn [salt] (random/of-key (:tick world) p salt))]
     (if (block/lava? st)
       (when (near-player? world (fire-radius world) p)
-        {:changes (liquid/lava-random-tick chunks p roll)})
+        {:changes (liquid/lava-random-tick chunks p roll)
+         :with (block/block-of st)})
       (block-result world chunks time p st roll))))
 
 (defn- local ^long [^long t ^long cid ^long k ^long i]
@@ -157,11 +159,29 @@
           [i stack] (map-indexed vector drops)]
       [:spawn-entity (items/popped world pos stack [:decay i])])))
 
-(defn- result-deltas [world results changes drips]
+(defn- run-closed [runs with ^long n]
+  (if (pos? n) (conj runs [{:with with} n]) runs))
+
+(defn- change-runs
+  "Returns runs [author n] of the changes, n in a row of one author.
+  The precipitation makes those fallen, the block that ticked those of
+  each of results."
+  [fallen results]
+  (loop [rs (seq results) runs [] by :precipitation n (count fallen)]
+    (if-not rs
+      (run-closed runs by n)
+      (let [r (first rs) k (count (:changes r)) w (:with r)]
+        (cond (zero? k) (recur (next rs) runs by n)
+              (= w by) (recur (next rs) runs by (+ n k))
+              :else (recur (next rs) (run-closed runs by n) w k))))))
+
+(defn- changed [world changes runs]
+  (delta/authored (edit/set-deltas world changes runs)
+                  (nth (peek runs) 0)))
+
+(defn- result-deltas [world results changes drips runs]
   (let [woken (drip-schedules world drips)]
-    (concat (when (seq changes)
-              (delta/authored (edit/set-deltas world changes)
-                              {:with :random-tick}))
+    (concat (when (seq changes) (changed world changes runs))
             (when (seq woken) [[:schedule-ticks woken]])
             (drip-events drips)
             (drop-spawns world results))))
@@ -178,7 +198,8 @@
         changes (into fallen (mapcat :changes) results)
         drips (into [] (keep :drip) results)]
     (when (or (seq changes) (seq drips))
-      (result-deltas world results changes drips))))
+      (result-deltas world results changes drips
+                     (change-runs fallen results)))))
 
 (defn- random-tick-deltas [world _events]
   (let [speed (long (get-in world [:rules :random-tick-speed] 3))]

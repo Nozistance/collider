@@ -41,6 +41,8 @@
 
 (defn- write-count ^long [^Neighbors s] (.writeCount s))
 
+(defn- record-count ^long [^Neighbors s] (.recordCount s))
+
 (defn- write-at [^Neighbors s ^long n] (.writeAt s n))
 
 (defn- running? [^Neighbors s] (.running s))
@@ -428,6 +430,27 @@
   (let [start [(opened chunks) 0]
         [s n] (reduce #(op-counted %1 ctx %2) start ops)]
     (assoc (level s (chunk/editing? chunks)) :count n)))
+
+(defn- run-added [runs by ^long n]
+  (let [top (peek runs)]
+    (cond (zero? n) runs
+          (not= by (nth top 0 ::none)) (conj runs [by n])
+          :else (conj (pop runs) [by (+ n (long (nth top 1)))]))))
+
+(defn- authored-run [ctx ops]
+  (fn [[s i runs] [by n]]
+    (let [i (long i) j (+ i (long n)) r (record-count s)
+          s (reduce #(op-run %1 ctx %2) s (subvec ops i j))]
+      [s j (run-added runs by (- (record-count s) r))])))
+
+(defn run-authored
+  "Returns the level after ops run in order, as run does. Given runs
+  [by n], n ops in a row of author by, its :authors holds runs [by n]
+  of its records."
+  [chunks ctx ops runs]
+  (let [start [(opened chunks) 0 []]
+        [s _ out] (reduce (authored-run ctx ops) start runs)]
+    (assoc (level s (chunk/editing? chunks)) :authors out)))
 
 (defn- command-state
   [chunks ctx [p st fx]]

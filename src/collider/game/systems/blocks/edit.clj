@@ -218,7 +218,8 @@
 
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates.
-  Given by, it is the author of the changes."
+  Given by, it is the author of the changes, or runs [by n] of the
+  authors of n changes in a row."
   ([world s] (settled-deltas world s nil))
   ([world s by]
    (let [recs (:records s)
@@ -249,18 +250,23 @@
       (conj! (pop! out) (joined top d))
       (conj! out d))))
 
+(defn- author-of [runs]
+  (if (== 1 (count runs)) (nth (nth runs 0) 0) (not-empty runs)))
+
 (defn- run-deltas [world changes base f]
   (let [[changes fx] (dried world changes)
         ctx (level/level-ctx world base)
-        s (f (:chunks world) ctx changes)]
-    [(into (settled-deltas world s) fx) s]))
+        s (f (:chunks world) ctx changes)
+        by (author-of (:authors s))]
+    [(into (settled-deltas world s by) fx) s]))
+
+(defn- given-ops [changes]
+  (mapv (fn [c]
+          (if (keyword? (c 0)) c [:set c (neighbors/flags-of c 3)]))
+        changes))
 
 (defn- as-given [chunks ctx changes]
-  (let [op (fn [c]
-             (if (keyword? (c 0))
-               c
-               [:set c (neighbors/flags-of c 3)]))]
-    (neighbors/run chunks ctx (mapv op changes))))
+  (neighbors/run chunks ctx (given-ops changes)))
 
 (defn change-deltas
   "Returns the deltas for the changes, each set as it is.
@@ -275,9 +281,13 @@
 
 (defn set-deltas
   "Returns the deltas for the changes the level makes in its tick.
-  Each is set as it is and runs its updates at once."
-  [world changes]
-  (change-deltas world changes (:tick world)))
+  Each is set as it is and runs its updates at once. Given runs [by
+  n], n changes in a row of author by, each record has its author."
+  ([world changes]
+   (change-deltas world changes (:tick world)))
+  ([world changes runs]
+   (let [f #(neighbors/run-authored %1 %2 (given-ops %3) runs)]
+     (first (run-deltas world changes (:tick world) f)))))
 
 (defn shaped-deltas
   "Returns the deltas for changes placed in the shape they take.

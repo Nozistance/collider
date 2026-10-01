@@ -45,6 +45,8 @@
   [:map [:by {:optional true} Eid] [:owner {:optional true} Eid]
    [:with {:optional true} :keyword]])
 
+(def Authors [:or Author [:vector [:tuple Author :int]]])
+
 (defn- merge-diff [cur add drop]
   (let [s (or cur (i/int-set))
         s (if (seq add) (into s add) s)]
@@ -64,7 +66,7 @@
   {:set-blocks
    {:scope :level
     :schema [:cat Records [:? [:maybe Coll]] [:? [:maybe Coll]]
-             [:? Author]]
+             [:? Authors]]
     :apply level/set-blocks}
    :ticks-flushed
    {:scope :level
@@ -238,16 +240,25 @@
    :release-use {:scope :input :apply player/release-use}})
 
 (defn- unauthored? [d]
-  (and (identical? :set-blocks (nth d 0)) (< (count d) 5)))
+  (case (nth d 0)
+    :set-blocks (< (count d) 5)
+    :level-deltas (boolean (some unauthored? (nth d 2)))
+    false))
+
+(declare authored)
 
 (defn- with-author [d by]
-  (conj (into d (repeat (- 4 (count d)) nil)) by))
+  (if (identical? :level-deltas (nth d 0))
+    (assoc d 2 (authored (nth d 2) by))
+    (conj (into d (repeat (- 4 (count d)) nil)) by)))
 
 (defn authored
   "Returns deltas ds with author by on each block change that has
-  none. An author names the entity that made the change in :by, the
-  one that owns it in :owner and what made it in :with. Given eid and
-  with, the author is {:by eid :with with}, with no :by for no eid."
+  none, also in the deltas they hand to another level. An author names
+  the entity that made the change in :by, the one that owns it in
+  :owner and what made it in :with. Given eid and with, the author is
+  {:by eid :with with}, with no :by for no eid. Runs [by n] in place
+  of the author tell the authors of n records in a row."
   ([ds by]
    (if (and by (some unauthored? ds))
      (mapv #(if (unauthored? %) (with-author % by) %) ds)
