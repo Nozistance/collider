@@ -648,6 +648,14 @@
 
 (def ^:private ^:table open-command-tree (delay (commands/tree 0)))
 
+(def ^:private plugin-tree (memoize commands/tree))
+
+(defn- command-nodes [lv ^long level]
+  (let [extra (commands/extra-of lv)]
+    (cond (seq extra) (plugin-tree level extra)
+          (< level (long commands/gamemaster)) @open-command-tree
+          :else @command-tree)))
+
 (def ^:private world-border-size 5.9999968E7)
 
 (def ^:private world-border-max 29999984)
@@ -669,13 +677,10 @@
      (long (Math/floor (double y)))
      (long (Math/floor (double z)))]))
 
-(defn- permission-packets [eid e]
+(defn- permission-packets [lv eid e]
   (let [level (player/permission-level e)]
     [{:packet :entity-event :eid eid :event (+ op-level-event level)}
-     {:packet :commands
-      :nodes (if (< level (long commands/gamemaster))
-               @open-command-tree
-               @command-tree)}]))
+     {:packet :commands :nodes (command-nodes lv level)}]))
 
 (def ^:private border-packet
   {:packet     :initialize-border :center-x 0.0 :center-z 0.0
@@ -751,7 +756,7 @@
     (concat
       [(assoc (spawn-info lv e) :packet :respawn :keep 3)
        difficulty-packet]
-      (permission-packets eid e)
+      (permission-packets lv eid e)
       (leave-packets m)
       (arrival-packets m e)
       (level-info-packets lv)
@@ -1078,7 +1083,7 @@
 (defn- join-world-packets [world e eid motd]
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
-    (permission-packets eid e)
+    (permission-packets world eid e)
     [(join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet

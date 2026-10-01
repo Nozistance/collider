@@ -122,12 +122,16 @@
   (-> (tick-input world-atom perf (when io-input (io-input)))
       (assoc :failures (atom []))))
 
+(defn- phases-of [opts]
+  (let [p (:phases opts tick/phases)]
+    (if (fn? p) (p) p)))
+
 (defn- run-tick! [{:keys [carried]} world-atom queue deliver! perf
                   opts]
   (let [fresh (drain! queue)
         world (ticked-world world-atom perf opts)
         events (into @carried fresh)
-        done (safe-tick world events (:phases opts tick/phases))]
+        done (safe-tick world events (phases-of opts))]
     (if-let [[world' deltas] done]
       (do (reset! carried [])
           (reset! world-atom (dissoc world' :failures))
@@ -209,7 +213,8 @@
   "Starts ticking world-atom on the events of queue.
   Each tick hands its deltas to deliver!. Returns a handle to stop
   it with. A unit that fails twenty ticks in a row stops the ticker
-  and calls the crash callback of opts."
+  and calls the crash callback of opts. The :phases of opts are the
+  phases, or a function that returns them each tick."
   ([world-atom queue deliver!]
    (start-ticker! world-atom queue deliver! nil))
   ([world-atom queue deliver! opts]

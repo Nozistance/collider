@@ -4,6 +4,7 @@
             [collider.game.level :as level]
             [collider.game.schema :as schema]
             [collider.game.cost :as cost]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
             [collider.log :as log]
@@ -205,17 +206,34 @@
     (log/failure! unit msg t)
     (some-> (:failures world) (swap! conj [unit t]))))
 
-(defn- passed [world fs at x]
+(defn- checked [ok? v]
+  (if (every? ok? v)
+    v
+    (throw (ex-info "the filter gave a bad delta"
+                    {:delta (first (remove ok? v))}))))
+
+(defn- passed [world fs at x ok?]
   (reduce (fn [x f]
-            (try (vec (f at x))
+            (try (checked ok? (vec (f at x)))
                  (catch Throwable t (unfiltered! world f t) x)))
           x fs))
+
+(defn- tagged-known? [plugin-tags tag x]
+  (cond (identical? :fx tag) (map? x)
+        (contains? delta/entity-apply tag) (integer? x)
+        :else (or (contains? delta/registry tag)
+                  (contains? plugin-tags tag))))
+
+(defn- known? [plugin-tags d]
+  (and (vector? d) (pos? (count d))
+       (tagged-known? plugin-tags (nth d 0) (nth d 1 nil))))
 
 (defn- filtered [world fs pd]
   (reduce-kv
     (fn [m dim d]
       (let [lv (assoc (get (:levels world) dim) :server world)
-            v (passed world fs lv (deltas/as-vec d))]
+            ok? (partial known? (:deltas (:hooks world)))
+            v (passed world fs lv (deltas/as-vec d) ok?)]
         (assoc m dim (deltas/with-dim (deltas/of-vec v) dim))))
     pd pd))
 
@@ -239,12 +257,13 @@
   the events in turn before the tick, each as (f world events). Its
   delta filters under [:hooks :delta-filters] pass the deltas of
   each phase in turn before they apply, each as (f level deltas). A
-  filter that fails passes on what it was given."
+  filter that fails, or gives a delta of a tag nothing applies,
+  passes on what it was given."
   ([world events] (tick world events phases))
   ([world events phases]
    (deltas/in-pool
      #(let [evs (if-let [fs (hooked world :event-filters)]
-                  (passed world fs world events)
+                  (passed world fs world events vector?)
                   events)
             acc (begin world evs)
             [world' ds] (reduce run-phase acc phases)]

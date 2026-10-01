@@ -17,9 +17,11 @@
             [collider.net.render :as render]
             [collider.net.server :as server]
             [collider.net.session :as session]
+            [collider.persist.lock :as lock]
             [collider.persist.snapshot :as snapshot]
             [collider.plugin :as plugin])
   (:import (clojure.lang ExceptionInfo)
+           (java.io Closeable)
            (collider.game.deltas.record Deltas)
            (java.lang.management
              GarbageCollectorMXBean ManagementFactory)
@@ -65,7 +67,8 @@
   (some-> ticker ticker/stop-ticker!)
   (server/close-all! conns shutdown-reason shutdown-drain-ms)
   (when saver (snapshot/stop-saver! saver store @world))
-  (plugin/stop-all! (:plugins server)))
+  (plugin/stop-all! (:plugins server))
+  (some-> ^Closeable (:lock server) .close))
 
 (defn- saver-thread ^Thread [^Runnable r]
   (doto (Thread. r "collider-saver-timer")
@@ -139,6 +142,15 @@
   (or (:store opts)
       (when-let [dir (:save-dir cfg)] (snapshot/file-store dir))))
 
+(defn- world-lock [opts cfg]
+  (when-not (:store opts)
+    (some-> (:save-dir cfg) lock/lock!)))
+
+(defn- locked [opts cfg f]
+  (let [l (world-lock opts cfg)]
+    (try (f l)
+         (catch Throwable t (some-> ^Closeable l .close) (throw t)))))
+
 (defn- run-out [& args]
   (let [^"[Ljava.lang.String;" argv (into-array String args)
         p (.start (ProcessBuilder. argv))
@@ -164,16 +176,16 @@
   (assoc (select-keys cfg config/world-keys)
          :unload-chunks? (some? store) :commit (build-commit)))
 
-(defn- open-world [opts]
-  (let [cfg (merge (config/load-config) opts)
-        store (open-store opts cfg)
+(defn- open-world [opts cfg l]
+  (let [store (open-store opts cfg)
         saved (when store (snapshot/load-snapshot store))
         init (merge schema/initial-world saved)
         world (atom (assoc init :config (world-config cfg store)))
         saver (when store (snapshot/start-saver))
         save! (when saver #(snapshot/want-commit! saver))]
     {:settings (atom cfg) :opts opts :store store :saved saved
-     :world world :saver saver :save! save! :handle (promise)}))
+     :world world :saver saver :save! save! :handle (promise)
+     :lock l}))
 
 (defn- open-net [{:keys [settings world save! opts adds]}]
   (let [queue (ConcurrentLinkedQueue.)
@@ -206,12 +218,17 @@
 (defn- commit-now [{:keys [saver store world]}]
   (when saver #(snapshot/request-save! saver store @world)))
 
+(def ^:private plugin-phases (memoize plugin/phases))
+
+(defn- spliced [systems]
+  #(plugin-phases tick/phases systems))
+
 (defn- ticker-opts [base conns]
   (cond-> {:io-input (io-input base conns)
            :settings (:settings base)
            :on-pause (commit-now base)
            :on-crash (on-crash (:handle base))}
-    (:phases base) (assoc :phases (:phases base))))
+    (:systems base) (assoc :phases (spliced (:systems base)))))
 
 (defn- period-change [saving]
   (fn [old new]
@@ -289,11 +306,19 @@
   {:dir (:plugins-dir opts "plugins") :mode mode :settings cfg
    :store store})
 
-(defn- with-adds [w {:keys [commands event-filters delta-filters]}]
-  (cond-> w
-    (seq commands) (assoc-in [:config :plugin-commands] commands)
-    (seq event-filters) (assoc-in [:hooks :event-filters] event-filters)
-    (seq delta-filters) (assoc-in [:hooks :delta-filters] delta-filters)))
+(def ^:private adds-at
+  {:plugins [:config :plugins]
+   :commands [:config :plugin-commands]
+   :deltas [:hooks :deltas]
+   :event-filters [:hooks :event-filters]
+   :delta-filters [:hooks :delta-filters]})
+
+(defn- with-adds [w adds]
+  (reduce-kv (fn [w k path]
+               (if-let [v (not-empty (get adds k))]
+                 (assoc-in w path v)
+                 w))
+             w adds-at))
 
 (defn- plugged [{:keys [opts settings store world] :as base} report]
   (let [ps (plugin/load-all (plugin-env :server opts @settings store))
@@ -301,31 +326,36 @@
         systems (:systems adds)]
     (report {:event :plugins :loaded (map :manifest ps)})
     (swap! world with-adds adds)
+    (plugin/phases tick/phases systems)
     (cond-> (assoc base :plugins ps :adds adds)
-      (seq systems)
-      (assoc :phases (plugin/phases tick/phases systems)))))
+      (seq systems) (assoc :systems systems))))
 
-(defn- prepared [opts report]
-  (let [opened (open-world opts)]
+(defn- prepared [opts cfg l report]
+  (let [opened (open-world opts cfg l)]
     (report (host-event (:saved opened) (:config-written? opts)))
     (let [base (plugged opened report)]
       (timed report :load data/load!)
       base)))
 
-(defn start
-  "Starts the server on the configured port and returns its handle.
-  The plugins load first, from :plugins-dir or plugins."
-  [opts]
+(defn- started [opts cfg l]
   (let [report (:report opts (fn [_] nil))
         {:keys [store world saver plugins] :as base}
-        (prepared opts report)
+        (prepared opts cfg l report)
         net (listen base)
         clocks (start-clocks base net)
-        held {:world world :saver saver :store store :plugins plugins}
+        held {:world world :saver saver :store store
+              :plugins plugins :lock l}
         server (merge held net clocks)
         port (.getLocalPort ^ServerSocket (:socket net))]
     (report {:event :ready :port port :took (uptime)})
     (hooked base server)))
+
+(defn start
+  "Starts the server on the configured port and returns its handle.
+  The plugins load first, from :plugins-dir or plugins."
+  [opts]
+  (let [cfg (merge (config/load-config) opts)]
+    (locked opts cfg #(started opts cfg %))))
 
 (defn stop
   "Stops a running server and everything it started."
@@ -390,16 +420,20 @@
     (cli/render! {:event :help :commands cs})
     0))
 
+(defn- cli-run [c args opts cfg ^Closeable l]
+  (data/load!)
+  (let [env (plugin-env :cli opts cfg (open-store opts cfg))
+        ps (plugin/load-all env)]
+    (try (plugin/run-cli! ps c args)
+         (finally (plugin/stop-all! ps) (some-> l .close)))))
+
 (defn- plugin-command [c args opts]
   (let [dir (:plugins-dir opts "plugins")]
     (when-not (and (.isDirectory (io/file dir))
                    (contains? (cli-commands dir) c))
       (throw (unknown c))))
-  (let [cfg (merge (config/load-config) opts)
-        ps (plugin/load-all
-             (plugin-env :cli opts cfg (open-store opts cfg)))]
-    (try (plugin/run-cli! ps c args)
-         (finally (plugin/stop-all! ps)))))
+  (let [cfg (merge (config/load-config) opts)]
+    (locked opts cfg #(cli-run c args opts cfg %))))
 
 (defn- version []
   (cli/render! {:event :version :commit (build-commit)})

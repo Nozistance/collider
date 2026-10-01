@@ -65,13 +65,18 @@
                  w))]
     (reduce step world ds)))
 
+(defn- plugin-delta [w delta]
+  (if-let [f (get (:deltas (:hooks w)) (nth delta 0))]
+    (f w delta)
+    w))
+
 (defn- apply-world-delta [w delta]
   (let [tag (nth delta 0)]
     (if-let [f (get delta/world-apply tag)]
       (f w delta)
       (if-let [g (get delta/entity-apply tag)]
         (level/update-entity w (nth delta 1) #(g (:tick w) % delta))
-        w))))
+        (plugin-delta w delta)))))
 
 (defn- merged-in [e m] (if m (entity/merged e m) e))
 

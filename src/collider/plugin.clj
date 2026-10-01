@@ -5,6 +5,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.game.command.tree :as tree]
+            [collider.game.systems.hooks :as hooks]
             [collider.log :as log]
             [malli.core :as m]
             [malli.error :as me])
@@ -35,18 +36,29 @@
   [:map
    [:systems {:optional true} [:vector [:tuple :keyword ifn?]]]
    [:commands {:optional true} [:vector vector?]]
+   [:on-event {:optional true} [:map-of :keyword ifn?]]
+   [:deltas {:optional true}
+    [:map-of :qualified-keyword
+     [:map [:schema vector?] [:apply ifn?]]]]
    [:event-filters {:optional true} [:vector ifn?]]
    [:delta-filters {:optional true} [:vector ifn?]]
    [:identity {:optional true}
     [:map [:identify ifn?] [:encrypt? {:optional true} boolean?]]]])
 
-(defn- refused [what & why]
-  (ex-info what {:what what :why (vec why)}))
+(defn- refused
+  ([what why command] (refused what why command nil))
+  ([what why command note]
+   (let [why (if (string? why) [why] why)]
+     (ex-info what (cond-> {:what what :why why :command command}
+                     note (assoc :note note))))))
 
 (defn- named [id] (str "plugin " (name id)))
 
 (defn- cause [^Throwable e]
   (str (.getName (class e)) ": " (ex-message e)))
+
+(def ^:private fix-or-remove
+  "Fix it, or take it out of plugins/ and start again.")
 
 (defn- jar? [^File f] (str/ends-with? (.getName f) ".jar"))
 
@@ -62,20 +74,27 @@
   (map (fn [[k msgs]] (str k " " (str/join ", " msgs)))
        (me/humanize (m/explain schema v))))
 
+(defn- not-edn [where e]
+  (refused (str where " is not edn")
+           "Collider cannot read the manifest."
+           fix-or-remove (cause e)))
+
 (defn- read-manifest [where text]
   (try (edn/read-string text)
-       (catch Exception e
-         (throw (refused (str where " is not edn") (ex-message e))))))
+       (catch Exception e (throw (not-edn where e)))))
 
 (defn- api-refusal [{:keys [id] :as m}]
   (refused (str (named id) " wants API " (:api-version m))
-           (str "This Collider has plugin API " api-version ".")))
+           (str "This Collider has plugin API " api-version ".")
+           (str "Get a build of " (name id) " for API "
+                api-version ", or take it out of plugins/.")))
 
 (defn- manifest [^File f text]
   (let [where (str (.getPath f) (when-not (jar? f) "/plugin.edn"))
         m (read-manifest where text)]
     (when-let [why (seq (complaints Manifest m))]
-      (throw (apply refused (str where " has bad fields") why)))
+      (throw (refused (str where " has bad fields") (vec why)
+                      fix-or-remove)))
     (when (not= api-version (:api-version m))
       (throw (api-refusal m)))
     {:file f :manifest m}))
@@ -84,17 +103,25 @@
   (if-let [text (manifest-text f)]
     (manifest f text)
     (when (jar? f)
-      (throw (refused (str (.getPath f) " has no plugin.edn"))))))
+      (throw (refused (str (.getPath f) " has no plugin.edn")
+                      "A plugin jar holds plugin.edn at its root."
+                      "Take the jar out of plugins/.")))))
 
 (defn- unique! [k what found]
   (doseq [[v n] (frequencies (mapcat k found))
           :when (< 1 (long n))]
-    (throw (refused (str "two plugins " what " " v)))))
+    (throw (refused (str "two plugins " what " " v)
+                    "Each name may belong to one plugin only."
+                    "Take one of them out of plugins/."))))
+
+(def ^:private rename-or-remove
+  "Rename it in the plugin, or take the plugin out of plugins/.")
 
 (defn- builtin! [c]
   (when (builtins c)
     (throw (refused (str "a plugin adds the command " c)
-                    "Collider has a command of that name."))))
+                    "Collider has a command of that name."
+                    rename-or-remove))))
 
 (defn scan
   "Returns the plugins in directory dir in name order, each as its
@@ -113,6 +140,7 @@
 
 (defn- missing [p d]
   (refused (str (named (id-of p)) " needs " (named d))
+           (str (name d) " is not in plugins/.")
            (str "Put " (name d) " in plugins/ too, or take "
                 (name (id-of p)) " out.")))
 
@@ -123,7 +151,8 @@
 (defn- circle [left]
   (refused "plugins depend on each other in a circle"
            (str "Their :depends never end: "
-                (str/join ", " (map (comp name id-of) left)) ".")))
+                (str/join ", " (map (comp name id-of) left)) ".")
+           "Take one of them out of plugins/."))
 
 (defn- ready [done left]
   (first (filter #(every? done (:depends (:manifest %))) left)))
@@ -157,13 +186,20 @@
   {:id id :mode mode :config (get-in settings [:plugins id])
    :dir (io/file dir (name id)) :log (logger id) :store store})
 
-(defn- in-words [what ^Throwable e]
-  (if (:what (ex-data e)) e (refused what (cause e))))
+(defn- in-words [what why ^Throwable e]
+  (if (:what (ex-data e))
+    e
+    (refused what why fix-or-remove (cause e))))
+
+(defn- foreign-tags [id v]
+  (for [tag (keys (:deltas v)) :when (not= (name id) (namespace tag))]
+    (str tag " is not under :" (name id) "/")))
 
 (defn- checked [id v]
-  (when-let [why (seq (complaints Contribution v))]
-    (throw (apply refused (str (named id) " returned a bad map")
-                  why)))
+  (let [why (concat (complaints Contribution v) (foreign-tags id v))]
+    (when (seq why)
+      (let [what (str (named id) " returned a bad map from init!")]
+        (throw (refused what (vec why) fix-or-remove)))))
   v)
 
 (defn- entry [ns nm] (symbol (name ns) nm))
@@ -174,7 +210,8 @@
 (defn- init-fn [cl {:keys [id ns]}]
   (or (with-loader cl #(requiring-resolve (entry ns "init!")))
       (throw (refused (str (named id) " has no init!")
-                      (str "Its :ns " ns " lacks (init! ctx).")))))
+                      (str "Its :ns " ns " lacks (init! ctx).")
+                      fix-or-remove))))
 
 (defn- init [cl env {:keys [manifest] :as p}]
   (let [c (ctx manifest env)
@@ -183,7 +220,8 @@
       (let [v (with-loader cl #((init-fn cl manifest) c))]
         (assoc p :ctx c :loader cl :plugin (checked id v)))
       (catch Exception e
-        (throw (in-words (str (named id) " failed to start") e))))))
+        (let [what (str (named id) " failed to start")]
+          (throw (in-words what "Its init! threw." e)))))))
 
 (defn- stop! [{:keys [manifest ctx]}]
   (try (when-let [f (resolve (entry (:ns manifest) "stop!"))] (f ctx))
@@ -217,7 +255,8 @@
 
 (defn- no-phase [k]
   (refused (str "a plugin system joins the phase of " (name k))
-           "No system of that name runs in the tick."))
+           "No system of that name runs in the tick."
+           fix-or-remove))
 
 (defn- phase-of [phases]
   (let [at (into {} (for [[i ph] (map-indexed vector phases), s ph]
@@ -235,38 +274,74 @@
 (defn- identity-of [plugins]
   (let [ps (filter (comp :identity :plugin) plugins)]
     (when (next ps)
-      (throw (refused "two plugins say who players are"
-                      (str/join ", " (map (comp name id-of) ps)))))
+      (let [names (str/join ", " (map (comp name id-of) ps))]
+        (throw (refused "two plugins say who players are"
+                        (str "Both give :identity: " names ".")
+                        "Take one of them out of plugins/."))))
     (:identity (:plugin (first ps)))))
 
 (defn- taken! [forms]
   (let [names (into #{} (map first) tree/commands)]
     (doseq [[k] forms :when (names k)]
       (throw (refused (str "a plugin adds the command /" (name k))
-                      "Collider has a command of that name.")))))
+                      "Collider has a command of that name."
+                      rename-or-remove)))))
 
 (defn- cli-of [plugins]
   (into {} (for [p plugins, [c sym] (:cli (:manifest p))]
              [c [p sym]])))
 
+(defn- listener [{:keys [plugin]}]
+  (when-let [hs (not-empty (:on-event plugin))]
+    [[:chat (hooks/on-event hs)]]))
+
+(defn- invalid! [tag d]
+  (let [e (ex-info (str "invalid delta " tag) {:delta d})
+        msg (str "plugin delta " tag " broke its schema, dropped")]
+    (log/failure! tag msg e)))
+
+(defn- delta-apply [id tag {:keys [schema apply]}]
+  (let [valid? (m/validator (into [:cat [:= tag]] (rest schema)))]
+    (fn [w d]
+      (if (valid? d)
+        (update-in w [:plugins id] apply d)
+        (do (invalid! tag d) w)))))
+
+(defn- deltas-of [p]
+  (let [id (id-of p)]
+    (for [[tag spec] (:deltas (:plugin p))]
+      [tag (delta-apply id tag spec)])))
+
+(defn- versions [plugins]
+  (into (sorted-set)
+        (map (fn [{m :manifest}] [(:id m) (:version m)]))
+        plugins))
+
 (defn contributions
   "Returns what the plugins add, in load order: the :systems as
-  [anchor system], the :commands as forms of the command tree, the
-  :event-filters and :delta-filters, the :identity function and the
-  :cli entries by name."
+  [anchor system] with those that hear :on-event after chat, the
+  :commands as forms of the command tree, the :deltas as the apply
+  of each tag, the :event-filters and :delta-filters, the :identity
+  function, the :cli entries by name and the ids and versions of the
+  plugins as :plugins. The apply of a tag of plugin id changes the
+  world under [:plugins id] as (f state delta)."
   [plugins]
   (let [joined (fn [k] (into [] (mapcat (comp k :plugin)) plugins))
         forms (joined :commands)]
     (taken! forms)
-    {:systems (joined :systems) :commands forms
+    {:systems (into (joined :systems) (mapcat listener) plugins)
+     :commands forms
+     :deltas (into {} (mapcat deltas-of) plugins)
      :event-filters (joined :event-filters)
      :delta-filters (joined :delta-filters)
-     :identity (identity-of plugins) :cli (cli-of plugins)}))
+     :identity (identity-of plugins) :cli (cli-of plugins)
+     :plugins (versions plugins)}))
 
 (defn- cli-fn [loader c sym]
   (or (with-loader loader #(requiring-resolve sym))
       (throw (refused (str "plugin command " c " has no function")
-                      (str sym " does not resolve.")))))
+                      (str sym " does not resolve.")
+                      fix-or-remove))))
 
 (defn run-cli!
   "Runs command line command c of the plugins with args. Returns the
@@ -276,5 +351,6 @@
         f (cli-fn loader c sym)
         what (str "command " c " failed")
         code (try (with-loader loader #(f ctx args))
-                  (catch Exception e (throw (in-words what e))))]
+                  (catch Exception e
+                    (throw (in-words what "The command threw." e))))]
     (if (int? code) code 0)))

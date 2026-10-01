@@ -421,7 +421,8 @@
             [tag (if (identical? :entity scope)
                    (into [:cat [:= tag] Eid] (rest schema))
                    (into [:cat [:= tag]] (rest schema)))])
-          [[:fx [:cat [:= :fx] Fx]]])))
+          [[:fx [:cat [:= :fx] Fx]]
+           [::m/default [:cat qualified-keyword? [:* :any]]]])))
 
 (def ^:private delta-validator (delay (m/validator Delta)))
 

@@ -71,7 +71,26 @@
   (log/plain (str "Collider for Minecraft " c/game-version
                   (when commit (str ", commit " commit)))))
 
-(defmethod render! :error [{:keys [what why command]}]
-  (log/error (str "**** " (str/upper-case what) "!"))
-  (doseq [l (if (string? why) [why] why)] (log/error l))
-  (when command (log/error command)))
+(def ^:private stars (apply str (repeat 43 "*")))
+
+(defn- capital [s]
+  (if (seq s) (str (str/upper-case (subs s 0 1)) (subs s 1)) ""))
+
+(defn error-lines
+  "Returns the lines of an error: what happened, why, what to do and
+  a note for those who look closer."
+  [{:keys [what why command note]}]
+  (let [why (if (string? why) [why] (vec why))
+        one? (= 1 (count why))]
+    (cond-> [(cond-> (capital (str what)) one? (str ": " (peek why)))]
+      (not one?) (into why)
+      command (conj command)
+      note (conj (str "Note for advanced users: " note)))))
+
+(defmethod render! :error [m]
+  (let [ls (error-lines m)]
+    (if (< 3 (count ls))
+      (do (log/error stars)
+          (run! log/plain ls)
+          (log/plain stars))
+      (run! log/error ls))))

@@ -33,13 +33,11 @@
   "The commands every player may run, as Commands.java requires."
   #{"me" "msg" "tell" "w" "list" "help"})
 
-(defn level-of
-  "Returns the permission level command nm requires."
-  ^long [nm]
+(defn- level-of ^long [nm]
   (if (open-commands nm) 0 gamemaster))
 
-(defn- allowed? [level nm]
-  (>= (long (or level gamemaster)) (level-of nm)))
+(defn- allowed? [level ^long need]
+  (>= (long (or level gamemaster)) need))
 
 (defn- selectors? [opts]
   (>= (long (or (:level opts) gamemaster)) gamemaster))
@@ -357,9 +355,22 @@
   [world]
   (:plugin-commands (:config world)))
 
-(defn- subcommands? [form] (keyword? (first (nth form 2))))
-
 (defn- cmd-name [form] (name (first form)))
+
+(defn- opts-of [form]
+  (let [o (nth form 2 nil)] (when (map? o) o)))
+
+(defn- plain-form [form]
+  (if (opts-of form) (into (subvec form 0 2) (subvec form 3)) form))
+
+(defn- form-level [f]
+  [(cmd-name f) (long (:level (opts-of f) 0))])
+
+(defn- needs [extra]
+  (let [own (into {} (map form-level) extra)]
+    (fn [nm] (or (get own nm) (level-of nm)))))
+
+(defn- subcommands? [form] (keyword? (first (nth form 2))))
 
 (defn- find-form [forms nm]
   (first (filter #(= nm (cmd-name %)) forms)))
@@ -596,16 +607,18 @@
         at #(if (= :root %) root (top %))]
     (mapv #(if (:redirect %) (update % :redirect at) %) nodes)))
 
+(defn- alias-nodes [ok?]
+  (into [] (comp (filter (comp ok? key)) (map alias-node)) aliases))
+
 (defn- root-node [level extra]
-  (let [ok? #(allowed? level %)
-        forms (filter (comp ok? cmd-name) (into commands extra))
-        alias-nodes (into [] (comp (filter (comp ok? key))
-                                   (map alias-node))
-                          aliases)]
+  (let [need (needs extra)
+        ok? #(allowed? level (need %))
+        forms (filter (comp ok? cmd-name)
+                      (into commands (map plain-form) extra))]
     {:type :root
      :children (-> (mapv form-node forms)
                    (cond-> (ok? "execute") (conj execute-node))
-                   (into alias-nodes))}))
+                   (into (alias-nodes ok?)))}))
 
 (defn tree
   "Returns the command nodes a client of permission level gets with
@@ -908,13 +921,15 @@
         (assoc :parse (arg-parse a) :suggest (arg-suggest a)))
       m)))
 
-(defn- usable-top [n]
-  (assoc n :usable? #(allowed? (:level %) (:name n))))
+(defn- usable-top [need n]
+  (let [lv (need (:name n))]
+    (assoc n :usable? #(allowed? (:level %) lv))))
 
 (defn- graph-of [extra]
-  (let [root (-> (with-paths (root-node 4 extra) [])
+  (let [top (partial usable-top (needs extra))
+        root (-> (with-paths (root-node 4 extra) [])
                  engine-node
-                 (update :children #(mapv usable-top %)))]
+                 (update :children #(mapv top %)))]
     (into {:root root} (map (fn [n] [(:name n) n]))
           (:children root))))
 

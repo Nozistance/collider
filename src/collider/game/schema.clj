@@ -209,7 +209,10 @@
    :players            {:default {} :scope :shared}
    :spawning           {:default (i/int-map) :scope :shared}
    :listed             {:default {} :scope :shared}
-   :config             {:scope :shared}})
+   :config             {:scope :shared}
+   :plugins            {:store store-same :load identity
+                        :schema [:maybe [:map-of :keyword :any]]
+                        :scope :shared}})
 
 (defn- of-scope [scope]
   (into {} (for [[k v] world :when (= scope (:scope v))] [k v])))
