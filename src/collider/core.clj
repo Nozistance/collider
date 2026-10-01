@@ -289,18 +289,18 @@
   {:dir (:plugins-dir opts "plugins") :mode mode :settings cfg
    :store store})
 
-(defn- with-adds [cfg {:keys [commands event-filters delta-filters]}]
-  (cond-> cfg
-    (seq commands) (assoc :plugin-commands commands)
-    (seq event-filters) (assoc :event-filters event-filters)
-    (seq delta-filters) (assoc :delta-filters delta-filters)))
+(defn- with-adds [w {:keys [commands event-filters delta-filters]}]
+  (cond-> w
+    (seq commands) (assoc-in [:config :plugin-commands] commands)
+    (seq event-filters) (assoc-in [:hooks :event-filters] event-filters)
+    (seq delta-filters) (assoc-in [:hooks :delta-filters] delta-filters)))
 
 (defn- plugged [{:keys [opts settings store world] :as base} report]
   (let [ps (plugin/load-all (plugin-env :server opts @settings store))
         adds (plugin/contributions ps)
         systems (:systems adds)]
     (report {:event :plugins :loaded (map :manifest ps)})
-    (swap! world update :config with-adds adds)
+    (swap! world with-adds adds)
     (cond-> (assoc base :plugins ps :adds adds)
       (seq systems)
       (assoc :phases (plugin/phases tick/phases systems)))))
