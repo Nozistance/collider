@@ -227,15 +227,18 @@
         lift (if (< vy buoyancy-below) buoyancy 0.0)]
     [(* (double vx) drag) (+ vy lift) (* (double vz) drag)]))
 
-(defn- fluid-at [chunks pos kind]
-  (liquid/fluid-height chunks pos (item-half) (item-height) kind))
+(def ^:private dry {:water 0.0 :lava 0.0 :push [0.0 0.0 0.0]})
+
+(defn- fluid-at [chunks dim pos vel]
+  (if (phys/dry? chunks pos (item-half) (item-height))
+    dry
+    (liquid/fluid-info chunks pos (item-half) (item-height) vel dim)))
 
 (defn- item-drift [chunks dim pos vel]
-  (let [push (liquid/entity-push
-               chunks pos (item-half) (item-height) vel dim)
+  (let [{:keys [water lava push]} (fluid-at chunks dim pos vel)
         pushed (v/+ vel push)
-        water (fluid-at chunks pos :water)
-        lava (fluid-at chunks pos :lava)]
+        water (double water)
+        lava (double lava)]
     [(cond
        (> water fluid-depth) (fluid-movement pushed water-drag)
        (> lava fluid-depth) (fluid-movement pushed lava-drag)

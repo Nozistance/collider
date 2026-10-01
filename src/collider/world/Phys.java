@@ -264,13 +264,19 @@ public final class Phys {
         long y0 = (long) Math.floor(y + 0.001);
         long y1 = (long) Math.ceil((y + height) - 0.001);
         long z0 = (long) Math.floor(z - a), z1 = (long) Math.ceil(z + a);
+        long ckey = -1;
+        Section s = null;
         for (long cx = x0; cx < x1; cx++) {
             for (long cy = Math.max(y0, MIN_Y); cy < y1 && cy <= MAX_Y;
                  cy++) {
                 for (long cz = z0; cz < z1; cz++) {
-                    Section s = Chunk.sectionAt(chunks, (int) cx,
-                                                (int) cy, (int) cz);
-                    int st = s == null ? 0 : s.block(
+                    long k = sectionKey(cx, cy, cz);
+                    if (k != ckey) {
+                        s = wetSection(chunks, t, cx, cy, cz);
+                        ckey = k;
+                    }
+                    if (s == null) continue;
+                    int st = s.block(
                             (int) (((cy & 15) << 8) | ((cz & 15) << 4)
                                    | (cx & 15)));
                     if (st > 0 && (Block.liquid(t, st)
@@ -283,12 +289,35 @@ public final class Phys {
         return true;
     }
 
+    private static Section wetSection(ChunkIndex chunks, BlockTables t,
+            long x, long y, long z) {
+        Section s = Chunk.sectionAt(chunks, (int) x, (int) y, (int) z);
+        return s != null && (s.holds(t.liquid()) || s.holds(t.waterlogged()))
+            ? s : null;
+    }
+
+    private static boolean near(ChunkIndex chunks, byte[] bits,
+            long[] span) {
+        for (long sx = span[0] >> 4; sx <= (span[1] - 1) >> 4; sx++) {
+            for (long sy = span[2] >> 4; sy <= (span[3] - 1) >> 4; sy++) {
+                for (long sz = span[4] >> 4; sz <= (span[5] - 1) >> 4;
+                     sz++) {
+                    Section s = Chunk.sectionAt(chunks, (int) sx << 4,
+                            (int) sy << 4, (int) sz << 4);
+                    if (s != null && s.holds(bits)) return true;
+                }
+            }
+        }
+        return false;
+    }
+
     /// Returns the bits of `bits` of each cell from `outer` touches,
     /// each span `{x0 x1 y0 y1 z0 z1}` with the ends left out, and
     /// the bits of `inner` shifted by two for lava in a cell of
     /// `inner`. Bit 1 is fire, 2 lava.
     public static long burns(ChunkIndex chunks, byte[] bits,
                              long[] outer, long[] inner) {
+        if (!near(chunks, bits, outer)) return 0;
         long acc = 0;
         for (long x = outer[0]; x < outer[1] && acc != 7; x++) {
             boolean xin = x >= inner[0] && x < inner[1];

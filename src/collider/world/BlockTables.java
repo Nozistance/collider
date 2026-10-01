@@ -32,4 +32,17 @@ public record BlockTables(Object[] types, Object[] names,
                           int[] dampening, int[] emission, int[] touch,
                           Object[] faces, double[] resist, byte[] flags,
                           byte[] sturdy, byte[] sturdyRigid,
-                          byte[] sturdyCenter) {}
+                          byte[] sturdyCenter) {
+    private static BlockTables current;
+
+    /// Returns the tables that `install` set last, or null.
+    public static BlockTables current() {
+        return current;
+    }
+
+    /// Makes `t` the tables that `current` returns, and returns it.
+    public static BlockTables install(BlockTables t) {
+        current = t;
+        return t;
+    }
+}

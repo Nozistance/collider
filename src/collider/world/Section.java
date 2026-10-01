@@ -407,6 +407,16 @@ public final class Section {
         return false;
     }
 
+    /// Returns true when any block id in this section is not zero
+    /// in `pred`.
+    public boolean holds(byte[] pred) {
+        if (pal == null) return true;
+        for (int id : pal) {
+            if (id < pred.length && pred[id] != 0) return true;
+        }
+        return false;
+    }
+
     /// Sets each unset entry of the 256 columns of `out` to the
     /// height above `base` of the top block in that column that
     /// matches `pred`.

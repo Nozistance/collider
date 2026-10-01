@@ -802,19 +802,20 @@
 
 (def ^:private ^:table table-set
   (delay
-    (BlockTables.
-      @type-arr @name-arr @shape-arr @needs-support-arr @attached-arr
-      @replaceable-arr @liquid-arr @waterlogged-arr @falls-arr
-      @can-be-replaced-arr @solid-table @legacy-solid-arr
-      @full-cube-arr @blocks-motion-arr @use-shape-arr
-      @can-occlude-arr @dampening-arr @emission-arr @touch-arr
-      @face-arr @resist-table (data/flags) (data/sturdy)
-      (data/sturdy-rigid) (data/sturdy-center))))
+    (BlockTables/install
+     (BlockTables.
+       @type-arr @name-arr @shape-arr @needs-support-arr @attached-arr
+       @replaceable-arr @liquid-arr @waterlogged-arr @falls-arr
+       @can-be-replaced-arr @solid-table @legacy-solid-arr
+       @full-cube-arr @blocks-motion-arr @use-shape-arr
+       @can-occlude-arr @dampening-arr @emission-arr @touch-arr
+       @face-arr @resist-table (data/flags) (data/sturdy)
+       (data/sturdy-rigid) (data/sturdy-center)))))
 
 (defn tables
   "Returns the tables of the block states."
   ^collider.world.BlockTables []
-  @table-set)
+  (or (BlockTables/current) @table-set))
 
 (defn blocks-motion?
   {:inline (via `Block/blocksMotion)}

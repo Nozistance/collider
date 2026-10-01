@@ -164,7 +164,7 @@
 (defn- has-chunk? [chunks x z]
   (some? (get chunks (chunk/pos->id x z))))
 
-(defn- near-edits? [world e]
+(defn- loaded-near? [world e]
   (let [chunks (:chunks world) p (:pos e)
         x0 (chunk-x (- (v/x p) 0.5)) x1 (chunk-x (+ (v/x p) 0.5))
         z0 (chunk-x (- (v/z p) 0.5)) z1 (chunk-x (+ (v/z p) 0.5))]
@@ -764,9 +764,14 @@
     (item-deltas world eid e)
     (mob-deltas world eid e)))
 
+(defn- stirred? [world e]
+  (if (creative-proof? e)
+    (loaded-near? world e)
+    (pos? (probe world e))))
+
 (defn- live? [world [_ e]]
   (and (some? (:health e))
-       (or (not (idle? world e)) (near-edits? world e))))
+       (or (not (idle? world e)) (stirred? world e))))
 
 (defn- ticking? [active e]
   (or (= :player (:type e)) (areas/active-at? active (:pos e))))

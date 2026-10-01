@@ -97,6 +97,11 @@
   ^Section [^Chunk chunk ^long si]
   (.section chunk (int si)))
 
+(defn holds?
+  "Returns true when section s may hold a state true in pred."
+  [^Section s ^booleans pred]
+  (.holds s pred))
+
 (defn with-section
   "Returns chunk with section s at index si."
   ^Chunk [^Chunk chunk ^long si ^Section s]

@@ -177,7 +177,9 @@
              (:carried e)
              t)))
 
-(defn- as-seen [s] (when s [(:item s) (long (:count s 1))]))
+(defn- as-seen [s]
+  (when s
+    [(:item s) (long (:count s 1)) (:components s) (:removed s)]))
 
 (defn- slot-diff [inv known]
   (let [pick (fn [slot]
@@ -190,15 +192,11 @@
 (defn- track-of [^long t e] (or (:track e) (baseline t e)))
 
 (def ^:private tracked-types
-  #{:player :item :tnt :falling-block :area-effect-cloud
-    :experience-orb})
+  (into #{:player :item :tnt :falling-block :area-effect-cloud
+          :experience-orb}
+        cat [entity/thrown-types hanging/types (keys mobs/types)]))
 
-(defn- tracked? [e]
-  (let [t (:type e)]
-    (or (tracked-types t)
-        (entity/thrown-types t)
-        (hanging/types t)
-        (mobs/mob-type? t))))
+(defn- tracked? [e] (contains? tracked-types (:type e)))
 
 (defn- tracked-entries [world]
   (into [] (filter (fn [[_ e]] (tracked? e))) (:entities world)))

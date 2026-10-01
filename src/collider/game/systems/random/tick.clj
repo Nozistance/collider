@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
-  (:require [collider.game.clock :as clock]
+  (:require [collider.data :as data]
+            [collider.game.clock :as clock]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
@@ -71,7 +72,15 @@
                    (conj acc [[(+ x0 lx) ly (+ z0 lz)] st])
                    acc)))))))
 
-(defn- blank? [s] (or (nil? s) (identical? s chunk/empty-section)))
+(def ^:private ^:table ticking
+  (delay (let [a (boolean-array (data/block-state-count))]
+           (dotimes [st (alength a)]
+             (aset a st (block/randomly-ticking? st)))
+           a)))
+
+(defn- quiet? [s]
+  (or (nil? s) (identical? s chunk/empty-section)
+      (not (chunk/holds? s @ticking))))
 
 (defn- chunk-cells [world speed cid c]
   (let [t (long (:tick world)) cid (long cid)
@@ -81,7 +90,7 @@
       (if (= si (long chunk/section-count))
         acc
         (recur (inc si)
-               (if (blank? (chunk/chunk-section c si))
+               (if (quiet? (chunk/chunk-section c si))
                  acc
                  (section-cells acc t cid si speed c x0 z0)))))))
 
