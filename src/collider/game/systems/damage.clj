@@ -307,7 +307,9 @@
         [f0 f1 lit f] (player-fire world e c)]
     (concat (burning-flag eid e f1 false)
             (when (not= f f0) [[:merge-entity eid {:fire f}]])
-            (when (pos? (long lit)) (melt-deltas world (:snow c)))
+            (when (pos? (long lit))
+              (delta/authored (melt-deltas world (:snow c))
+                              (delta/entity-author eid e)))
             (when (and (pos? (long f1)) (<= (long f) 0))
               [(put-out-sound world eid e)]))))
 

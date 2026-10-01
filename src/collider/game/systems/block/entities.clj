@@ -6,6 +6,7 @@
   (:require [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.block.blockentity :as be]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.systems.brewing :as brewing]
             [collider.game.systems.campfires :as campfires]
@@ -35,7 +36,7 @@
   (let [e (be/at w pos)
         f (ticker (:kind e))]
     (if (and f (due? w active turn pos))
-      (apply/then acc (f w [pos e]))
+      (apply/then acc (delta/authored (f w [pos e]) nil (:kind e)))
       acc)))
 
 (defn block-entities

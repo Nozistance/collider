@@ -1,6 +1,7 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
   (:require [collider.game.block.blockentity :as be]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.block.anvil :as anvil]
@@ -546,7 +547,8 @@
   (mapcat (fn [e]
             (let [eid (:eid e)
                   w (assoc-in world [:entities eid] e)]
-              (left-behind-deltas w eid e)))
+              (delta/authored (left-behind-deltas w eid e)
+                              eid :player)))
           (get-in world [:input :quits])))
 
 (defn- close-event-deltas [world [_ eid _]]

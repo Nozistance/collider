@@ -464,7 +464,8 @@
     :ender-pearl (concat (hurt-deltas world eid e d hit)
                          (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)
-    (potion-deltas world (assoc e :pos at) at hit)))
+    (delta/authored (potion-deltas world (assoc e :pos at) at hit)
+                    (delta/entity-author eid e))))
 
 (defn- step-deltas [world eid e]
   (let [d (drift world e)

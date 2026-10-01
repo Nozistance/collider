@@ -4,6 +4,7 @@
   drops, then fire."
   (:require [collider.data :as data]
             [collider.game.block.tnt :as tnt]
+            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.entity.sections :as sections]
             [collider.game.game-mode :as game-mode]
@@ -188,9 +189,15 @@
         read #(chunks/read-absent world %)]
     (explosion/block-reader (:chunks world) at read)))
 
-(defn- changed-deltas [{:keys [world rg]} changes]
-  (concat (chunks/read-absent-deltas (explosion/loaded-payloads rg))
-          (edit/shaped-deltas (with-read world rg) changes)))
+(defn- author [{:keys [by src source]}]
+  (when by
+    (cond-> {:by by :with source}
+      (:cause src) (assoc :owner (:cause src)))))
+
+(defn- changed-deltas [{:keys [world rg] :as b} changes]
+  (let [ds (edit/shaped-deltas (with-read world rg) changes)]
+    (concat (chunks/read-absent-deltas (explosion/loaded-payloads rg))
+            (delta/authored ds (author b)))))
 
 (defn- blocks
   "Returns {:ds :spawns :count} of the blocks of blast b: the deltas

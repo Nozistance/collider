@@ -3,6 +3,7 @@
   of ServerGamePacketListenerImpl. Players go in join order, each
   step sees the writes of the steps and players before it."
   (:require [collider.game.apply :as apply]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.level :as level]
             [collider.game.out :as out]
@@ -41,7 +42,8 @@
 
 (defn- stepped [[w :as acc] eid f]
   (if-let [e (get (:entities w) eid)]
-    (apply/then acc (f w (MapEntry/create eid e)))
+    (apply/then acc (delta/authored (f w (MapEntry/create eid e))
+                                    eid :player))
     acc))
 
 (defn player-tick

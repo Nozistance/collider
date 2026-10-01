@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.config :as config]
             [collider.data :as data]
+            [collider.game.delta :as delta]
             [collider.game.camera :as camera]
             [collider.game.clock :as clock]
             [collider.game.deltas :as deltas]
@@ -1945,10 +1946,14 @@
     :commit-synced (commit-synced world ev)
     nil))
 
+(defn- commander [[_ eid]]
+  (cond-> {:with :command} (integer? eid) (assoc :by eid)))
+
 (defn- one-deltas [world ev]
-  (vec (concat (event-deltas world ev)
-               (rules-event-deltas world ev)
-               (config-event-deltas world ev))))
+  (delta/authored (vec (concat (event-deltas world ev)
+                               (rules-event-deltas world ev)
+                               (config-event-deltas world ev)))
+                  (commander ev)))
 
 (defn- chat-deltas [world events]
   (apply/fold-events world events one-deltas))

@@ -1,6 +1,7 @@
 (ns collider.game.mob.rabbit
   "Rabbit hops, goals, garden raids and kits."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.delta :as delta]
+            [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.game-mode :as game-mode]
             [collider.game.mob.animal :as animal]
@@ -403,7 +404,10 @@
         ok? (and (:can-raid? h) (carrot-at? world cell))
         h (cond-> (assoc h :can-raid? false :raid-wait 10)
             ok? (assoc :carrots carrot-wait))]
-    [(entity/with e {:hop h}) (when ok? (eaten world eid cell))]))
+    [(entity/with e {:hop h})
+     (when ok?
+       (delta/authored (eaten world eid cell)
+                       (delta/entity-author eid e)))]))
 
 (defn- raid-tick [_ world eid e t _]
   (let [{:keys [cell tries]} (:task e)

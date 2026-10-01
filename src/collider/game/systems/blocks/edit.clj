@@ -217,30 +217,35 @@
 (defn- with-fx? [rec] (boolean (get rec 2)))
 
 (defn settled-deltas
-  "Returns the deltas of s, the result of a run of block updates."
-  [world s]
-  (let [recs (:records s)
-        quiet (unheard s)
-        d [:set-blocks (block-changes recs) (:ticks s)]]
-    (cond-> (into [(cond-> d (seq quiet) (conj quiet))]
-                  (removal-deltas world (:writes s)))
-      (some with-fx? recs) (into (change-fx world recs)))))
+  "Returns the deltas of s, the result of a run of block updates.
+  Given by, it is the author of the changes."
+  ([world s] (settled-deltas world s nil))
+  ([world s by]
+   (let [recs (:records s)
+         quiet (not-empty (unheard s))
+         d (cond-> [:set-blocks (block-changes recs) (:ticks s)]
+             (or quiet by) (conj quiet)
+             by (conj by))]
+     (cond-> (into [d] (removal-deltas world (:writes s)))
+       (some with-fx? recs) (into (change-fx world recs))))))
 
 (defn- joined [a b]
-  (let [[_ ca ta] a [_ cb tb] b]
-    [:set-blocks (into ca cb) (into ta tb)]))
+  (let [[_ ca ta _ by] a [_ cb tb] b
+        d [:set-blocks (into ca cb) (into ta tb)]]
+    (if by (conj d nil by) d)))
 
 (defn- joinable? [d]
-  (and (= :set-blocks (nth d 0)) (= 3 (count d))
-       (some? (nth d 2))))
+  (and (= :set-blocks (nth d 0)) (some? (nth d 2 nil))
+       (nil? (nth d 3 nil))))
 
 (defn joined-into
   "Returns out with d added.
-  A run of plain block writes joins into one."
+  A run of plain block writes of one author joins into one."
   [out d]
   (let [n (count out)
         top (when (pos? n) (nth out (dec n)))]
-    (if (and top (joinable? top) (joinable? d))
+    (if (and top (joinable? top) (joinable? d)
+             (= (nth top 4 nil) (nth d 4 nil)))
       (conj! (pop! out) (joined top d))
       (conj! out d))))
 

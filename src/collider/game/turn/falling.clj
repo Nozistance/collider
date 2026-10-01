@@ -1,6 +1,7 @@
 (ns collider.game.turn.falling
   "The turn of a falling block such as sand, gravel or an anvil."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.delta :as delta]
+            [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.systems.damage :as damage]
             [collider.random :as random]
@@ -74,7 +75,8 @@
 (defn- land-deltas [world eid e cell cur concrete? stuck?]
   (if-let [st (landed-state world e cell cur concrete? stuck?)]
     (cond-> (into [[:remove-entity eid]]
-                  (edit/set-deltas world [[cell st]]))
+                  (delta/authored (edit/set-deltas world [[cell st]])
+                                  (delta/entity-author eid e)))
             (anvil? st)
             (conj (land-event out/sound-anvil-land cell)))
     (broken-deltas world eid e cell)))

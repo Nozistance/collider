@@ -1,6 +1,7 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
   (:require [collider.game.clock :as clock]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.game-mode :as game-mode]
             [collider.game.systems.blocks.edit :as edit]
@@ -83,7 +84,9 @@
         up (stand-up world e head bed?)
         yaw (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
     (concat
-      (when bed? (edit/set-deltas world [[head (vacated st)]]))
+      (when bed?
+        (delta/authored (edit/set-deltas world [[head (vacated st)]])
+                        eid :player))
       (woken-deltas eid up yaw))))
 
 (defn- in-bed [world]
@@ -129,14 +132,16 @@
          (>= (deep-count world all) needed))))
 
 (defn vacated-deltas
-  "Returns the deltas of the bed that player e leaves between ticks.
-  Its head is set free."
-  [world e]
+  "Returns the deltas of the bed that player eid, e, leaves between
+  ticks. Its head is set free."
+  [world eid e]
   (let [head (get-in e [:sleeping :pos])
         st (when head (block-at world head))
         base (dec (long (:tick world)))]
     (when (and st (= :bed (block/type-of st)))
-      (edit/flagged-deltas world [[head (vacated st)]] 3 nil base))))
+      (delta/authored
+        (edit/flagged-deltas world [[head (vacated st)]] 3 nil base)
+        eid :player))))
 
 (defn- sleep-deltas [world]
   (when-let [all (seq (in-bed world))]
@@ -149,7 +154,8 @@
         (seq waking) (waking-deltas world asleep waking)))))
 
 (defn- quit-deltas [world]
-  (mapcat #(vacated-deltas world %) (get-in world [:input :quits])))
+  (mapcat #(vacated-deltas world (:eid %) %)
+          (get-in world [:input :quits])))
 
 (defn sleep
   "Returns the deltas of sleeping and waking in the level."

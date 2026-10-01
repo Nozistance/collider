@@ -15,7 +15,7 @@
     (when (>= (- t (long (:keepalive-at e t))) interval-ticks)
       (if (:keepalive-pending? e)
         (concat
-          (sleep/vacated-deltas world e)
+          (sleep/vacated-deltas world eid e)
           [(out/to eid
                    (out/disconnect {:translate "disconnect.timeout"}))
            [:remove-entity eid]

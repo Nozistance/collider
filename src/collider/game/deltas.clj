@@ -62,6 +62,14 @@
   [^Deltas d]
   (.input d))
 
+(defn as-vec
+  "Returns the deltas of d as one vector: those of the level, those
+  of each entity by eid, then the effects as [:fx msg]."
+  [^Deltas d]
+  (-> (world-of d)
+      (into cat (vals (entities-of d)))
+      (into (map #(vector :fx %)) (out-of d))))
+
 (def empty-deltas (->Deltas [] (i/int-map) [] []))
 
 (defn input

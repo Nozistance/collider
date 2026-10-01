@@ -2,6 +2,7 @@
   "Sheep grazing, shearing, dyeing and lamb colours."
   (:require [collider.data :as data]
             [collider.game.craft :as craft]
+            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
@@ -95,9 +96,10 @@
   [e t]
   (and (= :eat (get-in e [:task :kind])) (bite-now? e t)))
 
-(defn- eat-tick [_ world _ e t _]
+(defn- eat-tick [_ world eid e t _]
   (if-let [ds (when (bite-now? e t)
-                (bitten world (sense/feet-cell (:pos e))))]
+                (-> (bitten world (sense/feet-cell (:pos e)))
+                    (delta/authored (delta/entity-author eid e))))]
     [(ate e t) (when (get-in world [:rules :mob-griefing] true) ds)]
     [e nil]))
 

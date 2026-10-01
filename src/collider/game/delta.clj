@@ -2,6 +2,7 @@
   "The delta tags, what each means, and the effect messages."
   (:require [clojure.data.int-map :as i]
             [clojure.set :as set]
+            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.player :as player]
@@ -40,6 +41,10 @@
 
 (def Text [:or :string :map])
 
+(def Author
+  [:map [:by {:optional true} Eid] [:owner {:optional true} Eid]
+   [:with {:optional true} :keyword]])
+
 (defn- merge-diff [cur add drop]
   (let [s (or cur (i/int-set))
         s (if (seq add) (into s add) s)]
@@ -57,7 +62,9 @@
   which entities a delta may add and :by-eid that it belongs to the
   level of its eid."
   {:set-blocks
-   {:scope :level :schema [:cat Records [:? Coll] [:? Coll]]
+   {:scope :level
+    :schema [:cat Records [:? [:maybe Coll]] [:? [:maybe Coll]]
+             [:? Author]]
     :apply level/set-blocks}
    :ticks-flushed
    {:scope :level
@@ -229,6 +236,32 @@
    :place {:scope :input :apply player/place}
    :use-item {:scope :input :apply player/use-item}
    :release-use {:scope :input :apply player/release-use}})
+
+(defn- unauthored? [d]
+  (and (identical? :set-blocks (nth d 0)) (< (count d) 5)))
+
+(defn- with-author [d by]
+  (conj (into d (repeat (- 4 (count d)) nil)) by))
+
+(defn authored
+  "Returns deltas ds with author by on each block change that has
+  none. An author names the entity that made the change in :by, the
+  one that owns it in :owner and what made it in :with. Given eid and
+  with, the author is {:by eid :with with}, with no :by for no eid."
+  ([ds by]
+   (if (and by (some unauthored? ds))
+     (mapv #(if (unauthored? %) (with-author % by) %) ds)
+     ds))
+  ([ds eid with]
+   (if (some unauthored? ds)
+     (authored ds (cond-> {:with with} eid (assoc :by eid)))
+     ds)))
+
+(defn entity-author
+  "Returns the author of the block changes entity eid, e, makes."
+  [eid e]
+  (cond-> {:by eid :with (:type e)}
+    (:owner e) (assoc :owner (:owner e))))
 
 (defn- applies [scopes]
   (into {} (keep (fn [[tag {:keys [scope apply]}]]

@@ -3,6 +3,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schedule :as schedule]
@@ -94,24 +95,25 @@
     (assoc pass :out (reduce edit/joined-into (:out pass) ds))
     pass))
 
-(defn- written [world k pass s]
+(defn- written [world k pass s by]
   (let [writes (:writes s)]
     (cond-> (-> pass
                 (assoc-in [:w :chunks] (:chunks s))
-                (out-into (edit/settled-deltas world s)))
+                (out-into (edit/settled-deltas world s by)))
       (:dirty pass)
       (update :dirty into (map (comp column first)) writes)
       (= :block-ticks k) (update :lit lit-writes writes))))
 
 (def ^:private ^:const update-all 3)
 
-(defn- applied [world ctx k pass changes]
+(defn- applied [world ctx k pass changes by]
   (if (empty? changes)
     pass
     (let [op #(vector :set % (neighbors/flags-of % update-all))
           ops (mapv op changes)]
       (written world k pass
-               (neighbors/run (:chunks (:w pass)) ctx ops)))))
+               (neighbors/run (:chunks (:w pass)) ctx ops)
+               {:with by}))))
 
 (defn- again-deltas [[p] {:keys [again]}]
   (when again
@@ -126,9 +128,11 @@
   (let [[pass r] (if (stale? pass tick first-run)
                    (rerun pass ctx k tick)
                    [pass first-run])
-        ds (concat (again-deltas tick r) (:deltas r))
+        by (nth tick 1)
+        ds (concat (again-deltas tick r)
+                   (delta/authored (:deltas r) nil by))
         pass (out-into pass ds)]
-    (applied world ctx k pass (:changes r))))
+    (applied world ctx k pass (:changes r) by)))
 
 (defn- ordered [world k active]
   (let [runs? #(areas/active-id? active %)

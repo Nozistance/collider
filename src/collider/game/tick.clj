@@ -199,19 +199,53 @@
               pd))
           {} dims))
 
+(defn- unfiltered! [world f ^Throwable t]
+  (let [unit (log/name-of f)
+        msg (str "filter " unit " failed, passed over this time")]
+    (log/failure! unit msg t)
+    (some-> (:failures world) (swap! conj [unit t]))))
+
+(defn- passed [world fs at x]
+  (reduce (fn [x f]
+            (try (vec (f at x))
+                 (catch Throwable t (unfiltered! world f t) x)))
+          x fs))
+
+(defn- filtered [world fs pd]
+  (reduce-kv
+    (fn [m dim d]
+      (let [lv (assoc (get (:levels world) dim) :server world)
+            v (passed world fs lv (deltas/as-vec d))]
+        (assoc m dim (deltas/with-dim (deltas/of-vec v) dim))))
+    pd pd))
+
 (defn- step [[world ds] dim d]
   (apply/in world dim d ds))
 
+(defn- hooked [world k]
+  (seq (get-in world [:hooks k])))
+
 (defn- run-phase [[world ds :as acc] phase]
-  (let [pd (phase-deltas world ds phase)]
+  (let [pd (phase-deltas world ds phase)
+        pd (if-let [fs (hooked world :delta-filters)]
+             (filtered world fs pd)
+             pd)]
     (reduce #(step %1 %2 (get pd %2)) acc dims)))
 
 (defn tick
   "Returns the world and the deltas after one tick of the events.
-  A system that fails gives no deltas this tick, the others go on."
+  A system that fails gives no deltas this tick, the others go on.
+  The event filters of world under [:hooks :event-filters] pass
+  the events in turn before the tick, each as (f world events). Its
+  delta filters under [:hooks :delta-filters] pass the deltas of
+  each phase in turn before they apply, each as (f level deltas). A
+  filter that fails passes on what it was given."
   ([world events] (tick world events phases))
   ([world events phases]
    (deltas/in-pool
-     #(let [acc (begin world events)
+     #(let [evs (if-let [fs (hooked world :event-filters)]
+                  (passed world fs world events)
+                  events)
+            acc (begin world evs)
             [world' ds] (reduce run-phase acc phases)]
         [world' (merged ds)]))))

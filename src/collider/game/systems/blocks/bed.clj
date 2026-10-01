@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.bed
   "Going to sleep in a bed."
   (:require [collider.game.blast :as blast]
+            [collider.game.delta :as delta]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.sleep :as sleep]
@@ -112,8 +113,10 @@
         foot (mapv + head (connect/partner-offset st))
         both? (same-block? world' foot st)
         [world'' more] (if both? (removed world' foot) [world' nil])]
-    (concat (say-deltas eid (:error-message rule)) ds more
-            (blast/deltas world'' (blast-spec head)))))
+    (concat (say-deltas eid (:error-message rule))
+            (delta/authored
+              (concat ds more (blast/deltas world'' (blast-spec head)))
+              {:by eid :with :bed}))))
 
 (defn sleep-deltas [world eid pos]
   (when-let [head (bed/head-pos (:chunks world) pos)]

@@ -210,7 +210,7 @@
 
 (defn- kicked-deltas [world eid]
   (concat
-    (sleep/vacated-deltas world (get-in world [:entities eid]))
+    (sleep/vacated-deltas world eid (get-in world [:entities eid]))
     [(out/to eid (out/disconnect duplicate-login-reason))
      (out/to eid (out/close))
      [:remove-entity eid]]))

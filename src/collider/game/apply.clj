@@ -315,14 +315,19 @@
        (apply-level world d))
      d]))
 
+(defn- authored [ds ev]
+  (let [eid (nth ev 1 nil)]
+    (if (integer? eid) (delta/authored ds eid :player) ds)))
+
 (defn- event-deltas [f w x ev]
-  (try (vec (f w x))
+  (try (vec (authored (f w x) ev))
        (catch Throwable t (dropped! f ev t) [])))
 
 (defn fold-events
   "Returns the deltas f gives for each event in order.
   Each event sees the world after the events and slot events
-  before it. An event that f fails on gives no deltas."
+  before it. An event that f fails on gives no deltas. The player
+  of an event is the author of the block changes it makes."
   ([world events f] (fold-events world events f identity))
   ([world events f event-of]
    (loop [w world evs (seq events) acc []]
