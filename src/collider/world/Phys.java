@@ -298,10 +298,15 @@ public final class Phys {
 
     private static boolean near(ChunkIndex chunks, byte[] bits,
             long[] span) {
-        for (long sx = span[0] >> 4; sx <= (span[1] - 1) >> 4; sx++) {
-            for (long sy = span[2] >> 4; sy <= (span[3] - 1) >> 4; sy++) {
-                for (long sz = span[4] >> 4; sz <= (span[5] - 1) >> 4;
-                     sz++) {
+        return near(chunks, bits, span[0], span[1], span[2], span[3],
+                    span[4], span[5]);
+    }
+
+    private static boolean near(ChunkIndex chunks, byte[] bits, long x0,
+            long x1, long y0, long y1, long z0, long z1) {
+        for (long sx = x0 >> 4; sx <= (x1 - 1) >> 4; sx++) {
+            for (long sy = y0 >> 4; sy <= (y1 - 1) >> 4; sy++) {
+                for (long sz = z0 >> 4; sz <= (z1 - 1) >> 4; sz++) {
                     Section s = Chunk.sectionAt(chunks, (int) sx << 4,
                             (int) sy << 4, (int) sz << 4);
                     if (s != null && s.holds(bits)) return true;
@@ -309,6 +314,19 @@ public final class Phys {
             }
         }
         return false;
+    }
+
+    /// Returns true when no section within a block of the box of half
+    /// width `half` and `height` at `x y z` holds a state of `bits`.
+    public static boolean cool(ChunkIndex chunks, byte[] bits, double x,
+                               double y, double z, double half,
+                               double height) {
+        long y0 = Math.max(MIN_Y, (long) Math.floor(y) - 1);
+        long y1 = Math.min(MAX_Y + 1, (long) Math.floor(y + height) + 2);
+        return !near(chunks, bits, (long) Math.floor(x - half) - 1,
+                     (long) Math.floor(x + half) + 2, y0, y1,
+                     (long) Math.floor(z - half) - 1,
+                     (long) Math.floor(z + half) + 2);
     }
 
     /// Returns the bits of `bits` of each cell from `outer` touches,

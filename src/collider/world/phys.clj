@@ -155,6 +155,12 @@
   ^long [chunks ^bytes bits ^longs outer ^longs inner]
   (Phys/burns chunks bits outer inner))
 
+(defn cool?
+  "Returns true when no block of bits lies within a block of a body
+  of that size at pos."
+  [chunks ^bytes bits p half height]
+  (Phys/cool chunks bits (v/x p) (v/y p) (v/z p) half height))
+
 (defn free?
   "Returns true when a body of that size meets no block after a
   move by dx dy dz. Only the end position counts, not the path.

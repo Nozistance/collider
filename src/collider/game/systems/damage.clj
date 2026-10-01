@@ -213,14 +213,15 @@
       (dotimes [st (alength a)] (aset a st (byte (burn-bit st))))
       a)))
 
-(defn- probe ^long [world e]
-  (let [[half height] (box-of e)
-        p (:pos e)
-        outer (span p (double half) (double height)
-                    [fluid-margin fluid-margin])
-        inner (span p (double half) (double height)
-                    [sunk-shrink-xz sunk-shrink-y])]
-    (phys/burns (:chunks world) @burn-bits outer inner)))
+(defn- probe
+  (^long [world e] (probe world e (box-of e)))
+  (^long [world e [half height]]
+   (let [p (:pos e)
+         outer (span p (double half) (double height)
+                     [fluid-margin fluid-margin])
+         inner (span p (double half) (double height)
+                     [sunk-shrink-xz sunk-shrink-y])]
+     (phys/burns (:chunks world) @burn-bits outer inner))))
 
 (defn- burning-flag [eid e ^long fire sunk?]
   (let [lit? (boolean (or (pos? fire) sunk?))]
@@ -401,10 +402,16 @@
   wet as wet? tells or as it is."
   ([world eid e] (fire-deltas world eid e (:wet? e)))
   ([world eid e wet?]
-   (if (creative-proof? e)
-     (player-fire-deltas world eid e)
-     (lit-deltas eid e (long (or (:fire e) 0)) (boolean wet?)
-                 (probe world e)))))
+   (let [fire (long (or (:fire e) 0))]
+     (cond
+       (creative-proof? e) (player-fire-deltas world eid e)
+       :else
+       (let [[half height :as box] (box-of e)]
+         (when-not (and (zero? fire) (not (:burning? e))
+                        (phys/cool? (:chunks world) @burn-bits (:pos e)
+                                    half height))
+           (lit-deltas eid e fire (boolean wet?)
+                       (probe world e box))))))))
 
 (def ^:private ^:const burn-volume 0.4)
 
