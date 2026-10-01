@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.reach
   "Reach and block raycasts from the eye."
-  (:require [collider.game.player :as player]
+  (:require [collider.game.entity :as entity]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -18,8 +19,8 @@
 (defn eye-pos
   "Returns where the entity's eyes are."
   [e]
-  (let [p (:pos e) crouch? (and (:sneaking? e) (not (:flying e)))]
-    [(v/x p) (+ (v/y p) (if crouch? 1.27 1.62)) (v/z p)]))
+  (let [p (:pos e)]
+    [(v/x p) (+ (v/y p) (entity/eye-height e)) (v/z p)]))
 
 (defn axis-gap
   "Returns how far the eye is from a box of size along one axis."

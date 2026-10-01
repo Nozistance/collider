@@ -9,6 +9,17 @@
 
 (set! *warn-on-reflection* true)
 
+(defn joined?
+  "Returns true when box a of a shape meets box b of a body as
+  Shapes.joinIsNotEmpty finds it: each axis shares more than the
+  1.0E-7 that merges coordinates. A box is [x0 y0 z0 x1 y1 z1]."
+  [a b]
+  (let [axis (fn [^long i]
+               (Collision/joins
+                (double (nth a i)) (double (nth a (+ i 3)))
+                (double (nth b i)) (double (nth b (+ i 3)))))]
+    (and (axis 0) (axis 1) (axis 2))))
+
 (defn- full-cube? [chunks x y z]
   (let [st (chunk/block-state chunks x y z)]
     (and (block/solid? st) (block/full-cube? st))))
@@ -178,10 +189,13 @@
 
 (defn box-free?
   "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block.
-  bottom is the foot of the body the box belongs to."
-  [chunks box bottom]
-  (Phys/freeBox chunks (kinds) (block/cube-arr) (block/collision-arr)
-                (double-array box) (double bottom) 0))
+  bottom is the foot of the body the box belongs to, ctx its
+  context."
+  ([chunks box bottom] (box-free? chunks box bottom 0))
+  ([chunks box bottom ctx]
+   (Phys/freeBox chunks (kinds) (block/cube-arr)
+                 (block/collision-arr) (double-array box)
+                 (double bottom) (int ctx))))
 
 (defn- support-form [chunks pos half ctx]
   (let [c (gensym "cell")

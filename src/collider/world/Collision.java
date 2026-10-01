@@ -75,6 +75,66 @@ public final class Collision {
         return m;
     }
 
+    private static final double EPSILON = 1.0E-7;
+
+    private static double at(int i, double lo, double hi) {
+        return i == 0 ? lo : hi;
+    }
+
+    /// Returns true when the span from `f0` to `f1` of a shape and
+    /// the span from `s0` to `s1` of a body meet on one axis, as
+    /// `Shapes.joinIsNotEmpty` with `AND` merges their coordinates: a
+    /// coordinate within `1.0E-7` above the last one kept joins it.
+    public static boolean joins(double f0, double f1, double s0,
+            double s1) {
+        if (f1 - f0 < EPSILON || s1 - s0 < EPSILON) return false;
+        if (f1 < s0 - EPSILON || s1 < f0 - EPSILON) return false;
+        if (f0 == s0 && f1 == s1) return true;
+        int fi = 0, si = 0, cf = -1, cs = -1;
+        boolean open = false;
+        double last = Double.NaN;
+        while (fi < 2 || si < 2) {
+            boolean outF = fi >= 2, outS = si >= 2;
+            boolean first = !outF && (outS
+                || at(fi, f0, f1) < at(si, s0, s1) + EPSILON);
+            double v = first ? at(fi++, f0, f1) : at(si++, s0, s1);
+            if (first ? si == 0 || outS : fi == 0 || outF) continue;
+            if (!(last >= v - EPSILON)) {
+                if (open && cf == 0 && cs == 0) return true;
+                open = true;
+                last = v;
+            }
+            cf = fi - 1;
+            cs = si - 1;
+        }
+        return false;
+    }
+
+    private static boolean joins(double[] a, int o, double[] box) {
+        return joins(a[o], a[o + 3], box[0], box[3])
+            && joins(a[o + 1], a[o + 4], box[1], box[4])
+            && joins(a[o + 2], a[o + 5], box[2], box[5]);
+    }
+
+    private static boolean unit(double lo, double hi) {
+        return lo == Math.floor(lo) && hi == lo + 1.0;
+    }
+
+    private static boolean cell(double[] a, int o) {
+        return unit(a[o], a[o + 3]) && unit(a[o + 1], a[o + 4])
+            && unit(a[o + 2], a[o + 5]);
+    }
+
+    /// Returns true when box `o` of `a`, a block box in blocks, meets
+    /// the body box `box` as `BlockCollisions` finds it: a whole cell
+    /// by any overlap, any other box as `joins` finds it.
+    public static boolean meets(double[] a, int o, double[] box) {
+        if (!cell(a, o)) return joins(a, o, box);
+        return a[o + 3] > box[0] && box[3] > a[o]
+            && a[o + 4] > box[1] && box[4] > a[o + 1]
+            && a[o + 5] > box[2] && box[5] > a[o + 2];
+    }
+
     /// Returns the y coordinates of `shape`, the boxes that `shape`
     /// or `boxes` gave for `st`, in `ys`.
     public static double[] ys(YCoords ys, int st, double[] shape) {

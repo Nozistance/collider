@@ -357,9 +357,7 @@ public final class Phys {
     }
 
     private static boolean overlaps(double[] a, int o, double[] box) {
-        return a[o + 3] > box[0] && box[3] > a[o]
-            && a[o + 4] > box[1] && box[4] > a[o + 1]
-            && a[o + 5] > box[2] && box[5] > a[o + 2];
+        return Collision.meets(a, o, box);
     }
 
     /// Returns true when a body with half width `half` and height

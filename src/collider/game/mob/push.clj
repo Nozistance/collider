@@ -12,9 +12,7 @@
 (def ^:private no-box [0.0 1.0])
 
 (defn- pushable-box [e]
-  (case (:type e)
-    :player (size/type-box :player)
-    (or (mobs/box-of e) no-box)))
+  (or (size/box e) no-box))
 
 (defn- pushable-half ^double [e]
   (double (nth (pushable-box e) 0)))

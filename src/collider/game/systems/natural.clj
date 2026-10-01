@@ -175,13 +175,6 @@
 
 (defn- mob-box [k x y z] (box-at (dissoc k :scale) x y z))
 
-(defn- apart? [a b i]
-  (or (>= (double (a i)) (double (b (+ 3 (long i)))))
-      (<= (double (a (+ 3 (long i)))) (double (b i)))))
-
-(defn- overlaps? [a b]
-  (not (or (apart? a b 0) (apart? a b 1) (apart? a b 2))))
-
 (defn- box-of [e]
   (when-let [[half height] (size/box e)]
     (let [p (:pos e) h (double half)]
@@ -203,8 +196,9 @@
 
 (defn- blocked? [ctx box]
   (let [cx (bit-shift-right (long (Math/floor (double (box 0)))) 4)
-        cz (bit-shift-right (long (Math/floor (double (box 2)))) 4)]
-    (some #(some (fn [b] (overlaps? box b)) (get @(:blockers ctx) %))
+        cz (bit-shift-right (long (Math/floor (double (box 2)))) 4)
+        hits? #(some (fn [b] (phys/joined? box b)) %)]
+    (some #(hits? (get @(:blockers ctx) %))
           (chunk/around-ids cx cz 1))))
 
 (defn- clear? [ctx k x y z]
@@ -280,7 +274,7 @@
       (update :mobs conj mob)))
 
 (defn- free-of? [acc tr]
-  (not (some #(overlaps? (:box tr) %) (:boxes acc))))
+  (not (some #(phys/joined? (:box tr) %) (:boxes acc))))
 
 (defn- spawned [acc ctx cid cat tr]
   (let [size (long (get-in acc [:sizes (:g tr)] 0))

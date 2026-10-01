@@ -5,7 +5,8 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -15,45 +16,17 @@
 
 (defn- floor ^long [^double c] (long (Math/floor c)))
 
-(defn- axis-hit? [c b0 b1 lo hi]
-  (and (< (double lo) (+ (double c) (/ (double b1) 16.0)))
-       (> (double hi) (+ (double c) (/ (double b0) 16.0)))))
-
-(defn- box-hit? [b cx cy cz lo hi]
-  (and (axis-hit? cx (nth b 0) (nth b 3) (nth lo 0) (nth hi 0))
-       (axis-hit? cy (nth b 1) (nth b 4) (nth lo 1) (nth hi 1))
-       (axis-hit? cz (nth b 2) (nth b 5) (nth lo 2) (nth hi 2))))
-
 (defn- st-at [chunks cx cy cz]
   (chunk/chunks-get-block chunks cx cy cz))
 
-(defn- cell-hit? [chunks cx cy cz lo hi]
-  (let [st (st-at chunks cx cy cz)]
-    (and (chunk/in-range? (long cy))
-         (block/solid? st)
-         (or (block/full-cube? st)
-             (boolean (some #(box-hit? % cx cy cz lo hi)
-                        (block/collision-boxes st)))))))
-
-(defn- hits? [chunks lo hi]
-  (let [x0 (floor (nth lo 0)) y0 (floor (nth lo 1))
-        z0 (floor (nth lo 2)) x1 (floor (nth hi 0))
-        y1 (floor (nth hi 1)) z1 (floor (nth hi 2))]
-    (loop [cx x0 cy y0 cz z0]
-      (cond
-        (> cx x1) false
-        (> cy y1) (recur (inc cx) y0 z0)
-        (> cz z1) (recur cx (inc cy) z0)
-        (cell-hit? chunks cx cy cz lo hi) true
-        :else (recur cx cy (inc cz))))))
-
-(defn- fits? [chunks pos pose]
+(defn- fits? [chunks e pose]
   (let [[half h] (entity/pose-box pose)
-        x (v/x pos) y (v/y pos) z (v/z pos)
-        half (double half) h (double h) e fit-eps]
-    (not (hits? chunks
-                [(+ (- x half) e) (+ y e) (+ (- z half) e)]
-                [(- (+ x half) e) (- (+ y h) e) (- (+ z half) e)]))))
+        p (:pos e) x (v/x p) y (v/y p) z (v/z p)
+        half (double half) h (double h) d fit-eps]
+    (phys/box-free? chunks
+                    [(+ (- x half) d) (+ y d) (+ (- z half) d)
+                     (- (+ x half) d) (- (+ y h) d) (- (+ z half) d)]
+                    y (phys/context e))))
 
 (defn- water-depth ^double [chunks pos pose]
   (let [[half h] (entity/pose-box pose) m fluid-margin
@@ -89,18 +62,18 @@
     (and (:sneaking? e) (not (:flying e))) :crouching
     :else :standing))
 
-(defn- fitting-pose [chunks pos want]
+(defn- fitting-pose [chunks e want]
   (cond
-    (fits? chunks pos want) want
-    (fits? chunks pos :crouching) :crouching
+    (fits? chunks e want) want
+    (fits? chunks e :crouching) :crouching
     :else :swimming))
 
-(defn- pose-of [chunks pos e swim?]
+(defn- pose-of [chunks e swim?]
   (let [want (desired-pose e swim?)]
     (cond
-      (not (fits? chunks pos :swimming)) (:pose e :standing)
+      (not (fits? chunks e :swimming)) (:pose e :standing)
       (game-mode/spectator? e) want
-      :else (fitting-pose chunks pos want))))
+      :else (fitting-pose chunks e want))))
 
 (defn- changes [world e]
   (let [chunks (:chunks world)
@@ -113,7 +86,7 @@
         swim? (swims? e in? under? feet?)]
     (cond-> {:in-water?     in? :under-water? under? :swimming? swim?
              :eye-in-water? (eye-in-water? chunks pos pose)
-             :pose          (pose-of chunks pos e swim?)}
+             :pose          (pose-of chunks e swim?)}
       (game-mode/spectator? e) (assoc :on-ground false))))
 
 (defn player-deltas

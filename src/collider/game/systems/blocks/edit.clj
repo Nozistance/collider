@@ -13,11 +13,13 @@
             [collider.game.player :as player]
             [collider.game.systems.items :as items]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.chunk :as chunk]
             [collider.world.neighbors :as neighbors]
+            [collider.world.phys :as phys]
             [collider.world.direction :as dir]
             [collider.world.env.attribute :as attribute]))
 
@@ -26,66 +28,35 @@
 (defn block-at ^long [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
 
-(defn- player-box [e]
-  (entity/pose-box
-   (if (and (:sneaking? e) (not (:flying e))) :crouching :standing)))
-
 (defn builder-box
   "Returns the half width and height an entity blocks with.
   Returns nil when it never blocks placement, as a spectator."
   [e]
   (case (:type e)
-    :player (when-not (game-mode/spectator? e)
-              (player-box e))
+    :player (when-not (game-mode/spectator? e) (entity/box e))
     (:tnt :falling-block) (entity/box e)
     :item nil
     (when (mobs/mob-type? (:type e)) (mobs/box-of e))))
 
-(defn- box-hits-at? [^doubles a ^long n [px py pz] [half h]]
-  (let [px (double px) py (double py) pz (double pz)
-        half (double half) h (double h)]
-    (loop [i 0]
-      (if (= i n)
-        false
-        (let [o (* i 6)]
-          (if (and (> (+ px half) (aget a o))
-                   (< (- px half) (aget a (+ o 3)))
-                   (> (+ py h) (aget a (+ o 1)))
-                   (< py (aget a (+ o 4)))
-                   (> (+ pz half) (aget a (+ o 2)))
-                   (< (- pz half) (aget a (+ o 5))))
-            true
-            (recur (inc i))))))))
+(defn- placed-box [[x y z] [a b c d e f]]
+  (let [at (fn [o v] (+ (long o) (/ (double v) 16.0)))]
+    [(at x a) (at y b) (at z c) (at x d) (at y e) (at z f)]))
 
-(defn- abs-boxes ^doubles [^long x ^long y ^long z state]
-  (let [bs (block/collision-boxes state)
-        a (double-array (* 6 (count bs)))]
-    (reduce (fn [^long i b]
-              (let [o (* i 6)]
-                (aset a o (+ x (/ (double (nth b 0)) 16.0)))
-                (aset a (+ o 1) (+ y (/ (double (nth b 1)) 16.0)))
-                (aset a (+ o 2) (+ z (/ (double (nth b 2)) 16.0)))
-                (aset a (+ o 3) (+ x (/ (double (nth b 3)) 16.0)))
-                (aset a (+ o 4) (+ y (/ (double (nth b 4)) 16.0)))
-                (aset a (+ o 5) (+ z (/ (double (nth b 5)) 16.0)))
-                (inc i)))
-            0 bs)
-    a))
+(defn- body-box [e [half h]]
+  (let [p (:pos e) half (double half)]
+    [(- (v/x p) half) (v/y p) (- (v/z p) half)
+     (+ (v/x p) half) (+ (v/y p) (double h)) (+ (v/z p) half)]))
 
 (defn obstructed?
   "Returns true when a block of that state would overlap an entity.
   Only an entity that stops building at the cell counts."
-  [world [x y z] state]
-  (let [^doubles a (abs-boxes (long x) (long y) (long z) state)
-        n (quot (alength a) 6)
-        hit (fn [_ _ e]
-              (if-let [dims (builder-box e)]
-                (if (box-hits-at? a n (:pos e) dims)
-                  (reduced true)
-                  false)
-                false))]
-    (and (pos? n)
-         (boolean (reduce-kv hit false (:entities world))))))
+  [world pos state]
+  (let [bs (mapv #(placed-box pos %) (block/collision-boxes state))
+        hits? (fn [e]
+                (when-let [d (builder-box e)]
+                  (let [b (body-box e d)]
+                    (some #(phys/joined? % b) bs))))]
+    (boolean (and (seq bs) (some hits? (vals (:entities world)))))))
 
 (defn own-change
   "Returns the effect that shows one player the true block at pos."
