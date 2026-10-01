@@ -56,10 +56,15 @@
   (when (.compareAndSet ^AtomicBoolean (:closing c) false true)
     (.offer ^BlockingQueue (:q c) [:close])))
 
+(defn closing?
+  "Returns true once connection c is closing."
+  [^Conn c]
+  (.get ^AtomicBoolean (:closing c)))
+
 (defn send!
   "Queues packet m for connection c, dropping it once c is closing."
   [^Conn c m]
-  (when-not (.get ^AtomicBoolean (:closing c))
+  (when-not (closing? c)
     (.offer ^BlockingQueue (:q c) [:packet (conn-state c) m])))
 
 (defn compress!
@@ -107,7 +112,7 @@
         tag (when x (nth x 0))]
     (when-not (= :packet tag) (.flush out))
     (case tag
-      nil (when-not (.get ^AtomicBoolean (:closing c)) w)
+      nil (when-not (closing? c) w)
       :packet (do (emit! w (nth x 1) (nth x 2))
                   (when (.isEmpty q) (.flush out))
                   w)
@@ -229,6 +234,12 @@
     (drain! cs ms)
     (doseq [[_ ^Conn conn] cs] (.close ^Socket (:sock conn)))))
 
+(defn session-id
+  "Returns the id of the session of io: one random id while anyone
+  is connected, a new one after everyone has left."
+  [io]
+  (swap! (:session io) #(or % (random-uuid))))
+
 (defn- refuse! [^Socket sock ^long limit]
   (log/warn "connection limit" limit "reached, refusing"
             (str (.getRemoteSocketAddress sock)))
@@ -240,7 +251,9 @@
         (refuse! sock limit))
     (Thread/startVirtualThread
       #(try (serve-conn! sock io)
-            (finally (.decrementAndGet live))))))
+            (finally
+              (when (zero? (.decrementAndGet live))
+                (reset! (:session io) nil)))))))
 
 (defn- accept-one [^ServerSocket srv]
   (try (.accept srv)
@@ -267,6 +280,7 @@
   "Opens the port and starts accepting connections on it."
   [io port]
   (let [srv (ServerSocket. (int port))
-        live (AtomicInteger.)]
+        live (AtomicInteger.)
+        io (assoc io :session (atom nil))]
     {:socket srv
      :accept (Thread/startVirtualThread #(accept-loop srv io live))}))

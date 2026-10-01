@@ -8,8 +8,7 @@
             [collider.proto.wire :as wire]
             [malli.core :as m]
             [malli.error :as me])
-  (:import (collider.proto Buf)
-           (java.util UUID)))
+  (:import (collider.proto Buf)))
 
 (set! *warn-on-reflection* true)
 
@@ -234,9 +233,7 @@
     :write :wire}
    [:login :login-finished]
    {:schema [:map [:uuid wire/uuid] [:name [wire/string {:max 16}]]
-             [:properties Properties]
-             [:session {:optional true}
-              [:= {:wire wire/uuid} (UUID. 0 0)]]]
+             [:properties Properties] [:session wire/uuid]]
     :write :wire}
    [:login :login-disconnect]
    {:schema [:map [:json [wire/string {:max 262144}]]]

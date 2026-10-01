@@ -23,6 +23,9 @@
 (def ^:private duplicate-reason
   {:translate "multiplayer.disconnect.duplicate_login"})
 
+(def ^:private slow-login-reason
+  {:translate "multiplayer.disconnect.slow_login"})
+
 (def ^:private transfers-reason
   {:translate "multiplayer.disconnect.transfers_disabled"})
 
@@ -61,15 +64,39 @@
 (defn- client-settings [m]
   {:view-distance (:view-distance m) :skin-parts (:skin-parts m)})
 
-(defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]
-  (let [{nm :name :keys [settings profile]} (server/info conn)
-        eid (.incrementAndGet next-entity-id)]
+(defn- of-profile? [uuid c]
+  (= uuid (:uuid (:profile (server/info c)))))
+
+(defn- full? [conns cfg]
+  (>= (count conns) (long (:max-players cfg))))
+
+(defn- join-refusal [conns cfg uuid]
+  (cond
+    (some #(of-profile? uuid %) (vals conns)) duplicate-reason
+    (full? conns cfg) server-full-reason))
+
+(defn- admit! [conns cfg uuid eid conn]
+  (let [admit #(cond-> % (nil? (join-refusal % cfg uuid))
+                 (assoc eid conn))]
+    (join-refusal (first (swap-vals! conns admit)) cfg uuid)))
+
+(defn- kick! [conn reason]
+  (server/send! conn (disconnect-packet reason))
+  (server/close! conn))
+
+(defn- joined! [conn ^ConcurrentLinkedQueue queue eid]
+  (let [{nm :name :keys [settings profile addr]} (server/info conn)]
     (server/put! conn :eid eid)
-    (swap! conns assoc eid conn)
     (server/set-conn-state! conn :play)
     (.offer queue [:player-join eid nm (merge settings profile)])
-    (log/info "player" nm "connected: eid" eid
-              "addr" (:addr (server/info conn)))))
+    (log/info "player" nm "connected: eid" eid "addr" addr)))
+
+(defn- do-login! [conn {:keys [conns queue]} cfg]
+  (let [uuid (:uuid (:profile (server/info conn)))
+        eid (.incrementAndGet next-entity-id)]
+    (if-let [reason (admit! conns cfg uuid eid conn)]
+      (kick! conn reason)
+      (joined! conn queue eid))))
 
 (defn- on-ground? [m] (odd? (long (:flags m))))
 
@@ -230,9 +257,22 @@
     "multiplayer.disconnect.outdated_client"
     "multiplayer.disconnect.incompatible"))
 
-(defn- begin-login! [conn ^long protocol]
+(def ^:private ^:const tick-ms 50)
+
+(def ^:private ^:const max-login-ticks 600)
+
+(def ^:private ^:const slow-login-ms (* max-login-ticks tick-ms))
+
+(defn- watch-login! [conn ^long ms]
+  (Thread/startVirtualThread
+    #(do (Thread/sleep ms)
+         (when (= :login (server/conn-state conn))
+           (kick-login! conn slow-login-reason)))))
+
+(defn- begin-login! [conn io ^long protocol]
   (server/set-conn-state! conn :login)
-  (when-not (= protocol c/protocol-version)
+  (if (= protocol c/protocol-version)
+    (watch-login! conn (:slow-login-ms io slow-login-ms))
     (kick-login! conn (version-reason (outdated-key protocol)))))
 
 (defn- valid-name? [nm]
@@ -240,10 +280,16 @@
        (<= (count nm) 16)
        (every? #(< 32 (long (int %)) 127) nm)))
 
-(defn- kick-duplicates! [conns nm]
-  (doseq [[_ c] @conns :when (= nm (:name (server/info c)))]
-    (server/send! c (disconnect-packet duplicate-reason))
-    (server/close! c)))
+(defn- kick-duplicates! [conns uuid]
+  (let [dupes (filterv #(of-profile? uuid %) (vals @conns))]
+    (run! #(kick! % duplicate-reason) dupes)
+    (seq dupes)))
+
+(defn- await-quit! [conn conns uuid]
+  (when (and (not (server/closing? conn))
+             (some #(of-profile? uuid %) (vals @conns)))
+    (Thread/sleep tick-ms)
+    (recur conn conns uuid)))
 
 (defn- setup-compression! [conn ^long threshold]
   (when-not (neg? threshold)
@@ -251,21 +297,33 @@
                         :threshold threshold})
     (server/compress! conn threshold)))
 
-(defn- intention! [conn m]
+(defn- intention! [conn io m]
   (case (long (:next m))
     1 (server/set-conn-state! conn :status)
-    2 (begin-login! conn (long (:protocol m)))
+    2 (begin-login! conn io (long (:protocol m)))
     3 (do (server/set-conn-state! conn :login)
           (kick-login! conn transfers-reason))
     (server/close! conn)))
 
-(defn- login-ok! [conn conns cfg {nm :name :keys [uuid properties]}]
-  (server/put! conn :name nm)
-  (server/put! conn :profile {:uuid uuid :properties properties})
-  (setup-compression! conn (long (:compression-threshold cfg -1)))
-  (kick-duplicates! conns nm)
-  (server/send! conn {:packet :login-finished :name nm :uuid uuid
-                      :properties properties}))
+(defn- refuse! [conn nm text]
+  (log/info "refused" nm "addr" (:addr (server/info conn)) "-" text)
+  (kick-login! conn text))
+
+(defn- login-ok! [conn io cfg {nm :name :keys [uuid properties]}]
+  (let [conns (:conns io)]
+    (server/put! conn :name nm)
+    (server/put! conn :profile {:uuid uuid :properties properties})
+    (setup-compression! conn (long (:compression-threshold cfg -1)))
+    (when (kick-duplicates! conns uuid)
+      (await-quit! conn conns uuid))
+    (server/send! conn {:packet :login-finished :name nm :uuid uuid
+                        :properties properties
+                        :session (server/session-id io)})))
+
+(defn- verified! [conn io cfg who]
+  (if (full? @(:conns io) cfg)
+    (refuse! conn (:name who) server-full-reason)
+    (login-ok! conn io cfg who)))
 
 (defn- offline [{nm :name}]
   {:uuid (c/offline-uuid nm) :name nm :properties []})
@@ -273,16 +331,13 @@
 (defn- provider [io]
   (or (:identity io) {:identify offline}))
 
-(defn- refuse! [conn nm text]
-  (log/info "refused" nm "addr" (:addr (server/info conn)) "-" text)
-  (kick-login! conn text))
-
 (defn- identified! [conn io cfg who]
   (let [ip (:ip (server/info conn))
         r ((:identify (provider io)) (assoc who :ip ip))]
-    (if-let [text (:refuse r)]
-      (refuse! conn (:name who) text)
-      (login-ok! conn (:conns io) cfg r))))
+    (cond
+      (server/closing? conn) nil
+      (:refuse r) (refuse! conn (:name who) (:refuse r))
+      :else (verified! conn io cfg r))))
 
 (defn- ask-key! [conn io nm]
   (let [token (crypt/challenge)
@@ -299,8 +354,6 @@
   (let [nm (:name m)]
     (cond
       (not (valid-name? nm)) (kick-login! conn generic-reason)
-      (>= (count @(:conns io)) (long (:max-players cfg)))
-      (kick-login! conn server-full-reason)
       (encrypt? io cfg) (ask-key! conn io nm)
       :else (identified! conn io cfg {:name nm}))))
 
@@ -322,15 +375,11 @@
 (def ^:private move-packets
   #{:move-player-pos :move-player-pos-rot :move-player-rot})
 
-(defn- kick-bad-move! [conn]
-  (server/send! conn (disconnect-packet bad-movement-reason))
-  (server/close! conn))
-
 (defn- play-packet! [conn ^ConcurrentLinkedQueue queue m]
   (when (= :play (server/conn-state conn))
     (when-let [eid (:eid (server/info conn))]
       (if (and (move-packets (:packet m)) (invalid-move? m))
-        (kick-bad-move! conn)
+        (kick! conn bad-movement-reason)
         (if-let [ev (packet->event eid m)]
           (.offer queue ev)
           (log-unhandled! (:packet m)))))))
@@ -360,7 +409,7 @@
 (defn- dispatch!
   [conn {:keys [^ConcurrentLinkedQueue queue settings] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
-    [:handshake :intention] (intention! conn m)
+    [:handshake :intention] (intention! conn io m)
     [:status :status-request] (server/send! conn (status-response io))
     [:status :ping-request] (last-pong! conn m)
     [:play :ping-request] (server/send! conn (pong m))
@@ -370,7 +419,8 @@
     [:configuration :client-information]
     (server/put! conn :settings (client-settings m))
     [:configuration :select-known-packs] (finish-configuration! conn)
-    [:configuration :finish-configuration] (do-login! conn io)
+    [:configuration :finish-configuration]
+    (do-login! conn io @settings)
     (play-packet! conn queue m)))
 
 (defn handle-packet
