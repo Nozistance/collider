@@ -219,46 +219,6 @@
                       (f32 0.2)))]
     [(side :lx) (f32 0.2) (side :lz)]))
 
-(def ^:private sides
-  [[:z -1] [:z 1] [:x -1] [:x 1] [:y 1]])
-
-(defn- full-block? [chunks x y z]
-  (let [st (cell-state chunks x y z)]
-    (and (block/solid? st) (block/full-cube? st))))
-
-(defn- beside [[bx by bz] [a s]]
-  (let [s (long s) bx (long bx) by (long by) bz (long bz)]
-    (case a
-      :x [(+ bx s) by bz] :y [bx (+ by s) bz] :z [bx by (+ bz s)])))
-
-(defn- toward ^double [d [a s]]
-  (if (pos? (long s)) (- 1.0 (double (d a))) (double (d a))))
-
-(defn- closest-side [chunks x y z]
-  (let [b [(fl x) (fl y) (fl z)]
-        d {:x (- x (b 0)) :y (- y (b 1)) :z (- z (b 2))}
-        open? #(not (apply full-block? chunks (beside b %)))
-        step (fn [[_ best :as acc] side]
-               (let [o (toward d side)]
-                 (if (and (open? side) (< o (double best)))
-                   [side o]
-                   acc)))]
-    (first (reduce step [[:y 1] Double/MAX_VALUE] sides))))
-
-(defn shoved
-  "Returns velocity vel of an orb at pos stuck in a block, pushed
-  towards the nearest open side, as Entity.moveTowardsClosestSpace."
-  [chunks pos vel roll]
-  (let [y0 (v/y pos)
-        x (v/x pos) y (/ (+ y0 (+ y0 (height))) 2.0) z (v/z pos)
-        [a s] (closest-side chunks x y z)
-        speed (f32 (+ (f32 (* (f32 (roll :shove)) (f32 0.2)))
-                      (f32 0.1)))
-        push (f32 (* (double s) speed))
-        [sx sy sz] (mapv #(* 0.75 (double %)) vel)]
-    (case a
-      :x [push sy sz] :y [sx push sz] :z [sx sy push])))
-
 (def ^:private below-offset (f32 0.999999))
 
 (defn- friction ^double [chunks pos sup on-ground]

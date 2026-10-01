@@ -2,6 +2,7 @@
   "Experience orb motion and merging, and players taking orbs up."
   (:require [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.shove :as shove]
             [collider.game.experience :as xp]
             [collider.game.game-mode :as game-mode]
             [collider.game.orb :as orb]
@@ -58,7 +59,9 @@
       pid [pid (orb/pulled vel (:pos e) (get (into {} players) pid))
            false]
       (and hit? (orb/colliding? chunks (:pos e) vel))
-      [nil (orb/shoved chunks (:pos e) vel roll) true]
+      [nil (shove/shoved chunks (:pos e) (orb/height) vel
+                         (roll :shove))
+       true]
       :else [nil vel false])))
 
 (defn- travelled [world e vel pid sync?]

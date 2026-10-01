@@ -22,6 +22,9 @@ public final class Phys {
     private static final ThreadLocal<double[]> BUF =
             ThreadLocal.withInitial(() -> new double[1536]);
 
+    private static final ThreadLocal<double[]> BOX =
+            ThreadLocal.withInitial(() -> new double[6]);
+
     /// Returns `d` clamped so that the box `ebox` moving by `d` along
     /// `axis` stops on the face of the nearest of the `n` boxes in
     /// `a`. Each box takes six doubles.
@@ -178,6 +181,14 @@ public final class Phys {
     public static Sweep sweep(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double[] ebox,
             double vx, double vy, double vz, double bottom, int flags) {
+        int n = swept(chunks, kinds, cube, shapes, ebox, vx, vy, vz,
+                      bottom, flags);
+        return new Sweep(BUF.get(), n);
+    }
+
+    private static int swept(ChunkIndex chunks, byte[] kinds,
+            boolean[] cube, Object[] shapes, double[] ebox,
+            double vx, double vy, double vz, double bottom, int flags) {
         long x1 = loBound(ebox[0], vx), x2 = hiBound(ebox[3], vx);
         long y1 = Math.max(MIN_Y, loBound(ebox[1], vy) - 1);
         long y2 = Math.min(MAX_Y, hiBound(ebox[4], vy));
@@ -205,7 +216,7 @@ public final class Phys {
                 }
             }
         }
-        return new Sweep(a, n);
+        return n;
     }
 
     private static boolean meets(double[] a, int from, int to,
@@ -366,8 +377,25 @@ public final class Phys {
             boolean[] cube, Object[] shapes, double x, double y,
             double z, double half, double height, double bottom,
             int flags) {
-        double[] box = {x - half, y, z - half,
-                        x + half, y + height, z + half};
+        return clear(chunks, kinds, cube, shapes, x, y, z, half, height,
+                     0.0, bottom, flags);
+    }
+
+    /// Returns true when the box of a body with half width `half` and
+    /// height `height` standing at `x`, `y`, `z`, shrunk by `inset` on
+    /// each side as `AABB.deflate`, meets no block, as
+    /// `CollisionGetter.noBlockCollision`.
+    public static boolean clear(ChunkIndex chunks, byte[] kinds,
+            boolean[] cube, Object[] shapes, double x, double y,
+            double z, double half, double height, double inset,
+            double bottom, int flags) {
+        double[] box = BOX.get();
+        box[0] = x - half + inset;
+        box[1] = y + inset;
+        box[2] = z - half + inset;
+        box[3] = x + half - inset;
+        box[4] = y + height - inset;
+        box[5] = z + half - inset;
         return freeBox(chunks, kinds, cube, shapes, box, bottom, flags);
     }
 
@@ -376,10 +404,10 @@ public final class Phys {
     public static boolean freeBox(ChunkIndex chunks, byte[] kinds,
             boolean[] cube, Object[] shapes, double[] box, double bottom,
             int flags) {
-        Sweep sw = sweep(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0,
-                         bottom, flags);
-        double[] a = sw.a();
-        for (int i = 0; i < sw.n(); i++) {
+        int n = swept(chunks, kinds, cube, shapes, box, 0.0, 0.0, 0.0,
+                      bottom, flags);
+        double[] a = BUF.get();
+        for (int i = 0; i < n; i++) {
             if (overlaps(a, 6 * i, box)) return false;
         }
         return true;

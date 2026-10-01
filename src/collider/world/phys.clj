@@ -197,6 +197,22 @@
               (+ (v/z pos) (double dz)) (double half) (double height)
               (v/y pos) (int ctx))))
 
+(defn- clear-form [chunks pos half height inset]
+  (let [p (gensym "pos")]
+    `(let [~p ~pos]
+       ~(with-tables `Phys/clear chunks
+          [`(v/x ~p) `(v/y ~p) `(v/z ~p) `(double ~half)
+           `(double ~height) `(double ~inset) `(v/y ~p) `(int 0)]))))
+
+(defn clear?
+  "Returns true when a body of that size at pos, its box shrunk by
+  inset on each side, meets no block, as Level.noBlockCollision."
+  {:inline (fn [c p h t i] (clear-form c p h t i))}
+  [chunks pos half height inset]
+  (Phys/clear chunks (kinds) (block/cube-arr) (block/collision-arr)
+              (v/x pos) (v/y pos) (v/z pos) (double half)
+              (double height) (double inset) (v/y pos) (int 0)))
+
 (defn box-free?
   "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block.
   bottom is the foot of the body the box belongs to, ctx its

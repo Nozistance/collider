@@ -4,6 +4,7 @@
             [collider.random :as random]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.shove :as shove]
             [collider.game.entity.size :as size]
             [collider.game.game-mode :as game-mode]
             [collider.game.areas :as areas]
@@ -302,10 +303,28 @@
     [(:pos e) drift true (:support e) (:no-blocks? e)]
     (item-moved chunks e push)))
 
-(defn- settled [chunks dim e eid age]
-  (let [[drift in-fluid?] (item-drift chunks dim (:pos e) (:vel e))
-        stuck (:stuck e)
-        rest? (resting? e drift age eid)
+(defn- passed
+  "Returns the step of item e that passes through blocks by drift,
+  as Entity.move with noPhysics: it keeps its ground flag and
+  support, and no block acts on it."
+  [chunks e drift rest?]
+  (let [{:keys [pos on-ground support]} e
+        og (boolean on-ground)
+        p (if rest? pos (v/+ pos drift))
+        vel (if rest? drift (dragged chunks p support og drift))]
+    {:pos p :vel vel :on-ground og :support support
+     :no-blocks? (:no-blocks? e) :stuck (:stuck e)}))
+
+(def ^:private ^:const wall-inset 1.0E-7)
+
+(defn- in-wall? [chunks e]
+  (not (phys/clear? chunks (:pos e) (item-half) (item-height)
+                    wall-inset)))
+
+(defn- felt
+  "Returns the step of item e that blocks act on, as Entity.move."
+  [chunks e drift rest?]
+  (let [stuck (:stuck e)
         push (if stuck (mapv * drift stuck) drift)
         [pos' v on-ground sup nb?]
         (moved-or-resting chunks e drift rest? push)
@@ -313,8 +332,21 @@
         vy (liquid/bubble-push chunks pos' (double (v 1)))
         st (motion/stuck-speed chunks pos' (item-half) (item-height))]
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
-     :support sup :no-blocks? nb? :in-fluid? in-fluid?
+     :support sup :no-blocks? nb?
      :stuck (if rest? (or st stuck) st)}))
+
+(defn- settled [chunks dim e eid age t]
+  (let [[drift in-fluid?] (item-drift chunks dim (:pos e) (:vel e))
+        ghost? (in-wall? chunks e)
+        drift (if ghost?
+                (shove/shoved chunks (:pos e) (item-height) drift
+                              (random/of-key t eid :shove))
+                drift)
+        rest? (resting? e drift age eid)
+        s (if ghost?
+            (passed chunks e drift rest?)
+            (felt chunks e drift rest?))]
+    (assoc s :in-fluid? in-fluid?)))
 
 (defn- gone? [world e ^long age]
   (or (>= age despawn-age)
@@ -340,7 +372,8 @@
 
 (defn- step-item [world eid e]
   (let [age (inc (long (or (:age e) 0)))
-        s (settled (:chunks world) (:dim world) e (long eid) age)]
+        s (settled (:chunks world) (:dim world) e (long eid) age
+                   (:tick world))]
     (if (gone? world e age)
       [:remove-entity eid]
       [:merge-entity eid (stepped e s age)])))
