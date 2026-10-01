@@ -389,19 +389,13 @@
                     (transient [])
                     (range 27))))))
 
-(defn- merge-partner [items index from a used]
-  (first (for [j (neighbour-idxs index (:pos a))
-               :when (>= (long j) (long from))
-               :let [[eb b] (items j)]
-               :when (and (not (used eb)) (mergeable? a b))]
-           [eb b])))
-
-(defn- absorb [ea a eb b]
-  (let [n (long (:count (:stack b) 1))
-        stack (update (:stack a) :count (fnil + 1) n)
-        age (min (long (or (:age a) 0)) (long (or (:age b) 0)))]
-    [[:merge-entity ea {:stack stack :age age}]
-     [:remove-entity eb]]))
+(defn- cell-moved [index ^long i from to]
+  (let [a (cell-of from) b (cell-of to)]
+    (if (== a b)
+      index
+      (-> index
+          (assoc! a (filterv #(not= i (long %)) (get index a)))
+          (assoc! b (conj (get index b []) i))))))
 
 (defn- crossed? [from to]
   (or (not (== (fl (v/x from)) (fl (v/x to))))
@@ -425,19 +419,61 @@
   (zero? (rem (long (or (:age e) 0))
               (merge-rate from (:pos e)))))
 
-(defn- merge-deltas [items]
-  (let [items (filterv merge-ready? items)
-        index (merge-index items)]
-    (loop [i 0 used #{} out []]
-      (if (>= i (count items))
-        out
-        (let [[ea a] (items i)
-              found (when (and (not (used ea)) (merge-due? (items i)))
-                      (merge-partner items index (inc i) a used))]
-          (if-let [[eb b] found]
-            (recur (inc i) (conj used ea eb)
-                   (into out (absorb ea a eb b)))
-            (recur (inc i) used out)))))))
+(defn- of-long ^long [e k] (long (or (get e k) 0)))
+
+(defn- count-of ^long [e] (long (:count (:stack e) 1)))
+
+(defn- absorbed
+  "Returns item a after it took the stack of item b, as
+  ItemEntity.merge: the longer pickup delay and the younger age."
+  [a b]
+  (let [n (+ (count-of a) (count-of b))
+        d (max (of-long a :pickup-delay) (of-long b :pickup-delay))]
+    (assoc a :stack (assoc (:stack a) :count n)
+             :age (min (of-long a :age) (of-long b :age))
+             :pickup-delay d)))
+
+(defn- absorb-deltas [ea a eb]
+  [[:merge-entity ea (select-keys a [:stack :age :pickup-delay])]
+   [:remove-entity eb]])
+
+(defn- took
+  "Returns [es out] after item i of es took item j of es, which is
+  gone now. When the turn of i comes after the turn of j, i steps
+  from what it holds then."
+  [es ^booleans gone ^booleans fresh out [i j]]
+  (let [[ea a] (nth es i) [eb b] (nth es j) a (absorbed a b)
+        i (long i) j (long j)]
+    (aset gone j true)
+    (when (> i j) (aset fresh i true))
+    [(assoc es i [ea a]) (reduce conj! out (absorb-deltas ea a eb))]))
+
+(defn- tried
+  "Returns [es out done?] after item i of es tried to merge with item
+  j, as ItemEntity.tryToMerge: the smaller stack goes into the other.
+  It is done when i went into j."
+  [es gone fresh out i j]
+  (let [a (nth (nth es i) 1) b (nth (nth es j) 1)
+        ok? (and (merge-ready? [nil b]) (mergeable? a b))]
+    (cond
+      (not ok?) [es out false]
+      (< (count-of b) (count-of a))
+      (conj (took es gone fresh out [i j]) false)
+      :else (conj (took es gone fresh out [j i]) true))))
+
+(defn- merged
+  "Returns [es out] after item i of es merged with the items near it
+  in their order, as ItemEntity.mergeWithNeighbours. The items before
+  it moved this tick, the items after it not yet."
+  [index es gone fresh out i]
+  (loop [js (neighbour-idxs index (:pos (nth (nth es i) 1)))
+         es es out out]
+    (let [j (first js)]
+      (cond (nil? j) [es out]
+            (or (== (long j) (long i)) (aget ^booleans gone (long j)))
+            (recur (rest js) es out)
+            :else (let [[es out done?] (tried es gone fresh out i j)]
+                    (if done? [es out] (recur (rest js) es out)))))))
 
 (def ^:private slot-order
   (vec (concat (range 36 45) (range 9 36))))
@@ -615,13 +651,47 @@
       [eid nil (:pos e) d]
       [eid (entity/merged e (nth d 2)) (:pos e) d])))
 
-(defn items
-  "Returns the deltas of every dropped item in an active chunk."
-  {:wake {:types #{:item}}}
-  [world _d]
-  (let [step #(vector (stepped-item world %))
-        items (areas/active-of-types world [:item])
-        act (deltas/pmapcat step items)]
-    (deltas/of-vec
-      (when (pos? (count act))
-        (into (mapv (fn [s] (nth s 3)) act) (merge-deltas act))))))
+(defn- turn-of [world steps ^booleans fresh es i]
+  (if (aget fresh (long i))
+    (stepped-item world (nth es i))
+    (nth steps i)))
+
+(defn- due? [e from]
+  (and (merge-ready? [nil e]) (merge-due? [nil e from])))
+
+(defn- item-turn
+  "Returns [es index out] after the turn of item i of es: its step,
+  then its merges. An item gone before its turn does not step."
+  [world steps [gone fresh] [es index out] i]
+  (let [[eid e from d] (turn-of world steps fresh es i)
+        out (conj! out d)]
+    (if (nil? e)
+      (do (aset ^booleans gone (long i) true) [es index out])
+      (let [es (assoc es i [eid e])
+            index (cell-moved index i from (:pos e))]
+        (if (due? e from)
+          (let [[es out] (merged index es gone fresh out i)]
+            [es index out])
+          [es index out])))))
+
+(defn- walked
+  "Returns the deltas of items, each in its turn."
+  [world items steps]
+  (let [n (count items) flags [(boolean-array n) (boolean-array n)]
+        ^booleans gone (nth flags 0)]
+    (loop [i 0 acc [items (transient (merge-index items))
+                    (transient [])]]
+      (cond (= i n) (persistent! (nth acc 2))
+            (aget gone i) (recur (inc i) acc)
+            :else
+            (recur (inc i) (item-turn world steps flags acc i))))))
+
+(defn turns
+  "Returns the deltas of every dropped item in an active chunk, each
+  in its turn, as ItemEntity.tick."
+  [world]
+  (let [items (areas/active-of-types world [:item])
+        steps (deltas/pmapcat #(vector (stepped-item world %)) items)]
+    (when (pos? (count items))
+      (walked world items steps))))
+

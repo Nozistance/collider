@@ -1,5 +1,5 @@
-(ns collider.game.systems.mobs
-  "Mob thinking, movement and sounds."
+(ns collider.game.turn.mob
+  "The turn of a mob: its base tick, thinking, movement and sounds."
   (:require [collider.game.deltas :as deltas]
             [clojure.core.reducers :as r]
             [collider.game.attribute :as attribute]
@@ -19,6 +19,7 @@
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
+            [collider.game.turn.living :as living]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.delta :as delta]
@@ -780,21 +781,23 @@
 (defn- joined-into [acc more]
   (if (zero? (count more)) acc (into acc more)))
 
-(defn- stepped-deltas [world eid e e2 ds say-ds t]
+(defn- stepped-deltas [world eid e e2 [pre ds say-ds] t]
   (let [changes (mob-changes e e2)
-        merged (if (pos? (count changes))
-                 [[:merge-entity eid changes]]
-                 [])
-        acc (-> merged (joined-into ds) (joined-into say-ds))]
+        acc (if (pos? (count changes))
+              (conj (vec pre) [:merge-entity eid changes])
+              (vec pre))
+        acc (-> acc (joined-into ds) (joined-into say-ds))]
     (movement-sounds world acc e2 (boolean (:wet? e))
                      (double (or (:walked e) 0.0))
                      (double (or (:walked e2) 0.0)) t eid)))
 
 (defn- minded
-  "Returns mob e after it thought and steered this tick, the head it
-  turns, and its deltas and sounds. Other bodies do not move it yet."
+  "Returns mob e after its base tick, after it thought and steered
+  this tick, the head it turns, and its deltas and sounds. Other
+  bodies do not move it yet."
   [world tempters eid e t]
-  (let [[half height] (mobs/box-of e)
+  (let [[e pre] (living/based world eid e)
+        [half height] (mobs/box-of e)
         speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
@@ -804,21 +807,21 @@
                  (rabbit/steered world eid e1 speed half)
                  :else (steered world e1 speed half))
         look (when-not dead? (look-of world e1 height t))]
-    [e1 look ds say-ds]))
+    [e1 look ds say-ds pre]))
 
 (defn- step-mob
   ([world index eid e mind t]
    (step-mob world index eid e mind t nil nil))
-  ([world index eid e [e1 look ds say-ds] t cram live?]
+  ([world index eid e [e1 look ds say-ds pre] t cram live?]
    (let [[half height] (mobs/box-of e)
          more [look e cram live?]
          [e2 shoves hit?]
          (physics-shoves world index eid e1 half height more)
          [e2 own] (if-let [f (ai-steps (:type e))]
                     (f eid e2 t)
-                    [e2 nil])]
-     [e2 (joined-into (stepped-deltas world eid e e2 ds say-ds t) own)
-      shoves hit?])))
+                    [e2 nil])
+         ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
+     [e2 (joined-into ds own) shoves hit?])))
 
 (defn- handed
   "Returns acc with the shove sh handed to the mob in slot j, whose
@@ -886,10 +889,11 @@
          (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
 
 (defn- crammed [eid e ds]
-  (let [h (entity/hurt (entity/rested e) cramming-damage)]
+  (let [h (entity/hurt e cramming-damage)]
     (if (not= (:health h) (:health e))
-      [h (conj (vec ds) [:damage eid cramming-damage]
-               [:merge-entity eid {:hurt-cause :cramming}])]
+      [(assoc h :hurt-cause :cramming)
+       (conj (vec ds) [:damage eid cramming-damage]
+             [:merge-entity eid {:hurt-cause :cramming}])]
       [e ds])))
 
 (defn- cramming [world index slots es eid e t ds]
@@ -903,8 +907,7 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (-> (assoc e :pos pos) entity/rested
-          (entity/hurt cramming-damage)))))
+      (entity/hurt (assoc e :pos pos) cramming-damage))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
@@ -917,7 +920,8 @@
         cram (cram-of world index slots es eid t)
         [e2 ds shoves hit?]
         (step-mob world index eid e mind t cram (live-of slots es))
-        [e2 ds] (if hit? (crammed eid e2 ds) [e2 ds])]
+        [e2 ds] (if hit? (crammed eid e2 ds) [e2 ds])
+        [e2 ds] (living/touched world eid e2 (:wet? e) ds)]
     [e2 ds shoves]))
 
 (defn- live
@@ -1110,18 +1114,27 @@
   (let [world (assoc world :watchers (animal/watchers world))]
     (assoc world ::bites (bites world tempters t active islands))))
 
-(defn mobs-system
-  "Returns the deltas of the mobs in one tick.
-  Each island of mobs steps, and the clicks of players get answers."
-  {:wake {:types (set (keys mobs/types)) :events #{:interact}}}
+(defn- ended? [active [_ e]]
+  (and (mobs/mob-type? (:type e)) (mobs/death-ends? e)
+       (areas/active-at? active (:pos e))))
+
+(defn- endings [world active]
+  (into [] (comp (filter #(ended? active %))
+                 (mapcat (fn [[eid e]] (living/ended eid e))))
+        (:entities world)))
+
+(defn turns
+  "Returns the deltas of the mobs in one tick, each in its turn,
+  and the answers to the clicks of players on them. Each island of
+  mobs steps on its own."
   [world d]
-  (let [events (:input d)
-        t (long (:tick world))
+  (let [t (long (:tick world))
         active (areas/active-chunks world)
         tempters (sense/holders world)
         hs (herds world)
-        world (seen world tempters t active hs)]
+        world (seen world tempters t active hs)
+        clicks (interact-deltas world (:input d) t)]
     (deltas/merge
       (deltas/fold #(island-batch world active tempters t %)
                    (batches hs))
-      (deltas/of-vec (interact-deltas world events t)))))
+      (deltas/of-vec (into (endings world active) clicks)))))

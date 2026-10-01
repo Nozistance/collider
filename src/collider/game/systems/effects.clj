@@ -3,13 +3,11 @@
   A change runs on a running account of one entity, its effects,
   the attributes they touched and the deltas so far."
   (:require [collider.game.attribute :as attribute]
-            [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.entity :as entity]
-            [collider.game.systems.damage :as damage])
-  (:import (clojure.lang MapEntry)))
+            [collider.game.systems.damage :as damage]))
 
 (set! *warn-on-reflection* true)
 
@@ -218,25 +216,16 @@
                 [:merge-entity (:eid acc) {:dirty-attributes nil}]))
     acc))
 
-(defn- entity-deltas [world [eid e]]
-  (deltas (step (synced (account eid e) e) (lived world e)) e))
+(defn tick-deltas
+  "Returns the deltas of one tick of the effects of entity eid."
+  [world eid e]
+  (when (or (seq (:effects e)) (:dirty-attributes e))
+    (deltas (step (synced (account eid e) e) (lived world e)) e)))
 
 (defn- due? [e]
-  (and (or (seq (:effects e)) (:dirty-attributes e)) (living? e)))
+  (and (or (seq (:effects e)) (:dirty-attributes e)) (player? e)))
 
 (defn player-deltas
   "Returns the deltas that tick the effects of player p, an entry."
   [world p]
-  (when (due? (val p)) (entity-deltas world p)))
-
-(defn effects
-  "Returns the deltas that tick the effects of every living mob."
-  {:wake {:keys [:entities]}}
-  [world _]
-  (let [due (fn [acc eid e]
-              (if (and (due? e) (not (player? e)))
-                (conj acc (MapEntry/create eid e))
-                acc))
-        one (fn [x] (entity-deltas world x))]
-    (deltas/of-vec
-      (into [] (mapcat one) (reduce-kv due [] (:entities world))))))
+  (when (due? (val p)) (tick-deltas world (key p) (val p))))

@@ -396,11 +396,15 @@
             (when (and (pos? (long f1)) (<= (long f) 0))
               [(put-out-sound world eid e)]))))
 
-(defn- fire-deltas [world eid e]
-  (if (creative-proof? e)
-    (player-fire-deltas world eid e)
-    (lit-deltas eid e (long (or (:fire e) 0)) (boolean (:wet? e))
-                (probe world e))))
+(defn fire-deltas
+  "Returns the deltas of the fire and lava entity eid touches,
+  wet as wet? tells or as it is."
+  ([world eid e] (fire-deltas world eid e (:wet? e)))
+  ([world eid e wet?]
+   (if (creative-proof? e)
+     (player-fire-deltas world eid e)
+     (lit-deltas eid e (long (or (:fire e) 0)) (boolean wet?)
+                 (probe world e)))))
 
 (def ^:private ^:const burn-volume 0.4)
 
@@ -580,7 +584,10 @@
   (cond-> {:health-sent health}
           (not= :player (:type e)) (merge (panicked world e))))
 
-(defn- report-deltas [world eid e]
+(defn report-deltas
+  "Returns the deltas that show the hurt of entity eid since it was
+  last shown: its sound, its status, and on death its drops."
+  [world eid e]
   (let [health (double (:health e))
         shown (double (or (:health-sent e) health))]
     (when (< health shown)
@@ -595,7 +602,9 @@
         (when (= :player (:type e))
           [(out/to eid (out/health health))])))))
 
-(defn- timer-deltas [eid e]
+(defn timer-deltas
+  "Returns the deltas of LivingEntity.tickDeath for entity eid."
+  [eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
         gone? (and death (>= (long death) mobs/death-ticks)
@@ -725,7 +734,9 @@
     (g (:tick world) e d)
     e))
 
-(defn- hurt-now [world eid e ds]
+(defn hurt-now
+  "Returns entity eid after its own deltas of ds."
+  [world eid e ds]
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
 (defn- burn-deltas [world eid e]
@@ -735,7 +746,7 @@
                         (any-bit? (probe world e) lava-bit)
                         (cause-of e)))))
 
-(defn- base-deltas
+(defn base-deltas
   "Returns the deltas of living entity eid that LivingEntity.baseTick
   makes before the countdown of its hurt resistance: the fire it
   burns in (Entity.baseTick:546-556), then the void
@@ -777,9 +788,12 @@
   (or (= :player (:type e)) (areas/active-at? active (:pos e))))
 
 (defn- living [world]
-  (let [active (areas/active-chunks world)]
-    (comp (filter (fn [[_ e :as entry]]
-                    (and (ticking? active e) (live? world entry))))
+  (let [active (areas/active-chunks world)
+        due? (fn [[_ e :as entry]]
+               (and (ticking? active e)
+                    (not (mobs/mob-type? (:type e)))
+                    (live? world entry)))]
+    (comp (filter due?)
           (mapcat (fn [[eid e]] (living-deltas world eid e))))))
 
 (def ^:private ^:const living-leaf 64)
@@ -813,28 +827,36 @@
     (deltas/of-vec (when (seq evs)
                      (apply/fold-events world evs attack-deltas)))))
 
-(defn- based? [world active [_ e]]
-  (and (ticking? active e)
-       (not (contains? #{:item :experience-orb} (:type e)))
-       (or (pos? (long (or (:hurt-resist e) 0)))
-           (pos? (long (or (:fire e) 0)))
-           (and (:health e)
-                (< (v/y (:pos e)) (chunk/void-y world))))))
+(defn based?
+  "Returns true when living entity e has work in the start of its
+  base tick: hurt resistance, fire or the void."
+  [world e]
+  (or (pos? (long (or (:hurt-resist e) 0)))
+      (pos? (long (or (:fire e) 0)))
+      (and (:health e)
+           (< (v/y (:pos e)) (chunk/void-y world)))))
+
+(defn- own-tick? [e]
+  (let [k (:type e)]
+    (or (mobs/mob-type? k) (contains? #{:item :experience-orb} k))))
 
 (defn countdown
-  "Returns the deltas of every living entity from the start of
+  "Returns the deltas of every player from the start of
   LivingEntity.baseTick: fire, void, then the countdown of its hurt
-  resistance. It runs before the mobs, whose hurts this tick come
-  after it."
+  resistance. A mob counts in its own turn."
   {:wake {:keys [:entities]}}
   [world _d]
   (let [active (areas/active-chunks world)
-        xf (comp (filter (fn [entry] (based? world active entry)))
+        due? (fn [[_ e]]
+               (and (ticking? active e) (not (own-tick? e))
+                    (based? world e)))
+        xf (comp (filter due?)
                  (mapcat (fn [[eid e]] (base-deltas world eid e))))]
     (deltas/of-vec (deltas/select xf (:entities world)))))
 
 (defn damage
-  "Returns the deltas of every living entity this tick."
+  "Returns the deltas of every player and item this tick.
+  A mob takes its own in its turn."
   {:wake {:keys [:entities]}}
   [world _d]
   (deltas/of-vec

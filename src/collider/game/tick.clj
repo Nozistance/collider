@@ -16,15 +16,12 @@
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
-            [collider.game.systems.effects :as effects]
+            [collider.game.systems.entities :as entities]
             [collider.game.systems.explosions :as explosions]
             [collider.game.systems.falling :as falling]
             [collider.game.systems.hanging :as hanging]
             [collider.game.systems.inventory :as inventory]
-            [collider.game.systems.items :as items]
-            [collider.game.systems.mobs :as mobs]
             [collider.game.systems.natural :as natural]
-            [collider.game.systems.orbs :as orbs]
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
             [collider.game.systems.players.tick :as player-tick]
@@ -51,11 +48,9 @@
 
 (def entity-systems
   "The systems that step the entities of the level."
-  [#'items/items
-   #'orbs/orbs
-   #'falling/falling-blocks
+  [#'falling/falling-blocks
    #'damage/countdown
-   #'mobs/mobs-system
+   #'entities/entities
    #'tnt/tnt-system
    #'projectiles/projectiles
    #'hanging/hanging-checks
@@ -79,7 +74,6 @@
               #'chunks/chunk-views]
              [#'block-updates/block-flush #'players/players]
              [#'block-events/block-events]
-             [#'effects/effects]
              entity-systems
              [#'explosions/blasts]
              [#'containers/broadcast]
