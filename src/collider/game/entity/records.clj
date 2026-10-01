@@ -8,7 +8,7 @@
                 tempt-cooldown-until type color sheared? track
                 nav move body jump float? support no-blocks? in-lava?
                 follow-at effects arrived stick-cooldown-until
-                egg-at hop])
+                egg-at hop fall])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
                    tp-target chunk-pos sent-chunks
@@ -28,7 +28,8 @@
                 track])
 
 (defrecord FallingBlock
-  [type pos vel yaw pitch on-ground block start time track])
+  [type pos vel yaw pitch on-ground block start time track fall hurt
+   hurt-max])
 
 (defrecord Projectile [type pos vel yaw pitch on-ground stack owner
                        age left-owner? track])

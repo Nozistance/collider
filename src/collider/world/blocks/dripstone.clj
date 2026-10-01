@@ -42,6 +42,12 @@
     (and (speleothem? st)
          (or (= :tip th) (and merged? (= :tip_merge th))))))
 
+(defn stalagmite-tip?
+  "Returns true when st is the tip of a spike that points up, as
+  PointedDripstoneBlock.fallOn:65 checks it."
+  [^long st]
+  (and (stalagmite? st) (= :tip (thickness-of st))))
+
 (defn- free-hanging? [^long st]
   (and (stalactite? st)
        (= :tip (thickness-of st))
@@ -308,13 +314,23 @@
              (start-pos? chunks p st))
     (grow-changes chunks p st roll)))
 
+(defn- tip-hurt
+  "Returns the damage per block fallen of the tip at q of a spike
+  that broke off at p, as SpeleothemBlock.spawnFallingStalactite:220
+  sets it."
+  ^double [p q]
+  (double (float (max (- (inc (long (p 1))) (long (q 1))) 6))))
+
 (defn- fall-changes [chunks p]
   (loop [q p acc []]
     (let [st (chunk/at-void chunks q)]
       (if-not (stalactite? st)
         acc
-        (let [acc (conj acc [q (block/emptied st) [[:fall st]]])]
-          (if (tip? st true) acc (recur (dir/down q) acc)))))))
+        (if (tip? st true)
+          (conj acc [q (block/emptied st)
+                     [[:fall st (tip-hurt p q)]]])
+          (recur (dir/down q)
+                 (conj acc [q (block/emptied st) [[:fall st]]])))))))
 
 (defn- wake [chunks _dim tick p _old side]
   (let [st (chunk/at-void chunks p)

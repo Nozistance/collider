@@ -19,6 +19,7 @@
             [collider.game.mob.push :as push]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
+            [collider.game.turn.landing :as landing]
             [collider.game.turn.living :as living]
             [collider.game.turn.overlay :as overlay]
             [collider.game.apply :as apply]
@@ -422,7 +423,7 @@
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) vertical-drag)
            (* (* (v/z u) sf) k))
-     (phys/on-ground? mv) sup nb? h d (phys/vel mv)]))
+     (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
 
 (defn- travel-water [world e vel half height]
   (let [oy (v/y (:pos e)) falling? (<= (v/y vel) 0.0)
@@ -438,7 +439,7 @@
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb? nil d u]))
+     (phys/on-ground? mv) sup nb? nil d u mv]))
 
 (defn- lava-slowed [x y z g falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
@@ -460,7 +461,7 @@
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
      (jumped-out world e mv w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb? h d (phys/vel mv)]))
+     (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
 
 (defn- travelled
   [world e vel half height og? {:keys [water lava] :as f}]
@@ -522,11 +523,11 @@
         [v jumped?] (if (:jump e)
                       (jumping-vel world e vel og? f ready?)
                       [vel false])
-        [pos w ground? sup nb? h d u]
+        [pos w ground? sup nb? h d u mv]
         (travelled world e v half height og? f)
         vy (liquid/bubble-push (:chunks world) pos (v/y w))]
     [pos (v/v3 (v/x w) vy (v/z w)) ground? (jump-delay e t jumped?)
-     sup nb? h f false d u]))
+     sup nb? h f false d u mv]))
 
 (defn- rest-move [e f]
   [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f
@@ -591,9 +592,11 @@
     (if rest? (rest-move e f) (physics-move world e vel h ht f))))
 
 (defn- settled
-  [e [pos _ og cd sup nb?] v g rest? [yaw hy body] look walked came]
+  [e [_ _ og cd sup nb?] pos fall v g rest? [yaw hy body] look
+   walked came]
   (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
     (entity/with e {:pos pos :vel v :on-ground og :jump-cd cd
+                    :fall fall
                     :arrived came
                     :support sup :no-blocks? nb?
                     :wet? (flag (if rest? false (:wet? e)) w)
@@ -618,21 +621,51 @@
         v (shoved world (or hurt e) vel shoves live?)]
     [v shoves (some? hurt)]))
 
+(defn- moved-y ^double [tr]
+  (if-let [mv (nth tr 11 nil)] (phys/moved-y mv) 0.0))
+
+(defn- dry?
+  "Returns true when the mob that moved by tr was out of water when
+  its move began and is out of it after, as Entity.baseTick and
+  LivingEntity.checkFallDamage:375 look."
+  [tr]
+  (and (zero? (double (:water (nth tr 7))))
+       (zero? (double (:water (nth tr 6))))))
+
+(defn- fall-before ^double [world e tr]
+  (if (dry? tr)
+    (landing/cleared world (:pos e) (nth tr 0)
+                     (landing/before-move e (nth tr 7)))
+    0.0))
+
+(defn- fall-after ^double [tr ^double f0]
+  (if (dry? tr) (phys/fallen f0 (moved-y tr)) 0.0))
+
+(defn- lands? [tr ^double f0 ^double f1]
+  (and (nth tr 2) (or (pos? f0) (pos? f1))))
+
 (defn- physics-shoves
-  "Returns mob e after one tick of movement, the shoves it gave and
-  whether cramming hurt it, as pushed-back gives them."
+  "Returns mob e after one tick of movement, the shoves it gave,
+  whether cramming hurt it, as pushed-back gives them, and the
+  deltas of its landing."
   [world index eid e half height [look prev cram live?]]
   (let [h (double (float half)) ht (double (float height))
         tr (travel-of world index eid e h ht)
-        pos (nth tr 0) box [half height pos (nth tr 1)]
+        f0 (fall-before world e tr) f1 (fall-after tr f0)
+        ls (when (lands? tr f0 f1)
+             (landing/landed world eid e (nth tr 0) (nth tr 4) f0 f1))
+        pos (if ls (nth ls 0) (nth tr 0))
+        fall (landing/kept e (if (nth tr 2) 0.0 f1))
+        box [half height pos (nth tr 1)]
         [v shoves hit?] (pushed-back world index eid e box cram live?)
         g (or (nth tr 6) (fluid-after world pos h ht v))
         hd (body-of-move world e pos look)
-        e2 (settled e tr v g (nth tr 8) hd look (walk-of e prev pos)
+        e2 (settled e tr pos fall v g (nth tr 8) hd look
+                    (walk-of e prev pos)
                     (push/arrived e pos (:tick world) eid))]
     [(cond-> e2 (identical? :rabbit (:type e))
        (rabbit/bumped (nth tr 9 nil) (nth tr 10 nil)))
-     shoves hit?]))
+     shoves hit? (when ls (nth ls 1))]))
 
 (defn- physics [world index eid e half height]
   (nth (physics-shoves world index eid e half height nil) 0))
@@ -748,7 +781,7 @@
                :stick-cooldown-until :egg-at
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
-               :no-blocks? :arrived :hop))
+               :no-blocks? :arrived :hop :fall))
 
 (defn- age-up [e t]
   (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
@@ -815,13 +848,13 @@
   ([world index eid e [e1 look ds say-ds pre] t cram live?]
    (let [[half height] (mobs/box-of e)
          more [look e cram live?]
-         [e2 shoves hit?]
+         [e2 shoves hit? ls]
          (physics-shoves world index eid e1 half height more)
          [e2 own] (if-let [f (ai-steps (:type e))]
                     (f eid e2 t)
                     [e2 nil])
          ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
-     [e2 (joined-into ds own) shoves hit?])))
+     [e2 (joined-into ds own) shoves hit? ls])))
 
 (defn- handed
   "Returns acc with the shove sh handed to the mob in slot j, whose
@@ -907,10 +940,10 @@
   [world index t slots es i mind]
   (let [[eid e] (nth es i)
         cram (cram-of world index slots es eid t)
-        [e2 ds shoves hit?]
+        [e2 ds shoves hit? ls]
         (step-mob world index eid e mind t cram (live-of slots es))
         cs (when hit? [[:damage eid cramming-damage crush]])
-        [e2 ds] (living/touched world eid e2 (:wet? e) ds cs)]
+        [e2 ds] (living/touched world eid e2 (:wet? e) ds ls cs)]
     [e2 ds shoves]))
 
 (defn- live

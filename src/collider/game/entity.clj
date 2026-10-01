@@ -183,11 +183,11 @@
 
 (def ^:private kept
   {:mob [:health :death-time :color :sheared? :sound-variant
-         :effects :absorption]
+         :effects :absorption :fall]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin]
-   :falling-block [:block :time]
+   :falling-block [:block :time :fall :hurt :hurt-max]
    :thrown [:owner :left-owner? :stack]
    :hanging [:block-pos :facing :variant :stack :rotation]})
 

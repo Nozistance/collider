@@ -64,6 +64,16 @@
   "Returns the velocity a move leaves the body with."
   ^V3 [^Move m] (.vel m))
 
+(defn moved-y
+  "Returns how far up a move took the body."
+  ^double [^Move m] (.dy m))
+
+(defn fallen
+  "Returns fall distance fall after a move up by dy out of water,
+  as Entity.checkFallDamage:1585 adds it in float."
+  ^double [^double fall ^double dy]
+  (if (< dy 0.0) (- fall (double (float dy))) fall))
+
 (defn on-ground?
   "Returns true when a move ends on the ground."
   {:inline (fn [m]

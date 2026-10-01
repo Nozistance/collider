@@ -103,12 +103,26 @@
       (for [[i stack] (map-indexed vector (block/drops old salt))]
         [:spawn-entity (items/popped world pos stack i)]))))
 
-(defn- falling-block [[x y z :as pos] [_ st]]
-  [[:spawn-entity
-    {:type :falling-block
-     :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
-     :vel [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0 :on-ground false
-     :block (block/without-water st) :start pos :time 0}]])
+(def ^:private ^:const anvil-hurt 2.0)
+
+(def ^:private ^:const hurt-max 40)
+
+(defn- hurts
+  "Returns the damage per block fallen of a falling block st, as
+  AnvilBlock.falling:84 sets it, or hurt as the effect gave it."
+  [st hurt]
+  (cond hurt hurt
+        (= :anvil (block/type-of st)) anvil-hurt))
+
+(defn- falling-block [[x y z :as pos] [_ st hurt]]
+  (let [h (hurts st hurt)]
+    [[:spawn-entity
+      (cond-> {:type :falling-block
+               :pos [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]
+               :vel [0.0 0.0 0.0] :yaw 0.0 :pitch 0.0
+               :on-ground false :block (block/without-water st)
+               :start pos :time 0}
+        h (assoc :hurt h :hurt-max hurt-max))]]))
 
 (defn- primed [world pos]
   (when (get-in world [:rules :tnt-explodes] true)

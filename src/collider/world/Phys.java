@@ -513,6 +513,6 @@ public final class Phys {
                 new V3(equal(dx, vx) ? vx : restituted(vx),
                        hitY ? restituted(vy) : vy,
                        equal(dz, vz) ? vz : restituted(vz)),
-                hitY && vy < 0.0);
+                hitY && vy < 0.0, dy);
     }
 }
