@@ -12,6 +12,7 @@
             [collider.game.apply :as apply]
             [collider.game.level :as level]
             [collider.game.player :as player]
+            [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]))
@@ -55,13 +56,17 @@
   (let [st (container/state-at (:chunks world) (:pos m))]
     (= (:type m) (block/type-of st))))
 
+(defn- ender-valid? [world m]
+  (let [st (container/state-at (:chunks world) (:pos m))]
+    (= :ender-chest (block/type-of st))))
+
 (defn- valid? [world m]
   (cond
     (container/lectern? m)
     (and (= :lectern (:kind (be/at world (:pos m))))
          (container/book? (container/book-of world m)))
     (container/bench? m) (bench-valid? world m)
-    (= :ender (:kind m)) true
+    (= :ender (:kind m)) (ender-valid? world m)
     :else
     (every? (fn [pos]
               (contains? be/menu-kinds (:kind (be/at world pos))))
@@ -568,20 +573,26 @@
     (when (or (seq deltas) (seq ds))
       (concat [[:merge-entity eid {:menu menu}]] deltas ds))))
 
-(defn- broadcasting? [world e]
-  (let [m (:menu e)]
-    (and m (= :block (:kind m)) (valid? world m))))
+(defn- near?
+  "Returns true when player e is near enough to keep menu m open:
+  within its reach and 4 blocks of each of its blocks, as
+  Container.stillValidBlockEntity:95."
+  [e m]
+  (every? #(reach/in-edit-range? e %)
+          (or (seq (:cells m)) [(:pos m)])))
 
-(defn broadcast
-  "Sends every viewer the slots and data of their menu that moved.
-  This happens once per player tick."
-  {:wake {:types #{:player}}}
-  [world _d]
-  (let [one (fn [[eid e]]
-              (when (broadcasting? world e)
-                (broadcast-deltas world (long eid) e)))]
-    (deltas/of-vec
-      (into [] (mapcat one) (level/of-types world [:player])))))
+(defn menu-deltas
+  "Returns the deltas of the menu of player eid in its turn
+  (ServerPlayer.tick:619-623): the slots and data that moved go to
+  it, then a menu no longer valid closes."
+  [world eid e]
+  (when-let [m (:menu e)]
+    (let [ok? (valid? world m)]
+      (concat
+        (when (and ok? (= :block (:kind m)))
+          (broadcast-deltas world (long eid) e))
+        (when-not (and ok? (near? e m))
+          (close-deltas world eid e true))))))
 
 (defn- selected-bundle-deltas [world eid e m slot i]
   (let [items (container/items world eid m)

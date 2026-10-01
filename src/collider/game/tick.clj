@@ -45,8 +45,8 @@
 
 (def entity-systems
   "The systems that step the entities of the level."
-  [#'damage/countdown
-   #'entities/entities
+  [#'entities/entities
+   #'damage/burning
    #'hanging/hanging-checks
    #'damage/damage])
 
@@ -69,7 +69,6 @@
              [#'block-updates/block-flush #'players/players]
              [#'block-events/block-events]
              entity-systems
-             [#'containers/broadcast]
              [#'block-entities/block-entities]
              [#'player-tick/player-tick]
              [#'players/late-tracking]

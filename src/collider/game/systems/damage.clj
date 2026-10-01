@@ -684,21 +684,25 @@
       (burn-tick-deltas eid fire (boolean (:wet? e))
                         (any-bit? (probe world e) lava-bit)))))
 
+(defn- burnt-deltas
+  "Returns the deltas of the fire living entity eid burns in
+  (Entity.baseTick:546-556), then of the void
+  (Entity.checkBelowWorld:564)."
+  [world eid e]
+  (into (vec (burn-deltas world eid e)) (void-deltas world eid e)))
+
 (defn base-deltas
   "Returns the deltas of living entity eid that LivingEntity.baseTick
   makes before the countdown of its hurt resistance: the fire it
-  burns in (Entity.baseTick:546-556), then the void
-  (Entity.checkBelowWorld:564), then the countdown (:483)."
+  burns in, the void, then the countdown (:483)."
   [world eid e]
-  (-> (vec (burn-deltas world eid e))
-      (into (void-deltas world eid e))
-      (conj [:rest eid])))
+  (conj (burnt-deltas world eid e) [:rest eid]))
 
 (defn- busy-deltas [world eid e]
   (let [ds (concat (timer-deltas eid e)
                    (landing-deltas world eid e)
                    (fire-deltas world eid e))]
-    (->> (concat (base-deltas world eid e) ds)
+    (->> (concat [[:rest eid]] (burnt-deltas world eid e) ds)
          (hurt-now world eid e)
          (report-deltas world eid)
          (concat ds))))
@@ -749,10 +753,11 @@
   (let [k (:type e)]
     (or (mobs/mob-type? k) (contains? #{:item :experience-orb} k))))
 
-(defn countdown
+(defn burning
   "Returns the deltas of every player from the start of
-  LivingEntity.baseTick: fire, void, then the countdown of its hurt
-  resistance. A mob counts in its own turn."
+  LivingEntity.baseTick: fire, then the void. They come after the
+  turns of the entities, where a player counts down its hurt
+  resistance (ServerPlayer.tick:614); a mob does all of it there."
   {:wake {:keys [:entities]}}
   [world _d]
   (let [active (areas/active-chunks world)
@@ -760,7 +765,7 @@
                (and (ticking? active e) (not (own-tick? e))
                     (based? world e)))
         xf (comp (filter due?)
-                 (mapcat (fn [[eid e]] (base-deltas world eid e))))]
+                 (mapcat (fn [[eid e]] (burnt-deltas world eid e))))]
     (deltas/of-vec (deltas/select xf (:entities world)))))
 
 (defn damage
