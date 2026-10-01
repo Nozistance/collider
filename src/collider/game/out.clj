@@ -265,6 +265,14 @@
 (defn animation [eid kind]
   {:msg :animation :eid eid :kind kind})
 
+(defn damage-event
+  "Returns the effect that entity eid took a full hit of damage type
+  kind, caused by the entity cause through the entity direct, from
+  pos; each may be nil."
+  [eid kind cause direct pos]
+  {:msg :damage-event :eid eid :kind kind :cause cause
+   :direct direct :pos pos})
+
 (defn status
   "Returns the effect that an entity does something brief.
   Being hurt is one such thing."
@@ -316,9 +324,15 @@
                 (+ (double z) 0.5)]
           volume pitch source)))
 
-(defn particles [kind state pos count speed]
-  {:msg :particles :kind kind :state state :pos pos :count count
-   :speed (double speed)})
+(defn particles
+  "Returns the effect of count particles of kind at pos, spread by
+  the offsets dxyz."
+  ([kind state pos count speed]
+   (particles kind state pos count speed nil))
+  ([kind state pos count speed dxyz]
+   (cond-> {:msg :particles :kind kind :state state :pos pos
+            :count count :speed (double speed)}
+     dxyz (assoc :spread dxyz))))
 
 (defn trail
   "Returns the effect of a trail particle from pos to target, of an

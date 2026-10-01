@@ -5,13 +5,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private attack-damage-modifier
-  ["minecraft:attack_damage" "add_value" "mainhand"])
-
-(defn- attack-damage ^double [components]
+(defn- main-hand-sum
+  "Returns the sum of the add_value main hand modifiers of attribute
+  type in components."
+  ^double [components type]
   (let [mods (get components "minecraft:attribute_modifiers")
         match? #(= (map % ["type" "operation" "slot"])
-                   attack-damage-modifier)]
+                   [type "add_value" "mainhand"])]
     (reduce + 0.0 (for [a mods :when (match? a)]
                     (double (get a "amount"))))))
 
@@ -175,13 +175,15 @@
 
 (defn- combat-fields [cs]
   (let [egg (get-in cs ["minecraft:entity_data" "id"])
-        hit (attack-damage cs)
+        hit (main-hand-sum cs "minecraft:attack_damage")
+        pace (main-hand-sum cs "minecraft:attack_speed")
         resists (get-in cs ["minecraft:damage_resistant" "types"])
         pat (get cs "minecraft:provides_banner_patterns")
         tag #(tag-name (subs % 1))]
     (cond-> (sorted-map)
       egg (assoc :spawns (kw egg))
       (pos? hit) (assoc :attack-damage (flt hit))
+      (not (zero? pace)) (assoc :attack-speed pace)
       (string? resists) (assoc :resists (tag resists))
       (string? pat) (assoc :patterns (tag pat)))))
 

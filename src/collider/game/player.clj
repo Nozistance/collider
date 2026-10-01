@@ -179,7 +179,9 @@
 (def ^:private ^:table swords
   (delay (set (data/tag-values "item" "swords"))))
 
-(defn- sword? [item]
+(defn sword?
+  "Returns true when item is a sword."
+  [item]
   (contains? @swords item))
 
 (defn- stopped-use [e]

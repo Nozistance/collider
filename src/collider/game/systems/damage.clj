@@ -1,7 +1,6 @@
 (ns collider.game.systems.damage
   "Damage, death and respawn."
   (:require [collider.data :as data]
-            [collider.game.apply :as apply]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -32,18 +31,6 @@
 
 (def ^:private ^:const player-health 20.0)
 
-(def ^:private ^:const reach-sq 36.0)
-
-(def ^:private ^:const blind-reach-sq 9.0)
-
-(def ^:private ^:const base-damage 1.0)
-
-(def ^:private ^:const crit-multiplier 1.5)
-
-(def ^:private ^:const knockback-attack-strength 0.5)
-
-(def ^:private ^:const knockback-lift 0.1)
-
 (def ^:private ^:const voice-pitch-spread 0.2)
 
 (def ^:private ^:const baby-voice-pitch 1.5)
@@ -55,9 +42,6 @@
 (def ^:private ^:const fire-damage-period 20)
 
 (def ^:private ^:const ticks-per-second 20)
-
-(defn- weapon-damage ^double [item]
-  (double (get-in (data/items) [item :attack-damage] 0.0)))
 
 (defn- hurt-sound [e]
   (if (= :player (:type e))
@@ -80,75 +64,6 @@
   "Returns true when nothing can hurt the entity."
   [e]
   (= :player (:type e)))
-
-(defn- held-item [e]
-  (:item (get (:inventory e) (+ 36 (long (or (:held-slot e) 0))))))
-
-(defn- eye-of [e]
-  (let [p (:pos e)]
-    [(v/x p) (+ (v/y p) (entity/eye-height e)) (v/z p)]))
-
-(defn- ray-steps ^long [[ax ay az] [bx by bz]]
-  (let [dx (- (double bx) (double ax))
-        dy (- (double by) (double ay))
-        dz (- (double bz) (double az))
-        d (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))]
-    (long (Math/ceil (/ d 0.1)))))
-
-(defn- lerp-floor ^long [^double a ^double b ^double s]
-  (long (Math/floor (+ a (* (- b a) s)))))
-
-(defn- ray-cell [[ax ay az] [bx by bz] ^double s]
-  [(lerp-floor (double ax) (double bx) s)
-   (lerp-floor (double ay) (double by) s)
-   (lerp-floor (double az) (double bz) s)])
-
-(defn- clear-ray? [chunks a b ^long n]
-  (loop [i 1 lx Long/MIN_VALUE ly Long/MIN_VALUE lz Long/MIN_VALUE]
-    (if (>= i n)
-      true
-      (let [[x y z] (ray-cell a b (/ (double i) n))
-            x (long x) y (long y) z (long z)]
-        (if (and (= x lx) (= y ly) (= z lz))
-          (recur (inc i) x y z)
-          (if (phys/solid? chunks x y z)
-            false
-            (recur (inc i) x y z)))))))
-
-(defn- sees? [world a b]
-  (let [pa (eye-of a) pb (eye-of b)]
-    (clear-ray? (:chunks world) pa pb (ray-steps pa pb))))
-
-(defn- attackable? [a t]
-  (and a t (:health t) (pos? (double (:health t)))
-       (not (creative-proof? t))))
-
-(defn- in-reach? [world a t]
-  (let [d2 (v/dist3-sq (:pos a) (:pos t))]
-    (cond (< d2 blind-reach-sq) true
-          (>= d2 reach-sq) false
-          :else (sees? world a t))))
-
-(defn- crit? [a t]
-  (and (not (:on-ground a))
-       (neg? (v/y (or (:client-vel a) [0.0 0.0 0.0])))
-       (not (:wet? t))))
-
-(defn- melee-damage ^double [a crit?]
-  (cond-> (+ base-damage (weapon-damage (held-item a)))
-          crit? (* crit-multiplier)))
-
-(defn- sprint-push [a target]
-  (let [yaw (Math/toRadians (double (:yaw a)))
-        k knockback-attack-strength]
-    [:push target [(* (- (Math/sin yaw)) k) knockback-lift
-                   (* (Math/cos yaw) k)]]))
-
-(defn- hit-marks [a t tick]
-  (cond-> {:love-until nil}
-          (= :player (:type a)) (assoc :hurt-by-player tick)
-          (and (= :player (:type a)) (mobs/mob-type? (:type t)))
-          (assoc :hurt-cause :player-attack)))
 
 (def ^:private ^:const fire-seconds 8)
 
@@ -228,22 +143,26 @@
     (when (not= lit? (boolean (:burning? e)))
       [[:merge-entity eid {:burning? lit?}]])))
 
-(defn- caused [ds eid cause]
-  (cond-> ds cause (conj [:merge-entity eid {:hurt-cause cause}])))
+(def ^:private on-fire {:type :on-fire})
 
-(defn- burn-tick-deltas [eid fire wet? in-lava? cause]
+(def ^:private in-fire {:type :in-fire})
+
+(def ^:private in-lava {:type :lava})
+
+(def ^:private out-of-world {:type :out-of-world})
+
+(defn- burn-tick-deltas [eid fire wet? in-lava?]
   (when (and (pos? fire) (not wet?))
-    (let [c (cause :on-fire)
-          due? (and (zero? (rem fire fire-damage-period))
+    (let [due? (and (zero? (rem fire fire-damage-period))
                     (not in-lava?))]
       (cond-> [[:merge-entity eid {:fire (dec fire)}]]
-              due? (-> (conj [:damage eid 1.0]) (caused eid c))))))
+              due? (conj [:damage eid 1.0 on-fire])))))
 
 (defn- fire-ticks ^long [fire seconds]
   (max (long fire) (* ticks-per-second (long seconds))))
 
-(defn- ignite-deltas [eid fire wet? damage seconds cause]
-  (cond-> (caused [[:damage eid (double damage)]] eid cause)
+(defn- ignite-deltas [eid fire wet? damage seconds src]
+  (cond-> [[:damage eid (double damage) src]]
           (not wet?)
           (conj [:merge-entity eid
                  {:fire (fire-ticks fire seconds)}])))
@@ -257,18 +176,13 @@
     (cons [:merge-entity eid {:fire 0 :burning? false}]
           [(out/all (out/fizz (fizz-cell e)))])))
 
-(defn- cause-of [e]
-  (if (mobs/mob-type? (:type e)) identity (constantly nil)))
-
 (defn- lit-by-deltas [eid e fire wet? flags]
   (let [touch (any-bit? flags (bit-or fire-bit lava-bit))
         sunk? (any-bit? flags sunk-bit)
-        cause (cause-of e)
-        ignite (fn [d s k]
-                 (ignite-deltas eid fire wet? d s (cause k)))]
+        ignite (fn [d s src] (ignite-deltas eid fire wet? d s src))]
     (concat (burning-flag eid e fire sunk?)
-            (when touch (ignite 1.0 fire-seconds :in-fire))
-            (when sunk? (ignite lava-damage lava-seconds :lava))
+            (when touch (ignite 1.0 fire-seconds in-fire))
+            (when sunk? (ignite lava-damage lava-seconds in-lava))
             (douse-deltas eid e fire wet?))))
 
 (defn- lit-deltas [eid e fire wet? flags]
@@ -436,7 +350,7 @@
         lava? (pos? (bit-and flags lava-bit))
         ignite (fn [d s] (ignite-deltas eid fire wet? d s nil))]
     (concat (burning-flag eid e fire false)
-            (burn-tick-deltas eid fire wet? lava? (constantly nil))
+            (burn-tick-deltas eid fire wet? lava?)
             (when (pos? (bit-and flags fire-bit))
               (ignite 1.0 fire-seconds))
             (when lava? (ignite lava-damage lava-seconds))
@@ -511,8 +425,7 @@
   (when (and (pos? (double (:health e)))
              (< (v/y (:pos e)) (chunk/void-y world))
              (not (loading? world e)))
-    (caused [[:damage eid void-damage]] eid
-            ((cause-of e) :out-of-world))))
+    [[:damage eid void-damage out-of-world]]))
 
 (def ^:private ^:table panic-causes
   (delay (set (data/tag-values "damage_type" "panic_causes"))))
@@ -525,8 +438,7 @@
   (when (panics? e) (+ (long (:tick world)) panic-ticks)))
 
 (defn- panicked [world e]
-  (cond-> {:love-until nil :no-action 0
-           :panic-until (panic-until world e)}
+  (cond-> {:love-until nil :panic-until (panic-until world e)}
           (:hurt-cause e) (assoc :hurt-cause nil)))
 
 (def ^:private ^:const player-kill-memory 100)
@@ -587,26 +499,45 @@
     (when (and n (pos? (long n)))
       [[:xp-award (vec (:pos e)) (long n) [:death eid]]])))
 
-(defn- hurt-marks [world e ^double health]
+(defn- hurt-marks [world e ^double health src]
   (cond-> {:health-sent health}
+          src (assoc :struck-by nil)
           (not= :player (:type e)) (merge (panicked world e))))
 
+(defn- struck-deltas
+  "Returns the effects of a full hit from src on entity eid, as
+  LivingEntity.hurtServer:1247-1266 broadcasts the damage event to
+  its viewers and itself and plays the hurt sound, or the death
+  sound when it killed."
+  [world eid e src]
+  (let [snd (hurt-sound e)
+        ev (out/damage-event eid (:type src) (:cause src)
+                             (:direct src) (:pos src))]
+    (cond-> [(out/all ev)]
+      (= :player (:type e)) (conj (out/to eid ev))
+      snd (conj (out/all (out/sound snd (:pos e) 1.0
+                                    (sound-pitch world eid e)))))))
+
+(defn- died-deltas [world eid e]
+  (concat [(out/all (out/status eid :death))]
+          (drop-deltas world eid e) (death-orbs world eid e)))
+
 (defn report-deltas
-  "Returns the deltas that show the hurt of entity eid since it was
-  last shown: its sound, its status, and on death its drops."
+  "Returns the deltas that show the hurts of entity eid since they
+  were last shown: the effects of its full hit, and on death its
+  drops."
   [world eid e]
   (let [health (double (:health e))
-        shown (double (or (:health-sent e) health))]
-    (when (< health shown)
+        shown (double (or (:health-sent e) health))
+        src (:struck-by e)
+        lost? (< health shown)]
+    (when (or src lost?)
       (concat
-        [[:merge-entity eid (hurt-marks world e health)]]
-        (when-let [snd (hurt-sound e)]
-          (let [p (sound-pitch world eid e)]
-            [(out/all (out/sound snd (:pos e) 1.0 p))]))
-        [(out/all (out/status eid (if (pos? health) :hurt :death)))]
-        (when-not (pos? health)
-          (concat (drop-deltas world eid e) (death-orbs world eid e)))
-        (when (= :player (:type e))
+        [[:merge-entity eid (hurt-marks world e health src)]]
+        (when src (struck-deltas world eid e src))
+        (when (and lost? (not (pos? health)))
+          (died-deltas world eid e))
+        (when (and lost? (= :player (:type e)))
           [(out/to eid (out/health health))])))))
 
 (defn timer-deltas
@@ -733,6 +664,7 @@
          (not (:burning? e))
          (zero? (long (or (:hurt-resist e) 0)))
          (nil? (:landed e))
+         (nil? (:struck-by e))
          (>= health (double (or (:health-sent e) health))))))
 
 (defn- own-apply [world eid e d]
@@ -750,8 +682,7 @@
   (let [fire (long (or (:fire e) 0))]
     (when (and (pos? fire) (not (creative-proof? e)))
       (burn-tick-deltas eid fire (boolean (:wet? e))
-                        (any-bit? (probe world e) lava-bit)
-                        (cause-of e)))))
+                        (any-bit? (probe world e) lava-bit)))))
 
 (defn base-deltas
   "Returns the deltas of living entity eid that LivingEntity.baseTick
@@ -804,35 +735,6 @@
           (mapcat (fn [[eid e]] (living-deltas world eid e))))))
 
 (def ^:private ^:const living-leaf 64)
-
-(defn- hit-deltas [world a t target crit?]
-  (let [hit [:damage target (melee-damage a crit?)
-             (- (v/x (:pos a)) (v/x (:pos t)))
-             (- (v/z (:pos a)) (v/z (:pos t)))]
-        h (hurt-now world target t [hit])]
-    (when-not (identical? h t)
-      (let [marks [:merge-entity target (hit-marks a t (:tick world))]
-            h (hurt-now world target h [marks])]
-        (cond-> (into [hit marks] (report-deltas world target h))
-          (:sprinting? a) (conj (sprint-push a target))
-          crit? (conj (out/all (out/animation target :crit))))))))
-
-(defn- attack-deltas [world [_ eid target]]
-  (let [a (get-in world [:entities eid])
-        t (get-in world [:entities target])]
-    (when (and (not (game-mode/spectator? a))
-               (attackable? a t) (in-reach? world a t))
-      (hit-deltas world a t target (crit? a t)))))
-
-(defn attacks
-  "Returns the deltas of the players hitting living entities this
-  tick, one after another, as ServerGamePacketListenerImpl
-  .handleInteract runs Player.attack when the packet comes."
-  {:wake {:events #{:attack}}}
-  [world d]
-  (let [evs (filterv #(= :attack (nth % 0)) (:input d))]
-    (deltas/of-vec (when (seq evs)
-                     (apply/fold-events world evs attack-deltas)))))
 
 (defn based?
   "Returns true when living entity e has work in the start of its

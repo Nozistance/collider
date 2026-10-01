@@ -578,16 +578,27 @@
     (when-not (and fresh? (quiet? tr e self? dirty? same?))
       (changed-deltas t eid e vs self? tr mdata due?))))
 
+(defn- marked-deltas
+  "Returns the motion ServerEntity.sendChanges:234 sends after a hit
+  marked entity eid, and the mark gone."
+  [eid e vs]
+  (cond-> [[:merge-entity eid {:hurt-marked? nil}]]
+    vs (conj (out/all (out/velocity eid (:vel e))))))
+
+(defn- seen-deltas [t vs self? eid e]
+  (let [tr (track-of (long t) e)
+        mdata (metadata e)
+        dirty? (not= mdata (:mdata tr))
+        due? (due-now? (long t) tr e dirty?)]
+    (tracked-deltas (long t) eid e vs self? tr mdata dirty? due?)))
+
 (defn- move-deltas [t viewers [eid e]]
   (let [vs (contains? viewers eid)
-        self? (= :player (:type e))]
-    (when (or vs self?)
-      (let [tr (track-of (long t) e)
-            mdata (metadata e)
-            dirty? (not= mdata (:mdata tr))
-            due? (due-now? (long t) tr e dirty?)]
-        (tracked-deltas (long t) eid e vs self? tr mdata dirty?
-                        due?)))))
+        self? (= :player (:type e))
+        ds (when (or vs self?) (seen-deltas t vs self? eid e))]
+    (if (:hurt-marked? e)
+      (into (vec ds) (marked-deltas eid e vs))
+      ds)))
 
 (def ^:private tab-header-interval 20)
 

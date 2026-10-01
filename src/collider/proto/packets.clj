@@ -641,6 +641,11 @@
    [:play :hurt-animation]
    {:schema [:map [:eid wire/varint] [:yaw wire/float]]
     :write :wire}
+   [:play :damage-event]
+   {:schema [:map [:eid wire/varint] [:kind wire/varint]
+             [:cause wire/varint] [:direct wire/varint]
+             [:pos [:maybe wire/vec3]]]
+    :write :wire}
    [:play :entity-event]
    {:schema [:map [:eid wire/int] [:event wire/byte]]
     :write :wire}
@@ -665,9 +670,7 @@
              [:always {:optional true}
               [:= {:wire wire/boolean} false]]
              [:pos wire/vec3]
-             [:dx {:optional true} [:= {:wire wire/float} 0.0]]
-             [:dy {:optional true} [:= {:wire wire/float} 0.0]]
-             [:dz {:optional true} [:= {:wire wire/float} 0.0]]
+             [:dx wire/float] [:dy wire/float] [:dz wire/float]
              [:speed wire/float] [:count wire/int]
              [:particle wire/particle]]
     :write :wire}

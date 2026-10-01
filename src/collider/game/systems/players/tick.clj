@@ -6,6 +6,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.level :as level]
             [collider.game.out :as out]
+            [collider.game.systems.attacks :as attacks]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.compasses :as compasses]
             [collider.game.systems.consume :as consume]
@@ -33,6 +34,7 @@
    dripleaf/player-deltas
    items/player-pickups
    orbs/player-pickup
+   attacks/wielded
    pose/player-deltas
    experience/player-deltas
    keepalive/player-deltas])

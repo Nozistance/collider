@@ -200,8 +200,13 @@
     :apply (fn [_ e [_ _ add drop]]
              (update e :sent-chunks merge-diff add drop))}
    :damage
-   {:scope :entity :schema [:cat number? [:? [:cat number? number?]]]
-    :apply (fn [_ e [_ _ amount dx dz]] (entity/hurt e amount dx dz))}
+   {:scope :entity :schema [:cat number? [:? [:maybe :map]]]
+    :apply (fn [tick e [_ eid amount src]]
+             (entity/hurt e amount src tick eid))}
+   :knockback
+   {:scope :entity :schema [:cat number? number? number?]
+    :apply (fn [tick e [_ eid power xd zd]]
+             (entity/knocked e power xd zd tick eid))}
    :rest
    {:scope :entity :schema [:cat]
     :apply (fn [_ e _] (entity/rested e))}
@@ -360,6 +365,9 @@
                        [:stack [:maybe Stack]]]
    :animation         [[:eid Eid] [:kind :keyword]]
    :status            [[:eid Eid] [:kind :keyword]]
+   :damage-event      [[:eid Eid] [:kind :keyword]
+                       [:cause [:maybe Eid]] [:direct [:maybe Eid]]
+                       [:pos [:maybe Vec3]]]
    :collect           [[:eid Eid] [:collector Eid]]
    :open-screen       [[:container :int] [:menu :keyword]
                        [:title :map]]

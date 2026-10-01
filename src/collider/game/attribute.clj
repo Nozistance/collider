@@ -75,16 +75,17 @@
       (max (double lo) (min (double hi) v)))))
 
 (defn value
-  "Returns the value of attribute attr of entity e with effects.
-  This is AttributeInstance.calculateValue."
-  ^double [e effects attr]
-  (let [ms (modifiers e effects attr)
-        base (+ (double (get (base-values e) attr 0.0)) (summed ms 0))
-        v (+ base (* base (summed ms 1)))
-        v (reduce (fn [^double v [_ a o]]
-                    (if (= 2 o) (* v (+ 1.0 (double a))) v))
-                  v ms)]
-    (clamped attr v)))
+  "Returns the value of attribute attr of entity e with effects and
+  the modifiers more. This is AttributeInstance.calculateValue."
+  (^double [e effects attr] (value e effects attr nil))
+  (^double [e effects attr more]
+   (let [ms (into (modifiers e effects attr) more)
+         base (+ (double (get (base-values e) attr 0.0)) (summed ms 0))
+         v (+ base (* base (summed ms 1)))
+         v (reduce (fn [^double v [_ a o]]
+                     (if (= 2 o) (* v (+ 1.0 (double a))) v))
+                   v ms)]
+     (clamped attr v))))
 
 (defn entries
   "Returns the attribute entries [attr base modifiers] of the synced

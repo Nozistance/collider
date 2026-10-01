@@ -34,10 +34,11 @@
 (defn touched
   "Returns living entity eid after the blocks it touches at the end
   of its move (LivingEntity.aiStep, applyEffectsFromBlocks :3154),
-  and ds with their deltas and the show of each hurt of its turn.
-  It is wet as it was when its turn began."
-  [world eid e wet? ds]
-  (let [fs (damage/fire-deltas world eid e wet?)]
+  then the hurts cs of its push (pushEntities :3183), and ds with
+  their deltas and the show of each hurt of its turn. It is wet as
+  it was when its turn began."
+  [world eid e wet? ds cs]
+  (let [fs (into (vec (damage/fire-deltas world eid e wet?)) cs)]
     (if (seq fs)
       (shown world eid (damage/hurt-now world eid e fs)
              (into (vec ds) fs))

@@ -459,9 +459,11 @@
   (delay [(data/registry-id "particle_type" :explosion-emitter) nil]))
 
 (defn- particles-packet [m]
-  {:packet   :level-particles
-   :particle [(data/registry-id "particle_type" (:kind m)) (:state m)]
-   :pos      (:pos m) :count (:count m) :speed (:speed m)})
+  (let [[dx dy dz] (or (:spread m) [0.0 0.0 0.0])]
+    {:packet   :level-particles
+     :particle [(data/registry-id "particle_type" (:kind m)) (:state m)]
+     :pos      (:pos m) :count (:count m) :speed (:speed m)
+     :dx (double dx) :dy (double dy) :dz (double dz)}))
 
 (def ^:private ^:table trail-particle
   (delay (data/registry-id "particle_type" :trail)))
@@ -469,7 +471,7 @@
 (defn- trail-packet [m]
   {:packet   :level-particles
    :particle [@trail-particle [(:target m) (:color m) (:ticks m)]]
-   :pos      (:pos m) :count 1 :speed 0.0})
+   :pos      (:pos m) :count 1 :speed 0.0 :dx 0.0 :dy 0.0 :dz 0.0})
 
 (def ^:private unhandled (atom #{}))
 
@@ -500,10 +502,16 @@
    :love 18 :teleport 46 :reduced-debug 22 :full-debug 23})
 
 (defn- status-packet [m]
-  (if (= :hurt (:kind m))
-    {:packet :hurt-animation :eid (:eid m) :yaw 0.0}
-    (when-let [ev (entity-events (:kind m))]
-      {:packet :entity-event :eid (:eid m) :event ev})))
+  (when-let [ev (entity-events (:kind m))]
+    {:packet :entity-event :eid (:eid m) :event ev}))
+
+(defn- entity-ref ^long [eid] (if eid (inc (long eid)) 0))
+
+(defn- damage-event-packet [m]
+  {:packet :damage-event :eid (:eid m)
+   :kind (data/entry-id "damage_type" (:kind m))
+   :cause (entity-ref (:cause m)) :direct (entity-ref (:direct m))
+   :pos (:pos m)})
 
 (def ^:private sound-sources
   {:records 2 :blocks 4 :neutral 6 :players 7})
@@ -1029,6 +1037,7 @@
                 [{:packet :animate :eid (:eid m)
                   :action (animate-action (:kind m))}])
    :status    (fn [_ m] (when-let [p (status-packet m)] [p]))
+   :damage-event (fn [_ m] [(damage-event-packet m)])
    :collect   (fn [_ m] [(collect-packet m)])
    :attributes (fn [_ m]
                  [{:packet :update-attributes :eid (:eid m)
@@ -1149,7 +1158,8 @@
 
 (def ^:private entity-msgs
   #{:move :move-look :look :sync-pos :head-look :velocity :meta
-    :equipment :animation :status :collect :attributes})
+    :equipment :animation :status :collect :attributes
+    :damage-event})
 
 (defn- level-audience [sight dim m]
   (ranged-recipients (level-of sight dim)
@@ -1165,7 +1175,8 @@
 (defn- recipients [sight viewers m]
   (cond
     (:to m) [(:to m)]
-    (entity-msgs (:msg m)) (get @viewers (long (:eid m)) [])
+    (entity-msgs (:msg m))
+    (get @viewers (long (or (:via m) (:eid m))) [])
     :else
     (let [base (audience sight m)]
       (if (:except m) (remove #{(:except m)} base) base))))

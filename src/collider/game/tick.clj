@@ -7,6 +7,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
             [collider.log :as log]
+            [collider.game.systems.attacks :as attacks]
             [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.events :as block-events]
             [collider.game.systems.block.updates :as block-updates]
@@ -61,7 +62,7 @@
 (def phases [[#'spawning/placing]
              [#'chunks/chunk-loading]
              packet-systems
-             [#'hanging/hanging-uses #'damage/attacks]
+             [#'hanging/hanging-uses #'attacks/attacks]
              [#'daynight/daynight #'weather-system/weather]
              [#'sleep/sleep]
              [#'block-updates/block-updates]

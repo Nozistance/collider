@@ -888,18 +888,7 @@
              e (assoc e :pos pos)]
          (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
 
-(defn- crammed [eid e ds]
-  (let [h (entity/hurt e cramming-damage)]
-    (if (not= (:health h) (:health e))
-      [(assoc h :hurt-cause :cramming)
-       (conj (vec ds) [:damage eid cramming-damage]
-             [:merge-entity eid {:hurt-cause :cramming}])]
-      [e ds])))
-
-(defn- cramming [world index slots es eid e t ds]
-  (if (crammed? world index slots es eid e (:pos e) t)
-    (crammed eid e ds)
-    [e ds]))
+(def ^:private crush {:type :cramming})
 
 (defn- cram-of
   "Returns the fn that hurts mob eid of es when it stands crammed,
@@ -907,7 +896,7 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (entity/hurt (assoc e :pos pos) cramming-damage))))
+      (entity/hurt (assoc e :pos pos) cramming-damage crush t eid))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
@@ -920,8 +909,8 @@
         cram (cram-of world index slots es eid t)
         [e2 ds shoves hit?]
         (step-mob world index eid e mind t cram (live-of slots es))
-        [e2 ds] (if hit? (crammed eid e2 ds) [e2 ds])
-        [e2 ds] (living/touched world eid e2 (:wet? e) ds)]
+        cs (when hit? [[:damage eid cramming-damage crush]])
+        [e2 ds] (living/touched world eid e2 (:wet? e) ds cs)]
     [e2 ds shoves]))
 
 (defn- live

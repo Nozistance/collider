@@ -1,6 +1,8 @@
 (ns collider.game.entity
   "Entity constructors, saving and loading."
-  (:require [collider.game.entity.records :as types]
+  (:require [collider.data :as data]
+            [collider.game.attribute :as attribute]
+            [collider.game.entity.records :as types]
             [collider.game.entity.size :as size]
             [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
@@ -293,14 +295,58 @@
 
 (def ^:private ^:const max-resist 20)
 
-(defn- knock-back [e ^double dx ^double dz]
-  (let [f (Math/sqrt (+ (* dx dx) (* dz dz)))
-        v (or (:vel e) [0.0 0.0 0.0])]
-    (if (zero? f)
+(def ^:private ^:table unknocked
+  (delay (set (data/tag-values "damage_type" "no_knockback"))))
+
+(def ^:private ^:table unmarked
+  (delay (set (data/tag-values "damage_type" "no_impact"))))
+
+(def ^:private ^:const knock-power (double (float 0.4)))
+
+(def ^:private ^:const least-turn (double (float 1.0E-5)))
+
+(def ^:private ^:const knock-key 0x6b6e6f63)
+
+(defn- side-draw ^double [^long tick ^long eid ^long k]
+  (* 0.01 (- (random/of-longs tick eid (+ knock-key k))
+             (random/of-longs tick eid (+ knock-key k 1)))))
+
+(defn- knock-side
+  "Returns xd zd, or a tiny side drawn while they are too short,
+  as LivingEntity.knockback:1657."
+  [tick eid ^double xd ^double zd]
+  (loop [i 0 xd xd zd zd]
+    (if (< (+ (* xd xd) (* zd zd)) least-turn)
+      (recur (inc i) (side-draw tick eid (* 4 i))
+             (side-draw tick eid (+ (* 4 i) 2)))
+      [xd zd])))
+
+(defn- resisted ^double [e ^double power]
+  (let [r (get (attribute/base-values e) :knockback-resistance 0.0)]
+    (* power (- 1.0 (double r)))))
+
+(defn- knock-vel
+  "Returns velocity v halved and pushed away along unit xd zd with
+  power p, lifted only on ground."
+  [v ground? p xd zd]
+  (let [vy (v/y v) p (double p)]
+    [(- (/ (v/x v) 2.0) (* (double xd) p))
+     (if ground? (min 0.4 (+ (/ vy 2.0) p)) vy)
+     (- (/ (v/z v) 2.0) (* (double zd) p))]))
+
+(defn knocked
+  "Returns living entity e knocked back with power away from
+  direction xd zd, as LivingEntity.knockback:1651."
+  [e power xd zd tick eid]
+  (let [p (resisted e (double power))]
+    (if (<= p 0.0)
       e
-      (assoc e :vel [(- (/ (v/x v) 2.0) (* (/ dx f) 0.4))
-                     (min 0.4 (+ (/ (v/y v) 2.0) 0.4))
-                     (- (/ (v/z v) 2.0) (* (/ dz f) 0.4))]))))
+      (let [[xd zd] (knock-side tick eid (double xd) (double zd))
+            xd (double xd) zd (double zd)
+            f (Math/sqrt (+ (* xd xd) (* zd zd)))]
+        (assoc e :vel (knock-vel (or (:vel e) [0.0 0.0 0.0])
+                                 (:on-ground e) p (/ xd f)
+                                 (/ zd f)))))))
 
 (defn rested
   "Returns entity e with its hurt resistance one tick lower, as
@@ -309,33 +355,84 @@
   (let [r (long (or (:hurt-resist e) 0))]
     (if (pos? r) (assoc e :hurt-resist (dec r)) e)))
 
-(defn- hurt-again [e ^double health ^double amount]
-  (let [last-d (double (or (:last-damage e) 0.0))]
+(def ^:private generic {:type :generic})
+
+(defn- taken
+  "Returns entity e after a hurt from src it takes, as
+  LivingEntity.hurtServer:1240-1272 marks the one who caused it and
+  the last damage source."
+  [e src tick]
+  (cond-> e
+    (:player? src) (assoc :hurt-by-player tick)
+    (and (instance? Mob e) (not (identical? generic src)))
+    (assoc :hurt-cause (:type src))))
+
+(defn- f32 ^double [x] (double (float x)))
+
+(defn- lost
+  "Returns health after damage, as LivingEntity.actuallyHurt:1979
+  sets it in float."
+  ^double [health damage]
+  (max 0.0 (f32 (- (f32 health) (double damage)))))
+
+(defn- hurt-again [e health amount src tick]
+  (let [last-d (f32 (or (:last-damage e) 0.0))
+        amount (double amount)]
     (if (> amount last-d)
-      (assoc e :health (- health (- amount last-d))
-               :last-damage amount)
+      (taken (assoc e :health (lost health (f32 (- amount last-d)))
+                      :last-damage amount)
+             src tick)
       e)))
 
-(defn- hurt-fully [e health amount dx dz]
-  (let [left (max 0.0 (- (double health) (double amount)))]
-    (cond-> (assoc e :health left
-                     :last-damage amount
-                     :hurt-resist max-resist)
-            dx (knock-back (double dx) (double dz)))))
+(defn- knocked-by [e src tick eid]
+  (if (contains? @unknocked (:type src))
+    e
+    (let [p (:from src) pos (:pos e)]
+      (knocked e knock-power
+               (if p (- (v/x p) (v/x pos)) 0.0)
+               (if p (- (v/z p) (v/z pos)) 0.0) tick eid))))
+
+(defn- marked [e src]
+  (if (and (instance? Mob e) (not (contains? @unmarked (:type src))))
+    (assoc e :hurt-marked? true)
+    e))
+
+(defn- hurt-fully [e health amount src tick eid]
+  (let [left (lost health amount)]
+    (-> (assoc e :health left :last-damage amount
+               :hurt-resist max-resist :struck-by src)
+        (taken src tick)
+        (marked src)
+        (knocked-by src tick eid))))
 
 (defn- hurt-item [e ^double health ^double amount]
   (assoc e :health (double (long (- health amount)))))
 
+(defn- quieted [e]
+  (if (instance? Mob e) (assoc e :no-action 0) e))
+
 (defn hurt
-  "Returns entity e after amount of damage.
-  It is knocked back from direction dx dz when given."
-  ([e ^double amount] (hurt e amount nil nil))
-  ([e ^double amount dx dz]
+  "Returns entity e after amount of damage from source src, as
+  LivingEntity.hurtServer:1189. A source is a map: :type the damage
+  type, :cause and :direct the eids, :from where it knocks from,
+  :pos where it came from, :player? when a player caused it. A full
+  hit leaves the source in :struck-by until it is shown."
+  ([e amount] (hurt e amount nil 0 0))
+  ([e amount src tick eid]
    (let [health (double (or (:health e) 0.0))
-         resist (long (or (:hurt-resist e) 0))]
+         resist (long (or (:hurt-resist e) 0))
+         amount (max 0.0 (f32 amount))
+         src (or src generic)]
      (cond
        (not (pos? health)) e
        (contains? #{:item :experience-orb} (:type e))
        (hurt-item e health amount)
-       (> resist (/ max-resist 2.0)) (hurt-again e health amount)
-       :else (hurt-fully e health amount dx dz)))))
+       (> resist (/ max-resist 2.0))
+       (hurt-again (quieted e) health amount src tick)
+       :else (hurt-fully (quieted e) health amount src tick eid)))))
+
+(defn taken?
+  "Returns true when entity e took the hurt that made h of it."
+  [e h]
+  (or (< (double (:health h 0.0)) (double (:health e 0.0)))
+      (not (identical? (:struck-by h) (:struck-by e)))))
