@@ -37,7 +37,8 @@
    [:commands {:optional true} [:vector vector?]]
    [:event-filters {:optional true} [:vector ifn?]]
    [:delta-filters {:optional true} [:vector ifn?]]
-   [:identity {:optional true} ifn?]])
+   [:identity {:optional true}
+    [:map [:identify ifn?] [:encrypt? {:optional true} boolean?]]]])
 
 (defn- refused [what & why]
   (ex-info what {:what what :why (vec why)}))

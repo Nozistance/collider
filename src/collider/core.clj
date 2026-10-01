@@ -175,12 +175,13 @@
     {:settings (atom cfg) :opts opts :store store :saved saved
      :world world :saver saver :save! save! :handle (promise)}))
 
-(defn- open-net [{:keys [settings world save! opts]}]
+(defn- open-net [{:keys [settings world save! opts adds]}]
   (let [queue (ConcurrentLinkedQueue.)
         conns (atom {})
         io {:queue queue :conns conns :settings settings :save! save!
             :world world :on-packet #'session/handle-packet
-            :identity (:identity opts) :key-pair (crypt/key-pair)}
+            :identity (or (:identity opts) (:identity adds))
+            :key-pair (crypt/key-pair)}
         port (:port @settings)
         {:keys [socket accept]} (server/listen! io port)]
     {:queue queue :conns conns :socket socket :accept accept}))
