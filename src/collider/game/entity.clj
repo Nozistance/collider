@@ -381,13 +381,20 @@
              src tick)
       e)))
 
+(defn- knock-dir
+  "Returns xd zd of LivingEntity.dealDefaultKnockback:1298: against
+  the motion of a projectile, else toward where src came from."
+  [e src]
+  (let [m (:along src) p (:from src) pos (:pos e)]
+    (cond m [(- (v/x m)) (- (v/z m))]
+          p [(- (v/x p) (v/x pos)) (- (v/z p) (v/z pos))]
+          :else [0.0 0.0])))
+
 (defn- knocked-by [e src tick eid]
   (if (contains? @unknocked (:type src))
     e
-    (let [p (:from src) pos (:pos e)]
-      (knocked e knock-power
-               (if p (- (v/x p) (v/x pos)) 0.0)
-               (if p (- (v/z p) (v/z pos)) 0.0) tick eid))))
+    (let [[xd zd] (knock-dir e src)]
+      (knocked e knock-power xd zd tick eid))))
 
 (defn- marked [e src]
   (if (and (instance? Mob e) (not (contains? @unmarked (:type src))))
@@ -412,7 +419,8 @@
   "Returns entity e after amount of damage from source src, as
   LivingEntity.hurtServer:1189. A source is a map: :type the damage
   type, :cause and :direct the eids, :from where it knocks from,
-  :pos where it came from, :player? when a player caused it. A full
+  :along the motion of the projectile that knocks, :pos where it
+  came from, :player? when a player caused it. A full
   hit leaves the source in :struck-by until it is shown."
   ([e amount] (hurt e amount nil 0 0))
   ([e amount src tick eid]

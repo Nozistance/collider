@@ -176,7 +176,7 @@ public final class ChunkIndex extends APersistentMap
         if (c == null) return this;
         Chunk n = ((Chunk) c).withBlock(x, y, z, state, token);
         if (n == c) return this;
-        return assoc(Long.valueOf(id(x >> 4, z >> 4)), n);
+        return assoc(id(x >> 4, z >> 4), n);
     }
 
     public ChunkIndex withAll(long[] ids, Object[] values) {

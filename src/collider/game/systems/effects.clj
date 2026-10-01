@@ -118,13 +118,17 @@
       (set-health acc (min top (+ h amount)))
       acc)))
 
-(defn- hurt [acc ^double amount]
+(def ^:private magic {:type :magic})
+
+(def ^:private wither {:type :wither})
+
+(defn- hurt [acc ^double amount src]
   (let [e (:e acc)]
     (if (or (damage/creative-proof? e) (not (pos? (health acc))))
       acc
       (-> acc
           (assoc :e (entity/hurt e amount) :hurt? true)
-          (update :ds conj [:damage (:eid acc) amount])))))
+          (update :ds conj [:damage (:eid acc) amount src])))))
 
 (defn- regenerated [acc]
   (let [top (attribute/value (:e acc) (:fx acc) :max-health)]
@@ -136,10 +140,10 @@
   [acc k ^long a]
   (case k
     :regeneration [true (regenerated acc)]
-    :poison [true (if (> (health acc) 1.0) (hurt acc 1.0) acc)]
-    :wither [true (hurt acc 1.0)]
+    :poison [true (if (> (health acc) 1.0) (hurt acc 1.0 magic) acc)]
+    :wither [true (hurt acc 1.0 wither)]
     :instant-health [true (healed acc (effect/heal-amount a))]
-    :instant-damage [true (hurt acc (effect/harm-amount a))]
+    :instant-damage [true (hurt acc (effect/harm-amount a) magic)]
     :absorption [(pos? (double (:absorption (:e acc) 0.0))) acc]
     [true acc]))
 

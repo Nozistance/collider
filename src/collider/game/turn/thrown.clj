@@ -365,7 +365,7 @@
       (concat [[:teleport oid at]
                (out/to oid (teleport-packet at o))]
               (when-not (damage/creative-proof? o)
-                [[:damage oid pearl-damage]])
+                [[:damage oid pearl-damage {:type :ender-pearl}]])
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))
 
 (defn- dowse-cells [hit]
@@ -435,10 +435,34 @@
     [(out/all (out/level-event 2002 (floored at) bottle-xp-color))
      [:xp-award (mapv double at) n [:bottle eid] rough]]))
 
+(defn- thrown-source [world eid e d]
+  (let [o (some->> (:owner e) (get (:entities world)))]
+    {:type :thrown :cause (when o (:owner e)) :direct eid :along d
+     :player? (= :player (:type o))}))
+
+(defn- hurt-deltas
+  "Returns the deltas of the hurt a thrown e deals to what it hit
+  (Snowball.onHitEntity:56, 3 to a blaze, ThrownEgg.onHitEntity:60,
+  ThrownEnderpearl.onHitEntity:81): source thrown, knocked along the
+  motion d (Projectile.calculateHorizontalHurtKnockbackDirection
+  :385), shown at once."
+  [world eid e d hit]
+  (when-let [oid (:target hit)]
+    (let [o (get-in world [:entities oid])
+          n (if (and (= :snowball (:type e)) (= :blaze (:type o)))
+              3.0 0.0)
+          ds [[:damage oid n (thrown-source world eid e d)]]]
+      (when-not (damage/creative-proof? o)
+        (into ds (damage/report-deltas
+                   world oid (damage/hurt-now world oid o ds)))))))
+
 (defn- hit-deltas [world eid e d at hit]
   (case (:type e)
-    (:snowball :egg) [(out/all (out/status eid :break))]
-    :ender-pearl (pearl-deltas world e)
+    (:snowball :egg)
+    (into (vec (hurt-deltas world eid e d hit))
+          [(out/all (out/status eid :break))])
+    :ender-pearl (concat (hurt-deltas world eid e d hit)
+                         (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)
     (potion-deltas world (assoc e :pos at) at hit)))
 
