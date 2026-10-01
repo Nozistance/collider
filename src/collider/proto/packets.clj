@@ -109,9 +109,16 @@
    [:suggests {:optional true} [:maybe :string]]
    [:children [:sequential :int]]])
 
+(def ^:private Properties
+  [:sequential {:max 16}
+   [:map [:name [wire/string {:max 64}]]
+    [:value [wire/string {:max 32767}]]
+    [:signature [:maybe [wire/string {:max 1024}]]]]])
+
 (def ^:private Player
   [:map [:uuid :uuid]
    [:name {:optional true} :string]
+   [:properties {:optional true} Properties]
    [:gamemode {:optional true} [:maybe :int]]
    [:ping {:optional true} [:maybe :int]]])
 
@@ -165,11 +172,13 @@
   (c/write-uuid buf uuid)
   (c/write-varint buf (long (or ping 0))))
 
+(def ^:private write-properties! (wire/writer Properties))
+
 (defn- write-player-entry! [^Buf buf p]
   (let [{:keys [uuid name gamemode ping]} p]
     (c/write-uuid buf uuid)
     (c/write-string buf name)
-    (c/write-varint buf 0)
+    (write-properties! buf (:properties p))
     (c/write-varint buf (long (or gamemode 1)))
     (buf/write-boolean! buf true)
     (c/write-varint buf (long (or ping 0)))))
@@ -212,13 +221,20 @@
 (def ^:private login-packets
   {[:login :hello]
    {:schema [:map [:name [wire/string {:max 16}]] [:uuid wire/uuid]]
+    :read :wire
+    :out {:schema [:map [:server-id [wire/string {:max 20}]]
+                   [:key wire/blob] [:token wire/blob]
+                   [:authenticate? wire/boolean]]
+          :write :wire}}
+   [:login :key]
+   {:schema [:map [:secret wire/blob] [:token wire/blob]]
     :read :wire}
    [:login :login-compression]
    {:schema [:map [:threshold wire/varint]]
     :write :wire}
    [:login :login-finished]
    {:schema [:map [:uuid wire/uuid] [:name [wire/string {:max 16}]]
-             [:properties {:optional true} [:= {:wire wire/varint} 0]]
+             [:properties Properties]
              [:session {:optional true}
               [:= {:wire wire/uuid} (UUID. 0 0)]]]
     :write :wire}
@@ -802,7 +818,8 @@
   [{:keys [schema] :as e}]
   (cond-> e
     (= :wire (:read e)) (assoc :read (wire/reader schema))
-    (= :wire (:write e)) (assoc :write (wire/writer schema))))
+    (= :wire (:write e)) (assoc :write (wire/writer schema))
+    (:out e) (update :out compiled)))
 
 (def packets
   "Every packet by connection state and name."
@@ -833,7 +850,8 @@
           (data/packets))))
 
 (defn- outbound-entry [state [nm id]]
-  (let [e (get packets [state nm])]
+  (let [p (get packets [state nm])
+        e (:out p p)]
     (when-let [w (:write e)]
       [nm {:id (long id) :write w :check (checker nm (:schema e))}])))
 

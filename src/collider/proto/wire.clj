@@ -231,6 +231,18 @@
          :gen/schema [:vector {:min n :max n}
                       [:int {:min -128 :max 127}]]}})}))
 
+(defn- read-blob [b]
+  ((read-fixed (c/read-count b)) b))
+
+(defn- write-blob [b v]
+  (c/write-varint b (count v))
+  (write-fixed b v))
+
+(def blob
+  "Bytes after their count."
+  (wire-type :wire/blob vector? read-blob write-blob
+             [:vector [:int {:min -128 :max 127}]]))
+
 (def bitset
   (m/-simple-schema
     {:type :wire/bitset

@@ -4,6 +4,7 @@
             [collider.data :as data]
             [collider.game.game-mode :as game-mode]
             [collider.log :as log]
+            [collider.net.crypt :as crypt]
             [collider.proto.codec :as c]
             [collider.net.server :as server])
   (:import (java.util.concurrent ConcurrentLinkedQueue)
@@ -61,12 +62,12 @@
   {:view-distance (:view-distance m) :skin-parts (:skin-parts m)})
 
 (defn- do-login! [conn {:keys [conns ^ConcurrentLinkedQueue queue]}]
-  (let [{nm :name settings :settings} (server/info conn)
+  (let [{nm :name :keys [settings profile]} (server/info conn)
         eid (.incrementAndGet next-entity-id)]
     (server/put! conn :eid eid)
     (swap! conns assoc eid conn)
     (server/set-conn-state! conn :play)
-    (.offer queue [:player-join eid nm settings])
+    (.offer queue [:player-join eid nm (merge settings profile)])
     (log/info "player" nm "connected: eid" eid
               "addr" (:addr (server/info conn)))))
 
@@ -258,21 +259,65 @@
           (kick-login! conn transfers-reason))
     (server/close! conn)))
 
-(defn- login-ok! [conn conns cfg nm]
+(defn- login-ok! [conn conns cfg {nm :name :keys [uuid properties]}]
   (server/put! conn :name nm)
+  (server/put! conn :profile {:uuid uuid :properties properties})
   (setup-compression! conn (long (:compression-threshold cfg -1)))
   (kick-duplicates! conns nm)
-  (server/send! conn {:packet :login-finished :name nm
-                      :uuid (c/offline-uuid nm)}))
+  (server/send! conn {:packet :login-finished :name nm :uuid uuid
+                      :properties properties}))
+
+(defn- offline [{nm :name}]
+  {:uuid (c/offline-uuid nm) :name nm :properties []})
+
+(defn- provider [io]
+  (or (:identity io) {:identify offline}))
+
+(defn- refuse! [conn nm text]
+  (log/info "refused" nm "addr" (:addr (server/info conn)) "-" text)
+  (kick-login! conn text))
+
+(defn- identified! [conn io cfg who]
+  (let [ip (:ip (server/info conn))
+        r ((:identify (provider io)) (assoc who :ip ip))]
+    (if-let [text (:refuse r)]
+      (refuse! conn (:name who) text)
+      (login-ok! conn (:conns io) cfg r))))
+
+(defn- ask-key! [conn io nm]
+  (let [token (crypt/challenge)
+        auth? (boolean (:encrypt? (provider io)))]
+    (server/put! conn :login {:name nm :token token})
+    (server/send! conn {:packet :hello :server-id ""
+                        :key (vec (crypt/public-key (:key-pair io)))
+                        :token (vec token) :authenticate? auth?})))
+
+(defn- encrypt? [io cfg]
+  (or (:encrypt? (provider io)) (:encryption cfg)))
 
 (defn- hello! [conn io cfg m]
-  (let [nm (:name m)
-        conns (:conns io)]
+  (let [nm (:name m)]
     (cond
       (not (valid-name? nm)) (kick-login! conn generic-reason)
-      (>= (count @conns) (long (:max-players cfg)))
+      (>= (count @(:conns io)) (long (:max-players cfg)))
       (kick-login! conn server-full-reason)
-      :else (login-ok! conn conns cfg nm))))
+      (encrypt? io cfg) (ask-key! conn io nm)
+      :else (identified! conn io cfg {:name nm}))))
+
+(defn- pending-login [conn]
+  (or (:login (server/info conn))
+      (throw (ex-info "unexpected key packet" {}))))
+
+(defn- key! [conn io cfg m]
+  (let [{nm :name token :token} (pending-login conn)
+        kp (:key-pair io)
+        s (crypt/secret kp (byte-array (:secret m))
+                        (byte-array (:token m)) token)]
+    (server/put! conn :login nil)
+    (server/encrypt! conn s)
+    (identified! conn io cfg
+                 {:name nm
+                  :server-hash (crypt/server-hash "" kp s)})))
 
 (def ^:private move-packets
   #{:move-player-pos :move-player-pos-rot :move-player-rot})
@@ -320,6 +365,7 @@
     [:status :ping-request] (last-pong! conn m)
     [:play :ping-request] (server/send! conn (pong m))
     [:login :hello] (hello! conn io @settings m)
+    [:login :key] (key! conn io @settings m)
     [:login :login-acknowledged] (login-acknowledged! conn)
     [:configuration :client-information]
     (server/put! conn :settings (client-settings m))

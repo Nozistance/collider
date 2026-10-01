@@ -17,6 +17,7 @@
    :view-distance            4
    :simulation-distance      2
    :compression-threshold    256
+   :encryption               false
    :save-dir                 "world"
    :commit-period-ms         10000
    :pause-when-empty-seconds 60
@@ -32,6 +33,7 @@
    [:view-distance {:optional true} [:int {:min 2 :max 32}]]
    [:simulation-distance {:optional true} [:int {:min 2 :max 32}]]
    [:compression-threshold {:optional true} [:int {:min -1}]]
+   [:encryption {:optional true} :boolean]
    [:save-dir {:optional true} :string]
    [:commit-period-ms {:optional true} [:int {:min 0}]]
    [:pause-when-empty-seconds {:optional true}

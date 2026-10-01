@@ -2,6 +2,7 @@
   "Player connections."
   (:require [clojure.string :as str]
             [collider.log :as log]
+            [collider.net.crypt :as crypt]
             [collider.net.server.conn :as types]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
@@ -9,7 +10,7 @@
   (:import (collider.proto Buf)
            (collider.net.server.conn Conn)
            (java.io BufferedInputStream BufferedOutputStream
-                    EOFException)
+                    EOFException OutputStream)
            (java.net ServerSocket Socket SocketException
                      SocketTimeoutException)
            (java.util.concurrent
@@ -66,6 +67,13 @@
   [^Conn c ^long threshold]
   (.offer ^BlockingQueue (:q c) [:threshold threshold]))
 
+(defn encrypt!
+  "Encrypts connection c with secret s from now on: what it reads
+  next and the packets queued after this call."
+  [^Conn c s]
+  (swap! (:st c) update :in crypt/decrypting s)
+  (.offer ^BlockingQueue (:q c) [:encrypt s]))
+
 (defn- encode-packet! [^Buf payload state m]
   (try
     (buf/clear! payload)
@@ -75,49 +83,51 @@
       (log/warn "encode failed for" (:packet m) "-" (str t))
       false)))
 
-(defn- writer-wire [^BufferedOutputStream out]
-  {:out out :payload (buf/buf 1024) :body (buf/buf 1024)
+(defn- writer-wire [^OutputStream raw]
+  {:raw raw :out (BufferedOutputStream. raw) :threshold -1
+   :payload (buf/buf 1024) :body (buf/buf 1024)
    :head (buf/buf 5) :defl (Deflater.) :chunk (byte-array 8192)})
 
-(defn- emit! [w ^long threshold state m]
+(defn- emit! [w state m]
   (when (encode-packet! (:payload w) state m)
     (c/write-frame! (:out w) (:payload w) (:body w) (:head w)
-                    threshold (:defl w) (:chunk w))))
+                    (:threshold w) (:defl w) (:chunk w))))
 
 (defn- close-writer! [w ^Socket sock]
-  (let [^BufferedOutputStream out (:out w)]
-    (try (.flush out) (catch Throwable _ nil))
-    (.end ^Deflater (:defl w))
-    (.close sock)))
+  (.end ^Deflater (:defl w))
+  (.close sock))
 
-(defn- writer-step [^Conn c w ^long threshold x]
+(defn- encrypted [w s]
+  (let [out (crypt/encrypting (:raw w) s)]
+    (assoc w :out (BufferedOutputStream. out))))
+
+(defn- writer-step [^Conn c w x]
   (let [^BlockingQueue q (:q c)
-        ^BufferedOutputStream out (:out w)]
-    (cond
-      (nil? x)
-      (when-not (.get ^AtomicBoolean (:closing c)) threshold)
-      (= :packet (nth x 0))
-      (do (emit! w threshold (nth x 1) (nth x 2))
-          (when (.isEmpty q) (.flush out))
-          threshold)
-      (= :threshold (nth x 0))
-      (let [n (long (nth x 1))]
-        (swap! (:st c) assoc :threshold n)
-        (.flush out)
-        n))))
+        ^OutputStream out (:out w)
+        tag (when x (nth x 0))]
+    (when-not (= :packet tag) (.flush out))
+    (case tag
+      nil (when-not (.get ^AtomicBoolean (:closing c)) w)
+      :packet (do (emit! w (nth x 1) (nth x 2))
+                  (when (.isEmpty q) (.flush out))
+                  w)
+      :threshold (let [n (long (nth x 1))]
+                   (swap! (:st c) assoc :threshold n)
+                   (assoc w :threshold n))
+      :encrypt (encrypted w (nth x 1))
+      :close nil)))
 
 (defn- writer-loop [^Conn c]
   (let [^Socket sock (:sock c)
         ^BlockingQueue q (:q c)
-        out (BufferedOutputStream. (.getOutputStream sock))
-        w (writer-wire out)]
+        w0 (writer-wire (.getOutputStream sock))]
     (try
-      (loop [threshold -1]
+      (loop [w w0]
         (let [x (.poll q writer-poll-ms TimeUnit/MILLISECONDS)]
-          (when-let [t (writer-step c w threshold x)]
-            (recur (long t)))))
+          (when-let [w' (writer-step c w x)]
+            (recur w'))))
       (finally
-        (close-writer! w sock)))))
+        (close-writer! w0 sock)))))
 
 (defn- hex-of ^String [^Buf frame]
   (str/join " " (map #(format "%02x" (bit-and 255 (long %)))
@@ -134,12 +144,12 @@
 
 (defn- reader-loop [^Conn conn io]
   (let [^Socket sock (:sock conn)
-        in (BufferedInputStream. (.getInputStream sock))
         buf (buf/buf 2048)
         infl (Inflater.)]
+    (put! conn :in (BufferedInputStream. (.getInputStream sock)))
     (try
       (loop []
-        (let [raw (c/read-frame! in buf)
+        (let [raw (c/read-frame! (:in @(:st conn)) buf)
               thr (long (:threshold @(:st conn)))
               frame (c/decompress! raw thr infl)]
           (when-let [m (decode-logged conn frame)]
@@ -167,7 +177,8 @@
 (defn- new-conn [^Socket sock]
   (types/->Conn sock (LinkedBlockingQueue.)
           (atom {:state :handshake :threshold -1
-                 :addr  (str (.getRemoteSocketAddress sock))})
+                 :addr  (str (.getRemoteSocketAddress sock))
+                 :ip    (.getHostAddress (.getInetAddress sock))})
           (AtomicBoolean. false)))
 
 (defn- read-safely! [^Conn conn io ^Socket sock]

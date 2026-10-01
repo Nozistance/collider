@@ -235,8 +235,9 @@
     (out/to eid (out/joined))))
 
 (defn- add-entry [e]
-  {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)
-   :game-mode (:game-mode e)})
+  (cond-> {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)
+           :game-mode (:game-mode e)}
+    (:properties e) (assoc :properties (:properties e))))
 
 (defn- join-list-deltas [joined all]
   (mapcat (fn [[eid e]]
