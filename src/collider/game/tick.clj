@@ -25,7 +25,6 @@
             [collider.game.systems.packets :as packets]
             [collider.game.systems.players :as players]
             [collider.game.systems.players.tick :as player-tick]
-            [collider.game.systems.projectiles :as projectiles]
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
@@ -51,7 +50,6 @@
   [#'damage/countdown
    #'entities/entities
    #'tnt/tnt-system
-   #'projectiles/projectiles
    #'hanging/hanging-checks
    #'damage/damage])
 

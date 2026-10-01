@@ -1,7 +1,10 @@
-(ns collider.game.systems.projectiles
-  "Thrown snowballs, eggs, pearls, potions and bottles o' enchanting,
-  and lingering clouds."
-  (:require [collider.data :as data]
+(ns collider.game.turn.thrown
+  "The turns of thrown snowballs, eggs, pearls, potions and bottles
+  o' enchanting, and of lingering clouds."
+  (:require [clojure.data.int-map :as i]
+            [collider.data :as data]
+            [collider.game.apply :as apply]
+            [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
@@ -9,11 +12,11 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
-            [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.reach :as reach]
             [collider.game.systems.damage :as damage]
+            [collider.game.turn.overlay :as overlay]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -498,25 +501,56 @@
       (< age wait) [[:merge-entity eid {:age age :waiting? true}]]
       :else (cloud-active world eid e age))))
 
-(defn- live? [active [_ e]]
-  (areas/active-at? active (:pos e)))
-
 (def ^:private flying (conj entity/thrown-types :area-effect-cloud))
 
 (defn- cloud? [[_ e]] (= :area-effect-cloud (:type e)))
 
-(defn projectiles
-  "Returns the flight and the hits of the thrown things.
-  Also returns the life of the lingering clouds."
-  {:wake {:types flying}}
-  [world _d]
-  (let [active (areas/active-chunks world)
-        es (into [] (filter (partial live? active))
-                 (level/of-types world flying))
-        step (fn [[eid e :as entry]]
-               (if (cloud? entry)
-                 (cloud-deltas world eid e)
-                 (step-deltas world eid e)))
-        order (-> (into [] (remove cloud?) es)
-                  (into (filter cloud?) es))]
-    (deltas/fold step order)))
+(defn- stepped
+  "Returns the hittable entities that ds moved in the turns of the
+  tick so far, as they are after them, by eid."
+  [world ds]
+  (let [es (:entities world) t (:tick world)
+        f (fn [m eid eds]
+            (let [e (get es eid)]
+              (if (and e (hittable? e))
+                (assoc m eid (apply/entity t e eds))
+                m)))]
+    (reduce-kv f (i/int-map) (deltas/entities-of ds))))
+
+(defn- seen-by
+  "Returns the entities as turn eid sees them: those of the turns
+  before it moved, the others not yet."
+  [es after ^long eid]
+  (reduce-kv assoc es (i/range after Long/MIN_VALUE (dec eid))))
+
+(defn- written [t m ds]
+  (let [f (fn [m d]
+            (let [e (when (contains? delta/entity-apply (nth d 0))
+                      (get m (nth d 1)))]
+              (if e (assoc m (nth d 1) (apply/entity t e [d])) m)))]
+    (reduce f m ds)))
+
+(defn- turn [t [w es after acc] [eid e :as entry]]
+  (let [tw (assoc (overlay/seen w eid)
+                  :entities (seen-by es after eid))
+        cloud (cloud? entry)
+        ds (if cloud (cloud-deltas tw eid e) (step-deltas tw eid e))]
+    [(if cloud w (overlay/wrote w eid ds)) (written t es ds)
+     (written t after ds) (into acc ds)]))
+
+(defn turns
+  "Returns the deltas of the thrown things in active chunks, each in
+  its turn after the turns ds of the other entities, then those of
+  the lingering clouds. A hit tests the entities where they are at
+  its turn (ThrowableProjectile.tick:46): those before it in the
+  tick list moved, the others not yet. What a turn writes, the later
+  turns see."
+  [world ds]
+  (let [es (areas/active-of-types world flying)]
+    (when (pos? (count es))
+      (let [t (:tick world)
+            order (-> (into [] (remove cloud?) es)
+                      (into (filter cloud?) es))
+            start [world (deltas/keyed (:entities world))
+                   (stepped world ds) []]]
+        (peek (reduce #(turn t %1 %2) start order))))))

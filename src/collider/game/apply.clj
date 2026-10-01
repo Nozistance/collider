@@ -97,6 +97,11 @@
                  (next ds))))
       (merged-in e m))))
 
+(defn entity
+  "Returns entity e after its deltas ds of tick t, in order."
+  [t e ds]
+  (entity-folded t e ds))
+
 (defn- stepped [entities t]
   (fn [m [eid ds]]
     (if-let [e (get entities eid)]

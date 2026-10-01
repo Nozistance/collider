@@ -22,7 +22,7 @@
             [collider.game.systems.consume :as consume]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.hanging :as hanging]
-            [collider.game.systems.projectiles :as projectiles]
+            [collider.game.turn.thrown :as thrown]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -72,8 +72,8 @@
     (fn [{:keys [world eid pos face]}]
       (place/scaffold-place-deltas world eid pos face))]
    [(comp nil? :item) (constantly nil)]
-   [(comp projectiles/throwables :item)
-    (when-use (on-at projectiles/throw-deltas))]
+   [(comp thrown/throwables :item)
+    (when-use (on-at thrown/throw-deltas))]
    [:pour
     (when-use (fn [{:keys [world eid at item pour]}]
                 (bucket/add world eid at item pour)))]
