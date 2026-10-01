@@ -18,7 +18,6 @@
             [collider.game.systems.containers :as containers]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.entities :as entities]
-            [collider.game.systems.explosions :as explosions]
             [collider.game.systems.hanging :as hanging]
             [collider.game.systems.inventory :as inventory]
             [collider.game.systems.natural :as natural]
@@ -28,7 +27,6 @@
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
-            [collider.game.systems.tnt :as tnt]
             [collider.game.systems.weather :as weather-system]
             [collider.game.systems.damage :as damage]))
 
@@ -49,7 +47,6 @@
   "The systems that step the entities of the level."
   [#'damage/countdown
    #'entities/entities
-   #'tnt/tnt-system
    #'hanging/hanging-checks
    #'damage/damage])
 
@@ -72,7 +69,6 @@
              [#'block-updates/block-flush #'players/players]
              [#'block-events/block-events]
              entity-systems
-             [#'explosions/blasts]
              [#'containers/broadcast]
              [#'block-entities/block-entities]
              [#'player-tick/player-tick]

@@ -92,8 +92,9 @@
        (not (get-in world [:entities eid :sneaking?]))
        (not ((tnt/primed-origins world) pos))))
 
-(defn- prime-deltas [world pos]
-  (let [primed (tnt/primed pos [(:tick world) pos])]
+(defn- prime-deltas [world eid pos]
+  (let [primed (-> (tnt/primed pos [(:tick world) pos])
+                   (assoc :owner eid))]
     (into (edit/change-deltas world [[pos 0]])
           [[:spawn-entity primed]
            (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))])))
@@ -106,7 +107,7 @@
       (lightable world pos)
       (sounded world [[pos (lightable world pos)]]
                [(flint-sound world eid pos)])
-      (primable? world eid pos) (prime-deltas world pos)
+      (primable? world eid pos) (prime-deltas world eid pos)
       :else (fire-deltas world pos off #(flint-sound world eid %)))))
 
 (defn- meal-drops [world pos drops]

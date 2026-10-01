@@ -186,7 +186,7 @@
          :effects :absorption :fall]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
-   :tnt [:fuse :origin]
+   :tnt [:fuse :origin :owner]
    :falling-block [:block :time :fall :hurt :hurt-max]
    :thrown [:owner :left-owner? :stack]
    :hanging [:block-pos :facing :variant :stack :rotation]})
@@ -227,9 +227,6 @@
   [e]
   (boolean (some #(get e %) timers)))
 
-(defn- with-knockback [e]
-  (if-let [kb (:kb e)] (update e :vel v/+ kb) e))
-
 (defn saved
   "Returns entity e as the data a save keeps at game tick tick.
   The rest starts fresh when loaded."
@@ -238,7 +235,7 @@
     (if (= :area-effect-cloud k)
       (-> (into {} e) (dissoc :track :victims)
           (update :pos plain) (update :vel plain))
-      (cond-> (into (base (with-knockback e))
+      (cond-> (into (base e)
                     (filter (comp some? val))
                     (select-keys e (kept k)))
         (= :mob k) (saved-timers e (long tick))

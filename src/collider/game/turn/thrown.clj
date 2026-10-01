@@ -538,19 +538,23 @@
     [(if cloud w (overlay/wrote w eid ds)) (written t es ds)
      (written t after ds) (into acc ds)]))
 
+(defn- written-world [[w _ _ acc]] [w acc])
+
 (defn turns
-  "Returns the deltas of the thrown things in active chunks, each in
-  its turn after the turns ds of the other entities, then those of
-  the lingering clouds. A hit tests the entities where they are at
-  its turn (ThrowableProjectile.tick:46): those before it in the
-  tick list moved, the others not yet. What a turn writes, the later
-  turns see."
+  "Returns world with the blocks that the thrown things in active
+  chunks wrote, and their deltas, each in its turn after the turns
+  ds of the other entities, then those of the lingering clouds. A
+  hit tests the entities where they are at its turn
+  (ThrowableProjectile.tick:46): those before it in the tick list
+  moved, the others not yet. What a turn writes, the later turns
+  see."
   [world ds]
   (let [es (areas/active-of-types world flying)]
-    (when (pos? (count es))
+    (if (pos? (count es))
       (let [t (:tick world)
             order (-> (into [] (remove cloud?) es)
                       (into (filter cloud?) es))
             start [world (deltas/keyed (:entities world))
                    (stepped world ds) []]]
-        (peek (reduce #(turn t %1 %2) start order))))))
+        (written-world (reduce #(turn t %1 %2) start order)))
+      [world nil])))

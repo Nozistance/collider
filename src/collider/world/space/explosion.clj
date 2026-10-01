@@ -6,7 +6,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys])
-  (:import (collider.world.space Craters Exposure Rays Region)))
+  (:import (collider.world.space Exposure Rays Region)))
 
 (set! *warn-on-reflection* true)
 
@@ -123,23 +123,6 @@
         (aset a i (float (resistance i resist))))
       a)))
 
-(defn craters
-  "Returns an empty record of the cells the blasts of a tick change."
-  ^Craters []
-  (Craters.))
-
-(defn crater!
-  "Notes in c that the cell at x y z now holds st."
-  [^Craters c x y z st]
-  (Craters/note c (int x) (int y) (int z) (int st)))
-
-(defn read-now
-  "Returns the block state at x y z in region rg as the earlier
-  blasts of the tick in c left it."
-  [^Region rg ^Craters c x y z]
-  (let [s (Craters/now c (int x) (int y) (int z))]
-    (if (neg? s) (read-block rg (long x) (long y) (long z)) s)))
-
 (defn- hit-positions [^bytes hit origin ^long least]
   (let [ox (long (origin 0)) oy (long (origin 1))
         oz (long (origin 2))
@@ -158,31 +141,24 @@
    (- (long (Math/floor cz)) region-r)])
 
 (defn rays
-  "Returns the rays of a blast of power at center through rg as the
-  blocks stand before the blasts of the tick."
-  ^Rays [^Region rg [cx cy cz] power seed]
+  "Returns the rays of a blast of power at center through rg, whose
+  cells e reads."
+  ^Rays [^Region rg ^Exposure e [cx cy cz] power seed]
   (let [cx (double cx) cy (double cy) cz (double cz)
         [ox oy oz] (ray-origin cx cy cz)]
-    (Rays/cast rg (summoner rg) ^floats @resist-table (long ox)
+    (Rays/cast e (summoner rg) ^floats @resist-table (long ox)
                (long oy) (long oz) cx cy cz (double power)
                (long (hash seed)))))
 
 (defn reached
-  "Returns the cells that the rays rs of a blast at center reach once
-  the earlier blasts of the tick left the cells of c. The result
-  holds the cells with a block and the count of all reached cells."
-  [^Rays rs ^Craters c [cx cy cz]]
-  (let [origin (ray-origin (double cx) (double cy) (double cz))
-        hit (Rays/hit rs c)]
-    {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
-     :cells (delay (hit-positions hit origin 1))}))
-
-(defn affected-blocks
-  "Returns the cells that a blast of power at center reaches.
+  "Returns the cells that the rays rs of a blast at center reach.
   The result holds the cells with a block and the count of all
   reached cells."
-  [^Region rg center power seed]
-  (reached (rays rg center power seed) (craters) center))
+  [^Rays rs [cx cy cz]]
+  (let [origin (ray-origin (double cx) (double cy) (double cz))
+        hit (Rays/hit rs)]
+    {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
+     :cells (delay (hit-positions hit origin 1))}))
 
 (defn exposure
   "Returns what a blast at center sees through rg. The bodies that
@@ -191,28 +167,12 @@
   (Exposure/of rg (block/collision-arr) (phys/kinds) (double cx)
                (double cy) (double cz)))
 
-(defn stale?
-  "Returns true when the cells of c may change what a body at p sees
-  of the blast of e. The body is a box of half width half and height
-  height."
-  [^Exposure e ^Craters c [px py pz] half height]
-  (Exposure/stale e c (double px) (double py) (double pz)
-                  (double half) (double height)))
-
-(defn look
-  "Returns what each sample point of a body at p sees of the blast of
-  e before the blasts of the tick. The body is a box of half width
-  half and height height; flags tell how it meets the blocks whose
-  shape depends on the body."
-  ^longs [^Exposure e [px py pz] half height flags]
-  (Exposure/look e (double px) (double py) (double pz) (double half)
-                 (double height) (int flags)))
-
-(defn look-share
-  "Returns the share, 0.0 to 1.0, of the sample points in look that
-  see the blast."
-  ^double [^longs look]
-  (Double/longBitsToDouble (aget look 0)))
+(defn affected-blocks
+  "Returns the cells that a blast of power at center reaches.
+  The result holds the cells with a block and the count of all
+  reached cells."
+  [^Region rg center power seed]
+  (reached (rays rg (exposure rg center) center power seed) center))
 
 (defn exposed
   "Returns the share, 0.0 to 1.0, of a body at p that the blast of e
@@ -221,15 +181,8 @@
   blocks whose shape depends on the body."
   ([e center p half height] (exposed e center p half height 0))
   ([^Exposure e _center [px py pz] half height flags]
-   (Exposure/density e nil (double px) (double py) (double pz)
+   (Exposure/density e (double px) (double py) (double pz)
                      (double half) (double height) (int flags))))
-
-(defn exposed-now
-  "Returns what exposed does once the earlier blasts of the tick left
-  the cells of c. look is what the body saw before them, or nil."
-  [^Exposure e ^Craters c look [px py pz] half height flags]
-  (Exposure/densityNow e c look (double px) (double py) (double pz)
-                       (double half) (double height) (int flags)))
 
 (defn block-density
   "Returns the share, 0.0 to 1.0, of a body at p that the blast at

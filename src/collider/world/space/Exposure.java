@@ -1,5 +1,6 @@
 package collider.world.space;
 
+import clojure.lang.IFn;
 import collider.world.Collision;
 
 /// The cells around a blast that may block its sight, to share among
@@ -30,14 +31,11 @@ public final class Exposure {
     private final Region rg;
     private final Object[] shapes;
     private final byte[] kinds;
-    private final Craters craters;
     private final double cx, cy, cz;
     private final int ox, oy, oz;
-    private int[] states;
-    private byte[] cells;
-    private int[] sums;
-    private Exposure revised;
-    private boolean clears;
+    private char[] states;
+    private char[] sums;
+    private byte whole;
 
     /// Returns the exposure of a blast at `cx`, `cy`, `cz` through
     /// the sections of `rg`, with nothing read yet. `shapes` holds the
@@ -46,15 +44,14 @@ public final class Exposure {
     /// each block state.
     public static Exposure of(Region rg, Object[] shapes, byte[] kinds,
             double cx, double cy, double cz) {
-        return new Exposure(rg, shapes, kinds, null, cx, cy, cz);
+        return new Exposure(rg, shapes, kinds, cx, cy, cz);
     }
 
     private Exposure(Region rg, Object[] shapes, byte[] kinds,
-            Craters craters, double cx, double cy, double cz) {
+            double cx, double cy, double cz) {
         this.rg = rg;
         this.shapes = shapes;
         this.kinds = kinds;
-        this.craters = craters;
         this.cx = cx;
         this.cy = cy;
         this.cz = cz;
@@ -73,12 +70,41 @@ public final class Exposure {
     }
 
     private int read(int x, int y, int z) {
-        if (craters != null) {
-            int s = craters.state(x, y, z);
-            if (s >= 0) return s;
-        }
         return Rays.readBlock(rg.grid(), rg.cx0(), rg.cz0(), rg.sy0(),
                               rg.ncx(), rg.ncz(), rg.nsy(), x, y, z);
+    }
+
+    private boolean whole() {
+        if (whole == 0) whole = (byte) (present() ? 1 : -1);
+        return whole > 0;
+    }
+
+    private boolean present() {
+        if (rg.readAbsent() == null) return true;
+        int x0 = Math.max((ox >> 4) - rg.cx0(), 0);
+        int x1 = Math.min(((ox + W - 1) >> 4) - rg.cx0(), rg.ncx() - 1);
+        int z0 = Math.max((oz >> 4) - rg.cz0(), 0);
+        int z1 = Math.min(((oz + W - 1) >> 4) - rg.cz0(), rg.ncz() - 1);
+        for (int ix = x0; ix <= x1; ix++) {
+            for (int iz = z0; iz <= z1; iz++) {
+                if (rg.cols()[ix * rg.ncz() + iz] == null) return false;
+            }
+        }
+        return true;
+    }
+
+    /// Returns the block state at `x`, `y`, `z` in the region of `e`
+    /// as `Rays.block` reads it, from the cells of `e` when no column
+    /// under them waits to be read.
+    public static int block(Exposure e, IFn summon, int x, int y,
+            int z) {
+        int ix = x - e.ox, iy = y - e.oy, iz = z - e.oz;
+        if (ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W
+                && e.whole()) {
+            if (e.sums == null) e.build();
+            return e.states[(ix * W + iy) * W + iz];
+        }
+        return Rays.block(e.rg, summon, x, y, z);
     }
 
     private boolean mayCollide(int st) {
@@ -94,54 +120,28 @@ public final class Exposure {
         return (ix * S + iy) * S + iz;
     }
 
-    private void sum() {
-        sums = new int[S * S * S];
-        for (int ix = 0; ix < W; ix++) {
-            for (int iy = 0; iy < W; iy++) {
-                for (int iz = 0; iz < W; iz++) {
-                    int c = cells[(ix * W + iy) * W + iz];
-                    sums[sumIndex(ix + 1, iy + 1, iz + 1)] = c
-                        + sums[sumIndex(ix, iy + 1, iz + 1)]
-                        + sums[sumIndex(ix + 1, iy, iz + 1)]
-                        + sums[sumIndex(ix + 1, iy + 1, iz)]
-                        - sums[sumIndex(ix, iy, iz + 1)]
-                        - sums[sumIndex(ix, iy + 1, iz)]
-                        - sums[sumIndex(ix + 1, iy, iz)]
-                        + sums[sumIndex(ix, iy, iz)];
-                }
-            }
-        }
-    }
-
     private void build() {
-        int[] st = new int[W * W * W];
-        cells = new byte[W * W * W];
+        char[] st = new char[W * W * W];
+        char[] sm = new char[S * S * S];
         for (int ix = 0; ix < W; ix++) {
             for (int iy = 0; iy < W; iy++) {
                 for (int iz = 0; iz < W; iz++) {
-                    int i = (ix * W + iy) * W + iz;
-                    st[i] = read(ox + ix, oy + iy, oz + iz);
-                    cells[i] = (byte) (mayCollide(st[i]) ? 1 : 0);
+                    int b = read(ox + ix, oy + iy, oz + iz);
+                    st[(ix * W + iy) * W + iz] = (char) b;
+                    sm[sumIndex(ix + 1, iy + 1, iz + 1)] = (char) (
+                        (mayCollide(b) ? 1 : 0)
+                        + sm[sumIndex(ix, iy + 1, iz + 1)]
+                        + sm[sumIndex(ix + 1, iy, iz + 1)]
+                        + sm[sumIndex(ix + 1, iy + 1, iz)]
+                        - sm[sumIndex(ix, iy, iz + 1)]
+                        - sm[sumIndex(ix, iy + 1, iz)]
+                        - sm[sumIndex(ix + 1, iy, iz)]
+                        + sm[sumIndex(ix, iy, iz)]);
                 }
             }
         }
         states = st;
-        sum();
-    }
-
-    private Exposure revise(Craters c) {
-        if (cells == null) build();
-        Exposure e = new Exposure(rg, shapes, kinds, c, cx, cy, cz);
-        e.states = states.clone();
-        e.cells = cells.clone();
-        int[] changed = c.inCube(ox, oy, oz, W);
-        e.clears = c.clears(this::mayCollide);
-        for (int i = 0; i < changed.length; i += 2) {
-            e.states[changed[i]] = changed[i + 1];
-            e.cells[changed[i]] = (byte) (mayCollide(changed[i + 1]) ? 1 : 0);
-        }
-        e.sum();
-        return e;
+        sums = sm;
     }
 
     private int collidingIn(int x0, int y0, int z0, int x1, int y1,
@@ -254,26 +254,11 @@ public final class Exposure {
         return clipBoxes(b, px, py, pz, fx, fy, fz, dx, dy, dz);
     }
 
-    private static final int MISS = -1, AFAR = -2;
-
-    private int cubeIndex(int x, int y, int z) {
-        int ix = x - ox, iy = y - oy, iz = z - oz;
-        if (ix < 0 || ix >= W || iy < 0 || iy >= W || iz < 0 || iz >= W) {
-            return AFAR;
-        }
-        return (ix * W + iy) * W + iz;
-    }
-
-    private boolean changed(Craters c, int i) {
-        int ix = i / (W * W), iy = i / W % W, iz = i % W;
-        return c.state(ox + ix, oy + iy, oz + iz) >= 0;
-    }
-
-    private int clip(double fx, double fy, double fz, double bottom,
+    private boolean clip(double fx, double fy, double fz, double bottom,
             int flags) {
         double tx = cx, ty = cy, tz = cz;
         if (Double.compare(fx, tx) == 0 && Double.compare(fy, ty) == 0
-                && Double.compare(fz, tz) == 0) return MISS;
+                && Double.compare(fz, tz) == 0) return false;
         double toX = lerp(-1.0E-7, tx, fx), toY = lerp(-1.0E-7, ty, fy);
         double toZ = lerp(-1.0E-7, tz, fz);
         double frX = lerp(-1.0E-7, fx, tx), frY = lerp(-1.0E-7, fy, ty);
@@ -284,9 +269,9 @@ public final class Exposure {
                         Math.min(bz, floor(toZ)) - 1,
                         Math.max(bx, floor(toX)) + 1,
                         Math.max(by, floor(toY)) + 1,
-                        Math.max(bz, floor(toZ)) + 1) == 0) return MISS;
+                        Math.max(bz, floor(toZ)) + 1) == 0) return false;
         if (shapeHit(bx, by, bz, fx, fy, fz, tx, ty, tz, bottom, flags)) {
-            return cubeIndex(bx, by, bz);
+            return true;
         }
         double dx = toX - frX, dy = toY - frY, dz = toZ - frZ;
         int sx = sign(dx), sy = sign(dy), sz = sign(dz);
@@ -313,84 +298,24 @@ public final class Exposure {
                 tZ += tdz;
             }
             if (shapeHit(bx, by, bz, fx, fy, fz, tx, ty, tz, bottom, flags)) {
-                return cubeIndex(bx, by, bz);
+                return true;
             }
         }
-        return MISS;
-    }
-
-    /// Returns true when the cells in `c` that the earlier blasts of
-    /// the tick changed may change what a body box at `px`, `py`, `pz`
-    /// with half width `half` and height `height` sees of the blast
-    /// of `e`.
-    public static boolean stale(Exposure e, Craters c, double px,
-            double py, double pz, double half, double height) {
-        double w = (float) half, h = (float) height;
-        return c != null && c.anyIn(floor(Math.min(e.cx, px - w)) - 1,
-                                    floor(Math.min(e.cy, py)) - 1,
-                                    floor(Math.min(e.cz, pz - w)) - 1,
-                                    floor(Math.max(e.cx, px + w)) + 1,
-                                    floor(Math.max(e.cy, py + h)) + 1,
-                                    floor(Math.max(e.cz, pz + w)) + 1);
+        return false;
     }
 
     /// Returns the share from 0.0 to 1.0 of the sample points of a body
     /// box at `px`, `py`, `pz` with half width `half` and height
     /// `height` that see the blast of `e`. `flags` tell how the body
-    /// meets the blocks whose shape depends on it. The cells in `c`
-    /// that the earlier blasts of the tick changed count as they stand
-    /// now.
-    public static double density(Exposure e, Craters c, double px,
-            double py, double pz, double half, double height,
-            int flags) {
-        return densityNow(e, c, null, px, py, pz, half, height, flags);
-    }
-
-    /// Returns what the sample points of a body see of the blast of
-    /// `e` before the blasts of the tick, as `density` does. The first
-    /// long holds the bits of the share, the rest one for each sample
-    /// point: -1 when it sees the blast, else the cube index of the
-    /// cell in the way, -2 for a cell out of the cube.
-    public static long[] look(Exposure e, double px, double py,
+    /// meets the blocks whose shape depends on it.
+    public static double density(Exposure e, double px, double py,
             double pz, double half, double height, int flags) {
-        return e.sight(null, null, px, py, pz, half, height, flags);
+        return e.sight(px, py, pz, half, height, flags);
     }
 
-    /// Returns what `density` does, with `look` as the body saw the
-    /// blast before the blasts of the tick, or nil. A sample point
-    /// keeps what it saw then when no cell in `c` could change it: the
-    /// cell in its way stands, or it saw the blast and the blasts only
-    /// cleared cells or left its ray alone.
-    public static double densityNow(Exposure e, Craters c, long[] look,
-            double px, double py, double pz, double half,
-            double height, int flags) {
-        if (!stale(e, c, px, py, pz, half, height)) {
-            if (look != null) return Double.longBitsToDouble(look[0]);
-            return Double.longBitsToDouble(
-                e.sight(null, null, px, py, pz, half, height, flags)[0]);
-        }
-        if (e.revised == null) e.revised = e.revise(c);
-        long[] now = e.revised.sight(c, look, px, py, pz, half, height,
-                                     flags);
-        return Double.longBitsToDouble(now[0]);
-    }
-
-    private boolean rayMet(Craters c, double fx, double fy, double fz) {
-        double toX = lerp(-1.0E-7, cx, fx), toY = lerp(-1.0E-7, cy, fy);
-        double toZ = lerp(-1.0E-7, cz, fz);
-        double frX = lerp(-1.0E-7, fx, cx), frY = lerp(-1.0E-7, fy, cy);
-        double frZ = lerp(-1.0E-7, fz, cz);
-        return c.anyIn(Math.min(floor(frX), floor(toX)) - 1,
-                       Math.min(floor(frY), floor(toY)) - 1,
-                       Math.min(floor(frZ), floor(toZ)) - 1,
-                       Math.max(floor(frX), floor(toX)) + 1,
-                       Math.max(floor(frY), floor(toY)) + 1,
-                       Math.max(floor(frZ), floor(toZ)) + 1);
-    }
-
-    private long[] sight(Craters c, long[] then, double px, double py,
-            double pz, double half, double height, int flags) {
-        if (cells == null) build();
+    private double sight(double px, double py, double pz,
+            double half, double height, int flags) {
+        if (sums == null) build();
         double w = (float) half, h = (float) height;
         double x0 = px - w, y0 = py, z0 = pz - w;
         double x1 = px + w, y1 = py + h, z1 = pz + w;
@@ -405,7 +330,6 @@ public final class Exposure {
                                     floor(Math.max(cx, x1)) + 1,
                                     floor(Math.max(cy, y1)) + 1,
                                     floor(Math.max(cz, z1)) + 1) == 0;
-        long[] out = new long[16];
         int hits = 0, count = 0;
         for (double xx = 0.0; xx <= 1.0; xx += xs) {
             for (double yy = 0.0; yy <= 1.0; yy += ys) {
@@ -413,29 +337,11 @@ public final class Exposure {
                     double x = lerp(xx, x0, x1) + xo;
                     double y = lerp(yy, y0, y1);
                     double z = lerp(zz, z0, z1) + zo;
-                    int hit = clear ? MISS
-                        : seen(c, then, count, x, y, z, py, flags);
-                    if (count + 1 >= out.length) {
-                        out = java.util.Arrays.copyOf(out, 2 * out.length);
-                    }
-                    out[count + 1] = hit;
-                    if (hit == MISS) hits++;
+                    if (clear || !clip(x, y, z, py, flags)) hits++;
                     count++;
                 }
             }
         }
-        out[0] = Double.doubleToRawLongBits(
-            (double) ((float) hits / (float) count));
-        return out;
-    }
-
-    private int seen(Craters c, long[] then, int i, double x, double y,
-            double z, double bottom, int flags) {
-        if (then != null) {
-            int was = (int) then[i + 1];
-            if (was >= 0 && !changed(c, was)) return was;
-            if (was == MISS && (clears || !rayMet(c, x, y, z))) return MISS;
-        }
-        return clip(x, y, z, bottom, flags);
+        return (double) ((float) hits / (float) count);
     }
 }

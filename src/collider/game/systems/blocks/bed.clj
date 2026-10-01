@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.bed
   "Going to sleep in a bed."
-  (:require [collider.game.out :as out]
+  (:require [collider.game.blast :as blast]
+            [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.sleep :as sleep]
             [collider.vec :as v]
@@ -95,38 +96,24 @@
 (defn- center-of [[x y z]]
   [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)])
 
-(def ^:private ^:const bed-power 5.0)
-
-(defn- near? [p [cx cy cz]]
-  (let [dx (- (v/x p) (double cx)) dy (- (v/y p) (double cy))
-        dz (- (v/z p) (double cz))
-        r (+ (* 2.0 bed-power) 2.0)]
-    (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
-
-(defn- unstepped [world center]
-  (let [stepped? (fn [o]
-                   (and (not= :player (:type o))
-                        (near? (:pos o) center)))]
-    (into {}
-          (keep (fn [[oid o]] (when (stepped? o) [oid (:pos o)])))
-          (:entities world))))
-
-(defn- blast-request [world head]
+(defn- blast-spec [head]
   (let [center (center-of head)]
-    {:center center :power bed-power :source :block :fire? true
-     :by nil :with :bad-respawn-point
-     :later (unstepped world center)}))
+    {:center center :power 5.0 :source :block :fire? true
+     :src {:type :bad-respawn-point :pos center}}))
 
 (defn- same-block? [world pos st]
   (= (block/block-of (edit/block-at world pos)) (block/block-of st)))
 
-(defn- explode-deltas [world eid head st rule]
+(defn- explode-deltas
+  "Returns the deltas of a bed that blows up, as
+  BedBlock.useWithoutItem: both halves go, then the blast."
+  [world eid head st rule]
   (let [[world' ds] (removed world head)
         foot (mapv + head (connect/partner-offset st))
-        more (when (same-block? world' foot st)
-               (second (removed world' foot)))]
+        both? (same-block? world' foot st)
+        [world'' more] (if both? (removed world' foot) [world' nil])]
     (concat (say-deltas eid (:error-message rule)) ds more
-            [[:explode (blast-request world head)]])))
+            (blast/deltas world'' (blast-spec head)))))
 
 (defn sleep-deltas [world eid pos]
   (when-let [head (bed/head-pos (:chunks world) pos)]

@@ -15,8 +15,11 @@
   "Returns world as the turn of eid sees it: with what the turns
   before it wrote."
   [world ^long eid]
-  (let [f (fn [w [b _ bw]] (if (< (long b) eid) bw (reduced w)))]
-    (reduce f world (::writes world))))
+  (let [ws (::writes world) top (peek ws)
+        f (fn [w [b _ bw]] (if (< (long b) eid) bw (reduced w)))]
+    (if (and top (< (long (nth top 0)) eid))
+      (nth top 2)
+      (reduce f world ws))))
 
 (defn- chained [base ws]
   (let [f (fn [[acc w] [eid ds]]

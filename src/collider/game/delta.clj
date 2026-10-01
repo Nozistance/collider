@@ -154,14 +154,6 @@
    :observed
    {:scope :level :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :observed m))}
-   :explode
-   {:scope :level
-    :schema [:cat [:map [:center Vec3] [:power number?]
-                   [:source :keyword] [:fire? :boolean]
-                   [:by {:optional true} [:maybe Eid]]
-                   [:with {:optional true} :keyword]
-                   [:later {:optional true} :map]
-                   [:after {:optional true} Eid]]]}
    :merge-entity
    {:scope :entity :schema [:cat :map]
     :apply (fn [_ e [_ _ m]] (entity/merged e m))}
@@ -213,8 +205,7 @@
    :push
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [_ e [_ _ vel]]
-             (let [k (if (= :tnt (:type e)) :kb :vel)]
-               (update e k (fnil v/+ [0.0 0.0 0.0]) vel)))}
+             (update e :vel (fnil v/+ [0.0 0.0 0.0]) vel))}
    :player-join {:scope :input :apply player/join}
    :player-quit
    {:scope :input :apply (fn [w [_ eid]] (player/quit w eid))}

@@ -24,8 +24,8 @@
 (defrecord Orb [type pos vel yaw pitch on-ground value count age
                 health follow track])
 
-(defrecord Tnt [type pos vel yaw pitch on-ground origin fuse kb
-                track])
+(defrecord Tnt [type pos vel yaw pitch on-ground origin fuse owner
+                arrived track])
 
 (defrecord FallingBlock
   [type pos vel yaw pitch on-ground block start time track fall hurt
