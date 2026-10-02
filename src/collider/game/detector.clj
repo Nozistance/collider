@@ -1,7 +1,7 @@
 (ns collider.game.detector
   "Observers of the finished tick."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.level :as level]
             [collider.vec :as v]))

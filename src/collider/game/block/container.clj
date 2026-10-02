@@ -2,7 +2,7 @@
   "Containers and benches with their menus and lids."
   (:require [collider.data :as data]
             [collider.game.book :as book]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
             [collider.game.bundle :as bundle]

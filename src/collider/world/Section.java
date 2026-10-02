@@ -181,6 +181,11 @@ public final class Section {
         d[c] = (d[c] & ~mask) | (((long) q) << off);
     }
 
+    /// Returns the index of the block at x, y and z within its section.
+    public static int index(int x, int y, int z) {
+        return ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
+    }
+
     /// Returns the light level at index `i` of the light levels `a`.
     public static int nibble(byte[] a, int i) {
         return (a[i >> 1] >> ((i & 1) << 2)) & 15;

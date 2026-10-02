@@ -1,9 +1,9 @@
 (ns collider.game.command.components
   "Saved forms of item components as commands read them."
-  (:require [collider.game.command.dfu :as dfu
+  (:require [collider.game.command.decode :as dfu
              :refer [fixed from-file identifier named numbered
                      enum-of int-in float-in bool-of by-name]]
-            [collider.game.command.text-codec :as tc]))
+            [collider.game.command.text :as tc]))
 
 (set! *warn-on-reflection* true)
 

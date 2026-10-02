@@ -1,6 +1,6 @@
 (ns collider.game.mob.sense
   "A mob's senses of the blocks under it and the entities around it."
-  (:require [collider.game.game-mode :as game-mode]
+  (:require [collider.game.mode :as game-mode]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.vec :as v]
@@ -26,7 +26,7 @@
       (and (= d2 (double (best 0))) (< (long oid) (long (best 1))))))
 
 (defn- near? [pos ^double r2 pred o]
-  (and o (< (v/dist3-sq pos (:pos o)) r2) (pred o)))
+  (and o (< (v/dist-sq pos (:pos o)) r2) (pred o)))
 
 (defn player-within?
   "Returns true when a player that pred accepts stands closer than
@@ -97,7 +97,7 @@
   (reduce (fn [best [oid o]]
             (if-not (pred oid o)
               best
-              (let [d2 (v/dist-sq pos (:pos o))]
+              (let [d2 (v/dist-xz-sq pos (:pos o))]
                 (if (and (< d2 (double r2)) (closer? best d2 oid))
                   [d2 oid o]
                   best))))
@@ -158,7 +158,7 @@
   never below 2."
   [pos p ^double r]
   (let [d (max (* r (visibility p)) 2.0)]
-    (<= (v/dist3-sq pos (:pos p)) (* d d))))
+    (<= (v/dist-sq pos (:pos p)) (* d d))))
 
 (defn holders
   "Returns [id items player] for every player that holds something

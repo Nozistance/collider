@@ -10,7 +10,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.push :as push]
             [collider.game.turn.overlay :as overlay]
             [collider.vec :as v]
@@ -40,7 +40,7 @@
   [world pos [mx my mz] on-ground]
   (let [v (mapv #(* (double %) drag) [mx my mz])
         v (if on-ground (mapv * v [0.7 -0.5 0.7]) v)]
-    (v/+ v (liquid-push world pos v))))
+    (v/add v (liquid-push world pos v))))
 
 (defn- tnt-move ^Move [world e]
   (let [[vx vy vz] (:vel e)

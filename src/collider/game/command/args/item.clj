@@ -1,10 +1,10 @@
-(ns collider.game.command.item-args
+(ns collider.game.command.args.item
   "Item stack and item predicate arguments of commands."
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.command.args :as args]
             [collider.game.command.components :as cs]
-            [collider.game.command.dfu :as dfu]
+            [collider.game.command.decode :as dfu]
             [collider.game.command.reader :as r]
             [collider.game.command.snbt :as snbt]
             [collider.game.stack :as stack]))

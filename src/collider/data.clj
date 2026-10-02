@@ -195,6 +195,26 @@
         nm (.replace (if (neg? i) s (subs s (inc i))) \_ \-)]
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
+(defn full-id
+  "Returns resource location s with the default namespace when it
+  has none."
+  ^String [^String s]
+  (if (str/includes? s ":") s (str "minecraft:" s)))
+
+(defn parse-id
+  "Returns the namespace and the path of resource location s."
+  [^String s]
+  (let [i (str/index-of s \:)]
+    [(if (and i (pos? (long i))) (subs s 0 i) "minecraft")
+     (if i (subs s (inc (long i))) s)]))
+
+(defn index
+  "Returns the keys ks by their resource location."
+  [ks]
+  (into {} (map (fn [k] [(wire k) k])) ks))
+
+(def validate? (Boolean/getBoolean "collider.validate"))
+
 (defn packet-id ^long [state dir name]
   (or (get-in (packets) [state dir name])
       (throw (ex-info "unknown packet"
@@ -291,8 +311,11 @@
     #(contains? ids (kebab %))
     (let [ids (set (keys (pack path)))] #(contains? ids %))))
 
-(defn- tag-name [^String id]
-  (if (str/starts-with? id "minecraft:") (subs id 10) id))
+(defn tag-name
+  "Returns tag id without its mark and without the default namespace."
+  ^String [^String id]
+  (let [id (if (str/starts-with? id "#") (subs id 1) id)]
+    (if (str/starts-with? id "minecraft:") (subs id 10) id)))
 
 (defn- built-tags [path]
   (let [files (pack (str "tags/" path))
@@ -316,6 +339,13 @@
   "Returns the tags the server sends to the client, by registry: each
   built-in or synced registry that has any."
   [] @sent-tags)
+
+(defn tag-index
+  "Returns the tags of registry by resource location, each a set."
+  [registry]
+  (into {}
+        (map (fn [[t vs]] [(str "minecraft:" t) (set vs)]))
+        (get (tags) registry)))
 
 (defn registry-tags
   "Returns the tags of registry path by name, each a vector of its

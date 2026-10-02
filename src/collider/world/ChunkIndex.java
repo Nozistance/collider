@@ -92,6 +92,16 @@ public final class ChunkIndex extends APersistentMap implements IObj, IKVReduce,
         return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
     }
 
+    /// Returns the chunk x of key `id`.
+    public static int x(long id) {
+        return (int) (id >> 32);
+    }
+
+    /// Returns the chunk z of key `id`.
+    public static int z(long id) {
+        return (int) id;
+    }
+
     static boolean integral(Object k) {
         return k instanceof Long || k instanceof Integer || k instanceof Short || k instanceof Byte;
     }

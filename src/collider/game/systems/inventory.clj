@@ -5,7 +5,7 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]

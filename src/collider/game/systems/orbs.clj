@@ -4,7 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.shove :as shove]
             [collider.game.experience :as xp]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.orb :as orb]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
@@ -38,7 +38,7 @@
         h (orb/height)
         push (liquid/entity-push cs pos (orb/half) h vel
                                  (:dim world))]
-    (v/+ vel push)))
+    (v/add vel push)))
 
 (defn- driven [world e hit? roll]
   (let [chunks (:chunks world) pos (:pos e) vel (pushed world e)

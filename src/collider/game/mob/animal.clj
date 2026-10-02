@@ -1,7 +1,7 @@
 (ns collider.game.mob.animal
   "Farm animal goals and their selector."
   (:require [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
@@ -151,7 +151,7 @@
 (defn- partner? [eid e t oid o]
   (and (not= oid eid) (= (:type e) (:type o))
        (mobs/in-love? o t) (not (mobs/panicking? o t))
-       (< (v/dist3-sq (:pos e) (:pos o)) breed-range-sq)))
+       (< (v/dist-sq (:pos e) (:pos o)) breed-range-sq)))
 
 (defn- partner-for [world eid e t]
   (let [pred #(partner? eid e t %1 %2)]
@@ -201,7 +201,7 @@
         e (update-in e [:task :love] (fn [n] (inc (long n))))
         due (reduced-delay mate-ticks)]
     (if (and (>= (long (:love (:task e))) due)
-             (< (v/dist3-sq (:pos e) (:pos o)) breed-near-sq)
+             (< (v/dist-sq (:pos e) (:pos o)) breed-near-sq)
              (< (long eid) (long pid)))
       (bred spec world eid pid e o t)
       [e nil])))
@@ -212,7 +212,7 @@
 (defn- tempting [e lure? [pid items p]]
   (when (and (some lure? items)
              (sense/in-range? (:pos e) p (tempt-range e)))
-    [(v/dist3-sq (:pos e) (:pos p)) pid]))
+    [(v/dist-sq (:pos e) (:pos p)) pid]))
 
 (defn- tempter [e lures tempters]
   (when (seq tempters)
@@ -232,7 +232,7 @@
           e (glance (assoc-in e [:task :player] pid) pid t)]
       [(cond
          (nil? o) e
-         (< (v/dist3-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
+         (< (v/dist-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
          :else (nav/move-to-entity world e o (goal-speed e kind)))
        nil])))
 
@@ -286,7 +286,7 @@
 (defn- following? [world e _ _]
   (let [o (other world (:follow e))]
     (and (mobs/baby? e) o
-         (<= follow-near-sq (v/dist3-sq (:pos e) (:pos o))
+         (<= follow-near-sq (v/dist-sq (:pos e) (:pos o))
              follow-far-sq))))
 
 (defn- stroll-pos [world eid e t]
@@ -319,7 +319,7 @@
   [world e o]
   (let [from (eye-of e (mobs/eye-height e))
         to (eye-of o (entity/eye-height o))]
-    (and (<= (v/dist3-sq from to) sight-range-sq)
+    (and (<= (v/dist-sq from to) sight-range-sq)
          (sight/clear? (:chunks world) from to))))
 
 (defn- noticed? [world e o]
@@ -328,7 +328,7 @@
        (in-sight? world e o)))
 
 (defn- nearer [world e eye best [pid p]]
-  (let [d2 (v/dist3-sq eye (:pos p))]
+  (let [d2 (v/dist-sq eye (:pos p))]
     (if (and (or (nil? best) (< d2 (double (best 0))))
              (noticed? world e p))
       [d2 pid p]
@@ -355,7 +355,7 @@
 
 (defn- looking? [world e _ _]
   (let [o (other world (:target (:look e)))]
-    (and o (<= (v/dist3-sq (:pos e) (:pos o))
+    (and o (<= (v/dist-sq (:pos e) (:pos o))
                (let [r (look-range e)] (* r r))))))
 
 (defn- start-look-around [_ eid e t _]

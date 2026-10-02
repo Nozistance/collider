@@ -3,7 +3,7 @@
   (:require [collider.game.clock :as clock]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.level :as level]

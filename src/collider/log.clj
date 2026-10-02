@@ -108,6 +108,24 @@
         (error msg (str t) "and" (:n before) "more times since")
         (error-with msg t)))))
 
+(defn unit-failed!
+  "Logs that unit f failed with t. The function msg-of takes the name
+  of the unit and returns the message. Adds the failure to the atom
+  failures when there is one."
+  [failures f ^Throwable t msg-of]
+  (let [unit (name-of f)]
+    (failure! unit (msg-of unit) t)
+    (some-> failures (swap! conj [unit t]))))
+
+(defonce ^:private seen (atom #{}))
+
+(defn once!
+  "Logs args with the logging function f the first time key k comes."
+  [k f & args]
+  (when-not (@seen k)
+    (swap! seen conj k)
+    (apply f args)))
+
 (defn seconds
   "Returns a duration in nanoseconds as `(1.2s)`."
   ^String [^long nanos]

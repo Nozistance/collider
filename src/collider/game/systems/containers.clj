@@ -3,7 +3,7 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]

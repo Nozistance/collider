@@ -5,7 +5,7 @@
             [collider.game.block.container :as container]
             [collider.game.block.jukebox :as jukebox]
             [collider.game.block.sign :as sign]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]

@@ -1,7 +1,7 @@
 (ns collider.game.systems.geysers
   "Geysers of potent sulfur under water and what they lift."
   (:require [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.level :as level]
             [collider.game.systems.blocks.edit :as edit]

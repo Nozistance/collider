@@ -5,7 +5,7 @@
             [clojure.data.int-map :as i]
             [collider.game.book :as book]
             [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.level :as level :refer [update-entity]]
             [collider.game.out :as out]
             [collider.game.schema :as schema]

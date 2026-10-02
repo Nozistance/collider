@@ -9,7 +9,9 @@ import java.util.Objects;
 public final class Chunk {
 
     public static final int COUNT = 24;
-    private static final int OFFSET = 4;
+    public static final int OFFSET = 4;
+    public static final int MIN_Y = -OFFSET * 16;
+    public static final int MAX_Y = (COUNT - OFFSET) * 16 - 1;
     public static final Chunk EMPTY = new Chunk(new Section[COUNT]);
 
     private final Section[] sections;

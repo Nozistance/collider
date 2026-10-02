@@ -1,7 +1,7 @@
 (ns collider.game.camera
   "Spectator cameras."
   (:require [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.vec :as v]))

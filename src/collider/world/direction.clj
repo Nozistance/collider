@@ -33,7 +33,7 @@
 
 (def face-offset (zipmap (range) (mapv offset six)))
 
-(def face-facing {2 :north 3 :south 4 :west 5 :east})
+(def horizontal-face {2 :north 3 :south 4 :west 5 :east})
 
 (def opposite-index (int-array [1 0 3 2 5 4]))
 
@@ -84,3 +84,19 @@
   "Returns the cell below cell p."
   [p]
   [(nth p 0) (dec (nth p 1)) (nth p 2)])
+
+(defn toward
+  "Returns cell p moved one cell or n cells toward face d."
+  ([p d] (toward p d 1))
+  ([p d ^long n]
+   (let [[dx dy dz] (offset d)]
+     [(+ (long (nth p 0)) (* (long dx) n))
+      (+ (long (nth p 1)) (* (long dy) n))
+      (+ (long (nth p 2)) (* (long dz) n))])))
+
+(defn segment
+  "Returns which of n equal turns the yaw falls in. The count n is a
+  power of two."
+  ^long [yaw ^long n]
+  (let [q (/ (* (double yaw) n) 360.0)]
+    (bit-and (long (Math/floor (+ q 0.5))) (dec n))))

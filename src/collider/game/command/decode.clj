@@ -1,4 +1,4 @@
-(ns collider.game.command.dfu
+(ns collider.game.command.decode
   "Decoders of tags in commands."
   (:require [clojure.string :as str]
             [collider.data :as data])

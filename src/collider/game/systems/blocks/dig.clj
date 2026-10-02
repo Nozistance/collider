@@ -1,7 +1,7 @@
 (ns collider.game.systems.blocks.dig
   "Breaking blocks."
   (:require [collider.data :as data]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.entity :as entity]

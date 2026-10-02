@@ -5,7 +5,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.experience :as xp]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.loot :as loot]
             [collider.random :as random]
             [collider.game.mob.mobs :as mobs]

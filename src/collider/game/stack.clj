@@ -106,3 +106,37 @@
   [t]
   (when t
     (merge {:item (:item t) :count (long (:count t 1))} (:patch t))))
+
+(defn same-kind?
+  "Returns true when stacks a and b differ in count at most."
+  [a b]
+  (boolean (and a b (= (dissoc a :count) (dissoc b :count)))))
+
+(defn shrunk
+  "Returns stack with k fewer items, or nil when none stay."
+  [stack ^long k]
+  (when (< k (size stack)) (assoc stack :count (- (size stack) k))))
+
+(defn span
+  "Returns the stacks of v at slots from to to, last first when
+  reverse? is true."
+  [v ^long from ^long to reverse?]
+  (map v (if reverse?
+           (range (dec to) (dec from) -1)
+           (range from to))))
+
+(defn in-range?
+  "Returns true when v is within the bounds min and max inclusive.
+  A bound that is absent does not limit."
+  [{:keys [min max]} v]
+  (and (or (nil? min) (<= min v)) (or (nil? max) (<= v max))))
+
+(def water-bottle
+  {:item       :potion :count 1
+   :components {:potion-contents
+                {:potion :water :custom-color nil
+                 :custom-effects [] :custom-name nil}}})
+
+(defn water-bottle? [stack]
+  (let [path [:components :potion-contents :potion]]
+    (and (= :potion (:item stack)) (= :water (get-in stack path)))))

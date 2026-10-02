@@ -2,7 +2,7 @@
   "The login of a player, from handshake to play."
   (:require [clojure.data.json :as json]
             [collider.data :as data]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.log :as log]
             [collider.net.crypt :as crypt]
             [collider.proto.codec :as c]

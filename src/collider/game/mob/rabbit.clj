@@ -3,7 +3,7 @@
   (:require [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
@@ -293,7 +293,7 @@
 
 (defn- fled [world eid e t kind oid o]
   (when-let [cell (away-pos world eid e t o)]
-    (when (>= (v/dist3-sq (:pos o) cell) (v/dist3-sq (:pos o) (:pos e)))
+    (when (>= (v/dist-sq (:pos o) cell) (v/dist-sq (:pos o) (:pos e)))
       (let [speed (animal/goal-speed e :avoid)]
         (some-> (nav/path-to world e cell speed 0)
                 (assoc :task {:kind kind :from oid})
@@ -380,7 +380,7 @@
          (valid-target? world h cell))))
 
 (defn- centre-dist-sq ^double [[x y z] p]
-  (v/dist3-sq [(+ (long x) 0.5) (+ (long y) 1.5) (+ (long z) 0.5)] p))
+  (v/dist-sq [(+ (long x) 0.5) (+ (long y) 1.5) (+ (long z) 0.5)] p))
 
 (defn- walked-on [world e [x y z] tries]
   (let [e (assoc-in e [:task :tries] tries)]

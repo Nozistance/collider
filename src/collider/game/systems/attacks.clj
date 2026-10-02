@@ -6,7 +6,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -135,7 +135,7 @@
               (< (v/y p) (v/y hi))
               (> (+ (v/y p) (double ht)) (v/y lo))
               (< (- (v/z p) h) (v/z hi)) (> (+ (v/z p) h) (v/z lo))
-              (< (v/dist3-sq (:pos a) p) 9.0)))))
+              (< (v/dist-sq (:pos a) p) 9.0)))))
 
 (defn- sweep-box
   "Returns the box of target t grown by 1, 0.25 and 1."

@@ -5,7 +5,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.apply :as apply]
             [collider.game.player :as player]

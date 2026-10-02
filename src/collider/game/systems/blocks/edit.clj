@@ -2,7 +2,7 @@
   "Block edit checks and change deltas."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]

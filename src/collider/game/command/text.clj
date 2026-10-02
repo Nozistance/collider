@@ -1,7 +1,7 @@
-(ns collider.game.command.text-codec
+(ns collider.game.command.text
   "Text components in commands."
   (:require [clojure.string :as str]
-            [collider.game.command.dfu :as dfu]
+            [collider.game.command.decode :as dfu]
             [collider.proto.text :as text]))
 
 (set! *warn-on-reflection* true)

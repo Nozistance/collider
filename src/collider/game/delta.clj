@@ -214,7 +214,7 @@
    :push
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [_ e [_ _ vel]]
-             (update e :vel (fnil v/+ [0.0 0.0 0.0]) vel))}
+             (update e :vel (fnil v/add [0.0 0.0 0.0]) vel))}
    :player-join {:scope :input :apply player/join}
    :player-quit
    {:scope :input :apply (fn [w [_ eid]] (player/quit w eid))}

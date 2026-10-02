@@ -449,7 +449,7 @@
         on (if (= 0 face) :ceiling :floor)]
     (if (<= face 1)
       (pick chunks pos [(bell-at st on (dir/player-direction yaw))])
-      (->> (dir/opposite (dir/face-facing face))
+      (->> (dir/opposite (dir/horizontal-face face))
            (bell-on-wall chunks pos st)
            (pick chunks pos)))))
 

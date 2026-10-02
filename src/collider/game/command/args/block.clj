@@ -1,4 +1,4 @@
-(ns collider.game.command.block-args
+(ns collider.game.command.args.block
   (:require [collider.data :as data]
             [collider.game.command.args :as args]
             [collider.game.command.reader :as r]

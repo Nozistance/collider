@@ -64,6 +64,27 @@
   [^long st]
   (Block/name (tables) st))
 
+(defn flag
+  "Returns the property value that stands for truth b."
+  [b]
+  (if b :true :false))
+
+(defn- prop-value [v] (if (keyword? v) v (keyword (str v))))
+
+(defn with
+  "Returns st with the properties in kvs set. A value that is not a
+  keyword becomes the keyword of its printed form."
+  [st & kvs]
+  (let [st (long st)]
+    (state (block-of st)
+           (reduce (fn [m [k v]] (assoc m k (prop-value v)))
+                   (props-of st) (partition 2 kvs)))))
+
+(defn with-long
+  "Returns st with the whole number property k set to n."
+  ^long [^long st k ^long n]
+  (state (block-of st) (assoc (props-of st) k (keyword (str n)))))
+
 (defn- clone-table []
   (let [^objects a (block-table (fn [block b] (get b :clone block)))]
     (doseq [[_ b] (data/blocks)
@@ -698,7 +719,7 @@
    [(fn [t _b] (contains? trapdoor-types t))
     (fn [{:keys [face yaw cursor-y replacing?]}]
       (if (and (not replacing?) (>= (long face) 2))
-        {:facing (dir/face-facing face)
+        {:facing (dir/horizontal-face face)
          :half (if (> (long cursor-y) 8) :top :bottom)}
         {:facing (dir/opposite (dir/player-direction yaw))
          :half (if (= 1 (long face)) :bottom :top)}))]
@@ -709,10 +730,10 @@
    [(fn [_t b] (= :slab (shape-type b)))
     (fn [{:keys [top?]}] {:type (if top? :top :bottom)})]
    [(fn [t _b] (contains? wall-torch-types t))
-    (fn [{:keys [face]}] {:facing (dir/face-facing face)})]
+    (fn [{:keys [face]}] {:facing (dir/horizontal-face face)})]
    [(fn [t _b] (contains? side-types t))
     (fn [{:keys [face]}]
-      {:facing (get dir/face-facing face :north)})]
+      {:facing (get dir/horizontal-face face :north)})]
    [(fn [_t b] (contains? (:props b) :facing))
     (fn [{:keys [f]}]
       {:facing (nth [:north :east :south :west] f)})]])
@@ -913,12 +934,10 @@
   [^long st face]
   (Block/sturdyCenter (tables) st (dir/index face)))
 
-(def ^:private tag-sets (atom {}))
+(def ^:private ^:table tag-sets
+  (delay (update-vals (get (data/tags) "block") set)))
 
-(defn tag-set [tag]
-  (or (get @tag-sets tag)
-      (let [s (set (get-in (data/tags) ["block" tag]))]
-        (get (swap! tag-sets assoc tag s) tag))))
+(defn tag-set [tag] (get @tag-sets tag #{}))
 
 (defn tagged? [^long st tag]
   (contains? (tag-set tag) (block-of st)))

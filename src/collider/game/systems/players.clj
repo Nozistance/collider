@@ -4,7 +4,7 @@
             [clojure.data.int-map :as i]
             [collider.game.entity :as entity]
             [collider.game.effect :as effect]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.vec :as vv]
             [collider.game.mob.mobs :as mobs]

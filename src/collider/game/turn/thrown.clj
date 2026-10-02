@@ -8,7 +8,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
@@ -163,7 +163,7 @@
 
 (defn- carried [e vel]
   (let [m (or (:client-vel e) [0.0 0.0 0.0])]
-    (v/+ vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
+    (v/add vel [(v/x m) (if (:on-ground e) 0.0 (v/y m)) (v/z m)])))
 
 (defn- facing [vel]
   (let [x (v/x vel) y (v/y vel) z (v/z vel)
@@ -279,7 +279,7 @@
                     (when (chunk/in-range? (nth cell 1))
                       (cell-clip (:chunks world) cell from d))
                     [cell]))
-          nil (cells from (v/+ from d))))
+          nil (cells from (v/add from d))))
 
 (defn- skip? [eid e oid o]
   (or (= (long oid) (long eid))
@@ -303,7 +303,7 @@
             nil (deltas/keyed (:entities world)))))
 
 (defn- span [from d]
-  (let [to (v/+ from d)]
+  (let [to (v/add from d)]
     [(- (v/x to) (v/x from)) (- (v/y to) (v/y from))
      (- (v/z to) (v/z from))]))
 
@@ -399,7 +399,7 @@
     (for [[oid o] (deltas/keyed (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))
                      (overlaps? box (target-box o))
-                     (< (v/dist3-sq at (:pos o)) splash-range-sq))]
+                     (< (v/dist-sq at (:pos o)) splash-range-sq))]
       [:merge-entity oid {:fire 0 :burning? false}])))
 
 (defn- cloud-spec [e at]
@@ -473,7 +473,7 @@
         hit (clip world eid (assoc e :left-owner? left?) d)
         at (if hit
              (point (:pos e) (span (:pos e) d) (:t hit))
-             (v/+ (:pos e) d))]
+             (v/add (:pos e) d))]
     (cond
       (< (v/y at) (chunk/void-y world)) [[:remove-entity eid]]
       hit (into [[:remove-entity eid]]
@@ -489,7 +489,7 @@
           :when (and (hittable? o) (not (game-mode/spectator? o))
                      (not (contains? (:victims e) oid))
                      (overlaps? box (target-box o))
-                     (<= (v/dist-sq (:pos e) (:pos o)) (* r r)))]
+                     (<= (v/dist-xz-sq (:pos e) (:pos o)) (* r r)))]
       [oid (+ age cloud-reapply)])))
 
 (defn- kept-victims [e ^long age]

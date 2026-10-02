@@ -6,7 +6,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.shove :as shove]
             [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.game.player :as player]
@@ -238,7 +238,7 @@
 
 (defn- item-drift [chunks dim pos vel]
   (let [{:keys [water lava push]} (fluid-at chunks dim pos vel)
-        pushed (v/+ vel push)
+        pushed (v/add vel push)
         water (double water)
         lava (double lava)]
     [(cond
@@ -310,7 +310,7 @@
   [chunks e drift rest?]
   (let [{:keys [pos on-ground support]} e
         og (boolean on-ground)
-        p (if rest? pos (v/+ pos drift))
+        p (if rest? pos (v/add pos drift))
         vel (if rest? drift (dragged chunks p support og drift))]
     {:pos p :vel vel :on-ground og :support support
      :no-blocks? (:no-blocks? e) :stuck (:stuck e)}))

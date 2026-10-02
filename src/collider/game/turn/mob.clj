@@ -3,7 +3,7 @@
   (:require [collider.game.deltas :as deltas]
             [clojure.core.reducers :as r]
             [collider.game.attribute :as attribute]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.random :as random]
             [collider.game.entity :as entity]
             [collider.vec :as v]
@@ -201,7 +201,7 @@
         eye (+ (v/y pos) (* 0.95 (double height)))
         oeye (+ (v/y opos)
                 (case (:type o) :player 1.62 :point 0.0 (* 0.95 oh)))
-        dh (Math/sqrt (v/dist-sq pos opos))]
+        dh (Math/sqrt (v/dist-xz-sq pos opos))]
     (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))))
 
 (defn- active-look [e ^long t]
@@ -571,7 +571,7 @@
 
 (defn- walked-to ^double [e pos]
   (+ (double (or (:walked e) 0.0))
-     (* 0.6 (Math/sqrt (v/dist3-sq (:pos e) pos)))))
+     (* 0.6 (Math/sqrt (v/dist-sq (:pos e) pos)))))
 
 (defn- walk-of [e prev pos]
   (let [w (if prev (walked-to prev pos) 0.0)]

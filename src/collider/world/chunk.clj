@@ -133,10 +133,6 @@
   "Returns true when s holds its own block light."
   [^Section s] (.hasBlockLight s))
 
-(defn holds?
-  "Returns true when s holds a state that the table pred marks."
-  [^Section s ^booleans pred] (.holds s pred))
-
 (defn heights!
   "Fills the unset heightmap columns in out.
   Each gets the height above base of the top block of s that
@@ -246,6 +242,11 @@
         dz (range (- -1 v) (+ v 2))
         :when (tracked? v dx dz)]
     (pos->id (+ cx dx) (+ cz dz))))
+
+(defn block->chunk
+  "Returns the chunk coordinate that holds block coordinate x."
+  ^long [^long x]
+  (bit-shift-right x 4))
 
 (defn block-id-chunk
   "Returns the id of the chunk that holds the block with id bid."

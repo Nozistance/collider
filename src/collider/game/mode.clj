@@ -1,4 +1,4 @@
-(ns collider.game.game-mode
+(ns collider.game.mode
   "Game modes of players and the abilities each gives."
   (:require [collider.config :as config]
             [collider.game.entity :as entity]
@@ -93,24 +93,42 @@
   [e]
   (and (not (spectator? e)) (pos? (double (:health e 1.0)))))
 
+(def ^:private mode-abilities
+  {:survival {}
+   :creative {:invulnerable? true :may-fly? true :instabuild? true}
+   :adventure {}
+   :spectator {:invulnerable? true :may-fly? true :flies? true}})
+
+(defn- able? [e k]
+  (boolean (get-in mode-abilities [(:game-mode e) k])))
+
+(defn invulnerable?
+  "Returns true when the mode of player e keeps it from harm."
+  [e]
+  (able? e :invulnerable?))
+
 (defn may-fly?
   "Returns true when the mode of player e lets it fly."
   [e]
-  (contains? #{:creative :spectator} (:game-mode e)))
+  (able? e :may-fly?))
+
+(defn instabuild?
+  "Returns true when the mode of player e breaks blocks at once and
+  uses items without using them up."
+  [e]
+  (able? e :instabuild?))
 
 (defn flying-in
   "Returns true when a player with flying? still flies in mode."
   [mode flying?]
-  (case mode
-    :creative (boolean flying?)
-    :spectator true
-    false))
+  (let [{:keys [flies? may-fly?]} (mode-abilities mode)]
+    (boolean (or flies? (and may-fly? flying?)))))
 
 (defn abilities
   "Returns the abilities of player e as its client learns them."
   [e]
-  {:invulnerable? (may-fly? e) :flying? (boolean (:flying e))
-   :may-fly? (may-fly? e) :instabuild? (creative? e)})
+  {:invulnerable? (invulnerable? e) :flying? (boolean (:flying e))
+   :may-fly? (may-fly? e) :instabuild? (instabuild? e)})
 
 (def ^:const block-range 4.5)
 

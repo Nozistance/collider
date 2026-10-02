@@ -3,7 +3,7 @@
   them, and the check that they still hold."
   (:require [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.out :as out]
             [collider.game.apply :as apply]

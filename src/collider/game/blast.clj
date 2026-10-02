@@ -7,7 +7,7 @@
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.entity.sections :as sections]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]

@@ -1,7 +1,7 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
   (:require [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])

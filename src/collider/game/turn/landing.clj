@@ -45,7 +45,7 @@
   the move of a block or more passed a block that resets a fall or
   water (Entity.move:752)."
   ^double [world pos pos' ^double f]
-  (if (and (not (zero? f)) (>= (v/dist3-sq pos pos') 1.0)
+  (if (and (not (zero? f)) (>= (v/dist-sq pos pos') 1.0)
            (fall/resets? (:chunks world) pos pos'))
     0.0
     f))

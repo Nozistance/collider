@@ -11,7 +11,7 @@
             [collider.game.effect :as effect]
             [collider.game.command.tree :as commands]
             [collider.game.deltas :as deltas]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.schema :as schema]
             [collider.game.level :as level]

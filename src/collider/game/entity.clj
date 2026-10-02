@@ -19,6 +19,19 @@
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
     :experience-bottle})
 
+(defn player? [e] (= :player (:type e)))
+
+(defn living?
+  "Returns true when e is a player or a mob."
+  [e]
+  (or (player? e) (mobs/mob-type? (:type e))))
+
+(defn alive?
+  "Returns true when e is there and has health left. A body without
+  health counts as alive."
+  [e]
+  (and (some? e) (pos? (double (:health e 1.0)))))
+
 (defn item
   "Returns a dropped item entity of stack at pos.
   It moves with velocity vel and cannot be picked up for delay ticks."

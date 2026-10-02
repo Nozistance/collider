@@ -7,7 +7,7 @@
   (:require [clojure.data.int-map :as i]
             [collider.game.deltas :as deltas]
             [collider.game.entity.size :as size]
-            [collider.game.game-mode :as game-mode]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.placement :as placement]
             [collider.game.areas :as areas]
@@ -127,7 +127,7 @@
 (defn- nearest-sq [ctx x y z]
   (let [p [x y z]]
     (reduce (fn [best [_ e]]
-              (let [d (v/dist3-sq (:pos e) p)]
+              (let [d (v/dist-sq (:pos e) p)]
                 (if (or (nil? best) (< d (double best))) d best)))
             nil (:players ctx))))
 
