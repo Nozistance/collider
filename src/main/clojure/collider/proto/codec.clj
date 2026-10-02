@@ -121,6 +121,9 @@
   (buf/write-double! buf (double y))
   (buf/write-double! buf (double z)))
 
+(defn read-vec3 [^Buf buf]
+  [(buf/read-double buf) (buf/read-double buf) (buf/read-double buf)])
+
 (defn write-fixed-vec3
   "Writes a position as three ints of eighths of a block."
   [^Buf buf [x y z]]

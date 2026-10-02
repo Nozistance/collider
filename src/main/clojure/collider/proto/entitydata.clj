@@ -97,7 +97,7 @@
 
 (def fields
   "The index, type and default of each field, by class."
-  (into {} (map (juxt identity numbered)) (keys classes)))
+  (into {} (map (fn [c] [c (numbered c)])) (keys classes)))
 
 (defn default
   "Returns what the class holds in the field before anything sets it."
@@ -110,8 +110,8 @@
     (throw (ex-info "no such synched field" {:class cls :field k}))))
 
 (defn entries
-  "Returns the metadata entries [index type value] of a class for the
-  named fields, in index order."
+  "Returns the entity data of class cls for field values m.
+  The entries come in index order."
   [cls m]
   (let [fs (fields cls)]
     (vec (sort-by first (map #(entry cls fs %) m)))))

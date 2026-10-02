@@ -386,6 +386,14 @@
     (registry-id registry entry)
     (datapack-id registry entry)))
 
+(defn known-entry-id
+  "Returns the network id of entry in registry.
+  Returns nil for an unknown entry."
+  [registry entry]
+  (if (contains? (registries) registry)
+    (get-in (registries) [registry entry])
+    (get (get @datapack-index registry) entry)))
+
 (defn- invert-ids [entries]
   (into {} (map (fn [[k v]] [(long v) k])) entries))
 
