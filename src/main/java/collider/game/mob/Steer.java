@@ -132,18 +132,46 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
                 num(m, ZZA));
     }
 
+    private static boolean same(double a, double b) {
+        return Double.doubleToRawLongBits(a) == Double.doubleToRawLongBits(b);
+    }
+
+    /// Returns `s` itself when it already holds these values bit for
+    /// bit, else a new control with them.
+    private static Steer kept(
+            Steer s,
+            Keyword op,
+            double x,
+            double y,
+            double z,
+            double mult,
+            double speed,
+            double zza
+    ) {
+        if (s.op == op
+                && same(s.x, x)
+                && same(s.y, y)
+                && same(s.z, z)
+                && same(s.mult, mult)
+                && same(s.speed, speed)
+                && same(s.zza, zza)) {
+            return s;
+        }
+        return new Steer(op, x, y, z, mult, speed, zza);
+    }
+
     /// Returns `m` told to walk to `x`, `y`, `z` with speed modifier
     /// `mult`. A jump under way goes on.
     public static Steer wanted(Object m, double x, double y, double z, double mult) {
         Steer s = of(m);
         Keyword op = s.op == JUMPING ? JUMPING : MOVE_TO;
-        return new Steer(op, x, y, z, mult, s.speed, s.zza);
+        return kept(s, op, x, y, z, mult, s.speed, s.zza);
     }
 
     /// Returns `m` arrived: waiting, with no forward input.
     public static Steer arrived(Object m) {
         Steer s = of(m);
-        return new Steer(WAIT, s.x, s.y, s.z, s.mult, s.speed, 0.0);
+        return kept(s, WAIT, s.x, s.y, s.z, s.mult, s.speed, 0.0);
     }
 
     /// Returns `m` driving at `speed`, rounded to a float, then
@@ -151,7 +179,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     public static Steer driven(Object m, double speed, boolean jump) {
         Steer s = of(m);
         double f = (float) speed;
-        return new Steer(jump ? JUMPING : WAIT, s.x, s.y, s.z, s.mult, f, f);
+        return kept(s, jump ? JUMPING : WAIT, s.x, s.y, s.z, s.mult, f, f);
     }
 
     /// Returns `m` in its jump at `speed`, rounded to a float, which
@@ -159,7 +187,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     public static Steer jumped(Object m, double speed, boolean landed) {
         Steer s = of(m);
         double f = (float) speed;
-        return new Steer(landed ? WAIT : s.op, s.x, s.y, s.z, s.mult, f, f);
+        return kept(s, landed ? WAIT : s.op, s.x, s.y, s.z, s.mult, f, f);
     }
 
     /// Returns `m` with no forward input, the same `m` when it has
@@ -168,7 +196,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
         if (m == null) return null;
         Steer s = of(m);
         if (s.zza == 0.0 && m instanceof Steer) return m;
-        return new Steer(s.op, s.x, s.y, s.z, s.mult, s.speed, 0.0);
+        return kept(s, s.op, s.x, s.y, s.z, s.mult, s.speed, 0.0);
     }
 
     public Object valAt(Object k) {

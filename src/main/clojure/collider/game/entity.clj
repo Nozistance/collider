@@ -118,7 +118,14 @@
   (size/box e))
 
 (defn- same? [o vs]
-  `(and ~@(map (fn [[k s]] `(identical? ~s ~(field o (name k)))) vs)))
+  `(and ~@(map (fn [[k s]] `(v/same? ~s ~(field o (name k)))) vs)))
+
+(defn- kept [o at]
+  (fn [f]
+    (let [old (field o f) new (at f)]
+      (if (= old new)
+        old
+        `(let [n# ~new] (if (v/same? n# ~old) ~old n#))))))
 
 (defn- rebuilt [o at]
   `(new Mob ~@(map at mob-fields) (meta ~o) ~(field o "__extmap")))
@@ -126,7 +133,8 @@
 (defmacro with
   "Returns entity e with the keys of the map kvs set to their values.
   A mob takes them all in one copy and stays itself when it already
-  holds them. The keys are fields of Mob."
+  holds them bit for bit; a field that keeps its value keeps its
+  object. The keys are fields of Mob."
   [e kvs]
   (assert (every? (set (map keyword mob-fields)) (keys kvs)))
   (let [x (gensym "e")
@@ -135,7 +143,7 @@
         at (fn [f] (get vs (keyword f) (field o f)))]
     `(let [~x ~e ~@(mapcat (fn [[k v]] [(vs k) v]) kvs)]
        (if (instance? Mob ~x)
-         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o at)))
+         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o (kept o at))))
          (assoc ~x ~@(mapcat identity vs))))))
 
 (defn- fields-of [cls]
