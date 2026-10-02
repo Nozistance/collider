@@ -1,8 +1,7 @@
 (ns collider.world.chunk
   "Chunks of block states and light, with chunk and block ids."
   (:require [collider.vec :as v])
-  (:import (collider.proto Buf)
-           (collider.world Batch Chunk ChunkIndex Section)
+  (:import (collider.world Batch Chunk ChunkIndex Section)
            (java.io DataInput DataOutput)
            (java.util HashMap)))
 
@@ -139,24 +138,6 @@
   pred marks."
   [^Section s ^booleans pred ^ints out ^long base]
   (.heights s pred out (int base)))
-
-(defn write-section!
-  "Writes s to buf in wire form. It counts the states that fluid
-  marks and gives every block the biome."
-  [^Section s ^Buf buf ^booleans fluid ^long biome]
-  (.write s buf fluid (int biome)))
-
-(defn write-sky-light!
-  "Writes the sky light of s to buf."
-  [^Section s ^Buf buf] (.writeSkyLight s buf))
-
-(defn write-block-light!
-  "Writes the block light of s to buf."
-  [^Section s ^Buf buf] (.writeBlockLight s buf))
-
-(defn write-full-light!
-  "Writes a section of full light to buf."
-  [^Buf buf] (Section/writeFullLight buf))
 
 (defn save-chunk!
   "Writes chunk to out."
