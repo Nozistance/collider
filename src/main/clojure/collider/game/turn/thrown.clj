@@ -129,8 +129,10 @@
   [stack]
   (boolean (some instant? (brewed (contents stack)))))
 
-(defn- break-event ^long [stack]
-  (if (has-instant-effects? stack) 2007 2002))
+(defn- break-event [stack]
+  (if (has-instant-effects? stack)
+    :particles-instant-potion-splash
+    :particles-spell-potion-splash))
 
 (defn- triangle ^double [world eid k ^double dev]
   (let [t (:tick world)]
@@ -432,7 +434,9 @@
         rough (if (= :block (:kind hit))
                 (mapv double (dir/offset (:face hit)))
                 (mapv - d))]
-    [(out/all (out/level-event 2002 (floored at) bottle-xp-color))
+    [(out/all
+       (out/level-event :particles-spell-potion-splash (floored at)
+                        bottle-xp-color))
      [:xp-award (mapv double at) n [:bottle eid] rough]]))
 
 (defn- thrown-source [world eid e d]

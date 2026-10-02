@@ -311,7 +311,7 @@
    :extinguish        [[:pos Pos]]
    :fizz              [[:pos Pos]]
    :bonemeal          [[:pos Pos]]
-   :level-event       [[:event :int] [:pos Pos] [:data :int]]
+   :level-event       [[:event :keyword] [:pos Pos] [:data :int]]
    :sign-editor       [[:pos Pos] [:front? :boolean]]
    :open-book         [[:hand [:enum :main :off]]]
    :block-event       [[:pos Pos] [:action :int] [:param :int]]

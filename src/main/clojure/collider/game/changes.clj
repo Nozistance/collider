@@ -23,8 +23,6 @@
   ^long [world pos]
   (chunk/chunks-get-block (:chunks world) pos))
 
-(def ^:const ^:private sponge-dries 2009)
-
 (defn- drying? [world [_ st]]
   (and (number? st)
        (= :wet-sponge (block/block-of (long st)))
@@ -33,7 +31,7 @@
 (defn- dried-fx [world pos]
   (let [roll (random/of-key (:tick world) pos :sponge-dries)
         pitch (* (+ 1.0 (* (double roll) 0.2)) 0.7)]
-    [(out/all (out/level-event sponge-dries pos 0))
+    [(out/all (out/level-event :particles-water-evaporating pos 0))
      (out/all (out/block-sound :wet-sponge/dries pos 1.0 pitch))]))
 
 (defn dried
