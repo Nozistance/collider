@@ -199,13 +199,13 @@ public final class ChunkIndex extends APersistentMap implements IObj, IKVReduce,
         boolean put(long id, Object v);
     }
 
-    boolean walk(Sink sink) {
-        if (root == null) return true;
+    void walk(Sink sink) {
+        if (root == null) return;
         Walk w = new Walk(sink);
         w.nodes[0][0] = root;
         w.vps[0][0] = pv;
         w.size[0] = 1;
-        return w.rows(0, span, pu);
+        w.rows(0, span, pu);
     }
 
     public Object reduce(IFn f, Object init) {
@@ -298,19 +298,19 @@ public final class ChunkIndex extends APersistentMap implements IObj, IKVReduce,
             for (int ud = 0; ud <= LM; ud++) {
                 long hi = ((((long) up << L) | ud) - B) << 32;
                 int row = ud << L;
-                if (!pass(d, row, B, Integer.MAX_VALUE, hi) || !pass(d, row, 0, B - 1, hi)) return false;
+                if (stopped(d, row, B, Integer.MAX_VALUE, hi) || stopped(d, row, 0, B - 1, hi)) return false;
             }
             return true;
         }
 
-        boolean pass(int d, int row, int from, int to, long hi) {
+        boolean stopped(int d, int row, int from, int to, long hi) {
             for (int i = 0; i < size[d]; i++) {
                 int base = vps[d][i] << L;
                 if (!cells(nodes[d][i], row, base, from, to, hi)) {
-                    return false;
+                    return true;
                 }
             }
-            return true;
+            return false;
         }
 
         boolean cells(Object[] n, int row, int base, int from, int to, long hi) {

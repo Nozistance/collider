@@ -7,6 +7,7 @@ import clojure.lang.PersistentHashMap;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 import java.util.Arrays;
+import java.util.Objects;
 
 /// The block edits of one section, applied at once in order.
 public final class Batch {
@@ -79,7 +80,7 @@ public final class Batch {
         Object[] vals = new Object[ids.length];
         int n = 0;
         for (long id : ids) {
-            Batch[] bs = m.get(id);
+            Batch[] bs = Objects.requireNonNull(m.get(id));
             if (bs.length == 0) continue;
             Chunk ch = (Chunk) chunks.get(id);
             for (int si = Chunk.COUNT - 1; si >= 0; si--) {
@@ -106,7 +107,8 @@ public final class Batch {
             m.put(id, v.conj(vec(p, RT.nth(c, 2))));
         }
         ITransientMap r = PersistentHashMap.EMPTY.asTransient();
-        for (long id : m.sortedKeys()) r = r.assoc(id, m.get(id).persistent());
+        for (long id : m.sortedKeys())
+            r = r.assoc(id, Objects.requireNonNull(m.get(id)).persistent());
         return r.persistent();
     }
 

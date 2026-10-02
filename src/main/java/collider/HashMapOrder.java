@@ -22,9 +22,7 @@ public final class HashMapOrder {
     /// that order, in the order a copy of the map iterates them: a new
     /// map given all of them at once, sized by their count.
     public static int[] copied(int[] hashes) {
-        HashMap<Key, Integer> copy = new HashMap<>();
-        copy.putAll(filled(hashes));
-        return order(copy);
+        return order(new HashMap<>(filled(hashes)));
     }
 
     private static HashMap<Key, Integer> filled(int[] hashes) {

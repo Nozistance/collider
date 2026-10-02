@@ -22,7 +22,7 @@ public final class Scratch<V> {
 
     private static int mix(long k, int mask) {
         long h = k * 0x9E3779B97F4A7C15L;
-        return (int) (h ^ (h >>> 32)) & mask;
+        return Long.hashCode(h) & mask;
     }
 
     @SuppressWarnings("unchecked")

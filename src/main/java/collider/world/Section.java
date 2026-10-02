@@ -329,7 +329,7 @@ public final class Section {
 
     private Section widen(long[] d, int[] p, int state) {
         int[] remap = new int[p.length];
-        int used = used(d, p.length, remap);
+        int used = used(d, remap);
         int[] np = kept(p, remap, used, state);
         int nb = width(used + 1);
         int[] v = new int[SIZE];
@@ -341,7 +341,7 @@ public final class Section {
         return new Section(nb, kept, pack(nb, v), bl, sl);
     }
 
-    private int used(long[] d, int size, int[] remap) {
+    private int used(long[] d, int[] remap) {
         Arrays.fill(remap, -1);
         if (bits == 0) {
             remap[0] = 0;

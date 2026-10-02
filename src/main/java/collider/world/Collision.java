@@ -51,7 +51,8 @@ public final class Collision {
     }
 
     private static long seed(int x, int z) {
-        long seed = (long) (x * 3129871) ^ (long) z * 116129781L;
+        int xs = x * 3129871;
+        long seed = (long) xs ^ (long) z * 116129781L;
         seed = seed * seed * 42317861L + seed * 11L;
         return seed >> 16;
     }

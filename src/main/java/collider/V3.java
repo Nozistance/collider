@@ -102,6 +102,7 @@ public record V3(double x, double y, double z)
     }
 
     @Override
+    @SuppressWarnings("EqualsWhichDoesntCheckParameterClass")
     public boolean equals(Object o) {
         return equiv(o);
     }

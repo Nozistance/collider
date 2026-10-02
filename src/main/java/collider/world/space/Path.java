@@ -135,25 +135,19 @@ public final class Path {
     }
 
     private static int floorType(ChunkIndex chunks, int[] types, int[] forced, long x, long y, long z) {
-        switch (typeAt(chunks, types, x, y - 1, z)) {
-            case OPEN, WATER, LAVA, WALKABLE:
-                return OPEN;
-            case FIRE:
-                return FIRE;
-            case DAMAGING:
-                return DAMAGING;
-            case STICKY_HONEY:
-                return STICKY_HONEY;
-            case POWDER_SNOW:
-                return ON_TOP_OF_POWDER_SNOW;
-            case DAMAGE_CAUTIOUS:
-                return DAMAGE_CAUTIOUS;
-            case TRAPDOOR:
-                return ON_TOP_OF_TRAPDOOR;
-            default:
+        return switch (typeAt(chunks, types, x, y - 1, z)) {
+            case OPEN, WATER, LAVA, WALKABLE -> OPEN;
+            case FIRE -> FIRE;
+            case DAMAGING -> DAMAGING;
+            case STICKY_HONEY -> STICKY_HONEY;
+            case POWDER_SNOW -> ON_TOP_OF_POWDER_SNOW;
+            case DAMAGE_CAUTIOUS -> DAMAGE_CAUTIOUS;
+            case TRAPDOOR -> ON_TOP_OF_TRAPDOOR;
+            default -> {
                 int f = forced(chunks, forced, x, y, z);
-                return f >= 0 ? f : WALKABLE;
-        }
+                yield f >= 0 ? f : WALKABLE;
+            }
+        };
     }
 
     /// Returns the path type of the cell `x`, `y`, `z` for a mob one

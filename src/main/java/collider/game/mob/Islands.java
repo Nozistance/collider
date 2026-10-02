@@ -1,6 +1,7 @@
 package collider.game.mob;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.ForkJoinTask;
 
@@ -96,7 +97,7 @@ public final class Islands {
             sorted &= i == 0 || eids[i - 1] < eids[i];
         }
         if (!sorted) {
-            Arrays.sort(order, (a, b) -> Long.compare(eids[a], eids[b]));
+            Arrays.sort(order, Comparator.comparingLong(i -> eids[i]));
         }
         int[] out = new int[n];
         for (int i = 0; i < n; i++) out[i] = order[i];

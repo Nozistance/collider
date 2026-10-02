@@ -2,14 +2,11 @@ package collider.world.space;
 
 import clojure.lang.IFn;
 import collider.RandomSupport;
+import collider.world.Chunk;
 import collider.world.Section;
 
 /// The rays of a blast through a grid of sections.
 public final class Rays {
-
-    private static final int MIN_Y = -64;
-
-    private static final int MAX_Y = 319;
 
     /// The width of the cube of cells that the rays of a blast mark.
     public static final int W = 21;
@@ -88,7 +85,7 @@ public final class Rays {
     }
 
     private static double axis(long j) {
-        return (double) ((float) j / 15.0F * 2.0F - 1.0F);
+        return (float) j / 15.0F * 2.0F - 1.0F;
     }
 
     private byte val(int st) {
@@ -111,7 +108,7 @@ public final class Rays {
             int i = cellIndex(bx - ox, by - oy, bz - oz);
             boolean same = !first && i >= 0 && i == prev;
             first = false;
-            if (by < MIN_Y || by > MAX_Y) break;
+            if (by < Chunk.MIN_Y || by > Chunk.MAX_Y) break;
             if (!same) st = Exposure.block(seen, summon, bx, by, bz);
             float res = st < resist.length ? resist[st] : 3.0F;
             if (!Float.isNaN(res)) f -= (res + 0.3F) * 0.3F;

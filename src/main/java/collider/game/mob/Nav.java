@@ -304,8 +304,8 @@ public final class Nav extends APersistentMap {
     }
 
     @SuppressWarnings("unchecked")
-    public Iterator iterator() {
-        return ((Iterable) asMap()).iterator();
+    public Iterator<Object> iterator() {
+        return asMap().iterator();
     }
 
     /// Returns true when `m` has no path node left to walk to.

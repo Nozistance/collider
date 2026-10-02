@@ -19,9 +19,9 @@ import java.util.Set;
 /// before come in the order they stepped, by id.
 public final class PushGrid extends AbstractMap<Long, PushCell> {
 
-    private static final double STRENGTH = (double) 0.05F;
+    private static final double STRENGTH = 0.05F;
 
-    private static final double THRESHOLD = (double) 0.01F;
+    private static final double THRESHOLD = 0.01F;
 
     private final long[] eids;
     private final double[] halfs, heights, xs, ys, zs;
@@ -86,7 +86,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     private static int slot0(long k, int m) {
         long h = k * 0x9E3779B97F4A7C15L;
-        return (int) (h ^ (h >>> 32)) & m;
+        return Long.hashCode(h) & m;
     }
 
     private void link(int s) {
@@ -264,8 +264,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         if (n == 0) return PersistentVector.EMPTY;
         Object[] acc = new Object[n];
         int k = 0;
-        for (int i = 0; i < n; i++) {
-            int j = hits[i];
+        for (int j : hits) {
             double dx = x - xs[j], dz = z - zs[j];
             double m = Math.max(Math.abs(dx), Math.abs(dz));
             if (m >= THRESHOLD) {

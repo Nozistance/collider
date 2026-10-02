@@ -1,6 +1,7 @@
 package collider.game.mob;
 
 import java.util.Arrays;
+import java.util.Comparator;
 
 /// The place of each body of an island by its id.
 public final class Slots {
@@ -25,7 +26,7 @@ public final class Slots {
         if (sorted) return new Slots(eids, at);
         Integer[] order = new Integer[n];
         for (int i = 0; i < n; i++) order[i] = i;
-        Arrays.sort(order, (a, b) -> Long.compare(eids[a], eids[b]));
+        Arrays.sort(order, Comparator.comparingLong(i -> eids[i]));
         long[] ids = new long[n];
         for (int i = 0; i < n; i++) {
             ids[i] = eids[order[i]];

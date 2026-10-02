@@ -14,19 +14,6 @@ public final class Exposure {
 
     private static final int S = W + 1;
 
-    /// The kind of a block state whose collision shape depends on the
-    /// body that looks or on the position of the block.
-    public static final byte PLAIN = Collision.PLAIN,
-            SCAFFOLDING = Collision.SCAFFOLDING,
-            SCAFFOLDING_HANGING = Collision.SCAFFOLDING_HANGING,
-            POWDER_SNOW = Collision.POWDER_SNOW,
-            OFFSET_QUARTER = Collision.OFFSET_QUARTER,
-            OFFSET_EIGHTH = Collision.OFFSET_EIGHTH;
-
-    /// The flags of a body that looks: it descends, it falls more
-    /// than 2.5 blocks, it walks on powder snow.
-    public static final int DESCENDING = Collision.DESCENDING, FALLING = Collision.FALLING, WALKER = Collision.WALKER;
-
     private final Region rg;
     private final Object[] shapes;
     private final byte[] kinds;
@@ -164,6 +151,7 @@ public final class Exposure {
         return v - Math.floor(v);
     }
 
+    @SuppressWarnings("UseCompareMethod")
     private static int sign(double v) {
         return v == 0.0 ? 0 : (v > 0.0 ? 1 : -1);
     }
@@ -327,16 +315,16 @@ public final class Exposure {
     private double sight(double px, double py, double pz, double half, double height, int flags) {
         if (sums == null) build();
         double w = (float) half, h = (float) height;
-        double x0 = px - w, y0 = py, z0 = pz - w;
+        double x0 = px - w, z0 = pz - w;
         double x1 = px + w, y1 = py + h, z1 = pz + w;
         double xs = 1.0 / ((x1 - x0) * 2.0 + 1.0);
-        double ys = 1.0 / ((y1 - y0) * 2.0 + 1.0);
+        double ys = 1.0 / ((y1 - py) * 2.0 + 1.0);
         double zs = 1.0 / ((z1 - z0) * 2.0 + 1.0);
         double xo = (1.0 - Math.floor(1.0 / xs) * xs) / 2.0;
         double zo = (1.0 - Math.floor(1.0 / zs) * zs) / 2.0;
         boolean clear = collidingIn(
                         floor(Math.min(cx, x0)) - 1,
-                        floor(Math.min(cy, y0)) - 1,
+                        floor(Math.min(cy, py)) - 1,
                         floor(Math.min(cz, z0)) - 1,
                         floor(Math.max(cx, x1)) + 1,
                         floor(Math.max(cy, y1)) + 1,
@@ -347,13 +335,13 @@ public final class Exposure {
             for (double yy = 0.0; yy <= 1.0; yy += ys) {
                 for (double zz = 0.0; zz <= 1.0; zz += zs) {
                     double x = lerp(xx, x0, x1) + xo;
-                    double y = lerp(yy, y0, y1);
+                    double y = lerp(yy, py, y1);
                     double z = lerp(zz, z0, z1) + zo;
                     if (clear || !clip(x, y, z, py, flags)) hits++;
                     count++;
                 }
             }
         }
-        return (double) ((float) hits / (float) count);
+        return (float) hits / (float) count;
     }
 }

@@ -11,10 +11,6 @@ public final class Light {
     /// The channel of sky light.
     public static final int SKY = 1;
 
-    private static final int MIN_Y = -64;
-
-    private static final int MAX_Y = 319;
-
     private static final long OFF = 8388608;
 
     private static final int DOWN = 0;
@@ -52,11 +48,11 @@ public final class Light {
     }
 
     private static boolean inRange(long y) {
-        return MIN_Y <= y && y <= MAX_Y;
+        return Chunk.MIN_Y <= y && y <= Chunk.MAX_Y;
     }
 
     private static long pack(long x, long y, long z, long l) {
-        return ((x + OFF) << 38) | ((z + OFF) << 14) | ((y - MIN_Y + 1) << 4) | l;
+        return ((x + OFF) << 38) | ((z + OFF) << 14) | ((y - Chunk.MIN_Y + 1) << 4) | l;
     }
 
     private static long px(long e) {
@@ -68,7 +64,7 @@ public final class Light {
     }
 
     private static long py(long e) {
-        return MIN_Y + (((e >> 4) & 0x3FF) - 1);
+        return Chunk.MIN_Y + (((e >> 4) & 0x3FF) - 1);
     }
 
     private static int idx(long x, long y, long z) {
@@ -99,7 +95,7 @@ public final class Light {
     }
 
     private static long outside(long ch, long y) {
-        return ch == SKY && y > MAX_Y ? 15 : 0;
+        return ch == SKY && y > Chunk.MAX_Y ? 15 : 0;
     }
 
     /// Returns the level of channel `ch` stored at `x`, `y`, `z` in
@@ -139,14 +135,14 @@ public final class Light {
     /// the sky reaches straight down.
     public static long skySource(ChunkIndex chunks, long x, long z, BlockTables t) {
         long top = 0;
-        for (long y = MAX_Y; y >= MIN_Y; y--) {
+        for (long y = Chunk.MAX_Y; y >= Chunk.MIN_Y; y--) {
             long b = block(chunks, x, y, z);
             if (Block.dampening(t, b) > 0 || Block.occludes(t, top, b, DOWN)) {
                 return y + 1;
             }
             top = b;
         }
-        return MIN_Y;
+        return Chunk.MIN_Y;
     }
 
     /// Returns `chunks` relit after the changes `[pos old new]`, block
@@ -235,7 +231,7 @@ public final class Light {
             long src = skySource(chunks, x, z, t);
             long lo = src, hi = src;
             while (inRange(lo - 1) && skyFull(chunks, x, lo - 1, z)) lo--;
-            while (hi <= MAX_Y && !skyFull(chunks, x, hi, z)) hi++;
+            while (hi <= Chunk.MAX_Y && !skyFull(chunks, x, hi, z)) hi++;
             int need = m + (int) (hi - lo) + (b - a);
             if (need > out.length) {
                 out = Arrays.copyOf(out, Math.max(need, 2 * out.length));
@@ -393,8 +389,8 @@ public final class Light {
         return v0 + a * (v1 - v0);
     }
 
-    private static float blend(float v, float alpha, float target, float weight) {
-        float to = v + alpha * (target - v);
+    private static float blend(float v, float alpha, float weight) {
+        float to = v + alpha * (4.0F - v);
         return v + weight * (to - v);
     }
 
@@ -404,8 +400,8 @@ public final class Light {
         float th = (float) thunder;
         float r = (float) rain - th;
         float v = 15.0F * skyFactor(time);
-        if (r > 0) v = blend(v, 0.3125F, 4.0F, r);
-        if (th > 0) v = blend(v, 0.52734375F, 4.0F, th);
+        if (r > 0) v = blend(v, 0.3125F, r);
+        if (th > 0) v = blend(v, 0.52734375F, th);
         return Math.clamp(v, 0.0F, 15.0F);
     }
 

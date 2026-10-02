@@ -13,11 +13,7 @@ public final class Phys {
 
     private static final double EPS = 1.0E-7;
 
-    private static final double EQUAL_SLACK = (double) 1.0E-5F;
-
-    private static final int MIN_Y = -64;
-
-    private static final int MAX_Y = 319;
+    private static final double EQUAL_SLACK = 1.0E-5F;
 
     private static final ThreadLocal<double[]> BUF = ThreadLocal.withInitial(() -> new double[1536]);
 
@@ -204,8 +200,8 @@ public final class Phys {
             double bottom,
             int flags) {
         long x1 = loBound(ebox[0], vx), x2 = hiBound(ebox[3], vx);
-        long y1 = Math.max(MIN_Y, loBound(ebox[1], vy) - 1);
-        long y2 = Math.min(MAX_Y, hiBound(ebox[4], vy));
+        long y1 = Math.max(Chunk.MIN_Y, loBound(ebox[1], vy) - 1);
+        long y2 = Math.min(Chunk.MAX_Y, hiBound(ebox[4], vy));
         long z1 = loBound(ebox[2], vz), z2 = hiBound(ebox[5], vz);
         long cells = (x2 - x1 + 1) * (Math.max(y1, y2) - y1 + 1) * (z2 - z1 + 1);
         double[] a = buffer(96 * Math.max(1, cells));
@@ -245,8 +241,8 @@ public final class Phys {
             int flags,
             Heights hs) {
         long x1 = loBound(ebox[0], 0.0), x2 = hiBound(ebox[3], 0.0);
-        long y1 = Math.max(MIN_Y, loBound(ebox[1], 0.0) - 1);
-        long y2 = Math.min(MAX_Y, hiBound(ebox[4], 0.0));
+        long y1 = Math.max(Chunk.MIN_Y, loBound(ebox[1], 0.0) - 1);
+        long y2 = Math.min(Chunk.MAX_Y, hiBound(ebox[4], 0.0));
         long z1 = loBound(ebox[2], 0.0), z2 = hiBound(ebox[5], 0.0);
         long cells = (x2 - x1 + 1) * (Math.max(y1, y2) - y1 + 1) * (z2 - z1 + 1);
         double[] a = buffer(96 * Math.max(1, cells));
@@ -287,7 +283,7 @@ public final class Phys {
         long ckey = -1;
         Section s = null;
         for (long cx = x0; cx < x1; cx++) {
-            for (long cy = Math.max(y0, MIN_Y); cy < y1 && cy <= MAX_Y; cy++) {
+            for (long cy = Math.max(y0, Chunk.MIN_Y); cy < y1 && cy <= Chunk.MAX_Y; cy++) {
                 for (long cz = z0; cz < z1; cz++) {
                     long k = sectionKey(cx, cy, cz);
                     if (k != ckey) {
@@ -330,8 +326,8 @@ public final class Phys {
     /// width `half` and `height` at `x y z` holds a state of `bits`.
     public static boolean cool(
             ChunkIndex chunks, byte[] bits, double x, double y, double z, double half, double height) {
-        long y0 = Math.max(MIN_Y, (long) Math.floor(y) - 1);
-        long y1 = Math.min(MAX_Y + 1, (long) Math.floor(y + height) + 2);
+        long y0 = Math.max(Chunk.MIN_Y, (long) Math.floor(y) - 1);
+        long y1 = Math.min(Chunk.MAX_Y + 1, (long) Math.floor(y + height) + 2);
         return !near(
                 chunks,
                 bits,
@@ -478,13 +474,9 @@ public final class Phys {
         return -v * 0.0;
     }
 
-    private static void shift(double[] e, double dx, double dy, double dz) {
-        e[0] += dx;
-        e[3] += dx;
+    private static void lift(double[] e, double dy) {
         e[1] += dy;
         e[4] += dy;
-        e[2] += dz;
-        e[5] += dz;
     }
 
     private static double[] towards(double[] b, double x, double y, double z) {
@@ -509,9 +501,9 @@ public final class Phys {
             boolean landed,
             int flags) {
         double[] g = box0.clone();
-        if (landed) shift(g, 0.0, out[1], 0.0);
+        if (landed) lift(g, out[1]);
         double[] up = towards(g, vx, step, vz);
-        if (!landed) up[1] += (double) -1.0E-5F;
+        if (!landed) up[1] -= 1.0E-5F;
         Heights hs = new Heights(ys, g[1], step, (float) out[1]);
         Sweep sw = colliders(chunks, kinds, cube, shapes, up, box0[1], flags, hs);
         float[] h = hs.h;

@@ -60,11 +60,6 @@ public final class PathNode {
         closed = true;
     }
 
-    /// Returns the node the best path came from, null for the first.
-    public PathNode came() {
-        return came;
-    }
-
     /// Returns the straight distance to the cell `x`, `y`, `z`.
     public double distTo(long x, long y, long z) {
         long dx = x - this.x, dy = y - this.y, dz = z - this.z;

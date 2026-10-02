@@ -39,6 +39,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     }
 
     /// Returns the angle of `y`, `x` as Mth.atan2 approximates it.
+    @SuppressWarnings("SuspiciousNameCombination")
     public static double atan2(double y, double x) {
         double d2 = x * x + y * y;
         if (Double.isNaN(d2)) return Double.NaN;
@@ -149,7 +150,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     /// jumping or waiting.
     public static Steer driven(Object m, double speed, boolean jump) {
         Steer s = of(m);
-        double f = (double) (float) speed;
+        double f = (float) speed;
         return new Steer(jump ? JUMPING : WAIT, s.x, s.y, s.z, s.mult, f, f);
     }
 
@@ -157,7 +158,7 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     /// ends on landing.
     public static Steer jumped(Object m, double speed, boolean landed) {
         Steer s = of(m);
-        double f = (double) (float) speed;
+        double f = (float) speed;
         return new Steer(landed ? WAIT : s.op, s.x, s.y, s.z, s.mult, f, f);
     }
 

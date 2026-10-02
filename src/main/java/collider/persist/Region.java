@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.zip.CRC32;
 import java.util.zip.DataFormatException;
@@ -247,7 +248,7 @@ public final class Region {
                 } catch (DataFormatException e) {
                     continue;
                 }
-                r.append(id, data);
+                r.append(id, Objects.requireNonNull(data));
             }
         } catch (IOException | RuntimeException e) {
             r.close();
@@ -336,7 +337,9 @@ public final class Region {
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
         try (FileChannel c = FileChannel.open(tmp, CREATE, WRITE, TRUNCATE_EXISTING)) {
             ByteBuffer b = ByteBuffer.wrap(data);
-            while (b.hasRemaining()) c.write(b);
+            while (b.hasRemaining()) {
+                int ignored = c.write(b);
+            }
             c.force(true);
         } catch (IOException | RuntimeException e) {
             Files.deleteIfExists(tmp);

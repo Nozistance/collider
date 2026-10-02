@@ -55,10 +55,6 @@ public final class Flow {
             int voidAir,
             IFn facesOpen) {}
 
-    private static final int MIN_Y = -64;
-
-    private static final int MAX_Y = 319;
-
     private static final int UP = 4;
 
     private static final int DOWN = 5;
@@ -154,7 +150,7 @@ public final class Flow {
         for (int i = 0; i < on; i++) {
             if (ox[i] == x && oy[i] == y && oz[i] == z) return ost[i];
         }
-        if (y < MIN_Y || y > MAX_Y) return t.voidAir();
+        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return t.voidAir();
         int cx = x >> 4, cz = z >> 4, k = (cx & 1) | (cz & 1) << 1;
         Chunk c = near[k];
         if (c == null || nearX[k] != cx || nearZ[k] != cz) {
@@ -403,7 +399,7 @@ public final class Flow {
     }
 
     private boolean spreadTo(int x, int y, int z, int v) {
-        if (y < MIN_Y || y > MAX_Y) return true;
+        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return true;
         int traw = raw(x, y, z);
         if (t.container()[traw] || lavaAround(x, y, z)) return false;
         int st = t.base() + v;
