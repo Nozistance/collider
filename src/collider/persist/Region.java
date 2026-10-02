@@ -362,8 +362,12 @@ public final class Region {
         sync(dir);
     }
 
-    /// Makes the entries of directory `dir` durable.
+    private static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+
+    /// Makes the entries of directory `dir` durable. Windows cannot
+    /// open a directory, and its file system journals the entries.
     public static void sync(Path dir) throws IOException {
+        if (WINDOWS) return;
         try (FileChannel c = FileChannel.open(dir, READ)) {
             c.force(true);
         }

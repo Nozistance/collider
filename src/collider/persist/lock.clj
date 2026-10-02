@@ -44,8 +44,9 @@
   ^Closeable [dir]
   (let [f (io/file dir file-name)
         ch (opened f)]
+    (when-not (try-lock ch)
+      (.close ch)
+      (throw (held dir f)))
     (.write ch (ByteBuffer/wrap snowman))
     (.force ch true)
-    (if (try-lock ch)
-      ch
-      (do (.close ch) (throw (held dir f))))))
+    ch))
