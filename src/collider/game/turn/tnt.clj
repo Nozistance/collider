@@ -1,7 +1,7 @@
 (ns collider.game.turn.tnt
   "The turn of a primed TNT: it moves, and when its fuse runs out it
   blasts in the same turn, as PrimedTnt.tick:100-121."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.blast :as blast]
@@ -82,7 +82,7 @@
             (if-let [e (get es eid)]
               (assoc m eid (apply/entity t e eds))
               m))]
-    (reduce-kv f (i/int-map) (deltas/entities-of ds))))
+    (reduce-kv f (lm/long-map) (deltas/entities-of ds))))
 
 (defn- removals [ds]
   (into (sorted-set)
@@ -129,7 +129,7 @@
               (sections/placed idx id (:pos e))
               idx))
         lo (long (:mark s))
-        moved (i/range (:after s) lo (dec t))]
+        moved (lm/range (:after s) lo (dec t))]
     (-> (assoc s :idx (reduce-kv f (:idx s) moved) :mark t)
         (ended lo (dec t)))))
 

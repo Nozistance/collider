@@ -1,4 +1,4 @@
-package longmap;
+package collider.data;
 
 import clojure.lang.AFn;
 import clojure.lang.APersistentSet;
@@ -102,10 +102,10 @@ public final class LongSet extends APersistentSet implements IObj, IEditableColl
     }
 
     /// Returns the keys in order.
-    public long[] toLongArray() {
+    public long[] keys() {
         long[] ks = new long[count()];
         int i = 0;
-        for (Iterator<Object> it = iterator(); it.hasNext(); ) ks[i++] = (Long) it.next();
+        for (Object k : this) ks[i++] = (Long) k;
         return ks;
     }
 

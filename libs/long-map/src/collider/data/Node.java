@@ -1,4 +1,4 @@
-package longmap;
+package collider.data;
 
 import clojure.lang.IFn;
 import clojure.lang.MapEntry;
@@ -199,8 +199,8 @@ final class Node {
         return Long.bitCount(n.bits) == 2 ? n.kids[1 - i] : n.drop(bit, i, c, e);
     }
 
-    static boolean nested(Node top, Node n) {
-        return top.shift > n.shift ? top.covers(n.base) : top.shift == n.shift && top.base == n.base;
+    static boolean apart(Node top, Node n) {
+        return top.shift > n.shift ? !top.covers(n.base) : top.shift != n.shift || top.base != n.base;
     }
 
     static long slots(Node n, int s) {
@@ -217,7 +217,7 @@ final class Node {
         if (b == null) return op == INTER ? null : a;
         if (a == b && f == null) return op == DIFF ? null : a;
         Node top = a.shift >= b.shift ? a : b;
-        if (!nested(top, top == a ? b : a)) return op == UNION ? join(a, b, null) : op == INTER ? null : a;
+        if (apart(top, top == a ? b : a)) return op == UNION ? join(a, b, null) : op == INTER ? null : a;
         if (top.shift == 0) return leaves(op, a, b, f);
         int s = top.shift;
         long as = slots(a, s), bs = slots(b, s), all = as | bs;
@@ -371,7 +371,7 @@ final class Node {
         if (a == null) return side(b, false, f, acc, set);
         if (b == null) return side(a, true, f, acc, set);
         Node top = a.shift >= b.shift ? a : b;
-        if (!nested(top, top == a ? b : a)) {
+        if (apart(top, top == a ? b : a)) {
             boolean aFirst = Long.compareUnsigned(a.base, b.base) < 0;
             acc = diff(aFirst ? a : null, aFirst ? null : b, f, acc, set);
             return RT.isReduced(acc) ? acc : diff(aFirst ? null : a, aFirst ? b : null, f, acc, set);
@@ -398,6 +398,7 @@ final class Node {
         return acc;
     }
 
+    @SuppressWarnings("resource")
     static Object fold(Node n, int leaf, IFn combinef, IFn reducef, int mode) {
         if (n == null) return combinef.invoke();
         return ForkJoinPool.commonPool().invoke(new Fold(n, leaf, combinef, reducef, mode));

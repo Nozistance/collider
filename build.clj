@@ -4,15 +4,17 @@
 
 (def class-dir "target/classes")
 (def jar-file "target/collider.jar")
-(def basis (b/create-basis {:project "deps.edn"}))
+(def basis (delay (b/create-basis {:project "deps.edn"})))
 (defn clean [_]
   (b/delete {:path class-dir})
   (b/delete {:path jar-file}))
 
 (defn javac [_]
-  (b/javac {:src-dirs   ["src" "libs/longmap/src"]
+  (b/process {:command-args ["clojure" "-T:build" "javac"]
+              :dir          "libs/long-map"})
+  (b/javac {:src-dirs   ["src"]
             :class-dir  class-dir
-            :basis      basis
+            :basis      @basis
             :javac-opts ["-proc:none" "--release" "25"]}))
 
 (defn- log-bytes [n] ((requiring-resolve 'collider.log/human-bytes) n))
@@ -20,7 +22,7 @@
 (defn- step [doing done f] ((requiring-resolve 'collider.log/step) doing done f))
 
 (defn- compile-clj []
-  (b/compile-clj {:basis      basis
+  (b/compile-clj {:basis      @basis
                   :src-dirs   ["src"]
                   :class-dir  class-dir
                   :ns-compile '[collider.core]
@@ -29,7 +31,7 @@
 (defn- uber []
   (b/uber {:class-dir class-dir
            :uber-file jar-file
-           :basis     basis
+           :basis     @basis
            :main      'collider.core
            :exclude   [".*\\.java$" ".*\\.cljs$"]}))
 

@@ -1,7 +1,7 @@
 (ns collider.game.systems.players
   "Player list, entity tracking and movement updates."
   (:require [collider.game.deltas :as deltas]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.game.entity :as entity]
             [collider.game.effect :as effect]
             [collider.game.mode :as game-mode]
@@ -202,8 +202,8 @@
   (into [] (filter (fn [[_ e]] (tracked? e))) (:entities world)))
 
 (defn- viewed [ps]
-  (transduce (keep #(:tracking (val %))) (completing i/union)
-             (i/int-set) ps))
+  (transduce (keep #(:tracking (val %))) (completing lm/union)
+             (lm/long-set) ps))
 
 (def ^:private duplicate-login-reason
   "You logged in from another location")
@@ -296,13 +296,13 @@
 (defn- joined [m ^long c run]
   (if run
     (let [es (persistent! run)]
-      (assoc! m c (if-let [had (get m c)] (i/union had es) es)))
+      (assoc! m c (if-let [had (get m c)] (lm/union had es) es)))
     m))
 
-(defn- run-of [eid] (conj! (transient (i/int-set)) eid))
+(defn- run-of [eid] (conj! (transient (lm/long-set)) eid))
 
 (defn- entities-by-chunk [ts]
-  (loop [m (transient (i/int-map)) c 0 run nil ts (seq ts)]
+  (loop [m (transient (lm/long-map)) c 0 run nil ts (seq ts)]
     (if-let [[eid e] (first ts)]
       (let [c' (chunk/pos-chunk (:pos e))]
         (if (and run (= c c'))
@@ -317,22 +317,22 @@
 (defn- near-set [by-chunk seen]
   (if (< (count by-chunk) (count seen))
     (reduce (fn [acc [c es]]
-              (if (contains? seen c) (i/union acc es) acc))
-            (i/int-set) by-chunk)
+              (if (contains? seen c) (lm/union acc es) acc))
+            (lm/long-set) by-chunk)
     (reduce (fn [acc c]
-              (if-let [es (get by-chunk c)] (i/union acc es) acc))
-            (i/int-set) seen)))
+              (if-let [es (get by-chunk c)] (lm/union acc es) acc))
+            (lm/long-set) seen)))
 
 (defn- hidden-from [oid o bodies]
-  (into (i/int-set [oid])
+  (into (lm/long-set [oid])
         (keep (fn [[eid e]] (when-not (game-mode/shown-to? o e) eid)))
         bodies))
 
 (defn- tracking-deltas [world t0 [by-chunk bodies] [oid o]]
-  (let [near (near-set by-chunk (or (:sent-chunks o) (i/int-set)))
+  (let [near (near-set by-chunk (or (:sent-chunks o) (lm/long-set)))
         hidden (hidden-from oid o bodies)
-        want (into (i/int-set) (remove #(contains? hidden %)) near)
-        have (or (:tracking o) (i/int-set))
+        want (into (lm/long-set) (remove #(contains? hidden %)) near)
+        have (or (:tracking o) (lm/long-set))
         add (into [] (remove #(contains? have %)) want)
         gone (into [] (remove #(contains? want %)) have)]
     (when (or (seq add) (seq gone))

@@ -2,7 +2,7 @@
   "A level of the world: its view, its entities and its writes."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.game.clock :as clock]
             [collider.game.entity :as entity]
             [collider.game.orb :as orb]
@@ -145,7 +145,7 @@
   (persistent!
     (reduce-kv (fn [m eid e]
                  (let [t (:type e)]
-                   (assoc! m t (conj (get m t (i/int-set)) eid))))
+                   (assoc! m t (conj (get m t (lm/long-set)) eid))))
                (transient {}) entities)))
 
 (defn types-by
@@ -162,7 +162,7 @@
 
 (defn- ids-of [types ts]
   (reduce (fn [acc t]
-            (if-let [s (get types t)] (if acc (i/union acc s) s) acc))
+            (if-let [s (get types t)] (if acc (lm/union acc s) s) acc))
           nil ts))
 
 (defn of-types
@@ -190,7 +190,7 @@
   [world]
   (let [players (mapcat #(of-types (val %) player-type))]
     (assoc (dissoc world :levels)
-      :entities (into (i/int-map) players (:levels world)))))
+      :entities (into (lm/long-map) players (:levels world)))))
 
 (defn update-entity
   "Returns w with entity eid put through f, when w holds it."
@@ -252,7 +252,7 @@
 
 (defn- add-changed [ev events]
   (reduce-kv (fn [ev k es] (update ev k #(if % (into % es) es)))
-             (or ev (i/int-map)) (chunk/by-chunk events)))
+             (or ev (lm/long-map)) (chunk/by-chunk events)))
 
 (defn- ticks-added [w ticks]
   (reduce-kv (fn [w k es]
@@ -386,7 +386,7 @@
         (update :block-ticks schedule/dropped id)
         (update :fluid-ticks schedule/dropped id)
         (update :unknown dissoc id)
-        (update :stored (fnil conj (i/int-set)) id))))
+        (update :stored (fnil conj (lm/long-set)) id))))
 
 (defn set-block-entity
   "Returns level w after the delta [:set-block-entity pos e]."

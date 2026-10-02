@@ -1,7 +1,7 @@
 (ns collider.persist.snapshot
   "Saving and loading the world."
   (:refer-clojure :exclude [load])
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
@@ -21,7 +21,7 @@
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.world Chunk)
-           (longmap LongMap LongSet)
+           (collider.data LongMap LongSet)
            (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.channels ClosedChannelException)
@@ -37,17 +37,17 @@
   (chunk/load-chunk in))
 
 (nippy/extend-freeze LongMap ::longmap [m out]
-  (nippy/freeze-to-out! out (i/keys-array m))
+  (nippy/freeze-to-out! out (lm/key-array m))
   (nippy/freeze-to-out! out (object-array (vals m))))
 
 (nippy/extend-thaw ::longmap [in]
-  (i/from-sorted (nippy/thaw-from-in! in) (nippy/thaw-from-in! in)))
+  (lm/from-sorted (nippy/thaw-from-in! in) (nippy/thaw-from-in! in)))
 
 (nippy/extend-freeze LongSet ::longset [s out]
-  (nippy/freeze-to-out! out (i/keys-array s)))
+  (nippy/freeze-to-out! out (lm/key-array s)))
 
 (nippy/extend-thaw ::longset [in]
-  (i/from-sorted (nippy/thaw-from-in! in)))
+  (lm/from-sorted (nippy/thaw-from-in! in)))
 
 (def ^:private freeze-opts {:compressor lz4-compressor})
 
@@ -159,7 +159,7 @@
   (or @levels (open-levels! store (stamped-meta dir))))
 
 (defn- stored-ids [{:keys [regions]}]
-  (into (i/int-set) (mapcat region/chunks) (vals regions)))
+  (into (lm/long-set) (mapcat region/chunks) (vals regions)))
 
 (defn- with-stored [levels opened]
   (into {} (for [[dim lm] levels]
@@ -333,7 +333,7 @@
         start (merge empty-parts base)]
     (-> (reduce-kv schema/with-chunk start (:chunks lm))
         (dissoc :tick)
-        (assoc :stored (or (:stored lm) (i/int-set))))))
+        (assoc :stored (or (:stored lm) (lm/long-set))))))
 
 (defn world-of
   "Returns the world that a snapshot holds.

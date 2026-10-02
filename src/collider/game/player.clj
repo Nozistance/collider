@@ -2,7 +2,7 @@
   "Players: joining and quitting, their hands, moves and the events
   they send."
   (:require [collider.data :as data]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.game.book :as book]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
@@ -41,10 +41,10 @@
   {:type         :player :name name :uuid (offline-uuid name)
    :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
    :client-vel   [0.0 0.0 0.0]
-   :chunk-pos    nil :sent-chunks (i/int-set)
+   :chunk-pos    nil :sent-chunks (lm/long-set)
    :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
    :batches-max  1
-   :tracking (i/int-set) :track nil
+   :tracking (lm/long-set) :track nil
    :inventory    {} :held-slot 0
    :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
    :view-distance 2 :chunk-view nil
@@ -665,5 +665,5 @@
          :tp-target pos :tp-id (next-teleport-id e) :tp-at tick
          :chunk-view nil
          :chunk-pos (chunk/pos-chunk pos) :chunks-pending? nil
-         :sent-chunks (i/int-set) :tracking (i/int-set) :track nil
+         :sent-chunks (lm/long-set) :tracking (lm/long-set) :track nil
          :kept-mdata (:mdata (:track e))))

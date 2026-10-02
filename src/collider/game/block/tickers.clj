@@ -2,7 +2,7 @@
   "The block entities that tick, in the order they joined the level,
   as Level.blockEntityTickers kept by LevelChunk.tickersInLevel. A
   ticker that stays keeps its turn, a new one goes last."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.world.block :as block])
   (:import (collider.game.block HashOrder)))
 
@@ -10,7 +10,7 @@
 
 (def none
   "No ticker yet."
-  {:turns (i/int-map) :turn-of {} :next 0})
+  {:turns (lm/long-map) :turn-of {} :next 0})
 
 (defn ticks?
   "Returns true when block entity e ticks under block state st."

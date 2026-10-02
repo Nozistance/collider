@@ -3,7 +3,7 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
             [collider.game.entity :as entity]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.attribute :as attribute]
@@ -1159,7 +1159,7 @@
                     all (concat seen (forgotten deltas pid))]
                 (reduce (fn [a eid] (add-viewer a eid pid))
                         acc all)))
-            (transient (i/int-map))
+            (transient (lm/long-map))
             (:ps sight))))
 
 (def ^:private entity-msgs

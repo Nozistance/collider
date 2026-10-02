@@ -3,7 +3,7 @@
   EntitySectionStorage.getEntities: the sections of each section x by
   SectionPos.asLong, and the entities of a section as they came to
   it."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -27,7 +27,7 @@
 
 (def empty-index
   "An index without entities."
-  {:secs (sorted-map) :at (i/int-map)})
+  {:secs (sorted-map) :at (lm/long-map)})
 
 (defn removed
   "Returns index idx without entity id."
@@ -69,7 +69,7 @@
                (reduce add (transient {}) (sort earlier entries)))
         at (fn [[k es]] (map-indexed (fn [n [id]] [id [k n]]) es))]
     {:secs (into (sorted-map) secs)
-     :at (into (i/int-map) (mapcat at) secs)}))
+     :at (into (lm/long-map) (mapcat at) secs)}))
 
 (defn- in-range? [k y0 y1 z0 z1]
   (and (<= (long y0) (key-y (long k)) (long y1))

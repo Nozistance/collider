@@ -1,4 +1,4 @@
-package longmap;
+package collider.data;
 
 import clojure.lang.AFn;
 import clojure.lang.APersistentMap;
@@ -73,13 +73,13 @@ public final class LongMap extends APersistentMap
     }
 
     /// Returns the least key. Throws when the map is empty.
-    public long firstKey() {
+    public long first() {
         if (root == null) throw new IllegalStateException("Empty map has no first key");
         return Node.first(root);
     }
 
     /// Returns the greatest key. Throws when the map is empty.
-    public long lastKey() {
+    public long last() {
         if (root == null) throw new IllegalStateException("Empty map has no last key");
         return Node.last(root);
     }

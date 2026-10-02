@@ -4,7 +4,7 @@
   each chunk plans its spawns from the start of the tick on its own;
   the mob caps and the mobs spawned before then decide the plans in
   the shuffled order of the chunks."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
@@ -55,7 +55,7 @@
 (defn- close? [cid e] (< (center-sq cid (:pos e)) near-sq))
 
 (defn- counted [w]
-  (into (i/int-set)
+  (into (lm/long-set)
         (mapcat #(let [[cx cz] (chunk/id->pos %)]
                    (chunk/around-ids cx cz reach)))
         (areas/player-chunks w)))
@@ -192,7 +192,7 @@
             (if-let [b (when (blocks-building? e) (box-of e))]
               (update m (chunk/pos-chunk (:pos e)) (fnil conj []) b)
               m))
-          (i/int-map) (vals (:entities w))))
+          (lm/long-map) (vals (:entities w))))
 
 (defn- blocked? [ctx box]
   (let [cx (bit-shift-right (long (Math/floor (double (box 0)))) 4)

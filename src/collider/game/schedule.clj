@@ -1,16 +1,16 @@
 (ns collider.game.schedule
   "Lists of scheduled block ticks."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-(def block-list {:queue (i/int-map) :index (i/int-map) :next 0})
+(def block-list {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
-(def fluid-list {:queue (i/int-map) :index (i/int-map) :next 0})
+(def fluid-list {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
 (defn- queued [q at id ty order]
-  (let [m (or (get q at) (i/int-map))
+  (let [m (or (get q at) (lm/long-map))
         tys (get m id {})]
     (if (contains? tys ty)
       q
@@ -44,7 +44,7 @@
         index (assoc :index (assoc index id (assoc tys ty at)))))))
 
 (defn- queued! [q at id ty order]
-  (let [m (or (get q at) (i/int-map))
+  (let [m (or (get q at) (lm/long-map))
         tys (get m id {})]
     (if (contains? tys ty)
       q
@@ -64,7 +64,7 @@
   order, as add adds them one by one."
   [ticks entries]
   (let [index (:index ticks)
-        start [(transient (or (:queue ticks) (i/int-map)))
+        start [(transient (or (:queue ticks) (lm/long-map)))
                (some-> index transient)
                (long (:next ticks 0))]
         [q ix n] (reduce added-to start entries)]
@@ -79,7 +79,7 @@
   "Returns the ticks due by tick t, by block id."
   [ticks t]
   (transduce (map val) (completing #(merge-with into %1 %2))
-             (i/int-map) (due-rows ticks (long t))))
+             (lm/long-map) (due-rows ticks (long t))))
 
 (defn- row-entries [[at m]]
   (for [[id tys] m [ty order] tys] [at order id ty]))
@@ -141,7 +141,7 @@
 
 (defn- kept-row [q [at m] parked]
   (let [kept (filter #(contains? parked (key %)))
-        m' (when (seq parked) (into (i/int-map) kept m))]
+        m' (when (seq parked) (into (lm/long-map) kept m))]
     (if (seq m') (assoc q at m') (dissoc q at))))
 
 (defn flushed
@@ -149,7 +149,7 @@
   The ticks of the blocks in parked stay, overdue."
   [ticks t parked]
   (let [rows (due-rows ticks (long t))
-        parked (into (i/int-set) parked)
+        parked (into (lm/long-set) parked)
         q (reduce #(kept-row %1 %2 parked) (:queue ticks) rows)
         gone (for [[_ m] rows [id tys] m
                    :when (not (contains? parked id))]
@@ -161,7 +161,7 @@
   (= cid (chunk/block-id-chunk id)))
 
 (defn- outside [^long cid m]
-  (into (i/int-map) (remove #(in-chunk? cid (key %))) m))
+  (into (lm/long-map) (remove #(in-chunk? cid (key %))) m))
 
 (defn dropped
   "Returns ticks without the ticks of chunk cid."
@@ -169,7 +169,7 @@
   (let [cid (long cid)
         row (fn [[at m]]
               (let [m (outside cid m)] (when (seq m) [at m])))
-        q (into (i/int-map) (keep row) (:queue ticks))]
+        q (into (lm/long-map) (keep row) (:queue ticks))]
     (cond-> (assoc ticks :queue q)
       (:index ticks) (update :index #(outside cid %)))))
 

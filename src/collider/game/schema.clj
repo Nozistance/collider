@@ -1,6 +1,6 @@
 (ns collider.game.schema
   "Schema of the world map and of the player profile."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]
@@ -157,15 +157,15 @@
                         :scope :shared}
    :chunks             {:default chunk/no-chunks :load identity
                         :scope :level}
-   :entities           {:default (i/int-map) :load identity
+   :entities           {:default (lm/long-map) :load identity
                         :scope :level}
    :block-ticks        {:default schedule/block-list :scope :level}
    :fluid-ticks        {:default schedule/fluid-list :scope :level}
-   :block-entities     {:default (i/int-map) :load identity
+   :block-entities     {:default (lm/long-map) :load identity
                         :scope :level}
-   :stored             {:default (i/int-set) :scope :level}
-   :loading            {:default (i/int-set) :scope :level}
-   :unknown            {:default (i/int-map) :scope :level}
+   :stored             {:default (lm/long-set) :scope :level}
+   :loading            {:default (lm/long-set) :scope :level}
+   :unknown            {:default (lm/long-map) :scope :level}
    :world-spawn        {:default [24 4 8] :store store-same
                         :load identity
                         :schema [:tuple :int :int :int]
@@ -207,7 +207,7 @@
    :tickers            {:default tickers/none :scope :level}
    :shulker-anim       {:default {} :scope :level}
    :players            {:default {} :scope :shared}
-   :spawning           {:default (i/int-map) :scope :shared}
+   :spawning           {:default (lm/long-map) :scope :shared}
    :listed             {:default {} :scope :shared}
    :config             {:scope :shared}
    :plugins            {:store store-same :load identity

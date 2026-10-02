@@ -2,10 +2,10 @@
   "Deltas of one tick and the folds that make them."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.game.delta :as delta]
             [collider.game.deltas.record :refer [->Deltas]])
-  (:import (longmap LongMap)
+  (:import (collider.data LongMap)
            (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
@@ -70,12 +70,12 @@
       (into cat (vals (entities-of d)))
       (into (map #(vector :fx %)) (out-of d))))
 
-(def empty-deltas (->Deltas [] (i/int-map) [] []))
+(def empty-deltas (->Deltas [] (lm/long-map) [] []))
 
 (defn input
   "Returns the deltas that start a tick with events as input."
   ^Deltas [events]
-  (->Deltas [[:advance-tick]] (i/int-map) [] (vec events)))
+  (->Deltas [[:advance-tick]] (lm/long-map) [] (vec events)))
 
 (defn- built ^Deltas [w e o acc]
   (->Deltas (persistent! w) (persistent! e) (persistent! o)
@@ -117,13 +117,13 @@
 (defn keyed
   "Returns map m as a long map, which runs by key."
   [m]
-  (if (instance? LongMap m) m (into (i/int-map) m)))
+  (if (instance? LongMap m) m (into (lm/long-map) m)))
 
 (defn- halves [m]
-  (let [lo (i/lfirst m)
-        hi (i/llast m)
+  (let [lo (lm/first m)
+        hi (lm/last m)
         mid (+ lo (quot (- hi lo) 2))]
-    [(i/range m lo mid) (i/range m (inc mid) hi)]))
+    [(lm/range m lo mid) (lm/range m (inc mid) hi)]))
 
 (defn- folded [rf m ^long leaf]
   (if (<= (count m) leaf)
@@ -150,7 +150,7 @@
 (defn- joined-by-eid [a b]
   (cond (vacant? b) a
         (vacant? a) b
-        :else (i/merge-with into a b)))
+        :else (lm/merge-with into a b)))
 
 (defn- blank? [^Deltas d]
   (and (zero? (count (world-of d))) (vacant? (entities-of d))

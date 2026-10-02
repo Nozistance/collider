@@ -1,6 +1,6 @@
 (ns collider.game.delta
   "The delta tags, what each means, and the effect messages."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
@@ -47,9 +47,9 @@
 (def Authors [:or Author [:vector [:tuple Author :int]]])
 
 (defn- merge-diff [cur add drop]
-  (let [s (or cur (i/int-set))
+  (let [s (or cur (lm/long-set))
         s (if (seq add) (into s add) s)]
-    (if (seq drop) (i/difference s (i/int-set drop)) s)))
+    (if (seq drop) (lm/difference s (lm/long-set drop)) s)))
 
 (defn- new-eids [w w' _]
   (range (long (:next-eid w 1000000)) (long (:next-eid w' 1000000))))
@@ -108,7 +108,7 @@
    :chunk-requested
    {:scope :level :schema [:cat :int]
     :apply (fn [w [_ id]]
-             (update w :loading (fnil conj (i/int-set)) id))}
+             (update w :loading (fnil conj (lm/long-set)) id))}
    :chunk-ticket
    {:scope :level :schema [:cat :int :int]
     :apply (fn [w [_ id n]]

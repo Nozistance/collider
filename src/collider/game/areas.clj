@@ -1,6 +1,6 @@
 (ns collider.game.areas
   "The chunk areas the players of a level keep loaded and ticking."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.mode :as game-mode]
             [collider.game.level :as level]
             [collider.world.chunk :as chunk]))
@@ -31,10 +31,10 @@
              (when-let [e (get es eid)]
                (when (loads-chunks? world e)
                  (chunk/pos-chunk (:pos e)))))]
-    (into (i/int-set) (keep at) (vals (:players world)))))
+    (into (lm/long-set) (keep at) (vals (:players world)))))
 
 (defn- zone-at [ids ^long r]
-  (into (i/int-set)
+  (into (lm/long-set)
         (mapcat (fn [id]
                   (let [[cx cz] (chunk/id->pos id)]
                     (chunk/around-ids (long cx) (long cz) r))))
@@ -50,8 +50,8 @@
         s (sim-radius world)
         live? #(and (contains? zone %)
                     (contains? (:chunks world) %))
-        in? #(into (i/int-set) (filter live?) %)
-        absent (into (i/int-set)
+        in? #(into (lm/long-set) (filter live?) %)
+        absent (into (lm/long-set)
                      (remove #(contains? (:chunks world) %)) zone)
         active (in? (zone-at ps s))
         broadcast (zone-at ps (inc (view-radius world)))]

@@ -1,6 +1,6 @@
 (ns collider.game.systems.block.updates
   "Scheduled block ticks and their effects."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.delta :as delta]
@@ -154,7 +154,7 @@
   (let [size (+ r 2)]
     (loop [ts (seq ticks)
            flags (transient [])
-           seen (transient (i/int-set))]
+           seen (transient (lm/long-set))]
       (if ts
         (let [p (nth (first ts) 0)]
           (recur (next ts)
@@ -174,7 +174,7 @@
   (let [ctx (level/level-ctx world)
         firsts (first-runs world ctx k ticks)
         w (update world :chunks chunk/editable)
-        dirty (when (some some? firsts) (i/int-set))
+        dirty (when (some some? firsts) (lm/long-set))
         start {:w w :dirty dirty :lit {} :out (transient [])}]
     (persistent!
       (:out (reduce #(stepped world ctx k %1 %2) start

@@ -1,7 +1,7 @@
 (ns collider.game.turn.thrown
   "The turns of thrown snowballs, eggs, pearls, potions and bottles
   o' enchanting, and of lingering clouds."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.data :as data]
             [collider.game.apply :as apply]
             [collider.game.delta :as delta]
@@ -540,13 +540,13 @@
               (if (and e (hittable? e))
                 (assoc m eid (apply/entity t e eds))
                 m)))]
-    (reduce-kv f (i/int-map) (deltas/entities-of ds))))
+    (reduce-kv f (lm/long-map) (deltas/entities-of ds))))
 
 (defn- seen-by
   "Returns the entities as turn eid sees them: those of the turns
   before it moved, the others not yet."
   [es after ^long eid]
-  (reduce-kv assoc es (i/range after Long/MIN_VALUE (dec eid))))
+  (reduce-kv assoc es (lm/range after Long/MIN_VALUE (dec eid))))
 
 (defn- written [t m ds]
   (let [f (fn [m d]

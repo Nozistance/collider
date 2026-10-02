@@ -1,6 +1,6 @@
 (ns collider.game.systems.chunks
   "Chunk loading, streaming to players and unloading."
-  (:require [longmap.core :as i]
+  (:require [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
@@ -228,7 +228,7 @@
 (defn- purged [tickets]
   (reduce-kv (fn [m id n]
                (if (pos? (long n)) (assoc m id (dec (long n))) m))
-             (i/int-map) tickets))
+             (lm/long-map) tickets))
 
 (defn- dropped-ids [world held]
   (let [keep? (needed-ids world)]
@@ -241,7 +241,7 @@
   as the last tick left them."
   {:wake {:keys [:unknown [:config :unload-chunks?]]}}
   [world _]
-  (let [old (or (:unknown world) (i/int-map))
+  (let [old (or (:unknown world) (lm/long-map))
         held (purged old)]
     (deltas/of-vec
       (into (if (= held old) [] [[:purge-tickets held]])

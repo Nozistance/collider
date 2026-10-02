@@ -1,8 +1,9 @@
-{:paths   ["src" "libs/longmap/src" "target/classes"]
+{:paths   ["src" "target/classes"]
  :deps    {org.clojure/clojure      {:mvn/version "1.12.5"}
            org.clojure/data.json    {:mvn/version "2.5.2"}
            com.taoensso/nippy       {:mvn/version "3.8.1"}
-           metosin/malli            {:mvn/version "0.20.1"}}
+           metosin/malli            {:mvn/version "0.20.1"}
+           collider/long-map        {:local/root "libs/long-map"}}
  :aliases {:build {:ns-default  build
                    :extra-paths ["src"]
                    :extra-deps  {io.github.clojure/tools.build {:mvn/version "0.10.14"}}}

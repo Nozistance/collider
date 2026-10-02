@@ -1,7 +1,7 @@
 (ns collider.game.apply
   "The application of deltas to the world and to its levels."
   (:require [clojure.core.reducers :as r]
-            [longmap.core :as i]
+            [collider.data.long-map :as lm]
             [collider.game.areas :as areas]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
@@ -122,7 +122,7 @@
         lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
         hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
     (persistent!
-      (reduce step (transient (i/range entities lo hi))
+      (reduce step (transient (lm/range entities lo hi))
               (subvec v a b)))))
 
 (defn- leaves [^long n]
@@ -134,8 +134,8 @@
     (if (< n fold-leaf)
       (persistent! (reduce step (transient entities) by-eid))
       (let [v (vec by-eid)
-            leaf #(i/merge %1 (leaf-of step entities v %2))]
-        (r/fold 1 (r/monoid i/merge i/int-map) leaf (leaves n))))))
+            leaf #(lm/merge %1 (leaf-of step entities v %2))]
+        (r/fold 1 (r/monoid lm/merge lm/long-map) leaf (leaves n))))))
 
 (defn- deltas-of [ds]
   (if (instance? Deltas ds) ds (deltas/of-vec ds)))
@@ -150,7 +150,7 @@
       types
       (cond-> types
         a (untyped (:type a) eid)
-        b (update (:type b) (fnil conj (i/int-set)) eid)))))
+        b (update (:type b) (fnil conj (lm/long-set)) eid)))))
 
 (defn- retyped-index [types w w' eids]
   (let [e0 (:entities w) e1 (:entities w')]
@@ -225,7 +225,7 @@
 
 (defn- part [ws es]
   (assoc deltas/empty-deltas
-    :world (vec ws) :entities (into (i/int-map) es)))
+    :world (vec ws) :entities (into (lm/long-map) es)))
 
 (defn- rehomed [home ^Deltas d]
   (let [ws (group-by #(stray-dim home %) (deltas/world-of d))
