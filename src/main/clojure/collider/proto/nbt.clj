@@ -11,7 +11,9 @@
 
 (def ^:private tag-ids (zipmap tags (range)))
 
-(defn- tag-id ^long [kind]
+(defn tag-id
+  "Returns the wire id of tag kind."
+  ^long [kind]
   (long (tag-ids kind)))
 
 (defn- tag-kind [^long t]
