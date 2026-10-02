@@ -9,7 +9,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.bed :as bed]
-            [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.halves :as halves]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -20,7 +20,7 @@
 (defn- bed-in-range? [world eid head]
   (let [p (get-in world [:entities eid :pos])
         st (changes/block-at world head)
-        foot (mapv + head (connect/partner-offset st))]
+        foot (mapv + head (halves/partner-offset st))]
     (some (fn [[x y z]]
             (and (<= (Math/abs (- (v/x p) (+ (double x) 0.5))) 3.0)
                  (<= (Math/abs (- (v/y p) (double y))) 2.0)
@@ -30,7 +30,7 @@
 (defn- bed-blocked? [world head]
   (let [st (changes/block-at world head)
         above (mapv + head [0 1 0])
-        other (mapv + above (connect/partner-offset st))]
+        other (mapv + above (halves/partner-offset st))]
     (or (block/full-cube? (changes/block-at world above))
         (block/full-cube? (changes/block-at world other)))))
 
@@ -112,7 +112,7 @@
   BedBlock.useWithoutItem: both halves go, then the blast."
   [world eid head st rule]
   (let [[world' ds] (removed world head)
-        foot (mapv + head (connect/partner-offset st))
+        foot (mapv + head (halves/partner-offset st))
         both? (same-block? world' foot st)
         [world'' more] (if both? (removed world' foot) [world' nil])]
     (concat (say-deltas eid (:error-message rule))

@@ -5,7 +5,7 @@
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.halves :as halves]
             [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
@@ -27,7 +27,7 @@
 
 (defn- door-toggled [world pos state]
   (let [st' (flipped state)]
-    (if-let [[ppos pst] (connect/partner (:chunks world) pos state)]
+    (if-let [[ppos pst] (halves/partner (:chunks world) pos state)]
       [[pos st'] [ppos (flipped pst)]]
       [[pos st']])))
 

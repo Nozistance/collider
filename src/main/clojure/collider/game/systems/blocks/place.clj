@@ -11,7 +11,10 @@
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.halves :as halves]
             [collider.world.blocks.moss :as moss]
+            [collider.world.blocks.placement :as placement]
+            [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]))
@@ -131,7 +134,8 @@
 
 (defn- door-lower [world pos' state [cx _ cz]]
   (let [facing (block/facing-of state)
-        hinge (connect/door-hinge (:chunks world) pos' facing cx cz)]
+        chunks (:chunks world)
+        hinge (placement/door-hinge chunks pos' facing cx cz)]
     (restated state {:hinge hinge})))
 
 (defn- door-base-ok? [world pos' above]
@@ -147,7 +151,7 @@
     (second-cell-deltas world eid pos' lower above upper ok?)))
 
 (defn- bed-place-deltas [world eid pos' state item]
-  (let [head-pos (mapv + pos' (connect/partner-offset state))
+  (let [head-pos (mapv + pos' (halves/partner-offset state))
         head (restated state {:part :head})
         ok? #(replaceable? world head-pos item)]
     (second-cell-deltas world eid pos' state head-pos head ok?)))
@@ -197,7 +201,7 @@
 
 (defn- scaffold-in-deltas [world eid target]
   (let [base (block/state :scaffolding)
-        st (support/scaffold-state (:chunks world) target base)
+        st (scaffold/shaped (:chunks world) target base)
         logged (edit/waterlogged world target st)]
     (when-not (edit/obstructed? world target st)
       (changes/placed-deltas world eid target logged))))
@@ -226,7 +230,8 @@
   (let [chunks (:chunks world)
         tick (:tick world)
         st (reshaped world pos' state)]
-    (support/fitted chunks pos' st face yaw pitch sneak? tick same?)))
+    (placement/fitted chunks pos' st face yaw pitch sneak? tick
+                      same?)))
 
 (defn- container? [state]
   (and state
@@ -267,7 +272,7 @@
       (= :bed type) (bed-place-deltas world eid pos' state item)
       (= :mossy-carpet type)
       (carpet-place-deltas world eid pos' state)
-      (contains? connect/pair-types type)
+      (contains? halves/pair-types type)
       (pair-place-deltas world eid pos' state)
       (be/kind state) (block-entity-place-deltas world eid pos' state)
       :else (changes/placed-deltas world eid pos' state))))

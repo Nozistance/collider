@@ -86,14 +86,8 @@
       (when-let [cs (pitcher-grown chunks lp lst (inc (age lst)))]
         {:changes cs}))))
 
-(def ^:private fruits
-  {:pumpkin-stem
-   [:pumpkin :attached-pumpkin-stem "supports_pumpkin_stem_fruit"]
-   :melon-stem
-   [:melon :attached-melon-stem "supports_melon_stem_fruit"]})
-
 (defn- fruit-changes [chunks p st roll]
-  (let [[fruit attached tag] (fruits (block/block-of st))
+  (let [[fruit attached tag] (support/stem-fruits (block/block-of st))
         dir (dir/horizontal (pick roll :dir 4))
         beside (mapv + p (dir/horizontal-offset dir))
         soil (chunk/at chunks (dir/down beside))]
@@ -106,36 +100,6 @@
     (if (< (age st) 7)
       [[p (older st) nil 2]]
       (fruit-changes chunks p st roll))))
-
-(def ^:private stems
-  (into {} (for [[stem [fruit attached _]] fruits]
-             [attached [fruit stem]])))
-
-(defn- fruitless? [chunks p ^long st]
-  (let [[fruit _] (stems (block/block-of st))
-        off (dir/horizontal-offset (block/facing-of st))
-        beside (mapv + p off)]
-    (not= fruit (block/block-of (chunk/at chunks beside)))))
-
-(defn- detached ^long [^long st]
-  (block/state (second (stems (block/block-of st))) {:age :7}))
-
-(defn- attached-due [chunks p ctx]
-  (let [st (chunk/at chunks p)]
-    (cond
-      (and (= (:side ctx) (block/facing-of st))
-           (fruitless? chunks p st))
-      [[p (detached st)]]
-      (not (support/supported? chunks p st))
-      [(support/gone p st)])))
-
-(def attached-stem-rule
-  {:name    :attached-stem
-   :match?  (fn [_chunks st _p]
-              (= :attached-stem (block/type-of st)))
-   :wake    (fn [_chunks _dim _tick _p _old side]
-              (when side :neighbor))
-   :reshape attached-due})
 
 (defn cane-tick [chunks p st _roll _time _ctx]
   (let [h (height-below chunks p (block/block-of st) 3)]
