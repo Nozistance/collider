@@ -2,7 +2,7 @@
   "Players: joining and quitting, their hands, moves and the events
   they send."
   (:require [collider.data :as data]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.game.book :as book]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]

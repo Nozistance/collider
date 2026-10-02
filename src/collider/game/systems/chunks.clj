@@ -1,6 +1,6 @@
 (ns collider.game.systems.chunks
   "Chunk loading, streaming to players and unloading."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]

@@ -1,7 +1,7 @@
 (ns collider.game.systems.players
   "Player list, entity tracking and movement updates."
   (:require [collider.game.deltas :as deltas]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.game.entity :as entity]
             [collider.game.effect :as effect]
             [collider.game.mode :as game-mode]

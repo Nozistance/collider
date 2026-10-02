@@ -3,7 +3,7 @@
   EntitySectionStorage.getEntities: the sections of each section x by
   SectionPos.asLong, and the entities of a section as they came to
   it."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)

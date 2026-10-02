@@ -10,7 +10,7 @@
   (b/delete {:path jar-file}))
 
 (defn javac [_]
-  (b/javac {:src-dirs   ["src"]
+  (b/javac {:src-dirs   ["src" "libs/longmap/src"]
             :class-dir  class-dir
             :basis      basis
             :javac-opts ["-proc:none" "--release" "25"]}))

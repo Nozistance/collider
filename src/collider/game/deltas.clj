@@ -2,10 +2,10 @@
   "Deltas of one tick and the folds that make them."
   (:refer-clojure :exclude [merge])
   (:require [clojure.core.reducers :as r]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.game.delta :as delta]
             [collider.game.deltas.record :refer [->Deltas]])
-  (:import (clojure.data.int_map PersistentIntMap)
+  (:import (longmap LongMap)
            (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
@@ -115,13 +115,13 @@
 (def ^:private ^:const select-leaf 4096)
 
 (defn keyed
-  "Returns map m as an int-map, which runs by key."
+  "Returns map m as a long map, which runs by key."
   [m]
-  (if (instance? PersistentIntMap m) m (into (i/int-map) m)))
+  (if (instance? LongMap m) m (into (i/int-map) m)))
 
 (defn- halves [m]
-  (let [lo (long (key (first m)))
-        hi (long (key (first (rseq m))))
+  (let [lo (i/lfirst m)
+        hi (i/llast m)
         mid (+ lo (quot (- hi lo) 2))]
     [(i/range m lo mid) (i/range m (inc mid) hi)]))
 
@@ -135,10 +135,10 @@
 
 (defn select
   "Returns (into [] xf m) for a transducer xf that keeps no state.
-  The runs of more than leaf entries of an int-map go in parallel."
+  The runs of more than leaf entries of a long map go in parallel."
   ([xf m] (select xf m select-leaf))
   ([xf m leaf]
-   (if (instance? PersistentIntMap m)
+   (if (instance? LongMap m)
      (invoke #(folded (xf conj) m leaf))
      (into [] xf m))))
 

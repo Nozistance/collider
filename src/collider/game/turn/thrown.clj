@@ -1,7 +1,7 @@
 (ns collider.game.turn.thrown
   "The turns of thrown snowballs, eggs, pearls, potions and bottles
   o' enchanting, and of lingering clouds."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.data :as data]
             [collider.game.apply :as apply]
             [collider.game.delta :as delta]

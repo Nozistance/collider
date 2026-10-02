@@ -4,7 +4,7 @@
   each chunk plans its spawns from the start of the tick on its own;
   the mob caps and the mobs spawned before then decide the plans in
   the shuffled order of the chunks."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.deltas :as deltas]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]

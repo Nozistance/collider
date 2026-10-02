@@ -1,7 +1,6 @@
 (ns collider.game.delta
   "The delta tags, what each means, and the effect messages."
-  (:require [clojure.data.int-map :as i]
-            [clojure.set :as set]
+  (:require [longmap.core :as i]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
@@ -50,7 +49,7 @@
 (defn- merge-diff [cur add drop]
   (let [s (or cur (i/int-set))
         s (if (seq add) (into s add) s)]
-    (if (seq drop) (set/difference s (set drop)) s)))
+    (if (seq drop) (i/difference s (i/int-set drop)) s)))
 
 (defn- new-eids [w w' _]
   (range (long (:next-eid w 1000000)) (long (:next-eid w' 1000000))))

@@ -3,7 +3,7 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
             [collider.game.entity :as entity]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.attribute :as attribute]

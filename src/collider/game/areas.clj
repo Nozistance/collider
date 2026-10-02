@@ -1,6 +1,6 @@
 (ns collider.game.areas
   "The chunk areas the players of a level keep loaded and ticking."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.mode :as game-mode]
             [collider.game.level :as level]
             [collider.world.chunk :as chunk]))

@@ -1,6 +1,6 @@
 (ns collider.game.schedule
   "Lists of scheduled block ticks."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)

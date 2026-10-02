@@ -1,6 +1,6 @@
 (ns collider.game.systems.block.updates
   "Scheduled block ticks and their effects."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.delta :as delta]

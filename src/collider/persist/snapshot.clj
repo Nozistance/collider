@@ -1,7 +1,7 @@
 (ns collider.persist.snapshot
   "Saving and loading the world."
   (:refer-clojure :exclude [load])
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.pprint :as pp]
@@ -21,6 +21,7 @@
             [taoensso.nippy :as nippy]
             [taoensso.nippy.compression :refer [lz4-compressor]])
   (:import (collider.world Chunk)
+           (longmap LongMap LongSet)
            (collider.persist.snapshot.store FileStore)
            (java.io DataInput DataOutput File)
            (java.nio.channels ClosedChannelException)
@@ -34,6 +35,19 @@
 
 (nippy/extend-thaw ::chunk [^DataInput in]
   (chunk/load-chunk in))
+
+(nippy/extend-freeze LongMap ::longmap [m out]
+  (nippy/freeze-to-out! out (i/keys-array m))
+  (nippy/freeze-to-out! out (object-array (vals m))))
+
+(nippy/extend-thaw ::longmap [in]
+  (i/from-sorted (nippy/thaw-from-in! in) (nippy/thaw-from-in! in)))
+
+(nippy/extend-freeze LongSet ::longset [s out]
+  (nippy/freeze-to-out! out (i/keys-array s)))
+
+(nippy/extend-thaw ::longset [in]
+  (i/from-sorted (nippy/thaw-from-in! in)))
 
 (def ^:private freeze-opts {:compressor lz4-compressor})
 

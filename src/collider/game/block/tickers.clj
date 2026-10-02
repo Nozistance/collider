@@ -2,7 +2,7 @@
   "The block entities that tick, in the order they joined the level,
   as Level.blockEntityTickers kept by LevelChunk.tickersInLevel. A
   ticker that stays keeps its turn, a new one goes last."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.world.block :as block])
   (:import (collider.game.block HashOrder)))
 

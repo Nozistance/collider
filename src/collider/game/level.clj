@@ -2,7 +2,7 @@
   "A level of the world: its view, its entities and its writes."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.game.clock :as clock]
             [collider.game.entity :as entity]
             [collider.game.orb :as orb]

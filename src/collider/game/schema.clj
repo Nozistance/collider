@@ -1,6 +1,6 @@
 (ns collider.game.schema
   "Schema of the world map and of the player profile."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
             [collider.game.entity :as entity]

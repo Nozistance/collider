@@ -1,7 +1,7 @@
 (ns collider.game.apply
   "The application of deltas to the world and to its levels."
   (:require [clojure.core.reducers :as r]
-            [clojure.data.int-map :as i]
+            [longmap.core :as i]
             [collider.game.areas :as areas]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]

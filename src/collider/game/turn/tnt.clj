@@ -1,7 +1,7 @@
 (ns collider.game.turn.tnt
   "The turn of a primed TNT: it moves, and when its fuse runs out it
   blasts in the same turn, as PrimedTnt.tick:100-121."
-  (:require [clojure.data.int-map :as i]
+  (:require [longmap.core :as i]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.blast :as blast]
