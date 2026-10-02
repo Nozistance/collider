@@ -28,6 +28,7 @@
             [collider.game.systems.random.tick :as random-tick]
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
+            [collider.game.systems.tracker :as tracker]
             [collider.game.systems.weather :as weather-system]
             [collider.game.systems.damage :as damage]))
 
@@ -67,12 +68,12 @@
               #'natural/natural-spawns
               #'random-tick/random-ticks
               #'chunks/chunk-views]
-             [#'block-updates/block-flush #'players/players]
+             [#'block-updates/block-flush #'tracker/tracker]
              [#'block-events/block-events]
              entity-systems
              [#'block-entities/block-entities]
              [#'player-tick/player-tick]
-             [#'players/late-tracking]
+             [#'tracker/late-tracking]
              [#'chunks/chunk-streaming]
              [#'detector/observe]])
 

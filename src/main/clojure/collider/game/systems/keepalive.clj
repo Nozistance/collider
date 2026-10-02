@@ -1,24 +1,22 @@
 (ns collider.game.systems.keepalive
   "Keepalive pings and timeouts."
   (:require [collider.game.out :as out]
-            [collider.game.systems.sleep :as sleep]))
+            [collider.game.systems.players :as players]))
 
 (set! *warn-on-reflection* true)
 
-(def interval-ticks 300)
+(def interval-ticks
+  "The ticks between two pings of a player."
+  300)
 
 (defn player-deltas
-  "Returns the deltas that ping player p, an entry, or drop it when
-  it left the last ping unanswered."
+  "Returns the deltas that ping player eid, or drop it when it left
+  the last ping unanswered."
   [world [eid e]]
   (let [t (long (:tick world))]
     (when (>= (- t (long (:keepalive-at e t))) interval-ticks)
       (if (:keepalive-pending? e)
-        (concat
-          (sleep/vacated-deltas world eid e)
-          [(out/to eid
-                   (out/disconnect {:translate "disconnect.timeout"}))
-           [:remove-entity eid]
-           (out/to eid (out/close))])
+        (players/disconnect-deltas
+          world eid e {:translate "disconnect.timeout"})
         (let [m {:keepalive-at t :keepalive-pending? true}]
           [[:merge-entity eid m] (out/to eid (out/keepalive t))])))))
