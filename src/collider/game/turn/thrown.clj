@@ -364,8 +364,8 @@
     (when (and o (pos? (double (:health o 0.0))) (not (:sleeping o)))
       (concat [[:teleport oid at]
                (out/to oid (teleport-packet at o))]
-              (when-not (damage/creative-proof? o)
-                [[:damage oid pearl-damage {:type :ender-pearl}]])
+              (damage/damage-deltas world oid o pearl-damage
+                                    {:type :ender-pearl})
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))
 
 (defn- dowse-cells [hit]
@@ -451,8 +451,8 @@
     (let [o (get-in world [:entities oid])
           n (if (and (= :snowball (:type e)) (= :blaze (:type o)))
               3.0 0.0)
-          ds [[:damage oid n (thrown-source world eid e d)]]]
-      (when-not (damage/creative-proof? o)
+          src (thrown-source world eid e d)]
+      (when-let [ds (damage/damage-deltas world oid o n src)]
         (into ds (damage/report-deltas
                    world oid (damage/hurt-now world oid o ds)))))))
 

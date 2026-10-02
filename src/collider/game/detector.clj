@@ -48,12 +48,9 @@
       (not (and (zero? dx) (zero? dy) (zero? dz)))
       (conj (distance-stat m dx dy dz)))))
 
-(defn- may-fly? [_e]
-  true)
-
 (defn- fall-stat [e [k n :as pair]]
   (if (= :landed k)
-    (when (and (not (may-fly? e)) (>= (double n) 2.0))
+    (when (and (not (game-mode/may-fly? e)) (>= (double n) 2.0))
       [:fall-one-cm (Math/round (* (double n) 100.0))])
     pair))
 

@@ -16,6 +16,7 @@
             [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.env.difficulty :as difficulty]
             [collider.world.env.weather :as weather]
             [collider.world.phys :as phys]
             [collider.game.block.menu :as menu]
@@ -60,10 +61,78 @@
              (random/of-longs t eid (hash :hurt2)))]
     (+ base (* voice-pitch-spread r))))
 
-(defn creative-proof?
-  "Returns true when nothing can hurt the entity."
-  [e]
-  (= :player (:type e)))
+(def ^:private ^:table bypassing
+  (delay (set (data/tag-values "damage_type"
+                               "bypasses_invulnerability"))))
+
+(def ^:private ^:table rule-of
+  (delay
+    (into {}
+          (mapcat (fn [[tag rule]]
+                    (map (fn [t] [t rule])
+                         (data/tag-values "damage_type" tag))))
+          [["is_freezing" :freeze-damage]
+           ["is_fire" :fire-damage]
+           ["is_fall" :fall-damage]
+           ["is_drowning" :drowning-damage]])))
+
+(def ^:private ^:table scaling
+  (delay (into {}
+               (map (fn [[id m]] [(data/kebab id) (get m "scaling")]))
+               (data/pack "damage_type"))))
+
+(defn- cause-of [world src]
+  (when-let [c (:cause src)] (get-in world [:entities c])))
+
+(defn- spared?
+  "Returns true when player e takes no damage from src.
+  A game rule, the pvp rule or the mode of e can spare it."
+  [world e src]
+  (let [t (:type src) rule (get @rule-of t)]
+    (or (and rule (not (get-in world [:rules rule] true)))
+        (and (= :player (:type (cause-of world src)))
+             (not (get-in world [:rules :pvp] true)))
+        (and (game-mode/invulnerable? e)
+             (not (contains? @bypassing t))))))
+
+(defn- scales?
+  "Returns true when the damage of src scales with the difficulty."
+  [world src]
+  (case (get @scaling (:type src))
+    "always" true
+    "when_caused_by_living_non_player"
+    (mobs/mob-type? (:type (cause-of world src)))
+    false))
+
+(defn- by-difficulty
+  "Returns damage n as the difficulty of world scales it."
+  ^double [world ^double n]
+  (let [n (float n)]
+    (case (long (difficulty/id world))
+      0 0.0
+      1 (double (min (+ (/ n (float 2.0)) (float 1.0)) n))
+      3 (double (/ (* n (float 3.0)) (float 2.0)))
+      (double n))))
+
+(defn taken
+  "Returns the damage entity e takes of amount from src, or nil.
+  A player takes no damage in a mode that keeps it from harm or when a
+  rule spares it. The difficulty scales the damage to a player. Any
+  other entity takes amount."
+  [world e amount src]
+  (if (= :player (:type e))
+    (when-not (spared? world e src)
+      (let [n (double amount)
+            n (if (scales? world src) (by-difficulty world n) n)]
+        (when-not (zero? n) n)))
+    amount))
+
+(defn damage-deltas
+  "Returns the deltas of entity eid taking amount from src, none when
+  it takes nothing."
+  [world eid e amount src]
+  (when-let [n (taken world e amount src)]
+    [[:damage eid n src]]))
 
 (def ^:private ^:const fire-seconds 8)
 
@@ -267,22 +336,35 @@
         rain? #(weather/raining-at? world (:chunks world) %)]
     (or (rain? [x (long (Math/floor (v/y p))) z]) (rain? [x top z]))))
 
-(defn- fire-touched ^long [^long f]
-  (let [f (if (neg? f) (inc f) (capped (inc f)))]
+(defn- capper
+  "Returns the cap on the fire of player e.
+  The cap is one tick when the mode of e keeps it from harm."
+  [e]
+  (if (game-mode/invulnerable? e) capped identity))
+
+(defn- added-ticks
+  "Returns the one or two ticks that fire adds to player eid."
+  ^long [world eid]
+  (let [r (random/of-longs (:tick world) eid (hash :fire-ticks))]
+    (inc (long (* 2.0 r)))))
+
+(defn- fire-touched ^long [cap ^long f ^long added]
+  (let [f (if (neg? f) (inc f) (long (cap (+ f added))))]
     (if (neg? f)
       f
-      (capped (max f (* ticks-per-second fire-seconds))))))
+      (long (cap (max f (* ticks-per-second fire-seconds)))))))
 
-(defn- lit-by ^long [^long f c]
-  (let [f (if (:fire? c) (fire-touched f) f)]
+(defn- lit-by ^long [cap ^long f c ^long added]
+  (let [f (if (:fire? c) (fire-touched cap f added) f)]
     (if (:lava? c)
-      (capped (max f (* ticks-per-second lava-seconds)))
+      (long (cap (max f (* ticks-per-second lava-seconds))))
       f)))
 
-(defn- player-fire [world e c]
-  (let [f0 (long (or (:fire e) 0))
-        f1 (if (pos? f0) (capped (dec f0)) f0)
-        lit (lit-by f1 c)
+(defn- player-fire [world eid e c]
+  (let [cap (capper e)
+        f0 (long (or (:fire e) 0))
+        f1 (if (pos? f0) (long (cap (dec f0))) f0)
+        lit (lit-by cap f1 c (added-ticks world eid))
         wet? (or (:water? c) (seq (:snow c)) (rained-on? world e))
         f (if wet? (min 0 lit) lit)]
     [f0 f1 lit (if (and (<= f 0) (<= f f1)) fire-rest f)]))
@@ -302,10 +384,19 @@
     (out/all (out/sound :generic/extinguish-fire (:pos e) 0.7
                         (+ 1.6 (* 0.4 r)) :players))))
 
+(defn- contact-hurts
+  "Returns the deltas of the hurts from the fire and the lava that
+  player eid touches."
+  [world eid e c]
+  (concat (when (:fire? c) (damage-deltas world eid e 1.0 in-fire))
+          (when (:lava? c)
+            (damage-deltas world eid e lava-damage in-lava))))
+
 (defn- player-fire-deltas [world eid e]
   (let [c (contact world e)
-        [f0 f1 lit f] (player-fire world e c)]
-    (concat (burning-flag eid e f1 false)
+        [f0 f1 lit f] (player-fire world eid e c)]
+    (concat (contact-hurts world eid e c)
+            (burning-flag eid e f1 false)
             (when (not= f f0) [[:merge-entity eid {:fire f}]])
             (when (pos? (long lit))
               (delta/authored (melt-deltas world (:snow c))
@@ -318,16 +409,15 @@
   wet as wet? tells or as it is."
   ([world eid e] (fire-deltas world eid e (:wet? e)))
   ([world eid e wet?]
-   (let [fire (long (or (:fire e) 0))]
-     (cond
-       (creative-proof? e) (player-fire-deltas world eid e)
-       :else
-       (let [[half height :as box] (box-of e)]
-         (when-not (and (zero? fire) (not (:burning? e))
-                        (phys/cool? (:chunks world) @burn-bits (:pos e)
-                                    half height))
-           (lit-deltas eid e fire (boolean wet?)
-                       (probe world e box))))))))
+   (if (= :player (:type e))
+     (player-fire-deltas world eid e)
+     (let [fire (long (or (:fire e) 0))
+           [half height :as box] (box-of e)]
+       (when-not (and (zero? fire) (not (:burning? e))
+                      (phys/cool? (:chunks world) @burn-bits (:pos e)
+                                  half height))
+         (lit-deltas eid e fire (boolean wet?)
+                     (probe world e box)))))))
 
 (def ^:private ^:const burn-volume 0.4)
 
@@ -427,7 +517,7 @@
   (when (and (pos? (double (:health e)))
              (< (v/y (:pos e)) (chunk/void-y world))
              (not (loading? world e)))
-    [[:damage eid void-damage out-of-world]]))
+    (damage-deltas world eid e void-damage out-of-world)))
 
 (def ^:private ^:table panic-causes
   (delay (set (data/tag-values "damage_type" "panic_causes"))))
@@ -680,11 +770,21 @@
   [world eid e ds]
   (reduce (fn [e' d] (own-apply world eid e' d)) e ds))
 
+(defn- player-burn-deltas
+  "Returns the deltas of the hurt from the fire player eid burns in.
+  Outside lava it takes one hurt every second."
+  [world eid e ^long fire]
+  (when (and (zero? (rem fire fire-damage-period))
+             (not (any-bit? (probe world e) lava-bit)))
+    (damage-deltas world eid e 1.0 on-fire)))
+
 (defn- burn-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))]
-    (when (and (pos? fire) (not (creative-proof? e)))
-      (burn-tick-deltas eid fire (boolean (:wet? e))
-                        (any-bit? (probe world e) lava-bit)))))
+    (when (pos? fire)
+      (if (= :player (:type e))
+        (player-burn-deltas world eid e fire)
+        (burn-tick-deltas eid fire (boolean (:wet? e))
+                          (any-bit? (probe world e) lava-bit))))))
 
 (defn- burnt-deltas
   "Returns the deltas of the fire living entity eid burns in
@@ -720,7 +820,7 @@
     (mob-deltas world eid e)))
 
 (defn- stirred? [world e]
-  (if (creative-proof? e)
+  (if (= :player (:type e))
     (loaded-near? world e)
     (pos? (probe world e))))
 

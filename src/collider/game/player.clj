@@ -576,9 +576,10 @@
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
 (defn infinite-materials?
-  "Returns true when the player builds without spending items."
+  "Returns true when the player builds without spending items.
+  Its mode decides it."
   [player]
-  (game-mode/creative? player))
+  (game-mode/instabuild? player))
 
 (defn permission-level
   "Returns the permission level of player e.

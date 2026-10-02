@@ -123,12 +123,13 @@
 (def ^:private wither {:type :wither})
 
 (defn- hurt [acc ^double amount src]
-  (let [e (:e acc)]
-    (if (or (damage/creative-proof? e) (not (pos? (health acc))))
+  (let [e (:e acc)
+        n (damage/taken (:world acc) e amount src)]
+    (if (or (nil? n) (not (pos? (health acc))))
       acc
       (-> acc
-          (assoc :e (entity/hurt e amount) :hurt? true)
-          (update :ds conj [:damage (:eid acc) amount src])))))
+          (assoc :e (entity/hurt e n) :hurt? true)
+          (update :ds conj [:damage (:eid acc) n src])))))
 
 (defn- regenerated [acc]
   (let [top (attribute/value (:e acc) (:fx acc) :max-health)]
@@ -224,7 +225,9 @@
   "Returns the deltas of one tick of the effects of entity eid."
   [world eid e]
   (when (or (seq (:effects e)) (:dirty-attributes e))
-    (deltas (step (synced (account eid e) e) (lived world e)) e)))
+    (deltas (step (assoc (synced (account eid e) e) :world world)
+                  (lived world e))
+            e)))
 
 (defn- due? [e]
   (and (or (seq (:effects e)) (:dirty-attributes e)) (player? e)))

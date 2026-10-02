@@ -12,6 +12,7 @@
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.damage :as damage]
             [collider.game.systems.hanging :as hanging-system]
             [collider.game.systems.items :as items]
             [collider.random :as random]
@@ -69,10 +70,18 @@
     (explosion/exposed exposure center (:pos e) half height
                        (phys/context e))))
 
+(defn- shoved?
+  "Returns true when the blast moves player e.
+  A flying player in creative stays where it is."
+  [e]
+  (not (and (game-mode/creative? e) (:flying e))))
+
 (defn- pushed [b id e d12]
   (let [[kb dmg] (impulse b e (:pos e) d12 (density b e))]
     (cond
-      (= :player (:type e)) {:motion (when-not (:flying e) kb)}
+      (= :player (:type e))
+      {:ds (damage/damage-deltas (:world b) id e dmg (:src b))
+       :motion (when (shoved? e) kb)}
       (item-dies? e dmg) {:ds [[:remove-entity id]] :gone? true}
       :else {:ds (cond-> []
                    (hurtable? e) (conj [:damage id dmg (:src b)])

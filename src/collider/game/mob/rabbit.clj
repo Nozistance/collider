@@ -261,9 +261,13 @@
     :tick (fn [_ _ _ e _ _]
             [(speed-set e (animal/goal-speed e :panic)) nil])))
 
-(defn- enemy-player? [world o]
+(defn- enemy-player?
+  "Returns true when the rabbit flees player o.
+  It flees no player in creative or spectator and no player that its
+  mode keeps from harm. At peace it flees no player."
+  [world o]
   (and (= :player (:type o)) (game-mode/seen? o)
-       (not (game-mode/may-fly? o))
+       (not (game-mode/creative? o)) (not (game-mode/invulnerable? o))
        (pos? (difficulty/id world))))
 
 (defn- wolf? [_ o] (= :wolf (:type o)))

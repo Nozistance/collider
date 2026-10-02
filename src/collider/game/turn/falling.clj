@@ -205,16 +205,17 @@
   "Returns true when o is a living body alive in box, as
   EntitySelector.LIVING_ENTITY_STILL_ALIVE picks it."
   [box [_ o]]
-  (and (mobs/mob-type? (:type o)) (pos? (double (:health o 0.0)))
+  (and (or (= :player (:type o)) (mobs/mob-type? (:type o)))
+       (pos? (double (:health o 0.0)))
        (meet? box (box-of o))))
 
 (defn- hurt-deltas [world eid e ^double n]
   (let [src (source eid e)
         box (box-of e)
         hit (fn [[oid o]]
-              (let [d [:damage oid n src]
-                    h (damage/hurt-now world oid o [d])]
-                (into [d] (damage/report-deltas world oid h))))]
+              (when-let [ds (damage/damage-deltas world oid o n src)]
+                (let [h (damage/hurt-now world oid o ds)]
+                  (into ds (damage/report-deltas world oid h)))))]
     (into [] (comp (filter #(victim? box %)) (mapcat hit))
           (:entities world))))
 

@@ -93,10 +93,16 @@
       empty? []
       :else (unpot-deltas world eid pos n))))
 
-(defn- eats? [world eid]
+(def ^:private ^:const full-food 20)
+
+(defn- eats?
+  "Returns true when player eid eats.
+  It eats when its mode keeps it from harm or when it is hungry."
+  [world eid]
   (let [e (get-in world [:entities eid])]
     (and (main-hand? world eid)
-         (:invulnerable? (game-mode/abilities e)))))
+         (or (game-mode/invulnerable? e)
+             (< (long (:food e full-food)) full-food)))))
 
 (defn- bitten ^long [^long st]
   (let [bites (block/prop-long st :bites)]

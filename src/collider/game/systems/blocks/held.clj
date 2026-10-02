@@ -3,6 +3,7 @@
   spyglass and goat horn."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
@@ -34,8 +35,11 @@
        (= (:components a) (:components b))
        (= (:removed a) (:removed b))))
 
-(defn- swappable? [e held worn]
-  (and (or (player/infinite-materials? e) (not (binding? worn)))
+(defn- swappable?
+  "Returns true when player e swaps held for worn.
+  A player in creative also takes off a worn item that binds."
+  [e held worn]
+  (and (or (game-mode/creative? e) (not (binding? worn)))
        (not (same-stack? held worn))))
 
 (defn- equip-sound [e item]
@@ -43,12 +47,12 @@
                       :players)))
 
 (defn- hand-after [world eid e hand held worn]
-  (let [creative? (player/infinite-materials? e)
-        slot (player/hand-slot e hand)]
+  (let [slot (player/hand-slot e hand)]
     (if (<= (stack/size held) 1)
-      [[:set-slot eid slot (cond worn worn creative? held)]]
+      [[:set-slot eid slot
+        (cond worn worn (game-mode/creative? e) held)]]
       (concat (when worn (items/kept world eid e worn))
-              (when-not creative?
+              (when-not (player/infinite-materials? e)
                 [[:set-slot eid slot (update held :count dec)]])))))
 
 (defn equip-deltas

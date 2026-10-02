@@ -109,9 +109,9 @@
 (defn- hurt-of
   "Returns target eid of world after damage d from src."
   [world eid e d src]
-  (if (damage/creative-proof? e)
-    e
-    (damage/hurt-now world eid e [[:damage eid d src]])))
+  (if-let [ds (damage/damage-deltas world eid e d src)]
+    (damage/hurt-now world eid e ds)
+    e))
 
 (defn- extra-knock
   "Returns the deltas of Player.causeExtraKnockback:1116 on living
