@@ -5,19 +5,11 @@
   (:require [clojure.string :as str]
             [collider.proto.buf :as buf])
   (:import (clojure.lang BigInt)
+           (collider HashMapOrder)
            (collider.proto Buf)
            (java.util UUID)))
 
 (set! *warn-on-reflection* true)
-
-(defn- bucket ^long [^String s ^long cap]
-  (let [h (.hashCode s)]
-    (bit-and (bit-xor h (unsigned-bit-shift-right h 16)) (dec cap))))
-
-(defn- hash-order [entries cap]
-  (->> (map-indexed vector entries)
-       (sort-by (fn [[i [_ s]]] [(bucket s cap) i]))
-       (mapv second)))
 
 (def ^:private component-keys
   [[:text "text"] [:translate "translate"] [:fallback "fallback"]
@@ -32,11 +24,11 @@
    [:command "command"] [:page "page"] [:value "value"]
    [:id "id"] [:count "count"] [:uuid "uuid"] [:name "name"]])
 
-(def ^:private small-order (hash-order component-keys 16))
+(defn- hash-ordered [fields]
+  (let [hs (int-array (map (fn [[_ ^String nm]] (.hashCode nm)) fields))]
+    (mapv #(nth fields %) (HashMapOrder/of hs))))
 
-(def ^:private large-order (hash-order component-keys 32))
-
-(def ^:private event-order (hash-order event-keys 16))
+(def ^:private ordered (memoize hash-ordered))
 
 (defn plain?
   "Returns true when component c is bare text with no style
@@ -93,22 +85,24 @@
                        (str/replace (name v) \- \_))
     v))
 
-(defn- write-fields [^Buf b m order]
+(defn- written? [m [k]]
+  (let [v (get m k)]
+    (and (some? v) (not (and (vector? v) (empty? v))))))
+
+(defn- write-fields [^Buf b m fields]
   (run! (fn [[k nm]]
           (let [v (get m k)]
-            (when (and (some? v) (not (and (vector? v) (empty? v))))
-              (if (vector? v)
-                (do (buf/write-byte! b 9) (buf/write-utf! b nm)
-                    (write-list b v))
-                (write-entry b nm (wire-value k v))))))
-        order)
+            (if (vector? v)
+              (do (buf/write-byte! b 9) (buf/write-utf! b nm)
+                  (write-list b v))
+              (write-entry b nm (wire-value k v)))))
+        (ordered (filterv #(written? m %) fields)))
   (buf/write-byte! b 0))
 
 (defn- write-map [^Buf b m]
   (cond (plain? m) (buf/write-utf! b (:text m))
-        (contains? m :action) (write-fields b m event-order)
-        (> (count m) 12) (write-fields b m large-order)
-        :else (write-fields b m small-order)))
+        (contains? m :action) (write-fields b m event-keys)
+        :else (write-fields b m component-keys)))
 
 (defn- write-payload [^Buf b v]
   (case (tag v)

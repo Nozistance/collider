@@ -2,8 +2,8 @@
   "Decoders of tags in commands."
   (:require [clojure.string :as str]
             [collider.data :as data])
-  (:import (clojure.lang IPersistentMap IPersistentVector)
-           (java.util HashMap)))
+  (:import (clojure.lang IPersistentMap IPersistentVector MapEntry)
+           (collider HashMapOrder)))
 
 (set! *warn-on-reflection* true)
 
@@ -471,9 +471,10 @@
           :else (errors [kr vr]))))
 
 (defn- hash-order [m]
-  (let [hm (HashMap.)]
-    (doseq [[k v] m] (HashMap/.put hm (key-str k) v))
-    (seq hm)))
+  (let [vs (reduce (fn [acc [k v]] (assoc acc (key-str k) v)) {} m)
+        es (mapv #(MapEntry/create % (vs %)) (distinct (map (comp key-str key) m)))
+        hs (int-array (map #(.hashCode ^String (key %)) es))]
+    (map #(nth es %) (HashMapOrder/of hs))))
 
 (defn- distinct-keys? [rs]
   (let [ks (map #(first (second %)) rs)]

@@ -6,8 +6,6 @@ package collider.world;
 /// the speleothems on the position of the block.
 public final class Collision {
 
-    private Collision() {}
-
     /// The box of a full cube.
     public static final double[] CUBE = {0, 0, 0, 1, 1, 1};
 

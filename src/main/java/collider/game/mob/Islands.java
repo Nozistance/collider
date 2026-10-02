@@ -9,8 +9,6 @@ import java.util.concurrent.ForkJoinTask;
 /// touch, directly or through a chain of touching cells.
 public final class Islands {
 
-    private Islands() {}
-
     /// Returns the number of threads that the folds started from the
     /// calling thread share, where a thread outside any pool folds in
     /// `pool`.

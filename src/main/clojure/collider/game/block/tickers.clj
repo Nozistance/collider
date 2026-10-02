@@ -4,7 +4,7 @@
   ticker that stays keeps its turn, a new one goes last."
   (:require [collider.data.long-map :as lm]
             [collider.world.block :as block])
-  (:import (collider.game.block HashOrder)))
+  (:import (collider HashMapOrder)))
 
 (set! *warn-on-reflection* true)
 
@@ -45,10 +45,12 @@
   [tk pos on?]
   (if on? (added tk pos) (without tk pos)))
 
+(defn- pos-hash [[x y z]]
+  (unchecked-int (+ (* (+ (long y) (* (long z) 31)) 31) (long x))))
+
 (defn- hash-order [ps]
-  (let [ps (vec ps)
-        xyz (int-array (into [] cat ps))]
-    (mapv #(nth ps %) (HashOrder/of xyz))))
+  (let [ps (vec ps)]
+    (mapv #(nth ps %) (HashMapOrder/copied (int-array (map pos-hash ps))))))
 
 (defn loaded
   "Returns tickers tk with the block entities bes of a loaded chunk,
