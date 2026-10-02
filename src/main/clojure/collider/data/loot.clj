@@ -94,8 +94,7 @@
       (into [] (mapcat #(if (= % :skip) [] %)) rs))))
 
 (defn- under
-  "Returns the name and the table of every table of tables whose id
-  starts with dir, by name."
+  "Returns the tables in folder dir by their name in the folder."
   [tables dir]
   (let [prefix (str "minecraft:" dir "/")]
     (into (sorted-map)
@@ -105,10 +104,9 @@
           tables)))
 
 (defn block-drops
-  "Returns what each block drops, by block, from the loot tables of a
-  pack by id: the items with their counts and conditions, or :complex
-  for a table these words cannot tell. Blocks that drop nothing are
-  left out."
+  "Returns what each block drops, by block.
+  A table that the model cannot hold is :complex. Blocks that drop
+  nothing are left out."
   [tables]
   (pack/plain
    (into (sorted-map)
@@ -120,7 +118,10 @@
 (defn- loot-id [s]
   (pack/kw (str/replace (str s) #"^#" "")))
 
-(declare shear-name)
+(defn- shear-name [n]
+  (if-let [i (str/index-of n "/")]
+    (str (subs n 0 i) "-shear" (subs n i))
+    (str n "-shear")))
 
 (defn- table-ref [v]
   (let [s (str/replace (str v) #"^minecraft:" "")]
@@ -160,11 +161,6 @@
     (map? v) (loot-map v)
     (sequential? v) (mapv loot-node v)
     :else (loot-scalar v)))
-
-(defn- shear-name [n]
-  (if-let [i (str/index-of n "/")]
-    (str (subs n 0 i) "-shear" (subs n i))
-    (str n "-shear")))
 
 (defn- gift? [[_ json]] (= "minecraft:gift" (get json "type")))
 

@@ -1,6 +1,5 @@
 (ns collider.data.tags
-  "Tags built from the tag files of a pack, as the vanilla loader
-  builds them."
+  "Tags built from the tag files of a pack."
   (:require [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
@@ -22,9 +21,9 @@
 
 (defn- visit-refs [files acc id path]
   (let [path (conj path id)
-        [o d] (reduce #(visit files %1 %2 path) acc
-                      (refs (get files id)))]
-    [(conj o id) (conj d id)]))
+        step #(visit files %1 %2 path)
+        [order done] (reduce step acc (refs (get files id)))]
+    [(conj order id) (conj done id)]))
 
 (defn- visit [files [_ done :as acc] id path]
   (cond
@@ -48,11 +47,10 @@
       (into [] (comp cat (distinct)) parts))))
 
 (defn build
-  "Returns the tags that files build, by id, each a vector of element
-  ids without repeats in the order the entries give them. Files map
-  a tag id to its tag file; exists? tells the element ids of the
-  registry. A tag with a required entry that is missing is left out,
-  and so is every tag that requires it."
+  "Returns the tags that files build, by id.
+  Each tag lists element ids once, in entry order. Exists? tells if an
+  element id is in the registry. A tag with a missing required entry
+  is left out, and so is every tag that requires it."
   [files exists?]
   (reduce (fn [built id]
             (if-let [vs (build-tag exists? built (get files id))]

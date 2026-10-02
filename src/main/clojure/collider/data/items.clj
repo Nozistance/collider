@@ -5,10 +5,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- main-hand-sum
-  "Returns the sum of the add_value main hand modifiers of attribute
-  type in components."
-  ^double [components type]
+(defn- main-hand-sum ^double [components type]
   (let [mods (get components "minecraft:attribute_modifiers")
         match? #(= (map % ["type" "operation" "slot"])
                    [type "add_value" "mainhand"])]
@@ -231,9 +228,9 @@
      (fact :name item-names) (fact :mob-bucket mob-buckets)]))
 
 (defn items
-  "Returns the facts of every item by name, from the default
-  components of the items of a pack by id and the facts of their
-  classes. Tags gives the tags of a registry by name."
+  "Returns the facts of every item by name.
+  Components holds the default components of each item. Tags returns
+  the tags of a registry by name."
   [components tags facts]
   (let [own (into (sorted-map)
                   (map (fn [[id cs]] [(kw id) (item tags cs)]))
