@@ -7,6 +7,7 @@ import java.util.HashSet;
 import java.util.Iterator;
 
 public final class Cells {
+
     private record Cell(long x, long y, long z) {
         @Override
         public int hashCode() {
@@ -23,7 +24,10 @@ public final class Cells {
     private static Cell of(Object p) {
         IPersistentVector v = (IPersistentVector) p;
         return new Cell(
-                ((Number) v.nth(0)).longValue(), ((Number) v.nth(1)).longValue(), ((Number) v.nth(2)).longValue());
+                ((Number) v.nth(0)).longValue(),
+                ((Number) v.nth(1)).longValue(),
+                ((Number) v.nth(2)).longValue()
+        );
     }
 
     public static Cells of(Iterable<?> ps) {
