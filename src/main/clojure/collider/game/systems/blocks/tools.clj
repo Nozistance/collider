@@ -14,7 +14,7 @@
             [collider.game.reach :as reach]
             [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.halves :as halves]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow :as grow]
             [collider.world.blocks.grow.underwater :as underwater]
@@ -249,7 +249,7 @@
 
 (defn- door-partner [world pos cur]
   (when (contains? block/door-types (block/type-of cur))
-    (connect/partner (:chunks world) pos cur)))
+    (halves/partner (:chunks world) pos cur)))
 
 (defn- half-changes [world pos ^long st]
   (let [cur (changes/block-at world pos)]

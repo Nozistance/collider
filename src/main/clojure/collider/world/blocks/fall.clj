@@ -1,7 +1,8 @@
 (ns collider.world.blocks.fall
-  "What the block a body lands on does with its fall."
+  "Falling blocks, and what a block does with a fall onto it."
   (:require [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]))
@@ -130,3 +131,29 @@
         d (mapv #(* (/ (double %) len) c) m)
         t (mapv + f d)]
     (boolean (some #(resets-at? chunks f d %) (cells f t)))))
+
+(defn free-below?
+  "Returns true when a falling block at the cell x y z would fall."
+  [chunks [x y z]]
+  (let [y' (dec (long y))]
+    (and (chunk/in-range? y')
+         (block/free? (chunk/chunks-get-block chunks [x y' z])))))
+
+(defn- place-delay ^long [chunks p]
+  (let [st (chunk/chunks-get-block chunks p)]
+    (if (= :dragon-egg (block/type-of st))
+      (dragonegg/delay-after-place)
+      2)))
+
+(def falling-rule
+  "The block rule of blocks that fall when nothing is below them."
+  {:name   :falling
+   :match? (fn [_chunks st _p]
+             (and (block/falls? st)
+                  (not= :scaffolding (block/type-of st))))
+   :wake   (fn [chunks _dim tick p _old _side]
+             (+ (long tick) (place-delay chunks p)))
+   :due    (fn [chunks p _ctx]
+             (let [st (chunk/chunks-get-block chunks p)]
+               (when (free-below? chunks p)
+                 [[p (block/emptied st) [[:fall st]]]])))})

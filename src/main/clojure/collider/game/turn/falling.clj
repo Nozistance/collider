@@ -56,7 +56,7 @@
 
 (defn- landed-state [world e cell cur concrete? stuck?]
   (let [st (:block e)
-        free? (support/free-below? (:chunks world) cell)
+        free? (fall/free-below? (:chunks world) cell)
         continues? (and free? (not (and concrete? stuck?)))]
     (when (and (block/can-be-replaced? cur) (not continues?)
                (support/supported? (:chunks world) cell st))

@@ -11,24 +11,21 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.reach :as reach]
             [collider.world.block :as block]
-            [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.halves :as halves]
             [collider.world.blocks.fire :as fire]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private upper-types
-  (into block/door-types (conj connect/pair-types :pitcher-crop)))
-
 (defn- first-half? [old]
   (let [{:keys [half part]} (block/props-of old)
         t (block/type-of old)]
-    (or (and (= :upper half) (contains? upper-types t))
+    (or (and (= :upper half) (contains? halves/half-types t))
         (and (= :bed t) (= :foot part)))))
 
 (defn- kept-partner [world e pos old]
   (when (and (player/infinite-materials? e) (first-half? old))
-    (connect/partner (:chunks world) pos old)))
+    (halves/partner (:chunks world) pos old)))
 
 (defn- centre [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])

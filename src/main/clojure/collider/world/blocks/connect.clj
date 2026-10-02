@@ -2,14 +2,15 @@
   "Blocks that take their shape from their neighbours."
   (:require [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.chest :as chest]
             [collider.world.blocks.chorus :as chorus]
-            [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.fire :as fire]
+            [collider.world.blocks.halves :as halves]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.mushroom :as mushroom]
@@ -25,20 +26,14 @@
 
 (def ^:private ^:table walls (delay (tag "walls")))
 
-(def ^:private ^:table leaves (delay (tag "leaves")))
+(def ^:private ^:table leaf-blocks (delay (tag "leaves")))
 
 (def ^:private ^:table shulker-boxes (delay (tag "shulker_boxes")))
 
-(def ^:private exceptions
+(def ^:private never-connect
   #{:barrier :carved-pumpkin :jack-o-lantern :melon :pumpkin})
 
-(def ^:private neighbours
-  (conj (vec (vals dir/horizontal-offset)) [0 1 0] [0 -1 0]))
-
-(def pair-types
-  #{:double-plant :tall-flower :tall-seagrass :small-dripleaf})
-
-(def snowy-types #{:grass :mycelium :snowy-dirt})
+(def ^:private snowy-types #{:grass :mycelium :snowy-dirt})
 
 (def ^:private bar-types
   #{:iron-bars :stained-glass-pane :weathering-copper-bar})
@@ -46,6 +41,7 @@
 (def ^:private stair-types #{:stair :weathering-copper-stair})
 
 (def placed-types
+  "The block types that take their shape from neighbours when placed."
   (into #{:fence :wall :fence-gate :concrete-powder :chorus-plant
           :potent-sulfur :tripwire :note}
         (concat bar-types stair-types)))
@@ -59,94 +55,59 @@
             :big-dripleaf :fire :soul-fire :chest :trapped-chest
             :copper-chest :weathering-copper-chest :chorus-plant
             :potent-sulfur :tripwire :note :pitcher-crop :bell}
-          (concat bar-types stair-types pair-types
+          (concat bar-types stair-types halves/pair-types
                   block/growing-plant-types snowy-types
                   (block/leaves-types)))))
-
-(defn- connecting-types [] @connecting-set)
 
 (defn connecting?
   "Returns true when st may change its shape with its neighbours."
   [^long st]
-  (contains? (connecting-types) (block/type-of st)))
+  (contains? @connecting-set (block/type-of st)))
 
-(def ^:private half-types
-  (into block/door-types (conj pair-types :pitcher-crop)))
+(defn- never-connects? [b]
+  (or (contains? @leaf-blocks b) (contains? never-connect b)
+      (contains? @shulker-boxes b)))
 
-(defn- bed-offset [{:keys [part facing]}]
-  (dir/horizontal-offset
-    (if (= :foot part) facing (dir/opposite facing))))
+(defn- sturdy? [st b side]
+  (and (block/face-sturdy? st (dir/opposite side))
+       (not (never-connects? b))))
 
-(defn partner-offset
-  "Returns the offset to the other half of the two-block st, or nil."
-  [^long st]
-  (let [{:keys [half] :as props} (block/props-of st)
-        t (block/type-of st)]
-    (cond
-      (contains? half-types t) (if (= :lower half) [0 1 0] [0 -1 0])
-      (= :bed t) (bed-offset props)
-      (contains? chest/types t)
-      (dir/offset (chest/connected-direction st)))))
-
-(defn- paired? [^long st ^long other]
-  (if (contains? chest/types (block/type-of st))
-    (chest/paired? st other)
-    (and (= (block/block-of st) (block/block-of other))
-         (let [k (if (= :bed (block/type-of st)) :part :half)]
-           (not= (k (block/props-of st))
-                 (k (block/props-of other)))))))
-
-(defn partner
-  "Returns [pos state] of the other half of st at pos, or nil."
-  [chunks pos ^long st]
-  (when-let [off (partner-offset st)]
-    (let [p (mapv + pos off) o (chunk/at chunks p)]
-      (when (paired? st o) [p o]))))
-
-(defn- exception? [n]
-  (or (contains? @leaves n) (contains? exceptions n)
-      (contains? @shulker-boxes n)))
-
-(defn- sturdy? [st n dir]
-  (and (block/face-sturdy? st (dir/opposite dir))
-       (not (exception? n))))
-
-(defn- gate-connects? [st dir]
+(defn- gate-connects? [st side]
   (let [f (block/facing-of st)]
-    (if (#{:north :south} dir)
+    (if (#{:north :south} side)
       (contains? #{:east :west} f)
       (contains? #{:north :south} f))))
 
-(defn- fence-connects? [self nst dir]
+(defn- fence-connects? [self nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (contains? @fences n)
       (= (contains? @wooden n) (contains? @wooden self))
-      (= :fence-gate t) (gate-connects? nst dir)
-      :else (sturdy? nst n dir))))
+      (= :fence-gate t) (gate-connects? nst side)
+      :else (sturdy? nst n side))))
 
-(defn- wall-connects? [nst dir]
+(defn- wall-connects? [nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (or (contains? @walls n) (contains? @fences n)
           (contains? bar-types t)) true
-      (= :fence-gate t) (gate-connects? nst dir)
-      :else (sturdy? nst n dir))))
+      (= :fence-gate t) (gate-connects? nst side)
+      :else (sturdy? nst n side))))
 
-(defn- pane-connects? [nst dir]
+(defn- pane-connects? [nst side]
   (let [n (block/block-of nst) t (block/type-of nst)]
     (cond
       (nil? n) false
       (or (contains? bar-types t) (contains? @walls n)) true
-      :else (sturdy? nst n dir))))
+      :else (sturdy? nst n side))))
 
-(defn- connects? [t self nst dir]
+(defn- connects? [t self nst side]
   (case t
-    :fence (fence-connects? self nst dir)
-    :wall (wall-connects? nst dir)
-    (pane-connects? nst dir)))
+    :fence (fence-connects? self nst side)
+    :wall (wall-connects? nst side)
+    (pane-connects? nst side)))
 
 (defn- axis-low? [sides a b c d]
   (and (= :low (a sides)) (= :low (b sides))
@@ -156,49 +117,42 @@
   (not (or (axis-low? sides :north :south :east :west)
            (axis-low? sides :east :west :north :south))))
 
-(defn- with-prop [self st k v]
-  (block/state self (assoc (block/props-of st) k v)))
-
 (defn- wall-at? [st] (contains? @walls (block/block-of st)))
 
-(defn- gate-state [self st at]
+(defn- gate-state [_self st at]
   (let [z? (#{:north :south} (block/facing-of st))
         [a b] (if z? [[-1 0 0] [1 0 0]] [[0 0 -1] [0 0 1]])
         in-wall? (or (wall-at? (at a)) (wall-at? (at b)))]
-    (with-prop self st :in-wall (if in-wall? :true :false))))
-
-(defn- door-upper [pst]
-  (block/state (block/block-of pst)
-               (assoc (block/props-of pst) :half :upper)))
+    (block/with st :in-wall (block/flag in-wall?))))
 
 (def ^:private side-of
   (into {} (for [[k off] dir/offset] [off k])))
 
-(defn- partner-side [^long st] (side-of (partner-offset st)))
+(defn- partner-side [^long st] (side-of (halves/partner-offset st)))
 
 (defn- door-state [chunks pos ^long st sides]
   (let [lower? (= :lower (:half (block/props-of st)))
-        [_ pst] (partner chunks pos st)
+        [_ pst] (halves/partner chunks pos st)
         below (chunk/at chunks (dir/down pos))]
     (cond
       (and lower? (contains? sides :down)
-           (not (block/face-sturdy? below :up))) 0
+           (not (block/face-sturdy? below :up))) (block/emptied st)
       (not (contains? sides (partner-side st))) st
-      (nil? pst) 0
+      (nil? pst) (block/emptied st)
       lower? st
-      :else (door-upper pst))))
+      :else (block/with pst :half :upper))))
 
 (defn- bed-state [chunks pos ^long st sides]
-  (let [[_ pst] (partner chunks pos st)
-        occupied (:occupied (block/props-of (or pst 0)))]
+  (let [[_ pst] (halves/partner chunks pos st)]
     (cond
       (not (contains? sides (partner-side st))) st
-      (nil? pst) 0
-      :else (with-prop (block/block-of st) st :occupied occupied))))
+      (nil? pst) (block/emptied st)
+      :else (block/with st :occupied
+                        (:occupied (block/props-of pst))))))
 
 (defn- pair-state [chunks pos ^long st sides]
   (if (and (contains? sides (partner-side st))
-           (nil? (partner chunks pos st)))
+           (nil? (halves/partner chunks pos st)))
     (block/emptied st)
     st))
 
@@ -207,21 +161,17 @@
     (pair-state chunks pos st sides)
     st))
 
-(defn- water-source-state? [^long st]
-  (or (block/waterlogged? st)
-      (block/water-source? st)))
-
 (defn- source-if-fluid? [^long st]
   (or (nil? (block/liquid-class st))
       (block/waterlogged? st)
       (block/source-state? st)))
 
-(defn- erupts? [below t]
-  (and (block/tagged? (max 0 below) t) (source-if-fluid? below)))
+(defn- erupts? [^long below t]
+  (and (block/tagged? below t) (source-if-fluid? below)))
 
 (defn- sulfur-phase [st above below]
   (cond
-    (not (water-source-state? above)) :dry
+    (not (block/holds-water-source? above)) :dry
     (erupts? below "causes_continuous_geyser_eruptions") :continuous
     (erupts? below "causes_periodic_geyser_eruptions")
     (if (= :erupting (:potent-sulfur-state (block/props-of st)))
@@ -229,16 +179,16 @@
       :dormant)
     :else :wet))
 
-(defn- sulfur-state [self ^long st at]
+(defn- sulfur-state [_self ^long st at]
   (let [phase (sulfur-phase st (at [0 1 0]) (at [0 -1 0]))]
-    (with-prop self st :potent-sulfur-state phase)))
+    (block/with st :potent-sulfur-state phase)))
 
 (defn- stair? [st half]
   (and (= :stair (block/shape-of st))
        (= half (:half (block/props-of st)))))
 
-(defn- can-take-shape? [st at dir]
-  (let [n (at (dir/horizontal-offset dir))]
+(defn- can-take-shape? [st at side]
+  (let [n (at (dir/horizontal-offset side))]
     (not (and (stair? n (:half (block/props-of st)))
               (= (block/facing-of n) (block/facing-of st))))))
 
@@ -260,22 +210,18 @@
       (if (= ff left) :inner_left :inner_right)
       :else :straight)))
 
-(defn- stair-state [self st at]
+(defn- stair-state [_self st at]
   (let [{:keys [facing half]} (block/props-of st)]
-    (with-prop self st :shape (stair-shape st at facing half))))
+    (block/with st :shape (stair-shape st at facing half))))
 
-(defn- water? [st] (or (block/water? st) (block/waterlogged? st)))
-
-(defn- open-water? [at dir]
-  (let [n (at (dir/offset dir))]
-    (and (water? n) (not (block/face-sturdy? n (dir/opposite dir))))))
-
-(defn- touches-water? [st at]
-  (or (and (water? st) (water? (at (dir/offset :down))))
-      (some #(open-water? at %) [:up :north :south :west :east])))
+(defn- open-water? [at side]
+  (let [n (at (dir/offset side))]
+    (and (block/water? n)
+         (not (block/face-sturdy? n (dir/opposite side))))))
 
 (defn- powder-state [st at]
-  (if (or (water? (at [0 0 0])) (touches-water? (at [0 0 0]) at))
+  (if (or (block/water? (at [0 0 0]))
+          (some #(open-water? at %) [:up :north :south :west :east]))
     (block/concrete-of st)
     st))
 
@@ -301,7 +247,7 @@
 (defn- snowy-as [v]
   (fn [^long st]
     (if (contains? snowy-types (block/type-of st))
-      (with-prop (block/block-of st) st :snowy v)
+      (block/with st :snowy v)
       st)))
 
 (defn- snow? [st] (block/tagged? st "snow"))
@@ -311,35 +257,35 @@
           :on (block/state-table :long (snowy-as :true))
           :snow (block/state-table :boolean snow?)}))
 
-(defn- snowy-state [chunks [x y z] ^long st sides]
+(defn- snowy-state [chunks pos ^long st sides]
   (when (or (contains? sides nil) (contains? sides :up))
     (let [{:keys [off on snow]} @snowy-states
-          above (chunk/at chunks [x (inc (long y)) z])
+          above (chunk/at chunks (dir/up pos))
           ^longs to (if (aget ^booleans snow above) on off)
           new (aget to st)]
       (when (not= new st) new))))
 
 (defn- side-value [t c]
-  (if (= :wall t) (if c :low :none) (if c :true :false)))
+  (if (= :wall t) (if c :low :none) (block/flag c)))
 
 (defn- sides-state [t self ^long st at]
-  (let [side (fn [[dir off]]
-               [dir (side-value t (connects? t self (at off) dir))])
+  (let [side (fn [[d off]]
+               [d (side-value t (connects? t self (at off) d))])
         sides (into {} (map side) dir/horizontal-offset)
-        post (if (wall-post? sides) :true :false)
+        post (block/flag (wall-post? sides))
         props (cond-> (merge (block/props-of st) sides)
                 (= :wall t) (assoc :up post))]
     (block/state self props)))
 
-(defn- wire-connects? [nst dir]
+(defn- wire-connects? [nst side]
   (case (block/type-of nst)
-    :trip-wire-hook (= (block/facing-of nst) (dir/opposite dir))
+    :trip-wire-hook (= (block/facing-of nst) (dir/opposite side))
     :tripwire true
     false))
 
 (defn- tripwire-state [self ^long st at]
-  (let [side (fn [[dir off]]
-               [dir (if (wire-connects? (at off) dir) :true :false)])]
+  (let [side (fn [[d off]]
+               [d (block/flag (wire-connects? (at off) d))])]
     (->> (into (block/props-of st) (map side) dir/horizontal-offset)
          (block/state self))))
 
@@ -347,22 +293,22 @@
   (let [b (get (data/blocks) (block/block-of st))]
     [(:instrument b :harp) (:instrument-above? b)]))
 
-(defn- note-state [self ^long st at]
+(defn- note-state [_self ^long st at]
   (let [[up up?] (instrument (at [0 1 0]))
-        [down down?] (instrument (at [0 -1 0]))
-        i (cond up? up down? :harp :else down)]
-    (with-prop self st :instrument i)))
+        [down down?] (instrument (at [0 -1 0]))]
+    (block/with st :instrument (cond up? up down? :harp :else down))))
 
-(defn- kept ^long [^long st ^long new]
+(defn- unless-bare ^long [^long st ^long new]
   (if (seq (block/faces-of new)) new st))
 
 (defn- vine-reshaped [chunks pos st sides]
   (if (some #(not= :down %) sides)
-    (kept st (support/vine-updated chunks pos st))
+    (unless-bare st (support/vine-updated chunks pos st))
     st))
 
 (defn- multiface-reshaped [chunks pos st sides]
-  (kept st (support/multiface-sides-updated chunks pos st sides)))
+  (->> (support/multiface-sides-updated chunks pos st sides)
+       (unless-bare st)))
 
 (defn- leaf-reshaped [chunks pos st sides]
   (if (some #{nil :up} sides)
@@ -401,7 +347,7 @@
   (let [side (first (remove nil? sides))
         props (block/props-of st)]
     (if (and side (= (dir/axis side) (dir/axis (:facing props))))
-      (let [nst (chunk/at chunks (mapv + pos (dir/offset side)))]
+      (let [nst (chunk/at chunks (dir/toward pos side))]
         (if-let [m (bell-props props side nst)]
           (block/state (block/block-of st) (merge props m))
           st))
@@ -449,10 +395,6 @@
    :tripwire                 tripwire-state
    :note                     note-state})
 
-(def ^:private growing-reshaped
-  #{:weeping-vines :weeping-vines-plant :twisting-vines
-    :twisting-vines-plant :cave-vines :cave-vines-plant})
-
 (defn- reshaped-state [t chunks pos st at tick sides]
   (let [self (block/block-of st)]
     (cond
@@ -460,112 +402,19 @@
       (pos-reshapers t) ((pos-reshapers t) chunks pos st)
       (self-reshapers t) ((self-reshapers t) self st at)
       (= :concrete-powder t) (powder-state st at)
-      (contains? growing-reshaped t)
+      (contains? block/growing-plant-types t)
       (growing-plant-state pos st at tick sides)
       :else (sides-state t self st at))))
 
-(defn- reshape-of [chunks pos st tick sides]
-  (let [t (block/type-of st)]
-    (if (contains? snowy-types t)
-      (snowy-state chunks pos st sides)
-      (when (contains? (connecting-types) t)
-        (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
-              new (reshaped-state t chunks pos st at tick sides)]
-          (when (not= (long new) (long st)) new))))))
-
 (defn reshape
-  "Returns the new state of st at pos after a change on its sides.
-  Returns nil for none. A nil side stands for a change at pos itself."
-  ([chunks pos st tick] (reshape-of chunks pos st tick #{nil}))
-  ([chunks pos st tick sides] (reshape-of chunks pos st tick sides)))
-
-(defn- hinge-balance ^long [at left right]
-  (let [full (fn [off] (if (block/full-cube? (at off)) 1 0))]
-    (+ (- (long (full left))) (- (long (full (mapv + left [0 1 0]))))
-       (long (full right)) (long (full (mapv + right [0 1 0]))))))
-
-(defn- lower-door? [st]
-  (and (contains? block/door-types (block/type-of st))
-       (= :lower (:half (block/props-of st)))))
-
-(defn- cursor-hinge [facing ^double cx ^double cz]
-  (let [[sx _ sz] (dir/horizontal-offset facing)]
-    (if (and (or (>= (long sx) 0) (not (< cz 0.5)))
-             (or (<= (long sx) 0) (not (> cz 0.5)))
-             (or (>= (long sz) 0) (not (> cx 0.5)))
-             (or (<= (long sz) 0) (not (< cx 0.5))))
-      :left
-      :right)))
-
-(defn- forced-hinge [l r ^long balance]
-  (cond
-    (not (and (or (not l) r) (<= balance 0))) :right
-    (not (and (or (not r) l) (>= balance 0))) :left))
-
-(defn door-hinge
-  "Returns :left or :right for a door placed at pos with that facing.
-  The cursor coordinates are within the clicked face, in sixteenths."
-  [chunks pos facing cursor-x cursor-z]
-  (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
-        left (dir/horizontal-offset (dir/counter-clockwise facing))
-        right (dir/horizontal-offset (dir/clockwise facing))
-        [l r] (map (comp lower-door? at) [left right])]
-    (or (forced-hinge l r (hinge-balance at left right))
-        (cursor-hinge facing (/ (double cursor-x) 16.0)
-                      (/ (double cursor-z) 16.0)))))
-
-(defn around
-  "Returns the cells next to the cell x y z."
-  [[x y z]]
-  (mapv (fn [[dx dy dz]]
-          [(+ (long x) (long dx))
-           (+ (long y) (long dy))
-           (+ (long z) (long dz))])
-        neighbours))
-
-(defn- connecting-at
-  [chunks [_ y _ :as p]]
-  (when (chunk/in-range? y)
-    (let [st (chunk/chunks-get-block chunks p)]
-      (when (contains? (connecting-types) (block/type-of st)) st))))
-
-(defn- bed-origin? [origin st p]
-  (and (= :bed (block/type-of st)) (contains? @origin p)))
-
-(defn- side-toward [d]
-  (dir/opposite (side-of d)))
-
-(defn- touched [positions]
-  (let [beside (fn [p d] [(mapv + p d) (side-toward d)])
-        reached #(cons [% nil] (map (partial beside %) neighbours))]
-    (reduce (fn [[order sides] [q side]]
-              [(if (contains? sides q) order (conj order q))
-               (update sides q (fnil conj #{}) side)])
-            [[] {}]
-            (mapcat reached positions))))
-
-(defn- reshape-step [chunks origin tick sides acc p]
-  (let [st (connecting-at chunks p)]
-    (if-let [new (when (and st (not (bed-origin? origin st p)))
-                   (reshape chunks p st tick (sides p)))]
-      (conj acc [p new])
-      acc)))
-
-(defn- reshaped [chunks positions tick]
-  (let [origin (delay (set positions))
-        [cells sides] (touched positions)]
-    (reduce #(reshape-step chunks origin tick sides %1 %2)
-            [] cells)))
-
-(defn derived-changes
-  "Returns the shape changes that the blocks at positions set off.
-  They follow each other at most eight rounds deep."
-  [chunks positions tick]
-  (loop [chunks chunks positions positions acc [] n 0]
-    (let [changes (reshaped chunks positions tick)]
-      (if (or (empty? changes) (= n 8))
-        acc
-        (recur (chunk/chunks-set-blocks chunks changes)
-               (map first changes)
-               (into acc changes)
-               (inc n))))))
+  "Returns the new state of st at pos after a change on its sides, or
+  nil when it keeps its shape. A nil side means a change at pos."
+  ([chunks pos st tick] (reshape chunks pos st tick #{nil}))
+  ([chunks pos st tick sides]
+   (let [t (block/type-of st)]
+     (if (contains? snowy-types t)
+       (snowy-state chunks pos st sides)
+       (when (contains? @connecting-set t)
+         (let [at (fn [d] (chunk/at chunks (mapv + pos d)))
+               new (reshaped-state t chunks pos st at tick sides)]
+           (when (not= (long new) (long st)) new)))))))

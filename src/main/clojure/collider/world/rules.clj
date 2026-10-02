@@ -6,12 +6,13 @@
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.eyeblossom :as eyeblossom]
+            [collider.world.blocks.fall :as fall]
             [collider.world.blocks.fire :as fire]
-            [collider.world.blocks.grow.crop :as crop]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.rail :as rail]
+            [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]
             [collider.world.blocks.water :as water]))
 
@@ -23,15 +24,15 @@
             liquid/column-rule
             fire/rule
             dripleaf/rule
-            crop/attached-stem-rule
+            support/attached-stem-rule
             water/coral-rule
             rail/rule
             support/rule
             dripstone/rule
             dripstone/cauldron-rule
-            support/falling-rule
+            fall/falling-rule
             water/sponge-rule
-            support/scaffold-rule
+            scaffold/rule
             composter/rule
             lectern/rule
             leaves/rule])

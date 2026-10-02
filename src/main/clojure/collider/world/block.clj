@@ -308,6 +308,12 @@
 
 (defn water-source? [st] (and (water? st) (source-state? st)))
 
+(defn holds-water-source?
+  "Returns true when st is a water source or holds water."
+  [st]
+  (let [st (long st)]
+    (or (waterlogged? st) (water-source? st))))
+
 (defn full-fluid?
   "Returns true when the fluid of st fills its cell whole.
   A source, a fall and held water do."

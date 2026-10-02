@@ -2,7 +2,7 @@
   "Beds, their heads and where a sleeper stands up."
   (:require [collider.world.block :as block]
             [collider.world.direction :as dir]
-            [collider.world.blocks.connect :as connect]
+            [collider.world.blocks.halves :as halves]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -12,7 +12,7 @@
     (when (= :bed (block/type-of st))
       (if (= :head (:part (block/props-of st)))
         pos
-        (first (connect/partner chunks pos st))))))
+        (first (halves/partner chunks pos st))))))
 
 (def ^:private steps
   {:north [0 -1] :south [0 1] :west [-1 0] :east [1 0]})
