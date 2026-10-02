@@ -34,11 +34,6 @@
   "The components that commands cannot name."
   #{:creative-slot-lock :additional-trade-cost :map-post-processing})
 
-(defn- at? [[s n :as rd] c]
-  (and (r/can-read? rd) (= c (nth s n))))
-
-(defn- skip [[s n]] [s (inc n)])
-
 (defn- read-item [rd]
   (let [res (args/read-id rd)
         k (when-not (r/error? res) (@item-ids (first res)))]
@@ -87,32 +82,32 @@
           :else (read-value (first res) (r/skip-whitespace at)))))
 
 (defn- read-removal [seen rd]
-  (let [res (once seen (read-type (skip rd)))]
+  (let [res (once seen (read-type (r/skip rd)))]
     (if (r/error? res)
       res
       [[(first res) :remove] (r/skip-whitespace (second res))])))
 
 (defn- next-entry [rd]
-  (let [at (r/skip-whitespace (skip rd))]
+  (let [at (r/skip-whitespace (r/skip rd))]
     (if (r/can-read? at)
       at
       (r/error-at at no-component))))
 
 (defn- patch-step [patch rd]
   (let [rd (r/skip-whitespace rd)
-        read (if (at? rd \!) read-removal read-set)
+        read (if (r/at? rd \!) read-removal read-set)
         res (read (set (map first patch)) rd)
         [e end] (when-not (r/error? res) res)
         patch (conj patch e)
-        nx (when (and end (at? end \,)) (next-entry end))]
+        nx (when (and end (r/at? end \,)) (next-entry end))]
     (cond (r/error? res) [nil res :done]
           (nil? nx) [patch (r/expect end \]) :done]
           (r/error? nx) [nil nx :done]
           :else [patch nx])))
 
 (defn- read-patch [start]
-  (loop [patch [] rd (skip start)]
-    (if (or (not (r/can-read? rd)) (at? rd \]))
+  (loop [patch [] rd (r/skip start)]
+    (if (or (not (r/can-read? rd)) (r/at? rd \]))
       [patch (r/expect rd \])]
       (let [[patch rd done] (patch-step patch rd)]
         (if done [patch rd] (recur patch rd))))))
@@ -120,7 +115,7 @@
 (defn- parse-stack [rd]
   (let [res (read-item rd)
         [k end] (when-not (r/error? res) res)
-        [patch after] (when (and k (at? end \[)) (read-patch end))]
+        [patch after] (when (and k (r/at? end \[)) (read-patch end))]
     (cond (r/error? res) res
           (r/error? after) after
           :else [{:item k :patch (or patch [])} (or after end)])))

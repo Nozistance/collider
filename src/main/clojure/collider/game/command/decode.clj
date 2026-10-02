@@ -27,7 +27,8 @@
 
 (defn quoted
   "Returns string s quoted and escaped.
-  The quote is the kind that s does not start with."
+  It uses double quotes unless the first quote inside s is a double
+  quote."
   [s]
   (let [q (quote-char s)]
     (str q (apply str (map #(escaped q %) s)) q)))
@@ -355,15 +356,20 @@
 (defn- no-element [v]
   [:malformed (str "Failed to get element " (full-id v))])
 
+(defn- by-id [registry bad miss]
+  (fn [tag]
+    (let [[op v :as r] (identifier tag)]
+      (if (= :ok op)
+        (if-let [k (reg-key registry v)] [:ok k] (miss v))
+        (bad tag r)))))
+
+(defn- id-error [_ r] r)
+
 (defn fixed
   "Returns the decoder of an id of registry to its key.
   An id not in registry gives a missing element error."
   [registry]
-  (fn [tag]
-    (let [[op v :as r] (identifier tag)]
-      (cond (not= :ok op) r
-            (reg-key registry v) [:ok (reg-key registry v)]
-            :else (no-element v)))))
+  (by-id registry id-error no-element))
 
 (defn- no-file-element [registry v]
   [:malformed (str "Failed to get element ResourceKey[minecraft:"
@@ -373,11 +379,8 @@
   "Returns the decoder of an entry of registry by id.
   A tag that is not an id decodes with direct."
   [registry direct]
-  (fn [tag]
-    (let [[op v :as r] (identifier tag)]
-      (cond (not= :ok op) (direct tag)
-            (reg-key registry v) [:ok (reg-key registry v)]
-            :else (no-file-element registry v)))))
+  (by-id registry (fn [tag _] (direct tag))
+         #(no-file-element registry %)))
 
 (defn float-of
   "Decodes a number to the float it holds, as a double."
@@ -430,11 +433,7 @@
   "Returns the decoder of an id of registry to its key.
   An id not in registry gives an unknown key error."
   [registry]
-  (fn [tag]
-    (let [[op v :as r] (identifier tag)]
-      (cond (not= :ok op) r
-            (reg-key registry v) [:ok (reg-key registry v)]
-            :else (unknown-key registry v)))))
+  (by-id registry id-error #(unknown-key registry %)))
 
 (defn- tag-key [tag]
   (cond (not (string? tag)) [:malformed "Not a string"]
@@ -472,7 +471,8 @@
 
 (defn- hash-order [m]
   (let [vs (reduce (fn [acc [k v]] (assoc acc (key-str k) v)) {} m)
-        es (mapv #(MapEntry/create % (vs %)) (distinct (map (comp key-str key) m)))
+        ks (distinct (map (comp key-str key) m))
+        es (mapv #(MapEntry/create % (vs %)) ks)
         hs (int-array (map #(.hashCode ^String (key %)) es))]
     (map #(nth es %) (HashMapOrder/of hs))))
 

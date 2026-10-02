@@ -3,7 +3,8 @@
   version."
   (:require [collider.data :as data]
             [collider.game.command.selector :as sel]
-            [collider.game.command.tree :as cmd]
+            [collider.game.command.forms :as forms]
+            [collider.game.command.help :as help]
             [collider.game.commands.reply
              :refer [answer entity-name fail name-list say]]
             [collider.game.entity :as entity]
@@ -87,8 +88,8 @@
 
 (defn- help-deltas [world eid [text]]
   (let [lv (player/permission-level (get-in world [:entities eid]))
-        extra (cmd/extra-of world)
-        lines (cmd/help-lines lv text (sel/source-pos world) extra)]
+        extra (forms/extra-of world)
+        lines (help/help-lines lv text extra)]
     (if (nil? lines)
       (fail eid "commands.help.failed")
       (answer (mapv #(out/to eid (out/system-chat %)) lines)))))

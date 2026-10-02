@@ -3,7 +3,7 @@
   (:require [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
-            [collider.game.command.tree :as cmd]
+            [collider.game.command.forms :as forms]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -73,7 +73,7 @@
   creative player of the game master permission level."
   [e]
   (and (game-mode/creative? e)
-       (<= (long cmd/gamemaster) (player/permission-level e))))
+       (<= (long forms/gamemaster) (player/permission-level e))))
 
 (defn hit-uv
   "Returns where a click landed on a face, across and up.

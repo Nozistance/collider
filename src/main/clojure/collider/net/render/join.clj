@@ -4,7 +4,8 @@
             [collider.game.attribute :as attribute]
             [collider.game.block.menu :as menu]
             [collider.game.clock :as clock]
-            [collider.game.command.tree :as commands]
+            [collider.game.command.forms :as forms]
+            [collider.game.command.nodes :as commands]
             [collider.game.effect :as effect]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -47,9 +48,9 @@
 (def ^:private plugin-tree (memoize commands/tree))
 
 (defn- command-nodes [lv ^long level]
-  (let [extra (commands/extra-of lv)]
+  (let [extra (forms/extra-of lv)]
     (cond (seq extra) (plugin-tree level extra)
-          (< level (long commands/gamemaster)) @open-command-tree
+          (< level (long forms/gamemaster)) @open-command-tree
           :else @command-tree)))
 
 (def ^:private world-border-size 5.9999968E7)

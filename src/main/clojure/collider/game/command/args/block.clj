@@ -16,11 +16,6 @@
                (map (fn [[t bs]] [(str "minecraft:" t) (set bs)]))
                (get (data/tags) "block"))))
 
-(defn- at? [[s n :as rd] c]
-  (and (r/can-read? rd) (= c (nth s n))))
-
-(defn- skip [[s n]] [s (inc n)])
-
 (defn- lookup [ids [id end] rd k]
   (if-let [v (ids id)]
     [v end]
@@ -33,7 +28,7 @@
       (lookup @block-ids res rd "argument.block.id.invalid"))))
 
 (defn- read-tag [rd]
-  (let [res (args/read-id (skip rd))]
+  (let [res (args/read-id (r/skip rd))]
     (cond (r/error? res) res
           (contains? @block-tags (first res)) res
           :else
@@ -84,10 +79,10 @@
   (let [res (read-key b id props rd)
         [[prop k :as key] end] (when-not (r/error? res) res)]
     (cond (r/error? res) res
-          (not (at? end \=))
+          (not (r/at? end \=))
           (r/error-at end "argument.block.property.novalue" k id)
           :else
-          (let [at (r/skip-whitespace (skip end))
+          (let [at (r/skip-whitespace (r/skip end))
                 vr (read-value b id key at)]
             (if (r/error? vr)
               vr
@@ -96,16 +91,16 @@
 (defn- after-value [props rd]
   (let [end (r/skip-whitespace rd)]
     (cond (not (r/can-read? end)) [props end false]
-          (at? end \,) [props (skip end) true]
-          (at? end \]) [props end false]
+          (r/at? end \,) [props (r/skip end) true]
+          (r/at? end \]) [props end false]
           :else (unclosed end))))
 
 (defn- close [[props rd]]
-  (if (r/can-read? rd) [props (skip rd)] (unclosed rd)))
+  (if (r/can-read? rd) [props (r/skip rd)] (unclosed rd)))
 
 (defn- read-props [pair start]
-  (loop [props {} rd (r/skip-whitespace (skip start))]
-    (if (or (not (r/can-read? rd)) (at? rd \]))
+  (loop [props {} rd (r/skip-whitespace (r/skip start))]
+    (if (or (not (r/can-read? rd)) (r/at? rd \]))
       (close [props rd])
       (let [res (pair props (r/skip-whitespace rd))
             nx (if (r/error? res) res (apply after-value res))]
@@ -121,10 +116,10 @@
           (contains? props k)
           (r/error-at rd "argument.block.property.duplicate"
                       k "minecraft:")
-          (not (at? end \=))
+          (not (r/at? end \=))
           (r/error-at rd "argument.block.property.novalue"
                       k "minecraft:")
-          :else [k (r/skip-whitespace (skip end))])))
+          :else [k (r/skip-whitespace (r/skip end))])))
 
 (defn- vague-pair [props rd]
   (let [res (vague-key props rd)
@@ -137,7 +132,7 @@
           :else (unclosed at))))
 
 (defn- read-nbt [v rd]
-  (if (at? rd \{)
+  (if (r/at? rd \{)
     (let [res (snbt/read-compound rd)]
       (if (r/error? res)
         res
@@ -145,7 +140,7 @@
     [(assoc v :nbt nil) rd]))
 
 (defn- with-props [v read rd]
-  (if (at? rd \[)
+  (if (r/at? rd \[)
     (let [res (read-props read rd)]
       (if (r/error? res)
         res
@@ -181,14 +176,16 @@
 (defn block-state-arg []
   {:id "minecraft:block_state"
    :parse (fn [rd]
-            (if (at? rd \#)
+            (if (r/at? rd \#)
               (r/error-at rd "argument.block.tag.disallowed")
               (tidy (parse-block rd))))})
 
 (defn block-predicate-arg []
   {:id "minecraft:block_predicate"
    :parse (fn [rd]
-            (if (at? rd \#) (parse-tag rd) (tidy (parse-block rd))))})
+            (if (r/at? rd \#)
+              (parse-tag rd)
+              (tidy (parse-block rd))))})
 
 (defn- nbt-match? [pred nbt]
   (or (nil? (:nbt pred))

@@ -6,17 +6,12 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- at? [[s n :as rd] c]
-  (and (r/can-read? rd) (= c (nth s n))))
-
-(defn- skip [[s n]] [s (inc n)])
-
 (defn- axis [kind v] {:kind kind :value (double v)})
 
 (def ^:private flat (axis :relative 0))
 
 (defn- read-field [rd read]
-  (if (and (r/can-read? rd) (not (at? rd \space)))
+  (if (and (r/can-read? rd) (not (r/at? rd \space)))
     (read rd)
     [0.0 rd]))
 
@@ -29,11 +24,11 @@
         :else (axis :world v)))
 
 (defn- coord [read missing center? rd]
-  (cond (at? rd \^) (r/error-at rd "argument.pos.mixed")
+  (cond (r/at? rd \^) (r/error-at rd "argument.pos.mixed")
         (not (r/can-read? rd)) (r/error-at rd missing)
         :else
-        (let [rel? (at? rd \~)
-              at (if rel? (skip rd) rd)
+        (let [rel? (r/at? rd \~)
+              at (if rel? (r/skip rd) rd)
               res (read-field at (if rel? r/read-double read))]
           (if (r/error? res)
             res
@@ -53,16 +48,17 @@
           [v end] (when-not (r/error? res) res)]
       (cond (r/error? res) res
             (empty? (rest ps)) [(conj acc v) end]
-            (at? end \space) (recur (skip end) (rest ps) (conj acc v))
+            (r/at? end \space)
+            (recur (r/skip end) (rest ps) (conj acc v))
             :else (r/error-at start incomplete)))))
 
 (defn- local-field [start]
   (fn [rd]
     (cond (not (r/can-read? rd))
           (r/error-at rd "argument.pos.missing.double")
-          (not (at? rd \^)) (r/error-at start "argument.pos.mixed")
+          (not (r/at? rd \^)) (r/error-at start "argument.pos.mixed")
           :else
-          (let [res (read-field (skip rd) r/read-double)]
+          (let [res (read-field (r/skip rd) r/read-double)]
             (if (r/error? res)
               res
               [(axis :local (first res)) (second res)])))))
@@ -75,7 +71,7 @@
 (defn block-pos-arg []
   {:id "minecraft:block_pos"
    :parse (fn [rd]
-            (if (at? rd \^)
+            (if (r/at? rd \^)
               (local-coords rd)
               (fields rd (repeat 3 int-coord) incomplete-3d)))})
 
@@ -88,7 +84,7 @@
   ([center?]
    {:id "minecraft:vec3" :center center?
     :parse (fn [rd]
-             (if (at? rd \^)
+             (if (r/at? rd \^)
                (local-coords rd)
                (fields rd (vec3-fields center?) incomplete-3d)))}))
 

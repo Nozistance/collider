@@ -4,7 +4,7 @@
             [clojure.java.io :as io]
             [clojure.string :as str]
             [collider.config :as config]
-            [collider.game.command.tree :as tree]
+            [collider.game.command.forms :as forms]
             [collider.game.systems.hooks :as hooks]
             [collider.log :as log]
             [malli.core :as m])
@@ -287,7 +287,7 @@
     (:identity (:plugin (first ps)))))
 
 (defn- taken! [forms]
-  (let [names (into #{} (map first) tree/commands)]
+  (let [names (into #{} (map first) forms/commands)]
     (doseq [[k] forms :when (names k)]
       (throw (refused (str "a plugin adds the command /" (name k))
                       "Collider has a command of that name."

@@ -1,4 +1,5 @@
 (ns collider.game.command.reader
+  "Command text read at a cursor."
   (:refer-clojure :exclude [read-string])
   (:require [clojure.string :as str]))
 
@@ -14,8 +15,6 @@
 
 (defn remaining [[s n]] (subs s n))
 
-(defn consumed [[s n]] (subs s 0 n))
-
 (defn- skip-while [pred [s n]]
   (let [len (count s)]
     (loop [i n]
@@ -26,6 +25,16 @@
 (defn- whitespace? [c] (Character/isWhitespace (char c)))
 
 (defn skip-whitespace [rd] (skip-while whitespace? rd))
+
+(defn at?
+  "Returns true when the character at the cursor of rd is c."
+  [[s n :as rd] c]
+  (and (can-read? rd) (= c (nth s n))))
+
+(defn skip
+  "Returns rd with the cursor one character on."
+  [[s n]]
+  [s (inc n)])
 
 (defn error [k & args]
   {:key k :args (vec args) :cursor -1 :input nil})
@@ -59,9 +68,6 @@
 (defn read-int [rd]
   (read-number "int" #(Integer/valueOf ^String %) rd))
 
-(defn read-long [rd]
-  (read-number "long" #(Long/valueOf ^String %) rd))
-
 (defn read-float [rd]
   (read-number "float" #(Float/valueOf ^String %) rd))
 
@@ -85,11 +91,6 @@
                 (= c term) [(str/join acc) [s j]]
                 :else (recur j (conj acc c) false)))))))
 
-(defn read-quoted [[s n :as rd]]
-  (cond (not (can-read? rd)) ["" rd]
-        (quote? (nth s n)) (read-until [s (inc n)] (nth s n))
-        :else (error-at rd "parsing.quote.expected.start")))
-
 (defn read-string [[s n :as rd]]
   (cond (not (can-read? rd)) ["" rd]
         (quote? (nth s n)) (read-until [s (inc n)] (nth s n))
@@ -111,36 +112,6 @@
     [s (inc n)]
     (error-at rd "parsing.expected" (str ch))))
 
-(defn context [{:keys [cursor input]}]
-  (when (and input (>= cursor 0))
-    (let [c (min cursor (count input))]
-      (str (when (> c 10) "...")
-           (subs input (max 0 (- c 10)) c)
-           "<--[HERE]"))))
-
-(defn message [{:keys [key args]}]
-  (cond-> {:translate key} (seq args) (assoc :with args)))
-
-(def ^:private here
-  {:translate "command.context.here" :color "red" :italic true})
-
-(defn- line [input c command]
-  {:text "" :color "gray"
-   :click {:action :suggest-command :command (str "/" command)}
-   :extra (cond-> (if (> c 10) ["..."] [])
-            (pos? c) (conj (subs input (max 0 (- c 10)) c))
-            (< c (count input))
-            (conj {:text (subs input c) :color "red"
-                   :underlined true})
-            :always (conj here))})
-
-(defn chat
-  ([err] (chat err (:input err)))
-  ([{:keys [cursor input] :as err} command]
-   (if (and input (>= cursor 0))
-     [(message err) (line input (min cursor (count input)) command)]
-     [(message err)])))
-
 (defn- ranged [id kind read lo hi]
   {:id id :min lo :max hi
    :parse (fn [rd]
@@ -157,13 +128,6 @@
    (ranged "brigadier:integer" "argument.integer" read-int
            (Integer/valueOf (int lo)) (Integer/valueOf (int hi)))))
 
-(defn long-arg
-  ([] (long-arg Long/MIN_VALUE))
-  ([lo] (long-arg lo Long/MAX_VALUE))
-  ([lo hi]
-   (ranged "brigadier:long" "argument.long" read-long
-           (Long/valueOf (long lo)) (Long/valueOf (long hi)))))
-
 (defn float-arg
   ([] (float-arg (- Float/MAX_VALUE)))
   ([lo] (float-arg lo Float/MAX_VALUE))
@@ -171,26 +135,7 @@
    (ranged "brigadier:float" "argument.float" read-float
            (Float/valueOf (float lo)) (Float/valueOf (float hi)))))
 
-(defn double-arg
-  ([] (double-arg (- Double/MAX_VALUE)))
-  ([lo] (double-arg lo Double/MAX_VALUE))
-  ([lo hi]
-   (ranged "brigadier:double" "argument.double" read-double
-           (Double/valueOf (double lo))
-           (Double/valueOf (double hi)))))
-
-(defn bool-arg [] {:id "brigadier:bool" :parse read-boolean})
-
-(defn- read-greedy [[s _ :as rd]] [(remaining rd) [s (count s)]])
-
-(def ^:private string-reads
-  {:word read-unquoted :phrase read-string :greedy read-greedy})
-
-(defn string-arg [mode]
-  {:id "brigadier:string" :mode mode :parse (string-reads mode)})
-
-(defn escape-if-required [s]
-  (if (every? unquoted-char? s)
-    s
-    (let [e (str/escape s {\\ "\\\\" \" "\\\""})]
-      (str "\"" e "\""))))
+(defn read-greedy
+  "Reads the rest of the text."
+  [[s _ :as rd]]
+  [(remaining rd) [s (count s)]])

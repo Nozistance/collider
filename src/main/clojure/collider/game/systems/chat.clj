@@ -2,6 +2,7 @@
   "Chat lines, commands and tab completion."
   (:require [clojure.string :as str]
             [collider.game.apply :as apply]
+            [collider.game.command.forms :as forms]
             [collider.game.command.tree :as cmd]
             [collider.game.commands :as commands]
             [collider.game.commands.config :as config]
@@ -71,14 +72,14 @@
 
 (defn- gamemaster? [world eid]
   (when-let [e (get-in world [:entities eid])]
-    (<= (long cmd/gamemaster) (player/permission-level e))))
+    (<= (long forms/gamemaster) (player/permission-level e))))
 
 (defn- permission [world eid]
   (player/permission-level (get-in world [:entities eid])))
 
 (defn- parsed [world eid text origin]
   (cmd/parse text origin (:dim world :overworld)
-             (permission world eid) [0.0 0.0] (cmd/extra-of world)))
+             (permission world eid) [0.0 0.0] (forms/extra-of world)))
 
 (defn- command-deltas [world eid text]
   (let [origin (when-let [p (get-in world [:entities eid :pos])]
@@ -104,9 +105,9 @@
       (str/starts-with? text "/") (command-deltas world eid text)
       :else (public-deltas world eid text))))
 
-(defn- tab-deltas [world eid text target id]
+(defn- tab-deltas [world eid text id]
   (let [lv (permission world eid)
-        {:keys [start texts]} (cmd/suggestions world text target lv)
+        {:keys [start texts]} (cmd/suggestions world text lv)
         len (- (count text) (long start))]
     [(out/to eid (out/suggestions (or id 0) start len texts))]))
 
@@ -116,10 +117,10 @@
       (reported world eid
                 (player-commands/mode-set world eid mode x)))))
 
-(defn- event-deltas [world [tag eid text target id]]
+(defn- event-deltas [world [tag eid text _ id]]
   (case tag
     :chat (said-deltas world eid text)
-    :tab-complete (tab-deltas world eid text target id)
+    :tab-complete (tab-deltas world eid text id)
     :change-game-mode (mode-changed world eid text)
     :teleport-to-entity (teleport/spectator-teleport world eid text)
     nil))
