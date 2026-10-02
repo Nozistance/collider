@@ -1,17 +1,15 @@
 package collider.data;
 
+import clojure.lang.AFn;
 import clojure.lang.IFn;
 import clojure.lang.MapEntry;
 import clojure.lang.RT;
 import clojure.lang.Reduced;
 import java.util.ArrayDeque;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Iterator;
-import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.RecursiveTask;
 
 /// A node of the radix trie under LongMap and LongSet.
 ///
@@ -30,7 +28,7 @@ final class Node {
 
     static final int MASK = (1 << BITS) - 1;
     static final int UNION = 0, INTER = 1, DIFF = 2;
-    static final int KEYS = 0, KV = 1, ENTRIES = 2;
+    static final int KEYS = 0, KV = 1, ENTRIES = 2, VALS = 3;
 
     final Object edit;
     final long base;
@@ -57,6 +55,8 @@ final class Node {
     static boolean integral(Object k) {
         return k instanceof Long || k instanceof Integer || k instanceof Short || k instanceof Byte;
     }
+
+    static final Comparator<Object> ORDER = Comparator.comparingLong(Node::key);
 
     static long key(Object k) {
         if (integral(k)) return ((Number) k).longValue();
@@ -398,48 +398,47 @@ final class Node {
         return acc;
     }
 
-    @SuppressWarnings("resource")
-    static Object fold(Node n, int leaf, IFn combinef, IFn reducef, int mode) {
+    /// Reducers' fork-join functions, as `PersistentHashMap.fold` takes
+    /// them, so a fold runs on the reducers' pool.
+    record Fork(IFn invoke, IFn task, IFn fork, IFn join) {}
+
+    static Object fold(Node n, int leaf, IFn combinef, IFn reducef, int mode, Fork fj) {
         if (n == null) return combinef.invoke();
-        return ForkJoinPool.commonPool().invoke(new Fold(n, leaf, combinef, reducef, mode));
+        return fj.invoke.invoke(new AFn() {
+            @Override
+            public Object invoke() {
+                return part(n, leaf, combinef, reducef, mode, fj);
+            }
+        });
     }
 
-    static final class Fold extends RecursiveTask<Object> {
-        final Node n;
-        final int leaf, mode;
-        final IFn combinef, reducef;
-
-        Fold(Node n, int leaf, IFn combinef, IFn reducef, int mode) {
-            this.n = n;
-            this.leaf = leaf;
-            this.combinef = combinef;
-            this.reducef = reducef;
-            this.mode = mode;
+    static Object part(Node n, int leaf, IFn combinef, IFn reducef, int mode, Fork fj) {
+        if (n.count <= leaf || n.shift == 0) return unreduced(reduce(n, mode, reducef, combinef.invoke()));
+        Object[] tasks = new Object[n.kids.length];
+        for (int i = 1; i < tasks.length; i++) {
+            Node k = n.kids[i];
+            tasks[i] = fj.fork.invoke(fj.task.invoke(new AFn() {
+                @Override
+                public Object invoke() {
+                    return part(k, leaf, combinef, reducef, mode, fj);
+                }
+            }));
         }
-
-        @Override
-        protected Object compute() {
-            if (n.count <= leaf || n.shift == 0) return unreduced(reduce(n, mode, reducef, combinef.invoke()));
-            List<Fold> parts = new ArrayList<>(n.kids.length);
-            for (Node k : n.kids) parts.add(new Fold(k, leaf, combinef, reducef, mode));
-            invokeAll(parts);
-            Object acc = parts.getFirst().join();
-            for (int i = 1; i < parts.size(); i++) {
-                acc = combinef.invoke(acc, parts.get(i).join());
-            }
-            return acc;
-        }
+        Object acc = part(n.kids[0], leaf, combinef, reducef, mode, fj);
+        for (int i = 1; i < tasks.length; i++) acc = combinef.invoke(acc, fj.join.invoke(tasks[i]));
+        return acc;
     }
 
     static final class Walk implements Iterator<Object> {
         final ArrayDeque<Node> todo = new ArrayDeque<>();
-        final boolean entries, reverse;
+        final int mode;
+        final boolean reverse;
         Node leaf;
         long rest;
         int i;
 
-        Walk(Node root, boolean entries, boolean reverse) {
-            this.entries = entries;
+        Walk(Node root, int mode, boolean reverse) {
+            this.mode = mode;
             this.reverse = reverse;
             if (root != null) todo.push(root);
             advance();
@@ -474,8 +473,11 @@ final class Node {
             Object v = leaf.vals == null ? null : leaf.vals[i];
             i += reverse ? -1 : 1;
             if (rest == 0) advance();
-            if (entries) return MapEntry.create(k, v);
-            return k;
+            return switch (mode) {
+                case ENTRIES -> MapEntry.create(k, v);
+                case VALS -> v;
+                default -> k;
+            };
         }
     }
 

@@ -11,13 +11,16 @@ import clojure.lang.ISeq;
 import clojure.lang.ITransientSet;
 import clojure.lang.RT;
 import clojure.lang.Reversible;
+import clojure.lang.Sorted;
+import java.util.Comparator;
 import java.util.Iterator;
 
 /// A persistent set of longs, in signed order.
 ///
 /// Two sets with the same keys have the same shape. Edits that change
 /// nothing return the same set, and set algebra keeps shared parts.
-public final class LongSet extends APersistentSet implements IObj, IEditableCollection, IReduceInit, Reversible {
+public final class LongSet extends APersistentSet
+        implements IObj, IEditableCollection, IReduceInit, Reversible, Sorted {
 
     public static final LongSet EMPTY = new LongSet(null, null);
 
@@ -91,9 +94,10 @@ public final class LongSet extends APersistentSet implements IObj, IEditableColl
 
     /// Reduces the set in parts of at most `n` keys in parallel, with
     /// `(reducef acc k)`, and joins the parts in key order with
-    /// `combinef`.
-    public Object fold(int n, IFn combinef, IFn reducef) {
-        return Node.fold(root, n, combinef, reducef, Node.KEYS);
+    /// `combinef`, on the fork-join functions that
+    /// `PersistentHashMap.fold` takes.
+    public Object fold(int n, IFn combinef, IFn reducef, IFn fjinvoke, IFn fjtask, IFn fjfork, IFn fjjoin) {
+        return Node.fold(root, n, combinef, reducef, Node.KEYS, new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin));
     }
 
     /// Returns the set of keys `ks`.
@@ -136,12 +140,35 @@ public final class LongSet extends APersistentSet implements IObj, IEditableColl
 
     @Override
     public Iterator<Object> iterator() {
-        return new Node.Walk(root, false, false);
+        return new Node.Walk(root, Node.KEYS, false);
     }
 
     @Override
     public ISeq rseq() {
-        return RT.chunkIteratorSeq(new Node.Walk(root, false, true));
+        return RT.chunkIteratorSeq(new Node.Walk(root, Node.KEYS, true));
+    }
+
+    @Override
+    public Comparator<Object> comparator() {
+        return Node.ORDER;
+    }
+
+    @Override
+    public Object entryKey(Object k) {
+        return k;
+    }
+
+    @Override
+    public ISeq seq(boolean ascending) {
+        return ascending ? seq() : rseq();
+    }
+
+    @Override
+    public ISeq seqFrom(Object k, boolean ascending) {
+        long from = Node.key(k);
+        return ascending
+                ? range(from, Long.MAX_VALUE).seq()
+                : range(Long.MIN_VALUE, from).rseq();
     }
 
     @Override

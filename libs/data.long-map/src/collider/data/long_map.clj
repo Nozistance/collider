@@ -141,8 +141,13 @@
   ([^longs ks] (LongSet/fromSorted ks))
   ([^longs ks ^objects vs] (LongMap/fromSorted ks vs)))
 
+(def ^:private fj
+  [@#'r/fjinvoke r/fjtask @#'r/fjfork @#'r/fjjoin])
+
 (extend-protocol r/CollFold
   LongMap
-  (coll-fold [m n combinef reducef] (.fold m n combinef reducef))
+  (coll-fold [m n combinef reducef]
+    (let [[i t f j] fj] (.fold m n combinef reducef i t f j)))
   LongSet
-  (coll-fold [s n combinef reducef] (.fold s n combinef reducef)))
+  (coll-fold [s n combinef reducef]
+    (let [[i t f j] fj] (.fold s n combinef reducef i t f j))))

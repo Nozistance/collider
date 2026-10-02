@@ -5,7 +5,8 @@
             [collider.data.long-map :as lm]
             [collider.game.delta :as delta]
             [collider.game.deltas.record :refer [->Deltas]])
-  (:import (collider.data LongMap)
+  (:import (clojure.lang MapEntry)
+           (collider.data LongMap)
            (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
@@ -119,27 +120,17 @@
   [m]
   (if (instance? LongMap m) m (into (lm/long-map) m)))
 
-(defn- halves [m]
-  (let [lo (lm/first m)
-        hi (lm/last m)
-        mid (+ lo (quot (- hi lo) 2))]
-    [(lm/range m lo mid) (lm/range m (inc mid) hi)]))
-
-(defn- folded [rf m ^long leaf]
-  (if (<= (count m) leaf)
-    (reduce rf [] m)
-    (let [[a b] (halves m)
-          t (fork #(folded rf b leaf))
-          l (folded rf a leaf)]
-      (joined l (join t)))))
-
 (defn select
   "Returns (into [] xf m) for a transducer xf that keeps no state.
   The runs of more than leaf entries of a long map go in parallel."
   ([xf m] (select xf m select-leaf))
   ([xf m leaf]
    (if (instance? LongMap m)
-     (invoke #(folded (xf conj) m leaf))
+     (let [rf (xf conj)]
+       (r/fold leaf
+               (fn ([] []) ([a b] (joined a b)))
+               (fn [acc k v] (rf acc (MapEntry/create k v)))
+               m))
      (into [] xf m))))
 
 (defn vacant?

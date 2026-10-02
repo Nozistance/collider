@@ -6,6 +6,7 @@ import clojure.lang.IEditableCollection;
 import clojure.lang.IFn;
 import clojure.lang.IKVReduce;
 import clojure.lang.IMapEntry;
+import clojure.lang.IMapIterable;
 import clojure.lang.IObj;
 import clojure.lang.IPersistentMap;
 import clojure.lang.IPersistentVector;
@@ -17,7 +18,9 @@ import clojure.lang.ITransientMap;
 import clojure.lang.MapEntry;
 import clojure.lang.RT;
 import clojure.lang.Reversible;
+import clojure.lang.Sorted;
 import clojure.lang.Util;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.Map;
 
@@ -27,7 +30,7 @@ import java.util.Map;
 /// nothing return the same map, and merges keep shared parts. Values
 /// are never nil.
 public final class LongMap extends APersistentMap
-        implements IObj, IEditableCollection, IKVReduce, IReduceInit, Reversible {
+        implements IObj, IEditableCollection, IKVReduce, IMapIterable, IReduceInit, Reversible, Sorted {
 
     public static final LongMap EMPTY = new LongMap(null, null);
 
@@ -115,9 +118,10 @@ public final class LongMap extends APersistentMap
 
     /// Reduces the map in parts of at most `n` entries in parallel,
     /// with `(reducef acc k v)`, and joins the parts in key order with
-    /// `combinef`.
-    public Object fold(int n, IFn combinef, IFn reducef) {
-        return Node.fold(root, n, combinef, reducef, Node.KV);
+    /// `combinef`, on the fork-join functions that
+    /// `PersistentHashMap.fold` takes.
+    public Object fold(int n, IFn combinef, IFn reducef, IFn fjinvoke, IFn fjtask, IFn fjfork, IFn fjjoin) {
+        return Node.fold(root, n, combinef, reducef, Node.KV, new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin));
     }
 
     /// Returns the map of keys `ks` to values `vs`.
@@ -129,7 +133,7 @@ public final class LongMap extends APersistentMap
     public long[] keys() {
         long[] ks = new long[count()];
         int i = 0;
-        for (Iterator<Object> it = new Node.Walk(root, false, false); it.hasNext(); ) ks[i++] = (Long) it.next();
+        for (Iterator<Object> it = keyIterator(); it.hasNext(); ) ks[i++] = (Long) it.next();
         return ks;
     }
 
@@ -137,9 +141,7 @@ public final class LongMap extends APersistentMap
     public Object[] vals() {
         Object[] vs = new Object[count()];
         int i = 0;
-        for (Iterator<Object> it = new Node.Walk(root, true, false); it.hasNext(); ) {
-            vs[i++] = ((IMapEntry) it.next()).val();
-        }
+        for (Iterator<Object> it = valIterator(); it.hasNext(); ) vs[i++] = it.next();
         return vs;
     }
 
@@ -197,12 +199,45 @@ public final class LongMap extends APersistentMap
 
     @Override
     public Iterator<Object> iterator() {
-        return new Node.Walk(root, true, false);
+        return new Node.Walk(root, Node.ENTRIES, false);
     }
 
     @Override
     public ISeq rseq() {
-        return RT.chunkIteratorSeq(new Node.Walk(root, true, true));
+        return RT.chunkIteratorSeq(new Node.Walk(root, Node.ENTRIES, true));
+    }
+
+    @Override
+    public Iterator<Object> keyIterator() {
+        return new Node.Walk(root, Node.KEYS, false);
+    }
+
+    @Override
+    public Iterator<Object> valIterator() {
+        return new Node.Walk(root, Node.VALS, false);
+    }
+
+    @Override
+    public Comparator<Object> comparator() {
+        return Node.ORDER;
+    }
+
+    @Override
+    public Object entryKey(Object e) {
+        return ((IMapEntry) e).key();
+    }
+
+    @Override
+    public ISeq seq(boolean ascending) {
+        return ascending ? seq() : rseq();
+    }
+
+    @Override
+    public ISeq seqFrom(Object k, boolean ascending) {
+        long from = Node.key(k);
+        return ascending
+                ? range(from, Long.MAX_VALUE).seq()
+                : range(Long.MIN_VALUE, from).rseq();
     }
 
     @Override

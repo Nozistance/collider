@@ -11,7 +11,7 @@
 
 (defn javac [_]
   (b/process {:command-args ["clojure" "-T:build" "javac"]
-              :dir          "libs/long-map"})
+              :dir          "libs/data.long-map"})
   (b/javac {:src-dirs   ["src"]
             :class-dir  class-dir
             :basis      @basis
