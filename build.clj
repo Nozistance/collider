@@ -12,7 +12,7 @@
 (defn javac [_]
   (b/process {:command-args ["clojure" "-T:build" "javac"]
               :dir          "libs/data.long-map"})
-  (b/javac {:src-dirs   ["src"]
+  (b/javac {:src-dirs   ["src/main/java"]
             :class-dir  class-dir
             :basis      @basis
             :javac-opts ["-proc:none" "--release" "25"]}))
@@ -23,7 +23,7 @@
 
 (defn- compile-clj []
   (b/compile-clj {:basis      @basis
-                  :src-dirs   ["src"]
+                  :src-dirs   ["src/main/clojure"]
                   :class-dir  class-dir
                   :ns-compile '[collider.core]
                   :java-opts  ["-Dclojure.compiler.direct-linking=true"]}))
