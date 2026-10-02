@@ -1,6 +1,8 @@
 (ns collider.game.systems.items
   "Dropped item motion, merging and pickup."
   (:require [collider.data :as data]
+            [collider.game.inventory :as inventory]
+            [collider.game.item :as item]
             [collider.random :as random]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -8,7 +10,6 @@
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.areas :as areas]
-            [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
@@ -23,129 +24,6 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const despawn-age 6000)
-
-(def ^:private ^:const throw-pickup-delay 40)
-
-(def ^:private ^:const throw-power 0.3)
-
-(def ^:private ^:const throw-spread 0.02)
-
-(def ^:private ^:const throw-lift 0.1)
-
-(def ^:private ^:const throw-jitter 0.1)
-
-(def ^:private ^:const around-power 0.5)
-
-(def ^:private ^:const around-lift 0.2)
-
-(def ^:private ^:const hand-drop (double (float 0.3)))
-
-(defn- same-stack? [a b]
-  (and (= (:item a) (:item b)) (= (:components a) (:components b))))
-
-(defn- throw-velocity [world eid salt]
-  (let [e (get-in world [:entities eid])
-        yaw (Math/toRadians (double (or (:yaw e) 0.0)))
-        pitch (Math/toRadians (double (or (:pitch e) 0.0)))
-        t (:tick world)
-        ang (* (random/of-key t eid salt :a) Math/PI 2.0)
-        mag (* throw-spread (random/of-key t eid salt :m))
-        jitter (- (random/of-key t eid salt :y1)
-                  (random/of-key t eid salt :y2))]
-    [(+ (* (- throw-power) (Math/sin yaw) (Math/cos pitch))
-        (* (Math/cos ang) mag))
-     (+ (* (- throw-power) (Math/sin pitch)) throw-lift
-        (* throw-jitter jitter))
-     (+ (* throw-power (Math/cos yaw) (Math/cos pitch))
-        (* (Math/sin ang) mag))]))
-
-(defn- around-velocity [world eid salt]
-  (let [t (:tick world)
-        pow (* around-power (random/of-key t eid salt :p))
-        dir (* Math/PI 2.0 (random/of-key t eid salt :d))]
-    [(* -1.0 (Math/sin dir) pow) around-lift (* (Math/cos dir) pow)]))
-
-(defn dropped
-  "Returns the item entity a player throws out of hand.
-  With randomly? the item flies in a random direction."
-  ([world thrower stack] (dropped world thrower stack false 0))
-  ([world thrower stack randomly? salt]
-   (let [e (get-in world [:entities thrower])
-         [px py pz] (:pos e)
-         y (- (+ (double py) (entity/eye-height e)) hand-drop)
-         at [(double px) y (double pz)]
-         vel (if randomly?
-               (around-velocity world thrower salt)
-               (throw-velocity world thrower salt))]
-     (entity/item at vel stack throw-pickup-delay))))
-
-(defn thrown-deltas
-  "Returns the deltas of player eid throwing the stacks.
-  The stats of each throw come with them."
-  [world eid stacks]
-  (mapcat (fn [i s]
-            [[:spawn-entity (dropped world eid s false i)]
-             [:award eid (keyword "dropped" (name (:item s)))
-              (long (:count s 1))]
-             [:award eid :custom/drop 1]])
-          (range) stacks))
-
-(defn popped
-  "Returns the item dropped by a broken block."
-  [world pos stack salt]
-  (let [t (:tick world)
-        r (fn [k] (random/of-key t pos salt k))
-        [x y z] pos]
-    (entity/item [(+ (double x) 0.5 (- (* 0.5 (r :x)) 0.25))
-                  (+ (double y) 0.5 (- (* 0.5 (r :y)) 0.25) -0.125)
-                  (+ (double z) 0.5 (- (* 0.5 (r :z)) 0.25))]
-                 (entity/pop-velocity [t pos salt])
-                 stack)))
-
-(defn split-drop
-  "Returns the stack split into the piles a broken block drops."
-  [world pos stack salt]
-  (loop [n (long (:count stack 1)) i 0 acc []]
-    (if-not (pos? n)
-      acc
-      (let [k [(:tick world) pos salt :split i]
-            got (min n (+ 10 (long (* 21.0 (random/of-key k)))))]
-        (recur (- n got) (inc i)
-               (conj acc (assoc stack :count got)))))))
-
-(def ^:private ^:const scatter-spread 0.11485000171139836)
-
-(defn- scatter-spot [pos roll]
-  (let [f #(Math/floor (double (nth pos %)))]
-    [(+ (f 0) (* (double (roll :x)) 0.75) 0.125)
-     (+ (f 1) (* (double (roll :y)) 0.75))
-     (+ (f 2) (* (double (roll :z)) 0.75) 0.125)]))
-
-(defn- scatter-axis ^double [roll i a ^double mode]
-  (let [r #(double (roll [:vel i %]))]
-    (+ mode (* scatter-spread (- (r a) (r (inc (long a))))))))
-
-(defn- scatter-speed [roll i]
-  [(scatter-axis roll i 0 0.0) (scatter-axis roll i 2 0.2)
-   (scatter-axis roll i 4 0.0)])
-
-(defn- pile ^long [roll i ^long left]
-  (min left (+ 10 (long (* 21.0 (double (roll [:split i])))))))
-
-(defn scattered
-  "Returns the items that stack at pos scatters into.
-  Piles of 10 to 30 leave one spot inside the cell, each thrown its
-  own way, none held back from pickup. roll gives a number in [0, 1)
-  for each key."
-  [pos stack roll]
-  (let [at (scatter-spot pos roll)]
-    (loop [n (long (:count stack 1)) i 0 acc []]
-      (if-not (pos? n)
-        acc
-        (let [got (pile roll i n)
-              s (assoc stack :count got)
-              it (entity/item at (scatter-speed roll i) s 0)]
-          (recur (- n got) (inc i) (conj acc it)))))))
 
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
@@ -182,7 +60,7 @@
   "Returns the deltas of one drop event of its player."
   [world [_ eid :as ev]]
   (when-let [{:keys [stack take-from]} (drop-of world ev)]
-    (vec (concat (thrown-deltas world eid [stack])
+    (vec (concat (item/thrown-deltas world eid [stack])
                  (when take-from (taken world eid take-from))))))
 
 (defn- item-half ^double [] (size/half :item))
@@ -383,7 +261,7 @@
         sa (:stack ea) sb (:stack eb)
         flat (+ (item-half) (item-half) merge-inflate)
         tall (item-height)]
-    (and (same-stack? sa sb)
+    (and (inventory/same-stack? sa sb)
          (<= (+ (long (:count sa 1)) (long (:count sb 1)))
              (data/max-stack (:item sb)))
          (near? (v/x pa) (v/x pb) flat)
@@ -509,132 +387,6 @@
             :else (let [[es out done?] (tried es gone fresh out i j)]
                     (if done? [es out] (recur (rest js) es out)))))))
 
-(def ^:private slot-order
-  (vec (concat (range 36 45) (range 9 36))))
-
-(defn- topping-up? [cur stack ^long cap ^long n]
-  (and (pos? n) cur (same-stack? cur stack)
-       (< (long (:count cur 1)) cap)))
-
-(defn- topped-up [chs cur slot ^long take]
-  (conj chs [slot (update cur :count (fnil + 1) take)]))
-
-(defn- fill-existing [inv stack ^long n]
-  (let [cap (long (data/max-stack (:item stack)))
-        step (fn [[chs n] slot]
-               (let [n (long n) cur (get inv slot)
-                     have (long (:count cur 1))
-                     take (min (- cap have) n)]
-                 (if (topping-up? cur stack cap n)
-                   [(topped-up chs cur slot take) (- n take)]
-                   [chs n])))]
-    (reduce step [[] n] slot-order)))
-
-(defn- first-empty-slot [inv changes]
-  (first (remove #(or (get inv %) (some (fn [[s _]] (= s %)) changes))
-                 slot-order)))
-
-(defn add-stack
-  "Returns the slot changes that fit stack into inv, and the rest.
-  The rest is nil when the whole stack found room."
-  [inv stack]
-  (let [[changes n] (fill-existing inv stack (long (:count stack 1)))
-        n (long n)]
-    (if-let [slot (when (pos? n) (first-empty-slot inv changes))]
-      [(conj changes [slot (assoc stack :count n)]) nil]
-      [changes (when (pos? n) (assoc stack :count n))])))
-
-(defn- holds? [inv stack]
-  (some #(and (= (:item %) (:item stack))
-              (= (:components %) (:components stack)))
-        (vals inv)))
-
-(defn- shrunk [stack ^long n]
-  (let [left (- (long (:count stack 1)) n)]
-    (when (pos? left) (assoc stack :count left))))
-
-(defn kept
-  "Returns the deltas that put stack into the inventory of player
-  eid, and throw out what does not fit."
-  [world eid e stack]
-  (let [[changes left] (add-stack (:inventory e) stack)]
-    (concat (for [[slot s] changes] [:set-slot eid slot s])
-            (when left [[:spawn-entity (dropped world eid left)]]))))
-
-(defn- emptied [world eid e hand made]
-  (let [slot (player/hand-slot e hand)
-        left (shrunk (player/hand-stack e hand) 1)]
-    (if left
-      (cons [:set-slot eid slot left] (kept world eid e made))
-      [[:set-slot eid slot made]])))
-
-(defn- creative-filled [world eid e stack always?]
-  (when (or always? (not (holds? (:inventory e) stack)))
-    (kept world eid e stack)))
-
-(defn filled-result-deltas
-  "Returns the deltas of the container in hand turning into stack.
-  The last container becomes the filled item in the hand. From a
-  larger stack the filled item goes to the inventory. In creative the
-  container stays, and the filled item goes to the inventory only when
-  the player holds none or always? is true."
-  ([world eid stack]
-   (filled-result-deltas world eid stack false :main))
-  ([world eid stack always?]
-   (filled-result-deltas world eid stack always? :main))
-  ([world eid stack always? hand]
-   (let [e (get-in world [:entities eid])]
-     (if (player/infinite-materials? e)
-       (creative-filled world eid e stack always?)
-       (emptied world eid e hand stack)))))
-
-(defn consume-deltas
-  "Returns the deltas of spending n of the item in hand.
-  A player with infinite materials spends nothing."
-  [eid e hand ^long n]
-  (when-not (player/infinite-materials? e)
-    [[:set-slot eid (player/hand-slot e hand)
-      (shrunk (player/hand-stack e hand) n)]]))
-
-(defn- remainder-deltas [world eid e hand stack left]
-  (let [over (dec (long (:count stack 1)))
-        made {:item (:item left) :count (long (:count left 1))}]
-    (if (pos? over)
-      (cons [:set-slot eid (player/hand-slot e hand)
-             (assoc stack :count over)]
-            (kept world eid e made))
-      [[:set-slot eid (player/hand-slot e hand) made]])))
-
-(defn use-item-deltas
-  "Returns the deltas of a player using one item from hand.
-  Some items leave a remainder, such as an empty bucket after milk.
-  The remainder takes the hand or goes to the inventory."
-  [world eid e hand]
-  (let [stack (player/hand-stack e hand)
-        left (get-in (data/items) [(:item stack) :use-remainder])]
-    (if (and left (not (player/infinite-materials? e)))
-      (remainder-deltas world eid e hand stack left)
-      (consume-deltas eid e hand 1))))
-
-(defn- broken-deltas [eid e hand stack]
-  (let [fx (out/status eid (if (= :off hand) :break-off :break-main))]
-    [[:set-slot eid (player/hand-slot e hand) (shrunk stack 1)]
-     (out/all fx) (out/to eid fx)]))
-
-(defn hurt-item-deltas
-  "Returns the deltas of wearing the item in hand by n points.
-  An item worn past its last point breaks and leaves the hand. A
-  player with infinite materials wears nothing out."
-  [eid e hand ^long n]
-  (let [stack (player/hand-stack e hand)
-        worn (+ n (stack/damage stack))]
-    (when (and (stack/damageable? stack)
-               (not (player/infinite-materials? e)))
-      (if (>= worn (stack/max-damage stack))
-        (broken-deltas eid e hand stack)
-        [[:set-slot eid (player/hand-slot e hand)
-          (stack/with-damage stack worn)]]))))
-
 (defn- in-pickup-range? [pe ie]
   (let [pp (:pos pe) pi (:pos ie)
         [half h] (entity/box pe)
@@ -655,7 +407,7 @@
 
 (defn- pickup-one [[peid pe] [out inv :as acc] [ieid ie]]
   (if (in-pickup-range? pe ie)
-    (let [[changes remaining] (add-stack inv (:stack ie))]
+    (let [[changes remaining] (inventory/add-stack inv (:stack ie))]
       (if (seq changes)
         [(into out (collect-deltas ieid peid changes remaining))
          (into inv changes)]
@@ -728,4 +480,3 @@
         steps (deltas/pmapcat #(vector (stepped-item world %)) items)]
     (when (pos? (count items))
       (walked world items steps))))
-

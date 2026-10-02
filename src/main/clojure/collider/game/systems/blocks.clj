@@ -2,6 +2,7 @@
   "Player block actions such as digging, placing and using."
   (:require [collider.data :as data]
             [collider.game.book :as book]
+            [collider.game.changes :as changes]
             [collider.game.deltas :as deltas]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
@@ -16,7 +17,7 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.held :as held]
             [collider.game.systems.blocks.place :as place]
-            [collider.game.systems.blocks.reach :as reach]
+            [collider.game.reach :as reach]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
@@ -33,7 +34,7 @@
 (defn- clicked-scaffolding? [{:keys [world pos item use-item?]}]
   (and (= :scaffolding item)
        (not use-item?)
-       (= :scaffolding (block/type-of (edit/block-at world pos)))))
+       (= :scaffolding (block/type-of (changes/block-at world pos)))))
 
 (defn- when-use [f] (fn [c] (when (:use-item? c) (f c))))
 
@@ -142,7 +143,7 @@
   (when use-block?
     (cond
       (door/opens? world pos)
-      (door/toggle-deltas world eid pos (edit/block-at world pos))
+      (door/toggle-deltas world eid pos (changes/block-at world pos))
       (bed/uses-bed? world pos) (bed/sleep-deltas world eid pos))))
 
 (defn- play-deltas [world [eid pos face item cursor _ _ hand] origin]

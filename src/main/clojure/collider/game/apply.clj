@@ -6,6 +6,7 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.input :as input]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.schema :as schema]
@@ -33,12 +34,12 @@
     (log/failure! unit msg t)))
 
 (defn- heard-event [w acc d]
-  (try (when (player/heeded? w d)
-         (let [w' (event w d)] [w' (player/heard acc w w' d)]))
+  (try (when (input/heeded? w d)
+         (let [w' (event w d)] [w' (input/heard acc w w' d)]))
        (catch Throwable t (dropped! #'event d t))))
 
 (defn- applied-input [world input]
-  (loop [w world acc player/unheard xs (seq input)]
+  (loop [w world acc input/unheard xs (seq input)]
     (if-let [d (first xs)]
       (if-let [[w' acc'] (heard-event w acc d)]
         (recur w' acc' (next xs))

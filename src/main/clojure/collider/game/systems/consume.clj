@@ -3,15 +3,16 @@
   glass bottle at water."
   (:require [collider.data :as data]
             [collider.game.bundle :as bundle]
+            [collider.game.changes :as changes]
+            [collider.game.effect.account :as account]
+            [collider.game.inventory :as inventory]
+            [collider.game.item :as item]
             [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.effects :as effects]
-            [collider.game.systems.items :as items]
+            [collider.game.reach :as reach]
             [collider.game.using :as using]
             [collider.random :as random]
             [collider.vec :as v]
@@ -69,7 +70,7 @@
 (defn- landed-effects [acc {:keys [effects probability]} draw]
   (if (>= (float (draw)) (float probability))
     acc
-    (reduce #(effects/land %1 (:id %2) (instance-of %2))
+    (reduce #(account/land %1 (:id %2) (instance-of %2))
             acc effects)))
 
 (defn- top-y ^long [world]
@@ -141,8 +142,8 @@
 (defn- consumed [world draw acc {:keys [type] :as ce}]
   (case type
     :apply-effects (landed-effects acc ce draw)
-    :remove-effects (reduce effects/take-off acc (:effects ce))
-    :clear-all-effects (effects/take-all acc)
+    :remove-effects (reduce account/take-off acc (:effects ce))
+    :clear-all-effects (account/take-all acc)
     :teleport-randomly (teleported world acc ce draw)
     :play-sound (sounded acc (:sound ce))
     acc))
@@ -153,9 +154,9 @@
   each call."
   [world eid e c draw]
   (let [acc (reduce #(consumed world draw %1 %2)
-                    (effects/account eid e) (:effects c))]
+                    (account/account eid e) (:effects c))]
     (when (or (:changed? acc) (seq (:ds acc)))
-      (effects/deltas acc e))))
+      (account/deltas acc e))))
 
 (defn- draws [world eid]
   (let [n (volatile! -1)]
@@ -165,10 +166,10 @@
   [[:merge-entity eid {:using-item? false :using nil}]])
 
 (defn- extra-deltas [world eid e stack]
-  (let [[changes left] (items/add-stack (:inventory e) stack)]
+  (let [[changes left] (inventory/add-stack (:inventory e) stack)]
     (concat (for [[slot s] changes] [:set-slot eid slot s])
             (when left
-              [[:spawn-entity (items/dropped world eid left)]]))))
+              [[:spawn-entity (item/dropped world eid left)]]))))
 
 (defn- remainder-deltas [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
@@ -233,7 +234,7 @@
     (concat
       [(out/except eid (bundle-sound world eid one pos 0))
        [:set-slot eid (player/hand-slot e hand) b]]
-      (items/thrown-deltas world eid [s])
+      (item/thrown-deltas world eid [s])
       [(out/all (bundle-sound world eid all (block-centre pos) 1))
        [:award eid (keyword "used" (name (:item b))) 1]])))
 
@@ -280,7 +281,7 @@
     (extra-deltas world eid e made)))
 
 (defn- water-at? [world pos]
-  (let [st (edit/block-at world pos)]
+  (let [st (changes/block-at world pos)]
     (or (and (block/source-state? st)
              (block/water? st))
         (= :true (:waterlogged (block/props-of st))))))

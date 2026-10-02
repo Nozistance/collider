@@ -6,11 +6,11 @@
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.game.systems.damage :as damage]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]))
 
@@ -109,8 +109,8 @@
 (defn- hurt-of
   "Returns target eid of world after damage d from src."
   [world eid e d src]
-  (if-let [ds (damage/damage-deltas world eid e d src)]
-    (damage/hurt-now world eid e ds)
+  (if-let [ds (hurt/damage-deltas world eid e d src)]
+    (hurt/hurt-now world eid e ds)
     e))
 
 (defn- extra-knock
@@ -150,7 +150,7 @@
         h (hurt-of world oid o s src)]
     (if (entity/taken? o h)
       (into [d [:knockback oid sweep-knockback sx cz]]
-            (damage/report-deltas world oid h))
+            (hurt/report-deltas world oid h))
       (when-not (identical? o h) [d]))))
 
 (defn- sweep-particle [a]
@@ -194,7 +194,7 @@
                                [0.1 0.0 0.1]))])))
 
 (defn- landed-deltas [world eid a tid t h b src]
-  (concat (damage/report-deltas world tid h)
+  (concat (hurt/report-deltas world tid h)
           (extra-knock eid a tid (:knock? b))
           (when (:sweep? b)
             (sweep-deltas world eid a tid t src (:s b)))

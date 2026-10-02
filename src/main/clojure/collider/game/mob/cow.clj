@@ -1,9 +1,9 @@
 (ns collider.game.mob.cow
   "Cow milking and calf variants."
-  (:require [collider.game.mob.animal :as animal]
+  (:require [collider.game.inventory :as inventory]
+            [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.out :as out]
-            [collider.game.systems.items :as items]))
+            [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
 
@@ -24,7 +24,7 @@
 
 (defn- milked [world peid p hand]
   (cons (out/except peid (out/sound :cow/milk (:pos p) 1.0 1.0))
-        (items/filled-result-deltas world peid milk false hand)))
+        (inventory/filled-result-deltas world peid milk false hand)))
 
 (defn milk-result
   "Returns what a bucket does to a cow.

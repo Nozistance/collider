@@ -1,6 +1,7 @@
 (ns collider.game.mob.rabbit
   "Rabbit hops, goals, garden raids and kits."
-  (:require [collider.game.delta :as delta]
+  (:require [collider.game.changes :as changes]
+            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
@@ -11,7 +12,6 @@
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.grow.common :as grow]
@@ -398,8 +398,8 @@
         st (sense/block-at world crop)
         a (grow/age st)]
     (if (zero? a)
-      (edit/flagged-deltas world [[crop 0 []]] 2)
-      (concat (edit/flagged-deltas
+      (changes/flagged-deltas world [[crop 0 []]] 2)
+      (concat (changes/flagged-deltas
                 world [[crop (grow/aged st (dec a)) [[:break st]]]] 2)
               (signal/game-event :block-change crop eid)))))
 

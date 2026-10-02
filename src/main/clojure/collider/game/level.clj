@@ -13,6 +13,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.env.dimension :as dimension]
             [collider.world.env.weather :as weather]
+            [collider.world.gen :as gen]
             [collider.world.light :as light]
             [collider.world.neighbors :as neighbors])
   (:import (clojure.lang MapEntry)))
@@ -403,3 +404,24 @@
   [w [_ m]]
   (reduce-kv (fn [w k v] (if (= v (get w k)) w (assoc w k v)))
              w (or m (weather/advance w))))
+
+(def ^:private ^:const unknown-timeout 1)
+
+(defn read-absent
+  "Returns the payload of a chunk read while it is absent.
+  A saved chunk is read from the store at once. Any other chunk
+  is generated."
+  [world id]
+  (or (when (contains? (:stored world) id)
+        (when-let [read (:read-chunk world)]
+          (read (:dim world) id)))
+      {:chunk (gen/flat-chunk (:dim world))}))
+
+(defn read-absent-deltas
+  "Returns the deltas that put chunks read while absent in place.
+  Their ticket keeps them one more tick."
+  [payloads]
+  (mapcat (fn [[id payload]]
+            [[:restore-chunk id payload]
+             [:chunk-ticket id unknown-timeout]])
+          payloads))

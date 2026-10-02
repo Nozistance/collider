@@ -1,7 +1,7 @@
 (ns collider.game.systems.furnaces
   "Furnaces, blast furnaces and smokers cooking."
-  (:require [collider.game.systems.blocks.edit :as edit]
-            [collider.game.block.furnace :as furnace]
+  (:require [collider.game.block.furnace :as furnace]
+            [collider.game.changes :as changes]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -19,4 +19,5 @@
         [e' lit?] (furnace/tick e)]
     (concat (when (not= e e') [[:set-block-entity pos e']])
             (when (not= lit? (= :true (:lit (block/props-of st))))
-              (edit/set-deltas world [[pos (with-lit st lit?)]])))))
+              (let [st' (with-lit st lit?)]
+                (changes/set-deltas world [[pos st']]))))))

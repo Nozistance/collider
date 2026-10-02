@@ -4,18 +4,18 @@
   (:require [collider.data.long-map :as lm]
             [collider.data :as data]
             [collider.game.apply :as apply]
+            [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.damage :as damage]
+            [collider.game.reach :as reach]
             [collider.game.turn.overlay :as overlay]
             [collider.random :as random]
             [collider.vec :as v]
@@ -364,8 +364,8 @@
     (when (and o (pos? (double (:health o 0.0))) (not (:sleeping o)))
       (concat [[:teleport oid at]
                (out/to oid (teleport-packet at o))]
-              (damage/damage-deltas world oid o pearl-damage
-                                    {:type :ender-pearl})
+              (hurt/damage-deltas
+                world oid o pearl-damage {:type :ender-pearl})
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))
 
 (defn- dowse-cells [hit]
@@ -384,14 +384,14 @@
   (let [chunks (:chunks world)]
     (when (seq fires)
       (into (mapv #(break-packet chunks %) fires)
-            (edit/set-deltas world (mapv (fn [p] [p 0]) fires))))))
+            (changes/set-deltas world (mapv (fn [p] [p 0]) fires))))))
 
 (defn- dowse-deltas [world hit]
   (let [loaded? #(chunk/in-range? (nth % 1))
         cells (filterv loaded? (dowse-cells hit))
         fires (filterv #(fire-at? (:chunks world) %) cells)]
     (into (vec (fire-out-deltas world fires))
-          (mapcat #(edit/dowse-deltas world %))
+          (mapcat #(changes/dowse-deltas world %))
           (remove (set fires) cells))))
 
 (defn- doused-deltas [world e at]
@@ -452,9 +452,9 @@
           n (if (and (= :snowball (:type e)) (= :blaze (:type o)))
               3.0 0.0)
           src (thrown-source world eid e d)]
-      (when-let [ds (damage/damage-deltas world oid o n src)]
-        (into ds (damage/report-deltas
-                   world oid (damage/hurt-now world oid o ds)))))))
+      (when-let [ds (hurt/damage-deltas world oid o n src)]
+        (into ds (hurt/report-deltas
+                   world oid (hurt/hurt-now world oid o ds)))))))
 
 (defn- hit-deltas [world eid e d at hit]
   (case (:type e)

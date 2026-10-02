@@ -1,10 +1,10 @@
 (ns collider.game.systems.geysers
   "Geysers of potent sulfur under water and what they lift."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.changes :as changes]
+            [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.level :as level]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.chunk :as chunk]))
@@ -60,7 +60,7 @@
       d)))
 
 (defn- turn-deltas [world pos st]
-  (edit/set-deltas world [[pos (geyser/turned st)]]))
+  (changes/set-deltas world [[pos (geyser/turned st)]]))
 
 (defn- countdown-deltas [world pos st e depth]
   (when (zero? (rem (long (:tick world)) countdown-period))

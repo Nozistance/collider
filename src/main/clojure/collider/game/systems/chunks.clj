@@ -46,41 +46,12 @@
             [[:add-chunk id (gen/flat-chunk (:dim world))]])]
     d))
 
-(def ^:private ^:const unknown-timeout 1)
-
-(defn read-absent
-  "Returns the payload of a chunk read while it is absent.
-  A saved chunk is read from the store at once. Any other chunk
-  is generated."
-  [world id]
-  (or (when (contains? (:stored world) id)
-        (when-let [read (:read-chunk world)]
-          (read (:dim world) id)))
-      {:chunk (gen/flat-chunk (:dim world))}))
-
-(defn read-absent-deltas
-  "Returns the deltas that put chunks read while absent in place.
-  Their ticket keeps them one more tick."
-  [payloads]
-  (mapcat (fn [[id payload]]
-            [[:restore-chunk id payload]
-             [:chunk-ticket id unknown-timeout]])
-          payloads))
-
 (defn- restore-deltas [world d]
   (let [dim (:dim world)]
     (for [[tag _ id payload] (:input d)
           :when (= :chunk-loaded tag)]
       [:restore-chunk id
        (or payload {:chunk (gen/flat-chunk dim)})])))
-
-(defn needed-ids
-  "Returns the ids of the chunks the world keeps loaded.
-  They are the chunks around its players and the chunks joining and
-  respawning players wait for."
-  [world]
-  (into (areas/loaded-zone world)
-        (mapcat :need (vals (:spawning world)))))
 
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
@@ -199,7 +170,7 @@
     (concat (when (some loaded-event? (:input d))
               (restore-deltas world d))
             (when (loads? world)
-              (loading-deltas world (needed-ids world))))))
+              (loading-deltas world (areas/needed-ids world))))))
 
 (defn chunk-views
   "Moves the views of the players to their chunks.
@@ -231,7 +202,7 @@
              (lm/long-map) tickets))
 
 (defn- dropped-ids [world held]
-  (let [keep? (needed-ids world)]
+  (let [keep? (areas/needed-ids world)]
     (into [] (remove #(or (contains? keep? %) (contains? held %)))
           (keys (:chunks world)))))
 

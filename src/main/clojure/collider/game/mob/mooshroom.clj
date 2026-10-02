@@ -2,11 +2,11 @@
   "Mooshroom stew, shearing, flower feeding and lightning."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.env.signal :as signal]))
 
@@ -77,7 +77,7 @@
   (let [effects (:stew e)
         snd (if effects :mooshroom/suspicious :mooshroom/milk)
         s (stew effects)]
-    (concat (items/filled-result-deltas world peid s true hand)
+    (concat (inventory/filled-result-deltas world peid s true hand)
             [(out/all (out/sound snd (:pos e) 1.0 1.0))]
             (when effects [[:merge-entity eid {:stew nil}]]))))
 
@@ -113,7 +113,7 @@
   (let [snd (out/sound :mooshroom/eat (:pos e) loud-volume 1.0)]
     (concat [[:merge-entity eid {:stew (@stews item)}]
              (out/all snd)]
-            (items/consume-deltas peid p hand 1))))
+            (inventory/consume-deltas peid p hand 1))))
 
 (defn struck
   "Returns the deltas for a mooshroom that lightning bolt bid hits.
@@ -139,7 +139,7 @@
   (when (and (= :shears item) (not (mobs/baby? e)))
     {:result :success
      :deltas (concat (signal/game-event :shear (:pos e) peid)
-                     (items/hurt-item-deltas peid p hand 1)
+                     (inventory/hurt-item-deltas peid p hand 1)
                      (sheared eid e t))}))
 
 (defn flower-result

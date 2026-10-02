@@ -1,9 +1,9 @@
 (ns collider.game.systems.blocks.cauldron
   "Filling and emptying cauldrons."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
+            [collider.game.inventory :as inventory]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.items :as items]
             [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
@@ -27,7 +27,7 @@
          (= :water (get-in stack path)))))
 
 (defn- cauldron-filled [world pos item]
-  (let [above (edit/block-at world (mapv + pos [0 1 0]))
+  (let [above (changes/block-at world (mapv + pos [0 1 0]))
         dry? (not (block/water? above))]
     (case item
       :water-bucket
@@ -67,26 +67,26 @@
                      {:level (keyword (str (inc lvl)))})))))
 
 (defn- used-deltas [world eid pos item result sound stat]
-  (concat (items/filled-result-deltas world eid result)
+  (concat (inventory/filled-result-deltas world eid result)
           [(out/all (out/block-sound sound pos 1.0 1.0))
            [:award eid stat 1]
            [:award eid (keyword "used" (name item)) 1]]))
 
 (defn- bottle-deltas [world eid pos]
-  (let [cur (edit/block-at world pos)]
+  (let [cur (changes/block-at world pos)]
     (when (= :water-cauldron (block/block-of cur))
       (concat
-        (edit/change-deltas world [[pos (cauldron-lowered cur)]])
+        (changes/change-deltas world [[pos (cauldron-lowered cur)]])
         (used-deltas world eid pos :glass-bottle water-bottle
                      :bottle/fill :custom/use-cauldron)))))
 
 (defn- pour-bottle-deltas [world eid pos]
-  (let [cur (edit/block-at world pos)
+  (let [cur (changes/block-at world pos)
         block (block/block-of cur)]
     (when (contains? #{:cauldron :water-cauldron} block)
       (when-let [st (cauldron-raised cur)]
         (concat
-          (edit/change-deltas world [[pos st]])
+          (changes/change-deltas world [[pos st]])
           (used-deltas world eid pos :potion
                        {:item :glass-bottle :count 1}
                        :bottle/empty :custom/use-cauldron))))))
@@ -94,14 +94,14 @@
 (defn- scoop-deltas [world eid pos cur]
   (when-let [[filled sound] (cauldron-scooped cur)]
     (concat
-      (edit/change-deltas world [[pos (block/state :cauldron)]])
+      (changes/change-deltas world [[pos (block/state :cauldron)]])
       (used-deltas world eid pos :bucket {:item filled :count 1}
                    sound :custom/use-cauldron))))
 
 (defn- fill-deltas [world eid pos item]
   (when-let [[st sound] (cauldron-filled world pos item)]
     (concat
-      (edit/change-deltas world [[pos st]])
+      (changes/change-deltas world [[pos st]])
       (used-deltas world eid pos item {:item :bucket :count 1}
                    sound :custom/fill-cauldron))))
 
@@ -112,8 +112,8 @@
 (defn- wash-deltas [world eid pos cur stack cleaned stat]
   (when (= :water-cauldron (block/block-of cur))
     (concat
-      (edit/change-deltas world [[pos (cauldron-lowered cur)]])
-      (items/filled-result-deltas
+      (changes/change-deltas world [[pos (cauldron-lowered cur)]])
+      (inventory/filled-result-deltas
         world eid (assoc cleaned :count 1) true)
       [[:award eid stat 1]])))
 
@@ -131,7 +131,7 @@
                      :custom/clean-banner)))))
 
 (defn cauldron-deltas [world eid pos item stack]
-  (let [cur (edit/block-at world pos)]
+  (let [cur (changes/block-at world pos)]
     (cond
       (and (= :potion item) (water-bottle? stack))
       (pour-bottle-deltas world eid pos)

@@ -4,17 +4,17 @@
   drops, then fire."
   (:require [collider.data :as data]
             [collider.game.block.tnt :as tnt]
+            [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.entity.sections :as sections]
+            [collider.game.hanging.drops :as drops]
+            [collider.game.item :as item]
+            [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.chunks :as chunks]
-            [collider.game.systems.damage :as damage]
-            [collider.game.systems.hanging :as hanging-system]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -80,7 +80,7 @@
   (let [[kb dmg] (impulse b e (:pos e) d12 (density b e))]
     (cond
       (= :player (:type e))
-      {:ds (damage/damage-deltas (:world b) id e dmg (:src b))
+      {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
        :motion (when (shoved? e) kb)}
       (item-dies? e dmg) {:ds [[:remove-entity id]] :gone? true}
       :else {:ds (cond-> []
@@ -94,7 +94,7 @@
   [b id e d12]
   (if (contains? hanging/types (:type e))
     (let [by (:cause (:src b))]
-      {:ds (hanging-system/kill-deltas (:world b) id e (:causer b) by)
+      {:ds (drops/kill-deltas (:world b) id e (:causer b) by)
        :gone? true})
     (pushed b id e d12)))
 
@@ -146,7 +146,7 @@
   (when (get-in world [:rules :block-drops] true)
     (let [radius (decay-radius world source power)
           stacks (explosion/stacks rg destroy seed radius)]
-      (map-indexed (fn [i [p stack]] (items/popped world p stack i))
+      (map-indexed (fn [i [p stack]] (item/popped world p stack i))
                    stacks))))
 
 (defn- block-at ^long [rg [x y z]]
@@ -195,7 +195,7 @@
 
 (defn- reader [world center]
   (let [at (mapv #(long (double %)) center)
-        read #(chunks/read-absent world %)]
+        read #(level/read-absent world %)]
     (explosion/block-reader (:chunks world) at read)))
 
 (defn- author [{:keys [by src source]}]
@@ -204,8 +204,8 @@
       (:cause src) (assoc :owner (:cause src)))))
 
 (defn- changed-deltas [{:keys [world rg] :as b} changes]
-  (let [ds (edit/shaped-deltas (with-read world rg) changes)]
-    (concat (chunks/read-absent-deltas (explosion/loaded-payloads rg))
+  (let [ds (changes/shaped-deltas (with-read world rg) changes)]
+    (concat (level/read-absent-deltas (explosion/loaded-payloads rg))
             (delta/authored ds (author b)))))
 
 (defn- blocks

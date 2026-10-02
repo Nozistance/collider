@@ -5,13 +5,13 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.menu :as menu]
             [collider.game.deltas :as deltas]
+            [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
             [collider.game.systems.containers :as containers]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.items :as items]
+            [collider.game.reach :as reach]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -166,7 +166,7 @@
          [:client-slots eid (or changed {}) carried]]
         (containers/craft-deltas world eid after)
         (containers/sound-deltas world eid after)
-        (items/thrown-deltas world eid (:drops after))
+        (item/thrown-deltas world eid (:drops after))
         (equip-deltas world eid after)))))
 
 (defn- resent-deltas [eid e]

@@ -1,13 +1,13 @@
 (ns collider.game.turn.falling
   "The turn of a falling block such as sand, gravel or an anvil."
-  (:require [collider.game.delta :as delta]
+  (:require [collider.game.changes :as changes]
+            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.systems.damage :as damage]
             [collider.random :as random]
             [collider.world.blocks.fall :as fall]
             [collider.game.entity.size :as size]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
             [collider.game.turn.landing :as landing]
@@ -75,8 +75,9 @@
 (defn- land-deltas [world eid e cell cur concrete? stuck?]
   (if-let [st (landed-state world e cell cur concrete? stuck?)]
     (cond-> (into [[:remove-entity eid]]
-                  (delta/authored (edit/set-deltas world [[cell st]])
-                                  (delta/entity-author eid e)))
+                  (delta/authored
+                    (changes/set-deltas world [[cell st]])
+                    (delta/entity-author eid e)))
             (anvil? st)
             (conj (land-event out/sound-anvil-land cell)))
     (broken-deltas world eid e cell)))
@@ -213,9 +214,9 @@
   (let [src (source eid e)
         box (box-of e)
         hit (fn [[oid o]]
-              (when-let [ds (damage/damage-deltas world oid o n src)]
-                (let [h (damage/hurt-now world oid o ds)]
-                  (into ds (damage/report-deltas world oid h)))))]
+              (when-let [ds (hurt/damage-deltas world oid o n src)]
+                (let [h (hurt/hurt-now world oid o ds)]
+                  (into ds (hurt/report-deltas world oid h)))))]
     (into [] (comp (filter #(victim? box %)) (mapcat hit))
           (:entities world))))
 

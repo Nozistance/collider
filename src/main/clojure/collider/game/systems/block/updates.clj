@@ -3,13 +3,13 @@
   (:require [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
+            [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schedule :as schedule]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -92,14 +92,14 @@
 
 (defn- out-into [pass ds]
   (if (seq ds)
-    (assoc pass :out (reduce edit/joined-into (:out pass) ds))
+    (assoc pass :out (reduce changes/joined-into (:out pass) ds))
     pass))
 
 (defn- written [world k pass s by]
   (let [writes (:writes s)]
     (cond-> (-> pass
                 (assoc-in [:w :chunks] (:chunks s))
-                (out-into (edit/settled-deltas world s by)))
+                (out-into (changes/settled-deltas world s by)))
       (:dirty pass)
       (update :dirty into (map (comp column first)) writes)
       (= :block-ticks k) (update :lit lit-writes writes))))

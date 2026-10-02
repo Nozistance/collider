@@ -2,16 +2,15 @@
   "Paintings and item frames: hanging them, using them, breaking
   them, and the check that they still hold."
   (:require [collider.game.deltas :as deltas]
-            [collider.game.entity :as entity]
+            [collider.game.hanging.drops :as drops]
+            [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
-            [collider.game.out :as out]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.items :as items]
+            [collider.game.reach :as reach]
             [collider.random :as random]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -22,68 +21,13 @@
 (defn- others [world]
   (level/of-types world hanging/types))
 
-(defn- sound [e what]
-  (let [k (keyword (str "entity." (name (:type e)) "." what))]
-    (out/all (out/sound k (:pos e) 1.0 1.0 :neutral))))
-
-(def ^:private drop-offset (double (float 0.15)))
-
-(defn- drop-pos [e]
-  (let [[x y z] (:pos e)
-        [dx _ dz] (dir/offset (:facing e))]
-    [(+ (double x) (* (long dx) drop-offset)) (double y)
-     (+ (double z) (* (long dz) drop-offset))]))
-
-(defn- spawned [world eid e stack n]
-  (let [ks [(:tick world) eid :hanging-drop n]]
-    [:spawn-entity
-     (entity/item (drop-pos e) (entity/pop-velocity ks) stack)]))
-
-(defn- drops? [world]
-  (get-in world [:rules :entity-drops] true))
-
-(defn- endless? [causer]
-  (boolean (and causer (player/infinite-materials? causer))))
-
-(defn- frame-drops [world eid e causer with-frame?]
-  (when (and (drops? world) (not (endless? causer)))
-    (let [s (:stack e)]
-      (cond-> []
-        with-frame?
-        (conj (spawned world eid e {:item (:type e) :count 1} 0))
-        s (conj (spawned world eid e s 1))))))
-
-(defn- frame-broken [world eid e causer by]
-  (concat [(sound e "break")]
-          (frame-drops world eid e causer true)
-          (signal/game-event :block-change (:pos e) by)))
-
-(defn- painting-broken [world eid e causer]
-  (when (drops? world)
-    (cons (sound e "break")
-          (when-not (endless? causer)
-            [(spawned world eid e {:item :painting :count 1} 0)]))))
-
-(defn- dropped [world eid e causer by]
-  (if (= :painting (:type e))
-    (painting-broken world eid e causer)
-    (frame-broken world eid e causer by)))
-
-(defn kill-deltas
-  "Returns the deltas of hanging entity eid, e, killed by causer,
-  whose eid is by; both are nil when nothing caused it."
-  [world eid e causer by]
-  (concat [[:remove-entity eid]]
-          (signal/game-event :entity-die (:pos e) eid)
-          (dropped world eid e causer by)))
-
 (defn- checked [world t [live acc] [eid e]]
   (if (hanging/survives? (:chunks world) eid e live)
     [live (conj acc [:merge-entity eid
                      {:check-at (hanging/next-check-at t)}])]
     [(dissoc live eid)
      (-> (conj acc [:remove-entity eid])
-         (into (dropped world eid e nil nil)))]))
+         (into (drops/dropped world eid e nil nil)))]))
 
 (defn- turn [world active t [live acc :as s] [eid e :as entry]]
   (if (areas/active-at? active (:pos e))
@@ -137,10 +81,10 @@
     (hanging/frame item pos face (:tick world))))
 
 (defn- hung-deltas [world eid p e hand]
-  (concat [(sound e "place")]
+  (concat [(drops/sound e "place")]
           (signal/game-event :entity-place (:pos e) eid)
           [[:spawn-entity e]]
-          (items/consume-deltas eid p hand 1)))
+          (inventory/consume-deltas eid p hand 1)))
 
 (defn place-deltas
   "Returns the deltas of player eid, p, hanging the item it holds on
@@ -178,13 +122,13 @@
 (defn- put-deltas [peid p eid e hand stack]
   (let [e' (assoc e :stack (assoc stack :count 1))]
     (concat [[:merge-entity eid {:stack (:stack e')}]
-             (sound e' "add-item")]
+             (drops/sound e' "add-item")]
             (signal/game-event :block-change (:pos e) peid)
-            (items/consume-deltas peid p hand 1))))
+            (inventory/consume-deltas peid p hand 1))))
 
 (defn- turn-item-deltas [peid eid e]
   (let [r (mod (inc (long (or (:rotation e) 0))) 8)]
-    (concat [(sound e "rotate-item")
+    (concat [(drops/sound e "rotate-item")
              [:merge-entity eid {:rotation r}]]
             (signal/game-event :block-change (:pos e) peid))))
 
@@ -207,16 +151,16 @@
 
 (defn- emptied-deltas [world peid p eid e]
   (concat [[:merge-entity eid {:stack nil}]]
-          (frame-drops world eid e p false)
+          (drops/frame-drops world eid e p false)
           (signal/game-event :block-change (:pos e) peid)
-          [(sound e "remove-item")]))
+          [(drops/sound e "remove-item")]))
 
 (defn- attack-deltas [world [_ peid eid :as ev]]
   (when-let [[p e] (target world ev)]
     (when (in-attack-range? p e)
       (if (and (:stack e) (hanging/frames (:type e)))
         (emptied-deltas world peid p eid e)
-        (kill-deltas world eid e p peid)))))
+        (drops/kill-deltas world eid e p peid)))))
 
 (defn- event-deltas [world ev]
   (case (nth ev 0)

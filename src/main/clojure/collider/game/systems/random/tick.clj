@@ -1,13 +1,13 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
             [collider.game.clock :as clock]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
+            [collider.game.item :as item]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.game.areas :as areas]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -157,7 +157,7 @@
   (when (get-in world [:rules :block-drops] true)
     (for [{:keys [pos drops]} results
           [i stack] (map-indexed vector drops)]
-      [:spawn-entity (items/popped world pos stack [:decay i])])))
+      [:spawn-entity (item/popped world pos stack [:decay i])])))
 
 (defn- run-closed [runs with ^long n]
   (if (pos? n) (conj runs [{:with with} n]) runs))
@@ -176,7 +176,7 @@
               :else (recur (next rs) (run-closed runs by n) w k))))))
 
 (defn- changed [world changes runs]
-  (delta/authored (edit/set-deltas world changes runs)
+  (delta/authored (changes/set-deltas world changes runs)
                   (nth (peek runs) 0)))
 
 (defn- result-deltas [world results changes drips runs]

@@ -3,11 +3,14 @@
   (:require [clojure.string :as str]
             [collider.config :as config]
             [collider.data :as data]
+            [collider.game.areas :as areas]
+            [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.camera :as camera]
             [collider.game.clock :as clock]
             [collider.game.deltas :as deltas]
             [collider.game.effect :as effect]
+            [collider.game.effect.account :as account]
             [collider.game.experience :as xp]
             [collider.game.command.args :as cmd-args]
             [collider.game.command.args.item :as item-args]
@@ -15,6 +18,8 @@
             [collider.game.command.reader :as cmd-reader]
             [collider.game.command.tree :as cmd]
             [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
+            [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.gamerules :as rules]
             [collider.game.mob.mobs :as mobs]
@@ -26,10 +31,6 @@
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.systems.blocks.clone :as clone]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.chunks :as chunks]
-            [collider.game.systems.effects :as effects]
-            [collider.game.systems.items :as items]
             [collider.game.systems.sleep :as sleep]
             [collider.random :as random]
             [collider.vec :as v]
@@ -142,7 +143,7 @@
   [(out/to eid (failure {:translate key :with (vec with)}))])
 
 (defn- unloaded? [world positions]
-  (let [held (chunks/needed-ids world)]
+  (let [held (areas/needed-ids world)]
     (some #(let [id (chunk/block-chunk %)]
              (not (or (contains? (:chunks world) id)
                       (contains? held id))))
@@ -175,11 +176,11 @@
 
 (defn- fetched [world bounds]
   (let [in? #(contains? (:chunks world) %)
-        read (fn [id] [id (chunks/read-absent world id)])
+        read (fn [id] [id (level/read-absent world id)])
         loaded (into {} (comp (remove in?) (map read))
                      (box-ids bounds))]
     [(reduce-kv #(assoc %1 %2 (:chunk %3)) (:chunks world) loaded)
-     (chunks/read-absent-deltas loaded)]))
+     (level/read-absent-deltas loaded)]))
 
 (defn- source-dim [world]
   (get-in world [:source :dim] (:dim world)))
@@ -213,8 +214,8 @@
         lv (level-view world dim)
         [chunks adds] (fetched lv (box (into (ffirst changes)
                                              (first (peek changes)))))
-        [ds n placed] (edit/command-deltas (assoc lv :chunks chunks)
-                                           changes opts)]
+        [ds n placed] (changes/command-deltas
+                        (assoc lv :chunks chunks) changes opts)]
     [(in-level world dim adds) (in-level world dim ds) n placed]))
 
 (defn- area ^long [[[x1 x2] [y1 y2] [z1 z2]]]
@@ -338,7 +339,7 @@
         (= "masked" filter) (fn [st _] (not (block/air-type? st)))))
 
 (defn- copied-tail [p]
-  (cond-> (into [] (mapcat (fn [[q e]] (edit/be-changed q e)))
+  (cond-> (into [] (mapcat (fn [[q e]] (changes/be-changed q e)))
                 (:entities p))
     (seq (:ticks p)) (conj [:schedule-copied (:ticks p)])))
 
@@ -347,11 +348,11 @@
   [world [fd from fadds] [td to tadds] p]
   (if (= fd td)
     (let [ops (into (vec (:clear p)) (:place p))
-          [ds n] (edit/ops-deltas to ops)]
+          [ds n] (changes/ops-deltas to ops)]
       [(in-level world td (concat tadds ds (copied-tail p))) n])
     (let [[cds] (when (seq (:clear p))
-                  (edit/ops-deltas from (:clear p)))
-          [ds n] (edit/ops-deltas to (:place p))]
+                  (changes/ops-deltas from (:clear p)))
+          [ds n] (changes/ops-deltas to (:place p))]
       [(concat (in-level world fd (concat fadds cds))
                (in-level world td (concat tadds ds (copied-tail p))))
        n])))
@@ -730,8 +731,8 @@
         cid (chunk/block-chunk (mapv #(long (Math/floor %)) pos))]
     (when-not (or (contains? (:chunks lv) cid)
                   (contains? (:loading lv) cid))
-      (chunks/read-absent-deltas
-       {cid (chunks/read-absent lv cid)}))))
+      (level/read-absent-deltas
+       {cid (level/read-absent lv cid)}))))
 
 (defn- entity-moved [world id from e to pos [yaw pitch] rel]
   (let [rel (if (set? rel) rel #{})]
@@ -871,8 +872,9 @@
   (let [lv (level-view world dim)
         inv (or (:inventory e) {})
         item (:item proto)
-        [changes left] (items/add-stack inv (assoc proto :count n))
-        drop #(items/dropped lv id % true 0)]
+        stack (assoc proto :count n)
+        [changes left] (inventory/add-stack inv stack)
+        drop #(item/dropped lv id % true 0)]
     (concat
       (in-level world dim
                 (concat
@@ -938,7 +940,7 @@
       :else (fail eid "commands.summon.invalidPosition"))))
 
 (defn- place-needed? [world pos st mode]
-  (let [old (edit/block-at (source-level world) pos)
+  (let [old (changes/block-at (source-level world) pos)
         left (if (block/air-type? old) old (block/emptied old))]
     (or (not= "destroy" mode) (not (block/air-type? st))
         (not (block/air-type? left)))))
@@ -958,7 +960,7 @@
     (cond
       k (fail eid k)
       (and (= "keep" mode)
-           (not (block/air-type? (edit/block-at lv pos))))
+           (not (block/air-type? (changes/block-at lv pos))))
       (fail eid "commands.setblock.failed")
       :else (block-set world eid pos (:state block) mode))))
 
@@ -1256,10 +1258,10 @@
     :else (* 20 (long secs))))
 
 (defn- effect-changed [world [id dim e] f]
-  (when (effects/living? e)
-    (let [acc (f (effects/account id e))]
+  (when (account/living? e)
+    (let [acc (f (account/account id e))]
       (when (:landed? acc)
-        (or (in-level world dim (effects/deltas acc e)) [])))))
+        (or (in-level world dim (account/deltas acc e)) [])))))
 
 (defn- effect-report [eid xs n key-of with]
   (if (= 1 (count xs))
@@ -1281,14 +1283,14 @@
         key-of #(str "commands.effect.give.success." %)]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.entity")
-      (effect-run world eid xs #(effects/land % k i)
+      (effect-run world eid xs #(account/land % k i)
                   "commands.effect.give.failed" key-of
                   (fn [who] [(effect-title k) who (quot d 20)])))))
 
 (defn- clear-parts [k]
   (if k
-    ["specific" #(effects/take-off % k) #(vector (effect-title k) %)]
-    ["everything" effects/take-all vector]))
+    ["specific" #(account/take-off % k) #(vector (effect-title k) %)]
+    ["everything" account/take-all vector]))
 
 (defn- effect-clear-deltas [world eid [sel k]]
   (let [xs (if sel (selected world eid sel) (self world eid))
@@ -1650,7 +1652,7 @@
     (answer (tag-list eid xs tags))))
 
 (defn- swung [world hand [id dim e]]
-  (when (effects/living? e)
+  (when (account/living? e)
     (let [ds (player/swing-deltas id e hand (:tick world) true)]
       (or (in-level world dim ds) []))))
 

@@ -1,6 +1,6 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
-  (:require [collider.game.systems.blocks.edit :as edit]
+  (:require [collider.game.changes :as changes]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]))
@@ -46,4 +46,4 @@
   [world [_ e]]
   (when (:on-ground e)
     (let [changes (tilted-under world (sorted-map) e)]
-      (when (seq changes) (edit/set-deltas world (vec changes))))))
+      (when (seq changes) (changes/set-deltas world (vec changes))))))

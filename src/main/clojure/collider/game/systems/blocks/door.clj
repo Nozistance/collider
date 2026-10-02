@@ -1,8 +1,8 @@
 (ns collider.game.systems.blocks.door
   "Opening and closing doors, trapdoors and fence gates."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
@@ -15,7 +15,7 @@
         (concat block/door-types block/trapdoor-types)))
 
 (defn opens? [world pos]
-  (let [cur (edit/block-at world pos)]
+  (let [cur (changes/block-at world pos)]
     (and (contains? openable-types (block/type-of cur))
          (data/by-hand? (block/block-of cur)))))
 
@@ -53,5 +53,5 @@
   (let [changes (toggled world eid pos state)
         st' (second (first changes))
         open? (= :true (:open (block/props-of st')))]
-    (conj (edit/change-deltas world changes)
+    (conj (changes/change-deltas world changes)
           (out/except eid (open-sound world pos state open?)))))

@@ -4,8 +4,8 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
             [collider.game.entity :as entity]
+            [collider.game.item :as item]
             [collider.game.out :as out]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.lectern :as lectern]
@@ -25,7 +25,7 @@
 (defn- spilled [world pos e]
   (let [t (:tick world)
         roll (fn [i] #(random/of-key t pos [:spill i] %))
-        pour (fn [i s] (when s (items/scattered pos s (roll i))))]
+        pour (fn [i s] (when s (item/scattered pos s (roll i))))]
     (into []
           (comp (map-indexed pour) cat
                 (map (fn [it] [:spawn-entity it])))
@@ -35,7 +35,7 @@
   (when-let [r (:record e)]
     (let [above (mapv + pos [0 1 0])
           stop (out/level-event out/sound-stop-jukebox-song pos 0)]
-      [[:spawn-entity (items/popped world above r :jukebox)]
+      [[:spawn-entity (item/popped world above r :jukebox)]
        (out/all stop)])))
 
 (defn- book-dropped [world pos old e]

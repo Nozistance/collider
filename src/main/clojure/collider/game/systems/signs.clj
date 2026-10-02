@@ -1,6 +1,6 @@
 (ns collider.game.systems.signs
   "Signs that editors hold open."
-  (:require [collider.game.systems.blocks.reach :as reach]))
+  (:require [collider.game.reach :as reach]))
 
 (set! *warn-on-reflection* true)
 

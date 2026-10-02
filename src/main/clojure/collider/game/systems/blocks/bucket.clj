@@ -1,11 +1,13 @@
 (ns collider.game.systems.blocks.bucket
   "Filling and emptying buckets."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
+            [collider.game.inventory :as inventory]
+            [collider.game.item :as item]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.items :as items]
+            [collider.game.reach :as reach]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
@@ -22,7 +24,7 @@
              (get-in world [:rules :block-drops] true))
     (map-indexed
       (fn [i stack]
-        [:spawn-entity (items/popped world pos stack [:bucket i])])
+        [:spawn-entity (item/popped world pos stack [:bucket i])])
       (block/drops cur #(random/of-key (:tick world) pos %)))))
 
 (defn- may-replace? [cur]
@@ -45,7 +47,7 @@
     [(out/except eid fx)]))
 
 (defn- drown-deltas [world pos cur]
-  (concat (edit/change-deltas
+  (concat (changes/change-deltas
             world [[pos (campfire/drowned cur) [:fluid-tick]]])
           (when (= :true (:lit (block/props-of cur)))
             (let [snd :generic/extinguish-fire]
@@ -53,7 +55,7 @@
 
 (defn- hold-deltas [world pos cur]
   (let [st (edit/with-water cur true)]
-    (edit/change-deltas world [[pos st [:fluid-tick]]])))
+    (changes/change-deltas world [[pos st [:fluid-tick]]])))
 
 (defn- fizz-pitch ^double [world pos]
   (let [roll #(random/of-key (:tick world) pos %)]
@@ -71,10 +73,10 @@
     (drown-deltas world pos cur)
     holds? (hold-deltas world pos cur)
     :else (concat (break-drops world pos cur replace?)
-                  (edit/change-deltas world [[pos state]]))))
+                  (changes/change-deltas world [[pos state]]))))
 
 (defn- pour-deltas [world eid pos state relative snd]
-  (let [cur (edit/block-at world pos)
+  (let [cur (changes/block-at world pos)
         water? (block/water? state)
         replace? (may-replace? cur)
         holds? (and water? (edit/waterloggable? cur))]
@@ -93,7 +95,7 @@
 (defn- poured [world eid e state snd]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
     (let [relative (mapv + pos (dir/offset face))
-          hit (edit/block-at world pos)
+          hit (changes/block-at world pos)
           target (if (into-hit? hit state) pos relative)
           next-pos (when (= target pos) relative)]
       (when (chunk/in-level? world (target 1))
@@ -104,7 +106,7 @@
     (concat ds
             [[:award eid (keyword "used" (name item)) 1]]
             (when-not (player/infinite-materials? e)
-              (items/filled-result-deltas
+              (inventory/filled-result-deltas
                 world eid {:item :bucket :count 1} false
                 (:use-hand e))))))
 
@@ -134,7 +136,7 @@
 
 (defn- scoop-target [world e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
-    (let [st (edit/block-at world pos)]
+    (let [st (changes/block-at world pos)]
       (cond
         (= :powder-snow (block/type-of st)) [:powder-snow pos]
         (liquid/bubble-column? st) [:bubble-column pos]
@@ -159,10 +161,10 @@
 (defn- drained-deltas [world kind pos st]
   (case kind
     (:source :bubble-column)
-    (edit/change-deltas world [[pos 0]])
-    :powder-snow (edit/change-deltas world [[pos 0]])
+    (changes/change-deltas world [[pos 0]])
+    :powder-snow (changes/change-deltas world [[pos 0]])
     :waterlogged
-    (edit/change-deltas world [[pos (edit/with-water st false)]])))
+    (changes/change-deltas world [[pos (edit/with-water st false)]])))
 
 (defn- snow-fx [kind pos st]
   (when (= :powder-snow kind)
@@ -173,13 +175,13 @@
   The bucket fills from the block in view."
   [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
-    (let [st (edit/block-at world pos)
+    (let [st (changes/block-at world pos)
           filled {:item (scooped-item kind st) :count 1}]
       (concat (drained-deltas world kind pos st)
               (snow-fx kind pos st)
               [(out/except eid (fill-fx kind e st))
                [:award eid :used/bucket 1]]
-              (items/filled-result-deltas world eid filled)))))
+              (inventory/filled-result-deltas world eid filled)))))
 
 (defn lily-deltas
   "Returns the deltas of a player placing a lily pad.
@@ -189,9 +191,10 @@
     (let [[_ y' _ :as above] (mapv + pos [0 1 0])
           st (block/state item)]
       (when (and (= :source kind)
-                 (block/water? (edit/block-at world pos))
+                 (block/water? (changes/block-at world pos))
                  (chunk/in-level? world y')
-                 (block/can-be-replaced? (edit/block-at world above))
+                 (block/can-be-replaced?
+                   (changes/block-at world above))
                  (not (edit/obstructed? world above st))
                  (support/supported? (:chunks world) above st))
-        (edit/placed-deltas world eid above st)))))
+        (changes/placed-deltas world eid above st)))))

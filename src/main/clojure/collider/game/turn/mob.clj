@@ -30,7 +30,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
-            [collider.game.systems.blocks.reach :as reach]
+            [collider.game.reach :as reach]
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
   (:import (collider.game.entity.records Mob)

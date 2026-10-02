@@ -3,10 +3,10 @@
   what the block it lands on does with the fall."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
+            [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -188,7 +188,7 @@
     (let [y0 (top-of st)]
       [(cond-> e (in-top? e cell y0) (assoc :pos (lift e cell)))
        (into (delta/authored
-               (edit/set-deltas world [[cell (block/state :dirt)]])
+               (changes/set-deltas world [[cell (block/state :dirt)]])
                (delta/entity-author eid e))
              (lifted-deltas world eid cell y0))])
     [e nil]))

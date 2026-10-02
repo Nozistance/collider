@@ -2,13 +2,13 @@
   "Containers and benches with their menus and lids."
   (:require [collider.data :as data]
             [collider.game.book :as book]
+            [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.menu :as menu]
             [collider.game.bundle :as bundle]
             [collider.game.block.enchanting :as enchanting]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.brewing :as brewing]
@@ -362,8 +362,8 @@
 (defn- below [[x y z]] [x (dec (long y)) z])
 
 (defn- lectern-set [world pos st]
-  (edit/flagged-deltas world [[pos st]] 3 [(below pos)]
-                       (dec (long (:tick world)))))
+  (let [base (dec (long (:tick world)))]
+    (changes/flagged-deltas world [[pos st]] 3 [(below pos)] base)))
 
 (defn place-book-deltas [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))
@@ -528,7 +528,8 @@
   (concat
     (edge-sound world pos st t open?)
     (when (= :barrel t)
-      (edit/set-deltas world [[pos (barrel-open-state st open?)]]))))
+      (let [st' (barrel-open-state st open?)]
+        (changes/set-deltas world [[pos st']])))))
 
 (defn- lid-event [pos ^long n]
   (out/all (out/block-event pos 1 n)))
@@ -961,7 +962,7 @@
         next (worn-state st)
         c [pos (or next (block/emptied st))]
         event (if next out/sound-anvil-used out/sound-anvil-broken)]
-    (concat (edit/flagged-deltas world [c] (if next 2 3) nil base)
+    (concat (changes/flagged-deltas world [c] (if next 2 3) nil base)
             [(out/all (out/level-event event pos 0))])))
 
 (defn anvil-take-deltas

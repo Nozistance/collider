@@ -4,19 +4,16 @@
   shows what moved or closes, and a spectator keeps to its camera.
   The rest of a player's tick comes after the level, in join order."
   (:require [collider.game.apply :as apply]
+            [collider.game.block.screen :as screen]
             [collider.game.camera :as camera]
-            [collider.game.level :as level]
-            [collider.game.systems.containers :as containers]))
+            [collider.game.entity.hurt :as hurt]
+            [collider.game.level :as level]))
 
 (set! *warn-on-reflection* true)
 
-(defn- rest-deltas [eid e]
-  (when (pos? (long (or (:hurt-resist e) 0)))
-    [[:rest eid]]))
-
 (defn- turn-deltas [world eid e]
-  (-> (vec (rest-deltas eid e))
-      (into (containers/menu-deltas world eid e))
+  (-> (vec (hurt/rest-deltas eid e))
+      (into (screen/menu-deltas world eid e))
       (into (camera/follow-deltas world eid e))))
 
 (defn- turn [[w acc] [eid]]

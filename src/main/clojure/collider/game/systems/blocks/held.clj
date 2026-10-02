@@ -3,11 +3,11 @@
   spyglass and goat horn."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
+            [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
-            [collider.game.systems.items :as items]
             [collider.game.using :as using]))
 
 (set! *warn-on-reflection* true)
@@ -51,7 +51,7 @@
     (if (<= (stack/size held) 1)
       [[:set-slot eid slot
         (cond worn worn (game-mode/creative? e) held)]]
-      (concat (when worn (items/kept world eid e worn))
+      (concat (when worn (inventory/kept world eid e worn))
               (when-not (player/infinite-materials? e)
                 [[:set-slot eid slot (update held :count dec)]])))))
 

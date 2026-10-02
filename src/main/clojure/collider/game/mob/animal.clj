@@ -1,6 +1,7 @@
 (ns collider.game.mob.animal
   "Farm animal goals and their selector."
   (:require [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
@@ -9,7 +10,6 @@
             [collider.game.orb :as orb]
             [collider.game.out :as out]
             [collider.game.level :as level]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -492,7 +492,7 @@
     (when (= (:type e) (mobs/egg-type item))
       {:result :success-server
        :deltas (cons [:spawn-entity (newborn spec world t eid e e)]
-                     (items/consume-deltas peid p hand 1))})))
+                     (inventory/consume-deltas peid p hand 1))})))
 
 (defn- feedable? [e t]
   (and (not (mobs/baby? e))
@@ -529,7 +529,7 @@
   do neither leaves the food alone."
   [{:keys [world t peid p eid e hand item]}]
   (when (contains? (mobs/food (:type e)) item)
-    (let [used (items/use-item-deltas world peid p hand)
+    (let [used (inventory/use-item-deltas world peid p hand)
           ate (eaten t eid e)]
       (cond
         (feedable? e t)

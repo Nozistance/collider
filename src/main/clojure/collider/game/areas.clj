@@ -158,3 +158,11 @@
   (let [active (active-chunks world)
         live? (fn [[_ e]] (active-at? active (:pos e)))]
     (into [] (filter live?) (level/of-types world ts))))
+
+(defn needed-ids
+  "Returns the ids of the chunks the world keeps loaded.
+  They are the chunks around its players and the chunks joining and
+  respawning players wait for."
+  [world]
+  (into (loaded-zone world)
+        (mapcat :need (vals (:spawning world)))))

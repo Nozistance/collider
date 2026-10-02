@@ -1,10 +1,10 @@
 (ns collider.game.systems.sleep
   "Sleeping players and night skipping."
-  (:require [collider.game.clock :as clock]
+  (:require [collider.game.changes :as changes]
+            [collider.game.clock :as clock]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.mode :as game-mode]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.game.out :as out]
             [collider.game.level :as level]
             [collider.game.systems.daynight :as daynight]
@@ -85,8 +85,9 @@
         yaw (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
     (concat
       (when bed?
-        (delta/authored (edit/set-deltas world [[head (vacated st)]])
-                        eid :player))
+        (delta/authored
+          (changes/set-deltas world [[head (vacated st)]])
+          eid :player))
       (woken-deltas eid up yaw))))
 
 (defn- in-bed [world]
@@ -139,9 +140,9 @@
         st (when head (block-at world head))
         base (dec (long (:tick world)))]
     (when (and st (= :bed (block/type-of st)))
-      (delta/authored
-        (edit/flagged-deltas world [[head (vacated st)]] 3 nil base)
-        eid :player))))
+      (let [cs [[head (vacated st)]]]
+        (delta/authored (changes/flagged-deltas world cs 3 nil base)
+                        eid :player)))))
 
 (defn- sleep-deltas [world]
   (when-let [all (seq (in-bed world))]

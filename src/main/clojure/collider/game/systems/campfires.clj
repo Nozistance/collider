@@ -1,8 +1,8 @@
 (ns collider.game.systems.campfires
   "Campfires cooking the food laid on them."
-  (:require [collider.game.block.furnace :as furnace]
+  (:require [collider.game.block.campfire :as campfire]
+            [collider.game.item :as item]
             [collider.game.out :as out]
-            [collider.game.systems.items :as items]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -12,27 +12,8 @@
 
 (def ^:private ^:const cool-speed 2)
 
-(defn recipe
-  "Returns the campfire recipe that cooks the item, if any."
-  [item]
-  (furnace/recipe :campfire {:item item :count 1}))
-
-(defn- free-slot [items]
-  (first (keep-indexed (fn [i s] (when (nil? s) i)) items)))
-
-(defn place-food
-  "Returns the campfire with one piece of the item on its first free
-  slot, or nil when it takes nothing."
-  [e item]
-  (when-let [i (free-slot (:items e))]
-    (when-let [r (recipe item)]
-      (-> e
-          (assoc-in [:items i] {:item item :count 1})
-          (assoc-in [:cook i] 0)
-          (assoc-in [:cook-total i] (:time r))))))
-
 (defn- result [stack]
-  (or (:out (recipe (:item stack))) stack))
+  (or (:out (campfire/recipe (:item stack))) stack))
 
 (defn- ripe? [e ^long i]
   (>= (long (nth (:cook e) i))
@@ -58,8 +39,8 @@
 (defn- drop-deltas [world pos [i stack]]
   (let [salt [:campfire i]]
     (map (fn [part]
-           [:spawn-entity (items/popped world pos part salt)])
-         (items/split-drop world pos stack salt))))
+           [:spawn-entity (item/popped world pos part salt)])
+         (item/split-drop world pos stack salt))))
 
 (defn- cook-deltas [world pos e]
   (let [[e' drops] (reduce step [e []] (range slots))]

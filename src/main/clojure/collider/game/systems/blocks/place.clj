@@ -3,7 +3,9 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.block.sign :as sign]
+            [collider.game.changes :as changes]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -53,9 +55,9 @@
 
 (defn replaceable?
   "Returns true when the block at the position yields to the item."
-  ([world pos] (replaceable-state? (edit/block-at world pos) nil))
+  ([world pos] (replaceable-state? (changes/block-at world pos) nil))
   ([world pos item]
-   (replaceable-state? (edit/block-at world pos) item)))
+   (replaceable-state? (changes/block-at world pos) item)))
 
 (defn- restated [^long state props]
   (block/state (block/block-of state)
@@ -66,7 +68,7 @@
     (block/state :snow {:layers (keyword (str n))})))
 
 (defn- stacked [world pos' state item]
-  (let [cur (edit/block-at world pos')]
+  (let [cur (changes/block-at world pos')]
     (cond
       (and (= item :snow) (= :snow-layer (block/type-of cur)))
       (snow-stacked cur)
@@ -76,13 +78,13 @@
       :else state)))
 
 (defn- double-slab-at [world pos' item]
-  (let [at' (edit/block-at world pos')]
+  (let [at' (changes/block-at world pos')]
     (when (and (block/same-slab? at' item)
                (not= :double (block/slab-part at')))
       [pos' (block/double-slab item)])))
 
 (defn- slab-merge [world pos pos' face item]
-  (let [clicked (edit/block-at world pos)
+  (let [clicked (changes/block-at world pos)
         part (block/slab-part clicked)
         lower? (and (= 1 (long face)) (= :bottom part))
         upper? (and (= 0 (long face)) (= :top part))]
@@ -93,7 +95,7 @@
       :else (double-slab-at world pos' item))))
 
 (defn- water-plant-ok? [world [_ y _ :as pos'] ^long state]
-  (let [cur (edit/block-at world pos')]
+  (let [cur (changes/block-at world pos')]
     (and (block/water? cur)
          (contains? #{0 8} (block/liquid-level cur))
          (pos? (long y))
@@ -108,24 +110,24 @@
         topper (moss/carpet-topper chunks pos side?)
         changes [[pos state] [(dir/up pos) topper]]]
     (if topper
-      (edit/placed-deltas world eid changes)
-      (edit/placed-deltas world eid pos state))))
+      (changes/placed-deltas world eid changes)
+      (changes/placed-deltas world eid pos state))))
 
 (defn- block-entity-place-deltas [world eid pos state]
-  (let [stack (edit/held-stack world eid)
+  (let [stack (player/use-stack world eid)
         entity (-> (be/fresh (be/kind state) eid)
                    (be/from-stack stack)
                    (be/placed-by (get-in world [:entities eid])))
         editor (when (sign/kind state)
                  [(out/to eid (out/sign-editor pos true))])]
-    (concat (edit/placed-deltas world eid pos state)
+    (concat (changes/placed-deltas world eid pos state)
             [[:set-block-entity pos entity]]
             editor)))
 
 (defn- second-cell-deltas [world eid pos' state ppos pstate ok?]
   (when (and (chunk/in-level? world (ppos 1)) (ok?)
              (not (edit/obstructed? world pos' state)))
-    (edit/placed-deltas world eid [[pos' state] [ppos pstate]])))
+    (changes/placed-deltas world eid [[pos' state] [ppos pstate]])))
 
 (defn- door-lower [world pos' state [cx _ cz]]
   (let [facing (block/facing-of state)
@@ -133,7 +135,7 @@
     (restated state {:hinge hinge})))
 
 (defn- door-base-ok? [world pos' above]
-  (let [below (edit/block-at world (dir/down pos'))]
+  (let [below (changes/block-at world (dir/down pos'))]
     (and (replaceable? world above)
          (block/face-sturdy? below :up))))
 
@@ -152,7 +154,7 @@
 
 (defn- pair-upper [world above state]
   (let [upper (restated state {:half :upper})
-        water? (block/water? (edit/block-at world above))]
+        water? (block/water? (changes/block-at world above))]
     (if (contains? (block/props-of state) :waterlogged)
       (edit/with-water upper water?)
       upper)))
@@ -160,7 +162,7 @@
 (defn- pair-place-deltas [world eid pos' state]
   (let [above (dir/up pos')
         upper (pair-upper world above state)
-        ok? #(block/can-be-replaced? (edit/block-at world above))]
+        ok? #(block/can-be-replaced? (changes/block-at world above))]
     (second-cell-deltas world eid pos' state above upper ok?)))
 
 (defn- scaffold-direction [world eid face]
@@ -175,7 +177,7 @@
     (when (< (long n) 7)
       (if-not (chunk/in-level? world (p 1))
         p
-        (let [st (edit/block-at world p)]
+        (let [st (changes/block-at world p)]
           (cond
             (= :scaffolding (block/type-of st))
             (recur (mapv + p off) (if horizontal? (inc n) n))
@@ -198,7 +200,7 @@
         st (support/scaffold-state (:chunks world) target base)
         logged (edit/waterlogged world target st)]
     (when-not (edit/obstructed? world target st)
-      (edit/placed-deltas world eid target logged))))
+      (changes/placed-deltas world eid target logged))))
 
 (defn scaffold-place-deltas
   "Returns the deltas for placing scaffolding.
@@ -243,7 +245,7 @@
     (stacked world pos' st item)))
 
 (defn- relative-free? [world pos' item ctx]
-  (replaceable-state? (edit/block-at world pos') item
+  (replaceable-state? (changes/block-at world pos') item
                       (dissoc ctx :face)))
 
 (defn- rejected? [world pos' state item ctx over?]
@@ -255,7 +257,7 @@
 
 (defn- merged-deltas [world eid [mp ms]]
   (when-not (edit/obstructed? world mp ms)
-    (edit/placed-deltas world eid mp ms)))
+    (changes/placed-deltas world eid mp ms)))
 
 (defn- kind-deltas [world eid pos' state item cursor]
   (let [type (block/type-of state)]
@@ -268,7 +270,7 @@
       (contains? connect/pair-types type)
       (pair-place-deltas world eid pos' state)
       (be/kind state) (block-entity-place-deltas world eid pos' state)
-      :else (edit/placed-deltas world eid pos' state))))
+      :else (changes/placed-deltas world eid pos' state))))
 
 (defn- use-ctx [world eid face item cursor]
   (let [e (get-in world [:entities eid])]
@@ -300,7 +302,7 @@
   [world [eid pos face item cursor]]
   (when (dir/face-offset face)
     (let [ctx (use-ctx world eid face item cursor)
-          cur (edit/block-at world pos)
+          cur (changes/block-at world pos)
           over? (replaceable-state? cur item ctx)
           base (block/placement item (assoc ctx :replacing? over?))]
       (when (and base (may-place? world eid base))

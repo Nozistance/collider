@@ -1,17 +1,17 @@
 (ns collider.game.mob.sheep
   "Sheep grazing, shearing, dyeing and lamb colours."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
             [collider.game.craft :as craft]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
-            [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.grass :as grass]
@@ -74,11 +74,11 @@
         st (sense/block-at world cell)]
     (cond
       (edible? world cell)
-      (edit/set-deltas world
-                       [[cell (block/emptied st) [[:break st]]]])
+      (changes/set-deltas
+        world [[cell (block/emptied st) [[:break st]]]])
       (grass-at? world cell)
       (let [grass [:break (grass/grass-state)]]
-        (edit/flagged-deltas
+        (changes/flagged-deltas
           world [[below (grass/dirt-state) [grass]]] 2)))))
 
 (defn- animation-left
@@ -146,7 +146,7 @@
   (concat [[:merge-entity eid {:sheared? true}]
            (out/all (out/sound :sheep/shear (:pos e) 1.0 1.0))]
           (signal/game-event :shear (:pos e) peid)
-          (items/hurt-item-deltas peid p hand 1)
+          (inventory/hurt-item-deltas peid p hand 1)
           (shorn-items t eid e)))
 
 (defn- shearable? [e]
@@ -165,7 +165,7 @@
 (defn- dyed [peid p hand eid e id]
   (concat [[:merge-entity eid {:color id}]
            (out/except peid (out/sound :dye/use (:pos e) 1.0 1.0))]
-          (items/consume-deltas peid p hand 1)))
+          (inventory/consume-deltas peid p hand 1)))
 
 (defn dye-result
   "Returns what a dye does to a sheep that still wears its wool.

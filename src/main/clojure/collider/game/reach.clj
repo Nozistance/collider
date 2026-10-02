@@ -1,8 +1,8 @@
-(ns collider.game.systems.blocks.reach
+(ns collider.game.reach
   "Reach and block raycasts from the eye."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.changes :as changes]
+            [collider.game.entity :as entity]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.edit :as edit]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -103,7 +103,7 @@
 (defn cell-boxes
   "Returns the world-space boxes a ray can hit in the block cell."
   [world pos fluids]
-  (let [st (edit/block-at world pos)
+  (let [st (changes/block-at world pos)
         boxes (when (and (pos? st) (not (block/liquid? st)))
                 (map #(box-at pos %) (block/outline-boxes st)))]
     (concat boxes (fluid-box world pos st fluids))))

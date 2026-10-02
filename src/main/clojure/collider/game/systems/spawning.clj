@@ -3,8 +3,8 @@
   (:require [collider.game.deltas :as deltas]
             [collider.game.apply :as apply]
             [collider.game.player :as player]
+            [collider.game.respawn :as respawn]
             [collider.game.systems.chunks :as chunks]
-            [collider.game.systems.damage :as damage]
             [collider.world.chunk :as chunk]
             [collider.world.space.spawn :as spawn]))
 
@@ -43,17 +43,17 @@
 
 (defn- need-ids [w eid req]
   (if (:respawn? req)
-    (concat (damage/respawn-chunk-ids (get-in w [:entities eid]))
+    (concat (respawn/respawn-chunk-ids (get-in w [:entities eid]))
             (search-ids w req))
     (join-ids w req)))
 
 (defn- respawned [w eid req]
   (let [e (get-in w [:entities eid])
-        bed (damage/bed-respawn (:chunks w) e)
+        bed (respawn/bed-respawn (:chunks w) e)
         [yaw pitch] (player/spawn-turn w)
         [pos yaw pitch] (or bed [(found w req) yaw pitch])
-        lost? (and (nil? bed) (some? (damage/respawn-config e)))]
-    (conj (damage/respawn-deltas w eid [pos yaw pitch lost?])
+        lost? (and (nil? bed) (some? (respawn/respawn-config e)))]
+    (conj (respawn/respawn-deltas w eid [pos yaw pitch lost?])
           [:spawn-progress eid nil])))
 
 (defn- placed [w eid req]

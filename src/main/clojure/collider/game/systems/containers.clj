@@ -1,8 +1,10 @@
 (ns collider.game.systems.containers
   "Container menus for chests, barrels, lecterns and benches."
-  (:require [collider.game.block.blockentity :as be]
+  (:require [collider.game.block.screen :as screen]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
+            [collider.game.inventory :as inventory]
+            [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.block.anvil :as anvil]
             [collider.game.block.container :as container]
@@ -13,19 +15,10 @@
             [collider.game.apply :as apply]
             [collider.game.level :as level]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.reach :as reach]
-            [collider.game.systems.items :as items]
             [collider.random :as random]
             [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private player-view (vec (concat (range 9 36) (range 36 45))))
-
-(defn- view [m contents inv]
-  (if (container/player-slots? m)
-    (into (vec contents) (map inv) player-view)
-    (vec contents)))
 
 (defn- flat [contents inv ^long n]
   (into (into {} (keep-indexed (fn [i s] (when s [i s]))) contents)
@@ -38,96 +31,13 @@
     [(mapv #(get m %) (range n))
      (into {} (keep tail) m)]))
 
-(defn- remote-of [stack]
-  (when stack
-    (cond-> {:item (:item stack) :count (long (:count stack 1))}
-      (:components stack) (assoc :components (:components stack))
-      (:components? stack) (assoc :components? true))))
-
-(defn- hashed [r]
-  (when r
-    (assoc (dissoc r :components)
-      :components? (boolean (or (:components r) (:components? r))))))
-
-(defn- remote-match? [remote stack]
-  (let [r (remote-of stack)]
-    (if (:components? remote) (= remote (hashed r)) (= remote r))))
-
-(defn- bench-valid? [world m]
-  (let [st (container/state-at (:chunks world) (:pos m))]
-    (= (:type m) (block/type-of st))))
-
-(defn- ender-valid? [world m]
-  (let [st (container/state-at (:chunks world) (:pos m))]
-    (= :ender-chest (block/type-of st))))
-
-(defn- valid? [world m]
-  (cond
-    (container/lectern? m)
-    (and (= :lectern (:kind (be/at world (:pos m))))
-         (container/book? (container/book-of world m)))
-    (container/bench? m) (bench-valid? world m)
-    (= :ender (:kind m)) (ender-valid? world m)
-    :else
-    (every? (fn [pos]
-              (contains? be/menu-kinds (:kind (be/at world pos))))
-            (:cells m))))
-
-(defn- put-back [ctx inv stacks]
-  (reduce (fn [[inv drops] s]
-            (let [[inv' left] (crafting/place-back ctx inv s)]
-              [inv' (cond-> drops left (conj left))]))
-          [inv []]
-          (remove nil? stacks)))
-
-(defn- changed-slots [before after]
-  (let [moved (fn [k]
-                (when (not= (get before k) (get after k))
-                  [k (get after k)]))
-        ks (into (set (keys before)) (keys after))]
-    (sort-by key (into {} (keep moved) ks))))
-
-(defn- bench-inputs [world eid m]
-  (when (container/bench? m)
-    (container/inputs m (container/items world eid m))))
-
-(defn- closed-inventory [world eid e m]
-  (let [inv (or (:inventory e) {})
-        ctx (crafting/context world e)
-        stacks (cons (:carried e) (bench-inputs world eid m))
-        [inv' drops] (put-back ctx inv stacks)]
-    [(changed-slots inv inv') drops]))
-
-(defn- close-out-deltas [eid m carried notify?]
-  (concat
-    (when carried [(out/to eid (out/carried nil))])
-    (when notify? [(out/to eid (out/container-close (:id m)))])))
-
-(defn- opener-deltas [world e m step]
-  (when-not (game-mode/spectator? e)
-    (mapcat #(container/opener-deltas world % step)
-            (container/positions m))))
-
-(defn- close-deltas [world eid e notify?]
-  (when-let [m (:menu e)]
-    (let [[changes drops] (closed-inventory world eid e m)]
-      (concat
-        [[:merge-entity eid {:menu nil :carried nil}]]
-        (for [[slot s] changes] [:set-slot eid slot s])
-        (for [s drops] [:spawn-entity (items/dropped world eid s)])
-        (close-out-deltas eid m (:carried e) notify?)
-        (opener-deltas world e m -1)))))
-
-(defn- remote-slots [slots]
-  (into {} (map-indexed (fn [i s] [i (remote-of s)])) slots))
-
 (defn- opened [world eid e m id]
   (let [contents (container/items world eid m)
-        slots (view m contents (:inventory e))]
+        slots (screen/view m contents (:inventory e))]
     {:menu  (assoc m :id id :state-id 1
-                     :remote (remote-slots slots)
+                     :remote (screen/remote-slots slots)
                      :remote-data (container/data-values world m)
-                     :remote-carried (remote-of (:carried e)))
+                     :remote-carried (screen/remote-of (:carried e)))
      :slots slots}))
 
 (defn- open-screen-deltas [world eid m id slots carried]
@@ -170,7 +80,7 @@
 
 (defn- open-menu-deltas [world eid e m]
   (let [m (container/for-player m e)
-        prev (close-deltas world eid e true)
+        prev (screen/close-deltas world eid e true)
         e' (cond-> e prev (assoc :carried nil :menu nil))
         id (inc (mod (long (:container-counter e 0)) 100))
         {:keys [menu slots]} (opened world eid e' m id)]
@@ -188,7 +98,7 @@
       (concat
         (open-menu-deltas world eid e m)
         (when stat [[:award eid stat 1]])
-        (opener-deltas world e m 1)))
+        (screen/opener-deltas world e m 1)))
     []))
 
 (defn spectator-open-deltas
@@ -199,43 +109,11 @@
   (when-let [m (container/provider-at world pos)]
     (open-menu-deltas world eid (get-in world [:entities eid]) m)))
 
-(defn- synced [menu ^long st slots carried]
-  (assoc menu :state-id st
-              :remote (remote-slots slots)
-              :remote-carried (remote-of carried)))
-
-(defn- slot-diff-deltas [eid menu slots ^long base]
-  (let [remote (:remote menu)
-        stale (fn [i s]
-                (when-not (remote-match? (get remote i) s)
-                  [i s]))
-        send (fn [[ds ^long st] [i s]]
-               (let [p (out/container-slot (:id menu) (inc st) i s)]
-                 [(conj ds (out/to eid p)) (inc st)]))]
-    (reduce send [[] base] (keep-indexed stale slots))))
-
-(defn- resync-deltas [eid menu slots carried st]
-  (let [p (out/container-content (:id menu) st slots carried)]
-    {:deltas [(out/to eid p)]
-     :menu   (synced menu st slots carried)}))
-
-(defn- sync-deltas [eid menu slots carried resync?]
-  (let [base (long (:state-id menu 1))]
-    (if resync?
-      (resync-deltas eid menu slots carried (inc base))
-      (let [[ds st] (slot-diff-deltas eid menu slots base)
-            old (:remote-carried menu)
-            same? (remote-match? old carried)]
-        {:deltas (cond-> ds
-                   (not same?)
-                   (conj (out/to eid (out/carried carried))))
-         :menu   (synced menu st slots carried)}))))
-
 (defn- with-client [menu changed carried]
-  (let [put (fn [r [s v]] (assoc r (long s) (remote-of v)))
+  (let [put (fn [r [s v]] (assoc r (long s) (screen/remote-of v)))
         remote (reduce put (:remote menu) changed)]
     (assoc menu :remote remote
-                :remote-carried (remote-of carried))))
+                :remote-carried (screen/remote-of carried))))
 
 (defn- slot-changes [before after]
   (let [moved (fn [slot]
@@ -280,8 +158,9 @@
         m' (menu-after m m0 items items' packet)
         sent (long (:state-id packet))
         resync? (not= sent (long (:state-id m 1)))
-        slots (view m items' inv')
-        synced (sync-deltas eid m' slots (:carried after) resync?)]
+        slots (screen/view m items' inv')
+        carried (:carried after)
+        synced (screen/sync-deltas eid m' slots carried resync?)]
     (assoc synced :after after :inventory inv' :items items')))
 
 (defn craft-deltas
@@ -291,7 +170,7 @@
     (for [[item n] (:crafted after)]
       [:award eid (keyword "crafted" (name item)) n])
     (for [s (:spills after)]
-      [:spawn-entity (items/dropped world eid s)])))
+      [:spawn-entity (item/dropped world eid s)])))
 
 (def ^:private bundle-sounds
   {:insert      :item.bundle.insert
@@ -351,14 +230,15 @@
       (take-deltas world e m (long (:takes after 0)))
       (craft-deltas world eid after)
       (sound-deltas world eid after)
-      (items/thrown-deltas world eid (:drops after)))))
+      (item/thrown-deltas world eid (:drops after)))))
 
 (defn- all-data-deltas [world eid e m]
   (let [st (bit-and (inc (long (:state-id m 1))) 32767)
-        slots (view m (container/items world eid m) (:inventory e))
+        items (container/items world eid m)
+        slots (screen/view m items (:inventory e))
         data (container/data-values world m)
         {:keys [deltas menu]}
-        (resync-deltas eid m slots (:carried e) st)
+        (screen/resync-deltas eid m slots (:carried e) st)
         one (fn [i v] (out/to eid (out/container-data (:id m) i v)))
         menu (assoc menu :remote-data data)]
     (concat deltas (map-indexed one data)
@@ -373,7 +253,8 @@
         (not same?) nil
         (game-mode/spectator? e) (all-data-deltas world eid e m)
         (container/lectern? m) nil
-        (not (valid? world m)) (close-deltas world eid e true)
+        (not (screen/valid? world m))
+        (screen/close-deltas world eid e true)
         :else
         (let [c (clicked world eid e m packet)]
           (click-result-deltas world eid e m c))))))
@@ -387,7 +268,8 @@
 (defn- take-book-deltas
   [world eid e m]
   (when-let [book (container/book-of world m)]
-    (let [[changes left] (items/add-stack (or (:inventory e) {}) book)
+    (let [inv (or (:inventory e) {})
+          [changes left] (inventory/add-stack inv book)
           state-id (inc (long (:state-id m 1)))]
       (concat
         (container/remove-book-deltas world (:pos m))
@@ -395,8 +277,8 @@
         (when (not= 0 (container/page world m))
           [(out/to eid (out/container-data (:id m) 0 0))])
         (for [[slot s] changes] [:set-slot eid slot s])
-        (when left [[:spawn-entity (items/dropped world eid left)]])
-        (close-deltas world eid e true)))))
+        (when left [[:spawn-entity (item/dropped world eid left)]])
+        (screen/close-deltas world eid e true)))))
 
 (defn- lectern-button-deltas [world eid e m id]
   (let [id (long id)
@@ -412,9 +294,10 @@
   (let [m' (container/button m (long id))]
     (when (not= (:selected m') (:selected m))
       (let [items (container/derived m' (:contents m'))
-            slots (view m' items (:inventory e))
+            slots (screen/view m' items (:inventory e))
             m'' (assoc m' :contents items)
-            synced (sync-deltas eid m'' slots (:carried e) false)
+            carried (:carried e)
+            synced (screen/sync-deltas eid m'' slots carried false)
             menu (:menu synced)
             p (out/container-data (:id menu) 0 (:selected menu))]
         (concat
@@ -440,8 +323,8 @@
         shelves (enchanting/shelves world (:pos m))
         m' (merge (assoc m :contents items :seed seed)
                   (enchanting/offers seed shelves enchanted))
-        slots (view m' items (:inventory e))
-        synced (sync-deltas eid m' slots (:carried e) false)
+        slots (screen/view m' items (:inventory e))
+        synced (screen/sync-deltas eid m' slots (:carried e) false)
         {:keys [deltas menu]} synced
         paid (assoc (levels-paid e cost) :enchantment-seed seed)]
     (concat
@@ -474,9 +357,9 @@
 (defn- renamed-deltas [world eid e m]
   (let [ctx (crafting/context world e)
         [m' items] (container/settled m (:contents m) ctx)
-        slots (view m' items (:inventory e))
+        slots (screen/view m' items (:inventory e))
         m'' (assoc m' :contents items)
-        synced (sync-deltas eid m'' slots (:carried e) false)
+        synced (screen/sync-deltas eid m'' slots (:carried e) false)
         menu (:menu synced)]
     (concat [[:merge-entity eid {:menu menu}]]
             (:deltas synced)
@@ -486,7 +369,7 @@
   (when-let [e (get-in world [:entities eid])]
     (let [m (:menu e)
           nm (anvil/valid-name text)]
-      (when (and m (= :anvil (:type m)) (valid? world m)
+      (when (and m (= :anvil (:type m)) (screen/valid? world m)
                  nm (not= nm (:name m)))
         (renamed-deltas world eid e (assoc m :name nm))))))
 
@@ -497,104 +380,39 @@
                  (not (game-mode/spectator? e)))
         (cond
           (container/lectern? m)
-          (when (valid? world m)
+          (when (screen/valid? world m)
             (lectern-button-deltas world eid e m (long id)))
           (container/enchanting? m)
-          (when (valid? world m)
+          (when (screen/valid? world m)
             (enchant-button-deltas world eid e m (long id)))
           (container/bench? m)
           (bench-button-deltas eid e m (long id)))))))
 
-(def ^:private own-grid [0 1 2 3 4])
-
 (defn- inventory-close-deltas [world eid e]
   (let [inv (or (:inventory e) {})
-        stacks (cons (:carried e) (map inv (rest own-grid)))
+        stacks (cons (:carried e) (map inv (rest screen/own-grid)))
         ctx (crafting/context world e)
-        kept (apply dissoc inv own-grid)
-        [inv' drops] (put-back ctx kept stacks)]
+        kept (apply dissoc inv screen/own-grid)
+        [inv' drops] (screen/put-back ctx kept stacks)]
     (concat
       (when (:carried e) [[:merge-entity eid {:carried nil}]])
-      (for [[slot s] (changed-slots inv inv')] [:set-slot eid slot s])
-      (for [s drops] [:spawn-entity (items/dropped world eid s)]))))
-
-(defn- held-stacks [world eid e]
-  (let [grid (map (or (:inventory e) {}) (rest own-grid))
-        m (:menu e)]
-    (remove nil?
-            (if m
-              (concat grid [(:carried e)] (bench-inputs world eid m))
-              (cons (:carried e) grid)))))
-
-(defn- left-behind-deltas [world eid e]
-  (let [m (:menu e)]
-    (concat
-      (for [s (held-stacks world eid e)]
-        [:spawn-entity (items/dropped world eid s)])
-      (when m (opener-deltas world e m -1)))))
-
-(defn removed-deltas
-  "Returns the deltas that close the menu of player e as it leaves."
-  [world eid e]
-  (concat
-    (when (or (:menu e) (:carried e))
-      [[:merge-entity eid {:menu nil :carried nil}]])
-    (for [slot own-grid :when (get-in e [:inventory slot])]
-      [:set-slot eid slot nil])
-    (left-behind-deltas world eid e)))
+      (for [[slot s] (screen/changed-slots inv inv')]
+        [:set-slot eid slot s])
+      (for [s drops] [:spawn-entity (item/dropped world eid s)]))))
 
 (defn- quit-deltas [world]
   (mapcat (fn [e]
             (let [eid (:eid e)
                   w (assoc-in world [:entities eid] e)]
-              (delta/authored (left-behind-deltas w eid e)
+              (delta/authored (screen/left-behind-deltas w eid e)
                               eid :player)))
           (get-in world [:input :quits])))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]
     (if (:menu e)
-      (close-deltas world eid e false)
+      (screen/close-deltas world eid e false)
       (inventory-close-deltas world eid e))))
-
-(defn- data-deltas [eid m values]
-  (let [old (:remote-data m)]
-    [(keep-indexed (fn [i v]
-                     (when (not= (nth old i nil) v)
-                       (out/to eid (out/container-data (:id m) i v))))
-                   values)
-     (cond-> m values (assoc :remote-data (vec values)))]))
-
-(defn- broadcast-deltas [world eid e]
-  (let [m (:menu e)
-        slots (view m (container/items world eid m) (:inventory e))
-        synced (sync-deltas eid m slots (:carried e) false)
-        deltas (:deltas synced)
-        values (container/data-values world m)
-        [ds menu] (data-deltas eid (:menu synced) values)]
-    (when (or (seq deltas) (seq ds))
-      (concat [[:merge-entity eid {:menu menu}]] deltas ds))))
-
-(defn- near?
-  "Returns true when player e is near enough to keep menu m open:
-  within its reach and 4 blocks of each of its blocks, as
-  Container.stillValidBlockEntity:95."
-  [e m]
-  (every? #(reach/in-edit-range? e %)
-          (or (seq (:cells m)) [(:pos m)])))
-
-(defn menu-deltas
-  "Returns the deltas of the menu of player eid in its turn
-  (ServerPlayer.tick:619-623): the slots and data that moved go to
-  it, then a menu no longer valid closes."
-  [world eid e]
-  (when-let [m (:menu e)]
-    (let [ok? (valid? world m)]
-      (concat
-        (when (and ok? (= :block (:kind m)))
-          (broadcast-deltas world (long eid) e))
-        (when-not (and ok? (near? e m))
-          (close-deltas world eid e true))))))
 
 (defn- selected-bundle-deltas [world eid e m slot i]
   (let [items (container/items world eid m)
@@ -610,7 +428,7 @@
 (defn- bundle-select-deltas [world [_ eid slot i]]
   (let [e (get-in world [:entities eid])
         m (:menu e)]
-    (when (and m (not (container/lectern? m)) (valid? world m))
+    (when (and m (not (container/lectern? m)) (screen/valid? world m))
       (selected-bundle-deltas world eid e m slot i))))
 
 (defn- event-deltas [world [tag :as ev]]

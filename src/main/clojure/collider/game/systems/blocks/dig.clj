@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.dig
   "Breaking blocks."
   (:require [collider.data :as data]
+            [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
@@ -8,7 +9,7 @@
             [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
-            [collider.game.systems.blocks.reach :as reach]
+            [collider.game.reach :as reach]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.fire :as fire]
@@ -33,7 +34,7 @@
   [(+ (double x) 0.5) (+ (double y) 0.5) (+ (double z) 0.5)])
 
 (defn- shulker-drop [world pos e]
-  (let [item (block/block-of (edit/block-at world pos))
+  (let [item (block/block-of (changes/block-at world pos))
         vel (entity/pop-velocity [(:tick world) pos :shulker])]
     [:spawn-entity
      (entity/item (centre pos) vel (be/to-stack item e))]))
@@ -61,11 +62,11 @@
                kept (cons [ppos (block/emptied pst)]))]
     (concat
       (break-shown eid pos old)
-      (edit/change-deltas world gone)
+      (changes/change-deltas world gone)
       (when kept [(out/except eid (out/break-effect ppos pst))]))))
 
 (defn- break-deltas [world eid pos]
-  (let [old (edit/block-at world pos)
+  (let [old (changes/block-at world pos)
         e (get-in world [:entities eid])
         kept (kept-partner world e pos old)]
     (if (pos? old)
@@ -80,7 +81,7 @@
                   (false? (:creative-break? it)))))))
 
 (defn- may-dig? [world e pos]
-  (or (not (edit/game-master-block? (edit/block-at world pos)))
+  (or (not (edit/game-master-block? (changes/block-at world pos)))
       (edit/game-master? e)))
 
 (defn- restricted [world eid status pos]
