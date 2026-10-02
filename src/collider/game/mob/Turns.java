@@ -20,9 +20,17 @@ public final class Turns extends CountedCompleter<Void> {
     private final int lo, hi;
     private final boolean moving;
 
-    private Turns(Turns root, PushGrid grid, double far, IFn mind,
-                  IFn body, AtomicIntegerArray waiting, int[][] after,
-                  int lo, int hi, boolean moving) {
+    private Turns(
+            Turns root,
+            PushGrid grid,
+            double far,
+            IFn mind,
+            IFn body,
+            AtomicIntegerArray waiting,
+            int[][] after,
+            int lo,
+            int hi,
+            boolean moving) {
         super(root);
         this.root = root == null ? this : root;
         this.grid = grid;
@@ -42,15 +50,13 @@ public final class Turns extends CountedCompleter<Void> {
     /// in which no body moves further than `reach` along x or z.
     public static void run(PushGrid g, double reach, IFn mind, IFn body) {
         int n = g.bodies();
-        new Turns(null, g, 2.0 * reach + 1.0E-4, mind, body,
-                  new AtomicIntegerArray(n), new int[n][], 0, n, false)
+        new Turns(null, g, 2.0 * reach + 1.0E-4, mind, body, new AtomicIntegerArray(n), new int[n][], 0, n, false)
                 .invoke();
     }
 
     private void spawn(int lo, int hi, boolean moving) {
         root.addToPendingCount(1);
-        new Turns(root, grid, far, mind, body, waiting, after, lo, hi,
-                  moving).fork();
+        new Turns(root, grid, far, mind, body, waiting, after, lo, hi, moving).fork();
     }
 
     private void thought(int s) {

@@ -129,21 +129,17 @@ public final class Block {
     }
 
     /// Returns true when face `d` of `st` holds things at its center.
-    public static boolean sturdyCenter(BlockTables t, long st,
-            long d) {
+    public static boolean sturdyCenter(BlockTables t, long st, long d) {
         return bit(t.sturdyCenter(), st, 1L << d);
     }
 
     private static long[] face(BlockTables t, long st, int d) {
         long n = t.faces().length / 6;
-        return st >= 0 && st < n
-                ? (long[]) t.faces()[(int) st * 6 + d] : null;
+        return st >= 0 && st < n ? (long[]) t.faces()[(int) st * 6 + d] : null;
     }
 
     private static long[] side(BlockTables t, long st, int d) {
-        return st >= 0 && st < t.touch().length
-                && (t.touch()[(int) st] & (1 << d)) != 0
-                ? face(t, st, d) : null;
+        return st >= 0 && st < t.touch().length && (t.touch()[(int) st] & (1 << d)) != 0 ? face(t, st, d) : null;
     }
 
     private static boolean full(long[] m) {
@@ -151,8 +147,7 @@ public final class Block {
     }
 
     private static boolean covers(long[] a, long[] b) {
-        return (a[0] | b[0]) == -1 && (a[1] | b[1]) == -1
-                && (a[2] | b[2]) == -1 && (a[3] | b[3]) == -1;
+        return (a[0] | b[0]) == -1 && (a[1] | b[1]) == -1 && (a[2] | b[2]) == -1 && (a[3] | b[3]) == -1;
     }
 
     private static boolean seals(long[] a, long[] b) {
@@ -164,16 +159,14 @@ public final class Block {
 
     /// Returns true when the face of `from` along `d` and the
     /// opposite face of `to` seal and let no light through.
-    public static boolean occludes(BlockTables t, long from, long to,
-            long d) {
+    public static boolean occludes(BlockTables t, long from, long to, long d) {
         return seals(face(t, from, (int) d), face(t, to, (int) d ^ 1));
     }
 
     /// Returns the light cost of crossing from `from` into `to` along
     /// `d`. The cost is 16 when the faces that the shapes touch seal
     /// and `simple` otherwise.
-    public static long dampeningInto(BlockTables t, long from, long to,
-            long d, long simple) {
+    public static long dampeningInto(BlockTables t, long from, long to, long d, long simple) {
         long[] a = side(t, from, (int) d);
         long[] b = side(t, to, (int) d ^ 1);
         return seals(a, b) ? 16 : simple;
@@ -198,13 +191,11 @@ public final class Block {
     /// Returns the table true for each state whose `pred` is truthy.
     /// `pred` takes the state, its type and its block. A state
     /// without a type is false.
-    public static boolean[] table(Object[] types, Object[] names,
-            IFn pred) {
+    public static boolean[] table(Object[] types, Object[] names, IFn pred) {
         boolean[] a = new boolean[types.length];
         for (int i = 0; i < a.length; i++) {
             if (types[i] != null) {
-                a[i] = RT.booleanCast(pred.invoke((long) i, types[i],
-                                                  names[i]));
+                a[i] = RT.booleanCast(pred.invoke((long) i, types[i], names[i]));
             }
         }
         return a;

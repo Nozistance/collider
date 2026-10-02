@@ -15,10 +15,19 @@ import clojure.lang.Tuple;
 /// without a running function runs while the task of the mob has
 /// its kind. A start that returns `[e deltas false]` declines to
 /// start but keeps what it changed on the mob.
-public record GoalSelector(Object goals, Object childColor, int n,
-        Object[] kinds, long[] prios, long[] masks, IFn[] runnings,
+public record GoalSelector(
+        Object goals,
+        Object childColor,
+        int n,
+        Object[] kinds,
+        long[] prios,
+        long[] masks,
+        IFn[] runnings,
         IFn[] stops,
-        IFn[] starts, IFn[] continues, IFn[] ticks, boolean[] every)
+        IFn[] starts,
+        IFn[] continues,
+        IFn[] ticks,
+        boolean[] every)
         implements ILookup {
 
     private static final Keyword GOALS = Keyword.intern("goals");
@@ -42,8 +51,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
 
     private boolean running(int i, Object e, Object t, Object kind) {
         IFn f = runnings[i];
-        return f != null ? RT.booleanCast(f.invoke(e, t))
-                         : kinds[i] == kind;
+        return f != null ? RT.booleanCast(f.invoke(e, t)) : kinds[i] == kind;
     }
 
     private long bits(Object e, Object t) {
@@ -100,8 +108,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
     private Object cleaned(Object w, Object e, Object t, Object ts) {
         Object kind = kind(e);
         for (int i = 0; i < n; i++) {
-            if (running(i, e, t, kind)
-                && !RT.booleanCast(continues[i].invoke(w, e, t, ts))) {
+            if (running(i, e, t, kind) && !RT.booleanCast(continues[i].invoke(w, e, t, ts))) {
                 e = stopped(i, e, t);
                 kind = kind(e);
             }
@@ -109,8 +116,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
         return e;
     }
 
-    private Object started(Object w, Object eid, Object e, Object t,
-            Object ts, long[] locked, int i) {
+    private Object started(Object w, Object eid, Object e, Object t, Object ts, long[] locked, int i) {
         Object r = starts[i].invoke(w, eid, e, t, ts);
         if (r == null || declined(r) || !held(locked, masks[i])) return r;
         return starts[i].invoke(w, eid, displaced(e, t, masks[i]), t, ts);
@@ -127,8 +133,7 @@ public record GoalSelector(Object goals, Object childColor, int n,
         return ds;
     }
 
-    private IPersistentVector selected(Object w, Object eid, Object e,
-            Object t, Object ts) {
+    private IPersistentVector selected(Object w, Object eid, Object e, Object t, Object ts) {
         IPersistentVector ds = PersistentVector.EMPTY;
         long b = bits(e, t);
         long[] locked = locks(b);
@@ -146,8 +151,8 @@ public record GoalSelector(Object goals, Object childColor, int n,
         return Tuple.create(e, ds);
     }
 
-    private IPersistentVector ticked(Object w, Object eid, Object e,
-            Object t, Object ts, IPersistentVector ds, boolean all) {
+    private IPersistentVector ticked(
+            Object w, Object eid, Object e, Object t, Object ts, IPersistentVector ds, boolean all) {
         for (int i = 0; i < n; i++) {
             IFn f = ticks[i];
             if (f != null && (all || every[i]) && running(i, e, t, kind(e))) {
@@ -164,15 +169,11 @@ public record GoalSelector(Object goals, Object childColor, int n,
     /// selector stops the goals that may not go on, starts those
     /// that may and ticks all; on the others it ticks only the goals
     /// that want every tick.
-    public static Object think(GoalSelector s, Object w, Object eid,
-            Object e, Object t, Object ts, boolean full) {
+    public static Object think(GoalSelector s, Object w, Object eid, Object e, Object t, Object ts, boolean full) {
         if (!full) {
-            return s.ticked(w, eid, e, t, ts, PersistentVector.EMPTY,
-                            false);
+            return s.ticked(w, eid, e, t, ts, PersistentVector.EMPTY, false);
         }
-        IPersistentVector r =
-            s.selected(w, eid, s.cleaned(w, e, t, ts), t, ts);
-        return s.ticked(w, eid, r.nth(0), t, ts,
-                        (IPersistentVector) r.nth(1), true);
+        IPersistentVector r = s.selected(w, eid, s.cleaned(w, e, t, ts), t, ts);
+        return s.ticked(w, eid, r.nth(0), t, ts, (IPersistentVector) r.nth(1), true);
     }
 }

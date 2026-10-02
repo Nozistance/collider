@@ -1,8 +1,8 @@
 package collider.world.space;
 
+import clojure.lang.IFn;
 import collider.RandomSupport;
 import collider.world.Section;
-import clojure.lang.IFn;
 
 /// The rays of a blast through a grid of sections.
 public final class Rays {
@@ -18,9 +18,8 @@ public final class Rays {
     /// sections shaped `ncx` by `ncz` by `nsy`, or 0 outside
     /// the grid. The first cell covers the section at `cx0`,
     /// `cz0`, `sy0`.
-    public static int readBlock(Object[] grid, int cx0, int cz0, int sy0,
-                                int ncx, int ncz, int nsy,
-                                int x, int y, int z) {
+    public static int readBlock(
+            Object[] grid, int cx0, int cz0, int sy0, int ncx, int ncz, int nsy, int x, int y, int z) {
         int ix = (x >> 4) - cx0;
         int iz = (z >> 4) - cz0;
         int iy = (y >> 4) - sy0;
@@ -33,13 +32,11 @@ public final class Rays {
     /// Returns the block state at `x`, `y`, `z` in `rg`, or 0 outside
     /// it. An absent column of a region that reads absent chunks goes
     /// to `summon` as its grid x and z.
-    public static int block(Region rg, IFn summon, int x, int y,
-            int z) {
+    public static int block(Region rg, IFn summon, int x, int y, int z) {
         int ix = (x >> 4) - rg.cx0();
         int iz = (z >> 4) - rg.cz0();
         int iy = (y >> 4) - rg.sy0();
-        if (ix < 0 || ix >= rg.ncx() || iz < 0 || iz >= rg.ncz()
-                || iy < 0 || iy >= rg.nsy()) return 0;
+        if (ix < 0 || ix >= rg.ncx() || iz < 0 || iz >= rg.ncz() || iy < 0 || iy >= rg.nsy()) return 0;
         int col = ix * rg.ncz() + iz;
         if (rg.cols()[col] == null && rg.readAbsent() != null) {
             summon.invoke((long) ix, (long) iz);
@@ -50,8 +47,7 @@ public final class Rays {
     }
 
     private static int cellIndex(long ix, long iy, long iz) {
-        if (ix < 0 || ix >= W || iy < 0 || iy >= W || iz < 0
-                || iz >= W) return -1;
+        if (ix < 0 || ix >= W || iy < 0 || iy >= W || iz < 0 || iz >= W) return -1;
         return (int) ((ix * W + iy) * W + iz);
     }
 
@@ -66,9 +62,18 @@ public final class Rays {
     private final long seed;
     private final byte[] vals = new byte[W * W * W];
 
-    private Rays(Exposure seen, IFn summon, float[] resist, long ox,
-            long oy, long oz, double cx, double cy, double cz,
-            float power, long seed) {
+    private Rays(
+            Exposure seen,
+            IFn summon,
+            float[] resist,
+            long ox,
+            long oy,
+            long oz,
+            double cx,
+            double cy,
+            double cz,
+            float power,
+            long seed) {
         this.seen = seen;
         this.summon = summon;
         this.resist = resist;
@@ -96,8 +101,7 @@ public final class Rays {
         xd /= d;
         yd /= d;
         zd /= d;
-        float f = power * (0.7F
-                + (float) RandomSupport.unit(seed, j, 31 * k + l) * 0.6F);
+        float f = power * (0.7F + (float) RandomSupport.unit(seed, j, 31 * k + l) * 0.6F);
         double x = cx, y = cy, z = cz;
         int prev = -1, st = 0;
         boolean first = true;
@@ -121,8 +125,7 @@ public final class Rays {
     }
 
     private static boolean surface(long j, long k, long l) {
-        return j == 0 || j == 15 || k == 0 || k == 15 || l == 0
-            || l == 15;
+        return j == 0 || j == 15 || k == 0 || k == 15 || l == 0 || l == 15;
     }
 
     /// Casts the rays of a blast of `power` at `cx`, `cy`, `cz`
@@ -130,11 +133,19 @@ public final class Rays {
     /// of the `W` cube at `ox`, `oy`, `oz` they reach. `seed` varies
     /// the power of each ray. `resist` holds the blast resistance by
     /// block state, NaN for air.
-    public static Rays cast(Exposure seen, IFn summon, float[] resist,
-            long ox, long oy, long oz, double cx, double cy, double cz,
-            double power, long seed) {
-        Rays rs = new Rays(seen, summon, resist, ox, oy, oz, cx, cy, cz,
-                           (float) power, seed);
+    public static Rays cast(
+            Exposure seen,
+            IFn summon,
+            float[] resist,
+            long ox,
+            long oy,
+            long oz,
+            double cx,
+            double cy,
+            double cz,
+            double power,
+            long seed) {
+        Rays rs = new Rays(seen, summon, resist, ox, oy, oz, cx, cy, cz, (float) power, seed);
         for (long j = 0; j < 16; j++) {
             for (long k = 0; k < 16; k++) {
                 for (long l = 0; l < 16; l++) {

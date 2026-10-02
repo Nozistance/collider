@@ -41,8 +41,7 @@ public final class PathHeap {
         PathNode node = a[idx];
         double c = node.f;
         int i = idx;
-        for (int j = lowerChild(i); j != -1 && a[j].f < c;
-             j = lowerChild(i)) {
+        for (int j = lowerChild(i); j != -1 && a[j].f < c; j = lowerChild(i)) {
             put(i, a[j]);
             i = j;
         }

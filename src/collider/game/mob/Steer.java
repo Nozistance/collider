@@ -7,8 +7,8 @@ import clojure.lang.RT;
 /// The move control of a mob: what it does, where it walks to, the
 /// speed modifier it was given and the speed and forward input it
 /// drives with. A value; each change makes a new one.
-public record Steer(Keyword op, double x, double y, double z,
-        double mult, double speed, double zza) implements ILookup {
+public record Steer(Keyword op, double x, double y, double z, double mult, double speed, double zza)
+        implements ILookup {
 
     public static final Keyword MOVE_TO = Keyword.intern("move-to");
 
@@ -26,8 +26,7 @@ public record Steer(Keyword op, double x, double y, double z,
 
     private static final double DEGREES = 180.0F / (float) Math.PI;
 
-    private static final double FRAC_BIAS =
-        Double.longBitsToDouble(4805340802404319232L);
+    private static final double FRAC_BIAS = Double.longBitsToDouble(4805340802404319232L);
     private static final double[] ASIN_TAB = new double[257];
     private static final double[] COS_TAB = new double[257];
 
@@ -87,8 +86,7 @@ public record Steer(Keyword op, double x, double y, double z,
 
     /// Returns yaw turned toward the offset `xd`, `zd` by at most
     /// `max` degrees, in floats as MoveControl.tick and rotlerp.
-    public static double turned(double yaw, double xd, double zd,
-            double max) {
+    public static double turned(double yaw, double xd, double zd, double max) {
         float to = (float) (atan2(zd, xd) * DEGREES) - 90.0F;
         return rotlerp(yaw, to, max);
     }
@@ -110,8 +108,7 @@ public record Steer(Keyword op, double x, double y, double z,
     }
 
     /// The control of a mob never told to move.
-    public static final Steer IDLE =
-        new Steer(WAIT, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    public static final Steer IDLE = new Steer(WAIT, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
     private static double num(Object m, Keyword k) {
         Object v = RT.get(m, k);
@@ -124,15 +121,19 @@ public record Steer(Keyword op, double x, double y, double z,
         if (m instanceof Steer s) return s;
         if (m == null) return IDLE;
         Object op = RT.get(m, OP);
-        return new Steer(op == null ? WAIT : (Keyword) op, num(m, X),
-                         num(m, Y), num(m, Z), num(m, MULT),
-                         num(m, SPEED), num(m, ZZA));
+        return new Steer(
+                op == null ? WAIT : (Keyword) op,
+                num(m, X),
+                num(m, Y),
+                num(m, Z),
+                num(m, MULT),
+                num(m, SPEED),
+                num(m, ZZA));
     }
 
     /// Returns `m` told to walk to `x`, `y`, `z` with speed modifier
     /// `mult`. A jump under way goes on.
-    public static Steer wanted(Object m, double x, double y, double z,
-            double mult) {
+    public static Steer wanted(Object m, double x, double y, double z, double mult) {
         Steer s = of(m);
         Keyword op = s.op == JUMPING ? JUMPING : MOVE_TO;
         return new Steer(op, x, y, z, mult, s.speed, s.zza);
@@ -149,8 +150,7 @@ public record Steer(Keyword op, double x, double y, double z,
     public static Steer driven(Object m, double speed, boolean jump) {
         Steer s = of(m);
         double f = (double) (float) speed;
-        return new Steer(jump ? JUMPING : WAIT, s.x, s.y, s.z, s.mult,
-                         f, f);
+        return new Steer(jump ? JUMPING : WAIT, s.x, s.y, s.z, s.mult, f, f);
     }
 
     /// Returns `m` in its jump at `speed`, rounded to a float, which
@@ -158,8 +158,7 @@ public record Steer(Keyword op, double x, double y, double z,
     public static Steer jumped(Object m, double speed, boolean landed) {
         Steer s = of(m);
         double f = (double) (float) speed;
-        return new Steer(landed ? WAIT : s.op, s.x, s.y, s.z, s.mult, f,
-                         f);
+        return new Steer(landed ? WAIT : s.op, s.x, s.y, s.z, s.mult, f, f);
     }
 
     /// Returns `m` with no forward input, the same `m` when it has

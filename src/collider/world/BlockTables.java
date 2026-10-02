@@ -21,18 +21,32 @@ package collider.world;
 /// @param sturdy The faces, one bit each, that hold things.
 /// @param sturdyRigid The faces that hold things rigidly.
 /// @param sturdyCenter The faces that hold things at the center.
-public record BlockTables(Object[] types, Object[] names,
-                          Object[] shapes, boolean[] needsSupport,
-                          boolean[] attached, boolean[] replaceable,
-                          boolean[] liquid, boolean[] waterlogged,
-                          boolean[] falls, boolean[] canBeReplaced,
-                          boolean[] solid, boolean[] legacySolid,
-                          boolean[] fullCube, boolean[] blocksMotion,
-                          boolean[] useShape, boolean[] canOcclude,
-                          int[] dampening, int[] emission, int[] touch,
-                          Object[] faces, double[] resist, byte[] flags,
-                          byte[] sturdy, byte[] sturdyRigid,
-                          byte[] sturdyCenter) {
+public record BlockTables(
+        Object[] types,
+        Object[] names,
+        Object[] shapes,
+        boolean[] needsSupport,
+        boolean[] attached,
+        boolean[] replaceable,
+        boolean[] liquid,
+        boolean[] waterlogged,
+        boolean[] falls,
+        boolean[] canBeReplaced,
+        boolean[] solid,
+        boolean[] legacySolid,
+        boolean[] fullCube,
+        boolean[] blocksMotion,
+        boolean[] useShape,
+        boolean[] canOcclude,
+        int[] dampening,
+        int[] emission,
+        int[] touch,
+        Object[] faces,
+        double[] resist,
+        byte[] flags,
+        byte[] sturdy,
+        byte[] sturdyRigid,
+        byte[] sturdyCenter) {
     private static BlockTables current;
 
     /// Returns the tables that `install` set last, or null.

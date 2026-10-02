@@ -26,8 +26,7 @@ public final class Chunk {
 
     public static Chunk of(Object[] sections) {
         if (sections.length > COUNT) {
-            throw new IllegalArgumentException("sections "
-                                               + sections.length);
+            throw new IllegalArgumentException("sections " + sections.length);
         }
         Section[] a = new Section[COUNT];
         for (int i = 0; i < sections.length; i++) {

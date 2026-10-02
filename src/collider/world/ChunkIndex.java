@@ -1,7 +1,6 @@
 package collider.world;
 
 import clojure.lang.*;
-
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
@@ -17,22 +16,19 @@ import java.util.Map;
 /// later window reuses T, so nodes tagged T are never written again:
 /// frozen indexes are immutable values. Inside a window only the
 /// index returned last is valid to read, as with a transient.
-public final class ChunkIndex extends APersistentMap
-        implements IObj, IKVReduce, IReduceInit, IEditableCollection {
+public final class ChunkIndex extends APersistentMap implements IObj, IKVReduce, IReduceInit, IEditableCollection {
 
     static final int L = 4, I = 6, D = 22;
     static final int LM = (1 << L) - 1, IM = (1 << I) - 1;
     static final int B = (1 << 3) + (1 << 9) + (1 << 15) + (1 << 21);
-    public static final ChunkIndex EMPTY =
-            new ChunkIndex(null, L, -1, -1, 0, null, new Object(), null);
+    public static final ChunkIndex EMPTY = new ChunkIndex(null, L, -1, -1, 0, null, new Object(), null);
 
     final Object[] root;
     final int span, pu, pv, count;
     final IPersistentMap meta;
     final Object shape, token;
 
-    ChunkIndex(Object[] root, int span, int pu, int pv, int count,
-               IPersistentMap meta, Object shape, Object token) {
+    ChunkIndex(Object[] root, int span, int pu, int pv, int count, IPersistentMap meta, Object shape, Object token) {
         this.root = root;
         this.span = span;
         this.pu = pu;
@@ -47,8 +43,7 @@ public final class ChunkIndex extends APersistentMap
     /// result and of their results copy each node once and then write
     /// it in place until `frozen()`.
     public ChunkIndex editable() {
-        return new ChunkIndex(root, span, pu, pv, count, meta, shape,
-                              new Object());
+        return new ChunkIndex(root, span, pu, pv, count, meta, shape, new Object());
     }
 
     /// Returns true when this index is open for a window of edits.
@@ -60,8 +55,7 @@ public final class ChunkIndex extends APersistentMap
     /// when it has none.
     public ChunkIndex frozen() {
         if (token == null) return this;
-        return new ChunkIndex(root, span, pu, pv, count, meta, shape,
-                              null);
+        return new ChunkIndex(root, span, pu, pv, count, meta, shape, null);
     }
 
     /// Returns a token that is the same object for every index with
@@ -70,8 +64,7 @@ public final class ChunkIndex extends APersistentMap
         return shape;
     }
 
-    static Object find(Object[] n, int span, int pu, int pv,
-                       int cx, int cz) {
+    static Object find(Object[] n, int span, int pu, int pv, int cx, int cz) {
         int u = cx + B, v = cz + B, s = span;
         if ((u >>> s) != pu || (v >>> s) != pv) return null;
         for (s -= I; s >= L; s -= I) {
@@ -100,8 +93,7 @@ public final class ChunkIndex extends APersistentMap
     }
 
     static boolean integral(Object k) {
-        return k instanceof Long || k instanceof Integer
-                || k instanceof Short || k instanceof Byte;
+        return k instanceof Long || k instanceof Integer || k instanceof Short || k instanceof Byte;
     }
 
     static long key(Object k) {
@@ -125,8 +117,7 @@ public final class ChunkIndex extends APersistentMap
 
     public IMapEntry entryAt(Object k) {
         Object o = valAt(k, null);
-        return o == null ? null
-                : MapEntry.create(((Number) k).longValue(), o);
+        return o == null ? null : MapEntry.create(((Number) k).longValue(), o);
     }
 
     public int count() {
@@ -139,8 +130,7 @@ public final class ChunkIndex extends APersistentMap
 
     public ChunkIndex withMeta(IPersistentMap m) {
         if (m == meta) return this;
-        return new ChunkIndex(root, span, pu, pv, count, m, shape,
-                              token);
+        return new ChunkIndex(root, span, pu, pv, count, m, shape, token);
     }
 
     public ChunkIndex empty() {
@@ -298,8 +288,7 @@ public final class ChunkIndex extends APersistentMap
             for (int ud = 0; ud <= LM; ud++) {
                 long hi = ((((long) up << L) | ud) - B) << 32;
                 int row = ud << L;
-                if (!pass(d, row, B, Integer.MAX_VALUE, hi)
-                        || !pass(d, row, 0, B - 1, hi)) return false;
+                if (!pass(d, row, B, Integer.MAX_VALUE, hi) || !pass(d, row, 0, B - 1, hi)) return false;
             }
             return true;
         }
@@ -314,8 +303,7 @@ public final class ChunkIndex extends APersistentMap
             return true;
         }
 
-        boolean cells(Object[] n, int row, int base, int from, int to,
-                      long hi) {
+        boolean cells(Object[] n, int row, int base, int from, int to, long hi) {
             int a = Math.max(base, from) - base;
             int b = Math.min(base + LM, to) - base;
             for (int vd = a; vd <= b; vd++) {
@@ -348,8 +336,7 @@ public final class ChunkIndex extends APersistentMap
 
         ChunkIndex done(IPersistentMap meta) {
             if (root == null) return EMPTY.withMeta(meta);
-            return new ChunkIndex(root, span, pu, pv, count, meta,
-                                  shape, keep);
+            return new ChunkIndex(root, span, pu, pv, count, meta, shape, keep);
         }
 
         void reshaped() {
@@ -444,8 +431,7 @@ public final class ChunkIndex extends APersistentMap
         }
 
         static IllegalArgumentException bad(long id, Object o) {
-            return new IllegalArgumentException(
-                    "ChunkIndex entry: " + id + " " + o);
+            return new IllegalArgumentException("ChunkIndex entry: " + id + " " + o);
         }
 
         void remove(long id) {
@@ -471,8 +457,7 @@ public final class ChunkIndex extends APersistentMap
         }
     }
 
-    static final class Transient extends AFn
-            implements ITransientMap, ITransientAssociative2 {
+    static final class Transient extends AFn implements ITransientMap, ITransientAssociative2 {
         Edit edit;
         final IPersistentMap meta;
 
@@ -483,8 +468,7 @@ public final class ChunkIndex extends APersistentMap
 
         Edit live() {
             if (edit == null) {
-                throw new IllegalAccessError(
-                        "Transient after persistent!");
+                throw new IllegalAccessError("Transient after persistent!");
             }
             return edit;
         }
@@ -506,8 +490,7 @@ public final class ChunkIndex extends APersistentMap
             if (o instanceof IPersistentVector v && v.count() == 2) {
                 return assoc(v.nth(0), v.nth(1));
             }
-            throw new IllegalArgumentException(
-                    "ChunkIndex conj: " + o);
+            throw new IllegalArgumentException("ChunkIndex conj: " + o);
         }
 
         public IPersistentMap persistent() {
@@ -517,8 +500,7 @@ public final class ChunkIndex extends APersistentMap
         }
 
         public Object valAt(Object k, Object nf) {
-            Object o = integral(k)
-                    ? live().get(((Number) k).longValue()) : null;
+            Object o = integral(k) ? live().get(((Number) k).longValue()) : null;
             return o == null ? nf : o;
         }
 
@@ -536,8 +518,7 @@ public final class ChunkIndex extends APersistentMap
 
         public IMapEntry entryAt(Object k) {
             Object o = valAt(k, null);
-            return o == null ? null
-                    : MapEntry.create(((Number) k).longValue(), o);
+            return o == null ? null : MapEntry.create(((Number) k).longValue(), o);
         }
 
         public Object invoke(Object k) {

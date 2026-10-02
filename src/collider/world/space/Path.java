@@ -13,16 +13,29 @@ public final class Path {
 
     private static final double EPS = 1.0E-7;
 
-    static final int BLOCKED = 0, OPEN = 1, WALKABLE = 2,
-        WALKABLE_DOOR = 3, TRAPDOOR = 4, POWDER_SNOW = 5,
-        ON_TOP_OF_POWDER_SNOW = 6, FENCE = 7, LAVA = 8, WATER = 9,
-        RAIL = 11, UNPASSABLE_RAIL = 12, FIRE = 14, DAMAGING = 16,
-        DOOR_OPEN = 17, DOOR_WOOD_CLOSED = 18, DOOR_IRON_CLOSED = 19,
-        STICKY_HONEY = 22, DAMAGE_CAUTIOUS = 24,
-        ON_TOP_OF_TRAPDOOR = 25, BIG_MOBS_CLOSE_TO_DANGER = 26;
+    static final int BLOCKED = 0,
+            OPEN = 1,
+            WALKABLE = 2,
+            WALKABLE_DOOR = 3,
+            TRAPDOOR = 4,
+            POWDER_SNOW = 5,
+            ON_TOP_OF_POWDER_SNOW = 6,
+            FENCE = 7,
+            LAVA = 8,
+            WATER = 9,
+            RAIL = 11,
+            UNPASSABLE_RAIL = 12,
+            FIRE = 14,
+            DAMAGING = 16,
+            DOOR_OPEN = 17,
+            DOOR_WOOD_CLOSED = 18,
+            DOOR_IRON_CLOSED = 19,
+            STICKY_HONEY = 22,
+            DAMAGE_CAUTIOUS = 24,
+            ON_TOP_OF_TRAPDOOR = 25,
+            BIG_MOBS_CLOSE_TO_DANGER = 26;
 
-    private static final int[][] DIRS = {{0, 1}, {-1, 0}, {0, -1},
-                                         {1, 0}};
+    private static final int[][] DIRS = {{0, 1}, {-1, 0}, {0, -1}, {1, 0}};
 
     private static final int[] HORIZONTAL = {2, 3, 0, 1};
 
@@ -51,10 +64,19 @@ public final class Path {
     /// each path type. `mob` holds the position x, y, z, width,
     /// height and max up step; `flags` max fall, then floats, opens
     /// doors, passes doors and walks over fences as 0 or 1.
-    public Path(ChunkIndex chunks, long minY, int[] types, int[] forced,
-            boolean[] water, Object[] shapes, byte[] kinds,
-            double[] malus, double[] baseMalus, double[] mob,
-            long[] flags, int ctx) {
+    public Path(
+            ChunkIndex chunks,
+            long minY,
+            int[] types,
+            int[] forced,
+            boolean[] water,
+            Object[] shapes,
+            byte[] kinds,
+            double[] malus,
+            double[] baseMalus,
+            double[] mob,
+            long[] flags,
+            int ctx) {
         this.chunks = chunks;
         this.minY = minY;
         this.types = types;
@@ -84,15 +106,15 @@ public final class Path {
     }
 
     private static long key(long x, long y, long z) {
-        return (int) ((y & 0xFF) | ((x & 32767) << 8)
-                      | ((z & 32767) << 24)
-                      | (x < 0 ? Integer.MIN_VALUE : 0)
-                      | (z < 0 ? 32768 : 0));
+        return (int) ((y & 0xFF)
+                | ((x & 32767) << 8)
+                | ((z & 32767) << 24)
+                | (x < 0 ? Integer.MIN_VALUE : 0)
+                | (z < 0 ? 32768 : 0));
     }
 
     private static long cell(long x, long y, long z) {
-        return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12)
-               | (y & 0xFFFL);
+        return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12) | (y & 0xFFFL);
     }
 
     /// Returns the node of the cell `x`, `y`, `z` of search `p` and
@@ -107,22 +129,27 @@ public final class Path {
         return n;
     }
 
-    private static int typeAt(ChunkIndex chunks, int[] types, long x,
-            long y, long z) {
+    private static int typeAt(ChunkIndex chunks, int[] types, long x, long y, long z) {
         int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
         return st < types.length ? types[st] : OPEN;
     }
 
-    private static int floorType(ChunkIndex chunks, int[] types,
-            int[] forced, long x, long y, long z) {
+    private static int floorType(ChunkIndex chunks, int[] types, int[] forced, long x, long y, long z) {
         switch (typeAt(chunks, types, x, y - 1, z)) {
-            case OPEN, WATER, LAVA, WALKABLE: return OPEN;
-            case FIRE: return FIRE;
-            case DAMAGING: return DAMAGING;
-            case STICKY_HONEY: return STICKY_HONEY;
-            case POWDER_SNOW: return ON_TOP_OF_POWDER_SNOW;
-            case DAMAGE_CAUTIOUS: return DAMAGE_CAUTIOUS;
-            case TRAPDOOR: return ON_TOP_OF_TRAPDOOR;
+            case OPEN, WATER, LAVA, WALKABLE:
+                return OPEN;
+            case FIRE:
+                return FIRE;
+            case DAMAGING:
+                return DAMAGING;
+            case STICKY_HONEY:
+                return STICKY_HONEY;
+            case POWDER_SNOW:
+                return ON_TOP_OF_POWDER_SNOW;
+            case DAMAGE_CAUTIOUS:
+                return DAMAGE_CAUTIOUS;
+            case TRAPDOOR:
+                return ON_TOP_OF_TRAPDOOR;
             default:
                 int f = forced(chunks, forced, x, y, z);
                 return f >= 0 ? f : WALKABLE;
@@ -131,11 +158,9 @@ public final class Path {
 
     /// Returns the path type of the cell `x`, `y`, `z` for a mob one
     /// cell tall, in a level from `lo` up.
-    public static int staticType(ChunkIndex chunks, int[] types,
-            int[] forced, long lo, long x, long y, long z) {
+    public static int staticType(ChunkIndex chunks, int[] types, int[] forced, long lo, long x, long y, long z) {
         int t = typeAt(chunks, types, x, y, z);
-        return t == OPEN && y >= lo + 1
-               ? floorType(chunks, types, forced, x, y, z) : t;
+        return t == OPEN && y >= lo + 1 ? floorType(chunks, types, forced, x, y, z) : t;
     }
 
     private int staticAt(long x, long y, long z) {
@@ -148,8 +173,7 @@ public final class Path {
             return WALKABLE_DOOR;
         }
         if (t == DOOR_OPEN && !passDoors) return BLOCKED;
-        if (t == RAIL && staticAt(mx, my, mz) != RAIL
-            && staticAt(mx, my - 1, mz) != RAIL) {
+        if (t == RAIL && staticAt(mx, my, mz) != RAIL && staticAt(mx, my - 1, mz) != RAIL) {
             return UNPASSABLE_RAIL;
         }
         return t;
@@ -179,9 +203,7 @@ public final class Path {
         }
         int cur = staticAt(x, y, z);
         if (bbW > 1) {
-            return malus[cur] < bm
-                   && malus[BIG_MOBS_CLOSE_TO_DANGER] < bm
-                   ? BIG_MOBS_CLOSE_TO_DANGER : bt;
+            return malus[cur] < bm && malus[BIG_MOBS_CLOSE_TO_DANGER] < bm ? BIG_MOBS_CLOSE_TO_DANGER : bt;
         }
         return cur == OPEN && bt != OPEN && bm == 0.0 ? OPEN : bt;
     }
@@ -206,8 +228,7 @@ public final class Path {
             int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
             if (st < water.length && water[st]) return y + 0.5;
         }
-        int below = Chunk.blockAt(chunks, (int) x, (int) (y - 1),
-                                  (int) z);
+        int below = Chunk.blockAt(chunks, (int) x, (int) (y - 1), (int) z);
         return (y - 1) + shapeTop(shapes, below);
     }
 
@@ -234,24 +255,21 @@ public final class Path {
     }
 
     private static boolean partial(int t) {
-        return t == FENCE || t == DOOR_WOOD_CLOSED
-               || t == DOOR_IRON_CLOSED;
+        return t == FENCE || t == DOOR_WOOD_CLOSED || t == DOOR_IRON_CLOSED;
     }
 
     private PathNode groundBelow(long x, long y, long z) {
-        for (long cy = y - 1;; cy--) {
+        for (long cy = y - 1; ; cy--) {
             if (cy < minY) return blocked(x, y, z);
             if (y - cy > maxFall) return blocked(x, cy, z);
             int t = typeOfMob(x, cy, z);
             double m = malus[t];
             if (t == OPEN) continue;
-            return m >= 0.0 ? withCost(x, cy, z, t, m)
-                            : blocked(x, cy, z);
+            return m >= 0.0 ? withCost(x, cy, z, t, m) : blocked(x, cy, z);
         }
     }
 
-    private PathNode nonWaterBelow(long x, long y, long z,
-            PathNode best) {
+    private PathNode nonWaterBelow(long x, long y, long z, PathNode best) {
         for (long cy = y - 1; cy > minY; cy--) {
             int t = typeOfMob(x, cy, z);
             if (t != WATER) return best;
@@ -260,38 +278,41 @@ public final class Path {
         return best;
     }
 
-    private PathNode jumpOn(long x, long y, long z, long jump,
-            double nh, int dir, int cur) {
+    private PathNode jumpOn(long x, long y, long z, long jump, double nh, int dir, int cur) {
         PathNode above = accepted(x, y + 1, z, jump - 1, nh, dir, cur);
         if (above == null) return null;
         if (width >= 1.0) return above;
         if (above.kind != OPEN && above.kind != WALKABLE) return above;
         long cx = x - DIRS[dir][0], cz = z - DIRS[dir][1];
         double hw = width / 2.0;
-        double[] b = {cx + 0.5 - hw, floorLevel(cx, y + 1, cz) + 0.001,
-                      cz + 0.5 - hw, cx + 0.5 + hw,
-                      height + floorLevel(above.x, above.y, above.z)
-                      - 0.002,
-                      cz + 0.5 + hw};
+        double[] b = {
+            cx + 0.5 - hw,
+            floorLevel(cx, y + 1, cz) + 0.001,
+            cz + 0.5 - hw,
+            cx + 0.5 + hw,
+            height + floorLevel(above.x, above.y, above.z) - 0.002,
+            cz + 0.5 + hw
+        };
         return collides(b) ? null : above;
     }
 
-    private PathNode accepted(long x, long y, long z, long jump,
-            double nh, int dir, int cur) {
+    private PathNode accepted(long x, long y, long z, long jump, double nh, int dir, int cur) {
         if (floorLevel(x, y, z) - nh > Math.max(1.125, upStep)) {
             return null;
         }
         int t = typeOfMob(x, y, z);
         double m = malus[t];
         PathNode best = m >= 0.0 ? withCost(x, y, z, t, m) : null;
-        if (partial(cur) && best != null && best.malus() >= 0.0
-            && !canReach(best)) {
+        if (partial(cur) && best != null && best.malus() >= 0.0 && !canReach(best)) {
             best = null;
         }
         if (t == WALKABLE) return best;
-        if ((best == null || best.malus() < 0.0) && jump > 0
-            && (t != FENCE || overFences) && t != UNPASSABLE_RAIL
-            && t != TRAPDOOR && t != POWDER_SNOW) {
+        if ((best == null || best.malus() < 0.0)
+                && jump > 0
+                && (t != FENCE || overFences)
+                && t != UNPASSABLE_RAIL
+                && t != TRAPDOOR
+                && t != POWDER_SNOW) {
             return jumpOn(x, y, z, jump, nh, dir, cur);
         }
         if (t == WATER && !floats) return nonWaterBelow(x, y, z, best);
@@ -300,8 +321,7 @@ public final class Path {
         return best;
     }
 
-    private static boolean diagonalOk(double width, PathNode pos,
-            PathNode ew, PathNode ns) {
+    private static boolean diagonalOk(double width, PathNode pos, PathNode ew, PathNode ns) {
         if (ns == null || ew == null || ns.y > pos.y || ew.y > pos.y) {
             return false;
         }
@@ -311,40 +331,33 @@ public final class Path {
         if (width > 1.0 && (ew.malus() > 0.0 || ns.malus() > 0.0)) {
             return false;
         }
-        boolean gap = ns.kind == FENCE && ew.kind == FENCE
-                      && width < 0.5;
-        return (ns.y < pos.y || ns.malus() >= 0.0 || gap)
-               && (ew.y < pos.y || ew.malus() >= 0.0 || gap);
+        boolean gap = ns.kind == FENCE && ew.kind == FENCE && width < 0.5;
+        return (ns.y < pos.y || ns.malus() >= 0.0 || gap) && (ew.y < pos.y || ew.malus() >= 0.0 || gap);
     }
 
     private int neighbors(PathNode pos, PathNode[] out) {
         int cur = typeOfMob(pos.x, pos.y, pos.z);
-        long js = malus[typeOfMob(pos.x, pos.y + 1, pos.z)] >= 0.0
-                  && cur != STICKY_HONEY
-                  ? (long) Math.floor(Math.max(1.0, upStep)) : 0;
+        long js = malus[typeOfMob(pos.x, pos.y + 1, pos.z)] >= 0.0 && cur != STICKY_HONEY
+                ? (long) Math.floor(Math.max(1.0, upStep))
+                : 0;
         double ph = floorLevel(pos.x, pos.y, pos.z);
         PathNode[] side = new PathNode[4];
         for (int d : HORIZONTAL) {
-            side[d] = accepted(pos.x + DIRS[d][0], pos.y,
-                               pos.z + DIRS[d][1], js, ph, d, cur);
+            side[d] = accepted(pos.x + DIRS[d][0], pos.y, pos.z + DIRS[d][1], js, ph, d, cur);
         }
         int k = 0;
         for (int d : HORIZONTAL) {
             PathNode n = side[d];
-            if (n != null && !n.closed()
-                && (n.malus() >= 0.0 || pos.malus() < 0.0)) {
+            if (n != null && !n.closed() && (n.malus() >= 0.0 || pos.malus() < 0.0)) {
                 out[k++] = n;
             }
         }
         for (int d : HORIZONTAL) {
             int cw = CLOCKWISE[d];
             if (!diagonalOk(width, pos, side[d], side[cw])) continue;
-            PathNode n = accepted(pos.x + DIRS[d][0] + DIRS[cw][0],
-                                  pos.y,
-                                  pos.z + DIRS[d][1] + DIRS[cw][1],
-                                  js, ph, d, cur);
-            if (n != null && !n.closed() && n.kind != WALKABLE_DOOR
-                && n.malus() >= 0.0) {
+            PathNode n =
+                    accepted(pos.x + DIRS[d][0] + DIRS[cw][0], pos.y, pos.z + DIRS[d][1] + DIRS[cw][1], js, ph, d, cur);
+            if (n != null && !n.closed() && n.kind != WALKABLE_DOOR && n.malus() >= 0.0) {
                 out[k++] = n;
             }
         }
@@ -392,9 +405,7 @@ public final class Path {
     /// targets it reached within `reach`, null when it reached none.
     /// It visits fewer than `maxv` nodes and walks no further than
     /// `maxlen` from `from`.
-    public static PathTarget[] run(Path p, PathNode from,
-            PathTarget[] targets, double maxlen, long reach,
-            long maxv) {
+    public static PathTarget[] run(Path p, PathNode from, PathTarget[] targets, double maxlen, long reach, long maxv) {
         PathHeap heap = new PathHeap();
         start(heap, targets, from);
         PathNode[] out = new PathNode[8];
@@ -426,15 +437,12 @@ public final class Path {
     /// Returns what the first cell around `x`, `y`, `z` forces upon
     /// it through `forced`, the forced type of each block state, in
     /// the order WalkNodeEvaluator scans them; -1 when none does.
-    public static int forced(ChunkIndex chunks, int[] forced,
-            long x, long y, long z) {
+    public static int forced(ChunkIndex chunks, int[] forced, long x, long y, long z) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dz == 0) continue;
-                    int st = Chunk.blockAt(chunks, (int) (x + dx),
-                                           (int) (y + dy),
-                                           (int) (z + dz));
+                    int st = Chunk.blockAt(chunks, (int) (x + dx), (int) (y + dy), (int) (z + dz));
                     if (st < 0 || st >= forced.length) continue;
                     int f = forced[st];
                     if (f >= 0) return f;
@@ -456,13 +464,15 @@ public final class Path {
         return top;
     }
 
-    private static boolean cellHits(double[] s, double[] b, long x,
-            long y, long z) {
+    private static boolean cellHits(double[] s, double[] b, long x, long y, long z) {
         if (s == null) return false;
         for (int k = 0; k < s.length; k += 6) {
-            if (x + s[k + 3] > b[0] && x + s[k] < b[3]
-                && y + s[k + 4] > b[1] && y + s[k + 1] < b[4]
-                && z + s[k + 5] > b[2] && z + s[k + 2] < b[5]) {
+            if (x + s[k + 3] > b[0]
+                    && x + s[k] < b[3]
+                    && y + s[k + 4] > b[1]
+                    && y + s[k + 1] < b[4]
+                    && z + s[k + 5] > b[2]
+                    && z + s[k + 2] < b[5]) {
                 return true;
             }
         }
@@ -478,12 +488,9 @@ public final class Path {
         long z1 = (long) Math.floor(b[5] + EPS);
         for (long x = (long) Math.floor(b[0] - EPS); x <= x1; x++) {
             for (long y = (long) Math.floor(b[1] - EPS); y <= y1; y++) {
-                for (long z = (long) Math.floor(b[2] - EPS); z <= z1;
-                     z++) {
-                    int st = Chunk.blockAt(chunks, (int) x, (int) y,
-                                           (int) z);
-                    double[] s = Collision.shape(shapes, kinds, st,
-                        (int) x, (int) y, (int) z, py, ctx);
+                for (long z = (long) Math.floor(b[2] - EPS); z <= z1; z++) {
+                    int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
+                    double[] s = Collision.shape(shapes, kinds, st, (int) x, (int) y, (int) z, py, ctx);
                     if (cellHits(s, b, x, y, z)) return true;
                 }
             }
@@ -530,8 +537,7 @@ public final class Path {
     }
 
     /// Starts a search from the node `from` into `heap`.
-    public static void start(PathHeap heap, PathTarget[] targets,
-            PathNode from) {
+    public static void start(PathHeap heap, PathTarget[] targets, PathNode from) {
         from.g = 0.0;
         from.h = PathNode.fl(bestH(targets, from));
         from.f = from.h;
@@ -541,8 +547,7 @@ public final class Path {
     /// Lets the search step from `cur` onto its neighbour `n`. The
     /// step counts when the walked length stays under `maxlen` and
     /// it is the cheapest way to `n` so far.
-    public static void relax(PathHeap heap, PathTarget[] targets,
-            double maxlen, PathNode cur, PathNode n) {
+    public static void relax(PathHeap heap, PathTarget[] targets, double maxlen, PathNode cur, PathNode n) {
         double d = cur.distTo(n.x, n.y, n.z);
         double w = PathNode.fl(cur.walked + d);
         double g = PathNode.fl(PathNode.fl(cur.g + d) + n.malus());

@@ -4,10 +4,11 @@ package collider.world;
 public final class Noise {
 
     private static final int[][] GRADIENT = {
-            {1, 1, 0}, {-1, 1, 0}, {1, -1, 0}, {-1, -1, 0},
-            {1, 0, 1}, {-1, 0, 1}, {1, 0, -1}, {-1, 0, -1},
-            {0, 1, 1}, {0, -1, 1}, {0, 1, -1}, {0, -1, -1},
-            {1, 1, 0}, {0, -1, 1}, {-1, 1, 0}, {0, -1, -1}};
+        {1, 1, 0}, {-1, 1, 0}, {1, -1, 0}, {-1, -1, 0},
+        {1, 0, 1}, {-1, 0, 1}, {1, 0, -1}, {-1, 0, -1},
+        {0, 1, 1}, {0, -1, 1}, {0, 1, -1}, {0, -1, -1},
+        {1, 1, 0}, {0, -1, 1}, {-1, 1, 0}, {0, -1, -1}
+    };
 
     private static final double INPUT_FACTOR = 1.0181268882175227;
 
@@ -114,7 +115,8 @@ public final class Noise {
             double xa = smooth(xr);
             double ya = smooth(yr);
             double za = smooth(zr);
-            return lerp(za,
+            return lerp(
+                    za,
                     lerp(ya, lerp(xa, d000, d100), lerp(xa, d010, d110)),
                     lerp(ya, lerp(xa, d001, d101), lerp(xa, d011, d111)));
         }
@@ -152,7 +154,8 @@ public final class Noise {
             double scale = valueFactor;
             for (int i = 0; i < levels.length; i++) {
                 if (levels[i] != null) {
-                    value += amplitudes[i] * scale
+                    value += amplitudes[i]
+                            * scale
                             * levels[i].noise(wrap(x * factor), wrap(y * factor), wrap(z * factor));
                 }
                 factor *= 2.0;
@@ -200,7 +203,7 @@ public final class Noise {
 
     /// Returns the value of the noise at a point, from -1 to 1.
     public double value(double x, double y, double z) {
-        return (first.value(x, y, z)
-                + second.value(x * INPUT_FACTOR, y * INPUT_FACTOR, z * INPUT_FACTOR)) * valueFactor;
+        return (first.value(x, y, z) + second.value(x * INPUT_FACTOR, y * INPUT_FACTOR, z * INPUT_FACTOR))
+                * valueFactor;
     }
 }

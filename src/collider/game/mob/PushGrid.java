@@ -36,9 +36,15 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// Returns the grid of bodies `eids`, ascending, each with half
     /// width, height, position, and the tick and rank in it at which
     /// it came into its section at the same index.
-    public PushGrid(long[] eids, double[] halfs, double[] heights,
-                    double[] xs, double[] ys, double[] zs, long[] came,
-                    long[] ranks) {
+    public PushGrid(
+            long[] eids,
+            double[] halfs,
+            double[] heights,
+            double[] xs,
+            double[] ys,
+            double[] zs,
+            long[] came,
+            long[] ranks) {
         this.eids = eids;
         this.came = came;
         this.ranks = ranks;
@@ -137,19 +143,16 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// Moves the body `eid` of grid `g` to `x`, `y`, `z` with half width `half`
     /// and height `height`, come into its section at tick `c` and rank
     /// `r`, and returns this grid.
-    public static PushGrid moved(PushGrid g, long eid, double half,
-                                 double height, double x, double y,
-                                 double z, long c, long r) {
+    public static PushGrid moved(
+            PushGrid g, long eid, double half, double height, double x, double y, double z, long c, long r) {
         return g.move(eid, half, height, x, y, z, c, r);
     }
 
-    private PushGrid move(long eid, double half, double height,
-                          double x, double y, double z, long c, long r) {
+    private PushGrid move(long eid, double half, double height, double x, double y, double z, long c, long r) {
         int s = Arrays.binarySearch(eids, eid);
         came[s] = c;
         ranks[s] = r;
-        boolean same = slack > 0.0
-                || column(x, z) == column(xs[s], zs[s]);
+        boolean same = slack > 0.0 || column(x, z) == column(xs[s], zs[s]);
         if (!same) unlink(s);
         halfs[s] = half;
         heights[s] = height;
@@ -177,9 +180,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
 
-    private int[] overlapping(double x, double y, double z,
-                              double half, double height, long eid,
-                              long hi) {
+    private int[] overlapping(double x, double y, double z, double half, double height, long eid, long hi) {
         double r = half + widest, w = r + slack;
         long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
@@ -200,7 +201,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                     double oy = ys[j];
                     if (Math.abs(xs[j] - x) < rj
                             && Math.abs(zs[j] - z) < rj
-                            && oy < y + height && oy + heights[j] > y) {
+                            && oy < y + height
+                            && oy + heights[j] > y) {
                         long ox = cell(xs[j]) - cx, oz = cell(zs[j]) - cz;
                         if (ox < -1 || ox > 1 || oz < -1 || oz > 1) continue;
                         if (n == hits.length) {
@@ -226,11 +228,9 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private int compareListed(int a, int b) {
         int c = Long.compare(section(xs[a]), section(xs[b]));
         if (c != 0) return c;
-        c = Long.compare(section(zs[a]) & 0x3FFFFFL,
-                         section(zs[b]) & 0x3FFFFFL);
+        c = Long.compare(section(zs[a]) & 0x3FFFFFL, section(zs[b]) & 0x3FFFFFL);
         if (c != 0) return c;
-        c = Long.compare(section(ys[a]) & 0xFFFFFL,
-                         section(ys[b]) & 0xFFFFFL);
+        c = Long.compare(section(ys[a]) & 0xFFFFFL, section(ys[b]) & 0xFFFFFL);
         if (c != 0) return c;
         c = Long.compare(came[a], came[b]);
         return c != 0 ? c : Long.compare(ranks[a], ranks[b]);
@@ -253,14 +253,12 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// whose id is below `hi`. Each shove `[id dx dz]` moves this body
     /// by dx dz and the other body the opposite way. The shoves are
     /// not summed.
-    public static Object shoves(PushGrid g, double x, double y,
-                                double z, double half, double height,
-                                long eid, long hi) {
+    public static Object shoves(
+            PushGrid g, double x, double y, double z, double half, double height, long eid, long hi) {
         return g.shoved(x, y, z, half, height, eid, hi);
     }
 
-    private Object shoved(double x, double y, double z, double half,
-                          double height, long eid, long hi) {
+    private Object shoved(double x, double y, double z, double half, double height, long eid, long hi) {
         int[] hits = overlapping(x, y, z, half, height, eid, hi);
         int n = hits.length;
         if (n == 0) return PersistentVector.EMPTY;
@@ -273,8 +271,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             if (m >= THRESHOLD) {
                 double s = Math.sqrt(m);
                 double p = Math.min(1.0, 1.0 / s);
-                acc[k++] = RT.vector(eids[j], dx / s * p * STRENGTH,
-                                     dz / s * p * STRENGTH);
+                acc[k++] = RT.vector(eids[j], dx / s * p * STRENGTH, dz / s * p * STRENGTH);
             }
         }
         return vector(acc, k);
@@ -283,16 +280,12 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// Returns the ids of the bodies whose boxes overlap the box of
     /// the body `eid` of half width `half` and height `height` at
     /// `x`, `y`, `z`.
-    public static Object touching(PushGrid g, double x, double y,
-                                  double z, double half, double height,
-                                  long eid) {
+    public static Object touching(PushGrid g, double x, double y, double z, double half, double height, long eid) {
         return g.touched(x, y, z, half, height, eid);
     }
 
-    private Object touched(double x, double y, double z, double half,
-                           double height, long eid) {
-        int[] hits = overlapping(x, y, z, half, height, eid,
-                                 Long.MAX_VALUE);
+    private Object touched(double x, double y, double z, double half, double height, long eid) {
+        int[] hits = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
         int n = hits.length;
         Object[] acc = new Object[n];
         for (int i = 0; i < n; i++) acc[i] = eids[hits[i]];
@@ -320,8 +313,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             for (long bz = z0; bz <= z1; bz++) {
                 for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
                     double rj = ph[s] + ph[j] + far;
-                    if (j != s && Math.abs(px[j] - x) < rj
-                            && Math.abs(pz[j] - z) < rj) {
+                    if (j != s && Math.abs(px[j] - x) < rj && Math.abs(pz[j] - z) < rj) {
                         if (j < s) {
                             acc[0]++;
                         } else {
@@ -347,8 +339,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     public Set<Map.Entry<Long, PushCell>> entrySet() {
         Map<Long, int[]> in = new HashMap<>();
         for (int i = 0; i < eids.length; i++) {
-            long k = key(Math.floorDiv((long) Math.floor(xs[i]), 4),
-                         Math.floorDiv((long) Math.floor(zs[i]), 4));
+            long k = key(Math.floorDiv((long) Math.floor(xs[i]), 4), Math.floorDiv((long) Math.floor(zs[i]), 4));
             int[] c = in.getOrDefault(k, new int[0]);
             c = Arrays.copyOf(c, c.length + 1);
             c[c.length - 1] = i;
@@ -362,8 +353,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private PushCell cell(int[] c) {
         int n = c.length;
         long[] e = new long[n];
-        double[] h = new double[n], t = new double[n], x = new double[n],
-                y = new double[n], z = new double[n];
+        double[] h = new double[n], t = new double[n], x = new double[n], y = new double[n], z = new double[n];
         for (int i = 0; i < n; i++) {
             int j = c[i];
             e[i] = eids[j];

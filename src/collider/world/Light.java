@@ -27,13 +27,11 @@ public final class Light {
 
     private static final int DAY = 24000;
 
-    private static final long[] SEG_T = {-1670, 133, 11867, 13670, 22330,
-                                         24133};
+    private static final long[] SEG_T = {-1670, 133, 11867, 13670, 22330, 24133};
 
     private static final float DUSK = 0.26666668F;
 
-    private static final float[] SEG_V = {DUSK, 1.0F, 1.0F, DUSK, DUSK,
-                                          1.0F};
+    private static final float[] SEG_V = {DUSK, 1.0F, 1.0F, DUSK, DUSK, 1.0F};
 
     private final LongMap<byte[]> cache;
     private long lastKey = -1;
@@ -46,8 +44,7 @@ public final class Light {
     private long[] pq = new long[64];
     private int pqHead, pqTail;
 
-    private Light(LongMap<byte[]> cache, ChunkIndex chunks, int ch,
-            BlockTables t) {
+    private Light(LongMap<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
         this.cache = cache;
         this.chunks = chunks;
         this.ch = ch;
@@ -59,8 +56,7 @@ public final class Light {
     }
 
     private static long pack(long x, long y, long z, long l) {
-        return ((x + OFF) << 38) | ((z + OFF) << 14)
-            | ((y - MIN_Y + 1) << 4) | l;
+        return ((x + OFF) << 38) | ((z + OFF) << 14) | ((y - MIN_Y + 1) << 4) | l;
     }
 
     private static long px(long e) {
@@ -88,22 +84,18 @@ public final class Light {
         return (id << 6) | (sectionIndex(y) << 1) | ch;
     }
 
-    private static Section section(ChunkIndex chunks, long x, long y,
-            long z) {
+    private static Section section(ChunkIndex chunks, long x, long y, long z) {
         return Chunk.sectionAt(chunks, (int) x, (int) y, (int) z);
     }
 
     private static long block(ChunkIndex chunks, long x, long y, long z) {
-        return inRange(y) ? Chunk.blockAt(chunks, (int) x, (int) y,
-                                          (int) z) : 0;
+        return inRange(y) ? Chunk.blockAt(chunks, (int) x, (int) y, (int) z) : 0;
     }
 
-    private static long absentSky(ChunkIndex chunks, long x, long y,
-            long z) {
+    private static long absentSky(ChunkIndex chunks, long x, long y, long z) {
         Chunk c = Chunk.at(chunks, (int) (x >> 4), (int) (z >> 4));
         Section s = c.firstAbove((int) sectionIndex(y));
-        return s == null ? 15 : s.skyLight((int) ((z & 15) * 16
-                                                  + (x & 15)));
+        return s == null ? 15 : s.skyLight((int) ((z & 15) * 16 + (x & 15)));
     }
 
     private static long outside(long ch, long y) {
@@ -113,8 +105,7 @@ public final class Light {
     /// Returns the level of channel `ch` stored at `x`, `y`, `z` in
     /// `chunks`. Sky light is full above the world, and a missing
     /// section takes the sky light from above.
-    public static long stored(ChunkIndex chunks, long ch, long x, long y,
-            long z) {
+    public static long stored(ChunkIndex chunks, long ch, long x, long y, long z) {
         if (!inRange(y)) return outside(ch, y);
         Section s = section(chunks, x, y, z);
         if (s != null) {
@@ -135,8 +126,7 @@ public final class Light {
     }
 
     /// Returns the block light at `x`, `y`, `z` in `chunks`.
-    public static long blockAt(ChunkIndex chunks, long x, long y,
-            long z) {
+    public static long blockAt(ChunkIndex chunks, long x, long y, long z) {
         return stored(chunks, 0, x, y, z);
     }
 
@@ -147,13 +137,11 @@ public final class Light {
 
     /// Returns the lowest y of the column `x`, `z` in `chunks` that
     /// the sky reaches straight down.
-    public static long skySource(ChunkIndex chunks, long x, long z,
-            BlockTables t) {
+    public static long skySource(ChunkIndex chunks, long x, long z, BlockTables t) {
         long top = 0;
         for (long y = MAX_Y; y >= MIN_Y; y--) {
             long b = block(chunks, x, y, z);
-            if (Block.dampening(t, b) > 0
-                || Block.occludes(t, top, b, DOWN)) {
+            if (Block.dampening(t, b) > 0 || Block.occludes(t, top, b, DOWN)) {
                 return y + 1;
             }
             top = b;
@@ -165,15 +153,14 @@ public final class Light {
     /// light always and sky light when `sky`. Every section the flood
     /// touched takes its new light, the higher sections of a chunk
     /// first so that a new section takes the sky light above it.
-    public static ChunkIndex relit(ChunkIndex chunks, Object changes,
-            boolean sky, BlockTables t) {
+    public static ChunkIndex relit(ChunkIndex chunks, Object changes, boolean sky, BlockTables t) {
         LongMap<byte[]> cache = relight(chunks, changes, sky, t);
         if (cache == null || cache.isEmpty()) return chunks;
         long[] ks = cache.sortedKeys();
         long[] ids = new long[ks.length];
         Object[] vals = new Object[ks.length];
         int n = 0;
-        for (int i = ks.length - 1; i >= 0;) {
+        for (int i = ks.length - 1; i >= 0; ) {
             long id = ks[i] >> 6;
             Chunk c = (Chunk) chunks.get(id);
             for (; i >= 0 && (ks[i] >> 6) == id; i--) {
@@ -182,20 +169,17 @@ public final class Light {
                 Section s = c.section(si);
                 if (s == null) s = c.fresh(si);
                 byte[] a = cache.get(ks[i]);
-                c = c.with(si, (ks[i] & 1) == SKY ? s.withSkyLight(a)
-                                                  : s.withBlockLight(a));
+                c = c.with(si, (ks[i] & 1) == SKY ? s.withSkyLight(a) : s.withBlockLight(a));
             }
             if (c != null) {
                 ids[n] = id;
                 vals[n++] = c;
             }
         }
-        return chunks.withAll(Arrays.copyOf(ids, n),
-                              Arrays.copyOf(vals, n));
+        return chunks.withAll(Arrays.copyOf(ids, n), Arrays.copyOf(vals, n));
     }
 
-    private static LongMap<byte[]> relight(ChunkIndex chunks,
-            Object changes, boolean sky, BlockTables t) {
+    private static LongMap<byte[]> relight(ChunkIndex chunks, Object changes, boolean sky, BlockTables t) {
         long[] cells = new long[16];
         int n = 0;
         for (Object c : (Iterable<?>) changes) {
@@ -203,8 +187,7 @@ public final class Light {
             if (!different(t, old, now)) continue;
             Object p = RT.nth(c, 0);
             if (n == cells.length) cells = Arrays.copyOf(cells, 2 * n);
-            cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2),
-                              Block.emission(t, now));
+            cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2), Block.emission(t, now));
         }
         if (n == 0) return null;
         LongMap<byte[]> cache = new LongMap<>();
@@ -218,9 +201,10 @@ public final class Light {
 
     private static boolean different(BlockTables t, long old, long now) {
         return old != now
-            && (Block.dampening(t, old) != Block.dampening(t, now)
-                || Block.emission(t, old) != Block.emission(t, now)
-                || Block.useShape(t, old) || Block.useShape(t, now));
+                && (Block.dampening(t, old) != Block.dampening(t, now)
+                        || Block.emission(t, old) != Block.emission(t, now)
+                        || Block.useShape(t, old)
+                        || Block.useShape(t, now));
     }
 
     private void pass(long[] cells, int n) {
@@ -230,8 +214,7 @@ public final class Light {
         propagate();
     }
 
-    private static boolean skyFull(ChunkIndex chunks, long x, long y,
-            long z) {
+    private static boolean skyFull(ChunkIndex chunks, long x, long y, long z) {
         return stored(chunks, SKY, x, y, z) == 15;
     }
 
@@ -239,14 +222,13 @@ public final class Light {
     /// `cells` stand in. Where the sky now starts moved, the cells it
     /// left go dark and the cells it reached turn full; every other
     /// changed cell is full at or above the start and dark below it.
-    private static long[] skyCells(ChunkIndex chunks, long[] cells,
-            int n, BlockTables t) {
+    private static long[] skyCells(ChunkIndex chunks, long[] cells, int n, BlockTables t) {
         long[] ps = new long[n];
         for (int k = 0; k < n; k++) ps[k] = cells[k] & ~0xFL;
         Arrays.sort(ps);
         long[] out = new long[n + 64];
         int m = 0;
-        for (int a = 0; a < n;) {
+        for (int a = 0; a < n; ) {
             int b = a;
             while (b < n && (ps[b] >> 14) == (ps[a] >> 14)) b++;
             long x = px(ps[a]), z = pz(ps[a]);
@@ -305,8 +287,7 @@ public final class Light {
     private long get(long x, long y, long z) {
         if (!inRange(y)) return outside(ch, y);
         byte[] a = cached(key(x, y, z, ch));
-        return a != null ? Section.nibble(a, idx(x, y, z))
-                         : stored(chunks, ch, x, y, z);
+        return a != null ? Section.nibble(a, idx(x, y, z)) : stored(chunks, ch, x, y, z);
     }
 
     private byte[] fresh(long x, long y, long z) {
@@ -393,14 +374,11 @@ public final class Light {
         }
     }
 
-    private void spread(long from, long nx, long ny, long nz, long l,
-            int d) {
+    private void spread(long from, long nx, long ny, long nz, long l, int d) {
         if (!inRange(ny)) return;
         long to = block(chunks, nx, ny, nz);
         long cand = l - Math.max(1, Block.dampening(t, to));
-        if (cand > 0 && cand > get(nx, ny, nz)
-            && !Block.occludes(t, from, to, d)
-            && set(nx, ny, nz, cand)) {
+        if (cand > 0 && cand > get(nx, ny, nz) && !Block.occludes(t, from, to, d) && set(nx, ny, nz, cand)) {
             addP(pack(nx, ny, nz, cand));
         }
     }
@@ -415,16 +393,14 @@ public final class Light {
         return v0 + a * (v1 - v0);
     }
 
-    private static float blend(float v, float alpha, float target,
-            float weight) {
+    private static float blend(float v, float alpha, float target, float weight) {
         float to = v + alpha * (target - v);
         return v + weight * (to - v);
     }
 
     /// Returns the sky brightness from 0.0 to 15.0 at `time` of day.
     /// The `rain` and `thunder` levels from 0.0 to 1.0 dim it.
-    public static double skyLevel(long time, double rain,
-            double thunder) {
+    public static double skyLevel(long time, double rain, double thunder) {
         float th = (float) thunder;
         float r = (float) rain - th;
         float v = 15.0F * skyFactor(time);
@@ -441,10 +417,7 @@ public final class Light {
 
     /// Returns the light level at `x`, `y`, `z` in `chunks` at
     /// `time` of day with the `rain` and `thunder` levels.
-    public static long brightness(ChunkIndex chunks, long x, long y,
-            long z, long time, double rain, double thunder) {
-        return Math.max(skyAt(chunks, x, y, z)
-                        - darken(time, rain, thunder),
-                        blockAt(chunks, x, y, z));
+    public static long brightness(ChunkIndex chunks, long x, long y, long z, long time, double rain, double thunder) {
+        return Math.max(skyAt(chunks, x, y, z) - darken(time, rain, thunder), blockAt(chunks, x, y, z));
     }
 }

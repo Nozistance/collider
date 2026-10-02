@@ -18,8 +18,7 @@ public final class Section {
     private static final byte[] FULL = filled();
 
     /// A section of air under an open sky.
-    public static final Section EMPTY =
-        new Section(0, new int[] {0}, null, null, FULL);
+    public static final Section EMPTY = new Section(0, new int[] {0}, null, null, FULL);
 
     private final int bits;
     private final int per;
@@ -30,13 +29,11 @@ public final class Section {
     private final byte[] sl;
     private final Object token;
 
-    private Section(int bits, int[] pal, long[] data, byte[] bl,
-                    byte[] sl) {
+    private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl) {
         this(bits, pal, data, bl, sl, null);
     }
 
-    private Section(int bits, int[] pal, long[] data, byte[] bl,
-                    byte[] sl, Object token) {
+    private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl, Object token) {
         this.token = token;
         this.bits = bits;
         this.per = bits == 0 ? 0 : 64 / bits;
@@ -81,8 +78,7 @@ public final class Section {
 
     /// Builds a section from 4096 block states in y, z, x order and
     /// optional light of 2048 bytes each.
-    public static Section of(short[] blocks, byte[] blockLight,
-                             byte[] skyLight) {
+    public static Section of(short[] blocks, byte[] blockLight, byte[] skyLight) {
         if (blocks.length != SIZE) {
             throw new IllegalArgumentException("blocks");
         }
@@ -143,8 +139,7 @@ public final class Section {
     }
 
     private boolean sameBlocks(Section o) {
-        if (bits == o.bits && Arrays.equals(pal, o.pal)
-            && Arrays.equals(data, o.data)) {
+        if (bits == o.bits && Arrays.equals(pal, o.pal) && Arrays.equals(data, o.data)) {
             return true;
         }
         for (int i = 0; i < SIZE; i++) {
@@ -156,8 +151,7 @@ public final class Section {
     public boolean equals(Object other) {
         if (other == this) return true;
         if (!(other instanceof Section o)) return false;
-        return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl)
-            && sameBlocks(o);
+        return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl) && sameBlocks(o);
     }
 
     public int hashCode() {
@@ -170,15 +164,13 @@ public final class Section {
     public int block(int i) {
         if (bits == 0) return pal[0];
         int c = (int) ((i * mul) >>> 32);
-        int q = (int) ((data[c] >>> ((i - c * per) * bits))
-                       & ((1L << bits) - 1));
+        int q = (int) ((data[c] >>> ((i - c * per) * bits)) & ((1L << bits) - 1));
         return pal == null ? q : pal[q];
     }
 
     private int index(long[] d, int i) {
         int c = (int) ((i * mul) >>> 32);
-        return (int) ((d[c] >>> ((i - c * per) * bits))
-                      & ((1L << bits) - 1));
+        return (int) ((d[c] >>> ((i - c * per) * bits)) & ((1L << bits) - 1));
     }
 
     private void put(long[] d, int i, int q) {
@@ -198,8 +190,7 @@ public final class Section {
     /// the level `v`.
     public static void setNibble(byte[] a, int i, int v) {
         int b = a[i >> 1];
-        a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v
-                            : (b & 0x0F) | (v << 4));
+        a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v : (b & 0x0F) | (v << 4));
     }
 
     public int blockLight(int i) {
@@ -282,8 +273,7 @@ public final class Section {
             put(data, i, q);
             return this;
         }
-        return run(new int[] {i}, new int[] {state}, 0, 1, data, pal)
-            .owned(token);
+        return run(new int[] {i}, new int[] {state}, 0, 1, data, pal).owned(token);
     }
 
     private Section owned(Object t) {
@@ -298,8 +288,7 @@ public final class Section {
         return run(idx, states, 0, n, d, pal);
     }
 
-    private Section run(int[] idx, int[] st, int from, int n,
-                        long[] d, int[] p) {
+    private Section run(int[] idx, int[] st, int from, int n, long[] d, int[] p) {
         for (int k = from; k < n; k++) {
             int q = find(p, st[k]);
             if (q < 0 && p.length == 1 << bits) {
@@ -324,8 +313,7 @@ public final class Section {
         return -1;
     }
 
-    private static int[] kept(int[] p, int[] remap, int used,
-                              int state) {
+    private static int[] kept(int[] p, int[] remap, int used, int state) {
         int[] np = new int[used + 1];
         for (int q = 0; q < p.length; q++) {
             if (remap[q] >= 0) np[remap[q]] = p[q];
@@ -541,8 +529,7 @@ public final class Section {
         saveLight(out, sl);
     }
 
-    private static void saveLight(DataOutput out, byte[] a)
-            throws IOException {
+    private static void saveLight(DataOutput out, byte[] a) throws IOException {
         out.writeByte(a == null ? 0 : a == FULL ? 1 : 2);
         if (a != null && a != FULL) out.write(a);
     }
@@ -562,8 +549,7 @@ public final class Section {
         return new Section(bits, pal, d, bl, sl);
     }
 
-    private static int[] loadPalette(DataInput in, int bits)
-            throws IOException {
+    private static int[] loadPalette(DataInput in, int bits) throws IOException {
         int n = in.readUnsignedShort();
         int cap = bits == 0 ? 1 : 1 << bits;
         if (n < 1 || n > cap) {

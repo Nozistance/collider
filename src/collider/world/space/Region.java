@@ -13,7 +13,14 @@ import clojure.lang.Atom;
 /// @param nsy The size of the grid along y, in sections.
 /// @param readAbsent The function that reads an absent chunk, or nil.
 /// @param loaded The chunks that `readAbsent` gave, by id.
-public record Region(Object[] grid, Object[] cols,
-                     int cx0, int cz0, int sy0,
-                     int ncx, int ncz, int nsy,
-                     Object readAbsent, Atom loaded) {}
+public record Region(
+        Object[] grid,
+        Object[] cols,
+        int cx0,
+        int cz0,
+        int sy0,
+        int ncx,
+        int ncz,
+        int nsy,
+        Object readAbsent,
+        Atom loaded) {}

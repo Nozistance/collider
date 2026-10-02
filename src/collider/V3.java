@@ -4,22 +4,20 @@ import clojure.lang.Counted;
 import clojure.lang.IHashEq;
 import clojure.lang.ILookup;
 import clojure.lang.IPersistentCollection;
+import clojure.lang.ISeq;
 import clojure.lang.Indexed;
 import clojure.lang.Murmur3;
 import clojure.lang.RT;
-import clojure.lang.Sequential;
 import clojure.lang.Seqable;
-import clojure.lang.ISeq;
+import clojure.lang.Sequential;
 import clojure.lang.Util;
-
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 
 /// A point or motion of three doubles that is also a
 /// Clojure sequence.
 public record V3(double x, double y, double z)
-        implements Indexed, Counted, Sequential, Seqable, ILookup,
-        IPersistentCollection, IHashEq, Iterable<Object> {
+        implements Indexed, Counted, Sequential, Seqable, ILookup, IPersistentCollection, IHashEq, Iterable<Object> {
 
     private double at(int i) {
         return switch (i) {
@@ -29,42 +27,54 @@ public record V3(double x, double y, double z)
             default -> throw new IndexOutOfBoundsException(String.valueOf(i));
         };
     }
+
     public Object nth(int i) {
         return at(i);
     }
+
     public Object nth(int i, Object notFound) {
         return i >= 0 && i < 3 ? at(i) : notFound;
     }
+
     public int count() {
         return 3;
     }
+
     public Object valAt(Object k) {
         return valAt(k, null);
     }
+
     public Object valAt(Object k, Object notFound) {
         return k instanceof Number ? nth(((Number) k).intValue(), notFound) : notFound;
     }
+
     public ISeq seq() {
-        return RT.seq(new Object[]{x, y, z});
+        return RT.seq(new Object[] {x, y, z});
     }
+
     public Iterator<Object> iterator() {
         return new Iterator<>() {
             private int i = 0;
+
             public boolean hasNext() {
                 return i < 3;
             }
+
             public Object next() {
                 if (i >= 3) throw new NoSuchElementException();
                 return at(i++);
             }
         };
     }
+
     public IPersistentCollection cons(Object o) {
         return RT.vector(x, y, z, o);
     }
+
     public IPersistentCollection empty() {
         return RT.vector();
     }
+
     public boolean equiv(Object o) {
         if (o instanceof V3(double x1, double y1, double z1)) {
             return x == x1 && y == y1 && z == z1;
@@ -77,9 +87,11 @@ public record V3(double x, double y, double z)
         }
         return false;
     }
+
     public int hasheq() {
         return Murmur3.hashOrdered(this);
     }
+
     @Override
     public int hashCode() {
         int h = 1;
@@ -88,10 +100,12 @@ public record V3(double x, double y, double z)
         h = 31 * h + Double.hashCode(z);
         return h;
     }
+
     @Override
     public boolean equals(Object o) {
         return equiv(o);
     }
+
     @Override
     public String toString() {
         return "[" + x + " " + y + " " + z + "]";

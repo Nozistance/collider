@@ -7,8 +7,7 @@ import java.util.HashMap;
 /// the level chunk, both keyed by BlockPos.
 public final class HashOrder {
 
-    private HashOrder() {
-    }
+    private HashOrder() {}
 
     private record Pos(int x, int y, int z) {
         @Override

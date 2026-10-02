@@ -15,7 +15,6 @@ import collider.world.BlockTables;
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import collider.world.space.Path;
-
 import java.util.Iterator;
 
 /// The ground navigation of a mob: the path it walks, the node it
@@ -39,9 +38,22 @@ public final class Nav extends APersistentMap {
     private static final Keyword DELAYED = Keyword.intern("delayed?");
     private static final Keyword RECOMPUTE = Keyword.intern("recompute");
 
-    private static final Keyword[] KEYS = {PATH, INDEX, TARGET, REACH,
-        SPEED, TICK, STUCK_CHECK, STUCK_POS, TIMEOUT_NODE, TIMEOUT_TIMER,
-        TIMEOUT_CHECK, TIMEOUT_LIMIT, DELAYED, RECOMPUTE};
+    private static final Keyword[] KEYS = {
+        PATH,
+        INDEX,
+        TARGET,
+        REACH,
+        SPEED,
+        TICK,
+        STUCK_CHECK,
+        STUCK_POS,
+        TIMEOUT_NODE,
+        TIMEOUT_TIMER,
+        TIMEOUT_CHECK,
+        TIMEOUT_LIMIT,
+        DELAYED,
+        RECOMPUTE
+    };
 
     private static final Keyword NODES = Keyword.intern("nodes");
     private static final Keyword X = Keyword.intern("x");
@@ -50,17 +62,15 @@ public final class Nav extends APersistentMap {
     private static final Keyword TYPE = Keyword.intern("type");
     private static final Keyword WATER = Keyword.intern("water");
 
-    private static final Object ORIGIN =
-        PersistentVector.create(0L, 0L, 0L);
+    private static final Object ORIGIN = PersistentVector.create(0L, 0L, 0L);
 
     private static final int STUCK_INTERVAL = 100;
     private static final double STUCK_FACTOR = 0.25;
     private static final int MAX_SURFACE_STEPS = 16;
 
     /// The navigation of a mob that has never walked anywhere.
-    public static final Nav FRESH = new Nav(null, 0, null, 1L, 0.0, 0,
-        0, PersistentVector.create(0.0, 0.0, 0.0), ORIGIN, 0, 0, 0.0,
-        false, 0);
+    public static final Nav FRESH =
+            new Nav(null, 0, null, 1L, 0.0, 0, 0, PersistentVector.create(0.0, 0.0, 0.0), ORIGIN, 0, 0, 0.0, false, 0);
 
     private final Object path;
     private final long index;
@@ -79,19 +89,54 @@ public final class Nav extends APersistentMap {
     private final int[] xs, ys, zs;
     private final boolean[] cuts;
 
-    private Nav(Object path, long index, Object target, Object reach,
-            double speed, long tick, long stuckCheck, Object stuckPos,
-            Object timeoutNode, long timeoutTimer, long timeoutCheck,
-            double timeoutLimit, boolean delayed, long recompute) {
-        this(path, index, target, reach, speed, tick, stuckCheck,
-             stuckPos, timeoutNode, timeoutTimer, timeoutCheck,
-             timeoutLimit, delayed, recompute, null);
+    private Nav(
+            Object path,
+            long index,
+            Object target,
+            Object reach,
+            double speed,
+            long tick,
+            long stuckCheck,
+            Object stuckPos,
+            Object timeoutNode,
+            long timeoutTimer,
+            long timeoutCheck,
+            double timeoutLimit,
+            boolean delayed,
+            long recompute) {
+        this(
+                path,
+                index,
+                target,
+                reach,
+                speed,
+                tick,
+                stuckCheck,
+                stuckPos,
+                timeoutNode,
+                timeoutTimer,
+                timeoutCheck,
+                timeoutLimit,
+                delayed,
+                recompute,
+                null);
     }
 
-    private Nav(Object path, long index, Object target, Object reach,
-            double speed, long tick, long stuckCheck, Object stuckPos,
-            Object timeoutNode, long timeoutTimer, long timeoutCheck,
-            double timeoutLimit, boolean delayed, long recompute,
+    private Nav(
+            Object path,
+            long index,
+            Object target,
+            Object reach,
+            double speed,
+            long tick,
+            long stuckCheck,
+            Object stuckPos,
+            Object timeoutNode,
+            long timeoutTimer,
+            long timeoutCheck,
+            double timeoutLimit,
+            boolean delayed,
+            long recompute,
             Nav same) {
         this.path = path;
         this.index = index;
@@ -108,12 +153,17 @@ public final class Nav extends APersistentMap {
         this.delayed = delayed;
         this.recompute = recompute;
         if (same != null && same.path == path) {
-            xs = same.xs; ys = same.ys; zs = same.zs; cuts = same.cuts;
+            xs = same.xs;
+            ys = same.ys;
+            zs = same.zs;
+            cuts = same.cuts;
             return;
         }
         Object nodes = path == null ? null : RT.get(path, NODES);
         int n = RT.count(nodes);
-        xs = new int[n]; ys = new int[n]; zs = new int[n];
+        xs = new int[n];
+        ys = new int[n];
+        zs = new int[n];
         cuts = new boolean[n];
         for (int i = 0; i < n; i++) {
             Object node = RT.nth(nodes, i);
@@ -128,9 +178,7 @@ public final class Nav extends APersistentMap {
     /// corner.
     public static boolean cutCorner(Object t) {
         String s = t instanceof Keyword k ? k.getName() : "";
-        return !(s.equals("fire-in-neighbor")
-                 || s.equals("damaging-in-neighbor")
-                 || s.equals("walkable-door"));
+        return !(s.equals("fire-in-neighbor") || s.equals("damaging-in-neighbor") || s.equals("walkable-door"));
     }
 
     /// Returns the navigation `m` as a Nav, from a map when it is one.
@@ -175,8 +223,7 @@ public final class Nav extends APersistentMap {
         else if (k == DELAYED) d = RT.booleanCast(v);
         else if (k == RECOMPUTE) rc = lng(v);
         else throw new IllegalArgumentException("no nav key " + k);
-        return new Nav(p, i, t, r, s, tk, sc, sp, tn, tt, tc, tl, d, rc,
-                       this);
+        return new Nav(p, i, t, r, s, tk, sc, sp, tn, tt, tc, tl, d, rc, this);
     }
 
     private Object at(int j) {
@@ -275,15 +322,13 @@ public final class Nav extends APersistentMap {
         return n.with(TICK, n.tick + 1);
     }
 
-    private static boolean water(ChunkIndex c, BlockTables t, int x,
-            int y, int z) {
+    private static boolean water(ChunkIndex c, BlockTables t, int x, int y, int z) {
         return Block.name(t, Chunk.blockAt(c, x, y, z)) == WATER;
     }
 
     /// Returns the height a mob at `x`, `y`, `z` walks its path
     /// from: the water surface above it when it is wet.
-    public static double surfaceY(ChunkIndex c, BlockTables t, double x,
-            double y, double z, boolean wet) {
+    public static double surfaceY(ChunkIndex c, BlockTables t, double x, double y, double z, boolean wet) {
         if (!wet) return Math.floor(y + 0.5);
         int cx = (int) Math.floor(x), cz = (int) Math.floor(z);
         int y0 = (int) Math.floor(y);
@@ -302,41 +347,48 @@ public final class Nav extends APersistentMap {
     /// Returns the navigation after one step of the walk of a mob at
     /// `x`, `y`, `z`, `half` wide each side, driving at `drive`, on
     /// game tick `t`. The mob stands on ground or floats when `held`.
-    public static Object stepped(Object m, ChunkIndex c, BlockTables tb,
-            double x, double y, double z, boolean onGround, boolean wet,
-            boolean held, double half, double drive, long t) {
+    public static Object stepped(
+            Object m,
+            ChunkIndex c,
+            BlockTables tb,
+            double x,
+            double y,
+            double z,
+            boolean onGround,
+            boolean wet,
+            boolean held,
+            double half,
+            double drive,
+            long t) {
         Nav n = of(m);
         double my = surfaceY(c, tb, x, y, z, wet);
         if (held) return n.follow(x, y, z, my, half, drive, t);
         int i = (int) n.index;
         double py = n.ys[i];
-        if (my > py && !onGround
-            && (long) Math.floor(x) == (long) Math.floor(n.xs[i] + offset(half))
-            && (long) Math.floor(z) == (long) Math.floor(n.zs[i] + offset(half))) {
+        if (my > py
+                && !onGround
+                && (long) Math.floor(x) == (long) Math.floor(n.xs[i] + offset(half))
+                && (long) Math.floor(z) == (long) Math.floor(n.zs[i] + offset(half))) {
             return n.with(INDEX, n.index + 1);
         }
         return m;
     }
 
-    private boolean advance(double x, double y, double z, double my,
-            double half) {
+    private boolean advance(double x, double y, double z, double my, double half) {
         int i = (int) index;
         if (Walk.closeEnough(x, y, z, xs[i], ys[i], zs[i], 2.0 * half)) {
             return true;
         }
-        return cuts[i] && i + 1 < xs.length
-               && Walk.turnedBack(x, my, z, xs[i], ys[i], zs[i],
-                                  xs[i + 1], ys[i + 1], zs[i + 1]);
+        return cuts[i]
+                && i + 1 < xs.length
+                && Walk.turnedBack(x, my, z, xs[i], ys[i], zs[i], xs[i + 1], ys[i + 1], zs[i + 1]);
     }
 
     private static boolean sameCell(Object c, int x, int y, int z) {
-        return RT.longCast(RT.nth(c, 0)) == x
-               && RT.longCast(RT.nth(c, 1)) == y
-               && RT.longCast(RT.nth(c, 2)) == z;
+        return RT.longCast(RT.nth(c, 0)) == x && RT.longCast(RT.nth(c, 1)) == y && RT.longCast(RT.nth(c, 2)) == z;
     }
 
-    private Nav follow(double x, double y, double z, double my,
-            double half, double drive, long t) {
+    private Nav follow(double x, double y, double z, double my, double half, double drive, long t) {
         long i = advance(x, y, z, my, half) ? index + 1 : index;
         Object p = path, sp = stuckPos, tn = timeoutNode;
         long sc = stuckCheck, tt = timeoutTimer, tc = timeoutCheck;
@@ -356,23 +408,23 @@ public final class Nav extends APersistentMap {
             if (sameCell(tn, xs[j], ys[j], zs[j])) {
                 tt = tt + (t - tc);
             } else {
-                tn = PersistentVector.create((long) xs[j], (long) ys[j],
-                                             (long) zs[j]);
+                tn = PersistentVector.create((long) xs[j], (long) ys[j], (long) zs[j]);
                 tl = Walk.timeout(drive, x, my, z, xs[j], ys[j], zs[j]);
             }
             tc = t;
             if (tl > 0.0 && tt > 3.0 * tl) {
-                p = null; tn = ORIGIN; tt = 0; tl = 0.0;
+                p = null;
+                tn = ORIGIN;
+                tt = 0;
+                tl = 0.0;
             }
         }
-        return new Nav(p, i, target, reach, speed, tick, sc, sp, tn, tt,
-                       tc, tl, delayed, recompute, this);
+        return new Nav(p, i, target, reach, speed, tick, sc, sp, tn, tt, tc, tl, delayed, recompute, this);
     }
 
     /// Returns the move control `move` told to walk to the node the
     /// navigation `m` walks to, for a mob `half` wide each side.
-    public static Steer aimed(Object m, Object move, ChunkIndex c,
-            Object[] shapes, double half) {
+    public static Steer aimed(Object m, Object move, ChunkIndex c, Object[] shapes, double half) {
         Nav n = of(m);
         int i = (int) n.index;
         double off = offset(half);
@@ -380,8 +432,7 @@ public final class Nav extends APersistentMap {
         int cx = (int) Math.floor(x), cy = (int) Math.floor(y);
         int cz = (int) Math.floor(z);
         int below = Chunk.blockAt(c, cx, cy - 1, cz);
-        double gy = below == 0 ? y
-                    : (cy - 1) + Path.shapeTop(shapes, below);
+        double gy = below == 0 ? y : (cy - 1) + Path.shapeTop(shapes, below);
         return Steer.wanted(move, x, gy, z, n.speed);
     }
 }

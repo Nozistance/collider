@@ -6,7 +6,6 @@ import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentHashMap;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
-
 import java.util.Arrays;
 
 /// The block edits of one section, applied at once in order.
@@ -35,8 +34,7 @@ public final class Batch {
     /// Returns the changes `[pos st]` that alter a block of `chunks`
     /// inside heights `minY` to `maxY`, as `[pos old st]` in order. A
     /// change sees the ones before it.
-    public static Object changed(ChunkIndex chunks, Object changes,
-            long minY, long maxY) {
+    public static Object changed(ChunkIndex chunks, Object changes, long minY, long maxY) {
         LongMap<Integer> now = new LongMap<>(RT.count(changes));
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
@@ -44,8 +42,7 @@ public final class Batch {
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             int st = RT.intCast(RT.nth(c, 1));
-            long k = ((long) (x & 0x3FFFFFF) << 38)
-                | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
+            long k = ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
             Integer seen = now.get(k);
             int old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;
@@ -60,8 +57,7 @@ public final class Batch {
     /// at once in order, the sections of a chunk from the top down so
     /// that a new section takes the sky light of the one above.
     /// Changes in absent chunks are dropped.
-    public static ChunkIndex setBlocks(ChunkIndex chunks, Object changes,
-            int at) {
+    public static ChunkIndex setBlocks(ChunkIndex chunks, Object changes, int at) {
         LongMap<Batch[]> m = new LongMap<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
@@ -77,8 +73,7 @@ public final class Batch {
             if (bs.length == 0) continue;
             int si = (y >> 4) + 4;
             if (bs[si] == null) bs[si] = new Batch();
-            bs[si].add(((y & 15) << 8) | ((z & 15) << 4) | (x & 15),
-                       RT.intCast(RT.nth(c, at)));
+            bs[si].add(((y & 15) << 8) | ((z & 15) << 4) | (x & 15), RT.intCast(RT.nth(c, at)));
         }
         long[] ids = m.sortedKeys();
         Object[] vals = new Object[ids.length];
@@ -105,8 +100,7 @@ public final class Batch {
         LongMap<ITransientCollection> m = new LongMap<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
-            long id = ChunkIndex.id(RT.intCast(RT.nth(p, 0)) >> 4,
-                                    RT.intCast(RT.nth(p, 2)) >> 4);
+            long id = ChunkIndex.id(RT.intCast(RT.nth(p, 0)) >> 4, RT.intCast(RT.nth(p, 2)) >> 4);
             ITransientCollection v = m.get(id);
             if (v == null) v = PersistentVector.EMPTY.asTransient();
             m.put(id, v.conj(vec(p, RT.nth(c, 2))));

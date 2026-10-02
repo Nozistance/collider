@@ -28,7 +28,6 @@ import java.util.zip.DataFormatException;
 public final class Region {
 
     static final int HEAD = 16, SIDE = 32, ENTRY = 24;
-
     public final long key, gen;
     private final Log log;
     private final long[] at;
@@ -47,8 +46,7 @@ public final class Region {
             this.ch = ch;
         }
 
-        synchronized FileChannel reopen(FileChannel dead)
-                throws IOException {
+        synchronized FileChannel reopen(FileChannel dead) throws IOException {
             if (shut) throw new ClosedChannelException();
             if (ch == dead) ch = FileChannel.open(path, READ, WRITE);
             return ch;
@@ -76,8 +74,7 @@ public final class Region {
         }
     }
 
-    private Region(Log log, long key, long gen,
-            long[] at, int[] size, long end, long live) {
+    private Region(Log log, long key, long gen, long[] at, int[] size, long end, long live) {
         this.log = log;
         this.key = key;
         this.gen = gen;
@@ -102,22 +99,17 @@ public final class Region {
     }
 
     /// Returns a new empty region of generation `gen` in `dir`.
-    public static Region create(Path dir, long key, long gen)
-            throws IOException {
+    public static Region create(Path dir, long key, long gen) throws IOException {
         Files.createDirectories(dir);
         Path p = file(dir, key, gen);
-        FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE,
-                TRUNCATE_EXISTING);
-        return new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE],
-                new int[SIDE * SIDE], 0, 0);
+        FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
+        return new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
     }
 
-    static Region open(Path dir, long key, long gen, long end)
-            throws IOException {
+    static Region open(Path dir, long key, long gen, long end) throws IOException {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, READ, WRITE);
-        Region r = new Region(new Log(p, ch), key, gen,
-                new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
+        Region r = new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
         try {
             r.scan(end);
         } catch (IOException | RuntimeException e) {
@@ -172,8 +164,7 @@ public final class Region {
 
     /// Returns a region with its own index over the same file.
     public Region copy() {
-        return new Region(log, key, gen, at.clone(), size.clone(), end,
-                live);
+        return new Region(log, key, gen, at.clone(), size.clone(), end, live);
     }
 
     private static int crc(byte[] data) {
@@ -195,16 +186,14 @@ public final class Region {
     private byte[] record(long off, long id) throws IOException {
         ByteBuffer h = read(off, HEAD);
         int len = h.getInt(8);
-        if (ChunkIndex.id(h.getInt(0), h.getInt(4)) != id || len < 0
-                || off + HEAD + len > end) {
+        if (ChunkIndex.id(h.getInt(0), h.getInt(4)) != id || len < 0 || off + HEAD + len > end) {
             return null;
         }
         byte[] data = read(off + HEAD, len).array();
         return crc(data) == h.getInt(12) ? data : null;
     }
 
-    private byte[] older(long before, long id)
-            throws IOException, DataFormatException {
+    private byte[] older(long before, long id) throws IOException, DataFormatException {
         long[] offs = new long[8];
         int n = 0;
         for (long off = 0; off < before; ) {
@@ -220,8 +209,7 @@ public final class Region {
             byte[] data = record(offs[--n], id);
             if (data != null) return data;
         }
-        throw new DataFormatException("no record of it reads in "
-                + log.path);
+        throw new DataFormatException("no record of it reads in " + log.path);
     }
 
     /// Returns the bytes of chunk `id`, or null when it has no record.
@@ -282,8 +270,7 @@ public final class Region {
 
     /// Writes the manifest of generation `gen` that names `regions`
     /// with their ends.
-    public static void manifest(Path dir, long gen, Region[] regions)
-            throws IOException {
+    public static void manifest(Path dir, long gen, Region[] regions) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(regions.length * ENTRY);
         for (Region r : regions) b.putLong(r.key).putLong(r.gen).putLong(r.end);
         put(manifest(dir, gen), b.array());
@@ -315,8 +302,7 @@ public final class Region {
         return rs;
     }
 
-    private static void keep(Set<Path> kept, Path dir, long gen)
-            throws IOException {
+    private static void keep(Set<Path> kept, Path dir, long gen) throws IOException {
         if (gen <= 0 || !Files.isRegularFile(manifest(dir, gen))) return;
         kept.add(manifest(dir, gen));
         ByteBuffer b = entries(dir, gen);
@@ -348,8 +334,7 @@ public final class Region {
         Path dir = target.toAbsolutePath().getParent();
         Files.createDirectories(dir);
         Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try (FileChannel c = FileChannel.open(tmp, CREATE, WRITE,
-                TRUNCATE_EXISTING)) {
+        try (FileChannel c = FileChannel.open(tmp, CREATE, WRITE, TRUNCATE_EXISTING)) {
             ByteBuffer b = ByteBuffer.wrap(data);
             while (b.hasRemaining()) c.write(b);
             c.force(true);
@@ -357,8 +342,7 @@ public final class Region {
             Files.deleteIfExists(tmp);
             throw e;
         }
-        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE,
-                StandardCopyOption.REPLACE_EXISTING);
+        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         sync(dir);
     }
 

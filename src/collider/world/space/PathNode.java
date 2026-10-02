@@ -72,7 +72,6 @@ public final class PathNode {
     }
 
     public double manhattan(long x, long y, long z) {
-        return fl(Math.abs(x - this.x) + Math.abs(y - this.y)
-                  + Math.abs(z - this.z));
+        return fl(Math.abs(x - this.x) + Math.abs(y - this.y) + Math.abs(z - this.z));
     }
 }

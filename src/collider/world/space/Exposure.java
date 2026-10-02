@@ -17,16 +17,15 @@ public final class Exposure {
     /// The kind of a block state whose collision shape depends on the
     /// body that looks or on the position of the block.
     public static final byte PLAIN = Collision.PLAIN,
-        SCAFFOLDING = Collision.SCAFFOLDING,
-        SCAFFOLDING_HANGING = Collision.SCAFFOLDING_HANGING,
-        POWDER_SNOW = Collision.POWDER_SNOW,
-        OFFSET_QUARTER = Collision.OFFSET_QUARTER,
-        OFFSET_EIGHTH = Collision.OFFSET_EIGHTH;
+            SCAFFOLDING = Collision.SCAFFOLDING,
+            SCAFFOLDING_HANGING = Collision.SCAFFOLDING_HANGING,
+            POWDER_SNOW = Collision.POWDER_SNOW,
+            OFFSET_QUARTER = Collision.OFFSET_QUARTER,
+            OFFSET_EIGHTH = Collision.OFFSET_EIGHTH;
 
     /// The flags of a body that looks: it descends, it falls more
     /// than 2.5 blocks, it walks on powder snow.
-    public static final int DESCENDING = Collision.DESCENDING,
-        FALLING = Collision.FALLING, WALKER = Collision.WALKER;
+    public static final int DESCENDING = Collision.DESCENDING, FALLING = Collision.FALLING, WALKER = Collision.WALKER;
 
     private final Region rg;
     private final Object[] shapes;
@@ -42,13 +41,11 @@ public final class Exposure {
     /// collision boxes by block state, six doubles each, as an empty
     /// context meets them at the origin. `kinds` holds the kind of
     /// each block state.
-    public static Exposure of(Region rg, Object[] shapes, byte[] kinds,
-            double cx, double cy, double cz) {
+    public static Exposure of(Region rg, Object[] shapes, byte[] kinds, double cx, double cy, double cz) {
         return new Exposure(rg, shapes, kinds, cx, cy, cz);
     }
 
-    private Exposure(Region rg, Object[] shapes, byte[] kinds,
-            double cx, double cy, double cz) {
+    private Exposure(Region rg, Object[] shapes, byte[] kinds, double cx, double cy, double cz) {
         this.rg = rg;
         this.shapes = shapes;
         this.kinds = kinds;
@@ -62,16 +59,14 @@ public final class Exposure {
 
     private int state(int x, int y, int z) {
         int ix = x - ox, iy = y - oy, iz = z - oz;
-        if (states != null && ix >= 0 && ix < W && iy >= 0 && iy < W
-                && iz >= 0 && iz < W) {
+        if (states != null && ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W) {
             return states[(ix * W + iy) * W + iz];
         }
         return read(x, y, z);
     }
 
     private int read(int x, int y, int z) {
-        return Rays.readBlock(rg.grid(), rg.cx0(), rg.cz0(), rg.sy0(),
-                              rg.ncx(), rg.ncz(), rg.nsy(), x, y, z);
+        return Rays.readBlock(rg.grid(), rg.cx0(), rg.cz0(), rg.sy0(), rg.ncx(), rg.ncz(), rg.nsy(), x, y, z);
     }
 
     private boolean whole() {
@@ -96,11 +91,9 @@ public final class Exposure {
     /// Returns the block state at `x`, `y`, `z` in the region of `e`
     /// as `Rays.block` reads it, from the cells of `e` when no column
     /// under them waits to be read.
-    public static int block(Exposure e, IFn summon, int x, int y,
-            int z) {
+    public static int block(Exposure e, IFn summon, int x, int y, int z) {
         int ix = x - e.ox, iy = y - e.oy, iz = z - e.oz;
-        if (ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W
-                && e.whole()) {
+        if (ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W && e.whole()) {
             if (e.sums == null) e.build();
             return e.states[(ix * W + iy) * W + iz];
         }
@@ -111,8 +104,7 @@ public final class Exposure {
         return Collision.mayCollide(shapes, kinds, st);
     }
 
-    private double[] shape(int st, int x, int y, int z, double bottom,
-            int flags) {
+    private double[] shape(int st, int x, int y, int z, double bottom, int flags) {
         return Collision.shape(shapes, kinds, st, x, y, z, bottom, flags);
     }
 
@@ -128,15 +120,14 @@ public final class Exposure {
                 for (int iz = 0; iz < W; iz++) {
                     int b = read(ox + ix, oy + iy, oz + iz);
                     st[(ix * W + iy) * W + iz] = (char) b;
-                    sm[sumIndex(ix + 1, iy + 1, iz + 1)] = (char) (
-                        (mayCollide(b) ? 1 : 0)
-                        + sm[sumIndex(ix, iy + 1, iz + 1)]
-                        + sm[sumIndex(ix + 1, iy, iz + 1)]
-                        + sm[sumIndex(ix + 1, iy + 1, iz)]
-                        - sm[sumIndex(ix, iy, iz + 1)]
-                        - sm[sumIndex(ix, iy + 1, iz)]
-                        - sm[sumIndex(ix + 1, iy, iz)]
-                        + sm[sumIndex(ix, iy, iz)]);
+                    sm[sumIndex(ix + 1, iy + 1, iz + 1)] = (char) ((mayCollide(b) ? 1 : 0)
+                            + sm[sumIndex(ix, iy + 1, iz + 1)]
+                            + sm[sumIndex(ix + 1, iy, iz + 1)]
+                            + sm[sumIndex(ix + 1, iy + 1, iz)]
+                            - sm[sumIndex(ix, iy, iz + 1)]
+                            - sm[sumIndex(ix, iy + 1, iz)]
+                            - sm[sumIndex(ix + 1, iy, iz)]
+                            + sm[sumIndex(ix, iy, iz)]);
                 }
             }
         }
@@ -144,17 +135,20 @@ public final class Exposure {
         sums = sm;
     }
 
-    private int collidingIn(int x0, int y0, int z0, int x1, int y1,
-            int z1) {
+    private int collidingIn(int x0, int y0, int z0, int x1, int y1, int z1) {
         int ax = x0 - ox, ay = y0 - oy, az = z0 - oz;
         int bx = x1 - ox + 1, by = y1 - oy + 1, bz = z1 - oz + 1;
         if (ax < 0 || ay < 0 || az < 0 || bx > W || by > W || bz > W) {
             return -1;
         }
-        return sums[sumIndex(bx, by, bz)] - sums[sumIndex(ax, by, bz)]
-            - sums[sumIndex(bx, ay, bz)] - sums[sumIndex(bx, by, az)]
-            + sums[sumIndex(ax, ay, bz)] + sums[sumIndex(ax, by, az)]
-            + sums[sumIndex(bx, ay, az)] - sums[sumIndex(ax, ay, az)];
+        return sums[sumIndex(bx, by, bz)]
+                - sums[sumIndex(ax, by, bz)]
+                - sums[sumIndex(bx, ay, bz)]
+                - sums[sumIndex(bx, by, az)]
+                + sums[sumIndex(ax, ay, bz)]
+                + sums[sumIndex(ax, by, az)]
+                + sums[sumIndex(bx, ay, az)]
+                - sums[sumIndex(ax, ay, az)];
     }
 
     private static int floor(double v) {
@@ -174,33 +168,42 @@ public final class Exposure {
         return v == 0.0 ? 0 : (v > 0.0 ? 1 : -1);
     }
 
-    private static boolean inside(double[] b, double x, double y,
-            double z) {
+    private static boolean inside(double[] b, double x, double y, double z) {
         for (int k = 0; k < b.length; k += 6) {
-            if (x >= b[k] && x < b[k + 3] && y >= b[k + 1]
-                    && y < b[k + 4] && z >= b[k + 2] && z < b[k + 5]) {
+            if (x >= b[k] && x < b[k + 3] && y >= b[k + 1] && y < b[k + 4] && z >= b[k + 2] && z < b[k + 5]) {
                 return true;
             }
         }
         return false;
     }
 
-    private static double clipPoint(double scale, double da, double db,
-            double dc, double point, double minB, double maxB,
-            double minC, double maxC, double fromA, double fromB,
+    private static double clipPoint(
+            double scale,
+            double da,
+            double db,
+            double dc,
+            double point,
+            double minB,
+            double maxB,
+            double minC,
+            double maxC,
+            double fromA,
+            double fromB,
             double fromC) {
         double s = (point - fromA) / da;
         double pb = fromB + s * db;
         double pc = fromC + s * dc;
-        if (0.0 < s && s < scale && minB - 1.0E-7 < pb
-                && pb < maxB + 1.0E-7 && minC - 1.0E-7 < pc
+        if (0.0 < s
+                && s < scale
+                && minB - 1.0E-7 < pb
+                && pb < maxB + 1.0E-7
+                && minC - 1.0E-7 < pc
                 && pc < maxC + 1.0E-7) return s;
         return -1.0;
     }
 
-    private static boolean clipBoxes(double[] b, int px, int py,
-            int pz, double fx, double fy, double fz, double dx,
-            double dy, double dz) {
+    private static boolean clipBoxes(
+            double[] b, int px, int py, int pz, double fx, double fy, double fz, double dx, double dy, double dz) {
         double scale = 1.0;
         boolean hit = false;
         for (int k = 0; k < b.length; k += 6) {
@@ -241,9 +244,18 @@ public final class Exposure {
         return hit;
     }
 
-    private boolean shapeHit(int px, int py, int pz, double fx,
-            double fy, double fz, double tx, double ty, double tz,
-            double bottom, int flags) {
+    private boolean shapeHit(
+            int px,
+            int py,
+            int pz,
+            double fx,
+            double fy,
+            double fz,
+            double tx,
+            double ty,
+            double tz,
+            double bottom,
+            int flags) {
         double[] b = shape(state(px, py, pz), px, py, pz, bottom, flags);
         if (b == null) return false;
         double dx = tx - fx, dy = ty - fy, dz = tz - fz;
@@ -254,22 +266,22 @@ public final class Exposure {
         return clipBoxes(b, px, py, pz, fx, fy, fz, dx, dy, dz);
     }
 
-    private boolean clip(double fx, double fy, double fz, double bottom,
-            int flags) {
+    private boolean clip(double fx, double fy, double fz, double bottom, int flags) {
         double tx = cx, ty = cy, tz = cz;
-        if (Double.compare(fx, tx) == 0 && Double.compare(fy, ty) == 0
-                && Double.compare(fz, tz) == 0) return false;
+        if (Double.compare(fx, tx) == 0 && Double.compare(fy, ty) == 0 && Double.compare(fz, tz) == 0) return false;
         double toX = lerp(-1.0E-7, tx, fx), toY = lerp(-1.0E-7, ty, fy);
         double toZ = lerp(-1.0E-7, tz, fz);
         double frX = lerp(-1.0E-7, fx, tx), frY = lerp(-1.0E-7, fy, ty);
         double frZ = lerp(-1.0E-7, fz, tz);
         int bx = floor(frX), by = floor(frY), bz = floor(frZ);
-        if (collidingIn(Math.min(bx, floor(toX)) - 1,
+        if (collidingIn(
+                        Math.min(bx, floor(toX)) - 1,
                         Math.min(by, floor(toY)) - 1,
                         Math.min(bz, floor(toZ)) - 1,
                         Math.max(bx, floor(toX)) + 1,
                         Math.max(by, floor(toY)) + 1,
-                        Math.max(bz, floor(toZ)) + 1) == 0) return false;
+                        Math.max(bz, floor(toZ)) + 1)
+                == 0) return false;
         if (shapeHit(bx, by, bz, fx, fy, fz, tx, ty, tz, bottom, flags)) {
             return true;
         }
@@ -308,13 +320,11 @@ public final class Exposure {
     /// box at `px`, `py`, `pz` with half width `half` and height
     /// `height` that see the blast of `e`. `flags` tell how the body
     /// meets the blocks whose shape depends on it.
-    public static double density(Exposure e, double px, double py,
-            double pz, double half, double height, int flags) {
+    public static double density(Exposure e, double px, double py, double pz, double half, double height, int flags) {
         return e.sight(px, py, pz, half, height, flags);
     }
 
-    private double sight(double px, double py, double pz,
-            double half, double height, int flags) {
+    private double sight(double px, double py, double pz, double half, double height, int flags) {
         if (sums == null) build();
         double w = (float) half, h = (float) height;
         double x0 = px - w, y0 = py, z0 = pz - w;
@@ -324,12 +334,14 @@ public final class Exposure {
         double zs = 1.0 / ((z1 - z0) * 2.0 + 1.0);
         double xo = (1.0 - Math.floor(1.0 / xs) * xs) / 2.0;
         double zo = (1.0 - Math.floor(1.0 / zs) * zs) / 2.0;
-        boolean clear = collidingIn(floor(Math.min(cx, x0)) - 1,
-                                    floor(Math.min(cy, y0)) - 1,
-                                    floor(Math.min(cz, z0)) - 1,
-                                    floor(Math.max(cx, x1)) + 1,
-                                    floor(Math.max(cy, y1)) + 1,
-                                    floor(Math.max(cz, z1)) + 1) == 0;
+        boolean clear = collidingIn(
+                        floor(Math.min(cx, x0)) - 1,
+                        floor(Math.min(cy, y0)) - 1,
+                        floor(Math.min(cz, z0)) - 1,
+                        floor(Math.max(cx, x1)) + 1,
+                        floor(Math.max(cy, y1)) + 1,
+                        floor(Math.max(cz, z1)) + 1)
+                == 0;
         int hits = 0, count = 0;
         for (double xx = 0.0; xx <= 1.0; xx += xs) {
             for (double yy = 0.0; yy <= 1.0; yy += ys) {

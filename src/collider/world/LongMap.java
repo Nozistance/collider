@@ -29,7 +29,7 @@ public final class LongMap<V> {
     @SuppressWarnings("unchecked")
     public V get(long k) {
         int mask = keys.length - 1;
-        for (int i = mix(k, mask);; i = (i + 1) & mask) {
+        for (int i = mix(k, mask); ; i = (i + 1) & mask) {
             Object v = vals[i];
             if (v == null) return null;
             if (keys[i] == k) return (V) v;
@@ -40,7 +40,7 @@ public final class LongMap<V> {
     public void put(long k, V v) {
         if (2 * (n + 1) > keys.length) grow();
         int mask = keys.length - 1;
-        for (int i = mix(k, mask);; i = (i + 1) & mask) {
+        for (int i = mix(k, mask); ; i = (i + 1) & mask) {
             if (vals[i] == null) {
                 keys[i] = k;
                 vals[i] = v;

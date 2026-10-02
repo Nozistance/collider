@@ -9,5 +9,4 @@ package collider.world;
 /// @param scaffoldingBottom Those of the bottom of hanging
 ///     scaffolding.
 /// @param snowFalling Those of powder snow under a falling body.
-public record YCoords(Object[] states, double[] block,
-        double[] scaffoldingBottom, double[] snowFalling) {}
+public record YCoords(Object[] states, double[] block, double[] scaffoldingBottom, double[] snowFalling) {}

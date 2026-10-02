@@ -2,12 +2,11 @@ package collider.world;
 
 import clojure.lang.Counted;
 import clojure.lang.IFn;
-import clojure.lang.Indexed;
 import clojure.lang.ITransientCollection;
+import clojure.lang.Indexed;
 import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
-
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
@@ -35,8 +34,7 @@ public final class Neighbors {
         this.chunks = chunks;
     }
 
-    private static ITransientCollection conj(ITransientCollection v,
-            Object x) {
+    private static ITransientCollection conj(ITransientCollection v, Object x) {
         if (v == null) v = PersistentVector.EMPTY.asTransient();
         return v.conj(x);
     }
@@ -85,9 +83,7 @@ public final class Neighbors {
     /// Returns what the run collected as vectors: records, writes,
     /// ticks, sent and placed. The run ends here.
     public Object[] collected() {
-        return new Object[] {done(records), done(writes), done(ticks),
-                             done(sent),
-                             PersistentVector.create(placed)};
+        return new Object[] {done(records), done(writes), done(ticks), done(sent), PersistentVector.create(placed)};
     }
 
     /// Sets the block at `p`, which is `x` `y` `z`, to `st` with
@@ -95,8 +91,7 @@ public final class Neighbors {
     /// `maxY` and the block is not `st` already; records the write and
     /// tells the clients when flag 2 asks. Returns the old state, or -1
     /// when nothing was set.
-    public long place(Object p, int x, int y, int z, long st, long flags,
-            int minY, int maxY) {
+    public long place(Object p, int x, int y, int z, long st, long flags, int minY, int maxY) {
         if (y < minY || y > maxY) return -1;
         ChunkIndex c = (ChunkIndex) chunks;
         if (c.get(x >> 4, z >> 4) == null) return -1;
@@ -111,14 +106,11 @@ public final class Neighbors {
 
     /// Returns true when the six blocks beside `x` `y` `z` are all
     /// marked in `deaf`; outside the height counts as air.
-    public boolean deafAround(long x, long y, long z, boolean[] deaf,
-            int minY, int maxY) {
+    public boolean deafAround(long x, long y, long z, boolean[] deaf, int minY, int maxY) {
         ChunkIndex c = (ChunkIndex) chunks;
         for (int d = 0; d < 6; d++) {
             long ny = y + DY[d];
-            int st = ny < minY || ny > maxY ? 0
-                : Chunk.blockAt(c, (int) (x + DX[d]), (int) ny,
-                                (int) (z + DZ[d]));
+            int st = ny < minY || ny > maxY ? 0 : Chunk.blockAt(c, (int) (x + DX[d]), (int) ny, (int) (z + DZ[d]));
             if (!deaf[st]) return false;
         }
         return true;
@@ -130,8 +122,8 @@ public final class Neighbors {
     /// updates as `(shaped run pos old)`; `other` sets any other change
     /// as `(other run change)`. Each change set here that alters its
     /// block joins the placed cells as `[pos old]`.
-    public Neighbors command(Object changes, long flags, boolean[] plain,
-            boolean[] deaf, IFn shaped, IFn other, int minY, int maxY) {
+    public Neighbors command(
+            Object changes, long flags, boolean[] plain, boolean[] deaf, IFn shaped, IFn other, int minY, int maxY) {
         for (Object c : (Iterable<?>) changes) {
             long st = RT.longCast(RT.nth(c, 1));
             Object fx = RT.nth(c, 2, null);
@@ -157,9 +149,13 @@ public final class Neighbors {
     public Neighbors tell(boolean[] deaf, IFn told, int minY, int maxY) {
         for (Object c : placed) {
             Object p = RT.nth(c, 0);
-            if (!deafAround(RT.longCast(RT.nth(p, 0)),
-                            RT.longCast(RT.nth(p, 1)),
-                            RT.longCast(RT.nth(p, 2)), deaf, minY, maxY)) {
+            if (!deafAround(
+                    RT.longCast(RT.nth(p, 0)),
+                    RT.longCast(RT.nth(p, 1)),
+                    RT.longCast(RT.nth(p, 2)),
+                    deaf,
+                    minY,
+                    maxY)) {
                 told.invoke(this, p, RT.nth(c, 1));
             }
         }
@@ -181,16 +177,15 @@ public final class Neighbors {
         }
         count = 1;
         stack.push(item);
-        for (;;) {
+        for (; ; ) {
             for (int k = added.size() - 1; k >= 0; k--) {
                 stack.push(added.get(k));
             }
             added.clear();
             if (stack.isEmpty()) break;
-            for (;;) {
+            for (; ; ) {
                 Object top = stack.pop();
-                Object next = top instanceof Pass p ? p.step(this)
-                    : step.invoke(this, top);
+                Object next = top instanceof Pass p ? p.step(this) : step.invoke(this, top);
                 if (next == null) break;
                 stack.push(next);
                 if (!added.isEmpty()) break;
@@ -207,12 +202,18 @@ public final class Neighbors {
     /// mark when it comes to it, `st` being its state then. `sides`
     /// names the side of each step as seen from the block told.
     /// Outside the height counts as air.
-    public Neighbors pass(long x, long y, long z, boolean shape,
-            boolean[] deaf, Object[] sides, IFn told, IFn step,
-            int minY, int maxY) {
-        return addAndRun(new Pass(x, y, z, shape ? SY : DY,
-                                  shape ? SZ : DZ, deaf, sides, told,
-                                  minY, maxY), step);
+    public Neighbors pass(
+            long x,
+            long y,
+            long z,
+            boolean shape,
+            boolean[] deaf,
+            Object[] sides,
+            IFn told,
+            IFn step,
+            int minY,
+            int maxY) {
+        return addAndRun(new Pass(x, y, z, shape ? SY : DY, shape ? SZ : DZ, deaf, sides, told, minY, maxY), step);
     }
 
     private static final class Pass {
@@ -224,21 +225,28 @@ public final class Neighbors {
         private final int minY, maxY;
         private int i;
 
-        Pass(long x, long y, long z, int[] dy, int[] dz, boolean[] deaf,
-                Object[] sides, IFn told, int minY, int maxY) {
-            this.x = x; this.y = y; this.z = z;
-            this.dy = dy; this.dz = dz;
-            this.deaf = deaf; this.sides = sides; this.told = told;
-            this.minY = minY; this.maxY = maxY;
+        Pass(long x, long y, long z, int[] dy, int[] dz, boolean[] deaf, Object[] sides, IFn told, int minY, int maxY) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.dy = dy;
+            this.dz = dz;
+            this.deaf = deaf;
+            this.sides = sides;
+            this.told = told;
+            this.minY = minY;
+            this.maxY = maxY;
         }
 
         Object step(Neighbors s) {
             while (i < 6) {
                 int d = i++;
                 long nx = x + DX[d], ny = y + dy[d], nz = z + dz[d];
-                int st = ny < minY || ny > maxY ? 0
-                    : Chunk.blockAt((ChunkIndex) s.chunks, (int) nx,
-                                    (int) ny, (int) nz);
+                int st = ny < minY || ny > maxY
+                        ? 0
+                        : Chunk.blockAt(
+                                (ChunkIndex) s.chunks, (int) nx,
+                                (int) ny, (int) nz);
                 if (deaf[st]) continue;
                 told.invoke(s, vec(nx, ny, nz), sides[d], (long) st);
                 break;
