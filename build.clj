@@ -17,10 +17,6 @@
             :basis      @basis
             :javac-opts ["-proc:none" "--release" "25"]}))
 
-(defn- log-bytes [n] ((requiring-resolve 'collider.log/human-bytes) n))
-(defn- info [& args] (apply (requiring-resolve 'collider.log/info) args))
-(defn- step [doing done f] ((requiring-resolve 'collider.log/step) doing done f))
-
 (defn- compile-clj []
   (b/compile-clj {:basis      @basis
                   :src-dirs   ["src/main/clojure"]
@@ -46,10 +42,9 @@
 (defn release [_]
   (clean nil)
   (write-build-info)
-  (step "Compiling java" "Compiled java" #(javac nil))
-  (step "Compiling clojure" "Compiled clojure" #(compile-clj))
-  (step "Packing the jar" "Packed the jar" #(uber))
-  (info jar-file (log-bytes (.length (io/file jar-file)))))
+  (javac nil)
+  (compile-clj)
+  (uber))
 
 (defn- path [s] (.getCanonicalPath (io/file (str s))))
 
