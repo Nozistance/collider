@@ -26,6 +26,8 @@
 (defn- ceillog2 ^long [^long n]
   (- 32 (Integer/numberOfLeadingZeros (int (dec (max 1 n))))))
 
+(def ^:private ^:const motion-blocking-flag 1)
+
 (defn- state-flag? [^long st ^long bit]
   (pos? (bit-and (long (get (data/flags) st 0)) bit)))
 
@@ -33,7 +35,7 @@
   (or (block/liquid? st) (block/waterlogged? st)))
 
 (defn- motion-blocking? [^long st]
-  (or (state-flag? st 1) (fluid? st)))
+  (or (state-flag? st motion-blocking-flag) (fluid? st)))
 
 (defn- state-table ^booleans [pred]
   (let [a (boolean-array (data/block-state-count))]
@@ -41,12 +43,12 @@
       (aset a i (boolean (pred i))))
     a))
 
-(defn- surface? [^long st] (not= :air (block/type-of st)))
+(defn- non-air? [^long st] (not= :air (block/type-of st)))
 
 (defn- no-leaves? [^long st]
   (and (motion-blocking? st) (not (block/leaves? st))))
 
-(def ^:private ^:table surface-arr (delay (state-table surface?)))
+(def ^:private ^:table non-air-arr (delay (state-table non-air?)))
 
 (def ^:private ^:table motion-arr
   (delay (state-table motion-blocking?)))
@@ -64,32 +66,38 @@
   (c/write-varint buf biome))
 
 (defn- write-empty-section! [buf ^long biome]
-  (buf/write-short! buf 0)
-  (buf/write-short! buf 0)
-  (buf/write-byte! buf 0)
-  (c/write-varint buf block/air)
-  (write-biomes! buf biome))
+  (let [block-count 0 fluid-count 0 single-value-bits 0]
+    (buf/write-short! buf block-count)
+    (buf/write-short! buf fluid-count)
+    (buf/write-byte! buf single-value-bits)
+    (c/write-varint buf block/air)
+    (write-biomes! buf biome)))
 
 (defn- window [lv]
   (let [lo (chunk/level-min-y lv)]
-    [(chunk/section-index lo)
-     (quot (- (inc (chunk/level-max-y lv)) lo) 16)
-     (:sky? lv true)
-     (biome/id (:dim lv))]))
+    {:lo (chunk/section-index lo)
+     :n (quot (- (inc (chunk/level-max-y lv)) lo) 16)
+     :sky? (:sky? lv true)
+     :biome (biome/id (:dim lv))}))
 
-(defn- our-section [chunk ^long si]
-  (chunk/chunk-section chunk si))
-
-(defn- heightmap-longs ^longs [chunk [^long lo ^long n] pred]
+(defn- heightmap-longs ^longs [chunk {:keys [^long lo ^long n]} pred]
   (let [out (int-array 256)]
     (doseq [si (range (+ lo n -1) (dec lo) -1)
-            :let [s (our-section chunk si)]
+            :let [s (chunk/chunk-section chunk si)]
             :when s]
       (chunk/heights! s pred out (* 16 (- (long si) lo))))
     (pack-longs (ceillog2 (inc (* 16 n))) out)))
 
+(def ^:private ^:const world-surface-id 1)
+
+(def ^:private ^:const motion-blocking-id 4)
+
+(def ^:private ^:const no-leaves-id 5)
+
 (def ^:private ^:table client-heightmaps
-  (delay [[1 @surface-arr] [4 @motion-arr] [5 @no-leaves-arr]]))
+  (delay [[world-surface-id @non-air-arr]
+          [motion-blocking-id @motion-arr]
+          [no-leaves-id @no-leaves-arr]]))
 
 (defn- write-heightmaps! [buf chunk win]
   (c/write-varint buf (count @client-heightmaps))
@@ -111,11 +119,11 @@
     (c/write-varint buf (long type))
     (nbt/write-nbt buf nbt)))
 
-(defn- write-sections! [buf chunk [^long lo ^long n _ biome]]
+(defn- write-sections! [buf chunk {:keys [^long lo ^long n biome]}]
   (let [body (buf/buf 4096)
         biome (long biome)]
     (dotimes [i n]
-      (if-let [s (our-section chunk (+ lo i))]
+      (if-let [s (chunk/chunk-section chunk (+ lo i))]
         (write-section! body s biome)
         (write-empty-section! body biome)))
     (c/write-varint buf (buf/readable-bytes body))
@@ -125,14 +133,14 @@
   (loop [i 0 m 0]
     (if (= i n)
       m
-      (let [s (our-section chunk (+ lo i))
+      (let [s (chunk/chunk-section chunk (+ lo i))
             hit? (and (some? s) (chunk/holds? s solid))]
         (recur (inc i)
                (if hit? (bit-or m (bit-shift-left 1 (inc i))) m))))))
 
 (defn- around-bits
-  ^long [cs ^long cx ^long cz [lo n]]
-  (let [solid @surface-arr]
+  ^long [cs ^long cx ^long cz {:keys [lo n]}]
+  (let [solid @non-air-arr]
     (loop [k 0 m 0]
       (if (= k 9)
         m
@@ -158,12 +166,14 @@
     false))
 
 (defn- sky-empty? [chunk ^long si]
-  (if-let [s (our-section chunk si)]
+  (if-let [s (chunk/chunk-section chunk si)]
     (not (chunk/sky-lit? s))
     (dark-inherited? chunk si)))
 
 (defn- block-empty? [chunk ^long si]
-  (if-let [s (our-section chunk si)] (not (chunk/block-lit? s)) true))
+  (if-let [s (chunk/chunk-section chunk si)]
+    (not (chunk/block-lit? s))
+    true))
 
 (defn- empty-mask ^long [chunk ^long lo ^long layers dark?]
   (loop [li 0 m 0]
@@ -185,29 +195,24 @@
   (write-mask! buf blk))
 
 (defn- write-sky-layer! [buf chunk ^long si]
-  (SectionWriter/writeSkyLight
-    buf (or (our-section chunk si) (chunk/new-section chunk si))))
+  (let [s (or (chunk/chunk-section chunk si)
+                (chunk/new-section chunk si))]
+    (SectionWriter/writeSkyLight buf s)))
 
 (defn- write-block-layer! [buf chunk ^long si]
-  (SectionWriter/writeBlockLight buf (our-section chunk si)))
+  (SectionWriter/writeBlockLight buf (chunk/chunk-section chunk si)))
 
-(defn- write-sky! [buf chunk ^long lo ^long m]
-  (c/write-varint buf (Long/bitCount m))
-  (dotimes [li 64]
-    (when (bit-test m li)
-      (c/write-varint buf 2048)
-      (write-sky-layer! buf chunk (+ lo li -1)))))
-
-(defn- write-block! [buf chunk ^long lo ^long m]
-  (c/write-varint buf (Long/bitCount m))
-  (dotimes [li 64]
-    (when (bit-test m li)
-      (c/write-varint buf 2048)
-      (write-block-layer! buf chunk (+ lo li -1)))))
+(defn- write-light-layers! [buf chunk lo m write-layer!]
+  (let [lo (long lo) m (long m)]
+    (c/write-varint buf (Long/bitCount m))
+    (dotimes [li 64]
+      (when (bit-test m li)
+        (c/write-varint buf 2048)
+        (write-layer! buf chunk (+ lo li -1))))))
 
 (defn- write-lights!
-  [buf lv chunk cx cz [^long lo ^long n sky? :as win]]
-  (let [own (filled-bits chunk lo n @surface-arr)
+  [buf lv chunk cx cz {:keys [^long lo ^long n sky?] :as win}]
+  (let [own (filled-bits chunk lo n @non-air-arr)
         near (around-bits (:chunks lv) cx cz win)
         layers (spread (bit-or own near))
         sky-empty (empty-mask chunk lo (if sky? layers 0) sky-empty?)
@@ -216,8 +221,8 @@
         blk-lit (bit-and-not layers blk-empty)]
     (write-masks! buf sky-lit blk-lit)
     (write-masks! buf sky-empty blk-empty)
-    (write-sky! buf chunk lo sky-lit)
-    (write-block! buf chunk lo blk-lit)))
+    (write-light-layers! buf chunk lo sky-lit write-sky-layer!)
+    (write-light-layers! buf chunk lo blk-lit write-block-layer!)))
 
 (defn write-chunk!
   "Writes chunk at cx cz as level lv shows it to a client."
@@ -226,8 +231,8 @@
    (write-chunk! buf cx cz chunk block-entities nil))
   ([buf cx cz chunk block-entities lv]
    (let [win (window lv)]
-     (buf/write-int! buf (int (long cx)))
-     (buf/write-int! buf (int (long cz)))
+     (buf/write-int! buf cx)
+     (buf/write-int! buf cz)
      (write-heightmaps! buf chunk win)
      (write-sections! buf chunk win)
      (write-block-entities! buf block-entities)

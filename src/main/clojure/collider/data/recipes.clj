@@ -226,9 +226,9 @@
         property-sets))
 
 (defn recipes
-  "Returns the recipes of a pack by kind, from its recipes by id in
-  id order. Tags gives the items of an item tag by name, or nil for
-  no such tag."
+  "Returns the recipes by kind, in id order.
+  Pack holds the recipe json by id. Tags returns the items of an item
+  tag by name, or nil for no such tag."
   [pack tags]
   (let [named (sort-by key pack)
         rs (map val named)]

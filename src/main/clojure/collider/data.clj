@@ -6,10 +6,11 @@
             [collider.data.items :as items]
             [collider.data.loot :as loot]
             [collider.data.recipes :as recipes]
-            [collider.data.tags :as tags])
+            [collider.data.tags :as tags]
+            [collider.num :as num])
   (:import (clojure.lang PersistentArrayMap)
            (java.io File PushbackReader)
-           (java.util Arrays List)
+           (java.util Arrays)
            (java.util.concurrent ExecutionException)))
 
 (set! *warn-on-reflection* true)
@@ -23,8 +24,7 @@
        (catch Exception _ nil)))
 
 (defn complete?
-  "Returns true when d holds a set of tables of this game and layout.
-  The generator writes the stamp last, so a stamp means a full set."
+  "Returns true when d holds a set of tables of this game and layout."
   [d]
   (= {:game game :layout layout}
      (select-keys (stamp-of d) [:game :layout])))
@@ -43,7 +43,7 @@
 
 (defn- all-tables []
   (for [ns (all-ns)
-        :when (.startsWith (str (ns-name ns)) "collider.")
+        :when (str/starts-with? (str (ns-name ns)) "collider.")
         t (tables-of ns)]
     t))
 
@@ -80,7 +80,7 @@
       (edn/read {:readers nbt-readers} (PushbackReader. r)))))
 
 (defn pack
-  "Returns the entries of registry path of the vanilla pack by id, as
+  "Returns the entries of registry path of the game pack by id, as
   the codec of the registry writes them."
   [path]
   (read-edn (str "pack/" path ".edn")))
@@ -107,9 +107,8 @@
   [] (:packets @tables))
 
 (defn version
-  "Returns what the game tells of its version: :id, :name, :data,
-  :series, :protocol, :build-time in epoch millis, :resource-pack,
-  :data-pack and :stable."
+  "Returns the version facts of the game.
+  The build time is in epoch millis."
   [] (:version @tables))
 
 (defn registries
@@ -119,14 +118,11 @@
 (defn blocks [] (:blocks @tables))
 
 (defn spawns
-  "Returns what natural spawning reads: the mob categories in their
-  order, the spawn facts of the entity types, the states each type
-  stands on and the ones that hurt it, and the redstone conductors."
+  "Returns the facts that natural spawning reads."
   [] (:spawns @tables))
 
 (defn growers
-  "Returns the tree growers by name: the chance of the secondary
-  trees and the features of each tree."
+  "Returns the tree growers by name."
   [] (:growers @tables))
 
 (defn light
@@ -158,7 +154,7 @@
 (defn sounds [] (:sounds @tables))
 
 (def sound-table
-  "Sound kinds of the game: the vanilla sound event and its channel."
+  "The sound event and the channel of each sound kind."
   {:player/hurt                   [:entity.player.hurt 7]
    :player/hurt-on-fire           [:entity.player.hurt-on-fire 7]
    :player/death                  [:entity.player.death 7]
@@ -280,8 +276,8 @@
    :swim                          [:entity.generic.swim 6]})
 
 (defn entities
-  "Returns the width, height and eye height of each entity type, and
-  of its baby as :baby."
+  "Returns the width, height and eye height of each entity type.
+  The sizes of its baby are under :baby."
   [] (:entities @tables))
 
 (defn block-entities
@@ -300,7 +296,7 @@
 (defn snake
   "Returns the name of k with dashes as underscores."
   ^String [k]
-  (.replace (name k) \- \_))
+  (str/replace (name k) \- \_))
 
 (defn wire
   "Returns k as a resource location with the default namespace."
@@ -311,15 +307,15 @@
   "Returns resource location s as a keyword.
   The default namespace goes away and underscores become dashes."
   [^String s]
-  (let [s (.toLowerCase s)
-        i (.indexOf s ":")
-        ns (if (neg? i) "minecraft" (subs s 0 i))
-        nm (.replace (if (neg? i) s (subs s (inc i))) \_ \-)]
+  (let [s (str/lower-case s)
+        i (str/index-of s ":")
+        ns (if i (subs s 0 i) "minecraft")
+        nm (str/replace (if i (subs s (inc i)) s) \_ \-)]
     (if (= ns "minecraft") (keyword nm) (keyword ns nm))))
 
 (defn full-id
-  "Returns resource location s with the default namespace when it
-  has none."
+  "Returns resource location s, in the default namespace when it has
+  no namespace."
   ^String [^String s]
   (if (str/includes? s ":") s (str "minecraft:" s)))
 
@@ -383,12 +379,20 @@
                       {:registry registry :entry entry}))))
 
 (defn entry-id
-  "Returns the network id of entry in registry, built in or from
-  the datapack."
+  "Returns the network id of entry in registry.
+  The registry is built in or comes from the datapack."
   ^long [registry entry]
   (if (contains? (registries) registry)
     (registry-id registry entry)
     (datapack-id registry entry)))
+
+(defn known-entry-id
+  "Returns the network id of entry in registry.
+  Returns nil for an unknown entry."
+  [registry entry]
+  (if (contains? (registries) registry)
+    (get-in (registries) [registry entry])
+    (get (get @datapack-index registry) entry)))
 
 (defn- invert-ids [entries]
   (into {} (map (fn [[k v]] [(long v) k])) entries))
@@ -458,8 +462,7 @@
   (delay (into {} (filter sent-tags?) (sort-by key @all-tags))))
 
 (defn tags
-  "Returns the tags the server sends to the client, by registry: each
-  built-in or synced registry that has any."
+  "Returns the tags the server sends to the client, by registry."
   [] @sent-tags)
 
 (defn tag-index
@@ -470,8 +473,8 @@
         (get (tags) registry)))
 
 (defn registry-tags
-  "Returns the tags of registry path by name, each a vector of its
-  entries in the order vanilla builds it; nil when it has none."
+  "Returns the tags of registry path by name, or nil when it has
+  no tags."
   [path]
   (get @all-tags path))
 
@@ -516,17 +519,17 @@
 
 (defn items [] @item-table)
 
+(defn cooldown-group
+  "Returns the group whose cooldown locks item."
+  [item]
+  (get-in (items) [item :use-cooldown :group] item))
+
 (defn use-cooldown
   "Returns the cooldown group and the ticks item locks it for.
   Returns nil when the item has no cooldown."
   [item]
   (when-let [c (get-in (items) [item :use-cooldown])]
-    [(get c :group item) (long (* 20.0 (double (:seconds c))))]))
-
-(defn cooldown-group
-  "Returns the group whose cooldown locks item."
-  [item]
-  (get-in (items) [item :use-cooldown :group] item))
+    [(cooldown-group item) (long (* 20.0 (double (:seconds c))))]))
 
 (defn max-stack ^long [item]
   (long (get-in (items) [item :max-stack] 64)))
@@ -591,39 +594,55 @@
   [item]
   (get-in (items) [item :resists]))
 
-(defn- prop-order [b] (vec (keys (:props b))))
-
-(defn- prop-sizes [b]
-  (mapv #(count (get (:props b) %)) (prop-order b)))
-
 (defn- state-count ^long [b]
   (reduce * 1 (map count (vals (:props b)))))
 
-(defn- tail-size ^long [sizes ^long i]
-  (long (reduce * 1 (subvec sizes (inc i)))))
-
-(defn- decode-props [b ^long offset]
-  (let [order (prop-order b)
-        sizes (prop-sizes b)]
-    (loop [i 0, left offset, acc {}]
-      (if (= i (count order))
-        acc
-        (let [prop (nth order i)
-              tail (tail-size sizes i)
-              v (nth (get (:props b) prop) (quot left tail))]
-          (recur (inc i) (rem left tail)
-                 (assoc acc prop v)))))))
-
-(defn- state-last ^long [b]
-  (+ (long (:first b)) (state-count b)))
-
 (def ^:private ^:table state-total
   (delay
-    (long (reduce (fn [n [_ b]] (max n (state-last b)))
+    (long (reduce (fn [n [_ b]]
+                    (max n (+ (long (:first b)) (state-count b))))
                   0 (blocks)))))
 
 (defn block-state-count ^long []
   @state-total)
+
+(defn info
+  "Returns the facts known about block. Throws for an unknown one."
+  [block]
+  (or (get (blocks) block)
+      (throw (ex-info "unknown block" {:block block}))))
+
+(defn placed-sound [block item]
+  (let [t (get (sounds) (:sound (info block)))]
+    {:kind   (or (get-in (items) [item :place-sound]) (:place t))
+     :volume (num/f32 (/ (+ 1.0 (num/f32 (:volume t 1.0))) 2.0))
+     :pitch  (num/f32 (* (num/f32 0.8) (num/f32 (:pitch t 1.0))))}))
+
+(defn open-sound [block open?]
+  (get (info block) (if open? :open :close)))
+
+(defn by-hand?
+  "Returns true when block drops when broken without a tool."
+  [block]
+  (get (info block) :hand? true))
+
+(defn- prop-order [b] (vec (keys (:props b))))
+
+(defn- place-values
+  "Returns the weight of each property of block facts b in a state
+  offset, in property order."
+  [b]
+  (let [sizes (mapv #(count (get (:props b) %)) (prop-order b))]
+    (mapv #(long (reduce * 1 (subvec sizes (inc (long %)))))
+          (range (count sizes)))))
+
+(defn- decode-props [b ^long offset]
+  (let [props (:props b)
+        step (fn [[acc ^long left] [k ^long w]]
+               [(assoc acc k (nth (get props k) (quot left w)))
+                (rem left w)])]
+    (first (reduce step [{} offset]
+                   (map vector (prop-order b) (place-values b))))))
 
 (def ^:private ^:table state-blocks
   (delay
@@ -634,14 +653,9 @@
         (aset a (+ from (long i)) block))
       a)))
 
-(defn block-of-state ^objects []
-  @state-blocks)
-
 (defn each-run!
-  "Calls f with the id and the value of each state that table t
-  gives a value. Each run [from to i] gives the value i of the
-  palette to the states from to to. The walk skips states past the
-  last known one."
+  "Calls f with each state id and its value in table t.
+  States past the last known one are skipped."
   [{:keys [palette runs]} f]
   (let [n (block-state-count)]
     (doseq [[from to i] runs
@@ -667,9 +681,7 @@
   (delay (update (read-edn "collision-ys.edn") :states object-table)))
 
 (defn collision-ys
-  "Returns the y coordinates of the collision shapes: :states by
-  state id, nil for a full cube, and :block, :scaffolding-bottom and
-  :powder-snow-falling."
+  "Returns the y coordinates of the collision shapes of every state."
   [] @y-coords-table)
 
 (def ^:private ^:table outline-table
@@ -699,8 +711,7 @@
   (:full @sturdy-tables))
 
 (defn sturdy-center
-  "Returns which faces of every state hold a thing at their center,
-  by id."
+  "Returns which faces of every state hold a centered thing."
   ^bytes []
   (:center @sturdy-tables))
 
@@ -724,50 +735,18 @@
 (defn default-props []
   @defaults)
 
-(defn info
-  "Returns the facts known about block. Throws for an unknown one."
-  [block]
-  (or (get (blocks) block)
-      (throw (ex-info "unknown block" {:block block}))))
-
-(defn- single ^double [v] (double (float v)))
-
-(defn place-sound [block]
-  (get-in (sounds) [(:sound (info block)) :place]))
-
-(defn placed-sound [block item]
-  (let [t (get (sounds) (:sound (info block)))]
-    {:kind   (or (get-in (items) [item :place-sound]) (:place t))
-     :volume (single (/ (+ 1.0 (single (:volume t 1.0))) 2.0))
-     :pitch  (single (* (single 0.8) (single (:pitch t 1.0))))}))
-
-(defn open-sound [block open?]
-  (get (info block) (if open? :open :close)))
-
-(defn by-hand?
-  "Returns true when block drops when broken without a tool."
-  [block]
-  (get (info block) :hand? true))
-
 (defn- prop-index ^long [block-name prop vs v]
-  (let [idx (.indexOf ^List vs v)]
-    (when (neg? idx)
+  (or (first (keep-indexed (fn [i x] (when (= x v) i)) vs))
       (throw (ex-info "unknown property value"
-                      {:block block-name :prop prop :value v})))
-    idx))
+                      {:block block-name :prop prop :value v}))))
 
 (defn- state-offset ^long [block-name b wanted defaults]
-  (let [order (prop-order b)
-        sizes (prop-sizes b)]
-    (loop [i 0 id (long (:first b))]
-      (if (= i (count order))
-        id
-        (let [prop (nth order i)
-              vs (get (:props b) prop)
-              want (get wanted prop (get defaults prop))
-              idx (prop-index block-name prop vs want)
-              tail (tail-size sizes i)]
-          (recur (inc i) (long (+ id (* idx tail)))))))))
+  (let [props (:props b)
+        want #(get wanted % (get defaults %))
+        index #(prop-index block-name % (get props %) (want %))]
+    (long (reduce + (long (:first b))
+                  (map (fn [k ^long w] (* (index k) w))
+                       (prop-order b) (place-values b))))))
 
 (defn state-id
   "Returns the global state id of a block. Properties missing from
@@ -783,7 +762,8 @@
 (defn state-block
   "Returns the block of block state id, or nil for no such state."
   [^long id]
-  (when (< -1 id (block-state-count)) (aget (block-of-state) id)))
+  (when (< -1 id (block-state-count))
+    (aget ^objects @state-blocks id)))
 
 (defn state-props [^long id]
   (when-let [block-name (state-block id)]

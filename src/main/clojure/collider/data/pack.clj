@@ -34,7 +34,7 @@
   (ex-info msg (assoc data :what "unknown vanilla data")))
 
 (defn ingredient
-  "Returns the items of holder set v, or {:tag name} for a tag."
+  "Returns the items of holder set v, or the tag name under :tag."
   [v]
   (cond
     (string? v) (if (str/starts-with? v "#")

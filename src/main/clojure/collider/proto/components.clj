@@ -728,9 +728,7 @@
              (c/write-varint buf (long ticks)))))
 
 (defn- read-trail [^Buf buf]
-  [[(buf/read-double buf) (buf/read-double buf)
-    (buf/read-double buf)]
-   (buf/read-int buf) (c/read-varint buf)])
+  [(c/read-vec3 buf) (buf/read-int buf) (c/read-varint buf)])
 
 (defn read-particle
   "Returns the particle at the read point as [type options]."

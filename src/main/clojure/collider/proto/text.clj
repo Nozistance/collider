@@ -1,9 +1,8 @@
 (ns collider.proto.text
-  "Text components on the wire.
-  A whole number argument goes as an int tag, a BigInt one as the
-  long tag vanilla gives a long."
+  "Text components on the wire."
   (:require [clojure.string :as str]
-            [collider.proto.buf :as buf])
+            [collider.proto.buf :as buf]
+            [collider.proto.nbt :as nbt])
   (:import (clojure.lang BigInt)
            (collider HashMapOrder)
            (collider.proto Buf)
@@ -25,33 +24,36 @@
    [:id "id"] [:count "count"] [:uuid "uuid"] [:name "name"]])
 
 (defn- hash-ordered [fields]
-  (let [hs (int-array (map (fn [[_ ^String nm]] (.hashCode nm)) fields))]
+  (let [code (fn [[_ ^String nm]] (.hashCode nm))
+        hs (int-array (map code fields))]
     (mapv #(nth fields %) (HashMapOrder/of hs))))
 
 (def ^:private ordered (memoize hash-ordered))
 
 (defn plain?
-  "Returns true when component c is bare text with no style
-  or children."
+  "Returns true when component c is bare text.
+  Bare text has no style and no children."
   [c]
   (or (string? c) (and (= 1 (count c)) (string? (:text c)))))
 
-(defn- tag ^long [v]
-  (cond (string? v) 8
-        (map? v) (if (plain? v) 8 10)
-        (boolean? v) 1
-        (instance? Byte v) 1
-        (instance? Float v) 5
-        (instance? Double v) 6
-        (instance? UUID v) 11
-        (instance? BigInt v) 4
-        :else 3))
+(defn- tag [v]
+  (cond (string? v) :string
+        (map? v) (if (plain? v) :string :compound)
+        (boolean? v) :byte
+        (instance? Byte v) :byte
+        (instance? Float v) :float
+        (instance? Double v) :double
+        (instance? UUID v) :int-array
+        (instance? BigInt v) :long
+        :else :int))
 
-(defn- list-tag ^long [xs]
-  (reduce (fn [^long t x]
+(defn- list-tag [xs]
+  (reduce (fn [t x]
             (let [u (tag x)]
-              (cond (zero? t) u (= t u) t :else (reduced 10))))
-          0 xs))
+              (cond (= :end t) u
+                    (= t u) t
+                    :else (reduced :compound))))
+          :end xs))
 
 (declare write-payload)
 
@@ -64,18 +66,18 @@
       (buf/write-int! b (unchecked-int v)))))
 
 (defn- write-entry [^Buf b ^String nm v]
-  (buf/write-byte! b (tag v))
+  (buf/write-byte! b (nbt/tag-id (tag v)))
   (buf/write-utf! b nm)
   (write-payload b v))
 
-(defn- write-element [^Buf b ^long t v]
-  (if (and (= 10 t) (not= 10 (tag v)))
+(defn- write-element [^Buf b t v]
+  (if (and (= :compound t) (not= :compound (tag v)))
     (do (write-entry b "" v) (buf/write-byte! b 0))
     (write-payload b v)))
 
 (defn- write-list [^Buf b xs]
   (let [t (list-tag xs)]
-    (buf/write-byte! b t)
+    (buf/write-byte! b (nbt/tag-id t))
     (buf/write-int! b (count xs))
     (run! #(write-element b t %) xs)))
 
@@ -93,7 +95,8 @@
   (run! (fn [[k nm]]
           (let [v (get m k)]
             (if (vector? v)
-              (do (buf/write-byte! b 9) (buf/write-utf! b nm)
+              (do (buf/write-byte! b (nbt/tag-id :list))
+                  (buf/write-utf! b nm)
                   (write-list b v))
               (write-entry b nm (wire-value k v)))))
         (ordered (filterv #(written? m %) fields)))
@@ -106,18 +109,17 @@
 
 (defn- write-payload [^Buf b v]
   (case (tag v)
-    8 (buf/write-utf! b (if (string? v) v (:text v)))
-    10 (write-map b v)
-    1 (buf/write-byte! b (if (boolean? v) (if v 1 0) (long v)))
-    5 (buf/write-float! b (double v))
-    6 (buf/write-double! b (double v))
-    11 (write-uuid b v)
-    4 (buf/write-long! b (long v))
-    3 (buf/write-int! b (long v))))
+    :string (buf/write-utf! b (if (string? v) v (:text v)))
+    :compound (write-map b v)
+    :byte (buf/write-byte! b (if (boolean? v) (if v 1 0) (long v)))
+    :float (buf/write-float! b (double v))
+    :double (buf/write-double! b (double v))
+    :int-array (write-uuid b v)
+    :long (buf/write-long! b (long v))
+    :int (buf/write-int! b (long v))))
 
 (defn write-component
-  "Writes component c as the network NBT of a text.
-  Bare text goes as a string tag and anything else as a compound."
+  "Writes component c as the network NBT of a text."
   [^Buf b c]
-  (buf/write-byte! b (tag c))
+  (buf/write-byte! b (nbt/tag-id (tag c)))
   (write-payload b c))

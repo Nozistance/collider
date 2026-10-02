@@ -159,12 +159,7 @@
    [:walking-speed wire/float]])
 
 (defn- tag-entry-ids [registry entries]
-  (keep #(try (data/entry-id registry %)
-              (catch Exception _ nil))
-        entries))
-
-(defn- section-change-long ^long [state at]
-  (bit-or (bit-shift-left (long state) 12) (long at)))
+  (keep #(data/known-entry-id registry %) entries))
 
 (defn- write-item-ref! [^Buf buf i]
   (c/write-varint buf (data/registry-id "item" i)))
@@ -193,11 +188,21 @@
   (when source (c/write-varint buf source))
   (when id (c/write-string buf id)))
 
-(def ^:private info-actions
-  {:latency [0x10 write-latency-entry!]
-   :game-mode [0x04 write-mode-entry!]})
+(def ^:private ^:const add-player-bit 0x01)
 
-(def ^:private add-action [0x1D write-player-entry!])
+(def ^:private ^:const game-mode-bit 0x04)
+
+(def ^:private ^:const listed-bit 0x08)
+
+(def ^:private ^:const latency-bit 0x10)
+
+(def ^:private info-actions
+  {:latency [latency-bit write-latency-entry!]
+   :game-mode [game-mode-bit write-mode-entry!]})
+
+(def ^:private add-action
+  [(bit-or add-player-bit game-mode-bit listed-bit latency-bit)
+   write-player-entry!])
 
 (defn- write-player-info! [^Buf buf m]
   (let [[bits one] (info-actions (:action m) add-action)
@@ -246,20 +251,24 @@
    {:schema [:map [:json [wire/string {:max 262144}]]]
     :write :wire}})
 
+(defn- write-registry-tags! [^Buf buf registry ts]
+  (c/write-id buf registry)
+  (c/write-varint buf (count ts))
+  (doseq [[tag entries] ts]
+    (c/write-id buf tag)
+    (let [ids (tag-entry-ids registry entries)]
+      (c/write-varint buf (count ids))
+      (run! #(c/write-varint buf %) ids))))
+
+(defn- write-tags! [^Buf buf {:keys [tags]}]
+  (c/write-varint buf (count tags))
+  (doseq [[registry ts] tags]
+    (write-registry-tags! buf registry ts)))
+
 (def ^:private tags-packet
   {:schema [:map
             [:tags [:map-of Id [:map-of Id [:sequential :keyword]]]]]
-   :write (fn [^Buf buf m]
-            (let [tags (:tags m)]
-              (c/write-varint buf (count tags))
-              (doseq [[registry ts] tags]
-                (c/write-id buf registry)
-                (c/write-varint buf (count ts))
-                (doseq [[tag entries] ts]
-                  (c/write-id buf tag)
-                  (let [ids (tag-entry-ids registry entries)]
-                    (c/write-varint buf (count ids))
-                    (run! #(c/write-varint buf %) ids))))))})
+   :write write-tags!})
 
 (def ^:private configuration-packets
   {[:configuration :client-information]
@@ -488,13 +497,7 @@
    [:play :section-blocks-update]
    {:schema [:map [:section wire/section-pos]
              [:changes [:sequential wire/section-change]]]
-    :write (fn [^Buf buf m]
-             (let [[sx sy sz] (:section m)]
-               (buf/write-long!
-                 buf (c/section-pos (long sx) (long sy) (long sz))))
-             (c/write-varint buf (count (:changes m)))
-             (doseq [[at state] (:changes m)]
-               (c/write-varlong buf (section-change-long state at))))}
+    :write :wire}
    [:play :update-mob-effect]
    {:schema [:map [:eid wire/varint] [:effect [wire/reg "mob_effect"]]
              [:amplifier wire/varint] [:duration wire/varint]
@@ -539,6 +542,26 @@
              [:slot wire/short] [:stack wire/item-stack]]
     :write :wire}})
 
+(defn- write-property-sets! [^Buf buf sets]
+  (c/write-varint buf (count sets))
+  (doseq [[k items] sets]
+    (c/write-id buf (data/kebab k))
+    (c/write-varint buf (count items))
+    (run! #(write-item-ref! buf %) items)))
+
+(defn- write-stonecutting! [^Buf buf {:keys [in out]}]
+  (c/write-varint buf (inc (count in)))
+  (run! #(write-item-ref! buf %) in)
+  (c/write-varint buf (data/registry-id "slot_display" :item-stack))
+  (write-item-ref! buf (:item out))
+  (c/write-varint buf (long (:count out 1)))
+  (comps/write-patch buf nil))
+
+(defn- write-recipes! [^Buf buf m]
+  (write-property-sets! buf (:property-sets m))
+  (c/write-varint buf (count (:stonecutting m)))
+  (run! #(write-stonecutting! buf %) (:stonecutting m)))
+
 (def ^:private menu-packets
   {[:play :open-screen]
    {:schema [:map [:container wire/varint] [:menu wire/varint]
@@ -558,23 +581,7 @@
    {:schema [:map
              [:property-sets [:map-of Id [:sequential :keyword]]]
              [:stonecutting [:sequential Stonecutting]]]
-    :write (fn [^Buf buf m]
-             (let [sets (:property-sets m)
-                   item (fn [i] (write-item-ref! buf i))]
-               (c/write-varint buf (count sets))
-               (doseq [[k items] sets]
-                 (c/write-id buf (data/kebab k))
-                 (c/write-varint buf (count items))
-                 (run! item items))
-               (c/write-varint buf (count (:stonecutting m)))
-               (doseq [{:keys [in out]} (:stonecutting m)]
-                 (c/write-varint buf (inc (count in)))
-                 (run! item in)
-                 (c/write-varint
-                   buf (data/registry-id "slot_display" :item-stack))
-                 (item (:item out))
-                 (c/write-varint buf (long (:count out 1)))
-                 (comps/write-patch buf nil))))}
+    :write write-recipes!}
    [:play :container-close]
    {:schema [:map [:container wire/varint]]
     :read  :wire
@@ -582,6 +589,15 @@
    [:play :set-cursor-item]
    {:schema [:map [:stack wire/item-stack]]
     :write :wire}})
+
+(defn- write-equipment! [^Buf buf m]
+  (c/write-varint buf (long (:eid m)))
+  (let [slots (vec (:slots m))]
+    (doseq [[i [slot stack]] (map-indexed vector slots)]
+      (let [more? (< (inc i) (count slots))
+            b (if more? (bit-or (long slot) 0x80) slot)]
+        (buf/write-byte! buf (int b)))
+      (comps/write-item-stack buf stack))))
 
 (def ^:private entity-packets
   {[:play :bundle-delimiter]
@@ -643,14 +659,7 @@
    {:schema [:map [:eid wire/varint]
              [:slots [:sequential
                       [:tuple :int [:maybe Stack]]]]]
-    :write (fn [^Buf buf m]
-             (c/write-varint buf (long (:eid m)))
-             (let [slots (vec (:slots m))]
-               (doseq [[i [slot stack]] (map-indexed vector slots)]
-                 (let [more? (< (inc i) (count slots))
-                       b (if more? (bit-or (long slot) 0x80) slot)]
-                   (buf/write-byte! buf (int b)))
-                 (comps/write-item-stack buf stack))))}
+    :write write-equipment!}
    [:play :animate]
    {:schema [:map [:eid wire/varint] [:action wire/unsigned-byte]]
     :write :wire}

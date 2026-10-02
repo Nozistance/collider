@@ -63,7 +63,7 @@
 (def ^:private fix-or-remove
   "Fix it, or take it out of plugins/ and start again.")
 
-(defn- jar? [^File f] (str/ends-with? (.getName f) ".jar"))
+(defn- jar? [f] (str/ends-with? (str f) ".jar"))
 
 (defn- manifest-text [^File f]
   (if (jar? f)
@@ -88,8 +88,8 @@
            (str "Get a build of " (name id) " for API "
                 api-version ", or take it out of plugins/.")))
 
-(defn- manifest [^File f text]
-  (let [where (str (.getPath f) (when-not (jar? f) "/plugin.edn"))
+(defn- manifest [f text]
+  (let [where (str f (when-not (jar? f) "/plugin.edn"))
         m (read-manifest where text)]
     (when-let [why (seq (config/complaints Manifest m))]
       (throw (refused (str where " has bad fields") (vec why)
@@ -98,16 +98,18 @@
       (throw (api-refusal m)))
     {:file f :manifest m}))
 
-(defn- found-in [^File f]
+(defn- found-in [f]
   (if-let [text (manifest-text f)]
     (manifest f text)
     (when (jar? f)
-      (throw (refused (str (.getPath f) " has no plugin.edn")
+      (throw (refused (str f " has no plugin.edn")
                       "A plugin jar holds plugin.edn at its root."
                       "Take the jar out of plugins/.")))))
 
-(defn- unique! [k what found]
-  (doseq [[v n] (frequencies (mapcat k found))
+(defn- id-of [p] (:id (:manifest p)))
+
+(defn- unique! [names what]
+  (doseq [[v n] (frequencies names)
           :when (< 1 (long n))]
     (throw (refused (str "two plugins " what " " v)
                     "Each name may belong to one plugin only."
@@ -127,15 +129,13 @@
   :file and :manifest. A directory without plugin.edn is not a
   plugin. Throws when one is broken or two clash."
   [dir]
-  (let [files (sort-by #(.getName ^File %) (.listFiles (io/file dir)))
+  (let [files (sort-by str (.listFiles (io/file dir)))
         found (into [] (keep found-in) files)
-        cli (comp keys :cli :manifest)]
-    (unique! (comp vector name :id :manifest) "are called" found)
-    (unique! cli "add the command" found)
-    (run! builtin! (mapcat cli found))
+        commands (mapcat (comp keys :cli :manifest) found)]
+    (unique! (map (comp name id-of) found) "are called")
+    (unique! commands "add the command")
+    (run! builtin! commands)
     found))
-
-(defn- id-of [p] (:id (:manifest p)))
 
 (defn- missing [p d]
   (refused (str (named (id-of p)) " needs " (named d))
@@ -172,8 +172,8 @@
 
 (defn- class-loader [found]
   (let [cl (DynamicClassLoader. (RT/baseLoader))]
-    (doseq [{:keys [^File file]} found]
-      (.addURL cl (.toURL (.toURI file))))
+    (doseq [{:keys [file]} found]
+      (.addURL cl (io/as-url file)))
     cl))
 
 (defn- logger [id]

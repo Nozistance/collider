@@ -1,8 +1,7 @@
 (ns collider.proto.codec
   "Wire primitives of the protocol."
   (:refer-clojure :exclude [read-string])
-  (:require [clojure.string :as str]
-            [collider.data :as data]
+  (:require [collider.data :as data]
             [collider.proto.buf :as buf])
   (:import (collider.proto Buf)
            (java.nio.charset StandardCharsets)
@@ -76,9 +75,9 @@
   (^String [^Buf buf max]
    (let [max (long max)
          ^String s (read-utf8 buf max)]
-     (when (> (.length s) max)
+     (when (> (count s) max)
        (throw (ex-info "string too long"
-                       {:length (.length s) :max max})))
+                       {:length (count s) :max max})))
      s)))
 
 (defn read-count
@@ -102,11 +101,9 @@
 (defn write-id
   "Writes a registry name, in the default namespace when it has none."
   [^Buf buf k]
-  (write-string buf
-                (cond
-                  (keyword? k) (data/wire k)
-                  (str/includes? (str k) ":") (str k)
-                  :else (str "minecraft:" k))))
+  (write-string buf (if (keyword? k)
+                      (data/wire k)
+                      (data/full-id (str k)))))
 
 (defn write-angle
   "Writes a rotation in degrees as one byte."
@@ -123,6 +120,9 @@
   (buf/write-double! buf (double x))
   (buf/write-double! buf (double y))
   (buf/write-double! buf (double z)))
+
+(defn read-vec3 [^Buf buf]
+  [(buf/read-double buf) (buf/read-double buf) (buf/read-double buf)])
 
 (defn write-fixed-vec3
   "Writes a position as three ints of eighths of a block."
@@ -168,12 +168,16 @@
   (when (lp-partial? scale)
     (write-varint buf (bit-shift-right scale 2))))
 
+(def ^:private ^:const lp-zero
+  "The size under which the wire sends a vector as zero."
+  3.051944088384301E-5)
+
 (defn write-lp-vec3
   "Writes a vector quantized to a direction and a whole scale."
   [^Buf buf [x y z]]
   (let [x (double x) y (double y) z (double z)
         m (max (Math/abs x) (Math/abs y) (Math/abs z))]
-    (if (< m 3.051944088384301E-5)
+    (if (< m lp-zero)
       (buf/write-byte! buf 0)
       (let [scale (long (Math/ceil m))]
         (write-lp-bits buf (lp-bits x y z scale) scale)))))
@@ -263,13 +267,10 @@
   ^long [^Buf buf]
   (dec (read-varint buf)))
 
-(defn- full-id ^String [^String s]
-  (if (str/includes? s ":") s (str "minecraft:" s)))
-
 (defn read-id [^Buf buf]
   (let [s (read-string buf)
         k (data/kebab s)]
-    (if (= (full-id s) (data/wire k)) k s)))
+    (if (= (data/full-id s) (data/wire k)) k s)))
 
 (defn- stat-registry [type]
   (case type
