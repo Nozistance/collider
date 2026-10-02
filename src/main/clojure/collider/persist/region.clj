@@ -1,6 +1,5 @@
 (ns collider.persist.region
-  "Region logs: the chunks of a level in append-only files, and the
-  manifests that name how much of each file a commit holds."
+  "Append-only region files of chunks, and the manifests of commits."
   (:require [clojure.java.io :as io])
   (:import (collider.persist Region)
            (java.nio.file Path)))
@@ -22,9 +21,9 @@
 
 (defn open-all
   "Returns the regions that the manifest of generation gen in dir
-  names, indexed from their record heads."
+  names."
   [dir ^long gen]
-  (vec (Region/open (path dir) gen)))
+  (vec (Region/openAll (path dir) gen)))
 
 (defn key-of ^long [^Region r] (.-key r))
 
@@ -67,15 +66,10 @@
 (defn write-manifest!
   "Writes the manifest of generation gen in dir naming regions."
   [dir ^long gen regions]
-  (Region/manifest (path dir) gen (into-array Region regions)))
+  (Region/writeManifest (path dir) gen (into-array Region regions)))
 
 (defn sweep!
   "Deletes the files in dir that neither generation gen nor the one
   before it names."
   [dir ^long gen]
   (Region/sweep (path dir) gen))
-
-(defn put!
-  "Replaces file f with data whole and durably."
-  [f ^bytes data]
-  (Region/put (path f) data))

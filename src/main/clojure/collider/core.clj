@@ -1,10 +1,8 @@
 (ns collider.core
   "Server start and stop."
-  (:refer-clojure :exclude [run!])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [collider.cli :as cli]
             [collider.config :as config]
             [collider.data :as data]
             [collider.game.deltas :as deltas]
@@ -18,19 +16,14 @@
             [collider.net.server :as server]
             [collider.net.session :as session]
             [collider.persist.lock :as lock]
-            [collider.persist.snapshot :as snapshot]
+            [collider.persist.saver :as saver]
+            [collider.persist.store :as store]
             [collider.plugin :as plugin])
-  (:import (clojure.lang ExceptionInfo)
-           (java.io Closeable)
+  (:import (java.io Closeable)
            (collider.game.deltas.record Deltas)
-           (java.lang.management
-             GarbageCollectorMXBean ManagementFactory)
+           (java.lang.management ManagementFactory)
            (java.net BindException ServerSocket URL)
-           (java.util.concurrent
-             ConcurrentLinkedQueue Executors
-             ScheduledExecutorService ScheduledFuture ThreadFactory
-             TimeUnit))
-  (:gen-class))
+           (java.util.concurrent ConcurrentLinkedQueue)))
 
 (set! *warn-on-reflection* true)
 
@@ -46,10 +39,10 @@
   (doseq [{:keys [msg dim id payload]} (deltas/out-of deltas)]
     (case msg
       :store-chunk
-      (snapshot/store-chunk! saver dim id (:tick world) payload)
+      (saver/store-chunk! saver dim id (:tick world) payload)
       :load-chunk
       (let [done (on-loaded queue dim id)]
-        (snapshot/fetch-chunk! saver store dim id done))
+        (saver/fetch-chunk! saver store dim id done))
       nil)))
 
 (defn- deliver! [conns world deltas]
@@ -66,72 +59,32 @@
   (some-> socket .close)
   (some-> ticker ticker/stop-ticker!)
   (server/close-all! conns shutdown-reason shutdown-drain-ms)
-  (when saver (snapshot/stop-saver! saver store @world))
+  (when saver (saver/stop! saver store @world))
   (plugin/stop-all! (:plugins server))
   (some-> ^Closeable (:lock server) .close))
 
-(defn- saver-thread ^Thread [^Runnable r]
-  (doto (Thread. r "collider-saver-timer")
-    (.setDaemon true)))
+(defn stop
+  "Stops a running server and everything it started."
+  [{:keys [timer ^Thread shutdown-hook] :as server}]
+  (some-> timer saver/stop-timer!)
+  (when shutdown-hook
+    (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
+         (catch IllegalStateException _ nil)))
+  (shutdown! server)
+  (log/info "server stopped")
+  nil)
 
-(defn- saver-factory ^ThreadFactory []
-  (reify ThreadFactory
-    (newThread [_ r] (saver-thread r))))
+(defn halt!
+  "Stops a server whose tick crashed, then calls exit! with code 1."
+  [server exit!]
+  (stop server)
+  (exit! 1))
 
-(defn- autosave!
-  [{:keys [^ScheduledExecutorService pool settings save! pending]
-    :as saving}]
-  (let [ms (long (:commit-period-ms @settings))
-        run #(try (save!) (finally (autosave! saving)))
-        unit TimeUnit/MILLISECONDS]
-    (when (pos? ms)
-      (reset! pending (.schedule pool ^Runnable run ms unit)))))
-
-(defn- reschedule!
-  [{:keys [^ScheduledExecutorService pool pending] :as saving}]
-  (let [cancel #(some-> ^ScheduledFuture @pending (.cancel false))]
-    (.execute pool ^Runnable #(do (cancel) (autosave! saving)))))
-
-(defn- start-saving [save! settings]
-  (doto {:pool     (Executors/newSingleThreadScheduledExecutor
-                     (saver-factory))
-         :settings settings :save! save! :pending (atom nil)}
-    autosave!))
-
-(defn- restart-warning [old ks]
-  (log/warn "config.edn:" (str/join ", " (map pr-str ks))
-            "take a restart, keeping"
-            (pr-str (select-keys old ks))))
-
-(defn- reload-failure [e]
-  (let [{:keys [what why]} (ex-data e)]
-    (log/warn "reload failed:" (or what (ex-message e)))
-    (doseq [line why] (log/warn " " line))))
-
-(defn- applied!
-  [{:keys [settings on-change]} r eid]
-  (let [old @settings
-        s (:settings r)]
-    (when-let [ks (seq (:restart r))] (restart-warning old ks))
-    (reset! settings s)
-    (on-change old s)
-    [:config-loaded eid (select-keys s config/world-keys)]))
-
-(defn- reloaded!
-  [{:keys [settings overlay path ^ConcurrentLinkedQueue queue]
-    :as edge} eid]
-  (let [reread #(config/reload @settings path overlay)]
-    (.offer queue
-            (try (applied! edge (reread) eid)
-                 (catch Exception e
-                   (reload-failure e)
-                   [:config-failed eid])))))
-
-(defn- reload-io! [reload ^Deltas deltas]
+(defn- reload-io! [edge ^ConcurrentLinkedQueue queue ^Deltas deltas]
   (doseq [m (deltas/out-of deltas)
           :when (identical? :reload (:msg m))]
     (Thread/startVirtualThread
-      ^Runnable #(reloaded! reload (:to m)))))
+      ^Runnable #(.offer queue (config/reload! edge (:to m))))))
 
 (defn- shutdown-hook! [server]
   (let [t (Thread. ^Runnable #(shutdown! server) "collider-shutdown")]
@@ -140,7 +93,7 @@
 
 (defn- open-store [opts cfg]
   (or (:store opts)
-      (when-let [dir (:save-dir cfg)] (snapshot/file-store dir))))
+      (when-let [dir (:save-dir cfg)] (store/file-store dir))))
 
 (defn- world-lock [opts cfg]
   (when-not (:store opts)
@@ -167,7 +120,10 @@
     (try (run-out "git" "-C" dir "rev-parse" "--short=11" "HEAD")
          (catch Exception _ nil))))
 
-(defn- build-commit []
+(defn build-commit
+  "Returns the commit of the running code, or nil when it is not
+  known."
+  []
   (or (git-commit)
       (some-> (io/resource "collider/build.edn") slurp edn/read-string
               :commit)))
@@ -178,11 +134,11 @@
 
 (defn- open-world [opts cfg l]
   (let [store (open-store opts cfg)
-        saved (when store (snapshot/load-snapshot store))
+        saved (when store (store/load-world store))
         init (merge schema/initial-world saved)
         world (atom (assoc init :config (world-config cfg store)))
-        saver (when store (snapshot/start-saver))
-        save! (when saver #(snapshot/want-commit! saver))]
+        saver (when store (saver/start))
+        save! (when saver #(saver/want-save! saver))]
     {:settings (atom cfg) :opts opts :store store :saved saved
      :world world :saver saver :save! save! :handle (promise)
      :lock l}))
@@ -200,15 +156,13 @@
 
 (defn- reader [{:keys [saver store]}]
   (when saver
-    #(snapshot/fetch-chunk-now! saver store %1 %2)))
+    #(saver/fetch-chunk-now! saver store %1 %2)))
 
 (defn- io-input [{:keys [saver store world] :as base} conns]
-  (let [read (reader base)]
-    #(do (when saver (snapshot/commit-due! saver store world))
-         (hash-map :writable (server/writable-eids conns)
-                   :read-chunk read))))
-
-(declare halt!)
+  (let [read-chunk (reader base)]
+    #(do (when saver (saver/save-due! saver store world))
+         {:writable   (server/writable-eids conns)
+          :read-chunk read-chunk})))
 
 (defn- on-crash [handle]
   (fn [_]
@@ -216,48 +170,37 @@
       (Thread/startVirtualThread ^Runnable #(halt! @handle exit!)))))
 
 (defn- commit-now [{:keys [saver store world]}]
-  (when saver #(snapshot/request-save! saver store @world)))
-
-(def ^:private plugin-phases (memoize plugin/phases))
-
-(defn- spliced [systems]
-  #(plugin-phases tick/phases systems))
+  (when saver #(saver/save! saver store @world)))
 
 (defn- ticker-opts [base conns]
   (cond-> {:io-input (io-input base conns)
            :settings (:settings base)
            :on-pause (commit-now base)
            :on-crash (on-crash (:handle base))}
-    (:systems base) (assoc :phases (spliced (:systems base)))))
+    (:phases base) (assoc :phases (:phases base))))
 
-(defn- period-change [saving]
+(defn- period-change [timer]
   (fn [old new]
-    (when (and saving
+    (when (and timer
                (not= (:commit-period-ms old) (:commit-period-ms new)))
-      (reschedule! saving))))
+      (saver/retime! timer))))
 
-(defn- reload-edge [base queue saving]
+(defn- reload-edge [base timer]
   {:settings  (:settings base) :overlay (:opts base)
-   :path      "config.edn" :queue queue
-   :on-change (period-change saving)})
+   :path      config/file
+   :on-change (period-change timer)})
 
 (defn- start-clocks [base {:keys [queue conns]}]
   (let [{:keys [settings world saver save!]} base
-        saving (when saver (start-saving save! settings))
-        reload (reload-edge base queue saving)
+        timer (when saver (saver/timer save! settings))
+        reload (reload-edge base timer)
         out! (fn [w d]
                (when saver (chunk-io! base queue w d))
-               (reload-io! reload d)
+               (reload-io! reload queue d)
                (deliver! conns w d))
         opts (ticker-opts base conns)
         ticker (ticker/start-ticker! world queue out! opts)]
-    {:ticker    ticker :tick-stats (:stats ticker)
-     :scheduler (:pool saving)}))
-
-(defn- gc-name []
-  (let [beans (ManagementFactory/getGarbageCollectorMXBeans)
-        ^GarbageCollectorMXBean gc (first beans)]
-    (re-find #"\S+" (.getName gc))))
+    {:ticker ticker :tick-stats (:stats ticker) :timer timer}))
 
 (defn- host-event [saved config-written?]
   (let [rt (Runtime/getRuntime)
@@ -266,12 +209,10 @@
      :java            (System/getProperty "java.version")
      :cores           (.availableProcessors rt)
      :heap            (log/human-bytes (.maxMemory rt))
-     :gc              (gc-name)
-     :data            (data/dir)
      :world           (:save-dir (config/load-config))
      :chunks          (some-> (:stored lv) seq count)
      :entities        (count (:entities lv))
-     :config          "config.edn"
+     :config          config/file
      :config-written? config-written?}))
 
 (defn- timed [report step f]
@@ -281,14 +222,14 @@
     (report {:event :end :step step :took (- (System/nanoTime) t)})
     v))
 
-(defn- uptime ^long []
+(defn- uptime-ns ^long []
   (* 1000000 (.getUptime (ManagementFactory/getRuntimeMXBean))))
 
 (defn- port-taken [port]
   (let [why (format "Perhaps a server is already running on port %s?"
                     port)
-        cmd (format "Set another port in config.edn: {:port %s}"
-                    (inc (long port)))]
+        cmd (format "Set another port in %s: {:port %s}"
+                    config/file (inc (long port)))]
     (ex-info "port taken"
              {:what "failed to bind to port" :why why :command cmd})))
 
@@ -303,32 +244,26 @@
     s))
 
 (defn- plugin-env [mode opts cfg store]
-  {:dir (:plugins-dir opts "plugins") :mode mode :settings cfg
-   :store store})
+  {:dir (:plugins-dir opts plugin/default-dir) :mode mode
+   :settings cfg :store store})
 
-(def ^:private adds-at
-  {:plugins [:config :plugins]
-   :commands [:config :plugin-commands]
-   :deltas [:hooks :deltas]
-   :event-filters [:hooks :event-filters]
-   :delta-filters [:hooks :delta-filters]})
-
-(defn- with-adds [w adds]
-  (reduce-kv (fn [w k path]
-               (if-let [v (not-empty (get adds k))]
-                 (assoc-in w path v)
-                 w))
-             w adds-at))
+(defn- checked-phases
+  "Returns the live phases with the plugin systems in them. Throws
+  when a system names a phase the tick lacks."
+  [systems]
+  (let [phases (plugin/live-phases #'tick/phases systems)]
+    (phases)
+    phases))
 
 (defn- plugged [{:keys [opts settings store world] :as base} report]
   (let [ps (plugin/load-all (plugin-env :server opts @settings store))
         adds (plugin/contributions ps)
         systems (:systems adds)]
     (report {:event :plugins :loaded (map :manifest ps)})
-    (swap! world with-adds adds)
-    (plugin/phases tick/phases systems)
-    (cond-> (assoc base :plugins ps :adds adds)
-      (seq systems) (assoc :systems systems))))
+    (swap! world plugin/with-adds adds)
+    (let [phases (checked-phases systems)]
+      (cond-> (assoc base :plugins ps :adds adds)
+        (seq systems) (assoc :phases phases)))))
 
 (defn- prepared [opts cfg l report]
   (let [opened (open-world opts cfg l)]
@@ -347,7 +282,7 @@
               :plugins plugins :lock l}
         server (merge held net clocks)
         port (.getLocalPort ^ServerSocket (:socket net))]
-    (report {:event :ready :port port :took (uptime)})
+    (report {:event :ready :port port :took (uptime-ns)})
     (hooked base server)))
 
 (defn start
@@ -357,69 +292,6 @@
   (let [cfg (merge (config/load-config) opts)]
     (locked opts cfg #(started opts cfg %))))
 
-(defn stop
-  "Stops a running server and everything it started."
-  [{:keys [^ScheduledExecutorService scheduler ^Thread shutdown-hook]
-    :as server}]
-  (some-> scheduler .shutdownNow)
-  (when shutdown-hook
-    (try (.removeShutdownHook (Runtime/getRuntime) shutdown-hook)
-         (catch IllegalStateException _ nil)))
-  (shutdown! server)
-  (log/info "server stopped")
-  nil)
-
-(defn- halt!
-  "Stops a server whose tick crashed, then exits with code 1."
-  [server exit!]
-  (stop server)
-  (exit! 1))
-
-(defn- run! [opts]
-  (try (start (assoc opts :report cli/render!))
-       (catch ExceptionInfo e
-         (cli/render! (assoc (ex-data e) :event :error))
-         (System/exit 1))))
-
-(defonce ^{:doc "The server -main started, for the REPL."} running
-  (atom nil))
-
-(defn- serve! [args]
-  (log/to-file! "logs")
-  (when-not (data/dir)
-    (cli/render! (assoc (ex-data (data/no-tables)) :event :error))
-    (System/exit 1))
-  (let [written? (config/write-default!)
-        opts (apply merge {} (map edn/read-string args))
-        server (run! (assoc opts :config-written? written?))
-        ^Thread accept (:accept server)]
-    (reset! running server)
-    (.join accept)))
-
-(defn- failed! [e]
-  (cli/render! (assoc (ex-data e) :event :error)))
-
-(defn- not-built [c]
-  (ex-info (str c " is not built yet")
-           {:what (str "collider " c " is not built yet")
-            :why  ["Worlds come from the server itself for now."]}))
-
-(defn- unknown [c]
-  (ex-info (str "unknown command " c)
-           {:what (str "unknown command " c)
-            :why  ["See the commands with: collider help"]
-            :exit 2}))
-
-(defn- cli-commands [dir]
-  (into {} (for [{m :manifest} (plugin/scan dir), c (keys (:cli m))]
-             [c (:id m)])))
-
-(defn- help [opts]
-  (let [dir (:plugins-dir opts "plugins")
-        cs (when (.isDirectory (io/file dir)) (cli-commands dir))]
-    (cli/render! {:event :help :commands cs})
-    0))
-
 (defn- cli-run [c args opts cfg ^Closeable l]
   (data/load!)
   (let [env (plugin-env :cli opts cfg (open-store opts cfg))
@@ -427,42 +299,10 @@
     (try (plugin/run-cli! ps c args)
          (finally (plugin/stop-all! ps) (some-> l .close)))))
 
-(defn- plugin-command [c args opts]
-  (let [dir (:plugins-dir opts "plugins")]
-    (when-not (and (.isDirectory (io/file dir))
-                   (contains? (cli-commands dir) c))
-      (throw (unknown c))))
+(defn run-cli
+  "Runs command c of a plugin with args and returns its exit code.
+  The world of opts stays locked while it runs, without the network
+  and the tick."
+  [c args opts]
   (let [cfg (merge (config/load-config) opts)]
     (locked opts cfg #(cli-run c args opts cfg %))))
-
-(defn- version []
-  (cli/render! {:event :version :commit (build-commit)})
-  0)
-
-(defn command
-  "Runs command line command c with args and returns the exit code:
-  0 when it succeeds, 1 when it fails, 2 when there is no such
-  command. A plugin command runs with the plugins in :plugins-dir of
-  opts, without the network and the tick."
-  [c args opts]
-  (try
-    (case c
-      ("help" "-h" "--help") (help opts)
-      ("version" "--version") (version)
-      ("gen" "import" "export") (throw (not-built c))
-      (plugin-command c args opts))
-    (catch ExceptionInfo e
-      (failed! e)
-      (:exit (ex-data e) 1))))
-
-(defn- edn-arg? [s] (str/starts-with? (str/triml s) "{"))
-
-(defn -main
-  "Starts the server, or runs another command of the command line.
-  With no command or run, each argument is an edn map that overrides
-  the config."
-  [& args]
-  (let [[c & more] args]
-    (cond (or (nil? c) (edn-arg? c)) (serve! args)
-          (= "run" c) (serve! more)
-          :else (System/exit (command c more {})))))

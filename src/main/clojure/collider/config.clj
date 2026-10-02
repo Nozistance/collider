@@ -1,5 +1,5 @@
 (ns collider.config
-  "Server settings."
+  "Server settings and their reload."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
@@ -8,6 +8,10 @@
             [malli.error :as me]))
 
 (set! *warn-on-reflection* true)
+
+(def file
+  "The settings file of the server."
+  "config.edn")
 
 (def defaults
   {:port                     25565
@@ -43,20 +47,27 @@
    [:force-game-mode {:optional true} :boolean]
    [:plugins {:optional true} [:map-of :keyword :any]]])
 
-(defn- complaint [settings [k msgs]]
+(defn- complaint [v [k msgs]]
   (str k " " (str/join ", " msgs)
-       (when (contains? settings k)
-         (str ", got " (pr-str (get settings k))))))
+       (when (contains? v k) (str ", got " (pr-str (get v k))))))
+
+(defn complaints
+  "Returns the lines that say where v breaks schema, or nil when v
+  fits it."
+  [schema v]
+  (when-let [errors (me/humanize (m/explain schema v))]
+    (map #(complaint v %) errors)))
 
 (defn- checked [path settings]
-  (if-let [errors (me/humanize (m/explain Settings settings))]
+  (if-let [why (complaints Settings settings)]
     (throw (ex-info (str "invalid " path)
-                    {:what (str path " has bad settings")
-                     :why  (map #(complaint settings %) errors)}))
+                    {:what (str path " has bad settings") :why why}))
     settings))
 
 (defn load-config
-  ([] (load-config "config.edn"))
+  "Returns the settings in path over the defaults. Throws when they
+  are bad."
+  ([] (load-config file))
   ([path]
    (merge defaults
           (when (.exists (io/file (str path)))
@@ -70,10 +81,9 @@
 (def ^:private fixed-keys [:port :save-dir :plugins])
 
 (defn reload
-  "Returns the settings of path laid under overlay as :settings.
-  Keys that a running server cannot change keep their values.
-  Changed keys that need a restart go to :restart. Throws when the
-  config is bad."
+  "Returns the settings of path with overlay on top as :settings.
+  Keys that a running server cannot change keep their values and are
+  named in :restart when they differ. Throws when the config is bad."
   [current path overlay]
   (let [fresh (merge (load-config path) overlay)]
     {:settings (merge fresh (select-keys current fixed-keys))
@@ -87,7 +97,7 @@
 (defn write-default!
   "Writes the default settings to path unless path exists.
   Returns true when it writes them."
-  ([] (write-default! "config.edn"))
+  ([] (write-default! file))
   ([path]
    (let [f (io/file (str path))]
      (when-not (.exists f)
@@ -95,6 +105,32 @@
          (spit f (render defaults))
          true
          (catch Exception e
-           (log/warn "could not write" (.getPath f)
-                     "-" (.getMessage e))
+           (log/warn "could not write" (str f) "-" (ex-message e))
            false))))))
+
+(defn- restart-warning [old ks]
+  (log/warn (str file ":") (str/join ", " (map pr-str ks))
+            "take a restart, keeping"
+            (pr-str (select-keys old ks))))
+
+(defn- reload-failure [e]
+  (let [{:keys [what why]} (ex-data e)]
+    (log/warn "reload failed:" (or what (ex-message e)))
+    (doseq [line why] (log/warn " " line))))
+
+(defn- applied! [{:keys [settings on-change]} r eid]
+  (let [old @settings
+        s (:settings r)]
+    (when-let [ks (seq (:restart r))] (restart-warning old ks))
+    (reset! settings s)
+    (on-change old s)
+    [:config-loaded eid (select-keys s world-keys)]))
+
+(defn reload!
+  "Reads the config of a running server again for player eid.
+  Returns the event that tells the tick how it went."
+  [{:keys [settings path overlay] :as edge} eid]
+  (try (applied! edge (reload @settings path overlay) eid)
+       (catch Exception e
+         (reload-failure e)
+         [:config-failed eid])))

@@ -10,4 +10,4 @@
            :run   {:jvm-opts  ["-XX:+UseParallelGC"
                                "-XX:+UseCompactObjectHeaders" "-Xmx1g"
                                "--sun-misc-unsafe-memory-access=allow"]
-                   :main-opts ["-m" "collider.core"]}}}
+                   :main-opts ["-m" "collider.cli"]}}}

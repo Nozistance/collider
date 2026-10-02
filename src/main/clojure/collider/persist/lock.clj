@@ -39,8 +39,8 @@
        (catch OverlappingFileLockException _ nil)))
 
 (defn lock!
-  "Takes the lock of the world in dir, as the vanilla session.lock,
-  and returns it to close. Throws with words when another holds it."
+  "Takes the lock of the world in dir and returns it to close.
+  Throws when another process holds it."
   ^Closeable [dir]
   (let [f (io/file dir file-name)
         ch (opened f)]

@@ -28,10 +28,9 @@
 (defn dropped!
   "Logs that event ev failed in unit f and is dropped."
   [f ev ^Throwable t]
-  (let [unit (log/name-of f)
-        msg (str "event " (pr-str ev) " failed in " unit
-                 ", the event is dropped")]
-    (log/failure! unit msg t)))
+  (let [msg #(str "event " (pr-str ev) " failed in " %
+                  ", the event is dropped")]
+    (log/unit-failed! nil f t msg)))
 
 (defn- heard-event [w acc d]
   (try (when (input/heeded? w d)

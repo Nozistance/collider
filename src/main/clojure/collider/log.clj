@@ -127,18 +127,9 @@
     (apply f args)))
 
 (defn seconds
-  "Returns a duration in nanoseconds as `(1.2s)`."
+  "Returns a duration of nanos as seconds in parentheses."
   ^String [^long nanos]
   (String/format Locale/ROOT "(%.1fs)" (to-array [(/ nanos 1e9)])))
-
-(defn step
-  "Runs f and logs what it starts and how long it takes."
-  [doing done f]
-  (info (str doing "..."))
-  (let [t (System/nanoTime)
-        v (f)]
-    (info done (seconds (- (System/nanoTime) t)))
-    v))
 
 (defn- unit-str ^String [^double n unit]
   (if (= "B" unit)
