@@ -1,4 +1,4 @@
-{:paths   ["src/main/clojure" "target/classes"]
+{:paths   ["src/main/clojure" "src/main/java" "target/classes"]
  :deps    {org.clojure/clojure {:mvn/version "1.12.5"}}
  :aliases {:build {:ns-default build
                    :deps       {io.github.clojure/tools.build
