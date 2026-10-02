@@ -2,8 +2,14 @@
   "Anvil results, costs and names."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.block.menu :as menu]
+            [collider.game.changes :as changes]
             [collider.game.enchantment :as enchantment]
-            [collider.game.stack :as stack]))
+            [collider.game.out :as out]
+            [collider.game.stack :as stack]
+            [collider.random :as random]
+            [collider.world.block :as block]
+            [collider.world.blocks.chest :as chest]))
 
 (set! *warn-on-reflection* true)
 
@@ -212,5 +218,67 @@
 
 (defn next-stage
   "Returns the block an anvil wears down to, or nil when it breaks."
-  [block]
-  (stages block))
+  [b]
+  (stages b))
+
+(defn- menu-work [m inv creative?]
+  (work (get inv 0) (get inv 1) (:name m) (boolean creative?)))
+
+(defn- taken [m inv]
+  (let [n (long (:repair-count m 0))
+        left (- (long (:count (get inv 1) 1)) n)
+        inv (cond
+              (zero? n) (cond-> inv (not (:renaming? m)) (dissoc 1))
+              (pos? left) (update inv 1 assoc :count left)
+              :else (dissoc inv 1))]
+    (dissoc inv 0)))
+
+(defn- derive-result [m inv creative?]
+  (if-let [r (:result (menu-work m inv creative?))]
+    (assoc inv 2 r)
+    (dissoc inv 2)))
+
+(defn layout
+  "Returns the slot layout of anvil menu m for the player context
+  ctx."
+  [m ctx]
+  (let [place? (fn [slot _] (not= 2 (long slot)))
+        base (menu/slots-layout 3 place?)
+        v (:visible base)
+        creative? (boolean (:infinite? ctx))]
+    (assoc base
+      :result 2
+      :quick (fn [_ slot] (menu/combiner-quick v 2 slot))
+      :on-take (fn [inv] (taken m inv))
+      :derive (fn [inv] (derive-result m inv creative?)))))
+
+(defn changed
+  "Returns anvil menu m with the cost of its slots items."
+  [m items ctx]
+  (let [w (menu-work m items (:infinite? ctx))]
+    (assoc m :cost (:cost w) :repair-count (:repair-count w)
+             :renaming? (:renaming? w))))
+
+(def ^:private ^:const wear-chance 0.12)
+
+(defn- worn-state [^long st]
+  (when-let [b (next-stage (block/block-of st))]
+    (block/state b (block/props-of st))))
+
+(defn- wear-deltas [world pos ^long st]
+  (let [base (dec (long (:tick world)))
+        worn (worn-state st)
+        c [pos (or worn (block/emptied st))]
+        event (if worn :sound-anvil-used :sound-anvil-broken)]
+    (concat (changes/flagged-deltas world [c] (if worn 2 3) nil base)
+            [(out/all (out/level-event event pos 0))])))
+
+(defn take-deltas
+  "Returns the wear and the sound of a result leaving an anvil."
+  [world m creative?]
+  (let [pos (:pos m)
+        st (chest/state-at (:chunks world) pos)
+        roll (random/of-key (:tick world) pos :anvil)]
+    (if (and (not creative?) (< roll wear-chance))
+      (wear-deltas world pos st)
+      [(out/all (out/level-event :sound-anvil-used pos 0))])))

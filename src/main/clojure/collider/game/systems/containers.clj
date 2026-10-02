@@ -10,13 +10,16 @@
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.enchanting :as enchanting]
+            [collider.game.block.lectern :as lectern]
+            [collider.game.block.lid :as lid]
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.apply :as apply]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.random :as random]
-            [collider.world.block :as block]))
+            [collider.world.block :as block]
+            [collider.world.blocks.chest :as chest]))
 
 (set! *warn-on-reflection* true)
 
@@ -49,7 +52,7 @@
       (when (and (container/bench? m) (contains? m :selected))
         [(one 0 (:selected m))])
       (when (container/lectern? m)
-        [(one 0 (container/page world m))])
+        [(one 0 (lectern/page world m))])
       (map-indexed one (container/data-values world m)))))
 
 (def ^:private open-stats
@@ -76,7 +79,7 @@
 (defn- open-stat [world pos m]
   (or (open-stats (:type m))
       (block-stats (block/type-of
-                     (container/state-at (:chunks world) pos)))))
+                     (chest/state-at (:chunks world) pos)))))
 
 (defn- open-menu-deltas [world eid e m]
   (let [m (container/for-player m e)
@@ -202,7 +205,7 @@
 (defn- take-deltas [world e m takes]
   (when (pos? (long takes))
     (case (:type m)
-      :anvil (container/anvil-take-deltas
+      :anvil (anvil/take-deltas
                world m (player/infinite-materials? e))
       (keep identity [(container/take-sound m)]))))
 
@@ -260,21 +263,21 @@
           (click-result-deltas world eid e m c))))))
 
 (defn- page-button-deltas [world eid m ^long want]
-  (when-let [ds (container/page-deltas world m want)]
-    (let [page (container/next-page world m want)
+  (when-let [ds (lectern/page-deltas world m want)]
+    (let [page (lectern/next-page world m want)
           p (out/container-data (:id m) 0 page)]
       (concat ds [(out/to eid p)]))))
 
 (defn- take-book-deltas
   [world eid e m]
-  (when-let [book (container/book-of world m)]
+  (when-let [book (lectern/book-of world m)]
     (let [inv (or (:inventory e) {})
           [changes left] (inventory/add-stack inv book)
           state-id (inc (long (:state-id m 1)))]
       (concat
-        (container/remove-book-deltas world (:pos m))
+        (lectern/remove-book-deltas world (:pos m))
         [(out/to eid (out/container-slot (:id m) state-id 0 nil))]
-        (when (not= 0 (container/page world m))
+        (when (not= 0 (lectern/page world m))
           [(out/to eid (out/container-data (:id m) 0 0))])
         (for [[slot s] changes] [:set-slot eid slot s])
         (when left [[:spawn-entity (item/dropped world eid left)]])
@@ -282,7 +285,7 @@
 
 (defn- lectern-button-deltas [world eid e m id]
   (let [id (long id)
-        page (container/page world m)]
+        page (lectern/page world m)]
     (cond
       (>= id 100) (page-button-deltas world eid m (- id 100))
       (= 1 id) (page-button-deltas world eid m (dec page))
@@ -442,7 +445,7 @@
 
 (defn- containers-deltas [world events]
   (concat
-    (container/animate-deltas world)
+    (lid/animate-deltas world)
     (quit-deltas world)
     (apply/fold-events world events event-deltas)))
 

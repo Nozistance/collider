@@ -1,6 +1,7 @@
 (ns collider.game.block.smithing
   "Smithing recipes and their results."
   (:require [collider.data :as data]
+            [collider.game.block.menu :as menu]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -70,3 +71,53 @@
   [template base addition]
   (assemble (recipe-for template base addition)
             template base addition))
+
+(defn- slots-result [inv]
+  (result (get inv 0) (get inv 1) (get inv 2)))
+
+(defn- may-place? [slot stack]
+  (case (long slot)
+    0 (template? stack)
+    1 (base? stack)
+    2 (addition? stack)
+    3 false))
+
+(defn- quick [v slot]
+  (let [i (menu/index-of v slot)
+        total (count v)]
+    (cond
+      (= 3 i) (menu/span v 4 total true)
+      (< i 3) (menu/span v 4 total false)
+      :else {:try  (menu/span v 0 3 false)
+             :else (if (< i 31)
+                     (menu/span v 31 total false)
+                     (menu/span v 4 31 false))})))
+
+(defn- derive-result [inv]
+  (if-let [r (slots-result inv)]
+    (assoc inv 3 r)
+    (dissoc inv 3)))
+
+(defn- taken [inv]
+  (-> inv (menu/shrink 0) (menu/shrink 1) (menu/shrink 2)))
+
+(defn layout
+  "Returns the slot layout of a smithing table menu."
+  []
+  (let [base (menu/slots-layout 4 may-place?)
+        v (:visible base)]
+    (assoc base
+      :result 3
+      :no-gather #{3}
+      :stat {:slot 3 :by :taken}
+      :quick (fn [_ slot] (quick v slot))
+      :on-take taken
+      :derive derive-result)))
+
+(defn changed
+  "Returns smithing menu m flagged when its three full input slots
+  of items make nothing."
+  [m items]
+  (let [bad? (and (every? some? (take 3 items))
+                  (nil? (slots-result items)))]
+    (assoc m :recipe-error? (boolean bad?))))

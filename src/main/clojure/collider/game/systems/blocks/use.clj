@@ -5,6 +5,7 @@
             [collider.game.block.campfire :as campfire]
             [collider.game.block.container :as container]
             [collider.game.block.jukebox :as jukebox]
+            [collider.game.block.lectern :as lectern]
             [collider.game.block.sign :as sign]
             [collider.game.changes :as changes]
             [collider.game.inventory :as inventory]
@@ -19,7 +20,7 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.dragonegg :as dragonegg]
-            [collider.world.blocks.lectern :as lectern]
+            [collider.world.blocks.lectern :as block-lectern]
             [collider.world.direction :as dir]
             [collider.world.env.signal :as signal]))
 
@@ -270,7 +271,7 @@
   "SignBlock.useItemOn: an applicator changes the side faced, else
   the main hand edits it."
   [world eid pos face item]
-  (let [st (changes/block-at world pos) e (sign/at world pos)
+  (let [st (changes/block-at world pos) e (be/at world pos)
         at (get-in world [:entities eid :pos])
         front? (sign/front? st pos at)
         busy? (sign-busy? world eid e)]
@@ -283,7 +284,7 @@
   "Returns the deltas that write lines on one side of the sign at pos,
   when player eid edits it and it is not waxed."
   [world [eid pos front? lines]]
-  (let [e (sign/at world pos)]
+  (let [e (be/at world pos)]
     (when (and e (not (:waxed? e)) (= eid (:editor e)))
       [[:set-block-entity pos (sign/written e front? lines)]
        (out/all (out/block-entity pos))])))
@@ -485,10 +486,10 @@
         stack (player/use-stack world eid)
         main? (main-hand? world eid)]
     (cond
-      (lectern/has-book? st)
+      (block-lectern/has-book? st)
       (when main? (containers/open-deltas world eid pos))
-      (container/book? stack)
-      (concat (container/place-book-deltas world pos st stack)
+      (lectern/book? stack)
+      (concat (lectern/place-book-deltas world pos st stack)
               (consume-deltas world eid))
       (and main? item) [])))
 

@@ -2,9 +2,7 @@
   "Crafting grids of the table and the player."
   (:require [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]
-            [collider.game.stack :as stack]
-            [collider.game.player :as player])
-  (:import (java.util List)))
+            [collider.game.player :as player]))
 
 (set! *warn-on-reflection* true)
 
@@ -49,39 +47,12 @@
 
 (defn- count-of ^long [s] (if s (long (:count s 1)) 0))
 
-(defn- max-of ^long [s] (stack/max-size s))
-
-(defn- own-slot ^long [ctx ^long i]
-  (+ (long (:base ctx 0))
-     (cond (< i 9) (+ 36 i) (= i 40) 45 :else i)))
-
-(defn- room? [inv slot stack]
-  (let [s (get inv slot)]
-    (and s (same-kind? s stack) (> (max-of s) 1)
-         (< (count-of s) (max-of s)))))
-
-(defn- space-slot [ctx inv stack]
-  (some #(when (room? inv % stack) %)
-        (map #(own-slot ctx %)
-             (list* (:held ctx) 40 (range 36)))))
-
-(defn- free-slot [ctx inv]
-  (some #(when-not (get inv %) %)
-        (map #(own-slot ctx %) (range 36))))
-
 (defn- give [ctx m stack]
   (let [[inv left] (menu/add-to-inventory
                      (:base ctx 0) (:held ctx 0) (:infinite? ctx)
                      (:inventory m) stack)]
     (cond-> (assoc m :inventory inv)
       left (update :spills conj left))))
-
-(defn- shrink [inv slot]
-  (let [s (get inv slot)
-        n (dec (count-of s))]
-    (cond (nil? s) inv
-          (pos? n) (assoc inv slot (assoc s :count n))
-          :else (dissoc inv slot))))
 
 (defn- replaced [ctx m slot rep]
   (let [here (get (:inventory m) slot)]
@@ -104,26 +75,18 @@
           reps (remaining input)]
       (reduce (fn [m i]
                 (let [slot (cell-slot grid w input i)
-                      m (update m :inventory shrink slot)]
+                      m (update m :inventory menu/shrink slot)]
                   (replaced ctx m slot (nth reps i))))
               m
               (range (count reps))))))
 
-(defn- back-slot [ctx inv s]
-  (when s (or (space-slot ctx inv s) (free-slot ctx inv))))
+(def ^:private uncapped Long/MAX_VALUE)
 
 (defn place-back
   "Returns a player's inventory with a stack put back into it, as a
   closing screen puts it. It also returns what did not fit."
   [ctx inv stack]
-  (loop [inv inv s stack]
-    (if-let [slot (back-slot ctx inv s)]
-      (let [here (count-of (get inv slot))
-            put (min (count-of s) (- (max-of s) here))
-            left (- (count-of s) put)]
-        (recur (assoc inv slot (assoc s :count (+ here put)))
-               (when (pos? left) (assoc s :count left))))
-      [inv s])))
+  (menu/place-back uncapped (:base ctx 0) (:held ctx) inv stack))
 
 (def ^:private player-grid [1 2 3 4])
 
@@ -135,20 +98,15 @@
     :derive (deriving ctx 0 player-grid 2)
     :craft (consuming ctx player-grid 2)))
 
-(defn- span [v ^long from ^long to reverse?]
-  (map v (if reverse?
-           (range (dec to) (dec from) -1)
-           (range from to))))
-
 (defn- table-quick [v slot]
-  (let [i (long (.indexOf ^List v slot))]
+  (let [i (menu/index-of v slot)]
     (cond
-      (= 0 i) (span v 10 46 true)
-      (< i 10) (span v 10 46 false)
-      :else {:try  (span v 1 10 false)
+      (= 0 i) (menu/span v 10 46 true)
+      (< i 10) (menu/span v 10 46 false)
+      :else {:try  (menu/span v 1 10 false)
              :else (if (< i 37)
-                     (span v 37 46 false)
-                     (span v 10 37 false))})))
+                     (menu/span v 37 46 false)
+                     (menu/span v 10 37 false))})))
 
 (def ^:private table-grid (vec (range 1 10)))
 

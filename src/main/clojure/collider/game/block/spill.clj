@@ -1,13 +1,11 @@
 (ns collider.game.block.spill
-  "What the block entity of a removed block leaves in the world, as
-  BlockEntity.preRemoveSideEffects."
+  "What the block entity of a removed block leaves in the world."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
             [collider.game.entity :as entity]
             [collider.game.item :as item]
             [collider.game.out :as out]
             [collider.random :as random]
-            [collider.world.block :as block]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.direction :as dir]))
 
@@ -34,7 +32,7 @@
 (defn- record-popped [world pos e]
   (when-let [r (:record e)]
     (let [above (mapv + pos [0 1 0])
-          stop (out/level-event out/sound-stop-jukebox-song pos 0)]
+          stop (out/level-event :sound-stop-jukebox-song pos 0)]
       [[:spawn-entity (item/popped world above r :jukebox)]
        (out/all stop)])))
 
@@ -47,17 +45,6 @@
              (+ (double z) 0.5 (* 0.25 (double dz)))]
           v (entity/pop-velocity [(:tick world) pos :lectern])]
       [[:spawn-entity (entity/item p v (:book e))]])))
-
-(defn removed?
-  "Tells whether the block entity of old goes when st takes its cell
-  with flags: the block changes, the kind of block entity with it,
-  and flag 256 is not set."
-  [old st flags]
-  (let [k (be/kind old)]
-    (boolean
-      (and k (not (bit-test (long flags) 8))
-           (not= (block/block-of old) (block/block-of (long st)))
-           (not= k (be/kind (long st)))))))
 
 (def ^:private furnaces #{:furnace :blast-furnace :smoker})
 

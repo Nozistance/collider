@@ -2,6 +2,7 @@
   "The enchanting table: the power of the bookshelves around it, the
   offers a player's seed makes and the enchanting of the item."
   (:require [collider.data :as data]
+            [collider.game.block.menu :as menu]
             [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]
             [collider.world.block :as block]
@@ -208,3 +209,34 @@
   "Returns the enchantment seed a roll from 0 to 1 makes."
   ^long [^double roll]
   (unchecked-int (long (Math/floor (* roll 4294967296.0)))))
+
+(defn- may-place? [slot stack]
+  (or (zero? (long slot)) (= :lapis-lazuli (:item stack))))
+
+(defn- slot-max [slot _] (when (zero? (long slot)) 1))
+
+(defn- quick [v inv slot]
+  (let [i (menu/index-of v slot)]
+    (cond
+      (< i 2) (menu/span v 2 38 true)
+      (= :lapis-lazuli (:item (get inv slot))) (menu/span v 1 2 true)
+      :else (menu/span v 0 1 false))))
+
+(defn layout
+  "Returns the slot layout of an enchanting table menu."
+  []
+  (let [base (menu/slots-layout 2 may-place?)
+        v (:visible base)]
+    (assoc base
+      :max slot-max
+      :derive identity
+      :quick (fn [inv slot] (quick v inv slot)))))
+
+(defn changed
+  "Returns enchanting menu m with the offers for its slots items and
+  the bookshelves of the player context ctx."
+  [m items ctx]
+  (if (= (:contents m) items)
+    m
+    (let [shelves (:shelves ctx 0)]
+      (merge m (offers (:seed m) shelves (nth items 0))))))

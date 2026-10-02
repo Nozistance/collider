@@ -93,6 +93,37 @@
   ([rows] (container-layout rows (fn [_ _] true)))
   ([^long rows place] (slots-layout (* 9 rows) place)))
 
+(defn index-of
+  "Returns the index of x in v, or -1 when v does not hold it."
+  ^long [v x]
+  (long (or (first (keep-indexed (fn [i y] (when (= x y) i)) v))
+            -1)))
+
+(defn span
+  "Returns the slots of visible v from index from below index to,
+  last first when reverse? is true."
+  [v ^long from ^long to reverse?]
+  (map v (if reverse?
+           (range (dec to) (dec from) -1)
+           (range from to))))
+
+(defn combiner-quick
+  "Returns the slots a shift-click on slot tries in a menu of two
+  inputs and the result at index result."
+  [v ^long result slot]
+  (let [i (index-of v slot)
+        total (count v)]
+    (cond
+      (= i result) (span v (inc result) total true)
+      (< i result) (span v (inc result) total false)
+      :else (span v 0 result false))))
+
+(defn shrink
+  "Returns inventory inv with one item less in slot."
+  [inv slot]
+  (let [n (dec (long (:count (get inv slot) 1)))]
+    (if (pos? n) (update inv slot assoc :count n) (dissoc inv slot))))
+
 (defn- layout-of [m] (or (:layout m) player-layout))
 
 (defn- slot-max ^long [layout slot stack]
@@ -103,36 +134,44 @@
   (+ base
      (cond (< i 9) (+ hotbar-slot i) (= i 40) offhand-slot :else i)))
 
-(defn- room? [inv slot stack]
+(defn- room? [cap inv slot stack]
   (let [s (get inv slot)]
     (and (same? s stack) (> (max-of s) 1)
-         (< (count-of s) (min container-max (max-of s))))))
+         (< (count-of s) (min (long cap) (max-of s))))))
 
-(defn- space-slot [base held inv stack]
-  (some #(when (room? inv % stack) %)
+(defn- space-slot [cap base held inv stack]
+  (some #(when (room? cap inv % stack) %)
         (map #(own-slot base %) (list* held 40 (range 36)))))
 
 (defn- free-slot [base inv]
   (some #(when-not (get inv %) %)
         (map #(own-slot base %) (range 36))))
 
-(defn- add-once [base held inv stack]
-  (if-let [slot (or (space-slot base held inv stack)
+(defn- add-once [cap base held inv stack]
+  (if-let [slot (or (space-slot cap base held inv stack)
                     (free-slot base inv))]
     (let [here (count-of (get inv slot))
-          cap (min container-max (max-of stack))
-          put (min (count-of stack) (- cap here))]
+          top (min (long cap) (max-of stack))
+          put (min (count-of stack) (- top here))]
       [(assoc inv slot (assoc stack :count (+ here put)))
        (- (count-of stack) put)])
     [inv (count-of stack)]))
 
-(defn- add-all [base held inv stack]
+(defn- add-all [cap base held inv stack]
   (loop [inv inv n (count-of stack)]
-    (let [[inv' n'] (add-once base held inv (assoc stack :count n))
+    (let [s (assoc stack :count n)
+          [inv' n'] (add-once cap base held inv s)
           n' (long n')]
       (if (and (pos? n') (< n' n))
         (recur inv' n')
         [inv' n']))))
+
+(defn place-back
+  "Returns inventory inv with stack put back into the player slots
+  at most cap to a slot, and the part of stack that did not fit."
+  [cap base held inv stack]
+  (let [[inv' n] (add-all cap (long base) (long held) inv stack)]
+    [inv' (sized stack n)]))
 
 (defn- damaged? [stack]
   (and (stack/damageable? stack) (pos? (stack/damage stack))))
@@ -144,9 +183,10 @@
 
 (defn add-to-inventory [base held creative? inv stack]
   (let [base (long base)
+        held (long held)
         [inv' n] (if (damaged? stack)
                    (add-damaged base inv stack)
-                   (add-all base (long held) inv stack))]
+                   (add-all container-max base held inv stack))]
     [inv' (when-not creative? (sized stack n))]))
 
 (defn- insert [layout inv slot stack n]

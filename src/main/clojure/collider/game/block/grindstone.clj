@@ -1,6 +1,7 @@
 (ns collider.game.block.grindstone
   "Grindstone results and the experience they free."
   (:require [collider.data :as data]
+            [collider.game.block.menu :as menu]
             [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]))
 
@@ -101,3 +102,24 @@
       (let [half (long (Math/ceil (/ (double amount) 2.0)))]
         (+ half (long (* roll (double half)))))
       0)))
+
+(defn- may-place? [slot stack]
+  (case (long slot)
+    (0 1) (accepts? stack)
+    2 false))
+
+(defn- derive-result [inv]
+  (if-let [r (result (get inv 0) (get inv 1))]
+    (assoc inv 2 r)
+    (dissoc inv 2)))
+
+(defn layout
+  "Returns the slot layout of a grindstone menu."
+  []
+  (let [base (menu/slots-layout 3 may-place?)
+        v (:visible base)]
+    (assoc base
+      :result 2
+      :quick (fn [_ slot] (menu/combiner-quick v 2 slot))
+      :on-take (fn [inv] (dissoc inv 0 1))
+      :derive derive-result)))
