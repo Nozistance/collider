@@ -1,6 +1,5 @@
 package collider.world;
 
-import collider.proto.Buf;
 import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
@@ -212,6 +211,33 @@ public final class Section {
 
     public int paletteSize() {
         return pal == null ? 0 : pal.length;
+    }
+
+    /// Returns the state id at place `k` of the palette.
+    public int paletteId(int k) {
+        return pal[k];
+    }
+
+    /// Returns how many longs hold the packed palette indices.
+    public int wordCount() {
+        return data == null ? 0 : data.length;
+    }
+
+    /// Returns the long at `c` of the packed palette indices.
+    public long word(int c) {
+        return data[c];
+    }
+
+    /// Returns the block light bytes, or null when all are dark. The
+    /// caller must not change them.
+    public byte[] blockLightBytes() {
+        return bl;
+    }
+
+    /// Returns the sky light bytes, or null when all are dark. The
+    /// caller must not change them.
+    public byte[] skyLightBytes() {
+        return sl;
     }
 
     public short[] blocks() {
@@ -439,40 +465,13 @@ public final class Section {
         return 0;
     }
 
-    /// Writes this section to `buf` in network form. It counts the
-    /// blocks whose id is true in `fluid` and gives every block
-    /// the `biome`.
-    public void write(Buf buf, boolean[] fluid, int biome) {
-        long t = tally(fluid);
-        buf.writeShort((int) (t >>> 16));
-        buf.writeShort((int) (t & 0xFFFF));
-        buf.writeByte(bits);
-        if (pal != null) writePalette(buf);
-        if (data != null) {
-            for (long x : data) buf.writeLong(x);
-        }
-        buf.writeByte(0);
-        varint(buf, biome);
-    }
-
-    private void writePalette(Buf buf) {
-        if (bits != 0) varint(buf, pal.length);
-        for (int id : pal) varint(buf, id);
-    }
-
-    private static void varint(Buf buf, int v) {
-        while ((v & ~0x7F) != 0) {
-            buf.writeByte((v & 0x7F) | 0x80);
-            v >>>= 7;
-        }
-        buf.writeByte(v);
-    }
-
     private static boolean fluid(boolean[] fluid, int id) {
         return id < fluid.length && fluid[id];
     }
 
-    private long tally(boolean[] fluid) {
+    /// Returns the count of non-air blocks shifted left by 16 bits,
+    /// plus the count of blocks whose id is true in `fluid`.
+    public long tally(boolean[] fluid) {
         if (bits == 0) {
             int v = pal[0];
             long air = v == 0 ? 0 : SIZE;
@@ -507,18 +506,6 @@ public final class Section {
             if (id == 0 || fluid(fluid, id)) return true;
         }
         return false;
-    }
-
-    public void writeBlockLight(Buf buf) {
-        buf.writeBytes(bl == null ? ZERO : bl);
-    }
-
-    public void writeSkyLight(Buf buf) {
-        buf.writeBytes(sl == null ? ZERO : sl);
-    }
-
-    public static void writeFullLight(Buf buf) {
-        buf.writeBytes(FULL);
     }
 
     public void save(DataOutput out) throws IOException {

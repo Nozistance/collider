@@ -1,5 +1,11 @@
 (ns collider.proto.entitydata
-  "Synched fields of the entity classes.")
+  "Synched fields of the entity classes and their wire form."
+  (:require [collider.proto.buf :as buf]
+            [collider.proto.codec :as c]
+            [collider.proto.components :as comps]
+            [collider.proto.nbt :as nbt]
+            [collider.proto.text :as text])
+  (:import (collider.proto Buf)))
 
 (set! *warn-on-reflection* true)
 
@@ -109,3 +115,84 @@
   [cls m]
   (let [fs (fields cls)]
     (vec (sort-by first (map #(entry cls fs %) m)))))
+
+(def data-types
+  "The place of each entity data type in serializer order."
+  {:byte 0 :int 1 :float 3 :optional-component 6 :item 7
+   :boolean 8 :block-pos 10 :optional-block-pos 11 :direction 12
+   :block-state 14 :particle 16 :pose 20 :cow-variant 23
+   :cow-sound-variant 24 :pig-variant 28 :pig-sound-variant 29
+   :chicken-variant 30 :chicken-sound-variant 31
+   :painting-variant 34})
+
+(defn- write-data-pos [^Buf buf v]
+  (let [[x y z] v]
+    (c/write-block-pos buf (long x) (long y) (long z))))
+
+(defn- write-optional! [^Buf buf v write]
+  (buf/write-boolean! buf (some? v))
+  (when (some? v) (write buf v)))
+
+(defn- write-data-value [^Buf buf type v]
+  (case type
+    :byte (buf/write-byte! buf (int v))
+    :float (buf/write-float! buf (float v))
+    :optional-component (write-optional! buf v text/write-component)
+    :item (comps/write-item-stack buf v)
+    :boolean (buf/write-boolean! buf (boolean v))
+    :block-pos (write-data-pos buf v)
+    :optional-block-pos (write-optional! buf v write-data-pos)
+    :particle (comps/write-particle buf v)
+    :painting-variant (comps/write-painting-variant buf v)
+    (:int :direction :block-state :pose :cow-variant
+     :cow-sound-variant :pig-variant :pig-sound-variant
+     :chicken-variant :chicken-sound-variant)
+    (c/write-varint buf (long v))))
+
+(def ^:private ^:const entity-data-end 255)
+
+(defn write-entity-data
+  "Writes the tracked fields of an entity."
+  [^Buf buf entries]
+  (doseq [[idx type v] entries]
+    (buf/write-byte! buf (int idx))
+    (c/write-varint buf (data-types type))
+    (write-data-value buf type v))
+  (buf/write-byte! buf entity-data-end))
+
+(def ^:private data-type-names
+  (into {} (map (fn [[k v]] [(long v) k])) data-types))
+
+(defn- read-optional-pos [^Buf buf]
+  (when (buf/read-boolean buf) (c/read-block-pos buf)))
+
+(defn- read-optional-text [^Buf buf]
+  (when (buf/read-boolean buf) (nbt/read-nbt buf)))
+
+(defn- read-data-value [^Buf buf type]
+  (case type
+    :byte (buf/read-byte buf)
+    :float (buf/read-float buf)
+    :optional-component (read-optional-text buf)
+    :item (comps/read-item-stack buf)
+    :boolean (buf/read-boolean buf)
+    :block-pos (c/read-block-pos buf)
+    :optional-block-pos (read-optional-pos buf)
+    :particle (comps/read-particle buf)
+    :painting-variant (comps/read-painting-variant buf)
+    (:int :direction :block-state :pose :cow-variant
+     :cow-sound-variant :pig-variant :pig-sound-variant
+     :chicken-variant :chicken-sound-variant)
+    (c/read-varint buf)))
+
+(defn read-entity-data
+  "Returns the tracked fields of an entity at the read point."
+  [^Buf buf]
+  (loop [out []]
+    (let [idx (buf/read-unsigned-byte buf)]
+      (if (= entity-data-end idx)
+        out
+        (let [type (data-type-names (c/read-varint buf))
+              v (read-data-value buf type)]
+          (recur (conj out [idx type v])))))))
+

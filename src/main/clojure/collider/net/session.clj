@@ -3,6 +3,7 @@
   (:require [clojure.data.json :as json]
             [collider.data :as data]
             [collider.game.mode :as game-mode]
+            [collider.game.player :as player]
             [collider.log :as log]
             [collider.net.crypt :as crypt]
             [collider.proto.codec :as c]
@@ -326,7 +327,7 @@
     (login-ok! conn io cfg who)))
 
 (defn- offline [{nm :name}]
-  {:uuid (c/offline-uuid nm) :name nm :properties []})
+  {:uuid (player/offline-uuid nm) :name nm :properties []})
 
 (defn- provider [io]
   (or (:identity io) {:identify offline}))
@@ -406,6 +407,9 @@
   (server/set-conn-state! conn :configuration)
   (start-configuration! conn))
 
+(defn- client-information! [conn m]
+  (server/put! conn :settings (client-settings m)))
+
 (defn- dispatch!
   [conn {:keys [^ConcurrentLinkedQueue queue settings] :as io} m]
   (case [(server/conn-state conn) (:packet m)]
@@ -416,8 +420,7 @@
     [:login :hello] (hello! conn io @settings m)
     [:login :key] (key! conn io @settings m)
     [:login :login-acknowledged] (login-acknowledged! conn)
-    [:configuration :client-information]
-    (server/put! conn :settings (client-settings m))
+    [:configuration :client-information] (client-information! conn m)
     [:configuration :select-known-packs] (finish-configuration! conn)
     [:configuration :finish-configuration]
     (do-login! conn io @settings)

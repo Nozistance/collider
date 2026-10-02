@@ -1,11 +1,13 @@
 (ns collider.proto.wire
-  "Wire types as malli schemas, and the readers and writers
-  compiled from them."
+  "Wire types of packet fields."
   (:refer-clojure
     :exclude [boolean byte bytes double float int long short string])
   (:require [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
+            [collider.proto.components :as comps]
+            [collider.proto.entitydata :as ed]
+            [collider.proto.nbt :as nbt]
             [collider.proto.text :as text]
             [malli.core :as m]))
 
@@ -100,8 +102,7 @@
              section-gen))
 
 (def section-change
-  "One block of a section update as one varlong of its place in the
-  section and its state."
+  "One block change of a section update."
   (wire-type :wire/section-change sequential? c/read-section-change
              c/write-section-change
              [:tuple [:int {:min 0 :max 4095}]
@@ -147,11 +148,11 @@
              lp-gen))
 
 (def text
-  (wire-type :wire/text #(or (string? %) (map? %)) c/read-nbt
+  (wire-type :wire/text #(or (string? %) (map? %)) nbt/read-nbt
              text/write-component [:string {:max 32}]))
 
 (def nbt
-  (wire-type :wire/nbt any? c/read-nbt c/write-nbt
+  (wire-type :wire/nbt any? nbt/read-nbt nbt/write-nbt
              [:maybe [:map-of [:enum :a :b :c] [:string {:max 5}]]]))
 
 (def stat
@@ -161,7 +162,7 @@
 
 (def hashed-stack
   (wire-type :wire/hashed-stack #(or (nil? %) (map? %))
-             c/read-hashed-stack nil
+             comps/read-hashed-stack nil
              [:enum nil {:item :stone :count 1}]))
 
 (def holder-ref
@@ -175,14 +176,23 @@
         (buf/write-boolean! b false))
     (c/write-holder-ref b v)))
 
+(defn- read-sound-holder [b]
+  (let [i (c/read-varint b)]
+    (if (zero? i)
+      (let [s (c/read-string b)]
+        (when (buf/read-boolean b) (buf/read-float b))
+        s)
+      (dec i))))
+
 (def sound-holder
+  "A sound event by id, or by name with no fixed range."
   (wire-type :wire/sound-holder #(or (int? %) (string? %))
-             c/read-holder-ref write-sound-holder
+             read-sound-holder write-sound-holder
              [:int {:min 0 :max 100}]))
 
 (def entity-data
-  (wire-type :wire/entity-data sequential? c/read-entity-data
-             c/write-entity-data
+  (wire-type :wire/entity-data sequential? ed/read-entity-data
+             ed/write-entity-data
              [:enum [] [[0 :byte 5]] [[0 :byte 5] [8 :float 20.0]]]))
 
 (def string
@@ -205,8 +215,8 @@
        (let [delimited? (:delimited props)]
          {:pred #(or (nil? %) (map? %))
           :type-properties
-          {:wire/read (fn [b] (c/read-item-stack b delimited?))
-           :wire/write c/write-item-stack
+          {:wire/read (fn [b] (comps/read-item-stack b delimited?))
+           :wire/write comps/write-item-stack
            :gen/schema [:enum nil {:item :stone :count 1}
                         {:item :dirt :count 64}]}}))}))
 
@@ -257,7 +267,7 @@
            :gen/schema [:int {:min 0 :max top}]}}))}))
 
 (def bare
-  "A value that the wire pairs with an optional that stays empty."
+  "A value followed by an absent optional field."
   (m/-simple-schema
     {:type :wire/bare
      :compile
@@ -272,7 +282,8 @@
 
 (def particle
   "A particle as [type options], the options shaped by the type."
-  (wire-type :wire/particle vector? c/read-particle c/write-particle
+  (wire-type :wire/particle vector? comps/read-particle
+             comps/write-particle
              [:tuple int-range
               [:maybe
                [:or int-range

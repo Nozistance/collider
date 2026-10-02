@@ -1,7 +1,6 @@
 (ns collider.proto.buf
   "Byte buffers of the wire format."
   (:import (collider.proto Buf)
-           (java.io ByteArrayInputStream InputStream)
            (java.util.zip Deflater Inflater)))
 
 (set! *warn-on-reflection* true)
@@ -38,11 +37,18 @@
   ([^Buf b ^bytes src ^long off ^long len]
    (.writeBytes b src (int off) (int len))))
 
-(defn write-utf! [^Buf b ^String s]
-  (.writeUtf b s))
+(defn write-utf!
+  "Writes s in the modified UTF-8 of NBT."
+  [^Buf b ^String s]
+  (.writeModifiedUtf b s))
 
 (defn read-byte ^long [^Buf b]
   (long (.readByte b)))
+
+(defn read-utf
+  "Returns the string in the modified UTF-8 of NBT at the read point."
+  ^String [^Buf b]
+  (.readModifiedUtf b))
 
 (defn read-boolean [^Buf b]
   (.readBoolean b))
@@ -77,15 +83,10 @@
 (defn peek-bytes
   "Copies up to n unread bytes without moving the read point."
   ^bytes [^Buf b ^long n]
-  (let [n (min n (long (.readableBytes b)))
-        dst (byte-array n)]
-    (System/arraycopy (.-a b) (.-r b) dst 0 n)
-    dst))
+  (.peek b (int n)))
 
 (defn clear!
-  "Resets the read and write positions.
-  With keep it also shrinks the capacity down to keep bytes when it
-  grew larger."
+  "Empties b. With keep, b gives back the room above keep bytes."
   ([^Buf b]
    (.clear b))
   ([^Buf b ^long keep]
@@ -97,7 +98,7 @@
   (.ensure b (int n)))
 
 (defn adopt!
-  "Takes src as the content, read from 0 and written up to len."
+  "Makes the first len bytes of src the unread content of b."
   [^Buf b ^bytes src ^long len]
   (.adopt b src (int len)))
 
@@ -107,31 +108,17 @@
 (defn write-to! [^Buf b out]
   (.writeTo b out))
 
-(defn unread-stream
-  "Returns a stream over the unread bytes. The read point stays."
-  ^InputStream [^Buf b]
-  (ByteArrayInputStream. (.-a b) (.-r b) (.readableBytes b)))
-
-(defn leave-unread!
-  "Moves the read point so only the last n written bytes stay unread."
-  [^Buf b ^long n]
-  (set! (.-r b) (int (- (.-w b) n))))
-
 (defn inflate-input!
   "Gives the unread bytes to the inflater. The read point stays."
   [^Buf b ^Inflater i]
-  (.setInput i (.-a b) (.-r b) (.readableBytes b)))
+  (.inflateInput b i))
 
 (defn deflate-input!
   "Gives the unread bytes to the deflater and marks them read."
   [^Buf b ^Deflater d]
-  (.setInput d (.-a b) (.-r b) (.readableBytes b))
-  (set! (.-r b) (.-w b)))
+  (.deflateInput b d))
 
 (defn deflate!
   "Writes what the deflater gives into the free room."
   [^Buf b ^Deflater d]
-  (let [a (.-a b)
-        w (.-w b)
-        k (.deflate d a w (- (alength a) w))]
-    (set! (.-w b) (int (+ w k)))))
+  (.deflate b d))

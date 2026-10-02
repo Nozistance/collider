@@ -1,6 +1,5 @@
 (ns collider.net.crypt
-  "The encryption of a connection: the key pair of the server, the
-  secret a player shares and the hash a session server checks."
+  "Connection encryption and the session hash."
   (:import (java.io InputStream OutputStream)
            (java.math BigInteger)
            (java.nio.charset StandardCharsets)
@@ -46,7 +45,7 @@
   (SecretKeySpec. (decrypted kp encrypted) "AES"))
 
 (defn digest-hex
-  "Returns the SHA-1 of parts as Minecraft writes it: signed hex."
+  "Returns the SHA-1 of parts as signed hex."
   ^String [& parts]
   (let [md (MessageDigest/getInstance "SHA-1")]
     (run! #(.update md ^bytes %) parts)

@@ -1,10 +1,10 @@
 (ns collider.proto.packets
   "Readers and writers of every packet, by connection state and name."
   (:require [collider.data :as data]
-            [collider.game.delta :as delta]
             [collider.proto.buf :as buf]
             [collider.proto.chunk :as chunk]
             [collider.proto.codec :as c]
+            [collider.proto.components :as comps]
             [collider.proto.wire :as wire]
             [malli.core :as m]
             [malli.error :as me])
@@ -70,6 +70,8 @@
     (when suggests (c/write-string buf suggests))))
 
 (def ^:private Id [:or :keyword :string])
+
+(def ^:private Stack [:map [:item :keyword] [:count :int]])
 
 (def ^:private Line [wire/string {:max 384}])
 
@@ -185,6 +187,11 @@
 (defn- write-mode-entry! [^Buf buf {:keys [uuid gamemode]}]
   (c/write-uuid buf uuid)
   (c/write-varint buf (long gamemode)))
+
+(defn- write-stop-sound! [^Buf buf {:keys [source id]}]
+  (buf/write-byte! buf (bit-or (if source 1 0) (if id 2 0)))
+  (when source (c/write-varint buf source))
+  (when id (c/write-string buf id)))
 
 (def ^:private info-actions
   {:latency [0x10 write-latency-entry!]
@@ -458,11 +465,7 @@
                (c/write-varint buf to)))}
    [:play :stop-sound]
    {:schema [:map [:source [:maybe :int]] [:id [:maybe :string]]]
-    :write (fn [^Buf buf {:keys [source id]}]
-             (buf/write-byte! buf (bit-or (if source 1 0)
-                                          (if id 2 0)))
-             (when source (c/write-varint buf source))
-             (when id (c/write-string buf id)))}
+    :write write-stop-sound!}
    [:play :set-title-text]
    {:schema [:map [:text wire/text]]
     :write :wire}
@@ -571,7 +574,7 @@
                    buf (data/registry-id "slot_display" :item-stack))
                  (item (:item out))
                  (c/write-varint buf (long (:count out 1)))
-                 (c/write-patch buf nil))))}
+                 (comps/write-patch buf nil))))}
    [:play :container-close]
    {:schema [:map [:container wire/varint]]
     :read  :wire
@@ -639,7 +642,7 @@
    [:play :set-equipment]
    {:schema [:map [:eid wire/varint]
              [:slots [:sequential
-                      [:tuple :int [:maybe delta/Stack]]]]]
+                      [:tuple :int [:maybe Stack]]]]]
     :write (fn [^Buf buf m]
              (c/write-varint buf (long (:eid m)))
              (let [slots (vec (:slots m))]
@@ -647,7 +650,7 @@
                  (let [more? (< (inc i) (count slots))
                        b (if more? (bit-or (long slot) 0x80) slot)]
                    (buf/write-byte! buf (int b)))
-                 (c/write-item-stack buf stack))))}
+                 (comps/write-item-stack buf stack))))}
    [:play :animate]
    {:schema [:map [:eid wire/varint] [:action wire/unsigned-byte]]
     :write :wire}
@@ -823,7 +826,7 @@
   (update-vals table compiled))
 
 (defn- checker [nm schema]
-  (when (and delta/validate? schema)
+  (when (and data/validate? schema)
     (let [valid (delay (m/validator schema))
           explain (delay (m/explainer schema))]
       (fn [m]

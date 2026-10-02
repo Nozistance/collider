@@ -3,9 +3,11 @@
   (:require [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
+            [collider.proto.nbt :as nbt]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.env.biome :as biome]))
+            [collider.world.env.biome :as biome])
+  (:import (collider.proto SectionWriter)))
 
 (set! *warn-on-reflection* true)
 
@@ -55,7 +57,7 @@
 (def ^:private ^:table fluid-arr (delay (state-table fluid?)))
 
 (defn- write-section! [buf s ^long biome]
-  (chunk/write-section! s buf @fluid-arr biome))
+  (SectionWriter/write buf s @fluid-arr biome))
 
 (defn- write-biomes! [buf ^long biome]
   (buf/write-byte! buf 0)
@@ -107,7 +109,7 @@
     (buf/write-byte! buf (int (packed-xz x z)))
     (buf/write-short! buf (int y))
     (c/write-varint buf (long type))
-    (c/write-nbt buf nbt)))
+    (nbt/write-nbt buf nbt)))
 
 (defn- write-sections! [buf chunk [^long lo ^long n _ biome]]
   (let [body (buf/buf 4096)
@@ -183,11 +185,11 @@
   (write-mask! buf blk))
 
 (defn- write-sky-layer! [buf chunk ^long si]
-  (chunk/write-sky-light!
-    (or (our-section chunk si) (chunk/new-section chunk si)) buf))
+  (SectionWriter/writeSkyLight
+    buf (or (our-section chunk si) (chunk/new-section chunk si))))
 
 (defn- write-block-layer! [buf chunk ^long si]
-  (chunk/write-block-light! (our-section chunk si) buf))
+  (SectionWriter/writeBlockLight buf (our-section chunk si)))
 
 (defn- write-sky! [buf chunk ^long lo ^long m]
   (c/write-varint buf (Long/bitCount m))
@@ -218,9 +220,7 @@
     (write-block! buf chunk lo blk-lit)))
 
 (defn write-chunk!
-  "Writes chunk at cx cz as the level lv shows it.
-  It holds the sections, heightmaps and light inside the height
-  of lv."
+  "Writes chunk at cx cz as level lv shows it to a client."
   ([buf cx cz chunk] (write-chunk! buf cx cz chunk nil nil))
   ([buf cx cz chunk block-entities]
    (write-chunk! buf cx cz chunk block-entities nil))

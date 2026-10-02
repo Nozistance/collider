@@ -5,4 +5,4 @@
            (java.util.concurrent.atomic AtomicBoolean)))
 
 (defrecord Conn
-  [^Socket sock ^BlockingQueue q st ^AtomicBoolean closing])
+  [^Socket sock ^BlockingQueue queue props ^AtomicBoolean closing])
