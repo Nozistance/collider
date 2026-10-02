@@ -113,11 +113,10 @@
     [w (into {} (map heeded) ds)]))
 
 (defn- skipped! [world s dim ^Throwable t]
-  (let [unit (log/name-of s)
-        msg (str "system " unit " failed in " (name (or dim :server))
-                 ", its deltas this tick are dropped")]
-    (log/failure! unit msg t)
-    (some-> (:failures world) (swap! conj [unit t]))))
+  (let [where (name (or dim :server))
+        msg #(str "system " % " failed in " where
+                  ", its deltas this tick are dropped")]
+    (log/unit-failed! (:failures world) s t msg)))
 
 (defn- guarded [world s dim f]
   (fn []
@@ -201,10 +200,8 @@
           {} dims))
 
 (defn- unfiltered! [world f ^Throwable t]
-  (let [unit (log/name-of f)
-        msg (str "filter " unit " failed, passed over this time")]
-    (log/failure! unit msg t)
-    (some-> (:failures world) (swap! conj [unit t]))))
+  (let [msg #(str "filter " % " failed, passed over this time")]
+    (log/unit-failed! (:failures world) f t msg)))
 
 (defn- checked [ok? v]
   (if (every? ok? v)

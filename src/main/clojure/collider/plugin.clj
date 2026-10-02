@@ -1,14 +1,13 @@
 (ns collider.plugin
-  "Plugins: what each declares, the order they load in and what they
-  add to the server."
+  "Plugin loading, order and contributions."
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
             [clojure.string :as str]
+            [collider.config :as config]
             [collider.game.command.tree :as tree]
             [collider.game.systems.hooks :as hooks]
             [collider.log :as log]
-            [malli.core :as m]
-            [malli.error :as me])
+            [malli.core :as m])
   (:import (clojure.lang Compiler DynamicClassLoader RT)
            (java.io File)
            (java.util.zip ZipFile)))
@@ -18,6 +17,10 @@
 (def api-version
   "The major version of the plugin API this server has."
   1)
+
+(def default-dir
+  "The directory plugins load from when no other is given."
+  "plugins")
 
 (def builtins
   "The commands of the collider command line itself."
@@ -70,10 +73,6 @@
     (let [m (io/file f "plugin.edn")]
       (when (.exists m) (slurp m)))))
 
-(defn- complaints [schema v]
-  (map (fn [[k msgs]] (str k " " (str/join ", " msgs)))
-       (me/humanize (m/explain schema v))))
-
 (defn- not-edn [where e]
   (refused (str where " is not edn")
            "Collider cannot read the manifest."
@@ -92,7 +91,7 @@
 (defn- manifest [^File f text]
   (let [where (str (.getPath f) (when-not (jar? f) "/plugin.edn"))
         m (read-manifest where text)]
-    (when-let [why (seq (complaints Manifest m))]
+    (when-let [why (seq (config/complaints Manifest m))]
       (throw (refused (str where " has bad fields") (vec why)
                       fix-or-remove)))
     (when (not= api-version (:api-version m))
@@ -196,7 +195,8 @@
     (str tag " is not under :" (name id) "/")))
 
 (defn- checked [id v]
-  (let [why (concat (complaints Contribution v) (foreign-tags id v))]
+  (let [why (concat (config/complaints Contribution v)
+                   (foreign-tags id v))]
     (when (seq why)
       (let [what (str (named id) " returned a bad map from init!")]
         (throw (refused what (vec why) fix-or-remove)))))
@@ -207,8 +207,8 @@
 (defn- with-loader [cl f]
   (with-bindings {Compiler/LOADER cl} (f)))
 
-(defn- init-fn [cl {:keys [id ns]}]
-  (or (with-loader cl #(requiring-resolve (entry ns "init!")))
+(defn- init-fn [{:keys [id ns]}]
+  (or (requiring-resolve (entry ns "init!"))
       (throw (refused (str (named id) " has no init!")
                       (str "Its :ns " ns " lacks (init! ctx).")
                       fix-or-remove))))
@@ -217,7 +217,7 @@
   (let [c (ctx manifest env)
         id (:id manifest)]
     (try
-      (let [v (with-loader cl #((init-fn cl manifest) c))]
+      (let [v (with-loader cl #((init-fn manifest) c))]
         (assoc p :ctx c :loader cl :plugin (checked id v)))
       (catch Exception e
         (let [what (str (named id) " failed to start")]
@@ -240,11 +240,9 @@
          (catch Exception e (stop-all! acc) (throw e)))))
 
 (defn load-all
-  "Loads and starts the plugins in env's :dir for :mode, :server or
-  :cli. Each init! gets a ctx with its :config section of :settings,
-  its :dir, :mode, :log and :store. Returns the plugins in load
-  order, none when there is no such directory. Throws with words when
-  one cannot load; those started before it stop."
+  "Loads and starts the plugins in the :dir of env.
+  Returns them in load order, none when there is no such directory.
+  Throws when one cannot load and stops those started before it."
   [{:keys [dir] :as env}]
   (if-not (.isDirectory (io/file dir))
     []
@@ -264,12 +262,20 @@
     (fn [k] (or (at k) (throw (no-phase k))))))
 
 (defn phases
-  "Returns phases with each plugin system [anchor s] in the phase of
-  the system named anchor."
-  [phases systems]
-  (let [at (phase-of phases)]
+  "Returns the phases base with each plugin system [anchor s] in the
+  phase of the system named anchor."
+  [base systems]
+  (let [at (phase-of base)]
     (reduce (fn [ps [k s]] (update ps (at k) conj s))
-            (mapv vec phases) systems)))
+            (mapv vec base) systems)))
+
+(def ^:private spliced (memoize phases))
+
+(defn live-phases
+  "Returns a function that gives the phases base-var holds at the call
+  with the plugin systems in them."
+  [base-var systems]
+  #(spliced @base-var systems))
 
 (defn- identity-of [plugins]
   (let [ps (filter (comp :identity :plugin) plugins)]
@@ -318,13 +324,8 @@
         plugins))
 
 (defn contributions
-  "Returns what the plugins add, in load order: the :systems as
-  [anchor system] with those that hear :on-event after chat, the
-  :commands as forms of the command tree, the :deltas as the apply
-  of each tag, the :event-filters and :delta-filters, the :identity
-  function, the :cli entries by name and the ids and versions of the
-  plugins as :plugins. The apply of a tag of plugin id changes the
-  world under [:plugins id] as (f state delta)."
+  "Returns what the plugins add to the server, in load order.
+  Throws when a plugin adds a command the server has."
   [plugins]
   (let [joined (fn [k] (into [] (mapcat (comp k :plugin)) plugins))
         forms (joined :commands)]
@@ -354,3 +355,19 @@
                   (catch Exception e
                     (throw (in-words what "The command threw." e))))]
     (if (int? code) code 0)))
+
+(def ^:private adds-at
+  {:plugins [:config :plugins]
+   :commands [:config :plugin-commands]
+   :deltas [:hooks :deltas]
+   :event-filters [:hooks :event-filters]
+   :delta-filters [:hooks :delta-filters]})
+
+(defn with-adds
+  "Returns world with the contributions adds of the plugins in it."
+  [world adds]
+  (reduce-kv (fn [w k path]
+               (if-let [v (not-empty (get adds k))]
+                 (assoc-in w path v)
+                 w))
+             world adds-at))

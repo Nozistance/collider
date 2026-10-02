@@ -21,14 +21,14 @@
   (b/compile-clj {:basis      @basis
                   :src-dirs   ["src/main/clojure"]
                   :class-dir  class-dir
-                  :ns-compile '[collider.core]
+                  :ns-compile '[collider.cli]
                   :java-opts  ["-Dclojure.compiler.direct-linking=true"]}))
 
 (defn- uber []
   (b/uber {:class-dir class-dir
            :uber-file jar-file
            :basis     @basis
-           :main      'collider.core
+           :main      'collider.cli
            :exclude   [".*\\.java$" ".*\\.cljs$"]}))
 
 (defn- commit []

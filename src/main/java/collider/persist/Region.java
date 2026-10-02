@@ -1,6 +1,9 @@
 package collider.persist;
 
-import static java.nio.file.StandardOpenOption.*;
+import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.READ;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
+import static java.nio.file.StandardOpenOption.WRITE;
 
 import collider.world.ChunkIndex;
 import java.io.EOFException;
@@ -11,7 +14,6 @@ import java.nio.channels.FileChannel;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
@@ -23,17 +25,21 @@ import java.util.zip.DataFormatException;
 ///
 /// A record is `cx cz len crc32` as ints, then `len` bytes. The last
 /// readable record of a chunk wins. Only the bytes up to `end` belong
-/// to the region; a commit writes past them and a manifest names the
+/// to the region. A commit writes past them, and a manifest names the
 /// new end. A copy shares the file and owns its index, so readers of
 /// the old region never see a record of an uncommitted write.
 public final class Region {
 
-    static final int HEAD = 16, SIDE = 32, ENTRY = 24;
-    public final long key, gen;
+    static final int HEAD = 16;
+    static final int SIDE = 32;
+    static final int ENTRY = 24;
+    public final long key;
+    public final long gen;
     private final Log log;
     private final long[] at;
     private final int[] size;
-    private long end, live;
+    private long end;
+    private long live;
 
     /// The file of a region, shared by its copies. An interrupt closes
     /// the channel under every thread; the next use opens it again.
@@ -87,15 +93,14 @@ public final class Region {
 
     /// Returns the key of the region that holds chunk `id`.
     public static long of(long id) {
-        return ChunkIndex.id((int) (id >> 32) >> 5, (int) id >> 5);
+        return ChunkIndex.id(ChunkIndex.x(id) >> 5, ChunkIndex.z(id) >> 5);
     }
 
     static Path file(Path dir, long key, long gen) {
-        int rx = (int) (key >> 32), rz = (int) key;
-        return dir.resolve("r." + rx + "." + rz + "." + gen + ".log");
+        return dir.resolve("r." + ChunkIndex.x(key) + "." + ChunkIndex.z(key) + "." + gen + ".log");
     }
 
-    static Path manifest(Path dir, long gen) {
+    static Path manifestPath(Path dir, long gen) {
         return dir.resolve("regions." + gen);
     }
 
@@ -107,7 +112,7 @@ public final class Region {
         return new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
     }
 
-    static Region open(Path dir, long key, long gen, long end) throws IOException {
+    static Region openOne(Path dir, long key, long gen, long end) throws IOException {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, READ, WRITE);
         Region r = new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
@@ -121,12 +126,12 @@ public final class Region {
     }
 
     private static int slot(long id) {
-        return ((int) (id >> 32) & 31) + (((int) id & 31) << 5);
+        return (ChunkIndex.x(id) & 31) + ((ChunkIndex.z(id) & 31) << 5);
     }
 
     private long id(int slot) {
-        int cx = ((int) (key >> 32) << 5) + (slot & 31);
-        int cz = ((int) key << 5) + (slot >> 5);
+        int cx = (ChunkIndex.x(key) << 5) + (slot & 31);
+        int cz = (ChunkIndex.z(key) << 5) + (slot >> 5);
         return ChunkIndex.id(cx, cz);
     }
 
@@ -177,7 +182,7 @@ public final class Region {
     /// Writes chunk `id` past the end and makes it the chunk's record.
     public void append(long id, byte[] data) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(HEAD + data.length);
-        b.putInt((int) (id >> 32)).putInt((int) id).putInt(data.length);
+        b.putInt(ChunkIndex.x(id)).putInt(ChunkIndex.z(id)).putInt(data.length);
         b.putInt(crc(data)).put(data).flip();
         long off = end;
         while (b.hasRemaining()) io(c -> c.write(b, off + b.position()));
@@ -197,7 +202,8 @@ public final class Region {
     private byte[] older(long before, long id) throws IOException, DataFormatException {
         long[] offs = new long[8];
         int n = 0;
-        for (long off = 0; off < before; ) {
+        long off = 0;
+        while (off < before) {
             ByteBuffer h = read(off, HEAD);
             if (h.getInt(8) < 0) break;
             if (ChunkIndex.id(h.getInt(0), h.getInt(4)) == id) {
@@ -271,30 +277,30 @@ public final class Region {
 
     /// Writes the manifest of generation `gen` that names `regions`
     /// with their ends.
-    public static void manifest(Path dir, long gen, Region[] regions) throws IOException {
+    public static void writeManifest(Path dir, long gen, Region[] regions) throws IOException {
         ByteBuffer b = ByteBuffer.allocate(regions.length * ENTRY);
         for (Region r : regions) b.putLong(r.key).putLong(r.gen).putLong(r.end);
-        put(manifest(dir, gen), b.array());
+        AtomicFile.put(manifestPath(dir, gen), b.array());
     }
 
     private static ByteBuffer entries(Path dir, long gen) throws IOException {
-        ByteBuffer b = ByteBuffer.wrap(Files.readAllBytes(manifest(dir, gen)));
+        ByteBuffer b = ByteBuffer.wrap(Files.readAllBytes(manifestPath(dir, gen)));
         if (b.remaining() % ENTRY != 0) {
-            throw new IOException(manifest(dir, gen) + " is cut short");
+            throw new IOException(manifestPath(dir, gen) + " is cut short");
         }
         return b;
     }
 
     /// Returns the regions the manifest of generation `gen` names, with
     /// their indexes read from the record heads.
-    public static Region[] open(Path dir, long gen) throws IOException {
+    public static Region[] openAll(Path dir, long gen) throws IOException {
         if (gen == 0) return new Region[0];
         ByteBuffer b = entries(dir, gen);
         Region[] rs = new Region[b.remaining() / ENTRY];
         int i = 0;
         try {
             for (; i < rs.length; i++) {
-                rs[i] = open(dir, b.getLong(), b.getLong(), b.getLong());
+                rs[i] = openOne(dir, b.getLong(), b.getLong(), b.getLong());
             }
         } catch (IOException | RuntimeException e) {
             while (i > 0) rs[--i].close();
@@ -304,8 +310,8 @@ public final class Region {
     }
 
     private static void keep(Set<Path> kept, Path dir, long gen) throws IOException {
-        if (gen <= 0 || !Files.isRegularFile(manifest(dir, gen))) return;
-        kept.add(manifest(dir, gen));
+        if (gen <= 0 || !Files.isRegularFile(manifestPath(dir, gen))) return;
+        kept.add(manifestPath(dir, gen));
         ByteBuffer b = entries(dir, gen);
         while (b.hasRemaining()) {
             kept.add(file(dir, b.getLong(), b.getLong()));
@@ -326,37 +332,6 @@ public final class Region {
                 boolean ours = n.startsWith("r.") || n.startsWith("regions.");
                 if (ours && !kept.contains(p)) Files.delete(p);
             }
-        }
-    }
-
-    /// Replaces `target` with `data` whole: a crash leaves either the
-    /// old file or the new one, and the new one is durable on return.
-    public static void put(Path target, byte[] data) throws IOException {
-        Path dir = target.toAbsolutePath().getParent();
-        Files.createDirectories(dir);
-        Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
-        try (FileChannel c = FileChannel.open(tmp, CREATE, WRITE, TRUNCATE_EXISTING)) {
-            ByteBuffer b = ByteBuffer.wrap(data);
-            while (b.hasRemaining()) {
-                int ignored = c.write(b);
-            }
-            c.force(true);
-        } catch (IOException | RuntimeException e) {
-            Files.deleteIfExists(tmp);
-            throw e;
-        }
-        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-        sync(dir);
-    }
-
-    private static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
-
-    /// Makes the entries of directory `dir` durable. Windows cannot
-    /// open a directory, and its file system journals the entries.
-    public static void sync(Path dir) throws IOException {
-        if (WINDOWS) return;
-        try (FileChannel c = FileChannel.open(dir, READ)) {
-            c.force(true);
         }
     }
 }
