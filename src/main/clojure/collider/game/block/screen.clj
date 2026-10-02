@@ -4,11 +4,14 @@
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
+            [collider.game.block.lectern :as lectern]
+            [collider.game.block.lid :as lid]
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.reach :as reach]
-            [collider.world.block :as block]))
+            [collider.world.block :as block]
+            [collider.world.blocks.chest :as chest]))
 
 (set! *warn-on-reflection* true)
 
@@ -40,11 +43,11 @@
     (if (:components? remote) (= remote (hashed r)) (= remote r))))
 
 (defn- bench-valid? [world m]
-  (let [st (container/state-at (:chunks world) (:pos m))]
+  (let [st (chest/state-at (:chunks world) (:pos m))]
     (= (:type m) (block/type-of st))))
 
 (defn- ender-valid? [world m]
-  (let [st (container/state-at (:chunks world) (:pos m))]
+  (let [st (chest/state-at (:chunks world) (:pos m))]
     (= :ender-chest (block/type-of st))))
 
 (defn valid?
@@ -53,7 +56,7 @@
   (cond
     (container/lectern? m)
     (and (= :lectern (:kind (be/at world (:pos m))))
-         (container/book? (container/book-of world m)))
+         (lectern/book? (lectern/book-of world m)))
     (container/bench? m) (bench-valid? world m)
     (= :ender (:kind m)) (ender-valid? world m)
     :else
@@ -101,8 +104,8 @@
   the openers of the blocks of menu m."
   [world e m step]
   (when-not (game-mode/spectator? e)
-    (mapcat #(container/opener-deltas world % step)
-            (container/positions m))))
+    (mapcat #(lid/opener-deltas world % step)
+            (lid/positions m))))
 
 (defn close-deltas
   "Returns the deltas that close the menu of player eid.

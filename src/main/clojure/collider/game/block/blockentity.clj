@@ -60,6 +60,17 @@
 (defn kind [^long st]
   (or (sign/kind st) (get block-kinds (block/type-of st))))
 
+(defn removed?
+  "Returns true when the block entity of old goes as st takes its
+  cell with flags. The block and the kind of block entity change,
+  and flag 256 is not set."
+  [old st flags]
+  (let [k (kind old)]
+    (boolean
+      (and k (not (bit-test (long flags) 8))
+           (not= (block/block-of old) (block/block-of (long st)))
+           (not= k (kind (long st)))))))
+
 (defn at [world pos]
   (get-in world [:block-entities (chunk/block-chunk pos) pos]))
 

@@ -4,7 +4,7 @@
             [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
-            [collider.game.block.container :as container]
+            [collider.game.block.lid :as lid]
             [collider.game.entity :as entity]
             [collider.game.player :as player]
             [collider.game.out :as out]
@@ -43,7 +43,7 @@
   (let [e (be/at world pos)]
     (when (= :shulker-box (:kind e))
       (concat
-        (when (container/animation world pos)
+        (when (lid/animation world pos)
           [[:shulker-anim pos nil]])
         (when (some some? (:items e))
           [(shulker-drop world pos e)])))))

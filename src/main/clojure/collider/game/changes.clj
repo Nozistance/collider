@@ -156,7 +156,7 @@
 
 (defn- removed? [[_ old st flags]]
   (and (aget ^booleans @holds-entity (long old))
-       (spill/removed? old st flags)))
+       (be/removed? old st flags)))
 
 (defn- removal-deltas [world writes]
   (let [gone (fn [[p old]] (spill/removed-deltas world p old))]

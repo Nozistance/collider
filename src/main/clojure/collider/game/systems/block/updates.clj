@@ -2,7 +2,7 @@
   "Scheduled block ticks and their effects."
   (:require [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
-            [collider.game.block.container :as container]
+            [collider.game.block.lid :as lid]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
@@ -47,7 +47,7 @@
     (cond
       (not= ty (type-of st)) {:reach 0}
       (= :block-ticks k)
-      (or (container/recheck w p st) (ruled w ctx k p st))
+      (or (lid/recheck w p st) (ruled w ctx k p st))
       :else (ruled w ctx k p st))))
 
 (defn- packed ^long [^long x ^long z]

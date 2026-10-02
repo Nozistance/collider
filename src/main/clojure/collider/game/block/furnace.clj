@@ -1,6 +1,7 @@
 (ns collider.game.block.furnace
   "Furnace, blast furnace and smoker fuel, recipes and cooking."
   (:require [collider.data :as data]
+            [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]))
 
 (set! *warn-on-reflection* true)
@@ -146,3 +147,35 @@
       e
       (assoc e :cook 0
                :cook-total (:time (recipe (:kind e) stack) 200)))))
+
+(defn- fuel-slot-accepts? [stack]
+  (or (pos? (burn-duration stack))
+      (= :bucket (:item stack))))
+
+(defn- may-place? [slot stack]
+  (case (long slot) 0 true 1 (fuel-slot-accepts? stack) 2 false))
+
+(defn- slot-max [slot stack]
+  (when (and (= 1 (long slot)) (= :bucket (:item stack))) 1))
+
+(defn- quick [v kind inv slot]
+  (let [i (menu/index-of v slot)
+        stack (get inv slot)]
+    (cond
+      (= 2 i) (menu/span v 3 39 true)
+      (< i 2) (menu/span v 3 39 false)
+      (recipe kind stack) (menu/span v 0 1 false)
+      (pos? (burn-duration stack)) (menu/span v 1 2 false)
+      (< 2 i 30) (menu/span v 30 39 false)
+      :else (menu/span v 3 30 false))))
+
+(defn layout
+  "Returns the slot layout of furnace menu m."
+  [m]
+  (let [base (menu/slots-layout 3 may-place?)
+        v (:visible base)
+        kind (:type m)]
+    (assoc base
+      :max slot-max
+      :stat {:slot 2 :by :removed}
+      :quick (fn [inv slot] (quick v kind inv slot)))))

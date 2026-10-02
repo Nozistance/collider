@@ -1,6 +1,7 @@
 (ns collider.game.block.brewing
   "Brewing stand mixes, fuel and timer."
   (:require [collider.data :as data]
+            [collider.game.block.menu :as menu]
             [collider.game.craft :as craft]))
 
 (set! *warn-on-reflection* true)
@@ -128,3 +129,34 @@
   (let [e (refuel e)
         left (dec (long (:brew e 0)))]
     (if (>= left 0) (running e left) (start e))))
+
+(defn- may-place? [slot stack]
+  (case (long slot)
+    (0 1 2) (contains? bottles (:item stack))
+    3 (ingredient? stack)
+    4 (fuel? stack)))
+
+(defn- slot-max [slot _]
+  (when (< (long slot) 3) 1))
+
+(defn- quick [v inv slot]
+  (let [i (menu/index-of v slot)
+        stack (get inv slot)]
+    (cond
+      (< i 5) (menu/span v 5 41 true)
+      (fuel? stack)
+      {:try  (menu/span v 4 5 false)
+       :else (when (ingredient? stack) (menu/span v 3 4 false))}
+      (ingredient? stack) (menu/span v 3 4 false)
+      (contains? bottles (:item stack)) (menu/span v 0 3 false)
+      (< 4 i 32) (menu/span v 32 41 false)
+      :else (menu/span v 5 32 false))))
+
+(defn layout
+  "Returns the slot layout of a brewing stand menu."
+  []
+  (let [base (menu/slots-layout 5 may-place?)
+        v (:visible base)]
+    (assoc base
+      :max slot-max
+      :quick (fn [inv slot] (quick v inv slot)))))
