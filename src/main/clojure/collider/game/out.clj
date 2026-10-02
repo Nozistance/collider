@@ -351,53 +351,47 @@
   [pos]
   {:msg :fizz :pos pos})
 
-(def ^:const sound-play-jukebox-song 1010)
+(def sound-play-jukebox-song :sound-play-jukebox-song)
 
-(def ^:const sound-stop-jukebox-song 1011)
+(def sound-stop-jukebox-song :sound-stop-jukebox-song)
 
-(def ^:const sound-extinguish-fire 1009)
+(def sound-extinguish-fire :sound-extinguish-fire)
 
-(def ^:const sound-anvil-broken 1029)
+(def sound-anvil-broken :sound-anvil-broken)
 
-(def ^:const sound-anvil-used 1030)
+(def sound-anvil-used :sound-anvil-used)
 
-(def ^:const sound-anvil-land 1031)
+(def sound-anvil-land :sound-anvil-land)
 
-(def ^:const sound-chorus-grow 1033)
+(def sound-brewing-stand-brew :sound-brewing-stand-brew)
 
-(def ^:const sound-chorus-death 1034)
+(def sound-grindstone-used :sound-grindstone-used)
 
-(def ^:const sound-brewing-stand-brew 1035)
+(def sound-page-turn :sound-page-turn)
 
-(def ^:const sound-grindstone-used 1042)
+(def sound-smithing-table-used :sound-smithing-table-used)
 
-(def ^:const sound-page-turn 1043)
+(def sound-drip-lava-into-cauldron :sound-drip-lava-into-cauldron)
 
-(def ^:const sound-smithing-table-used 1044)
+(def sound-drip-water-into-cauldron :sound-drip-water-into-cauldron)
 
-(def ^:const sound-drip-lava-into-cauldron 1046)
+(def sound-pointed-dripstone-land :sound-pointed-dripstone-land)
 
-(def ^:const sound-drip-water-into-cauldron 1047)
+(def composter-fill :composter-fill)
 
-(def ^:const sound-pointed-dripstone-land 1045)
+(def dripstone-drip :dripstone-drip)
 
-(def ^:const composter-fill 1500)
+(def particles-destroy-block :particles-destroy-block)
 
-(def ^:const lava-fizz 1501)
+(def particles-and-sound-wax-on :particles-and-sound-wax-on)
 
-(def ^:const dripstone-drip 1504)
+(def particles-wax-off :particles-wax-off)
 
-(def ^:const particles-and-sound-plant-growth 1505)
-
-(def ^:const particles-destroy-block 2001)
-
-(def ^:const particles-and-sound-wax-on 3003)
-
-(def ^:const particles-wax-off 3004)
-
-(def ^:const particles-scrape 3005)
+(def particles-scrape :particles-scrape)
 
 (defn level-event
+  "Returns level event event at pos with data. The event is the name
+  of the vanilla level event as a keyword."
   ([event pos] (level-event event pos 0))
   ([event pos data]
    {:msg :level-event :event event :pos pos :data data}))

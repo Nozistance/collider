@@ -101,11 +101,9 @@
 (def ^:private back
   {:north :south :south :north :west :east :east :west})
 
-(def ^:private ^:const grew
-  1033)
+(def ^:private grew :sound-chorus-grow)
 
-(def ^:private ^:const died
-  1034)
+(def ^:private died :sound-chorus-death)
 
 (defn- flower-of ^long [^long age]
   (block/state :chorus-flower {:age (keyword (str age))}))
