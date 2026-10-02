@@ -4,12 +4,9 @@
             [collider.game.clock :as clock]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
-            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
-            [collider.game.level :as level]
+            [collider.game.sleep :as sleeping]
             [collider.game.systems.daynight :as daynight]
-            [collider.vec :as v]
-            [collider.world.blocks.bed :as bed]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.attribute :as attribute]
@@ -33,71 +30,6 @@
            :sleep? (attribute/allows? (:can-sleep r) dark?)
            :spawn? (attribute/allows? (:can-set-spawn r) dark?))))
 
-(defn- counted [entries]
-  (remove (comp game-mode/spectator? val) entries))
-
-(defn sleepers-needed
-  "Returns how many sleeping players the night needs.
-  Spectators do not count."
-  ^long [world]
-  (let [players (count (counted (level/player-entries world)))
-        k [:rules :players-sleeping-percentage]
-        share (long (get-in world k 100))]
-    (max 1 (long (Math/ceil (/ (* players share) 100.0))))))
-
-(defn announcement
-  "Returns the message that counts the sleeping players."
-  [world ^long asleep]
-  (let [needed (sleepers-needed world)]
-    (out/all (out/overlay
-               (if (>= asleep needed)
-                 {:translate "sleep.skipping_night"}
-                 {:translate "sleep.players_sleeping"
-                  :with [asleep needed]})))))
-
-(defn- stand-up [world e head bed?]
-  (let [p (:pos e)]
-    (if bed?
-      (bed/stand-up-position (:chunks world) head (:yaw e 0.0))
-      [(v/x p) (v/y p) (v/z p)])))
-
-(defn- vacated [st]
-  (block/state (block/block-of st)
-               (assoc (block/props-of st) :occupied :false)))
-
-(defn- woken-deltas [eid up yaw]
-  [[:merge-entity eid
-    {:sleeping nil :leave-bed? nil :pose :standing :yaw yaw
-     :pitch 0.0}]
-   [:teleport eid up]
-   (out/all (out/animation eid :wake-up))
-   (out/to eid (out/animation eid :wake-up))
-   (out/to eid (out/teleport up yaw 0.0))])
-
-(defn wake-deltas
-  "Returns the deltas of player eid waking up."
-  [world eid]
-  (let [e (get-in world [:entities eid])
-        head (get-in e [:sleeping :pos])
-        st (block-at world head)
-        bed? (= :bed (block/type-of st))
-        up (stand-up world e head bed?)
-        yaw (if bed? (bed/look-yaw head up) (:yaw e 0.0))]
-    (concat
-      (when bed?
-        (delta/authored
-          (changes/set-deltas world [[head (vacated st)]])
-          eid :player))
-      (woken-deltas eid up yaw))))
-
-(defn- in-bed [world]
-  (filter (fn [[_ e]] (:sleeping e)) (level/player-entries world)))
-
-(defn sleepers
-  "Returns the sleeping players that count, which are no spectators."
-  [world]
-  (counted (in-bed world)))
-
 (defn- deep-count ^long [world asleep]
   (let [now (long (:tick world))
         deep? (fn [[_ e]]
@@ -119,16 +51,19 @@
           (when (and (get-in world [:rules :advance-weather] true)
                      (weather/raining? world))
             [[:set-weather weather/reset-cycle]])
-          (mapcat (fn [[eid _]] (wake-deltas world eid)) asleep)))
+          (mapcat (fn [[eid _]] (sleeping/wake-deltas world eid))
+                  asleep)))
 
 (defn- waking-deltas [world asleep waking]
-  (let [left (count (counted waking))]
-    (concat (mapcat (fn [[eid _]] (wake-deltas world eid)) waking)
+  (let [left (count (sleeping/counted waking))]
+    (concat (mapcat (fn [[eid _]] (sleeping/wake-deltas world eid))
+                    waking)
             (when (pos? left)
-              [(announcement world (- (count asleep) left))]))))
+              (let [n (- (count asleep) left)]
+                [(sleeping/announcement world n)])))))
 
 (defn- night-passes? [world all asleep]
-  (let [needed (sleepers-needed world)]
+  (let [needed (sleeping/sleepers-needed world)]
     (and (>= (count asleep) needed)
          (>= (deep-count world all) needed))))
 
@@ -140,14 +75,14 @@
         st (when head (block-at world head))
         base (dec (long (:tick world)))]
     (when (and st (= :bed (block/type-of st)))
-      (let [cs [[head (vacated st)]]]
+      (let [cs [[head (sleeping/vacated st)]]]
         (delta/authored (changes/flagged-deltas world cs 3 nil base)
                         eid :player)))))
 
 (defn- sleep-deltas [world]
-  (when-let [all (seq (in-bed world))]
+  (when-let [all (seq (sleeping/in-bed world))]
     (let [sleep? (:sleep? (bed-rule world))
-          asleep (counted all)
+          asleep (sleeping/counted all)
           up? (fn [[_ e]] (or (:leave-bed? e) (not sleep?)))
           waking (filter up? all)]
       (cond

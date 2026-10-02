@@ -1,9 +1,10 @@
-(ns collider.game.systems.blocks.clone
+(ns collider.game.commands.clone
   "The cells /clone copies and the order it sets them in."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.schedule :as schedule]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -21,8 +22,8 @@
     :else :solid))
 
 (defn- listed
-  "CloneCommands.clone: one source cell into the three lists and the
-  cells a move clears, the non-solid ones first."
+  "Returns a step that sorts one source cell for the copy and for the
+  clear."
   [from to off test]
   (fn [acc p]
     (let [st (state-at from p)
@@ -47,23 +48,23 @@
 (defn- barrier [] (block/state :barrier))
 
 (defn- cleared
-  "The ops of a move on the source: barriers, then air."
+  "Returns the ops that a move runs on the source."
   [clear strict?]
   (let [b (barrier)
-        flags (if strict? 818 3)]
+        flags (if strict? update/strict update/all)]
     (-> []
-        (into (map (fn [p] [:set [p b] 818])) clear)
+        (into (map (fn [p] [:set [p b] update/strict])) clear)
         (into (map (fn [p] [:set [p 0] flags])) clear))))
 
 (defn- placed
-  "The ops on the destination: barriers in reverse, the blocks, the
-  block entity cells again, and the neighbour updates in reverse."
+  "Returns the ops that a clone runs on the destination."
   [all es strict?]
   (let [b (barrier)
-        flags (if strict? 818 2)
-        back (rseq all)]
+        flags (if strict? update/strict update/clients)
+        back (rseq all)
+        walled (fn [[q]] [:set [q b] update/strict])]
     (cond-> (-> []
-                (into (map (fn [[q]] [:set [q b] 818])) back)
+                (into (map walled) back)
                 (into (map (fn [[q st]] [:put [q st] flags])) all)
                 (into (map (fn [[q st]] [:set [q st] flags])) es))
       (not strict?)
@@ -79,12 +80,11 @@
     (schedule/copied (:block-ticks from) in? moved)))
 
 (defn plan
-  "Returns what /clone does from level from into level to.
+  "Returns the ops, block entities and block ticks that /clone copies
+  between two levels.
   box holds the sorted source bounds and off the shift to the
   destination. test, when given, takes the state and block entity of
-  a source cell. :clear holds the ops on the source, :place the ops
-  on the destination, :entities the block entities copied as
-  [pos e] and :ticks the block ticks copied."
+  a source cell."
   [from to box off test mode strict?]
   (let [r (reduce (listed from to off test) lists (cells box))
         all (-> (:solid r) (into (:entities r)) (into (:other r)))

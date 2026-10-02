@@ -4,6 +4,7 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.out :as out]
+            [collider.game.sleep :as sleeping]
             [collider.game.systems.sleep :as sleep]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -57,11 +58,11 @@
   (if (<= (long (get-in world [:rules :players-sleeping-percentage]
                         100))
           100)
-    (sleep/announcement world asleep)
+    (sleeping/announcement world asleep)
     (out/to eid (out/overlay {:translate "sleep.not_possible"}))))
 
 (defn- lie-deltas [world eid head st]
-  (let [asleep (inc (count (sleep/sleepers world)))]
+  (let [asleep (inc (count (sleeping/sleepers world)))]
     (concat (changes/change-deltas world [[head (occupied st)]])
             [[:merge-entity eid (lying world head)]
              (sleep-status world asleep eid)])))
