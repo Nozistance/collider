@@ -1,42 +1,63 @@
 (ns collider.world.blocks.grow.mushroom
   "Spreading mushrooms, and the huge mushrooms bone meal makes."
-  (:require [collider.world.block :as block]
+  (:require [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.blocks.grow.common :refer [air-at? chance? crowd flag pick]]
+            [collider.world.blocks.grow.common
+             :refer [air-at? chance? crowd]]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
 
-(defn tick [chunks p st roll _time _ctx]
-  (when (and (chance? roll :gate 25) (< (crowd chunks p (block/block-of st)) 5))
-    (let [step (fn [q i] (mapv + q [(dec (pick roll [:x i] 3)) (- (pick roll [:y1 i] 2) (pick roll [:y2 i] 2)) (dec (pick roll [:z i] 3))]))
-          ok? (fn [q] (and (air-at? chunks q) (support/supported? chunks q st)))
-          target (loop [q p off (step p 0) i 1]
-                   (if (> i 4)
-                     off
-                     (let [q (if (ok? off) off q)]
-                       (recur q (step q i) (inc i)))))]
-      (when (ok? target) [[target st]]))))
+(defn- spread-step [roll q i]
+  (let [dx (dec (random/below (roll [:x i]) 3))
+        dy (- (random/below (roll [:y1 i]) 2)
+              (random/below (roll [:y2 i]) 2))
+        dz (dec (random/below (roll [:z i]) 3))]
+    (mapv + q [dx dy dz])))
+
+(defn- spread-target [roll fits? p]
+  (loop [q p off (spread-step roll p 0) i 1]
+    (if (> i 4)
+      off
+      (let [q (if (fits? off) off q)]
+        (recur q (spread-step roll q i) (inc i))))))
+
+(defn tick
+  "Returns the mushroom a random tick of the mushroom st at p
+  spreads to, if any."
+  [chunks p st roll _time _world]
+  (when (and (chance? roll :gate 25)
+             (< (crowd chunks p (block/block-of st)) 5))
+    (let [fits? #(and (air-at? chunks %)
+                      (support/supported? chunks % st))
+          target (spread-target roll fits? p)]
+      (when (fits? target) [[target st]]))))
 
 (def ^:private huge
-  {:red-mushroom   {:cap :red-mushroom-block :radius 2 :tag "huge_red_mushroom_can_place_on"}
-   :brown-mushroom {:cap :brown-mushroom-block :radius 3 :tag "huge_brown_mushroom_can_place_on"}})
+  {:red-mushroom
+   {:cap :red-mushroom-block :radius 2
+    :tag "huge_red_mushroom_can_place_on"}
+   :brown-mushroom
+   {:cap :brown-mushroom-block :radius 3
+    :tag "huge_brown_mushroom_can_place_on"}})
 
-(def ^:private ^:table stem-state (delay (block/state :mushroom-stem {:up :false :down :false})))
+(def ^:private ^:table stem-state
+  (delay (block/state :mushroom-stem {:up :false :down :false})))
 
-(defn- cleared-at ^long [chunks origin q]
+(defn- state-ignoring-origin ^long [chunks origin q]
   (if (= q origin) 0 (chunk/at chunks q)))
 
-(defn- check-radius ^long [kind ^long radius ^long dy]
+(defn- room-radius ^long [kind ^long radius ^long dy]
   (if (= :brown-mushroom kind) (if (<= dy 3) 0 radius) 0))
 
 (defn- room? [chunks p kind radius height]
-  (every? (fn [[dx dy dz]]
-            (let [st (cleared-at chunks p (mapv + p [dx dy dz]))]
+  (every? (fn [off]
+            (let [st (state-ignoring-origin chunks p (mapv + p off))]
               (or (zero? st) (block/tagged? st "leaves"))))
           (for [dy (range (inc (long height)))
-                :let [r (check-radius kind (long radius) dy)]
+                :let [r (room-radius kind (long radius) dy)]
                 dx (range (- r) (inc r)) dz (range (- r) (inc r))]
             [dx dy dz])))
 
@@ -46,43 +67,60 @@
        (room? chunks p kind (long radius) (long height))))
 
 (defn- height-roll ^long [roll]
-  (let [h (+ 4 (pick roll :height 3))]
-    (if (zero? (pick roll :double 12)) (* 2 h) h)))
+  (let [h (+ 4 (random/below (roll :height) 3))]
+    (if (zero? (random/below (roll :double) 12)) (* 2 h) h)))
+
+(defn- red-faces [cap ^long center [dx dy dz] ^long h]
+  (let [dx (long dx) dy (long dy) dz (long dz)]
+    (block/state cap {:down :false
+                      :up (block/flag (>= dy (dec h)))
+                      :west (block/flag (< dx (- center)))
+                      :east (block/flag (> dx center))
+                      :north (block/flag (< dz (- center)))
+                      :south (block/flag (> dz center))})))
 
 (defn- red-cap [p cap ^long radius ^long height]
   (let [center (- radius 2)]
     (for [dy (range (- height 3) (inc height))
           :let [r (if (< dy height) radius (dec radius))]
           dx (range (- r) (inc r)) dz (range (- r) (inc r))
-          :let [xe (or (= dx (- r)) (= dx r)) ze (or (= dz (- r)) (= dz r))]
+          :let [xe (or (= dx (- r)) (= dx r))
+                ze (or (= dz (- r)) (= dz r))
+                off [dx dy dz]]
           :when (or (>= dy height) (not= xe ze))]
-      [(mapv + p [dx dy dz])
-       (block/state cap {:down  :false :up (flag (>= dy (dec height)))
-                         :west  (flag (< dx (- center))) :east (flag (> dx center))
-                         :north (flag (< dz (- center))) :south (flag (> dz center))})])))
+      [(mapv + p off) (red-faces cap center off height)])))
+
+(defn- brown-faces [cap ^long r ^long dx ^long dz]
+  (let [nx (= dx (- r)) px (= dx r) nz (= dz (- r)) pz (= dz r)
+        xe (or nx px) ze (or nz pz)
+        f #(block/flag (or %1 (and %2 (= %3 %4))))]
+    (block/state cap {:up :true :down :false
+                      :west (f nx ze dx (- 1 r))
+                      :east (f px ze dx (dec r))
+                      :north (f nz xe dz (- 1 r))
+                      :south (f pz xe dz (dec r))})))
+
+(defn- corner? [^long r ^long dx ^long dz]
+  (and (or (= dx (- r)) (= dx r)) (or (= dz (- r)) (= dz r))))
 
 (defn- brown-cap [p cap ^long radius ^long height]
-  (for [dx (range (- radius) (inc radius)) dz (range (- radius) (inc radius))
-        :let [nx (= dx (- radius)) px (= dx radius) nz (= dz (- radius)) pz (= dz radius)
-              xe (or nx px) ze (or nz pz)]
-        :when (not (and xe ze))]
-    [(mapv + p [dx height dz])
-     (block/state cap {:up    :true :down :false
-                       :west  (flag (or nx (and ze (= dx (- 1 radius)))))
-                       :east  (flag (or px (and ze (= dx (dec radius)))))
-                       :north (flag (or nz (and xe (= dz (- 1 radius)))))
-                       :south (flag (or pz (and xe (= dz (dec radius)))))})]))
+  (for [dx (range (- radius) (inc radius))
+        dz (range (- radius) (inc radius))
+        :when (not (corner? radius dx dz))]
+    [(mapv + p [dx height dz]) (brown-faces cap radius dx dz)]))
 
 (defn- cells [p kind cap radius height]
   (let [cap-fn (if (= :brown-mushroom kind) brown-cap red-cap)]
     (concat (cap-fn p cap (long radius) (long height))
-            (for [dy (range (long height))] [(mapv + p [0 dy 0]) @stem-state]))))
+            (for [dy (range (long height))]
+              [(dir/toward p :up dy) @stem-state]))))
 
 (defn- changes [chunks origin cells]
   (loop [cells (seq cells) seen {origin 0} acc []]
     (if-let [[q st] (first cells)]
       (let [cur (long (get seen q (chunk/at chunks q)))]
-        (if (or (zero? cur) (block/tagged? cur "replaceable_by_mushrooms"))
+        (if (or (zero? cur)
+                (block/tagged? cur "replaceable_by_mushrooms"))
           (recur (next cells) (assoc seen q st) (conj acc [q st]))
           (recur (next cells) seen acc)))
       acc)))
@@ -100,4 +138,6 @@
   [chunks [_ y _ :as p] st roll]
   (let [kind (block/block-of st) {:keys [radius]} (huge kind)]
     (when (and radius (chunk/in-range? (+ (long y) 4 (long radius))))
-      {:changes (if (< (double (roll :success)) 0.4) (grown chunks p kind roll) [])})))
+      {:changes (if (< (double (roll :success)) 0.4)
+                  (grown chunks p kind roll)
+                  [])})))

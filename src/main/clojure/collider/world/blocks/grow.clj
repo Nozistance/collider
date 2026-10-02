@@ -1,14 +1,23 @@
 (ns collider.world.blocks.grow
   "Random growth and bone meal of every block class."
   (:require [collider.world.block :as block]
-            [collider.world.blocks.grow.bamboo :as bamboo]
+            [collider.world.update :as update]
             [collider.world.blocks.dripleaf :as dripleaf]
+            [collider.world.blocks.grow.amethyst :as amethyst]
+            [collider.world.blocks.grow.bamboo :as bamboo]
+            [collider.world.blocks.grow.common :refer [flagged]]
+            [collider.world.blocks.grow.copper :as copper]
             [collider.world.blocks.grow.crop :as crop]
-            [collider.world.blocks.grow.ground :as ground]
+            [collider.world.blocks.grow.flower :as flower]
+            [collider.world.blocks.grow.melt :as melt]
             [collider.world.blocks.grow.mushroom :as mushroom]
+            [collider.world.blocks.grow.pickles :as pickles]
             [collider.world.blocks.grow.sapling :as sapling]
+            [collider.world.blocks.grow.sprout :as sprout]
+            [collider.world.blocks.grow.turf :as turf]
+            [collider.world.blocks.grow.underwater :as underwater]
             [collider.world.blocks.grow.vine :as vine]
-            [collider.world.blocks.grow.weather :as weather]
+            [collider.world.blocks.leaves :as leaves]
             [collider.world.env.biome :as biome]))
 
 (set! *warn-on-reflection* true)
@@ -16,9 +25,12 @@
 (defn- table [pairs]
   (into {} (for [[classes f] pairs k classes] [k f])))
 
+(def ^:private crops
+  [:crop :carrot :potato :beetroot :torchflower-crop])
+
 (def ^:private ticks
   (table
-   [[[:crop :carrot :potato :beetroot :torchflower-crop] crop/tick]
+   [[crops crop/tick]
     [[:stem] crop/stem-tick]
     [[:pitcher-crop] crop/pitcher-tick]
     [[:sugar-cane] crop/cane-tick]
@@ -28,90 +40,83 @@
     [[:sweet-berry-bush] crop/berry-tick]
     [[:kelp] crop/kelp-tick]
     [[:mushroom] mushroom/tick]
-    [[:grass :mycelium] ground/spread-tick]
-    [[:farmland] ground/farmland-tick]
+    [[:grass :mycelium] turf/spread-tick]
+    [[:farmland] turf/farmland-tick]
     [[:cocoa] crop/cocoa-tick]
-    [[:ice] ground/ice-tick]
-    [[:snow-layer] ground/snow-tick]
+    [[:ice] melt/ice-tick]
+    [[:snow-layer] melt/snow-tick]
     [[:vine] vine/tick]
-    [[:budding-amethyst] ground/budding-tick]
-    [[:eyeblossom] ground/eyeblossom-tick]
-    [[:flower-pot] ground/potted-tick]
+    [[:budding-amethyst] amethyst/budding-tick]
+    [[:eyeblossom] flower/eyeblossom-tick]
+    [[:flower-pot] flower/potted-tick]
     [[:nether-wart] crop/nether-wart-tick]
     [[:sapling] sapling/tick]
     [[:mangrove-propagule] sapling/propagule-tick]
-    [[:chorus-flower] ground/chorus-tick]
+    [[:chorus-flower] flower/chorus-tick]
     [[:mangrove-leaves :tinted-particle-leaves
-      :untinted-particle-leaves] ground/leaves-tick]
+      :untinted-particle-leaves] leaves/decay-tick]
     [[:weeping-vines :twisting-vines :cave-vines] vine/plant-tick]]))
 
-(def ^:private flags-2
+(def ^:private client-only
   #{:vine :mushroom :chorus-flower})
 
-(defn- flagged [flags changes]
-  (mapv (fn [[p st fx]] [p st fx flags]) changes))
-
-(defn- ticked [chunks p st roll time ctx]
+(defn- ticked [chunks p st roll time world]
   (if-let [f (ticks (block/type-of st))]
-    (f chunks p st roll time ctx)
+    (f chunks p st roll time world)
     (when (block/weathering? st)
-      (weather/tick chunks p st roll))))
+      (copper/tick chunks p st roll))))
 
 (defn random-tick
-  "Returns the changes of a random tick of st at p.
-  A change may carry its set flags as a fourth element."
-  ([chunks p st roll time] (random-tick chunks p st roll time nil))
-  ([chunks p st roll time ctx]
-   (let [st (long st)
-         cs (ticked chunks p st roll time ctx)]
-     (if (and (seq cs) (flags-2 (block/type-of st)))
-       (flagged 2 cs)
-       cs))))
+  "Returns the changes of a random tick of st at p."
+  [chunks p st roll time world]
+  (let [st (long st)
+        cs (ticked chunks p st roll time world)]
+    (if (and (seq cs) (client-only (block/type-of st)))
+      (flagged update/clients cs)
+      cs)))
 
 (defn random-drops
   "Returns the drops of leaves too far from their log.
   Returns nil for any other block."
   [^long st roll]
-  (when (and (block/leaves? st)
-             (= :false (:persistent (block/props-of st)))
-             (= 7 (block/prop-long st :distance)))
+  (when (and (block/leaves? st) (leaves/decaying? st))
     (block/drops st roll)))
 
 (defn- berries-meal [chunks p st roll]
   (some-> (vine/berries-meal chunks p st roll)
-          (update :changes #(flagged 2 %))))
+          (update :changes #(flagged update/clients %))))
 
 (def ^:private meals
   (table
-   [[[:crop :carrot :potato :beetroot :torchflower-crop :stem]
-     crop/meal]
+   [[(conj crops :stem) crop/meal]
     [[:pitcher-crop] crop/pitcher-meal]
-    [[:tall-grass] crop/doubled]
+    [[:tall-grass] crop/tall-grass-meal]
     [[:tall-flower] crop/tall-flower-meal]
     [[:flower-bed] crop/petals-meal]
     [[:sweet-berry-bush] crop/berry-meal]
     [[:mushroom] mushroom/meal]
-    [[:rooted-dirt] ground/roots-meal]
-    [[:bonemealable-feature-placer] ground/placer-meal]
+    [[:rooted-dirt] sprout/roots-meal]
+    [[:bonemealable-feature-placer] turf/placer-meal]
     [[:cocoa] crop/cocoa-meal]
     [[:bamboo-sapling] bamboo/sapling-meal]
     [[:kelp] crop/kelp-meal]
     [[:weeping-vines :twisting-vines] vine/plant-meal]
     [[:weeping-vines-plant :twisting-vines-plant] vine/body-meal]
     [[:cave-vines :cave-vines-plant] berries-meal]
-    [[:glow-lichen] ground/lichen-meal]
-    [[:hanging-moss] ground/hanging-moss-meal]
-    [[:mossy-carpet] ground/carpet-meal]
-    [[:big-dripleaf :big-dripleaf-stem :small-dripleaf] dripleaf/meal]
-    [[:bush :firefly-bush] ground/bush-meal]
-    [[:short-dry-grass] ground/short-dry-grass-meal]
-    [[:tall-dry-grass] ground/tall-dry-grass-meal]
+    [[:glow-lichen] sprout/lichen-meal]
+    [[:hanging-moss] sprout/hanging-moss-meal]
+    [[:mossy-carpet] sprout/carpet-meal]
+    [[:big-dripleaf :big-dripleaf-stem :small-dripleaf]
+     dripleaf/meal]
+    [[:bush :firefly-bush] sprout/bush-meal]
+    [[:short-dry-grass] sprout/short-dry-grass-meal]
+    [[:tall-dry-grass] sprout/tall-dry-grass-meal]
     [[:bamboo-stalk] bamboo/meal]
-    [[:sea-pickle] ground/pickle-meal]
+    [[:sea-pickle] pickles/pickle-meal]
     [[:sapling] sapling/meal]
     [[:azalea] sapling/azalea-meal]
     [[:mangrove-propagule] sapling/propagule-meal]
-    [[:seagrass] crop/seagrass-meal]]))
+    [[:seagrass] underwater/seagrass-meal]]))
 
 (defn bonemeal
   "Returns the result of bone meal on st at p in level dim.
@@ -120,13 +125,15 @@
   [chunks p st roll dim]
   (let [st (long st) t (block/type-of st)]
     (if (= :grass t)
-      (ground/turf-meal chunks p st roll (biome/at dim p))
+      (turf/turf-meal chunks p st roll (biome/at dim p))
       (when-let [f (meals t)]
         (f chunks p st roll)))))
 
 (def tilled
+  "The blocks a hoe turns each tillable block into."
   {:grass-block [:farmland] :dirt-path [:farmland] :dirt [:farmland]
    :coarse-dirt [:dirt] :rooted-dirt [:dirt :hanging-roots]})
 
 (def flattened
+  "The blocks a shovel flattens into a dirt path."
   #{:grass-block :dirt :podzol :coarse-dirt :mycelium :rooted-dirt})

@@ -1,20 +1,22 @@
 (ns collider.world.blocks.grow.crop
   "Crops and the other plants that grow where they stand."
-  (:require [collider.world.block :as block]
+  (:require [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
+            [collider.world.update :as update]
+            [collider.world.blocks.grass :as grass]
             [collider.world.blocks.grow.common
-             :refer [age aged air-at? chance? lit? pick water? with
-                     height-below]]
+             :refer [age aged air-at? chance? height-below lit?
+                     older]]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
 
 (def max-age
+  "The age at which each crop is ripe."
   {:crop 7 :carrot 7 :potato 7 :beetroot 3 :torchflower-crop 1
    :stem 7})
-
-(defn- older [st] (aged st (inc (age st))))
 
 (defn- soil-speed ^double [chunks [x y z] ^long dx ^long dz]
   (let [q [(+ (long x) dx) (dec (long y)) (+ (long z) dz)]
@@ -51,12 +53,14 @@
 (defn- gated? [t roll]
   (and (#{:beetroot :torchflower-crop} t) (chance? roll :gate 3)))
 
-(defn tick [chunks p st roll _time _ctx]
+(defn tick
+  "Returns the changes of a random tick of the crop st at p."
+  [chunks p st roll _time _world]
   (let [t (block/type-of st)]
     (when (and (< (age st) (long (max-age t)))
                (not (gated? t roll))
                (grows-now? chunks p st roll))
-      [[p (older st) nil 2]])))
+      [[p (older st) nil update/clients]])))
 
 (defn- room-above? [chunks p ^long a]
   (or (< a 3)
@@ -68,18 +72,22 @@
              (chunk/in-range? (inc (long (p 1))))
              (room-above? chunks p a))
     (let [st' (aged st a)]
-      (cond-> [[p st' nil 2]]
-        (>= a 3) (conj [(dir/up p) (with st' :half :upper)])))))
+      (cond-> [[p st' nil update/clients]]
+        (>= a 3) (conj [(dir/up p) (block/with st' :half :upper)])))))
 
 (defn- lower? [st] (= :lower (:half (block/props-of st))))
 
-(defn pitcher-tick [chunks p st roll _time _ctx]
+(defn pitcher-tick
+  "Returns the changes of a random tick of the pitcher crop st at p."
+  [chunks p st roll _time _world]
   (when (and (lower? st)
              (< (age st) 4)
              (growth-roll? chunks p st roll))
     (pitcher-grown chunks p st (inc (age st)))))
 
-(defn pitcher-meal [chunks p st _roll]
+(defn pitcher-meal
+  "Returns the bone meal result for the pitcher crop st at p."
+  [chunks p st _roll]
   (let [lp (if (lower? st) p (dir/down p))
         lst (if (lower? st) st (chunk/at chunks lp))]
     (when (and (= :pitcher-crop (block/type-of lst)) (< (age lst) 4))
@@ -88,113 +96,143 @@
 
 (defn- fruit-changes [chunks p st roll]
   (let [[fruit attached tag] (support/stem-fruits (block/block-of st))
-        dir (dir/horizontal (pick roll :dir 4))
-        beside (mapv + p (dir/horizontal-offset dir))
+        dir (dir/horizontal (random/below (roll :dir) 4))
+        beside (dir/toward p dir)
         soil (chunk/at chunks (dir/down beside))]
     (when (and (air-at? chunks beside) (block/tagged? soil tag))
       [[beside (block/state fruit)]
        [p (block/state attached {:facing dir})]])))
 
-(defn stem-tick [chunks p st roll _time _ctx]
+(defn stem-tick
+  "Returns the changes of a random tick of the stem st at p. A ripe
+  stem grows a fruit beside it."
+  [chunks p st roll _time _world]
   (when (grows-now? chunks p st roll)
-    (if (< (age st) 7)
-      [[p (older st) nil 2]]
+    (if (< (age st) (long (max-age :stem)))
+      [[p (older st) nil update/clients]]
       (fruit-changes chunks p st roll))))
 
-(defn cane-tick [chunks p st _roll _time _ctx]
+(defn cane-tick
+  "Returns the changes of a random tick of the sugar cane st at p."
+  [chunks p st _roll _time _world]
   (let [h (height-below chunks p (block/block-of st) 3)]
     (when (and (air-at? chunks (dir/up p)) (< (inc h) 3))
       (if (= 15 (age st))
         [[(dir/up p) (block/state (block/block-of st))]
-         [p (aged st 0) nil 260]]
-        [[p (older st) nil 260]]))))
+         [p (aged st 0) nil update/quiet]]
+        [[p (older st) nil update/quiet]]))))
 
-(defn- cactus-top [chunks p st roll a h]
-  (let [up (dir/up p)
+(defn- cactus-top [chunks p st roll a height]
+  (let [a (long a) height (long height) up (dir/up p)
         cactus (block/state :cactus)]
     (cond
       (and (= a 8) (support/supported? chunks up cactus))
-      (when (<= (double (roll :flower)) (if (>= h 3) 0.25 0.1))
+      (when (<= (double (roll :flower)) (if (>= height 3) 0.25 0.1))
         [[up (block/state :cactus-flower)]])
-      (and (= a 15) (< h 3))
+      (and (= a 15) (< height 3))
       (let [st' (aged st 0)]
         [[up cactus]
-         [p st' [[:neighbor-changed up st']] 260]]))))
+         [p st' [[:neighbor-changed up st']] update/quiet]]))))
 
-(defn cactus-tick [chunks p st roll _time _ctx]
+(defn cactus-tick
+  "Returns the changes of a random tick of the cactus st at p."
+  [chunks p st roll _time _world]
   (when (air-at? chunks (dir/up p))
     (let [a (age st)
           h (inc (height-below chunks p :cactus 3))]
       (when-not (and (>= h 3) (= a 15))
         (into (vec (cactus-top chunks p st roll a h))
-              (when (< a 15) [[p (aged st (inc a)) nil 260]]))))))
+              (when (< a 15)
+                [[p (aged st (inc a)) nil update/quiet]]))))))
 
-(defn berry-tick [chunks p st roll _time _ctx]
+(defn berry-tick
+  "Returns the changes of a random tick of the berry bush st at p."
+  [chunks p st roll _time _world]
   (when (and (< (age st) 3)
              (chance? roll :gate 5)
              (lit? chunks (dir/up p) 9))
-    [[p (older st) nil 2]]))
+    [[p (older st) nil update/clients]]))
 
-(defn kelp-tick [chunks p st roll _time _ctx]
+(defn kelp-tick
+  "Returns the kelp a random tick of the kelp st at p grows above."
+  [chunks p st roll _time _world]
   (when (and (< (age st) 25) (< (double (roll :grow)) 0.14)
              (block/water? (chunk/at chunks (dir/up p))))
     [[(dir/up p) (older st)]]))
 
-(defn cocoa-tick [_chunks p st roll _time _ctx]
+(defn cocoa-tick
+  "Returns the changes of a random tick of the cocoa st at p."
+  [_chunks p st roll _time _world]
   (when (and (chance? roll :gate 5) (< (age st) 2))
-    [[p (older st) nil 2]]))
+    [[p (older st) nil update/clients]]))
 
-(defn nether-wart-tick [_chunks p st roll _time _ctx]
+(defn nether-wart-tick
+  "Returns the changes of a random tick of the nether wart st at p."
+  [_chunks p st roll _time _world]
   (when (and (< (age st) 3) (chance? roll :gate 10))
-    [[p (older st) nil 2]]))
+    [[p (older st) nil update/clients]]))
 
 (defn- meal-steps ^long [t roll]
   (case t
-    :beetroot (quot (+ 2 (pick roll :meal 4)) 3)
+    :beetroot (quot (+ 2 (random/below (roll :meal) 4)) 3)
     :torchflower-crop 1
-    (+ 2 (pick roll :meal 4))))
+    (+ 2 (random/below (roll :meal) 4))))
 
-(defn meal [chunks p st roll]
+(defn- ripe-fruit [chunks p st st' roll]
+  (when (and (= :stem (block/type-of st))
+             (= (age st') (long (max-age :stem)))
+             (grows-now? chunks p st roll))
+    (fruit-changes chunks p st' roll)))
+
+(defn meal
+  "Returns the bone meal result for the crop or stem st at p."
+  [chunks p st roll]
   (let [t (block/type-of st) a (age st) top (long (max-age t))]
     (when (< a top)
-      (let [a' (min top (+ a (meal-steps t roll)))
-            st' (aged st a')
-            fruit? (and (= :stem t) (= a' 7)
-                        (grows-now? chunks p st roll))
-            fruit (when fruit? (fruit-changes chunks p st' roll))]
-        {:changes (into [[p st' nil 2]] fruit)}))))
+      (let [st' (aged st (min top (+ a (meal-steps t roll))))]
+        {:changes (into [[p st' nil update/clients]]
+                        (ripe-fruit chunks p st st' roll))}))))
 
-(defn berry-meal [_chunks p st _roll]
-  (when (< (age st) 3) {:changes [[p (older st) nil 2]]}))
+(defn berry-meal
+  "Returns the bone meal result for the berry bush st at p."
+  [_chunks p st _roll]
+  (when (< (age st) 3)
+    {:changes [[p (older st) nil update/clients]]}))
 
-(defn cocoa-meal [_chunks p st _roll]
-  (when (< (age st) 2) {:changes [[p (older st) nil 2]]}))
+(defn cocoa-meal
+  "Returns the bone meal result for the cocoa st at p."
+  [_chunks p st _roll]
+  (when (< (age st) 2)
+    {:changes [[p (older st) nil update/clients]]}))
 
-(defn kelp-meal [chunks p st _roll]
+(defn kelp-meal
+  "Returns the kelp bone meal grows above the kelp st at p."
+  [chunks p st _roll]
   (when (and (< (age st) 25)
              (block/water? (chunk/at chunks (dir/up p))))
     {:changes [[(dir/up p) (older st)]]}))
 
-(defn seagrass-meal [chunks p _st _roll]
-  (let [half (fn [h] (block/state :tall-seagrass {:half h}))]
-    (when (water? (chunk/at chunks (dir/up p)))
-      {:changes [[p (half :lower) nil 2]
-                 [(dir/up p) (half :upper) nil 2]]})))
-
-(defn tall-flower-meal [_chunks _p st _roll]
+(defn tall-flower-meal
+  "Returns the drop of a tall flower that bone meal copies."
+  [_chunks _p st _roll]
   (when (lower? st)
     {:drops [{:item (block/block-of st) :count 1}]}))
 
-(defn doubled [chunks p st _roll]
-  (let [fern? (= :fern (block/block-of st))
-        tall (block/state (if fern? :large-fern :tall-grass))
-        upper (block/state (block/block-of tall) {:half :upper})]
+(defn tall-grass-meal
+  "Returns the tall plant bone meal grows from the short grass or fern
+  st at p."
+  [chunks p st _roll]
+  (let [[tall upper] (grass/tall-of st)]
     (when (and (air-at? chunks (dir/up p))
                (support/supported? chunks p tall))
-      {:changes [[p tall nil 2] [(dir/up p) upper nil 2]]})))
+      {:changes [[p tall nil update/clients]
+                 [(dir/up p) upper nil update/clients]]})))
 
-(defn petals-meal [_chunks p st _roll]
+(defn petals-meal
+  "Returns the bone meal result for the flower bed st at p."
+  [_chunks p st _roll]
   (let [n (block/prop-long st :flower-amount)]
     (if (< n 4)
-      {:changes [[p (with st :flower-amount (inc n)) nil 2]]}
+      {:changes [[p (block/with st :flower-amount (inc n))
+                  nil update/clients]]}
       {:drops [{:item (block/block-of st) :count 1}]})))

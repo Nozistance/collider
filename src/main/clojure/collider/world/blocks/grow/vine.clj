@@ -1,23 +1,54 @@
 (ns collider.world.blocks.grow.vine
   "Vines, and the plants that grow along one direction."
-  (:require [collider.world.block :as block]
+  (:require [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.grow.common
-             :refer [age aged air-at? chance? crowd pick with]]
-            [collider.world.blocks.multiface :as multiface]))
+             :refer [age aged air-at? chance? crowd]]
+            [collider.world.blocks.multiface :as multiface
+             :refer [has-face?]]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private sides [:north :south :west :east])
-
 (def ^:private ^:const max-age 25)
+
+(defn- hung-from-above? [chunks pos st side]
+  (let [a (chunk/at chunks (dir/up pos))]
+    (and (= (block/block-of a) (block/block-of st))
+         (has-face? a side))))
+
+(defn face-held?
+  "Returns true when the face on side of the vine st at pos is held."
+  [chunks pos st side]
+  (and (not= :down side)
+       (or (multiface/attaches? chunks pos side)
+           (and (contains? dir/horizontal-offset side)
+                (hung-from-above? chunks pos st side)))))
+
+(defn- face-kept [chunks pos st m side]
+  (if (= :true (get m side))
+    (let [held? (if (= :up side)
+                  (multiface/face-held? chunks (dir/up pos) :up)
+                  (face-held? chunks pos st side))]
+      (assoc m side (block/flag held?)))
+    m))
+
+(defn updated
+  "Returns the vine st without the faces nothing holds, or what is
+  left of it when no face is left."
+  ^long [chunks pos ^long st]
+  (let [step (fn [m side] (face-kept chunks pos st m side))
+        props' (reduce step (block/props-of st)
+                       [:up :north :south :west :east])
+        st' (block/state (block/block-of st) props')]
+    (if (seq (block/faces-of st')) st' (block/emptied st))))
 
 (defn- grow-into ^long [^long st ^long a roll]
   (let [st' (aged st a)]
     (if (= :cave-vines (block/type-of st))
-      (with st' :berries
-            (if (< (double (roll :berries)) 0.11) :true :false))
+      (block/with st' :berries
+                  (block/flag (< (double (roll :berries)) 0.11)))
       st')))
 
 (defn- growth-offset [st]
@@ -25,57 +56,55 @@
 
 (defn plant-tick
   "Returns the cell a growing plant head at p grows into, if any."
-  [chunks p st roll _time _ctx]
+  [chunks p st roll _time _world]
   (let [q (mapv + p (growth-offset st))]
     (when (and (< (age st) max-age)
                (< (double (roll :grow)) 0.1)
                (air-at? chunks q))
       [[q (grow-into st (inc (age st)) roll)]])))
 
-(defn- vine-with [st dir] (with st dir :true))
-
-(defn- vine-has? [st dir] (= :true (get (block/props-of st) dir)))
+(defn- vine-with [st side] (block/with st side :true))
 
 (defn- crowded? [chunks p self] (>= (crowd chunks p self) 5))
 
-(defn- fresh-with [st dir]
-  (vine-with (block/state (block/block-of st)) dir))
+(defn- fresh-with [st side]
+  (vine-with (block/state (block/block-of st)) side))
 
 (defn- onto [chunks st test turn]
-  (when (and (vine-has? st turn)
+  (when (and (has-face? st turn)
              (multiface/attaches? chunks test turn))
     [[test (fresh-with st turn)]]))
 
 (defn- wrapped [chunks st test turn back]
-  (let [corner (mapv + test (dir/offset turn))]
-    (when (and (vine-has? st turn) (air-at? chunks corner)
+  (let [corner (dir/toward test turn)]
+    (when (and (has-face? st turn) (air-at? chunks corner)
                (multiface/attaches? chunks corner back))
       [[corner (fresh-with st back)]])))
 
-(defn- into-air [chunks st test dir roll]
-  (let [turns [(dir/clockwise dir) (dir/counter-clockwise dir)]
-        back (dir/opposite dir)]
+(defn- into-air [chunks st test side roll]
+  (let [turns [(dir/clockwise side) (dir/counter-clockwise side)]
+        back (dir/opposite side)]
     (or (some #(onto chunks st test %) turns)
         (some #(wrapped chunks st test % back) turns)
         (when (and (< (double (roll :up-wall)) 0.05)
                    (multiface/attaches? chunks test :up))
           [[test (fresh-with st :up)]]))))
 
-(defn- sideways [chunks p st dir roll]
-  (let [test (mapv + p (dir/offset dir))]
+(defn- sideways [chunks p st side roll]
+  (let [test (dir/toward p side)]
     (if (air-at? chunks test)
-      (into-air chunks st test dir roll)
-      (when (multiface/attaches? chunks p dir)
-        [[p (vine-with st dir)]]))))
+      (into-air chunks st test side roll)
+      (when (multiface/attaches? chunks p side)
+        [[p (vine-with st side)]]))))
 
 (defn- climbs? [chunks p]
   (or (multiface/attaches? chunks p :up)
       (air-at? chunks (dir/up p))))
 
-(defn- kept-side [chunks above roll s dir]
-  (if (or (< (double (roll [:keep dir])) 0.5)
-          (not (multiface/attaches? chunks above dir)))
-    (with s dir :false)
+(defn- kept-side [chunks above roll s side]
+  (if (or (< (double (roll [:keep side])) 0.5)
+          (not (multiface/attaches? chunks above side)))
+    (block/with s side :false)
     s))
 
 (defn- upward [chunks p st roll]
@@ -85,12 +114,13 @@
       (crowded? chunks p (block/block-of st)) nil
       :else
       (let [keep-side #(kept-side chunks above roll %1 %2)
-            st' (reduce keep-side st sides)]
-        (when (some #(vine-has? st' %) sides) [[above st']])))))
+            st' (reduce keep-side st dir/horizontal)]
+        (when (some #(has-face? st' %) dir/horizontal)
+          [[above st']])))))
 
-(defn- copied-side [st roll s dir]
-  (if (and (< (double (roll [:copy dir])) 0.5) (vine-has? st dir))
-    (vine-with s dir)
+(defn- copied-side [st roll s side]
+  (if (and (< (double (roll [:copy side])) 0.5) (has-face? st side))
+    (vine-with s side)
     s))
 
 (defn- downward [chunks p st roll]
@@ -98,24 +128,27 @@
         self (block/block-of st)]
     (when (or (zero? bst) (= (block/block-of bst) self))
       (let [before (if (zero? bst) (block/state self) bst)
-            after (reduce #(copied-side st roll %1 %2) before sides)]
+            copy #(copied-side st roll %1 %2)
+            after (reduce copy before dir/horizontal)]
         (when (and (not= after before)
-                   (some #(vine-has? after %) sides))
+                   (some #(has-face? after %) dir/horizontal))
           [[below after]])))))
 
+(defn- grown [chunks p st roll side]
+  (cond
+    (and (contains? dir/horizontal-offset side)
+         (not (has-face? st side)))
+    (when-not (crowded? chunks p (block/block-of st))
+      (sideways chunks p st side roll))
+    (and (= :up side) (climbs? chunks p)) (upward chunks p st roll)
+    :else (downward chunks p st roll)))
+
 (defn tick
-  "VineBlock.randomTick: the cells a vine at p grows into."
-  [chunks p st roll _time ctx]
-  (when (and (get-in ctx [:rules :spread-vines] true)
+  "Returns the cells a vine at p grows into on a random tick."
+  [chunks p st roll _time world]
+  (when (and (get-in world [:rules :spread-vines] true)
              (chance? roll :gate 4))
-    (let [dir (dir/six (pick roll :dir 6))]
-      (cond
-        (and (contains? dir/horizontal-offset dir)
-             (not (vine-has? st dir)))
-        (when-not (crowded? chunks p (block/block-of st))
-          (sideways chunks p st dir roll))
-        (and (= :up dir) (climbs? chunks p)) (upward chunks p st roll)
-        :else (downward chunks p st roll)))))
+    (grown chunks p st roll (dir/six (random/below (roll :dir) 6)))))
 
 (defn- nether-count ^long [roll]
   (loop [p 1.0 n 0]
@@ -135,13 +168,12 @@
           :else nil)))))
 
 (defn plant-meal
-  "Returns the cells bone meal grows a plant head at p into."
+  "Returns the cells bone meal grows a weeping or twisting vine head
+  at p into."
   [chunks p st roll]
-  (let [off (growth-offset st)
-        cave? (= :cave-vines (block/type-of st))
-        n (if cave? 1 (nether-count roll))]
+  (let [off (growth-offset st)]
     (loop [q (mapv + p off) a (min max-age (inc (age st)))
-           left n acc []]
+           left (nether-count roll) acc []]
       (if (and (pos? left) (air-at? chunks q))
         (recur (mapv + q off) (min max-age (inc a)) (dec left)
                (conj acc [q (aged st a)]))
@@ -157,4 +189,4 @@
   "Returns the cave vine at p with berries, when it has none."
   [_chunks p st _roll]
   (when (= :false (:berries (block/props-of st)))
-    {:changes [[p (with st :berries :true)]]}))
+    {:changes [[p (block/with st :berries :true)]]}))

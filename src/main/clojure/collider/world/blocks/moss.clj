@@ -7,11 +7,6 @@
 
 (set! *warn-on-reflection* true)
 
-(def wall-sides [:north :east :south :west])
-
-(defn- with ^long [^long st k v]
-  (block/state (block/block-of st) (assoc (block/props-of st) k v)))
-
 (defn- carpet-at? [chunks p dir pred]
   (let [n (chunk/at-void chunks p)]
     (and (= :pale-moss-carpet (block/block-of n))
@@ -43,22 +38,29 @@
   (let [bottom? (= :true (:bottom (block/props-of st)))
         create? (or create-sides? bottom?)]
     (reduce (fn [s dir]
-              (with s dir (carpet-side chunks p s dir create?)))
-            st wall-sides)))
+              (block/with s dir (carpet-side chunks p s dir create?)))
+            st dir/horizontal)))
 
-(defn carpet-faces? [^long st]
+(defn carpet-faces?
+  "Returns true when the carpet st shows a bottom or a side."
+  [^long st]
   (let [props (block/props-of st)]
     (or (= :true (:bottom props))
-        (boolean (some #(not= :none (get props %)) wall-sides)))))
+        (boolean (some #(not= :none (get props %)) dir/horizontal)))))
 
-(defn carpet-supported? [chunks p ^long st]
+(defn carpet-supported?
+  "Returns true when the block below holds the carpet st at p."
+  [chunks p ^long st]
   (let [below (chunk/at-void chunks (dir/down p))]
     (if (= :true (:bottom (block/props-of st)))
       (pos? below)
       (and (= :pale-moss-carpet (block/block-of below))
            (= :true (:bottom (block/props-of below)))))))
 
-(defn carpet-reshaped ^long [chunks p ^long st]
+(defn carpet-reshaped
+  "Returns the carpet st at p fitted to its neighbours, or air when
+  it has no hold or no face left."
+  ^long [chunks p ^long st]
   (if-not (carpet-supported? chunks p st)
     0
     (let [st' (carpet-updated chunks p st false)]
@@ -67,7 +69,7 @@
 (defn- trimmed [s dir side?]
   (if (and (not= :none (get (block/props-of s) dir))
            (not (side? dir)))
-    (with s dir :none)
+    (block/with s dir :none)
     s))
 
 (defn carpet-topper
@@ -82,20 +84,27 @@
                (or (not carpet?) open?)
                (or carpet? (block/can-be-replaced? prev)))
       (let [base (carpet-updated chunks above fresh true)
-            st' (reduce #(trimmed %1 %2 side?) base wall-sides)]
+            st' (reduce #(trimmed %1 %2 side?) base dir/horizontal)]
         (when (and (carpet-faces? st') (not= st' prev)) st')))))
 
-(defn hanging-tip ^long [chunks p ^long st]
+(defn hanging-tip
+  "Returns the hanging moss st at p marked as a tip unless more moss
+  hangs below it."
+  ^long [chunks p ^long st]
   (let [below (chunk/at-void chunks (dir/down p))
         same? (= (block/block-of st) (block/block-of below))]
-    (with st :tip (if same? :false :true))))
+    (block/with st :tip (block/flag (not same?)))))
 
-(defn hanging-supported? [chunks p ^long st]
+(defn hanging-supported?
+  "Returns true when the block above holds the hanging moss st at p."
+  [chunks p ^long st]
   (let [above (chunk/at-void chunks (dir/up p))]
     (or (multiface/attaches? chunks p :up)
         (= (block/block-of st) (block/block-of above)))))
 
-(defn hanging-end [chunks p self]
+(defn hanging-end
+  "Returns the first cell below p that is not hanging moss of self."
+  [chunks p self]
   (loop [q (dir/down p)]
     (if (= self (block/block-of (chunk/at-void chunks q)))
       (recur (dir/down q))

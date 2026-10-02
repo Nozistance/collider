@@ -6,9 +6,10 @@
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
+            [collider.world.blocks.grow.vine :as vine]
+            [collider.world.blocks.hugemushroom :as hugemushroom]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
-            [collider.world.blocks.mushroom :as mushroom]
             [collider.world.blocks.scaffold :as scaffold]
             [collider.world.blocks.support :as support]))
 
@@ -91,7 +92,7 @@
         free? (fn [side]
                 (and (not= :down side)
                      (= :false (get (block/props-of base) side))
-                     (support/vine-face-held? chunks pos base side)))]
+                     (vine/face-held? chunks pos base side)))]
     (if-let [side (first-free order free?)]
       (with-face base side)
       (when (= base cur) cur))))
@@ -253,7 +254,7 @@
   (campfire/placed chunks pos st yaw))
 
 (defn- mushroom-fitted [chunks pos st _opts]
-  (mushroom/placed chunks pos st))
+  (hugemushroom/placed chunks pos st))
 
 (defn- dirt-fitted [chunks pos st _opts]
   (if (support/supported? chunks pos st) st (support/gone-state st)))

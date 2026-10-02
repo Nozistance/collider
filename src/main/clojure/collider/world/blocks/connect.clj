@@ -11,9 +11,11 @@
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.halves :as halves]
+            [collider.world.blocks.grow.vine :as vine]
+            [collider.world.blocks.hugemushroom :as hugemushroom]
             [collider.world.blocks.leaves :as leaves]
             [collider.world.blocks.moss :as moss]
-            [collider.world.blocks.mushroom :as mushroom]
+            [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
@@ -303,11 +305,11 @@
 
 (defn- vine-reshaped [chunks pos st sides]
   (if (some #(not= :down %) sides)
-    (unless-bare st (support/vine-updated chunks pos st))
+    (unless-bare st (vine/updated chunks pos st))
     st))
 
 (defn- multiface-reshaped [chunks pos st sides]
-  (->> (support/multiface-sides-updated chunks pos st sides)
+  (->> (multiface/sides-updated chunks pos st sides)
        (unless-bare st)))
 
 (defn- leaf-reshaped [chunks pos st sides]
@@ -387,7 +389,7 @@
 
 (def ^:private self-reshapers
   {:campfire                 campfire/updated
-   :huge-mushroom            mushroom/updated
+   :huge-mushroom            hugemushroom/updated
    :potent-sulfur            sulfur-state
    :fence-gate               gate-state
    :stair                    stair-state

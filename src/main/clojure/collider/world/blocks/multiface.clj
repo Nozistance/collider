@@ -1,21 +1,16 @@
 (ns collider.world.blocks.multiface
   "Blocks that sit on the faces of their neighbours and spread."
-  (:require [collider.world.block :as block]
+  (:require [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.direction :as dir]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-(defn shuffled [roll xs]
-  (loop [v (vec xs) i (count v)]
-    (if (< i 2)
-      v
-      (let [j (long (Math/floor (* (double (roll [:shuffle i])) i)))
-            a (v (dec i)) b (v j)]
-        (recur (assoc v (dec i) b j a) (dec i))))))
-
-(defn- has-face? [^long st dir]
-  (= :true (get (block/props-of st) dir)))
+(defn has-face?
+  "Returns true when st shows a face on side."
+  [^long st side]
+  (= :true (get (block/props-of st) side)))
 
 (def ^:private face-axes
   {:west [0 1 2] :east [0 1 2] :down [1 0 2] :up [1 0 2]
@@ -36,32 +31,52 @@
   (boolean (some #(box-full? % side) (block/collision-boxes st))))
 
 (defn face-held?
-  "Whether the block at q holds a face on side by its support shape
-  or by one box of its collision shape, as MultifaceBlock.canAttachTo
-  asks."
+  "Returns true when the block at q can hold a face on side."
   [chunks q side]
   (let [n (chunk/at-void chunks q)]
     (and (pos? n)
          (or (block/face-sturdy? n side) (collision-full? n side)))))
 
 (defn attaches?
-  "Whether the neighbour of p on dir holds a face toward p."
+  "Returns true when the neighbour of p on dir holds a face toward p."
   [chunks p dir]
-  (face-held? chunks (mapv + p (dir/offset dir)) (dir/opposite dir)))
+  (face-held? chunks (dir/toward p dir) (dir/opposite dir)))
 
-(defn- water-source? [^long st]
-  (and (pos? st) (block/water-source? st)))
+(defn- face-kept [chunks pos m side]
+  (if (and (= :true (get m side))
+           (not (attaches? chunks pos side)))
+    (assoc m side :false)
+    m))
+
+(defn- kept ^long [chunks pos ^long st sides]
+  (let [step (fn [m side] (face-kept chunks pos m side))
+        props' (reduce step (block/props-of st) sides)
+        st' (block/state (block/block-of st) props')]
+    (if (seq (block/faces-of st')) st' (block/emptied st))))
+
+(defn updated
+  "Returns st at pos without the faces that nothing holds, or what
+  is left of it when no face is left."
+  ^long [chunks pos ^long st]
+  (kept chunks pos st block/face-props))
+
+(defn sides-updated
+  "Returns st without the faces on sides that lost the block they
+  cover. A nil side means a change at pos and checks every face."
+  ^long [chunks pos ^long st sides]
+  (if (contains? sides nil)
+    (updated chunks pos st)
+    (kept chunks pos st (filter sides block/face-props))))
 
 (defn- replaceable? [^long st self]
   (or (zero? st)
-      (and (pos? st) (= self (block/block-of st)))
-      (water-source? st)))
+      (= self (block/block-of st))
+      (block/water-source? st)))
 
 (defn- valid-placement? [chunks old p dir self]
-  (let [old (max 0 (long old))]
-    (and (or (not= self (block/block-of old))
-             (not (has-face? old dir)))
-         (attaches? chunks p dir))))
+  (and (or (not= self (block/block-of (long old)))
+           (not (has-face? old dir)))
+       (attaches? chunks p dir)))
 
 (defn- spread-into? [chunks [q dir] self]
   (let [existing (chunk/at-void chunks q)]
@@ -70,11 +85,11 @@
          (valid-placement? chunks existing q dir self))))
 
 (defn- spread-pos [p from-face spread-dir type]
-  (let [ahead (mapv + p (dir/offset spread-dir))]
+  (let [ahead (dir/toward p spread-dir)]
     (case type
       :same-position [p spread-dir]
       :same-plane [ahead from-face]
-      :wrap-around [(mapv + ahead (dir/offset from-face))
+      :wrap-around [(dir/toward ahead from-face)
                     (dir/opposite spread-dir)])))
 
 (defn spread-toward
@@ -91,30 +106,31 @@
 
 (defn- base-state [^long old self]
   (cond
-    (= self (block/block-of (max 0 old))) old
-    (water-source? old) (block/with-water (block/state self))
+    (= self (block/block-of old)) old
+    (block/water-source? old) (block/with-water (block/state self))
     :else (block/state self)))
 
 (defn- placed-state ^long [chunks [q dir] self]
   (let [base (base-state (chunk/at-void chunks q) self)]
-    (block/state (block/block-of base)
-                 (assoc (block/props-of base) dir :true))))
+    (block/with base dir :true)))
+
+(defn- shuffled-six [roll]
+  (random/shuffled #(random/below (roll [:shuffle %]) %) dir/six))
 
 (defn- from-face-random [chunks p st from-face roll]
-  (let [dirs (shuffled #(roll [:dir from-face %]) dir/six)]
+  (let [dirs (shuffled-six #(roll [:dir from-face %]))]
     (first (keep #(spread-toward chunks p st from-face %) dirs))))
 
 (defn- face-spread [chunks p st roll from-face]
   (when (has-face? st from-face)
     (from-face-random chunks p st from-face roll)))
 
-(defn spread-random [chunks p ^long st roll]
+(defn spread-random
+  "Returns the change that spreads st at p onto one face picked by
+  roll, or nil when no face can take it."
+  [chunks p ^long st roll]
   (let [self (block/block-of st)
-        faces (shuffled #(roll [:face %]) dir/six)
+        faces (shuffled-six #(roll [:face %]))
         spread #(face-spread chunks p st roll %)]
     (when-let [sp (first (keep spread faces))]
       [[(first sp) (placed-state chunks sp self)]])))
-
-(defn can-spread? [chunks p ^long st]
-  (boolean (some (fn [[from to]] (spread-toward chunks p st from to))
-                 (for [from dir/six to dir/six] [from to]))))

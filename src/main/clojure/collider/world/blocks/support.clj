@@ -8,6 +8,7 @@
             [collider.world.blocks.chorus :as chorus]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.dripstone :as dripstone]
+            [collider.world.blocks.grow.vine :as vine]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.multiface :as multiface]
             [collider.world.blocks.rail :as rail]
@@ -300,12 +301,10 @@
         (block/face-sturdy? b :up)
         (= :hopper (block/block-of b)))))
 
-(declare vine-updated multiface-updated)
-
-(defn- vine-held? [chunks pos st] (pos? (vine-updated chunks pos st)))
+(defn- vine-held? [chunks pos st] (pos? (vine/updated chunks pos st)))
 
 (defn- multiface-held? [chunks pos st]
-  (boolean (seq (block/faces-of (multiface-updated chunks pos st)))))
+  (boolean (seq (block/faces-of (multiface/updated chunks pos st)))))
 
 (defn- scaffold-held? [chunks pos _st]
   (< (scaffold/distance chunks pos) 7))
@@ -396,60 +395,6 @@
     [p (block/state :dirt)]
     (block/destroyed p st)))
 
-(defn- hung-from-above? [chunks pos st side]
-  (let [a (above chunks pos)]
-    (and (= (block/block-of a) (block/block-of st))
-         (= :true (get (block/props-of a) side)))))
-
-(defn vine-face-held?
-  "Returns true when the face on side of vine st at pos is held."
-  [chunks pos st side]
-  (and (not= :down side)
-       (or (multiface/attaches? chunks pos side)
-           (and (contains? dir/horizontal-offset side)
-                (hung-from-above? chunks pos st side)))))
-
-(defn- vine-face-kept [chunks pos st m side]
-  (if (= :true (get m side))
-    (let [held? (if (= :up side)
-                  (multiface/face-held? chunks (dir/up pos) :up)
-                  (vine-face-held? chunks pos st side))]
-      (assoc m side (block/flag held?)))
-    m))
-
-(defn vine-updated
-  "Returns the vine st without the faces nothing holds, or air when no
-  face is left."
-  ^long [chunks pos ^long st]
-  (let [step (fn [m side] (vine-face-kept chunks pos st m side))
-        props' (reduce step (block/props-of st)
-                       [:up :north :south :west :east])
-        st' (block/state (block/block-of st) props')]
-    (if (seq (block/faces-of st')) st' (block/emptied st))))
-
-(defn- multiface-face-kept [chunks pos m side]
-  (if (and (= :true (get m side))
-           (not (multiface/attaches? chunks pos side)))
-    (assoc m side :false)
-    m))
-
-(defn- multiface-kept ^long [chunks pos ^long st sides]
-  (let [step (fn [m side] (multiface-face-kept chunks pos m side))
-        props' (reduce step (block/props-of st) sides)
-        st' (block/state (block/block-of st) props')]
-    (if (seq (block/faces-of st')) st' (block/emptied st))))
-
-(defn- multiface-updated ^long [chunks pos ^long st]
-  (multiface-kept chunks pos st block/face-props))
-
-(defn multiface-sides-updated
-  "Returns st without the faces on sides that lost the block they
-  cover. A nil side means a change at pos and checks every face."
-  ^long [chunks pos ^long st sides]
-  (if (contains? sides nil)
-    (multiface-updated chunks pos st)
-    (multiface-kept chunks pos st (filter sides block/face-props))))
-
 (def ^:private tick-sides
   (merge {:sugar-cane some? :cactus some? :chorus-plant some?
           :bamboo-stalk some? :hanging-moss some?
@@ -502,7 +447,7 @@
   (if (contains? block/multiface-types (block/type-of st))
     (and (some? side)
          (empty? (block/faces-of
-                   (multiface-sides-updated chunks p st #{side}))))
+                   (multiface/sides-updated chunks p st #{side}))))
     (and (shape-side? st side) (not (supported? chunks p st)))))
 
 (defn- wake [chunks _dim tick p _old side]

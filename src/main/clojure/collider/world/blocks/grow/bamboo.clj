@@ -3,33 +3,69 @@
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.blocks.grow.common :refer [age air-at? chance? height-above height-below lit? with]]))
+            [collider.world.blocks.grow.common
+             :refer [age air-at? chance? height-above height-below
+                     lit?]]))
 
 (set! *warn-on-reflection* true)
 
-(defn- grown [chunks p st roll height]
-  (let [below (chunk/at chunks (dir/down p)) two (chunk/at chunks (dir/down (dir/down p)))
-        bamboo? (fn [s] (= :bamboo (block/block-of s)))
-        leaves (if (or (not (bamboo? below)) (= :none (:leaves (block/props-of below)))) :small :large)
-        shift (when (and (= leaves :large) (bamboo? two))
-                [[(dir/down p) (with below :leaves :small)] [(dir/down (dir/down p)) (with two :leaves :none)]])
-        a (if (and (not= 1 (age st)) (not (bamboo? two))) 0 1)
-        height (long height)
-        stage (if (or (and (>= height 11) (< (double (roll :stage)) 0.25)) (= height 15)) 1 0)]
-    (conj (vec shift) [(dir/up p) (block/state :bamboo {:age (keyword (str a)) :leaves leaves :stage (keyword (str stage))})])))
+(def ^:private ^:table shoot
+  (delay (block/state :bamboo {:leaves :small})))
 
-(defn tick [chunks p st roll _time _ctx]
-  (when (and (= 0 (block/prop-long st :stage)) (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
+(defn- bamboo? [st] (= :bamboo (block/block-of st)))
+
+(defn- leaves-for [below]
+  (if (or (not (bamboo? below))
+          (= :none (:leaves (block/props-of below))))
+    :small
+    :large))
+
+(defn- thinned [p below two leaves]
+  (when (and (= leaves :large) (bamboo? two))
+    [[(dir/down p) (block/with below :leaves :small)]
+     [(dir/toward p :down 2) (block/with two :leaves :none)]]))
+
+(defn- stage-for ^long [^long height roll]
+  (if (or (and (>= height 11) (< (double (roll :stage)) 0.25))
+          (= height 15))
+    1
+    0))
+
+(defn- grown [chunks p st roll height]
+  (let [below (chunk/at chunks (dir/down p))
+        two (chunk/at chunks (dir/toward p :down 2))
+        leaves (leaves-for below)
+        new-age (if (and (not= 1 (age st)) (not (bamboo? two))) 0 1)
+        stage (stage-for height roll)
+        top (block/with (block/state :bamboo)
+                        :age new-age :leaves leaves :stage stage)]
+    (conj (vec (thinned p below two leaves)) [(dir/up p) top])))
+
+(defn- room-above? [chunks p roll]
+  (and (chance? roll :gate 3)
+       (air-at? chunks (dir/up p))
+       (lit? chunks (dir/up p) 9)))
+
+(defn tick
+  "Returns the changes of a random tick of the bamboo st at p."
+  [chunks p st roll _time _world]
+  (when (and (= 0 (block/prop-long st :stage))
+             (room-above? chunks p roll))
     (let [height (inc (height-below chunks p :bamboo 16))]
       (when (< height 16)
         (grown chunks p st roll height)))))
 
-(defn sapling-tick [chunks p _st roll _time _ctx]
-  (when (and (chance? roll :gate 3) (air-at? chunks (dir/up p)) (lit? chunks (dir/up p) 9))
-    [[(dir/up p) (block/state :bamboo {:leaves :small})]]))
+(defn sapling-tick
+  "Returns the shoot a random tick of a bamboo sapling at p grows."
+  [chunks p _st roll _time _world]
+  (when (room-above? chunks p roll)
+    [[(dir/up p) @shoot]]))
 
-(defn sapling-meal [chunks p _st _roll]
-  (when (air-at? chunks (dir/up p)) {:changes [[(dir/up p) (block/state :bamboo {:leaves :small})]]}))
+(defn sapling-meal
+  "Returns the shoot bone meal grows on a bamboo sapling at p."
+  [chunks p _st _roll]
+  (when (air-at? chunks (dir/up p))
+    {:changes [[(dir/up p) @shoot]]}))
 
 (defn meal
   "Returns the bone meal result for the bamboo at p.
@@ -38,7 +74,7 @@
   [chunks p _st roll]
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)
-        top (mapv + p [0 above 0])
+        top (dir/toward p :up above)
         top-st (chunk/at chunks top)
         target (dir/up top)]
     (when (and (< (+ above below 1) 16)
