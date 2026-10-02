@@ -7,20 +7,26 @@
 
 (set! *warn-on-reflection* true)
 
-(defn eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
+(defn- eyeblossom? [^long st] (= :eyeblossom (block/type-of st)))
 
-(defn- night? [^long time] (<= 12600 (mod time 24000) 23400))
+(defn night?
+  "Returns true when the time of day falls in the hours an eyeblossom
+  stays open."
+  [^long time]
+  (<= 12600 (mod time 24000) 23400))
 
-(defn switched [^long st ^long time]
+(defn switched
+  "Returns the eyeblossom st opened or closed for the time of day.
+  Returns nil when it already fits."
+  [^long st ^long time]
+  (let [open? (= :open-eyeblossom (block/block-of st))
+        night (night? time)]
+    (when (not= open? night)
+      (block/state (if night :open-eyeblossom :closed-eyeblossom)))))
+
+(defn- sound-kind [^long st long-sound?]
   (let [open? (= :open-eyeblossom (block/block-of st))]
-    (when (not= open? (night? time))
-      (block/state (if (night? time)
-                     :open-eyeblossom
-                     :closed-eyeblossom)))))
-
-(defn sound-kind [^long st long?]
-  (let [open? (= :open-eyeblossom (block/block-of st))]
-    (if long?
+    (if long-sound?
       (if open? :eyeblossom/open-long :eyeblossom/close-long)
       (if open? :eyeblossom/open :eyeblossom/close))))
 
@@ -37,14 +43,10 @@
         dz (- (long qz) (long z))
         dist (Math/sqrt (double (+ (* dx dx) (* dy dy) (* dz dz))))
         lo (long (* dist 5.0)) hi (long (* dist 10.0))
-        r (random/of-key tick q :eyeblossom)
-        roll (long (Math/floor (* r (inc (- hi lo)))))]
-    (+ tick lo roll)))
+        r (random/of-key tick q :eyeblossom)]
+    (+ tick (random/between r lo hi))))
 
-(defn cascade
-  "Returns the eyeblossoms near p that follow the one at p.
-  They are grouped by the tick they change on."
-  [chunks p ^long old ^long tick]
+(defn- cascade [chunks p ^long old ^long tick]
   (reduce (fn [m q]
             (if (not= old (chunk/at chunks q))
               m
@@ -71,12 +73,12 @@
 
 (defn switch-fx
   "Returns the effects of the eyeblossom st at p turning to new on
-  tick. They hold its sound, its trail and the eyeblossoms around it
-  that follow."
-  [chunks p st new tick long?]
+  tick. The eyeblossoms near it follow later, and long-sound? picks
+  the longer sound."
+  [chunks p st new tick long-sound?]
   (let [kin (cascade chunks p st tick)]
     (cond-> [(trail p new tick)
-             [:sound (sound-kind new long?) 1.0 1.0]]
+             [:sound (sound-kind new long-sound?) 1.0 1.0]]
       (seq kin) (conj [:schedule kin]))))
 
 (defn- switch-due [chunks p ctx]
@@ -86,6 +88,8 @@
       [[p new (switch-fx chunks p st new (:tick ctx) false)]])))
 
 (def rule
+  "The block rule that breaks eyeblossoms without support and turns
+  them with the time of day."
   {:name    :eyeblossom
    :match?  (fn [_chunks st _p] (eyeblossom? st))
    :wake    wake

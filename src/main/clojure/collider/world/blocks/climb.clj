@@ -1,6 +1,7 @@
 (ns collider.world.blocks.climb
   "Blocks a living entity climbs."
-  (:require [collider.world.block :as block]
+  (:require [collider.vec :as v]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -17,9 +18,11 @@
          (= :ladder (block/block-of below))
          (= (:facing props) (:facing (block/props-of below))))))
 
-(defn on-climbable? [chunks pos]
-  (let [[x y z] (mapv #(long (Math/floor (double %))) pos)
+(defn on-climbable?
+  "Returns true when the block at pos lets a living entity climb."
+  [chunks pos]
+  (let [[x y z :as cell] (v/cell pos)
         st (st-at chunks x y z)]
     (or (block/tagged? st "climbable")
         (and (contains? block/trapdoor-types (block/type-of st))
-             (ladder-trapdoor? chunks st [x y z])))))
+             (ladder-trapdoor? chunks st cell)))))

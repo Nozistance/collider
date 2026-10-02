@@ -7,24 +7,27 @@
 
 (set! *warn-on-reflection* true)
 
-(defn head-pos [chunks pos]
+(defn head-pos
+  "Returns the cell of the head of the bed at pos, or nil when pos
+  holds no bed."
+  [chunks pos]
   (let [st (chunk/at chunks pos)]
     (when (= :bed (block/type-of st))
       (if (= :head (:part (block/props-of st)))
         pos
         (first (halves/partner chunks pos st))))))
 
-(def ^:private steps
-  {:north [0 -1] :south [0 1] :west [-1 0] :east [1 0]})
+(defn- step [d]
+  (let [[dx _ dz] (dir/horizontal-offset d)] [dx dz]))
 
-(defn- facing-angle? [dir ^double yaw]
-  (let [[dx dz] (steps dir)
+(defn- looks-toward? [^double yaw face]
+  (let [[dx dz] (step face)
         a (Math/toDegrees (Math/atan2 (- dx) dz))
         d (^[double] Math/abs (rem (+ (- yaw a) 540.0) 360.0))]
     (< (^[double] Math/abs (- d 180.0)) 90.0)))
 
 (defn- stand-up-offsets [forward side]
-  (let [[fx fz] (steps forward) [sx sz] (steps side)]
+  (let [[fx fz] (step forward) [sx sz] (step side)]
     [[sx sz]
      [(- sx fx) (- sz fz)]
      [(- sx (* 2 fx)) (- sz (* 2 fz))]
@@ -50,8 +53,8 @@
 (defn- floor-height [chunks pos]
   (let [here (box-top (chunk/at chunks pos))]
     (cond
-      (and (> here Double/NEGATIVE_INFINITY) (< here 1.0)) here
       (>= here 1.0) nil
+      (> here Double/NEGATIVE_INFINITY) here
       :else (floor-below chunks pos))))
 
 (defn- edge ^double [c v]
@@ -111,11 +114,13 @@
 (defn- above-bed [[x y z]]
   [(+ (double x) 0.5) (+ (double y) 1.1) (+ (double z) 0.5)])
 
-(defn stand-up-position [chunks pos ^double yaw]
+(defn stand-up-position
+  "Returns where a player facing yaw stands up from the bed at pos."
+  [chunks pos ^double yaw]
   (let [st (chunk/at chunks pos)
         forward (block/facing-of st)
         right (dir/clockwise forward)
-        side (if (facing-angle? right yaw) (dir/opposite right) right)
+        side (if (looks-toward? yaw right) (dir/opposite right) right)
         cells (mapv #(shifted pos %) (stand-up-offsets forward side))
         found (or (some #(dismount-position chunks % true) cells)
                   (some #(dismount-position chunks % false) cells))]

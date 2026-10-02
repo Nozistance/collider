@@ -6,33 +6,46 @@
 
 (set! *warn-on-reflection* true)
 
-(defn campfire? [^long st] (= :campfire (block/type-of st)))
+(defn campfire?
+  "Returns true when st is a campfire of any kind."
+  [^long st]
+  (= :campfire (block/type-of st)))
 
 (defn- smoke-source? [^long st] (= :hay-block (block/block-of st)))
 
 (defn- at [chunks [_ y _ :as p]]
   (if (chunk/in-range? y) (chunk/chunks-get-block chunks p) 0))
 
-(defn- with-props [^long st m]
-  (block/state (block/block-of st) (merge (block/props-of st) m)))
+(defn placed
+  "Returns the campfire st placed at pos by a player facing yaw."
+  [chunks pos st yaw]
+  (let [water? (block/water? (at chunks pos))
+        signal? (smoke-source? (at chunks (dir/down pos)))]
+    (block/with st
+                :facing (dir/player-direction yaw)
+                :waterlogged (block/flag water?)
+                :lit (block/flag (not water?))
+                :signal-fire (block/flag signal?))))
 
-(defn- flag [x] (if x :true :false))
+(defn updated
+  "Returns the campfire st as block self with its signal smoke set
+  from the block under it. near gives the block at an offset."
+  [self ^long st near]
+  (let [signal? (smoke-source? (near [0 -1 0]))]
+    (block/state self (assoc (block/props-of st)
+                        :signal-fire (block/flag signal?)))))
 
-(defn placed [chunks pos st yaw]
-  (let [water? (block/water? (at chunks pos))]
-    (with-props st {:facing      (dir/player-direction yaw)
-                    :waterlogged (flag water?)
-                    :lit         (flag (not water?))
-                    :signal-fire (flag (smoke-source? (at chunks (dir/down pos))))})))
-
-(defn updated [self ^long st at]
-  (block/state self (assoc (block/props-of st)
-                      :signal-fire (flag (smoke-source? (at [0 -1 0]))))))
-
-(defn dowsed [^long st]
+(defn dowsed
+  "Returns the lit campfire st put out. Returns nil when st is no
+  lit campfire."
+  [^long st]
   (when (and (campfire? st) (= :true (:lit (block/props-of st))))
-    (with-props st {:lit :false})))
+    (block/with st :lit :false)))
 
-(defn drowned [^long st]
-  (when (and (campfire? st) (= :false (:waterlogged (block/props-of st))))
-    (with-props st {:waterlogged :true :lit :false})))
+(defn drowned
+  "Returns the campfire st filled with water and put out, or nil
+  when st is no dry campfire."
+  [^long st]
+  (when (and (campfire? st)
+             (= :false (:waterlogged (block/props-of st))))
+    (block/with st :waterlogged :true :lit :false)))

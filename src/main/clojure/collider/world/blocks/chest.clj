@@ -8,39 +8,53 @@
 (set! *warn-on-reflection* true)
 
 (def types
+  "The block types of chests that pair into double chests."
   #{:chest :trapped-chest :copper-chest :weathering-copper-chest})
 
-(def copper-types #{:copper-chest :weathering-copper-chest})
+(def copper-types
+  "The block types of copper chests."
+  #{:copper-chest :weathering-copper-chest})
 
 (def ^:private ^:table copper-chests
   (delay (set (get-in (data/tags) ["block" "copper_chests"]))))
 
-(defn state-at ^long [chunks pos]
+(defn state-at
+  "Returns the block state at pos."
+  ^long [chunks pos]
   (chunk/chunks-get-block chunks pos))
 
-(defn connected-direction [^long st]
+(defn connected-direction
+  "Returns the direction from the half of a double chest st to its
+  other half."
+  [^long st]
   (let [{:keys [type facing]} (block/props-of st)]
     (if (= :left type)
       (dir/clockwise facing)
       (dir/counter-clockwise facing))))
 
-(defn connects? [^long self ^long other]
+(defn- connects? [^long self ^long other]
   (if (contains? copper-types (block/type-of self))
     (contains? @copper-chests (block/block-of other))
     (and (pos? other)
          (= (block/block-of self) (block/block-of other)))))
 
-(defn partner-pos [pos ^long st]
-  (mapv + pos (dir/offset (connected-direction st))))
+(defn- partner-pos [pos ^long st]
+  (dir/toward pos (connected-direction st)))
 
-(defn paired? [^long st ^long other]
+(defn paired?
+  "Returns true when chest other is the other half of the double
+  chest st."
+  [^long st ^long other]
   (let [a (block/props-of st) b (block/props-of other)]
     (and (connects? st other)
          (not= :single (:type b))
          (not= (:type a) (:type b))
          (= (:facing a) (:facing b)))))
 
-(defn partner [chunks pos ^long st]
+(defn partner
+  "Returns the cell of the other half of the double chest at pos.
+  Returns nil when no chest pairs with it."
+  [chunks pos ^long st]
   (when (and (contains? types (block/type-of st))
              (not= :single (:type (block/props-of st))))
     (let [p2 (partner-pos pos st)]
@@ -78,7 +92,7 @@
       st)))
 
 (defn- candidate-facing [chunks pos ^long st dir]
-  (let [o (state-at chunks (mapv + pos (dir/offset dir)))
+  (let [o (state-at chunks (dir/toward pos dir))
         props (block/props-of o)]
     (when (and (connects? st o) (= :single (:type props)))
       (:facing props))))
@@ -112,14 +126,13 @@
   sneaking player pairs it only along that face."
   [chunks pos st face sneaking?]
   (let [[facing type] (facing-and-type chunks pos st face sneaking?)
-        props (assoc (block/props-of st) :facing facing :type type)
-        st' (block/state (block/block-of st) props)]
+        st' (block/with st :facing facing :type type)]
     (if (= :single type)
       st'
       (copper-merged st' (state-at chunks (partner-pos pos st'))))))
 
 (defn- joined-toward [chunks pos ^long st dir]
-  (let [o (state-at chunks (mapv + pos (dir/offset dir)))
+  (let [o (state-at chunks (dir/toward pos dir))
         props (block/props-of o)]
     (when (and (connects? st o)
                (not= :single (:type props))
@@ -130,19 +143,20 @@
 (defn- joined-type [chunks pos ^long st]
   (some #(joined-toward chunks pos st %) [:north :south :west :east]))
 
-(defn- with-type [^long st t]
-  (let [props (assoc (block/props-of st) :type t)]
-    (block/state (block/block-of st) props)))
-
-(defn updated [chunks pos ^long st]
+(defn updated
+  "Returns the chest st at pos paired with or parted from the chests
+  next to it."
+  [chunks pos ^long st]
   (if (= :single (:type (block/props-of st)))
-    (if-let [t (joined-type chunks pos st)] (with-type st t) st)
+    (if-let [t (joined-type chunks pos st)]
+      (block/with st :type t)
+      st)
     (let [o (state-at chunks (partner-pos pos st))]
       (if (connects? st o)
         (copper-merged st o)
-        (with-type st :single)))))
+        (block/with st :type :single)))))
 
-(defn nearest-looking [yaw pitch]
+(defn- nearest-looking [yaw pitch]
   (let [y (Math/toRadians (double yaw))
         p (Math/toRadians (double pitch))
         dx (- (* (Math/sin y) (Math/cos p)))
@@ -154,7 +168,8 @@
       (>= ax az) (if (pos? dx) :east :west)
       :else (if (pos? dz) :south :north))))
 
-(defn barrel-placed [^long st yaw pitch]
-  (let [facing (dir/opposite (nearest-looking yaw pitch))]
-    (block/state (block/block-of st)
-                 (assoc (block/props-of st) :facing facing))))
+(defn barrel-placed
+  "Returns the barrel st placed by a player who looks along yaw and
+  pitch. It faces the player."
+  [^long st yaw pitch]
+  (block/with st :facing (dir/opposite (nearest-looking yaw pitch))))

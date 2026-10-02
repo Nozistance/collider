@@ -12,9 +12,6 @@
 (def ^:private max-growth-length
   {:pointed-dripstone 7 :sulfur-spike 2})
 
-(def ^:private cauldrons
-  #{:cauldron :layered-cauldron :lava-cauldron})
-
 (def ^:private water-chance 0.17578125)
 
 (def ^:private lava-chance 0.05859375)
@@ -33,7 +30,7 @@
 (defn- directed? [^long st dir]
   (and (speleothem? st) (= dir (dir-of st))))
 
-(defn stalactite? [^long st] (directed? st :down))
+(defn- stalactite? [^long st] (directed? st :down))
 
 (defn- stalagmite? [^long st] (directed? st :up))
 
@@ -43,8 +40,7 @@
          (or (= :tip th) (and merged? (= :tip_merge th))))))
 
 (defn stalagmite-tip?
-  "Returns true when st is the tip of a spike that points up, as
-  PointedDripstoneBlock.fallOn:65 checks it."
+  "Returns true when st is the tip of a spike that points up."
   [^long st]
   (and (stalagmite? st) (= :tip (thickness-of st))))
 
@@ -67,19 +63,18 @@
   (= :water (fluid-of (chunk/at-void chunks p))))
 
 (defn- water-source-at? [chunks p]
-  (let [st (chunk/at-void chunks p)]
-    (and (= :water (fluid-of st))
-         (or (block/waterlogged? st) (block/source-state? st)))))
+  (block/holds-water-source? (chunk/at-void chunks p)))
 
-(defn- toward [p dir] (mapv + p (dir/offset dir)))
-
-(defn valid-placement? [chunks p dir self]
-  (let [b (chunk/at-void chunks (toward p (dir/opposite dir)))]
+(defn- valid-placement? [chunks p dir self]
+  (let [b (chunk/at-void chunks (dir/toward p (dir/opposite dir)))]
     (and (not (neg? b))
          (or (block/face-sturdy? b dir)
              (and (directed? b dir) (= self (block/block-of b)))))))
 
-(defn supported? [chunks p ^long st]
+(defn supported?
+  "Returns true when the spike st at p hangs from or stands on a
+  block that holds it."
+  [chunks p ^long st]
   (valid-placement? chunks p (dir-of st) (block/block-of st)))
 
 (defn- facing-tip [front merge?]
@@ -89,8 +84,8 @@
 
 (defn- thickness [chunks p dir merge? self]
   (let [base (dir/opposite dir)
-        front (chunk/at-void chunks (toward p dir))
-        back (chunk/at-void chunks (toward p base))]
+        front (chunk/at-void chunks (dir/toward p dir))
+        back (chunk/at-void chunks (dir/toward p base))]
     (cond
       (and (directed? front base) (= self (block/block-of front)))
       (facing-tip front merge?)
@@ -99,14 +94,16 @@
       (directed? back dir) :middle
       :else :base)))
 
-(defn updated ^long [chunks p ^long st]
+(defn updated
+  "Returns the spike st at p with its thickness fitted to the spikes
+  next to it."
+  ^long [chunks p ^long st]
   (let [dir (dir-of st) self (block/block-of st)
         merge? (= :tip_merge (thickness-of st))]
     (if-not (valid-placement? chunks p dir self)
       st
-      (let [th (thickness chunks p dir merge? self)
-            props (assoc (block/props-of st) :thickness th)]
-        (block/state self props)))))
+      (let [th (thickness chunks p dir merge? self)]
+        (block/with st :thickness th)))))
 
 (defn- placed-dir [chunks p pitch self]
   (let [default (if (neg? (double pitch)) :down :up)
@@ -115,23 +112,25 @@
       (valid-placement? chunks p default self) default
       (valid-placement? chunks p other self) other)))
 
-(defn placed [chunks p st pitch sneaking?]
+(defn placed
+  "Returns the spike st placed at p by a player who looks along
+  pitch, or nil when nothing holds it. A sneaking player keeps it
+  from merging."
+  [chunks p st pitch sneaking?]
   (let [st (long st)
         self (block/block-of st)]
     (when-let [dir (placed-dir chunks p pitch self)]
-      (let [th (thickness chunks p dir (not sneaking?) self)
-            props (assoc (block/props-of st)
-                    :vertical-direction dir :thickness th)]
-        (block/state self props)))))
+      (let [th (thickness chunks p dir (not sneaking?) self)]
+        (block/with st :vertical-direction dir :thickness th)))))
 
 (defn- find-vertical [chunks p dir path? target? max-steps]
-  (loop [i 1 q (toward p dir)]
+  (loop [i 1 q (dir/toward p dir)]
     (when (< i (long max-steps))
       (let [st (chunk/at-void chunks q)]
         (cond
           (neg? st) nil
           (target? st) q
-          (path? st) (recur (inc i) (toward q dir))
+          (path? st) (recur (inc i) (dir/toward q dir))
           :else nil)))))
 
 (defn- along [self dir]
@@ -218,13 +217,13 @@
     {:tip tip :cauldron c
      :delay (+ 50 (- (long (tip 1)) (long (c 1))))}))
 
-(defn- transferred [chunks dim p st roll]
+(defn- transferred [chunks dim p st r]
   (when-let [{:keys [pos state fluid]} (fluid-above chunks dim p st)]
     (let [prob (case fluid
                  :water water-chance
                  :lava lava-chance
                  nil)]
-      (when (and prob (< (double roll) (double prob)))
+      (when (and prob (< (double r) (double prob)))
         (when-let [tip (find-tip chunks p st 11)]
           (if (and (= :mud (block/block-of (long state)))
                    (= :water fluid))
@@ -232,18 +231,16 @@
             (landing chunks tip fluid)))))))
 
 (defn drip
-  "Returns the drip of the dripstone at p this tick.
-  Returns nil when nothing drips. The result holds the tip it
-  falls from and either block changes or the cauldron it fills
-  and the delay before it lands. dim names the dimension."
+  "Returns the drip of the dripstone at p in dimension dim this tick,
+  or nil when nothing drips."
   [chunks p st roll dim]
   (when (= :pointed-dripstone (block/type-of st))
-    (let [roll (double (roll :drip))]
-      (when (and (< roll water-chance) (start-pos? chunks p st))
-        (transferred chunks dim p st roll)))))
+    (let [r (double (roll :drip))]
+      (when (and (< r water-chance) (start-pos? chunks p st))
+        (transferred chunks dim p st r)))))
 
 (defn- created [chunks q dir th self]
-  (let [wet (if (water-at? chunks q) :true :false)]
+  (let [wet (block/flag (water-at? chunks q))]
     (block/state self {:vertical-direction dir :thickness th
                        :waterlogged wet})))
 
@@ -255,7 +252,7 @@
      [b (created chunks b :up :tip_merge self)]]))
 
 (defn- grown [chunks from dir self]
-  (let [target (toward from dir) n (chunk/at-void chunks target)]
+  (let [target (dir/toward from dir) n (chunk/at-void chunks target)]
     (cond
       (unmerged-tip? n (dir/opposite dir) self)
       (merged chunks target n self)
@@ -263,7 +260,7 @@
       [[target (created chunks target dir :tip self)]])))
 
 (defn- can-tip-grow? [chunks q ^long tst]
-  (let [dir (dir-of tst) n (chunk/at-void chunks (toward q dir))]
+  (let [dir (dir-of tst) n (chunk/at-void chunks (dir/toward q dir))]
     (cond
       (neg? n) false
       (some? (fluid-of n)) false
@@ -308,7 +305,10 @@
       (when-let [tip (find-tip chunks p st len)]
         (grow-tip chunks tip self roll)))))
 
-(defn random-changes [chunks p ^long st roll]
+(defn random-changes
+  "Returns the growth a random tick makes on the dripstone st at p,
+  or nil when it does not grow."
+  [chunks p ^long st roll]
   (when (and (= :pointed-dripstone (block/type-of st))
              (< (double (roll :grow)) growth-chance)
              (start-pos? chunks p st))
@@ -316,10 +316,9 @@
 
 (defn- tip-hurt
   "Returns the damage per block fallen of the tip at q of a spike
-  that broke off at p, as SpeleothemBlock.spawnFallingStalactite:220
-  sets it."
+  that broke off at p."
   ^double [p q]
-  (double (float (max (- (inc (long (p 1))) (long (q 1))) 6))))
+  (double (max (- (inc (long (p 1))) (long (q 1))) 6)))
 
 (defn- fall-changes [chunks p]
   (loop [q p acc []]
@@ -332,12 +331,16 @@
           (recur (dir/down q)
                  (conj acc [q (block/emptied st) [[:fall st]]])))))))
 
+(def ^:private ^:const stalactite-delay 2)
+
+(def ^:private ^:const stalagmite-delay 1)
+
 (defn- wake [chunks _dim tick p _old side]
   (let [st (chunk/at-void chunks p)
         down? (stalactite? st)]
     (when (and (= side (if down? :up :down))
                (not (supported? chunks p st)))
-      (+ (long tick) (if down? 2 1)))))
+      (+ (long tick) (if down? stalactite-delay stalagmite-delay)))))
 
 (defn- fallen [chunks p _ctx]
   (let [st (chunk/at-void chunks p)]
@@ -346,6 +349,7 @@
       (seq (fall-changes chunks p)))))
 
 (def rule
+  "The block rule that breaks or drops spikes that lose their hold."
   {:name   :dripstone
    :match? (fn [_chunks st _p] (speleothem? st))
    :wake   wake
@@ -360,8 +364,9 @@
             [[p st' [[:drip fluid]]]]))))))
 
 (def cauldron-rule
+  "The block rule that fills a cauldron under a dripping spike."
   {:name   :cauldron-drip
    :match? (fn [_chunks st _p]
-             (contains? cauldrons (block/type-of st)))
+             (contains? block/cauldron-types (block/type-of st)))
    :wake   (fn [_chunks _dim _tick _p _old _side] nil)
    :due    cauldron-fill})

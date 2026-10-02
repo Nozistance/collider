@@ -55,7 +55,7 @@
         e' (assoc e :book one :page 0)]
     (concat
       [[:set-block-entity pos e']]
-      (lectern-set world pos (block-lectern/reset-state st true))
+      (lectern-set world pos (block-lectern/reset st true))
       [(out/all (out/block-sound :item.book.put pos 1.0 1.0))])))
 
 (defn remove-book-deltas
@@ -65,7 +65,7 @@
         e (be/at world pos)]
     (cons [:set-block-entity pos (assoc e :book nil :page 0)]
           (lectern-set world pos
-                       (block-lectern/reset-state st false)))))
+                       (block-lectern/reset st false)))))
 
 (defn next-page
   "Returns page want of the book of menu m, kept inside the book."
@@ -78,7 +78,7 @@
         ids [(chunk/block-pos->id pos)]]
     (concat
       [[:set-block-entity pos (assoc e :page p)]]
-      (lectern-set world pos (block-lectern/powered-state st true))
+      (lectern-set world pos (block-lectern/powered st true))
       [[:schedule-ticks {at ids}]
        (out/all (out/level-event :sound-page-turn pos 0))])))
 

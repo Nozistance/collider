@@ -6,6 +6,7 @@
             [collider.game.item :as item]
             [collider.game.out :as out]
             [collider.random :as random]
+            [collider.world.block :as block]
             [collider.world.blocks.lectern :as lectern]
             [collider.world.direction :as dir]))
 
@@ -39,7 +40,7 @@
 (defn- book-dropped [world pos old e]
   (when (and (lectern/has-book? old) (:book e))
     (let [[x y z] pos
-          [dx _ dz] (dir/offset (lectern/facing old))
+          [dx _ dz] (dir/offset (block/facing-of old))
           p [(+ (double x) 0.5 (* 0.25 (double dx)))
              (double (inc (long y)))
              (+ (double z) 0.5 (* 0.25 (double dz)))]
