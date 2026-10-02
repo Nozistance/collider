@@ -2,20 +2,19 @@ package collider.world;
 
 import java.util.Arrays;
 
-/// A mutable map from long keys to values, open addressed. Scratch
-/// for one pass; never shared.
-public final class LongMap<V> {
+/// Values by long key for one pass, never kept or shared.
+public final class Scratch<V> {
 
     private long[] keys;
     private Object[] vals;
     private int n;
 
-    public LongMap() {
+    public Scratch() {
         this(8);
     }
 
     /// Returns a map sized for `size` keys.
-    public LongMap(int size) {
+    public Scratch(int size) {
         int c = Integer.highestOneBit(Math.max(8, size) * 2 - 1) * 2;
         keys = new long[c];
         vals = new Object[c];

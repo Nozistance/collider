@@ -35,7 +35,7 @@ public final class Batch {
     /// inside heights `minY` to `maxY`, as `[pos old st]` in order. A
     /// change sees the ones before it.
     public static Object changed(ChunkIndex chunks, Object changes, long minY, long maxY) {
-        LongMap<Integer> now = new LongMap<>(RT.count(changes));
+        Scratch<Integer> now = new Scratch<>(RT.count(changes));
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
@@ -58,7 +58,7 @@ public final class Batch {
     /// that a new section takes the sky light of the one above.
     /// Changes in absent chunks are dropped.
     public static ChunkIndex setBlocks(ChunkIndex chunks, Object changes, int at) {
-        LongMap<Batch[]> m = new LongMap<>();
+        Scratch<Batch[]> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
@@ -97,7 +97,7 @@ public final class Batch {
     /// Returns the changes `[pos old st]` as a map from chunk id to
     /// the `[pos st]` of that chunk, in order.
     public static Object byChunk(Object changes) {
-        LongMap<ITransientCollection> m = new LongMap<>();
+        Scratch<ITransientCollection> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
             long id = ChunkIndex.id(RT.intCast(RT.nth(p, 0)) >> 4, RT.intCast(RT.nth(p, 2)) >> 4);

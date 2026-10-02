@@ -3,7 +3,7 @@ package collider.world.space;
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import collider.world.Collision;
-import collider.world.LongMap;
+import collider.world.Scratch;
 
 /// The numeric core of the ground path search. `shapes` holds the
 /// collision boxes of each block state, six doubles each, in blocks.
@@ -54,8 +54,8 @@ public final class Path {
     private final double px, py, pz, width, height, upStep;
     private final long maxFall, mx, my, mz, bbW, bbH;
     private final boolean floats, openDoors, passDoors, overFences;
-    private final LongMap<PathNode> nodes = new LongMap<>(256);
-    private final LongMap<Integer> typed = new LongMap<>(256);
+    private final Scratch<PathNode> nodes = new Scratch<>(256);
+    private final Scratch<Integer> typed = new Scratch<>(256);
 
     /// Makes one search over `chunks` from `minY` up. `types`,
     /// `forced` and `water` hold the path type, the type forced upon

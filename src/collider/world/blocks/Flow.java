@@ -74,14 +74,14 @@ public final class Flow {
     /// The per-thread arrays of the slope search. An entry holds its
     /// value in the low half and the epoch of the search that wrote
     /// it in the high half; entries of older searches count as unset.
-    private static final class Scratch {
+    private static final class SlopeSearch {
         long[] cells = new long[SLOTS * 11 * 11];
         long[] seen = new long[11 * 11];
         int[] queue = new int[11 * 11];
         long epoch;
     }
 
-    private static final ThreadLocal<Scratch> SCRATCH = ThreadLocal.withInitial(Scratch::new);
+    private static final ThreadLocal<SlopeSearch> SEARCH = ThreadLocal.withInitial(SlopeSearch::new);
 
     private final Tables t;
 
@@ -322,7 +322,7 @@ public final class Flow {
         this.slope = slope;
         r = slope + 1;
         w = 2 * r + 1;
-        Scratch sc = SCRATCH.get();
+        SlopeSearch sc = SEARCH.get();
         if (++sc.epoch == Integer.MAX_VALUE) {
             Arrays.fill(sc.cells, 0L);
             Arrays.fill(sc.seen, 0L);

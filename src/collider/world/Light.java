@@ -33,7 +33,7 @@ public final class Light {
 
     private static final float[] SEG_V = {DUSK, 1.0F, 1.0F, DUSK, DUSK, 1.0F};
 
-    private final LongMap<byte[]> cache;
+    private final Scratch<byte[]> cache;
     private long lastKey = -1;
     private byte[] last;
     private final ChunkIndex chunks;
@@ -44,7 +44,7 @@ public final class Light {
     private long[] pq = new long[64];
     private int pqHead, pqTail;
 
-    private Light(LongMap<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
+    private Light(Scratch<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
         this.cache = cache;
         this.chunks = chunks;
         this.ch = ch;
@@ -154,7 +154,7 @@ public final class Light {
     /// touched takes its new light, the higher sections of a chunk
     /// first so that a new section takes the sky light above it.
     public static ChunkIndex relit(ChunkIndex chunks, Object changes, boolean sky, BlockTables t) {
-        LongMap<byte[]> cache = relight(chunks, changes, sky, t);
+        Scratch<byte[]> cache = relight(chunks, changes, sky, t);
         if (cache == null || cache.isEmpty()) return chunks;
         long[] ks = cache.sortedKeys();
         long[] ids = new long[ks.length];
@@ -179,7 +179,7 @@ public final class Light {
         return chunks.withAll(Arrays.copyOf(ids, n), Arrays.copyOf(vals, n));
     }
 
-    private static LongMap<byte[]> relight(ChunkIndex chunks, Object changes, boolean sky, BlockTables t) {
+    private static Scratch<byte[]> relight(ChunkIndex chunks, Object changes, boolean sky, BlockTables t) {
         long[] cells = new long[16];
         int n = 0;
         for (Object c : (Iterable<?>) changes) {
@@ -190,7 +190,7 @@ public final class Light {
             cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2), Block.emission(t, now));
         }
         if (n == 0) return null;
-        LongMap<byte[]> cache = new LongMap<>();
+        Scratch<byte[]> cache = new Scratch<>();
         new Light(cache, chunks, 0, t).pass(cells, n);
         if (sky) {
             long[] sc = skyCells(chunks, cells, n, t);
