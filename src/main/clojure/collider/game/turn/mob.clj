@@ -753,7 +753,7 @@
 
 (defn- diff-step [o n a c c' k]
   (let [g (symbol (str ".-" (name k)))]
-    [c' `(if (identical? (~g ~n) (~g ~o))
+    [c' `(if (v/same? (~g ~n) (~g ~o))
            ~c
            (do (aset ~a ~c ~k)
                (aset ~a (unchecked-inc ~c) (~g ~n))
@@ -761,7 +761,7 @@
 
 (defn- diff-size [o n k]
   (let [g (symbol (str ".-" (name k)))]
-    `(if (identical? (~g ~n) (~g ~o)) 0 2)))
+    `(if (v/same? (~g ~n) (~g ~o)) 0 2)))
 
 (defmacro ^:private diff-fields [old new & ks]
   (let [o (with-meta (gensym "o") {:tag 'Mob})

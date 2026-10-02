@@ -88,6 +88,21 @@ public record V3(double x, double y, double z)
         return false;
     }
 
+    /// Returns true when a and b are one object, two numbers of one
+    /// type and the same bits, or two points with the same bits.
+    public static boolean same(Object a, Object b) {
+        if (a == b) {
+            return true;
+        }
+        if (a instanceof V3(double x0, double y0, double z0)) {
+            return b instanceof V3(double x1, double y1, double z1)
+                    && Double.compare(x0, x1) == 0
+                    && Double.compare(y0, y1) == 0
+                    && Double.compare(z0, z1) == 0;
+        }
+        return a instanceof Number && a.equals(b);
+    }
+
     public int hasheq() {
         return Murmur3.hashOrdered(this);
     }
