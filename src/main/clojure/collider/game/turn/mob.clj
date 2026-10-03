@@ -856,18 +856,17 @@
          ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
      [e2 (joined-into ds own) shoves hit? ls])))
 
-(defn- handed
-  "Returns acc with the shove sh handed to the mob in slot j, whose
-  speed this tick so far is in vels."
-  [es ^objects vels acc j [eid dx dz]]
-  (let [e (nth (nth es j) 1)]
-    (if (mobs/mob-type? (:type e))
-      (let [vel (or (aget vels j) (:vel e))
-            v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
-                    (- (v/z vel) (double dz)))]
-        (aset vels j v)
-        (conj acc [:merge-entity eid {:vel v}]))
-      acc)))
+(defn- hand
+  "Returns the delta that hands the shove sh to mob e in slot j, whose
+  speed this tick so far is in vels, or nil when e takes no shove."
+  [e ^objects vels j [eid dx dz]]
+  (when (mobs/mob-type? (:type e))
+    (let [j (int j)
+          vel (or (aget vels j) (:vel e))
+          v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
+                  (- (v/z vel) (double dz)))]
+      (aset vels j v)
+      [:merge-entity eid {:vel v}])))
 
 (defn- takes-now? [^booleans ticking ^long i ^long j]
   (or (< j i) (not (aget ticking j))))
@@ -880,9 +879,9 @@
 
 (defn- handing [ticking vels slots es i shoves]
   (let [f (fn [acc sh]
-            (if-let [j (taker ticking slots es i sh)]
-              (handed es vels acc j sh)
-              acc))]
+            (let [j (taker ticking slots es i sh)
+                  d (when j (hand (nth (nth es j) 1) vels j sh))]
+              (if d (conj acc d) acc)))]
     (reduce f [] shoves)))
 
 (defn- takers
@@ -1053,16 +1052,17 @@
   "Returns the deltas of runs in the order of their mobs, each with
   the shoves it hands to the bodies before it, which end the tick as
   cur."
-  [cur runs]
+  [^objects cur runs]
   (let [vels (object-array (count runs))
-        hand (fn [acc [j sh]] (handed cur vels acc j sh))]
-    (persistent!
-      (reduce (fn [acc run]
-                (if run
-                  (let [acc (reduce conj! acc (nth run 0))]
-                    (reduce conj! acc (reduce hand [] (nth run 1))))
-                  acc))
-              (transient []) runs))))
+        f (fn [acc [j sh]]
+            (if-let [d (hand (nth (aget cur (int j)) 1) vels j sh)]
+              (conj! acc d)
+              acc))
+        g (fn [acc run]
+            (if run
+              (reduce f (reduce conj! acc (nth run 0)) (nth run 1))
+              acc))]
+    (persistent! (reduce g (transient []) runs))))
 
 (defn- near-start? [e e2] (push/within? e e2 step-reach))
 
