@@ -178,14 +178,13 @@ public final class Rays {
         return rs.vals.clone();
     }
 
-    /// Returns the cells that the rays of `a` or of `b` reach. A cell
-    /// that both reach holds the same mark in each.
+    /// Marks in `a` the cells that `b` marks and returns `a`. A cell
+    /// that both mark holds the same mark in each.
     public static byte[] union(byte[] a, byte[] b) {
-        byte[] u = a.clone();
-        for (int i = 0; i < u.length; i++) {
-            if (b[i] != 0) u[i] = b[i];
+        for (int i = 0; i < a.length; i++) {
+            if (b[i] != 0) a[i] = b[i];
         }
-        return u;
+        return a;
     }
 
     /// Returns the number of cells in `hit` that a ray reached.

@@ -141,15 +141,10 @@
    (- (long (Math/floor cy)) region-r)
    (- (long (Math/floor cz)) region-r)])
 
-(def ^:private ^:const ray-part
-  "The number of rays one job of a blast casts when they go at once."
-  169)
-
-(defn- ray-parts [split?]
-  (if split?
-    (mapv (fn [i] [i (min Rays/COUNT (+ (long i) ray-part))])
-          (range 0 Rays/COUNT ray-part))
-    [[0 Rays/COUNT]]))
+(defn- ray-parts [^long n]
+  (mapv (fn [^long i]
+          [(quot (* i Rays/COUNT) n) (quot (* (inc i) Rays/COUNT) n)])
+        (range n)))
 
 (defn- caster [^SectionGrid rg ^Exposure e [cx cy cz] power seed]
   (let [cx (double cx) cy (double cy) cz (double cz)
@@ -165,12 +160,12 @@
 (defn rays
   "Returns the cells of the cube at the centre that the rays of a
   blast of power reach through rg, 1 for air and 2 for a block. The
-  cells come from e. The rays go at once when split? is true, which
-  needs e frozen."
-  ^bytes [rg e center power seed split?]
+  cells come from e. The rays go at once in n parts, which needs e
+  frozen when n is above 1."
+  ^bytes [rg e center power seed n]
   (reduce #(Rays/union %1 %2)
-          (par/pmapv (caster rg e center power seed)
-                     (ray-parts split?) 1 1)))
+          (par/pmapv (caster rg e center power seed) (ray-parts n)
+                     1 1)))
 
 (defn reached
   "Returns the cells of hit, as rays returns them for a blast at
@@ -199,7 +194,7 @@
   "Returns what the rays of a blast of power at center through rg
   reach, as reached does."
   [^SectionGrid rg center power seed]
-  (reached (rays rg (exposure rg center) center power seed false)
+  (reached (rays rg (exposure rg center) center power seed 1)
            center))
 
 (defn exposed

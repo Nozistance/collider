@@ -139,7 +139,9 @@
   "Returns the bodies, each [id e d12], with the share seen of each
   that blast b sees, as [id e d12 seen]."
   [b bodies]
-  (let [least (if (:frozen? b) seen-least Long/MAX_VALUE)]
+  (let [least (if (and (:frozen? b) (> (par/threads) 1))
+                seen-least
+                Long/MAX_VALUE)]
     (par/pmapv (sight b) bodies 4 least)))
 
 (defn- explosion-pitch ^double [seed]
@@ -229,12 +231,18 @@
   "The least power of a blast whose rays go at once."
   2.0)
 
+(def ^:private ^:const ray-jobs
+  "The most parts that the rays of one blast go in at once."
+  8)
+
 (defn- blocks
   "Returns the deltas that break and burn the blocks of blast b, the
   TNT they prime, the drops and how many blocks it reached."
   [{:keys [rg exposure center power seed fire?] :as b}]
-  (let [split? (and (:frozen? b) (>= (double power) split-power))
-        hit (explosion/rays rg exposure center power seed split?)
+  (let [n (if (and (:frozen? b) (>= (double power) split-power))
+            (min ray-jobs (par/threads))
+            1)
+        hit (explosion/rays rg exposure center power seed n)
         reached (explosion/reached hit center)
         [chains destroy] (broken-cells b (:blocks reached))
         fires (if fire? (fire-cells b @(:cells reached) destroy) [])]

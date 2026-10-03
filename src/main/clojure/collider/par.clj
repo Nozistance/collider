@@ -3,7 +3,8 @@
   (:require [clojure.core.reducers :as r]
             [collider.data.long-map :as lm])
   (:import (clojure.lang MapEntry)
-           (collider.data LongMap)))
+           (collider.data LongMap)
+           (java.util.concurrent ForkJoinPool ForkJoinTask)))
 
 (set! *warn-on-reflection* true)
 
@@ -30,6 +31,12 @@
   "Returns (f) run so that the folds inside it run in parallel."
   [f]
   (@#'r/fjinvoke f))
+
+(defn threads
+  "Returns the number of threads that the folds started here share."
+  ^long []
+  (let [p (or (ForkJoinTask/getPool) @r/pool)]
+    (.getParallelism ^ForkJoinPool p)))
 
 (defn pmapcat
   "Returns the mapcat of f over vector v.
