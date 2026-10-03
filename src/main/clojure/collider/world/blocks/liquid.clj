@@ -594,23 +594,24 @@
   [:sound :block.dried-ghast.place-in-water 1.0 1.0])
 
 (def ^:private effects
-  {Flow/FIZZ       [:fizz]
-   Flow/FIZZ_TWICE [:fizz :fizz]
-   Flow/FILL       [:fluid-tick]
-   Flow/DOUSE      [extinguished :fluid-tick]
-   Flow/SOAK       [soaked-ghast :fluid-tick]})
+  (-> (vec (repeat (inc Flow/SOAK) nil))
+      (assoc Flow/FIZZ [:fizz]
+             Flow/FIZZ_TWICE [:fizz :fizz]
+             Flow/FILL [:fluid-tick]
+             Flow/DOUSE [extinguished :fluid-tick]
+             Flow/SOAK [soaked-ghast :fluid-tick])))
 
 (defn- found-fx [^ints found ^long k]
-  (let [g (long (Flow/changeDrop found k))
-        fx (effects (long (Flow/changeEffect found k)) [])]
-    (cond->> fx (not (neg? g)) (into [[:drop g]]))))
+  (let [g (Flow/changeDrop found k)]
+    (if (neg? g)
+      (effects (Flow/changeEffect found k))
+      [[:drop (long g)]])))
 
 (defn- found-change [^ints found ^long k]
   (let [p [(long (Flow/changeX found k)) (long (Flow/changeY found k))
            (long (Flow/changeZ found k))]
-        st (long (Flow/changeState found k))
-        fx (found-fx found k)]
-    (if (seq fx) [p st fx] [p st])))
+        st (long (Flow/changeState found k))]
+    (if-let [fx (found-fx found k)] [p st fx] [p st])))
 
 (defn- flowed [chunks cls {:keys [dropoff slope infinite?]} [x y z]]
   (let [found (Flow/changes

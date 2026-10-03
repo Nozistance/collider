@@ -728,6 +728,10 @@ public final class Flow {
     /// Returns the block that the lava at `x` `y` `z` turns into, or -1
     /// when it stays lava.
     public static int mixed(Tables t, ChunkIndex chunks, int x, int y, int z) {
+        boolean inside = y >= Chunk.MIN_Y && y <= Chunk.MAX_Y;
+        if (!inside || t.fluid()[Chunk.blockAt(chunks, x, y, z)] != LAVA) {
+            return -1;
+        }
         return new Flow(t, chunks).mixed(x, y, z);
     }
 }
