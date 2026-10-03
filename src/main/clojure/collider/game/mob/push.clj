@@ -5,7 +5,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Islands PushGrid Slots Turns)))
+  (:import (collider.game.mob Bodies PushGrid Slots Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -20,21 +20,15 @@
 (defn- pushable-height ^double [e]
   (double (nth (pushable-box e) 1)))
 
-(defn- cell-key ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
-          (bit-and cz 0xFFFFFFFF)))
-
-(defn- cell-of ^long [^double x ^double z]
-  (cell-key (bit-shift-right (long (Math/floor x)) 2)
-            (bit-shift-right (long (Math/floor z)) 2)))
-
 (defn alive?
   "Returns true when a body takes shoves.
   A dead body takes none but still steps and shoves the living."
   [e]
   (let [h (:health e)] (or (nil? h) (pos? (double h)))))
 
-(defn- body?
+(defn body?
+  "Returns true when the entity of entry shoves and takes shoves in
+  a chunk of held."
   [held [_ e]]
   (and (or (= :player (:type e))
            (and (mobs/mob-type? (:type e))
@@ -130,22 +124,55 @@
   ^long [^Slots s eid]
   (Slots/slot s (long eid)))
 
-(defn- grouped [entries]
-  (let [n (count entries)
-        eids (long-array n) cells (long-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth entries i) p (:pos e)]
-        (aset eids i (long eid))
-        (aset cells i (cell-of (double (v/x p)) (double (v/z p))))))
-    (Islands/of eids cells)))
+(defn bodies
+  "Returns no bodies, to which add-body adds them in id order."
+  ^Bodies []
+  (Bodies.))
+
+(defn add-body
+  "Adds the body of entry to bodies b and returns b. The body ticks
+  this tick when ticks? is true."
+  ^Bodies [^Bodies b [eid e :as entry] ticks?]
+  (let [p (:pos e) [h t] (pushable-box e)]
+    (Bodies/add b entry (long eid) (double h) (double t)
+                (double (v/x p)) (double (v/y p)) (double (v/z p))
+                (came e) (rank eid e) (boolean ticks?))))
+
+(defn groups
+  "Returns the bodies of b in groups that one tick of movement cannot
+  bring together, each as the indices of its bodies in b by id."
+  [^Bodies b]
+  (Bodies/islands b))
+
+(defn entries-of
+  "Returns the entries of the bodies of b at indices g."
+  [^Bodies b ^ints g]
+  (Bodies/entries b g))
+
+(defn grid-of
+  "Returns the index of the bodies of b at indices g, as index-of
+  gives it for their entries."
+  ^PushGrid [^Bodies b ^ints g]
+  (Bodies/grid b g))
+
+(defn slots-of
+  "Returns the slots of the bodies of b at indices g."
+  ^Slots [^Bodies b ^ints g]
+  (Bodies/slots b g))
+
+(defn ticks-of
+  "Returns whether each body of b at indices g ticks this tick."
+  ^booleans [^Bodies b ^ints g]
+  (Bodies/ticking b g))
 
 (defn islands
   "Returns the pushable bodies in groups that one tick of movement
   cannot bring together. Each group steps on its own."
   [world held]
-  (let [entries (into [] (filter #(body? held %)) (:entities world))
-        group (fn [^ints g] (mapv #(nth entries %) g))]
-    (mapv group (grouped entries))))
+  (let [f (fn [b entry]
+            (if (body? held entry) (add-body b entry false) b))
+        b (reduce f (bodies) (:entities world))]
+    (mapv #(entries-of b %) (groups b))))
 
 (defn- scan [^PushGrid index eid p half height hi]
   (if index

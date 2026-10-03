@@ -18,7 +18,7 @@ public final class Islands {
         return (p == null ? pool : p).getParallelism();
     }
 
-    private static long key(long cx, long cz) {
+    static long key(long cx, long cz) {
         return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
     }
 
