@@ -122,18 +122,24 @@ public final class Batch {
         return r.persistent();
     }
 
-    /// Returns `[pos st]` for each distinct cell of `cells` in the order
-    /// it first comes, `st` being its block in `chunks`.
+    /// Returns `[pos st]` for each distinct cell of `cells`, all in one
+    /// chunk, in the order it first comes, `st` being its block in
+    /// `chunks`.
     public static Object statesAt(ChunkIndex chunks, Object cells) {
-        int n = RT.count(cells);
-        Scratch<Boolean> seen = new Scratch<>(n);
+        int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+        for (Object p : (Iterable<?>) cells) {
+            int y = RT.intCast(RT.nth(p, 1));
+            lo = Math.min(lo, y);
+            hi = Math.max(hi, y);
+        }
+        long[] seen = new long[lo > hi ? 0 : (hi - lo + 1) * 4];
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object p : (Iterable<?>) cells) {
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
-            long k = Cell.pack(x, y, z);
-            if (n > 1 && seen.get(k) != null) continue;
-            if (n > 1) seen.put(k, Boolean.TRUE);
+            int i = (y - lo) * 256 + (z & 15) * 16 + (x & 15);
+            if ((seen[i >> 6] & (1L << i)) != 0) continue;
+            seen[i >> 6] |= 1L << i;
             out = out.conj(vec(p, (long) Chunk.blockAt(chunks, x, y, z)));
         }
         return out.persistent();
