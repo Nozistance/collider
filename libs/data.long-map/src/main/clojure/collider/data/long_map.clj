@@ -4,8 +4,9 @@
   Both types are Clojure collections, so `clojure.core` works on them.
   The functions here that share a name with `clojure.core` take
   primitive keys and skip boxing."
-  (:refer-clojure :exclude [get contains? assoc dissoc conj disj first last
-                            range merge merge-with])
+  (:refer-clojure
+   :exclude [get contains? empty? assoc dissoc conj disj first last
+             range merge merge-with])
   (:require [clojure.core.reducers :as r])
   (:import (clojure.lang IFn)
            (collider.data LongMap LongSet)))
@@ -37,6 +38,11 @@
   (if (instance? LongSet x)
     (.has ^LongSet x k)
     (.has ^LongMap x k)))
+
+(defn empty?
+  "Returns true when map `m` holds no entry."
+  [m]
+  (reduce-kv (fn [_ _ _] (reduced false)) true m))
 
 (defn assoc
   "Returns map `m` with `v` at `k`."

@@ -122,14 +122,11 @@
     (throw (ex-info "a level strayed from the shared keys"
                     {:dim dim :key k}))))
 
-(defn- vacant? [m]
-  (reduce-kv (fn [_ _ _] (reduced false)) true m))
-
 (defn idle?
   "Returns true when level lv holds nothing a tick could change."
   [lv]
-  (and (zero? (count (:chunks lv))) (vacant? (:entities lv))
-       (empty? (:loading lv)) (vacant? (:unknown lv))))
+  (and (zero? (count (:chunks lv))) (lm/empty? (:entities lv))
+       (empty? (:loading lv)) (lm/empty? (:unknown lv))))
 
 (defn dim-of
   "Returns the dimension whose level holds entity eid, or nil."
