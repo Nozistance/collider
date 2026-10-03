@@ -2,6 +2,7 @@
   "Places where players and mobs may spawn."
   (:require [collider.data :as data]
             [collider.world.block :as block]
+            [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.light :as light]
             [collider.world.phys :as phys]))
@@ -25,17 +26,6 @@
 
 (defn- motion-blocking? [^long st]
   (or (block/blocks-motion? st) (fluid? st)))
-
-(defn- own-height ^double [^long st]
-  (let [l (block/liquid-level st)]
-    (/ (double (if (or (zero? l) (>= l 8)) 8 (- 8 l))) 9.0)))
-
-(defn- fluid-height [chunks x y z st]
-  (if (= (block/liquid-class (long st))
-         (block/liquid-class
-           (long (state-at chunks x (inc (long y)) z))))
-    1.0
-    (own-height (long st))))
 
 (defn- blank-at? [chunks ^long x ^long y ^long z]
   (let [id (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4))
@@ -86,7 +76,7 @@
 
 (defn- fluid-box [chunks x y z st]
   (let [x (long x) y (long y) z (long z)
-        h (double (fluid-height chunks x y z st))]
+        h (double (liquid/height chunks [x y z] st))]
     [(double x) (double y) (double z) (+ x 1.0) (+ y h) (+ z 1.0)]))
 
 (defn- cell-boxes [chunks x y z]

@@ -181,7 +181,7 @@
         st (cell-state chunks x y z)]
     (boolean
       (when (block/water? st)
-        (when-let [h (liquid/fluid-height-of chunks [x y z] st nil)]
+        (when-let [h (liquid/height chunks [x y z] st)]
           (<= ey (+ (double y) (double h))))))))
 
 (defn in-lava?

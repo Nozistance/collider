@@ -103,40 +103,50 @@
 (defn- blocks-movement? [st]
   (and (pos? (long st)) (block/blocks-motion? (long st))))
 
+(defn- same? [cls st] (= cls (liquid-class st)))
+
+(defn- above-at [chunks [x y z]]
+  (let [up (inc (long y))]
+    (if (chunk/in-range? up)
+      (chunk/at chunks [x up z])
+      0)))
+
 (defn- amount ^long [st]
   (let [l (level st)] (if (or (zero? l) (>= l 8)) 8 (- 8 l))))
 
-(defn- height ^double [st] (/ (double (amount st)) 9.0))
+(defn height
+  "Returns how high the fluid of st fills its cell. Given chunks and
+  p, returns 1.0 under the same fluid and nil for a state without
+  fluid."
+  (^double [st] (/ (double (amount st)) 9.0))
+  ([chunks p st]
+   (when-let [cls (liquid-class st)]
+     (if (same? cls (above-at chunks p)) 1.0 (height st)))))
 
-(defn- own-height ^double [st] (num/f32 (height st)))
-
-(defn- amount-height ^double [^long n] (num/f32 (/ (double n) 9.0)))
-
-(defn- amount-at ^long [chunks cls p]
+(defn- own-at ^double [chunks cls p]
   (let [st (state-at chunks (p 0) (p 1) (p 2))]
     (if (and (pos? (long st)) (= cls (liquid-class st)))
-      (amount st)
-      -1)))
+      (num/f32 (height st))
+      0.0)))
 
 (defn- unit [v] (v/normalized v 1.0E-4))
 
 (def ^:private ^:const fall-drop (double (float 0.8888889)))
 
-(defn- below-pull ^double [chunks cls n [nx y nz]]
-  (let [j (amount-at chunks cls [nx (dec (long y)) nz])]
+(defn- below-pull ^double [chunks cls h [nx y nz]]
+  (let [j (own-at chunks cls [nx (dec (long y)) nz])]
     (if (pos? j)
-      (num/fsub (amount-height n)
-                (num/fsub (amount-height j) fall-drop))
+      (num/fsub h (num/fsub j fall-drop))
       0.0)))
 
-(defn- neighbor-pull [chunks cls n p face]
+(defn- neighbor-pull [chunks cls h p face]
   (let [[nx y nz :as q] (dir/toward p face)
         ns (state-at chunks nx y nz)
-        j (amount-at chunks cls q)]
+        j (own-at chunks cls q)]
     (cond
       (other-class? cls ns) 0.0
-      (pos? j) (num/fsub (amount-height n) (amount-height j))
-      (not (blocks-movement? ns)) (below-pull chunks cls n q)
+      (pos? j) (num/fsub h j)
+      (not (blocks-movement? ns)) (below-pull chunks cls h q)
       :else 0.0)))
 
 (def ^:private ice-types #{:ice :frosted-ice})
@@ -156,10 +166,10 @@
 (defn- walled? [chunks cls p]
   (some #(walled-at? chunks cls p %) sides))
 
-(defn- pull-sum [chunks cls n p]
+(defn- pull-sum [chunks cls h p]
   (reduce (fn [[vx vz] face]
             (let [[dx _ dz] (dir/offset face)
-                  k (neighbor-pull chunks cls n p face)]
+                  k (neighbor-pull chunks cls h p face)]
               [(+ (double vx) (* (long dx) k))
                (+ (double vz) (* (long dz) k))]))
           [0.0 0.0]
@@ -170,24 +180,21 @@
   [chunks [x y z :as p]]
   (let [st (state-at chunks x y z)]
     (when-let [cls (when (pos? (long st)) (liquid-class st))]
-      (let [[vx vz] (pull-sum chunks cls (amount-at chunks cls p) p)]
+      (let [[vx vz] (pull-sum chunks cls (own-at chunks cls p) p)]
         (if (and (>= (level st) 8) (walled? chunks cls p))
           (let [[nx _ nz] (unit [vx 0.0 vz])]
             (unit [nx -6.0 nz]))
           (unit [vx 0.0 vz]))))))
 
-(defn- height-in ^double [chunks cls [x y z]]
-  (let [above (state-at chunks x (inc (long y)) z)]
-    (if (and (pos? (long above)) (= cls (liquid-class above)))
-      1.0
-      (own-height (state-at chunks x y z)))))
+(defn- height-in ^double [chunks [x y z :as c]]
+  (num/f32 (height chunks c (state-at chunks x y z))))
 
 (defn surface
   "Returns the height of the top of liquid cls in cell c, or nil."
   [chunks cls [x y z :as c]]
   (let [st (state-at chunks x y z)]
     (when (and (pos? st) (= cls (liquid-class st)))
-      (let [h (float (height-in chunks cls c))]
+      (let [h (float (height-in chunks c))]
         (double (float (+ (double (float y)) (double h))))))))
 
 (def ^:private ^:const fluid-margin 0.001)
@@ -214,7 +221,7 @@
     (when (pos? st) (liquid-class st))))
 
 (defn- wet-cell [chunks y acc cls [_ cy :as c]]
-  (let [h (- (+ (double cy) (height-in chunks cls c)) (double y))]
+  (let [h (- (+ (double cy) (height-in chunks c)) (double y))]
     (if (< h fluid-margin) acc (with-cell acc cls h c chunks))))
 
 (defn- scan-cells [chunks y x0 x1 y0 y1 z0 z1]
@@ -299,23 +306,7 @@
 
 (defn- falling? [st] (= 8 (level st)))
 
-(defn- same? [cls st] (= cls (liquid-class st)))
-
 (defn- source-of? [cls st] (and (same? cls st) (zero? (level st))))
-
-(defn- above-at [chunks [x y z]]
-  (let [up (inc (long y))]
-    (if (chunk/in-range? up)
-      (chunk/at chunks [x up z])
-      0)))
-
-(defn fluid-height-of
-  "Returns the height of the fluid of st at p, or nil.
-  Mode :source-only counts sources alone."
-  [chunks p st mode]
-  (let [cls (liquid-class st)]
-    (when (and cls (or (not= mode :source-only) (source-of? cls st)))
-      (if (same? cls (above-at chunks p)) 1.0 (height st)))))
 
 (defn- boxes [st]
   (if (pos? (long st)) (block/collision-boxes (long st)) []))
