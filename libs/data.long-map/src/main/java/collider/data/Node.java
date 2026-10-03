@@ -29,6 +29,7 @@ final class Node {
     static final int MASK = (1 << BITS) - 1;
     static final int UNION = 0, INTER = 1, DIFF = 2;
     static final int KEYS = 0, KV = 1, ENTRIES = 2, VALS = 3;
+    static final Comparator<Object> ORDER = Comparator.comparingLong(Node::key);
 
     final Object edit;
     final long base;
@@ -66,8 +67,6 @@ final class Node {
                 || k instanceof Short
                 || k instanceof Byte;
     }
-
-    static final Comparator<Object> ORDER = Comparator.comparingLong(Node::key);
 
     static long key(Object k) {
         if (integral(k)) return ((Number) k).longValue();
@@ -272,9 +271,11 @@ final class Node {
     }
 
     static Node leaves(int op, Node a, Node b, IFn f) {
-        long bits = op == UNION
-                ? a.bits | b.bits
-                : op == INTER ? a.bits & b.bits : a.bits & ~b.bits;
+        long bits = switch (op) {
+            case UNION -> a.bits | b.bits;
+            case INTER -> a.bits & b.bits;
+            default -> a.bits & ~b.bits;
+        };
         if (bits == 0) return null;
         if (a.vals == null) {
             return bits == a.bits ? a : bits == b.bits ? b : a.restrict(bits);
@@ -286,18 +287,20 @@ final class Node {
             long bit = r & -r;
             Object va = (a.bits & bit) == 0 ? null : a.vals[index(a.bits, bit)];
             Object vb = (b.bits & bit) == 0 ? null : b.vals[index(b.bits, bit)];
-            Object v = va == null
-                    ? vb
-                    : vb == null || op != UNION
-                            ? va
-                            : f == null ? vb : value(f.invoke(va, vb));
+            Object v = merged(op, va, vb, f);
             sameA &= v == va;
             sameB &= v == vb;
             vs[i] = v;
         }
-        return sameA
-                ? a
-                : sameB ? b : new Node(null, a.base, 0, vs.length, bits, null, vs);
+        if (sameA) return a;
+        if (sameB) return b;
+        return new Node(null, a.base, 0, vs.length, bits, null, vs);
+    }
+
+    static Object merged(int op, Object va, Object vb, IFn f) {
+        if (va == null) return vb;
+        if (vb == null || op != UNION) return va;
+        return f == null ? vb : value(f.invoke(va, vb));
     }
 
     Node restrict(long keep) {
@@ -543,40 +546,30 @@ final class Node {
     }
 
     static int check(Node n, int above, boolean map) {
-        need(
-                n.bits != 0 && n.shift < above && n.shift % BITS == 0,
-                "empty or misplaced node"
-        );
+        boolean placed = n.shift < above && n.shift % BITS == 0;
+        need(n.bits != 0 && placed, "empty or misplaced node");
         need((n.base & ~above(n.shift)) == 0, "base has bits below the node");
-        need(
-                n.count > 0
-                        && Long.bitCount(n.bits)
-                                == (n.shift == 0 ? n.count : n.kids.length),
-                "slot count"
-        );
-        if (n.shift == 0) {
-            need(
-                    n.kids == null
-                            && (map
-                                    ? n.vals != null && n.vals.length == n.count
-                                    : n.vals == null),
-                    "leaf arrays"
-            );
-            for (int i = 0; n.vals != null && i < n.count; i++) {
-                need(n.vals[i] != null, "nil value");
-            }
-            return n.count;
+        int slots = n.shift == 0 ? n.count : n.kids.length;
+        need(n.count > 0 && Long.bitCount(n.bits) == slots, "slot count");
+        return n.shift == 0 ? checkLeaf(n, map) : checkBranch(n, map);
+    }
+
+    static int checkLeaf(Node n, boolean map) {
+        boolean vals = map ? n.vals != null && n.vals.length == n.count : n.vals == null;
+        need(n.kids == null && vals, "leaf arrays");
+        for (int i = 0; n.vals != null && i < n.count; i++) {
+            need(n.vals[i] != null, "nil value");
         }
+        return n.count;
+    }
+
+    static int checkBranch(Node n, boolean map) {
         need(n.vals == null && n.kids.length >= 2, "branch with fewer than two children");
         int c = 0;
         for (Node k : n.kids) {
             long bit = n.bit(k.base);
-            need(
-                    n.covers(k.base)
-                            && (n.bits & bit) != 0
-                            && n.kids[index(n.bits, bit)] == k,
-                    "child out of its slot"
-            );
+            boolean slotted = (n.bits & bit) != 0 && n.kids[index(n.bits, bit)] == k;
+            need(n.covers(k.base) && slotted, "child out of its slot");
             c += check(k, n.shift, map);
         }
         need(c == n.count, "branch count");
