@@ -1,6 +1,5 @@
 package collider.data;
 
-import clojure.lang.AFn;
 import clojure.lang.APersistentSet;
 import clojure.lang.IEditableCollection;
 import clojure.lang.IFn;
@@ -38,17 +37,14 @@ public final class LongSet extends APersistentSet
         return new LongSet(n, meta);
     }
 
-    /// Returns true when the set has `k`.
     public boolean has(long k) {
         return Node.leafOf(root, Node.u(k)) != null;
     }
 
-    /// Returns the set with `k`.
     public LongSet add(long k) {
         return with(Node.put(root, Node.u(k), null, null));
     }
 
-    /// Returns the set without `k`.
     public LongSet remove(long k) {
         return with(Node.remove(root, Node.u(k), null));
     }
@@ -76,12 +72,10 @@ public final class LongSet extends APersistentSet
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
 
-    /// Returns the keys in both sets.
     public LongSet intersection(LongSet o) {
         return with(Node.combine(Node.INTER, root, o.root, null));
     }
 
-    /// Returns the keys of this set that are not in `o`.
     public LongSet difference(LongSet o) {
         return with(Node.combine(Node.DIFF, root, o.root, null));
     }
@@ -89,7 +83,7 @@ public final class LongSet extends APersistentSet
     /// Reduces `(f acc k added)` in key order over the keys in exactly
     /// one of this set and `o`. `added` is true for keys of `o`.
     public Object diff(LongSet o, IFn f, Object init) {
-        return Node.unreduced(Node.diff(root, o.root, f, init, true));
+        return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
     /// Reduces the set in parts of at most `n` keys in parallel, with
@@ -109,17 +103,13 @@ public final class LongSet extends APersistentSet
         return Node.fold(root, n, combinef, reducef, Node.KEYS, fj);
     }
 
-    /// Returns the set of keys `ks`.
     public static LongSet fromSorted(long[] ks) {
         return EMPTY.with(Node.fromSorted(ks, null));
     }
 
-    /// Returns the keys in order.
+    /// Returns the keys in ascending order.
     public long[] keys() {
-        long[] ks = new long[count()];
-        int i = 0;
-        for (Object k : this) ks[i++] = (Long) k;
-        return ks;
+        return Node.keyArray(root);
     }
 
     /// Throws when the trie breaks one of its shape invariants.
@@ -218,61 +208,39 @@ public final class LongSet extends APersistentSet
         return new Transient(this);
     }
 
-    static final class Transient extends AFn implements ITransientSet {
+    static final class Transient extends Node.Transient implements ITransientSet {
         final LongSet from;
-        Node root;
-        Object edit = new Object();
 
         Transient(LongSet from) {
+            super(from.root);
             this.from = from;
-            this.root = from.root;
-        }
-
-        Object edit() {
-            if (edit == null) {
-                throw new IllegalAccessError("Transient used after persistent!");
-            }
-            return edit;
         }
 
         @Override
         public Transient conj(Object k) {
-            root = Node.put(root, Node.u(Node.key(k)), null, edit());
+            put(Node.u(Node.key(k)), null);
             return this;
         }
 
         @Override
         public Transient disjoin(Object k) {
-            Object e = edit();
-            if (Node.integral(k)) {
-                root = Node.remove(root, Node.u(((Number) k).longValue()), e);
-            }
+            remove(k);
             return this;
         }
 
         @Override
         public LongSet persistent() {
-            edit();
-            edit = null;
-            return from.with(root);
+            return from.with(close());
         }
 
         @Override
         public boolean contains(Object k) {
-            edit();
-            return Node.integral(k)
-                    && Node.leafOf(root, Node.u(((Number) k).longValue())) != null;
+            return find(k, null) != null;
         }
 
         @Override
         public Object get(Object k) {
             return contains(k) ? k : null;
-        }
-
-        @Override
-        public int count() {
-            edit();
-            return root == null ? 0 : root.count;
         }
 
         @Override
