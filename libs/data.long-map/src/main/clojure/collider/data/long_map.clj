@@ -42,7 +42,7 @@
 (defn empty?
   "Returns true when map `m` holds no entry."
   [m]
-  (reduce-kv (fn [_ _ _] (reduced false)) true m))
+  (zero? (count m)))
 
 (defn assoc
   "Returns map `m` with `v` at `k`."
