@@ -1,6 +1,7 @@
 (ns collider.game.schedule
   "Lists of scheduled block ticks."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -204,7 +205,7 @@
           ticks entries))
 
 (defn- relative [^long t [at _ id ty]]
-  [(- (long at) t) (chunk/id->block-pos id) ty])
+  [(- (long at) t) (cell/unpack id) ty])
 
 (defn saved
   "Returns the ticks of chunk cid as [delay pos type].
@@ -231,5 +232,5 @@
   (let [base (- (count saved))]
     (reduce (fn [ticks [n [dt p ty]]]
               (added ticks (+ (long t) (max 1 (long dt)))
-                     (chunk/block-pos->id p) ty (+ base (long n))))
+                     (cell/pack p) ty (+ base (long n))))
             ticks (map-indexed vector saved))))

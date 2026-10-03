@@ -1,6 +1,7 @@
 (ns collider.world.blocks.eyeblossom
   "Eyeblossoms, open by night and closed by day."
-  (:require [collider.random :as random]
+  (:require [collider.cell :as cell]
+            [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.support :as support]))
@@ -51,7 +52,7 @@
             (if (not= old (chunk/at chunks q))
               m
               (update m (follow-tick p q tick) (fnil conj [])
-                      (chunk/block-pos->id q))))
+                      (cell/pack q))))
           {} (neighbours p)))
 
 (defn- wake [chunks _dim _tick p _old _side]

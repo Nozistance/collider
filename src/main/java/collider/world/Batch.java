@@ -6,6 +6,7 @@ import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentHashMap;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
+import collider.Cell;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -32,12 +33,6 @@ public final class Batch {
         return s.apply(idx, states, n);
     }
 
-    private static long cellKey(int x, int y, int z) {
-        return ((long) (x & 0x3FFFFFF) << 38)
-                | ((long) (z & 0x3FFFFFF) << 12)
-                | (y & 0xFFF);
-    }
-
     /// Returns the changes `[pos st]` that alter a block of `chunks`
     /// inside heights `minY` to `maxY`, as `[pos old st]` in order. A
     /// change sees the ones before it.
@@ -54,7 +49,7 @@ public final class Batch {
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             int st = RT.intCast(RT.nth(c, 1));
-            long k = cellKey(x, y, z);
+            long k = Cell.pack(x, y, z);
             Integer seen = now.get(k);
             int old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;

@@ -1,6 +1,7 @@
 (ns collider.game.systems.random.tick
   "Random block ticks for growth, melting, dripping and weathering."
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.game.changes :as changes]
             [collider.game.clock :as clock]
             [collider.game.delta :as delta]
@@ -148,7 +149,7 @@
   (reduce (fn [m {:keys [cauldron delay]}]
             (if cauldron
               (update m (+ (long (:tick world)) (long delay))
-                      (fnil conj []) (chunk/block-pos->id cauldron))
+                      (fnil conj []) (cell/pack cauldron))
               m))
           {} drips))
 

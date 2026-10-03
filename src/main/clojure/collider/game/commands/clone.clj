@@ -1,6 +1,7 @@
 (ns collider.game.commands.clone
   "The cells /clone copies and the order it sets them in."
-  (:require [collider.game.block.blockentity :as be]
+  (:require [collider.cell :as cell]
+            [collider.game.block.blockentity :as be]
             [collider.game.schedule :as schedule]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -73,10 +74,9 @@
 (defn- ticks-copied [from box off]
   (let [[[x1 x2] [y1 y2] [z1 z2]] box
         in? (fn [id]
-              (let [[x y z] (chunk/id->block-pos id)]
+              (let [[x y z] (cell/unpack id)]
                 (and (<= x1 x x2) (<= y1 y y2) (<= z1 z z2))))
-        moved #(chunk/block-pos->id
-                 (shifted (chunk/id->block-pos %) off))]
+        moved #(cell/pack (shifted (cell/unpack %) off))]
     (schedule/copied (:block-ticks from) in? moved)))
 
 (defn plan

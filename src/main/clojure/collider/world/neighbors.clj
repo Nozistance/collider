@@ -1,6 +1,7 @@
 (ns collider.world.neighbors
   "Block changes with the neighbour updates they run at once."
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
             [collider.world.blocks.geyser :as geyser]
@@ -100,7 +101,7 @@
 (defn- ticked [s ctx k at p ty]
   (if (and at ty)
     (let [at (max (long at) (inc (long (:tick ctx))))]
-      (add-tick! s [k at (chunk/block-pos->id p) ty]))
+      (add-tick! s [k at (cell/pack p) ty]))
     s))
 
 (declare set-block)

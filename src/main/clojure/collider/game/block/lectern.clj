@@ -1,13 +1,13 @@
 (ns collider.game.block.lectern
   "The book on a lectern, its pages and its menu."
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.book :as book]
             [collider.game.changes :as changes]
             [collider.game.out :as out]
             [collider.world.blocks.chest :as chest]
-            [collider.world.blocks.lectern :as block-lectern]
-            [collider.world.chunk :as chunk]))
+            [collider.world.blocks.lectern :as block-lectern]))
 
 (set! *warn-on-reflection* true)
 
@@ -71,7 +71,7 @@
 (defn- turned-deltas [world pos e ^long p]
   (let [st (chest/state-at (:chunks world) pos)
         at (+ (long (:tick world)) block-lectern/impulse-ticks -1)
-        ids [(chunk/block-pos->id pos)]]
+        ids [(cell/pack pos)]]
     (concat
       [[:set-block-entity pos (assoc e :page p)]]
       (lectern-set world pos (block-lectern/powered st true))

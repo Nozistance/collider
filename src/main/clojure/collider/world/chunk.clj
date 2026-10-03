@@ -1,6 +1,7 @@
 (ns collider.world.chunk
   "Chunks of block states and light, with chunk and block ids."
-  (:require [collider.vec :as v])
+  (:require [collider.cell :as cell]
+            [collider.vec :as v])
   (:import (collider.world Batch Chunk ChunkIndex Section)
            (java.io DataInput DataOutput)))
 
@@ -151,20 +152,6 @@
     (.block chunk (int lx) (int y) (int lz))
     0))
 
-(defn block-pos->id
-  (^long [[x y z]] (block-pos->id x y z))
-  (^long [x y z]
-   (let [x (long x) y (long y) z (long z)]
-     (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
-             (bit-shift-left (bit-and y 0xFFF) 26)
-             (bit-and z 0x3FFFFFF)))))
-
-(defn id->block-pos
-  [^long id]
-  [(bit-shift-right id 38)
-   (bit-shift-right (bit-shift-left id 26) 52)
-   (bit-shift-right (bit-shift-left id 38) 38)])
-
 (defn pos->id
   "Returns the chunk coordinates cx cz as one long id."
   ^long [^long cx ^long cz]
@@ -215,8 +202,8 @@
 
 (defn block-id-chunk
   ^long [^long bid]
-  (pos->id (bit-shift-right bid 42)
-           (bit-shift-right (bit-shift-left bid 38) 42)))
+  (pos->id (bit-shift-right (cell/x bid) 4)
+           (bit-shift-right (cell/z bid) 4)))
 
 (defn block-chunk
   ^long [[x _ z]]

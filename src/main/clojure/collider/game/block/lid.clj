@@ -1,12 +1,12 @@
 (ns collider.game.block.lid
   "Container lids, their openers, sounds and shulker box motion."
-  (:require [collider.game.changes :as changes]
+  (:require [collider.cell :as cell]
+            [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.chest :as chest]
-            [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
@@ -177,7 +177,7 @@
   (when (not= :barrel t) [(lid-event pos n)]))
 
 (defn- recheck-at [pos ^long base]
-  (let [id (chunk/block-pos->id pos)]
+  (let [id (cell/pack pos)]
     [:schedule-ticks {(+ base recheck-delay) [id]}]))
 
 (defn- counter-deltas [world pos st t step]

@@ -1,7 +1,8 @@
 (ns collider.proto.codec
   "Wire primitives of the protocol."
   (:refer-clojure :exclude [read-string])
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.proto.buf :as buf])
   (:import (collider.proto Buf)
            (java.nio.charset StandardCharsets)
@@ -226,16 +227,10 @@
     (buf/write-byte! buf (bit-and (bit-shift-right v (* 8 i)) 0xFF))))
 
 (defn write-block-pos [^Buf buf ^long x ^long y ^long z]
-  (let [v (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
-                  (bit-shift-left (bit-and z 0x3FFFFFF) 12)
-                  (bit-and y 0xFFF))]
-    (buf/write-long! buf v)))
+  (buf/write-long! buf (cell/pack x y z)))
 
 (defn read-block-pos [^Buf buf]
-  (let [v (buf/read-long buf)]
-    [(bit-shift-right v 38)
-     (bit-shift-right (bit-shift-left v 52) 52)
-     (bit-shift-right (bit-shift-left v 26) 38)]))
+  (cell/unpack (buf/read-long buf)))
 
 (defn section-pos
   "Returns the section position as one long."
