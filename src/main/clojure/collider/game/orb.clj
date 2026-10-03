@@ -16,12 +16,10 @@
 (set! *warn-on-reflection* true)
 
 (defn half
-  "Returns the half width of an orb."
   ^double []
   (size/half :experience-orb))
 
 (defn height
-  "Returns the height of an orb."
   ^double []
   (size/height :experience-orb))
 
@@ -176,7 +174,6 @@
     0))
 
 (defn eye-in-water?
-  "Returns true when the eye of an orb at pos is in water."
   [chunks pos]
   (let [ey (+ (v/y pos) (eye))
         x (num/floor (v/x pos)) y (num/floor ey)

@@ -85,7 +85,6 @@
       (best pots {:ctx ctx :rd rd :errors errors}))))
 
 (defn parse
-  "Returns the parse of input from cursor n."
   [graph input n cx]
   (let [root (graph :root)]
     (parse-nodes root [input n] (context root n) cx graph)))

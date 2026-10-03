@@ -1,6 +1,5 @@
 (ns collider.game.commands.world
-  "The commands on the world: time, weather, gamerule,
-  setworldspawn, defaultgamemode and reload."
+  "Commands on the world, such as time, weather and gamerule."
   (:require [collider.data :as data]
             [collider.game.clock :as clock]
             [collider.game.command.selector :as sel]
@@ -226,7 +225,6 @@
         (say eid "commands.reload.success")))
 
 (def handlers
-  "The commands on the world by name."
   (into {:gamerule gamerule-deltas
          :weather-clear (weather-deltas :clear)
          :weather-rain (weather-deltas :rain)

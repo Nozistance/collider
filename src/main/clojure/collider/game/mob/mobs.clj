@@ -87,7 +87,6 @@
   (biome-tag "spawns_gold_rabbits"))
 
 (def rabbit-variants
-  "The rabbit variants by their ids."
   {0 :brown 1 :white 2 :black 3 :white-splotched 4 :gold 5 :salt
    99 :evil})
 
@@ -311,9 +310,8 @@
       :follow-bonus (follow-bonus ks))))
 
 (defn command-mob
-  "Returns a mob summoned by a command in level dim. It faces as its
-  constructor turns it, less than 2 pi degrees; the keys ks decide
-  its colour and voice."
+  "Returns a mob summoned by a command in level dim. Its yaw is under
+  2 pi degrees, and the keys ks decide its yaw, colour and voice."
   [type pos ks tick dim]
   (let [r (double (float (random/of-key (conj ks :yaw))))
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
@@ -351,7 +349,6 @@
        (>= (inc (long (or (:death-time e) 0))) death-ticks)))
 
 (defn box-of
-  "Returns the half width and the height of mob e."
   [e]
   (size/box e))
 

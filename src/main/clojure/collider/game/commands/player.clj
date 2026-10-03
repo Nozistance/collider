@@ -1,6 +1,5 @@
 (ns collider.game.commands.player
-  "The commands on players: give, clear, experience, effect,
-  gamemode, spawnpoint, playsound, stopsound and title."
+  "Commands on players, such as give, clear, effect and title."
   (:require [collider.data :as data]
             [collider.game.command.args.item :as item-args]
             [collider.game.command.reader :as cmd-reader]
@@ -63,8 +62,9 @@
       :else (mapcat #(given world eid % proto n) xs))))
 
 (def ^:private inventory-order
-  "Menu slots in the order Inventory counts them: hotbar, main,
-  feet to head, offhand, then the crafting grid."
+  "Menu slots in the order a clear visits them. The hotbar comes
+  first, followed by the main slots, the armour from feet to head,
+  the off hand and the crafting grid."
   (vec (concat (range 36 45) (range 9 36) [8 7 6 5 45] [1 2 3 4])))
 
 (defn- taken ^long [pred ^long limit ^long counted stack]
@@ -88,8 +88,8 @@
 
 (defn- cleared
   "Returns how many items pred matches on player e, and the slot
-  changes that take at most limit of them; limit 0 only counts, -1
-  takes all."
+  changes that take at most limit of them. A limit of 0 only counts,
+  and -1 takes all."
   [e pred limit]
   (let [inv (:inventory e)
         stacks (conj (mapv (fn [s] [s (get inv s)]) inventory-order)
@@ -397,7 +397,6 @@
           #(out/title kind %)))
 
 (def handlers
-  "The commands on players by name."
   {:give give-deltas :clear clear-deltas
    :xp-add xp-add-deltas :xp-set xp-set-deltas
    :xp-query xp-query-deltas

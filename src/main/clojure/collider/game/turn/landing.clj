@@ -1,6 +1,6 @@
 (ns collider.game.turn.landing
-  "The fall of a living entity: how far it falls in its move and
-  what the block it lands on does with the fall."
+  "Falls of living entities and what the block they land on does
+  with each fall."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
             [collider.game.changes :as changes]
@@ -18,8 +18,8 @@
 (defn- fall-of ^double [e] (double (or (:fall e) 0.0)))
 
 (defn kept
-  "Returns fall distance f as entity e should hold it: nil for none,
-  and the value e holds when it is the same, so that a body that
+  "Returns fall distance f as entity e should hold it. It is nil for
+  none, and the value e already holds when equal, so a body that
   does not fall keeps its entity."
   [e ^double f]
   (let [old (:fall e)]

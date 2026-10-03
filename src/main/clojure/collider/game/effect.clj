@@ -23,7 +23,6 @@
     :icon? (boolean icon?) :hidden nil}))
 
 (defn endless?
-  "Returns true when instance i never runs out."
   [i]
   (= infinite (long (:duration i))))
 
@@ -80,7 +79,6 @@
     [i false]))
 
 (defn remaining?
-  "Returns true when instance i has time left."
   [i]
   (or (endless? i) (pos? (long (:duration i)))))
 
@@ -107,12 +105,10 @@
       false)))
 
 (defn heal-amount
-  "Returns what instant health heals at amplifier a."
   ^double [^long a]
   (double (max (shift-int 4 a) 0)))
 
 (defn harm-amount
-  "Returns what instant damage hurts at amplifier a."
   ^double [^long a]
   (num/f32 (shift-int 6 a)))
 

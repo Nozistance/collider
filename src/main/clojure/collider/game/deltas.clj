@@ -31,8 +31,9 @@
   (.input d))
 
 (defn as-vec
-  "Returns the deltas of d as one vector. The deltas of the level
-  come first, then those of each entity by eid, then the effects."
+  "Returns the deltas of d in one sequence. The deltas of the level
+  come first, followed by those of each entity by eid, and the
+  effects come last."
   [^Deltas d]
   (-> (world-of d)
       (into cat (vals (entities-of d)))
@@ -73,7 +74,7 @@
 
 (defn collecting
   "Returns an empty collector of deltas, which keeps them in the
-  order they come. One thread at a time may add to it."
+  order they come. It takes no two adds at once."
   ^objects []
   (open empty-deltas))
 
@@ -188,8 +189,8 @@
 
 (defn run-weighed
   "Returns the deltas of thunks fs merged in their order.
-  The thunks whose keys ks are heavy? run in parallel, the rest in
-  order; timed wraps a thunk so its key keeps its weight."
+  The thunks whose keys ks are heavy? run in parallel and the rest
+  in order. A thunk that timed wraps keeps the weight of its key."
   ^Deltas [heavy? timed ks fs]
   (if (= 1 (count fs))
     ((nth fs 0))

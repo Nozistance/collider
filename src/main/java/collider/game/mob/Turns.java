@@ -6,10 +6,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicIntegerArray;
 
-/// The turns of the bodies of one island in parallel. Each body first
-/// thinks, which needs no other body, then moves as soon as every
-/// body of lower id that it could meet moved. The turns join in the
-/// order of the bodies while later bodies still move.
+/// The turns of the bodies of one island in parallel. A body thinks
+/// before it moves and needs no other body to think. It moves once
+/// every body of lower id that it could meet moved. Turns join in
+/// the order of the bodies while later bodies still move.
 public final class Turns extends CountedCompleter<Void> {
 
     private static final int LEAF = 8;
@@ -62,7 +62,7 @@ public final class Turns extends CountedCompleter<Void> {
         this.moving = false;
     }
 
-    /// Calls `mind` and then `body` with the index of each body of the
+    /// Calls `mind` before `body` with the index of each body of the
     /// pinned grid `g`, and `join` with each index in ascending order.
     /// The call of `body` with index s waits for the calls with each
     /// body of lower index that s could meet in a tick in which no

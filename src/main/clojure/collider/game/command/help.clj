@@ -27,7 +27,6 @@
            close))))
 
 (defn- smart-usage
-  "Returns the short usage text of node i."
   [nodes i optional? deep?]
   (let [n (nth nodes i)
         self (cond->> (usage-text n) optional? (format "[%s]"))

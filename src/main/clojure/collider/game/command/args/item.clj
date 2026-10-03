@@ -344,7 +344,6 @@
     :tag (contains? (@item-tags v) (:item s))))
 
 (defn matches?
-  "Returns true when stack s passes item predicate pred."
   [{:keys [type tests]} s]
   (and (type? type s)
        (every? (fn [alts] (some #(term? s %) alts)) tests)))

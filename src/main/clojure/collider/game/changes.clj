@@ -19,7 +19,6 @@
 (set! *warn-on-reflection* true)
 
 (defn block-at
-  "Returns the block state at pos in the level world."
   ^long [world pos]
   (chunk/at (:chunks world) pos))
 
@@ -56,8 +55,8 @@
 (def ^:private ^:const hurt-max 40)
 
 (defn- hurts
-  "Returns the damage per block fallen of a falling block st, as
-  AnvilBlock.falling:84 sets it, or hurt as the effect gave it."
+  "Returns the damage per block fallen of falling block st, or hurt
+  as the effect gave it."
   [st hurt]
   (cond hurt hurt
         (= :anvil (block/type-of st)) anvil-hurt))

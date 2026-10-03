@@ -181,7 +181,6 @@
   (delay (set (data/tag-values "item" "swords"))))
 
 (defn sword?
-  "Returns true when item is a sword."
   [item]
   (contains? @swords item))
 
@@ -226,7 +225,6 @@
     (+ slots/hotbar (long (or (:held-slot e) 0)))))
 
 (defn hand-stack
-  "Returns the stack the player holds in hand."
   [e hand]
   (get-in e [:inventory (hand-slot e hand)]))
 
@@ -560,14 +558,16 @@
   (long (:permission-level e 4)))
 
 (defn block-reach
-  "Returns how far the player reaches blocks."
+  "Returns how far the player reaches blocks, in blocks. Creative
+  reaches further."
   ^double [player]
   (if (game-mode/creative? player)
     (+ game-mode/block-range game-mode/creative-block-range)
     game-mode/block-range))
 
 (defn entity-reach
-  "Returns how far the player reaches entities."
+  "Returns how far the player reaches entities, in blocks. Creative
+  reaches further."
   ^double [player]
   (if (game-mode/creative? player)
     (+ game-mode/entity-range game-mode/creative-entity-range)

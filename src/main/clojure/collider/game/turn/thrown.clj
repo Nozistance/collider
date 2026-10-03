@@ -546,8 +546,8 @@
     (reduce-kv f (lm/long-map) (deltas/entities-of ds))))
 
 (defn- seen-by
-  "Returns the entities as turn eid sees them: those of the turns
-  before it moved, the others not yet."
+  "Returns entities es as turn eid sees them, moved by the turns of
+  lower eid and not yet by the later ones."
   [es after ^long eid]
   (reduce-kv assoc es (lm/range after Long/MIN_VALUE (dec eid))))
 
@@ -574,8 +574,8 @@
 (defn turns
   "Returns world with the blocks that the thrown things in active
   chunks wrote, and their deltas, each in its turn after the turns
-  ds of the other bodies, then the clouds. A hit meets the bodies
-  where they stand at its turn, and sees the blocks it wrote."
+  ds of the other bodies. Clouds take their turns last. A hit meets
+  bodies where they stand at its turn and sees its own blocks."
   [world ds]
   (let [es (areas/active-of-types world flying)]
     (if (pos? (count es))

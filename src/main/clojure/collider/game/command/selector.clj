@@ -30,7 +30,6 @@
     (fail (assoc p :rd rd) (apply r/error-at rd k xs))))
 
 (defn- read-with
-  "Runs reader f at the cursor: the value, or p failed."
   [p f]
   (let [res (f (:rd p))]
     (if (r/error? res)
@@ -73,8 +72,8 @@
 (defn- swapped? [[a b]] (and a b (> (compare a b) 0)))
 
 (defn read-bounds
-  "MinMaxBounds.fromReader: [min max], either nil, of numbers parse
-  reads; swap? checks the order as Doubles and Ints do."
+  "Returns the range [min max] of the numbers parse reads at rd, with
+  an open end nil. With swap? a min above max is an error."
   [[s n :as rd] parse kind swap?]
   (let [res (if (r/can-read? rd)
               (bounds-at rd parse kind)
@@ -419,8 +418,9 @@
    :name nil :uuid nil :range nil :preds []})
 
 (defn parse
-  "Reads a selector or a name at rd: {:rd :sel} or with :error, and
-  :sugg, :start and :states for the completions."
+  "Reads a selector or a player name at rd. The result holds the
+  reader past it and the selector, or an error, and what the
+  completions need. A selector is an error unless allow? is true."
   [rd allow?]
   (let [p {:rd rd :start (second rd) :allow? allow?
            :sugg :name-or-selector}
@@ -433,7 +433,8 @@
 (defn- split-at? [c] (#{\. \_ \/ \:} c))
 
 (defn matches-sub?
-  "SharedSuggestionProvider.matchesSubStr."
+  "Returns true when input starts with pattern, or holds it right
+  after a dot, an underscore, a slash or a colon."
   [^String pattern ^String input]
   (loop [i 0]
     (cond (.startsWith input pattern (int i)) true
@@ -446,7 +447,9 @@
   (filterv #(not= rem %) texts))
 
 (defn suggest-strings
-  "SharedSuggestionProvider.suggest of xs at start of text."
+  "Returns the completions among xs of text from start on. Case does
+  not count, any word of an x may match, and the text typed in full
+  is not offered."
   [^String text start xs]
   (let [rem (subs text start) lo (str/lower-case rem)]
     {:start start
@@ -460,7 +463,9 @@
       (or (matches-sub? t ns) (matches-sub? t path)))))
 
 (defn suggest-ids
-  "SharedSuggestionProvider.suggestResource with prefix."
+  "Returns the completions among ids, each after prefix, of text
+  from start on. Text without a colon may match the namespace or the
+  path of an id."
   [^String text start ids prefix]
   (let [rem (subs text start) t (str/lower-case rem)]
     {:start start
@@ -503,8 +508,8 @@
                            (conj (f tags "#") (f tags "!#")))))}))
 
 (defn suggestions
-  "EntitySelectorParser.fillSuggestions: the completions where p
-  stopped; names are the player names to offer."
+  "Returns the completions at the point where parse p stopped. Names
+  are the player names to offer."
   [p ^String text names]
   (let [at (cursor p) st (:start p)
         sel (when (:allow? p) selector-texts)]

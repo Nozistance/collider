@@ -36,7 +36,6 @@
         (sent-deltas e eid slot (edited e s book))))))
 
 (defn resolved
-  "Returns stack with its written book content marked resolved."
   [s]
   (let [c (stack/component s :written-book-content)]
     (if (or (nil? c) (:resolved c))

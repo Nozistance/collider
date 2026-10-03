@@ -10,11 +10,9 @@
 (set! *warn-on-reflection* true)
 
 (def types
-  "The types of the hanging entities."
   #{:painting :item-frame :glow-item-frame})
 
 (def frames
-  "The types of the item frames."
   #{:item-frame :glow-item-frame})
 
 (def ^:private ^:const check-period 101)

@@ -27,7 +27,6 @@
   (animal/spec animal/goals chick-coat))
 
 (defn brain
-  "Returns the chicken's next state and deltas for one tick."
   [world eid e t tempters]
   (animal/brain spec world eid e t tempters))
 
@@ -80,6 +79,6 @@
 
 (defn ai-step
   "Returns chicken e after the part of its step that is its own, and
-  its deltas: it falls slower and lays eggs."
+  its deltas. It falls slower and lays eggs."
   [eid e t]
   (laying eid (slowed e) t))

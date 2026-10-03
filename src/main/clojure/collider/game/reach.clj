@@ -17,7 +17,6 @@
 (def ^:private ^:const neg-inf Double/NEGATIVE_INFINITY)
 
 (defn eye-pos
-  "Returns where the entity's eyes are."
   [e]
   (let [p (:pos e)]
     [(v/x p) (+ (v/y p) (entity/eye-height e)) (v/z p)]))

@@ -16,8 +16,8 @@
        (> (v/y (:pos e')) (v/y (:pos e)))))
 
 (defn- move-of
-  "Returns what a :move event did to its player.
-  Returns nil when the event moved no player."
+  "Returns what a :move event did to its player, or nil when it moved
+  none. A player who sleeps or awaits a teleport does not move."
   [w w' [tag eid changes]]
   (let [e (get-in w [:entities eid]) e' (get-in w' [:entities eid])]
     (when (and (= :move tag) (:pos changes) (:pos e) e'
@@ -29,8 +29,6 @@
              (climb/on-climbable? (:chunks w') (:pos e'))))))
 
 (defn- quit-of
-  "Returns the entity that leaves with a player quit event.
-  Any other event gives nil."
   [w [tag eid]]
   (when (= :player-quit tag)
     (when-let [e (get-in w [:entities eid])]

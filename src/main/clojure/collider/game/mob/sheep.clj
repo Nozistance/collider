@@ -189,6 +189,5 @@
     (animal/spec (concat before [eat] after) lamb-color)))
 
 (defn brain
-  "Returns the sheep's next state and deltas for one tick."
   [world eid e t tempters]
   (animal/brain spec world eid e t tempters))

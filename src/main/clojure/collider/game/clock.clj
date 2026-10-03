@@ -48,7 +48,6 @@
     (merge fresh c)))
 
 (defn state
-  "Returns the state of clock in world."
   [world clock]
   (whole (get (:clocks world) clock)))
 
@@ -68,7 +67,6 @@
   (:default-clock (dimension/type-of dim)))
 
 (defn ticked
-  "Returns clock state c one tick on."
   [c]
   (if (:paused c)
     c
@@ -100,7 +98,7 @@
            (num/f32 (:rate c)))})
 
 (defn sync-of
-  "Returns the network state of clocks in world, by clock."
+  "Returns the network state of each clock of clocks in world."
   [world clocks]
   (let [on (advancing? world)]
     (into {} (map (fn [k] [k (network-state (state world k) on)]))

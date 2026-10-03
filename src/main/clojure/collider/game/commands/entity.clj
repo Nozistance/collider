@@ -1,5 +1,5 @@
 (ns collider.game.commands.entity
-  "The commands on entities: kill, summon, tag and swing."
+  "The kill, summon, tag and swing commands."
   (:require [collider.game.command.selector :as sel]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
@@ -125,7 +125,6 @@
                     (swing-report eid xs (count dss))))))
 
 (def handlers
-  "The commands on entities by name."
   {:kill kill-deltas :summon summon-deltas
    :tag-add (tag-changed tag-added "add")
    :tag-remove (tag-changed tag-removed "remove")

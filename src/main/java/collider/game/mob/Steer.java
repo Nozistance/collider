@@ -4,9 +4,9 @@ import clojure.lang.ILookup;
 import clojure.lang.Keyword;
 import clojure.lang.RT;
 
-/// The move control of a mob: what it does, where it walks to, the
-/// speed modifier it was given and the speed and forward input it
-/// drives with. A value; each change makes a new one.
+/// The move control of a mob. It holds what the mob does, where it
+/// walks to, the speed modifier it was given and the speed and
+/// forward input it drives with. Each change makes a new control.
 public record Steer(
         Keyword op,
         double x,
@@ -45,8 +45,8 @@ public record Steer(
         }
     }
 
-    /// Returns the angle of `y`, `x` from a sine table and a short
-    /// series. It is close to `Math.atan2` but not equal.
+    /// Returns the angle of `y`, `x` in radians as the game finds it,
+    /// close to the exact arctangent but not equal.
     @SuppressWarnings("SuspiciousNameCombination")
     public static double atan2(double y, double x) {
         double d2 = x * x + y * y;
@@ -176,14 +176,14 @@ public record Steer(
         return kept(s, op, x, y, z, mult, s.speed, s.zza);
     }
 
-    /// Returns `m` arrived: waiting, with no forward input.
+    /// Returns `m` arrived, waiting with no forward input.
     public static Steer arrived(Object m) {
         Steer s = of(m);
         return kept(s, WAIT, s.x, s.y, s.z, s.mult, s.speed, 0.0);
     }
 
-    /// Returns `m` driving at `speed`, rounded to a float, then
-    /// jumping or waiting.
+    /// Returns `m` driving at `speed`, rounded to a float. It jumps
+    /// when `jump` is true and waits otherwise.
     public static Steer driven(Object m, double speed, boolean jump) {
         Steer s = of(m);
         double f = (float) speed;

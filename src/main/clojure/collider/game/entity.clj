@@ -17,12 +17,10 @@
 (set! *warn-on-reflection* true)
 
 (def thrown-types
-  "The types of thrown bodies."
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
     :experience-bottle})
 
 (defn player?
-  "Returns true when e is a player."
   [e]
   (= :player (:type e)))
 
@@ -95,7 +93,6 @@
                  (:vel m) (assoc :vel (v/v3 (:vel m)))))))
 
 (defn uuid-of
-  "Returns the uuid of entity e, whose id is eid."
   [eid e]
   (or (:uuid e) (UUID. (long eid) (long eid))))
 
@@ -105,7 +102,6 @@
   (size/type-box :player pose))
 
 (defn pose-eye
-  "Returns the eye height of a player in pose."
   ^double [pose]
   (size/pose-eye :player pose))
 
@@ -182,7 +178,6 @@
 (def ^:private orb-merged (merger Orb))
 
 (defn merged
-  "Returns entity e with the map m merged into it."
   [e m]
   (cond (< (count m) 2) (merge e m)
         (instance? Mob e) (mob-merged e m)
@@ -406,7 +401,6 @@
 (def ^:private generic {:type :generic})
 
 (defn- taken
-  "Returns entity e that remembers who hurt it with src and how."
   [e src tick]
   (cond-> e
     (:player? src) (assoc :hurt-by-player tick)

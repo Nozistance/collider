@@ -85,7 +85,6 @@
       (player-metadata e))))
 
 (defn of
-  "Returns the metadata that entity e shows a client."
   [e]
   (let [m (own-metadata e) fx (:effects e)]
     (cond (seq fx) (merge m (effect-metadata e fx))

@@ -28,7 +28,6 @@
   {:secs (sorted-map) :at (lm/long-map)})
 
 (defn removed
-  "Returns index idx without entity id."
   [idx id]
   (if-let [[k n] (get (:at idx) id)]
     (assoc idx :secs (update (:secs idx) k assoc n nil)

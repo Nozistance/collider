@@ -10,7 +10,6 @@
 (set! *warn-on-reflection* true)
 
 (def ids
-  "The ids of the game modes."
   {:survival 0 :creative 1 :adventure 2 :spectator 3})
 
 (def ^:private by-id

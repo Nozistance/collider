@@ -9,12 +9,11 @@ import clojure.lang.RT;
 import clojure.lang.Tuple;
 
 /// The goals of a breed, highest priority first, and the selector
-/// that stops, starts and ticks them. Each goal
-/// holds its kind, its priority, its flags as a bit mask and its
-/// functions; goals of one priority never displace each other; a goal
-/// without a running function runs while the task of the mob has
-/// its kind. A start that returns `[e deltas false]` declines to
-/// start but keeps what it changed on the mob.
+/// that stops, starts and ticks them. Goals of one priority never
+/// displace each other. A goal without a running function runs
+/// while the task of the mob has its kind. A start that returns
+/// `[e deltas false]` declines to start but keeps what it changed
+/// on the mob.
 public record GoalSelector(
         Object goals,
         Object childColor,
@@ -182,7 +181,7 @@ public record GoalSelector(
     /// Returns `[e deltas]` after one tick of the goals of mob `e`
     /// with id `eid` in world `w` at tick `t`. On a `full` tick the
     /// selector stops the goals that may not go on, starts those
-    /// that may and ticks all; on the others it ticks only the goals
+    /// that may and ticks all. On other ticks it ticks only the goals
     /// that want every tick.
     public static Object think(
             GoalSelector s,

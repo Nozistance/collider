@@ -18,7 +18,6 @@
   1000000)
 
 (def world-spawn
-  "The spawn of a new world."
   [24 4 8])
 
 (defn chunk-entity?

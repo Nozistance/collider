@@ -120,7 +120,6 @@
   (Bodies/islands b))
 
 (defn entries-of
-  "Returns the entries of the bodies of b at indices g."
   [^Bodies b ^ints g]
   (Bodies/entries b g))
 
@@ -131,7 +130,6 @@
   (Bodies/grid b g))
 
 (defn slots-of
-  "Returns the slots of the bodies of b at indices g."
   ^Slots [^Bodies b ^ints g]
   (Bodies/slots b g))
 
@@ -192,13 +190,13 @@
   (scan index eid (:pos e) half height (long eid)))
 
 (defn pinned
-  "Returns index, which keeps each body in the column it stands in,
-  so threads may read it while bodies move no further than reach."
+  "Returns index with each body kept in the column it stands in.
+  Readers may share it while bodies move no further than reach."
   ^PushGrid [^PushGrid index reach]
   (PushGrid/pinned index (double reach)))
 
 (defn turns
-  "Calls mind and then body with the index of each body of the
+  "Calls mind before body with the index of each body of the
   pinned index, in parallel, and join with each index in order. The
   call of body with a body waits for the calls with each body of
   lower id that it could meet in a tick in which no body moves

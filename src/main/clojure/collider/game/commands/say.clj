@@ -1,6 +1,5 @@
 (ns collider.game.commands.say
-  "The commands that talk: say, me, msg, tellraw, list, help and
-  version."
+  "The say, me, msg, tellraw, list, help and version commands."
   (:require [collider.data :as data]
             [collider.game.command.selector :as sel]
             [collider.game.command.forms :as forms]
@@ -114,7 +113,6 @@
               (version-lines (data/version)))))
 
 (def handlers
-  "The commands that talk by name."
   {:say (broadcast "say_command") :me (broadcast "emote_command")
    :msg msg-deltas :tellraw tellraw-deltas :help help-deltas
    :list (list-deltas #(entity-name (nth % 2)))

@@ -1,5 +1,5 @@
 (ns collider.game.commands.fill
-  "The commands that set blocks: fill, setblock and clone."
+  "The fill, setblock and clone commands."
   (:require [collider.game.changes :as changes]
             [collider.game.command.args :as cmd-args]
             [collider.game.command.args.block :as block-args]
@@ -156,7 +156,6 @@
       [(* 16 cx) 0 (* 16 cz)])))
 
 (defn- chunks-at?
-  "Returns true when the chunks between corners a and b are loaded."
   [lv [_ y0 _ :as a] [_ y1 _ :as b]]
   (and (>= (long y1) (chunk/level-min-y lv))
        (<= (long y0) (chunk/level-max-y lv))
@@ -255,6 +254,5 @@
       :else (block-set world eid p (:state block) mode))))
 
 (def handlers
-  "The block commands by name."
   {:fill fill-deltas :fill-where fill-where-deltas
    :setblock setblock-deltas :clone clone-deltas})

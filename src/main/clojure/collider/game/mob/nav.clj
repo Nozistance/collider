@@ -233,9 +233,9 @@
             :else [(assoc e :nav nav2) nil nil]))))
 
 (defn aim
-  "Returns mob e after one tick of its navigation, then the path
-  state and the move it aims at when it walks a path, or nils.
-  The caller sets both on the mob."
+  "Returns mob e after one tick of its navigation, with the path
+  state and the move it aims at. Both are nil when it walks no path,
+  and the caller sets them on the mob."
   [world e]
   (let [nav0 (:nav e)
         nav (Nav/ticked nav0)]

@@ -34,12 +34,10 @@
   (chunk/block-state chunks (long x) (dec (long y)) (long z)))
 
 (defn solid?
-  "Returns true when the block in the cell is solid."
   [chunks cell]
   (block/solid? (state-at chunks cell)))
 
 (defn water?
-  "Returns true when water stands in the cell."
   [chunks cell]
   (block/water? (state-at chunks cell)))
 

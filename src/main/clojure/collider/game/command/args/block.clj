@@ -221,7 +221,7 @@
     tags? (into (map #(str "#" %)) (sort (keys @block-tags)))))
 
 (defn varying?
-  "Whether the blocks that parsed value v names have properties."
+  "Returns true when the blocks parsed value v names have properties."
   [{:keys [tag state]}]
   (let [bs (if tag (@block-tags tag) [(block/name-of state)])]
     (boolean (some #(seq (get-in (data/blocks) [% :props])) bs))))
