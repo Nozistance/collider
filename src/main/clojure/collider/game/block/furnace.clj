@@ -24,7 +24,6 @@
   (delay (reduce index-recipe {} (data/cooking-recipes))))
 
 (defn recipe
-  "Returns the recipe a furnace of kind cooks stack by, if any."
   [kind stack]
   (when stack (get-in @index [(recipe-types kind) (:item stack)])))
 
@@ -34,8 +33,6 @@
 (defn- f32 ^double [^double x] (double (unchecked-float x)))
 
 (defn- reward
-  "Returns the points n cooks of recipe id are worth, as
-  AbstractFurnaceBlockEntity.createExperience."
   ^long [id ^long n roll]
   (let [made (f32 (* (f32 n) (f32 (double (get @recipe-xp id 0.0)))))
         whole (Math/floor made)
@@ -45,8 +42,7 @@
 
 (defn award-deltas
   "Returns the orbs furnace e pays at pos for what it cooked since
-  the last payout, one award for each recipe, as
-  AbstractFurnaceBlockEntity.getRecipesToAwardAndPopExperience."
+  the last payout, one award for each recipe."
   [e pos roll salt]
   (for [[id n] (sort-by key (:used e))
         :let [pts (reward id (long n) roll)]
@@ -170,7 +166,6 @@
       :else (menu/span v 3 30 false))))
 
 (defn layout
-  "Returns the slot layout of furnace menu m."
   [m]
   (let [base (menu/slots-layout 3 may-place?)
         v (:visible base)

@@ -235,7 +235,6 @@
        [:award eid (keyword "used" (name (:item b))) 1]])))
 
 (defn- bundle-drop-deltas
-  "Returns the deltas of a bundle in use dropping its next stack."
   [world eid e hand stack left]
   (when (and (bundle/bundle? stack) (drops? stack left))
     (let [[b s] (bundle/remove-one stack)]

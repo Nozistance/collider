@@ -15,8 +15,8 @@
   "You logged in from another location")
 
 (defn disconnect-deltas
-  "Returns the deltas that drop player eid, entity e, with text:
-  out of its bed, told why, cut off and gone from the level."
+  "Returns the deltas that drop player eid, entity e, with text. It
+  leaves its bed, hears why, is cut off and leaves the level."
   [world eid e text]
   (concat
     (sleep/vacated-deltas world eid e)
@@ -134,7 +134,6 @@
         (vec (player/swing-deltas eid p (or hand :main) t false))))))
 
 (defn player-list
-  "Returns the deltas of the player list of the server."
   {:wake :always :once true}
   [world d]
   (let [ps (level/player-entries world)

@@ -131,7 +131,6 @@
     (delta/authored (vec ds) (commands/author ev))))
 
 (defn chat
-  "Turns the chat lines and commands of this tick into deltas."
   {:wake {:events #{:chat :tab-complete :change-game-mode
                     :teleport-to-entity :rules-request :set-rules
                     :config-loaded :config-failed :commit-synced}}}

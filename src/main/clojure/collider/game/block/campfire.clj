@@ -5,7 +5,6 @@
 (set! *warn-on-reflection* true)
 
 (defn recipe
-  "Returns the campfire recipe that cooks the item, if any."
   [item]
   (furnace/recipe :campfire {:item item :count 1}))
 

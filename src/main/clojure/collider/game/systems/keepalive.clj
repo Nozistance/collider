@@ -6,7 +6,6 @@
 (set! *warn-on-reflection* true)
 
 (def interval-ticks
-  "The ticks between two pings of a player."
   300)
 
 (defn player-deltas

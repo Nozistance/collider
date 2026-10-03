@@ -18,8 +18,8 @@
 (def ^:private player-view (vec (concat (range 9 36) (range 36 45))))
 
 (defn view
-  "Returns the slots menu m shows: its contents, then the slots
-  of inventory inv when m shows them."
+  "Returns the slots menu m shows. The slots of inventory inv follow
+  its own when m shows them."
   [m contents inv]
   (if (container/player-slots? m)
     (into (vec contents) (map inv) player-view)
@@ -177,7 +177,7 @@
 
 (defn left-behind-deltas
   "Returns the deltas of the stacks player e leaves behind as its
-  menu goes: they drop, and the openers of the menu lose it."
+  menu goes. The stacks drop, and the openers of the menu lose e."
   [world eid e]
   (let [m (:menu e)]
     (concat
@@ -214,17 +214,16 @@
       (concat [[:merge-entity eid {:menu menu}]] deltas ds))))
 
 (defn- near?
-  "Returns true when player e is near enough to keep menu m open:
-  within its reach and 4 blocks of each of its blocks, as
-  Container.stillValidBlockEntity:95."
+  "Returns true when player e is near enough to keep menu m open. It
+  must be within its reach and 4 blocks of each block of m."
   [e m]
   (every? #(reach/in-edit-range? e %)
           (or (seq (:cells m)) [(:pos m)])))
 
 (defn menu-deltas
-  "Returns the deltas of the menu of player eid in its turn
-  (ServerPlayer.tick:619-623): the slots and data that moved go to
-  it, then a menu no longer valid closes."
+  "Returns the deltas of the menu of player eid in its turn. The
+  slots and data that moved go to the player, and a menu no longer
+  valid closes."
   [world eid e]
   (when-let [m (:menu e)]
     (let [ok? (valid? world m)]

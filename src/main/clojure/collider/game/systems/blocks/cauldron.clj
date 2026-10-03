@@ -115,8 +115,8 @@
                      :custom/clean-banner)))))
 
 (defn cauldron-deltas
-  "Returns the deltas of a held item used on a cauldron.
-  The cauldron is at pos and item is in the hand of player eid."
+  "Returns the deltas of item in the hand of player eid used on the
+  cauldron at pos."
   [world eid pos item held]
   (let [cur (changes/block-at world pos)]
     (cond

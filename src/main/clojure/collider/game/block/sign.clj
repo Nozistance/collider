@@ -32,7 +32,6 @@
    :has_glowing_text (boolean (:glowing? t))})
 
 (defn nbt
-  "Returns the NBT of sign e."
   [e]
   {:front_text (text-nbt (:front e))
    :back_text  (text-nbt (:back e))

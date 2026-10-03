@@ -32,12 +32,10 @@
   (if (< page 0) 0 (min page (dec pages))))
 
 (defn book-of
-  "Returns the book on the lectern of menu m."
   [world m]
   (:book (be/at world (:pos m))))
 
 (defn page
-  "Returns the open page of the lectern of menu m."
   ^long [world m]
   (long (:page (be/at world (:pos m)) 0)))
 
@@ -48,7 +46,6 @@
     (changes/flagged-deltas world [[pos st]] 3 [(below pos)] base)))
 
 (defn place-book-deltas
-  "Returns the deltas of stack put as a book on lectern st at pos."
   [world pos ^long st stack]
   (let [e (or (be/at world pos) (be/fresh :lectern nil))
         one (book/resolved (assoc stack :count 1))
@@ -59,7 +56,6 @@
       [(out/all (out/block-sound :item.book.put pos 1.0 1.0))])))
 
 (defn remove-book-deltas
-  "Returns the deltas of the book taken off the lectern at pos."
   [world pos]
   (let [st (chest/state-at (:chunks world) pos)
         e (be/at world pos)]
@@ -93,7 +89,6 @@
       (turned-deltas world pos e p))))
 
 (defn layout
-  "Returns the slot layout of a lectern menu."
   []
   {:count 1 :visible [0]
    :place (fn [_ _] false)

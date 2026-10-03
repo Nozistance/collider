@@ -119,7 +119,6 @@
       :else (span v 0 result false))))
 
 (defn shrink
-  "Returns inventory inv with one item less in slot."
   [inv slot]
   (let [n (dec (long (:count (get inv slot) 1)))]
     (if (pos? n) (update inv slot assoc :count n) (dissoc inv slot))))
@@ -321,8 +320,8 @@
     :else (deselected m slot b)))
 
 (defn- overridden
-  "Returns the click as a bundle takes it, and whether it did
-  (AbstractContainerMenu.tryItemClickBehaviourOverride)."
+  "Returns the click as a bundle takes it, and whether the bundle
+  took it."
   [m layout slot clicked carried primary?]
   (if-let [m' (when (bundle/bundle? carried)
                 (stacked-on-other
@@ -697,8 +696,7 @@
     (dissoc (assoc m' :equipped (vec (equipped m' before))) :direct)))
 
 (defn select-bundle
-  "Returns m with the stack at index i picked in the bundle in menu
-  slot slot (AbstractContainerMenu.setSelectedBundleItemIndex)."
+  "Returns m with stack i of the bundle in the given slot picked."
   [m slot i]
   (let [visible (:visible (layout-of m))
         slot (long slot)

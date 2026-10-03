@@ -239,8 +239,6 @@
     (dissoc inv 2)))
 
 (defn layout
-  "Returns the slot layout of anvil menu m for the player context
-  ctx."
   [m ctx]
   (let [place? (fn [slot _] (not= 2 (long slot)))
         base (menu/slots-layout 3 place?)
@@ -253,7 +251,7 @@
       :derive (fn [inv] (derive-result m inv creative?)))))
 
 (defn changed
-  "Returns anvil menu m with the cost of its slots items."
+  "Returns anvil menu m with the cost of the items in its slots."
   [m items ctx]
   (let [w (menu-work m items (:infinite? ctx))]
     (assoc m :cost (:cost w) :repair-count (:repair-count w)

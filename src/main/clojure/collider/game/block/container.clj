@@ -1,5 +1,5 @@
 (ns collider.game.block.container
-  "Container and bench menus: what they show, hold and store."
+  "What container and bench menus show, hold and store."
   (:require [collider.game.block.anvil :as anvil]
             [collider.game.block.blockentity :as be]
             [collider.game.block.brewing :as brewing]
@@ -33,7 +33,6 @@
         bench-types))
 
 (def menu-types
-  "The blocks that open a menu when used."
   (conj (into container-types be/furnace-kinds) :brewing-stand))
 
 (defn placed-state
@@ -167,7 +166,6 @@
         be/furnace-kinds))
 
 (defn menu-at
-  "Returns the menu the block at pos opens, or nil."
   [world pos]
   (let [chunks (:chunks world)
         st (chest/state-at chunks pos) t (block/type-of st)]
@@ -201,7 +199,6 @@
 (defn enchanting? [m] (= :enchantment-table (:type m)))
 
 (defn for-player
-  "Returns menu m as player e opens it."
   [m e]
   (cond-> m
     (enchanting? m) (assoc :seed (long (:enchantment-seed e 0)))))
@@ -334,7 +331,6 @@
 (def ^:private plain-ctx {:held 0})
 
 (defn layout
-  "Returns the slot layout of menu m for the player context ctx."
   ([m] (layout m plain-ctx))
   ([m ctx]
    (cond

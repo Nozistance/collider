@@ -40,7 +40,6 @@
       acc)))
 
 (defn block-entities
-  "Returns the deltas of the tick of every ticking block entity."
   {:wake {:keys [[:tickers :turns]] :types #{:player}}}
   [world _d]
   (let [active (areas/active-chunks world)

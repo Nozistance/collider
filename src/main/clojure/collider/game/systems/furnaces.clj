@@ -10,7 +10,6 @@
 (defn- lit? [^long st] (= :true (:lit (block/props-of st))))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the furnace e at pos."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
         [e' burns?] (furnace/tick e)]

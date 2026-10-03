@@ -94,7 +94,6 @@
       (open-screen-deltas world eid m id slots (:carried e')))))
 
 (defn open-deltas
-  "Returns the deltas of player eid opening the menu of block pos."
   [world eid pos]
   (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
@@ -463,7 +462,6 @@
     (apply/fold-events world events event-deltas)))
 
 (defn containers
-  "Returns the deltas of the menus and containers of the tick."
   {:wake {:events #{:menu-click :menu-close :menu-button
                     :rename-item :bundle-select}
           :keys [:shulker-anim [:input :quits]]}}

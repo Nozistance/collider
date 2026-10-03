@@ -58,7 +58,6 @@
     (= :true (:lit (block/props-of st)))))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the campfire e at pos."
   [world [pos e]]
   (if (lit? world pos)
     (cook-deltas world pos e)

@@ -1,6 +1,5 @@
 (ns collider.game.block.lid
-  "Container lids: who holds them open, their sounds and the shulker
-  box animation."
+  "Container lids, their openers, sounds and shulker box motion."
   (:require [collider.game.changes :as changes]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -27,7 +26,6 @@
               (block/collision-boxes st))))
 
 (defn animation
-  "Returns the lid animation of the shulker box at pos, or nil."
   [world pos]
   (get (:shulker-anim world) pos))
 

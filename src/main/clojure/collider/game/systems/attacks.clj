@@ -34,15 +34,13 @@
 (defn- held [a] (:item (player/hand-stack a :main)))
 
 (defn- attr
-  "Returns attribute k of player a with the main hand modifier of
-  the item it holds."
   ^double [a k]
   (let [m (get-in (data/items) [(held a) k])]
     (attribute/value a (:effects a) k (when m [[:item m 0]]))))
 
 (defn- strength
-  "Returns how far the attack of player a has charged at tick t, from
-  0 to 1. The ticker counts from the tick in :strength-from."
+  "Returns how far the attack of player a has charged at tick t,
+  from 0 to 1."
   ^double [a ^long t]
   (let [n (if-let [from (:strength-from a)]
             (- t (long from))
@@ -56,13 +54,10 @@
     (num/f32 (+ weak-floor (num/f32 (* sq strong-share))))))
 
 (defn- scaled
-  "Returns damage base scaled by strength s."
   ^double [^double base ^double s]
   (num/f32 (* base (strength-factor s))))
 
 (defn- crit?
-  "Returns true when the blow of player a at target t is a critical
-  hit."
   [world a t]
   (and (pos? (double (or (:fall a) 0.0))) (not (:on-ground a))
        (not (climb/on-climbable? (:chunks world) (:pos a)))
@@ -80,8 +75,6 @@
          (< (+ (* (v/x c) (v/x c)) (* (v/z c) (v/z c))) (* m m)))))
 
 (defn- blow
-  "Returns the strength, damage and kind of the blow of player a at
-  target at tick t0."
   [world a target ^long t0]
   (let [s (strength a t0)
         full? (> s full-strength)
@@ -106,7 +99,6 @@
     [(v/sin r) (- (v/cos r))]))
 
 (defn- hurt-of
-  "Returns target eid of world after damage d from src."
   [world eid e d src]
   (if-let [ds (hurt/damage-deltas world eid e d src)]
     (hurt/hurt-now world eid e ds)
@@ -116,8 +108,6 @@
   (num/f32 (get (attribute/base-values a) :attack-knockback 0.0)))
 
 (defn- extra-knock
-  "Returns the deltas of the extra knockback on living target tid
-  when the blow knocks."
   [eid a tid knock?]
   (let [kb (num/f32 (/ (base-knockback a) 2.0))
         k (num/f32 (+ kb (if knock? sprint-knockback 0.0)))
@@ -138,7 +128,6 @@
        (< (v/dist-sq (:pos a) (:pos o)) 9.0)))
 
 (defn- sweep-box
-  "Returns the box of target grown by 1, 0.25 and 1."
   [target]
   (let [[h ht] (entity/box target) p (:pos target)
         g (+ (double h) 1.0)]
@@ -162,7 +151,6 @@
     (out/all (out/particles :sweep-attack nil at 0 0.0 spread))))
 
 (defn- sweep-deltas
-  "Returns the deltas of the sweep around target."
   [world eid a tid target src s]
   (let [box (sweep-box target) dir (facing a)
         near (filter #(swept? a box % eid tid) (:entities world))]
@@ -176,8 +164,6 @@
              :entity.player.attack.weak)))
 
 (defn- visual-deltas
-  "Returns the crit the attacker and those who see it are shown, or
-  the sound of a plain blow."
   [eid a tid {:keys [crit? sweep? full?]}]
   (let [crit (out/animation tid :crit)]
     (cond crit? [(sound a :entity.player.attack.crit)
@@ -189,8 +175,6 @@
   (num/f32 (- (double (:health target)) (double (:health h)))))
 
 (defn- hearts
-  "Returns the damage indicator over target when it lost more than 2
-  health. The target is h after the blow."
   [target h]
   (let [lost (lost-health target h)
         [_ ht] (entity/box target) p (:pos target)
@@ -209,7 +193,6 @@
           (hearts target h)))
 
 (defn- struck-deltas
-  "Returns the deltas of the blow b of player eid at target tid."
   [world eid a tid target b]
   (let [src (source eid a)
         h (hurt-of world tid target (:damage b) src)
@@ -223,8 +206,6 @@
               [(sound a :entity.player.attack.nodamage)]))))
 
 (defn- attack
-  "Returns the deltas of the attack of player eid at target tid. The
-  ticker restarts, and a blow with damage lands."
   [world eid a tid target]
   (let [t0 (long (:tick world))
         b (blow world a target t0)]
@@ -236,8 +217,6 @@
   (max (- lo p) (- p hi) 0.0))
 
 (defn- in-range?
-  "Returns true when the eye of player a is within its attack range
-  of the box of target, with a buffer of 3."
   [a target]
   (let [[h ht] (entity/box target) h (double h)
         p (:pos target) q (:pos a)
@@ -253,8 +232,6 @@
        (not (contains? #{:item :experience-orb} (:type target)))))
 
 (defn- attack-deltas
-  "Returns the deltas of the attack packet of player eid at target
-  tid."
   [world [_ eid tid]]
   (let [a (get-in world [:entities eid])
         target (get-in world [:entities tid])]
@@ -263,7 +240,6 @@
       (attack world eid a tid target))))
 
 (defn- swing-deltas
-  "Returns the deltas that restart the attack ticker of a swing."
   [world [_ eid]]
   (when (get-in world [:entities eid])
     [[:merge-entity eid {:strength-from (long (:tick world))}]]))
