@@ -1034,35 +1034,35 @@
           (placed! index cur i eid e e2)
           (aset runs i [ds (takers ticking slots cur i shoves)]))))))
 
-(defn- turn-runs
-  "Returns the run of each mob of the island isl, with the takers of
-  its shoves, or nil when ok? finds a mob out of reach. Each mob
-  thinks in parallel and moves as soon as the mobs it could meet
-  before it moved. The array cur ends with the bodies after the tick."
-  [world tempters t isl cur ok?]
-  (let [n (count (:es isl)) runs (object-array n)
-        minds (object-array n) out (boolean-array 1)
-        isl (update isl :index push/pinned step-reach)]
-    (push/turns (:index isl) step-reach
-                (mind-of world tempters t isl minds)
-                (body-of world t isl [minds cur runs] out ok?))
-    (when-not (aget out 0) (vec runs))))
+(defn- joiner
+  "Returns the fn that adds to collector c the run of mob i of runs,
+  then the shoves it hands to the bodies before it, which end the
+  tick as cur."
+  [c ^objects cur ^objects runs]
+  (let [vels (object-array (alength runs))
+        f (fn [_ [j sh]]
+            (when-let [d (hand (nth (aget cur (int j)) 1) vels j sh)]
+              (deltas/collect! c d)))]
+    (fn [i]
+      (when-let [run (aget runs (int i))]
+        (deltas/collect-all! c (nth run 0))
+        (reduce f nil (nth run 1))))))
 
-(defn- joined
-  "Returns the deltas of runs in the order of their mobs, each with
-  the shoves it hands to the bodies before it, which end the tick as
-  cur."
-  [^objects cur runs]
-  (let [vels (object-array (count runs))
-        f (fn [acc [j sh]]
-            (if-let [d (hand (nth (aget cur (int j)) 1) vels j sh)]
-              (conj! acc d)
-              acc))
-        g (fn [acc run]
-            (if run
-              (reduce f (reduce conj! acc (nth run 0)) (nth run 1))
-              acc))]
-    (persistent! (reduce g (transient []) runs))))
+(defn- turn-runs
+  "Returns the deltas of the island isl in the order of its mobs,
+  each run with the shoves it hands to the bodies before it, or nil
+  when ok? finds a mob out of reach. Each mob thinks in parallel and
+  moves as soon as the mobs it could meet before it moved. The array
+  cur ends with the bodies after the tick."
+  [world tempters t isl cur ok?]
+  (let [n (count (:es isl)) minds (object-array n)
+        runs (object-array n) out (boolean-array 1)
+        c (deltas/collecting)]
+    (push/turns (push/pinned (:index isl) step-reach) step-reach
+                (mind-of world tempters t isl minds)
+                (body-of world t isl [minds cur runs] out ok?)
+                (joiner c cur runs))
+    (when-not (aget out 0) (deltas/collected c))))
 
 (defn- near-start? [e e2] (push/within? e e2 step-reach))
 
@@ -1073,10 +1073,10 @@
   in reach; else it steps again in order."
   [world active tempters t es ok?]
   (let [isl (island active es) cur (object-array (:es isl))
-        runs (turn-runs world tempters t isl cur ok?)]
-    (if runs
-      [(joined cur runs) 0]
-      [(step-island world active tempters t es)
+        d (turn-runs world tempters t isl cur ok?)]
+    (if d
+      [d 0]
+      [(deltas/of-vec (step-island world active tempters t es))
        (count (filter (fn [[_ e]] (mobs/mob-type? (:type e))) es))])))
 
 (def ^:private ^:const ahead-bodies 64)
@@ -1087,7 +1087,7 @@
 (defn- island-deltas [world active tempters t es]
   (if (ahead? es)
     (nth (ahead-island world active tempters t es near-start?) 0)
-    (step-island world active tempters t es)))
+    (deltas/of-vec (step-island world active tempters t es))))
 
 (defn- herds [world]
   (filter (fn [es] (some (fn [[_ e]] (mobs/mob-type? (:type e))) es))
@@ -1104,7 +1104,10 @@
     (cond-> acc (seq b) (conj b))))
 
 (defn- island-batch [world active tempters t batch]
-  (into [] (mapcat #(island-deltas world active tempters t %)) batch))
+  (let [f (fn [acc es]
+            (->> (island-deltas world active tempters t es)
+                 (deltas/merge acc)))]
+    (reduce f deltas/empty-deltas batch)))
 
 (def ^:private biters {:sheep sheep/biting? :rabbit rabbit/raiding?})
 
@@ -1147,6 +1150,6 @@
         world (seen world tempters t active hs)
         clicks (interact-deltas world (:input d) t)]
     (deltas/merge
-      (deltas/fold #(island-batch world active tempters t %)
+      (deltas/fold-merged #(island-batch world active tempters t %)
                    (batches hs))
       (deltas/of-vec (into (endings world active) clicks)))))

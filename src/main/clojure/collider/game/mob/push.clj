@@ -189,11 +189,13 @@
 
 (defn turns
   "Calls mind and then body with the index of each body of the
-  pinned index, in parallel. The call of body with a body waits for
-  the calls with each body of lower id that it could meet in a tick
-  in which no body moves further than reach along x or z."
-  [^PushGrid index reach mind body]
-  (Turns/run index (double reach) mind body))
+  pinned index, in parallel, and join with each index in order. The
+  call of body with a body waits for the calls with each body of
+  lower id that it could meet in a tick in which no body moves
+  further than reach along x or z. The call of join with a body
+  follows the calls of body with it and each body of lower id."
+  [^PushGrid index reach mind body join]
+  (Turns/run index (double reach) mind body join))
 
 (defn within?
   "Returns true when body e, now e2, kept its box and moved no

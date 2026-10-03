@@ -78,30 +78,50 @@
   ^Deltas [events]
   (->Deltas [[:advance-tick]] (lm/long-map) [] (vec events)))
 
-(defn- built ^Deltas [w e o acc]
-  (->Deltas (persistent! w) (persistent! e) (persistent! o)
-            (input-of acc)))
+(defn- open ^objects [^Deltas acc]
+  (object-array [(transient (world-of acc))
+                 (transient (entities-of acc))
+                 (transient (out-of acc))]))
 
-(defn- added ^Deltas [^Deltas acc ds]
-  (loop [ds ds
-         w (transient (world-of acc))
-         e (transient (entities-of acc))
-         o (transient (out-of acc))]
-    (if ds
-      (let [d (first ds) ds (next ds)]
-        (let [tag (nth d 0)]
-          (cond
-            (identical? :fx tag) (recur ds w e (conj! o (nth d 1)))
-            (contains? delta/entity-apply tag)
-            (let [eid (nth d 1)]
-              (recur ds w (assoc! e eid (conj (get e eid []) d)) o))
-            :else (recur ds (conj! w d) e o))))
-      (built w e o acc))))
+(defn- put [^objects c d]
+  (let [tag (nth d 0)]
+    (cond
+      (identical? :fx tag) (aset c 2 (conj! (aget c 2) (nth d 1)))
+      (contains? delta/entity-apply tag)
+      (let [e (aget c 1) eid (nth d 1)]
+        (aset c 1 (assoc! e eid (conj (get e eid []) d))))
+      :else (aset c 0 (conj! (aget c 0) d)))
+    c))
+
+(defn- closed ^Deltas [^objects c input]
+  (->Deltas (persistent! (aget c 0)) (persistent! (aget c 1))
+            (persistent! (aget c 2)) input))
 
 (defn- add ^Deltas [^Deltas acc v]
   (if-let [ds (seq (if delta/validate? (delta/check! v) v))]
-    (added acc ds)
+    (closed (reduce put (open acc) ds) (input-of acc))
     acc))
+
+(defn collecting
+  "Returns an empty collector of deltas, which keeps them in the
+  order they come. One thread at a time may add to it."
+  ^objects []
+  (open empty-deltas))
+
+(defn collect!
+  "Adds delta d to collector c after the deltas it keeps."
+  [c d]
+  (put c (if delta/validate? (nth (delta/check! [d]) 0) d)))
+
+(defn collect-all!
+  "Adds the deltas of vector v to collector c in order."
+  [c v]
+  (reduce put c (if delta/validate? (delta/check! v) v)))
+
+(defn collected
+  "Returns the deltas collector c keeps. It takes no more after."
+  ^Deltas [c]
+  (closed c []))
 
 (defn of-vec
   "Returns the deltas of vector v, in its order."
@@ -194,6 +214,15 @@
     (reduce (folded-into f) empty-deltas v)
     (r/fold 1 (r/monoid merge (constantly empty-deltas))
             (folded-into f) v)))
+
+(defn fold-merged
+  "Returns the deltas f gives for each item of vector v, merged in
+  order. The items run in parallel."
+  ^Deltas [f v]
+  (let [rf (fn [acc x] (merge acc (f x)))]
+    (if (< (count v) 2)
+      (reduce rf empty-deltas v)
+      (r/fold 1 (r/monoid merge (constantly empty-deltas)) rf v))))
 
 (defn merge-all
   "Returns the deltas of vector v merged in order, pairwise."
