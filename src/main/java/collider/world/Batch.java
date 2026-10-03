@@ -42,19 +42,21 @@ public final class Batch {
             long minY,
             long maxY
     ) {
-        Scratch<Integer> now = new Scratch<>(RT.count(changes));
+        Scratch<Long> now = new Scratch<>(RT.count(changes));
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
-            int st = RT.intCast(RT.nth(c, 1));
+            Object given = RT.nth(c, 1);
+            long st = RT.intCast(given);
             long k = Cell.pack(x, y, z);
-            Integer seen = now.get(k);
-            int old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
+            Long seen = now.get(k);
+            long old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;
-            out = out.conj(vec(p, (long) old, (long) st));
-            now.put(k, st);
+            Long boxed = given instanceof Long l ? l : Long.valueOf(st);
+            out = out.conj(vec(p, seen != null ? seen : Long.valueOf(old), boxed));
+            now.put(k, boxed);
         }
         return out.persistent();
     }
