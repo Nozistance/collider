@@ -125,6 +125,18 @@ final class Node {
         return vals == null ? Boolean.TRUE : vals[index(bits, bit(u))];
     }
 
+    Object at(long bit) {
+        if ((bits & bit) == 0) return null;
+        return vals == null ? Boolean.TRUE : vals[index(bits, bit)];
+    }
+
+    static Object valAt(Node root, Object k, Object nf) {
+        if (!integral(k)) return nf;
+        long u = u(((Number) k).longValue());
+        Node l = leafOf(root, u);
+        return l == null ? nf : l.val(u);
+    }
+
     static Node join(Node a, Node b, Object edit) {
         int h = 63 - Long.numberOfLeadingZeros(a.base ^ b.base);
         int s = h / BITS * BITS;
@@ -285,8 +297,8 @@ final class Node {
         int i = 0;
         for (long r = bits; r != 0; r &= r - 1, i++) {
             long bit = r & -r;
-            Object va = (a.bits & bit) == 0 ? null : a.vals[index(a.bits, bit)];
-            Object vb = (b.bits & bit) == 0 ? null : b.vals[index(b.bits, bit)];
+            Object va = a.at(bit);
+            Object vb = b.at(bit);
             Object v = merged(op, va, vb, f);
             sameA &= v == va;
             sameB &= v == vb;
@@ -351,10 +363,19 @@ final class Node {
         return n.keyAt(Long.highestOneBit(n.bits));
     }
 
-    static Node keys(Node n) {
+    static Node withoutVals(Node n) {
         Node[] ks = n.kids == null ? null : new Node[n.kids.length];
-        for (int i = 0; ks != null && i < ks.length; i++) ks[i] = keys(n.kids[i]);
+        for (int i = 0; ks != null && i < ks.length; i++) ks[i] = withoutVals(n.kids[i]);
         return new Node(null, n.base, n.shift, n.count, n.bits, ks, null);
+    }
+
+    static long[] keyArray(Node root) {
+        long[] ks = new long[root == null ? 0 : root.count];
+        int i = 0;
+        for (Walk w = new Walk(root, KEYS, false); w.hasNext(); ) {
+            ks[i++] = (Long) w.next();
+        }
+        return ks;
     }
 
     static Object step(int mode, IFn f, Object acc, long k, Object v) {
@@ -398,52 +419,51 @@ final class Node {
                 : f.invoke(acc, k, old, nu);
     }
 
-    static Object side(Node n, boolean old, IFn f, Object acc, boolean set) {
+    static Object side(Node n, boolean old, IFn f, Object acc) {
         if (n.shift != 0) {
             for (Node k : n.kids) {
-                acc = side(k, old, f, acc, set);
+                acc = side(k, old, f, acc);
                 if (RT.isReduced(acc)) return acc;
             }
             return acc;
         }
+        boolean set = n.vals == null;
         int i = 0;
         for (long r = n.bits; r != 0; r &= r - 1, i++) {
-            Object v = n.vals == null ? Boolean.TRUE : n.vals[i];
+            Object v = set ? Boolean.TRUE : n.vals[i];
             acc = emit(f, acc, n.keyAt(r & -r), old ? v : null, old ? null : v, set);
             if (RT.isReduced(acc)) return acc;
         }
         return acc;
     }
 
-    static Object diff(Node a, Node b, IFn f, Object acc, boolean set) {
+    static Object diff(Node a, Node b, IFn f, Object acc) {
         if (a == b) return acc;
-        if (a == null) return side(b, false, f, acc, set);
-        if (b == null) return side(a, true, f, acc, set);
+        if (a == null) return side(b, false, f, acc);
+        if (b == null) return side(a, true, f, acc);
         Node top = a.shift >= b.shift ? a : b;
         if (apart(top, top == a ? b : a)) {
             boolean aFirst = Long.compareUnsigned(a.base, b.base) < 0;
-            acc = diff(aFirst ? a : null, aFirst ? null : b, f, acc, set);
-            return RT.isReduced(acc)
-                    ? acc
-                    : diff(aFirst ? null : a, aFirst ? b : null, f, acc, set);
+            acc = diff(aFirst ? a : null, aFirst ? null : b, f, acc);
+            if (RT.isReduced(acc)) return acc;
+            return diff(aFirst ? null : a, aFirst ? b : null, f, acc);
         }
-        if (top.shift == 0) return diffLeaves(a, b, f, acc, set);
+        if (top.shift == 0) return diffLeaves(a, b, f, acc);
         int s = top.shift;
         long as = slots(a, s), bs = slots(b, s);
         for (long r = as | bs; r != 0; r &= r - 1) {
-            acc = diff(kid(a, s, as, r & -r), kid(b, s, bs, r & -r), f, acc, set);
+            acc = diff(kid(a, s, as, r & -r), kid(b, s, bs, r & -r), f, acc);
             if (RT.isReduced(acc)) return acc;
         }
         return acc;
     }
 
-    static Object diffLeaves(Node a, Node b, IFn f, Object acc, boolean set) {
+    static Object diffLeaves(Node a, Node b, IFn f, Object acc) {
         for (long r = a.bits | b.bits; r != 0; r &= r - 1) {
-            long k = a.keyAt(r & -r), u = u(k);
-            Object va = (a.bits & r & -r) == 0 ? null : a.val(u);
-            Object vb = (b.bits & r & -r) == 0 ? null : b.val(u);
+            Object va = a.at(r & -r);
+            Object vb = b.at(r & -r);
             if (va == vb) continue;
-            acc = emit(f, acc, k, va, vb, set);
+            acc = emit(f, acc, a.keyAt(r & -r), va, vb, a.vals == null);
             if (RT.isReduced(acc)) return acc;
         }
         return acc;
@@ -482,6 +502,49 @@ final class Node {
             acc = combinef.invoke(acc, fj.join.invoke(tasks[i]));
         }
         return acc;
+    }
+
+    /// The root of a transient. It writes in place only the nodes it
+    /// owns, and only until it is made persistent.
+    abstract static class Transient extends AFn {
+        Node root;
+        Object edit = new Object();
+
+        Transient(Node root) {
+            this.root = root;
+        }
+
+        Object edit() {
+            if (edit == null) {
+                throw new IllegalAccessError("Transient used after persistent!");
+            }
+            return edit;
+        }
+
+        void put(long u, Object v) {
+            root = Node.put(root, u, v, edit());
+        }
+
+        void remove(Object k) {
+            Object e = edit();
+            if (integral(k)) root = Node.remove(root, u(((Number) k).longValue()), e);
+        }
+
+        Object find(Object k, Object nf) {
+            edit();
+            return valAt(root, k, nf);
+        }
+
+        Node close() {
+            edit();
+            edit = null;
+            return root;
+        }
+
+        public int count() {
+            edit();
+            return root == null ? 0 : root.count;
+        }
     }
 
     static final class Walk implements Iterator<Object> {

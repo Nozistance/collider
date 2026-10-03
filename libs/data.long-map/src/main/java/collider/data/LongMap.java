@@ -1,6 +1,5 @@
 package collider.data;
 
-import clojure.lang.AFn;
 import clojure.lang.APersistentMap;
 import clojure.lang.IEditableCollection;
 import clojure.lang.IFn;
@@ -108,14 +107,14 @@ public final class LongMap extends APersistentMap
 
     @Override
     public LongSet keySet() {
-        return root == null ? LongSet.EMPTY : new LongSet(Node.keys(root), null);
+        return root == null ? LongSet.EMPTY : new LongSet(Node.withoutVals(root), null);
     }
 
     /// Reduces `(f acc k old new)` over the keys whose values differ
     /// between this map and `o`, in key order. An absent value is nil.
     /// Shared parts cost nothing.
     public Object diff(LongMap o, IFn f, Object init) {
-        return Node.unreduced(Node.diff(root, o.root, f, init, false));
+        return Node.unreduced(Node.diff(root, o.root, f, init));
     }
 
     /// Reduces the map in parts of at most `n` entries in parallel,
@@ -142,12 +141,7 @@ public final class LongMap extends APersistentMap
 
     /// Returns the keys in ascending order.
     public long[] keys() {
-        long[] ks = new long[count()];
-        int i = 0;
-        for (Iterator<Object> it = keyIterator(); it.hasNext(); ) {
-            ks[i++] = (Long) it.next();
-        }
-        return ks;
+        return Node.keyArray(root);
     }
 
     /// Returns the values in key order.
@@ -165,7 +159,7 @@ public final class LongMap extends APersistentMap
 
     @Override
     public Object valAt(Object k, Object nf) {
-        return Node.integral(k) ? get(((Number) k).longValue(), nf) : nf;
+        return Node.valAt(root, k, nf);
     }
 
     @Override
@@ -286,36 +280,24 @@ public final class LongMap extends APersistentMap
         return new Transient(this);
     }
 
-    static final class Transient extends AFn
+    static final class Transient extends Node.Transient
             implements ITransientMap, ITransientAssociative2 {
         final LongMap from;
-        Node root;
-        Object edit = new Object();
 
         Transient(LongMap from) {
+            super(from.root);
             this.from = from;
-            this.root = from.root;
-        }
-
-        Object edit() {
-            if (edit == null) {
-                throw new IllegalAccessError("Transient used after persistent!");
-            }
-            return edit;
         }
 
         @Override
         public Transient assoc(Object k, Object v) {
-            root = Node.put(root, Node.u(Node.key(k)), Node.value(v), edit());
+            put(Node.u(Node.key(k)), Node.value(v));
             return this;
         }
 
         @Override
         public Transient without(Object k) {
-            Object e = edit();
-            if (Node.integral(k)) {
-                root = Node.remove(root, Node.u(((Number) k).longValue()), e);
-            }
+            remove(k);
             return this;
         }
 
@@ -340,29 +322,17 @@ public final class LongMap extends APersistentMap
 
         @Override
         public LongMap persistent() {
-            edit();
-            edit = null;
-            return from.with(root);
+            return from.with(close());
         }
 
         @Override
         public Object valAt(Object k, Object nf) {
-            edit();
-            if (!Node.integral(k)) return nf;
-            long u = Node.u(((Number) k).longValue());
-            Node l = Node.leafOf(root, u);
-            return l == null ? nf : l.val(u);
+            return find(k, nf);
         }
 
         @Override
         public Object valAt(Object k) {
             return valAt(k, null);
-        }
-
-        @Override
-        public int count() {
-            edit();
-            return root == null ? 0 : root.count;
         }
 
         @Override
