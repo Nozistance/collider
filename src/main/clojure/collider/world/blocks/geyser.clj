@@ -6,8 +6,7 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ^:const water-reach
-  4)
+(def ^:private ^:const water-reach 4)
 
 (def ^:private ^:const reach-per-water 6)
 
@@ -16,17 +15,13 @@
   [^long st]
   (:potent-sulfur-state (block/props-of st)))
 
-(defn- water-source? [^long st]
-  (or (block/waterlogged? st) (block/water-source? st)))
-
 (defn- passable? [^long st]
   (or (= :water (block/block-of st))
       (= :scaffolding (block/type-of st))
       (empty? (block/collision-boxes st))))
 
 (defn- through? [^long st]
-  (and (water-source? st)
-       (or (= :water (block/block-of st)) (passable? st))))
+  (and (block/holds-water-source? st) (passable? st)))
 
 (defn source
   "Returns the cell above the water over the sulfur at pos, where
@@ -46,8 +41,8 @@
   (- (long qy) (long y) 1))
 
 (defn reach
-  "Returns how many cells above pos the geyser pushes through,
-  up to six per water block."
+  "Returns how many cells above pos the geyser pushes through, up to
+  six per water block."
   ^long [chunks [x y z] ^long depth]
   (let [top (* reach-per-water depth)
         at #(chunk/at chunks [x (+ (long y) 1 (long %)) z])]
@@ -58,8 +53,7 @@
         :else i))))
 
 (defn- drawn ^long [pos k ^long lo ^long hi]
-  (let [r (random/of-key pos :geyser k)]
-    (+ lo (long (* r (inc (- hi lo)))))))
+  (random/between (random/of-key pos :geyser k) lo hi))
 
 (defn- countdown-from ^long [pos ph ^long depth]
   (if (= :dormant ph)
@@ -77,25 +71,23 @@
 (defn turned
   "Returns the state a geyser takes when its countdown runs out."
   ^long [^long st]
-  (let [ph (if (= :dormant (phase st)) :erupting :dormant)
-        props (block/props-of st)]
-    (block/state (block/block-of st)
-                 (assoc props :potent-sulfur-state ph))))
+  (let [ph (if (= :dormant (phase st)) :erupting :dormant)]
+    (block/with st :potent-sulfur-state ph)))
 
-(defn- geyser? [ph] (contains? #{:dormant :erupting} ph))
+(defn- counting? [ph] (contains? #{:dormant :erupting} ph))
 
 (defn placed-fx
-  "Returns the effects of placing st.
-  A geyser that starts is heard and runs its block event."
+  "Returns the effects of placing st. A geyser that starts is heard
+  and runs its block event."
   [^long st]
   (when (#{:erupting :continuous} (phase st))
     [[:geyser-start st]]))
 
 (defn shaped-fx
-  "Returns the effects of a shape update that turns sulfur old into
+  "Returns the effect of a shape update that turns sulfur old into
   st. A new geyser starts its countdown anew."
   [^long old ^long st]
   (when (and (= :potent-sulfur (block/type-of old))
-             (not (geyser? (phase old)))
-             (geyser? (phase st)))
+             (not (counting? (phase old)))
+             (counting? (phase st)))
     [:reset-countdown]))

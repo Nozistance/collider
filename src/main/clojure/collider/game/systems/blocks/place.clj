@@ -10,7 +10,6 @@
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.connect :as connect]
-            [collider.world.blocks.fire :as fire]
             [collider.world.blocks.halves :as halves]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.placement :as placement]
@@ -49,7 +48,7 @@
    (cond
      (zero? cur) true
      (block/liquid? cur) true
-     (fire/fire-state? cur) true
+     (block/fire? cur) true
      (= :snow-layer (block/type-of cur))
      (snow-replaceable? cur item face)
      (piles? cur item sneak?) true

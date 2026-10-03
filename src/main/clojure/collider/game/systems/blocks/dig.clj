@@ -12,7 +12,6 @@
             [collider.game.reach :as reach]
             [collider.world.block :as block]
             [collider.world.blocks.halves :as halves]
-            [collider.world.blocks.fire :as fire]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -46,7 +45,7 @@
           [(shulker-drop world pos e)])))))
 
 (defn- break-shown [eid pos old]
-  (if (fire/fire-state? old)
+  (if (block/fire? old)
     [(out/all (out/extinguish pos))]
     [(out/except eid (out/break-effect pos old))]))
 

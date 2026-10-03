@@ -5,17 +5,24 @@
 
 (set! *warn-on-reflection* true)
 
-(defn level ^long [^long st] (block/prop-long st :level))
+(def ^:private ^:const full-level 7)
+
+(def ^:private ^:const settle-delay 20)
+
+(defn- level ^long [^long st] (block/prop-long st :level))
+
+(defn- full? [^long st] (= full-level (level st)))
 
 (def rule
+  "The block rule that makes a full composter ready after a while."
   {:name   :composter
    :match? (fn [_chunks st _p] (= :composter (block/type-of st)))
    :wake   (fn [chunks _dim tick p _old side]
              (let [st (chunk/chunks-get-block chunks p)]
-               (when (and (nil? side) (= 7 (level st)))
-                 (+ (long tick) 20))))
+               (when (and (nil? side) (full? st))
+                 (+ (long tick) settle-delay))))
    :due    (fn [chunks p _ctx]
              (let [st (chunk/chunks-get-block chunks p)]
-               (when (= 7 (level st))
+               (when (full? st)
                  [[p (block/state :composter {:level :8})
                    [[:sound :block.composter.ready 1.0 1.0]]]])))})

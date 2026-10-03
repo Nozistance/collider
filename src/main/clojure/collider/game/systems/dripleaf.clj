@@ -30,7 +30,7 @@
     (let [st (chunk/chunks-get-block (:chunks world) p)]
       (when (and (dripleaf/leaf? st)
                  (= :none (dripleaf/tilt-of st))
-                 (dripleaf/can-tilt? p (v/y (:pos e)) (:on-ground e)))
+                 (dripleaf/rests-on? p (v/y (:pos e)) (:on-ground e)))
         [p (dripleaf/tilted st :unstable)]))))
 
 (defn- tilted-under [world acc e]

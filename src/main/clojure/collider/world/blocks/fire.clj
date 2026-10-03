@@ -15,20 +15,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const ages 16)
-
-(defn fire-state?
-  "Returns true when st is a fire block."
-  [st]
-  (block/fire? (long st)))
-
 (defn fire-state
-  "Returns the fire block of age."
+  "Returns a fire of the given age that clings to no side."
   ^long [^long age]
   (block/state :fire {:age (keyword (str age))}))
 
 (defn age
-  "Returns the age of the fire block st."
+  "Returns how far the fire st has burnt, from 0 to 15."
   ^long [st]
   (block/prop-long (long st) :age))
 
@@ -37,8 +30,7 @@
     (block/state :fire props)))
 
 (def ^:private side-offsets
-  {:north [0 0 -1] :south [0 0 1] :west [-1 0 0] :east [1 0 0]
-   :up [0 1 0]})
+  (select-keys dir/offset [:north :south :west :east :up]))
 
 (defn- block-near ^long [chunks p d]
   (max 0 (long (chunk/at-void chunks (mapv + p d)))))
@@ -46,15 +38,14 @@
 (defn- side-fire [chunks p]
   (into {:age :0}
         (map (fn [[k d]]
-               [k (if (block/burnable? (block-near chunks p d))
-                    :true
-                    :false)]))
+               (let [st (block-near chunks p d)]
+                 [k (block/flag (block/burnable? st))])))
         side-offsets))
 
 (defn state-for
   "Returns the fire block that fits at p."
   ^long [chunks p]
-  (let [below (block-near chunks p [0 -1 0])]
+  (let [below (block-near chunks p (dir/offset :down))]
     (cond
       (block/tagged? below "soul_fire_base_blocks")
       (block/state :soul-fire)
@@ -82,20 +73,17 @@
                 (max m (odds st :ignite))))
             0 dir/around)))
 
-(defn- pick ^long [roll salt ^long n]
-  (long (Math/floor (* (double (roll salt)) n))))
-
 (defn state-with-age
   "Returns the fire block for p, aged a when it is fire."
   ^long [chunks p ^long a]
   (let [st (state-for chunks p)]
-    (if (fire-state? st) (with-age st a) st)))
+    (if (block/fire? st) (with-age st a) st)))
 
 (defn- spread-age ^long [roll salt ^long a]
-  (min 15 (+ a (quot (pick roll salt 5) 4))))
+  (min 15 (+ a (quot (random/below (roll salt) 5) 4))))
 
 (def ^:private rain-sides
-  [[0 0 0] [-1 0 0] [1 0 0] [0 0 -1] [0 0 1]])
+  (into [[0 0 0]] (map dir/offset) [:west :east :north :south]))
 
 (defn- near-rain? [chunks ctx p]
   (boolean (some (fn [d]
@@ -106,19 +94,21 @@
   [[q st'] ^long st]
   (if (block/tnt? st) [q st' [:prime]] [q st']))
 
+(defn- burnt-to [chunks ctx q roll a]
+  (if (and (< (random/below (roll [:burn-age q]) (+ a 10)) 5)
+           (not (weather/raining-at? ctx chunks q)))
+    [q (state-with-age chunks q (spread-age roll [:burn-spread q] a))]
+    [q 0]))
+
 (defn- burn-out [chunks ctx p d chance roll a]
   (let [q (mapv + p d) st (chunk/at-void chunks q)]
-    (when (< (pick roll [:burn q] chance) (odds st :burn))
-      (burnt (if (and (< (pick roll [:burn-age q] (+ a 10)) 5)
-                      (not (weather/raining-at? ctx chunks q)))
-               (let [aged (spread-age roll [:burn-spread q] a)]
-                 [q (state-with-age chunks q aged)])
-               [q 0])
-             st))))
+    (when (< (random/below (roll [:burn q]) chance) (odds st :burn))
+      (burnt (burnt-to chunks ctx q roll a) st))))
 
 (def ^:private burn-sides
-  [[[1 0 0] 300] [[-1 0 0] 300] [[0 -1 0] 250] [[0 1 0] 250]
-   [[0 0 -1] 300] [[0 0 1] 300]])
+  (mapv (fn [[d chance]] [(dir/offset d) chance])
+        [[:east 300] [:west 300] [:down 250] [:up 250]
+         [:north 300] [:south 300]]))
 
 (defn- burnout? [ctx p]
   (biome/increased-fire-burnout? (biome/at (:dim ctx) p)))
@@ -137,15 +127,15 @@
 (defn- wet? [chunks ctx q]
   (and (weather/raining? ctx) (near-rain? chunks ctx q)))
 
-(defn- catch-rate ^long [^long yy]
-  (if (> yy 1) (+ 100 (* (dec yy) 100)) 100))
+(defn- catch-rate ^long [^long yy] (* 100 (max 1 yy)))
 
 (defn- catch-at [chunks p ctx roll a difficulty extra? d]
   (let [rate (catch-rate (long (nth d 1)))
         q (mapv + p d)
         io (ignite-odds chunks q)
         o (catch-odds io a difficulty extra?)]
-    (when (and (pos? io) (pos? o) (<= (pick roll [:catch q] rate) o)
+    (when (and (pos? io) (pos? o)
+               (<= (random/below (roll [:catch q]) rate) o)
                (not (wet? chunks ctx q)))
       (let [aged (spread-age roll [:catch-age q] a)]
         [q (state-with-age chunks q aged)]))))
@@ -170,8 +160,8 @@
     (+ (* dx dx) (* dy dy) (* dz dz))))
 
 (defn- near-player? [ctx p]
-  (let [rule :fire-spread-radius-around-player
-        r (long (get-in ctx [:rules rule] 128))
+  (let [k :fire-spread-radius-around-player
+        r (long (get-in ctx [:rules k] 128))
         near? (fn [q] (< (far-sq q p) (double (* r r))))]
     (or (= -1 r) (boolean (some near? (:players ctx))))))
 
@@ -180,8 +170,7 @@
 
 (defn- rained-out? [chunks p ctx r infiniburn? a]
   (and (not infiniburn?)
-       (weather/raining? ctx)
-       (near-rain? chunks ctx p)
+       (wet? chunks ctx p)
        (< (double (r :rain-out)) (+ 0.2 (* (double a) 0.03)))))
 
 (defn- unfed-changes [p below a aged]
@@ -190,11 +179,13 @@
     aged))
 
 (defn- died-out? [r ^long a below]
-  (and (= a 15) (< (pick r :out 4) 1) (not (can-burn? below))))
+  (and (= a 15) (< (random/below (r :out) 4) 1)
+       (not (can-burn? below))))
 
 (defn- aged-of [st r p]
-  (let [a (age st)]
-    (aged-change st a (min 15 (+ a (quot (pick r :age 3) 2))) p)))
+  (let [a (age st)
+        a' (min 15 (+ a (quot (random/below (r :age) 3) 2)))]
+    (aged-change st a a' p)))
 
 (defn- infiniburn-tag [ctx]
   (let [dim (or (:dim ctx) :overworld)
@@ -204,15 +195,15 @@
 (defn- tick-changes [chunks p ctx]
   (let [st (chunk/at-void chunks p)
         r (fn [salt] (random/of-key (:tick ctx) p salt))
-        below (chunk/at-void chunks (mapv + p [0 -1 0]))
-        forever? (block/tagged? (max 0 below) (infiniburn-tag ctx))
+        below (chunk/at-void chunks (dir/down p))
+        infiniburn? (block/tagged? (max 0 below) (infiniburn-tag ctx))
         a (age st)
         aged (aged-of st r p)
         spread #(concat aged (spread-changes chunks p ctx r a))]
     (cond
       (not (support/supported? chunks p st)) [[p 0]]
-      (rained-out? chunks p ctx r forever? a) [[p 0]]
-      forever? (spread)
+      (rained-out? chunks p ctx r infiniburn? a) [[p 0]]
+      infiniburn? (spread)
       (not (valid-location? chunks p)) (unfed-changes p below a aged)
       (died-out? r a below) [[p 0]]
       :else (spread))))
@@ -224,8 +215,10 @@
   (when (nil? side) (fire-delay tick p)))
 
 (def rule
+  "The block rule that ages fire, spreads it, burns blocks away and
+  puts it out."
   {:name   :fire
-   :match? (fn [_chunks st _p] (fire-state? st))
+   :match? (fn [_chunks st _p] (block/fire? st))
    :wake   wake-at
    :again  (fn [_chunks tick p] (fire-delay tick p))
    :reach  2
