@@ -1,5 +1,5 @@
 (ns collider.game.mob.control
-  "The move, jump and body rotation controls of a mob."
+  "The move, jump, body and head controls of a mob."
   (:require [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
@@ -159,3 +159,47 @@
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
       [yaw head {:head hy :at t :yaw (body-after e hy)}]
       :else [yaw head (faced e b hy t)])))
+
+(defn- look-pitch ^double [e height o]
+  (let [pos (:pos e) opos (:pos o)
+        oh (double (nth (or (mobs/box-of o) [0.0 1.0]) 1))
+        eye (+ (v/y pos) (* mobs/legacy-look-eye (double height)))
+        oeye (+ (v/y opos)
+                (case (:type o)
+                  :player mobs/legacy-player-eye
+                  :point 0.0
+                  (* mobs/legacy-look-eye oh)))
+        dh (Math/sqrt (v/dist-xz-sq pos opos))]
+    (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))))
+
+(defn- active-look [e ^long t]
+  (let [look (:look e)]
+    (when (and look (> (long (or (:until look) 0)) t)) look)))
+
+(defn- head-same? [e look ^double hy ^double hp]
+  (and (identical? look (:look e))
+       (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
+       (let [op (:pitch e)] (and op (== (double op) hp)))))
+
+(defn- look-aim [world e height look]
+  (let [oid (:target look)
+        at (:at look)
+        o (cond oid (get (:entities world) oid)
+                at {:pos at :type :point})]
+    [(cond o (v/yaw-toward (:pos e) (:pos o))
+           (and look (:yaw look)) (:yaw look)
+           :else (body-yaw e))
+     (if o (look-pitch e height o) 0.0)]))
+
+(defn look-of
+  "Returns the head yaw, head pitch and look of mob e turned towards
+  what it looks at, or nil when its head stays."
+  [world e height t]
+  (let [look (active-look e (long t))
+        [dyaw dpitch] (look-aim world e height look)
+        y0 (double (or (:head-yaw e) (:yaw e)))
+        p0 (double (or (:pitch e) 0.0))
+        hy (v/limit-angle y0 (double dyaw) 10.0)
+        hp (v/limit-angle p0 (double dpitch) 40.0)]
+    (when-not (head-same? e look (double hy) (double hp))
+      [hy hp look])))

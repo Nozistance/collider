@@ -10,7 +10,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
-  (:import (clojure.lang PersistentHashMap)
+  (:import (clojure.lang PersistentArrayMap PersistentHashMap)
            (collider.game.entity.records Item Mob Orb)
            (java.util UUID)))
 
@@ -190,10 +190,39 @@
         (instance? Orb e) (orb-merged e m)
         :else (merge e m)))
 
-(defn mob-looked
-  "Returns the mob e turned towards what it looks at."
-  [e head-yaw pitch look]
-  (with e {:head-yaw head-yaw :pitch pitch :look look}))
+(defn- diff-step [o n a c c' k]
+  (let [g (symbol (str ".-" (name k)))]
+    [c' `(if (v/same? (~g ~n) (~g ~o))
+           ~c
+           (do (aset ~a ~c ~k)
+               (aset ~a (unchecked-inc ~c) (~g ~n))
+               (unchecked-add ~c 2)))]))
+
+(defn- diff-size [o n k]
+  (let [g (symbol (str ".-" (name k)))]
+    `(if (v/same? (~g ~n) (~g ~o)) 0 2)))
+
+(defmacro ^:private diff-fields [old new & ks]
+  (let [o (with-meta (gensym "o") {:tag 'Mob})
+        n (with-meta (gensym "n") {:tag 'Mob})
+        a (with-meta (gensym "a") {:tag 'objects})
+        cs (vec (repeatedly (inc (count ks)) #(gensym "c")))
+        step (fn [i k] (diff-step o n a (cs i) (cs (inc i)) k))
+        add (fn [acc k] `(unchecked-add ~acc ~(diff-size o n k)))
+        size (reduce add 0 ks)]
+    `(let [~o ~old ~n ~new ~a (object-array ~size)
+           ~(cs 0) 0 ~@(mapcat step (range) ks)]
+       (PersistentArrayMap. ~a))))
+
+(defn mob-changes
+  "Returns the fields of mob new that a turn changed from mob old."
+  [old new]
+  (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
+               :no-action :baby-until :tempt-cooldown-until :say-tick
+               :stick-cooldown-until :egg-at
+               :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
+               :move :jump :body :follow-at :in-lava? :float? :support
+               :no-blocks? :arrived :hop :fall))
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
