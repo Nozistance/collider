@@ -71,10 +71,7 @@
   {:packet :game-event :event (game-events event) :value value})
 
 (defn- join-spawn [world]
-  (let [[x y z] (player/respawn-at world)]
-    [(long (Math/floor (double x)))
-     (long (Math/floor (double y)))
-     (long (Math/floor (double z)))]))
+  (v/cell (player/respawn-at world)))
 
 (defn- permission-packets [lv eid e]
   (let [level (player/permission-level e)]
@@ -134,18 +131,32 @@
   {:packet :set-experience :progress (double (:xp-progress e 0.0))
    :level (long (:xp-level e 0)) :total (long (:xp-total e 0))})
 
+(def ^:private ^:const full-food 20)
+
+(def ^:private ^:const full-saturation 5.0)
+
+(defn health-packet
+  "Returns the packet that shows a player its health, with full food."
+  [health]
+  {:packet :set-health :health health :food full-food
+   :saturation full-saturation})
+
 (defn resent-packets
   "Returns the health and experience a player gets again after
   entering a level."
   [e]
-  [{:packet :set-health :health (double (:health e 20.0))
-    :food 20 :saturation 5.0}
+  [(health-packet (double (:health e 20.0)))
    (experience-packet e)])
 
+(defn position-packet
+  "Returns the packet that moves a player to the place m names."
+  [m]
+  {:packet :player-position :teleport-id 0
+   :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
+   :pitch (:pitch m) :relative (:relative m 0)})
+
 (defn- arrival-packets [m e]
-  [{:packet :player-position :teleport-id 0
-    :pos (:pos m) :vel [0.0 0.0 0.0] :yaw (:yaw m)
-    :pitch (:pitch m) :relative (:relative m 0)}
+  [(position-packet m)
    (view/center-packet (chunk/pos-chunk (:pos m)))
    (own-abilities e)])
 
@@ -216,7 +227,7 @@
   (let [[entity block] (game-mode/reach-attributes e)
         speed (attribute/modifiers e (:effects e) :movement-speed)
         base (get (attribute/base-values e) :movement-speed)]
-    (into [{:packet :set-health :health 20.0 :food 20 :saturation 5.0}
+    (into [(health-packet 20.0)
            (experience-packet e)
            {:packet     :update-attributes :eid eid
             :attributes [entity [:movement-speed base speed] block]}]

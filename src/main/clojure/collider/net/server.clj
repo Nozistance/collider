@@ -4,7 +4,7 @@
             [collider.log :as log]
             [collider.net.crypt :as crypt]
             [collider.net.frame :as frame]
-            [collider.net.server.conn :as types]
+            [collider.net.server.conn :as conn]
             [collider.proto.buf :as buf]
             [collider.proto.packets :as packets])
   (:import (collider.proto Buf)
@@ -47,11 +47,6 @@
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:props c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
-
-(defn set-conn-state!
-  "Moves connection c to protocol state s."
-  [^Conn c s]
-  (put! c :state s))
 
 (defn close!
   "Closes the connection c once everything already sent has gone out."
@@ -191,7 +186,7 @@
          :ip    (.getHostAddress (.getInetAddress sock))}))
 
 (defn- new-conn [^Socket sock]
-  (types/->Conn sock (LinkedBlockingQueue.) (new-props sock)
+  (conn/->Conn sock (LinkedBlockingQueue.) (new-props sock)
                 (AtomicBoolean. false)))
 
 (defn- read-safely! [^Conn conn io ^Socket sock]

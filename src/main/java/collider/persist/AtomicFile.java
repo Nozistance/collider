@@ -8,11 +8,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 
-/// A file replaced whole: after a crash it holds the old bytes or the
+/// A file replaced whole. After a crash it holds the old bytes or the
 /// new ones, never a mix.
 public final class AtomicFile {
 
-    private static final boolean WINDOWS = System.getProperty("os.name").startsWith("Windows");
+    private static final boolean WINDOWS =
+            System.getProperty("os.name").startsWith("Windows");
 
     /// Replaces `target` with `data`. After a crash the file is the old
     /// one or the new one. The new one is durable on return.
@@ -35,7 +36,12 @@ public final class AtomicFile {
             Files.deleteIfExists(tmp);
             throw e;
         }
-        Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        Files.move(
+                tmp,
+                target,
+                StandardCopyOption.ATOMIC_MOVE,
+                StandardCopyOption.REPLACE_EXISTING
+        );
         sync(dir);
     }
 

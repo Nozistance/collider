@@ -1,6 +1,6 @@
 (ns collider.persist.store
-  "The saved world on disk: region files, their manifests and the
-  meta root."
+  "The saved world on disk, in region files, their manifests and
+  the meta root."
   (:refer-clojure :exclude [load])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
