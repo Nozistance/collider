@@ -35,8 +35,8 @@ public final class Slots {
         return new Slots(ids, at);
     }
 
-    /// Returns the index of body `eid` in `s`, or -1 when it has
-    /// none.
+    /// Returns the index of body `eid` in `s`, or -1 for a body that
+    /// is not in the island.
     public static long slot(Slots s, long eid) {
         int i = Arrays.binarySearch(s.ids, eid);
         return i < 0 ? -1 : s.at[i];

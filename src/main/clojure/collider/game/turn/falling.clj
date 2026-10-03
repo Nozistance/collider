@@ -205,8 +205,8 @@
           [0 1 2]))
 
 (defn- victim?
-  "Returns true when o is a living body that is alive and meets
-  box."
+  "Returns true when o is a player or a mob with health left that
+  meets box."
   [box [_ o]]
   (and (or (= :player (:type o)) (mobs/mob-type? (:type o)))
        (pos? (double (:health o 0.0)))
@@ -228,7 +228,8 @@
   {:anvil :chipped-anvil :chipped-anvil :damaged-anvil})
 
 (defn- chip-chance
-  "Returns the chance that an anvil chips after a fall of i blocks."
+  "Returns the chance that an anvil chips after a fall of i blocks,
+  0.05 and 0.05 more for each block."
   ^double [^long i]
   (let [step (float 0.05)]
     (double (float (+ step (float (* (float i) step)))))))

@@ -193,19 +193,20 @@ public final class Noise {
         this.valueFactor = TARGET_DEVIATION / (0.1 * (1.0 + 1.0 / span));
     }
 
-    /// Builds a noise field from a seed, its first octave and its
-    /// octave amplitudes.
+    /// Returns the noise field of `seed` whose octaves start at
+    /// `firstOctave`, one amplitude in `amplitudes` per octave.
     public static Noise of(long seed, int firstOctave, double[] amplitudes) {
         return new Noise(seed, firstOctave, amplitudes);
     }
 
-    /// Returns the noise at a point scaled by a float factor.
+    /// Returns the noise at `x`, `y`, `z` times `scale`, multiplied
+    /// in double precision.
     public double at(double x, double y, double z, float scale) {
         return value(x * (double) scale, y * (double) scale, z * (double) scale);
     }
 
-    /// Returns the noise at a point, scaling in float precision
-    /// rather than double.
+    /// Returns the noise at `x`, `y`, `z` times `scale`, multiplied
+    /// in float precision.
     public double atFloat(int x, int y, int z, float scale) {
         return value((float) x * scale, (float) y * scale, (float) z * scale);
     }

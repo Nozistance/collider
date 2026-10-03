@@ -1,7 +1,7 @@
 package collider.game.mob;
 
-/// The numeric core of walking a path: when a mob counts a node as
-/// reached and how long it may take to get there.
+/// When a mob counts a node of its path as reached, and how long it
+/// may take to get there.
 public final class Walk {
 
     private static final double MAX_VERTICAL = 1.0;

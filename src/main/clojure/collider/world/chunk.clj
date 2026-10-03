@@ -47,7 +47,7 @@
   (Section/of blocks bl sl))
 
 (defn nibble-set!
-  "Sets the light level at idx of arr to v."
+  "Sets the light level at idx of arr to v, from 0 to 15."
   [^bytes arr ^long idx ^long v]
   (Section/setNibble arr (int idx) (int v)))
 

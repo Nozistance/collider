@@ -40,5 +40,4 @@
   (kinds type))
 
 (def goals
-  "The goals of each mob type."
   (update-vals kinds :goals))

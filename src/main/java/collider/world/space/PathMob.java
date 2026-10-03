@@ -2,11 +2,6 @@ package collider.world.space;
 
 /// The mob of one path search, where it stands and how it walks.
 ///
-/// @param x The x of its position.
-/// @param y The y of its position.
-/// @param z The z of its position.
-/// @param width Its width.
-/// @param height Its height.
 /// @param upStep How high it steps up without a jump.
 /// @param maxFall How far it may fall.
 /// @param floats True when it floats in water.
