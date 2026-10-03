@@ -2,7 +2,6 @@ package collider.game.mob;
 
 import clojure.lang.ILookup;
 import clojure.lang.Keyword;
-import clojure.lang.RT;
 import collider.Mth;
 
 /// The move control of a mob. It holds what the mob does, where it
@@ -60,25 +59,8 @@ public record Steer(
     /// The control of a mob never told to move.
     public static final Steer IDLE = new Steer(WAIT, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
 
-    private static double num(Object m, Keyword k) {
-        Object v = RT.get(m, k);
-        return v == null ? 0.0 : ((Number) v).doubleValue();
-    }
-
-    /// Returns the control `m` as a Steer, from a map when it is
-    /// one. Keys left out read as waiting and zero.
-    public static Steer of(Object m) {
-        if (m instanceof Steer s) return s;
-        if (m == null) return IDLE;
-        Object op = RT.get(m, OP);
-        return new Steer(
-                op == null ? WAIT : (Keyword) op,
-                num(m, X),
-                num(m, Y),
-                num(m, Z),
-                num(m, MULT),
-                num(m, SPEED),
-                num(m, ZZA));
+    private static Steer of(Object m) {
+        return m == null ? IDLE : (Steer) m;
     }
 
     private static boolean same(double a, double b) {
@@ -143,8 +125,8 @@ public record Steer(
     /// none, and nil for no control.
     public static Object halted(Object m) {
         if (m == null) return null;
-        Steer s = of(m);
-        if (s.zza == 0.0 && m instanceof Steer) return m;
+        Steer s = (Steer) m;
+        if (s.zza == 0.0) return s;
         return kept(s, s.op, s.x, s.y, s.z, s.mult, s.speed, 0.0);
     }
 
