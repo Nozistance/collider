@@ -308,6 +308,7 @@
     (let [ctx (use-ctx world eid face item cursor)
           cur (changes/block-at world pos)
           over? (replaceable-state? cur item ctx)
-          base (placement/item-state item (assoc ctx :replacing? over?))]
+          ctx' (assoc ctx :replacing? over?)
+          base (placement/item-state item ctx')]
       (when (and base (may-place? world eid base))
         (attempt-deltas world eid pos base ctx over?)))))
