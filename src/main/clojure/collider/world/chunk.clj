@@ -10,6 +10,10 @@
 
 (def ^:const max-y 319)
 
+(def ^:const world-border
+  "How far from the centre the world border stands, in blocks."
+  29999984)
+
 (def ^:const section-count 24)
 
 (def ^:const section-offset 4)
