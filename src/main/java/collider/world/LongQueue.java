@@ -1,36 +1,43 @@
 package collider.world;
 
-import java.util.Arrays;
+import java.util.ArrayDeque;
 
 /// Longs taken in the order they were added, for one pass, never kept
-/// or shared. The longs not yet taken move to the front before the
-/// queue grows, so a queue drained as it fills stays small.
+/// or shared. The longs live in blocks of one size, and a block taken
+/// to its end holds the next ones added, so the queue never copies and
+/// holds about as much as it has waiting at most.
 public final class LongQueue {
 
-    private long[] items = new long[64];
+    private static final int SIZE = 1024;
+
+    private final ArrayDeque<long[]> next = new ArrayDeque<>();
+    private long[] out = new long[SIZE];
+    private long[] in = out;
+    private long[] spare;
     private int head;
     private int tail;
 
     public boolean isEmpty() {
-        return head == tail;
+        return out == in && head == tail;
     }
 
     public void add(long e) {
-        if (tail == items.length) {
-            int live = tail - head;
-            if (2 * live <= items.length) {
-                System.arraycopy(items, head, items, 0, live);
-            } else {
-                items = Arrays.copyOfRange(items, head, head + 2 * items.length);
-            }
-            tail = live;
-            head = 0;
+        if (tail == SIZE) {
+            in = spare != null ? spare : new long[SIZE];
+            spare = null;
+            next.addLast(in);
+            tail = 0;
         }
-        items[tail++] = e;
+        in[tail++] = e;
     }
 
     /// Takes the oldest long, which must be there.
     public long poll() {
-        return items[head++];
+        if (head == SIZE) {
+            spare = out;
+            out = next.removeFirst();
+            head = 0;
+        }
+        return out[head++];
     }
 }
