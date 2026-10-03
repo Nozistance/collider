@@ -50,33 +50,27 @@
   (< (next-float lv) (double (float c))))
 
 (defn pick
-  "Returns an element of xs by the next draw of lv."
   [lv xs]
   (nth xs (next-int lv (count xs))))
 
 (defn at
-  "Returns the block state at p in lv."
   ^long [lv p]
   (chunk/at (:chunks lv) p))
 
 (defn off
-  "Returns the cell p moved by dx dy dz."
   [p dx dy dz]
   [(+ (long (p 0)) (long dx)) (+ (long (p 1)) (long dy))
    (+ (long (p 2)) (long dz))])
 
 (defn at-dir
-  "Returns the cell next to p in direction d."
   [p d]
   (mapv + p (dir/offset d)))
 
 (defn toward
-  "Returns p moved n cells in direction d."
   [p d n]
   (mapv #(+ (long %1) (* (long %2) (long n))) p (dir/offset d)))
 
 (defn manhattan
-  "Returns the sum of the distances of a and b along each axis."
   ^long [a b]
   (reduce + (map #(Math/abs (- (long %1) (long %2))) a b)))
 
@@ -106,12 +100,10 @@
       (boolean (some #{(block/block-of st)} v)))))
 
 (defn air?
-  "Returns true when the cell p of lv holds air."
   [lv p]
   (block/air-type? (at lv p)))
 
 (defn air-or-leaves?
-  "Returns true when the cell p of lv holds air or leaves."
   [lv p]
   (let [st (at lv p)]
     (or (block/air-type? st) (block/tagged? st "leaves"))))
@@ -182,7 +174,6 @@
       st)))
 
 (defn provide
-  "Returns the state that provider m gives at p."
   ^long [lv m p]
   (case (:type m)
     :simple-state-provider (state-of (:state m))
@@ -191,12 +182,10 @@
     :randomized-int-state-provider (randomized lv m p)))
 
 (defn water?
-  "Returns true when the cell p of lv holds water."
   [lv p]
   (block/water? (at lv p)))
 
 (defn source?
-  "Returns true when the cell p of lv holds a water source."
   [lv p]
   (let [st (at lv p)]
     (and (block/water? st)

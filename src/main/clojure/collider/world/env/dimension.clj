@@ -1,6 +1,5 @@
 (ns collider.world.env.dimension
-  "Dimension types, with the shape, light and attributes of each
-  level."
+  "Dimension types with the shape, light and attributes of a level."
   (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
@@ -63,6 +62,5 @@
   @type-table)
 
 (defn type-of
-  "Returns the fields of dimension type dim."
   [dim]
   (get (types) dim))

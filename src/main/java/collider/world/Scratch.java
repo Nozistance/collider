@@ -9,12 +9,10 @@ public final class Scratch<V> {
     private Object[] vals;
     private int n;
 
-    /// Makes an empty map sized for a few keys.
     public Scratch() {
         this(8);
     }
 
-    /// Makes an empty map sized for `size` keys.
     public Scratch(int size) {
         int c = Integer.highestOneBit(Math.max(8, size) * 2 - 1) * 2;
         keys = new long[c];
@@ -26,7 +24,6 @@ public final class Scratch<V> {
         return Long.hashCode(h) & mask;
     }
 
-    /// Returns the value of `k`, or null.
     @SuppressWarnings("unchecked")
     public V get(long k) {
         int mask = keys.length - 1;
@@ -67,12 +64,10 @@ public final class Scratch<V> {
         }
     }
 
-    /// Returns true when no key has a value.
     public boolean isEmpty() {
         return n == 0;
     }
 
-    /// Returns the keys in ascending order.
     public long[] sortedKeys() {
         long[] r = new long[n];
         int j = 0;

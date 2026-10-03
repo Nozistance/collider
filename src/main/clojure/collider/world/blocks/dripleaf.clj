@@ -21,7 +21,6 @@
 (defn- half-of [^long st] (:half (block/props-of st)))
 
 (defn tilt-of
-  "Returns the tilt of the big dripleaf st, like :none."
   [^long st]
   (:tilt (block/props-of st)))
 
@@ -50,7 +49,6 @@
       (may-place-small-on? chunks p b))))
 
 (defn supported?
-  "Returns true when the dripleaf st at p holds on."
   [chunks p ^long st]
   (cond
     (leaf? st) (leaf-supported? chunks p)
@@ -87,7 +85,6 @@
 (def ^:private tilt-delay {:unstable 10 :partial 10 :full 100})
 
 (defn tilted
-  "Returns the big dripleaf st with the tilt set."
   ^long [^long st tilt]
   (block/with st :tilt tilt))
 

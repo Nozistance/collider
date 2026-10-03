@@ -617,8 +617,8 @@ public final class Phys {
         return Math.abs(b - a) < EQUAL_SLACK;
     }
 
-    /// Returns the velocity `v` stopped by a block: zero with the sign
-    /// opposite to `v`, as a bounce of factor zero leaves it.
+    /// Returns the velocity `v` stopped by a block, a zero with the sign
+    /// opposite to `v` as a bounce of factor zero leaves it.
     private static double stopped(double v) {
         return -v * 0.0;
     }

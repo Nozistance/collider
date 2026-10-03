@@ -11,8 +11,7 @@
 (set! *warn-on-reflection* true)
 
 (defn joined?
-  "Returns true when box a of a shape meets box b of a body. A box is
-  [x0 y0 z0 x1 y1 z1]."
+  "Returns true when box a of a shape meets box b of a body."
   [a b]
   (let [axis (fn [^long i]
                (Collision/joins
@@ -57,11 +56,9 @@
                   (fence-at? chunks x (dec y) z))))))
 
 (defn pos
-  "Returns the position a move ends at."
   ^V3 [^Move m] (.pos m))
 
 (defn vel
-  "Returns the velocity a move leaves the body with."
   ^V3 [^Move m] (.vel m))
 
 (defn moved-y
@@ -74,7 +71,6 @@
   (if (< dy 0.0) (- fall (double (float dy))) fall))
 
 (defn on-ground?
-  "Returns true when a move ends on the ground."
   {:inline (fn [m]
              (let [t 'collider.world.Move]
                `(.onGround ~(with-meta m {:tag t}))))}
@@ -103,7 +99,7 @@
       a)))
 
 (defn kinds
-  "Returns the Collision kind of each block state."
+  "Returns the collision kind of each block state."
   ^bytes [] @kind-table)
 
 (defn- doubles-of [v] (when v (double-array v)))
@@ -117,7 +113,6 @@
                 (doubles-of (:powder-snow-falling t))))))
 
 (defn y-coords
-  "Returns the y coordinates of the collision shapes."
   ^YCoords [] @y-coords-table)
 
 (def ^:private walker-tag "powder_snow_walkable_mobs")
@@ -224,9 +219,8 @@
   (inlined clear-form chunks pos half height inset))
 
 (defn box-free?
-  "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block.
-  bottom is the foot of the body the box belongs to, ctx its
-  context."
+  "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block. The
+  body of the box has its foot at bottom and its context in ctx."
   ([chunks box bottom] (box-free? chunks box bottom 0))
   ([chunks box bottom ctx]
    (Phys/freeBox chunks (kinds) (block/cube-arr)

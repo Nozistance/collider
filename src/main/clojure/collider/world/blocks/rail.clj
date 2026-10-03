@@ -12,7 +12,6 @@
   #{:rail :powered-rail :detector-rail})
 
 (defn rail?
-  "Returns true when st is a rail of any kind."
   [^long st]
   (contains? rail-types (block/type-of st)))
 
@@ -175,7 +174,6 @@
     [[p (chunk/at chunks p) [[:neighbor-changed p st]]]]))
 
 (defn- set-down
-  "Returns the changes of rail st set at p."
   [chunks p ^long st]
   (let [cs (placed chunks p st (signal/has-neighbor-signal? chunks p)
                    true)
@@ -189,7 +187,6 @@
   (block/signal-source? (block/state (block/block-of old))))
 
 (defn- rechecked
-  "Returns the changes of rail st after block old beside it changes."
   [chunks p ^long st ^long old]
   (cond
     (removed? chunks p (shape-of st))

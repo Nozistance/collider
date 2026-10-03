@@ -47,7 +47,6 @@
        (lit? chunks (dir/up p) 9)))
 
 (defn tick
-  "Returns the changes of a random tick of the bamboo st at p."
   [chunks p st roll _time _world]
   (when (and (= 0 (block/prop-long st :stage))
              (room-above? chunks p roll))
@@ -68,9 +67,8 @@
     {:changes [[(dir/up p) @shoot]]}))
 
 (defn meal
-  "Returns the bone meal result for the bamboo at p.
-  Returns nil when it cannot grow. The new segment goes on top
-  of the whole stalk, not above p."
+  "Returns the bone meal result for the bamboo at p, or nil when it
+  cannot grow. The new segment goes on top of the whole stalk."
   [chunks p _st roll]
   (let [above (height-above chunks p :bamboo 16)
         below (height-below chunks p :bamboo 16)

@@ -32,11 +32,9 @@
   (block/related st :previous))
 
 (defn waxed
-  "Returns the waxed form of st, or nil."
   [^long st]
   (block/related st :waxed))
 
 (defn unwaxed
-  "Returns st without its wax, or nil."
   [^long st]
   (block/related st :unwaxed))

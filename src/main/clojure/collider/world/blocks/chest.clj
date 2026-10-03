@@ -19,7 +19,6 @@
   (delay (set (get-in (data/tags) ["block" "copper_chests"]))))
 
 (defn state-at
-  "Returns the block state at pos."
   ^long [chunks pos]
   (chunk/at chunks pos))
 

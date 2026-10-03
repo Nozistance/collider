@@ -254,6 +254,5 @@
       :cherry-foliage-placer (drawn :height))))
 
 (defn radius
-  "Returns the foliage radius that the foliage placer of cfg draws."
   ^long [l cfg]
   (lv/sample l (:radius (:foliage-placer cfg))))

@@ -40,17 +40,14 @@
     (into [] (comp (map first) (distinct) (map cell)) (:cells acc))))
 
 (defn chunks
-  "Returns the chunks of placement acc."
   [acc]
   (:chunks acc))
 
 (defn state-at
-  "Returns the block state at p in placement acc."
   ^long [acc p]
   (chunk/at (:chunks acc) p))
 
 (defn set-state
-  "Returns placement acc after it sets st at p."
   [acc p ^long st]
   (-> acc
       (update :chunks chunk/chunks-set-block p st)
@@ -256,7 +253,7 @@
 
 (defn configured
   "Returns placement acc after the configured feature grows at p.
-  The feature is a name or a value; roll and salt draw its chances."
+  The feature is a name or a value. Roll and salt draw its chances."
   [acc feature p roll salt]
   (let [m (resolved :configured feature)
         salt (conj salt feature)]

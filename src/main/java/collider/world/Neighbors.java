@@ -16,11 +16,10 @@ import java.util.ArrayList;
 /// the stack in the order it was added once the running one yields.
 public final class Neighbors {
 
-    /// The update flag that tells the clients.
     private static final long CLIENTS = 2;
 
-    /// The x offsets of the six sides, in the order of updates: west,
-    /// east, down, up, north, south. Shape updates share the x
+    /// The x offsets of the six sides in the order of updates, which is
+    /// west, east, down, up, north, south. Shape updates share the x
     /// offsets and go west, east, north, south, down, up.
     private static final int[] DX = {-1, 1, 0, 0, 0, 0};
     private static final int[] DY = {0, 0, -1, 1, 0, 0};
@@ -50,19 +49,16 @@ public final class Neighbors {
         return v == null ? PersistentVector.EMPTY : v.persistent();
     }
 
-    /// Adds the record `x`.
     public Neighbors record(Object x) {
         records = conj(records, x);
         return this;
     }
 
-    /// Adds the write `x`.
     public Neighbors write(Object x) {
         writes = conj(writes, x);
         return this;
     }
 
-    /// Adds the scheduled tick `x`.
     public Neighbors tick(Object x) {
         ticks = conj(ticks, x);
         return this;
@@ -74,29 +70,25 @@ public final class Neighbors {
         return this;
     }
 
-    /// Adds the placed cell `x`.
     public Neighbors addPlaced(Object x) {
         placed.add(x);
         return this;
     }
 
-    /// Returns how many records the run holds.
     public int recordCount() {
         return records == null ? 0 : ((Counted) records).count();
     }
 
-    /// Returns how many writes the run holds.
     public int writeCount() {
         return writes == null ? 0 : ((Counted) writes).count();
     }
 
-    /// Returns the write at place `n`.
     public Object writeAt(int n) {
         return ((Indexed) writes).nth(n);
     }
 
-    /// Returns what the run collected as vectors: records, writes,
-    /// ticks, sent and placed. The run ends here.
+    /// Returns the records, writes, ticks, sent cells and placed cells
+    /// that the run collected. The run ends here.
     public Object[] collected() {
         return new Object[] {
             done(records),
@@ -165,11 +157,11 @@ public final class Neighbors {
     }
 
     /// Sets the changes of a command in order, each with `flags`. A
-    /// change `[pos st]` of a state `plain` marks is set here, and
-    /// when a block beside it is not `deaf`, `shaped` runs its shape
-    /// updates as `(shaped run pos old)`; `other` sets any other change
-    /// as `(other run change)`. Each change set here that alters its
-    /// block joins the placed cells as `[pos old]`.
+    /// change `[pos st]` of a state `plain` marks is set here, and when a
+    /// block beside it is not `deaf`, `shaped` runs its shape updates as
+    /// `(shaped run pos old)`. `other` sets any other change as
+    /// `(other run change)`. Each change set here that alters its block
+    /// joins the placed cells as `[pos old]`.
     public Neighbors command(
             Object changes,
             long flags,
@@ -224,9 +216,9 @@ public final class Neighbors {
         return running;
     }
 
-    /// Adds `item`; when none runs, runs it and all it adds with
-    /// `step`, a function of this run and an item that returns the
-    /// item to run again or nil.
+    /// Adds `item`. When none runs, it runs the item and all it adds with
+    /// `step`, a function of this run and an item that returns the item to
+    /// run again or nil.
     public Neighbors addAndRun(Object item, IFn step) {
         if (running) {
             added.add(item);

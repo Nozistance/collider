@@ -12,12 +12,10 @@
   (true? (get-in (dimension/type-of dim) [:attributes attr])))
 
 (defn fast-lava?
-  "Returns true when lava flows fast in dimension dim."
   [dim]
   (value? dim :gameplay/fast-lava))
 
 (defn water-evaporates?
-  "Returns true when water placed in dimension dim evaporates."
   [dim]
   (value? dim :gameplay/water-evaporates))
 

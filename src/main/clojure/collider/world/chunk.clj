@@ -23,11 +23,9 @@
   [^long y] (and (<= min-y y) (<= y max-y)))
 
 (defn level-min-y
-  "Returns the lowest block y of level lv."
   ^long [lv] (long (:min-y lv min-y)))
 
 (defn level-max-y
-  "Returns the highest block y of level lv."
   ^long [lv] (long (:max-y lv max-y)))
 
 (defn void-y
@@ -35,24 +33,21 @@
   ^double [lv] (- (double (level-min-y lv)) 64.0))
 
 (defn in-level?
-  "Returns true when block y is inside the height of level lv."
   [lv ^long y]
   (and (<= (level-min-y lv) y) (<= y (level-max-y lv))))
 
 (defn section-index
-  "Returns the index of the section holding block y."
   ^long [^long y]
   (+ (bit-shift-right y 4) section-offset))
 
 (def ^Section empty-section Section/EMPTY)
 
 (defn section
-  "Returns a section of block states and block and sky light."
   ^Section [^shorts blocks ^bytes bl ^bytes sl]
   (Section/of blocks bl sl))
 
 (defn nibble-set!
-  "Sets the light level at idx of the light levels arr to v."
+  "Sets the light level at idx of arr to v."
   [^bytes arr ^long idx ^long v]
   (Section/setNibble arr (int idx) (int v)))
 
@@ -64,7 +59,6 @@
   ^ChunkIndex [^ChunkIndex chunks] (.editable chunks))
 
 (defn editing?
-  "Returns true when chunks are open for a window of edits."
   [^ChunkIndex chunks] (.editing chunks))
 
 (defn frozen
@@ -79,7 +73,6 @@
   (Chunk/of (object-array sections)))
 
 (defn first-above
-  "Returns the nearest section above index si of chunk, or nil."
   ^Section [^Chunk chunk ^long si]
   (.firstAbove chunk (int si)))
 
@@ -94,7 +87,6 @@
   (Chunk/at chunks (int cx) (int cz)))
 
 (defn chunk-section
-  "Returns the section at index si of chunk, nil where none exists."
   ^Section [^Chunk chunk ^long si]
   (.section chunk (int si)))
 
@@ -104,7 +96,6 @@
   (.holds s pred))
 
 (defn with-section
-  "Returns chunk with section s at index si."
   ^Chunk [^Chunk chunk ^long si ^Section s]
   (.with chunk (int si) s))
 
@@ -115,15 +106,12 @@
   (.block s (int idx)))
 
 (defn sky-light
-  "Returns the sky light level at index idx of s."
   ^long [^Section s ^long idx] (.skyLight s (int idx)))
 
 (defn with-sky-light
-  "Returns s with the sky light levels a."
   ^Section [^Section s ^bytes a] (.withSkyLight s a))
 
 (defn with-block-light
-  "Returns s with the block light levels a."
   ^Section [^Section s ^bytes a] (.withBlockLight s a))
 
 (defn sky-lit?
@@ -135,18 +123,15 @@
   [^Section s] (.hasBlockLight s))
 
 (defn heights!
-  "Fills the unset heightmap columns in out.
-  Each gets the height above base of the top block of s that
-  pred marks."
+  "Fills the unset heightmap columns in out with the height above
+  base of the top block of s that pred marks."
   [^Section s ^booleans pred ^ints out ^long base]
   (.heights s pred out (int base)))
 
 (defn save-chunk!
-  "Writes chunk to out."
   [^Chunk chunk ^DataOutput out] (.save chunk out))
 
 (defn load-chunk
-  "Returns the chunk read from in."
   ^Chunk [^DataInput in] (Chunk/load in))
 
 (defn set-block
@@ -167,7 +152,6 @@
     0))
 
 (defn block-pos->id
-  "Returns the block position as one long id."
   (^long [[x y z]] (block-pos->id x y z))
   (^long [x y z]
    (let [x (long x) y (long y) z (long z)]
@@ -176,7 +160,6 @@
              (bit-and z 0x3FFFFFF)))))
 
 (defn id->block-pos
-  "Returns the block position that id holds."
   [^long id]
   [(bit-shift-right id 38)
    (bit-shift-right (bit-shift-left id 26) 52)
@@ -227,18 +210,15 @@
     (pos->id (+ cx dx) (+ cz dz))))
 
 (defn block->chunk
-  "Returns the chunk coordinate that holds block coordinate x."
   ^long [^long x]
   (bit-shift-right x 4))
 
 (defn block-id-chunk
-  "Returns the id of the chunk that holds the block with id bid."
   ^long [^long bid]
   (pos->id (bit-shift-right bid 42)
            (bit-shift-right (bit-shift-left bid 38) 42)))
 
 (defn block-chunk
-  "Returns the id of the chunk that holds the block at x y z."
   ^long [[x _ z]]
   (pos->id (bit-shift-right (long x) 4) (bit-shift-right (long z) 4)))
 

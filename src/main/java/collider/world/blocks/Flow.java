@@ -186,37 +186,30 @@ public final class Flow {
         overCount = n;
     }
 
-    /// Returns how many targets or changes a packed result holds.
     public static int count(int[] packed) {
         return packed[0];
     }
 
-    /// Returns the direction of target k of a packed target list.
     public static int targetDirection(int[] found, int k) {
         return found[1 + TARGET * k];
     }
 
-    /// Returns the level that target k of a packed target list takes.
     public static int targetLevel(int[] found, int k) {
         return found[2 + TARGET * k];
     }
 
-    /// Returns the x of change k of a packed change list.
     public static int changeX(int[] changes, int k) {
         return changes[1 + CHANGE * k];
     }
 
-    /// Returns the y of change k of a packed change list.
     public static int changeY(int[] changes, int k) {
         return changes[2 + CHANGE * k];
     }
 
-    /// Returns the z of change k of a packed change list.
     public static int changeZ(int[] changes, int k) {
         return changes[3 + CHANGE * k];
     }
 
-    /// Returns the new state of change k of a packed change list.
     public static int changeState(int[] changes, int k) {
         return changes[4 + CHANGE * k];
     }

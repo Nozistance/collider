@@ -1,6 +1,5 @@
 (ns collider.world.env.biome
-  "Biomes, and the temperature and precipitation they give a
-  position."
+  "Biomes and the temperature and precipitation they give a place."
   (:require [collider.data :as data]
             [collider.world.env.dimension :as dimension]))
 
@@ -87,12 +86,10 @@
       (double base))))
 
 (defn warm-enough-to-rain?
-  "Returns true when biome at p is too warm for snow."
   [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 
 (defn cold-enough-to-snow?
-  "Returns true when what falls on biome at p is snow."
   [biome p]
   (not (warm-enough-to-rain? biome p)))
 
@@ -110,6 +107,5 @@
     (get (:attributes biome) k (get (:attributes dim) k))))
 
 (defn increased-fire-burnout?
-  "Returns true when fire burns out faster in biome."
   [biome]
   (boolean (attribute biome :gameplay/increased-fire-burnout)))

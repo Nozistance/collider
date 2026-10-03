@@ -65,7 +65,7 @@ public final class Batch {
     }
 
     /// Returns `chunks` with the changes set, the new state of each at
-    /// place `stateAt` of the change: 1 for `[pos st]`, 2 for
+    /// place `stateAt` of the change, 1 for `[pos st]` and 2 for
     /// `[pos old st]`. The edits of one section apply at once in
     /// order, the sections of a chunk from the top down so that a new
     /// section takes the sky light of the one above. Changes in absent

@@ -54,7 +54,6 @@ public final class Collision {
         return b.length == 0 ? null : b;
     }
 
-    /// Returns the kind of `st` in `kinds`.
     public static int kind(byte[] kinds, int st) {
         return st > 0 && st < kinds.length ? kinds[st] : PLAIN;
     }

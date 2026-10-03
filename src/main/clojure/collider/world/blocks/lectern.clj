@@ -10,17 +10,14 @@
   2)
 
 (defn lectern?
-  "Returns true when st is a lectern."
   [^long st]
   (= :lectern (block/type-of st)))
 
 (defn has-book?
-  "Returns true when the lectern st holds a book."
   [^long st]
   (= :true (:has-book (block/props-of st))))
 
 (defn powered?
-  "Returns true when the lectern st sends a redstone pulse."
   [^long st]
   (= :true (:powered (block/props-of st))))
 
@@ -30,7 +27,6 @@
   (block/with st :powered :false :has-book (block/flag book?)))
 
 (defn powered
-  "Returns the lectern st powered when on? is true, else unpowered."
   ^long [^long st on?]
   (block/with st :powered (block/flag on?)))
 

@@ -412,7 +412,6 @@ public final class Path {
         return r;
     }
 
-    /// Returns the cell of the goal `t` as x, y, z.
     public static long[] goal(PathTarget t) {
         return new long[] {t.x, t.y, t.z};
     }
@@ -515,8 +514,7 @@ public final class Path {
     }
 
     /// Returns true when the box `b` meets a collision shape of a
-    /// block as the mob meets it. `b` holds min x, y, z and max x, y,
-    /// z.
+    /// block as the mob meets it. `b` holds the min and max x, y, z.
     private boolean collides(double[] b) {
         long x1 = (long) Math.floor(b[3] + EPS);
         long y1 = (long) Math.floor(b[4] + EPS);

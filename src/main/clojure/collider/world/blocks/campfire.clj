@@ -7,7 +7,6 @@
 (set! *warn-on-reflection* true)
 
 (defn campfire?
-  "Returns true when st is a campfire of any kind."
   [^long st]
   (= :campfire (block/type-of st)))
 

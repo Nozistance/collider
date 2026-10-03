@@ -9,12 +9,10 @@
 (def ^:private ^:table dirt (delay (block/state :dirt)))
 
 (defn grass-state
-  "Returns the state of a grass block."
   ^long []
   @grass)
 
 (defn dirt-state
-  "Returns the state of dirt."
   ^long []
   @dirt)
 

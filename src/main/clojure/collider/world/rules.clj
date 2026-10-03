@@ -80,8 +80,7 @@
          false)))
 
 (defn fluid-wake-tick
-  "Returns the tick that the fluid of st asks for after a change, or
-  nil."
+  "Returns the tick the fluid of st asks for after a change, or nil."
   [chunks dim st tick pos old side]
   (when (and (block/liquid-class st)
              (not (still? chunks pos st side)))

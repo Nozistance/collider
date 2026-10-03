@@ -5,10 +5,10 @@ import clojure.lang.Atom;
 /// The sections that an explosion may reach, with the chunk columns
 /// they come from.
 ///
-/// @param grid The sections by grid x, then grid z, then grid y; null
-///     where a column or a section is absent.
-/// @param cols The chunk columns by grid x, then grid z; null where
-///     the column is absent.
+/// @param grid The sections by grid x, z and y, null where a column
+///     or a section is absent.
+/// @param cols The chunk columns by grid x and z, null where the
+///     column is absent.
 /// @param cx0 The chunk x of the first cell.
 /// @param cz0 The chunk z of the first cell.
 /// @param sy0 The section y of the first cell.

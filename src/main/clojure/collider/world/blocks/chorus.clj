@@ -49,7 +49,6 @@
       (zero? below) (one-plant-beside? chunks p))))
 
 (defn supported?
-  "Returns true when the chorus plant or flower st at p holds on."
   [chunks p ^long st]
   (boolean (if (flower? st)
              (flower-supported? chunks p)

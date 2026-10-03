@@ -286,8 +286,6 @@
       s)))
 
 (defn- kept?
-  "Returns true when p still holds the block of st after old left
-  it."
   [s p old st]
   (or (not (marked? :rail old))
       (= (block/block-of st) (block/block-of (block-at s p)))))
@@ -302,8 +300,6 @@
        (contains? (chunks s) (chunk/block-chunk p))))
 
 (defn flags-of
-  "Returns the flags that a change [p st fx flags] carries, or flags
-  when it names none."
   ^long [c ^long flags]
   (long (get c 3 flags)))
 
@@ -367,9 +363,8 @@
     (if (chunk/editing? chunks) chunks (chunk/editable chunks))))
 
 (defn- run-each
-  "Returns the level after f runs over the changes in one window of
-  edits of chunks. The chunks come out open only when they came in
-  open."
+  "Returns the level after f runs over changes in one edit window of
+  chunks. The chunks come out open only when they came in open."
   [chunks ctx changes f]
   (level (reduce #(f %1 ctx %2) (opened chunks) changes)
          (chunk/editing? chunks)))
@@ -395,7 +390,6 @@
                    update-limit)))
 
 (defn- set-told
-  "Returns s after the cells around p hear of the change from old."
   [s ctx p old]
   (-> (removed s ctx p old (block-at s p) update/neighbors)
       (neighbors-changed ctx p old)))
@@ -409,13 +403,13 @@
     :send (add-sent! s x)))
 
 (defn run
-  "Returns the level after ops run in order.
-  An op [:set c flags] or [:put c flags] sets change c as it is, not
-  shaped by its neighbours. An op [:notify pos] tells
-  the six blocks around pos of a change there, [:tell pos old] of a
-  change from old. An op [:edge pos side] updates the shapes of pos
-  and the cell on side against each other with flags 2. An op
-  [:send pos] tells the clients of pos."
+  "Returns the level after ops run in order. An op [:set c flags] or
+  [:put c flags] sets change c as it is, not shaped by its neighbours.
+  An op [:notify pos] tells the six blocks around pos of a change
+  there, and [:tell pos old] tells them of a change from old. An op
+  [:edge pos side] updates the shapes of pos and the cell on side
+  against each other with flags 2. An op [:send pos] tells the
+  clients of pos."
   [chunks ctx ops]
   (run-each chunks ctx ops op-run))
 

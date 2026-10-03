@@ -11,7 +11,7 @@
 (def ^:private ^:const reach-per-water 6)
 
 (defn phase
-  "Returns the potent sulfur phase of st, like :dormant."
+  "Returns the potent sulfur phase of st."
   [^long st]
   (:potent-sulfur-state (block/props-of st)))
 
