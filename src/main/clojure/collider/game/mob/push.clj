@@ -46,28 +46,6 @@
 (defn- rank ^long [eid e]
   (if-let [r (nth (:arrived e) 1 nil)] (long r) (* 2 (long eid))))
 
-(defn- arrivals [es]
-  (let [n (count es) cs (long-array n) rs (long-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth es i)]
-        (aset cs i (came e))
-        (aset rs i (rank eid e))))
-    [cs rs]))
-
-(defn- filled ^PushGrid [es]
-  (let [n (count es) [cs rs] (arrivals es)
-        eids (long-array n) xs (double-array n) ys (double-array n)
-        zs (double-array n) hs (double-array n) ts (double-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth es i) p (:pos e)]
-        (aset eids i (long eid))
-        (aset xs i (double (v/x p)))
-        (aset ys i (double (v/y p)))
-        (aset zs i (double (v/z p)))
-        (aset hs i (pushable-half e))
-        (aset ts i (pushable-height e))))
-    (PushGrid. eids hs ts xs ys zs cs rs)))
-
 (defn- by-id? [es]
   (and (vector? es)
        (loop [i 1]
@@ -75,14 +53,6 @@
              (and (< (long (nth (nth es (dec i)) 0))
                      (long (nth (nth es i) 0)))
                   (recur (inc i)))))))
-
-(defn index-of
-  "Returns the index in which a body finds every body near enough to
-  shove it. Each move of a body changes it in place."
-  ^PushGrid [entries]
-  (filled (if (by-id? entries)
-            entries
-            (vec (sort-by first entries)))))
 
 (defn moved
   "Returns index after body eid moved to its place in entry e."
@@ -138,6 +108,11 @@
                 (double (v/x p)) (double (v/y p)) (double (v/z p))
                 (came e) (rank eid e) (boolean ticks?))))
 
+(defn joined-bodies
+  "Adds the bodies of o to bodies b after its own and returns b."
+  ^Bodies [^Bodies b ^Bodies o]
+  (Bodies/joined b o))
+
 (defn groups
   "Returns the bodies of b in groups that one tick of movement cannot
   bring together, each as the indices of its bodies in b by id."
@@ -164,6 +139,14 @@
   "Returns whether each body of b at indices g ticks this tick."
   ^booleans [^Bodies b ^ints g]
   (Bodies/ticking b g))
+
+(defn index-of
+  "Returns the index in which a body finds every body near enough to
+  shove it. Each move of a body changes it in place."
+  ^PushGrid [entries]
+  (let [es (if (by-id? entries) entries (sort-by first entries))
+        b (reduce #(add-body %1 %2 false) (bodies) es)]
+    (grid-of b (int-array (range (count es))))))
 
 (defn islands
   "Returns the pushable bodies in groups that one tick of movement

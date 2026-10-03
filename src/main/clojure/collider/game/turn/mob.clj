@@ -33,7 +33,9 @@
             [collider.game.reach :as reach]
             [collider.world.env.signal :as signal]
             [collider.world.phys :as phys])
-  (:import (collider.game.entity.records Mob)
+  (:import (clojure.lang MapEntry)
+           (collider.data LongMap)
+           (collider.game.entity.records Mob)
            (collider.game.mob Islands Steer Turns)
            (collider.world Move)))
 
@@ -1133,6 +1135,28 @@
 (defn- scanned ^objects []
   (object-array [(push/bodies) (transient []) (transient [])]))
 
+(defn- kept-all! [^objects acc ^objects o i]
+  (aset acc i (reduce conj! (aget acc i) (persistent! (aget o i)))))
+
+(defn- scans-joined
+  ([] (scanned))
+  ([^objects acc ^objects o]
+   (push/joined-bodies (aget acc 0) (aget o 0))
+   (kept-all! acc o 1)
+   (kept-all! acc o 2)
+   acc))
+
+(def ^:private ^:const scan-leaf 128)
+
+(defn- scanned-all
+  "Returns the scan of each entry of map m by f, in key order. The
+  parts of a long map scan in parallel."
+  ^objects [f m]
+  (if (instance? LongMap m)
+    (r/fold scan-leaf scans-joined
+            (fn [acc k v] (f acc (MapEntry/create k v))) m)
+    (reduce f (scanned) m)))
+
 (defn- herd-of [b at]
   (let [es (push/entries-of b at)]
     (when (some mob? es) {:es es :bodies b :at at})))
@@ -1143,7 +1167,7 @@
   ends, all in id order."
   [world active t]
   (let [f (scan (areas/loaded-zone world) active t)
-        ^objects acc (reduce f (scanned) (:entities world))
+        acc (scanned-all f (:entities world))
         b (aget acc 0)]
     [(into [] (keep #(herd-of b %)) (push/groups b))
      (persistent! (aget acc 1)) (persistent! (aget acc 2))]))
