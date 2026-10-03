@@ -82,8 +82,9 @@
           world [[below (grass/dirt-state) [grass]]] 2)))))
 
 (defn- animation-left
-  "EatBlockGoal.eatAnimationTick after the goal ticked at tick t: it
-  counts goal selector passes, which come every second tick."
+  "Returns what is left of the eating animation of sheep e after its
+  goal ticked at tick t. It counts passes of the goal selector, which
+  runs on every second tick."
   ^long [e t]
   (quot (- (long (get-in e [:task :until])) (long t) 2) 2))
 

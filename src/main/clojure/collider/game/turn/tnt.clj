@@ -1,6 +1,6 @@
 (ns collider.game.turn.tnt
-  "The turn of a primed TNT: it moves, and when its fuse runs out it
-  blasts in the same turn, as PrimedTnt.tick:100-121."
+  "The turn of a primed TNT. It moves, and when its fuse runs out it
+  blasts in the same turn."
   (:require [collider.data.long-map :as lm]
             [collider.game.apply :as apply]
             [collider.game.areas :as areas]
@@ -36,8 +36,8 @@
 (def ^:private ^:const drag (double (float 0.98)))
 
 (defn- stepped-vel
-  "Returns the motion of a TNT after its drag and its bounce on the
-  ground (PrimedTnt.tick:104-107), then the push of a liquid."
+  "Returns the motion of a TNT after its drag, its bounce on the
+  ground and the push of a liquid."
   [world pos [mx my mz] on-ground]
   (let [v (mapv #(* (double %) drag) [mx my mz])
         v (if on-ground (mapv * v [0.7 -0.5 0.7]) v)]
@@ -166,8 +166,8 @@
           s spawns))
 
 (defn- source
-  "Returns the damage source of the blast of TNT eid, e, as
-  Explosion.getDefaultDamageSource: its owner causes it while alive."
+  "Returns the damage source of the blast of TNT eid, e. Its owner
+  causes it while alive."
   [s eid e]
   (let [owner (:owner e)
         o (when owner (get (:cur s) owner))]
@@ -175,7 +175,7 @@
      :cause (when o owner) :player? (= :player (:type o))}))
 
 (defn- spec
-  "Returns the blast of TNT eid, e, at pos, as PrimedTnt.explode."
+  "Returns the blast of TNT eid, e, at pos."
   [s eid e pos]
   (let [src (source s eid e)]
     {:center [(v/x pos) (+ (v/y pos) (/ (tnt-height) 16.0)) (v/z pos)]
@@ -184,8 +184,8 @@
      :primed (:primed s)}))
 
 (defn- blasted
-  "Returns s after TNT eid, e, blasts at pos in world, as
-  ServerExplosion.explode: bodies, then blocks."
+  "Returns s after TNT eid, e, blasts at pos in world. Bodies take
+  the blast before blocks."
   [s world eid e pos]
   (let [t (:tick world)
         b (blast/of world (spec s eid e pos))

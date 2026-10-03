@@ -69,8 +69,22 @@ public final class Nav extends APersistentMap {
     private static final int MAX_SURFACE_STEPS = 16;
 
     /// The navigation of a mob that has never walked anywhere.
-    public static final Nav FRESH =
-            new Nav(null, 0, null, 1L, 0.0, 0, 0, PersistentVector.create(0.0, 0.0, 0.0), ORIGIN, 0, 0, 0.0, false, 0);
+    public static final Nav FRESH = new Nav(
+            null,
+            0,
+            null,
+            1L,
+            0.0,
+            0,
+            0,
+            PersistentVector.create(0.0, 0.0, 0.0),
+            ORIGIN,
+            0,
+            0,
+            0.0,
+            false,
+            0
+    );
 
     private final Object path;
     private final long index;
@@ -178,7 +192,9 @@ public final class Nav extends APersistentMap {
     /// corner.
     public static boolean cutCorner(Object t) {
         String s = t instanceof Keyword k ? k.getName() : "";
-        return !(s.equals("fire-in-neighbor") || s.equals("damaging-in-neighbor") || s.equals("walkable-door"));
+        return !(s.equals("fire-in-neighbor")
+                || s.equals("damaging-in-neighbor")
+                || s.equals("walkable-door"));
     }
 
     /// Returns the navigation `m` as a Nav, from a map when it is one.
@@ -328,7 +344,14 @@ public final class Nav extends APersistentMap {
 
     /// Returns the height a mob at `x`, `y`, `z` walks its path
     /// from: the water surface above it when it is wet.
-    public static double surfaceY(ChunkIndex c, BlockTables t, double x, double y, double z, boolean wet) {
+    public static double surfaceY(
+            ChunkIndex c,
+            BlockTables t,
+            double x,
+            double y,
+            double z,
+            boolean wet
+    ) {
         if (!wet) return Math.floor(y + 0.5);
         int cx = (int) Math.floor(x), cz = (int) Math.floor(z);
         int y0 = (int) Math.floor(y);
@@ -381,14 +404,34 @@ public final class Nav extends APersistentMap {
         }
         return cuts[i]
                 && i + 1 < xs.length
-                && Walk.turnedBack(x, my, z, xs[i], ys[i], zs[i], xs[i + 1], ys[i + 1], zs[i + 1]);
+                && Walk.turnedBack(
+                        x,
+                        my,
+                        z,
+                        xs[i],
+                        ys[i],
+                        zs[i],
+                        xs[i + 1],
+                        ys[i + 1],
+                        zs[i + 1]
+                );
     }
 
     private static boolean sameCell(Object c, int x, int y, int z) {
-        return RT.longCast(RT.nth(c, 0)) == x && RT.longCast(RT.nth(c, 1)) == y && RT.longCast(RT.nth(c, 2)) == z;
+        return RT.longCast(RT.nth(c, 0)) == x
+                && RT.longCast(RT.nth(c, 1)) == y
+                && RT.longCast(RT.nth(c, 2)) == z;
     }
 
-    private Nav follow(double x, double y, double z, double my, double half, double drive, long t) {
+    private Nav follow(
+            double x,
+            double y,
+            double z,
+            double my,
+            double half,
+            double drive,
+            long t
+    ) {
         long i = advance(x, y, z, my, half) ? index + 1 : index;
         Object p = path, sp = stuckPos, tn = timeoutNode;
         long sc = stuckCheck, tt = timeoutTimer, tc = timeoutCheck;
@@ -419,12 +462,34 @@ public final class Nav extends APersistentMap {
                 tl = 0.0;
             }
         }
-        return new Nav(p, i, target, reach, speed, tick, sc, sp, tn, tt, tc, tl, delayed, recompute, this);
+        return new Nav(
+                p,
+                i,
+                target,
+                reach,
+                speed,
+                tick,
+                sc,
+                sp,
+                tn,
+                tt,
+                tc,
+                tl,
+                delayed,
+                recompute,
+                this
+        );
     }
 
     /// Returns the move control `move` told to walk to the node the
     /// navigation `m` walks to, for a mob `half` wide each side.
-    public static Steer aimed(Object m, Object move, ChunkIndex c, Object[] shapes, double half) {
+    public static Steer aimed(
+            Object m,
+            Object move,
+            ChunkIndex c,
+            Object[] shapes,
+            double half
+    ) {
         Nav n = of(m);
         int i = (int) n.index;
         double off = offset(half);

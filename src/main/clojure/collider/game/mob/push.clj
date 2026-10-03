@@ -69,9 +69,9 @@
 
 (defn arrived
   "Returns when body e, which moves to to in tick t, came into its
-  entity section, as the order of Level.getPushableEntities follows
-  it: its old arrival when it stays in its section, else this tick
-  after the bodies of lower id."
+  entity section. The order of pushable entities follows it. A body
+  that stays in its section keeps its old arrival, and one that moves
+  arrives this tick after the bodies of lower id."
   [e to t eid]
   (let [from (:pos e)]
     (if (and (same-section? (v/x from) (v/x to))

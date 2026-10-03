@@ -61,14 +61,16 @@
    (not (zero? (path/path-type-malus
                  walker (path/type-static lv x y z))))))
 
+(defn- offset [t eid k part i n]
+  (let [n (long n) span (inc (* 2 n))]
+    (- (long (* span (rnd t eid [k part] i))) n)))
+
 (defn direction
   "Returns an offset up to h blocks away and v up or down.
   The x, the y and the z are drawn in that order."
   [t eid k i h v]
-  (let [draw (fn [part n]
-               (let [n (long n) span (inc (* 2 n))]
-                 (- (long (* span (rnd t eid [k part] i))) n)))]
-    [(draw :x h) (draw :y v) (draw :z h)]))
+  [(offset t eid k :x i h) (offset t eid k :y i v)
+   (offset t eid k :z i h)])
 
 (defn pos-toward-direction
   "Returns the cell the offset lands on from where the mob stands."
@@ -162,25 +164,24 @@
 (def ^:private sqrt-2 (double (float (Math/sqrt 2.0))))
 
 (defn- away-direction
-  "RandomPos.generateRandomDirectionWithinRadians: an offset up to h
-  blocks within a quarter turn of the direction dx dz, or nil."
+  "Returns an offset up to h blocks away and v up or down within a
+  quarter turn of the direction dx dz, or nil."
   [t eid k i h v dx dz]
-  (let [h (long h) v (long v)
+  (let [h (long h)
         c (- (Steer/atan2 (double dz) (double dx)) quarter-turn)
         f (float (rnd t eid [k :angle] i))
         a (+ c (* (double (float (- (float (* 2.0 f)) 1.0)))
                   quarter-turn))
-        d (* (* (Math/sqrt (rnd t eid [k :dist] i)) (double h)) sqrt-2)
+        r (Math/sqrt (rnd t eid [k :dist] i))
+        d (* (* r (double h)) sqrt-2)
         xt (- (* d (Math/sin a))) zt (* d (Math/cos a))]
     (when-not (or (> (Math/abs xt) h) (> (Math/abs zt) h))
-      (let [span (inc (* 2 v))]
-        [(long (Math/floor xt)) (- (long (* span (rnd t eid [k :y] i))) v)
-         (long (Math/floor zt))]))))
+      [(long (Math/floor xt)) (offset t eid k :y i v)
+       (long (Math/floor zt))])))
 
 (defn pos-away
-  "DefaultRandomPos.getPosAway: a walk goal up to h blocks away and v
-  up or down, within a quarter turn of the direction dx dz, costing
-  the mob nothing."
+  "Returns a walk goal up to h blocks away and v up or down within a
+  quarter turn of the direction dx dz. It costs the mob nothing."
   [world e t eid k h v dx dz]
   (let [pos (:pos e) w (mobs/walker (:type e))]
     (best-pos (fn [c] (walk-target-value world e c))

@@ -35,7 +35,7 @@
   (+ egg-ticks (long (* egg-ticks (random/of-key t eid :egg-time)))))
 
 (defn- slowed
-  "Chicken.aiStep: a chicken off the ground falls slower."
+  "Returns chicken e, which falls slower off the ground."
   [e]
   (let [vel (:vel e)]
     (if (or (:on-ground e) (not (neg? (v/y vel))))
@@ -65,9 +65,9 @@
   (and (pos? (double (:health e))) (not (mobs/baby? e))))
 
 (defn- laying
-  "Chicken.aiStep: a grown chicken lays an egg when its egg time runs
-  out, then waits again. The wait starts on the first tick it is
-  grown, and counts this tick."
+  "Returns chicken e after its egg time at tick t. A grown chicken
+  lays an egg when its egg time runs out and waits again. The wait
+  starts on the first tick it is grown and counts this tick."
   [eid e t]
   (let [at (:egg-at e)
         wait (egg-time t eid)]

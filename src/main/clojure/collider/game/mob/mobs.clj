@@ -95,8 +95,7 @@
   (cond (< r 50) 0 (< r 90) 5 :else 2))
 
 (defn rabbit-variant
-  "Rabbit.getRandomRabbitVariant: the variant a rabbit takes in biome,
-  drawn from the keys ks."
+  "Returns the variant a rabbit takes in biome by the keys ks."
   [ks biome]
   (let [n (:name biome)
         r (long (* 100.0 (random/of-key (conj ks :rabbit))))]
@@ -157,8 +156,8 @@
     (when (contains? types t) t)))
 
 (defn attribute
-  "Returns the base value of attribute k of mob kind type, as
-  DefaultAttributes gives it, or zero when the kind has none."
+  "Returns the base value of attribute k of mob kind type, or zero
+  when the kind has none."
   ^double [type k]
   (double (get-in (data/attributes) [type k] 0.0)))
 
@@ -187,8 +186,7 @@
   [type] (get-in types [type :walker] path/cow))
 
 (defn step-height
-  "Returns how high a mob of kind type climbs without jumping, the
-  step height attribute as LivingEntity.maxUpStep reads it."
+  "Returns how high a mob of kind type climbs without jumping."
   ^double [type]
   (double (float (attribute type :step-height))))
 
@@ -293,8 +291,8 @@
 (def ^:private ^:const follow-spread 0.11485000000000001)
 
 (defn- follow-bonus
-  "Returns the share of follow range Mob.finalizeSpawn adds, drawn as
-  RandomSource.triangle around zero from the keys ks."
+  "Returns the share of follow range that a new mob adds. The keys ks
+  draw it on a triangle around zero."
   ^double [ks]
   (* follow-spread (- (random/of-key (conj ks :follow))
                       (random/of-key (conj ks :follow-2)))))
@@ -324,10 +322,9 @@
 (def ^:private ^:const baby-start 24000)
 
 (defn natural-mob
-  "Returns a mob that NaturalSpawner puts at pos in level dim. Its
-  body faces yaw and its head stays at zero; it is a baby when baby?
-  says AgeableMob.finalizeSpawn made it one. The keys ks decide its
-  colour, voice and follow range."
+  "Returns a mob that natural spawning puts at pos in level dim. Its
+  body faces yaw and its head stays at zero. It is a baby when baby?
+  says so. The keys ks decide its colour, voice and follow range."
   [type pos ks tick dim yaw baby?]
   (cond-> (assoc (egg-mob type pos ks tick dim)
             :yaw (double yaw) :head-yaw 0.0)
@@ -347,8 +344,8 @@
 (def ^:const death-ticks 20)
 
 (defn death-ends?
-  "Returns true when dead mob e leaves at the start of this tick, as
-  LivingEntity.tickDeath, before its step."
+  "Returns true when dead mob e leaves at the start of this tick,
+  before its step."
   [e]
   (and (not (pos? (double (:health e 1.0))))
        (>= (inc (long (or (:death-time e) 0))) death-ticks)))

@@ -33,17 +33,17 @@
 
 (defn before-move
   "Returns the fall distance of living entity e when its move starts
-  out of water in fluid f: lava halves it (Entity.baseTick:560),
-  slow falling and levitation clear it (LivingEntity.travel:3139)."
+  out of water in fluid f. Lava halves it, and slow falling and
+  levitation clear it."
   ^double [e f]
   (cond (held? e) 0.0
         (pos? (double (:lava f))) (* 0.5 (fall-of e))
         :else (fall-of e)))
 
 (defn cleared
-  "Returns fall f of a body that moved from pos to pos', or 0.0 when
-  the move of a block or more passed a block that resets a fall or
-  water (Entity.move:752)."
+  "Returns fall f of a body that moved from pos to pos'. It is 0.0
+  when a move of a block or more passed water or a block that resets
+  a fall."
   ^double [world pos pos' ^double f]
   (if (and (not (zero? f)) (>= (v/dist-sq pos pos') 1.0)
            (fall/resets? (:chunks world) pos pos'))
@@ -107,7 +107,7 @@
 (defn- floor-of ^long [^double a] (long (Math/floor a)))
 
 (defn- block-fall-sound
-  "Returns the sound of LivingEntity.playBlockFallSound:1871."
+  "Returns the fall sound of the block under e, or nil over air."
   [world e]
   (let [p (:pos e)
         y (floor-of (- (v/y p) sound-offset))
@@ -116,8 +116,8 @@
     (when-not (block/air? st) [(block-sound e st)])))
 
 (defn- hurt-deltas
-  "Returns the deltas of LivingEntity.causeFallDamage:1799 of e for
-  a fall d with modifier m from source type k."
+  "Returns the deltas of the fall damage of e for a fall d with
+  modifier m from source type k."
   [world eid e [d m k]]
   (let [n (damage-of e (double d) (double m))]
     (when (pos? n)
@@ -151,8 +151,8 @@
     (/ (double (reduce max 0 tops)) 16.0)))
 
 (defn- lifted-y
-  "Returns the height a body at y rises to out of the block at cy
-  that became a whole one, as Block.pushEntitiesUp moves it."
+  "Returns the height a body at y rises to out of the block at cy that
+  became a whole one."
   ^double [^double y ^long cy]
   (let [off (max -1.0 (- (+ (double cy) 1.0) (+ y 1.0)))]
     (+ y (+ 1.0 off))))
