@@ -155,7 +155,7 @@
         least (if (and (:frozen? b) (> (par/threads) 1))
                 seen-least
                 Long/MAX_VALUE)]
-    (into [] (filter some?) (par/pmapv one (near b idx) 4 least))))
+    (into [] (filter some?) (par/pmapv one (near b idx) 16 least))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1]) (random/of-key [seed :p2]))]
