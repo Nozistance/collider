@@ -14,16 +14,16 @@
   (into #{:fence-gate}
         (concat block/door-types block/trapdoor-types)))
 
-(defn opens? [world pos]
+(defn opens?
+  "Returns true when a hand opens and closes the block at pos."
+  [world pos]
   (let [cur (changes/block-at world pos)]
     (and (contains? openable-types (block/type-of cur))
          (data/by-hand? (block/block-of cur)))))
 
-(defn- flipped [st & kvs]
-  (let [props (block/props-of st)
-        open (if (= :true (:open props)) :false :true)]
-    (block/state (block/block-of st)
-                 (apply assoc props :open open kvs))))
+(defn- flipped [st]
+  (let [open? (= :true (:open (block/props-of st)))]
+    (block/with st :open (block/flag (not open?)))))
 
 (defn- door-toggled [world pos state]
   (let [st' (flipped state)]
@@ -34,9 +34,10 @@
 (defn- gate-toggled [world eid pos state]
   (let [{:keys [facing open]} (block/props-of state)
         yaw (get-in world [:entities eid :yaw] 0.0)
-        dir (dir/player-direction yaw)
-        turn? (and (= :false open) (= facing (dir/opposite dir)))]
-    [[pos (flipped state :facing (if turn? dir facing))]]))
+        side (dir/player-direction yaw)
+        turn? (and (= :false open) (= facing (dir/opposite side)))
+        facing' (if turn? side facing)]
+    [[pos (block/with (flipped state) :facing facing')]]))
 
 (defn- toggled [world eid pos state]
   (case (block/type-of state)
@@ -49,7 +50,10 @@
         pitch (random/hinge-pitch [(:tick world) pos :door])]
     (out/block-sound kind pos 1.0 pitch)))
 
-(defn toggle-deltas [world eid pos state]
+(defn toggle-deltas
+  "Returns the deltas of player eid opening or closing the block
+  state at pos."
+  [world eid pos state]
   (let [changes (toggled world eid pos state)
         st' (second (first changes))
         open? (= :true (:open (block/props-of st')))]

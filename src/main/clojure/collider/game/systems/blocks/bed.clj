@@ -10,11 +10,14 @@
             [collider.world.block :as block]
             [collider.world.blocks.bed :as bed]
             [collider.world.blocks.halves :as halves]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
-(defn uses-bed? [world pos]
+(defn uses-bed?
+  "Returns true when the block at pos is a bed."
+  [world pos]
   (= :bed (block/type-of (changes/block-at world pos))))
 
 (defn- bed-in-range? [world eid head]
@@ -29,7 +32,7 @@
 
 (defn- bed-blocked? [world head]
   (let [st (changes/block-at world head)
-        above (mapv + head [0 1 0])
+        above (dir/up head)
         other (mapv + above (halves/partner-offset st))]
     (or (block/full-cube? (changes/block-at world above))
         (block/full-cube? (changes/block-at world other)))))
@@ -43,9 +46,7 @@
 (defn- say-deltas [eid text]
   (when text [(out/to eid (out/overlay text))]))
 
-(defn- occupied [st]
-  (block/state (block/block-of st)
-               (assoc (block/props-of st) :occupied :true)))
+(defn- occupied [st] (block/with st :occupied :true))
 
 (defn- lying [world head]
   (let [[x y z] head
@@ -95,11 +96,8 @@
         all (second (first ds))]
     [(update world :chunks chunk/chunks-set-blocks all) ds]))
 
-(defn- center-of [[x y z]]
-  [(+ (long x) 0.5) (+ (long y) 0.5) (+ (long z) 0.5)])
-
 (defn- blast-spec [head]
-  (let [center (center-of head)]
+  (let [center (v/centre head)]
     {:center center :power 5.0 :source :block :fire? true
      :src {:type :bad-respawn-point :pos center}}))
 
@@ -108,19 +106,21 @@
      (block/block-of st)))
 
 (defn- explode-deltas
-  "Returns the deltas of a bed that blows up, as
-  BedBlock.useWithoutItem: both halves go, then the blast."
+  "Returns the deltas of a bed that explodes when used. Both halves
+  go before the blast."
   [world eid head st rule]
   (let [[world' ds] (removed world head)
         foot (mapv + head (halves/partner-offset st))
         both? (same-block? world' foot st)
-        [world'' more] (if both? (removed world' foot) [world' nil])]
+        [world'' more] (if both? (removed world' foot) [world' nil])
+        blast (blast/deltas world'' (blast-spec head))
+        by {:by eid :with :bed}]
     (concat (say-deltas eid (:error-message rule))
-            (delta/authored
-              (concat ds more (blast/deltas world'' (blast-spec head)))
-              {:by eid :with :bed}))))
+            (delta/authored (concat ds more blast) by))))
 
-(defn sleep-deltas [world eid pos]
+(defn sleep-deltas
+  "Returns the deltas of player eid using the bed at pos."
+  [world eid pos]
   (when-let [head (bed/head-pos (:chunks world) pos)]
     (let [st (changes/block-at world head)
           rule (sleep/bed-rule world)]

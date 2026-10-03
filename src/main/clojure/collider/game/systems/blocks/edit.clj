@@ -7,6 +7,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -15,10 +16,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn builder-box
-  "Returns the half width and height an entity blocks with.
-  Returns nil when it never blocks placement, as a spectator."
-  [e]
+(defn- builder-box [e]
   (case (:type e)
     :player (when-not (game-mode/spectator? e) (entity/box e))
     (:tnt :falling-block) (entity/box e)
@@ -64,35 +62,30 @@
   #{:command :structure :jigsaw :test :test-instance})
 
 (defn game-master-block?
-  "Whether st is a block only game masters place, use and break."
+  "Returns true when only game masters may place, use and break st."
   [^long st]
   (contains? game-master-types (block/type-of st)))
 
 (defn game-master?
-  "Whether player e may place, use and break game master blocks: a
-  creative player of the game master permission level."
+  "Returns true when player e may place, use and break game master
+  blocks."
   [e]
   (and (game-mode/creative? e)
        (<= (long forms/gamemaster) (player/permission-level e))))
 
-(defn hit-uv
-  "Returns where a click landed on a face, across and up.
-  Both run from zero to one."
-  [face [cx cy cz]]
+(defn- hit-uv [face [cx cy cz]]
   (let [x (/ (double cx) 16.0)
         y (/ (double cy) 16.0)
         z (/ (double cz) 16.0)]
-    (case (long face)
-      2 [(- 1.0 x) y]
-      3 [x y]
-      4 [z y]
-      5 [(- 1.0 z) y]
+    (case (dir/from-index (long face))
+      :north [(- 1.0 x) y]
+      :south [x y]
+      :west [z y]
+      :east [(- 1.0 z) y]
       nil)))
 
-(defn section
-  "Returns which of n equal parts a fraction falls in."
-  ^long [^double rel ^long n]
-  (min (dec n) (max 0 (long (Math/floor (* rel n))))))
+(defn- section ^long [^double rel ^long n]
+  (min (dec n) (max 0 (num/floor (* rel n)))))
 
 (defn hit-slot
   "Returns which slot of a grid drawn on the block face was clicked."
@@ -109,21 +102,12 @@
   [st]
   (= :false (:waterlogged (block/props-of st))))
 
-(defn with-water
-  "Returns the state with water, or without when logged? is false."
-  [st logged?]
-  (block/state (block/block-of st)
-               (assoc (block/props-of st) :waterlogged
-                      (if logged? :true :false))))
-
-(def ^:private full-water-types
-  "The block classes that hold falling water as well as a source.
-  Everywhere else a placed block holds only source water."
+(def ^:private flowing-water-types
   #{:conduit :coral-plant :coral-fan :coral-wall-fan
     :base-coral-plant :base-coral-fan :base-coral-wall-fan})
 
 (defn- placed-wet? [st state]
-  (if (contains? full-water-types (block/type-of state))
+  (if (contains? flowing-water-types (block/type-of state))
     (block/full-water? st)
     (block/water-source? st)))
 
@@ -134,5 +118,5 @@
   (if (and (placed-wet? (changes/block-at world pos') state)
            (contains? (block/props-of state) :waterlogged)
            (not= :light (block/type-of state)))
-    (with-water state true)
+    (block/with-water state)
     state))

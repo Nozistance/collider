@@ -4,30 +4,17 @@
             [collider.game.changes :as changes]
             [collider.game.inventory :as inventory]
             [collider.game.out :as out]
-            [collider.world.block :as block]))
+            [collider.game.stack :as stack]
+            [collider.world.block :as block]
+            [collider.world.direction :as dir]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:table banners
   (delay (set (data/tag-values "item" "banners"))))
 
-(def ^:private water-bottle
-  {:item :potion
-   :count 1
-   :components
-   {:potion-contents
-    {:potion :water
-     :custom-color nil
-     :custom-effects []
-     :custom-name nil}}})
-
-(defn water-bottle? [stack]
-  (let [path [:components :potion-contents :potion]]
-    (and (= :potion (:item stack))
-         (= :water (get-in stack path)))))
-
 (defn- cauldron-filled [world pos item]
-  (let [above (changes/block-at world (mapv + pos [0 1 0]))
+  (let [above (changes/block-at world (dir/up pos))
         dry? (not (block/water? above))]
     (case item
       :water-bucket
@@ -55,16 +42,14 @@
   (let [lvl (block/prop-long cur :level)]
     (if (= 1 lvl)
       (block/state :cauldron)
-      (block/state (block/block-of cur)
-                   {:level (keyword (str (dec lvl)))}))))
+      (block/with-long cur :level (dec lvl)))))
 
 (defn- cauldron-raised [cur]
   (if (= :cauldron (block/block-of cur))
     (block/state :water-cauldron)
     (let [lvl (block/prop-long cur :level)]
       (when (< lvl 3)
-        (block/state (block/block-of cur)
-                     {:level (keyword (str (inc lvl)))})))))
+        (block/with-long cur :level (inc lvl))))))
 
 (defn- used-deltas [world eid pos item result sound stat]
   (concat (inventory/filled-result-deltas world eid result)
@@ -77,13 +62,13 @@
     (when (= :water-cauldron (block/block-of cur))
       (concat
         (changes/change-deltas world [[pos (cauldron-lowered cur)]])
-        (used-deltas world eid pos :glass-bottle water-bottle
+        (used-deltas world eid pos :glass-bottle stack/water-bottle
                      :bottle/fill :custom/use-cauldron)))))
 
 (defn- pour-bottle-deltas [world eid pos]
   (let [cur (changes/block-at world pos)
-        block (block/block-of cur)]
-    (when (contains? #{:cauldron :water-cauldron} block)
+        kind (block/block-of cur)]
+    (when (contains? #{:cauldron :water-cauldron} kind)
       (when-let [st (cauldron-raised cur)]
         (concat
           (changes/change-deltas world [[pos st]])
@@ -109,7 +94,7 @@
   (and (not= :shulker-box item)
        (= :shulker-box (:type (get (data/blocks) item)))))
 
-(defn- wash-deltas [world eid pos cur stack cleaned stat]
+(defn- wash-deltas [world eid pos cur cleaned stat]
   (when (= :water-cauldron (block/block-of cur))
     (concat
       (changes/change-deltas world [[pos (cauldron-lowered cur)]])
@@ -117,25 +102,27 @@
         world eid (assoc cleaned :count 1) true)
       [[:award eid stat 1]])))
 
-(defn- washed [world eid pos cur item stack]
-  (let [layers (get-in stack [:components :banner-patterns])]
+(defn- washed [world eid pos cur item held]
+  (let [layers (get-in held [:components :banner-patterns])]
     (cond
       (dyed-shulker? item)
-      (wash-deltas world eid pos cur stack
-                   (assoc stack :item :shulker-box)
+      (wash-deltas world eid pos cur (assoc held :item :shulker-box)
                    :custom/clean-shulker-box)
       (and (contains? @banners item) (seq layers))
       (let [path [:components :banner-patterns]]
-        (wash-deltas world eid pos cur stack
-                     (assoc-in stack path (vec (butlast layers)))
+        (wash-deltas world eid pos cur
+                     (assoc-in held path (vec (butlast layers)))
                      :custom/clean-banner)))))
 
-(defn cauldron-deltas [world eid pos item stack]
+(defn cauldron-deltas
+  "Returns the deltas of a player who uses the held item on the
+  cauldron at pos."
+  [world eid pos item held]
   (let [cur (changes/block-at world pos)]
     (cond
-      (and (= :potion item) (water-bottle? stack))
+      (and (= :potion item) (stack/water-bottle? held))
       (pour-bottle-deltas world eid pos)
       (= :bucket item) (scoop-deltas world eid pos cur)
       (= :glass-bottle item) (bottle-deltas world eid pos)
-      :else (or (washed world eid pos cur item stack)
+      :else (or (washed world eid pos cur item held)
                 (fill-deltas world eid pos item)))))

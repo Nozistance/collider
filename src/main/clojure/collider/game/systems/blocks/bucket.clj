@@ -19,8 +19,8 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- break-drops [world pos cur may-replace?]
-  (when (and may-replace? (pos? cur) (not (block/liquid? cur))
+(defn- break-drops [world pos cur replace?]
+  (when (and replace? (pos? cur) (not (block/liquid? cur))
              (get-in world [:rules :block-drops] true))
     (map-indexed
       (fn [i stack]
@@ -39,10 +39,10 @@
 (defn- mob-splash [snd pos]
   (out/block-sound snd pos 1.0 1.0 :neutral))
 
-(defn- splash [eid pos water? mob-sound]
+(defn- splash [eid pos water? mob-snd]
   (let [snd (if water? :bucket/empty :bucket/empty-lava)
-        fx (if mob-sound
-             (mob-splash mob-sound pos)
+        fx (if mob-snd
+             (mob-splash mob-snd pos)
              (out/block-sound snd pos 1.0 1.0))]
     [(out/except eid fx)]))
 
@@ -54,13 +54,12 @@
               [(out/all (out/block-sound snd pos 1.0 1.0))]))))
 
 (defn- hold-deltas [world pos cur]
-  (let [st (edit/with-water cur true)]
+  (let [st (block/with-water cur)]
     (changes/change-deltas world [[pos st [:fluid-tick]]])))
 
 (defn- fizz-pitch ^double [world pos]
   (let [roll #(random/of-key (:tick world) pos %)]
-    (+ 2.6 (* (- (double (roll :fizz-a)) (double (roll :fizz-b)))
-              0.8))))
+    (random/triangle 2.6 0.8 (roll :fizz-a) (roll :fizz-b))))
 
 (defn- evaporated [world eid pos]
   (let [snd (out/block-sound :block.fire.extinguish pos 0.5
@@ -75,31 +74,32 @@
     :else (concat (break-drops world pos cur replace?)
                   (changes/change-deltas world [[pos state]]))))
 
-(defn- pour-deltas [world eid pos state relative snd]
+(defn- pour-deltas [world eid pos state relative mob-snd]
   (let [cur (changes/block-at world pos)
         water? (block/water? state)
         replace? (may-replace? cur)
         holds? (and water? (edit/waterloggable? cur))]
     (cond
       (not (pourable? world eid cur relative replace? holds?))
-      (when relative (pour-deltas world eid relative state nil snd))
+      (when relative
+        (pour-deltas world eid relative state nil mob-snd))
       (and water? (attribute/water-evaporates? (:dim world)))
       (evaporated world eid pos)
       :else (concat (settled world pos state cur replace? holds?)
-                    (splash eid pos water? snd)))))
+                    (splash eid pos water? mob-snd)))))
 
 (defn- into-hit? [hit state]
   (and (contains? (block/props-of hit) :waterlogged)
        (block/water? state)))
 
-(defn- poured [world eid e state snd]
+(defn- poured [world eid e state mob-snd]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
-    (let [relative (mapv + pos (dir/offset face))
+    (let [relative (dir/toward pos face)
           hit (changes/block-at world pos)
           target (if (into-hit? hit state) pos relative)
           next-pos (when (= target pos) relative)]
       (when (chunk/in-level? world (target 1))
-        (pour-deltas world eid target state next-pos snd)))))
+        (pour-deltas world eid target state next-pos mob-snd)))))
 
 (defn- emptied [world eid e item ds]
   (when (seq ds)
@@ -110,17 +110,15 @@
                 world eid {:item :bucket :count 1} false
                 (:use-hand e))))))
 
-(defn add
-  "Returns the deltas for a player who empties a bucket.
-  The bucket holds state and pours at the block in view. Out of
-  creative the bucket in hand is left empty."
+(defn empty-deltas
+  "Returns the deltas of a player who empties a bucket of state at
+  the block in view. Out of creative the hand keeps an empty bucket."
   [world eid e item state]
   (emptied world eid e item (poured world eid e state nil)))
 
-(defn- mob-sound [world eid e snd]
+(defn- mob-splash-deltas [world eid e snd]
   (when-let [{:keys [pos face]} (reach/clip world e :none)]
-    (let [at (mapv + pos (dir/offset face))]
-      [(out/except eid (mob-splash snd at))])))
+    [(out/except eid (mob-splash snd (dir/toward pos face)))]))
 
 (defn mob-deltas
   "Returns the deltas for a player who empties a bucket that holds a
@@ -130,7 +128,7 @@
   (let [{:keys [fluid sound]} (data/mob-bucket item)]
     (emptied world eid e item
              (if (= :empty fluid)
-               (mob-sound world eid e sound)
+               (mob-splash-deltas world eid e sound)
                (poured world eid e (liquid/liquid-state fluid 0)
                        sound)))))
 
@@ -144,27 +142,26 @@
         (= :true (:waterlogged (block/props-of st)))
         [:waterlogged pos]))))
 
-(defn- scooped-item [kind st]
-  (cond (= :powder-snow kind) :powder-snow-bucket
-        (block/lava? st) :lava-bucket
-        :else :water-bucket))
+(def ^:private fills
+  {:powder-snow [:powder-snow-bucket :bucket/fill-snow]
+   :lava [:lava-bucket :bucket/fill-lava]
+   :water [:water-bucket :bucket/fill]})
 
-(defn- fill-sound [kind st]
-  (cond
-    (= :powder-snow kind) :bucket/fill-snow
-    (block/lava? st) :bucket/fill-lava
-    :else :bucket/fill))
+(defn- fill-of [kind st]
+  (fills (cond (= :powder-snow kind) :powder-snow
+               (block/lava? st) :lava
+               :else :water)))
 
 (defn- fill-fx [kind e st]
-  (out/sound (fill-sound kind st) (:pos e) 1.0 1.0 :players))
+  (let [[_ snd] (fill-of kind st)]
+    (out/sound snd (:pos e) 1.0 1.0 :players)))
 
 (defn- drained-deltas [world kind pos st]
   (case kind
-    (:source :bubble-column)
+    (:source :bubble-column :powder-snow)
     (changes/change-deltas world [[pos 0]])
-    :powder-snow (changes/change-deltas world [[pos 0]])
     :waterlogged
-    (changes/change-deltas world [[pos (edit/with-water st false)]])))
+    (changes/change-deltas world [[pos (block/without-water st)]])))
 
 (defn- snow-fx [kind pos st]
   (when (= :powder-snow kind)
@@ -176,7 +173,7 @@
   [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
     (let [st (changes/block-at world pos)
-          filled {:item (scooped-item kind st) :count 1}]
+          filled {:item (first (fill-of kind st)) :count 1}]
       (concat (drained-deltas world kind pos st)
               (snow-fx kind pos st)
               [(out/except eid (fill-fx kind e st))
@@ -188,7 +185,7 @@
   It goes on the water source in view."
   [world eid e item]
   (when-let [[kind pos] (scoop-target world e)]
-    (let [[_ y' _ :as above] (mapv + pos [0 1 0])
+    (let [[_ y' _ :as above] (dir/up pos)
           st (block/state item)]
       (when (and (= :source kind)
                  (block/water? (changes/block-at world pos))
