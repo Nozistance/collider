@@ -50,7 +50,7 @@
 
 (defn- hop [e] (or (:hop e) {}))
 
-(defn- move-of ^Steer [e] (Steer/of (or (:move e) origin)))
+(defn- move-of ^Steer [e] (or (:move e) origin))
 
 (defn- rewanted [m ^double s]
   (Steer/wanted m (double (:x m)) (double (:y m)) (double (:z m)) s))

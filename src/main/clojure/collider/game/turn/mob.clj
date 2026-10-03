@@ -18,13 +18,14 @@
             [collider.game.out :as out]
             [collider.game.turn.living :as living]
             [collider.game.turn.overlay :as overlay]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.motion :as motion])
   (:import (clojure.lang MapEntry)
            (collider.data LongMap)
-           (collider.game.mob Islands Steer)))
+           (collider.game.mob Steer)))
 
 (set! *warn-on-reflection* true)
 
@@ -401,7 +402,7 @@
 
 (defn- ahead? [h]
   (and (>= (count (:es h)) ahead-bodies)
-       (> (Islands/threads @r/pool) 1)))
+       (> (par/threads) 1)))
 
 (defn- island-deltas [world tempters t h]
   (if (ahead? h)

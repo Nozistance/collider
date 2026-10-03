@@ -45,8 +45,9 @@
   (unchecked-int (+ (* (+ (long y) (* (long z) 31)) 31) (long x))))
 
 (defn- hash-order [ps]
-  (let [ps (vec ps)]
-    (mapv #(nth ps %) (HashMapOrder/copied (int-array (map pos-hash ps))))))
+  (let [ps (vec ps)
+        order (HashMapOrder/copied (int-array (map pos-hash ps)))]
+    (mapv #(nth ps %) order)))
 
 (defn loaded
   "Returns tickers tk with the block entities bes of a loaded chunk,

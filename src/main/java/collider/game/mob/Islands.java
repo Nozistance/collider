@@ -2,21 +2,11 @@ package collider.game.mob;
 
 import java.util.Arrays;
 import java.util.Comparator;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 
 /// The groups of bodies that one tick of movement cannot bring
 /// together. Bodies share a group when their cells of the push grid
 /// touch, directly or through a chain of touching cells.
 public final class Islands {
-
-    /// Returns the number of threads that the folds started from the
-    /// calling thread share, where a thread outside any pool folds in
-    /// `pool`.
-    public static int threads(ForkJoinPool pool) {
-        ForkJoinPool p = ForkJoinTask.getPool();
-        return (p == null ? pool : p).getParallelism();
-    }
 
     static long key(long cx, long cz) {
         return ((cx & 0xFFFFFFFFL) << 32) | (cz & 0xFFFFFFFFL);
