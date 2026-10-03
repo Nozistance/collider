@@ -1,12 +1,14 @@
 (ns collider.game.systems.compasses
   "Lodestone compasses that lose their lodestone."
-  (:require [collider.game.stack :as stack]
+  (:require [collider.game.slots :as slots]
+            [collider.game.stack :as stack]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private ticked-slots (range 5 46))
+(def ^:private ticked-slots
+  (range (:head slots/armor) (inc slots/offhand)))
 
 (def ^:private ^:const world-edge 30000000)
 
@@ -35,7 +37,7 @@
 
 (defn player-deltas
   "Returns the deltas that clear the target of each compass in the
-  inventory of player p, an entry, whose lodestone is gone."
+  inventory of player eid whose lodestone is gone."
   [world [eid e]]
   (let [inv (:inventory e)]
     (keep #(slot-delta world eid inv %) ticked-slots)))

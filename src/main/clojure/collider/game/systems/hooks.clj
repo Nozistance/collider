@@ -6,9 +6,9 @@
 (set! *warn-on-reflection* true)
 
 (defn on-event
-  "Returns a system that gives each event of this tick whose tag
-  handlers holds to the function of that tag, as (f level event)
-  that returns deltas."
+  "Returns a system that passes each event of the tick to the handler
+  of its tag. A handler takes the level and the event and returns
+  deltas."
   [handlers]
   (let [tags (set (keys handlers))
         heard? #(contains? tags (nth % 0))

@@ -13,7 +13,9 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
+            [collider.game.stack :as stack]
             [collider.game.using :as using]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -46,10 +48,10 @@
 
 (defn- food-sounds [world eid e c]
   (let [a (roll world eid [:food 0]) b (roll world eid [:food 1])
-        c' (roll world eid [:food 2])
+        r (roll world eid [:food 2])
         pos (:pos e)
         eat (+ 1.0 (* 0.4 (- a b)))
-        burp (+ 0.9 (* 0.1 c'))]
+        burp (+ 0.9 (* 0.1 r))]
     [(out/all (out/sound (:sound c) pos 1.0 eat :neutral))
      (out/all
       (out/sound :entity.player.burp pos 0.5 burp :players))]))
@@ -88,10 +90,10 @@
 
 (defn- landing [world [x y z]]
   (let [chunks (:chunks world) lo (chunk/level-min-y world)
-        bx (long (Math/floor x)) bz (long (Math/floor z))
+        bx (num/floor x) bz (num/floor z)
         solid? #(block/blocks-motion?
                   (long (chunk/block-state chunks bx % bz)))]
-    (loop [by (long (Math/floor y)) y (double y)]
+    (loop [by (num/floor y) y (double y)]
       (cond
         (<= by lo) nil
         (solid? (dec by)) [x y z]
@@ -126,7 +128,10 @@
         (sounded :item.chorus-fruit.teleport)
         (update :ds conj [:merge-entity eid {:fall 0.0}]))))
 
-(defn- teleported [world acc {:keys [diameter]} draw]
+(defn- teleported
+  "Returns acc after up to 16 tries to teleport the eater. A try that
+  fails puts it back home."
+  [world acc {:keys [diameter]} draw]
   (let [o (:pos (:e acc)) home [(v/x o) (v/y o) (v/z o)]
         loaded? #(contains? (:chunks world) (chunk/block-chunk %))]
     (loop [n 0 acc acc]
@@ -165,12 +170,6 @@
 (defn- stopped [eid]
   [[:merge-entity eid {:using-item? false :using nil}]])
 
-(defn- extra-deltas [world eid e stack]
-  (let [[changes left] (inventory/add-stack (:inventory e) stack)]
-    (concat (for [[slot s] changes] [:set-slot eid slot s])
-            (when left
-              [[:spawn-entity (item/dropped world eid left)]]))))
-
 (defn- remainder-deltas [world eid e hand stack]
   (let [left (get-in (data/items) [(:item stack) :use-remainder])]
     (when (and left (not (player/infinite-materials? e)))
@@ -179,7 +178,7 @@
             made {:item (:item left) :count (long (:count left 1))}]
         (if (pos? over)
           (cons [:set-slot eid slot (assoc stack :count over)]
-                (extra-deltas world eid e made))
+                (inventory/kept world eid e made))
           [[:set-slot eid slot made]])))))
 
 (defn- finish-deltas [world eid e]
@@ -224,23 +223,19 @@
   (let [p (+ 0.8 (* 0.4 (roll world eid [:bundle salt])))]
     (out/sound kind pos 0.8 p :players)))
 
-(defn- block-centre [pos]
-  (mapv #(+ 0.5 (Math/floor (double %))) pos))
-
 (defn- dropped-deltas [world eid e hand b s]
-  (let [pos (:pos e)
+  (let [pos (:pos e) centre (v/centre (v/cell pos))
         one :item.bundle.remove-one
         all :item.bundle.drop-contents]
     (concat
       [(out/except eid (bundle-sound world eid one pos 0))
        [:set-slot eid (player/hand-slot e hand) b]]
       (item/thrown-deltas world eid [s])
-      [(out/all (bundle-sound world eid all (block-centre pos) 1))
+      [(out/all (bundle-sound world eid all centre 1))
        [:award eid (keyword "used" (name (:item b))) 1]])))
 
-(defn- unloaded-deltas
-  "Returns the deltas of a bundle in use dropping its next stack
-  (BundleItem.onUseTick)."
+(defn- bundle-drop-deltas
+  "Returns the deltas of a bundle in use dropping its next stack."
   [world eid e hand stack left]
   (when (and (bundle/bundle? stack) (drops? stack left))
     (let [[b s] (bundle/remove-one stack)]
@@ -262,25 +257,17 @@
       (nil? (:using e)) nil
       (not= item (:item stack)) (stopped eid)
       c (eaten-deltas world eid e c left)
-      :else (concat (unloaded-deltas world eid e hand stack left)
+      :else (concat (bundle-drop-deltas world eid e hand stack left)
                     (held-deltas eid e item left)))))
 
-(def ^:private water-bottle
-  {:item       :potion :count 1
-   :components {:potion-contents
-                {:potion :water :custom-color nil
-                 :custom-effects [] :custom-name nil}}})
-
-(defn- same-stack? [a b]
-  (and (= (:item a) (:item b)) (= (:components a) (:components b))))
+(defn- held? [e made]
+  (some #(inventory/same-stack? made %) (vals (:inventory e))))
 
 (defn- filled-deltas [world eid e made]
-  (if (player/infinite-materials? e)
-    (when-not (some #(same-stack? made %) (vals (:inventory e)))
-      (extra-deltas world eid e made))
-    (extra-deltas world eid e made)))
+  (when-not (and (player/infinite-materials? e) (held? e made))
+    (inventory/kept world eid e made)))
 
-(defn- water-at? [world pos]
+(defn- water-source? [world pos]
   (let [st (changes/block-at world pos)]
     (or (and (block/source-state? st)
              (block/water? st))
@@ -294,13 +281,13 @@
   The bottle fills at the water source in view."
   [world eid e]
   (when-let [{:keys [pos]} (reach/clip world e :source-only)]
-    (when (water-at? world pos)
+    (when (water-source? world pos)
       (concat [(fill-sound eid e)
                [:award eid :used/glass-bottle 1]]
-              (filled-deltas world eid e water-bottle)))))
+              (filled-deltas world eid e stack/water-bottle)))))
 
 (defn player-deltas
-  "Returns the deltas of the item player p, an entry, holds in use
+  "Returns the deltas of the item the player entry p holds in use
   this tick, and of the uses it let go."
   [world p]
   (let [eid (key p)

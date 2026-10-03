@@ -1,6 +1,6 @@
 (ns collider.game.systems.hanging
-  "Paintings and item frames: hanging them, using them, breaking
-  them, and the check that they still hold."
+  "Hanging, use, breaking and support checks of paintings and item
+  frames."
   (:require [collider.game.deltas :as deltas]
             [collider.game.hanging.drops :as drops]
             [collider.game.inventory :as inventory]
@@ -18,7 +18,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- others [world]
+(defn- hung-entries [world]
   (level/of-types world hanging/types))
 
 (defn- checked [world t [live acc] [eid e]]
@@ -50,11 +50,11 @@
 
 (defn hanging-checks
   "Returns the deltas that tick the hanging entities. Once in 101 of
-  its ticks each checks that its wall still holds it, as
-  BlockAttachedEntity.tick, and drops when it does not."
+  its ticks each checks that its wall still holds it, and drops when
+  it does not."
   {:wake {:types hanging/types}}
   [world _d]
-  (deltas/of-vec (turns world (others world))))
+  (deltas/of-vec (turns world (hung-entries world))))
 
 (defn- build? [p] (not= :adventure (:game-mode p)))
 
@@ -71,7 +71,7 @@
 (defn- painted [world pos face stack]
   (let [t (:tick world)
         roll (random/of-key [t pos :art])
-        hung (others world)]
+        hung (hung-entries world)]
     (some-> (hanging/painting (:chunks world) hung pos face t roll)
             (dyed stack))))
 
@@ -86,18 +86,21 @@
           [[:spawn-entity e]]
           (inventory/consume-deltas eid p hand 1)))
 
+(defn- holds? [world e]
+  (hanging/survives? (:chunks world) nil e (hung-entries world)))
+
 (defn place-deltas
-  "Returns the deltas of player eid, p, hanging the item it holds on
-  the face of the block at pos, as HangingEntityItem.useOn."
+  "Returns the deltas of player eid hanging the item it holds on the
+  face of the block at pos. The player is p."
   [world eid p pos face]
   (let [hand (:use-hand p :main)
         stack (player/hand-stack p hand)
         item (:item stack)
         face (dir/from-index face)
-        at (mapv + pos (dir/offset face))]
+        at (dir/toward pos face)]
     (when (and (placeable? world item face at) (build? p))
       (when-let [e (made world item at face stack)]
-        (when (hanging/survives? (:chunks world) nil e (others world))
+        (when (holds? world e)
           (hung-deltas world eid p e hand))))))
 
 (defn- gap-sq ^double [p [x0 y0 z0 x1 y1 z1]]

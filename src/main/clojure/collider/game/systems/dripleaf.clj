@@ -1,6 +1,7 @@
 (ns collider.game.systems.dripleaf
   "Big dripleaf tipping under players."
   (:require [collider.game.changes :as changes]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
             [collider.world.blocks.dripleaf :as dripleaf]))
@@ -11,16 +12,14 @@
 
 (def ^:private ^:const half-width 0.3)
 
-(defn- floor ^long [^double a] (long (Math/floor a)))
-
 (defn- span [^double c]
-  (let [a (floor (+ (- c half-width) epsilon))
-        b (floor (- (+ c half-width) epsilon))]
+  (let [a (num/floor (+ (- c half-width) epsilon))
+        b (num/floor (- (+ c half-width) epsilon))]
     (if (= a b) [a] [a b])))
 
 (defn- foot-cells [e]
   (let [p (:pos e)
-        y (floor (double (v/y p)))
+        y (num/floor (v/y p))
         zs (span (double (v/z p)))]
     (into [] (mapcat (fn [x] (mapv (fn [z] [x y z]) zs)))
           (span (double (v/x p))))))
@@ -41,8 +40,7 @@
           acc (foot-cells e)))
 
 (defn player-deltas
-  "Returns the deltas that tip the big dripleaves under player p,
-  an entry."
+  "Returns the deltas that tip the big dripleaves under the player."
   [world [_ e]]
   (when (:on-ground e)
     (let [changes (tilted-under world (sorted-map) e)]

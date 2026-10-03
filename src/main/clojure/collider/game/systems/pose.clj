@@ -2,6 +2,7 @@
   "Player water state, swimming and pose."
   (:require [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -13,11 +14,6 @@
 (def ^:private ^:const fluid-margin 0.001)
 
 (def ^:private ^:const fit-eps 1.0E-7)
-
-(defn- floor ^long [^double c] (long (Math/floor c)))
-
-(defn- st-at [chunks cx cy cz]
-  (chunk/block-state chunks cx cy cz))
 
 (defn- fits? [chunks e pose]
   (let [[half h] (entity/pose-box pose)
@@ -37,16 +33,17 @@
 
 (defn- water-at? [chunks cx cy cz]
   (and (chunk/in-range? (long cy))
-       (block/water? (st-at chunks cx cy cz))))
+       (block/water? (chunk/block-state chunks cx cy cz))))
 
 (defn- eye-in-water? [chunks pos pose]
   (let [ey (+ (v/y pos) (entity/pose-eye pose))
-        cx (floor (v/x pos)) cy (floor ey) cz (floor (v/z pos))]
+        cx (num/floor (v/x pos)) cy (num/floor ey)
+        cz (num/floor (v/z pos))]
     (boolean
       (when (water-at? chunks cx cy cz)
         (when-let [h (liquid/fluid-height-of
                        chunks [cx cy cz]
-                       (st-at chunks cx cy cz) nil)]
+                       (chunk/block-state chunks cx cy cz) nil)]
           (<= ey (+ (long cy) (double h))))))))
 
 (defn- swims? [e in-water? under-water? feet-water?]
@@ -81,7 +78,7 @@
         pose (:pose e :standing)
         in? (pos? (water-depth chunks pos pose))
         under? (boolean (and (:eye-in-water? e) in?))
-        fx (floor (v/x pos)) fy (floor (v/y pos)) fz (floor (v/z pos))
+        [fx fy fz] (v/cell pos)
         feet? (water-at? chunks fx fy fz)
         swim? (swims? e in? under? feet?)]
     (cond-> {:in-water?     in? :under-water? under? :swimming? swim?
@@ -91,7 +88,7 @@
 
 (defn player-deltas
   "Returns the deltas that set the water state and the pose of
-  player p, an entry."
+  player eid."
   [world [eid e]]
   (when (game-mode/ticks? (:chunks world) e)
     (let [same? (fn [[k vl]] (= vl (get e k)))

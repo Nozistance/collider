@@ -10,7 +10,8 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.attribute :as attribute]
-            [collider.world.env.weather :as weather]))
+            [collider.world.env.weather :as weather]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
@@ -68,16 +69,17 @@
          (>= (deep-count world all) needed))))
 
 (defn vacated-deltas
-  "Returns the deltas of the bed that player eid, e, leaves between
-  ticks. Its head is set free."
+  "Returns the deltas of the bed that player eid leaves between ticks.
+  Its head is set free. The player is e."
   [world eid e]
   (let [head (get-in e [:sleeping :pos])
         st (when head (block-at world head))
         base (dec (long (:tick world)))]
     (when (and st (= :bed (block/type-of st)))
       (let [cs [[head (sleeping/vacated st)]]]
-        (delta/authored (changes/flagged-deltas world cs 3 nil base)
-                        eid :player)))))
+        (delta/authored
+          (changes/flagged-deltas world cs update/all nil base)
+          eid :player)))))
 
 (defn- sleep-deltas [world]
   (when-let [all (seq (sleeping/in-bed world))]

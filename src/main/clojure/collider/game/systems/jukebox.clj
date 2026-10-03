@@ -6,8 +6,8 @@
 (set! *warn-on-reflection* true)
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the jukebox e at pos: the end
-  of its song."
+  "Returns the deltas of one tick of the jukebox e at pos. They end
+  its song when it is over."
   [world [pos e]]
   (when (:song e)
     (let [age (- (long (:tick world)) (long (:started e)))]

@@ -10,7 +10,7 @@
        (entity/player? e)))
 
 (defn player-deltas
-  "Returns the deltas that tick the effects of player p, an entry."
+  "Returns the deltas that tick the effects of the player entry p."
   [world p]
   (when (due? (val p))
     (account/tick-deltas world (key p) (val p))))
