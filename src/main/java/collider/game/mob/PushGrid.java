@@ -54,7 +54,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         this.zs = zs;
         int n = eids.length;
         this.next = new int[n];
-        this.heads = new LongIntMap(n);
+        this.heads = new LongIntMap(2 * n);
         for (int i = 0; i < n; i++) {
             widest = Math.max(widest, halfs[i]);
             link(i);
