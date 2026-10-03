@@ -11,10 +11,10 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.sleep :as sleep]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Steer)
-           (java.util Locale)))
+  (:import (java.util Locale)))
 
 (set! *warn-on-reflection* true)
 
@@ -247,8 +247,8 @@
   (let [xd (- (double px) (double fx)) yd (- (double py) (double fy))
         zd (- (double pz) (double fz))
         sd (Math/sqrt (+ (* xd xd) (* zd zd)))
-        pitch (sel/wrapped (float (- (* (Steer/atan2 yd sd) deg))))
-        turn (float (* (Steer/atan2 zd xd) deg))
+        pitch (sel/wrapped (float (- (* (num/atan2 yd sd) deg))))
+        turn (float (* (num/atan2 zd xd) deg))
         yaw (sel/wrapped (- turn (float 90.0)))]
     [(f32 yaw) (pitch-set pitch)]))
 
