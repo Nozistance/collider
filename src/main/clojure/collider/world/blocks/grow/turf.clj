@@ -5,7 +5,8 @@
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.env.weather :as weather]
-            [collider.world.feature :as feature]
+            [collider.world.feature.place :as feature]
+            [collider.world.feature.table :as table]
             [collider.world.update :as update]
             [collider.world.blocks.grass :as grass]
             [collider.world.blocks.grow.common
@@ -94,7 +95,7 @@
     acc))
 
 (defn- turf-flower [acc q j roll salt biome]
-  (let [fs (feature/bone-meal-features biome)]
+  (let [fs (table/bone-meal-features biome)]
     (if (empty? fs)
       acc
       (let [f (nth fs (random/below (roll [:which j]) (count fs)))]
@@ -137,7 +138,7 @@
   "Returns the patch bone meal grows on a block that places one."
   [chunks p st roll]
   (when (air-at? chunks (dir/up p))
-    (let [f (feature/placer-feature (block/block-of st))
+    (let [f (table/placer-feature (block/block-of st))
           start (feature/start chunks)
           acc (feature/configured start f (dir/up p) roll [:patch])]
       {:changes (flagged update/clients (feature/cells acc))})))

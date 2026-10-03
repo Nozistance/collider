@@ -5,10 +5,9 @@
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.env.weather :as weather]
-            [collider.world.feature :as feature]
-            [collider.world.feature.worldgen :as worldgen]
+            [collider.world.feature.table :as table]
+            [collider.world.feature.level :as lv :refer [off]]
             [collider.world.feature.tree :as tree]
-            [collider.world.feature.trunk :refer [off]]
             [collider.world.update :as update]
             [collider.world.blocks.grow.common
              :refer [age chance? older]]))
@@ -22,23 +21,23 @@
          (:grower (get (data/blocks) (block/block-of st))))))
 
 (defn- min-height ^long [grower]
-  (long (or (some-> (:tree grower) feature/configured-feature
+  (long (or (some-> (:tree grower) table/configured-feature
                     :config :trunk-placer :base-height)
             0)))
 
 (defn- flowers? [level p]
-  (boolean (some #(block/tagged? (worldgen/at level %) "flowers")
+  (boolean (some #(block/tagged? (lv/at level %) "flowers")
                  (for [x (range -2 3) y (range -1 2) z (range -2 3)]
                    (off p x y z)))))
 
 (defn- mega-key [level grower]
   (if (and (:secondary-mega grower)
-           (worldgen/chance? level (:secondary-chance grower)))
+           (lv/chance? level (:secondary-chance grower)))
     (:secondary-mega grower)
     (:mega grower)))
 
 (defn- tree-key [level grower flowers?]
-  (let [second? (worldgen/chance? level (:secondary-chance grower))]
+  (let [second? (lv/chance? level (:secondary-chance grower))]
     (or (when second?
           (or (when flowers? (:secondary-flowers grower))
               (:secondary-tree grower)))
@@ -51,17 +50,17 @@
     (off p (+ (long dx) x) 0 (+ (long dz) z))))
 
 (defn- fill [level cells st]
-  (reduce #(worldgen/put %1 %2 st update/quiet) level cells))
+  (reduce #(lv/put %1 %2 st update/quiet) level cells))
 
 (defn- placed [level feature-key p]
-  (let [config (:config (feature/configured-feature feature-key))]
+  (let [config (:config (table/configured-feature feature-key))]
     (tree/place level config p)))
 
 (def ^:private corners [[0 0] [0 -1] [-1 0] [-1 -1]])
 
 (defn- mega-corner [level p st]
   (let [self (block/block-of st)
-        same? #(= self (block/block-of (worldgen/at level %)))]
+        same? #(= self (block/block-of (lv/at level %)))]
     (first (filter #(every? same? (square p %)) corners))))
 
 (defn- mega [level p st feature-key]
@@ -79,17 +78,17 @@
 
 (defn- single [level p st feature-key]
   (let [empty (empty-of st)
-        level (placed (worldgen/put level p empty update/quiet)
+        level (placed (lv/put level p empty update/quiet)
                       feature-key p)]
     (if (:placed? level)
-      (cond-> level (= empty (worldgen/at level p)) (resent p))
-      (worldgen/put level p st update/quiet))))
+      (cond-> level (= empty (lv/at level p)) (resent p))
+      (lv/put level p st update/quiet))))
 
 (defn- grow
   "Returns the changes of a tree grown from the sapling st at p."
   [chunks p st roll]
   (let [grower (grower-of st)
-        level (worldgen/start chunks roll :tree)
+        level (lv/start chunks roll :tree)
         big (some->> (mega-key level grower) (mega level p st))]
     (:changes
       (or big

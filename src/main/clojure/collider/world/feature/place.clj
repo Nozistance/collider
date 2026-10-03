@@ -1,135 +1,19 @@
-(ns collider.world.feature
-  "Placement of the features that bone meal reaches."
-  (:require [clojure.string :as str]
-            [collider.data :as data]
+(ns collider.world.feature.place
+  "The growth of the features that bone meal reaches."
+  (:require [collider.data :as data]
+            [collider.random :as random]
             [collider.world.block :as block]
-            [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]
             [collider.world.blocks.moss :as moss]
             [collider.world.blocks.support :as support]
+            [collider.world.chunk :as chunk]
+            [collider.world.direction :as dir]
+            [collider.world.feature.table :as table]
             [collider.world.noise :as noise]))
 
 (set! *warn-on-reflection* true)
 
-(defn- plain [s] (str/replace (str s) #"^minecraft:" ""))
-
-(defn- kw [s] (keyword (str/replace (plain s) "_" "-")))
-
-(defn- by-key [kvs] (into {} (sort-by first kvs)))
-
-(defn- by-name [path] (update-keys (data/pack path) plain))
-
-(defn- state-value [m]
-  (let [props (get m "Properties")
-        prop (fn [[k v]] [(kw k) (keyword v)])]
-    (cond-> {:block (kw (get m "Name"))}
-      props (assoc :props (by-key (map prop props))))))
-
-(defn- feature-value [v]
-  (cond
-    (and (map? v) (contains? v "Name")) (state-value v)
-    (map? v) (by-key (map (fn [[k x]] [(kw k) (feature-value x)]) v))
-    (vector? v) (mapv feature-value v)
-    (not (string? v)) v
-    (str/starts-with? v "#") {:tag (plain (subs v 1))}
-    :else (kw v)))
-
-(def ^:private selector-types
-  #{"minecraft:random_selector" "minecraft:weighted_random_selector"
-    "minecraft:simple_random_selector"
-    "minecraft:random_boolean_selector"})
-
-(def ^:private placed-fields
-  #{"feature" "default_feature" "vegetation_feature"})
-
-(defn- placed-refs [v]
-  (let [ref (fn [[k x]]
-              (if (and (string? x) (placed-fields k))
-                [(plain x)]
-                (placed-refs x)))]
-    (cond
-      (and (map? v) (contains? v "placement")) [v]
-      (map? v) (mapcat ref v)
-      (vector? v) (mapcat placed-refs v))))
-
-(defn- placed-of [reg p] (if (map? p) p (get (:placed reg) p)))
-
-(defn- placed-feature [reg p]
-  (plain (get (placed-of reg p) "feature")))
-
-(defn- conf-placed-refs [reg nm]
-  (placed-refs (get (get (:configured reg) nm) "config")))
-
-(defn- conf-features [reg nm]
-  (let [j (get (:configured reg) nm)
-        nested #(conf-features reg (placed-feature reg %))]
-    (into [nm]
-          (when (selector-types (get j "type"))
-            (mapcat nested (conf-placed-refs reg nm))))))
-
-(defn- biome-features [reg tagged j]
-  (let [grown #(conf-features reg (placed-feature reg (plain %)))
-        xf (comp cat (mapcat grown) (filter tagged))]
-    (into [] xf (get j "features"))))
-
-(defn- bone-meal-biomes [reg tagged]
-  (by-key (keep (fn [[nm j]]
-                  (let [fs (biome-features reg tagged j)]
-                    (when (seq fs) [(kw nm) (mapv kw fs)])))
-                (:biomes reg))))
-
-(defn- closure [reg cs ps]
-  (let [rs (mapcat #(conf-placed-refs reg %) cs)
-        cs' (into cs (map #(placed-feature reg %)) (concat ps rs))
-        ps' (into ps (filter string?) rs)]
-    (if (and (= cs cs') (= ps ps')) [cs' ps'] (recur reg cs' ps'))))
-
-(defn- feature-set [reg kind names]
-  (by-key (map (fn [n] [(kw n) (feature-value (get (kind reg) n))])
-               names)))
-
-(defn- bone-meal-tagged []
-  (let [r "worldgen/configured_feature"]
-    (into #{} (map data/snake)
-          (data/tag-values r "can_spawn_from_bone_meal"))))
-
-(defn- placers []
-  (by-key (keep (fn [[b m]] (when-let [f (:feature m)] [b f]))
-                (data/blocks))))
-
-(defn- grown-trees []
-  (into #{} (comp (mapcat #(vals (dissoc % :secondary-chance)))
-                  (map data/snake))
-        (vals (data/growers))))
-
-(defn- feature-registries []
-  {:placed (by-name "worldgen/placed_feature")
-   :configured (by-name "worldgen/configured_feature")
-   :biomes (by-name "worldgen/biome")})
-
-(defn- feature-table []
-  (let [reg (feature-registries)
-        tagged (bone-meal-tagged)
-        placers (placers)
-        roots (-> tagged
-                  (into (map (comp data/snake val)) placers)
-                  (into (grown-trees)))
-        [cs ps] (closure reg roots #{"grass_bonemeal"})]
-    {:configured (feature-set reg :configured cs)
-     :placed (feature-set reg :placed ps)
-     :bone-meal (bone-meal-biomes reg tagged)
-     :placers placers}))
-
-(def ^:private ^:table feature-tables (delay (feature-table)))
-
-(defn features
-  "Returns the features that bone meal reaches, the features that
-  each biome grows from it and the feature of each placer block."
-  []
-  @feature-tables)
-
 (defn- pick ^long [roll salt ^long n]
-  (long (Math/floor (* (double (roll salt)) n))))
+  (random/below (roll salt) n))
 
 (defn- one-of [xs roll salt]
   (nth xs (pick roll salt (count xs))))
@@ -147,18 +31,27 @@
   [chunks]
   {:chunks chunks :cells []})
 
-(defn cells [acc]
+(defn cells
+  "Returns the cells that placement acc changed, each once in the
+  order of its first change, with its last state."
+  [acc]
   (let [final (into {} (:cells acc))
         cell (fn [p] [p (final p)])]
     (into [] (comp (map first) (distinct) (map cell)) (:cells acc))))
 
-(defn chunks [acc]
+(defn chunks
+  "Returns the chunks of placement acc."
+  [acc]
   (:chunks acc))
 
-(defn state-at ^long [acc p]
+(defn state-at
+  "Returns the block state at p in placement acc."
+  ^long [acc p]
   (chunk/at (:chunks acc) p))
 
-(defn set-state [acc p ^long st]
+(defn set-state
+  "Returns placement acc after it sets st at p."
+  [acc p ^long st]
   (-> acc
       (update :chunks chunk/chunks-set-block p st)
       (update :cells conj [p st])))
@@ -183,7 +76,7 @@
   [k (noise/noise seed octave (double-array amps))])
 
 (defn- configured-noises []
-  (distinct (deep-noises (:configured (features)))))
+  (distinct (deep-noises (:configured (table/features)))))
 
 (def ^:private ^:table noises
   (delay (into {} (map noise-entry) (configured-noises))))
@@ -252,7 +145,8 @@
           lower (assoc (block/props-of st) :half :lower)]
       (-> acc
           (set-state p (block/state self lower))
-          (set-state (dir/up p) (block/state self {:half :upper}))))))
+          (set-state (dir/up p)
+                     (block/state self {:half :upper}))))))
 
 (defn- mossy-carpet [acc p roll salt]
   (let [side? (fn [d] (< (double (roll (conj salt d))) 0.5))
@@ -278,9 +172,8 @@
 (defn- sample ^long [v roll salt]
   (if (number? v)
     (long v)
-    (let [lo (long (:min-inclusive v))
-          hi (long (:max-inclusive v))]
-      (+ lo (pick roll salt (inc (- hi lo)))))))
+    (random/between (roll salt) (long (:min-inclusive v))
+                    (long (:max-inclusive v)))))
 
 (defn- slide [acc p n want step]
   (loop [q p i 0]
@@ -325,14 +218,14 @@
   (let [c (double (:extra-edge-column-chance cfg))]
     (and (not (zero? c)) (<= (double (roll (conj salt :edge))) c))))
 
-(defn- patch-cell [[acc surface :as state] cfg p roll salt column]
+(defn- patch-cell [[acc surface :as step] cfg p roll salt column]
   (let [[dx dz edge?] column
         s (conj salt dx dz)
         q (mapv + p [dx 0 dz])
         below (when (or (not edge?) (edge-column? cfg roll s))
                 (patch-ground acc cfg q))]
     (if (nil? below)
-      state
+      step
       (let [d (sample (:depth cfg) roll (conj s :depth))
             [acc grown?] (place-ground acc cfg below d roll s)]
         [acc (cond-> surface grown? (conj below))]))))
@@ -356,10 +249,16 @@
         [acc surface] (reduce cell [acc []] (patch-columns xr zr))]
     (vegetation acc cfg surface roll salt)))
 
-(defn configured [acc feature p roll salt]
-  (let [m (if (keyword? feature)
-            (get-in (features) [:configured feature])
-            feature)
+(defn- resolved [kind feature]
+  (if (keyword? feature)
+    (get-in (table/features) [kind feature])
+    feature))
+
+(defn configured
+  "Returns placement acc after the configured feature grows at p.
+  The feature is a name or a value; roll and salt draw its chances."
+  [acc feature p roll salt]
+  (let [m (resolved :configured feature)
         salt (conj salt feature)]
     (case (:type m)
       :simple-block (simple-block acc (:config m) p roll salt)
@@ -372,21 +271,11 @@
     (block/tagged? (state-at acc p) (tag-of (:tag (:predicate m))))
     true))
 
-(defn placed [acc feature p roll salt]
-  (let [m (if (keyword? feature)
-            (get-in (features) [:placed feature])
-            feature)]
+(defn placed
+  "Returns placement acc after the placed feature grows at p when its
+  placement filters keep p."
+  [acc feature p roll salt]
+  (let [m (resolved :placed feature)]
     (if (every? #(keeps? acc % p) (:placement m))
       (configured acc (:feature m) p roll (conj salt feature))
       acc)))
-
-(defn bone-meal-features [biome]
-  (get-in (features) [:bone-meal biome]))
-
-(defn configured-feature
-  "Returns the configured feature named k that bone meal reaches."
-  [k]
-  (get-in (features) [:configured k]))
-
-(defn placer-feature [block]
-  (get-in (features) [:placers block]))
