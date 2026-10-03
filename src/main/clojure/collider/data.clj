@@ -74,7 +74,8 @@
    'nbt/L long-array})
 
 (defn read-edn
-  "Returns the table in file name of the table directory."
+  "Returns the table in file name. Throws when no full set of tables
+  is found."
   [name]
   (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
@@ -123,7 +124,6 @@
   [] (:spawns @tables))
 
 (defn growers
-  "Returns the tree growers by name."
   [] (:growers @tables))
 
 (defn light
@@ -321,7 +321,8 @@
   (if (str/includes? s ":") s (str "minecraft:" s)))
 
 (defn parse-id
-  "Returns the namespace and the path of resource location s."
+  "Returns the namespace and the path of resource location s. The
+  namespace is minecraft when s has none."
   [^String s]
   (let [i (str/index-of s \:)]
     [(if (and i (pos? (long i))) (subs s 0 i) "minecraft")
@@ -373,15 +374,16 @@
           (datapack))))
 
 (defn datapack-id
-  "Returns the id of an entry that the server sends to the client."
+  "Returns the place of entry in the datapack order of registry.
+  Throws for an unknown entry."
   ^long [registry entry]
   (or (get (get @datapack-index registry) entry)
       (throw (ex-info "unknown datapack entry"
                       {:registry registry :entry entry}))))
 
 (defn entry-id
-  "Returns the network id of entry in registry.
-  The registry is built in or comes from the datapack."
+  "Returns the network id of entry in registry, built in or from the
+  datapack. Throws for an unknown entry."
   ^long [registry entry]
   (if (contains? (registries) registry)
     (registry-id registry entry)
@@ -412,7 +414,8 @@
   (ex-info "unknown registry" {:registry registry}))
 
 (defn entry-name
-  "Returns the entry of registry with network id id."
+  "Returns the entry of registry with network id id. Throws for an
+  unknown registry or id."
   [registry ^long id]
   (let [m (get @by-id registry)
         v (get (datapack) registry)]
@@ -423,7 +426,6 @@
       :else (throw (unknown-id registry id)))))
 
 (defn- tag-paths
-  "Returns the registries the pack has tag files for, by path."
   []
   (let [root (io/file (or (dir) (throw (no-tables))) "pack" "tags")
         skip (inc (count (str root)))]
@@ -521,7 +523,8 @@
 (defn items [] @item-table)
 
 (defn cooldown-group
-  "Returns the group whose cooldown locks item."
+  "Returns the group whose cooldown locks item, item itself when it
+  names no group."
   [item]
   (get-in (items) [item :use-cooldown :group] item))
 
@@ -576,7 +579,7 @@
   (get-in (items) [item :title]))
 
 (defn rarity
-  "Returns the rarity of an item."
+  "Returns the rarity of item, :common when it has none."
   [item]
   (get-in (items) [item :rarity] :common))
 

@@ -136,7 +136,6 @@
    (/ (buf/read-int buf) 8.0)])
 
 (defn write-section-change
-  "Writes one block change of a section update."
   [^Buf buf [at state]]
   (let [v (bit-or (bit-shift-left (long state) 12) (long at))]
     (write-varlong buf v)))
@@ -258,12 +257,14 @@
   (doseq [x xs] (f buf x)))
 
 (defn write-holder-ref
-  "Writes a registry entry by reference to its id."
+  "Writes a registry entry by its id, plus one so that zero stays for
+  an entry sent in full."
   [^Buf buf ^long id]
   (write-varint buf (inc id)))
 
 (defn read-holder-ref
-  "Returns the id of a registry entry given by reference."
+  "Returns the id of a registry entry given by reference, or -1 for
+  an entry sent in full."
   ^long [^Buf buf]
   (dec (read-varint buf)))
 

@@ -94,7 +94,6 @@
       (into [] (mapcat #(if (= % :skip) [] %)) rs))))
 
 (defn- under
-  "Returns the tables in folder dir by their name in the folder."
   [tables dir]
   (let [prefix (str "minecraft:" dir "/")]
     (into (sorted-map)

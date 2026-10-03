@@ -300,6 +300,5 @@
     (.execute pool ^Runnable #(do (cancel) (autosave! timer)))))
 
 (defn stop-timer!
-  "Stops timer."
   [{:keys [^ScheduledExecutorService pool]}]
   (some-> pool .shutdownNow))

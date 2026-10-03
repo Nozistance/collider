@@ -4,7 +4,7 @@
 (set! *warn-on-reflection* true)
 
 (defn f32
-  "Returns x rounded to the nearest float."
+  "Returns x rounded to the nearest float, kept as a double."
   ^double [^double x]
   (double (unchecked-float x)))
 
@@ -14,7 +14,6 @@
   (long (unchecked-int x)))
 
 (defn floor
-  "Returns the greatest whole number not above x."
   ^long [^double x]
   (long (Math/floor x)))
 

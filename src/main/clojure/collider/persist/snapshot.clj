@@ -39,7 +39,6 @@
   (if (bytes? payload) payload (nippy/freeze payload freeze-opts)))
 
 (defn thaw
-  "Returns the chunk payload that data holds."
   [^bytes data]
   (nippy/thaw data))
 

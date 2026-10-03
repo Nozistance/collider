@@ -45,7 +45,6 @@
   (.get r id))
 
 (defn chunks
-  "Returns the ids of the chunks r holds."
   [^Region r]
   (.chunks r))
 

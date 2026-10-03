@@ -93,7 +93,6 @@
    (.clear b (int keep))))
 
 (defn ensure!
-  "Makes room for n more bytes."
   [^Buf b ^long n]
   (.ensure b (int n)))
 

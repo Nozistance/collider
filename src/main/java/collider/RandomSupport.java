@@ -11,13 +11,13 @@ public final class RandomSupport {
         return z ^ (z >>> 31);
     }
 
-    /// Returns a number from 0 to 1 for `a`, `b` and `c`.
+    /// Returns a number at least 0 and below 1 for `a`, `b` and `c`.
     public static double unit(long a, long b, long c) {
         long h = mixStafford13(mixStafford13(mixStafford13(a) + b) + c);
         return (double) (h & 0xFFFFFF) / 1.6777216E7;
     }
 
-    /// Returns a number from 0 to 1 for `a`, `b`, `c` and `d`.
+    /// Returns a number at least 0 and below 1 for `a`, `b`, `c` and `d`.
     public static double unit(long a, long b, long c, long d) {
         return unit(a, b, 31 * c + d);
     }

@@ -244,7 +244,6 @@ public final class Region {
         return data != null ? data : older(a - 1, id);
     }
 
-    /// Returns the ids of the chunks the region holds.
     public long[] chunks() {
         int n = 0;
         long[] ids = new long[SIDE * SIDE];

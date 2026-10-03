@@ -63,11 +63,9 @@
     (.init (int mode) s (IvParameterSpec. (.getEncoded s)))))
 
 (defn decrypting
-  "Returns in as read through the secret s."
   ^InputStream [^InputStream in s]
   (CipherInputStream. in (cipher Cipher/DECRYPT_MODE s)))
 
 (defn encrypting
-  "Returns out as written through the secret s."
   ^OutputStream [^OutputStream out s]
   (CipherOutputStream. out (cipher Cipher/ENCRYPT_MODE s)))

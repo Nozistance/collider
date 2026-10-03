@@ -84,7 +84,8 @@
     :else (compress-into! body payload deflater)))
 
 (defn write-frame!
-  "Writes the payload to the stream as one packet."
+  "Writes payload to out as one packet. A payload of threshold bytes
+  or more goes compressed. A negative threshold sends it plain."
   [^OutputStream out ^Buf payload ^Buf body ^Buf head threshold
    ^Deflater deflater]
   (buf/clear! body)

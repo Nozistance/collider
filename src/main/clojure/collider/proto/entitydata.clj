@@ -152,7 +152,6 @@
 (def ^:private ^:const entity-data-end 255)
 
 (defn write-entity-data
-  "Writes the tracked fields of an entity."
   [^Buf buf entries]
   (doseq [[idx type v] entries]
     (buf/write-byte! buf (int idx))
@@ -186,7 +185,6 @@
     (c/read-varint buf)))
 
 (defn read-entity-data
-  "Returns the tracked fields of an entity at the read point."
   [^Buf buf]
   (loop [out []]
     (let [idx (buf/read-unsigned-byte buf)]

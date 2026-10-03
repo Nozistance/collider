@@ -102,7 +102,6 @@
   (:rigid @sturdy-tables))
 
 (defn flags
-  "Returns the flag bits of every state, by id."
   ^bytes []
   @flag-table)
 
