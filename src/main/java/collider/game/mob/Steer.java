@@ -7,8 +7,15 @@ import clojure.lang.RT;
 /// The move control of a mob: what it does, where it walks to, the
 /// speed modifier it was given and the speed and forward input it
 /// drives with. A value; each change makes a new one.
-public record Steer(Keyword op, double x, double y, double z, double mult, double speed, double zza)
-        implements ILookup {
+public record Steer(
+        Keyword op,
+        double x,
+        double y,
+        double z,
+        double mult,
+        double speed,
+        double zza
+) implements ILookup {
 
     public static final Keyword MOVE_TO = Keyword.intern("move-to");
 
@@ -38,7 +45,8 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
         }
     }
 
-    /// Returns the angle of `y`, `x` as Mth.atan2 approximates it.
+    /// Returns the angle of `y`, `x` from a sine table and a short
+    /// series. It is close to `Math.atan2` but not equal.
     @SuppressWarnings("SuspiciousNameCombination")
     public static double atan2(double y, double x) {
         double d2 = x * x + y * y;
@@ -86,14 +94,14 @@ public record Steer(Keyword op, double x, double y, double z, double mult, doubl
     }
 
     /// Returns yaw turned toward the offset `xd`, `zd` by at most
-    /// `max` degrees, in floats as MoveControl.tick and rotlerp.
+    /// `max` degrees, in floats.
     public static double turned(double yaw, double xd, double zd, double max) {
         float to = (float) (atan2(zd, xd) * DEGREES) - 90.0F;
         return rotlerp(yaw, to, max);
     }
 
     /// Returns `a0` turned toward `b0` by at most `max` degrees, brought
-    /// back into one turn, in floats as MoveControl.rotlerp.
+    /// back into one turn, in floats.
     public static double rotlerp(double a0, double b0, double max) {
         float a = (float) a0, b = (float) b0, m = (float) max;
         float diff = wrapDegrees(b - a);

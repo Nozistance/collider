@@ -12,10 +12,10 @@ import java.util.Set;
 /// The bodies of one island by the block column they stand in, for
 /// the shoves between overlapping bodies. It changes in place as the
 /// bodies move, so one island steps with one grid. Threads may read
-/// it at once while no body moves. A body meets the others as
-/// Level.getPushableEntities lists them: by entity section in the
-/// order EntitySectionStorage walks them, then in the order they
-/// came into their section. Shoves from the bodies that stepped
+/// it at once while no body moves. A body meets the others in the
+/// order of the pushable entities of the level. Bodies go by entity
+/// section in the order of the section storage, and in each section
+/// in the order they came into it. Shoves from the bodies that stepped
 /// before come in the order they stepped, by id.
 public final class PushGrid extends AbstractMap<Long, PushCell> {
 
@@ -144,11 +144,29 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// and height `height`, come into its section at tick `c` and rank
     /// `r`, and returns this grid.
     public static PushGrid moved(
-            PushGrid g, long eid, double half, double height, double x, double y, double z, long c, long r) {
+            PushGrid g,
+            long eid,
+            double half,
+            double height,
+            double x,
+            double y,
+            double z,
+            long c,
+            long r
+    ) {
         return g.move(eid, half, height, x, y, z, c, r);
     }
 
-    private PushGrid move(long eid, double half, double height, double x, double y, double z, long c, long r) {
+    private PushGrid move(
+            long eid,
+            double half,
+            double height,
+            double x,
+            double y,
+            double z,
+            long c,
+            long r
+    ) {
         int s = Arrays.binarySearch(eids, eid);
         came[s] = c;
         ranks[s] = r;
@@ -180,7 +198,15 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
 
-    private int[] overlapping(double x, double y, double z, double half, double height, long eid, long hi) {
+    private int[] overlapping(
+            double x,
+            double y,
+            double z,
+            double half,
+            double height,
+            long eid,
+            long hi
+    ) {
         double r = half + widest, w = r + slack;
         long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
@@ -254,11 +280,27 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// by dx dz and the other body the opposite way. The shoves are
     /// not summed.
     public static Object shoves(
-            PushGrid g, double x, double y, double z, double half, double height, long eid, long hi) {
+            PushGrid g,
+            double x,
+            double y,
+            double z,
+            double half,
+            double height,
+            long eid,
+            long hi
+    ) {
         return g.shoved(x, y, z, half, height, eid, hi);
     }
 
-    private Object shoved(double x, double y, double z, double half, double height, long eid, long hi) {
+    private Object shoved(
+            double x,
+            double y,
+            double z,
+            double half,
+            double height,
+            long eid,
+            long hi
+    ) {
         int[] hits = overlapping(x, y, z, half, height, eid, hi);
         int n = hits.length;
         if (n == 0) return PersistentVector.EMPTY;
@@ -279,11 +321,26 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     /// Returns the ids of the bodies whose boxes overlap the box of
     /// the body `eid` of half width `half` and height `height` at
     /// `x`, `y`, `z`.
-    public static Object touching(PushGrid g, double x, double y, double z, double half, double height, long eid) {
+    public static Object touching(
+            PushGrid g,
+            double x,
+            double y,
+            double z,
+            double half,
+            double height,
+            long eid
+    ) {
         return g.touched(x, y, z, half, height, eid);
     }
 
-    private Object touched(double x, double y, double z, double half, double height, long eid) {
+    private Object touched(
+            double x,
+            double y,
+            double z,
+            double half,
+            double height,
+            long eid
+    ) {
         int[] hits = overlapping(x, y, z, half, height, eid, Long.MAX_VALUE);
         int n = hits.length;
         Object[] acc = new Object[n];
@@ -338,7 +395,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     public Set<Map.Entry<Long, PushCell>> entrySet() {
         Map<Long, int[]> in = new HashMap<>();
         for (int i = 0; i < eids.length; i++) {
-            long k = key(Math.floorDiv((long) Math.floor(xs[i]), 4), Math.floorDiv((long) Math.floor(zs[i]), 4));
+            long k = key(cell(xs[i]), cell(zs[i]));
             int[] c = in.getOrDefault(k, new int[0]);
             c = Arrays.copyOf(c, c.length + 1);
             c[c.length - 1] = i;
@@ -352,7 +409,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private PushCell cell(int[] c) {
         int n = c.length;
         long[] e = new long[n];
-        double[] h = new double[n], t = new double[n], x = new double[n], y = new double[n], z = new double[n];
+        double[] h = new double[n], t = new double[n];
+        double[] x = new double[n], y = new double[n], z = new double[n];
         for (int i = 0; i < n; i++) {
             int j = c[i];
             e[i] = eids[j];
