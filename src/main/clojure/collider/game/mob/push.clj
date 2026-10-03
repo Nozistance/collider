@@ -5,7 +5,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Islands PushGrid Slots Turns)))
+  (:import (collider.game.mob Bodies PushGrid Slots Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -20,21 +20,15 @@
 (defn- pushable-height ^double [e]
   (double (nth (pushable-box e) 1)))
 
-(defn- cell-key ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
-          (bit-and cz 0xFFFFFFFF)))
-
-(defn- cell-of ^long [^double x ^double z]
-  (cell-key (bit-shift-right (long (Math/floor x)) 2)
-            (bit-shift-right (long (Math/floor z)) 2)))
-
 (defn alive?
   "Returns true when a body takes shoves.
   A dead body takes none but still steps and shoves the living."
   [e]
   (let [h (:health e)] (or (nil? h) (pos? (double h)))))
 
-(defn- body?
+(defn body?
+  "Returns true when the entity of entry shoves and takes shoves in
+  a chunk of held."
   [held [_ e]]
   (and (or (= :player (:type e))
            (and (mobs/mob-type? (:type e))
@@ -52,28 +46,6 @@
 (defn- rank ^long [eid e]
   (if-let [r (nth (:arrived e) 1 nil)] (long r) (* 2 (long eid))))
 
-(defn- arrivals [es]
-  (let [n (count es) cs (long-array n) rs (long-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth es i)]
-        (aset cs i (came e))
-        (aset rs i (rank eid e))))
-    [cs rs]))
-
-(defn- filled ^PushGrid [es]
-  (let [n (count es) [cs rs] (arrivals es)
-        eids (long-array n) xs (double-array n) ys (double-array n)
-        zs (double-array n) hs (double-array n) ts (double-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth es i) p (:pos e)]
-        (aset eids i (long eid))
-        (aset xs i (double (v/x p)))
-        (aset ys i (double (v/y p)))
-        (aset zs i (double (v/z p)))
-        (aset hs i (pushable-half e))
-        (aset ts i (pushable-height e))))
-    (PushGrid. eids hs ts xs ys zs cs rs)))
-
 (defn- by-id? [es]
   (and (vector? es)
        (loop [i 1]
@@ -81,14 +53,6 @@
              (and (< (long (nth (nth es (dec i)) 0))
                      (long (nth (nth es i) 0)))
                   (recur (inc i)))))))
-
-(defn index-of
-  "Returns the index in which a body finds every body near enough to
-  shove it. Each move of a body changes it in place."
-  ^PushGrid [entries]
-  (filled (if (by-id? entries)
-            entries
-            (vec (sort-by first entries)))))
 
 (defn moved
   "Returns index after body eid moved to its place in entry e."
@@ -130,22 +94,68 @@
   ^long [^Slots s eid]
   (Slots/slot s (long eid)))
 
-(defn- grouped [entries]
-  (let [n (count entries)
-        eids (long-array n) cells (long-array n)]
-    (dotimes [i n]
-      (let [[eid e] (nth entries i) p (:pos e)]
-        (aset eids i (long eid))
-        (aset cells i (cell-of (double (v/x p)) (double (v/z p))))))
-    (Islands/of eids cells)))
+(defn bodies
+  "Returns no bodies, to which add-body adds them in id order."
+  ^Bodies []
+  (Bodies.))
+
+(defn add-body
+  "Adds the body of entry to bodies b and returns b. The body ticks
+  this tick when ticks? is true."
+  ^Bodies [^Bodies b [eid e :as entry] ticks?]
+  (let [p (:pos e) [h t] (pushable-box e)]
+    (Bodies/add b entry (long eid) (double h) (double t)
+                (double (v/x p)) (double (v/y p)) (double (v/z p))
+                (came e) (rank eid e) (boolean ticks?))))
+
+(defn joined-bodies
+  "Adds the bodies of o to bodies b after its own and returns b."
+  ^Bodies [^Bodies b ^Bodies o]
+  (Bodies/joined b o))
+
+(defn groups
+  "Returns the bodies of b in groups that one tick of movement cannot
+  bring together, each as the indices of its bodies in b by id."
+  [^Bodies b]
+  (Bodies/islands b))
+
+(defn entries-of
+  "Returns the entries of the bodies of b at indices g."
+  [^Bodies b ^ints g]
+  (Bodies/entries b g))
+
+(defn grid-of
+  "Returns the index of the bodies of b at indices g, as index-of
+  gives it for their entries."
+  ^PushGrid [^Bodies b ^ints g]
+  (Bodies/grid b g))
+
+(defn slots-of
+  "Returns the slots of the bodies of b at indices g."
+  ^Slots [^Bodies b ^ints g]
+  (Bodies/slots b g))
+
+(defn ticks-of
+  "Returns whether each body of b at indices g ticks this tick."
+  ^booleans [^Bodies b ^ints g]
+  (Bodies/ticking b g))
+
+(defn index-of
+  "Returns the index in which a body finds every body near enough to
+  shove it. Each move of a body changes it in place."
+  ^PushGrid [entries]
+  (let [es (if (by-id? entries) entries (sort-by first entries))
+        b (reduce #(add-body %1 %2 false) (bodies) es)]
+    (grid-of b (int-array (range (count es))))))
 
 (defn islands
   "Returns the pushable bodies in groups that one tick of movement
   cannot bring together. Each group steps on its own."
   [world held]
-  (let [entries (into [] (filter #(body? held %)) (:entities world))
-        group (fn [^ints g] (mapv #(nth entries %) g))]
-    (mapv group (grouped entries))))
+  (let [f (fn [b entry]
+            (if (body? held entry) (add-body b entry false) b))
+        b (reduce f (bodies) (:entities world))]
+    (mapv #(entries-of b %) (groups b))))
 
 (defn- scan [^PushGrid index eid p half height hi]
   (if index
@@ -189,11 +199,13 @@
 
 (defn turns
   "Calls mind and then body with the index of each body of the
-  pinned index, in parallel. The call of body with a body waits for
-  the calls with each body of lower id that it could meet in a tick
-  in which no body moves further than reach along x or z."
-  [^PushGrid index reach mind body]
-  (Turns/run index (double reach) mind body))
+  pinned index, in parallel, and join with each index in order. The
+  call of body with a body waits for the calls with each body of
+  lower id that it could meet in a tick in which no body moves
+  further than reach along x or z. The call of join with a body
+  follows the calls of body with it and each body of lower id."
+  [^PushGrid index reach mind body join]
+  (Turns/run index (double reach) mind body join))
 
 (defn within?
   "Returns true when body e, now e2, kept its box and moved no
