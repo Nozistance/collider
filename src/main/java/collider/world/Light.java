@@ -35,14 +35,23 @@ public final class Light {
     private final ChunkIndex chunks;
     private final int ch;
     private final BlockTables t;
-    private final LongQueue decreases = new LongQueue();
-    private final LongQueue increases = new LongQueue();
+    private final LongQueue decreases;
+    private final LongQueue increases;
 
-    private Light(Scratch<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
+    private Light(
+            Scratch<byte[]> cache,
+            ChunkIndex chunks,
+            int ch,
+            BlockTables t,
+            LongQueue decreases,
+            LongQueue increases
+    ) {
         this.cache = cache;
         this.chunks = chunks;
         this.ch = ch;
         this.t = t;
+        this.decreases = decreases;
+        this.increases = increases;
     }
 
     private static boolean inRange(long y) {
@@ -197,10 +206,11 @@ public final class Light {
         }
         if (n == 0) return null;
         Scratch<byte[]> cache = new Scratch<>();
-        new Light(cache, chunks, BLOCK, t).pass(cells, n);
+        LongQueue dec = new LongQueue(), inc = new LongQueue();
+        new Light(cache, chunks, BLOCK, t, dec, inc).pass(cells, n);
         if (sky) {
             long[] sc = skyCells(chunks, cells, n, t);
-            new Light(cache, chunks, SKY, t).pass(sc, sc.length);
+            new Light(cache, chunks, SKY, t, dec, inc).pass(sc, sc.length);
         }
         return cache;
     }
