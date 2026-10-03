@@ -19,9 +19,9 @@
     (into (hurt/timer-deltas eid e))))
 
 (defn based
-  "Returns living entity eid after LivingEntity.baseTick and its
-  deltas: fire, the void and the countdown of its hurt resistance,
-  its death timer, then its effects (:509). A hurt shows at once."
+  "Returns living entity eid after its base tick, and its deltas.
+  Fire, the void, the countdown of its hurt resistance, its death
+  timer and its effects act in this order. A hurt shows at once."
   [world eid e]
   (let [ds (base-of world eid e)
         e1 (if (seq ds) (hurt/hurt-now world eid e ds) e)
@@ -33,11 +33,9 @@
 
 (defn touched
   "Returns living entity eid after the hurts ls of its landing in its
-  move (Entity.checkFallDamage:1589), the blocks it touches at the
-  end of its move (LivingEntity.aiStep, applyEffectsFromBlocks
-  :3154), then the hurts cs of its push (pushEntities :3183), and ds
-  with their deltas and the show of each hurt of its turn. It is wet
-  as it was when its turn began."
+  move, the blocks it touches at the end of its move, the hurts cs of
+  its push and ds, with their deltas and the show of each hurt of its
+  turn. It is wet as it was when its turn began."
   [world eid e wet? ds ls cs]
   (let [fd (hurt/fire-deltas world eid e wet?)
         fs (if (or ls cs) (-> (vec ls) (into fd) (into cs)) fd)]
@@ -47,7 +45,6 @@
       (shown world eid e ds))))
 
 (defn ended
-  "Returns the deltas of dead entity eid whose death ends before its
-  step, as LivingEntity.tickDeath removes it."
+  "Returns the deltas that remove dead entity eid before its step."
   [eid e]
   (hurt/timer-deltas eid e))

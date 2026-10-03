@@ -446,11 +446,9 @@
      :player? (= :player (:type o))}))
 
 (defn- hurt-deltas
-  "Returns the deltas of the hurt a thrown e deals to what it hit
-  (Snowball.onHitEntity:56, 3 to a blaze, ThrownEgg.onHitEntity:60,
-  ThrownEnderpearl.onHitEntity:81): source thrown, knocked along the
-  motion d (Projectile.calculateHorizontalHurtKnockbackDirection
-  :385), shown at once."
+  "Returns the deltas of the hurt that thrown e deals to what it hit.
+  A snowball deals 3 to a blaze. The hurt knocks along the motion d
+  and shows at once."
   [world eid e d hit]
   (when-let [oid (:target hit)]
     (let [o (get-in world [:entities oid])

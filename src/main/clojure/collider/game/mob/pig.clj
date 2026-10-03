@@ -9,8 +9,8 @@
                 (constantly #{:carrot-on-a-stick})))
 
 (defn- lured
-  "Pig.registerGoals: a carrot on a stick lures a pig ahead of its
-  food, at the priority of the food, so neither lure takes a pig
+  "Returns goals in which a carrot on a stick lures a pig ahead of its
+  food. It has the priority of the food, so neither lure takes a pig
   from the other."
   [goals]
   (let [food? #(= :tempt (:kind %))

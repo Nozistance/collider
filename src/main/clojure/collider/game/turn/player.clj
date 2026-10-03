@@ -1,8 +1,8 @@
 (ns collider.game.turn.player
-  "The turn of a player in the entity tick list, as ServerPlayer.tick
-  (ServerPlayer.java:610): its hurt resistance counts down, its menu
-  shows what moved or closes, and a spectator keeps to its camera.
-  The rest of a player's tick comes after the level, in join order."
+  "The turn of a player in the entity tick list. Its hurt resistance
+  counts down, its menu shows what moved or closes, and a spectator
+  keeps to its camera. The rest of a player's tick comes after the
+  level, in join order."
   (:require [collider.game.apply :as apply]
             [collider.game.block.screen :as screen]
             [collider.game.camera :as camera]

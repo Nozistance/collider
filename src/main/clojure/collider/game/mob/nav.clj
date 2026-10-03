@@ -21,8 +21,8 @@
 (defn- half-of ^double [e] (double (nth (mobs/box-of e) 0)))
 
 (defn- path-length
-  "PathNavigation.getMaxPathLength: the follow range of mob e with the
-  bonus Mob.finalizeSpawn drew, never under the 16 a path needs."
+  "Returns the follow range of mob e with the bonus it drew at spawn,
+  never under the 16 a path needs."
   ^double [e]
   (let [b (double (or (:follow-bonus e) 0.0))
         r (mobs/attribute (:type e) :follow-range)

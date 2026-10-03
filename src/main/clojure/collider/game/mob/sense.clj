@@ -148,15 +148,14 @@
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
 (defn visibility
-  "Returns how much of its range a mob sees player p at, as
-  LivingEntity.getVisibilityPercent: a sneaking player less."
+  "Returns how much of its range a mob sees player p at. A sneaking
+  player is seen less."
   ^double [p]
   (if (:sneaking? p) 0.8 1.0))
 
 (defn in-range?
-  "Tells whether a mob at pos notices player p within range r, as
-  TargetingConditions.test: r shrinks with the player's visibility,
-  never below 2."
+  "Returns true when a mob at pos notices player p within range r.
+  The range shrinks with the visibility of the player, never below 2."
   [pos p ^double r]
   (let [d (max (* r (visibility p)) 2.0)]
     (<= (v/dist-sq pos (:pos p)) (* d d))))

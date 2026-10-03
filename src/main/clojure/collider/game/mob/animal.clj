@@ -75,8 +75,8 @@
   pos/one-in?)
 
 (defn- reduced-delay
-  "Goal.reducedTickDelay: ticks as goal selector passes, which come
-  every second tick."
+  "Returns ticks as passes of the goal selector, which runs on every
+  second tick."
   ^long [^long ticks]
   (quot (inc ticks) 2))
 
@@ -92,8 +92,8 @@
                :raid (double (float 0.7)) :wander 0.6}})
 
 (def ^:private look-ranges
-  "The range of LookAtPlayerGoal for each breed that looks further
-  than six blocks."
+  "The range of the look at player goal for each breed that looks
+  further than six blocks."
   {:rabbit 10.0})
 
 (defn- look-range ^double [e]
@@ -174,8 +174,7 @@
            :arrived [(* 2 (long t)) (* 2 (long eid))])))
 
 (defn- breeding-orb
-  "Returns the orb of 1 to 7 points that
-  Animal.finalizeSpawnChildFromBreeding drops where mob e stands."
+  "Returns the orb of 1 to 7 points that breeding drops at mob e."
   [eid e t]
   (let [roll #(random/of-key t eid [:breed-orb %])
         value (inc (long (* 7.0 (double (roll :value)))))]
@@ -237,9 +236,9 @@
        nil])))
 
 (defn tempt
-  "TemptGoal: follows the nearest player holding what lures gives
-  for the breed, and calms down for a while under key calm when it
-  lets go."
+  "Returns the goal to follow the nearest player who holds what lures
+  gives for the breed. Under key calm it calms down for a while when
+  it lets go."
   [kind calm lures]
   {:kind kind :flags #{:move :look}
    :start (fn [_ _ e t tempters]
@@ -335,8 +334,8 @@
       best)))
 
 (defn- player-to-look-at
-  "LookAtPlayerGoal.canUse: the player nearest the eyes of mob e
-  among those it notices, as [distance-squared id player]."
+  "Returns the player nearest the eyes of mob e among those it
+  notices, with its distance squared and its id."
   [world e]
   (let [eye (eye-of e (mobs/eye-height e))]
     (reduce #(nearer world e eye %1 %2) nil
@@ -464,8 +463,8 @@
        (boolean-array (map (comp boolean :every-tick?) gs))))))
 
 (defn- full-pass?
-  "Mob.serverAiStep: goals run on every second tick, and eid decides
-  which, but on each of the first two ticks of a mob."
+  "Returns true when mob eid runs its goals on tick t. The parity of
+  eid picks every second tick, and a new mob runs them twice first."
   [eid e t]
   (let [b (:born e)]
     (or (even? (+ (long t) (long eid)))
@@ -514,8 +513,7 @@
    (out/all (out/status eid :love))])
 
 (defn- eaten
-  "Animal.playEatingSound: the breeds that eat aloud do it in the
-  voice of mob e."
+  "Returns the eating sound of mob e for the breeds that eat aloud."
   [t eid e]
   (when-let [snd (mobs/eating-sound e)]
     (let [r #(random/of-key t eid [:eat %])
