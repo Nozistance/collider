@@ -15,6 +15,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.num :as num]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -74,8 +75,8 @@
   [e]
   (not (and (game-mode/creative? e) (:flying e))))
 
-(defn- pushed [b id e d12]
-  (let [[kb dmg] (impulse b e (:pos e) d12 (density b e))]
+(defn- pushed [b id e d12 seen]
+  (let [[kb dmg] (impulse b e (:pos e) d12 seen)]
     (cond
       (entity/player? e)
       {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
@@ -85,15 +86,18 @@
                    (hurtable? e) (conj [:damage id dmg (:src b)])
                    (moving? kb) (conj [:push id kb]))})))
 
+(defn- hanging? [e] (contains? hanging/types (:type e)))
+
 (defn hit
   "Returns what blast b does to body e of id, d12 of twice its power
-  away. A player gets its push with the effect of the blast."
-  [b id e d12]
-  (if (contains? hanging/types (:type e))
+  away, of which b sees share seen. A player gets its push with the
+  effect of the blast."
+  [b [id e d12 seen]]
+  (if (hanging? e)
     (let [by (:cause (:src b))]
       {:ds (drops/kill-deltas (:world b) id e (:causer b) by)
        :gone? true})
-    (pushed b id e d12)))
+    (pushed b id e d12 seen)))
 
 (defn- distance [b]
   (let [c (:center b) r (twice (:power b))
@@ -108,6 +112,15 @@
                         [(v/x center) (v/y center) (v/z center)]))]
     [(f (- r)) (f r)]))
 
+(def ^:private ^:const seen-least
+  "The least number of bodies of a blast that take its sight at
+  once."
+  16)
+
+(defn- sight [b]
+  (fn [[_ e :as body]]
+    (conj body (when-not (hanging? e) (density b e)))))
+
 (defn bodies
   "Returns [id e d12] of the bodies of index idx that blast b reaches,
   in section order. Function now gives the body of an id as it is,
@@ -121,6 +134,13 @@
                 (when-let [e (now id)]
                   (when-not (game-mode/spectator? e) [id e d12])))))]
     (into [] (keep f) (sections/within idx lo hi))))
+
+(defn sighted
+  "Returns the bodies, each [id e d12], with the share seen of each
+  that blast b sees, as [id e d12 seen]."
+  [b bodies]
+  (let [least (if (:frozen? b) seen-least Long/MAX_VALUE)]
+    (par/pmapv (sight b) bodies 4 least)))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1]) (random/of-key [seed :p2]))]
@@ -205,12 +225,17 @@
     (concat (level/read-absent-deltas (explosion/loaded-payloads rg))
             (delta/authored ds (author b)))))
 
+(def ^:private ^:const split-power
+  "The least power of a blast whose rays go at once."
+  2.0)
+
 (defn- blocks
   "Returns the deltas that break and burn the blocks of blast b, the
   TNT they prime, the drops and how many blocks it reached."
   [{:keys [rg exposure center power seed fire?] :as b}]
-  (let [rays (explosion/rays rg exposure center power seed)
-        reached (explosion/reached rays center)
+  (let [split? (and (:frozen? b) (>= (double power) split-power))
+        hit (explosion/rays rg exposure center power seed split?)
+        reached (explosion/reached hit center)
         [chains destroy] (broken-cells b (:blocks reached))
         fires (if fire? (fire-cells b @(:cells reached) destroy) [])]
     {:ds (changed-deltas b (into (mapv (fn [p] [p 0]) destroy) fires))
@@ -224,10 +249,11 @@
   the entity that caused it and the TNT already lit."
   [world spec]
   (let [{:keys [center by]} spec
-        rg (reader world center)]
+        rg (reader world center)
+        e (explosion/exposure rg center)]
     (assoc spec :world world :rg rg :power (double (:power spec))
            :seed [(:tick world) (or by center)]
-           :exposure (explosion/exposure rg center))))
+           :exposure e :frozen? (explosion/frozen? e))))
 
 (defn finish
   "Returns the deltas of the blocks and the effect of blast b after it
@@ -250,9 +276,9 @@
   [world spec]
   (let [b (of world spec)
         es (:entities world)
-        hit-of (fn [[id e d12]] [id (hit b id e d12)])
+        hit-of (fn [body] [(nth body 0) (hit b body)])
         idx (sections/of (seq es))
-        hits (mapv hit-of (bodies b idx #(get es %)))
+        hits (mapv hit-of (sighted b (bodies b idx #(get es %))))
         {:keys [ds spawns]} (finish b (motions hits))]
     (-> ds
         (into (mapcat (comp :ds second)) hits)

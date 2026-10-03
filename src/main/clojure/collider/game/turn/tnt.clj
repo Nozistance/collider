@@ -149,8 +149,9 @@
         (update :out into ds)
         (update :idx place))))
 
-(defn- hit-body [tick b [s motions] [id e d12]]
-  (let [h (blast/hit b id e d12)
+(defn- hit-body [tick b [s motions] body]
+  (let [id (nth body 0)
+        h (blast/hit b body)
         s (if (:gone? h) (gone s id) (written s tick id (:ds h)))
         s (if (neg? (long id)) s (update s :out into (:ds h)))]
     [s (cond-> motions (:motion h) (assoc id (:motion h)))]))
@@ -189,7 +190,8 @@
   [s world eid e pos]
   (let [t (:tick world)
         b (blast/of world (spec s eid e pos))
-        bodies (blast/bodies b (:idx s) (now-of s eid))
+        bodies (->> (blast/bodies b (:idx s) (now-of s eid))
+                    (blast/sighted b))
         [s motions] (reduce #(hit-body t b %1 %2) [s {}] bodies)
         {:keys [ds spawns]} (blast/finish b motions)]
     (-> s
