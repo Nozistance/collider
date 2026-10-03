@@ -177,6 +177,29 @@ public final class Section {
         return pal == null ? q : pal[q];
     }
 
+    /// Writes the states of the `n` blocks from index `i` along x
+    /// into `out`, from `at` and `step` apart.
+    public void blocksAlongX(int i, int n, char[] out, int at, int step) {
+        if (bits == 0) {
+            for (int k = 0; k < n; k++) out[at + k * step] = (char) pal[0];
+            return;
+        }
+        long mask = (1L << bits) - 1;
+        int c = (int) ((i * mul) >>> 32);
+        int left = per - (i - c * per);
+        long w = data[c] >>> ((i - c * per) * bits);
+        for (int k = 0; k < n; k++) {
+            if (left == 0) {
+                w = data[++c];
+                left = per;
+            }
+            int q = (int) (w & mask);
+            out[at + k * step] = (char) (pal == null ? q : pal[q]);
+            w >>>= bits;
+            left--;
+        }
+    }
+
     private int index(long[] d, int i) {
         int c = (int) ((i * mul) >>> 32);
         return (int) ((d[c] >>> ((i - c * per) * bits)) & ((1L << bits) - 1));
