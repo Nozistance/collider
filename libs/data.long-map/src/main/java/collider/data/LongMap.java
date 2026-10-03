@@ -60,13 +60,11 @@ public final class LongMap extends APersistentMap
         return l == null ? null : l.val(u);
     }
 
-    /// Returns the value at key `k`, or `nf` when the key is absent.
     public Object get(long k, Object nf) {
         Object v = get(k);
         return v == null ? nf : v;
     }
 
-    /// Returns true when the map has key `k`.
     public boolean has(long k) {
         return Node.leafOf(root, Node.u(k)) != null;
     }
@@ -76,7 +74,6 @@ public final class LongMap extends APersistentMap
         return with(Node.put(root, Node.u(k), Node.value(v), null));
     }
 
-    /// Returns the map without key `k`.
     public LongMap remove(long k) {
         return with(Node.remove(root, Node.u(k), null));
     }
@@ -109,7 +106,6 @@ public final class LongMap extends APersistentMap
         return with(Node.combine(Node.UNION, root, o.root, f));
     }
 
-    /// Returns the set of keys.
     @Override
     public LongSet keySet() {
         return root == null ? LongSet.EMPTY : new LongSet(Node.keys(root), null);
@@ -139,12 +135,12 @@ public final class LongMap extends APersistentMap
         return Node.fold(root, n, combinef, reducef, Node.KV, fj);
     }
 
-    /// Returns the map of keys `ks` to values `vs`.
+    /// Returns the map of keys `ks` to values `vs`. Throws on a nil value.
     public static LongMap fromSorted(long[] ks, Object[] vs) {
         return EMPTY.with(Node.fromSorted(ks, vs));
     }
 
-    /// Returns the keys in order.
+    /// Returns the keys in ascending order.
     public long[] keys() {
         long[] ks = new long[count()];
         int i = 0;

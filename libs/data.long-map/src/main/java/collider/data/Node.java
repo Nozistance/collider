@@ -449,8 +449,8 @@ final class Node {
         return acc;
     }
 
-    /// Reducers' fork-join functions, as `PersistentHashMap.fold` takes
-    /// them, so a fold runs on the reducers' pool.
+    /// The fork-join functions of `clojure.core.reducers`, in the order
+    /// `PersistentHashMap.fold` takes them.
     record Fork(IFn invoke, IFn task, IFn fork, IFn join) {}
 
     static Object fold(Node n, int leaf, IFn combinef, IFn reducef, int mode, Fork fj) {

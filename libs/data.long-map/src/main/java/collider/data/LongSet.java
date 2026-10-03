@@ -38,17 +38,14 @@ public final class LongSet extends APersistentSet
         return new LongSet(n, meta);
     }
 
-    /// Returns true when the set has `k`.
     public boolean has(long k) {
         return Node.leafOf(root, Node.u(k)) != null;
     }
 
-    /// Returns the set with `k`.
     public LongSet add(long k) {
         return with(Node.put(root, Node.u(k), null, null));
     }
 
-    /// Returns the set without `k`.
     public LongSet remove(long k) {
         return with(Node.remove(root, Node.u(k), null));
     }
@@ -76,12 +73,10 @@ public final class LongSet extends APersistentSet
         return with(Node.combine(Node.UNION, root, o.root, null));
     }
 
-    /// Returns the keys in both sets.
     public LongSet intersection(LongSet o) {
         return with(Node.combine(Node.INTER, root, o.root, null));
     }
 
-    /// Returns the keys of this set that are not in `o`.
     public LongSet difference(LongSet o) {
         return with(Node.combine(Node.DIFF, root, o.root, null));
     }
@@ -109,12 +104,11 @@ public final class LongSet extends APersistentSet
         return Node.fold(root, n, combinef, reducef, Node.KEYS, fj);
     }
 
-    /// Returns the set of keys `ks`.
     public static LongSet fromSorted(long[] ks) {
         return EMPTY.with(Node.fromSorted(ks, null));
     }
 
-    /// Returns the keys in order.
+    /// Returns the keys in ascending order.
     public long[] keys() {
         long[] ks = new long[count()];
         int i = 0;
