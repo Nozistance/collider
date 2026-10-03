@@ -9,7 +9,6 @@
             [collider.game.schema :as schema]
             [collider.game.systems.attacks :as attacks]
             [collider.game.systems.block.entities :as block-entities]
-            [collider.game.systems.block.events :as block-events]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.camera :as camera]
@@ -73,7 +72,6 @@
     #'random-tick/random-ticks
     #'chunks/chunk-views]
    [#'block-updates/block-flush #'tracker/tracker]
-   [#'block-events/block-events]
    entity-systems
    [#'block-entities/block-entities]
    [#'player-tick/player-tick]
