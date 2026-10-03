@@ -113,36 +113,49 @@
     [(f (- r)) (f r)]))
 
 (def ^:private ^:const seen-least
-  "The least number of bodies of a blast that take its sight at
-  once."
+  "The least number of entities near a blast that it reaches in
+  parts at once."
   16)
 
 (defn- sight [b]
   (fn [[_ e :as body]]
     (conj body (when-not (hanging? e) (density b e)))))
 
+(defn- reach
+  "Returns the function that gives [id e d12] of an index entry that
+  blast b reaches, nil for one it does not."
+  [b now]
+  (let [d12-of (distance b)]
+    (fn [[id p]]
+      (let [d12 (d12-of p)]
+        (when (<= d12 1.0)
+          (when-let [e (now id)]
+            (when-not (game-mode/spectator? e) [id e d12])))))))
+
+(defn- near [b idx]
+  (let [[lo hi] (reach-box b)]
+    (sections/within idx lo hi)))
+
 (defn bodies
   "Returns [id e d12] of the bodies of index idx that blast b reaches,
   in section order. Function now gives the body of an id as it is,
   nil when it is gone."
   [b idx now]
-  (let [[lo hi] (reach-box b)
-        d12-of (distance b)
-        f (fn [[id p]]
-            (let [d12 (d12-of p)]
-              (when (<= d12 1.0)
-                (when-let [e (now id)]
-                  (when-not (game-mode/spectator? e) [id e d12])))))]
-    (into [] (keep f) (sections/within idx lo hi))))
+  (into [] (keep (reach b now)) (near b idx)))
 
-(defn sighted
-  "Returns the bodies, each [id e d12], with the share seen of each
-  that blast b sees, as [id e d12 seen]."
-  [b bodies]
-  (let [least (if (and (:frozen? b) (> (par/threads) 1))
+(defn struck
+  "Returns (f [id e d12 seen]) for each body of index idx that blast
+  b reaches, in section order, with the share seen of it that b
+  sees. Function now gives the body of an id as it is, nil when it
+  is gone. Function f must be pure, and its nil results are left
+  out."
+  [b idx now f]
+  (let [reached (reach b now) seen (sight b)
+        one (fn [entry] (some-> (reached entry) seen f))
+        least (if (and (:frozen? b) (> (par/threads) 1))
                 seen-least
                 Long/MAX_VALUE)]
-    (par/pmapv (sight b) bodies 4 least)))
+    (into [] (filter some?) (par/pmapv one (near b idx) 4 least))))
 
 (defn- explosion-pitch ^double [seed]
   (let [r (- (random/of-key [seed :p1]) (random/of-key [seed :p2]))]
@@ -286,7 +299,7 @@
         es (:entities world)
         hit-of (fn [body] [(nth body 0) (hit b body)])
         idx (sections/of (seq es))
-        hits (mapv hit-of (sighted b (bodies b idx #(get es %))))
+        hits (struck b idx #(get es %) hit-of)
         {:keys [ds spawns]} (finish b (motions hits))]
     (-> ds
         (into (mapcat (comp :ds second)) hits)
