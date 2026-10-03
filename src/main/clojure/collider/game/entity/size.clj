@@ -1,13 +1,13 @@
 (ns collider.game.entity.size
   "The bounding boxes and eye heights of entity types."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
-(defn- f32 ^double [v] (double (float v)))
-
 (defn- measured [{:keys [width height eye baby poses]}]
-  (cond-> {:box [(* 0.5 (f32 width)) (f32 height)] :eye (f32 eye)}
+  (cond-> {:box [(* 0.5 (num/f32 width)) (num/f32 height)]
+           :eye (num/f32 eye)}
     baby (assoc :baby (measured baby))
     poses (assoc :poses (update-vals poses measured))))
 

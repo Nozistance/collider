@@ -1,13 +1,12 @@
 (ns collider.game.tick
-  "The tick: its phases and how they run."
+  "The tick, its phases and how they run."
   (:require [collider.game.apply :as apply]
-            [collider.game.level :as level]
-            [collider.game.schema :as schema]
             [collider.game.cost :as cost]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.detector :as detector]
-            [collider.log :as log]
+            [collider.game.level :as level]
+            [collider.game.schema :as schema]
             [collider.game.systems.attacks :as attacks]
             [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.events :as block-events]
@@ -17,6 +16,7 @@
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
             [collider.game.systems.containers :as containers]
+            [collider.game.systems.damage :as damage]
             [collider.game.systems.daynight :as daynight]
             [collider.game.systems.entities :as entities]
             [collider.game.systems.hanging :as hanging]
@@ -30,7 +30,8 @@
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tracker :as tracker]
             [collider.game.systems.weather :as weather-system]
-            [collider.game.systems.damage :as damage]))
+            [collider.log :as log]
+            [collider.par :as par]))
 
 (set! *warn-on-reflection* true)
 
@@ -56,26 +57,29 @@
   "Every system the level tick drives off the world it is given."
   (into packet-systems entity-systems))
 
-(def phases [[#'spawning/placing]
-             [#'chunks/chunk-loading]
-             packet-systems
-             [#'hanging/hanging-uses #'attacks/attacks]
-             [#'daynight/daynight #'weather-system/weather]
-             [#'sleep/sleep]
-             [#'block-updates/block-updates]
-             [#'block-updates/fluid-updates]
-             [#'chunks/unloading
-              #'natural/natural-spawns
-              #'random-tick/random-ticks
-              #'chunks/chunk-views]
-             [#'block-updates/block-flush #'tracker/tracker]
-             [#'block-events/block-events]
-             entity-systems
-             [#'block-entities/block-entities]
-             [#'player-tick/player-tick]
-             [#'tracker/late-tracking]
-             [#'chunks/chunk-streaming]
-             [#'detector/observe]])
+(def phases
+  "The phases of the tick in the order they run. The systems of one
+  phase see the same world."
+  [[#'spawning/placing]
+   [#'chunks/chunk-loading]
+   packet-systems
+   [#'hanging/hanging-uses #'attacks/attacks]
+   [#'daynight/daynight #'weather-system/weather]
+   [#'sleep/sleep]
+   [#'block-updates/block-updates]
+   [#'block-updates/fluid-updates]
+   [#'chunks/unloading
+    #'natural/natural-spawns
+    #'random-tick/random-ticks
+    #'chunks/chunk-views]
+   [#'block-updates/block-flush #'tracker/tracker]
+   [#'block-events/block-events]
+   entity-systems
+   [#'block-entities/block-entities]
+   [#'player-tick/player-tick]
+   [#'tracker/late-tracking]
+   [#'chunks/chunk-streaming]
+   [#'detector/observe]])
 
 (def dims
   "The dimensions the tick runs, in a fixed order."
@@ -139,7 +143,7 @@
   (or (identical? home dim) (not (:once (meta s)))))
 
 (defn- held? [v]
-  (if (coll? v) (not (empty? v)) (boolean v)))
+  (if (coll? v) (boolean (seq v)) (boolean v)))
 
 (defn- tagged? [tags ds]
   (loop [i (dec (count ds))]
@@ -192,10 +196,13 @@
          (deltas/run-weighed cost/heavy? timed ks fs)
          dim)))))
 
+(defn- awake-deltas [world ds phase dim]
+  (when-not (asleep? world dim)
+    (level-deltas world ds phase dim)))
+
 (defn- phase-deltas [world ds phase]
   (reduce (fn [pd dim]
-            (if-let [d (when-not (asleep? world dim)
-                         (level-deltas world ds phase dim))]
+            (if-let [d (awake-deltas world ds phase dim)]
               (assoc pd dim d)
               pd))
           {} dims))
@@ -251,15 +258,12 @@
 (defn tick
   "Returns the world and the deltas after one tick of the events.
   A system that fails gives no deltas this tick, the others go on.
-  The event filters of world under [:hooks :event-filters] pass
-  the events in turn before the tick, each as (f world events). Its
-  delta filters under [:hooks :delta-filters] pass the deltas of
-  each phase in turn before they apply, each as (f level deltas). A
-  filter that fails, or gives a delta of a tag nothing applies,
-  passes on what it was given."
+  The event filters of the world pass the events before the tick,
+  its delta filters the deltas of each phase before they apply. A
+  filter that fails passes on what it was given."
   ([world events] (tick world events phases))
   ([world events phases]
-   (deltas/in-pool
+   (par/in-pool
      #(let [evs (if-let [fs (hooked world :event-filters)]
                   (passed world fs world events vector?)
                   events)

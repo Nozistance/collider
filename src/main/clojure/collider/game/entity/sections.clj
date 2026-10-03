@@ -1,8 +1,6 @@
 (ns collider.game.entity.sections
-  "Entities by the entity section they stand in, in the order of
-  EntitySectionStorage.getEntities: the sections of each section x by
-  SectionPos.asLong, and the entities of a section as they came to
-  it."
+  "Entities by the entity section they stand in, in the order the
+  game visits them."
   (:require [collider.data.long-map :as lm]
             [collider.vec :as v]))
 
@@ -39,7 +37,7 @@
 
 (defn placed
   "Returns index idx with entity id at p. An entity that comes to
-  another section goes last in it, as EntitySection.add."
+  another section goes last in it."
   [idx id p]
   (let [k (key-of p) at (get (:at idx) id) entry [id (v/v3 p)]]
     (if (and at (== k (long (nth at 0))))
@@ -79,9 +77,8 @@
   (subseq secs >= (packed x 0 0) <= (packed x -1 -1)))
 
 (defn within
-  "Returns [id place] of the entities in the sections that
-  EntitySectionStorage.forEachAccessibleNonEmptySection visits for
-  the box from lo to hi, in its order."
+  "Returns [id place] of the entities in the sections the game
+  visits for the box from lo to hi, in the order it visits them."
   [idx lo hi]
   (let [y0 (section (- (v/y lo) 4.0)) y1 (section (v/y hi))
         z0 (section (- (v/z lo) 2.0)) z1 (section (+ (v/z hi) 2.0))

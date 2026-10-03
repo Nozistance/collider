@@ -6,6 +6,7 @@
             [collider.game.entity.size :as size]
             [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block])
@@ -16,10 +17,14 @@
 (set! *warn-on-reflection* true)
 
 (def thrown-types
+  "The types of thrown bodies."
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
     :experience-bottle})
 
-(defn player? [e] (= :player (:type e)))
+(defn player?
+  "Returns true when e is a player."
+  [e]
+  (= :player (:type e)))
 
 (defn living?
   "Returns true when e is a player or a mob."
@@ -60,10 +65,7 @@
 (defmacro ^:private extmap [e]
   (field (with-meta e {:tag `Mob}) "__extmap"))
 
-(defn- compact
-  "Returns mob e with its few keys beyond its fields in an array map,
-  which finds a key without hashing it."
-  [e]
+(defn- compact [e]
   (let [x (extmap e)]
     (if (and (instance? PersistentHashMap x) (<= (count x) 8))
       (with-extmap e (into {} x))
@@ -131,10 +133,8 @@
   `(new Mob ~@(map at mob-fields) (meta ~o) ~(field o "__extmap")))
 
 (defmacro with
-  "Returns entity e with the keys of the map kvs set to their values.
-  A mob takes them all in one copy and stays itself when it already
-  holds them bit for bit; a field that keeps its value keeps its
-  object. The keys are fields of Mob."
+  "Returns entity e with the keys of kvs set to their values.
+  A mob that already holds them all is returned as it is."
   [e kvs]
   (assert (every? (set (map keyword mob-fields)) (keys kvs)))
   (let [x (gensym "e")
@@ -144,7 +144,7 @@
     `(let [~x ~e ~@(mapcat (fn [[k v]] [(vs k) v]) kvs)]
        (if (instance? Mob ~x)
          (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o (kept o at))))
-         (assoc ~x ~@(mapcat identity vs))))))
+         (assoc ~x ~@(into [] cat vs))))))
 
 (defn- fields-of [cls]
   (eval (list (symbol (str cls) "getBasis"))))
@@ -155,12 +155,14 @@
        ~@(map-indexed put fields))))
 
 (defn- put-field [a x k v fields]
-  (let [set (fn [i f] [(keyword f) `(do (aset ~a ~i ~v) ~x)])]
+  (let [put (fn [i f] [(keyword f) `(do (aset ~a ~i ~v) ~x)])]
     `(case ~k
-       ~@(apply concat (map-indexed set fields))
+       ~@(into [] (comp (map-indexed put) cat) fields)
        (assoc ~x ~k ~v))))
 
-(defmacro ^:private merger [cls]
+(defmacro ^:private merger
+  "Returns the function that merges a map into a record of class cls."
+  [cls]
   (let [fields (fields-of cls)
         e (with-meta (gensym "e") {:tag cls})
         a (with-meta (gensym "a") {:tag 'objects})
@@ -330,8 +332,8 @@
              (random/of-longs tick eid (+ knock-key k 1)))))
 
 (defn- knock-side
-  "Returns xd zd, or a tiny side drawn while they are too short,
-  as LivingEntity.knockback:1657."
+  "Returns xd zd, or a tiny random side push while they are too
+  short."
   [tick eid ^double xd ^double zd]
   (loop [i 0 xd xd zd zd]
     (if (< (+ (* xd xd) (* zd zd)) least-turn)
@@ -353,22 +355,21 @@
      (- (/ (v/z v) 2.0) (* (double zd) p))]))
 
 (defn knocked
-  "Returns living entity e knocked back with power away from
-  direction xd zd, as LivingEntity.knockback:1651."
+  "Returns living entity e knocked back with power, away from
+  direction xd zd."
   [e power xd zd tick eid]
   (let [p (resisted e (double power))]
     (if (<= p 0.0)
       e
       (let [[xd zd] (knock-side tick eid (double xd) (double zd))
             xd (double xd) zd (double zd)
-            f (Math/sqrt (+ (* xd xd) (* zd zd)))]
-        (assoc e :vel (knock-vel (or (:vel e) [0.0 0.0 0.0])
-                                 (:on-ground e) p (/ xd f)
-                                 (/ zd f)))))))
+            f (Math/sqrt (+ (* xd xd) (* zd zd)))
+            vel (or (:vel e) [0.0 0.0 0.0])
+            ground? (:on-ground e)]
+        (assoc e :vel (knock-vel vel ground? p (/ xd f) (/ zd f)))))))
 
 (defn rested
-  "Returns entity e with its hurt resistance one tick lower, as
-  LivingEntity.baseTick counts it down."
+  "Returns entity e with its hurt resistance one tick lower."
   [e]
   (let [r (long (or (:hurt-resist e) 0))]
     (if (pos? r) (assoc e :hurt-resist (dec r)) e)))
@@ -376,35 +377,30 @@
 (def ^:private generic {:type :generic})
 
 (defn- taken
-  "Returns entity e after a hurt from src it takes, as
-  LivingEntity.hurtServer:1240-1272 marks the one who caused it and
-  the last damage source."
+  "Returns entity e that remembers who hurt it with src and how."
   [e src tick]
   (cond-> e
     (:player? src) (assoc :hurt-by-player tick)
     (and (instance? Mob e) (not (identical? generic src)))
     (assoc :hurt-cause (:type src))))
 
-(defn- f32 ^double [x] (double (float x)))
-
 (defn- lost
-  "Returns health after damage, as LivingEntity.actuallyHurt:1979
-  sets it in float."
+  "Returns health after damage, in float precision."
   ^double [health damage]
-  (max 0.0 (f32 (- (f32 health) (double damage)))))
+  (max 0.0 (num/f32 (- (num/f32 health) (double damage)))))
 
 (defn- hurt-again [e health amount src tick]
-  (let [last-d (f32 (or (:last-damage e) 0.0))
-        amount (double amount)]
+  (let [last-d (num/f32 (or (:last-damage e) 0.0))
+        amount (double amount)
+        more (num/f32 (- amount last-d))]
     (if (> amount last-d)
-      (taken (assoc e :health (lost health (f32 (- amount last-d)))
-                      :last-damage amount)
+      (taken (assoc e :health (lost health more) :last-damage amount)
              src tick)
       e)))
 
 (defn- knock-dir
-  "Returns xd zd of LivingEntity.dealDefaultKnockback:1298: against
-  the motion of a projectile, else toward where src came from."
+  "Returns the knockback direction, against the motion of a
+  projectile or toward where src came from."
   [e src]
   (let [m (:along src) p (:from src) pos (:pos e)]
     (cond m [(- (v/x m)) (- (v/z m))]
@@ -436,29 +432,27 @@
 (defn- quieted [e]
   (if (instance? Mob e) (assoc e :no-action 0) e))
 
+(defn- hurt-living [e health amount src tick eid]
+  (if (> (long (or (:hurt-resist e) 0)) (/ max-resist 2.0))
+    (hurt-again (quieted e) health amount src tick)
+    (hurt-fully (quieted e) health amount src tick eid)))
+
 (defn hurt
-  "Returns entity e after amount of damage from source src, as
-  LivingEntity.hurtServer:1189. A source is a map: :type the damage
-  type, :cause and :direct the eids, :from where it knocks from,
-  :along the motion of the projectile that knocks, :pos where it
-  came from, :player? when a player caused it. A full
-  hit leaves the source in :struck-by until it is shown."
+  "Returns entity e after amount of damage from source src.
+  A full hit keeps src in :struck-by until it is shown."
   ([e amount] (hurt e amount nil 0 0))
   ([e amount src tick eid]
    (let [health (double (or (:health e) 0.0))
-         resist (long (or (:hurt-resist e) 0))
-         amount (max 0.0 (f32 amount))
-         src (or src generic)]
+         amount (max 0.0 (num/f32 amount))]
      (cond
        (not (pos? health)) e
        (contains? #{:item :experience-orb} (:type e))
        (hurt-item e health amount)
-       (> resist (/ max-resist 2.0))
-       (hurt-again (quieted e) health amount src tick)
-       :else (hurt-fully (quieted e) health amount src tick eid)))))
+       :else
+       (hurt-living e health amount (or src generic) tick eid)))))
 
 (defn taken?
-  "Returns true when entity e took the hurt that made h of it."
+  "Returns true when h, entity e after a hurt, shows a hit."
   [e h]
   (or (< (double (:health h 0.0)) (double (:health e 0.0)))
       (not (identical? (:struck-by h) (:struck-by e)))))

@@ -5,9 +5,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def block-list {:queue (lm/long-map) :index (lm/long-map) :next 0})
+(def block-list
+  "The empty list of block ticks."
+  {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
-(def fluid-list {:queue (lm/long-map) :index (lm/long-map) :next 0})
+(def fluid-list
+  "The empty list of fluid ticks."
+  {:queue (lm/long-map) :index (lm/long-map) :next 0})
 
 (defn- queued [q at id ty order]
   (let [m (or (get q at) (lm/long-map))
@@ -127,8 +131,8 @@
   chunks take turns by the order of their next tick."
   [ticks t runs?]
   (let [rows (due-rows ticks (long t))
-        es (persistent! (reduce #(due-into %1 %2 runs?)
-                                (transient []) rows))]
+        into-due #(due-into %1 %2 runs?)
+        es (persistent! (reduce into-due (transient []) rows))]
     (mapv (fn [[_ _ id ty]] [id ty])
           (if (next rows) (merged (lanes es)) (sort by-order es)))))
 
@@ -179,10 +183,9 @@
   (for [[at m] (:queue ticks) [id tys] m ty (keys tys)] [at id ty]))
 
 (defn copied
-  "Returns the ticks that LevelTicks.copyAreaFrom copies, each as
-  [at id ty order]: every tick of a block id that in? accepts, moved
-  to (moved id). They keep their order among themselves and follow
-  the last of them."
+  "Returns as [at id ty order] every tick of a block id that in?
+  accepts, moved to (moved id). They keep their order among
+  themselves and follow the last tick of ticks."
   [ticks in? moved]
   (let [xf (comp (mapcat row-entries) (filter #(in? (% 2))))
         es (into [] xf (:queue ticks))
@@ -215,9 +218,10 @@
 (defn saved-by-chunk
   "Returns the ticks of every chunk as saved, by chunk id."
   [ticks t]
-  (update-vals (group-by #(chunk/block-id-chunk (% 2))
-                         (mapcat row-entries (:queue ticks)))
-               #(mapv (partial relative t) (sort-by second %))))
+  (let [by-chunk #(chunk/block-id-chunk (% 2))
+        es (mapcat row-entries (:queue ticks))]
+    (update-vals (group-by by-chunk es)
+                 #(mapv (partial relative t) (sort-by second %)))))
 
 (defn restored
   "Returns ticks with the saved ticks back, due after their delays.

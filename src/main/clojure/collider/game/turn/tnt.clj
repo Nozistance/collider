@@ -13,6 +13,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.push :as push]
             [collider.game.turn.overlay :as overlay]
+            [collider.par :as par]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -187,7 +188,7 @@
   ServerExplosion.explode: bodies, then blocks."
   [s world eid e pos]
   (let [t (:tick world)
-        b (blast/blast world (spec s eid e pos))
+        b (blast/of world (spec s eid e pos))
         bodies (blast/bodies b (:idx s) (now-of s eid))
         [s motions] (reduce #(hit-body t b %1 %2) [s {}] bodies)
         {:keys [ds spawns]} (blast/finish b motions)]
@@ -233,6 +234,6 @@
     (when (pos? (count tnts))
       (finished
         (reduce #(turn world %1 %2)
-                {:w world :cur (deltas/keyed (:entities world)) :ds ds
+                {:w world :cur (par/keyed (:entities world)) :ds ds
                  :out [] :fresh 0}
                 tnts)))))

@@ -13,11 +13,23 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:const first-eid
+  "The eid the first entity of a new world gets."
+  1000000)
+
+(def world-spawn
+  "The spawn of a new world."
+  [24 4 8])
+
+(def ^:const world-border
+  "How far from the centre the world border stands, in blocks."
+  29999984)
+
 (defn chunk-entity?
   "Returns true when entity e belongs to chunk id.
   Players never do."
   [^long id e]
-  (and (not= :player (:type e))
+  (and (not (entity/player? e))
        (= id (chunk/pos-chunk (:pos e)))))
 
 (defn payload-of
@@ -32,7 +44,7 @@
      :fluid-ticks (or fluid-ticks [])}))
 
 (defn- grouped [m eid e]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     m
     (let [id (chunk/pos-chunk (:pos e))]
       (assoc! m id (conj (get m id []) (MapEntry/create eid e))))))
@@ -45,11 +57,11 @@
 
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
-  Players do not belong to a chunk. Ticks count as delays from now.
-  The entities come from entries when given, as chunk-entities
-  groups them."
+  Ticks count as delays from now. Entries are its entities when
+  given."
   ([w id]
-   (chunk-payload w id (filter #(chunk-entity? id (val %)) (:entities w))))
+   (let [own? #(chunk-entity? id (val %))]
+     (chunk-payload w id (filter own? (:entities w)))))
   ([w id entries]
    (let [id (long id) t (long (:tick w 0))]
      (payload-of (get (:chunks w) id)
@@ -71,7 +83,7 @@
   "Returns [payload next-eid] with the bodies of the payload under new
   ids. Only the uuid of a body outlives its chunk."
   [w {:keys [entities] :as payload}]
-  (let [n (long (:next-eid w 1000000))
+  (let [n (long (:next-eid w first-eid))
         renumber (fn [i [_ e]] [(+ n (long i)) e])
         fresh (map-indexed renumber entities)]
     [(assoc payload :entities (into {} fresh))
@@ -97,11 +109,11 @@
   [w id {:keys [chunk block-entities entities] :as payload}]
   (let [id (long id)
         t (long (:tick w 0))
-        es (keep (entity-entry t))
+        loaded-xf (keep (entity-entry t))
         bes (into {} (map (block-entity-entry t)) block-entities)]
     (cond-> (-> w
                 (update :chunks assoc id chunk)
-                (update :entities into es entities)
+                (update :entities into loaded-xf entities)
                 (ticks-restored t payload)
                 (update :loading disj id))
       (seq block-entities) (with-block-entities id bes))))
@@ -109,7 +121,7 @@
 (declare profile-of)
 
 (defn- named-player? [e]
-  (and (= :player (:type e)) (:name e)))
+  (and (entity/player? e) (:name e)))
 
 (defn- store-profiles [profiles world]
   (into profiles
@@ -138,6 +150,8 @@
   (merge rules/defaults (select-keys v (keys rules/defaults))))
 
 (def world
+  "Every key of the world with its default, its scope and how it is
+  stored and loaded."
   {:tick               {:default 0 :store store-long
                         :load load-long :schema :int
                         :scope :shared}
@@ -145,7 +159,7 @@
    :clocks             {:default {} :store store-same
                         :load identity :schema :map
                         :scope :shared}
-   :next-eid           {:default 1000000 :store store-same
+   :next-eid           {:default first-eid :store store-same
                         :load identity :schema :int
                         :scope :shared}
    :rules              {:default rules/defaults :store store-same
@@ -166,7 +180,7 @@
    :stored             {:default (lm/long-set) :scope :level}
    :loading            {:default (lm/long-set) :scope :level}
    :unknown            {:default (lm/long-map) :scope :level}
-   :world-spawn        {:default [24 4 8] :store store-same
+   :world-spawn        {:default world-spawn :store store-same
                         :load identity
                         :schema [:tuple :int :int :int]
                         :scope :shared}
@@ -230,23 +244,27 @@
   [:overworld :the-nether :the-end])
 
 (def Level
+  "The schema of the stored keys of a level."
   (into [:map {:closed true}
          [:stored {:optional true} [:fn set?]]]
         (for [[k {s :schema}] level-table :when s]
           [k {:optional true} s])))
 
 (def Meta
+  "The schema of the stored keys of the world."
   (into [:map {:closed true}
          [:levels {:optional true} [:map-of :keyword Level]]]
         (for [[k {s :schema}] shared-table :when s]
           [k {:optional true} s])))
 
+(defn- shared-defaults []
+  (into {} (for [[k v] shared-table :when (contains? v :default)]
+             [k (:default v)])))
+
 (def initial-world
-  (let [lv (update-vals level-table :default)
-        top (into {} (for [[k v] shared-table
-                           :when (contains? v :default)]
-                       [k (:default v)]))]
-    (assoc top :levels (zipmap dims (repeat lv)))))
+  "The world before anything happens in it."
+  (let [lv (update-vals level-table :default)]
+    (assoc (shared-defaults) :levels (zipmap dims (repeat lv)))))
 
 (defn snapshot
   "Returns what w stores of the keys of scope, :shared or :level."
@@ -271,6 +289,7 @@
   (loaded-of level-table m))
 
 (def profile
+  "Every key a player profile keeps, with its default."
   {:inventory    {:default {}}
    :held-slot    {:default 0}
    :spawn        {}

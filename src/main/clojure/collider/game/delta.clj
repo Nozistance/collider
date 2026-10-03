@@ -1,11 +1,11 @@
 (ns collider.game.delta
   "The delta tags, what each means, and the effect messages."
   (:require [collider.data.long-map :as lm]
-            [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
+            [collider.game.schema :as schema]
             [collider.vec :as v]
             [collider.world.env.weather :as weather]
             [malli.core :as m]
@@ -41,10 +41,13 @@
 (def Text [:or :string :map])
 
 (def Author
+  "Who made a block change, and with what."
   [:map [:by {:optional true} Eid] [:owner {:optional true} Eid]
    [:with {:optional true} :keyword]])
 
-(def Authors [:or Author [:vector [:tuple Author :int]]])
+(def Authors
+  "One author, or the authors of runs of records."
+  [:or Author [:vector [:tuple Author :int]]])
 
 (defn- merge-diff [cur add drop]
   (let [s (or cur (lm/long-set))
@@ -52,16 +55,17 @@
     (if (seq drop) (lm/difference s (lm/long-set drop)) s)))
 
 (defn- new-eids [w w' _]
-  (range (long (:next-eid w 1000000)) (long (:next-eid w' 1000000))))
+  (range (long (:next-eid w schema/first-eid))
+         (long (:next-eid w' schema/first-eid))))
+
+(defn- quit [w [_ eid]] (player/quit w eid))
 
 (def registry
-  "What each delta tag means: its :schema, its :scope and its :apply.
-  A :world delta changes the world as a whole, a :level one the level
-  it is applied to, an :entity one the entity of its eid and an :input
-  one is an event of a player. :apply takes the world and the delta,
-  for an :entity delta the tick, the entity and the delta. :eids tells
-  which entities a delta may add and :by-eid that it belongs to the
-  level of its eid."
+  "Every delta tag with its scope, its schema and how it applies.
+  A world delta changes the whole world, a level delta the level it
+  is applied to, an entity delta the entity of its eid and an input
+  delta is an event of a player. The fx tag holds the effect messages
+  with their fields."
   {:set-blocks
    {:scope :level
     :schema [:cat Records [:? [:maybe Coll]] [:? [:maybe Coll]]
@@ -143,8 +147,7 @@
    {:scope :level :schema [:cat Vec3 :int :any [:? Vec3]]
     :apply level/xp-award :eids new-eids}
    :remove-entity
-   {:scope :level :schema [:cat Eid] :by-eid true
-    :apply (fn [w [_ eid]] (player/quit w eid))}
+   {:scope :level :schema [:cat Eid] :by-eid true :apply quit}
    :level-deltas
    {:scope :world :schema [:cat :keyword [:sequential :any]]}
    :change-dimension
@@ -215,8 +218,7 @@
     :apply (fn [_ e [_ _ vel]]
              (update e :vel (fnil v/add [0.0 0.0 0.0]) vel))}
    :player-join {:scope :input :apply player/join}
-   :player-quit
-   {:scope :input :apply (fn [w [_ eid]] (player/quit w eid))}
+   :player-quit {:scope :input :apply quit}
    :move {:scope :input :apply player/move}
    :client-tick-end {:scope :input :apply player/client-tick-end}
    :abilities {:scope :input :apply player/abilities}
@@ -236,11 +238,124 @@
    :client-settings {:scope :input :apply player/client-settings}
    :place {:scope :input :apply player/place}
    :use-item {:scope :input :apply player/use-item}
-   :release-use {:scope :input :apply player/release-use}})
+   :release-use {:scope :input :apply player/release-use}
+   :fx
+   {:scope :out
+    :messages
+    {:blocks-changed [[:cp :int] [:records Records]]
+     :load-chunk [[:id :int]]
+     :store-chunk [[:id :int] [:payload :map]]
+     :break-effect [[:pos Pos] [:state State]]
+     :explosion [[:center Vec3] [:radius number?] [:blocks :int]
+                 [:motions :map] [:pitch number?]]
+     :sound [[:kind :keyword] [:pos Vec3] [:volume number?]
+             [:pitch number?] [:source {:optional true} :keyword]
+             [:entity {:optional true} :int]]
+     :particles [[:kind :keyword] [:state [:maybe State]] [:pos Vec3]
+                 [:count :int] [:speed number?]
+                 [:spread {:optional true} Vec3]]
+     :trail [[:pos Vec3] [:target Vec3] [:color :int] [:ticks :int]]
+     :extinguish [[:pos Pos]]
+     :fizz [[:pos Pos]]
+     :bonemeal [[:pos Pos]]
+     :level-event [[:event :keyword] [:pos Pos] [:data :int]]
+     :sign-editor [[:pos Pos] [:front? :boolean]]
+     :open-book [[:hand [:enum :main :off]]]
+     :block-event [[:pos Pos] [:action :int] [:param :int]]
+     :block-entity [[:pos Pos]]
+     :time [[:age :int] [:clocks :map]]
+     :teleport [[:pos Vec3] [:yaw number?] [:pitch number?]
+                [:relative :int]]
+     :health [[:health number?]]
+     :experience [[:progress number?] [:level :int] [:total :int]]
+     :respawn []
+     :change-dimension [[:pos Vec3] [:yaw number?] [:pitch number?]
+                        [:relative :int] [:forget Coll]
+                        [:untrack Coll]]
+     :default-spawn [[:dimension :keyword] [:pos Pos] [:yaw number?]
+                     [:pitch number?]]
+     :rule-flag [[:kind :keyword] [:on? :boolean]]
+     :rain-started []
+     :rain-stopped []
+     :rain-level [[:level number?]]
+     :thunder-level [[:level number?]]
+     :keepalive [[:id :int]]
+     :disconnect [[:text Text]]
+     :close []
+     :joined []
+     :block-ack [[:sequence :int]]
+     :cooldown [[:group :keyword] [:ticks :int]]
+     :mob-effect [[:eid Eid] [:effect :keyword] [:amplifier :int]
+                  [:duration :int] [:flags :int]]
+     :mob-effect-gone [[:eid Eid] [:effect :keyword]]
+     :set-slot [[:slot :int] [:stack [:maybe Stack]]]
+     :carried [[:stack [:maybe Stack]]]
+     :held-slot [[:slot :int]]
+     :inventory [[:slots [:sequential :any]]
+                 [:carried [:maybe Stack]]]
+     :suggestions [[:id :int] [:start :int] [:length :int]
+                   [:matches [:sequential :any]]]
+     :system-chat [[:text Text]]
+     :player-chat [[:text Text]]
+     :overlay [[:text Text]]
+     :title [[:kind [:enum :title :subtitle :actionbar]] [:text Text]]
+     :title-times [[:fade-in :int] [:stay :int] [:fade-out :int]]
+     :clear-titles [[:reset :boolean]]
+     :player-rotation [[:yaw :double] [:relative-yaw :boolean]
+                       [:pitch :double] [:relative-pitch :boolean]]
+     :look-at [[:from [:enum :feet :eyes]] [:pos :any]
+               [:id [:maybe :int]]
+               [:anchor [:maybe [:enum :feet :eyes]]]]
+     :named-sound [[:id :string] [:source :string] [:pos Vec3]
+                   [:volume :double] [:pitch :double] [:seed :int]]
+     :stop-sound [[:id [:maybe :string]] [:source [:maybe :string]]]
+     :stats [[:stats :map]]
+     :game-rules [[:rules :map]]
+     :reload []
+     :reloaded []
+     :view-distance [[:distance :int]]
+     :simulation-distance [[:distance :int]]
+     :tab-add [[:entries [:sequential :map]]]
+     :tab-remove [[:uuids [:sequential :uuid]]]
+     :tab-latency [[:entries [:sequential :map]]]
+     :tab-header [[:header Text] [:footer Text]]
+     :tab-game-mode [[:uuid :uuid] [:mode :keyword]]
+     :game-mode [[:mode :keyword]]
+     :camera [[:id :int]]
+     :abilities [[:invulnerable? :boolean] [:flying? :boolean]
+                 [:may-fly? :boolean] [:instabuild? :boolean]]
+     :move [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
+            [:on-ground :boolean]]
+     :move-look [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
+                 [:yaw :int] [:pitch :int] [:on-ground :boolean]]
+     :look [[:eid Eid] [:yaw :int] [:pitch :int]
+            [:on-ground :boolean]]
+     :sync-pos [[:eid Eid] [:pos Vec3] [:yaw number?]
+                [:pitch number?] [:on-ground :boolean]]
+     :head-look [[:eid Eid] [:yaw number?]]
+     :meta [[:eid Eid] [:type :keyword] [:meta :map]]
+     :velocity [[:eid Eid] [:vel Vec3]]
+     :attributes [[:eid Eid] [:attributes [:sequential :any]]]
+     :equipment [[:eid Eid] [:slot :int] [:stack [:maybe Stack]]]
+     :animation [[:eid Eid] [:kind :keyword]]
+     :status [[:eid Eid] [:kind :keyword]]
+     :damage-event [[:eid Eid] [:kind :keyword] [:cause [:maybe Eid]]
+                    [:direct [:maybe Eid]] [:pos [:maybe Vec3]]]
+     :collect [[:eid Eid] [:collector Eid]]
+     :open-screen [[:container :int] [:menu :keyword] [:title :map]]
+     :container-content
+     [[:container :int] [:state-id :int]
+      [:items [:sequential [:maybe Stack]]] [:carried [:maybe Stack]]]
+     :container-slot [[:container :int] [:state-id :int] [:slot :int]
+                      [:stack [:maybe Stack]]]
+     :container-data [[:container :int] [:id :int] [:value :int]]
+     :container-close [[:container :int]]}}})
+
+(def ^:private ^:const author-slot 4)
 
 (defn- unauthored? [d]
   (case (nth d 0)
-    :set-blocks (< (count d) 5)
+    :set-blocks (<= (count d) author-slot)
     :level-deltas (boolean (some unauthored? (nth d 2)))
     false))
 
@@ -249,15 +364,12 @@
 (defn- with-author [d by]
   (if (identical? :level-deltas (nth d 0))
     (assoc d 2 (authored (nth d 2) by))
-    (conj (into d (repeat (- 4 (count d)) nil)) by)))
+    (conj (into d (repeat (- author-slot (count d)) nil)) by)))
 
 (defn authored
   "Returns deltas ds with author by on each block change that has
-  none, also in the deltas they hand to another level. An author names
-  the entity that made the change in :by, the one that owns it in
-  :owner and what made it in :with. Given eid and with, the author is
-  {:by eid :with with}, with no :by for no eid. Runs [by n] in place
-  of the author tell the authors of n records in a row."
+  none, also in the deltas they hand to another level. Given eid and
+  with, the author is entity eid and with names what made the change."
   ([ds by]
    (if (and by (some unauthored? ds))
      (mapv #(if (unauthored? %) (with-author % by) %) ds)
@@ -280,138 +392,16 @@
         registry))
 
 (def world-apply
-  "Returns the apply of a :world or :level tag, by tag."
+  "How each world and level tag applies, by tag."
   (applies #{:world :level}))
 
 (def entity-apply
-  "Returns the apply of an :entity tag, by tag."
+  "How each entity tag applies, by tag."
   (applies #{:entity}))
 
 (def input-apply
-  "Returns the apply of an :input tag, by tag."
+  "How each input tag applies, by tag."
   (applies #{:input}))
-
-(def fx-messages
-  {:blocks-changed    [[:cp :int] [:records Records]]
-   :load-chunk        [[:id :int]]
-   :store-chunk       [[:id :int] [:payload :map]]
-   :break-effect      [[:pos Pos] [:state State]]
-   :explosion         [[:center Vec3] [:radius number?]
-                       [:blocks :int] [:motions :map]
-                       [:pitch number?]]
-   :sound             [[:kind :keyword] [:pos Vec3]
-                       [:volume number?] [:pitch number?]
-                       [:source {:optional true} :keyword]
-                       [:entity {:optional true} :int]]
-   :particles         [[:kind :keyword] [:state [:maybe State]]
-                       [:pos Vec3] [:count :int]
-                       [:speed number?]]
-   :trail             [[:pos Vec3] [:target Vec3] [:color :int]
-                       [:ticks :int]]
-   :extinguish        [[:pos Pos]]
-   :fizz              [[:pos Pos]]
-   :bonemeal          [[:pos Pos]]
-   :level-event       [[:event :keyword] [:pos Pos] [:data :int]]
-   :sign-editor       [[:pos Pos] [:front? :boolean]]
-   :open-book         [[:hand [:enum :main :off]]]
-   :block-event       [[:pos Pos] [:action :int] [:param :int]]
-   :block-entity      [[:pos Pos]]
-   :time              [[:age :int] [:clocks :map]]
-   :teleport          [[:pos Vec3] [:yaw number?] [:pitch number?]
-                       [:relative :int]]
-   :health            [[:health number?]]
-   :experience        [[:progress number?] [:level :int]
-                       [:total :int]]
-   :respawn           []
-   :change-dimension  [[:pos Vec3] [:yaw number?] [:pitch number?]
-                       [:relative :int]
-                       [:forget Coll] [:untrack Coll]]
-   :default-spawn     [[:dimension :keyword] [:pos Pos]
-                       [:yaw number?] [:pitch number?]]
-   :rule-flag         [[:kind :keyword] [:on? :boolean]]
-   :rain-started      []
-   :rain-stopped      []
-   :rain-level        [[:level number?]]
-   :thunder-level     [[:level number?]]
-   :keepalive         [[:id :int]]
-   :disconnect        [[:text Text]]
-   :close             []
-   :joined            []
-   :block-ack         [[:sequence :int]]
-   :cooldown          [[:group :keyword] [:ticks :int]]
-   :mob-effect        [[:eid Eid] [:effect :keyword]
-                       [:amplifier :int] [:duration :int]
-                       [:flags :int]]
-   :mob-effect-gone   [[:eid Eid] [:effect :keyword]]
-   :set-slot          [[:slot :int] [:stack [:maybe Stack]]]
-   :carried           [[:stack [:maybe Stack]]]
-   :held-slot         [[:slot :int]]
-   :inventory         [[:slots [:sequential :any]]
-                       [:carried [:maybe Stack]]]
-   :suggestions       [[:id :int] [:start :int] [:length :int]
-                       [:matches [:sequential :any]]]
-   :system-chat       [[:text Text]]
-   :player-chat       [[:text Text]]
-   :overlay           [[:text Text]]
-   :title             [[:kind [:enum :title :subtitle :actionbar]]
-                       [:text Text]]
-   :title-times       [[:fade-in :int] [:stay :int] [:fade-out :int]]
-   :clear-titles      [[:reset :boolean]]
-   :player-rotation   [[:yaw :double] [:relative-yaw :boolean]
-                       [:pitch :double] [:relative-pitch :boolean]]
-   :look-at           [[:from [:enum :feet :eyes]] [:pos :any]
-                       [:id [:maybe :int]]
-                       [:anchor [:maybe [:enum :feet :eyes]]]]
-   :named-sound       [[:id :string] [:source :string] [:pos Vec3]
-                       [:volume :double] [:pitch :double]
-                       [:seed :int]]
-   :stop-sound        [[:id [:maybe :string]]
-                       [:source [:maybe :string]]]
-   :stats             [[:stats :map]]
-   :game-rules        [[:rules :map]]
-   :reload            []
-   :reloaded          []
-   :view-distance     [[:distance :int]]
-   :simulation-distance [[:distance :int]]
-   :tab-add           [[:entries [:sequential :map]]]
-   :tab-remove        [[:uuids [:sequential :uuid]]]
-   :tab-latency       [[:entries [:sequential :map]]]
-   :tab-header        [[:header Text] [:footer Text]]
-   :tab-game-mode     [[:uuid :uuid] [:mode :keyword]]
-   :game-mode         [[:mode :keyword]]
-   :camera            [[:id :int]]
-   :abilities         [[:invulnerable? :boolean] [:flying? :boolean]
-                       [:may-fly? :boolean] [:instabuild? :boolean]]
-   :move              [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
-                       [:on-ground :boolean]]
-   :move-look         [[:eid Eid] [:dx :int] [:dy :int] [:dz :int]
-                       [:yaw :int] [:pitch :int]
-                       [:on-ground :boolean]]
-   :look              [[:eid Eid] [:yaw :int] [:pitch :int]
-                       [:on-ground :boolean]]
-   :sync-pos          [[:eid Eid] [:pos Vec3] [:yaw number?]
-                       [:pitch number?] [:on-ground :boolean]]
-   :head-look         [[:eid Eid] [:yaw number?]]
-   :meta              [[:eid Eid] [:type :keyword] [:meta :map]]
-   :velocity          [[:eid Eid] [:vel Vec3]]
-   :attributes        [[:eid Eid] [:attributes [:sequential :any]]]
-   :equipment         [[:eid Eid] [:slot :int]
-                       [:stack [:maybe Stack]]]
-   :animation         [[:eid Eid] [:kind :keyword]]
-   :status            [[:eid Eid] [:kind :keyword]]
-   :damage-event      [[:eid Eid] [:kind :keyword]
-                       [:cause [:maybe Eid]] [:direct [:maybe Eid]]
-                       [:pos [:maybe Vec3]]]
-   :collect           [[:eid Eid] [:collector Eid]]
-   :open-screen       [[:container :int] [:menu :keyword]
-                       [:title :map]]
-   :container-content [[:container :int] [:state-id :int]
-                       [:items [:sequential [:maybe Stack]]]
-                       [:carried [:maybe Stack]]]
-   :container-slot    [[:container :int] [:state-id :int]
-                       [:slot :int] [:stack [:maybe Stack]]]
-   :container-data    [[:container :int] [:id :int] [:value :int]]
-   :container-close   [[:container :int]]})
 
 (defn- with-address [fields]
   (into [:map [:msg :keyword] [:to {:optional true} Eid]
@@ -420,11 +410,13 @@
         fields))
 
 (def Fx
+  "The schema of an effect."
   (into [:multi {:dispatch :msg}]
-        (for [[msg fields] fx-messages]
+        (for [[msg fields] (:messages (:fx registry))]
           [msg (with-address fields)])))
 
 (def Delta
+  "The schema of a delta."
   (into [:multi {:dispatch first}]
         (concat
           (for [[tag {:keys [scope schema]}] registry :when schema]
@@ -444,7 +436,9 @@
   (when-let [e (@delta-explainer delta)]
     (me/humanize e)))
 
-(def validate? (Boolean/getBoolean "collider.validate"))
+(def validate?
+  "True when the deltas are checked against their schemas."
+  (Boolean/getBoolean "collider.validate"))
 
 (defn check!
   "Returns deltas, or throws on the first one that breaks its schema."

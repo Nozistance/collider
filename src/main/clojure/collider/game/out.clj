@@ -4,11 +4,20 @@
 
 (set! *warn-on-reflection* true)
 
-(defn to [eid msg] [:fx (assoc msg :to eid)])
+(defn to
+  "Returns msg as an effect for player eid alone."
+  [eid msg]
+  [:fx (assoc msg :to eid)])
 
-(defn all [msg] [:fx msg])
+(defn all
+  "Returns msg as an effect for every player it concerns."
+  [msg]
+  [:fx msg])
 
-(defn except [eid msg] [:fx (assoc msg :except eid)])
+(defn except
+  "Returns msg as an effect for every player it concerns but eid."
+  [eid msg]
+  [:fx (assoc msg :except eid)])
 
 (defn everyone
   "Returns msg as an effect of the server.
@@ -139,8 +148,7 @@
   {:msg :reload})
 
 (defn reloaded
-  "Returns the effect of a finished reload.
-  It holds the data a reload resends to the players."
+  "Returns the effect of a finished reload."
   []
   {:msg :reloaded})
 
@@ -168,21 +176,21 @@
    :fade-out (long fade-out)})
 
 (defn clear-titles
-  "Returns the effect that hides the titles; reset? also forgets
-  their text and times."
+  "Returns the effect that hides the titles. With reset? the client
+  also forgets their text and times."
   [reset?]
   {:msg :clear-titles :reset (boolean reset?)})
 
 (defn player-rotation
-  "Returns the effect that turns a player to yaw and pitch; a
+  "Returns the effect that turns a player to yaw and pitch. A
   relative one is added to where the player looks."
   [yaw relative-yaw? pitch relative-pitch?]
   {:msg :player-rotation :yaw (double yaw) :relative-yaw relative-yaw?
    :pitch (double pitch) :relative-pitch relative-pitch?})
 
 (defn look-at
-  "Returns the effect that turns a player from its anchor from to
-  pos, or to the given anchor of the entity of id when there is one."
+  "Returns the effect that turns a player to look at pos, or at the
+  anchor of entity id when there is one."
   [from pos id anchor]
   {:msg :look-at :from from :pos pos :id id :anchor anchor})
 
@@ -267,8 +275,8 @@
 
 (defn damage-event
   "Returns the effect that entity eid took a full hit of damage type
-  kind, caused by the entity cause through the entity direct, from
-  pos; each may be nil."
+  kind, caused by entity cause through entity direct, from pos. Each
+  of these may be nil."
   [eid kind cause direct pos]
   {:msg :damage-event :eid eid :kind kind :cause cause
    :direct direct :pos pos})
@@ -290,7 +298,7 @@
   ([kind pos volume pitch source]
    (cond-> {:msg :sound :kind kind :pos pos
             :volume (double volume) :pitch (double pitch)}
-           source (assoc :source source))))
+     source (assoc :source source))))
 
 (def sound-sources
   "The mixer channels of sounds, in the order the client numbers
@@ -306,8 +314,8 @@
    :volume (double volume) :pitch (double pitch) :seed (long seed)})
 
 (defn stop-sound
-  "Returns the effect that stops the sound named id on channel source;
-  nil for either stops all of them."
+  "Returns the effect that stops the sound named id on channel
+  source. Nil for either stops all of them."
   [id source]
   {:msg :stop-sound :id id :source source})
 
@@ -391,7 +399,7 @@
 
 (defn level-event
   "Returns level event event at pos with data. The event is the name
-  of the vanilla level event as a keyword."
+  of the level event as a keyword."
   ([event pos] (level-event event pos 0))
   ([event pos data]
    {:msg :level-event :event event :pos pos :data data}))

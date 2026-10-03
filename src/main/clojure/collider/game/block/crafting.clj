@@ -27,7 +27,7 @@
 
 (defn result [ctx stacks ^long w]
   (let [input (craft/trim {:w w :h w :stacks (vec stacks)})]
-    (when-let [r (craft/find (craft/index) input nil)]
+    (when-let [r (craft/recipe-for (craft/index) input nil)]
       (when (allowed? ctx r)
         (craft/assemble r input)))))
 
@@ -38,7 +38,7 @@
       (dissoc inv slot))))
 
 (defn- remaining [input]
-  (if-let [r (craft/find (craft/index) input nil)]
+  (if-let [r (craft/recipe-for (craft/index) input nil)]
     (craft/remainders r input)
     (:stacks input)))
 

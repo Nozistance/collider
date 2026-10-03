@@ -1,8 +1,8 @@
 (ns collider.game.level
-  "A level of the world: its view, its entities and its writes."
-  (:require [collider.game.block.blockentity :as be]
+  "A level of the world with its view, its entities and its writes."
+  (:require [collider.data.long-map :as lm]
+            [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
-            [collider.data.long-map :as lm]
             [collider.game.clock :as clock]
             [collider.game.entity :as entity]
             [collider.game.orb :as orb]
@@ -117,7 +117,8 @@
   [world]
   (doseq [[dim lv] (:levels world)
           [k v] world
-          :when (and (not= :levels k) (not (identical? v (get lv k))))]
+          :when (and (not= :levels k)
+                     (not (identical? v (get lv k))))]
     (throw (ex-info "a level strayed from the shared keys"
                     {:dim dim :key k}))))
 
@@ -125,8 +126,7 @@
   (reduce-kv (fn [_ _ _] (reduced false)) true m))
 
 (defn idle?
-  "Returns true when level lv holds nothing a tick could change.
-  Such a level has no chunks, no entities and no chunk on its way."
+  "Returns true when level lv holds nothing a tick could change."
   [lv]
   (and (zero? (count (:chunks lv))) (vacant? (:entities lv))
        (empty? (:loading lv)) (vacant? (:unknown lv))))
@@ -161,10 +161,11 @@
   [lv types]
   (vary-meta lv assoc ::types [(:entities lv) types]))
 
+(defn- with-ids [types acc t]
+  (if-let [s (get types t)] (if acc (lm/union acc s) s) acc))
+
 (defn- ids-of [types ts]
-  (reduce (fn [acc t]
-            (if-let [s (get types t)] (if acc (lm/union acc s) s) acc))
-          nil ts))
+  (reduce #(with-ids types %1 %2) nil ts))
 
 (defn of-types
   "Returns [eid entity] of the entities of lv whose type is in ts.
@@ -197,7 +198,7 @@
   "Returns w with entity eid put through f, when w holds it."
   [w eid f & args]
   (if (get-in w [:entities eid])
-    (clojure.core/apply update-in w [:entities eid] f args)
+    (apply update-in w [:entities eid] f args)
     w))
 
 (defn- kind-changed? [old st]
@@ -240,14 +241,14 @@
   (chunk/changed (:chunks w) w changes))
 
 (defn level-ctx
-  "Returns what the block rules of level w read besides its blocks.
-  When given, base stands for the tick."
+  "Returns what the block rules of level w read besides its blocks,
+  at tick t when given."
   ([w] (level-ctx w (:tick w)))
-  ([w base]
+  ([w t]
    (merge (select-keys w weather/fields)
           {:rules (:rules w)
            :dim (:dim w)
-           :tick (long base)
+           :tick (long t)
            :time-of-day (clock/day-ticks w)
            :players (mapv (comp :pos val) (player-entries w))})))
 
@@ -287,10 +288,12 @@
        w
        (with-changes w real ticks quiet)))))
 
+(defn- bare-records [s]
+  (mapv (fn [[p st]] [p st]) (:records s)))
+
 (defn- apply-set-blocks [w changes]
-  (let [s (neighbors/set-blocks (:chunks w) (level-ctx w) changes)
-        changes (mapv (fn [[p st]] [p st]) (:records s))]
-    (settled w changes (:ticks s))))
+  (let [s (neighbors/set-blocks (:chunks w) (level-ctx w) changes)]
+    (settled w (bare-records s) (:ticks s))))
 
 (defn- drop-entities [es id]
   (reduce-kv (fn [es eid e]
@@ -298,7 +301,7 @@
              es es))
 
 (defn- spawned [w spec]
-  (let [eid (long (:next-eid w 1000000))]
+  (let [eid (long (:next-eid w schema/first-eid))]
     (-> w
         (assoc-in [:entities eid]
                   (entity/of (assoc spec :born (:tick w))))
@@ -329,9 +332,9 @@
 
 (defn xp-award
   "Returns level w after the delta [:xp-award pos amount salt dir]."
-  [w [_ pos amount salt roughly]]
+  [w [_ pos amount salt dir]]
   (let [t (:tick w)]
-    (orb/awarded w spawned pos (or roughly [0.0 0.0 0.0])
+    (orb/awarded w spawned pos (or dir [0.0 0.0 0.0])
                  (long amount) #(random/of-key t pos salt %))))
 
 (defn schedule-ticks

@@ -1,10 +1,11 @@
 (ns collider.game.using
-  "Items a player holds in use: how long a use lasts, and the
+  "Items a player holds in use, how long a use lasts and the
   instrument of a horn."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
             [collider.game.bundle :as bundle]
-            [collider.game.stack :as stack]))
+            [collider.game.stack :as stack]
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
@@ -40,10 +41,12 @@
 (defn instrument-ticks
   "Returns the ticks a use of instrument lasts."
   ^long [ins]
-  (let [d (double (float (:duration ins)))]
-    (long (Math/floor (double (float (* d 20.0)))))))
+  (let [d (num/f32 (:duration ins))]
+    (num/floor (num/f32 (* d 20.0)))))
 
-(defn- consume-ticks [c]
+(defn consume-ticks
+  "Returns the ticks it takes to eat or drink with consumable c."
+  ^long [c]
   (long (* 20.0 (double (:seconds c)))))
 
 (defn ticks

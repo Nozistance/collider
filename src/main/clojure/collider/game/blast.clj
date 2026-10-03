@@ -1,7 +1,6 @@
 (ns collider.game.blast
-  "One explosion, as ServerExplosion.explode:237-252: its rays, the
-  bodies it reaches in section order, the blocks it breaks, their
-  drops, then fire."
+  "One explosion with its rays, the bodies it reaches, the blocks it
+  breaks, their drops and its fire."
   (:require [collider.data :as data]
             [collider.game.block.tnt :as tnt]
             [collider.game.changes :as changes]
@@ -12,9 +11,10 @@
             [collider.game.hanging.drops :as drops]
             [collider.game.item :as item]
             [collider.game.level :as level]
-            [collider.game.mode :as game-mode]
             [collider.game.hanging :as hanging]
+            [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -24,11 +24,10 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- twice ^double [power] (double (float (* 2.0 (double power)))))
+(defn- twice ^double [power] (num/f32 (* 2.0 (double power))))
 
 (defn- blast-damage ^double [^double k power]
-  (let [d (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 (twice power)))]
-    (double (float d))))
+  (num/f32 (+ 1.0 (* (/ (+ (* k k) k) 2.0) 7.0 (twice power)))))
 
 (def ^:private ^:const unit-least (double (float 1.0E-5)))
 
@@ -37,8 +36,7 @@
     (not= :tnt (:type e)) (+ (double (entity/eye-height e)))))
 
 (defn- impulse
-  "Returns [push damage] of body e at p, d12 of twice the power away,
-  that density of it sees the blast, as hurtEntities:184-200."
+  "Returns the push and the damage the blast gives body e at p."
   [{:keys [center power]} e p d12 density]
   (let [dx (- (v/x p) (v/x center))
         dy (- (origin-y e p) (v/y center))
@@ -79,7 +77,7 @@
 (defn- pushed [b id e d12]
   (let [[kb dmg] (impulse b e (:pos e) d12 (density b e))]
     (cond
-      (= :player (:type e))
+      (entity/player? e)
       {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
        :motion (when (shoved? e) kb)}
       (item-dies? e dmg) {:ds [[:remove-entity id]] :gone? true}
@@ -89,8 +87,7 @@
 
 (defn hit
   "Returns what blast b does to body e of id, d12 of twice its power
-  away: :ds its deltas, :gone? when it ends, :motion the push the
-  explosion packet gives a player."
+  away. A player gets its push with the effect of the blast."
   [b id e d12]
   (if (contains? hanging/types (:type e))
     (let [by (:cause (:src b))]
@@ -113,8 +110,8 @@
 
 (defn bodies
   "Returns [id e d12] of the bodies of index idx that blast b reaches,
-  in the order of getEntities (hurtEntities:181). now gives the body
-  of an id as it is, nil when it is gone."
+  in section order. Function now gives the body of an id as it is,
+  nil when it is gone."
   [b idx now]
   (let [[lo hi] (reach-box b)
         d12-of (distance b)
@@ -209,8 +206,8 @@
             (delta/authored ds (author b)))))
 
 (defn- blocks
-  "Returns {:ds :spawns :count} of the blocks of blast b: the deltas
-  that break and burn them, the TNT they prime and the drops."
+  "Returns the deltas that break and burn the blocks of blast b, the
+  TNT they prime, the drops and how many blocks it reached."
   [{:keys [rg exposure center power seed fire?] :as b}]
   (let [rays (explosion/rays rg exposure center power seed)
         reached (explosion/reached rays center)
@@ -221,11 +218,10 @@
                      (drop-specs b destroy))
      :count (:count reached)}))
 
-(defn blast
-  "Returns blast b of spec in world: :center, :power, :source (:tnt,
-  :block or :mob), :fire?, :by the eid it goes off from, :src its
-  damage source, :causer the entity that caused it and :primed the
-  TNT blocks already lit, by default those of world."
+(defn of
+  "Returns the blast of spec in world. The spec names its centre,
+  power, source, fire, damage source, the entity it goes off from,
+  the entity that caused it and the TNT already lit."
   [world spec]
   (let [{:keys [center by]} spec
         rg (reader world center)]
@@ -234,9 +230,9 @@
            :exposure (explosion/exposure rg center))))
 
 (defn finish
-  "Returns {:ds :spawns} of the blocks of blast b after it hit its
-  bodies, motions by player: the deltas of its blocks and its effect,
-  then the bodies it spawns."
+  "Returns the deltas of the blocks and the effect of blast b after it
+  hit its bodies, with the bodies it spawns. Motions are the pushes
+  of the players by eid."
   [b motions]
   (let [{:keys [ds spawns] :as r} (blocks b)
         {:keys [center power seed]} b
@@ -252,7 +248,7 @@
   "Returns the deltas of the blast of spec in world, every body where
   it stands."
   [world spec]
-  (let [b (blast world spec)
+  (let [b (of world spec)
         es (:entities world)
         hit-of (fn [[id e d12]] [id (hit b id e d12)])
         idx (sections/of (seq es))

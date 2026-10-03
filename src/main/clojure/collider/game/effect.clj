@@ -1,20 +1,18 @@
 (ns collider.game.effect
-  "Mob effects on living entities.
-  An entity keeps its effects under :effects, by effect name. An
-  instance holds :duration in ticks (-1 is infinite), :amplifier,
-  :ambient?, :visible? and :icon?, and under :hidden the weaker one
-  that comes back when it runs out."
-  (:require [collider.data :as data]))
+  "Mob effects on living entities."
+  (:require [collider.data :as data]
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:const infinite -1)
+(def ^:const infinite
+  "The duration of an effect that never runs out."
+  -1)
 
 (def ^:private ^:const refresh-period 600)
 
 (defn instance
-  "Returns a new effect instance.
-  The amplifier is clamped to 0..255."
+  "Returns a new effect instance that hides no weaker one."
   ([duration amplifier] (instance duration amplifier false true))
   ([duration amplifier ambient? visible?]
    (instance duration amplifier ambient? visible? visible?))
@@ -24,7 +22,10 @@
     :ambient? (boolean ambient?) :visible? (boolean visible?)
     :icon? (boolean icon?) :hidden nil}))
 
-(defn endless? [i] (= infinite (long (:duration i))))
+(defn endless?
+  "Returns true when instance i never runs out."
+  [i]
+  (= infinite (long (:duration i))))
 
 (defn- shorter? [a b]
   (and (not (endless? a))
@@ -57,8 +58,7 @@
      (boolean (or changed? amb? vis? icon?))]))
 
 (defn merged
-  "Returns [instance changed?] after instance t lands on cur.
-  This is MobEffectInstance.update."
+  "Returns [instance changed?] after instance t lands on cur."
   [cur t]
   (flags (cond
            (> (long (:amplifier t)) (long (:amplifier cur)))
@@ -79,7 +79,9 @@
     [(:hidden i) true]
     [i false]))
 
-(defn remaining? [i]
+(defn remaining?
+  "Returns true when instance i has time left."
+  [i]
   (or (endless? i) (pos? (long (:duration i)))))
 
 (def ^:private kinds
@@ -89,7 +91,7 @@
    :hunger [:always] :absorption [:always]})
 
 (defn- shift-int ^long [^long a ^long n]
-  (unchecked-int (bit-shift-left a (bit-and n 31))))
+  (num/i32 (bit-shift-left a (bit-and n 31))))
 
 (defn due?
   "Returns true when effect k with amplifier a acts at tick count c.
@@ -112,14 +114,13 @@
 (defn harm-amount
   "Returns what instant damage hurts at amplifier a."
   ^double [^long a]
-  (double (float (shift-int 6 a))))
+  (num/f32 (shift-int 6 a)))
 
 (defn stepped
   "Returns [instance events] after one tick that did not stop it.
   The events are :refresh when a hidden instance took its place,
   :gone when it ran out and :updated when the client needs its
-  duration again. This is the rest of MobEffectInstance.tickServer
-  after the effect acted, and the end of LivingEntity.tickEffects."
+  duration again."
   [i]
   (let [[i down?] (downgraded (ticked-down i))
         d (long (:duration i))]
@@ -130,8 +131,7 @@
 
 (defn added
   "Returns [effects what] after instance t of effect k lands.
-  What is :added, :updated or nil when nothing changed. This is
-  LivingEntity.addEffect for an entity the effect can affect."
+  What is :added, :updated or nil when nothing changed."
   [effects k t]
   (if-let [cur (get effects k)]
     (let [[i changed?] (merged cur t)]

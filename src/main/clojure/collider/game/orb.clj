@@ -1,10 +1,11 @@
 (ns collider.game.orb
-  "Experience orbs as ExperienceOrb makes, merges, moves and gives
-  them. The functions take a roll that answers a number in [0, 1)
-  for each key, in the order the entity random draws them."
+  "Experience orbs, made, merged, moved and given. The functions take
+  a roll that answers a number in [0, 1) for each key, in the order
+  the entity draws them."
   (:require [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.experience :as xp]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -14,11 +15,19 @@
 
 (set! *warn-on-reflection* true)
 
-(defn half ^double [] (size/half :experience-orb))
+(defn half
+  "Returns the half width of an orb."
+  ^double []
+  (size/half :experience-orb))
 
-(defn height ^double [] (size/height :experience-orb))
+(defn height
+  "Returns the height of an orb."
+  ^double []
+  (size/height :experience-orb))
 
-(def lifetime 6000)
+(def lifetime
+  "How many ticks an orb lasts."
+  6000)
 
 (def ^:private ^:const groups 40)
 
@@ -26,32 +35,23 @@
 
 (def ^:private ^:const gravity 0.03)
 
-(defn- f32 ^double [^double x] (double (unchecked-float x)))
-
 (defn- eye ^double [] (size/pose-eye :experience-orb nil))
-
-(defn- fl ^long [^double a] (long (Math/floor a)))
 
 (defn- unit [d]
   (let [x (double (nth d 0)) y (double (nth d 1)) z (double (nth d 2))
         l (Math/sqrt (+ (* x x) (* y y) (* z z)))]
     (if (< l 1.0E-5) [0.0 0.0 0.0] [(/ x l) (/ y l) (/ z l)])))
 
-(defn- dot ^double [a b]
-  (+ (* (double (nth a 0)) (double (nth b 0)))
-     (* (double (nth a 1)) (double (nth b 1)))
-     (* (double (nth a 2)) (double (nth b 2)))))
-
 (defn make
-  "Returns an orb of value at pos, as the ExperienceOrb constructor:
-  a random yaw, then a random push turned to face roughly, the
-  rough direction, which also moves the orb half its size along."
+  "Returns an orb of value at pos with a random yaw and a random push
+  turned to face roughly. The orb also moves half its size along that
+  rough direction."
   ([pos value roll] (make pos [0.0 0.0 0.0] value roll))
   ([pos roughly ^long value roll]
-   (let [yaw (f32 (* (f32 (roll :yaw)) 360.0))
+   (let [yaw (num/f32 (* (num/f32 (roll :yaw)) 360.0))
          side #(* (- (* (double (roll %)) 0.2) 0.1) 2.0)
          push [(side :vx) (* (double (roll :vy)) 0.2 2.0) (side :vz)]
-         push (if (neg? (dot roughly push)) (mapv - push) push)
+         push (if (neg? (v/dot roughly push)) (mapv - push) push)
          u (unit roughly)
          at (mapv #(+ (double %1) (* (double %2) 0.25)) pos u)]
      {:type :experience-orb :pos at :vel push :yaw yaw :pitch 0.0
@@ -91,9 +91,9 @@
       (spawn w (make pos roughly value roll)))))
 
 (defn awarded
-  "Returns the level w after amount points drop at pos as orbs, as
-  ExperienceOrb.awardWithDirection towards roughly. Each orb joins
-  a near one of its value and group, or spawns with spawn."
+  "Returns the level w after amount points drop at pos as orbs that
+  face roughly. Each orb joins a near one of its value and group, or
+  spawns with spawn."
   [w spawn pos roughly amount roll]
   (reduce (fn [w [i value]]
             (award-one spawn w pos roughly value #(roll [i %])))
@@ -116,8 +116,8 @@
        (box-near? (:pos e) (:pos o))))
 
 (defn merged
-  "Returns orb e and the ids of the orbs it takes in, as
-  ExperienceOrb.scanForMerges over the orbs [eid orb] around."
+  "Returns orb e and the ids of the orbs it takes in among the orbs
+  [eid orb] around."
   [eid e orbs]
   (let [taken (filterv #(mergeable? eid e %) orbs)]
     [(reduce (fn [e [_ o]]
@@ -126,14 +126,9 @@
              e taken)
      (mapv key taken)]))
 
-(defn- dist-sq ^double [a b]
-  (let [dx (- (v/x a) (v/x b)) dy (- (v/y a) (v/y b))
-        dz (- (v/z a) (v/z b))]
-    (+ (* dx dx) (* dy dy) (* dz dz))))
-
 (defn- nearest [pos players]
   (reduce (fn [best [_ p :as entry]]
-            (let [d (dist-sq (:pos p) pos)
+            (let [d (v/dist-sq (:pos p) pos)
                   closer? (or (nil? best) (< d (double (best 1))))]
               (if (and (< d 64.0) closer?)
                 [entry d]
@@ -142,28 +137,30 @@
 
 (defn- chosen [pos players]
   (when-let [[[pid p]] (nearest pos players)]
-    (when (pos? (double (:health p 20.0))) pid)))
+    (when (entity/alive? p) pid)))
 
 (defn followed
   "Returns the player orb e follows among players [eid player] that
-  are not spectators, as ExperienceOrb.followNearbyPlayer."
+  are not spectators."
   [e players]
   (let [cur (some (fn [[pid p]] (when (= pid (:follow e)) p))
                   players)]
-    (if (and cur (<= (dist-sq (:pos cur) (:pos e)) 64.0))
+    (if (and cur (<= (v/dist-sq (:pos cur) (:pos e)) 64.0))
       (:follow e)
       (chosen (:pos e) players))))
 
 (defn- normal [x y z]
   (let [d (Math/sqrt (+ (* x x) (* y y) (* z z)))]
-    (if (< d (f32 1.0E-5)) [0.0 0.0 0.0] [(/ x d) (/ y d) (/ z d)])))
+    (if (< d (num/f32 1.0E-5))
+      [0.0 0.0 0.0]
+      [(/ x d) (/ y d) (/ z d)])))
 
 (defn pulled
   "Returns velocity vel of an orb at pos pulled towards player p."
   [vel pos p]
   (let [pp (:pos p)
         dx (- (v/x pp) (v/x pos))
-        dy (- (+ (v/y pp) (/ (f32 (entity/eye-height p)) 2.0))
+        dy (- (+ (v/y pp) (/ (num/f32 (entity/eye-height p)) 2.0))
               (v/y pos))
         dz (- (v/z pp) (v/z pos))
         power (- 1.0 (/ (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
@@ -179,11 +176,11 @@
     0))
 
 (defn eye-in-water?
-  "Returns true when the eye of an orb at pos is in water, as
-  Entity.isEyeInFluid."
+  "Returns true when the eye of an orb at pos is in water."
   [chunks pos]
   (let [ey (+ (v/y pos) (eye))
-        x (fl (v/x pos)) y (fl ey) z (fl (v/z pos))
+        x (num/floor (v/x pos)) y (num/floor ey)
+        z (num/floor (v/z pos))
         st (cell-state chunks x y z)]
     (boolean
       (when (block/water? st)
@@ -193,7 +190,8 @@
 (defn in-lava?
   "Returns true when the block an orb at pos is in holds lava."
   [chunks pos]
-  (let [x (fl (v/x pos)) y (fl (v/y pos)) z (fl (v/z pos))]
+  (let [x (num/floor (v/x pos)) y (num/floor (v/y pos))
+        z (num/floor (v/z pos))]
     (block/lava? (cell-state chunks x y z))))
 
 (defn colliding?
@@ -206,26 +204,30 @@
 (defn swum
   "Returns velocity vel of an orb whose eye is in water."
   [vel]
-  [(* (v/x vel) (f32 0.99))
-   (min (+ (v/y vel) (f32 5.0E-4)) (f32 0.06))
-   (* (v/z vel) (f32 0.99))])
+  [(* (v/x vel) (num/f32 0.99))
+   (min (+ (v/y vel) (num/f32 5.0E-4)) (num/f32 0.06))
+   (* (v/z vel) (num/f32 0.99))])
 
-(defn fallen [vel] [(v/x vel) (- (v/y vel) gravity) (v/z vel)])
+(defn fallen
+  "Returns velocity vel of an orb after one tick of gravity."
+  [vel]
+  [(v/x vel) (- (v/y vel) gravity) (v/z vel)])
 
 (defn tossed
   "Returns the velocity lava throws an orb up with."
   [roll]
-  (let [side #(f32 (* (f32 (- (f32 (roll [% 0])) (f32 (roll [% 1]))))
-                      (f32 0.2)))]
-    [(side :lx) (f32 0.2) (side :lz)]))
+  (let [draw #(num/f32 (roll %))
+        side #(num/fmul (num/fsub (draw [% 0]) (draw [% 1]))
+                        (num/f32 0.2))]
+    [(side :lx) (num/f32 0.2) (side :lz)]))
 
-(def ^:private below-offset (f32 0.999999))
+(def ^:private below-offset (num/f32 0.999999))
 
 (defn- friction ^double [chunks pos sup on-ground]
-  (let [air (f32 0.98)]
+  (let [air (num/f32 0.98)]
     (if on-ground
       (let [st (motion/below-state chunks pos sup below-offset)]
-        (f32 (* air (motion/friction st))))
+        (num/f32 (* air (motion/friction st))))
       air)))
 
 (defn- supported [chunks mv]

@@ -16,7 +16,10 @@
       (contains? (:removed stack) k) nil
       :else (proto (:item stack) k))))
 
-(defn has? [stack k] (some? (component stack k)))
+(defn has?
+  "Returns true when stack carries component k."
+  [stack k]
+  (some? (component stack k)))
 
 (defn- tidy [stack]
   (cond-> stack
@@ -33,14 +36,24 @@
             :else (-> (update s :components assoc k v)
                       (update :removed disj k))))))
 
-(defn size ^long [stack] (if stack (long (:count stack 1)) 0))
+(defn size
+  "Returns how many items stack holds, zero for no stack."
+  ^long [stack]
+  (if stack (long (:count stack 1)) 0))
 
-(defn max-size ^long [stack]
+(defn max-size
+  "Returns how many items fit in one stack like stack."
+  ^long [stack]
   (long (or (component stack :max-stack-size) 64)))
 
-(defn damage ^long [stack] (long (or (component stack :damage) 0)))
+(defn damage
+  "Returns the wear of stack."
+  ^long [stack]
+  (long (or (component stack :damage) 0)))
 
-(defn max-damage ^long [stack]
+(defn max-damage
+  "Returns the wear at which stack breaks, zero when it never wears."
+  ^long [stack]
   (long (or (component stack :max-damage) 0)))
 
 (defn damageable?
@@ -49,16 +62,24 @@
   (and (some? stack) (has? stack :max-damage)
        (not (has? stack :unbreakable)) (has? stack :damage)))
 
-(defn with-damage [stack ^long v]
+(defn with-damage
+  "Returns stack worn to v, kept within its bounds."
+  [stack ^long v]
   (put stack :damage (min (max v 0) (max-damage stack))))
 
-(defn repair-cost ^long [stack]
+(defn repair-cost
+  "Returns what one more repair of stack adds to the cost."
+  ^long [stack]
   (long (or (component stack :repair-cost) 0)))
 
-(defn increased-repair-cost ^long [^long base]
+(defn increased-repair-cost
+  "Returns the repair cost after one more repair from base."
+  ^long [^long base]
   (min (+ (* base 2) 1) Integer/MAX_VALUE))
 
-(defn enchant-key [stack]
+(defn enchant-key
+  "Returns the component that holds the enchantments of stack."
+  [stack]
   (if (= :enchanted-book (:item stack))
     :stored-enchantments
     :enchantments))
@@ -68,22 +89,29 @@
   [stack]
   (or (component stack (enchant-key stack)) {}))
 
-(defn set-enchantments [stack m]
+(defn set-enchantments
+  "Returns stack with the enchantments m."
+  [stack m]
   (put stack (enchant-key stack) m))
 
-(defn any-enchantments? [stack]
-  (boolean (or (seq (or (component stack :enchantments) {}))
-               (seq (or (component stack :stored-enchantments) {})))))
+(defn any-enchantments?
+  "Returns true when stack carries or stores an enchantment."
+  [stack]
+  (boolean (or (seq (component stack :enchantments))
+               (seq (component stack :stored-enchantments)))))
 
-(defn custom-name [stack] (component stack :custom-name))
+(defn custom-name
+  "Returns the name given to stack, or nil."
+  [stack]
+  (component stack :custom-name))
 
 (defn- book-title [stack]
   (let [t (:raw (:title (component stack :written-book-content)))]
     (when-not (str/blank? t) t)))
 
 (defn hover-name
-  "Returns the name shown on stack: custom, the book title, or the
-  item's own."
+  "Returns the name shown on stack. A given name comes first, then
+  the title of a book, then the name of the item."
   [stack]
   (or (custom-name stack) (book-title stack)
       (data/item-name (:item stack))))
@@ -132,11 +160,14 @@
   (and (or (nil? min) (<= min v)) (or (nil? max) (<= v max))))
 
 (def water-bottle
+  "A bottle of water."
   {:item       :potion :count 1
    :components {:potion-contents
                 {:potion :water :custom-color nil
                  :custom-effects [] :custom-name nil}}})
 
-(defn water-bottle? [stack]
+(defn water-bottle?
+  "Returns true when stack is a bottle of water."
+  [stack]
   (let [path [:components :potion-contents :potion]]
     (and (= :potion (:item stack)) (= :water (get-in stack path)))))

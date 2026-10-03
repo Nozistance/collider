@@ -1,6 +1,7 @@
 (ns collider.game.hanging
-  "Paintings and item frames: their boxes and what holds them up."
+  "Paintings and item frames, their boxes and what holds them up."
   (:require [collider.data :as data]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
@@ -12,7 +13,9 @@
   "The types of the hanging entities."
   #{:painting :item-frame :glow-item-frame})
 
-(def frames #{:item-frame :glow-item-frame})
+(def frames
+  "The types of the item frames."
+  #{:item-frame :glow-item-frame})
 
 (def ^:private ^:const check-period 101)
 
@@ -62,13 +65,15 @@
 
 (defn- side ^double [^long n] (if (even? n) 0.5 0.0))
 
+(defn- unsigned-zero ^double [^double a] (+ a 0.0))
+
 (defn- painting-box [pos facing variant]
   (let [[w h] (@variant-sizes variant)
         [lx _ lz] (dir/offset (dir/counter-clockwise facing))
         [x y z] (wall-center pos facing)
         s (side w)
-        c [(+ (+ x (* (long lx) s)) 0.0) (+ y (side h))
-           (+ (+ z (* (long lz) s)) 0.0)]
+        c [(unsigned-zero (+ x (* (long lx) s))) (+ y (side h))
+           (unsigned-zero (+ z (* (long lz) s)))]
         ax (dir/axis facing)]
     (of-size c (if (= :x ax) flat (double w)) (double h)
              (if (= :z ax) flat (double w)))))
@@ -102,8 +107,8 @@
       (assoc e :yaw (* 90.0 (long (index-2d f))) :pitch 0.0))))
 
 (defn placed
-  "Returns hanging entity e set at its block and facing: its box
-  gives its position, its facing its turn."
+  "Returns hanging entity e set at its block and facing. Its box gives
+  its position, its facing its turn."
   [e]
   (turned (assoc e :pos (center (box e)))))
 
@@ -120,11 +125,6 @@
 (defn- painting-of [pos facing variant t]
   (placed (assoc (base :painting pos facing t) :variant variant)))
 
-(defn- overlap? [[a0 b0 c0 a1 b1 c1] [x0 y0 z0 x1 y1 z1]]
-  (and (< (double a0) (double x1)) (> (double a1) (double x0))
-       (< (double b0) (double y1)) (> (double b1) (double y0))
-       (< (double c0) (double z1)) (> (double c1) (double z0))))
-
 (defn- blocks? [eid e [oid o]]
   (and (or (= (:facing o) (:facing e))
            (and (= :painting (:type e)) (= (:type o) (:type e))))
@@ -133,7 +133,7 @@
 (defn- coexists? [eid e b others]
   (not-any? (fn [entry]
               (and (blocks? eid e entry)
-                   (overlap? b (box (val entry)))))
+                   (v/boxes-meet? b (box (val entry)))))
             others))
 
 (defn- holds? [^long st vertical?]
@@ -170,9 +170,9 @@
     (frame-held? chunks e)))
 
 (defn survives?
-  "Returns true when hanging entity e may stay where it hangs.
-  others are the hanging entities of its level, as eid and entity;
-  eid is its own, or nil when it is not placed yet."
+  "Returns true when hanging entity e may stay where it hangs among
+  the others of its level, by eid. Eid is its own, or nil when it is
+  not placed yet."
   [chunks eid e others]
   (let [b (box e)]
     (and (phys/box-free? chunks b (nth (:pos e) 1))

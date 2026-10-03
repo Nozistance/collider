@@ -1,8 +1,8 @@
 (ns collider.game.areas
   "The chunk areas the players of a level keep loaded and ticking."
   (:require [collider.data.long-map :as lm]
-            [collider.game.mode :as game-mode]
             [collider.game.level :as level]
+            [collider.game.mode :as game-mode]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -46,17 +46,17 @@
 
 (defn- compute-areas [world]
   (let [ps (player-chunks world)
-        zone (zone-at ps (+ 2 (view-radius world)))
+        r (view-radius world)
+        zone (zone-at ps (+ 2 r))
         s (sim-radius world)
         live? #(and (contains? zone %)
                     (contains? (:chunks world) %))
-        in? #(into (lm/long-set) (filter live?) %)
+        live-of #(into (lm/long-set) (filter live?) %)
         absent (into (lm/long-set)
                      (remove #(contains? (:chunks world) %)) zone)
-        active (in? (zone-at ps s))
-        broadcast (zone-at ps (inc (view-radius world)))]
-    {:active active :ticking (in? (zone-at ps (inc s)))
-     :broadcast broadcast :zone zone :absent absent
+        active (live-of (zone-at ps s))]
+    {:active active :ticking (live-of (zone-at ps (inc s)))
+     :broadcast (zone-at ps (inc r)) :zone zone :absent absent
      :active-ids (vec active)}))
 
 (defn- areas-key
@@ -132,8 +132,7 @@
 
 (defn cache-active-chunks
   "Returns the world with its chunk areas up to date.
-  The areas follow its players and chunks. The key they were made
-  from is metadata, so equal worlds stay equal."
+  The areas follow its players and chunks."
   [world]
   (let [had (:active-chunks world)]
     (if (and had (same? (::key (meta had)) world))

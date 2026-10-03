@@ -18,7 +18,8 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
-            [collider.game.turn.overlay :as overlay])
+            [collider.game.turn.overlay :as overlay]
+            [collider.par :as par])
   (:import (collider.world Move)))
 
 (set! *warn-on-reflection* true)
@@ -477,6 +478,6 @@
   in its turn, as ItemEntity.tick."
   [world]
   (let [items (areas/active-of-types world [:item])
-        steps (deltas/pmapcat #(vector (stepped-item world %)) items)]
+        steps (par/pmapcat #(vector (stepped-item world %)) items)]
     (when (pos? (count items))
       (walked world items steps))))

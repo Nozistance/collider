@@ -4,6 +4,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.schema :as schema]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -48,7 +49,7 @@
                   (set-deltas world eid (merge e m) nil))))
         (set-deltas world eid e nil)))))
 
-(defn- box [e]
+(defn- spectatable-box [e]
   (let [t (:type e)]
     (cond
       (= :player t)
@@ -57,7 +58,7 @@
       (mobs/mob-type? t) (mobs/box-of e)
       (#{:tnt :falling-block} t) (entity/box e))))
 
-(def ^:private ^:const border 29999984.0)
+(def ^:private ^:const border (double schema/world-border))
 
 (defn- in-border? [e]
   (let [x (Math/floor (v/x (:pos e))) z (Math/floor (v/z (:pos e)))]
@@ -67,8 +68,9 @@
 (defn- gap ^double [^double lo ^double hi ^double p]
   (max 0.0 (- lo p) (- p hi)))
 
-(defn- in-range?
-  [p t [half h]]
+(def ^:private ^:const reach-margin 3.0)
+
+(defn- in-range? [p t [half h]]
   (let [[ex ey ez] (xyz (:pos p))
         ey (+ (double ey) (entity/eye-height p))
         [x y z] (xyz (:pos t))
@@ -76,7 +78,7 @@
         dx (gap (- x half) (+ x half) ex)
         dy (gap y (+ y (double h)) ey)
         dz (gap (- z half) (+ z half) ez)
-        r (+ 3.0 game-mode/entity-range)]
+        r (+ reach-margin game-mode/entity-range)]
     (< (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
 
 (defn spectate-deltas
@@ -86,6 +88,6 @@
   (let [p (get-in world [:entities eid])
         t (when tid (get-in world [:entities tid]))]
     (when (and (game-mode/spectator? p) t (in-border? t))
-      (when-let [b (box t)]
+      (when-let [b (spectatable-box t)]
         (when (in-range? p t b)
           (set-deltas world eid p tid))))))

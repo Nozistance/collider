@@ -39,7 +39,7 @@
 (def ^:private ^:const ticks-per-second 20)
 
 (defn- hurt-sound [e]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     (cond
       (not (pos? (double (:health e)))) :player/death
       (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
@@ -85,7 +85,7 @@
   [world e src]
   (let [t (:type src) rule (get @rule-of t)]
     (or (and rule (not (get-in world [:rules rule] true)))
-        (and (= :player (:type (cause-of world src)))
+        (and (entity/player? (cause-of world src))
              (not (get-in world [:rules :pvp] true)))
         (and (game-mode/invulnerable? e)
              (not (contains? @bypassing t))))))
@@ -115,7 +115,7 @@
   rule spares it. The difficulty scales the damage to a player. Any
   other entity takes amount."
   [world e amount src]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     (when-not (spared? world e src)
       (let [n (double amount)
             n (if (scales? world src) (by-difficulty world n) n)]
@@ -394,7 +394,7 @@
   wet as wet? tells or as it is."
   ([world eid e] (fire-deltas world eid e (:wet? e)))
   ([world eid e wet?]
-   (if (= :player (:type e))
+   (if (entity/player? e)
      (player-fire-deltas world eid e)
      (let [fire (long (or (:fire e) 0))
            [half height :as box] (box-of e)]
@@ -498,7 +498,7 @@
             (landing-particles world e (double fall)))))
 
 (defn- loading? [world e]
-  (and (= :player (:type e))
+  (and (entity/player? e)
        (not (player/client-loaded? e (inc (long (:tick world)))))))
 
 (defn- void-deltas [world eid e]
@@ -543,7 +543,8 @@
               #(random/of-key (:tick world) eid %)))
 
 (defn- drops-loot?
-  "LivingEntity.shouldDropLoot: not a baby, and the mob_drops rule."
+  "Returns true when e drops loot. A baby does not, nor any body while
+  the mob drops rule is off."
   [world e]
   (and (get @drop-tables (:type e))
        (not (mobs/baby? e))
@@ -569,11 +570,10 @@
   (xp/death-reward e (keeps? world) (game-mode/spectator? e)))
 
 (defn- death-orbs
-  "Returns the orbs LivingEntity.dropExperience leaves where e died.
-  Players drop some of their levels, animals a few points when a
-  player killed them."
+  "Returns the orbs e leaves where it died. Players drop some of
+  their levels, animals a few points when a player killed them."
   [world eid e]
-  (let [n (if (= :player (:type e))
+  (let [n (if (entity/player? e)
             (player-reward world e)
             (mob-reward world eid e))]
     (when (and n (pos? (long n)))
@@ -582,22 +582,21 @@
 (defn- hurt-marks [world e ^double health src]
   (cond-> {:health-sent health}
           src (assoc :struck-by nil)
-          (not= :player (:type e)) (merge (panicked world e))))
+          (not (entity/player? e)) (merge (panicked world e))))
 
 (defn- voice [world eid e snd]
   (out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))))
 
 (defn- struck-deltas
-  "Returns the effects of a full hit from src on entity eid, as
-  LivingEntity.hurtServer:1247-1266 broadcasts the damage event to
-  its viewers and itself and plays the hurt sound, or the death
-  sound when it killed."
+  "Returns the effects of a full hit from src on entity eid. Its
+  viewers and the entity itself see the damage, and they hear the hurt
+  sound, or the death sound when it killed."
   [world eid e src]
   (let [snd (hurt-sound e)
         ev (out/damage-event
              eid (:type src) (:cause src) (:direct src) (:pos src))]
     (cond-> [(out/all ev)]
-      (= :player (:type e)) (conj (out/to eid ev))
+      (entity/player? e) (conj (out/to eid ev))
       snd (conj (voice world eid e snd)))))
 
 (defn- died-deltas [world eid e]
@@ -606,7 +605,7 @@
 
 (defn- lost-deltas [world eid e health]
   (concat (when-not (pos? (double health)) (died-deltas world eid e))
-          (when (= :player (:type e))
+          (when (entity/player? e)
             [(out/to eid (out/health health))])))
 
 (defn report-deltas
@@ -625,12 +624,12 @@
         (when lost? (lost-deltas world eid e health))))))
 
 (defn timer-deltas
-  "Returns the deltas of LivingEntity.tickDeath for entity eid."
+  "Returns the deltas of the death countdown of entity eid."
   [eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
         gone? (and death (>= (long death) mobs/death-ticks)
-                   (not= :player (:type e)))]
+                   (not (entity/player? e)))]
     (concat
       (when death [[:merge-entity eid {:death-time death}]])
       (when gone? [[:remove-entity eid]]))))
@@ -657,15 +656,14 @@
 (defn- burn-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))]
     (when (pos? fire)
-      (if (= :player (:type e))
+      (if (entity/player? e)
         (player-burn-deltas world eid e fire)
         (let [lava? (any-bit? (probe world e) lava-bit)]
           (burn-tick-deltas eid fire (boolean (:wet? e)) lava?))))))
 
 (defn burnt-deltas
-  "Returns the deltas of the fire living entity eid burns in
-  (Entity.baseTick:546-556), then of the void
-  (Entity.checkBelowWorld:564)."
+  "Returns the deltas of the fire living entity eid burns in, then
+  of the void."
   [world eid e]
   (into (vec (burn-deltas world eid e)) (void-deltas world eid e)))
 
@@ -677,9 +675,9 @@
     [[:rest eid]]))
 
 (defn base-deltas
-  "Returns the deltas of living entity eid that LivingEntity.baseTick
-  makes before the countdown of its hurt resistance: the fire it
-  burns in, the void, then the countdown (:483)."
+  "Returns the deltas of living entity eid at the start of its tick.
+  The fire it burns in and the void come before the countdown of its
+  hurt resistance."
   [world eid e]
   (conj (burnt-deltas world eid e) [:rest eid]))
 

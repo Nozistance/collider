@@ -4,6 +4,7 @@
   rate unless paused or the advance_time rule is off. The day of
   every level follows the overworld clock."
   (:require [collider.data :as data]
+            [collider.num :as num]
             [collider.world.env.dimension :as dimension]))
 
 (set! *warn-on-reflection* true)
@@ -66,17 +67,15 @@
   [dim]
   (:default-clock (dimension/type-of dim)))
 
-(defn- as-float ^double [x] (unchecked-float (double x)))
-
 (defn ticked
   "Returns clock state c one tick on."
   [c]
   (if (:paused c)
     c
     (let [r (double (:rate c))
-          p (as-float (+ (double (:partial-tick c)) r))
-          n (long (Math/floor p))]
-      (assoc c :partial-tick (as-float (- p n))
+          p (num/f32 (+ (double (:partial-tick c)) r))
+          n (num/floor p)]
+      (assoc c :partial-tick (num/f32 (- p n))
              :total-ticks (+ (long (:total-ticks c)) n)))))
 
 (defn advanced
@@ -95,10 +94,10 @@
   "Returns clock state c as the client runs it."
   [c advancing]
   {:total-ticks (long (:total-ticks c))
-   :partial-tick (as-float (:partial-tick c))
+   :partial-tick (num/f32 (:partial-tick c))
    :rate (if (or (:paused c) (not advancing))
            0.0
-           (as-float (:rate c)))})
+           (num/f32 (:rate c)))})
 
 (defn sync-of
   "Returns the network state of clocks in world, by clock."

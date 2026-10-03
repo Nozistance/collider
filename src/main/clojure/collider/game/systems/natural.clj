@@ -10,6 +10,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.areas :as areas]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -341,7 +342,7 @@
 (defn- spawned-in [ctx cats]
   (let [cids (candidates ctx)
         job #(plan ctx cats %)
-        plans (deltas/pmapv job cids chunk-leaf chunk-threshold)
+        plans (par/pmapv job cids chunk-leaf chunk-threshold)
         acc {:counts @(:counts ctx) :boxes [] :mobs []}
         pairs (map vector cids plans)]
     (:mobs (reduce #(settle ctx %1 %2) acc pairs))))

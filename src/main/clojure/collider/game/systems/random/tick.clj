@@ -8,6 +8,7 @@
             [collider.game.item :as item]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -102,7 +103,7 @@
 (def ^:private ^:const chunk-threshold 64)
 
 (defn- per-chunk [cids f]
-  (deltas/pmapv f cids chunk-leaf chunk-threshold))
+  (par/pmapv f cids chunk-leaf chunk-threshold))
 
 (defn- chunk-results [world chunks speed time cid]
   (when-let [c (get chunks cid)]
