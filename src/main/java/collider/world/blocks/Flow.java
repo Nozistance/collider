@@ -1,15 +1,13 @@
 package collider.world.blocks;
 
-import clojure.lang.Indexed;
-import clojure.lang.RT;
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import java.util.Arrays;
-import java.util.Map;
 
-/// The spread of one liquid on its fluid tick. It finds the new liquid
-/// of a cell and the lowest targets of the slope search, and it reads
-/// the chunks under an overlay of states that the chunks lack yet.
+/// The spread of one liquid on its fluid tick. It finds the changes
+/// of the tick with their effects, and the lava next to each change
+/// that mixes with water as the change reaches it. It reads the chunks
+/// under an overlay of the states that the tick changed.
 /// Directions 0 to 3 go east, west, south and north, 4 up and 5 down.
 /// A level is 0 for a source and 8 for a falling liquid. A flowing
 /// liquid of amount n has the level 8 minus n.
@@ -33,6 +31,37 @@ public final class Flow {
     /// The wall kind of a state with some collision.
     public static final int PARTIAL = 2;
 
+    /// The effect of a lava flow that breaks a block or mixes.
+    public static final int FIZZ = 1;
+
+    /// The effect of a lava flow that breaks a block and mixes.
+    public static final int FIZZ_TWICE = 2;
+
+    /// The effect of a container that takes water.
+    public static final int FILL = 3;
+
+    /// The effect of a lit container that takes water and goes out.
+    public static final int DOUSE = 4;
+
+    /// The effect of a dried ghast that takes water.
+    public static final int SOAK = 5;
+
+    /// The blocks that lava turns into next to water.
+    ///
+    /// @param source The block of a lava source over water.
+    /// @param flowing The block of a flowing lava over water.
+    /// @param smother The block of water that lava falls into.
+    /// @param basalt The block of lava over soul soil by blue ice.
+    /// @param soulSoil The state below lava that makes basalt.
+    /// @param blueIce The state beside lava that makes basalt.
+    public record Mix(
+            int source,
+            int flowing,
+            int smother,
+            int basalt,
+            int soulSoil,
+            int blueIce) {}
+
     /// The tables of one liquid, each indexed by block state.
     ///
     /// @param cls The fluid code of the liquid.
@@ -50,7 +79,10 @@ public final class Flow {
     /// @param holdsFlowing True when the state may hold the flow.
     /// @param ground True when a state below makes a new source.
     /// @param container True when the state holds a fluid in itself.
+    /// @param held The state that a container takes water as.
+    /// @param fills The effect of a container that takes water.
     /// @param drops True when a flow into the state drops it.
+    /// @param mix The blocks of lava next to water.
     /// @param base The source state of the liquid.
     /// @param voidAir The state outside the world height.
     public record Tables(
@@ -66,9 +98,20 @@ public final class Flow {
             boolean[] holdsFlowing,
             boolean[] ground,
             boolean[] container,
+            long[] held,
+            byte[] fills,
             boolean[] drops,
+            Mix mix,
             int base,
             int voidAir) {}
+
+    private static final int EAST = 0;
+
+    private static final int WEST = 1;
+
+    private static final int SOUTH = 2;
+
+    private static final int NORTH = 3;
 
     private static final int UP = 4;
 
@@ -76,7 +119,13 @@ public final class Flow {
 
     private static final int[] DX = {1, -1, 0, 0, 0, 0};
 
+    private static final int[] DY = {0, 0, 0, 0, 1, -1};
+
     private static final int[] DZ = {0, 0, 1, -1, 0, 0};
+
+    private static final int[] MIXES = {UP, NORTH, SOUTH, WEST, EAST};
+
+    private static final int[] UPDATES = {WEST, EAST, DOWN, UP, NORTH, SOUTH};
 
     private static final double HALF_FULL = 0.44444445;
 
@@ -96,7 +145,7 @@ public final class Flow {
 
     private static final int TARGET = 2;
 
-    private static final int CHANGE = 5;
+    private static final int CHANGE = 6;
 
     /// The per-thread arrays of the slope search and the face test. An
     /// entry holds its value in the low half and the epoch of the search
@@ -121,13 +170,13 @@ public final class Flow {
 
     private final ChunkIndex chunks;
 
-    private int[] overX;
+    private int[] overX = new int[0];
 
-    private int[] overY;
+    private int[] overY = new int[0];
 
-    private int[] overZ;
+    private int[] overZ = new int[0];
 
-    private int[] overState;
+    private int[] overState = new int[0];
 
     private int overCount;
 
@@ -163,38 +212,22 @@ public final class Flow {
 
     private final int[] nearZ = new int[4];
 
-    private Flow(Tables t, ChunkIndex chunks, Object over) {
+    private final int[] mixedAround = new int[UPDATES.length];
+
+    private Flow(Tables t, ChunkIndex chunks) {
         this.t = t;
         this.chunks = chunks;
-        int n = over == null ? 0 : RT.count(over);
-        overX = new int[n];
-        overY = new int[n];
-        overZ = new int[n];
-        overState = new int[n];
-        if (over != null) {
-            int i = 0;
-            for (Object o : (Iterable<?>) over) {
-                Map.Entry<?, ?> e = (Map.Entry<?, ?>) o;
-                Indexed k = (Indexed) e.getKey();
-                overX[i] = RT.intCast(k.nth(0));
-                overY[i] = RT.intCast(k.nth(1));
-                overZ[i] = RT.intCast(k.nth(2));
-                overState[i] = RT.intCast(e.getValue());
-                i++;
-            }
-        }
-        overCount = n;
     }
 
     public static int count(int[] packed) {
         return packed[0];
     }
 
-    public static int targetDirection(int[] found, int k) {
+    private static int targetDirection(int[] found, int k) {
         return found[1 + TARGET * k];
     }
 
-    public static int targetLevel(int[] found, int k) {
+    private static int targetLevel(int[] found, int k) {
         return found[2 + TARGET * k];
     }
 
@@ -218,6 +251,12 @@ public final class Flow {
     /// or -1 when it drops none.
     public static int changeDrop(int[] changes, int k) {
         return changes[5 + CHANGE * k];
+    }
+
+    /// Returns the effect of change k of a packed change list, or 0 when
+    /// it has none.
+    public static int changeEffect(int[] changes, int k) {
+        return changes[6 + CHANGE * k];
     }
 
     private void put(int x, int y, int z, int st) {
@@ -343,66 +382,11 @@ public final class Flow {
         return n > 0 ? 8 - n : -1;
     }
 
-    /// Returns the level of the liquid that the cell at `x` `y` `z`
-    /// takes from its neighbours, or -1 when it takes none.
-    public static int newLiquid(
-            Tables t,
-            ChunkIndex chunks,
-            Object over,
-            int x,
-            int y,
-            int z,
-            int dropoff,
-            boolean infinite
-    ) {
-        return new Flow(t, chunks, over).newLiquid(x, y, z, dropoff, infinite);
-    }
-
     private boolean replaceableDown(int st) {
         int f = t.fluid()[st];
         if (f == NONE) return true;
         if (f == WATER) return t.cls() != WATER;
         return t.cls() == WATER && amount(st) / 9.0 >= HALF_FULL;
-    }
-
-    /// Returns the level of the liquid that the liquid at `x` `y` `z`
-    /// spreads down to, or -1 when it does not spread down.
-    public static int downLevel(
-            Tables t,
-            ChunkIndex chunks,
-            Object over,
-            int x,
-            int y,
-            int z,
-            int dropoff,
-            boolean infinite
-    ) {
-        return new Flow(t, chunks, over).down(x, y, z, dropoff, infinite);
-    }
-
-    /// Returns true when the liquid at `x` `y` `z` has a hole below.
-    public static boolean hole(
-            Tables t,
-            ChunkIndex chunks,
-            Object over,
-            int x,
-            int y,
-            int z
-    ) {
-        return new Flow(t, chunks, over).holeAt(x, y, z);
-    }
-
-    /// Returns true when lava is at one of the six cells around `x`
-    /// `y` `z`.
-    public static boolean lavaNear(
-            Tables t,
-            ChunkIndex chunks,
-            Object over,
-            int x,
-            int y,
-            int z
-    ) {
-        return new Flow(t, chunks, over).lavaAround(x, y, z);
     }
 
     private int index(int x, int z) {
@@ -566,25 +550,7 @@ public final class Flow {
         return out;
     }
 
-    /// Returns the targets that the liquid at `x` `y` `z` spreads to on
-    /// its sides, north first, then south, west and east. Read the
-    /// result with `count`, `targetDirection` and `targetLevel`.
-    public static int[] lowestTargets(
-            Tables t,
-            ChunkIndex chunks,
-            Object over,
-            int x,
-            int y,
-            int z,
-            int dropoff,
-            int slope,
-            boolean infinite
-    ) {
-        return new Flow(t, chunks, over)
-                .lowestTargets(x, y, z, dropoff, slope, infinite);
-    }
-
-    private void add(int x, int y, int z, int st, int dropped) {
+    private void add(int x, int y, int z, int st, int dropped, int effect) {
         if (CHANGE * madeCount + CHANGE + 1 > made.length) {
             made = Arrays.copyOf(made, 2 * made.length);
         }
@@ -594,24 +560,66 @@ public final class Flow {
         made[k + 2] = z;
         made[k + 3] = st;
         made[k + 4] = dropped;
+        made[k + 5] = effect;
     }
 
-    private boolean spreadTo(int x, int y, int z, int v) {
-        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return true;
-        int traw = raw(x, y, z);
-        if (t.container()[traw] || lavaAround(x, y, z)) return false;
-        int st = t.base() + v;
-        add(x, y, z, st, t.drops()[traw] ? traw : -1);
-        put(x, y, z, st);
-        return true;
-    }
-
-    private boolean lavaAround(int x, int y, int z) {
-        for (int d = 0; d < 6; d++) {
-            int dy = d == UP ? 1 : d == DOWN ? -1 : 0;
-            if (t.fluid()[raw(x + DX[d], y + dy, z + DZ[d])] == LAVA) return true;
+    private int mixed(int x, int y, int z) {
+        int st = raw(x, y, z);
+        if (t.fluid()[st] != LAVA) return -1;
+        Mix m = t.mix();
+        boolean soul = raw(x, y - 1, z) == m.soulSoil();
+        for (int d : MIXES) {
+            int n = raw(x + DX[d], y + DY[d], z + DZ[d]);
+            if (t.fluid()[n] == WATER) {
+                return t.level()[st] == 0 ? m.source() : m.flowing();
+            }
+            if (soul && n == m.blueIce()) return m.basalt();
         }
-        return false;
+        return -1;
+    }
+
+    private void placeAndMixAround(int x, int y, int z, int st) {
+        put(x, y, z, st);
+        for (int k = 0; k < UPDATES.length; k++) {
+            int d = UPDATES[k];
+            mixedAround[k] = mixed(x + DX[d], y + DY[d], z + DZ[d]);
+        }
+        for (int k = 0; k < UPDATES.length; k++) {
+            int d = UPDATES[k];
+            if (mixedAround[k] >= 0) {
+                put(x + DX[d], y + DY[d], z + DZ[d], mixedAround[k]);
+            }
+        }
+    }
+
+    private void flowInto(int x, int y, int z, int v, int traw) {
+        boolean lava = t.cls() == LAVA;
+        int st = t.base() + v;
+        int mix = -1;
+        if (lava) {
+            put(x, y, z, st);
+            mix = mixed(x, y, z);
+        }
+        boolean gone = t.drops()[traw];
+        int fizz = (lava && gone ? 1 : 0) + (mix >= 0 ? 1 : 0);
+        int end = mix >= 0 ? mix : st;
+        add(x, y, z, end, !lava && gone ? traw : -1, fizz);
+        placeAndMixAround(x, y, z, end);
+    }
+
+    private void spreadTo(int x, int y, int z, int v, int d) {
+        if (y < Chunk.MIN_Y || y > Chunk.MAX_Y) return;
+        int traw = raw(x, y, z);
+        if (t.cls() == LAVA && d == DOWN && t.fluid()[traw] == WATER) {
+            add(x, y, z, t.mix().smother(), -1, FIZZ);
+            put(x, y, z, t.mix().smother());
+        } else if (t.container()[traw]) {
+            int st = (int) t.held()[traw];
+            add(x, y, z, st, -1, t.fills()[traw]);
+            placeAndMixAround(x, y, z, st);
+        } else {
+            flowInto(x, y, z, v, traw);
+        }
     }
 
     private int down(int x, int y, int z, int dropoff, boolean infinite) {
@@ -639,7 +647,7 @@ public final class Flow {
         return n;
     }
 
-    private boolean sides(
+    private void sides(
             int x,
             int y,
             int z,
@@ -649,18 +657,15 @@ public final class Flow {
             boolean infinite
     ) {
         int n = l == 8 ? 7 : (l == 0 ? 8 : 8 - l) - dropoff;
-        if (n <= 0) return true;
+        if (n <= 0) return;
         int[] found = lowestTargets(x, y, z, dropoff, slope, infinite);
         for (int k = 0; k < count(found); k++) {
             int d = targetDirection(found, k);
-            if (!spreadTo(x + DX[d], y, z + DZ[d], targetLevel(found, k))) {
-                return false;
-            }
+            spreadTo(x + DX[d], y, z + DZ[d], targetLevel(found, k), d);
         }
-        return true;
     }
 
-    private boolean spread(
+    private void spread(
             int x,
             int y,
             int z,
@@ -671,17 +676,16 @@ public final class Flow {
     ) {
         int v = down(x, y, z, dropoff, infinite);
         if (v >= 0) {
-            return spreadTo(x, y - 1, z, v)
-                    && (sourcesAround(x, y, z) < 3
-                            || sides(x, y, z, l, dropoff, slope, infinite));
+            spreadTo(x, y - 1, z, v, DOWN);
+            if (sourcesAround(x, y, z) >= 3) {
+                sides(x, y, z, l, dropoff, slope, infinite);
+            }
+        } else if (l == 0 || !holeAt(x, y, z)) {
+            sides(x, y, z, l, dropoff, slope, infinite);
         }
-        if (l == 0 || !holeAt(x, y, z)) {
-            return sides(x, y, z, l, dropoff, slope, infinite);
-        }
-        return true;
     }
 
-    private int[] waterChanges(
+    private int[] changes(
             int x,
             int y,
             int z,
@@ -690,29 +694,24 @@ public final class Flow {
             boolean infinite
     ) {
         int raw = raw(x, y, z);
-        if (!same(raw)) return null;
         int l = t.level()[raw];
         int v = l == 0 ? 0 : newLiquid(x, y, z, dropoff, infinite);
         made = new int[16];
         if (v < 0) {
-            add(x, y, z, 0, -1);
+            add(x, y, z, 0, -1, 0);
         } else {
             if (v != l) {
-                add(x, y, z, t.base() + v, -1);
+                add(x, y, z, t.base() + v, -1, 0);
                 put(x, y, z, t.base() + v);
             }
-            if (!spread(x, y, z, v, dropoff, slope, infinite)) {
-                return null;
-            }
+            spread(x, y, z, v, dropoff, slope, infinite);
         }
         made[0] = madeCount;
         return made;
     }
 
-    /// Returns the changes of the water at `x` `y` `z` on its fluid
-    /// tick, or null when one of them needs the full path, as for a
-    /// container or for lava next to the flow. Read the result with
-    /// `count` and the `change` accessors.
+    /// Returns the changes of the liquid at `x` `y` `z` on its fluid
+    /// tick. Read the result with `count` and the `change` accessors.
     public static int[] changes(
             Tables t,
             ChunkIndex chunks,
@@ -723,7 +722,12 @@ public final class Flow {
             int slope,
             boolean infinite
     ) {
-        return new Flow(t, chunks, null)
-                .waterChanges(x, y, z, dropoff, slope, infinite);
+        return new Flow(t, chunks).changes(x, y, z, dropoff, slope, infinite);
+    }
+
+    /// Returns the block that the lava at `x` `y` `z` turns into, or -1
+    /// when it stays lava.
+    public static int mixed(Tables t, ChunkIndex chunks, int x, int y, int z) {
+        return new Flow(t, chunks).mixed(x, y, z);
     }
 }
