@@ -137,7 +137,7 @@
 
 (defn- chosen [pos players]
   (when-let [[[pid p]] (nearest pos players)]
-    (when (pos? (double (:health p 20.0))) pid)))
+    (when (entity/alive? p) pid)))
 
 (defn followed
   "Returns the player orb e follows among players [eid player] that

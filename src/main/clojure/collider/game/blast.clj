@@ -77,7 +77,7 @@
 (defn- pushed [b id e d12]
   (let [[kb dmg] (impulse b e (:pos e) d12 (density b e))]
     (cond
-      (= :player (:type e))
+      (entity/player? e)
       {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
        :motion (when (shoved? e) kb)}
       (item-dies? e dmg) {:ds [[:remove-entity id]] :gone? true}

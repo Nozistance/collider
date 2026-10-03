@@ -39,7 +39,7 @@
 (def ^:private ^:const ticks-per-second 20)
 
 (defn- hurt-sound [e]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     (cond
       (not (pos? (double (:health e)))) :player/death
       (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
@@ -85,7 +85,7 @@
   [world e src]
   (let [t (:type src) rule (get @rule-of t)]
     (or (and rule (not (get-in world [:rules rule] true)))
-        (and (= :player (:type (cause-of world src)))
+        (and (entity/player? (cause-of world src))
              (not (get-in world [:rules :pvp] true)))
         (and (game-mode/invulnerable? e)
              (not (contains? @bypassing t))))))
@@ -115,7 +115,7 @@
   rule spares it. The difficulty scales the damage to a player. Any
   other entity takes amount."
   [world e amount src]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     (when-not (spared? world e src)
       (let [n (double amount)
             n (if (scales? world src) (by-difficulty world n) n)]
@@ -394,7 +394,7 @@
   wet as wet? tells or as it is."
   ([world eid e] (fire-deltas world eid e (:wet? e)))
   ([world eid e wet?]
-   (if (= :player (:type e))
+   (if (entity/player? e)
      (player-fire-deltas world eid e)
      (let [fire (long (or (:fire e) 0))
            [half height :as box] (box-of e)]
@@ -498,7 +498,7 @@
             (landing-particles world e (double fall)))))
 
 (defn- loading? [world e]
-  (and (= :player (:type e))
+  (and (entity/player? e)
        (not (player/client-loaded? e (inc (long (:tick world)))))))
 
 (defn- void-deltas [world eid e]
@@ -573,7 +573,7 @@
   "Returns the orbs e leaves where it died. Players drop some of
   their levels, animals a few points when a player killed them."
   [world eid e]
-  (let [n (if (= :player (:type e))
+  (let [n (if (entity/player? e)
             (player-reward world e)
             (mob-reward world eid e))]
     (when (and n (pos? (long n)))
@@ -582,7 +582,7 @@
 (defn- hurt-marks [world e ^double health src]
   (cond-> {:health-sent health}
           src (assoc :struck-by nil)
-          (not= :player (:type e)) (merge (panicked world e))))
+          (not (entity/player? e)) (merge (panicked world e))))
 
 (defn- voice [world eid e snd]
   (out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))))
@@ -596,7 +596,7 @@
         ev (out/damage-event
              eid (:type src) (:cause src) (:direct src) (:pos src))]
     (cond-> [(out/all ev)]
-      (= :player (:type e)) (conj (out/to eid ev))
+      (entity/player? e) (conj (out/to eid ev))
       snd (conj (voice world eid e snd)))))
 
 (defn- died-deltas [world eid e]
@@ -605,7 +605,7 @@
 
 (defn- lost-deltas [world eid e health]
   (concat (when-not (pos? (double health)) (died-deltas world eid e))
-          (when (= :player (:type e))
+          (when (entity/player? e)
             [(out/to eid (out/health health))])))
 
 (defn report-deltas
@@ -629,7 +629,7 @@
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
         gone? (and death (>= (long death) mobs/death-ticks)
-                   (not= :player (:type e)))]
+                   (not (entity/player? e)))]
     (concat
       (when death [[:merge-entity eid {:death-time death}]])
       (when gone? [[:remove-entity eid]]))))
@@ -656,7 +656,7 @@
 (defn- burn-deltas [world eid e]
   (let [fire (long (or (:fire e) 0))]
     (when (pos? fire)
-      (if (= :player (:type e))
+      (if (entity/player? e)
         (player-burn-deltas world eid e fire)
         (let [lava? (any-bit? (probe world e) lava-bit)]
           (burn-tick-deltas eid fire (boolean (:wet? e)) lava?))))))

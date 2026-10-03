@@ -29,7 +29,7 @@
   "Returns true when entity e belongs to chunk id.
   Players never do."
   [^long id e]
-  (and (not= :player (:type e))
+  (and (not (entity/player? e))
        (= id (chunk/pos-chunk (:pos e)))))
 
 (defn payload-of
@@ -44,7 +44,7 @@
      :fluid-ticks (or fluid-ticks [])}))
 
 (defn- grouped [m eid e]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     m
     (let [id (chunk/pos-chunk (:pos e))]
       (assoc! m id (conj (get m id []) (MapEntry/create eid e))))))
@@ -121,7 +121,7 @@
 (declare profile-of)
 
 (defn- named-player? [e]
-  (and (= :player (:type e)) (:name e)))
+  (and (entity/player? e) (:name e)))
 
 (defn- store-profiles [profiles world]
   (into profiles
