@@ -41,8 +41,8 @@
 
 (defn- stepped [[w :as acc] eid f]
   (if-let [e (get (:entities w) eid)]
-    (apply/then acc (delta/authored (f w (MapEntry/create eid e))
-                                    eid :player))
+    (let [ds (f w (MapEntry/create eid e))]
+      (apply/then acc (delta/authored ds eid :player)))
     acc))
 
 (defn player-tick
