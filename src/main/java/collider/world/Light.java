@@ -35,10 +35,8 @@ public final class Light {
     private final ChunkIndex chunks;
     private final int ch;
     private final BlockTables t;
-    private long[] rq = new long[64];
-    private int rqHead, rqTail;
-    private long[] pq = new long[64];
-    private int pqHead, pqTail;
+    private final LongQueue decreases = new LongQueue();
+    private final LongQueue increases = new LongQueue();
 
     private Light(Scratch<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
         this.cache = cache;
@@ -271,24 +269,6 @@ public final class Light {
         return RT.longCast(RT.nth(c, i));
     }
 
-    private void addR(long e) {
-        if (rqTail == rq.length) {
-            rq = Arrays.copyOfRange(rq, rqHead, rqHead + 2 * rq.length);
-            rqTail -= rqHead;
-            rqHead = 0;
-        }
-        rq[rqTail++] = e;
-    }
-
-    private void addP(long e) {
-        if (pqTail == pq.length) {
-            pq = Arrays.copyOfRange(pq, pqHead, pqHead + 2 * pq.length);
-            pqTail -= pqHead;
-            pqHead = 0;
-        }
-        pq[pqTail++] = e;
-    }
-
     private byte[] cached(long k) {
         if (k != lastKey) {
             last = cache.get(k);
@@ -330,7 +310,7 @@ public final class Light {
         long cur = get(x, y, z);
         if (cur > 0) {
             set(x, y, z, 0);
-            addR(pack(x, y, z, cur));
+            decreases.add(pack(x, y, z, cur));
         }
     }
 
@@ -339,12 +319,12 @@ public final class Light {
         long source = c & 0xF;
         if (source > 0 && source > get(x, y, z)) {
             set(x, y, z, source);
-            addP(pack(x, y, z, source));
+            increases.add(pack(x, y, z, source));
         }
         for (int d = 0; d < 6; d++) {
             long nx = x + DX[d], ny = y + DY[d], nz = z + DZ[d];
             long ln = get(nx, ny, nz);
-            if (ln > 0) addP(pack(nx, ny, nz, ln));
+            if (ln > 0) increases.add(pack(nx, ny, nz, ln));
         }
     }
 
@@ -352,13 +332,13 @@ public final class Light {
         long em = Block.emission(t, block(chunks, x, y, z));
         if (em > 0 && ch == BLOCK) {
             set(x, y, z, em);
-            addP(pack(x, y, z, em));
+            increases.add(pack(x, y, z, em));
         }
     }
 
     private void unlight() {
-        while (rqHead < rqTail) {
-            long e = rq[rqHead++];
+        while (!decreases.isEmpty()) {
+            long e = decreases.poll();
             long l = e & 0xF;
             for (int d = 0; d < 6; d++) {
                 long nx = px(e) + DX[d], ny = py(e) + DY[d];
@@ -366,9 +346,9 @@ public final class Light {
                 long ln = get(nx, ny, nz);
                 if (ln <= 0) continue;
                 if (ln >= l) {
-                    addP(pack(nx, ny, nz, ln));
+                    increases.add(pack(nx, ny, nz, ln));
                 } else if (set(nx, ny, nz, 0)) {
-                    addR(pack(nx, ny, nz, ln));
+                    decreases.add(pack(nx, ny, nz, ln));
                     reEmit(nx, ny, nz);
                 }
             }
@@ -376,8 +356,8 @@ public final class Light {
     }
 
     private void propagate() {
-        while (pqHead < pqTail) {
-            long e = pq[pqHead++];
+        while (!increases.isEmpty()) {
+            long e = increases.poll();
             long x = px(e), y = py(e), z = pz(e), l = e & 0xF;
             if (l != get(x, y, z)) continue;
             long from = block(chunks, x, y, z);
@@ -395,7 +375,7 @@ public final class Light {
                 && cand > get(nx, ny, nz)
                 && !Block.occludes(t, from, to, d)
                 && set(nx, ny, nz, cand)) {
-            addP(pack(nx, ny, nz, cand));
+            increases.add(pack(nx, ny, nz, cand));
         }
     }
 
