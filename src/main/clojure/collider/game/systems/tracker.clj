@@ -1,18 +1,19 @@
 (ns collider.game.systems.tracker
   "What each player sees of the bodies near it."
-  (:require [collider.data.long-map :as lm]
+  (:require [clojure.core.reducers :as r]
+            [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.chunks :as chunks]
             [collider.game.entity.metadata :as metadata]
             [collider.game.hanging :as hanging]
             [collider.game.level :as level]
-            [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.systems.tracker.track :refer [->Track]]
-            [collider.vec :as vv]
-            [collider.world.chunk :as chunk])
-  (:import (collider.game.systems.tracker.track Frame Track)))
+            [collider.vec :as vv])
+  (:import (collider.game.deltas.record Deltas)
+           (collider.game.systems.tracker.track Frame Track)))
 
 (set! *warn-on-reflection* true)
 
@@ -101,16 +102,6 @@
 
 (defn- track-of [^long t e] (or (:track e) (baseline t e)))
 
-(def ^:private tracked-types
-  (into #{:player :item :tnt :falling-block :area-effect-cloud
-          :experience-orb}
-        cat [entity/thrown-types hanging/types (keys mobs/types)]))
-
-(defn- tracked? [e] (contains? tracked-types (:type e)))
-
-(defn- tracked-entries [world]
-  (into [] (filter (fn [[_ e]] (tracked? e))) (:entities world)))
-
 (defn- viewed [ps]
   (transduce (keep #(:tracking (val %))) (completing lm/union)
              (lm/long-set) ps))
@@ -126,48 +117,18 @@
           (conj base (out/to pid (out/meta eid (:type e) mdata)))
           base)))))
 
-(defn- joined [m ^long c run]
-  (if run
-    (let [es (persistent! run)]
-      (assoc! m c (if-let [had (get m c)] (lm/union had es) es)))
-    m))
-
-(defn- run-of [eid] (conj! (transient (lm/long-set)) eid))
-
-(defn- entities-by-chunk [ts]
-  (loop [m (transient (lm/long-map)) c 0 run nil ts (seq ts)]
-    (if-let [[eid e] (first ts)]
-      (let [c' (chunk/pos-chunk (:pos e))]
-        (if (and run (= c c'))
-          (recur m c (conj! run eid) (next ts))
-          (recur (joined m c run) c' (run-of eid) (next ts))))
-      (persistent! (joined m c run)))))
-
-(defn- near-index [ts]
-  [(entities-by-chunk ts)
-   (filterv #(identical? :player (:type (val %))) ts)])
-
-(defn- near-set [by-chunk seen]
-  (if (< (count by-chunk) (count seen))
-    (reduce (fn [acc [c es]]
-              (if (contains? seen c) (lm/union acc es) acc))
-            (lm/long-set) by-chunk)
-    (reduce (fn [acc c]
-              (if-let [es (get by-chunk c)] (lm/union acc es) acc))
-            (lm/long-set) seen)))
-
 (defn- hidden-from [oid o bodies]
   (into (lm/long-set [oid])
         (keep (fn [[eid e]] (when-not (game-mode/shown-to? o e) eid)))
         bodies))
 
-(defn- tracking-deltas [world t0 [by-chunk bodies] [oid o]]
-  (let [near (near-set by-chunk (or (:sent-chunks o) (lm/long-set)))
-        hidden (hidden-from oid o bodies)
-        want (into (lm/long-set) (remove #(contains? hidden %)) near)
+(defn- tracking-deltas [world t0 idx ps [oid o]]
+  (let [near (chunks/near idx (or (:sent-chunks o) (lm/long-set)))
+        hidden (hidden-from oid o ps)
+        want (lm/difference near hidden)
         have (or (:tracking o) (lm/long-set))
-        add (into [] (remove #(contains? have %)) want)
-        gone (into [] (remove #(contains? want %)) have)]
+        add (into [] (lm/difference want have))
+        gone (into [] (lm/difference have want))]
     (when (or (seq add) (seq gone))
       (into [[:tracking oid add gone]]
             (mapcat (fn [eid] (baseline-deltas world t0 oid eid)))
@@ -425,7 +386,7 @@
         due? (due-now? (long t) tr e dirty?)]
     (tracked-deltas (long t) eid e vs self? tr mdata dirty? due?)))
 
-(defn- move-deltas [t viewers [eid e]]
+(defn- move-deltas [t viewers eid e]
   (let [vs (contains? viewers eid)
         self? (= :player (:type e))
         ds (when (or vs self?) (seen-deltas t vs self? eid e))]
@@ -452,29 +413,39 @@
   [world d]
   (deltas/of-vec
     (when (entities-changed? d)
-      (let [near (near-index (tracked-entries world))
+      (let [idx (chunks/index world)
+            ps (level/player-entries world)
             t0 (inc (long (:tick world)))
-            track (fn [entry] (tracking-deltas world t0 near entry))]
-        (into [] (mapcat track) (level/player-entries world))))))
+            track #(tracking-deltas world t0 idx ps %)]
+        (into [] (mapcat track) ps)))))
 
-(defn- spawn-deltas [world ps ts]
-  (let [near (near-index ts)]
-    (deltas/fold #(tracking-deltas world (:tick world) near %) ps)))
+(defn- spawn-deltas [world ps]
+  (let [idx (chunks/index world)
+        t0 (:tick world)]
+    (deltas/fold #(tracking-deltas world t0 idx ps %) ps)))
 
 (def ^:private ^:const move-batch 32)
 
-(defn- moves-deltas [world ps ts]
+(defn- collected [c]
+  (if (instance? Deltas c) c (deltas/collected c)))
+
+(defn- joined
+  ([] (deltas/collecting))
+  ([a b] (deltas/merge (collected a) (collected b))))
+
+(defn- moves-deltas [world ps]
   (let [viewers (viewed ps)
         t (long (:tick world))
-        moved (fn [entry] (move-deltas t viewers entry))]
-    (deltas/fold #(into [] (mapcat moved) %)
-                 (into [] (partition-all move-batch) ts))))
+        step (fn [c eid e]
+               (if (chunks/tracked? e)
+                 (deltas/collect-all! c (move-deltas t viewers eid e))
+                 c))]
+    (collected (r/fold move-batch joined step (:entities world)))))
 
 (defn tracker
   {:wake {:keys [:entities [:input :resends]]}}
   [world _]
-  (let [ps (level/player-entries world)
-        ts (tracked-entries world)]
+  (let [ps (level/player-entries world)]
     (deltas/merge (deltas/of-vec (resend-deltas world))
-                  (spawn-deltas world ps ts)
-                  (moves-deltas world ps ts))))
+                  (spawn-deltas world ps)
+                  (moves-deltas world ps))))
