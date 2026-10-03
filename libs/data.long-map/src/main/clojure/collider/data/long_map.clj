@@ -1,6 +1,5 @@
 (ns collider.data.long-map
   "Persistent maps and sets with long keys, in signed key order.
-
   Both types are Clojure collections, so `clojure.core` works on them.
   The functions here that share a name with `clojure.core` take
   primitive keys and skip boxing."
@@ -15,7 +14,8 @@
   "Returns a map of the given keys and values."
   (^LongMap [] LongMap/EMPTY)
   (^LongMap [k v] (.put LongMap/EMPTY (long k) v))
-  (^LongMap [k v & kvs] (apply clojure.core/assoc (long-map k v) kvs)))
+  (^LongMap [k v & kvs]
+   (apply clojure.core/assoc (long-map k v) kvs)))
 
 (defn long-set
   "Returns a set of the longs in `coll`."
