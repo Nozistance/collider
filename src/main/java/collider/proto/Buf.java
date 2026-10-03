@@ -223,7 +223,9 @@ public final class Buf {
                     if ((c2 & 0xC0) != 0x80 || (c3 & 0xC0) != 0x80) {
                         throw malformed(count - 1);
                     }
-                    chars[n++] = (char) (((c & 0x0F) << 12) | ((c2 & 0x3F) << 6) | (c3 & 0x3F));
+                    chars[n++] = (char) (((c & 0x0F) << 12)
+                            | ((c2 & 0x3F) << 6)
+                            | (c3 & 0x3F));
                 }
                 default -> throw malformed(count);
             }
