@@ -620,6 +620,15 @@
 (defn- read-removed [^Buf buf]
   (data/entry-name "data_component_type" (c/read-varint buf)))
 
+(defn- read-changes [^Buf buf delimited? added removed]
+  (let [cs (mapv (fn [_] (read-component buf delimited?))
+                 (range added))
+        rs (mapv (fn [_] (read-removed buf)) (range removed))
+        m (apply array-map (apply concat cs))]
+    (cond-> {}
+            (seq cs) (assoc :components m)
+            (seq rs) (assoc :removed (set rs)))))
+
 (defn read-patch
   "Returns the changes to the default components of an item, or nil
   when there are none."
@@ -627,15 +636,8 @@
   ([^Buf buf delimited?]
    (let [added (c/read-count buf)
          removed (c/read-count buf)]
-     (if (and (zero? added) (zero? removed))
-       nil
-       (let [one (fn [_] (read-component buf delimited?))
-             cs (mapv one (range added))
-             rs (mapv (fn [_] (read-removed buf)) (range removed))
-             m (apply array-map (apply concat cs))]
-         (cond-> {}
-                 (seq cs) (assoc :components m)
-                 (seq rs) (assoc :removed (set rs))))))))
+     (when-not (and (zero? added) (zero? removed))
+       (read-changes buf delimited? added removed)))))
 
 (defn write-patch
   "Writes the changes to the default components of an item."
