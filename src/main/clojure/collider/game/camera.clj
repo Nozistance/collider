@@ -4,6 +4,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
+            [collider.game.schema :as schema]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -57,7 +58,7 @@
       (mobs/mob-type? t) (mobs/box-of e)
       (#{:tnt :falling-block} t) (entity/box e))))
 
-(def ^:private ^:const border 29999984.0)
+(def ^:private ^:const border (double schema/world-border))
 
 (defn- in-border? [e]
   (let [x (Math/floor (v/x (:pos e))) z (Math/floor (v/z (:pos e)))]

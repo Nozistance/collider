@@ -298,7 +298,7 @@
              es es))
 
 (defn- spawned [w spec]
-  (let [eid (long (:next-eid w 1000000))]
+  (let [eid (long (:next-eid w schema/first-eid))]
     (-> w
         (assoc-in [:entities eid]
                   (entity/of (assoc spec :born (:tick w))))

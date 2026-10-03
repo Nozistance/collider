@@ -51,11 +51,10 @@
    :health-sent  20.0
    :keepalive-at tick :keepalive-pending? false})
 
-(def ^:private border-edge 29999984)
-
 (defn- in-border? [[x _ z]]
-  (and (<= (- border-edge) (long x)) (< (long x) border-edge)
-       (<= (- border-edge) (long z)) (< (long z) border-edge)))
+  (let [b schema/world-border]
+    (and (<= (- b) (long x)) (< (long x) b)
+         (<= (- b) (long z)) (< (long z) b))))
 
 (defn- respawn-dimension [w]
   (let [dim (:world-spawn-dimension w :overworld)]
@@ -83,7 +82,7 @@
   It moves inside the world border as the chunks of its level stand
   now."
   [w]
-  (let [pos (vec (:world-spawn w [24 4 8]))]
+  (let [pos (vec (:world-spawn w schema/world-spawn))]
     (if (in-border? pos) pos (centre-top (respawn-level w)))))
 
 (defn set-world-spawn

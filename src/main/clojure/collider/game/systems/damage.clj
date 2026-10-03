@@ -5,6 +5,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.world.chunk :as chunk]
             [collider.game.areas :as areas]
+            [collider.par :as par]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -95,7 +96,7 @@
                     (hurt/based? world e)))
         burnt (fn [[eid e]] (hurt/burnt-deltas world eid e))
         xf (comp (filter due?) (mapcat burnt))]
-    (deltas/of-vec (deltas/select xf (:entities world)))))
+    (deltas/of-vec (par/select xf (:entities world)))))
 
 (defn damage
   "Returns the deltas of every player and item this tick.
@@ -103,4 +104,4 @@
   {:wake {:keys [:entities]}}
   [world _d]
   (deltas/of-vec
-    (deltas/select (living world) (:entities world) living-leaf)))
+    (par/select (living world) (:entities world) living-leaf)))

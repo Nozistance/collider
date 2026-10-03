@@ -2,7 +2,8 @@
   "The ticker: it runs the tick twenty times a second."
   (:require [collider.game.deltas :as deltas]
             [collider.game.tick :as tick]
-            [collider.log :as log])
+            [collider.log :as log]
+            [collider.par :as par])
   (:import (collider.game.deltas.record Deltas)
            (java.util Arrays)
            (java.util.concurrent ConcurrentLinkedQueue)
@@ -207,7 +208,7 @@
 (defn- ticker-thread
   ^Thread [st running world-atom queue deliver! opts]
   (let [run #(ticker-loop st running world-atom queue deliver! opts)]
-    (daemon! #(deltas/in-pool run) "collider-ticker")))
+    (daemon! #(par/in-pool run) "collider-ticker")))
 
 (defn start-ticker!
   "Starts ticking world-atom on the events of queue.

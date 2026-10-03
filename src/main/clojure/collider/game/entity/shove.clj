@@ -1,7 +1,7 @@
 (ns collider.game.entity.shove
-  "Bodies stuck in blocks pushed towards open space, as
-  Entity.moveTowardsClosestSpace."
-  (:require [collider.vec :as v]
+  "Bodies stuck in blocks pushed towards open space."
+  (:require [collider.num :as num]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -9,10 +9,6 @@
 
 (def ^:private sides
   [[:z -1] [:z 1] [:x -1] [:x 1] [:y 1]])
-
-(defn- fl ^long [^double a] (long (Math/floor a)))
-
-(defn- f32 ^double [^double x] (double (unchecked-float x)))
 
 (defn- full-block? [chunks [x y z]]
   (and (chunk/in-range? (long y))
@@ -27,13 +23,13 @@
   (if (pos? (long s)) (- 1.0 (double (d a))) (double (d a))))
 
 (defn- closest-side [chunks ^double x ^double y ^double z]
-  (let [b [(fl x) (fl y) (fl z)]
+  (let [b [(num/floor x) (num/floor y) (num/floor z)]
         d {:x (- x (double (b 0))) :y (- y (double (b 1)))
            :z (- z (double (b 2)))}
+        open? #(not (full-block? chunks (beside b %)))
         step (fn [[_ best :as acc] side]
                (let [o (toward d side)]
-                 (if (and (< o (double best))
-                          (not (full-block? chunks (beside b side))))
+                 (if (and (< o (double best)) (open? side))
                    [side o]
                    acc)))]
     (first (reduce step [[:y 1] Double/MAX_VALUE] sides))))
@@ -46,8 +42,9 @@
   (let [y0 (v/y pos)
         y (/ (+ y0 (+ y0 (double height))) 2.0)
         [a s] (closest-side chunks (v/x pos) y (v/z pos))
-        speed (f32 (+ (f32 (* (f32 r) (f32 0.2))) (f32 0.1)))
-        push (f32 (* (double s) speed))
+        spread (num/fmul (num/f32 r) (num/f32 0.2))
+        speed (num/f32 (+ spread (num/f32 0.1)))
+        push (num/f32 (* (double s) speed))
         sx (* (v/x vel) 0.75) sy (* (v/y vel) 0.75)
         sz (* (v/z vel) 0.75)]
     (case a

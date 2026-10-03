@@ -10,12 +10,11 @@
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.game.schema :as schema]
-            [collider.log :as log])
+            [collider.log :as log]
+            [collider.par :as par])
   (:import (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private ^:const fold-leaf 64)
 
 (defn- unchanged [w _]
   w)
@@ -92,7 +91,9 @@
     :track (when-not (kept-mdata? e m) {:track (nth d 2)})
     nil))
 
-(defn- entity-folded [t e ds]
+(defn entity
+  "Returns entity e after its deltas ds of tick t, in order."
+  [t e ds]
   (loop [e e m nil ds (seq ds)]
     (if ds
       (let [d (first ds)]
@@ -102,23 +103,18 @@
                  (next ds))))
       (merged-in e m))))
 
-(defn entity
-  "Returns entity e after its deltas ds of tick t, in order."
-  [t e ds]
-  (entity-folded t e ds))
-
 (defn- stepped [entities t]
   (fn [m [eid ds]]
     (if-let [e (get entities eid)]
-      (assoc! m eid (entity-folded t e ds))
+      (assoc! m eid (entity t e ds))
       m)))
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
 
 (defn- leaf-of [step entities v ^long j]
   (let [n (count v)
-        a (* j fold-leaf)
-        b (min n (+ a fold-leaf))
+        a (* j par/fold-leaf)
+        b (min n (+ a par/fold-leaf))
         lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
         hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
     (persistent!
@@ -126,12 +122,12 @@
               (subvec v a b)))))
 
 (defn- leaves [^long n]
-  (vec (range (quot (+ n (dec fold-leaf)) fold-leaf))))
+  (vec (range (quot (+ n (dec par/fold-leaf)) par/fold-leaf))))
 
 (defn- folded-entities [w entities by-eid]
   (let [step (stepped entities (:tick w))
         n (count by-eid)]
-    (if (< n fold-leaf)
+    (if (< n par/fold-leaf)
       (persistent! (reduce step (transient entities) by-eid))
       (let [v (vec by-eid)
             leaf #(lm/merge %1 (leaf-of step entities v %2))]
@@ -287,12 +283,10 @@
 
 (defn in
   "Returns world with deltas d applied to its level dim.
-  The shared keys the level changed go to the top of world and to its
-  other levels. The deltas of an entity in another level, those d
-  hands to another level and the players that change dimension go
-  where they belong, in that order. Given ds, the deltas each level
-  took so far by dimension, returns [world ds] with d noted where it
-  applied."
+  The shared keys the level changed go to the world and to its other
+  levels. Deltas of other levels and changes of dimension go where
+  they belong. Given ds, the deltas each level took so far, returns
+  the world and ds with d noted where it applied."
   ([world dim d]
    (nth (in (level/synced world) dim (deltas-of d) {}) 0))
   ([world dim d ds]
@@ -328,6 +322,12 @@
   (try (vec (authored (f w x) ev))
        (catch Throwable t (dropped! f ev t) [])))
 
+(defn- event-step [f event-of w x more]
+  (let [ev (event-of x)
+        w (entities w (player/slot-part w ev))
+        ds (event-deltas f w x ev)]
+    [(if (and more (seq ds)) (first (deltas w ds)) w) ds]))
+
 (defn fold-events
   "Returns the deltas f gives for each event in order.
   Each event sees the world after the events and slot events
@@ -338,16 +338,12 @@
    (loop [w world evs (seq events) acc []]
      (if-not evs
        acc
-       (let [x (first evs) more (next evs) ev (event-of x)
-             w (entities w (player/slot-part w ev))
-             ds (event-deltas f w x ev)
-             step? (and more (seq ds))]
-         (recur (if step? (first (deltas w ds)) w)
-                more (into acc ds)))))))
+       (let [more (next evs)
+             [w ds] (event-step f event-of w (first evs) more)]
+         (recur w more (into acc ds)))))))
 
 (defn then
-  "Returns [world' d'] after deltas ds: world with ds applied and
-  the deltas d with ds added."
+  "Returns world with deltas ds applied, and deltas d with ds added."
   [[world d] ds]
   (let [x (deltas/of-vec (vec ds))]
     [(if (deltas/inert? x) world (first (deltas world x)))

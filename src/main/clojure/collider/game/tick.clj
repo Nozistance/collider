@@ -30,7 +30,8 @@
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tracker :as tracker]
             [collider.game.systems.weather :as weather-system]
-            [collider.game.systems.damage :as damage]))
+            [collider.game.systems.damage :as damage]
+            [collider.par :as par]))
 
 (set! *warn-on-reflection* true)
 
@@ -259,7 +260,7 @@
   passes on what it was given."
   ([world events] (tick world events phases))
   ([world events phases]
-   (deltas/in-pool
+   (par/in-pool
      #(let [evs (if-let [fs (hooked world :event-filters)]
                   (passed world fs world events vector?)
                   events)

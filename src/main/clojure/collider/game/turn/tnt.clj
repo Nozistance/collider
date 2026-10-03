@@ -13,6 +13,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.push :as push]
             [collider.game.turn.overlay :as overlay]
+            [collider.par :as par]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
@@ -233,6 +234,6 @@
     (when (pos? (count tnts))
       (finished
         (reduce #(turn world %1 %2)
-                {:w world :cur (deltas/keyed (:entities world)) :ds ds
+                {:w world :cur (par/keyed (:entities world)) :ds ds
                  :out [] :fresh 0}
                 tnts)))))

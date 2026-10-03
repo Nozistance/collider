@@ -4,44 +4,11 @@
   (:require [clojure.core.reducers :as r]
             [collider.data.long-map :as lm]
             [collider.game.delta :as delta]
-            [collider.game.deltas.record :refer [->Deltas]])
-  (:import (clojure.lang MapEntry)
-           (collider.data LongMap)
-           (collider.game.deltas.record Deltas)))
+            [collider.game.deltas.record :refer [->Deltas]]
+            [collider.par :as par])
+  (:import (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)
-
-(def ^:private ^:const fold-leaf 64)
-
-(defn- fork [f] (@#'r/fjfork (r/fjtask f)))
-
-(defn- join [task] (@#'r/fjjoin task))
-
-(defn- invoke [f] (@#'r/fjinvoke f))
-
-(def ^:private ^:const fold-threshold 64)
-
-(defn pmapcat
-  "Returns the mapcat of f over vector v.
-  The work runs in parallel when v is longer than threshold."
-  ([f v] (pmapcat f v fold-leaf fold-threshold))
-  ([f v leaf threshold]
-   (if (<= (count v) (long threshold))
-     (into [] (mapcat f) v)
-     (r/fold (long leaf) (r/monoid into vector)
-             (fn [acc x] (into acc (f x)))
-             v))))
-
-(defn pmapv
-  "Returns the map of f over vector v as a vector.
-  The work runs in parallel when v is longer than threshold."
-  ([f v] (pmapv f v fold-leaf fold-threshold))
-  ([f v leaf threshold]
-   (if (<= (count v) (long threshold))
-     (mapv f v)
-     (r/fold (long leaf) (r/monoid into vector)
-             (fn [acc x] (conj acc (f x)))
-             v))))
 
 (defn world-of
   "Returns the deltas of d that change the level as a whole."
@@ -71,7 +38,9 @@
       (into cat (vals (entities-of d)))
       (into (map #(vector :fx %)) (out-of d))))
 
-(def empty-deltas (->Deltas [] (lm/long-map) [] []))
+(def empty-deltas
+  "The deltas that change nothing."
+  (->Deltas [] (lm/long-map) [] []))
 
 (defn input
   "Returns the deltas that start a tick with events as input."
@@ -128,31 +97,6 @@
   ^Deltas [v]
   (add empty-deltas v))
 
-(defn- joined [a b]
-  (cond (zero? (count b)) a
-        (zero? (count a)) b
-        :else (into a b)))
-
-(def ^:private ^:const select-leaf 4096)
-
-(defn keyed
-  "Returns map m as a long map, which runs by key."
-  [m]
-  (if (instance? LongMap m) m (into (lm/long-map) m)))
-
-(defn select
-  "Returns (into [] xf m) for a transducer xf that keeps no state.
-  The runs of more than leaf entries of a long map go in parallel."
-  ([xf m] (select xf m select-leaf))
-  ([xf m leaf]
-   (if (instance? LongMap m)
-     (let [rf (xf conj)]
-       (r/fold leaf
-               (fn ([] []) ([a b] (joined a b)))
-               (fn [acc k v] (rf acc (MapEntry/create k v)))
-               m))
-     (into [] xf m))))
-
 (defn vacant?
   "Returns true when map m holds no entry."
   [m]
@@ -168,10 +112,10 @@
        (zero? (count (out-of d))) (zero? (count (input-of d)))))
 
 (defn- joined-deltas ^Deltas [^Deltas a ^Deltas b]
-  (->Deltas (joined (world-of a) (world-of b))
+  (->Deltas (par/joined (world-of a) (world-of b))
             (joined-by-eid (entities-of a) (entities-of b))
-            (joined (out-of a) (out-of b))
-            (joined (input-of a) (input-of b))))
+            (par/joined (out-of a) (out-of b))
+            (par/joined (input-of a) (input-of b))))
 
 (defn merge
   "Returns the deltas of a followed by those of b."
@@ -197,11 +141,6 @@
   (if (empty? (out-of d))
     d
     (assoc d :out (mapv #(marked dim %) (out-of d)))))
-
-(defn in-pool
-  "Returns (f) run so that the folds inside it run in parallel."
-  [f]
-  (invoke f))
 
 (defn- folded-into [f]
   (fn [acc x] (add acc (f x))))
@@ -237,13 +176,13 @@
 
 (defn- forked [heavy? timed heaviest k f]
   (when (and (heavy? k) (not (identical? k heaviest)))
-    (fork (timed k f))))
+    (par/fork (timed k f))))
 
 (defn- ran-here [timed tasks ks fs]
   (mapv (fn [t k f] (when-not t ((timed k f)))) tasks ks fs))
 
 (defn- joined-all [tasks rs]
-  (mapv (fn [t r] (if t (join t) r)) tasks rs))
+  (mapv (fn [t r] (if t (par/join t) r)) tasks rs))
 
 (defn- run-all [timed ks fs]
   (merge-all (mapv (fn [k f] ((timed k f))) ks fs)))

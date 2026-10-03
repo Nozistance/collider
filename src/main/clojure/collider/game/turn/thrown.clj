@@ -17,6 +17,7 @@
             [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.game.turn.overlay :as overlay]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -302,7 +303,7 @@
                 best
                 (let [box (inflated (target-box o) m m m)]
                   (nearer best (reach/box-entry from d box) [oid]))))
-            nil (deltas/keyed (:entities world)))))
+            nil (par/keyed (:entities world)))))
 
 (defn- span [from d]
   (let [to (v/add from d)]
@@ -398,7 +399,7 @@
 
 (defn- doused-deltas [world e at]
   (let [box (inflated (body-box e at) 4.0 2.0 4.0)]
-    (for [[oid o] (deltas/keyed (:entities world))
+    (for [[oid o] (par/keyed (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))
                      (overlaps? box (target-box o))
                      (< (v/dist-sq at (:pos o)) splash-range-sq))]
@@ -489,7 +490,7 @@
 
 (defn- touched [world e ^double r ^long age]
   (let [box (cloud-box e r)]
-    (for [[oid o] (deltas/keyed (:entities world))
+    (for [[oid o] (par/keyed (:entities world))
           :when (and (hittable? o) (not (game-mode/spectator? o))
                      (not (contains? (:victims e) oid))
                      (overlaps? box (target-box o))
@@ -583,7 +584,7 @@
       (let [t (:tick world)
             order (-> (into [] (remove cloud?) es)
                       (into (filter cloud?) es))
-            start [world (deltas/keyed (:entities world))
+            start [world (par/keyed (:entities world))
                    (stepped world ds) []]]
         (written-world (reduce #(turn t %1 %2) start order)))
       [world nil])))

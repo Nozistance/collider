@@ -543,7 +543,8 @@
               #(random/of-key (:tick world) eid %)))
 
 (defn- drops-loot?
-  "LivingEntity.shouldDropLoot: not a baby, and the mob_drops rule."
+  "Returns true when e drops loot. A baby does not, nor any body while
+  the mob drops rule is off."
   [world e]
   (and (get @drop-tables (:type e))
        (not (mobs/baby? e))
@@ -569,9 +570,8 @@
   (xp/death-reward e (keeps? world) (game-mode/spectator? e)))
 
 (defn- death-orbs
-  "Returns the orbs LivingEntity.dropExperience leaves where e died.
-  Players drop some of their levels, animals a few points when a
-  player killed them."
+  "Returns the orbs e leaves where it died. Players drop some of
+  their levels, animals a few points when a player killed them."
   [world eid e]
   (let [n (if (= :player (:type e))
             (player-reward world e)
@@ -588,10 +588,9 @@
   (out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))))
 
 (defn- struck-deltas
-  "Returns the effects of a full hit from src on entity eid, as
-  LivingEntity.hurtServer:1247-1266 broadcasts the damage event to
-  its viewers and itself and plays the hurt sound, or the death
-  sound when it killed."
+  "Returns the effects of a full hit from src on entity eid. Its
+  viewers and the entity itself see the damage, and they hear the hurt
+  sound, or the death sound when it killed."
   [world eid e src]
   (let [snd (hurt-sound e)
         ev (out/damage-event
@@ -625,7 +624,7 @@
         (when lost? (lost-deltas world eid e health))))))
 
 (defn timer-deltas
-  "Returns the deltas of LivingEntity.tickDeath for entity eid."
+  "Returns the deltas of the death countdown of entity eid."
   [eid e]
   (let [dead? (not (pos? (double (:health e))))
         death (when dead? (inc (long (or (:death-time e) 0))))
@@ -663,9 +662,8 @@
           (burn-tick-deltas eid fire (boolean (:wet? e)) lava?))))))
 
 (defn burnt-deltas
-  "Returns the deltas of the fire living entity eid burns in
-  (Entity.baseTick:546-556), then of the void
-  (Entity.checkBelowWorld:564)."
+  "Returns the deltas of the fire living entity eid burns in, then
+  of the void."
   [world eid e]
   (into (vec (burn-deltas world eid e)) (void-deltas world eid e)))
 
@@ -677,9 +675,9 @@
     [[:rest eid]]))
 
 (defn base-deltas
-  "Returns the deltas of living entity eid that LivingEntity.baseTick
-  makes before the countdown of its hurt resistance: the fire it
-  burns in, the void, then the countdown (:483)."
+  "Returns the deltas of living entity eid at the start of its tick.
+  The fire it burns in and the void come before the countdown of its
+  hurt resistance."
   [world eid e]
   (conj (burnt-deltas world eid e) [:rest eid]))
 

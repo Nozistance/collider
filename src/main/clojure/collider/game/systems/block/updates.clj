@@ -10,6 +10,7 @@
             [collider.game.schedule :as schedule]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
+            [collider.par :as par]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
@@ -167,7 +168,7 @@
         lone (persistent! (lone-flags r ticks))
         first-run #(when (lone %) (ran world ctx k (ticks %)))]
     (if (some true? lone)
-      (deltas/pmapv first-run (vec (range (count ticks))))
+      (par/pmapv first-run (vec (range (count ticks))))
       (vec (repeat (count ticks) nil)))))
 
 (defn- ticks-run [world k ticks]
