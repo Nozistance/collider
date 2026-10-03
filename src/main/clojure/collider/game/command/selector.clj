@@ -10,6 +10,7 @@
             [collider.game.experience :as xp]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v])
   (:import (java.util UUID)))
@@ -600,11 +601,7 @@
 (defn wrapped
   "Returns angle a in degrees as a float from -180 up to 180."
   [a]
-  (let [r (float (rem (float a) (float 360.0)))]
-    (cond
-      (>= r (float 180.0)) (float (- r (float 360.0)))
-      (< r (float -180.0)) (float (+ r (float 360.0)))
-      :else r)))
+  (num/wrap-degrees a))
 
 (defn- turned? [[lo hi] rot]
   (let [a (wrapped (or lo 0.0)) b (wrapped (or hi 359.0))
