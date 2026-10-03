@@ -195,13 +195,12 @@ public final class Light {
             boolean sky,
             BlockTables t
     ) {
-        long[] cells = new long[16];
+        long[] cells = new long[RT.count(changes)];
         int n = 0;
         for (Object c : (Iterable<?>) changes) {
             long old = nth(c, 1), now = nth(c, 2);
             if (!relightNeeded(t, old, now)) continue;
             Object p = RT.nth(c, 0);
-            if (n == cells.length) cells = Arrays.copyOf(cells, 2 * n);
             cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2), Block.emission(t, now));
         }
         if (n == 0) return null;
