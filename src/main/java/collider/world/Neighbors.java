@@ -11,6 +11,7 @@ import clojure.lang.Util;
 import collider.Cell;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /// A run of block updates over one window of edits, with the chunks,
 /// what the run collects and the queue of neighbour updates. Updates
@@ -33,6 +34,7 @@ public final class Neighbors {
     public ChunkIndex chunks;
     private ITransientCollection records, writes, ticks, sent;
     private final ArrayList<Object> placed = new ArrayList<>();
+    private long[] placedOld = new long[16];
     private final ArrayDeque<Object> stack = new ArrayDeque<>();
     private final ArrayList<Object> added = new ArrayList<>();
     private boolean running;
@@ -72,8 +74,12 @@ public final class Neighbors {
         return this;
     }
 
-    public Neighbors addPlaced(Object x) {
-        placed.add(x);
+    /// Adds `p` to the placed cells, `old` being its state before.
+    public Neighbors addPlaced(Object p, long old) {
+        int n = placed.size();
+        if (n == placedOld.length) placedOld = Arrays.copyOf(placedOld, 2 * n);
+        placedOld[n] = old;
+        placed.add(p);
         return this;
     }
 
@@ -217,7 +223,7 @@ public final class Neighbors {
     /// block beside it is not `deaf`, `shaped` runs its shape updates as
     /// `(shaped run pos old)`. `other` sets any other change as
     /// `(other run change)`. Each change set here that alters its block
-    /// joins the placed cells as `[pos old]`.
+    /// joins the placed cells.
     public Neighbors command(
             Object changes,
             long flags,
@@ -241,7 +247,7 @@ public final class Neighbors {
             Object rec = RT.count(c) == 2 && RT.nth(c, 1) instanceof Long ? c : null;
             long old = put(p, rec, x, y, z, st, flags, minY, maxY);
             if (old < 0) continue;
-            placed.add(vec(p, old));
+            addPlaced(p, old);
             if (!deafAround(x, y, z, deaf, minY, maxY)) {
                 shaped.invoke(this, p, old);
             }
@@ -249,11 +255,12 @@ public final class Neighbors {
         return this;
     }
 
-    /// Runs `(told run pos old)` for each placed cell `[pos old]`
-    /// with a block beside it that `deaf` does not mark.
+    /// Runs `(told run pos old)` for each placed cell `pos`, `old`
+    /// being its state before, with a block beside it that `deaf` does
+    /// not mark.
     public Neighbors tell(boolean[] deaf, IFn told, int minY, int maxY) {
-        for (Object c : placed) {
-            Object p = RT.nth(c, 0);
+        for (int i = 0; i < placed.size(); i++) {
+            Object p = placed.get(i);
             if (!deafAround(
                     RT.longCast(RT.nth(p, 0)),
                     RT.longCast(RT.nth(p, 1)),
@@ -262,7 +269,7 @@ public final class Neighbors {
                     minY,
                     maxY
             )) {
-                told.invoke(this, p, RT.nth(c, 1));
+                told.invoke(this, p, placedOld[i]);
             }
         }
         return this;

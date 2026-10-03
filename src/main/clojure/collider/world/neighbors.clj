@@ -39,7 +39,8 @@
 
 (defn- add-sent! ^Neighbors [^Neighbors s x] (.send s x))
 
-(defn- add-placed! ^Neighbors [^Neighbors s x] (.addPlaced s x))
+(defn- add-placed! ^Neighbors [^Neighbors s p old]
+  (.addPlaced s p (long old)))
 
 (defn- write-count ^long [^Neighbors s] (.writeCount s))
 
@@ -469,7 +470,7 @@
         s' (set-block s ctx c' update/silent update-limit)]
     (if (< n (write-count s'))
       (let [[q old] (write-at s' n)]
-        (if (= p q) (add-placed! s' [p old]) s'))
+        (if (= p q) (add-placed! s' p old) s'))
       s')))
 
 (def ^:private ^:const shape-depth (dec update-limit))
@@ -497,7 +498,7 @@
         f (if strict? update/strict update/silent)
         s (set-block s ctx c f update-limit)
         [q old] (when (< n (write-count s)) (write-at s n))]
-    (if (= p q) [(add-placed! s [p old]) true] [s false])))
+    (if (= p q) [(add-placed! s p old) true] [s false])))
 
 (defn- cell [ctx {:keys [strict? destroy? test]}]
   (fn [[s n] [p st :as c]]
@@ -521,7 +522,7 @@
   "Returns the level after the changes of a command.
   Each change is set with silent flags. Each change that alters its
   cell tells its neighbours once all changes are set. :placed holds
-  those cells as [pos old] and :count the cells the command affected.
+  those cells and :count the cells the command affected.
   With :test only cells whose state passes it change. With :destroy?
   each cell is first destroyed with its drops. With :strict? each
   change is set as it is with strict flags and tells no one. A change
