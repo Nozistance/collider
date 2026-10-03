@@ -1,5 +1,5 @@
 (ns collider.net.render.tracked
-  "Packets that show a tracked entity: its spawn and its data."
+  "Spawn and data packets of a tracked entity."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.game.hanging :as hanging]
@@ -8,33 +8,15 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:private kinds
+  (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit :item
+          :experience-orb :tnt :falling-block :area-effect-cloud
+          :painting :item-frame :glow-item-frame}
+        entity/thrown-types))
+
 (def ^:private ^:table entity-type
-  (delay
-    {:player        (data/registry-id "entity_type" :player)
-     :sheep         (data/registry-id "entity_type" :sheep)
-     :cow           (data/registry-id "entity_type" :cow)
-     :mooshroom     (data/registry-id "entity_type" :mooshroom)
-     :pig           (data/registry-id "entity_type" :pig)
-     :chicken       (data/registry-id "entity_type" :chicken)
-     :rabbit        (data/registry-id "entity_type" :rabbit)
-     :item          (data/registry-id "entity_type" :item)
-     :experience-orb (data/registry-id "entity_type" :experience-orb)
-     :tnt           (data/registry-id "entity_type" :tnt)
-     :falling-block (data/registry-id "entity_type" :falling-block)
-     :snowball      (data/registry-id "entity_type" :snowball)
-     :egg           (data/registry-id "entity_type" :egg)
-     :ender-pearl   (data/registry-id "entity_type" :ender-pearl)
-     :splash-potion (data/registry-id "entity_type" :splash-potion)
-     :lingering-potion
-     (data/registry-id "entity_type" :lingering-potion)
-     :experience-bottle
-     (data/registry-id "entity_type" :experience-bottle)
-     :area-effect-cloud
-     (data/registry-id "entity_type" :area-effect-cloud)
-     :painting      (data/registry-id "entity_type" :painting)
-     :item-frame    (data/registry-id "entity_type" :item-frame)
-     :glow-item-frame
-     (data/registry-id "entity_type" :glow-item-frame)}))
+  (delay (zipmap kinds
+                 (map #(data/registry-id "entity_type" %) kinds))))
 
 (def ^:private ^:table entity-effect-particle
   (delay (data/registry-id "particle_type" :entity-effect)))
@@ -43,7 +25,7 @@
   "Returns the type e shows itself as on the wire."
   [e]
   (let [t (:type e)]
-    (if (contains? @entity-type t) t :player)))
+    (if (contains? kinds t) t :player)))
 
 (def ^:private shared-flags
   {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5
@@ -130,17 +112,13 @@
           (contains? meta :color)
           (assoc :particle [@entity-effect-particle (:color meta)])))
 
-(def ^:private entity-class
-  {:player :player :sheep :sheep :cow :cow :mooshroom :mushroom-cow
-   :pig :pig :chicken :chicken :rabbit :rabbit
-   :item :item-entity :tnt :primed-tnt :falling-block :falling-block
-   :area-effect-cloud :area-effect-cloud
-   :experience-orb :experience-orb :painting :painting
-   :item-frame :item-frame :glow-item-frame :item-frame})
+(def ^:private renamed-classes
+  {:mooshroom :mushroom-cow :item :item-entity :tnt :primed-tnt
+   :glow-item-frame :item-frame})
 
 (defn- class-of [kind]
-  (or (entity-class kind)
-      (when (entity/thrown-types kind) :throwable-item-projectile)))
+  (cond (entity/thrown-types kind) :throwable-item-projectile
+        (kinds kind) (get renamed-classes kind kind)))
 
 (defn- sheep-fields [meta]
   (cond-> (animal-fields meta)
@@ -257,7 +235,7 @@
         [{:packet :bundle-delimiter}]))))
 
 (defn tracking-packets
-  "Returns the packets that spawn the entities of a :tracking
-  delta."
+  "Returns the packets that spawn the new entities of a :tracking
+  delta, one bundle each."
   [world [_ _ add _]]
   (mapcat #(spawn-packets world %) add))

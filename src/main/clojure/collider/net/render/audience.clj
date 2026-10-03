@@ -11,37 +11,26 @@
 (defn- players [world]
   (vec (sort (vals (:players world)))))
 
-(def ^:private ^:const explosion-range-sq 4096.0)
+(defn- pos-of [world eid]
+  (get-in world [:entities eid :pos]))
 
-(defn- in-earshot? [world center eid]
-  (when-let [p (get-in world [:entities eid :pos])]
-    (< (v/dist-sq p center) explosion-range-sq)))
+(defn- within? [^double r2 center p]
+  (and p (< (v/dist-sq p center) r2)))
 
 (def ^:private ^:const level-range-sq (* 64.0 64.0))
 
-(defn- in-level-range? [world center eid]
-  (when-let [p (get-in world [:entities eid :pos])]
-    (< (v/dist-sq p center) level-range-sq)))
-
-(defn- sound-range-sq [volume]
+(defn- sound-range-sq ^double [volume]
   (let [v (double volume)
         r (if (> v 1.0) (* 16.0 v) 16.0)]
     (* r r)))
 
-(defn- in-sound-range? [world center volume eid]
-  (when-let [p (get-in world [:entities eid :pos])]
-    (< (v/dist-sq p center) (sound-range-sq volume))))
-
 (def ^:private ^:const particle-range-sq (* 32.0 32.0))
 
-(defn- block-center [pos]
-  [(+ (Math/floor (v/x pos)) 0.5)
-   (+ (Math/floor (v/y pos)) 0.5)
-   (+ (Math/floor (v/z pos)) 0.5)])
+(defn- near? [world r2 center eid]
+  (within? r2 center (pos-of world eid)))
 
-(defn- in-particle-range? [world center eid]
-  (when-let [p (get-in world [:entities eid :pos])]
-    (< (v/dist-sq (block-center p) center) particle-range-sq)))
+(defn- near-cell? [world r2 center eid]
+  (within? r2 center (some-> (pos-of world eid) v/cell v/centre)))
 
 (defn- chunk-of-msg [m]
   (case (:msg m)
@@ -51,21 +40,23 @@
 (defn- tracking-chunk? [world cp eid]
   (contains? (get-in world [:entities eid :sent-chunks]) cp))
 
-(defn- ranged-recipients [world ps m]
+(defn- in-range [world m]
   (case (:msg m)
     (:blocks-changed :block-entity)
-    (let [cp (chunk-of-msg m)]
-      (filterv #(tracking-chunk? world cp %) ps))
+    (let [cp (chunk-of-msg m)] #(tracking-chunk? world cp %))
     (:level-event :break-effect :fizz :bonemeal :extinguish
      :block-event)
-    (filterv #(in-level-range? world (:pos m) %) ps)
+    #(near? world level-range-sq (:pos m) %)
     :sound
-    (filterv #(in-sound-range? world (:pos m) (:volume m) %) ps)
+    (let [r2 (sound-range-sq (:volume m))]
+      #(near? world r2 (:pos m) %))
     (:particles :trail)
-    (filterv #(in-particle-range? world (:pos m) %) ps)
-    :explosion
-    (filterv #(in-earshot? world (:center m) %) ps)
-    ps))
+    #(near-cell? world particle-range-sq (:pos m) %)
+    :explosion #(near? world level-range-sq (:center m) %)
+    nil))
+
+(defn- ranged-recipients [world ps m]
+  (if-let [in? (in-range world m)] (filterv in? ps) ps))
 
 (def ^:private home (first schema/dims))
 

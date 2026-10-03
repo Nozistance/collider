@@ -16,8 +16,8 @@
 (set! *warn-on-reflection* true)
 
 (defn start
-  "Returns a saver. Its :pending holds the chunks unloaded since the
-  last commit, its :wanted whether the next tick commits."
+  "Returns a saver, which commits the world to a store while the
+  ticks go on."
   []
   {:agent   (agent {:last nil :meta nil :writes 0 :held 0 :built 0}
                    :error-mode :continue)
@@ -165,6 +165,14 @@
   (into {} (keep (fn [[dim {c :changed}]] (when (seq c) [dim c])))
         levels))
 
+(defn- idle? [state m changed]
+  (and (empty? changed) (not (meta-changed? m (:meta state)))))
+
+(defn- advanced [state saver parts m levels tick]
+  (-> (assoc state :last parts :tick tick :meta m
+             :built (reduce + (map :built (vals levels))))
+      (released saver tick)))
+
 (defn- committed [state saver store world]
   (let [tick (long (:tick world 0))
         moved? (not= tick (:tick state))
@@ -173,13 +181,11 @@
         parts (update-vals levels :parts)
         held (filter (partial held-at? tick) @(:pending saver))
         changed (with-held (changed-chunks levels) parts held)
-        idle? (and (empty? changed)
-                   (not (meta-changed? m (:meta state))))
-        state' (if idle? state (written state store m changed))]
+        state' (if (idle? state m changed)
+                 state
+                 (written state store m changed))]
     (if state'
-      (-> (assoc state' :last parts :tick tick :meta m
-                 :built (reduce + (map :built (vals levels))))
-          (released saver tick))
+      (advanced state' saver parts m levels tick)
       (assoc state :last nil :meta nil))))
 
 (defn- chunk-name ^String [id]

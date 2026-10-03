@@ -42,7 +42,7 @@ public final class Region {
     private long live;
 
     /// The file of a region, shared by its copies. An interrupt closes
-    /// the channel under every thread; the next use opens it again.
+    /// the channel for every user, and the next use opens it again.
     private static final class Log {
         final Path path;
         volatile FileChannel ch;
@@ -81,7 +81,15 @@ public final class Region {
         }
     }
 
-    private Region(Log log, long key, long gen, long[] at, int[] size, long end, long live) {
+    private Region(
+            Log log,
+            long key,
+            long gen,
+            long[] at,
+            int[] size,
+            long end,
+            long live
+    ) {
         this.log = log;
         this.key = key;
         this.gen = gen;
@@ -91,13 +99,19 @@ public final class Region {
         this.live = live;
     }
 
+    private static Region empty(Log log, long key, long gen) {
+        int n = SIDE * SIDE;
+        return new Region(log, key, gen, new long[n], new int[n], 0, 0);
+    }
+
     /// Returns the key of the region that holds chunk `id`.
     public static long of(long id) {
         return ChunkIndex.id(ChunkIndex.x(id) >> 5, ChunkIndex.z(id) >> 5);
     }
 
     static Path file(Path dir, long key, long gen) {
-        return dir.resolve("r." + ChunkIndex.x(key) + "." + ChunkIndex.z(key) + "." + gen + ".log");
+        String xz = ChunkIndex.x(key) + "." + ChunkIndex.z(key);
+        return dir.resolve("r." + xz + "." + gen + ".log");
     }
 
     static Path manifestPath(Path dir, long gen) {
@@ -109,13 +123,13 @@ public final class Region {
         Files.createDirectories(dir);
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, CREATE, READ, WRITE, TRUNCATE_EXISTING);
-        return new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
+        return empty(new Log(p, ch), key, gen);
     }
 
     static Region openOne(Path dir, long key, long gen, long end) throws IOException {
         Path p = file(dir, key, gen);
         FileChannel ch = FileChannel.open(p, READ, WRITE);
-        Region r = new Region(new Log(p, ch), key, gen, new long[SIDE * SIDE], new int[SIDE * SIDE], 0, 0);
+        Region r = empty(new Log(p, ch), key, gen);
         try {
             r.scan(end);
         } catch (IOException | RuntimeException e) {
@@ -192,7 +206,8 @@ public final class Region {
     private byte[] record(long off, long id) throws IOException {
         ByteBuffer h = read(off, HEAD);
         int len = h.getInt(8);
-        if (ChunkIndex.id(h.getInt(0), h.getInt(4)) != id || len < 0 || off + HEAD + len > end) {
+        boolean ours = ChunkIndex.id(h.getInt(0), h.getInt(4)) == id;
+        if (!ours || len < 0 || off + HEAD + len > end) {
             return null;
         }
         byte[] data = read(off + HEAD, len).array();
@@ -277,7 +292,8 @@ public final class Region {
 
     /// Writes the manifest of generation `gen` that names `regions`
     /// with their ends.
-    public static void writeManifest(Path dir, long gen, Region[] regions) throws IOException {
+    public static void writeManifest(Path dir, long gen, Region[] regions)
+            throws IOException {
         ByteBuffer b = ByteBuffer.allocate(regions.length * ENTRY);
         for (Region r : regions) b.putLong(r.key).putLong(r.gen).putLong(r.end);
         AtomicFile.put(manifestPath(dir, gen), b.array());
@@ -291,8 +307,8 @@ public final class Region {
         return b;
     }
 
-    /// Returns the regions the manifest of generation `gen` names, with
-    /// their indexes read from the record heads.
+    /// Returns the regions the manifest of generation `gen` names, each
+    /// with its index.
     public static Region[] openAll(Path dir, long gen) throws IOException {
         if (gen == 0) return new Region[0];
         ByteBuffer b = entries(dir, gen);

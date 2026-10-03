@@ -35,8 +35,8 @@
     {:packet :set-chunk-cache-center :cx cx :cz cz}))
 
 (defn chunk-packets
-  "Returns the packets of a :chunks-sent delta: the centre, the
-  chunks dropped and the chunks added."
+  "Returns the packets of a :chunks-sent delta. They move the
+  centre, drop chunks and add chunks."
   [world [_ _ add drop center]]
   (concat
     (when center [(center-packet center)])

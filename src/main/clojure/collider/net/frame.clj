@@ -1,5 +1,5 @@
 (ns collider.net.frame
-  "Packet frames on a connection: length prefix and compression."
+  "Packet frames of a connection, with their length and compression."
   (:require [collider.proto.buf :as buf]
             [collider.proto.codec :as c])
   (:import (collider.proto Buf)

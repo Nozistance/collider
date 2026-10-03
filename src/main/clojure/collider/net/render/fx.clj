@@ -42,12 +42,9 @@
    :particle [@trail-particle [(:target m) (:color m) (:ticks m)]]
    :pos      (:pos m) :count 1 :speed 0.0 :dx 0.0 :dy 0.0 :dz 0.0})
 
-(def ^:private unhandled (atom #{}))
-
 (defn- once! [kind]
-  (when-not (@unhandled kind)
-    (swap! unhandled conj kind)
-    (log/warn "render:" kind "not rendered yet")))
+  (log/once! [::unrendered kind]
+             log/warn "render:" kind "not rendered yet"))
 
 (defn- section-index ^long [[x y z]]
   (bit-or (bit-shift-left (bit-and (long x) 15) 8)
@@ -83,8 +80,12 @@
    :cause (entity-ref (:cause m)) :direct (entity-ref (:direct m))
    :pos (:pos m)})
 
+(def ^:private source-ids (zipmap out/sound-sources (range)))
+
 (def ^:private sound-sources
-  {:records 2 :blocks 4 :neutral 6 :players 7})
+  (update-vals {:records "record" :blocks "block" :neutral "neutral"
+                :players "player"}
+               source-ids))
 
 (defn- sound-id [kind]
   (let [reg (get (data/registries) "sound_event")]
@@ -110,8 +111,6 @@
 (defn- look-at-packet [m]
   {:packet :player-look-at :from (anchors (:from m)) :pos (:pos m)
    :id (:id m) :to (some-> (:anchor m) anchors)})
-
-(def ^:private source-ids (zipmap out/sound-sources (range)))
 
 (defn- title-times-packet [m]
   (assoc (select-keys m [:fade-in :stay :fade-out])
@@ -143,6 +142,9 @@
   {:title :set-title-text :subtitle :set-subtitle-text
    :actionbar :set-action-bar-text})
 
+(defn- chat-fx [_ m]
+  [{:packet :system-chat :overlay false :text (:text m)}])
+
 (def ^:private session-fx
   {:teleport      (fn [_ m]
                     [{:packet :player-position :teleport-id 0
@@ -151,9 +153,7 @@
                       :relative (:relative m 0)}])
    :keepalive     (fn [_ m] [{:packet :keep-alive :id (:id m)}])
    :disconnect    (fn [_ m] [{:packet :disconnect :text (:text m)}])
-   :system-chat   (fn [_ m]
-                    [{:packet :system-chat :overlay false
-                      :text (:text m)}])
+   :system-chat   chat-fx
    :overlay       (fn [_ m]
                     [{:packet :system-chat :overlay true
                       :text (:text m)}])
@@ -167,9 +167,7 @@
    :stop-sound    (fn [_ m] [(stop-sound-packet m)])
    :clear-titles  (fn [_ m]
                     [{:packet :clear-titles :reset (:reset m)}])
-   :player-chat   (fn [_ m]
-                    [{:packet :system-chat :overlay false
-                      :text (:text m)}])
+   :player-chat   chat-fx
    :stats         (fn [_ m]
                     [{:packet :award-stats :stats (:stats m)}])
    :suggestions   (fn [_ m]
@@ -179,9 +177,7 @@
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])
-   :health        (fn [_ m]
-                    [{:packet :set-health :health (:health m)
-                      :food 20 :saturation 5.0}])
+   :health        (fn [_ m] [(join/health-packet (:health m))])
    :experience    (fn [_ m]
                     [{:packet :set-experience :progress (:progress m)
                       :level (:level m) :total (:total m)}])
@@ -257,7 +253,7 @@
   {:packet :level-event :event (level-events event) :pos pos
    :data data})
 
-(defn- level-fx [event]
+(defn- weather-fx [event]
   (fn [_ m] [(join/game-event-packet event (:level m))]))
 
 (defn- level-event-fx [event data]
@@ -283,8 +279,8 @@
   {:rule-flag      (fn [_ m] [(rule-flag-packet m)])
    :rain-started   (fn [_ _] [(rain-packet :start-raining)])
    :rain-stopped   (fn [_ _] [(rain-packet :stop-raining)])
-   :rain-level     (level-fx :rain-level-change)
-   :thunder-level  (level-fx :thunder-level-change)
+   :rain-level     (weather-fx :rain-level-change)
+   :thunder-level  (weather-fx :thunder-level-change)
    :time           (fn [_ m] [(join/set-time-packet m)])
    :blocks-changed (fn [_ m]
                      (let [cp (chunk/id->pos (:cp m))]
