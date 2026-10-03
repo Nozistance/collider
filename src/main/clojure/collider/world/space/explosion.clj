@@ -2,6 +2,7 @@
   "Explosions, the blocks they break, their drops and their
   reach into a body."
   (:require [collider.data :as data]
+            [collider.par :as par]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -140,22 +141,38 @@
    (- (long (Math/floor cy)) region-r)
    (- (long (Math/floor cz)) region-r)])
 
-(defn rays
-  "Returns the rays of a blast of power at center through rg, whose
-  cells e reads."
-  ^Rays [^SectionGrid rg ^Exposure e [cx cy cz] power seed]
+(defn- ray-parts [^long n]
+  (mapv (fn [^long i]
+          [(quot (* i Rays/COUNT) n) (quot (* (inc i) Rays/COUNT) n)])
+        (range n)))
+
+(defn- caster [^SectionGrid rg ^Exposure e [cx cy cz] power seed]
   (let [cx (double cx) cy (double cy) cz (double cz)
-        [ox oy oz] (ray-origin cx cy cz)]
-    (Rays/cast e (summoner rg) ^floats @resist-table (long ox)
-               (long oy) (long oz) cx cy cz (double power)
-               (long (hash seed)))))
+        [ox oy oz] (ray-origin cx cy cz)
+        ox (long ox) oy (long oy) oz (long oz)
+        resist ^floats @resist-table
+        power (double power) h (long (hash seed))]
+    (fn [[from to]]
+      (Rays/hit
+        (Rays/cast e (summoner rg) resist ox oy oz cx cy cz power h
+                   (int from) (int to))))))
+
+(defn rays
+  "Returns the cells of the cube at the centre that the rays of a
+  blast of power reach through rg, 1 for air and 2 for a block. The
+  cells come from e. The rays go at once in n parts, which needs e
+  frozen when n is above 1."
+  ^bytes [rg e center power seed n]
+  (reduce #(Rays/union %1 %2)
+          (par/pmapv (caster rg e center power seed) (ray-parts n)
+                     1 1)))
 
 (defn reached
-  "Returns the cells that the rays rs of a blast at center reach,
-  with the cells that hold a block and the count of all of them."
-  [^Rays rs [cx cy cz]]
-  (let [origin (ray-origin (double cx) (double cy) (double cz))
-        hit (Rays/hit rs)]
+  "Returns the cells of hit, as rays returns them for a blast at
+  center, with the cells that hold a block and the count of all of
+  them."
+  [^bytes hit [cx cy cz]]
+  (let [origin (ray-origin (double cx) (double cy) (double cz))]
     {:blocks (hit-positions hit origin 2) :count (Rays/hitCount hit)
      :cells (delay (hit-positions hit origin 1))}))
 
@@ -166,11 +183,19 @@
   (Exposure. rg (block/collision-arr) (phys/kinds) (double cx)
              (double cy) (double cz)))
 
+(defn frozen?
+  "Returns true when the reads of e and of its grid change neither,
+  so that the rays and the bodies of one blast may read them at
+  once."
+  [^Exposure e]
+  (Exposure/frozen e))
+
 (defn affected-blocks
   "Returns what the rays of a blast of power at center through rg
   reach, as reached does."
   [^SectionGrid rg center power seed]
-  (reached (rays rg (exposure rg center) center power seed) center))
+  (reached (rays rg (exposure rg center) center power seed 1)
+           center))
 
 (defn exposed
   "Returns the share, 0.0 to 1.0, of a body at p that the blast of e

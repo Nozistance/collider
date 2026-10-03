@@ -82,6 +82,20 @@ public final class Exposure {
         return true;
     }
 
+    /// Returns true when every column of the grid of `e` is present,
+    /// so that no read of `e` or of its grid changes them. `e` then
+    /// holds its cells, and its reads may go at once.
+    public static boolean frozen(Exposure e) {
+        if (e.rg.readAbsent() != null) {
+            for (Object col : e.rg.cols()) {
+                if (col == null) return false;
+            }
+        }
+        e.allColumnsRead();
+        if (e.sums == null) e.build();
+        return true;
+    }
+
     /// Returns the block state at `x`, `y`, `z` in the region of `e`
     /// as `Rays.block` reads it, from the cells of `e` when no column
     /// under them waits to be read.
