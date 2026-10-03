@@ -184,7 +184,7 @@
       (level/with-types w (or types (level/by-type es))))))
 
 (defn- folded-in [w by-eid]
-  (if (deltas/vacant? by-eid)
+  (if (lm/empty? by-eid)
     w
     (assoc w :entities (folded-entities w (:entities w) by-eid))))
 
@@ -202,7 +202,7 @@
     (areas/cache-active-chunks (typed quit types))))
 
 (defn- inhabited? [world dim]
-  (not (deltas/vacant? (:entities (get (:levels world) dim)))))
+  (not (lm/empty? (:entities (get (:levels world) dim)))))
 
 (defn- homes [world dim]
   (when (some #(and (not (identical? % dim)) (inhabited? world %))

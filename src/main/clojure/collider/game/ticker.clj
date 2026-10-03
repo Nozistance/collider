@@ -1,6 +1,7 @@
 (ns collider.game.ticker
   "The ticker that runs the tick twenty times a second."
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.data.long-map :as lm]
+            [collider.game.deltas :as deltas]
             [collider.game.tick :as tick]
             [collider.log :as log]
             [collider.par :as par])
@@ -119,7 +120,7 @@
 
 (defn- send-out! [deliver! world ^Deltas deltas]
   (when (or (seq (deltas/out-of deltas))
-            (not (deltas/vacant? (deltas/entities-of deltas))))
+            (not (lm/empty? (deltas/entities-of deltas))))
     (try (deliver! world deltas)
          (catch Throwable t (log/error-with "deliver error:" t)))))
 

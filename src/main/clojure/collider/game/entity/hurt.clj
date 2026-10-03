@@ -274,20 +274,21 @@
 (defn- hi-cell ^long [^double a]
   (long (Math/floor (- a inside-margin))))
 
+(def ^:private ^:table occupied
+  (delay (let [a (boolean-array (data/block-state-count) true)]
+           (aset a 0 false)
+           a)))
+
 (defn- all-air? [chunks e]
   (let [p (:pos e)
         [half height] (box-of e)
         h (double half) x (v/x p) y (v/y p) z (v/z p)
-        x1 (hi-cell (+ x h)) y0 (lo-cell y)
-        y1 (hi-cell (+ y (double height)))
-        z0 (lo-cell (- z h)) z1 (hi-cell (+ z h))]
-    (loop [cx (lo-cell (- x h)) cy y0 cz z0]
-      (cond (> cx x1) true
-            (> cy y1) (recur (inc cx) y0 z0)
-            (> cz z1) (recur cx (inc cy) z0)
-            (zero? (chunk/block-state chunks cx cy cz))
-            (recur cx cy (inc cz))
-            :else false))))
+        top (+ y (double height))]
+    (not (phys/some-cell?
+           chunks @occupied
+           (lo-cell (- x h)) (lo-cell y) (lo-cell (- z h))
+           (inc (hi-cell (+ x h))) (inc (hi-cell top))
+           (inc (hi-cell (+ z h)))))))
 
 (def ^:private calm
   {:fire? false :lava? false :water? false :snow []})

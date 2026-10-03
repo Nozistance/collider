@@ -1,6 +1,7 @@
 (ns collider.game.tick
   "The tick, its phases and how they run."
-  (:require [collider.game.apply :as apply]
+  (:require [collider.data.long-map :as lm]
+            [collider.game.apply :as apply]
             [collider.game.cost :as cost]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
@@ -98,7 +99,7 @@
 
 (defn- awaited? [world dim]
   (let [spawning (:spawning world)]
-    (and (not (deltas/vacant? spawning))
+    (and (not (lm/empty? spawning))
          (some #(= dim (:dim (val %))) spawning))))
 
 (defn- asleep? [world dim]

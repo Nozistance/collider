@@ -53,7 +53,7 @@
    :keepalive-at tick :keepalive-pending? false})
 
 (defn- in-border? [[x _ z]]
-  (let [b schema/world-border]
+  (let [b chunk/world-border]
     (and (<= (- b) (long x)) (< (long x) b)
          (<= (- b) (long z)) (< (long z) b))))
 

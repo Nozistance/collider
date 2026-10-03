@@ -21,10 +21,6 @@
   "The spawn of a new world."
   [24 4 8])
 
-(def ^:const world-border
-  "How far from the centre the world border stands, in blocks."
-  29999984)
-
 (defn chunk-entity?
   "Returns true when entity e belongs to chunk id.
   Players never do."

@@ -97,18 +97,13 @@
   ^Deltas [v]
   (add empty-deltas v))
 
-(defn vacant?
-  "Returns true when map m holds no entry."
-  [m]
-  (reduce-kv (fn [_ _ _] (reduced false)) true m))
-
 (defn- joined-by-eid [a b]
-  (cond (vacant? b) a
-        (vacant? a) b
+  (cond (lm/empty? b) a
+        (lm/empty? a) b
         :else (lm/merge-with into a b)))
 
 (defn- blank? [^Deltas d]
-  (and (zero? (count (world-of d))) (vacant? (entities-of d))
+  (and (zero? (count (world-of d))) (lm/empty? (entities-of d))
        (zero? (count (out-of d))) (zero? (count (input-of d)))))
 
 (defn- joined-deltas ^Deltas [^Deltas a ^Deltas b]
@@ -128,7 +123,7 @@
 (defn inert?
   "Returns true when d changes nothing in the world it applies to."
   [^Deltas d]
-  (and (empty? (world-of d)) (vacant? (entities-of d))
+  (and (empty? (world-of d)) (lm/empty? (entities-of d))
        (empty? (input-of d))))
 
 (defn- marked [dim m]

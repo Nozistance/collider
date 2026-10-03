@@ -251,10 +251,9 @@
            (block/tagged? st "prevent_mob_spawning_inside")
            (dangerous? f st))))
 
-(def ^:private ^:const border 29999984)
-
 (defn- in-border? [^long x ^long z]
-  (and (<= (- border) x) (< x border) (<= (- border) z) (< z border)))
+  (let [b chunk/world-border]
+    (and (<= (- b) x) (< x b) (<= (- b) z) (< z b))))
 
 (defn- at ^long [chunks x y z] (chunk/block-state chunks x y z))
 

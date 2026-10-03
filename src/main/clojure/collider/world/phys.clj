@@ -180,6 +180,17 @@
   ^long [chunks ^bytes bits ^longs outer ^longs inner]
   (Phys/burns chunks bits outer inner))
 
+(defn some-cell?
+  "Returns true when a cell from x0 y0 z0 up to x1 y1 z1, the high
+  ends left out, holds a state that marks is true for."
+  {:inline (fn [c m x0 y0 z0 x1 y1 z1]
+             `(Phys/someCell
+                ~c ~m (long ~x0) (long ~y0) (long ~z0)
+                (long ~x1) (long ~y1) (long ~z1)))}
+  [chunks ^booleans marks x0 y0 z0 x1 y1 z1]
+  (Phys/someCell chunks marks (long x0) (long y0) (long z0)
+                 (long x1) (long y1) (long z1)))
+
 (defn cool?
   "Returns true when no block of bits lies within a block of a body
   of that size at pos."

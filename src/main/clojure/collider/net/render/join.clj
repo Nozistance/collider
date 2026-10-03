@@ -53,10 +53,6 @@
           (< level (long forms/gamemaster)) @open-command-tree
           :else @command-tree)))
 
-(def ^:private world-border-size 5.9999968E7)
-
-(def ^:private world-border-max 29999984)
-
 (def ^:private op-level-event 24)
 
 (def ^:private game-events
@@ -78,10 +74,12 @@
     [{:packet :entity-event :eid eid :event (+ op-level-event level)}
      {:packet :commands :nodes (command-nodes lv level)}]))
 
+(def ^:private border-size (* 2.0 chunk/world-border))
+
 (def ^:private border-packet
   {:packet     :initialize-border :center-x 0.0 :center-z 0.0
-   :old-size   world-border-size :size world-border-size
-   :max-size   world-border-max :warning-blocks 5
+   :old-size   border-size :size border-size
+   :max-size   chunk/world-border :warning-blocks 5
    :warning-time 300})
 
 (defn- spawn-pos-packet [world]
