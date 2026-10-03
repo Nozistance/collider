@@ -153,14 +153,31 @@ public final class Neighbors {
             int minY,
             int maxY
     ) {
+        return put(p, null, x, y, z, st, flags, minY, maxY);
+    }
+
+    /// Places as `place` does, recording `rec` when it is the change
+    /// `[p st]` itself, else a new one.
+    private long put(
+            Object p,
+            Object rec,
+            int x,
+            int y,
+            int z,
+            long st,
+            long flags,
+            int minY,
+            int maxY
+    ) {
         if (y < minY || y > maxY) return -1;
         ChunkIndex c = chunks;
         if (c.get(x >> 4, z >> 4) == null) return -1;
         long old = Chunk.blockAt(c, x, y, z);
         if (old == st) return -1;
         chunks = c.withBlock(x, y, z, (int) st);
-        records = conj(records, vec(p, st));
-        writes = conj(writes, vec(p, old, st, flags));
+        Object boxed = rec != null ? RT.nth(rec, 1) : Long.valueOf(st);
+        records = conj(records, rec != null ? rec : vec(p, boxed));
+        writes = conj(writes, vec(p, old, boxed, flags));
         if ((flags & CLIENTS) != 0) sent = conj(sent, p);
         return old;
     }
@@ -221,7 +238,8 @@ public final class Neighbors {
             Object p = RT.nth(c, 0);
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
-            long old = place(p, x, y, z, st, flags, minY, maxY);
+            Object rec = RT.count(c) == 2 && RT.nth(c, 1) instanceof Long ? c : null;
+            long old = put(p, rec, x, y, z, st, flags, minY, maxY);
             if (old < 0) continue;
             placed.add(vec(p, old));
             if (!deafAround(x, y, z, deaf, minY, maxY)) {
