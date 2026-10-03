@@ -5,6 +5,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.level :as level]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.blocks.geyser :as geyser]
             [collider.world.chunk :as chunk]))
@@ -13,14 +14,13 @@
 
 (def ^:private ^:const countdown-period 20)
 
-(def ^:private lift (double (float 0.2)))
+(def ^:private lift (num/f32 0.2))
 
-(def ^:private base-speed (double (float 0.3)))
-
-(defn- alive? [e] (pos? (double (:health e 1.0))))
+(def ^:private base-speed (num/f32 0.3))
 
 (defn- launched-player? [e]
-  (and (alive? e) (not (game-mode/spectator? e)) (not (:flying e))))
+  (and (entity/alive? e) (not (game-mode/spectator? e))
+       (not (:flying e))))
 
 (defn- launched? [e]
   (let [t (:type e)]
@@ -28,9 +28,9 @@
       (= :player t) (launched-player? e)
       (#{:item :tnt :falling-block} t) true
       (contains? entity/thrown-types t) true
-      :else (and (mobs/mob-type? t) (alive? e)))))
+      :else (and (mobs/mob-type? t) (entity/alive? e)))))
 
-(defn- size [e] (when (launched? e) (entity/box e)))
+(defn- launch-size [e] (when (launched? e) (entity/box e)))
 
 (defn- inside? [[x lo z] ^double hi e [half h]]
   (let [[ex ey ez] (:pos e)
@@ -54,7 +54,7 @@
         lo [x (+ (long y) 1 (min 0 (dec n))) z]
         hi (double (+ (long y) 2 (max 0 (dec n))))]
     (for [[eid e] (sort-by key (:entities world))
-          :let [s (size e)]
+          :let [s (launch-size e)]
           :when (and s (inside? lo hi e s) (slow? e depth))
           d (lifted eid e)]
       d)))

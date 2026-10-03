@@ -7,7 +7,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def send-interval 20)
+(def send-interval
+  "How many ticks pass between two times sent to the players."
+  20)
+
+(def ^:private ^:const sky-darken-max 15.0)
+
+(def ^:private ^:const dark-darken 4)
 
 (def ^:private sky-keyframes
   [[133 1.0] [11867 1.0] [13670 0.26666668] [22330 0.26666668]
@@ -23,13 +29,19 @@
 (defn- span-of [t]
   (first (filter #(around? t %) (partition 2 1 sky-keyframes))))
 
-(defn dark? [time-of-day]
+(defn dark?
+  "Returns true when the sky is dark at time-of-day."
+  [time-of-day]
   (let [t (day-time time-of-day)
         [[t0 v0] [t1 v1]] (span-of t)
-        m (+ v0 (* (- v1 v0) (/ (double (- t t0)) (- t1 t0))))]
-    (>= (long (- 15.0 (* 15.0 m))) 4)))
+        m (+ v0 (* (- v1 v0) (/ (double (- t t0)) (- t1 t0))))
+        darken (- sky-darken-max (* sky-darken-max m))]
+    (>= (long darken) dark-darken)))
 
-(defn dark-outside? [world]
+(defn dark-outside?
+  "Returns true when the sky of the level is dark now. A level with a
+  fixed time is never dark."
+  [world]
   (and (not (:has-fixed-time (dimension/type-of (:dim world))))
        (dark? (clock/day-ticks world))))
 
@@ -38,6 +50,7 @@
     [(out/all (out/time (long (:tick world)) {}))]))
 
 (defn daynight
+  "Returns the time sent to the players once in a while."
   {:wake {:every send-interval} :once true}
   [world _d]
   (deltas/of-vec (daynight-deltas world)))

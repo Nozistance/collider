@@ -19,6 +19,7 @@
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys]
             [collider.game.turn.overlay :as overlay]
+            [collider.num :as num]
             [collider.par :as par])
   (:import (collider.world Move)))
 
@@ -26,13 +27,17 @@
 
 (def ^:private ^:const despawn-age 6000)
 
+(def ^:private ^:const drop-all 3)
+
+(def ^:private ^:const drop-one 4)
+
 (defn- held-drop [world eid status]
   (let [e (get-in world [:entities eid])
         slot (player/hand-slot e :main)
         s (get-in e [:inventory slot])]
     (when s
       (let [total (long (:count s 1))
-            n (if (= 4 (long status)) 1 total)
+            n (if (= drop-one (long status)) 1 total)
             left (when (< n total) (assoc s :count (- total n)))]
         {:stack (assoc s :count n) :take-from [slot left]}))))
 
@@ -44,7 +49,7 @@
   [world [tag eid a b]]
   (when-let [e (get-in world [:entities eid])]
     (case tag
-      :dig (when (and (#{3 4} (long a))
+      :dig (when (and (#{drop-all drop-one} (long a))
                       (not (game-mode/spectator? e)))
              (held-drop world eid a))
       :creative-slot
@@ -140,7 +145,7 @@
 
 (defn- ground-friction ^double [chunks pos sup]
   (let [f (motion/friction (motion/below-state chunks pos sup))]
-    (double (float (* air-drag f)))))
+    (num/f32 (* air-drag f))))
 
 (defn- moved-speed [chunks ^Move mv sup on-ground]
   (let [p (phys/pos mv)
@@ -157,8 +162,8 @@
 
 (defn- item-moved [chunks e vel]
   (let [vel (mapv double vel)
-        ^Move mv (phys/move chunks (:pos e) vel (item-half)
-                            (item-height))
+        half (item-half) height (item-height)
+        ^Move mv (phys/move chunks (:pos e) vel half height)
         og (phys/on-ground? mv)
         [sup nb?] (supported chunks e mv)
         p (phys/pos mv)]
@@ -183,9 +188,8 @@
     (item-moved chunks e push)))
 
 (defn- passed
-  "Returns the step of item e that passes through blocks by drift,
-  as Entity.move with noPhysics: it keeps its ground flag and
-  support, and no block acts on it."
+  "Returns the step of item e that passes through blocks by drift.
+  It keeps its ground flag and support, and no block acts on it."
   [chunks e drift rest?]
   (let [{:keys [pos on-ground support]} e
         og (boolean on-ground)
@@ -201,7 +205,7 @@
                     wall-inset)))
 
 (defn- felt
-  "Returns the step of item e that blocks act on, as Entity.move."
+  "Returns the step of item e that blocks act on."
   [chunks e drift rest?]
   (let [stuck (:stuck e)
         push (if stuck (mapv * drift stuck) drift)
@@ -214,13 +218,14 @@
      :support sup :no-blocks? nb?
      :stuck (if rest? (or st stuck) st)}))
 
+(defn- shoved [chunks e eid t drift]
+  (let [roll (random/of-key t eid :shove)]
+    (shove/shoved chunks (:pos e) (item-height) drift roll)))
+
 (defn- settled [chunks dim e eid age t]
   (let [[drift in-fluid?] (item-drift chunks dim (:pos e) (:vel e))
         ghost? (in-wall? chunks e)
-        drift (if ghost?
-                (shove/shoved chunks (:pos e) (item-height) drift
-                              (random/of-key t eid :shove))
-                drift)
+        drift (if ghost? (shoved chunks e eid t drift) drift)
         rest? (resting? e drift age eid)
         s (if ghost?
             (passed chunks e drift rest?)
@@ -230,7 +235,7 @@
 (defn- gone? [world e ^long age]
   (or (>= age despawn-age)
       (< (v/y (:pos e)) (chunk/void-y world))
-      (not (pos? (double (:health e 1.0))))))
+      (not (entity/alive? e))))
 
 (defn- needs-sync? [e s]
   (or (:in-fluid? s)
@@ -269,15 +274,14 @@
          (near? (v/z pa) (v/z pb) flat)
          (near? (v/y pa) (v/y pb) tall))))
 
-(defn- fl ^long [^double a] (long (Math/floor a)))
-
 (defn- cell-key ^long [^long x ^long y ^long z]
   (bit-or (bit-shift-left (bit-and x 0x3FFFFFF) 38)
           (bit-shift-left (bit-and z 0x3FFFFFF) 12)
           (bit-and y 0xFFF)))
 
 (defn- cell-of ^long [pos]
-  (cell-key (fl (v/x pos)) (fl (v/y pos)) (fl (v/z pos))))
+  (cell-key (num/floor (v/x pos)) (num/floor (v/y pos))
+            (num/floor (v/z pos))))
 
 (defn- merge-index [items]
   (persistent!
@@ -293,9 +297,9 @@
             (+ (long z) (dec (rem c 3)))))
 
 (defn- neighbour-idxs [index pos]
-  (let [x (fl (v/x pos))
-        y (fl (v/y pos))
-        z (fl (v/z pos))
+  (let [x (num/floor (v/x pos))
+        y (num/floor (v/y pos))
+        z (num/floor (v/z pos))
         at (fn [c] (get index (neighbour-key x y z c) []))]
     (sort (persistent!
             (reduce (fn [acc c] (reduce conj! acc (at c)))
@@ -311,15 +315,14 @@
           (assoc! b (conj (get index b []) i))))))
 
 (defn- crossed? [from to]
-  (or (not (== (fl (v/x from)) (fl (v/x to))))
-      (not (== (fl (v/y from)) (fl (v/y to))))
-      (not (== (fl (v/z from)) (fl (v/z to))))))
+  (or (not (== (num/floor (v/x from)) (num/floor (v/x to))))
+      (not (== (num/floor (v/y from)) (num/floor (v/y to))))
+      (not (== (num/floor (v/z from)) (num/floor (v/z to))))))
 
 (defn- merge-rate ^long [from to]
   (if (crossed? from to) moved-rate resting-rate))
 
-(defn- merge-ready?
-  [[_ e]]
+(defn- merge-ready? [e]
   (when e
     (let [s (:stack e)]
       (and (not= no-pickup-delay (long (or (:pickup-delay e) 0)))
@@ -327,8 +330,7 @@
            (< (long (:count s 1))
               (long (data/max-stack (:item s))))))))
 
-(defn- merge-due?
-  [[_ e from]]
+(defn- merge-due? [e from]
   (zero? (rem (long (or (:age e) 0))
               (merge-rate from (:pos e)))))
 
@@ -337,8 +339,8 @@
 (defn- count-of ^long [e] (long (:count (:stack e) 1)))
 
 (defn- absorbed
-  "Returns item a after it took the stack of item b, as
-  ItemEntity.merge: the longer pickup delay and the younger age."
+  "Returns item a after it took the stack of item b. It keeps the
+  longer pickup delay and the younger age."
   [a b]
   (let [n (+ (count-of a) (count-of b))
         d (max (of-long a :pickup-delay) (of-long b :pickup-delay))]
@@ -363,11 +365,11 @@
 
 (defn- tried
   "Returns [es out done?] after item i of es tried to merge with item
-  j, as ItemEntity.tryToMerge: the smaller stack goes into the other.
-  It is done when i went into j."
+  j. The smaller stack goes into the other. It is done when i went
+  into j."
   [es gone fresh out i j]
   (let [a (nth (nth es i) 1) b (nth (nth es j) 1)
-        ok? (and (merge-ready? [nil b]) (mergeable? a b))]
+        ok? (and (merge-ready? b) (mergeable? a b))]
     (cond
       (not ok?) [es out false]
       (< (count-of b) (count-of a))
@@ -376,8 +378,8 @@
 
 (defn- merged
   "Returns [es out] after item i of es merged with the items near it
-  in their order, as ItemEntity.mergeWithNeighbours. The items before
-  it moved this tick, the items after it not yet."
+  in their order. The items before it moved this tick, the items
+  after it not yet."
   [index es gone fresh out i]
   (loop [js (neighbour-idxs index (:pos (nth (nth es i) 1)))
          es es out out]
@@ -419,11 +421,10 @@
   (zero? (long (or (:pickup-delay ie) 0))))
 
 (defn- takes? [pe]
-  (and (pos? (double (:health pe 20.0)))
-       (not (game-mode/spectator? pe))))
+  (and (entity/alive? pe) (not (game-mode/spectator? pe))))
 
 (defn player-pickups
-  "Returns the deltas of player p, an entry, taking up the items it
+  "Returns the deltas of the player entry p taking up the items it
   touches, one after another."
   [world p]
   (when (takes? (val p))
@@ -444,11 +445,11 @@
     (nth steps i)))
 
 (defn- due? [e from]
-  (and (merge-ready? [nil e]) (merge-due? [nil e from])))
+  (and (merge-ready? e) (merge-due? e from)))
 
 (defn- item-turn
-  "Returns [es index out] after the turn of item i of es: its step,
-  then its merges. An item gone before its turn does not step."
+  "Returns [es index out] after the turn of item i of es. The item
+  steps and merges. An item gone before its turn does not step."
   [world steps [gone fresh] [es index out] i]
   (let [[eid e from d] (turn-of world steps fresh es i)
         out (conj! out d)]
@@ -475,7 +476,7 @@
 
 (defn turns
   "Returns the deltas of every dropped item in an active chunk, each
-  in its turn, as ItemEntity.tick."
+  in its turn."
   [world]
   (let [items (areas/active-of-types world [:item])
         steps (par/pmapcat #(vector (stepped-item world %)) items)]

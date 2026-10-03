@@ -7,16 +7,12 @@
             [collider.game.areas :as areas]
             [collider.game.level :as level]
             [collider.world.chunk :as chunk]
-            [collider.world.gen :as gen]))
+            [collider.world.gen :as gen])
+  (:import (collider.world ChunkIndex)))
 
 (set! *warn-on-reflection* true)
 
-(def ^:const start-rate 9.0)
-
-(defn view-distance
-  "Returns the view distance of the server in chunks."
-  ^long [world]
-  (areas/view-radius world))
+(def ^:private ^:const start-rate 9.0)
 
 (defn player-radius
   "Returns the view distance a player is sent chunks for.
@@ -25,13 +21,10 @@
   ^long [world p]
   (-> (long (or (:view-distance p) 2))
       (max 2)
-      (min (view-distance world))))
+      (min (areas/view-radius world))))
 
-(defn wanted-chunks
-  "Returns the ids of the chunks a player in chunk cp sees."
-  [world cp ^long r]
-  (let [[cx cz] (chunk/id->pos cp)]
-    (into #{} (chunk/tracked-ids (long cx) (long cz) r))))
+(defn- generated [world]
+  (gen/flat-chunk (:dim world)))
 
 (defn loading-deltas
   "Returns the deltas that bring the absent chunks into the world.
@@ -43,28 +36,28 @@
         :when (not (contains? (:loading world) id))
         d (if (contains? (:stored world) id)
             [[:chunk-requested id] (out/all (out/load-chunk id))]
-            [[:add-chunk id (gen/flat-chunk (:dim world))]])]
+            [[:add-chunk id (generated world)]])]
     d))
 
 (defn- restore-deltas [world d]
-  (let [dim (:dim world)]
-    (for [[tag _ id payload] (:input d)
-          :when (= :chunk-loaded tag)]
-      [:restore-chunk id
-       (or payload {:chunk (gen/flat-chunk dim)})])))
+  (for [[tag _ id payload] (:input d)
+        :when (= :chunk-loaded tag)]
+    [:restore-chunk id (or payload {:chunk (generated world)})]))
 
 (defn- writable? [world eid]
   (if-let [w (:writable world)] (contains? w eid) true))
 
-(defn- id-x ^long [^long id] (unchecked-int (bit-shift-right id 32)))
+(defn- dx ^long [^long cp ^long id]
+  (- (ChunkIndex/x id) (ChunkIndex/x cp)))
 
-(defn- id-z ^long [^long id] (unchecked-int id))
+(defn- dz ^long [^long cp ^long id]
+  (- (ChunkIndex/z id) (ChunkIndex/z cp)))
 
 (defn- sees? [^long cp ^long r ^long id]
-  (chunk/tracked? r (- (id-x id) (id-x cp)) (- (id-z id) (id-z cp))))
+  (chunk/tracked? r (dx cp id) (dz cp id)))
 
 (defn- dist-sq ^long [^long cp ^long id]
-  (let [dx (- (id-x id) (id-x cp)) dz (- (id-z id) (id-z cp))]
+  (let [dx (dx cp id) dz (dz cp id)]
     (+ (* dx dx) (* dz dz))))
 
 (defn- nearest-first [ids ^long cp]
@@ -189,12 +182,14 @@
                (into [] (filter #(streaming? world %))
                      (level/player-entries world))))
 
+(defn- stored-deltas [world groups id]
+  (let [p (schema/chunk-payload world id (get groups id))]
+    [[:unload-chunk id] (out/all (out/store-chunk id p))]))
+
 (defn- unload-deltas [world ids]
-  (let [groups (when (seq ids) (schema/chunk-entities (:entities world)))]
-    (mapcat (fn [id]
-              (let [p (schema/chunk-payload world id (get groups id))]
-                [[:unload-chunk id] (out/all (out/store-chunk id p))]))
-            ids)))
+  (let [es (:entities world)
+        groups (when (seq ids) (schema/chunk-entities es))]
+    (mapcat #(stored-deltas world groups %) ids)))
 
 (defn- purged [tickets]
   (reduce-kv (fn [m id n]

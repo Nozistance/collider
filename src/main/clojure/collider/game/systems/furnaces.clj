@@ -7,17 +7,14 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- with-lit ^long [^long st lit?]
-  (block/state (block/block-of st)
-               (assoc (block/props-of st)
-                      :lit (if lit? :true :false))))
+(defn- lit? [^long st] (= :true (:lit (block/props-of st))))
 
 (defn tick-deltas
   "Returns the deltas of one tick of the furnace e at pos."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
-        [e' lit?] (furnace/tick e)]
+        [e' burns?] (furnace/tick e)]
     (concat (when (not= e e') [[:set-block-entity pos e']])
-            (when (not= lit? (= :true (:lit (block/props-of st))))
-              (let [st' (with-lit st lit?)]
+            (when (not= burns? (lit? st))
+              (let [st' (block/with st :lit (block/flag burns?))]
                 (changes/set-deltas world [[pos st']]))))))

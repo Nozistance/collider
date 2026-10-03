@@ -18,6 +18,7 @@
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.chest :as chest]))
 
@@ -207,7 +208,7 @@
     (case (:type m)
       :anvil (anvil/take-deltas
                world m (player/infinite-materials? e))
-      (keep identity [(container/take-sound m)]))))
+      (when-let [s (container/take-sound m)] [s]))))
 
 (defn- click-merge-deltas [eid e after inventory menu]
   (let [changes (slot-changes (or (:inventory e) {}) inventory)
@@ -271,26 +272,32 @@
 (defn- take-book-deltas
   [world eid e m]
   (when-let [book (lectern/book-of world m)]
-    (let [inv (or (:inventory e) {})
-          [changes left] (inventory/add-stack inv book)
-          state-id (inc (long (:state-id m 1)))]
+    (let [state-id (inc (long (:state-id m 1)))]
       (concat
         (lectern/remove-book-deltas world (:pos m))
         [(out/to eid (out/container-slot (:id m) state-id 0 nil))]
         (when (not= 0 (lectern/page world m))
           [(out/to eid (out/container-data (:id m) 0 0))])
-        (for [[slot s] changes] [:set-slot eid slot s])
-        (when left [[:spawn-entity (item/dropped world eid left)]])
+        (inventory/kept world eid e book)
         (screen/close-deltas world eid e true)))))
+
+(def ^:private ^:const page-back 1)
+
+(def ^:private ^:const page-on 2)
+
+(def ^:private ^:const take-book 3)
+
+(def ^:private ^:const page-jump 100)
 
 (defn- lectern-button-deltas [world eid e m id]
   (let [id (long id)
         page (lectern/page world m)]
     (cond
-      (>= id 100) (page-button-deltas world eid m (- id 100))
-      (= 1 id) (page-button-deltas world eid m (dec page))
-      (= 2 id) (page-button-deltas world eid m (inc page))
-      (= 3 id) (take-book-deltas world eid e m)
+      (>= id page-jump)
+      (page-button-deltas world eid m (- id page-jump))
+      (= page-back id) (page-button-deltas world eid m (dec page))
+      (= page-on id) (page-button-deltas world eid m (inc page))
+      (= take-book id) (take-book-deltas world eid e m)
       :else nil)))
 
 (defn- bench-button-deltas [eid e m id]
@@ -310,7 +317,7 @@
 
 (defn- enchant-sound [world pos]
   (let [r (random/of-key (:tick world) pos :enchant)
-        at (mapv #(+ 0.5 (double %)) pos)]
+        at (v/centre pos)]
     (out/all (out/sound :block.enchantment-table.use at 1.0
                         (+ 0.9 (* 0.1 r))))))
 
@@ -319,13 +326,19 @@
     (cond-> {:xp-level (max n 0) :xp-sent nil}
       (neg? n) (assoc :xp-progress 0.0 :xp-total 0))))
 
+(defn- next-seed [world eid]
+  (let [r (random/of-key (:tick world) eid :enchantment-seed)]
+    (enchanting/next-seed r)))
+
+(defn- enchanted-menu [world m items seed]
+  (let [shelves (enchanting/shelves world (:pos m))]
+    (merge (assoc m :contents items :seed seed)
+           (enchanting/offers seed shelves (first items)))))
+
 (defn- enchant-deltas [world eid e m enchanted lapis cost]
-  (let [seed (enchanting/next-seed
-               (random/of-key (:tick world) eid :enchantment-seed))
+  (let [seed (next-seed world eid)
         items [enchanted lapis]
-        shelves (enchanting/shelves world (:pos m))
-        m' (merge (assoc m :contents items :seed seed)
-                  (enchanting/offers seed shelves enchanted))
+        m' (enchanted-menu world m items seed)
         slots (screen/view m' items (:inventory e))
         synced (screen/sync-deltas eid m' slots (:carried e) false)
         {:keys [deltas menu]} synced
@@ -403,13 +416,13 @@
         [:set-slot eid slot s])
       (for [s drops] [:spawn-entity (item/dropped world eid s)]))))
 
+(defn- left-deltas [world e]
+  (let [eid (:eid e)
+        w (assoc-in world [:entities eid] e)]
+    (delta/authored (screen/left-behind-deltas w eid e) eid :player)))
+
 (defn- quit-deltas [world]
-  (mapcat (fn [e]
-            (let [eid (:eid e)
-                  w (assoc-in world [:entities eid] e)]
-              (delta/authored (screen/left-behind-deltas w eid e)
-                              eid :player)))
-          (get-in world [:input :quits])))
+  (mapcat #(left-deltas world %) (get-in world [:input :quits])))
 
 (defn- close-event-deltas [world [_ eid _]]
   (when-let [e (get-in world [:entities eid])]

@@ -1,25 +1,31 @@
 (ns collider.game.systems.damage
   "The hurts of players and items each tick."
-  (:require [collider.game.deltas :as deltas]
+  (:require [collider.game.areas :as areas]
+            [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
             [collider.game.mob.mobs :as mobs]
-            [collider.world.chunk :as chunk]
-            [collider.game.areas :as areas]
+            [collider.num :as num]
             [collider.par :as par]
-            [collider.vec :as v]))
+            [collider.vec :as v]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
-(defn- chunk-x ^long [^double a]
-  (bit-shift-right (long (Math/floor a)) 4))
+(def ^:private loose-types #{:item :experience-orb})
+
+(defn- chunk-coord ^long [^double a]
+  (bit-shift-right (num/floor a) 4))
 
 (defn- has-chunk? [chunks x z]
   (some? (get chunks (chunk/pos->id x z))))
 
 (defn- loaded-near? [world e]
   (let [chunks (:chunks world) p (:pos e)
-        x0 (chunk-x (- (v/x p) 0.5)) x1 (chunk-x (+ (v/x p) 0.5))
-        z0 (chunk-x (- (v/z p) 0.5)) z1 (chunk-x (+ (v/z p) 0.5))]
+        x0 (chunk-coord (- (v/x p) 0.5))
+        x1 (chunk-coord (+ (v/x p) 0.5))
+        z0 (chunk-coord (- (v/z p) 0.5))
+        z1 (chunk-coord (+ (v/z p) 0.5))]
     (or (has-chunk? chunks x0 z0)
         (and (not= x0 x1) (has-chunk? chunks x1 z0))
         (and (not= z0 z1) (has-chunk? chunks x0 z1))
@@ -51,13 +57,13 @@
     (hurt/fire-deltas world eid e)
     (busy-deltas world eid e)))
 
-(defn- living-deltas [world eid e]
-  (if (contains? #{:item :experience-orb} (:type e))
+(defn- body-deltas [world eid e]
+  (if (contains? loose-types (:type e))
     (hurt/item-deltas world eid e)
     (mob-deltas world eid e)))
 
 (defn- stirred? [world e]
-  (if (= :player (:type e))
+  (if (entity/player? e)
     (loaded-near? world e)
     (pos? (hurt/probe world e))))
 
@@ -66,28 +72,28 @@
        (or (not (idle? world e)) (stirred? world e))))
 
 (defn- ticking? [active e]
-  (or (= :player (:type e)) (areas/active-at? active (:pos e))))
+  (or (entity/player? e) (areas/active-at? active (:pos e))))
 
-(defn- living [world]
+(defn- bodies [world]
   (let [active (areas/active-chunks world)
         due? (fn [[_ e :as entry]]
                (and (ticking? active e)
                     (not (mobs/mob-type? (:type e)))
                     (live? world entry)))]
     (comp (filter due?)
-          (mapcat (fn [[eid e]] (living-deltas world eid e))))))
+          (mapcat (fn [[eid e]] (body-deltas world eid e))))))
 
-(def ^:private ^:const living-leaf 64)
+(def ^:private ^:const bodies-leaf 64)
 
 (defn- own-tick? [e]
   (let [k (:type e)]
-    (or (mobs/mob-type? k) (contains? #{:item :experience-orb} k))))
+    (or (mobs/mob-type? k) (contains? loose-types k))))
 
 (defn burning
-  "Returns the deltas of every player from the start of
-  LivingEntity.baseTick: fire, then the void. They come after the
-  turns of the entities, where a player counts down its hurt
-  resistance (ServerPlayer.tick:614); a mob does all of it there."
+  "Returns the fire deltas and the void deltas of every player at the
+  start of its base tick. They come after the turns of the entities,
+  where a player counts down its hurt resistance. A mob does all of
+  it in its turn."
   {:wake {:keys [:entities]}}
   [world _d]
   (let [active (areas/active-chunks world)
@@ -104,4 +110,4 @@
   {:wake {:keys [:entities]}}
   [world _d]
   (deltas/of-vec
-    (par/select (living world) (:entities world) living-leaf)))
+    (par/select (bodies world) (:entities world) bodies-leaf)))

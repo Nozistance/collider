@@ -10,26 +10,25 @@
 (defn- was-raining? [world]
   (> (double (:o-rain-level world 0.0)) 0.2))
 
-(defn- rain-level [w] (out/rain-level (weather/rain-level w)))
+(defn- rain-msg [w] (out/rain-level (weather/rain-level w)))
 
-(defn- thunder-level [w]
+(defn- thunder-msg [w]
   (out/thunder-level (weather/raw-thunder-level w)))
 
 (defn- level-messages [w]
   (concat
     (when (not= (double (:o-rain-level w 0.0)) (weather/rain-level w))
-      [(out/all (rain-level w))])
+      [(out/all (rain-msg w))])
     (when (not= (double (:o-thunder-level w 0.0))
                 (weather/raw-thunder-level w))
-      [(out/all (thunder-level w))])))
+      [(out/all (thunder-msg w))])))
 
 (defn- switch-messages [w]
-  (when (not= (was-raining? w) (weather/raining? w))
-    [(out/all (if (was-raining? w)
-                (out/rain-stopped)
-                (out/rain-started)))
-     (out/everyone (rain-level w))
-     (out/everyone (thunder-level w))]))
+  (let [was? (was-raining? w)]
+    (when (not= was? (weather/raining? w))
+      [(out/all (if was? (out/rain-stopped) (out/rain-started)))
+       (out/everyone (rain-msg w))
+       (out/everyone (thunder-msg w))])))
 
 (defn- join-messages [world events]
   (when (weather/raining? world)

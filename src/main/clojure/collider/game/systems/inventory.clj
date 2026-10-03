@@ -8,6 +8,7 @@
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.slots :as slots]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
             [collider.game.systems.containers :as containers]
@@ -32,8 +33,8 @@
                        (join-msgs world eid))))
         joins))
 
-(defn- item-of [name]
-  (when (contains? (get (data/registries) "item") name) name))
+(defn- item-of [k]
+  (when (contains? (get (data/registries) "item") k) k))
 
 (def ^:private own-kinds #{:banner :decorated-pot})
 
@@ -81,15 +82,14 @@
                   (and (player/infinite-materials? e) include-data))
     entity (picked-entity world entity)))
 
-(def ^:private scan-order
-  (vec (concat (range 36 45) (range 9 36))))
+(def ^:private ^:const hotbar-size 9)
 
-(defn- same-item? [a b]
-  (and (some? a) (= (dissoc a :count) (dissoc b :count))))
+(def ^:private scan-order
+  (into (vec (range slots/hotbar (inc slots/hotbar-end))) slots/main))
 
 (defn- slot-with [inv stack]
   (some (fn [slot]
-          (when (same-item? (get inv slot) stack) slot))
+          (when (stack/same-kind? (get inv slot) stack) slot))
         scan-order))
 
 (defn- free-slot [inv]
@@ -99,9 +99,10 @@
   (boolean (seq (stack/component s :enchantments))))
 
 (defn- hotbar-where [inv ^long held pred]
-  (some (fn [i] (let [n (mod (+ held (long i)) 9)]
-                  (when (pred (get inv (+ 36 n))) n)))
-        (range 9)))
+  (some (fn [i]
+          (let [n (mod (+ held (long i)) hotbar-size)]
+            (when (pred (get inv (+ slots/hotbar n))) n)))
+        (range hotbar-size)))
 
 (defn- suitable-hotbar [inv ^long held]
   (or (hotbar-where inv held nil?)
@@ -114,16 +115,16 @@
 (defn- swap-into-hotbar [eid inv slot n]
   (let [n (long n)]
     (concat (select-deltas eid n)
-            [[:set-slot eid (+ 36 n) (get inv slot)]
-             [:set-slot eid slot (get inv (+ 36 n))]])))
+            [[:set-slot eid (+ slots/hotbar n) (get inv slot)]
+             [:set-slot eid slot (get inv (+ slots/hotbar n))]])))
 
 (defn- stash-into-hotbar [eid inv stack n]
   (let [n (long n)
-        cur (get inv (+ 36 n))
+        cur (get inv (+ slots/hotbar n))
         free (when cur (free-slot inv))]
     (concat (select-deltas eid n)
             (when free [[:set-slot eid free cur]])
-            [[:set-slot eid (+ 36 n) stack]])))
+            [[:set-slot eid (+ slots/hotbar n) stack]])))
 
 (defn- pick-deltas [world [_ eid what]]
   (when-let [e (get-in world [:entities eid])]
@@ -133,8 +134,8 @@
             slot (slot-with inv stack)
             n (suitable-hotbar inv held)]
         (cond
-          (and slot (<= 36 (long slot) 44))
-          (select-deltas eid (- (long slot) 36))
+          (and slot (<= slots/hotbar (long slot) slots/hotbar-end))
+          (select-deltas eid (- (long slot) slots/hotbar))
           slot (swap-into-hotbar eid inv slot n)
           (player/infinite-materials? e)
           (stash-into-hotbar eid inv stack n)

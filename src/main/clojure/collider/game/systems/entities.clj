@@ -37,9 +37,9 @@
       (some #(= :interact (nth % 0)) (deltas/input-of d))))
 
 (defn entities
-  "Returns the deltas of the entities of the level in one tick, as
-  ServerLevel.tick walks its entity tick list. The players go first,
-  as most enter the list before the entities around them."
+  "Returns the deltas of the entities of the level in one tick, in
+  the order of the entity tick list. The players go first, as most
+  enter the list before the entities around them."
   {:wake {:types (conj kinds :player) :events #{:interact}}}
   [world d]
   (let [ds (deltas/of-vec (player/turns world))]

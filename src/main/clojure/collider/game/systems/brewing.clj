@@ -12,14 +12,10 @@
 (def ^:private bottle-props
   [:has-bottle-0 :has-bottle-1 :has-bottle-2])
 
-(defn- bottle-prop [items i p]
-  [p (if (nth items (long i)) :true :false)])
-
 (defn- with-bottles ^long [^long st items]
-  (block/state (block/block-of st)
-               (into (block/props-of st)
-                     (map-indexed (partial bottle-prop items))
-                     bottle-props)))
+  (let [flag #(block/flag (nth items (long %)))
+        flags (map flag (range (count bottle-props)))]
+    (apply block/with st (interleave bottle-props flags))))
 
 (defn- brew-deltas [world pos spill]
   (cons (out/all (out/level-event out/sound-brewing-stand-brew pos))

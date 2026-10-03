@@ -9,9 +9,8 @@
     (or (nil? p) (not (reach/in-edit-range? p pos)))))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the sign e at pos: it goes back
-  from an editor who left. Nobody is told, as the text did not
-  change."
+  "Returns the deltas that free the sign e at pos when its editor is
+  gone or out of reach. Nobody is told, as the text did not change."
   [world [pos e]]
   (when (and (:editor e) (away? world e pos))
     [[:set-block-entity pos (assoc e :editor nil)]]))
