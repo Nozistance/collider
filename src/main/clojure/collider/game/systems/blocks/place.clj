@@ -38,7 +38,7 @@
        (not (and sneak? (block/stack-props (block/type-of cur))))))
 
 (defn- own-item? [^long cur item]
-  (= (block/block-of cur) (block/item->block item 1)))
+  (= (block/block-of cur) (placement/item->block item 1)))
 
 (defn replaceable-state?
   "Returns true when the state yields to a block put in its cell."
@@ -308,6 +308,6 @@
     (let [ctx (use-ctx world eid face item cursor)
           cur (changes/block-at world pos)
           over? (replaceable-state? cur item ctx)
-          base (block/placement item (assoc ctx :replacing? over?))]
+          base (placement/item-state item (assoc ctx :replacing? over?))]
       (when (and base (may-place? world eid base))
         (attempt-deltas world eid pos base ctx over?)))))

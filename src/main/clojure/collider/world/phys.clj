@@ -1,6 +1,7 @@
 (ns collider.world.phys
   "Collision of moving bodies with the blocks of the world."
   (:require [collider.data :as data]
+            [collider.data.state :as states]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -111,7 +112,7 @@
 
 (def ^:private ^:table y-coords-table
   (delay
-    (let [t (data/collision-ys)]
+    (let [t (states/collision-ys)]
       (YCoords. (object-array (map doubles-of (:states t)))
                 (doubles-of (:block t))
                 (doubles-of (:scaffolding-bottom t))

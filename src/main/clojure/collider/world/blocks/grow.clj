@@ -1,6 +1,7 @@
 (ns collider.world.blocks.grow
   "Random growth and bone meal of every block class."
   (:require [collider.world.block :as block]
+            [collider.world.block.oxidation :as oxidation]
             [collider.world.update :as update]
             [collider.world.blocks.dripleaf :as dripleaf]
             [collider.world.blocks.grow.amethyst :as amethyst]
@@ -63,7 +64,7 @@
 (defn- ticked [chunks p st roll time world]
   (if-let [f (ticks (block/type-of st))]
     (f chunks p st roll time world)
-    (when (block/weathering? st)
+    (when (oxidation/ages? st)
       (copper/tick chunks p st roll))))
 
 (defn random-tick
