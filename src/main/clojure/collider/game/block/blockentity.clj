@@ -204,8 +204,8 @@
              (get component-fields (:kind e) {})))
 
 (defn placed-by
-  "Returns e as its block placed by player p leaves it: a structure
-  block keeps the name of its author."
+  "Returns block entity e placed by player p. A structure block takes
+  the name of p as its author."
   [e p]
   (cond-> e
     (= :structure-block (:kind e)) (assoc :author (:name p))))

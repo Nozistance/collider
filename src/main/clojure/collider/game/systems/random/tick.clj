@@ -209,7 +209,6 @@
       (ticked world speed))))
 
 (defn random-ticks
-  "Returns the deltas of the random ticks of the active chunks."
   {:wake {:types #{:player}}}
   [world _d]
   (deltas/of-vec (random-tick-deltas world)))

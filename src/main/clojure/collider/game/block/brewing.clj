@@ -28,7 +28,6 @@
   (contains? (:fuel @index) (:item stack)))
 
 (defn ingredient?
-  "Returns true for an item that some mix brews with."
   [stack]
   (contains? (:ingredients @index) (:item stack)))
 
@@ -153,7 +152,6 @@
       :else (menu/span v 5 32 false))))
 
 (defn layout
-  "Returns the slot layout of a brewing stand menu."
   []
   (let [base (menu/slots-layout 5 may-place?)
         v (:visible base)]

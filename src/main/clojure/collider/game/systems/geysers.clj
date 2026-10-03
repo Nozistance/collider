@@ -71,7 +71,6 @@
               (when (zero? c) (turn-deltas world pos st))))))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the potent sulfur e at pos."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
         ph (geyser/phase st)

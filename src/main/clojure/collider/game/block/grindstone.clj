@@ -70,7 +70,6 @@
             (stripped))))))
 
 (defn result
-  "Returns what a grindstone offers for the two inputs."
   [input additional]
   (cond
     (and (nil? input) (nil? additional)) nil
@@ -114,7 +113,6 @@
     (dissoc inv 2)))
 
 (defn layout
-  "Returns the slot layout of a grindstone menu."
   []
   (let [base (menu/slots-layout 3 may-place?)
         v (:visible base)]

@@ -9,7 +9,6 @@
   (delay (:stonecutting (data/recipes))))
 
 (defn cuts
-  "Returns the stonecutter recipes that take stack."
   [stack]
   (if (nil? stack)
     []
@@ -28,7 +27,6 @@
         {:item (:item out) :count (long (:count out 1))}))))
 
 (defn changed
-  "Returns stonecutter menu m after its input slot holds inv."
   [m inv]
   (let [item (:item (get inv 0))]
     (if (= item (:input-item m))
@@ -50,7 +48,6 @@
     (dissoc inv 1)))
 
 (defn layout
-  "Returns the slot layout of stonecutter menu m."
   [m]
   (let [place? (fn [slot _] (not= 1 (long slot)))
         base (menu/slots-layout 2 place?)

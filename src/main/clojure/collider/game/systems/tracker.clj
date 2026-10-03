@@ -1,5 +1,5 @@
 (ns collider.game.systems.tracker
-  "Entity tracking: what each player sees of the bodies near it."
+  "What each player sees of the bodies near it."
   (:require [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -414,8 +414,6 @@
       (changed-deltas t eid e vs self? tr mdata due?))))
 
 (defn- marked-deltas
-  "Returns the motion ServerEntity.sendChanges:234 sends after a hit
-  marked entity eid, and the mark gone."
   [eid e vs]
   (cond-> [[:merge-entity eid {:hurt-marked? nil}]]
     vs (conj (out/all (out/velocity eid (:vel e))))))
@@ -473,7 +471,6 @@
                  (into [] (partition-all move-batch) ts))))
 
 (defn tracker
-  "Returns the deltas of entity tracking in the level."
   {:wake {:keys [:entities [:input :resends]]}}
   [world _]
   (let [ps (level/player-entries world)

@@ -16,7 +16,6 @@
 (set! *warn-on-reflection* true)
 
 (defn uses-bed?
-  "Returns true when the block at pos is a bed."
   [world pos]
   (= :bed (block/type-of (changes/block-at world pos))))
 
@@ -119,7 +118,6 @@
             (delta/authored (concat ds more blast) by))))
 
 (defn sleep-deltas
-  "Returns the deltas of player eid using the bed at pos."
   [world eid pos]
   (when-let [head (bed/head-pos (:chunks world) pos)]
     (let [st (changes/block-at world head)

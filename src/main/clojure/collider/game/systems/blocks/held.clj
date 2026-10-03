@@ -68,7 +68,6 @@
         (hand-after world eid e hand held worn)))))
 
 (defn spyglass-deltas
-  "Returns the deltas of a player raising a spyglass."
   [eid e]
   (let [snd (out/sound :item.spyglass.use (:pos e) 1.0 1.0 :players)]
     [(out/except eid snd)

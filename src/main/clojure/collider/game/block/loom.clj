@@ -29,7 +29,6 @@
        (some? (data/pattern-tag (:item stack)))))
 
 (defn selectable-patterns
-  "Returns the patterns the loom offers for pattern item pattern."
   [pattern]
   (if (nil? pattern)
     @no-item-required
@@ -66,7 +65,6 @@
     (if (>= (count (layers banner)) max-layers) -1 (long kept))))
 
 (defn changed
-  "Returns loom menu m after its slots hold inv."
   [m inv]
   (let [banner (get inv 0) dye (get inv 1)]
     (if-not (and banner dye)
@@ -100,7 +98,6 @@
     (dissoc inv 3)))
 
 (defn layout
-  "Returns the slot layout of loom menu m."
   [m]
   (let [base (menu/slots-layout 4 may-place?)
         v (:visible base)

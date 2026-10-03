@@ -196,13 +196,11 @@
               (ticks-run world k (ordered world k active)))))))
 
 (defn block-updates
-  "Returns the deltas of the block ticks that are due."
   {:wake {:keys [[:block-ticks :queue]]}}
   [world _d]
   (deltas/of-vec (ticks-deltas world :block-ticks)))
 
 (defn fluid-updates
-  "Returns the deltas of the fluid ticks that are due."
   {:wake {:keys [[:fluid-ticks :queue]]}}
   [world _d]
   (deltas/of-vec (ticks-deltas world :fluid-ticks)))
@@ -226,8 +224,7 @@
     (out/all (out/block-entity pos))))
 
 (defn block-flush
-  "Returns the effects that show the changed blocks to clients.
-  They are the blocks that changed in this tick."
+  "Returns the effects that show the blocks changed this tick."
   {:wake {:keys [:changed-blocks]}}
   [w _d]
   (deltas/of-vec

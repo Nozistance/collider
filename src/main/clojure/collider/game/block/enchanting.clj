@@ -1,6 +1,6 @@
 (ns collider.game.block.enchanting
-  "The enchanting table: the power of the bookshelves around it, the
-  offers a player's seed makes and the enchanting of the item."
+  "Enchanting tables, the power of their bookshelves, the offers a
+  player's seed makes and the enchanting of items."
   (:require [collider.data :as data]
             [collider.game.block.menu :as menu]
             [collider.game.enchantment :as enchantment]
@@ -18,7 +18,6 @@
   (volatile! (bit-and (bit-xor seed multiplier) mask)))
 
 (defn- bits
-  "Returns the next n bits of r (LegacyRandomSource.next)."
   ^long [r ^long n]
   (let [s (-> (unchecked-multiply (long @r) multiplier)
               (unchecked-add 11)
@@ -27,7 +26,6 @@
     (long (unchecked-int (bit-shift-right s (- 48 n))))))
 
 (defn- below
-  "Returns a number from 0 below bound (BitRandomSource.nextInt)."
   ^long [r ^long bound]
   (if (zero? (bit-and bound (dec bound)))
     (bit-shift-right (* bound (bits r 31)) 31)
@@ -62,19 +60,16 @@
          (tagged? transmitters chunks (mapv + pos half)))))
 
 (defn shelves
-  "Returns how many bookshelves power the table at pos
-  (EnchantingTableBlock.isValidBookShelf)."
+  "Returns how many bookshelves power the table at pos."
   ^long [world pos]
   (count (filter #(shelf? (:chunks world) pos %) offsets)))
 
 (defn enchantable?
-  "Returns true when stack may go under the table's enchanting."
   [stack]
   (and (some? (stack/component stack :enchantable))
        (= {} (stack/component stack :enchantments))))
 
 (defn- slot-cost
-  "EnchantmentHelper.getEnchantmentCost."
   ^long [r ^long slot ^long shelves]
   (let [b (min shelves 15)
         n (+ (below r 8) 1 (bit-shift-right b 1) (below r (inc b)))]
@@ -110,7 +105,6 @@
   (delay (data/tag-values "enchantment" "in_enchanting_table")))
 
 (defn- available
-  "EnchantmentHelper.getAvailableEnchantmentResults."
   [^long value item]
   (into []
         (keep (fn [k]
@@ -143,7 +137,6 @@
     picked))
 
 (defn- selected
-  "EnchantmentHelper.selectEnchantment."
   [r stack ^long cost]
   (if-let [n (stack/component stack :enchantable)]
     (let [value (spread r cost (long n))
@@ -157,8 +150,6 @@
   (into (subvec v 0 i) (subvec v (inc i))))
 
 (defn- offered
-  "Returns the random after, and the enchantments of the offer
-  (EnchantmentMenu.getEnchantmentList)."
   [^long seed ^long slot ^long cost stack]
   (let [r (seeded (unchecked-int (+ seed slot)))
         xs (selected r stack cost)]
@@ -181,8 +172,8 @@
         (range 3)))
 
 (defn offers
-  "Returns the costs and the enchantment and level shown on each
-  of the three offers (EnchantmentMenu.slotsChanged)."
+  "Returns the cost, the enchantment and its level shown on each of
+  the three offers."
   [seed shelves stack]
   (if-not (and stack (enchantable? stack))
     blank
@@ -223,7 +214,6 @@
       :else (menu/span v 0 1 false))))
 
 (defn layout
-  "Returns the slot layout of an enchanting table menu."
   []
   (let [base (menu/slots-layout 2 may-place?)
         v (:visible base)]
@@ -233,8 +223,8 @@
       :quick (fn [inv slot] (quick v inv slot)))))
 
 (defn changed
-  "Returns enchanting menu m with the offers for its slots items and
-  the bookshelves of the player context ctx."
+  "Returns enchanting menu m with the offers for its items and the
+  bookshelves of the player context ctx."
   [m items ctx]
   (if (= (:contents m) items)
     m

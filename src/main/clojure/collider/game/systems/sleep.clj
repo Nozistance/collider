@@ -96,7 +96,6 @@
           (get-in world [:input :quits])))
 
 (defn sleep
-  "Returns the deltas of sleeping and waking in the level."
   {:wake {:types #{:player} :keys [[:input :quits]]}}
   [world _d]
   (deltas/of-vec (concat (quit-deltas world) (sleep-deltas world))))

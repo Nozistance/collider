@@ -1,7 +1,6 @@
 (ns collider.game.block.tickers
-  "The block entities that tick, in the order they joined the level,
-  as Level.blockEntityTickers kept by LevelChunk.tickersInLevel. A
-  ticker that stays keeps its turn, a new one goes last."
+  "The block entities that tick, in the order they joined the level.
+  A ticker that stays keeps its turn, and a new one goes last."
   (:require [collider.data.long-map :as lm]
             [collider.world.block :as block])
   (:import (collider HashMapOrder)))
@@ -9,11 +8,9 @@
 (set! *warn-on-reflection* true)
 
 (def none
-  "No ticker yet."
   {:turns (lm/long-map) :turn-of {} :next 0})
 
 (defn ticks?
-  "Returns true when block entity e ticks under block state st."
   [e st]
   (case (:kind e)
     (:furnace :blast-furnace :smoker :campfire :brewing-stand
@@ -33,7 +30,6 @@
        :next (inc n)})))
 
 (defn without
-  "Returns tickers tk without the one at pos."
   [tk pos]
   (if-let [n (get (:turn-of tk) pos)]
     (assoc tk :turns (dissoc (:turns tk) n)
@@ -54,7 +50,7 @@
 
 (defn loaded
   "Returns tickers tk with the block entities bes of a loaded chunk,
-  a map of pos to entity. state-of gives the block state at a pos."
+  keyed by pos. state-of gives the block state at a pos."
   [tk bes state-of]
   (let [on? #(ticks? (get bes %) (state-of %))]
     (reduce added tk (filter on? (hash-order (keys bes))))))

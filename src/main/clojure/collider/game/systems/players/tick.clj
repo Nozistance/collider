@@ -1,7 +1,6 @@
 (ns collider.game.systems.players.tick
-  "The tick of each player after the level, as the connection tick
-  of ServerGamePacketListenerImpl. Players go in join order, each
-  step sees the writes of the steps and players before it."
+  "The tick of each player after the level. Players go in join order,
+  and each step sees the writes of the steps and players before it."
   (:require [collider.game.apply :as apply]
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
@@ -47,7 +46,6 @@
     acc))
 
 (defn player-tick
-  "Returns the deltas of the tick of every player of the level."
   {:wake {:types #{:player}}}
   [world d]
   (let [fs (steps d)

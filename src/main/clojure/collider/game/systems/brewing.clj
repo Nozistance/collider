@@ -23,7 +23,6 @@
           [[:spawn-entity (item/popped world pos spill :brew)]])))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the brewing stand e at pos."
   [world [pos e]]
   (let [st (chunk/at (:chunks world) pos)
         [e' brewed? spill] (brewing/tick e)

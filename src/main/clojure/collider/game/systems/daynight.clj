@@ -30,7 +30,6 @@
   (first (filter #(around? t %) (partition 2 1 sky-keyframes))))
 
 (defn dark?
-  "Returns true when the sky is dark at time-of-day."
   [time-of-day]
   (let [t (day-time time-of-day)
         [[t0 v0] [t1 v1]] (span-of t)

@@ -355,7 +355,7 @@
 (defn- took
   "Returns [es out] after item i of es took item j of es, which is
   gone now. When the turn of i comes after the turn of j, i steps
-  from what it holds then."
+  from what it holds at that point."
   [es ^booleans gone ^booleans fresh out [i j]]
   (let [[ea a] (nth es i) [eb b] (nth es j) a (absorbed a b)
         i (long i) j (long j)]
@@ -463,7 +463,6 @@
           [es index out])))))
 
 (defn- walked
-  "Returns the deltas of items, each in its turn."
   [world items steps]
   (let [n (count items) flags [(boolean-array n) (boolean-array n)]
         ^booleans gone (nth flags 0)]

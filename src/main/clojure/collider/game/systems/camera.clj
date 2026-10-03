@@ -10,7 +10,6 @@
   (when (= :spectate tag) (camera/spectate-deltas world eid tid)))
 
 (defn camera
-  "Returns the deltas of the spectator actions of this tick."
   {:wake {:events #{:spectate}}}
   [world d]
   (deltas/of-vec (apply/fold-events world (:input d) event-deltas)))

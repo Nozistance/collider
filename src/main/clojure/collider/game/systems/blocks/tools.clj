@@ -35,17 +35,14 @@
 (def ^:private ^:table shovel-items (tool-set "shovels"))
 
 (defn axes
-  "Returns the items tagged as axes."
   []
   @axe-items)
 
 (defn hoes
-  "Returns the items tagged as hoes."
   []
   @hoe-items)
 
 (defn shovels
-  "Returns the items tagged as shovels."
   []
   @shovel-items)
 
@@ -81,7 +78,6 @@
   (concat (changes/change-deltas world changes) fx))
 
 (defn firecharge-deltas
-  "Returns the deltas of a fire charge used on the block at pos."
   [world [_eid pos face]]
   (if-let [st (lightable world pos)]
     (changed-with world [[pos st]] [(charge-sound world pos)])
@@ -102,7 +98,6 @@
            (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))])))
 
 (defn flint-deltas
-  "Returns the deltas of flint and steel used on the block at pos."
   [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
     (if-let [st (lightable world pos)]
@@ -220,7 +215,6 @@
     [[:spawn-entity (item/popped world pos stack :till)]]))
 
 (defn till-deltas
-  "Returns the deltas of a hoe used on the block at pos."
   [world [_eid pos _ _ _]]
   (let [cur (changes/block-at world pos)]
     (when-let [[to freed] (grow/tilled (block/block-of cur))]
@@ -236,7 +230,6 @@
     (block/state :dirt-path)))
 
 (defn flatten-deltas
-  "Returns the deltas of a shovel used on the block at pos."
   [world [_eid pos face _ _]]
   (let [cur (changes/block-at world pos)]
     (when (not= 0 (long face))
@@ -261,7 +254,6 @@
         (out/all (out/level-event particles pos))))
 
 (defn wax-deltas
-  "Returns the deltas of honeycomb used on the block at pos."
   [world [_ pos _ _ _]]
   (when-let [st (oxidation/waxed (changes/block-at world pos))]
     (let [fx (copper-fx pos nil out/particles-and-sound-wax-on)]
@@ -276,7 +268,6 @@
         (changed-with world (half-changes world pos st) fx)))))
 
 (defn axe-deltas
-  "Returns the deltas of an axe used on the block at pos."
   [world [_ pos _ _ _]]
   (let [cur (changes/block-at world pos)]
     (if-let [st (block/stripped cur)]
@@ -342,7 +333,6 @@
     (entity/item at vel {:item :pumpkin-seeds :count 4})))
 
 (defn carve-deltas
-  "Returns the deltas of shears carving the pumpkin at pos."
   [world eid pos face]
   (let [facing (carve-facing world eid face)
         carved (block/state :carved-pumpkin {:facing facing})]

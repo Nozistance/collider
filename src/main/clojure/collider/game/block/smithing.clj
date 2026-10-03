@@ -37,7 +37,6 @@
        (fits? (:addition r) addition)))
 
 (defn recipe-for
-  "Returns the smithing recipe the three slots call for, or nil."
   [template base addition]
   (first (filter #(matches? % template base addition) @recipes)))
 
@@ -59,7 +58,6 @@
         (stack/put (assoc base :count 1) :trim trim)))))
 
 (defn assemble
-  "Returns what the recipe makes of the three slots, or nil."
   [r template base addition]
   (when r
     (if (= :trim (:type r))
@@ -67,7 +65,6 @@
       (transformed r base))))
 
 (defn result
-  "Returns what a smithing table offers for the three slots."
   [template base addition]
   (assemble (recipe-for template base addition)
             template base addition))
@@ -102,7 +99,6 @@
   (-> inv (menu/shrink 0) (menu/shrink 1) (menu/shrink 2)))
 
 (defn layout
-  "Returns the slot layout of a smithing table menu."
   []
   (let [base (menu/slots-layout 4 may-place?)
         v (:visible base)]
