@@ -1,5 +1,5 @@
 (ns collider.world.blocks.water
-  "What water does to coral, kelp and sponges."
+  "Coral, kelp and sponges in water."
   (:require [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -10,19 +10,19 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:private around6
-  [[0 -1 0] [0 1 0] [0 0 -1] [0 0 1] [-1 0 0] [1 0 0]])
+(def ^:private around6 (mapv dir/offset dir/six))
 
 (def ^:private kelp-types #{:kelp :kelp-plant})
 
-(def ^:private plants #{:kelp :kelp-plant :seagrass :tall-seagrass})
+(def ^:private plants (disj block/water-holder-types :bubble-column))
 
-(defn- water? [st] (block/water? st))
-
-(defn coral-wet? [chunks p st]
+(defn coral-wet?
+  "Returns true when coral st at p holds water or touches it."
+  [chunks p st]
   (or (block/waterlogged? st)
       (boolean
-        (some #(water? (chunk/at chunks (mapv + p %))) around6))))
+        (some #(block/water? (chunk/at chunks (mapv + p %)))
+              around6))))
 
 (defn- held-side [st]
   (case (block/type-of st)
@@ -54,24 +54,27 @@
    :reshape (:due support/rule)
    :due     coral-dies})
 
-(defn kelp? [st] (contains? kelp-types (block/type-of (long st))))
+(defn kelp?
+  "Returns true when st is kelp, the head or the body."
+  [st]
+  (contains? kelp-types (block/type-of (long st))))
 
 (defn kelp-still?
-  "Returns true when kelp st at p asks for no fluid tick for a change
-  on side. That is so when the change turns a head into a body or a
-  body into a head."
+  "Returns true when a change on side only turns kelp st at p from
+  head to body or back. Such a change needs no fluid tick."
   [chunks p st side]
-  (let [above? (kelp? (chunk/at chunks (dir/up p)))
-        held? #(support/supported? chunks p st)]
+  (let [above? (kelp? (chunk/at chunks (dir/up p)))]
     (cond
       (not (kelp? st)) false
       (= :kelp-plant (block/type-of (long st)))
       (and (= :up side) (not above?))
       (= :up side) above?
-      (= :down side) (and above? (held?))
+      (= :down side) (and above? (support/supported? chunks p st))
       :else false)))
 
-(defn kelp-head-state ^long [tick pos]
+(defn kelp-head-state
+  "Returns the kelp head that grows at pos on tick, with its age."
+  ^long [tick pos]
   (block/state :kelp {:age (support/plant-age tick pos)}))
 
 (defn- above [chunks [x y z]]
@@ -125,12 +128,16 @@
      [pos (block/state :sponge) [:dry absorb-sound]]]
     [[pos (block/state :wet-sponge) [absorb-sound] 2]]))
 
-(defn- spread [bfs p ^long d]
+(def ^:private ^:const max-cells 65)
+
+(def ^:private ^:const max-depth 6)
+
+(defn- visit [bfs p ^long d]
   (let [n (inc (long (:n bfs)))
         bfs (-> (assoc bfs :n n) (update :seen conj p))]
     (cond
-      (>= n 65) (assoc bfs :queue [])
-      (< d 6) (update bfs :queue into
+      (>= n max-cells) (assoc bfs :queue [])
+      (< d max-depth) (update bfs :queue into
                       (map (fn [o] [(mapv + p o) (inc d)]))
                       around6)
       :else bfs)))
@@ -141,16 +148,14 @@
           c (when-not (= p pos) (dried-at chunks p))]
       (cond
         (seen p) (recur chunks bfs)
-        c [c #(searched % (spread bfs p d))]
-        (= p pos) (recur chunks (spread bfs p d))
+        c [c #(searched % (visit bfs p d))]
+        (= p pos) (recur chunks (visit bfs p d))
         :else (recur chunks (update bfs :seen conj p))))
     (when (> (long (:n bfs)) 1) (soaked pos (:dim bfs)))))
 
 (defn absorbed
-  "Returns the changes of a sponge at pos in dim soaking up water,
-  as SpongeBlock.removeWaterBreadthFirstSearch finds them. Each
-  removal is set before the next cell is read, so the changes after
-  it are a step, a function of the level as the removal left it."
+  "Returns the changes of a sponge at pos in dim that soaks up water.
+  Each removal comes as a step that reads the level it left."
   [chunks pos dim]
   (searched chunks {:pos pos :dim dim :n 0 :seen #{}
                     :queue (conj PersistentQueue/EMPTY [pos 0])}))
