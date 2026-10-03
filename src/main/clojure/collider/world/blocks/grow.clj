@@ -68,7 +68,6 @@
       (copper/tick chunks p st roll))))
 
 (defn random-tick
-  "Returns the changes of a random tick of st at p."
   [chunks p st roll time world]
   (let [st (long st)
         cs (ticked chunks p st roll time world)]
@@ -120,9 +119,8 @@
     [[:seagrass] underwater/seagrass-meal]]))
 
 (defn bonemeal
-  "Returns the result of bone meal on st at p in level dim.
-  Returns nil when it does nothing. The result holds block
-  changes, drops, or both."
+  "Returns the block changes and drops of bone meal on st at p in
+  level dim, or nil when it does nothing."
   [chunks p st roll dim]
   (let [st (long st) t (block/type-of st)]
     (if (= :grass t)

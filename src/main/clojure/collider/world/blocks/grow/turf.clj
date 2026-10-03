@@ -66,7 +66,6 @@
                  water-offsets)))
 
 (defn farmland-tick
-  "Returns the changes of a random tick of farmland at p."
   [chunks p st _roll _time _world]
   (let [m (block/prop-long st :moisture)
         above (chunk/at chunks (dir/up p))]

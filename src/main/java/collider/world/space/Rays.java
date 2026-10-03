@@ -163,8 +163,8 @@ public final class Rays {
         return rs;
     }
 
-    /// Returns the cells the rays of `rs` reach: 1 for air and 2 for
-    /// a block, by cell of the `W` cube.
+    /// Returns the cells of the `W` cube that the rays of `rs` reach,
+    /// 1 for air and 2 for a block.
     public static byte[] hit(Rays rs) {
         return rs.vals.clone();
     }

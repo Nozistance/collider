@@ -8,7 +8,6 @@
 (set! *warn-on-reflection* true)
 
 (defn has-face?
-  "Returns true when st shows a face on side."
   [^long st side]
   (= :true (get (block/props-of st) side)))
 

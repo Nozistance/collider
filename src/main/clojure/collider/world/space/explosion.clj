@@ -223,9 +223,9 @@
     (when (and (pos? st) (not (block/tnt? st))) st)))
 
 (defn stacks
-  "Returns [pos stack] pairs of what the blast leaves behind. The
-  drops of the destroyed positions merge into few stacks. seed
-  decides the random drops. The drops depend on the blast radius."
+  "Returns what the blast leaves behind at each position. The drops
+  of the destroyed positions merge into few stacks. Seed decides the
+  random drops, and the blast radius lowers them."
   [^SectionGrid rg positions seed radius]
   (let [add (fn [cs pos]
               (if-let [st (dropping? rg pos)]

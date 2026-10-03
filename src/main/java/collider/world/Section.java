@@ -195,24 +195,21 @@ public final class Section {
         return ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
     }
 
-    /// Returns the light level at index `i` of the light levels `a`.
+    /// Returns the light level at index `i` of `a`.
     public static int nibble(byte[] a, int i) {
         return (a[i >> 1] >> ((i & 1) << 2)) & 15;
     }
 
-    /// Sets the light level at index `i` of the light levels `a` to
-    /// the level `v`.
+    /// Sets the light level at index `i` of `a` to `v`.
     public static void setNibble(byte[] a, int i, int v) {
         int b = a[i >> 1];
         a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v : (b & 0x0F) | (v << 4));
     }
 
-    /// Returns the block light at index `i`.
     public int blockLight(int i) {
         return bl == null ? 0 : nibble(bl, i);
     }
 
-    /// Returns the sky light at index `i`.
     public int skyLight(int i) {
         return sl == null ? 0 : nibble(sl, i);
     }
@@ -313,8 +310,8 @@ public final class Section {
 
     /// Returns this section with block `i` set to `state`, owned by
     /// the edit window `token`. A section the window owns is written
-    /// in place and returned; any other is copied once and tagged.
-    /// Owned sections obey the invariant of `ChunkIndex`: once the
+    /// in place and returned. Any other is copied once and tagged.
+    /// Owned sections obey the invariant of `ChunkIndex`. Once the
     /// window is frozen, nothing writes them again.
     public Section withOwned(int i, int state, Object token) {
         if (token == null) return with(i, state);

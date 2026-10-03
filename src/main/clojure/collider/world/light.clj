@@ -14,7 +14,6 @@
   (Light/at chunks (long x) (long y) (long z)))
 
 (defn block-light-at
-  "Returns the block light at x y z."
   {:inline (fn [c x y z]
              `(Light/blockAt ~c (long ~x) (long ~y) (long ~z)))}
   ^long [chunks x y z]
@@ -40,8 +39,7 @@
    (Light/skyLevel time rain-level thunder-level)))
 
 (defn sky-darken
-  "Returns how much the time of day and the weather dim the sky light,
-  from 0 to 15."
+  "Returns how much time and weather dim the sky light, 0 to 15."
   {:inline (fn
              ([t] `(Light/darken (long ~t) 0.0 0.0))
              ([t r h]
@@ -74,6 +72,5 @@
    (Light/relit chunks changes (boolean sky?) (block/tables))))
 
 (defn relight
-  "Returns chunks relit after the block at pos changed state."
   [chunks pos old-state new-state]
   (relight-batch chunks [[pos old-state new-state]]))

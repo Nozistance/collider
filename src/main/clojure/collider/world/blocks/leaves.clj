@@ -28,8 +28,7 @@
        (= 7 (block/prop-long st :distance))))
 
 (defn decay-tick
-  "Returns the change that removes the leaves st at p when they decay.
-  Returns nil when they stay."
+  "Returns the change that removes decaying leaves st at p, or nil."
   [_chunks p st _roll _time _world]
   (when (decaying? st)
     [[p (block/emptied st)]]))

@@ -90,8 +90,7 @@
         (reduce #(root %1 rp %2) l cells)))))
 
 (defn trunk-origin
-  "Returns where the trunk starts above origin, drawn by root placer
-  rp."
+  "Returns where the trunk starts above origin, drawn by placer rp."
   [l rp origin]
   (off origin 0 (lv/sample l (:trunk-offset-y rp)) 0))
 
@@ -229,8 +228,7 @@
                  [l #{}] (shuffled l (:leaves ctx)))))
 
 (defn decorate
-  "Returns l with the decorators decs of the tree in ctx placed in
-  order."
+  "Returns l with the decorators decs of the tree in ctx, in order."
   [l decs ctx]
   (reduce (fn [l m]
             ((case (:type m)

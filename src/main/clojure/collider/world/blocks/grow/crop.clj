@@ -54,7 +54,6 @@
   (and (#{:beetroot :torchflower-crop} t) (chance? roll :gate 3)))
 
 (defn tick
-  "Returns the changes of a random tick of the crop st at p."
   [chunks p st roll _time _world]
   (let [t (block/type-of st)]
     (when (and (< (age st) (long (max-age t)))
@@ -78,7 +77,6 @@
 (defn- lower? [st] (= :lower (:half (block/props-of st))))
 
 (defn pitcher-tick
-  "Returns the changes of a random tick of the pitcher crop st at p."
   [chunks p st roll _time _world]
   (when (and (lower? st)
              (< (age st) 4)
@@ -86,7 +84,6 @@
     (pitcher-grown chunks p st (inc (age st)))))
 
 (defn pitcher-meal
-  "Returns the bone meal result for the pitcher crop st at p."
   [chunks p st _roll]
   (let [lp (if (lower? st) p (dir/down p))
         lst (if (lower? st) st (chunk/at chunks lp))]
@@ -113,7 +110,6 @@
       (fruit-changes chunks p st roll))))
 
 (defn cane-tick
-  "Returns the changes of a random tick of the sugar cane st at p."
   [chunks p st _roll _time _world]
   (let [h (height-below chunks p (block/block-of st) 3)]
     (when (and (air-at? chunks (dir/up p)) (< (inc h) 3))
@@ -135,7 +131,6 @@
          [p st' [[:neighbor-changed up st']] update/quiet]]))))
 
 (defn cactus-tick
-  "Returns the changes of a random tick of the cactus st at p."
   [chunks p st roll _time _world]
   (when (air-at? chunks (dir/up p))
     (let [a (age st)
@@ -146,7 +141,6 @@
                 [[p (aged st (inc a)) nil update/quiet]]))))))
 
 (defn berry-tick
-  "Returns the changes of a random tick of the berry bush st at p."
   [chunks p st roll _time _world]
   (when (and (< (age st) 3)
              (chance? roll :gate 5)
@@ -161,13 +155,11 @@
     [[(dir/up p) (older st)]]))
 
 (defn cocoa-tick
-  "Returns the changes of a random tick of the cocoa st at p."
   [_chunks p st roll _time _world]
   (when (and (chance? roll :gate 5) (< (age st) 2))
     [[p (older st) nil update/clients]]))
 
 (defn nether-wart-tick
-  "Returns the changes of a random tick of the nether wart st at p."
   [_chunks p st roll _time _world]
   (when (and (< (age st) 3) (chance? roll :gate 10))
     [[p (older st) nil update/clients]]))
@@ -185,7 +177,6 @@
     (fruit-changes chunks p st' roll)))
 
 (defn meal
-  "Returns the bone meal result for the crop or stem st at p."
   [chunks p st roll]
   (let [t (block/type-of st) a (age st) top (long (max-age t))]
     (when (< a top)
@@ -194,13 +185,11 @@
                         (ripe-fruit chunks p st st' roll))}))))
 
 (defn berry-meal
-  "Returns the bone meal result for the berry bush st at p."
   [_chunks p st _roll]
   (when (< (age st) 3)
     {:changes [[p (older st) nil update/clients]]}))
 
 (defn cocoa-meal
-  "Returns the bone meal result for the cocoa st at p."
   [_chunks p st _roll]
   (when (< (age st) 2)
     {:changes [[p (older st) nil update/clients]]}))
@@ -229,7 +218,6 @@
                  [(dir/up p) upper nil update/clients]]})))
 
 (defn petals-meal
-  "Returns the bone meal result for the flower bed st at p."
   [_chunks p st _roll]
   (let [n (block/prop-long st :flower-amount)]
     (if (< n 4)

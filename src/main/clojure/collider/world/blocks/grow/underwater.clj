@@ -85,8 +85,7 @@
 
 (defn meal
   "Returns the seagrass and coral that bone meal on the floor face
-  grows around the water at pos. Returns nil unless the water fills
-  pos."
+  grows around the water at pos, or nil unless water fills pos."
   [chunks pos face roll corals?]
   (when (block/full-water? (chunk/at chunks pos))
     (let [at0 #(chunk/at chunks %)

@@ -85,7 +85,6 @@
       (lv/put level p st update/quiet))))
 
 (defn- grow
-  "Returns the changes of a tree grown from the sapling st at p."
   [chunks p st roll]
   (let [grower (grower-of st)
         level (lv/start chunks roll :tree)
@@ -96,7 +95,6 @@
             (if k (single level p st k) level))))))
 
 (defn- advance
-  "Returns the changes of one growth stage of the sapling st at p."
   [chunks p st roll]
   (if (zero? (block/prop-long st :stage))
     [[p (block/with st :stage 1) nil update/quiet]]
@@ -109,7 +107,6 @@
   {:changes (if (meal-roll? roll) (f) [])})
 
 (defn tick
-  "Returns the changes of a random tick of the sapling st at p."
   [chunks p st roll time world]
   (let [[x y z] p up-y (inc (long y))
         light (weather/brightness world chunks x up-y z time)]
@@ -117,7 +114,6 @@
       (advance chunks p st roll))))
 
 (defn meal
-  "Returns the bone meal result for the sapling st at p."
   [chunks p st roll]
   (when (chunk/in-range? (+ (long (p 1)) (min-height (grower-of st))))
     (meal-result roll #(advance chunks p st roll))))
@@ -125,7 +121,6 @@
 (defn- hanging? [st] (= :true (:hanging (block/props-of st))))
 
 (defn propagule-tick
-  "Returns the changes of a random tick of the propagule st at p."
   [chunks p st roll _time _world]
   (cond
     (not (hanging? st))
@@ -133,14 +128,12 @@
     (< (age st) 4) [[p (older st) nil update/clients]]))
 
 (defn propagule-meal
-  "Returns the bone meal result for the propagule st at p."
   [chunks p st roll]
   (cond
     (not (hanging? st)) (meal-result roll #(advance chunks p st roll))
     (< (age st) 4) {:changes [[p (older st) nil update/clients]]}))
 
 (defn azalea-meal
-  "Returns the bone meal result for the azalea st at p."
   [chunks p st roll]
   (let [up (dir/up p)
         h (+ (long (p 1)) (min-height (grower-of st)) 2)]

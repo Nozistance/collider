@@ -7,10 +7,8 @@ import java.util.Arrays;
 /// brightness of the sky over the day.
 public final class Light {
 
-    /// The channel of block light.
     public static final int BLOCK = 0;
 
-    /// The channel of sky light.
     public static final int SKY = 1;
 
     private static final long COORD_BIAS = 8388608;
@@ -126,12 +124,10 @@ public final class Light {
         return Math.max(s.skyLight(i), s.blockLight(i));
     }
 
-    /// Returns the block light at `x`, `y`, `z` in `chunks`.
     public static long blockAt(ChunkIndex chunks, long x, long y, long z) {
         return stored(chunks, BLOCK, x, y, z);
     }
 
-    /// Returns the sky light at `x`, `y`, `z` in `chunks`.
     public static long skyAt(ChunkIndex chunks, long x, long y, long z) {
         return stored(chunks, SKY, x, y, z);
     }

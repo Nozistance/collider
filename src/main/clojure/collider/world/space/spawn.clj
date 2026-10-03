@@ -230,8 +230,7 @@
   (get-in (data/spawns) [:types t]))
 
 (defn categories
-  "Returns the mob categories in their order, each a pair of its name
-  and its facts."
+  "Returns the mob categories in their order with their facts."
   []
   (:categories (data/spawns)))
 
@@ -284,7 +283,6 @@
        (bright? chunks x y z)))
 
 (defn spawn-box
-  "Returns the box of a spawn of kind k at x y z."
   [k x y z]
   (let [s (float (:scale k 1.0))
         half (double (/ (float (* s (float (:width k)))) (float 2.0)))
@@ -299,9 +297,8 @@
   (phys/box-free? chunks box Double/MAX_VALUE))
 
 (defn kind
-  "Returns the spawn facts of entity type t with its size and ground.
-  The ground is the tag of the blocks it spawns on. A misc type has
-  none."
+  "Returns the spawn facts of entity type t with its size and ground,
+  or nil for a misc type. The ground is the block tag it spawns on."
   [t ground]
   (when-let [f (facts t)]
     (let [{:keys [width height]} (get (data/entities) t)]

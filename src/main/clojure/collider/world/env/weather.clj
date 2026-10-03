@@ -37,8 +37,7 @@
                   (not= :the-end dim)))))
 
 (defn sample
-  "Returns a tick count within bounds, both ends included, picked by
-  roll."
+  "Returns a tick count within bounds, ends included, picked by roll."
   ^long [^double roll bounds]
   (let [lo (long (nth bounds 0))
         span (- (long (nth bounds 1)) lo)
@@ -62,18 +61,15 @@
   (double (:thunder-level ctx 0.0)))
 
 (defn raining?
-  "Returns true when the rain level makes it rain."
   [ctx]
   (> (rain-level ctx) 0.2))
 
 (defn thundering?
-  "Returns true when the thunder level makes it thunder."
   [ctx]
   (> (thunder-level ctx) 0.9))
 
 (defn sky-darken
-  "Returns how much the weather and the time dim the sky light, from 0
-  to 15."
+  "Returns how much weather and time dim the sky light, 0 to 15."
   ^long [ctx ^long time]
   (light/sky-darken time (rain-level ctx) (thunder-level ctx)))
 
@@ -104,7 +100,6 @@
     :else (biome/precipitation-at (biome/at (:dim ctx) p) p)))
 
 (defn raining-at?
-  "Returns true when rain falls at block p now."
   [ctx chunks p]
   (= :rain (precipitation-at ctx chunks p)))
 

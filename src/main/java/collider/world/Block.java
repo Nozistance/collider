@@ -20,47 +20,38 @@ public final class Block {
         return st >= 0 && st < a.length && (a[(int) st] & b) != 0;
     }
 
-    /// Returns the block type of `st`, or null.
     public static Object type(BlockTables t, long st) {
         return at(t.types(), st);
     }
 
-    /// Returns the block of `st`, or null.
     public static Object name(BlockTables t, long st) {
         return at(t.names(), st);
     }
 
-    /// Returns the shape kind of `st`, or null.
     public static Object shape(BlockTables t, long st) {
         return at(t.shapes(), st);
     }
 
-    /// Returns true when `st` breaks without support.
     public static boolean needsSupport(BlockTables t, long st) {
         return is(t.needsSupport(), st);
     }
 
-    /// Returns true when `st` hangs on a neighbour.
     public static boolean attached(BlockTables t, long st) {
         return is(t.attached(), st);
     }
 
-    /// Returns true when a placement replaces `st`.
     public static boolean replaceable(BlockTables t, long st) {
         return is(t.replaceable(), st);
     }
 
-    /// Returns true when `st` is a liquid.
     public static boolean liquid(BlockTables t, long st) {
         return is(t.liquid(), st);
     }
 
-    /// Returns true when `st` holds water.
     public static boolean waterlogged(BlockTables t, long st) {
         return is(t.waterlogged(), st);
     }
 
-    /// Returns true when `st` falls without a block under it.
     public static boolean falls(BlockTables t, long st) {
         return is(t.falls(), st);
     }
@@ -70,7 +61,6 @@ public final class Block {
         return st == 0 || is(t.canBeReplaced(), st);
     }
 
-    /// Returns true when `st` stops a body.
     public static boolean solid(BlockTables t, long st) {
         return is(t.solid(), st);
     }
@@ -80,22 +70,18 @@ public final class Block {
         return st > 0 && is(t.legacySolid(), st);
     }
 
-    /// Returns true when `st` collides as a full cube.
     public static boolean fullCube(BlockTables t, long st) {
         return is(t.fullCube(), st);
     }
 
-    /// Returns true when `st` blocks motion.
     public static boolean blocksMotion(BlockTables t, long st) {
         return is(t.blocksMotion(), st);
     }
 
-    /// Returns true when `st` occludes light by its shape.
     public static boolean useShape(BlockTables t, long st) {
         return is(t.useShape(), st);
     }
 
-    /// Returns true when `st` can occlude its neighbours.
     public static boolean canOcclude(BlockTables t, long st) {
         return is(t.canOcclude(), st);
     }
@@ -106,7 +92,6 @@ public final class Block {
         return st >= 0 && st < a.length ? a[(int) st] : 15;
     }
 
-    /// Returns the light that `st` gives.
     public static long emission(BlockTables t, long st) {
         int[] a = t.emission();
         return st >= 0 && st < a.length ? a[(int) st] : 0;
@@ -123,17 +108,14 @@ public final class Block {
         return bit(t.flags(), st, mask);
     }
 
-    /// Returns true when face `d` of `st` holds things.
     public static boolean sturdy(BlockTables t, long st, long d) {
         return bit(t.sturdy(), st, 1L << d);
     }
 
-    /// Returns true when face `d` of `st` holds things rigidly.
     public static boolean sturdyRigid(BlockTables t, long st, long d) {
         return bit(t.sturdyRigid(), st, 1L << d);
     }
 
-    /// Returns true when face `d` of `st` holds things at its center.
     public static boolean sturdyCenter(BlockTables t, long st, long d) {
         return bit(t.sturdyCenter(), st, 1L << d);
     }

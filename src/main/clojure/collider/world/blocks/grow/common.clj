@@ -24,22 +24,18 @@
   (< (double (roll salt)) (/ 1.0 n)))
 
 (defn age
-  "Returns the age of the plant st."
   ^long [st]
   (block/prop-long st :age))
 
 (defn aged
-  "Returns the plant st at the age n."
   ^long [st ^long n]
   (block/with st :age n))
 
 (defn older
-  "Returns the plant st one age older."
   ^long [st]
   (aged st (inc (age st))))
 
 (defn flagged
-  "Returns the changes with their update flags set to flags."
   [flags changes]
   (mapv (fn [[p st fx]] [p st fx flags]) changes))
 

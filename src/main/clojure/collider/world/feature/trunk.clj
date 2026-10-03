@@ -10,8 +10,7 @@
 (set! *warn-on-reflection* true)
 
 (defn attach
-  "Returns a place p where foliage grows, with its radius offset and
-  whether the foliage is doubled."
+  "Returns a place p where foliage grows."
   [p radius-offset double?]
   {:pos p :radius-offset radius-offset :double? double?})
 

@@ -38,8 +38,7 @@
 (def ^:private player-order [:south :west :north :east])
 
 (defn player-index
-  "Returns the index of the horizontal direction of yaw, south
-  first."
+  "Returns the index of the horizontal direction of yaw, south first."
   ^long [yaw]
   (let [q (/ (* (double yaw) 4.0) 360.0)]
     (bit-and (long (Math/floor (+ q 0.5))) 3)))
@@ -83,17 +82,14 @@
     [a b c (opposite c) (opposite b) (opposite a)]))
 
 (defn up
-  "Returns the cell above cell p."
   [p]
   [(nth p 0) (inc (nth p 1)) (nth p 2)])
 
 (defn down
-  "Returns the cell below cell p."
   [p]
   [(nth p 0) (dec (nth p 1)) (nth p 2)])
 
 (defn toward
-  "Returns cell p moved one cell or n cells toward face d."
   ([p d] (toward p d 1))
   ([p d ^long n]
    (let [[dx dy dz] (offset d)]

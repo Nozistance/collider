@@ -60,7 +60,6 @@
 (defn- level ^long [st] (block/liquid-level st))
 
 (defn liquid-state
-  "Returns the state of liquid cls at level n."
   ^long [cls ^long n]
   (+ (long (@base cls)) n))
 
@@ -617,7 +616,6 @@
 (def ^:private column-drag {:soul-sand :false :magma :true})
 
 (defn bubble-column?
-  "Returns true when st is a bubble column."
   [st]
   (= :bubble-column (block/type-of (long st))))
 

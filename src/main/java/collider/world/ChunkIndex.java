@@ -43,7 +43,6 @@ public final class ChunkIndex extends APersistentMap
     static final int INNER_MASK = (1 << INNER_BITS) - 1;
     static final int BIAS = (1 << 3) + (1 << 9) + (1 << 15) + (1 << 21);
 
-    /// The index without chunks.
     public static final ChunkIndex EMPTY =
             new ChunkIndex(null, LEAF_BITS, -1, -1, 0, null, new Object(), null);
 
@@ -80,7 +79,6 @@ public final class ChunkIndex extends APersistentMap
         return new ChunkIndex(root, span, prefixU, prefixV, count, meta, shape, fresh);
     }
 
-    /// Returns true when this index is open for a window of edits.
     public boolean editing() {
         return token != null;
     }
@@ -112,27 +110,22 @@ public final class ChunkIndex extends APersistentMap
         return (((u >>> s) & INNER_MASK) << INNER_BITS) | ((v >>> s) & INNER_MASK);
     }
 
-    /// Returns the value of the chunk at `cx`, `cz`, or null.
     public Object get(int cx, int cz) {
         return find(root, span, prefixU, prefixV, cx, cz);
     }
 
-    /// Returns the value of the chunk with key `id`.
     public Object get(long id) {
         return find(root, span, prefixU, prefixV, x(id), z(id));
     }
 
-    /// Returns the map key for chunk coordinates cx and cz.
     public static long id(int cx, int cz) {
         return ((long) cx << 32) | (cz & 0xFFFFFFFFL);
     }
 
-    /// Returns the chunk x of key `id`.
     public static int x(long id) {
         return (int) (id >> 32);
     }
 
-    /// Returns the chunk z of key `id`.
     public static int z(long id) {
         return (int) id;
     }

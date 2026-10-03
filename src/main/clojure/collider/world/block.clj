@@ -12,13 +12,12 @@
 (def ^:const air 0)
 
 (defn state
-  "Returns the global state id of block with props.
-  Without props it is the id of the default state."
+  "Returns the state id of block with props, or of its default state."
   (^long [block] (states/id block))
   (^long [block props] (states/id block props)))
 
 (defn name-of
-  "Returns the block of state st, or nil for no such state."
+  "Returns the block of st, or nil for an unknown state."
   [^long st] (states/block st))
 
 (defn- block-table [f]
@@ -45,7 +44,7 @@
       a)))
 
 (defn props-of
-  "Returns the properties of state st, or nil for no such state."
+  "Returns the properties of st, or nil for an unknown state."
   [^long st]
   (when (known? st) (aget ^objects @props-arr st)))
 
@@ -66,13 +65,11 @@
   (Block/type (tables) st))
 
 (defn block-of
-  "Returns the block of st."
   {:inline (via `Block/name)}
   [^long st]
   (Block/name (tables) st))
 
 (defn flag
-  "Returns the property value that stands for truth b."
   [b]
   (if b :true :false))
 
@@ -88,7 +85,6 @@
                    (props-of st) (partition 2 kvs)))))
 
 (defn with-long
-  "Returns st with the whole number property k set to n."
   ^long [^long st k ^long n]
   (state (block-of st) (assoc (props-of st) k (keyword (str n)))))
 
@@ -161,7 +157,6 @@
                (data/tag-values "block" "leaves"))))
 
 (defn leaves-types
-  "Returns the block classes that count as leaves."
   [] @leaves-set)
 
 (def growing-plant
@@ -240,7 +235,6 @@
            (fn [st _ _] (contains? (props-of st) :waterlogged)))))
 
 (defn has-waterlogged-prop?
-  "Returns true when the block of st declares waterlogged."
   [^long st]
   (and (known? st) (aget ^booleans @has-waterlogged-arr st)))
 
@@ -249,7 +243,6 @@
            (fn [st _ _] (= :double (:type (props-of st)))))))
 
 (defn double-slab?
-  "Returns true when the type property of st is double."
   [^long st]
   (and (known? st) (aget ^booleans @double-slab-arr st)))
 
@@ -264,7 +257,6 @@
       (boolean-table (fn [_ _ n] (contains? tagged n))))))
 
 (defn leaves?
-  "Returns true when st is leaves."
   [^long st] (contains? (leaves-types) (type-of st)))
 
 (defn needs-support?
@@ -286,13 +278,13 @@
   (Block/replaceable (tables) st))
 
 (defn liquid?
-  "Returns true when st is a fluid block."
+  "Returns true when st is a fluid, not a block that holds one."
   {:inline (via `Block/liquid)}
   [^long st]
   (Block/liquid (tables) st))
 
 (defn waterlogged?
-  "Returns true when st holds water."
+  "Returns true when st holds water, as a water plant does."
   {:inline (via `Block/waterlogged)}
   [^long st]
   (Block/waterlogged (tables) st))
@@ -304,8 +296,8 @@
 (def ^:private ^:table lava-state (delay (state :lava)))
 
 (defn liquid-class
-  "Returns :water or :lava for a liquid state, else nil.
-  A waterlogged state answers :water."
+  "Returns the fluid of st as a keyword, or nil. Held water
+  counts as water."
   [st]
   (let [st (long st)]
     (cond
@@ -313,8 +305,7 @@
       (waterlogged? st) :water)))
 
 (defn liquid-level
-  "Returns the level of a liquid state.
-  A source is 0 and a fall is 8."
+  "Returns the level of fluid st, 0 for a source and 8 for a fall."
   ^long [st]
   (let [st (long st)]
     (if (liquid? st)
@@ -324,7 +315,6 @@
       0)))
 
 (defn source-state?
-  "Returns true when st is a fluid source."
   [st]
   (and (liquid? (long st)) (zero? (liquid-level st))))
 
@@ -333,11 +323,9 @@
   [st] (= :water (liquid-class st)))
 
 (defn lava?
-  "Returns true when st is lava."
   [st] (= :lava (liquid-class st)))
 
 (defn water-source?
-  "Returns true when st is a water source."
   [st] (and (water? st) (source-state? st)))
 
 (defn holds-water-source?
@@ -347,14 +335,13 @@
     (or (waterlogged? st) (water-source? st))))
 
 (defn full-fluid?
-  "Returns true when the fluid of st fills its cell whole.
-  A source, a fall and held water do."
+  "Returns true when the fluid of st fills its cell. A source, a
+  fall and held water do."
   [st]
   (and (some? (liquid-class st))
        (let [l (liquid-level st)] (or (zero? l) (>= l 8)))))
 
 (defn full-water?
-  "Returns true when st is water that fills its cell whole."
   [st]
   (and (water? st) (full-fluid? st)))
 
@@ -370,8 +357,8 @@
   (contains? air-types (block-of st)))
 
 (defn state-table
-  "Returns a table of (f st) for every block state, of kind k:
-  :boolean, :byte or :long."
+  "Returns (f st) for every block state, typed by k as boolean,
+  byte or long."
   [k f]
   (let [xs (map f (range (data/block-state-count)))]
     (case k
@@ -380,17 +367,14 @@
       :long (long-array (map long xs)))))
 
 (defn fire?
-  "Returns true when st is fire."
   [^long st] (= :fire (type-of st)))
 
 (defn tnt?
-  "Returns true when st is TNT."
   [^long st] (= :tnt (type-of st)))
 
 (defn destroyed
-  "Returns the change that destroying the block at p makes.
-  The block leaves its fluid and drops. It shows its break unless it
-  is a fire."
+  "Returns the change that destroying the block at p makes. The block
+  leaves its fluid and drops, and shows its break unless it is fire."
   [p ^long st]
   [p (emptied st)
    (if (contains? #{:fire :soul-fire} (type-of st))
@@ -398,7 +382,6 @@
      [[:break st] [:drop st]])])
 
 (defn falls?
-  "Returns true when st falls without a block below."
   {:inline (via `Block/falls)}
   [^long st]
   (Block/falls (tables) st))
@@ -415,14 +398,13 @@
   (or (zero? st) (fire? st) (liquid? st) (can-be-replaced? st)))
 
 (defn without-water
-  "Returns st without its water."
   ^long [^long st]
   (if (= :true (:waterlogged (props-of st)))
     (state (block-of st) (assoc (props-of st) :waterlogged :false))
     st))
 
 (defn with-water
-  "Returns st with water, or st when it holds none."
+  "Returns st with water, or st itself when it cannot hold water."
   ^long [^long st]
   (if (contains? (props-of st) :waterlogged)
     (state (block-of st) (assoc (props-of st) :waterlogged :true))
@@ -439,7 +421,7 @@
    :stair-block :stair :weathering-copper-stair-block :stair})
 
 (defn shape-type
-  "Returns the shape kind of the states of block facts b, or nil."
+  "Returns the shape kind of block facts b, or nil."
   [b]
   (shape-classes (:class b)))
 
@@ -447,7 +429,6 @@
   (delay (block-table (fn [_ b] (shape-type b)))))
 
 (defn shape-of
-  "Returns the shape kind of st, or nil."
   {:inline (via `Block/shape)}
   [^long st]
   (Block/shape (tables) st))
@@ -457,7 +438,6 @@
   [^long st] (= :fence (shape-of st)))
 
 (defn shaped?
-  "Returns true when st has a shape kind."
   [^long st] (some? (shape-of st)))
 
 (defn- stops? [^long st]
@@ -475,7 +455,6 @@
   (Block/solid (tables) st))
 
 (defn solid-arr
-  "Returns the table of solid? by state."
   ^booleans [] @solid-table)
 
 (defn- int-runs [^long default t]
@@ -573,7 +552,6 @@
   (Block/emission (tables) st))
 
 (defn use-shape-for-light-occlusion?
-  "Returns true when the shape of st decides what light it stops."
   {:inline (via `Block/useShape)}
   [^long st]
   (Block/useShape (tables) st))
@@ -616,14 +594,12 @@
   (Block/resist (tables) st))
 
 (defn resist-arr
-  "Returns the blast resistance by block state."
   ^doubles []
   @resist-table)
 
 (defn- behind [facing] (dir/offset (dir/opposite facing)))
 
 (defn facing-of
-  "Returns the facing property of st."
   [^long st] (:facing (props-of st)))
 
 (defn support-offset
@@ -655,7 +631,6 @@
   (with-props-of (:dead (info-of st)) (without-water st)))
 
 (defn stripped
-  "Returns the stripped form of st, or nil."
   [^long st] (related st :stripped))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
@@ -688,8 +663,7 @@
       a)))
 
 (defn collision-arr
-  "Returns the collision boxes by block state.
-  Each box holds six coordinates in blocks."
+  "Returns the collision boxes of every state in blocks."
   ^objects []
   @collision-table)
 
@@ -730,7 +704,6 @@
   (Block/fullCube (tables) st))
 
 (defn cube-arr
-  "Returns the table of full cubes by block state."
   ^booleans []
   @full-cube-arr)
 
@@ -756,12 +729,10 @@
        (states/sturdy-rigid) (states/sturdy-center)))))
 
 (defn tables
-  "Returns the tables of the block states."
   ^BlockTables []
   (or (BlockTables/current) @table-set))
 
 (defn blocks-motion?
-  "Returns true when st stops motion."
   {:inline (via `Block/blocksMotion)}
   [^long st]
   (Block/blocksMotion (tables) st))
@@ -774,20 +745,17 @@
     :weighted-pressure-plate})
 
 (defn possible-to-respawn-in?
-  "Returns true when a player may respawn inside st."
   [^long st]
   (or (contains? respawnable-types (type-of st))
       (and (known? st) (not (flag? st motion-bit))
            (not (liquid? st)))))
 
 (defn ignited-by-lava?
-  "Returns true when lava sets st on fire."
   {:inline (via `Block/flag lava-bit)}
   [^long st]
   (flag? st lava-bit))
 
 (defn solid-render?
-  "Returns true when st renders as a solid cube."
   {:inline (via `Block/flag render-bit)}
   [^long st]
   (flag? st render-bit))
@@ -805,7 +773,6 @@
   (flag? st signal-bit))
 
 (defn randomly-ticking?
-  "Returns true when st takes random ticks."
   {:inline (via `Block/flag ticking-bit)}
   [^long st]
   (flag? st ticking-bit))
@@ -838,8 +805,8 @@
       (when (pos? n) {:item (:item e) :count n}))))
 
 (defn drops
-  "Returns the stacks that st drops, rolled with roll.
-  An explosion radius, when given, lowers the drops."
+  "Returns the stacks that st drops, rolled with roll. An explosion
+  of radius lowers the drops."
   ([^long st roll] (drops st roll nil))
   ([^long st roll radius]
    (let [table (get (data/drops) (block-of st))
@@ -878,7 +845,6 @@
   [tag] (get @tag-sets tag #{}))
 
 (defn tagged?
-  "Returns true when block tag holds the block of st."
   [^long st tag]
   (contains? (tag-set tag) (block-of st)))
 
@@ -935,5 +901,4 @@
   [^long st] (:type (props-of st)))
 
 (defn double-slab
-  "Returns the double slab of item."
   ^long [item] (state item {:type :double}))
