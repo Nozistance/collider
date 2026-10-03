@@ -7,7 +7,7 @@
             [collider.world.direction :as dir]
             [collider.world.env.attribute :as attribute]
             [collider.world.env.dimension :as dimension])
-  (:import (collider.world.blocks Flow Flow$Tables)))
+  (:import (collider.world.blocks Flow Flow$Mix Flow$Tables)))
 
 (set! *warn-on-reflection* true)
 
@@ -357,17 +357,11 @@
 (defn- can-hold? [fluid st]
   (and (holds-any-fluid? st) (holds-specific? fluid st)))
 
-(defn- raw-over ^long [chunks over [x y z :as p]]
-  (if-let [st (get over p)]
-    (long st)
-    (long (raw-at chunks x y z))))
-
-(defn- raw-cell ^long [{:keys [chunks over]} p]
-  (raw-over chunks over p))
-
 (defn- state-table ^booleans [f] (block/state-table :boolean f))
 
 (defn- byte-table ^bytes [f] (block/state-table :byte f))
+
+(defn- long-table ^longs [f] (block/state-table :long f))
 
 (def ^:private fluid-codes {:water Flow/WATER :lava Flow/LAVA})
 
@@ -400,13 +394,34 @@
 (defn- ground? [cls st]
   (or (block/solid? (long st)) (source-of? cls (state-of st))))
 
-(defn- destroying [mix traw]
-  (let [traw (long traw)]
-    (when (and (pos? traw)
-               (not (block/air-type? traw)))
-      (if mix :fizz [:drop traw]))))
+(defn- breaks? [st]
+  (let [st (long st)]
+    (and (pos? st) (not (block/air-type? st)))))
 
-(defn- tables-of [cls {:keys [codes levels kinds boxes]}]
+(defn- lit-campfire? [st]
+  (and (= :campfire (block/type-of st))
+       (= :true (:lit (block/props-of st)))))
+
+(defn- held ^long [st]
+  (if (container? st)
+    (cond-> (block/with st :waterlogged :true)
+      (lit-campfire? st) (block/with :lit :false))
+    0))
+
+(defn- fill ^long [st]
+  (cond
+    (not (container? st)) 0
+    (lit-campfire? st) Flow/DOUSE
+    (= :dried-ghast (block/type-of st)) Flow/SOAK
+    :else Flow/FILL))
+
+(defn- mix-of []
+  (let [{:keys [source flowing smother]} (get-in liquids [:lava :mix])
+        id #(int (block/state %))]
+    (Flow$Mix. (id source) (id flowing) (id smother)
+               (id :basalt) (id :soul-soil) (id :blue-ice))))
+
+(defn- tables-of [cls {:keys [codes levels kinds boxes] :as t}]
   (Flow$Tables. (int (fluid-codes cls)) codes levels kinds boxes
                 (state-table #(enterable? cls %))
                 (state-table #(hole-floor? cls %))
@@ -414,8 +429,8 @@
                 (state-table #(holds-specific? cls %))
                 (state-table #(holds-specific? (flowing cls) %))
                 (state-table #(ground? cls %))
-                (state-table container?)
-                (state-table #(some? (destroying nil %)))
+                (state-table container?) (:held t) (:fills t)
+                (state-table breaks?) (:mix t)
                 (int (@base cls)) (int @void-air)))
 
 (def ^:private ^:table flow-tables
@@ -423,177 +438,13 @@
                shared {:codes  (byte-table fluid-code)
                        :levels (byte-table fluid-level)
                        :kinds  kinds
-                       :boxes  (box-table kinds)}]
+                       :boxes  (box-table kinds)
+                       :held   (long-table held)
+                       :fills  (byte-table fill)
+                       :mix    (mix-of)}]
            (into {}
                  (map #(vector % (tables-of % shared)))
                  (keys liquids)))))
-
-(defn- hole? [{:keys [cls chunks over]} [x y z]]
-  (Flow/hole (@flow-tables cls) chunks over (int x) (int y) (int z)))
-
-(defn- lava-near? [{:keys [chunks over]} [x y z]]
-  (Flow/lavaNear (@flow-tables :water) chunks over
-                 (int x) (int y) (int z)))
-
-(defn- level->liquid [^long l]
-  (case l -1 nil 0 :source 8 :falling (- 8 l)))
-
-(defn- new-liquid
-  [{:keys [cls chunks over dropoff infinite?]} [x y z]]
-  (level->liquid
-    (Flow/newLiquid (@flow-tables cls) chunks over (int x) (int y)
-                    (int z) (int dropoff) (boolean infinite?))))
-
-(defn- liquid->state ^long [cls v]
-  (case v
-    :source (liquid-state cls 0)
-    :falling (liquid-state cls 8)
-    (liquid-state cls (- 8 (long v)))))
-
-(defn- mix-product [mix m]
-  (when mix
-    (let [k (if (zero? (long m)) :source :flowing)]
-      (block/state (k mix)))))
-
-(def ^:private ^:table basalt-state (delay (block/state :basalt)))
-
-(def ^:private ^:table soul-soil-state
-  (delay (block/state :soul-soil)))
-
-(def ^:private ^:table blue-ice-state
-  (delay (block/state :blue-ice)))
-
-(def ^:private mix-order [:up :north :south :west :east])
-
-(defn- mixed-by [chunks over p st soul? face]
-  (let [n (raw-over chunks over (dir/toward p face))]
-    (cond
-      (block/water? n)
-      (mix-product (get-in liquids [:lava :mix]) (level st))
-      (and soul? (== n (long @blue-ice-state))) @basalt-state)))
-
-(defn mixed
-  "Returns the block that the lava at p turns into, or nil.
-  States in over stand before those of the chunks."
-  ([chunks p] (mixed chunks nil p))
-  ([chunks over [x y z :as p]]
-   (let [st (raw-over chunks over p)]
-     (when (block/lava? st)
-       (let [below (raw-over chunks over [x (dec (long y)) z])
-             soul? (== below (long @soul-soil-state))]
-         (some #(mixed-by chunks over p st soul? %) mix-order))))))
-
-(def ^:private update-order [:west :east :down :up :north :south])
-
-(defn- conversion [chunks over p face]
-  (let [np (dir/toward p face)]
-    (when-let [prod (mixed chunks over np)] [np prod])))
-
-(defn- written [changes] {:changes changes :over changes})
-
-(defn- with-neighbors
-  [{:keys [chunks over] :as env} [tp st :as change]]
-  (if (lava-near? env tp)
-    (let [over (assoc over tp st)]
-      {:changes [change]
-       :over    (into [change]
-                      (keep #(conversion chunks over tp %))
-                      update-order)})
-    (written [change])))
-
-(def ^:private extinguished
-  [:sound :entity.generic.extinguish-fire 1.0 1.0])
-
-(def ^:private soaked-ghast
-  [:sound :block.dried-ghast.place-in-water 1.0 1.0])
-
-(defn- doused [tp st]
-  (if (= :true (:lit (block/props-of st)))
-    [tp (block/with st :lit :false) [extinguished]]
-    [tp st]))
-
-(defn- held-liquid [tp traw]
-  (let [traw (long traw)
-        st (block/with traw :waterlogged :true)
-        [p st' fx] (case (block/type-of traw)
-                     :campfire (doused tp st)
-                     :dried-ghast [tp st [soaked-ghast]]
-                     [tp st])]
-    [p st' (conj (vec fx) :fluid-tick)]))
-
-(defn- spread-plain [{:keys [chunks over cls mix] :as env} tp v traw]
-  (let [st (liquid->state cls v)
-        prod (when mix (mixed chunks (assoc over tp st) tp))
-        gone (destroying mix traw)
-        fx (cond-> []
-             gone (conj gone)
-             prod (conj :fizz))]
-    (with-neighbors env
-                    (cond-> [tp (or prod st)] (seq fx) (conj fx)))))
-
-(defn- smothered [tp mix]
-  (written [[tp (block/state (:smother mix)) [:fizz]]]))
-
-(defn- spread-to [{:keys [mix] :as env} tp face v]
-  (let [traw (raw-cell env tp)]
-    (cond
-      (not (chunk/in-range? (long (tp 1)))) (written [])
-      (and mix (= face :down) (block/water? traw)) (smothered tp mix)
-      (container? traw) (with-neighbors env (held-liquid tp traw))
-      :else (spread-plain env tp v traw))))
-
-(defn- target [p ^ints found ^long k]
-  (let [face (flow-faces (Flow/targetDirection found k))
-        v (level->liquid (Flow/targetLevel found k))]
-    [(dir/toward p face) face v]))
-
-(defn- targets [p ^ints found]
-  (mapv #(target p found %) (range (Flow/count found))))
-
-(defn- lowest-targets
-  [{:keys [cls chunks over dropoff slope infinite?]} [x y z :as p]]
-  (targets p (Flow/lowestTargets
-               (@flow-tables cls) chunks over (int x) (int y) (int z)
-               (int dropoff) (int slope) (boolean infinite?))))
-
-(defn- over-with [env changes]
-  (update env :over (fnil into {})
-          (map (fn [[q st]] [q st])) changes))
-
-(defn- spread-one [[acc env] [tp face v]]
-  (let [r (spread-to env tp face v)]
-    [(into acc (:changes r)) (over-with env (:over r))]))
-
-(defn- spread-each [env targets]
-  (first (reduce spread-one [[] env] targets)))
-
-(defn- spread-sides [{:keys [dropoff] :as env} p st]
-  (let [n (if (falling? st) 7 (- (amount st) (long dropoff)))]
-    (when (pos? n)
-      (spread-each env (lowest-targets env p)))))
-
-(defn- source-neighbours ^long [{:keys [cls] :as env} p]
-  (let [source? #(source-of? cls (state-of (raw-cell env %)))]
-    (count (filter #(source? (dir/toward p %)) sides))))
-
-(defn- down-level
-  [{:keys [cls chunks over dropoff infinite?]} [x y z]]
-  (level->liquid
-    (Flow/downLevel (@flow-tables cls) chunks over (int x) (int y)
-                    (int z) (int dropoff) (boolean infinite?))))
-
-(defn- spread-down [env p st]
-  (when-let [v (down-level env p)]
-    (let [r (spread-to env (dir/down p) :down v)
-          env (over-with env (:over r))]
-      (into (:changes r)
-            (when (>= (source-neighbours env p) 3)
-              (spread-sides env p st))))))
-
-(defn- spread [{:keys [cls] :as env} p st]
-  (or (spread-down env p st)
-      (when (or (source-of? cls st) (not (hole? env p)))
-        (spread-sides env p st))))
 
 (defn- rising? [cls old new]
   (and (same? cls old)
@@ -720,21 +571,10 @@
 (def ^:private conversion-rule
   {:water :water-source-conversion :lava :lava-source-conversion})
 
-(defn- flow-env [chunks cls table rules]
-  (let [{:keys [dropoff slope infinite? mix]} (table cls)]
-    {:chunks    chunks :cls cls
-     :dropoff   (long dropoff) :slope (long slope)
-     :infinite? (get rules (conversion-rule cls) infinite?)
-     :mix       mix}))
-
-(defn- cell-flowed [chunks env cls p st]
-  (let [v (if (source-of? cls st) :source (new-liquid env p))
-        st' (if v (liquid->state cls v) 0)]
-    (cond
-      (zero? (long st')) [[p 0]]
-      (= (long st') (long st)) (spread env p st')
-      :else (into [[p st']]
-                  (spread (assoc env :over {p st'}) p st')))))
+(defn- flow-of [cls {:keys [dim rules]}]
+  (let [m ((liquids-in dim) cls)
+        rule (conversion-rule cls)]
+    (assoc m :infinite? (get rules rule (:infinite? m)))))
 
 (defn- reach-of ^long [table]
   (inc (long (transduce (map :slope) max 0 (vals table)))))
@@ -747,30 +587,50 @@
   ^long [dim]
   (long (or (get @reaches dim) (reach-of liquids))))
 
+(def ^:private extinguished
+  [:sound :entity.generic.extinguish-fire 1.0 1.0])
+
+(def ^:private soaked-ghast
+  [:sound :block.dried-ghast.place-in-water 1.0 1.0])
+
+(def ^:private effects
+  (-> (vec (repeat (inc Flow/SOAK) nil))
+      (assoc Flow/FIZZ [:fizz]
+             Flow/FIZZ_TWICE [:fizz :fizz]
+             Flow/FILL [:fluid-tick]
+             Flow/DOUSE [extinguished :fluid-tick]
+             Flow/SOAK [soaked-ghast :fluid-tick])))
+
+(defn- found-fx [^ints found ^long k]
+  (let [g (Flow/changeDrop found k)]
+    (if (neg? g)
+      (effects (Flow/changeEffect found k))
+      [[:drop (long g)]])))
+
 (defn- found-change [^ints found ^long k]
   (let [p [(long (Flow/changeX found k)) (long (Flow/changeY found k))
            (long (Flow/changeZ found k))]
-        st (long (Flow/changeState found k))
-        g (long (Flow/changeDrop found k))]
-    (if (neg? g) [p st] [p st [[:drop g]]])))
+        st (long (Flow/changeState found k))]
+    (if-let [fx (found-fx found k)] [p st fx] [p st])))
 
-(defn- water-cell [chunks {:keys [dropoff slope infinite?]} [x y z]]
-  (when-let [found (Flow/changes
-                     (@flow-tables :water) chunks
-                     (int x) (int y) (int z) (int dropoff)
-                     (int slope) (boolean infinite?))]
+(defn- flowed [chunks cls {:keys [dropoff slope infinite?]} [x y z]]
+  (let [found (Flow/changes
+                (@flow-tables cls) chunks (int x) (int y) (int z)
+                (int dropoff) (int slope) (boolean infinite?))]
     (mapv #(found-change found %) (range (Flow/count found)))))
 
 (defn update-cell
   "Returns the changes of the liquid at p on its fluid tick."
   [chunks [x y z :as p] ctx]
-  (let [st (state-at chunks x y z)
-        cls (liquid-class st)]
-    (when cls
-      (let [table (liquids-in (:dim ctx))
-            env (flow-env chunks cls table (:rules ctx))]
-        (or (when (= :water cls) (water-cell chunks env p))
-            (cell-flowed chunks env cls p st))))))
+  (when-let [cls (liquid-class (state-at chunks x y z))]
+    (flowed chunks cls (flow-of cls ctx) p)))
+
+(defn mixed
+  "Returns the block that the lava at p turns into, or nil."
+  [chunks [x y z]]
+  (let [t (@flow-tables :lava)
+        st (long (Flow/mixed t chunks (int x) (int y) (int z)))]
+    (when-not (neg? st) st)))
 
 (defn- fire-sides [chunks p]
   (into {:age :0}
