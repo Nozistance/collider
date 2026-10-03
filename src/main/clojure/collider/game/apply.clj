@@ -105,29 +105,25 @@
       (merged-in e m))))
 
 (defn- stepped [entities t]
-  (fn [m [eid ds]]
+  (fn [[m xs :as acc] [eid ds]]
     (if-let [e (get entities eid)]
-      (assoc! m eid (entity t e ds))
-      m)))
+      (let [e' (entity t e ds) x (chunks/crossing eid e e')]
+        [(assoc! m eid e') (if x (conj! xs x) xs)])
+      acc)))
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
 
-(defn- crossings [entities es by-eid]
-  (let [crossed (fn [[eid]]
-                  (let [e0 (get entities eid) e1 (get es eid)]
-                    (chunks/crossing eid e0 e1)))]
-    (into [] (keep crossed) by-eid)))
+(defn- stepped-all [step es entries]
+  (let [[m xs] (reduce step [(transient es) (transient [])] entries)]
+    [(persistent! m) (persistent! xs)]))
 
 (defn- leaf-of [step entities v ^long j]
   (let [n (count v)
         a (* j par/fold-leaf)
         b (min n (+ a par/fold-leaf))
         lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
-        hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))
-        part (subvec v a b)
-        es (transient (lm/range entities lo hi))
-        es (persistent! (reduce step es part))]
-    [es (crossings entities es part)]))
+        hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
+    (stepped-all step (lm/range entities lo hi) (subvec v a b))))
 
 (defn- leaves [^long n]
   (vec (range (quot (+ n (dec par/fold-leaf)) par/fold-leaf))))
@@ -140,9 +136,7 @@
   (let [step (stepped entities (:tick w))
         n (count by-eid)]
     (if (< n par/fold-leaf)
-      (let [es (persistent!
-                 (reduce step (transient entities) by-eid))]
-        [es (crossings entities es by-eid)])
+      (stepped-all step entities by-eid)
       (let [v (vec by-eid)
             leaf #(joined %1 (leaf-of step entities v %2))]
         (r/fold 1 joined leaf (leaves n))))))

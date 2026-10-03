@@ -26,16 +26,20 @@
 (defn- came [idx c eid]
   (lm/assoc idx c (lm/conj (lm/get idx c (lm/long-set)) eid)))
 
+(defn- at ^long [e] (chunk/pos-chunk (:pos e)))
+
 (defn- chunk-of [e]
-  (when (and e (tracked? e)) (chunk/pos-chunk (:pos e))))
+  (when (and e (tracked? e)) (at e)))
 
 (defn crossing
   "Returns [eid from to] when entity eid goes from chunk from to chunk
   to between old and new. A chunk is nil where eid is not tracked."
   [eid old new]
-  (when-not (and old new
-                 (identical? (:pos old) (:pos new))
-                 (identical? (:type old) (:type new)))
+  (if (and old new (identical? (:type old) (:type new)))
+    (when (and (not (identical? (:pos old) (:pos new)))
+               (tracked? new))
+      (let [c0 (at old) c1 (at new)]
+        (when-not (== c0 c1) [eid c0 c1])))
     (let [c0 (chunk-of old) c1 (chunk-of new)]
       (when-not (= c0 c1) [eid c0 c1]))))
 
