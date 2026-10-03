@@ -148,7 +148,8 @@
   (let [gone (fn [[p old]] (spill/removed-deltas world p old))]
     (into [] (comp (filter removed?) (mapcat gone)) writes)))
 
-(defn- with-fx? [rec] (boolean (get rec 2)))
+(defn- with-fx? [recs]
+  (reduce (fn [_ r] (if (get r 2) (reduced true) false)) false recs))
 
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates.
@@ -162,7 +163,7 @@
              (or quiet by) (conj quiet)
              by (conj by))]
      (cond-> (into [d] (removal-deltas world (:writes s)))
-       (some with-fx? recs) (into (change-fx world recs))))))
+       (with-fx? recs) (into (change-fx world recs))))))
 
 (defn- joined [a b]
   (let [[_ ca ta _ by] a [_ cb tb] b
