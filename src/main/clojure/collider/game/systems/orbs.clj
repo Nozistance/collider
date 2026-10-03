@@ -34,10 +34,9 @@
 
 (defn- pushed [world e]
   (let [{:keys [pos vel]} e
-        cs (:chunks world)
+        cs (:chunks world) dim (:dim world)
         h (orb/height)
-        push (liquid/entity-push cs pos (orb/half) h vel
-                                 (:dim world))]
+        push (liquid/entity-push cs pos (orb/half) h vel dim)]
     (v/add vel push)))
 
 (defn- driven [world e hit? roll]
@@ -47,10 +46,15 @@
                   :else vel)]
     (if (orb/in-lava? chunks pos) (orb/tossed roll) vel)))
 
+(def ^:private ^:const merge-period 20)
+
 (defn- scanned [world eid e orbs]
-  (if (= 1 (rem (lived world e) 20))
+  (if (= 1 (rem (lived world e) merge-period))
     (orb/merged eid e (seq (dissoc orbs eid)))
     [e []]))
+
+(defn- shoved [chunks e vel roll]
+  (shove/shoved chunks (:pos e) (orb/height) vel (roll :shove)))
 
 (defn- drawn [world e vel players hit? roll]
   (let [pid (orb/followed e players)
@@ -59,9 +63,7 @@
       pid [pid (orb/pulled vel (:pos e) (get (into {} players) pid))
            false]
       (and hit? (orb/colliding? chunks (:pos e) vel))
-      [nil (shove/shoved chunks (:pos e) (orb/height) vel
-                         (roll :shove))
-       true]
+      [nil (shoved chunks e vel roll) true]
       :else [nil vel false])))
 
 (defn- travelled [world e vel pid sync?]
@@ -159,10 +161,10 @@
             (map #(chime (:pos p) %) (:chimes acc)))))
 
 (defn player-pickup
-  "Returns the deltas of player p, an entry, taking up one of the orbs
-  it touches."
+  "Returns the deltas of player pid taking up one of the orbs it
+  touches."
   [world [pid p]]
-  (when (and (pos? (double (:health p 20.0)))
+  (when (and (entity/alive? p)
              (not (game-mode/spectator? p))
              (ready? world p))
     (let [near #(touches? p (val %))

@@ -1,15 +1,12 @@
 (ns collider.game.systems.natural
-  "Natural spawning of mobs around the players, as NaturalSpawner
-  runs it from ServerChunkCache.tickChunks. The rolls are keyed, so
-  each chunk plans its spawns from the start of the tick on its own;
-  the mob caps and the mobs spawned before then decide the plans in
-  the shuffled order of the chunks."
+  "Natural spawning of mobs around the players."
   (:require [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.areas :as areas]
+            [collider.num :as num]
             [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -26,7 +23,7 @@
 
 (def ^:private ^:const reach 8)
 
-(def ^:private ^:const magic 289)
+(def ^:private ^:const spawn-area 289)
 
 (def ^:private ^:const near-sq 16384.0)
 
@@ -41,7 +38,7 @@
 
 (defn- below ^long [^double r ^long n] (long (* r n)))
 
-(defn- spawners [w]
+(defn- players-of [w]
   (into [] (keep #(let [e (get-in w [:entities %])]
                     (when (and e (not (game-mode/spectator? e)))
                       [% e])))
@@ -55,7 +52,7 @@
 
 (defn- close? [cid e] (< (center-sq cid (:pos e)) near-sq))
 
-(defn- counted [w]
+(defn- counted-chunks [w]
   (into (lm/long-set)
         (mapcat #(let [[cx cz] (chunk/id->pos %)]
                    (chunk/around-ids cx cz reach)))
@@ -85,13 +82,13 @@
 
 (defn- global-ok? [ctx [cat :as c]]
   (< (long (get-in @(:counts ctx) [:global cat] 0))
-     (quot (* (cap c) (count (:counted ctx))) magic)))
+     (quot (* (cap c) (count (:counted ctx))) spawn-area)))
 
 (defn- local-ok? [ctx counts cid [cat :as c]]
   (some #(< (long (get-in counts [:local % cat] 0)) (cap c))
         (near ctx cid)))
 
-(defn- spawners-of [ctx cat] (get-in ctx [:biome :spawners cat]))
+(defn- spawners [ctx cat] (get-in ctx [:biome :spawners cat]))
 
 (defn- biome-of [w] (biome/at (:dim w :overworld) nil))
 
@@ -100,8 +97,7 @@
         (get-in (biome-of w) [:spawners cat])))
 
 (defn- enemies? [w]
-  (and (get-in w [:rules :spawn-mobs] true)
-       (get-in w [:rules :spawn-monsters] true)))
+  (get-in w [:rules :spawn-monsters] true))
 
 (defn- wanted? [w [cat f]]
   (and (not= :misc cat) (or (enemies? w) (:friendly f))
@@ -148,7 +144,7 @@
          (or (= c (long cid)) (contains? (:active ctx) c)))))
 
 (defn- pick [ctx cid cat salt ll]
-  (let [es (spawners-of ctx cat)
+  (let [es (spawners ctx cat)
         total (long (reduce + 0 (map :weight es)))]
     (when (pos? total)
       (loop [[e & more] es
@@ -196,16 +192,16 @@
           (lm/long-map) (vals (:entities w))))
 
 (defn- blocked? [ctx box]
-  (let [cx (bit-shift-right (long (Math/floor (double (box 0)))) 4)
-        cz (bit-shift-right (long (Math/floor (double (box 2)))) 4)
+  (let [cx (bit-shift-right (num/floor (box 0)) 4)
+        cz (bit-shift-right (num/floor (box 2)) 4)
         hits? #(some (fn [b] (phys/joined? box b)) %)]
     (some #(hits? (get @(:blockers ctx) %))
           (chunk/around-ids cx cz 1))))
 
 (defn- clear? [ctx k x y z]
-  (let [h (/ (double (float (:width k))) 2.0)
+  (let [h (/ (num/f32 (:width k)) 2.0)
         at [(+ (long x) 0.5) y (+ (long z) 0.5)]]
-    (and (phys/dry? (:chunks ctx) at h (double (float (:height k))))
+    (and (phys/dry? (:chunks ctx) at h (num/f32 (:height k)))
          (not (blocked? ctx (mob-box k x y z))))))
 
 (defn- attempt [ctx k d2 [x y z]]
@@ -223,7 +219,7 @@
     (if k (assoc s :k k :n n) (assoc s :stop ::abort))
     (if (:k s) s (assoc s :stop ::none))))
 
-(defn- tried [ctx cid g ll d2 s]
+(defn- tried [ctx g ll d2 s]
   (if-let [tr (attempt ctx (:k s) d2 (:p s))]
     (update s :acc conj (assoc tr :g g :ll ll))
     s))
@@ -234,7 +230,7 @@
         d2 (nearest-sq ctx (+ (long x) 0.5) y (+ (long z) 0.5))]
     (if (and d2 (right-distance? ctx cid d2 x y z))
       (let [s (chosen ctx cid cat g ll s)]
-        (if (:stop s) s (tried ctx cid g ll d2 s)))
+        (if (:stop s) s (tried ctx g ll d2 s)))
       s)))
 
 (defn- group [ctx cid cat g at0]
@@ -322,7 +318,7 @@
     {:t (:tick w) :dim dim :chunks (:chunks w)
      :min-y (chunk/level-min-y w) :active (areas/active-chunks w)
      :ticking (areas/ticking-chunks w)
-     :counted (counted w) :players (spawners w)
+     :counted (counted-chunks w) :players (players-of w)
      :biome (biome-of w) :peaceful? (zero? (difficulty/id w))
      :despawn (into {} (map (fn [[c f]] [c (:despawn f)]))
                     (spawn/categories))
