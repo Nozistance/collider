@@ -56,19 +56,22 @@
 (defn- rank ^long [id e]
   (if-let [r (nth (:arrived e) 1 nil)] (long r) (* 2 (long id))))
 
-(defn- earlier [[a ea] [b eb]]
-  (let [c (compare (came ea) (came eb))]
-    (if (zero? c) (compare (rank a ea) (rank b eb)) c)))
+(defn- arrival [[id e :as entry]]
+  [(came e) (rank id e) entry])
+
+(defn- earlier [a b]
+  (let [c (Long/compare (nth a 0) (nth b 0))]
+    (if (zero? c) (Long/compare (nth a 1) (nth b 1)) c)))
 
 (defn of
   "Returns the index of the entries [id e], each where it stands, in
   the order they came to their sections."
   [entries]
-  (let [add (fn [m [id e]]
+  (let [add (fn [m [_ _ [id e]]]
               (let [p (v/v3 (:pos e)) k (key-of p)]
                 (assoc! m k (conj (get m k []) [id p]))))
         secs (reduce add (transient (lm/long-map))
-                     (sort earlier entries))
+                     (sort earlier (mapv arrival entries)))
         secs (persistent! secs)
         at (fn [[k es]] (map-indexed (fn [n [id]] [id [k n]]) es))]
     {:secs secs :at (into (lm/long-map) (mapcat at) secs)}))
