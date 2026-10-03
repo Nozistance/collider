@@ -11,6 +11,9 @@ public final class Rays {
     /// The width of the cube of cells that the rays of a blast mark.
     public static final int W = 21;
 
+    /// The number of rays of a blast.
+    public static final int COUNT = 1352;
+
     private static final double STEP = 0.3F;
 
     private static final float UNKNOWN_RESISTANCE = 3.0F;
@@ -133,11 +136,12 @@ public final class Rays {
         return j == 0 || j == 15 || k == 0 || k == 15 || l == 0 || l == 15;
     }
 
-    /// Casts the rays of a blast of `power` at `cx`, `cy`, `cz`
-    /// through the cells that `seen` reads. The rays mark the cells
-    /// of the `W` cube at `ox`, `oy`, `oz` they reach. `seed` varies
-    /// the power of each ray. `resist` holds the blast resistance by
-    /// block state, NaN for air.
+    /// Casts the rays from `from` to `to`, of the `COUNT` rays of a
+    /// blast of `power` at `cx`, `cy`, `cz`, through the cells that
+    /// `seen` reads. The rays mark the cells of the `W` cube at `ox`,
+    /// `oy`, `oz` they reach. `seed` varies the power of each ray.
+    /// `resist` holds the blast resistance by block state, NaN for
+    /// air.
     public static Rays cast(
             Exposure seen,
             IFn summon,
@@ -149,14 +153,19 @@ public final class Rays {
             double cy,
             double cz,
             double power,
-            long seed
+            long seed,
+            int from,
+            int to
     ) {
         float f = (float) power;
         Rays rs = new Rays(seen, summon, resist, ox, oy, oz, cx, cy, cz, f, seed);
+        int n = 0;
         for (long j = 0; j < 16; j++) {
             for (long k = 0; k < 16; k++) {
                 for (long l = 0; l < 16; l++) {
-                    if (surface(j, k, l)) rs.castRay(j, k, l);
+                    if (!surface(j, k, l)) continue;
+                    if (n >= from && n < to) rs.castRay(j, k, l);
+                    n++;
                 }
             }
         }
@@ -167,6 +176,16 @@ public final class Rays {
     /// 1 for air and 2 for a block.
     public static byte[] hit(Rays rs) {
         return rs.vals.clone();
+    }
+
+    /// Returns the cells that the rays of `a` or of `b` reach. A cell
+    /// that both reach holds the same mark in each.
+    public static byte[] union(byte[] a, byte[] b) {
+        byte[] u = a.clone();
+        for (int i = 0; i < u.length; i++) {
+            if (b[i] != 0) u[i] = b[i];
+        }
+        return u;
     }
 
     /// Returns the number of cells in `hit` that a ray reached.
