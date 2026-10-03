@@ -11,9 +11,14 @@
   [dim attr]
   (true? (get-in (dimension/type-of dim) [:attributes attr])))
 
-(defn fast-lava? [dim] (value? dim :gameplay/fast-lava))
+(defn fast-lava?
+  "Returns true when lava flows fast in dimension dim."
+  [dim]
+  (value? dim :gameplay/fast-lava))
 
-(defn water-evaporates? [dim]
+(defn water-evaporates?
+  "Returns true when water placed in dimension dim evaporates."
+  [dim]
   (value? dim :gameplay/water-evaporates))
 
 (def ^:private sleep-when-dark
@@ -22,12 +27,17 @@
 
 (defn- rule-key [s] (keyword (str/replace s "_" "-")))
 
-(defn bed-rule [dim]
+(defn bed-rule
+  "Returns when a bed lets a player sleep and set a spawn in
+  dimension dim, and whether it explodes."
+  [dim]
   (let [r (get-in (dimension/type-of dim)
                   [:attributes :gameplay/bed-rule] sleep-when-dark)]
     (-> (merge {:explodes false} r)
         (update :can-sleep rule-key)
         (update :can-set-spawn rule-key))))
 
-(defn allows? [rule dark?]
+(defn allows?
+  "Returns true when bed rule rule allows the action, given dark?."
+  [rule dark?]
   (case rule :always true :when-dark (boolean dark?) :never false))

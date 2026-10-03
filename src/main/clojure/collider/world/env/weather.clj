@@ -1,22 +1,31 @@
 (ns collider.world.env.weather
   "The rain and thunder cycle, and what falls at a position."
-  (:require [collider.world.env.dimension :as dimension]
-            [collider.random :as random]
+  (:require [collider.random :as random]
             [collider.world.env.biome :as biome]
+            [collider.world.env.dimension :as dimension]
             [collider.world.light :as light]
             [collider.world.space.spawn :as spawn]))
 
 (set! *warn-on-reflection* true)
 
-(def rain-delay [12000 180000])
+(def rain-delay
+  "The bounds of the ticks before rain starts."
+  [12000 180000])
 
-(def rain-duration [12000 24000])
+(def rain-duration
+  "The bounds of the ticks that rain lasts."
+  [12000 24000])
 
-(def thunder-delay [12000 180000])
+(def thunder-delay
+  "The bounds of the ticks before thunder starts."
+  [12000 180000])
 
-(def thunder-duration [3600 15600])
+(def thunder-duration
+  "The bounds of the ticks that thunder lasts."
+  [3600 15600])
 
 (def fields
+  "The keys of the weather state of a world."
   [:clear-weather-time :rain-time :thunder-time :raining? :thundering?
    :rain-level :o-rain-level :thunder-level :o-thunder-level])
 
@@ -28,8 +37,8 @@
                   (not= :the-end dim)))))
 
 (defn sample
-  "Returns a whole number of ticks within bounds inclusive.
-  The roll picks it."
+  "Returns a tick count within bounds, both ends included, picked by
+  roll."
   ^long [^double roll bounds]
   (let [lo (long (nth bounds 0))
         span (- (long (nth bounds 1)) lo)
@@ -177,4 +186,5 @@
    :thundering?        (boolean thundering?)})
 
 (def reset-cycle
+  "The weather timers after the cycle starts over."
   {:rain-time 0 :raining? false :thunder-time 0 :thundering? false})

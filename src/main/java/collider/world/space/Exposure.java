@@ -4,9 +4,8 @@ import clojure.lang.IFn;
 import collider.world.Collision;
 
 /// The cells around a blast that may block its sight, to share among
-/// the bodies it reaches. Sight follows `ServerExplosion.getSeenPercent`:
-/// a clip from each sample point of the body to the blast against the
-/// collision boxes of the blocks.
+/// the bodies it reaches. A body sees the blast from a sample point
+/// when the segment between them meets no collision box of a block.
 public final class Exposure {
 
     /// The width of the cube of cells that an exposure keeps.
@@ -14,25 +13,29 @@ public final class Exposure {
 
     private static final int S = W + 1;
 
-    private final Region rg;
+    private static final double EPS = 1.0E-7;
+
+    private final SectionGrid rg;
     private final Object[] shapes;
     private final byte[] kinds;
     private final double cx, cy, cz;
     private final int ox, oy, oz;
     private char[] states;
     private char[] sums;
-    private byte whole;
+    private byte columnsRead;
 
-    /// Returns the exposure of a blast at `cx`, `cy`, `cz` through
-    /// the sections of `rg`, with nothing read yet. `shapes` holds the
-    /// collision boxes by block state, six doubles each, as an empty
-    /// context meets them at the origin. `kinds` holds the kind of
-    /// each block state.
-    public static Exposure of(Region rg, Object[] shapes, byte[] kinds, double cx, double cy, double cz) {
-        return new Exposure(rg, shapes, kinds, cx, cy, cz);
-    }
-
-    private Exposure(Region rg, Object[] shapes, byte[] kinds, double cx, double cy, double cz) {
+    /// Makes the exposure of a blast at `cx`, `cy`, `cz` through the
+    /// sections of `rg`, with nothing read yet. `shapes` holds the
+    /// collision boxes of each block state at the origin and `kinds`
+    /// the collision kind of each block state.
+    public Exposure(
+            SectionGrid rg,
+            Object[] shapes,
+            byte[] kinds,
+            double cx,
+            double cy,
+            double cz
+    ) {
         this.rg = rg;
         this.shapes = shapes;
         this.kinds = kinds;
@@ -46,19 +49,23 @@ public final class Exposure {
 
     private int state(int x, int y, int z) {
         int ix = x - ox, iy = y - oy, iz = z - oz;
-        if (states != null && ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W) {
+        if (states != null && inCube(ix, iy, iz)) {
             return states[(ix * W + iy) * W + iz];
         }
         return read(x, y, z);
     }
 
-    private int read(int x, int y, int z) {
-        return Rays.readBlock(rg.grid(), rg.cx0(), rg.cz0(), rg.sy0(), rg.ncx(), rg.ncz(), rg.nsy(), x, y, z);
+    private static boolean inCube(int ix, int iy, int iz) {
+        return ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W;
     }
 
-    private boolean whole() {
-        if (whole == 0) whole = (byte) (present() ? 1 : -1);
-        return whole > 0;
+    private int read(int x, int y, int z) {
+        return Rays.readBlock(rg, x, y, z);
+    }
+
+    private boolean allColumnsRead() {
+        if (columnsRead == 0) columnsRead = (byte) (present() ? 1 : -1);
+        return columnsRead > 0;
     }
 
     private boolean present() {
@@ -80,7 +87,7 @@ public final class Exposure {
     /// under them waits to be read.
     public static int block(Exposure e, IFn summon, int x, int y, int z) {
         int ix = x - e.ox, iy = y - e.oy, iz = z - e.oz;
-        if (ix >= 0 && ix < W && iy >= 0 && iy < W && iz >= 0 && iz < W && e.whole()) {
+        if (inCube(ix, iy, iz) && e.allColumnsRead()) {
             if (e.sums == null) e.build();
             return e.states[(ix * W + iy) * W + iz];
         }
@@ -158,7 +165,12 @@ public final class Exposure {
 
     private static boolean inside(double[] b, double x, double y, double z) {
         for (int k = 0; k < b.length; k += 6) {
-            if (x >= b[k] && x < b[k + 3] && y >= b[k + 1] && y < b[k + 4] && z >= b[k + 2] && z < b[k + 5]) {
+            if (x >= b[k]
+                    && x < b[k + 3]
+                    && y >= b[k + 1]
+                    && y < b[k + 4]
+                    && z >= b[k + 2]
+                    && z < b[k + 5]) {
                 return true;
             }
         }
@@ -177,21 +189,32 @@ public final class Exposure {
             double maxC,
             double fromA,
             double fromB,
-            double fromC) {
+            double fromC
+    ) {
         double s = (point - fromA) / da;
         double pb = fromB + s * db;
         double pc = fromC + s * dc;
         if (0.0 < s
                 && s < scale
-                && minB - 1.0E-7 < pb
-                && pb < maxB + 1.0E-7
-                && minC - 1.0E-7 < pc
-                && pc < maxC + 1.0E-7) return s;
+                && minB - EPS < pb
+                && pb < maxB + EPS
+                && minC - EPS < pc
+                && pc < maxC + EPS) return s;
         return -1.0;
     }
 
     private static boolean clipBoxes(
-            double[] b, int px, int py, int pz, double fx, double fy, double fz, double dx, double dy, double dz) {
+            double[] b,
+            int px,
+            int py,
+            int pz,
+            double fx,
+            double fy,
+            double fz,
+            double dx,
+            double dy,
+            double dz
+    ) {
         double scale = 1.0;
         boolean hit = false;
         for (int k = 0; k < b.length; k += 6) {
@@ -199,9 +222,9 @@ public final class Exposure {
             double x1 = b[k + 3] + px, y1 = b[k + 4] + py;
             double z1 = b[k + 5] + pz;
             double s = -1.0;
-            if (dx > 1.0E-7) {
+            if (dx > EPS) {
                 s = clipPoint(scale, dx, dy, dz, x0, y0, y1, z0, z1, fx, fy, fz);
-            } else if (dx < -1.0E-7) {
+            } else if (dx < -EPS) {
                 s = clipPoint(scale, dx, dy, dz, x1, y0, y1, z0, z1, fx, fy, fz);
             }
             if (s >= 0.0) {
@@ -209,9 +232,9 @@ public final class Exposure {
                 hit = true;
             }
             s = -1.0;
-            if (dy > 1.0E-7) {
+            if (dy > EPS) {
                 s = clipPoint(scale, dy, dz, dx, y0, z0, z1, x0, x1, fy, fz, fx);
-            } else if (dy < -1.0E-7) {
+            } else if (dy < -EPS) {
                 s = clipPoint(scale, dy, dz, dx, y1, z0, z1, x0, x1, fy, fz, fx);
             }
             if (s >= 0.0) {
@@ -219,9 +242,9 @@ public final class Exposure {
                 hit = true;
             }
             s = -1.0;
-            if (dz > 1.0E-7) {
+            if (dz > EPS) {
                 s = clipPoint(scale, dz, dx, dy, z0, x0, x1, y0, y1, fz, fx, fy);
-            } else if (dz < -1.0E-7) {
+            } else if (dz < -EPS) {
                 s = clipPoint(scale, dz, dx, dy, z1, x0, x1, y0, y1, fz, fx, fy);
             }
             if (s >= 0.0) {
@@ -243,11 +266,12 @@ public final class Exposure {
             double ty,
             double tz,
             double bottom,
-            int flags) {
+            int flags
+    ) {
         double[] b = shape(state(px, py, pz), px, py, pz, bottom, flags);
         if (b == null) return false;
         double dx = tx - fx, dy = ty - fy, dz = tz - fz;
-        if (dx * dx + dy * dy + dz * dz < 1.0E-7) return false;
+        if (dx * dx + dy * dy + dz * dz < EPS) return false;
         double qx = fx + dx * 0.001, qy = fy + dy * 0.001;
         double qz = fz + dz * 0.001;
         if (inside(b, qx - px, qy - py, qz - pz)) return true;
@@ -256,11 +280,13 @@ public final class Exposure {
 
     private boolean clip(double fx, double fy, double fz, double bottom, int flags) {
         double tx = cx, ty = cy, tz = cz;
-        if (Double.compare(fx, tx) == 0 && Double.compare(fy, ty) == 0 && Double.compare(fz, tz) == 0) return false;
-        double toX = lerp(-1.0E-7, tx, fx), toY = lerp(-1.0E-7, ty, fy);
-        double toZ = lerp(-1.0E-7, tz, fz);
-        double frX = lerp(-1.0E-7, fx, tx), frY = lerp(-1.0E-7, fy, ty);
-        double frZ = lerp(-1.0E-7, fz, tz);
+        if (Double.compare(fx, tx) == 0
+                && Double.compare(fy, ty) == 0
+                && Double.compare(fz, tz) == 0) return false;
+        double toX = lerp(-EPS, tx, fx), toY = lerp(-EPS, ty, fy);
+        double toZ = lerp(-EPS, tz, fz);
+        double frX = lerp(-EPS, fx, tx), frY = lerp(-EPS, fy, ty);
+        double frZ = lerp(-EPS, fz, tz);
         int bx = floor(frX), by = floor(frY), bz = floor(frZ);
         if (collidingIn(
                         Math.min(bx, floor(toX)) - 1,
@@ -306,13 +332,16 @@ public final class Exposure {
 
     /// Returns the share from 0.0 to 1.0 of the sample points of a body
     /// box at `px`, `py`, `pz` with half width `half` and height
-    /// `height` that see the blast of `e`. `flags` tell how the body
-    /// meets the blocks whose shape depends on it.
-    public static double density(Exposure e, double px, double py, double pz, double half, double height, int flags) {
-        return e.sight(px, py, pz, half, height, flags);
-    }
-
-    private double sight(double px, double py, double pz, double half, double height, int flags) {
+    /// `height` that see the blast. `flags` tell how the body meets
+    /// the blocks whose shape depends on it.
+    public double density(
+            double px,
+            double py,
+            double pz,
+            double half,
+            double height,
+            int flags
+    ) {
         if (sums == null) build();
         double w = (float) half, h = (float) height;
         double x0 = px - w, z0 = pz - w;

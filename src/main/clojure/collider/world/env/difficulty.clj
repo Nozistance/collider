@@ -3,4 +3,7 @@
 
 (set! *warn-on-reflection* true)
 
-(defn id ^long [_ctx] 0)
+(defn id
+  "Returns the difficulty id of the world, always peaceful."
+  ^long [_ctx]
+  0)

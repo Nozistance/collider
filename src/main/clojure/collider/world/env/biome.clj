@@ -6,9 +6,13 @@
 
 (set! *warn-on-reflection* true)
 
-(def ^:const sea-level -63)
+(def ^:const sea-level
+  "The sea level of the flat overworld."
+  -63)
 
-(def ^:const snow-level (+ sea-level 17))
+(def ^:const snow-level
+  "The height above which the overworld snows in every biome."
+  (+ sea-level 17))
 
 (defn sea-level-of
   "Returns the sea level of the generator of level dim."
@@ -72,21 +76,18 @@
         drop (float (/ (float (* d (float 0.05))) (float 40.0)))]
     (double (float (- (float base) drop)))))
 
-(defn- height-adjusted-temperature ^double [biome p]
+(defn temperature
+  "Returns the temperature of biome at p. It falls above the
+  snow level."
+  ^double [biome p]
   (let [y (long (nth p 1))
         base (float (:temperature biome))]
     (if (> y (long snow-level))
       (chill base y p)
       (double base))))
 
-(defn temperature
-  "Returns the temperature of biome at p. It falls above the
-  snow level."
-  ^double [biome p]
-  (height-adjusted-temperature biome p))
-
 (defn warm-enough-to-rain?
-  "Returns true when what falls on biome at p is rain."
+  "Returns true when biome at p is too warm for snow."
   [biome p]
   (>= (temperature biome p) (double (float 0.15))))
 

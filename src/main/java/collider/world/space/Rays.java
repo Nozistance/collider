@@ -11,44 +11,51 @@ public final class Rays {
     /// The width of the cube of cells that the rays of a blast mark.
     public static final int W = 21;
 
-    /// Returns the block state at `x`, `y`, `z` in a `grid` of
-    /// sections shaped `ncx` by `ncz` by `nsy`, or 0 outside
-    /// the grid. The first cell covers the section at `cx0`,
-    /// `cz0`, `sy0`.
-    public static int readBlock(
-            Object[] grid, int cx0, int cz0, int sy0, int ncx, int ncz, int nsy, int x, int y, int z) {
-        int ix = (x >> 4) - cx0;
-        int iz = (z >> 4) - cz0;
-        int iy = (y >> 4) - sy0;
-        if (ix < 0 || ix >= ncx || iz < 0 || iz >= ncz || iy < 0 || iy >= nsy) return 0;
-        Section s = (Section) grid[(ix * ncz + iz) * nsy + iy];
+    private static final double STEP = 0.3F;
+
+    private static final float UNKNOWN_RESISTANCE = 3.0F;
+
+    private static final float STEP_DECAY = 0.22500001F;
+
+    private static int column(SectionGrid rg, int x, int z) {
+        int ix = (x >> 4) - rg.cx0();
+        int iz = (z >> 4) - rg.cz0();
+        if (ix < 0 || ix >= rg.ncx() || iz < 0 || iz >= rg.ncz()) return -1;
+        return ix * rg.ncz() + iz;
+    }
+
+    private static int stateIn(SectionGrid rg, int col, int iy, int x, int y, int z) {
+        Section s = (Section) rg.grid()[col * rg.nsy() + iy];
         if (s == null) return 0;
         return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
     }
 
     /// Returns the block state at `x`, `y`, `z` in `rg`, or 0 outside
-    /// it. An absent column of a region that reads absent chunks goes
-    /// to `summon` as its grid x and z.
-    public static int block(Region rg, IFn summon, int x, int y, int z) {
-        int ix = (x >> 4) - rg.cx0();
-        int iz = (z >> 4) - rg.cz0();
+    /// it or where its section is absent.
+    public static int readBlock(SectionGrid rg, int x, int y, int z) {
+        int col = column(rg, x, z);
         int iy = (y >> 4) - rg.sy0();
-        if (ix < 0 || ix >= rg.ncx() || iz < 0 || iz >= rg.ncz() || iy < 0 || iy >= rg.nsy()) return 0;
-        int col = ix * rg.ncz() + iz;
+        if (col < 0 || iy < 0 || iy >= rg.nsy()) return 0;
+        return stateIn(rg, col, iy, x, y, z);
+    }
+
+    /// Returns the block state at `x`, `y`, `z` in `rg`, or 0 outside
+    /// it. An absent column of a grid that reads absent chunks goes
+    /// to `summon` as its grid x and z.
+    public static int block(SectionGrid rg, IFn summon, int x, int y, int z) {
+        int col = column(rg, x, z);
+        int iy = (y >> 4) - rg.sy0();
+        if (col < 0 || iy < 0 || iy >= rg.nsy()) return 0;
         if (rg.cols()[col] == null && rg.readAbsent() != null) {
-            summon.invoke((long) ix, (long) iz);
+            summon.invoke((long) (col / rg.ncz()), (long) (col % rg.ncz()));
         }
-        Section s = (Section) rg.grid()[col * rg.nsy() + iy];
-        if (s == null) return 0;
-        return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
+        return stateIn(rg, col, iy, x, y, z);
     }
 
     private static int cellIndex(long ix, long iy, long iz) {
         if (ix < 0 || ix >= W || iy < 0 || iy >= W || iz < 0 || iz >= W) return -1;
         return (int) ((ix * W + iy) * W + iz);
     }
-
-    private static final double STEP = 0.3F;
 
     private final Exposure seen;
     private final IFn summon;
@@ -70,7 +77,8 @@ public final class Rays {
             double cy,
             double cz,
             float power,
-            long seed) {
+            long seed
+    ) {
         this.seen = seen;
         this.summon = summon;
         this.resist = resist;
@@ -110,14 +118,14 @@ public final class Rays {
             first = false;
             if (by < Chunk.MIN_Y || by > Chunk.MAX_Y) break;
             if (!same) st = Exposure.block(seen, summon, bx, by, bz);
-            float res = st < resist.length ? resist[st] : 3.0F;
+            float res = st < resist.length ? resist[st] : UNKNOWN_RESISTANCE;
             if (!Float.isNaN(res)) f -= (res + 0.3F) * 0.3F;
             if (f > 0.0F && !same && i >= 0) vals[i] = val(st);
             x += xd * STEP;
             y += yd * STEP;
             z += zd * STEP;
             prev = i;
-            f -= 0.22500001F;
+            f -= STEP_DECAY;
         }
     }
 
@@ -141,8 +149,10 @@ public final class Rays {
             double cy,
             double cz,
             double power,
-            long seed) {
-        Rays rs = new Rays(seen, summon, resist, ox, oy, oz, cx, cy, cz, (float) power, seed);
+            long seed
+    ) {
+        float f = (float) power;
+        Rays rs = new Rays(seen, summon, resist, ox, oy, oz, cx, cy, cz, f, seed);
         for (long j = 0; j < 16; j++) {
             for (long k = 0; k < 16; k++) {
                 for (long l = 0; l < 16; l++) {

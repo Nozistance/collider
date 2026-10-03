@@ -65,9 +65,9 @@
   (not (and (zero? (double (kb 0))) (zero? (double (kb 1)))
             (zero? (double (kb 2))))))
 
-(defn- density [{:keys [exposure center]} e]
+(defn- density [{:keys [exposure]} e]
   (let [[half height] (entity/box e)]
-    (explosion/exposed exposure center (:pos e) half height
+    (explosion/exposed exposure (:pos e) half height
                        (phys/context e))))
 
 (defn- shoved?

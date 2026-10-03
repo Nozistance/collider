@@ -1,6 +1,7 @@
 (ns collider.world.space.path
   "Ground paths of mobs, the types of cells and the search over them."
   (:require [collider.data :as data]
+            [collider.num :as num]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys])
@@ -20,7 +21,7 @@
    :big-mobs-close-to-danger])
 
 (def default-malus
-  "The malus every path type carries when a mob keeps no own one."
+  "The malus of each path type for a mob without its own."
   {:blocked -1.0 :open 0.0 :walkable 0.0 :walkable-door 0.0
    :trapdoor 0.0 :powder-snow -1.0 :on-top-of-powder-snow 0.0
    :fence -1.0 :lava -1.0 :water 8.0 :water-border 8.0 :rail 0.0
@@ -202,12 +203,12 @@
     cow-malus
     (malus-arr mob)))
 
-(defn- sizes ^doubles [mob]
+(defn- body-of ^doubles [mob]
   (let [[px py pz] (:pos mob)]
     (double-array [px py pz (:width mob) (:height mob)
                    (:max-up-step mob)])))
 
-(defn- flags ^longs [mob]
+(defn- walk-flags ^longs [mob]
   (long-array [(:max-fall mob) (flag (:float? mob))
                (flag (:open-doors? mob)) (flag (:pass-doors? mob))
                (flag (:walk-over-fences? mob))]))
@@ -215,7 +216,8 @@
 (defn- search-of [lv mob]
   (Path. (:chunks lv) (chunk/level-min-y lv) @type-ids @forced-ids
          @water-arr (block/collision-arr) (phys/kinds) (malus-of mob)
-         base-malus (sizes mob) (flags mob) (int (:ctx mob 0))))
+         base-malus (body-of mob) (walk-flags mob)
+         (int (:ctx mob 0))))
 
 (defn context
   "Returns what one search over level lv knows about its mob.
@@ -227,8 +229,7 @@
    :search (search-of lv mob)})
 
 (defn type-of-mob
-  "Returns the path type of the cell x y z for the mob of ctx.
-  One search types each cell once, as WalkNodeEvaluator caches it."
+  "Returns the path type of the cell x y z for the mob of ctx."
   [ctx x y z]
   (nth path-types
        (Path/typeOf (:search ctx) (long x) (long y) (long z))))
@@ -237,21 +238,15 @@
   (or (= :water (block/block-of st))
       (and (block/water? st) (zero? (block/liquid-level st)))))
 
-(defn- water-top ^long [ctx ^long x ^long y ^long z]
-  (loop [cy y]
-    (if (water-start? (chunk/block-state (:chunks ctx) x cy z))
-      (recur (inc cy))
-      cy)))
+(defn- rise-while [ctx pred x y z]
+  (let [chunks (:chunks ctx) x (long x) z (long z)]
+    (loop [cy (long y)]
+      (if (pred (chunk/block-state chunks x cy z))
+        (recur (inc cy))
+        cy))))
 
 (defn- stands-on-fluid? [mob ^long st]
   (contains? (:stand-on-fluid? mob) (block/liquid-class st)))
-
-(defn- fluid-top ^long [ctx ^long x ^long y ^long z]
-  (let [mob (:mob ctx) chunks (:chunks ctx)]
-    (loop [cy y]
-      (if (stands-on-fluid? mob (chunk/block-state chunks x cy z))
-        (recur (inc cy))
-        cy))))
 
 (defn- air-drop ^long [ctx ^long x ^double py ^long z]
   (let [chunks (:chunks ctx) lo (long (:min-y ctx))]
@@ -271,9 +266,9 @@
         y0 (long (Math/floor (double py)))]
     (cond
       (stands-on-fluid? mob (chunk/block-state (:chunks ctx) x y0 z))
-      (dec (fluid-top ctx x y0 z))
+      (dec (rise-while ctx #(stands-on-fluid? mob %) x y0 z))
       (and (:float? mob) (:in-water? mob))
-      (dec (water-top ctx x y0 z))
+      (dec (rise-while ctx water-start? x y0 z))
       (:on-ground? mob) (long (Math/floor (+ (double py) 0.5)))
       :else (air-drop ctx x (double py) z))))
 
@@ -281,7 +276,7 @@
   (let [t (type-of-mob ctx x y z)]
     (and (not= :open t) (>= (path-type-malus (:mob ctx) t) 0.0))))
 
-(defn- cell-of ^long [c] (long (Math/floor (double c))))
+(defn- cell-of ^long [c] (num/floor (double c)))
 
 (defn- corners [mob]
   (let [[px _ pz] (:pos mob) w (/ (double (:width mob)) 2.0)

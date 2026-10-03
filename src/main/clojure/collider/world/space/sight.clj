@@ -1,6 +1,5 @@
 (ns collider.world.space.sight
-  "Whether blocks stand between two points: the clip of a segment
-  against the collision shapes of the blocks it crosses."
+  "Line of sight between points, and the cells a segment crosses."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
 
@@ -30,9 +29,7 @@
 (defn- near? [^double c lo hi]
   (< (- (double lo) eps) c (+ (double hi) eps)))
 
-(defn- face-hit?
-  "AABB.clipPoint of the face at plane across axis a."
-  [from v a plane [lo hi]]
+(defn- face-hit? [from v a plane [lo hi]]
   (let [[b c] (remove #{a} axes)
         t (/ (- (double plane) (double (from a))) (double (v a)))
         at #(+ (double (from %)) (* t (double (v %))))]
@@ -58,15 +55,12 @@
   (* td (if (pos? sg) (- 1.0 (frac f)) (frac f))))
 
 (defn- stretched [a b]
-  (mapv #(lerp -1.0E-7 (double (a %)) (double (b %))) axes))
+  (mapv #(lerp (- eps) (double (a %)) (double (b %))) axes))
 
 (defn- step-len ^double [^long sg ^double d]
   (if (zero? sg) Double/MAX_VALUE (/ (double sg) d)))
 
-(defn- walk
-  "BlockGetter.traverseBlocks from from to to: the first cell, the
-  step signs, the step lengths and the next crossings."
-  [from to]
+(defn- walk [from to]
   (let [f (stretched from to)
         d (mapv - (stretched to from) f)
         sg (mapv #(long (Math/signum (double %))) d)
@@ -78,19 +72,22 @@
   (let [tx (double tx) ty (double ty) tz (double tz)]
     (if (< tx ty) (if (< tx tz) 0 2) (if (< ty tz) 1 2))))
 
-(defn- crossed? [chunks from v {:keys [sg td] :as w}]
-  (loop [cell (:cell w) t (:t w)]
-    (cond
-      (cell-hit? chunks from v cell) true
-      (not-any? #(<= (double %) 1.0) t) false
-      :else (let [a (next-axis t)]
-              (recur (update cell a + (sg a))
-                     (update t a + (td a)))))))
+(defn some-cell
+  "Returns the first true value of (f cell) for the cells that the
+  segment from a to b crosses, in the order it crosses them, or nil."
+  [f a b]
+  (let [{:keys [sg td] :as w} (walk a b)]
+    (loop [cell (:cell w) t (:t w)]
+      (or (f cell)
+          (when (some #(<= (double %) 1.0) t)
+            (let [i (next-axis t)]
+              (recur (update cell i + (sg i))
+                     (update t i + (td i)))))))))
 
 (defn clear?
-  "Tells whether the segment from from to to meets no collision
-  shape of the blocks it crosses."
-  [chunks from to]
-  (or (= (vec from) (vec to))
-      (let [v (mapv #(- (double (to %)) (double (from %))) axes)]
-        (not (crossed? chunks from v (walk from to))))))
+  "Returns true when the segment from a to b meets no collision shape
+  of the blocks it crosses."
+  [chunks a b]
+  (or (= (vec a) (vec b))
+      (let [v (mapv #(- (double (b %)) (double (a %))) axes)]
+        (not (some-cell #(cell-hit? chunks a v %) a b)))))

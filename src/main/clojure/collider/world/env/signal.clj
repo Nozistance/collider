@@ -4,13 +4,11 @@
 (set! *warn-on-reflection* true)
 
 (defn has-neighbor-signal?
-  "Returns true when a neighbour of p powers it.
-  None does yet."
+  "Returns true when a neighbour of p powers it."
   [_chunks _p]
   false)
 
 (defn game-event
-  "Returns the deltas of a game event heard at pos.
-  There are none yet."
+  "Returns the deltas of a game event heard at pos."
   [_kind _pos _source]
   nil)

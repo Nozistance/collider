@@ -948,6 +948,20 @@
 (defn tagged? [^long st tag]
   (contains? (tag-set tag) (block-of st)))
 
+(def ^:private ^:table conductor-arr
+  (delay
+    (let [a (boolean-array (data/block-state-count))
+          top (dec (alength a))]
+      (doseq [[lo hi] (:conductors (data/spawns))
+              id (range lo (inc (min (long hi) top)))]
+        (aset a (int id) true))
+      a)))
+
+(defn conductor?
+  "Returns true when st conducts redstone."
+  [^long st]
+  (aget ^booleans @conductor-arr st))
+
 (def face-props [:up :north :south :west :east :down])
 
 (defn faces-of [^long st]

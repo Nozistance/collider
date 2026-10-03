@@ -1,7 +1,7 @@
 package collider.world.space;
 
 /// A cell of one path search with its scores and its place in the
-/// open set. The scores hold float values.
+/// open set.
 public final class PathNode {
 
     public final long x;
@@ -37,6 +37,7 @@ public final class PathNode {
         return malus;
     }
 
+    /// Sets the cost the path type of the cell adds to `m`.
     public void setMalus(double m) {
         malus = fl(m);
     }
@@ -47,15 +48,12 @@ public final class PathNode {
         return kind;
     }
 
-    public void setKind(int t) {
-        kind = t;
-    }
-
     /// Returns true when the search is done with the node.
     public boolean closed() {
         return closed;
     }
 
+    /// Marks the node as done for the search.
     public void close() {
         closed = true;
     }
@@ -63,9 +61,11 @@ public final class PathNode {
     /// Returns the straight distance to the cell `x`, `y`, `z`.
     public double distTo(long x, long y, long z) {
         long dx = x - this.x, dy = y - this.y, dz = z - this.z;
-        return fl(Math.sqrt((double) (dx * dx + dy * dy + dz * dz)));
+        return fl(Math.sqrt(dx * dx + dy * dy + dz * dz));
     }
 
+    /// Returns the sum of the distances to the cell `x`, `y`, `z`
+    /// along each axis.
     public double manhattan(long x, long y, long z) {
         return fl(Math.abs(x - this.x) + Math.abs(y - this.y) + Math.abs(z - this.z));
     }

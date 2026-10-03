@@ -6,7 +6,8 @@
             [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.liquid :as liquid]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.space.sight :as sight]))
 
 (set! *warn-on-reflection* true)
 
@@ -80,41 +81,6 @@
              (meets? f d (cell-box c (inc (double (c 1))))))
         (and top (meets? f d (cell-box c (double top)))))))
 
-(defn- frac ^double [^double x] (- x (Math/floor x)))
-
-(defn- axis-start [^double f ^double d]
-  (let [s (long (Math/signum d))
-        dt (if (zero? s) Double/MAX_VALUE (/ (double s) d))]
-    [s dt (* dt (if (pos? s) (- 1.0 (frac f)) (frac f)))]))
-
-(defn- next-axis ^long [[tx ty tz]]
-  (let [tx (double tx) ty (double ty) tz (double tz)]
-    (if (< tx ty) (if (< tx tz) 0 2) (if (< ty tz) 1 2))))
-
-(defn- nudged [a b]
-  (mapv (fn [x y]
-          (+ (double x) (* -1.0E-7 (- (double y) (double x)))))
-        a b))
-
-(defn- walk-step [axes [c ts]]
-  (let [i (next-axis ts) [s dt] (axes i)]
-    [(update c i + s) (update ts i + dt)]))
-
-(defn- going? [[_ ts]] (some #(<= (double %) 1.0) ts))
-
-(defn- cells
-  "Returns the cells a ray from f to t passes, in the order it
-  passes them."
-  [f t]
-  (let [f' (nudged f t)
-        t' (nudged t f)
-        axes (mapv #(axis-start %1 (- (double %2) (double %1))) f' t')
-        step #(walk-step axes %)
-        start [(v/cell f') (mapv #(nth % 2) axes)]]
-    (cons (start 0)
-          (map #((step %) 0)
-               (take-while going? (iterate step start))))))
-
 (def ^:private ^:const reach 8.0)
 
 (defn resets?
@@ -128,7 +94,7 @@
         c (min len reach)
         d (mapv #(* (/ (double %) len) c) m)
         t (mapv + f d)]
-    (boolean (some #(resets-at? chunks f d %) (cells f t)))))
+    (boolean (sight/some-cell #(resets-at? chunks f d %) f t))))
 
 (defn free-below?
   "Returns true when a falling block at the cell x y z would fall."

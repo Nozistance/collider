@@ -9,6 +9,7 @@ public final class PathHeap {
     private PathNode[] a = new PathNode[128];
     private int n;
 
+    /// Returns true when the open set holds no node.
     public boolean isEmpty() {
         return n == 0;
     }

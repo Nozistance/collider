@@ -5,8 +5,7 @@ import collider.world.ChunkIndex;
 import collider.world.Collision;
 import collider.world.Scratch;
 
-/// The numeric core of the ground path search. `shapes` holds the
-/// collision boxes of each block state, six doubles each, in blocks.
+/// The numeric core of the ground path search of a mob.
 public final class Path {
 
     private static final double FUDGING = 1.5;
@@ -134,7 +133,14 @@ public final class Path {
         return st < types.length ? types[st] : OPEN;
     }
 
-    private static int floorType(ChunkIndex chunks, int[] types, int[] forced, long x, long y, long z) {
+    private static int floorType(
+            ChunkIndex chunks,
+            int[] types,
+            int[] forced,
+            long x,
+            long y,
+            long z
+    ) {
         return switch (typeAt(chunks, types, x, y - 1, z)) {
             case OPEN, WATER, LAVA, WALKABLE -> OPEN;
             case FIRE -> FIRE;
@@ -152,7 +158,15 @@ public final class Path {
 
     /// Returns the path type of the cell `x`, `y`, `z` for a mob one
     /// cell tall, in a level from `lo` up.
-    public static int staticType(ChunkIndex chunks, int[] types, int[] forced, long lo, long x, long y, long z) {
+    public static int staticType(
+            ChunkIndex chunks,
+            int[] types,
+            int[] forced,
+            long lo,
+            long x,
+            long y,
+            long z
+    ) {
         int t = typeAt(chunks, types, x, y, z);
         return t == OPEN && y >= lo + 1 ? floorType(chunks, types, forced, x, y, z) : t;
     }
@@ -167,7 +181,9 @@ public final class Path {
             return WALKABLE_DOOR;
         }
         if (t == DOOR_OPEN && !passDoors) return BLOCKED;
-        if (t == RAIL && staticAt(mx, my, mz) != RAIL && staticAt(mx, my - 1, mz) != RAIL) {
+        if (t == RAIL
+                && staticAt(mx, my, mz) != RAIL
+                && staticAt(mx, my - 1, mz) != RAIL) {
             return UNPASSABLE_RAIL;
         }
         return t;
@@ -197,7 +213,8 @@ public final class Path {
         }
         int cur = staticAt(x, y, z);
         if (bbW > 1) {
-            return malus[cur] < bm && malus[BIG_MOBS_CLOSE_TO_DANGER] < bm ? BIG_MOBS_CLOSE_TO_DANGER : bt;
+            boolean near = malus[cur] < bm && malus[BIG_MOBS_CLOSE_TO_DANGER] < bm;
+            return near ? BIG_MOBS_CLOSE_TO_DANGER : bt;
         }
         return cur == OPEN && bt != OPEN && bm == 0.0 ? OPEN : bt;
     }
@@ -211,10 +228,6 @@ public final class Path {
         int v = p.typedForMob(x, y, z);
         p.typed.put(k, v);
         return v;
-    }
-
-    private int typeOfMob(long x, long y, long z) {
-        return typeOf(this, x, y, z);
     }
 
     private double floorLevel(long x, long y, long z) {
@@ -256,7 +269,7 @@ public final class Path {
         for (long cy = y - 1; ; cy--) {
             if (cy < minY) return blocked(x, y, z);
             if (y - cy > maxFall) return blocked(x, cy, z);
-            int t = typeOfMob(x, cy, z);
+            int t = typeOf(this, x, cy, z);
             double m = malus[t];
             if (t == OPEN) continue;
             return m >= 0.0 ? withCost(x, cy, z, t, m) : blocked(x, cy, z);
@@ -265,14 +278,22 @@ public final class Path {
 
     private PathNode nonWaterBelow(long x, long y, long z, PathNode best) {
         for (long cy = y - 1; cy > minY; cy--) {
-            int t = typeOfMob(x, cy, z);
+            int t = typeOf(this, x, cy, z);
             if (t != WATER) return best;
             best = withCost(x, cy, z, t, malus[t]);
         }
         return best;
     }
 
-    private PathNode jumpOn(long x, long y, long z, long jump, double nh, int dir, int cur) {
+    private PathNode jumpOn(
+            long x,
+            long y,
+            long z,
+            long jump,
+            double nh,
+            int dir,
+            int cur
+    ) {
         PathNode above = accepted(x, y + 1, z, jump - 1, nh, dir, cur);
         if (above == null) return null;
         if (width >= 1.0) return above;
@@ -290,11 +311,19 @@ public final class Path {
         return collides(b) ? null : above;
     }
 
-    private PathNode accepted(long x, long y, long z, long jump, double nh, int dir, int cur) {
+    private PathNode accepted(
+            long x,
+            long y,
+            long z,
+            long jump,
+            double nh,
+            int dir,
+            int cur
+    ) {
         if (floorLevel(x, y, z) - nh > Math.max(1.125, upStep)) {
             return null;
         }
-        int t = typeOfMob(x, y, z);
+        int t = typeOf(this, x, y, z);
         double m = malus[t];
         PathNode best = m >= 0.0 ? withCost(x, y, z, t, m) : null;
         if (partial(cur) && best != null && best.malus() >= 0.0 && !canReach(best)) {
@@ -315,7 +344,12 @@ public final class Path {
         return best;
     }
 
-    private static boolean diagonalOk(double width, PathNode pos, PathNode ew, PathNode ns) {
+    private static boolean diagonalOk(
+            double width,
+            PathNode pos,
+            PathNode ew,
+            PathNode ns
+    ) {
         if (ns == null || ew == null || ns.y > pos.y || ew.y > pos.y) {
             return false;
         }
@@ -326,18 +360,21 @@ public final class Path {
             return false;
         }
         boolean gap = ns.kind == FENCE && ew.kind == FENCE && width < 0.5;
-        return (ns.y < pos.y || ns.malus() >= 0.0 || gap) && (ew.y < pos.y || ew.malus() >= 0.0 || gap);
+        return (ns.y < pos.y || ns.malus() >= 0.0 || gap)
+                && (ew.y < pos.y || ew.malus() >= 0.0 || gap);
     }
 
     private int neighbors(PathNode pos, PathNode[] out) {
-        int cur = typeOfMob(pos.x, pos.y, pos.z);
-        long js = malus[typeOfMob(pos.x, pos.y + 1, pos.z)] >= 0.0 && cur != STICKY_HONEY
+        int cur = typeOf(this, pos.x, pos.y, pos.z);
+        int above = typeOf(this, pos.x, pos.y + 1, pos.z);
+        long js = malus[above] >= 0.0 && cur != STICKY_HONEY
                 ? (long) Math.floor(Math.max(1.0, upStep))
                 : 0;
         double ph = floorLevel(pos.x, pos.y, pos.z);
         PathNode[] side = new PathNode[4];
         for (int d : HORIZONTAL) {
-            side[d] = accepted(pos.x + DIRS[d][0], pos.y, pos.z + DIRS[d][1], js, ph, d, cur);
+            long x = pos.x + DIRS[d][0], z = pos.z + DIRS[d][1];
+            side[d] = accepted(x, pos.y, z, js, ph, d, cur);
         }
         int k = 0;
         for (int d : HORIZONTAL) {
@@ -349,8 +386,9 @@ public final class Path {
         for (int d : HORIZONTAL) {
             int cw = CLOCKWISE[d];
             if (!diagonalOk(width, pos, side[d], side[cw])) continue;
-            PathNode n =
-                    accepted(pos.x + DIRS[d][0] + DIRS[cw][0], pos.y, pos.z + DIRS[d][1] + DIRS[cw][1], js, ph, d, cur);
+            long x = pos.x + DIRS[d][0] + DIRS[cw][0];
+            long z = pos.z + DIRS[d][1] + DIRS[cw][1];
+            PathNode n = accepted(x, pos.y, z, js, ph, d, cur);
             if (n != null && !n.closed() && n.kind != WALKABLE_DOOR && n.malus() >= 0.0) {
                 out[k++] = n;
             }
@@ -399,7 +437,14 @@ public final class Path {
     /// targets it reached within `reach`, null when it reached none.
     /// It visits fewer than `maxv` nodes and walks no further than
     /// `maxlen` from `from`.
-    public static PathTarget[] run(Path p, PathNode from, PathTarget[] targets, double maxlen, long reach, long maxv) {
+    public static PathTarget[] run(
+            Path p,
+            PathNode from,
+            PathTarget[] targets,
+            double maxlen,
+            long reach,
+            long maxv
+    ) {
         PathHeap heap = new PathHeap();
         start(heap, targets, from);
         PathNode[] out = new PathNode[8];
@@ -430,13 +475,18 @@ public final class Path {
 
     /// Returns what the first cell around `x`, `y`, `z` forces upon
     /// it through `forced`, the forced type of each block state, in
-    /// the order WalkNodeEvaluator scans them; -1 when none does.
+    /// the order the game scans them, or -1 when none does.
     public static int forced(ChunkIndex chunks, int[] forced, long x, long y, long z) {
         for (int dx = -1; dx <= 1; dx++) {
             for (int dy = -1; dy <= 1; dy++) {
                 for (int dz = -1; dz <= 1; dz++) {
                     if (dx == 0 && dz == 0) continue;
-                    int st = Chunk.blockAt(chunks, (int) (x + dx), (int) (y + dy), (int) (z + dz));
+                    int st = Chunk.blockAt(
+                            chunks,
+                            (int) (x + dx),
+                            (int) (y + dy),
+                            (int) (z + dz)
+                    );
                     if (st < 0 || st >= forced.length) continue;
                     int f = forced[st];
                     if (f >= 0) return f;
@@ -474,8 +524,8 @@ public final class Path {
     }
 
     /// Returns true when the box `b` meets a collision shape of a
-    /// block as the mob meets it, `WalkNodeEvaluator.hasCollisions`.
-    /// `b` holds min x, y, z and max x, y, z.
+    /// block as the mob meets it. `b` holds min x, y, z and max x, y,
+    /// z.
     private boolean collides(double[] b) {
         long x1 = (long) Math.floor(b[3] + EPS);
         long y1 = (long) Math.floor(b[4] + EPS);
@@ -484,7 +534,16 @@ public final class Path {
             for (long y = (long) Math.floor(b[1] - EPS); y <= y1; y++) {
                 for (long z = (long) Math.floor(b[2] - EPS); z <= z1; z++) {
                     int st = Chunk.blockAt(chunks, (int) x, (int) y, (int) z);
-                    double[] s = Collision.shape(shapes, kinds, st, (int) x, (int) y, (int) z, py, ctx);
+                    double[] s = Collision.shape(
+                            shapes,
+                            kinds,
+                            st,
+                            (int) x,
+                            (int) y,
+                            (int) z,
+                            py,
+                            ctx
+                    );
                     if (cellHits(s, b, x, y, z)) return true;
                 }
             }
@@ -520,7 +579,7 @@ public final class Path {
     /// Returns the smallest straight distance from `n` to the
     /// `targets`, and lets each target keep `n` when `n` is the
     /// closest node to it so far.
-    public static double bestH(PathTarget[] targets, PathNode n) {
+    private static double nearestOffered(PathTarget[] targets, PathNode n) {
         double best = Float.MAX_VALUE;
         for (PathTarget t : targets) {
             double h = n.distTo(t.x, t.y, t.z);
@@ -531,9 +590,9 @@ public final class Path {
     }
 
     /// Starts a search from the node `from` into `heap`.
-    public static void start(PathHeap heap, PathTarget[] targets, PathNode from) {
+    private static void start(PathHeap heap, PathTarget[] targets, PathNode from) {
         from.g = 0.0;
-        from.h = PathNode.fl(bestH(targets, from));
+        from.h = PathNode.fl(nearestOffered(targets, from));
         from.f = from.h;
         heap.insert(from);
     }
@@ -541,7 +600,13 @@ public final class Path {
     /// Lets the search step from `cur` onto its neighbour `n`. The
     /// step counts when the walked length stays under `maxlen` and
     /// it is the cheapest way to `n` so far.
-    public static void relax(PathHeap heap, PathTarget[] targets, double maxlen, PathNode cur, PathNode n) {
+    private static void relax(
+            PathHeap heap,
+            PathTarget[] targets,
+            double maxlen,
+            PathNode cur,
+            PathNode n
+    ) {
         double d = cur.distTo(n.x, n.y, n.z);
         double w = PathNode.fl(cur.walked + d);
         double g = PathNode.fl(PathNode.fl(cur.g + d) + n.malus());
@@ -550,7 +615,7 @@ public final class Path {
         if (w < maxlen && (!open || g < n.g)) {
             n.came = cur;
             n.g = g;
-            n.h = PathNode.fl(bestH(targets, n) * FUDGING);
+            n.h = PathNode.fl(nearestOffered(targets, n) * FUDGING);
             if (open) {
                 heap.changeCost(n, n.g + n.h);
             } else {

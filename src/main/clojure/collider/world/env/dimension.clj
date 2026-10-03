@@ -1,20 +1,16 @@
 (ns collider.world.env.dimension
-  "Dimension types of the vanilla pack: the shape, light and
-  attributes of a level."
+  "Dimension types, with the shape, light and attributes of each
+  level."
   (:require [collider.data :as data]))
 
 (set! *warn-on-reflection* true)
 
-(declare attribute-value)
-
-(defn- attribute-entry [[k v]]
-  [(data/kebab k) (attribute-value v)])
-
 (defn- attribute-value [v]
-  (cond
-    (map? v) (into {} (map attribute-entry) v)
-    (vector? v) (mapv attribute-value v)
-    :else v))
+  (letfn [(entry [[k x]] [(data/kebab k) (attribute-value x)])]
+    (cond
+      (map? v) (into {} (map entry) v)
+      (vector? v) (mapv attribute-value v)
+      :else v)))
 
 (defn attributes
   "Returns the environment attributes of json of a dimension type
@@ -38,10 +34,10 @@
    :has-ender-dragon-fight (get json "has_ender_dragon_fight" false)
    :has-fixed-time (get json "has_fixed_time" false)))
 
-(defn- look [json]
+(defn- environment [json]
   (hash-map
    :ambient-light (get json "ambient_light")
-   :infiniburn (data/kebab (subs (get json "infiniburn") 1))
+   :infiniburn (data/kebab (data/tag-name (get json "infiniburn")))
    :monster-spawn-light-level
    (spawn-light (get json "monster_spawn_light_level"))
    :monster-spawn-block-light-limit
@@ -52,7 +48,7 @@
 
 (defn- dimension-type [json]
   (let [clock (get json "default_clock")]
-    (cond-> (merge (shape json) (look json))
+    (cond-> (merge (shape json) (environment json))
       clock (assoc :default-clock (data/kebab clock)))))
 
 (def ^:private ^:table type-table

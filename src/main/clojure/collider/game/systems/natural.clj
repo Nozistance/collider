@@ -9,10 +9,10 @@
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.mob.placement :as placement]
             [collider.game.areas :as areas]
             [collider.random :as random]
             [collider.vec :as v]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome]
             [collider.world.env.difficulty :as difficulty]
@@ -66,7 +66,7 @@
           (:players ctx))
     []))
 
-(defn- category-of [e] (:category (placement/facts (:type e))))
+(defn- category-of [e] (:category (spawn/facts (:type e))))
 
 (defn- add-mob [counts near-ids cat]
   (reduce #(update-in %1 [:local %2 cat] (fnil inc 0))
@@ -122,7 +122,7 @@
 
 (defn- opens? [ctx [x y z]]
   (and (> (long y) (long (:min-y ctx)))
-       (not (placement/conductor? (at ctx x y z)))))
+       (not (block/conductor? (at ctx x y z)))))
 
 (defn- nearest-sq [ctx x y z]
   (let [p [x y z]]
@@ -162,16 +162,16 @@
       [(get (:kinds ctx) (:type e)) (+ lo (below r span))])))
 
 (defn- box-at [k x y z]
-  (placement/spawn-box k (+ (long x) 0.5) y (+ (long z) 0.5)))
+  (spawn/spawn-box k (+ (long x) 0.5) y (+ (long z) 0.5)))
 
 (defn- fits? [ctx k d2 x y z]
   (let [cs (:chunks ctx)
         far (long (get-in ctx [:despawn (:category k)]))]
     (and (or (:far k) (<= (double d2) (double (* far far))))
          (:summon k)
-         (placement/position-ok? cs k x y z)
-         (placement/rules-ok? cs k (:peaceful? ctx) x y z)
-         (placement/box-free? cs (box-at k x y z)))))
+         (spawn/position-ok? cs k x y z)
+         (spawn/rules-ok? cs k (:peaceful? ctx) x y z)
+         (spawn/mob-box-free? cs (box-at k x y z)))))
 
 (defn- mob-box [k x y z] (box-at (dissoc k :scale) x y z))
 
@@ -313,7 +313,7 @@
   (into {} (for [es (vals (get-in ctx [:biome :spawners]))
                  {t :type} es
                  :when (mobs/mob-type? t)]
-             [t (placement/kind
+             [t (spawn/kind
                   t (get-in mobs/types [t :spawns-on]))])))
 
 (defn- base [w]
@@ -324,7 +324,7 @@
      :counted (counted w) :players (spawners w)
      :biome (biome-of w) :peaceful? (zero? (difficulty/id w))
      :despawn (into {} (map (fn [[c f]] [c (:despawn f)]))
-                    (placement/categories))
+                    (spawn/categories))
      :spawn (when (= dim (:world-spawn-dimension w :overworld))
               (:world-spawn w))}))
 
@@ -347,7 +347,7 @@
     (:mobs (reduce #(settle ctx %1 %2) acc pairs))))
 
 (defn- wanted [w]
-  (not-empty (filterv #(wanted? w %) (placement/categories))))
+  (not-empty (filterv #(wanted? w %) (spawn/categories))))
 
 (defn- spawn-deltas [w]
   (when-let [cs (wanted w)]

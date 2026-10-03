@@ -6,35 +6,36 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys])
-  (:import (collider.world.space Exposure Rays Region)))
+  (:import (clojure.lang Atom)
+           (collider.world.space Exposure Rays SectionGrid)))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const region-r 10)
 
-(defn- rg-grid ^objects [^Region rg] (.grid rg))
+(defn- rg-grid ^objects [^SectionGrid rg] (.grid rg))
 
-(defn- rg-cols ^objects [^Region rg] (.cols rg))
+(defn- rg-cols ^objects [^SectionGrid rg] (.cols rg))
 
-(defn- rg-read [^Region rg] (.readAbsent rg))
+(defn- rg-read [^SectionGrid rg] (.readAbsent rg))
 
-(defn- rg-loaded ^clojure.lang.Atom [^Region rg] (.loaded rg))
+(defn- rg-loaded ^Atom [^SectionGrid rg] (.loaded rg))
 
-(defn- rg-cx0 ^long [^Region rg] (.cx0 rg))
+(defn- rg-cx0 ^long [^SectionGrid rg] (.cx0 rg))
 
-(defn- rg-cz0 ^long [^Region rg] (.cz0 rg))
+(defn- rg-cz0 ^long [^SectionGrid rg] (.cz0 rg))
 
-(defn- rg-sy0 ^long [^Region rg] (.sy0 rg))
+(defn- rg-sy0 ^long [^SectionGrid rg] (.sy0 rg))
 
-(defn- rg-ncx ^long [^Region rg] (.ncx rg))
+(defn- rg-ncx ^long [^SectionGrid rg] (.ncx rg))
 
-(defn- rg-ncz ^long [^Region rg] (.ncz rg))
+(defn- rg-ncz ^long [^SectionGrid rg] (.ncz rg))
 
-(defn- rg-nsy ^long [^Region rg] (.nsy rg))
+(defn- rg-nsy ^long [^SectionGrid rg] (.nsy rg))
 
 (defn loaded-payloads
   "Returns the chunks that the reads of rg load, by id."
-  [^Region rg]
+  [^SectionGrid rg]
   @(rg-loaded rg))
 
 (defn- section-range [^long cy]
@@ -55,43 +56,44 @@
 (defn- section-at [col ^long sy]
   (chunk/chunk-section col (+ sy chunk/section-offset)))
 
-(defn- region-id [^Region rg ^long ix ^long iz]
+(defn- region-id [^SectionGrid rg ^long ix ^long iz]
   (chunk/pos->id (+ (rg-cx0 rg) ix) (+ (rg-cz0 rg) iz)))
 
-(defn- col-index ^long [^Region rg ^long ix ^long iz]
+(defn- col-index ^long [^SectionGrid rg ^long ix ^long iz]
   (+ (* ix (rg-ncz rg)) iz))
 
-(defn- cell-index ^long [^Region rg ^long ix ^long iz ^long iy]
+(defn- cell-index ^long [^SectionGrid rg ^long ix ^long iz ^long iy]
   (+ (* (col-index rg ix iz) (rg-nsy rg)) iy))
 
-(defn- put-column [^Region rg ^long ix ^long iz col]
+(defn- put-column [^SectionGrid rg ^long ix ^long iz col]
   (aset ^objects (rg-cols rg) (col-index rg ix iz) col)
   (when col
     (dotimes [iy (rg-nsy rg)]
       (aset ^objects (rg-grid rg) (cell-index rg ix iz iy)
             (section-at col (+ (rg-sy0 rg) iy))))))
 
-(defn- fill-grid [^Region rg chunks]
+(defn- fill-grid [^SectionGrid rg chunks]
   (dotimes [ix (rg-ncx rg)]
     (dotimes [iz (rg-ncz rg)]
       (put-column rg ix iz (get chunks (region-id rg ix iz))))))
+
+(defn- empty-grid ^SectionGrid [[cx0 cz0 sy0 ncx ncz nsy] read-absent]
+  (let [n (* (long ncx) (long ncz))]
+    (SectionGrid. (object-array (* n (long nsy))) (object-array n)
+                  (int cx0) (int cz0) (int sy0) (int ncx) (int ncz)
+                  (int nsy) read-absent (atom {}))))
 
 (defn block-reader
   "Returns a reader over the blocks around pos. The reader asks
   read-absent for each absent chunk it needs. The answer is the
   payload of that chunk, read or generated."
-  (^Region [chunks pos] (block-reader chunks pos nil))
-  (^Region [chunks pos read-absent]
-   (let [[cx0 cz0 sy0 ncx ncz nsy] (region-bounds pos)
-         n (* (long ncx) (long ncz))
-         rg (Region. (object-array (* n (long nsy))) (object-array n)
-                     (int cx0) (int cz0) (int sy0)
-                     (int ncx) (int ncz) (int nsy) read-absent
-                     (atom {}))]
+  (^SectionGrid [chunks pos] (block-reader chunks pos nil))
+  (^SectionGrid [chunks pos read-absent]
+   (let [rg (empty-grid (region-bounds pos) read-absent)]
      (fill-grid rg chunks)
      rg)))
 
-(defn- summon [^Region rg ^long ix ^long iz]
+(defn- summon [^SectionGrid rg ^long ix ^long iz]
   (let [id (region-id rg ix iz)
         payload ((rg-read rg) id)]
     (swap! (rg-loaded rg) assoc id payload)
@@ -102,16 +104,14 @@
 
 (defn read-block
   "Returns the block state at x y z in region rg, air outside it."
-  ^long [^Region rg ^long x ^long y ^long z]
+  ^long [^SectionGrid rg ^long x ^long y ^long z]
   (Rays/block rg (summoner rg) (unchecked-int x) (unchecked-int y)
               (unchecked-int z)))
 
-(def ^:private ^:const ray-w 21)
-
-(def ^:private air-names #{:air :cave-air :void-air})
+(def ^:private ^:const ray-w Rays/W)
 
 (defn- resistance [^long st ^doubles resist]
-  (cond (contains? air-names (block/name-of st)) Float/NaN
+  (cond (block/air-type? st) Float/NaN
         (block/waterlogged? st) (max (aget resist st) 100.0)
         :else (aget resist st)))
 
@@ -143,7 +143,7 @@
 (defn rays
   "Returns the rays of a blast of power at center through rg, whose
   cells e reads."
-  ^Rays [^Region rg ^Exposure e [cx cy cz] power seed]
+  ^Rays [^SectionGrid rg ^Exposure e [cx cy cz] power seed]
   (let [cx (double cx) cy (double cy) cz (double cz)
         [ox oy oz] (ray-origin cx cy cz)]
     (Rays/cast e (summoner rg) ^floats @resist-table (long ox)
@@ -151,9 +151,8 @@
                (long (hash seed)))))
 
 (defn reached
-  "Returns the cells that the rays rs of a blast at center reach.
-  The result holds the cells with a block and the count of all
-  reached cells."
+  "Returns the cells that the rays rs of a blast at center reach,
+  with the cells that hold a block and the count of all of them."
   [^Rays rs [cx cy cz]]
   (let [origin (ray-origin (double cx) (double cy) (double cz))
         hit (Rays/hit rs)]
@@ -163,49 +162,38 @@
 (defn exposure
   "Returns what a blast at center sees through rg. The bodies that
   one blast reaches share it."
-  ^Exposure [^Region rg [cx cy cz]]
-  (Exposure/of rg (block/collision-arr) (phys/kinds) (double cx)
-               (double cy) (double cz)))
+  ^Exposure [^SectionGrid rg [cx cy cz]]
+  (Exposure. rg (block/collision-arr) (phys/kinds) (double cx)
+             (double cy) (double cz)))
 
 (defn affected-blocks
-  "Returns the cells that a blast of power at center reaches.
-  The result holds the cells with a block and the count of all
-  reached cells."
-  [^Region rg center power seed]
+  "Returns what the rays of a blast of power at center through rg
+  reach, as reached does."
+  [^SectionGrid rg center power seed]
   (reached (rays rg (exposure rg center) center power seed) center))
 
 (defn exposed
   "Returns the share, 0.0 to 1.0, of a body at p that the blast of e
-  at the center reaches without a block in the way. The body is a box
-  of half width half and height height; flags tell how it meets the
-  blocks whose shape depends on the body."
-  ([e center p half height] (exposed e center p half height 0))
-  ([^Exposure e _center [px py pz] half height flags]
-   (Exposure/density e (double px) (double py) (double pz)
-                     (double half) (double height) (int flags))))
+  reaches without a block in the way. The body is a box of half width
+  half and height height. The flags tell how it meets the blocks
+  whose shape depends on the body."
+  ([e p half height] (exposed e p half height 0))
+  ([^Exposure e [px py pz] half height flags]
+   (.density e (double px) (double py) (double pz)
+             (double half) (double height) (int flags))))
 
 (defn block-density
-  "Returns the share, 0.0 to 1.0, of a body at p that the blast at
-  the center reaches through rg without a block in the way. The body
-  is a box of half width half and height height; flags tell how it
-  meets the blocks whose shape depends on the body."
+  "Returns what exposed returns for the blast at center through rg."
   ([rg center p half height]
    (block-density rg center p half height 0))
-  ([^Region rg center p half height flags]
-   (exposed (exposure rg center) center p half height flags)))
+  ([^SectionGrid rg center p half height flags]
+   (exposed (exposure rg center) p half height flags)))
 
 (defn shuffled
   "Returns v in the order seed shuffles it into."
   [v seed]
-  (let [^objects a (to-array v)]
-    (loop [i (alength a)]
-      (if (> i 1)
-        (let [j (long (* i (random/of-key [seed :shuffle i])))
-              t (aget a (dec i))]
-          (aset a (dec i) (aget a j))
-          (aset a j t)
-          (recur (dec i)))
-        (vec a)))))
+  (random/shuffled #(random/below (random/of-key [seed :shuffle %]) %)
+                   v))
 
 (def ^:private ^:const merge-cap 16)
 
@@ -230,7 +218,7 @@
               (add-stack acc pos (:item s) (long (:count s 1))))]
     (reduce add cs (block/drops st roll radius))))
 
-(defn- dropping? [^Region rg [x y z]]
+(defn- dropping? [^SectionGrid rg [x y z]]
   (let [st (read-block rg (long x) (long y) (long z))]
     (when (and (pos? st) (not (block/tnt? st))) st)))
 
@@ -238,7 +226,7 @@
   "Returns [pos stack] pairs of what the blast leaves behind. The
   drops of the destroyed positions merge into few stacks. seed
   decides the random drops. The drops depend on the blast radius."
-  [^Region rg positions seed radius]
+  [^SectionGrid rg positions seed radius]
   (let [add (fn [cs pos]
               (if-let [st (dropping? rg pos)]
                 (pos-stacks cs st pos seed radius)

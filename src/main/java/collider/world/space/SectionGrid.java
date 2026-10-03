@@ -2,9 +2,13 @@ package collider.world.space;
 
 import clojure.lang.Atom;
 
-/// The sections that an explosion may reach with the chunk columns
+/// The sections that an explosion may reach, with the chunk columns
 /// they come from.
 ///
+/// @param grid The sections by grid x, then grid z, then grid y; null
+///     where a column or a section is absent.
+/// @param cols The chunk columns by grid x, then grid z; null where
+///     the column is absent.
 /// @param cx0 The chunk x of the first cell.
 /// @param cz0 The chunk z of the first cell.
 /// @param sy0 The section y of the first cell.
@@ -13,7 +17,7 @@ import clojure.lang.Atom;
 /// @param nsy The size of the grid along y, in sections.
 /// @param readAbsent The function that reads an absent chunk, or nil.
 /// @param loaded The chunks that `readAbsent` gave, by id.
-public record Region(
+public record SectionGrid(
         Object[] grid,
         Object[] cols,
         int cx0,
