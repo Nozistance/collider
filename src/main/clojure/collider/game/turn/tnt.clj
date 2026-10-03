@@ -149,12 +149,39 @@
         (update :out into ds)
         (update :idx place))))
 
-(defn- hit-body [tick b [s motions] body]
-  (let [id (nth body 0)
-        h (blast/hit b body)
-        s (if (:gone? h) (gone s id) (written s tick id (:ds h)))
-        s (if (neg? (long id)) s (update s :out into (:ds h)))]
-    [s (cond-> motions (:motion h) (assoc id (:motion h)))]))
+(defn- after-hit [tick m id ds]
+  (when-let [e (get m id)] (apply/entity tick e ds)))
+
+(defn- hit-of
+  "Returns the function that gives [id h e a] of a body that blast b
+  hits in s, where h is the hit and e and a are the body in :cur and
+  in :after once it took it."
+  [s tick b]
+  (let [cur (:cur s) after (:after s)]
+    (fn [body]
+      (let [id (nth body 0) h (blast/hit b body) ds (:ds h)]
+        (if (:gone? h)
+          [id h]
+          [id h (after-hit tick cur id ds)
+           (after-hit tick after id ds)])))))
+
+(defn- put [m id x] (if x (assoc! m id x) m))
+
+(defn- took
+  "Returns s after the hits of one blast, with the motions of the
+  players it pushes by eid."
+  [s hits]
+  (let [step (fn [[cur after out mo] [id h e a]]
+               [(put cur id e) (put after id a)
+                (if (neg? (long id)) out (reduce conj! out (:ds h)))
+                (cond-> mo (:motion h) (assoc id (:motion h)))])
+        init [(transient (:cur s)) (transient (:after s))
+              (transient (:out s)) {}]
+        [cur after out mo] (reduce step init hits)
+        s (assoc s :cur (persistent! cur) :after (persistent! after)
+                   :out (persistent! out))]
+    [(reduce gone s (keep #(when (:gone? (nth % 1)) (nth % 0)) hits))
+     mo]))
 
 (defn- spawned [s spawns]
   (reduce (fn [s e]
@@ -190,9 +217,8 @@
   [s world eid e pos]
   (let [t (:tick world)
         b (blast/of world (spec s eid e pos))
-        bodies (->> (blast/bodies b (:idx s) (now-of s eid))
-                    (blast/sighted b))
-        [s motions] (reduce #(hit-body t b %1 %2) [s {}] bodies)
+        hits (blast/struck b (:idx s) (now-of s eid) (hit-of s t b))
+        [s motions] (took s hits)
         {:keys [ds spawns]} (blast/finish b motions)]
     (-> s
         (update :w overlay/wrote eid ds)

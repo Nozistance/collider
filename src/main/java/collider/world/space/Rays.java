@@ -20,7 +20,7 @@ public final class Rays {
 
     private static final float STEP_DECAY = 0.22500001F;
 
-    private static int column(SectionGrid rg, int x, int z) {
+    static int column(SectionGrid rg, int x, int z) {
         int ix = (x >> 4) - rg.cx0();
         int iz = (z >> 4) - rg.cz0();
         if (ix < 0 || ix >= rg.ncx() || iz < 0 || iz >= rg.ncz()) return -1;

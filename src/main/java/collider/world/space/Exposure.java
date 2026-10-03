@@ -2,6 +2,7 @@ package collider.world.space;
 
 import clojure.lang.IFn;
 import collider.world.Collision;
+import collider.world.Section;
 
 /// The cells around a blast that may block its sight, to share among
 /// the bodies it reaches. A body sees the blast from a sample point
@@ -120,25 +121,62 @@ public final class Exposure {
 
     private void build() {
         char[] st = new char[W * W * W];
-        char[] sm = new char[S * S * S];
-        for (int ix = 0; ix < W; ix++) {
-            for (int iy = 0; iy < W; iy++) {
-                for (int iz = 0; iz < W; iz++) {
-                    int b = read(ox + ix, oy + iy, oz + iz);
-                    st[(ix * W + iy) * W + iz] = (char) b;
-                    sm[sumIndex(ix + 1, iy + 1, iz + 1)] = (char) ((mayCollide(b) ? 1 : 0)
-                            + sm[sumIndex(ix, iy + 1, iz + 1)]
-                            + sm[sumIndex(ix + 1, iy, iz + 1)]
-                            + sm[sumIndex(ix + 1, iy + 1, iz)]
-                            - sm[sumIndex(ix, iy, iz + 1)]
-                            - sm[sumIndex(ix, iy + 1, iz)]
-                            - sm[sumIndex(ix + 1, iy, iz)]
-                            + sm[sumIndex(ix, iy, iz)]);
-                }
+        for (int iy = 0; iy < W; iy++) {
+            int y = oy + iy;
+            int sy = (y >> 4) - rg.sy0();
+            if (sy < 0 || sy >= rg.nsy()) continue;
+            for (int iz = 0; iz < W; iz++) {
+                rowAlongX(st, y, sy, iz);
             }
         }
         states = st;
-        sums = sm;
+        sums = sums(st);
+    }
+
+    private void rowAlongX(char[] st, int y, int sy, int iz) {
+        int z = oz + iz;
+        int ix = 0;
+        while (ix < W) {
+            int x = ox + ix;
+            int n = Math.min(16 - (x & 15), W - ix);
+            Section s = section(Rays.column(rg, x, z), sy);
+            if (s != null) {
+                int at = (ix * W + (y - oy)) * W + iz;
+                s.blocksAlongX(Section.index(x, y, z), n, st, at, W * W);
+            }
+            ix += n;
+        }
+    }
+
+    private Section section(int col, int sy) {
+        return col < 0 ? null : (Section) rg.grid()[col * rg.nsy() + sy];
+    }
+
+    private char[] sums(char[] st) {
+        char[] sm = new char[S * S * S];
+        int last = -1;
+        int hit = 0;
+        for (int ix = 0; ix < W; ix++) {
+            for (int iy = 0; iy < W; iy++) {
+                int from = (ix * W + iy) * W;
+                int to = sumIndex(ix + 1, iy + 1, 1);
+                for (int iz = 0; iz < W; iz++) {
+                    int b = st[from + iz];
+                    if (b != last) {
+                        last = b;
+                        hit = mayCollide(b) ? 1 : 0;
+                    }
+                    sm[to + iz] = (char) (sm[to + iz - 1] + hit);
+                }
+                addRow(sm, sumIndex(ix + 1, iy, 0), to - 1, S);
+            }
+            addRow(sm, sumIndex(ix, 0, 0), sumIndex(ix + 1, 0, 0), S * S);
+        }
+        return sm;
+    }
+
+    private static void addRow(char[] sm, int from, int to, int n) {
+        for (int k = 0; k < n; k++) sm[to + k] += sm[from + k];
     }
 
     private int collidingIn(int x0, int y0, int z0, int x1, int y1, int z1) {
