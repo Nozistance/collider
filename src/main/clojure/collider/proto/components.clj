@@ -359,7 +359,6 @@
   ((:w c-painting-variant) buf v))
 
 (defn read-painting-variant
-  "Returns the painting variant at the read point."
   [^Buf buf]
   ((:r c-painting-variant) buf))
 
@@ -622,7 +621,8 @@
   (data/entry-name "data_component_type" (c/read-varint buf)))
 
 (defn read-patch
-  "Returns the changes to the default components of an item."
+  "Returns the changes to the default components of an item, or nil
+  when there are none."
   ([^Buf buf] (read-patch buf false))
   ([^Buf buf delimited?]
    (let [added (c/read-count buf)

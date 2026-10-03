@@ -22,7 +22,8 @@
   (delay (data/registry-id "particle_type" :entity-effect)))
 
 (defn kind-of
-  "Returns the type e shows itself as on the wire."
+  "Returns the type e shows itself as on the wire. A type the server
+  cannot show yet goes as :player."
   [e]
   (let [t (:type e)]
     (if (contains? kinds t) t :player)))
@@ -83,8 +84,6 @@
    :chicken [:chicken-variant :chicken-sound]})
 
 (defn- coat-fields
-  "Returns the coat and the voice of a cow, a pig or a chicken as the
-  ids of their registries."
   [kind meta]
   (let [[ck vk] (coat-keys kind)
         n (name kind)]

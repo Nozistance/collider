@@ -16,7 +16,8 @@
   (Murmur3/mixCollHash (unchecked-int h) (unchecked-int n)))
 
 (defn of-key
-  "Returns a number from 0 to 1 for the given key or keys."
+  "Returns a number at least 0 and below 1 for the given key or keys.
+  The same keys always give the same number."
   (^double [ks] (frac (hash ks)))
   (^double [a b] (frac (coll-hash (step (step 1 a) b) 2)))
   (^double [a b c]
@@ -25,13 +26,13 @@
    (frac (coll-hash (step (step (step (step 1 a) b) c) d) 4))))
 
 (defn pitch
-  "Returns a sound pitch around 1.0 for the given key or keys."
+  "Returns a sound pitch from 0.8 below 1.2 that the keys decide."
   (^double [ks] (+ 0.8 (* 0.4 (of-key ks))))
   (^double [a b c] (+ 0.8 (* 0.4 (of-key a b c)))))
 
 (defn hinge-pitch
-  "Returns the narrower sound pitch of doors and other hinges for the
-  given key or keys."
+  "Returns the pitch of a door or other hinge, from 0.9 below 1.0,
+  that the keys decide."
   (^double [ks] (+ 0.9 (* 0.1 (of-key ks))))
   (^double [a b c] (+ 0.9 (* 0.1 (of-key a b c)))))
 
@@ -42,7 +43,7 @@
   (RandomSupport/mixStafford13 z))
 
 (defn of-longs
-  "Returns a number from 0 to 1 for the given longs."
+  "Returns a number at least 0 and below 1 for the given longs."
   {:inline (fn [& args] `(RandomSupport/unit ~@args))
    :inline-arities #{3 4}}
   (^double [^long a ^long b ^long c] (RandomSupport/unit a b c))
@@ -66,13 +67,15 @@
   (+ centre (* spread (- a b))))
 
 (defn rnd
-  "Returns a number from 0 to 1 decided by tick t, eid and key k."
+  "Returns a number at least 0 and below 1 that tick t, eid and key k
+  decide."
   (^double [t eid k] (of-longs (long t) (long eid) (hash k)))
   (^double [t eid k i]
    (of-longs (long t) (long eid) (hash k) (long i))))
 
 (defn one-in?
-  "Returns true with a chance of one in n."
+  "Returns true with a chance of one in n, decided by tick t, eid and
+  key k."
   [t eid k ^long n]
   (zero? (long (* n (rnd t eid k)))))
 

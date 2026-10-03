@@ -30,7 +30,6 @@
 (def ^:private ^:const default-max-connections 256)
 
 (defn conn-state
-  "Returns the protocol state connection c is in."
   [^Conn c]
   (:state @(:props c)))
 
@@ -55,7 +54,6 @@
     (.offer ^BlockingQueue (:queue c) [:close])))
 
 (defn closing?
-  "Returns true once connection c is closing."
   [^Conn c]
   (.get ^AtomicBoolean (:closing c)))
 

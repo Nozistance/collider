@@ -85,7 +85,8 @@
   (if (seq s) (str (str/upper-case (subs s 0 1)) (subs s 1)) ""))
 
 (defn error-lines
-  "Returns the lines that tell the person about an error."
+  "Returns the lines that tell the person about an error. A single
+  reason goes on the first line, after what failed."
   [{:keys [what why command note]}]
   (let [why (if (string? why) [why] (vec why))
         one? (= 1 (count why))]

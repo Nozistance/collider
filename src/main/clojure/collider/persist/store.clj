@@ -1,6 +1,5 @@
 (ns collider.persist.store
-  "The saved world on disk, in region files, their manifests and
-  the meta root."
+  "Reading and committing the saved world."
   (:refer-clojure :exclude [load])
   (:require [clojure.edn :as edn]
             [clojure.java.io :as io]
@@ -292,7 +291,6 @@
   (update snap :levels #(per-level (fn [lm] (dissoc lm :chunks)) %)))
 
 (defn write-snapshot!
-  "Commits a snapshot to a store."
   [store snap]
   (commit! store (snapshot-meta snap)
            (per-level :chunks (:levels snap))))

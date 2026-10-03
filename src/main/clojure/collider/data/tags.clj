@@ -5,7 +5,6 @@
 (set! *warn-on-reflection* true)
 
 (defn- entry
-  "Returns entry e of a tag file as id, tag flag and requirement."
   [e]
   (let [[s required] (if (map? e)
                        [(get e "id") (get e "required" true)]

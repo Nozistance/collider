@@ -62,7 +62,6 @@
    :level-chunks-load-start 13})
 
 (defn game-event-packet
-  "Returns the game event packet of event with value."
   [event value]
   {:packet :game-event :event (game-events event) :value value})
 
@@ -93,7 +92,6 @@
    {:packet :ticking-step :steps 0}])
 
 (defn set-time-packet
-  "Returns the packet of the time m carries."
   [m]
   {:packet :set-time :age (:age m) :clocks (:clocks m)})
 

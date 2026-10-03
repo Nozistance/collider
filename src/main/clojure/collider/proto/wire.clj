@@ -74,7 +74,6 @@
                (buf/write-long! b (c/section-pos x y z)))))
 
 (def section-change
-  "One block change of a section update."
   (wire-type :wire/section-change sequential? c/read-section-change
              c/write-section-change))
 
@@ -378,11 +377,9 @@
     (codec-of schema :wire/read)))
 
 (defn reader
-  "Returns a fn that reads a value of schema."
   [schema]
   (reader* (m/schema schema)))
 
 (defn writer
-  "Returns a fn that writes a value of schema."
   [schema]
   (writer* (m/schema schema)))

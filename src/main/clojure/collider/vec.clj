@@ -30,7 +30,6 @@
   (V3. (+ (x a) (x b)) (+ (y a) (y b)) (+ (z a) (z b))))
 
 (defn dot
-  "Returns the dot product of a and b."
   ^double [a b]
   (+ (* (x a) (x b)) (* (y a) (y b)) (* (z a) (z b))))
 
@@ -46,7 +45,8 @@
       (V3. (/ (x v) l) (/ (y v) l) (/ (z v) l)))))
 
 (defn dist-xz-sq
-  "Returns the square of the distance between two points, ignoring y."
+  "Returns the squared distance from a to b in the xz plane. With tx
+  and tz the second point is given by its x and z."
   (^double [a b]
    (let [dx (- (x b) (x a))
          dz (- (z b) (z a))]
@@ -118,10 +118,12 @@
         (unchecked-int (bit-and (unchecked-long i) 65535))))
 
 (defn sin
-  "Returns the sine of a in radians from the table of Mth.sin."
+  "Returns the sine of a in radians at the precision of the game,
+  65536 steps a turn rounded to a float."
   ^double [^double a] (sin-at (* a sin-scale)))
 
 (defn cos
-  "Returns the cosine of a in radians from the table of Mth.cos."
+  "Returns the cosine of a in radians at the precision of the game,
+  65536 steps a turn rounded to a float."
   ^double [^double a]
   (sin-at (+ (* a sin-scale) 16384.0)))

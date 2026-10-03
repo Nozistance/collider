@@ -79,7 +79,7 @@
      :levels (:levels (level/synced world))}))
 
 (defn level-of
-  "Returns level dim of sight."
+  "Returns level dim of sight, the overworld when dim is nil."
   [sight dim]
   (get (:levels sight) (or dim home)))
 
@@ -130,7 +130,8 @@
                       schema/dims))))
 
 (defn recipients
-  "Returns the players that get effect m."
+  "Returns the players that get effect m. A :to player gets it alone,
+  and an :except player never gets it."
   [sight viewers m]
   (cond
     (:to m) [(:to m)]

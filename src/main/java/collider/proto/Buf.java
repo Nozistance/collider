@@ -26,7 +26,6 @@ public final class Buf {
         }
     }
 
-    /// Makes room for `n` more bytes.
     public void ensure(int n) {
         if (writeIndex + n > bytes.length) {
             byte[] b = new byte[Math.max(bytes.length * 2, writeIndex + n)];

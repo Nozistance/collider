@@ -10,7 +10,6 @@
 (set! *warn-on-reflection* true)
 
 (def file
-  "The settings file of the server."
   "config.edn")
 
 (def defaults

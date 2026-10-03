@@ -879,7 +879,8 @@
            {:state state :packet (:packet m)}))
 
 (defn decode
-  "Returns the packet read from buf in the connection state."
+  "Returns the packet read from buf in the connection state, or nil
+  for an id the state does not know."
   [state ^Buf buf]
   (let [id (c/read-varint buf)]
     (when-let [e (get (get @inbound state) id)]
@@ -890,7 +891,8 @@
         {:packet (:packet e)}))))
 
 (defn encode!
-  "Writes packet m into buf with the id of the connection state."
+  "Writes packet m into buf with its id in the connection state.
+  Throws for a packet the state cannot send."
   [state ^Buf buf m]
   (let [e (or (get (get @outbound state) (:packet m))
               (throw (no-writer state m)))]

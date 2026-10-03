@@ -54,7 +54,8 @@
              v))))
 
 (defn joined
-  "Returns vector a followed by vector b."
+  "Returns vector a followed by vector b. When one is empty the other
+  comes back as it is."
   [a b]
   (cond (zero? (count b)) a
         (zero? (count a)) b

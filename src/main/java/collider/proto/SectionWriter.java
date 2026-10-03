@@ -35,13 +35,11 @@ public final class SectionWriter {
         buf.writeByte(v);
     }
 
-    /// Writes the block light of section `s` to `buf`.
     public static void writeBlockLight(Buf buf, Section s) {
         byte[] a = s.blockLightBytes();
         buf.writeBytes(a == null ? DARK : a);
     }
 
-    /// Writes the sky light of section `s` to `buf`.
     public static void writeSkyLight(Buf buf, Section s) {
         byte[] a = s.skyLightBytes();
         buf.writeBytes(a == null ? DARK : a);
