@@ -34,10 +34,12 @@ public record GoalSelector(
     private static final Keyword TASK = Keyword.intern("task");
     private static final Keyword KIND = Keyword.intern("kind");
 
+    @Override
     public Object valAt(Object k) {
         return valAt(k, null);
     }
 
+    @Override
     public Object valAt(Object k, Object notFound) {
         if (k == GOALS) return goals;
         if (k == CHILD_LOOK) return childLook;

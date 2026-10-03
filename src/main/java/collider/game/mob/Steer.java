@@ -130,10 +130,12 @@ public record Steer(
         return kept(s, s.op, s.x, s.y, s.z, s.mult, s.speed, 0.0);
     }
 
+    @Override
     public Object valAt(Object k) {
         return valAt(k, null);
     }
 
+    @Override
     public Object valAt(Object k, Object notFound) {
         if (k == OP) return op;
         if (k == X) return x;
