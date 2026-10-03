@@ -22,10 +22,20 @@
 
 (def ^:private still (v/v3 [0.0 0.0 0.0]))
 
-(defn- f32 ^double [x] (double (float x)))
+(defn- pitch-set ^double [^double x]
+  (if (Double/isFinite x)
+    (let [r (num/f32 (rem (float x) (float 360.0)))]
+      (num/f32 (max -90.0 (min 90.0 r))))
+    x))
 
-(defn- pitch-set ^double [x]
-  (f32 (max -90.0 (min 90.0 (f32 (rem (float x) (float 360.0)))))))
+(defn- turn-props
+  "Returns the turn that yaw and pitch leave on an entity. A yaw or
+  pitch that is not finite leaves the old one, and the head takes the
+  yaw as it is."
+  [yaw pitch]
+  (cond-> {:head-yaw yaw}
+    (Double/isFinite (double yaw)) (assoc :yaw yaw)
+    (Double/isFinite (double pitch)) (assoc :pitch pitch)))
 
 (defn- rel-bits [rel same?]
   (reduce (fn [^long b ^long a]
@@ -40,8 +50,10 @@
         seen (sort (seq (:tracking e)))
         sent (if (set? rel)
                [0.0 0.0 (rel-bits rel false)]
-               [yaw pitch 0])]
-    [[:change-dimension eid dim pos yaw pitch]
+               [yaw pitch 0])
+        kept (merge {:yaw (:yaw e 0.0) :pitch (:pitch e 0.0)}
+                    (turn-props yaw pitch))]
+    [[:change-dimension eid dim pos (:yaw kept) (:pitch kept)]
      (out/to eid (out/change-dimension dim pos sent known seen))]))
 
 (defn- sent-angle [rel? v old]
@@ -96,8 +108,8 @@
 (defn- player-placed [id e pos [yaw pitch :as turn] rel]
   (into [[:teleport id pos]
          [:merge-entity id
-          {:yaw yaw :pitch pitch :head-yaw yaw :on-ground true
-           :vel (kept-vel e (if (set? rel) rel #{}) true)}]]
+          (assoc (turn-props yaw pitch) :on-ground true
+                 :vel (kept-vel e (if (set? rel) rel #{}) true))]]
         (player-teleport id e pos turn rel)))
 
 (defn- player-moved [world id from e0 to pos turn rel]
@@ -112,14 +124,14 @@
     (sel/in-level world from (concat wake moved))))
 
 (defn- placed-props [e pos yaw pitch rel]
-  (cond-> {:pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
-           :vel (kept-vel e rel true) :on-ground true}
+  (cond-> (assoc (turn-props yaw pitch) :pos (v/v3 pos)
+                 :vel (kept-vel e rel true) :on-ground true)
     (:nav e) (assoc :nav (:nav (nav/stop e)))))
 
 (defn- recreated [world id e pos yaw pitch rel]
   (let [t (:tick world)]
     (when-let [m (entity/loaded (entity/saved e t) t)]
-      (assoc m :pos (v/v3 pos) :yaw yaw :pitch pitch :head-yaw yaw
+      (assoc (merge m (turn-props yaw pitch)) :pos (v/v3 pos)
              :vel (kept-vel e rel false)
              :uuid (entity/uuid-of id e)))))
 
@@ -220,9 +232,10 @@
   (tp-at world eid (sel/selected world eid s) (vec p)))
 
 (defn- source-turn [world eid [ry yv] [rp pv]]
-  (let [src (get-in world [:entities eid])]
-    [(f32 (+ (double yv) (if ry (double (:yaw src 0.0)) 0.0)))
-     (f32 (+ (double pv) (if rp (double (:pitch src 0.0)) 0.0)))]))
+  (let [src (get-in world [:entities eid])
+        own #(if %1 (double (%2 src 0.0)) 0.0)]
+    [(num/f32 (+ (double yv) (own ry :yaw)))
+     (num/f32 (+ (double pv) (own rp :pitch)))]))
 
 (defn- turned-by [rel? v old]
   (if rel?
@@ -239,7 +252,7 @@
     (tp-at world eid (sel/selected world eid s) [x y z]
            #(rotated-turn % turn (first yaw) (first pitch)) nil)))
 
-(def ^:private deg (f32 (/ 180.0 (f32 Math/PI))))
+(def ^:private deg (num/f32 (/ 180.0 (num/f32 Math/PI))))
 
 (defn- look-angles
   "Returns the yaw and pitch that look from feet at from to pos."
@@ -250,7 +263,7 @@
         pitch (sel/wrapped (float (- (* (num/atan2 yd sd) deg))))
         turn (float (* (num/atan2 zd xd) deg))
         yaw (sel/wrapped (- turn (float 90.0)))]
-    [(f32 yaw) (pitch-set pitch)]))
+    [(num/f32 yaw) (pitch-set pitch)]))
 
 (defn- anchored [e anchor]
   (let [[x y z] (xyz (:pos e))]
@@ -259,7 +272,7 @@
       [x y z])))
 
 (defn- rotated [world id dim yaw pitch fx]
-  (let [turn {:yaw yaw :head-yaw yaw :pitch pitch}]
+  (let [turn (turn-props yaw pitch)]
     (sel/in-level world dim
                   (cond-> [[:merge-entity id turn]]
                     fx (conj (out/to id fx))))))
@@ -294,12 +307,12 @@
   e, and the values the player packet carries."
   [world eid e [ry yv] [rp pv]]
   (let [src (get-in world [:entities eid])
-        arg #(f32 (if %1 (+ (double %2) (double (or %3 0.0))) %2))
+        arg #(num/f32 (if %1 (+ (double %2) (double (or %3 0.0))) %2))
         y (arg ry yv (:yaw src)) x (arg rp pv (:pitch src))
-        dy (if ry (f32 (- y (f32 (:yaw e 0.0)))) y)
-        dx (if rp (f32 (- x (f32 (:pitch e 0.0)))) x)
-        ay (if ry (f32 (+ (f32 (:yaw e 0.0)) dy)) dy)
-        ax (if rp (f32 (+ (f32 (:pitch e 0.0)) dx)) dx)
+        dy (if ry (num/f32 (- y (num/f32 (:yaw e 0.0)))) y)
+        dx (if rp (num/f32 (- x (num/f32 (:pitch e 0.0)))) x)
+        ay (if ry (num/f32 (+ (num/f32 (:yaw e 0.0)) dy)) dy)
+        ax (if rp (num/f32 (+ (num/f32 (:pitch e 0.0)) dx)) dx)
         sent [dy (boolean ry) dx (boolean rp)]]
     [ay (pitch-set (max -90.0 (min 90.0 ax))) sent]))
 

@@ -229,8 +229,8 @@
         :else :mob))
 
 (def ^:private kept
-  {:mob [:health :death-time :color :sheared? :sound-variant
-         :effects :absorption :fall]
+  {:mob [:health :death-time :color :variant :sheared?
+         :sound-variant :effects :absorption :fall]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
@@ -239,7 +239,7 @@
    :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults
-  {:mob {:death-time 0 :color 0 :sheared? false}
+  {:mob {:death-time 0 :sheared? false}
    :item {:age 0 :pickup-delay 0 :health 5.0}
    :experience-orb {:value 0 :count 1 :age 0 :health 5.0}
    :tnt {:fuse 80}
@@ -311,6 +311,7 @@
     (-> e
         (assoc :head-yaw (:yaw e) :health-sent top
                :health (or (:health m) top))
+        (update (mobs/look-key (:type m)) #(or % 0))
         (cond-> (:carrots m) (assoc :hop {:carrots (:carrots m)}))
         (loaded-timers m (long tick)))))
 

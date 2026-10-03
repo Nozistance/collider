@@ -28,6 +28,13 @@
   ^double [^double a ^double b]
   (double (unchecked-float (- a b))))
 
+(defn wrap-degrees
+  "Returns angle a in degrees as a float from -180 up to 180. An
+  infinite angle gives NaN."
+  {:inline (fn [a] `(Mth/wrapDegrees (unchecked-float ~a)))}
+  [a]
+  (Mth/wrapDegrees (unchecked-float a)))
+
 (defn fdiv
   "Returns a divided by b rounded to a float."
   ^double [^double a ^double b]

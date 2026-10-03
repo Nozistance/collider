@@ -168,8 +168,8 @@
          (< (long (:love (:task e) 0)) mate-ticks))))
 
 (defn- newborn [spec world t eid e o]
-  (let [color ((:child-color spec) world t eid e o)]
-    (assoc (mobs/new-mob (:type e) (:pos e) color t)
+  (let [look ((:child-look spec) world t eid e o)]
+    (assoc (mobs/new-mob (:type e) (:pos e) look t)
            :baby-until (+ (long t) baby-ticks)
            :arrived [(* 2 (long t)) (* 2 (long eid))])))
 
@@ -449,12 +449,13 @@
   "Returns the spec of a breed from its goals, highest priority first.
   A goal ranks by its place unless it names its priority. Each goal
   gets its flags as a bit mask too. The spec also picks the
-  colour of a newborn from both parents."
-  ([goals] (spec goals (fn [_ _ _ a _] (:color a))))
-  ([goals child-color]
+  look of a newborn from both parents."
+  ([goals]
+   (spec goals (fn [_ _ _ a _] ((mobs/look-key (:type a)) a))))
+  ([goals child-look]
    (let [gs (vec (map-indexed ranked goals))]
      (GoalSelector.
-       gs child-color (count gs) (object-array (map :kind gs))
+       gs child-look (count gs) (object-array (map :kind gs))
        (long-array (map :prio gs)) (long-array (map :mask gs))
        (fns gs :running?) (fns gs :stop)
        (fns gs :start) (fns gs :continue?) (fns gs :tick)
