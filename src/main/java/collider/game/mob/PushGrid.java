@@ -194,7 +194,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         return g;
     }
 
-    private static long cell(double c) {
+    private static long cellCoord(double c) {
         return Math.floorDiv((long) Math.floor(c), 4);
     }
 
@@ -210,7 +210,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         double r = half + widest, w = r + slack;
         long x0 = (long) Math.floor(x - w), x1 = (long) Math.floor(x + w);
         long z0 = (long) Math.floor(z - w), z1 = (long) Math.floor(z + w);
-        long cx = cell(x), cz = cell(z);
+        long cx = cellCoord(x), cz = cellCoord(z);
         boolean pinned = slack > 0.0;
         int[] hits = new int[16];
         int n = 0;
@@ -229,7 +229,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                             && Math.abs(zs[j] - z) < rj
                             && oy < y + height
                             && oy + heights[j] > y) {
-                        long ox = cell(xs[j]) - cx, oz = cell(zs[j]) - cz;
+                        long ox = cellCoord(xs[j]) - cx, oz = cellCoord(zs[j]) - cz;
                         if (ox < -1 || ox > 1 || oz < -1 || oz > 1) continue;
                         if (n == hits.length) {
                             hits = Arrays.copyOf(hits, n * 2);
@@ -395,24 +395,24 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     public Set<Map.Entry<Long, PushCell>> entrySet() {
         Map<Long, int[]> in = new HashMap<>();
         for (int i = 0; i < eids.length; i++) {
-            long k = key(cell(xs[i]), cell(zs[i]));
+            long k = key(cellCoord(xs[i]), cellCoord(zs[i]));
             int[] c = in.getOrDefault(k, new int[0]);
             c = Arrays.copyOf(c, c.length + 1);
             c[c.length - 1] = i;
             in.put(k, c);
         }
         Map<Long, PushCell> out = new HashMap<>();
-        in.forEach((k, c) -> out.put(k, cell(c)));
+        in.forEach((k, c) -> out.put(k, pushCell(c)));
         return out.entrySet();
     }
 
-    private PushCell cell(int[] c) {
-        int n = c.length;
+    private PushCell pushCell(int[] bodies) {
+        int n = bodies.length;
         long[] e = new long[n];
         double[] h = new double[n], t = new double[n];
         double[] x = new double[n], y = new double[n], z = new double[n];
         for (int i = 0; i < n; i++) {
-            int j = c[i];
+            int j = bodies[i];
             e[i] = eids[j];
             h[i] = halfs[j];
             t[i] = heights[j];
