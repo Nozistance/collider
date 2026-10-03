@@ -232,18 +232,9 @@
 (defn read-block-pos [^Buf buf]
   (cell/unpack (buf/read-long buf)))
 
-(defn section-pos
-  "Returns the section position as one long."
-  ^long [^long sx ^long sy ^long sz]
-  (bit-or (bit-shift-left (bit-and sx 0x3FFFFF) 42)
-          (bit-shift-left (bit-and sz 0x3FFFFF) 20)
-          (bit-and sy 0xFFFFF)))
-
 (defn read-section-pos [^Buf buf]
   (let [v (buf/read-long buf)]
-    [(bit-shift-right v 42)
-     (bit-shift-right (bit-shift-left v 44) 44)
-     (bit-shift-right (bit-shift-left v 22) 42)]))
+    [(cell/section-x v) (cell/section-y v) (cell/section-z v)]))
 
 (defn write-list
   "Writes the count of xs and each of them with f."

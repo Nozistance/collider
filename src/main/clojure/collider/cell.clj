@@ -1,5 +1,5 @@
 (ns collider.cell
-  "Block cells packed into one long."
+  "Block cells and section positions packed into one long."
   (:import (collider Cell)))
 
 (set! *warn-on-reflection* true)
@@ -25,3 +25,23 @@
   "Returns the coordinates of cell c as [x y z]."
   [^long c]
   [(Cell/x c) (Cell/y c) (Cell/z c)])
+
+(defn pack-section
+  {:inline (fn [x y z] `(Cell/packSection ~x ~y ~z))}
+  ^long [^long x ^long y ^long z]
+  (Cell/packSection x y z))
+
+(defn section-x
+  {:inline (fn [s] `(Cell/sectionX ~s))}
+  ^long [^long s]
+  (Cell/sectionX s))
+
+(defn section-y
+  {:inline (fn [s] `(Cell/sectionY ~s))}
+  ^long [^long s]
+  (Cell/sectionY s))
+
+(defn section-z
+  {:inline (fn [s] `(Cell/sectionZ ~s))}
+  ^long [^long s]
+  (Cell/sectionZ s))
