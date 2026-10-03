@@ -10,27 +10,34 @@ import clojure.lang.RT;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
-/// A run of block updates over one window of edits: the chunks, what
-/// the run collects, and the queue of neighbour updates. The queue
-/// keeps the order of vanilla's `CollectingNeighborUpdater`: updates
+/// A run of block updates over one window of edits, with the chunks,
+/// what the run collects and the queue of neighbour updates. Updates
 /// added while one runs wait in a layer, and the layer goes on top of
 /// the stack in the order it was added once the running one yields.
 public final class Neighbors {
 
+    /// The update flag that tells the clients.
+    private static final long CLIENTS = 2;
+
+    /// The x offsets of the six sides, in the order of updates: west,
+    /// east, down, up, north, south. Shape updates share the x
+    /// offsets and go west, east, north, south, down, up.
     private static final int[] DX = {-1, 1, 0, 0, 0, 0};
     private static final int[] DY = {0, 0, -1, 1, 0, 0};
     private static final int[] DZ = {0, 0, 0, 0, -1, 1};
     private static final int[] SY = {0, 0, 0, 0, -1, 1};
     private static final int[] SZ = {0, 0, -1, 1, 0, 0};
 
-    public Object chunks;
+    /// The chunks of the window as the run left them so far.
+    public ChunkIndex chunks;
     private ITransientCollection records, writes, ticks, sent;
     private final ArrayList<Object> placed = new ArrayList<>();
     private final ArrayDeque<Object> stack = new ArrayDeque<>();
     private final ArrayList<Object> added = new ArrayList<>();
-    private int count;
+    private boolean running;
 
-    public Neighbors(Object chunks) {
+    /// Starts a run over the window `chunks`.
+    public Neighbors(ChunkIndex chunks) {
         this.chunks = chunks;
     }
 
@@ -43,39 +50,47 @@ public final class Neighbors {
         return v == null ? PersistentVector.EMPTY : v.persistent();
     }
 
+    /// Adds the record `x`.
     public Neighbors record(Object x) {
         records = conj(records, x);
         return this;
     }
 
+    /// Adds the write `x`.
     public Neighbors write(Object x) {
         writes = conj(writes, x);
         return this;
     }
 
+    /// Adds the scheduled tick `x`.
     public Neighbors tick(Object x) {
         ticks = conj(ticks, x);
         return this;
     }
 
+    /// Adds `x` to what the clients are told.
     public Neighbors send(Object x) {
         sent = conj(sent, x);
         return this;
     }
 
+    /// Adds the placed cell `x`.
     public Neighbors addPlaced(Object x) {
         placed.add(x);
         return this;
     }
 
+    /// Returns how many records the run holds.
     public int recordCount() {
         return records == null ? 0 : ((Counted) records).count();
     }
 
+    /// Returns how many writes the run holds.
     public int writeCount() {
         return writes == null ? 0 : ((Counted) writes).count();
     }
 
+    /// Returns the write at place `n`.
     public Object writeAt(int n) {
         return ((Indexed) writes).nth(n);
     }
@@ -83,37 +98,70 @@ public final class Neighbors {
     /// Returns what the run collected as vectors: records, writes,
     /// ticks, sent and placed. The run ends here.
     public Object[] collected() {
-        return new Object[] {done(records), done(writes), done(ticks), done(sent), PersistentVector.create(placed)};
+        return new Object[] {
+            done(records),
+            done(writes),
+            done(ticks),
+            done(sent),
+            PersistentVector.create(placed)
+        };
     }
 
     /// Sets the block at `p`, which is `x` `y` `z`, to `st` with
     /// `flags` when its chunk is present, `y` is inside `minY` to
-    /// `maxY` and the block is not `st` already; records the write and
-    /// tells the clients when flag 2 asks. Returns the old state, or -1
-    /// when nothing was set.
-    public long place(Object p, int x, int y, int z, long st, long flags, int minY, int maxY) {
+    /// `maxY` and the block is not `st` already. Records the write and
+    /// tells the clients when the flags ask. Returns the old state, or
+    /// -1 when nothing was set.
+    public long place(
+            Object p,
+            int x,
+            int y,
+            int z,
+            long st,
+            long flags,
+            int minY,
+            int maxY
+    ) {
         if (y < minY || y > maxY) return -1;
-        ChunkIndex c = (ChunkIndex) chunks;
+        ChunkIndex c = chunks;
         if (c.get(x >> 4, z >> 4) == null) return -1;
         long old = Chunk.blockAt(c, x, y, z);
         if (old == st) return -1;
         chunks = c.withBlock(x, y, z, (int) st);
         records = conj(records, vec(p, st));
         writes = conj(writes, vec(p, old, st, flags));
-        if ((flags & 2) != 0) sent = conj(sent, p);
+        if ((flags & CLIENTS) != 0) sent = conj(sent, p);
         return old;
     }
 
     /// Returns true when the six blocks beside `x` `y` `z` are all
-    /// marked in `deaf`; outside the height counts as air.
-    public boolean deafAround(long x, long y, long z, boolean[] deaf, int minY, int maxY) {
-        ChunkIndex c = (ChunkIndex) chunks;
+    /// marked in `deaf`. Outside the height counts as air.
+    public boolean deafAround(
+            long x,
+            long y,
+            long z,
+            boolean[] deaf,
+            int minY,
+            int maxY
+    ) {
+        ChunkIndex c = chunks;
         for (int d = 0; d < 6; d++) {
-            long ny = y + DY[d];
-            int st = ny < minY || ny > maxY ? 0 : Chunk.blockAt(c, (int) (x + DX[d]), (int) ny, (int) (z + DZ[d]));
+            int st = stateAt(c, x + DX[d], y + DY[d], z + DZ[d], minY, maxY);
             if (!deaf[st]) return false;
         }
         return true;
+    }
+
+    private static int stateAt(
+            ChunkIndex c,
+            long x,
+            long y,
+            long z,
+            int minY,
+            int maxY
+    ) {
+        if (y < minY || y > maxY) return 0;
+        return Chunk.blockAt(c, (int) x, (int) y, (int) z);
     }
 
     /// Sets the changes of a command in order, each with `flags`. A
@@ -123,7 +171,15 @@ public final class Neighbors {
     /// as `(other run change)`. Each change set here that alters its
     /// block joins the placed cells as `[pos old]`.
     public Neighbors command(
-            Object changes, long flags, boolean[] plain, boolean[] deaf, IFn shaped, IFn other, int minY, int maxY) {
+            Object changes,
+            long flags,
+            boolean[] plain,
+            boolean[] deaf,
+            IFn shaped,
+            IFn other,
+            int minY,
+            int maxY
+    ) {
         for (Object c : (Iterable<?>) changes) {
             long st = RT.longCast(RT.nth(c, 1));
             Object fx = RT.nth(c, 2, null);
@@ -155,7 +211,8 @@ public final class Neighbors {
                     RT.longCast(RT.nth(p, 2)),
                     deaf,
                     minY,
-                    maxY)) {
+                    maxY
+            )) {
                 told.invoke(this, p, RT.nth(c, 1));
             }
         }
@@ -164,18 +221,18 @@ public final class Neighbors {
 
     /// Returns true while an update runs, so a new one waits.
     public boolean running() {
-        return count > 0;
+        return running;
     }
 
     /// Adds `item`; when none runs, runs it and all it adds with
     /// `step`, a function of this run and an item that returns the
     /// item to run again or nil.
     public Neighbors addAndRun(Object item, IFn step) {
-        if (count > 0) {
+        if (running) {
             added.add(item);
             return this;
         }
-        count = 1;
+        running = true;
         stack.push(item);
         for (; ; ) {
             for (int k = added.size() - 1; k >= 0; k--) {
@@ -185,13 +242,15 @@ public final class Neighbors {
             if (stack.isEmpty()) break;
             for (; ; ) {
                 Object top = stack.pop();
-                Object next = top instanceof Pass p ? p.step(this) : step.invoke(this, top);
+                Object next = top instanceof Pass p
+                        ? p.step(this)
+                        : step.invoke(this, top);
                 if (next == null) break;
                 stack.push(next);
                 if (!added.isEmpty()) break;
             }
         }
-        count = 0;
+        running = false;
         return this;
     }
 
@@ -212,8 +271,12 @@ public final class Neighbors {
             IFn told,
             IFn step,
             int minY,
-            int maxY) {
-        return addAndRun(new Pass(x, y, z, shape ? SY : DY, shape ? SZ : DZ, deaf, sides, told, minY, maxY), step);
+            int maxY
+    ) {
+        int[] dy = shape ? SY : DY;
+        int[] dz = shape ? SZ : DZ;
+        Pass p = new Pass(x, y, z, dy, dz, deaf, sides, told, minY, maxY);
+        return addAndRun(p, step);
     }
 
     private static final class Pass {
@@ -225,7 +288,18 @@ public final class Neighbors {
         private final int minY, maxY;
         private int i;
 
-        Pass(long x, long y, long z, int[] dy, int[] dz, boolean[] deaf, Object[] sides, IFn told, int minY, int maxY) {
+        Pass(
+                long x,
+                long y,
+                long z,
+                int[] dy,
+                int[] dz,
+                boolean[] deaf,
+                Object[] sides,
+                IFn told,
+                int minY,
+                int maxY
+        ) {
             this.x = x;
             this.y = y;
             this.z = z;
@@ -242,11 +316,7 @@ public final class Neighbors {
             while (i < 6) {
                 int d = i++;
                 long nx = x + DX[d], ny = y + dy[d], nz = z + dz[d];
-                int st = ny < minY || ny > maxY
-                        ? 0
-                        : Chunk.blockAt(
-                                (ChunkIndex) s.chunks, (int) nx,
-                                (int) ny, (int) nz);
+                int st = stateAt(s.chunks, nx, ny, nz, minY, maxY);
                 if (deaf[st]) continue;
                 told.invoke(s, vec(nx, ny, nz), sides[d], (long) st);
                 break;

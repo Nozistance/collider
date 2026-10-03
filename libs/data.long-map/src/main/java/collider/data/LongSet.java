@@ -96,8 +96,17 @@ public final class LongSet extends APersistentSet
     /// `(reducef acc k)`, and joins the parts in key order with
     /// `combinef`, on the fork-join functions that
     /// `PersistentHashMap.fold` takes.
-    public Object fold(int n, IFn combinef, IFn reducef, IFn fjinvoke, IFn fjtask, IFn fjfork, IFn fjjoin) {
-        return Node.fold(root, n, combinef, reducef, Node.KEYS, new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin));
+    public Object fold(
+            int n,
+            IFn combinef,
+            IFn reducef,
+            IFn fjinvoke,
+            IFn fjtask,
+            IFn fjfork,
+            IFn fjjoin
+    ) {
+        Node.Fork fj = new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin);
+        return Node.fold(root, n, combinef, reducef, Node.KEYS, fj);
     }
 
     /// Returns the set of keys `ks`.
@@ -199,7 +208,9 @@ public final class LongSet extends APersistentSet
 
     @Override
     public Object reduce(IFn f, Object init) {
-        return root == null ? init : Node.unreduced(Node.reduce(root, Node.KEYS, f, init));
+        return root == null
+                ? init
+                : Node.unreduced(Node.reduce(root, Node.KEYS, f, init));
     }
 
     @Override
@@ -218,7 +229,9 @@ public final class LongSet extends APersistentSet
         }
 
         Object edit() {
-            if (edit == null) throw new IllegalAccessError("Transient used after persistent!");
+            if (edit == null) {
+                throw new IllegalAccessError("Transient used after persistent!");
+            }
             return edit;
         }
 
@@ -231,7 +244,9 @@ public final class LongSet extends APersistentSet
         @Override
         public Transient disjoin(Object k) {
             Object e = edit();
-            if (Node.integral(k)) root = Node.remove(root, Node.u(((Number) k).longValue()), e);
+            if (Node.integral(k)) {
+                root = Node.remove(root, Node.u(((Number) k).longValue()), e);
+            }
             return this;
         }
 
@@ -245,7 +260,8 @@ public final class LongSet extends APersistentSet
         @Override
         public boolean contains(Object k) {
             edit();
-            return Node.integral(k) && Node.leafOf(root, Node.u(((Number) k).longValue())) != null;
+            return Node.integral(k)
+                    && Node.leafOf(root, Node.u(((Number) k).longValue())) != null;
         }
 
         @Override

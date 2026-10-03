@@ -38,7 +38,15 @@ final class Node {
     Node[] kids;
     Object[] vals;
 
-    Node(Object edit, long base, int shift, int count, long bits, Node[] kids, Object[] vals) {
+    Node(
+            Object edit,
+            long base,
+            int shift,
+            int count,
+            long bits,
+            Node[] kids,
+            Object[] vals
+    ) {
         this.edit = edit;
         this.base = base;
         this.shift = shift;
@@ -53,7 +61,10 @@ final class Node {
     }
 
     static boolean integral(Object k) {
-        return k instanceof Long || k instanceof Integer || k instanceof Short || k instanceof Byte;
+        return k instanceof Long
+                || k instanceof Integer
+                || k instanceof Short
+                || k instanceof Byte;
     }
 
     static final Comparator<Object> ORDER = Comparator.comparingLong(Node::key);
@@ -150,7 +161,9 @@ final class Node {
     }
 
     Node replace(int i, Node kid, Object v, int delta, Object e) {
-        Node n = owned(e) ? this : new Node(e, base, shift, count, bits, clone(kids), clone(vals));
+        Node n = owned(e)
+                ? this
+                : new Node(e, base, shift, count, bits, clone(kids), clone(vals));
         if (kid != null) n.kids[i] = kid;
         else n.vals[i] = v;
         n.count += delta;
@@ -177,8 +190,12 @@ final class Node {
         if (!n.covers(u)) return join(n, leaf(u, v, e), e);
         long bit = n.bit(u);
         int i = index(n.bits, bit);
-        if ((n.bits & bit) == 0) return n.insert(bit, i, n.shift == 0 ? null : leaf(u, v, e), v, e);
-        if (n.shift == 0) return v == null || n.vals[i] == v ? n : n.replace(i, null, v, 0, e);
+        if ((n.bits & bit) == 0) {
+            return n.insert(bit, i, n.shift == 0 ? null : leaf(u, v, e), v, e);
+        }
+        if (n.shift == 0) {
+            return v == null || n.vals[i] == v ? n : n.replace(i, null, v, 0, e);
+        }
         Node k = n.kids[i];
         int c = k.count;
         Node k2 = put(k, u, v, e);
@@ -200,7 +217,9 @@ final class Node {
     }
 
     static boolean apart(Node top, Node n) {
-        return top.shift > n.shift ? !top.covers(n.base) : top.shift != n.shift || top.base != n.base;
+        return top.shift > n.shift
+                ? !top.covers(n.base)
+                : top.shift != n.shift || top.base != n.base;
     }
 
     static long slots(Node n, int s) {
@@ -217,7 +236,9 @@ final class Node {
         if (b == null) return op == INTER ? null : a;
         if (a == b && f == null) return op == DIFF ? null : a;
         Node top = a.shift >= b.shift ? a : b;
-        if (apart(top, top == a ? b : a)) return op == UNION ? join(a, b, null) : op == INTER ? null : a;
+        if (apart(top, top == a ? b : a)) {
+            return op == UNION ? join(a, b, null) : op == INTER ? null : a;
+        }
         if (top.shift == 0) return leaves(op, a, b, f);
         int s = top.shift;
         long as = slots(a, s), bs = slots(b, s), all = as | bs;
@@ -244,13 +265,20 @@ final class Node {
     }
 
     static boolean same(Node x, int s, long bm, Node[] ks, int n) {
-        return x != null && x.shift == s && x.bits == bm && Arrays.equals(x.kids, 0, n, ks, 0, n);
+        return x != null
+                && x.shift == s
+                && x.bits == bm
+                && Arrays.equals(x.kids, 0, n, ks, 0, n);
     }
 
     static Node leaves(int op, Node a, Node b, IFn f) {
-        long bits = op == UNION ? a.bits | b.bits : op == INTER ? a.bits & b.bits : a.bits & ~b.bits;
+        long bits = op == UNION
+                ? a.bits | b.bits
+                : op == INTER ? a.bits & b.bits : a.bits & ~b.bits;
         if (bits == 0) return null;
-        if (a.vals == null) return bits == a.bits ? a : bits == b.bits ? b : a.restrict(bits);
+        if (a.vals == null) {
+            return bits == a.bits ? a : bits == b.bits ? b : a.restrict(bits);
+        }
         Object[] vs = new Object[Long.bitCount(bits)];
         boolean sameA = bits == a.bits, sameB = bits == b.bits;
         int i = 0;
@@ -258,12 +286,18 @@ final class Node {
             long bit = r & -r;
             Object va = (a.bits & bit) == 0 ? null : a.vals[index(a.bits, bit)];
             Object vb = (b.bits & bit) == 0 ? null : b.vals[index(b.bits, bit)];
-            Object v = va == null ? vb : vb == null || op != UNION ? va : f == null ? vb : value(f.invoke(va, vb));
+            Object v = va == null
+                    ? vb
+                    : vb == null || op != UNION
+                            ? va
+                            : f == null ? vb : value(f.invoke(va, vb));
             sameA &= v == va;
             sameB &= v == vb;
             vs[i] = v;
         }
-        return sameA ? a : sameB ? b : new Node(null, a.base, 0, vs.length, bits, null, vs);
+        return sameA
+                ? a
+                : sameB ? b : new Node(null, a.base, 0, vs.length, bits, null, vs);
     }
 
     Node restrict(long keep) {
@@ -279,8 +313,12 @@ final class Node {
 
     static Node range(Node n, long lo, long hi) {
         long first = n.base, last = n.base | ~above(n.shift);
-        if (Long.compareUnsigned(last, lo) < 0 || Long.compareUnsigned(first, hi) > 0) return null;
-        if (Long.compareUnsigned(first, lo) >= 0 && Long.compareUnsigned(last, hi) <= 0) return n;
+        if (Long.compareUnsigned(last, lo) < 0 || Long.compareUnsigned(first, hi) > 0) {
+            return null;
+        }
+        if (Long.compareUnsigned(first, lo) >= 0 && Long.compareUnsigned(last, hi) <= 0) {
+            return n;
+        }
         if (n.shift == 0) return n.restrict(n.bits & between(n, lo, hi));
         Node[] ks = new Node[n.kids.length];
         long bm = 0;
@@ -319,7 +357,9 @@ final class Node {
     static Object step(int mode, IFn f, Object acc, long k, Object v) {
         return switch (mode) {
             case KEYS -> f instanceof IFn.OLO p ? p.invokePrim(acc, k) : f.invoke(acc, k);
-            case KV -> f instanceof IFn.OLOO p ? p.invokePrim(acc, k, v) : f.invoke(acc, k, v);
+            case KV -> f instanceof IFn.OLOO p
+                    ? p.invokePrim(acc, k, v)
+                    : f.invoke(acc, k, v);
             default -> f.invoke(acc, MapEntry.create(k, v));
         };
     }
@@ -345,8 +385,14 @@ final class Node {
     }
 
     static Object emit(IFn f, Object acc, long k, Object old, Object nu, boolean set) {
-        if (set) return f instanceof IFn.OLOO p ? p.invokePrim(acc, k, nu != null) : f.invoke(acc, k, nu != null);
-        return f instanceof IFn.OLOOO p ? p.invokePrim(acc, k, old, nu) : f.invoke(acc, k, old, nu);
+        if (set) {
+            return f instanceof IFn.OLOO p
+                    ? p.invokePrim(acc, k, nu != null)
+                    : f.invoke(acc, k, nu != null);
+        }
+        return f instanceof IFn.OLOOO p
+                ? p.invokePrim(acc, k, old, nu)
+                : f.invoke(acc, k, old, nu);
     }
 
     static Object side(Node n, boolean old, IFn f, Object acc, boolean set) {
@@ -374,7 +420,9 @@ final class Node {
         if (apart(top, top == a ? b : a)) {
             boolean aFirst = Long.compareUnsigned(a.base, b.base) < 0;
             acc = diff(aFirst ? a : null, aFirst ? null : b, f, acc, set);
-            return RT.isReduced(acc) ? acc : diff(aFirst ? null : a, aFirst ? b : null, f, acc, set);
+            return RT.isReduced(acc)
+                    ? acc
+                    : diff(aFirst ? null : a, aFirst ? b : null, f, acc, set);
         }
         if (top.shift == 0) return diffLeaves(a, b, f, acc, set);
         int s = top.shift;
@@ -413,7 +461,9 @@ final class Node {
     }
 
     static Object part(Node n, int leaf, IFn combinef, IFn reducef, int mode, Fork fj) {
-        if (n.count <= leaf || n.shift == 0) return unreduced(reduce(n, mode, reducef, combinef.invoke()));
+        if (n.count <= leaf || n.shift == 0) {
+            return unreduced(reduce(n, mode, reducef, combinef.invoke()));
+        }
         Object[] tasks = new Object[n.kids.length];
         for (int i = 1; i < tasks.length; i++) {
             Node k = n.kids[i];
@@ -425,7 +475,9 @@ final class Node {
             }));
         }
         Object acc = part(n.kids[0], leaf, combinef, reducef, mode, fj);
-        for (int i = 1; i < tasks.length; i++) acc = combinef.invoke(acc, fj.join.invoke(tasks[i]));
+        for (int i = 1; i < tasks.length; i++) {
+            acc = combinef.invoke(acc, fj.join.invoke(tasks[i]));
+        }
         return acc;
     }
 
@@ -484,24 +536,47 @@ final class Node {
     static Node fromSorted(long[] ks, Object[] vs) {
         Object e = new Object();
         Node n = null;
-        for (int i = 0; i < ks.length; i++) n = put(n, u(ks[i]), vs == null ? null : value(vs[i]), e);
+        for (int i = 0; i < ks.length; i++) {
+            n = put(n, u(ks[i]), vs == null ? null : value(vs[i]), e);
+        }
         return n;
     }
 
     static int check(Node n, int above, boolean map) {
-        need(n.bits != 0 && n.shift < above && n.shift % BITS == 0, "empty or misplaced node");
+        need(
+                n.bits != 0 && n.shift < above && n.shift % BITS == 0,
+                "empty or misplaced node"
+        );
         need((n.base & ~above(n.shift)) == 0, "base has bits below the node");
-        need(n.count > 0 && Long.bitCount(n.bits) == (n.shift == 0 ? n.count : n.kids.length), "slot count");
+        need(
+                n.count > 0
+                        && Long.bitCount(n.bits)
+                                == (n.shift == 0 ? n.count : n.kids.length),
+                "slot count"
+        );
         if (n.shift == 0) {
-            need(n.kids == null && (map ? n.vals != null && n.vals.length == n.count : n.vals == null), "leaf arrays");
-            for (int i = 0; n.vals != null && i < n.count; i++) need(n.vals[i] != null, "nil value");
+            need(
+                    n.kids == null
+                            && (map
+                                    ? n.vals != null && n.vals.length == n.count
+                                    : n.vals == null),
+                    "leaf arrays"
+            );
+            for (int i = 0; n.vals != null && i < n.count; i++) {
+                need(n.vals[i] != null, "nil value");
+            }
             return n.count;
         }
         need(n.vals == null && n.kids.length >= 2, "branch with fewer than two children");
         int c = 0;
         for (Node k : n.kids) {
             long bit = n.bit(k.base);
-            need(n.covers(k.base) && (n.bits & bit) != 0 && n.kids[index(n.bits, bit)] == k, "child out of its slot");
+            need(
+                    n.covers(k.base)
+                            && (n.bits & bit) != 0
+                            && n.kids[index(n.bits, bit)] == k,
+                    "child out of its slot"
+            );
             c += check(k, n.shift, map);
         }
         need(c == n.count, "branch count");

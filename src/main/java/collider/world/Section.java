@@ -9,6 +9,7 @@ import java.util.Arrays;
 /// and sky light.
 public final class Section {
 
+    /// The bits of a packed state id when there is no palette.
     public static final int GLOBAL_BITS = 15;
     private static final int SIZE = 4096;
     private static final int LIGHT = 2048;
@@ -32,7 +33,14 @@ public final class Section {
         this(bits, pal, data, bl, sl, null);
     }
 
-    private Section(int bits, int[] pal, long[] data, byte[] bl, byte[] sl, Object token) {
+    private Section(
+            int bits,
+            int[] pal,
+            long[] data,
+            byte[] bl,
+            byte[] sl,
+            Object token
+    ) {
         this.token = token;
         this.bits = bits;
         this.per = bits == 0 ? 0 : 64 / bits;
@@ -138,21 +146,24 @@ public final class Section {
     }
 
     private boolean sameBlocks(Section o) {
-        if (bits == o.bits && Arrays.equals(pal, o.pal) && Arrays.equals(data, o.data)) {
-            return true;
-        }
+        boolean same = bits == o.bits
+                && Arrays.equals(pal, o.pal)
+                && Arrays.equals(data, o.data);
+        if (same) return true;
         for (int i = 0; i < SIZE; i++) {
             if (block(i) != o.block(i)) return false;
         }
         return true;
     }
 
+    @Override
     public boolean equals(Object other) {
         if (other == this) return true;
         if (!(other instanceof Section o)) return false;
         return Arrays.equals(bl, o.bl) && Arrays.equals(sl, o.sl) && sameBlocks(o);
     }
 
+    @Override
     public int hashCode() {
         int h = 31 * Arrays.hashCode(bl) + Arrays.hashCode(sl);
         for (int i = 0; i < SIZE; i++) h = 31 * h + block(i);
@@ -162,8 +173,7 @@ public final class Section {
     /// Returns the block state at index i in y, z, x order.
     public int block(int i) {
         if (bits == 0) return pal[0];
-        int c = (int) ((i * mul) >>> 32);
-        int q = (int) ((data[c] >>> ((i - c * per) * bits)) & ((1L << bits) - 1));
+        int q = index(data, i);
         return pal == null ? q : pal[q];
     }
 
@@ -197,18 +207,22 @@ public final class Section {
         a[i >> 1] = (byte) ((i & 1) == 0 ? (b & 0xF0) | v : (b & 0x0F) | (v << 4));
     }
 
+    /// Returns the block light at index `i`.
     public int blockLight(int i) {
         return bl == null ? 0 : nibble(bl, i);
     }
 
+    /// Returns the sky light at index `i`.
     public int skyLight(int i) {
         return sl == null ? 0 : nibble(sl, i);
     }
 
+    /// Returns how many bits each packed palette index takes.
     public int bits() {
         return bits;
     }
 
+    /// Returns how many states the palette holds, 0 without one.
     public int paletteSize() {
         return pal == null ? 0 : pal.length;
     }
@@ -240,24 +254,29 @@ public final class Section {
         return sl;
     }
 
+    /// Returns the 4096 block states in y, z, x order.
     public short[] blocks() {
         short[] out = new short[SIZE];
         for (int i = 0; i < SIZE; i++) out[i] = (short) block(i);
         return out;
     }
 
+    /// Returns a copy of the block light bytes, dark when absent.
     public byte[] blockLightCopy() {
         return bl == null ? new byte[LIGHT] : bl.clone();
     }
 
+    /// Returns a copy of the sky light bytes, dark when absent.
     public byte[] skyLightCopy() {
         return sl == null ? new byte[LIGHT] : sl.clone();
     }
 
+    /// Returns true when some block light is not dark.
     public boolean hasBlockLight() {
         return bl != null;
     }
 
+    /// Returns true when some sky light is not dark.
     public boolean hasSkyLight() {
         return sl != null;
     }
@@ -287,6 +306,7 @@ public final class Section {
         return single(0, null, canon(a));
     }
 
+    /// Returns this section with block `i` set to `state`.
     public Section with(int i, int state) {
         return apply(new int[] {i}, new int[] {state}, 1);
     }
@@ -508,6 +528,7 @@ public final class Section {
         return false;
     }
 
+    /// Writes the section to `out` in the snapshot form.
     public void save(DataOutput out) throws IOException {
         out.writeByte(bits);
         if (pal != null) {
@@ -526,6 +547,7 @@ public final class Section {
         if (a != null && a != FULL) out.write(a);
     }
 
+    /// Reads a section that `save` wrote.
     public static Section load(DataInput in) throws IOException {
         int bits = in.readUnsignedByte();
         boolean global = bits == GLOBAL_BITS;
