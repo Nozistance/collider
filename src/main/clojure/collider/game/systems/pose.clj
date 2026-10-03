@@ -41,9 +41,9 @@
         cz (num/floor (v/z pos))]
     (boolean
       (when (water-at? chunks cx cy cz)
-        (when-let [h (liquid/fluid-height-of
+        (when-let [h (liquid/height
                        chunks [cx cy cz]
-                       (chunk/block-state chunks cx cy cz) nil)]
+                       (chunk/block-state chunks cx cy cz))]
           (<= ey (+ (long cy) (double h))))))))
 
 (defn- swims? [e in-water? under-water? feet-water?]

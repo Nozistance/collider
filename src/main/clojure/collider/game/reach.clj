@@ -89,9 +89,15 @@
   [(unscale x a) (unscale y b) (unscale z c)
    (unscale x d) (unscale y e) (unscale z f)])
 
+(defn- counts? [st fluids]
+  (case fluids
+    :none false
+    :source-only (zero? (block/liquid-level st))
+    true))
+
 (defn- fluid-height [world pos st fluids]
-  (when (not= :none fluids)
-    (liquid/fluid-height-of (:chunks world) pos st fluids)))
+  (when (counts? st fluids)
+    (liquid/height (:chunks world) pos st)))
 
 (defn- fluid-box [world pos st fluids]
   (when-let [fh (fluid-height world pos st fluids)]
