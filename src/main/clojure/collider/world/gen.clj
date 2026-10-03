@@ -6,6 +6,8 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:private ^:const ground 4)
+
 (def ^:private layers
   {:overworld  [:bedrock :dirt :dirt :grass-block]
    :the-nether [:bedrock :netherrack :netherrack :netherrack]
@@ -14,7 +16,7 @@
 (defn- flat-sky ^bytes []
   (let [arr (byte-array 2048)]
     (dotimes [i 4096]
-      (when (>= (quot i 256) 4)
+      (when (>= (quot i 256) ground)
         (chunk/nibble-set! arr i 15)))
     arr))
 
@@ -25,19 +27,19 @@
         states (mapv block/state (layers dim))]
     (dotimes [i 4096]
       (let [y (quot i 256)
-            st (long (if (< y 4) (nth states y) 0))]
+            st (long (if (< y ground) (nth states y) 0))]
         (aset bs i (short st))))
     (chunk/section bs nil (when (sky? dim) (flat-sky)))))
 
-(def ^:private dark-top
+(def ^:private skyless-cap
   (chunk/section (short-array 4096) nil nil))
 
 (defn- flat-of [dim]
   (chunk/chunk-of
-    (cond-> (assoc (vec (repeat chunk/section-count nil))
-                   (chunk/section-index 0) (flat-section dim))
-      (not (sky? dim))
-      (assoc (dec chunk/section-count) dark-top))))
+   (cond-> (assoc (vec (repeat chunk/section-count nil))
+                  (chunk/section-index 0) (flat-section dim))
+     (not (sky? dim))
+     (assoc (dec chunk/section-count) skyless-cap))))
 
 (def ^:private ^:table flat
   (delay (into {} (for [dim (keys layers)]

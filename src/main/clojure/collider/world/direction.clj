@@ -1,5 +1,5 @@
 (ns collider.world.direction
-  "The six block faces with their offsets, turns and wire indices.")
+  "The six block faces, their offsets, turns and ids.")
 
 (set! *warn-on-reflection* true)
 
@@ -35,12 +35,11 @@
 
 (def horizontal-face {2 :north 3 :south 4 :west 5 :east})
 
-(def opposite-index (int-array [1 0 3 2 5 4]))
-
 (def ^:private player-order [:south :west :north :east])
 
 (defn player-index
-  "Returns the index of the horizontal way yaw faces, south first."
+  "Returns the index of the horizontal direction of yaw, south
+  first."
   ^long [yaw]
   (let [q (/ (* (double yaw) 4.0) 360.0)]
     (bit-and (long (Math/floor (+ q 0.5))) 3)))
@@ -50,20 +49,28 @@
   [yaw]
   (nth player-order (player-index yaw)))
 
+(defn- x-ahead [ax ay az x y z]
+  (cond (> y x) [ay ax az]
+        (> z y) [ax az ay]
+        :else [ax ay az]))
+
+(defn- z-ahead [ax ay az x y z]
+  (cond (> y z) [ay az ax]
+        (> x y) [az ax ay]
+        :else [az ay ax]))
+
 (defn- nearest-axes
-  [^double ps ^double pc ^double ys ^double yc]
-  (let [ax (if (pos? ys) :east :west)
-        ay (if (neg? ps) :up :down)
-        az (if (pos? yc) :south :north)
-        xy (Math/abs ys) ym (Math/abs ps) zy (Math/abs yc)
-        xm (* xy pc) zm (* zy pc)]
-    (cond
-      (> xy zy) (cond (> ym xm) [ay ax az]
-                      (> zm ym) [ax az ay]
-                      :else [ax ay az])
-      (> ym zm) [ay az ax]
-      (> xm ym) [az ax ay]
-      :else [az ay ax])))
+  [^double pitch-sin ^double pitch-cos
+   ^double yaw-sin ^double yaw-cos]
+  (let [ax (if (pos? yaw-sin) :east :west)
+        ay (if (neg? pitch-sin) :up :down)
+        az (if (pos? yaw-cos) :south :north)
+        x-turn (Math/abs yaw-sin) z-turn (Math/abs yaw-cos)
+        x (* x-turn pitch-cos) y (Math/abs pitch-sin)
+        z (* z-turn pitch-cos)]
+    (if (> x-turn z-turn)
+      (x-ahead ax ay az x y z)
+      (z-ahead ax ay az x y z))))
 
 (defn look-order
   "Returns the six directions as a player looking along yaw sees them.
