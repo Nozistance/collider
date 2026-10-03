@@ -91,9 +91,6 @@
    :changed-blocks-flushed
    {:scope :level :schema [:cat]
     :apply (fn [w _] (assoc w :changed-blocks nil))}
-   :block-events-run
-   {:scope :level :schema [:cat]
-    :apply (fn [w _] (assoc w :block-events nil))}
    :set-clock
    {:scope :world :schema [:cat :keyword :map]
     :apply (fn [w [_ k m]] (update-in w [:clocks k] merge m))}

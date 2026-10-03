@@ -13,6 +13,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.num :as num]
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.tools :as tools]
@@ -34,18 +35,8 @@
 (defn- set-at [world pos st]
   (changes/change-deltas world [[pos st]]))
 
-(defn- with-props [cur props]
-  (block/state (block/block-of cur) props))
-
-(defn- inventory [world eid]
-  (get-in world [:entities eid :inventory]))
-
 (defn- stack-deltas [world eid stack]
-  (let [inv (inventory world eid)
-        [changes left] (inventory/add-stack inv stack)]
-    (concat (for [[slot s] changes] [:set-slot eid slot s])
-            (when left
-              [[:spawn-entity (item/dropped world eid left)]]))))
+  (inventory/kept world eid (get-in world [:entities eid]) stack))
 
 (defn- consume-deltas [world eid]
   (let [e (get-in world [:entities eid])]
@@ -66,27 +57,23 @@
 
 (defn- candle-cake-deltas [world eid pos item]
   (let [cur (changes/block-at world pos)
-        cake (keyword (str (name item) "-cake"))
-        e (get-in world [:entities eid])]
+        cake (keyword (str (name item) "-cake"))]
     (when (and (zero? (block/prop-long cur :bites))
                (contains? (data/blocks) cake))
-      (concat (inventory/consume-deltas eid e (:use-hand e) 1)
+      (concat (consume-deltas world eid)
               (set-at world pos (block/state cake))
               [(heard :cake/add-candle pos 1.0)
                [:award eid (keyword "used" (name item)) 1]]))))
 
-(def ^:private ^:const max-bites 6)
-
 (defn- main-hand?
-  "Whether player eid uses the block with the main hand, the only
-  hand that uses a block without its item."
+  "Returns true when player eid uses the main hand. Only the main
+  hand uses a block without an item."
   [world eid]
   (not= :off (get-in world [:entities eid :use-hand])))
 
 (defn- pot-deltas
-  "FlowerPotBlock.useItemOn: a plant goes into an empty pot, and
-  takes the click of a full one; the main hand with anything else
-  takes the plant out of a full pot and the click of an empty one."
+  "Returns the deltas of a flower pot used with item. A plant goes
+  into an empty pot. The main hand takes the plant out of a full pot."
   [world eid pos item]
   (let [n (block/block-of (changes/block-at world pos))
         plant (potted-block item)
@@ -109,10 +96,12 @@
          (or (game-mode/invulnerable? e)
              (< (long (:food e full-food)) full-food)))))
 
+(def ^:private ^:const max-bites 6)
+
 (defn- bitten ^long [^long st]
   (let [bites (block/prop-long st :bites)]
     (if (< bites max-bites)
-      (with-props st {:bites (keyword (str (inc bites)))})
+      (block/with-long st :bites (inc bites))
       0)))
 
 (defn- eat-deltas [world eid pos cake fx]
@@ -120,30 +109,31 @@
     (cons [:award eid :custom/eat-cake-slice 1]
           (changes/change-deltas world [[pos (bitten cake) fx]]))))
 
-(defn- cake-use [w eid pos _ item _]
-  (or (when (candle-item? item) (candle-cake-deltas w eid pos item))
-      (eat-deltas w eid pos (changes/block-at w pos) nil)))
+(defn- cake-use [{:keys [world eid pos item]}]
+  (or (when (candle-item? item)
+        (candle-cake-deltas world eid pos item))
+      (eat-deltas world eid pos (changes/block-at world pos) nil)))
 
 (defn- candle-hit? [cursor]
   (> (double (nth cursor 1)) 8.0))
 
 (defn- lit? [st] (= :true (:lit (block/props-of st))))
 
-(defn- candle-cake-use [w eid pos _ item cursor]
-  (let [cur (changes/block-at w pos)]
+(defn- candle-cake-use [{:keys [world eid pos item cursor]}]
+  (let [cur (changes/block-at world pos)]
     (cond
       (#{:flint-and-steel :fire-charge} item) nil
       (and (nil? item) (candle-hit? cursor) (lit? cur))
-      (changes/candle-out-deltas w pos)
+      (changes/candle-out-deltas world pos)
       :else
-      (eat-deltas w eid pos (block/state :cake) [[:drop cur]]))))
+      (eat-deltas world eid pos (block/state :cake) [[:drop cur]]))))
 
 (defn- berries-deltas [world pos]
   (let [cur (changes/block-at world pos)
         props (block/props-of cur)
         pitch (random/pitch (:tick world) pos :berries)
         berries {:item :glow-berries :count 1}
-        picked (with-props cur (assoc props :berries :false))]
+        picked (block/with cur :berries :false)]
     (when (= :true (:berries props))
       (concat
         (set-at world pos picked)
@@ -164,10 +154,11 @@
 
 (defn- bush-stacks [world pos ^long a]
   (let [roll (random/of-key (:tick world) pos :bush-count)
-        n (inc (long (Math/floor (* berry-rolls roll))))]
-    (cond-> []
-      (= bush-max-age a) (conj {:item :sweet-berries :count 1})
-      true (conj {:item :sweet-berries :count n}))))
+        n (inc (num/floor (* berry-rolls (double roll))))
+        rolled {:item :sweet-berries :count n}]
+    (if (= bush-max-age a)
+      [{:item :sweet-berries :count 1} rolled]
+      [rolled])))
 
 (defn- bush-deltas [world pos]
   (let [cur (changes/block-at world pos)
@@ -193,11 +184,11 @@
        (some? item)
        (not ((tools/axes) item))))
 
-(defn- pose-deltas [world pos]
+(defn- pose-deltas [{:keys [world pos]}]
   (let [cur (changes/block-at world pos)
-        props (update (block/props-of cur) :copper-golem-pose
-                      next-pose)]
-    (concat (set-at world pos (with-props cur props))
+        pose (next-pose (:copper-golem-pose (block/props-of cur)))]
+    (concat (set-at world pos
+                    (block/with cur :copper-golem-pose pose))
             [(heard :copper-golem/statue pos 1.0)])))
 
 (defn- compost-took? [world pos ^long lvl item]
@@ -215,13 +206,13 @@
 
 (defn- compost-empty-deltas [world pos]
   (let [bone-meal {:item :bone-meal :count 1}
-        at (mapv + pos [0 1 0])]
+        at (dir/up pos)]
     (concat (set-at world pos (block/state :composter {:level :0}))
             [[:spawn-entity
               (item/popped world at bone-meal :compost)]
              (heard :composter/empty pos 1.0)])))
 
-(defn- compost-deltas [world pos item]
+(defn- compost-deltas [{:keys [world pos item]}]
   (let [cur (changes/block-at world pos)
         lvl (block/prop-long cur :level)]
     (cond
@@ -229,7 +220,7 @@
       (when (< lvl 7) (compost-fill-deltas world pos lvl item))
       (and (nil? item) (= lvl 8)) (compost-empty-deltas world pos))))
 
-(defn- campfire-use-deltas [world _eid pos _face item _cursor]
+(defn- campfire-use-deltas [{:keys [world pos item]}]
   (when-let [e (be/at world pos)]
     (when-let [e' (and item (campfire/place-food e item))]
       (changes/be-changed pos e'))))
@@ -255,9 +246,8 @@
                    (out/to eid (out/sign-editor pos front?))])))
 
 (defn- chains?
-  "Whether a hanging sign item clicked on face of the hanging sign st
-  places another sign instead (CeilingHangingSignBlock.java:90-96,
-  WallHangingSignBlock.java:78-88)."
+  "Returns true when a hanging sign item places a new sign.
+  The item is used on face of the sign st."
   [^long st face item]
   (let [d (dir/from-index (long face))
         across? (not= (dir/axis d) (dir/axis (block/facing-of st)))]
@@ -268,9 +258,10 @@
            false))))
 
 (defn- sign-use-deltas
-  "SignBlock.useItemOn: an applicator changes the side faced, else
-  the main hand edits it."
-  [world eid pos face item]
+  "Returns the deltas of a sign used with item. A dye, ink or
+  honeycomb changes the side the player faces. The main hand opens
+  the editor."
+  [{:keys [world eid pos face item]}]
   (let [st (changes/block-at world pos) e (be/at world pos)
         at (get-in world [:entities eid :pos])
         front? (sign/front? st pos at)
@@ -281,8 +272,8 @@
           (sign-hand-deltas world eid pos e front? busy?)))))
 
 (defn sign-update-deltas
-  "Returns the deltas that write lines on one side of the sign at pos,
-  when player eid edits it and it is not waxed."
+  "Returns the deltas that write lines on one side of a sign.
+  Only the editor eid writes the sign at pos, and not when waxed."
   [world [eid pos front? lines]]
   (let [e (be/at world pos)]
     (when (and e (not (:waxed? e)) (= eid (:editor e)))
@@ -311,7 +302,7 @@
              (heard :decorated-pot/insert pos pitch)
              (out/all dust)])))
 
-(defn- pot-use-deltas [world pos item]
+(defn- pot-use-deltas [{:keys [world pos item]}]
   (when-let [e (be/at world pos)]
     (if (pot-insertable? e item)
       (pot-insert-deltas pos e item)
@@ -320,9 +311,9 @@
 
 (defn- jukebox-eject-deltas [world pos e]
   (let [cur (changes/block-at world pos)
-        at (mapv + pos [0 1 0])]
+        at (dir/up pos)]
     (concat
-      (set-at world pos (with-props cur {:has-record :false}))
+      (set-at world pos (block/with cur :has-record :false))
       (changes/be-changed
         pos (assoc e :record nil :song nil :started nil))
       [[:spawn-entity (item/popped world at (:record e) :jukebox)]
@@ -337,11 +328,11 @@
         id (jukebox/song-id song)
         play (out/level-event out/sound-play-jukebox-song pos id)]
     (concat
-      (set-at world pos (with-props cur {:has-record :true}))
+      (set-at world pos (block/with cur :has-record :true))
       (changes/be-changed pos e')
       [(out/all play)])))
 
-(defn- jukebox-use-deltas [world pos item]
+(defn- jukebox-use-deltas [{:keys [world pos item]}]
   (let [e (be/at world pos)
         props (block/props-of (changes/block-at world pos))
         has? (= :true (:has-record props))]
@@ -365,18 +356,18 @@
       :else (concat (changes/be-changed pos e')
                     [(heard :shelf/place-item pos 1.0)]))))
 
-(defn- shelf-use-deltas [world eid pos face cursor]
+(defn- shelf-use-deltas [{:keys [world eid pos face cursor]}]
   (let [st (changes/block-at world pos) e (be/at world pos)
         slot (edit/hit-slot st face cursor 1 3)
         powered? (signal/has-neighbor-signal? (:chunks world) pos)]
     (when (and e slot (not powered?))
       (shelf-swap-deltas world eid pos e slot))))
 
-(def ^:private ^:table book-items
+(def ^:private ^:table bookshelf-books
   (delay (set (get-in (data/tags) ["item" "bookshelf_books"]))))
 
 (defn- book-item? [item]
-  (contains? @book-items item))
+  (contains? @bookshelf-books item))
 
 (defn- slot-prop [^long i]
   (keyword (str "slot-" i "-occupied")))
@@ -386,7 +377,7 @@
                    (assoc m (slot-prop i)
                      (if (nth items i) :true :false)))
         props (reduce occupied (block/props-of st) (range 6))]
-    (with-props st props)))
+    (block/state (block/block-of st) props)))
 
 (defn- occupied? [^long st slot]
   (= :true (get (block/props-of st) (slot-prop slot))))
@@ -403,13 +394,12 @@
     (assoc (if (= item (:item held)) held {:item item}) :count 1)))
 
 (defn- bookshelf-add-deltas [world eid pos e slot item]
-  (let [at (get-in world [:entities eid])
-        stack (one-held world eid item)
+  (let [stack (one-held world eid item)
         sound (if (= :enchanted-book item)
                 :bookshelf/insert-enchanted
                 :bookshelf/insert)]
     (concat [[:award eid (keyword "used" (name item)) 1]]
-            (inventory/consume-deltas eid at (:use-hand at) 1)
+            (consume-deltas world eid)
             (shelved world pos e slot stack)
             [(heard sound pos 1.0)])))
 
@@ -423,13 +413,13 @@
             (when stack (stack-deltas world eid stack)))))
 
 (defn- bookshelf-hand-deltas
-  "ChiseledBookShelfBlock.useWithoutItem: an empty slot takes the
-  click and does nothing."
+  "Returns the deltas of a bookshelf slot used by hand. An empty slot
+  takes the click and does nothing."
   [world eid pos e slot full?]
   (when (and slot (main-hand? world eid))
     (if full? (bookshelf-take-deltas world eid pos e slot) [])))
 
-(defn- bookshelf-use-deltas [world eid pos face item cursor]
+(defn- bookshelf-use-deltas [{:keys [world eid pos face item cursor]}]
   (let [st (changes/block-at world pos) e (be/at world pos)
         slot (edit/hit-slot st face cursor 2 3)
         full? (and slot (occupied? st slot))]
@@ -441,28 +431,30 @@
         full? (bookshelf-hand-deltas world eid pos e slot full?)
         :else (bookshelf-add-deltas world eid pos e slot item)))))
 
-(defn- bell-side? [^long st dir]
-  (let [same? (= (dir/axis (block/facing-of st)) (dir/axis dir))]
+(defn- bell-side? [^long st side]
+  (let [same? (= (dir/axis (block/facing-of st)) (dir/axis side))]
     (case (:attachment (block/props-of st))
       :floor same?
       (:single_wall :double_wall) (not same?)
       :ceiling true
       false)))
 
-(defn- bell-hit? [^long st face ^double cursor-y]
-  (let [dir (dir/from-index (long face))]
-    (and (contains? dir/horizontal-offset dir)
-         (not (> (/ cursor-y 16.0) 0.8124))
-         (bell-side? st dir))))
+(def ^:private ^:const bell-hit-top 0.8124)
 
-(defn- bell-use-deltas [world pos face cursor]
+(defn- bell-hit? [^long st face ^double cursor-y]
+  (let [side (dir/from-index (long face))]
+    (and (contains? dir/horizontal-offset side)
+         (not (> (/ cursor-y 16.0) bell-hit-top))
+         (bell-side? st side))))
+
+(defn- bell-use-deltas [{:keys [world pos face cursor]}]
   (let [st (changes/block-at world pos)
         side (get dir/index (dir/from-index (long face)))]
     (when (bell-hit? st face (double (nth cursor 1)))
       [(out/all (out/block-event pos 1 side))
        (out/all (out/block-sound :bell/use pos 2.0 1.0))])))
 
-(defn- egg-deltas [world pos]
+(defn- dragon-egg-deltas [{:keys [world pos]}]
   (let [st (changes/block-at world pos)
         roll (fn [k] (random/of-key (:tick world) pos :egg k))]
     (when-let [target (dragonegg/teleport-target
@@ -471,17 +463,15 @@
 
 (def ^:private ^:const light-levels 16)
 
-(defn- light-deltas [world pos]
+(defn- light-deltas [{:keys [world pos]}]
   (let [st (changes/block-at world pos)
-        lvl (rem (inc (block/prop-long st :level)) light-levels)
-        props (assoc (block/props-of st) :level (keyword (str lvl)))]
-    (set-at world pos (with-props st props))))
+        lvl (rem (inc (block/prop-long st :level)) light-levels)]
+    (set-at world pos (block/with-long st :level lvl))))
 
 (defn- lectern-use-deltas
-  "LecternBlock.useItemOn: the main hand reads the book on it; a
-  book goes on an empty one, anything else in the main hand takes
-  the click."
-  [world eid pos item]
+  "Returns the deltas of a lectern used with item. The main hand
+  reads a book on it. A book goes on an empty lectern."
+  [{:keys [world eid pos item]}]
   (let [st (changes/block-at world pos)
         stack (player/use-stack world eid)
         main? (main-hand? world eid)]
@@ -493,49 +483,47 @@
               (consume-deltas world eid))
       (and main? item) [])))
 
-(defn- candle-use [w _ pos _ item _]
-  (when (nil? item) (changes/candle-out-deltas w pos)))
+(defn- flower-pot-use [{:keys [world eid pos item]}]
+  (pot-deltas world eid pos item))
 
-(defn- berries-use [w _ pos _ item _]
-  (when (nil? item) (berries-deltas w pos)))
+(defn- candle-use [{:keys [world pos item]}]
+  (when (nil? item) (changes/candle-out-deltas world pos)))
 
-(defn- bush-use [w _ pos _ item _]
-  (when (picks-berries? (changes/block-at w pos) item)
-    (bush-deltas w pos)))
+(defn- berries-use [{:keys [world pos item]}]
+  (when (nil? item) (berries-deltas world pos)))
+
+(defn- bush-use [{:keys [world pos item]}]
+  (when (picks-berries? (changes/block-at world pos) item)
+    (bush-deltas world pos)))
 
 (def ^:private by-type
-  {:flower-pot (fn [w eid pos _ item _] (pot-deltas w eid pos item))
+  {:flower-pot flower-pot-use
    :candle candle-use
    :candle-cake candle-cake-use
    :cake cake-use
    :cave-vines berries-use
    :cave-vines-plant berries-use
    :sweet-berry-bush bush-use
-   :composter (fn [w _ pos _ item _] (compost-deltas w pos item))
-   :decorated-pot (fn [w _ pos _ item _] (pot-use-deltas w pos item))
-   :jukebox (fn [w _ pos _ item _] (jukebox-use-deltas w pos item))
+   :composter compost-deltas
+   :decorated-pot pot-use-deltas
+   :jukebox jukebox-use-deltas
    :campfire campfire-use-deltas
-   :shelf (fn [w eid pos face _ cursor]
-            (shelf-use-deltas w eid pos face cursor))
+   :shelf shelf-use-deltas
    :chiseled-book-shelf bookshelf-use-deltas
-   :bell (fn [w _ pos face _ cursor]
-           (bell-use-deltas w pos face cursor))
-   :lectern (fn [w eid pos _ item _]
-              (lectern-use-deltas w eid pos item))
-   :dragon-egg (fn [w _ pos _ _ _] (egg-deltas w pos))
-   :light (fn [w _ pos _ _ _] (light-deltas w pos))})
+   :bell bell-use-deltas
+   :lectern lectern-use-deltas
+   :dragon-egg dragon-egg-deltas
+   :light light-deltas})
 
 (defn- game-master-use
-  "Game master blocks take the click of a game master, whose client
-  opens their screen itself."
-  [w eid pos _ _ _]
-  (when (and (main-hand? w eid) (be/at w pos)
-             (edit/game-master? (get-in w [:entities eid])))
+  "Returns an empty use when a game master uses a game master block.
+  The client opens its screen itself."
+  [{:keys [world eid pos]}]
+  (when (and (main-hand? world eid) (be/at world pos)
+             (edit/game-master? (get-in world [:entities eid])))
     []))
 
-(def ^:private menu-stats
-  "The blocks whose menus are not built yet, with the stat their use
-  awards: the main hand still takes the click (useWithoutItem)."
+(def ^:private menu-pending-stats
   {:enchantment-table nil
    :beacon :custom/interact-with-beacon
    :cartography-table :custom/interact-with-cartography-table
@@ -544,38 +532,45 @@
    :dropper :custom/inspect-dropper
    :crafter nil})
 
-(defn- menu-use [w eid pos _ _ _]
-  (when (main-hand? w eid)
-    (let [t (block/type-of (changes/block-at w pos))]
-      (if-let [stat (menu-stats t)] [[:award eid stat 1]] []))))
+(defn- menu-use [{:keys [world eid pos]}]
+  (when (main-hand? world eid)
+    (let [t (block/type-of (changes/block-at world pos))]
+      (if-let [stat (menu-pending-stats t)]
+        [[:award eid stat 1]]
+        []))))
 
-(defn- open-use [w eid pos _ _ _]
-  (when (main-hand? w eid) (containers/open-deltas w eid pos)))
+(defn- open-use [{:keys [world eid pos]}]
+  (when (main-hand? world eid)
+    (containers/open-deltas world eid pos)))
 
-(defn- cauldron-use [w eid pos _ item _]
-  (cauldron/cauldron-deltas w eid pos item (player/use-stack w eid)))
+(defn- cauldron-use [{:keys [world eid pos item]}]
+  (let [held (player/use-stack world eid)]
+    (cauldron/cauldron-deltas world eid pos item held)))
+
+(defn- carve-use [{:keys [world eid pos face]}]
+  (tools/carve-deltas world eid pos face))
+
+(defn- carves? [cur item]
+  (and (= :pumpkin (block/block-of cur)) (= :shears item)))
 
 (defn- handler [cur item]
   (let [t (block/type-of cur)]
     (or (by-type t)
         (cond
-          (poses? cur item) (fn [w _ pos _ _ _] (pose-deltas w pos))
+          (poses? cur item) pose-deltas
           (contains? block/cauldron-types t) cauldron-use
           (edit/game-master-block? cur) game-master-use
-          (sign/kind cur)
-          (fn [w eid pos face item _]
-            (sign-use-deltas w eid pos face item))
+          (sign/kind cur) sign-use-deltas
           (contains? container/menu-types t) open-use
-          (contains? menu-stats t) menu-use
-          (and (= :pumpkin (block/block-of cur)) (= :shears item))
-          (fn [w eid pos face _ _]
-            (tools/carve-deltas w eid pos face))))))
+          (contains? menu-pending-stats t) menu-use
+          (carves? cur item) carve-use))))
 
 (defn deltas
-  "Returns the deltas of player eid using the block at pos on face,
-  with item in hand and the cursor at the hit point, or nil when the
-  block does nothing."
+  "Returns the deltas of player eid using the block at pos.
+  The player clicks face at cursor with item in hand. Returns nil
+  when the block does nothing."
   [world eid pos face item cursor]
   (let [cur (changes/block-at world pos)]
     (when-let [h (handler cur item)]
-      (h world eid pos face item cursor))))
+      (h {:world world :eid eid :pos pos :face face :item item
+          :cursor cursor}))))

@@ -10,9 +10,9 @@
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
-            [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.reach :as reach]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.block.oxidation :as oxidation]
             [collider.world.blocks.halves :as halves]
@@ -28,11 +28,11 @@
 
 (defn- tool-set [tag] (delay (set (data/tag-values "item" tag))))
 
-(def ^:private axe-items (tool-set "axes"))
+(def ^:private ^:table axe-items (tool-set "axes"))
 
-(def ^:private hoe-items (tool-set "hoes"))
+(def ^:private ^:table hoe-items (tool-set "hoes"))
 
-(def ^:private shovel-items (tool-set "shovels"))
+(def ^:private ^:table shovel-items (tool-set "shovels"))
 
 (defn axes
   "Returns the items tagged as axes."
@@ -56,7 +56,7 @@
     (when (and (contains? lightable-types (block/type-of cur))
                (= :false (:lit props))
                (not= :true (:waterlogged props)))
-      (block/state (block/block-of cur) (assoc props :lit :true)))))
+      (block/with cur :lit :true))))
 
 (defn- fire-deltas [world pos off snd]
   (let [[_ y' _ :as pos'] (mapv + pos off)
@@ -72,19 +72,19 @@
 
 (defn- charge-sound [world pos]
   (let [t (:tick world)
-        p (- (random/of-key t pos :charge-a)
-             (random/of-key t pos :charge-b))
-        pitch (+ 1.0 (* 0.2 (double p)))]
+        a (random/of-key t pos :charge-a)
+        b (random/of-key t pos :charge-b)
+        pitch (random/triangle 1.0 0.2 a b)]
     (out/all (out/block-sound :firecharge/use pos 1.0 pitch))))
 
-(defn- sounded [world changes fx]
+(defn- changed-with [world changes fx]
   (concat (changes/change-deltas world changes) fx))
 
 (defn firecharge-deltas
   "Returns the deltas of a fire charge used on the block at pos."
   [world [_eid pos face]]
   (if-let [st (lightable world pos)]
-    (sounded world [[pos st]] [(charge-sound world pos)])
+    (changed-with world [[pos st]] [(charge-sound world pos)])
     (when-let [off (dir/face-offset face)]
       (fire-deltas world pos off #(charge-sound world %)))))
 
@@ -105,12 +105,11 @@
   "Returns the deltas of flint and steel used on the block at pos."
   [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
-    (cond
-      (lightable world pos)
-      (sounded world [[pos (lightable world pos)]]
-               [(flint-sound world eid pos)])
-      (primable? world eid pos) (prime-deltas world eid pos)
-      :else (fire-deltas world pos off #(flint-sound world eid %)))))
+    (if-let [st (lightable world pos)]
+      (changed-with world [[pos st]] [(flint-sound world eid pos)])
+      (if (primable? world eid pos)
+        (prime-deltas world eid pos)
+        (fire-deltas world pos off #(flint-sound world eid %))))))
 
 (defn- meal-drops [world pos drops]
   (map-indexed
@@ -134,16 +133,14 @@
   (delay (let [tag "produces_corals_from_bonemeal"]
            (set (data/tag-values "worldgen/biome" tag)))))
 
-(defn- corals-at [world]
-  (fn [p]
-    (let [biome (biome/at (:dim world) p)]
-      (contains? @coral-biomes (:name biome)))))
+(defn- coral-biome? [world p]
+  (contains? @coral-biomes (:name (biome/at (:dim world) p))))
 
 (defn- seabed-deltas [world pos face]
   (let [side (dir/from-index face)
-        at (mapv + pos (dir/offset side))
+        at (dir/toward pos side)
         roll #(random/of-key (:tick world) at :seabed %)
-        corals? (corals-at world)
+        corals? #(coral-biome? world %)
         grow #(underwater/meal (:chunks world) at side roll corals?)]
     (when (block/face-sturdy? (changes/block-at world pos) side)
       (when-let [cs (grow)]
@@ -163,9 +160,9 @@
 (def ^:private plant-heads
   #{:kelp :weeping-vines :twisting-vines :cave-vines})
 
-(defn- grown-tip [st]
-  (let [props (assoc (block/props-of st) :age :25)]
-    (block/state (block/block-of st) props)))
+(def ^:private tip-max-age :25)
+
+(defn- grown-tip [st] (block/with st :age tip-max-age))
 
 (defn shear-deltas
   "Returns the deltas of shears used on the tip of a growing plant.
@@ -176,7 +173,7 @@
         kind :block.growing-plant.crop
         snd (out/block-sound kind pos 1.0 1.0 :blocks)]
     (when (and (contains? plant-heads (block/type-of st))
-               (not= :25 (:age (block/props-of st))))
+               (not= tip-max-age (:age (block/props-of st))))
       (concat
         [(out/except eid snd)]
         (changes/change-deltas world [[pos (grown-tip st)]])
@@ -206,7 +203,7 @@
 
 (defn compass-deltas
   "Returns the deltas of a compass used on a lodestone.
-  The compass points at it from then on."
+  After this the compass points at the lodestone."
   [world [eid pos _ _ _]]
   (when (= :lodestone (block/block-of (changes/block-at world pos)))
     (let [e (get-in world [:entities eid])]
@@ -216,7 +213,7 @@
         [[:award eid :used/compass 1]]))))
 
 (defn- air-above? [world pos]
-  (zero? (changes/block-at world (mapv + pos [0 1 0]))))
+  (zero? (changes/block-at world (dir/up pos))))
 
 (defn- freed-drop [world pos freed]
   (let [stack {:item freed :count 1}]
@@ -245,7 +242,7 @@
     (when (not= 0 (long face))
       (if-let [st (flattened-state world pos cur)]
         (let [snd (out/block-sound :shovel/flatten pos 1.0 1.0)]
-          (sounded world [[pos st]] [(out/all snd)]))
+          (changed-with world [[pos st]] [(out/all snd)]))
         (changes/campfire-out-deltas world pos)))))
 
 (defn- door-partner [world pos cur]
@@ -267,30 +264,29 @@
   "Returns the deltas of honeycomb used on the block at pos."
   [world [_ pos _ _ _]]
   (when-let [st (oxidation/waxed (changes/block-at world pos))]
-    (sounded world (half-changes world pos st)
-             (copper-fx pos nil
-                        out/particles-and-sound-wax-on))))
+    (let [fx (copper-fx pos nil out/particles-and-sound-wax-on)]
+      (changed-with world (half-changes world pos st) fx))))
 
 (defn- copper-axe-deltas [world pos cur]
   (if-let [st (oxidation/scraped cur)]
-    (sounded world (half-changes world pos st)
-             (copper-fx pos :axe/scrape out/particles-scrape))
+    (let [fx (copper-fx pos :axe/scrape out/particles-scrape)]
+      (changed-with world (half-changes world pos st) fx))
     (when-let [st (oxidation/unwaxed cur)]
-      (sounded world (half-changes world pos st)
-               (copper-fx pos :axe/wax-off out/particles-wax-off)))))
+      (let [fx (copper-fx pos :axe/wax-off out/particles-wax-off)]
+        (changed-with world (half-changes world pos st) fx)))))
 
 (defn axe-deltas
   "Returns the deltas of an axe used on the block at pos."
   [world [_ pos _ _ _]]
   (let [cur (changes/block-at world pos)]
     (if-let [st (block/stripped cur)]
-      (sounded world [[pos st]]
-               [(out/all (out/block-sound :axe/strip pos 1.0 1.0))])
+      (let [snd (out/block-sound :axe/strip pos 1.0 1.0)]
+        (changed-with world [[pos st]] [(out/all snd)]))
       (copper-axe-deltas world pos cur))))
 
 (defn- egg-pitch ^double [t pos]
-  (let [p (- (random/of-key t pos :p1) (random/of-key t pos :p2))]
-    (+ 1.0 (* 0.2 p))))
+  (random/triangle 1.0 0.2 (random/of-key t pos :p1)
+                   (random/of-key t pos :p2)))
 
 (defn- hatch-deltas [world pos mob at]
   (let [t (:tick world)
@@ -311,21 +307,20 @@
   [world [eid pos face item]]
   (when-let [off (dir/face-offset face)]
     (when-let [mob (mobs/egg-type item)]
-      (let [[x y z] (mapv + pos off)
-            at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]]
+      (let [[_ y _ :as cell] (mapv + pos off)
+            at (v/bottom-centre cell)]
         (when (chunk/in-range? y)
           (concat (egg-deltas world eid pos mob at)
                   [[:award eid (keyword "used" (name item)) 1]]))))))
 
 (defn fluid-egg-deltas
-  "Returns the deltas of a spawn egg used at a liquid source in
-  view. The mob hatches in the liquid."
+  "Returns the deltas of a spawn egg used at a liquid source.
+  The mob hatches in the liquid source in view."
   [world eid e item]
   (when-let [mob (mobs/egg-type item)]
     (when-let [{:keys [pos]} (reach/clip world e :source-only)]
       (when (block/liquid? (changes/block-at world pos))
-        (let [[x y z] pos
-              at [(+ (long x) 0.5) (double y) (+ (long z) 0.5)]]
+        (let [at (v/bottom-centre pos)]
           (concat (egg-deltas world eid pos mob at)
                   [[:award eid (keyword "used" (name item)) 1]]))))))
 
@@ -333,7 +328,7 @@
   (if (<= (long face) 1)
     (let [yaw (get-in world [:entities eid :yaw] 0.0)]
       (dir/opposite (dir/player-direction yaw)))
-    (get {2 :north 3 :south 4 :west 5 :east} face)))
+    (get dir/horizontal-face face)))
 
 (defn- seeds-drop [world [x y z :as pos] [ox _ oz]]
   (let [t (:tick world)
@@ -349,11 +344,11 @@
 (defn carve-deltas
   "Returns the deltas of shears carving the pumpkin at pos."
   [world eid pos face]
-  (let [dir (carve-facing world eid face)
-        carved (block/state :carved-pumpkin {:facing dir})]
+  (let [facing (carve-facing world eid face)
+        carved (block/state :carved-pumpkin {:facing facing})]
     (concat
       (changes/change-deltas world [[pos carved]])
-      [[:spawn-entity (seeds-drop world pos (dir/offset dir))]
+      [[:spawn-entity (seeds-drop world pos (dir/offset facing))]
        (out/all (out/block-sound :pumpkin/carve pos 1.0 1.0))])))
 
 (def ^:private ^:table mud-blocks
@@ -368,7 +363,7 @@
   [world eid pos face]
   (when (and (not= 0 (long face))
              (muddable? world pos)
-             (cauldron/water-bottle? (player/use-stack world eid)))
+             (stack/water-bottle? (player/use-stack world eid)))
     (concat (changes/change-deltas world [[pos (block/state :mud)]])
             [(out/all (out/block-sound :splash pos 1.0 1.0 :blocks))
              (out/all (out/block-sound :bottle/empty pos 1.0 1.0))]

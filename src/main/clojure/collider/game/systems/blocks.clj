@@ -43,12 +43,20 @@
 
 (defn- item-is [k] (comp #{k} :item))
 
-(defn- tool-is [d] (fn [c] ((d) (:item c))))
+(defn- item-in [kinds] (comp kinds :item))
+
+(defn- tagged [tag-items] (fn [c] ((tag-items) (:item c))))
 
 (defn- on-args [f] (fn [{:keys [world args]}] (f world args)))
 
 (defn- on-at [f]
   (fn [{:keys [world eid at]}] (f world eid at)))
+
+(defn- on-item [f]
+  (fn [{:keys [world eid at item]}] (f world eid at item)))
+
+(defn- on-face [f]
+  (fn [{:keys [world eid pos face]}] (f world eid pos face)))
 
 (defn- axe-or-place [w args]
   (or (tools/axe-deltas w args) (place/solid-place-deltas w args)))
@@ -69,19 +77,25 @@
   (let [hand (:use-hand at)]
     (book/open-deltas at eid hand (player/hand-slot at hand))))
 
+(defn- pour-deltas [{:keys [world eid at item pour]}]
+  (bucket/empty-deltas world eid at item pour))
+
+(defn- hang-deltas [{:keys [world eid at pos face]}]
+  (hanging/place-deltas world eid at pos face))
+
+(defn- spyglass-deltas [{:keys [eid at]}]
+  (held/spyglass-deltas eid at))
+
+(def ^:private hanging-items
+  #{:painting :item-frame :glow-item-frame})
+
 (def ^:private item-actions
-  [[clicked-scaffolding?
-    (fn [{:keys [world eid pos face]}]
-      (place/scaffold-place-deltas world eid pos face))]
+  [[clicked-scaffolding? (on-face place/scaffold-place-deltas)]
    [(comp nil? :item) (constantly nil)]
-   [(comp thrown/throwables :item)
+   [(item-in thrown/throwables)
     (when-use (on-at thrown/throw-deltas))]
-   [:pour
-    (when-use (fn [{:keys [world eid at item pour]}]
-                (bucket/add world eid at item pour)))]
-   [(comp data/mob-bucket :item)
-    (when-use (fn [{:keys [world eid at item]}]
-                (bucket/mob-deltas world eid at item)))]
+   [:pour (when-use pour-deltas)]
+   [(item-in data/mob-bucket) (when-use (on-item bucket/mob-deltas))]
    [(item-is :flint-and-steel)
     (when-hand (on-args tools/flint-deltas))]
    [(item-is :fire-charge)
@@ -89,28 +103,21 @@
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]
-   [(comp #{:lily-pad :frogspawn} :item)
-    (when-use (fn [{:keys [world eid at item]}]
-                (bucket/lily-deltas world eid at item)))]
-   [(item-is :potion)
-    (when-hand (fn [{:keys [world eid pos face]}]
-                 (tools/mud-deltas world eid pos face)))]
+   [(item-in #{:lily-pad :frogspawn})
+    (when-use (on-item bucket/lily-deltas))]
+   [(item-is :potion) (when-hand (on-face tools/mud-deltas))]
    [(item-is :bone-meal) (when-hand (on-args tools/bonemeal-deltas))]
-   [(tool-is tools/hoes) (when-hand (on-args tools/till-deltas))]
+   [(tagged tools/hoes) (when-hand (on-args tools/till-deltas))]
    [(item-is :honeycomb) (when-hand (on-args tools/wax-deltas))]
-   [(tool-is tools/axes) (when-hand (on-args axe-or-place))]
-   [(tool-is tools/shovels)
-    (when-hand (on-args tools/flatten-deltas))]
+   [(tagged tools/axes) (when-hand (on-args axe-or-place))]
+   [(tagged tools/shovels) (when-hand (on-args tools/flatten-deltas))]
    [(item-is :shears) (when-hand (on-args tools/shear-deltas))]
    [(item-is :compass) (when-hand (on-args tools/compass-deltas))]
-   [(comp mobs/egg-type :item) egg-deltas]
-   [(comp #{:painting :item-frame :glow-item-frame} :item)
-    (when-hand (fn [{:keys [world eid at pos face]}]
-                 (hanging/place-deltas world eid at pos face)))]
-   [(item-is :spyglass)
-    (when-use (fn [{:keys [eid at]}] (held/spyglass-deltas eid at)))]
+   [(item-in mobs/egg-type) egg-deltas]
+   [(item-in hanging-items) (when-hand hang-deltas)]
+   [(item-is :spyglass) (when-use spyglass-deltas)]
    [(item-is :goat-horn) (when-use (held-deltas held/horn-deltas))]
-   [(comp held/swap-slot :item) (when-use (held-deltas equip-deltas))]
+   [(item-in held/swap-slot) (when-use (held-deltas equip-deltas))]
    [(constantly true) (on-args place/solid-place-deltas)]])
 
 (defn- fresh? [{:keys [at item world]}]
@@ -121,15 +128,17 @@
     (let [acts (filter (fn [[pred _]] (pred ctx)) item-actions)]
       (when-let [[_ f] (first acts)] (f ctx)))))
 
+(defn- no-face? [face] (= 255 (bit-and (long face) 0xFF)))
+
 (defn- suppressed?
-  "Whether a sneaking player with something in either hand, item in
-  the hand that clicks, skips the use of the block clicked."
+  "Returns true when the player skips the use of the block.
+  A sneaking player skips it with an item in either hand."
   [at item]
   (boolean (and (:sneaking? at)
                 (or item (seq (sense/hands-of at))))))
 
 (defn- place-ctx [world at [eid pos face item cursor :as args]]
-  (let [use-item? (= 255 (bit-and (long face) 0xFF))]
+  (let [use-item? (no-face? face)]
     {:world world :eid eid :pos pos :face face :item item :at at
      :args args :cursor cursor :use-item? use-item?
      :use-block? (not (or use-item? (suppressed? at item)))
@@ -160,7 +169,7 @@
       (when item (or (hand-deltas ctx) (item-deltas ctx))))))
 
 (defn- spectator-deltas [world eid pos face]
-  (when-not (= 255 (bit-and (long face) 0xFF))
+  (when-not (no-face? face)
     (seq (containers/spectator-open-deltas world eid pos))))
 
 (defn- place-deltas [world [eid pos face :as args] origin]
@@ -180,8 +189,10 @@
                     (#{:blocks-changed :overlay} (:msg m)))))
         deltas))
 
+(def ^:private ^:const hit-slack 1.0000001)
+
 (defn- on-block? [cursor]
-  (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) 1.0000001)
+  (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) hit-slack)
           cursor))
 
 (defn- barred [world e pos]
@@ -193,6 +204,14 @@
       (< y bottom) [false bottom]
       (:tp-target e) [true top])))
 
+(defn- top-reached [eid face ^long y ^long top]
+  (when (and (= 1 face) (>= y top)) (edit/build-limit eid true top)))
+
+(defn- limit-reached [eid face y top bottom]
+  (or (top-reached eid face y top)
+      (when (and (= 0 face) (<= y bottom))
+        (edit/build-limit eid false bottom))))
+
 (defn- failed-limits
   [world e [eid pos face item _ _ _ hand] deltas]
   (let [y (long (nth pos 1))
@@ -201,17 +220,14 @@
         item (or item (sense/in-hand e (or hand :main)))]
     (when-not (or (consumed? deltas)
                   (not (placement-attempt? world e item)))
-      (cond
-        (and (= 1 face) (>= y top))
-        (repeat 2 (edit/build-limit eid true top))
-        (and (= 0 face) (<= y bottom))
-        [(edit/build-limit eid false bottom)]))))
+      (keep identity [(top-reached eid face y top)
+                      (limit-reached eid face y top bottom)]))))
 
 (defn- use-on-deltas
   [world [eid pos face _ cursor :as args] origin]
   (let [e (merge (get-in world [:entities eid]) origin)]
     (cond
-      (= 255 (bit-and (long face) 0xFF))
+      (no-face? face)
       (place-deltas world args origin)
       (and (reach/in-reach? e pos) (on-block? cursor))
       (if-let [[high? y] (barred world e pos)]
@@ -219,9 +235,11 @@
         (let [r (place-deltas world args origin)]
           (concat r (failed-limits world e args r)))))))
 
+(def ^:private dig-actions #{dig/start dig/abort dig/finish})
+
 (defn- sequence-of [tag args]
   (case tag
-    :dig (when (#{0 1 2} (long (first args))) (nth args 3 nil))
+    :dig (when (dig-actions (long (first args))) (nth args 3 nil))
     :place (nth args 4 nil)
     :use-item (nth args 1 nil)
     nil))
@@ -250,8 +268,8 @@
       ds)))
 
 (defn sequences
-  "Returns the last block action sequence of each player in events,
-  as a map of eid to sequence."
+  "Returns the last block action sequence of each player in events.
+  The sequences are by eid."
   [events]
   (reduce (fn [m [tag eid & args]]
             (if-let [sq (sequence-of tag args)]
@@ -259,13 +277,15 @@
               m))
           {} events))
 
+(defn- item-use-args [[eid hand]]
+  [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand])
+
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
     :dig (dig/dig-deltas world args)
     :place (placed-deltas world args (get origins i))
-    :use-item (let [[eid hand] args
-                    a [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand]]
-                (place-deltas world a (get origins i)))
+    :use-item
+    (place-deltas world (item-use-args args) (get origins i))
     :sign-update (use/sign-update-deltas world args)
     nil))
 

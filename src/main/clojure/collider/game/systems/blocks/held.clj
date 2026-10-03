@@ -1,6 +1,5 @@
 (ns collider.game.systems.blocks.held
-  "Using an item in the air: putting on what it equips, and the
-  spyglass and goat horn."
+  "Armor, the spyglass and the goat horn, used in the air."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
             [collider.game.inventory :as inventory]
@@ -8,16 +7,15 @@
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
+            [collider.game.slots :as slots]
             [collider.game.using :as using]))
 
 (set! *warn-on-reflection* true)
 
-(def ^:private armor-slot {:head 5 :chest 6 :legs 7 :feet 8})
-
 (defn swap-slot
   "Returns the slot a player puts item on by using it, or nil."
   [item]
-  (armor-slot (data/swap-slot item)))
+  (slots/armor (data/swap-slot item)))
 
 (defn- binds? [v]
   (contains? (get v "effects") "minecraft:prevent_armor_change"))
@@ -56,8 +54,8 @@
                 [[:set-slot eid slot (update held :count dec)]])))))
 
 (defn equip-deltas
-  "Returns the deltas of a player using an item that it wears.
-  The item goes on and what was worn there takes its place."
+  "Returns the deltas of a player who puts on the held item. The worn
+  item goes to the hand."
   [world eid e hand held]
   (let [item (:item held)
         slot (swap-slot item)
@@ -83,7 +81,7 @@
    (out/to eid (out/cooldown group ticks))])
 
 (defn- horn-sound [eid e ins]
-  (let [volume (float (/ (double (float (:range ins))) 16.0))
+  (let [volume (float (/ (double (:range ins)) 16.0))
         snd (:sound ins)
         fx (out/entity-sound snd eid (:pos e) volume 1.0 :records)]
     (out/except eid fx)))

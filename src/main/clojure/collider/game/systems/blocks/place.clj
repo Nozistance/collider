@@ -22,14 +22,13 @@
 
 (def ^:private water-plant-types #{:kelp :kelp-plant :seagrass})
 
-(def ^:private face-directions
-  {0 :down 1 :up 2 :north 3 :south 4 :west 5 :east})
-
 (def ^:private horizontals #{:north :south :west :east})
+
+(def ^:private ^:const snow-max-layers 8)
 
 (defn- snow-replaceable? [^long cur item face]
   (let [n (block/prop-long cur :layers)]
-    (if (and (= item :snow) (< n 8))
+    (if (and (= item :snow) (< n snow-max-layers))
       (or (nil? face) (= 1 (long face)))
       (= n 1))))
 
@@ -40,8 +39,7 @@
 (defn- own-item? [^long cur item]
   (= (block/block-of cur) (placement/item->block item 1)))
 
-(defn replaceable-state?
-  "Returns true when the state yields to a block put in its cell."
+(defn- replaceable-state?
   ([cur] (replaceable-state? cur nil nil))
   ([cur item] (replaceable-state? cur item nil))
   ([^long cur item {:keys [sneak? face]}]
@@ -55,19 +53,14 @@
      :else (and (block/can-be-replaced? cur)
                 (not (own-item? cur item))))))
 
-(defn replaceable?
-  "Returns true when the block at the position yields to the item."
+(defn- replaceable?
   ([world pos] (replaceable-state? (changes/block-at world pos) nil))
   ([world pos item]
    (replaceable-state? (changes/block-at world pos) item)))
 
-(defn- restated [^long state props]
-  (block/state (block/block-of state)
-               (merge (block/props-of state) props)))
-
 (defn- snow-stacked [^long cur]
-  (let [n (min 8 (inc (block/prop-long cur :layers)))]
-    (block/state :snow {:layers (keyword (str n))})))
+  (let [n (min snow-max-layers (inc (block/prop-long cur :layers)))]
+    (block/with-long cur :layers n)))
 
 (defn- stacked [world pos' state item]
   (let [cur (changes/block-at world pos')]
@@ -135,7 +128,7 @@
   (let [facing (block/facing-of state)
         chunks (:chunks world)
         hinge (placement/door-hinge chunks pos' facing cx cz)]
-    (restated state {:hinge hinge})))
+    (block/with state :hinge hinge)))
 
 (defn- door-base-ok? [world pos' above]
   (let [below (changes/block-at world (dir/down pos'))]
@@ -145,21 +138,21 @@
 (defn- door-place-deltas [world eid pos' state cursor]
   (let [above (dir/up pos')
         lower (door-lower world pos' state cursor)
-        upper (restated lower {:half :upper})
+        upper (block/with lower :half :upper)
         ok? #(door-base-ok? world pos' above)]
     (second-cell-deltas world eid pos' lower above upper ok?)))
 
 (defn- bed-place-deltas [world eid pos' state item]
   (let [head-pos (mapv + pos' (halves/partner-offset state))
-        head (restated state {:part :head})
+        head (block/with state :part :head)
         ok? #(replaceable? world head-pos item)]
     (second-cell-deltas world eid pos' state head-pos head ok?)))
 
 (defn- pair-upper [world above state]
-  (let [upper (restated state {:half :upper})
+  (let [upper (block/with state :half :upper)
         water? (block/water? (changes/block-at world above))]
     (if (contains? (block/props-of state) :waterlogged)
-      (edit/with-water upper water?)
+      (block/with upper :waterlogged (block/flag water?))
       upper)))
 
 (defn- pair-place-deltas [world eid pos' state]
@@ -171,13 +164,15 @@
 (defn- scaffold-direction [world eid face]
   (let [e (get-in world [:entities eid])]
     (cond
-      (:sneaking? e) (get face-directions face)
+      (:sneaking? e) (get dir/from-index face)
       (= 1 (long face)) (dir/player-direction (:yaw e 0.0))
       :else :up)))
 
+(def ^:private ^:const scaffold-max-distance 7)
+
 (defn- scaffold-walk [world p off horizontal?]
   (loop [p p n 0]
-    (when (< (long n) 7)
+    (when (< (long n) scaffold-max-distance)
       (if-not (chunk/in-level? world (p 1))
         p
         (let [st (changes/block-at world p)]
@@ -245,7 +240,7 @@
         same? (= pos' pos)
         st (fitted-state world pos' state face same? pose)
         st (if (container? st) (contained world pos' st face pose) st)
-        st (if st (edit/waterlogged world pos' st) st)]
+        st (some->> st (edit/waterlogged world pos'))]
     (stacked world pos' st item)))
 
 (defn- relative-free? [world pos' item ctx]
