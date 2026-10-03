@@ -83,15 +83,16 @@
                (transient {})
                entities)))
 
-(def ^:private index-cache (atom nil))
+(defn indexed
+  "Returns world with its entities placed by cell for the searches of
+  its mobs this tick."
+  [world]
+  (assoc world ::index (delay (build-index (:entities world)))))
 
-(defn- entity-index [entities]
-  (let [c @index-cache]
-    (if (and c (identical? (nth c 0) entities))
-      (nth c 1)
-      (let [idx (build-index entities)]
-        (reset! index-cache [entities idx])
-        idx))))
+(defn- entity-index [world]
+  (if-let [d (::index world)]
+    @d
+    (build-index (:entities world))))
 
 (defn- scan-cell [best pos r2 pred entries]
   (reduce (fn [best [oid o]]
@@ -120,7 +121,7 @@
   r2 that pred accepts, or nil."
   [world pos r2 pred]
   (let [r2 (double r2)
-        index (entity-index (:entities world))
+        index (entity-index world)
         r (Math/sqrt r2)
         [x0 x1] (cell-span (v/x pos) r)
         [z0 z1] (cell-span (v/z pos) r)]

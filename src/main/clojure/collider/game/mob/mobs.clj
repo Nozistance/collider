@@ -114,15 +114,19 @@
 (def ^:private water-walker
   (update path/cow :malus assoc :water 0.0))
 
+(def ^:private mooshroom
+  (-> (assoc cow :ground :mycelium :voices [:classic]
+             :spawns-on "mooshrooms_spawnable_on")
+      (dissoc :spawn-color)))
+
 (def types
+  "The facts of each mob type."
   {:sheep     {:sounds        :sheep
                :food          "sheep_food"
                :spawns-on     "animals_spawnable_on"
                :spawn-color   sheep-color}
    :cow       cow
-   :mooshroom (-> (assoc cow :ground :mycelium :voices [:classic]
-                         :spawns-on "mooshrooms_spawnable_on")
-                  (dissoc :spawn-color))
+   :mooshroom mooshroom
    :pig       {:sounds      :pig
                :baby-sounds :baby-pig
                :voices      [:classic :big :mini]
@@ -358,6 +362,21 @@
   "Returns how far above its position mob e looks out."
   ^double [e]
   (size/eye e))
+
+(def ^:const legacy-fluid-eye
+  "The share of its height at which a mob tests the depth of the fluid
+  it jumps in, in place of its real eye."
+  0.85)
+
+(def ^:const legacy-look-eye
+  "The share of its height at which a mob looks and is looked at, in
+  place of its real eye."
+  0.95)
+
+(def ^:const legacy-player-eye
+  "The height above its feet at which a mob sees the eye of a player,
+  in place of the eye of its pose."
+  1.62)
 
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."

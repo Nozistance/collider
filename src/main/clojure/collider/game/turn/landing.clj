@@ -67,26 +67,25 @@
 (def ^:private ^:const least-scale (double (float 0.2)))
 
 (defn- particles
-  "Returns the block particles of LivingEntity.checkFallDamage:379
-  for e landing at pos on block st at cell after fall f."
+  "Returns the block particles of e landing at pos on block st at
+  cell after fall f."
   [e pos st cell f]
   (let [p (double (max 0 (long (Math/floor (power e (double f))))))]
     (when (and (pos? p) (not (block/air? st)))
-      (let [scale (min (+ least-scale (/ p 15.0)) 2.5)]
-        [(out/all (out/particles :block st (particle-at pos cell)
-                                 (long (* 150.0 scale)) 0.15))]))))
+      (let [scale (min (+ least-scale (/ p 15.0)) 2.5)
+            n (long (* 150.0 scale))
+            at (particle-at pos cell)]
+        [(out/all (out/particles :block st at n 0.15))]))))
 
 (def ^:private ^:table immune
   (delay (set (data/tag-values "entity_type" "fall_damage_immune"))))
 
-(defn- damage-of
-  "Returns the fall damage of LivingEntity.calculateFallDamage:1858."
-  ^long [e ^double d ^double m]
+(defn- damage-of ^long [e ^double d ^double m]
   (if (contains? @immune (:type e))
     0
-    (let [k (get (attribute/base-values e) :fall-damage-multiplier)]
-      (long (Math/floor (* (power e d) (double (float m))
-                           (double (or k 1.0))))))))
+    (let [k (get (attribute/base-values e) :fall-damage-multiplier)
+          scaled (* (power e d) (double (float m)))]
+      (long (Math/floor (* scaled (double (or k 1.0))))))))
 
 (defn- sound [e kind ^double vol ^double pitch]
   (out/all (out/sound kind (:pos e) vol pitch :neutral)))
@@ -172,17 +171,17 @@
   (let [p (:pos o)]
     (v/v3 (v/x p) (lifted-y (v/y p) (long (nth cell 1))) (v/z p))))
 
+(defn- lifted-delta [eid cell y0 [oid o]]
+  (when (and (not= oid eid) (not= :player (:type o))
+             (in-top? o cell y0))
+    [:merge-entity oid {:pos (lift o cell)}]))
+
 (defn- lifted-deltas [world eid cell y0]
-  (into [] (keep (fn [[oid o]]
-                   (when (and (not= oid eid) (not= :player (:type o))
-                              (in-top? o cell y0))
-                     [:merge-entity oid {:pos (lift o cell)}])))
-        (:entities world)))
+  (into [] (keep #(lifted-delta eid cell y0 %)) (:entities world)))
 
 (defn- trampled
-  "Returns e and the deltas of FarmlandBlock.fallOn:109 when e
-  tramples farmland st at cell to dirt: the bodies in the top of
-  the cell rise out of it (FarmlandBlock.turnToDirt:122)."
+  "Returns e and the deltas of farmland st at cell that e tramples
+  to dirt. The bodies in the top of the cell rise out of it."
   [world eid e st cell f]
   (if (tramples? world eid e f)
     (let [y0 (top-of st)]
@@ -194,8 +193,8 @@
     [e nil]))
 
 (defn- fell-on
-  "Returns e and the deltas of Block.fallOn:492 of block st at cell
-  for living entity e after fall f."
+  "Returns e and the deltas of block st at cell that living entity e
+  falls on after fall f."
   [world eid e st cell f]
   (let [f (double f)
         [e ts] (if (= :farmland (block/type-of st))
@@ -210,10 +209,8 @@
 
 (defn landed
   "Returns the position and the deltas of living entity e that lands
-  at pos on block sup, or on nothing, with fall f0 before its move
-  and f after it: the particles of LivingEntity.checkFallDamage:379,
-  then what the block under it does with the fall
-  (Entity.checkFallDamage:1589)."
+  at pos on block sup, after fall f0 before its move and f after
+  it."
   [world eid e pos sup f0 f]
   (let [f0 (double f0) f (double f)
         e (assoc e :pos pos)

@@ -72,7 +72,7 @@
             [(land-event out/sound-anvil-broken cell)])
           (item-deltas world eid e)))
 
-(defn- land-deltas [world eid e cell cur concrete? stuck?]
+(defn- land-deltas [world eid e [cell cur concrete? stuck?]]
   (if-let [st (landed-state world e cell cur concrete? stuck?)]
     (cond-> (into [[:remove-entity eid]]
                   (delta/authored
@@ -180,16 +180,18 @@
   {:type (get sources (block/type-of (:block e)) :falling-block)
    :cause eid :direct eid :from (:pos e)})
 
-(defn- hurt-amount
-  "Returns the damage of FallingBlockEntity.causeFallDamage:258 of e
-  after fall d, nil when it hurts nothing."
+(defn- fall-damage ^double [^long n per cap]
+  (let [raw (float (* (float n) (float per)))]
+    (double (min (long (Math/floor raw)) (long cap)))))
+
+(defn- fall-hurt
+  "Returns the blocks fallen and the damage that falling block e deals
+  after fall d, or nil when it deals none."
   [e ^double d]
   (when-let [per (:hurt e)]
     (let [n (long (Math/ceil (- d 1.0)))]
       (when-not (neg? n)
-        [n (double (min (long (Math/floor (float (* (float n)
-                                                    (float per)))))
-                        (long (:hurt-max e))))]))))
+        [n (fall-damage n per (:hurt-max e))]))))
 
 (defn- box-of [e]
   (let [[half h] (entity/box e) p (:pos e) half (double half)]
@@ -203,8 +205,8 @@
           [0 1 2]))
 
 (defn- victim?
-  "Returns true when o is a living body alive in box, as
-  EntitySelector.LIVING_ENTITY_STILL_ALIVE picks it."
+  "Returns true when o is a living body that is alive and meets
+  box."
   [box [_ o]]
   (and (or (= :player (:type o)) (mobs/mob-type? (:type o)))
        (pos? (double (:health o 0.0)))
@@ -226,15 +228,14 @@
   {:anvil :chipped-anvil :chipped-anvil :damaged-anvil})
 
 (defn- chip-chance
-  "Returns 0.05F + i * 0.05F in float."
+  "Returns the chance that an anvil chips after a fall of i blocks."
   ^double [^long i]
   (let [step (float 0.05)]
     (double (float (+ step (float (* (float i) step)))))))
 
 (defn- chipped
   "Returns falling block e after its anvil took damage n from a fall
-  of i blocks, as FallingBlockEntity.causeFallDamage:269 chips it;
-  nil when it breaks."
+  of i blocks. Returns nil when the anvil breaks."
   [world eid e i n]
   (let [st (:block e)
         r (random/of-longs (:tick world) eid chip-key)]
@@ -249,53 +250,54 @@
                        :neutral))
    (out/all (out/status eid :honey-jump))])
 
+(defn- below-state ^long [world e]
+  (let [ch (:chunks world) pos (:pos e)
+        sup (phys/supporting-block ch pos (half) (phys/context e))]
+    (chunk/at ch (fall/on-pos ch pos sup))))
+
 (defn- fell-on
-  "Returns falling block e that lands after fall f and the deltas of
-  Block.fallOn:492 of the block under it, which hurt the living
-  bodies in its box (FallingBlockEntity.causeFallDamage:253)."
+  "Returns falling block e after it lands from fall f, and the deltas
+  of the block under it and of the bodies it hurts."
   [world eid e ^double f]
   (if-not (pos? f)
     [e []]
-    (let [ch (:chunks world) pos (:pos e)
-          sup (phys/supporting-block ch pos (half) (phys/context e))
-          st (chunk/at ch (fall/on-pos ch pos sup))
+    (let [st (below-state world e)
           hd (when (= :honey (block/type-of st)) (honey-deltas eid e))
           [i n] (when-let [l (fall/landing st f)]
-                  (hurt-amount e (double (nth l 0))))]
+                  (fall-hurt e (double (nth l 0))))]
       (if i
         [(chipped world eid e i n)
          (into (vec hd) (hurt-deltas world eid e n))]
         [e (vec hd)]))))
 
 (defn- landed-deltas
-  "Returns the deltas of falling block e that landed, or broke when
-  its fall broke it (FallingBlockEntity.tick:183, cancelDrop)."
-  [world eid e cell cur concrete? stuck?]
+  "Returns the deltas of falling block e that lands, or that breaks
+  when e is nil."
+  [world eid e l]
   (if e
-    (land-deltas world eid e cell cur concrete? stuck?)
+    (land-deltas world eid e l)
     [[:remove-entity eid]
-     (land-event out/sound-anvil-broken cell)]))
+     (land-event out/sound-anvil-broken (nth l 0))]))
 
 (defn- fallen ^double [world e ^Move mv]
   (let [f (double (or (:fall e) 0.0))]
     (phys/fallen (landing/cleared world (:pos e) (phys/pos mv) f)
                  (phys/moved-y mv))))
 
+(defn- ground-deltas [world eid e f l]
+  (let [[e hs] (fell-on world eid e f)]
+    (into hs (landed-deltas world eid e l))))
+
 (defn- step-deltas [world eid e]
   (let [^Move mv (fall-move world e)
-        pos (phys/pos mv)
+        pos (phys/pos mv) vel (phys/vel mv)
         time (inc (long (:time e)))
-        vel (phys/vel mv)
         f (fallen world e mv)
-        [cell cur concrete? stuck?] (landing world e pos vel)]
+        [cell _ _ stuck? :as l] (landing world e pos vel)]
     (cond
       (phys/on-ground? mv)
-      (let [[e hs] (fell-on world eid (assoc e :pos pos) f)]
-        (into hs (landed-deltas world eid e cell cur concrete?
-                                stuck?)))
-      stuck?
-      (land-deltas world eid (assoc e :pos pos)
-                   cell cur concrete? stuck?)
+      (ground-deltas world eid (assoc e :pos pos) f l)
+      stuck? (land-deltas world eid (assoc e :pos pos) l)
       (expired? world time cell)
       (cons [:remove-entity eid]
             (item-deltas world eid (assoc e :pos pos)))
@@ -306,10 +308,9 @@
     [(overlay/wrote world eid ds) (into out ds)]))
 
 (defn turns
-  "Returns world with the blocks that falling blocks set in their
-  turns, and the deltas of every falling block in an active chunk.
-  Each lands with setBlock as FallingBlockEntity.tick:196, so the
-  turns after it see the block."
+  "Returns world with the blocks that falling blocks set, and the
+  deltas of the falling blocks in active chunks. A later turn sees
+  the blocks of the turns before it."
   [world]
   (reduce turn [world []]
           (areas/active-of-types world [:falling-block])))
