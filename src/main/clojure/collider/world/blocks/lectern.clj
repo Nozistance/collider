@@ -40,6 +40,6 @@
    :match? (fn [_chunks st _p] (lectern? st))
    :wake   (fn [_chunks _dim _tick _p _old _side] nil)
    :due    (fn [chunks p _ctx]
-             (let [st (chunk/chunks-get-block chunks p)]
+             (let [st (chunk/at chunks p)]
                (when (and (lectern? st) (powered? st))
                  [[p (powered st false)]])))})

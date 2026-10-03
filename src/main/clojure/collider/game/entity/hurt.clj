@@ -474,7 +474,7 @@
 (def ^:private ^:const safe-fall 3.0)
 
 (defn- ground-state [world pos]
-  (chunk/chunks-get-block
+  (chunk/at
     (:chunks world)
     [(long (Math/floor (v/x pos)))
      (long (Math/floor (- (v/y pos) 0.2)))

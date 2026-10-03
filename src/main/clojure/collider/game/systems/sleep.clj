@@ -19,7 +19,7 @@
 (def ^:private wake-marker "minecraft:wake_up_from_sleep")
 
 (defn- block-at [world pos]
-  (chunk/chunks-get-block (:chunks world) pos))
+  (chunk/at (:chunks world) pos))
 
 (defn bed-rule
   "Returns the bed rule of the level with what it allows now."

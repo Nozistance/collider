@@ -29,7 +29,7 @@
 (defn tick-deltas
   "Returns the deltas of one tick of the brewing stand e at pos."
   [world [pos e]]
-  (let [st (chunk/chunks-get-block (:chunks world) pos)
+  (let [st (chunk/at (:chunks world) pos)
         [e' brewed? spill] (brewing/tick e)
         st' (with-bottles st (:items e'))]
     (concat (when (not= e e') [[:set-block-entity pos e']])

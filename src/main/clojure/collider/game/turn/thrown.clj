@@ -268,7 +268,7 @@
     [(c 0 x) (c 1 y) (c 2 z) (c 3 x) (c 4 y) (c 5 z)]))
 
 (defn- cell-clip [chunks cell from d]
-  (let [st (chunk/chunks-get-block chunks cell)]
+  (let [st (chunk/at chunks cell)]
     (when (block/solid? st)
       (reduce (fn [best b]
                 (nearer best
@@ -378,10 +378,10 @@
 
 (defn- fire-at? [chunks p]
   (and (chunk/in-range? (nth p 1))
-       (block/fire? (chunk/chunks-get-block chunks p))))
+       (block/fire? (chunk/at chunks p))))
 
 (defn- break-packet [chunks p]
-  (out/all (out/break-effect p (chunk/chunks-get-block chunks p))))
+  (out/all (out/break-effect p (chunk/at chunks p))))
 
 (defn- fire-out-deltas [world fires]
   (let [chunks (:chunks world)]

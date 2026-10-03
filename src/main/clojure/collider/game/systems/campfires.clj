@@ -54,7 +54,7 @@
     (when (not= e e') [[:set-block-entity pos e']])))
 
 (defn- lit? [world pos]
-  (let [st (chunk/chunks-get-block (:chunks world) pos)]
+  (let [st (chunk/at (:chunks world) pos)]
     (= :true (:lit (block/props-of st)))))
 
 (defn tick-deltas

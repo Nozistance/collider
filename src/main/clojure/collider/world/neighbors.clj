@@ -99,7 +99,7 @@
 
 (defn- block-at ^long [s p]
   (if (chunk/in-range? (long (p 1)))
-    (chunk/chunks-get-block (chunks s) p)
+    (chunk/at (chunks s) p)
     0))
 
 (defn- ticked [s ctx k at p ty]

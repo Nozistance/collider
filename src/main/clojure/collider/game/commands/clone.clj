@@ -10,7 +10,7 @@
 
 (defn- state-at ^long [lv [_ y _ :as p]]
   (if (chunk/in-level? lv (long y))
-    (chunk/chunks-get-block (:chunks lv) p)
+    (chunk/at (:chunks lv) p)
     0))
 
 (defn- shifted [p off] (mapv + p off))

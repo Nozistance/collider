@@ -21,7 +21,7 @@
 (defn block-at
   "Returns the block state at pos in the level world."
   ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) pos))
+  (chunk/at (:chunks world) pos))
 
 (defn- drying? [world [_ st]]
   (and (number? st)

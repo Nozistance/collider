@@ -90,7 +90,7 @@
   (let [chunks (:chunks world) lo (chunk/level-min-y world)
         bx (long (Math/floor x)) bz (long (Math/floor z))
         solid? #(block/blocks-motion?
-                  (long (chunk/chunks-get-block chunks bx % bz)))]
+                  (long (chunk/block-state chunks bx % bz)))]
     (loop [by (long (Math/floor y)) y (double y)]
       (cond
         (<= by lo) nil
@@ -101,7 +101,7 @@
   (let [span #(range (long (Math/floor %1)) (long (Math/ceil %2)))
         fluid? (fn [[x y z]]
                  (block/liquid-class
-                   (chunk/chunks-get-block chunks x y z)))]
+                   (chunk/block-state chunks x y z)))]
     (some fluid? (for [x (span x0 x1) y (span y0 y1) z (span z0 z1)]
                    [x y z]))))
 

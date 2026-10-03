@@ -73,7 +73,7 @@
 (defn tick-deltas
   "Returns the deltas of one tick of the potent sulfur e at pos."
   [world [pos e]]
-  (let [st (chunk/chunks-get-block (:chunks world) pos)
+  (let [st (chunk/at (:chunks world) pos)
         ph (geyser/phase st)
         q (when (#{:dormant :erupting :continuous} ph)
             (geyser/source (:chunks world) pos))

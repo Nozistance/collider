@@ -144,7 +144,7 @@
 (defn- frame-held? [chunks e]
   (let [f (:facing e)
         wall (mapv - (:block-pos e) (dir/offset f))]
-    (holds? (chunk/chunks-get-block chunks wall)
+    (holds? (chunk/at chunks wall)
             (= :y (dir/axis f)))))
 
 (defn- cells [^double lo ^double hi]
@@ -160,7 +160,7 @@
 (defn- painting-held? [chunks e b]
   (let [[x0 y0 z0 x1 y1 z1] (support-box e b)]
     (every? (fn [[x y z]]
-              (holds? (chunk/chunks-get-block chunks [x y z]) false))
+              (holds? (chunk/at chunks [x y z]) false))
             (for [x (cells x0 x1) y (cells y0 y1) z (cells z0 z1)]
               [x y z]))))
 

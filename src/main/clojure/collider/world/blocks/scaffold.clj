@@ -38,7 +38,7 @@
 (defn- too-far? [^long st] (= 7 (block/prop-long st :distance)))
 
 (defn- due [chunks p _ctx]
-  (let [st (chunk/chunks-get-block chunks p)
+  (let [st (chunk/at chunks p)
         st' (shaped chunks p st)]
     (cond
       (not (too-far? st')) (when (not= st' st) [[p st']])

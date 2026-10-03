@@ -101,10 +101,10 @@
   [chunks [x y z]]
   (let [y' (dec (long y))]
     (and (chunk/in-range? y')
-         (block/free? (chunk/chunks-get-block chunks [x y' z])))))
+         (block/free? (chunk/at chunks [x y' z])))))
 
 (defn- place-delay ^long [chunks p]
-  (let [st (chunk/chunks-get-block chunks p)]
+  (let [st (chunk/at chunks p)]
     (if (= :dragon-egg (block/type-of st))
       dragonegg/place-delay
       2)))
@@ -118,6 +118,6 @@
    :wake   (fn [chunks _dim tick p _old _side]
              (+ (long tick) (place-delay chunks p)))
    :due    (fn [chunks p _ctx]
-             (let [st (chunk/chunks-get-block chunks p)]
+             (let [st (chunk/at chunks p)]
                (when (free-below? chunks p)
                  [[p (block/emptied st) [[:fall st]]]])))})

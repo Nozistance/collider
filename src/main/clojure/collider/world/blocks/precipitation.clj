@@ -17,7 +17,7 @@
 
 (defn- state-at ^long [chunks p]
   (if (chunk/in-range? (long (nth p 1)))
-    (long (chunk/chunks-get-block chunks p))
+    (long (chunk/at chunks p))
     0))
 
 (defn- block-light ^long [chunks p]

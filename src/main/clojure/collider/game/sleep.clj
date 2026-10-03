@@ -13,7 +13,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- block-at [world pos]
-  (chunk/chunks-get-block (:chunks world) pos))
+  (chunk/at (:chunks world) pos))
 
 (defn counted
   "Returns the player entries that count for sleep, which are no

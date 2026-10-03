@@ -172,7 +172,7 @@
 
 (defn- cell-state ^long [chunks x y z]
   (if (chunk/in-range? (long y))
-    (long (chunk/chunks-get-block chunks [x y z]))
+    (long (chunk/at chunks [x y z]))
     0))
 
 (defn eye-in-water?

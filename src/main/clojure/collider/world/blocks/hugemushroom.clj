@@ -7,7 +7,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- at [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks p) 0))
+  (if (chunk/in-range? y) (chunk/at chunks p) 0))
 
 (defn- faced ^long [self ^long st face]
   (block/state self (reduce-kv face (block/props-of st) dir/offset)))

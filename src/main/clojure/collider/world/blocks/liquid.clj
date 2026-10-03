@@ -82,7 +82,7 @@
 
 (defn- raw-at ^long [chunks ^long x ^long y ^long z]
   (if (chunk/in-range? y)
-    (long (chunk/chunks-get-block chunks x y z))
+    (long (chunk/block-state chunks x y z))
     (long @void-air)))
 
 (defn- state-of ^long [^long st]
@@ -307,7 +307,7 @@
 (defn- above-at [chunks [x y z]]
   (let [up (inc (long y))]
     (if (chunk/in-range? up)
-      (chunk/chunks-get-block chunks [x up z])
+      (chunk/at chunks [x up z])
       0)))
 
 (defn fluid-height-of
@@ -850,7 +850,7 @@
 (defn fluid-wake
   "Returns the tick at which the liquid at p moves next."
   [chunks dim tick p old side]
-  (let [st (chunk/chunks-get-block chunks p)]
+  (let [st (chunk/at chunks p)]
     (+ (long tick)
        (if (nil? side)
          (update-delay dim old st tick p)

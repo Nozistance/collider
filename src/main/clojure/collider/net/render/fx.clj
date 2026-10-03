@@ -14,7 +14,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- block-state ^long [world pos]
-  (chunk/chunks-get-block (:chunks world) pos))
+  (chunk/at (:chunks world) pos))
 
 (def ^:private ^:table explosion-block-particles
   (delay (let [id #(data/registry-id "particle_type" %)]

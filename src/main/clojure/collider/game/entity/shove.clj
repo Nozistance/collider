@@ -12,7 +12,7 @@
 
 (defn- full-block? [chunks [x y z]]
   (and (chunk/in-range? (long y))
-       (block/full-cube? (chunk/chunks-get-block chunks [x y z]))))
+       (block/full-cube? (chunk/at chunks [x y z]))))
 
 (defn- beside [[bx by bz] [a s]]
   (let [s (long s) bx (long bx) by (long by) bz (long bz)]
