@@ -693,11 +693,26 @@
   ^objects []
   @collision-table)
 
+(def ^:private ^:const motion-bit 1)
+
+(def ^:private ^:const lava-bit 2)
+
+(def ^:private ^:const ticking-bit 4)
+
+(def ^:private ^:const render-bit 8)
+
+(def ^:private ^:const top-face-bit 16)
+
+(def ^:private ^:const signal-bit 32)
+
+(def ^:private ^:const legacy-solid-bit 64)
+
 (defn- flagged? [^long st ^long mask]
   (pos? (bit-and (long (aget ^bytes (states/flags) st)) mask)))
 
 (def ^:private ^:table legacy-solid-arr
-  (delay (boolean-table (fn [st _ _] (flagged? st 64)))))
+  (delay (boolean-table
+           (fn [st _ _] (flagged? st legacy-solid-bit)))))
 
 (defn legacy-solid?
   "Returns true when st counts as solid for old rules."
@@ -719,9 +734,11 @@
   ^booleans []
   @full-cube-arr)
 
+(def ^:private passable #{:cobweb :bamboo-sapling})
+
 (defn- motion? [^long st n]
-  (and (flagged? st 1)
-       (not (contains? #{:cobweb :bamboo-sapling} n))))
+  (and (flagged? st motion-bit)
+       (not (contains? passable n))))
 
 (def ^:private ^:table blocks-motion-arr
   (delay (boolean-table (fn [st _ n] (motion? st n)))))
@@ -760,37 +777,38 @@
   "Returns true when a player may respawn inside st."
   [^long st]
   (or (contains? respawnable-types (type-of st))
-      (and (known? st) (not (flag? st 1)) (not (liquid? st)))))
+      (and (known? st) (not (flag? st motion-bit))
+           (not (liquid? st)))))
 
 (defn ignited-by-lava?
   "Returns true when lava sets st on fire."
-  {:inline (via `Block/flag 2)}
+  {:inline (via `Block/flag lava-bit)}
   [^long st]
-  (flag? st 2))
+  (flag? st lava-bit))
 
 (defn solid-render?
   "Returns true when st renders as a solid cube."
-  {:inline (via `Block/flag 8)}
+  {:inline (via `Block/flag render-bit)}
   [^long st]
-  (flag? st 8))
+  (flag? st render-bit))
 
 (defn collision-face-full-up?
   "Returns true when the top face of st is full."
-  {:inline (via `Block/flag 16)}
+  {:inline (via `Block/flag top-face-bit)}
   [^long st]
-  (flag? st 16))
+  (flag? st top-face-bit))
 
 (defn signal-source?
   "Returns true when st gives a redstone signal."
-  {:inline (via `Block/flag 32)}
+  {:inline (via `Block/flag signal-bit)}
   [^long st]
-  (flag? st 32))
+  (flag? st signal-bit))
 
 (defn randomly-ticking?
   "Returns true when st takes random ticks."
-  {:inline (via `Block/flag 4)}
+  {:inline (via `Block/flag ticking-bit)}
   [^long st]
-  (flag? st 4))
+  (flag? st ticking-bit))
 
 (defn burnable?
   "Returns true when fire can catch st."
