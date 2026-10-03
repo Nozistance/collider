@@ -7,8 +7,11 @@ import clojure.lang.Indexed;
 import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
+import clojure.lang.Util;
+import collider.Cell;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 
 /// A run of block updates over one window of edits, with the chunks,
 /// what the run collects and the queue of neighbour updates. Updates
@@ -31,6 +34,7 @@ public final class Neighbors {
     public ChunkIndex chunks;
     private ITransientCollection records, writes, ticks, sent;
     private final ArrayList<Object> placed = new ArrayList<>();
+    private long[] placedOld = new long[16];
     private final ArrayDeque<Object> stack = new ArrayDeque<>();
     private final ArrayList<Object> added = new ArrayList<>();
     private boolean running;
@@ -70,8 +74,12 @@ public final class Neighbors {
         return this;
     }
 
-    public Neighbors addPlaced(Object x) {
-        placed.add(x);
+    /// Adds `p` to the placed cells, `old` being its state before.
+    public Neighbors addPlaced(Object p, long old) {
+        int n = placed.size();
+        if (n == placedOld.length) placedOld = Arrays.copyOf(placedOld, 2 * n);
+        placedOld[n] = old;
+        placed.add(p);
         return this;
     }
 
@@ -99,6 +107,43 @@ public final class Neighbors {
         };
     }
 
+    /// Returns the distinct cells of the `records` of a run that its
+    /// `sent` cells do not hold, in order.
+    public static Object unheard(Object records, Object sent) {
+        if (paired(records, sent)) return PersistentVector.EMPTY;
+        Scratch<Boolean> heard = new Scratch<>(RT.count(sent));
+        for (Object p : (Iterable<?>) sent) heard.put(packed(p), Boolean.TRUE);
+        Scratch<Boolean> seen = new Scratch<>();
+        ITransientCollection out = PersistentVector.EMPTY.asTransient();
+        for (Object r : (Iterable<?>) records) {
+            Object p = RT.nth(r, 0);
+            long k = packed(p);
+            if (heard.get(k) != null || seen.get(k) != null) continue;
+            seen.put(k, Boolean.TRUE);
+            out = out.conj(p);
+        }
+        return out.persistent();
+    }
+
+    /// Returns true when each record has its own sent cell, in order.
+    private static boolean paired(Object records, Object sent) {
+        Indexed s = (Indexed) sent;
+        int m = RT.count(sent), j = 0;
+        for (Object r : (Iterable<?>) records) {
+            if (j == m || !Util.equiv(RT.nth(r, 0), s.nth(j))) return false;
+            j++;
+        }
+        return true;
+    }
+
+    private static long packed(Object p) {
+        return Cell.pack(
+                RT.longCast(RT.nth(p, 0)),
+                RT.longCast(RT.nth(p, 1)),
+                RT.longCast(RT.nth(p, 2))
+        );
+    }
+
     /// Sets the block at `p`, which is `x` `y` `z`, to `st` with
     /// `flags` when its chunk is present, `y` is inside `minY` to
     /// `maxY` and the block is not `st` already. Records the write and
@@ -114,14 +159,31 @@ public final class Neighbors {
             int minY,
             int maxY
     ) {
+        return put(p, null, x, y, z, st, flags, minY, maxY);
+    }
+
+    /// Places as `place` does, recording `rec` when it is the change
+    /// `[p st]` itself, else a new one.
+    private long put(
+            Object p,
+            Object rec,
+            int x,
+            int y,
+            int z,
+            long st,
+            long flags,
+            int minY,
+            int maxY
+    ) {
         if (y < minY || y > maxY) return -1;
         ChunkIndex c = chunks;
         if (c.get(x >> 4, z >> 4) == null) return -1;
         long old = Chunk.blockAt(c, x, y, z);
         if (old == st) return -1;
         chunks = c.withBlock(x, y, z, (int) st);
-        records = conj(records, vec(p, st));
-        writes = conj(writes, vec(p, old, st, flags));
+        Object boxed = rec != null ? RT.nth(rec, 1) : Long.valueOf(st);
+        records = conj(records, rec != null ? rec : vec(p, boxed));
+        writes = conj(writes, vec(p, old, boxed, flags));
         if ((flags & CLIENTS) != 0) sent = conj(sent, p);
         return old;
     }
@@ -161,7 +223,7 @@ public final class Neighbors {
     /// block beside it is not `deaf`, `shaped` runs its shape updates as
     /// `(shaped run pos old)`. `other` sets any other change as
     /// `(other run change)`. Each change set here that alters its block
-    /// joins the placed cells as `[pos old]`.
+    /// joins the placed cells.
     public Neighbors command(
             Object changes,
             long flags,
@@ -182,9 +244,10 @@ public final class Neighbors {
             Object p = RT.nth(c, 0);
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
-            long old = place(p, x, y, z, st, flags, minY, maxY);
+            Object rec = RT.count(c) == 2 && RT.nth(c, 1) instanceof Long ? c : null;
+            long old = put(p, rec, x, y, z, st, flags, minY, maxY);
             if (old < 0) continue;
-            placed.add(vec(p, old));
+            addPlaced(p, old);
             if (!deafAround(x, y, z, deaf, minY, maxY)) {
                 shaped.invoke(this, p, old);
             }
@@ -192,11 +255,12 @@ public final class Neighbors {
         return this;
     }
 
-    /// Runs `(told run pos old)` for each placed cell `[pos old]`
-    /// with a block beside it that `deaf` does not mark.
+    /// Runs `(told run pos old)` for each placed cell `pos`, `old`
+    /// being its state before, with a block beside it that `deaf` does
+    /// not mark.
     public Neighbors tell(boolean[] deaf, IFn told, int minY, int maxY) {
-        for (Object c : placed) {
-            Object p = RT.nth(c, 0);
+        for (int i = 0; i < placed.size(); i++) {
+            Object p = placed.get(i);
             if (!deafAround(
                     RT.longCast(RT.nth(p, 0)),
                     RT.longCast(RT.nth(p, 1)),
@@ -205,7 +269,7 @@ public final class Neighbors {
                     minY,
                     maxY
             )) {
-                told.invoke(this, p, RT.nth(c, 1));
+                told.invoke(this, p, placedOld[i]);
             }
         }
         return this;

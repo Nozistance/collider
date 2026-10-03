@@ -249,9 +249,15 @@
 
 (defn by-chunk
   "Returns the changes [pos old st] as a map from chunk id to the
-  [pos st] of that chunk, in order."
+  cells of that chunk, in order."
   [changes]
   (Batch/byChunk changes))
+
+(defn states-at
+  "Returns [pos st] for each distinct cell of cells in the order it
+  first comes, st being its block in chunks."
+  [chunks cells]
+  (Batch/statesAt chunks cells))
 
 (defn- set-all [chunks changes ^long state-at]
   (if (empty? changes)

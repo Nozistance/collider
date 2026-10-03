@@ -137,19 +137,6 @@
   (mapv (fn [[pos st :as c]] (if (== 2 (count c)) c [pos st]))
         changes))
 
-(defn- heard? [sent [p]]
-  (some #(= p %) sent))
-
-(def ^:private ^:const scan-limit 16)
-
-(defn- unheard
-  [{:keys [records sent]}]
-  (if (and (<= (count sent) scan-limit)
-           (every? #(heard? sent %) records))
-    []
-    (let [sent (set sent)]
-      (into [] (comp (map first) (remove sent) (distinct)) records))))
-
 (def ^:private ^:table holds-entity
   (delay (block/state-table :boolean (comp some? be/kind))))
 
@@ -161,7 +148,8 @@
   (let [gone (fn [[p old]] (spill/removed-deltas world p old))]
     (into [] (comp (filter removed?) (mapcat gone)) writes)))
 
-(defn- with-fx? [rec] (boolean (get rec 2)))
+(defn- with-fx? [recs]
+  (reduce (fn [_ r] (if (get r 2) (reduced true) false)) false recs))
 
 (defn settled-deltas
   "Returns the deltas of s, the result of a run of block updates.
@@ -170,12 +158,12 @@
   ([world s] (settled-deltas world s nil))
   ([world s by]
    (let [recs (:records s)
-         quiet (not-empty (unheard s))
+         quiet (not-empty (neighbors/unheard s))
          d (cond-> [:set-blocks (block-changes recs) (:ticks s)]
              (or quiet by) (conj quiet)
              by (conj by))]
      (cond-> (into [d] (removal-deltas world (:writes s)))
-       (some with-fx? recs) (into (change-fx world recs))))))
+       (with-fx? recs) (into (change-fx world recs))))))
 
 (defn- joined [a b]
   (let [[_ ca ta _ by] a [_ cb tb] b

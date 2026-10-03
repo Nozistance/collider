@@ -42,19 +42,21 @@ public final class Batch {
             long minY,
             long maxY
     ) {
-        Scratch<Integer> now = new Scratch<>(RT.count(changes));
+        Scratch<Long> now = new Scratch<>(RT.count(changes));
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
-            int st = RT.intCast(RT.nth(c, 1));
+            Object given = RT.nth(c, 1);
+            long st = RT.intCast(given);
             long k = Cell.pack(x, y, z);
-            Integer seen = now.get(k);
-            int old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
+            Long seen = now.get(k);
+            long old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;
-            out = out.conj(vec(p, (long) old, (long) st));
-            now.put(k, st);
+            Long boxed = given instanceof Long l ? l : Long.valueOf(st);
+            out = out.conj(vec(p, seen != null ? seen : Long.valueOf(old), boxed));
+            now.put(k, boxed);
         }
         return out.persistent();
     }
@@ -103,7 +105,7 @@ public final class Batch {
     }
 
     /// Returns the changes `[pos old st]` as a map from chunk id to
-    /// the `[pos st]` of that chunk, in order.
+    /// the cells of that chunk, in order.
     public static Object byChunk(Object changes) {
         Scratch<ITransientCollection> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
@@ -113,13 +115,36 @@ public final class Batch {
             long id = ChunkIndex.id(cx, cz);
             ITransientCollection v = m.get(id);
             if (v == null) v = PersistentVector.EMPTY.asTransient();
-            m.put(id, v.conj(vec(p, RT.nth(c, 2))));
+            m.put(id, v.conj(p));
         }
         ITransientMap r = PersistentHashMap.EMPTY.asTransient();
         for (long id : m.sortedKeys()) {
             r = r.assoc(id, Objects.requireNonNull(m.get(id)).persistent());
         }
         return r.persistent();
+    }
+
+    /// Returns `[pos st]` for each distinct cell of `cells`, all in one
+    /// chunk, in the order it first comes, `st` being its block in
+    /// `chunks`.
+    public static Object statesAt(ChunkIndex chunks, Object cells) {
+        int lo = Integer.MAX_VALUE, hi = Integer.MIN_VALUE;
+        for (Object p : (Iterable<?>) cells) {
+            int y = RT.intCast(RT.nth(p, 1));
+            lo = Math.min(lo, y);
+            hi = Math.max(hi, y);
+        }
+        long[] seen = new long[lo > hi ? 0 : (hi - lo + 1) * 4];
+        ITransientCollection out = PersistentVector.EMPTY.asTransient();
+        for (Object p : (Iterable<?>) cells) {
+            int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
+            int z = RT.intCast(RT.nth(p, 2));
+            int i = (y - lo) * 256 + (z & 15) * 16 + (x & 15);
+            if ((seen[i >> 6] & (1L << i)) != 0) continue;
+            seen[i >> 6] |= 1L << i;
+            out = out.conj(vec(p, (long) Chunk.blockAt(chunks, x, y, z)));
+        }
+        return out.persistent();
     }
 
     private static Object vec(Object... xs) {

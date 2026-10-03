@@ -35,14 +35,23 @@ public final class Light {
     private final ChunkIndex chunks;
     private final int ch;
     private final BlockTables t;
-    private final LongQueue decreases = new LongQueue();
-    private final LongQueue increases = new LongQueue();
+    private final LongQueue decreases;
+    private final LongQueue increases;
 
-    private Light(Scratch<byte[]> cache, ChunkIndex chunks, int ch, BlockTables t) {
+    private Light(
+            Scratch<byte[]> cache,
+            ChunkIndex chunks,
+            int ch,
+            BlockTables t,
+            LongQueue decreases,
+            LongQueue increases
+    ) {
         this.cache = cache;
         this.chunks = chunks;
         this.ch = ch;
         this.t = t;
+        this.decreases = decreases;
+        this.increases = increases;
     }
 
     private static boolean inRange(long y) {
@@ -186,21 +195,21 @@ public final class Light {
             boolean sky,
             BlockTables t
     ) {
-        long[] cells = new long[16];
+        long[] cells = new long[RT.count(changes)];
         int n = 0;
         for (Object c : (Iterable<?>) changes) {
             long old = nth(c, 1), now = nth(c, 2);
             if (!relightNeeded(t, old, now)) continue;
             Object p = RT.nth(c, 0);
-            if (n == cells.length) cells = Arrays.copyOf(cells, 2 * n);
             cells[n++] = pack(nth(p, 0), nth(p, 1), nth(p, 2), Block.emission(t, now));
         }
         if (n == 0) return null;
         Scratch<byte[]> cache = new Scratch<>();
-        new Light(cache, chunks, BLOCK, t).pass(cells, n);
+        LongQueue dec = new LongQueue(), inc = new LongQueue();
+        new Light(cache, chunks, BLOCK, t, dec, inc).pass(cells, n);
         if (sky) {
             long[] sc = skyCells(chunks, cells, n, t);
-            new Light(cache, chunks, SKY, t).pass(sc, sc.length);
+            new Light(cache, chunks, SKY, t, dec, inc).pass(sc, sc.length);
         }
         return cache;
     }

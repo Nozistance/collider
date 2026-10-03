@@ -206,22 +206,20 @@
   [world _d]
   (deltas/of-vec (ticks-deltas world :fluid-ticks)))
 
-(defn- final-records [w recs]
-  (let [at #(chunk/at (:chunks w) %)
-        final (fn [pos] [pos (at pos)])]
-    (into [] (comp (map first) (distinct) (map final)) recs)))
-
 (defn- announced [w events]
   (let [heard (areas/broadcast-chunks w)]
     (filter (fn [[cp _]] (contains? heard cp)) events)))
 
-(defn- changed-out [w [cp recs]]
-  (out/all (out/blocks-changed cp (final-records w recs))))
+(defn- changed-out [w [cp cells]]
+  (let [recs (chunk/states-at (:chunks w) cells)]
+    (out/all (out/blocks-changed cp recs))))
 
 (defn- entity-outs [w events]
-  (for [[_ recs] events
-        [pos _] recs
-        :when (be/at w pos)]
+  (for [[cp cells] events
+        :let [es (be/in-chunk w cp)]
+        :when es
+        pos cells
+        :when (get es pos)]
     (out/all (out/block-entity pos))))
 
 (defn block-flush
