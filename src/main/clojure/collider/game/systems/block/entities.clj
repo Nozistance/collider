@@ -1,8 +1,7 @@
 (ns collider.game.systems.block.entities
-  "The block entities that tick, one after another in the order they
-  joined the level, as Level.tickBlockEntities. Each sees the writes
-  of the ones before it; one that joins during the walk waits for
-  the next tick."
+  "The tick of block entities. They tick one after another in the
+  order they joined the level, and each sees the writes of the ones
+  before it. One that joins during the tick waits for the next tick."
   (:require [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.block.blockentity :as be]

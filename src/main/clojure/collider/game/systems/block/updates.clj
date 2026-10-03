@@ -16,19 +16,19 @@
             [collider.world.chunk :as chunk]
             [collider.world.light :as light]
             [collider.world.neighbors :as neighbors]
-            [collider.world.rules :as rules]))
+            [collider.world.rules :as rules]
+            [collider.world.update :as update]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private lists
-  "The lists of what is due, each run by its own rules."
   {:block-ticks {:type-of block/block-of :due rules/cell-changes
                  :reach rules/reach :lit? rules/lit?
-                 :crowd (constantly 1)}
+                 :isolation (constantly 1)}
    :fluid-ticks {:type-of liquid/fluid-of :due rules/fluid-changes
                  :reach rules/fluid-reach
                  :lit? (constantly false)
-                 :crowd #(liquid/reach (:dim %))}})
+                 :isolation #(liquid/reach (:dim %))}})
 
 (defn- again-at [k chunks ctx changes p st]
   (when (and (= :block-ticks k) (not-any? #(= p (first %)) changes))
@@ -96,21 +96,20 @@
     (assoc pass :out (reduce changes/joined-into (:out pass) ds))
     pass))
 
-(defn- written [world k pass s by]
-  (let [writes (:writes s)]
+(defn- written [world k pass settled author]
+  (let [writes (:writes settled)
+        ds (changes/settled-deltas world settled author)]
     (cond-> (-> pass
-                (assoc-in [:w :chunks] (:chunks s))
-                (out-into (changes/settled-deltas world s by)))
+                (assoc-in [:w :chunks] (:chunks settled))
+                (out-into ds))
       (:dirty pass)
       (update :dirty into (map (comp column first)) writes)
       (= :block-ticks k) (update :lit lit-writes writes))))
 
-(def ^:private ^:const update-all 3)
-
 (defn- applied [world ctx k pass changes by]
   (if (empty? changes)
     pass
-    (let [op #(vector :set % (neighbors/flags-of % update-all))
+    (let [op #(vector :set % (neighbors/flags-of % update/all))
           ops (mapv op changes)]
       (written world k pass
                (neighbors/run (:chunks (:w pass)) ctx ops)
@@ -164,7 +163,7 @@
         flags))))
 
 (defn- first-runs [world ctx k ticks]
-  (let [r ((get-in lists [k :crowd]) ctx)
+  (let [r ((get-in lists [k :isolation]) ctx)
         lone (persistent! (lone-flags r ticks))
         first-run #(when (lone %) (ran world ctx k (ticks %)))]
     (if (some true? lone)
@@ -197,13 +196,13 @@
               (ticks-run world k (ordered world k active)))))))
 
 (defn block-updates
-  "Runs the block ticks that are due."
+  "Returns the deltas of the block ticks that are due."
   {:wake {:keys [[:block-ticks :queue]]}}
   [world _d]
   (deltas/of-vec (ticks-deltas world :block-ticks)))
 
 (defn fluid-updates
-  "Runs the fluid ticks that are due."
+  "Returns the deltas of the fluid ticks that are due."
   {:wake {:keys [[:fluid-ticks :queue]]}}
   [world _d]
   (deltas/of-vec (ticks-deltas world :fluid-ticks)))
@@ -227,7 +226,8 @@
     (out/all (out/block-entity pos))))
 
 (defn block-flush
-  "Tells the clients about the blocks that changed this tick."
+  "Returns the effects that show clients the blocks that changed this
+  tick."
   {:wake {:keys [:changed-blocks]}}
   [w _d]
   (deltas/of-vec
