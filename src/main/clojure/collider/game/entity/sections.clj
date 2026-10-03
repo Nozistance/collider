@@ -1,7 +1,8 @@
 (ns collider.game.entity.sections
   "Entities by the entity section they stand in, in the order the
   game visits them."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -9,19 +10,9 @@
 (defn- section ^long [^double c]
   (bit-shift-right (long (Math/floor c)) 4))
 
-(defn- packed ^long [^long x ^long y ^long z]
-  (bit-or (bit-shift-left (bit-and x 0x3FFFFF) 42)
-          (bit-shift-left (bit-and z 0x3FFFFF) 20)
-          (bit-and y 0xFFFFF)))
-
 (defn- key-of ^long [p]
-  (packed (section (v/x p)) (section (v/y p)) (section (v/z p))))
-
-(defn- key-y ^long [^long k]
-  (bit-shift-right (bit-shift-left k 44) 44))
-
-(defn- key-z ^long [^long k]
-  (bit-shift-right (bit-shift-left k 22) 42))
+  (cell/pack-section
+    (section (v/x p)) (section (v/y p)) (section (v/z p))))
 
 (def empty-index
   "An index without entities."
@@ -77,11 +68,12 @@
     {:secs secs :at (into (lm/long-map) (mapcat at) secs)}))
 
 (defn- in-range? [k y0 y1 z0 z1]
-  (and (<= (long y0) (key-y (long k)) (long y1))
-       (<= (long z0) (key-z (long k)) (long z1))))
+  (and (<= (long y0) (cell/section-y (long k)) (long y1))
+       (<= (long z0) (cell/section-z (long k)) (long z1))))
 
 (defn- column [secs ^long x]
-  (lm/range secs (packed x 0 0) (packed x -1 -1)))
+  (lm/range secs (cell/pack-section x 0 0)
+            (cell/pack-section x -1 -1)))
 
 (defn- kept [acc e] (if e (conj! acc e) acc))
 

@@ -99,13 +99,15 @@
         (solid? (dec by)) [x y z]
         :else (recur (dec by) (dec y))))))
 
+(def ^:private ^:table liquid-marks
+  (delay (block/state-table :boolean block/liquid-class)))
+
+(defn- ceil ^long [^double a] (long (Math/ceil a)))
+
 (defn- wet? [chunks [x0 y0 z0 x1 y1 z1]]
-  (let [span #(range (long (Math/floor %1)) (long (Math/ceil %2)))
-        fluid? (fn [[x y z]]
-                 (block/liquid-class
-                   (chunk/block-state chunks x y z)))]
-    (some fluid? (for [x (span x0 x1) y (span y0 y1) z (span z0 z1)]
-                   [x y z]))))
+  (phys/some-cell? chunks @liquid-marks
+                   (num/floor x0) (num/floor y0) (num/floor z0)
+                   (ceil x1) (ceil y1) (ceil z1)))
 
 (defn- fits? [world e [x y z :as p]]
   (let [[half h] (entity/pose-box (:pose e :standing))

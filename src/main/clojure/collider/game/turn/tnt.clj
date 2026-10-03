@@ -27,8 +27,9 @@
 (defn- tnt-height ^double [] (size/height :tnt))
 
 (defn- liquid-push [world pos vel]
-  (liquid/entity-push (:chunks world) pos (tnt-half) (tnt-height) vel
-                      (:dim world)))
+  (let [{:keys [chunks dim]} world
+        h (tnt-half) ht (tnt-height)]
+    (:push (liquid/fluid-info chunks pos h ht vel dim))))
 
 (defn- stuck-now [world pos]
   (motion/stuck-speed (:chunks world) pos (tnt-half) (tnt-height)))

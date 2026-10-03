@@ -281,15 +281,6 @@
           [0.0 0.0 0.0]
           around))
 
-(defn entity-push
-  "Returns the push of the flowing liquids on a body.
-  The lava of a fast-lava dimension dim pushes harder."
-  ([chunks pos half height vel]
-   (entity-push chunks pos half height vel nil))
-  ([chunks pos half height vel dim]
-   (current-push (liquids-in dim)
-                 (fluid-around chunks pos half height) vel)))
-
 (defn fluid-info
   "Returns the water and lava over a body and the push of their flow."
   ([chunks pos half height vel]

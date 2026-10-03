@@ -2,7 +2,8 @@
   "Wire types of packet fields."
   (:refer-clojure
     :exclude [boolean byte bytes double float int long short string])
-  (:require [collider.data :as data]
+  (:require [collider.cell :as cell]
+            [collider.data :as data]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.components :as comps]
@@ -71,7 +72,7 @@
 (def section-pos
   (wire-type :wire/section-pos sequential? c/read-section-pos
              (fn [b [x y z]]
-               (buf/write-long! b (c/section-pos x y z)))))
+               (buf/write-long! b (cell/pack-section x y z)))))
 
 (def section-change
   (wire-type :wire/section-change sequential? c/read-section-change

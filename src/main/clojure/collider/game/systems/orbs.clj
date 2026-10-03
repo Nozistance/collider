@@ -36,7 +36,7 @@
   (let [{:keys [pos vel]} e
         cs (:chunks world) dim (:dim world)
         h (orb/height)
-        push (liquid/entity-push cs pos (orb/half) h vel dim)]
+        push (:push (liquid/fluid-info cs pos (orb/half) h vel dim))]
     (v/add vel push)))
 
 (defn- driven [world e hit? roll]
