@@ -6,6 +6,7 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.chunks :as chunks]
             [collider.game.input :as input]
             [collider.game.level :as level]
             [collider.game.player :as player]
@@ -111,27 +112,40 @@
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
 
+(defn- crossings [entities es by-eid]
+  (let [crossed (fn [[eid]]
+                  (let [e0 (get entities eid) e1 (get es eid)]
+                    (chunks/crossing eid e0 e1)))]
+    (into [] (keep crossed) by-eid)))
+
 (defn- leaf-of [step entities v ^long j]
   (let [n (count v)
         a (* j par/fold-leaf)
         b (min n (+ a par/fold-leaf))
         lo (if (zero? j) Long/MIN_VALUE (eid-at v a))
-        hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))]
-    (persistent!
-      (reduce step (transient (lm/range entities lo hi))
-              (subvec v a b)))))
+        hi (if (= b n) Long/MAX_VALUE (dec (eid-at v b)))
+        part (subvec v a b)
+        es (transient (lm/range entities lo hi))
+        es (persistent! (reduce step es part))]
+    [es (crossings entities es part)]))
 
 (defn- leaves [^long n]
   (vec (range (quot (+ n (dec par/fold-leaf)) par/fold-leaf))))
+
+(defn- joined
+  ([] [(lm/long-map) []])
+  ([[a xa] [b xb]] [(lm/merge a b) (par/joined xa xb)]))
 
 (defn- folded-entities [w entities by-eid]
   (let [step (stepped entities (:tick w))
         n (count by-eid)]
     (if (< n par/fold-leaf)
-      (persistent! (reduce step (transient entities) by-eid))
+      (let [es (persistent!
+                 (reduce step (transient entities) by-eid))]
+        [es (crossings entities es by-eid)])
       (let [v (vec by-eid)
-            leaf #(lm/merge %1 (leaf-of step entities v %2))]
-        (r/fold 1 (r/monoid lm/merge lm/long-map) leaf (leaves n))))))
+            leaf #(joined %1 (leaf-of step entities v %2))]
+        (r/fold 1 joined leaf (leaves n))))))
 
 (defn- deltas-of [ds]
   (if (instance? Deltas ds) ds (deltas/of-vec ds)))
@@ -183,10 +197,20 @@
       w
       (level/with-types w (or types (level/by-type es))))))
 
+(defn- indexed [lv]
+  (let [lv (chunks/indexed lv)]
+    (when (and delta/validate?
+               (not= (chunks/index lv) (chunks/of (:entities lv))))
+      (throw (ex-info "the chunk index strayed from the entities"
+                      {:index (chunks/index lv)})))
+    lv))
+
 (defn- folded-in [w by-eid]
   (if (lm/empty? by-eid)
     w
-    (assoc w :entities (folded-entities w (:entities w) by-eid))))
+    (let [w (chunks/indexed w)
+          [es xs] (folded-entities w (:entities w) by-eid)]
+      (chunks/moved w es xs))))
 
 (defn- apply-level [lv ds]
   (let [^Deltas d (deltas-of ds)
@@ -199,7 +223,7 @@
         folded (folded-in applied (deltas/entities-of d))
         quit (reduce player/quit folded removes)
         types (retyped-index types folded quit removes)]
-    (areas/cache-active-chunks (typed quit types))))
+    (indexed (areas/cache-active-chunks (typed quit types)))))
 
 (defn- inhabited? [world dim]
   (not (lm/empty? (:entities (get (:levels world) dim)))))
