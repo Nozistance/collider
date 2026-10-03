@@ -329,7 +329,9 @@ public final class LongMap extends APersistentMap
             if (o instanceof Map.Entry<?, ?> e) return assoc(e.getKey(), e.getValue());
             if (o instanceof IPersistentVector v) {
                 if (v.count() != 2) {
-                    throw new IllegalArgumentException("Vector arg to map conj must be a pair");
+                    throw new IllegalArgumentException(
+                            "Vector arg to map conj must be a pair"
+                    );
                 }
                 return assoc(v.nth(0), v.nth(1));
             }

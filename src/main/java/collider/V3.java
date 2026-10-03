@@ -1,6 +1,5 @@
 package collider;
 
-import clojure.lang.Counted;
 import clojure.lang.IHashEq;
 import clojure.lang.ILookup;
 import clojure.lang.IPersistentCollection;
@@ -8,7 +7,6 @@ import clojure.lang.ISeq;
 import clojure.lang.Indexed;
 import clojure.lang.Murmur3;
 import clojure.lang.RT;
-import clojure.lang.Seqable;
 import clojure.lang.Sequential;
 import clojure.lang.Util;
 import java.util.Iterator;
@@ -17,7 +15,12 @@ import java.util.NoSuchElementException;
 /// A point or motion of three doubles that is also a
 /// Clojure sequence.
 public record V3(double x, double y, double z)
-        implements Indexed, Counted, Sequential, Seqable, ILookup, IPersistentCollection, IHashEq, Iterable<Object> {
+        implements Indexed,
+                Sequential,
+                ILookup,
+                IPersistentCollection,
+                IHashEq,
+                Iterable<Object> {
 
     private double at(int i) {
         return switch (i) {
@@ -28,30 +31,37 @@ public record V3(double x, double y, double z)
         };
     }
 
+    @Override
     public Object nth(int i) {
         return at(i);
     }
 
+    @Override
     public Object nth(int i, Object notFound) {
         return i >= 0 && i < 3 ? at(i) : notFound;
     }
 
+    @Override
     public int count() {
         return 3;
     }
 
+    @Override
     public Object valAt(Object k) {
         return valAt(k, null);
     }
 
+    @Override
     public Object valAt(Object k, Object notFound) {
         return k instanceof Number ? nth(((Number) k).intValue(), notFound) : notFound;
     }
 
+    @Override
     public ISeq seq() {
         return RT.seq(new Object[] {x, y, z});
     }
 
+    @Override
     public Iterator<Object> iterator() {
         return new Iterator<>() {
             private int i = 0;
@@ -67,14 +77,17 @@ public record V3(double x, double y, double z)
         };
     }
 
+    @Override
     public IPersistentCollection cons(Object o) {
         return RT.vector(x, y, z, o);
     }
 
+    @Override
     public IPersistentCollection empty() {
         return RT.vector();
     }
 
+    @Override
     public boolean equiv(Object o) {
         if (o instanceof V3(double x1, double y1, double z1)) {
             return x == x1 && y == y1 && z == z1;
@@ -103,6 +116,7 @@ public record V3(double x, double y, double z)
         return a instanceof Number && a.equals(b);
     }
 
+    @Override
     public int hasheq() {
         return Murmur3.hashOrdered(this);
     }

@@ -120,13 +120,13 @@ public final class Bodies {
         return LazilyPersistentVector.createOwning(out);
     }
 
-    private long[] longs(long[] a, int[] g) {
+    private static long[] longs(long[] a, int[] g) {
         long[] out = new long[g.length];
         for (int k = 0; k < g.length; k++) out[k] = a[g[k]];
         return out;
     }
 
-    private double[] doubles(double[] a, int[] g) {
+    private static double[] doubles(double[] a, int[] g) {
         double[] out = new double[g.length];
         for (int k = 0; k < g.length; k++) out[k] = a[g[k]];
         return out;
@@ -137,21 +137,21 @@ public final class Bodies {
     public static PushGrid grid(Bodies b, int[] g) {
         b.packed();
         return new PushGrid(
-                b.longs(b.eids, g),
-                b.doubles(b.halfs, g),
-                b.doubles(b.heights, g),
-                b.doubles(b.xs, g),
-                b.doubles(b.ys, g),
-                b.doubles(b.zs, g),
-                b.longs(b.came, g),
-                b.longs(b.ranks, g)
+                longs(b.eids, g),
+                doubles(b.halfs, g),
+                doubles(b.heights, g),
+                doubles(b.xs, g),
+                doubles(b.ys, g),
+                doubles(b.zs, g),
+                longs(b.came, g),
+                longs(b.ranks, g)
         );
     }
 
     /// Returns the places by id of the bodies of `b` at indices `g`.
     public static Slots slots(Bodies b, int[] g) {
         b.packed();
-        return Slots.of(b.longs(b.eids, g));
+        return Slots.of(longs(b.eids, g));
     }
 
     /// Returns whether each body of `b` at indices `g` ticks.

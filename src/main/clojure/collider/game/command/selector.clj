@@ -46,11 +46,12 @@
              (not (and (r/can-read? rd 2)
                        (= \. (.charAt s (int (inc (long n)))))))))))
 
+(defn- bound-end [rd]
+  (loop [e rd]
+    (if (and (r/can-read? e) (bound-char? e)) (recur (skip e)) e)))
+
 (defn- read-bound [[s n :as rd] parse kind]
-  (let [[_ i :as end] (loop [e rd]
-                        (if (and (r/can-read? e) (bound-char? e))
-                          (recur (skip e))
-                          e))
+  (let [[_ i :as end] (bound-end rd)
         t (subs s n i)]
     (if (= "" t)
       [nil end]
@@ -115,6 +116,8 @@
 (def ^:private options-key "argument.entity.options.")
 
 (def ^:private missing "argument.entity.selector.missing")
+
+(def ^:private unknown "argument.entity.selector.unknown")
 
 (def ^:private not-allowed "argument.entity.selector.not_allowed")
 
@@ -215,13 +218,15 @@
   (and (any-tag? p)
        (not (contains? (get-in p [:states :type :tags]) id))))
 
+(defn- add-tag [p id]
+  (update-in p [:states :type :tags] (fnil conj #{}) id))
+
 (defn- type-tag [p start inv]
   (let [[id p] (read-with p args/read-id)]
     (cond (reduced? p) p
           (not (tag-ok? p id)) (inapplicable p start "type")
           :else (-> (assoc-in p [:states :type :state] :multiple)
-                    (update-in [:states :type :tags]
-                               (fnil conj #{}) id)
+                    (add-tag id)
                     (pred :type-tag id inv)))))
 
 (defn- typed [p id inv]
@@ -254,9 +259,10 @@
   (let [[inv p] (invert? p) [v p] (read-with p snbt/read-compound)]
     (if (reduced? p) p (pred p :nbt v inv))))
 
-(defn- expect [p ch]
-  (second (read-with p #(let [e (r/expect % ch)]
-                          (if (r/error? e) e [nil e])))))
+(defn- expect-at [rd ch]
+  (let [e (r/expect rd ch)] (if (r/error? e) e [nil e])))
+
+(defn- expect [p ch] (second (read-with p #(expect-at % ch))))
 
 (defn- entry [p read-key read-value]
   (let [[k p] (read-with (ws p) read-key)
@@ -334,6 +340,10 @@
    "advancements" [advancements-option (once? :advancements)]
    "predicate" [predicate-option (constantly true)]})
 
+(defn- option-read [p f]
+  (let [p (f (ws (assoc (update p :rd skip) :sugg :nothing)))]
+    (if (reduced? p) p (ws (assoc p :sugg :next)))))
+
 (defn- option-value [p k start]
   (let [[f ok?] (options k) p (ws p)]
     (cond (nil? f)
@@ -341,9 +351,7 @@
           (not (ok? p)) (inapplicable p start k)
           (not (at? (:rd p) \=))
           (fail-at p start "argument.entity.options.valueless" k)
-          :else (let [p (f (ws (assoc (update p :rd skip)
-                                      :sugg :nothing)))]
-                  (if (reduced? p) p (ws (assoc p :sugg :next)))))))
+          :else (option-read p f))))
 
 (defn- option [p]
   (let [p (ws p) start (cursor p) [k p] (read-with p r/read-string)]
@@ -387,8 +395,10 @@
   (let [[s n :as rd] (:rd p) c (nth s n) k (kinds c)]
     (if k
       (assoc p :rd (skip rd) :sel (merge (:sel p) k) :sugg :open)
-      (unreduced (fail-at p n "argument.entity.selector.unknown"
-                          (str "@" c))))))
+      (unreduced (fail-at p n unknown (str "@" c))))))
+
+(defn- open-options [p]
+  (assoc p :rd (skip (:rd p)) :sugg :key-or-close))
 
 (defn- selector-read [p]
   (let [p (assoc p :sugg :selector :sel {:selector? true})
@@ -396,8 +406,7 @@
             (kind-read p)
             (assoc p :error (r/error-at (:rd p) missing)))]
     (if (and (not (:error p)) (at? (:rd p) \[))
-      (close (options-read (assoc p :rd (skip (:rd p))
-                                  :sugg :key-or-close)))
+      (close (options-read (open-options p)))
       p)))
 
 (defn- uuid-of [^String s]
@@ -408,8 +417,8 @@
         p (cond-> p (r/can-read? (:rd p)) (assoc :sugg :name))
         [v p] (read-with p r/read-string)]
     (cond (reduced? p) (unreduced p)
-          (uuid-of v) (assoc p :sel {:uuid (uuid-of v) :limit 1
-                                     :entities? true})
+          (uuid-of v)
+          (assoc p :sel {:uuid (uuid-of v) :limit 1 :entities? true})
           (or (= "" v) (> (count v) 16))
           (unreduced (fail-at p start "argument.entity.invalid"))
           :else (assoc p :sel {:name v :limit 1 :entities? false}))))
@@ -433,16 +442,19 @@
 
 (defn- split-at? [c] (#{\. \_ \/ \:} c))
 
+(defn- next-split [s]
+  (first (keep-indexed (fn [k c] (when (split-at? c) k)) s)))
+
 (defn matches-sub?
   "Returns true when input starts with pattern, or holds it right
   after a dot, an underscore, a slash or a colon."
   [^String pattern ^String input]
   (loop [i 0]
-    (cond (.startsWith input pattern (int i)) true
-          :else (let [j (first (keep-indexed
-                                 (fn [k c] (when (split-at? c) k))
-                                 (subs input i)))]
-                  (if j (recur (+ i (long j) 1)) false)))))
+    (if (.startsWith input pattern (int i))
+      true
+      (if-let [j (next-split (subs input i))]
+        (recur (+ i (long j) 1))
+        false))))
 
 (defn- offered [rem texts]
   (filterv #(not= rem %) texts))
@@ -452,16 +464,19 @@
   not count, any word of an x may match, and the text typed in full
   is not offered."
   [^String text start xs]
-  (let [rem (subs text start) lo (str/lower-case rem)]
-    {:start start
-     :texts (offered rem (filter #(matches-sub? lo (str/lower-case %))
-                                 xs))}))
+  (let [rem (subs text start) lo (str/lower-case rem)
+        hits (filter #(matches-sub? lo (str/lower-case %)) xs)]
+    {:start start :texts (offered rem hits)}))
 
 (defn- id-match? [^String t ^String id]
   (let [[ns path] (str/split id #":" 2)]
     (if (str/includes? t ":")
       (matches-sub? t id)
       (or (matches-sub? t ns) (matches-sub? t path)))))
+
+(defn- prefixed [^String t ids ^String prefix]
+  (let [t (subs t (count prefix))]
+    (for [id ids :when (id-match? t id)] (str prefix id))))
 
 (defn suggest-ids
   "Returns the completions among ids, each after prefix, of text
@@ -471,9 +486,7 @@
   (let [rem (subs text start) t (str/lower-case rem)]
     {:start start
      :texts (if (str/starts-with? t prefix)
-              (let [t (subs t (count prefix))]
-                (offered rem (for [id ids :when (id-match? t id)]
-                               (str prefix id))))
+              (offered rem (prefixed t ids prefix))
               [])}))
 
 (def ^:private selector-texts ["@p" "@a" "@r" "@s" "@e" "@n"])
@@ -497,39 +510,47 @@
           t [(when inv? (str "!" m)) (when plain? m)] :when t]
       t)))
 
-(defn- type-suggestions [p text start]
+(defn- type-groups [p text start]
   (let [ids (entity-types) tags (filter #(tag-ok? p %) (type-tags))
         f #(suggest-ids text start %1 %2)]
-    {:start start
-     :texts (vec (mapcat :texts
-                         (cond-> []
-                           (any-tag? p) (conj (f ids "!"))
-                           (= :none (state p :type)) (conj (f ids ""))
-                           (seq tags)
-                           (conj (f tags "#") (f tags "!#")))))}))
+    (cond-> []
+      (any-tag? p) (conj (f ids "!"))
+      (= :none (state p :type)) (conj (f ids ""))
+      (seq tags) (conj (f tags "#") (f tags "!#")))))
+
+(defn- type-suggestions [p text start]
+  {:start start
+   :texts (vec (mapcat :texts (type-groups p text start)))})
+
+(def ^:private sort-texts ["nearest" "furthest" "random" "arbitrary"])
+
+(defn- name-suggestions [p text names]
+  (let [at (cursor p)
+        sel (when (:allow? p) selector-texts)
+        n (suggest-strings text at names)]
+    (update n :texts into (offered (subs text at) sel))))
+
+(defn- option-suggestions [p ^String text at]
+  (case (:sugg p)
+    :open (fixed text at ["["])
+    :key-or-close (fixed text at (cons "]" (option-names p text at)))
+    :key (fixed text at (option-names p text at))
+    :next (fixed text at ["," "]"])
+    :sort (suggest-strings text at sort-texts)
+    :gamemode (fixed text at (mode-texts p (subs text at)))
+    :type (type-suggestions p text at)
+    {:start at :texts []}))
 
 (defn suggestions
   "Returns the completions at the point where parse p stopped. Names
   are the player names to offer."
   [p ^String text names]
-  (let [at (cursor p) st (:start p)
-        sel (when (:allow? p) selector-texts)]
+  (let [at (cursor p)]
     (case (:sugg p)
-      :name-or-selector
-      (let [n (suggest-strings text at names)]
-        (update n :texts into (offered (subs text at) sel)))
-      :name (suggest-strings text st names)
+      :name-or-selector (name-suggestions p text names)
+      :name (suggest-strings text (:start p) names)
       :selector (fixed text (dec at) selector-texts)
-      :open (fixed text at ["["])
-      :key-or-close
-      (fixed text at (cons "]" (option-names p text at)))
-      :key (fixed text at (option-names p text at))
-      :next (fixed text at ["," "]"])
-      :sort (suggest-strings text at ["nearest" "furthest" "random"
-                                      "arbitrary"])
-      :gamemode (fixed text at (mode-texts p (subs text at)))
-      :type (type-suggestions p text at)
-      {:start at :texts []})))
+      (option-suggestions p text at))))
 
 (defn source-dim
   "Returns the dimension a command runs in."

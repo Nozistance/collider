@@ -265,7 +265,7 @@ public final class Region {
                 byte[] data;
                 try {
                     data = get(id);
-                } catch (DataFormatException e) {
+                } catch (DataFormatException _) {
                     continue;
                 }
                 r.append(id, Objects.requireNonNull(data));

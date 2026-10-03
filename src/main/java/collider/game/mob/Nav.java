@@ -205,7 +205,7 @@ public final class Nav extends APersistentMap {
         };
     }
 
-    private int slot(Object k) {
+    private static int slot(Object k) {
         for (int j = 0; j < KEYS.length; j++) {
             if (KEYS[j] == k) return j;
         }
@@ -221,48 +221,59 @@ public final class Nav extends APersistentMap {
         return new PersistentArrayMap(kvs);
     }
 
+    @Override
     public IPersistentMap assoc(Object k, Object v) {
         return slot(k) < 0 ? asMap().assoc(k, v) : with(k, v);
     }
 
+    @Override
     public IPersistentMap assocEx(Object k, Object v) {
         return asMap().assocEx(k, v);
     }
 
+    @Override
     public IPersistentMap without(Object k) {
         return asMap().without(k);
     }
 
+    @Override
     public boolean containsKey(Object k) {
         return slot(k) >= 0;
     }
 
+    @Override
     public IMapEntry entryAt(Object k) {
         int j = slot(k);
         return j < 0 ? null : MapEntry.create(k, at(j));
     }
 
+    @Override
     public Object valAt(Object k) {
         return valAt(k, null);
     }
 
+    @Override
     public Object valAt(Object k, Object notFound) {
         int j = slot(k);
         return j < 0 ? notFound : at(j);
     }
 
+    @Override
     public int count() {
         return KEYS.length;
     }
 
+    @Override
     public IPersistentCollection empty() {
         return PersistentArrayMap.EMPTY;
     }
 
+    @Override
     public ISeq seq() {
         return asMap().seq();
     }
 
+    @Override
     @SuppressWarnings("unchecked")
     public Iterator<Object> iterator() {
         return asMap().iterator();

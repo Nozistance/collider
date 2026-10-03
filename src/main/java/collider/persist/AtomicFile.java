@@ -29,7 +29,7 @@ public final class AtomicFile {
         )) {
             ByteBuffer b = ByteBuffer.wrap(data);
             while (b.hasRemaining()) {
-                int ignored = c.write(b);
+                c.write(b);
             }
             c.force(true);
         } catch (IOException | RuntimeException e) {
