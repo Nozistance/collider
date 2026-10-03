@@ -82,7 +82,8 @@
       here)))
 
 (defn- fall-gravity
-  "Returns the gravity mob e falls by at vertical speed vy."
+  "Returns the gravity mob e falls by at vertical speed vy. Slow
+  falling lowers it only while e does not rise."
   ^double [e ^double vy]
   (if (and (<= vy 0.0) (contains? (:effects e) :slow-falling))
     (Math/min gravity slow-fall-gravity)
@@ -91,7 +92,8 @@
 (defn- levitation [e] (get (:effects e) :levitation))
 
 (defn- lifted
-  "Returns vertical speed vy of mob e after gravity or levitation."
+  "Returns vertical speed vy of mob e after one tick of gravity.
+  Levitation takes the place of gravity."
   ^double [e ^double vy]
   (if-let [l (levitation e)]
     (let [a (double (inc (long (:amplifier l))))]
@@ -319,7 +321,8 @@
   (if-let [f (:jump-share (spec/of (:type e)))] (f e) 1.0))
 
 (defn- jump-power
-  "Returns how hard mob e jumps."
+  "Returns the upward speed mob e jumps with. The block under it
+  and jump boost change it."
   ^double [world e]
   (let [f (jump-factor world (:pos e) (:support e))
         s (num/fmul jump-strength (jump-share e))]

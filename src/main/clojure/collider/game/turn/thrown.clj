@@ -116,7 +116,8 @@
               base-potion-color))))
 
 (defn has-effects?
-  "Returns true when the potion in stack carries any effect."
+  "Returns true when the potion in stack carries any effect, its own
+  or a custom one."
   [stack]
   (let [c (contents stack)]
     (boolean (or (seq (:custom-effects c)) (seq (brewed c))))))
@@ -202,7 +203,8 @@
         (when (pos? n) (assoc stack :count n))]])))
 
 (defn throw-deltas
-  "Returns the deltas of a player throwing what its hand holds."
+  "Returns the deltas of a player throwing what its hand holds, or
+  nil when the hand holds nothing to throw."
   [world eid e]
   (let [stack (player/hand-stack e (:use-hand e)) item (:item stack)]
     (when (throwables item)

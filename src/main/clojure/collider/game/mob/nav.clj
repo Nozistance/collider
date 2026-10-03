@@ -48,7 +48,7 @@
   (boolean (or (:on-ground e) (control/in-liquid? e))))
 
 (defn stop
-  "Returns mob e with its path dropped."
+  "Returns mob e without its path. Its goal stays."
   [e]
   (if (:path (:nav e)) (assoc-in e [:nav :path] nil) e))
 

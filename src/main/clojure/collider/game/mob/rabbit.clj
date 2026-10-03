@@ -79,7 +79,8 @@
                     :hop (next-speed e w)})))
 
 (defn- aimed-at
-  "Rabbit e after its navigation told it where to go with move m."
+  "Returns rabbit e with the path state nav and the move m that its
+  navigation aims at. The speed of m becomes that of its next hop."
   [e nav ^Steer m]
   (let [w (wanted-speed e (double (:mult m)))
         m (if (== w (double (:mult m))) m (rewanted m w))]
@@ -236,8 +237,8 @@
       (>= (Math/abs (- (v/z d) (v/z u))) (double (float 1.0E-5)))))
 
 (defn bumped
-  "Returns rabbit e that met a wall in its move this tick or did not.
-  It compares the move d it asked for with the move u it made."
+  "Returns rabbit e marked by whether the move u it made this tick
+  fell short of the move d it asked for. A nil d marks no hit."
   [e d u]
   (let [hit? (and d (collided? d u))]
     (if (= hit? (boolean (:hit? (hop e))))

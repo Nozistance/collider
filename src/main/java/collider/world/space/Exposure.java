@@ -82,9 +82,8 @@ public final class Exposure {
         return true;
     }
 
-    /// Returns true when every column of the grid of `e` is present,
-    /// so that no read of `e` or of its grid changes them. `e` then
-    /// holds its cells, and its reads may go at once.
+    /// Returns true when every column of the grid of `e` is present.
+    /// No read changes a frozen `e`, so its reads may run at once.
     public static boolean frozen(Exposure e) {
         if (e.rg.readAbsent() != null) {
             for (Object col : e.rg.cols()) {
@@ -96,9 +95,8 @@ public final class Exposure {
         return true;
     }
 
-    /// Returns the block state at `x`, `y`, `z` in the region of `e`
-    /// as `Rays.block` reads it, from the cells of `e` when no column
-    /// under them waits to be read.
+    /// Returns the block state at `x`, `y`, `z` in the region of `e`,
+    /// inside the cube of cells of `e` or outside it.
     public static int block(Exposure e, IFn summon, int x, int y, int z) {
         int ix = x - e.ox, iy = y - e.oy, iz = z - e.oz;
         if (inCube(ix, iy, iz) && e.allColumnsRead()) {

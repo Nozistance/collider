@@ -99,7 +99,9 @@
       a)))
 
 (defn kinds
-  "Returns the collision kind of each block state."
+  "Returns the collision kind of every block state by state id. Only
+  scaffolding, powder snow, bamboo, pointed dripstone and sulfur
+  spikes differ from the plain kind."
   ^bytes [] @kind-table)
 
 (defn- doubles-of [v] (when v (double-array v)))

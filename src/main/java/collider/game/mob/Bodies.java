@@ -98,8 +98,8 @@ public final class Bodies {
         return this;
     }
 
-    /// Returns the indices in `b` of its bodies in groups, as
-    /// [Islands#of] groups them by the cells of the push grid.
+    /// Returns the indices in `b` of its bodies, in the groups whose
+    /// cells of the push grid touch.
     public static int[][] islands(Bodies b) {
         b.packed();
         long[] cells = new long[b.n];

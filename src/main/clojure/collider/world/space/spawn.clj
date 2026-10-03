@@ -230,7 +230,8 @@
   (get-in (data/spawns) [:types t]))
 
 (defn categories
-  "Returns the mob categories in their order with their facts."
+  "Returns the mob categories in order, each with its cap per chunk,
+  its despawn distances and whether it is friendly and persistent."
   []
   (:categories (data/spawns)))
 

@@ -310,8 +310,9 @@
       :follow-bonus (follow-bonus ks))))
 
 (defn command-mob
-  "Returns a mob summoned by a command in level dim. Its yaw is under
-  2 pi degrees, and the keys ks decide its yaw, colour and voice."
+  "Returns a mob summoned by a command in level dim. Its yaw and head
+  yaw are drawn from 0 up to 2 pi, about 6.28 degrees. The keys ks
+  decide its yaw, colour and voice."
   [type pos ks tick dim]
   (let [r (double (float (random/of-key (conj ks :yaw))))
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]

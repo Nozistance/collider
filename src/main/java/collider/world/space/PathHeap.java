@@ -9,7 +9,6 @@ public final class PathHeap {
     private PathNode[] a = new PathNode[128];
     private int n;
 
-    /// Returns true when the open set holds no node.
     public boolean isEmpty() {
         return n == 0;
     }
@@ -57,7 +56,8 @@ public final class PathHeap {
         up(n - 1);
     }
 
-    /// Removes and returns the node of the lowest total score.
+    /// Removes and returns the node of the lowest total score. The
+    /// open set must not be empty.
     public PathNode pop() {
         PathNode top = a[0];
         int last = n - 1;
