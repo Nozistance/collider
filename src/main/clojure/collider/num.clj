@@ -1,5 +1,6 @@
 (ns collider.num
-  "Scalar casts to the float and int widths the game computes in.")
+  "Scalar arithmetic at the precision the game computes in."
+  (:import (collider Mth)))
 
 (set! *warn-on-reflection* true)
 
@@ -31,3 +32,10 @@
   "Returns a divided by b rounded to a float."
   ^double [^double a ^double b]
   (double (unchecked-float (/ a b))))
+
+(defn atan2
+  "Returns the angle of y, x in radians as the game finds it, close to
+  the exact arctangent but not equal."
+  {:inline (fn [y x] `(Mth/atan2 (double ~y) (double ~x)))}
+  ^double [^double y ^double x]
+  (Mth/atan2 y x))

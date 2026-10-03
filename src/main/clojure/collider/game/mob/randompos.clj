@@ -2,13 +2,13 @@
   "Random walk goals of mobs and the tests on their cells."
   (:require [collider.game.clock :as clock]
             [collider.game.mob.mobs :as mobs]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.weather :as weather]
-            [collider.world.space.path :as path])
-  (:import (collider.game.mob Steer)))
+            [collider.world.space.path :as path]))
 
 (set! *warn-on-reflection* true)
 
@@ -166,7 +166,7 @@
   quarter turn of the direction dx dz, or nil."
   [t eid k i h v dx dz]
   (let [h (long h)
-        c (- (Steer/atan2 (double dz) (double dx)) quarter-turn)
+        c (- (num/atan2 (double dz) (double dx)) quarter-turn)
         f (float (rnd t eid [k :angle] i))
         a (+ c (* (double (float (- (float (* 2.0 f)) 1.0)))
                   quarter-turn))

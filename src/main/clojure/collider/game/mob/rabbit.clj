@@ -12,6 +12,7 @@
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
             [collider.game.out :as out]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.grow.common :as grow]
@@ -99,7 +100,7 @@
 
 (defn- faced ^double [e ^double x ^double z]
   (let [p (:pos e)
-        a (* (Steer/atan2 (- z (v/z p)) (- x (v/x p))) 180.0)]
+        a (* (num/atan2 (- z (v/z p)) (- x (v/x p))) 180.0)]
     (double (float (- (float (/ a (double (float Math/PI))))
                       (float 90.0))))))
 
