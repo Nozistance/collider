@@ -67,112 +67,62 @@ public final class Nav extends APersistentMap {
     private static final double STUCK_FACTOR = 0.25;
     private static final int MAX_SURFACE_STEPS = 16;
 
+    private static final int[] NO_CELLS = {};
+    private static final boolean[] NO_CUTS = {};
+
     /// The navigation of a mob that has never walked anywhere.
-    public static final Nav FRESH = new Nav(
-            null,
-            0,
-            null,
-            1L,
-            0.0,
-            0,
-            0,
-            PersistentVector.create(0.0, 0.0, 0.0),
-            ORIGIN,
-            0,
-            0,
-            0.0,
-            false,
-            0
-    );
+    public static final Nav FRESH = new Nav();
 
-    private final Object path;
-    private final long index;
-    private final Object target;
-    private final Object reach;
-    private final double speed;
-    private final long tick;
-    private final long stuckCheck;
-    private final Object stuckPos;
-    private final Object timeoutNode;
-    private final long timeoutTimer;
-    private final long timeoutCheck;
-    private final double timeoutLimit;
-    private final boolean delayed;
-    private final long recompute;
-    private final int[] xs, ys, zs;
-    private final boolean[] cuts;
+    private Object path;
+    private long index;
+    private Object target;
+    private Object reach;
+    private double speed;
+    private long tick;
+    private long stuckCheck;
+    private Object stuckPos;
+    private Object timeoutNode;
+    private long timeoutTimer;
+    private long timeoutCheck;
+    private double timeoutLimit;
+    private boolean delayed;
+    private long recompute;
+    private int[] xs, ys, zs;
+    private boolean[] cuts;
 
-    private Nav(
-            Object path,
-            long index,
-            Object target,
-            Object reach,
-            double speed,
-            long tick,
-            long stuckCheck,
-            Object stuckPos,
-            Object timeoutNode,
-            long timeoutTimer,
-            long timeoutCheck,
-            double timeoutLimit,
-            boolean delayed,
-            long recompute) {
-        this(
-                path,
-                index,
-                target,
-                reach,
-                speed,
-                tick,
-                stuckCheck,
-                stuckPos,
-                timeoutNode,
-                timeoutTimer,
-                timeoutCheck,
-                timeoutLimit,
-                delayed,
-                recompute,
-                null);
+    private Nav() {
+        reach = 1L;
+        stuckPos = PersistentVector.create(0.0, 0.0, 0.0);
+        timeoutNode = ORIGIN;
+        xs = ys = zs = NO_CELLS;
+        cuts = NO_CUTS;
     }
 
-    private Nav(
-            Object path,
-            long index,
-            Object target,
-            Object reach,
-            double speed,
-            long tick,
-            long stuckCheck,
-            Object stuckPos,
-            Object timeoutNode,
-            long timeoutTimer,
-            long timeoutCheck,
-            double timeoutLimit,
-            boolean delayed,
-            long recompute,
-            Nav same) {
-        this.path = path;
-        this.index = index;
-        this.target = target;
-        this.reach = reach;
-        this.speed = speed;
-        this.tick = tick;
-        this.stuckCheck = stuckCheck;
-        this.stuckPos = stuckPos;
-        this.timeoutNode = timeoutNode;
-        this.timeoutTimer = timeoutTimer;
-        this.timeoutCheck = timeoutCheck;
-        this.timeoutLimit = timeoutLimit;
-        this.delayed = delayed;
-        this.recompute = recompute;
-        if (same != null && same.path == path) {
-            xs = same.xs;
-            ys = same.ys;
-            zs = same.zs;
-            cuts = same.cuts;
-            return;
-        }
-        Object nodes = path == null ? null : RT.get(path, NODES);
+    private Nav(Nav o) {
+        path = o.path;
+        index = o.index;
+        target = o.target;
+        reach = o.reach;
+        speed = o.speed;
+        tick = o.tick;
+        stuckCheck = o.stuckCheck;
+        stuckPos = o.stuckPos;
+        timeoutNode = o.timeoutNode;
+        timeoutTimer = o.timeoutTimer;
+        timeoutCheck = o.timeoutCheck;
+        timeoutLimit = o.timeoutLimit;
+        delayed = o.delayed;
+        recompute = o.recompute;
+        xs = o.xs;
+        ys = o.ys;
+        zs = o.zs;
+        cuts = o.cuts;
+    }
+
+    private void walk(Object p) {
+        if (p == path) return;
+        path = p;
+        Object nodes = p == null ? null : RT.get(p, NODES);
         int n = RT.count(nodes);
         xs = new int[n];
         ys = new int[n];
@@ -217,28 +167,23 @@ public final class Nav extends APersistentMap {
     }
 
     private Nav with(Object k, Object v) {
-        Object p = path, t = target, r = reach, sp = stuckPos;
-        Object tn = timeoutNode;
-        long i = index, tk = tick, sc = stuckCheck, tt = timeoutTimer;
-        long tc = timeoutCheck, rc = recompute;
-        double s = speed, tl = timeoutLimit;
-        boolean d = delayed;
-        if (k == PATH) p = v;
-        else if (k == INDEX) i = lng(v);
-        else if (k == TARGET) t = v;
-        else if (k == REACH) r = v;
-        else if (k == SPEED) s = dbl(v);
-        else if (k == TICK) tk = lng(v);
-        else if (k == STUCK_CHECK) sc = lng(v);
-        else if (k == STUCK_POS) sp = v;
-        else if (k == TIMEOUT_NODE) tn = v;
-        else if (k == TIMEOUT_TIMER) tt = lng(v);
-        else if (k == TIMEOUT_CHECK) tc = lng(v);
-        else if (k == TIMEOUT_LIMIT) tl = dbl(v);
-        else if (k == DELAYED) d = RT.booleanCast(v);
-        else if (k == RECOMPUTE) rc = lng(v);
+        Nav n = new Nav(this);
+        if (k == PATH) n.walk(v);
+        else if (k == INDEX) n.index = lng(v);
+        else if (k == TARGET) n.target = v;
+        else if (k == REACH) n.reach = v;
+        else if (k == SPEED) n.speed = dbl(v);
+        else if (k == TICK) n.tick = lng(v);
+        else if (k == STUCK_CHECK) n.stuckCheck = lng(v);
+        else if (k == STUCK_POS) n.stuckPos = v;
+        else if (k == TIMEOUT_NODE) n.timeoutNode = v;
+        else if (k == TIMEOUT_TIMER) n.timeoutTimer = lng(v);
+        else if (k == TIMEOUT_CHECK) n.timeoutCheck = lng(v);
+        else if (k == TIMEOUT_LIMIT) n.timeoutLimit = dbl(v);
+        else if (k == DELAYED) n.delayed = RT.booleanCast(v);
+        else if (k == RECOMPUTE) n.recompute = lng(v);
         else throw new IllegalArgumentException("no nav key " + k);
-        return new Nav(p, i, t, r, s, tk, sc, sp, tn, tt, tc, tl, d, rc, this);
+        return n;
     }
 
     private Object at(int j) {
@@ -333,8 +278,9 @@ public final class Nav extends APersistentMap {
     /// Returns `m` a tick older when it walks a path.
     public static Object ticked(Object m) {
         if (m == null || RT.get(m, PATH) == null) return m;
-        Nav n = of(m);
-        return n.with(TICK, n.tick + 1);
+        Nav n = new Nav(of(m));
+        n.tick++;
+        return n;
     }
 
     private static boolean water(ChunkIndex c, BlockTables t, int x, int y, int z) {
@@ -391,7 +337,9 @@ public final class Nav extends APersistentMap {
                 && !onGround
                 && (long) Math.floor(x) == (long) Math.floor(n.xs[i] + offset(half))
                 && (long) Math.floor(z) == (long) Math.floor(n.zs[i] + offset(half))) {
-            return n.with(INDEX, n.index + 1);
+            Nav next = new Nav(n);
+            next.index++;
+            return next;
         }
         return m;
     }
@@ -431,53 +379,41 @@ public final class Nav extends APersistentMap {
             double drive,
             long t
     ) {
-        long i = advance(x, y, z, my, half) ? index + 1 : index;
-        Object p = path, sp = stuckPos, tn = timeoutNode;
-        long sc = stuckCheck, tt = timeoutTimer, tc = timeoutCheck;
-        double tl = timeoutLimit;
+        Nav n = new Nav(this);
+        if (advance(x, y, z, my, half)) n.index++;
         if (tick - stuckCheck > STUCK_INTERVAL) {
             double eff = drive >= 1.0 ? drive : drive * drive;
             double thr = eff * STUCK_INTERVAL * STUCK_FACTOR;
             double dx = x - RT.doubleCast(RT.nth(stuckPos, 0));
             double dy = my - RT.doubleCast(RT.nth(stuckPos, 1));
             double dz = z - RT.doubleCast(RT.nth(stuckPos, 2));
-            sc = tick;
-            sp = PersistentVector.create(x, my, z);
-            if (!(dx * dx + dy * dy + dz * dz >= thr * thr)) p = null;
+            n.stuckCheck = tick;
+            n.stuckPos = PersistentVector.create(x, my, z);
+            if (!(dx * dx + dy * dy + dz * dz >= thr * thr)) n.walk(null);
         }
-        if (p != null && i < xs.length) {
-            int j = (int) i;
-            if (sameCell(tn, xs[j], ys[j], zs[j])) {
-                tt = tt + (t - tc);
-            } else {
-                tn = PersistentVector.create((long) xs[j], (long) ys[j], (long) zs[j]);
-                tl = Walk.timeout(drive, x, my, z, xs[j], ys[j], zs[j]);
-            }
-            tc = t;
-            if (tl > 0.0 && tt > 3.0 * tl) {
-                p = null;
-                tn = ORIGIN;
-                tt = 0;
-                tl = 0.0;
-            }
+        if (n.path != null && n.index < xs.length) n.timed(drive, x, my, z, t);
+        return n;
+    }
+
+    private void timed(double drive, double x, double my, double z, long t) {
+        int j = (int) index;
+        if (sameCell(timeoutNode, xs[j], ys[j], zs[j])) {
+            timeoutTimer += t - timeoutCheck;
+        } else {
+            timeoutNode = PersistentVector.create(
+                    (long) xs[j],
+                    (long) ys[j],
+                    (long) zs[j]
+            );
+            timeoutLimit = Walk.timeout(drive, x, my, z, xs[j], ys[j], zs[j]);
         }
-        return new Nav(
-                p,
-                i,
-                target,
-                reach,
-                speed,
-                tick,
-                sc,
-                sp,
-                tn,
-                tt,
-                tc,
-                tl,
-                delayed,
-                recompute,
-                this
-        );
+        timeoutCheck = t;
+        if (timeoutLimit > 0.0 && timeoutTimer > 3.0 * timeoutLimit) {
+            walk(null);
+            timeoutNode = ORIGIN;
+            timeoutTimer = 0;
+            timeoutLimit = 0.0;
+        }
     }
 
     /// Returns the move control `move` told to walk to the node the
