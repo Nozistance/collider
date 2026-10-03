@@ -359,6 +359,12 @@
     {:chunks (if open? cs (chunk/frozen cs)) :records records
      :writes writes :ticks ticks :sent sent :placed placed}))
 
+(defn unheard
+  "Returns the distinct cells of the records of level l that the
+  clients do not hear of, in order."
+  [l]
+  (Neighbors/unheard (:records l) (:sent l)))
+
 (defn- opened [chunks]
   (Neighbors.
     (if (chunk/editing? chunks) chunks (chunk/editable chunks))))

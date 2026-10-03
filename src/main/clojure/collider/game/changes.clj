@@ -137,19 +137,6 @@
   (mapv (fn [[pos st :as c]] (if (== 2 (count c)) c [pos st]))
         changes))
 
-(defn- heard? [sent [p]]
-  (some #(= p %) sent))
-
-(def ^:private ^:const scan-limit 16)
-
-(defn- unheard
-  [{:keys [records sent]}]
-  (if (and (<= (count sent) scan-limit)
-           (every? #(heard? sent %) records))
-    []
-    (let [sent (set sent)]
-      (into [] (comp (map first) (remove sent) (distinct)) records))))
-
 (def ^:private ^:table holds-entity
   (delay (block/state-table :boolean (comp some? be/kind))))
 
@@ -170,7 +157,7 @@
   ([world s] (settled-deltas world s nil))
   ([world s by]
    (let [recs (:records s)
-         quiet (not-empty (unheard s))
+         quiet (not-empty (neighbors/unheard s))
          d (cond-> [:set-blocks (block-changes recs) (:ticks s)]
              (or quiet by) (conj quiet)
              by (conj by))]

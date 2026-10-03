@@ -7,6 +7,8 @@ import clojure.lang.Indexed;
 import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
+import clojure.lang.Util;
+import collider.Cell;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 
@@ -97,6 +99,43 @@ public final class Neighbors {
             done(sent),
             PersistentVector.create(placed)
         };
+    }
+
+    /// Returns the distinct cells of the `records` of a run that its
+    /// `sent` cells do not hold, in order.
+    public static Object unheard(Object records, Object sent) {
+        if (paired(records, sent)) return PersistentVector.EMPTY;
+        Scratch<Boolean> heard = new Scratch<>(RT.count(sent));
+        for (Object p : (Iterable<?>) sent) heard.put(packed(p), Boolean.TRUE);
+        Scratch<Boolean> seen = new Scratch<>();
+        ITransientCollection out = PersistentVector.EMPTY.asTransient();
+        for (Object r : (Iterable<?>) records) {
+            Object p = RT.nth(r, 0);
+            long k = packed(p);
+            if (heard.get(k) != null || seen.get(k) != null) continue;
+            seen.put(k, Boolean.TRUE);
+            out = out.conj(p);
+        }
+        return out.persistent();
+    }
+
+    /// Returns true when each record has its own sent cell, in order.
+    private static boolean paired(Object records, Object sent) {
+        Indexed s = (Indexed) sent;
+        int m = RT.count(sent), j = 0;
+        for (Object r : (Iterable<?>) records) {
+            if (j == m || !Util.equiv(RT.nth(r, 0), s.nth(j))) return false;
+            j++;
+        }
+        return true;
+    }
+
+    private static long packed(Object p) {
+        return Cell.pack(
+                RT.longCast(RT.nth(p, 0)),
+                RT.longCast(RT.nth(p, 1)),
+                RT.longCast(RT.nth(p, 2))
+        );
     }
 
     /// Sets the block at `p`, which is `x` `y` `z`, to `st` with
