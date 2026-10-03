@@ -246,8 +246,8 @@
                    (out/to eid (out/sign-editor pos front?))])))
 
 (defn- chains?
-  "Returns true when a hanging sign item used on face of st places a
-  new sign."
+  "Returns true when a hanging sign item places a new sign.
+  The item is used on face of the sign st."
   [^long st face item]
   (let [d (dir/from-index (long face))
         across? (not= (dir/axis d) (dir/axis (block/facing-of st)))]
@@ -272,8 +272,8 @@
           (sign-hand-deltas world eid pos e front? busy?)))))
 
 (defn sign-update-deltas
-  "Returns the deltas that write lines on one side of the sign at pos,
-  when player eid edits it and it is not waxed."
+  "Returns the deltas that write lines on one side of a sign.
+  Only the editor eid writes the sign at pos, and not when waxed."
   [world [eid pos front? lines]]
   (let [e (be/at world pos)]
     (when (and e (not (:waxed? e)) (= eid (:editor e)))
@@ -566,9 +566,9 @@
           (carves? cur item) carve-use))))
 
 (defn deltas
-  "Returns the deltas of player eid using the block at pos on face,
-  with item in hand and the cursor at the hit point, or nil when the
-  block does nothing."
+  "Returns the deltas of player eid using the block at pos.
+  The player clicks face at cursor with item in hand. Returns nil
+  when the block does nothing."
   [world eid pos face item cursor]
   (let [cur (changes/block-at world pos)]
     (when-let [h (handler cur item)]

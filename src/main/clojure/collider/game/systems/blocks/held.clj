@@ -1,6 +1,5 @@
 (ns collider.game.systems.blocks.held
-  "Items used in the air, such as armor, the spyglass and the goat
-  horn."
+  "Armor, the spyglass and the goat horn, used in the air."
   (:require [collider.data :as data]
             [collider.data.pack :refer [kw]]
             [collider.game.inventory :as inventory]

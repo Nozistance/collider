@@ -87,8 +87,8 @@
 (def ^:private breaking-actions #{start finish})
 
 (defn dig-deltas
-  "Returns the deltas of a player who starts or finishes digging the
-  block at pos."
+  "Returns the deltas of a player who digs at a block.
+  Only the start and the finish of the dig break the block at pos."
   [world [eid status pos _face]]
   (let [e (get-in world [:entities eid])
         below-top? (<= (long (nth pos 1)) (chunk/level-max-y world))]

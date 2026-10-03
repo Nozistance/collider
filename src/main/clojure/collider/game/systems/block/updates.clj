@@ -226,8 +226,8 @@
     (out/all (out/block-entity pos))))
 
 (defn block-flush
-  "Returns the effects that show clients the blocks that changed this
-  tick."
+  "Returns the effects that show the changed blocks to clients.
+  They are the blocks that changed in this tick."
   {:wake {:keys [:changed-blocks]}}
   [w _d]
   (deltas/of-vec

@@ -166,8 +166,8 @@
   (if (pos? n) (conj runs [{:with with} n]) runs))
 
 (defn- change-runs
-  "Returns the author and length of each run of changes. Fallen snow
-  comes first, then the changes of each ticked block."
+  "Returns the author and length of each run of changes.
+  Fallen snow comes first, and the changes of ticked blocks follow."
   [fallen results]
   (loop [rs (seq results) runs [] by :precipitation n (count fallen)]
     (if-not rs

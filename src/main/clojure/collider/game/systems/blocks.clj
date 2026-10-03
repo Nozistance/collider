@@ -131,8 +131,8 @@
 (defn- no-face? [face] (= 255 (bit-and (long face) 0xFF)))
 
 (defn- suppressed?
-  "Returns true when a sneaking player with an item in either hand
-  skips the use of the block."
+  "Returns true when the player skips the use of the block.
+  A sneaking player skips it with an item in either hand."
   [at item]
   (boolean (and (:sneaking? at)
                 (or item (seq (sense/hands-of at))))))
@@ -189,8 +189,10 @@
                     (#{:blocks-changed :overlay} (:msg m)))))
         deltas))
 
+(def ^:private ^:const hit-slack 1.0000001)
+
 (defn- on-block? [cursor]
-  (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) 1.0000001)
+  (every? #(< (Math/abs (- (/ (double %) 16.0) 0.5)) hit-slack)
           cursor))
 
 (defn- barred [world e pos]
@@ -266,8 +268,8 @@
       ds)))
 
 (defn sequences
-  "Returns the last block action sequence of each player in events,
-  as a map of eid to sequence."
+  "Returns the last block action sequence of each player in events.
+  The sequences are by eid."
   [events]
   (reduce (fn [m [tag eid & args]]
             (if-let [sq (sequence-of tag args)]

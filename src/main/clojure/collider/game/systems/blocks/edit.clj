@@ -67,8 +67,8 @@
   (contains? game-master-types (block/type-of st)))
 
 (defn game-master?
-  "Returns true when player e may place, use and break game master
-  blocks."
+  "Returns true when player e may edit game master blocks.
+  To edit is to place, use and break."
   [e]
   (and (game-mode/creative? e)
        (<= (long forms/gamemaster) (player/permission-level e))))

@@ -51,8 +51,8 @@
     (out/block-sound kind pos 1.0 pitch)))
 
 (defn toggle-deltas
-  "Returns the deltas of player eid opening or closing the block
-  state at pos."
+  "Returns the deltas of a door, trapdoor or gate that a player uses.
+  The block is state at pos and player eid uses it."
   [world eid pos state]
   (let [changes (toggled world eid pos state)
         st' (second (first changes))

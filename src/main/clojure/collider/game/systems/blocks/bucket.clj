@@ -111,8 +111,9 @@
                 (:use-hand e))))))
 
 (defn empty-deltas
-  "Returns the deltas of a player who empties a bucket of state at
-  the block in view. Out of creative the hand keeps an empty bucket."
+  "Returns the deltas of a player who empties a bucket of state.
+  It pours at the block in view. Out of creative the hand keeps an
+  empty bucket."
   [world eid e item state]
   (emptied world eid e item (poured world eid e state nil)))
 
@@ -121,9 +122,9 @@
     [(out/except eid (mob-splash snd (dir/toward pos face)))]))
 
 (defn mob-deltas
-  "Returns the deltas for a player who empties a bucket that holds a
-  mob. Its water pours like a water bucket, with the sound of the
-  bucket."
+  "Returns the deltas of a player who empties a bucket of a mob.
+  Its water pours like a water bucket, with the sound of the
+  mob bucket."
   [world eid e item]
   (let [{:keys [fluid sound]} (data/mob-bucket item)]
     (emptied world eid e item

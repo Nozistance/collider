@@ -203,7 +203,7 @@
 
 (defn compass-deltas
   "Returns the deltas of a compass used on a lodestone.
-  The compass points at it from then on."
+  After this the compass points at the lodestone."
   [world [eid pos _ _ _]]
   (when (= :lodestone (block/block-of (changes/block-at world pos)))
     (let [e (get-in world [:entities eid])]
@@ -314,8 +314,8 @@
                   [[:award eid (keyword "used" (name item)) 1]]))))))
 
 (defn fluid-egg-deltas
-  "Returns the deltas of a spawn egg used at a liquid source in
-  view. The mob hatches in the liquid."
+  "Returns the deltas of a spawn egg used at a liquid source.
+  The mob hatches in the liquid source in view."
   [world eid e item]
   (when-let [mob (mobs/egg-type item)]
     (when-let [{:keys [pos]} (reach/clip world e :source-only)]
