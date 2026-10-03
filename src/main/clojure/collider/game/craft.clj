@@ -1,58 +1,37 @@
 (ns collider.game.craft
   "Crafting recipes and their matching against a crafting grid."
-  (:refer-clojure :exclude [find])
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.game.stack :as stack
+             :refer [component has? put]]))
 
 (set! *warn-on-reflection* true)
-
-(defn- proto [item k] (get-in (data/items) [item :components k]))
-
-(defn- component [stack k]
-  (let [cs (:components stack)]
-    (cond (contains? cs k) (get cs k)
-          (contains? (:removed stack) k) nil
-          :else (proto (:item stack) k))))
-
-(defn- has? [stack k] (some? (component stack k)))
-
-(defn- tidy [stack]
-  (cond-> stack
-    (empty? (:components stack)) (dissoc :components)
-    (empty? (:removed stack)) (dissoc :removed)))
-
-(defn- put [stack k v]
-  (let [s (update stack :components dissoc k)]
-    (tidy (cond
-            (= v (proto (:item stack) k)) (update s :removed disj k)
-            (nil? v) (update s :removed (fnil conj #{}) k)
-            :else (-> (update s :components assoc k v)
-                      (update :removed disj k))))))
 
 (defn- with-patch [stack patch]
   (reduce #(put %1 %2 nil)
           (reduce-kv put stack (:components patch))
           (:removed patch)))
 
-(defn- valid [stack]
+(defn- valid-or-nil [stack]
   (let [most (or (component stack :max-stack-size) 1)]
     (when-not (or (and (has? stack :max-damage) (> most 1))
                   (> (:count stack) most))
       stack)))
 
-(defn- normal [stack]
+(defn- patched [stack]
   (when (and stack (pos? (:count stack 1)))
     (with-patch {:item (:item stack) :count (:count stack 1)} stack)))
 
 (defn- create [template]
-  (valid (with-patch (select-keys template [:item :count]) template)))
+  (valid-or-nil
+    (with-patch (select-keys template [:item :count]) template)))
 
 (defn- create-over [template n patch]
   (-> {:item (:item template) :count n}
       (with-patch patch)
       (with-patch template)
-      valid))
+      valid-or-nil))
 
-(defn- test? [ingredient stack]
+(defn- accepts? [ingredient stack]
   (and (some? stack) (contains? ingredient (:item stack))))
 
 (defn remainder
@@ -89,7 +68,7 @@
   [{:keys [w h stacks] :as grid}]
   (if (or (zero? w) (zero? h))
     (merge grid empty-input)
-    (let [stacks (mapv normal stacks)
+    (let [stacks (mapv patched stacks)
           [l r t b] (span w h stacks)
           nw (inc (- r l))
           nh (inc (- b t))]
@@ -120,7 +99,7 @@
             (let [x (rem i w)
                   cell (nth cells (if flip? (+ (- w x 1) (- i x)) i))
                   s (nth stacks i)]
-              (if cell (test? cell s) (nil? s))))
+              (if cell (accepts? cell s) (nil? s))))
           (range (* w h))))
 
 (defn- pattern-matches? [pattern {:keys [w h n stacks]}]
@@ -150,13 +129,10 @@
   (let [{:keys [n stacks]} input]
     (and (= n (count ingredients))
          (if (and (= 1 (count stacks)) (= 1 n))
-           (test? (first ingredients) (first stacks))
+           (accepts? (first ingredients) (first stacks))
            (and (every? seq ingredients)
                 (fits? ingredients 0
                        (frequencies (keep :item stacks))))))))
-
-(defn- in-bounds? [{:keys [min max]} v]
-  (and (or (nil? min) (<= min v)) (or (nil? max) (<= v max))))
 
 (defn- transmuted [{:keys [result]} input extra]
   (create-over result (+ (:count result) extra) input))
@@ -164,21 +140,18 @@
 (defn- transmute-scan [{:keys [input material]} stacks most]
   (reduce (fn [[found m] s]
             (cond (nil? s) [found m]
-                  (test? input s) (if found (reduced nil) [s m])
-                  (not (test? material s)) (reduced nil)
+                  (accepts? input s) (if found (reduced nil) [s m])
+                  (not (accepts? material s)) (reduced nil)
                   (> (inc m) most) (reduced nil)
                   :else [found (inc m)]))
           [nil 0]
           stacks))
 
-(defn- same-stack? [a b]
-  (= (dissoc a :count) (dissoc b :count)))
-
 (defn- transmute-result? [recipe found m]
   (let [n (:count (:result recipe))]
     (or (not= 1 (if (:add-material-count? recipe) (+ m n) n))
         (let [made (transmuted recipe found 0)]
-          (and (some? made) (not (same-stack? found made)))))))
+          (and (some? made) (not (stack/same-kind? found made)))))))
 
 (defmethod matches? :transmute [recipe {:keys [n stacks]}]
   (let [bounds (:material-count recipe)
@@ -187,14 +160,14 @@
       (when (<= (inc (:min bounds 1)) n (inc hi))
         (when-let [[found m] (transmute-scan recipe stacks hi)]
           (and found
-               (in-bounds? bounds m)
+               (stack/in-range? bounds m)
                (transmute-result? recipe found m)))))))
 
 (defn- transmute-count [{:keys [input material]} stacks]
   (reduce (fn [[in m] s]
             (cond (nil? s) [in m]
-                  (test? input s) [s m]
-                  (test? material s) [in (inc m)]
+                  (accepts? input s) [s m]
+                  (accepts? material s) [in (inc m)]
                   :else [in m]))
           [nil 0]
           stacks))
@@ -203,16 +176,17 @@
   (if (:add-material-count? recipe)
     (let [[in m] (transmute-count recipe stacks)]
       (transmuted recipe in m))
-    (when-let [in (first (filter #(test? (:input recipe) %) stacks))]
-      (transmuted recipe in 0))))
+    (let [input? #(accepts? (:input recipe) %)]
+      (when-let [in (first (filter input? stacks))]
+        (transmuted recipe in 0)))))
 
 (defn- dye-of [stack] (or (component stack :dye) :white))
 
 (defn- dye-scan [{:keys [target dye]} stacks]
   (reduce (fn [[t d] s]
             (cond (nil? s) [t d]
-                  (test? target s) (if t (reduced nil) [true d])
-                  (and (test? dye s) (has? s :dye)) [t true]
+                  (accepts? target s) (if t (reduced nil) [true d])
+                  (and (accepts? dye s) (has? s :dye)) [t true]
                   :else (reduced nil)))
           [false false]
           stacks))
@@ -256,8 +230,8 @@
 (defn- dye-parts [{:keys [target dye]} stacks]
   (reduce (fn [[t ds] s]
             (cond (nil? s) [t ds]
-                  (test? target s) (if t (reduced nil) [s ds])
-                  (test? dye s) [t (conj ds (dye-of s))]
+                  (accepts? target s) (if t (reduced nil) [s ds])
+                  (accepts? dye s) [t (conj ds (dye-of s))]
                   :else (reduced nil)))
           [nil []]
           stacks))
@@ -274,7 +248,7 @@
     (and (= 3 w) (= 3 h) (= 9 n)
          (every? (fn [i]
                    (let [ing (if (= 4 i) source material)]
-                     (test? ing (nth stacks i))))
+                     (accepts? ing (nth stacks i))))
                  (range 9)))))
 
 (defmethod assemble :imbue [recipe {:keys [w stacks]}]
@@ -285,7 +259,7 @@
 
 (defmethod matches? :decorated-pot [recipe {:keys [w h n stacks]}]
   (and (= 3 w) (= 3 h) (= 4 n)
-       (every? (fn [[k i]] (test? (recipe k) (nth stacks i)))
+       (every? (fn [[k i]] (accepts? (recipe k) (nth stacks i)))
                [[:back 1] [:left 3] [:right 5] [:front 7]])))
 
 (defmethod assemble :decorated-pot [{:keys [result]} {:keys [stacks]}]
@@ -302,7 +276,7 @@
   (let [c (banner-color s)
         k (layers s)]
     (cond (nil? s) [color src tgt]
-          (not (and (test? banner s) c)) (reduced nil)
+          (not (and (accepts? banner s) c)) (reduced nil)
           (and color (not= color c)) (reduced nil)
           (> k 6) (reduced nil)
           (pos? k) (if src (reduced nil) [c true tgt])
@@ -329,16 +303,16 @@
 
 (defn- copyable? [{:keys [allowed-generations]} content]
   (and (some? content)
-       (in-bounds? allowed-generations (:generation content))))
+       (stack/in-range? allowed-generations (:generation content))))
 
 (defn- book-step [{:keys [source material] :as r} [src mat] s]
   (cond (nil? s) [src mat]
-        (test? source s)
+        (accepts? source s)
         (if (and (copyable? r (component s :written-book-content))
                  (not src))
           [true mat]
           (reduced nil))
-        (test? material s) [src true]
+        (accepts? material s) [src true]
         :else (reduced nil)))
 
 (defmethod matches? :book-cloning [recipe {:keys [n stacks]}]
@@ -350,10 +324,10 @@
 (defn- book-parts [{:keys [source material]} stacks]
   (reduce (fn [[src k] s]
             (cond (nil? s) [src k]
-                  (and (test? source s)
+                  (and (accepts? source s)
                        (has? s :written-book-content))
                   (if src (reduced nil) [s k])
-                  (test? material s) [src (inc k)]
+                  (accepts? material s) [src (inc k)]
                   :else (reduced nil)))
           [nil 0]
           stacks))
@@ -379,9 +353,10 @@
 
 (defn- rocket-step [{:keys [shell fuel star]} [sh f] s]
   (cond (nil? s) [sh f]
-        (test? shell s) (if sh (reduced nil) [true f])
-        (test? fuel s) (if (> (inc f) 3) (reduced nil) [sh (inc f)])
-        (test? star s) [sh f]
+        (accepts? shell s) (if sh (reduced nil) [true f])
+        (accepts? fuel s)
+        (if (> (inc f) 3) (reduced nil) [sh (inc f)])
+        (accepts? star s) [sh f]
         :else (reduced nil)))
 
 (defmethod matches? :firework-rocket [recipe {:keys [n stacks]}]
@@ -393,8 +368,8 @@
 (defmethod assemble :firework-rocket [recipe input]
   (let [{:keys [fuel star result]} recipe
         ss (remove nil? (:stacks input))
-        stars (remove #(test? fuel %) ss)
-        boom (fn [s] (when (test? star s)
+        stars (remove #(accepts? fuel %) ss)
+        boom (fn [s] (when (accepts? star s)
                        (component s :firework-explosion)))
         booms (vec (keep boom stars))
         flight (- (count ss) (count stars))
@@ -403,15 +378,15 @@
     (create-over result (:count result) comps)))
 
 (defn- shape-of [{:keys [shapes]} s]
-  (some (fn [[shape ing]] (when (test? ing s) shape)) shapes))
+  (some (fn [[shape ing]] (when (accepts? ing s) shape)) shapes))
 
 (defn- star-step [r [fu d sh tr tw] s]
   (let [{:keys [twinkle trail fuel dye]} r]
     (cond (nil? s) [fu d sh tr tw]
-          (test? twinkle s) (if tw (reduced nil) [fu d sh tr true])
-          (test? trail s) (if tr (reduced nil) [fu d sh true tw])
-          (test? fuel s) (if fu (reduced nil) [true d sh tr tw])
-          (and (test? dye s) (has? s :dye)) [fu true sh tr tw]
+          (accepts? twinkle s) (if tw (reduced nil) [fu d sh tr true])
+          (accepts? trail s) (if tr (reduced nil) [fu d sh true tw])
+          (accepts? fuel s) (if fu (reduced nil) [true d sh tr tw])
+          (and (accepts? dye s) (has? s :dye)) [fu true sh tr tw]
           (or (nil? (shape-of r s)) sh) (reduced nil)
           :else [fu d true tr tw])))
 
@@ -429,9 +404,9 @@
   (let [found (shape-of r s)]
     (cond (nil? s) [shape tr tw cs]
           found [found tr tw cs]
-          (test? (:twinkle r) s) [shape tr true cs]
-          (test? (:trail r) s) [shape true tw cs]
-          (test? (:dye r) s)
+          (accepts? (:twinkle r) s) [shape tr true cs]
+          (accepts? (:trail r) s) [shape true tw cs]
+          (accepts? (:dye r) s)
           [shape tr tw (conj cs (firework-color s))]
           :else [shape tr tw cs])))
 
@@ -446,8 +421,8 @@
 
 (defn- fade-step [{:keys [target dye]} [d t] s]
   (cond (nil? s) [d t]
-        (and (test? dye s) (has? s :dye)) [true t]
-        (or (not (test? target s)) t) (reduced nil)
+        (and (accepts? dye s) (has? s :dye)) [true t]
+        (or (not (accepts? target s)) t) (reduced nil)
         :else [d true]))
 
 (defmethod matches? :firework-star-fade [recipe {:keys [n stacks]}]
@@ -462,8 +437,8 @@
 
 (defn- fade-parts [{:keys [target dye]} stacks]
   (reduce (fn [[t cs] s]
-            (cond (test? dye s) [t (conj cs (firework-color s))]
-                  (test? target s) [s cs]
+            (cond (accepts? dye s) [t (conj cs (firework-color s))]
+                  (accepts? target s) [s cs]
                   :else [t cs]))
           [nil []]
           stacks))
@@ -490,20 +465,13 @@
 (defmethod matches? :repair-item [_ input]
   (some? (repair-pair input)))
 
-(defn- max-damage [s] (or (component s :max-damage) 0))
-
 (defn- left-uses [s]
-  (let [m (max-damage s)]
+  (let [m (stack/max-damage s)]
     (- m (min (max (or (component s :damage) 0) 0) m))))
 
-(defn- enchant-key [s]
-  (if (= :enchanted-book (:item s))
-    :stored-enchantments
-    :enchantments))
-
 (defn- curses [a b]
-  (let [ea (or (component a (enchant-key a)) {})
-        eb (or (component b (enchant-key b)) {})
+  (let [ea (or (component a (stack/enchant-key a)) {})
+        eb (or (component b (stack/enchant-key b)) {})
         curse (set (get-in (data/tags) ["enchantment" "curse"]))]
     (into {}
           (for [e (distinct (concat (keys ea) (keys eb)))
@@ -513,24 +481,26 @@
             [e (min lvl 255)]))))
 
 (defn- enchant [stack a b]
-  (let [k (enchant-key stack)]
+  (let [k (stack/enchant-key stack)]
     (if-some [old (component stack k)]
       (put stack k (merge old (curses a b)))
       stack)))
 
 (defmethod assemble :repair-item [_ input]
   (when-let [[a b] (repair-pair input)]
-    (let [most (max (max-damage a) (max-damage b))
+    (let [most (max (stack/max-damage a) (stack/max-damage b))
           left (+ (left-uses a) (left-uses b) (quot (* most 5) 100))
-          s (-> (normal {:item (:item a) :count 1})
+          s (-> (patched {:item (:item a) :count 1})
                 (put :max-damage most))]
       (-> s
-          (put :damage (min (max (- most left) 0) (max-damage s)))
+          (put :damage
+               (min (max (- most left) 0) (stack/max-damage s)))
           (enchant a b)))))
 
-(defn- map-pattern [{:keys [map material]}]
-  (let [m material]
-    {:w 3 :h 3 :symmetric? true :cells [m m m m map m m m m]}))
+(defn- map-pattern [recipe]
+  (let [m (:material recipe)]
+    {:w 3 :h 3 :symmetric? true
+     :cells [m m m m (:map recipe) m m m m]}))
 
 (defn- filled-map [stacks]
   (first (filter #(has? % :map-id) stacks)))
@@ -551,9 +521,9 @@
 
 (defn- shield-step [{:keys [banner target]} [clear pat] s]
   (cond (nil? s) [clear pat]
-        (and (test? banner s) (banner-color s))
+        (and (accepts? banner s) (banner-color s))
         (if pat (reduced nil) [clear true])
-        (or (not (test? target s)) clear (pos? (layers s)))
+        (or (not (accepts? target s)) clear (pos? (layers s)))
         (reduced nil)
         :else [true pat]))
 
@@ -566,9 +536,9 @@
 (defn- shield-parts [{:keys [banner target]} stacks]
   (reduce (fn [[ps base t] s]
             (cond (nil? s) [ps base t]
-                  (and (test? banner s) (banner-color s))
+                  (and (accepts? banner s) (banner-color s))
                   [(component s :banner-patterns) (banner-color s) t]
-                  (test? target s) [ps base s]
+                  (accepts? target s) [ps base s]
                   :else [ps base t]))
           [nil :white nil]
           stacks))
@@ -585,7 +555,9 @@
     :shapeless [:shapeless (count ingredients)]
     [:other]))
 
-(defn index-of [recipes]
+(defn index-of
+  "Returns the recipes indexed for the lookup of a grid."
+  [recipes]
   (reduce (fn [idx r] (update-in idx (bucket r) (fnil conj []) r))
           {:by-id (into {} (map (juxt :id identity)) recipes)}
           (sort-by :order recipes)))
@@ -593,7 +565,10 @@
 (def ^:private ^:table crafting-index
   (delay (index-of (:crafting (data/recipes)))))
 
-(defn index [] @crafting-index)
+(defn index
+  "Returns the index of the crafting recipes."
+  []
+  @crafting-index)
 
 (defn- candidates [idx {:keys [w h n]}]
   (let [rs (concat (get-in idx [:shaped [w h n]])
@@ -601,7 +576,7 @@
                    (:other idx))]
     (sort-by :order rs)))
 
-(defn find
+(defn recipe-for
   "Returns the recipe that crafts input.
   The hinted recipe comes first when it crafts input too."
   [idx input hint]

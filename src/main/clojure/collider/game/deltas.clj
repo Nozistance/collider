@@ -31,8 +31,8 @@
   (.input d))
 
 (defn as-vec
-  "Returns the deltas of d as one vector: those of the level, those
-  of each entity by eid, then the effects as [:fx msg]."
+  "Returns the deltas of d as one vector. The deltas of the level
+  come first, then those of each entity by eid, then the effects."
   [^Deltas d]
   (-> (world-of d)
       (into cat (vals (entities-of d)))

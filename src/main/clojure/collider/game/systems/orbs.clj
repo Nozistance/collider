@@ -152,7 +152,7 @@
   (let [acc (xp/account p (lived world p))
         acc (xp/give-points acc (long (:value o)))
         ready (+ 2 (long (:tick world)))
-        marks (assoc (xp/marks acc) :xp-ready-at ready)]
+        marks (assoc (xp/player-fields acc) :xp-ready-at ready)]
     (concat [(out/all (out/collect oid pid))
              [:merge-entity pid marks]
              (orb-left oid (dec (long (:count o))))]

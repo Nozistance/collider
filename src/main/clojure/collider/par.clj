@@ -8,7 +8,8 @@
 (set! *warn-on-reflection* true)
 
 (def ^:const fold-leaf
-  "The size of the smallest part a parallel fold splits a vector into."
+  "The size of the smallest part a parallel fold splits a vector
+  into."
   64)
 
 (def ^:private ^:const fold-threshold 64)

@@ -1,6 +1,6 @@
 (ns collider.game.player
-  "Players: joining and quitting, their hands, moves and the events
-  they send."
+  "Players joining and quitting, with their hands, moves and the
+  events they send."
   (:require [collider.data :as data]
             [collider.data.long-map :as lm]
             [collider.game.book :as book]
@@ -9,6 +9,7 @@
             [collider.game.level :as level :refer [update-entity]]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
+            [collider.game.slots :as slots]
             [collider.game.stack :as stack]
             [collider.game.using :as using]
             [collider.random :as random]
@@ -149,12 +150,14 @@
           (update-entity eid load-awaited (:tick w)))
       w)))
 
+(def ^:private crafting-slots
+  (into [slots/crafting-result] slots/crafting-grid))
+
 (defn- stored-profile [e dim]
   (schema/profile-of
     (-> e
         (update-in [:stats :custom/leave-game] (fnil inc 0))
-        (update :inventory
-                #(clojure.core/apply dissoc % (range 5))))
+        (update :inventory #(apply dissoc % crafting-slots)))
     dim))
 
 (defn- forget-player [ps name eid]
@@ -191,20 +194,14 @@
                (not= :off (get-in e [:using :hand])))
           (assoc :using-item? false :using nil)))
 
-(defn- wrap-degrees ^double [^double d]
-  (let [r (rem d 360.0)]
-    (cond (>= r 180.0) (- r 360.0)
-          (< r -180.0) (+ r 360.0)
-          :else r)))
-
 (defn- held-item-of [e]
-  (let [slot (+ 36 (long (or (:held-slot e) 0)))]
+  (let [slot (+ slots/hotbar (long (or (:held-slot e) 0)))]
     (get-in e [:inventory slot :item])))
 
 (defn- snapped [e rot]
   (if (and rot (held-item-of e))
-    (assoc e :yaw (wrap-degrees (double (:yaw rot)))
-             :pitch (wrap-degrees (double (:pitch rot))))
+    (assoc e :yaw (v/wrap-deg (double (:yaw rot)))
+             :pitch (v/wrap-deg (double (:pitch rot))))
     e))
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
@@ -224,7 +221,9 @@
 (defn hand-slot
   "Returns the inventory slot the hand holds."
   ^long [e hand]
-  (if (= :off hand) 45 (+ 36 (long (or (:held-slot e) 0)))))
+  (if (= :off hand)
+    slots/offhand
+    (+ slots/hotbar (long (or (:held-slot e) 0)))))
 
 (defn hand-stack
   "Returns the stack the player holds in hand."
@@ -268,11 +267,6 @@
   [stack]
   (when stack (get-in (data/items) [(:item stack) :consumable])))
 
-(defn consume-ticks
-  "Returns the ticks it takes to eat or drink with consumable c."
-  ^long [c]
-  (long (* 20.0 (double (:seconds c)))))
-
 (defn on-cooldown?
   "Returns true when the cooldown group of item is still locked."
   [e item ^long tick]
@@ -311,11 +305,13 @@
   [w [_ eid hand _ rot]]
   (used w eid hand rot))
 
+(def ^:private ^:const no-face 255)
+
 (defn place
   "Returns w after the event [:place eid pos face ...] as its player
   turns and, clicking no block, uses the item in hand."
   [w [_ eid _ face _ _ _ rot]]
-  (if (= 255 (bit-and (long face) 0xFF))
+  (if (= no-face (bit-and (long face) 0xFF))
     (used w eid :main rot)
     (update-entity w eid snapped rot)))
 
@@ -517,10 +513,8 @@
     (apply-move w eid {:flying flying} false)))
 
 (defn- sprinted
-  "Returns player e sprinting or not.
-  The sprint modifier comes off its movement speed and goes back on
-  when it sprints. The attribute is left to sync unless it was not
-  sprinting and does not."
+  "Returns player e with its sprint set to on?. Its movement speed
+  goes out again unless the sprint stays off."
   [e on?]
   (cond-> (assoc e :sprinting? on?)
     (or on? (:sprinting? e))

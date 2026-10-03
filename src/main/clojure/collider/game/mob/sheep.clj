@@ -109,7 +109,7 @@
   (let [stacks [{:item (dye-item a) :count 1}
                 {:item (dye-item b) :count 1}]
         in (craft/trim {:w 2 :h 1 :stacks stacks})]
-    (when-let [r (craft/find (craft/index) in nil)]
+    (when-let [r (craft/recipe-for (craft/index) in nil)]
       (data/dye-color (get-in r [:result :item])))))
 
 (defn- lamb-color [_ t eid a b]

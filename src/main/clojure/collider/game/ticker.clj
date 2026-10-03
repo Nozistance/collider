@@ -1,5 +1,5 @@
 (ns collider.game.ticker
-  "The ticker: it runs the tick twenty times a second."
+  "The ticker that runs the tick twenty times a second."
   (:require [collider.game.deltas :as deltas]
             [collider.game.tick :as tick]
             [collider.log :as log]
@@ -90,11 +90,15 @@
           (min (double tps)
                (/ (* 1.0E9 (dec n)) (- now past))))))))
 
+(def ^:private ^:const catch-up-ns 1000000000)
+
+(def ^:private ^:const ns-per-ms 1000000)
+
 (defn- pace ^long [^long next-ns ^long step-ns]
   (let [target (+ next-ns step-ns)
         now (System/nanoTime)
-        target (if (> (- now target) 1000000000) now target)
-        sleep (quot (- target now) 1000000)]
+        target (if (> (- now target) catch-up-ns) now target)
+        sleep (quot (- target now) ns-per-ms)]
     (when (pos? sleep) (^[long] Thread/sleep sleep))
     target))
 
@@ -150,7 +154,7 @@
         streaks))
 
 (defn- crash! [{:keys [running]} opts [unit n t]]
-  (log/error "**** THE SERVER CRASHED!")
+  (log/error "the server crashed")
   (log/error unit "failed" n "ticks in a row")
   (log/error-with "its last failure" t)
   (log/error "saving the world and stopping")
@@ -161,7 +165,7 @@
   (let [s (swap! (:streaks st) streaks failures)]
     (when-let [c (crashing s)] (crash! st opts c))))
 
-(defn- ticker-state [_cfg]
+(defn- ticker-state []
   {:window  (long-array window-size)
    :counter (AtomicLong. 0)
    :stamps  (long-array tps-window)
@@ -211,15 +215,14 @@
     (daemon! #(par/in-pool run) "collider-ticker")))
 
 (defn start-ticker!
-  "Starts ticking world-atom on the events of queue.
-  Each tick hands its deltas to deliver!. Returns a handle to stop
-  it with. A unit that fails twenty ticks in a row stops the ticker
-  and calls the crash callback of opts. The :phases of opts are the
-  phases, or a function that returns them each tick."
+  "Starts ticking world-atom on the events of queue and returns the
+  handle that stops it. Each tick hands its deltas to deliver!. A unit
+  that fails twenty ticks in a row stops the ticker. The phases come
+  from opts when it names them."
   ([world-atom queue deliver!]
    (start-ticker! world-atom queue deliver! nil))
   ([world-atom queue deliver! opts]
-   (let [st (ticker-state opts)
+   (let [st (ticker-state)
          running (:running st)
          thread (ticker-thread
                   st running world-atom queue deliver! opts)]

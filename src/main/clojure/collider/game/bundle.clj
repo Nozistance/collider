@@ -1,5 +1,5 @@
 (ns collider.game.bundle
-  "Bundles: the stacks they hold, their weight and the item picked
+  "Bundles with the stacks they hold, their weight and the item picked
   to come out first."
   (:require [collider.data :as data]
             [collider.game.stack :as stack]))
@@ -57,12 +57,10 @@
   (and (> (stack/max-size s) 1)
        (not (and (stack/damageable? s) (pos? (stack/damage s))))))
 
-(defn- same? [a b]
-  (= (dissoc a :count) (dissoc b :count)))
-
 (defn- index-of [stacks s]
   (when (stackable? s)
-    (first (keep-indexed (fn [i x] (when (same? x s) i)) stacks))))
+    (let [at (fn [i x] (when (stack/same-kind? x s) i))]
+      (first (keep-indexed at stacks)))))
 
 (defn- with-contents [bundle stacks]
   (stack/put bundle :bundle-contents (mapv stack/template stacks)))
@@ -98,7 +96,7 @@
 
 (defn remove-one
   "Returns bundle without the stack that comes out next, and that
-  stack; the stack is nil when the bundle is empty."
+  stack. The stack is nil when the bundle is empty."
   [bundle]
   (let [stacks (contents bundle)
         i (selected bundle)

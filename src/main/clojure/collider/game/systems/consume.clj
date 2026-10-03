@@ -32,7 +32,7 @@
 (defn emits?
   "Returns true when the tick with that many ticks left is heard."
   [c ^long left]
-  (let [total (player/consume-ticks c)
+  (let [total (using/consume-ticks c)
         wait (long (* total effects-start))]
     (and (> (- total left) wait)
          (zero? (rem left effects-interval)))))

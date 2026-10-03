@@ -188,7 +188,7 @@
   ServerExplosion.explode: bodies, then blocks."
   [s world eid e pos]
   (let [t (:tick world)
-        b (blast/blast world (spec s eid e pos))
+        b (blast/of world (spec s eid e pos))
         bodies (blast/bodies b (:idx s) (now-of s eid))
         [s motions] (reduce #(hit-body t b %1 %2) [s {}] bodies)
         {:keys [ds spawns]} (blast/finish b motions)]

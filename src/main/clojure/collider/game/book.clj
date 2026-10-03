@@ -1,15 +1,12 @@
 (ns collider.game.book
   "Books a player writes in and signs, and written books it reads."
   (:require [collider.game.out :as out]
+            [collider.game.slots :as slots]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
 
 (defn- page [s] {:raw s :filtered nil})
-
-(defn- book-slot [^long slot]
-  (cond (<= 0 slot 8) (+ 36 slot)
-        (= 40 slot) 45))
 
 (defn- written [e s title pages]
   (-> (stack/transmute s :written-book)
@@ -33,7 +30,7 @@
   "Returns the deltas of a player that edits or signs the book in
   hotbar slot n, or 40 for the off hand."
   [e eid n book]
-  (when-let [slot (book-slot n)]
+  (when-let [slot (slots/of-hotbar n)]
     (let [s (get-in e [:inventory slot])]
       (when (stack/has? s :writable-book-content)
         (sent-deltas e eid slot (edited e s book))))))

@@ -138,7 +138,7 @@
 
 (defn- xp-changed [world [id dim e] f]
   (let [acc (f (sel/xp-of world e))
-        ds (cons [:merge-entity id (xp/marks acc)] (chimes e acc))]
+        ds (cons [:merge-entity id (xp/player-fields acc)] (chimes e acc))]
     (sel/in-level world dim ds)))
 
 (defn- xp-unit [unit] (or unit "points"))

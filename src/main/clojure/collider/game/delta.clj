@@ -343,9 +343,9 @@
                     [:direct [:maybe Eid]] [:pos [:maybe Vec3]]]
      :collect [[:eid Eid] [:collector Eid]]
      :open-screen [[:container :int] [:menu :keyword] [:title :map]]
-     :container-content [[:container :int] [:state-id :int]
-                         [:items [:sequential [:maybe Stack]]]
-                         [:carried [:maybe Stack]]]
+     :container-content
+     [[:container :int] [:state-id :int]
+      [:items [:sequential [:maybe Stack]]] [:carried [:maybe Stack]]]
      :container-slot [[:container :int] [:state-id :int] [:slot :int]
                       [:stack [:maybe Stack]]]
      :container-data [[:container :int] [:id :int] [:value :int]]

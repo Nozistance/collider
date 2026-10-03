@@ -1,5 +1,5 @@
 (ns collider.game.enchantment
-  "Enchantments of the vanilla pack: their cost, reach and rivals."
+  "Enchantments with their cost, reach and rivals."
   (:require [clojure.string :as str]
             [collider.data :as data]))
 

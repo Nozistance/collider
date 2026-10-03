@@ -128,7 +128,9 @@
         :let [e (get-in world [:entities eid])] :when e]
     (out/to eid (out/stats (or (:stats e) {})))))
 
-(def channels [award answer])
+(def channels
+  "The channels of the detector, in the order they run."
+  [award answer])
 
 (defn observe
   "Returns what the detector channels make of the tick."

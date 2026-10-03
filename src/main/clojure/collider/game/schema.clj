@@ -57,9 +57,8 @@
 
 (defn chunk-payload
   "Returns chunk id with its block entities, entities and ticks.
-  Players do not belong to a chunk. Ticks count as delays from now.
-  The entities come from entries when given, as chunk-entities
-  groups them."
+  Ticks count as delays from now. Entries are its entities when
+  given."
   ([w id]
    (let [own? #(chunk-entity? id (val %))]
      (chunk-payload w id (filter own? (:entities w)))))

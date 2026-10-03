@@ -16,7 +16,7 @@
     (count (filter #(< (double (roll (conj s %))) p)
                    (range (long (:n n)))))))
 
-(defn- int-count ^long [n roll s]
+(defn- int-of ^long [n roll s]
   (cond
     (number? n) (rounded n)
     (:n n) (binomial n roll s)
@@ -26,7 +26,7 @@
                  (+ lo (long (* (double (roll s)) (inc (- hi lo)))))))
     :else (fail "unknown number provider" {:provider n})))
 
-(defn- float-count ^double [n roll s]
+(defn- float-of ^double [n roll s]
   (if (number? n)
     (double n)
     (let [lo (double (:min n)) hi (double (:max n))]
@@ -39,7 +39,7 @@
        :is-baby (boolean (:baby? (:entity ctx)))
        (fail "unknown entity flag" {:flag k}))))
 
-(defn- at-least? [r v]
+(defn- in-range? [r v]
   (and (>= (long v) (long (:min r Long/MIN_VALUE)))
        (<= (long v) (long (:max r Long/MAX_VALUE)))))
 
@@ -53,13 +53,13 @@
       :components (= v (select-keys (:components e) (keys v)))
       :type-specific/sheep (same-flag? (:sheared v) (:sheared? e))
       :type-specific/raider (same-flag? (:is-captain v) (:captain? e))
-      :type-specific/cube-mob (at-least? (:size v) (:size e 0))
+      :type-specific/cube-mob (in-range? (:size v) (:size e 0))
       :vehicle (= (:entity-type v) (:vehicle e))
       :entity-type (= v (:type e))
       :equipment false
       (fail "unknown entity predicate" {:field k}))))
 
-(defn- this? [c ctx]
+(defn- this-entity-matches? [c ctx]
   (and (= :this (:entity c))
        (every? (fn [[k v]] (field? k v ctx)) (:predicate c))))
 
@@ -82,7 +82,7 @@
          (* (double (:per-level-above-first e)) (dec lvl)))
       (double (:unenchanted-chance c)))))
 
-(declare all?)
+(declare outcomes)
 
 (defn- passes? [c ctx roll s]
   (case (:condition c)
@@ -90,18 +90,18 @@
     :random-chance (< (double (roll s)) (double (:chance c)))
     :random-chance-with-enchanted-bonus
     (< (double (roll s)) (bonus-chance c ctx))
-    :entity-properties (this? c ctx)
+    :entity-properties (this-entity-matches? c ctx)
     :damage-source-properties (damage? (:predicate c) ctx)
     :inverted (not (passes? (:term c) ctx roll (conj s :term)))
-    :any-of (boolean (some true? (all? (:terms c) ctx roll s)))
-    :all-of (every? true? (all? (:terms c) ctx roll s))
+    :any-of (boolean (some true? (outcomes (:terms c) ctx roll s)))
+    :all-of (every? true? (outcomes (:terms c) ctx roll s))
     (fail "unknown condition" {:condition (:condition c)})))
 
-(defn- all? [cs ctx roll s]
+(defn- outcomes [cs ctx roll s]
   (map-indexed #(passes? %2 ctx roll (conj s %1)) cs))
 
 (defn- met? [cs ctx roll s]
-  (every? true? (all? cs ctx roll (conj s :when))))
+  (every? true? (outcomes cs ctx roll (conj s :when))))
 
 (defn- smelt [stack]
   (if-let [r (:out (furnace/recipe :furnace stack))]
@@ -115,16 +115,16 @@
     (if (zero? lvl)
       stack
       (let [n (+ (long (:count stack 1))
-                 (rounded (* lvl (float-count (:count f) roll s))))]
+                 (rounded (* lvl (float-of (:count f) roll s))))]
         (assoc stack :count (if (pos? lim) (min n lim) n))))))
 
 (defn- set-count [stack f roll s]
   (let [base (if (:add f) (long (:count stack 1)) 0)
-        n (int-count (:count f) roll (conj s :n))]
+        n (int-of (:count f) roll (conj s :n))]
     (assoc stack :count (+ base n))))
 
 (defn- ominous-amplifier [stack f roll s]
-  (let [n (int-count (:amplifier f) roll (conj s :a))]
+  (let [n (int-of (:amplifier f) roll (conj s :a))]
     (assoc-in stack [:components :ominous-bottle-amplifier]
               (min 4 (max 0 n)))))
 
@@ -202,7 +202,7 @@
 (defn- pool-drops [tables p ctx roll s]
   (if-not (met? (:conditions p) ctx roll s)
     []
-    (let [n (int-count (:rolls p 1) roll (conj s :rolls))]
+    (let [n (int-of (:rolls p 1) roll (conj s :rolls))]
       (into [] (mapcat #(one-roll tables p ctx roll (conj s %)))
             (range n)))))
 
