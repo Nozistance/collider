@@ -71,6 +71,9 @@
            (not= (block/block-of old) (block/block-of (long st)))
            (not= k (kind (long st)))))))
 
+(defn in-chunk [world id]
+  (get (:block-entities world) id))
+
 (defn at [world pos]
   (get-in world [:block-entities (chunk/block-chunk pos) pos]))
 
