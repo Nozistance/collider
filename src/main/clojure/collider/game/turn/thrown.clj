@@ -466,8 +466,8 @@
     (:snowball :egg)
     (into (vec (hurt-deltas world eid e d hit))
           [(out/all (out/status eid :break))])
-    :ender-pearl (concat (hurt-deltas world eid e d hit)
-                         (pearl-deltas world e))
+    :ender-pearl
+    (concat (hurt-deltas world eid e d hit) (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)
     (delta/authored (potion-deltas world (assoc e :pos at) at hit)
                     (delta/entity-author eid e))))
@@ -570,21 +570,20 @@
 
 (defn- written-world [[w _ _ acc]] [w acc])
 
+(defn- in-order [es]
+  (-> (into [] (remove cloud?) es) (into (filter cloud?) es)))
+
 (defn turns
   "Returns world with the blocks that the thrown things in active
   chunks wrote, and their deltas, each in its turn after the turns
-  ds of the other entities, then those of the lingering clouds. A
-  hit tests the entities where they are at its turn
-  (ThrowableProjectile.tick:46): those before it in the tick list
-  moved, the others not yet. What a turn writes, the later turns
-  see."
+  ds of the other bodies, then the clouds. A hit meets the bodies
+  where they stand at its turn, and sees the blocks it wrote."
   [world ds]
   (let [es (areas/active-of-types world flying)]
     (if (pos? (count es))
-      (let [t (:tick world)
-            order (-> (into [] (remove cloud?) es)
-                      (into (filter cloud?) es))
-            start [world (par/keyed (:entities world))
+      (let [start [world (par/keyed (:entities world))
                    (stepped world ds) []]]
-        (written-world (reduce #(turn t %1 %2) start order)))
+        (->> (in-order es)
+             (reduce #(turn (:tick world) %1 %2) start)
+             written-world))
       [world nil])))
