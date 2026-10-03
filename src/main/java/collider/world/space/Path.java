@@ -1,5 +1,6 @@
 package collider.world.space;
 
+import collider.Cell;
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import collider.world.Collision;
@@ -109,10 +110,6 @@ public final class Path {
                 | (z < 0 ? 32768 : 0));
     }
 
-    private static long cell(long x, long y, long z) {
-        return ((x & 0x3FFFFFFL) << 38) | ((z & 0x3FFFFFFL) << 12) | (y & 0xFFFL);
-    }
-
     /// Returns the node of the cell `x`, `y`, `z` of search `p` and
     /// adds it when absent. Cells that share a key share a node.
     public static PathNode node(Path p, long x, long y, long z) {
@@ -219,7 +216,7 @@ public final class Path {
     /// Returns the path type of the cell `x`, `y`, `z` for the mob of
     /// search `p`. One search types each cell once.
     public static int typeOf(Path p, long x, long y, long z) {
-        long k = cell(x, y, z);
+        long k = Cell.pack(x, y, z);
         Integer t = p.typed.get(k);
         if (t != null) return t;
         int v = p.typedForMob(x, y, z);

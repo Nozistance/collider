@@ -1,6 +1,7 @@
 (ns collider.game.level
   "A level of the world with its view, its entities and its writes."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.tickers :as tickers]
             [collider.game.clock :as clock]
@@ -308,7 +309,7 @@
     0))
 
 (defn- block-tick [w at id]
-  (let [p (chunk/id->block-pos id)
+  (let [p (cell/unpack id)
         st (block-or-zero (:chunks w) p)]
     (update w :block-ticks schedule/add at id (block/block-of st))))
 

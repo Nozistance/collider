@@ -1,6 +1,7 @@
 (ns collider.game.systems.block.updates
   "Scheduled block ticks and their effects."
-  (:require [collider.data.long-map :as lm]
+  (:require [collider.cell :as cell]
+            [collider.data.long-map :as lm]
             [collider.game.block.blockentity :as be]
             [collider.game.block.lid :as lid]
             [collider.game.changes :as changes]
@@ -117,7 +118,7 @@
 
 (defn- again-deltas [[p] {:keys [again]}]
   (when again
-    [[:schedule-ticks {again [(chunk/block-pos->id p)]}]]))
+    [[:schedule-ticks {again [(cell/pack p)]}]]))
 
 (defn- stale? [pass [p] first-run]
   (or (nil? first-run)
@@ -136,7 +137,7 @@
 
 (defn- ordered [world k active]
   (let [runs? #(areas/active-id? active %)
-        pos (fn [[id ty]] [(chunk/id->block-pos id) ty])
+        pos (fn [[id ty]] [(cell/unpack id) ty])
         order (schedule/run-order (get world k) (:tick world) runs?)]
     (mapv pos order)))
 
