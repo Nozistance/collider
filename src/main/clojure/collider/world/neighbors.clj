@@ -8,7 +8,8 @@
             [collider.world.blocks.rail :as rail]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
-            [collider.world.rules :as rules])
+            [collider.world.rules :as rules]
+            [collider.world.update :as update])
   (:import (collider.world ChunkIndex Neighbors)))
 
 (set! *warn-on-reflection* true)
@@ -25,19 +26,19 @@
 
 (defn- chunks ^ChunkIndex [^Neighbors s] (.chunks s))
 
-(defn- with-chunks ^Neighbors [^Neighbors s chunks]
+(defn- set-chunks! ^Neighbors [^Neighbors s chunks]
   (set! (.chunks s) chunks)
   s)
 
-(defn- add-record ^Neighbors [^Neighbors s x] (.record s x))
+(defn- add-record! ^Neighbors [^Neighbors s x] (.record s x))
 
-(defn- add-write ^Neighbors [^Neighbors s x] (.write s x))
+(defn- add-write! ^Neighbors [^Neighbors s x] (.write s x))
 
-(defn- add-tick ^Neighbors [^Neighbors s x] (.tick s x))
+(defn- add-tick! ^Neighbors [^Neighbors s x] (.tick s x))
 
-(defn- add-sent ^Neighbors [^Neighbors s x] (.send s x))
+(defn- add-sent! ^Neighbors [^Neighbors s x] (.send s x))
 
-(defn- add-placed ^Neighbors [^Neighbors s x] (.addPlaced s x))
+(defn- add-placed! ^Neighbors [^Neighbors s x] (.addPlaced s x))
 
 (defn- write-count ^long [^Neighbors s] (.writeCount s))
 
@@ -63,8 +64,7 @@
                (= :neighbor (rules/update-pass st))))))
 
 (defn- plain?
-  "Returns true when placing st asks nothing of st itself: no rule
-  owns it, it holds no fluid, keeps its shape and sets off no effect."
+  "Returns true when placing st needs no reply from st."
   [^long st]
   (not (or (rules/update-pass st) (block/liquid? st)
            (rules/fluid-of st) (connect/connecting? st)
@@ -83,29 +83,24 @@
 (defn- marked? [k ^long st]
   (aget ^booleans (k @states) st))
 
-(defn- deaf-to-neighbor?
-  "Returns true when a neighbour update of a block in state st
-  changes nothing."
-  [^long st]
-  (marked? :neighbor st))
+(defn- has? [^long flags ^long flag]
+  (not (zero? (bit-and flags flag))))
 
 (defn- deaf-around? [^Neighbors s k p]
   (.deafAround s (long (p 0)) (long (p 1)) (long (p 2)) (k @states)
                chunk/min-y chunk/max-y))
 
-(defn- shifted [[x y z] [dx dy dz]]
-  [(+ (long x) (long dx)) (+ (long y) (long dy))
-   (+ (long z) (long dz))])
-
 (defn- block-at ^long [s p]
   (if (chunk/in-range? (long (p 1)))
-    (chunk/chunks-get-block (chunks s) p)
+    (chunk/at (chunks s) p)
     0))
+
+(def ^:private told-all (constantly update/all))
 
 (defn- ticked [s ctx k at p ty]
   (if (and at ty)
     (let [at (max (long at) (inc (long (:tick ctx))))]
-      (add-tick s [k at (chunk/block-pos->id p) ty]))
+      (add-tick! s [k at (chunk/block-pos->id p) ty]))
     s))
 
 (declare set-block)
@@ -115,22 +110,23 @@
        (or (zero? (long st)) (block/liquid? st))))
 
 (defn- shape-flags ^long [^long flags old st]
-  (if (destroys? old st) 3 (bit-and flags -33)))
+  (if (destroys? old st)
+    update/all
+    (bit-and-not flags update/suppress-drops)))
 
 (defn- reacted
-  "Sets the changes of a rule in order. A change may name its own
-  flags. A step, a function of the level, gives the changes that
-  follow the ones before it."
-  [s ctx changes flags-of limit]
+  "Returns s after the changes of a rule. A change may name its own
+  flags. A step fn gives the changes that follow the ones before it."
+  [s ctx changes flags-for limit]
   (reduce (fn [s c]
             (if (fn? c)
-              (reacted s ctx (c (chunks s)) flags-of limit)
+              (reacted s ctx (c (chunks s)) flags-for limit)
               (let [[p st] c
-                    f (get c 3 (flags-of (block-at s p) st))]
+                    f (get c 3 (flags-for (block-at s p) st))]
                 (set-block s ctx c f limit))))
           s changes))
 
-(defn- rule-woken [s ctx p old side flags-of limit]
+(defn- rule-woken [s ctx p old side flags-for limit]
   (let [cs (chunks s)
         {:keys [dim tick]} ctx
         st (block-at s p)
@@ -138,7 +134,7 @@
     (if (= :neighbor at)
       (let [ctx' (assoc ctx :side side :old old)]
         (reacted s ctx (rules/reshape-changes cs st p ctx')
-                 flags-of limit))
+                 flags-for limit))
       (ticked s ctx :block-ticks at p (block/block-of st)))))
 
 (defn- fluid-woken [s ctx p old side]
@@ -155,24 +151,24 @@
 (defn- liquid-woken [s ctx p old side]
   (let [st (block-at s p)
         s' (if (block/lava? st)
-             (rule-woken s ctx p old side (constantly 3) update-limit)
+             (rule-woken s ctx p old side told-all update-limit)
              s)]
     (if (= st (block-at s' p))
       (-> (fluid-woken s' ctx p old side)
-          (column-woken ctx p (block-at s' (shifted p [0 -1 0]))))
+          (column-woken ctx p (block-at s' (dir/toward p :down))))
       s')))
 
 (defn- placed [s ctx p old]
   (if (block/liquid? (block-at s p))
     (liquid-woken s ctx p old nil)
-    (rule-woken s ctx p old nil (constantly 3) update-limit)))
+    (rule-woken s ctx p old nil told-all update-limit)))
 
 (defn- state-changed [s ctx q st old side]
   (cond
     (zero? (long st)) s
     (block/liquid? st) (liquid-woken s ctx q old side)
     (= :neighbor (rules/update-pass st))
-    (rule-woken s ctx q old side (constantly 3) update-limit)
+    (rule-woken s ctx q old side told-all update-limit)
     :else s))
 
 (defn- reshaped [s ctx q st side flags limit]
@@ -208,14 +204,14 @@
     (block/liquid? st) (liquid-shaped s ctx q old side st nst)
     :else (block-shaped s ctx q st old side flags limit)))
 
-(defn- run-next [s ctx [_ p old]]
+(defn- run-next! [s ctx [_ p old]]
   (state-changed s ctx p old old nil)
   nil)
 
 (defn- stepper [ctx]
-  (fn [s item] (run-next s ctx item)))
+  (fn [s item] (run-next! s ctx item)))
 
-(defn- add-and-run [^Neighbors s ctx item]
+(defn- add-and-run! [^Neighbors s ctx item]
   (.addAndRun s item (stepper ctx)))
 
 (defn- passed [^Neighbors s ctx p shape? told]
@@ -233,17 +229,20 @@
   (if (seq fx)
     (reduce (fn [s [k q st]]
               (if (and (= :neighbor-changed k)
-                       (not (deaf-to-neighbor? st)))
-                (add-and-run s ctx [:full q st])
+                       (not (marked? :neighbor st)))
+                (add-and-run! s ctx [:full q st])
                 s))
             s (filter vector? fx))
     s))
+
+(def ^:private ^:const shape-cleared
+  (bit-or update/neighbors update/suppress-drops))
 
 (defn- shapes-changed [s ctx p old flags limit]
   (if (and (not (running? s)) (deaf-around? s :shape p))
     s
     (let [nst (block-at s p)
-          f (bit-and (long flags) -34)]
+          f (bit-and-not (long flags) shape-cleared)]
       (passed s ctx p true
               #(shape-changed %1 ctx %2 %4 old %3 nst f limit)))))
 
@@ -256,34 +255,39 @@
 
 (defn- written [s p old st fx flags]
   (let [fx (into (shown fx) (geyser/placed-fx st))]
-    (-> (with-chunks s (chunk/chunks-set-block (chunks s) p st))
-        (add-record (if (seq fx) [p st fx] [p st]))
-        (add-write [p old st flags]))))
+    (-> (set-chunks! s (chunk/chunks-set-block (chunks s) p st))
+        (add-record! (if (seq fx) [p st fx] [p st]))
+        (add-write! [p old st flags]))))
 
 (defn- updated [s ctx p old st flags limit]
-  (let [s (if (bit-test (long flags) 9) s (placed s ctx p old))
+  (let [flags (long flags)
+        s (if (has? flags update/skip-on-place)
+            s
+            (placed s ctx p old))
         limit (long limit)]
     (if (not= (long st) (block-at s p))
       s
       (cond-> s
-        (bit-test (long flags) 1) (add-sent p)
-        (odd? (long flags)) (neighbors-changed ctx p old)
-        (and (pos? limit) (not (bit-test (long flags) 4)))
+        (has? flags update/clients) (add-sent! p)
+        (has? flags update/neighbors) (neighbors-changed ctx p old)
+        (and (pos? limit) (not (has? flags update/known-shape)))
         (shapes-changed ctx p old flags (dec limit))))))
 
 (defn- removed
   "Returns s after a rail old that st replaced at p tells the cells
-  around it, as its affectNeighborsAfterRemoval does."
+  around it."
   [s ctx p old st flags]
   (let [flags (long flags)]
-    (if (and (marked? :rail old) (odd? flags) (not (bit-test flags 6))
+    (if (and (marked? :rail old) (has? flags update/neighbors)
+             (not (has? flags update/moved-by-piston))
              (not= (block/block-of old) (block/block-of st)))
       (reduce #(neighbors-changed %1 ctx %2 old) s
               (rail/removal-notified p old))
       s)))
 
 (defn- kept?
-  "Tells whether p still holds the block of st after old left it."
+  "Returns true when p still holds the block of st after old left
+  it."
   [s p old st]
   (or (not (marked? :rail old))
       (= (block/block-of st) (block/block-of (block-at s p)))))
@@ -310,7 +314,7 @@
       (not (settable? s p)) s
       (= old (long st))
       (let [fx (shown fx)]
-        (cond-> s (seq fx) (add-record [p st fx])))
+        (cond-> s (seq fx) (add-record! [p st fx])))
       :else (let [s (-> (written s p old st fx flags)
                         (removed ctx p old st flags))]
               (if (kept? s p old st)
@@ -326,17 +330,15 @@
     (if (or (neg? old) (not (kept? s p old st)))
       s
       (cond-> s
-        (odd? flags) (neighbors-changed ctx p old)
-        (and (pos? limit) (not (bit-test flags 4)))
+        (has? flags update/neighbors) (neighbors-changed ctx p old)
+        (and (pos? limit) (not (has? flags update/known-shape)))
         (shapes-changed ctx p old flags (dec limit))))))
 
 (defn set-block
-  "Returns s after change [p st fx] is set with flags and depth.
-  Flag 1 tells the neighbours. Flag 2 tells the clients. Flag 16 skips
-  shape updates. Flag 512 skips the placement reply. Shape replies
-  keep the flags without 1 and 32. The neighbour calls that fx names
-  run last. The cells that the clients hear of go to :sent, and each
-  write to :writes as [p old st flags]."
+  "Returns s after change [p st fx] is set with update flags to depth
+  limit. The neighbour calls that fx names run last. The cells that
+  the clients hear of go to :sent, and each write to :writes as
+  [p old st flags]."
   [s ctx [p st fx :as c] flags limit]
   (if (and (empty? fx) (marked? :plain st))
     (plain-set s ctx p st flags limit)
@@ -365,9 +367,9 @@
     (if (chunk/editing? chunks) chunks (chunk/editable chunks))))
 
 (defn- run-each
-  "Runs f over the changes in one window of edits of chunks. Chunks
-  already open stay open for the caller to freeze; others come out
-  frozen again."
+  "Returns the level after f runs over the changes in one window of
+  edits of chunks. The chunks come out open only when they came in
+  open."
   [chunks ctx changes f]
   (level (reduce #(f %1 ctx %2) (opened chunks) changes)
          (chunk/editing? chunks)))
@@ -378,23 +380,24 @@
   for and the cells that the clients hear of. ctx gives the tick, the
   dimension, the rules and what the rules read."
   [chunks ctx changes]
-  (run-each chunks ctx changes (placed-with 3)))
+  (run-each chunks ctx changes (placed-with update/all)))
 
 (defn- edged
-  "StructureTemplate.updateShapeAtEdge on one face: p takes the shape
-  that the cell on side gives, then that cell the shape p gives."
+  "Returns s after p and the cell on side take each other's shape."
   [s ctx p side]
-  (let [q (shifted p (dir/offset side))
+  (let [q (dir/toward p side)
         n (block-at s q)
-        s (shape-changed s ctx p (block-at s p) n side n 2 update-limit)
+        f update/clients
+        lim update-limit
+        s (shape-changed s ctx p (block-at s p) n side n f lim)
         st (block-at s p)]
-    (shape-changed s ctx q n st (dir/opposite side) st 2 update-limit)))
+    (shape-changed s ctx q n st (dir/opposite side) st f
+                   update-limit)))
 
 (defn- set-told
-  "ServerLevel.updateNeighboursOnBlockSet: the cells around p hear of
-  the change there from old."
+  "Returns s after the cells around p hear of the change from old."
   [s ctx p old]
-  (-> (removed s ctx p old (block-at s p) 1)
+  (-> (removed s ctx p old (block-at s p) update/neighbors)
       (neighbors-changed ctx p old)))
 
 (defn- op-run [s ctx [op x y]]
@@ -403,12 +406,12 @@
     :notify (neighbors-changed s ctx x (block-at s x))
     :tell (set-told s ctx x y)
     :edge (edged s ctx x y)
-    :send (add-sent s x)))
+    :send (add-sent! s x)))
 
 (defn run
   "Returns the level after ops run in order.
-  An op [:set c flags] sets change c as it is, not shaped by its
-  neighbours; [:put c flags] does the same. An op [:notify pos] tells
+  An op [:set c flags] or [:put c flags] sets change c as it is, not
+  shaped by its neighbours. An op [:notify pos] tells
   the six blocks around pos of a change there, [:tell pos old] of a
   change from old. An op [:edge pos side] updates the shapes of pos
   and the cell on side against each other with flags 2. An op
@@ -462,15 +465,17 @@
   [s ctx [p :as c]]
   (let [n (write-count s)
         c' (command-state (chunks s) ctx c)
-        s' (set-block s ctx c' 258 update-limit)]
+        s' (set-block s ctx c' update/silent update-limit)]
     (if (< n (write-count s'))
       (let [[q old] (write-at s' n)]
-        (if (= p q) (add-placed s' [p old]) s'))
+        (if (= p q) (add-placed! s' [p old]) s'))
       s')))
 
+(def ^:private ^:const shape-depth (dec update-limit))
+
 (defn- commanded-each [^Neighbors s ctx changes]
-  (.command s changes 258 (:plain @states) (:shape @states)
-            #(shapes-changed %1 ctx %2 %3 258 (dec update-limit))
+  (.command s changes update/silent (:plain @states) (:shape @states)
+            #(shapes-changed %1 ctx %2 %3 update/silent shape-depth)
             #(command-placed %1 ctx %2) chunk/min-y chunk/max-y))
 
 (defn- told [^Neighbors s ctx]
@@ -481,15 +486,17 @@
   (let [old (block-at s p) n (write-count s)]
     (if (block/air-type? old)
       [s false]
-      (let [s (set-block s ctx (block/destroyed p old) 3 update-limit)]
+      (let [c (block/destroyed p old)
+            s (set-block s ctx c update/all update-limit)]
         [s (< n (write-count s))]))))
 
 (defn- cell-placed [s ctx [p st :as c] strict?]
   (let [n (write-count s)
         c (if strict? c (command-state (chunks s) ctx c))
-        s (set-block s ctx c (if strict? 818 258) update-limit)
+        f (if strict? update/strict update/silent)
+        s (set-block s ctx c f update-limit)
         [q old] (when (< n (write-count s)) (write-at s n))]
-    (if (= p q) [(add-placed s [p old]) true] [s false])))
+    (if (= p q) [(add-placed! s [p old]) true] [s false])))
 
 (defn- cell [ctx {:keys [strict? destroy? test]}]
   (fn [[s n] [p st :as c]]
@@ -504,20 +511,22 @@
         s (if (:strict? opts) s (told s ctx))]
     (assoc (level s (chunk/editing? chunks)) :count n)))
 
+(defn- commanded-plain [chunks ctx changes]
+  (let [s (-> (opened chunks) (commanded-each ctx changes) (told ctx))
+        l (level s (chunk/editing? chunks))]
+    (assoc l :count (count (:placed l)))))
+
 (defn commanded
   "Returns the level after the changes of a command.
-  Each change is set with flags 258. Each change that alters its cell
-  tells its neighbours once all changes are set. :placed holds those
-  cells as [pos old] and :count the cells the command affected. With
-  :test only cells whose state passes it change. With :destroy? each
-  cell is first destroyed with its drops. With :strict? each change is
-  set as it is with flags 818 and tells no one. A change of state nil
-  places nothing."
+  Each change is set with silent flags. Each change that alters its
+  cell tells its neighbours once all changes are set. :placed holds
+  those cells as [pos old] and :count the cells the command affected.
+  With :test only cells whose state passes it change. With :destroy?
+  each cell is first destroyed with its drops. With :strict? each
+  change is set as it is with strict flags and tells no one. A change
+  of state nil places nothing."
   ([chunks ctx changes] (commanded chunks ctx changes nil))
   ([chunks ctx changes opts]
    (if (seq opts)
      (commanded-by chunks ctx changes opts)
-     (let [l (level (told (commanded-each (opened chunks) ctx changes)
-                          ctx)
-                    (chunk/editing? chunks))]
-       (assoc l :count (count (:placed l)))))))
+     (commanded-plain chunks ctx changes))))

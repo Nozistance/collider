@@ -217,7 +217,7 @@
 
 (defn- reticked [w pos]
   (let [e (be/at w pos)
-        st (chunk/chunks-get-block (:chunks w) pos)]
+        st (chunk/at (:chunks w) pos)]
     (update w :tickers tickers/bound pos
             (and e (tickers/ticks? e st)))))
 
@@ -272,7 +272,7 @@
   (let [told (unquiet real quiet)]
     (cond-> (-> w
                 (update :chunks chunk/editable)
-                (update :chunks chunk/chunks-set-blocks real 2)
+                (update :chunks chunk/chunks-set-writes real)
                 (update :chunks light/relight-batch real
                         (:sky? w true))
                 (update :chunks chunk/frozen)
@@ -309,7 +309,7 @@
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
   (if (chunk/in-range? y)
-    (chunk/chunks-get-block chunks p)
+    (chunk/at chunks p)
     0))
 
 (defn- block-tick [w at id]
@@ -395,7 +395,7 @@
 (defn set-block-entity
   "Returns level w after the delta [:set-block-entity pos e]."
   [w [_ pos e]]
-  (if (and e (be/kind (chunk/chunks-get-block (:chunks w) pos)))
+  (if (and e (be/kind (chunk/at (:chunks w) pos)))
     (-> w
         (assoc-in [:block-entities (chunk/block-chunk pos) pos] e)
         (reticked pos))

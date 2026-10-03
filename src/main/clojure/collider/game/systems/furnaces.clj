@@ -15,7 +15,7 @@
 (defn tick-deltas
   "Returns the deltas of one tick of the furnace e at pos."
   [world [pos e]]
-  (let [st (chunk/chunks-get-block (:chunks world) pos)
+  (let [st (chunk/at (:chunks world) pos)
         [e' lit?] (furnace/tick e)]
     (concat (when (not= e e') [[:set-block-entity pos e']])
             (when (not= lit? (= :true (:lit (block/props-of st))))

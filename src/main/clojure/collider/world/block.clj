@@ -1,7 +1,8 @@
 (ns collider.world.block
-  "Block states and their placement."
+  "Block states and the facts of each state."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.data.state :as states]
             [collider.world.direction :as dir])
   (:import (collider.world Block BlockTables)
            (java.util Arrays)))
@@ -13,10 +14,12 @@
 (defn state
   "Returns the global state id of block with props.
   Without props it is the id of the default state."
-  (^long [block] (data/state-id block))
-  (^long [block props] (data/state-id block props)))
+  (^long [block] (states/id block))
+  (^long [block props] (states/id block props)))
 
-(defn name-of [^long st] (data/state-block st))
+(defn name-of
+  "Returns the block of state st, or nil for no such state."
+  [^long st] (states/block st))
 
 (defn- block-table [f]
   (let [a (object-array (data/block-state-count))]
@@ -38,7 +41,7 @@
 (def ^:private ^:table props-arr
   (delay
     (let [n (data/block-state-count) a (object-array n)]
-      (dotimes [i n] (aset a i (second (data/state-props i))))
+      (dotimes [i n] (aset a i (second (states/props i))))
       a)))
 
 (defn props-of
@@ -46,7 +49,9 @@
   [^long st]
   (when (known? st) (aget ^objects @props-arr st)))
 
-(defn prop-long ^long [^long st k]
+(defn prop-long
+  "Returns the whole number property k of st, 0 when absent."
+  ^long [^long st k]
   (Long/parseLong (name (get (props-of st) k :0))))
 
 (declare tables)
@@ -55,11 +60,13 @@
   (fn [st] `(~m (tables) ~st ~@args)))
 
 (defn type-of
+  "Returns the class of the block of st."
   {:inline (via `Block/type)}
   [^long st]
   (Block/type (tables) st))
 
 (defn block-of
+  "Returns the block of st."
   {:inline (via `Block/name)}
   [^long st]
   (Block/name (tables) st))
@@ -94,17 +101,23 @@
 
 (def ^:private ^:table clone-arr (delay (clone-table)))
 
-(defn clone-of [^long st]
+(defn clone-of
+  "Returns the item a player picks from st, or nil."
+  [^long st]
   (when (known? st)
     (let [item (aget ^objects @clone-arr st)]
       (when-not (= :air item) item))))
 
-(defn clone-props [^long st include-data]
+(defn clone-props
+  "Returns the properties a picked item of st keeps."
+  [^long st include-data]
   (let [b (get (data/blocks) (block-of st))]
     (cond-> (:clone-props b)
       include-data (into (:data-props b)))))
 
-(defn prop-name [k] (str/replace (name k) "-" "_"))
+(defn prop-name
+  "Returns the wire name of property k."
+  [k] (str/replace (name k) "-" "_"))
 
 (def door-types #{:door :weathering-copper-door})
 
@@ -147,7 +160,9 @@
                (map (fn [b] (:type (get (data/blocks) b))))
                (data/tag-values "block" "leaves"))))
 
-(defn leaves-types [] @leaves-set)
+(defn leaves-types
+  "Returns the block classes that count as leaves."
+  [] @leaves-set)
 
 (def growing-plant
   (into {}
@@ -248,34 +263,43 @@
     (let [tagged (set (get-in (data/tags) ["block" "replaceable"]))]
       (boolean-table (fn [_ _ n] (contains? tagged n))))))
 
-(defn leaves? [^long st] (contains? (leaves-types) (type-of st)))
+(defn leaves?
+  "Returns true when st is leaves."
+  [^long st] (contains? (leaves-types) (type-of st)))
 
 (defn needs-support?
+  "Returns true when st breaks without a block to hold it."
   {:inline (via `Block/needsSupport)}
   [^long st]
   (Block/needsSupport (tables) st))
 
 (defn attached?
+  "Returns true when st hangs on a neighbour."
   {:inline (via `Block/attached)}
   [^long st]
   (Block/attached (tables) st))
 
 (defn replaceable?
+  "Returns true when a placed block replaces st."
   {:inline (via `Block/replaceable)}
   [^long st]
   (Block/replaceable (tables) st))
 
 (defn liquid?
+  "Returns true when st is a fluid block."
   {:inline (via `Block/liquid)}
   [^long st]
   (Block/liquid (tables) st))
 
 (defn waterlogged?
+  "Returns true when st holds water."
   {:inline (via `Block/waterlogged)}
   [^long st]
   (Block/waterlogged (tables) st))
 
-(defn emptied ^long [^long st] (if (waterlogged? st) @water-state 0))
+(defn emptied
+  "Returns the state that st leaves when it breaks."
+  ^long [^long st] (if (waterlogged? st) @water-state 0))
 
 (def ^:private ^:table lava-state (delay (state :lava)))
 
@@ -299,14 +323,22 @@
                     @water-state)))
       0)))
 
-(defn source-state? [st]
+(defn source-state?
+  "Returns true when st is a fluid source."
+  [st]
   (and (liquid? (long st)) (zero? (liquid-level st))))
 
-(defn water? [st] (= :water (liquid-class st)))
+(defn water?
+  "Returns true when st is or holds water."
+  [st] (= :water (liquid-class st)))
 
-(defn lava? [st] (= :lava (liquid-class st)))
+(defn lava?
+  "Returns true when st is lava."
+  [st] (= :lava (liquid-class st)))
 
-(defn water-source? [st] (and (water? st) (source-state? st)))
+(defn water-source?
+  "Returns true when st is a water source."
+  [st] (and (water? st) (source-state? st)))
 
 (defn holds-water-source?
   "Returns true when st is a water source or holds water."
@@ -326,7 +358,9 @@
   [st]
   (and (water? st) (full-fluid? st)))
 
-(defn air? [^long st] (zero? st))
+(defn air?
+  "Returns true when st is plain air."
+  [^long st] (zero? st))
 
 (def ^:private air-types #{:air :cave-air :void-air})
 
@@ -336,8 +370,8 @@
   (contains? air-types (block-of st)))
 
 (defn state-table
-  "Returns an array of kind k that holds (f st) at each block state.
-  The kind is :boolean, :byte or :long."
+  "Returns a table of (f st) for every block state, of kind k:
+  :boolean, :byte or :long."
   [k f]
   (let [xs (map f (range (data/block-state-count)))]
     (case k
@@ -345,9 +379,13 @@
       :byte (byte-array (map byte xs))
       :long (long-array (map long xs)))))
 
-(defn fire? [^long st] (= :fire (type-of st)))
+(defn fire?
+  "Returns true when st is fire."
+  [^long st] (= :fire (type-of st)))
 
-(defn tnt? [^long st] (= :tnt (type-of st)))
+(defn tnt?
+  "Returns true when st is TNT."
+  [^long st] (= :tnt (type-of st)))
 
 (defn destroyed
   "Returns the change that destroying the block at p makes.
@@ -360,29 +398,39 @@
      [[:break st] [:drop st]])])
 
 (defn falls?
+  "Returns true when st falls without a block below."
   {:inline (via `Block/falls)}
   [^long st]
   (Block/falls (tables) st))
 
 (defn can-be-replaced?
+  "Returns true when the replaceable tag holds st."
   {:inline (via `Block/canBeReplaced)}
   [^long st]
   (Block/canBeReplaced (tables) st))
 
-(defn free? [^long st]
+(defn free?
+  "Returns true when a placement may take the cell of st."
+  [^long st]
   (or (zero? st) (fire? st) (liquid? st) (can-be-replaced? st)))
 
-(defn without-water ^long [^long st]
+(defn without-water
+  "Returns st without its water."
+  ^long [^long st]
   (if (= :true (:waterlogged (props-of st)))
     (state (block-of st) (assoc (props-of st) :waterlogged :false))
     st))
 
-(defn with-water ^long [^long st]
+(defn with-water
+  "Returns st with water, or st when it holds none."
+  ^long [^long st]
   (if (contains? (props-of st) :waterlogged)
     (state (block-of st) (assoc (props-of st) :waterlogged :true))
     st))
 
-(defn concrete-of ^long [^long st]
+(defn concrete-of
+  "Returns the concrete that powder st turns into."
+  ^long [^long st]
   (state (:concrete (get (data/blocks) (block-of st)))))
 
 (def ^:private shape-classes
@@ -390,19 +438,27 @@
    :slab-block  :slab :weathering-copper-slab-block :slab
    :stair-block :stair :weathering-copper-stair-block :stair})
 
-(defn- shape-type [b] (shape-classes (:class b)))
+(defn shape-type
+  "Returns the shape kind of the states of block facts b, or nil."
+  [b]
+  (shape-classes (:class b)))
 
 (def ^:private ^:table shape-arr
   (delay (block-table (fn [_ b] (shape-type b)))))
 
 (defn shape-of
+  "Returns the shape kind of st, or nil."
   {:inline (via `Block/shape)}
   [^long st]
   (Block/shape (tables) st))
 
-(defn fence? [^long st] (= :fence (shape-of st)))
+(defn fence?
+  "Returns true when st joins like a fence."
+  [^long st] (= :fence (shape-of st)))
 
-(defn shaped? [^long st] (some? (shape-of st)))
+(defn shaped?
+  "Returns true when st has a shape kind."
+  [^long st] (some? (shape-of st)))
 
 (defn- stops? [^long st]
   (and (pos? st)
@@ -413,20 +469,23 @@
   (delay (boolean-table (fn [st _ _] (stops? st)))))
 
 (defn solid?
+  "Returns true when st stops a walking body."
   {:inline (via `Block/solid)}
   [^long st]
   (Block/solid (tables) st))
 
-(defn solid-arr ^booleans [] @solid-table)
+(defn solid-arr
+  "Returns the table of solid? by state."
+  ^booleans [] @solid-table)
 
 (defn- int-runs [^long default t]
   (let [a (int-array (data/block-state-count) (int default))]
-    (data/each-run! t (fn [i v] (aset a (int i) (int v))))
+    (states/each-run! t (fn [i v] (aset a (int i) (int v))))
     a))
 
 (defn- bool-runs [t]
   (let [a (boolean-array (data/block-state-count))]
-    (data/each-run! t (fn [i v] (aset a (int i) (boolean v))))
+    (states/each-run! t (fn [i v] (aset a (int i) (boolean v))))
     a))
 
 (def ^:private ^:table dampening-arr
@@ -488,7 +547,7 @@
 (def ^:private ^:table face-arr
   (delay
     (let [a (object-array (* (data/block-state-count) 6))]
-      (data/each-run! (:faces (data/light))
+      (states/each-run! (:faces (data/light))
                       (fn [i k]
                         (set-faces! a (long i) (@kind-faces k))))
       a)))
@@ -496,29 +555,31 @@
 (def ^:private ^:table touch-arr
   (delay
     (let [a (int-array (data/block-state-count))]
-      (data/each-run! (:faces (data/light))
+      (states/each-run! (:faces (data/light))
                       (fn [i k]
                         (aset a (int i) (int (@kind-touch k)))))
       a)))
 
 (defn dampening
+  "Returns how much light st takes away."
   {:inline (via `Block/dampening)}
   ^long [^long st]
   (Block/dampening (tables) st))
 
-(defn opacity ^long [^long st] (max 1 (dampening st)))
-
 (defn emits
+  "Returns the light level st gives."
   {:inline (via `Block/emission)}
   ^long [^long st]
   (Block/emission (tables) st))
 
 (defn use-shape-for-light-occlusion?
+  "Returns true when the shape of st decides what light it stops."
   {:inline (via `Block/useShape)}
   [^long st]
   (Block/useShape (tables) st))
 
 (defn can-occlude?
+  "Returns true when st may stop light."
   {:inline (via `Block/canOcclude)}
   [^long st]
   (Block/canOcclude (tables) st))
@@ -549,6 +610,7 @@
       a)))
 
 (defn resist
+  "Returns the blast resistance of st."
   {:inline (via `Block/resist)}
   ^double [^long st]
   (Block/resist (tables) st))
@@ -560,9 +622,13 @@
 
 (defn- behind [facing] (dir/offset (dir/opposite facing)))
 
-(defn facing-of [^long st] (:facing (props-of st)))
+(defn facing-of
+  "Returns the facing property of st."
+  [^long st] (:facing (props-of st)))
 
-(defn support-offset [^long st]
+(defn support-offset
+  "Returns the offset to the block that holds st up, or nil."
+  [^long st]
   (let [t (type-of st)]
     (cond
       (contains? torch-types t) [0 -1 0]
@@ -577,206 +643,37 @@
          (select-keys (props-of st)
                       (keys (:props (data/info block))))))
 
-(defn- related [^long st k]
+(defn related
+  "Returns the state of the block that the facts of st name under k,
+  with the properties the two share, or nil."
+  [^long st k]
   (when-let [b (k (info-of st))] (with-props-of b st)))
 
-(defn weathering? [^long st]
-  (let [b (info-of st)]
-    (boolean (and b (or (:next b) (:previous b))))))
-
-(defn weather-stage ^long [^long st]
-  (loop [b (info-of st) n 0]
-    (if-let [p (:previous b)]
-      (recur (get (data/blocks) p) (inc n))
-      n)))
-
-(defn weathered-next [^long st] (related st :next))
-
-(defn weathered-prev [^long st] (related st :previous))
-
-(defn waxed [^long st] (related st :waxed))
-
-(defn unwaxed [^long st] (related st :unwaxed))
-
-(defn dead-coral ^long [^long st]
+(defn dead-coral
+  "Returns the dead form of coral st, without water."
+  ^long [^long st]
   (with-props-of (:dead (info-of st)) (without-water st)))
 
-(defn stripped [^long st] (related st :stripped))
-
-(def named-block-items
-  {:redstone :redstone-wire
-   :string :tripwire
-   :wheat-seeds :wheat
-   :cocoa-beans :cocoa
-   :pumpkin-seeds :pumpkin-stem
-   :melon-seeds :melon-stem
-   :carrot :carrots
-   :potato :potatoes
-   :torchflower-seeds :torchflower-crop
-   :pitcher-pod :pitcher-crop
-   :beetroot-seeds :beetroots
-   :sweet-berries :sweet-berry-bush
-   :glow-berries :cave-vines
-   :powder-snow-bucket :powder-snow})
-
-(defn wall-block [block] (get-in (data/items) [block :wall]))
-
-(def ^:private standing-and-wall-types
-  #{:standing-sign :skull :wither-skull :player-head :torch
-    :redstone-torch :banner :ceiling-hanging-sign :coral-fan
-    :base-coral-fan})
-
-(defn item->block [item face]
-  (let [t (:type (get (data/blocks) item))]
-    (cond
-      (contains? standing-and-wall-types t) item
-      (and (<= 2 (long face) 5) (wall-block item)) (wall-block item)
-      (contains? (data/blocks) item) item
-      :else (named-block-items item))))
-
-(defn rotation-segment [yaw]
-  (let [n (/ (* (+ (double yaw) 180.0) 16.0) 360.0)]
-    (bit-and (long (Math/floor (+ n 0.5))) 15)))
-
-(defn skull-rotation [yaw]
-  (let [n (/ (* (double yaw) 16.0) 360.0)]
-    (bit-and (long (Math/floor (+ n 0.5))) 15)))
-
-(defn- orientation [front top]
-  (keyword (str (name front) "_" (name top))))
-
-(defn- crafter-top [front side]
-  (case front
-    :down (dir/opposite side)
-    :up side
-    :up))
-
-(defn- crafter-orientation [{:keys [look yaw]}]
-  (let [front (dir/opposite (first look))
-        top (crafter-top front (dir/player-direction yaw))]
-    {:orientation (orientation front top)}))
-
-(defn- jigsaw-orientation [{:keys [face yaw]}]
-  (let [front (dir/from-index face)
-        top (if (<= (long face) 1)
-              (dir/opposite (dir/player-direction yaw))
-              :up)]
-    {:orientation (orientation front top)}))
-
-(defn- rail-shape [{:keys [yaw]}]
-  {:shape (if (#{:east :west} (dir/player-direction yaw))
-            :east_west
-            :north_south)})
-
-(defn- hopper-facing [{:keys [face]}]
-  {:facing (if (<= (long face) 1)
-             :down
-             (dir/opposite (dir/from-index face)))})
-
-(def ^:private placement-rules
-  [[(fn [t _b]
-      (#{:rotated-pillar :infested-rotated-pillar :chain
-         :weathering-copper-chain :hay :creaking-heart} t))
-    (fn [{:keys [face]}]
-      {:axis (case (long face) (0 1) :y, (4 5) :x, :z)})]
-   [(fn [t _b]
-      (#{:end-rod :weathering-lightning-rod :lightning-rod
-         :amethyst-cluster :shulker-box} t))
-    (fn [{:keys [face]}] {:facing (dir/from-index face)})]
-   [(fn [t _b] (#{:piston-base :dispenser :dropper :command} t))
-    (fn [{:keys [look]}] {:facing (dir/opposite (first look))})]
-   [(fn [t _b] (= :observer t))
-    (fn [{:keys [look]}] {:facing (first look)})]
-   [(fn [t _b] (= :crafter t)) crafter-orientation]
-   [(fn [t _b] (= :jigsaw t)) jigsaw-orientation]
-   [(fn [t _b] (= :hopper t)) hopper-facing]
-   [(fn [t _b] (#{:rail :powered-rail :detector-rail} t)) rail-shape]
-   [(fn [t _b] (= :calibrated-sculk-sensor t))
-    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw)})]
-   [(fn [t _b]
-      (#{:standing-sign :banner :ceiling-hanging-sign} t))
-    (fn [{:keys [yaw]}]
-      {:rotation (keyword (str (rotation-segment yaw)))})]
-   [(fn [t _b] (#{:skull :wither-skull :player-head} t))
-    (fn [{:keys [yaw]}]
-      {:rotation (keyword (str (skull-rotation yaw)))})]
-   [(fn [t _b] (= :decorated-pot t))
-    (fn [{:keys [f]}] {:facing (nth [:south :west :north :east] f)})]
-   [(fn [t _b] (= :lantern t))
-    (fn [{:keys [face]}]
-      {:hanging (if (= 0 (long face)) :true :false)})]
-   [(fn [t _b] (contains? (leaves-types) t))
-    (fn [_] {:persistent :true})]
-   [(fn [t _b] (= :mangrove-propagule t))
-    (fn [_] {:age :4})]
-   [(fn [t _b] (contains? door-types t))
-    (fn [{:keys [yaw]}]
-      {:facing (dir/player-direction yaw) :half :lower})]
-   [(fn [t _b] (= :bed t))
-    (fn [{:keys [yaw]}]
-      {:facing (dir/player-direction yaw)
-       :part :foot
-       :occupied :false})]
-   [(fn [t _b] (= :anvil t))
-    (fn [{:keys [yaw]}]
-      {:facing (dir/clockwise (dir/player-direction yaw))})]
-   [(fn [t _b] (= :fence-gate t))
-    (fn [{:keys [yaw]}] {:facing (dir/player-direction yaw)})]
-   [(fn [t _b] (contains? trapdoor-types t))
-    (fn [{:keys [face yaw cursor-y replacing?]}]
-      (if (and (not replacing?) (>= (long face) 2))
-        {:facing (dir/horizontal-face face)
-         :half (if (> (long cursor-y) 8) :top :bottom)}
-        {:facing (dir/opposite (dir/player-direction yaw))
-         :half (if (= 1 (long face)) :bottom :top)}))]
-   [(fn [_t b] (= :stair (shape-type b)))
-    (fn [{:keys [f top?]}]
-      {:facing (nth [:south :west :north :east] f)
-       :half (if top? :top :bottom)})]
-   [(fn [_t b] (= :slab (shape-type b)))
-    (fn [{:keys [top?]}] {:type (if top? :top :bottom)})]
-   [(fn [t _b] (contains? wall-torch-types t))
-    (fn [{:keys [face]}] {:facing (dir/horizontal-face face)})]
-   [(fn [t _b] (contains? side-types t))
-    (fn [{:keys [face]}]
-      {:facing (get dir/horizontal-face face :north)})]
-   [(fn [_t b] (contains? (:props b) :facing))
-    (fn [{:keys [f]}]
-      {:facing (nth [:north :east :south :west] f)})]])
-
-(defn- placement-props [t b ctx]
-  (let [match (fn [[pred _]] (pred t b))]
-    (when-let [[_ f] (first (filter match placement-rules))]
-      (f ctx))))
-
-(defn- placement-ctx [{:keys [face yaw pitch cursor-y] :as ctx}]
-  (let [face (long face)]
-    (assoc ctx
-           :face face
-           :f (dir/player-index yaw)
-           :look (dir/look-order yaw (or pitch 0.0))
-           :top? (or (= face 0)
-                     (and (not= face 1) (> (long cursor-y) 8))))))
-
-(defn placement [item ctx]
-  (when-let [block (item->block item (:face ctx))]
-    (let [b (data/info block)
-          props (placement-props (:type b) b (placement-ctx ctx))
-          props (merge {:waterlogged :false} props)]
-      (state block (select-keys props (keys (:props b)))))))
+(defn stripped
+  "Returns the stripped form of st, or nil."
+  [^long st] (related st :stripped))
 
 (def ^:private full-box [[0 0 0 16 16 16]])
 
-(defn- shape-at [^long st] (aget ^objects (data/shapes) st))
+(defn- shape-at [^long st] (aget ^objects (states/shapes) st))
 
-(defn collision-boxes [^long st]
+(defn collision-boxes
+  "Returns the collision boxes of st in sixteenths."
+  [^long st]
   (if (known? st)
     (let [v (shape-at st)] (if (nil? v) full-box v))
     full-box))
 
-(defn outline-boxes [^long st]
+(defn outline-boxes
+  "Returns the outline boxes of st in sixteenths."
+  [^long st]
   (if (known? st)
-    (let [v (aget ^objects (data/outlines) st)]
+    (let [v (aget ^objects (states/outlines) st)]
       (if (nil? v) full-box v))
     full-box))
 
@@ -796,21 +693,38 @@
   ^objects []
   @collision-table)
 
+(def ^:private ^:const motion-bit 1)
+
+(def ^:private ^:const lava-bit 2)
+
+(def ^:private ^:const ticking-bit 4)
+
+(def ^:private ^:const render-bit 8)
+
+(def ^:private ^:const top-face-bit 16)
+
+(def ^:private ^:const signal-bit 32)
+
+(def ^:private ^:const legacy-solid-bit 64)
+
 (defn- flagged? [^long st ^long mask]
-  (pos? (bit-and (long (aget ^bytes (data/flags) st)) mask)))
+  (pos? (bit-and (long (aget ^bytes (states/flags) st)) mask)))
 
 (def ^:private ^:table legacy-solid-arr
-  (delay (boolean-table (fn [st _ _] (flagged? st 64)))))
+  (delay (boolean-table
+           (fn [st _ _] (flagged? st legacy-solid-bit)))))
 
 (defn legacy-solid?
+  "Returns true when st counts as solid for old rules."
   {:inline (via `Block/legacySolid)}
   [^long st]
   (Block/legacySolid (tables) st))
 
 (def ^:private ^:table full-cube-arr
-  (delay (Block/fullCubes (data/shapes))))
+  (delay (Block/fullCubes (states/shapes))))
 
 (defn full-cube?
+  "Returns true when the collision shape of st is a full cube."
   {:inline (via `Block/fullCube)}
   [^long st]
   (Block/fullCube (tables) st))
@@ -820,9 +734,11 @@
   ^booleans []
   @full-cube-arr)
 
+(def ^:private passable #{:cobweb :bamboo-sapling})
+
 (defn- motion? [^long st n]
-  (and (flagged? st 1)
-       (not (contains? #{:cobweb :bamboo-sapling} n))))
+  (and (flagged? st motion-bit)
+       (not (contains? passable n))))
 
 (def ^:private ^:table blocks-motion-arr
   (delay (boolean-table (fn [st _ n] (motion? st n)))))
@@ -836,15 +752,16 @@
        @can-be-replaced-arr @solid-table @legacy-solid-arr
        @full-cube-arr @blocks-motion-arr @use-shape-arr
        @can-occlude-arr @dampening-arr @emission-arr @touch-arr
-       @face-arr @resist-table (data/flags) (data/sturdy)
-       (data/sturdy-rigid) (data/sturdy-center)))))
+       @face-arr @resist-table (states/flags) (states/sturdy)
+       (states/sturdy-rigid) (states/sturdy-center)))))
 
 (defn tables
   "Returns the tables of the block states."
-  ^collider.world.BlockTables []
+  ^BlockTables []
   (or (BlockTables/current) @table-set))
 
 (defn blocks-motion?
+  "Returns true when st stops motion."
   {:inline (via `Block/blocksMotion)}
   [^long st]
   (Block/blocksMotion (tables) st))
@@ -856,36 +773,46 @@
     :ceiling-hanging-sign :wall-hanging-sign :pressure-plate
     :weighted-pressure-plate})
 
-(defn possible-to-respawn-in? [^long st]
+(defn possible-to-respawn-in?
+  "Returns true when a player may respawn inside st."
+  [^long st]
   (or (contains? respawnable-types (type-of st))
-      (and (known? st) (not (flag? st 1)) (not (liquid? st)))))
+      (and (known? st) (not (flag? st motion-bit))
+           (not (liquid? st)))))
 
 (defn ignited-by-lava?
-  {:inline (via `Block/flag 2)}
+  "Returns true when lava sets st on fire."
+  {:inline (via `Block/flag lava-bit)}
   [^long st]
-  (flag? st 2))
+  (flag? st lava-bit))
 
 (defn solid-render?
-  {:inline (via `Block/flag 8)}
+  "Returns true when st renders as a solid cube."
+  {:inline (via `Block/flag render-bit)}
   [^long st]
-  (flag? st 8))
+  (flag? st render-bit))
 
 (defn collision-face-full-up?
-  {:inline (via `Block/flag 16)}
+  "Returns true when the top face of st is full."
+  {:inline (via `Block/flag top-face-bit)}
   [^long st]
-  (flag? st 16))
+  (flag? st top-face-bit))
 
 (defn signal-source?
-  {:inline (via `Block/flag 32)}
+  "Returns true when st gives a redstone signal."
+  {:inline (via `Block/flag signal-bit)}
   [^long st]
-  (flag? st 32))
+  (flag? st signal-bit))
 
 (defn randomly-ticking?
-  {:inline (via `Block/flag 4)}
+  "Returns true when st takes random ticks."
+  {:inline (via `Block/flag ticking-bit)}
   [^long st]
-  (flag? st 4))
+  (flag? st ticking-bit))
 
-(defn burnable? [^long st]
+(defn burnable?
+  "Returns true when fire can catch st."
+  [^long st]
   (let [ignite (get-in (data/fire) [(block-of st) :ignite] 0)]
     (and (known? st) (pos? (long ignite)))))
 
@@ -926,16 +853,19 @@
   (fn [st face] `(~m (tables) ~st (dir/index ~face))))
 
 (defn face-sturdy?
+  "Returns true when face of st holds a block."
   {:inline (face-form `Block/sturdy)}
   [^long st face]
   (Block/sturdy (tables) st (dir/index face)))
 
 (defn face-holds-rigid?
+  "Returns true when face of st holds a block rigidly."
   {:inline (face-form `Block/sturdyRigid)}
   [^long st face]
   (Block/sturdyRigid (tables) st (dir/index face)))
 
 (defn face-holds-center?
+  "Returns true when face of st holds a block at its center."
   {:inline (face-form `Block/sturdyCenter)}
   [^long st face]
   (Block/sturdyCenter (tables) st (dir/index face)))
@@ -943,9 +873,13 @@
 (def ^:private ^:table tag-sets
   (delay (update-vals (get (data/tags) "block") set)))
 
-(defn tag-set [tag] (get @tag-sets tag #{}))
+(defn tag-set
+  "Returns the blocks of block tag, an empty set when absent."
+  [tag] (get @tag-sets tag #{}))
 
-(defn tagged? [^long st tag]
+(defn tagged?
+  "Returns true when block tag holds the block of st."
+  [^long st tag]
   (contains? (tag-set tag) (block-of st)))
 
 (def ^:private ^:table conductor-arr
@@ -964,14 +898,18 @@
 
 (def face-props [:up :north :south :west :east :down])
 
-(defn faces-of [^long st]
+(defn faces-of
+  "Returns the faces that st covers."
+  [^long st]
   (let [props (props-of st)]
     (filterv #(= :true (get props %)) face-props)))
 
 (defn- vacant-face? [^long st]
   (some (fn [k] (= :false (get (props-of st) k))) face-props))
 
-(defn stackable? [^long st item]
+(defn stackable?
+  "Returns true when item adds one more to st."
+  [^long st item]
   (and (= item (block-of st))
        (if-let [k (stack-props (type-of st))]
          (< (prop-long st k) 4)
@@ -979,15 +917,23 @@
            (and (or (= :vine t) (contains? multiface-types t))
                 (boolean (vacant-face? st)))))))
 
-(defn stacked ^long [^long st]
+(defn stacked
+  "Returns st with one more of its stacked parts."
+  ^long [^long st]
   (let [k (stack-props (type-of st))
         n (prop-long st k)]
     (state (block-of st)
            (assoc (props-of st) k (keyword (str (inc n)))))))
 
-(defn same-slab? [^long st item]
+(defn same-slab?
+  "Returns true when st is a slab of item."
+  [^long st item]
   (and (= item (block-of st)) (= :slab (shape-of st))))
 
-(defn slab-part [^long st] (:type (props-of st)))
+(defn slab-part
+  "Returns the slab type of st."
+  [^long st] (:type (props-of st)))
 
-(defn double-slab ^long [item] (state item {:type :double}))
+(defn double-slab
+  "Returns the double slab of item."
+  ^long [item] (state item {:type :double}))

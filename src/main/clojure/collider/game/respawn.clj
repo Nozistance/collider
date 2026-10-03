@@ -38,7 +38,7 @@
 
 (defn- respawnable? [chunks pos]
   (block/possible-to-respawn-in?
-    (chunk/chunks-get-block chunks pos)))
+    (chunk/at chunks pos)))
 
 (defn- free-to-stand? [chunks [x y z]]
   (and (respawnable? chunks [x y z])

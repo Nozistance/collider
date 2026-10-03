@@ -80,11 +80,11 @@
 (defn- above [chunks [x y z]]
   (let [y (inc (long y))]
     (if (chunk/in-range? y)
-      (chunk/chunks-get-block chunks [x y z])
+      (chunk/at chunks [x y z])
       0)))
 
 (defn- kelp-grown [chunks p ctx]
-  (let [st (chunk/chunks-get-block chunks p)
+  (let [st (chunk/at chunks p)
         up? (kelp? (above chunks p))]
     (case (block/type-of st)
       :kelp (when up? [[p (block/state :kelp-plant)]])

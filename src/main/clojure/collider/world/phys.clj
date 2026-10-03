@@ -1,6 +1,7 @@
 (ns collider.world.phys
   "Collision of moving bodies with the blocks of the world."
   (:require [collider.data :as data]
+            [collider.data.state :as states]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
@@ -10,9 +11,8 @@
 (set! *warn-on-reflection* true)
 
 (defn joined?
-  "Returns true when box a of a shape meets box b of a body as
-  Shapes.joinIsNotEmpty finds it: each axis shares more than the
-  1.0E-7 that merges coordinates. A box is [x0 y0 z0 x1 y1 z1]."
+  "Returns true when box a of a shape meets box b of a body. A box is
+  [x0 y0 z0 x1 y1 z1]."
   [a b]
   (let [axis (fn [^long i]
                (Collision/joins
@@ -69,8 +69,7 @@
   ^double [^Move m] (.dy m))
 
 (defn fallen
-  "Returns fall distance fall after a move up by dy out of water,
-  as Entity.checkFallDamage:1585 adds it in float."
+  "Returns fall distance fall after a move up by dy out of water."
   ^double [^double fall ^double dy]
   (if (< dy 0.0) (- fall (double (float dy))) fall))
 
@@ -84,8 +83,8 @@
 
 (defn- hanging? [^long st]
   (let [ps (block/props-of st)]
-    (and (= "true" (name (get ps :bottom :false)))
-         (not= "0" (name (get ps :distance :0))))))
+    (and (= :true (:bottom ps))
+         (not= :0 (:distance ps :0)))))
 
 (defn- shape-kind [^long st]
   (case (block/type-of st)
@@ -111,7 +110,7 @@
 
 (def ^:private ^:table y-coords-table
   (delay
-    (let [t (data/collision-ys)]
+    (let [t (states/collision-ys)]
       (YCoords. (object-array (map doubles-of (:states t)))
                 (doubles-of (:block t))
                 (doubles-of (:scaffolding-bottom t))
@@ -126,15 +125,17 @@
 (def ^:private ^:table walkers
   (delay (set (data/tag-values "entity_type" walker-tag))))
 
+(def ^:private ^:const boots-slot 8)
+
 (defn- walker? [e]
   (or (contains? @walkers (:type e))
-      (= :leather-boots (:item (get (:inventory e) 8)))))
+      (= :leather-boots (:item (get (:inventory e) boots-slot)))))
 
 (defn- descends? [e]
   (and (= :player (:type e)) (:sneaking? e)))
 
 (defn context
-  "Returns the flags of body e as Collision.shape takes them."
+  "Returns the collision flags of body e."
   ^long [e]
   (cond-> 0
     (descends? e) (bit-or Collision/DESCENDING)
@@ -162,17 +163,20 @@
            `(+ (v/z ~p) (double ~dz)) `(double ~half)
            `(double ~height) `(v/y ~p) `(int ~ctx)]))))
 
+(defmacro ^:private inlined [form & args]
+  (apply @(resolve form) args))
+
 (defn dry?
   "Returns true when no water or lava touches a body of that size
-  at pos, as the fluid scan of liquid/fluid-info sees it."
+  at pos."
   [chunks pos half height]
   (Phys/dry chunks (block/tables) (v/x pos) (v/y pos) (v/z pos)
             (double half) (double height)))
 
 (defn burns
-  "Returns the bits of bits of each cell the span outer touches, and
-  bit 4 when a cell of the span inner holds bit 2. Each span is x0
-  x1 y0 y1 z0 z1 with the ends left out."
+  "Returns the marks in bits of the cells that span outer touches,
+  with Phys/LAVA_INSIDE set when lava lies in span inner. Each span is
+  x0 x1 y0 y1 z0 z1 with the ends left out."
   ^long [chunks ^bytes bits ^longs outer ^longs inner]
   (Phys/burns chunks bits outer inner))
 
@@ -192,10 +196,7 @@
   ([chunks pos half height dx dy dz]
    (free? chunks pos half height dx dy dz 0))
   ([chunks pos half height dx dy dz ctx]
-   (Phys/free chunks (kinds) (block/cube-arr) (block/collision-arr)
-              (+ (v/x pos) (double dx)) (+ (v/y pos) (double dy))
-              (+ (v/z pos) (double dz)) (double half) (double height)
-              (v/y pos) (int ctx))))
+   (inlined free-form chunks pos half height dx dy dz ctx)))
 
 (defn- clear-form [chunks pos half height inset]
   (let [p (gensym "pos")]
@@ -206,12 +207,10 @@
 
 (defn clear?
   "Returns true when a body of that size at pos, its box shrunk by
-  inset on each side, meets no block, as Level.noBlockCollision."
+  inset on each side, meets no block."
   {:inline (fn [c p h t i] (clear-form c p h t i))}
   [chunks pos half height inset]
-  (Phys/clear chunks (kinds) (block/cube-arr) (block/collision-arr)
-              (v/x pos) (v/y pos) (v/z pos) (double half)
-              (double height) (double inset) (v/y pos) (int 0)))
+  (inlined clear-form chunks pos half height inset))
 
 (defn box-free?
   "Returns true when the box [x0 y0 z0 x1 y1 z1] meets no block.
@@ -230,11 +229,6 @@
     `(when-let [~c ~call]
        [(aget ~c 0) (aget ~c 1) (aget ~c 2)])))
 
-(defn- support-cell ^longs [chunks pos half ctx]
-  (Phys/support chunks (kinds) (block/cube-arr)
-                (block/collision-arr) (v/x pos) (v/y pos) (v/z pos)
-                (double half) (int ctx)))
-
 (defn supporting-block
   "Returns the block a box of that half width standing at pos rests
   on, nil when it rests on nothing. The nearest block centre wins,
@@ -243,8 +237,7 @@
    :inline-arities #{3 4}}
   ([chunks pos half] (supporting-block chunks pos half 0))
   ([chunks pos half ctx]
-   (when-let [c (support-cell chunks pos half ctx)]
-     [(aget c 0) (aget c 1) (aget c 2)])))
+   (inlined support-form chunks pos half ctx)))
 
 (defn- move-form [chunks pos vel half height step ground? ctx]
   (let [v (gensym "vel")]
@@ -254,24 +247,21 @@
            `(double ~height) `(double ~step) `(boolean ~ground?)
            `(int ~ctx) `(y-coords)]))))
 
+(defn- move-rest [[a b c :as more]]
+  (case (count more)
+    0 [0.0 false 0]
+    1 [a false 0]
+    2 [a false b]
+    [a b c]))
+
 (defn- moved ^Move [chunks pos vel half height step ground? ctx]
-  (Phys/move chunks (kinds) (block/cube-arr) (block/collision-arr)
-             (v/x pos) (v/y pos) (v/z pos) (v/x vel) (v/y vel)
-             (v/z vel) (double half) (double height) (double step)
-             (boolean ground?) (int ctx) (y-coords)))
+  (inlined move-form chunks pos vel half height step ground? ctx))
 
 (defn move
-  "Returns the position, velocity and ground flag of a body.
-  The body moves by vel from pos and the blocks it meets stop
-  it. The body is a box of half width half and height height.
-  step is how high it climbs without jumping, ground? whether it
-  stood on the ground before the move. ctx is the context of the
-  body."
-  {:inline (fn
-             ([c p v h t] (move-form c p v h t 0.0 false 0))
-             ([c p v h t s] (move-form c p v h t s false 0))
-             ([c p v h t s x] (move-form c p v h t s false x))
-             ([c p v h t s g x] (move-form c p v h t s g x)))
+  "Returns the end of a move of a body by vel from pos. Blocks stop
+  the body, and it climbs up to step when held back sideways."
+  {:inline (fn [c p v h t & more]
+             (apply move-form c p v h t (move-rest (vec more))))
    :inline-arities #{5 6 7 8}}
   ([chunks pos vel half height]
    (moved chunks pos vel half height 0.0 false 0))

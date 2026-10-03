@@ -110,7 +110,7 @@
        (creatable? w cat)))
 
 (defn- at ^long [ctx x y z]
-  (chunk/chunks-get-block (:chunks ctx) x y z))
+  (chunk/block-state (:chunks ctx) x y z))
 
 (defn- start [ctx cid cat]
   (let [t (long (:t ctx)) [cx cz] (chunk/id->pos cid)

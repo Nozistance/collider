@@ -32,7 +32,7 @@
 
 (defn- block-at ^long [world [_ y _ :as pos]]
   (if (chunk/in-range? y)
-    (chunk/chunks-get-block (:chunks world) pos)
+    (chunk/at (:chunks world) pos)
     0))
 
 (defn- cell-of [pos]

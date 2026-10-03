@@ -26,6 +26,7 @@
             [collider.game.turn.thrown :as thrown]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.placement :as placement]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]))
 
@@ -169,7 +170,7 @@
 
 (defn- placement-attempt? [world e item]
   (and item
-       (or (block/item->block item 1) (liquid/bucket->state item)
+       (or (placement/item->block item 1) (liquid/bucket->state item)
            (data/mob-bucket item))
        (not (player/on-cooldown? e item (:tick world)))))
 

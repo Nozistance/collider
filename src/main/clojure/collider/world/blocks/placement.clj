@@ -1,6 +1,7 @@
 (ns collider.world.blocks.placement
   "The state a block takes when a player places it."
-  (:require [collider.world.block :as block]
+  (:require [collider.data :as data]
+            [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.direction :as dir]
             [collider.world.blocks.campfire :as campfire]
@@ -14,6 +15,11 @@
             [collider.world.blocks.support :as support]))
 
 (set! *warn-on-reflection* true)
+
+(defn wall-block
+  "Returns the wall form of block item, or nil."
+  [item]
+  (get-in (data/items) [item :wall]))
 
 (defn- pick [chunks pos states]
   (first (filter #(support/supported? chunks pos %) states)))
@@ -151,7 +157,7 @@
            (on-wall side))))
 
 (defn- wall-state-of [st side]
-  (let [wall (block/wall-block (block/block-of st))
+  (let [wall (wall-block (block/block-of st))
         logged (select-keys (block/props-of st) [:waterlogged])]
     (block/state wall (assoc logged :facing (dir/opposite side)))))
 
@@ -333,3 +339,167 @@
     (or (forced-hinge l r (hinge-balance at left right))
         (cursor-hinge facing (/ (double cursor-x) 16.0)
                       (/ (double cursor-z) 16.0)))))
+
+(def ^:private named-block-items
+  {:redstone :redstone-wire
+   :string :tripwire
+   :wheat-seeds :wheat
+   :cocoa-beans :cocoa
+   :pumpkin-seeds :pumpkin-stem
+   :melon-seeds :melon-stem
+   :carrot :carrots
+   :potato :potatoes
+   :torchflower-seeds :torchflower-crop
+   :pitcher-pod :pitcher-crop
+   :beetroot-seeds :beetroots
+   :sweet-berries :sweet-berry-bush
+   :glow-berries :cave-vines
+   :powder-snow-bucket :powder-snow})
+
+(def ^:private standing-and-wall-types
+  #{:standing-sign :skull :wither-skull :player-head :torch
+    :redstone-torch :banner :ceiling-hanging-sign :coral-fan
+    :base-coral-fan})
+
+(defn item->block
+  "Returns the block that item places on face, or nil."
+  [item face]
+  (let [t (:type (get (data/blocks) item))]
+    (cond
+      (contains? standing-and-wall-types t) item
+      (and (<= 2 (long face) 5) (wall-block item)) (wall-block item)
+      (contains? (data/blocks) item) item
+      :else (named-block-items item))))
+
+(defn- orientation [front top]
+  (keyword (str (name front) "_" (name top))))
+
+(defn- crafter-top [front side]
+  (case front
+    :down (dir/opposite side)
+    :up side
+    :up))
+
+(defn- crafter-orientation [{:keys [look yaw]}]
+  (let [front (dir/opposite (first look))
+        top (crafter-top front (dir/player-direction yaw))]
+    {:orientation (orientation front top)}))
+
+(defn- jigsaw-orientation [{:keys [face yaw]}]
+  (let [front (dir/from-index face)
+        top (if (<= (long face) 1)
+              (dir/opposite (dir/player-direction yaw))
+              :up)]
+    {:orientation (orientation front top)}))
+
+(defn- rail-shape [{:keys [yaw]}]
+  {:shape (if (#{:east :west} (dir/player-direction yaw))
+            :east_west
+            :north_south)})
+
+(defn- hopper-facing [{:keys [face]}]
+  {:facing (if (<= (long face) 1)
+             :down
+             (dir/opposite (dir/from-index face)))})
+
+(defn- axis-of-face [{:keys [face]}]
+  {:axis (case (long face) (0 1) :y, (4 5) :x, :z)})
+
+(defn- face-facing [{:keys [face]}] {:facing (dir/from-index face)})
+
+(defn- look-away [{:keys [look]}]
+  {:facing (dir/opposite (first look))})
+
+(defn- look-facing [{:keys [look]}] {:facing (first look)})
+
+(defn- yaw-facing [{:keys [yaw]}]
+  {:facing (dir/player-direction yaw)})
+
+(defn- yaw-away [{:keys [yaw]}]
+  {:facing (dir/opposite (dir/player-direction yaw))})
+
+(defn- standing-rotation [{:keys [yaw]}]
+  {:rotation (keyword (str (dir/segment (+ (double yaw) 180.0) 16)))})
+
+(defn- skull-rotation [{:keys [yaw]}]
+  {:rotation (keyword (str (dir/segment yaw 16)))})
+
+(defn- lantern-hanging [{:keys [face]}]
+  {:hanging (block/flag (= 0 (long face)))})
+
+(defn- door-facing [ctx] (assoc (yaw-facing ctx) :half :lower))
+
+(defn- bed-facing [ctx]
+  (assoc (yaw-facing ctx) :part :foot :occupied :false))
+
+(defn- anvil-facing [{:keys [yaw]}]
+  {:facing (dir/clockwise (dir/player-direction yaw))})
+
+(defn- trapdoor-facing [{:keys [face cursor-y replacing?] :as ctx}]
+  (if (and (not replacing?) (>= (long face) 2))
+    {:facing (dir/horizontal-face face)
+     :half (if (> (long cursor-y) 8) :top :bottom)}
+    (assoc (yaw-away ctx) :half (if (= 1 (long face)) :bottom :top))))
+
+(defn- wall-facing [{:keys [face]}]
+  {:facing (dir/horizontal-face face)})
+
+(defn- side-facing [{:keys [face]}]
+  {:facing (get dir/horizontal-face face :north)})
+
+(def ^:private by-type
+  [[#{:rotated-pillar :infested-rotated-pillar :chain
+      :weathering-copper-chain :hay :creaking-heart} axis-of-face]
+   [#{:end-rod :weathering-lightning-rod :lightning-rod
+      :amethyst-cluster :shulker-box} face-facing]
+   [#{:piston-base :dispenser :dropper :command} look-away]
+   [#{:observer} look-facing]
+   [#{:crafter} crafter-orientation]
+   [#{:jigsaw} jigsaw-orientation]
+   [#{:hopper} hopper-facing]
+   [#{:rail :powered-rail :detector-rail} rail-shape]
+   [#{:calibrated-sculk-sensor :decorated-pot :fence-gate} yaw-facing]
+   [#{:standing-sign :banner :ceiling-hanging-sign} standing-rotation]
+   [#{:skull :wither-skull :player-head} skull-rotation]
+   [#{:lantern} lantern-hanging]
+   [#{:mangrove-propagule} (constantly {:age :4})]
+   [block/door-types door-facing]
+   [#{:bed} bed-facing]
+   [#{:anvil} anvil-facing]
+   [block/trapdoor-types trapdoor-facing]
+   [block/wall-torch-types wall-facing]
+   [block/side-types side-facing]])
+
+(def ^:private type-rules
+  (into {} (for [[types f] by-type, t types] [t f])))
+
+(defn- stair-props [{:keys [yaw top?] :as ctx}]
+  (assoc (yaw-facing ctx) :half (if top? :top :bottom)))
+
+(defn- class-rule [t b]
+  (cond
+    (contains? (block/leaves-types) t)
+    (constantly {:persistent :true})
+    (= :stair (block/shape-type b)) stair-props
+    (= :slab (block/shape-type b))
+    (fn [{:keys [top?]}] {:type (if top? :top :bottom)})
+    (contains? (:props b) :facing) yaw-away))
+
+(defn- placement-ctx [{:keys [face pitch cursor-y] :as ctx}]
+  (let [face (long face)]
+    (assoc ctx
+           :face face
+           :look (dir/look-order (:yaw ctx) (or pitch 0.0))
+           :top? (or (= face 0)
+                     (and (not= face 1) (> (long cursor-y) 8))))))
+
+(defn item-state
+  "Returns the state that item places for the click ctx, or nil."
+  [item ctx]
+  (when-let [block (item->block item (:face ctx))]
+    (let [b (data/info block)
+          t (:type b)
+          rule (or (type-rules t) (class-rule t b))
+          props (when rule (rule (placement-ctx ctx)))
+          props (merge {:waterlogged :false} props)]
+      (block/state block (select-keys props (keys (:props b)))))))

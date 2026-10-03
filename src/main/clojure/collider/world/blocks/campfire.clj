@@ -14,7 +14,7 @@
 (defn- smoke-source? [^long st] (= :hay-block (block/block-of st)))
 
 (defn- at [chunks [_ y _ :as p]]
-  (if (chunk/in-range? y) (chunk/chunks-get-block chunks p) 0))
+  (if (chunk/in-range? y) (chunk/at chunks p) 0))
 
 (defn placed
   "Returns the campfire st placed at pos by a player facing yaw."

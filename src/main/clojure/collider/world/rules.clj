@@ -18,46 +18,43 @@
 
 (set! *warn-on-reflection* true)
 
-(def rules [water/kelp-rule
-            eyeblossom/rule
-            liquid/rule
-            liquid/column-rule
-            fire/rule
-            dripleaf/rule
-            support/attached-stem-rule
-            water/coral-rule
-            rail/rule
-            support/rule
-            dripstone/rule
-            dripstone/cauldron-rule
-            fall/falling-rule
-            water/sponge-rule
-            scaffold/rule
-            composter/rule
-            lectern/rule
-            leaves/rule])
+(def rules
+  "The block rules in order. The first that matches a state owns it."
+  [water/kelp-rule
+   eyeblossom/rule
+   liquid/rule
+   liquid/column-rule
+   fire/rule
+   dripleaf/rule
+   support/attached-stem-rule
+   water/coral-rule
+   rail/rule
+   support/rule
+   dripstone/rule
+   dripstone/cauldron-rule
+   fall/falling-rule
+   water/sponge-rule
+   scaffold/rule
+   composter/rule
+   lectern/rule
+   leaves/rule])
 
 (defn- find-rule [st]
-  (reduce (fn [_ r] (when ((:match? r) nil st nil) (reduced r)))
-          nil rules))
+  (some (fn [r] (when ((:match? r) nil st nil) r)) rules))
 
-(def ^:private by-state
-  (delay (object-array (data/block-state-count))))
+(def ^:private ^:table by-state
+  (delay (let [n (data/block-state-count)]
+           (object-array (map find-rule (range n))))))
 
 (defn- rule-for [st]
   (let [^objects arr @by-state st (long st)]
     (when (< -1 st (alength arr))
-      (let [r (aget arr st)]
-        (if (nil? r)
-          (let [r (find-rule st)] (aset arr st (or r false)) r)
-          (if (false? r) nil r))))))
+      (aget arr st))))
 
 (defn wake-tick
-  "Returns what the rule owning pos asks for on a change.
-  That is a scheduled tick, :neighbor for a reply at once, or nil.
-  old is the state before the change. side is the side of the
-  change seen from pos, or nil for a change at pos itself. dim
-  names the dimension."
+  "Returns the tick that the rule of st asks for after a change,
+  :neighbor for a reply at once, or nil. The side is the side of the
+  change seen from pos, nil at pos."
   [chunks dim st tick pos old side]
   (when-let [r (rule-for st)]
     ((:wake r) chunks dim tick pos old side)))
@@ -82,7 +79,10 @@
          (:kelp :kelp-plant) (water/kelp-still? chunks pos st side)
          false)))
 
-(defn fluid-wake-tick [chunks dim st tick pos old side]
+(defn fluid-wake-tick
+  "Returns the tick that the fluid of st asks for after a change, or
+  nil."
+  [chunks dim st tick pos old side]
   (when (and (block/liquid-class st)
              (not (still? chunks pos st side)))
     (liquid/fluid-wake chunks dim tick pos old side)))
@@ -131,9 +131,13 @@
     (+ (long (:reach r 1)) (if (lit? st ctx) light-reach 0))
     0))
 
-(defn fluid-reach ^long [st ctx]
+(defn fluid-reach
+  "Returns how many columns away the tick of the fluid of st reads."
+  ^long [st ctx]
   (if (block/liquid-class st) (liquid/reach (:dim ctx)) 0))
 
-(defn fluid-changes [chunks st pos ctx]
+(defn fluid-changes
+  "Returns the changes the fluid of st makes on its tick at pos."
+  [chunks st pos ctx]
   (when (block/liquid-class st)
     (liquid/update-cell chunks pos ctx)))

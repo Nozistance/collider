@@ -56,7 +56,7 @@
     (cond-> s (seq v) (stack/put :block-state v))))
 
 (defn- picked-block [world pos include-data]
-  (let [st (chunk/chunks-get-block (:chunks world) pos)]
+  (let [st (chunk/at (:chunks world) pos)]
     (when-let [item (block/clone-of st)]
       (-> {:item item :count 1}
           (with-entity world pos include-data)

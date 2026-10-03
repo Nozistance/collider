@@ -8,7 +8,7 @@
 
 (defn- st-at ^long [chunks x y z]
   (if (chunk/in-range? (long y))
-    (chunk/chunks-get-block chunks x y z)
+    (chunk/block-state chunks x y z)
     block/air))
 
 (defn- ladder-trapdoor? [chunks st [x y z]]

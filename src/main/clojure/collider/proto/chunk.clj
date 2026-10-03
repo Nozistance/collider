@@ -1,6 +1,7 @@
 (ns collider.proto.chunk
   "Chunks as the client receives them."
   (:require [collider.data :as data]
+            [collider.data.state :as states]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.nbt :as nbt]
@@ -29,7 +30,7 @@
 (def ^:private ^:const motion-blocking-flag 1)
 
 (defn- state-flag? [^long st ^long bit]
-  (pos? (bit-and (long (get (data/flags) st 0)) bit)))
+  (pos? (bit-and (long (get (states/flags) st 0)) bit)))
 
 (defn- fluid? [^long st]
   (or (block/liquid? st) (block/waterlogged? st)))

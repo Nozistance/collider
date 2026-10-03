@@ -16,7 +16,7 @@
 
 (defn- state-at [chunks x y z]
   (if (chunk/in-range? (long y))
-    (chunk/chunks-get-block chunks x y z)
+    (chunk/block-state chunks x y z)
     0))
 
 (defn- fluid? [^long st] (some? (block/liquid-class st)))
@@ -256,7 +256,7 @@
 (defn- in-border? [^long x ^long z]
   (and (<= (- border) x) (< x border) (<= (- border) z) (< z border)))
 
-(defn- at ^long [chunks x y z] (chunk/chunks-get-block chunks x y z))
+(defn- at ^long [chunks x y z] (chunk/block-state chunks x y z))
 
 (defn- on-ground? [chunks f x y z]
   (let [x (long x) y (long y) z (long z)]

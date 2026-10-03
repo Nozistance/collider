@@ -21,7 +21,7 @@
 (defn state-at
   "Returns the block state at pos."
   ^long [chunks pos]
-  (chunk/chunks-get-block chunks pos))
+  (chunk/at chunks pos))
 
 (defn connected-direction
   "Returns the direction from the half of a double chest st to its

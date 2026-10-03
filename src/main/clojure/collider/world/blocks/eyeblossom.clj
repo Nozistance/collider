@@ -55,7 +55,7 @@
           {} (neighbours p)))
 
 (defn- wake [chunks _dim _tick p _old _side]
-  (let [st (chunk/chunks-get-block chunks p)]
+  (let [st (chunk/at chunks p)]
     (when-not (support/supported? chunks p st) :neighbor)))
 
 (def ^:private colors
@@ -82,7 +82,7 @@
       (seq kin) (conj [:schedule kin]))))
 
 (defn- switch-due [chunks p ctx]
-  (let [st (chunk/chunks-get-block chunks p)
+  (let [st (chunk/at chunks p)
         time (long (:time-of-day ctx 0))]
     (when-let [new (switched st time)]
       [[p new (switch-fx chunks p st new (:tick ctx) false)]])))

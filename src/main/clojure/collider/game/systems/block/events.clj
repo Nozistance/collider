@@ -12,7 +12,7 @@
   {})
 
 (defn- run-event [w [pos b action param]]
-  (let [st (chunk/chunks-get-block (:chunks w) pos)
+  (let [st (chunk/at (:chunks w) pos)
         f (triggers b)]
     (when (and f (= b (block/block-of st)))
       (f w pos action param))))

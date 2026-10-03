@@ -1,6 +1,7 @@
 (ns collider.world.blocks.grow.copper
   "Weathering of copper."
   (:require [collider.world.block :as block]
+            [collider.world.block.oxidation :as oxidation]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -17,11 +18,11 @@
 (defn- stages [chunks p]
   (for [off near
         :let [n (chunk/at chunks (mapv + p off))]
-        :when (block/weathering? n)]
-    (block/weather-stage n)))
+        :when (oxidation/ages? n)]
+    (oxidation/stage n)))
 
 (defn- odds [chunks p st]
-  (let [own (block/weather-stage st)
+  (let [own (oxidation/stage st)
         ages (stages chunks p)]
     (when-not (some #(< (long %) own) ages)
       (let [older (count (filter #(> (long %) own) ages))
@@ -40,5 +41,5 @@
                     (< (double (roll :day)) tick-chance)
                     (odds chunks p st))]
     (when (< (double (roll :age)) (double o))
-      (when-let [st' (block/weathered-next st)]
+      (when-let [st' (oxidation/aged st)]
         [[p st']]))))

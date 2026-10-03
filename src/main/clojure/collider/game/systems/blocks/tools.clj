@@ -14,6 +14,7 @@
             [collider.game.reach :as reach]
             [collider.random :as random]
             [collider.world.block :as block]
+            [collider.world.block.oxidation :as oxidation]
             [collider.world.blocks.halves :as halves]
             [collider.world.blocks.fire :as fire]
             [collider.world.blocks.grow :as grow]
@@ -265,16 +266,16 @@
 (defn wax-deltas
   "Returns the deltas of honeycomb used on the block at pos."
   [world [_ pos _ _ _]]
-  (when-let [st (block/waxed (changes/block-at world pos))]
+  (when-let [st (oxidation/waxed (changes/block-at world pos))]
     (sounded world (half-changes world pos st)
              (copper-fx pos nil
                         out/particles-and-sound-wax-on))))
 
 (defn- copper-axe-deltas [world pos cur]
-  (if-let [st (block/weathered-prev cur)]
+  (if-let [st (oxidation/scraped cur)]
     (sounded world (half-changes world pos st)
              (copper-fx pos :axe/scrape out/particles-scrape))
-    (when-let [st (block/unwaxed cur)]
+    (when-let [st (oxidation/unwaxed cur)]
       (sounded world (half-changes world pos st)
                (copper-fx pos :axe/wax-off out/particles-wax-off)))))
 

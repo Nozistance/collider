@@ -2,8 +2,7 @@
   "Chunks of block states and light, with chunk and block ids."
   (:require [collider.vec :as v])
   (:import (collider.world Batch Chunk ChunkIndex Section)
-           (java.io DataInput DataOutput)
-           (java.util HashMap)))
+           (java.io DataInput DataOutput)))
 
 (set! *warn-on-reflection* true)
 
@@ -56,9 +55,8 @@
 (def ^ChunkIndex no-chunks ChunkIndex/EMPTY)
 
 (defn editable
-  "Returns chunks opened for a window of edits.
-  Edits of the result copy each index node once and then write it in
-  place, until frozen. Only the index returned last is valid to read."
+  "Returns chunks opened for a window of edits. Only the index
+  returned last is valid to read."
   ^ChunkIndex [^ChunkIndex chunks] (.editable chunks))
 
 (defn editing?
@@ -246,15 +244,6 @@
   (pos->id (bit-shift-right (long (Math/floor (v/x pos))) 4)
            (bit-shift-right (long (Math/floor (v/z pos))) 4)))
 
-(defn chunks-get-block
-  "Returns the block state at x y z, air where the chunk is absent."
-  (^long [chunks [x y z]]
-   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
-                  (unchecked-int z)))
-  ([chunks x y z]
-   (Chunk/blockAt chunks (unchecked-int x) (unchecked-int y)
-                  (unchecked-int z))))
-
 (definline block-state
   "Returns the block state at x y z, air where the chunk is absent."
   [chunks x y z]
@@ -263,42 +252,19 @@
            (unchecked-int ~z))))
 
 (defn at
-  "Returns the block state at p, air outside the world height."
-  ^long [chunks [_ y _ :as p]]
-  (if (in-range? y) (chunks-get-block chunks p) 0))
+  "Returns the block state at p, air outside the world height and
+  where the chunk is absent."
+  ^long [chunks [x y z]]
+  (block-state chunks x y z))
 
 (defn at-void
   "Returns the block state at p, -1 outside the world height."
-  ^long [chunks [_ y _ :as p]]
-  (if (in-range? y) (chunks-get-block chunks p) -1))
-
-(defn- add-edit! [^Batch e ^long i ^long state] (.add e i state))
-
-(defn- edits-of ^Batch [^HashMap cache cp si]
-  (let [k [cp si]]
-    (or (.get cache k)
-        (let [e (Batch.)]
-          (.put cache k e)
-          e))))
-
-(defn- apply-change! [^HashMap cache change]
-  (let [[[x y z :as p] state] change
-        x (long x) y (long y) z (long z)
-        cp (block-chunk p)
-        idx (+ (* (bit-and y 15) 256) (* (bit-and z 15) 16)
-               (bit-and x 15))]
-    (add-edit! (edits-of cache cp (section-index y))
-               idx (long state))))
-
-(defn- cache-order [^HashMap cache]
-  (let [order (fn [[[cp si] _]] [(long cp) (- (long si))])]
-    (sort-by order (into {} cache))))
+  ^long [chunks [x y z]]
+  (if (in-range? y) (block-state chunks x y z) -1))
 
 (defn chunks-set-block
-  "Returns chunks with the block at p set to state.
-  A change in an absent chunk is dropped. Equals chunks-set-blocks
-  of the one change without its batch machinery. In a window of edits
-  the chunk and its section are written in place once owned."
+  "Returns chunks with the block at p set to state. A change in an
+  absent chunk is dropped."
   ^ChunkIndex [^ChunkIndex chunks [x y z] state]
   (.withBlock chunks (unchecked-int x) (unchecked-int y)
               (unchecked-int z) (unchecked-int state)))
@@ -316,12 +282,19 @@
   [changes]
   (Batch/byChunk changes))
 
+(defn- set-all [chunks changes ^long state-at]
+  (if (empty? changes)
+    chunks
+    (Batch/setBlocks chunks changes (int state-at))))
+
 (defn chunks-set-blocks
-  "Returns chunks with the [pos state] changes applied, or the
-  [pos old state] changes when at is 2. Changes in absent chunks are
-  dropped."
-  ([chunks changes] (chunks-set-blocks chunks changes 1))
-  ([chunks changes at]
-   (if (empty? changes)
-     chunks
-     (Batch/setBlocks chunks changes (int at)))))
+  "Returns chunks with the [pos state] changes applied. Changes in
+  absent chunks are dropped."
+  [chunks changes]
+  (set-all chunks changes 1))
+
+(defn chunks-set-writes
+  "Returns chunks with the [pos old state] writes applied. Writes in
+  absent chunks are dropped."
+  [chunks writes]
+  (set-all chunks writes 2))

@@ -451,7 +451,7 @@
     (and (shape-side? st side) (not (supported? chunks p st)))))
 
 (defn- wake [chunks _dim tick p _old side]
-  (let [st (chunk/chunks-get-block chunks p)]
+  (let [st (chunk/at chunks p)]
     (if-let [sides (tick-sides (block/type-of st))]
       (when (and (sides side) (not (supported? chunks p st)))
         (inc (long tick)))
@@ -461,7 +461,7 @@
   #{:repeater :comparator :redstone-wire})
 
 (defn- unsupported [chunks p _ctx]
-  (let [st (chunk/chunks-get-block chunks p)]
+  (let [st (chunk/at chunks p)]
     (when-not (supported? chunks p st)
       (if (removed-types (block/type-of st))
         [[p (block/emptied st) [[:drop st]]]]

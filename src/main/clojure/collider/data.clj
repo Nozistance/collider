@@ -10,7 +10,6 @@
             [collider.num :as num])
   (:import (clojure.lang PersistentArrayMap)
            (java.io File PushbackReader)
-           (java.util Arrays)
            (java.util.concurrent ExecutionException)))
 
 (set! *warn-on-reflection* true)
@@ -74,7 +73,9 @@
    'nbt/d double 'nbt/B byte-array 'nbt/I int-array
    'nbt/L long-array})
 
-(defn- read-edn [name]
+(defn read-edn
+  "Returns the table in file name of the table directory."
+  [name]
   (let [d (or (dir) (throw (no-tables)))]
     (with-open [r (io/reader (io/file d name))]
       (edn/read {:readers nbt-readers} (PushbackReader. r)))))
@@ -594,7 +595,9 @@
   [item]
   (get-in (items) [item :resists]))
 
-(defn- state-count ^long [b]
+(defn state-count
+  "Returns how many states the block of facts b has."
+  ^long [b]
   (reduce * 1 (map count (vals (:props b)))))
 
 (def ^:private ^:table state-total
@@ -625,147 +628,3 @@
   "Returns true when block drops when broken without a tool."
   [block]
   (get (info block) :hand? true))
-
-(defn- prop-order [b] (vec (keys (:props b))))
-
-(defn- place-values
-  "Returns the weight of each property of block facts b in a state
-  offset, in property order."
-  [b]
-  (let [sizes (mapv #(count (get (:props b) %)) (prop-order b))]
-    (mapv #(long (reduce * 1 (subvec sizes (inc (long %)))))
-          (range (count sizes)))))
-
-(defn- decode-props [b ^long offset]
-  (let [props (:props b)
-        step (fn [[acc ^long left] [k ^long w]]
-               [(assoc acc k (nth (get props k) (quot left w)))
-                (rem left w)])]
-    (first (reduce step [{} offset]
-                   (map vector (prop-order b) (place-values b))))))
-
-(def ^:private ^:table state-blocks
-  (delay
-    (let [a (object-array (block-state-count))]
-      (doseq [[block b] (blocks)
-              :let [from (long (:first b))]
-              i (range (state-count b))]
-        (aset a (+ from (long i)) block))
-      a)))
-
-(defn each-run!
-  "Calls f with each state id and its value in table t.
-  States past the last known one are skipped."
-  [{:keys [palette runs]} f]
-  (let [n (block-state-count)]
-    (doseq [[from to i] runs
-            :let [v (nth palette i)]
-            id (range from (inc (min (long to) (dec n))))]
-      (f id v))))
-
-(defn- object-table [t]
-  (let [a (object-array (block-state-count))]
-    (each-run! t (fn [id v] (aset a (int id) v)))
-    a))
-
-(defn- byte-table [t ^long default]
-  (let [a (byte-array (block-state-count))]
-    (Arrays/fill a (byte default))
-    (each-run! t (fn [id v] (aset a (int id) (byte (long v)))))
-    a))
-
-(def ^:private ^:table shape-table
-  (delay (object-table (read-edn "shapes.edn"))))
-
-(def ^:private ^:table y-coords-table
-  (delay (update (read-edn "collision-ys.edn") :states object-table)))
-
-(defn collision-ys
-  "Returns the y coordinates of the collision shapes of every state."
-  [] @y-coords-table)
-
-(def ^:private ^:table outline-table
-  (delay (object-table (read-edn "outlines.edn"))))
-
-(def ^:private ^:table sturdy-tables
-  (delay (update-vals (read-edn "sturdy.edn") #(byte-table % 63))))
-
-(def ^:private ^:table flag-table
-  (delay (byte-table (read-edn "flags.edn") 0)))
-
-(defn shapes
-  "Returns the collision boxes of every state, by id.
-  A state that is a full cube has nil instead."
-  ^objects []
-  @shape-table)
-
-(defn outlines
-  "Returns the outline boxes of every state, by id.
-  A state that is a full cube has nil instead."
-  ^objects []
-  @outline-table)
-
-(defn sturdy
-  "Returns which faces of every state hold things, by id."
-  ^bytes []
-  (:full @sturdy-tables))
-
-(defn sturdy-center
-  "Returns which faces of every state hold a centered thing."
-  ^bytes []
-  (:center @sturdy-tables))
-
-(defn sturdy-rigid
-  "Returns which faces of every state hold things rigidly, by id."
-  ^bytes []
-  (:rigid @sturdy-tables))
-
-(defn flags ^bytes []
-  @flag-table)
-
-(defn- default-of [b]
-  (decode-props b (- (long (:default b)) (long (:first b)))))
-
-(def ^:private ^:table defaults
-  (delay
-    (into {}
-          (map (fn [[block b]] [block (default-of b)]))
-          (blocks))))
-
-(defn default-props []
-  @defaults)
-
-(defn- prop-index ^long [block-name prop vs v]
-  (or (first (keep-indexed (fn [i x] (when (= x v) i)) vs))
-      (throw (ex-info "unknown property value"
-                      {:block block-name :prop prop :value v}))))
-
-(defn- state-offset ^long [block-name b wanted defaults]
-  (let [props (:props b)
-        want #(get wanted % (get defaults %))
-        index #(prop-index block-name % (get props %) (want %))]
-    (long (reduce + (long (:first b))
-                  (map (fn [k ^long w] (* (index k) w))
-                       (prop-order b) (place-values b))))))
-
-(defn state-id
-  "Returns the global state id of a block. Properties missing from
-  wanted take their default values."
-  (^long [block-name] (long (:default (info block-name))))
-  (^long [block-name wanted]
-   (let [b (info block-name)]
-     (if (empty? wanted)
-       (state-id block-name)
-       (state-offset block-name b wanted
-                     (get (default-props) block-name))))))
-
-(defn state-block
-  "Returns the block of block state id, or nil for no such state."
-  [^long id]
-  (when (< -1 id (block-state-count))
-    (aget ^objects @state-blocks id)))
-
-(defn state-props [^long id]
-  (when-let [block-name (state-block id)]
-    (let [b (get (blocks) block-name)]
-      [block-name (decode-props b (- id (long (:first b))))])))

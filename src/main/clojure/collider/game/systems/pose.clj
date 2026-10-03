@@ -17,7 +17,7 @@
 (defn- floor ^long [^double c] (long (Math/floor c)))
 
 (defn- st-at [chunks cx cy cz]
-  (chunk/chunks-get-block chunks cx cy cz))
+  (chunk/block-state chunks cx cy cz))
 
 (defn- fits? [chunks e pose]
   (let [[half h] (entity/pose-box pose)

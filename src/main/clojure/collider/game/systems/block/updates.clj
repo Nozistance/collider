@@ -43,7 +43,7 @@
 
 (defn- ran
   [w ctx k [p ty]]
-  (let [st (chunk/chunks-get-block (:chunks w) p)
+  (let [st (chunk/at (:chunks w) p)
         type-of (get-in lists [k :type-of])]
     (cond
       (not= ty (type-of st)) {:reach 0}
@@ -82,7 +82,7 @@
       (assoc pass :w (assoc w :chunks chunks) :lit {}))))
 
 (defn- rerun [pass ctx k [p :as tick]]
-  (let [st (chunk/chunks-get-block (:chunks (:w pass)) p)
+  (let [st (chunk/at (:chunks (:w pass)) p)
         pass (if ((get-in lists [k :lit?]) st ctx) (relit pass) pass)]
     [pass (ran (:w pass) ctx k tick)]))
 
@@ -209,7 +209,7 @@
   (deltas/of-vec (ticks-deltas world :fluid-ticks)))
 
 (defn- final-records [w recs]
-  (let [at #(chunk/chunks-get-block (:chunks w) %)
+  (let [at #(chunk/at (:chunks w) %)
         final (fn [pos] [pos (at pos)])]
     (into [] (comp (map first) (distinct) (map final)) recs)))
 
