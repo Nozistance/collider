@@ -68,7 +68,6 @@
     (when (contains? table k) k)))
 
 (defn serialize
-  "Returns value of rule as text."
   ^String [rule value]
   (if (= :bool (:type (table rule)))
     (if value "true" "false")

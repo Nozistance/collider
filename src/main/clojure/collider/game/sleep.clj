@@ -1,5 +1,5 @@
 (ns collider.game.sleep
-  "Players in bed: who counts, waking up and the sleep count."
+  "Players in bed, waking up and the count of sleepers."
   (:require [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.level :as level]
@@ -22,7 +22,6 @@
   (remove (comp game-mode/spectator? val) entries))
 
 (defn in-bed
-  "Returns the entries of the players in bed."
   [world]
   (filter (fn [[_ e]] (:sleeping e)) (level/player-entries world)))
 
@@ -90,6 +89,5 @@
                      (woken-deltas eid up yaw))}))
 
 (defn wake-deltas
-  "Returns the deltas of player eid waking up."
   [world eid]
   (:deltas (wake world eid)))

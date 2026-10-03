@@ -28,6 +28,5 @@
   (animal/spec (lured animal/goals) piglet-coat))
 
 (defn brain
-  "Returns the pig's next state and deltas for one tick."
   [world eid e t tempters]
   (animal/brain spec world eid e t tempters))

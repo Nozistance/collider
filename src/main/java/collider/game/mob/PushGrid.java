@@ -11,8 +11,8 @@ import java.util.Set;
 
 /// The bodies of one island by the block column they stand in, for
 /// the shoves between overlapping bodies. It changes in place as the
-/// bodies move, so one island steps with one grid. Threads may read
-/// it at once while no body moves. A body meets the others in the
+/// bodies move, so one island steps with one grid. Many readers may
+/// share it while no body moves. A body meets the others in the
 /// order of the pushable entities of the level. Bodies go by entity
 /// section in the order of the section storage, and in each section
 /// in the order they came into it. Shoves from the bodies that stepped
@@ -184,8 +184,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     /// Keeps each body of grid `g` in the column it stands in now,
     /// for the moves of a tick in which no body moves further than
-    /// `reach` along x or z, and no body changes its box. Threads may
-    /// then read it while bodies move, and returns `g`.
+    /// `reach` along x or z, and no body changes its box. Returns `g`,
+    /// which many readers may share while the bodies move.
     public static PushGrid pinned(PushGrid g, double reach) {
         g.slack = reach;
         g.px = g.xs.clone();
@@ -356,9 +356,9 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     /// Returns the number of bodies of lower id that body `s` could
     /// meet in a tick in which no body moves further than half of
-    /// `far` along x or z, then the indices of such bodies of higher
-    /// id. It reads the places the bodies had when the grid was
-    /// pinned.
+    /// `far` along x or z, followed by the indices of such bodies of
+    /// higher id. It reads the places the bodies had when the grid
+    /// was pinned.
     int[] near(int s, double far) {
         double x = px[s], z = pz[s], r = ph[s] + widest + far;
         long x0 = (long) Math.floor(x - r), x1 = (long) Math.floor(x + r);

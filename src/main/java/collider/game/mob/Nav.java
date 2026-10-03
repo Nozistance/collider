@@ -17,10 +17,9 @@ import collider.world.ChunkIndex;
 import collider.world.space.Path;
 import java.util.Iterator;
 
-/// The ground navigation of a mob: the path it walks, the node it
-/// walks to, and the checks that drop a path it no longer gets on
-/// with. A value that reads and changes as a map; the nodes of the
-/// path are kept in arrays too for the walk each tick.
+/// The ground navigation of a mob. It holds the path the mob walks
+/// and the node it walks to, and drops a path the mob no longer gets
+/// on with. It reads and changes as a map.
 public final class Nav extends APersistentMap {
 
     private static final Keyword PATH = Keyword.intern("path");
@@ -343,7 +342,7 @@ public final class Nav extends APersistentMap {
     }
 
     /// Returns the height a mob at `x`, `y`, `z` walks its path
-    /// from: the water surface above it when it is wet.
+    /// from. A wet mob walks from the water surface above it.
     public static double surfaceY(
             ChunkIndex c,
             BlockTables t,

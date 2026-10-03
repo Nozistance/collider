@@ -1,5 +1,5 @@
 (ns collider.game.command.markup
-  "Chat markup: bold, italic, underlined, struck and code runs."
+  "Chat markup for bold, italic, underlined, struck and code runs."
   (:require [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)

@@ -97,7 +97,8 @@
       acc)))
 
 (defn give-points
-  "Returns acc after i points."
+  "Returns acc after i points, which may raise or lower its level.
+  The total never drops below zero."
   [acc ^long i]
   (if (zero? i)
     acc
@@ -112,14 +113,14 @@
           raised))))
 
 (defn give-levels
-  "Returns acc after amount levels."
   [acc ^long amount]
   (if (zero? amount)
     acc
     (assoc (levels-given acc amount) :dirty? true)))
 
 (defn set-points
-  "Returns acc with the progress amount points make."
+  "Returns acc with amount points into its current level. The
+  progress stays short of the next level."
   [acc ^long amount]
   (let [limit (need acc)
         top (f32 (/ (f32 (- limit 1.0)) limit))
@@ -129,7 +130,6 @@
       (assoc acc :progress p :dirty? true))))
 
 (defn set-levels
-  "Returns acc at level amount."
   [acc ^long amount]
   (if (== amount (long (:level acc)))
     acc

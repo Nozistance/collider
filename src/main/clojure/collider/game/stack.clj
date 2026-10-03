@@ -17,7 +17,6 @@
       :else (proto (:item stack) k))))
 
 (defn has?
-  "Returns true when stack carries component k."
   [stack k]
   (some? (component stack k)))
 
@@ -90,7 +89,6 @@
   (or (component stack (enchant-key stack)) {}))
 
 (defn set-enchantments
-  "Returns stack with the enchantments m."
   [stack m]
   (put stack (enchant-key stack) m))
 
@@ -110,8 +108,8 @@
     (when-not (str/blank? t) t)))
 
 (defn hover-name
-  "Returns the name shown on stack. A given name comes first, then
-  the title of a book, then the name of the item."
+  "Returns the name shown on stack. A given name wins over the title
+  of a book, and the title wins over the name of the item."
   [stack]
   (or (custom-name stack) (book-title stack)
       (data/item-name (:item stack))))
@@ -160,14 +158,12 @@
   (and (or (nil? min) (<= min v)) (or (nil? max) (<= v max))))
 
 (def water-bottle
-  "A bottle of water."
   {:item       :potion :count 1
    :components {:potion-contents
                 {:potion :water :custom-color nil
                  :custom-effects [] :custom-name nil}}})
 
 (defn water-bottle?
-  "Returns true when stack is a bottle of water."
   [stack]
   (let [path [:components :potion-contents :potion]]
     (and (= :potion (:item stack)) (= :water (get-in stack path)))))

@@ -1,6 +1,6 @@
 (ns collider.game.turn.living
-  "The parts of a living entity's turn around its step: the base tick
-  before it and the touch of blocks after it."
+  "The base tick before the step of a living entity and the touch of
+  blocks after it."
   (:require [collider.game.effect.account :as account]
             [collider.game.entity.hurt :as hurt]))
 

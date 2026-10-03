@@ -46,12 +46,10 @@
     :max-absorption :luck})
 
 (defn base-values
-  "Returns the base of every attribute that entity e has."
   [e]
   (get (data/attributes) (:type e)))
 
 (defn effect-attributes
-  "Returns the attributes effect k changes."
   [k]
   (into #{} (map first) (templates k)))
 
@@ -63,7 +61,8 @@
     [[:sprinting (num/f32 sprint-boost) multiply-total]]))
 
 (defn modifiers
-  "Returns the modifiers of attribute attr of entity e."
+  "Returns the modifiers of attribute attr of entity e under effects.
+  A sprinting player adds the sprint boost to its movement speed."
   [e effects attr]
   (into (vec (sprint-modifiers e attr))
         (for [[k i] (effect/in-order effects)
@@ -85,8 +84,8 @@
       (max (double lo) (min (double hi) v)))))
 
 (defn value
-  "Returns the value of attribute attr of entity e with effects and
-  the modifiers more."
+  "Returns the value of attribute attr of entity e under effects,
+  with the modifiers more added. It stays in the range of attr."
   (^double [e effects attr] (value e effects attr nil))
   (^double [e effects attr more]
    (let [ms (into (modifiers e effects attr) more)

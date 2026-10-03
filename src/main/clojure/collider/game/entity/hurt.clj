@@ -91,7 +91,6 @@
              (not (contains? @bypassing t))))))
 
 (defn- scales?
-  "Returns true when the damage of src scales with the difficulty."
   [world src]
   (case (get @scaling (:type src))
     "always" true
@@ -100,7 +99,6 @@
     false))
 
 (defn- by-difficulty
-  "Returns damage n as the difficulty of world scales it."
   ^double [world ^double n]
   (let [n (float n)]
     (case (long (difficulty/id world))
@@ -367,8 +365,6 @@
                         (+ 1.6 (* 0.4 r)) :players))))
 
 (defn- contact-hurts
-  "Returns the deltas of the hurts from the fire and the lava that
-  player eid touches."
   [world eid e c]
   (concat (when (:fire? c) (damage-deltas world eid e 1.0 in-fire))
           (when (:lava? c)
@@ -492,7 +488,6 @@
         [(out/all (out/particles :block st at n 0.15))]))))
 
 (defn landing-deltas
-  "Returns the deltas of entity eid landing from a fall."
   [world eid e]
   (when-let [fall (:landed e)]
     (concat [[:merge-entity eid {:landed nil}]]
@@ -611,8 +606,8 @@
 
 (defn report-deltas
   "Returns the deltas that show the hurts of entity eid since they
-  were last shown: the effects of its full hit, and on death its
-  drops."
+  were last shown. They are the effects of its full hit, and on
+  death its drops."
   [world eid e]
   (let [health (double (:health e))
         shown (double (or (:health-sent e) health))
@@ -663,8 +658,8 @@
           (burn-tick-deltas eid fire (boolean (:wet? e)) lava?))))))
 
 (defn burnt-deltas
-  "Returns the deltas of the fire living entity eid burns in, then
-  of the void."
+  "Returns the deltas of the fire living entity eid burns in,
+  followed by those of the void."
   [world eid e]
   (into (vec (burn-deltas world eid e)) (void-deltas world eid e)))
 
@@ -684,7 +679,7 @@
 
 (defn based?
   "Returns true when living entity e has work in the start of its
-  base tick: hurt resistance, fire or the void."
+  base tick, which hurt resistance, fire or the void gives."
   [world e]
   (or (pos? (long (or (:hurt-resist e) 0)))
       (pos? (long (or (:fire e) 0)))

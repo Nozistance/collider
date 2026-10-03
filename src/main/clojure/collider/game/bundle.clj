@@ -49,7 +49,6 @@
   (max 0 (long (quot (- 1 (load-of stacks)) w))))
 
 (defn room-for
-  "Returns how many items of stack still fit into bundle."
   ^long [bundle stack]
   (room (contents bundle) (weight stack)))
 

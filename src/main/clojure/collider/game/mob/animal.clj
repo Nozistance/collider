@@ -411,7 +411,6 @@
     :stop (fn [e _] (assoc e :task nil :look nil))}])
 
 (defn goal
-  "Returns the farm animal goal of kind k."
   [k]
   (first (filter #(= k (:kind %)) goals)))
 
@@ -432,7 +431,6 @@
   (if (watched? world e) 0 (long (or (:no-action e) 0))))
 
 (def ^:private flag-bits
-  "The bit of each goal flag, as Goal.Flag orders them."
   {:move 1 :look 2 :jump 4 :target 8})
 
 (defn- mask-of ^long [flags]

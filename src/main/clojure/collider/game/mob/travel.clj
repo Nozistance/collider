@@ -1,6 +1,6 @@
 (ns collider.game.mob.travel
-  "The move of a mob in one tick: its walk, jump, fall and swim, the
-  bodies it shoves and the landing."
+  "Mob moves in one tick, with walking, jumping, falling, swimming,
+  shoving and landing."
   (:require [collider.game.entity :as entity]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]

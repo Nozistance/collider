@@ -9,7 +9,6 @@
 (set! *warn-on-reflection* true)
 
 (defn block-at
-  "Returns the block state at a position."
   (^long [world p] (chunk/at (:chunks world) p))
   (^long [world x y z] (chunk/block-state (:chunks world) x y z)))
 

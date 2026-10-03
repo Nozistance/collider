@@ -108,7 +108,7 @@
   (:active (areas world)))
 
 (defn active-chunk-ids
-  "Returns the active chunks as a vector, in the order of the set."
+  "Returns the ids of the active chunks in the order of their set."
   [world]
   (:active-ids (areas world)))
 

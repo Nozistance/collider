@@ -262,7 +262,7 @@
 
 (defn ai-step
   "Returns rabbit e after the part of its step that is its own, and
-  its deltas: its hop ages, and a jump sounds and shows."
+  its deltas. Its hop ages, and a jump sounds and shows."
   [eid e t]
   (let [h (hop e)
         ds (hop-deltas eid e t h)
@@ -488,6 +488,5 @@
     kit-variant))
 
 (defn brain
-  "Returns the rabbit's next state and deltas for one tick."
   [world eid e t tempters]
   (animal/brain spec world eid e t tempters))

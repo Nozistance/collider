@@ -138,7 +138,6 @@
       (some #(when (holds? %) %) schema/dims))))
 
 (defn by-type
-  "Returns the eids of entities by type."
   [entities]
   (persistent!
     (reduce-kv (fn [m eid e]
@@ -174,7 +173,6 @@
     (into [] (map entry) ids)))
 
 (defn holds-types?
-  "Returns true when lv holds an entity whose type is in set ts."
   [lv ts]
   (let [held? (fn [_ t _] (if (contains? ts t) (reduced true) false))]
     (if-let [types (types-by lv)]

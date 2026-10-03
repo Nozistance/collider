@@ -161,7 +161,6 @@
           :else r)))
 
 (defn listed
-  "Returns the decoder of a list of what f decodes."
   [f]
   (fn [tag] (settled tag (list-of f tag))))
 

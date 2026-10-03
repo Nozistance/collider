@@ -407,13 +407,11 @@
         fields))
 
 (def Fx
-  "The schema of an effect."
   (into [:multi {:dispatch :msg}]
         (for [[msg fields] (:messages (:fx registry))]
           [msg (with-address fields)])))
 
 (def Delta
-  "The schema of a delta."
   (into [:multi {:dispatch first}]
         (concat
           (for [[tag {:keys [scope schema]}] registry :when schema]

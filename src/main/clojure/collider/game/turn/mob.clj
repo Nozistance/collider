@@ -271,7 +271,7 @@
     [e2 ds shoves]))
 
 (defn- live
-  "Returns world as mob eid sees it in its turn: with the blocks the
+  "Returns world as mob eid sees it in its turn, with the blocks the
   turns before it wrote this tick."
   [world ^long eid]
   (let [w (overlay/seen world eid)]
@@ -298,8 +298,6 @@
     index))
 
 (defn- island
-  "Returns the island of herd h: its bodies with their index, their
-  slots and whether each ticks."
   [{:keys [es bodies at]}]
   {:es es :index (push/grid-of bodies at)
    :ticking (push/ticks-of bodies at)
@@ -356,7 +354,7 @@
 
 (defn- joiner
   "Returns the fn of slot i that adds to collector c the deltas of
-  mob i, then the shoves it hands to the bodies before it."
+  mob i, followed by the shoves it hands to the bodies before it."
   [c ^objects cur ^objects runs]
   (let [vels (object-array (alength runs))
         f (fn [_ [j sh]]
@@ -480,9 +478,9 @@
     (when (some mob? es) {:es es :bodies b :at at})))
 
 (defn- herds
-  "Returns the herds of world, the islands of bodies with a mob among
-  them, then the mobs that bite this tick and the mobs whose death
-  ends, all in id order."
+  "Returns the herds of world, which are the islands of bodies with
+  a mob among them, with the mobs that bite this tick and the mobs
+  whose death ends. All three are in id order."
   [world active t]
   (let [f (scan (areas/loaded-zone world) active t)
         acc (scanned-all f (:entities world))

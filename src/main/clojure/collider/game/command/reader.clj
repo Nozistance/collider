@@ -27,7 +27,6 @@
 (defn skip-whitespace [rd] (skip-while whitespace? rd))
 
 (defn at?
-  "Returns true when the character at the cursor of rd is c."
   [[s n :as rd] c]
   (and (can-read? rd) (= c (nth s n))))
 

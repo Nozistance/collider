@@ -16,7 +16,6 @@
   (animal/spec animal/goals calf-variant))
 
 (defn brain
-  "Returns the cow's next state and deltas for one tick."
   [world eid e t tempters]
   (animal/brain spec world eid e t tempters))
 

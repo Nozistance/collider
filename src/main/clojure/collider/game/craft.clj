@@ -566,7 +566,6 @@
   (delay (index-of (:crafting (data/recipes)))))
 
 (defn index
-  "Returns the index of the crafting recipes."
   []
   @crafting-index)
 

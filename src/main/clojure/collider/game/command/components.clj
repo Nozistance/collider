@@ -236,6 +236,5 @@
      (numbered "lucy" "wild" "gold" "cyan" "blue")}))
 
 (defn decode
-  "Returns the decoded value of component k from tag."
   [k tag]
   (if-let [f (decoders k)] (f tag) [:raw tag]))

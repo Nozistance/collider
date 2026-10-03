@@ -355,7 +355,6 @@
   (:plugin-commands (:config world)))
 
 (defn cmd-name
-  "Returns the name of command form."
   [form]
   (name (first form)))
 

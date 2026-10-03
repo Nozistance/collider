@@ -1,7 +1,5 @@
 (ns collider.game.turn.overlay
-  "The blocks the turns of a tick wrote so far, as each later turn
-  sees them. Each write is a world after it, so every read of the
-  world sees it; a tick without writes reads the world itself."
+  "Blocks earlier turns of a tick wrote, as later turns see them."
   (:require [collider.game.delta :as delta]))
 
 (set! *warn-on-reflection* true)
@@ -12,7 +10,7 @@
     (reduce f world ds)))
 
 (defn seen
-  "Returns world as the turn of eid sees it: with what the turns
+  "Returns world as the turn of eid sees it, with what the turns
   before it wrote."
   [world ^long eid]
   (let [ws (::writes world) top (peek ws)

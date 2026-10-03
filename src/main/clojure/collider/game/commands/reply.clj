@@ -83,6 +83,5 @@
     {:text "" :extra (vec (interpose separator names))}))
 
 (defn dimension-id
-  "Returns the id of dimension dim."
   [dim]
   (str "minecraft:" (data/snake dim)))

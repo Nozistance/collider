@@ -1,6 +1,5 @@
 (ns collider.game.commands.teleport
-  "The commands that move and turn entities: tp, rotate and
-  spectate."
+  "The tp, rotate and spectate commands."
   (:require [collider.game.camera :as camera]
             [collider.game.command.selector :as sel]
             [collider.game.commands.pos :as pos]
@@ -382,7 +381,6 @@
                      [(:yaw d 0.0) (:pitch d 0.0)] :entity)))))
 
 (def handlers
-  "The commands that move and turn entities, by name."
   {:tp tp-deltas :tp-to tp-to-deltas :tp-targets tp-targets-deltas
    :tp-targets-to tp-targets-to-deltas
    :tp-targets-rotated tp-rotated-deltas
