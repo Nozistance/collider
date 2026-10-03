@@ -3,15 +3,16 @@ package collider.world;
 import java.util.ArrayDeque;
 
 /// Longs taken in the order they were added, for one pass, never kept
-/// or shared. The longs live in blocks of one size, and a block taken
-/// to its end holds the next ones added, so the queue never copies and
-/// holds about as much as it has waiting at most.
+/// or shared. The longs live in blocks that double in size up to a
+/// limit, and a block taken to its end holds the next ones added, so
+/// the queue never copies and holds about as much as it has waiting at
+/// most.
 public final class LongQueue {
 
     private static final int SIZE = 1024;
 
     private final ArrayDeque<long[]> next = new ArrayDeque<>();
-    private long[] out = new long[SIZE];
+    private long[] out = new long[64];
     private long[] in = out;
     private long[] spare;
     private int head;
@@ -22,8 +23,9 @@ public final class LongQueue {
     }
 
     public void add(long e) {
-        if (tail == SIZE) {
-            in = spare != null ? spare : new long[SIZE];
+        if (tail == in.length) {
+            int size = Math.min(SIZE, 2 * in.length);
+            in = spare != null && spare.length == size ? spare : new long[size];
             spare = null;
             next.addLast(in);
             tail = 0;
@@ -33,7 +35,7 @@ public final class LongQueue {
 
     /// Takes the oldest long, which must be there.
     public long poll() {
-        if (head == SIZE) {
+        if (head == out.length) {
             spare = out;
             out = next.removeFirst();
             head = 0;
