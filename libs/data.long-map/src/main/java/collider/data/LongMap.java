@@ -30,7 +30,13 @@ import java.util.Map;
 /// nothing return the same map, and merges keep shared parts. Values
 /// are never nil.
 public final class LongMap extends APersistentMap
-        implements IObj, IEditableCollection, IKVReduce, IMapIterable, IReduceInit, Reversible, Sorted {
+        implements IObj,
+                IEditableCollection,
+                IKVReduce,
+                IMapIterable,
+                IReduceInit,
+                Reversible,
+                Sorted {
 
     public static final LongMap EMPTY = new LongMap(null, null);
 
@@ -120,8 +126,17 @@ public final class LongMap extends APersistentMap
     /// with `(reducef acc k v)`, and joins the parts in key order with
     /// `combinef`, on the fork-join functions that
     /// `PersistentHashMap.fold` takes.
-    public Object fold(int n, IFn combinef, IFn reducef, IFn fjinvoke, IFn fjtask, IFn fjfork, IFn fjjoin) {
-        return Node.fold(root, n, combinef, reducef, Node.KV, new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin));
+    public Object fold(
+            int n,
+            IFn combinef,
+            IFn reducef,
+            IFn fjinvoke,
+            IFn fjtask,
+            IFn fjfork,
+            IFn fjjoin
+    ) {
+        Node.Fork fj = new Node.Fork(fjinvoke, fjtask, fjfork, fjjoin);
+        return Node.fold(root, n, combinef, reducef, Node.KV, fj);
     }
 
     /// Returns the map of keys `ks` to values `vs`.
@@ -133,7 +148,9 @@ public final class LongMap extends APersistentMap
     public long[] keys() {
         long[] ks = new long[count()];
         int i = 0;
-        for (Iterator<Object> it = keyIterator(); it.hasNext(); ) ks[i++] = (Long) it.next();
+        for (Iterator<Object> it = keyIterator(); it.hasNext(); ) {
+            ks[i++] = (Long) it.next();
+        }
         return ks;
     }
 
@@ -263,7 +280,9 @@ public final class LongMap extends APersistentMap
 
     @Override
     public Object reduce(IFn f, Object init) {
-        return root == null ? init : Node.unreduced(Node.reduce(root, Node.ENTRIES, f, init));
+        return root == null
+                ? init
+                : Node.unreduced(Node.reduce(root, Node.ENTRIES, f, init));
     }
 
     @Override
@@ -271,7 +290,8 @@ public final class LongMap extends APersistentMap
         return new Transient(this);
     }
 
-    static final class Transient extends AFn implements ITransientMap, ITransientAssociative2 {
+    static final class Transient extends AFn
+            implements ITransientMap, ITransientAssociative2 {
         final LongMap from;
         Node root;
         Object edit = new Object();
@@ -282,7 +302,9 @@ public final class LongMap extends APersistentMap
         }
 
         Object edit() {
-            if (edit == null) throw new IllegalAccessError("Transient used after persistent!");
+            if (edit == null) {
+                throw new IllegalAccessError("Transient used after persistent!");
+            }
             return edit;
         }
 
@@ -295,7 +317,9 @@ public final class LongMap extends APersistentMap
         @Override
         public Transient without(Object k) {
             Object e = edit();
-            if (Node.integral(k)) root = Node.remove(root, Node.u(((Number) k).longValue()), e);
+            if (Node.integral(k)) {
+                root = Node.remove(root, Node.u(((Number) k).longValue()), e);
+            }
             return this;
         }
 
@@ -304,7 +328,9 @@ public final class LongMap extends APersistentMap
             edit();
             if (o instanceof Map.Entry<?, ?> e) return assoc(e.getKey(), e.getValue());
             if (o instanceof IPersistentVector v) {
-                if (v.count() != 2) throw new IllegalArgumentException("Vector arg to map conj must be a pair");
+                if (v.count() != 2) {
+                    throw new IllegalArgumentException("Vector arg to map conj must be a pair");
+                }
                 return assoc(v.nth(0), v.nth(1));
             }
             for (ISeq s = RT.seq(o); s != null; s = s.next()) {

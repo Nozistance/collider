@@ -12,6 +12,10 @@ public final class Noise {
 
     private static final double INPUT_FACTOR = 1.0181268882175227;
 
+    private static final double TARGET_DEVIATION = 0.16666666666666666;
+
+    private static final double WRAP = 3.3554432E7;
+
     private static final class Bits {
         private long seed;
 
@@ -47,7 +51,7 @@ public final class Noise {
     }
 
     private static final class Octave {
-        private final byte[] p = new byte[256];
+        private final byte[] perm = new byte[256];
         private final double xo;
         private final double yo;
         private final double zo;
@@ -57,18 +61,18 @@ public final class Noise {
             this.yo = random.nextDouble() * 256.0;
             this.zo = random.nextDouble() * 256.0;
             for (int i = 0; i < 256; i++) {
-                p[i] = (byte) i;
+                perm[i] = (byte) i;
             }
             for (int i = 0; i < 256; i++) {
                 int offset = random.nextInt(256 - i);
-                byte tmp = p[i];
-                p[i] = p[i + offset];
-                p[i + offset] = tmp;
+                byte tmp = perm[i];
+                perm[i] = perm[i + offset];
+                perm[i + offset] = tmp;
             }
         }
 
         private int p(int x) {
-            return p[x & 0xFF] & 0xFF;
+            return perm[x & 0xFF] & 0xFF;
         }
 
         private static double grad(int hash, double x, double y, double z) {
@@ -141,11 +145,12 @@ public final class Noise {
                 }
             }
             this.inputFactor = Math.pow(2.0, -zeroIndex);
-            this.valueFactor = Math.pow(2.0, octaves - 1) / (Math.pow(2.0, octaves) - 1.0);
+            this.valueFactor =
+                    Math.pow(2.0, octaves - 1) / (Math.pow(2.0, octaves) - 1.0);
         }
 
         private static double wrap(double x) {
-            return x - (double) (long) Math.floor(x / 3.3554432E7 + 0.5) * 3.3554432E7;
+            return x - (double) (long) Math.floor(x / WRAP + 0.5) * WRAP;
         }
 
         double value(double x, double y, double z) {
@@ -154,9 +159,12 @@ public final class Noise {
             double scale = valueFactor;
             for (int i = 0; i < levels.length; i++) {
                 if (levels[i] != null) {
-                    value += amplitudes[i]
-                            * scale
-                            * levels[i].noise(wrap(x * factor), wrap(y * factor), wrap(z * factor));
+                    double n = levels[i].noise(
+                            wrap(x * factor),
+                            wrap(y * factor),
+                            wrap(z * factor)
+                    );
+                    value += amplitudes[i] * scale * n;
                 }
                 factor *= 2.0;
                 scale /= 2.0;
@@ -181,7 +189,8 @@ public final class Noise {
                 highest = Math.max(highest, i);
             }
         }
-        this.valueFactor = 0.16666666666666666 / (0.1 * (1.0 + 1.0 / (double) (highest - lowest + 1)));
+        double span = highest - lowest + 1;
+        this.valueFactor = TARGET_DEVIATION / (0.1 * (1.0 + 1.0 / span));
     }
 
     /// Builds a noise field from a seed, its first octave and its
@@ -203,7 +212,8 @@ public final class Noise {
 
     /// Returns the value of the noise at a point, from -1 to 1.
     public double value(double x, double y, double z) {
-        return (first.value(x, y, z) + second.value(x * INPUT_FACTOR, y * INPUT_FACTOR, z * INPUT_FACTOR))
-                * valueFactor;
+        double a = first.value(x, y, z);
+        double b = second.value(x * INPUT_FACTOR, y * INPUT_FACTOR, z * INPUT_FACTOR);
+        return (a + b) * valueFactor;
     }
 }

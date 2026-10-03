@@ -8,10 +8,19 @@ import java.util.Objects;
 /// A chunk column of `COUNT` sections, some of which may be absent.
 public final class Chunk {
 
+    /// The number of sections of a column.
     public static final int COUNT = 24;
+
+    /// The index of the section that starts at y 0.
     public static final int OFFSET = 4;
+
+    /// The lowest y of a column.
     public static final int MIN_Y = -OFFSET * 16;
+
+    /// The highest y of a column.
     public static final int MAX_Y = (COUNT - OFFSET) * 16 - 1;
+
+    /// A column without sections.
     public static final Chunk EMPTY = new Chunk(new Section[COUNT]);
 
     private final Section[] sections;
@@ -26,6 +35,8 @@ public final class Chunk {
         this.token = token;
     }
 
+    /// Returns the column of `sections`, from the lowest up, the
+    /// missing top ones absent.
     public static Chunk of(Object[] sections) {
         if (sections.length > COUNT) {
             throw new IllegalArgumentException("sections " + sections.length);
@@ -37,10 +48,12 @@ public final class Chunk {
         return new Chunk(a);
     }
 
+    /// Returns the section of index `si`, or null.
     public Section section(int si) {
         return si >= 0 && si < COUNT ? sections[si] : null;
     }
 
+    /// Returns this chunk with section `si` set to `s`.
     public Chunk with(int si, Section s) {
         if (sections[si] == s) return this;
         Section[] a = sections.clone();
@@ -52,11 +65,10 @@ public final class Chunk {
     /// world y set to `state`, written in place where the edit window
     /// `token` owns the chunk and its section, as `ChunkIndex` allows.
     public Chunk withBlock(int x, int y, int z, int state, Object token) {
-        int si = (y >> 4) + OFFSET;
+        int si = sectionIndex(y);
         Section s = sections[si];
         if (s == null) s = fresh(si);
-        int i = ((y & 15) << 8) | ((z & 15) << 4) | (x & 15);
-        Section n = s.withOwned(i, state, token);
+        Section n = s.withOwned(Section.index(x, y, z), state, token);
         if (token == null) return with(si, n);
         if (this.token == token) {
             sections[si] = n;
@@ -69,11 +81,16 @@ public final class Chunk {
 
     /// Returns the block state at chunk-relative x and z and world y.
     public int block(int x, int y, int z) {
-        int si = (y >> 4) + OFFSET;
+        int si = sectionIndex(y);
         if (si < 0 || si >= COUNT) return 0;
         Section s = sections[si];
         if (s == null) return 0;
-        return s.block(((y & 15) << 8) | ((z & 15) << 4) | (x & 15));
+        return s.block(Section.index(x, y, z));
+    }
+
+    /// Returns the index of the section that holds world y.
+    public static int sectionIndex(int y) {
+        return (y >> 4) + OFFSET;
     }
 
     /// Returns the chunk at chunk coordinates, or `EMPTY` if absent.
@@ -82,12 +99,16 @@ public final class Chunk {
         return c == null ? EMPTY : (Chunk) c;
     }
 
+    /// Returns the block state at `x`, `y`, `z` in `chunks`, air in
+    /// an absent chunk or section.
     public static int blockAt(ChunkIndex chunks, int x, int y, int z) {
         return at(chunks, x >> 4, z >> 4).block(x, y, z);
     }
 
+    /// Returns the section that holds `x`, `y`, `z` in `chunks`, or
+    /// null.
     public static Section sectionAt(ChunkIndex chunks, int x, int y, int z) {
-        return at(chunks, x >> 4, z >> 4).section((y >> 4) + OFFSET);
+        return at(chunks, x >> 4, z >> 4).section(sectionIndex(y));
     }
 
     /// Returns the lowest present section above section index `si`.
@@ -114,6 +135,7 @@ public final class Chunk {
         return mask;
     }
 
+    @Override
     public boolean equals(Object o) {
         if (o == this) return true;
         if (!(o instanceof Chunk)) return false;
@@ -124,6 +146,7 @@ public final class Chunk {
         return true;
     }
 
+    @Override
     public int hashCode() {
         int h = 1;
         for (Section s : sections) {
@@ -132,6 +155,7 @@ public final class Chunk {
         return h;
     }
 
+    /// Writes the column to `out` in the snapshot form.
     public void save(DataOutput out) throws IOException {
         out.writeInt(present());
         for (Section s : sections) {
@@ -139,6 +163,7 @@ public final class Chunk {
         }
     }
 
+    /// Reads a column that `save` wrote.
     public static Chunk load(DataInput in) throws IOException {
         int mask = in.readInt();
         if ((mask >>> COUNT) != 0) {

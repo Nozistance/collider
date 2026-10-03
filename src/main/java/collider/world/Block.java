@@ -20,6 +20,7 @@ public final class Block {
         return st >= 0 && st < a.length && (a[(int) st] & b) != 0;
     }
 
+    /// Returns the block type of `st`, or null.
     public static Object type(BlockTables t, long st) {
         return at(t.types(), st);
     }
@@ -49,6 +50,7 @@ public final class Block {
         return is(t.replaceable(), st);
     }
 
+    /// Returns true when `st` is a liquid.
     public static boolean liquid(BlockTables t, long st) {
         return is(t.liquid(), st);
     }
@@ -58,6 +60,7 @@ public final class Block {
         return is(t.waterlogged(), st);
     }
 
+    /// Returns true when `st` falls without a block under it.
     public static boolean falls(BlockTables t, long st) {
         return is(t.falls(), st);
     }
@@ -82,6 +85,7 @@ public final class Block {
         return is(t.fullCube(), st);
     }
 
+    /// Returns true when `st` blocks motion.
     public static boolean blocksMotion(BlockTables t, long st) {
         return is(t.blocksMotion(), st);
     }
@@ -91,6 +95,7 @@ public final class Block {
         return is(t.useShape(), st);
     }
 
+    /// Returns true when `st` can occlude its neighbours.
     public static boolean canOcclude(BlockTables t, long st) {
         return is(t.canOcclude(), st);
     }
@@ -139,7 +144,11 @@ public final class Block {
     }
 
     private static long[] side(BlockTables t, long st, int d) {
-        return st >= 0 && st < t.touch().length && (t.touch()[(int) st] & (1 << d)) != 0 ? face(t, st, d) : null;
+        int[] touch = t.touch();
+        boolean touches = st >= 0
+                && st < touch.length
+                && (touch[(int) st] & (1 << d)) != 0;
+        return touches ? face(t, st, d) : null;
     }
 
     private static boolean full(long[] m) {
@@ -147,7 +156,10 @@ public final class Block {
     }
 
     private static boolean covers(long[] a, long[] b) {
-        return (a[0] | b[0]) == -1 && (a[1] | b[1]) == -1 && (a[2] | b[2]) == -1 && (a[3] | b[3]) == -1;
+        return (a[0] | b[0]) == -1
+                && (a[1] | b[1]) == -1
+                && (a[2] | b[2]) == -1
+                && (a[3] | b[3]) == -1;
     }
 
     private static boolean seals(long[] a, long[] b) {
@@ -166,7 +178,13 @@ public final class Block {
     /// Returns the light cost of crossing from `from` into `to` along
     /// `d`. The cost is 16 when the faces that the shapes touch seal
     /// and `simple` otherwise.
-    public static long dampeningInto(BlockTables t, long from, long to, long d, long simple) {
+    public static long dampeningInto(
+            BlockTables t,
+            long from,
+            long to,
+            long d,
+            long simple
+    ) {
         long[] a = side(t, from, (int) d);
         long[] b = side(t, to, (int) d ^ 1);
         return seals(a, b) ? 16 : simple;

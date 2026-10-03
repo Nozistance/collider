@@ -56,13 +56,11 @@ public final class Path {
     private final Scratch<PathNode> nodes = new Scratch<>(256);
     private final Scratch<Integer> typed = new Scratch<>(256);
 
-    /// Makes one search over `chunks` from `minY` up. `types`,
-    /// `forced` and `water` hold the path type, the type forced upon
-    /// neighbours (-1 for none) and waterness of each block state;
-    /// `malus` the mob's malus and `baseMalus` the default malus of
-    /// each path type. `mob` holds the position x, y, z, width,
-    /// height and max up step; `flags` max fall, then floats, opens
-    /// doors, passes doors and walks over fences as 0 or 1.
+    /// Makes one search for `mob` over `chunks` from `minY` up.
+    /// `types`, `forced` and `water` hold the path type, the type
+    /// forced upon neighbours (-1 for none) and whether it is water,
+    /// for each block state. `malus` holds the malus of the mob and
+    /// `baseMalus` the default malus, for each path type.
     public Path(
             ChunkIndex chunks,
             long minY,
@@ -73,9 +71,8 @@ public final class Path {
             byte[] kinds,
             double[] malus,
             double[] baseMalus,
-            double[] mob,
-            long[] flags,
-            int ctx) {
+            PathMob mob
+    ) {
         this.chunks = chunks;
         this.minY = minY;
         this.types = types;
@@ -83,20 +80,20 @@ public final class Path {
         this.water = water;
         this.shapes = shapes;
         this.kinds = kinds;
-        this.ctx = ctx;
+        this.ctx = mob.ctx();
         this.malus = malus;
         this.baseMalus = baseMalus;
-        px = mob[0];
-        py = mob[1];
-        pz = mob[2];
-        width = mob[3];
-        height = mob[4];
-        upStep = mob[5];
-        maxFall = flags[0];
-        floats = flags[1] != 0;
-        openDoors = flags[2] != 0;
-        passDoors = flags[3] != 0;
-        overFences = flags[4] != 0;
+        px = mob.x();
+        py = mob.y();
+        pz = mob.z();
+        width = mob.width();
+        height = mob.height();
+        upStep = mob.upStep();
+        maxFall = mob.maxFall();
+        floats = mob.floats();
+        openDoors = mob.openDoors();
+        passDoors = mob.passDoors();
+        overFences = mob.overFences();
         mx = (long) Math.floor(px);
         my = (long) Math.floor(py);
         mz = (long) Math.floor(pz);
@@ -405,19 +402,13 @@ public final class Path {
         return n;
     }
 
-    /// Returns the cells of the path to the node closest to `t`,
-    /// first to last, as x, y, z and path type, four longs each.
-    public static long[] cells(PathTarget t) {
+    /// Returns the nodes of the path to the node closest to `t`,
+    /// first to last.
+    public static PathNode[] route(PathTarget t) {
         int k = 0;
         for (PathNode n = t.node(); n != null; n = n.came) k++;
-        long[] r = new long[4 * k];
-        for (PathNode n = t.node(); n != null; n = n.came) {
-            k--;
-            r[4 * k] = n.x;
-            r[4 * k + 1] = n.y;
-            r[4 * k + 2] = n.z;
-            r[4 * k + 3] = n.kind;
-        }
+        PathNode[] r = new PathNode[k];
+        for (PathNode n = t.node(); n != null; n = n.came) r[--k] = n;
         return r;
     }
 

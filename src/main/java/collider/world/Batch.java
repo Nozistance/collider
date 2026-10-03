@@ -32,10 +32,21 @@ public final class Batch {
         return s.apply(idx, states, n);
     }
 
+    private static long cellKey(int x, int y, int z) {
+        return ((long) (x & 0x3FFFFFF) << 38)
+                | ((long) (z & 0x3FFFFFF) << 12)
+                | (y & 0xFFF);
+    }
+
     /// Returns the changes `[pos st]` that alter a block of `chunks`
     /// inside heights `minY` to `maxY`, as `[pos old st]` in order. A
     /// change sees the ones before it.
-    public static Object changed(ChunkIndex chunks, Object changes, long minY, long maxY) {
+    public static Object changed(
+            ChunkIndex chunks,
+            Object changes,
+            long minY,
+            long maxY
+    ) {
         Scratch<Integer> now = new Scratch<>(RT.count(changes));
         ITransientCollection out = PersistentVector.EMPTY.asTransient();
         for (Object c : (Iterable<?>) changes) {
@@ -43,7 +54,7 @@ public final class Batch {
             int x = RT.intCast(RT.nth(p, 0)), y = RT.intCast(RT.nth(p, 1));
             int z = RT.intCast(RT.nth(p, 2));
             int st = RT.intCast(RT.nth(c, 1));
-            long k = ((long) (x & 0x3FFFFFF) << 38) | ((long) (z & 0x3FFFFFF) << 12) | (y & 0xFFF);
+            long k = cellKey(x, y, z);
             Integer seen = now.get(k);
             int old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;
@@ -53,12 +64,13 @@ public final class Batch {
         return out.persistent();
     }
 
-    /// Returns `chunks` with the changes set, each `[pos st]`, or
-    /// `[pos old st]` when `at` is 2. The edits of one section apply
-    /// at once in order, the sections of a chunk from the top down so
-    /// that a new section takes the sky light of the one above.
-    /// Changes in absent chunks are dropped.
-    public static ChunkIndex setBlocks(ChunkIndex chunks, Object changes, int at) {
+    /// Returns `chunks` with the changes set, the new state of each at
+    /// place `stateAt` of the change: 1 for `[pos st]`, 2 for
+    /// `[pos old st]`. The edits of one section apply at once in
+    /// order, the sections of a chunk from the top down so that a new
+    /// section takes the sky light of the one above. Changes in absent
+    /// chunks are dropped.
+    public static ChunkIndex setBlocks(ChunkIndex chunks, Object changes, int stateAt) {
         Scratch<Batch[]> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
@@ -72,9 +84,9 @@ public final class Batch {
                 m.put(id, bs);
             }
             if (bs.length == 0) continue;
-            int si = (y >> 4) + 4;
+            int si = Chunk.sectionIndex(y);
             if (bs[si] == null) bs[si] = new Batch();
-            bs[si].add(((y & 15) << 8) | ((z & 15) << 4) | (x & 15), RT.intCast(RT.nth(c, at)));
+            bs[si].add(Section.index(x, y, z), RT.intCast(RT.nth(c, stateAt)));
         }
         long[] ids = m.sortedKeys();
         Object[] vals = new Object[ids.length];
@@ -101,14 +113,17 @@ public final class Batch {
         Scratch<ITransientCollection> m = new Scratch<>();
         for (Object c : (Iterable<?>) changes) {
             Object p = RT.nth(c, 0);
-            long id = ChunkIndex.id(RT.intCast(RT.nth(p, 0)) >> 4, RT.intCast(RT.nth(p, 2)) >> 4);
+            int cx = RT.intCast(RT.nth(p, 0)) >> 4;
+            int cz = RT.intCast(RT.nth(p, 2)) >> 4;
+            long id = ChunkIndex.id(cx, cz);
             ITransientCollection v = m.get(id);
             if (v == null) v = PersistentVector.EMPTY.asTransient();
             m.put(id, v.conj(vec(p, RT.nth(c, 2))));
         }
         ITransientMap r = PersistentHashMap.EMPTY.asTransient();
-        for (long id : m.sortedKeys())
+        for (long id : m.sortedKeys()) {
             r = r.assoc(id, Objects.requireNonNull(m.get(id)).persistent());
+        }
         return r.persistent();
     }
 

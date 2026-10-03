@@ -5,7 +5,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.phys :as phys])
-  (:import (collider.world.space Path PathTarget)))
+  (:import (collider.world.space Path PathMob PathNode PathTarget)))
 
 (set! *warn-on-reflection* true)
 
@@ -196,28 +196,24 @@
 
 (def ^:private cow-malus (malus-arr cow))
 
-(defn- flag ^long [x] (if x 1 0))
-
 (defn- malus-of ^doubles [mob]
   (if (identical? (:malus mob) (:malus cow))
     cow-malus
     (malus-arr mob)))
 
-(defn- body-of ^doubles [mob]
+(defn- walker-of ^PathMob [mob]
   (let [[px py pz] (:pos mob)]
-    (double-array [px py pz (:width mob) (:height mob)
-                   (:max-up-step mob)])))
-
-(defn- walk-flags ^longs [mob]
-  (long-array [(:max-fall mob) (flag (:float? mob))
-               (flag (:open-doors? mob)) (flag (:pass-doors? mob))
-               (flag (:walk-over-fences? mob))]))
+    (PathMob. px py pz (:width mob) (:height mob) (:max-up-step mob)
+              (:max-fall mob) (boolean (:float? mob))
+              (boolean (:open-doors? mob))
+              (boolean (:pass-doors? mob))
+              (boolean (:walk-over-fences? mob))
+              (int (:ctx mob 0)))))
 
 (defn- search-of [lv mob]
   (Path. (:chunks lv) (chunk/level-min-y lv) @type-ids @forced-ids
          @water-arr (block/collision-arr) (phys/kinds) (malus-of mob)
-         base-malus (body-of mob) (walk-flags mob)
-         (int (:ctx mob 0))))
+         base-malus (walker-of mob)))
 
 (defn context
   "Returns what one search over level lv knows about its mob.
@@ -303,13 +299,13 @@
   (mapv (fn [[x y z]] (PathTarget. (long x) (long y) (long z)))
         goals))
 
-(defn- node-map [^longs c ^long i]
-  {:x (aget c i) :y (aget c (+ i 1)) :z (aget c (+ i 2))
-   :type (nth path-types (aget c (+ i 3)))})
+(defn- node-map [^PathNode n]
+  {:x (.-x n) :y (.-y n) :z (.-z n)
+   :type (nth path-types (.kind n))})
 
 (defn- reconstruct [t reached?]
-  (let [c (Path/cells t)]
-    {:nodes          (mapv #(node-map c %) (range 0 (alength c) 4))
+  (let [c (Path/route t)]
+    {:nodes          (mapv node-map c)
      :target         (vec (Path/goal t))
      :reached?       reached?
      :dist-to-target (Path/gap t)}))

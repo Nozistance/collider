@@ -1,9 +1,8 @@
 package collider.world;
 
-/// The collision boxes of a block state as a body meets them, as
-/// `BlockState.getCollisionShape` with the `CollisionContext` of the
-/// body: scaffolding and powder snow depend on the body, bamboo and
-/// the speleothems on the position of the block.
+/// The collision boxes of a block state as a body meets them.
+/// Scaffolding and powder snow depend on the body, bamboo and the
+/// speleothems on the position of the block.
 public final class Collision {
 
     /// The box of a full cube.
@@ -13,18 +12,37 @@ public final class Collision {
 
     private static final double[] SNOW_FALLING = {0, 0, 0, 1, 0.9F, 1};
 
-    /// The kind of a block state whose collision shape depends on the
-    /// body that meets it or on the position of the block.
-    public static final byte PLAIN = 0,
-            SCAFFOLDING = 1,
-            SCAFFOLDING_HANGING = 2,
-            POWDER_SNOW = 3,
-            OFFSET_QUARTER = 4,
-            OFFSET_EIGHTH = 5;
+    private static final double EPSILON = 1.0E-7;
 
-    /// The flags of a body: it descends, it falls more than 2.5
-    /// blocks, it walks on powder snow, it is a falling block.
-    public static final int DESCENDING = 1, FALLING = 2, WALKER = 4, FALLING_BLOCK = 8;
+    /// The kind of a block state whose shape is its boxes.
+    public static final byte PLAIN = 0;
+
+    /// The kind of scaffolding that stands.
+    public static final byte SCAFFOLDING = 1;
+
+    /// The kind of scaffolding that hangs.
+    public static final byte SCAFFOLDING_HANGING = 2;
+
+    /// The kind of powder snow.
+    public static final byte POWDER_SNOW = 3;
+
+    /// The kind of a state offset by up to a quarter of a block.
+    public static final byte OFFSET_QUARTER = 4;
+
+    /// The kind of a state offset by up to an eighth of a block.
+    public static final byte OFFSET_EIGHTH = 5;
+
+    /// The flag of a body that descends.
+    public static final int DESCENDING = 1;
+
+    /// The flag of a body that falls more than 2.5 blocks.
+    public static final int FALLING = 2;
+
+    /// The flag of a body that walks on powder snow.
+    public static final int WALKER = 4;
+
+    /// The flag of a falling block.
+    public static final int FALLING_BLOCK = 8;
 
     /// Returns the boxes of `st` at the origin as an empty context
     /// meets them, or null when it has none. A state past the end of
@@ -47,7 +65,7 @@ public final class Collision {
     }
 
     private static boolean above(double bottom, int y, double top) {
-        return bottom > (double) y + top - 1.0E-5F;
+        return bottom > y + top - 1.0E-5F;
     }
 
     private static long seed(int x, int z) {
@@ -75,16 +93,14 @@ public final class Collision {
         return m;
     }
 
-    private static final double EPSILON = 1.0E-7;
-
     private static double at(int i, double lo, double hi) {
         return i == 0 ? lo : hi;
     }
 
     /// Returns true when the span from `f0` to `f1` of a shape and
-    /// the span from `s0` to `s1` of a body meet on one axis, as
-    /// `Shapes.joinIsNotEmpty` with `AND` merges their coordinates: a
-    /// coordinate within `1.0E-7` above the last one kept joins it.
+    /// the span from `s0` to `s1` of a body meet on one axis once
+    /// their coordinates merge. A coordinate within `1.0E-7` above
+    /// the last one kept joins it.
     public static boolean joins(double f0, double f1, double s0, double s1) {
         if (f1 - f0 < EPSILON || s1 - s0 < EPSILON) return false;
         if (f1 < s0 - EPSILON || s1 < f0 - EPSILON) return false;
@@ -119,12 +135,14 @@ public final class Collision {
     }
 
     private static boolean cell(double[] a, int o) {
-        return unit(a[o], a[o + 3]) && unit(a[o + 1], a[o + 4]) && unit(a[o + 2], a[o + 5]);
+        return unit(a[o], a[o + 3])
+                && unit(a[o + 1], a[o + 4])
+                && unit(a[o + 2], a[o + 5]);
     }
 
     /// Returns true when box `o` of `a`, a block box in blocks, meets
-    /// the body box `box` as `BlockCollisions` finds it: a whole cell
-    /// by any overlap, any other box as `joins` finds it.
+    /// the body box `box`. A whole cell meets by any overlap, any
+    /// other box as `joins` finds it.
     public static boolean meets(double[] a, int o, double[] box) {
         if (!cell(a, o)) return joins(a, o, box);
         return a[o + 3] > box[0]
@@ -148,18 +166,31 @@ public final class Collision {
     /// Returns the boxes of `st` at `x`, `y`, `z`, relative to the
     /// cell, that a body with its bottom at `bottom` and the `flags`
     /// meets, or null when none.
-    public static double[] shape(Object[] shapes, byte[] kinds, int st, int x, int y, int z, double bottom, int flags) {
+    public static double[] shape(
+            Object[] shapes,
+            byte[] kinds,
+            int st,
+            int x,
+            int y,
+            int z,
+            double bottom,
+            int flags
+    ) {
         int kind = kind(kinds, st);
         switch (kind) {
             case SCAFFOLDING, SCAFFOLDING_HANGING -> {
                 boolean still = (flags & DESCENDING) == 0;
                 if (still && above(bottom, y, 1.0)) return boxes(shapes, st);
-                return kind == SCAFFOLDING_HANGING && above(bottom, y, 0.0) ? UNSTABLE_BOTTOM : null;
+                boolean hangs = kind == SCAFFOLDING_HANGING && above(bottom, y, 0.0);
+                return hangs ? UNSTABLE_BOTTOM : null;
             }
             case POWDER_SNOW -> {
                 if ((flags & FALLING) != 0) return SNOW_FALLING;
                 if ((flags & FALLING_BLOCK) != 0) return CUBE;
-                return (flags & WALKER) != 0 && above(bottom, y, 1.0) && (flags & DESCENDING) == 0 ? CUBE : null;
+                boolean stands = (flags & WALKER) != 0
+                        && above(bottom, y, 1.0)
+                        && (flags & DESCENDING) == 0;
+                return stands ? CUBE : null;
             }
             case OFFSET_QUARTER -> {
                 double[] b = boxes(shapes, st);
