@@ -25,7 +25,7 @@
 (def ^:private kept-on-shear
   [:pos :vel :yaw :head-yaw :on-ground :breed-ready-at])
 
-(defn- variant ^long [e] (long (or (:color e) 0)))
+(defn- variant ^long [e] (long (or (:variant e) 0)))
 
 (defn- mutates? [t eid a b]
   (and (= (variant a) (variant b))
@@ -116,11 +116,11 @@
 
 (defn struck
   "Returns the deltas for a mooshroom that lightning bolt bid hits.
-  Its colour turns over, and the same bolt never turns it twice."
+  Its variant turns over, and the same bolt never turns it twice."
   [eid e bid]
   (when-not (= bid (:struck-by e))
     (let [snd (out/sound :mooshroom/convert (:pos e) loud-volume 1.0)]
-      [[:merge-entity eid {:color (- 1 (variant e)) :struck-by bid}]
+      [[:merge-entity eid {:variant (- 1 (variant e)) :struck-by bid}]
        (out/all snd)])))
 
 (defn bowl-result

@@ -107,7 +107,7 @@
    :voices         [:classic :moody]
    :food           "cow_food"
    :spawns-on      "animals_spawnable_on"
-   :spawn-color    coat})
+   :spawn-look     coat})
 
 (def ^:private water-walker
   (update path/cow :malus assoc :water 0.0))
@@ -115,14 +115,14 @@
 (def ^:private mooshroom
   (-> (assoc cow :ground :mycelium :voices [:classic]
              :spawns-on "mooshrooms_spawnable_on")
-      (dissoc :spawn-color)))
+      (dissoc :spawn-look)))
 
 (def types
   "The facts of each mob type."
   {:sheep     {:sounds        :sheep
                :food          "sheep_food"
                :spawns-on     "animals_spawnable_on"
-               :spawn-color   sheep-color}
+               :spawn-look    sheep-color}
    :cow       cow
    :mooshroom mooshroom
    :pig       {:sounds      :pig
@@ -132,7 +132,7 @@
                :eats-aloud? true
                :food        "pig_food"
                :spawns-on   "animals_spawnable_on"
-               :spawn-color coat}
+               :spawn-look  coat}
    :chicken   {:sounds      :chicken
                :baby-sounds :baby-chicken
                :voices      [:classic :picky]
@@ -141,12 +141,12 @@
                :fall-drag   0.6
                :walker      water-walker
                :spawns-on   "animals_spawnable_on"
-               :spawn-color coat}
+               :spawn-look  coat}
    :rabbit    {:sounds      :rabbit
                :block-steps? true
                :food        "rabbit_food"
                :spawns-on   "rabbits_spawnable_on"
-               :spawn-color rabbit-variant}})
+               :spawn-look  rabbit-variant}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -256,6 +256,8 @@
 
 (defn burning? [e] (boolean (:burning? e)))
 
+(defn- variant ^long [e] (long (or (:variant e) 0)))
+
 (defn metadata
   "Returns what clients see of mob e besides its movement."
   [e]
@@ -263,23 +265,28 @@
     :sheep (sheep-meta e)
     (:cow :pig :chicken)
     ((coat-meta (:type e))
-     [(coats (long (or (:color e) 0))) (voice-of (types (:type e)) e)
+     [(coats (variant e)) (voice-of (types (:type e)) e)
       (some? (:baby-until e)) (burning? e)])
     :mooshroom (mooshroom-meta
-                [(long (or (:color e) 0))
-                 (some? (:baby-until e)) (burning? e)])
+                [(variant e) (some? (:baby-until e)) (burning? e)])
     :rabbit (rabbit-metas
-             [(long (or (:color e) 0))
-              (some? (:baby-until e)) (burning? e)])))
+             [(variant e) (some? (:baby-until e)) (burning? e)])))
+
+(defn look-key
+  "Returns the key that holds how a mob of kind type looks. A sheep
+  wears a wool colour, and any other kind a variant."
+  [type]
+  (if (= :sheep type) :color :variant))
 
 (defn new-mob
-  "Returns a fresh mob of kind type at pos, with nothing on its mind."
-  [type pos color tick]
+  "Returns a fresh mob of kind type at pos, with nothing on its mind.
+  It looks as look says, a wool colour or a variant."
+  [type pos look tick]
   (cond-> {:type        type
            :pos         pos
            :vel         [0.0 0.0 0.0]
            :yaw         0.0 :pitch 0.0 :on-ground false
-           :color       color
+           (look-key type) look
            :task        nil
            :no-action   0
            :health      (max-health type)
@@ -298,21 +305,21 @@
 
 (defn egg-mob
   "Returns a mob hatched from a spawn egg in level dim.
-  The keys ks decide its colour, voice, yaw and follow range."
+  The keys ks decide its look, voice, yaw and follow range."
   [type pos ks tick dim]
-  (let [color-fn (get-in types [type :spawn-color] (fn [_ _] 0))
+  (let [look-fn (get-in types [type :spawn-look] (fn [_ _] 0))
         voices (count (get-in types [type :voices] [:classic]))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)
         voice (long (* voices (random/of-key (conj ks :voice))))
-        color (color-fn ks (biome/at dim pos))]
-    (assoc (new-mob type pos color tick)
+        look (look-fn ks (biome/at dim pos))]
+    (assoc (new-mob type pos look tick)
       :yaw yaw :head-yaw yaw :sound-variant voice
       :follow-bonus (follow-bonus ks))))
 
 (defn command-mob
   "Returns a mob summoned by a command in level dim. Its yaw and head
   yaw are drawn from 0 up to 2 pi, about 6.28 degrees. The keys ks
-  decide its yaw, colour and voice."
+  decide its yaw, look and voice."
   [type pos ks tick dim]
   (let [r (double (float (random/of-key (conj ks :yaw))))
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
@@ -323,7 +330,7 @@
 (defn natural-mob
   "Returns a mob that natural spawning puts at pos in level dim. Its
   body faces yaw and its head stays at zero. It is a baby when baby?
-  says so. The keys ks decide its colour, voice and follow range."
+  says so. The keys ks decide its look, voice and follow range."
   [type pos ks tick dim yaw baby?]
   (cond-> (assoc (egg-mob type pos ks tick dim)
             :yaw (double yaw) :head-yaw 0.0)
@@ -376,10 +383,11 @@
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."
   [e]
-  (let [n (long (or (:color e) 0))
+  (let [n (variant e)
         shroom (if (= 1 n) :brown :red)
+        wool (long (or (:color e) 0))
         components (case (:type e)
-                     :sheep {:sheep/color (dye-colors n)}
+                     :sheep {:sheep/color (dye-colors wool)}
                      :mooshroom {:mooshroom/variant shroom}
                      :chicken {:chicken/variant (coats n)}
                      :pig {:pig/variant (coats n)}

@@ -297,7 +297,7 @@
          (> (+ oy (double oh)) (- y 3.0)))))
 
 (defn- dreaded? [world e fear r oid o]
-  (and (not= :evil (mobs/rabbit-variants (:color e)))
+  (and (not= :evil (mobs/rabbit-variants (:variant e)))
        (fear world o) (boxed? e o)
        (sense/in-range? (:pos e) o r)
        (animal/in-sight? world e o)))
@@ -468,8 +468,8 @@
   (let [bio (biome/at (:dim world) nil)
         v (mobs/rabbit-variant [t eid :kit] bio)]
     (cond (animal/one-in? t eid :kit kit-chance) v
-          (< (animal/rnd t eid :kit-parent) 0.5) (:color b)
-          :else (:color a))))
+          (< (animal/rnd t eid :kit-parent) 0.5) (:variant b)
+          :else (:variant a))))
 
 (def spec
   "The goals of a rabbit.

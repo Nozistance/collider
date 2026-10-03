@@ -20,7 +20,7 @@
             after)))
 
 (defn- piglet-coat [_ t eid a b]
-  (if (< (animal/rnd t eid :variant) 0.5) (:color a) (:color b)))
+  (if (< (animal/rnd t eid :variant) 0.5) (:variant a) (:variant b)))
 
 (def spec
   "The goals of a pig.

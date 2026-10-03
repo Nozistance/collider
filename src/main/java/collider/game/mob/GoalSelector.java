@@ -16,7 +16,7 @@ import clojure.lang.Tuple;
 /// on the mob.
 public record GoalSelector(
         Object goals,
-        Object childColor,
+        Object childLook,
         int n,
         Object[] kinds,
         long[] prios,
@@ -30,7 +30,7 @@ public record GoalSelector(
         implements ILookup {
 
     private static final Keyword GOALS = Keyword.intern("goals");
-    private static final Keyword CHILD_COLOR = Keyword.intern("child-color");
+    private static final Keyword CHILD_LOOK = Keyword.intern("child-look");
     private static final Keyword TASK = Keyword.intern("task");
     private static final Keyword KIND = Keyword.intern("kind");
 
@@ -40,7 +40,7 @@ public record GoalSelector(
 
     public Object valAt(Object k, Object notFound) {
         if (k == GOALS) return goals;
-        if (k == CHILD_COLOR) return childColor;
+        if (k == CHILD_LOOK) return childLook;
         return notFound;
     }
 
