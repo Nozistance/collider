@@ -7,6 +7,9 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:private kept
+  [:equipment-modifiers :last-equipment :lost-modifiers])
+
 (defn player-deltas
   "Returns the deltas that move the modifiers of the equipment of the
   player entry p that changed since its last turn."
@@ -15,5 +18,5 @@
         [e' attrs] (attribute/equipped e (player/equipment e))]
     (when-not (identical? e e')
       (cons [:merge-entity eid
-             (select-keys e' [:equipment-modifiers :last-equipment])]
+             (select-keys e' kept)]
             (account/changed-deltas eid e' attrs)))))

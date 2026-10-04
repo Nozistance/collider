@@ -93,6 +93,20 @@
   (when (= :creative (:game-mode e))
     (some-> (creative-reach attr) vector)))
 
+(defn- taken-over?
+  "Returns true when the modifier id of attribute a that an effect
+  puts is gone: equipment put its own under the id after it, or took
+  the id off."
+  [e a id]
+  (or (contains? (get-in e [:equipment-modifiers a]) id)
+      (contains? (get-in e [:lost-modifiers a]) id)))
+
+(defn- effect-modifiers [e effects attr]
+  (for [[k i] (effect/in-order effects)
+        [a id amount op] (templates k)
+        :when (and (= a attr) (not (taken-over? e a id)))]
+    [id (* (double amount) (inc (long (:amplifier i)))) op]))
+
 (defn modifiers
   "Returns the modifiers of attribute attr of entity e under effects.
   A sprinting player adds the sprint boost to its movement speed, a
@@ -100,12 +114,22 @@
   [e effects attr]
   (-> (vec (sprint-modifiers e attr))
       (into (mode-modifiers e attr))
-      (into (for [[k i] (effect/in-order effects)
-                  [a id amount op] (templates k)
-                  :when (= a attr)]
-              [id (* (double amount) (inc (long (:amplifier i))))
-               op]))
+      (into (effect-modifiers e effects attr))
       (into (vals (get (:equipment-modifiers e) attr)))))
+
+(defn- unheld [e k a id]
+  (if (contains? (get-in e [k a]) id)
+    (update-in e [k a] (if (= k :lost-modifiers) disj dissoc) id)
+    e))
+
+(defn reclaimed
+  "Returns entity e once effect k puts or takes off its modifiers.
+  Each id of k goes from equipment first, as removeModifier does."
+  [e k]
+  (reduce (fn [e [a id]]
+            (-> (unheld e :equipment-modifiers a id)
+                (unheld :lost-modifiers a id)))
+          e (templates k)))
 
 (def ^:private equipment-slots
   [:mainhand :offhand :feet :legs :chest :head :body :saddle])
@@ -149,15 +173,27 @@
     [(:item s) (long (:count s 1)) (not-empty (:components s))
      (not-empty (:removed s))]))
 
-(defn- dropped [[ms ts :as acc] [a [id]]]
-  (if (contains? (get ms a) id)
-    [(update ms a dissoc id) (conj ts a)]
-    acc))
+(defn- effect-holds? [e a id]
+  (some (fn [k] (some (fn [[a' id']] (and (= a a') (= id id')))
+                      (templates k)))
+        (keys (:effects e))))
+
+(defn- dropped
+  "Returns [e ts] once the modifier id of attribute a goes, whoever
+  put it. An effect that put it loses it until it puts it anew."
+  [[e ts] [a [id]]]
+  (let [own? (contains? (get-in e [:equipment-modifiers a]) id)
+        fx? (effect-holds? e a id)
+        shown? (or own? (and fx? (not (taken-over? e a id))))]
+    [(cond-> e
+       own? (update-in [:equipment-modifiers a] dissoc id)
+       fx? (update-in [:lost-modifiers a] (fnil conj #{}) id))
+     (cond-> ts shown? (conj a))]))
 
 (defn- taken [has?]
-  (fn [[ms ts :as acc] [a [id :as m]]]
+  (fn [[e ts :as acc] [a [id :as m]]]
     (if (has? a)
-      [(assoc-in ms [a id] m) (conj ts a)]
+      [(assoc-in e [:equipment-modifiers a id] m) (conj ts a)]
       acc)))
 
 (defn- old-modifiers [e slot]
@@ -174,7 +210,7 @@
              equipment-slots)))
 
 (defn- moved [e equipment slots]
-  (let [acc [(:equipment-modifiers e {}) #{}]
+  (let [acc [(update e :equipment-modifiers #(or % {})) #{}]
         acc (reduce dropped acc (mapcat #(old-modifiers e %) slots))]
     (reduce (taken (base-values e)) acc
             (mapcat #(new-modifiers equipment %) slots))))
@@ -187,11 +223,11 @@
   A broken stack adds none."
   [e equipment]
   (let [slots (changed-slots e equipment)
-        [ms ts] (moved e equipment slots)]
+        [e' ts] (moved e equipment slots)]
     (if (empty? slots)
       [e #{}]
-      [(assoc e :equipment-modifiers ms
-              :last-equipment (select-keys equipment equipment-slots))
+      [(assoc e' :last-equipment
+              (select-keys equipment equipment-slots))
        ts])))
 
 (defn- summed ^double [ms op]

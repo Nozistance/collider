@@ -30,7 +30,9 @@
     acc))
 
 (defn- touched [acc k]
-  (update acc :dirty into (attribute/effect-attributes k)))
+  (-> acc
+      (update :dirty into (attribute/effect-attributes k))
+      (update :e attribute/reclaimed k)))
 
 (defn- put-fx [acc k i]
   (-> acc
@@ -189,6 +191,12 @@
   (let [a (:absorption (:e acc))]
     (when (not= a (:absorption e0)) {:absorption a})))
 
+(defn- modifier-change [acc e0]
+  (let [e (:e acc)
+        ks [:equipment-modifiers :lost-modifiers]]
+    (when-not (every? #(identical? (get e %) (get e0 %)) ks)
+      (select-keys e ks))))
+
 (defn- ambience-kept
   "The ambience the entity data keeps once the last effect is gone."
   [acc e0]
@@ -202,6 +210,7 @@
   (let [acc (refreshed acc)
         m (merge (when (:changed? acc) {:effects (:fx acc)})
                  (absorption-change acc e0)
+                 (modifier-change acc e0)
                  (ambience-kept acc e0))]
     (concat (when (seq m) [[:merge-entity (:eid acc) m]])
             (:ds acc)
