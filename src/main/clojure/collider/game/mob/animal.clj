@@ -290,13 +290,13 @@
     [[(- x w 8.0) (- y 4.0) (- z w 8.0)]
      [(+ x w 8.0) (+ y h 4.0) (+ z w 8.0)]]))
 
-(defn- meets? [[lo hi] o]
+(defn- meets? [[[x0 y0 z0] [x1 y1 z1]] o]
   (let [p (:pos o) [w h] (mobs/box-of o)
         x (double (v/x p)) y (double (v/y p)) z (double (v/z p))
         w (double w) h (double h)]
-    (and (< (double (v/x lo)) (+ x w)) (> (double (v/x hi)) (- x w))
-         (< (double (v/y lo)) (+ y h)) (> (double (v/y hi)) y)
-         (< (double (v/z lo)) (+ z w)) (> (double (v/z hi)) (- z w)))))
+    (and (< (double x0) (+ x w)) (> (double x1) (- x w))
+         (< (double y0) (+ y h)) (> (double y1) y)
+         (< (double z0) (+ z w)) (> (double z1) (- z w)))))
 
 (defn- parent? [eid e zone oid o]
   (and (not= oid eid) (= (:type e) (:type o)) (not (mobs/baby? o))
