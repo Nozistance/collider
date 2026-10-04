@@ -2,7 +2,7 @@
   "Rabbit hops, goals, garden raids and kits."
   (:require [collider.game.changes :as changes]
             [collider.game.delta :as delta]
-            [collider.game.entity :as entity]
+            [collider.game.entity.gen :as gen]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.animal :as animal]
@@ -74,9 +74,9 @@
   The control keeps what it aims at."
   [e ^double s]
   (let [m (move-of e) w (wanted-speed e s)]
-    (entity/with e {:nav (nav-speed e s)
-                    :move (rewanted m w)
-                    :hop (next-speed e w)})))
+    (gen/with e {:nav (nav-speed e s)
+                 :move (rewanted m w)
+                 :hop (next-speed e w)})))
 
 (defn- aimed-at
   "Returns rabbit e with the path state nav and the move m that its
@@ -84,7 +84,7 @@
   [e nav ^Steer m]
   (let [w (wanted-speed e (double (:mult m)))
         m (if (== w (double (:mult m))) m (rewanted m w))]
-    (entity/with e {:nav nav :move m :hop (next-speed e w)})))
+    (gen/with e {:nav nav :move m :hop (next-speed e w)})))
 
 (defn- pitch ^double [t eid]
   (let [r #(double (float (animal/rnd t eid [:hop-pitch %])))
@@ -175,7 +175,7 @@
   [e]
   (let [e (if (:jump e) (start-jumping e) e)
         j (boolean (:jumping? (hop e)))]
-    (if (= j (boolean (:jump e))) e (entity/with e {:jump j}))))
+    (if (= j (boolean (:jump e))) e (gen/with e {:jump j}))))
 
 (defn steered
   "Returns rabbit e after its navigation, its own step and its move
@@ -243,7 +243,7 @@
   (let [hit? (and d (collided? d u))]
     (if (= hit? (boolean (:hit? (hop e))))
       e
-      (entity/with e {:hop (assoc (hop e) :hit? hit?)}))))
+      (gen/with e {:hop (assoc (hop e) :hit? hit?)}))))
 
 (defn- aged-hop [h]
   (let [n (long (:ticks h 0)) d (long (:duration h 0))]
@@ -269,7 +269,7 @@
   (let [h (hop e)
         ds (hop-deltas eid e t h)
         h' (aged-hop (dissoc h :sound-at))]
-    [(if (= h h') e (entity/with e {:hop h'})) (not-empty ds)]))
+    [(if (= h h') e (gen/with e {:hop h'})) (not-empty ds)]))
 
 (def ^:private panic
   (assoc (animal/goal :panic)
@@ -322,7 +322,7 @@
 
 (defn- avoid-tick [_ _ _ e _ _]
   (let [s (animal/goal-speed e :avoid)]
-    [(entity/with e {:nav (nav-speed e s)}) nil]))
+    [(gen/with e {:nav (nav-speed e s)}) nil]))
 
 (defn- avoid
   "Returns the goal to flee what fear marks within r. The killer bunny
@@ -384,7 +384,7 @@
   (let [wait (raid-wait t eid)
         cell (garden world e h)
         h (assoc h :raid-wait wait :can-raid? (some? cell))
-        e (entity/with e {:hop h})]
+        e (gen/with e {:hop h})]
     (if cell
       [(assoc (toward-crop world e cell)
          :task {:kind :raid :cell cell :tries 0 :stay (stay t eid)})
@@ -430,7 +430,7 @@
         ok? (and (:can-raid? h) (carrot-at? world cell))
         h (cond-> (assoc h :can-raid? false :raid-wait 10)
             ok? (assoc :carrots carrot-wait))]
-    [(entity/with e {:hop h})
+    [(gen/with e {:hop h})
      (when ok?
        (delta/authored (eaten world eid cell)
                        (delta/entity-author eid e)))]))

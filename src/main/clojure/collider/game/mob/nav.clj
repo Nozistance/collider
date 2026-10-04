@@ -1,6 +1,6 @@
 (ns collider.game.mob.nav
   "Ground navigation of mobs."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.entity.gen :as gen]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
@@ -256,4 +256,4 @@
   The mob walks its path on and tells its move control where to go."
   [world e]
   (let [[e nav m] (aim world e)]
-    (if nav (entity/with e {:nav nav :move m}) e)))
+    (if nav (gen/with e {:nav nav :move m}) e)))

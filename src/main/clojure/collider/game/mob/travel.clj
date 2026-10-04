@@ -1,7 +1,7 @@
 (ns collider.game.mob.travel
   "Mob moves in one tick, with walking, jumping, falling, swimming,
   shoving and landing."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.entity.gen :as gen]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.push :as push]
@@ -428,16 +428,16 @@
   [e [_ _ og cd sup nb?] pos fall v g rest? [yaw hy body] look
    walked came]
   (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
-    (entity/with e {:pos pos :vel v :on-ground og :jump-cd cd
-                    :fall fall
-                    :arrived came
-                    :support sup :no-blocks? nb?
-                    :wet? (kept-flag (if rest? false (:wet? e)) w)
-                    :in-lava? (kept-flag (:in-lava? e) l)
-                    :yaw yaw :head-yaw hy :body body
-                    :pitch (if look (nth look 1) (:pitch e))
-                    :look (if look (nth look 2) (:look e))
-                    :walked walked})))
+    (gen/with e {:pos pos :vel v :on-ground og :jump-cd cd
+                 :fall fall
+                 :arrived came
+                 :support sup :no-blocks? nb?
+                 :wet? (kept-flag (if rest? false (:wet? e)) w)
+                 :in-lava? (kept-flag (:in-lava? e) l)
+                 :yaw yaw :head-yaw hy :body body
+                 :pitch (if look (nth look 1) (:pitch e))
+                 :look (if look (nth look 2) (:look e))
+                 :walked walked})))
 
 (defn- body-of-move [world e pos look]
   (let [moved? (shifted? (:pos e) pos)

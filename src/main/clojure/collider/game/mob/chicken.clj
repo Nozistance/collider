@@ -1,6 +1,6 @@
 (ns collider.game.mob.chicken
   "Chicken coats, slow falls and laid eggs."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.game.entity.gen :as gen]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.gift :as gift]
             [collider.game.mob.mobs :as mobs]
@@ -34,7 +34,7 @@
     (if (or (:on-ground e) (not (neg? (v/y vel))))
       e
       (let [vy (* (v/y vel) fall-drag)]
-        (entity/with e {:vel (v/v3 (v/x vel) vy (v/z vel))})))))
+        (gen/with e {:vel (v/v3 (v/x vel) vy (v/z vel))})))))
 
 (defn- laid [t eid e]
   (gift/gift-deltas t eid e :chicken-lay :chicken/egg :lay))
@@ -51,9 +51,9 @@
         wait (egg-time t eid)]
     (cond
       (not (layer? e)) [e nil]
-      (nil? at) [(entity/with e {:egg-at (+ (long t) -1 wait)}) nil]
+      (nil? at) [(gen/with e {:egg-at (+ (long t) -1 wait)}) nil]
       (< (long t) (long at)) [e nil]
-      :else [(entity/with e {:egg-at (+ (long t) wait)})
+      :else [(gen/with e {:egg-at (+ (long t) wait)})
              (laid t eid e)])))
 
 (defn ai-step

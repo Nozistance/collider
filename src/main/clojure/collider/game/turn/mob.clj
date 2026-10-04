@@ -6,6 +6,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.gen :as gen]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.brain :as brain]
             [collider.game.mob.clock :as clock]
@@ -153,8 +154,8 @@
 
 (defn- spent-jump [e dead?]
   (cond-> e
-    (:jump e) (entity/with {:jump false})
-    dead? (entity/with {:move (Steer/halted (:move e))})))
+    (:jump e) (gen/with {:jump false})
+    dead? (gen/with {:move (Steer/halted (:move e))})))
 
 (defn- move-speed ^double [e]
   (if-let [fx (not-empty (:effects e))]

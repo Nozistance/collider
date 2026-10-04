@@ -1,6 +1,7 @@
 (ns collider.game.mob.control
   "The move, jump, body and head controls of a mob."
   (:require [collider.game.entity :as entity]
+            [collider.game.entity.gen :as gen]
             [collider.game.mob.mobs :as mobs]
             [collider.num :as num]
             [collider.vec :as v]
@@ -75,24 +76,24 @@
         yd (- (double (:y m)) (v/y pos))
         zd (- (double (:z m)) (v/z pos))]
     (if (< (+ (* xd xd) (* yd yd) (* zd zd)) min-speed-sqr)
-      (entity/with e {:nav nav :move (Steer/arrived m)})
+      (gen/with e {:nav nav :move (Steer/arrived m)})
       (let [jump? (boolean (jumps? (:chunks world) e xd yd zd width))
             m (Steer/driven m (* (double (:mult m)) attr) jump?)
             yaw (turned e xd zd)]
         (if jump?
-          (entity/with e {:nav nav :yaw yaw :move m :jump true})
-          (entity/with e {:nav nav :yaw yaw :move m}))))))
+          (gen/with e {:nav nav :yaw yaw :move m :jump true})
+          (gen/with e {:nav nav :yaw yaw :move m}))))))
 
 (defn- jumping-tick [e nav m ^double attr]
   (let [landed? (boolean (or (:on-ground e) (in-liquid? e)))
         s (* (double (:mult m)) attr)]
-    (entity/with e {:nav nav :move (Steer/jumped m s landed?)})))
+    (gen/with e {:nav nav :move (Steer/jumped m s landed?)})))
 
 (defn- waiting [e nav m]
   (let [h (Steer/halted m)]
     (if (and (identical? h (:move e)) (identical? nav (:nav e)))
       e
-      (entity/with e {:nav nav :move h}))))
+      (gen/with e {:nav nav :move h}))))
 
 (defn tick
   "Returns mob e after one tick of its move and jump controls, for
