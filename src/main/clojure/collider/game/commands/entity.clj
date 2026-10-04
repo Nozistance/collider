@@ -6,6 +6,7 @@
              :refer [answer entity-name fail name-list say success]]
             [collider.game.effect.account :as account]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
             [collider.game.player :as player]))
 
@@ -36,7 +37,8 @@
         dim (sel/source-dim world)
         kind {:translate (str "entity.minecraft." (name type))}
         msg {:translate "commands.summon.success" :with [kind]}
-        mob (mobs/command-mob type at [t eid :summon at] t dim)]
+        place (variant/place world dim at)
+        mob (mobs/command-mob type at [t eid :summon at] t place)]
     (concat (sel/in-level world dim [[:spawn-entity mob]])
             (success [(out/to eid (out/system-chat msg))]))))
 

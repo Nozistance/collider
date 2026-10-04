@@ -5,6 +5,7 @@
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.variant :as variant]
             [collider.game.areas :as areas]
             [collider.num :as num]
             [collider.par :as par]
@@ -260,7 +261,9 @@
 (defn- born [ctx cid cat tr size]
   (let [{:keys [g ll kind pos]} tr t (:t ctx)
         yaw (float (* 360.0 (roll t cid [cat g :yaw] ll)))]
-    (mobs/natural-mob (:type kind) pos [t cid cat g ll] t (:dim ctx)
+    (mobs/natural-mob (:type kind) pos [t cid cat g ll] t
+                      (assoc (:place ctx)
+                        :biome (biome/at (:dim ctx) pos))
                       yaw (baby? ctx cid cat tr size))))
 
 (defn- added [acc ctx cat mob]
@@ -320,6 +323,7 @@
      :ticking (areas/ticking-chunks w)
      :counted (counted-chunks w) :players (players-of w)
      :biome (biome-of w) :peaceful? (zero? (difficulty/id w))
+     :place (variant/place w dim nil)
      :despawn (into {} (map (fn [[c f]] [c (:despawn f)]))
                     (spawn/categories))
      :spawn (when (= dim (:world-spawn-dimension w :overworld))

@@ -43,7 +43,8 @@
    (get json "monster_spawn_block_light_limit")
    :skybox (data/kebab (get json "skybox" "overworld"))
    :cardinal-light (data/kebab (get json "cardinal_light" "default"))
-   :attributes (attributes json)))
+   :attributes (attributes json)
+   :timelines (data/holder-set "timeline" (get json "timelines" []))))
 
 (defn- dimension-type [json]
   (let [clock (get json "default_clock")]
