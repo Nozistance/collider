@@ -1,7 +1,7 @@
 package collider.game.mob;
 
+import collider.world.LongIntMap;
 import java.util.Arrays;
-import java.util.Comparator;
 
 /// The groups of bodies that one tick of movement cannot bring
 /// together. Bodies share a group when their cells of the push grid
@@ -27,40 +27,14 @@ public final class Islands {
         }
     }
 
-    private static int[] table(long[] cells) {
-        int size = Integer.highestOneBit(Math.max(4, cells.length * 4));
-        int[] t = new int[size];
-        Arrays.fill(t, -1);
-        for (int i = 0; i < cells.length; i++) {
-            int h = slot(cells[i], size);
-            while (t[h] >= 0) h = (h + 1) & (size - 1);
-            t[h] = i;
-        }
-        return t;
-    }
-
-    private static int slot(long k, int size) {
-        long h = k * 0x9E3779B97F4A7C15L;
-        return (int) (h >>> 40) & (size - 1);
-    }
-
-    private static int find(int[] t, long[] cells, long k) {
-        int size = t.length;
-        for (int h = slot(k, size); t[h] >= 0; h = (h + 1) & (size - 1)) {
-            if (cells[t[h]] == k) return t[h];
-        }
-        return -1;
-    }
-
-    private static int[] linked(long[] cells, int[] t) {
-        int m = cells.length;
+    private static int[] linked(long[] cells, int m, LongIntMap at) {
         int[] up = new int[m];
         for (int i = 0; i < m; i++) up[i] = i;
         for (int i = 0; i < m; i++) {
             long cx = (int) (cells[i] >> 32), cz = (int) cells[i];
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dz = -1; dz <= 1; dz++) {
-                    int j = find(t, cells, key(cx + dx, cz + dz));
+                    int j = at.get(key(cx + dx, cz + dz));
                     if (j > i) join(up, i, j);
                 }
             }
@@ -68,29 +42,20 @@ public final class Islands {
         return up;
     }
 
-    private static long[] distinct(long[] keys) {
-        long[] s = keys.clone();
-        Arrays.sort(s);
-        int m = 0;
-        for (int i = 0; i < s.length; i++) {
-            if (m == 0 || s[m - 1] != s[i]) s[m++] = s[i];
-        }
-        return Arrays.copyOf(s, m);
-    }
-
     private static int[] byId(long[] eids) {
         int n = eids.length;
-        Integer[] order = new Integer[n];
+        int[] out = new int[n];
         boolean sorted = true;
         for (int i = 0; i < n; i++) {
-            order[i] = i;
+            out[i] = i;
             sorted &= i == 0 || eids[i - 1] < eids[i];
         }
-        if (!sorted) {
-            Arrays.sort(order, Comparator.comparingLong(i -> eids[i]));
-        }
-        int[] out = new int[n];
-        for (int i = 0; i < n; i++) out[i] = order[i];
+        if (sorted) return out;
+        LongIntMap at = new LongIntMap(n);
+        for (int i = 0; i < n; i++) at.put(eids[i], i);
+        long[] s = eids.clone();
+        Arrays.sort(s);
+        for (int k = 0; k < n; k++) out[k] = at.get(s[k]);
         return out;
     }
 
@@ -99,18 +64,28 @@ public final class Islands {
     /// the groups are in the order of their first id.
     public static int[][] of(long[] eids, long[] keys) {
         int n = eids.length;
-        long[] cells = distinct(keys);
-        int[] t = table(cells);
-        int[] up = linked(cells, t);
+        LongIntMap at = new LongIntMap(n);
+        long[] cells = new long[n];
+        int[] cell = new int[n];
+        int m = 0;
+        for (int i = 0; i < n; i++) {
+            int c = at.get(keys[i]);
+            if (c < 0) {
+                c = m++;
+                at.put(keys[i], c);
+                cells[c] = keys[i];
+            }
+            cell[i] = c;
+        }
+        int[] up = linked(cells, m, at);
         int[] order = byId(eids);
-        int[] group = new int[cells.length];
+        int[] group = new int[m];
         Arrays.fill(group, -1);
         int[] sizes = new int[n];
         int[] of = new int[n];
         int g = 0;
         for (int k = 0; k < n; k++) {
-            int i = order[k];
-            int r = root(up, find(t, cells, keys[i]));
+            int r = root(up, cell[order[k]]);
             if (group[r] < 0) group[r] = g++;
             of[k] = group[r];
             sizes[of[k]]++;
