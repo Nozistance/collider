@@ -425,6 +425,7 @@
     (:player? src)
     (assoc :hurt-by-player-until (+ (long tick) player-memory)
            :last-hurt-by-player (:uuid (:attacker src)))
+    (instance? Mob e) (assoc :last-hurt [src tick])
     (and (instance? Mob e) (not (identical? generic src)))
     (assoc :hurt-cause (:type src))
     (and (instance? Mob e) (not (pos? (double (:health e)))))
