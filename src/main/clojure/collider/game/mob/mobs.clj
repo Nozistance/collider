@@ -364,20 +364,13 @@
   ^double [e]
   (size/eye e))
 
-(def ^:const legacy-fluid-eye
-  "The share of its height at which a mob tests the depth of the fluid
-  it jumps in, in place of its real eye."
-  0.85)
+(def ^:private ^:const shallow-eye 0.4)
 
-(def ^:const legacy-look-eye
-  "The share of its height at which a mob looks and is looked at, in
-  place of its real eye."
-  0.95)
-
-(def ^:const legacy-player-eye
-  "The height above its feet at which a mob sees the eye of a player,
-  in place of the eye of its pose."
-  1.62)
+(defn fluid-jump-threshold
+  "Returns how deep the fluid around mob e must be before it swims
+  up. A mob with its eyes below 0.4 swims up in any fluid."
+  ^double [e]
+  (if (< (eye-height e) shallow-eye) 0.0 0.4))
 
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."

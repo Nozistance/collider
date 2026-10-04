@@ -166,13 +166,13 @@
   bodies do not move it yet."
   [world tempters eid e t]
   (let [[e pre] (living/based world eid e)
-        [half height] (mobs/box-of e)
+        [half _] (mobs/box-of e)
         speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
         e1 (if dead? e1 (steered world eid e1 speed half))
-        look (when-not dead? (control/look-of world e1 height t))]
+        look (when-not dead? (control/look-of world e1 t))]
     [e1 look ds say-ds pre]))
 
 (defn- step-mob

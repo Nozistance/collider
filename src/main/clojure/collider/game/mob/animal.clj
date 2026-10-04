@@ -63,8 +63,6 @@
 
 (def ^:private ^:const ticks-per-second 20)
 
-(def ^:private ^:const jump-threshold 0.4)
-
 (def ^:private ^:const float-jump-chance 0.8)
 
 (def rnd
@@ -135,8 +133,11 @@
 
 (defn- other [world oid] (get (:entities world) oid))
 
-(defn- glance [e oid t]
-  (assoc e :look {:target oid :until (+ (long t) 2)}))
+(defn- glance
+  ([e oid t] (glance e oid t nil))
+  ([e oid t speed]
+   (assoc e :look (cond-> {:target oid :until (+ (long t) 2)}
+                    speed (assoc :speed speed)))))
 
 (defn- panic-pos [world eid e t]
   (or (when (:burning? e) (look-for-water world e))
@@ -225,11 +226,14 @@
 
 (def ^:private ^:const tempt-stop-sq 6.25)
 
+(def ^:private ^:const tempt-look-speed 95.0)
+
 (defn- tempt-tick [kind lures]
   (fn [_ world _ e t tempters]
     (let [pid (tempter e lures tempters)
           o (other world pid)
-          e (glance (assoc-in e [:task :player] pid) pid t)]
+          e (glance (assoc-in e [:task :player] pid) pid t
+                    tempt-look-speed)]
       [(cond
          (nil? o) e
          (< (v/dist-sq (:pos e) (:pos o)) tempt-stop-sq) (nav/stop e)
@@ -342,9 +346,12 @@
     (reduce #(nearer world e eye %1 %2) nil
             (level/player-entries world))))
 
-(defn- look-until [t eid]
-  (+ (long t) look-ticks
-     (long (* look-ticks (rnd t eid :look-time)))))
+(defn- look-until
+  "Returns the tick at which a look at a player begun at tick t ends.
+  The goal counts its time in passes of the selector."
+  [t eid]
+  (let [n (+ look-ticks (long (* look-ticks (rnd t eid :look-time))))]
+    (+ (long t) (* 2 (reduced-delay n)))))
 
 (defn- start-look-player [world eid e t _]
   (when (< (rnd t eid :look) look-chance)
@@ -370,13 +377,22 @@
 (defn- looking-around? [_ e t _]
   (>= (long (:until (:task e))) (long t)))
 
+(defn- stop-look-around
+  "Returns mob e done looking around at tick t. Its head keeps to the
+  way it looked for the rest of the tick."
+  [e t]
+  (let [l (:look e)]
+    (assoc e :task nil
+           :look (when l (assoc l :until (inc (long t)))))))
+
 (defn- afloat? [world e _ _]
   (let [[half height] (mobs/box-of e)
         chunks (:chunks world)
         h (if (phys/dry? chunks (:pos e) half height)
             0.0
             (liquid/fluid-height chunks (:pos e) half height :water))]
-    (or (> h jump-threshold) (boolean (:in-lava? e)))))
+    (or (> h (mobs/fluid-jump-threshold e))
+        (boolean (:in-lava? e)))))
 
 (defn- start-float [world eid e t tempters]
   (when (afloat? world e t tempters) [(assoc e :float? true) nil]))
@@ -408,8 +424,7 @@
     :running? (fn [e t] (some? (look-goal e t)))
     :stop (fn [e _] (assoc e :look nil))}
    {:kind :look-around :flags #{:move :look} :start start-look-around
-    :continue? looking-around?
-    :stop (fn [e _] (assoc e :task nil :look nil))}])
+    :continue? looking-around? :stop stop-look-around}])
 
 (defn goal
   [k]
