@@ -278,7 +278,8 @@
 
 (defn saved
   "Returns entity e as the data a save keeps at game tick tick.
-  The rest starts fresh when loaded."
+  The rest starts fresh when loaded. A frozen mob keeps the time its
+  clocks had when they stopped."
   [e tick]
   (let [k (kind (:type e))]
     (if (= :area-effect-cloud k)
@@ -287,7 +288,7 @@
       (cond-> (into (base e)
                     (filter (comp some? val))
                     (select-keys e (kept k)))
-        (= :mob k) (saved-timers e (long tick))
+        (= :mob k) (saved-timers e (long (or (:frozen-at e) tick)))
         (:carrots (:hop e)) (assoc :carrots (:carrots (:hop e)))))))
 
 (defn- still-axis ^double [^double a]
