@@ -473,7 +473,7 @@
 (def ^:private type-rules
   (into {} (for [[types f] by-type, t types] [t f])))
 
-(defn- stair-props [{:keys [yaw top?] :as ctx}]
+(defn- stair-props [{:keys [top?] :as ctx}]
   (assoc (yaw-facing ctx) :half (if top? :top :bottom)))
 
 (defn- class-rule [t b]

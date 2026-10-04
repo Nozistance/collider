@@ -1,7 +1,6 @@
 (ns collider.world.light
   "Block light, sky light, and the sky brightness of the day cycle."
-  (:require [collider.world.block :as block]
-            [collider.world.chunk :as chunk])
+  (:require [collider.world.block :as block])
   (:import (collider.world Light)))
 
 (set! *warn-on-reflection* true)

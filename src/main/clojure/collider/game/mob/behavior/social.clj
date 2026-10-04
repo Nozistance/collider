@@ -150,7 +150,7 @@
              (<= (long t) (long (:spawn (b/run-of e i))))
              (not (panicking? e t)) (not (panicking? o t)))))))
 
-(defn- love-tick [kind speed close spec]
+(defn- love-tick [speed close spec]
   (fn [w eid e t i]
     (let [pid (b/recall e :breed-target t)
           o (c/other w pid)
@@ -184,5 +184,5 @@
                    (some? (partner-of w eid e t kind))))
     :start (love-start kind speed close)
     :continue? (loving? kind)
-    :tick (love-tick kind speed close {:child-look child-look})
+    :tick (love-tick speed close {:child-look child-look})
     :stop unloved :tells? mobs/in-love?}))

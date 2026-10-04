@@ -7,7 +7,6 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.mode :as game-mode]
-            [collider.game.out :as out]
             [collider.game.apply :as apply]
             [collider.game.player :as player]
             [collider.game.systems.blocks.bed :as bed]

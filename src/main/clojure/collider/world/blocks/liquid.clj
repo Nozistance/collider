@@ -500,7 +500,7 @@
   (or (bubble-column? below) (makes-column? below)))
 
 (defn- column-shaped?
-  [chunks [x y z :as p] side]
+  [chunks [x y z] side]
   (let [below (raw-at chunks x (dec (long y)) z)
         [dx dy dz] (when side (dir/offset side))
         nst (when side

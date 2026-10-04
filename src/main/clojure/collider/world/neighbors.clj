@@ -492,7 +492,7 @@
             s (set-block s ctx c update/all update-limit)]
         [s (< n (write-count s))]))))
 
-(defn- cell-placed [s ctx [p st :as c] strict?]
+(defn- cell-placed [s ctx [p :as c] strict?]
   (let [n (write-count s)
         c (if strict? c (command-state (chunks s) ctx c))
         f (if strict? update/strict update/silent)

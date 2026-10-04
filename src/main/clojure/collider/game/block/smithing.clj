@@ -58,7 +58,7 @@
         (stack/put (assoc base :count 1) :trim trim)))))
 
 (defn assemble
-  [r template base addition]
+  [r _template base addition]
   (when r
     (if (= :trim (:type r))
       (trimmed r base addition)

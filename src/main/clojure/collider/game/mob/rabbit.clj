@@ -296,7 +296,7 @@
     (and (< oy (+ y (double h) 3.0))
          (> (+ oy (double oh)) (- y 3.0)))))
 
-(defn- dreaded? [world e fear r oid o]
+(defn- dreaded? [world e fear r _oid o]
   (and (not= :evil (mobs/rabbit-variants (:variant e)))
        (fear world o) (boxed? e o)
        (sense/in-range? (:pos e) o r)

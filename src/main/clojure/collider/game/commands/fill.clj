@@ -213,7 +213,7 @@
        (chunks-at? (sel/level-view world td) (:dest a)
                    (mapv peek d))))
 
-(defn- overlapping [world eid a fd td [b _ d]]
+(defn- overlapping [eid a fd td [b _ d]]
   (when (and (not (#{"force" "move"} (:mode a))) (= fd td)
              (overlap? b d))
     (fail eid "commands.clone.overlap")))
@@ -225,7 +225,7 @@
         [b :as boxes] (clone-boxes a)]
     (if-let [[k & with] (clone-error world a fd td)]
       (apply fail eid k with)
-      (or (overlapping world eid a fd td boxes)
+      (or (overlapping eid a fd td boxes)
           (too-big world eid "commands.clone.toobig" b)
           (when-not (clone-loaded? world a fd td boxes)
             (fail eid "argument.pos.unloaded"))

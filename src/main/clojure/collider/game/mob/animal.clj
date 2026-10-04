@@ -403,7 +403,7 @@
     (or (> h (mobs/fluid-jump-threshold e))
         (boolean (:in-lava? e)))))
 
-(defn- start-float [world eid e t tempters]
+(defn- start-float [world _eid e t tempters]
   (when (afloat? world e t tempters) [(assoc e :float? true) nil]))
 
 (defn- float-tick [_ _ eid e t _]

@@ -114,7 +114,7 @@
   "Returns result r of tag as a decoder result.
   An error is malformed. The tag stays raw when the error text is
   not modelled."
-  [tag [op v :as r]]
+  [tag [_ v :as r]]
   (cond (not (failed? r)) r
         (nil? v) [:raw tag]
         :else [:malformed v]))

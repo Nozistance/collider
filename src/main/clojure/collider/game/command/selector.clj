@@ -76,7 +76,7 @@
 (defn read-bounds
   "Returns the range [min max] of the numbers parse reads at rd, with
   an open end nil. With swap? a min above max is an error."
-  [[s n :as rd] parse kind swap?]
+  [[_ n :as rd] parse kind swap?]
   (let [res (if (r/can-read? rd)
               (bounds-at rd parse kind)
               (r/error-at rd "argument.range.empty"))]

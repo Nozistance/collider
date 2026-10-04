@@ -29,8 +29,6 @@
 
 (def ^:private ^:const groups 40)
 
-(def ^:private ^:const scan-period 20)
-
 (def ^:private ^:const gravity 0.03)
 
 (defn- eye ^double [] (size/pose-eye :experience-orb nil))

@@ -4,7 +4,6 @@
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.random :as random]
-            [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.shove :as shove]
             [collider.game.entity.size :as size]

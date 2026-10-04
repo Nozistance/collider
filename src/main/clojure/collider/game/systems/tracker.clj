@@ -348,7 +348,7 @@
                 (= (:carried e) (:carried tr))
                 (not (vel-changed? tr (:vel e)))))))
 
-(defn- collect-out [eid e vs self? track-delta msgs selfs]
+(defn- collect-out [eid vs self? track-delta msgs selfs]
   (let [out (transient [])
         out (if track-delta (conj! out track-delta) out)
         out (if vs
@@ -364,7 +364,7 @@
   (let [f (frame e tr (long t) due? mdata)
         tr' (advance-track tr e f)
         msgs (move-msgs eid e f)]
-    (collect-out eid e vs self?
+    (collect-out eid vs self?
                  (when-not (identical? tr tr') [:track eid tr'])
                  msgs (self-msgs eid e f))))
 

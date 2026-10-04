@@ -80,7 +80,7 @@
     (painted world pos face stack)
     (hanging/frame item pos face (:tick world))))
 
-(defn- hung-deltas [world eid p e hand]
+(defn- hung-deltas [eid p e hand]
   (concat [(drops/sound e "place")]
           (signal/game-event :entity-place (:pos e) eid)
           [[:spawn-entity e]]
@@ -101,7 +101,7 @@
     (when (and (placeable? world item face at) (build? p))
       (when-let [e (made world item at face stack)]
         (when (holds? world e)
-          (hung-deltas world eid p e hand))))))
+          (hung-deltas eid p e hand))))))
 
 (defn- gap-sq ^double [p [x0 y0 z0 x1 y1 z1]]
   (let [[ex ey ez] (reach/eye-pos p)

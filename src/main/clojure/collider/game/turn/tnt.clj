@@ -7,7 +7,6 @@
             [collider.game.blast :as blast]
             [collider.game.block.tnt :as tnt]
             [collider.game.deltas :as deltas]
-            [collider.game.entity :as entity]
             [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]

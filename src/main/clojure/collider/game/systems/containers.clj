@@ -15,7 +15,6 @@
             [collider.game.block.menu :as menu]
             [collider.game.out :as out]
             [collider.game.apply :as apply]
-            [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.random :as random]
             [collider.vec :as v]
@@ -141,7 +140,7 @@
    :creative?  (:infinite? ctx)
    :layout     (container/layout m ctx)})
 
-(defn- menu-after [m m0 items items' packet]
+(defn- menu-after [m0 items items' packet]
   (-> (cond-> m0 (container/bench? m0) (assoc :contents items'))
       (with-client (:changed packet) (:carried packet))
       (stale-result items items')))
@@ -158,7 +157,7 @@
         n (container/slot-count m)
         [items0 inv'] (split-flat (:inventory after) n)
         [m0 items'] (container/settled m items0 ctx)
-        m' (menu-after m m0 items items' packet)
+        m' (menu-after m0 items items' packet)
         sent (long (:state-id packet))
         resync? (not= sent (long (:state-id m 1)))
         slots (screen/view m items' inv')
