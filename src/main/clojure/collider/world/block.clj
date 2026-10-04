@@ -389,7 +389,7 @@
   (Block/canBeReplaced (tables) st))
 
 (defn free?
-  "Returns true when a placement may take the cell of st."
+  "Returns true when a falling block passes through st."
   [^long st]
   (or (zero? st) (fire? st) (liquid? st) (can-be-replaced? st)))
 
