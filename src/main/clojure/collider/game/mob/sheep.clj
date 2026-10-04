@@ -141,9 +141,11 @@
                  (entity/item at (shear-vel t eid i) s)]))]
     (map-indexed one (singles (wool-stacks t eid e)))))
 
+(defn- shear-sound [eid e]
+  (out/all (out/entity-sound :sheep/shear eid (:pos e) 1.0 1.0 nil)))
+
 (defn- sheared [t peid p hand eid e]
-  (concat [[:merge-entity eid {:sheared? true}]
-           (out/all (out/sound :sheep/shear (:pos e) 1.0 1.0))]
+  (concat [[:merge-entity eid {:sheared? true}] (shear-sound eid e)]
           (signal/game-event :shear (:pos e) peid)
           (inventory/hurt-item-deltas peid p hand 1)
           (shorn-items t eid e)))
