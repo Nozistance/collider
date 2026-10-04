@@ -507,8 +507,7 @@
   (delay (set (data/tag-values "damage_type" "panic_causes"))))
 
 (defn- panics? [e]
-  (let [c (:hurt-cause e)]
-    (or (nil? c) (contains? @panic-causes c))))
+  (contains? @panic-causes (:hurt-cause e)))
 
 (defn- panic-until [world e]
   (when (panics? e) (+ (long (:tick world)) panic-ticks)))
