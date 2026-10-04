@@ -172,8 +172,8 @@
     e))
 
 (defn- brain-steps
-  "Returns mob e after its navigation, its brain and its controls in
-  the order of Mob.serverAiStep, with its deltas and sounds."
+  "Returns mob e after its navigation, its brain and its controls,
+  in this order, with its deltas and sounds."
   [world eid e t speed half]
   (let [b (:breed (:brain e))
         [e ds] (brain/think b world eid (nav/tick world e) t)
