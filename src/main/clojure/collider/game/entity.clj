@@ -118,7 +118,7 @@
 (defn- same? [o vs]
   `(and ~@(map (fn [[k s]] `(v/same? ~s ~(field o (name k)))) vs)))
 
-(defn- kept [o at]
+(defn- held [o at]
   (fn [f]
     (let [old (field o f) new (at f)]
       (if (= old new)
@@ -139,7 +139,7 @@
         at (fn [f] (get vs (keyword f) (field o f)))]
     `(let [~x ~e ~@(mapcat (fn [[k v]] [(vs k) v]) kvs)]
        (if (instance? Mob ~x)
-         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o (kept o at))))
+         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o (held o at))))
          (assoc ~x ~@(into [] cat vs))))))
 
 (defn- fields-of [cls]
