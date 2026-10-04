@@ -615,14 +615,12 @@
     (when (and n (pos? (long n)))
       [[:xp-award (vec (:pos e)) (long n) [:death eid]]])))
 
-(def ^:private ^:const say-interval 120)
-
 (defn- hushed
   "Returns the tick from which a mob hurt at tick t counts towards its
   next ambient sound. A late hurt, after the base tick of the mob,
   counts from one tick later."
   ^long [^long t late?]
-  (+ t say-interval (if late? 1 0)))
+  (+ t mobs/ambient-interval (if late? 1 0)))
 
 (defn- hurt-marks [world e health src late?]
   (cond-> {:health-sent health}

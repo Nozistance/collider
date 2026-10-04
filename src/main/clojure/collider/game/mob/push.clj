@@ -1,6 +1,7 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
   (:require [collider.game.entity.size :as size]
+            [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
@@ -100,7 +101,7 @@
   (Bodies.))
 
 (defn add-body
-  "Adds the body of entry to bodies b and returns b. The body ticks
+  "Adds the body of entry to bodies b and returns b. The body steps
   this tick when ticks? is true."
   ^Bodies [^Bodies b [eid e :as entry] ticks?]
   (let [p (:pos e) [h t] (pushable-box e)]
@@ -140,10 +141,11 @@
 
 (defn index-of
   "Returns the index in which a body finds every body near enough to
-  shove it. Each move of a body changes it in place."
+  shove it, each body stepping this tick. Each move of a body changes
+  it in place."
   ^PushGrid [entries]
   (let [es (if (by-id? entries) entries (sort-by first entries))
-        b (reduce #(add-body %1 %2 false) (bodies) es)]
+        b (reduce #(add-body %1 %2 true) (bodies) es)]
     (grid-of b (int-array (range (count es))))))
 
 (defn islands
@@ -214,3 +216,34 @@
          (<= (Math/abs (- (v/z q) (v/z p))) r)
          (== (pushable-half e) (pushable-half e2))
          (== (pushable-height e) (pushable-height e2)))))
+
+(def ^:private ^:const player-reach 2.0)
+
+(def ^:private mob-types (vec (keys mobs/types)))
+
+(defn- near? [a b]
+  (and (< (Math/abs (- (v/x a) (v/x b))) player-reach)
+       (< (Math/abs (- (v/z a) (v/z b))) player-reach)))
+
+(defn- shoved-by? [p [_ e]]
+  (and (alive? e) (not (mobs/death-ends? e))
+       (near? (:pos p) (:pos e))))
+
+(defn- taken [es [eid dx dz]]
+  (let [vel (:vel (get es eid))
+        v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
+                (- (v/z vel) (double dz)))]
+    [:merge-entity eid {:vel v}]))
+
+(defn player-shoves
+  "Returns the deltas of the shoves that player entry p gives the
+  mobs its box overlaps as its tick ends. The player takes none of
+  them back, and a spectator gives none."
+  [world [peid p :as entry]]
+  (when-not (game-mode/spectator? p)
+    (let [ms (into [entry] (filter #(shoved-by? p %))
+                   (level/of-types world mob-types))]
+      (when (next ms)
+        (let [[h ht] (pushable-box p)
+              sh (shoves (index-of ms) peid p h ht)]
+          (mapv #(taken (:entities world) %) sh))))))

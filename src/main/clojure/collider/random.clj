@@ -79,13 +79,6 @@
   [t eid k ^long n]
   (zero? (long (* n (rnd t eid k)))))
 
-(defn exp-delay
-  "Returns a wait of at least one tick, drawn from an exponential law
-  with the given mean."
-  ^long [mean ^long t ^long eid kind]
-  (let [r (max 1.0E-9 (of-longs t eid (hash kind)))]
-    (max 1 (long (* (double mean) (- (Math/log r)))))))
-
 (defn shuffled
   "Returns the vector xs shuffled. The function pick takes a count i
   and returns a whole number from 0 below i."

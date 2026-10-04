@@ -144,7 +144,8 @@ public final class Bodies {
                 doubles(b.ys, g),
                 doubles(b.zs, g),
                 longs(b.came, g),
-                longs(b.ranks, g)
+                longs(b.ranks, g),
+                ticking(b, g)
         );
     }
 

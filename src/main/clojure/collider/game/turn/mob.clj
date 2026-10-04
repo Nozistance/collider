@@ -2,11 +2,13 @@
   "Mob turns in a tick."
   (:require [clojure.core.reducers :as r]
             [collider.data :as data]
+            [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
+            [collider.game.mob.clock :as clock]
             [collider.game.mob.control :as control]
             [collider.game.mob.interact :as interact]
             [collider.game.mob.mobs :as mobs]
@@ -34,8 +36,6 @@
     (b world eid e t tempters)
     [e nil]))
 
-(def ^:private ^:const say-interval 120)
-
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
     (+ base (* 0.2 (- (random/of-longs t eid (hash :p1))
@@ -55,7 +55,7 @@
      (- t since)))
 
 (defn- said [eid e t]
-  (let [e (assoc e :say-tick (+ (long t) say-interval 1))]
+  (let [e (assoc e :say-tick (+ (long t) mobs/ambient-interval 1))]
     (if-let [say (mobs/sound-of e :say)]
       (let [p (sound-pitch e t eid)]
         [e [(out/all (out/sound say (:pos e) 1.0 p))]])
@@ -441,21 +441,45 @@
 (defn- kept! [^objects acc i entry]
   (aset acc i (conj! (aget acc i) entry)))
 
+(defn- clocked
+  "Returns entry as its mob ticks at t, thawed when it ticks again
+  after a freeze. It adds to acc the change that freezes or thaws the
+  mob."
+  [^objects acc active t [eid e :as entry]]
+  (let [on? (areas/active-at? active (:pos e))
+        frozen? (clock/frozen? e)]
+    (cond
+      (and on? frozen?)
+      (let [m (clock/thawed e t)]
+        (kept! acc 3 [:merge-entity eid m])
+        (MapEntry/create eid (merge e m)))
+      (not (or on? frozen?))
+      (do (kept! acc 3 [:merge-entity eid (clock/frozen t)]) entry)
+      :else entry)))
+
+(defn- steps? [active [_ e :as entry]]
+  (and (mob? entry) (areas/active-at? active (:pos e))))
+
+(defn- sorted! [^objects acc held active t entry]
+  (cond
+    (push/body? held entry)
+    (do
+      (push/add-body (aget acc 0) entry (steps? active entry))
+      (when (biting? active t entry) (kept! acc 1 entry)))
+    (ended? active entry) (kept! acc 2 entry)))
+
 (defn- scan
   "Returns the fn that adds entry to the bodies, the biters or the
-  endings in acc."
+  endings in acc, and the change to the clocks of its mob."
   [held active t]
-  (fn [^objects acc [_ e :as entry]]
-    (cond
-      (push/body? held entry)
-      (let [ticks? (areas/active-at? active (:pos e))]
-        (push/add-body (aget acc 0) entry ticks?)
-        (when (biting? active t entry) (kept! acc 1 entry)))
-      (ended? active entry) (kept! acc 2 entry))
-    acc))
+  (fn [^objects acc entry]
+    (let [entry (if (mob? entry) (clocked acc active t entry) entry)]
+      (sorted! acc held active t entry)
+      acc)))
 
 (defn- scanned ^objects []
-  (object-array [(push/bodies) (transient []) (transient [])]))
+  (object-array [(push/bodies) (transient []) (transient [])
+                 (transient [])]))
 
 (defn- kept-all! [^objects acc ^objects o i]
   (aset acc i (reduce conj! (aget acc i) (persistent! (aget o i)))))
@@ -466,6 +490,7 @@
    (push/joined-bodies (aget acc 0) (aget o 0))
    (kept-all! acc o 1)
    (kept-all! acc o 2)
+   (kept-all! acc o 3)
    acc))
 
 (def ^:private ^:const scan-leaf 128)
@@ -485,14 +510,20 @@
 
 (defn- herds
   "Returns the herds of world, which are the islands of bodies with
-  a mob among them, with the mobs that bite this tick and the mobs
-  whose death ends. All three are in id order."
+  a mob among them, with the mobs that bite this tick, the mobs whose
+  death ends and the changes to the clocks of mobs. All four are in
+  id order."
   [world active t]
   (let [f (scan (areas/loaded-zone world) active t)
         acc (scanned-all f (:entities world))
         b (aget acc 0)]
     [(into [] (keep #(herd-of b %)) (push/groups b))
-     (persistent! (aget acc 1)) (persistent! (aget acc 2))]))
+     (persistent! (aget acc 1)) (persistent! (aget acc 2))
+     (persistent! (aget acc 3))]))
+
+(defn- clocks-set [world clocks]
+  (let [f (fn [es [_ eid m]] (assoc es eid (merge (get es eid) m)))]
+    (update world :entities #(reduce f % clocks))))
 
 (defn- bitten [world tempters t [eid e]]
   (let [ds (nth (minded (live world eid) tempters eid e t) 2)]
@@ -509,18 +540,44 @@
 (defn- endings [ends]
   (into [] (mapcat (fn [[eid e]] (living/ended eid e))) ends))
 
+(defn- herds-deltas [world tempters t hs]
+  (->> (batches hs)
+       (deltas/fold-merged #(island-batch world tempters t %))))
+
+(defn- spawn? [d] (identical? :spawn-entity (nth d 0)))
+
+(defn- clicked
+  "Returns world after the answers ds to the clicks on its mobs. The
+  entities they spawn join from the next tick."
+  [world ds]
+  (first (apply/applied world (into [] (remove spawn?) ds))))
+
+(defn- before-turns
+  "Returns world before the turns of its mobs at tick t, its herds,
+  and the deltas that come before the turns. The clocks of the mobs
+  start or stop, and the clicks of players in events follow, one after
+  another."
+  [world active events t]
+  (let [[_ _ _ clocks :as h] (herds world active t)
+        world (clocks-set world clocks)
+        clicks (interact/clicks world events t)]
+    (if (empty? clicks)
+      [world h clocks]
+      (let [w (clicked world clicks) h (herds w active t)]
+        [w h (-> clocks (into clicks) (into (nth h 3)))]))))
+
 (defn turns
-  "Returns the deltas of the mobs in one tick, each in its turn,
-  and the answers to the clicks of players on them. Each island of
-  mobs steps on its own."
+  "Returns the answers to the clicks of players on mobs in one tick
+  and the deltas of the mobs, each in its turn. Each island of mobs
+  steps on its own."
   [world d]
-  (let [world (sense/indexed world) t (long (:tick world))
+  (let [t (long (:tick world))
         active (areas/active-chunks world)
+        [world [hs biters ends] pre]
+        (before-turns world active (:input d) t)
         tempters (sense/holders world)
-        [hs biters ends] (herds world active t)
-        world (seen world tempters t biters)
-        clicks (interact/clicks world (:input d) t)]
+        world (seen (sense/indexed world) tempters t biters)]
     (deltas/merge
-      (->> (batches hs)
-           (deltas/fold-merged #(island-batch world tempters t %)))
-      (deltas/of-vec (into (endings ends) clicks)))))
+      (deltas/of-vec pre)
+      (herds-deltas world tempters t hs)
+      (deltas/of-vec (endings ends)))))
