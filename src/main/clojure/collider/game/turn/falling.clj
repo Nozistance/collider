@@ -178,7 +178,8 @@
 
 (defn- source [eid e]
   {:type (get sources (block/type-of (:block e)) :falling-block)
-   :cause eid :direct eid :from (:pos e)})
+   :cause eid :direct eid :from (:pos e)
+   :attacker e :direct-attacker e})
 
 (defn- fall-damage ^double [^long n per cap]
   (let [raw (float (* (float n) (float per)))]

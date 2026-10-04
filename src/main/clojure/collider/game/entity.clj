@@ -415,9 +415,12 @@
 (defn- taken
   [e src tick]
   (cond-> e
-    (:player? src) (assoc :hurt-by-player tick)
+    (:player? src)
+    (assoc :hurt-by-player tick :last-hurt-by-player (:cause src))
     (and (instance? Mob e) (not (identical? generic src)))
-    (assoc :hurt-cause (:type src))))
+    (assoc :hurt-cause (:type src))
+    (and (instance? Mob e) (not (pos? (double (:health e)))))
+    (assoc :killed-by src)))
 
 (defn- lost
   "Returns health after damage, in float precision."
