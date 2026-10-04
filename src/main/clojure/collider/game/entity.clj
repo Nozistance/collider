@@ -230,7 +230,7 @@
 
 (def ^:private kept
   {:mob [:health :death-time :color :variant :sheared?
-         :sound-variant :effects :absorption :fall]
+         :sound-variant :effects :absorption :fall :stew]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
