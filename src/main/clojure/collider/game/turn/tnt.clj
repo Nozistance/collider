@@ -201,7 +201,8 @@
   (let [owner (:owner e)
         o (when owner (get (:cur s) owner))]
     {:type (if o :player-explosion :explosion) :direct eid
-     :cause (when o owner) :player? (= :player (:type o))}))
+     :cause (when o owner) :player? (= :player (:type o))
+     :attacker o :direct-attacker e}))
 
 (defn- spec
   "Returns the blast of TNT eid, e, at pos."

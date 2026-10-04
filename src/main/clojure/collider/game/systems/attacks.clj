@@ -87,7 +87,7 @@
 
 (defn- source [eid a]
   {:type :player-attack :cause eid :direct eid :from (:pos a)
-   :player? true})
+   :player? true :attacker a :direct-attacker a})
 
 (defn- sound [a k]
   (out/all (out/sound k (:pos a) 1.0 1.0 :players)))

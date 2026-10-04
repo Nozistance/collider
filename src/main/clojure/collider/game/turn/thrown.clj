@@ -445,7 +445,7 @@
 (defn- thrown-source [world eid e d]
   (let [o (some->> (:owner e) (get (:entities world)))]
     {:type :thrown :cause (when o (:owner e)) :direct eid :along d
-     :player? (= :player (:type o))}))
+     :player? (= :player (:type o)) :attacker o :direct-attacker e}))
 
 (defn- hurt-deltas
   "Returns the deltas of the hurt that thrown e deals to what it hit.
