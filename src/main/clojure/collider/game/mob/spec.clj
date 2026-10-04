@@ -15,27 +15,28 @@
    mooshroom/flower-result cow/milk-result animal/feed-result])
 
 (def ^:private rabbit-kind
-  {:brain rabbit/brain :goals rabbit/spec :ai-step rabbit/ai-step
+  {:think rabbit/brain :goals rabbit/spec :ai-step rabbit/ai-step
    :jump-share rabbit/jump-share :hop rabbit/hopped
    :bump rabbit/bumped :steer rabbit/steered :bites? rabbit/raiding?
    :results [animal/feed-result]})
 
 (def ^:private kinds
-  {:sheep {:brain sheep/brain :goals sheep/spec :bites? sheep/biting?
+  {:sheep {:think sheep/brain :goals sheep/spec :bites? sheep/biting?
            :results [sheep/shear-result animal/feed-result]}
-   :cow {:brain cow/brain :goals cow/spec
+   :cow {:think cow/brain :goals cow/spec
          :results [cow/milk-result animal/feed-result]}
-   :mooshroom {:brain mooshroom/brain :goals mooshroom/spec
+   :mooshroom {:think mooshroom/brain :goals mooshroom/spec
                :results mushroom-results}
-   :pig {:brain pig/brain :goals pig/spec
+   :pig {:think pig/brain :goals pig/spec
          :results [animal/feed-result]}
-   :chicken {:brain chicken/brain :goals chicken/spec
+   :chicken {:think chicken/brain :goals chicken/spec
              :ai-step chicken/ai-step :results [animal/feed-result]}
    :rabbit rabbit-kind})
 
 (defn of
   "Returns the parts of the turn of a mob of type, or nil for a type
-  without them."
+  without them. A mob thinks with goals by :think and :goals, or
+  with the compiled brain :brain."
   [type]
   (kinds type))
 

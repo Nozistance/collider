@@ -185,4 +185,4 @@
     :start (love-start kind speed close)
     :continue? (loving? kind)
     :tick (love-tick kind speed close {:child-look child-look})
-    :stop unloved}))
+    :stop unloved :tells? mobs/in-love?}))

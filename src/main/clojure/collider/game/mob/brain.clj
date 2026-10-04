@@ -233,7 +233,8 @@
     [(assoc c :check #(needs-met? known needs %1 %2)) nxt]))
 
 (def ^:private header
-  #{:requires :erase-on-stop :update :memories :default :sense})
+  #{:requires :erase-on-stop :update :memories :default :sense
+    :sensors})
 
 (defn- pairs [xs]
   (map-indexed (fn [k x] (if (map? x) [k x] x)) xs))
@@ -276,9 +277,17 @@
         (reduce (fn [m [k s]] (if (= s status) (bit-or m (bit k)) m))
                 0 (:needs b))))))
 
+(defn- node-tells [b]
+  (cons (:tells? b) (mapcat (comp node-tells first) (:items b))))
+
+(defn- tells-of [es]
+  (let [fs (vec (keep identity (mapcat (comp node-tells peek) es)))]
+    (when (seq fs) (fn [e t] (boolean (some #(% e t) fs))))))
+
 (defn- info [spec es known]
   (let [acts (remove header (keys spec))]
-    {:known known :update (:update spec)
+    {:known known :update (:update spec) :sensors (:sensors spec)
+     :tells? (tells-of es)
      :default (:default spec :idle) :erase (:erase-on-stop spec)
      :requires (merge (zipmap acts (repeat {})) (:requires spec))
      :order (mapv (fn [[p a b]] [p a (:id b)]) es)}))
@@ -291,9 +300,9 @@
 
 (defn breed
   "Returns the brain of a breed from spec. An activity maps to its
-  behaviours, and a bare behaviour takes its place as priority. The
-  header keys give requirements, memories erased on leaving, the
-  first activity, more known memories and the sensor part."
+  behaviours, a bare behaviour takes its place as priority, and the
+  header keys give the rest. Its tells? holds when one of its
+  behaviours tells? that a mob may write to others."
   ^Brain [spec]
   (let [es (vec (order spec))
         known (known-of spec es)
@@ -308,7 +317,7 @@
 (defn fresh
   "Returns the brain of a new mob of breed b."
   [b]
-  {:activity (:default b) :memories {} :known (:known b)})
+  {:activity (:default b) :memories {} :known (:known b) :breed b})
 
 (defn think
   "Returns [e deltas] after one tick of the brain b of mob e."

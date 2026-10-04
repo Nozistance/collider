@@ -1,6 +1,8 @@
 (ns collider.game.turn.overlay
-  "Blocks earlier turns of a tick wrote, as later turns see them."
-  (:require [collider.game.delta :as delta]))
+  "Blocks earlier turns of a tick wrote, as later turns see them, and
+  what mobs remember to other mobs, as those take it in their turns."
+  (:require [collider.game.delta :as delta]
+            [collider.game.mob.brain :as brain]))
 
 (set! *warn-on-reflection* true)
 
@@ -42,3 +44,46 @@
         (if (identical? w prev)
           world
           (assoc world ::writes (conj (or ws []) [eid ds w])))))))
+
+(defn- remember? [d] (identical? :remember (nth d 0)))
+
+(defn told
+  "Returns world where each mob that steps? takes hears in its own
+  turn what the :remember deltas ds of the turn of eid write to it."
+  [world eid ds steps?]
+  (let [m0 (::told world {})
+        f (fn [m d]
+            (let [pid (nth d 1)]
+              (if (and (remember? d) (not= pid eid) (steps? pid))
+                (update m pid (fnil conj []) [eid d])
+                m)))
+        m (reduce f m0 ds)]
+    (if (identical? m m0) world (assoc world ::told m))))
+
+(defn took
+  "Returns mob e after it remembers what the told writes ws say."
+  [e ws]
+  (let [f (fn [e [_ [_ _ k v until]]] (brain/remember e k v until))]
+    (reduce f e ws)))
+
+(defn heard
+  "Returns [e later] for mob e in the turn of eid: e after what the
+  turns before it told it, and what the turns after it tell it,
+  which it takes after its step."
+  [world ^long eid e]
+  (if-let [ws (get (::told world) eid)]
+    (let [before? (fn [[w]] (< (long w) eid))]
+      [(took e (filter before? ws)) (into [] (remove before?) ws)])
+    [e nil]))
+
+(defn- heard? [m eid d]
+  (and (remember? d)
+       (some (fn [[w x]] (and (= w eid) (= x d))) (get m (nth d 1)))))
+
+(defn untold
+  "Returns the deltas ds of the turn of eid without the writes that
+  the mobs it told take in their own turns."
+  [world eid ds]
+  (if-let [m (::told world)]
+    (into [] (remove #(heard? m eid %)) ds)
+    ds))

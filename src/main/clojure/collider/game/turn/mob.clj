@@ -7,12 +7,14 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
+            [collider.game.mob.brain :as brain]
             [collider.game.mob.clock :as clock]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.push :as push]
             [collider.game.mob.sense :as sense]
+            [collider.game.mob.sensor :as sensor]
             [collider.game.mob.spec :as spec]
             [collider.game.mob.travel :as travel]
             [collider.game.out :as out]
@@ -30,7 +32,7 @@
 (set! *warn-on-reflection* true)
 
 (defn- think [world eid e t tempters]
-  (if-let [b (:brain (spec/of (:type e)))]
+  (if-let [b (:think (spec/of (:type e)))]
     (b world eid e t tempters)
     [e nil]))
 
@@ -123,7 +125,7 @@
       (assoc e :baby-until nil)
       e)))
 
-(defn- brain-step [world eid e t tempters dead?]
+(defn- goal-step [world eid e t tempters dead?]
   (let [[e1 deltas] (if dead? [e nil] (think world eid e t tempters))
         e1 (age-up e1 t)
         [e1 say-deltas] (if dead? [e1 nil] (ambient eid e1 t))]
@@ -158,23 +160,63 @@
                      (double (or (:walked e) 0.0))
                      (double (or (:walked e2) 0.0)) t eid)))
 
+(defn- breed-of [e]
+  (or (:breed (:brain e)) (:brain (spec/of (:type e)))))
+
+(defn- brained
+  "Returns mob e with a fresh brain of its breed when it has none, as
+  it first thinks at tick t."
+  [e t eid]
+  (if-let [b (when-not (:brain e) (:brain (spec/of (:type e))))]
+    (assoc e :brain (sensor/fresh b (:sensors b) t eid))
+    e))
+
+(defn- brain-steps
+  "Returns mob e after its navigation, its brain and its controls in
+  the order of Mob.serverAiStep, with its deltas and sounds."
+  [world eid e t speed half]
+  (let [b (:breed (:brain e))
+        [e ds] (brain/think b world eid (nav/tick world e) t)
+        e (age-up (brain/update-activity b e t) t)
+        [e say-ds] (ambient eid e t)]
+    [(control/tick world e speed (* 2.0 (double half))) ds say-ds]))
+
+(defn- goal-steps [world tempters eid e t speed half]
+  (let [[e ds say-ds] (goal-step world eid e t tempters false)]
+    [(steered world eid e speed half) ds say-ds]))
+
+(defn- stepped-mind [world tempters eid e t dead?]
+  (let [[half _] (mobs/box-of e)
+        speed (move-speed e)
+        e (if dead? e (brained e t eid))]
+    (cond dead? (goal-step world eid e t tempters true)
+          (:brain e) (brain-steps world eid e t speed half)
+          :else (goal-steps world tempters eid e t speed half))))
+
 (defn- minded
   "Returns mob e after its base tick, after it thought and steered
   this tick, the head it turns, and its deltas and sounds. Other
   bodies do not move it yet."
   [world tempters eid e t]
   (let [[e pre] (living/based world eid e)
-        [half _] (mobs/box-of e)
-        speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
-        [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
-        e1 (if dead? e1 (steered world eid e1 speed half))
+        [e1 ds say-ds] (stepped-mind world tempters eid e0 t dead?)
         look (when-not dead? (control/look-of world e1 t))]
     [e1 look ds say-ds pre]))
 
+(defn- mind
+  "Returns what mob eid, e, thinks at tick t in the world lw it sees,
+  from e after what the turns before it told it. Its deltas leave out
+  what the mobs it tells take in their own turns, and the writes the
+  turns after it tell it come last."
+  [world lw tempters eid e t]
+  (let [[e later] (overlay/heard world eid e)
+        m (minded lw tempters eid e t)]
+    (conj (update m 2 #(overlay/untold world eid %)) later)))
+
 (defn- step-mob
-  [world index eid e [e1 look ds say-ds pre] t cram live?]
+  [world index eid e [e1 look ds say-ds pre later] t cram live?]
   (let [[half height] (mobs/box-of e)
         more [look e cram live?]
         [e2 shoves hit? ls]
@@ -182,6 +224,7 @@
         [e2 own] (if-let [f (:ai-step (spec/of (:type e)))]
                    (f eid e2 t)
                    [e2 nil])
+        e2 (overlay/took e2 later)
         ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
     [e2 (joined-into ds own) shoves hit? ls]))
 
@@ -281,14 +324,14 @@
 
 (defn- turn [world ticking vels tempters t index slots es i]
   (let [[eid e] (nth es i)
-        world (live world eid)
+        lw (live world eid)
         [e2 ds shoves]
         (if (stepping? ticking es i)
-          (run-turn world index t slots es i
-                    (minded world tempters eid e t))
+          (run-turn lw index t slots es i
+                    (mind world lw tempters eid e t))
           [e nil nil])
         es (assoc! es i [eid e2])
-        hs (handing (:chunks world) ticking vels slots es i
+        hs (handing (:chunks lw) ticking vels slots es i
                     shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
     [es (if (seq hs) (into (vec ds) hs) ds) from]))
@@ -330,7 +373,7 @@
     (let [i (int i)]
       (when (stepping? ticking es i)
         (let [[eid e] (nth es i)
-              m (minded (live world eid) tempters eid e t)]
+              m (mind world (live world eid) tempters eid e t)]
           (aset minds i m))))))
 
 (defn- placed! [index ^objects cur i eid e e2]
@@ -426,9 +469,15 @@
                  (deltas/merge acc)))]
     (reduce f deltas/empty-deltas batch)))
 
-(defn- biting? [active t [_ e]]
-  (when-let [f (:bites? (spec/of (:type e)))]
-    (and (f e t) (areas/active-at? active (:pos e)))))
+(defn- holds? [f e t] (and f (f e t)))
+
+(defn- first?
+  "Returns true when mob e bites or tells another mob at tick t, and
+  so takes its turn before the turns of the mobs."
+  [active t [_ e]]
+  (and (or (holds? (:bites? (spec/of (:type e))) e t)
+           (holds? (:tells? (breed-of e)) e t))
+       (areas/active-at? active (:pos e))))
 
 (defn- ended? [active [_ e]]
   (and (mobs/mob-type? (:type e)) (mobs/death-ends? e)
@@ -461,7 +510,7 @@
     (push/body? held entry)
     (do
       (push/add-body (aget acc 0) entry (steps? active entry))
-      (when (biting? active t entry) (kept! acc 1 entry)))
+      (when (first? active t entry) (kept! acc 1 entry)))
     (ended? active entry) (kept! acc 2 entry)))
 
 (defn- scan
@@ -506,9 +555,9 @@
 
 (defn- herds
   "Returns the herds of world, which are the islands of bodies with
-  a mob among them, with the mobs that bite this tick, the mobs whose
-  death ends and the changes to the clocks of mobs. All four are in
-  id order."
+  a mob among them, with the mobs that bite or tell this tick, the
+  mobs whose death ends and the changes to the clocks of mobs. All
+  four are in id order."
   [world active t]
   (let [f (scan (areas/loaded-zone world) active t)
         acc (scanned-all f (:entities world))
@@ -521,20 +570,33 @@
   (let [f (fn [es [_ eid m]] (assoc es eid (merge (get es eid) m)))]
     (update world :entities #(reduce f % clocks))))
 
-(defn- bitten [world tempters t [eid e]]
-  (let [ds (nth (minded (live world eid) tempters eid e t) 2)]
-    (overlay/wrote world eid ds)))
+(defn- bitten [world tempters steps? t [eid e]]
+  (let [[e _] (overlay/heard world eid e)
+        ds (nth (minded (live world eid) tempters eid e t) 2)]
+    (-> (overlay/wrote world eid ds)
+        (overlay/told eid ds steps?))))
 
 (defn- seen
-  "Returns world with the bites of this tick in the overlay. A mob
-  bites in its turn and sees the writes of each turn before it."
-  [world tempters t biters]
+  "Returns world with the bites of this tick in the overlay, and what
+  mobs tell the mobs that step. A mob bites and tells in its turn and
+  sees the writes of each turn before it."
+  [world tempters steps? t biters]
   (let [world (assoc world :watchers (animal/watchers world))
-        bf (fn [w m] (bitten w tempters t m))]
+        bf (fn [w m] (bitten w tempters steps? t m))]
     (reduce bf world biters)))
 
 (defn- endings [ends]
   (into [] (mapcat (fn [[eid e]] (living/ended eid e))) ends))
+
+(defn- stepper
+  "Returns the fn that tells whether the entity of an id steps this
+  tick."
+  [world active]
+  (let [held (areas/loaded-zone world) es (:entities world)]
+    (fn [eid]
+      (when-let [e (get es eid)]
+        (let [entry (MapEntry/create eid e)]
+          (and (push/body? held entry) (steps? active entry)))))))
 
 (defn- herds-deltas [world tempters t hs]
   (->> (batches hs)
@@ -556,7 +618,8 @@
         [world [hs biters ends] pre]
         (before-turns world active t)
         tempters (sense/holders world)
-        world (seen (sense/indexed world) tempters t biters)]
+        world (seen (sense/indexed world) tempters
+                    (stepper world active) t biters)]
     (deltas/merge
       (deltas/of-vec pre)
       (herds-deltas world tempters t hs)

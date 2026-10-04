@@ -55,7 +55,7 @@
   "Returns brain spec with the sense part of sensors and the memories
   they require known."
   [spec sensors]
-  (-> (assoc spec :sense (sensing sensors))
+  (-> (assoc spec :sense (sensing sensors) :sensors (vec sensors))
       (update :memories (fnil into []) (mapcat :requires sensors))))
 
 (defn fresh

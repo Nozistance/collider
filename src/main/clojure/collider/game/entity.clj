@@ -218,7 +218,7 @@
                :stick-cooldown-until :egg-at
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
-               :no-blocks? :arrived :hop :fall))
+               :no-blocks? :arrived :hop :fall :brain))
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
