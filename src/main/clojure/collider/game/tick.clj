@@ -15,6 +15,7 @@
             [collider.game.systems.camera :as camera]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
+            [collider.game.systems.clicks :as clicks]
             [collider.game.systems.containers :as containers]
             [collider.game.systems.damage :as damage]
             [collider.game.systems.daynight :as daynight]
@@ -64,6 +65,7 @@
    [#'chunks/chunk-loading]
    packet-systems
    [#'hanging/hanging-uses #'attacks/attacks]
+   [#'clicks/clicks]
    [#'daynight/daynight #'weather-system/weather]
    [#'sleep/sleep]
    [#'block-updates/block-updates]

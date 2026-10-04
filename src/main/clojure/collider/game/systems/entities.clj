@@ -32,17 +32,13 @@
         ds (deltas/merge ds (deltas/of-vec thrown))]
     (deltas/merge ds (deltas/of-vec (tnt/turns world ds)))))
 
-(defn- others? [world d]
-  (or (level/holds-types? world kinds)
-      (some #(= :interact (nth % 0)) (deltas/input-of d))))
-
 (defn entities
   "Returns the deltas of the entities of the level in one tick, in
   the order of the entity tick list. The players go first, as most
   enter the list before the entities around them."
-  {:wake {:types (conj kinds :player) :events #{:interact}}}
+  {:wake {:types (conj kinds :player)}}
   [world d]
   (let [ds (deltas/of-vec (player/turns world))]
-    (if (others? world d)
+    (if (level/holds-types? world kinds)
       (others world d ds)
       ds)))

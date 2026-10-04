@@ -2,7 +2,6 @@
   "Mob turns in a tick."
   (:require [clojure.core.reducers :as r]
             [collider.data :as data]
-            [collider.game.apply :as apply]
             [collider.game.areas :as areas]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
@@ -10,7 +9,6 @@
             [collider.game.mob.animal :as animal]
             [collider.game.mob.clock :as clock]
             [collider.game.mob.control :as control]
-            [collider.game.mob.interact :as interact]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.push :as push]
@@ -542,37 +540,21 @@
   (->> (batches hs)
        (deltas/fold-merged #(island-batch world tempters t %))))
 
-(defn- spawn? [d] (identical? :spawn-entity (nth d 0)))
-
-(defn- clicked
-  "Returns world after the answers ds to the clicks on its mobs. The
-  entities they spawn join from the next tick."
-  [world ds]
-  (first (apply/applied world (into [] (remove spawn?) ds))))
-
 (defn- before-turns
   "Returns world before the turns of its mobs at tick t, its herds,
-  and the deltas that come before the turns. The clocks of the mobs
-  start or stop, and the clicks of players in events follow, one after
-  another."
-  [world active events t]
-  (let [[_ _ _ clocks :as h] (herds world active t)
-        world (clocks-set world clocks)
-        clicks (interact/clicks world events t)]
-    (if (empty? clicks)
-      [world h clocks]
-      (let [w (clicked world clicks) h (herds w active t)]
-        [w h (-> clocks (into clicks) (into (nth h 3)))]))))
+  and the deltas that start or stop the clocks of the mobs."
+  [world active t]
+  (let [[_ _ _ clocks :as h] (herds world active t)]
+    [(clocks-set world clocks) h clocks]))
 
 (defn turns
-  "Returns the answers to the clicks of players on mobs in one tick
-  and the deltas of the mobs, each in its turn. Each island of mobs
-  steps on its own."
-  [world d]
+  "Returns the deltas of the mobs in one tick, each in its turn.
+  Each island of mobs steps on its own."
+  [world _d]
   (let [t (long (:tick world))
         active (areas/active-chunks world)
         [world [hs biters ends] pre]
-        (before-turns world active (:input d) t)
+        (before-turns world active t)
         tempters (sense/holders world)
         world (seen (sense/indexed world) tempters t biters)]
     (deltas/merge
