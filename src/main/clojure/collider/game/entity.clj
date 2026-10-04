@@ -6,6 +6,7 @@
             [collider.game.entity.records :as types]
             [collider.game.entity.size :as size]
             [collider.game.hanging :as hanging]
+            [collider.game.mob.brain :as brain]
             [collider.game.mob.mobs :as mobs]
             [collider.num :as num]
             [collider.random :as random]
@@ -191,13 +192,19 @@
     (assoc m :scute-time (- (long at) tick))
     m))
 
+(defn- saved-memories [m e tick]
+  (if-let [ms (brain/saved e tick)] (assoc m :memories ms) m))
+
 (defn- saved-clocks [m e tick]
-  (saved-scute (saved-timers m e tick) e tick))
+  (-> (saved-timers m e tick)
+      (saved-scute e tick)
+      (saved-memories e tick)))
 
 (defn timed?
   "Returns true when what a save keeps of e depends on the tick."
   [e]
-  (boolean (some #(get e %) (conj timers :scute-at))))
+  (or (boolean (some #(get e %) (conj timers :scute-at)))
+      (brain/timed? e)))
 
 (defn saved
   "Returns entity e as the data a save keeps at game tick tick.
@@ -250,7 +257,10 @@
         (cond-> (:scute-time m)
           (assoc :scute-at (+ (long tick) (long (:scute-time m)))))
         (loaded-timers m (long tick))
-        (locked-baby (long tick)))))
+        (locked-baby (long tick))
+        (cond-> (:memories m)
+          (assoc :brain
+                 {:memories (brain/loaded (:memories m) tick)})))))
 
 (defn- kind-extras [e k m tick]
   (case k

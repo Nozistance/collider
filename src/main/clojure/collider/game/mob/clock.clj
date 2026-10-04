@@ -1,6 +1,7 @@
 (ns collider.game.mob.clock
   "The clocks of a mob, which run only in the ticks the mob lives.
-  A mob out of the active chunks does not tick.")
+  A mob out of the active chunks does not tick."
+  (:require [collider.game.mob.brain :as brain]))
 
 (set! *warn-on-reflection* true)
 
@@ -39,7 +40,9 @@
         ks (into deadlines (map first) inner)
         m (into {} (filter (comp some? val)) (select-keys e ks))
         m (reduce #(later %1 %2 dt) m deadlines)]
-    (assoc (reduce #(later-in %1 %2 dt) m inner) :frozen-at nil)))
+    (cond-> (assoc (reduce #(later-in %1 %2 dt) m inner)
+                   :frozen-at nil)
+      (:brain e) (assoc :brain (brain/delayed (:brain e) dt)))))
 
 (defn rebased
   "Returns the changes that move the stop of the clocks of frozen mob

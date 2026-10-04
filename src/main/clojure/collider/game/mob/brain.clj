@@ -359,3 +359,89 @@
   (if-let [a (some #(when (met? b e t %) %) (:update b))]
     (switched b e a)
     e))
+
+(def memory-types
+  "The vanilla id of each memory a mob may hold and whether a save
+  keeps it."
+  {:attack-target ["attack_target" false]
+   :breed-target ["breed_target" false]
+   :cant-reach-walk-target-since
+   ["cant_reach_walk_target_since" false]
+   :danger-detected-recently ["danger_detected_recently" true]
+   :gaze-cooldown-ticks ["gaze_cooldown_ticks" true]
+   :hurt-by ["hurt_by" false]
+   :hurt-by-entity ["hurt_by_entity" false]
+   :is-in-water ["is_in_water" true]
+   :is-panicking ["is_panicking" true]
+   :is-tempted ["is_tempted" true]
+   :look-target ["look_target" false]
+   :nearest-living-entities ["mobs" false]
+   :nearest-players ["nearest_players" false]
+   :nearest-visible-adult ["nearest_visible_adult" false]
+   :nearest-visible-attackable-player
+   ["nearest_visible_targetable_player" false]
+   :nearest-visible-attackable-players
+   ["nearest_visible_targetable_players" false]
+   :nearest-visible-living-entities ["visible_mobs" false]
+   :nearest-visible-player ["nearest_visible_player" false]
+   :path ["path" false]
+   :temptation-cooldown-ticks ["temptation_cooldown_ticks" true]
+   :tempting-player ["tempting_player" false]
+   :walk-target ["walk_target" false]})
+
+(defn- kept? [k] (true? (get-in memory-types [k 1])))
+
+(defn- ttl-left
+  "Returns the ticks memory m has after tick t, nil when it never
+  ends, or a negative number when it is gone."
+  [m ^long t]
+  (cond (== 3 (count m)) (m 2)
+        (== forever (long (m 1))) nil
+        :else (- (long (m 1)) t)))
+
+(defn saved
+  "Returns the memories of mob e a save at tick t keeps, each as its
+  value with the ticks it has left when it ends."
+  [e t]
+  (reduce-kv (fn [acc k m]
+               (let [r (ttl-left m (long t))]
+                 (cond (not (kept? k)) acc
+                       (nil? r) (assoc acc k [(m 0)])
+                       (pos? (long r)) (assoc acc k [(m 0) r])
+                       :else acc)))
+             nil (memories e)))
+
+(defn loaded
+  "Returns the memories saved as ms back at tick t."
+  [ms t]
+  (reduce-kv (fn [acc k [v r]]
+               (assoc acc k [v (if r (+ (long t) (long r)) forever)]))
+             {} ms))
+
+(defn timed?
+  "Returns true when what a save keeps of the memories of e depends
+  on the tick."
+  [e]
+  (boolean
+    (some (fn [[k m]]
+            (and (kept? k) (== 2 (count m))
+                 (not= forever (m 1))))
+          (memories e))))
+
+(defn- later [^long x ^long dt] (if (== forever x) x (+ x dt)))
+
+(defn- later-memory [m dt]
+  (if (== 2 (count m)) [(m 0) (later (m 1) dt)] m))
+
+(defn- later-run [r dt]
+  (cond-> r
+    (:end r) (update :end later dt)
+    (:spawn r) (update :spawn later dt)))
+
+(defn delayed
+  "Returns brain b with each tick it waits for moved on by dt ticks."
+  [b dt]
+  (cond-> b
+    (:memories b) (update :memories update-vals #(later-memory % dt))
+    (:running b) (update :running update-vals #(later-run % dt))
+    (:phase b) (update :phase (partial mapv #(later % dt)))))
