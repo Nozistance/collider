@@ -33,6 +33,7 @@
    effects/player-deltas
    consume/player-deltas
    equipment/player-deltas
+   effects/player-sync
    compasses/player-deltas
    dripleaf/player-deltas
    push/player-shoves

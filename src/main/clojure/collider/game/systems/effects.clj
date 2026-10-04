@@ -14,3 +14,9 @@
   [world p]
   (when (due? (val p))
     (account/tick-deltas world (key p) (val p))))
+
+(defn player-sync
+  "Returns the deltas that send the attributes of the player entry p
+  that changed in its turn, once."
+  [_ p]
+  (account/sync-deltas (key p) (val p)))

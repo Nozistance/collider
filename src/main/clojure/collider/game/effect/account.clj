@@ -22,7 +22,7 @@
   "Returns the account of entity e with id eid before any change."
   [eid e]
   {:eid eid :e e :fx (or (:effects e) {}) :ds [] :dirty #{}
-   :changed? false :hurt? false})
+   :changed? false :hurt? false :sends? (not (player? e))})
 
 (defn- own [acc msg]
   (if (player? (:e acc))
@@ -170,11 +170,20 @@
         (reduce #(event %1 k i' %2) (put-fx acc k i') evs)
         (dropped acc k)))))
 
-(defn- attribute-deltas [{:keys [eid e fx dirty]}]
-  (let [es (attribute/entries e fx dirty)]
+(defn- sent-deltas [eid e fx attrs]
+  (let [es (attribute/entries e fx attrs)]
     (when (seq es)
       (cond-> [(out/all (out/attributes eid es))]
         (player? e) (conj (out/to eid (out/attributes eid es)))))))
+
+(defn- attribute-deltas
+  "Returns the deltas of the attributes the account touched. A mob
+  sends them at once, a player keeps them for sync-deltas."
+  [{:keys [eid e fx dirty sends?]}]
+  (cond sends? (sent-deltas eid e fx dirty)
+        (seq dirty)
+        (let [ks (into (or (:dirty-attributes e) #{}) dirty)]
+          [[:merge-entity eid {:dirty-attributes ks}]])))
 
 (defn- absorption-change [acc e0]
   (let [a (:absorption (:e acc))]
@@ -229,9 +238,19 @@
   (deltas (assoc (account eid e) :dirty (set attrs)) e))
 
 (defn tick-deltas
-  "Returns the deltas of one tick of the effects of entity eid."
+  "Returns the deltas of one tick of the effects of entity eid.
+  A mob sends the attributes left to sync with them, a player keeps
+  them for sync-deltas."
   [world eid e]
   (when (or (seq (:effects e)) (:dirty-attributes e))
     (deltas (step (assoc (synced (account eid e) e) :world world)
                   (lived world e))
             e)))
+
+(defn sync-deltas
+  "Returns the deltas that send the attributes player eid, e, left to
+  sync, all in one packet."
+  [eid e]
+  (when-let [ks (:dirty-attributes e)]
+    (cons [:merge-entity eid {:dirty-attributes nil}]
+          (sent-deltas eid e (:effects e) ks))))

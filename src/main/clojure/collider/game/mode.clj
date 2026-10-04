@@ -155,11 +155,16 @@
            :flying (flying-after chunks e mode)}
     (= :spectator mode) (assoc :using-item? false :using nil)))
 
-(defn- reach-deltas [eid e e']
+(def ^:private reaches
+  #{:entity-interaction-range :block-interaction-range})
+
+(defn- reach-deltas
+  "Returns the delta that leaves the interaction ranges of player eid
+  to sync when its mode changes them."
+  [eid e e']
   (when (not= (creative? e) (creative? e'))
-    (let [attrs (reach-attributes e')]
-      [(out/to eid (out/attributes eid attrs))
-       (out/all (out/attributes eid attrs))])))
+    (let [ks (into (or (:dirty-attributes e) #{}) reaches)]
+      [[:merge-entity eid {:dirty-attributes ks}]])))
 
 (defn change
   "Returns the deltas that put player e of id eid in mode, or nil when
