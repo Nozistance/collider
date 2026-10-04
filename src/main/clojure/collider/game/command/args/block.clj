@@ -192,8 +192,8 @@
       (and (some? nbt) (snbt/compare-nbt (:nbt pred) nbt true))))
 
 (defn- block-match? [{:keys [state props]} st]
-  (let [b (block/name-of state) have (block/props-of st)]
-    (and (= b (block/name-of st))
+  (let [b (block/block-of state) have (block/props-of st)]
+    (and (= b (block/block-of st))
          (every? (fn [[k v]] (= v (get have k))) props))))
 
 (defn- vague-match? [b have [key raw]]
@@ -203,7 +203,7 @@
          (= (value-of b prop raw) (get have prop)))))
 
 (defn- tag-match? [{:keys [tag props]} st]
-  (let [b (block/name-of st) have (block/props-of st)]
+  (let [b (block/block-of st) have (block/props-of st)]
     (and (contains? (get @block-tags tag) b)
          (every? #(vague-match? b have %) props))))
 
@@ -223,5 +223,5 @@
 (defn varying?
   "Returns true when the blocks parsed value v names have properties."
   [{:keys [tag state]}]
-  (let [bs (if tag (@block-tags tag) [(block/name-of state)])]
+  (let [bs (if tag (@block-tags tag) [(block/block-of state)])]
     (boolean (some #(seq (get-in (data/blocks) [% :props])) bs))))

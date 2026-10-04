@@ -263,7 +263,7 @@
 (defn- placed-deltas [world [eid pos :as args] origin]
   (let [ds (vec (use-on-deltas world args origin))]
     (if-let [off (ack-offset world origin args)]
-      (let [w (first (apply/deltas world ds))]
+      (let [w (first (apply/applied world ds))]
         (into ds (ack-changes w eid pos off)))
       ds)))
 

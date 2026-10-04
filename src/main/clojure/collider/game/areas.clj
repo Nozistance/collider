@@ -130,7 +130,7 @@
       had
       (compute-areas world))))
 
-(defn cache-active-chunks
+(defn with-areas
   "Returns the world with its chunk areas up to date.
   The areas follow its players and chunks."
   [world]
