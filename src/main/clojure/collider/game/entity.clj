@@ -383,7 +383,7 @@
       [xd zd])))
 
 (defn- resisted ^double [e ^double power]
-  (let [r (get (attribute/base-values e) :knockback-resistance 0.0)]
+  (let [r (attribute/value e (:effects e) :knockback-resistance)]
     (* power (- 1.0 (double r)))))
 
 (defn- knock-vel

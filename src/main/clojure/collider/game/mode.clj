@@ -1,6 +1,7 @@
 (ns collider.game.mode
   "Game modes of players and the abilities each gives."
   (:require [collider.config :as config]
+            [collider.game.attribute :as attribute]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.vec :as v]
@@ -129,24 +130,14 @@
   {:invulnerable? (invulnerable? e) :flying? (boolean (:flying e))
    :may-fly? (may-fly? e) :instabuild? (instabuild? e)})
 
-(def ^:const block-range 4.5)
-
-(def ^:const creative-block-range 0.5)
-
 (def ^:const entity-range 3.0)
-
-(def ^:const creative-entity-range 2.0)
 
 (defn reach-attributes
   "Returns the interaction ranges of player e.
   The creative modifiers apply only in creative."
   [e]
-  (let [c? (creative? e)
-        mod (fn [k r] (if c? [[k r 0]] []))]
-    [[:entity-interaction-range entity-range
-      (mod :creative-mode-entity-range creative-entity-range)]
-     [:block-interaction-range block-range
-      (mod :creative-mode-block-range creative-block-range)]]))
+  (mapcat #(attribute/entries e (:effects e) #{%})
+          [:entity-interaction-range :block-interaction-range]))
 
 (defn- in-range-of-ground? [chunks e]
   (let [[half h] (entity/pose-box (:pose e :standing))

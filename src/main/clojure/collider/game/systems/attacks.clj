@@ -1,7 +1,6 @@
 (ns collider.game.systems.attacks
   "Players hitting entities when the attack packet comes."
-  (:require [collider.data :as data]
-            [collider.game.apply :as apply]
+  (:require [collider.game.apply :as apply]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -35,8 +34,7 @@
 
 (defn- attr
   ^double [a k]
-  (let [m (get-in (data/items) [(held a) k])]
-    (attribute/value a (:effects a) k (when m [[:item m 0]]))))
+  (attribute/value a (:effects a) k))
 
 (defn- strength
   "Returns how far the attack of player a has charged at tick t,
@@ -105,7 +103,7 @@
     e))
 
 (defn- base-knockback ^double [a]
-  (num/f32 (get (attribute/base-values a) :attack-knockback 0.0)))
+  (num/f32 (attribute/value a (:effects a) :attack-knockback)))
 
 (defn- extra-knock
   [eid a tid knock?]
