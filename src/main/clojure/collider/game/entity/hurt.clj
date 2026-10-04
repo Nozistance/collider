@@ -529,7 +529,7 @@
   (let [fire (long (or (:fire e) 0))]
     {:on-fire? (or (pos? fire) (boolean (:burning? e)))
      :killed-by-player? (killed-by-player? world e)
-     :damage-type nil
+     :damage-type (:hurt-cause e)
      :looting 0
      :entity (mobs/loot-entity e)}))
 
