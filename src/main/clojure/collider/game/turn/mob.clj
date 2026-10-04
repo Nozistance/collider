@@ -202,15 +202,15 @@
 (defn- takes-now? [^booleans ticking ^long i ^long j]
   (or (< j i) (not (aget ticking j))))
 
-(defn- taker [ticking slots es i sh]
+(defn- taker [chunks ticking slots es i sh]
   (let [j (push/slot slots (nth sh 0))]
     (when (and (>= j 0) (takes-now? ticking i j)
-               (push/alive? (nth (nth es j) 1)))
+               (push/pushable? chunks (nth (nth es j) 1)))
       j)))
 
-(defn- handing [ticking vels slots es i shoves]
+(defn- handing [chunks ticking vels slots es i shoves]
   (let [f (fn [acc sh]
-            (let [j (taker ticking slots es i sh)
+            (let [j (taker chunks ticking slots es i sh)
                   d (when j (hand (nth (nth es j) 1) vels j sh))]
               (if d (conj acc d) acc)))]
     (reduce f [] shoves)))
@@ -218,9 +218,9 @@
 (defn- takers
   "Returns the slot and the shove of each body that takes a shove
   of mob i now."
-  [ticking slots es i shoves]
+  [chunks ticking slots es i shoves]
   (let [f (fn [acc sh]
-            (if-let [j (taker ticking slots es i sh)]
+            (if-let [j (taker chunks ticking slots es i sh)]
               (conj (or acc []) [j sh])
               acc))]
     (reduce f nil shoves)))
@@ -232,12 +232,13 @@
 (defn- max-cramming ^long [world]
   (long (get (:rules world) :max-entity-cramming 24)))
 
-(defn- live-of [slots es]
-  (fn [o] (push/alive? (nth (nth es (push/slot slots o)) 1))))
+(defn- live-of [chunks slots es]
+  (fn [o]
+    (push/pushable? chunks (nth (nth es (push/slot slots o)) 1))))
 
-(defn- crowd [index slots es eid e]
+(defn- crowd [chunks index slots es eid e]
   (let [[half height] (mobs/box-of e)
-        alive? (live-of slots es)
+        alive? (live-of chunks slots es)
         f (fn [^long n o] (if (alive? o) (inc n) n))]
     (reduce f 0 (push/touching index eid e half height))))
 
@@ -248,8 +249,9 @@
   (and (push/alive? e)
        (< (random/of-longs t eid cramming-key) 0.25)
        (let [m (max-cramming world)
-             e (assoc e :pos pos)]
-         (and (pos? m) (> (crowd index slots es eid e) (dec m))))))
+             e (assoc e :pos pos)
+             n (crowd (:chunks world) index slots es eid e)]
+         (and (pos? m) (> (long n) (dec m))))))
 
 (def ^:private crush {:type :cramming})
 
@@ -271,7 +273,8 @@
   (let [[eid e] (nth es i)
         cram (cram-of world index slots es eid t)
         [e2 ds shoves hit? ls]
-        (step-mob world index eid e mind t cram (live-of slots es))
+        (step-mob world index eid e mind t cram
+                  (live-of (:chunks world) slots es))
         cs (when hit? [[:damage eid cramming-damage crush]])
         [e2 ds] (living/touched world eid e2 (:wet? e) ds ls cs)]
     [e2 ds shoves]))
@@ -294,7 +297,8 @@
                     (minded world tempters eid e t))
           [e nil nil])
         es (assoc! es i [eid e2])
-        hs (handing ticking vels slots es i shoves)
+        hs (handing (:chunks world) ticking vels slots es i
+                    shoves)
         from (when-not (identical? (:pos e) (:pos e2)) (:pos e))]
     [es (if (seq hs) (into (vec ds) hs) ds) from]))
 
@@ -352,11 +356,12 @@
     (let [i (int i) m (aget minds i)]
       (when m
         (let [[eid e] (nth cur i)
-              [e2 ds shoves]
-              (run-turn (live world eid) index t slots cur i m)]
+              w (live world eid)
+              [e2 ds shoves] (run-turn w index t slots cur i m)
+              ts (takers (:chunks w) ticking slots cur i shoves)]
           (when-not (ok? e e2) (aset ^booleans out 0 true))
           (placed! index cur i eid e e2)
-          (aset runs i [ds (takers ticking slots cur i shoves)]))))))
+          (aset runs i [ds ts]))))))
 
 (defn- joiner
   "Returns the fn of slot i that adds to collector c the deltas of

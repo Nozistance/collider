@@ -389,9 +389,10 @@
         (+ (v/z vel) (double dz))))
 
 (defn- shoved [world e vel shoves live?]
-  (if (and (seq shoves) (push/alive? e))
+  (if (and (seq shoves) (push/pushable? (:chunks world) e))
     (let [es (:entities world)
-          live? (or live? #(push/alive? (get es %)))]
+          live? (or live?
+                    #(push/pushable? (:chunks world) (get es %)))]
       (reduce (fn [v sh] (if (live? (nth sh 0)) (taken v sh) v))
               vel shoves))
     vel))
@@ -400,8 +401,8 @@
   (assoc (fluid-of world e half height)
          :threshold (mobs/fluid-jump-threshold e)))
 
-(defn- own-vel [index eid e half height f]
-  (let [shoves (when (push/alive? e)
+(defn- own-vel [world index eid e half height f]
+  (let [shoves (when (push/pushable? (:chunks world) e)
                  (push/before index eid e half height))]
     (pushed (reduce taken (:vel e) shoves) (:push f))))
 
@@ -420,7 +421,7 @@
   [world index eid e h ht]
   (let [f (fluid-at world e h ht)
         moving? (not (zero? (double (:zza (:move e) 0.0))))
-        vel (own-vel index eid e h ht f)
+        vel (own-vel world index eid e h ht f)
         rest? (at-rest? world e h moving? (in-fluid? f) vel)]
     (if rest? (rest-move e f) (physics-move world e vel h ht f))))
 
@@ -451,7 +452,8 @@
   [world index eid e [half height pos vel] cram live?]
   (let [hurt (when cram (cram e pos))
         shoves (push/shoves-at index eid pos half height)
-        v (shoved world (or hurt e) vel shoves live?)]
+        v (shoved world (or hurt (assoc e :pos pos)) vel shoves
+                  live?)]
     [v shoves (some? hurt)]))
 
 (defn- moved-y ^double [tr]

@@ -5,6 +5,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.vec :as v]
+            [collider.world.blocks.climb :as climb]
             [collider.world.chunk :as chunk])
   (:import (collider.game.mob Bodies PushGrid Slots Turns)))
 
@@ -37,9 +38,14 @@
        (not (game-mode/spectator? e))
        (contains? held (chunk/pos-chunk (:pos e)))))
 
-(defn- pushable?
-  [held [_ e :as entry]]
-  (and (body? held entry) (alive? e)))
+(defn- climbing? [chunks e]
+  (and (not (:flying e)) (climb/on-climbable? chunks (:pos e))))
+
+(defn pushable?
+  "Returns true when body e takes shoves among chunks. A body that
+  climbs takes none but still shoves the others."
+  [chunks e]
+  (and (alive? e) (not (climbing? chunks e))))
 
 (defn- came ^long [e]
   (if-let [a (:arrived e)] (long (nth a 0)) Long/MIN_VALUE))
@@ -225,8 +231,8 @@
   (and (< (Math/abs (- (v/x a) (v/x b))) player-reach)
        (< (Math/abs (- (v/z a) (v/z b))) player-reach)))
 
-(defn- shoved-by? [p [_ e]]
-  (and (alive? e) (not (mobs/death-ends? e))
+(defn- shoved-by? [chunks p [_ e]]
+  (and (pushable? chunks e) (not (mobs/death-ends? e))
        (near? (:pos p) (:pos e))))
 
 (defn- taken [es [eid dx dz]]
@@ -241,8 +247,8 @@
   them back, and a spectator gives none."
   [world [peid p :as entry]]
   (when-not (game-mode/spectator? p)
-    (let [ms (into [entry] (filter #(shoved-by? p %))
-                   (level/of-types world mob-types))]
+    (let [f (filter #(shoved-by? (:chunks world) p %))
+          ms (into [entry] f (level/of-types world mob-types))]
       (when (next ms)
         (let [[h ht] (pushable-box p)
               sh (shoves (index-of ms) peid p h ht)]
