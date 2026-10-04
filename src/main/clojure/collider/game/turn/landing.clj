@@ -83,7 +83,9 @@
 (defn- damage-of ^long [e ^double d ^double m]
   (if (contains? @immune (:type e))
     0
-    (let [k (get (attribute/base-values e) :fall-damage-multiplier)
+    (let [a :fall-damage-multiplier
+          k (when (a (attribute/base-values e))
+              (attribute/value e (:effects e) a))
           scaled (* (power e d) (double (float m)))]
       (long (Math/floor (* scaled (double (or k 1.0))))))))
 

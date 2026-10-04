@@ -1,7 +1,6 @@
 (ns collider.game.systems.attacks
   "Players hitting entities when the attack packet comes."
-  (:require [collider.data :as data]
-            [collider.game.apply :as apply]
+  (:require [collider.game.apply :as apply]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
@@ -36,8 +35,7 @@
 
 (defn- attr
   ^double [a k]
-  (let [m (get-in (data/items) [(held a) k])]
-    (attribute/value a (:effects a) k (when m [[:item m 0]]))))
+  (attribute/value a (:effects a) k))
 
 (defn- strength
   "Returns how far the attack of player a has charged at tick t,
@@ -106,7 +104,7 @@
     e))
 
 (defn- base-knockback ^double [a]
-  (num/f32 (get (attribute/base-values a) :attack-knockback 0.0)))
+  (num/f32 (attribute/value a (:effects a) :attack-knockback)))
 
 (defn- extra-knock
   [eid a tid knock?]
@@ -151,9 +149,17 @@
         spread [(- sx) 0.0 (- cz)]]
     (out/all (out/particles :sweep-attack nil at 0 0.0 spread))))
 
+(defn- sweep-damage
+  "Returns the damage the sweep of blow b of player a deals each
+  entity near."
+  ^double [a b]
+  (let [r (num/f32 (attr a :sweeping-damage-ratio))
+        d (num/f32 (+ 1.0 (* r (double (:damage b)))))]
+    (* d (double (:s b)))))
+
 (defn- sweep-deltas
-  [world eid a tid target src s]
-  (let [box (sweep-box target) dir (facing a)
+  [world eid a tid target src b]
+  (let [s (sweep-damage a b) box (sweep-box target) dir (facing a)
         near (filter #(swept? a box % eid tid) (:entities world))]
     (concat [(sound a :entity.player.attack.sweep)]
             (mapcat #(swept-deltas world src (num/f32 s) dir %) near)
@@ -189,7 +195,7 @@
   (concat (hurt/report-deltas world tid h)
           (extra-knock eid a tid (:knock? b))
           (when (:sweep? b)
-            (sweep-deltas world eid a tid target src (:s b)))
+            (sweep-deltas world eid a tid target src b))
           (visual-deltas eid a tid b)
           (hearts target h)))
 

@@ -3,6 +3,7 @@
   events they send."
   (:require [collider.data :as data]
             [collider.data.long-map :as lm]
+            [collider.game.attribute :as attribute]
             [collider.game.book :as book]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
@@ -227,6 +228,17 @@
 (defn hand-stack
   [e hand]
   (get-in e [:inventory (hand-slot e hand)]))
+
+(defn equipment
+  "Returns the stacks that player e wears and holds, by equipment
+  slot."
+  [e]
+  (let [at (assoc slots/armor :mainhand (hand-slot e :main)
+                  :offhand slots/offhand)]
+    (into {}
+          (keep (fn [[k i]]
+                  (when-let [s (get-in e [:inventory i])] [k s])))
+          at)))
 
 (def ^:private ^:const default-swing 6)
 
@@ -558,20 +570,15 @@
   (long (:permission-level e 4)))
 
 (defn block-reach
-  "Returns how far the player reaches blocks, in blocks. Creative
-  reaches further."
+  "Returns how far the player reaches blocks, in blocks."
   ^double [player]
-  (if (game-mode/creative? player)
-    (+ game-mode/block-range game-mode/creative-block-range)
-    game-mode/block-range))
+  (attribute/value player (:effects player) :block-interaction-range))
 
 (defn entity-reach
-  "Returns how far the player reaches entities, in blocks. Creative
-  reaches further."
+  "Returns how far the player reaches entities, in blocks."
   ^double [player]
-  (if (game-mode/creative? player)
-    (+ game-mode/entity-range game-mode/creative-entity-range)
-    game-mode/entity-range))
+  (let [fx (:effects player)]
+    (attribute/value player fx :entity-interaction-range)))
 
 (defn arrived
   "Returns player e as it arrives in another level at pos.

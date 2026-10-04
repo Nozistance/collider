@@ -13,6 +13,7 @@
             [collider.game.systems.consume :as consume]
             [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.effects :as effects]
+            [collider.game.systems.equipment :as equipment]
             [collider.game.systems.experience :as experience]
             [collider.game.systems.items :as items]
             [collider.game.systems.keepalive :as keepalive]
@@ -31,6 +32,7 @@
   [(ack (blocks/sequences (:input d)))
    effects/player-deltas
    consume/player-deltas
+   equipment/player-deltas
    compasses/player-deltas
    dripleaf/player-deltas
    push/player-shoves

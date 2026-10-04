@@ -3,6 +3,7 @@
   change them."
   (:require [collider.data :as data]
             [collider.game.effect :as effect]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]
             [collider.num :as num]))
 
@@ -37,15 +38,36 @@
    :unluck [[:luck :effect.unluck -1.0 add-value]]})
 
 (def ^:private ranges
-  {:movement-speed [0.0 1024.0] :attack-speed [0.0 1024.0]
-   :attack-damage [0.0 2048.0] :safe-fall-distance [-1024.0 1024.0]
-   :waypoint-transmit-range [0.0 6.0E7] :max-health [1.0 1024.0]
-   :max-absorption [0.0 2048.0] :luck [-1024.0 1024.0]})
+  {:air-drag-modifier [0.0 2048.0] :armor [0.0 30.0]
+   :armor-toughness [0.0 20.0] :attack-damage [0.0 2048.0]
+   :attack-knockback [0.0 5.0] :attack-speed [0.0 1024.0]
+   :below-name-distance [0.0 512.0] :block-break-speed [0.0 1024.0]
+   :block-interaction-range [0.0 64.0] :bounciness [0.0 1.0]
+   :burning-time [0.0 1024.0] :camera-distance [0.0 32.0]
+   :explosion-knockback-resistance [0.0 1.0]
+   :entity-interaction-range [0.0 64.0]
+   :fall-damage-multiplier [0.0 100.0] :flying-speed [0.0 1024.0]
+   :follow-range [0.0 2048.0] :friction-modifier [0.0 2048.0]
+   :gravity [-1.0 1.0] :jump-strength [0.0 32.0]
+   :knockback-resistance [-2.0 1.0] :luck [-1024.0 1024.0]
+   :max-absorption [0.0 2048.0] :max-health [1.0 1024.0]
+   :mining-efficiency [0.0 1024.0] :movement-efficiency [0.0 1.0]
+   :movement-speed [0.0 1024.0] :name-tag-distance [0.0 512.0]
+   :oxygen-bonus [0.0 1024.0] :safe-fall-distance [-1024.0 1024.0]
+   :scale [0.0625 16.0] :sneaking-speed [0.0 1.0]
+   :spawn-reinforcements [0.0 1.0] :step-height [0.0 10.0]
+   :submerged-mining-speed [0.0 20.0]
+   :sweeping-damage-ratio [0.0 1.0]
+   :tempt-range [0.0 2048.0] :water-movement-efficiency [0.0 1.0]
+   :waypoint-transmit-range [0.0 6.0E7]
+   :waypoint-receive-range [0.0 6.0E7]})
 
 (def synced
   "The attributes a client is told about."
-  #{:movement-speed :attack-speed :safe-fall-distance :max-health
-    :max-absorption :luck})
+  (disj (set (keys ranges)) :attack-damage :attack-knockback
+        :follow-range :knockback-resistance :spawn-reinforcements
+        :tempt-range :waypoint-transmit-range
+        :waypoint-receive-range))
 
 (defn base-values
   [e]
@@ -62,15 +84,28 @@
              (:sprinting? e))
     [[:sprinting (num/f32 sprint-boost) multiply-total]]))
 
+(def ^:private creative-reach
+  {:block-interaction-range [:creative-mode-block-range 0.5 add-value]
+   :entity-interaction-range
+   [:creative-mode-entity-range 2.0 add-value]})
+
+(defn- mode-modifiers [e attr]
+  (when (= :creative (:game-mode e))
+    (some-> (creative-reach attr) vector)))
+
 (defn modifiers
   "Returns the modifiers of attribute attr of entity e under effects.
-  A sprinting player adds the sprint boost to its movement speed."
+  A sprinting player adds the sprint boost to its movement speed, a
+  creative one the creative reach."
   [e effects attr]
-  (into (vec (sprint-modifiers e attr))
-        (for [[k i] (effect/in-order effects)
-              [a id amount op] (templates k)
-              :when (= a attr)]
-          [id (* (double amount) (inc (long (:amplifier i)))) op])))
+  (-> (vec (sprint-modifiers e attr))
+      (into (mode-modifiers e attr))
+      (into (for [[k i] (effect/in-order effects)
+                  [a id amount op] (templates k)
+                  :when (= a attr)]
+              [id (* (double amount) (inc (long (:amplifier i))))
+               op]))
+      (into (vals (get (:equipment-modifiers e) attr)))))
 
 (def ^:private equipment-slots
   [:mainhand :offhand :feet :legs :chest :head :body :saddle])
@@ -90,22 +125,74 @@
   (and (stack/damageable? s)
        (>= (stack/damage s) (stack/max-damage s))))
 
-(defn- stack-modifiers [attr slot s]
-  (when-not (broken? s)
+(defn- enchantment-modifiers [slot s]
+  (for [[k level] (stack/component s :enchantments)
+        :let [en (enchantment/info k)]
+        :when (some #(in-group? % slot) (:slots en))
+        {:keys [attribute id amount operation]} (:attributes en)]
+    [attribute [(str id "/" (name slot)) (double (amount level))
+                (operations operation)]]))
+
+(defn- stack-modifiers
+  "Returns the modifiers [attr modifier] stack s gives in slot: its
+  own, then those of its enchantments."
+  [slot s]
+  (concat
     (for [{a :attribute m :modifier g :slot}
           (stack/component s :attribute-modifiers)
-          :when (and (= attr a) (in-group? (or g :any) slot))]
-      [(:id m) (double (:amount m)) (operations (:operation m))])))
+          :when (in-group? (or g :any) slot)]
+      [a [(:id m) (double (:amount m)) (operations (:operation m))]])
+    (enchantment-modifiers slot s)))
 
-(defn equipment-modifiers
-  "Returns the modifiers of attribute attr that the stacks of
-  equipment give, by equipment slot. A broken stack gives none. Of
-  two modifiers with one id the later slot wins."
-  [equipment attr]
-  (let [of #(when-let [s (get equipment %)]
-              (stack-modifiers attr % s))]
-    (vals (reduce (fn [m [id :as x]] (assoc m id x))
-                  {} (mapcat of equipment-slots)))))
+(defn- seen [s]
+  (when s
+    [(:item s) (long (:count s 1)) (not-empty (:components s))
+     (not-empty (:removed s))]))
+
+(defn- dropped [[ms ts :as acc] [a [id]]]
+  (if (contains? (get ms a) id)
+    [(update ms a dissoc id) (conj ts a)]
+    acc))
+
+(defn- taken [has?]
+  (fn [[ms ts :as acc] [a [id :as m]]]
+    (if (has? a)
+      [(assoc-in ms [a id] m) (conj ts a)]
+      acc)))
+
+(defn- old-modifiers [e slot]
+  (when-let [s (get (:last-equipment e) slot)]
+    (stack-modifiers slot s)))
+
+(defn- new-modifiers [equipment slot]
+  (when-let [s (get equipment slot)]
+    (when-not (broken? s) (stack-modifiers slot s))))
+
+(defn- changed-slots [e equipment]
+  (let [last (:last-equipment e)]
+    (filterv #(not= (seen (get last %)) (seen (get equipment %)))
+             equipment-slots)))
+
+(defn- moved [e equipment slots]
+  (let [acc [(:equipment-modifiers e {}) #{}]
+        acc (reduce dropped acc (mapcat #(old-modifiers e %) slots))]
+    (reduce (taken (base-values e)) acc
+            (mapcat #(new-modifiers equipment %) slots))))
+
+(defn equipped
+  "Returns [e attrs]: entity e with the modifiers of the stacks it
+  holds in equipment, by slot, and the attributes that changed.
+  A changed slot first loses the modifiers of its old stack by id,
+  then its new stack adds its own, so the last changed slot wins.
+  A broken stack adds none."
+  [e equipment]
+  (let [slots (changed-slots e equipment)
+        [ms ts] (moved e equipment slots)]
+    (if (empty? slots)
+      [e #{}]
+      [(assoc e :equipment-modifiers ms
+              :last-equipment (select-keys equipment equipment-slots))
+       ts])))
 
 (defn- summed ^double [ms op]
   (reduce (fn [^double s [_ a o]] (if (= op o) (+ s (double a)) s))
@@ -121,15 +208,14 @@
       (max (double lo) (min (double hi) v)))))
 
 (defn value
-  "Returns the value of attribute attr of entity e under effects,
-  with the modifiers more added. It stays in the range of attr."
-  (^double [e effects attr] (value e effects attr nil))
-  (^double [e effects attr more]
-   (let [ms (into (modifiers e effects attr) more)
-         base (+ (double (get (base-values e) attr 0.0))
-                 (summed ms add-value))
-         v (+ base (* base (summed ms add-base-share)))]
-     (clamped attr (reduce multiplied v ms)))))
+  "Returns the value of attribute attr of entity e under effects.
+  It stays in the range of attr."
+  ^double [e effects attr]
+  (let [ms (modifiers e effects attr)
+        base (+ (double (get (base-values e) attr 0.0))
+                (summed ms add-value))
+        v (+ base (* base (summed ms add-base-share)))]
+    (clamped attr (reduce multiplied v ms))))
 
 (defn entries
   "Returns the attribute entries [attr base modifiers] of the synced

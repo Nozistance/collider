@@ -5,13 +5,6 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- main-hand-sum ^double [components type]
-  (let [mods (get components "minecraft:attribute_modifiers")
-        match? #(= (map % ["type" "operation" "slot"])
-                   [type "add_value" "mainhand"])]
-    (reduce + 0.0 (for [a mods :when (match? a)]
-                    (double (get a "amount"))))))
-
 (defn- unmodelled [v]
   (throw (pack/unknown "default component not modelled" {:value v})))
 
@@ -22,6 +15,20 @@
 
 (defn- not-modelled [what v]
   (pack/unknown (str what " not modelled") {:value v}))
+
+(def ^:private displays {"default" 0 "hidden" 1})
+
+(defn- modifier-display [v]
+  (let [t (get-in v ["display" "type"] "default")]
+    (or (displays t) (throw (not-modelled "modifier display" v)))))
+
+(defn- modifier-entry [v]
+  {:attribute (kw (get v "type")) :slot (kw (get v "slot" "any"))
+   :display {:display (modifier-display v)}
+   :modifier {:id (kw (get v "id")) :amount (double (get v "amount"))
+              :operation (kw (get v "operation"))}})
+
+(defn- modifiers [v] (mapv modifier-entry v))
 
 (defn- potion-default [v]
   (empty-or-throw "custom_effects" (get v "custom_effects"))
@@ -58,6 +65,7 @@
    "minecraft:enchantable"          [:enchantable #(get % "value")]
    "minecraft:bundle_contents"      [:bundle-contents no-contents]
    "minecraft:dye"                  [:dye kw]
+   "minecraft:attribute_modifiers"  [:attribute-modifiers modifiers]
    "minecraft:instrument"           [:instrument kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]
    "minecraft:enchantments"         [:enchantments levels]
@@ -172,15 +180,11 @@
 
 (defn- combat-fields [cs]
   (let [egg (get-in cs ["minecraft:entity_data" "id"])
-        hit (main-hand-sum cs "minecraft:attack_damage")
-        pace (main-hand-sum cs "minecraft:attack_speed")
         resists (get-in cs ["minecraft:damage_resistant" "types"])
         pat (get cs "minecraft:provides_banner_patterns")
         tag #(tag-name (subs % 1))]
     (cond-> (sorted-map)
       egg (assoc :spawns (kw egg))
-      (pos? hit) (assoc :attack-damage (flt hit))
-      (not (zero? pace)) (assoc :attack-speed pace)
       (string? resists) (assoc :resists (tag resists))
       (string? pat) (assoc :patterns (tag pat)))))
 

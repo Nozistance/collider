@@ -221,6 +221,13 @@
                 [:merge-entity (:eid acc) {:dirty-attributes nil}]))
     acc))
 
+(defn changed-deltas
+  "Returns the deltas that follow attributes attrs of entity eid,
+  now e, changing: they go out, and health and absorption keep under
+  their new top."
+  [eid e attrs]
+  (deltas (assoc (account eid e) :dirty (set attrs)) e))
+
 (defn tick-deltas
   "Returns the deltas of one tick of the effects of entity eid."
   [world eid e]

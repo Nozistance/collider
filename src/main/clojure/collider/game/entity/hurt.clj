@@ -13,7 +13,6 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.game.slots :as slots]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -532,13 +531,7 @@
   "Returns the stacks that player e wears and holds, by equipment
   slot. Any other entity has none."
   [e]
-  (when (entity/player? e)
-    (let [at (assoc slots/armor :mainhand (player/hand-slot e :main)
-                    :offhand slots/offhand)]
-      (into {}
-            (keep (fn [[k i]]
-                    (when-let [s (get-in e [:inventory i])] [k s])))
-            at))))
+  (when (entity/player? e) (player/equipment e)))
 
 (defn- loot-view
   "Returns entity e as loot predicates see it, or nil for no e."
@@ -559,8 +552,7 @@
 
 (defn- luck ^double [p]
   (if p
-    (attribute/value p (:effects p) :luck
-                     (attribute/equipment-modifiers (worn p) :luck))
+    (attribute/value p (:effects p) :luck)
     0.0))
 
 (defn- loot-ctx [world e]
