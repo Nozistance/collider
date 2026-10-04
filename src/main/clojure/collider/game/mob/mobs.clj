@@ -339,6 +339,10 @@
             :yaw (double yaw) :head-yaw 0.0)
     baby? (assoc :baby-until (+ (long tick) baby-start))))
 
+(def ^:const ambient-interval
+  "The ticks a mob keeps quiet after it was heard or hurt."
+  120)
+
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
 (defn baby? [e] (some? (:baby-until e)))

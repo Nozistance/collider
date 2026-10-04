@@ -36,8 +36,6 @@
     (b world eid e t tempters)
     [e nil]))
 
-(def ^:private ^:const say-interval 120)
-
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
     (+ base (* 0.2 (- (random/of-longs t eid (hash :p1))
@@ -57,7 +55,7 @@
      (- t since)))
 
 (defn- said [eid e t]
-  (let [e (assoc e :say-tick (+ (long t) say-interval 1))]
+  (let [e (assoc e :say-tick (+ (long t) mobs/ambient-interval 1))]
     (if-let [say (mobs/sound-of e :say)]
       (let [p (sound-pitch e t eid)]
         [e [(out/all (out/sound say (:pos e) 1.0 p))]])
