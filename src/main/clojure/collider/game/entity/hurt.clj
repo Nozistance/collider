@@ -7,6 +7,7 @@
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.experience :as xp]
+            [collider.game.level :as level]
             [collider.game.loot :as loot]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
@@ -518,14 +519,11 @@
   (cond-> {:love-until nil :panic-until (panic-until world e)}
           (:hurt-cause e) (assoc :hurt-cause nil)))
 
-(def ^:private ^:const player-kill-memory 100)
-
 (def ^:private ^:table drop-tables (delay (data/entity-drops)))
 
 (defn- killed-by-player? [world e]
-  (let [at (:hurt-by-player e)]
-    (boolean (and at (< (- (long (:tick world)) (long at))
-                        player-kill-memory)))))
+  (let [until (:hurt-by-player-until e)]
+    (boolean (and until (< (long (:tick world)) (long until))))))
 
 (defn- on-fire? [e]
   (or (pos? (long (or (:fire e) 0))) (boolean (:burning? e))))
@@ -555,11 +553,15 @@
   killer, while it is in the world."
   [world e]
   (when (killed-by-player? world e)
-    (let [p (get-in world [:entities (:last-hurt-by-player e)])]
-      (when (entity/player? p) p))))
+    (let [u (:last-hurt-by-player e)]
+      (some (fn [[_ p]] (when (= u (:uuid p)) p))
+            (level/player-entries world)))))
 
 (defn- luck ^double [p]
-  (if p (attribute/value p (:effects p) :luck) 0.0))
+  (if p
+    (attribute/value p (:effects p) :luck
+                     (attribute/equipment-modifiers (worn p) :luck))
+    0.0))
 
 (defn- loot-ctx [world e]
   (let [src (:killed-by e)

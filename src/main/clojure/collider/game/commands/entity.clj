@@ -5,6 +5,8 @@
             [collider.game.commands.reply
              :refer [answer entity-name fail name-list say success]]
             [collider.game.effect.account :as account]
+            [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
@@ -12,12 +14,24 @@
 
 (set! *warn-on-reflection* true)
 
+(def ^:private generic-kill {:type :generic-kill})
+
+(defn- slain [world id e]
+  (when-let [ds (hurt/damage-deltas
+                  world id e Float/MAX_VALUE generic-kill)]
+    (let [h (hurt/hurt-now world id e ds)]
+      (into ds (hurt/report-deltas world id h)))))
+
+(defn- kill-in [lv id e]
+  (cond
+    (not (entity/living? e)) [[:remove-entity id]]
+    (and (entity/player? e)
+         (not (player/client-loaded? e (long (:tick lv)))))
+    nil
+    :else (slain lv id e)))
+
 (defn- killed [world [id dim e]]
-  (sel/in-level world dim
-                (cond
-                  (not= :player (:type e)) [[:remove-entity id]]
-                  (player/client-loaded? e (long (:tick world)))
-                  [[:merge-entity id {:health 0.0}]])))
+  (sel/in-level world dim (kill-in (sel/level-view world dim) id e)))
 
 (defn- kill-report [eid xs]
   (if (= 1 (count xs))
