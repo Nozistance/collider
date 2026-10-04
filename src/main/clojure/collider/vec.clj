@@ -7,8 +7,8 @@
 (defn v3? [v] (instance? V3 v))
 
 (defn same?
-  "Returns true when a and b are one value bit for bit: one object,
-  two numbers of one type, or two points."
+  "Returns true when a and b are one value bit for bit. One object,
+  two numbers of one type and two equal points all count."
   {:inline (fn [a b] `(V3/same ~a ~b))}
   [a b]
   (V3/same a b))
