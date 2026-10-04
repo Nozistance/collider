@@ -160,6 +160,48 @@
 (def ^:private damage-resistant
   (dfu/record [:types :types (holders "damage_type") :req]))
 
+(defn- double-of [tag]
+  (if (number? tag)
+    [:ok (double tag)]
+    [:malformed "Not a number"]))
+
+(def ^:private display-kinds
+  {"default" 0 "hidden" 1 "override" 2})
+
+(def ^:private display-kind
+  (dfu/record [:type :kind (named display-kinds) :req]))
+
+(defn- display-of [tag kind]
+  (if (= 2 kind)
+    ((dfu/mapped (dfu/record [:value :text tc/text-of :req])
+                 #(assoc % :display 2))
+     tag)
+    [:ok {:display kind}]))
+
+(defn- modifier-display [tag]
+  (let [[op v :as r] (display-kind tag)]
+    (if (= :ok op) (display-of tag (:kind v)) r)))
+
+(def ^:private slot-groups
+  [:any :mainhand :offhand :hand :feet :legs :chest :head :armor
+   :body :saddle])
+
+(def ^:private operations
+  [:add-value :add-multiplied-base :add-multiplied-total])
+
+(def ^:private attribute-entry
+  (dfu/mapped
+    (dfu/record
+      [:type :attribute (by-name "attribute") :req]
+      [:id :id identifier :req]
+      [:amount :amount double-of :req]
+      [:operation :operation (enum-of operations) :req]
+      [:slot :slot (enum-of slot-groups) :opt :any]
+      [:display :display modifier-display :opt {:display 0}])
+    (fn [v]
+      (let [ks [:id :amount :operation]]
+        (assoc (apply dissoc v ks) :modifier (select-keys v ks))))))
+
 (def ^:private dyes
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
    :light-gray :cyan :purple :blue :brown :green :red :black])
@@ -199,6 +241,7 @@
      :recipes recipes :block-state block-state
      :pot-decorations pot-decorations :repairable repairable
      :damage-resistant damage-resistant
+     :attribute-modifiers (dfu/listed attribute-entry)
      :provides-banner-patterns (holders "banner_pattern")
      :custom-name tc/text-of :item-name tc/text-of :lore tc/lore
      :damage-type (fixed "damage_type")
