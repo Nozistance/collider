@@ -217,7 +217,7 @@
         folded (folded-in applied (deltas/entities-of d))
         quit (reduce player/quit folded removes)
         types (retyped-index types folded quit removes)]
-    (indexed (areas/cache-active-chunks (typed quit types)))))
+    (indexed (areas/with-areas (typed quit types)))))
 
 (defn- inhabited? [world dim]
   (not (lm/empty? (:entities (get (:levels world) dim)))))
