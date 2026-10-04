@@ -322,7 +322,7 @@
     (let [lv (dissoc (get (:levels world) dim) :input)]
       (level/with-level world dim (apply-level lv d)))))
 
-(defn deltas
+(defn applied
   "Returns the world after ds and ds as applied.
   A whole world takes ds in its overworld."
   [world ds]
@@ -344,7 +344,7 @@
   (let [ev (event-of x)
         w (entities w (player/slot-part w ev))
         ds (event-deltas f w x ev)]
-    [(if (and more (seq ds)) (first (deltas w ds)) w) ds]))
+    [(if (and more (seq ds)) (first (applied w ds)) w) ds]))
 
 (defn fold-events
   "Returns the deltas f gives for each event in order.
@@ -364,5 +364,5 @@
   "Returns world with deltas ds applied, and deltas d with ds added."
   [[world d] ds]
   (let [x (deltas/of-vec (vec ds))]
-    [(if (deltas/inert? x) world (first (deltas world x)))
+    [(if (deltas/inert? x) world (first (applied world x)))
      (deltas/merge d x)]))

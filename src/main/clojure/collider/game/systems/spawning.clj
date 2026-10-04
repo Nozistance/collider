@@ -63,7 +63,7 @@
 
 (defn- loading [[w acc] need]
   (let [ds (vec (chunks/loading-deltas w need))
-        w' (if (seq ds) (first (apply/deltas w ds)) w)]
+        w' (if (seq ds) (first (apply/applied w ds)) w)]
     [w' (into acc ds)]))
 
 (defn- settle [[world acc] [eid req]]
