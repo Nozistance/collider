@@ -16,8 +16,11 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- span [a b]
+  (let [a (long a) b (long b)] [(min a b) (max a b)]))
+
 (defn- box [[ax ay az bx by bz]]
-  (mapv (fn [a b] (sort [(long a) (long b)])) [ax ay az] [bx by bz]))
+  (mapv span [ax ay az] [bx by bz]))
 
 (defn- shell? [[[x1 x2] [y1 y2] [z1 z2]] [x y z]]
   (or (= x x1) (= x x2) (= y y1) (= y y2) (= z z1) (= z z2)))

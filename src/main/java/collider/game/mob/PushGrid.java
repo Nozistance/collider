@@ -3,6 +3,7 @@ package collider.game.mob;
 import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
+import collider.world.LongIntMap;
 import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -27,9 +28,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private final double[] halfs, heights, xs, ys, zs;
     private final long[] came, ranks;
     private final int[] next;
-    private long[] keys;
-    private int[] heads;
-    private int used;
+    private final LongIntMap heads;
     private double widest, slack;
     private double[] px, pz, ph;
 
@@ -55,11 +54,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         this.zs = zs;
         int n = eids.length;
         this.next = new int[n];
-        int cap = 16;
-        while (cap < 4 * n) cap <<= 1;
-        this.keys = new long[cap];
-        this.heads = new int[cap];
-        Arrays.fill(heads, -1);
+        this.heads = new LongIntMap(2 * n);
         for (int i = 0; i < n; i++) {
             widest = Math.max(widest, halfs[i]);
             link(i);
@@ -75,69 +70,22 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     }
 
     private int head(long k) {
-        int m = keys.length - 1;
-        int i = slot0(k, m);
-        while (heads[i] != -1) {
-            if (keys[i] == k) return Math.max(heads[i], -1);
-            i = (i + 1) & m;
-        }
-        return -1;
-    }
-
-    private static int slot0(long k, int m) {
-        long h = k * 0x9E3779B97F4A7C15L;
-        return Long.hashCode(h) & m;
+        return heads.get(k);
     }
 
     private void link(int s) {
-        long k = column(xs[s], zs[s]);
-        int m = keys.length - 1;
-        int i = slot0(k, m);
-        while (heads[i] != -1) {
-            if (keys[i] == k) {
-                next[s] = Math.max(heads[i], -1);
-                heads[i] = s;
-                return;
-            }
-            i = (i + 1) & m;
-        }
-        keys[i] = k;
-        next[s] = -1;
-        heads[i] = s;
-        if (++used * 2 > keys.length) grow();
+        next[s] = heads.put(column(xs[s], zs[s]), s);
     }
 
     private void unlink(int s) {
         long k = column(xs[s], zs[s]);
-        int m = keys.length - 1;
-        int i = slot0(k, m);
-        while (heads[i] == -1 || keys[i] != k) i = (i + 1) & m;
-        if (heads[i] == s) {
-            heads[i] = next[s] < 0 ? -2 : next[s];
+        int p = heads.get(k);
+        if (p == s) {
+            heads.put(k, next[s]);
             return;
         }
-        int p = heads[i];
         while (next[p] != s) p = next[p];
         next[p] = next[s];
-    }
-
-    private void grow() {
-        long[] ok = keys;
-        int[] oh = heads;
-        keys = new long[ok.length * 2];
-        heads = new int[ok.length * 2];
-        Arrays.fill(heads, -1);
-        int m = keys.length - 1;
-        used = 0;
-        for (int j = 0; j < ok.length; j++) {
-            if (oh[j] >= 0) {
-                int i = slot0(ok[j], m);
-                while (heads[i] != -1) i = (i + 1) & m;
-                keys[i] = ok[j];
-                heads[i] = oh[j];
-                used++;
-            }
-        }
     }
 
     /// Moves the body `eid` of grid `g` to `x`, `y`, `z` with half width `half`
