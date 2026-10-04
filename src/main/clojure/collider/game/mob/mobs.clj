@@ -336,13 +336,6 @@
             :yaw (double yaw) :head-yaw 0.0)
     baby? (assoc :baby-until (+ (long tick) baby-start))))
 
-(defn exp-delay
-  "Returns a wait of at least one tick, drawn from an exponential law
-  with the given mean."
-  ^long [mean ^long t ^long eid kind]
-  (let [r (max 1.0E-9 (random/of-longs t eid (hash kind)))]
-    (max 1 (long (* (double mean) (- (Math/log r)))))))
-
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
 (defn baby? [e] (some? (:baby-until e)))

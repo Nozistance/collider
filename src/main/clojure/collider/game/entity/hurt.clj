@@ -575,10 +575,21 @@
     (when (and n (pos? (long n)))
       [[:xp-award (vec (:pos e)) (long n) [:death eid]]])))
 
-(defn- hurt-marks [world e ^double health src]
+(def ^:private ^:const say-interval 120)
+
+(defn- hushed
+  "Returns the tick from which a mob hurt at tick t counts towards its
+  next ambient sound. A late hurt, after the base tick of the mob,
+  counts from one tick later."
+  ^long [^long t late?]
+  (+ t say-interval (if late? 1 0)))
+
+(defn- hurt-marks [world e health src late?]
   (cond-> {:health-sent health}
-          src (assoc :struck-by nil)
-          (not (entity/player? e)) (merge (panicked world e))))
+    src (assoc :struck-by nil)
+    (not (entity/player? e)) (merge (panicked world e))
+    (and src (pos? health) (mobs/mob-type? (:type e)))
+    (assoc :say-tick (hushed (:tick world) late?))))
 
 (defn- voice [world eid e snd]
   (out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))))
@@ -607,17 +618,18 @@
 (defn report-deltas
   "Returns the deltas that show the hurts of entity eid since they
   were last shown. They are the effects of its full hit, and on
-  death its drops."
-  [world eid e]
-  (let [health (double (:health e))
-        shown (double (or (:health-sent e) health))
-        src (:struck-by e)
-        lost? (< health shown)]
-    (when (or src lost?)
-      (concat
-        [[:merge-entity eid (hurt-marks world e health src)]]
-        (when src (struck-deltas world eid e src))
-        (when lost? (lost-deltas world eid e health))))))
+  death its drops. A hurt is late when it came after the base tick
+  of eid in this tick."
+  ([world eid e] (report-deltas world eid e false))
+  ([world eid e late?]
+   (let [health (double (:health e))
+         src (:struck-by e)
+         lost? (< health (double (or (:health-sent e) health)))]
+     (when (or src lost?)
+       (concat
+         [[:merge-entity eid (hurt-marks world e health src late?)]]
+         (when src (struck-deltas world eid e src))
+         (when lost? (lost-deltas world eid e health)))))))
 
 (defn timer-deltas
   "Returns the deltas of the death countdown of entity eid."
