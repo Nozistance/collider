@@ -3,6 +3,7 @@
   (:require [collider.data.long-map :as lm]
             [collider.game.entity :as entity]
             [collider.game.level :as level]
+            [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
@@ -168,6 +169,9 @@
    :merge-entity
    {:scope :entity :schema [:cat :map]
     :apply (fn [_ e [_ _ m]] (entity/merged e m))}
+   :remember
+   {:scope :entity :schema [:cat :keyword :any :int]
+    :apply (fn [_ e [_ _ k v until]] (brain/remember e k v until))}
    :teleport
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [tick e [_ _ pos]]

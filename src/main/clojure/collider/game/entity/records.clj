@@ -8,7 +8,7 @@
                 tempt-cooldown-until type color variant sheared? track
                 nav move body jump float? support no-blocks? in-lava?
                 follow-at effects arrived stick-cooldown-until
-                egg-at hop fall])
+                egg-at hop fall brain])
 
 (defrecord Player [type name uuid pos yaw pitch on-ground client-vel
                    tp-target chunk-pos sent-chunks
