@@ -130,6 +130,18 @@
         (recur (inc cx)
                (scan-row index best pos r2 pred cx z0 z1))))))
 
+(defn around
+  "Returns [id entity] of every entity whose cell meets the square of
+  half side r around pos, cell by cell."
+  [world pos r]
+  (let [index (entity-index world)
+        [x0 x1] (cell-span (v/x pos) r)
+        [z0 z1] (cell-span (v/z pos) r)]
+    (for [cx (range x0 (inc (long x1)))
+          cz (range z0 (inc (long z1)))
+          entry (get index (cell-key cx cz))]
+      entry)))
+
 (defn held-of
   "Returns the item in the player's selected hotbar slot."
   [p]
