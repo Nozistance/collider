@@ -168,13 +168,16 @@
 
 (defn- put [m id x] (if x (assoc! m id x) m))
 
+(defn- heard [out h]
+  (reduce conj! (reduce conj! out (:ds h)) (:heard h)))
+
 (defn- took
   "Returns s after the hits of one blast, with the motions of the
   players it pushes by eid."
   [s hits]
   (let [step (fn [[cur after out mo] [id h e a]]
                [(put cur id e) (put after id a)
-                (if (neg? (long id)) out (reduce conj! out (:ds h)))
+                (if (neg? (long id)) out (heard out h))
                 (cond-> mo (:motion h) (assoc id (:motion h)))])
         init [(transient (:cur s)) (transient (:after s))
               (transient (:out s)) {}]

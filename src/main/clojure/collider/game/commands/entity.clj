@@ -17,22 +17,20 @@
 
 (def ^:private generic-kill {:type :generic-kill})
 
-(defn- died [id e]
-  (signal/game-event :entity-die (:pos e) id))
-
-(defn- health ^double [e] (double (or (:health e) 0.0)))
+(defn- removed [id e]
+  (into [[:remove-entity id]]
+        (signal/game-event :entity-die (:pos e) id)))
 
 (defn- slain [world id e]
   (when-let [ds (hurt/damage-deltas
                   world id e Float/MAX_VALUE generic-kill)]
-    (let [h (hurt/hurt-now world id e ds)]
-      (cond-> (into ds (hurt/report-deltas world id h))
-        (and (pos? (health e)) (not (pos? (health h))))
-        (into (died id h))))))
+    (->> (hurt/hurt-now world id e ds)
+         (hurt/report-deltas world id)
+         (into ds))))
 
 (defn- kill-in [lv id e]
   (cond
-    (not (entity/living? e)) (into [[:remove-entity id]] (died id e))
+    (not (entity/living? e)) (removed id e)
     (and (entity/player? e)
          (not (player/client-loaded? e (long (:tick lv)))))
     nil

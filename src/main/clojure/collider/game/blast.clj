@@ -20,6 +20,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.fire :as fire]
+            [collider.world.env.signal :as signal]
             [collider.world.phys :as phys]
             [collider.world.space.explosion :as explosion]))
 
@@ -75,23 +76,34 @@
   [e]
   (not (and (game-mode/creative? e) (:flying e))))
 
+(defn- item-heard
+  "Returns the game event of the hurt blast b gives item e, none for
+  any other body."
+  [b e]
+  (if (= :item (:type e))
+    (signal/game-event :entity-damage (:pos e) (:cause (:src b)))
+    []))
+
 (defn- pushed [b id e d12 seen]
   (let [[kb dmg] (impulse b e (:pos e) d12 seen)]
     (cond
       (entity/player? e)
       {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
        :motion (when (shoved? e) kb)}
-      (item-dies? e dmg) {:ds [[:remove-entity id]] :gone? true}
+      (item-dies? e dmg)
+      {:ds (conj (item-heard b e) [:remove-entity id]) :gone? true}
       :else {:ds (cond-> []
                    (hurtable? e) (conj [:damage id dmg (:src b)])
-                   (moving? kb) (conj [:push id kb]))})))
+                   (moving? kb) (conj [:push id kb]))
+             :heard (when (hurtable? e) (item-heard b e))})))
 
 (defn- hanging? [e] (contains? hanging/types (:type e)))
 
 (defn hit
   "Returns what blast b does to body e of id, d12 of twice its power
   away, of which b sees share seen. A player gets its push with the
-  effect of the blast."
+  effect of the blast, a hurt item that stays the game event of its
+  hurt in :heard."
   [b [id e d12 seen]]
   (if (hanging? e)
     (let [by (:cause (:src b))]

@@ -19,6 +19,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
             [collider.world.env.difficulty :as difficulty]
+            [collider.world.env.signal :as signal]
             [collider.world.env.weather :as weather]
             [collider.world.phys :as phys]))
 
@@ -446,8 +447,17 @@
       [(out/all
          (out/sound :generic/burn (:pos e) burn-volume pitch))])))
 
+(defn- heard
+  "Returns deltas ds of item e with the game event after each damage.
+  No entity caused the hurt of a fire."
+  [e ds]
+  (let [ev (signal/game-event :entity-damage (:pos e) nil)]
+    (mapcat (fn [d] (if (= :damage (nth d 0)) (into [d] ev) [d]))
+            ds)))
+
 (defn- item-burn-deltas [world eid e ^long flags]
-  (let [ds (item-fire-deltas world eid e flags)
+  (let [ds (cond->> (item-fire-deltas world eid e flags)
+             (= :item (:type e)) (heard e))
         health (double (:health e))]
     (concat ds
             (when (pos? (bit-and flags lava-bit))
@@ -617,6 +627,7 @@
 (defn- hurt-marks [world e health src late?]
   (cond-> {:health-sent health}
     src (assoc :struck-by nil)
+    (:hurts e) (assoc :hurts nil)
     (not (entity/player? e)) (merge (panicked world e))
     (and src (pos? health) (mobs/mob-type? (:type e)))
     (assoc :say-tick (hushed (:tick world) late?))))
@@ -636,8 +647,17 @@
       (entity/player? e) (conj (out/to eid ev))
       snd (conj (voice world eid e snd)))))
 
+(defn- marked-deltas
+  "Returns the delta that marks the hurts of entity eid as shown,
+  then the game events of those that took health."
+  [world eid e health src late?]
+  (let [ev (signal/game-event :entity-damage (:pos e) eid)]
+    (cons [:merge-entity eid (hurt-marks world e health src late?)]
+          (mapcat (fn [_] ev) (range (long (or (:hurts e) 0)))))))
+
 (defn- died-deltas [world eid e]
-  (concat [(out/all (out/status eid :death))]
+  (concat (signal/game-event :entity-die (:pos e) eid)
+          [(out/all (out/status eid :death))]
           (drop-deltas world eid e) (death-orbs world eid e)))
 
 (defn- lost-deltas [world eid e health]
@@ -647,17 +667,17 @@
 
 (defn report-deltas
   "Returns the deltas that show the hurts of entity eid since they
-  were last shown. They are the effects of its full hit, and on
-  death its drops. A hurt is late when it came after the base tick
-  of eid in this tick."
+  were last shown. They are the game events of its hurts, the
+  effects of its full hit, and on death its drops. A hurt is late
+  when it came after the base tick of eid in this tick."
   ([world eid e] (report-deltas world eid e false))
   ([world eid e late?]
    (let [health (double (:health e))
          src (:struck-by e)
          lost? (< health (double (or (:health-sent e) health)))]
-     (when (or src lost?)
+     (when (or src lost? (:hurts e))
        (concat
-         [[:merge-entity eid (hurt-marks world e health src late?)]]
+         (marked-deltas world eid e health src late?)
          (when src (struck-deltas world eid e src))
          (when lost? (lost-deltas world eid e health)))))))
 

@@ -435,13 +435,22 @@
   ^double [health damage]
   (max 0.0 (num/f32 (- (num/f32 health) (double damage)))))
 
+(defn- counted
+  "Returns entity e that counts one more hurt to show, when damage
+  took health."
+  [e ^double damage]
+  (if (zero? damage)
+    e
+    (assoc e :hurts (inc (long (or (:hurts e) 0))))))
+
 (defn- hurt-again [e health amount src tick]
   (let [last-d (num/f32 (or (:last-damage e) 0.0))
         amount (double amount)
         more (num/f32 (- amount last-d))]
     (if (> amount last-d)
-      (taken (assoc e :health (lost health more) :last-damage amount)
-             src tick)
+      (-> (assoc e :health (lost health more) :last-damage amount)
+          (counted more)
+          (taken src tick))
       e)))
 
 (defn- knock-dir
@@ -468,6 +477,7 @@
   (let [left (lost health amount)]
     (-> (assoc e :health left :last-damage amount
                :hurt-resist max-resist :struck-by src)
+        (counted amount)
         (taken src tick)
         (marked src)
         (knocked-by src tick eid))))
