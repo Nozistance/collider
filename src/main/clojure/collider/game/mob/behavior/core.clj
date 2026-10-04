@@ -1,9 +1,9 @@
 (ns collider.game.mob.behavior.core
-  "The behaviours most brains share, after ai/behavior: swimming,
-  panic, the look and walk sinks, cooldowns, idling, strolling and
-  looking around. A position tracker is {:pos p} for a point or
-  {:eid id :eye? b :target-eye? b} for an entity, a walk target
-  {:to tracker :speed s :close n}."
+  "The behaviours most brains share: swimming, panic, the look and
+  walk sinks, cooldowns, idling, strolling and looking around. A
+  position tracker is {:pos p} for a point or {:eid id :eye? b
+  :target-eye? b} for an entity, a walk target {:to tracker :speed s
+  :close n}."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
@@ -231,7 +231,8 @@
       [false e])))
 
 (defn- path-tried
-  "Returns [ok e] after tryComputePath of MoveToTargetSink."
+  "Returns [ok e] with the path of mob e to walk target wt, ok when
+  the mob may walk it."
   [w eid e t i wt]
   (let [cell (tracked-block w (:to wt))
         [e p] (nav/create-path w e cell 0)
