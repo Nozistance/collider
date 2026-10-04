@@ -3,6 +3,7 @@
   change them."
   (:require [collider.data :as data]
             [collider.game.effect :as effect]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]
             [collider.num :as num]))
 
@@ -124,13 +125,24 @@
   (and (stack/damageable? s)
        (>= (stack/damage s) (stack/max-damage s))))
 
+(defn- enchantment-modifiers [slot s]
+  (for [[k level] (stack/component s :enchantments)
+        :let [en (enchantment/info k)]
+        :when (some #(in-group? % slot) (:slots en))
+        {:keys [attribute id amount operation]} (:attributes en)]
+    [attribute [(str id "/" (name slot)) (double (amount level))
+                (operations operation)]]))
+
 (defn- stack-modifiers
-  "Returns the modifiers [attr modifier] stack s gives in slot."
+  "Returns the modifiers [attr modifier] stack s gives in slot: its
+  own, then those of its enchantments."
   [slot s]
-  (for [{a :attribute m :modifier g :slot}
-        (stack/component s :attribute-modifiers)
-        :when (in-group? (or g :any) slot)]
-    [a [(:id m) (double (:amount m)) (operations (:operation m))]]))
+  (concat
+    (for [{a :attribute m :modifier g :slot}
+          (stack/component s :attribute-modifiers)
+          :when (in-group? (or g :any) slot)]
+      [a [(:id m) (double (:amount m)) (operations (:operation m))]])
+    (enchantment-modifiers slot s)))
 
 (defn- seen [s]
   (when s
