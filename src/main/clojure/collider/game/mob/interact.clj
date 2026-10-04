@@ -2,6 +2,7 @@
   "The answers of mobs to the clicks of players on them."
   (:require [collider.game.apply :as apply]
             [collider.game.mob.animal :as animal]
+            [collider.game.mob.clock :as clock]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.mob.sheep :as sheep]
@@ -32,9 +33,11 @@
         e (get-in world [:entities target])
         hand (if (#{:off 1} hand) :off :main)]
     (when (and p e (mobs/mob-type? (:type e)))
-      (let [p (assoc p :sneaking? (boolean sneaking?))]
+      (let [p (assoc p :sneaking? (boolean sneaking?))
+            m (clock/rebased e t)]
         (when (in-reach? p e)
-          {:world world :t t :peid peid :p p :eid target :e e
+          {:world world :t t :peid peid :p p :eid target
+           :e (merge e m) :rebase m
            :hand hand :item (sense/in-hand p hand)})))))
 
 (defn- species-result [ctx]
@@ -45,8 +48,10 @@
    animal/lock-result sheep/dye-result])
 
 (defn- answered
-  [{:keys [peid p e hand t]} {:keys [result deltas]}]
+  [{:keys [peid p eid e hand t rebase]} {:keys [result deltas]}]
   (cond-> (vec deltas)
+    (and rebase (not= :pass result))
+    (->> (into [[:merge-entity eid rebase]]))
     (not= :pass result)
     (into (signal/game-event :entity-interact (:pos e) peid))
     (= :success-server result)

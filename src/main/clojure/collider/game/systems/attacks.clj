@@ -6,6 +6,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.mob.clock :as clock]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -237,7 +238,10 @@
         target (get-in world [:entities tid])]
     (when (and a (not (game-mode/spectator? a))
                (target? eid tid target) (in-range? a target))
-      (attack world eid a tid target))))
+      (if-let [m (clock/rebased target (:tick world))]
+        (cons [:merge-entity tid m]
+              (attack world eid a tid (merge target m)))
+        (attack world eid a tid target)))))
 
 (defn- swing-deltas
   [world [_ eid]]

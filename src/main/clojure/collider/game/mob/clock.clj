@@ -39,3 +39,12 @@
         m (into {} (filter (comp some? val)) (select-keys e ks))
         m (reduce #(later %1 %2 dt) m deadlines)]
     (assoc (reduce #(later-in %1 %2 dt) m inner) :frozen-at nil)))
+
+(defn rebased
+  "Returns the changes that move the stop of the clocks of frozen mob
+  e to tick t, or nil when e is not frozen. Its deadlines move on by
+  the ticks they stood still, so what they have left stays, and a
+  deadline set from t keeps all of its time while e stands."
+  [e t]
+  (when (frozen? e)
+    (assoc (thawed e t) :frozen-at t)))
