@@ -118,13 +118,6 @@
 (defn- same? [o vs]
   `(and ~@(map (fn [[k s]] `(v/same? ~s ~(field o (name k)))) vs)))
 
-(defn- held [o at]
-  (fn [f]
-    (let [old (field o f) new (at f)]
-      (if (= old new)
-        old
-        `(let [n# ~new] (if (v/same? n# ~old) ~old n#))))))
-
 (defn- rebuilt [o at]
   `(new Mob ~@(map at mob-fields) (meta ~o) ~(field o "__extmap")))
 
@@ -139,7 +132,7 @@
         at (fn [f] (get vs (keyword f) (field o f)))]
     `(let [~x ~e ~@(mapcat (fn [[k v]] [(vs k) v]) kvs)]
        (if (instance? Mob ~x)
-         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o (held o at))))
+         (let [~o ~x] (if ~(same? o vs) ~o ~(rebuilt o at)))
          (assoc ~x ~@(into [] cat vs))))))
 
 (defn- fields-of [cls]
