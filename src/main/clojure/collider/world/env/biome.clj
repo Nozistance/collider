@@ -102,7 +102,9 @@
     (cold-enough-to-snow? biome p) :snow
     :else :rain))
 
-(defn- attribute [biome k]
+(defn attribute
+  "Returns environment attribute k of biome, else of its dimension."
+  [biome k]
   (let [dim (dimension/type-of (:dimension biome))]
     (get (:attributes biome) k (get (:attributes dim) k))))
 

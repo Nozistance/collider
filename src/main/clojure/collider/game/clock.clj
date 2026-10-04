@@ -20,9 +20,10 @@
      :show? (and full? (get v "show_in_commands" false))}))
 
 (defn- timeline [{clock "clock" period "period_ticks"
-                  markers "time_markers"}]
+                  markers "time_markers" tracks "tracks"}]
   (cond-> {:clock   (data/kebab clock)
-           :markers (update-vals markers #(marker period %))}
+           :markers (update-vals markers #(marker period %))
+           :tracks  (or tracks {})}
     period (assoc :period period)))
 
 (def ^:private ^:table timeline-table
@@ -157,3 +158,23 @@
   (if-let [p (:period t)]
     (long (unchecked-int (quot total (long p))))
     0))
+
+(defn- keyframe-at [t frames ^long at]
+  (or (last (filter #(<= (long (get % "ticks")) at) frames))
+      (if (:period t) (peek frames) (first frames))))
+
+(defn- held-value [world t track]
+  (let [n (ticks world (:clock t))
+        at (if-let [p (:period t)] (mod n (long p)) n)]
+    (get (keyframe-at t (get track "keyframes") at) "value")))
+
+(defn held
+  "Returns the value the timelines of level dim give attribute id in
+  world, or nil when none has a track for it. Each keyframe holds
+  until the next, and the last timeline of the level wins. This
+  fits attributes that do not blend."
+  [world dim id]
+  (some (fn [k]
+          (let [t (timeline-of (data/wire k))]
+            (some->> (get-in t [:tracks id]) (held-value world t))))
+        (rseq (vec (:timelines (dimension/type-of dim))))))

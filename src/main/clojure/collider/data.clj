@@ -486,6 +486,14 @@
 (defn tag-values [registry tag]
   (get (registry-tags registry) tag []))
 
+(defn holder-set
+  "Returns the entries of registry that holder set v names. A string
+  with a mark names a tag, one without names a single entry."
+  [registry v]
+  (cond (vector? v) (mapv kebab v)
+        (str/starts-with? v "#") (tag-values registry (tag-name v))
+        :else [(kebab v)]))
+
 (def ^:private ^:table brewing-table
   (delay (assoc (:brewing @tables)
                 :fuel (tag-values "item" "brewing_fuel"))))
