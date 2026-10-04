@@ -148,9 +148,17 @@
         spread [(- sx) 0.0 (- cz)]]
     (out/all (out/particles :sweep-attack nil at 0 0.0 spread))))
 
+(defn- sweep-damage
+  "Returns the damage the sweep of blow b of player a deals each
+  entity near."
+  ^double [a b]
+  (let [r (num/f32 (attr a :sweeping-damage-ratio))
+        d (num/f32 (+ 1.0 (* r (double (:damage b)))))]
+    (* d (double (:s b)))))
+
 (defn- sweep-deltas
-  [world eid a tid target src s]
-  (let [box (sweep-box target) dir (facing a)
+  [world eid a tid target src b]
+  (let [s (sweep-damage a b) box (sweep-box target) dir (facing a)
         near (filter #(swept? a box % eid tid) (:entities world))]
     (concat [(sound a :entity.player.attack.sweep)]
             (mapcat #(swept-deltas world src (num/f32 s) dir %) near)
@@ -186,7 +194,7 @@
   (concat (hurt/report-deltas world tid h)
           (extra-knock eid a tid (:knock? b))
           (when (:sweep? b)
-            (sweep-deltas world eid a tid target src (:s b)))
+            (sweep-deltas world eid a tid target src b))
           (visual-deltas eid a tid b)
           (hearts target h)))
 
