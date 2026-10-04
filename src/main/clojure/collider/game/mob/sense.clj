@@ -146,11 +146,27 @@
   (set (keep (fn [slot] (get-in p [:inventory slot :item]))
              [(+ 36 (long (or (:held-slot p) 0))) 45])))
 
+(def ^:private armor-slots [5 6 7 8])
+
+(def ^:private ^:const least-cover (double (float 0.1)))
+
+(defn- armor-cover
+  "Returns the share of the armor slots of player p that hold
+  something, never below a tenth."
+  ^double [p]
+  (let [inv (:inventory p)
+        worn (count (keep #(:item (get inv %)) armor-slots))]
+    (max least-cover (/ (double worn) 4.0))))
+
 (defn visibility
   "Returns how much of its range a mob sees player p at. A sneaking
-  player is seen less."
+  player is seen less, and an invisible one less still, the less
+  armor it wears."
   ^double [p]
-  (if (:sneaking? p) 0.8 1.0))
+  (cond-> 1.0
+    (:sneaking? p) (* 0.8)
+    (contains? (:effects p) :invisibility)
+    (* (* 0.7 (armor-cover p)))))
 
 (defn in-range?
   "Returns true when a mob at pos notices player p within range r.
