@@ -117,7 +117,11 @@
       (keep-path? e cell nav) [e (:path nav)]
       :else (searched world e cell reach))))
 
-(defn- create-path [world e cell ^long reach]
+(defn create-path
+  "Returns [e path] with the path mob e would walk to the cell, which
+  it takes to be reached within reach, or a nil path. The mob keeps
+  walking what it walked."
+  [world e cell ^long reach]
   (let [chunks (:chunks world)
         e (assoc e :nav (nav-of e))
         [gx _ gz] cell]
@@ -150,7 +154,9 @@
                    (v/z pos) (boolean (:wet? e)))
      (v/z pos)]))
 
-(defn- moved-to [world e p ^double speed]
+(defn moved-to
+  "Returns mob e walking path p at speed."
+  [world e p ^double speed]
   (let [nav (nav-of e)
         same? (= (:nodes p) (:nodes (:path nav)))
         e (assoc e :nav (if same? nav (assoc nav :path p :index 0)))]

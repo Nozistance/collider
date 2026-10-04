@@ -123,7 +123,10 @@
   [(+ (long x) (long dx)) (+ (long y) (long dy))
    (+ (long z) (long dz))])
 
-(defn- look-for-water [world e]
+(defn look-for-water
+  "Returns the nearest water cell within five blocks of mob e, or nil
+  when it stands in a block that collides."
+  [world e]
   (let [chunks (:chunks world)
         [x y z :as here] (sense/feet-cell (:pos e))]
     (when (empty? (block/collision-boxes
@@ -182,7 +185,10 @@
         value (inc (long (* 7.0 (double (roll :value)))))]
     (orb/make (:pos e) value roll)))
 
-(defn- bred [spec world eid pid e o t]
+(defn bred
+  "Returns [e deltas] of mob eid breeding with pid at tick t: the
+  newborn, the cooldown of both and the orb."
+  [spec world eid pid e o t]
   (let [cooled {:love-until 0
                 :breed-ready-at (+ (long t) breed-cooldown)}]
     [(assoc e :task nil)
@@ -385,7 +391,10 @@
     (assoc e :task nil
            :look (when l (assoc l :until (inc (long t)))))))
 
-(defn- afloat? [world e _ _]
+(defn afloat?
+  "Returns true when mob e floats high enough in water to swim up,
+  or is in lava."
+  [world e _ _]
   (let [[half height] (mobs/box-of e)
         chunks (:chunks world)
         h (if (phys/dry? chunks (:pos e) half height)
