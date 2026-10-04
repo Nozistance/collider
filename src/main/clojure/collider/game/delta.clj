@@ -137,6 +137,9 @@
    :set-block-entity
    {:scope :level :schema [:cat Pos [:maybe :map]]
     :apply level/set-block-entity}
+   :game-event
+   {:scope :level :schema [:cat :keyword :any :any]
+    :apply (fn [w _] w)}
    :spawn-entity
    {:scope :level :schema [:cat :map] :apply level/spawn-entity
     :eids new-eids}

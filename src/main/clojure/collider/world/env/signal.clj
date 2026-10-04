@@ -9,6 +9,7 @@
   false)
 
 (defn game-event
-  "Returns the deltas of a game event heard at pos."
-  [_kind _pos _source]
-  nil)
+  "Returns the deltas of a game event of kind at pos, which source
+  gave. No listener hears it yet."
+  [kind pos source]
+  [[:game-event kind pos source]])

@@ -10,21 +10,29 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
-            [collider.game.player :as player]))
+            [collider.game.player :as player]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private generic-kill {:type :generic-kill})
 
+(defn- died [id e]
+  (signal/game-event :entity-die (:pos e) id))
+
+(defn- health ^double [e] (double (or (:health e) 0.0)))
+
 (defn- slain [world id e]
   (when-let [ds (hurt/damage-deltas
                   world id e Float/MAX_VALUE generic-kill)]
     (let [h (hurt/hurt-now world id e ds)]
-      (into ds (hurt/report-deltas world id h)))))
+      (cond-> (into ds (hurt/report-deltas world id h))
+        (and (pos? (health e)) (not (pos? (health h))))
+        (into (died id h))))))
 
 (defn- kill-in [lv id e]
   (cond
-    (not (entity/living? e)) [[:remove-entity id]]
+    (not (entity/living? e)) (into [[:remove-entity id]] (died id e))
     (and (entity/player? e)
          (not (player/client-loaded? e (long (:tick lv)))))
     nil
