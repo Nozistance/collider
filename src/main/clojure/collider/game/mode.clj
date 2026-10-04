@@ -1,7 +1,6 @@
 (ns collider.game.mode
   "Game modes of players and the abilities each gives."
-  (:require [collider.config :as config]
-            [collider.game.attribute :as attribute]
+  (:require [collider.game.attribute :as attribute]
             [collider.game.entity :as entity]
             [collider.game.out :as out]
             [collider.vec :as v]
@@ -37,7 +36,7 @@
 (defn default-mode
   "Returns the mode a player without a save joins in."
   [world]
-  (get-in world [:config :game-mode] (:game-mode config/defaults)))
+  (get-in world [:config :game-mode] :creative))
 
 (defn forced-mode
   "Returns the default mode when force-game-mode is on, else nil."
