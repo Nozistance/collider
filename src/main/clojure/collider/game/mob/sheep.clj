@@ -50,13 +50,15 @@
 (defn- eat-odds ^long [e]
   (quot (if (mobs/baby? e) baby-eat-chance eat-chance) 2))
 
-(defn- eat-task [t] {:kind :eat :until (+ (long t) eat-ticks)})
+(defn- eat-task [eid e t]
+  {:kind :eat
+   :until (animal/pass-after eid e t (quot eat-ticks 2))})
 
 (defn- start-eat [world eid e t _]
   (let [cell (sense/feet-cell (:pos e))]
     (when (and (animal/one-in? t eid :eat (eat-odds e))
                (or (edible? world cell) (grass-at? world cell)))
-      [(nav/stop (assoc e :task (eat-task t)))
+      [(nav/stop (assoc e :task (eat-task eid e t)))
        [(out/all (out/status eid :eat))]])))
 
 (defn- eating? [_ e t _]

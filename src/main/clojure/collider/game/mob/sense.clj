@@ -93,11 +93,11 @@
     @d
     (build-index (:entities world))))
 
-(defn- scan-cell [best pos r2 pred entries]
+(defn- scan-cell [dist best pos r2 pred entries]
   (reduce (fn [best [oid o]]
             (if-not (pred oid o)
               best
-              (let [d2 (v/dist-xz-sq pos (:pos o))]
+              (let [d2 (double (dist pos (:pos o)))]
                 (if (and (< d2 (double r2)) (closer? best d2 oid))
                   [d2 oid o]
                   best))))
@@ -107,28 +107,38 @@
 (defn- cell-span [^double c ^double r]
   [(cell-at (- c r)) (cell-at (+ c r))])
 
-(defn- scan-row [index best pos r2 pred cx z0 z1]
+(defn- scan-row [index dist best pos r2 pred cx z0 z1]
   (loop [cz (long z0) best best]
     (if (> cz (long z1))
       best
       (recur (inc cz)
-             (scan-cell best pos r2 pred
+             (scan-cell dist best pos r2 pred
                         (get index (cell-key (long cx) cz)))))))
 
-(defn nearest
-  "Returns [distance-squared id entity] of the nearest entity within
-  r2 that pred accepts, or nil."
-  [world pos r2 pred]
-  (let [r2 (double r2)
-        index (entity-index world)
-        r (Math/sqrt r2)
+(defn- nearest-by [world pos r dist r2 pred]
+  (let [index (entity-index world)
         [x0 x1] (cell-span (v/x pos) r)
         [z0 z1] (cell-span (v/z pos) r)]
     (loop [cx (long x0) best nil]
       (if (> cx (long x1))
         best
         (recur (inc cx)
-               (scan-row index best pos r2 pred cx z0 z1))))))
+               (scan-row index dist best pos r2 pred cx z0 z1))))))
+
+(defn nearest
+  "Returns [distance-squared id entity] of the nearest entity within
+  r2 that pred accepts, or nil. Distance counts on x and z."
+  [world pos r2 pred]
+  (let [r2 (double r2)]
+    (nearest-by world pos (Math/sqrt r2) v/dist-xz-sq r2 pred)))
+
+(defn nearest-around
+  "Returns [distance-squared id entity] of the entity nearest pos in
+  space among those that pred accepts, or nil. Pred must refuse
+  every entity farther than r from pos on x or on z."
+  [world pos r pred]
+  (nearest-by world pos (double r) v/dist-sq
+              Double/POSITIVE_INFINITY pred))
 
 (defn around
   "Returns [id entity] of every entity whose cell meets the square of

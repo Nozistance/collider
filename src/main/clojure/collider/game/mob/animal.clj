@@ -2,6 +2,7 @@
   "Farm animal goals and their selector."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
+            [collider.game.entity.size :as size]
             [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -78,6 +79,22 @@
   second tick."
   ^long [^long ticks]
   (quot (inc ticks) 2))
+
+(defn- full-pass?
+  "Returns true when mob eid runs its goals on tick t. The parity of
+  eid picks every second tick, and a new mob runs them twice first."
+  [eid e t]
+  (let [b (:born e)]
+    (or (even? (+ (long t) (long eid)))
+        (and (some? b) (<= (- (long t) (long b)) 1)))))
+
+(defn pass-after
+  "Returns the tick of the nth pass of the goals of mob eid after
+  tick t."
+  ^long [eid e ^long t ^long n]
+  (loop [s (inc t) n n]
+    (let [n (if (full-pass? eid e s) (dec n) n)]
+      (if (zero? n) s (recur (inc s) n)))))
 
 (def ^:private speeds
   "The speed of each goal for each breed.
@@ -263,17 +280,34 @@
            (let [until (+ (long t) calm-ticks)]
              (nav/stop (assoc e :task nil calm until))))})
 
-(defn- parent? [eid e p oid o]
-  (let [q (:pos o)
-        d (fn [f] (Math/abs (- (double (f q)) (double (f p)))))]
-    (and (not= oid eid) (= (:type e) (:type o)) (not (mobs/baby? o))
-         (<= (double (d v/y)) 4.0) (<= (double (d v/x)) 8.0)
-         (<= (double (d v/z)) 8.0))))
+(defn- parent-zone
+  "Returns the low and the high corner of the box of mob e grown by
+  8 on x and z and by 4 on y."
+  [e]
+  (let [p (:pos e) [w h] (mobs/box-of e)
+        x (double (v/x p)) y (double (v/y p)) z (double (v/z p))
+        w (double w) h (double h)]
+    [[(- x w 8.0) (- y 4.0) (- z w 8.0)]
+     [(+ x w 8.0) (+ y h 4.0) (+ z w 8.0)]]))
+
+(defn- meets? [[lo hi] o]
+  (let [p (:pos o) [w h] (mobs/box-of o)
+        x (double (v/x p)) y (double (v/y p)) z (double (v/z p))
+        w (double w) h (double h)]
+    (and (< (double (v/x lo)) (+ x w)) (> (double (v/x hi)) (- x w))
+         (< (double (v/y lo)) (+ y h)) (> (double (v/y hi)) y)
+         (< (double (v/z lo)) (+ z w)) (> (double (v/z hi)) (- z w)))))
+
+(defn- parent? [eid e zone oid o]
+  (and (not= oid eid) (= (:type e) (:type o)) (not (mobs/baby? o))
+       (meets? zone o)))
 
 (defn- parent-for [world eid e]
-  (let [p (:pos e)
-        pred #(parent? eid e p %1 %2)]
-    (when-let [[d2 oid] (sense/nearest world p follow-far-sq pred)]
+  (let [zone (parent-zone e)
+        r (+ 8.0 (double (first (mobs/box-of e)))
+             (size/half (:type e)))
+        pred #(parent? eid e zone %1 %2)]
+    (when-let [[d2 oid] (sense/nearest-around world (:pos e) r pred)]
       (when (>= (double d2) follow-near-sq) oid))))
 
 (def ^:private ^:const follow-repath 20)
@@ -296,7 +330,7 @@
 
 (defn- following? [world e _ _]
   (let [o (other world (:follow e))]
-    (and (mobs/baby? e) o
+    (and (mobs/baby? e) (entity/alive? o)
          (<= follow-near-sq (v/dist-sq (:pos e) (:pos o))
              follow-far-sq))))
 
@@ -356,15 +390,15 @@
 (defn- look-until
   "Returns the tick at which a look at a player begun at tick t ends.
   The goal counts its time in passes of the selector."
-  [t eid]
+  [eid e t]
   (let [n (+ look-ticks (long (* look-ticks (rnd t eid :look-time))))]
-    (+ (long t) (* 2 (reduced-delay n)))))
+    (pass-after eid e t (reduced-delay n))))
 
 (defn- start-look-player [world eid e t _]
   (when (< (rnd t eid :look) look-chance)
     (when-let [[_ pid] (player-to-look-at world e)]
       [(assoc e :look {:kind :look-player :target pid
-                       :until (look-until t eid)})
+                       :until (look-until eid e t)})
        nil])))
 
 (defn- looking? [world e _ _]
@@ -486,14 +520,6 @@
        (fns gs :running?) (fns gs :stop)
        (fns gs :start) (fns gs :continue?) (fns gs :tick)
        (boolean-array (map (comp boolean :every-tick?) gs))))))
-
-(defn- full-pass?
-  "Returns true when mob eid runs its goals on tick t. The parity of
-  eid picks every second tick, and a new mob runs them twice first."
-  [eid e t]
-  (let [b (:born e)]
-    (or (even? (+ (long t) (long eid)))
-        (and (some? b) (<= (- (long t) (long b)) 1)))))
 
 (defn brain
   "Returns the mob and its deltas after one tick of its goals.
