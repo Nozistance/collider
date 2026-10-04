@@ -65,7 +65,7 @@
 
 (def ^:private entity-events
   {:hop 1 :death 3 :break 3 :eat 10 :break-main 47 :break-off 48
-   :love 18 :teleport 46 :reduced-debug 22 :full-debug 23
+   :love 18 :peek 64 :teleport 46 :reduced-debug 22 :full-debug 23
    :honey-jump 54})
 
 (defn- status-packet [m]

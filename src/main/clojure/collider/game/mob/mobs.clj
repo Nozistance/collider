@@ -148,7 +148,8 @@
                :hurt-taken  shell/taken
                :hurt-reaction shell/hurt
                :eats-aloud? true
-               :food        "armadillo_food"}})
+               :food        "armadillo_food"
+               :spawns-on   "armadillo_spawnable_on"}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."

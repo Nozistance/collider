@@ -2,6 +2,7 @@
   "The parts of a mob turn that differ by mob type."
   (:require [collider.game.mob.animal :as animal]
             [collider.game.mob.armadillo :as armadillo]
+            [collider.game.mob.armadillo-ai :as armadillo-ai]
             [collider.game.mob.chicken :as chicken]
             [collider.game.mob.cow :as cow]
             [collider.game.mob.mooshroom :as mooshroom]
@@ -22,7 +23,7 @@
    :results [animal/feed-result]})
 
 (def ^:private armadillo-kind
-  {:goals (animal/spec []) :custom-step armadillo/shed
+  {:brain armadillo-ai/breed :custom-step armadillo/custom-step
    :ai-step armadillo/ai-step
    :results [armadillo/brush-result armadillo/scared-result
              animal/feed-result]})

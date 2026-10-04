@@ -179,11 +179,14 @@
 
 (defn- brained
   "Returns mob e with a fresh brain of its breed when it has none, as
-  it first thinks at tick t."
+  it first thinks at tick t. The brain keeps what e remembered
+  before."
   [e t eid]
-  (if-let [b (when-not (:brain e) (:brain (spec/of (:type e))))]
-    (assoc e :brain (sensor/fresh b (:sensors b) t eid))
-    e))
+  (let [m (:brain e)]
+    (if-let [b (when-not (:breed m) (:brain (spec/of (:type e))))]
+      (assoc e :brain
+             (sensor/fresh b (:sensors b) t eid (:memories m)))
+      e)))
 
 (defn- brain-steps
   "Returns mob e after its navigation, its brain and its controls,
@@ -205,7 +208,7 @@
         speed (move-speed e)
         e (if dead? e (brained e t eid))]
     (cond dead? (goal-step world eid e t tempters true)
-          (:brain e) (brain-steps world eid e t speed half)
+          (:breed (:brain e)) (brain-steps world eid e t speed half)
           :else (goal-steps world tempters eid e t speed half))))
 
 (defn- minded

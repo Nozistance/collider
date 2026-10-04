@@ -209,6 +209,9 @@
    :armadillo/death               [:entity.armadillo.death 6]
    :armadillo/eat                 [:entity.armadillo.eat 6]
    :armadillo/roll                [:entity.armadillo.roll 6]
+   :armadillo/land                [:entity.armadillo.land 6]
+   :armadillo/unroll-start
+   [:entity.armadillo.unroll-start 6]
    :armadillo/unroll-finish
    [:entity.armadillo.unroll-finish 6]
    :armadillo/scute-drop          [:entity.armadillo.scute-drop 6]

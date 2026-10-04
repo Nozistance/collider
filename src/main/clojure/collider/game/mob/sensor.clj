@@ -60,9 +60,10 @@
 
 (defn fresh
   "Returns the brain of a new mob eid of breed b with sensors, whose
-  brain first thinks at tick t."
-  [b sensors t eid]
-  (assoc (b/fresh b) :phase (phases sensors t eid)))
+  brain first thinks at tick t, with the memories mems."
+  ([b sensors t eid] (fresh b sensors t eid nil))
+  ([b sensors t eid mems]
+   (assoc (b/fresh b mems) :phase (phases sensors t eid))))
 
 (defn follow-range
   "Returns the follow range of mob e with the bonus it drew at spawn."
@@ -248,14 +249,15 @@
 
 (defn mob-sensor
   "Returns the sensor that every rate ticks sets memory for ttl ticks
-  when scares? accepts world, mob and the id of one of its nearest
-  living entities. It erases memory while ready? rejects the mob."
+  when scares? accepts world, mob, the id of one of its nearest
+  living entities and the tick. It erases memory while ready?
+  rejects the mob at the tick."
   [rate scares? ready? memory ttl]
   {:rate rate :requires [:nearest-living-entities]
    :tick (fn [world _ e t]
            (cond
-             (not (ready? e)) (b/erase e memory)
-             (some #(scares? world e %)
+             (not (ready? e t)) (b/erase e memory)
+             (some #(scares? world e % t)
                    (b/recall e :nearest-living-entities t))
              (b/remember-for e memory true t ttl)
              :else e))})

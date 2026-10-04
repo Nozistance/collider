@@ -49,13 +49,17 @@
 (defn- blank? [v]
   (or (nil? v) (and (instance? Collection v) (empty? v))))
 
+(defn- knows? [e k]
+  (if-let [known (:known (:brain e))] (contains? known k) true))
+
 (defn remember
   "Returns mob e holding v as memory k up to tick until. A nil value
   or an empty collection erases the memory. A memory the breed of e
-  does not know is left as it is."
+  does not know is left as it is. Before its first thought e holds
+  any memory, and its brain keeps those its breed knows."
   [e k v until]
   (let [m [v until]]
-    (cond (not (contains? (:known (:brain e)) k)) e
+    (cond (not (knows? e k)) e
           (blank? v) (erase e k)
           (= m (get (memories e) k)) e
           :else (assoc-in e [:brain :memories k] m))))
@@ -315,9 +319,12 @@
             (into-array IFn (map :step cs)))))
 
 (defn fresh
-  "Returns the brain of a new mob of breed b."
-  [b]
-  {:activity (:default b) :memories {} :known (:known b) :breed b})
+  "Returns the brain of a new mob of breed b, with the memories mems
+  its breed knows."
+  ([b] (fresh b nil))
+  ([b mems]
+   {:activity (:default b) :memories (select-keys mems (:known b))
+    :known (:known b) :breed b}))
 
 (defn think
   "Returns [e deltas] after one tick of the brain b of mob e."
