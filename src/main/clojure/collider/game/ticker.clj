@@ -53,11 +53,14 @@
 
 (defn- paused? [opts ^long n]
   (let [s (pause-seconds opts)]
+    (and (pos? s) (>= n (* 20 s)))))
+
+(defn- announce-pause! [opts ^long n]
+  (let [s (pause-seconds opts)]
     (when (and (pos? s) (= n (* 20 s)))
       (log/info "no players for" s "s, world paused"
                 "until someone joins")
-      (when-let [f (:on-pause opts)] (f)))
-    (and (pos? s) (>= n (* 20 s)))))
+      (when-let [f (:on-pause opts)] (f)))))
 
 (defn- idle? [opts n queue]
   (and (paused? opts n) (queue-empty? queue)))
@@ -197,6 +200,7 @@
     (loop [next-ns (System/nanoTime) i 0 perf nil empty 0]
       (when (running? running)
         (let [n (empty-ticks empty @world-atom)]
+          (announce-pause! opts n)
           (if (idle? opts n queue)
             (do (Thread/sleep 50) (recur (System/nanoTime) 0 nil n))
             (let [p (tick! i perf)

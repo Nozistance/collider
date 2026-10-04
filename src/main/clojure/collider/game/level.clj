@@ -9,6 +9,7 @@
             [collider.game.orb :as orb]
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -296,11 +297,18 @@
                (if (schema/chunk-entity? id e) (dissoc es eid) es))
              es es))
 
+(defn- born-yaw [spec t eid]
+  (if (= :item (:type spec))
+    (let [r (num/f32 (random/of-key t eid :item-yaw))]
+      (assoc spec :yaw (num/f32 (* r 360.0))))
+    spec))
+
 (defn- spawned [w spec]
-  (let [eid (long (:next-eid w schema/first-eid))]
+  (let [eid (long (:next-eid w schema/first-eid))
+        t (:tick w)
+        e (assoc (born-yaw spec t eid) :born t)]
     (-> w
-        (assoc-in [:entities eid]
-                  (entity/of (assoc spec :born (:tick w))))
+        (assoc-in [:entities eid] (entity/of e))
         (assoc :next-eid (inc eid)))))
 
 (defn- block-or-zero ^long [chunks [_ y _ :as p]]
