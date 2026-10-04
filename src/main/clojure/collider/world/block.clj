@@ -16,10 +16,6 @@
   (^long [block] (states/id block))
   (^long [block props] (states/id block props)))
 
-(defn name-of
-  "Returns the block of st, or nil for an unknown state."
-  [^long st] (states/block st))
-
 (defn- block-table [f]
   (let [a (object-array (data/block-state-count))]
     (doseq [[block b] (data/blocks)
