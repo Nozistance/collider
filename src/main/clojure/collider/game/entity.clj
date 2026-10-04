@@ -232,7 +232,7 @@
 (def ^:private kept
   {:mob [:health :death-time :color :variant :sheared?
          :sound-variant :effects :absorption :fall :stew
-         :forced-age :age-locked?]
+         :forced-age :age-locked? :last-hurt-by-player]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
@@ -253,7 +253,8 @@
    :thrown {:age 0}})
 
 (def ^:private timers
-  [:love-until :baby-until :breed-ready-at :egg-at])
+  [:love-until :baby-until :breed-ready-at :egg-at
+   :hurt-by-player-until])
 
 (def ^:private expired {:love-until 0 :breed-ready-at 0})
 
@@ -267,9 +268,12 @@
     (let [dt (- (long t) tick)] (when (pos? dt) dt))))
 
 (defn- saved-timers [m e tick]
-  (reduce (fn [m k]
-            (if-let [dt (left e k tick)] (assoc m k dt) m))
-          m timers))
+  (let [m (reduce (fn [m k]
+                    (if-let [dt (left e k tick)] (assoc m k dt) m))
+                  m timers)]
+    (cond-> m
+      (nil? (:hurt-by-player-until m))
+      (dissoc :last-hurt-by-player))))
 
 (defn timed?
   "Returns true when what a save keeps of e depends on the tick."
@@ -412,11 +416,14 @@
 
 (def ^:private generic {:type :generic})
 
+(def ^:private ^:const player-memory 100)
+
 (defn- taken
   [e src tick]
   (cond-> e
     (:player? src)
-    (assoc :hurt-by-player tick :last-hurt-by-player (:cause src))
+    (assoc :hurt-by-player-until (+ (long tick) player-memory)
+           :last-hurt-by-player (:uuid (:attacker src)))
     (and (instance? Mob e) (not (identical? generic src)))
     (assoc :hurt-cause (:type src))
     (and (instance? Mob e) (not (pos? (double (:health e)))))
