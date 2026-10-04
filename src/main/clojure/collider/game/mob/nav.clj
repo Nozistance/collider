@@ -103,7 +103,8 @@
   (let [p (search world e cell reach)
         nav {:target (:target p) :reach reach
              :timeout-node [0 0 0] :timeout-timer 0
-             :timeout-limit 0.0}]
+             :timeout-limit 0.0}
+        nav (cond-> nav (:target p) (assoc :stuck? false))]
     [(update e :nav merge nav) p]))
 
 (defn- keep-path? [e cell nav]

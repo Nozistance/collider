@@ -36,6 +36,7 @@ public final class Nav extends APersistentMap {
     private static final Keyword TIMEOUT_LIMIT = Keyword.intern("timeout-limit");
     private static final Keyword DELAYED = Keyword.intern("delayed?");
     private static final Keyword RECOMPUTE = Keyword.intern("recompute");
+    private static final Keyword STUCK = Keyword.intern("stuck?");
 
     private static final Keyword[] KEYS = {
         PATH,
@@ -51,7 +52,8 @@ public final class Nav extends APersistentMap {
         TIMEOUT_CHECK,
         TIMEOUT_LIMIT,
         DELAYED,
-        RECOMPUTE
+        RECOMPUTE,
+        STUCK
     };
 
     private static final Keyword NODES = Keyword.intern("nodes");
@@ -87,6 +89,7 @@ public final class Nav extends APersistentMap {
     private double timeoutLimit;
     private boolean delayed;
     private long recompute;
+    private boolean stuck;
     private int[] xs, ys, zs;
     private boolean[] cuts;
 
@@ -113,6 +116,7 @@ public final class Nav extends APersistentMap {
         timeoutLimit = o.timeoutLimit;
         delayed = o.delayed;
         recompute = o.recompute;
+        stuck = o.stuck;
         xs = o.xs;
         ys = o.ys;
         zs = o.zs;
@@ -182,6 +186,7 @@ public final class Nav extends APersistentMap {
         else if (k == TIMEOUT_LIMIT) n.timeoutLimit = dbl(v);
         else if (k == DELAYED) n.delayed = RT.booleanCast(v);
         else if (k == RECOMPUTE) n.recompute = lng(v);
+        else if (k == STUCK) n.stuck = RT.booleanCast(v);
         else throw new IllegalArgumentException("no nav key " + k);
         return n;
     }
@@ -201,7 +206,8 @@ public final class Nav extends APersistentMap {
             case 10 -> timeoutCheck;
             case 11 -> timeoutLimit;
             case 12 -> delayed;
-            default -> recompute;
+            case 13 -> recompute;
+            default -> stuck;
         };
     }
 
@@ -400,7 +406,8 @@ public final class Nav extends APersistentMap {
             double dz = z - RT.doubleCast(RT.nth(stuckPos, 2));
             n.stuckCheck = tick;
             n.stuckPos = PersistentVector.create(x, my, z);
-            if (!(dx * dx + dy * dy + dz * dz >= thr * thr)) n.walk(null);
+            n.stuck = !(dx * dx + dy * dy + dz * dz >= thr * thr);
+            if (n.stuck) n.walk(null);
         }
         if (n.path != null && n.index < xs.length) n.timed(drive, x, my, z, t);
         return n;
@@ -421,6 +428,7 @@ public final class Nav extends APersistentMap {
         timeoutCheck = t;
         if (timeoutLimit > 0.0 && timeoutTimer > 3.0 * timeoutLimit) {
             walk(null);
+            stuck = false;
             timeoutNode = ORIGIN;
             timeoutTimer = 0;
             timeoutLimit = 0.0;
