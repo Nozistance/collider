@@ -5,6 +5,7 @@
             [collider.game.inventory :as inventory]
             [collider.game.loot :as loot]
             [collider.game.mob.animal :as animal]
+            [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.random :as random]
@@ -16,14 +17,13 @@
 
 (def ^:private ^:const brown 1)
 
-(def ^:private ^:const shear-lift 1.0)
-
 (def ^:private ^:const explode-lift 0.5)
 
 (def ^:private ^:const loud-volume 2.0)
 
 (def ^:private kept-on-shear
-  [:pos :vel :yaw :head-yaw :on-ground :breed-ready-at])
+  [:pos :vel :yaw :pitch :on-ground :breed-ready-at :fall :effects
+   :absorption :tags])
 
 (defn- variant ^long [e] (long (or (:variant e) 0)))
 
@@ -85,28 +85,39 @@
               {:looting 0 :entity (mobs/loot-entity e)}
               #(random/of-key t eid [:shear %])))
 
+(defn- height ^double [e] (double (second (mobs/box-of e))))
+
 (defn- shorn-items [t eid e]
   (let [[x y z] (:pos e)
-        at [x (+ (double y) shear-lift) z]
+        at [x (+ (double y) (height e)) z]
         one (fn [i s]
               (let [vel (entity/pop-velocity [t eid :shear i])]
                 [:spawn-entity (entity/item at vel s 0)]))]
     (map-indexed one (mushrooms t eid e))))
 
-(defn- converted [e t]
+(def ^:private full-turn (double (float (* 2.0 Math/PI))))
+
+(defn- born-head-yaw ^double [ks]
+  (let [r (double (float (random/of-key ks)))]
+    (double (float (* r (double full-turn))))))
+
+(defn- converted [eid e t]
   (merge (mobs/new-mob :cow (:pos e) nil t)
-         (select-keys e kept-on-shear)))
+         (select-keys e kept-on-shear)
+         {:head-yaw (born-head-yaw [t eid :convert])
+          :body {:yaw (control/body-yaw e) :head 0.0 :at (dec t)}
+          :burning? (pos? (long (or (:fire e) 0)))}))
 
 (defn- sheared [eid e t]
   (let [[x y z] (:pos e)
-        height (double (second (mobs/box-of e)))
-        at [x (+ (double y) (* explode-lift height)) z]
-        puff (out/particles :explosion nil at 1 0.0)]
-    (concat [[:remove-entity eid]
-             (out/all (out/sound :mooshroom/shear (:pos e) 1.0 1.0))
-             [:spawn-entity (converted e t)]
-             (out/all puff)]
-            (shorn-items t eid e))))
+        at [x (+ (double y) (* explode-lift (height e))) z]
+        puff (out/particles :explosion nil at 1 0.0)
+        pos (:pos e)
+        snd (out/entity-sound :mooshroom/shear eid pos 1.0 1.0 nil)]
+    (concat [(out/all snd) (out/all puff)]
+            (shorn-items t eid e)
+            [[:spawn-entity (converted eid e t)]
+             [:remove-entity eid]])))
 
 (defn- fed-flower [peid p hand eid e item]
   (let [snd (out/sound :mooshroom/eat (:pos e) loud-volume 1.0)]
@@ -118,9 +129,9 @@
   "Returns the deltas for a mooshroom that lightning bolt bid hits.
   Its variant turns over, and the same bolt never turns it twice."
   [eid e bid]
-  (when-not (= bid (:struck-by e))
+  (when-not (= bid (:bolt e))
     (let [snd (out/sound :mooshroom/convert (:pos e) loud-volume 1.0)]
-      [[:merge-entity eid {:variant (- 1 (variant e)) :struck-by bid}]
+      [[:merge-entity eid {:variant (- 1 (variant e)) :bolt bid}]
        (out/all snd)])))
 
 (defn bowl-result
@@ -137,9 +148,9 @@
   [{:keys [t peid p hand eid e item]}]
   (when (and (= :shears item) (not (mobs/baby? e)))
     {:result :success
-     :deltas (concat (signal/game-event :shear (:pos e) peid)
-                     (inventory/hurt-item-deltas peid p hand 1)
-                     (sheared eid e t))}))
+     :deltas (concat (sheared eid e t)
+                     (signal/game-event :shear (:pos e) peid)
+                     (inventory/hurt-item-deltas peid p hand 1))}))
 
 (defn flower-result
   "Returns what a stew flower does to a grown brown mooshroom.
