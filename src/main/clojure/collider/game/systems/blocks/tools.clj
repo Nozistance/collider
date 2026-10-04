@@ -7,6 +7,7 @@
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
             [collider.game.stack :as stack]
             [collider.game.player :as player]
@@ -281,7 +282,8 @@
 
 (defn- hatch-deltas [world pos mob at]
   (let [t (:tick world)
-        hatched (mobs/egg-mob mob at [t pos] t (:dim world))
+        place (variant/place world (:dim world) at)
+        hatched (mobs/egg-mob mob at [t pos] t place)
         pitch (egg-pitch t pos)]
     (cons [:spawn-entity hatched]
           (when-let [say (mobs/sound-of hatched :say)]

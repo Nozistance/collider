@@ -2,8 +2,8 @@
   "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
             [collider.game.entity.size :as size]
+            [collider.game.mob.variant :as variant]
             [collider.random :as random]
-            [collider.world.env.biome :as biome]
             [collider.world.space.path :as path]))
 
 (set! *warn-on-reflection* true)
@@ -48,15 +48,8 @@
 
 (defn- spawn-config [biome] (spawn-configs (biome-kind biome)))
 
-(def coats
-  "The coats of the farm animals that come in a warm and a cold
-  variant, by their ids."
-  [:temperate :warm :cold])
-
-(def ^:private coat-ids
-  {:temperate 0 :warm 1 :cold 2})
-
-(defn- coat [_ biome] (coat-ids (biome-kind biome)))
+(defn- coat [registry]
+  (fn [ks place] (variant/pick registry place ks)))
 
 (def ^:private ^:const rare-total 100.0)
 
@@ -75,7 +68,7 @@
     common
     :pink))
 
-(defn- sheep-color [ks biome]
+(defn- sheep-color [ks {:keys [biome]}]
   (let [{:keys [rare common]} (spawn-config biome)
         r (long (* rare-total (random/of-key ks)))]
     (color-id (or (weighted r rare) (common-color ks common)))))
@@ -94,8 +87,8 @@
   (cond (< r 50) 0 (< r 90) 5 :else 2))
 
 (defn rabbit-variant
-  "Returns the variant a rabbit takes in biome by the keys ks."
-  [ks biome]
+  "Returns the variant a rabbit takes at place by the keys ks."
+  [ks {:keys [biome]}]
   (let [n (:name biome)
         r (long (* 100.0 (random/of-key (conj ks :rabbit))))]
     (cond (@white-rabbit-biomes n) (if (< r 80) 1 3)
@@ -107,7 +100,7 @@
    :voices         [:classic :moody]
    :food           "cow_food"
    :spawns-on      "animals_spawnable_on"
-   :spawn-look     coat})
+   :spawn-look     (coat "cow_variant")})
 
 (def ^:private water-walker
   (update path/cow :malus assoc :water 0.0))
@@ -132,7 +125,7 @@
                :eats-aloud? true
                :food        "pig_food"
                :spawns-on   "animals_spawnable_on"
-               :spawn-look  coat}
+               :spawn-look  (coat "pig_variant")}
    :chicken   {:sounds      :chicken
                :baby-sounds :baby-chicken
                :voices      [:classic :picky]
@@ -141,7 +134,7 @@
                :fall-drag   0.6
                :walker      water-walker
                :spawns-on   "animals_spawnable_on"
-               :spawn-look  coat}
+               :spawn-look  (coat "chicken_variant")}
    :rabbit    {:sounds      :rabbit
                :block-steps? true
                :food        "rabbit_food"
@@ -233,15 +226,17 @@
   (when (:eats-aloud? (types (:type e))) (sound-of e :eat)))
 
 (defn- coat-metas [type ck vk]
-  (into {} (for [c coats v (:voices (types type))
+  (into {} (for [c (get (data/datapack) (str (name type) "_variant"))
+                 v (:voices (types type))
                  baby [false true] burning [false true]]
              [[c v baby burning]
               {ck c vk v :baby? baby :burning? burning}])))
 
-(def ^:private coat-meta
-  {:cow (coat-metas :cow :cow-variant :cow-sound)
-   :pig (coat-metas :pig :pig-variant :pig-sound)
-   :chicken (coat-metas :chicken :chicken-variant :chicken-sound)})
+(def ^:private ^:table coat-meta
+  (delay
+    {:cow (coat-metas :cow :cow-variant :cow-sound)
+     :pig (coat-metas :pig :pig-variant :pig-sound)
+     :chicken (coat-metas :chicken :chicken-variant :chicken-sound)}))
 
 (def ^:private mooshroom-meta
   (into {} (for [v [0 1] baby [false true] burning [false true]]
@@ -258,12 +253,14 @@
 
 (defn- variant ^long [e] (long (or (:variant e) 0)))
 
+(defn- coat-of [e] (or (:variant e) :temperate))
+
 (defn- own-metadata [e]
   (case (:type e)
     :sheep (sheep-meta e)
     (:cow :pig :chicken)
-    ((coat-meta (:type e))
-     [(coats (variant e)) (voice-of (types (:type e)) e)
+    ((@coat-meta (:type e))
+     [(coat-of e) (voice-of (types (:type e)) e)
       (some? (:baby-until e)) (burning? e)])
     :mooshroom (mooshroom-meta
                 [(variant e) (some? (:baby-until e)) (burning? e)])
@@ -308,37 +305,37 @@
                       (random/of-key (conj ks :follow-2)))))
 
 (defn egg-mob
-  "Returns a mob hatched from a spawn egg in level dim.
+  "Returns a mob hatched from a spawn egg at place.
   The keys ks decide its look, voice, yaw and follow range."
-  [type pos ks tick dim]
+  [type pos ks tick place]
   (let [look-fn (get-in types [type :spawn-look] (fn [_ _] 0))
         voices (count (get-in types [type :voices] [:classic]))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)
         voice (long (* voices (random/of-key (conj ks :voice))))
-        look (look-fn ks (biome/at dim pos))]
+        look (look-fn ks place)]
     (assoc (new-mob type pos look tick)
       :yaw yaw :head-yaw yaw :sound-variant voice
       :follow-bonus (follow-bonus ks))))
 
 (defn command-mob
-  "Returns a mob summoned by a command in level dim. Its yaw and head
+  "Returns a mob summoned by a command at place. Its yaw and head
   yaw are drawn from 0 up to 2 pi, about 6.28 degrees. The keys ks
   decide its yaw, look and voice."
-  [type pos ks tick dim]
+  [type pos ks tick place]
   (let [r (double (float (random/of-key (conj ks :yaw))))
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
-    (assoc (egg-mob type pos ks tick dim) :yaw yaw :head-yaw yaw)))
+    (assoc (egg-mob type pos ks tick place) :yaw yaw :head-yaw yaw)))
 
 (def ^:const baby-start
   "The ticks a newborn takes to grow up."
   24000)
 
 (defn natural-mob
-  "Returns a mob that natural spawning puts at pos in level dim. Its
-  body faces yaw and its head stays at zero. It is a baby when baby?
-  says so. The keys ks decide its look, voice and follow range."
-  [type pos ks tick dim yaw baby?]
-  (cond-> (assoc (egg-mob type pos ks tick dim)
+  "Returns a mob that natural spawning puts at pos. Its body faces
+  yaw and its head stays at zero. It is a baby when baby? says so.
+  The keys ks decide its look, voice and follow range."
+  [type pos ks tick place yaw baby?]
+  (cond-> (assoc (egg-mob type pos ks tick place)
             :yaw (double yaw) :head-yaw 0.0)
     baby? (assoc :baby-until (+ (long tick) baby-start))))
 
@@ -375,14 +372,13 @@
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."
   [e]
-  (let [n (variant e)
-        shroom (if (= 1 n) :brown :red)
+  (let [shroom (if (= 1 (:variant e)) :brown :red)
         wool (long (or (:color e) 0))
         components (case (:type e)
                      :sheep {:sheep/color (dye-colors wool)}
                      :mooshroom {:mooshroom/variant shroom}
-                     :chicken {:chicken/variant (coats n)}
-                     :pig {:pig/variant (coats n)}
+                     :chicken {:chicken/variant (coat-of e)}
+                     :pig {:pig/variant (coat-of e)}
                      nil)]
     (cond-> {:type (:type e) :baby? (baby? e)
            :sheared? (boolean (:sheared? e))}
