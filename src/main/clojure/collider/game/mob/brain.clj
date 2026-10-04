@@ -111,14 +111,26 @@
   (fn [w eid e t]
     (on-mob (if stop (stop w eid e t i) e) #(unrun % i))))
 
+(defn- checked [{:keys [start? check]} w eid e t i]
+  (cond check (check w eid e t i)
+        start? [(start? w eid e t) e]
+        :else [true e]))
+
+(defn- end-of ^long [t eid i span]
+  (if (= :never span)
+    forever
+    (+ (long t) (duration t eid i span))))
+
 (defn- began [b i]
-  (let [{:keys [start? start]} b
+  (let [start (:start b)
         span (:duration b [60 60])]
     (fn [w eid e t]
-      (when (or (nil? start?) (start? w eid e t))
-        (let [end (+ (long t) (duration t eid i span))
-              e (with-run e i {:end end})]
-          (if start (start w eid e t i) e))))))
+      (let [[ok e'] (checked b w eid e t i)]
+        (cond
+          ok (let [e (with-run e' i {:end (end-of t eid i span)})]
+               (if start (start w eid e t i) e))
+          (identical? e e') nil
+          :else [e' [] false])))))
 
 (defn- behaviour [{:keys [continue? tick] :as b} i]
   (let [halt (halted b i)]
@@ -155,9 +167,11 @@
 
 (defn- tried [kids one? w eid t acc j]
   (let [k (kids j)
-        f #(when ((:check k) % t) ((:try k) w eid % t))
-        acc' (if ((:running? k) (acc 0)) acc (then acc f))]
-    (if (and one? (not (identical? acc acc'))) (reduced acc') acc')))
+        e (acc 0)
+        r (when (and (not ((:running? k) e)) ((:check k) e t))
+            ((:try k) w eid e t))
+        acc' (if r (then acc (constantly r)) acc)]
+    (if (and one? r (not (false? (get r 2)))) (reduced acc') acc')))
 
 (defn- gate-order [g i n]
   (let [ws (mapv second (:items g))
