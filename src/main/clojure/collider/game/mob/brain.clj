@@ -35,9 +35,10 @@
   that never ends or is not there gives forever."
   ^long [e k t]
   (let [m (get (memories e) k)]
-    (if (or (nil? m) (== forever (long (m 1))))
-      forever
-      (- (long (m 1)) (long t)))))
+    (cond (nil? m) forever
+          (== 3 (count m)) (long (m 2))
+          (== forever (long (m 1))) forever
+          :else (- (long (m 1)) (long t)))))
 
 (defn erase
   "Returns mob e without memory k."
@@ -52,22 +53,30 @@
 (defn- knows? [e k]
   (if-let [known (:known (:brain e))] (contains? known k) true))
 
+(defn- held [e k v m]
+  (cond (not (knows? e k)) e
+        (blank? v) (erase e k)
+        (= m (get (memories e) k)) e
+        :else (assoc-in e [:brain :memories k] m)))
+
 (defn remember
   "Returns mob e holding v as memory k up to tick until. A nil value
   or an empty collection erases the memory. A memory the breed of e
   does not know is left as it is. Before its first thought e holds
   any memory, and its brain keeps those its breed knows."
   [e k v until]
-  (let [m [v until]]
-    (cond (not (knows? e k)) e
-          (blank? v) (erase e k)
-          (= m (get (memories e) k)) e
-          :else (assoc-in e [:brain :memories k] m))))
+  (held e k v [v until]))
 
 (defn remember-for
   "Returns mob e holding v as memory k from tick t for ttl ticks."
   [e k v t ttl]
   (remember e k v (until t ttl)))
+
+(defn remember-ttl
+  "Returns mob e holding v as memory k for ttl ticks, which its next
+  brain tick starts to count."
+  [e k v ttl]
+  (held e k v [v forever ttl]))
 
 (defn run-of
   "Returns what behaviour i of mob e keeps while it runs, or nil when

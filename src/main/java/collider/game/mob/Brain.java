@@ -68,13 +68,21 @@ public record Brain(
         return RT.longCast(RT.nth(m, 1));
     }
 
+    private static Object counted(Object m, long t) {
+        long until = t + RT.longCast(RT.nth(m, 2)) - 1;
+        return t > until ? null : Tuple.create(RT.nth(m, 0), until);
+    }
+
     private static Object forgotten(Object e, long t) {
         Object b = brain(e);
         Object mems = RT.get(b, MEMORIES);
         Object kept = mems;
         for (ISeq s = RT.seq(mems); s != null; s = s.next()) {
             Map.Entry<?, ?> m = (Map.Entry<?, ?>) s.first();
-            if (t > until(m.getValue())) kept = RT.dissoc(kept, m.getKey());
+            Object v = m.getValue();
+            Object c = RT.count(v) == 3 ? counted(v, t) : v;
+            if (c == null || t > until(c)) kept = RT.dissoc(kept, m.getKey());
+            else if (c != v) kept = RT.assoc(kept, m.getKey(), c);
         }
         if (kept == mems) return e;
         return RT.assoc(e, BRAIN, RT.assoc(b, MEMORIES, kept));

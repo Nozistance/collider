@@ -125,7 +125,7 @@
 
 (defn- startled [e t]
   (let [k :danger-detected-recently
-        e (brain/remember-for e k true t danger-ticks)]
+        e (brain/remember-ttl e k true danger-ticks)]
     (if (can-stay-rolled-up? e t) (roll-up e) e)))
 
 (defn hurt
