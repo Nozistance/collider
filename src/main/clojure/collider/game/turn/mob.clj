@@ -225,13 +225,6 @@
               acc))]
     (reduce f nil shoves)))
 
-(def ^:private ^:const cramming-damage 6.0)
-
-(def ^:private ^:const cramming-key 0x63726d)
-
-(defn- max-cramming ^long [world]
-  (long (get (:rules world) :max-entity-cramming 24)))
-
 (defn- live-of [chunks slots es]
   (fn [o]
     (push/pushable? chunks (nth (nth es (push/slot slots o)) 1))))
@@ -247,11 +240,10 @@
   tick."
   [world index slots es eid e pos t]
   (and (push/alive? e)
-       (< (random/of-longs t eid cramming-key) 0.25)
-       (let [m (max-cramming world)
-             e (assoc e :pos pos)
-             n (crowd (:chunks world) index slots es eid e)]
-         (and (pos? m) (> (long n) (dec m))))))
+       (push/cramming-draw? t eid)
+       (let [e (assoc e :pos pos)]
+         (push/crowded?
+           world (crowd (:chunks world) index slots es eid e)))))
 
 (def ^:private crush {:type :cramming})
 
@@ -261,7 +253,8 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (entity/hurt (assoc e :pos pos) cramming-damage crush t eid))))
+      (entity/hurt (assoc e :pos pos) push/cramming-damage crush t
+                   eid))))
 
 (defn- stepping? [^booleans ticking es ^long i]
   (and (aget ticking i) (mobs/mob-type? (:type (nth (nth es i) 1)))))
@@ -275,7 +268,7 @@
         [e2 ds shoves hit? ls]
         (step-mob world index eid e mind t cram
                   (live-of (:chunks world) slots es))
-        cs (when hit? [[:damage eid cramming-damage crush]])
+        cs (when hit? [[:damage eid push/cramming-damage crush]])
         [e2 ds] (living/touched world eid e2 (:wet? e) ds ls cs)]
     [e2 ds shoves]))
 

@@ -1,9 +1,11 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
-  (:require [collider.game.entity.size :as size]
+  (:require [collider.game.entity.hurt :as hurt]
+            [collider.game.entity.size :as size]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]
             [collider.world.chunk :as chunk])
@@ -241,15 +243,54 @@
                 (- (v/z vel) (double dz)))]
     [:merge-entity eid {:vel v}]))
 
+(def cramming-damage 6.0)
+
+(def ^:private ^:const cramming-key 0x63726d)
+
+(defn cramming-draw?
+  "Returns true when body eid, crowded in tick t, draws the one in
+  four that tests it for cramming."
+  [t eid]
+  (< (random/of-longs t eid cramming-key) 0.25))
+
+(defn crowded?
+  "Returns true when n pushable bodies in a box are a crowd under the
+  max_entity_cramming rule of world."
+  [world n]
+  (let [m (long (get (:rules world) :max-entity-cramming 24))]
+    (and (pos? m) (> (long n) (dec m)))))
+
+(def ^:private crush {:type :cramming})
+
+(defn- crammed [world peid p n]
+  (when (and (alive? p) (cramming-draw? (:tick world) peid)
+             (crowded? world n))
+    (when-let [ds (hurt/damage-deltas
+                    world peid p cramming-damage crush)]
+      (let [h (hurt/hurt-now world peid p ds)]
+        (into ds (hurt/report-deltas world peid h))))))
+
+(defn- crowd-of [world [peid p :as entry]]
+  (let [ok? (fn [[eid e :as x]]
+              (and (not= eid peid) (not (game-mode/spectator? e))
+                   (shoved-by? (:chunks world) p x)))]
+    (-> [entry]
+        (into (filter ok?) (level/of-types world mob-types))
+        (into (filter ok?) (level/player-entries world)))))
+
 (defn player-shoves
-  "Returns the deltas of the shoves that player entry p gives the
-  mobs its box overlaps as its tick ends. The player takes none of
-  them back, and a spectator gives none."
+  "Returns the deltas of the cramming of player entry p and of the
+  shoves it gives the mobs its box overlaps as its tick ends. The
+  player takes none of them back, and a spectator gives none."
   [world [peid p :as entry]]
   (when-not (game-mode/spectator? p)
-    (let [f (filter #(shoved-by? (:chunks world) p %))
-          ms (into [entry] f (level/of-types world mob-types))]
-      (when (next ms)
+    (let [bs (crowd-of world entry)]
+      (when (next bs)
         (let [[h ht] (pushable-box p)
-              sh (shoves (index-of ms) peid p h ht)]
-          (mapv #(taken (:entities world) %) sh))))))
+              index (index-of bs)
+              n (count (touching index peid p h ht))
+              es (:entities world)
+              mob? #(mobs/mob-type? (:type (get es (nth % 0))))]
+          (into (vec (crammed world peid p n))
+                (comp (filter mob?) (map #(taken es %)))
+                (shoves index peid p h ht)))))))
