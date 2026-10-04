@@ -91,9 +91,9 @@
         (deltas/world-of ds)))
 
 (defn- now-of
-  "Returns what gives a body by id as turn t sees it: as the turns of
-  the other kinds left it when it comes before t in the tick list,
-  else as it was."
+  "Returns a function from id to the body as turn t sees it. A body
+  before t in the tick list is as the turns of the other kinds left
+  it, else as it was."
   [s ^long t]
   (let [after (:after s) cur (:cur s)]
     (fn [^long id] (or (when (< id t) (get after id)) (get cur id)))))
@@ -258,9 +258,9 @@
 (defn turns
   "Returns the deltas of every primed TNT in an active chunk, each in
   its turn after the turns ds of the other entities in world. A blast
-  reaches the bodies where they are at its turn: those before it in
-  the tick list moved, the others not yet. What it does to them, its
-  craters and the bodies it spawns, the later turns see."
+  reaches the bodies where they are at its turn. Those before it in
+  the tick list already moved, the others not yet. The later turns
+  see what it does to them, its craters and the bodies it spawns."
   [world ds]
   (let [tnts (areas/active-of-types world [:tnt])]
     (when (pos? (count tnts))

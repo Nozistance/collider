@@ -186,8 +186,9 @@
     (orb/make (:pos e) value roll)))
 
 (defn bred
-  "Returns [e deltas] of mob eid breeding with pid at tick t: the
-  newborn, the cooldown of both and the orb."
+  "Returns [e deltas] of mob eid breeding with pid at tick t.
+  The deltas spawn the newborn and cool both parents down. An orb
+  spawns too unless the mob-drops rule is off."
   [spec world eid pid e o t]
   (let [cooled {:love-until 0
                 :breed-ready-at (+ (long t) breed-cooldown)}]

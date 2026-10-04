@@ -58,7 +58,8 @@
 
 (defn dropped
   "Returns the deltas of hanging entity eid breaking by causer, whose
-  eid is by: its sound, its drops and its game event."
+  eid is by. They hold its break sound and drops, and a frame adds a
+  block change game event."
   [world eid e causer by]
   (if (= :painting (:type e))
     (painting-broken world eid e causer)
@@ -66,7 +67,7 @@
 
 (defn kill-deltas
   "Returns the deltas of hanging entity eid, e, killed by causer,
-  whose eid is by; both are nil when nothing caused it."
+  whose eid is by. Both causer and by are nil when nothing caused it."
   [world eid e causer by]
   (concat [[:remove-entity eid]]
           (signal/game-event :entity-die (:pos e) eid)

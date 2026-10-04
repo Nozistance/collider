@@ -1,9 +1,5 @@
 (ns collider.game.mob.behavior.core
-  "The behaviours most brains share: swimming, panic, the look and
-  walk sinks, cooldowns, idling, strolling and looking around. A
-  position tracker is {:pos p} for a point or {:eid id :eye? b
-  :target-eye? b} for an entity, a walk target {:to tracker :speed s
-  :close n}."
+  "Behaviours most mob brains share."
   (:require [collider.data :as data]
             [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
@@ -145,8 +141,8 @@
    :stop (fn [_ _ e _ _] (b/erase e :look-target))})
 
 (defn count-down-cooldown-ticks
-  "Returns the behaviour that keeps cooldown k of cool until it runs
-  out and then erases it."
+  "Returns the behaviour that keeps cooldown k until it runs out
+  and erases it when it stops."
   [k]
   {:id [:count-down k] :duration :never :needs {k :present}
    :continue? (fn [_ _ e t _]

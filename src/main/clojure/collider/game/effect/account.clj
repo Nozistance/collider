@@ -139,7 +139,7 @@
 
 (defn- acted
   "Returns [kept? account] after effect k at amplifier a acted.
-  This is MobEffect.applyEffectTick of each kind."
+  The effect goes when kept? is false."
   [acc k ^long a]
   (case k
     :regeneration [true (regenerated acc)]
@@ -240,9 +240,9 @@
     acc))
 
 (defn changed-deltas
-  "Returns the deltas that follow attributes attrs of entity eid,
-  now e, changing: they go out, and health and absorption keep under
-  their new top."
+  "Returns the deltas that follow a change of attributes attrs of
+  entity eid, now e. The attributes go out, and health and absorption
+  stay under their new top."
   [eid e attrs]
   (deltas (assoc (account eid e) :dirty (set attrs)) e))
 

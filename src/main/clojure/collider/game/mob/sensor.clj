@@ -103,8 +103,8 @@
       (sense/in-range? (:pos e) o r))))
 
 (defn targetable?
-  "Returns true when mob eid, e, may look at entity oid, o, at tick t:
-  it is seen, in follow range and in sight."
+  "Returns true when mob eid, e, may look at entity oid, o, at tick t.
+  The entity must be another one, seen, in follow range and in sight."
   [world eid e t oid o]
   (boolean
     (and o (not= eid oid) (game-mode/seen? o) (in-range? e t oid o)

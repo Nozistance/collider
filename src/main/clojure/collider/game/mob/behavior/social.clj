@@ -1,7 +1,5 @@
 (ns collider.game.mob.behavior.social
-  "The behaviours that turn a mob to others: looking at them now
-  and then, following an adult or a tempting player, and making
-  love."
+  "Behaviours that turn a mob to others."
   (:require [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.behavior.core :as c]

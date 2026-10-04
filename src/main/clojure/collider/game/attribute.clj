@@ -94,9 +94,9 @@
     (some-> (creative-reach attr) vector)))
 
 (defn- taken-over?
-  "Returns true when the modifier id of attribute a that an effect
-  puts is gone: equipment put its own under the id after it, or took
-  the id off."
+  "Returns true when the modifier id that an effect puts on attribute
+  a is gone. Equipment either put its own modifier under that id
+  after the effect, or took the id off."
   [e a id]
   (or (contains? (get-in e [:equipment-modifiers a]) id)
       (contains? (get-in e [:lost-modifiers a]) id)))
@@ -158,8 +158,8 @@
                 (operations operation)]]))
 
 (defn- stack-modifiers
-  "Returns the modifiers [attr modifier] stack s gives in slot: its
-  own, then those of its enchantments."
+  "Returns the [attr modifier] pairs that stack s gives in slot.
+  Its own modifiers come before those of its enchantments."
   [slot s]
   (concat
     (for [{a :attribute m :modifier g :slot}
@@ -216,11 +216,11 @@
             (mapcat #(new-modifiers equipment %) slots))))
 
 (defn equipped
-  "Returns [e attrs]: entity e with the modifiers of the stacks it
-  holds in equipment, by slot, and the attributes that changed.
-  A changed slot first loses the modifiers of its old stack by id,
-  then its new stack adds its own, so the last changed slot wins.
-  A broken stack adds none."
+  "Returns [e attrs] with entity e wearing the modifiers of the
+  stacks in equipment, by slot, and the attributes that changed.
+  The old stacks of all changed slots lose their modifiers by id
+  before the new stacks add their own, so the last changed slot
+  wins. A broken stack adds none."
   [e equipment]
   (let [slots (changed-slots e equipment)
         [e' ts] (moved e equipment slots)]

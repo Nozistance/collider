@@ -67,9 +67,9 @@
     (reduce f e ws)))
 
 (defn heard
-  "Returns [e later] for mob e in the turn of eid: e after what the
-  turns before it told it, and what the turns after it tell it,
-  which it takes after its step."
+  "Returns [e later] for mob e in the turn of eid. The e has taken
+  what the turns before it told it. The later holds what the turns
+  after it tell it, which it takes after its step."
   [world ^long eid e]
   (if-let [ws (get (::told world) eid)]
     (let [before? (fn [[w]] (< (long w) eid))]

@@ -50,8 +50,8 @@
              v))))
 
 (defn pmapv
-  "Returns the map of f over vector v as a vector.
-  The work runs in parallel when v is longer than threshold."
+  "Returns (mapv f v), computed in parallel when v is longer than
+  threshold."
   ([f v] (pmapv f v fold-leaf fold-threshold))
   ([f v leaf threshold]
    (if (<= (count v) (long threshold))

@@ -75,7 +75,7 @@
   nil)
 
 (defn halt!
-  "Stops a server whose tick crashed, then calls exit! with code 1."
+  "Stops a server whose tick crashed and calls exit! with code 1."
   [server exit!]
   (stop server)
   (exit! 1))
