@@ -312,7 +312,7 @@
 (defn- kinds [ctx]
   (into {} (for [es (vals (get-in ctx [:biome :spawners]))
                  {t :type} es
-                 :when (mobs/mob-type? t)]
+                 :when (get-in mobs/types [t :spawns-on])]
              [t (spawn/kind
                   t (get-in mobs/types [t :spawns-on]))])))
 

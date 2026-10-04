@@ -7,7 +7,8 @@
 (def ^:private deadlines
   [:say-tick :jump-cd :panic-until :baby-until :love-until
    :breed-ready-at :tempt-cooldown-until :follow-at
-   :stick-cooldown-until :egg-at :age-lock-at :hurt-by-player-until])
+   :stick-cooldown-until :egg-at :age-lock-at :hurt-by-player-until
+   :scute-at])
 
 (def ^:private inner [[:task :until] [:look :until] [:body :at]])
 

@@ -1,6 +1,7 @@
 (ns collider.game.mob.spec
   "The parts of a mob turn that differ by mob type."
   (:require [collider.game.mob.animal :as animal]
+            [collider.game.mob.armadillo :as armadillo]
             [collider.game.mob.chicken :as chicken]
             [collider.game.mob.cow :as cow]
             [collider.game.mob.mooshroom :as mooshroom]
@@ -20,6 +21,12 @@
    :bump rabbit/bumped :steer rabbit/steered :bites? rabbit/raiding?
    :results [animal/feed-result]})
 
+(def ^:private armadillo-kind
+  {:goals (animal/spec []) :custom-step armadillo/shed
+   :ai-step armadillo/ai-step
+   :results [armadillo/brush-result armadillo/scared-result
+             animal/feed-result]})
+
 (def ^:private kinds
   {:sheep {:think sheep/brain :goals sheep/spec :bites? sheep/biting?
            :results [sheep/shear-result animal/feed-result]}
@@ -31,12 +38,14 @@
          :results [animal/feed-result]}
    :chicken {:think chicken/brain :goals chicken/spec
              :ai-step chicken/ai-step :results [animal/feed-result]}
-   :rabbit rabbit-kind})
+   :rabbit rabbit-kind
+   :armadillo armadillo-kind})
 
 (defn of
   "Returns the parts of the turn of a mob of type, or nil for a type
   without them. A mob thinks with goals by :think and :goals, or
-  with the compiled brain :brain."
+  with the compiled brain :brain. Its own server step :custom-step
+  comes after either."
   [type]
   (kinds type))
 

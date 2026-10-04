@@ -189,7 +189,7 @@
     (when (<= (- (long t) (long at)) hurt-memory) src)))
 
 (defn- hurt-cause [e src]
-  (if (and (some? (:cause src)) (entity/living? (:attacker src)))
+  (if (entity/living-attacker? src)
     (remembered e :hurt-by-entity (:cause src))
     e))
 

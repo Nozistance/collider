@@ -232,7 +232,8 @@
 (def ^:private kept
   {:mob [:health :death-time :color :variant :sheared?
          :sound-variant :effects :absorption :fall :stew
-         :forced-age :age-locked? :last-hurt-by-player]
+         :forced-age :age-locked? :last-hurt-by-player
+         :armadillo-state]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
@@ -275,10 +276,18 @@
       (nil? (:hurt-by-player-until m))
       (dissoc :last-hurt-by-player))))
 
+(defn- saved-scute [m e ^long tick]
+  (if-let [at (:scute-at e)]
+    (assoc m :scute-time (- (long at) tick))
+    m))
+
+(defn- saved-clocks [m e tick]
+  (saved-scute (saved-timers m e tick) e tick))
+
 (defn timed?
   "Returns true when what a save keeps of e depends on the tick."
   [e]
-  (boolean (some #(get e %) timers)))
+  (boolean (some #(get e %) (conj timers :scute-at))))
 
 (defn saved
   "Returns entity e as the data a save keeps at game tick tick.
@@ -292,7 +301,7 @@
       (cond-> (into (base e)
                     (filter (comp some? val))
                     (select-keys e (kept k)))
-        (= :mob k) (saved-timers e (long (or (:frozen-at e) tick)))
+        (= :mob k) (saved-clocks e (long (or (:frozen-at e) tick)))
         (:carrots (:hop e)) (assoc :carrots (:carrots (:hop e)))))))
 
 (defn- still-axis ^double [^double a]
@@ -328,6 +337,8 @@
                :health (or (:health m) top))
         (update (mobs/look-key (:type m)) #(or % 0))
         (cond-> (:carrots m) (assoc :hop {:carrots (:carrots m)}))
+        (cond-> (:scute-time m)
+          (assoc :scute-at (+ (long tick) (long (:scute-time m)))))
         (loaded-timers m (long tick))
         (locked-baby (long tick)))))
 
@@ -444,6 +455,21 @@
     e
     (assoc e :hurts (inc (long (or (:hurts e) 0))))))
 
+(defn living-attacker?
+  "Returns true when damage source src has a living entity behind it."
+  [src]
+  (and (some? (:cause src)) (living? (:attacker src))))
+
+(defn- reacted [e src tick]
+  (if-let [f (:hurt-reaction (mobs/types (:type e)))]
+    (f e src tick (living-attacker? src))
+    e))
+
+(defn- breed-taken ^double [e ^double amount]
+  (if-let [f (:hurt-taken (mobs/types (:type e)))]
+    (f e amount)
+    amount))
+
 (defn- hurt-again [e health amount src tick]
   (let [last-d (num/f32 (or (:last-damage e) 0.0))
         amount (double amount)
@@ -451,7 +477,8 @@
     (if (> amount last-d)
       (-> (assoc e :health (lost health more) :last-damage amount)
           (counted more)
-          (taken src tick))
+          (taken src tick)
+          (reacted src tick))
       e)))
 
 (defn- knock-dir
@@ -480,6 +507,7 @@
                :hurt-resist max-resist :struck-by src)
         (counted amount)
         (taken src tick)
+        (reacted src tick)
         (marked src)
         (knocked-by src tick eid))))
 
@@ -500,7 +528,7 @@
   ([e amount] (hurt e amount nil 0 0))
   ([e amount src tick eid]
    (let [health (double (or (:health e) 0.0))
-         amount (max 0.0 (num/f32 amount))]
+         amount (max 0.0 (breed-taken e (num/f32 amount)))]
      (cond
        (not (pos? health)) e
        (contains? #{:item :experience-orb} (:type e))

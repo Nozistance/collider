@@ -165,12 +165,15 @@
 (defn entity-drops
   "Returns the loot tables of the mobs by name, from the loot tables
   of a pack by id. A shearing table has the name of the mob with the
-  suffix -shear, and a gift table its own name."
+  suffix -shear, a brushing table the suffix -brush, and a gift table
+  its own name."
   [tables]
-  (let [shear (under tables "shearing")]
+  (let [shear (under tables "shearing")
+        brush (under tables "brush")]
     (pack/plain
      (into (sorted-map)
            (map (fn [[name json]] [(pack/kw name) (loot-node json)]))
            (concat (under tables "entities")
                    (map (fn [[n j]] [(shear-name n) j]) shear)
+                   (map (fn [[n j]] [(str n "-brush") j]) brush)
                    (filter gift? (under tables "gameplay")))))))

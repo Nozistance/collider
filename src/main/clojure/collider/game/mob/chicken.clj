@@ -1,22 +1,16 @@
 (ns collider.game.mob.chicken
   "Chicken coats, slow falls and laid eggs."
-  (:require [collider.data :as data]
-            [collider.game.entity :as entity]
-            [collider.game.loot :as loot]
+  (:require [collider.game.entity :as entity]
             [collider.game.mob.animal :as animal]
+            [collider.game.mob.gift :as gift]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.out :as out]
-            [collider.random :as random]
-            [collider.vec :as v]
-            [collider.world.env.signal :as signal]))
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const egg-ticks 6000)
 
 (def ^:private ^:const fall-drag 0.6)
-
-(def ^:private ^:table tables (delay (data/entity-drops)))
 
 (defn- chick-coat [_ t eid a b]
   (if (< (animal/rnd t eid :variant) 0.5) (:variant a) (:variant b)))
@@ -31,7 +25,7 @@
   (animal/brain spec world eid e t tempters))
 
 (defn- egg-time ^long [t eid]
-  (+ egg-ticks (long (* egg-ticks (random/of-key t eid :egg-time)))))
+  (gift/wait t eid :egg-time egg-ticks))
 
 (defn- slowed
   "Returns chicken e, which falls slower off the ground."
@@ -42,23 +36,8 @@
       (let [vy (* (v/y vel) fall-drag)]
         (entity/with e {:vel (v/v3 (v/x vel) vy (v/z vel))})))))
 
-(defn- eggs [t eid e]
-  (loot/drops @tables :chicken-lay {:entity (mobs/loot-entity e)}
-              #(random/of-key t eid [:lay %])))
-
-(defn- pitch ^double [t eid]
-  (let [r #(random/of-key t eid [:lay-pitch %])]
-    (+ 1.0 (* 0.2 (- (double (r 1)) (double (r 2)))))))
-
 (defn- laid [t eid e]
-  (let [pos (:pos e)
-        drop (fn [i s]
-               (let [vel (entity/pop-velocity [t eid :lay i])]
-                 [:spawn-entity (entity/item pos vel s)]))]
-    (when-let [ds (seq (map-indexed drop (eggs t eid e)))]
-      (let [snd (out/sound :chicken/egg pos 1.0 (pitch t eid))]
-        (concat ds [(out/all snd)]
-                (signal/game-event :entity-place pos eid))))))
+  (gift/gift-deltas t eid e :chicken-lay :chicken/egg :lay))
 
 (defn- layer? [e]
   (and (pos? (double (:health e))) (not (mobs/baby? e))))

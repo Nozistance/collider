@@ -48,6 +48,8 @@
              [:variant :pig-variant :temperate]
              [:sound-variant :pig-sound-variant :classic]]}
    :rabbit {:parent :animal :fields [[:type :int 0]]}
+   :armadillo
+   {:parent :animal :fields [[:state :armadillo-state 0]]}
    :chicken
    {:parent :animal
     :fields [[:variant :chicken-variant :temperate]
@@ -123,7 +125,7 @@
    :block-state 14 :particle 16 :pose 20 :cow-variant 23
    :cow-sound-variant 24 :pig-variant 28 :pig-sound-variant 29
    :chicken-variant 30 :chicken-sound-variant 31
-   :painting-variant 34})
+   :painting-variant 34 :armadillo-state 36})
 
 (defn- write-data-pos [^Buf buf v]
   (let [[x y z] v]
@@ -146,7 +148,7 @@
     :painting-variant (comps/write-painting-variant buf v)
     (:int :direction :block-state :pose :cow-variant
      :cow-sound-variant :pig-variant :pig-sound-variant
-     :chicken-variant :chicken-sound-variant)
+     :chicken-variant :chicken-sound-variant :armadillo-state)
     (c/write-varint buf (long v))))
 
 (def ^:private ^:const entity-data-end 255)
@@ -181,7 +183,7 @@
     :painting-variant (comps/read-painting-variant buf)
     (:int :direction :block-state :pose :cow-variant
      :cow-sound-variant :pig-variant :pig-sound-variant
-     :chicken-variant :chicken-sound-variant)
+     :chicken-variant :chicken-sound-variant :armadillo-state)
     (c/read-varint buf)))
 
 (defn read-entity-data

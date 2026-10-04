@@ -15,8 +15,6 @@
 
 (def ^:private ^:const max-turn 90.0)
 
-(def ^:private ^:const max-head-y-rot 75.0)
-
 (def ^:private ^:const head-stable-angle 15.0)
 
 (def ^:private ^:const face-forward-delay 10)
@@ -120,16 +118,17 @@
   (let [d (flt (v/wrap-deg (flt (- target base))))]
     (flt (- target (Math/clamp d (- max) max)))))
 
-(defn- faced-forward ^double [^double yaw ^double hy ^long stable]
+(defn- faced-forward
+  ^double [^double yaw ^double hy ^long stable ^double max]
   (if (> stable face-forward-delay)
     (let [n (- stable face-forward-delay)
           f (Math/clamp (flt (/ (double n) 10.0)) 0.0 1.0)
-          r (flt (* max-head-y-rot (flt (- 1.0 f))))]
+          r (flt (* max (flt (- 1.0 f))))]
       (rotate-if-necessary yaw hy r))
     yaw))
 
-(defn- carried [^double yaw ^double hy ^long t]
-  (let [h (rotate-if-necessary hy yaw max-head-y-rot)]
+(defn- carried [e ^double yaw ^double hy ^long t]
+  (let [h (rotate-if-necessary hy yaw (mobs/max-head-y-rot e))]
     [yaw h {:head h :at t :yaw yaw}]))
 
 (defn body-yaw
@@ -140,23 +139,25 @@
 
 (defn- faced [e b ^double hy ^long t]
   (let [by (body-yaw e)
-        f (faced-forward by hy (- t (long (:at b))))]
+        r (mobs/max-head-y-rot e)
+        f (faced-forward by hy (- t (long (:at b))) r)]
     (if (and (:yaw b) (== f by)) b (assoc b :yaw f))))
 
 (defn- body-after [e ^double hy]
-  (rotate-if-necessary (body-yaw e) hy max-head-y-rot))
+  (rotate-if-necessary (body-yaw e) hy (mobs/max-head-y-rot e)))
 
 (defn body-turn
   "Returns the yaw, head yaw and body of mob e after its move, for
   head yaw head. The flag moved? is true when the mob shifted in the
-  XZ plane this tick. A walking mob carries its head. A standing one
-  turns its body after its head."
+  XZ plane this tick. A walking mob carries its head, a standing one
+  turns after it, and a held one stops the clock of its head."
   [e head moved? t]
   (let [yaw (double (:yaw e)) t (long t)
         hy (double (or head yaw))
         b (or (:body e) {:head 0.0 :at (dec t)})]
     (cond
-      moved? (carried yaw hy t)
+      (mobs/body-held? e) [yaw head (update b :at inc)]
+      moved? (carried e yaw hy t)
       (> (Math/abs (- hy (double (:head b)))) head-stable-angle)
       [yaw head {:head hy :at t :yaw (body-after e hy)}]
       :else [yaw head (faced e b hy t)])))
@@ -205,7 +206,7 @@
   ^double [e ^double hy]
   (if (Nav/walked (:nav e))
     hy
-    (rotate-if-necessary hy (body-yaw e) max-head-y-rot)))
+    (rotate-if-necessary hy (body-yaw e) (mobs/max-head-y-rot e))))
 
 (defn look-of
   "Returns the head yaw, head pitch and look of mob e turned towards

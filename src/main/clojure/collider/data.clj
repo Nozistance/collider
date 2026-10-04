@@ -201,6 +201,18 @@
    :rabbit/hurt                   [:entity.rabbit.hurt 6]
    :rabbit/death                  [:entity.rabbit.death 6]
    :rabbit/jump                   [:entity.rabbit.jump 6]
+   :armadillo/say                 [:entity.armadillo.ambient 6]
+   :armadillo/step                [:entity.armadillo.step 6]
+   :armadillo/hurt                [:entity.armadillo.hurt 6]
+   :armadillo/hurt-reduced
+   [:entity.armadillo.hurt-reduced 6]
+   :armadillo/death               [:entity.armadillo.death 6]
+   :armadillo/eat                 [:entity.armadillo.eat 6]
+   :armadillo/roll                [:entity.armadillo.roll 6]
+   :armadillo/unroll-finish
+   [:entity.armadillo.unroll-finish 6]
+   :armadillo/scute-drop          [:entity.armadillo.scute-drop 6]
+   :armadillo/brush               [:entity.armadillo.brush 6]
    :chicken/say                   [:entity.chicken.ambient 6]
    :chicken/step                  [:entity.chicken.step 6]
    :chicken/hurt                  [:entity.chicken.hurt 6]

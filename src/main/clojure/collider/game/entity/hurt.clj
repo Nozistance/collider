@@ -10,6 +10,7 @@
             [collider.game.level :as level]
             [collider.game.loot :as loot]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.shell :as shell]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -628,6 +629,7 @@
   (cond-> {:health-sent health}
     src (assoc :struck-by nil)
     (:hurts e) (assoc :hurts nil)
+    (:shell-sounds e) (assoc :shell-sounds nil)
     (not (entity/player? e)) (merge (panicked world e))
     (and src (pos? health) (mobs/mob-type? (:type e)))
     (assoc :say-tick (hushed (:tick world) late?))))
@@ -649,11 +651,14 @@
 
 (defn- marked-deltas
   "Returns the delta that marks the hurts of entity eid as shown,
-  then the game events of those that took health."
+  the game events of those that took health and the rolls of the
+  shell of an armadillo, in this order."
   [world eid e health src late?]
   (let [ev (signal/game-event :entity-damage (:pos e) eid)]
-    (cons [:merge-entity eid (hurt-marks world e health src late?)]
-          (mapcat (fn [_] ev) (range (long (or (:hurts e) 0)))))))
+    (concat
+      [[:merge-entity eid (hurt-marks world e health src late?)]]
+      (mapcat (fn [_] ev) (range (long (or (:hurts e) 0))))
+      (shell/shell-deltas eid e (:tick world)))))
 
 (defn- died-deltas [world eid e]
   (concat (signal/game-event :entity-die (:pos e) eid)

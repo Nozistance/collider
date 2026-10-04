@@ -2,6 +2,7 @@
   "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
             [collider.game.entity.size :as size]
+            [collider.game.mob.shell :as shell]
             [collider.game.mob.variant :as variant]
             [collider.random :as random]
             [collider.world.space.path :as path]))
@@ -139,7 +140,15 @@
                :block-steps? true
                :food        "rabbit_food"
                :spawns-on   "rabbits_spawnable_on"
-               :spawn-look  rabbit-variant}})
+               :spawn-look  rabbit-variant}
+   :armadillo {:sounds      :armadillo
+               :sound-key   shell/sound-key
+               :head-y-rot  shell/max-head-y-rot
+               :body-held?  shell/scared?
+               :hurt-taken  shell/taken
+               :hurt-reaction shell/hurt
+               :eats-aloud? true
+               :food        "armadillo_food"}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -182,6 +191,16 @@
   ^double [type]
   (double (float (attribute type :step-height))))
 
+(defn max-head-y-rot
+  "Returns how far mob e turns its head from its body."
+  ^double [e]
+  (if-let [f (:head-y-rot (types (:type e)))] (f e) 75.0))
+
+(defn body-held?
+  "Returns true when mob e keeps its body from turning."
+  [e]
+  (if-let [f (:body-held? (types (:type e)))] (boolean (f e)) false))
+
 (defn- voice-of [m e]
   (get (:voices m) (long (or (:sound-variant e) 0)) :classic))
 
@@ -197,10 +216,11 @@
 (defn sound-of
   "Returns the sound mob e makes for k, such as :say or :hurt.
   Each voice of a breed has sounds of its own, and a baby may sound
-  as a baby."
+  as a baby. A breed may change or hush a sound by its state."
   [e k]
-  (let [m (types (:type e))]
-    (when (:sounds m)
+  (let [m (types (:type e))
+        k (if-let [f (:sound-key m)] (f e k) k)]
+    (when (and k (:sounds m))
       (keyword (name (sound-set m e k)) (name k)))))
 
 (def ^:private sheep-metas
@@ -265,7 +285,10 @@
     :mooshroom (mooshroom-meta
                 [(variant e) (some? (:baby-until e)) (burning? e)])
     :rabbit (rabbit-metas
-             [(variant e) (some? (:baby-until e)) (burning? e)])))
+             [(variant e) (some? (:baby-until e)) (burning? e)])
+    :armadillo {:armadillo-state (shell/state-id e)
+                :baby? (some? (:baby-until e))
+                :burning? (burning? e)}))
 
 (defn metadata
   "Returns what clients see of mob e besides its movement."

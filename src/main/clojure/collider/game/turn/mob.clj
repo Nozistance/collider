@@ -31,10 +31,24 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- think [world eid e t tempters]
-  (if-let [b (:think (spec/of (:type e)))]
-    (b world eid e t tempters)
+(defn- custom-step
+  "Returns mob e after the part of its server step that is its own
+  and comes after its mind, with its deltas."
+  [world eid e t]
+  (if-let [f (:custom-step (spec/of (:type e)))]
+    (f world eid e t)
     [e nil]))
+
+(defn- with-custom [world eid [e ds] t]
+  (let [[e more] (custom-step world eid e t)]
+    [e (if (seq more) (concat ds more) ds)]))
+
+(defn- think [world eid e t tempters]
+  (with-custom world eid
+    (if-let [b (:think (spec/of (:type e)))]
+      (b world eid e t tempters)
+      [e nil])
+    t))
 
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
@@ -177,8 +191,9 @@
   [world eid e t speed half]
   (let [b (:breed (:brain e))
         [e ds] (brain/think b world eid (nav/tick world e) t)
-        e (age-up (brain/update-activity b e t) t)
-        [e say-ds] (ambient eid e t)]
+        e (brain/update-activity b e t)
+        [e ds] (with-custom world eid [e ds] t)
+        [e say-ds] (ambient eid (age-up e t) t)]
     [(control/tick world e speed (* 2.0 (double half))) ds say-ds]))
 
 (defn- goal-steps [world tempters eid e t speed half]

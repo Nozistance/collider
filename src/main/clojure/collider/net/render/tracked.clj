@@ -9,8 +9,9 @@
 (set! *warn-on-reflection* true)
 
 (def ^:private kinds
-  (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit :item
-          :experience-orb :tnt :falling-block :area-effect-cloud
+  (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit
+          :armadillo :item :experience-orb :tnt :falling-block
+          :area-effect-cloud
           :painting :item-frame :glow-item-frame}
         entity/thrown-types))
 
@@ -129,6 +130,15 @@
   (cond-> (animal-fields meta)
     (contains? meta :variant) (assoc :type (long (:variant meta)))))
 
+(defn- armadillo-fields [meta]
+  (cond-> (animal-fields meta)
+    (contains? meta :armadillo-state)
+    (assoc :state (:armadillo-state meta))))
+
+(def ^:private animal-own
+  {:sheep sheep-fields :mooshroom variant-fields
+   :rabbit variant-fields :armadillo armadillo-fields})
+
 (defn- falling-fields [meta]
   (cond-> {}
     (contains? meta :start) (assoc :start-pos (:start meta))))
@@ -163,9 +173,8 @@
     :player (merge (player-fields meta) (living-fields meta))
     (:cow :pig :chicken)
     (merge (coat-fields kind meta) (living-fields meta))
-    :sheep (merge (sheep-fields meta) (living-fields meta))
-    (:mooshroom :rabbit)
-    (merge (variant-fields meta) (living-fields meta))
+    (:sheep :mooshroom :rabbit :armadillo)
+    (merge ((animal-own kind) meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
     :tnt (tnt-fields meta)
     :falling-block (falling-fields meta)
