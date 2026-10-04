@@ -2,6 +2,7 @@
   "Damage, fire, the void and death of entities, and the deltas
   that show them."
   (:require [collider.data :as data]
+            [collider.game.attribute :as attribute]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
@@ -11,6 +12,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.game.slots :as slots]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -525,13 +527,50 @@
     (boolean (and at (< (- (long (:tick world)) (long at))
                         player-kill-memory)))))
 
+(defn- on-fire? [e]
+  (or (pos? (long (or (:fire e) 0))) (boolean (:burning? e))))
+
+(defn- worn
+  "Returns the stacks that player e wears and holds, by equipment
+  slot. Any other entity has none."
+  [e]
+  (when (entity/player? e)
+    (let [at (assoc slots/armor :mainhand (player/hand-slot e :main)
+                    :offhand slots/offhand)]
+      (into {}
+            (keep (fn [[k i]]
+                    (when-let [s (get-in e [:inventory i])] [k s])))
+            at))))
+
+(defn- loot-view
+  "Returns entity e as loot predicates see it, or nil for no e."
+  [e]
+  (when e
+    (cond-> {:type (:type e) :living? (entity/living? e)
+             :on-fire? (on-fire? e) :equipment (worn e)}
+      (mobs/mob-type? (:type e)) (merge (mobs/loot-entity e)))))
+
+(defn- attacking-player
+  "Returns the player who hurt mob e recently enough to count as its
+  killer, while it is in the world."
+  [world e]
+  (when (killed-by-player? world e)
+    (let [p (get-in world [:entities (:last-hurt-by-player e)])]
+      (when (entity/player? p) p))))
+
+(defn- luck ^double [p]
+  (if p (attribute/value p (:effects p) :luck) 0.0))
+
 (defn- loot-ctx [world e]
-  (let [fire (long (or (:fire e) 0))]
-    {:on-fire? (or (pos? fire) (boolean (:burning? e)))
-     :killed-by-player? (killed-by-player? world e)
-     :damage-type (:hurt-cause e)
-     :looting 0
-     :entity (mobs/loot-entity e)}))
+  (let [src (:killed-by e)
+        p (attacking-player world e)]
+    {:entity (loot-view e)
+     :attacker (loot-view (:attacker src))
+     :direct-attacker (loot-view (:direct-attacker src))
+     :attacking-player (loot-view p)
+     :damage-type (:type src)
+     :direct? (= (:cause src) (:direct src))
+     :luck (luck p)}))
 
 (defn- loot-stacks [world eid e]
   (loot/drops @drop-tables (:type e) (loot-ctx world e)

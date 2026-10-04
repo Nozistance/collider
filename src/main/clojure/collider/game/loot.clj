@@ -1,7 +1,9 @@
 (ns collider.game.loot
   "Mob loot tables."
   (:require [collider.data :as data]
-            [collider.game.block.furnace :as furnace]))
+            [collider.game.block.furnace :as furnace]
+            [collider.game.stack :as stack]
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
@@ -32,36 +34,89 @@
     (let [lo (double (:min n)) hi (double (:max n))]
       (if (>= lo hi) lo (+ lo (* (double (roll s)) (- hi lo)))))))
 
-(defn- flag? [k v ctx]
-  (= (boolean v)
-     (case k
-       :is-on-fire (boolean (:on-fire? ctx))
-       :is-baby (boolean (:baby? (:entity ctx)))
-       (fail "unknown entity flag" {:flag k}))))
+(defn- members
+  "Returns the entries of holder set v of registry, which is an id,
+  a list of ids or a tag."
+  [registry v]
+  (cond
+    (keyword? v) #{v}
+    (:tag v) (set (data/tag-values registry (:tag v)))
+    :else (set v)))
+
+(defn- bounds [r]
+  (if (number? r) {:min r :max r} r))
 
 (defn- in-range? [r v]
-  (and (>= (long v) (long (:min r Long/MIN_VALUE)))
-       (<= (long v) (long (:max r Long/MAX_VALUE)))))
+  (let [r (bounds r)]
+    (and (>= (long v) (long (:min r Long/MIN_VALUE)))
+         (<= (long v) (long (:max r Long/MAX_VALUE))))))
+
+(defn- enchanted?
+  "Returns true when enchantment predicate p finds a match in the
+  enchantment levels m."
+  [p m]
+  (let [r (:levels p)
+        fits? #(and (pos? (long %)) (or (nil? r) (in-range? r %)))]
+    (cond
+      (:enchantments p)
+      (boolean (some #(fits? (get m % 0))
+                     (members "enchantment" (:enchantments p))))
+      (:levels p) (boolean (some fits? (vals m)))
+      :else (boolean (seq m)))))
+
+(defn- item-part? [s [k v]]
+  (case k
+    (:enchantments :stored-enchantments)
+    (let [m (stack/component s k)]
+      (and (some? m) (every? #(enchanted? % m) v)))
+    (fail "unknown item predicate" {:predicate k})))
+
+(defn- item-matches? [p s]
+  (every? (fn [[k v]]
+            (case k
+              :items (contains? (members "item" v) (:item s))
+              :count (in-range? v (stack/size s))
+              :predicates (every? #(item-part? s %) v)
+              (fail "unknown item field" {:field k})))
+          p))
+
+(defn- equipped? [v e]
+  (and (:living? e)
+       (every? (fn [[slot p]]
+                 (item-matches? p (get (:equipment e) slot)))
+               v)))
+
+(defn- flag? [k v e]
+  (= (boolean v)
+     (case k
+       :is-on-fire (boolean (:on-fire? e))
+       :is-baby (boolean (:baby? e))
+       (fail "unknown entity flag" {:flag k}))))
 
 (defn- same-flag? [a b]
   (= (boolean a) (boolean b)))
 
-(defn- field? [k v ctx]
-  (let [e (:entity ctx)]
-    (case k
-      :flags (every? (fn [[fk fv]] (flag? fk fv ctx)) v)
-      :components (= v (select-keys (:components e) (keys v)))
-      :type-specific/sheep (same-flag? (:sheared v) (:sheared? e))
-      :type-specific/raider (same-flag? (:is-captain v) (:captain? e))
-      :type-specific/cube-mob (in-range? (:size v) (:size e 0))
-      :vehicle (= (:entity-type v) (:vehicle e))
-      :entity-type (= v (:type e))
-      :equipment false
-      (fail "unknown entity predicate" {:field k}))))
+(defn- field? [e [k v]]
+  (case k
+    :flags (every? (fn [[fk fv]] (flag? fk fv e)) v)
+    :components (= v (select-keys (:components e) (keys v)))
+    :type-specific/sheep (same-flag? (:sheared v) (:sheared? e))
+    :type-specific/raider (same-flag? (:is-captain v) (:captain? e))
+    :type-specific/cube-mob (in-range? (:size v) (:size e 0))
+    :vehicle (= (:entity-type v) (:vehicle e))
+    :entity-type (contains? (members "entity_type" v) (:type e))
+    :equipment (equipped? v e)
+    (fail "unknown entity predicate" {:field k})))
 
-(defn- this-entity-matches? [c ctx]
-  (and (= :this (:entity c))
-       (every? (fn [[k v]] (field? k v ctx)) (:predicate c))))
+(defn- entity-matches? [p e]
+  (and (some? e) (every? #(field? e %) p)))
+
+(defn- target [ctx t]
+  (get ctx (if (= :this t) :entity t)))
+
+(defn- properties? [c ctx]
+  (let [p (:predicate c)]
+    (or (empty? p) (entity-matches? p (target ctx (:entity c))))))
 
 (defn- damage-tag? [t ctx]
   (let [vs (data/tag-values "damage_type" (data/snake (:id t)))]
@@ -69,28 +124,66 @@
        (boolean (some #{(:damage-type ctx)} vs)))))
 
 (defn- damage? [p ctx]
-  (and (every? #{:tags} (keys p))
-       (every? #(damage-tag? % ctx) (:tags p))))
+  (every? (fn [[k v]]
+            (case k
+              :tags (every? #(damage-tag? % ctx) v)
+              :source-entity (entity-matches? v (:attacker ctx))
+              :direct-entity
+              (entity-matches? v (:direct-attacker ctx))
+              :is-direct (same-flag? v (:direct? ctx))
+              (fail "unknown damage predicate" {:field k})))
+          p))
+
+(def ^:private slot-groups
+  {:any [:mainhand :offhand :feet :legs :chest :head :body :saddle]
+   :mainhand [:mainhand] :offhand [:offhand]
+   :hand [:mainhand :offhand] :feet [:feet] :legs [:legs]
+   :chest [:chest] :head [:head] :body [:body] :saddle [:saddle]
+   :armor [:feet :legs :chest :head :body]})
+
+(defn- slots-of [[id m]]
+  [(data/kebab id) (mapv keyword (get m "slots"))])
+
+(def ^:private ^:table enchant-slots
+  (delay (into {} (map slots-of) (data/pack "enchantment"))))
+
+(defn- level-on [e ench slot]
+  (let [s (get (:equipment e) slot)]
+    (long (get (stack/component s :enchantments) ench 0))))
+
+(defn- level-of
+  "Returns the highest level of enchantment ench on the slots it acts
+  from, on the living attacker of ctx. Without one it is 0."
+  ^long [ctx ench]
+  (let [e (:attacker ctx)]
+    (if (:living? e)
+      (let [slots (mapcat slot-groups (get @enchant-slots ench))]
+        (reduce max 0 (map #(level-on e ench %) slots)))
+      0)))
+
+(defn- level-value ^double [v ^long lvl]
+  (cond
+    (number? v) (num/f32 v)
+    (= :linear (:type v))
+    (let [per (num/f32 (:per-level-above-first v))]
+      (num/f32 (+ (num/f32 (:base v)) (num/f32 (* per (dec lvl))))))
+    :else (fail "unknown level value" {:value v})))
 
 (defn- bonus-chance ^double [c ctx]
-  (let [lvl (long (:looting ctx 0))
-        e (:enchanted-chance c)]
-    (when-not (= :linear (:type e))
-      (fail "unknown enchanted chance" {:chance e}))
+  (let [lvl (level-of ctx (:enchantment c))]
     (if (pos? lvl)
-      (+ (double (:base e))
-         (* (double (:per-level-above-first e)) (dec lvl)))
-      (double (:unenchanted-chance c)))))
+      (level-value (:enchanted-chance c) lvl)
+      (num/f32 (:unenchanted-chance c)))))
 
 (declare outcomes)
 
 (defn- passes? [c ctx roll s]
   (case (:condition c)
-    :killed-by-player (boolean (:killed-by-player? ctx))
+    :killed-by-player (some? (:attacking-player ctx))
     :random-chance (< (double (roll s)) (double (:chance c)))
     :random-chance-with-enchanted-bonus
     (< (double (roll s)) (bonus-chance c ctx))
-    :entity-properties (this-entity-matches? c ctx)
+    :entity-properties (properties? c ctx)
     :damage-source-properties (damage? (:predicate c) ctx)
     :inverted (not (passes? (:term c) ctx roll (conj s :term)))
     :any-of (boolean (some true? (outcomes (:terms c) ctx roll s)))
@@ -109,13 +202,13 @@
       (assoc r :count (min n (data/max-stack (:item r)))))
     stack))
 
-(defn- looting-grow [stack f ctx roll s]
-  (let [lvl (long (:looting ctx 0))
+(defn- count-increase [stack f ctx roll s]
+  (let [lvl (level-of ctx (:enchantment f))
         lim (long (:limit f 0))]
     (if (zero? lvl)
       stack
-      (let [n (+ (long (:count stack 1))
-                 (rounded (* lvl (float-of (:count f) roll s))))]
+      (let [add (num/f32 (* lvl (float-of (:count f) roll s)))
+            n (+ (long (:count stack 1)) (Math/round (float add)))]
         (assoc stack :count (if (pos? lim) (min n lim) n))))))
 
 (defn- set-count [stack f roll s]
@@ -132,7 +225,7 @@
   (case (:function f)
     :set-count (set-count stack f roll s)
     :enchanted-count-increase
-    (looting-grow stack f ctx roll (conj s :l))
+    (count-increase stack f ctx roll (conj s :l))
     :furnace-smelt (smelt stack)
     :set-potion (assoc-in stack [:components :potion-contents]
                 {:potion (:id f)})
@@ -166,17 +259,21 @@
       :sequence (till-empty (children-of e ctx roll s))
       (fail "unsupported entry" {:type (:type e)}))))
 
-(defn- weight-of ^long [[e _]]
-  (long (:weight e 1)))
+(defn- weight-of
+  "Returns the weight of leaf e under luck, never below 0."
+  ^long [[e _] ^double luck]
+  (let [q (num/f32 (* (num/f32 (:quality e 0)) luck))]
+    (max 0 (long (Math/floor (num/f32 (+ (long (:weight e 1)) q)))))))
 
-(defn- pick [leaves ^double r]
-  (let [ls (filterv #(pos? (weight-of %)) leaves)
-        total (reduce + 0 (map weight-of ls))]
+(defn- pick [leaves ^double r ^double luck]
+  (let [w #(weight-of % luck)
+        ls (filterv #(pos? (long (w %))) leaves)
+        total (reduce + 0 (map w ls))]
     (when (pos? (long total))
       (loop [[l & more] ls i (long (* r (long total)))]
-        (if (neg? (- i (weight-of l)))
+        (if (neg? (- i (long (w l))))
           l
-          (recur more (- i (weight-of l))))))))
+          (recur more (- i (long (w l)))))))))
 
 (declare table-drops)
 
@@ -194,15 +291,26 @@
 (defn- one-roll [tables p ctx roll s]
   (let [expand-at (fn [i e] (expand e ctx roll (conj s i)))
         leaves (mapcat identity (map-indexed expand-at (:entries p)))]
-    (if-let [l (pick (vec leaves) (double (roll (conj s :pick))))]
+    (if-let [l (pick (vec leaves) (double (roll (conj s :pick)))
+                     (double (:luck ctx 0.0)))]
       (mapv #(apply-fns % (:functions p) ctx roll (conj s :fns))
             (leaf-stacks tables l ctx roll))
       [])))
 
+(defn- bonus-rolls
+  "Returns the rolls that the luck of ctx adds to pool p."
+  ^long [p ctx roll s]
+  (if-let [b (:bonus-rolls p)]
+    (let [luck (num/f32 (:luck ctx 0.0))
+          n (num/f32 (* (num/f32 (float-of b roll s)) luck))]
+      (long (Math/floor n)))
+    0))
+
 (defn- pool-drops [tables p ctx roll s]
   (if-not (met? (:conditions p) ctx roll s)
     []
-    (let [n (int-of (:rolls p 1) roll (conj s :rolls))]
+    (let [n (+ (int-of (:rolls p 1) roll (conj s :rolls))
+               (bonus-rolls p ctx roll (conj s :bonus)))]
       (into [] (mapcat #(one-roll tables p ctx roll (conj s %)))
             (range n)))))
 

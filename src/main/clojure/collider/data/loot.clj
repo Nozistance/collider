@@ -114,9 +114,6 @@
                    (when (not= t []) [(pack/kw name) t]))))
          (under tables "blocks"))))
 
-(defn- loot-id [s]
-  (pack/kw (str/replace (str s) #"^#" "")))
-
 (defn- shear-name [n]
   (if-let [i (str/index-of n "/")]
     (str (subs n 0 i) "-shear" (subs n i))
@@ -132,7 +129,9 @@
 
 (defn- loot-scalar [v]
   (cond
-    (string? v) (loot-id v)
+    (and (string? v) (str/starts-with? v "#"))
+    {:tag (str/replace (subs v 1) #"^minecraft:" "")}
+    (string? v) (pack/kw v)
     (not (number? v)) v
     (== (double v) (Math/rint (double v))) (long v)
     :else v))
