@@ -278,6 +278,10 @@
         (into (filter ok?) (level/of-types world mob-types))
         (into (filter ok?) (level/player-entries world)))))
 
+(defn- shoved-mobs [es]
+  (comp (filter #(mobs/mob-type? (:type (get es (nth % 0)))))
+        (map #(taken es %))))
+
 (defn player-shoves
   "Returns the deltas of the cramming of player entry p and of the
   shoves it gives the mobs its box overlaps as its tick ends. The
@@ -288,9 +292,7 @@
       (when (next bs)
         (let [[h ht] (pushable-box p)
               index (index-of bs)
-              n (count (touching index peid p h ht))
-              es (:entities world)
-              mob? #(mobs/mob-type? (:type (get es (nth % 0))))]
+              n (count (touching index peid p h ht))]
           (into (vec (crammed world peid p n))
-                (comp (filter mob?) (map #(taken es %)))
+                (shoved-mobs (:entities world))
                 (shoves index peid p h ht)))))))
