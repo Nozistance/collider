@@ -44,8 +44,8 @@
 
 (defn custom-step
   "Returns living armadillo e after its server step at tick t, with
-  its deltas. It is heard rolling as its brain rolled it, and then
-  its scute time comes."
+  its deltas. It is heard rolling as its brain rolled it, before its
+  scute time comes."
   [world eid e t]
   (let [[e2 ds] (shed world eid (assoc e :shell-sounds nil) t)]
     [e2 (concat (shell/shell-deltas eid e t) ds)]))
