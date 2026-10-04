@@ -558,7 +558,10 @@
             (level/player-entries world)))))
 
 (defn- luck ^double [p]
-  (if p (attribute/value p (:effects p) :luck) 0.0))
+  (if p
+    (attribute/value p (:effects p) :luck
+                     (attribute/equipment-modifiers (worn p) :luck))
+    0.0))
 
 (defn- loot-ctx [world e]
   (let [src (:killed-by e)

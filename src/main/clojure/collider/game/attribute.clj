@@ -1,7 +1,9 @@
 (ns collider.game.attribute
-  "Attributes of living entities as their effects change them."
+  "Attributes of living entities as their effects and equipment
+  change them."
   (:require [collider.data :as data]
             [collider.game.effect :as effect]
+            [collider.game.stack :as stack]
             [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
@@ -69,6 +71,41 @@
               [a id amount op] (templates k)
               :when (= a attr)]
           [id (* (double amount) (inc (long (:amplifier i)))) op])))
+
+(def ^:private equipment-slots
+  [:mainhand :offhand :feet :legs :chest :head :body :saddle])
+
+(def ^:private slot-groups
+  {:any (set equipment-slots) :hand #{:mainhand :offhand}
+   :armor #{:feet :legs :chest :head :body}})
+
+(def ^:private operations
+  {:add-value add-value :add-multiplied-base add-base-share
+   :add-multiplied-total multiply-total})
+
+(defn- in-group? [group slot]
+  (contains? (get slot-groups group #{group}) slot))
+
+(defn- broken? [s]
+  (and (stack/damageable? s)
+       (>= (stack/damage s) (stack/max-damage s))))
+
+(defn- stack-modifiers [attr slot s]
+  (when-not (broken? s)
+    (for [{a :attribute m :modifier g :slot}
+          (stack/component s :attribute-modifiers)
+          :when (and (= attr a) (in-group? (or g :any) slot))]
+      [(:id m) (double (:amount m)) (operations (:operation m))])))
+
+(defn equipment-modifiers
+  "Returns the modifiers of attribute attr that the stacks of
+  equipment give, by equipment slot. A broken stack gives none. Of
+  two modifiers with one id the later slot wins."
+  [equipment attr]
+  (let [of #(when-let [s (get equipment %)]
+              (stack-modifiers attr % s))]
+    (vals (reduce (fn [m [id :as x]] (assoc m id x))
+                  {} (mapcat of equipment-slots)))))
 
 (defn- summed ^double [ms op]
   (reduce (fn [^double s [_ a o]] (if (= op o) (+ s (double a)) s))
