@@ -76,7 +76,9 @@
 (defn- animal-fields [meta]
   (cond-> (common-fields meta)
           (contains? meta :baby?)
-          (assoc :baby (boolean (:baby? meta)))))
+          (assoc :baby (boolean (:baby? meta)))
+          (contains? meta :age-locked?)
+          (assoc :age-locked (boolean (:age-locked? meta)))))
 
 (def ^:private coat-keys
   {:cow [:cow-variant :cow-sound]

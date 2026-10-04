@@ -1,6 +1,7 @@
 (ns collider.game.mob.animal
   "Farm animal goals and their selector."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.data :as data]
+            [collider.game.entity :as entity]
             [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
@@ -502,10 +503,32 @@
         seconds (long (* s feeding-speedup))]
     (- remaining (* seconds ticks-per-second))))
 
-(defn- grown [t target e]
-  (let [left (max 0 (- (long (:baby-until e)) (long t)))]
+(defn- left-at
+  "Returns the ticks baby e has left to grow up at the start of tick
+  t, before it grows in t."
+  ^long [e t]
+  (inc (- (long (:baby-until e)) (long t))))
+
+(defn- grown
+  "Returns the deltas that grow baby e of id target, fed at tick t.
+  The baby keeps count of the growth its food gave."
+  [t target e]
+  (let [left (left-at e t)
+        gain (- left (fed-growth left))
+        forced (+ (long (or (:forced-age e) 0)) gain)]
     [[:merge-entity target
-      {:baby-until (+ (long t) (fed-growth left))}]]))
+      {:baby-until (- (long (:baby-until e)) gain)
+       :forced-age forced}]]))
+
+(defn aged-up
+  "Returns baby e older by ticks at tick t. A baby that grows up so
+  may not breed until the growth its food gave has passed."
+  [e t ticks]
+  (let [t (long t)]
+    (if (< (long ticks) (left-at e t))
+      (assoc e :baby-until (- (long (:baby-until e)) (long ticks)))
+      (assoc e :baby-until t
+             :breed-ready-at (+ t (long (or (:forced-age e) 0)))))))
 
 (defn- loved [t eid]
   [[:merge-entity eid {:love-until (+ (long t) love-ticks)}]
@@ -520,6 +543,44 @@
           pitch (+ base (* 0.2 (- (double (r 1)) (double (r 2)))))]
       [(out/all (out/sound snd (:pos e) 1.0 pitch))])))
 
+(def ^:private ^:const lock-cooldown 40)
+
+(def ^:private unlockable-tag "cannot_be_age_locked")
+
+(def ^:private ^:table unlockable
+  (delay (set (data/tag-values "entity_type" unlockable-tag))))
+
+(defn- lockable? [e t]
+  (let [at (:age-lock-at e)]
+    (and (mobs/baby? e) (not (@unlockable (:type e)))
+         (or (nil? at) (>= (long t) (+ (long at) lock-cooldown))))))
+
+(defn- block-center [p]
+  (mapv #(+ 0.5 (Math/floor (double %))) p))
+
+(defn- lock-sound [e locked?]
+  (let [k (if locked? :golden-dandelion/use :golden-dandelion/unuse)]
+    (out/all (out/sound k (block-center (:pos e)) 1.0 1.0))))
+
+(defn lock-result
+  "Returns what a golden dandelion does to a baby mob. It stops the
+  growing up of the baby, or lets it grow again, and either way the
+  baby starts from birth. A baby takes it at most once in 40 ticks."
+  [{:keys [t peid p eid e hand item]}]
+  (when (and (= :golden-dandelion item) (lockable? e t))
+    (let [locked? (not (:age-locked? e))
+          m {:age-locked? (when locked? true) :age-lock-at t
+             :baby-until (+ (long t) (dec baby-ticks))}]
+      {:result :success
+       :deltas (concat [[:merge-entity eid m]]
+                       (inventory/consume-deltas peid p hand 1)
+                       [(lock-sound e locked?)])})))
+
+(defn grows?
+  "Returns true when mob e is a baby whose age is not locked."
+  [e]
+  (and (mobs/baby? e) (not (:age-locked? e))))
+
 (defn feed-result
   "Returns what the breeding food of the mob does to it.
   A grown mob falls in love and a baby grows up sooner. A mob that may
@@ -532,6 +593,6 @@
         (feedable? e t)
         {:result :success-server
          :deltas (concat used (loved t eid) ate)}
-        (mobs/baby? e)
+        (grows? e)
         {:result :success
          :deltas (concat used (grown t eid e) ate)}))))

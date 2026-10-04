@@ -116,10 +116,14 @@
       (if-let [d (step-sound-delta world e t eid)] (conj acc d) acc)
       acc)))
 
-(defn- age-up [e t]
-  (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
-    (assoc e :baby-until nil)
-    e))
+(defn- age-up
+  "Returns mob e grown up at tick t when its time has come. A baby
+  whose age is locked does not grow up."
+  [e t]
+  (let [until (:baby-until e)]
+    (if (and until (>= (long t) (long until)) (not (:age-locked? e)))
+      (assoc e :baby-until nil)
+      e)))
 
 (defn- brain-step [world eid e t tempters dead?]
   (let [[e1 deltas] (if dead? [e nil] (think world eid e t tempters))

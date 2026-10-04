@@ -63,10 +63,8 @@
   (> (long (get-in e [:task :until])) (inc (long t))))
 
 (defn- ate [e t]
-  (let [left (long (or (:baby-until e) t))
-        grown (max (long t) (- left bite-growth))]
-    (cond-> (assoc e :sheared? false)
-            (mobs/baby? e) (assoc :baby-until grown))))
+  (cond-> (assoc e :sheared? false)
+    (animal/grows? e) (animal/aged-up t bite-growth)))
 
 (defn- bitten
   [world [x y z :as cell]]

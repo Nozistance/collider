@@ -42,7 +42,7 @@
 
 (def ^:private chain
   [(partial animal/egg-result spec/goals) species-result
-   sheep/dye-result])
+   animal/lock-result sheep/dye-result])
 
 (defn- answered
   [{:keys [peid p e hand t]} {:keys [result deltas]}]

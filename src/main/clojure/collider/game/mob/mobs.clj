@@ -258,9 +258,7 @@
 
 (defn- variant ^long [e] (long (or (:variant e) 0)))
 
-(defn metadata
-  "Returns what clients see of mob e besides its movement."
-  [e]
+(defn- own-metadata [e]
   (case (:type e)
     :sheep (sheep-meta e)
     (:cow :pig :chicken)
@@ -271,6 +269,12 @@
                 [(variant e) (some? (:baby-until e)) (burning? e)])
     :rabbit (rabbit-metas
              [(variant e) (some? (:baby-until e)) (burning? e)])))
+
+(defn metadata
+  "Returns what clients see of mob e besides its movement."
+  [e]
+  (cond-> (own-metadata e)
+    (:age-locked? e) (assoc :age-locked? true)))
 
 (defn look-key
   "Returns the key that holds how a mob of kind type looks. A sheep
@@ -325,7 +329,9 @@
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
     (assoc (egg-mob type pos ks tick dim) :yaw yaw :head-yaw yaw)))
 
-(def ^:private ^:const baby-start 24000)
+(def ^:const baby-start
+  "The ticks a newborn takes to grow up."
+  24000)
 
 (defn natural-mob
   "Returns a mob that natural spawning puts at pos in level dim. Its

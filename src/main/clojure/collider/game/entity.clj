@@ -213,7 +213,8 @@
   "Returns the fields of mob new that a turn changed from mob old."
   [old new]
   (diff-fields old new :pos :vel :yaw :pitch :on-ground :task :follow
-               :no-action :baby-until :tempt-cooldown-until :say-tick
+               :no-action :baby-until :breed-ready-at
+               :tempt-cooldown-until :say-tick
                :stick-cooldown-until :egg-at
                :walked :head-yaw :look :jump-cd :wet? :sheared? :nav
                :move :jump :body :follow-at :in-lava? :float? :support
@@ -230,7 +231,8 @@
 
 (def ^:private kept
   {:mob [:health :death-time :color :variant :sheared?
-         :sound-variant :effects :absorption :fall]
+         :sound-variant :effects :absorption :fall :forced-age
+         :age-locked?]
    :item [:stack :age :pickup-delay :health]
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
@@ -306,6 +308,14 @@
               (cond-> e (contains? expired k) (assoc k (expired k)))))
           e timers))
 
+(defn- locked-baby
+  "Returns mob e loaded at tick, a baby again when its age is locked,
+  however long ago it was locked."
+  [e ^long tick]
+  (if (and (:age-locked? e) (nil? (:baby-until e)))
+    (assoc e :baby-until (+ tick mobs/baby-start))
+    e))
+
 (defn- mob-extras [e m tick]
   (let [top (mobs/max-health (:type m))]
     (-> e
@@ -313,7 +323,8 @@
                :health (or (:health m) top))
         (update (mobs/look-key (:type m)) #(or % 0))
         (cond-> (:carrots m) (assoc :hop {:carrots (:carrots m)}))
-        (loaded-timers m (long tick)))))
+        (loaded-timers m (long tick))
+        (locked-baby (long tick)))))
 
 (defn- kind-extras [e k m tick]
   (case k

@@ -242,6 +242,8 @@
    :axe/scrape                    [:item.axe.scrape 4]
    :axe/wax-off                   [:item.axe.wax-off 4]
    :dye/use                       [:item.dye.use 4]
+   :golden-dandelion/use          [:item.golden-dandelion.use 7]
+   :golden-dandelion/unuse        [:item.golden-dandelion.unuse 7]
    :glow-ink/use                  [:item.glow-ink-sac.use 4]
    :ink-sac/use                   [:item.ink-sac.use 4]
    :sign/waxed                    [:block.sign.waxed-interact-fail 4]
