@@ -6,8 +6,8 @@
 
 (set! *warn-on-reflection* true)
 
-(defn- shown [world eid e ds]
-  (let [rs (hurt/report-deltas world eid e)]
+(defn- shown [world eid e ds late?]
+  (let [rs (hurt/report-deltas world eid e late?)]
     (if (seq rs)
       [(hurt/hurt-now world eid e rs) (into (vec ds) rs)]
       [e ds])))
@@ -27,9 +27,9 @@
         e1 (if (seq ds) (hurt/hurt-now world eid e ds) e)
         fx (account/tick-deltas world eid e1)]
     (cond (seq fx) (let [e2 (hurt/hurt-now world eid e1 fx)]
-                     (shown world eid e2 (into ds fx)))
-          (seq ds) (shown world eid e1 ds)
-          :else (shown world eid e nil))))
+                     (shown world eid e2 (into ds fx) false))
+          (seq ds) (shown world eid e1 ds false)
+          :else (shown world eid e nil false))))
 
 (defn touched
   "Returns living entity eid after the hurts ls of its landing in its
@@ -41,8 +41,8 @@
         fs (if (or ls cs) (-> (vec ls) (into fd) (into cs)) fd)]
     (if (seq fs)
       (shown world eid (hurt/hurt-now world eid e fs)
-             (into (vec ds) fs))
-      (shown world eid e ds))))
+             (into (vec ds) fs) true)
+      (shown world eid e ds true))))
 
 (defn ended
   "Returns the deltas that remove dead entity eid before its step."

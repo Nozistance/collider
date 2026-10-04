@@ -2,10 +2,11 @@
   "The move, jump, body and head controls of a mob."
   (:require [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Steer)
+  (:import (collider.game.mob Nav Steer)
            (collider.world.space Path)))
 
 (set! *warn-on-reflection* true)
@@ -160,17 +161,24 @@
       [yaw head {:head hy :at t :yaw (body-after e hy)}]
       :else [yaw head (faced e b hy t)])))
 
-(defn- look-pitch ^double [e height o]
-  (let [pos (:pos e) opos (:pos o)
-        oh (double (nth (or (mobs/box-of o) [0.0 1.0]) 1))
-        eye (+ (v/y pos) (* mobs/legacy-look-eye (double height)))
-        oeye (+ (v/y opos)
-                (case (:type o)
-                  :player mobs/legacy-player-eye
-                  :point 0.0
-                  (* mobs/legacy-look-eye oh)))
-        dh (Math/sqrt (v/dist-xz-sq pos opos))]
-    (- (Math/toDegrees (Math/atan2 (- oeye eye) dh)))))
+(def ^:private ^:const max-head-x-rot 40.0)
+
+(def ^:private ^:const look-speed 10.0)
+
+(def ^:private ^:const float-pi (double (float Math/PI)))
+
+(defn- eye-y ^double [o]
+  (cond-> (v/y (:pos o))
+    (not= :point (:type o)) (+ (entity/eye-height o))))
+
+(defn- look-pitch
+  "Returns the pitch at which mob e looks at the eyes of o, or at the
+  point o."
+  ^double [e o]
+  (let [pos (:pos e)
+        dy (- (eye-y o) (+ (v/y pos) (mobs/eye-height e)))
+        dh (Math/sqrt (v/dist-xz-sq pos (:pos o)))]
+    (double (float (- (/ (* (num/atan2 dy dh) 180.0) float-pi))))))
 
 (defn- active-look [e ^long t]
   (let [look (:look e)]
@@ -181,7 +189,7 @@
        (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
        (let [op (:pitch e)] (and op (== (double op) hp)))))
 
-(defn- look-aim [world e height look]
+(defn- look-aim [world e look]
   (let [oid (:target look)
         at (:at look)
         o (cond oid (get (:entities world) oid)
@@ -189,17 +197,26 @@
     [(cond o (v/yaw-toward (:pos e) (:pos o))
            (and look (:yaw look)) (:yaw look)
            :else (body-yaw e))
-     (if o (look-pitch e height o) 0.0)]))
+     (if o (look-pitch e o) 0.0)]))
+
+(defn- head-held
+  "Returns head yaw hy of mob e kept within reach of its body while
+  it walks a path."
+  ^double [e ^double hy]
+  (if (Nav/walked (:nav e))
+    hy
+    (rotate-if-necessary hy (body-yaw e) max-head-y-rot)))
 
 (defn look-of
   "Returns the head yaw, head pitch and look of mob e turned towards
-  what it looks at, or nil when its head stays."
-  [world e height t]
+  what it looks at, or nil when its head stays. The pitch starts from
+  level on every tick."
+  [world e t]
   (let [look (active-look e (long t))
-        [dyaw dpitch] (look-aim world e height look)
+        [dyaw dpitch] (look-aim world e look)
         y0 (double (or (:head-yaw e) (:yaw e)))
-        p0 (double (or (:pitch e) 0.0))
-        hy (v/limit-angle y0 (double dyaw) 10.0)
-        hp (v/limit-angle p0 (double dpitch) 40.0)]
+        speed (double (:speed look look-speed))
+        hy (head-held e (v/limit-angle y0 (double dyaw) speed))
+        hp (v/limit-angle 0.0 (double dpitch) max-head-x-rot)]
     (when-not (head-same? e look (double hy) (double hp))
       [hy hp look])))

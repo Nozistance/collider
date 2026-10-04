@@ -58,8 +58,6 @@
 (def ^:private ^:const vertical-drag
   (modified-friction (double (float 0.98))))
 
-(def ^:private ^:const jump-threshold 0.4)
-
 (defn- below-state ^long [world pos sup]
   (motion/below-state (:chunks world) pos sup))
 
@@ -377,9 +375,6 @@
   [(:pos e) (rest-vel-of e) true nil (:support e) (:no-blocks? e) f
    f true])
 
-(defn- fluid-threshold ^double [^double height]
-  (if (< (* mobs/legacy-fluid-eye height) 0.4) 0.0 jump-threshold))
-
 (defn- kept-flag [old now]
   (if (= (boolean old) now) old now))
 
@@ -403,7 +398,7 @@
 
 (defn- fluid-at [world e half height]
   (assoc (fluid-of world e half height)
-         :threshold (fluid-threshold height)))
+         :threshold (mobs/fluid-jump-threshold e)))
 
 (defn- own-vel [index eid e half height f]
   (let [shoves (when (push/alive? e)

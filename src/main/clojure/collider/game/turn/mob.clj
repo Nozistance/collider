@@ -34,9 +34,7 @@
     (b world eid e t tempters)
     [e nil]))
 
-(def ^:private ^:const say-rest 120)
-
-(def ^:private ^:const say-mean 40)
+(def ^:private ^:const say-interval 120)
 
 (defn- sound-pitch ^double [e ^long t ^long eid]
   (let [base (if (mobs/baby? e) 1.5 1.0)]
@@ -52,23 +50,26 @@
     (min 1.0 (* (Math/sqrt (+ (* vx vx 0.2) (* vy vy) (* vz vz 0.2)))
                 (double k)))))
 
-(defn- next-say ^long [^long t ^long eid]
-  (+ t say-rest (mobs/exp-delay say-mean t eid :say)))
+(defn- says? [^long t ^long eid ^long since]
+  (< (long (* 1000.0 (random/of-longs t eid (hash :say))))
+     (- t since)))
 
-(defn- said [eid e t st]
-  (let [t (long t) eid (long eid) say (mobs/sound-of e :say)]
-    (cond (nil? say) [e nil]
-          (nil? st) [(assoc e :say-tick (next-say t eid)) nil]
-          :else
-          (let [p (sound-pitch e t eid)
-                s (out/sound say (:pos e) 1.0 p)]
-            [(assoc e :say-tick (next-say t eid)) [(out/all s)]]))))
+(defn- said [eid e t]
+  (let [e (assoc e :say-tick (+ (long t) say-interval 1))]
+    (if-let [say (mobs/sound-of e :say)]
+      (let [p (sound-pitch e t eid)]
+        [e [(out/all (out/sound say (:pos e) 1.0 p))]])
+      [e nil])))
 
-(defn- ambient [eid e t]
+(defn- ambient
+  "Returns mob e and its ambient sound at tick t. The chance to speak
+  grows by a thousandth each tick since the mob was last heard or
+  hurt."
+  [eid e t]
   (let [st (:say-tick e)]
-    (if (and st (< (long t) (long st)))
-      [e nil]
-      (said eid e t st))))
+    (cond (says? t eid (long (or st t))) (said eid e t)
+          (nil? st) [(assoc e :say-tick t) nil]
+          :else [e nil])))
 
 (defn- step-state ^long [world e]
   (let [ch (:chunks world) p (:pos e)
@@ -115,10 +116,14 @@
       (if-let [d (step-sound-delta world e t eid)] (conj acc d) acc)
       acc)))
 
-(defn- age-up [e t]
-  (if (and (mobs/baby? e) (>= (long t) (long (:baby-until e))))
-    (assoc e :baby-until nil)
-    e))
+(defn- age-up
+  "Returns mob e grown up at tick t when its time has come. A baby
+  whose age is locked does not grow up."
+  [e t]
+  (let [until (:baby-until e)]
+    (if (and until (>= (long t) (long until)) (not (:age-locked? e)))
+      (assoc e :baby-until nil)
+      e)))
 
 (defn- brain-step [world eid e t tempters dead?]
   (let [[e1 deltas] (if dead? [e nil] (think world eid e t tempters))
@@ -161,13 +166,13 @@
   bodies do not move it yet."
   [world tempters eid e t]
   (let [[e pre] (living/based world eid e)
-        [half height] (mobs/box-of e)
+        [half _] (mobs/box-of e)
         speed (move-speed e)
         dead? (not (pos? (double (:health e))))
         e0 (spent-jump e dead?)
         [e1 ds say-ds] (brain-step world eid e0 t tempters dead?)
         e1 (if dead? e1 (steered world eid e1 speed half))
-        look (when-not dead? (control/look-of world e1 height t))]
+        look (when-not dead? (control/look-of world e1 t))]
     [e1 look ds say-ds pre]))
 
 (defn- step-mob

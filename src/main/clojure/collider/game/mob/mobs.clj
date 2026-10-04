@@ -258,9 +258,7 @@
 
 (defn- variant ^long [e] (long (or (:variant e) 0)))
 
-(defn metadata
-  "Returns what clients see of mob e besides its movement."
-  [e]
+(defn- own-metadata [e]
   (case (:type e)
     :sheep (sheep-meta e)
     (:cow :pig :chicken)
@@ -271,6 +269,12 @@
                 [(variant e) (some? (:baby-until e)) (burning? e)])
     :rabbit (rabbit-metas
              [(variant e) (some? (:baby-until e)) (burning? e)])))
+
+(defn metadata
+  "Returns what clients see of mob e besides its movement."
+  [e]
+  (cond-> (own-metadata e)
+    (:age-locked? e) (assoc :age-locked? true)))
 
 (defn look-key
   "Returns the key that holds how a mob of kind type looks. A sheep
@@ -325,7 +329,9 @@
         yaw (double (float (* r (double (float (* 2.0 Math/PI))))))]
     (assoc (egg-mob type pos ks tick dim) :yaw yaw :head-yaw yaw)))
 
-(def ^:private ^:const baby-start 24000)
+(def ^:const baby-start
+  "The ticks a newborn takes to grow up."
+  24000)
 
 (defn natural-mob
   "Returns a mob that natural spawning puts at pos in level dim. Its
@@ -335,13 +341,6 @@
   (cond-> (assoc (egg-mob type pos ks tick dim)
             :yaw (double yaw) :head-yaw 0.0)
     baby? (assoc :baby-until (+ (long tick) baby-start))))
-
-(defn exp-delay
-  "Returns a wait of at least one tick, drawn from an exponential law
-  with the given mean."
-  ^long [mean ^long t ^long eid kind]
-  (let [r (max 1.0E-9 (random/of-longs t eid (hash kind)))]
-    (max 1 (long (* (double mean) (- (Math/log r)))))))
 
 (defn in-love? [e t] (> (long (or (:love-until e) 0)) (long t)))
 
@@ -365,20 +364,13 @@
   ^double [e]
   (size/eye e))
 
-(def ^:const legacy-fluid-eye
-  "The share of its height at which a mob tests the depth of the fluid
-  it jumps in, in place of its real eye."
-  0.85)
+(def ^:private ^:const shallow-eye 0.4)
 
-(def ^:const legacy-look-eye
-  "The share of its height at which a mob looks and is looked at, in
-  place of its real eye."
-  0.95)
-
-(def ^:const legacy-player-eye
-  "The height above its feet at which a mob sees the eye of a player,
-  in place of the eye of its pose."
-  1.62)
+(defn fluid-jump-threshold
+  "Returns how deep the fluid around mob e must be before it swims
+  up. A mob with its eyes below 0.4 swims up in any fluid."
+  ^double [e]
+  (if (< (eye-height e) shallow-eye) 0.0 0.4))
 
 (defn loot-entity
   "Returns mob e as the predicates of its loot table see it."
