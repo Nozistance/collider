@@ -28,8 +28,8 @@
   (or (block/blocks-motion? st) (fluid? st)))
 
 (defn- blank-at? [chunks ^long x ^long y ^long z]
-  (let [id (chunk/pos->id (bit-shift-right x 4) (bit-shift-right z 4))
-        c (get chunks id)
+  (let [cx (chunk/block->chunk x) cz (chunk/block->chunk z)
+        c (get chunks (chunk/pos->id cx cz))
         s (when c (chunk/chunk-section c (chunk/section-index y)))]
     (or (nil? s) (identical? s chunk/empty-section))))
 
@@ -182,8 +182,8 @@
         x (long (nth suggestion 0))
         z (long (nth suggestion 2))
         span (fn [^long c]
-               (range (bit-shift-right (- c r) 4)
-                      (inc (bit-shift-right (+ c r) 4))))]
+               (range (chunk/block->chunk (- c r))
+                      (inc (chunk/block->chunk (+ c r)))))]
     (for [cx (span x) cz (span z)] (chunk/pos->id cx cz))))
 
 (defn find-spawn

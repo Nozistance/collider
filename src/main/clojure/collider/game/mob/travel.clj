@@ -171,17 +171,16 @@
   (and (pos? st)
        (or (some? (block/liquid-class st)) (block/waterlogged? st))))
 
+(def ^:private ^:table wet-marks
+  (delay (block/state-table :boolean wet-state?)))
+
+(defn- ceil ^long [^double a] (long (Math/ceil a)))
+
 (defn- any-liquid? [world lo hi]
-  (let [xa (long (Math/floor (v/x lo))) xb (long (Math/ceil (v/x hi)))
-        ya (long (Math/floor (v/y lo))) yb (long (Math/ceil (v/y hi)))
-        za (long (Math/floor (v/z lo)))
-        zb (long (Math/ceil (v/z hi)))]
-    (loop [x xa y ya z za]
-      (cond (>= x xb) false
-            (>= y yb) (recur (inc x) ya za)
-            (>= z zb) (recur x (inc y) za)
-            (wet-state? (sense/block-at world x y z)) true
-            :else (recur x y (inc z))))))
+  (phys/some-cell? (:chunks world) @wet-marks
+                   (num/floor (v/x lo)) (num/floor (v/y lo))
+                   (num/floor (v/z lo))
+                   (ceil (v/x hi)) (ceil (v/y hi)) (ceil (v/z hi))))
 
 (defn- climb-free? [world e pos vel half height oy]
   (let [up (+ (v/y vel) out-of-fluid-reach
