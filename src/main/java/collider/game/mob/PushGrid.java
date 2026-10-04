@@ -27,14 +27,16 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private final long[] eids;
     private final double[] halfs, heights, xs, ys, zs;
     private final long[] came, ranks;
+    private final boolean[] steps;
     private final int[] next;
     private final LongIntMap heads;
     private double widest, slack;
     private double[] px, pz, ph;
 
     /// Returns the grid of bodies `eids`, ascending, each with half
-    /// width, height, position, and the tick and rank in it at which
-    /// it came into its section at the same index.
+    /// width, height, position, the tick and rank in it at which it
+    /// came into its section, and whether it steps this tick, at the
+    /// same index.
     public PushGrid(
             long[] eids,
             double[] halfs,
@@ -43,10 +45,13 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
             double[] ys,
             double[] zs,
             long[] came,
-            long[] ranks) {
+            long[] ranks,
+            boolean[] steps
+    ) {
         this.eids = eids;
         this.came = came;
         this.ranks = ranks;
+        this.steps = steps;
         this.halfs = halfs;
         this.heights = heights;
         this.xs = xs;
@@ -171,6 +176,7 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
                 for (int j = head(key(bx, bz)); j >= 0; j = next[j]) {
                     long o = eids[j];
                     if (o == eid || o >= hi) continue;
+                    if (hi != Long.MAX_VALUE && !steps[j]) continue;
                     double rj = half + halfs[j];
                     double oy = ys[j];
                     if (Math.abs(xs[j] - x) < rj
@@ -224,9 +230,10 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
 
     /// Returns the shoves between the body `eid` of half width `half`
     /// and height `height` at `x`, `y`, `z` and each body it overlaps
-    /// whose id is below `hi`. Each shove `[id dx dz]` moves this body
-    /// by dx dz and the other body the opposite way. The shoves are
-    /// not summed.
+    /// whose id is below `hi`. Below a bound `hi`, only the bodies
+    /// that step this tick count. Each shove `[id dx dz]` moves this
+    /// body by dx dz and the other body the opposite way. The shoves
+    /// are not summed.
     public static Object shoves(
             PushGrid g,
             double x,

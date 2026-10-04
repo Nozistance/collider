@@ -459,11 +459,14 @@
       (do (kept! acc 3 [:merge-entity eid (clock/frozen t)]) entry)
       :else entry)))
 
-(defn- sorted! [^objects acc held active t [_ e :as entry]]
+(defn- steps? [active [_ e :as entry]]
+  (and (mob? entry) (areas/active-at? active (:pos e))))
+
+(defn- sorted! [^objects acc held active t entry]
   (cond
     (push/body? held entry)
-    (let [ticks? (areas/active-at? active (:pos e))]
-      (push/add-body (aget acc 0) entry ticks?)
+    (do
+      (push/add-body (aget acc 0) entry (steps? active entry))
       (when (biting? active t entry) (kept! acc 1 entry)))
     (ended? active entry) (kept! acc 2 entry)))
 

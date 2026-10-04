@@ -5,6 +5,7 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.level :as level]
+            [collider.game.mob.push :as push]
             [collider.game.out :as out]
             [collider.game.systems.attacks :as attacks]
             [collider.game.systems.blocks :as blocks]
@@ -32,6 +33,7 @@
    consume/player-deltas
    compasses/player-deltas
    dripleaf/player-deltas
+   push/player-shoves
    items/player-pickups
    orbs/player-pickup
    attacks/wielded
