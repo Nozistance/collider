@@ -249,16 +249,16 @@
     [e2 (joined-into ds own) shoves hit? ls]))
 
 (defn- hand
-  "Returns the delta that hands the shove sh to mob e in slot j, whose
-  speed this tick so far is in vels, or nil when e takes no shove."
+  "Returns the delta that adds the shove sh to the speed of mob e in
+  slot j, or nil when e takes no shove. The speed it has this tick so
+  far goes to vels. What hit e before in its tick stays."
   [e ^objects vels j [eid dx dz]]
   (when (mobs/mob-type? (:type e))
     (let [j (int j)
           vel (or (aget vels j) (:vel e))
-          v (v/v3 (- (v/x vel) (double dx)) (v/y vel)
-                  (- (v/z vel) (double dz)))]
-      (aset vels j v)
-      [:merge-entity eid {:vel v}])))
+          dx (- (double dx)) dz (- (double dz))]
+      (aset vels j (v/v3 (+ (v/x vel) dx) (v/y vel) (+ (v/z vel) dz)))
+      [:push eid (v/v3 dx -0.0 dz)])))
 
 (defn- takes-now? [^booleans ticking ^long i ^long j]
   (or (< j i) (not (aget ticking j))))
