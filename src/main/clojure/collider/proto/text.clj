@@ -1,10 +1,10 @@
 (ns collider.proto.text
   "Text components on the wire."
   (:require [clojure.string :as str]
+            [collider.hash-order :as hash-order]
             [collider.proto.buf :as buf]
             [collider.proto.nbt :as nbt])
   (:import (clojure.lang BigInt)
-           (collider HashMapOrder)
            (collider.proto Buf)
            (java.util UUID)))
 
@@ -25,8 +25,8 @@
 
 (defn- hash-ordered [fields]
   (let [code (fn [[_ ^String nm]] (.hashCode nm))
-        hs (int-array (map code fields))]
-    (mapv #(nth fields %) (HashMapOrder/of hs))))
+        hs (map code fields)]
+    (mapv #(nth fields %) (hash-order/of hs))))
 
 (def ^:private ordered (memoize hash-ordered))
 

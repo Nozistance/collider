@@ -2,8 +2,8 @@
   "The block entities that tick, in the order they joined the level.
   A ticker that stays keeps its turn, and a new one goes last."
   (:require [collider.data.long-map :as lm]
-            [collider.world.block :as block])
-  (:import (collider HashMapOrder)))
+            [collider.hash-order :as hash-order]
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,7 +46,7 @@
 
 (defn- hash-order [ps]
   (let [ps (vec ps)
-        order (HashMapOrder/copied (int-array (map pos-hash ps)))]
+        order (hash-order/copied (map pos-hash ps))]
     (mapv #(nth ps %) order)))
 
 (defn loaded
