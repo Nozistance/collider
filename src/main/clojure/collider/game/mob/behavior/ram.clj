@@ -182,12 +182,13 @@
      (+ (v/x p) h) (+ (v/y p) (double ht)) (+ (v/z p) h)]))
 
 (defn- rammed [world eid e foe?]
-  (->> (sense/around world (:pos e) 3.0)
-       (filter (fn [[oid o]]
-                 (and (not= oid eid) (v/boxes-meet? (body-box e) (body-box o))
-                      (foe? world e o))))
-       (sort-by key)
-       first))
+  (let [box (body-box e)]
+    (->> (sense/around world (:pos e) 3.0)
+         (filter (fn [[oid o]]
+                   (and (not= oid eid) (v/boxes-meet? box (body-box o))
+                        (foe? world e o))))
+         (sort-by key)
+         first)))
 
 (defn- finished [eid e t i between]
   (let [n (c/sample t eid i :ram (between e))]
