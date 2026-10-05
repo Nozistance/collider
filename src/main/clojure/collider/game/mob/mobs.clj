@@ -295,6 +295,9 @@
 
 (defn- coat-of [e] (or (:variant e) :temperate))
 
+(defn- aged [m e]
+  (assoc m :baby? (some? (:baby-until e)) :burning? (burning? e)))
+
 (defn- own-metadata [e]
   (case (:type e)
     :sheep (sheep-meta e)
@@ -306,11 +309,8 @@
                 [(variant e) (some? (:baby-until e)) (burning? e)])
     :rabbit (rabbit-metas
              [(variant e) (some? (:baby-until e)) (burning? e)])
-    :armadillo {:armadillo-state (shell/state-id e)
-                :baby? (some? (:baby-until e))
-                :burning? (burning? e)}
-    :goat (assoc (goat/metadata e) :baby? (some? (:baby-until e))
-                 :burning? (burning? e))))
+    :armadillo (aged {:armadillo-state (shell/state-id e)} e)
+    :goat (aged (goat/metadata e) e)))
 
 (defn metadata
   "Returns what clients see of mob e besides its movement."

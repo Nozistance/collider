@@ -22,8 +22,8 @@
 (def ^:private milk {:item :milk-bucket :count 1})
 
 (defn- milked [world peid p hand e]
-  (cons (out/except peid
-                    (out/sound (mobs/sound-of e :milk) (:pos p) 1.0 1.0))
+  (cons (out/except
+          peid (out/sound (mobs/sound-of e :milk) (:pos p) 1.0 1.0))
         (inventory/filled-result-deltas world peid milk false hand)))
 
 (defn milk-result
