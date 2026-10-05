@@ -145,14 +145,23 @@
           (identical? e e') nil
           :else [e' [] false])))))
 
-(defn- behaviour [{:keys [continue? tick] :as b} i]
+(defn- kept
+  "Returns [ok e] for behaviour b at index i going on. Its continue?
+  answers ok alone or with the mob it changed asking."
+  [{:keys [continue?]} w eid e t i]
+  (if (and continue? (<= (long t) (long (:end (run-of e i)))))
+    (let [r (continue? w eid e t i)]
+      (if (vector? r) r [r e]))
+    [false e]))
+
+(defn- behaviour [{:keys [tick] :as b} i]
   (let [halt (halted b i)]
     {:try (began b i)
      :step (fn [w eid e t]
-             (if (and (<= (long t) (long (:end (run-of e i))))
-                      continue? (continue? w eid e t i))
-               (if tick (tick w eid e t i) e)
-               (halt w eid e t)))
+             (let [[ok e] (kept b w eid e t i)]
+               (if ok
+                 (if tick (tick w eid e t i) e)
+                 (halt w eid e t))))
      :halt halt
      :running? #(some? (run-of % i))}))
 

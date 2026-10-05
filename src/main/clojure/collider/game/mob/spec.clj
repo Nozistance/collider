@@ -30,7 +30,7 @@
              animal/feed-result]})
 
 (def ^:private goat-kind
-  {:brain goat-ai/breed :goals (animal/spec [])
+  {:brain goat-ai/breed
    :results [cow/milk-result animal/feed-result]})
 
 (def ^:private kinds
@@ -56,5 +56,5 @@
   [type]
   (kinds type))
 
-(def goals
-  (update-vals kinds :goals))
+(def child-looks
+  (update-vals kinds #(:child-look (:goals %) animal/parent-look)))

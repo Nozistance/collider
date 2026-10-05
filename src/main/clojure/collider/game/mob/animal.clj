@@ -508,13 +508,15 @@
 
 (defn- fns [gs k] (into-array IFn (map k gs)))
 
+(defn parent-look [_ _ _ a _] ((mobs/look-key (:type a)) a))
+
 (defn spec
   "Returns the spec of a breed from its goals, highest priority first.
   A goal ranks by its place unless it names its priority. Each goal
   gets its flags as a bit mask too. The spec also picks the
   look of a newborn from both parents."
   ([goals]
-   (spec goals (fn [_ _ _ a _] ((mobs/look-key (:type a)) a))))
+   (spec goals parent-look))
   ([goals child-look]
    (let [gs (vec (map-indexed ranked goals))]
      (GoalSelector.
@@ -538,13 +540,14 @@
 
 (defn egg-result
   "Returns what a spawn egg of the mob's own kind does to it.
-  It hatches a baby bred from that one parent. The breed spec of each
-  mob type comes from specs."
-  [specs {:keys [world t peid p eid e hand item]}]
-  (when-let [spec (specs (:type e))]
+  It hatches a baby bred from that one parent, which looks as looks
+  says for the mob type."
+  [looks {:keys [world t peid p eid e hand item]}]
+  (when-let [look (looks (:type e))]
     (when (= (:type e) (mobs/egg-type item))
       {:result :success-server
-       :deltas (cons [:spawn-entity (newborn spec world t eid e e)]
+       :deltas (cons [:spawn-entity
+                      (newborn {:child-look look} world t eid e e)]
                      (inventory/consume-deltas peid p hand 1))})))
 
 (defn- feedable? [e t]

@@ -6,6 +6,7 @@
             [collider.game.mob.brain :as b]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
+            [collider.game.mob.sensor :as sensor]
             [collider.game.mode :as game-mode]
             [collider.num :as num]
             [collider.random :as random]
@@ -58,27 +59,12 @@
                   (:target-eye? tr) (eye-pos o)
                   :else (:pos o)))))
 
-(defn visible?
-  "Returns true when mob e sees entity oid among the living it saw
-  last."
-  [e oid t]
-  (let [m (b/recall e :nearest-visible-living-entities t)]
-    (boolean (and m (some #(= oid %) (:near m))
-                  (get (:seen m) oid)))))
-
-(defn closest
-  "Returns the nearest entity mob e sees for which (pred oid o)."
-  [w e t pred]
-  (when-let [m (b/recall e :nearest-visible-living-entities t)]
-    (some (fn [oid]
-            (let [o (other w oid)]
-              (when (and o (pred oid o) (get (:seen m) oid)) oid)))
-          (:near m))))
-
-(defn- sees? [w e tr t]
+(defn- sees [w eid e tr t]
   (if-let [oid (:eid tr)]
-    (and (entity/alive? (other w oid)) (visible? e oid t))
-    true))
+    (if (entity/alive? (other w oid))
+      (sensor/sees w eid e t oid)
+      [false e])
+    [true e]))
 
 (defn cool
   "Returns mob e holding cooldown k of n ticks set at tick t, which
@@ -130,9 +116,9 @@
 (defn look-at-target-sink [lo hi]
   {:id :look-at-target-sink :duration [lo hi]
    :needs {:look-target :present}
-   :continue? (fn [w _ e t _]
+   :continue? (fn [w eid e t _]
                 (if-let [tr (b/recall e :look-target t)]
-                  (sees? w e tr t)
+                  (sees w eid e tr t)
                   false))
    :tick (fn [w _ e t _]
            (if-let [tr (b/recall e :look-target t)]

@@ -130,18 +130,33 @@
 
 (defn seen
   "Returns [ids e] of the visible living entities of mob eid, e, at
-  tick t that pred accepts, nearest first, at most n of them, and e
-  with what it learned of their sight."
+  tick t for which (pred oid o), nearest first, at most n of them,
+  and e with what it learned of their sight."
   ([world eid e t pred] (seen world eid e t pred Long/MAX_VALUE))
   ([world eid e t pred n]
    (let [es (:entities world)]
      (loop [ids (:near (b/recall e visible-key t)) e e acc []]
        (let [oid (first ids) o (get es oid)]
          (cond (or (nil? ids) (>= (count acc) (long n))) [acc e]
-               (not (and o (pred o))) (recur (next ids) e acc)
+               (not (and o (pred oid o))) (recur (next ids) e acc)
                :else
                (let [[s e] (sighted world eid e t oid o)]
                  (recur (next ids) e (if s (conj acc oid) acc)))))))))
+
+(defn closest
+  "Returns [oid e] of the nearest visible living entity of mob eid,
+  e, at tick t for which (pred oid o), and e with what it learned."
+  [world eid e t pred]
+  (let [[ids e] (seen world eid e t pred 1)]
+    [(first ids) e]))
+
+(defn sees
+  "Returns [seen? e] for entity oid among the living mob eid, e, saw
+  last, and e keeping the answer until it looks again."
+  [world eid e t oid]
+  (if (some #(= oid %) (:near (b/recall e visible-key t)))
+    (sighted world eid e t oid (get (:entities world) oid))
+    [false e]))
 
 (defn nearest-living
   "Returns the sensor of the living entities in follow range of the
@@ -243,7 +258,7 @@
    :requires [:nearest-visible-adult visible-key]
    :tick (fn [world eid e t]
            (if (b/present? e visible-key t)
-             (let [[ids e] (seen world eid e t #(adult-of? e %) 1)]
+             (let [[ids e] (seen world eid e t #(adult-of? e %2) 1)]
                (remembered e :nearest-visible-adult (first ids)))
              e))})
 

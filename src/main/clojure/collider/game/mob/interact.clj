@@ -44,7 +44,7 @@
   (some (fn [f] (f ctx)) (:results (spec/of (:type (:e ctx))))))
 
 (def ^:private chain
-  [(partial animal/egg-result spec/goals) species-result
+  [(partial animal/egg-result spec/child-looks) species-result
    animal/lock-result sheep/dye-result])
 
 (defn- answered

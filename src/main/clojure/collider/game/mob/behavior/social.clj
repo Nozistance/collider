@@ -5,6 +5,7 @@
             [collider.game.mob.behavior.core :as c]
             [collider.game.mob.brain :as b]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.sensor :as sensor]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]))
@@ -32,12 +33,14 @@
       (let [ok? (fn [_ o]
                   (and (= kind (:type o))
                        (<= (v/dist-sq (:pos o) (:pos e)) r2)))]
-        (when-let [oid (c/closest w e t ok?)]
-          (let [r (ticked-down e eid t i interval)
-                tr (c/at-entity oid true)]
-            (if (vector? r)
-              r
-              (b/remember r :look-target tr forever))))))))
+        (let [[oid e] (sensor/closest w eid e t ok?)]
+          (if (nil? oid)
+            (declined e)
+            (let [r (ticked-down e eid t i interval)
+                  tr (c/at-entity oid true)]
+              (if (vector? r)
+                r
+                (b/remember r :look-target tr forever)))))))))
 
 (defn set-entity-look-target-sometimes [kind max-dist interval]
   {:id :set-entity-look-target-sometimes
@@ -114,7 +117,7 @@
   (let [ok? (fn [oid o]
               (and (= kind (:type o)) (mates? eid e t oid o)
                    (not (panicking? o t))))]
-    (c/closest w e t ok?)))
+    (sensor/closest w eid e t ok?)))
 
 (defn- gazed [e oid speed close]
   (let [tr (c/at-entity oid true)]
@@ -130,7 +133,7 @@
 
 (defn- love-start [kind speed close]
   (fn [w eid e t i]
-    (let [pid (partner-of w eid e t kind)
+    (let [[pid e] (partner-of w eid e t kind)
           at (+ (long t) 60 (random/below (c/roll t eid i :child) 50))
           e (-> (b/remember e :breed-target pid forever)
                 (gazed pid speed close)
@@ -142,11 +145,13 @@
   (fn [w eid e t i]
     (let [pid (b/recall e :breed-target t)
           o (c/other w pid)]
-      (boolean
-        (and o (= kind (:type o)) (entity/alive? o)
-             (mates? eid e t pid o) (c/visible? e pid t)
-             (<= (long t) (long (:spawn (b/run-of e i))))
-             (not (panicking? e t)) (not (panicking? o t)))))))
+      (if (and o (= kind (:type o)) (entity/alive? o)
+               (mates? eid e t pid o))
+        (let [[s e] (sensor/sees w eid e t pid)]
+          [(and s (<= (long t) (long (:spawn (b/run-of e i))))
+                (not (panicking? e t)) (not (panicking? o t)))
+           e])
+        false))))
 
 (defn- love-tick [speed close spec]
   (fn [w eid e t i]
@@ -177,9 +182,10 @@
    (animal-make-love kind speed close (fn [_ _ _ a _] (:variant a))))
   ([kind speed close child-look]
    {:id :animal-make-love :duration [110 110] :needs love-needs
-    :start? (fn [w eid e t]
-              (and (mobs/in-love? e t)
-                   (some? (partner-of w eid e t kind))))
+    :check (fn [w eid e t _]
+             (if (mobs/in-love? e t)
+               (update (partner-of w eid e t kind) 0 some?)
+               [false e]))
     :start (love-start kind speed close)
     :continue? (loving? kind)
     :tick (love-tick speed close {:child-look child-look})
