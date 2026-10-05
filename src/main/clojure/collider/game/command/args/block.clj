@@ -246,8 +246,8 @@
            (ranged? b prop have (:right matcher))))))
 
 (defn component-matches?
-  "Returns true when the block st with block entity nbt meets pred, the
-  block predicate of an item component."
+  "Returns true when the block st with block entity nbt meets pred,
+  the block predicate of an item component."
   [{:keys [blocks state] :as pred} st nbt]
   (and (held-in? blocks (block/block-of st))
        (every? #(state-entry? st %) state)

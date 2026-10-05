@@ -99,14 +99,19 @@
           [[:spawn-entity primed]
            (out/all (out/sound :tnt/primed (:pos primed) 1.0 1.0))])))
 
+(defn prime-tnt-deltas
+  "Returns the deltas of player eid lighting the tnt at pos, or nil
+  when it does not light."
+  [world eid pos]
+  (when (primable? world eid pos)
+    (prime-deltas world eid pos)))
+
 (defn flint-deltas
   [world [eid pos face]]
   (when-let [off (dir/face-offset face)]
     (if-let [st (lightable world pos)]
       (changed-with world [[pos st]] [(flint-sound world eid pos)])
-      (if (primable? world eid pos)
-        (prime-deltas world eid pos)
-        (fire-deltas world pos off #(flint-sound world eid %))))))
+      (fire-deltas world pos off #(flint-sound world eid %)))))
 
 (defn- meal-drops [world pos drops]
   (map-indexed

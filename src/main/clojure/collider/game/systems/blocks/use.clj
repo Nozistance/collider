@@ -553,6 +553,9 @@
 (defn- carve-use [{:keys [world eid pos face]}]
   (tools/carve-deltas world eid pos face))
 
+(defn- tnt-use [{:keys [world eid pos]}]
+  (tools/prime-tnt-deltas world eid pos))
+
 (defn- carves? [cur item]
   (and (= :pumpkin (block/block-of cur)) (= :shears item)))
 
@@ -566,7 +569,8 @@
           (sign/kind cur) sign-use-deltas
           (contains? container/menu-types t) open-use
           (contains? menu-pending-stats t) menu-use
-          (carves? cur item) carve-use))))
+          (carves? cur item) carve-use
+          (and (block/tnt? cur) (= :flint-and-steel item)) tnt-use))))
 
 (defn deltas
   "Returns the deltas of player eid using the block at pos.
