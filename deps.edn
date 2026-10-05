@@ -11,6 +11,10 @@
                                "-XX:+UseCompactObjectHeaders" "-Xmx1g"
                                "--sun-misc-unsafe-memory-access=allow"]
                    :main-opts ["-m" "collider.cli"]}
+           :zgc   {:jvm-opts  ["-XX:+UseZGC" "-XX:ZUncommitDelay=60"
+                               "-XX:+UseCompactObjectHeaders" "-Xmx1g"
+                               "--sun-misc-unsafe-memory-access=allow"]
+                   :main-opts ["-m" "collider.cli"]}
            :mem   {:jvm-opts ["-XX:NativeMemoryTracking=summary"
                               "-XX:+HeapDumpOnOutOfMemoryError"
                               "-XX:HeapDumpPath=logs"
