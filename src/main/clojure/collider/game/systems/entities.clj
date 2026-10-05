@@ -27,8 +27,10 @@
         ds (reduce deltas/merge ds
                    [(deltas/of-vec fallen)
                     (deltas/of-vec (items/turns world))
-                    (orbs/orbs world d) (mob/turns world d)])
-        [world thrown] (thrown/turns world ds)
+                    (orbs/orbs world d)])
+        [mobs rode] (mob/turns world d ds)
+        ds (deltas/merge ds mobs)
+        [world thrown] (thrown/turns world ds rode)
         ds (deltas/merge ds (deltas/of-vec thrown))]
     (deltas/merge ds (deltas/of-vec (tnt/turns world ds)))))
 

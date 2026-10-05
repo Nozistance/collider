@@ -535,7 +535,7 @@
 
 (defn- cloud? [[_ e]] (= :area-effect-cloud (:type e)))
 
-(defn- stepped
+(defn stepped
   "Returns the hittable entities that ds moved in the turns of the
   tick so far, as they are after them, by eid."
   [world ds]
@@ -547,26 +547,48 @@
                 m)))]
     (reduce-kv f (lm/long-map) (deltas/entities-of ds))))
 
-(defn- seen-by
+(defn seen-by
   "Returns entities es as turn eid sees them, moved by the turns of
   lower eid and not yet by the later ones."
   [es after ^long eid]
   (reduce-kv assoc es (lm/range after Long/MIN_VALUE (dec eid))))
 
-(defn- written [t m ds]
+(defn written
+  "Returns entities m after the deltas ds of tick t."
+  [t m ds]
   (let [f (fn [m d]
             (let [e (when (contains? delta/entity-apply (nth d 0))
                       (get m (nth d 1)))]
               (if e (assoc m (nth d 1) (apply/entity t e [d])) m)))]
     (reduce f m ds)))
 
-(defn- turn [t [w es after acc] [eid e :as entry]]
-  (let [tw (assoc (overlay/seen w eid)
-                  :entities (seen-by es after eid))
-        cloud (cloud? entry)
-        ds (if cloud (cloud-deltas tw eid e) (step-deltas tw eid e))]
-    [(if cloud w (overlay/wrote w eid ds)) (written t es ds)
-     (written t after ds) (into acc ds)]))
+(defn reach
+  "Returns the box [x0 z0 x1 z1] that thrown e sweeps in its move
+  this tick."
+  [world e]
+  (let [p (:pos e) q (v/add p (drift world e))]
+    [(min (v/x p) (v/x q)) (min (v/z p) (v/z q))
+     (max (v/x p) (v/x q)) (max (v/z p) (v/z q))]))
+
+(defn ridden
+  "Returns [w ds], world w after the turn of thrown eid, e, among
+  entities es as it sees them, and its deltas ds."
+  [w es eid e]
+  (let [tw (assoc (overlay/seen w eid) :entities es)
+        ds (step-deltas tw eid e)]
+    [(overlay/wrote w eid ds) ds]))
+
+(defn- cloud-turn [w es eid e]
+  [w (cloud-deltas (assoc (overlay/seen w eid) :entities es) eid e)])
+
+(defn- turn [t rode [w es after acc] [eid e :as entry]]
+  (if-let [ds (get rode eid)]
+    [(overlay/wrote w eid ds) (written t es ds) after acc]
+    (let [seen (seen-by es after eid)
+          [w ds] (if (cloud? entry)
+                   (cloud-turn w seen eid e)
+                   (ridden w seen eid e))]
+      [w (written t es ds) (written t after ds) (into acc ds)])))
 
 (defn- written-world [[w _ _ acc]] [w acc])
 
@@ -577,13 +599,14 @@
   "Returns world with the blocks that the thrown things in active
   chunks wrote, and their deltas, each in its turn after the turns
   ds of the other bodies. Clouds take their turns last. A hit meets
-  bodies where they stand at its turn and sees its own blocks."
-  [world ds]
+  bodies where they stand at its turn and sees its own blocks. Those
+  in rode by id took their turns among the mobs, with its deltas."
+  [world ds rode]
   (let [es (areas/active-of-types world flying)]
     (if (pos? (count es))
       (let [start [world (par/keyed (:entities world))
                    (stepped world ds) []]]
         (->> (in-order es)
-             (reduce #(turn (:tick world) %1 %2) start)
+             (reduce #(turn (:tick world) rode %1 %2) start)
              written-world))
       [world nil])))

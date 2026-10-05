@@ -21,6 +21,7 @@
             [collider.game.out :as out]
             [collider.game.turn.living :as living]
             [collider.game.turn.overlay :as overlay]
+            [collider.game.turn.thrown :as thrown]
             [collider.par :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -361,10 +362,10 @@
     index))
 
 (defn- island
-  [{:keys [es bodies at]}]
+  [{:keys [es bodies at riders after]}]
   {:es es :index (push/grid-of bodies at)
    :ticking (push/ticks-of bodies at)
-   :slots (push/slots-of bodies at)})
+   :slots (push/slots-of bodies at) :riders riders :after after})
 
 (defn- walk
   "Returns the deltas of the island isl stepped in the order of its
@@ -379,8 +380,90 @@
           (recur (inc i) es (reindexed index es i from)
                  (reduce conj! acc ds)))))))
 
+(defn- now-of
+  "Returns body j of es as a thrown thing sees it now, or nil when
+  it is as base holds it."
+  [base es ^objects vels ^booleans touched j]
+  (let [[eid e] (nth es j) vel (aget vels j)]
+    (cond (aget touched j) (cond-> e vel (assoc :vel vel))
+          vel (assoc (get base eid) :vel vel))))
+
+(defn- rider-view
+  "Returns the entities as rider eid of the island isl sees them in
+  its turn, the bodies of the island as they are in run s."
+  [world {:keys [after]} {:keys [es vels touched]} eid]
+  (let [base (thrown/seen-by (par/keyed (:entities world)) after eid)
+        f (fn [m j]
+            (if-let [e (now-of base es vels touched j)]
+              (assoc m (nth (nth es j) 0) e)
+              m))]
+    (reduce f base (range (count es)))))
+
+(defn- hit-body
+  "Returns run s with body j of es as the turn of a rider left it in
+  entities m, which it saw as view."
+  [view m s j]
+  (let [[eid] (nth (:es s) j) e (get view eid) e2 (get m eid)]
+    (if (identical? e e2)
+      s
+      (do (aset ^objects (:vels s) j nil)
+          (aset ^booleans (:touched s) j true)
+          (cond-> (update s :es assoc! j [eid e2])
+            (not (identical? (:pos e) (:pos e2)))
+            (update :index push/moved eid (:pos e) e2))))))
+
+(defn- rider-turn [world t isl s [eid e]]
+  (let [view (rider-view world isl s eid)
+        [w ds] (thrown/ridden (:w s) view eid e)
+        m (thrown/written t view ds)
+        s (reduce #(hit-body view m %1 %2) s (range (count (:es s))))]
+    (assoc s :w w :acc (reduce conj! (:acc s) ds)
+           :writes (conj (:writes s) [eid ds]))))
+
+(defn- body-turn [world tempters t isl s i]
+  (let [{:keys [ticking slots]} isl
+        {:keys [es vels index]} s
+        on? (stepping? ticking es i)
+        [es ds from]
+        (turn world ticking vels tempters t index slots es i)]
+    (when on? (aset ^booleans (:touched s) i true))
+    (assoc s :es es :index (reindexed (:index s) es i from)
+           :acc (reduce conj! (:acc s) ds))))
+
+(defn- in-turns
+  "Returns the turns of island isl in order of id, a slot of its
+  bodies as a long and a rider as its entry."
+  [{:keys [es riders]}]
+  (->> (concat (map-indexed (fn [i [eid]] [eid i]) es)
+               (map (fn [[eid :as r]] [eid r]) riders))
+       (sort-by first) (mapv second)))
+
+(defn- ridden-walk
+  "Returns the deltas of the island isl with its riders, each in its
+  turn, and the deltas of each rider by its id."
+  [world tempters t isl]
+  (let [n (count (:es isl))
+        s {:es (transient (:es isl)) :index (:index isl)
+           :acc (transient []) :w world :writes []
+           :vels (object-array n) :touched (boolean-array n)}
+        f (fn [s x]
+            (if (integer? x)
+              (body-turn world tempters t isl s x)
+              (rider-turn world t isl s x)))
+        s (reduce f s (in-turns isl))]
+    [(persistent! (:acc s)) (:writes s)]))
+
+(defn- island-steps
+  "Returns the deltas of herd h stepped in order, and the deltas of
+  each of its riders by id."
+  [world tempters t h]
+  (let [isl (island h)]
+    (if (seq (:riders h))
+      (ridden-walk world tempters t isl)
+      [(walk world tempters t isl) nil])))
+
 (defn- step-island [world tempters t h]
-  (walk world tempters t (island h)))
+  (nth (island-steps world tempters t h) 0))
 
 (def ^:private ^:const step-reach 0.5)
 
@@ -455,11 +538,12 @@
   it steps again in order."
   [world tempters t h ok?]
   (let [isl (island h) cur (object-array (:es isl))
-        d (turn-runs world tempters t isl cur ok?)]
+        d (when-not (seq (:riders h))
+            (turn-runs world tempters t isl cur ok?))]
     (if d
       [d 0]
       [(deltas/of-vec (step-island world tempters t h))
-       (count (filter mob? (:es h)))])))
+       (if (seq (:riders h)) 0 (count (filter mob? (:es h))))])))
 
 (def ^:private ^:const ahead-bodies 64)
 
@@ -468,9 +552,10 @@
        (> (par/threads) 1)))
 
 (defn- island-deltas [world tempters t h]
-  (if (ahead? h)
-    (nth (ahead-island world tempters t h near-start?) 0)
-    (deltas/of-vec (step-island world tempters t h))))
+  (if (and (ahead? h) (not (seq (:riders h))))
+    [(nth (ahead-island world tempters t h near-start?) 0) nil]
+    (let [[v rode] (island-steps world tempters t h)]
+      [(deltas/of-vec v) rode])))
 
 (def ^:private ^:const batch-bodies 32)
 
@@ -482,11 +567,14 @@
   (let [[acc b] (reduce batched [[] [] 0] islands)]
     (cond-> acc (seq b) (conj b))))
 
+(defn- paired
+  ([] [deltas/empty-deltas nil])
+  ([[a x] [b y]] [(deltas/merge a b) (into (or x []) y)]))
+
 (defn- island-batch [world tempters t batch]
   (let [f (fn [acc h]
-            (->> (island-deltas world tempters t h)
-                 (deltas/merge acc)))]
-    (reduce f deltas/empty-deltas batch)))
+            (paired acc (island-deltas world tempters t h)))]
+    (reduce f (paired) batch)))
 
 (defn- holds? [f e t] (and f (f e t)))
 
@@ -572,18 +660,91 @@
   (let [es (push/entries-of b at)]
     (when (some mob? es) {:es es :bodies b :at at})))
 
+(defn- cell ^long [a]
+  (Math/floorDiv (long (Math/floor (double a))) 4))
+
+(defn- body-cell [[_ e]]
+  [(cell (v/x (:pos e))) (cell (v/z (:pos e)))])
+
+(defn- reached
+  "Returns the cells of the push grid that thrown e can reach in its
+  turn, with the ring of cells around them."
+  [world e]
+  (let [[x0 z0 x1 z1] (thrown/reach world e)]
+    (vec (for [cx (range (dec (cell x0)) (+ 2 (cell x1)))
+               cz (range (dec (cell z0)) (+ 2 (cell z1)))]
+           [cx cz]))))
+
+(defn- root [up x]
+  (let [y (get up x x)] (if (== (long y) (long x)) x (recur up y))))
+
+(defn- linked [up a b]
+  (let [ra (root up a) rb (root up b)]
+    (if (== (long ra) (long rb))
+      up
+      (assoc up (max ra rb) (min ra rb)))))
+
+(defn- cells-of [b gs]
+  (let [f (fn [m k]
+            (reduce #(assoc %1 (body-cell %2) k) m
+                    (push/entries-of b (nth gs k))))]
+    (reduce f {} (range (count gs)))))
+
+(defn- rider-linked
+  "Returns [up at] after rider k, which reaches cells, links to the
+  groups and the riders before it in the cells of at."
+  [[up at] [k cells]]
+  (let [f (fn [[up at] c]
+            (if-let [o (get at c)]
+              [(linked up k o) at]
+              [up (assoc at c k)]))]
+    (reduce f [up at] cells)))
+
+(defn- joined-herd
+  "Returns the herd of the groups of b and the riders of rs in the
+  nodes ks, or nil when no mob is among them."
+  [b gs rs after ks]
+  (let [n (count gs)
+        {g true r false} (group-by #(< (long %) n) ks)
+        f (fn [k] (map vector (nth gs k)
+                       (push/entries-of b (nth gs k))))
+        ps (sort-by #(key (nth % 1)) (mapcat f g))
+        es (mapv second ps)]
+    (when (some mob? es)
+      {:es es :bodies b :at (int-array (map first ps))
+       :riders (mapv #(nth (nth rs (- (long %) n)) 0) r)
+       :after after})))
+
+(defn- herded
+  "Returns the herds of the groups gs of bodies b, each group joined
+  with the others that a thrown thing of rs reaches with it. A thrown
+  thing that reaches no mob rides no herd."
+  [b gs {:keys [rs after]}]
+  (if (empty? rs)
+    (into [] (keep #(herd-of b %)) gs)
+    (let [n (count gs)
+          ks (range (+ n (count rs)))
+          [up] (reduce rider-linked [{} (cells-of b gs)]
+                       (map-indexed #(vector (+ n %1) (nth %2 1)) rs))
+          comps (vals (group-by #(root up %) ks))]
+      (->> (sort-by first comps)
+           (filter #(< (long (first %)) n))
+           (keep #(joined-herd b gs rs after %)) vec))))
+
 (defn- herds
   "Returns the herds of world, which are the islands of bodies with
   a mob among them, with the mobs that bite or tell this tick, the
   mobs whose death ends and the changes to the clocks of mobs. All
-  four are in id order."
-  [world active t]
-  (let [f (scan (areas/loaded-zone world) active t)
-        acc (scanned-all f (:entities world))
-        b (aget acc 0)]
-    [(into [] (keep #(herd-of b %)) (push/groups b))
-     (persistent! (aget acc 1)) (persistent! (aget acc 2))
-     (persistent! (aget acc 3))]))
+  four are in id order. The thrown things of rs ride the herds they
+  reach."
+  ([world active t] (herds world active t nil))
+  ([world active t rs]
+   (let [f (scan (areas/loaded-zone world) active t)
+         acc (scanned-all f (:entities world))
+         b (aget acc 0)]
+     [(herded b (push/groups b) rs)
+      (persistent! (aget acc 1)) (persistent! (aget acc 2))
+      (persistent! (aget acc 3))])))
 
 (defn- clocks-set [world clocks]
   (let [f (fn [es [_ eid m]] (assoc es eid (merge (get es eid) m)))]
@@ -618,28 +779,42 @@
           (and (push/body? held entry) (steps? active entry)))))))
 
 (defn- herds-deltas [world tempters t hs]
-  (->> (batches hs)
-       (deltas/fold-merged #(island-batch world tempters t %))))
+  (let [f (fn [acc b] (paired acc (island-batch world tempters t b)))
+        bs (batches hs)]
+    (if (< (count bs) 2)
+      (reduce f (paired) bs)
+      (r/fold 1 paired f bs))))
+
+(defn- riders
+  "Returns the thrown things of world in id order, each with the
+  cells it reaches, and the hittable bodies the turns ds moved."
+  [world ds]
+  (let [es (areas/active-of-types world entity/thrown-types)]
+    (when (seq es)
+      {:rs (mapv (fn [[_ e :as r]] [r (reached world e)])
+                 (sort-by key es))
+       :after (thrown/stepped world ds)})))
 
 (defn- before-turns
   "Returns world before the turns of its mobs at tick t, its herds,
   and the deltas that start or stop the clocks of the mobs."
-  [world active t]
-  (let [[_ _ _ clocks :as h] (herds world active t)]
+  [world active t ds]
+  (let [[_ _ _ clocks :as h]
+        (herds world active t (riders world ds))]
     [(clocks-set world clocks) h clocks]))
 
 (defn turns
-  "Returns the deltas of the mobs in one tick, each in its turn.
-  Each island of mobs steps on its own."
-  [world _d]
+  "Returns the deltas of the mobs in one tick, each in its turn, and
+  the deltas of each thrown thing that rode them by id. Each island
+  of mobs steps on its own, the thrown things that reach it among
+  its turns. The turns ds came before."
+  [world _d ds]
   (let [t (long (:tick world))
         active (areas/active-chunks world)
-        [world [hs biters ends] pre]
-        (before-turns world active t)
+        [world [hs biters ends] pre] (before-turns world active t ds)
         tempters (sense/holders world)
         world (seen (sense/indexed world) tempters
-                    (stepper world active) t biters)]
-    (deltas/merge
-      (deltas/of-vec pre)
-      (herds-deltas world tempters t hs)
-      (deltas/of-vec (endings ends)))))
+                    (stepper world active) t biters)
+        [d rode] (herds-deltas world tempters t hs)
+        ends (deltas/of-vec (endings ends))]
+    [(deltas/merge (deltas/of-vec pre) d ends) (into {} rode)]))
