@@ -1,7 +1,6 @@
 package collider.world.space;
 
 import clojure.lang.IFn;
-import collider.RandomSupport;
 import collider.world.Chunk;
 import collider.world.Section;
 
@@ -109,7 +108,7 @@ public final class Rays {
         xd /= d;
         yd /= d;
         zd /= d;
-        float f = power * (0.7F + (float) RandomSupport.unit(seed, j, 31 * k + l) * 0.6F);
+        float f = power * (0.7F + (float) unit(seed, j, 31 * k + l) * 0.6F);
         double x = cx, y = cy, z = cz;
         int prev = -1, st = 0;
         boolean first = true;
@@ -130,6 +129,19 @@ public final class Rays {
             prev = i;
             f -= STEP_DECAY;
         }
+    }
+
+    /// Returns a number at least 0 and below 1 for `a`, `b` and `c`, as
+    /// `collider.random/of-longs` does.
+    private static double unit(long a, long b, long c) {
+        long h = mix(mix(mix(a) + b) + c);
+        return (double) (h & 0xFFFFFF) / 1.6777216E7;
+    }
+
+    private static long mix(long z) {
+        z = (z ^ (z >>> 30)) * -4658895280553007687L;
+        z = (z ^ (z >>> 27)) * -7723592293110705685L;
+        return z ^ (z >>> 31);
     }
 
     private static boolean surface(long j, long k, long l) {

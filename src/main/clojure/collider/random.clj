@@ -1,7 +1,6 @@
 (ns collider.random
   "Random numbers drawn from keys."
-  (:import (clojure.lang Murmur3 Util)
-           (collider RandomSupport)))
+  (:import (clojure.lang Murmur3 Util)))
 
 (set! *warn-on-reflection* true)
 
@@ -38,17 +37,22 @@
 
 (defn mix64
   "Returns z mixed so that near longs give far apart ones."
-  {:inline (fn [z] `(RandomSupport/mixStafford13 ~z))}
   ^long [^long z]
-  (RandomSupport/mixStafford13 z))
+  (let [z (unchecked-multiply
+           (bit-xor z (unsigned-bit-shift-right z 30))
+           -4658895280553007687)
+        z (unchecked-multiply
+           (bit-xor z (unsigned-bit-shift-right z 27))
+           -7723592293110705685)]
+    (bit-xor z (unsigned-bit-shift-right z 31))))
 
 (defn of-longs
   "Returns a number at least 0 and below 1 for the given longs."
-  {:inline (fn [& args] `(RandomSupport/unit ~@args))
-   :inline-arities #{3 4}}
-  (^double [^long a ^long b ^long c] (RandomSupport/unit a b c))
+  (^double [^long a ^long b ^long c]
+   (let [h (mix64 (unchecked-add (mix64 a) b))]
+     (frac (mix64 (unchecked-add h c)))))
   (^double [^long a ^long b ^long c ^long d]
-   (RandomSupport/unit a b c d)))
+   (of-longs a b (unchecked-add (unchecked-multiply 31 c) d))))
 
 (defn below
   "Returns a whole number from 0 below n picked by roll r."
