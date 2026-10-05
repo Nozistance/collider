@@ -70,8 +70,9 @@
         :else :right-horn?))
 
 (defn- spread [t eid i k lo hi]
-  (let [r (num/f32 (c/roll t eid i k))]
-    (double (num/f32 (+ (num/f32 (* r (num/f32 (- hi lo)))) lo)))))
+  (let [r (num/f32 (c/roll t eid i k))
+        lo (num/f32 lo) w (num/f32 (- (num/f32 hi) lo))]
+    (double (num/f32 (+ (num/f32 (* r w)) lo)))))
 
 (defn- hornless? [e]
   (and (false? (:left-horn? e)) (false? (:right-horn? e))))

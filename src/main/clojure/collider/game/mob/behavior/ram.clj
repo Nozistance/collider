@@ -17,7 +17,8 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
-            [collider.world.env.difficulty :as difficulty]))
+            [collider.world.env.difficulty :as difficulty]
+            [collider.world.feature.level :as feature]))
 
 (set! *warn-on-reflection* true)
 
@@ -62,9 +63,6 @@
         (recur (inc i) n)
         c))))
 
-(defn- manhattan ^long [a b]
-  (reduce + (map #(Math/abs (- (long %1) (long %2))) a b)))
-
 (defn- reachable [world [e] cell]
   (let [[e p] (nav/create-path world e cell 0)]
     (if (:reached? p) (reduced [e cell]) [e nil])))
@@ -77,7 +75,7 @@
     (let [me (v/cell (:pos e))
           cs (->> sides
                   (map #(furthest world e to % hi))
-                  (filter #(>= (manhattan % to) (long lo)))
+                  (filter #(>= (feature/manhattan % to) (long lo)))
                   (sort-by #(v/dist-sq me %)))]
       (reduce (partial reachable world) [e nil] cs))
     [e nil]))
@@ -176,23 +174,17 @@
         s (num/f32 (* v (num/f32 1.65)))
         n (- (level-of e :speed) (level-of e :slowness))
         boost (num/f32 (* 0.25 n))]
-    (num/f32 (+ (Math/max 0.2 (Math/min 3.0 s)) boost))))
+    (num/f32 (+ (Math/max (num/f32 0.2) (Math/min 3.0 s)) boost))))
 
 (defn- body-box [o]
   (let [[h ht] (entity/box o) p (:pos o) h (double h)]
     [(- (v/x p) h) (v/y p) (- (v/z p) h)
      (+ (v/x p) h) (+ (v/y p) (double ht)) (+ (v/z p) h)]))
 
-(defn- boxes-meet? [a b]
-  (let [[ax ay az bx by bz] (body-box a)
-        [cx cy cz dx dy dz] (body-box b)]
-    (and (< ax dx) (> bx cx) (< ay dy) (> by cy)
-         (< az dz) (> bz cz))))
-
 (defn- rammed [world eid e foe?]
   (->> (sense/around world (:pos e) 3.0)
        (filter (fn [[oid o]]
-                 (and (not= oid eid) (boxes-meet? e o)
+                 (and (not= oid eid) (v/boxes-meet? (body-box e) (body-box o))
                       (foe? world e o))))
        (sort-by key)
        first))
