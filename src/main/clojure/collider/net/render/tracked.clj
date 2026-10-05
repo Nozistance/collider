@@ -43,7 +43,7 @@
 (defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
 
 (def ^:private pose-id
-  {:standing 0 :sleeping 2 :swimming 3 :crouching 5})
+  {:standing 0 :sleeping 2 :swimming 3 :crouching 5 :long-jumping 6})
 
 (def ^:private living-flags {:is-using 1 :off-hand 2})
 
@@ -139,8 +139,12 @@
   {:screaming? :screaming :left-horn? :left-horn
    :right-horn? :right-horn})
 
+(defn- posed [fields meta]
+  (cond-> fields
+    (contains? meta :pose) (assoc :pose (pose-id (:pose meta) 0))))
+
 (defn- goat-fields [meta]
-  (into (animal-fields meta)
+  (into (posed (animal-fields meta) meta)
         (keep (fn [[k f]] (when (contains? meta k) [f (meta k)])))
         goat-keys))
 

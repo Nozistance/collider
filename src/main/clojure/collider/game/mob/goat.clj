@@ -57,4 +57,5 @@
   [e]
   {:screaming? (boolean (:screaming? e))
    :left-horn? (not (false? (:left-horn? e)))
-   :right-horn? (not (false? (:right-horn? e)))})
+   :right-horn? (not (false? (:right-horn? e)))
+   :pose (or (:pose e) :standing)})

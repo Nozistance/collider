@@ -1,8 +1,10 @@
 (ns collider.game.mob.goat-ai
   "The brain of a goat at rest."
   (:require [collider.game.mob.behavior.core :as c]
+            [collider.game.mob.behavior.long-jump :as jump]
             [collider.game.mob.behavior.social :as s]
             [collider.game.mob.brain :as b]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sensor :as sensor]))
 
 (set! *warn-on-reflection* true)
@@ -27,6 +29,19 @@
    [2 (s/baby-follow-adult [5 16] 1.25)]
    [3 wander]])
 
+(def ^:private between-jumps [600 1200])
+
+(defn- sound [k] #(mobs/sound-of % k))
+
+(def ^:private long-jump
+  [[0 (jump/long-jump-mid-jump between-jumps (sound :step))]
+   [1 (jump/long-jump-to-random-pos
+        between-jumps 5 5 3.5714288 (sound :long-jump))]])
+
+(def ^:private jump-ready
+  {:tempting-player :absent :breed-target :absent :walk-target :absent
+   :long-jump-cooldown-ticks :absent})
+
 (def ^:private sensors
   [(sensor/nearest-living) (sensor/players) (sensor/adult)
    (sensor/hurt-by) (sensor/tempting sensor/food-lure?)])
@@ -37,7 +52,9 @@
 (def breed
   (b/breed
     (sensor/with-sensors
-      {:core core :idle idle :requires {:idle at-rest} :update [:idle]
+      {:core core :idle idle :long-jump long-jump
+       :requires {:idle at-rest :long-jump jump-ready}
+       :update [:long-jump :idle]
        :memories [:long-jump-cooldown-ticks :ram-cooldown-ticks
                   :ram-target :long-jump-mid-jump]}
       sensors)))

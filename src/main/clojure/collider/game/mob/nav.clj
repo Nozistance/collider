@@ -95,12 +95,11 @@
       [x (above-solid lv x y z) z]
       [x y z])))
 
-(defn- search [world e cell ^long reach]
-  (path/find-path world (walker e) #{cell} (path-length e) reach
-                  1.0))
+(defn- search [world e cell reach len]
+  (path/find-path world (walker e) #{cell} len reach 1.0))
 
-(defn- searched [world e cell ^long reach]
-  (let [p (search world e cell reach)
+(defn- searched [world e cell reach len]
+  (let [p (search world e cell reach len)
         nav {:target (:target p) :reach reach
              :timeout-node [0 0 0] :timeout-timer 0
              :timeout-limit 0.0}
@@ -110,13 +109,13 @@
 (defn- keep-path? [e cell nav]
   (and (:path nav) (not (done? e)) (= cell (:target nav))))
 
-(defn- pathed [world e cell ^long reach]
+(defn- pathed [world e cell reach len]
   (let [nav (:nav e)]
     (cond
       (< (v/y (:pos e)) (chunk/level-min-y world)) [e nil]
       (not (can-update-path? e)) [e nil]
       (keep-path? e cell nav) [e (:path nav)]
-      :else (searched world e cell reach))))
+      :else (searched world e cell reach len))))
 
 (defn create-path
   "Returns [e path] with the path mob e would walk to the cell, which
@@ -127,8 +126,14 @@
         e (assoc e :nav (nav-of e))
         [gx _ gz] cell]
     (if (loaded? chunks gx gz)
-      (pathed world e (surface-cell world cell) reach)
+      (pathed world e (surface-cell world cell) reach (path-length e))
       [e nil])))
+
+(defn short-path
+  "Returns [e path] with the path mob e would walk to the cell as it
+  is, no longer than len, or a nil path."
+  [world e cell reach len]
+  (pathed world (assoc e :nav (nav-of e)) cell reach (double len)))
 
 (defn- cauldron? [chunks n]
   (block/tagged? (chunk/block-state chunks (:x n) (:y n) (:z n))

@@ -412,6 +412,16 @@
   ^double [e]
   (size/eye e))
 
+(def ^:private ^:const jump-boost (double (float 0.1)))
+
+(defn jump-boost-power
+  "Returns how much higher jump boost lifts mob e."
+  ^double [e]
+  (if-let [b (get (:effects e) :jump-boost)]
+    (let [n (double (float (inc (long (:amplifier b)))))]
+      (double (unchecked-float (* jump-boost n))))
+    0.0))
+
 (def ^:private ^:const shallow-eye 0.4)
 
 (defn fluid-jump-threshold

@@ -32,8 +32,6 @@
 
 (def ^:private ^:const levitation-rise 0.05)
 
-(def ^:private ^:const jump-boost (double (float 0.1)))
-
 (def ^:private ^:const jump-strength (double (float 0.42)))
 
 (def ^:private ^:const min-jump (double (float 1.0E-5)))
@@ -257,11 +255,12 @@
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
-        k (num/fmul bf air-drag)
+        free? (:discard-friction? e)
+        k (if free? 1.0 (num/fmul bf air-drag))
         [h u] (moved-fluid world e d mv half height f)]
     [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) k)
-           (* (lifted e (v/y u)) vertical-drag)
+           (* (lifted e (v/y u)) (if free? 1.0 vertical-drag))
            (* (* (v/z u) sf) k))
      (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
 
@@ -309,11 +308,6 @@
         (pos? (double lava)) (travel-lava world e vel half height f)
         :else (travel-air world e vel half height og? f)))
 
-(defn- boost-power ^double [e]
-  (if-let [b (get (:effects e) :jump-boost)]
-    (num/fmul jump-boost (double (float (inc (long (:amplifier b))))))
-    0.0))
-
 (defn- jump-share ^double [e]
   (if-let [f (:jump-share (spec/of (:type e)))] (f e) 1.0))
 
@@ -323,7 +317,7 @@
   ^double [world e]
   (let [f (jump-factor world (:pos e) (:support e))
         s (num/fmul jump-strength (jump-share e))]
-    (double (float (+ (num/fmul s f) (boost-power e))))))
+    (double (float (+ (num/fmul s f) (mobs/jump-boost-power e))))))
 
 (defn- jump-off [vel ^double p]
   (if (<= p min-jump)

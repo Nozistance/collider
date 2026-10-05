@@ -14,11 +14,20 @@
 (def ^:private ^:table sizes
   (delay (update-vals (data/entities) measured)))
 
+(def ^:private scales {:goat {:long-jumping (num/f32 0.7)}})
+
+(defn- scaled [{[half h] :box eye :eye} ^double f]
+  {:box [(* 0.5 (num/fmul (* 2.0 (double half)) f)) (num/fmul h f)]
+   :eye (num/fmul eye f)})
+
 (defn- size-of [e]
-  (let [s (get @sizes (:type e))]
-    (or (when (some? (:baby-until e)) (:baby s))
-        (get (:poses s) (:pose e))
-        s)))
+  (let [s (get @sizes (:type e))
+        s (or (when (some? (:baby-until e)) (:baby s))
+              (get (:poses s) (:pose e))
+              s)]
+    (if-let [f (when (:pose e) (get-in scales [(:type e) (:pose e)]))]
+      (scaled s f)
+      s)))
 
 (defn box
   "Returns the half width and the height of entity e, as its type,
