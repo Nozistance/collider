@@ -32,15 +32,13 @@
     (fn [w eid e t i]
       (let [ok? (fn [_ o]
                   (and (= kind (:type o))
-                       (<= (v/dist-sq (:pos o) (:pos e)) r2)))]
-        (let [[oid e] (sensor/closest w eid e t ok?)]
-          (if (nil? oid)
-            (declined e)
-            (let [r (ticked-down e eid t i interval)
-                  tr (c/at-entity oid true)]
-              (if (vector? r)
-                r
-                (b/remember r :look-target tr forever)))))))))
+                       (<= (v/dist-sq (:pos o) (:pos e)) r2)))
+            [oid e] (sensor/closest w eid e t ok?)
+            r (when oid (ticked-down e eid t i interval))]
+        (cond (nil? oid) (declined e)
+              (vector? r) r
+              :else (b/remember r :look-target (c/at-entity oid true)
+                                forever))))))
 
 (defn set-entity-look-target-sometimes [kind max-dist interval]
   {:id :set-entity-look-target-sometimes
@@ -141,6 +139,12 @@
       [e (into [[:remember pid :breed-target eid forever]]
                (gazes pid eid speed close))])))
 
+(defn- love-check [kind]
+  (fn [w eid e t _]
+    (if (mobs/in-love? e t)
+      (update (partner-of w eid e t kind) 0 some?)
+      [false e])))
+
 (defn- loving? [kind]
   (fn [w eid e t i]
     (let [pid (b/recall e :breed-target t)
@@ -182,10 +186,7 @@
    (animal-make-love kind speed close (fn [_ _ _ a _] (:variant a))))
   ([kind speed close child-look]
    {:id :animal-make-love :duration [110 110] :needs love-needs
-    :check (fn [w eid e t _]
-             (if (mobs/in-love? e t)
-               (update (partner-of w eid e t kind) 0 some?)
-               [false e]))
+    :check (love-check kind)
     :start (love-start kind speed close)
     :continue? (loving? kind)
     :tick (love-tick speed close {:child-look child-look})
