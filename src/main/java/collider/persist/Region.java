@@ -28,8 +28,6 @@ import java.util.zip.DataFormatException;
 /// to the region. A commit writes past them, and a manifest names the
 /// new end. A copy shares the file and owns its index, so readers of
 /// the old region never see a record of an uncommitted write.
-/// In Java because it keeps a mutable index in primitive arrays over an
-/// open file.
 public final class Region {
 
     static final int HEAD = 16;

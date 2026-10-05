@@ -4,7 +4,6 @@ import java.util.Arrays;
 
 /// Ints by long key for one pass, never kept or shared. A missing key
 /// reads as -1. A key once put stays, whatever its value.
-/// In Java because it is a mutable structure on primitive arrays.
 public final class LongIntMap {
 
     private static final int FREE = Integer.MIN_VALUE;

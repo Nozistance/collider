@@ -1,7 +1,6 @@
 package collider.world.space;
 
 /// The mob of one path search, where it stands and how it walks.
-/// In Java because Path, a Java class, reads it.
 ///
 /// @param upStep How high it steps up without a jump.
 /// @param maxFall How far it may fall.

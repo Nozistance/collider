@@ -11,8 +11,6 @@ import java.util.Arrays;
 /// Directions 0 to 3 go east, west, south and north, 4 up and 5 down.
 /// A level is 0 for a source and 8 for a falling liquid. A flowing
 /// liquid of amount n has the level 8 minus n.
-/// In Java because it changes an overlay of states in place and its
-/// steps take more than four primitives.
 public final class Flow {
 
     /// The fluid code of a state with no fluid.

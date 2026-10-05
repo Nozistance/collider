@@ -1,7 +1,6 @@
 package collider.world;
 
 /// A Perlin noise field built from a seed and its octave amplitudes.
-/// In Java because it keeps the float arithmetic of the game.
 public final class Noise {
 
     private static final int[][] GRADIENT = {

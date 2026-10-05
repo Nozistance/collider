@@ -5,8 +5,6 @@ import java.util.Arrays;
 
 /// Block light and sky light, their flood after a change and the
 /// brightness of the sky over the day.
-/// In Java because it floods light through mutable primitive queues and
-/// keeps the float arithmetic of the game.
 public final class Light {
 
     public static final int BLOCK = 0;

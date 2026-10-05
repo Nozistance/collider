@@ -4,7 +4,6 @@ import java.util.Arrays;
 
 /// The open set of a path search with the node of the lowest total
 /// score on top.
-/// In Java because it is a mutable heap on primitive arrays.
 public final class PathHeap {
 
     private PathNode[] a = new PathNode[128];

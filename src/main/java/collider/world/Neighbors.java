@@ -16,8 +16,6 @@ import java.util.Arrays;
 /// what the run collects and the queue of neighbour updates. Updates
 /// added while one runs wait in a layer, and the layer goes on top of
 /// the stack in the order it was added once the running one yields.
-/// In Java because it runs a mutable queue of updates over primitive
-/// arrays.
 public final class Neighbors {
 
     private static final long CLIENTS = 2;

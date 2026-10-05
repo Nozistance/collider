@@ -5,7 +5,6 @@ import collider.world.Chunk;
 import collider.world.Section;
 
 /// The rays of a blast through a grid of sections.
-/// In Java because it keeps the float arithmetic of the game.
 public final class Rays {
 
     /// The width of the cube of cells that the rays of a blast mark.

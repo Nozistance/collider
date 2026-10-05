@@ -7,8 +7,6 @@ import collider.world.Section;
 /// The cells around a blast that may block its sight, to share among
 /// the bodies it reaches. A body sees the blast from a sample point
 /// when the segment between them meets no collision box of a block.
-/// In Java because it fills mutable primitive arrays, keeps the float
-/// arithmetic of the game and its steps take more than four primitives.
 public final class Exposure {
 
     /// The width of the cube of cells that an exposure keeps.

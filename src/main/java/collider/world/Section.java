@@ -7,7 +7,6 @@ import java.util.Arrays;
 
 /// A 16 by 16 by 16 volume of block states with optional block light
 /// and sky light.
-/// In Java because it is a mutable structure on primitive arrays.
 public final class Section {
 
     /// The bits of a packed state id when there is no palette.

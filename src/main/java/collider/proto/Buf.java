@@ -8,7 +8,6 @@ import java.util.zip.Deflater;
 import java.util.zip.Inflater;
 
 /// A resizable byte sequence with a read position and a write position.
-/// In Java because it is a mutable byte buffer.
 public final class Buf {
 
     private byte[] bytes;
