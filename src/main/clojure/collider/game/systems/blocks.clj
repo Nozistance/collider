@@ -122,8 +122,11 @@
 (defn- fresh? [{:keys [at item world]}]
   (not (player/on-cooldown? at item (:tick world))))
 
+(defn- usable-on? [{:keys [world at pos use-item?]}]
+  (or use-item? (edit/may-use-at? world at pos)))
+
 (defn- item-deltas [ctx]
-  (when (fresh? ctx)
+  (when (and (fresh? ctx) (usable-on? ctx))
     (let [acts (filter (fn [[pred _]] (pred ctx)) item-actions)]
       (when-let [[_ f] (first acts)] (f ctx)))))
 

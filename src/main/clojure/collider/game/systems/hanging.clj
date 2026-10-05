@@ -56,8 +56,6 @@
   [world _d]
   (deltas/of-vec (turns world (hung-entries world))))
 
-(defn- build? [p] (not= :adventure (:game-mode p)))
-
 (defn- placeable? [world item face pos]
   (if (= :painting item)
     (not= :y (dir/axis face))
@@ -98,7 +96,7 @@
         item (:item stack)
         face (dir/from-index face)
         at (dir/toward pos face)]
-    (when (and (placeable? world item face at) (build? p))
+    (when (placeable? world item face at)
       (when-let [e (made world item at face stack)]
         (when (holds? world e)
           (hung-deltas eid p e hand))))))

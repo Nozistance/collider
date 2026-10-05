@@ -92,8 +92,12 @@
   (and (contains? (block/props-of hit) :waterlogged)
        (block/water? state)))
 
+(defn- clipped [world e]
+  (when-let [{:keys [pos] :as hit} (reach/clip world e :none)]
+    (when (edit/may-use-at? world e pos) hit)))
+
 (defn- poured [world eid e state mob-snd]
-  (when-let [{:keys [pos face]} (reach/clip world e :none)]
+  (when-let [{:keys [pos face]} (clipped world e)]
     (let [relative (dir/toward pos face)
           hit (changes/block-at world pos)
           target (if (into-hit? hit state) pos relative)
@@ -118,7 +122,7 @@
   (emptied world eid e item (poured world eid e state nil)))
 
 (defn- mob-splash-deltas [world eid e snd]
-  (when-let [{:keys [pos face]} (reach/clip world e :none)]
+  (when-let [{:keys [pos face]} (clipped world e)]
     [(out/except eid (mob-splash snd (dir/toward pos face)))]))
 
 (defn mob-deltas
@@ -168,18 +172,22 @@
   (when (= :powder-snow kind)
     [(out/all (out/level-event out/particles-destroy-block pos st))]))
 
+(defn- scoop [world eid e kind pos]
+  (let [st (changes/block-at world pos)
+        filled {:item (first (fill-of kind st)) :count 1}]
+    (concat (drained-deltas world kind pos st)
+            (snow-fx kind pos st)
+            [(out/except eid (fill-fx kind e st))
+             [:award eid :used/bucket 1]]
+            (inventory/filled-result-deltas world eid filled))))
+
 (defn scoop-deltas
   "Returns the deltas of a player filling an empty bucket.
   The bucket fills from the block in view."
   [world eid e]
   (when-let [[kind pos] (scoop-target world e)]
-    (let [st (changes/block-at world pos)
-          filled {:item (first (fill-of kind st)) :count 1}]
-      (concat (drained-deltas world kind pos st)
-              (snow-fx kind pos st)
-              [(out/except eid (fill-fx kind e st))
-               [:award eid :used/bucket 1]]
-              (inventory/filled-result-deltas world eid filled)))))
+    (when (edit/may-use-at? world e pos)
+      (scoop world eid e kind pos))))
 
 (defn lily-deltas
   "Returns the deltas of a player placing a lily pad.

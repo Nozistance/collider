@@ -238,12 +238,12 @@
                  (out/level-event out/particles-and-sound-wax-on pos)
                  (out/block-sound sound pos 1.0 1.0)))])))
 
-(defn- sign-hand-deltas [world eid pos e front? busy?]
+(defn- sign-hand-deltas [world eid pos e front? opens?]
   (when (main-hand? world eid)
     (cond
       (:waxed? e) [(heard :sign/waxed pos 1.0)]
-      (not busy?) [[:set-block-entity pos (assoc e :editor eid)]
-                   (out/to eid (out/sign-editor pos front?))])))
+      opens? [[:set-block-entity pos (assoc e :editor eid)]
+              (out/to eid (out/sign-editor pos front?))])))
 
 (defn- chains?
   "Returns true when a hanging sign item places a new sign.
@@ -260,16 +260,17 @@
 (defn- sign-use-deltas
   "Returns the deltas of a sign used with item. A dye, ink or
   honeycomb changes the side the player faces. The main hand opens
-  the editor."
+  the editor. Neither works out of the modes that build."
   [{:keys [world eid pos face item]}]
   (let [st (changes/block-at world pos) e (be/at world pos)
-        at (get-in world [:entities eid :pos])
-        front? (sign/front? st pos at)
-        busy? (sign-busy? world eid e)]
+        p (get-in world [:entities eid])
+        front? (sign/front? st pos (:pos p))
+        free? (and (not (sign-busy? world eid e))
+                   (game-mode/may-build? p))]
     (when (and e (not (chains? st face item)))
-      (or (when (and item (not (:waxed? e)) (not busy?))
+      (or (when (and item (not (:waxed? e)) free?)
             (sign-apply-deltas pos e front? item))
-          (sign-hand-deltas world eid pos e front? busy?)))))
+          (sign-hand-deltas world eid pos e front? free?)))))
 
 (defn sign-update-deltas
   "Returns the deltas that write lines on one side of a sign.
@@ -486,8 +487,10 @@
 (defn- flower-pot-use [{:keys [world eid pos item]}]
   (pot-deltas world eid pos item))
 
-(defn- candle-use [{:keys [world pos item]}]
-  (when (nil? item) (changes/candle-out-deltas world pos)))
+(defn- candle-use [{:keys [world eid pos item]}]
+  (when (and (nil? item)
+             (game-mode/may-build? (get-in world [:entities eid])))
+    (changes/candle-out-deltas world pos)))
 
 (defn- berries-use [{:keys [world pos item]}]
   (when (nil? item) (berries-deltas world pos)))

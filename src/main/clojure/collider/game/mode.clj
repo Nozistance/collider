@@ -53,6 +53,7 @@
 
 (defn spectator? [e] (= :spectator (:game-mode e)))
 
+
 (defn- held? [chunks cx cz]
   (contains? chunks (chunk/pos->id cx cz)))
 
@@ -93,8 +94,9 @@
   (and (not (spectator? e)) (pos? (double (:health e 1.0)))))
 
 (def ^:private mode-abilities
-  {:survival {}
-   :creative {:invulnerable? true :may-fly? true :instabuild? true}
+  {:survival {:may-build? true}
+   :creative {:invulnerable? true :may-fly? true :instabuild? true
+              :may-build? true}
    :adventure {}
    :spectator {:invulnerable? true :may-fly? true :flies? true}})
 
@@ -105,6 +107,11 @@
   "Returns true when the mode of player e keeps it from harm."
   [e]
   (able? e :invulnerable?))
+
+(defn may-build?
+  "Returns true when the mode of player e lets it build."
+  [e]
+  (able? e :may-build?))
 
 (defn may-fly?
   "Returns true when the mode of player e lets it fly."

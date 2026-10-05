@@ -12,6 +12,7 @@
             [collider.game.stack :as stack]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
+            [collider.game.systems.blocks.edit :as edit]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -306,13 +307,19 @@
           (concat (egg-deltas world eid pos mob at)
                   [[:award eid (keyword "used" (name item)) 1]]))))))
 
+(defn- hatches-at? [world e {:keys [pos face]}]
+  (and (block/liquid? (changes/block-at world pos))
+       (let [behind (dir/toward pos (dir/opposite face))]
+         (edit/may-use-at? world e behind))))
+
 (defn fluid-egg-deltas
   "Returns the deltas of a spawn egg used at a liquid source.
   The mob hatches in the liquid source in view."
   [world eid e item]
   (when-let [mob (mobs/egg-type item)]
-    (when-let [{:keys [pos]} (reach/clip world e :source-only)]
-      (when (block/liquid? (changes/block-at world pos))
+    (when-let [{:keys [pos] :as hit}
+               (reach/clip world e :source-only)]
+      (when (hatches-at? world e hit)
         (let [at (v/bottom-centre pos)]
           (concat (egg-deltas world eid pos mob at)
                   [[:award eid (keyword "used" (name item)) 1]]))))))

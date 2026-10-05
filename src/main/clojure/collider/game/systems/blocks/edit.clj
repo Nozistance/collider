@@ -3,10 +3,12 @@
   (:require [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
+            [collider.game.command.args.block :as block-args]
             [collider.game.command.forms :as forms]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -49,6 +51,31 @@
   (let [at (chunk/block-chunk pos)
         changed [[pos (changes/block-at world pos)]]]
     (out/to eid (out/blocks-changed at changed))))
+
+(defn- allows? [world stack k pos]
+  (let [st (changes/block-at world pos)]
+    (boolean
+      (some #(block-args/component-matches? % st nil)
+            (:predicates (stack/component stack k))))))
+
+(defn may-break?
+  "Returns true when player e may break the block at pos. Out of the
+  modes that build only a main hand stack that can break the block
+  lets it."
+  [world e pos]
+  (or (game-mode/may-build? e)
+      (and (not (game-mode/spectator? e))
+           (allows? world (player/hand-stack e :main)
+                    :can-break pos))))
+
+(defn may-use-at?
+  "Returns true when player e may use the stack in its hand on the
+  block at pos. Out of the modes that build only a stack that can be
+  placed on the block lets it."
+  [world e pos]
+  (or (game-mode/may-build? e)
+      (allows? world (player/hand-stack e (:use-hand e :main))
+               :can-place-on pos)))
 
 (defn build-limit
   "Returns the red line above the hotbar that names a height limit.

@@ -2,7 +2,6 @@
   "Breaking blocks."
   (:require [collider.data :as data]
             [collider.game.changes :as changes]
-            [collider.game.mode :as game-mode]
             [collider.game.block.blockentity :as be]
             [collider.game.block.lid :as lid]
             [collider.game.entity :as entity]
@@ -95,7 +94,8 @@
     (when (and (breaking-actions status) (reach/in-reach? e pos))
       (cond
         (not below-top?) [(edit/own-change world eid pos)]
-        (game-mode/spectator? e) (restricted world eid status pos)
+        (not (edit/may-break? world e pos))
+        (restricted world eid status pos)
         (and (tool-breaks? e) (permitted? world e pos))
         (break-deltas world eid pos)
         :else [(edit/own-change world eid pos)]))))

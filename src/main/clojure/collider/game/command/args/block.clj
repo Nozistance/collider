@@ -213,6 +213,46 @@
          (block-match? pred state))
        (nbt-match? pred nbt)))
 
+(defn- held-in? [blocks b]
+  (cond (nil? blocks) true
+        (map? blocks)
+        (let [t (:tag blocks)
+              id (if (keyword? t) (data/wire t) (data/full-id t))]
+          (contains? (get @block-tags id) b))
+        :else (boolean (some #{b} blocks))))
+
+(defn- rank ^long [values v]
+  (cond (integer-property? values) (Long/parseLong (name v))
+        (= [:true :false] values) (if (= :true v) 1 0)
+        :else (.indexOf ^java.util.List values v)))
+
+(defn- within? [b prop raw ok?]
+  (or (nil? raw)
+      (boolean (some-> (value-of b prop raw) ok?))))
+
+(defn- ranged? [b prop have {:keys [min max]}]
+  (let [values (get-in (data/blocks) [b :props prop])
+        cmp #(compare (rank values have) (rank values %))]
+    (and (within? b prop min #(>= (long (cmp %)) 0))
+         (within? b prop max #(<= (long (cmp %)) 0)))))
+
+(defn- state-entry? [st {:keys [name matcher]}]
+  (let [b (block/block-of st)
+        prop (property-of b name)
+        have (get (block/props-of st) prop)]
+    (and (some? prop)
+         (if-let [{:keys [value]} (:left matcher)]
+           (= have (value-of b prop value))
+           (ranged? b prop have (:right matcher))))))
+
+(defn component-matches?
+  "Returns true when the block st with block entity nbt meets pred, the
+  block predicate of an item component."
+  [{:keys [blocks state] :as pred} st nbt]
+  (and (held-in? blocks (block/block-of st))
+       (every? #(state-entry? st %) state)
+       (nbt-match? pred nbt)))
+
 (defn ids
   "Returns the block ids a block argument completes, with the block
   tags as #ids when tags? is true."

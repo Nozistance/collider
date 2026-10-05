@@ -295,7 +295,8 @@
       (page-button-deltas world eid m (- id page-jump))
       (= page-back id) (page-button-deltas world eid m (dec page))
       (= page-on id) (page-button-deltas world eid m (inc page))
-      (= take-book id) (take-book-deltas world eid e m)
+      (= take-book id)
+      (when (game-mode/may-build? e) (take-book-deltas world eid e m))
       :else nil)))
 
 (defn- bench-button-deltas [eid e m id]
