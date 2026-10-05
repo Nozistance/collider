@@ -231,9 +231,11 @@
   what the mobs it tells take in their own turns, and the writes the
   turns after it tell it come last."
   [world lw tempters eid e t]
-  (let [[e later] (overlay/heard world eid e)
+  (let [[e later blows] (overlay/heard world eid e)
         m (minded lw tempters eid e t)]
-    (conj (update m 2 #(overlay/untold world eid %)) later)))
+    (cond-> (update m 2 #(overlay/untold world eid %))
+      (seq blows) (update 4 #(into blows %))
+      true (conj later))))
 
 (defn- step-mob
   [world index eid e [e1 look ds say-ds pre later] t cram live?]
@@ -244,7 +246,7 @@
         [e2 own] (if-let [f (:ai-step (spec/of (:type e)))]
                    (f eid e2 t)
                    [e2 nil])
-        e2 (overlay/took e2 later)
+        e2 (overlay/took t e2 later)
         ds (stepped-deltas world eid e e2 [pre ds say-ds] t)]
     [e2 (joined-into ds own) shoves hit? ls]))
 

@@ -47,38 +47,51 @@
 
 (defn- remember? [d] (identical? :remember (nth d 0)))
 
+(defn- told?
+  "Returns true when the turn of eid tells mob pid delta d. A blow
+  reaches only a mob whose turn comes after."
+  [eid pid d]
+  (case (nth d 0)
+    :remember true
+    (:damage :knockback) (< (long eid) (long pid))
+    false))
+
 (defn told
-  "Returns world where each mob that steps? takes hears in its own
-  turn what the :remember deltas ds of the turn of eid write to it."
+  "Returns world where each mob that steps? takes in its own turn
+  what the :remember deltas ds of the turn of eid write to it, and
+  the blows they deal it before its turn."
   [world eid ds steps?]
   (let [m0 (::told world {})
         f (fn [m d]
             (let [pid (nth d 1)]
-              (if (and (remember? d) (not= pid eid) (steps? pid))
+              (if (and (not= pid eid) (told? eid pid d) (steps? pid))
                 (update m pid (fnil conj []) [eid d])
                 m)))
         m (reduce f m0 ds)]
     (if (identical? m m0) world (assoc world ::told m))))
 
 (defn took
-  "Returns mob e after it remembers what the told writes ws say."
-  [e ws]
-  (let [f (fn [e [_ [_ _ k v until]]] (brain/remember e k v until))]
+  "Returns mob e at tick t after it takes the told writes ws."
+  [t e ws]
+  (let [f (fn [e [_ d]] ((delta/entity-apply (nth d 0)) t e d))]
     (reduce f e ws)))
 
 (defn heard
-  "Returns [e later] for mob e in the turn of eid. The e has taken
-  what the turns before it told it. The later holds what the turns
-  after it tell it, which it takes after its step."
+  "Returns [e later blows] for mob e in the turn of eid. The e has
+  taken what the turns before it told it, and blows holds the deltas
+  of those that are no memory, which its turn writes in its place.
+  The later holds what the turns after it tell it, which it takes
+  after its step."
   [world ^long eid e]
   (if-let [ws (get (::told world) eid)]
-    (let [before? (fn [[w]] (< (long w) eid))]
-      [(took e (filter before? ws)) (into [] (remove before?) ws)])
-    [e nil]))
+    (let [before? (fn [[w]] (< (long w) eid))
+          bs (filterv before? ws)]
+      [(took (:tick world) e bs) (into [] (remove before?) ws)
+       (into [] (comp (map second) (remove remember?)) bs)])
+    [e nil nil]))
 
 (defn- heard? [m eid d]
-  (and (remember? d)
-       (some (fn [[w x]] (and (= w eid) (= x d))) (get m (nth d 1)))))
+  (some (fn [[w x]] (and (= w eid) (= x d))) (get m (nth d 1))))
 
 (defn untold
   "Returns the deltas ds of the turn of eid without the writes that
