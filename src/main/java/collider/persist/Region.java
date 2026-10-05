@@ -114,7 +114,8 @@ public final class Region {
         return dir.resolve("r." + xz + "." + gen + ".log");
     }
 
-    static Path manifestPath(Path dir, long gen) {
+    /// Returns the path of the manifest of generation `gen` in `dir`.
+    public static Path manifestPath(Path dir, long gen) {
         return dir.resolve("regions." + gen);
     }
 
@@ -289,13 +290,12 @@ public final class Region {
         log.close();
     }
 
-    /// Writes the manifest of generation `gen` that names `regions`
-    /// with their ends.
-    public static void writeManifest(Path dir, long gen, Region[] regions)
-            throws IOException {
+    /// Returns the bytes of a manifest that names `regions` with their
+    /// ends.
+    public static byte[] manifest(Region[] regions) {
         ByteBuffer b = ByteBuffer.allocate(regions.length * ENTRY);
         for (Region r : regions) b.putLong(r.key).putLong(r.gen).putLong(r.end);
-        AtomicFile.put(manifestPath(dir, gen), b.array());
+        return b.array();
     }
 
     private static ByteBuffer entries(Path dir, long gen) throws IOException {

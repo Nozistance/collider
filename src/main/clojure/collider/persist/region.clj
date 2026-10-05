@@ -1,6 +1,7 @@
 (ns collider.persist.region
   "Append-only region files of chunks, and the manifests of commits."
-  (:require [clojure.java.io :as io])
+  (:require [clojure.java.io :as io]
+            [collider.persist.atomic-file :as atomic-file])
   (:import (collider.persist Region)
            (java.nio.file Path)))
 
@@ -65,7 +66,8 @@
 (defn write-manifest!
   "Writes the manifest of generation gen in dir naming regions."
   [dir ^long gen regions]
-  (Region/writeManifest (path dir) gen (into-array Region regions)))
+  (atomic-file/put! (Region/manifestPath (path dir) gen)
+                    (Region/manifest (into-array Region regions))))
 
 (defn sweep!
   "Deletes the files in dir that neither generation gen nor the one

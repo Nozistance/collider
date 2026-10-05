@@ -8,12 +8,12 @@
             [collider.data :as data]
             [collider.data.long-map :as lm]
             [collider.game.schema :as schema]
+            [collider.persist.atomic-file :as atomic-file]
             [collider.persist.region :as region]
             [collider.persist.snapshot :as snapshot]
             [collider.persist.store.records :as records
              :refer [Store commit! load]])
-  (:import (collider.persist AtomicFile)
-           (collider.persist.store.records FileStore)
+  (:import (collider.persist.store.records FileStore)
            (java.io File)
            (java.nio.channels ClosedChannelException)
            (java.nio.file Files)))
@@ -33,7 +33,7 @@
   (Files/readAllBytes (.toPath f)))
 
 (defn- put! [^File f ^bytes data]
-  (AtomicFile/put (.toPath f) data))
+  (atomic-file/put! (.toPath f) data))
 
 (defn- edn-of [^bytes data]
   (let [v (edn/read-string (String. data "UTF-8"))]
