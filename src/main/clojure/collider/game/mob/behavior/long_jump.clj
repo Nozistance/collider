@@ -35,8 +35,6 @@
 
 (defn- ceil ^long [^double a] (long (Math/ceil a)))
 
-(defn- plus [p q] (mapv + p q))
-
 (defn- minus [p q] (mapv - p q))
 
 (defn- scaled [p ^double k] (mapv #(* (double %) k) p))
@@ -57,7 +55,7 @@
         u (scaled (v/normalized d tiny) (* m spread))]
     (loop [i 0 at p]
       (or (>= i n)
-          (let [at (if (== i (dec n)) q (plus at u))]
+          (let [at (if (== i (dec n)) q (v/add at u))]
             (and (clear-at? chunks e b at) (recur (inc i) at)))))))
 
 (defn- arc-at
@@ -80,7 +78,7 @@
         n (long n) dr (/ (double r) (double n))]
     (loop [i 0 ri 0.0 prev nil]
       (or (>= i (dec n))
-          (let [ri (+ ri dr) at (plus p (arc-at k ri))]
+          (let [ri (+ ri dr) at (v/add p (arc-at k ri))]
             (and (or (nil? prev) (clear-move? chunks e b prev at))
                  (recur (inc i) ri at)))))))
 

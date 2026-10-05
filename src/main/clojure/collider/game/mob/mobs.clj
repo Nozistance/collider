@@ -5,6 +5,7 @@
             [collider.game.mob.goat :as goat]
             [collider.game.mob.shell :as shell]
             [collider.game.mob.variant :as variant]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.world.space.path :as path]))
 
@@ -418,8 +419,7 @@
   "Returns how much higher jump boost lifts mob e."
   ^double [e]
   (if-let [b (get (:effects e) :jump-boost)]
-    (let [n (double (float (inc (long (:amplifier b)))))]
-      (double (unchecked-float (* jump-boost n))))
+    (num/fmul jump-boost (double (float (inc (long (:amplifier b))))))
     0.0))
 
 (def ^:private ^:const shallow-eye 0.4)
