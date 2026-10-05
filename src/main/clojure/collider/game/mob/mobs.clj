@@ -2,6 +2,7 @@
   "Mob kinds and the start state of a new mob."
   (:require [collider.data :as data]
             [collider.game.entity.size :as size]
+            [collider.game.mob.goat :as goat]
             [collider.game.mob.shell :as shell]
             [collider.game.mob.variant :as variant]
             [collider.random :as random]
@@ -99,6 +100,7 @@
 (def ^:private cow
   {:sounds         :cow
    :voices         [:classic :moody]
+   :shared         #{:milk}
    :food           "cow_food"
    :spawns-on      "animals_spawnable_on"
    :spawn-look     (coat "cow_variant")})
@@ -110,6 +112,9 @@
   (-> (assoc cow :ground :mycelium :voices [:classic]
              :spawns-on "mooshrooms_spawnable_on")
       (dissoc :spawn-look)))
+
+(def ^:private goat-walker
+  (update path/cow :malus assoc :on-top-of-powder-snow -1.0))
 
 (def types
   "The facts of each mob type."
@@ -149,7 +154,19 @@
                :hurt-reaction shell/hurt
                :eats-aloud? true
                :food        "armadillo_food"
-               :spawns-on   "armadillo_spawnable_on"}})
+               :spawns-on   "armadillo_spawnable_on"}
+   :goat      {:sounds      :goat
+               :voice       goat/voice
+               :shared      #{:step}
+               :head-y-rot  (constantly 15.0)
+               :eats-aloud? true
+               :eat-sounds  2
+               :fall-reduction 10
+               :food        "goat_food"
+               :walker      goat-walker
+               :spawned     goat/spawned
+               :born        goat/born
+               :spawns-on   "goats_spawnable_on"}})
 
 (defn egg-type
   "Returns the mob kind spawn egg item hatches, or nil."
@@ -203,7 +220,9 @@
   (if-let [f (:body-held? (types (:type e)))] (boolean (f e)) false))
 
 (defn- voice-of [m e]
-  (get (:voices m) (long (or (:sound-variant e) 0)) :classic))
+  (if-let [f (:voice m)]
+    (f e)
+    (get (:voices m) (long (or (:sound-variant e) 0)) :classic)))
 
 (defn- voiced [s voice]
   (if (= :classic voice) s (keyword (str (name s) "-" (name voice)))))
@@ -289,7 +308,9 @@
              [(variant e) (some? (:baby-until e)) (burning? e)])
     :armadillo {:armadillo-state (shell/state-id e)
                 :baby? (some? (:baby-until e))
-                :burning? (burning? e)}))
+                :burning? (burning? e)}
+    :goat (assoc (goat/metadata e) :baby? (some? (:baby-until e))
+                 :burning? (burning? e))))
 
 (defn metadata
   "Returns what clients see of mob e besides its movement."
@@ -336,10 +357,12 @@
         voices (count (get-in types [type :voices] [:classic]))
         yaw (- (* 360.0 (random/of-key (conj ks :yaw))) 180.0)
         voice (long (* voices (random/of-key (conj ks :voice))))
-        look (look-fn ks place)]
-    (assoc (new-mob type pos look tick)
-      :yaw yaw :head-yaw yaw :sound-variant voice
-      :follow-bonus (follow-bonus ks))))
+        look (look-fn ks place)
+        spawned (get-in types [type :spawned] (fn [e _ _] e))]
+    (spawned (assoc (new-mob type pos look tick)
+               :yaw yaw :head-yaw yaw :sound-variant voice
+               :follow-bonus (follow-bonus ks))
+             ks tick)))
 
 (defn command-mob
   "Returns a mob summoned by a command at place. Its yaw and head

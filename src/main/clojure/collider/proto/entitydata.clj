@@ -50,6 +50,10 @@
    :rabbit {:parent :animal :fields [[:type :int 0]]}
    :armadillo
    {:parent :animal :fields [[:state :armadillo-state 0]]}
+   :goat
+   {:parent :animal
+    :fields [[:screaming :boolean false] [:left-horn :boolean true]
+             [:right-horn :boolean true]]}
    :chicken
    {:parent :animal
     :fields [[:variant :chicken-variant :temperate]

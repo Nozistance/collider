@@ -6,6 +6,7 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.vec :as v]
@@ -80,6 +81,9 @@
 (def ^:private ^:table immune
   (delay (set (data/tag-values "entity_type" "fall_damage_immune"))))
 
+(defn- reduction ^long [e]
+  (long (get-in mobs/types [(:type e) :fall-reduction] 0)))
+
 (defn- damage-of ^long [e ^double d ^double m]
   (if (contains? @immune (:type e))
     0
@@ -87,7 +91,8 @@
           k (when (a (attribute/base-values e))
               (attribute/value e (:effects e) a))
           scaled (* (power e d) (double (float m)))]
-      (long (Math/floor (* scaled (double (or k 1.0))))))))
+      (- (long (Math/floor (* scaled (double (or k 1.0)))))
+         (reduction e)))))
 
 (defn- sound [e kind ^double vol ^double pitch]
   (out/all (out/sound kind (:pos e) vol pitch :neutral)))

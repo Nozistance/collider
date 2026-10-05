@@ -12,6 +12,7 @@
             [collider.game.orb :as orb]
             [collider.game.out :as out]
             [collider.game.level :as level]
+            [collider.game.player :as player]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
@@ -190,10 +191,12 @@
          (< (long (:love (:task e) 0)) mate-ticks))))
 
 (defn- newborn [spec world t eid e o]
-  (let [look ((:child-look spec) world t eid e o)]
-    (assoc (mobs/new-mob (:type e) (:pos e) look t)
-           :baby-until (+ (long t) baby-ticks)
-           :arrived [(* 2 (long t)) (* 2 (long eid))])))
+  (let [look ((:child-look spec) world t eid e o)
+        born (get-in mobs/types [(:type e) :born] (fn [k & _] k))]
+    (born (assoc (mobs/new-mob (:type e) (:pos e) look t)
+                 :baby-until (+ (long t) baby-ticks)
+                 :arrived [(* 2 (long t)) (* 2 (long eid))])
+          t eid e o)))
 
 (defn- breeding-orb
   "Returns the orb of 1 to 7 points that breeding drops at mob e."
@@ -585,14 +588,31 @@
   [[:merge-entity eid {:love-until (+ (long t) love-ticks)}]
    (out/all (out/status eid :love))])
 
+(defn- eat-pitch ^double [t eid e]
+  (let [r #(random/of-key t eid [:eat %])
+        base (if (mobs/baby? e) 1.5 1.0)]
+    (+ base (* 0.2 (- (double (r 1)) (double (r 2)))))))
+
+(defn- food-left? [p hand]
+  (or (player/infinite-materials? p)
+      (< 1 (long (:count (player/hand-stack p hand) 0)))))
+
+(defn- eat-pitches
+  "Returns the pitch of each eating sound of mob e fed from hand of
+  player p. A breed with eat sounds eats again at a wide pitch while
+  the hand still holds food."
+  [t eid e p hand]
+  (if-let [n (:eat-sounds (mobs/types (:type e)))]
+    (map #(random/pitch [t eid :eat %])
+         (range (if (food-left? p hand) n 1)))
+    [(eat-pitch t eid e)]))
+
 (defn- eaten
-  "Returns the eating sound of mob e for the breeds that eat aloud."
-  [t eid e]
+  "Returns the eating sounds of mob e for the breeds that eat aloud."
+  [t eid e p hand]
   (when-let [snd (mobs/eating-sound e)]
-    (let [r #(random/of-key t eid [:eat %])
-          base (if (mobs/baby? e) 1.5 1.0)
-          pitch (+ base (* 0.2 (- (double (r 1)) (double (r 2)))))]
-      [(out/all (out/sound snd (:pos e) 1.0 pitch))])))
+    (for [pitch (eat-pitches t eid e p hand)]
+      (out/all (out/sound snd (:pos e) 1.0 pitch)))))
 
 (def ^:private ^:const lock-cooldown 40)
 
@@ -639,7 +659,7 @@
   [{:keys [world t peid p eid e hand item]}]
   (when (contains? (mobs/food (:type e)) item)
     (let [used (inventory/use-item-deltas world peid p hand)
-          ate (eaten t eid e)]
+          ate (eaten t eid e p hand)]
       (cond
         (feedable? e t)
         {:result :success-server

@@ -5,6 +5,7 @@
             [collider.game.mob.armadillo-ai :as armadillo-ai]
             [collider.game.mob.chicken :as chicken]
             [collider.game.mob.cow :as cow]
+            [collider.game.mob.goat-ai :as goat-ai]
             [collider.game.mob.mooshroom :as mooshroom]
             [collider.game.mob.pig :as pig]
             [collider.game.mob.rabbit :as rabbit]
@@ -28,6 +29,10 @@
    :results [armadillo/brush-result armadillo/scared-result
              animal/feed-result]})
 
+(def ^:private goat-kind
+  {:brain goat-ai/breed :goals (animal/spec [])
+   :results [cow/milk-result animal/feed-result]})
+
 (def ^:private kinds
   {:sheep {:think sheep/brain :goals sheep/spec :bites? sheep/biting?
            :results [sheep/shear-result animal/feed-result]}
@@ -40,7 +45,8 @@
    :chicken {:think chicken/brain :goals chicken/spec
              :ai-step chicken/ai-step :results [animal/feed-result]}
    :rabbit rabbit-kind
-   :armadillo armadillo-kind})
+   :armadillo armadillo-kind
+   :goat goat-kind})
 
 (defn of
   "Returns the parts of the turn of a mob of type, or nil for a type

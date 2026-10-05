@@ -10,7 +10,7 @@
 
 (def ^:private kinds
   (into #{:player :sheep :cow :mooshroom :pig :chicken :rabbit
-          :armadillo :item :experience-orb :tnt :falling-block
+          :armadillo :goat :item :experience-orb :tnt :falling-block
           :area-effect-cloud
           :painting :item-frame :glow-item-frame}
         entity/thrown-types))
@@ -135,9 +135,19 @@
     (contains? meta :armadillo-state)
     (assoc :state (:armadillo-state meta))))
 
+(def ^:private goat-keys
+  {:screaming? :screaming :left-horn? :left-horn
+   :right-horn? :right-horn})
+
+(defn- goat-fields [meta]
+  (into (animal-fields meta)
+        (keep (fn [[k f]] (when (contains? meta k) [f (meta k)])))
+        goat-keys))
+
 (def ^:private animal-own
   {:sheep sheep-fields :mooshroom variant-fields
-   :rabbit variant-fields :armadillo armadillo-fields})
+   :rabbit variant-fields :armadillo armadillo-fields
+   :goat goat-fields})
 
 (defn- falling-fields [meta]
   (cond-> {}
@@ -173,7 +183,7 @@
     :player (merge (player-fields meta) (living-fields meta))
     (:cow :pig :chicken)
     (merge (coat-fields kind meta) (living-fields meta))
-    (:sheep :mooshroom :rabbit :armadillo)
+    (:sheep :mooshroom :rabbit :armadillo :goat)
     (merge ((animal-own kind) meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
     :tnt (tnt-fields meta)

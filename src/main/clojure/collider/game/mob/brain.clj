@@ -374,6 +374,8 @@
    :is-in-water ["is_in_water" true]
    :is-panicking ["is_panicking" true]
    :is-tempted ["is_tempted" true]
+   :long-jump-cooldown-ticks ["long_jump_cooling_down" true]
+   :long-jump-mid-jump ["long_jump_mid_jump" false]
    :look-target ["look_target" false]
    :nearest-living-entities ["mobs" false]
    :nearest-players ["nearest_players" false]
@@ -385,6 +387,8 @@
    :nearest-visible-living-entities ["visible_mobs" false]
    :nearest-visible-player ["nearest_visible_player" false]
    :path ["path" false]
+   :ram-cooldown-ticks ["ram_cooldown_ticks" true]
+   :ram-target ["ram_target" false]
    :temptation-cooldown-ticks ["temptation_cooldown_ticks" true]
    :tempting-player ["tempting_player" false]
    :walk-target ["walk_target" false]})

@@ -21,13 +21,14 @@
 
 (def ^:private milk {:item :milk-bucket :count 1})
 
-(defn- milked [world peid p hand]
-  (cons (out/except peid (out/sound :cow/milk (:pos p) 1.0 1.0))
+(defn- milked [world peid p hand e]
+  (cons (out/except peid
+                    (out/sound (mobs/sound-of e :milk) (:pos p) 1.0 1.0))
         (inventory/filled-result-deltas world peid milk false hand)))
 
 (defn milk-result
-  "Returns what a bucket does to a cow.
-  A grown cow fills it with milk. A calf gives none."
+  "Returns what a bucket does to a cow or a goat.
+  A grown one fills it with milk. A young one gives none."
   [{:keys [world peid p hand e item]}]
   (when (and (= :bucket item) (not (mobs/baby? e)))
-    {:result :success :deltas (milked world peid p hand)}))
+    {:result :success :deltas (milked world peid p hand e)}))
