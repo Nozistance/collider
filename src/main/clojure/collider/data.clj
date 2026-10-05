@@ -223,6 +223,9 @@
    :goat/eat                      [:entity.goat.eat 6]
    :goat/milk                     [:entity.goat.milk 7]
    :goat/long-jump                [:entity.goat.long-jump 6]
+   :goat/prepare-ram              [:entity.goat.prepare-ram 6]
+   :goat/ram-impact               [:entity.goat.ram-impact 6]
+   :goat/horn-break               [:entity.goat.horn-break 6]
    :goat-screaming/say            [:entity.goat.screaming.ambient 6]
    :goat-screaming/hurt           [:entity.goat.screaming.hurt 6]
    :goat-screaming/death          [:entity.goat.screaming.death 6]
@@ -230,6 +233,10 @@
    :goat-screaming/milk           [:entity.goat.screaming.milk 7]
    :goat-screaming/long-jump
    [:entity.goat.screaming.long-jump 6]
+   :goat-screaming/prepare-ram
+   [:entity.goat.screaming.prepare-ram 6]
+   :goat-screaming/ram-impact
+   [:entity.goat.screaming.ram-impact 6]
    :chicken/say                   [:entity.chicken.ambient 6]
    :chicken/step                  [:entity.chicken.step 6]
    :chicken/hurt                  [:entity.chicken.hurt 6]

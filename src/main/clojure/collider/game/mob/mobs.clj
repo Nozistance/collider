@@ -158,7 +158,7 @@
                :spawns-on   "armadillo_spawnable_on"}
    :goat      {:sounds      :goat
                :voice       goat/voice
-               :shared      #{:step}
+               :shared      #{:step :horn-break}
                :head-y-rot  (constantly 15.0)
                :eats-aloud? true
                :eat-sounds  2

@@ -256,7 +256,10 @@
 
 (def ^:private header
   #{:requires :erase-on-stop :update :memories :default :sense
-    :sensors})
+    :sensors :activities})
+
+(defn- activities [spec]
+  (or (:activities spec) (remove header (keys spec))))
 
 (defn- pairs [xs]
   (map-indexed (fn [k x] (if (map? x) [k x] x)) xs))
@@ -272,10 +275,11 @@
 (defn order
   "Returns [prio activity behaviour] for each behaviour of spec in
   the order a brain visits them. Lower priorities come first. Within
-  one the activities go by the hash of their names and the place in
-  spec, and the behaviours of an activity by their place."
+  one the activities go by the hash of their names and their place in
+  :activities of spec or else in spec, and the behaviours of an
+  activity by their place."
   [spec]
-  (let [acts (remove header (keys spec))
+  (let [acts (activities spec)
         es (for [a acts [p b] (pairs (spec a))] [p a b])]
     (mapcat (comp hash-ordered val)
             (sort-by key (group-by first es)))))
@@ -307,7 +311,7 @@
     (when (seq fs) (fn [e t] (boolean (some #(% e t) fs))))))
 
 (defn- info [spec es known]
-  (let [acts (remove header (keys spec))]
+  (let [acts (activities spec)]
     {:known known :update (:update spec) :sensors (:sensors spec)
      :tells? (tells-of es)
      :default (:default spec :idle) :erase (:erase-on-stop spec)
