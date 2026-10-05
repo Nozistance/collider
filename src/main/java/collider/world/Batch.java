@@ -10,6 +10,7 @@ import java.util.Arrays;
 import java.util.Objects;
 
 /// The block edits of one section, applied at once in order.
+/// In Java because it is a mutable structure on primitive arrays.
 public final class Batch {
 
     private int[] idx = new int[8];

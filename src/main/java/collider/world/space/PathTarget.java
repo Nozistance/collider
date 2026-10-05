@@ -2,6 +2,7 @@ package collider.world.space;
 
 /// A goal cell of one path search, with the node that came closest
 /// to it so far.
+/// In Java because its closest node changes in place.
 public final class PathTarget {
 
     public final long x;

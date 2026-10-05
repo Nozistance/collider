@@ -6,6 +6,8 @@ import collider.world.Collision;
 import collider.world.Scratch;
 
 /// The numeric core of the ground path search of a mob.
+/// In Java because it keeps the mutable state of one search in
+/// primitive fields and arrays.
 public final class Path {
 
     private static final double FUDGING = 1.5;

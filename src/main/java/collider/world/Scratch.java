@@ -3,6 +3,7 @@ package collider.world;
 import java.util.Arrays;
 
 /// Values by long key for one pass, never kept or shared.
+/// In Java because it is a mutable structure on primitive arrays.
 public final class Scratch<V> {
 
     private long[] keys;

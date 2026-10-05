@@ -9,6 +9,8 @@ import java.util.Arrays;
 /// `shapes` holds the boxes of each other state, six doubles each,
 /// in blocks. `bottom` and `flags` are the body as `Collision.shape`
 /// takes it.
+/// In Java because it keeps the float arithmetic of the game and its
+/// steps take more than four primitives.
 public final class Phys {
 
     /// The mark of a fire cell in the table of `burns`.

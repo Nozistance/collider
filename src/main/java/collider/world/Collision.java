@@ -3,6 +3,8 @@ package collider.world;
 /// The collision boxes of a block state as a body meets them.
 /// Scaffolding and powder snow depend on the body, bamboo and the
 /// speleothems on the position of the block.
+/// In Java because it keeps the float arithmetic of the game, and joins
+/// and meets in Clojure lost the bench.
 public final class Collision {
 
     /// The box of a full cube.

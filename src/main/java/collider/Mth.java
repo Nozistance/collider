@@ -1,6 +1,7 @@
 package collider;
 
 /// The angle arithmetic of the game, rounded as the game rounds it.
+/// In Java because it keeps the float arithmetic of the game.
 public final class Mth {
 
     private static final double FRAC_BIAS = Double.longBitsToDouble(4805340802404319232L);

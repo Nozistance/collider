@@ -33,6 +33,7 @@ import java.util.Map;
 /// T, so nodes tagged T are never written again and frozen indexes
 /// are immutable values. Inside a window only the index returned last
 /// is valid to read, as with a transient.
+/// In Java because it writes its nodes in place inside an edit window.
 public final class ChunkIndex extends APersistentMap
         implements IObj, IKVReduce, IReduceInit, IEditableCollection {
 

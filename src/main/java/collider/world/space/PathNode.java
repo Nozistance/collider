@@ -2,6 +2,7 @@ package collider.world.space;
 
 /// A cell of one path search with its scores and its place in the
 /// open set.
+/// In Java because its scores and place in the heap change in place.
 public final class PathNode {
 
     public final long x;

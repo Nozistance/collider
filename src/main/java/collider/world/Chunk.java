@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.util.Objects;
 
 /// A chunk column of `COUNT` sections, some of which may be absent.
+/// In Java because it changes its sections in place inside an edit
+/// window.
 public final class Chunk {
 
     public static final int COUNT = 24;

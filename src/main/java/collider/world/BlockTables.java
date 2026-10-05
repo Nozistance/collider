@@ -1,6 +1,7 @@
 package collider.world;
 
 /// The tables of the block states, each indexed by state id.
+/// In Java because the Java classes read the tables from its fields.
 ///
 /// @param types The block type of each state, or null.
 /// @param names The block of each state.

@@ -4,6 +4,7 @@ import clojure.lang.Atom;
 
 /// The sections that an explosion may reach, with the chunk columns
 /// they come from.
+/// In Java because Rays and Exposure, Java classes, read it.
 ///
 /// @param grid The sections by grid x, z and y, null where a column
 ///     or a section is absent.

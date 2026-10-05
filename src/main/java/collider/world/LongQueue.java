@@ -7,6 +7,7 @@ import java.util.ArrayDeque;
 /// limit, and a block taken to its end holds the next ones added, so
 /// the queue never copies and holds about as much as it has waiting at
 /// most.
+/// In Java because it is a mutable structure on primitive arrays.
 public final class LongQueue {
 
     private static final int SIZE = 1024;

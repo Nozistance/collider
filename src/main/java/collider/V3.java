@@ -14,6 +14,8 @@ import java.util.NoSuchElementException;
 
 /// A point or motion of three doubles that is also a
 /// Clojure sequence.
+/// In Java because a value of three primitive doubles that is also a
+/// Clojure sequence needs a class of its own.
 public record V3(double x, double y, double z)
         implements Indexed,
                 Sequential,
