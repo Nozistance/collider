@@ -6,7 +6,6 @@ import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentHashMap;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
-import collider.Cell;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -50,7 +49,7 @@ public final class Batch {
             int z = RT.intCast(RT.nth(p, 2));
             Object given = RT.nth(c, 1);
             long st = RT.intCast(given);
-            long k = Cell.pack(x, y, z);
+            long k = Scratch.cell(x, y, z);
             Long seen = now.get(k);
             long old = seen != null ? seen : Chunk.blockAt(chunks, x, y, z);
             if (old == st || y < minY || y > maxY) continue;

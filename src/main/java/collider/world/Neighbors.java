@@ -8,7 +8,6 @@ import clojure.lang.LazilyPersistentVector;
 import clojure.lang.PersistentVector;
 import clojure.lang.RT;
 import clojure.lang.Util;
-import collider.Cell;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -137,7 +136,7 @@ public final class Neighbors {
     }
 
     private static long packed(Object p) {
-        return Cell.pack(
+        return Scratch.cell(
                 RT.longCast(RT.nth(p, 0)),
                 RT.longCast(RT.nth(p, 1)),
                 RT.longCast(RT.nth(p, 2))

@@ -19,6 +19,12 @@ public final class Scratch<V> {
         vals = new Object[c];
     }
 
+    /// Returns the key of the cell `x`, `y`, `z`, packed as the game
+    /// packs a block position.
+    public static long cell(long x, long y, long z) {
+        return (x & 0x3FFFFFFL) << 38 | (z & 0x3FFFFFFL) << 12 | (y & 0xFFFL);
+    }
+
     private static int mix(long k, int mask) {
         long h = k * 0x9E3779B97F4A7C15L;
         return Long.hashCode(h) & mask;

@@ -1,6 +1,5 @@
 package collider.world.space;
 
-import collider.Cell;
 import collider.world.Chunk;
 import collider.world.ChunkIndex;
 import collider.world.Collision;
@@ -216,7 +215,7 @@ public final class Path {
     /// Returns the path type of the cell `x`, `y`, `z` for the mob of
     /// search `p`. One search types each cell once.
     public static int typeOf(Path p, long x, long y, long z) {
-        long k = Cell.pack(x, y, z);
+        long k = Scratch.cell(x, y, z);
         Integer t = p.typed.get(k);
         if (t != null) return t;
         int v = p.typedForMob(x, y, z);
