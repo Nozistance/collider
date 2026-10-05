@@ -41,10 +41,6 @@
 
 (defn- scaled [p ^double k] (mapv #(* (double %) k) p))
 
-(defn- unit [p]
-  (let [d (Math/sqrt (reduce + (map * p p)))]
-    (if (< d tiny) [0.0 0.0 0.0] (mapv #(/ (double %) d) p))))
-
 (defn- clear-at? [chunks e [half h] at]
   (let [[x y z] at half (double half)]
     (phys/box-free?
@@ -57,8 +53,8 @@
   [chunks e b p q]
   (let [d (minus q p)
         m (Math/min (* 2.0 (double (b 0))) (double (b 1)))
-        n (ceil (/ (Math/sqrt (reduce + (map * d d))) m))
-        u (scaled (unit d) (* m spread))]
+        n (ceil (/ (v/length d) m))
+        u (scaled (v/normalized d tiny) (* m spread))]
     (loop [i 0 at p]
       (or (>= i n)
           (let [at (if (== i (dec n)) q (plus at u))]
@@ -90,10 +86,11 @@
 
 (defn- aim
   "Returns the angle, the reach across squared and the rise from p
-  to the edge of the block centre to that faces p."
+  to the point half a block short of to."
   [p to]
   (let [d [(- (to 0) (p 0)) 0.0 (- (to 2) (p 2))]
-        [dx y dz] (minus (minus to (scaled (unit d) 0.5)) p)]
+        edge (minus to (scaled (v/normalized d tiny) 0.5))
+        [dx y dz] (minus edge p)]
     [(Math/atan2 dz dx) (+ (+ (* dx dx) 0.0) (* dz dz)) y]))
 
 (defn- speed-squared ^double [rad ^double r2 ^double y]
@@ -169,7 +166,7 @@
   (out/all (out/entity-sound (sound e) eid (:pos e) volume 1.0 nil)))
 
 (defn- leapt [eid e jump sound]
-  (let [n (Math/sqrt (reduce + (map * jump jump)))
+  (let [n (v/length jump)
         k (/ (+ n (mobs/jump-boost-power e)) n)
         [e ds] (posed eid e (:pose e) true)
         e (assoc e :yaw (control/body-yaw e)
