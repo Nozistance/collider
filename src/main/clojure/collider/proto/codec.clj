@@ -14,7 +14,7 @@
 
 (def game-version data/game)
 
-(defn write-varint [^Buf buf v]
+(defn write-varint [^Buf buf ^long v]
   (loop [v (bit-and (long v) 0xFFFFFFFF)]
     (if (zero? (bit-and v (bit-not 0x7F)))
       (buf/write-byte! buf (unchecked-int v))

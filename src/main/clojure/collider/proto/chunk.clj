@@ -8,7 +8,7 @@
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
             [collider.world.env.biome :as biome])
-  (:import (collider.proto SectionWriter)))
+  (:import (collider.world Section)))
 
 (set! *warn-on-reflection* true)
 
@@ -59,8 +59,23 @@
 
 (def ^:private ^:table fluid-arr (delay (state-table fluid?)))
 
-(defn- write-section! [buf s ^long biome]
-  (SectionWriter/write buf s @fluid-arr biome))
+(def ^:private dark (byte-array 2048))
+
+(defn- write-palette! [buf ^Section s]
+  (let [n (.paletteSize s)]
+    (when-not (zero? n)
+      (when-not (zero? (.bits s)) (c/write-varint buf n))
+      (dotimes [k n] (c/write-varint buf (.paletteId s k))))))
+
+(defn- write-section! [buf ^Section s ^long biome]
+  (let [t (.tally s ^booleans @fluid-arr)]
+    (buf/write-short! buf (unsigned-bit-shift-right t 16))
+    (buf/write-short! buf (bit-and t 0xFFFF))
+    (buf/write-byte! buf (.bits s))
+    (write-palette! buf s)
+    (dotimes [c (.wordCount s)] (buf/write-long! buf (.word s c)))
+    (buf/write-byte! buf 0)
+    (c/write-varint buf biome)))
 
 (defn- write-biomes! [buf ^long biome]
   (buf/write-byte! buf 0)
@@ -198,10 +213,11 @@
 (defn- write-sky-layer! [buf chunk ^long si]
   (let [s (or (chunk/chunk-section chunk si)
                 (chunk/new-section chunk si))]
-    (SectionWriter/writeSkyLight buf s)))
+    (buf/write-bytes! buf (or (.skyLightBytes ^Section s) dark))))
 
 (defn- write-block-layer! [buf chunk ^long si]
-  (SectionWriter/writeBlockLight buf (chunk/chunk-section chunk si)))
+  (let [^Section s (chunk/chunk-section chunk si)]
+    (buf/write-bytes! buf (or (.blockLightBytes s) dark))))
 
 (defn- write-light-layers! [buf chunk lo m write-layer!]
   (let [lo (long lo) m (long m)]
