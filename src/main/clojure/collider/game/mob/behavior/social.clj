@@ -29,11 +29,11 @@
 
 (defn- glanced [ok? interval w eid e t i]
   (let [[oid e] (sensor/closest w eid e t ok?)
-        r (when oid (ticked-down e eid t i interval))]
+        r (when oid (ticked-down e eid t i interval))
+        tr (c/at-entity oid true)]
     (cond (nil? oid) (declined e)
           (vector? r) r
-          :else (b/remember r :look-target (c/at-entity oid true)
-                            forever))))
+          :else (b/remember r :look-target tr forever))))
 
 (defn- glance [kind max-dist interval]
   (let [d (num/f32 max-dist) r2 (num/fmul d d)]
