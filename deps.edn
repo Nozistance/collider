@@ -10,4 +10,8 @@
            :run   {:jvm-opts  ["-XX:+UseParallelGC"
                                "-XX:+UseCompactObjectHeaders" "-Xmx1g"
                                "--sun-misc-unsafe-memory-access=allow"]
-                   :main-opts ["-m" "collider.cli"]}}}
+                   :main-opts ["-m" "collider.cli"]}
+           :mem   {:jvm-opts ["-XX:NativeMemoryTracking=summary"
+                              "-XX:+HeapDumpOnOutOfMemoryError"
+                              "-XX:HeapDumpPath=logs"
+                              "-Xlog:gc*:file=logs/gc.log:time,uptime:filecount=3,filesize=10m"]}}}
