@@ -27,18 +27,21 @@
       (let [e (b/with-slot e i {:ticks (dec n)})]
         (if (== n 1) e (declined e))))))
 
+(defn- glanced [ok? interval w eid e t i]
+  (let [[oid e] (sensor/closest w eid e t ok?)
+        r (when oid (ticked-down e eid t i interval))]
+    (cond (nil? oid) (declined e)
+          (vector? r) r
+          :else (b/remember r :look-target (c/at-entity oid true)
+                            forever))))
+
 (defn- glance [kind max-dist interval]
   (let [d (num/f32 max-dist) r2 (num/fmul d d)]
     (fn [w eid e t i]
       (let [ok? (fn [_ o]
                   (and (= kind (:type o))
-                       (<= (v/dist-sq (:pos o) (:pos e)) r2)))
-            [oid e] (sensor/closest w eid e t ok?)
-            r (when oid (ticked-down e eid t i interval))]
-        (cond (nil? oid) (declined e)
-              (vector? r) r
-              :else (b/remember r :look-target (c/at-entity oid true)
-                                forever))))))
+                       (<= (v/dist-sq (:pos o) (:pos e)) r2)))]
+        (glanced ok? interval w eid e t i)))))
 
 (defn set-entity-look-target-sometimes [kind max-dist interval]
   {:id :set-entity-look-target-sometimes
