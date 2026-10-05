@@ -8,19 +8,41 @@
             [collider.world.feature.foliage :as foliage]
             [collider.world.feature.level :as lv]
             [collider.world.feature.trunk :as trunk])
-  (:import (collider.world.feature Cells)))
+  (:import (clojure.lang IDeref)
+           (java.util HashSet)))
 
 (set! *warn-on-reflection* true)
 
-(defn- cells ^Cells [ps] (Cells/of ps))
+(defn- cell-hash ^long [^long x ^long y ^long z]
+  (let [yz (unchecked-add y (unchecked-multiply z 31))]
+    (unchecked-int (unchecked-add (unchecked-multiply yz 31) x))))
 
-(defn- order [^Cells c] (Cells/.order c))
+(defn- cell [[x y z]]
+  (let [v [(long x) (long y) (long z)]
+        h (int (cell-hash x y z))]
+    (reify
+      IDeref
+      (deref [_] v)
+      Object
+      (hashCode [_] h)
+      (equals [this o]
+        (and (identical? (class this) (class o)) (= v (deref o)))))))
 
-(defn- add! [^Cells c p] (Cells/.add c p))
+(defn- cells ^HashSet [ps]
+  (let [c (HashSet.)]
+    (doseq [p ps] (.add c (cell p)))
+    c))
 
-(defn- poll! [^Cells c] (Cells/.poll c))
+(defn- order [^HashSet c] (mapv deref c))
 
-(defn- none? [^Cells c] (Cells/.isEmpty c))
+(defn- add! [^HashSet c p] (.add c (cell p)))
+
+(defn- poll! [^HashSet c]
+  (let [it (.iterator c) p (.next it)]
+    (.remove it)
+    @p))
+
+(defn- none? [^HashSet c] (.isEmpty c))
 
 (defn- size-at ^long [ms ^long h ^long y]
   (case (:type ms)
