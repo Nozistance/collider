@@ -13,13 +13,10 @@ import java.util.Arrays;
 /// liquid of amount n has the level 8 minus n.
 public final class Flow {
 
-    /// The fluid code of a state with no fluid.
     public static final int NONE = 0;
 
-    /// The fluid code of water.
     public static final int WATER = 1;
 
-    /// The fluid code of lava.
     public static final int LAVA = 2;
 
     /// The wall kind of a full cube.

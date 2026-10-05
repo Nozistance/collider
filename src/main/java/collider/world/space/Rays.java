@@ -10,7 +10,6 @@ public final class Rays {
     /// The width of the cube of cells that the rays of a blast mark.
     public static final int W = 21;
 
-    /// The number of rays of a blast.
     public static final int COUNT = 1352;
 
     private static final double STEP = 0.3F;
@@ -131,8 +130,8 @@ public final class Rays {
         }
     }
 
-    /// Returns a number at least 0 and below 1 for `a`, `b` and `c`, as
-    /// `collider.random/of-longs` does.
+    /// Returns a number from 0 up to 1, 1 left out, that `a`, `b` and
+    /// `c` alone decide.
     private static double unit(long a, long b, long c) {
         long h = mix(mix(mix(a) + b) + c);
         return (double) (h & 0xFFFFFF) / 1.6777216E7;

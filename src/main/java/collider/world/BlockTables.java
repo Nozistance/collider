@@ -8,23 +8,18 @@ package collider.world;
 /// @param needsSupport True for a state that breaks without support.
 /// @param attached True for a state that hangs on a neighbour.
 /// @param replaceable True for a state that a placement replaces.
-/// @param liquid True for a liquid.
-/// @param waterlogged True for a state that holds water.
 /// @param falls True for a state that falls without a block under it.
 /// @param canBeReplaced True for a state in the replaceable tag.
 /// @param solid True for a state that stops a body.
 /// @param legacySolid True for a state solid by the legacy rule.
 /// @param fullCube True for a state whose collision is a full cube.
-/// @param blocksMotion True for a state that blocks motion.
 /// @param useShape True for a state that occludes light by shape.
-/// @param canOcclude True for a state that can occlude neighbours.
 /// @param dampening The light that each state takes, 0 to 15.
 /// @param emission The light that each state gives, 0 to 15.
 /// @param touch The faces, one bit each, that the shape touches.
 /// @param faces The six occlusion faces of each state, as four
 ///        longs of 16 by 16 bits, or null.
 /// @param resist The blast resistance of each state.
-/// @param flags The flag bits of each state.
 /// @param sturdy The faces, one bit each, that hold things.
 /// @param sturdyRigid The faces that hold things rigidly.
 /// @param sturdyCenter The faces that hold things at the center.

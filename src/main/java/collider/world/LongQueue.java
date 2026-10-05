@@ -3,10 +3,7 @@ package collider.world;
 import java.util.ArrayDeque;
 
 /// Longs taken in the order they were added, for one pass, never kept
-/// or shared. The longs live in blocks that double in size up to a
-/// limit, and a block taken to its end holds the next ones added, so
-/// the queue never copies and holds about as much as it has waiting at
-/// most.
+/// or shared.
 public final class LongQueue {
 
     private static final int SIZE = 1024;

@@ -19,10 +19,8 @@ public final class Bodies {
     private int n;
     private ArrayList<Bodies> rest;
 
-    /// Adds to `b` the body `eid` of map entry `entry`, of half width
-    /// `half` and height `height` at `x`, `y`, `z`, come into its
-    /// section at tick `came` and rank `rank`, and whether it ticks,
-    /// and returns `b`.
+    /// Adds body `eid` to `b` and returns `b`. The tick `came` and the
+    /// `rank` place it among the bodies of its section.
     public static Bodies add(
             Bodies b,
             Object entry,

@@ -33,10 +33,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
     private double widest, slack;
     private double[] px, pz, ph;
 
-    /// Returns the grid of bodies `eids`, ascending, each with half
-    /// width, height, position, the tick and rank in it at which it
-    /// came into its section, and whether it steps this tick, at the
-    /// same index.
+    /// Returns the grid of bodies `eids`, ascending. Every other array
+    /// holds the body of `eids` at the same index.
     public PushGrid(
             long[] eids,
             double[] halfs,
@@ -93,9 +91,8 @@ public final class PushGrid extends AbstractMap<Long, PushCell> {
         next[p] = next[s];
     }
 
-    /// Moves the body `eid` of grid `g` to `x`, `y`, `z` with half width `half`
-    /// and height `height`, come into its section at tick `c` and rank
-    /// `r`, and returns this grid.
+    /// Moves body `eid` of `g` and returns `g`. The tick `c` and the
+    /// rank `r` place it among the bodies of its section.
     public static PushGrid moved(
             PushGrid g,
             long eid,

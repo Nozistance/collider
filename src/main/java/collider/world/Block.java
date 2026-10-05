@@ -103,7 +103,6 @@ public final class Block {
         return st >= 0 && st < a.length ? a[(int) st] : 3.0;
     }
 
-    /// Returns true when the flags of `st` have a bit of `mask`.
     public static boolean flag(BlockTables t, long st, long mask) {
         return bit(t.flags(), st, mask);
     }

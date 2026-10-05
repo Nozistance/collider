@@ -5,7 +5,6 @@ package collider.world;
 /// speleothems on the position of the block.
 public final class Collision {
 
-    /// The box of a full cube.
     public static final double[] CUBE = {0, 0, 0, 1, 1, 1};
 
     private static final double[] UNSTABLE_BOTTOM = {0, 0, 0, 1, 0.125, 1};
@@ -17,13 +16,10 @@ public final class Collision {
     /// The kind of a block state whose shape is its boxes.
     public static final byte PLAIN = 0;
 
-    /// The kind of scaffolding that stands.
     public static final byte SCAFFOLDING = 1;
 
-    /// The kind of scaffolding that hangs.
     public static final byte SCAFFOLDING_HANGING = 2;
 
-    /// The kind of powder snow.
     public static final byte POWDER_SNOW = 3;
 
     /// The kind of a state offset by up to a quarter of a block.
@@ -32,7 +28,6 @@ public final class Collision {
     /// The kind of a state offset by up to an eighth of a block.
     public static final byte OFFSET_EIGHTH = 5;
 
-    /// The flag of a body that descends.
     public static final int DESCENDING = 1;
 
     /// The flag of a body that falls more than 2.5 blocks.
@@ -41,7 +36,6 @@ public final class Collision {
     /// The flag of a body that walks on powder snow.
     public static final int WALKER = 4;
 
-    /// The flag of a falling block.
     public static final int FALLING_BLOCK = 8;
 
     /// Returns the boxes of `st` at the origin as an empty context

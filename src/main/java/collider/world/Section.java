@@ -247,7 +247,6 @@ public final class Section {
         return pal == null ? 0 : pal.length;
     }
 
-    /// Returns the state id at place `k` of the palette.
     public int paletteId(int k) {
         return pal[k];
     }
@@ -257,7 +256,6 @@ public final class Section {
         return data == null ? 0 : data.length;
     }
 
-    /// Returns the long at `c` of the packed palette indices.
     public long word(int c) {
         return data[c];
     }
