@@ -61,8 +61,9 @@
                 dx (range (- r) (inc r)) dz (range (- r) (inc r))]
             [dx dy dz])))
 
-(defn- fits? [chunks [_ y _ :as p] kind radius tag height]
-  (and (>= (long y) 1) (chunk/in-range? (+ (long y) (long height) 1))
+(defn- fits? [chunks lv [_ y _ :as p] kind radius tag height]
+  (and (> (long y) (chunk/level-min-y lv))
+       (chunk/in-level? lv (+ (long y) (long height) 1))
        (block/tagged? (chunk/at chunks (dir/down p)) tag)
        (room? chunks p kind (long radius) (long height))))
 
@@ -125,19 +126,21 @@
           (recur (next cells) seen acc)))
       acc)))
 
-(defn- grown [chunks p kind roll]
+(defn- grown [chunks lv p kind roll]
   (let [{:keys [cap radius tag]} (huge kind) radius (long radius)
         height (height-roll roll)]
-    (if (fits? chunks p kind radius tag height)
+    (if (fits? chunks lv p kind radius tag height)
       (changes chunks p (cells p kind cap radius height))
       [])))
 
 (defn meal
   "Returns the bone meal result for the mushroom st at p. The changes
-  are the blocks of a huge mushroom, or empty when none fits there."
-  [chunks [_ y _ :as p] st roll]
-  (let [kind (block/block-of st) {:keys [radius]} (huge kind)]
-    (when (and radius (chunk/in-range? (+ (long y) 4 (long radius))))
+  are the blocks of a huge mushroom, or empty when none fits there.
+  lv holds the height range :min-y and :max-y of the level."
+  [chunks lv [_ y _ :as p] st roll]
+  (let [kind (block/block-of st) {:keys [radius]} (huge kind)
+        top (+ (long y) 4 (long (or radius 0)))]
+    (when (and radius (chunk/in-level? lv top))
       {:changes (if (< (double (roll :success)) 0.4)
-                  (grown chunks p kind roll)
+                  (grown chunks lv p kind roll)
                   [])})))

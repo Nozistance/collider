@@ -19,7 +19,9 @@
             [collider.world.blocks.grow.underwater :as underwater]
             [collider.world.blocks.grow.vine :as vine]
             [collider.world.blocks.leaves :as leaves]
-            [collider.world.env.biome :as biome]))
+            [collider.world.chunk :as chunk]
+            [collider.world.env.biome :as biome]
+            [collider.world.env.dimension :as dimension]))
 
 (set! *warn-on-reflection* true)
 
@@ -94,7 +96,6 @@
     [[:tall-flower] crop/tall-flower-meal]
     [[:flower-bed] crop/petals-meal]
     [[:sweet-berry-bush] crop/berry-meal]
-    [[:mushroom] mushroom/meal]
     [[:rooted-dirt] sprout/roots-meal]
     [[:bonemealable-feature-placer] turf/placer-meal]
     [[:cocoa] crop/cocoa-meal]
@@ -118,13 +119,19 @@
     [[:mangrove-propagule] sapling/propagule-meal]
     [[:seagrass] underwater/seagrass-meal]]))
 
+(defn- bounds [dim]
+  (let [lo (long (:min-y (dimension/type-of dim) chunk/min-y))]
+    {:min-y lo
+     :max-y (+ lo (long (:height (dimension/type-of dim) 384)) -1)}))
+
 (defn bonemeal
   "Returns the block changes and drops of bone meal on st at p in
   level dim, or nil when it does nothing."
   [chunks p st roll dim]
   (let [st (long st) t (block/type-of st)]
-    (if (= :grass t)
-      (turf/turf-meal chunks p st roll (biome/at dim p))
+    (case t
+      :grass (turf/turf-meal chunks p st roll (biome/at dim p))
+      :mushroom (mushroom/meal chunks (bounds dim) p st roll)
       (when-let [f (meals t)]
         (f chunks p st roll)))))
 
