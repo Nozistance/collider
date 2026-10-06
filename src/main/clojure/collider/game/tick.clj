@@ -32,7 +32,7 @@
             [collider.game.systems.tracker :as tracker]
             [collider.game.systems.weather :as weather-system]
             [collider.log :as log]
-            [collider.par :as par]))
+            [collider.parallel :as par]))
 
 (set! *warn-on-reflection* true)
 

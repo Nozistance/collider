@@ -17,7 +17,7 @@
             [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.game.turn.overlay :as overlay]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]

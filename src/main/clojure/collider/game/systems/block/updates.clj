@@ -11,7 +11,7 @@
             [collider.game.schedule :as schedule]
             [collider.game.areas :as areas]
             [collider.game.level :as level]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]

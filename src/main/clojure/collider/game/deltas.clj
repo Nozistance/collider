@@ -5,7 +5,7 @@
             [collider.data.long-map :as lm]
             [collider.game.delta :as delta]
             [collider.game.deltas.record :refer [->Deltas]]
-            [collider.par :as par])
+            [collider.parallel :as par])
   (:import (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)

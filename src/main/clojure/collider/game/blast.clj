@@ -15,7 +15,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.num :as num]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]

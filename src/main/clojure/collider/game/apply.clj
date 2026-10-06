@@ -12,7 +12,7 @@
             [collider.game.player :as player]
             [collider.game.schema :as schema]
             [collider.log :as log]
-            [collider.par :as par])
+            [collider.parallel :as par])
   (:import (collider.game.deltas.record Deltas)))
 
 (set! *warn-on-reflection* true)

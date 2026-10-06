@@ -2,7 +2,7 @@
   "Explosions, the blocks they break, their drops and their
   reach into a body."
   (:require [collider.data :as data]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]

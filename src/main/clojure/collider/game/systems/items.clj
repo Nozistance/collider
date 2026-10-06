@@ -19,7 +19,7 @@
             [collider.world.phys :as phys]
             [collider.game.turn.overlay :as overlay]
             [collider.num :as num]
-            [collider.par :as par])
+            [collider.parallel :as par])
   (:import (collider.world Move)))
 
 (set! *warn-on-reflection* true)
@@ -477,6 +477,6 @@
   in its turn."
   [world]
   (let [items (areas/active-of-types world [:item])
-        steps (par/pmapcat #(vector (stepped-item world %)) items)]
+        steps (par/pmapv #(stepped-item world %) items)]
     (when (pos? (count items))
       (walked world items steps))))

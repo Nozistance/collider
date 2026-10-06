@@ -6,7 +6,7 @@
             [collider.game.entity.hurt :as hurt]
             [collider.game.mob.mobs :as mobs]
             [collider.num :as num]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]))
 

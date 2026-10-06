@@ -12,7 +12,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.mob.push :as push]
             [collider.game.turn.overlay :as overlay]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]

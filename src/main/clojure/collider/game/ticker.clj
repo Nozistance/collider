@@ -4,7 +4,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.tick :as tick]
             [collider.log :as log]
-            [collider.par :as par])
+            [collider.parallel :as par])
   (:import (collider.game.deltas.record Deltas)
            (java.util Arrays)
            (java.util.concurrent ConcurrentLinkedQueue)

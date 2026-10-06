@@ -9,7 +9,7 @@
             [collider.game.item :as item]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]

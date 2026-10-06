@@ -22,7 +22,7 @@
             [collider.game.turn.living :as living]
             [collider.game.turn.overlay :as overlay]
             [collider.game.turn.thrown :as thrown]
-            [collider.par :as par]
+            [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
