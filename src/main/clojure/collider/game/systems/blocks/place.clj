@@ -89,11 +89,10 @@
       (nil? pos') nil
       :else (double-slab-at world pos' item))))
 
-(defn- water-plant-ok? [world [_ y _ :as pos'] ^long state]
+(defn- water-plant-ok? [world pos' ^long state]
   (let [cur (changes/block-at world pos')]
     (and (block/water? cur)
          (contains? #{0 8} (block/liquid-level cur))
-         (pos? (long y))
          (support/supported? (:chunks world) pos' state))))
 
 (defn- moss-side? [world pos dir]
