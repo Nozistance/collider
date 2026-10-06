@@ -39,12 +39,9 @@
           (update :clocks clock/advanced)))
 
 (defn- made-bounds [dim]
-  (let [t (dimension/type-of dim)
-        lo (long (:min-y t chunk/min-y))]
-    {:min-y lo
-     :max-y (+ lo (long (:height t 384)) -1)
-     :sky? (:has-skylight t true)
-     :dim dim}))
+  (assoc (dimension/bounds dim)
+         :sky? (:has-skylight (dimension/type-of dim) true)
+         :dim dim))
 
 (def ^:private dim-bounds
   (into {} (map (fn [dim] [dim (delay (made-bounds dim))]))

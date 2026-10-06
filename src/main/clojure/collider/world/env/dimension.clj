@@ -1,6 +1,7 @@
 (ns collider.world.env.dimension
   "Dimension types with the shape, light and attributes of a level."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -65,3 +66,11 @@
 (defn type-of
   [dim]
   (get (types) dim))
+
+(defn bounds
+  "Returns the lowest and the highest y of dimension dim."
+  [dim]
+  (let [t (type-of dim)
+        lo (long (:min-y t chunk/min-y))]
+    {:min-y lo
+     :max-y (+ lo (long (:height t 384)) -1)}))

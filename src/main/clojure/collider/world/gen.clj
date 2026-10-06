@@ -22,7 +22,7 @@
 
 (defn- sky? [dim] (:has-skylight (dimension/type-of dim) true))
 
-(defn- floor-y ^long [dim] (long (:min-y (dimension/type-of dim) 0)))
+(defn- floor-y ^long [dim] (:min-y (dimension/bounds dim)))
 
 (defn- flat-section [dim]
   (let [bs (short-array 4096)
