@@ -234,8 +234,8 @@
        (< (Math/abs (- (v/z a) (v/z b))) player-reach)))
 
 (defn- shoved-by? [chunks p [_ e]]
-  (and (pushable? chunks e) (not (mobs/death-ends? e))
-       (near? (:pos p) (:pos e))))
+  (and (near? (:pos p) (:pos e)) (pushable? chunks e)
+       (not (mobs/death-ends? e))))
 
 (defn- taken [es [eid dx dz]]
   (let [vel (:vel (get es eid))
