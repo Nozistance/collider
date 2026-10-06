@@ -125,7 +125,8 @@
   (let [st (long st) t (block/type-of st)]
     (case t
       :grass (turf/turf-meal chunks p st roll (biome/at dim p))
-      :mushroom (mushroom/meal chunks (dimension/bounds dim) p st roll)
+      :mushroom
+      (mushroom/meal chunks (dimension/bounds dim) p st roll)
       (when-let [f (meals t)]
         (f chunks p st roll)))))
 
