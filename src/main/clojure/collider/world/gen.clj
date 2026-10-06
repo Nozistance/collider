@@ -22,6 +22,8 @@
 
 (defn- sky? [dim] (:has-skylight (dimension/type-of dim) true))
 
+(defn- floor-y ^long [dim] (long (:min-y (dimension/type-of dim) 0)))
+
 (defn- flat-section [dim]
   (let [bs (short-array 4096)
         states (mapv block/state (layers dim))]
@@ -37,7 +39,8 @@
 (defn- flat-of [dim]
   (chunk/chunk-of
    (cond-> (assoc (vec (repeat chunk/section-count nil))
-                  (chunk/section-index 0) (flat-section dim))
+                  (chunk/section-index (floor-y dim))
+                  (flat-section dim))
      (not (sky? dim))
      (assoc (dec chunk/section-count) skyless-cap))))
 

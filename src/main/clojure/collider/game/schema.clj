@@ -18,7 +18,7 @@
   1000000)
 
 (def world-spawn
-  [24 4 8])
+  [24 -60 8])
 
 (defn chunk-entity?
   "Returns true when entity e belongs to chunk id.
