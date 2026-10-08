@@ -133,6 +133,7 @@
 (defn chat
   {:wake {:events #{:chat :tab-complete :change-game-mode
                     :teleport-to-entity :rules-request :set-rules
-                    :config-loaded :config-failed :commit-synced}}}
+                    :config-loaded :config-failed :commit-synced
+                    :hooks-set}}}
   [world d]
   (deltas/of-vec (apply/fold-events world (:input d) one-deltas)))

@@ -38,6 +38,7 @@
     :config-loaded (config-loaded world m)
     :config-failed (reply/fail eid "commands.reload.failure")
     :commit-synced (commit-synced world ev)
+    :hooks-set (let [[_ k fs] ev] [[:set-hooks k fs]])
     nil))
 
 (defn event-deltas

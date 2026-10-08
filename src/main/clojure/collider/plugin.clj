@@ -45,6 +45,8 @@
      [:map [:schema vector?] [:apply ifn?]]]]
    [:event-filters {:optional true} [:vector ifn?]]
    [:delta-filters {:optional true} [:vector ifn?]]
+   [:packets-in {:optional true} [:vector ifn?]]
+   [:packets-out {:optional true} [:vector ifn?]]
    [:identity {:optional true}
     [:map [:identify ifn?] [:encrypt? {:optional true} boolean?]]]])
 
@@ -335,6 +337,7 @@
      :deltas (into {} (mapcat deltas-of) plugins)
      :event-filters (joined :event-filters)
      :delta-filters (joined :delta-filters)
+     :packets-in (joined :packets-in) :packets-out (joined :packets-out)
      :identity (identity-of plugins) :cli (cli-of plugins)
      :plugins (versions plugins)}))
 
@@ -361,7 +364,9 @@
    :commands [:config :plugin-commands]
    :deltas [:hooks :deltas]
    :event-filters [:hooks :event-filters]
-   :delta-filters [:hooks :delta-filters]})
+   :delta-filters [:hooks :delta-filters]
+   :packets-in [:hooks :packets-in]
+   :packets-out [:hooks :packets-out]})
 
 (defn with-adds
   "Returns world with the contributions adds of the plugins in it."

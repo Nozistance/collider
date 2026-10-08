@@ -219,6 +219,7 @@
    :spawning           {:default (lm/long-map) :scope :shared}
    :listed             {:default {} :scope :shared}
    :config             {:scope :shared}
+   :hooks              {:scope :shared}
    :plugins            {:store store-same :load identity
                         :schema [:maybe [:map-of :keyword :any]]
                         :scope :shared}})

@@ -1,6 +1,7 @@
 (ns collider.net.render
   "Packets for each player from the tick."
   (:require [collider.game.deltas :as deltas]
+            [collider.log :as log]
             [collider.net.render.audience :as audience]
             [collider.net.render.fx :as fx]
             [collider.net.render.join :as join]
@@ -123,5 +124,11 @@
   A player entering a level gets its chunks after all else."
   [world ^Deltas deltas]
   (let [sight (audience/sight-of world)
-        pairs (ordered world sight deltas)]
-    (if (teleports? deltas) (numbered sight pairs) pairs)))
+        pairs (ordered world sight deltas)
+        pairs (if (teleports? deltas) (numbered sight pairs) pairs)]
+    (doseq [f (get-in world [:hooks :packets-out])]
+      (try (f world pairs)
+           (catch Throwable t
+             (log/once! :packets-out log/warn "packet watcher failed:"
+                        (str t)))))
+    pairs))

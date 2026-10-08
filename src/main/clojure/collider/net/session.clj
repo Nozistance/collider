@@ -231,14 +231,22 @@
                  {:name nm
                   :server-hash (crypt/server-hash "" kp s)})))
 
-(defn- play-packet! [conn ^ConcurrentLinkedQueue queue m]
+(defn- watched! [io eid m ev]
+  (doseq [f (some-> (:world io) deref (get-in [:hooks :packets-in]))]
+    (try (f eid m ev)
+         (catch Throwable t
+           (log/once! :packets-in log/warn "packet watcher failed:" (str t))))))
+
+(defn- play-packet! [conn {:keys [^ConcurrentLinkedQueue queue] :as io} m]
   (when (= :play (server/conn-state conn))
     (when-let [eid (:eid (server/info conn))]
       (if (events/bad-move? m)
         (kick! conn bad-movement-reason)
-        (if-let [ev (events/packet->event eid m)]
-          (.offer queue ev)
-          (log-unhandled! (:packet m)))))))
+        (let [ev (events/packet->event eid m)]
+          (watched! io eid m ev)
+          (if ev
+            (.offer queue ev)
+            (log-unhandled! (:packet m))))))))
 
 (defn- disconnect-generic! [conn t]
   (log/warn "bad packet from" (:addr (server/info conn)) "-" (str t))
@@ -280,7 +288,7 @@
     [:configuration :select-known-packs] (finish-configuration! conn)
     [:configuration :finish-configuration]
     (do-login! conn io @settings)
-    (play-packet! conn queue m)))
+    (play-packet! conn io m)))
 
 (defn handle-packet
   "Acts on packet m from conn, disconnecting it on any error."

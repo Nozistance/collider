@@ -101,6 +101,9 @@
    :set-config
    {:scope :world :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :config m))}
+   :set-hooks
+   {:scope :world :schema [:cat :keyword vector?]
+    :apply (fn [w [_ k fs]] (assoc-in w [:hooks k] fs))}
    :set-world-spawn
    {:scope :world
     :schema [:cat :keyword Pos [:tuple number? number?]]
