@@ -203,6 +203,11 @@
       (-> (sections/moved w es ys)
           (assoc :entities es)))))
 
+(defn- arrived [lv lv']
+  (let [es (:entities lv')
+        es' (sections/arrivals (:entities lv) es (:tick lv))]
+    (if (identical? es es') lv' (assoc lv' :entities es'))))
+
 (defn- apply-level [lv ds]
   (let [^Deltas d (deltas-of ds)
         ws (deltas/world-of d)
@@ -212,7 +217,7 @@
         applied (if (seq inp) (applied-input lv1 inp) lv1)
         types (retyped-index types lv1 applied (input-eids inp))
         folded (folded-in applied (deltas/entities-of d))
-        quit (reduce player/quit folded removes)
+        quit (arrived lv (reduce player/quit folded removes))
         types (retyped-index types folded quit removes)]
     (indexed (areas/with-areas (typed quit types)))))
 
@@ -258,10 +263,12 @@
 
 (defn- crossed [world from [_ eid dim pos yaw pitch]]
   (if-let [e (get-in world [:levels from :entities eid])]
-    (-> world
-        (update-in [:levels from :entities] dissoc eid)
-        (assoc-in [:levels dim :entities eid]
-                  (player/arrived e (:tick world) pos yaw pitch)))
+    (let [t (:tick world)
+          e' (assoc (player/arrived e t pos yaw pitch)
+                    :arrived (sections/appeared t))]
+      (-> world
+          (update-in [:levels from :entities] dissoc eid)
+          (assoc-in [:levels dim :entities eid] e')))
     world))
 
 (defn- noted [ds dim d]

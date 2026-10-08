@@ -10,7 +10,6 @@
             [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
-            [collider.game.mob.push :as push]
             [collider.game.turn.overlay :as overlay]
             [collider.parallel :as par]
             [collider.vec :as v]
@@ -57,8 +56,8 @@
           :else vel)))
 
 (defn- stepped
-  "Returns the fields of TNT eid, e, after its move in its turn."
-  [world eid e]
+  "Returns the fields of TNT e after its move in its turn."
+  [world e]
   (let [^Move mv (tnt-move world e)
         pos (phys/pos mv)
         on-ground (phys/on-ground? mv)
@@ -67,8 +66,7 @@
     (cond-> {:pos pos :origin nil
              :vel (stepped-vel world pos moved on-ground)
              :on-ground on-ground
-             :fuse (dec (long (:fuse e)))
-             :arrived (push/arrived e pos (:tick world) eid)}
+             :fuse (dec (long (:fuse e)))}
       (or stuck' (:stuck e)) (assoc :stuck stuck'))))
 
 (defn- due? [e]
@@ -81,7 +79,8 @@
   (let [es (:entities world) t (:tick world)
         f (fn [m eid eds]
             (if-let [e (get es eid)]
-              (assoc m eid (apply/entity t e eds))
+              (let [e' (apply/entity t e eds)]
+                (assoc m eid (sections/entered t eid e e')))
               m))]
     (reduce-kv f (lm/long-map) (deltas/entities-of ds))))
 
@@ -251,8 +250,8 @@
         tw (overlay/seen (:w s) eid)]
     (cond
       (nil? e) s
-      (due? e) (fused s world tw eid e (stepped tw eid e))
-      :else (moved s (:tick world) eid (stepped tw eid e)))))
+      (due? e) (fused s world tw eid e (stepped tw e))
+      :else (moved s (:tick world) eid (stepped tw e)))))
 
 (defn- finished [{:keys [out cur]}]
   (into [] (keep (fn [d]

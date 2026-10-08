@@ -154,6 +154,35 @@
   (when-not (and old new (or (kept? old new) (stays? id old new)))
     [id (some-> old :pos key-of) (some-> new :pos key-of)]))
 
+(defn appeared
+  "Returns the arrival of an entity that appears in tick t."
+  [t]
+  [(inc (* 2 (long t))) nil])
+
+(defn- arrival-at [t id old new]
+  (cond
+    (nil? new) nil
+    (nil? old) (when-not (:arrived new) (appeared t))
+    (identical? (:arrived old) (:arrived new))
+    (when (crossing id old new)
+      [(* 2 (long t)) (inc (* 2 (long id)))])))
+
+(defn entered
+  "Returns entity id as new, which was old before tick t, arrived in t
+  when it appeared or came to another section with no arrival of its
+  own."
+  [t id old new]
+  (if-let [x (arrival-at t id old new)] (assoc new :arrived x) new))
+
+(defn arrivals
+  "Returns entities es, which were old before tick t, each one as
+  entered gives it."
+  [old es t]
+  (let [f (fn [acc id a b]
+            (let [b' (entered t id a b)]
+              (if (identical? b b') acc (lm/assoc acc id b'))))]
+    (lm/diff old es f es)))
+
 (defn moved
   "Returns level lv that keeps the index for entities es, which differ
   from its own by the crossings xs alone. The level still holds its
