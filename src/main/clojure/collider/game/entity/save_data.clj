@@ -58,7 +58,12 @@
    :OnGround [(fn [e _] (flag (:on-ground e)))
               (fn [e x _] (assoc e :on-ground (on? x)))]
    :Tags [(fn [e _] (when (seq (:tags e)) (vec (:tags e))))
-          tagged]})
+          tagged]
+   :CustomName [(fn [e _] (:custom-name e))
+                (fn [e x _]
+                  (if (or (string? x) (map? x)) (assoc e :custom-name x) e))]
+   :CustomNameVisible [(fn [e _] (when (:custom-name-visible e) (flag true)))
+                       (fn [e x _] (assoc e :custom-name-visible (on? x)))]})
 
 (defn- numeric [f]
   (fn [e x t] (if (number? x) (f e x t) e)))

@@ -317,7 +317,9 @@
   "Returns what clients see of mob e besides its movement."
   [e]
   (cond-> (own-metadata e)
-    (:age-locked? e) (assoc :age-locked? true)))
+    (:age-locked? e) (assoc :age-locked? true)
+    (:custom-name e) (assoc :custom-name (:custom-name e))
+    (:custom-name-visible e) (assoc :custom-name-visible true)))
 
 (defn look-key
   "Returns the key that holds how a mob of kind type looks. A sheep

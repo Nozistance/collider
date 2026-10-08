@@ -1,6 +1,8 @@
 (ns collider.game.mob.interact
   "The answers of mobs to the clicks of players on them."
   (:require [collider.game.apply :as apply]
+            [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.clock :as clock]
             [collider.game.mob.mobs :as mobs]
@@ -10,6 +12,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
+            [collider.game.stack :as stack]
             [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
@@ -43,8 +46,17 @@
 (defn- species-result [ctx]
   (some (fn [f] (f ctx)) (:results (spec/of (:type (:e ctx))))))
 
+(defn- name-tag-result
+  [{:keys [peid p eid e hand item]}]
+  (when-let [nm (and (= :name-tag item) (entity/alive? e)
+                     (stack/custom-name (player/hand-stack p hand)))]
+    {:result :success
+     :deltas (into [[:merge-entity eid {:custom-name nm}]]
+                   (inventory/consume-deltas peid p hand 1))}))
+
 (def ^:private chain
-  [(partial animal/egg-result spec/child-looks) species-result
+  [name-tag-result (partial animal/egg-result spec/child-looks)
+   species-result
    animal/lock-result sheep/dye-result])
 
 (defn- answered

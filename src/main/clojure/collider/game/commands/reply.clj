@@ -61,7 +61,9 @@
   "Returns the name of entity e as chat shows it."
   [e]
   (let [k (str "entity.minecraft." (data/snake (:type e)))
-        nm (if (= :player (:type e)) (:name e) {:translate k})
+        nm (cond (= :player (:type e)) (:name e)
+                 (:custom-name e) (:custom-name e)
+                 :else {:translate k})
         hover {:action :show-entity :id (:type e) :uuid (:uuid e)
                :name nm}]
     (cond
