@@ -27,26 +27,35 @@
 (defn- state-at ^long [chunks ^long x ^long y ^long z]
   (if (chunk/in-range? y) (chunk/block-state chunks x y z) 0))
 
-(defn- web? [chunks ^long x ^long y ^long z]
-  (= :web (block/type-of (state-at chunks x y z))))
+(def ^:private snow-speed
+  [(double (float 0.9)) 1.5 (double (float 0.9))])
 
-(defn- webbed? [chunks [x y z] ^double half ^double height]
+(defn- held-by ^long [chunks ^long x ^long y ^long z]
+  (case (block/type-of (state-at chunks x y z))
+    :web 1
+    :powder-snow 2
+    0))
+
+(defn- holder [chunks [x y z] ^double half ^double height]
   (let [x (double x) y (double y) z (double z)
         x1 (hi (+ x half)) y0 (lo y) y1 (hi (+ y height))
         z0 (lo (- z half)) z1 (hi (+ z half))]
-    (loop [bx (lo (- x half)) by y0 bz z0]
-      (cond (> bx x1) false
-            (> by y1) (recur (inc bx) y0 z0)
-            (> bz z1) (recur bx (inc by) z0)
-            (web? chunks bx by bz) true
-            :else (recur bx by (inc bz))))))
+    (loop [bx (lo (- x half)) by y0 bz z0 found 0]
+      (cond (> bx x1) found
+            (> by y1) (recur (inc bx) y0 z0 found)
+            (> bz z1) (recur bx (inc by) z0 found)
+            :else (let [h (held-by chunks bx by bz)]
+                    (recur bx by (inc bz) (if (pos? h) h found)))))))
 
 (defn stuck-speed
   "Returns the factor the blocks in a body at pos apply to its next
-  move, or nil when none of them holds it."
+  move, or nil when none of them holds it. Of a cobweb and powder
+  snow, the one met last holds it."
   [chunks pos half height]
-  (when (webbed? chunks pos (double half) (double height))
-    web-speed))
+  (case (holder chunks pos (double half) (double height))
+    1 web-speed
+    2 snow-speed
+    nil))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))
