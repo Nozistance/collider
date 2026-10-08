@@ -7,6 +7,7 @@
             [collider.game.effect.account :as account]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.entity.save-data :as save-data]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
@@ -52,24 +53,31 @@
       (concat (mapcat #(killed world %) xs)
               (kill-report eid xs)))))
 
-(defn- summoned [world eid type at]
+(defn- summon-mob [world eid type at nbt]
   (let [t (:tick world)
-        dim (sel/source-dim world)
+        place #(variant/place world (sel/source-dim world) at)]
+    (if nbt
+      (-> (mobs/new-mob type at nil t)
+          (save-data/loaded nbt t)
+          (assoc :pos at))
+      (mobs/command-mob type at [t eid :summon at] t (place)))))
+
+(defn- summoned [world eid type at nbt]
+  (let [dim (sel/source-dim world)
         kind {:translate (str "entity.minecraft." (name type))}
         msg {:translate "commands.summon.success" :with [kind]}
-        place (variant/place world dim at)
-        mob (mobs/command-mob type at [t eid :summon at] t place)]
+        mob (summon-mob world eid type at nbt)]
     (concat (sel/in-level world dim [[:spawn-entity mob]])
             (success [(out/to eid (out/system-chat msg))]))))
 
-(defn- summon-deltas [world eid [type x y z]]
+(defn- summon-deltas [world eid [type x y z nbt]]
   (let [p (sel/source-pos world)
         at [(double (or x (nth p 0)))
             (double (or y (nth p 1)))
             (double (or z (nth p 2)))]]
     (cond
       (not (mobs/mob-type? type)) (fail eid "commands.summon.failed")
-      (pos/spawnable? at) (summoned world eid type at)
+      (pos/spawnable? at) (summoned world eid type at nbt)
       :else (fail eid "commands.summon.invalidPosition"))))
 
 (def ^:private tag-limit 1024)

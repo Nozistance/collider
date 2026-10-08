@@ -121,6 +121,7 @@
     (:greedy :text) r/read-greedy
     :component component-read
     :dimension args/read-id
+    :compound snbt/read-compound
     nil))
 
 (defn- reader-for [[_ [kind opts]]]

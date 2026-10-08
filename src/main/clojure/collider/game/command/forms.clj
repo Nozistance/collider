@@ -275,8 +275,9 @@
     [[:targets [:targets {:default :self}]]]
     [:world :kill]]
    [:summon "summon a mob (~ = where you are)"
-    (into [[:entity [:entity-type {}]]]
-          (vec-args {:default nil :node "pos"}))
+    (-> [[:entity [:entity-type {}]]]
+        (into (vec-args {:default nil :node "pos"}))
+        (conj [:nbt [:compound {:default nil}]]))
     [:world :summon]]
    [:setblock "set one block (~ = your position)"
     (conj (pos-args) [:block [:block {}]]

@@ -33,7 +33,8 @@
    :anchor [:entity-anchor nil]
    :message [:message nil]
    :component [:component nil]
-   :dimension [:dimension nil]})
+   :dimension [:dimension nil]
+   :compound [:nbt-compound-tag nil]})
 
 (defn- entity-props [single? players?]
   {:single? (boolean single?) :players? (boolean players?)})

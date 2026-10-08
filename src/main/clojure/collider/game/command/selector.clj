@@ -7,6 +7,7 @@
             [collider.game.command.reader :as r]
             [collider.game.command.snbt :as snbt]
             [collider.game.entity :as entity]
+            [collider.game.entity.save-data :as save-data]
             [collider.game.experience :as xp]
             [collider.game.level :as level]
             [collider.game.schema :as schema]
@@ -636,7 +637,7 @@
 (defn- tagged? [tag e]
   (if (= "" tag) (empty? (:tags e)) (contains? (:tags e) tag)))
 
-(defn- pred? [[k a inv] e]
+(defn- pred? [[k a inv] e t]
   (let [f #(not= (boolean inv) (boolean %))]
     (case k
       :alive (alive? e)
@@ -646,6 +647,7 @@
       :type (f (= a (:type e)))
       :type-tag (f (type-tagged? a (:type e)))
       :tag (f (tagged? a e))
+      :nbt (f (snbt/compare-nbt a (save-data/saved e t) true))
       false)))
 
 (defn xp-of
@@ -688,7 +690,7 @@
                pos))))
 
 (defn- selects? [world sel pos box [_ _ e]]
-  (and (every? #(pred? % e) (:preds sel))
+  (and (every? #(pred? % e (:tick world)) (:preds sel))
        (or (nil? (:type sel)) (= (:type sel) (:type e)))
        (or (nil? (:rot-x sel)) (turned? (:rot-x sel) (:pitch e 0.0)))
        (or (nil? (:rot-y sel)) (turned? (:rot-y sel) (:yaw e 0.0)))
