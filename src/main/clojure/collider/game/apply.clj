@@ -147,17 +147,8 @@
 (defn- deltas-of [ds]
   (if (instance? Deltas ds) ds (deltas/of-vec ds)))
 
-(defn- untyped [types t eid]
-  (let [s (disj (get types t) eid)]
-    (if (seq s) (assoc types t s) (dissoc types t))))
-
 (defn- retyped [types e0 e1 eid]
-  (let [a (get e0 eid) b (get e1 eid)]
-    (if (and a b (identical? (:type a) (:type b)))
-      types
-      (cond-> types
-        a (untyped (:type a) eid)
-        b (update (:type b) (fnil conj (lm/long-set)) eid)))))
+  (level/retyped types eid (get e0 eid) (get e1 eid)))
 
 (defn- retyped-index [types w w' eids]
   (let [e0 (:entities w) e1 (:entities w')]
@@ -181,18 +172,16 @@
 (defn- input-eids [inp]
   (into [] (keep #(let [x (nth % 1 nil)] (when (integer? x) x))) inp))
 
-(defn- checked [es types]
-  (when (and types (not= types (level/by-type es)))
-    (throw (ex-info "the type index strayed from the entities"
-                    {:index types :entities (level/by-type es)})))
-  types)
+(defn- checked! [w]
+  (let [types (level/types-by w) built (level/by-type (:entities w))]
+    (when (not= types built)
+      (throw (ex-info "the type index strayed from the entities"
+                      {:index types :entities built})))))
 
 (defn- typed [w types]
-  (let [es (:entities w)
-        types (if delta/validate? (checked es types) types)]
-    (if (and types (level/types-by w))
-      w
-      (level/with-types w (or types (level/by-type es))))))
+  (let [w (if types (level/with-types w types) (level/typed w))]
+    (when delta/validate? (checked! w))
+    w))
 
 (defn- strayed! [what idx built]
   (when (not= idx built)

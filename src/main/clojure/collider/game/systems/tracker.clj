@@ -132,19 +132,15 @@
         bodies))
 
 (defn- untracked [world]
-  (when-let [types (level/types-by world)]
-    (reduce-kv (fn [acc t ids]
-                 (if (contains? tracked-types t)
-                   acc
-                   (lm/union acc ids)))
-               (lm/long-set) types)))
+  (reduce-kv (fn [acc t ids]
+               (if (contains? tracked-types t)
+                 acc
+                 (lm/union acc ids)))
+             (lm/long-set) (level/types-by world)))
 
 (defn- by-chunk [world]
-  (let [es (:entities world)
-        out (untracked world)
-        keep? (cond (nil? out) #(tracked? (get es %))
-                    (lm/empty? out) any?
-                    :else #(not (lm/contains? out %)))]
+  (let [out (untracked world)
+        keep? (if (lm/empty? out) any? #(not (lm/contains? out %)))]
     (sections/chunked (sections/index world) keep?)))
 
 (defn- in-view [idx seen]

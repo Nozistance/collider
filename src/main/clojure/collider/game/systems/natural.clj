@@ -80,15 +80,12 @@
     (count (filter #(contains? cs (chunk/pos-chunk (:pos (get es %))))
                    ids))))
 
-(defn- types-of [w]
-  (or (level/types-by w) (level/by-type (:entities w))))
-
 (defn- global-counts [w]
   (let [f (fn [m t ids]
             (let [cat (:category (spawn/facts t))
                   n (if cat (loaded-count w ids) 0)]
               (if (pos? n) (added-n m [:global cat] n) m)))]
-    (reduce-kv f {} (types-of w))))
+    (reduce-kv f {} (level/types-by w))))
 
 (defn- tallied [cats m pid]
   (reduce-kv #(added-n %1 [:local pid %2] %3) m cats))

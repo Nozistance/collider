@@ -24,7 +24,11 @@
   "Returns level lv that keeps v under k for entities es, its own by
   default."
   ([lv k v] (with lv k (entities lv) v))
-  ([lv k es v] (vary-meta lv assoc k [es v])))
+  ([lv k es v]
+   (let [[es0 v0] (get (meta lv) k)]
+     (if (and (identical? es es0) (identical? v v0))
+       lv
+       (vary-meta lv assoc k [es v])))))
 
 (defn kept
   "Returns level lv that keeps the value under k for its entities."

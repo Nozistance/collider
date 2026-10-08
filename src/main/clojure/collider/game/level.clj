@@ -6,6 +6,7 @@
             [collider.game.block.tickers :as tickers]
             [collider.game.clock :as clock]
             [collider.game.entity :as entity]
+            [collider.game.entity.stamp :as stamp]
             [collider.game.orb :as orb]
             [collider.game.schedule :as schedule]
             [collider.game.schema :as schema]
@@ -162,17 +163,37 @@
                    (assoc! m t (conj (get m t (lm/long-set)) eid))))
                (transient {}) entities)))
 
+(defn- untyped [types t eid]
+  (let [s (disj (get types t) eid)]
+    (if (seq s) (assoc types t s) (dissoc types t))))
+
+(defn retyped
+  "Returns index types after entity eid goes from a to b. A nil a or
+  b means eid is absent there."
+  [types eid a b]
+  (if (and a b (identical? (:type a) (:type b)))
+    types
+    (cond-> types
+      a (untyped (:type a) eid)
+      b (update (:type b) (fnil conj (lm/long-set)) eid))))
+
+(defn- caught [types es now]
+  (lm/diff es now retyped types))
+
 (defn types-by
-  "Returns the eids of lv by type as its apply left them, or nil."
+  "Returns the eids of level lv by type."
   [lv]
-  (let [t (::types (meta lv))]
-    (when (and t (identical? (:entities lv) (nth t 0)))
-      (nth t 1))))
+  (stamp/value lv ::types by-type caught))
 
 (defn with-types
   "Returns lv with types, its eids by type, kept as its index."
   [lv types]
-  (vary-meta lv assoc ::types [(:entities lv) types]))
+  (stamp/with lv ::types types))
+
+(defn typed
+  "Returns level lv that keeps its eids by type for its entities."
+  [lv]
+  (stamp/kept lv ::types by-type caught))
 
 (defn- with-ids [types acc t]
   (if-let [s (get types t)] (if acc (lm/union acc s) s) acc))
@@ -185,17 +206,14 @@
   They come by eid."
   [lv ts]
   (let [es (:entities lv)
-        ids (ids-of (or (types-by lv) (by-type es)) ts)
+        ids (ids-of (types-by lv) ts)
         entry (fn [eid] (MapEntry/create eid (get es eid)))]
     (into [] (map entry) ids)))
 
 (defn holds-types?
   [lv ts]
   (let [held? (fn [_ t _] (if (contains? ts t) (reduced true) false))]
-    (if-let [types (types-by lv)]
-      (reduce-kv held? false types)
-      (reduce-kv (fn [_ _ e] (held? nil (:type e) nil))
-                 false (:entities lv)))))
+    (reduce-kv held? false (types-by lv))))
 
 (def ^:private player-type #{:player})
 
