@@ -194,7 +194,9 @@
 
 (def ^:private data-form
   [:data "read entity data"
-   [(lit "get") (lit "entity") one-arg] [:world :data-get-entity]])
+   [(lit "get") (lit "entity") one-arg [:path [:nbt-path {:default nil}]]
+    [:scale [:double {:default nil}]]]
+   [:world :data-get-entity]])
 
 (def ^:private rotate-form
   [:rotate "turn an entity"

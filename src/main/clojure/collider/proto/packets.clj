@@ -37,9 +37,13 @@
     (when hi? (buf/write-float! buf hi))))
 
 (defn- write-double-range! [^Buf buf props]
-  (buf/write-byte! buf 3)
-  (buf/write-double! buf (double (:min props)))
-  (buf/write-double! buf (double (:max props))))
+  (let [lo (double (:min props (- Double/MAX_VALUE)))
+        hi (double (:max props Double/MAX_VALUE))
+        lo? (not= lo (- Double/MAX_VALUE))
+        hi? (not= hi Double/MAX_VALUE)]
+    (buf/write-byte! buf (bit-or (if lo? 1 0) (if hi? 2 0)))
+    (when lo? (buf/write-double! buf lo))
+    (when hi? (buf/write-double! buf hi))))
 
 (defn- entity-flags ^long [props]
   (bit-or (if (:single? props) 1 0) (if (:players? props) 2 0)))

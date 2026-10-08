@@ -9,6 +9,7 @@
             [collider.game.command.args.item :as items]
             [collider.game.command.forms :as forms]
             [collider.game.command.nodes :as node-tree]
+            [collider.game.command.nbt-path :as nbt-path]
             [collider.game.command.reader :as r]
             [collider.game.command.selector :as sel]
             [collider.game.command.snbt :as snbt]
@@ -122,6 +123,8 @@
     :component component-read
     :dimension args/read-id
     :compound snbt/read-compound
+    :nbt-path nbt-path/read-path
+    :double r/read-double
     nil))
 
 (defn- reader-for [[_ [kind opts]]]
