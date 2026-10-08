@@ -2,11 +2,13 @@
   "Natural spawning of mobs around the players."
   (:require [collider.data.long-map :as lm]
             [collider.game.deltas :as deltas]
+            [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.variant :as variant]
             [collider.game.areas :as areas]
+            [collider.game.level :as level]
             [collider.num :as num]
             [collider.parallel :as par]
             [collider.random :as random]
@@ -71,13 +73,37 @@
   (reduce #(update-in %1 [:local %2 cat] (fnil inc 0))
           (update-in counts [:global cat] (fnil inc 0)) near-ids))
 
+(defn- added-n [m ks n] (update-in m ks (fnil + 0) n))
+
+(defn- loaded-count [w ids]
+  (let [es (:entities w) cs (:chunks w)]
+    (count (filter #(contains? cs (chunk/pos-chunk (:pos (get es %))))
+                   ids))))
+
+(defn- types-of [w]
+  (or (level/types-by w) (level/by-type (:entities w))))
+
+(defn- global-counts [w]
+  (let [f (fn [m t ids]
+            (let [cat (:category (spawn/facts t))
+                  n (if cat (loaded-count w ids) 0)]
+              (if (pos? n) (added-n m [:global cat] n) m)))]
+    (reduce-kv f {} (types-of w))))
+
+(defn- tallied [cats m pid]
+  (reduce-kv #(added-n %1 [:local pid %2] %3) m cats))
+
+(defn- local-counts [w ctx cid counts]
+  (let [[cx cz] (chunk/id->pos cid) es (:entities w)
+        ids (sections/in-chunk (:index ctx) cx cz)
+        cats (frequencies (keep #(category-of (get es %)) ids))]
+    (reduce (partial tallied cats) counts (near ctx cid))))
+
 (defn- mob-counts [w ctx]
-  (reduce (fn [c e]
-            (let [cat (category-of e) cid (chunk/pos-chunk (:pos e))]
-              (if (and cat (contains? (:chunks w) cid))
-                (add-mob c (near ctx cid) cat)
-                c)))
-          {} (vals (:entities w))))
+  (let [f (fn [m cid]
+            (cond->> m
+              (contains? (:chunks w) cid) (local-counts w ctx cid)))]
+    (reduce f (global-counts w) (:counted ctx))))
 
 (defn- cap ^long [[_ f]] (long (:max f)))
 
@@ -185,18 +211,17 @@
     :player (not (game-mode/spectator? e))
     (mobs/mob-type? (:type e))))
 
-(defn- blockers [w]
-  (reduce (fn [m e]
-            (if-let [b (when (blocks-building? e) (box-of e))]
-              (update m (chunk/pos-chunk (:pos e)) (fnil conj []) b)
-              m))
-          (lm/long-map) (vals (:entities w))))
+(defn- blockers [w idx cid]
+  (let [es (:entities w) [cx cz] (chunk/id->pos cid)
+        box (fn [id] (let [e (get es id)]
+                       (when (blocks-building? e) (box-of e))))]
+    (into [] (keep box) (sections/in-chunk idx cx cz))))
 
 (defn- blocked? [ctx box]
   (let [cx (bit-shift-right (num/floor (box 0)) 4)
         cz (bit-shift-right (num/floor (box 2)) 4)
         hits? #(some (fn [b] (phys/joined? box b)) %)]
-    (some #(hits? (get @(:blockers ctx) %))
+    (some #(hits? ((:blockers ctx) %))
           (chunk/around-ids cx cz 1))))
 
 (defn- clear? [ctx k x y z]
@@ -331,8 +356,9 @@
 
 (defn- context [w]
   (let [ctx (base w)
-        ctx (assoc ctx :kinds (kinds ctx)
-                   :blockers (delay (blockers w)))]
+        idx (sections/index w)
+        ctx (assoc ctx :kinds (kinds ctx) :index idx
+                   :blockers (memoize #(blockers w idx %)))]
     (assoc ctx :counts (delay (mob-counts w ctx)))))
 
 (def ^:private ^:const chunk-leaf 16)

@@ -7,6 +7,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.chunks :as chunks]
+            [collider.game.entity.sections :as sections]
             [collider.game.input :as input]
             [collider.game.level :as level]
             [collider.game.player :as player]
@@ -105,17 +106,21 @@
       (merged-in e m))))
 
 (defn- stepped [entities t]
-  (fn [[m xs :as acc] [eid ds]]
+  (fn [[m xs ys :as acc] [eid ds]]
     (if-let [e (get entities eid)]
-      (let [e' (entity t e ds) x (chunks/crossing eid e e')]
-        [(assoc! m eid e') (if x (conj! xs x) xs)])
+      (let [e' (entity t e ds)
+            x (chunks/crossing eid e e')
+            y (sections/crossing eid e e')]
+        [(assoc! m eid e') (if x (conj! xs x) xs)
+         (if y (conj! ys y) ys)])
       acc)))
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
 
 (defn- stepped-all [step es entries]
-  (let [[m xs] (reduce step [(transient es) (transient [])] entries)]
-    [(persistent! m) (persistent! xs)]))
+  (let [init [(transient es) (transient []) (transient [])]
+        [m xs ys] (reduce step init entries)]
+    [(persistent! m) (persistent! xs) (persistent! ys)]))
 
 (defn- leaf-of [step entities v ^long j]
   (let [n (count v)
@@ -129,8 +134,9 @@
   (vec (range (quot (+ n (dec par/fold-leaf)) par/fold-leaf))))
 
 (defn- joined
-  ([] [(lm/long-map) []])
-  ([[a xa] [b xb]] [(lm/merge a b) (par/joined xa xb)]))
+  ([] [(lm/long-map) [] []])
+  ([[a xa ya] [b xb yb]]
+   [(lm/merge a b) (par/joined xa xb) (par/joined ya yb)]))
 
 (defn- folded-entities [w entities by-eid]
   (let [step (stepped entities (:tick w))
@@ -191,20 +197,27 @@
       w
       (level/with-types w (or types (level/by-type es))))))
 
+(defn- strayed! [what idx built]
+  (when (not= idx built)
+    (throw (ex-info (str "the " what " index strayed")
+                    {:index idx :built built}))))
+
 (defn- indexed [lv]
-  (let [lv (chunks/indexed lv)]
-    (when (and delta/validate?
-               (not= (chunks/index lv) (chunks/of (:entities lv))))
-      (throw (ex-info "the chunk index strayed from the entities"
-                      {:index (chunks/index lv)})))
+  (let [lv (sections/indexed (chunks/indexed lv))
+        es (:entities lv)]
+    (when delta/validate?
+      (strayed! "chunk" (chunks/index lv) (chunks/of es))
+      (strayed! "section" (sections/index lv) (sections/of (seq es))))
     lv))
 
 (defn- folded-in [w by-eid]
   (if (lm/empty? by-eid)
     w
-    (let [w (chunks/indexed w)
-          [es xs] (folded-entities w (:entities w) by-eid)]
-      (chunks/moved w es xs))))
+    (let [w (sections/indexed (chunks/indexed w))
+          [es xs ys] (folded-entities w (:entities w) by-eid)]
+      (-> (chunks/moved w es xs)
+          (sections/moved es ys)
+          (assoc :entities es)))))
 
 (defn- apply-level [lv ds]
   (let [^Deltas d (deltas-of ds)

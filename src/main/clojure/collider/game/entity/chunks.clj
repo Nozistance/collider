@@ -2,10 +2,10 @@
   "The entities a player can be shown, by the chunk they stand in."
   (:require [collider.data.long-map :as lm]
             [collider.game.entity :as entity]
+            [collider.game.entity.stamp :as stamp]
             [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
-            [collider.world.chunk :as chunk])
-  (:import (collider.data LongMap)))
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -53,8 +53,6 @@
                (if-let [x (crossing eid a b)] (crossed idx x) idx))]
     (lm/diff es now step idx)))
 
-(defn- stamp [lv] (::index (meta lv)))
-
 (defn of
   "Returns the index of entities es, built anew."
   [es]
@@ -63,28 +61,19 @@
 (defn index
   "Returns the eids of the tracked entities of level lv by chunk."
   [lv]
-  (let [[es idx] (stamp lv)
-        now (or (:entities lv) (lm/long-map))]
-    (cond
-      (identical? es now) idx
-      (and idx (instance? LongMap es) (instance? LongMap now))
-      (caught-up idx es now)
-      :else (of now))))
+  (stamp/value lv ::index of caught-up))
 
 (defn indexed
   "Returns level lv that keeps its index for its entities."
   [lv]
-  (let [now (or (:entities lv) (lm/long-map))]
-    (if (identical? now (nth (stamp lv) 0 nil))
-      lv
-      (vary-meta lv assoc ::index [now (index lv)]))))
+  (stamp/kept lv ::index of caught-up))
 
 (defn moved
-  "Returns level lv with entities es that differ from its own by the
-  crossings xs alone."
+  "Returns level lv that keeps the index for entities es, which differ
+  from its own by the crossings xs alone. The level still holds its
+  own entities."
   [lv es xs]
-  (let [idx (reduce crossed (index lv) xs)]
-    (vary-meta (assoc lv :entities es) assoc ::index [es idx])))
+  (stamp/with lv ::index es (reduce crossed (index lv) xs)))
 
 (defn near
   "Returns the eids of index idx that stand in the chunks seen."

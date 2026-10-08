@@ -109,16 +109,23 @@
   [s ^long lo ^long hi]
   (reduce gone s (subseq (:removed s) >= lo <= hi)))
 
+(defn- seen-by
+  "Returns world with the bodies as turn t sees them, without the
+  spectators."
+  [s world ^long t]
+  (let [went (lm/range (:after s) Long/MIN_VALUE (dec t))
+        now (lm/merge (:cur s) went)
+        off (fn [m id]
+              (cond-> m
+                (game-mode/spectator? (get now id)) (lm/dissoc id)))]
+    (assoc world :entities (reduce off now (vals (:players world))))))
+
 (defn- indexed [s world t]
   (let [ds (:ds s)
         s (assoc s :after (after-deltas world ds) :mark t
                    :removed (removals ds)
                    :primed (tnt/primed-origins world))
-        now (now-of s t)
-        body (fn [[id _]]
-               (let [e (now id)]
-                 (when-not (game-mode/spectator? e) [id e])))
-        s (assoc s :idx (sections/of (keep body (:cur s))))]
+        s (assoc s :idx (sections/index (seen-by s world t)))]
     (ended s Long/MIN_VALUE (dec (long t)))))
 
 (defn- advanced

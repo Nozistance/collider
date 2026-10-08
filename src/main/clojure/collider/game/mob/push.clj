@@ -1,15 +1,16 @@
 (ns collider.game.mob.push
   "Shoves between overlapping bodies."
   (:require [collider.game.entity.hurt :as hurt]
+            [collider.game.entity.sections :as sections]
             [collider.game.entity.size :as size]
-            [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.blocks.climb :as climb]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Bodies PushGrid Slots Turns)))
+  (:import (clojure.lang MapEntry)
+           (collider.game.mob Bodies PushGrid Slots Turns)))
 
 (set! *warn-on-reflection* true)
 
@@ -227,8 +228,6 @@
 
 (def ^:private ^:const player-reach 2.0)
 
-(def ^:private mob-types (vec (keys mobs/types)))
-
 (defn- near? [a b]
   (and (< (Math/abs (- (v/x a) (v/x b))) player-reach)
        (< (Math/abs (- (v/z a) (v/z b))) player-reach)))
@@ -270,13 +269,23 @@
       (let [h (hurt/hurt-now world peid p ds)]
         (into ds (hurt/report-deltas world peid h))))))
 
+(defn- body-type? [t]
+  (or (identical? :player t) (mobs/mob-type? t)))
+
 (defn- crowd-of [world [peid p :as entry]]
-  (let [ok? (fn [[eid e :as x]]
-              (and (not= eid peid) (not (game-mode/spectator? e))
-                   (shoved-by? (:chunks world) p x)))]
-    (-> [entry]
-        (into (filter ok?) (level/of-types world mob-types))
-        (into (filter ok?) (level/player-entries world)))))
+  (let [es (:entities world)
+        [h ht] (pushable-box p)
+        o (:pos p) h (double h)
+        lo (v/v3 (- (v/x o) h) (v/y o) (- (v/z o) h))
+        hi (v/v3 (+ (v/x o) h) (+ (v/y o) (double ht)) (+ (v/z o) h))
+        ok? (fn [[eid e :as x]]
+              (and (not= eid peid) (body-type? (:type e))
+                   (not (game-mode/spectator? e))
+                   (shoved-by? (:chunks world) p x)))
+        body (fn [eid]
+               (when-let [e (get es eid)] (MapEntry/create eid e)))]
+    (into [entry] (comp (keep body) (filter ok?))
+          (sections/within (sections/index world) lo hi))))
 
 (defn- shoved-mobs [es]
   (comp (filter #(mobs/mob-type? (:type (get es (nth % 0)))))

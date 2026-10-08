@@ -1,10 +1,12 @@
 (ns collider.game.mob.sense
   "A mob's senses of the blocks under it and the entities around it."
-  (:require [collider.game.mode :as game-mode]
+  (:require [collider.game.entity.sections :as sections]
+            [collider.game.mode :as game-mode]
             [collider.game.level :as level]
             [collider.game.player :as player]
             [collider.vec :as v]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk])
+  (:import (clojure.lang MapEntry)))
 
 (set! *warn-on-reflection* true)
 
@@ -60,70 +62,33 @@
              (or (< (+ (* dx dx) (* dy dy) (* dz dz)) r2)
                  (recur (+ i 3))))))))
 
-(def ^:private ^:const cell-shift 2)
-
-(defn- cell-key ^long [^long cx ^long cz]
-  (bit-or (bit-shift-left (bit-and cx 0xFFFFFFFF) 32)
-          (bit-and cz 0xFFFFFFFF)))
-
-(defn- cell-at ^long [^double c]
-  (bit-shift-right (long (Math/floor c)) cell-shift))
-
-(defn- cell-of ^long [pos]
-  (cell-key (cell-at (v/x pos)) (cell-at (v/z pos))))
-
-(defn- build-index [entities]
-  (persistent!
-    (reduce-kv (fn [m eid e]
-                 (if-let [p (:pos e)]
-                   (let [k (cell-of p)]
-                     (assoc! m k (conj (get m k []) [eid e])))
-                   m))
-               (transient {})
-               entities)))
-
 (defn indexed
-  "Returns world with its entities placed by cell for the searches of
-  its mobs this tick."
+  "Returns world with its entities by section for the searches of its
+  mobs this tick."
   [world]
-  (assoc world ::index (delay (build-index (:entities world)))))
+  (assoc world ::index
+         (delay [(sections/index world) (:entities world)])))
 
 (defn- entity-index [world]
   (if-let [d (::index world)]
     @d
-    (build-index (:entities world))))
+    [(sections/index world) (:entities world)]))
 
-(defn- scan-cell [dist best pos r2 pred entries]
-  (reduce (fn [best [oid o]]
-            (if-not (pred oid o)
-              best
-              (let [d2 (double (dist pos (:pos o)))]
-                (if (and (< d2 (double r2)) (closer? best d2 oid))
-                  [d2 oid o]
-                  best))))
-          best
-          entries))
-
-(defn- cell-span [^double c ^double r]
-  [(cell-at (- c r)) (cell-at (+ c r))])
-
-(defn- scan-row [index dist best pos r2 pred cx z0 z1]
-  (loop [cz (long z0) best best]
-    (if (> cz (long z1))
-      best
-      (recur (inc cz)
-             (scan-cell dist best pos r2 pred
-                        (get index (cell-key (long cx) cz)))))))
+(defn- near-ids [idx pos r]
+  (let [x (v/x pos) z (v/z pos) r (double r)]
+    (sections/columns idx (- x r) (- z r) (+ x r) (+ z r))))
 
 (defn- nearest-by [world pos r dist r2 pred]
-  (let [index (entity-index world)
-        [x0 x1] (cell-span (v/x pos) r)
-        [z0 z1] (cell-span (v/z pos) r)]
-    (loop [cx (long x0) best nil]
-      (if (> cx (long x1))
-        best
-        (recur (inc cx)
-               (scan-row index dist best pos r2 pred cx z0 z1))))))
+  (let [[idx es] (entity-index world) r2 (double r2)
+        f (fn [best oid]
+            (let [o (get es oid)]
+              (if-not (pred oid o)
+                best
+                (let [d2 (double (dist pos (:pos o)))]
+                  (if (and (< d2 r2) (closer? best d2 oid))
+                    [d2 oid o]
+                    best)))))]
+    (reduce f nil (near-ids idx pos r))))
 
 (defn nearest
   "Returns [distance-squared id entity] of the nearest entity within
@@ -141,16 +106,11 @@
               Double/POSITIVE_INFINITY pred))
 
 (defn around
-  "Returns [id entity] of every entity whose cell meets the square of
-  half side r around pos, cell by cell."
+  "Returns [id entity] of every entity whose section column meets the
+  square of half side r around pos, column by column."
   [world pos r]
-  (let [index (entity-index world)
-        [x0 x1] (cell-span (v/x pos) r)
-        [z0 z1] (cell-span (v/z pos) r)]
-    (for [cx (range x0 (inc (long x1)))
-          cz (range z0 (inc (long z1)))
-          entry (get index (cell-key cx cz))]
-      entry)))
+  (let [[idx es] (entity-index world)]
+    (map #(MapEntry/create % (get es %)) (near-ids idx pos r))))
 
 (defn held-of
   "Returns the item in the player's selected hotbar slot."

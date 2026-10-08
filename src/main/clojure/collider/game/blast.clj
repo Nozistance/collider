@@ -134,15 +134,15 @@
     (conj body (when-not (hanging? e) (density b e)))))
 
 (defn- reach
-  "Returns the function that gives [id e d12] of an index entry that
-  blast b reaches, nil for one it does not."
+  "Returns the function that gives [id e d12] for the id of a body
+  that blast b reaches, nil for one it does not."
   [b now]
   (let [d12-of (distance b)]
-    (fn [[id p]]
-      (let [d12 (d12-of p)]
-        (when (<= d12 1.0)
-          (when-let [e (now id)]
-            (when-not (game-mode/spectator? e) [id e d12])))))))
+    (fn [id]
+      (when-let [e (now id)]
+        (let [d12 (d12-of (:pos e))]
+          (when (and (<= d12 1.0) (not (game-mode/spectator? e)))
+            [id e d12]))))))
 
 (defn- near [b idx]
   (let [[lo hi] (reach-box b)]
@@ -310,7 +310,7 @@
   (let [b (of world spec)
         es (:entities world)
         hit-of (fn [body] [(nth body 0) (hit b body)])
-        idx (sections/of (seq es))
+        idx (sections/index world)
         hits (struck b idx #(get es %) hit-of)
         {:keys [ds spawns]} (finish b (motions hits))]
     (-> ds
