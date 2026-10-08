@@ -1,6 +1,4 @@
 (ns collider.devtools.trace
-  "What one player does, followed from packet to packet. The hooks
-  hold vars, so a reloaded trace takes effect on the next tick."
   (:require [clojure.string :as str]
             [collider.cli :as cli]
             [collider.log :as log])
@@ -20,12 +18,22 @@
 
 (def ^:private quiet-deltas #{:track})
 
+(def ^:private colours
+  {"tick" "1" "in" "36" "e" "33" "d" "32" "out" "35"})
+
+(defn- painted [colour? kind s]
+  (if colour? (str "\u001b[" (colours kind) "m" s "\u001b[0m") s))
+
 (defn- shown [x]
   (binding [*print-length* 8 *print-level* 4] (pr-str x)))
 
-(defn- say! [kind & xs]
-  (when-let [sink (:sink @state)]
-    (sink (str (format "%-4s" kind) (str/join " " xs)))))
+(defn- spoken [v]
+  (if (and (vector? v) (keyword? (first v)))
+    (str/join " " (cons (name (first v)) (map shown (rest v))))
+    (shown v)))
+
+(defn- say! [kind text]
+  (swap! state update :lines (fnil conj []) [kind text]))
 
 (defn- entity? [world id]
   (and (integer? id)
@@ -35,13 +43,12 @@
   (into #{} (comp cat (filter #(entity? world %))) evs))
 
 (defn packet-in
-  "Shows a packet the player sent and the event it became."
   [eid m ev]
   (when (and (= eid (:eid @state)) (not (quiet-packets (:packet m))))
-    (say! "in" (:packet m) (shown (dissoc m :packet)) "->" (shown ev))))
+    (say! "in" (str (name (:packet m)) " " (shown (dissoc m :packet))
+                    " -> " (if ev (spoken ev) "-")))))
 
 (defn events
-  "Shows the events of the player this tick, keeping them as they are."
   [world evs]
   (let [eid (:eid @state)
         mine (filterv #(and (= eid (nth % 1 nil))
@@ -49,52 +56,68 @@
                       evs)]
     (swap! state assoc :ids (conj (touched world mine) eid)
            :active? (boolean (seq mine)))
-    (doseq [ev mine] (say! "ev" (shown ev)))
+    (doseq [ev mine] (say! "e" (spoken ev)))
     evs))
+
+(defn- stats-only? [d]
+  (and (= :merge-entity (nth d 0)) (= [:stats] (keys (nth d 2 nil)))))
 
 (defn- about [ids d]
   (let [x (nth d 1 nil)]
-    (and (not (quiet-deltas (nth d 0)))
+    (and (not (quiet-deltas (nth d 0))) (not (stats-only? d))
          (or (contains? ids x) (contains? ids (:to x))))))
 
 (defn deltas
-  "Shows the deltas of a phase about what the player touched."
   [_ ds]
   (let [{:keys [active? ids]} @state]
     (when active?
-      (doseq [d ds :when (about ids d)] (say! "d" (shown d))))
+      (doseq [d ds :when (about ids d)] (say! "d" (spoken d))))
     ds))
 
+(defn packet-names
+  [ps]
+  (->> (partition-by identity (map (comp name :packet) ps))
+       (map #(if (next %) (str (first %) " x" (count %)) (first %)))
+       (str/join ", ")))
+
+(defn- player-name [world eid]
+  (some #(get-in % [:entities eid :name]) (vals (:levels world))))
+
+(defn- block [world {:keys [eid colour?]} lines]
+  (let [line (fn [[kind text]]
+               (str "\n  " (painted colour? kind (format "%-4s" kind)) text))]
+    (apply str (painted colour? "tick"
+                        (str "tick " (:tick world) " "
+                             (player-name world eid)))
+           (map line lines))))
+
 (defn packets-out
-  "Shows the names of the packets the player gets on an active tick."
-  [_ pairs]
-  (let [{:keys [eid active?]} @state]
+  [world pairs]
+  (let [{:keys [eid active? sink]} @state]
     (when active?
-      (when-let [ps (seq (keep (fn [[e p]] (when (= e eid) (:packet p)))
-                               pairs))]
-        (say! "out" (str/join ", " (map name ps)))))))
+      (when-let [ps (seq (keep (fn [[e p]] (when (= e eid) p)) pairs))]
+        (say! "out" (packet-names ps)))
+      (let [[old] (swap-vals! state assoc :lines [] :active? false)]
+        (sink (block world old (:lines old)))))))
 
 (def ^:private own
   {:event-filters #'events :delta-filters #'deltas
    :packets-in #'packet-in :packets-out #'packets-out})
 
 (defn hooks-with
-  "Returns hooks with the trace hooks added once."
   [hooks]
   (reduce-kv (fn [h k v]
                (update h k #(if (some #{v} %) (vec %) (conj (vec %) v))))
              hooks own))
 
 (defn hooks-without
-  "Returns hooks without the trace hooks."
   [hooks]
   (reduce-kv (fn [h k v] (update h k #(vec (remove #{v} %)))) hooks own))
 
 (defn follow!
-  "Follows player eid, writing each line to the sink of opts, the log
-  when there is none."
   [eid opts]
-  (reset! state {:eid eid :sink (or (:sink opts) #(log/info %))}))
+  (reset! state {:eid eid :sink (or (:sink opts) #(log/info %))
+                 :colour? (:color? opts true) :lines []}))
 
 (defn stop! [] (reset! state nil))
 
@@ -108,7 +131,6 @@
     (.offer queue [:hooks-set k fs])))
 
 (defn on!
-  "Traces the player named nm on the running server, or on server."
   ([nm] (on! @cli/running nm))
   ([server nm]
    (if-let [eid (player-eid @(:world server) nm)]
@@ -116,6 +138,6 @@
      (throw (ex-info (str "no player " nm) {})))))
 
 (defn off!
-  "Stops tracing on the running server, or on server."
   ([] (off! @cli/running))
   ([server] (set-hooks! server hooks-without) (stop!)))
+
