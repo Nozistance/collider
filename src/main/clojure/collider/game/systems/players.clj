@@ -4,7 +4,8 @@
             [collider.game.level :as level]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.game.systems.sleep :as sleep])
+            [collider.game.systems.sleep :as sleep]
+            [collider.log :as log])
   (:import (java.util Locale)))
 
 (set! *warn-on-reflection* true)
@@ -106,12 +107,13 @@
     (str "Collider Server (" commit ")")
     "Collider Server"))
 
-(defn- tab-header-msg [commit {:keys [tps mspt p50-ms p99-ms]}]
+(defn- tab-header-msg [commit {:keys [tps mspt p50-ms p99-ms dps]}]
   (out/tab-header (server-title commit)
                   (str "TPS " (fmt "%.1f" (or tps 20.0))
                        "\nMSPT " (fmt "%.2f" mspt) " ms"
                        "\np50 " (fmt "%.2f" p50-ms) " ms"
-                       "\np99 " (fmt "%.2f" p99-ms) " ms")))
+                       "\np99 " (fmt "%.2f" p99-ms) " ms"
+                       "\n\u0394/s " (log/human-count (or dps 0)))))
 
 (defn- tab-header-deltas [world events]
   (when-let [perf (:perf world)]

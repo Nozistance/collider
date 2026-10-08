@@ -143,3 +143,13 @@
     (if (or (< n 1024.0) (empty? (rest units)))
       (unit-str n (first units))
       (recur (/ n 1024.0) (rest units)))))
+
+(defn human-count
+  "Returns a count in the largest unit of a thousand it fills."
+  ^String [n]
+  (loop [n (double n) units ["k" "M" "G" "T"] unit nil]
+    (cond (nil? unit) (if (< n 1000.0)
+                        (str (long n))
+                        (recur (/ n 1000.0) (rest units) (first units)))
+          (or (< n 1000.0) (empty? units)) (unit-str n unit)
+          :else (recur (/ n 1000.0) (rest units) (first units)))))

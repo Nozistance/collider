@@ -65,21 +65,28 @@
 (defn- idle? [opts n queue]
   (and (paused? opts n) (queue-empty? queue)))
 
-(defn- mean-ms ^double [^longs window ^long ticks]
+(defn- mean ^double [^longs window ^long ticks]
   (let [n (min ticks mspt-window)]
     (loop [k 0 sum 0]
       (if (< k n)
         (let [i (int (rem (- ticks 1 k) window-size))]
           (recur (inc k) (+ sum (aget window i))))
-        (/ (double sum) n 1e6)))))
+        (/ (double sum) n)))))
 
-(defn- percentiles [^longs window counter]
+(defn- delta-count ^long [d]
+  (+ (count (deltas/world-of d))
+     (reduce (fn [^long n ds] (+ n (count ds)))
+             0 (vals (deltas/entities-of d)))
+     (count (deltas/out-of d))))
+
+(defn- percentiles [^longs window counter counts]
   (let [n (int (min (count-of counter) window-size))]
     (when (pos? n)
       (let [arr (Arrays/copyOf window n)]
         (Arrays/sort arr)
         {:ticks  (count-of counter)
-         :mspt   (mean-ms window (count-of counter))
+         :mspt   (/ (mean window (count-of counter)) 1e6)
+         :deltas-per-tick (when counts (mean counts (count-of counter)))
          :p50-ms (/ (aget arr (quot n 2)) 1e6)
          :p99-ms (/ (aget arr (min (dec n) (int (* n 0.99)))) 1e6)
          :max-ms (/ (aget arr (dec n)) 1e6)}))))
@@ -135,7 +142,12 @@
   (let [p (:phases opts tick/phases)]
     (if (fn? p) (p) p)))
 
-(defn- run-tick! [{:keys [carried]} world-atom queue deliver! perf
+(defn- record-deltas! [{:keys [^longs counts counter]} d]
+  (when counts
+    (aset counts (int (rem (count-of counter) window-size))
+          (delta-count d))))
+
+(defn- run-tick! [{:keys [carried] :as st} world-atom queue deliver! perf
                   opts]
   (let [fresh (drain! queue)
         world (ticked-world world-atom perf opts)
@@ -144,6 +156,7 @@
     (if-let [[world' deltas] done]
       (do (reset! carried [])
           (reset! world-atom (dissoc world' :failures))
+          (record-deltas! st deltas)
           (send-out! deliver! world' deltas))
       (reset! carried fresh))
     @(:failures world)))
@@ -171,16 +184,20 @@
 
 (defn- ticker-state []
   {:window  (long-array window-size)
+   :counts  (long-array window-size)
    :counter (AtomicLong. 0)
    :stamps  (long-array tps-window)
    :carried (atom [])
    :streaks (atom {})
    :running (AtomicBoolean. true)})
 
-(defn- perf-of [{:keys [window counter ^longs stamps]} i t0 tps]
+(defn- perf-of [{:keys [window counter counts ^longs stamps]} i t0 tps]
   (when (zero? (rem (long i) 20))
-    (let [base (or (percentiles window counter) {})]
-      (assoc base :tps (tps-of stamps i t0 tps)))))
+    (let [base (or (percentiles window counter counts) {})
+          now (tps-of stamps i t0 tps)]
+      (cond-> (assoc base :tps now)
+        (:deltas-per-tick base)
+        (assoc :dps (* now (double (:deltas-per-tick base))))))))
 
 (defn- one-tick! [{:keys [window counter] :as st} world-atom queue
                   deliver! perf t0 opts]
@@ -233,7 +250,7 @@
                   st running world-atom queue deliver! opts)]
      {:thread  thread
       :running running
-      :stats   #(percentiles (:window st) (:counter st))})))
+      :stats   #(percentiles (:window st) (:counter st) (:counts st))})))
 
 (defn stop-ticker!
   "Stops the ticker and waits up to a second for it to end."
