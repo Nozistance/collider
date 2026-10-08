@@ -107,8 +107,8 @@
         :else (inline-list xs depth)))
 
 (defn- hash-keys
-  "Returns the keys of m in the order a hash map of them gives them
-  back, as a tag keeps them."
+  "Returns the keys of m in the order a tag gives them back, which
+  is the order of their hash codes in a hash table."
   [m]
   (let [ks (vec (keys m))]
     (mapv ks (hash-order/of (map #(.hashCode (name %)) ks)))))
