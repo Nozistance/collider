@@ -22,14 +22,32 @@
 
 (set! *warn-on-reflection* true)
 
-(defn player-entries
-  "Returns [eid entity] of the players world holds, by eid."
-  [world]
+(defn- entries [world]
   (let [entities (:entities world)
         entry (fn [eid]
                 (when-let [e (get entities eid)]
                   (MapEntry/create eid e)))]
     (into [] (keep entry) (sort (vals (:players world))))))
+
+(defn- listed [world]
+  (when-let [[ps es v] (::players (meta world))]
+    (when (and (identical? ps (:players world))
+               (identical? es (:entities world)))
+      v)))
+
+(defn player-entries
+  "Returns [eid entity] of the players world holds, by eid."
+  [world]
+  (or (listed world) (entries world)))
+
+(defn with-players
+  "Returns lv that keeps its player entries as long as its players
+  and its entities stay the same."
+  [lv]
+  (if (listed lv)
+    lv
+    (vary-meta lv assoc ::players
+               [(:players lv) (:entities lv) (entries lv)])))
 
 (defn advance
   "Returns the world one tick older."

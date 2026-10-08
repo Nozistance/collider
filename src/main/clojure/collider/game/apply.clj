@@ -6,7 +6,6 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
-            [collider.game.entity.chunks :as chunks]
             [collider.game.entity.sections :as sections]
             [collider.game.input :as input]
             [collider.game.level :as level]
@@ -106,21 +105,19 @@
       (merged-in e m))))
 
 (defn- stepped [entities t]
-  (fn [[m xs ys :as acc] [eid ds]]
+  (fn [[m ys :as acc] [eid ds]]
     (if-let [e (get entities eid)]
       (let [e' (entity t e ds)
-            x (chunks/crossing eid e e')
             y (sections/crossing eid e e')]
-        [(assoc! m eid e') (if x (conj! xs x) xs)
-         (if y (conj! ys y) ys)])
+        [(assoc! m eid e') (if y (conj! ys y) ys)])
       acc)))
 
 (defn- eid-at ^long [v ^long k] (long (key (nth v k))))
 
 (defn- stepped-all [step es entries]
-  (let [init [(transient es) (transient []) (transient [])]
-        [m xs ys] (reduce step init entries)]
-    [(persistent! m) (persistent! xs) (persistent! ys)]))
+  (let [init [(transient es) (transient [])]
+        [m ys] (reduce step init entries)]
+    [(persistent! m) (persistent! ys)]))
 
 (defn- leaf-of [step entities v ^long j]
   (let [n (count v)
@@ -134,9 +131,9 @@
   (vec (range (quot (+ n (dec par/fold-leaf)) par/fold-leaf))))
 
 (defn- joined
-  ([] [(lm/long-map) [] []])
-  ([[a xa ya] [b xb yb]]
-   [(lm/merge a b) (par/joined xa xb) (par/joined ya yb)]))
+  ([] [(lm/long-map) []])
+  ([[a ya] [b yb]]
+   [(lm/merge a b) (par/joined ya yb)]))
 
 (defn- folded-entities [w entities by-eid]
   (let [step (stepped entities (:tick w))
@@ -203,20 +200,18 @@
                     {:index idx :built built}))))
 
 (defn- indexed [lv]
-  (let [lv (sections/indexed (chunks/indexed lv))
-        es (:entities lv)]
+  (let [lv (level/with-players (sections/indexed lv))]
     (when delta/validate?
-      (strayed! "chunk" (chunks/index lv) (chunks/of es))
-      (strayed! "section" (sections/index lv) (sections/of (seq es))))
+      (strayed! "section" (sections/index lv)
+                (sections/of (seq (:entities lv)))))
     lv))
 
 (defn- folded-in [w by-eid]
   (if (lm/empty? by-eid)
     w
-    (let [w (sections/indexed (chunks/indexed w))
-          [es xs ys] (folded-entities w (:entities w) by-eid)]
-      (-> (chunks/moved w es xs)
-          (sections/moved es ys)
+    (let [w (sections/indexed w)
+          [es ys] (folded-entities w (:entities w) by-eid)]
+      (-> (sections/moved w es ys)
           (assoc :entities es)))))
 
 (defn- apply-level [lv ds]

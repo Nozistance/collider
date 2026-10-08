@@ -4,7 +4,8 @@
   (:require [collider.cell :as cell]
             [collider.data.long-map :as lm]
             [collider.game.entity.stamp :as stamp]
-            [collider.vec :as v]))
+            [collider.vec :as v]
+            [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
 
@@ -220,3 +221,18 @@
     (persistent!
       (reduce-kv (fn [acc _ xs] (reduce present acc xs))
                  (transient []) ids))))
+
+(defn- chunk-of ^long [k]
+  (chunk/pos->id (cell/section-x (long k)) (cell/section-z (long k))))
+
+(defn chunked
+  "Returns the ids of the entities that pass (keep? id) by the chunk
+  they stand in, a set for each chunk that has any."
+  [idx keep?]
+  (let [add (fn [s id] (if (and id (keep? id)) (conj! s id) s))
+        step (fn [m k ids]
+               (let [c (chunk-of k)
+                     s (transient (lm/get m c (lm/long-set)))
+                     s (persistent! (reduce add s ids))]
+                 (if (lm/empty? s) m (lm/assoc m c s))))]
+    (reduce-kv step (lm/long-map) (:secs idx))))
