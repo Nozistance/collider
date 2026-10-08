@@ -193,11 +193,8 @@
 
 (defn- perf-of [{:keys [window counter counts ^longs stamps]} i t0 tps]
   (when (zero? (rem (long i) 20))
-    (let [base (or (percentiles window counter counts) {})
-          now (tps-of stamps i t0 tps)]
-      (cond-> (assoc base :tps now)
-        (:deltas-per-tick base)
-        (assoc :dps (* now (double (:deltas-per-tick base))))))))
+    (let [base (or (percentiles window counter counts) {})]
+      (assoc base :tps (tps-of stamps i t0 tps)))))
 
 (defn- one-tick! [{:keys [window counter] :as st} world-atom queue
                   deliver! perf t0 opts]

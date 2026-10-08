@@ -107,13 +107,18 @@
     (str "Collider Server (" commit ")")
     "Collider Server"))
 
-(defn- tab-header-msg [commit {:keys [tps mspt p50-ms p99-ms dps]}]
+(defn- per-tick [x]
+  (let [x (double (or x 0.0))]
+    (if (< x 1000.0) (fmt "%.1f" x) (log/human-count x))))
+
+(defn- tab-header-msg
+  [commit {:keys [tps mspt p50-ms p99-ms deltas-per-tick]}]
   (out/tab-header (server-title commit)
                   (str "TPS " (fmt "%.1f" (or tps 20.0))
                        "\nMSPT " (fmt "%.2f" mspt) " ms"
                        "\np50 " (fmt "%.2f" p50-ms) " ms"
                        "\np99 " (fmt "%.2f" p99-ms) " ms"
-                       "\n\u0394/s " (log/human-count (or dps 0)))))
+                       "\n\u0394/t " (per-tick deltas-per-tick))))
 
 (defn- tab-header-deltas [world events]
   (when-let [perf (:perf world)]
