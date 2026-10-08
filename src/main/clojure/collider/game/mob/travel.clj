@@ -151,9 +151,20 @@
       -0.003
       (- vy (/ g 16.0)))))
 
+(defn- held [e vel]
+  (if-let [[sx sy sz] (:stuck e)]
+    (v/v3 (* (v/x vel) (double sx)) (* (v/y vel) (double sy))
+          (* (v/z vel) (double sz)))
+    vel))
+
 (defn- stepped ^Move [world e vel half height c]
-  (phys/move (:chunks world) (:pos e) vel half height
+  (phys/move (:chunks world) (:pos e) (held e vel) half height
              (mobs/step-height (:type e)) (boolean (:on-ground e)) c))
+
+(def ^:private still (v/v3 0.0 0.0 0.0))
+
+(defn- after-vel [e ^Move mv]
+  (if (:stuck e) still (phys/vel mv)))
 
 (defn- supported [world e ^Move mv half c]
   (if-not (phys/on-ground? mv)
@@ -244,9 +255,9 @@
   dry cells keeps the fluid it had."
   [world e d ^Move mv half height f]
   (if (dry-still? e mv half height f)
-    [f (phys/vel mv)]
+    [f (after-vel e mv)]
     (let [g (fluid-after world (phys/pos mv) half height d)]
-      [g (carried d (phys/vel mv) (:push g))])))
+      [g (carried d (after-vel e mv) (:push g))])))
 
 (defn- travel-air [world e vel half height og? f]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
@@ -272,13 +283,13 @@
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
-        u (phys/vel mv)
+        u (after-vel e mv)
         vy (fluid-fall g falling? (* (v/y u) water-slowdown))
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
     [(phys/pos mv)
-     (jumped-out world e mv w half height oy (hit-wall? d u))
-     (phys/on-ground? mv) sup nb? nil d u mv]))
+     (jumped-out world e mv w half height oy (hit-wall? d (phys/vel mv)))
+     (phys/on-ground? mv) sup nb? nil d (phys/vel mv) mv]))
 
 (defn- lava-slowed [x y z g falling? shallow?]
   (let [x (* (double x) 0.5) y (double y) z (* (double z) 0.5)]
@@ -299,7 +310,7 @@
                        g falling? shallow?)
         w (v/v3 (v/x w) (- (v/y w) (/ g 4.0)) (v/z w))]
     [(phys/pos mv)
-     (jumped-out world e mv w half height oy (hit-wall? d u))
+     (jumped-out world e mv w half height oy (hit-wall? d (phys/vel mv)))
      (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
 
 (defn- travelled
@@ -420,7 +431,7 @@
 
 (defn- settled
   [e [_ _ og cd sup nb?] pos fall v g rest? [yaw hy body] look
-   walked came]
+   walked came st]
   (let [w (pos? (double (:water g))) l (pos? (double (:lava g)))]
     (gen/with e {:pos pos :vel v :on-ground og :jump-cd cd
                  :fall fall
@@ -431,7 +442,7 @@
                  :yaw yaw :head-yaw hy :body body
                  :pitch (if look (nth look 1) (:pitch e))
                  :look (if look (nth look 2) (:look e))
-                 :walked walked})))
+                 :walked walked :stuck st})))
 
 (defn- body-of-move [world e pos look]
   (let [moved? (shifted? (:pos e) pos)
@@ -477,7 +488,7 @@
     e2))
 
 (defn- shoved-move
-  [world index eid e tr box fall ls [look prev cram live?]]
+  [world index eid e tr box fall ls [look prev cram live? st]]
   (let [[half height pos] box
         h (num/f32 half) ht (num/f32 height)
         [v shoves hit?] (pushed-back world index eid e box cram live?)
@@ -485,7 +496,7 @@
         hd (body-of-move world e pos look)
         came (push/arrived e pos (:tick world) eid)
         e2 (settled e tr pos fall v g (nth tr 8) hd look
-                    (walk-of e prev pos) came)]
+                    (walk-of e prev pos) came st)]
     [(bumped e e2 tr) shoves hit? (when ls (nth ls 1))]))
 
 (defn moved
@@ -500,6 +511,7 @@
         ls (when (lands? tr f0 f1)
              (landing/landed world eid e (nth tr 0) (nth tr 4) f0 f1))
         pos (if ls (nth ls 0) (nth tr 0))
-        fall (landing/kept e (if (nth tr 2) 0.0 f1))
+        st (motion/stuck-speed (:chunks world) pos half height true)
+        fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]]
-    (shoved-move world index eid e tr box fall ls more)))
+    (shoved-move world index eid e tr box fall ls (conj (vec more) st))))

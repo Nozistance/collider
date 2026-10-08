@@ -30,32 +30,42 @@
 (def ^:private snow-speed
   [(double (float 0.9)) 1.5 (double (float 0.9))])
 
-(defn- held-by ^long [chunks ^long x ^long y ^long z]
-  (case (block/type-of (state-at chunks x y z))
+(defn- held-by ^long [^long st snow?]
+  (case (block/type-of st)
     :web 1
-    :powder-snow 2
+    :powder-snow (if snow? 2 0)
     0))
 
-(defn- holder [chunks [x y z] ^double half ^double height]
+(defn- holder [chunks [x y z] half height snow?]
   (let [x (double x) y (double y) z (double z)
+        half (double half) height (double height)
         x1 (hi (+ x half)) y0 (lo y) y1 (hi (+ y height))
         z0 (lo (- z half)) z1 (hi (+ z half))]
     (loop [bx (lo (- x half)) by y0 bz z0 found 0]
       (cond (> bx x1) found
             (> by y1) (recur (inc bx) y0 z0 found)
             (> bz z1) (recur bx (inc by) z0 found)
-            :else (let [h (held-by chunks bx by bz)]
+            :else (let [h (held-by (state-at chunks bx by bz) snow?)]
                     (recur bx by (inc bz) (if (pos? h) h found)))))))
+
+(defn- snow-at-feet? [chunks [x y z]]
+  (= :powder-snow
+     (block/type-of (state-at chunks (num/floor (double x))
+                              (num/floor (double y))
+                              (num/floor (double z))))))
 
 (defn stuck-speed
   "Returns the factor the blocks in a body at pos apply to its next
   move, or nil when none of them holds it. Of a cobweb and powder
-  snow, the one met last holds it."
-  [chunks pos half height]
-  (case (holder chunks pos (double half) (double height))
-    1 web-speed
-    2 snow-speed
-    nil))
+  snow, the one met last holds it. Powder snow holds a living body
+  only by its feet."
+  ([chunks pos half height] (stuck-speed chunks pos half height false))
+  ([chunks pos half height living?]
+   (case (long (holder chunks pos half height
+                       (or (not living?) (snow-at-feet? chunks pos))))
+     1 web-speed
+     2 snow-speed
+     nil)))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))

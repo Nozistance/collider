@@ -159,8 +159,8 @@
     dead? (gen/with {:move (Steer/halted (:move e))})))
 
 (defn- move-speed ^double [e]
-  (if-let [fx (not-empty (:effects e))]
-    (attribute/value e fx :movement-speed)
+  (if (or (seq (:effects e)) (:frost e))
+    (attribute/value e (:effects e) :movement-speed)
     (mobs/speed (:type e))))
 
 (defn- joined-into [acc more]

@@ -89,6 +89,10 @@
    :entity-interaction-range
    [:creative-mode-entity-range 2.0 add-value]})
 
+(defn- frost-modifiers [e attr]
+  (when (and (= :movement-speed attr) (:frost e))
+    [[:powder-snow (double (:frost e)) add-value]]))
+
 (defn- mode-modifiers [e attr]
   (when (= :creative (:game-mode e))
     (some-> (creative-reach attr) vector)))
@@ -113,6 +117,7 @@
   creative one the creative reach."
   [e effects attr]
   (-> (vec (sprint-modifiers e attr))
+      (into (frost-modifiers e attr))
       (into (mode-modifiers e attr))
       (into (effect-modifiers e effects attr))
       (into (vals (get (:equipment-modifiers e) attr)))))

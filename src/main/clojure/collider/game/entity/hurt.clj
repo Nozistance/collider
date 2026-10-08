@@ -14,10 +14,12 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
             [collider.world.env.difficulty :as difficulty]
             [collider.world.env.signal :as signal]
@@ -401,6 +403,16 @@
        (not-any? #(contains? @immune-wear (:item %))
                  (vals (dissoc (player/equipment e) :mainhand :offhand)))))
 
+(defn- frost-of
+  "Returns how much frost f takes off the speed of entity e, nil when
+  none. Over air it takes nothing."
+  [world e ^long f]
+  (when (and (pos? f)
+             (not (zero? (motion/below-state (:chunks world) (:pos e)
+                                             (:support e) 0.2))))
+    (num/fmul (num/f32 -0.05)
+              (num/f32 (/ (double (min f freeze-ticks)) freeze-ticks)))))
+
 (defn- freeze-deltas
   "Returns the deltas of the frost of entity eid after a tick in or
   out of powder snow."
@@ -410,8 +422,16 @@
         f' (if (and snow? can?)
              (min freeze-ticks (inc f))
              (max 0 (- f 2)))
-        lived (- (long (:tick world)) (long (:born e 0)))]
-    (concat (when (not= f f') [[:merge-entity eid {:ticks-frozen f'}]])
+        lived (- (long (:tick world)) (long (:born e 0)))
+        frost (frost-of world e f')
+        changes (cond-> {}
+                  (not= f f') (assoc :ticks-frozen f')
+                  (not= frost (:frost e)) (assoc :frost frost)
+                  (and (not= frost (:frost e)) (entity/player? e))
+                  (assoc :dirty-attributes
+                         (conj (or (:dirty-attributes e) #{})
+                               :movement-speed)))]
+    (concat (when (seq changes) [[:merge-entity eid changes]])
             (when (and can? (>= f' freeze-ticks)
                        (zero? (rem lived freeze-period)))
               (damage-deltas world eid e 1.0 freezing)))))

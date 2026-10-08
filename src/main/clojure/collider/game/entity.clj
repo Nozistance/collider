@@ -129,7 +129,7 @@
                    :look :jump-cd :wet? :sheared? :nav :move :jump
                    :body :follow-at :in-lava? :float? :support
                    :no-blocks? :arrived :hop :fall :brain
-                   :love-until))
+                   :love-until :stuck))
 
 (defn- plain [v] (if (v/v3? v) (vec v) v))
 
