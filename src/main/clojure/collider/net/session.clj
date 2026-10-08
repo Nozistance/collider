@@ -103,7 +103,7 @@
                log/info "play:" packet "not handled")))
 
 (defn- kick-login! [conn reason]
-  (server/send! conn (login-kick-packet reason))
+  (server/send! conn :login (login-kick-packet reason))
   (server/close! conn))
 
 (defn- version-reason [k]
@@ -122,14 +122,16 @@
 
 (defn- watch-login! [conn ^long ms]
   (Thread/startVirtualThread
-    #(do (Thread/sleep ms)
-         (when (= :login (server/conn-state conn))
-           (kick-login! conn slow-login-reason)))))
+    #(try (Thread/sleep ms)
+          (when (server/advance! conn :login :slow-login)
+            (kick-login! conn slow-login-reason))
+          (catch InterruptedException _))))
 
 (defn- begin-login! [conn io ^long protocol]
   (server/put! conn :state :login)
   (if (= protocol c/protocol-version)
-    (watch-login! conn (:slow-login-ms io slow-login-ms))
+    (let [ms (:slow-login-ms io slow-login-ms)]
+      (server/put! conn :watch (watch-login! conn ms)))
     (kick-login! conn (version-reason (outdated-key protocol)))))
 
 (defn- valid-name? [nm]
@@ -257,8 +259,9 @@
   (server/close! conn))
 
 (defn- login-acknowledged! [conn]
-  (server/put! conn :state :configuration)
-  (start-configuration! conn))
+  (when (server/advance! conn :login :configuration)
+    (some-> ^Thread (:watch (server/info conn)) .interrupt)
+    (start-configuration! conn)))
 
 (defn- client-information! [conn m]
   (server/put! conn :settings (events/client-settings m)))

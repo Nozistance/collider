@@ -43,6 +43,13 @@
   [^Conn c k v]
   (swap! (:props c) assoc k v))
 
+(defn advance!
+  "Moves connection c from state from to state to, true when it did."
+  [^Conn c from to]
+  (let [step #(if (= from (:state %)) (assoc % :state to) %)
+        [old new] (swap-vals! (:props c) step)]
+    (not (identical? old new))))
+
 (defn- who [^Conn c]
   (let [{:keys [name eid addr]} @(:props c)]
     (str (or name addr) (when eid (str " (eid " eid ")")))))
@@ -58,10 +65,13 @@
   (.get ^AtomicBoolean (:closing c)))
 
 (defn send!
-  "Queues packet m for connection c, dropping it once c is closing."
-  [^Conn c m]
-  (when-not (closing? c)
-    (.offer ^BlockingQueue (:queue c) [:packet (conn-state c) m])))
+  "Queues packet m for connection c, dropping it once c is closing.
+  Encodes m in the state of c, or in state when given."
+  ([^Conn c m]
+   (send! c (conn-state c) m))
+  ([^Conn c state m]
+   (when-not (closing? c)
+     (.offer ^BlockingQueue (:queue c) [:packet state m]))))
 
 (defn compress!
   "Compresses everything above threshold on connection c from now on."
