@@ -145,8 +145,8 @@
             [id e d12]))))))
 
 (defn- near [b idx]
-  (let [[lo hi] (reach-box b)]
-    (sections/within idx lo hi)))
+  (let [[lo hi] (reach-box b) r (+ (twice (:power b)) 1.0)]
+    (sections/within idx lo hi (:center b) r)))
 
 (defn bodies
   "Returns [id e d12] of the bodies of index idx that blast b reaches,

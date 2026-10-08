@@ -21,13 +21,20 @@
                        (lm/dissoc secs k)
                        (lm/assoc secs k ids)))))
 
+(defn- slot ^long [ids ^long id]
+  (loop [i 0]
+    (let [x (nth ids i)]
+      (if (and x (== id (long x))) i (recur (inc i))))))
+
 (defn removed
+  "Returns index idx without entity id. Its place in its section stays
+  empty, nil, and the readers of the index pass over it."
   [idx id]
   (if-let [k (lm/get (:at idx) id)]
-    (let [k (long k) id (long id)
-          ids (lm/get (:secs idx) k)
-          ids (into [] (remove #(== id (long %))) ids)]
-      (with-section (assoc idx :at (lm/dissoc (:at idx) id)) k ids))
+    (let [k (long k) ids (lm/get (:secs idx) k)
+          ids (assoc ids (slot ids id) nil)]
+      (assoc idx :at (lm/dissoc (:at idx) id)
+                 :secs (lm/assoc (:secs idx) k ids)))
     idx))
 
 (defn- inserted [idx ^long k id]
@@ -164,21 +171,38 @@
   (lm/range secs (cell/pack-section x 0 0)
             (cell/pack-section x -1 -1)))
 
+(defn- present [acc id] (if id (conj! acc id) acc))
+
 (defn- visited [idx x0 x1 in?]
-  (let [add (fn [acc k ids] (if (in? k) (reduce conj! acc ids) acc))
+  (let [add (fn [acc k ids] (if (in? k) (reduce present acc ids) acc))
         secs (:secs idx)]
     (persistent!
       (reduce (fn [acc x] (reduce-kv add acc (column secs x)))
               (transient []) (range x0 (inc (long x1)))))))
 
-(defn within
-  "Returns the ids of the entities in the sections the game visits
-  for the box from lo to hi, in the order it visits them."
-  [idx lo hi]
+(defn- gap ^double [^double c ^long s]
+  (let [lo (* 16.0 s)]
+    (max 0.0 (- lo c) (- c (+ lo 16.0)))))
+
+(defn- meets? [c ^double r k]
+  (let [k (long k)
+        dx (gap (v/x c) (cell/section-x k))
+        dy (gap (v/y c) (cell/section-y k))
+        dz (gap (v/z c) (cell/section-z k))]
+    (<= (+ (* dx dx) (* dy dy) (* dz dz)) (* r r))))
+
+(defn- boxed [idx lo hi in?]
   (let [y0 (section (- (v/y lo) 4.0)) y1 (section (v/y hi))
         z0 (section (- (v/z lo) 2.0)) z1 (section (+ (v/z hi) 2.0))]
     (visited idx (section (- (v/x lo) 2.0)) (section (+ (v/x hi) 2.0))
-             #(in-range? % y0 y1 z0 z1))))
+             (every-pred #(in-range? % y0 y1 z0 z1) in?))))
+
+(defn within
+  "Returns the ids of the entities in the sections the game visits
+  for the box from lo to hi, in the order it visits them. With point
+  c and r, only of the sections that come within r of c."
+  ([idx lo hi] (boxed idx lo hi any?))
+  ([idx lo hi c r] (boxed idx lo hi #(meets? c r %))))
 
 (defn columns
   "Returns the ids of the entities in the sections whose columns meet
@@ -194,5 +218,5 @@
   (let [ids (lm/range (:secs idx) (cell/pack-section cx 0 cz)
                       (cell/pack-section cx -1 cz))]
     (persistent!
-      (reduce-kv (fn [acc _ xs] (reduce conj! acc xs))
+      (reduce-kv (fn [acc _ xs] (reduce present acc xs))
                  (transient []) ids))))
