@@ -86,7 +86,10 @@
 
 (defn of
   [e]
-  (let [m (own-metadata e) fx (:effects e)]
+  (let [m (cond-> (own-metadata e)
+            (pos? (long (or (:ticks-frozen e) 0)))
+            (assoc :ticks-frozen (:ticks-frozen e)))
+        fx (:effects e)]
     (cond (seq fx) (merge m (effect-metadata e fx))
           (:ambience e) (assoc m :effect-ambience true)
           :else m)))

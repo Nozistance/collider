@@ -63,7 +63,12 @@
                 (fn [e x _]
                   (if (or (string? x) (map? x)) (assoc e :custom-name x) e))]
    :CustomNameVisible [(fn [e _] (when (:custom-name-visible e) (flag true)))
-                       (fn [e x _] (assoc e :custom-name-visible (on? x)))]})
+                       (fn [e x _] (assoc e :custom-name-visible (on? x)))]
+   :TicksFrozen
+   [(fn [e _]
+      (let [n (long (or (:ticks-frozen e) 0))] (when (pos? n) (int n))))
+    (fn [e x _]
+      (if (number? x) (assoc e :ticks-frozen (long (unchecked-int x))) e))]})
 
 (defn- numeric [f]
   (fn [e x t] (if (number? x) (f e x t) e)))

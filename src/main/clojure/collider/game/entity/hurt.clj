@@ -281,16 +281,25 @@
            (aset a 0 false)
            a)))
 
-(defn- all-air? [chunks e]
+(def ^:private ^:table snowy
+  (delay (let [n (data/block-state-count) a (boolean-array n)]
+           (dotimes [st n]
+             (when (= :powder-snow (block/type-of st)) (aset a st true)))
+           a)))
+
+(defn- some-inside? [chunks e marks]
   (let [p (:pos e)
         [half height] (box-of e)
         h (double half) x (v/x p) y (v/y p) z (v/z p)
         top (+ y (double height))]
-    (not (phys/some-cell?
-           chunks @occupied
-           (lo-cell (- x h)) (lo-cell y) (lo-cell (- z h))
-           (inc (hi-cell (+ x h))) (inc (hi-cell top))
-           (inc (hi-cell (+ z h)))))))
+    (phys/some-cell?
+      chunks marks
+      (lo-cell (- x h)) (lo-cell y) (lo-cell (- z h))
+      (inc (hi-cell (+ x h))) (inc (hi-cell top))
+      (inc (hi-cell (+ z h))))))
+
+(defn- all-air? [chunks e]
+  (not (some-inside? chunks e @occupied)))
 
 (def ^:private calm
   {:fire? false :lava? false :water? false :snow []})
@@ -374,6 +383,39 @@
           (when (:lava? c)
             (damage-deltas world eid e lava-damage in-lava))))
 
+(def ^:private ^:const freeze-ticks 140)
+
+(def ^:private ^:const freeze-period 40)
+
+(def ^:private freezing {:type :freeze})
+
+(def ^:private ^:table immune-types
+  (delay (set (data/tag-values "entity_type" "freeze_immune_entity_types"))))
+
+(def ^:private ^:table immune-wear
+  (delay (set (data/tag-values "item" "freeze_immune_wearables"))))
+
+(defn- can-freeze? [e]
+  (and (not (game-mode/spectator? e))
+       (not (contains? @immune-types (:type e)))
+       (not-any? #(contains? @immune-wear (:item %))
+                 (vals (dissoc (player/equipment e) :mainhand :offhand)))))
+
+(defn- freeze-deltas
+  "Returns the deltas of the frost of entity eid after a tick in or
+  out of powder snow."
+  [world eid e snow?]
+  (let [f (long (or (:ticks-frozen e) 0))
+        can? (can-freeze? e)
+        f' (if (and snow? can?)
+             (min freeze-ticks (inc f))
+             (max 0 (- f 2)))
+        lived (- (long (:tick world)) (long (:born e 0)))]
+    (concat (when (not= f f') [[:merge-entity eid {:ticks-frozen f'}]])
+            (when (and can? (>= f' freeze-ticks)
+                       (zero? (rem lived freeze-period)))
+              (damage-deltas world eid e 1.0 freezing)))))
+
 (defn- player-fire-deltas [world eid e]
   (let [c (contact world e)
         [f0 f1 lit f] (player-fire world eid e c)]
@@ -385,13 +427,14 @@
                 (melt-deltas world (:snow c))
                 (delta/entity-author eid e)))
             (when (and (pos? (long f1)) (<= (long f) 0))
-              [(put-out-sound world eid e)]))))
+              [(put-out-sound world eid e)])
+            (freeze-deltas world eid e (boolean (seq (:snow c)))))))
 
 (defn- cool? [world e half height]
   (phys/cool? (:chunks world) @burn-bits (:pos e) half height))
 
 (defn fire-deltas
-  "Returns the deltas of the fire and lava entity eid touches,
+  "Returns the deltas of the fire, lava and frost entity eid touches,
   wet as wet? tells or as it is."
   ([world eid e] (fire-deltas world eid e (:wet? e)))
   ([world eid e wet?]
@@ -399,10 +442,12 @@
      (player-fire-deltas world eid e)
      (let [fire (long (or (:fire e) 0))
            [half height :as box] (box-of e)]
-       (when-not (and (zero? fire) (not (:burning? e))
-                      (cool? world e half height))
-         (lit-deltas eid e fire (boolean wet?)
-                     (probe world e box)))))))
+       (concat
+         (when-not (and (zero? fire) (not (:burning? e))
+                        (cool? world e half height))
+           (lit-deltas eid e fire (boolean wet?) (probe world e box)))
+         (freeze-deltas world eid e
+                        (some-inside? (:chunks world) e @snowy)))))))
 
 (def ^:private ^:const burn-volume 0.4)
 

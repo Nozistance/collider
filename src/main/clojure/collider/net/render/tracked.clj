@@ -56,7 +56,9 @@
 
 (defn- common-fields [meta]
   (cond-> (select-keys meta [:custom-name :custom-name-visible])
-    (flags? meta) (assoc :shared-flags (flags-byte meta))))
+    (flags? meta) (assoc :shared-flags (flags-byte meta))
+    (contains? meta :ticks-frozen)
+    (assoc :ticks-frozen (long (or (:ticks-frozen meta) 0)))))
 
 (defn- player-fields [meta]
   (cond-> (common-fields meta)
