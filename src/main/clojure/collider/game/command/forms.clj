@@ -192,6 +192,10 @@
 
 (def ^:private one-arg [:target [:targets {:single? true}]])
 
+(def ^:private data-form
+  [:data "read entity data"
+   [(lit "get") (lit "entity") one-arg] [:world :data-get-entity]])
+
 (def ^:private rotate-form
   [:rotate "turn an entity"
    [one-arg [:yaw [:angle {:axis 0 :node "rotation"}]]
@@ -230,7 +234,7 @@
      [:maxCount [:int {:min 0 :max int-max :default nil
                        :quiet true}]]]
     [:world :clear]]
-   tag-form rotate-form swing-form
+   tag-form data-form rotate-form swing-form
    [:version "show the version of the game" [] [:world :version]]])
 
 (def ^:private fill-modes
