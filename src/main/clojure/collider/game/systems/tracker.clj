@@ -294,8 +294,6 @@
   (cond-> []
           (f-meta-changed? f)
           (conj (out/meta eid (:type e) (f-mdiff f)))
-          (and (f-vel-changed? f) (not (:needs-sync? e)))
-          (conj (out/velocity eid (f-vel f)))
           (seq (f-slot-diff f)) (into (map slot-msg) (f-slot-diff f))
           (f-carried-changed? f) (conj (out/carried (:carried e)))))
 
@@ -406,8 +404,10 @@
 
 (defn- marked-deltas
   [eid e vs]
-  (cond-> [[:merge-entity eid {:hurt-marked? nil}]]
-    vs (conj (out/all (out/velocity eid (:vel e))))))
+  (let [msg (out/velocity eid (or (:vel e) vel-zero))]
+    (cond-> [[:merge-entity eid {:hurt-marked? nil}]]
+      vs (conj (out/all msg))
+      (= :player (:type e)) (conj (out/to eid msg)))))
 
 (defn- seen-deltas [t vs self? eid e]
   (let [tr (track-of (long t) e)

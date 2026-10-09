@@ -417,7 +417,7 @@
       (knocked e knock-power xd zd tick eid))))
 
 (defn- marked [e src]
-  (if (and (instance? Mob e) (not (contains? @unmarked (:type src))))
+  (if-not (contains? @unmarked (:type src))
     (assoc e :hurt-marked? true)
     e))
 

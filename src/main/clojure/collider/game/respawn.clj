@@ -78,7 +78,9 @@
            :hud-sent nil
            :hurt-resist 0 :last-damage 0.0 :death-time 0
            :born tick :ambience nil :xp-sent -1 :level-up-at 0
-           :xp-ready-at nil :client-vel [0.0 0.0 0.0]}
+           :xp-ready-at nil :client-vel [0.0 0.0 0.0]
+           :fire 0 :burning? false :ticks-frozen 0 :fall 0.0
+           :landed nil}
     true (merge food/fresh)
     (not keep?) (merge no-experience)
     (seq (:effects e)) (assoc :effects {})
