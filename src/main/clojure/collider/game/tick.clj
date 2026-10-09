@@ -32,7 +32,6 @@
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tracker :as tracker]
             [collider.game.systems.weather :as weather-system]
-            [collider.log :as log]
             [collider.parallel :as par]))
 
 (set! *warn-on-reflection* true)
@@ -119,27 +118,12 @@
         heeded (fn [[dim d]] [dim (apply/heeded w dim d)])]
     [w (into {} (map heeded) ds)]))
 
-(defn- skipped! [world s dim ^Throwable t]
-  (let [where (name (or dim :server))
-        msg #(str "system " % " failed in " where
-                  ", its deltas this tick are dropped")]
-    (log/unit-failed! (:failures world) s t msg)))
-
-(defn- guarded [world s dim f]
-  (fn []
-    (try (f)
-         (catch Throwable t
-           (skipped! world s dim t)
-           deltas/empty-deltas))))
-
 (defn- merged [ds] (reduce deltas/merge (map ds dims)))
 
-(defn- thunk [world lv d ds dim s]
+(defn- thunk [world lv d ds s]
   (if (:once (meta s))
-    (let [f (guarded world s nil
-                     #(s (level/server-view world) (merged ds)))]
-      #(deltas/with-dim (f) nil))
-    (guarded world s dim #(s lv d))))
+    #(deltas/with-dim (s (level/server-view world) (merged ds)) nil)
+    #(s lv d)))
 
 (defn- runs-in? [dim s]
   (or (identical? home dim) (not (:once (meta s)))))
@@ -192,7 +176,7 @@
         ks (awake-in lv d dim phase)]
     (when (pos? (count ks))
       (let [lv (assoc lv :server world)
-            fs (mapv #(thunk world lv d ds dim %) ks)
+            fs (mapv #(thunk world lv d ds %) ks)
             timed (cost/timer (:tick world))]
         (deltas/with-dim
          (deltas/run-weighed cost/heavy? timed ks fs)
@@ -209,21 +193,14 @@
               pd))
           {} dims))
 
-(defn- unfiltered! [world f ^Throwable t]
-  (let [msg #(str "filter " % " failed, passed over this time")]
-    (log/unit-failed! (:failures world) f t msg)))
-
 (defn- checked [ok? v]
   (if (every? ok? v)
     v
     (throw (ex-info "the filter gave a bad delta"
                     {:delta (first (remove ok? v))}))))
 
-(defn- passed [world fs at x ok?]
-  (reduce (fn [x f]
-            (try (checked ok? (vec (f at x)))
-                 (catch Throwable t (unfiltered! world f t) x)))
-          x fs))
+(defn- passed [fs at x ok?]
+  (reduce (fn [x f] (checked ok? (vec (f at x)))) x fs))
 
 (defn- tagged-known? [plugin-tags tag x]
   (cond (identical? :fx tag) (map? x)
@@ -240,7 +217,7 @@
     (fn [m dim d]
       (let [lv (assoc (get (:levels world) dim) :server world)
             ok? (partial known? (:deltas (:hooks world)))
-            v (passed world fs lv (deltas/as-vec d) ok?)]
+            v (passed fs lv (deltas/as-vec d) ok?)]
         (assoc m dim (deltas/with-dim (deltas/of-vec v) dim))))
     pd pd))
 
@@ -259,15 +236,13 @@
 
 (defn tick
   "Returns the world and the deltas after one tick of the events.
-  A system that fails gives no deltas this tick, the others go on.
   The event filters of the world pass the events before the tick,
-  its delta filters the deltas of each phase before they apply. A
-  filter that fails passes on what it was given."
+  its delta filters the deltas of each phase before they apply."
   ([world events] (tick world events phases))
   ([world events phases]
    (par/in-pool
      #(let [evs (if-let [fs (hooked world :event-filters)]
-                  (passed world fs world events vector?)
+                  (passed fs world events vector?)
                   events)
             acc (begin world evs)
             [world' ds] (reduce run-phase acc phases)]
