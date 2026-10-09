@@ -7,6 +7,7 @@
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
             [collider.game.experience :as xp]
+            [collider.game.item :as item]
             [collider.game.level :as level]
             [collider.game.loot :as loot]
             [collider.game.mob.mobs :as mobs]
@@ -740,9 +741,39 @@
       (mapcat (fn [_] ev) (range (long (or (:hurts e) 0))))
       (shell/shell-deltas eid e (:tick world)))))
 
+(def ^:private death-order
+  (concat (range 36 45) (range 9 36) [45 8 7 6 5]))
+
+(defn- vanishes? [s]
+  (contains? (get-in s [:components :enchantments]) :vanishing-curse))
+
+(defn- inventory-deltas
+  "Returns the deltas of player eid, e, who dies and drops all it
+  carries but what vanishes."
+  [world eid e]
+  (when-not (or (keeps? world) (game-mode/spectator? e))
+    (let [inv (:inventory e)
+          drops (remove vanishes? (keep inv death-order))]
+      (cons [:merge-entity eid {:inventory (apply dissoc inv death-order)}]
+            (map-indexed (fn [i s]
+                           [:spawn-entity
+                            (item/dropped world eid s true [:death i])])
+                         drops)))))
+
+(defn- player-died-deltas [world eid e]
+  (when (entity/player? e)
+    (concat
+      (inventory-deltas world eid e)
+      [[:award eid :custom/deaths 1]
+       [:merge-entity eid
+        {:fire 0 :burning? false :ticks-frozen 0
+         :stats (assoc (:stats e) :custom/time-since-death 0
+                       :custom/time-since-rest 0)}]])))
+
 (defn- died-deltas [world eid e]
   (concat (signal/game-event :entity-die (:pos e) eid)
           [(out/all (out/status eid :death))]
+          (player-died-deltas world eid e)
           (drop-deltas world eid e) (death-orbs world eid e)))
 
 (defn- lost-deltas [world eid e health]

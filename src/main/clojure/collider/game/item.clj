@@ -17,7 +17,7 @@
 
 (def ^:private ^:const around-power 0.5)
 
-(def ^:private ^:const around-lift 0.2)
+(def ^:private ^:const around-lift (double (float 0.2)))
 
 (def ^:private ^:const hand-drop (double (float 0.3)))
 
