@@ -50,7 +50,7 @@
 (defn- byte-table [t ^long default]
   (let [a (byte-array (data/block-state-count))]
     (Arrays/fill a (byte default))
-    (each-run! t (fn [id v] (aset a (int id) (byte (long v)))))
+    (each-run! t (fn [id v] (aset a (int id) (unchecked-byte (long v)))))
     a))
 
 (def ^:private ^:table shape-table

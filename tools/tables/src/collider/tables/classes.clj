@@ -101,10 +101,11 @@
   (call-static "world.level.block.Block" "isFaceFull"
                (collision-shape env st) up))
 
-(defn- state-flags [env st]
+(defn- state-flags [{:keys [air zero] :as env} st]
   (let [flags (conj (mapv #(call st %) flag-methods)
                     (full-top? env st)
-                    (call st "isSignalSource") (call st "isSolid"))]
+                    (call st "isSignalSource") (call st "isSolid")
+                    (call st "isSuffocating" air zero))]
     (unless-default 0 (mask flags))))
 
 (defn- state-sturdy [{:keys [air zero dirs]} st & more]
@@ -373,6 +374,12 @@
       (seq own) (assoc :clone-props own)
       (seq data) (assoc :data-props data))))
 
+(defn- dig-props [st]
+  (let [air (static-field "world.level.EmptyBlockGetter" "INSTANCE")
+        zero (static-field "core.BlockPos" "ZERO")]
+    (cond-> {:hardness (flt (call st "getDestroySpeed" air zero))}
+      (call st "requiresCorrectToolForDrops") (assoc :needs-tool? true))))
+
 (defn- own-props [by-type env reg b]
   (let [field #(hidden-field (class b) b %)
         st (call b "defaultBlockState")]
@@ -380,6 +387,7 @@
             :sound      (by-type (call st "getSoundType"))
             :class      (block-class b)}
            (motion-props field)
+           (dig-props st)
            (instrument st)
            (toggle b)
            (clone-props env reg b))))

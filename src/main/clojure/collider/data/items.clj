@@ -214,9 +214,22 @@
                  (pack/item-set (tags "item") (get rep "items")))
       trim (assoc :trim-material (kw trim)))))
 
+(defn- tool-rule [tags r]
+  (cond-> {:blocks (pack/item-set (tags "block") (get r "blocks"))}
+    (contains? r "speed") (assoc :speed (flt (get r "speed")))
+    (contains? r "correct_for_drops")
+    (assoc :correct? (get r "correct_for_drops"))))
+
+(defn- tool-fields [tags cs]
+  (when-let [t (get cs "minecraft:tool")]
+    {:tool {:rules (mapv #(tool-rule tags %) (get t "rules"))
+            :default-speed (flt (get t "default_mining_speed" 1.0))
+            :per-block (get t "damage_per_block" 1)}}))
+
 (defn- item [tags cs]
   (merge (sorted-map :components (default-components cs))
          (stack-fields cs) (equip-fields tags cs) (combat-fields cs)
+         (tool-fields tags cs)
          (consumable-fields tags cs) (station-fields tags cs)))
 
 (defn- fact [k t] (update-vals t #(hash-map k %)))

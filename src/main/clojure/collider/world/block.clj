@@ -865,3 +865,10 @@
 
 (defn double-slab
   ^long [item] (state item {:type :double}))
+
+(def ^:private ^:const suffocating-bit 128)
+
+(defn suffocating?
+  "Returns true when st suffocates an entity with its eyes in it."
+  [^long st]
+  (flag? st suffocating-bit))

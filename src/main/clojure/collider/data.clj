@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 22)
+(def layout 23)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))

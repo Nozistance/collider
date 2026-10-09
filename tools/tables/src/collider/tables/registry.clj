@@ -31,6 +31,12 @@
                 (ids (get m "entries"))]))
         (report-json reports "registries.json")))
 
+(defn- experience [v]
+  (cond
+    (map? v) (do (assert (= "minecraft:uniform" (get v "type")) v)
+                 [(get v "min_inclusive") (get v "max_inclusive")])
+    (and (number? v) (pos? (long v))) [v v]))
+
 (defn- block [[name m] extra shaped]
   (let [{:strs [properties states definition]} m
         first-id (apply min (map #(get % "id") states))
@@ -38,9 +44,13 @@
         props (into (sorted-map)
                     (map (fn [[p vs]] [(kw p) (mapv keyword vs)]))
                     properties)
-        base {:first   first-id
-              :default (or default first-id)
-              :type    (kw (get definition "type"))}
+        xp (experience (get definition "experience"))
+        burn (get definition "fire_damage")
+        base (cond-> {:first   first-id
+                      :default (or default first-id)
+                      :type    (kw (get definition "type"))}
+               xp (assoc :xp xp)
+               burn (assoc :fire-damage burn))
         own (into (sorted-map) (merge base (get extra (kw name))))]
     [(kw name)
      (cond-> own

@@ -26,7 +26,7 @@
 (defn flt
   "Returns v as the double that prints like the float v."
   ^double [v]
-  (Double/parseDouble (Float/toString (float v))))
+  (Double/parseDouble (Float/toString (unchecked-float v))))
 
 (defn unknown
   "Returns the error for pack data the tables have no words for."
