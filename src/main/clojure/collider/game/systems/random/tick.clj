@@ -7,6 +7,7 @@
             [collider.game.delta :as delta]
             [collider.game.deltas :as deltas]
             [collider.game.item :as item]
+            [collider.game.loot :as loot]
             [collider.game.out :as out]
             [collider.game.areas :as areas]
             [collider.parallel :as par]
@@ -42,10 +43,16 @@
   (long (get-in world [:rules :fire-spread-radius-around-player]
                 128)))
 
+(defn- leaf-drops [world p]
+  (fn [st roll]
+    (loot/block-drops {:state st :pos p
+                       :block-at #(changes/block-at world %)}
+                      roll)))
+
 (defn- block-result [world chunks day-time p st roll]
   (let [drip (dripstone/drip chunks p st roll (:dim world))
         grown (grow/random-tick chunks p st roll day-time world)
-        drops (grow/random-drops st roll)
+        drops (grow/random-drops st roll (leaf-drops world p))
         changes (concat (:changes drip)
                         (dripstone/random-changes chunks p st roll)
                         grown)]

@@ -237,11 +237,11 @@
               (recur (inc i) (- n d) (assoc cs i [p it (+ c d)])))
             (recur (inc i) n cs)))))))
 
-(defn- pos-stacks [cs st pos seed radius]
+(defn- pos-stacks [cs st pos seed radius drops]
   (let [roll (fn [salt] (random/of-key [seed pos salt]))
         add (fn [acc s]
               (add-stack acc pos (:item s) (long (:count s 1))))]
-    (reduce add cs (block/drops st roll radius))))
+    (reduce add cs (drops st pos roll radius))))
 
 (defn- dropping? [^SectionGrid rg [x y z]]
   (let [st (read-block rg (long x) (long y) (long z))]
@@ -251,10 +251,10 @@
   "Returns what the blast leaves behind at each position. The drops
   of the destroyed positions merge into few stacks. Seed decides the
   random drops, and the blast radius lowers them."
-  [^SectionGrid rg positions seed radius]
+  [^SectionGrid rg positions seed radius drops]
   (let [add (fn [cs pos]
               (if-let [st (dropping? rg pos)]
-                (pos-stacks cs st pos seed radius)
+                (pos-stacks cs st pos seed radius drops)
                 cs))]
     (mapv (fn [[pos item n]] [pos {:item item :count n}])
           (reduce add [] (shuffled positions seed)))))

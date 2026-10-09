@@ -77,11 +77,11 @@
       cs)))
 
 (defn random-drops
-  "Returns the drops of leaves too far from their log.
-  Returns nil for any other block."
-  [^long st roll]
+  "Returns the drops of leaves too far from their log, by drops of
+  the state and roll. Returns nil for any other block."
+  [^long st roll drops]
   (when (and (block/leaves? st) (leaves/decaying? st))
-    (block/drops st roll)))
+    (drops st roll)))
 
 (defn- berries-meal [chunks p st roll]
   (some-> (vine/berries-meal chunks p st roll)

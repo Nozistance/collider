@@ -2,6 +2,7 @@
   "One explosion with its rays, the bodies it reaches, the blocks it
   breaks, their drops and its fire."
   (:require [collider.data :as data]
+            [collider.game.block.blockentity :as be]
             [collider.game.block.tnt :as tnt]
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
@@ -11,6 +12,7 @@
             [collider.game.hanging.drops :as drops]
             [collider.game.item :as item]
             [collider.game.level :as level]
+            [collider.game.loot :as loot]
             [collider.game.hanging :as hanging]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -186,10 +188,21 @@
 (defn- interacts? [world source]
   (or (not= :mob source) (get-in world [:rules :mob-griefing] true)))
 
+(declare block-at)
+
+(defn- loot-of [world rg source]
+  (fn [st pos roll radius]
+    (loot/block-drops {:state st :pos pos :radius radius
+                       :entity (when source {:type source})
+                       :block-entity (be/at world pos)
+                       :block-at #(block-at rg %)}
+                      roll)))
+
 (defn- drop-specs [{:keys [world rg seed source power]} destroy]
   (when (get-in world [:rules :block-drops] true)
     (let [radius (decay-radius world source power)
-          stacks (explosion/stacks rg destroy seed radius)]
+          stacks (explosion/stacks rg destroy seed radius
+                                   (loot-of world rg source))]
       (map-indexed (fn [i [p stack]] (item/popped world p stack i))
                    stacks))))
 

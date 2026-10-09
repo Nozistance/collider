@@ -1,9 +1,11 @@
 (ns collider.game.loot
-  "Mob loot tables."
+  "Loot tables of mobs and blocks."
   (:require [collider.data :as data]
+            [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
             [collider.game.stack :as stack]
-            [collider.num :as num]))
+            [collider.num :as num]
+            [collider.world.block :as block]))
 
 (set! *warn-on-reflection* true)
 
@@ -115,8 +117,8 @@
   (get ctx (if (= :this t) :entity t)))
 
 (defn- properties? [c ctx]
-  (let [p (:predicate c)]
-    (or (empty? p) (entity-matches? p (target ctx (:entity c))))))
+  (or (not (contains? c :predicate))
+      (entity-matches? (:predicate c) (target ctx (:entity c)))))
 
 (defn- damage-tag? [t ctx]
   (let [vs (data/tag-values "damage_type" (data/snake (:id t)))]
@@ -175,6 +177,48 @@
       (level-value (:enchanted-chance c) lvl)
       (num/f32 (:unenchanted-chance c)))))
 
+(defn- tool-level ^long [ctx ench]
+  (long (get (stack/component (:tool ctx) :enchantments) ench 0)))
+
+(defn- prop-fits? [have want]
+  (if (map? want)
+    (let [v (parse-long (name have))]
+      (and v (in-range? {:min (some-> (:min want) name parse-long)
+                         :max (some-> (:max want) name parse-long)}
+                        v)))
+    (= (name have) (name want))))
+
+(defn- state-fits? [st props]
+  (let [have (block/props-of st)]
+    (every? (fn [[k v]] (and (contains? have k) (prop-fits? (have k) v)))
+            props)))
+
+(defn- block-fits? [p st]
+  (and (or (nil? (:blocks p))
+           (contains? (members "block" (:blocks p)) (block/block-of st)))
+       (state-fits? st (:state p))))
+
+(defn- located? [c ctx]
+  (let [[x y z] (:pos ctx)
+        at [(+ (long x) (long (:offsetX c 0)))
+            (+ (long y) (long (:offsetY c 0)))
+            (+ (long z) (long (:offsetZ c 0)))]
+        p (:predicate c)]
+    (cond (nil? (:pos ctx)) false
+          (empty? p) true
+          (= [:block] (keys p))
+          (block-fits? (:block p) ((:block-at ctx) at))
+          :else (fail "unknown location predicate" {:predicate p}))))
+
+(defn- bonus-table? [c ctx r]
+  (let [cs (:chances c)
+        i (min (tool-level ctx (:enchantment c)) (dec (count cs)))]
+    (< (double r) (double (nth cs i)))))
+
+(defn- survives? [ctx r]
+  (let [radius (:radius ctx)]
+    (or (nil? radius) (<= (double r) (/ 1.0 (double radius))))))
+
 (declare outcomes)
 
 (defn- passes? [c ctx roll s]
@@ -185,6 +229,14 @@
     (< (double (roll s)) (bonus-chance c ctx))
     :entity-properties (properties? c ctx)
     :damage-source-properties (damage? (:predicate c) ctx)
+    :match-tool (boolean (and (:tool ctx)
+                              (item-matches? (:predicate c) (:tool ctx))))
+    :block-state-property
+    (and (= (:block c) (block/block-of (:state ctx)))
+         (state-fits? (:state ctx) (:properties c)))
+    :table-bonus (bonus-table? c ctx (roll s))
+    :survives-explosion (survives? ctx (roll s))
+    :location-check (located? c ctx)
     :inverted (not (passes? (:term c) ctx roll (conj s :term)))
     :any-of (boolean (some true? (outcomes (:terms c) ctx roll s)))
     :all-of (every? true? (outcomes (:terms c) ctx roll s))
@@ -221,6 +273,57 @@
     (assoc-in stack [:components :ominous-bottle-amplifier]
               (min 4 (max 0 n)))))
 
+(defn- below ^long [r ^long n] (long (* (double r) n)))
+
+(defn- ore-bonus ^long [^long n ^long lvl roll s]
+  (if (pos? lvl)
+    (* n (inc (max 0 (dec (below (roll s) (+ lvl 2))))))
+    n))
+
+(defn- bonus-count [stack f ctx roll s]
+  (let [lvl (tool-level ctx (:enchantment f))
+        n (long (:count stack 1))
+        ps (:parameters f)]
+    (assoc stack :count
+           (case (:formula f)
+             :ore-drops (ore-bonus n lvl roll s)
+             :binomial-with-bonus-count
+             (+ n (binomial {:n (+ lvl (long (:extra ps)))
+                             :p (:probability ps)}
+                            roll s))
+             :uniform-bonus-count
+             (+ n (below (roll s)
+                         (inc (* lvl (long (:bonusMultiplier ps))))))
+             (fail "unknown bonus formula" {:formula (:formula f)})))))
+
+(defn- decayed [stack ctx roll s]
+  (if-let [radius (:radius ctx)]
+    (let [p (/ 1.0 (double radius))
+          n (count (filter #(<= (double (roll (conj s %))) p)
+                           (range (long (:count stack 1)))))]
+      (assoc stack :count n))
+    stack))
+
+(defn- limited [stack {:keys [limit]}]
+  (let [{:keys [min max]} (bounds limit)]
+    (update stack :count
+            #(cond->> (long %) min (clojure.core/max (long min))
+                      max (clojure.core/min (long max))))))
+
+(defn- copied-components [stack f ctx]
+  (let [e (:block-entity ctx)
+        cs (when e (:components (be/to-stack (:item stack) e)))]
+    (update stack :components merge (select-keys cs (:include f)))))
+
+(defn- copied-state [stack f ctx]
+  (let [have (block/props-of (:state ctx))
+        v (into {} (keep (fn [k]
+                           (when-let [x (get have k)]
+                             [(block/prop-name k) (name x)])))
+                (:properties f))]
+    (cond-> stack
+      (seq v) (update-in [:components :block-state] merge v))))
+
 (defn- run-fn [stack f ctx roll s]
   (case (:function f)
     :set-count (set-count stack f roll s)
@@ -230,6 +333,11 @@
     :set-potion (assoc-in stack [:components :potion-contents]
                 {:potion (:id f)})
     :set-ominous-bottle-amplifier (ominous-amplifier stack f roll s)
+    :apply-bonus (bonus-count stack f ctx roll s)
+    :explosion-decay (decayed stack ctx roll s)
+    :limit-count (limited stack f)
+    :copy-components (copied-components stack f ctx)
+    :copy-state (copied-state stack f ctx)
     (fail "unsupported function" {:function (:function f)})))
 
 (defn- apply-fn [stack f ctx roll s]
@@ -252,7 +360,7 @@
   (if-not (met? (:conditions e) ctx roll s)
     []
     (case (:type e)
-      (:item :loot-table :empty) [[e s]]
+      (:item :loot-table :empty :dynamic) [[e s]]
       :alternatives (let [kids (children-of e ctx roll s)]
                       (or (first (remove empty? kids)) []))
       :group (vec (mapcat identity (children-of e ctx roll s)))
@@ -281,10 +389,18 @@
   (let [id (:value e)]
     (table-drops tables id ctx roll (conj s id))))
 
+(defn- sherds [ctx]
+  (let [e (:block-entity ctx)]
+    (mapv #(hash-map :item % :count 1)
+          (take 4 (concat (:sherds e) (repeat :brick))))))
+
 (defn- leaf-stacks [tables [e s] ctx roll]
   (let [made (case (:type e)
                :empty []
                :item [{:item (:name e) :count 1}]
+               :dynamic (if (= :sherds (:name e))
+                          (sherds ctx)
+                          (fail "unknown dynamic drop" {:name (:name e)}))
                :loot-table (nested tables e ctx roll s))]
     (mapv #(apply-fns % (:functions e) ctx roll (conj s :fns)) made)))
 
@@ -315,11 +431,12 @@
             (range n)))))
 
 (defn- table-drops [tables id ctx roll s]
-  (let [t (or (get tables id) (fail "unknown table" {:table id}))]
-    (into [] (comp (map-indexed
-                    #(pool-drops tables %2 ctx roll (conj s %1)))
-                   cat)
-          (:pools t))))
+  (let [t (or (get tables id) (fail "unknown table" {:table id}))
+        made (into [] (comp (map-indexed
+                             #(pool-drops tables %2 ctx roll (conj s %1)))
+                            cat)
+                   (:pools t))]
+    (mapv #(apply-fns % (:functions t) ctx roll (conj s :table)) made)))
 
 (defn drops
   "Returns the stacks table-id drops in ctx, in pool order.
@@ -328,3 +445,13 @@
   [tables table-id ctx roll]
   (filterv #(pos? (long (:count % 1)))
            (table-drops tables table-id ctx roll [table-id])))
+
+(defn block-drops
+  "Returns the stacks the block of ctx drops. Ctx holds the state,
+  pos, tool, entity, block entity, the radius of an explosion and
+  block-at, the state at a pos."
+  [ctx roll]
+  (let [tables (data/drops) b (block/block-of (:state ctx))]
+    (if (contains? tables b)
+      (drops tables b (merge {:tool {:item :air :count 0}} ctx) roll)
+      [])))

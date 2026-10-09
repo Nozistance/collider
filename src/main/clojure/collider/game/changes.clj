@@ -7,6 +7,7 @@
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.game.level :as level]
+            [collider.game.loot :as loot]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.random :as random]
@@ -45,11 +46,18 @@
                     (mapcat #(dried-fx world %)))
            changes)]))
 
+(defn block-drops
+  "Returns the stacks the block st at pos drops without a tool."
+  [world pos st]
+  (loot/block-drops {:state st :pos pos
+                     :block-entity (be/at world pos)
+                     :block-at #(block-at world %)}
+                    #(random/of-key (:tick world) pos %)))
+
 (defn- dropped [world pos [_ old]]
   (when (get-in world [:rules :block-drops] true)
-    (let [salt (fn [salt] (random/of-key (:tick world) pos salt))]
-      (for [[i stack] (map-indexed vector (block/drops old salt))]
-        [:spawn-entity (item/popped world pos stack i)]))))
+    (for [[i stack] (map-indexed vector (block-drops world pos old))]
+      [:spawn-entity (item/popped world pos stack i)])))
 
 (def ^:private ^:const anvil-hurt 2.0)
 

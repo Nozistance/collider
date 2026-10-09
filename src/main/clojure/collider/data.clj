@@ -144,7 +144,7 @@
             :entity-drops (loot/entity-drops t)})))
 
 (defn drops
-  "Returns what blocks drop when broken."
+  "Returns the loot table of each block by name."
   [] (:drops @loot-tables))
 
 (defn entity-drops

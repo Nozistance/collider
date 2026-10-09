@@ -25,7 +25,7 @@
     (map-indexed
       (fn [i stack]
         [:spawn-entity (item/popped world pos stack [:bucket i])])
-      (block/drops cur #(random/of-key (:tick world) pos %)))))
+      (changes/block-drops world pos cur))))
 
 (defn- may-replace? [cur]
   (or (block/can-be-replaced? cur) (not (block/blocks-motion? cur))))
