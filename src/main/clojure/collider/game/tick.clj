@@ -12,6 +12,7 @@
             [collider.game.systems.block.entities :as block-entities]
             [collider.game.systems.block.updates :as block-updates]
             [collider.game.systems.blocks :as blocks]
+            [collider.game.systems.landing :as landing]
             [collider.game.systems.camera :as camera]
             [collider.game.systems.chat :as chat]
             [collider.game.systems.chunks :as chunks]
@@ -42,6 +43,7 @@
   [#'players/player-list
    #'camera/camera
    #'blocks/block-edits
+   #'landing/landings
    #'packets/by-player
    #'inventory/inventory
    #'containers/containers

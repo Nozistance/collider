@@ -48,11 +48,8 @@
       (not (and (zero? dx) (zero? dy) (zero? dz)))
       (conj (distance-stat m dx dy dz)))))
 
-(defn- fall-stat [e [k n :as pair]]
-  (if (= :landed k)
-    (when (and (not (game-mode/may-fly? e)) (>= (double n) 2.0))
-      [:fall-one-cm (Math/round (* (double n) 100.0))])
-    pair))
+(defn- fall-stat [_e [k _ :as pair]]
+  (when-not (= :landed k) pair))
 
 (defn- ticked-stats [e]
   (cond-> [[:play-time 1] [:total-world-time 1]]

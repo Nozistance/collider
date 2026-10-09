@@ -437,19 +437,22 @@
   (let [e (get-in w [:entities eid])]
     (if (and (:tp-target e) (= (long id) (long (:tp-id e 1))))
       (update-entity w eid merge
-                     {:pos (v/v3 (:tp-target e)) :tp-target nil
-                      :fall 0.0})
+                     {:pos (v/v3 (:tp-target e)) :tp-target nil})
       w)))
 
 (defn- fall-changes [e changes vel]
   (let [fall (double (or (:fall e) 0.0))
-        dy (if vel (v/y vel) 0.0)]
+        dy (if vel (v/y vel) 0.0)
+        wet? (:in-water? changes (:in-water? e))
+        fall (if (and (not wet?) (neg? dy))
+               (- fall (double (unchecked-float dy)))
+               fall)]
     (cond
       (or (:flying e) (:flying changes)) {:fall 0.0 :landed nil}
       (:on-ground changes)
       {:fall 0.0 :landed (when (pos? fall) fall)}
-      (neg? dy) {:fall (- fall dy) :landed nil}
-      :else {:landed nil})))
+      (pos? dy) {:fall 0.0 :landed nil}
+      :else {:fall fall :landed nil})))
 
 (defn- move-vel [old new]
   (when (and old new)

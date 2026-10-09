@@ -6,6 +6,8 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.entity.hurt :as hurt]
+            [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]
             [collider.random :as random]
@@ -94,12 +96,19 @@
       (- (long (Math/floor (* scaled (double (or k 1.0)))))
          (reduction e)))))
 
+(defn- player? [e] (= :player (:type e)))
+
 (defn- sound [e kind ^double vol ^double pitch]
-  (out/all (out/sound kind (:pos e) vol pitch :neutral)))
+  (if (player? e)
+    (out/except (:eid e) (out/sound kind (:pos e) vol pitch :players))
+    (out/all (out/sound kind (:pos e) vol pitch :neutral))))
 
 (defn- fall-sound [e big?]
-  (sound e (if big? :entity.generic.big-fall
-               :entity.generic.small-fall) 1.0 1.0))
+  (sound e (cond (player? e) (if big? :entity.player.big-fall
+                                 :entity.player.small-fall)
+                 big? :entity.generic.big-fall
+                 :else :entity.generic.small-fall)
+         1.0 1.0))
 
 (defn- block-sound [e ^long st]
   (let [s (get (data/sounds) (:sound (data/info (block/block-of st))))
@@ -122,15 +131,23 @@
                      [(floor-of (v/x p)) y (floor-of (v/z p))])]
     (when-not (block/air? st) [(block-sound e st)])))
 
+(defn- fall-stat [eid e ^double d]
+  (when (and (player? e) (>= d 2.0))
+    [[:award eid :custom/fall-one-cm (Math/round (* d 100.0))]]))
+
 (defn- hurt-deltas
   "Returns the deltas of the fall damage of e for a fall d with
-  modifier m from source type k."
+  modifier m from source type k. A body that may fly takes none."
   [world eid e [d m k]]
-  (let [n (damage-of e (double d) (double m))]
-    (when (pos? n)
-      (-> [(fall-sound e (> n 4))]
-          (into (block-fall-sound world e))
-          (conj [:damage eid (double n) (srcs k)])))))
+  (when-not (game-mode/may-fly? e)
+    (let [n (damage-of e (double d) (double m))]
+      (concat
+        (fall-stat eid e (double d))
+        (when (pos? n)
+          (-> [(fall-sound e (> n 4))]
+              (into (block-fall-sound world e))
+              (into (hurt/damage-deltas world eid e (double n)
+                                        (srcs k)))))))))
 
 (defn- honey-deltas [eid e ^long st hs]
   (cond-> (into [(sound e :block.honey-block.slide 1.0 1.0)
@@ -148,7 +165,7 @@
         w (float (* 2.0 (double half)))
         size (float (* (float (* w w)) (float h)))]
     (and (< (random/of-longs (:tick world) eid trample-key) (- f 0.5))
-         (get-in world [:rules :mob-griefing] true)
+         (or (player? e) (get-in world [:rules :mob-griefing] true))
          (> size (float 0.512)))))
 
 (defn- top-of
@@ -207,8 +224,10 @@
         [e ts] (if (= :farmland (block/type-of st))
                  (trampled world eid e st cell f)
                  [e nil])
-        hs (when-let [l (fall/landing st f)]
-             (hurt-deltas world eid e l))]
+        l (if (and (:sneaking? e) (= :slime (block/type-of st)))
+            [f 1.0 :fall]
+            (fall/landing st f))
+        hs (when l (hurt-deltas world eid e l))]
     [e (case (block/type-of st)
          :honey (honey-deltas eid e st hs)
          :powder-snow (snow-deltas e f)
@@ -220,7 +239,7 @@
   it."
   [world eid e pos sup f0 f]
   (let [f0 (double f0) f (double f)
-        e (assoc e :pos pos)
+        e (assoc e :pos pos :eid eid)
         cell (fall/on-pos (:chunks world) pos sup)
         st (chunk/at (:chunks world) cell)
         ps (when (pos? f0) (particles e pos st cell f0))]
