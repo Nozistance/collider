@@ -15,7 +15,8 @@
   {:limited?  (boolean (get-in world [:rules :limited-crafting]))
    :known     (or (:known-recipes e) #{})
    :held      (long (or (:held-slot e) 0))
-   :infinite? (player/infinite-materials? e)})
+   :infinite? (player/infinite-materials? e)
+   :xp-level  (long (:xp-level e 0))})
 
 (defn- allowed? [ctx recipe]
   (or (contains? special (:type recipe))

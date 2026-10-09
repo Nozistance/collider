@@ -243,9 +243,12 @@
   (let [place? (fn [slot _] (not= 2 (long slot)))
         base (menu/slots-layout 3 place?)
         v (:visible base)
-        creative? (boolean (:infinite? ctx))]
+        creative? (boolean (:infinite? ctx))
+        cost (long (:cost m 0))]
     (assoc base
       :result 2
+      :may-take? (and (pos? cost)
+                      (or creative? (<= cost (long (:xp-level ctx 0)))))
       :quick (fn [_ slot] (menu/combiner-quick v 2 slot))
       :on-take (fn [inv] (taken m inv))
       :derive (fn [inv] (derive-result m inv creative?)))))

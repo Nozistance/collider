@@ -10,6 +10,7 @@
             [collider.game.block.container :as container]
             [collider.game.block.crafting :as crafting]
             [collider.game.block.enchanting :as enchanting]
+            [collider.game.block.grindstone :as grindstone]
             [collider.game.block.lectern :as lectern]
             [collider.game.block.lid :as lid]
             [collider.game.block.menu :as menu]
@@ -201,11 +202,30 @@
                 (out/to eid (out/container-data id i v))))]
     (keep-indexed one (container/data-values world menu))))
 
-(defn- take-deltas [world e m takes]
+(defn- levels-paid [e ^long cost]
+  (let [n (- (long (:xp-level e 0)) cost)]
+    (cond-> {:xp-level (max n 0) :xp-sent nil}
+      (neg? n) (assoc :xp-progress 0.0 :xp-total 0))))
+
+(defn- anvil-paid [eid e m]
+  (when-not (player/infinite-materials? e)
+    [[:merge-entity eid (levels-paid e (long (:cost m 0)))]]))
+
+(defn- ground-off [world m]
+  (let [[a b] (:contents m)
+        pos (:pos m)
+        n (grindstone/reward a b (random/of-key (:tick world) pos
+                                                :grindstone))]
+    (when (pos? n) [[:xp-award (v/centre pos) n :grindstone]])))
+
+(defn- take-deltas [world eid e m takes]
   (when (pos? (long takes))
     (case (:type m)
-      :anvil (anvil/take-deltas
-               world m (player/infinite-materials? e))
+      :anvil (concat (anvil-paid eid e m)
+                     (anvil/take-deltas
+                       world m (player/infinite-materials? e)))
+      :grindstone (concat (ground-off world m)
+                          [(container/take-sound m)])
       (when-let [s (container/take-sound m)] [s]))))
 
 (defn- click-merge-deltas [eid e after inventory menu]
@@ -229,7 +249,7 @@
       deltas
       (selected-deltas eid m menu)
       (value-deltas world eid m menu)
-      (take-deltas world e m (long (:takes after 0)))
+      (take-deltas world eid e m (long (:takes after 0)))
       (craft-deltas world eid after)
       (sound-deltas world eid after)
       (item/thrown-deltas world eid (:drops after)))))
@@ -319,11 +339,6 @@
         at (v/centre pos)]
     (out/all (out/sound :block.enchantment-table.use at 1.0
                         (+ 0.9 (* 0.1 r))))))
-
-(defn- levels-paid [e ^long cost]
-  (let [n (- (long (:xp-level e 0)) cost)]
-    (cond-> {:xp-level (max n 0) :xp-sent nil}
-      (neg? n) (assoc :xp-progress 0.0 :xp-total 0))))
 
 (defn- next-seed [world eid]
   (let [r (random/of-key (:tick world) eid :enchantment-seed)]

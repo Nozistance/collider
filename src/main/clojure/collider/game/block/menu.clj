@@ -200,11 +200,15 @@
                   (pos? put) (assoc slot (sized stack (+ have put))))]
         [inv (sized stack (- (count-of stack) put))]))))
 
+(defn- locked? [layout slot]
+  (and (= slot (:result layout)) (false? (:may-take? layout))))
+
 (defn- removable [layout inv slot n mx]
   (let [here (get inv slot)
         whole (count-of here)
         n (long n) mx (long mx)]
     (cond
+      (locked? layout slot) 0
       (and (not ((:place layout) slot here)) (< mx whole)) 0
       (= slot (:result layout)) whole
       :else (min n mx whole))))
@@ -387,7 +391,7 @@
     (move-to layout inv stack q)))
 
 (defn- quick-move-once [layout inv slot]
-  (let [stack (get inv slot)
+  (let [stack (when-not (locked? layout slot) (get inv slot))
         inv' (dissoc inv slot)
         q (when stack ((:quick layout) inv slot))
         [inv' left] (if (nil? stack)
@@ -522,6 +526,7 @@
         m (assoc m :direct other)]
     (cond
       (and (nil? source) (nil? target)) m
+      (locked? layout slot) m
       (nil? source) (swap-out m layout slot other target)
       (not ((:place layout) slot source)) m
       (nil? target)
