@@ -49,7 +49,8 @@
 (defn- path [s] (.getCanonicalPath (io/file (str s))))
 
 (defn tables [{:keys [out cache jar]}]
-  (let [game @(requiring-resolve 'collider.data/game)
+  (let [game (do (load-file "tools/tables/src/collider/tables/stamp.clj")
+                 @(resolve 'collider.tables.stamp/game))
         args (cond-> ["clojure" "-M" "-m" "collider.tables.core"
                       "generate"
                       "--out" (path (or out "target/data"))
