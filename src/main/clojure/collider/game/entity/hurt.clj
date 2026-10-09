@@ -742,9 +742,7 @@
           (drop-deltas world eid e) (death-orbs world eid e)))
 
 (defn- lost-deltas [world eid e health]
-  (concat (when-not (pos? (double health)) (died-deltas world eid e))
-          (when (entity/player? e)
-            [(out/to eid (out/health health))])))
+  (when-not (pos? (double health)) (died-deltas world eid e)))
 
 (defn report-deltas
   "Returns the deltas that show the hurts of entity eid since they

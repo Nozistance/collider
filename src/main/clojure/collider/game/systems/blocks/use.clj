@@ -8,6 +8,7 @@
             [collider.game.block.lectern :as lectern]
             [collider.game.block.sign :as sign]
             [collider.game.changes :as changes]
+            [collider.game.food :as food]
             [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
@@ -85,16 +86,12 @@
       empty? []
       :else (unpot-deltas world eid pos n))))
 
-(def ^:private ^:const full-food 20)
-
 (defn- eats?
   "Returns true when player eid eats.
   It eats when its mode keeps it from harm or when it is hungry."
   [world eid]
   (let [e (get-in world [:entities eid])]
-    (and (main-hand? world eid)
-         (or (game-mode/invulnerable? e)
-             (< (long (:food e full-food)) full-food)))))
+    (and (main-hand? world eid) (food/can-eat? e false))))
 
 (def ^:private ^:const max-bites 6)
 
@@ -104,10 +101,18 @@
       (block/with-long st :bites (inc bites))
       0)))
 
+(def ^:private ^:const slice-food 2)
+
+(def ^:private slice-saturation
+  (num/fmul (num/fmul slice-food (num/f32 0.1)) 2.0))
+
 (defn- eat-deltas [world eid pos cake fx]
   (when (eats? world eid)
-    (cons [:award eid :custom/eat-cake-slice 1]
-          (changes/change-deltas world [[pos (bitten cake) fx]]))))
+    (let [e (get-in world [:entities eid])]
+      (list* [:award eid :custom/eat-cake-slice 1]
+             [:merge-entity eid
+              (food/eaten e slice-food slice-saturation)]
+             (changes/change-deltas world [[pos (bitten cake) fx]])))))
 
 (defn- cake-use [{:keys [world eid pos item]}]
   (or (when (candle-item? item)

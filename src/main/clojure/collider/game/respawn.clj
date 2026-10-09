@@ -2,6 +2,7 @@
   "Where a dead player comes back, and the deltas that bring it."
   (:require [collider.game.block.menu :as menu]
             [collider.game.block.screen :as screen]
+            [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.world.block :as block]
@@ -74,9 +75,11 @@
 
 (defn- fresh-marks [e tick keep?]
   (cond-> {:health player-health :health-sent player-health
+           :hud-sent nil
            :hurt-resist 0 :last-damage 0.0 :death-time 0
            :born tick :ambience nil :xp-sent -1 :level-up-at 0
            :xp-ready-at nil :client-vel [0.0 0.0 0.0]}
+    true (merge food/fresh)
     (not keep?) (merge no-experience)
     (seq (:effects e)) (assoc :effects {})
     (:absorption e) (assoc :absorption nil)))
@@ -92,7 +95,6 @@
    (out/to eid (out/respawn))
    (out/to eid (out/teleport pos yaw pitch))
    (out/to eid (shown-experience e keep?))
-   (out/to eid (out/health player-health))
    (out/to eid (out/held-slot (long (or (:held-slot e) 0))))])
 
 (defn- own-slots [inv]

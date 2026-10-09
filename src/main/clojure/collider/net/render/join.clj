@@ -7,6 +7,7 @@
             [collider.game.command.forms :as forms]
             [collider.game.command.nodes :as commands]
             [collider.game.effect :as effect]
+            [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -127,21 +128,21 @@
   {:packet :set-experience :progress (double (:xp-progress e 0.0))
    :level (long (:xp-level e 0)) :total (long (:xp-total e 0))})
 
-(def ^:private ^:const full-food 20)
-
-(def ^:private ^:const full-saturation 5.0)
-
 (defn health-packet
-  "Returns the packet that shows a player its health, with full food."
-  [health]
-  {:packet :set-health :health health :food full-food
-   :saturation full-saturation})
+  "Returns the packet that shows a player its health and food."
+  [health food saturation]
+  {:packet :set-health :health health :food food
+   :saturation saturation})
+
+(defn- own-health-packet [e]
+  (health-packet (double (:health e 20.0)) (food/level e)
+                 (food/saturation e)))
 
 (defn resent-packets
   "Returns the health and experience a player gets again after
   entering a level."
   [e]
-  [(health-packet (double (:health e 20.0)))
+  [(own-health-packet e)
    (experience-packet e)])
 
 (defn position-packet
@@ -223,7 +224,7 @@
   (let [[entity block] (game-mode/reach-attributes e)
         speed (attribute/modifiers e (:effects e) :movement-speed)
         base (get (attribute/base-values e) :movement-speed)]
-    (into [(health-packet 20.0)
+    (into [(own-health-packet e)
            (experience-packet e)
            {:packet     :update-attributes :eid eid
             :attributes [entity [:movement-speed base speed] block]}]

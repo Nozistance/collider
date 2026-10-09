@@ -6,6 +6,7 @@
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.food :as food]
             [collider.game.mob.mobs :as mobs]
             [collider.game.out :as out]))
 
@@ -58,8 +59,7 @@
             (not (:hurt? acc)) (assoc :health-sent h))]
     (-> acc
         (assoc-in [:e :health] h)
-        (update :ds conj [:merge-entity (:eid acc) m])
-        (own (out/health h)))))
+        (update :ds conj [:merge-entity (:eid acc) m]))))
 
 (defn- clamp-health [acc]
   (let [top (attribute/value (:e acc) (:fx acc) :max-health)]
@@ -137,6 +137,14 @@
   (let [top (attribute/value (:e acc) (:fx acc) :max-health)]
     (if (< (health acc) top) (healed acc 1.0) acc)))
 
+(defn- fed [acc ^long n]
+  (if (player? (:e acc))
+    (let [m (food/eaten (:e acc) n (* 2.0 n))]
+      (-> acc
+          (update :e merge m)
+          (update :ds conj [:merge-entity (:eid acc) m])))
+    acc))
+
 (defn- acted
   "Returns [kept? account] after effect k at amplifier a acted.
   The effect goes when kept? is false."
@@ -147,6 +155,7 @@
     :wither [true (hurt acc 1.0 wither)]
     :instant-health [true (healed acc (effect/heal-amount a))]
     :instant-damage [true (hurt acc (effect/harm-amount a) magic)]
+    :saturation [true (fed acc (inc a))]
     :absorption [(pos? (double (:absorption (:e acc) 0.0))) acc]
     [true acc]))
 

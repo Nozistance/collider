@@ -10,6 +10,7 @@
             [collider.world.env.dimension :as dimension]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
+            [collider.game.food :as food]
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
@@ -172,16 +173,10 @@
 (defn- stopped [eid]
   [[:merge-entity eid {:using-item? false :using nil}]])
 
-(defn- remainder-deltas [world eid e hand stack]
-  (let [left (get-in (data/items) [(:item stack) :use-remainder])]
-    (when (and left (not (player/infinite-materials? e)))
-      (let [over (dec (long (:count stack 1)))
-            slot (player/hand-slot e hand)
-            made {:item (:item left) :count (long (:count left 1))}]
-        (if (pos? over)
-          (cons [:set-slot eid slot (assoc stack :count over)]
-                (inventory/kept world eid e made))
-          [[:set-slot eid slot made]])))))
+(defn- fed-deltas [world eid e c f]
+  (cons [:merge-entity eid
+         (food/eaten e (:nutrition f) (:saturation f))]
+        (food-sounds world eid e c)))
 
 (defn- finish-deltas [world eid e]
   (let [{:keys [hand item]} (:using e)
@@ -189,10 +184,10 @@
         c (player/consumable stack)]
     (concat [(use-sound world eid e c :finish)
              [:award eid (keyword "used" (name item)) 1]]
-            (when (get-in (data/items) [item :food])
-              (food-sounds world eid e c))
+            (when-let [f (get-in (data/items) [item :food])]
+              (fed-deltas world eid e c f))
             (effect-deltas world eid e c (draws world eid))
-            (remainder-deltas world eid e hand stack)
+            (inventory/use-item-deltas world eid e hand)
             (player/cooldown-deltas eid e item (:tick world))
             (stopped eid))))
 

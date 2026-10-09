@@ -53,8 +53,11 @@
    {:msg :teleport :pos pos :yaw (double yaw) :pitch (double pitch)
     :relative (long relative)}))
 
-(defn health [health]
-  {:msg :health :health (double health)})
+(defn health
+  "Returns the effect that shows a player its health and food."
+  [health food saturation]
+  {:msg :health :health (double health) :food (long food)
+   :saturation (double saturation)})
 
 (defn experience
   "Returns the effect that shows a player its experience bar."

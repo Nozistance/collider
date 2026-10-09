@@ -6,6 +6,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.book :as book]
             [collider.game.entity :as entity]
+            [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.level :as level :refer [update-entity]]
             [collider.game.out :as out]
@@ -39,19 +40,21 @@
     [:player-join eid name]))
 
 (defn- new-player [name tick pos]
-  {:type         :player :name name :uuid (offline-uuid name)
-   :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
-   :client-vel   [0.0 0.0 0.0]
-   :chunk-pos    nil :sent-chunks (lm/long-set)
-   :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
-   :batches-max  1
-   :tracking (lm/long-set) :track nil
-   :inventory    {} :held-slot 0
-   :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
-   :view-distance 2 :chunk-view nil
-   :health       20.0
-   :health-sent  20.0
-   :keepalive-at tick :keepalive-pending? false})
+  (merge
+    {:type         :player :name name :uuid (offline-uuid name)
+     :pos          pos :yaw 0.0 :pitch 0.0 :on-ground true
+     :client-vel   [0.0 0.0 0.0]
+     :chunk-pos    nil :sent-chunks (lm/long-set)
+     :chunk-rate   9.0 :chunk-quota 0.0 :batches-unacked 0
+     :batches-max  1
+     :tracking (lm/long-set) :track nil
+     :inventory    {} :held-slot 0
+     :sneaking?    false :sprinting? false :skin-parts 0 :ping 0
+     :view-distance 2 :chunk-view nil
+     :health       20.0
+     :health-sent  20.0
+     :keepalive-at tick :keepalive-pending? false}
+    food/fresh))
 
 (defn- in-border? [[x _ z]]
   (let [b chunk/world-border]
@@ -128,7 +131,8 @@
         e (entity/of (moded w (merge fresh saved)))
         tick (:tick w)]
     (-> e (awaiting-join tick) (load-awaited tick)
-        (assoc :born tick :xp-sent (:xp-total e 0)))))
+        (assoc :born tick :xp-sent (:xp-total e 0)
+               :hud-sent (food/hud e)))))
 
 (defn placed
   "Returns level w after the delta [:player-placed eid name pos]."
@@ -300,6 +304,7 @@
       (:using e) e
       (game-mode/spectator? e) e
       (on-cooldown? e (:item stack) tick) e
+      (food/refuses? e (:item stack)) e
       n (assoc e
           :using-item? true
           :using {:hand hand :item (:item stack) :started tick

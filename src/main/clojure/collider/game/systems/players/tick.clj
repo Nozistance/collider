@@ -16,6 +16,7 @@
             [collider.game.systems.effects :as effects]
             [collider.game.systems.equipment :as equipment]
             [collider.game.systems.experience :as experience]
+            [collider.game.systems.food :as food]
             [collider.game.systems.items :as items]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.orbs :as orbs]
@@ -35,6 +36,7 @@
    effects/player-deltas
    consume/player-deltas
    equipment/player-deltas
+   food/player-regeneration
    effects/player-sync
    compasses/player-deltas
    dripleaf/player-deltas
@@ -43,6 +45,7 @@
    orbs/player-pickup
    attacks/wielded
    pose/player-deltas
+   food/player-deltas
    experience/player-deltas
    keepalive/player-deltas])
 

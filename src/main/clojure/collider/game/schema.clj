@@ -301,6 +301,11 @@
    :flying       {:default false :store boolean}
    :effects      {}
    :absorption   {}
+   :health       {}
+   :food         {:default 20}
+   :saturation   {:default 5.0}
+   :exhaustion   {:default 0.0}
+   :food-timer   {:default 0}
    :xp-level     {:default 0}
    :xp-progress  {:default 0.0}
    :xp-total     {:default 0}

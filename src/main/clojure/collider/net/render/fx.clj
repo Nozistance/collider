@@ -177,7 +177,9 @@
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])
-   :health        (fn [_ m] [(join/health-packet (:health m))])
+   :health        (fn [_ m]
+                    [(join/health-packet
+                       (:health m) (:food m) (:saturation m))])
    :experience    (fn [_ m]
                     [{:packet :set-experience :progress (:progress m)
                       :level (:level m) :total (:total m)}])

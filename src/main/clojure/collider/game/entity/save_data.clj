@@ -93,6 +93,16 @@
    :DeathTime [(fn [e _] (short (or (:death-time e) 0)))
                (numeric dying)]})
 
+(defn- float-field [k]
+  [(fn [e _] (float (or (get e k) 0.0)))
+   (numeric (fn [e x _] (assoc e k (f32 x))))])
+
+(def ^:private player-fields
+  {:foodLevel (int-field :food)
+   :foodTickTimer (int-field :food-timer)
+   :foodSaturationLevel (float-field :saturation)
+   :foodExhaustionLevel (float-field :exhaustion)})
+
 (defn- age
   "Returns the age of mob e at tick t as a save keeps it, below zero
   for a baby and above zero while it may not breed again. A locked
@@ -195,7 +205,8 @@
   (cond (mobs/mob-type? type)
         (merge entity-fields living-fields animal-fields
                (kind-fields type))
-        (= :player type) (merge entity-fields living-fields)
+        (= :player type)
+        (merge entity-fields living-fields player-fields)
         :else entity-fields))
 
 (defn saved
