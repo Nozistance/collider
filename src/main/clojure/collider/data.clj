@@ -158,6 +158,10 @@
   "The sound event and the channel of each sound kind."
   {:player/hurt                   [:entity.player.hurt 7]
    :player/hurt-on-fire           [:entity.player.hurt-on-fire 7]
+   :player/hurt-drown             [:entity.player.hurt-drown 7]
+   :player/hurt-freeze            [:entity.player.hurt-freeze 7]
+   :player/hurt-sweet-berry-bush
+   [:entity.player.hurt-sweet-berry-bush 7]
    :player/death                  [:entity.player.death 7]
    :sheep/say                     [:entity.sheep.ambient 6]
    :sheep/step                    [:entity.sheep.step 6]

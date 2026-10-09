@@ -44,12 +44,20 @@
 
 (def ^:private ^:const ticks-per-second 20)
 
-(defn- hurt-sound [e]
+(def ^:private effect-sounds
+  {"drowning" :player/hurt-drown "burning" :player/hurt-on-fire
+   "poking"   :player/hurt-sweet-berry-bush
+   "freezing" :player/hurt-freeze})
+
+(def ^:private ^:table player-hurts
+  (delay (update-vals (update-keys (data/pack "damage_type") data/kebab)
+                      #(effect-sounds (get % "effects") :player/hurt))))
+
+(defn- hurt-sound [e src]
   (if (entity/player? e)
-    (cond
-      (not (pos? (double (:health e)))) :player/death
-      (pos? (long (or (:fire e) 0))) :player/hurt-on-fire
-      :else :player/hurt)
+    (if (pos? (double (:health e)))
+      (@player-hurts (:type src) :player/hurt)
+      :player/death)
     (if (pos? (double (:health e)))
       (mobs/sound-of e :hurt)
       (mobs/sound-of e :death))))
@@ -710,7 +718,7 @@
   viewers and the entity itself see the damage, and they hear the hurt
   sound, or the death sound when it killed."
   [world eid e src]
-  (let [snd (hurt-sound e)
+  (let [snd (hurt-sound e src)
         ev (out/damage-event
              eid (:type src) (:cause src) (:direct src) (:pos src))]
     (cond-> [(out/all ev)]
