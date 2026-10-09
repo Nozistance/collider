@@ -151,7 +151,7 @@
     [:remove-entity oid]))
 
 (defn- taken-deltas [world pid p oid o]
-  (let [acc (xp/account p (lived world p))
+  (let [acc (xp/account p (inc (lived world p)))
         acc (xp/give-points acc (long (:value o)))
         ready (+ 2 (long (:tick world)))
         marks (assoc (xp/player-fields acc) :xp-ready-at ready)]

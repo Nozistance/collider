@@ -233,9 +233,11 @@
           acc (effect/in-order (:fx acc))))
 
 (defn- lived
-  "Returns how many ticks entity e has lived in the world."
+  "Returns how many ticks entity e has lived in the world. A player
+  counts the tick it joined in."
   ^long [world e]
-  (- (long (:tick world)) (long (or (:born e) 0))))
+  (cond-> (- (long (:tick world)) (long (or (:born e) 0)))
+    (player? e) inc))
 
 (defn- synced
   "Returns the account with the attributes entity e left to sync.
