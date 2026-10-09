@@ -1,6 +1,7 @@
 (ns collider.game.systems.blocks.edit
   "Block edit checks."
-  (:require [collider.game.changes :as changes]
+  (:require [collider.game.block.blockentity :as be]
+            [collider.game.changes :as changes]
             [collider.game.entity :as entity]
             [collider.game.mode :as game-mode]
             [collider.game.command.args.block :as block-args]
@@ -52,30 +53,68 @@
         changed [[pos (changes/block-at world pos)]]]
     (out/to eid (out/blocks-changed at changed))))
 
-(defn- allows? [world stack k pos]
-  (let [st (changes/block-at world pos)]
-    (boolean
-      (some #(block-args/component-matches? % st nil)
-            (:predicates (stack/component stack k))))))
+(defn- saved [world pos]
+  (when-let [e (be/at world pos)]
+    (be/full-nbt e pos (:tick world))))
+
+(defn- same-block? [{:keys [state entity? nbt]} st full]
+  (and (= state st)
+       (or (not entity?) (= nbt (some-> full (dissoc :x :y :z))))))
+
+(defn- tested
+  "Returns [hit? v'] for the predicates v of an adventure component
+  on the block at pos. The last block tested stays in the metadata
+  of v, and the same block again gets the same answer."
+  [world v pos]
+  (let [st (changes/block-at world pos)
+        full (saved world pos)
+        seen (meta v)]
+    (if (and seen (same-block? seen st full))
+      [(:hit? seen) v]
+      (let [p (some #(when (block-args/component-matches? % st full) %)
+                    (:predicates v))]
+        [(some? p)
+         (with-meta v {:state st :hit? (some? p)
+                       :entity? (some? (:nbt p))
+                       :nbt (some-> full (dissoc :x :y :z))})]))))
+
+(defn- allows [world eid e hand k pos]
+  (let [stack (player/hand-stack e hand)]
+    (if-let [v (stack/component stack k)]
+      (let [[hit? v'] (tested world v pos)]
+        [hit? (when-not (= (meta v) (meta v'))
+                [[:set-slot eid (player/hand-slot e hand)
+                  (assoc-in stack [:components k] v')]])])
+      [false nil])))
+
+(defn break-check
+  "Returns [may? deltas] for player eid, e, breaking the block at pos.
+  Out of the modes that build only a main hand stack that can break
+  the block lets it. The deltas keep the last block it tested."
+  [world eid e pos]
+  (cond (game-mode/may-build? e) [true nil]
+        (game-mode/spectator? e) [false nil]
+        :else (allows world eid e :main :can-break pos)))
 
 (defn may-break?
-  "Returns true when player e may break the block at pos. Out of the
-  modes that build only a main hand stack that can break the block
-  lets it."
+  "Returns true when player e may break the block at pos."
   [world e pos]
-  (or (game-mode/may-build? e)
-      (and (not (game-mode/spectator? e))
-           (allows? world (player/hand-stack e :main)
-                    :can-break pos))))
+  (first (break-check world nil e pos)))
+
+(defn use-check
+  "Returns [may? deltas] for player eid, e, using the stack in its
+  hand on the block at pos. Out of the modes that build only a stack
+  that can be placed on the block lets it."
+  [world eid e pos]
+  (if (game-mode/may-build? e)
+    [true nil]
+    (allows world eid e (:use-hand e :main) :can-place-on pos)))
 
 (defn may-use-at?
   "Returns true when player e may use the stack in its hand on the
-  block at pos. Out of the modes that build only a stack that can be
-  placed on the block lets it."
+  block at pos."
   [world e pos]
-  (or (game-mode/may-build? e)
-      (allows? world (player/hand-stack e (:use-hand e :main))
-               :can-place-on pos)))
+  (first (use-check world nil e pos)))
 
 (defn build-limit
   "Returns the red line above the hotbar that names a height limit.

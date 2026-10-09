@@ -92,10 +92,13 @@
   (let [e (get-in world [:entities eid])
         below-top? (<= (long (nth pos 1)) (chunk/level-max-y world))]
     (when (and (breaking-actions status) (reach/in-reach? e pos))
-      (cond
-        (not below-top?) [(edit/own-change world eid pos)]
-        (not (edit/may-break? world e pos))
-        (restricted world eid status pos)
-        (and (tool-breaks? e) (permitted? world e pos))
-        (break-deltas world eid pos)
-        :else [(edit/own-change world eid pos)]))))
+      (if-not below-top?
+        [(edit/own-change world eid pos)]
+        (let [[may? kept] (edit/break-check world eid e pos)]
+          (concat
+            kept
+            (cond
+              (not may?) (restricted world eid status pos)
+              (and (tool-breaks? e) (permitted? world e pos))
+              (break-deltas world eid pos)
+              :else [(edit/own-change world eid pos)])))))))

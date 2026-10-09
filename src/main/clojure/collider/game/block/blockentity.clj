@@ -165,6 +165,16 @@
     :structure-block (assoc (tags e :update) :author (:author e ""))
     (tags e :update)))
 
+(defn full-nbt
+  "Returns the tag of block entity e at pos with its id and place.
+  Only signs and containers save their whole body."
+  [e [x y z] t]
+  (cond-> (assoc (or (nbt e t) {}) :components {}
+                 :id (identifier (:kind e))
+                 :x (int x) :y (int y) :z (int z))
+    (and (:items e) (not= :campfire (:kind e)))
+    (assoc :Items (items-nbt (:items e)))))
+
 (def ^:private fixed
   #{:beacon :conduit :mob-spawner :trial-spawner :vault
     :brushable-block :copper-golem-statue :enchanting-table

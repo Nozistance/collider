@@ -3,6 +3,8 @@
   (:require [collider.game.command.decode :as dfu
              :refer [fixed from-file identifier named numbered
                      enum-of int-in float-in bool-of by-name]]
+            [collider.game.command.reader :as r]
+            [collider.game.command.snbt :as snbt]
             [collider.game.command.text :as tc]))
 
 (set! *warn-on-reflection* true)
@@ -202,6 +204,84 @@
       (let [ks [:id :amount :operation]]
         (assoc (apply dissoc v ks) :modifier (select-keys v ks))))))
 
+(def ^:private exact-value
+  (dfu/mapped dfu/string-of #(hash-map :left {:value %})))
+
+(def ^:private value-range
+  (dfu/mapped (dfu/record [:min :min dfu/string-of :opt]
+                          [:max :max dfu/string-of :opt])
+              #(hash-map :right %)))
+
+(defn- state-matcher [tag]
+  (dfu/either (exact-value tag) (value-range tag)))
+
+(def ^:private state-entries
+  (dfu/mapped (dfu/unbounded-map dfu/string-of state-matcher)
+              #(mapv (fn [[k v]] {:name k :matcher v}) %)))
+
+(defn- read-compound [s]
+  (let [res (snbt/read-fully (r/reader s))
+        v (first res)]
+    (cond (r/error? res)
+          [:malformed (str (:key res) " at position " (:cursor res))]
+          (map? v) [:ok v]
+          :else [:malformed (str "Expected compound tag, got "
+                                 (dfu/printed v))])))
+
+(defn- snbt-compound [tag]
+  (if (string? tag) (read-compound tag) [:malformed "Not a string"]))
+
+(defn- compound [tag]
+  (if (map? tag)
+    [:ok tag]
+    [:malformed (str "Not a compound tag: " (dfu/printed tag))]))
+
+(defn- nbt-predicate [tag]
+  (dfu/settled tag (dfu/either (snbt-compound tag) (compound tag))))
+
+(declare decode)
+
+(defn- exact-entry [[k v]]
+  (let [[op t :as r] (identifier (name k))]
+    (if (= :ok op)
+      (let [[vo vv :as vr] (decode t v)]
+        (if (= :ok vo) [:ok [t vv]] vr))
+      r)))
+
+(defn- exact-of [tag]
+  (if (map? tag)
+    (let [rs (mapv exact-entry tag)]
+      (if (every? #(= :ok (first %)) rs)
+        [:ok (mapv second rs)]
+        [:raw tag]))
+    (dfu/not-map tag)))
+
+(defn- no-partial [_]
+  [:malformed "Component predicates are not supported"])
+
+(def ^:private block-predicate
+  (dfu/mapped
+    (dfu/record [:blocks :blocks (holders "block") :opt]
+                [:state :state state-entries :opt]
+                [:nbt :nbt nbt-predicate :opt]
+                [:components :exact exact-of :opt []]
+                [:predicates :partial no-partial :opt []])
+    #(merge {:blocks nil :state nil :nbt nil} %)))
+
+(defn- compact-list
+  "Returns the decoder of one element of f or a non-empty list of
+  them, to a vector. A map is decoded as the element alone."
+  [f]
+  (fn [tag]
+    (let [one ((dfu/mapped f vector) tag)]
+      (if (map? tag)
+        one
+        (let [many (dfu/non-empty (dfu/list-of f tag))]
+          (dfu/settled tag (dfu/either many one)))))))
+
+(def ^:private adventure
+  (dfu/mapped (compact-list block-predicate) #(hash-map :predicates %)))
+
 (def ^:private dyes
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
    :light-gray :cyan :purple :blue :brown :green :red :black])
@@ -241,6 +321,7 @@
      :recipes recipes :block-state block-state
      :pot-decorations pot-decorations :repairable repairable
      :damage-resistant damage-resistant
+     :can-break adventure :can-place-on adventure
      :attribute-modifiers (dfu/listed attribute-entry)
      :provides-banner-patterns (holders "banner_pattern")
      :custom-name tc/text-of :item-name tc/text-of :lore tc/lore

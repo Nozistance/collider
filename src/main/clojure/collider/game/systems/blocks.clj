@@ -122,13 +122,15 @@
 (defn- fresh? [{:keys [at item world]}]
   (not (player/on-cooldown? at item (:tick world))))
 
-(defn- usable-on? [{:keys [world at pos use-item?]}]
-  (or use-item? (edit/may-use-at? world at pos)))
+(defn- use-check [{:keys [world eid at pos use-item?]}]
+  (if use-item? [true nil] (edit/use-check world eid at pos)))
 
 (defn- item-deltas [ctx]
-  (when (and (fresh? ctx) (usable-on? ctx))
-    (let [acts (filter (fn [[pred _]] (pred ctx)) item-actions)]
-      (when-let [[_ f] (first acts)] (f ctx)))))
+  (when (fresh? ctx)
+    (let [[may? kept] (use-check ctx)
+          acts (filter (fn [[pred _]] (pred ctx)) item-actions)
+          [_ f] (when may? (first acts))]
+      (seq (concat kept (when f (f ctx)))))))
 
 (defn- no-face? [face] (= 255 (bit-and (long face) 0xFF)))
 
