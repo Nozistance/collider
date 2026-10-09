@@ -811,18 +811,105 @@
   (when (pos? (long (or (:hurt-resist e) 0)))
     [[:rest eid]]))
 
+(def ^:const max-air 300)
+
+(defn- air ^long [e] (long (:air e max-air)))
+
+(defn- wall-cells [e]
+  (let [p (:pos e)
+        w (/ (double (unchecked-float (* 2.0 (double (first (entity/box e)))
+                                         0.8)))
+             2.0)
+        ey (+ (v/y p) (entity/eye-height e))
+        r (fn [c d] (range (num/floor (- c d)) (inc (num/floor (+ c d)))))]
+    (for [x (r (v/x p) w) y (r ey 5.0E-7) z (r (v/z p) w)]
+      [[x y z] [(- (v/x p) w) (- ey 5.0E-7) (- (v/z p) w)
+                (+ (v/x p) w) (+ ey 5.0E-7) (+ (v/z p) w)]])))
+
+(defn- meets? [[x y z] [ax ay az bx by bz] [a b c d f g]]
+  (let [s (fn [o v] (+ (double o) (/ (double v) 16.0)))]
+    (and (< (s x a) bx) (> (s x d) ax) (< (s y b) by) (> (s y f) ay)
+         (< (s z c) bz) (> (s z g) az))))
+
+(defn- in-wall? [world e]
+  (and (not (game-mode/spectator? e)) (not (:sleeping e))
+       (some (fn [[cell box]]
+               (let [st (chunk/at (:chunks world) cell)]
+                 (and (pos? st) (block/suffocating? st)
+                      (some #(meets? cell box %)
+                            (block/collision-boxes st)))))
+             (wall-cells e))))
+
+(defn wall-deltas
+  "Returns the deltas of living entity eid, e, choking in a block."
+  [world eid e]
+  (when (in-wall? world e)
+    (damage-deltas world eid e 1.0 {:type :in-wall})))
+
+(def ^:private ^:table water-breathers
+  (delay (set (data/tag-values "entity_type" "can_breathe_under_water"))))
+
+(defn- breathes? [e]
+  (let [fx (:effects e)]
+    (or (contains? @water-breathers (:type e))
+        (contains? fx :water-breathing) (contains? fx :conduit-power)
+        (contains? fx :breath-of-the-nautilus)
+        (and (entity/player? e) (game-mode/invulnerable? e)))))
+
+(defn- refills? [e]
+  (let [fx (:effects e)]
+    (or (not (contains? fx :breath-of-the-nautilus))
+        (contains? fx :water-breathing) (contains? fx :conduit-power))))
+
+(defn- eye-in-water? [world e]
+  (if (entity/player? e)
+    (:eye-in-water? e)
+    (liquid/eye-in-water? (:chunks world) (:pos e) (entity/eye-height e))))
+
+(defn- drowned [world eid e]
+  (concat [[:merge-entity eid {:air 0}]
+           (out/all (out/status eid :drown-bubbles))]
+          (when (entity/player? e)
+            [(out/to eid (out/status eid :drown-bubbles))])
+          (damage-deltas world eid e 2.0 {:type :drown})))
+
+(defn- refilled [eid e]
+  (when (< (air e) max-air)
+    [[:merge-entity eid {:air (min max-air (+ (air e) 4))}]]))
+
+(defn air-deltas
+  "Returns the deltas of the air of living entity eid, e. It runs out
+  with the eyes in water and comes back out of it."
+  [world eid e]
+  (if (eye-in-water? world e)
+    (cond
+      (not (breathes? e))
+      (let [a (dec (air e))]
+        (if (<= a -20)
+          (drowned world eid e)
+          [[:merge-entity eid {:air a}]]))
+      (refills? e) (refilled eid e))
+    (refilled eid e)))
+
 (defn base-deltas
   "Returns the deltas of living entity eid at the start of its tick.
-  The fire it burns in and the void come before the countdown of its
-  hurt resistance."
+  The fire it burns in and the void come before the block it chokes
+  in, its air and the countdown of its hurt resistance."
   [world eid e]
-  (conj (burnt-deltas world eid e) [:rest eid]))
+  (-> (vec (burnt-deltas world eid e))
+      (into (wall-deltas world eid e))
+      (into (air-deltas world eid e))
+      (conj [:rest eid])))
 
 (defn based?
   "Returns true when living entity e has work in the start of its
-  base tick, which hurt resistance, fire or the void gives."
+  base tick, which hurt resistance, fire, the void, a block at the
+  eyes or water gives."
   [world e]
   (or (pos? (long (or (:hurt-resist e) 0)))
       (pos? (long (or (:fire e) 0)))
+      (< (air e) max-air)
       (and (:health e)
-           (< (v/y (:pos e)) (chunk/void-y world)))))
+           (< (v/y (:pos e)) (chunk/void-y world)))
+      (eye-in-water? world e)
+      (in-wall? world e)))

@@ -711,3 +711,17 @@
    :wake    mix-wake
    :reshape mix-due
    :due     column-due})
+
+(defn eye-in-water?
+  "Returns true when the eyes eye above pos are under the surface of
+  water."
+  [chunks pos ^double eye]
+  (let [ey (+ (v/y pos) eye)
+        cx (num/floor (v/x pos)) cy (num/floor ey)
+        cz (num/floor (v/z pos))]
+    (boolean
+      (when (chunk/in-range? cy)
+        (let [st (chunk/block-state chunks cx cy cz)]
+          (when (block/water? st)
+            (when-let [h (height chunks [cx cy cz] st)]
+              (<= ey (+ cy (double h))))))))))

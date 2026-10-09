@@ -36,15 +36,7 @@
        (block/water? (chunk/block-state chunks cx cy cz))))
 
 (defn- eye-in-water? [chunks pos pose]
-  (let [ey (+ (v/y pos) (entity/pose-eye pose))
-        cx (num/floor (v/x pos)) cy (num/floor ey)
-        cz (num/floor (v/z pos))]
-    (boolean
-      (when (water-at? chunks cx cy cz)
-        (when-let [h (liquid/height
-                       chunks [cx cy cz]
-                       (chunk/block-state chunks cx cy cz))]
-          (<= ey (+ (long cy) (double h))))))))
+  (liquid/eye-in-water? chunks pos (entity/pose-eye pose)))
 
 (defn- swims? [e in-water? under-water? feet-water?]
   (cond

@@ -89,8 +89,10 @@
   base tick, with the hurts they report."
   [world [eid e :as entry]]
   (when (live? world entry)
-    (into (vec (hurt/burnt-deltas world eid e))
-          (body-deltas world eid e))))
+    (-> (vec (hurt/burnt-deltas world eid e))
+        (into (hurt/wall-deltas world eid e))
+        (into (hurt/air-deltas world eid e))
+        (into (body-deltas world eid e)))))
 
 (defn damage
   "Returns the deltas of every item and orb this tick. A mob takes
