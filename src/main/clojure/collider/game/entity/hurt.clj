@@ -127,12 +127,16 @@
   rule spares it. The difficulty scales the damage to a player. Any
   other entity takes amount."
   [world e amount src]
-  (if (entity/player? e)
+  (cond
+    (and (contains? (:effects e) :fire-resistance)
+         (= :fire-damage (get @rule-of (:type src))))
+    nil
+    (entity/player? e)
     (when-not (spared? world e src)
       (let [n (double amount)
             n (if (scales? world src) (by-difficulty world n) n)]
         (when-not (zero? n) n)))
-    amount))
+    :else amount))
 
 (defn damage-deltas
   "Returns the deltas of entity eid taking amount from src, none when
@@ -811,6 +815,54 @@
   (when (pos? (long (or (:hurt-resist e) 0)))
     [[:rest eid]]))
 
+(def ^:private ^:table harmful
+  (delay (let [n (data/block-state-count) a (boolean-array n)]
+           (dotimes [st n]
+             (when (case (block/type-of st)
+                     (:cactus :soul-fire) true
+                     :campfire (= :true (:lit (block/props-of st)))
+                     :sweet-berry-bush
+                     (pos? (block/prop-long st :age))
+                     false)
+               (aset a st true)))
+           a)))
+
+(defn- on-magma? [world e]
+  (and (:on-ground e) (not (:sneaking? e))
+       (= :magma (block/type-of
+                   (motion/below-state (:chunks world) (:pos e)
+                                       (:support e) 0.2)))))
+
+(defn- moving? [e]
+  (let [[x _ z] (or (:client-vel e) [0.0 0.0 0.0])]
+    (or (>= (Math/abs (double x)) 0.003)
+        (>= (Math/abs (double z)) 0.003))))
+
+(defn- cell-harm [e st]
+  (case (block/type-of st)
+    :cactus [1.0 {:type :cactus}]
+    :soul-fire [2.0 {:type :in-fire}]
+    :campfire [(double (:fire-damage (data/info (block/block-of st)) 1))
+               {:type :campfire}]
+    :sweet-berry-bush (when (moving? e) [1.0 {:type :sweet-berry-bush}])
+    nil))
+
+(defn touch-deltas
+  "Returns the deltas of the blocks that hurt living entity eid, e.
+  The magma it stands on comes before the blocks it is in."
+  [world eid e]
+  (let [chunks (:chunks world)
+        inside (when (some-inside? chunks e @harmful)
+                 (keep #(cell-harm e (cell-state chunks %))
+                       (inside-cells e)))]
+    (concat
+      (when (on-magma? world e)
+        (damage-deltas world eid e 1.0 {:type :hot-floor}))
+      (mapcat (fn [[n src]] (damage-deltas world eid e n src)) inside))))
+
+(defn- touching? [world e]
+  (or (on-magma? world e) (some-inside? (:chunks world) e @harmful)))
+
 (def ^:const max-air 300)
 
 (defn- air ^long [e] (long (:air e max-air)))
@@ -899,6 +951,7 @@
   (-> (vec (burnt-deltas world eid e))
       (into (wall-deltas world eid e))
       (into (air-deltas world eid e))
+      (into (touch-deltas world eid e))
       (conj [:rest eid])))
 
 (defn based?
@@ -912,4 +965,5 @@
       (and (:health e)
            (< (v/y (:pos e)) (chunk/void-y world)))
       (eye-in-water? world e)
-      (in-wall? world e)))
+      (in-wall? world e)
+      (touching? world e)))

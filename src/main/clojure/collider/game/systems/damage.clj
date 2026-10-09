@@ -92,6 +92,7 @@
     (-> (vec (hurt/burnt-deltas world eid e))
         (into (hurt/wall-deltas world eid e))
         (into (hurt/air-deltas world eid e))
+        (into (hurt/touch-deltas world eid e))
         (into (body-deltas world eid e)))))
 
 (defn damage
