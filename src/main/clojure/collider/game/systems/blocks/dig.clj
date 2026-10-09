@@ -6,6 +6,9 @@
             [collider.game.block.lid :as lid]
             [collider.game.dig :as dig]
             [collider.game.entity :as entity]
+            [collider.game.food :as food]
+            [collider.game.item :as item]
+            [collider.game.loot :as loot]
             [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.player :as player]
@@ -14,10 +17,12 @@
             [collider.game.systems.blocks.use :as use]
             [collider.game.reach :as reach]
             [collider.num :as num]
+            [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.halves :as halves]
-            [collider.world.chunk :as chunk]))
+            [collider.world.chunk :as chunk]
+            [collider.world.env.attribute :as attribute]))
 
 (set! *warn-on-reflection* true)
 
@@ -43,14 +48,14 @@
     [:spawn-entity
      (entity/item (v/centre pos) vel (be/to-stack item e))]))
 
-(defn- shulker-break-deltas [world pos]
-  (let [e (be/at world pos)]
-    (when (= :shulker-box (:kind e))
+(defn- shulker-break-deltas [world e pos]
+  (let [be (be/at world pos)]
+    (when (and (= :shulker-box (:kind be)) (player/infinite-materials? e))
       (concat
         (when (lid/animation world pos)
           [[:shulker-anim pos nil]])
-        (when (some some? (:items e))
-          [(shulker-drop world pos e)])))))
+        (when (some some? (:items be))
+          [(shulker-drop world pos be)])))))
 
 (defn- break-shown [eid pos old]
   (if (block/fire? old)
@@ -71,7 +76,7 @@
         e (get-in world [:entities eid])
         kept (kept-partner world e pos old)]
     (if (pos? old)
-      (into (vec (shulker-break-deltas world pos))
+      (into (vec (shulker-break-deltas world e pos))
             (gone-deltas world eid pos old kept))
       [(edit/own-change world eid pos)])))
 
@@ -105,10 +110,56 @@
             (when (and (pos? n) (or hard? (= :shears (:item stack))))
               (inventory/hurt-item-deltas (:tick world) eid e :main n))))))
 
+(defn- loot-deltas [world e pos st]
+  (when (get-in world [:rules :block-drops] true)
+    (let [ctx {:state st :pos pos :entity e
+               :tool (player/hand-stack e :main)
+               :block-entity (be/at world pos)
+               :block-at #(changes/block-at world %)}
+          roll #(random/of-key (:tick world) pos :mined %)]
+      (map-indexed (fn [i stack]
+                     [:spawn-entity (item/popped world pos stack [:mined i])])
+                   (loot/block-drops ctx roll)))))
+
+(defn- silk? [e]
+  (contains? (get-in (player/hand-stack e :main)
+                     [:components :enchantments])
+             :silk-touch))
+
+(defn- melts? [world e pos st]
+  (let [below (changes/block-at world (mapv + pos [0 -1 0]))]
+    (and (= :ice (block/block-of st)) (not (silk? e))
+         (not (attribute/water-evaporates? (:dim world)))
+         (or (block/blocks-motion? below) (block/liquid? below)))))
+
+(defn- egg-left-deltas [world pos st]
+  (let [n (block/prop-long st :eggs)
+        pitch (+ 0.9 (* 0.2 (random/of-key (:tick world) pos :egg)))]
+    (when (and (= :turtle-egg (block/block-of st)) (> n 1))
+      (concat [(out/all (out/block-sound :entity.turtle.egg-break pos 0.7 pitch))]
+              (changes/change-deltas
+                world [[pos (block/with-long st :eggs (dec n))]])
+              [(out/all (out/break-effect pos st))]))))
+
+(defn- after-deltas [world e pos st]
+  (if (melts? world e pos st)
+    (changes/change-deltas world [[pos (block/state :water)]])
+    (egg-left-deltas world pos st)))
+
+(defn- mined-deltas [world eid e pos st]
+  (when (dig/correct-tool? e st)
+    (concat [[:award eid (keyword "mined" (name (block/block-of st))) 1]
+             [:merge-entity eid (select-keys (food/exhausted e 0.005)
+                                             [:exhaustion])]]
+            (loot-deltas world e pos st)
+            (after-deltas world e pos st))))
+
 (defn- destroyed [world eid e pos]
   (let [st (changes/block-at world pos)]
     (concat (break-deltas world eid pos)
-            (when (pos? st) (worn-deltas world eid e st)))))
+            (when (and (pos? st) (not (player/infinite-materials? e)))
+              (concat (mined-deltas world eid e pos st)
+                      (worn-deltas world eid e st))))))
 
 (defn- dig-state [e] (:dig e))
 
