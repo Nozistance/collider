@@ -502,3 +502,20 @@
   [e h]
   (or (< (double (:health h 0.0)) (double (:health e 0.0)))
       (not (identical? (:struck-by h) (:struck-by e)))))
+
+(defn display-name
+  "Returns the name of entity e as chat shows it."
+  [e]
+  (let [k (str "entity.minecraft." (data/snake (:type e)))
+        nm (cond (= :player (:type e)) (:name e)
+                 (:custom-name e) (:custom-name e)
+                 :else {:translate k})
+        hover {:action :show-entity :id (:type e) :uuid (:uuid e)
+               :name nm}]
+    (cond
+      (nil? (:uuid e)) nm
+      (= :player (:type e))
+      {:text nm :insertion nm :hover hover
+       :click {:action :suggest-command
+               :command (str "/tell " nm " ")}}
+      :else (assoc nm :hover hover :insertion (str (:uuid e))))))

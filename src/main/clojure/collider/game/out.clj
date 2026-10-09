@@ -134,6 +134,12 @@
   {:msg :suggestions :id id :start start :length length
    :matches (vec matches)})
 
+(defn combat-kill
+  "Returns the effect that shows player eid the cause of its death on
+  the death screen."
+  [eid text]
+  {:msg :combat-kill :eid eid :text text})
+
 (defn system-chat
   "Returns the effect that shows the text component in chat."
   [text]

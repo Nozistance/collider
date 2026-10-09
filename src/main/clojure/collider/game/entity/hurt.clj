@@ -760,9 +760,48 @@
                             (item/dropped world eid s true [:death i])])
                          drops)))))
 
+(def ^:private ^:table death-kinds
+  (delay (into {}
+               (map (fn [[id m]] [(data/kebab id)
+                                  [(get m "message_id")
+                                   (get m "death_message_type")]]))
+               (data/pack "damage_type"))))
+
+(defn- credit [world e]
+  (when (killed-by-player? world e)
+    (let [u (:last-hurt-by-player e)]
+      (some (fn [[_ o]] (when (= u (:uuid o)) o)) (:entities world)))))
+
+(defn- killer [world src]
+  (or (:attacker src) (get-in world [:entities (:cause src)])))
+
+(defn death-text
+  "Returns the cause of the death of e from src as chat shows it."
+  [world e src]
+  (let [[id kind] (get @death-kinds (:type src) ["generic" nil])
+        v (entity/display-name e)
+        k (killer world src)
+        by (or k (credit world e))
+        key (str "death.attack." id)]
+    (cond
+      (and (= "fall_variants" kind) (nil? by))
+      {:translate "death.fell.accident.generic" :with [v]}
+      k {:translate key :with [v (entity/display-name k)]}
+      by {:translate (str key ".player")
+          :with [v (entity/display-name by)]}
+      :else {:translate key :with [v]})))
+
+(defn- told-deltas [world eid e]
+  (let [text (death-text world e (or (:struck-by e) {:type :generic}))]
+    (if (get-in world [:rules :show-death-messages] true)
+      [(out/to eid (out/combat-kill eid text))
+       (out/all (out/system-chat text))]
+      [(out/to eid (out/combat-kill eid {:text ""}))])))
+
 (defn- player-died-deltas [world eid e]
   (when (entity/player? e)
     (concat
+      (told-deltas world eid e)
       (inventory-deltas world eid e)
       [[:award eid :custom/deaths 1]
        [:merge-entity eid

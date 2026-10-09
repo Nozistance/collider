@@ -177,6 +177,9 @@
    :game-rules    (fn [_ m]
                     [{:packet :game-rule-values
                       :values (into {} (map rule-pair) (:rules m))}])
+   :combat-kill   (fn [_ m]
+                    [{:packet :player-combat-kill :eid (:eid m)
+                      :text (:text m)}])
    :health        (fn [_ m]
                     [(join/health-packet
                        (:health m) (:food m) (:saturation m))])

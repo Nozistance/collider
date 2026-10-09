@@ -459,6 +459,9 @@
    [:play :disconnect]
    {:schema [:map [:text wire/text]]
     :write :wire}
+   [:play :player-combat-kill]
+   {:schema [:map [:eid wire/varint] [:text wire/text]]
+    :write :wire}
    [:play :system-chat]
    {:schema [:map [:text wire/text] [:overlay wire/boolean]]
     :write :wire}

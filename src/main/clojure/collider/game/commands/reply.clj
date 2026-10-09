@@ -3,6 +3,7 @@
   (:require [clojure.string :as str]
             [collider.data :as data]
             [collider.game.command.markup :as markup]
+            [collider.game.entity :as entity]
             [collider.game.out :as out]))
 
 (set! *warn-on-reflection* true)
@@ -60,19 +61,7 @@
 (defn entity-name
   "Returns the name of entity e as chat shows it."
   [e]
-  (let [k (str "entity.minecraft." (data/snake (:type e)))
-        nm (cond (= :player (:type e)) (:name e)
-                 (:custom-name e) (:custom-name e)
-                 :else {:translate k})
-        hover {:action :show-entity :id (:type e) :uuid (:uuid e)
-               :name nm}]
-    (cond
-      (nil? (:uuid e)) nm
-      (= :player (:type e))
-      {:text nm :insertion nm :hover hover
-       :click {:action :suggest-command
-               :command (str "/tell " nm " ")}}
-      :else (assoc nm :hover hover :insertion (str (:uuid e))))))
+  (entity/display-name e))
 
 (def ^:private separator {:text ", " :color "gray"})
 

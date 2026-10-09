@@ -304,6 +304,7 @@
      :suggestions [[:id :int] [:start :int] [:length :int]
                    [:matches [:sequential :any]]]
      :system-chat [[:text Text]]
+     :combat-kill [[:eid Eid] [:text Text]]
      :player-chat [[:text Text]]
      :overlay [[:text Text]]
      :title [[:kind [:enum :title :subtitle :actionbar]] [:text Text]]
