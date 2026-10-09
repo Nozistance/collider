@@ -15,6 +15,7 @@
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
             [collider.game.player :as player]
+            [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
@@ -537,6 +538,28 @@
     (mapcat (fn [d] (if (= :damage (nth d 0)) (into [d] ev) [d]))
             ds)))
 
+(defn- held-stacks [stack]
+  (let [cs (:components stack)]
+    (->> (concat (:container cs) (:bundle-contents cs))
+         (map stack/of-template)
+         (filter #(pos? (long (:count % 0)))))))
+
+(defn- spill-deltas
+  "Returns the stacks a destroyed item entity e lets out of the shulker
+  box or bundle it holds, each where e was."
+  [world eid e]
+  (map-indexed
+    (fn [i s]
+      (let [r #(random/of-key [(:tick world) eid :spill i %])]
+        [:spawn-entity
+         (entity/item (:pos e)
+                      [(- (* 0.2 (r :x)) 0.1) 0.2 (- (* 0.2 (r :z)) 0.1)]
+                      s)]))
+    (held-stacks (:stack e))))
+
+(defn- gone-deltas [world eid e]
+  (cons [:remove-entity eid] (spill-deltas world eid e)))
+
 (defn- item-burn-deltas [world eid e ^long flags]
   (let [ds (cond->> (item-fire-deltas world eid e flags)
              (= :item (:type e)) (heard e))
@@ -545,7 +568,7 @@
             (when (pos? (bit-and flags lava-bit))
               (burn-sound-deltas world eid e health))
             (when (>= (damage-sum ds) health)
-              [[:remove-entity eid]]))))
+              (gone-deltas world eid e)))))
 
 (defn- unlit? [e ^long flags]
   (and (zero? flags) (not (pos? (long (or (:fire e) 0))))
@@ -559,7 +582,7 @@
       [[:merge-entity eid {:fire 0}]])
     (let [flags (probe world e)]
       (if (unlit? e flags)
-        (when (>= 0.0 (double (:health e))) [[:remove-entity eid]])
+        (when (>= 0.0 (double (:health e))) (gone-deltas world eid e))
         (item-burn-deltas world eid e flags)))))
 
 (def ^:private ^:const safe-fall 3.0)
