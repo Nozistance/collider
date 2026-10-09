@@ -179,7 +179,7 @@
       (concat
         [(out/except eid snd)]
         (changes/change-deltas world [[pos (grown-tip st)]])
-        (inventory/hurt-item-deltas eid e (:use-hand e) 1)
+        (inventory/hurt-item-deltas (:tick world) eid e (:use-hand e) 1)
         [[:award eid :used/shears 1]]))))
 
 (defn- tracker [world pos]

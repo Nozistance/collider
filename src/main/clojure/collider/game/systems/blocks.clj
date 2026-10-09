@@ -59,13 +59,18 @@
   (fn [{:keys [world eid pos face]}] (f world eid pos face)))
 
 (defn- costing [f cost]
-  (fn [{:keys [eid at] :as c}]
+  (fn [c]
     (when-let [ds (seq (f c))]
-      (concat ds (cost eid at (:use-hand at))))))
+      (concat ds (cost c)))))
 
-(defn- spending [f] (costing f inventory/spent-deltas))
+(defn- spending [f]
+  (costing f (fn [{:keys [eid at]}]
+               (inventory/spent-deltas eid at (:use-hand at)))))
 
-(defn- wearing [f] (costing f inventory/worn-deltas))
+(defn- wearing [f]
+  (costing f (fn [{:keys [world eid at]}]
+               (inventory/worn-deltas (:tick world) eid at
+                                      (:use-hand at)))))
 
 (defn- blocking? [{:keys [at]}]
   (and (= :main (:use-hand at)) (not (:sneaking? at))

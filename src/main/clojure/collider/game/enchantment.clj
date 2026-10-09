@@ -66,6 +66,22 @@
   (let [es (get-in json ["effects" "minecraft:attributes"])]
     (mapv attribute-effect es)))
 
+(defn- requirement [r]
+  (case (get r "condition")
+    nil (constantly true)
+    "minecraft:match_tool"
+    (let [items (holders "item" (get-in r ["predicate" "items"]))]
+      #(contains? items %))
+    "minecraft:inverted" (complement (requirement (get r "term")))
+    (throw (ex-info "requirement not modelled" {:requirement r}))))
+
+(defn- damage-effect [v]
+  (let [e (get v "effect")]
+    (when-not (= "minecraft:remove_binomial" (get e "type"))
+      (throw (ex-info "item damage effect not modelled" {:effect e})))
+    {:chance (by-level (get e "chance"))
+     :when (requirement (get v "requirements"))}))
+
 (defn- enchantment [json]
   {:anvil-cost (get json "anvil_cost")
    :exclusive (holders "enchantment" (get json "exclusive_set" []))
@@ -76,7 +92,9 @@
    :supported (holders "item" (get json "supported_items"))
    :primary (primary json)
    :slots (mapv data/kebab (get json "slots"))
-   :attributes (attribute-effects json)})
+   :attributes (attribute-effects json)
+   :item-damage (mapv damage-effect
+                      (get-in json ["effects" "minecraft:item_damage"]))})
 
 (def ^:private ^:table table
   (delay (into {}
@@ -93,3 +111,36 @@
   "Returns the cost, reach and rivals of enchantment name."
   [name]
   (get (all) name))
+
+(defn- gaussian ^double [roll]
+  (let [u (max (double (roll :gauss-a)) Double/MIN_VALUE)]
+    (* (Math/sqrt (* -2.0 (Math/log u)))
+       (Math/cos (* 2.0 Math/PI (double (roll :gauss-b)))))))
+
+(defn- normal-drop ^long [^double n ^double p roll]
+  (let [miu (Math/floor (num/f32 (* n p)))
+        sigma (Math/sqrt (num/f32 (* (num/f32 (* n p)) (- 1.0 p))))
+        drop (Math/round (+ miu (* (gaussian roll) sigma)))]
+    (max 0 (min (long n) drop))))
+
+(defn- removed
+  "Returns n less the points that each go with chance p, the way
+  vanilla removes them as a binomial."
+  ^double [^double n ^double p roll]
+  (let [q (num/f32 (- 1.0 p))]
+    (- n (if (and (> n 128.0) (>= (num/f32 (* n p)) 20.0)
+                  (>= (num/f32 (* n q)) 20.0))
+           (normal-drop n p roll)
+           (count (filter #(< (double (roll %)) p) (range (long n))))))))
+
+(defn item-damage
+  "Returns the wear of n points that stack takes after its
+  enchantments, with roll the random number of a key."
+  [stack n roll]
+  (let [effects (for [[k level] (get-in stack [:components :enchantments])
+                      e (:item-damage (info k))
+                      :when ((:when e) (:item stack))]
+                  [e level])]
+    (long (reduce (fn [^double n [e level]]
+                    (removed n (double ((:chance e) level)) roll))
+                  (double n) effects))))

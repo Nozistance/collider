@@ -2,9 +2,11 @@
   "Stacks a player takes into its inventory and spends from hand."
   (:require [collider.data :as data]
             [collider.game.item :as item]
+            [collider.game.enchantment :as enchantment]
             [collider.game.out :as out]
             [collider.game.player :as player]
-            [collider.game.stack :as stack]))
+            [collider.game.stack :as stack]
+            [collider.random :as random]))
 
 (set! *warn-on-reflection* true)
 
@@ -128,19 +130,26 @@
      (out/all fx) (out/to eid fx)
      [:award eid (keyword "broken" (name (:item stack))) 1]]))
 
+(defn- wear-of [t eid stack n]
+  (enchantment/item-damage stack n #(random/of-key t eid :unbreaking %)))
+
 (defn hurt-item-deltas
-  "Returns the deltas of wearing the item in hand by n points.
-  An item worn past its last point breaks and leaves the hand. A
-  player with infinite materials wears nothing out."
-  [eid e hand ^long n]
-  (let [stack (player/hand-stack e hand)
-        worn (+ n (stack/damage stack))]
+  "Returns the deltas of wearing the item in hand by n points at
+  tick t. Its enchantments may save some points. An item worn past
+  its last point breaks and leaves the hand. A player with infinite
+  materials wears nothing out."
+  [t eid e hand n]
+  (let [stack (player/hand-stack e hand)]
     (when (and (stack/damageable? stack)
                (not (player/infinite-materials? e)))
-      (if (>= worn (stack/max-damage stack))
-        (broken-deltas eid e hand stack)
-        [[:set-slot eid (player/hand-slot e hand)
-          (stack/with-damage stack worn)]]))))
+      (let [n (wear-of t eid stack n)
+            worn (+ n (stack/damage stack))]
+        (cond
+          (zero? n) nil
+          (>= worn (stack/max-damage stack))
+          (broken-deltas eid e hand stack)
+          :else [[:set-slot eid (player/hand-slot e hand)
+                  (stack/with-damage stack worn)]])))))
 
 (defn- used-award [eid e hand]
   (when-let [item (:item (player/hand-stack e hand))]
@@ -154,6 +163,6 @@
 
 (defn worn-deltas
   "Returns the deltas of a player wearing the tool in hand by one
-  point, counted as used."
-  [eid e hand]
-  (concat (used-award eid e hand) (hurt-item-deltas eid e hand 1)))
+  point at tick t, counted as used."
+  [t eid e hand]
+  (concat (used-award eid e hand) (hurt-item-deltas t eid e hand 1)))

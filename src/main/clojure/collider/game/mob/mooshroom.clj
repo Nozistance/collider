@@ -150,7 +150,7 @@
     {:result :success
      :deltas (concat (sheared eid e t)
                      (signal/game-event :shear (:pos e) peid)
-                     (inventory/hurt-item-deltas peid p hand 1))}))
+                     (inventory/hurt-item-deltas t peid p hand 1))}))
 
 (defn flower-result
   "Returns what a stew flower does to a grown brown mooshroom.

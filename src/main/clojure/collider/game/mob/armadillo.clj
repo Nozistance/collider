@@ -77,7 +77,7 @@
     (concat (gift/dropped t eid e :armadillo-brush :brush)
             [(out/all (out/sound :armadillo/brush pos 1.0 1.0))]
             (signal/game-event :entity-interact pos eid)
-            (inventory/hurt-item-deltas peid p hand brush-wear))))
+            (inventory/hurt-item-deltas t peid p hand brush-wear))))
 
 (defn brush-result
   "Returns what a brush does to a grown armadillo. It brushes off a

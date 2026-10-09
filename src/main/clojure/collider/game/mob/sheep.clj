@@ -149,7 +149,7 @@
 (defn- sheared [t peid p hand eid e]
   (concat [[:merge-entity eid {:sheared? true}] (shear-sound eid e)]
           (signal/game-event :shear (:pos e) peid)
-          (inventory/hurt-item-deltas peid p hand 1)
+          (inventory/hurt-item-deltas t peid p hand 1)
           (shorn-items t eid e)))
 
 (defn- shearable? [e]

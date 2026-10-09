@@ -198,7 +198,8 @@
   (let [[e hand] (user world eid)] (inventory/spent-deltas eid e hand)))
 
 (defn- worn [world eid]
-  (let [[e hand] (user world eid)] (inventory/worn-deltas eid e hand)))
+  (let [[e hand] (user world eid)]
+    (inventory/worn-deltas (:tick world) eid e hand)))
 
 (defn- consumed [world eid]
   (let [[e hand] (user world eid)]
