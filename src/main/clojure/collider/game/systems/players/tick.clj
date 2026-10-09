@@ -9,6 +9,7 @@
             [collider.game.out :as out]
             [collider.game.systems.attacks :as attacks]
             [collider.game.systems.blocks :as blocks]
+            [collider.game.systems.blocks.dig :as dig]
             [collider.game.systems.compasses :as compasses]
             [collider.game.systems.consume :as consume]
             [collider.game.systems.damage :as damage]
@@ -32,6 +33,7 @@
 
 (defn- steps [d]
   [(ack (blocks/sequences (:input d)))
+   dig/player-deltas
    damage/player-deltas
    effects/player-deltas
    consume/player-deltas

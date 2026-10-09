@@ -4,11 +4,16 @@
             [collider.game.changes :as changes]
             [collider.game.block.blockentity :as be]
             [collider.game.block.lid :as lid]
+            [collider.game.dig :as dig]
             [collider.game.entity :as entity]
+            [collider.game.inventory :as inventory]
+            [collider.game.mode :as game-mode]
             [collider.game.player :as player]
             [collider.game.out :as out]
             [collider.game.systems.blocks.edit :as edit]
+            [collider.game.systems.blocks.use :as use]
             [collider.game.reach :as reach]
+            [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.halves :as halves]
@@ -83,22 +88,139 @@
 (defn- restricted [world eid status pos]
   (when (= start (long status)) [(edit/own-change world eid pos)]))
 
-(def ^:private breaking-actions #{start finish})
+(defn- staged [eid pos stage]
+  (out/except eid (out/destroy-stage eid pos stage)))
+
+(defn- stage-of ^long [^double p] (long (num/f32 (* p 10.0))))
+
+(defn- worn-deltas [world eid e st]
+  (let [stack (player/hand-stack e :main)
+        t (get-in (data/items) [(:item stack) :tool])
+        hard? (not (zero? (double (:hardness (get (data/blocks)
+                                                  (block/block-of st))
+                                             0.0))))
+        n (long (:per-block t 1))]
+    (when (and t (not (player/infinite-materials? e)))
+      (cons [:award eid (keyword "used" (name (:item stack))) 1]
+            (when (and (pos? n) (or hard? (= :shears (:item stack))))
+              (inventory/hurt-item-deltas (:tick world) eid e :main n))))))
+
+(defn- destroyed [world eid e pos]
+  (let [st (changes/block-at world pos)]
+    (concat (break-deltas world eid pos)
+            (when (pos? st) (worn-deltas world eid e st)))))
+
+(defn- dig-state [e] (:dig e))
+
+(defn- started [world eid e pos]
+  (let [st (changes/block-at world pos)
+        air? (zero? st)
+        p (if air? 1.0 (dig/progress e st))
+        d (dig-state e)]
+    (concat
+      (when-not air? (use/attack-deltas world eid pos))
+      (if (and (not air?) (>= p 1.0))
+        (destroyed world eid e pos)
+        (concat
+          (when (:active? d) [(edit/own-change world eid (:pos d))])
+          [[:merge-entity eid {:dig {:pos pos :start (:tick world)
+                                     :active? true :stage (stage-of p)}}]
+           (staged eid pos (stage-of p))])))))
+
+(defn- stopped [world eid e pos]
+  (let [d (dig-state e)
+        st (changes/block-at world pos)]
+    (when (and (= pos (:pos d)) (pos? st))
+      (let [n (inc (- (long (:tick world)) (long (:start d))))
+            prog (num/f32 (* (dig/progress e st) n))]
+        (cond
+          (>= prog (num/f32 0.7))
+          (concat [[:merge-entity eid {:dig (assoc d :active? false)}]
+                   (staged eid pos -1)]
+                  (destroyed world eid e pos))
+          (nil? (:delayed e))
+          [[:merge-entity eid
+            {:dig (assoc d :active? false)
+             :delayed {:pos pos :start (:start d)}}]])))))
+
+(defn- aborted [eid e pos]
+  (let [d (dig-state e)]
+    (concat [[:merge-entity eid {:dig (assoc d :active? false)}]]
+            (when (and d (not= pos (:pos d))) [(staged eid (:pos d) -1)])
+            [(staged eid pos -1)])))
+
+(defn- timed? [e] (not (:instabuild? (game-mode/abilities e))))
+
+(defn- survival-deltas [world eid e status pos]
+  (condp = (long status)
+    start (started world eid e pos)
+    finish (stopped world eid e pos)
+    abort (aborted eid e pos)
+    nil))
+
+(defn- creative-deltas [world eid e status pos]
+  (when (#{start finish} status)
+    (if (and (tool-breaks? e) (permitted? world e pos))
+      (break-deltas world eid pos)
+      [(edit/own-change world eid pos)])))
+
+(defn- checked-deltas [world eid e status pos]
+  (let [[may? kept] (if (= abort (long status))
+                      [true nil]
+                      (edit/break-check world eid e pos))]
+    (concat
+      kept
+      (cond
+        (not may?) (restricted world eid status pos)
+        (timed? e) (survival-deltas world eid e status pos)
+        :else (creative-deltas world eid e status pos)))))
 
 (defn dig-deltas
-  "Returns the deltas of a player who digs at a block.
-  Only the start and the finish of the dig break the block at pos."
+  "Returns the deltas of a player who digs at a block. Out of
+  creative the block breaks when the dig has gone on long enough."
   [world [eid status pos _face]]
   (let [e (get-in world [:entities eid])
         below-top? (<= (long (nth pos 1)) (chunk/level-max-y world))]
-    (when (and (breaking-actions status) (reach/in-reach? e pos))
-      (if-not below-top?
-        [(edit/own-change world eid pos)]
-        (let [[may? kept] (edit/break-check world eid e pos)]
-          (concat
-            kept
-            (cond
-              (not may?) (restricted world eid status pos)
-              (and (tool-breaks? e) (permitted? world e pos))
-              (break-deltas world eid pos)
-              :else [(edit/own-change world eid pos)])))))))
+    (when (reach/in-reach? e pos)
+      (if below-top?
+        (checked-deltas world eid e status pos)
+        [(edit/own-change world eid pos)]))))
+
+(defn- ticked-progress ^double [world e st start]
+  (let [n (+ 2 (- (long (:tick world)) (long start)))]
+    (num/f32 (* (dig/progress e st) n))))
+
+(defn- restaged [eid d pos ^double prog]
+  (let [stage (stage-of prog)]
+    (when (not= stage (:stage d))
+      [[:merge-entity eid {:dig (assoc d :stage stage)}]
+       (staged eid pos stage)])))
+
+(defn- delayed-deltas [world eid e]
+  (let [{:keys [pos start]} (:delayed e)
+        st (changes/block-at world pos)
+        prog (ticked-progress world e st start)]
+    (cond
+      (zero? st) [[:merge-entity eid {:delayed nil}]]
+      (>= prog 1.0)
+      (concat (restaged eid (dig-state e) pos prog)
+              [[:merge-entity eid {:delayed nil}]]
+              (destroyed world eid e pos))
+      :else (restaged eid (dig-state e) pos prog))))
+
+(defn- active-deltas [world eid e]
+  (let [{:keys [pos start] :as d} (dig-state e)
+        st (changes/block-at world pos)]
+    (if (zero? st)
+      [[:merge-entity eid {:dig (assoc d :active? false :stage -1)}]
+       (staged eid pos -1)]
+      (restaged eid d pos (ticked-progress world e st start)))))
+
+(defn player-deltas
+  "Returns the deltas of the dig of player p in its tick. A delayed
+  break goes on until the block is gone, else the cracks of the dig
+  go on."
+  [world [eid e]]
+  (cond
+    (:delayed e) (delayed-deltas world eid e)
+    (:active? (dig-state e)) (active-deltas world eid e)))

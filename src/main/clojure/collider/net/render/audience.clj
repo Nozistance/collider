@@ -19,6 +19,8 @@
 
 (def ^:private ^:const level-range-sq (* 64.0 64.0))
 
+(def ^:private ^:const destroy-range-sq (* 32.0 32.0))
+
 (defn- sound-range-sq ^double [volume]
   (let [v (double volume)
         r (if (> v 1.0) (* 16.0 v) 16.0)]
@@ -53,6 +55,7 @@
     (:particles :trail)
     #(near-cell? world particle-range-sq (:pos m) %)
     :explosion #(near? world level-range-sq (:center m) %)
+    :destroy-stage #(near? world destroy-range-sq (:pos m) %)
     nil))
 
 (defn- ranged-recipients [world ps m]

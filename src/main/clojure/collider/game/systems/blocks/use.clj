@@ -494,6 +494,16 @@
                         (:chunks world) pos roll)]
       (changes/change-deltas world [[pos 0] [target st]]))))
 
+(def ^:private attacks
+  {:dragon-egg dragon-egg-deltas})
+
+(defn attack-deltas
+  "Returns the deltas of player eid hitting the block at pos as it
+  starts to dig it."
+  [world eid pos]
+  (when-let [f (attacks (block/type-of (changes/block-at world pos)))]
+    (f {:world world :eid eid :pos pos})))
+
 (def ^:private ^:const light-levels 16)
 
 (defn- light-deltas [{:keys [world pos]}]

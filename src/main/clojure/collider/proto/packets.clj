@@ -495,6 +495,10 @@
    [:play :clear-titles]
    {:schema [:map [:reset wire/boolean]]
     :write :wire}
+   [:play :block-destruction]
+   {:schema [:map [:eid wire/varint] [:pos wire/block-pos]
+             [:stage wire/byte]]
+    :write :wire}
    [:play :block-update]
    {:schema [:map [:pos wire/block-pos] [:state wire/varint]]
     :write :wire}

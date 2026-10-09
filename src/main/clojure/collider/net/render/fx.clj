@@ -288,6 +288,9 @@
                      (let [cp (chunk/id->pos (:cp m))]
                        (block-records cp (:records m))))
    :break-effect   (level-event-fx :particles-destroy-block :state)
+   :destroy-stage  (fn [_ m]
+                     [{:packet :block-destruction :eid (:eid m)
+                       :pos (:pos m) :stage (:stage m)}])
    :fizz           (level-event-fx :lava-fizz (constantly 0))
    :bonemeal
    (level-event-fx :particles-and-sound-plant-growth

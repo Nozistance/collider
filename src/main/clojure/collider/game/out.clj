@@ -351,6 +351,12 @@
   [pos target color ticks]
   {:msg :trail :pos pos :target target :color color :ticks ticks})
 
+(defn destroy-stage
+  "Returns the effect that shows the crack stage of the block at pos
+  that player eid digs, -1 for none."
+  [eid pos stage]
+  {:msg :destroy-stage :eid eid :pos pos :stage stage})
+
 (defn break-effect [pos state]
   {:msg :break-effect :pos pos :state state})
 
