@@ -152,6 +152,7 @@
              [:merge-entity eid (select-keys (food/exhausted e 0.005)
                                              [:exhaustion])]]
             (loot-deltas world e pos st)
+            (changes/xp-deltas world pos st (player/hand-stack e :main))
             (after-deltas world e pos st))))
 
 (defn- destroyed [world eid e pos]

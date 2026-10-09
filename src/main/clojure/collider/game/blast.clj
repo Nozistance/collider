@@ -260,6 +260,15 @@
     (cond-> {:by by :with source}
       (:cause src) (assoc :owner (:cause src)))))
 
+(defn- xp-deltas
+  "Returns the orbs of the blocks a blast that a player caused
+  destroys."
+  [{:keys [world rg src]} destroy]
+  (when (:player? src)
+    (mapcat #(changes/xp-deltas world % (block-at rg %)
+                                {:item :air :count 0})
+            destroy)))
+
 (defn- changed-deltas [{:keys [world rg] :as b} changes]
   (let [ds (changes/shaped-deltas (with-read world rg) changes)]
     (concat (level/read-absent-deltas (explosion/loaded-payloads rg))
@@ -284,7 +293,9 @@
         reached (explosion/reached hit center)
         [chains destroy] (broken-cells b (:blocks reached))
         fires (if fire? (fire-cells b @(:cells reached) destroy) [])]
-    {:ds (changed-deltas b (into (mapv (fn [p] [p 0]) destroy) fires))
+    {:ds (concat (xp-deltas b destroy)
+                 (changed-deltas b (into (mapv (fn [p] [p 0]) destroy)
+                                         fires)))
      :spawns (concat (map #(chain-spec b %) chains)
                      (drop-specs b destroy))
      :count (:count reached)}))

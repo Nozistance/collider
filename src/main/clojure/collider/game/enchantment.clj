@@ -82,6 +82,12 @@
     {:chance (by-level (get e "chance"))
      :when (requirement (get v "requirements"))}))
 
+(defn- set-value [v]
+  (let [e (get v "effect")]
+    (when-not (= "minecraft:set" (get e "type"))
+      (throw (ex-info "block experience effect not modelled" {:effect e})))
+    (by-level (get e "value"))))
+
 (defn- enchantment [json]
   {:anvil-cost (get json "anvil_cost")
    :exclusive (holders "enchantment" (get json "exclusive_set" []))
@@ -93,6 +99,8 @@
    :primary (primary json)
    :slots (mapv data/kebab (get json "slots"))
    :attributes (attribute-effects json)
+   :block-xp (mapv set-value
+                   (get-in json ["effects" "minecraft:block_experience"]))
    :item-damage (mapv damage-effect
                       (get-in json ["effects" "minecraft:item_damage"]))})
 
@@ -144,3 +152,12 @@
     (long (reduce (fn [^double n [e level]]
                     (removed n (double ((:chance e) level)) roll))
                   (double n) effects))))
+
+(defn block-xp
+  "Returns the experience n of a broken block after the enchantments
+  of the tool stack."
+  ^long [stack ^long n]
+  (long (reduce (fn [^double v [k level]]
+                  (reduce #(double (%2 level)) v (:block-xp (info k))))
+                (double n)
+                (get-in stack [:components :enchantments]))))

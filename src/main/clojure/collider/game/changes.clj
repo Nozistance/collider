@@ -11,6 +11,7 @@
             [collider.game.out :as out]
             [collider.game.player :as player]
             [collider.random :as random]
+            [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.campfire :as campfire]
             [collider.world.blocks.geyser :as geyser]
@@ -54,10 +55,21 @@
                      :block-at #(block-at world %)}
                     #(random/of-key (:tick world) pos %)))
 
+(defn xp-deltas
+  "Returns the orbs of the experience of the block st at pos broken
+  with tool."
+  [world pos st tool]
+  (when (get-in world [:rules :block-drops] true)
+    (let [n (loot/block-xp st tool
+                           #(random/of-key (:tick world) pos :block-xp %))]
+      (when (pos? n) [[:xp-award (v/centre pos) n :block-xp]]))))
+
 (defn- dropped [world pos [_ old]]
   (when (get-in world [:rules :block-drops] true)
-    (for [[i stack] (map-indexed vector (block-drops world pos old))]
-      [:spawn-entity (item/popped world pos stack i)])))
+    (concat
+      (for [[i stack] (map-indexed vector (block-drops world pos old))]
+        [:spawn-entity (item/popped world pos stack i)])
+      (xp-deltas world pos old {:item :air :count 0}))))
 
 (def ^:private ^:const anvil-hurt 2.0)
 

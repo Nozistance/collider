@@ -3,6 +3,7 @@
   (:require [collider.data :as data]
             [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.world.block :as block]))
@@ -455,3 +456,27 @@
     (if (contains? tables b)
       (drops tables b (merge {:tool {:item :air :count 0}} ctx) roll)
       [])))
+
+(defn- between ^long [lo hi roll]
+  (+ (long lo) (below (roll :xp) (inc (- (long hi) (long lo))))))
+
+(def ^:private sculk-types
+  #{:sculk-catalyst :sculk-sensor :calibrated-sculk-sensor
+    :sculk-shrieker})
+
+(defn- base-xp ^long [st roll]
+  (let [t (block/type-of st)]
+    (cond
+      (contains? sculk-types t) 5
+      (= :redstone-ore t) (between 1 5 roll)
+      :else (if-let [[lo hi] (:xp (get (data/blocks) (block/block-of st)))]
+              (between lo hi roll)
+              0))))
+
+(defn block-xp
+  "Returns the experience the block st gives when tool breaks it,
+  with roll the random number of a key."
+  ^long [st tool roll]
+  (if (= :spawner (block/type-of st))
+    (+ 15 (below (roll :a) 15) (below (roll :b) 15))
+    (enchantment/block-xp tool (base-xp st roll))))
