@@ -29,7 +29,7 @@
            :uber-file jar-file
            :basis     @basis
            :main      'collider.cli
-           :exclude   [".*\\.java$" ".*\\.cljs$"]}))
+           :exclude   [".*\\.java$" ".*\\.cljs$" "collider/devtools/.*"]}))
 
 (defn- commit []
   (b/git-process {:git-args "rev-parse --short=11 HEAD"}))
