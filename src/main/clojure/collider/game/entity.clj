@@ -2,12 +2,16 @@
   "Entity constructors, saving and loading."
   (:require [collider.data :as data]
             [collider.game.attribute :as attribute]
+            [collider.game.combat :as combat]
+            [collider.game.enchantment :as enchantment]
             [collider.game.entity.gen :as gen]
             [collider.game.entity.records :as types]
             [collider.game.entity.size :as size]
             [collider.game.hanging :as hanging]
             [collider.game.mob.brain :as brain]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.slots :as slots]
+            [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
@@ -390,13 +394,50 @@
     (f e amount)
     amount))
 
+(def ^:private armor-order [:feet :legs :chest :head])
+
+(defn- wear-piece [e src n tick eid k]
+  (let [slot (slots/armor k)
+        s (get-in e [:inventory slot])
+        fire? (and (combat/tagged? (:type src) "is_fire")
+                   (= "is_fire" (data/resists (:item s))))]
+    (if (and s (stack/damageable? s) (not fire?))
+      (let [roll #(random/of-key tick eid [:armor slot %])
+            worn (+ (stack/damage s) (enchantment/item-damage s n roll))]
+        (if (>= worn (stack/max-damage s))
+          (update e :inventory dissoc slot)
+          (assoc-in e [:inventory slot] (stack/with-damage s worn))))
+      e)))
+
+(defn- armor-worn
+  "Returns player e with the armor it wears worn by a hit of amount
+  from src, a quarter of it, at least 1."
+  [e src amount tick eid]
+  (if (and (player? e) (not (combat/tagged? (:type src) "bypasses_armor")))
+    (let [n (max 1 (long (/ (double amount) 4.0)))]
+      (reduce #(wear-piece %1 src n tick eid %2) e armor-order))
+    e))
+
+(defn- suffered
+  "Returns e after amount from src reaches it past its armor,
+  resistance, protection and absorption, with the damage its health
+  took."
+  [e health amount src tick eid]
+  (let [e (armor-worn e src amount tick eid)
+        d (combat/damage-after e src (double amount))
+        abs (double (or (:absorption e) 0.0))
+        left (max 0.0 (num/f32 (- d abs)))
+        e (cond-> e
+            (pos? abs) (assoc :absorption (num/f32 (- abs (- d left)))))]
+    [(assoc e :health (lost health left)) left]))
+
 (defn- hurt-again [e health amount src tick]
   (let [last-d (num/f32 (or (:last-damage e) 0.0))
         amount (double amount)
         more (num/f32 (- amount last-d))]
     (if (> amount last-d)
-      (-> (assoc e :health (lost health more) :last-damage amount)
-          (counted more)
+      (-> (let [[e lost-hp] (suffered e health more src tick nil)]
+            (counted (assoc e :last-damage amount) lost-hp))
           (taken src tick)
           (reacted src tick))
       e)))
@@ -422,10 +463,10 @@
     e))
 
 (defn- hurt-fully [e health amount src tick eid]
-  (let [left (lost health amount)]
-    (-> (assoc e :health left :last-damage amount
+  (let [[e lost-hp] (suffered e health amount src tick eid)]
+    (-> (assoc e :last-damage amount
                :hurt-resist max-resist :struck-by src)
-        (counted amount)
+        (counted lost-hp)
         (taken src tick)
         (reacted src tick)
         (marked src)

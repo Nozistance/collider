@@ -82,6 +82,23 @@
     {:chance (by-level (get e "chance"))
      :when (requirement (get v "requirements"))}))
 
+(defn- tag-tests [r]
+  (case (get r "condition")
+    "minecraft:all_of" (mapcat tag-tests (get r "terms"))
+    "minecraft:damage_source_properties"
+    (map (fn [t] [(str/replace (get t "id") #"^minecraft:" "")
+                  (get t "expected")])
+         (get-in r ["predicate" "tags"]))
+    (throw (ex-info "protection requirement not modelled"
+                    {:requirement r}))))
+
+(defn- protection-effect [v]
+  (let [e (get v "effect")]
+    (when-not (= "minecraft:add" (get e "type"))
+      (throw (ex-info "protection effect not modelled" {:effect e})))
+    {:value (by-level (get e "value"))
+     :tags (vec (tag-tests (get v "requirements")))}))
+
 (defn- set-value [v]
   (let [e (get v "effect")]
     (when-not (= "minecraft:set" (get e "type"))
@@ -99,6 +116,8 @@
    :primary (primary json)
    :slots (mapv data/kebab (get json "slots"))
    :attributes (attribute-effects json)
+   :protection (mapv protection-effect
+                     (get-in json ["effects" "minecraft:damage_protection"]))
    :block-xp (mapv set-value
                    (get-in json ["effects" "minecraft:block_experience"]))
    :item-damage (mapv damage-effect
@@ -161,3 +180,16 @@
                   (reduce #(double (%2 level)) v (:block-xp (info k))))
                 (double n)
                 (get-in stack [:components :enchantments]))))
+
+(defn protection
+  "Returns the protection points of the enchantments m, by name and
+  level, against damage of a type for which tagged? tells the tags."
+  ^double [m tagged?]
+  (reduce-kv
+    (fn [^double acc k level]
+      (reduce (fn [^double a {:keys [value tags]}]
+                (if (every? (fn [[t want]] (= want (tagged? t))) tags)
+                  (num/f32 (+ a (double (value level))))
+                  a))
+              acc (:protection (info k))))
+    0.0 (or m {})))
