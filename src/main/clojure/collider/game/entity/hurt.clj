@@ -372,12 +372,15 @@
     (concat (changes/set-deltas world (mapv (fn [c] [c 0]) cells))
             (map #(melt-effect (:chunks world) %) cells))))
 
-(defn- put-out-sound [world eid e]
+(defn put-out-sound
+  "Returns the hiss of entity eid whose fire went out."
+  [world eid e]
   (let [t (long (:tick world))
         r (- (random/of-longs t eid (hash :put-out1))
              (random/of-longs t eid (hash :put-out2)))]
     (out/all (out/sound :generic/extinguish-fire (:pos e) 0.7
-                        (+ 1.6 (* 0.4 r)) :players))))
+                        (+ 1.6 (* 0.4 r))
+                        (if (entity/player? e) :players :neutral)))))
 
 (defn- contact-hurts
   [world eid e c]

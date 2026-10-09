@@ -50,7 +50,6 @@
 (def entity-systems
   "The systems that step the entities of the level."
   [#'entities/entities
-   #'damage/burning
    #'hanging/hanging-checks
    #'damage/damage])
 

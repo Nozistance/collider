@@ -4,7 +4,6 @@
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
-            [collider.game.mob.mobs :as mobs]
             [collider.num :as num]
             [collider.parallel :as par]
             [collider.vec :as v]
@@ -47,7 +46,7 @@
   (let [ds (concat (hurt/timer-deltas eid e)
                    (hurt/landing-deltas world eid e)
                    (hurt/fire-deltas world eid e))]
-    (->> (concat [[:rest eid]] (hurt/burnt-deltas world eid e) ds)
+    (->> (concat (hurt/burnt-deltas world eid e) ds)
          (hurt/hurt-now world eid e)
          (hurt/report-deltas world eid)
          (concat ds))))
@@ -78,35 +77,24 @@
   (let [active (areas/active-chunks world)
         due? (fn [[_ e :as entry]]
                (and (ticking? active e)
-                    (not (mobs/mob-type? (:type e)))
+                    (contains? loose-types (:type e))
                     (live? world entry)))]
     (comp (filter due?)
           (mapcat (fn [[eid e]] (body-deltas world eid e))))))
 
 (def ^:private ^:const bodies-leaf 64)
 
-(defn- own-tick? [e]
-  (let [k (:type e)]
-    (or (mobs/mob-type? k) (contains? loose-types k))))
-
-(defn burning
-  "Returns the fire deltas and the void deltas of every player at the
-  start of its base tick. They come after the turns of the entities,
-  where a player counts down its hurt resistance. A mob does all of
-  it in its turn."
-  {:wake {:keys [:entities]}}
-  [world _d]
-  (let [active (areas/active-chunks world)
-        due? (fn [[_ e]]
-               (and (ticking? active e) (not (own-tick? e))
-                    (hurt/based? world e)))
-        burnt (fn [[eid e]] (hurt/burnt-deltas world eid e))
-        xf (comp (filter due?) (mapcat burnt))]
-    (deltas/of-vec (par/select xf (:entities world)))))
+(defn player-deltas
+  "Returns the deltas of the fire and the void of player eid in its
+  base tick, with the hurts they report."
+  [world [eid e :as entry]]
+  (when (live? world entry)
+    (into (vec (hurt/burnt-deltas world eid e))
+          (body-deltas world eid e))))
 
 (defn damage
-  "Returns the deltas of every player and item this tick.
-  A mob takes its own in its turn."
+  "Returns the deltas of every item and orb this tick. A mob takes
+  its own in its turn, a player in its tick after the level."
   {:wake {:keys [:entities]}}
   [world _d]
   (deltas/of-vec

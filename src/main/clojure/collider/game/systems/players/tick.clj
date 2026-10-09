@@ -11,6 +11,7 @@
             [collider.game.systems.blocks :as blocks]
             [collider.game.systems.compasses :as compasses]
             [collider.game.systems.consume :as consume]
+            [collider.game.systems.damage :as damage]
             [collider.game.systems.dripleaf :as dripleaf]
             [collider.game.systems.effects :as effects]
             [collider.game.systems.equipment :as equipment]
@@ -30,6 +31,7 @@
 
 (defn- steps [d]
   [(ack (blocks/sequences (:input d)))
+   damage/player-deltas
    effects/player-deltas
    consume/player-deltas
    equipment/player-deltas

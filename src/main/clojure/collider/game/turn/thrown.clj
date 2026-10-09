@@ -404,8 +404,10 @@
     (for [[oid o] (par/keyed (:entities world))
           :when (and (hittable? o) (pos? (long (:fire o 0)))
                      (overlaps? box (target-box o))
-                     (< (v/dist-sq at (:pos o)) splash-range-sq))]
-      [:merge-entity oid {:fire 0 :burning? false}])))
+                     (< (v/dist-sq at (:pos o)) splash-range-sq))
+          d [[:merge-entity oid {:fire 0 :burning? false}]
+             (hurt/put-out-sound world oid o)]]
+      d)))
 
 (defn- cloud-spec [e at]
   (let [stack (:stack e)]
