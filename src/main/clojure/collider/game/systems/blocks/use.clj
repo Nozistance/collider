@@ -191,6 +191,19 @@
                     (block/with cur :copper-golem-pose pose))
             [(heard :copper-golem/statue pos 1.0)])))
 
+(defn- user [world eid]
+  (let [e (get-in world [:entities eid])] [e (:use-hand e :main)]))
+
+(defn- spent [world eid]
+  (let [[e hand] (user world eid)] (inventory/spent-deltas eid e hand)))
+
+(defn- worn [world eid]
+  (let [[e hand] (user world eid)] (inventory/worn-deltas eid e hand)))
+
+(defn- consumed [world eid]
+  (let [[e hand] (user world eid)]
+    (inventory/consume-deltas eid e hand 1)))
+
 (defn- compost-took? [world pos ^long lvl item]
   (or (zero? lvl)
       (< (random/of-key (:tick world) pos :compost)
@@ -212,18 +225,23 @@
               (item/popped world at bone-meal :compost)]
              (heard :composter/empty pos 1.0)])))
 
-(defn- compost-deltas [{:keys [world pos item]}]
+(defn- compost-deltas [{:keys [world eid pos item]}]
   (let [cur (changes/block-at world pos)
         lvl (block/prop-long cur :level)]
     (cond
-      (and item (< lvl 8) (data/compost item))
-      (when (< lvl 7) (compost-fill-deltas world pos lvl item))
-      (and (nil? item) (= lvl 8)) (compost-empty-deltas world pos))))
+      (= lvl 8) (compost-empty-deltas world pos)
+      (and item (data/compost item))
+      (if (< lvl 7)
+        (concat (compost-fill-deltas world pos lvl item)
+                (spent world eid))
+        []))))
 
-(defn- campfire-use-deltas [{:keys [world pos item]}]
+(defn- campfire-use-deltas [{:keys [world eid pos item]}]
   (when-let [e (be/at world pos)]
     (when-let [e' (and item (campfire/place-food e item))]
-      (changes/be-changed pos e'))))
+      (concat (changes/be-changed pos e')
+              [[:award eid :custom/interact-with-campfire 1]]
+              (consumed world eid)))))
 
 (defn- sign-busy? [world eid e]
   (and (:editor e) (not= eid (:editor e))
@@ -269,7 +287,8 @@
                    (game-mode/may-build? p))]
     (when (and e (not (chains? st face item)))
       (or (when (and item (not (:waxed? e)) free?)
-            (sign-apply-deltas pos e front? item))
+            (some-> (sign-apply-deltas pos e front? item)
+                    (concat (spent world eid))))
           (sign-hand-deltas world eid pos e front? free?)))))
 
 (defn sign-update-deltas
@@ -303,10 +322,10 @@
              (heard :decorated-pot/insert pos pitch)
              (out/all dust)])))
 
-(defn- pot-use-deltas [{:keys [world pos item]}]
+(defn- pot-use-deltas [{:keys [world eid pos item]}]
   (when-let [e (be/at world pos)]
     (if (pot-insertable? e item)
-      (pot-insert-deltas pos e item)
+      (concat (pot-insert-deltas pos e item) (spent world eid))
       [(heard :decorated-pot/insert-fail pos 1.0)
        (out/all (out/block-event pos 1 1))])))
 
@@ -333,7 +352,7 @@
       (changes/be-changed pos e')
       [(out/all play)])))
 
-(defn- jukebox-use-deltas [{:keys [world pos item]}]
+(defn- jukebox-use-deltas [{:keys [world eid pos item]}]
   (let [e (be/at world pos)
         props (block/props-of (changes/block-at world pos))
         has? (= :true (:has-record props))]
@@ -341,7 +360,13 @@
       (nil? e) nil
       has? (when (:record e) (jukebox-eject-deltas world pos e))
       (jukebox/song-of item)
-      (jukebox-insert-deltas world pos e item))))
+      (concat (jukebox-insert-deltas world pos e item)
+              [[:award eid :custom/play-record 1]]
+              (consumed world eid)))))
+
+(defn- emptied-hand [world eid]
+  (when-not (player/infinite-materials? (get-in world [:entities eid]))
+    [[:set-slot eid (player/use-slot world eid) nil]]))
 
 (defn- shelf-swap-deltas [world eid pos e slot]
   (let [removed (get-in e [:items slot])
@@ -355,7 +380,8 @@
                        (heard taken pos 1.0)])
       (nil? stack) nil
       :else (concat (changes/be-changed pos e')
-                    [(heard :shelf/place-item pos 1.0)]))))
+                    [(heard :shelf/place-item pos 1.0)]
+                    (emptied-hand world eid)))))
 
 (defn- shelf-use-deltas [{:keys [world eid pos face cursor]}]
   (let [st (changes/block-at world pos) e (be/at world pos)
@@ -551,10 +577,13 @@
     (cauldron/cauldron-deltas world eid pos item held)))
 
 (defn- carve-use [{:keys [world eid pos face]}]
-  (tools/carve-deltas world eid pos face))
+  (concat (tools/carve-deltas world eid pos face) (worn world eid)))
 
-(defn- tnt-use [{:keys [world eid pos]}]
-  (tools/prime-tnt-deltas world eid pos))
+(defn- tnt-use [{:keys [world eid pos item]}]
+  (some-> (tools/prime-tnt-deltas world eid pos)
+          (concat (if (= :fire-charge item)
+                    (spent world eid)
+                    (worn world eid)))))
 
 (defn- carves? [cur item]
   (and (= :pumpkin (block/block-of cur)) (= :shears item)))
@@ -570,7 +599,8 @@
           (contains? container/menu-types t) open-use
           (contains? menu-pending-stats t) menu-use
           (carves? cur item) carve-use
-          (and (block/tnt? cur) (= :flint-and-steel item)) tnt-use))))
+          (and (block/tnt? cur) (#{:flint-and-steel :fire-charge} item))
+          tnt-use))))
 
 (defn deltas
   "Returns the deltas of player eid using the block at pos.

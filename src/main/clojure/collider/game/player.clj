@@ -298,6 +298,7 @@
         n (using/ticks stack)]
     (cond
       (:using e) e
+      (game-mode/spectator? e) e
       (on-cooldown? e (:item stack) tick) e
       n (assoc e
           :using-item? true

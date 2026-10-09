@@ -8,6 +8,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.mode :as game-mode]
             [collider.game.apply :as apply]
+            [collider.game.inventory :as inventory]
             [collider.game.player :as player]
             [collider.game.systems.blocks.bed :as bed]
             [collider.game.systems.blocks.bucket :as bucket]
@@ -57,8 +58,22 @@
 (defn- on-face [f]
   (fn [{:keys [world eid pos face]}] (f world eid pos face)))
 
-(defn- axe-or-place [w args]
-  (or (tools/axe-deltas w args) (place/solid-place-deltas w args)))
+(defn- costing [f cost]
+  (fn [{:keys [eid at] :as c}]
+    (when-let [ds (seq (f c))]
+      (concat ds (cost eid at (:use-hand at))))))
+
+(defn- spending [f] (costing f inventory/spent-deltas))
+
+(defn- wearing [f] (costing f inventory/worn-deltas))
+
+(defn- blocking? [{:keys [at]}]
+  (and (= :main (:use-hand at)) (not (:sneaking? at))
+       (= :shield (:item (player/hand-stack at :off)))))
+
+(defn- axe-or-place [c]
+  (or (when-not (blocking? c) ((wearing (on-args tools/axe-deltas)) c))
+      ((on-args place/solid-place-deltas) c)))
 
 (defn- equip-deltas [world eid e held]
   (held/equip-deltas world eid e (:use-hand e) held))
@@ -96,9 +111,9 @@
    [:pour (when-use pour-deltas)]
    [(item-in data/mob-bucket) (when-use (on-item bucket/mob-deltas))]
    [(item-is :flint-and-steel)
-    (when-hand (on-args tools/flint-deltas))]
+    (when-hand (wearing (on-args tools/flint-deltas)))]
    [(item-is :fire-charge)
-    (when-hand (on-args tools/firecharge-deltas))]
+    (when-hand (spending (on-args tools/firecharge-deltas)))]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]
@@ -106,10 +121,11 @@
     (when-use (on-item bucket/lily-deltas))]
    [(item-is :potion) (when-hand (on-face tools/mud-deltas))]
    [(item-is :bone-meal) (when-hand (on-args tools/bonemeal-deltas))]
-   [(tagged tools/hoes) (when-hand (on-args tools/till-deltas))]
-   [(item-is :honeycomb) (when-hand (on-args tools/wax-deltas))]
-   [(tagged tools/axes) (when-hand (on-args axe-or-place))]
-   [(tagged tools/shovels) (when-hand (on-args tools/flatten-deltas))]
+   [(tagged tools/hoes) (when-hand (wearing (on-args tools/till-deltas)))]
+   [(item-is :honeycomb) (when-hand (spending (on-args tools/wax-deltas)))]
+   [(tagged tools/axes) (when-hand axe-or-place)]
+   [(tagged tools/shovels)
+    (when-hand (wearing (on-args tools/flatten-deltas)))]
    [(item-is :shears) (when-hand (on-args tools/shear-deltas))]
    [(item-is :compass) (when-hand (on-args tools/compass-deltas))]
    [(item-in mobs/egg-type) egg-deltas]

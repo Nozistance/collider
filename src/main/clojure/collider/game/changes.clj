@@ -4,6 +4,7 @@
             [collider.game.block.blockentity :as be]
             [collider.game.block.spill :as spill]
             [collider.game.block.tnt :as tnt]
+            [collider.game.inventory :as inventory]
             [collider.game.item :as item]
             [collider.game.level :as level]
             [collider.game.out :as out]
@@ -280,17 +281,38 @@
         (data/placed-sound (block/block-of state) item)]
     (out/except eid (out/block-sound kind pos volume pitch))))
 
-(defn placed-deltas
-  "Returns the deltas of a player placing blocks.
-  The place sound goes to everyone else."
-  ([world eid pos state] (placed-deltas world eid [[pos state]]))
+(defn- spent [world eid]
+  (let [e (get-in world [:entities eid])
+        hand (:use-hand e :main)
+        stack (player/use-stack world eid)]
+    (if (= :powder-snow-bucket (:item stack))
+      (inventory/filled-result-deltas world eid {:item :bucket :count 1}
+                                      false hand)
+      (inventory/consume-deltas eid e hand 1))))
+
+(defn placed-by-use-deltas
+  "Returns the deltas of a player placing blocks from the stack in
+  hand, which spends one of it. The place sound goes to everyone
+  else."
+  ([world eid pos state] (placed-by-use-deltas world eid [[pos state]]))
   ([world eid changes]
    (let [base (dec (long (:tick world)))
          deltas (shaped-deltas world changes base)
          [[pos state]] (first (dried world changes))]
      (-> deltas
          (into (placed-by-fx pos state))
-         (conj (place-sound world eid pos state))))))
+         (conj (place-sound world eid pos state))
+         (into (spent world eid))))))
+
+(defn placed-deltas
+  "Returns the deltas of a player placing blocks with the stack in
+  hand, which counts as used."
+  ([world eid pos state] (placed-deltas world eid [[pos state]]))
+  ([world eid changes]
+   (let [ds (placed-by-use-deltas world eid changes)]
+     (if-let [item (:item (player/use-stack world eid))]
+       (conj ds [:award eid (keyword "used" (name item)) 1])
+       ds))))
 
 (defn be-changed
   "Returns the deltas that set the block entity at pos and show it."

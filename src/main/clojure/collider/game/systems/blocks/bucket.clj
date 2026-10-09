@@ -203,4 +203,4 @@
                    (changes/block-at world above))
                  (not (edit/obstructed? world above st))
                  (support/supported? (:chunks world) above st))
-        (changes/placed-deltas world eid above st)))))
+        (changes/placed-by-use-deltas world eid above st)))))

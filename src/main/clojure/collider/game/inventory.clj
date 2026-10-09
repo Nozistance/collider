@@ -125,7 +125,8 @@
 (defn- broken-deltas [eid e hand stack]
   (let [fx (out/status eid (if (= :off hand) :break-off :break-main))]
     [[:set-slot eid (player/hand-slot e hand) (shrunk stack 1)]
-     (out/all fx) (out/to eid fx)]))
+     (out/all fx) (out/to eid fx)
+     [:award eid (keyword "broken" (name (:item stack))) 1]]))
 
 (defn hurt-item-deltas
   "Returns the deltas of wearing the item in hand by n points.
@@ -140,3 +141,19 @@
         (broken-deltas eid e hand stack)
         [[:set-slot eid (player/hand-slot e hand)
           (stack/with-damage stack worn)]]))))
+
+(defn- used-award [eid e hand]
+  (when-let [item (:item (player/hand-stack e hand))]
+    [[:award eid (keyword "used" (name item)) 1]]))
+
+(defn spent-deltas
+  "Returns the deltas of a player using up one of the stack in hand,
+  counted as used."
+  [eid e hand]
+  (concat (used-award eid e hand) (consume-deltas eid e hand 1)))
+
+(defn worn-deltas
+  "Returns the deltas of a player wearing the tool in hand by one
+  point, counted as used."
+  [eid e hand]
+  (concat (used-award eid e hand) (hurt-item-deltas eid e hand 1)))

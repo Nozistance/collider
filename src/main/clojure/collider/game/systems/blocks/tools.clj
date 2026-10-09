@@ -225,7 +225,7 @@
   [world [_eid pos _ _ _]]
   (let [cur (changes/block-at world pos)]
     (when-let [[to freed] (grow/tilled (block/block-of cur))]
-      (when (air-above? world pos)
+      (when (or freed (air-above? world pos))
         (concat
           (changes/change-deltas world [[pos (block/state to)]])
           (when freed (freed-drop world pos freed))
