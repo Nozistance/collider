@@ -1,10 +1,13 @@
 (ns collider.game.systems.attacks
   "Players hitting entities when the attack packet comes."
-  (:require [collider.game.apply :as apply]
+  (:require [collider.data :as data]
+            [collider.game.apply :as apply]
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.enchantment :as enchantment]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.inventory :as inventory]
             [collider.game.mob.clock :as clock]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -79,10 +82,15 @@
         full? (> s full-strength)
         knock? (and full? (boolean (:sprinting? a)))
         crit? (and full? (crit? world a target))
-        d (scaled (num/f32 (attr a :attack-damage)) s)]
+        d (scaled (num/f32 (attr a :attack-damage)) s)
+        bonus (enchantment/damage-bonus (player/hand-stack a :main)
+                                        (:type target))
+        magic (num/f32 (* s bonus))
+        base (if crit? (num/f32 (* d crit-multiplier)) d)]
     {:s s :full? full? :knock? knock? :crit? crit?
      :sweep? (and full? (not crit?) (not knock?) (sweep? a))
-     :damage (if crit? (num/f32 (* d crit-multiplier)) d)}))
+     :magic magic
+     :damage (num/f32 (+ base magic))}))
 
 (defn- source [eid a]
   {:type :player-attack :cause eid :direct eid :from (:pos a)
@@ -104,7 +112,8 @@
     e))
 
 (defn- base-knockback ^double [a]
-  (num/f32 (attribute/value a (:effects a) :attack-knockback)))
+  (num/f32 (+ (num/f32 (attribute/value a (:effects a) :attack-knockback))
+              (enchantment/knockback-bonus (player/hand-stack a :main)))))
 
 (defn- extra-knock
   [eid a tid knock?]
@@ -191,12 +200,28 @@
     (when (> lost 2.0)
       [(out/all fx)])))
 
+(defn- ignite-deltas [a tid target]
+  (let [secs (enchantment/ignite-seconds (player/hand-stack a :main))
+        n (long (Math/floor (* secs 20.0)))]
+    (when (> n (long (or (:fire target) 0)))
+      [[:merge-entity tid {:fire n :ticks-frozen 0}]])))
+
+(defn- wear-deltas [world eid a]
+  (let [stack (player/hand-stack a :main)]
+    (when-let [n (get-in (data/items) [(:item stack) :per-attack])]
+      (when-not (player/infinite-materials? a)
+        (cons [:award eid (keyword "used" (name (:item stack))) 1]
+              (inventory/hurt-item-deltas (:tick world) eid a :main
+                                          (long n)))))))
+
 (defn- landed-deltas [world eid a tid target h b src]
   (concat (hurt/report-deltas world tid h)
           (extra-knock eid a tid (:knock? b))
           (when (:sweep? b)
             (sweep-deltas world eid a tid target src b))
           (visual-deltas eid a tid b)
+          (ignite-deltas a tid target)
+          (wear-deltas world eid a)
           (hearts target h)))
 
 (defn- struck-deltas

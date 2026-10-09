@@ -99,6 +99,29 @@
     {:value (by-level (get e "value"))
      :tags (vec (tag-tests (get v "requirements")))}))
 
+(defn- add-value [v]
+  (let [e (get v "effect")]
+    (when-not (= "minecraft:add" (get e "type"))
+      (throw (ex-info "add effect not modelled" {:effect e})))
+    (by-level (get e "value"))))
+
+(defn- target-types [r]
+  (case (get r "condition")
+    nil nil
+    "minecraft:entity_properties"
+    (holders "entity_type"
+             (get-in r ["predicate" "minecraft:entity_type"]))
+    (throw (ex-info "damage requirement not modelled"
+                    {:requirement r}))))
+
+(defn- damage-effect-of [v]
+  {:value (add-value v) :types (target-types (get v "requirements"))})
+
+(defn- ignite-of [v]
+  (let [e (get v "effect")]
+    (when (= "minecraft:ignite" (get e "type"))
+      (by-level (get e "duration")))))
+
 (defn- set-value [v]
   (let [e (get v "effect")]
     (when-not (= "minecraft:set" (get e "type"))
@@ -118,6 +141,11 @@
    :attributes (attribute-effects json)
    :protection (mapv protection-effect
                      (get-in json ["effects" "minecraft:damage_protection"]))
+   :damage (mapv damage-effect-of
+                 (get-in json ["effects" "minecraft:damage"]))
+   :knockback (mapv add-value (get-in json ["effects" "minecraft:knockback"]))
+   :ignite (vec (keep ignite-of
+                      (get-in json ["effects" "minecraft:post_attack"])))
    :block-xp (mapv set-value
                    (get-in json ["effects" "minecraft:block_experience"]))
    :item-damage (mapv damage-effect
@@ -193,3 +221,29 @@
                   a))
               acc (:protection (info k))))
     0.0 (or m {})))
+
+(defn- summed ^double [stack k f]
+  (reduce-kv (fn [^double acc ench level]
+               (reduce (fn [^double a e]
+                         (if-let [x (f e level)] (num/f32 (+ a x)) a))
+                       acc (k (info ench))))
+             0.0 (or (get-in stack [:components :enchantments]) {})))
+
+(defn damage-bonus
+  "Returns the damage the enchantments of weapon stack add against an
+  entity of type t."
+  ^double [stack t]
+  (summed stack :damage (fn [{:keys [value types]} level]
+                          (when (or (nil? types) (contains? types t))
+                            (double (value level))))))
+
+(defn knockback-bonus
+  "Returns the knockback the enchantments of weapon stack add."
+  ^double [stack]
+  (summed stack :knockback (fn [value level] (double (value level)))))
+
+(defn ignite-seconds
+  "Returns the seconds the enchantments of weapon stack set a victim
+  on fire for, 0 for none."
+  ^double [stack]
+  (summed stack :ignite (fn [value level] (double (value level)))))

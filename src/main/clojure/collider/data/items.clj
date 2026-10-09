@@ -182,9 +182,11 @@
   (let [egg (get-in cs ["minecraft:entity_data" "id"])
         resists (get-in cs ["minecraft:damage_resistant" "types"])
         pat (get cs "minecraft:provides_banner_patterns")
+        weapon (get cs "minecraft:weapon")
         tag #(tag-name (subs % 1))]
     (cond-> (sorted-map)
       egg (assoc :spawns (kw egg))
+      weapon (assoc :per-attack (get weapon "item_damage_per_attack" 1))
       (string? resists) (assoc :resists (tag resists))
       (string? pat) (assoc :patterns (tag pat)))))
 
