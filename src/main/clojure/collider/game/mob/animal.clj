@@ -154,10 +154,17 @@
 
 (defn- other [world oid] (get (:entities world) oid))
 
+(defn- eyes-of
+  "Returns the point at the eyes of entity o."
+  [o]
+  (let [p (:pos o)]
+    (v/v3 (v/x p) (+ (v/y p) (entity/eye-height o)) (v/z p))))
+
 (defn- glance
-  ([e oid t] (glance e oid t nil))
-  ([e oid t speed]
+  ([e o oid t] (glance e o oid t nil))
+  ([e o oid t speed]
    (assoc e :look (cond-> {:target oid :until (+ (long t) 2)}
+                    o (assoc :at (eyes-of o))
                     speed (assoc :speed speed)))))
 
 (defn- panic-pos [world eid e t]
@@ -225,7 +232,7 @@
   (let [pid (:partner (:task e))
         o (other world pid)
         speed (goal-speed e :mate)
-        e (nav/move-to-entity world (glance e pid t) o speed)
+        e (nav/move-to-entity world (glance e o pid t) o speed)
         e (update-in e [:task :love] (fn [n] (inc (long n))))
         due (reduced-delay mate-ticks)]
     (if (and (>= (long (:love (:task e))) due)
@@ -259,7 +266,7 @@
   (fn [_ world _ e t tempters]
     (let [pid (tempter e lures tempters)
           o (other world pid)
-          e (glance (assoc-in e [:task :player] pid) pid t
+          e (glance (assoc-in e [:task :player] pid) o pid t
                     tempt-look-speed)]
       [(cond
          (nil? o) e
@@ -399,10 +406,14 @@
 
 (defn- start-look-player [world eid e t _]
   (when (< (rnd t eid :look) look-chance)
-    (when-let [[_ pid] (player-to-look-at world e)]
-      [(assoc e :look {:kind :look-player :target pid
+    (when-let [[_ pid p] (player-to-look-at world e)]
+      [(assoc e :look {:kind :look-player :target pid :at (eyes-of p)
                        :until (look-until eid e t)})
        nil])))
+
+(defn- look-player-tick [_ world _ e _ _]
+  (let [o (other world (:target (:look e)))]
+    [(cond-> e o (assoc-in [:look :at] (eyes-of o))) nil]))
 
 (defn- looking? [world e _ _]
   (let [o (other world (:target (:look e)))]
@@ -483,6 +494,7 @@
    {:kind :look-player :flags #{:look} :start start-look-player
     :continue? looking?
     :running? (fn [e t] (some? (look-goal e t)))
+    :tick look-player-tick
     :stop (fn [e _] (assoc e :look nil))}
    {:kind :look-around :flags #{:move :look} :start start-look-around
     :continue? looking-around? :stop stop-look-around

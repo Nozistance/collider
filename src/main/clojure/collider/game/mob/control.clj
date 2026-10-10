@@ -203,8 +203,8 @@
 (defn- look-aim [world e look]
   (let [oid (:target look)
         at (:at look)
-        o (cond oid (get (:entities world) oid)
-                at {:pos at :type :point})]
+        o (cond at {:pos at :type :point}
+                oid (get (:entities world) oid))]
     [(cond o (look-yaw e o)
            (and look (:yaw look)) (:yaw look)
            :else (body-yaw e))
