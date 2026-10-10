@@ -35,7 +35,7 @@
 
 (defn- particles-packet [m]
   (let [[dx dy dz] (or (:spread m) [0.0 0.0 0.0])]
-    {:packet   :level-particles
+    {:packet   :level-particles :limiter false :always false
      :particle [(particle-id (:kind m)) (:state m)]
      :pos      (:pos m) :count (:count m) :speed (:speed m)
      :dx (double dx) :dy (double dy) :dz (double dz)}))
@@ -44,7 +44,7 @@
   (delay (data/registry-id "particle_type" :trail)))
 
 (defn- trail-packet [m]
-  {:packet   :level-particles
+  {:packet   :level-particles :limiter false :always false
    :particle [@trail-particle [(:target m) (:color m) (:ticks m)]]
    :pos      (:pos m) :count 1 :speed 0.0 :dx 0.0 :dy 0.0 :dz 0.0})
 

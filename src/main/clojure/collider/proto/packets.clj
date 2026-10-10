@@ -701,10 +701,7 @@
     :write :wire}
    [:play :level-particles]
    {:schema [:map
-             [:limiter {:optional true}
-              [:= {:wire wire/boolean} false]]
-             [:always {:optional true}
-              [:= {:wire wire/boolean} false]]
+             [:limiter wire/boolean] [:always wire/boolean]
              [:pos wire/vec3]
              [:dx wire/float] [:dy wire/float] [:dz wire/float]
              [:speed wire/float] [:count wire/int]

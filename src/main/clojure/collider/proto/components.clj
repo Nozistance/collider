@@ -692,11 +692,12 @@
   {:block :state :block-marker :state :falling-dust :state
    :dust-pillar :state :block-crumble :state
    :entity-effect :color :tinted-leaves :color :flash :color
-   :trail :trail
-   :geyser nil :geyser-base nil :geyser-poof nil :geyser-plume nil
-   :dragon-breath nil :dust nil :dust-color-transition nil
-   :effect nil :instant-effect nil :sculk-charge nil :item nil
-   :vibration nil :shriek nil})
+   :trail :trail :dragon-breath :power :dust :dust
+   :dust-color-transition :transition :effect :spell
+   :instant-effect :spell :sculk-charge :roll :item :item
+   :vibration :vibration :shriek :delay :geyser :geyser
+   :geyser-plume :geyser :geyser-base :geyser-base
+   :geyser-poof :geyser-base})
 
 (defn- particle-entry [[k id]]
   [(long id) [k (get particle-option-kinds k :none)]])
@@ -705,39 +706,98 @@
   (delay (into {} (map particle-entry)
                (get (data/registries) "particle_type"))))
 
-(defn- unmodelled [k]
-  (ex-info (str "particle options of " (name k) " not modelled")
-           {:particle k}))
-
 (defn- particle-kind [t]
   (let [[k kind] (@particle-kinds (long t))]
     (when-not k
       (throw (ex-info "unknown particle type" {:particle t})))
-    (or kind (throw (unmodelled k)))))
+    kind))
+
+(defn- shape-error [t opts]
+  (ex-info "particle options do not fit the type"
+           {:particle t :options opts}))
+
+(defn- source-id [k]
+  (data/entry-id "position_source_type" k))
+
+(defn- write-source [^Buf buf [how a b]]
+  (c/write-varint buf (source-id how))
+  (case how
+    :block (let [[x y z] a] (c/write-block-pos buf x y z))
+    :entity (do (c/write-varint buf (long a))
+                (buf/write-float! buf (float b)))))
+
+(defn- read-source [^Buf buf]
+  (let [how (data/entry-name "position_source_type"
+                             (c/read-varint buf))]
+    (case how
+      :block [:block (c/read-block-pos buf)]
+      :entity [:entity (c/read-varint buf) (buf/read-float buf)])))
+
+(defn- write-options [^Buf buf kind t opts]
+  (try
+    (case kind
+      :none nil
+      :state (c/write-varint buf (long opts))
+      :color (buf/write-int! buf (int opts))
+      :power (buf/write-float! buf (float opts))
+      :spell (let [[color power] opts]
+               (buf/write-int! buf (int color))
+               (buf/write-float! buf (float power)))
+      :dust (let [[color scale] opts]
+              (buf/write-int! buf (int color))
+              (buf/write-float! buf (float scale)))
+      :transition (let [[from to scale] opts]
+                    (buf/write-int! buf (int from))
+                    (buf/write-int! buf (int to))
+                    (buf/write-float! buf (float scale)))
+      :roll (buf/write-float! buf (float opts))
+      :item ((:w c-template) buf opts)
+      :vibration (let [[source ticks] opts]
+                   (write-source buf source)
+                   (c/write-varint buf (int ticks)))
+      :delay (c/write-varint buf (int opts))
+      :geyser (buf/write-int! buf (int opts))
+      :geyser-base (let [[water impulse] opts]
+                     (buf/write-int! buf (int water))
+                     (buf/write-float! buf (float impulse)))
+      :trail (let [[target color ticks] opts]
+               (c/write-vec3 buf target)
+               (buf/write-int! buf (int color))
+               (c/write-varint buf (int ticks))))
+    (catch ClassCastException _ (throw (shape-error t opts)))
+    (catch IllegalArgumentException _ (throw (shape-error t opts)))
+    (catch NullPointerException _ (throw (shape-error t opts)))
+    (catch IndexOutOfBoundsException _ (throw (shape-error t opts)))
+    (catch UnsupportedOperationException _
+      (throw (shape-error t opts)))))
 
 (defn write-particle
   "Writes a particle as [type options].
   The type decides the shape of the options."
   [^Buf buf [t opts]]
   (c/write-varint buf (long t))
-  (case (particle-kind t)
-    :none nil
-    :state (c/write-varint buf (long opts))
-    :color (buf/write-int! buf (int opts))
-    :trail (let [[target color ticks] opts]
-             (c/write-vec3 buf target)
-             (buf/write-int! buf (int color))
-             (c/write-varint buf (long ticks)))))
+  (write-options buf (particle-kind t) t opts))
 
-(defn- read-trail [^Buf buf]
-  [(c/read-vec3 buf) (buf/read-int buf) (c/read-varint buf)])
+(defn- read-options [^Buf buf kind]
+  (case kind
+    :none nil
+    :state (c/read-varint buf)
+    :color (buf/read-int buf)
+    :power (buf/read-float buf)
+    :spell [(buf/read-int buf) (buf/read-float buf)]
+    :dust [(buf/read-int buf) (buf/read-float buf)]
+    :transition [(buf/read-int buf) (buf/read-int buf)
+                 (buf/read-float buf)]
+    :roll (buf/read-float buf)
+    :item ((:r c-template) buf)
+    :vibration [(read-source buf) (c/read-varint buf)]
+    :delay (c/read-varint buf)
+    :geyser (buf/read-int buf)
+    :geyser-base [(buf/read-int buf) (buf/read-float buf)]
+    :trail [(c/read-vec3 buf) (buf/read-int buf) (c/read-varint buf)]))
 
 (defn read-particle
   "Returns the particle at the read point as [type options]."
   [^Buf buf]
   (let [t (c/read-varint buf)]
-    [t (case (particle-kind t)
-         :none nil
-         :state (c/read-varint buf)
-         :color (buf/read-int buf)
-         :trail (read-trail buf))]))
+    [t (read-options buf (particle-kind t))]))
