@@ -91,17 +91,26 @@
     (signal/game-event :entity-damage (:pos e) (:cause (:src b)))
     []))
 
+(def ^:private ^:const impulse-grace 40)
+
 (defn- gusted [b id e d12 seen]
   (let [[kb] (impulse b e (:pos e) d12 seen)]
     (if (entity/player? e)
-      {:ds [] :motion (when (shoved? e) kb)}
+      (let [g (max impulse-grace (long (:impulse-grace e 0)))
+            p (:pos e)]
+        {:ds [[:merge-entity id {:impulse-at [(v/x p) (v/y p) (v/z p)]
+                                 :impulse-grace g}]]
+         :motion (when (shoved? e) kb)})
       {:ds (if (moving? kb) [[:push id kb]] [])})))
 
 (defn- pushed [b id e d12 seen]
   (let [[kb dmg] (impulse b e (:pos e) d12 seen)]
     (cond
       (entity/player? e)
-      {:ds (hurt/damage-deltas (:world b) id e dmg (:src b))
+      {:ds (cond-> (vec (hurt/damage-deltas (:world b) id e dmg
+                                            (:src b)))
+             (pos? (long (:impulse-grace e 0)))
+             (conj [:merge-entity id {:impulse-grace 0}]))
        :motion (when (shoved? e) kb)}
       (item-dies? e dmg)
       {:ds (conj (item-heard b e) [:remove-entity id]) :gone? true}

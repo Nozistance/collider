@@ -13,6 +13,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.block :as block]
+            [collider.world.blocks.climb :as climb]
             [collider.world.blocks.fall :as fall]
             [collider.world.chunk :as chunk]))
 
@@ -135,19 +136,51 @@
   (when (and (player? e) (>= d 2.0))
     [[:award eid :custom/fall-one-cm (Math/round (* d 100.0))]]))
 
+(def ^:private forgotten {:impulse-at nil :impulse-grace 0})
+
+(defn- after-impulse
+  "Returns the fall of e that counts after a gust caught it, and
+  whether the gust is forgotten before the damage."
+  [e ^double d]
+  (if-let [at (:impulse-at e)]
+    (let [f (min d (- (double (v/y at)) (double (v/y (:pos e)))))]
+      [f (or (<= f 0.0) (zero? (long (:impulse-grace e 0))))])
+    [d false]))
+
 (defn- hurt-deltas
   "Returns the deltas of the fall damage of e for a fall d with
   modifier m from source type k. A body that may fly takes none."
   [world eid e [d m k]]
   (when-not (game-mode/may-fly? e)
-    (let [n (damage-of e (double d) (double m))]
+    (let [[f gone?] (after-impulse e (double d))
+          n (damage-of e f (double m))]
       (concat
         (fall-stat eid e (double d))
+        (when (or gone? (and (pos? n) (:impulse-at e)))
+          [[:merge-entity eid forgotten]])
         (when (pos? n)
           (-> [(fall-sound e (> n 4))]
               (into (block-fall-sound world e))
               (into (hurt/damage-deltas world eid e (double n)
                                         (srcs k)))))))))
+
+(defn grace-deltas
+  "Returns the deltas of the grace after a gust that player eid, e,
+  loses in its turn."
+  [_ [eid e]]
+  (let [g (long (:impulse-grace e 0))]
+    (when (pos? g) [[:merge-entity eid {:impulse-grace (dec g)}]])))
+
+(defn settled-deltas
+  "Returns the deltas that forget the gust of player eid, e, whose
+  move left it on the ground, in a liquid or on a ladder after its
+  grace ran out."
+  [world eid e]
+  (when (and (:impulse-at e) (zero? (long (:impulse-grace e 0)))
+             (or (:on-ground e) (:in-water? e) (:in-lava? e)
+                 (game-mode/spectator? e) (:fall-flying e)
+                 (climb/on-climbable? (:chunks world) (:pos e))))
+    [[:merge-entity eid forgotten]]))
 
 (defn- honey-deltas [eid e ^long st hs]
   (cond-> (into [(sound e :block.honey-block.slide 1.0 1.0)

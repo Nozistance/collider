@@ -21,7 +21,8 @@
             [collider.game.systems.items :as items]
             [collider.game.systems.keepalive :as keepalive]
             [collider.game.systems.orbs :as orbs]
-            [collider.game.systems.pose :as pose])
+            [collider.game.systems.pose :as pose]
+            [collider.game.turn.landing :as landing])
   (:import (clojure.lang MapEntry)))
 
 (set! *warn-on-reflection* true)
@@ -48,6 +49,7 @@
    attacks/wielded
    pose/player-deltas
    food/player-deltas
+   landing/grace-deltas
    experience/player-deltas
    keepalive/player-deltas])
 

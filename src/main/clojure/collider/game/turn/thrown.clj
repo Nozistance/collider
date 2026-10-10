@@ -418,6 +418,9 @@
     (when (and o (pos? (double (:health o 0.0))) (not (:sleeping o)))
       (concat [[:teleport oid at]
                (out/to oid (teleport-packet at o))]
+              (when (:impulse-at o)
+                [[:merge-entity oid
+                  {:impulse-at nil :impulse-grace 0}]])
               (hurt/damage-deltas
                 world oid o pearl-damage {:type :ender-pearl})
               [(out/all (out/sound :player/teleport p 1.0 1.0))]))))

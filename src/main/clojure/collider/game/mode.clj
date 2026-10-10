@@ -53,7 +53,6 @@
 
 (defn spectator? [e] (= :spectator (:game-mode e)))
 
-
 (defn- held? [chunks cx cz]
   (contains? chunks (chunk/pos->id cx cz)))
 
@@ -159,7 +158,9 @@
 (defn- changes [chunks e mode]
   (cond-> {:game-mode mode :previous-game-mode (:game-mode e)
            :flying (flying-after chunks e mode)}
-    (= :spectator mode) (assoc :using-item? false :using nil)))
+    (= :spectator mode) (assoc :using-item? false :using nil)
+    (and (= :creative mode) (:impulse-at e))
+    (assoc :impulse-at nil :impulse-grace 0)))
 
 (def ^:private reaches
   #{:entity-interaction-range :block-interaction-range})
