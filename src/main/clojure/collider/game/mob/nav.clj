@@ -320,7 +320,7 @@
     nav))
 
 (defn- timed
-  "Returns nav after the timeout of the node it walks to: a mob that
+  "Returns nav after the timeout of the node it walks to. A mob that
   takes three times as long as it should drops its path."
   [nav drive x my z t]
   (let [n (node nav (:index nav))
