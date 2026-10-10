@@ -40,11 +40,11 @@
   ^double [^double a ^double b]
   (double (unchecked-float (/ a b))))
 
-(def ^:const ^:private deg-per-rad (double (unchecked-float (/ 180.0 (double (unchecked-float Math/PI))))))
+(def ^:private ^:const deg-per-rad
+  (double (unchecked-float (/ 180.0 (double (unchecked-float Math/PI))))))
 
 (defn degrees
-  "Returns radians r as degrees the way the game multiplies, by a float
-  constant."
+  "Returns radians r as degrees, multiplied by a float constant."
   ^double [^double r]
   (* r deg-per-rad))
 
