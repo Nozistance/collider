@@ -37,6 +37,20 @@
    :back_text  (text-nbt (:back e))
    :is_waxed   (boolean (:waxed? e))})
 
+(defn- flag? [v] (if (boolean? v) v (pos? (long v))))
+
+(defn- text-of [m]
+  {:lines (vec (:messages m)) :color (data/kebab (:color m))
+   :glowing? (flag? (:has_glowing_text m))})
+
+(defn loaded
+  "Returns sign e with what its tag d holds."
+  [e d]
+  (cond-> e
+    (:front_text d) (assoc :front (text-of (:front_text d)))
+    (:back_text d) (assoc :back (text-of (:back_text d)))
+    (some? (:is_waxed d)) (assoc :waxed? (flag? (:is_waxed d)))))
+
 (def ^:private wall-rot {:south 0 :west 90 :north 180 :east 270})
 
 (defn- y-rot ^double [^long st]

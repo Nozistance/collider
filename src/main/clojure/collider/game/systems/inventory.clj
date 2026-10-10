@@ -38,17 +38,12 @@
 
 (def ^:private own-kinds #{:banner :decorated-pot})
 
-(defn- with-data [s world e]
-  (let [d (be/entity-data e (:tick world))]
-    (stack/put s :block-entity-data d)))
-
 (defn- with-entity [s world pos include-data]
-  (let [e (be/at world pos)
-        data? (and e include-data)
-        s (if (or data? (contains? own-kinds (:kind e)))
-            (be/to-stack (:item s) e)
-            s)]
-    (cond-> s data? (with-data world e))))
+  (let [e (be/at world pos)]
+    (cond
+      (and e include-data) (be/picked (:item s) e (:tick world))
+      (contains? own-kinds (:kind e)) (be/to-stack (:item s) e)
+      :else s)))
 
 (defn- with-props [s st include-data]
   (let [props (block/props-of st)

@@ -109,9 +109,11 @@
 
 (defn- block-entity-place-deltas [world eid pos state]
   (let [stack (player/use-stack world eid)
-        entity (-> (be/fresh (be/kind state) eid)
-                   (be/from-stack stack)
-                   (be/placed-by (get-in world [:entities eid])))
+        p (get-in world [:entities eid])
+        fresh (be/fresh (be/kind state) eid)
+        data? (or (not (be/op-only? fresh)) (edit/game-master? p))
+        entity (-> (be/from-stack fresh stack data?)
+                   (be/placed-by p))
         editor (when (sign/kind state)
                  [(out/to eid (out/sign-editor pos true))])]
     (concat (changes/placed-deltas world eid pos state)
