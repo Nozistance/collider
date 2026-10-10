@@ -726,24 +726,18 @@
 (def ^:private c-vec3
   (codec c/read-vec3 (fn [^Buf b v] (c/write-vec3 b v))))
 
-(def ^:private c-block-pos
-  (codec c/read-block-pos
-         (fn [^Buf b [x y z]] (c/write-block-pos b x y z))))
-
-(def ^:private position-sources
-  {:block c-block-pos
-   :entity (tuple c-varint c-float)})
-
 (def ^:private c-source
-  (codec (fn [^Buf b]
-           (let [how (data/entry-name "position_source_type"
-                                      (c/read-varint b))]
-             (into [how] (let [v ((:r (position-sources how)) b)]
-                           (if (= how :block) [v] v)))))
-         (fn [^Buf b [how & more]]
-           (c/write-varint b (data/entry-id "position_source_type" how))
-           ((:w (position-sources how)) b
-            (if (= how :block) (first more) (vec more))))))
+  (codec
+    (fn [^Buf b]
+      (case (data/entry-name "position_source_type" (c/read-varint b))
+        :block [:block ((:r c-block-pos) b)]
+        :entity [:entity (c/read-varint b) (buf/read-float b)]))
+    (fn [^Buf b [how a off]]
+      (c/write-varint b (data/entry-id "position_source_type" how))
+      (case how
+        :block ((:w c-block-pos) b a)
+        :entity (do (c/write-varint b (long a))
+                    (buf/write-float! b (float off)))))))
 
 (def ^:private particle-codecs
   {:state c-varint :color c-int :power c-float :roll c-float
