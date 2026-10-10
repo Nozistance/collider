@@ -4,7 +4,8 @@
             [collider.game.entity :as entity]
             [collider.game.hanging :as hanging]
             [collider.proto.entitydata :as ed]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [clojure.string :as str]))
 
 (set! *warn-on-reflection* true)
 
@@ -209,6 +210,25 @@
     (ed/entries cls (entity-fields kind meta))
     []))
 
+(defn- default-of [cls k]
+  (let [[_ t d] (get-in ed/fields [cls k])]
+    (if (and (keyword? d) (str/ends-with? (name t) "variant"))
+      (data/datapack-id (str/replace (name t) "-" "_") d)
+      d)))
+
+(defn- default? [cls [k v]]
+  (let [d (default-of cls k)]
+    (if (and (number? v) (number? d)) (== v d) (= v d))))
+
+(defn- pairing-data
+  "Returns the entity data a viewer gets as it starts to see an entity
+  of kind: all of meta but the defaults."
+  [kind meta]
+  (if-let [cls (class-of kind)]
+    (ed/entries cls (into {} (remove #(default? cls %))
+                          (entity-fields kind meta)))
+    []))
+
 (def equipment-slots
   "The wire slots of the equipment a tracker holds, in its order."
   [0 2 3 4 5])
@@ -253,7 +273,7 @@
   (when-let [e (get-in world [:entities eid])]
     (let [kind (kind-of e)
           tr (:track e)
-          d (entity-data kind (if tr (:mdata tr) {}))
+          d (pairing-data kind (if tr (:mdata tr) {}))
           equip (equipment-of tr)]
       (concat
         [{:packet :bundle-delimiter}

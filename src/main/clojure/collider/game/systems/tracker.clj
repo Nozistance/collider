@@ -44,9 +44,11 @@
 (defn- angle
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 
-(def ^:private flag-keys
-  [:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?
-   :color :sheared? :variant])
+(def ^:private packed
+  "The keys that share one field of entity data: a change to one sends
+  the whole field."
+  [[:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?]
+   [:color :sheared?]])
 
 (defn- meta-diff [mdata sent]
   (let [ks (into #{} (concat (keys mdata) (keys sent)))
@@ -54,9 +56,11 @@
                (let [v (get mdata k)]
                  (when (not= v (get sent k)) [k v])))
         changed (into {} (keep pick) ks)]
-    (if (some #(contains? changed %) flag-keys)
-      (into changed (select-keys mdata flag-keys))
-      changed)))
+    (reduce (fn [acc group]
+              (if (some #(contains? changed %) group)
+                (into acc (select-keys mdata group))
+                acc))
+            changed packed)))
 
 (defn- held-stack [e]
   (get-in e [:inventory (+ 36 (long (or (:held-slot e) 0)))]))
