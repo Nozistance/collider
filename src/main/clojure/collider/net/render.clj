@@ -106,15 +106,19 @@
                       true))))
             msgs)))
 
+(defn- tab-add? [m] (identical? :tab-add (:msg m)))
+
 (defn- ordered [world sight ^Deltas deltas]
   (let [es (deltas/entities-of deltas)
         viewers (delay (audience/viewer-index sight es))
-        new (arrivals deltas)]
+        new (arrivals deltas)
+        msgs (once-each (deltas/out-of deltas))
+        msg-out (fn [ms] (mapcat #(msg-packets sight viewers %) ms))]
     (vec (concat
            (join-bursts world sight deltas)
+           (msg-out (filter tab-add? msgs))
            (entity-delta-packets sight es (complement new))
-           (mapcat (fn [m] (msg-packets sight viewers m))
-                   (once-each (deltas/out-of deltas)))
+           (msg-out (remove tab-add? msgs))
            (entity-delta-packets sight es new)
            (forget-packets es)
            (level-entry-packets sight deltas)))))
