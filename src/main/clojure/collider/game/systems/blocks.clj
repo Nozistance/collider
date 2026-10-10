@@ -307,7 +307,7 @@
 
 (defn- edit-deltas [world i [tag & args] origins]
   (case tag
-    :dig (dig/dig-deltas world args)
+    :dig (dig/dig-deltas world args (get origins i))
     :place (placed-deltas world args (get origins i))
     :use-item
     (place-deltas world (item-use-args args) (get origins i))

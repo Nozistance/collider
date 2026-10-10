@@ -210,17 +210,22 @@
 
 (def ^:private origin-keys [:pos :yaw :pitch :sneaking? :flying])
 
+(def ^:private dig-keys
+  [:pos :on-ground :eye-in-water? :in-water? :pose])
+
 (defn use-origin
-  "Returns the eye and look of the player behind an event.
-  Only place and use events have one. Others give nil."
+  "Returns the eye and look of the player behind an event, or for a
+  dig what its player was when the dig came. Other events give nil."
   [w [tag & args]]
   (let [rot (case tag
               :place (nth args 6 nil)
               :use-item (nth args 3 nil)
               nil)]
-    (when (#{:place :use-item} tag)
-      (when-let [e (get-in w [:entities (first args)])]
-        (select-keys (snapped e rot) origin-keys)))))
+    (when-let [e (get-in w [:entities (first args)])]
+      (case tag
+        (:place :use-item) (select-keys (snapped e rot) origin-keys)
+        :dig (select-keys e dig-keys)
+        nil))))
 
 (defn hand-slot
   "Returns the inventory slot the hand holds."
