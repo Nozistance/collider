@@ -166,6 +166,7 @@
 
 (defn- living-fields [meta]
   (cond-> {}
+    (contains? meta :health) (assoc :health (:health meta))
     (contains? meta :effect-particles)
     (assoc :effect-particles
            (mapv effect-particle (:effect-particles meta)))

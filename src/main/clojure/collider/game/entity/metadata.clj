@@ -4,7 +4,8 @@
             [collider.game.entity :as entity]
             [collider.game.hanging :as hanging]
             [collider.game.mob.mobs :as mobs]
-            [collider.game.mode :as game-mode]))
+            [collider.game.mode :as game-mode]
+            [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
 
@@ -85,9 +86,14 @@
       (mobs/metadata e)
       (player-metadata e))))
 
+(defn- living? [e]
+  (and (some? (:health e))
+       (or (entity/player? e) (mobs/mob-type? (:type e)))))
+
 (defn of
   [e]
   (let [m (cond-> (own-metadata e)
+            (living? e) (assoc :health (num/f32 (double (:health e))))
             (not= 300 (long (:air e 300))) (assoc :air-supply (:air e))
             (pos? (long (or (:ticks-frozen e) 0)))
             (assoc :ticks-frozen (:ticks-frozen e)))
