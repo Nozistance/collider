@@ -193,11 +193,10 @@
   #{:player :llama-spit :wither :bat :item-frame :glow-item-frame
     :leash-knot :painting :end-crystal :evoker-fangs})
 
-(defn- vel-due? [e self? due?]
-  (or self?
-      (and due?
-           (or (:needs-sync? e)
-               (not (contains? no-delta-types (:type e)))))))
+(defn- vel-due? [e due?]
+  (and due?
+       (or (:needs-sync? e) (:fall-flying e)
+           (not (contains? no-delta-types (:type e))))))
 
 (defn- near-baseline? [e ^Track tr]
   (let [[bx by bz] (tr-pos tr)
@@ -270,7 +269,7 @@
          (boolean (and due? (not= head (long (tr-head tr)))))
          meta-changed?
          equip-changed?
-         (and (vel-due? e self? due?) (vel-changed? tr vel))
+         (and (vel-due? e due?) (vel-changed? tr vel))
          (when equip-changed? (equip-changes equip tr))
          (self-slot-diff e tr self?)
          carried?
