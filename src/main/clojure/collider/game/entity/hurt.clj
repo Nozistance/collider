@@ -439,7 +439,7 @@
         f' (if (and snow? can?)
              (min freeze-ticks (inc f))
              (max 0 (- f 2)))
-        lived (- (long (:tick world)) (long (:born e 0)))
+        lived (entity/tick-count world e)
         frost (frost-of world e f')
         changes (cond-> {}
                   (not= f f') (assoc :ticks-frozen f')

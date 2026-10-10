@@ -37,7 +37,10 @@
    :back_text  (text-nbt (:back e))
    :is_waxed   (boolean (:waxed? e))})
 
-(defn- flag? [v] (if (boolean? v) v (pos? (long v))))
+(defn flag?
+  "Returns true when the tag value v, a boolean or a byte, is set."
+  [v]
+  (if (boolean? v) v (pos? (long v))))
 
 (defn- text-of [m]
   {:lines (vec (:messages m)) :color (data/kebab (:color m))

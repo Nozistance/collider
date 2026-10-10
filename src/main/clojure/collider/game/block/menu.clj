@@ -63,7 +63,7 @@
    :place   player-may-place?
    :max     (fn [slot _] (when (armor-slots slot) 1))
    :equip   (assoc armor-slots offhand-slot :offhand)
-   :fast    (fn [slot stack]
+   :bound?  (fn [slot stack]
               (and (armor-slots slot) (enchantment/binding? stack)))
    :swap    (fn ^long [^long button] (hand-slot 0 button))
    :quick   player-quick-slots})
@@ -205,13 +205,14 @@
 
 (defn- locked? [m slot]
   (let [layout (layout-of m)
-        fast (:fast layout)]
+        bound? (:bound? layout)]
     (or (and (= slot (:result layout)) (false? (:may-take? layout)))
-        (and fast (not (:creative? m))
-             (fast slot (get (:inventory m) slot))))))
+        (and bound? (not (:creative? m))
+             (bound? slot (get (:inventory m) slot))))))
 
-(defn- removable [m layout inv slot n mx]
-  (let [here (get inv slot)
+(defn- removable [m slot n mx]
+  (let [layout (layout-of m)
+        here (get (:inventory m) slot)
         whole (count-of here)
         n (long n) mx (long mx)]
     (cond
@@ -232,7 +233,7 @@
    (let [layout (layout-of m)
          inv (:inventory m)
          here (get inv slot)
-         got (long (removable m layout inv slot n mx))
+         got (long (removable m slot n mx))
          left (sized here (- (count-of here) got))]
      (if (pos? got)
        [(cond-> (assoc m :inventory (put-slot inv slot left))
@@ -398,8 +399,10 @@
         moved))
     (move-to layout inv stack q)))
 
-(defn- quick-move-once [m layout inv slot]
-  (let [stack (when-not (locked? m slot) (get inv slot))
+(defn- quick-move-once [m slot]
+  (let [layout (layout-of m)
+        inv (:inventory m)
+        stack (when-not (locked? m slot) (get inv slot))
         inv' (dissoc inv slot)
         q (when stack ((:quick layout) inv slot))
         [inv' left] (if (nil? stack)
@@ -463,7 +466,7 @@
   (let [layout (layout-of m)]
     (loop [m m]
       (let [inv (:inventory m)
-            moved (quick-move-once m layout inv slot)
+            moved (quick-move-once m slot)
             m' (-> (assoc m :inventory moved)
                    (quick-stat layout slot inv)
                    (settle inv))

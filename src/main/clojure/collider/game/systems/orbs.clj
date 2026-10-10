@@ -26,9 +26,6 @@
   (into [] (remove #(game-mode/spectator? (val %)))
         (level/player-entries world)))
 
-(defn- lived ^long [world e]
-  (- (long (:tick world)) (long (or (:born e) 0))))
-
 (defn- roll-of [world eid]
   (let [t (:tick world)] (fn [k] (random/of-key t eid k))))
 
@@ -49,7 +46,7 @@
 (def ^:private ^:const merge-period 20)
 
 (defn- scanned [world eid e orbs]
-  (if (= 1 (rem (lived world e) merge-period))
+  (if (= 1 (rem (entity/tick-count world e) merge-period))
     (orb/merged eid e (seq (dissoc orbs eid)))
     [e []]))
 
@@ -151,7 +148,7 @@
     [:remove-entity oid]))
 
 (defn- taken-deltas [world pid p oid o]
-  (let [acc (xp/account p (inc (lived world p)))
+  (let [acc (xp/account p (entity/tick-count world p))
         acc (xp/give-points acc (long (:value o)))
         ready (+ 2 (long (:tick world)))
         marks (assoc (xp/player-fields acc) :xp-ready-at ready)]

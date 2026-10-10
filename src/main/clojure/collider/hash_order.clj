@@ -29,3 +29,11 @@
   them. The copy is a new map given all keys at once."
   [hashes]
   (order (HashMap. ^Map (filled hashes))))
+
+(defn compound
+  "Returns the entries [k v] that have a value as a map that iterates
+  as a hash map given them in order iterates their names."
+  [entries]
+  (let [es (filterv (comp some? second) entries)
+        code (fn [[k]] (.hashCode ^String (name k)))]
+    (apply array-map (mapcat #(nth es %) (of (map code es))))))

@@ -1,7 +1,8 @@
 (ns collider.game.systems.food
   "Natural regeneration and the food of players, ticked in their turn,
   and the health packet at its end."
-  (:require [collider.game.food :as food]
+  (:require [collider.game.entity :as entity]
+            [collider.game.food :as food]
             [collider.game.out :as out]
             [collider.world.env.difficulty :as difficulty]))
 
@@ -24,7 +25,7 @@
   "Returns the deltas of the natural regeneration of the player entry
   p in a peaceful world."
   [world [eid e]]
-  (let [lived (inc (- (long (:tick world)) (long (:born e 0))))
+  (let [lived (entity/tick-count world e)
         peaceful? (zero? (difficulty/id world))]
     (change-deltas eid e (food/regenerated e lived peaceful?
                                            (regen? world)))))

@@ -30,6 +30,13 @@
   [e]
   (= :player (:type e)))
 
+(defn tick-count
+  "Returns the ticks entity e has lived at the tick of world, in its
+  turn. A player counts the tick it joined in."
+  ^long [world e]
+  (cond-> (- (long (:tick world)) (long (:born e 0)))
+    (player? e) inc))
+
 (defn living?
   "Returns true when e is a player or a mob."
   [e]

@@ -190,7 +190,8 @@
                  (double offset))
         vel (carried e (shot-vel world eid dir (double power)))
         [yaw pitch] (facing vel)]
-    {:type  (or entity (:item stack)) :owner eid :age 0 :left-owner? false
+    {:type  (or entity (:item stack)) :owner eid :age 0
+     :left-owner? false
      :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) eye-drop) (v/z p)]
      :vel   vel :yaw yaw :pitch pitch :on-ground false
      :stack (assoc stack :count 1)}))
@@ -469,25 +470,25 @@
         (into ds (hurt/report-deltas
                    world oid (hurt/hurt-now world oid o ds)))))))
 
-(defn- free-at [world at w sy shift]
-  (let [[x y z] at
-        wd (+ w 1.0E-6)
-        hd (+ sy 1.0E-6)
-        box [(- x (/ wd 2.0)) (- y (/ hd 2.0)) (- z (/ wd 2.0))
-             (+ x (/ wd 2.0)) (+ y (/ hd 2.0)) (+ z (/ wd 2.0))]]
-    (some-> (phys/free-position (:chunks world) box [x y z] w sy w y
-                                (phys/context {:type :chicken}))
-            (update 1 + shift))))
+(defn- free-at [world [x y z :as pos] w sy shift]
+  (let [wd (/ (+ w 1.0E-6) 2.0)
+        hd (/ (+ sy 1.0E-6) 2.0)
+        box [(- x wd) (- y hd) (- z wd) (+ x wd) (+ y hd) (+ z wd)]
+        ctx (phys/context {:type :chicken})
+        free (phys/free-position (:chunks world) box pos w sy w y
+                                 ctx)]
+    (some-> free (update 1 + shift))))
 
 (defn- hatched-at
-  "Returns where a baby chicken hatched at the egg position at stands,
-  grown from no size to its own, or nil when it does not fit."
-  [world at]
+  "Returns where a baby chicken hatched at pos stands once grown from
+  no size to its own, or nil when it does not fit."
+  [world pos]
   (let [[half h] (size/box {:type :chicken :baby-until 0})
-        w (* 2.0 (double half)) h (double h)
-        [x y z] [(v/x at) (v/y at) (v/z at)]]
-    (or (free-at world [x y z] w h (/ (- h) 2.0))
-        (free-at world [x y z] w 0.0 1.0E-6))))
+        w (* 2.0 (double half))
+        h (double h)
+        pos [(v/x pos) (v/y pos) (v/z pos)]]
+    (or (free-at world pos w h (/ (- h) 2.0))
+        (free-at world pos w 0.0 1.0E-6))))
 
 (defn- hatch-deltas [world eid e d at]
   (let [t (long (:tick world))]
@@ -495,8 +496,8 @@
       (when-let [p (hatched-at world at)]
         (let [four? (< (random/of-key t eid :hatch-four) 0.03125)
               n (if four? 4 1)
-              yaw (lerp-rotation (double (:yaw e 0.0))
-                                 (first (facing d)))
+              turned (first (facing d))
+              yaw (lerp-rotation (double (:yaw e 0.0)) turned)
               look (stack/component (:stack e) :chicken/variant)
               c (assoc (mobs/new-mob :chicken p look t)
                        :baby-until (+ t mobs/baby-start)

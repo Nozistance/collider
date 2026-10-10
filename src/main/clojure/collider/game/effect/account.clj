@@ -232,13 +232,6 @@
   (reduce #(ticked (long lived) %1 %2)
           acc (effect/in-order (:fx acc))))
 
-(defn- lived
-  "Returns how many ticks entity e has lived in the world. A player
-  counts the tick it joined in."
-  ^long [world e]
-  (cond-> (- (long (:tick world)) (long (or (:born e) 0)))
-    (player? e) inc))
-
 (defn- synced
   "Returns the account with the attributes entity e left to sync.
   The deltas that clear them come with it."
@@ -264,7 +257,7 @@
   [world eid e]
   (when (or (seq (:effects e)) (:dirty-attributes e))
     (deltas (step (assoc (synced (account eid e) e) :world world)
-                  (lived world e))
+                  (entity/tick-count world e))
             e)))
 
 (defn sync-deltas
