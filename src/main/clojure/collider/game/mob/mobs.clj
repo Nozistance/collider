@@ -244,18 +244,25 @@
     (when (and k (:sounds m))
       (keyword (name (sound-set m e k)) (name k)))))
 
-(def ^:private sheep-metas
-  (vec (for [color (range 16) baby [false true]
-             burning [false true] sheared [false true]]
-         (cond-> {:color color :baby? baby :burning? burning}
-           sheared (assoc :sheared? true)))))
+(defn- full
+  "Returns look m of a mob of kind type that has all its health."
+  [type m]
+  (assoc m :health (num/f32 (double (max-health type)))))
+
+(def ^:private ^:table sheep-metas
+  (delay
+    (vec (for [color (range 16) baby [false true]
+               burning [false true] sheared [false true]]
+           (full :sheep
+                 (cond-> {:color color :baby? baby :burning? burning}
+                   sheared (assoc :sheared? true)))))))
 
 (defn- bit ^long [b ^long v] (if b v 0))
 
 (defn- sheep-meta [e]
   (let [c (long (or (:color e) 0))]
     (when (and (<= 0 c) (< c 16))
-      (nth sheep-metas
+      (nth @sheep-metas
            (bit-or (bit-shift-left c 3)
                    (bit (some? (:baby-until e)) 4)
                    (bit (:burning? e) 2) (bit (:sheared? e) 1))))))
@@ -271,7 +278,7 @@
                  v (:voices (types type))
                  baby [false true] burning [false true]]
              [[c v baby burning]
-              {ck c vk v :baby? baby :burning? burning}])))
+              (full type {ck c vk v :baby? baby :burning? burning})])))
 
 (def ^:private ^:table coat-meta
   (delay
@@ -279,16 +286,29 @@
      :pig (coat-metas :pig :pig-variant :pig-sound)
      :chicken (coat-metas :chicken :chicken-variant :chicken-sound)}))
 
-(def ^:private mooshroom-meta
-  (into {} (for [v [0 1] baby [false true] burning [false true]]
-             [[v baby burning]
-              {:variant v :baby? baby :burning? burning}])))
+(defn- aged-metas [type looks]
+  (into {} (for [m looks baby [false true] burning [false true]]
+             [[m baby burning]
+              (full type (assoc m :baby? baby :burning? burning))])))
 
-(def ^:private rabbit-metas
-  (into {} (for [v (keys rabbit-variants) baby [false true]
-                 burning [false true]]
-             [[v baby burning]
-              {:variant v :baby? baby :burning? burning}])))
+(def ^:private ^:table mooshroom-meta
+  (delay (aged-metas :mooshroom (for [v [0 1]] {:variant v}))))
+
+(def ^:private ^:table rabbit-metas
+  (delay (aged-metas :rabbit
+                     (for [v (keys rabbit-variants)] {:variant v}))))
+
+(def ^:private ^:table armadillo-metas
+  (delay (aged-metas :armadillo
+                     (for [s (range 4)] {:armadillo-state s}))))
+
+(def ^:private ^:table goat-metas
+  (delay (aged-metas :goat
+                     (for [scream [false true] left [false true]
+                           right [false true]
+                           pose [:standing :long-jumping]]
+                       {:screaming? scream :left-horn? left
+                        :right-horn? right :pose pose}))))
 
 (defn burning? [e] (boolean (:burning? e)))
 
@@ -296,8 +316,10 @@
 
 (defn- coat-of [e] (or (:variant e) :temperate))
 
-(defn- aged [m e]
-  (assoc m :baby? (some? (:baby-until e)) :burning? (burning? e)))
+(defn- aged [table type m e]
+  (let [baby (some? (:baby-until e)) burning (burning? e)]
+    (or (get table [m baby burning])
+        (full type (assoc m :baby? baby :burning? burning)))))
 
 (defn- own-metadata [e]
   (case (:type e)
@@ -306,17 +328,21 @@
     ((@coat-meta (:type e))
      [(coat-of e) (voice-of (types (:type e)) e)
       (some? (:baby-until e)) (burning? e)])
-    :mooshroom (mooshroom-meta
-                [(variant e) (some? (:baby-until e)) (burning? e)])
-    :rabbit (rabbit-metas
-             [(variant e) (some? (:baby-until e)) (burning? e)])
-    :armadillo (aged {:armadillo-state (shell/state-id e)} e)
-    :goat (aged (goat/metadata e) e)))
+    :mooshroom (aged @mooshroom-meta :mooshroom {:variant (variant e)} e)
+    :rabbit (aged @rabbit-metas :rabbit {:variant (variant e)} e)
+    :armadillo (aged @armadillo-metas :armadillo
+                     {:armadillo-state (shell/state-id e)} e)
+    :goat (aged @goat-metas :goat (goat/metadata e) e)))
+
+(defn- hurt [m e]
+  (let [h (num/f32 (double (:health e (:health m))))]
+    (if (== h (double (:health m))) m (assoc m :health h))))
 
 (defn metadata
-  "Returns what clients see of mob e besides its movement."
+  "Returns what clients see of mob e besides its movement. A mob that
+  did not change gets the same map again."
   [e]
-  (cond-> (own-metadata e)
+  (cond-> (hurt (own-metadata e) e)
     (:age-locked? e) (assoc :age-locked? true)
     (:custom-name e) (assoc :custom-name (:custom-name e))
     (:custom-name-visible e) (assoc :custom-name-visible true)))

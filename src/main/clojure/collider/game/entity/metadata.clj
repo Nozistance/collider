@@ -58,7 +58,8 @@
            :using-item? (using-hand e)
            :swimming?   (boolean (:swimming? e))
            :pose        (or (:pose e) :standing)
-           :skin-parts  (long (or (:skin-parts e) 0))}
+           :skin-parts  (long (or (:skin-parts e) 0))
+           :health      (num/f32 (double (:health e 20.0)))}
           (:sleeping e)
           (assoc :sleeping-pos (get-in e [:sleeping :pos]))
           (pos? (double (:absorption e 0.0)))
@@ -86,14 +87,9 @@
       (mobs/metadata e)
       (player-metadata e))))
 
-(defn- living? [e]
-  (and (some? (:health e))
-       (or (entity/player? e) (mobs/mob-type? (:type e)))))
-
 (defn of
   [e]
   (let [m (cond-> (own-metadata e)
-            (living? e) (assoc :health (num/f32 (double (:health e))))
             (not= 300 (long (:air e 300))) (assoc :air-supply (:air e))
             (pos? (long (or (:ticks-frozen e) 0)))
             (assoc :ticks-frozen (:ticks-frozen e)))
