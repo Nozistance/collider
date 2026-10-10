@@ -76,7 +76,7 @@
 (defn- fresh-marks [e tick keep?]
   (cond-> {:health player-health :health-sent player-health
            :hud-sent nil
-           :hurt-resist 0 :last-damage 0.0 :death-time 0
+           :hurt-resist 0 :last-damage 0.0 :death-time 0 :track nil
            :born tick :ambience nil :xp-sent -1 :level-up-at 0
            :xp-ready-at nil :client-vel [0.0 0.0 0.0]
            :fire 0 :burning? false :ticks-frozen 0 :fall 0.0

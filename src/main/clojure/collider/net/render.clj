@@ -11,11 +11,23 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- comebacks
+  "Returns the ids that one :tracking delta of ds drops and a later one
+  adds again, a body that left and came back within the tick."
+  [ds]
+  (let [ts (filterv #(= :tracking (first %)) ds)]
+    (set (for [i (range (count ts))
+               id (nth (nth ts i) 3)
+               :when (some #(some #{id} (nth % 2)) (subvec ts (inc i)))]
+           id))))
+
 (defn- forget-packets [deltas]
   (for [[eid ds] deltas
+        :let [back (comebacks ds)]
         [tag _ _ gone] ds
+        :let [gone (remove back gone)]
         :when (and (= :tracking tag) (seq gone))]
-    [eid {:packet :remove-entities :eids gone}]))
+    [eid {:packet :remove-entities :eids (vec gone)}]))
 
 (defn- player-of [sight eid]
   (get-in (audience/own-level sight eid) [:entities eid]))
@@ -31,11 +43,14 @@
 (defn- entity-delta-packets [sight deltas pick]
   (for [[eid ds] deltas
         :when (pick eid)
-        :let [lv (audience/own-level sight eid)]
+        :let [lv (audience/own-level sight eid) back (comebacks ds)]
         d ds
         p (case (first d)
             :chunks-sent (view/chunk-packets lv d)
-            :tracking (tracked/tracking-packets lv d)
+            :tracking
+            (concat (when-let [ids (seq (filter back (nth d 3)))]
+                      [{:packet :remove-entities :eids (vec ids)}])
+                    (tracked/tracking-packets lv d))
             nil)]
     [eid p]))
 
