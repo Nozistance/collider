@@ -41,7 +41,8 @@
   (double (unchecked-float (/ a b))))
 
 (def ^:private ^:const deg-per-rad
-  (double (unchecked-float (/ 180.0 (double (unchecked-float Math/PI))))))
+  (let [pi (double (unchecked-float Math/PI))]
+    (double (unchecked-float (/ 180.0 pi)))))
 
 (defn degrees
   "Returns radians r as degrees, multiplied by a float constant."
