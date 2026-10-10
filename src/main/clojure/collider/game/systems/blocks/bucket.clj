@@ -170,7 +170,7 @@
 
 (defn- snow-fx [kind pos st]
   (when (= :powder-snow kind)
-    [(out/all (out/level-event out/particles-destroy-block pos st))]))
+    [(out/all (out/level-event :particles-destroy-block pos st))]))
 
 (defn- scoop [world eid e kind pos]
   (let [st (changes/block-at world pos)

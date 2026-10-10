@@ -263,15 +263,15 @@
 (defn wax-deltas
   [world [_ pos _ _ _]]
   (when-let [st (oxidation/waxed (changes/block-at world pos))]
-    (let [fx (copper-fx pos nil out/particles-and-sound-wax-on)]
+    (let [fx (copper-fx pos nil :particles-and-sound-wax-on)]
       (changed-with world (half-changes world pos st) fx))))
 
 (defn- copper-axe-deltas [world pos cur]
   (if-let [st (oxidation/scraped cur)]
-    (let [fx (copper-fx pos :axe/scrape out/particles-scrape)]
+    (let [fx (copper-fx pos :axe/scrape :particles-scrape)]
       (changed-with world (half-changes world pos st) fx))
     (when-let [st (oxidation/unwaxed cur)]
-      (let [fx (copper-fx pos :axe/wax-off out/particles-wax-off)]
+      (let [fx (copper-fx pos :axe/wax-off :particles-wax-off)]
         (changed-with world (half-changes world pos st) fx)))))
 
 (defn axe-deltas

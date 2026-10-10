@@ -219,7 +219,7 @@
   (let [took? (compost-took? world pos lvl item)
         level (keyword (str (inc lvl)))
         st (block/state :composter {:level level})
-        fill (out/level-event out/composter-fill pos (if took? 1 0))]
+        fill (out/level-event :composter-fill pos (if took? 1 0))]
     (concat (when took? (set-at world pos st))
             [(out/all fill)])))
 
@@ -259,7 +259,7 @@
              (out/all (out/block-entity pos))]
             [(out/all
                (if (= :wax sound)
-                 (out/level-event out/particles-and-sound-wax-on pos)
+                 (out/level-event :particles-and-sound-wax-on pos)
                  (out/block-sound sound pos 1.0 1.0)))])))
 
 (defn- sign-hand-deltas [world eid pos e front? opens?]
@@ -351,7 +351,7 @@
         e' (assoc e :record {:item item :count 1} :song song
                     :started (:tick world))
         id (jukebox/song-id song)
-        play (out/level-event out/sound-play-jukebox-song pos id)]
+        play (out/level-event :sound-play-jukebox-song pos id)]
     (concat
       (set-at world pos (block/with cur :has-record :true))
       (changes/be-changed pos e')

@@ -30,6 +30,6 @@
   when it plays none."
   [pos e]
   (when (:song e)
-    (let [stop (out/level-event out/sound-stop-jukebox-song pos 0)]
+    (let [stop (out/level-event :sound-stop-jukebox-song pos 0)]
       (conj (signal/game-event :jukebox-stop-play pos nil)
             (out/all stop)))))

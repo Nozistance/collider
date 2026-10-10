@@ -18,7 +18,7 @@
     (apply block/with st (interleave bottle-props flags))))
 
 (defn- brew-deltas [world pos spill]
-  (cons (out/all (out/level-event out/sound-brewing-stand-brew pos))
+  (cons (out/all (out/level-event :sound-brewing-stand-brew pos))
         (when spill
           [[:spawn-entity (item/popped world pos spill :brew)]])))
 

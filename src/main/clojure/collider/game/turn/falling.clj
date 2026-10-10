@@ -67,9 +67,9 @@
 (defn- broken-deltas [world eid e cell]
   (concat [[:remove-entity eid]]
           (when (speleothem? (:block e))
-            [(land-event out/sound-pointed-dripstone-land cell)])
+            [(land-event :sound-pointed-dripstone-land cell)])
           (when (anvil? (:block e))
-            [(land-event out/sound-anvil-broken cell)])
+            [(land-event :sound-anvil-broken cell)])
           (item-deltas world eid e)))
 
 (defn- land-deltas [world eid e [cell cur concrete? stuck?]]
@@ -79,7 +79,7 @@
                     (changes/set-deltas world [[cell st]])
                     (delta/entity-author eid e)))
             (anvil? st)
-            (conj (land-event out/sound-anvil-land cell)))
+            (conj (land-event :sound-anvil-land cell)))
     (broken-deltas world eid e cell)))
 
 (defn- solid-here? [world cell]
@@ -279,7 +279,7 @@
   (if e
     (land-deltas world eid e l)
     [[:remove-entity eid]
-     (land-event out/sound-anvil-broken (nth l 0))]))
+     (land-event :sound-anvil-broken (nth l 0))]))
 
 (defn- fallen ^double [world e ^Move mv]
   (let [f (double (or (:fall e) 0.0))]

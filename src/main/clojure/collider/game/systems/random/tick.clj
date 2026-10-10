@@ -162,7 +162,7 @@
 
 (defn- drip-events [drips]
   (for [{:keys [tip]} drips]
-    (out/all (out/level-event out/dripstone-drip tip 0))))
+    (out/all (out/level-event :dripstone-drip tip 0))))
 
 (defn- drop-spawns [world results]
   (when (get-in world [:rules :block-drops] true)

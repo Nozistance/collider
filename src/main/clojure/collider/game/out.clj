@@ -389,36 +389,6 @@
   [pos]
   {:msg :fizz :pos pos})
 
-(def sound-play-jukebox-song :sound-play-jukebox-song)
-
-(def sound-stop-jukebox-song :sound-stop-jukebox-song)
-
-(def sound-extinguish-fire :sound-extinguish-fire)
-
-(def sound-anvil-broken :sound-anvil-broken)
-
-(def sound-anvil-land :sound-anvil-land)
-
-(def sound-brewing-stand-brew :sound-brewing-stand-brew)
-
-(def sound-drip-lava-into-cauldron :sound-drip-lava-into-cauldron)
-
-(def sound-drip-water-into-cauldron :sound-drip-water-into-cauldron)
-
-(def sound-pointed-dripstone-land :sound-pointed-dripstone-land)
-
-(def composter-fill :composter-fill)
-
-(def dripstone-drip :dripstone-drip)
-
-(def particles-destroy-block :particles-destroy-block)
-
-(def particles-and-sound-wax-on :particles-and-sound-wax-on)
-
-(def particles-wax-off :particles-wax-off)
-
-(def particles-scrape :particles-scrape)
-
 (defn level-event
   "Returns level event event at pos with data. The event is the name
   of the level event as a keyword."

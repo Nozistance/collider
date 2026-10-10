@@ -99,8 +99,8 @@
        (out/all (out/sound :tnt/primed (:pos e) 1.0 1.0))])))
 
 (def ^:private drip-events
-  {:water out/sound-drip-water-into-cauldron
-   :lava out/sound-drip-lava-into-cauldron})
+  {:water :sound-drip-water-into-cauldron
+   :lava :sound-drip-lava-into-cauldron})
 
 (def ^:private eruption-sounds
   {:erupting :block.potent-sulfur.geyser-eruption
@@ -360,7 +360,7 @@
   (when-let [st (campfire/dowsed (block-at world pos))]
     (concat (change-deltas world [[pos st]])
             [(out/all (out/level-event
-                        out/sound-extinguish-fire pos))])))
+                        :sound-extinguish-fire pos))])))
 
 (defn dowse-deltas
   "Returns the deltas of a candle or a campfire dowsed by water."
