@@ -222,7 +222,7 @@
 
 (defn- pairing-data
   "Returns the entity data a viewer gets as it starts to see an entity
-  of kind: all of meta but the defaults."
+  of kind, all of meta but the defaults."
   [kind meta]
   (if-let [cls (class-of kind)]
     (ed/entries cls (into {} (remove #(default? cls %))

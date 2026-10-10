@@ -45,7 +45,7 @@
   ^long [v] (long (Math/floor (* (double v) (/ 256.0 360.0)))))
 
 (def ^:private packed
-  "The keys that share one field of entity data: a change to one sends
+  "The keys that share one field of entity data. A change to one sends
   the whole field."
   [[:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?]
    [:color :sheared?]])
