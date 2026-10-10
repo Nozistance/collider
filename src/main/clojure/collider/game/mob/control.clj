@@ -8,8 +8,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Nav)
-           (collider.world.space Path)))
+  (:import (collider.world.space Path)))
 
 (set! *warn-on-reflection* true)
 
@@ -26,6 +25,12 @@
   one turn around the circle."
   ^double [^double a ^double b ^double max]
   (steer/rotlerp a b max))
+
+(defn walked?
+  "Returns true when navigation nav has no path node left to walk to."
+  [nav]
+  (or (nil? (:path nav))
+      (>= (long (:index nav 0)) (count (:nodes (:path nav))))))
 
 (defn shape-top
   "Returns how high the collision shape of the cell x y z reaches."
@@ -215,7 +220,7 @@
   "Returns head yaw hy of mob e kept within reach of its body while
   it walks a path."
   ^double [e ^double hy]
-  (if (Nav/walked (:nav e))
+  (if (walked? (:nav e))
     hy
     (rotate-if-necessary hy (body-yaw e) (mobs/max-head-y-rot e))))
 
