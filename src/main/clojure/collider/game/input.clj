@@ -79,3 +79,14 @@
   "The input record of a tick before its first event."
   {:heeded [] :use-origins {} :moves [] :quits [] :resends []
    :releases []})
+
+(defn as-came
+  "Returns world with the player of event ev, the i-th of the tick,
+  as it was when the event came."
+  [world i ev]
+  (let [eid (nth ev 1)
+        origin (get-in world [:input :use-origins i])
+        e (get-in world [:entities eid])]
+    (if (and origin e)
+      (assoc-in world [:entities eid] (merge e origin))
+      world)))

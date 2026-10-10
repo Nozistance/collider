@@ -228,11 +228,10 @@
         :else (creative-deltas world eid e status pos)))))
 
 (defn dig-deltas
-  "Returns the deltas of a player who digs at a block, seen as it was
-  in origin when the dig came. Out of creative the block breaks when
-  the dig has gone on long enough."
-  [world [eid status pos _face] origin]
-  (let [e (merge (get-in world [:entities eid]) origin)
+  "Returns the deltas of a player who digs at a block. Out of
+  creative the block breaks when the dig has gone on long enough."
+  [world [eid status pos _face]]
+  (let [e (get-in world [:entities eid])
         below-top? (<= (long (nth pos 1)) (chunk/level-max-y world))]
     (when (reach/in-reach? e pos)
       (if below-top?

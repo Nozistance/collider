@@ -2,6 +2,7 @@
   "The answers of mobs to the clicks of players on them."
   (:require [collider.game.apply :as apply]
             [collider.game.entity :as entity]
+            [collider.game.input :as input]
             [collider.game.inventory :as inventory]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.clock :as clock]
@@ -81,5 +82,9 @@
   "Returns the deltas of the answers of mobs to the clicks of players
   in events at tick t, one click after another."
   [world events t]
-  (apply/fold-events world (filter #(= :interact (first %)) events)
-                     (fn [w ev] (interact w ev t))))
+  (apply/fold-events world
+                     (keep-indexed
+                       (fn [i ev] (when (= :interact (first ev)) [i ev]))
+                       events)
+                     (fn [w [i ev]] (interact (input/as-came w i ev) ev t))
+                     second))

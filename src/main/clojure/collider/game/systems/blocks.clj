@@ -1,15 +1,17 @@
 (ns collider.game.systems.blocks
   "Player block actions such as digging, placing and using."
   (:require [collider.data :as data]
+            [collider.game.apply :as apply]
             [collider.game.book :as book]
             [collider.game.changes :as changes]
             [collider.game.deltas :as deltas]
+            [collider.game.input :as input]
+            [collider.game.inventory :as inventory]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.sense :as sense]
             [collider.game.mode :as game-mode]
-            [collider.game.apply :as apply]
-            [collider.game.inventory :as inventory]
             [collider.game.player :as player]
+            [collider.game.reach :as reach]
             [collider.game.systems.blocks.bed :as bed]
             [collider.game.systems.blocks.bucket :as bucket]
             [collider.game.systems.blocks.dig :as dig]
@@ -17,7 +19,6 @@
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.held :as held]
             [collider.game.systems.blocks.place :as place]
-            [collider.game.reach :as reach]
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
@@ -305,9 +306,9 @@
 (defn- item-use-args [[eid hand]]
   [eid [-1 -1 -1] 255 nil [0 0 0] nil nil hand])
 
-(defn- edit-deltas [world i [tag & args] origins]
+(defn- edit-deltas [world i [tag & args :as ev] origins]
   (case tag
-    :dig (dig/dig-deltas world args (get origins i))
+    :dig (dig/dig-deltas (input/as-came world i ev) args)
     :place (placed-deltas world args (get origins i))
     :use-item
     (place-deltas world (item-use-args args) (get origins i))

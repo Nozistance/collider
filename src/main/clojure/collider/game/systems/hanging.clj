@@ -1,14 +1,15 @@
 (ns collider.game.systems.hanging
   "Hanging, use, breaking and support checks of paintings and item
   frames."
-  (:require [collider.game.deltas :as deltas]
-            [collider.game.hanging.drops :as drops]
-            [collider.game.inventory :as inventory]
-            [collider.game.mode :as game-mode]
-            [collider.game.hanging :as hanging]
-            [collider.game.apply :as apply]
+  (:require [collider.game.apply :as apply]
             [collider.game.areas :as areas]
+            [collider.game.deltas :as deltas]
+            [collider.game.hanging :as hanging]
+            [collider.game.hanging.drops :as drops]
+            [collider.game.input :as input]
+            [collider.game.inventory :as inventory]
             [collider.game.level :as level]
+            [collider.game.mode :as game-mode]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.random :as random]
@@ -178,6 +179,9 @@
   item frames this tick, one after another."
   {:wake {:events #{:interact :attack}}}
   [world d]
-  (let [evs (filterv #(aimed? world %) (:input d))]
+  (let [evs (into [] (keep-indexed
+                       (fn [i ev] (when (aimed? world ev) [i ev])))
+                 (:input d))
+        f (fn [w [i ev]] (event-deltas (input/as-came w i ev) ev))]
     (deltas/of-vec (when (seq evs)
-                     (apply/fold-events world evs event-deltas)))))
+                     (apply/fold-events world evs f second)))))
