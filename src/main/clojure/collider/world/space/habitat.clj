@@ -1,6 +1,6 @@
 (ns collider.world.space.habitat
-  "Where a mob kind may spawn: its floor, the blocks it may stand in,
-  its light and the room its box needs."
+  "Where a mob kind may spawn. It reads the floor, the blocks the mob
+  stands in, the light and the room its box needs."
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]

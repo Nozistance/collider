@@ -1,5 +1,5 @@
 (ns collider.world.space.column
-  "The heights of a block column: its surface, its motion blocking top
+  "The heights of a block column. Its surface, its motion blocking top
   and its floor."
   (:require [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
