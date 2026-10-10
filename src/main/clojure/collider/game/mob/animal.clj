@@ -409,14 +409,26 @@
     (and o (<= (v/dist-sq (:pos e) (:pos o))
                (let [r (look-range e)] (* r r))))))
 
+(defn- around-point [e [rx rz]]
+  (let [p (:pos e)]
+    (v/v3 (+ (v/x p) (double rx)) (+ (v/y p) (mobs/eye-height e))
+          (+ (v/z p) (double rz)))))
+
 (defn- start-look-around [_ eid e t _]
   (when (< (rnd t eid :around) look-chance)
     (let [n (* look-around-ticks (rnd t eid :around-time))
-          yaw (- (* 360.0 (rnd t eid :around-yaw)) 180.0)]
-      [(assoc e :task {:kind :look-around
+          d (- (rnd t eid :around-yaw) 0.25)
+          r (* 2.0 Math/PI (if (neg? d) (inc d) d))
+          rel [(Math/cos r) (Math/sin r)]]
+      [(assoc e :task {:kind :look-around :rel rel
                        :until (+ (long t) look-around-ticks (long n))}
-              :look {:yaw yaw :until Long/MAX_VALUE})
+              :look {:at (around-point e rel) :until Long/MAX_VALUE})
        nil])))
+
+(defn- look-around-tick [_ _ _ e _ _]
+  (let [at (around-point e (:rel (:task e)))]
+    [(cond-> e (not (v/same? at (:at (:look e)))) (assoc-in [:look :at] at))
+     nil]))
 
 (defn- looking-around? [_ e t _]
   (>= (long (:until (:task e))) (long t)))
@@ -471,7 +483,8 @@
     :running? (fn [e t] (some? (look-goal e t)))
     :stop (fn [e _] (assoc e :look nil))}
    {:kind :look-around :flags #{:move :look} :start start-look-around
-    :continue? looking-around? :stop stop-look-around}])
+    :continue? looking-around? :stop stop-look-around
+    :every-tick? true :tick look-around-tick}])
 
 (defn goal
   [k]

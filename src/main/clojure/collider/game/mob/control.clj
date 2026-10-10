@@ -119,6 +119,11 @@
   (let [d (flt (v/wrap-deg (flt (- target base))))]
     (flt (- target (Math/clamp d (- max) max)))))
 
+(defn- rotate-towards
+  ^double [^double from ^double to ^double max]
+  (let [d (flt (v/wrap-deg (flt (- to from))))]
+    (flt (+ from (Math/clamp d (- max) max)))))
+
 (defn- faced-forward
   ^double [^double yaw ^double hy ^long stable ^double max]
   (if (> stable face-forward-delay)
@@ -191,12 +196,17 @@
        (let [oh (:head-yaw e)] (and oh (== (double oh) hy)))
        (let [op (:pitch e)] (and op (== (double op) hp)))))
 
+(defn- look-yaw ^double [e o]
+  (let [xd (- (v/x (:pos o)) (v/x (:pos e)))
+        zd (- (v/z (:pos o)) (v/z (:pos e)))]
+    (num/f32 (- (num/f32 (/ (* (num/atan2 zd xd) 180.0) float-pi)) 90.0))))
+
 (defn- look-aim [world e look]
   (let [oid (:target look)
         at (:at look)
         o (cond oid (get (:entities world) oid)
                 at {:pos at :type :point})]
-    [(cond o (v/yaw-toward (:pos e) (:pos o))
+    [(cond o (look-yaw e o)
            (and look (:yaw look)) (:yaw look)
            :else (body-yaw e))
      (if o (look-pitch e o) 0.0)]))
@@ -218,7 +228,7 @@
         [dyaw dpitch] (look-aim world e look)
         y0 (double (or (:head-yaw e) (:yaw e)))
         speed (double (:speed look look-speed))
-        hy (head-held e (v/limit-angle y0 (double dyaw) speed))
-        hp (v/limit-angle 0.0 (double dpitch) max-head-x-rot)]
+        hy (head-held e (rotate-towards y0 (double dyaw) speed))
+        hp (rotate-towards 0.0 (double dpitch) max-head-x-rot)]
     (when-not (head-same? e look (double hy) (double hp))
       [hy hp look])))
