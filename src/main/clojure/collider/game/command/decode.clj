@@ -470,10 +470,8 @@
 
 (defn- hash-order [m]
   (let [vs (reduce (fn [acc [k v]] (assoc acc (key-str k) v)) {} m)
-        ks (distinct (map (comp key-str key) m))
-        es (mapv #(MapEntry/create % (vs %)) ks)
-        hs (map #(.hashCode ^String (key %)) es)]
-    (map #(nth es %) (hash-order/of hs))))
+        ks (distinct (map (comp key-str key) m))]
+    (hash-order/by-name key (map #(MapEntry/create % (vs %)) ks))))
 
 (defn- distinct-keys? [rs]
   (let [ks (map #(first (second %)) rs)]

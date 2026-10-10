@@ -30,10 +30,18 @@
   [hashes]
   (order (HashMap. ^Map (filled hashes))))
 
+(defn by-name
+  "Returns xs in the order a hash map given them in order iterates
+  them, each keyed by the string (f x)."
+  [f xs]
+  (let [xs (vec xs)]
+    (mapv xs (of (map #(.hashCode ^String (f %)) xs)))))
+
 (defn compound
   "Returns the entries [k v] that have a value as a map that iterates
   as a hash map given them in order iterates their names."
   [entries]
-  (let [es (filterv (comp some? second) entries)
-        code (fn [[k]] (.hashCode ^String (name k)))]
-    (apply array-map (mapcat #(nth es %) (of (map code es))))))
+  (->> (filter (comp some? second) entries)
+       (by-name (comp name first))
+       (apply concat)
+       (apply array-map)))

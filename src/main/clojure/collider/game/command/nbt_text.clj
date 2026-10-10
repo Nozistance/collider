@@ -110,8 +110,7 @@
   "Returns the keys of m in the order a tag gives them back, which
   is the order of their hash codes in a hash table."
   [m]
-  (let [ks (vec (keys m))]
-    (mapv ks (hash-order/of (map #(.hashCode (name %)) ks)))))
+  (hash-order/by-name name (keys m)))
 
 (defn- entry [m k depth]
   (concat [(lit "") (key-part k) (lit ":") gap]

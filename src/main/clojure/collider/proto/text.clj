@@ -23,12 +23,7 @@
    [:command "command"] [:page "page"] [:value "value"]
    [:id "id"] [:count "count"] [:uuid "uuid"] [:name "name"]])
 
-(defn- hash-ordered [fields]
-  (let [code (fn [[_ ^String nm]] (.hashCode nm))
-        hs (map code fields)]
-    (mapv #(nth fields %) (hash-order/of hs))))
-
-(def ^:private ordered (memoize hash-ordered))
+(def ^:private ordered (memoize #(hash-order/by-name second %)))
 
 (defn plain?
   "Returns true when component c is bare text.
