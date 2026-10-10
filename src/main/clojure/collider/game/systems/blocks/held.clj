@@ -1,7 +1,7 @@
 (ns collider.game.systems.blocks.held
   "Armor, the spyglass and the goat horn, used in the air."
   (:require [collider.data :as data]
-            [collider.data.pack :refer [kw]]
+            [collider.game.enchantment :as enchantment]
             [collider.game.inventory :as inventory]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -17,17 +17,6 @@
   [item]
   (slots/armor (data/swap-slot item)))
 
-(defn- binds? [v]
-  (contains? (get v "effects") "minecraft:prevent_armor_change"))
-
-(def ^:private ^:table binding-enchantments
-  (delay (into #{}
-               (keep (fn [[id v]] (when (binds? v) (kw id))))
-               (data/pack "enchantment"))))
-
-(defn- binding? [worn]
-  (some @binding-enchantments (keys (stack/enchantments worn))))
-
 (defn- same-stack? [a b]
   (and (= (:item a) (:item b))
        (= (:components a) (:components b))
@@ -37,7 +26,7 @@
   "Returns true when player e swaps held for worn.
   A player in creative also takes off a worn item that binds."
   [e held worn]
-  (and (or (game-mode/creative? e) (not (binding? worn)))
+  (and (or (game-mode/creative? e) (not (enchantment/binding? worn)))
        (not (same-stack? held worn))))
 
 (defn- equip-sound [e item]

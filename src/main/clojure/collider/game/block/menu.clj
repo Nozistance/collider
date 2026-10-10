@@ -2,6 +2,7 @@
   "Menus and the effect of a player's clicks on their slots."
   (:require [collider.data :as data]
             [collider.game.bundle :as bundle]
+            [collider.game.enchantment :as enchantment]
             [collider.game.stack :as stack]))
 
 (set! *warn-on-reflection* true)
@@ -62,6 +63,8 @@
    :place   player-may-place?
    :max     (fn [slot _] (when (armor-slots slot) 1))
    :equip   (assoc armor-slots offhand-slot :offhand)
+   :fast    (fn [slot stack]
+              (and (armor-slots slot) (enchantment/binding? stack)))
    :swap    (fn ^long [^long button] (hand-slot 0 button))
    :quick   player-quick-slots})
 
@@ -200,15 +203,19 @@
                   (pos? put) (assoc slot (sized stack (+ have put))))]
         [inv (sized stack (- (count-of stack) put))]))))
 
-(defn- locked? [layout slot]
-  (and (= slot (:result layout)) (false? (:may-take? layout))))
+(defn- locked? [m slot]
+  (let [layout (layout-of m)
+        fast (:fast layout)]
+    (or (and (= slot (:result layout)) (false? (:may-take? layout)))
+        (and fast (not (:creative? m))
+             (fast slot (get (:inventory m) slot))))))
 
-(defn- removable [layout inv slot n mx]
+(defn- removable [m layout inv slot n mx]
   (let [here (get inv slot)
         whole (count-of here)
         n (long n) mx (long mx)]
     (cond
-      (locked? layout slot) 0
+      (locked? m slot) 0
       (and (not ((:place layout) slot here)) (< mx whole)) 0
       (= slot (:result layout)) whole
       :else (min n mx whole))))
@@ -225,7 +232,7 @@
    (let [layout (layout-of m)
          inv (:inventory m)
          here (get inv slot)
-         got (long (removable layout inv slot n mx))
+         got (long (removable m layout inv slot n mx))
          left (sized here (- (count-of here) got))]
      (if (pos? got)
        [(cond-> (assoc m :inventory (put-slot inv slot left))
@@ -341,6 +348,7 @@
     (cond
       (nil? clicked)
       (if carried (place-carried m slot carried primary?) m)
+      (locked? m slot) m
       (nil? carried) (take-carried m slot clicked primary?)
       ((:place layout) slot carried)
       (onto-slot m layout slot clicked carried primary?)
@@ -390,8 +398,8 @@
         moved))
     (move-to layout inv stack q)))
 
-(defn- quick-move-once [layout inv slot]
-  (let [stack (when-not (locked? layout slot) (get inv slot))
+(defn- quick-move-once [m layout inv slot]
+  (let [stack (when-not (locked? m slot) (get inv slot))
         inv' (dissoc inv slot)
         q (when stack ((:quick layout) inv slot))
         [inv' left] (if (nil? stack)
@@ -455,7 +463,7 @@
   (let [layout (layout-of m)]
     (loop [m m]
       (let [inv (:inventory m)
-            moved (quick-move-once layout inv slot)
+            moved (quick-move-once m layout inv slot)
             m' (-> (assoc m :inventory moved)
                    (quick-stat layout slot inv)
                    (settle inv))
@@ -526,7 +534,7 @@
         m (assoc m :direct other)]
     (cond
       (and (nil? source) (nil? target)) m
-      (locked? layout slot) m
+      (locked? m slot) m
       (nil? source) (swap-out m layout slot other target)
       (not ((:place layout) slot source)) m
       (nil? target)

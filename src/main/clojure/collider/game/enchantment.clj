@@ -2,6 +2,7 @@
   "Enchantments with their cost, reach and rivals."
   (:require [clojure.string :as str]
             [collider.data :as data]
+            [collider.game.stack :as stack]
             [collider.num :as num]))
 
 (set! *warn-on-reflection* true)
@@ -130,6 +131,8 @@
 
 (defn- enchantment [json]
   {:anvil-cost (get json "anvil_cost")
+   :binds? (contains? (get json "effects")
+                      "minecraft:prevent_armor_change")
    :exclusive (holders "enchantment" (get json "exclusive_set" []))
    :max-level (get json "max_level")
    :min-cost (cost (get json "min_cost"))
@@ -166,6 +169,11 @@
   "Returns the cost, reach and rivals of enchantment name."
   [name]
   (get (all) name))
+
+(defn binding?
+  "Returns true when an enchantment of stack keeps it worn."
+  [stack]
+  (boolean (some #(:binds? (info %)) (keys (stack/enchantments stack)))))
 
 (defn- gaussian ^double [roll]
   (let [u (max (double (roll :gauss-a)) Double/MIN_VALUE)]
