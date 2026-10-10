@@ -4,6 +4,7 @@
             [collider.data :as data]
             [collider.world.env.dimension :as dimension]
             [collider.game.command.args :as args]
+            [collider.game.command.args.pos :as pos]
             [collider.game.command.args.block :as blocks]
             [collider.game.command.dispatcher :as d]
             [collider.game.command.args.item :as items]
@@ -134,9 +135,9 @@
       (case kind
         :int (int-reader (:min opts) (:max opts))
         :effect-seconds (int-reader 1 1000000)
-        :coord (:parse (args/block-pos-arg))
-        :dcoord (:parse (args/vec3-arg (:center opts true)))
-        :angle (:parse (args/rotation-arg))
+        :coord (:parse (pos/block-pos-arg))
+        :dcoord (:parse (pos/vec3-arg (:center opts true)))
+        :angle (:parse (pos/rotation-arg))
         :duration (:parse (args/time-arg (:min opts)))
         :mob-effect (:parse (args/resource-arg "mob_effect"))
         :entity-type (:parse (args/resource-arg "entity_type"))
@@ -207,8 +208,8 @@
 
 (defn- resolved [[_ [kind]] v src]
   (case kind
-    :coord (mapv long (args/block-pos v src))
-    :dcoord (args/position v src)
+    :coord (mapv long (pos/block-pos v src))
+    :dcoord (pos/position v src)
     :angle (mapv (fn [{k :kind x :value}] [(= :relative k) x]) v)
     [v]))
 
