@@ -11,6 +11,7 @@
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
             [collider.game.mob.sense :as sense]
+            [collider.game.mob.variant :as variant]
             [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
@@ -114,9 +115,9 @@
       (data/dye-color (get-in r [:result :item])))))
 
 (defn- lamb-color [_ t eid a b]
-  (let [ca (mobs/dye-colors (long (:color a)))
-        cb (mobs/dye-colors (long (:color b)))]
-    (or (mobs/color-id (mixed ca cb))
+  (let [ca (variant/dye-colors (long (:color a)))
+        cb (variant/dye-colors (long (:color b)))]
+    (or (variant/color-id (mixed ca cb))
         (if (< (animal/rnd t eid :mix) 0.5) (:color a) (:color b)))))
 
 (defn- wool-stacks [t eid e]
@@ -175,7 +176,7 @@
   The coat takes the colour."
   [{:keys [peid p hand eid e item]}]
   (when (and (= :sheep (:type e)) (not (:sheared? e)))
-    (when-let [id (some-> (data/dye-color item) mobs/color-id)]
+    (when-let [id (some-> (data/dye-color item) variant/color-id)]
       (when (not= (long id) (long (or (:color e) 0)))
         {:result :success :deltas (dyed peid p hand eid e id)}))))
 

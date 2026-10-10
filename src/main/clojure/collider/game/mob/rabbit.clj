@@ -4,6 +4,7 @@
             [collider.game.delta :as delta]
             [collider.game.entity.gen :as gen]
             [collider.game.entity.size :as size]
+            [collider.game.mob.variant :as variant]
             [collider.game.mode :as game-mode]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.control :as control]
@@ -296,7 +297,7 @@
          (> (+ oy (double oh)) (- y 3.0)))))
 
 (defn- dreaded? [world e fear r _oid o]
-  (and (not= :evil (mobs/rabbit-variants (:variant e)))
+  (and (not= :evil (variant/rabbit-variants (:variant e)))
        (fear world o) (boxed? e o)
        (sense/in-range? (:pos e) o r)
        (animal/in-sight? world e o)))
@@ -465,7 +466,7 @@
 
 (defn- kit-variant [world t eid a b]
   (let [bio (biome/at (:dim world) nil)
-        v (mobs/rabbit-variant [t eid :kit] bio)]
+        v (variant/rabbit-variant [t eid :kit] bio)]
     (cond (animal/one-in? t eid :kit kit-chance) v
           (< (animal/rnd t eid :kit-parent) 0.5) (:variant b)
           :else (:variant a))))

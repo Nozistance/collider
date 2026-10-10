@@ -2,6 +2,7 @@
   "Entities as the tags of a vanilla save."
   (:require [collider.data :as data]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.variant :as variant]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -172,7 +173,7 @@
 
 (def ^:private rabbit-fields
   {:RabbitType
-   (legacy-field :variant (set (keys mobs/rabbit-variants))
+   (legacy-field :variant (set (keys variant/rabbit-variants))
                  unchecked-int)})
 
 (def ^:private goat-fields

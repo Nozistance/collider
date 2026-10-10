@@ -73,3 +73,89 @@
   (let [xs (chosen (get @selector-table registry) place)
         r (random/of-key (conj ks :variant))]
     (when (seq xs) (nth xs (random/below r (count xs))))))
+
+(def dye-colors
+  "The dye colours by their id, as the loot tables name them."
+  [:white :orange :magenta :light-blue :yellow :lime :pink :gray
+   :light-gray :cyan :purple :blue :brown :green :red :black])
+
+(def ^:private color-ids
+  (into {} (map-indexed (fn [i c] [c i])) dye-colors))
+
+(defn color-id
+  "Returns the id of dye colour c, or nil when c is no dye colour."
+  [c] (color-ids c))
+
+(def ^:private spawn-configs
+  {:temperate
+   {:rare [[5 :black] [5 :gray] [5 :light-gray] [3 :brown]]
+    :common :white}
+   :warm
+   {:rare [[5 :gray] [5 :light-gray] [5 :white] [3 :black]]
+    :common :brown}
+   :cold
+   {:rare [[5 :light-gray] [5 :gray] [5 :white] [3 :brown]]
+    :common :black}})
+
+(defn- biome-tag [tag]
+  (delay (set (data/tag-values "worldgen/biome" tag))))
+
+(def ^:private ^:table warm-biomes
+  (biome-tag "spawns_warm_variant_farm_animals"))
+
+(def ^:private ^:table cold-biomes
+  (biome-tag "spawns_cold_variant_farm_animals"))
+
+(defn- biome-kind [biome]
+  (let [n (:name biome)]
+    (cond (@warm-biomes n) :warm
+          (@cold-biomes n) :cold
+          :else :temperate)))
+
+(defn- spawn-config [biome] (spawn-configs (biome-kind biome)))
+
+(def ^:private ^:const rare-total 100.0)
+
+(def ^:private ^:const common-total 500.0)
+
+(def ^:private ^:const common-weight 499)
+
+(defn- weighted [^long r entries]
+  (loop [lo 0 [[w c] & more] entries]
+    (when w
+      (if (< r (+ lo (long w))) c (recur (+ lo (long w)) more)))))
+
+(defn- common-color [ks common]
+  (if (< (long (* common-total (random/of-key (conj ks :pink))))
+         common-weight)
+    common
+    :pink))
+
+(defn sheep-color
+  "Returns the wool colour a sheep takes at place by the keys ks."
+  [ks {:keys [biome]}]
+  (let [{:keys [rare common]} (spawn-config biome)
+        r (long (* rare-total (random/of-key ks)))]
+    (color-id (or (weighted r rare) (common-color ks common)))))
+
+(def ^:private ^:table white-rabbit-biomes
+  (biome-tag "spawns_white_rabbits"))
+
+(def ^:private ^:table gold-rabbit-biomes
+  (biome-tag "spawns_gold_rabbits"))
+
+(def rabbit-variants
+  {0 :brown 1 :white 2 :black 3 :white-splotched 4 :gold 5 :salt
+   99 :evil})
+
+(defn- mixed-rabbit ^long [^long r]
+  (cond (< r 50) 0 (< r 90) 5 :else 2))
+
+(defn rabbit-variant
+  "Returns the variant a rabbit takes at place by the keys ks."
+  [ks {:keys [biome]}]
+  (let [n (:name biome)
+        r (long (* 100.0 (random/of-key (conj ks :rabbit))))]
+    (cond (@white-rabbit-biomes n) (if (< r 80) 1 3)
+          (@gold-rabbit-biomes n) 4
+          :else (mixed-rabbit r))))
