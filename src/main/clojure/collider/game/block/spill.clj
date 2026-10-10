@@ -2,9 +2,9 @@
   "What the block entity of a removed block leaves in the world."
   (:require [collider.game.block.blockentity :as be]
             [collider.game.block.furnace :as furnace]
+            [collider.game.block.jukebox :as jukebox]
             [collider.game.entity :as entity]
             [collider.game.item :as item]
-            [collider.game.out :as out]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.lectern :as lectern]
@@ -32,10 +32,9 @@
 
 (defn- record-popped [world pos e]
   (when-let [r (:record e)]
-    (let [above (mapv + pos [0 1 0])
-          stop (out/level-event :sound-stop-jukebox-song pos 0)]
-      [[:spawn-entity (item/popped world above r :jukebox)]
-       (out/all stop)])))
+    (let [above (mapv + pos [0 1 0])]
+      (conj (vec (jukebox/stopped pos e))
+            [:spawn-entity (item/popped world above r :jukebox)]))))
 
 (defn- book-dropped [world pos old e]
   (when (and (lectern/has-book? old) (:book e))

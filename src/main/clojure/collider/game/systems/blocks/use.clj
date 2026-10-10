@@ -342,9 +342,8 @@
       (set-at world pos (block/with cur :has-record :false))
       (changes/be-changed
         pos (assoc e :record nil :song nil :started nil))
-      [[:spawn-entity (item/popped world at (:record e) :jukebox)]
-       (out/all
-         (out/level-event out/sound-stop-jukebox-song pos 0))])))
+      (jukebox/stopped pos e)
+      [[:spawn-entity (item/popped world at (:record e) :jukebox)]])))
 
 (defn- jukebox-insert-deltas [world pos e item]
   (let [cur (changes/block-at world pos)

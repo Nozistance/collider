@@ -293,12 +293,12 @@
   (cond-> e
     Book (assoc :book (tag/stack Book) :page (long (or Page 0)))))
 
-(defn- with-record
-  [e {r :RecordItem age :ticks_since_song_started} t]
+(defn- with-record [e {r :RecordItem age :ticks_since_song_started} t]
   (if r
     (let [stack (tag/stack r)
           song (jukebox/song-of (:item stack))
-          on? (and age song (not (jukebox/finished? song (long age))))]
+          on? (and age song
+                   (not (jukebox/finished? song (long age))))]
       (cond-> (assoc e :record stack)
         on? (assoc :song song :started (- (long t) (long age)))))
     e))

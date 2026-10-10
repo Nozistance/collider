@@ -1,6 +1,8 @@
 (ns collider.game.block.jukebox
   "Jukeboxes and the songs of music discs."
-  (:require [collider.data :as data]))
+  (:require [collider.data :as data]
+            [collider.game.out :as out]
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -22,3 +24,12 @@
 
 (defn song-id ^long [song]
   (data/datapack-id "jukebox_song" song))
+
+(defn stopped
+  "Returns the deltas of the song of jukebox e at pos stopping, none
+  when it plays none."
+  [pos e]
+  (when (:song e)
+    (let [stop (out/level-event out/sound-stop-jukebox-song pos 0)]
+      (conj (signal/game-event :jukebox-stop-play pos nil)
+            (out/all stop)))))
