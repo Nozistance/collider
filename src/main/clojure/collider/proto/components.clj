@@ -1,6 +1,7 @@
 (ns collider.proto.components
   "Data components of item stacks, and particles, on the wire."
   (:require [collider.data :as data]
+            [collider.data.particles :as particles]
             [collider.proto.buf :as buf]
             [collider.proto.codec :as c]
             [collider.proto.nbt :as nbt]
@@ -688,19 +689,8 @@
                 (or (pos? (long added)) (pos? (long removed)))
                 (assoc :components? true))))))
 
-(def ^:private particle-option-kinds
-  {:block :state :block-marker :state :falling-dust :state
-   :dust-pillar :state :block-crumble :state
-   :entity-effect :color :tinted-leaves :color :flash :color
-   :trail :trail :dragon-breath :power :dust :dust
-   :dust-color-transition :transition :effect :spell
-   :instant-effect :spell :sculk-charge :roll :item :item
-   :vibration :vibration :shriek :delay :geyser :geyser
-   :geyser-plume :geyser :geyser-base :geyser-base
-   :geyser-poof :geyser-base})
-
 (defn- particle-entry [[k id]]
-  [(long id) [k (get particle-option-kinds k :none)]])
+  [(long id) [k (particles/kind k)]])
 
 (def ^:private ^:table particle-kinds
   (delay (into {} (map particle-entry)
