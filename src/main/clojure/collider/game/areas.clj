@@ -1,6 +1,7 @@
 (ns collider.game.areas
   "The chunk areas the players of a level keep loaded and ticking."
   (:require [collider.data.long-map :as lm]
+            [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.world.chunk :as chunk]))
@@ -19,6 +20,7 @@
 
 (defn- loads-chunks? [world e]
   (and (= :player (:type e))
+       (not (entity/removed? e))
        (or (get-in world [:rules :spectators-generate-chunks] true)
            (not (game-mode/spectator? e)))))
 

@@ -30,6 +30,13 @@
   [e]
   (= :player (:type e)))
 
+(defn removed?
+  "Returns true when e is a player dead long enough to have left its
+  level. It comes back when it respawns."
+  [e]
+  (and (player? e)
+       (>= (long (or (:death-time e) 0)) mobs/death-ticks)))
+
 (defn tick-count
   "Returns the ticks entity e has lived at the tick of world, in its
   turn. A player counts the tick it joined in."

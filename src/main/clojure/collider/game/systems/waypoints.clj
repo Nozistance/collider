@@ -5,6 +5,7 @@
   or when the one who transmits starts or stops."
   (:require [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -203,7 +204,10 @@
   "Returns the deltas that keep the locator bar of every player."
   {:wake {:types #{:player}}}
   [world _d]
-  (let [ps (vec (level/player-entries world))
+  (let [all (vec (level/player-entries world))
+        ps (filterv #(not (entity/removed? (val %))) all)
+        out (into [] (comp (filter #(entity/removed? (val %))) (map key))
+                  all)
         on? (get-in world [:rules :locator-bar] true)
         st {:on? on? :out []
             :in (into #{} (keep (fn [[eid e]]
@@ -211,7 +215,8 @@
                       ps)
             :links (into {} (map (fn [[eid e]]
                                    [eid (:waypoints e {})]))
-                         ps)}
+                         all)}
+        st (reduce cut st out)
         st (gone st (set (map key ps)))
         st (reduce #(born %1 world %2 ps) st ps)
         st (reduce #(stepped %1 world %2 ps) st ps)
@@ -219,4 +224,4 @@
         st (reduce #(heard %1 world %2 ps moved) st ps)
         st (reduce #(switched %1 world %2 ps) st ps)
         st (if on? st (broke-all st))]
-    (deltas/of-vec (into (:out st) (keep #(marks st %)) ps))))
+    (deltas/of-vec (into (:out st) (keep #(marks st %)) all))))

@@ -1,6 +1,7 @@
 (ns collider.game.systems.chunks
   "Chunk loading, streaming to players and unloading."
   (:require [collider.data.long-map :as lm]
+            [collider.game.entity :as entity]
             [collider.game.deltas :as deltas]
             [collider.game.out :as out]
             [collider.game.schema :as schema]
@@ -145,7 +146,8 @@
         (when moved? cp)]])))
 
 (defn- streaming? [world [_ p]]
-  (streams? p (chunk/pos-chunk (:pos p)) (player-radius world p)))
+  (and (not (entity/removed? p))
+       (streams? p (chunk/pos-chunk (:pos p)) (player-radius world p))))
 
 (defn- loaded-event? [ev] (= :chunk-loaded (nth ev 0)))
 
@@ -171,7 +173,8 @@
   {:wake {:types #{:player}}}
   [world _d]
   (deltas/of-vec
-    (into [] (mapcat #(view-deltas world %))
+    (into [] (comp (remove #(entity/removed? (val %)))
+                   (mapcat #(view-deltas world %)))
           (level/player-entries world))))
 
 (defn chunk-streaming

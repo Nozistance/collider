@@ -44,6 +44,7 @@
 
 (defn- busy-deltas [world eid e]
   (let [ds (concat (hurt/timer-deltas eid e)
+                   (hurt/removal-deltas world eid e)
                    (hurt/landing-deltas world eid e)
                    (hurt/fire-deltas world eid e))]
     (->> (concat (hurt/burnt-deltas world eid e) ds)

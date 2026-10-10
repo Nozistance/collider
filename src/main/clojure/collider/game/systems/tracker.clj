@@ -128,7 +128,10 @@
 
 (defn- hidden-from [oid o bodies]
   (into (lm/long-set [oid])
-        (keep (fn [[eid e]] (when-not (game-mode/shown-to? o e) eid)))
+        (keep (fn [[eid e]]
+                (when (or (entity/removed? e)
+                          (not (game-mode/shown-to? o e)))
+                  eid)))
         bodies))
 
 (defn- untracked [world]

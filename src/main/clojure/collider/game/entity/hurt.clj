@@ -883,6 +883,24 @@
       (when gone? [(out/all (out/status eid :poof))
                    [:remove-entity eid]]))))
 
+(defn removal-deltas
+  "Returns the deltas that take dead player eid off its level once
+  its countdown ends. It puffs for its viewers and for itself, they
+  lose its body, and it loses all it saw and every chunk."
+  [world eid e]
+  (when (and (not (entity/removed? e))
+             (entity/removed? (update e :death-time (fnil inc 0))))
+    (concat
+      [(out/all (out/status eid :poof))
+       (out/to eid (out/status eid :poof))]
+      (for [[oid o] (:entities world)
+            :when (contains? (:tracking o) eid)]
+        [:tracking oid [] [eid]])
+      [[:tracking eid [] (vec (:tracking e))]
+       [:chunks-sent eid [] (vec (sort (:sent-chunks e))) nil]
+       [:merge-entity eid {:chunk-pos nil :chunk-view nil
+                           :chunks-pending? false}]])))
+
 (defn- own-apply [world eid e d]
   (if-let [g (and (= eid (nth d 1 nil))
                   (get delta/entity-apply (nth d 0)))]
