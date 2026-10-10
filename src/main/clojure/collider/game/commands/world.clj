@@ -2,7 +2,7 @@
   "Commands on the world, such as time, weather and gamerule."
   (:require [collider.data :as data]
             [collider.game.clock :as clock]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.commands.player :as player-commands]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
@@ -73,7 +73,7 @@
        (= (mapv double turn) (player/spawn-turn world))))
 
 (defn- world-spawn-set [world eid at [yaw pitch :as turn]]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         with (conj (mapv str at) (str yaw) (str pitch)
                    (dimension-id dim))
         msg {:translate "commands.setworldspawn.success" :with with}]
@@ -186,7 +186,7 @@
         (in-timeline world eid k v f key)))))
 
 (defn- time-deltas [world eid op [k v]]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         k (or k (clock/default-of dim))]
     (cond
       (= :time-gametime op)
@@ -208,8 +208,8 @@
   (when mode
     (mapcat (fn [[_ dim :as x]]
               (let [ds (player-commands/mode-change world x mode)]
-                (sel/in-level world dim ds)))
-            (sel/player-entries world))))
+                (targets/in-level world dim ds)))
+            (targets/player-entries world))))
 
 (defn- default-mode-deltas
   [world eid [mode]]

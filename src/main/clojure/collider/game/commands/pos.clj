@@ -1,7 +1,7 @@
 (ns collider.game.commands.pos
   "The positions and turns commands take, and the checks on them."
   (:require [collider.game.areas :as areas]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.world.chunk :as chunk]))
 
 (set! *warn-on-reflection* true)
@@ -46,7 +46,7 @@
 (defn block-under
   "Returns the block of pos, the source block where pos gives none."
   [world [x y z]]
-  (let [p (sel/source-pos world)
+  (let [p (targets/source-pos world)
         at #(long (Math/floor (double (nth p %))))]
     [(long (or x (at 0)))
      (long (or y (at 1)))
@@ -61,4 +61,4 @@
                 (float (+ (double v) base))))
         y (if yaw (get yaw (:yaw e)) (float 0.0))
         p (if pitch (get pitch (:pitch e)) (float 0.0))]
-    [(sel/wrapped y) (float (max -90.0 (min 90.0 (double p))))]))
+    [(targets/wrapped y) (float (max -90.0 (min 90.0 (double p))))]))

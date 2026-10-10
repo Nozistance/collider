@@ -3,7 +3,7 @@
   (:require [collider.game.command.nbt-path :as nbt-path]
             [collider.game.command.nbt-text :as nbt-text]
             [collider.game.command.reader :as r]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.commands.reply
              :refer [answer entity-name fail say]]
             [collider.game.entity.save-data :as save-data])
@@ -36,7 +36,7 @@
           :else (query eid e (first found)))))
 
 (defn- get-entity-deltas [world eid [s path scale]]
-  (if-let [[_ _ e] (first (sel/selected world eid s))]
+  (if-let [[_ _ e] (first (targets/selected world eid s))]
     (let [tag (save-data/saved e (:tick world))]
       (if path (at-path eid e path scale tag) (query eid e tag)))
     (fail eid "argument.entity.notfound.entity")))

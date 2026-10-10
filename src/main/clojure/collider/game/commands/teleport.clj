@@ -1,7 +1,7 @@
 (ns collider.game.commands.teleport
   "The tp, rotate and spectate commands."
   (:require [collider.game.camera :as camera]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
              :refer [answer entity-name fail say]]
@@ -57,7 +57,7 @@
      (out/to eid (out/change-dimension dim pos sent known seen))]))
 
 (defn- sent-angle [rel? v old]
-  (if rel? (sel/wrapped (- (double v) (double old))) v))
+  (if rel? (targets/wrapped (- (double v) (double old))) v))
 
 (defn- sent-turn [e [yaw pitch] rel]
   [(sent-angle (:y-rot rel) yaw (:yaw e 0.0))
@@ -113,7 +113,7 @@
         (player-teleport id e pos turn rel)))
 
 (defn- player-moved [world id from e0 to pos turn rel]
-  (let [lv (sel/level-view world from)
+  (let [lv (targets/level-view world from)
         [wake e] (woken lv id e0)
         own? (set? rel)
         turn (if (:own-turn rel) [(:yaw e 0.0) (:pitch e 0.0)] turn)
@@ -121,7 +121,7 @@
                 (let [pos (if own? (shifted pos rel e0 e) pos)]
                   (player-placed id e pos turn rel))
                 (crossed lv id to pos turn rel))]
-    (sel/in-level world from (concat wake moved))))
+    (targets/in-level world from (concat wake moved))))
 
 (defn- placed-props [e pos yaw pitch rel]
   (cond-> (assoc (turn-props yaw pitch) :pos (v/v3 pos)
@@ -136,7 +136,7 @@
              :uuid (entity/uuid-of id e)))))
 
 (defn- arrival-chunk [world to pos]
-  (let [lv (sel/level-view world to)
+  (let [lv (targets/level-view world to)
         cid (chunk/block-chunk (mapv #(long (Math/floor %)) pos))]
     (when-not (or (contains? (:chunks lv) cid)
                   (contains? (:loading lv) cid))
@@ -146,15 +146,15 @@
 (defn- arrived [world id e to pos [yaw pitch] rel]
   (when-let [m (recreated world id e pos yaw pitch rel)]
     (let [ds (arrival-chunk world to pos)]
-      (sel/in-level world to (concat ds [[:spawn-entity m]])))))
+      (targets/in-level world to (concat ds [[:spawn-entity m]])))))
 
 (defn- entity-moved [world id from e to pos [yaw pitch :as turn] rel]
   (let [rel (if (set? rel) rel #{})]
     (if (= from to)
       (let [m (placed-props e pos yaw pitch rel)]
-        (sel/in-level world from [[:merge-entity id m]]))
+        (targets/in-level world from [[:merge-entity id m]]))
       (concat
-        (sel/in-level world from [[:remove-entity id]])
+        (targets/in-level world from [[:remove-entity id]])
         (arrived world id e to pos turn rel)))))
 
 (defn- moved
@@ -180,7 +180,7 @@
 (def ^:private own-rotation #{:y-rot :x-rot :own-turn})
 
 (defn- tp-moves [world placed pos turn-of look]
-  (let [to (sel/source-dim world)
+  (let [to (targets/source-dim world)
         rel (get-in world [:source :relative] #{})]
     (mapcat (fn [x]
               (let [[t r] (turn-of x)]
@@ -214,7 +214,7 @@
             (entity-report eid placed d))))
 
 (defn- tp-entity-deltas [world eid placed s]
-  (let [[_ dim d] (first (sel/selected world eid s))]
+  (let [[_ dim d] (first (targets/selected world eid s))]
     (cond
       (or (nil? d) (empty? placed))
       (fail eid "argument.entity.notfound.entity")
@@ -223,13 +223,13 @@
       :else (to-entity world eid placed dim d))))
 
 (defn- tp-deltas [world eid p]
-  (tp-at world eid (sel/self world eid) (vec p)))
+  (tp-at world eid (targets/self world eid) (vec p)))
 
 (defn- tp-to-deltas [world eid [s]]
-  (tp-entity-deltas world eid (sel/self world eid) s))
+  (tp-entity-deltas world eid (targets/self world eid) s))
 
 (defn- tp-targets-deltas [world eid [s & p]]
-  (tp-at world eid (sel/selected world eid s) (vec p)))
+  (tp-at world eid (targets/selected world eid s) (vec p)))
 
 (defn- source-turn [world eid [ry yv] [rp pv]]
   (let [src (get-in world [:entities eid])
@@ -239,8 +239,8 @@
 
 (defn- turned-by [rel? v old]
   (if rel?
-    (+ (double old) (sel/wrapped (- (double v) (double old))))
-    (sel/wrapped v)))
+    (+ (double old) (targets/wrapped (- (double v) (double old))))
+    (targets/wrapped v)))
 
 (defn- rotated-turn [[_ _ e] [yaw pitch] ry rp]
   [[(turned-by ry yaw (:yaw e 0.0))
@@ -249,7 +249,7 @@
 
 (defn- tp-rotated-deltas [world eid [s x y z yaw pitch]]
   (let [turn (source-turn world eid yaw pitch)]
-    (tp-at world eid (sel/selected world eid s) [x y z]
+    (tp-at world eid (targets/selected world eid s) [x y z]
            #(rotated-turn % turn (first yaw) (first pitch)) nil)))
 
 (def ^:private deg (num/f32 (/ 180.0 (num/f32 Math/PI))))
@@ -260,9 +260,9 @@
   (let [xd (- (double px) (double fx)) yd (- (double py) (double fy))
         zd (- (double pz) (double fz))
         sd (Math/sqrt (+ (* xd xd) (* zd zd)))
-        pitch (sel/wrapped (float (- (* (num/atan2 yd sd) deg))))
+        pitch (targets/wrapped (float (- (* (num/atan2 yd sd) deg))))
         turn (float (* (num/atan2 zd xd) deg))
-        yaw (sel/wrapped (- turn (float 90.0)))]
+        yaw (targets/wrapped (- turn (float 90.0)))]
     [(num/f32 yaw) (pitch-set pitch)]))
 
 (defn- anchored [e anchor]
@@ -273,7 +273,7 @@
 
 (defn- rotated [world id dim yaw pitch fx]
   (let [turn (turn-props yaw pitch)]
-    (sel/in-level world dim
+    (targets/in-level world dim
                   (cond-> [[:merge-entity id turn]]
                     fx (conj (out/to id fx))))))
 
@@ -285,22 +285,22 @@
 
 (defn- tp-facing-deltas [world eid [s x y z fx fy fz]]
   (let [target [fx fy fz]]
-    (tp-at world eid (sel/selected world eid s) [x y z] nil
+    (tp-at world eid (targets/selected world eid s) [x y z] nil
            (look-from world target #(out/look-at :feet % nil nil)))))
 
 (defn- facing-entity-at [world eid s p o oid anchor]
-  (tp-at world eid (sel/selected world eid s) p nil
+  (tp-at world eid (targets/selected world eid s) p nil
          (look-from world (anchored o anchor)
                     #(out/look-at :feet % oid anchor))))
 
 (defn- tp-facing-entity-deltas [world eid [s x y z other anchor]]
-  (let [[oid _ o] (first (sel/selected world eid other))]
+  (let [[oid _ o] (first (targets/selected world eid other))]
     (if o
       (facing-entity-at world eid s [x y z] o oid (or anchor :feet))
       (fail eid "argument.entity.notfound.entity"))))
 
 (defn- tp-targets-to-deltas [world eid [s dest]]
-  (tp-entity-deltas world eid (sel/selected world eid s) dest))
+  (tp-entity-deltas world eid (targets/selected world eid s) dest))
 
 (defn- turned-to
   "Returns the yaw and pitch that the rotation arguments give entity
@@ -320,7 +320,7 @@
   (say eid "commands.rotate.success" (entity-name e)))
 
 (defn- rotate-deltas [world eid [s yaw pitch]]
-  (if-let [[id dim e] (first (sel/selected world eid s))]
+  (if-let [[id dim e] (first (targets/selected world eid s))]
     (let [[ay ax sent] (turned-to world eid e yaw pitch)
           fx (when (= :player (:type e))
                (apply out/player-rotation sent))]
@@ -334,13 +334,13 @@
             (rotate-report eid e))))
 
 (defn- facing-deltas [world eid [s x y z]]
-  (if-let [x0 (first (sel/selected world eid s))]
+  (if-let [x0 (first (targets/selected world eid s))]
     (faced world eid x0 [x y z] (out/look-at :feet [x y z] nil nil))
     (fail eid "argument.entity.notfound.entity")))
 
 (defn- facing-entity-deltas [world eid [s other anchor]]
-  (let [x0 (first (sel/selected world eid s))
-        [oid _ o] (first (sel/selected world eid other))
+  (let [x0 (first (targets/selected world eid s))
+        [oid _ o] (first (targets/selected world eid other))
         anchor (or anchor :feet)]
     (if (and x0 o)
       (let [p (anchored o anchor)]
@@ -350,13 +350,13 @@
 (defn- camera-set
   [world [id dim e :as x] [tid tdim t]]
   (if (or (nil? t) (= dim tdim))
-    (let [lv (sel/level-view world dim)]
-      (sel/in-level world dim (camera/set-deltas lv id e tid)))
+    (let [lv (targets/level-view world dim)]
+      (targets/in-level world dim (camera/set-deltas lv id e tid)))
     (let [ds [[:merge-entity id {:camera tid}]
               (out/to id (out/camera tid))]]
       (concat (moved world x tdim (vec (xyz (:pos t))) (own-turn x)
                      own-rotation)
-              (sel/in-level world tdim ds)))))
+              (targets/in-level world tdim ds)))))
 
 (defn- spectate-report [eid t]
   (let [k (if t "started" "stopped")
@@ -374,8 +374,8 @@
                   (spectate-report eid t))))
 
 (defn- spectate-deltas [world eid [target player]]
-  (let [x (first (sel/player-selected world eid player))
-        t (when target (first (sel/selected world eid target)))]
+  (let [x (first (targets/player-selected world eid player))
+        t (when target (first (targets/selected world eid target)))]
     (cond
       (nil? x) (fail eid "argument.entity.notfound.player")
       (and target (nil? t))
@@ -387,7 +387,7 @@
   nil when eid is no spectator or u is not found."
   [world eid u]
   (let [x [eid (:dim world) (get-in world [:entities eid])]
-        [_ dim d] (sel/by-uuid world false u)]
+        [_ dim d] (targets/by-uuid world false u)]
     (when (and d (game-mode/spectator? (nth x 2)))
       (concat (camera/set-deltas world eid (nth x 2) nil)
               (moved world x dim (vec (xyz (:pos d)))

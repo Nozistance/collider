@@ -1,7 +1,7 @@
 (ns collider.game.commands.say
   "The say, me, msg, tellraw, list, help and version commands."
   (:require [collider.data :as data]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.command.forms :as forms]
             [collider.game.command.help :as help]
             [collider.game.commands.reply
@@ -15,7 +15,7 @@
 
 (defn- names-of [world eid s]
   (name-list (map #(entity-name (nth % 2))
-                  (sel/selected world eid s))))
+                  (targets/selected world eid s))))
 
 (defn- message-step [world eid ^String text]
   (fn [[acc at] [a b s]]
@@ -62,14 +62,14 @@
      (out/to id (line "msg_command_incoming" from))]))
 
 (defn- msg-deltas [world eid [s m]]
-  (let [xs (sel/player-selected world eid s)
+  (let [xs (targets/player-selected world eid s)
         who {:eid eid :name (sender-name world eid)}]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
       (mapcat #(whispered who (message-content world eid m) %) xs))))
 
 (defn- tellraw-deltas [world eid [s text]]
-  (let [xs (sel/player-selected world eid s)]
+  (let [xs (targets/player-selected world eid s)]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
       (mapv (fn [[id]] (out/to id (out/system-chat text))) xs))))
@@ -80,7 +80,7 @@
 
 (defn- list-deltas [f]
   (fn [world eid _]
-    (let [xs (sel/player-entries world)
+    (let [xs (targets/player-entries world)
           most (get-in world [:config :max-players] 20)]
       (answer (say eid "commands.list.players" (count xs) most
                    (name-list (map f xs)))))))

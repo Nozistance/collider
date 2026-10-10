@@ -4,7 +4,7 @@
             [collider.game.command.args :as cmd-args]
             [collider.game.command.args.block :as block-args]
             [collider.game.command.reader :as cmd-reader]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.commands.clone :as clone]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply :refer [fail say]]
@@ -66,12 +66,12 @@
   (box (into (ffirst changes) (first (peek changes)))))
 
 (defn- edited [world changes opts]
-  (let [dim (sel/source-dim world)
-        lv (sel/level-view world dim)
+  (let [dim (targets/source-dim world)
+        lv (targets/level-view world dim)
         [chunks adds] (fetched lv (changes-box changes))
         [ds n placed] (changes/command-deltas
                         (assoc lv :chunks chunks) changes opts)]
-    [(sel/in-level world dim adds) (sel/in-level world dim ds) n
+    [(targets/in-level world dim adds) (targets/in-level world dim ds) n
      placed]))
 
 (defn- area ^long [[[x1 x2] [y1 y2] [z1 z2]]]
@@ -98,7 +98,7 @@
 
 (defn- fill-by [world eid corners block mode test]
   (let [bounds (box corners)]
-    (if-let [k (some #(pos/pos-error (sel/source-level world) %)
+    (if-let [k (some #(pos/pos-error (targets/source-level world) %)
                      [(subvec corners 0 3) (subvec corners 3 6)])]
       (fail eid k)
       (or (too-big world eid "commands.fill.toobig" bounds)
@@ -121,13 +121,13 @@
      :dest [x y z] :filter f :mode m}))
 
 (defn- dim-of [world id]
-  (if id (cmd-args/dimension id schema/dims) (sel/source-dim world)))
+  (if id (cmd-args/dimension id schema/dims) (targets/source-dim world)))
 
 (defn- dim-error [d]
   (when (cmd-reader/error? d) (into [(:key d)] (:args d))))
 
 (defn- corner-error [world dim p]
-  (when-let [k (pos/pos-error (sel/level-view world dim) p)] [k]))
+  (when-let [k (pos/pos-error (targets/level-view world dim) p)] [k]))
 
 (defn- clone-error
   "Returns the first error of the arguments of /clone, in the order
@@ -168,7 +168,7 @@
   (reduce (fn [[lv adds] bounds]
             (let [[chunks more] (fetched lv bounds)]
               [(assoc lv :chunks chunks) (into adds more)]))
-          [(sel/level-view world dim) []] boxes))
+          [(targets/level-view world dim) []] boxes))
 
 (defn- clone-test [{:keys [filter]} filtered?]
   (cond filtered? (fn [st _] (block-args/matches? filter st nil))
@@ -184,8 +184,8 @@
                 (changes/ops-deltas from (:clear p)))
         [ds n] (changes/ops-deltas to (:place p))
         placed (concat tadds ds (copied-tail p))]
-    [(concat (sel/in-level world fd (concat fadds cds))
-             (sel/in-level world td placed))
+    [(concat (targets/in-level world fd (concat fadds cds))
+             (targets/in-level world td placed))
      n]))
 
 (defn- clone-run
@@ -194,7 +194,7 @@
   (if (= fd td)
     (let [ops (into (vec (:clear p)) (:place p))
           [ds n] (changes/ops-deltas to ops)]
-      [(sel/in-level world td (concat tadds ds (copied-tail p))) n])
+      [(targets/in-level world td (concat tadds ds (copied-tail p))) n])
     (moved-run world from dest p)))
 
 (defn- cloned [world eid a opts fd td [b off d]]
@@ -209,8 +209,8 @@
       (concat ds (say eid "commands.clone.success" n)))))
 
 (defn- clone-loaded? [world a fd td [_ _ d]]
-  (and (chunks-at? (sel/level-view world fd) (:begin a) (:end a))
-       (chunks-at? (sel/level-view world td) (:dest a)
+  (and (chunks-at? (targets/level-view world fd) (:begin a) (:end a))
+       (chunks-at? (targets/level-view world td) (:dest a)
                    (mapv peek d))))
 
 (defn- overlapping [eid a fd td [b _ d]]
@@ -232,7 +232,7 @@
           (cloned world eid a opts fd td boxes)))))
 
 (defn- place-needed? [world p st mode]
-  (let [old (changes/block-at (sel/source-level world) p)
+  (let [old (changes/block-at (targets/source-level world) p)
         left (if (block/air-type? old) old (block/emptied old))]
     (or (not= "destroy" mode) (not (block/air-type? st))
         (not (block/air-type? left)))))
@@ -247,7 +247,7 @@
 
 (defn- setblock-deltas [world eid [x y z block mode]]
   (let [p [x y z]
-        lv (sel/source-level world)
+        lv (targets/source-level world)
         k (pos/pos-error lv p)]
     (cond
       k (fail eid k)

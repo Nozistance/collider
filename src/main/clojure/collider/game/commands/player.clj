@@ -3,7 +3,7 @@
   (:require [collider.data :as data]
             [collider.game.command.args.item :as item-args]
             [collider.game.command.reader :as cmd-reader]
-            [collider.game.command.selector :as sel]
+            [collider.game.command.targets :as targets]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
              :refer [dimension-id entity-name fail say say*]]
@@ -31,14 +31,14 @@
    :hover {:action :show-item :id item}})
 
 (defn- given-deltas [world [id dim e] proto n]
-  (let [lv (sel/level-view world dim)
+  (let [lv (targets/level-view world dim)
         inv (or (:inventory e) {})
         stack (assoc proto :count n)
         [changes left] (inventory/add-stack inv stack)
         set (fn [[slot s]] [:set-slot id slot s])
         spilled (when left
                   [[:spawn-entity (item/dropped lv id left true 0)]])]
-    (sel/in-level world dim (concat (map set changes) spilled))))
+    (targets/in-level world dim (concat (map set changes) spilled))))
 
 (defn- given [world eid [_ _ e :as x] proto n]
   (concat (given-deltas world x proto n)
@@ -49,7 +49,7 @@
   (* 100 (long (or (stack/component proto :max-stack-size) 1))))
 
 (defn- give-deltas [world eid [s input n]]
-  (let [xs (sel/player-selected world eid s)
+  (let [xs (targets/player-selected world eid s)
         proto (item-args/item-stack input 1)
         most (when-not (cmd-reader/error? proto) (give-limit proto))]
     (cond
@@ -113,10 +113,10 @@
     (fail eid "clear.failed.multiple" (count xs))))
 
 (defn- cleared-deltas [world [id dim [_ cs]]]
-  (sel/in-level world dim (map #(clear-change id %) cs)))
+  (targets/in-level world dim (map #(clear-change id %) cs)))
 
 (defn- players-or-self [world eid s]
-  (if s (sel/player-selected world eid s) (sel/self world eid)))
+  (if s (targets/player-selected world eid s) (targets/self world eid)))
 
 (defn- clear-deltas [world eid [s pred limit]]
   (let [xs (players-or-self world eid s)
@@ -134,10 +134,10 @@
     (out/all (out/sound :player/levelup (:pos e) vol 1.0))))
 
 (defn- xp-changed [world [id dim e] f]
-  (let [acc (f (sel/xp-of world e))
+  (let [acc (f (targets/xp-of world e))
         fields (xp/player-fields acc)
         ds (cons [:merge-entity id fields] (chimes e acc))]
-    (sel/in-level world dim ds)))
+    (targets/in-level world dim ds)))
 
 (defn- xp-unit [unit] (or unit "points"))
 
@@ -149,7 +149,7 @@
       (say eid (str base "multiple") amount (count xs)))))
 
 (defn- xp-add-deltas [world eid [s amount unit]]
-  (let [xs (sel/player-selected world eid s)
+  (let [xs (targets/player-selected world eid s)
         unit (xp-unit unit)
         f (if (= "levels" unit) xp/give-levels xp/give-points)
         g (fn [a] (f a amount))]
@@ -160,10 +160,10 @@
 
 (defn- settable? [world unit amount [_ _ e]]
   (or (= "levels" unit)
-      (< (long amount) (xp/needed (:level (sel/xp-of world e))))))
+      (< (long amount) (xp/needed (:level (targets/xp-of world e))))))
 
 (defn- xp-set-deltas [world eid [s amount unit]]
-  (let [xs (sel/player-selected world eid s)
+  (let [xs (targets/player-selected world eid s)
         unit (xp-unit unit)
         f (if (= "levels" unit) xp/set-levels xp/set-points)
         g (fn [a] (f a amount))
@@ -175,8 +175,8 @@
                     (xp-report eid xs "set" unit amount)))))
 
 (defn- xp-query-deltas [world eid [s unit]]
-  (if-let [[_ _ e] (first (sel/player-selected world eid s))]
-    (let [acc (sel/xp-of world e)
+  (if-let [[_ _ e] (first (targets/player-selected world eid s))]
+    (let [acc (targets/xp-of world e)
           n (if (= "levels" unit) (:level acc) (xp/points acc))]
       (say eid (str "commands.experience.query." unit)
            (entity-name e) n))
@@ -196,7 +196,7 @@
   (when (account/living? e)
     (let [acc (f (account/account id e))]
       (when (:landed? acc)
-        (or (sel/in-level world dim (account/deltas acc e)) [])))))
+        (or (targets/in-level world dim (account/deltas acc e)) [])))))
 
 (defn- effect-report [eid xs n key-of with]
   (if (= 1 (count xs))
@@ -212,7 +212,7 @@
               (effect-report eid xs (count xs) key-of with)))))
 
 (defn- effect-give-deltas [world eid [s k secs amp hide]]
-  (let [xs (sel/selected world eid s)
+  (let [xs (targets/selected world eid s)
         d (given-ticks k secs)
         i (effect/instance d (or amp 0) false (not hide))
         key-of #(str "commands.effect.give.success." %)]
@@ -228,7 +228,7 @@
     ["everything" account/take-all vector]))
 
 (defn- effect-clear-deltas [world eid [s k]]
-  (let [xs (if s (sel/selected world eid s) (sel/self world eid))
+  (let [xs (if s (targets/selected world eid s) (targets/self world eid))
         [what f with] (clear-parts k)
         base (str "commands.effect.clear." what)]
     (if (empty? xs)
@@ -259,18 +259,18 @@
   "Returns the deltas that put the selected player x in game mode
   mode."
   [world [id dim e] mode]
-  (game-mode/change (sel/level-view world dim) id e mode))
+  (game-mode/change (targets/level-view world dim) id e mode))
 
 (defn mode-set
   "Returns the deltas and replies of player eid putting the selected
   player x in game mode mode, nil when it is in that mode."
   [world eid mode [_ dim :as x]]
   (when-let [ds (seq (mode-change world x mode))]
-    (concat (sel/in-level world dim ds)
+    (concat (targets/in-level world dim ds)
             (mode-report world eid x mode))))
 
 (defn- gamemode-deltas [world eid [mode s]]
-  (let [xs (sel/player-selected world eid s)]
+  (let [xs (targets/player-selected world eid s)]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
       (mapcat #(mode-set world eid mode %) xs))))
@@ -283,18 +283,18 @@
           (conj with (count xs)))))
 
 (defn- spawnpoint-set [world eid xs at [yaw pitch]]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         spawn {:dimension dim :pos at :yaw (double yaw)
                :pitch (double pitch)}
         forced {:forced-spawn spawn}
         set (fn [[id d]]
-              (sel/in-level world d [[:merge-entity id forced]]))
+              (targets/in-level world d [[:merge-entity id forced]]))
         with (conj (mapv str at) (str yaw) (str pitch)
                    (dimension-id dim))]
     (concat (mapcat set xs) (spawn-report eid xs with))))
 
 (defn- spawnpoint-deltas [world eid [s x y z yaw pitch]]
-  (let [xs (sel/player-selected world eid s)]
+  (let [xs (targets/player-selected world eid s)]
     (cond
       (empty? xs) (fail eid "argument.entity.notfound.player")
       (pos/out-of-bounds? [x y z])
@@ -323,7 +323,7 @@
                min-volume]))))
 
 (defn- sound-listeners [world eid s]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         xs (players-or-self world eid s)]
     (filter #(= dim (nth % 1)) xs)))
 
@@ -336,7 +336,7 @@
 
 (defn- playsound-result [world eid s id played]
   (cond
-    (and s (empty? (sel/player-selected world eid s)))
+    (and s (empty? (targets/player-selected world eid s)))
     (fail eid "argument.entity.notfound.player")
     (empty? played) (fail eid "commands.playsound.failed")
     :else (concat (map second played)
@@ -349,7 +349,7 @@
 
 (defn- playsound-deltas
   [world eid [src id s x y z volume pitch min-volume]]
-  (let [at (if (some? x) [x y z] (vec (sel/source-pos world)))
+  (let [at (if (some? x) [x y z] (vec (targets/source-pos world)))
         volume (float (or volume 1.0))
         least (or min-volume 0.0)
         seed (random/mix64 (hash [(:tick world) eid id]))
@@ -383,20 +383,20 @@
                 (or speed 0.0) (or n 0) force?))
 
 (defn- particle-viewers [world eid s at force?]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         near? (fn [[_ d e]] (and (= d dim) (sees-particle? e at force?)))]
     (filter near? (if s
-                    (sel/player-selected world eid s)
-                    (sel/player-entries world)))))
+                    (targets/player-selected world eid s)
+                    (targets/player-entries world)))))
 
 (defn- particle-deltas
   [world eid [mode p x y z dx dy dz speed n s]]
-  (let [at (if (some? x) [x y z] (vec (sel/source-pos world)))
+  (let [at (if (some? x) [x y z] (vec (targets/source-pos world)))
         force? (= mode :force)
         shown (particle-viewers world eid s at force?)
         fx (particle-fx p at [dx dy dz] speed n force?)]
     (cond
-      (and s (empty? (sel/player-selected world eid s)))
+      (and s (empty? (targets/player-selected world eid s)))
       (fail eid "argument.entity.notfound.player")
       (empty? shown) (fail eid "commands.particle.failed")
       :else (concat (map (fn [[id]] (out/to id fx)) shown)
@@ -412,7 +412,7 @@
       :else ["commands.stopsound.success.sourceless.any"])))
 
 (defn- stopsound-deltas [world eid [src s id]]
-  (let [xs (sel/player-selected world eid s)
+  (let [xs (targets/player-selected world eid s)
         m (out/stop-sound id (when (not= "*" src) src))]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.player")
@@ -426,7 +426,7 @@
 
 (defn- titled [key fx]
   (fn [world eid [s & more]]
-    (let [xs (sel/player-selected world eid s)
+    (let [xs (targets/player-selected world eid s)
           m (apply fx more)]
       (if (empty? xs)
         (fail eid "argument.entity.notfound.player")

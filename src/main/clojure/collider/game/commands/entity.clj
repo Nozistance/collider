@@ -1,6 +1,6 @@
 (ns collider.game.commands.entity
   "The kill, summon, tag and swing commands."
-  (:require [collider.game.command.selector :as sel]
+  (:require [collider.game.command.targets :as targets]
             [collider.game.commands.pos :as pos]
             [collider.game.commands.reply
              :refer [answer entity-name fail name-list say success]]
@@ -38,7 +38,7 @@
     :else (slain lv id e)))
 
 (defn- killed [world [id dim e]]
-  (sel/in-level world dim (kill-in (sel/level-view world dim) id e)))
+  (targets/in-level world dim (kill-in (targets/level-view world dim) id e)))
 
 (defn- kill-report [eid xs]
   (if (= 1 (count xs))
@@ -47,7 +47,7 @@
     (say eid "commands.kill.success.multiple" (count xs))))
 
 (defn- kill-deltas [world eid [s]]
-  (let [xs (sel/selected world eid s)]
+  (let [xs (targets/selected world eid s)]
     (if (empty? xs)
       (fail eid "argument.entity.notfound.entity")
       (concat (mapcat #(killed world %) xs)
@@ -55,7 +55,7 @@
 
 (defn- summon-mob [world eid type at nbt]
   (let [t (:tick world)
-        place #(variant/place world (sel/source-dim world) at)]
+        place #(variant/place world (targets/source-dim world) at)]
     (if nbt
       (-> (mobs/new-mob type at nil t)
           (save-data/loaded nbt t)
@@ -63,15 +63,15 @@
       (mobs/command-mob type at [t eid :summon at] t (place)))))
 
 (defn- summoned [world eid type at nbt]
-  (let [dim (sel/source-dim world)
+  (let [dim (targets/source-dim world)
         kind {:translate (str "entity.minecraft." (name type))}
         msg {:translate "commands.summon.success" :with [kind]}
         mob (summon-mob world eid type at nbt)]
-    (concat (sel/in-level world dim [[:spawn-entity mob]])
+    (concat (targets/in-level world dim [[:spawn-entity mob]])
             (success [(out/to eid (out/system-chat msg))]))))
 
 (defn- summon-deltas [world eid [type x y z nbt]]
-  (let [p (sel/source-pos world)
+  (let [p (targets/source-pos world)
         at [(double (or x (nth p 0)))
             (double (or y (nth p 1)))
             (double (or z (nth p 2)))]]
@@ -86,13 +86,13 @@
   (let [tags (or (:tags e) #{})]
     (when-not (or (contains? tags name)
                   (>= (count tags) (long tag-limit)))
-      (sel/in-level world dim
+      (targets/in-level world dim
                     [[:merge-entity id {:tags (conj tags name)}]]))))
 
 (defn- tag-removed [world name [id dim e]]
   (when (contains? (:tags e) name)
     (let [tags (disj (:tags e) name)]
-      (sel/in-level world dim [[:merge-entity id {:tags tags}]]))))
+      (targets/in-level world dim [[:merge-entity id {:tags tags}]]))))
 
 (defn- tag-report [eid xs base name]
   (if (= 1 (count xs))
@@ -102,7 +102,7 @@
 
 (defn- tag-changed [f op]
   (fn [world eid [s name]]
-    (let [xs (sel/selected world eid s)
+    (let [xs (targets/selected world eid s)
           dss (keep #(f world name %) xs)
           base (str "commands.tag." op ".success.")]
       (cond
@@ -130,14 +130,14 @@
                  n (tag-names tags)))))
 
 (defn- tag-list-deltas [world eid [s]]
-  (let [xs (sel/selected world eid s)
+  (let [xs (targets/selected world eid s)
         tags (into #{} (mapcat #(:tags (nth % 2))) xs)]
     (answer (tag-list eid xs tags))))
 
 (defn- swung [world hand [id dim e]]
   (when (account/living? e)
     (let [ds (player/swing-deltas id e hand (:tick world) true)]
-      (or (sel/in-level world dim ds) []))))
+      (or (targets/in-level world dim ds) []))))
 
 (defn- swing-report [eid xs n]
   (if (= 1 n)
@@ -146,7 +146,7 @@
     (say eid "commands.swing.success.multiple" n)))
 
 (defn- swing-deltas [world eid [hand s]]
-  (let [xs (if s (sel/selected world eid s) (sel/self world eid))
+  (let [xs (if s (targets/selected world eid s) (targets/self world eid))
         dss (keep #(swung world (or hand :main) %) xs)]
     (cond
       (empty? xs) (fail eid "argument.entity.notfound.entity")
