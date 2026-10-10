@@ -1,6 +1,6 @@
 (ns collider.game.systems.players.motion
   "The speed the server keeps for a player, which the client does
-  not send: a knock sets it and every tick wears it down as a body
+  not send. A knock sets it and every tick wears it down as a body
   with no input moving through air or along the ground."
   (:require [collider.num :as num]
             [collider.vec :as v]
@@ -22,9 +22,8 @@
 
 (defn- inertia ^double [world e]
   (if (:on-ground e)
-    (num/f32 (* (motion/friction (motion/below-state (:chunks world) (:pos e)
-                                                     (:support e)))
-                air-inertia))
+    (let [st (motion/below-state (:chunks world) (:pos e) (:support e))]
+      (num/f32 (* (motion/friction st) air-inertia)))
     air-inertia))
 
 (defn worn
