@@ -4,6 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.size :as size]
             [collider.game.inventory :as inventory]
+            [collider.game.mob.goals :as goals]
             [collider.game.mode :as game-mode]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.nav :as nav]
@@ -19,9 +20,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.phys :as phys]
             [collider.world.chunk :as chunk]
-            [collider.world.space.sight :as sight])
-  (:import (clojure.lang IFn)
-           (collider.game.mob GoalSelector)))
+            [collider.world.space.sight :as sight]))
 
 (set! *warn-on-reflection* true)
 
@@ -533,8 +532,6 @@
 (defn- ranked [i g]
   (assoc g :prio (:prio g i) :mask (mask-of (:flags g))))
 
-(defn- fns [gs k] (into-array IFn (map k gs)))
-
 (defn parent-look [_ _ _ a _] ((mobs/look-key (:type a)) a))
 
 (defn spec
@@ -545,13 +542,7 @@
   ([goals]
    (spec goals parent-look))
   ([goals child-look]
-   (let [gs (vec (map-indexed ranked goals))]
-     (GoalSelector.
-       gs child-look (count gs) (object-array (map :kind gs))
-       (long-array (map :prio gs)) (long-array (map :mask gs))
-       (fns gs :running?) (fns gs :stop)
-       (fns gs :start) (fns gs :continue?) (fns gs :tick)
-       (boolean-array (map (comp boolean :every-tick?) gs))))))
+   {:goals (vec (map-indexed ranked goals)) :child-look child-look}))
 
 (defn brain
   "Returns the mob and its deltas after one tick of its goals.
@@ -562,8 +553,7 @@
         e (if (== n (long (or (:no-action e) 0)))
             e
             (assoc e :no-action n))]
-    (GoalSelector/think spec world eid e t tempters
-                        (full-pass? eid e t))))
+    (goals/think spec world eid e t tempters (full-pass? eid e t))))
 
 (defn egg-result
   "Returns what a spawn egg of the mob's own kind does to it.
