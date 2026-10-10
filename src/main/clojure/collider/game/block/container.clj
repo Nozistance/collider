@@ -47,7 +47,7 @@
       :else st)))
 
 (defn- blocked? [chunks pos]
-  (block/full-cube? (chest/state-at chunks (mapv + pos [0 1 0]))))
+  (block/conductor? (chest/state-at chunks (mapv + pos [0 1 0]))))
 
 (defn- double-chest-menu [pos p2 ^long st]
   {:kind  :block :rows 6 :type :generic-9x6
