@@ -16,6 +16,7 @@
             [collider.game.areas :as areas]
             [collider.game.player :as player]
             [collider.game.reach :as reach]
+            [collider.game.stack :as stack]
             [collider.game.turn.overlay :as overlay]
             [collider.parallel :as par]
             [collider.random :as random]
@@ -23,7 +24,8 @@
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.direction :as dir]))
+            [collider.world.direction :as dir]
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -61,6 +63,10 @@
                       :sound :snowball/throw}
    :egg              {:power 1.5 :offset 0.0
                       :sound :egg/throw}
+   :blue-egg         {:power 1.5 :offset 0.0
+                      :sound :egg/throw :entity :egg}
+   :brown-egg        {:power 1.5 :offset 0.0
+                      :sound :egg/throw :entity :egg}
    :ender-pearl      {:power 1.5 :offset 0.0
                       :sound :ender-pearl/throw}
    :splash-potion    {:power 0.5 :offset -20.0
@@ -178,13 +184,13 @@
 (defn- eye-y ^double [e] (f32 (entity/eye-height e)))
 
 (defn- thrown [world eid e stack]
-  (let [{:keys [power offset]} (throwables (:item stack))
+  (let [{:keys [power offset entity]} (throwables (:item stack))
         p (:pos e)
         dir (aim (double (:yaw e 0.0)) (double (:pitch e 0.0))
                  (double offset))
         vel (carried e (shot-vel world eid dir (double power)))
         [yaw pitch] (facing vel)]
-    {:type  (:item stack) :owner eid :age 0 :left-owner? false
+    {:type  (or entity (:item stack)) :owner eid :age 0 :left-owner? false
      :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) eye-drop) (v/z p)]
      :vel   vel :yaw yaw :pitch pitch :on-ground false
      :stack (assoc stack :count 1)}))
@@ -463,11 +469,49 @@
         (into ds (hurt/report-deltas
                    world oid (hurt/hurt-now world oid o ds)))))))
 
+(defn- free-at [world at w sy shift]
+  (let [[x y z] at
+        wd (+ w 1.0E-6)
+        hd (+ sy 1.0E-6)
+        box [(- x (/ wd 2.0)) (- y (/ hd 2.0)) (- z (/ wd 2.0))
+             (+ x (/ wd 2.0)) (+ y (/ hd 2.0)) (+ z (/ wd 2.0))]]
+    (some-> (phys/free-position (:chunks world) box [x y z] w sy w y
+                                (phys/context {:type :chicken}))
+            (update 1 + shift))))
+
+(defn- hatched-at
+  "Returns where a baby chicken hatched at the egg position at stands,
+  grown from no size to its own, or nil when it does not fit."
+  [world at]
+  (let [[half h] (size/box {:type :chicken :baby-until 0})
+        w (* 2.0 (double half)) h (double h)
+        [x y z] [(v/x at) (v/y at) (v/z at)]]
+    (or (free-at world [x y z] w h (/ (- h) 2.0))
+        (free-at world [x y z] w 0.0 1.0E-6))))
+
+(defn- hatch-deltas [world eid e d at]
+  (let [t (long (:tick world))]
+    (when (< (random/of-key t eid :hatch) 0.125)
+      (when-let [p (hatched-at world at)]
+        (let [four? (< (random/of-key t eid :hatch-four) 0.03125)
+              n (if four? 4 1)
+              yaw (lerp-rotation (double (:yaw e 0.0))
+                                 (first (facing d)))
+              look (stack/component (:stack e) :chicken/variant)
+              c (assoc (mobs/new-mob :chicken p look t)
+                       :baby-until (+ t mobs/baby-start)
+                       :yaw yaw :pitch 0.0)]
+          (repeat n [:spawn-entity c]))))))
+
 (defn- hit-deltas [world eid e d at hit]
   (case (:type e)
-    (:snowball :egg)
+    :snowball
     (into (vec (hurt-deltas world eid e d hit))
           [(out/all (out/status eid :break))])
+    :egg
+    (-> (vec (hurt-deltas world eid e d hit))
+        (into (hatch-deltas world eid e d at))
+        (conj (out/all (out/status eid :break))))
     :ender-pearl
     (concat (hurt-deltas world eid e d hit) (pearl-deltas world e))
     :experience-bottle (bottle-deltas world eid d at hit)

@@ -67,6 +67,7 @@
    "minecraft:dye"                  [:dye kw]
    "minecraft:attribute_modifiers"  [:attribute-modifiers modifiers]
    "minecraft:instrument"           [:instrument kw]
+   "minecraft:chicken/variant"      [:chicken/variant kw]
    "minecraft:swing_animation"      [:swing-animation swing-animation]
    "minecraft:enchantments"         [:enchantments levels]
    "minecraft:stored_enchantments"  [:stored-enchantments levels]

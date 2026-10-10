@@ -278,3 +278,85 @@
    (moved chunks pos vel half height step false ctx))
   ([chunks pos vel half height step ground? ctx]
    (moved chunks pos vel half height step ground? ctx)))
+
+(defn- overlaps? [[a b c d e f] [p q r s u w]]
+  (and (< a s) (< p d) (< b u) (< q e) (< c w) (< r f)))
+
+(defn- cells [lo hi]
+  (let [cell #(long (Math/floor (double %)))]
+    (range (dec (cell (- lo 1e-7))) (+ 2 (cell (+ hi 1e-7))))))
+
+(defn- shape-at [chunks x y z bottom ctx]
+  (let [bs (Collision/shape (block/collision-arr) (kinds)
+                           (long (chunk/at chunks [x y z]))
+                           (int x) (int y) (int z) (double bottom)
+                           (int ctx))]
+    (mapv (fn [[a b c d e f]]
+            [(+ x a) (+ y b) (+ z c) (+ x d) (+ y e) (+ z f)])
+          (partition 6 (or bs [])))))
+
+(defn- block-boxes
+  "Returns the boxes of the blocks that meet area, each block whole,
+  as a body with its foot at bottom and context ctx meets them."
+  [chunks [x0 y0 z0 x1 y1 z1 :as area] bottom ctx]
+  (for [x (cells x0 x1) y (cells y0 y1) z (cells z0 z1)
+        :let [boxes (shape-at chunks x y z bottom ctx)]
+        :when (some #(overlaps? % area) boxes)
+        b boxes]
+    b))
+
+(defn- merged
+  "Returns the sorted values vs, each one within 1e-7 of the one
+  before left out, as voxel shapes merge their coordinates."
+  [vs]
+  (reduce (fn [acc v]
+            (if (and (seq acc)
+                     (>= (double (peek acc)) (- (double v) 1e-7)))
+              acc
+              (conj acc v)))
+          [] (sort vs)))
+
+(defn- spans [lo hi solids i j]
+  (->> (concat [lo hi] (map #(% i) solids) (map #(% j) solids))
+       (filter #(<= lo % hi))
+       merged
+       (partition 2 1)))
+
+(defn- dist2 ^double [p q]
+  (reduce + (map #(let [d (- (double %1) (double %2))] (* d d)) p q)))
+
+(defn- nearest [p boxes]
+  (let [clamped (fn [[a b c d e f]]
+                  (mapv #(max %2 (min %3 %1)) p [a b c] [d e f]))]
+    (reduce (fn [best q]
+              (if (or (nil? best) (< (dist2 p q) (dist2 p best)))
+                q
+                best))
+            nil (map clamped boxes))))
+
+(defn- grown [sizes [a b c d e f]]
+  (let [[hx hy hz] (map #(/ (double %) 2.0) sizes)]
+    [(- a hx) (- b hy) (- c hz) (+ d hx) (+ e hy) (+ f hz)]))
+
+(defn- inside? [solids x y z]
+  (some (fn [[a b c d e f]] (and (< a x d) (< b y e) (< c z f)))
+        solids))
+
+(defn- mid ^double [a b] (* 0.5 (+ (double a) (double b))))
+
+(defn free-position
+  "Returns the point nearest centre in the box allowed where the
+  centre of a body of size sx sy sz meets no block, or nil when there
+  is none. The body has its foot at bottom and its context in ctx."
+  [chunks [ax0 ay0 az0 ax1 ay1 az1] centre sx sy sz bottom ctx]
+  (let [area [(- ax0 sx) (- ay0 sy) (- az0 sz)
+              (+ ax1 sx) (+ ay1 sy) (+ az1 sz)]
+        solids (mapv #(grown [sx sy sz] %)
+                     (block-boxes chunks area bottom ctx))]
+    (nearest centre
+             (for [[x0 x1] (spans ax0 ax1 solids 0 3)
+                   [y0 y1] (spans ay0 ay1 solids 1 4)
+                   [z0 z1] (spans az0 az1 solids 2 5)
+                   :when (not (inside? solids (mid x0 x1) (mid y0 y1)
+                                       (mid z0 z1)))]
+               [x0 y0 z0 x1 y1 z1]))))
