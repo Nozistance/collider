@@ -7,6 +7,7 @@
             [collider.game.command.forms :as forms]
             [collider.game.command.nodes :as commands]
             [collider.game.effect :as effect]
+            [collider.game.entity :as entity]
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
@@ -212,7 +213,8 @@
   (concat
     [(assoc (data/recipes) :packet :update-recipes)]
     (permission-packets world eid e)
-    [(join-teleport-packet e)
+    [{:packet :system-chat :overlay false :text (entity/joined-text e)}
+     (join-teleport-packet e)
      {:packet :server-data :motd motd}
      border-packet
      (clock-sync-packet world)

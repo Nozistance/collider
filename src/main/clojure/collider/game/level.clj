@@ -218,11 +218,14 @@
 (def ^:private player-type #{:player})
 
 (defn server-view
-  "Returns the shared keys of world with all players as entities."
+  "Returns the shared keys of world with all players as entities, and
+  as :quits the players who left in this tick."
   [world]
-  (let [players (mapcat #(of-types (val %) player-type))]
+  (let [players (mapcat #(of-types (val %) player-type))
+        quits (mapcat #(get-in (val %) [:input :quits]))]
     (assoc (dissoc world :levels)
-      :entities (into (lm/long-map) players (:levels world)))))
+      :entities (into (lm/long-map) players (:levels world))
+      :quits (into [] quits (:levels world)))))
 
 (defn update-entity
   "Returns w with entity eid put through f, when w holds it."

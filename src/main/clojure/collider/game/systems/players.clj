@@ -1,6 +1,7 @@
 (ns collider.game.systems.players
   "The player list, logins and the tab header."
   (:require [collider.game.deltas :as deltas]
+            [collider.game.entity :as entity]
             [collider.game.level :as level]
             [collider.game.out :as out]
             [collider.game.player :as player]
@@ -44,9 +45,17 @@
                       (other-logins world pname))))
           events))
 
-(defn- joined-deltas [events]
-  (for [[tag eid] events :when (= :player-join tag)]
-    (out/to eid (out/joined))))
+(defn- joined-deltas [world events]
+  (for [[tag eid] events :when (= :player-join tag)
+        d [(out/to eid (out/joined))
+           (out/except eid (out/system-chat
+                             (entity/joined-text
+                               (get-in world [:entities eid]))))]]
+    d))
+
+(defn- left-deltas [world]
+  (for [e (:quits world)]
+    (out/all (out/system-chat (entity/left-text e)))))
 
 (defn- add-entry [e]
   (cond-> {:uuid (:uuid e) :name (:name e) :ping (or (:ping e) 0)
@@ -146,7 +155,8 @@
   (let [ps (level/player-entries world)
         joins (player/joins d)]
     (deltas/of-vec
-      (into [] cat [(joined-deltas joins)
+      (into [] cat [(joined-deltas world joins)
+                    (left-deltas world)
                     (duplicate-login-deltas world joins)
                     (list-deltas world ps)
                     (tab-header-deltas world joins)]))))

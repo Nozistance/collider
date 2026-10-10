@@ -527,3 +527,16 @@
        :click {:action :suggest-command
                :command (str "/tell " nm " ")}}
       :else (assoc nm :hover hover :insertion (str (:uuid e))))))
+
+(defn- yellow-line [key e]
+  {:translate key :with [(display-name e)] :color "yellow"})
+
+(defn joined-text
+  "Returns the line chat shows when player e joins."
+  [e]
+  (yellow-line "multiplayer.player.joined" e))
+
+(defn left-text
+  "Returns the line chat shows when player e leaves."
+  [e]
+  (yellow-line "multiplayer.player.left" e))
