@@ -18,7 +18,7 @@
             [collider.game.systems.blocks.cauldron :as cauldron]
             [collider.game.systems.blocks.edit :as edit]
             [collider.game.systems.blocks.tools :as tools]
-            [collider.game.systems.containers :as containers]
+            [collider.game.block.screen :as screen]
             [collider.random :as random]
             [collider.world.block :as block]
             [collider.world.blocks.dragonegg :as dragonegg]
@@ -519,7 +519,7 @@
         main? (main-hand? world eid)]
     (cond
       (block-lectern/has-book? st)
-      (when main? (containers/open-deltas world eid pos))
+      (when main? (screen/open-deltas world eid pos))
       (lectern/book? stack)
       (concat (lectern/place-book-deltas world pos st stack)
               (consume-deltas world eid))
@@ -585,7 +585,7 @@
 
 (defn- open-use [{:keys [world eid pos]}]
   (when (main-hand? world eid)
-    (containers/open-deltas world eid pos)))
+    (screen/open-deltas world eid pos)))
 
 (defn- cauldron-use [{:keys [world eid pos item]}]
   (let [held (player/use-stack world eid)]

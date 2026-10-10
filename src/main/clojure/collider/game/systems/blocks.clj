@@ -22,7 +22,7 @@
             [collider.game.systems.blocks.tools :as tools]
             [collider.game.systems.blocks.use :as use]
             [collider.game.systems.consume :as consume]
-            [collider.game.systems.containers :as containers]
+            [collider.game.block.screen :as screen]
             [collider.game.systems.hanging :as hanging]
             [collider.game.turn.thrown :as thrown]
             [collider.world.block :as block]
@@ -196,7 +196,7 @@
 
 (defn- spectator-deltas [world eid pos face]
   (when-not (no-face? face)
-    (seq (containers/spectator-open-deltas world eid pos))))
+    (seq (screen/spectator-open-deltas world eid pos))))
 
 (defn- place-deltas [world [eid pos face :as args] origin]
   (if (game-mode/spectator? (get-in world [:entities eid]))

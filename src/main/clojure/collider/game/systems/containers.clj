@@ -18,9 +18,7 @@
             [collider.game.apply :as apply]
             [collider.game.player :as player]
             [collider.random :as random]
-            [collider.vec :as v]
-            [collider.world.block :as block]
-            [collider.world.blocks.chest :as chest]))
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
 
@@ -34,83 +32,6 @@
                (when (>= (long k) n) [(- (long k) n) v]))]
     [(mapv #(get m %) (range n))
      (into {} (keep tail) m)]))
-
-(defn- opened [world eid e m id]
-  (let [contents (container/items world eid m)
-        slots (screen/view m contents (:inventory e))]
-    {:menu  (assoc m :id id :state-id 1
-                     :remote (screen/remote-slots slots)
-                     :remote-data (container/data-values world m)
-                     :remote-carried (screen/remote-of (:carried e)))
-     :slots slots}))
-
-(defn- open-screen-deltas [world eid m id slots carried]
-  (let [screen (:screen m (:type m))
-        one (fn [i v] (out/to eid (out/container-data id i v)))]
-    (concat
-      [(out/to eid (out/open-screen id screen (:title m)))
-       (out/to eid (out/container-content id 1 slots carried))]
-      (when (and (container/bench? m) (contains? m :selected))
-        [(one 0 (:selected m))])
-      (when (container/lectern? m)
-        [(one 0 (lectern/page world m))])
-      (map-indexed one (container/data-values world m)))))
-
-(def ^:private open-stats
-  {:crafting-table :custom/interact-with-crafting-table
-   :stonecutter    :custom/interact-with-stonecutter
-   :loom           :custom/interact-with-loom
-   :furnace        :custom/interact-with-furnace
-   :blast-furnace  :custom/interact-with-blast-furnace
-   :smoker         :custom/interact-with-smoker
-   :brewing-stand  :custom/interact-with-brewingstand
-   :anvil          :custom/interact-with-anvil
-   :grindstone     :custom/interact-with-grindstone
-   :smithing-table :custom/interact-with-smithing-table})
-
-(def ^:private block-stats
-  {:chest                    :custom/open-chest
-   :copper-chest             :custom/open-chest
-   :weathering-copper-chest  :custom/open-chest
-   :trapped-chest            :custom/trigger-trapped-chest
-   :barrel                   :custom/open-barrel
-   :shulker-box              :custom/open-shulker-box
-   :ender-chest              :custom/open-enderchest})
-
-(defn- open-stat [world pos m]
-  (or (open-stats (:type m))
-      (block-stats (block/type-of
-                     (chest/state-at (:chunks world) pos)))))
-
-(defn- open-menu-deltas [world eid e m]
-  (let [m (container/for-player m e)
-        prev (screen/close-deltas world eid e true)
-        e' (cond-> e prev (assoc :carried nil :menu nil))
-        id (inc (mod (long (:container-counter e 0)) 100))
-        {:keys [menu slots]} (opened world eid e' m id)]
-    (concat
-      prev
-      [[:merge-entity eid {:menu menu :container-counter id}]]
-      (open-screen-deltas world eid m id slots (:carried e')))))
-
-(defn open-deltas
-  [world eid pos]
-  (if-let [m (container/menu-at world pos)]
-    (let [e (get-in world [:entities eid])
-          stat (open-stat world pos m)]
-      (concat
-        (open-menu-deltas world eid e m)
-        (when stat [[:award eid stat 1]])
-        (screen/opener-deltas world e m 1)))
-    []))
-
-(defn spectator-open-deltas
-  "Returns the deltas of a spectator using a block with a menu.
-  The menu opens with no stat and no opener. Returns nil when the
-  block has none."
-  [world eid pos]
-  (when-let [m (container/provider-at world pos)]
-    (open-menu-deltas world eid (get-in world [:entities eid]) m)))
 
 (defn- with-client [menu changed carried]
   (let [put (fn [r [s v]] (assoc r (long s) (screen/remote-of v)))
