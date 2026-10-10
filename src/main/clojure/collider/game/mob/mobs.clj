@@ -275,12 +275,13 @@
 (defn metadata
   "Returns what clients see of mob e besides its movement."
   [e]
-  (cond-> (assoc (own-metadata e)
-                 :baby? (some? (:baby-until e)) :burning? (burning? e)
-                 :health (num/f32 (double (:health e))))
-    (:age-locked? e) (assoc :age-locked? true)
-    (:custom-name e) (assoc :custom-name (:custom-name e))
-    (:custom-name-visible e) (assoc :custom-name-visible true)))
+  (let [health (:health e (max-health (:type e)))]
+    (cond-> (assoc (own-metadata e)
+                   :baby? (some? (:baby-until e)) :burning? (burning? e)
+                   :health (num/f32 (double health)))
+      (:age-locked? e) (assoc :age-locked? true)
+      (:custom-name e) (assoc :custom-name (:custom-name e))
+      (:custom-name-visible e) (assoc :custom-name-visible true))))
 
 (defn look-key
   "Returns the key that holds how a mob of kind type looks. A sheep
