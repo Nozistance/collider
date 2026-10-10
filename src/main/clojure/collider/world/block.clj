@@ -267,12 +267,6 @@
   [^long st]
   (Block/attached (tables) st))
 
-(defn replaceable?
-  "Returns true when a placed block replaces st."
-  {:inline (via `Block/replaceable)}
-  [^long st]
-  (Block/replaceable (tables) st))
-
 (defn liquid?
   "Returns true when st is a fluid, not a block that holds one."
   {:inline (via `Block/liquid)}
@@ -433,9 +427,6 @@
   "Returns true when st joins like a fence."
   [^long st] (= :fence (shape-of st)))
 
-(defn shaped?
-  [^long st] (some? (shape-of st)))
-
 (defn- stops? [^long st]
   (and (pos? st)
        (not (aget ^booleans @liquid-arr st))
@@ -558,13 +549,6 @@
   [^long st]
   (Block/canOcclude (tables) st))
 
-(defn shape-occludes?
-  "Returns true when the faces of from and to that meet along d seal
-  and let no light through."
-  {:inline (fn [from to d] `(Block/occludes (tables) ~from ~to ~d))}
-  [^long from ^long to ^long d]
-  (Block/occludes (tables) from to d))
-
 (defn light-dampening-into
   "Returns the light cost of crossing from into to along dir."
   {:inline (fn [from to dir simple]
@@ -583,30 +567,12 @@
               (double (:resistance b 3.0))))
       a)))
 
-(defn resist
-  "Returns the blast resistance of st."
-  {:inline (via `Block/resist)}
-  ^double [^long st]
-  (Block/resist (tables) st))
-
 (defn resist-arr
   ^doubles []
   @resist-table)
 
-(defn- behind [facing] (dir/offset (dir/opposite facing)))
-
 (defn facing-of
   [^long st] (:facing (props-of st)))
-
-(defn support-offset
-  "Returns the offset to the block that holds st up, or nil."
-  [^long st]
-  (let [t (type-of st)]
-    (cond
-      (contains? torch-types t) [0 -1 0]
-      (contains? wall-torch-types t) (behind (facing-of st))
-      (contains? side-types t) (behind (facing-of st))
-      (contains? ground-types t) [0 -1 0])))
 
 (defn- info-of [^long st] (get (data/blocks) (block-of st)))
 

@@ -150,15 +150,6 @@
     (r/fold 1 (r/monoid merge (constantly empty-deltas))
             (folded-into f) v)))
 
-(defn fold-merged
-  "Returns the deltas f gives for each item of vector v, merged in
-  order. The items run in parallel."
-  ^Deltas [f v]
-  (let [rf (fn [acc x] (merge acc (f x)))]
-    (if (< (count v) 2)
-      (reduce rf empty-deltas v)
-      (r/fold 1 (r/monoid merge (constantly empty-deltas)) rf v))))
-
 (defn merge-all
   "Returns the deltas of vector v merged in order, pairwise."
   ^Deltas [v]

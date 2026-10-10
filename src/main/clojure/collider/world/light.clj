@@ -25,18 +25,6 @@
   ^long [chunks x y z]
   (Light/skyAt chunks (long x) (long y) (long z)))
 
-(defn sky-light-level
-  "Returns the sky brightness from 0.0 to 15.0 at a time of day.
-  The rain and thunder levels from 0.0 to 1.0 dim it."
-  {:inline (fn
-             ([t] `(Light/skyLevel (long ~t) 0.0 0.0))
-             ([t r h]
-              `(Light/skyLevel (long ~t) (double ~r) (double ~h))))
-   :inline-arities #{1 3}}
-  (^double [^long time] (Light/skyLevel time 0.0 0.0))
-  (^double [^long time ^double rain-level ^double thunder-level]
-   (Light/skyLevel time rain-level thunder-level)))
-
 (defn sky-darken
   "Returns how much time and weather dim the sky light, 0 to 15."
   {:inline (fn

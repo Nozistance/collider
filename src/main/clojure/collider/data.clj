@@ -364,19 +364,6 @@
   ^String [^String s]
   (if (str/includes? s ":") s (str "minecraft:" s)))
 
-(defn parse-id
-  "Returns the namespace and the path of resource location s. The
-  namespace is minecraft when s has none."
-  [^String s]
-  (let [i (str/index-of s \:)]
-    [(if (and i (pos? (long i))) (subs s 0 i) "minecraft")
-     (if i (subs s (inc (long i))) s)]))
-
-(defn index
-  "Returns the keys ks by their resource location."
-  [ks]
-  (into {} (map (fn [k] [(wire k) k])) ks))
-
 (def validate? (Boolean/getBoolean "collider.validate"))
 
 (defn packet-id ^long [state dir name]
@@ -511,13 +498,6 @@
 (defn tags
   "Returns the tags the server sends to the client, by registry."
   [] @sent-tags)
-
-(defn tag-index
-  "Returns the tags of registry by resource location, each a set."
-  [registry]
-  (into {}
-        (map (fn [[t vs]] [(str "minecraft:" t) (set vs)]))
-        (get (tags) registry)))
 
 (defn registry-tags
   "Returns the tags of registry path by name, or nil when it has

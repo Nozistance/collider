@@ -87,23 +87,11 @@
   [a b]
   (and (axis-meets? a b 0) (axis-meets? a b 1) (axis-meets? a b 2)))
 
-(defn yaw-toward
-  "Returns the yaw in degrees that looks from p at tgt."
-  ^double [p tgt]
-  (let [dx (- (x p) (x tgt)) dz (- (z tgt) (z p))]
-    (Math/toDegrees (Math/atan2 dx dz))))
-
 (defn wrap-deg ^double [^double a]
   (let [a (rem a 360.0)]
     (cond (< a -180.0) (+ a 360.0)
           (>= a 180.0) (- a 360.0)
           :else a)))
-
-(defn limit-angle
-  "Returns cur turned toward target by at most step degrees."
-  ^double [^double cur ^double target ^double step]
-  (let [d (wrap-deg (- target cur))]
-    (+ cur (Math/max (- step) (Math/min step d)))))
 
 (def ^:private ^:const sin-scale 10430.378350470453)
 

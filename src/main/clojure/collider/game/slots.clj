@@ -7,8 +7,6 @@
 
 (def armor {:head 5 :chest 6 :legs 7 :feet 8})
 
-(def ^:const boots 8)
-
 (def main (vec (range 9 36)))
 
 (def ^:const hotbar 36)

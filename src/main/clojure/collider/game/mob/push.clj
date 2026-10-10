@@ -157,15 +157,6 @@
         b (reduce #(add-body %1 %2 true) (bodies) es)]
     (grid-of b (int-array (range (count es))))))
 
-(defn islands
-  "Returns the pushable bodies in groups that one tick of movement
-  cannot bring together. Each group steps on its own."
-  [world held]
-  (let [f (fn [b entry]
-            (if (body? held entry) (add-body b entry false) b))
-        b (reduce f (bodies) (:entities world))]
-    (mapv #(entries-of b %) (groups b))))
-
 (defn- scan [^PushGrid index eid p half height hi]
   (if index
     (PushGrid/shoves index (double (v/x p)) (double (v/y p))

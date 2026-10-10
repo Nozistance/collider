@@ -77,12 +77,6 @@
   (^double [t eid k i]
    (of-longs (long t) (long eid) (hash k) (long i))))
 
-(defn one-in?
-  "Returns true with a chance of one in n, decided by tick t, eid and
-  key k."
-  [t eid k ^long n]
-  (zero? (long (* n (rnd t eid k)))))
-
 (defn shuffled
   "Returns the vector xs shuffled. The function pick takes a count i
   and returns a whole number from 0 below i."

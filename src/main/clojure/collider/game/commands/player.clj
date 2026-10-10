@@ -75,16 +75,13 @@
       (neg? (- limit counted)) n
       :else (min (- limit counted) n))))
 
-(defn- shrunk [stack ^long k]
-  (when (< k (stack/size stack)) (update stack :count - k)))
-
 (defn- clear-step [pred limit]
   (fn [[n changes] [slot stack]]
     (let [k (taken pred limit n stack)]
       [(+ (long n) k)
        (cond-> changes
          (and (pos? k) (not (zero? (long limit))))
-         (conj [slot (shrunk stack k)]))])))
+         (conj [slot (stack/shrunk stack k)]))])))
 
 (defn- cleared
   "Returns how many items pred matches on player e, and the slot

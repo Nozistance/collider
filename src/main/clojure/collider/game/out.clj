@@ -397,17 +397,9 @@
 
 (def sound-anvil-broken :sound-anvil-broken)
 
-(def sound-anvil-used :sound-anvil-used)
-
 (def sound-anvil-land :sound-anvil-land)
 
 (def sound-brewing-stand-brew :sound-brewing-stand-brew)
-
-(def sound-grindstone-used :sound-grindstone-used)
-
-(def sound-page-turn :sound-page-turn)
-
-(def sound-smithing-table-used :sound-smithing-table-used)
 
 (def sound-drip-lava-into-cauldron :sound-drip-lava-into-cauldron)
 

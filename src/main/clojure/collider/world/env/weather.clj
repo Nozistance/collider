@@ -64,15 +64,6 @@
   [ctx]
   (> (rain-level ctx) 0.2))
 
-(defn thundering?
-  [ctx]
-  (> (thunder-level ctx) 0.9))
-
-(defn sky-darken
-  "Returns how much weather and time dim the sky light, 0 to 15."
-  ^long [ctx ^long time]
-  (light/sky-darken time (rain-level ctx) (thunder-level ctx)))
-
 (defn brightness
   "Returns the light level at x y z under the weather.
   The time of day dims the sky part too."

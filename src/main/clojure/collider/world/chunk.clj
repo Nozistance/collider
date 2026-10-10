@@ -96,24 +96,8 @@
   [^Section s ^booleans pred]
   (.holds s pred))
 
-(defn with-section
-  ^Chunk [^Chunk chunk ^long si ^Section s]
-  (.with chunk (int si) s))
-
-(defn section-block
-  "Returns the block state at index idx of s. The index runs over
-  x fastest and over y slowest."
-  ^long [^Section s ^long idx]
-  (.block s (int idx)))
-
 (defn sky-light
   ^long [^Section s ^long idx] (.skyLight s (int idx)))
-
-(defn with-sky-light
-  ^Section [^Section s ^bytes a] (.withSkyLight s a))
-
-(defn with-block-light
-  ^Section [^Section s ^bytes a] (.withBlockLight s a))
 
 (defn sky-lit?
   "Returns true when s holds its own sky light."
@@ -134,15 +118,6 @@
 
 (defn load-chunk
   ^Chunk [^DataInput in] (Chunk/load in))
-
-(defn set-block
-  "Returns chunk with the block at local lx y lz set to state."
-  ^Chunk [^Chunk chunk lx y lz state]
-  (let [y (long y)
-        si (int (section-index y))
-        idx (+ (* (bit-and y 15) 256) (* (long lz) 16) (long lx))
-        s (or (.section chunk si) (.fresh chunk si))]
-    (.with chunk si (.with s (int idx) (int state)))))
 
 (defn get-block
   "Returns the block state at local lx y lz. Air comes back where

@@ -143,14 +143,6 @@
   [stack ^long k]
   (when (< k (size stack)) (assoc stack :count (- (size stack) k))))
 
-(defn span
-  "Returns the stacks of v at slots from to to, last first when
-  reverse? is true."
-  [v ^long from ^long to reverse?]
-  (map v (if reverse?
-           (range (dec to) (dec from) -1)
-           (range from to))))
-
 (defn in-range?
   "Returns true when v is within the bounds min and max inclusive.
   A bound that is absent does not limit."
