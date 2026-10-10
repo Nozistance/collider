@@ -4,7 +4,7 @@
             [collider.world.env.biome :as biome]
             [collider.world.env.dimension :as dimension]
             [collider.world.light :as light]
-            [collider.world.space.spawn :as spawn]))
+            [collider.world.space.column :as column]))
 
 (set! *warn-on-reflection* true)
 
@@ -79,7 +79,7 @@
 
 (defn- under-cover? [chunks p]
   (let [[x y z] p]
-    (> (spawn/motion-blocking-height chunks x z) (long y))))
+    (> (column/motion-blocking-height chunks x z) (long y))))
 
 (defn precipitation-at
   "Returns :none, :rain or :snow for what falls at block p now."

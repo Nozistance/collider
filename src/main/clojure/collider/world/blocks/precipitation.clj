@@ -7,7 +7,7 @@
             [collider.world.env.biome :as biome]
             [collider.world.env.weather :as weather]
             [collider.world.light :as light]
-            [collider.world.space.spawn :as spawn]))
+            [collider.world.space.column :as column]))
 
 (set! *warn-on-reflection* true)
 
@@ -102,7 +102,7 @@
     (biome/warm-enough-to-rain? (biome/at (:dim ctx) p) p)))
 
 (defn- column-changes [ctx chunks x z max-height roll]
-  (let [top [(long x) (spawn/motion-blocking-height chunks x z)
+  (let [top [(long x) (column/motion-blocking-height chunks x z)
              (long z)]
         below [(long x) (dec (long (nth top 1))) (long z)]
         biome (biome/at (:dim ctx) top)]

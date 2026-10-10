@@ -17,7 +17,7 @@
             [collider.random :as random]
             [collider.vec :as v]
             [collider.world.chunk :as chunk]
-            [collider.world.space.spawn :as spawn])
+            [collider.world.space.column :as column])
   (:import (java.nio.charset StandardCharsets)
            (java.util UUID)))
 
@@ -74,7 +74,7 @@
 
 (defn- centre-top [lv]
   [0 (max (long (:min-y lv chunk/min-y))
-          (spawn/motion-blocking-height (:chunks lv {}) 0 0))
+          (column/motion-blocking-height (:chunks lv {}) 0 0))
    0])
 
 (defn spawn-turn

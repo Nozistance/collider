@@ -1,67 +1,16 @@
 (ns collider.world.space.spawn
-  "Places where players and mobs may spawn."
+  "Where a player spawns in a level."
   (:require [collider.data :as data]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.chunk :as chunk]
-            [collider.world.light :as light]
-            [collider.world.phys :as phys]))
+            [collider.world.space.column :as column]))
 
 (set! *warn-on-reflection* true)
 
 (def ^:private ^:const max-attempts 1024)
 
 (def ^:private ^:const eps 1.0E-7)
-
-(def ^:private ^:const none (dec chunk/min-y))
-
-(defn- state-at [chunks x y z]
-  (if (chunk/in-range? (long y))
-    (chunk/block-state chunks x y z)
-    0))
-
-(defn- fluid? [^long st] (some? (block/liquid-class st)))
-
-(defn- air? [^long st] (block/air-type? st))
-
-(defn- motion-blocking? [^long st]
-  (or (block/blocks-motion? st) (fluid? st)))
-
-(defn- blank-at? [chunks ^long x ^long y ^long z]
-  (let [cx (chunk/block->chunk x) cz (chunk/block->chunk z)
-        c (get chunks (chunk/pos->id cx cz))
-        s (when c (chunk/chunk-section c (chunk/section-index y)))]
-    (or (nil? s) (identical? s chunk/empty-section))))
-
-(defn- column-heights [chunks x z]
-  (loop [y (long chunk/max-y) surface none motion none floor none]
-    (cond
-      (or (< y (long chunk/min-y)) (not= floor none))
-      [surface motion floor]
-      (blank-at? chunks x y z)
-      (recur (dec (bit-and y -16)) surface motion floor)
-      :else
-      (let [st (long (state-at chunks x y z))
-            top? (and (= motion none) (motion-blocking? st))]
-        (recur (dec y)
-               (if (and (= surface none) (not (air? st))) y surface)
-               (if top? y motion)
-               (if (block/blocks-motion? st) y floor))))))
-
-(defn surface-top
-  "Returns the y of the highest block of the column at x z that is
-  not air, one below the lowest y when there is none."
-  ^long [chunks x z]
-  (long (nth (column-heights chunks x z) 0)))
-
-(defn motion-blocking-height
-  "Returns the y just above the top of the column at x z.
-  The top is its highest block or fluid."
-  ^long [chunks x z]
-  (let [[_ motion _] (column-heights chunks x z)]
-    (if (= (long motion) (long none))
-      (long chunk/min-y)
-      (inc (long motion)))))
 
 (defn- overlaps? [lo box]
   (let [[x0 y0 z0 x1 y1 z1] lo [a b c d e f] box]
@@ -81,9 +30,9 @@
 
 (defn- cell-boxes [chunks x y z]
   (let [x (long x) y (long y) z (long z)
-        st (long (state-at chunks x y z))
+        st (long (column/state-at chunks x y z))
         solid (mapv #(box-at x y z %) (block/collision-boxes st))]
-    (if (fluid? st)
+    (if (column/fluid? st)
       (conj solid (fluid-box chunks x y z st))
       solid)))
 
@@ -122,14 +71,14 @@
             (> (long surface) (long floor)))))
 
 (defn- level-respawn-pos [chunks x z]
-  (let [[surface top floor] (column-heights chunks x z)]
+  (let [[surface top floor] (column/column-heights chunks x z)]
     (when (and (>= (long top) (long chunk/min-y))
                (open-top? surface top floor))
       (loop [y (inc (long top))]
         (when (>= y (long chunk/min-y))
-          (let [st (long (state-at chunks x y z))]
+          (let [st (long (column/state-at chunks x y z))]
             (cond
-              (fluid? st) nil
+              (column/fluid? st) nil
               (block/collision-face-full-up? st) [x (inc y) z]
               :else (recur (dec y)))))))))
 
@@ -199,98 +148,3 @@
         (fixup-height chunks suggestion)
         (let [[x z] (candidate-cell params ox oz i)]
           (or (free-spawn chunks x z) (recur (inc i))))))))
-
-(defn- state-set ^booleans [runs]
-  (let [a (boolean-array (data/block-state-count))]
-    (doseq [[lo hi] runs
-            id (range lo (inc (min (long hi) (dec (alength a)))))]
-      (aset a (int id) true))
-    a))
-
-(def ^:private ^:table sets
-  (delay (let [s (data/spawns)]
-           {:floors (mapv state-set (:floors s))
-            :dangers (mapv state-set (:dangers s))})))
-
-(defn- in? [^booleans a ^long st] (aget a st))
-
-(defn facts
-  "Returns the spawn facts of entity type t, nil for a misc type."
-  [t]
-  (get-in (data/spawns) [:types t]))
-
-(defn categories
-  "Returns the mob categories in order, each with its cap per chunk,
-  its despawn distances and whether it is friendly and persistent."
-  []
-  (:categories (data/spawns)))
-
-(defn spawn-floor?
-  "Returns true when a mob with facts f may spawn on st."
-  [f ^long st]
-  (in? (nth (:floors @sets) (:floor f)) st))
-
-(defn- dangerous? [f ^long st]
-  (in? (nth (:dangers @sets) (:danger f)) st))
-
-(defn empty-spawn-block?
-  "Returns true when a mob with facts f may stand in st."
-  [f ^long st]
-  (not (or (block/full-cube? st) (block/signal-source? st)
-           (block/liquid-class st)
-           (block/tagged? st "prevent_mob_spawning_inside")
-           (dangerous? f st))))
-
-(defn- in-border? [^long x ^long z]
-  (let [b chunk/world-border]
-    (and (<= (- b) x) (< x b) (<= (- b) z) (< z b))))
-
-(defn- at ^long [chunks x y z] (chunk/block-state chunks x y z))
-
-(defn- on-ground? [chunks f x y z]
-  (let [x (long x) y (long y) z (long z)]
-    (and (in-border? x z) (spawn-floor? f (at chunks x (dec y) z))
-         (empty-spawn-block? f (at chunks x y z))
-         (empty-spawn-block? f (at chunks x (inc y) z)))))
-
-(defn position-ok?
-  "Returns true when the placement type of kind f allows a spawn at
-  block x y z."
-  [chunks f x y z]
-  (case (:placement f)
-    :on-ground (on-ground? chunks f x y z)
-    :no-restrictions true
-    false))
-
-(defn- bright? [chunks x y z] (> (light/light-at chunks x y z) 8))
-
-(defn rules-ok?
-  "Returns true when a mob of kind k may spawn at block x y z. The
-  block below must be of the ground of k and the cell must be lit."
-  [chunks k peaceful? x y z]
-  (and (or (:peaceful k) (not peaceful?))
-       (some? (:ground k))
-       (block/tagged? (at chunks x (dec (long y)) z) (:ground k))
-       (bright? chunks x y z)))
-
-(defn spawn-box
-  [k x y z]
-  (let [s (float (:scale k 1.0))
-        half (double (/ (float (* s (float (:width k)))) (float 2.0)))
-        height (double (float (* s (float (:height k)))))]
-    [(- (double x) half) (double y) (- (double z) half)
-     (+ (double x) half) (+ (double y) height) (+ (double z) half)]))
-
-(defn mob-box-free?
-  "Returns true when box meets no block. Every block sees the box
-  above it."
-  [chunks box]
-  (phys/box-free? chunks box Double/MAX_VALUE))
-
-(defn kind
-  "Returns the spawn facts of entity type t with its size and ground,
-  or nil for a misc type. The ground is the block tag it spawns on."
-  [t ground]
-  (when-let [f (facts t)]
-    (let [{:keys [width height]} (get (data/entities) t)]
-      (assoc f :type t :ground ground :width width :height height))))
