@@ -3,12 +3,12 @@
   the hurts it takes rolled up."
   (:require [collider.data :as data]
             [collider.game.mob.brain :as brain]
+            [collider.game.mob.steer :as steer]
             [collider.game.out :as out]
             [collider.num :as num]
             [collider.random :as random]
             [collider.vec :as v]
-            [collider.world.env.signal :as signal])
-  (:import (collider.game.mob Steer)))
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -72,7 +72,7 @@
 (defn- stopped-in-place [e]
   (cond-> (assoc e :vel (v/v3 0.0 0.0 0.0) :love-until nil)
     (:path (:nav e)) (assoc-in [:nav :path] nil)
-    (:move e) (update :move #(Steer/jumped % 0.0 false))))
+    (:move e) (update :move #(steer/jumped % 0.0 false))))
 
 (defn- said [e k]
   (update e :shell-sounds (fnil conj []) k))

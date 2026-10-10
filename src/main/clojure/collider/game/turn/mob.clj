@@ -17,6 +17,7 @@
             [collider.game.mob.sense :as sense]
             [collider.game.mob.sensor :as sensor]
             [collider.game.mob.spec :as spec]
+            [collider.game.mob.steer :as steer]
             [collider.game.mob.travel :as travel]
             [collider.game.out :as out]
             [collider.game.turn.living :as living]
@@ -28,8 +29,7 @@
             [collider.world.block :as block]
             [collider.world.blocks.motion :as motion])
   (:import (clojure.lang MapEntry)
-           (collider.data LongMap)
-           (collider.game.mob Steer)))
+           (collider.data LongMap)))
 
 (set! *warn-on-reflection* true)
 
@@ -156,7 +156,7 @@
 (defn- spent-jump [e dead?]
   (cond-> e
     (:jump e) (gen/with {:jump false})
-    dead? (gen/with {:move (Steer/halted (:move e))})))
+    dead? (gen/with {:move (steer/halted (:move e))})))
 
 (defn- move-speed ^double [e]
   (if (or (seq (:effects e)) (:frost e))

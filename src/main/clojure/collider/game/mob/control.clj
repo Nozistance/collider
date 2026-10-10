@@ -3,11 +3,12 @@
   (:require [collider.game.entity :as entity]
             [collider.game.entity.gen :as gen]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.steer :as steer]
             [collider.num :as num]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk])
-  (:import (collider.game.mob Nav Steer)
+  (:import (collider.game.mob Nav)
            (collider.world.space Path)))
 
 (set! *warn-on-reflection* true)
@@ -24,7 +25,7 @@
   "Returns a turned toward b by at most max degrees, brought back into
   one turn around the circle."
   ^double [^double a ^double b ^double max]
-  (Steer/rotlerp a b max))
+  (steer/rotlerp a b max))
 
 (defn shape-top
   "Returns how high the collision shape of the cell x y z reaches."
@@ -41,7 +42,7 @@
   "Returns mob e told to walk to x y z at that speed.
   A jump under way keeps the mob jumping."
   [e x y z speed]
-  (let [m (Steer/wanted (:move e) (double x) (double y) (double z)
+  (let [m (steer/wanted (:move e) (double x) (double y) (double z)
                         (double speed))]
     (assoc e :move m)))
 
@@ -62,7 +63,7 @@
          (not (block/tagged? st "fences")))))
 
 (defn- turned ^double [e ^double xd ^double zd]
-  (Steer/turned (double (:yaw e)) xd zd max-turn))
+  (steer/turned (double (:yaw e)) xd zd max-turn))
 
 (defn- jumps? [chunks e xd yd zd width]
   (let [xd (double xd) zd (double zd) w (double width)]
@@ -76,9 +77,9 @@
         yd (- (double (:y m)) (v/y pos))
         zd (- (double (:z m)) (v/z pos))]
     (if (< (+ (* xd xd) (* yd yd) (* zd zd)) min-speed-sqr)
-      (gen/with e {:nav nav :move (Steer/arrived m)})
+      (gen/with e {:nav nav :move (steer/arrived m)})
       (let [jump? (boolean (jumps? (:chunks world) e xd yd zd width))
-            m (Steer/driven m (* (double (:mult m)) attr) jump?)
+            m (steer/driven m (* (double (:mult m)) attr) jump?)
             yaw (turned e xd zd)]
         (if jump?
           (gen/with e {:nav nav :yaw yaw :move m :jump true})
@@ -87,10 +88,10 @@
 (defn- jumping-tick [e nav m ^double attr]
   (let [landed? (boolean (or (:on-ground e) (in-liquid? e)))
         s (* (double (:mult m)) attr)]
-    (gen/with e {:nav nav :move (Steer/jumped m s landed?)})))
+    (gen/with e {:nav nav :move (steer/jumped m s landed?)})))
 
 (defn- waiting [e nav m]
-  (let [h (Steer/halted m)]
+  (let [h (steer/halted m)]
     (if (and (identical? h (:move e)) (identical? nav (:nav e)))
       e
       (gen/with e {:nav nav :move h}))))
@@ -104,9 +105,9 @@
    (let [nav (or nav (:nav e)) m (or m (:move e))
          op (:op m :wait)]
      (cond
-       (identical? op Steer/MOVE_TO)
+       (identical? op :move-to)
        (move-to-tick world e nav m attr width)
-       (identical? op Steer/JUMPING)
+       (identical? op :jumping)
        (jumping-tick e nav m (double attr))
        :else (waiting e nav m)))))
 

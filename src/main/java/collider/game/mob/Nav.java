@@ -435,15 +435,9 @@ public final class Nav extends APersistentMap {
         }
     }
 
-    /// Returns the move control `move` told to walk to the node the
-    /// navigation `m` walks to, for a mob `half` wide each side.
-    public static Steer aimed(
-            Object m,
-            Object move,
-            ChunkIndex c,
-            Object[] shapes,
-            double half
-    ) {
+    /// Returns the point the navigation `m` walks to, for a mob `half`
+    /// wide each side, as x, y, z and the speed it walks at.
+    public static double[] aimedAt(Object m, ChunkIndex c, Object[] shapes, double half) {
         Nav n = of(m);
         int i = (int) n.index;
         double off = offset(half);
@@ -452,6 +446,6 @@ public final class Nav extends APersistentMap {
         int cz = (int) Math.floor(z);
         int below = Chunk.blockAt(c, cx, cy - 1, cz);
         double gy = below == 0 ? y : (cy - 1) + Path.shapeTop(shapes, below);
-        return Steer.wanted(move, x, gy, z, n.speed);
+        return new double[] {x, gy, z, n.speed};
     }
 }

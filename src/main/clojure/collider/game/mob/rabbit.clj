@@ -11,6 +11,7 @@
             [collider.game.mob.nav :as nav]
             [collider.game.mob.randompos :as pos]
             [collider.game.mob.sense :as sense]
+            [collider.game.mob.steer :as steer]
             [collider.game.out :as out]
             [collider.num :as num]
             [collider.vec :as v]
@@ -19,8 +20,7 @@
             [collider.world.blocks.grow.crop :as crop]
             [collider.world.env.biome :as biome]
             [collider.world.env.difficulty :as difficulty]
-            [collider.world.env.signal :as signal])
-  (:import (collider.game.mob Steer)))
+            [collider.world.env.signal :as signal]))
 
 (set! *warn-on-reflection* true)
 
@@ -46,14 +46,14 @@
 
 (def ^:private rad-per-deg (double (float (/ Math/PI 180.0))))
 
-(def ^:private origin (Steer/wanted nil 0.0 0.0 0.0 0.0))
+(def ^:private origin (steer/wanted nil 0.0 0.0 0.0 0.0))
 
 (defn- hop [e] (or (:hop e) {}))
 
-(defn- move-of ^Steer [e] (or (:move e) origin))
+(defn- move-of [e] (or (:move e) origin))
 
 (defn- rewanted [m ^double s]
-  (Steer/wanted m (double (:x m)) (double (:y m)) (double (:z m)) s))
+  (steer/wanted m (double (:x m)) (double (:y m)) (double (:z m)) s))
 
 (defn- wanted-speed ^double [e ^double s]
   (if (:wet? e) swim-speed s))
@@ -81,7 +81,7 @@
 (defn- aimed-at
   "Returns rabbit e with the path state nav and the move m that its
   navigation aims at. The speed of m becomes that of its next hop."
-  [e nav ^Steer m]
+  [e nav m]
   (let [w (wanted-speed e (double (:mult m)))
         m (if (== w (double (:mult m))) m (rewanted m w))]
     (gen/with e {:nav nav :move m :hop (next-speed e w)})))
@@ -112,7 +112,7 @@
   (let [w (double (first (mobs/box-of e)))]
     (* 0.5 (long (+ (* 2.0 w) 1.0)))))
 
-(defn- hop-target [e ^Steer m]
+(defn- hop-target [e m]
   (if (nav/done? e)
     [(:x m) (:z m)]
     (let [n (next-node e) off (node-off e)]
@@ -120,7 +120,7 @@
 
 (defn- hop-off [e]
   (let [m (move-of e)]
-    (if (and (identical? Steer/MOVE_TO (:op m))
+    (if (and (identical? :move-to (:op m))
              (zero? (long (:delay (hop e) 0))))
       (let [[x z] (hop-target e m)]
         (start-jumping (assoc e :yaw (faced e x z))))
@@ -162,8 +162,8 @@
   (let [h (hop e) m (move-of e)
         e (cond
             (and (:on-ground e) (not (:jumping? h))) (speed-set e 0.0)
-            (or (identical? Steer/MOVE_TO (:op m))
-                (identical? Steer/JUMPING (:op m)))
+            (or (identical? :move-to (:op m))
+                (identical? :jumping (:op m)))
             (speed-set e (double (:next h 0.0)))
             :else e)]
     (control/tick world e attr width)))

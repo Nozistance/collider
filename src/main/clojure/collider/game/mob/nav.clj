@@ -3,6 +3,7 @@
   (:require [collider.game.entity.gen :as gen]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
+            [collider.game.mob.steer :as steer]
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
@@ -233,8 +234,9 @@
                  (long (:tick world)))))
 
 (defn- aimed [world e nav]
-  (Nav/aimed nav (:move e) (:chunks world) (block/collision-arr)
-             (half-of e)))
+  (let [^doubles a (Nav/aimedAt nav (:chunks world) (block/collision-arr)
+                                (half-of e))]
+    (steer/wanted (:move e) (aget a 0) (aget a 1) (aget a 2) (aget a 3))))
 
 (defn- walked-on [world e nav0 nav]
   (if (Nav/walked nav)
