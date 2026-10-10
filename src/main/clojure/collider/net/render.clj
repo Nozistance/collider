@@ -106,7 +106,13 @@
                       true))))
             msgs)))
 
-(defn- tab-add? [m] (identical? :tab-add (:msg m)))
+(defn- before-bodies?
+  "Returns true when effect m goes out before the bodies that come and
+  go this tick: a player is listed before others see it, and an entity
+  puffs before it is gone."
+  [m]
+  (or (identical? :tab-add (:msg m))
+      (and (identical? :status (:msg m)) (identical? :poof (:kind m)))))
 
 (defn- ordered [world sight ^Deltas deltas]
   (let [es (deltas/entities-of deltas)
@@ -116,9 +122,9 @@
         msg-out (fn [ms] (mapcat #(msg-packets sight viewers %) ms))]
     (vec (concat
            (join-bursts world sight deltas)
-           (msg-out (filter tab-add? msgs))
+           (msg-out (filter before-bodies? msgs))
            (entity-delta-packets sight es (complement new))
-           (msg-out (remove tab-add? msgs))
+           (msg-out (remove before-bodies? msgs))
            (entity-delta-packets sight es new)
            (forget-packets es)
            (level-entry-packets sight deltas)))))

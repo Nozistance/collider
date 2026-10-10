@@ -841,6 +841,19 @@
 (defn- lost-deltas [world eid e health]
   (when-not (pos? (double health)) (died-deltas world eid e)))
 
+(defn- armor-broken-deltas
+  "Returns the deltas that show the armor player eid, e, broke in its
+  hurts, and count each break."
+  [eid e]
+  (when-let [bs (seq (:broken e))]
+    (concat
+      [[:merge-entity eid {:broken nil}]]
+      (mapcat (fn [[k item]]
+                (let [fx (out/status eid (keyword (str "break-" (name k))))]
+                  [(out/all fx) (out/to eid fx)
+                   [:award eid (keyword "broken" (name item)) 1]]))
+              bs))))
+
 (defn report-deltas
   "Returns the deltas that show the hurts of entity eid since they
   were last shown. They are the game events of its hurts, the
@@ -851,9 +864,10 @@
    (let [health (double (:health e))
          src (:struck-by e)
          lost? (< health (double (or (:health-sent e) health)))]
-     (when (or src lost? (:hurts e))
+     (when (or src lost? (:hurts e) (:broken e))
        (concat
          (marked-deltas world eid e health src late?)
+         (armor-broken-deltas eid e)
          (when src (struck-deltas world eid e src))
          (when lost? (lost-deltas world eid e health)))))))
 
@@ -866,7 +880,8 @@
                    (not (entity/player? e)))]
     (concat
       (when death [[:merge-entity eid {:death-time death}]])
-      (when gone? [[:remove-entity eid]]))))
+      (when gone? [(out/all (out/status eid :poof))
+                   [:remove-entity eid]]))))
 
 (defn- own-apply [world eid e d]
   (if-let [g (and (= eid (nth d 1 nil))

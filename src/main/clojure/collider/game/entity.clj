@@ -412,7 +412,8 @@
       (let [roll #(random/of-key tick eid [:armor slot %])
             worn (+ (stack/damage s) (enchantment/item-damage s n roll))]
         (if (>= worn (stack/max-damage s))
-          (update e :inventory dissoc slot)
+          (-> (update e :inventory dissoc slot)
+              (update :broken (fnil conj []) [k (:item s)]))
           (assoc-in e [:inventory slot] (stack/with-damage s worn))))
       e)))
 

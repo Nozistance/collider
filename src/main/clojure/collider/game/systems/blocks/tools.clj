@@ -362,6 +362,17 @@
   (contains? @mud-blocks
              (block/block-of (changes/block-at world pos))))
 
+(defn- mud-splashes
+  "Returns the five splashes over a block made mud, each at a random
+  spot of its top."
+  [world [x y z :as pos]]
+  (for [i (range 5)
+        :let [r #(random/of-key (:tick world) pos [:mud-splash i %])]]
+    (out/all (out/particles :splash nil
+                            [(+ (double x) (double (r 0))) (+ (long y) 1.0)
+                             (+ (double z) (double (r 1)))]
+                            1 1.0))))
+
 (defn mud-deltas
   "Returns the deltas of a water bottle poured on the block at pos."
   [world eid pos face]
@@ -369,6 +380,7 @@
              (muddable? world pos)
              (stack/water-bottle? (player/use-stack world eid)))
     (concat (changes/change-deltas world [[pos (block/state :mud)]])
+            (mud-splashes world pos)
             [(out/all (out/block-sound :splash pos 1.0 1.0 :blocks))
              (out/all (out/block-sound :bottle/empty pos 1.0 1.0))]
             (inventory/filled-result-deltas
