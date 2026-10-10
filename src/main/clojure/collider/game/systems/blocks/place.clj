@@ -112,7 +112,7 @@
         p (get-in world [:entities eid])
         fresh (be/fresh (be/kind state) eid)
         data? (or (not (be/op-only? fresh)) (edit/game-master? p))
-        entity (-> (be/from-stack fresh stack data?)
+        entity (-> (be/from-stack fresh stack data? (:tick world))
                    (be/placed-by p))
         state (cond-> state
                 (:record entity) (block/with :has-record :true))

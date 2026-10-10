@@ -1,6 +1,7 @@
 (ns collider.game.block.blockentity
   "Block entities, the data of a block besides its state."
   (:require [collider.data :as data]
+            [collider.game.block.jukebox :as jukebox]
             [collider.game.block.sign :as sign]
             [collider.game.stack.tag :as tag]
             [collider.hash-order :as hash-order]
@@ -292,10 +293,17 @@
   (cond-> e
     Book (assoc :book (tag/stack Book) :page (long (or Page 0)))))
 
-(defn- with-record [e {r :RecordItem}]
-  (cond-> e r (assoc :record (tag/stack r))))
+(defn- with-record
+  [e {r :RecordItem age :ticks_since_song_started} t]
+  (if r
+    (let [stack (tag/stack r)
+          song (jukebox/song-of (:item stack))
+          on? (and age song (not (jukebox/finished? song (long age))))]
+      (cond-> (assoc e :record stack)
+        on? (assoc :song song :started (- (long t) (long age)))))
+    e))
 
-(defn- with-data [e d]
+(defn- with-data [e d t]
   (let [k (:kind e)]
     (cond
       (furnace-kinds k) (with-recipes e d)
@@ -303,7 +311,7 @@
       :else (case k
               :shelf (with-shelf e d)
               :lectern (with-book e d)
-              :jukebox (with-record e d)
+              :jukebox (with-record e d t)
               (:sign :hanging-sign) (sign/loaded e d)
               e))))
 
@@ -317,13 +325,13 @@
     :else e))
 
 (defn from-stack
-  "Returns block entity e set from the components of stack, over the
-  block entity data of its kind when data?."
-  [e stack data?]
+  "Returns block entity e set at tick t from the components of stack,
+  over the block entity data of its kind when data?."
+  [e stack data? t]
   (let [cs (:components stack)
         d (:block-entity-data cs)
         e (if (and data? d (= (:type d) (:kind e)))
-            (with-data e (:data d))
+            (with-data e (:data d) t)
             e)]
     (reduce-kv (fn [e field component]
                  (if-let [v (get cs component)] (assoc e field v) e))
