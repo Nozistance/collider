@@ -6,6 +6,7 @@
             [collider.game.deltas :as deltas]
             [collider.game.input :as input]
             [collider.game.entity :as entity]
+            [collider.game.entity.damage :as damage]
             [collider.game.enchantment :as enchantment]
             [collider.game.entity.hurt :as hurt]
             [collider.game.inventory :as inventory]
@@ -146,7 +147,7 @@
 (defn- swept-deltas [world src s [sx cz] [oid o]]
   (let [d [:damage oid s src]
         h (hurt-of world oid o s src)]
-    (if (entity/taken? o h)
+    (if (damage/taken? o h)
       (into [d [:knockback oid sweep-knockback sx cz]]
             (hurt/report-deltas world oid h))
       (when-not (identical? o h) [d]))))
@@ -234,7 +235,7 @@
     (concat (when (:knock? b)
               [(sound a :entity.player.attack.knockback)])
             hit
-            (if (entity/taken? target h)
+            (if (damage/taken? target h)
               (landed-deltas world eid a tid target h b src)
               [(sound a :entity.player.attack.nodamage)]))))
 

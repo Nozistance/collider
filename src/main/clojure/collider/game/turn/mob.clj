@@ -6,6 +6,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
+            [collider.game.entity.damage :as damage]
             [collider.game.entity.gen :as gen]
             [collider.game.mob.animal :as animal]
             [collider.game.mob.brain :as brain]
@@ -316,7 +317,7 @@
   [world index slots es eid t]
   (fn [e pos]
     (when (crammed? world index slots es eid e pos t)
-      (entity/hurt (assoc e :pos pos) push/cramming-damage crush t
+      (damage/hurt (assoc e :pos pos) push/cramming-damage crush t
                    eid))))
 
 (defn- stepping? [^booleans ticking es ^long i]

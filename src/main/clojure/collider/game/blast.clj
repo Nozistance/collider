@@ -7,6 +7,7 @@
             [collider.game.changes :as changes]
             [collider.game.delta :as delta]
             [collider.game.entity :as entity]
+            [collider.game.entity.damage :as damage]
             [collider.game.entity.hurt :as hurt]
             [collider.game.entity.sections :as sections]
             [collider.game.hanging.drops :as drops]
@@ -66,7 +67,7 @@
 
 (defn- item-dies? [e dmg]
   (and (= :item (:type e)) (hurtable? e)
-       (not (pos? (double (:health (entity/hurt e (double dmg))))))))
+       (not (pos? (double (:health (damage/hurt e (double dmg))))))))
 
 (defn- moving? [kb]
   (not (and (zero? (double (kb 0))) (zero? (double (kb 1)))

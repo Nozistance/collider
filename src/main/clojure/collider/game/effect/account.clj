@@ -5,6 +5,7 @@
   (:require [collider.game.attribute :as attribute]
             [collider.game.effect :as effect]
             [collider.game.entity :as entity]
+            [collider.game.entity.damage :as damage]
             [collider.game.entity.hurt :as hurt]
             [collider.game.food :as food]
             [collider.game.mob.mobs :as mobs]
@@ -130,7 +131,7 @@
     (if (or (nil? n) (not (pos? (health acc))))
       acc
       (-> acc
-          (assoc :e (entity/hurt e n) :hurt? true)
+          (assoc :e (damage/hurt e n) :hurt? true)
           (update :ds conj [:damage (:eid acc) n src])))))
 
 (defn- regenerated [acc]

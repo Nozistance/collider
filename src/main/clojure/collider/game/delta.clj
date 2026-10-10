@@ -2,6 +2,7 @@
   "The delta tags, what each means, and the effect messages."
   (:require [collider.data.long-map :as lm]
             [collider.game.entity :as entity]
+            [collider.game.entity.damage :as damage]
             [collider.game.level :as level]
             [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
@@ -212,14 +213,14 @@
    :damage
    {:scope :entity :schema [:cat number? [:? [:maybe :map]]]
     :apply (fn [tick e [_ eid amount src]]
-             (entity/hurt e amount src tick eid))}
+             (damage/hurt e amount src tick eid))}
    :knockback
    {:scope :entity :schema [:cat number? number? number?]
     :apply (fn [tick e [_ eid power xd zd]]
-             (entity/knocked e power xd zd tick eid))}
+             (damage/knocked e power xd zd tick eid))}
    :rest
    {:scope :entity :schema [:cat]
-    :apply (fn [_ e _] (entity/rested e))}
+    :apply (fn [_ e _] (damage/rested e))}
    :push
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [_ e [_ _ vel]]
