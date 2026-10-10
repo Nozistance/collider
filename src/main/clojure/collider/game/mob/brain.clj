@@ -1,10 +1,9 @@
 (ns collider.game.mob.brain
   "Memories, activities and behaviours of a mob with a brain."
   (:require [clojure.string :as str]
+            [collider.hash-order :as hash-order]
             [collider.random :as random])
-  (:import (clojure.lang IFn)
-           (collider.game.mob Brain)
-           (java.util Collection)))
+  (:import (java.util Collection)))
 
 (set! *warn-on-reflection* true)
 
@@ -269,8 +268,7 @@
 (defn- hash-ordered [es]
   (let [acts (vec (distinct (map second es)))
         by (group-by second es)]
-    (mapcat #(by (acts %))
-            (Brain/hashOrder (map activity-name acts)))))
+    (mapcat by (hash-order/computed activity-name acts))))
 
 (defn order
   "Returns [prio activity behaviour] for each behaviour of spec in
@@ -296,12 +294,10 @@
                 [(conj cs c) nxt]))
             [[] (count es)] (map-indexed vector es))))
 
-(defn- masks [es mems status]
+(defn- mask-of ^long [mems status b]
   (let [bit (zipmap mems (map #(bit-shift-left 1 %) (range)))]
-    (long-array
-      (for [[_ _ b] es]
-        (reduce (fn [m [k s]] (if (= s status) (bit-or m (bit k)) m))
-                0 (:needs b))))))
+    (reduce (fn [^long m [k s]] (if (= s status) (bit-or m (long (bit k))) m))
+            0 (:needs b))))
 
 (defn- node-tells [b]
   (cons (:tells? b) (mapcat (comp node-tells first) (:items b))))
@@ -329,16 +325,18 @@
   behaviours, a bare behaviour takes its place as priority, and the
   header keys give the rest. Its tells? holds when one of its
   behaviours tells? that a mob may write to others."
-  ^Brain [spec]
+  [spec]
   (let [es (vec (order spec))
         known (known-of spec es)
         mems (vec (sort known))
         cs (controls es known)]
-    (Brain. (info spec es known) (count es) (object-array mems)
-            (object-array (map second es)) (masks es mems :present)
-            (masks es mems :absent) (:sense spec)
-            (into-array IFn (map :try cs))
-            (into-array IFn (map :step cs)))))
+    (assoc (info spec es known)
+           ::memories mems ::sense (:sense spec)
+           ::steps (mapv (fn [[_ a b] c]
+                           {:activity a :try (:try c) :step (:step c)
+                            :needs (mask-of mems :present b)
+                            :shuns (mask-of mems :absent b)})
+                         es cs))))
 
 (defn fresh
   "Returns the brain of a new mob of breed b, with the memories mems
@@ -348,10 +346,74 @@
    {:activity (:default b) :memories (select-keys mems (:known b))
     :known (:known b) :breed b}))
 
+(defn- expiry ^long [m] (long (nth m 1)))
+
+(defn- counted
+  "Returns memory m that counts its ticks, held until it runs out, or
+  nil when it already has."
+  [m ^long t]
+  (let [until (+ t (long (nth m 2)) -1)]
+    (when-not (> t until) [(nth m 0) until])))
+
+(defn- forgotten [e ^long t]
+  (let [mems (:memories (:brain e))
+        kept (reduce-kv (fn [kept k v]
+                          (let [c (if (= 3 (count v)) (counted v t) v)]
+                            (cond (or (nil? c) (> t (expiry c))) (dissoc kept k)
+                                  (identical? c v) kept
+                                  :else (assoc kept k c))))
+                        mems mems)]
+    (if (identical? kept mems) e (assoc-in e [:brain :memories] kept))))
+
+(defn- present-bits ^long [b e ^long t]
+  (let [mems (:memories (:brain e))]
+    (reduce-kv (fn [^long m k mem]
+                 (let [v (get mems mem)]
+                   (if (and v (<= t (expiry v))) (bit-set m k) m)))
+               0 (::memories b))))
+
+(defn- ready? [b step e t]
+  (let [m (present-bits b e t) needs (long (:needs step))]
+    (and (= needs (bit-and m needs)) (zero? (bit-and m (long (:shuns step)))))))
+
+(defn- running? [e i] (some? (get (:running (:brain e)) (long i))))
+
+(defn- active? [e step]
+  (let [a (:activity step)]
+    (or (identical? :core a) (identical? a (:activity (:brain e))))))
+
+(defn- mob-of [r] (if (vector? r) (nth r 0) r))
+
+(defn- with-deltas [ds r] (if (vector? r) (into ds (nth r 1)) ds))
+
+(defn- started [b w eid e t ds]
+  (reduce-kv (fn [[e ds] i step]
+               (if-let [r (and (active? e step) (not (running? e i))
+                               (ready? b step e t)
+                               ((:try step) w eid e t))]
+                 [(mob-of r) (with-deltas ds r)]
+                 [e ds]))
+             [e ds] (::steps b)))
+
+(defn- ticked [b w eid e t ds]
+  (let [steps (::steps b)
+        busy (filterv #(running? e %) (range (count steps)))]
+    (reduce (fn [[e ds] i]
+              (let [r ((:step (steps i)) w eid e t)]
+                [(mob-of r) (with-deltas ds r)]))
+            [e ds] busy)))
+
 (defn think
-  "Returns [e deltas] after one tick of the brain b of mob e."
-  [^Brain b world eid e t]
-  (Brain/think b world eid e (long t)))
+  "Returns [e deltas] after one tick of the brain b of mob e. Expired
+  memories go first, the sensors run, the behaviours that may start
+  start, and last every running behaviour ticks or stops."
+  [b world eid e t]
+  (let [t (long t)
+        e (forgotten e t)
+        r (when-let [f (::sense b)] (f world eid e t))
+        [e ds] (if (::sense b) [(mob-of r) (with-deltas [] r)] [e []])
+        [e ds] (started b world eid e t ds)]
+    (ticked b world eid e t ds)))
 
 (defn- met? [b e t a]
   (when-let [req (get (:requires b) a)]

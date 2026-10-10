@@ -45,3 +45,13 @@
        (by-name (comp name first))
        (apply concat)
        (apply array-map)))
+
+(defn computed
+  "Returns xs in the order a hash map iterates them after
+  computeIfAbsent took them in turn, each keyed by (f x). A new key
+  goes to the head of its bucket, so a later x of a shared bucket
+  comes first, and of equal keys the first x stays."
+  [f xs]
+  (let [m (HashMap.)]
+    (doseq [x xs] (.computeIfAbsent m (f x) (fn [_] x)))
+    (vec (.values m))))
