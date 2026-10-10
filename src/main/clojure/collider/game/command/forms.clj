@@ -162,6 +162,28 @@
 (defn- playsound-way [src]
   [(into [sound-arg (lit src)] sound-tail) [:world :playsound src]])
 
+(defn- delta-args []
+  [[:dx [:dcoord {:axis 0 :node "delta" :center false}]]
+   [:dy [:dcoord {:axis 1 :node "delta" :center false}]]
+   [:dz [:dcoord {:axis 2 :node "delta" :center false}]]])
+
+(def ^:private particle-form
+  (let [nm [[:name [:particle {}]]]
+        at (into nm (vec-args {:node "pos"}))
+        full (-> at (into (delta-args))
+                 (conj [:speed [:float {:min 0.0
+                                        :max (double Float/MAX_VALUE)}]]
+                       [:count [:int {:min 0 :max int-max}]]))
+        viewers [:viewers [:targets {:players? true}]]
+        mode (fn [m] [(conj full (lit m)) [:world :particle (keyword m)]
+                      (conj full (lit m) viewers)
+                      [:world :particle (keyword m)]])]
+    (-> [:particle "show particles to players"
+         nm [:world :particle nil] at [:world :particle nil]
+         full [:world :particle nil]]
+        (into (mode "force"))
+        (into (mode "normal")))))
+
 (def ^:private playsound-form
   (into [:playsound "play a sound to players"
          [sound-arg] [:world :playsound nil]]
@@ -229,7 +251,7 @@
     [] [:world :help] [[:command [:greedy {}]]] [:world :help]]
    [:list "list the players online"
     [] [:world :list] [(lit "uuids")] [:world :list-uuids]]
-   title-form playsound-form stopsound-form
+   title-form playsound-form stopsound-form particle-form
    [:clear "clear items from players (default: yours, all)"
     [[:targets [:targets {:players? true :default nil}]]
      [:item [:item-predicate {:default nil}]]

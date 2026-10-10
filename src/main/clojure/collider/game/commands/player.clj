@@ -362,6 +362,39 @@
         played (keep play (sound-listeners world eid s))]
     (playsound-result world eid s id played)))
 
+(def ^:private ^:const particle-near-sq (* 32.0 32.0))
+
+(def ^:private ^:const particle-far-sq (* 512.0 512.0))
+
+(defn- sees-particle?
+  "Returns true when the centre of the block player e stands in is
+  near enough to at, as ServerLevel.sendParticles asks."
+  [e at force?]
+  (let [p (:pos e)
+        c (map #(+ (Math/floor (double %)) 0.5) [(v/x p) (v/y p) (v/z p)])
+        d (reduce + (map #(let [x (- (double %1) (double %2))] (* x x))
+                         c at))]
+    (< d (if force? particle-far-sq particle-near-sq))))
+
+(defn- particle-id [p]
+  (data/wire (data/entry-name "particle_type" (first p))))
+
+(defn- particle-deltas
+  [world eid [mode p x y z dx dy dz speed n s]]
+  (let [at (if (some? x) [x y z] (vec (sel/source-pos world)))
+        force? (= mode :force)
+        dim (sel/source-dim world)
+        xs (if s (sel/player-selected world eid s) (sel/player-entries world))
+        shown (filter (fn [[_ d e]] (and (= d dim) (sees-particle? e at force?)))
+                      xs)
+        fx (out/particle p at [(or dx 0.0) (or dy 0.0) (or dz 0.0)]
+                         (or speed 0.0) (or n 0) force?)]
+    (cond (and s (empty? xs)) (fail eid "argument.entity.notfound.player")
+          (empty? shown) (fail eid "commands.particle.failed")
+          :else (concat (map (fn [[id]] (out/to id fx)) shown)
+                        (say eid "commands.particle.success"
+                             (particle-id p))))))
+
 (defn- stop-report [src id]
   (let [src (when (not= "*" src) src)]
     (cond
@@ -403,6 +436,7 @@
    :effect-give effect-give-deltas :effect-clear effect-clear-deltas
    :gamemode gamemode-deltas :spawnpoint spawnpoint-deltas
    :playsound playsound-deltas :stopsound stopsound-deltas
+   :particle particle-deltas
    :title-clear (titled "commands.title.cleared"
                         #(out/clear-titles false))
    :title-reset (titled "commands.title.reset"

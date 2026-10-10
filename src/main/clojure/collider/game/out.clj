@@ -341,6 +341,14 @@
                 (+ (double z) 0.5)]
           volume pitch source)))
 
+(defn particle
+  "Returns the effect of count particles p, as [type options], at pos,
+  spread by delta and moving at speed. Force lets them show farther
+  and past the client's own particle setting."
+  [p pos delta speed count force]
+  {:msg :particle :particle p :pos pos :delta delta
+   :speed (double speed) :count (long count) :force (boolean force)})
+
 (defn particles
   "Returns the effect of count particles of kind at pos, spread by
   the offsets dxyz."

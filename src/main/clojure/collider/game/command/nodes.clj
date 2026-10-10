@@ -22,6 +22,7 @@
    :angle [:rotation nil]
    :block [:block-state nil]
    :item [:item-stack nil]
+   :particle [:particle nil]
    :entity-type [:resource {:registry "minecraft:entity_type"}]
    :text [brigadier-string {:kind 0}]
    :game-mode [:gamemode nil]

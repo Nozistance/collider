@@ -7,6 +7,7 @@
             [collider.game.command.args.block :as blocks]
             [collider.game.command.dispatcher :as d]
             [collider.game.command.args.item :as items]
+            [collider.game.command.args.particle :as particles]
             [collider.game.command.forms :as forms]
             [collider.game.command.nodes :as node-tree]
             [collider.game.command.nbt-path :as nbt-path]
@@ -25,6 +26,7 @@
    :float #(r/float-arg (:min %) (:max %))
    :marker (fn [_] (args/id-arg))
    :sound (fn [_] (args/id-arg))
+   :particle (fn [_] (particles/particle-arg))
    :item-predicate (fn [_] (items/item-predicate-arg))
    :block (fn [_] (blocks/block-state-arg))
    :block-predicate (fn [_] (blocks/block-predicate-arg))
@@ -133,7 +135,7 @@
         :int (int-reader (:min opts) (:max opts))
         :effect-seconds (int-reader 1 1000000)
         :coord (:parse (args/block-pos-arg))
-        :dcoord (:parse (args/vec3-arg))
+        :dcoord (:parse (args/vec3-arg (:center opts true)))
         :angle (:parse (args/rotation-arg))
         :duration (:parse (args/time-arg (:min opts)))
         :mob-effect (:parse (args/resource-arg "mob_effect"))

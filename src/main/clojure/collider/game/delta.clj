@@ -263,6 +263,8 @@
                  [:count :int] [:speed number?]
                  [:spread {:optional true} Vec3]]
      :trail [[:pos Vec3] [:target Vec3] [:color :int] [:ticks :int]]
+     :particle [[:particle vector?] [:pos Vec3] [:delta Vec3]
+                [:speed number?] [:count :int] [:force :boolean]]
      :extinguish [[:pos Pos]]
      :fizz [[:pos Pos]]
      :bonemeal [[:pos Pos]]

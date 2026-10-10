@@ -374,6 +374,12 @@
       (dissoc :game-mode)
       (assoc :gamemode (game-mode/id (:game-mode entry)))))
 
+(defn- particle-packet [{:keys [delta] :as m}]
+  {:packet :level-particles :limiter (:force m) :always false
+   :pos (:pos m) :dx (double (nth delta 0)) :dy (double (nth delta 1))
+   :dz (double (nth delta 2)) :speed (:speed m) :count (:count m)
+   :particle (:particle m)})
+
 (defn- tab-add-packet [m]
   {:packet :player-info-update :players (mapv listed (:entries m))})
 
@@ -406,7 +412,8 @@
    :tab-remove        (fn [_ m] [(tab-remove-packet m)])
    :tab-game-mode     (fn [_ m] [(tab-game-mode-packet m)])
    :tab-latency       (fn [_ m] [(tab-latency-packet m)])
-   :tab-header        (fn [_ m] [(tab-header-packet m)])})
+   :tab-header        (fn [_ m] [(tab-header-packet m)])
+   :particle          (fn [_ m] [(particle-packet m)])})
 
 (def ^:private animate-actions
   {:swing 0 :wake-up 2 :swing-off 3 :crit 4})
