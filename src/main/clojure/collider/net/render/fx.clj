@@ -7,6 +7,7 @@
             [collider.game.out :as out]
             [collider.log :as log]
             [collider.net.render.join :as join]
+            [collider.net.render.sounds :as sounds]
             [collider.net.render.tracked :as tracked]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]))
@@ -97,7 +98,7 @@
 
 (defn- sound-id [kind]
   (let [reg (get (data/registries) "sound_event")]
-    (if-let [[ev src] (get data/sound-table kind)]
+    (if-let [[ev src] (get sounds/table kind)]
       (when-let [id (get reg ev)] [id src])
       (when-let [id (get reg kind)] [id (sound-sources :blocks)]))))
 
