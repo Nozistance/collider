@@ -199,7 +199,8 @@
 (defn- look-yaw ^double [e o]
   (let [xd (- (v/x (:pos o)) (v/x (:pos e)))
         zd (- (v/z (:pos o)) (v/z (:pos e)))]
-    (num/f32 (- (num/f32 (/ (* (num/atan2 zd xd) 180.0) float-pi)) 90.0))))
+    (num/f32 (- (num/f32 (/ (* (num/atan2 zd xd) 180.0) float-pi))
+                90.0))))
 
 (defn- look-aim [world e look]
   (let [oid (:target look)

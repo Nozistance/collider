@@ -427,7 +427,7 @@
 
 (defn- look-around-tick [_ _ _ e _ _]
   (let [at (around-point e (:rel (:task e)))]
-    [(cond-> e (not (v/same? at (:at (:look e)))) (assoc-in [:look :at] at))
+    [(if (v/same? at (:at (:look e))) e (assoc-in e [:look :at] at))
      nil]))
 
 (defn- looking-around? [_ e t _]
