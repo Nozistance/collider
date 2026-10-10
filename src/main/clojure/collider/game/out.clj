@@ -203,6 +203,13 @@
   [from pos id anchor]
   {:msg :look-at :from from :pos pos :id id :anchor anchor})
 
+(defn waypoint
+  "Returns the effect that puts op (:track, :update or :untrack) on
+  the point of uuid in the locator bar. Kind is :block, :chunk or
+  :azimuth, with at a block, a chunk or an angle."
+  [op uuid kind at]
+  {:msg :waypoint :op op :uuid uuid :kind kind :at at})
+
 (defn player-chat
   "Returns the effect that shows a line a player said.
   The text component already carries its sender."

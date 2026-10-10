@@ -173,6 +173,9 @@
    :named-sound   (fn [_ m] [(named-sound-packet m)])
    :player-rotation (fn [_ m] [(rotation-packet m)])
    :look-at       (fn [_ m] [(look-at-packet m)])
+   :waypoint      (fn [_ m]
+                    [(-> (select-keys m [:op :uuid :kind :at])
+                         (assoc :packet :waypoint))])
    :stop-sound    (fn [_ m] [(stop-sound-packet m)])
    :clear-titles  (fn [_ m]
                     [{:packet :clear-titles :reset (:reset m)}])

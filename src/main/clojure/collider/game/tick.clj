@@ -31,6 +31,7 @@
             [collider.game.systems.sleep :as sleep]
             [collider.game.systems.spawning :as spawning]
             [collider.game.systems.tracker :as tracker]
+            [collider.game.systems.waypoints :as waypoints]
             [collider.game.systems.weather :as weather-system]
             [collider.parallel :as par]))
 
@@ -78,6 +79,7 @@
    entity-systems
    [#'block-entities/block-entities]
    [#'player-tick/player-tick]
+   [#'waypoints/waypoints]
    [#'tracker/late-tracking]
    [#'chunks/chunk-streaming]
    [#'detector/observe]])

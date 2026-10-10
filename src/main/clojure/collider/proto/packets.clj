@@ -192,6 +192,27 @@
   (when source (c/write-varint buf source))
   (when id (c/write-string buf id)))
 
+(def ^:private waypoint-ops {:track 0 :untrack 1 :update 2})
+
+(def ^:private waypoint-kinds {nil 0 :block 1 :chunk 2 :azimuth 3})
+
+(defn- write-waypoint! [^Buf buf {:keys [op uuid color kind at]}]
+  (c/write-varint buf (waypoint-ops op))
+  (buf/write-boolean! buf true)
+  (c/write-uuid buf uuid)
+  (c/write-string buf "minecraft:default")
+  (buf/write-boolean! buf (some? color))
+  (when color
+    (let [rgb (long color)]
+      (buf/write-byte! buf (bit-and (bit-shift-right rgb 16) 0xFF))
+      (buf/write-byte! buf (bit-and (bit-shift-right rgb 8) 0xFF))
+      (buf/write-byte! buf (bit-and rgb 0xFF))))
+  (c/write-varint buf (waypoint-kinds kind))
+  (case kind
+    (:block :chunk) (run! #(c/write-varint buf (long %)) at)
+    :azimuth (buf/write-float! buf at)
+    nil))
+
 (def ^:private ^:const add-player-bit 0x01)
 
 (def ^:private ^:const game-mode-bit 0x04)
@@ -482,6 +503,9 @@
    [:play :stop-sound]
    {:schema [:map [:source [:maybe :int]] [:id [:maybe :string]]]
     :write write-stop-sound!}
+   [:play :waypoint]
+   {:schema [:map [:op :keyword] [:uuid :uuid]]
+    :write write-waypoint!}
    [:play :set-title-text]
    {:schema [:map [:text wire/text]]
     :write :wire}
