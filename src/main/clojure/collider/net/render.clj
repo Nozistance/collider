@@ -108,7 +108,7 @@
 
 (defn- before-bodies?
   "Returns true when effect m goes out before the bodies that come and
-  go this tick: a player is listed before others see it, and an entity
+  go this tick. A player is listed before others see it, and an entity
   puffs before it is gone."
   [m]
   (or (identical? :tab-add (:msg m))
