@@ -153,9 +153,12 @@
 
 (defn- transmits? [s] (> (transmit s) 0.0))
 
+(defn- cut [st rid]
+  (reduce #(unlinked %1 rid %2) st (keys (get-in st [:links rid]))))
+
 (defn- born [st world [pid p :as pe] ps]
   (if (first-tick? world p)
-    (let [st (-> (reduce #(unlinked %1 pid %2) st (keys (get-in st [:links pid])))
+    (let [st (-> (cut st pid)
                  (untracked pid)
                  (assoc-in [:links pid] {}))
           st (reduce #(touched %1 world %2 pe) st (in-set st ps))]
@@ -183,8 +186,7 @@
       :else st)))
 
 (defn- broke-all [st]
-  (reduce-kv (fn [st rid ls] (reduce #(unlinked %1 rid %2) st (keys ls)))
-             st (:links st)))
+  (reduce cut st (keys (:links st))))
 
 (defn- movers [world]
   (into #{} (keep (fn [[tag eid]] (when (= :move tag) eid)))
@@ -204,9 +206,12 @@
   (let [ps (vec (level/player-entries world))
         on? (get-in world [:rules :locator-bar] true)
         st {:on? on? :out []
-            :in (into #{} (keep #(when (:in? (:waypoint (val %))) (key %)))
+            :in (into #{} (keep (fn [[eid e]]
+                                  (when (:in? (:waypoint e)) eid)))
                       ps)
-            :links (into {} (map (fn [[eid e]] [eid (:waypoints e {})])) ps)}
+            :links (into {} (map (fn [[eid e]]
+                                   [eid (:waypoints e {})]))
+                         ps)}
         st (gone st (set (map key ps)))
         st (reduce #(born %1 world %2 ps) st ps)
         st (reduce #(stepped %1 world %2 ps) st ps)
