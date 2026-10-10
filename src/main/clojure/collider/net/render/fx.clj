@@ -21,8 +21,14 @@
            [[[(id :poof) nil] 0.5 1.0 1]
             [[(id :smoke) nil] 1.0 1.0 1]])))
 
-(def ^:private ^:table explosion-particle
-  (delay [(data/registry-id "particle_type" :explosion-emitter) nil]))
+(def ^:private explosion-particles
+  {:blast {:small :explosion :large :explosion-emitter}
+   :wind  {:small :gust-emitter-small :large :gust-emitter-large}})
+
+(defn- explosion-particle [{:keys [kind radius]}]
+  (let [size (if (< (double radius) 2.0) :small :large)
+        k (get-in explosion-particles [(or kind :blast) size])]
+    [(data/registry-id "particle_type" k) nil]))
 
 (defn- particle-id ^long [kind]
   (data/registry-id "particle_type" kind))
@@ -127,13 +133,14 @@
 (defn explode-packet
   "Returns the explosion m as player eid sees it."
   [m eid]
-  (let [k (get (:motions m) eid)]
+  (let [k (get (:motions m) eid)
+        wind? (= :wind (:kind m))]
     {:packet    :explode :center (:center m) :radius (:radius m)
      :blocks    (:blocks m)
      :knockback (when (and k (some #(not (zero? (double %))) k)) k)
-     :particle  @explosion-particle
-     :sound     (first (sound-id :explosion))
-     :block-particles @explosion-block-particles}))
+     :particle  (explosion-particle m)
+     :sound     (first (sound-id (if wind? :wind-charge/burst :explosion)))
+     :block-particles (if wind? [] @explosion-block-particles)}))
 
 (defn- rule-pair [[k v]]
   [(rules/wire-name k) (rules/serialize k v)])

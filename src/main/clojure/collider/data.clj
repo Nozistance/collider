@@ -257,6 +257,8 @@
    :snowball/throw                [:entity.snowball.throw 6]
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
+   :wind-charge/throw             [:entity.wind-charge.throw 6]
+   :wind-charge/burst             [:entity.wind-charge.wind-burst 4]
    :splash-potion/throw           [:entity.splash-potion.throw 7]
    :lingering-potion/throw        [:entity.lingering-potion.throw 6]
    :experience-bottle/throw       [:entity.experience-bottle.throw 6]

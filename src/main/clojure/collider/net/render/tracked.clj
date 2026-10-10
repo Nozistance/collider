@@ -122,7 +122,8 @@
    :glow-item-frame :item-frame})
 
 (defn- class-of [kind]
-  (cond (entity/thrown-types kind) :throwable-item-projectile
+  (cond (= :wind-charge kind) :projectile
+        (entity/thrown-types kind) :throwable-item-projectile
         (kinds kind) (get renamed-classes kind kind)))
 
 (defn- sheep-fields [meta]

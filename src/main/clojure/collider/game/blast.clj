@@ -35,18 +35,23 @@
 
 (def ^:private ^:const unit-least (double (float 1.0E-5)))
 
+(def ^:private ^:const wind-knockback (double (float 1.22)))
+
+(defn- wind? [b] (= :wind-charge (:source b)))
+
 (defn- origin-y ^double [e p]
   (cond-> (v/y p)
     (not= :tnt (:type e)) (+ (double (entity/eye-height e)))))
 
 (defn- impulse
   "Returns the push and the damage the blast gives body e at p."
-  [{:keys [center power]} e p d12 density]
+  [{:keys [center power] :as b} e p d12 density]
   (let [dx (- (v/x p) (v/x center))
         dy (- (origin-y e p) (v/y center))
         dz (- (v/z p) (v/z center))
         d (Math/sqrt (+ (* dx dx) (* dy dy) (* dz dz)))
-        k (* (- 1.0 (double d12)) (double density))
+        k (cond-> (* (- 1.0 (double d12)) (double density))
+            (wind? b) (* wind-knockback))
         dmg (blast-damage k power)]
     (if (< d unit-least)
       [[0.0 0.0 0.0] dmg]
@@ -86,6 +91,12 @@
     (signal/game-event :entity-damage (:pos e) (:cause (:src b)))
     []))
 
+(defn- gusted [b id e d12 seen]
+  (let [[kb] (impulse b e (:pos e) d12 seen)]
+    (if (entity/player? e)
+      {:ds [] :motion (when (shoved? e) kb)}
+      {:ds (if (moving? kb) [[:push id kb]] [])})))
+
 (defn- pushed [b id e d12 seen]
   (let [[kb dmg] (impulse b e (:pos e) d12 seen)]
     (cond
@@ -107,11 +118,15 @@
   effect of the blast, a hurt item that stays the game event of its
   hurt in :heard."
   [b [id e d12 seen]]
-  (if (hanging? e)
+  (cond
+    (wind? b) (if (or (hanging? e) (= :item (:type e)))
+                {:ds []}
+                (gusted b id e d12 seen))
+    (hanging? e)
     (let [by (:cause (:src b))]
       {:ds (drops/kill-deltas (:world b) id e (:causer b) by)
        :gone? true})
-    (pushed b id e d12 seen)))
+    :else (pushed b id e d12 seen)))
 
 (defn- distance [b]
   (let [c (:center b) r (twice (:power b))
@@ -137,11 +152,13 @@
 
 (defn- reach
   "Returns the function that gives [id e d12] for the id of a body
-  that blast b reaches, nil for one it does not."
+  that blast b reaches, nil for one it does not. A gust passes the
+  charge it comes from."
   [b now]
-  (let [d12-of (distance b)]
+  (let [d12-of (distance b)
+        by (when (wind? b) (:by b))]
     (fn [id]
-      (when-let [e (now id)]
+      (when-let [e (when (not= id by) (now id))]
         (let [d12 (d12-of (:pos e))]
           (when (and (<= d12 1.0) (not (game-mode/spectator? e)))
             [id e d12]))))))
@@ -282,6 +299,13 @@
   "The most parts that the rays of one blast go in at once."
   8)
 
+(defn- gust-cells
+  "Returns how many cells the rays of the gust of b reach. A gust
+  breaks nothing."
+  [{:keys [rg exposure center power seed]}]
+  (let [hit (explosion/rays rg exposure center power seed 1 true)]
+    {:ds [] :spawns [] :count (:count (explosion/reached hit center))}))
+
 (defn- blocks
   "Returns the deltas that break and burn the blocks of blast b, the
   TNT they prime, the drops and how many blocks it reached."
@@ -317,10 +341,11 @@
   hit its bodies, with the bodies it spawns. Motions are the pushes
   of the players by eid."
   [b motions]
-  (let [{:keys [ds spawns] :as r} (blocks b)
+  (let [{:keys [ds spawns] :as r} ((if (wind? b) gust-cells blocks) b)
         {:keys [center power seed]} b
         pitch (explosion-pitch seed)
-        msg (out/explosion center power (:count r) motions pitch)]
+        msg (out/explosion center power (:count r) motions pitch)
+        msg (cond-> msg (wind? b) (assoc :kind :wind))]
     {:ds (conj (vec ds) (out/all msg)) :spawns spawns}))
 
 (defn- motions [hits]

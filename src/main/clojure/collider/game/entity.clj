@@ -24,7 +24,7 @@
 
 (def thrown-types
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
-    :experience-bottle})
+    :experience-bottle :wind-charge})
 
 (defn player?
   [e]

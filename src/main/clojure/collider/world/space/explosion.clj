@@ -124,6 +124,15 @@
         (aset a i (float (resistance i resist))))
       a)))
 
+(def ^:private ^:table wind-resist-table
+  (delay
+    (let [n (alength ^floats @resist-table)
+          a (float-array n)
+          stops? #(block/tagged? % "blocks_wind_charge_explosions")]
+      (dotimes [i n]
+        (aset a i (if (stops? i) (float 3600000.0) Float/NaN)))
+      a)))
+
 (defn- hit-positions [^bytes hit origin ^long least]
   (let [ox (long (origin 0)) oy (long (origin 1))
         oz (long (origin 2))
@@ -146,11 +155,12 @@
           [(quot (* i Rays/COUNT) n) (quot (* (inc i) Rays/COUNT) n)])
         (range n)))
 
-(defn- caster [^SectionGrid rg ^Exposure e [cx cy cz] power seed]
+(defn- caster
+  [^SectionGrid rg ^Exposure e [cx cy cz] power seed wind?]
   (let [cx (double cx) cy (double cy) cz (double cz)
         [ox oy oz] (ray-origin cx cy cz)
         ox (long ox) oy (long oy) oz (long oz)
-        resist ^floats @resist-table
+        resist ^floats (if wind? @wind-resist-table @resist-table)
         power (double power) h (long (hash seed))]
     (fn [[from to]]
       (Rays/hit
@@ -161,11 +171,14 @@
   "Returns the cells of the cube at the centre that the rays of a
   blast of power reach through rg, 1 for air and 2 for a block. The
   cells come from e. The rays go at once in n parts, which needs e
-  frozen when n is above 1."
-  ^bytes [rg e center power seed n]
-  (reduce #(Rays/union %1 %2)
-          (par/pmapv (caster rg e center power seed) (ray-parts n)
-                     1 1)))
+  frozen when n is above 1. The rays of wind pass every block but
+  the few that stop wind."
+  (^bytes [rg e center power seed n]
+   (rays rg e center power seed n false))
+  (^bytes [rg e center power seed n wind?]
+   (let [cast (caster rg e center power seed wind?)]
+     (reduce #(Rays/union %1 %2)
+             (par/pmapv cast (ray-parts n) 1 1)))))
 
 (defn reached
   "Returns the cells of hit, as rays returns them for a blast at

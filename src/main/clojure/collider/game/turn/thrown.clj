@@ -17,7 +17,9 @@
             [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.game.stack :as stack]
+            [collider.game.blast :as blast]
             [collider.game.turn.overlay :as overlay]
+            [collider.num :as num]
             [collider.parallel :as par]
             [collider.random :as random]
             [collider.vec :as v]
@@ -67,6 +69,8 @@
                       :sound :egg/throw :entity :egg}
    :brown-egg        {:power 1.5 :offset 0.0
                       :sound :egg/throw :entity :egg}
+   :wind-charge      {:power 1.5 :offset 0.0
+                      :sound :wind-charge/throw :drop 0.0}
    :ender-pearl      {:power 1.5 :offset 0.0
                       :sound :ender-pearl/throw}
    :splash-potion    {:power 0.5 :offset -20.0
@@ -184,7 +188,8 @@
 (defn- eye-y ^double [e] (f32 (entity/eye-height e)))
 
 (defn- thrown [world eid e stack]
-  (let [{:keys [power offset entity]} (throwables (:item stack))
+  (let [{:keys [power offset entity drop]
+         :or {drop eye-drop}} (throwables (:item stack))
         p (:pos e)
         dir (aim (double (:yaw e 0.0)) (double (:pitch e 0.0))
                  (double offset))
@@ -192,7 +197,7 @@
         [yaw pitch] (facing vel)]
     {:type  (or entity (:item stack)) :owner eid :age 0
      :left-owner? false
-     :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) eye-drop) (v/z p)]
+     :pos   [(v/x p) (- (+ (v/y p) (eye-y e)) (double drop)) (v/z p)]
      :vel   vel :yaw yaw :pitch pitch :on-ground false
      :stack (assoc stack :count 1)}))
 
@@ -341,11 +346,18 @@
     (pos? (let [[w h] (entity/box e)]
             (liquid/fluid-height chunks (:pos e) w h :water)))))
 
-(defn- drift [world e]
+(defn- wind? [e] (= :wind-charge (:type e)))
+
+(defn- falling-drift [world e]
   (let [g (double (gravity (:type e) 0.03))
         vel (:vel e)
         k (if (submerged? world e) water-drag air-drag)]
     [(* k (v/x vel)) (* k (- (v/y vel) g)) (* k (v/z vel))]))
+
+(defn- drift [world e]
+  (if (wind? e)
+    (:vel e)
+    (falling-drift world e)))
 
 (defn- point [from d ^double t]
   [(+ (v/x from) (* t (v/x d))) (+ (v/y from) (* t (v/y d)))
@@ -360,11 +372,41 @@
   (let [old (wrapped old new)]
     (+ old (* 0.2 (- new old)))))
 
-(defn- moved [e at d left?]
+(defn- f-wrapped ^double [^double old ^double new]
+  (cond (< (f32 (- new old)) -180.0) (recur (f32 (- old 360.0)) new)
+        (>= (f32 (- new old)) 180.0) (recur (f32 (+ old 360.0)) new)
+        :else old))
+
+(defn- f-lerp ^double [^double old ^double new]
+  (let [old (f-wrapped (f32 old) new)]
+    (f32 (+ old (f* (f32 0.2) (f32 (- new old)))))))
+
+(def ^:private ^:const rad->deg
+  (double (unchecked-float (/ (float 180.0) (float Math/PI)))))
+
+(defn- deg ^double [^double rad] (f32 (* rad rad->deg)))
+
+(defn- turned
+  "Returns the yaw and the pitch of e turned a fifth of the way
+  towards its motion d, as a hurting projectile turns."
+  [e d]
+  (let [x (v/x d) y (v/y d) z (v/z d)
+        h (Math/sqrt (+ (* x x) (* z z)))]
+    (if (zero? (+ (* h h) (* y y)))
+      [(:yaw e 0.0) (:pitch e 0.0)]
+      (let [yaw (f32 (+ (deg (num/atan2 z x)) 90.0))
+            pitch (f32 (- (deg (num/atan2 h y)) 90.0))]
+        [(f-lerp (double (:yaw e 0.0)) yaw)
+         (f-lerp (double (:pitch e 0.0)) pitch)]))))
+
+(defn- updated [e d]
   (let [[yaw pitch] (facing d)]
-    {:pos at :vel d :left-owner? left?
-     :yaw (lerp-rotation (double (:yaw e 0.0)) yaw)
-     :pitch (lerp-rotation (double (:pitch e 0.0)) pitch)
+    [(lerp-rotation (double (:yaw e 0.0)) yaw)
+     (lerp-rotation (double (:pitch e 0.0)) pitch)]))
+
+(defn- moved [e at d left?]
+  (let [[yaw pitch] (if (wind? e) (turned e d) (updated e d))]
+    {:pos at :vel d :left-owner? left? :yaw yaw :pitch pitch
      :age (inc (long (:age e 0)))}))
 
 (defn- teleport-packet [at o]
@@ -453,7 +495,8 @@
 
 (defn- thrown-source [world eid e d]
   (let [o (some->> (:owner e) (get (:entities world)))]
-    {:type :thrown :cause (when o (:owner e)) :direct eid :along d
+    {:type (if (wind? e) :wind-charge :thrown)
+     :cause (when o (:owner e)) :direct eid :along d
      :player? (= :player (:type o)) :attacker o :direct-attacker e}))
 
 (defn- hurt-deltas
@@ -463,8 +506,8 @@
   [world eid e d hit]
   (when-let [oid (:target hit)]
     (let [o (get-in world [:entities oid])
-          n (if (and (= :snowball (:type e)) (= :blaze (:type o)))
-              3.0 0.0)
+          blaze? (and (= :snowball (:type e)) (= :blaze (:type o)))
+          n (cond (wind? e) 1.0 blaze? 3.0 :else 0.0)
           src (thrown-source world eid e d)]
       (when-let [ds (hurt/damage-deltas world oid o n src)]
         (into ds (hurt/report-deltas
@@ -504,8 +547,22 @@
                        :yaw yaw :pitch 0.0)]
           (repeat n [:spawn-entity c]))))))
 
+(defn- burst-deltas [world eid e at]
+  (blast/deltas world {:center [(v/x at) (v/y at) (v/z at)] :power 1.2
+                       :source :wind-charge :by eid
+                       :src {:type :wind-charge :cause (:owner e)
+                             :direct eid}}))
+
+(defn- burst-at [at hit]
+  (if (= :block (:kind hit))
+    (v/add at (mapv #(* 0.25 (double %)) (dir/offset (:face hit))))
+    at))
+
 (defn- hit-deltas [world eid e d at hit]
   (case (:type e)
+    :wind-charge
+    (concat (hurt-deltas world eid e d hit)
+            (burst-deltas world eid e (burst-at at hit)))
     :snowball
     (into (vec (hurt-deltas world eid e d hit))
           [(out/all (out/status eid :break))])
@@ -519,7 +576,19 @@
     (delta/authored (potion-deltas world (assoc e :pos at) at hit)
                     (delta/entity-author eid e))))
 
-(defn- step-deltas [world eid e]
+(def ^:private ^:const wind-ceiling (+ chunk/max-y 30))
+
+(defn- wind-gone
+  "Returns the deltas of wind charge e that goes before it moves. High
+  above the world it bursts, and without its owner it just goes."
+  [world eid e]
+  (cond
+    (> (long (Math/floor (double (v/y (:pos e))))) wind-ceiling)
+    (into [[:remove-entity eid]] (burst-deltas world eid e (:pos e)))
+    (and (:owner e) (nil? (get-in world [:entities (:owner e)])))
+    [[:remove-entity eid]]))
+
+(defn- moving-deltas [world eid e]
   (let [d (drift world e)
         left? (left-owner? world e d)
         hit (clip world eid (assoc e :left-owner? left?) d)
@@ -531,6 +600,10 @@
       hit (into [[:remove-entity eid]]
                 (hit-deltas world eid e d at hit))
       :else [[:merge-entity eid (moved e at d left?)]])))
+
+(defn- step-deltas [world eid e]
+  (or (when (wind? e) (wind-gone world eid e))
+      (moving-deltas world eid e)))
 
 (defn- cloud-box [e ^double r]
   (box-of (:pos e) r (size/height :area-effect-cloud)))
