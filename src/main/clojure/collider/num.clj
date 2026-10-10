@@ -40,6 +40,14 @@
   ^double [^double a ^double b]
   (double (unchecked-float (/ a b))))
 
+(def ^:const ^:private deg-per-rad (double (unchecked-float (/ 180.0 (double (unchecked-float Math/PI))))))
+
+(defn degrees
+  "Returns radians r as degrees the way the game multiplies, by a float
+  constant."
+  ^double [^double r]
+  (* r deg-per-rad))
+
 (defn atan2
   "Returns the angle of y, x in radians as the game finds it, close to
   the exact arctangent but not equal."

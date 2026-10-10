@@ -101,9 +101,8 @@
 
 (defn- faced ^double [e ^double x ^double z]
   (let [p (:pos e)
-        a (* (num/atan2 (- z (v/z p)) (- x (v/x p))) 180.0)]
-    (double (float (- (float (/ a (double (float Math/PI))))
-                      (float 90.0))))))
+        a (num/degrees (num/atan2 (- z (v/z p)) (- x (v/x p))))]
+    (double (float (- (float a) (float 90.0))))))
 
 (defn- next-node [e]
   (let [nv (:nav e)]

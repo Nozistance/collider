@@ -172,8 +172,6 @@
 
 (def ^:private ^:const look-speed 10.0)
 
-(def ^:private ^:const float-pi (double (float Math/PI)))
-
 (defn- eye-y ^double [o]
   (cond-> (v/y (:pos o))
     (not= :point (:type o)) (+ (entity/eye-height o))))
@@ -185,7 +183,7 @@
   (let [pos (:pos e)
         dy (- (eye-y o) (+ (v/y pos) (mobs/eye-height e)))
         dh (Math/sqrt (v/dist-xz-sq pos (:pos o)))]
-    (double (float (- (/ (* (num/atan2 dy dh) 180.0) float-pi))))))
+    (double (float (- (num/degrees (num/atan2 dy dh)))))))
 
 (defn- active-look [e ^long t]
   (let [look (:look e)]
@@ -199,7 +197,7 @@
 (defn- look-yaw ^double [e o]
   (let [xd (- (v/x (:pos o)) (v/x (:pos e)))
         zd (- (v/z (:pos o)) (v/z (:pos e)))]
-    (num/f32 (- (num/f32 (/ (* (num/atan2 zd xd) 180.0) float-pi))
+    (num/f32 (- (num/f32 (num/degrees (num/atan2 zd xd)))
                 90.0))))
 
 (defn- look-aim [world e look]
