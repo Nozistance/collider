@@ -4,6 +4,7 @@
             [collider.game.entity :as entity]
             [collider.game.entity.damage :as damage]
             [collider.game.level :as level]
+            [collider.game.level.writes :as writes]
             [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
@@ -72,7 +73,7 @@
    {:scope :level
     :schema [:cat Records [:? [:maybe Coll]] [:? [:maybe Coll]]
              [:? Authors]]
-    :apply level/set-blocks}
+    :apply writes/set-blocks}
    :ticks-flushed
    {:scope :level
     :schema [:cat [:enum :block-ticks :fluid-ticks] :int Coll]
@@ -80,16 +81,16 @@
              (update w k schedule/flushed t parked))}
    :schedule-ticks
    {:scope :level :schema [:cat [:map-of :int Coll]]
-    :apply level/schedule-ticks}
+    :apply writes/schedule-ticks}
    :schedule-copied
    {:scope :level :schema [:cat Coll]
     :apply (fn [w [_ es]]
              (update w :block-ticks schedule/add-ordered es))}
    :openers
-   {:scope :level :schema [:cat Pos :int] :apply level/openers}
+   {:scope :level :schema [:cat Pos :int] :apply writes/openers}
    :shulker-anim
    {:scope :level :schema [:cat Pos [:maybe :map]]
-    :apply level/shulker-anim}
+    :apply writes/shulker-anim}
    :changed-blocks-flushed
    {:scope :level :schema [:cat]
     :apply (fn [w _] (assoc w :changed-blocks nil))}
@@ -110,7 +111,7 @@
     :schema [:cat :keyword Pos [:tuple number? number?]]
     :apply player/set-world-spawn}
    :add-chunk
-   {:scope :level :schema [:cat :int :any] :apply level/add-chunk}
+   {:scope :level :schema [:cat :int :any] :apply writes/add-chunk}
    :chunk-requested
    {:scope :level :schema [:cat :int]
     :apply (fn [w [_ id]]
@@ -124,7 +125,7 @@
     :apply (fn [w [_ held]] (assoc w :unknown held))}
    :restore-chunk
    {:scope :level :schema [:cat :int :map]
-    :apply level/restore-chunk}
+    :apply writes/restore-chunk}
    :player-placed
    {:scope :level :schema [:cat Eid :string Vec3]
     :apply player/placed :eids (fn [_ _ d] [(nth d 1)])}
@@ -135,22 +136,22 @@
                (assoc-in w [:spawning eid] req)
                (update w :spawning dissoc eid)))}
    :unload-chunk
-   {:scope :level :schema [:cat :int] :apply level/unload-chunk}
+   {:scope :level :schema [:cat :int] :apply writes/unload-chunk}
    :set-weather
    {:scope :level :schema [:cat :map]
     :apply (fn [w [_ m]] (merge w (select-keys m weather/fields)))}
    :set-block-entity
    {:scope :level :schema [:cat Pos [:maybe :map]]
-    :apply level/set-block-entity}
+    :apply writes/set-block-entity}
    :game-event
    {:scope :level :schema [:cat :keyword :any :any]
     :apply (fn [w _] w)}
    :spawn-entity
-   {:scope :level :schema [:cat :map] :apply level/spawn-entity
+   {:scope :level :schema [:cat :map] :apply writes/spawn-entity
     :eids new-eids}
    :xp-award
    {:scope :level :schema [:cat Vec3 :int :any [:? Vec3]]
-    :apply level/xp-award :eids new-eids}
+    :apply writes/xp-award :eids new-eids}
    :remove-entity
    {:scope :level :schema [:cat Eid] :by-eid true :apply quit}
    :level-deltas
@@ -166,7 +167,7 @@
     :apply (fn [w _] (dissoc (level/advance w) :input))}
    :advance-weather
    {:scope :level :schema [:cat [:? :map]]
-    :apply level/advance-weather}
+    :apply writes/advance-weather}
    :observed
    {:scope :level :schema [:cat :map]
     :apply (fn [w [_ m]] (assoc w :observed m))}
