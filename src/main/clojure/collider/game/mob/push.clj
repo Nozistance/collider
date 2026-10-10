@@ -90,13 +90,6 @@
       (:arrived e)
       [(* 2 (long t)) (inc (* 2 (long eid)))])))
 
-(defn slots
-  "Returns the place of each body of entries by its id."
-  ^Slots [entries]
-  (let [n (count entries) eids (long-array n)]
-    (dotimes [i n] (aset eids i (long (nth (nth entries i) 0))))
-    (Slots/of eids)))
-
 (defn slot
   "Returns the index of body eid in slots, or -1 when it has none."
   {:inline (fn [s eid]

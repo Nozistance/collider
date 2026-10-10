@@ -441,9 +441,6 @@
   [^long st]
   (Block/solid (tables) st))
 
-(defn solid-arr
-  ^booleans [] @solid-table)
-
 (defn- int-runs [^long default t]
   (let [a (int-array (data/block-state-count) (int default))]
     (states/each-run! t (fn [i v] (aset a (int i) (int v))))

@@ -177,13 +177,6 @@
   (let [[lo hi] (reach-box b) r (+ (twice (:power b)) 1.0)]
     (sections/within idx lo hi (:center b) r)))
 
-(defn bodies
-  "Returns [id e d12] of the bodies of index idx that blast b reaches,
-  in section order. Function now gives the body of an id as it is,
-  nil when it is gone."
-  [b idx now]
-  (into [] (keep (reach b now)) (near b idx)))
-
 (defn struck
   "Returns (f [id e d12 seen]) for each body of index idx that blast
   b reaches, in section order, with the share seen of it that b

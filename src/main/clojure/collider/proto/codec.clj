@@ -236,12 +236,6 @@
   (let [v (buf/read-long buf)]
     [(cell/section-x v) (cell/section-y v) (cell/section-z v)]))
 
-(defn write-list
-  "Writes the count of xs and each of them with f."
-  [^Buf buf xs f]
-  (write-varint buf (count xs))
-  (doseq [x xs] (f buf x)))
-
 (defn write-holder-ref
   "Writes a registry entry by its id, plus one so that zero stays for
   an entry sent in full."

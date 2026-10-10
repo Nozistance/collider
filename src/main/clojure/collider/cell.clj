@@ -30,13 +30,6 @@
   ^long [^long c]
   (bit-shift-right (bit-shift-left c 26) 38))
 
-(defn offset
-  "Returns the cell dx dy dz away from cell c. Each coordinate wraps
-  inside its own field."
-  ^long [^long c ^long dx ^long dy ^long dz]
-  (pack (unchecked-add (x c) dx) (unchecked-add (y c) dy)
-        (unchecked-add (z c) dz)))
-
 (defn unpack
   "Returns the coordinates of cell c as [x y z]."
   [^long c]

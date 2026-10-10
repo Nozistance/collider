@@ -20,12 +20,6 @@
 
 (def ^:private ^:const face-forward-delay 10)
 
-(defn rotlerp
-  "Returns a turned toward b by at most max degrees, brought back into
-  one turn around the circle."
-  ^double [^double a ^double b ^double max]
-  (steer/rotlerp a b max))
-
 (defn walked?
   "Returns true when navigation nav has no path node left to walk to."
   [nav]
@@ -42,14 +36,6 @@
   "Returns the height the floor under the cell x y z stands at."
   ^double [chunks ^long x ^long y ^long z]
   (+ (dec y) (shape-top chunks x (dec y) z)))
-
-(defn wanted
-  "Returns mob e told to walk to x y z at that speed.
-  A jump under way keeps the mob jumping."
-  [e x y z speed]
-  (let [m (steer/wanted (:move e) (double x) (double y) (double z)
-                        (double speed))]
-    (assoc e :move m)))
 
 (defn in-liquid?
   "Returns true when the mob stands in water or in lava, either of

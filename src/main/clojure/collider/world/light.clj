@@ -58,6 +58,3 @@
   ([chunks changes sky?]
    (Light/relit chunks changes (boolean sky?) (block/tables))))
 
-(defn relight
-  [chunks pos old-state new-state]
-  (relight-batch chunks [[pos old-state new-state]]))
