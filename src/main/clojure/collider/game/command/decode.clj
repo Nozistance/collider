@@ -508,3 +508,24 @@
   the decoded key. A key that fails fails its value too."
   [kf vf]
   (map-of kf (fn [[ko kv :as kr] v] (if (= :ok ko) ((vf kv) v) kr))))
+
+(def ^:private int-array-class (Class/forName "[I"))
+
+(defn as-list
+  "Returns list tag or array tag as a vector, else nil."
+  [tag]
+  (cond (vector? tag) tag
+        (and (some? tag) (.isArray (class tag))) (vec tag)))
+
+(defn ints-of
+  "Returns the decoder of n ints, from an int array or a list of
+  numbers. More than n is a partial result."
+  [n]
+  (fn [tag]
+    (cond (not (or (instance? int-array-class tag)
+                   (and (vector? tag) (every? number? tag))))
+          [:malformed (str "Not an int array: " (printed tag))]
+          (not= n (count tag))
+          [(if (< (long n) (count tag)) :partial :malformed)
+           (str "Input is not a list of " n " ints")]
+          :else [:ok (mapv #(long (unchecked-int %)) (vec tag))])))

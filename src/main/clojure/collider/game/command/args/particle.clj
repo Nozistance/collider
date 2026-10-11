@@ -26,10 +26,6 @@
   (let [v (unchecked-float (* (double (unchecked-float x)) 255.0))]
     (bit-and 0xFF (unchecked-int (Math/floor v)))))
 
-(defn- as-list [tag]
-  (cond (vector? tag) tag
-        (and (some? tag) (.isArray (class tag))) (vec tag)))
-
 (defn- list-result [n good bad]
   (let [size (when-not (= n (count good))
                (str "Input is not a list of " n " elements"))
@@ -44,7 +40,7 @@
   result, a shorter one fails, and each element that is no number
   adds its error."
   [f n tag]
-  (if-let [xs (as-list tag)]
+  (if-let [xs (dfu/as-list tag)]
     (list-result n (mapv f (filter number? xs))
                  (count (remove number? xs)))
     (dfu/not-a "list" tag)))
@@ -129,20 +125,11 @@
       x
       (or-else x item-name tag))))
 
-(def ^:private int-array-class (Class/forName "[I"))
-
-(defn- block-pos [tag]
-  (cond (not (or (instance? int-array-class tag)
-                 (and (vector? tag) (every? number? tag))))
-        [:malformed (str "Not an int array: " (dfu/printed tag))]
-        (not= 3 (count tag))
-        [:malformed "Input is not a list of 3 ints"]
-        :else [:ok (mapv #(long (unchecked-int %)) (vec tag))]))
 
 (def ^:private source-type (dfu/by-name "position_source_type"))
 
 (def ^:private block-source
-  (dfu/mapped (dfu/record [:pos :pos block-pos :req])
+  (dfu/mapped (dfu/record [:pos :pos (dfu/ints-of 3) :req])
               #(vector :block (:pos %))))
 
 (defn- source [tag]

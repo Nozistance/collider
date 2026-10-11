@@ -307,11 +307,8 @@
     [:ok (bit-and (long (unchecked-byte tag)) 0xFF)]
     [:malformed "Not a number"]))
 
-(defn- seq-tag [tag]
-  (if (and (some? tag) (.isArray (class tag))) (vec tag) tag))
-
 (defn- elements [f]
-  (let [l (dfu/listed f)] (fn [tag] (l (seq-tag tag)))))
+  (let [l (dfu/listed f)] (fn [tag] (l (or (dfu/as-list tag) tag)))))
 
 (defn- string-to [most]
   (dfu/checked dfu/string-of #(<= (count %) most) (constantly nil)))
@@ -334,7 +331,8 @@
   (fn [tag]
     (let [[op v :as r] (dfu/string-of tag)]
       (cond (not= :ok op) r
-            (contains? (get-in (data/blocks) [block :props]) (keyword v))
+            (some #(= v (data/snake %)) (keys (get-in (data/blocks)
+                                                      [block :props])))
             r
             :else [:malformed (str "No property on " (data/wire block)
                                    " with name: " v)]))))
@@ -359,7 +357,7 @@
 
 (def ^:private map-decorations
   (dfu/mapped (dfu/unbounded-map dfu/string-of decoration)
-              #(update-keys % keyword)))
+              #(nbt (update-keys % keyword))))
 
 (defn- holders-tag [v]
   (cond (map? v) (str "#" (dfu/full-id (:tag v)))
@@ -373,27 +371,26 @@
                            #(nbt-tree (assoc tag :items (holders-tag %))))
                (:items tag))))
 
-(defn- patch-entry [[k v]]
-  (let [s (subs (str k) 1)
-        gone? (str/starts-with? s "!")
-        [op t :as r] (identifier (cond-> s gone? (subs 1)))
-        [vo vv :as vr] (when (and (= :ok op) (not gone?)) (decode t v))]
-    (cond (not= :ok op) r
-          gone? [:ok [:removed t]]
-          (= :ok vo) [:ok [:components [t vv]]]
-          :else vr)))
+(defn- patch-key [s]
+  (let [gone? (str/starts-with? s "!")
+        [op id] (identifier (cond-> s gone? (subs 1)))]
+    (cond (not= :ok op) [:raw s]
+          (dfu/reg-key "data_component_type" id) [:ok [id gone?]]
+          :else [:malformed (str "No component with type: '"
+                                 (dfu/full-id id) "'")])))
 
-(defn- patch-of [tag]
-  (if (map? tag)
-    (let [rs (mapv patch-entry tag)
-          part #(into %1 (keep (fn [[_ [k x]]] (when (= %2 k) x))) rs)]
-      (cond (dfu/raw-in? rs) [:raw tag]
-            (some dfu/failed? rs) (dfu/settled tag (dfu/errors rs))
-            :else [:ok (not-empty
-                         (into {} (filter (comp seq val))
-                               {:components (part {} :components)
-                                :removed (part #{} :removed)}))]))
-    (dfu/not-map tag)))
+(defn- patch-value [[id gone?]]
+  (if gone? dfu/tag-unit #(decode id %)))
+
+(defn- patch [m]
+  (let [part #(into %1 (keep (fn [[[id gone?] v]] (%2 id gone? v))) m)]
+    (not-empty
+      (into {} (filter (comp seq val))
+            {:components (part {} (fn [id gone? v] (when-not gone? [id v])))
+             :removed (part #{} (fn [id gone? _] (when gone? id)))}))))
+
+(def ^:private patch-of
+  (dfu/mapped (dfu/dispatched-map patch-key patch-value) patch))
 
 (def ^:private item-id
   (dfu/checked (by-name "item") #(not= :air %)
@@ -437,12 +434,15 @@
    tag))
 
 (defn- effect [tag]
-  (let [[op v :as r] ((dfu/record [:id :effect (by-name "mob_effect") :req])
-                      tag)]
-    (if (= :ok op)
-      ((dfu/mapped effect-details #(assoc v :details %))
-       (dissoc tag :id))
-      r)))
+  (if (map? tag)
+    (let [[io iv :as i] ((dfu/record [:id :effect (by-name "mob_effect")
+                                      :req])
+                         tag)
+          [eo ev :as e] (effect-details tag)]
+      (cond (dfu/raw-in? [i e]) [:raw tag]
+            (= :ok io eo) [:ok (assoc iv :details ev)]
+            :else (dfu/errors [i e])))
+    (dfu/not-map tag)))
 
 (def ^:private potion-record
   (with-nils [:potion :custom-color :custom-name]
@@ -482,17 +482,11 @@
               [:pages :pages (dfu/listed (filterable tc/text-of)) :opt []]
               [:resolved :resolved bool-of :opt false]))
 
-(defn- block-pos [tag]
-  (let [xs (seq-tag tag)]
-    (if (and (vector? xs) (= 3 (count xs)) (every? number? xs))
-      [:ok (mapv #(long (unchecked-int %)) xs)]
-      [:raw tag])))
-
 (def ^:private lodestone-tracker
   (with-nils [:target]
     (dfu/record [:target :target
                  (dfu/record [:dimension :dimension identifier :req]
-                             [:pos :pos block-pos :req])
+                             [:pos :pos (dfu/ints-of 3) :req])
                  :opt]
                 [:tracked :tracked bool-of :opt true])))
 
@@ -517,21 +511,34 @@
                        v "'")]
       r)))
 
-(defn- uuid-of [tag]
-  (let [xs (seq-tag tag)]
-    (if (and (vector? xs) (= 4 (count xs)) (every? number? xs))
-      (let [[a b c d] (map #(long (unchecked-int %)) xs)
-            hi (bit-or (bit-shift-left a 32) (bit-and b 0xFFFFFFFF))
-            lo (bit-or (bit-shift-left c 32) (bit-and d 0xFFFFFFFF))]
-        [:ok (java.util.UUID. hi lo)])
-      [:raw tag])))
+(def ^:private uuid-of
+  (dfu/mapped (dfu/ints-of 4)
+              (fn [[a b c d]]
+                (java.util.UUID.
+                  (bit-or (bit-shift-left a 32) (bit-and b 0xFFFFFFFF))
+                  (bit-or (bit-shift-left c 32) (bit-and d 0xFFFFFFFF))))))
 
-(def ^:private properties
-  (dfu/limited (with-nils [:signature]
-                 (dfu/record [:name :name (string-to 64) :req]
-                             [:value :value (string-to 32767) :req]
-                             [:signature :signature (string-to 1024) :opt]))
-               16))
+(def ^:private property
+  (with-nils [:signature]
+    (dfu/record [:name :name (string-to 64) :req]
+                [:value :value (string-to 32767) :req]
+                [:signature :signature (string-to 1024) :opt])))
+
+(defn- property-list [tag]
+  (if (and (vector? tag) (< 16 (count tag)))
+    ((dfu/limited property 16) tag)
+    (dfu/list-of property tag)))
+
+(def ^:private property-map
+  (dfu/mapped
+    (dfu/checked (dfu/unbounded-map dfu/string-of (dfu/listed dfu/string-of))
+                 #(<= (count %) 16)
+                 #(str "Cannot have more than 16 properties, but was "
+                       (count %)))
+    (fn [m] (vec (for [[k vs] m v vs] {:name k :value v :signature nil})))))
+
+(defn- properties [tag]
+  (dfu/settled tag (dfu/either (property-map tag) (property-list tag))))
 
 (def ^:private named-profile
   (dfu/mapped (dfu/record [:id :id uuid-of :req]
@@ -559,7 +566,7 @@
           [ro _ :as r] (partial-profile tag)
           [po pv :as p] (cond (= :ok lo) l
                               (= :ok ro) r
-                              :else (dfu/errors [r l]))
+                              :else (dfu/errors [l r]))
           [so sv :as s] (skin tag)]
       (cond (dfu/raw-in? [p s]) [:raw tag]
             (= :ok po so) [:ok {:profile pv :skin sv}]
@@ -567,12 +574,12 @@
     (dfu/not-map tag)))
 
 (defn- profile [tag]
-  (let [by-name #(hash-map :profile {:right {:name % :id nil
+  (let [named #(hash-map :profile {:right {:name % :id nil
                                              :properties []}}
                            :skin {:body nil :cape nil :elytra nil
                                   :model nil})]
     (dfu/settled tag (dfu/either (full-profile tag)
-                                 ((dfu/mapped player-name by-name) tag)))))
+                                 ((dfu/mapped player-name named) tag)))))
 
 (def ^:private banner-patterns
   (dfu/listed
@@ -586,23 +593,23 @@
                 [:ticks_in_hive :ticks-in-hive dfu/int-of :req]
                 [:min_ticks_in_hive :min-ticks-in-hive dfu/int-of :req])))
 
+(def ^:private consume-kinds
+  {:apply-effects
+   (dfu/record [:effects :effects (dfu/listed effect) :req]
+               [:probability :probability (dfu/float-range 0 1) :opt 1.0])
+   :remove-effects
+   (dfu/record [:effects :effects (holders "mob_effect") :req])
+   :clear-all-effects (dfu/record)
+   :teleport-randomly
+   (dfu/record [:diameter :diameter dfu/positive-float :opt 16.0])
+   :play-sound (dfu/record [:sound :sound sound :req])})
+
 (defn- consume-effect [tag]
-  (let [kinds
-        {:apply-effects
-         (dfu/record [:effects :effects (dfu/listed effect) :req]
-                     [:probability :probability (dfu/float-range 0 1) :opt
-                      1.0])
-         :remove-effects
-         (dfu/record [:effects :effects (holders "mob_effect") :req])
-         :clear-all-effects (dfu/record)
-         :teleport-randomly
-         (dfu/record [:diameter :diameter dfu/positive-float :opt 16.0])
-         :play-sound (dfu/record [:sound :sound sound :req])}
-        [op v :as r] ((dfu/record [:type :type
+  (let [[op v :as r] ((dfu/record [:type :type
                                    (by-name "consume_effect_type") :req])
                       tag)]
     (if (= :ok op)
-      ((dfu/mapped (kinds (:type v)) #(assoc % :type (:type v)))
+      ((dfu/mapped (consume-kinds (:type v)) #(assoc % :type (:type v)))
        (dissoc tag :type))
       r)))
 

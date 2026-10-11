@@ -28,6 +28,11 @@
 (defn- default? [item k]
   (contains? (get-in (data/items) [item :defaults]) k))
 
+(defn unpatched
+  "Returns stack with component k back to the default of its item."
+  [stack k]
+  (tidy (-> (update stack :components dissoc k) (update :removed disj k))))
+
 (defn put
   "Returns stack with component k set to v, or dropped when v is nil."
   [stack k v]

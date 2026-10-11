@@ -126,9 +126,19 @@
   []
   {:id "minecraft:item_stack" :parse parse-stack})
 
+(defn- json-tag [x]
+  (cond (map? x) (update-vals (update-keys x keyword) json-tag)
+        (vector? x) (mapv json-tag x)
+        (boolean? x) (byte (if x 1 0))
+        :else x))
+
+(defn- default? [item k v]
+  (let [d (get-in (data/items) [item :defaults k] ::none)]
+    (and (not= ::none d) (= [:ok v] (cs/decode k (json-tag d))))))
+
 (defn- patched [s [k op v]]
   (case op
-    :ok (stack/put s k v)
+    :ok (if (default? (:item s) k v) (stack/unpatched s k) (stack/put s k v))
     :remove (stack/put s k nil)
     :raw s))
 

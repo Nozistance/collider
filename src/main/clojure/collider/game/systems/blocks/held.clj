@@ -17,17 +17,12 @@
   [item]
   (slots/armor (data/swap-slot item)))
 
-(defn- same-stack? [a b]
-  (and (= (:item a) (:item b))
-       (= (:components a) (:components b))
-       (= (:removed a) (:removed b))))
-
 (defn- swappable?
   "Returns true when player e swaps held for worn.
   A player in creative also takes off a worn item that binds."
   [e held worn]
   (and (or (game-mode/creative? e) (not (enchantment/binding? worn)))
-       (not (same-stack? held worn))))
+       (not (inventory/same-stack? held worn))))
 
 (defn- equip-sound [e item]
   (out/all (out/sound (data/equip-sound item) (:pos e) 1.0 1.0
