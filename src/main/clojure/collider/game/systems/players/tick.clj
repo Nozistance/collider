@@ -20,6 +20,7 @@
             [collider.game.systems.food :as food]
             [collider.game.systems.items :as items]
             [collider.game.systems.keepalive :as keepalive]
+            [collider.game.systems.players.glide :as glide]
             [collider.game.systems.players.motion :as motion]
             [collider.game.systems.orbs :as orbs]
             [collider.game.systems.pose :as pose]
@@ -48,6 +49,7 @@
    items/player-pickups
    orbs/player-pickup
    attacks/wielded
+   glide/player-deltas
    motion/player-deltas
    pose/player-deltas
    food/player-deltas

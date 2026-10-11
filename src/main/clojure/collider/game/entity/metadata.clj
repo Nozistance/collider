@@ -67,7 +67,8 @@
           (assoc :absorption (:absorption e))
           (not (zero? (long (:score e 0))))
           (assoc :score (:score e))
-          (game-mode/spectator? e) (assoc :invisible? true)))
+          (game-mode/spectator? e) (assoc :invisible? true)
+          (:fall-flying e) (assoc :fall-flying? true)))
 
 (defn- effect-particles [e fx]
   (when-not (game-mode/spectator? e)

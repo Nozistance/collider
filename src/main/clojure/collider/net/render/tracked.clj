@@ -32,7 +32,7 @@
 
 (def ^:private shared-flags
   {:burning? 0 :sneaking? 1 :sprinting? 3 :swimming? 4 :invisible? 5
-   :glowing? 6})
+   :glowing? 6 :fall-flying? 7})
 
 (defn- flags-byte ^long [meta]
   (reduce-kv (fn [^long b k ^long bit]
@@ -44,7 +44,7 @@
 (defn- flags? [meta] (boolean (some #(contains? meta %) flag-keys)))
 
 (def ^:private pose-id
-  {:standing 0 :sleeping 2 :swimming 3 :crouching 5 :long-jumping 6})
+  {:standing 0 :fall-flying 1 :sleeping 2 :swimming 3 :crouching 5 :long-jumping 6})
 
 (def ^:private living-flags {:is-using 1 :off-hand 2})
 

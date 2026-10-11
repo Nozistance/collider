@@ -47,7 +47,8 @@
 (def ^:private packed
   "The keys that share one field of entity data. A change to one sends
   the whole field."
-  [[:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?]
+  [[:burning? :sneaking? :sprinting? :swimming? :invisible? :glowing?
+    :fall-flying?]
    [:color :sheared?]])
 
 (defn- meta-diff [mdata sent]

@@ -48,6 +48,7 @@
   (cond
     (:sleeping e) :sleeping
     swim? :swimming
+    (:fall-flying e) :fall-flying
     (and (:sneaking? e) (not (:flying e))) :crouching
     :else :standing))
 

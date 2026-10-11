@@ -5,6 +5,7 @@
             [collider.data.long-map :as lm]
             [collider.game.attribute :as attribute]
             [collider.game.book :as book]
+            [collider.game.glide :as glide]
             [collider.game.entity :as entity]
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
@@ -553,6 +554,7 @@
     0 (update-entity w eid assoc :leave-bed? true)
     1 (update-entity w eid sprinted true)
     2 (update-entity w eid sprinted false)
+    6 (update-entity w eid glide/started)
     w))
 
 (defn move
