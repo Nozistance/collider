@@ -259,10 +259,15 @@
 (defn on-wire? [e]
   (boolean (tags e :update-packet?)))
 
+(def ^:private named
+  #{:chest :trapped-chest :barrel :shulker-box :furnace :blast-furnace
+    :smoker :brewing-stand})
+
 (def ^:private component-fields
-  {:banner        {:patterns :banner-patterns}
-   :skull         {:profile :profile}
-   :decorated-pot {:sherds :pot-decorations}})
+  (merge (zipmap named (repeat {:custom-name :custom-name}))
+         {:banner        {:patterns :banner-patterns}
+          :skull         {:profile :profile}
+          :decorated-pot {:sherds :pot-decorations}}))
 
 (defn contents [items]
   (let [last-at (fn [acc [i s]] (if s (long i) acc))
@@ -337,6 +342,24 @@
                  (if-let [v (get cs component)] (assoc e field v) e))
                (with-container e (:container cs))
                (get component-fields (:kind e) {}))))
+
+(defn- items-from [tags size]
+  (reduce (fn [v t]
+            (let [i (long (:Slot t -1))]
+              (if (< -1 i (long size)) (assoc v i (tag/stack t)) v)))
+          (vec (repeat size nil)) tags))
+
+(defn with-tag
+  "Returns block entity e at tick t loaded from tag d, as a command
+  puts it. What d leaves out comes back as a new one of its kind has
+  it, contents included."
+  [e d t]
+  (let [f (with-data (made (:kind e) t) d t)]
+    (cond-> f
+      (vector? (:items f)) (assoc :items (items-from (:Items d)
+                                                     (count (:items f))))
+      (and (named (:kind f)) (some? (:CustomName d)))
+      (assoc :custom-name (:CustomName d)))))
 
 (defn placed-by
   "Returns block entity e placed by player p. A structure block takes

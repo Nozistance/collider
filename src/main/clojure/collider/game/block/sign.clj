@@ -43,8 +43,8 @@
   (if (boolean? v) v (pos? (long v))))
 
 (defn- text-of [m]
-  {:lines (vec (:messages m)) :color (data/kebab (:color m))
-   :glowing? (flag? (:has_glowing_text m))})
+  {:lines (vec (:messages m)) :color (data/kebab (:color m "black"))
+   :glowing? (flag? (:has_glowing_text m false))})
 
 (defn loaded
   "Returns sign e with what its tag d holds."

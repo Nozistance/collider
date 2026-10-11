@@ -1,6 +1,7 @@
 (ns collider.game.commands.fill
   "The fill, setblock and clone commands."
-  (:require [collider.game.changes :as changes]
+  (:require [collider.game.block.blockentity :as be]
+            [collider.game.changes :as changes]
             [collider.game.command.args :as cmd-args]
             [collider.game.command.args.block :as block-args]
             [collider.game.command.reader :as cmd-reader]
@@ -237,13 +238,33 @@
     (or (not= "destroy" mode) (not (block/air-type? st))
         (not (block/air-type? left)))))
 
-(defn- block-set [world eid [x y z :as p] st mode]
+(defn- entity-after
+  "Returns the block entity that holds cell p of level lv once st is
+  set there, the one it has when the kind of block entity stays."
+  [lv p st mode t]
+  (when-let [k (be/kind st)]
+    (let [e (be/at lv p)
+          old (if (= "destroy" mode) 0 (changes/block-at lv p))]
+      (if (and e (not= "destroy" mode) (not (be/removed? old st 0)))
+        e
+        (be/made k t)))))
+
+(defn- block-set [world eid [x y z :as p] {st :state tag :nbt} mode]
   (let [put? (place-needed? world p st mode)
+        lv (targets/source-level world)
+        before (when (and put? tag)
+                 (entity-after lv p st mode (:tick world)))
+        after (when before (be/with-tag before tag (:tick world)))
+        changed? (boolean (and after (not= after before)))
         opts (mode-opts mode nil)
         [_ ds _ placed] (edited world [[p (when put? st)]] opts)]
-    (if (and put? (zero? (long placed)))
+    (if (and put? (zero? (long placed)) (not changed?))
       (fail eid "commands.setblock.failed")
-      (concat ds (say eid "commands.setblock.success" x y z)))))
+      (concat ds
+              (when changed?
+                (targets/in-level world (targets/source-dim world)
+                                  (changes/be-changed p after)))
+              (say eid "commands.setblock.success" x y z)))))
 
 (defn- setblock-deltas [world eid [x y z block mode]]
   (let [p [x y z]
@@ -254,7 +275,7 @@
       (and (= "keep" mode)
            (not (block/air-type? (changes/block-at lv p))))
       (fail eid "commands.setblock.failed")
-      :else (block-set world eid p (:state block) mode))))
+      :else (block-set world eid p block mode))))
 
 (def handlers
   {:fill fill-deltas :fill-where fill-where-deltas

@@ -165,13 +165,19 @@
         (map (fn [t] [t (fn [_ _ pos _] (furnace-menu t pos))]))
         be/furnace-kinds))
 
+(defn- named [world m]
+  (if-let [n (some #(:custom-name (be/at world %)) (:cells m))]
+    (assoc m :title n)
+    m))
+
 (defn menu-at
   [world pos]
   (let [chunks (:chunks world)
         st (chest/state-at chunks pos) t (block/type-of st)]
-    (if (contains? chest/types t)
-      (chest-menu chunks pos st)
-      (when-let [f (builders t)] (f world chunks pos st)))))
+    (some->> (if (contains? chest/types t)
+               (chest-menu chunks pos st)
+               (when-let [f (builders t)] (f world chunks pos st)))
+             (named world))))
 
 (defn provider-at
   "Returns the menu a spectator opens at pos.
