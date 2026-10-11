@@ -177,7 +177,17 @@
 (defn- light-flags [states pred]
   (palette-runs (for [[id st] states :when (pred st)] [id true])))
 
+(defn- skylight-check!
+  "Throws unless skylight passes exactly the states that take no
+  light away, which the server reads from the dampening."
+  [states]
+  (doseq [[id st] states
+          :when (not= (call st "propagatesSkylightDown")
+                      (zero? (long (call st "getLightDampening"))))]
+    (throw (unknown "skylight does not follow dampening" {:state id}))))
+
 (defn- light-table [states]
+  (skylight-check! states)
   (let [vals-of (fn [m p] (light-values states m p))]
     {:dampening (vals-of "getLightDampening" #(not= 15 (long %)))
      :emission (vals-of "getLightEmission" #(pos? (long %)))

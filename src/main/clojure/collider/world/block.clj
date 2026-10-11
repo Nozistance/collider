@@ -546,6 +546,10 @@
   [^long st]
   (Block/canOcclude (tables) st))
 
+(defn propagates-skylight-down?
+  "Returns true when skylight passes st on its way down."
+  [^long st] (zero? (dampening st)))
+
 (defn light-dampening-into
   "Returns the light cost of crossing from into to along dir."
   {:inline (fn [from to dir simple]

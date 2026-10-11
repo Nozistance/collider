@@ -133,6 +133,31 @@
                       (feature/start chunks) (range tries))]
       {:changes (flagged update/clients (feature/cells acc))})))
 
+(defn- around [p]
+  (for [x (range -1 2) y (range -1 2) z (range -1 2)]
+    [(+ (long (p 0)) x) (+ (long (p 1)) y) (+ (long (p 2)) z)]))
+
+(defn- nylium-of [near roll]
+  (let [has? (fn [k] (some #(= k (block/block-of %)) near))
+        red (has? :crimson-nylium)
+        blue (has? :warped-nylium)]
+    (cond (and red blue) (if (< (double (roll :nylium)) 0.5)
+                           :warped-nylium
+                           :crimson-nylium)
+          blue :warped-nylium
+          red :crimson-nylium)))
+
+(defn netherrack-meal
+  "Returns the bone meal result for netherrack at p, which turns
+  into the nylium beside it."
+  [chunks p _ roll]
+  (let [near (mapv #(chunk/at chunks %) (around p))]
+    (when (and (block/propagates-skylight-down? (chunk/at chunks (dir/up p)))
+               (some #(block/tagged? % "nylium") near))
+      {:changes (if-let [k (nylium-of near roll)]
+                  [[p (block/state k) nil update/all]]
+                  [])})))
+
 (defn placer-meal
   "Returns the patch bone meal grows on a block that places one."
   [chunks p st roll]
