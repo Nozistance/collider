@@ -46,11 +46,15 @@
   (long (get-in world [:config :simulation-distance]
                 activation-radius)))
 
-(defn- compute-areas [world]
-  (let [ps (player-chunks world)
-        r (view-radius world)
+(defn- inputs
+  "Returns what the chunk areas of world are a function of."
+  [world]
+  [(player-chunks world) (chunk/shape (:chunks world))
+   (view-radius world) (sim-radius world)])
+
+(defn- computed [world [ps _ r s :as of]]
+  (let [r (long r) s (long s)
         zone (zone-at ps (+ 2 r))
-        s (sim-radius world)
         live? #(and (contains? zone %)
                     (contains? (:chunks world) %))
         live-of #(into (lm/long-set) (filter live?) %)
@@ -59,39 +63,11 @@
         active (live-of (zone-at ps s))]
     {:active active :ticking (live-of (zone-at ps (inc s)))
      :broadcast (zone-at ps (inc r)) :zone zone :absent absent
-     :active-ids (vec active)}))
-
-(defn- areas-key
-  "Returns what the chunk areas of world are a function of.
-  Block writes keep the shape of chunks, so they do not count."
-  [world]
-  {:player-chunks (player-chunks world)
-   :shape (chunk/shape (:chunks world))
-   :config (:config world) :rules (:rules world)
-   :players (:players world) :entities (:entities world)})
-
-(defn- same-shape? [k world]
-  (and (identical? (:shape k) (chunk/shape (:chunks world)))
-       (identical? (:config k) (:config world))
-       (identical? (:rules k) (:rules world))))
-
-(defn- same? [k world]
-  (and (identical? (:entities k) (:entities world))
-       (identical? (:players k) (:players world))
-       (same-shape? k world)))
-
-(defn- reusable? [k world ps]
-  (and (same-shape? k world) (= (:player-chunks k) ps)))
-
-(defn- fresh? [world had]
-  (when had
-    (let [k (::key (meta had))]
-      (or (same? k world)
-          (reusable? k world (player-chunks world))))))
+     :active-ids (vec active) :of of}))
 
 (defn- areas [world]
-  (let [had (:active-chunks world)]
-    (if (fresh? world had) had (compute-areas world))))
+  (let [had (:active-chunks world) of (inputs world)]
+    (if (= of (:of had)) had (computed world of))))
 
 (defn loaded-zone
   "Returns the ids of the chunks the players keep at full status.
@@ -126,22 +102,12 @@
   [world]
   (:broadcast (areas world)))
 
-(defn- kept [world had now]
-  (let [k (::key (meta had))]
-    (if (and had (reusable? k world (:player-chunks now)))
-      had
-      (compute-areas world))))
-
 (defn with-areas
   "Returns the world with its chunk areas up to date.
   The areas follow its players and chunks."
   [world]
-  (let [had (:active-chunks world)]
-    (if (and had (same? (::key (meta had)) world))
-      world
-      (let [now (areas-key world)]
-        (assoc world :active-chunks
-               (with-meta (kept world had now) {::key now}))))))
+  (let [had (:active-chunks world) now (areas world)]
+    (if (identical? had now) world (assoc world :active-chunks now))))
 
 (defn active-at?
   "Returns true when the chunk of block pos is in active."

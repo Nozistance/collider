@@ -147,30 +147,10 @@
 (defn- deltas-of [ds]
   (if (instance? Deltas ds) ds (deltas/of-vec ds)))
 
-(defn- retyped [types e0 e1 eid]
-  (level/retyped types eid (get e0 eid) (get e1 eid)))
-
-(defn- retyped-index [types w w' eids]
-  (let [e0 (:entities w) e1 (:entities w')]
-    (if (or (nil? types) (identical? e0 e1))
-      types
-      (when eids (reduce #(retyped %1 e0 e1 %2) types eids)))))
-
-(defn- touched [w w' delta]
-  (let [tag (nth delta 0)]
-    (if-let [f (:eids (get delta/registry tag))]
-      (f w w' delta)
-      (when (contains? delta/entity-apply tag) []))))
-
-(defn- world-step [[w removes types] delta]
+(defn- world-step [[w removes] delta]
   (if (identical? :remove-entity (nth delta 0))
-    [w (conj removes (nth delta 1)) types]
-    (let [w' (apply-world-delta w delta)]
-      [w' removes
-       (retyped-index types w w' (touched w w' delta))])))
-
-(defn- input-eids [inp]
-  (into [] (keep #(let [x (nth % 1 nil)] (when (integer? x) x))) inp))
+    [w (conj removes (nth delta 1))]
+    [(apply-world-delta w delta) removes]))
 
 (defn- checked! [w]
   (let [types (level/types-by w) built (level/by-type (:entities w))]
@@ -178,8 +158,8 @@
       (throw (ex-info "the type index strayed from the entities"
                       {:index types :entities built})))))
 
-(defn- typed [w types]
-  (let [w (if types (level/with-types w types) (level/typed w))]
+(defn- typed [w]
+  (let [w (level/typed w)]
     (when delta/validate? (checked! w))
     w))
 
@@ -211,15 +191,12 @@
 (defn- apply-level [lv ds]
   (let [^Deltas d (deltas-of ds)
         ws (deltas/world-of d)
-        init [lv [] (level/types-by lv)]
-        [lv1 removes types] (reduce world-step init ws)
+        [lv1 removes] (reduce world-step [lv []] ws)
         inp (deltas/input-of d)
         applied (if (seq inp) (applied-input lv1 inp) lv1)
-        types (retyped-index types lv1 applied (input-eids inp))
         folded (folded-in applied (deltas/entities-of d))
-        quit (arrived lv (reduce player/quit folded removes))
-        types (retyped-index types folded quit removes)]
-    (indexed (areas/with-areas (typed quit types)))))
+        quit (arrived lv (reduce player/quit folded removes))]
+    (indexed (areas/with-areas (typed quit)))))
 
 (defn- inhabited? [world dim]
   (not (lm/empty? (:entities (get (:levels world) dim)))))

@@ -173,11 +173,6 @@
   [lv]
   (stamp/value lv ::types by-type caught))
 
-(defn with-types
-  "Returns lv with types, its eids by type, kept as its index."
-  [lv types]
-  (stamp/with lv ::types types))
-
 (defn typed
   "Returns level lv that keeps its eids by type for its entities."
   [lv]

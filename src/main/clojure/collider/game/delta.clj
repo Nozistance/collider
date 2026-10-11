@@ -8,7 +8,6 @@
             [collider.game.mob.brain :as brain]
             [collider.game.player :as player]
             [collider.game.schedule :as schedule]
-            [collider.game.schema :as schema]
             [collider.vec :as v]
             [collider.world.env.weather :as weather]
             [malli.core :as m]
@@ -56,10 +55,6 @@
   (let [s (or cur (lm/long-set))
         s (if (seq add) (into s add) s)]
     (if (seq drop) (lm/difference s (lm/long-set drop)) s)))
-
-(defn- new-eids [w w' _]
-  (range (long (:next-eid w schema/first-eid))
-         (long (:next-eid w' schema/first-eid))))
 
 (defn- quit [w [_ eid]] (player/quit w eid))
 
@@ -128,7 +123,7 @@
     :apply writes/restore-chunk}
    :player-placed
    {:scope :level :schema [:cat Eid :string Vec3]
-    :apply player/placed :eids (fn [_ _ d] [(nth d 1)])}
+    :apply player/placed}
    :spawn-progress
    {:scope :world :schema [:cat Eid [:maybe :map]]
     :apply (fn [w [_ eid req]]
@@ -147,11 +142,10 @@
    {:scope :level :schema [:cat :keyword :any :any]
     :apply (fn [w _] w)}
    :spawn-entity
-   {:scope :level :schema [:cat :map] :apply writes/spawn-entity
-    :eids new-eids}
+   {:scope :level :schema [:cat :map] :apply writes/spawn-entity}
    :xp-award
    {:scope :level :schema [:cat Vec3 :int :any [:? Vec3]]
-    :apply writes/xp-award :eids new-eids}
+    :apply writes/xp-award}
    :remove-entity
    {:scope :level :schema [:cat Eid] :by-eid true :apply quit}
    :level-deltas
