@@ -116,6 +116,7 @@
     [[:sapling] sapling/meal]
     [[:azalea] sapling/azalea-meal]
     [[:mangrove-propagule] sapling/propagule-meal]
+    [[:mangrove-leaves] sapling/leaves-meal]
     [[:seagrass] underwater/seagrass-meal]]))
 
 (defn bonemeal

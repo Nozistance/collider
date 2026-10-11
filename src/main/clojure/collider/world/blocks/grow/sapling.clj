@@ -133,6 +133,13 @@
     (not (hanging? st)) (meal-result roll #(advance chunks p st roll))
     (< (age st) 4) {:changes [[p (older st) nil update/clients]]}))
 
+(defn leaves-meal
+  [chunks p _ _]
+  (let [down (dir/down p)]
+    (when (block/air-type? (chunk/at chunks down))
+      {:changes [[down (block/state :mangrove-propagule {:hanging :true})
+                  nil update/clients]]})))
+
 (defn azalea-meal
   [chunks p st roll]
   (let [up (dir/up p)
