@@ -230,7 +230,8 @@
             :per-block (get t "damage_per_block" 1)}}))
 
 (defn- item [tags cs]
-  (merge (sorted-map :components (default-components cs))
+  (merge (sorted-map :components (default-components cs)
+                     :defaults (set (map kw (keys cs))))
          (stack-fields cs) (equip-fields tags cs) (combat-fields cs)
          (tool-fields tags cs)
          (consumable-fields tags cs) (station-fields tags cs)))
@@ -249,7 +250,8 @@
 
 (defn items
   "Returns the facts of every item by name.
-  Components holds the default components of each item. Tags returns
+  Components holds the default components of each item, defaults
+  the names of all of them. Tags returns
   the tags of a registry by name."
   [components tags facts]
   (let [own (into (sorted-map)

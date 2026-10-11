@@ -1,9 +1,12 @@
 (ns collider.game.command.components
   "Saved forms of item components as commands read them."
-  (:require [collider.game.command.decode :as dfu
+  (:require [clojure.string :as str]
+            [collider.data :as data]
+            [collider.game.command.decode :as dfu
              :refer [fixed from-file identifier named numbered
                      enum-of int-in float-in bool-of by-name]]
             [collider.game.command.reader :as r]
+            [collider.hash-order :as hash-order]
             [collider.game.command.snbt :as snbt]
             [collider.game.command.text :as tc]))
 
@@ -286,6 +289,425 @@
   [:white :orange :magenta :light-blue :yellow :lime :pink :gray
    :light-gray :cyan :purple :blue :brown :green :red :black])
 
+(defn- nbt [m] (hash-order/compound (seq m)))
+
+(defn- nbt-tree [x]
+  (cond (map? x) (nbt (update-vals x nbt-tree))
+        (vector? x) (mapv nbt-tree x)
+        :else x))
+
+(defn- with-nils [ks f]
+  (dfu/mapped f #(merge (zipmap ks (repeat nil)) %)))
+
+(defn- long-of [tag]
+  (if (number? tag) [:ok (long tag)] [:malformed "Not a number"]))
+
+(defn- unsigned-byte [tag]
+  (if (number? tag)
+    [:ok (bit-and (long (unchecked-byte tag)) 0xFF)]
+    [:malformed "Not a number"]))
+
+(defn- seq-tag [tag]
+  (if (and (some? tag) (.isArray (class tag))) (vec tag) tag))
+
+(defn- elements [f]
+  (let [l (dfu/listed f)] (fn [tag] (l (seq-tag tag)))))
+
+(defn- string-to [most]
+  (dfu/checked dfu/string-of #(<= (count %) most) (constantly nil)))
+
+(def ^:private tag-data
+  (dfu/mapped #(dfu/settled % (dfu/either (compound %) (snbt-compound %)))
+              nbt-tree))
+
+(defn- typed-data [registry]
+  (fn [tag]
+    (let [[op m :as r] (tag-data tag)]
+      (cond (not= :ok op) r
+            (nil? (:id m))
+            [:malformed (str "Expected 'id' field in " (dfu/printed tag))]
+            :else ((dfu/mapped (by-name registry)
+                               #(hash-map :type % :data (dissoc m :id)))
+                   (:id m))))))
+
+(defn- property-of [block]
+  (fn [tag]
+    (let [[op v :as r] (dfu/string-of tag)]
+      (cond (not= :ok op) r
+            (contains? (get-in (data/blocks) [block :props]) (keyword v))
+            r
+            :else [:malformed (str "No property on " (data/wire block)
+                                   " with name: " v)]))))
+
+(def ^:private debug-stick-state
+  (dfu/mapped (dfu/dispatched-map (by-name "block") property-of)
+              #(nbt (update-keys % (comp keyword data/wire)))))
+
+(def ^:private container-loot
+  (dfu/mapped (dfu/record [:loot_table :table identifier :req]
+                          [:seed :seed long-of :opt 0])
+              (fn [{:keys [table seed]}]
+                (nbt {:loot_table (dfu/full-id table)
+                      :seed (when (not= 0 seed) seed)}))))
+
+(def ^:private decoration
+  (dfu/mapped
+    (dfu/record [:type :type (by-name "map_decoration_type") :req]
+                [:x :x double-of :req] [:z :z double-of :req]
+                [:rotation :rotation dfu/float-of :req])
+    #(nbt (-> (update % :type dfu/full-id) (update :rotation float)))))
+
+(def ^:private map-decorations
+  (dfu/mapped (dfu/unbounded-map dfu/string-of decoration)
+              #(update-keys % keyword)))
+
+(defn- holders-tag [v]
+  (cond (map? v) (str "#" (dfu/full-id (:tag v)))
+        (= 1 (count v)) (dfu/full-id (first v))
+        :else (mapv dfu/full-id v)))
+
+(defn- lock [tag]
+  (cond (not (map? tag)) (dfu/not-map tag)
+        (nil? (:items tag)) [:ok (nbt-tree tag)]
+        :else ((dfu/mapped (holders "item")
+                           #(nbt-tree (assoc tag :items (holders-tag %))))
+               (:items tag))))
+
+(defn- patch-entry [[k v]]
+  (let [s (subs (str k) 1)
+        gone? (str/starts-with? s "!")
+        [op t :as r] (identifier (cond-> s gone? (subs 1)))
+        [vo vv :as vr] (when (and (= :ok op) (not gone?)) (decode t v))]
+    (cond (not= :ok op) r
+          gone? [:ok [:removed t]]
+          (= :ok vo) [:ok [:components [t vv]]]
+          :else vr)))
+
+(defn- patch-of [tag]
+  (if (map? tag)
+    (let [rs (mapv patch-entry tag)
+          part #(into %1 (keep (fn [[_ [k x]]] (when (= %2 k) x))) rs)]
+      (cond (dfu/raw-in? rs) [:raw tag]
+            (some dfu/failed? rs) (dfu/settled tag (dfu/errors rs))
+            :else [:ok (not-empty
+                         (into {} (filter (comp seq val))
+                               {:components (part {} :components)
+                                :removed (part #{} :removed)}))]))
+    (dfu/not-map tag)))
+
+(def ^:private item-id
+  (dfu/checked (by-name "item") #(not= :air %)
+               (constantly "Item must not be minecraft:air")))
+
+(def ^:private template-record
+  (with-nils [:patch]
+    (dfu/record [:id :item item-id :req]
+                [:count :count (int-in 1 99 "Value must be within range [1;99]: ")
+                 :opt 1]
+                [:components :patch patch-of :opt])))
+
+(defn- template [tag]
+  (dfu/settled tag (dfu/either (template-record tag)
+                               ((dfu/mapped item-id #(hash-map :item %
+                                                               :count 1
+                                                               :patch nil))
+                                tag))))
+
+(def ^:private slot
+  (dfu/record [:slot :slot (dfu/int-range 0 255) :req]
+              [:item :item template :req]))
+
+(def ^:private container
+  (dfu/mapped (dfu/limited slot 256)
+              (fn [slots]
+                (reduce (fn [v {:keys [slot item]}] (assoc v slot item))
+                        (vec (repeat (inc (reduce max -1 (map :slot slots)))
+                                     nil))
+                        slots))))
+
+(defn- effect-details [tag]
+  ((dfu/mapped
+     (dfu/record [:amplifier :amplifier unsigned-byte :opt 0]
+                 [:duration :duration dfu/int-of :opt 0]
+                 [:ambient :ambient bool-of :opt false]
+                 [:show_particles :show-particles bool-of :opt true]
+                 [:show_icon :show-icon bool-of :opt]
+                 [:hidden_effect :hidden effect-details :opt])
+     (fn [d] (merge {:show-icon (:show-particles d) :hidden nil} d)))
+   tag))
+
+(defn- effect [tag]
+  (let [[op v :as r] ((dfu/record [:id :effect (by-name "mob_effect") :req])
+                      tag)]
+    (if (= :ok op)
+      ((dfu/mapped effect-details #(assoc v :details %))
+       (dissoc tag :id))
+      r)))
+
+(def ^:private potion-record
+  (with-nils [:potion :custom-color :custom-name]
+    (dfu/record [:potion :potion (by-name "potion") :opt]
+                [:custom_color :custom-color dfu/int-of :opt]
+                [:custom_effects :custom-effects
+                 (dfu/mapped (dfu/listed effect)
+                             (fn [es]
+                               (mapv #(assoc-in % [:details :hidden] nil)
+                                     es)))
+                 :opt []]
+                [:custom_name :custom-name dfu/string-of :opt])))
+
+(defn- potion-contents [tag]
+  (let [id (dfu/mapped (by-name "potion")
+                       #(hash-map :potion % :custom-color nil
+                                  :custom-effects [] :custom-name nil))]
+    (dfu/settled tag (dfu/either (potion-record tag) (id tag)))))
+
+(defn- filterable [f]
+  (let [full (with-nils [:filtered]
+               (dfu/record [:raw :raw f :req] [:filtered :filtered f :opt]))
+        simple (dfu/mapped f #(hash-map :raw % :filtered nil))]
+    (fn [tag] (dfu/settled tag (dfu/either (full tag) (simple tag))))))
+
+(def ^:private writable-book
+  (dfu/mapped
+    (dfu/record [:pages :pages
+                 (dfu/limited (filterable (string-to 1024)) 100) :opt []])
+    :pages))
+
+(def ^:private written-book
+  (dfu/record [:title :title (filterable (string-to 32)) :req]
+              [:author :author dfu/string-of :req]
+              [:generation :generation
+               (int-in 0 3 "Value must be within range [0;3]: ") :opt 0]
+              [:pages :pages (dfu/listed (filterable tc/text-of)) :opt []]
+              [:resolved :resolved bool-of :opt false]))
+
+(defn- block-pos [tag]
+  (let [xs (seq-tag tag)]
+    (if (and (vector? xs) (= 3 (count xs)) (every? number? xs))
+      [:ok (mapv #(long (unchecked-int %)) xs)]
+      [:raw tag])))
+
+(def ^:private lodestone-tracker
+  (with-nils [:target]
+    (dfu/record [:target :target
+                 (dfu/record [:dimension :dimension identifier :req]
+                             [:pos :pos block-pos :req])
+                 :opt]
+                [:tracked :tracked bool-of :opt true])))
+
+(def ^:private firework-explosion
+  (dfu/record [:shape :shape
+               (enum-of [:small-ball :large-ball :star :creeper :burst])
+               :req]
+              [:colors :colors (elements dfu/int-of) :opt []]
+              [:fade_colors :fade-colors (elements dfu/int-of) :opt []]
+              [:has_trail :trail bool-of :opt false]
+              [:has_twinkle :twinkle bool-of :opt false]))
+
+(def ^:private fireworks
+  (dfu/record [:flight_duration :flight-duration unsigned-byte :opt 0]
+              [:explosions :explosions (dfu/limited firework-explosion 256)
+               :opt []]))
+
+(defn- player-name [tag]
+  (let [[op v :as r] ((string-to 16) tag)]
+    (if (and (= :ok op) (some #(or (<= (int %) 32) (<= 127 (int %))) v))
+      [:malformed (str "Player name contained disallowed characters: '"
+                       v "'")]
+      r)))
+
+(defn- uuid-of [tag]
+  (let [xs (seq-tag tag)]
+    (if (and (vector? xs) (= 4 (count xs)) (every? number? xs))
+      (let [[a b c d] (map #(long (unchecked-int %)) xs)
+            hi (bit-or (bit-shift-left a 32) (bit-and b 0xFFFFFFFF))
+            lo (bit-or (bit-shift-left c 32) (bit-and d 0xFFFFFFFF))]
+        [:ok (java.util.UUID. hi lo)])
+      [:raw tag])))
+
+(def ^:private properties
+  (dfu/limited (with-nils [:signature]
+                 (dfu/record [:name :name (string-to 64) :req]
+                             [:value :value (string-to 32767) :req]
+                             [:signature :signature (string-to 1024) :opt]))
+               16))
+
+(def ^:private named-profile
+  (dfu/mapped (dfu/record [:id :id uuid-of :req]
+                          [:name :name player-name :req]
+                          [:properties :properties properties :opt []])
+              #(hash-map :left %)))
+
+(def ^:private partial-profile
+  (dfu/mapped (with-nils [:name :id]
+                (dfu/record [:name :name player-name :opt]
+                            [:id :id uuid-of :opt]
+                            [:properties :properties properties :opt []]))
+              #(hash-map :right %)))
+
+(def ^:private skin
+  (with-nils [:body :cape :elytra :model]
+    (dfu/record [:texture :body identifier :opt]
+                [:cape :cape identifier :opt]
+                [:elytra :elytra identifier :opt]
+                [:model :model (enum-of [:wide :slim]) :opt])))
+
+(defn- full-profile [tag]
+  (if (map? tag)
+    (let [[lo _ :as l] (named-profile tag)
+          [ro _ :as r] (partial-profile tag)
+          [po pv :as p] (cond (= :ok lo) l
+                              (= :ok ro) r
+                              :else (dfu/errors [r l]))
+          [so sv :as s] (skin tag)]
+      (cond (dfu/raw-in? [p s]) [:raw tag]
+            (= :ok po so) [:ok {:profile pv :skin sv}]
+            :else (dfu/errors [p s])))
+    (dfu/not-map tag)))
+
+(defn- profile [tag]
+  (let [by-name #(hash-map :profile {:right {:name % :id nil
+                                             :properties []}}
+                           :skin {:body nil :cape nil :elytra nil
+                                  :model nil})]
+    (dfu/settled tag (dfu/either (full-profile tag)
+                                 ((dfu/mapped player-name by-name) tag)))))
+
+(def ^:private banner-patterns
+  (dfu/listed
+    (dfu/record [:pattern :pattern (from-file "banner_pattern" inline-raw)
+                 :req]
+                [:color :color (enum-of dyes) :req])))
+
+(def ^:private bees
+  (dfu/listed
+    (dfu/record [:entity_data :data (typed-data "entity_type") :req]
+                [:ticks_in_hive :ticks-in-hive dfu/int-of :req]
+                [:min_ticks_in_hive :min-ticks-in-hive dfu/int-of :req])))
+
+(defn- consume-effect [tag]
+  (let [kinds
+        {:apply-effects
+         (dfu/record [:effects :effects (dfu/listed effect) :req]
+                     [:probability :probability (dfu/float-range 0 1) :opt
+                      1.0])
+         :remove-effects
+         (dfu/record [:effects :effects (holders "mob_effect") :req])
+         :clear-all-effects (dfu/record)
+         :teleport-randomly
+         (dfu/record [:diameter :diameter dfu/positive-float :opt 16.0])
+         :play-sound (dfu/record [:sound :sound sound :req])}
+        [op v :as r] ((dfu/record [:type :type
+                                   (by-name "consume_effect_type") :req])
+                      tag)]
+    (if (= :ok op)
+      ((dfu/mapped (kinds (:type v)) #(assoc % :type (:type v)))
+       (dissoc tag :type))
+      r)))
+
+(def ^:private consume-effects (dfu/listed consume-effect))
+
+(def ^:private consumable
+  (dfu/record [:consume_seconds :seconds dfu/non-negative-float :opt
+               (double (float 1.6))]
+              [:animation :animation
+               (enum-of [:none :eat :drink :block :bow :trident :crossbow
+                         :spyglass :toot-horn :brush :bundle :spear])
+               :opt :eat]
+              [:sound :sound sound :opt :entity.generic.eat]
+              [:has_consume_particles :particles bool-of :opt true]
+              [:on_consume_effects :on-consume consume-effects :opt []]))
+
+(def ^:private death-protection
+  (dfu/record [:death_effects :death-effects consume-effects :opt []]))
+
+(def ^:private tool-rule
+  (with-nils [:speed :correct-for-drops]
+    (dfu/record [:blocks :blocks (holders "block") :req]
+                [:speed :speed dfu/positive-float :opt]
+                [:correct_for_drops :correct-for-drops bool-of :opt])))
+
+(def ^:private tool
+  (dfu/record [:rules :rules (dfu/listed tool-rule) :req]
+              [:default_mining_speed :default-mining-speed dfu/float-of
+               :opt 1.0]
+              [:damage_per_block :damage-per-block dfu/non-negative :opt 1]
+              [:can_destroy_blocks_in_creative :destroy-in-creative bool-of
+               :opt true]))
+
+(def ^:private equippable
+  (with-nils [:asset :camera-overlay :allowed-entities]
+    (dfu/record
+      [:slot :slot (enum-of [:mainhand :feet :legs :chest :head :offhand
+                             :body :saddle])
+       :req]
+      [:equip_sound :equip-sound sound :opt :item.armor.equip-generic]
+      [:asset_id :asset identifier :opt]
+      [:camera_overlay :camera-overlay identifier :opt]
+      [:allowed_entities :allowed-entities (holders "entity_type") :opt]
+      [:dispensable :dispensable bool-of :opt true]
+      [:swappable :swappable bool-of :opt true]
+      [:damage_on_hurt :damage-on-hurt bool-of :opt true]
+      [:equip_on_interact :equip-on-interact bool-of :opt false]
+      [:can_be_sheared :can-be-sheared bool-of :opt false]
+      [:shearing_sound :shearing-sound sound :opt :item.shears.snip])))
+
+(def ^:private damage-reduction
+  (with-nils [:type]
+    (dfu/record [:horizontal_blocking_angle :horizontal-blocking-angle
+                 dfu/positive-float :opt 90.0]
+                [:type :type (holders "damage_type") :opt]
+                [:base :base dfu/float-of :req]
+                [:factor :factor dfu/float-of :req])))
+
+(def ^:private blocks-attacks
+  (with-nils [:bypassed-by :block-sound :disable-sound]
+    (dfu/record
+      [:block_delay_seconds :block-delay-seconds dfu/non-negative-float
+       :opt 0.0]
+      [:disable_cooldown_scale :disable-cooldown-scale
+       dfu/non-negative-float :opt 1.0]
+      [:damage_reductions :damage-reductions (dfu/listed damage-reduction)
+       :opt [{:horizontal-blocking-angle 90.0 :type nil :base 0.0
+              :factor 1.0}]]
+      [:item_damage :item-damage
+       (dfu/record [:threshold :threshold dfu/non-negative-float :req]
+                   [:base :base dfu/float-of :req]
+                   [:factor :factor dfu/float-of :req])
+       :opt {:threshold 1.0 :base 0.0 :factor 1.0}]
+      [:bypassed_by :bypassed-by (holders "damage_type") :opt]
+      [:block_sound :block-sound sound :opt]
+      [:disabled_sound :disable-sound sound :opt])))
+
+(def ^:private piercing-weapon
+  (with-nils [:sound :hit-sound]
+    (dfu/record [:deals_knockback :deals-knockback bool-of :opt true]
+                [:dismounts :dismounts bool-of :opt false]
+                [:sound :sound sound :opt]
+                [:hit_sound :hit-sound sound :opt])))
+
+(def ^:private kinetic-condition
+  (dfu/record [:max_duration_ticks :max-duration-ticks dfu/non-negative
+               :req]
+              [:min_speed :min-speed dfu/float-of :opt 0.0]
+              [:min_relative_speed :min-relative-speed dfu/float-of :opt
+               0.0]))
+
+(def ^:private kinetic-weapon
+  (with-nils [:dismount :knockback :damage :sound :hit-sound]
+    (dfu/record
+      [:contact_cooldown_ticks :contact-cooldown-ticks dfu/non-negative
+       :opt 10]
+      [:delay_ticks :delay-ticks dfu/non-negative :opt 0]
+      [:dismount_conditions :dismount kinetic-condition :opt]
+      [:knockback_conditions :knockback kinetic-condition :opt]
+      [:damage_conditions :damage kinetic-condition :opt]
+      [:forward_movement :forward-movement dfu/float-of :opt 0.0]
+      [:damage_multiplier :damage-multiplier dfu/float-of :opt 1.0]
+      [:sound :sound sound :opt]
+      [:hit_sound :hit-sound sound :opt])))
+
 (def ^:private decoders
   "The components that commands check.
   Commands keep the others unchecked."
@@ -357,8 +779,26 @@
                "dark_brown")
      :llama/variant (numbered "creamy" "white" "brown" "gray")
      :axolotl/variant
-     (numbered "lucy" "wild" "gold" "cyan" "blue")}))
+     (numbered "lucy" "wild" "gold" "cyan" "blue")
+     :custom-data tag-data :bucket-entity-data tag-data
+     :entity-data (typed-data "entity_type")
+     :block-entity-data (typed-data "block_entity_type")
+     :debug-stick-state debug-stick-state :container-loot container-loot
+     :map-decorations map-decorations :lock lock
+     :use-remainder (dfu/mapped template #(hash-map :convert-into %))
+     :sulfur-cube-content (dfu/mapped template #(hash-map :absorbed %))
+     :charged-projectiles (dfu/limited template 1024)
+     :bundle-contents (dfu/listed template) :container container
+     :potion-contents potion-contents
+     :writable-book-content writable-book
+     :written-book-content written-book
+     :lodestone-tracker lodestone-tracker
+     :firework-explosion firework-explosion :fireworks fireworks
+     :profile profile :banner-patterns banner-patterns :bees bees
+     :consumable consumable :death-protection death-protection
+     :tool tool :equippable equippable :blocks-attacks blocks-attacks
+     :piercing-weapon piercing-weapon :kinetic-weapon kinetic-weapon}))
 
 (defn decode
   [k tag]
-  (if-let [f (decoders k)] (f tag) [:raw tag]))
+  (if-let [f (decoders k)] (dfu/settled tag (f tag)) [:raw tag]))

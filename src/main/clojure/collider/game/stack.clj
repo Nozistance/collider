@@ -25,13 +25,18 @@
     (empty? (:components stack)) (dissoc :components)
     (empty? (:removed stack)) (dissoc :removed)))
 
+(defn- default? [item k]
+  (contains? (get-in (data/items) [item :defaults]) k))
+
 (defn put
   "Returns stack with component k set to v, or dropped when v is nil."
   [stack k v]
-  (let [s (update stack :components dissoc k)]
+  (let [s (update stack :components dissoc k)
+        item (:item stack)]
     (tidy (cond
-            (= v (proto (:item stack) k)) (update s :removed disj k)
-            (nil? v) (update s :removed (fnil conj #{}) k)
+            (and (nil? v) (default? item k))
+            (update s :removed (fnil conj #{}) k)
+            (= v (proto item k)) (update s :removed disj k)
             :else (-> (update s :components assoc k v)
                       (update :removed disj k))))))
 

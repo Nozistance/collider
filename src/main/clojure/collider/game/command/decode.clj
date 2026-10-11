@@ -187,19 +187,21 @@
           (= :ok op) [:ok [out v]]
           (= :raw op) r
           (= :lenient how) [:ok (when (some? dflt) [out dflt])]
-          (= :opt how) [:partial v]
+          (or (= :opt how) (= :partial op)) [:partial v]
           :else [:malformed v])))
 
 (defn record
   "Returns the decoder of a record over fields.
   Each field is [key-in-tag key-out decoder how default]. The value
-  holds the fields that have one."
+  holds the fields that have one. The error is partial when each
+  failed field has a partial value."
   [& fields]
   (fn [tag]
     (if (map? tag)
       (let [rs (mapv #(record-field tag %) fields)]
         (cond (raw-in? rs) [:raw tag]
-              (some failed? rs) (settled tag (errors rs))
+              (some failed? rs) (let [[_ v :as e] (errors rs)]
+                                  (if (nil? v) [:raw tag] e))
               :else [:ok (into {} (keep second) rs)]))
       (not-map tag))))
 
@@ -463,7 +465,7 @@
 
 (defn- entry-of
   [kf vf [k v]]
-  (let [[ko kv :as kr] (kf k) [vo vv :as vr] (vf v)]
+  (let [[ko kv :as kr] (kf k) [vo vv :as vr] (vf kr v)]
     (cond (raw-in? [kr vr]) [:raw v]
           (= :ok ko vo) [:ok [kv vv]]
           :else (errors [kr vr]))))
@@ -483,10 +485,7 @@
 
 (defn- entries-map [rs] (apply array-map (mapcat second rs)))
 
-(defn unbounded-map
-  "Returns the decoder of a map with any keys.
-  The error names the failed entries as missed input."
-  [kf vf]
+(defn- map-of [kf vf]
   (fn [tag]
     (if (map? tag)
       (let [es (hash-order tag)
@@ -497,3 +496,15 @@
               (distinct-keys? rs) [:ok (entries-map rs)]
               :else [:raw tag]))
       (not-map tag))))
+
+(defn unbounded-map
+  "Returns the decoder of a map with any keys.
+  The error names the failed entries as missed input."
+  [kf vf]
+  (map-of kf (fn [_ v] (vf v))))
+
+(defn dispatched-map
+  "Returns the decoder of a map whose values decode with (vf k), k
+  the decoded key. A key that fails fails its value too."
+  [kf vf]
+  (map-of kf (fn [[ko kv :as kr] v] (if (= :ok ko) ((vf kv) v) kr))))
