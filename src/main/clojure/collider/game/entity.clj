@@ -18,7 +18,7 @@
 
 (def thrown-types
   #{:snowball :egg :ender-pearl :splash-potion :lingering-potion
-    :experience-bottle :wind-charge})
+    :experience-bottle :wind-charge :firework-rocket})
 
 (defn player?
   [e]
@@ -81,7 +81,7 @@
     :area-effect-cloud (types/map->Cloud m)
     (:painting :item-frame :glow-item-frame) (types/map->Hanging m)
     (:snowball :egg :ender-pearl :splash-potion :lingering-potion
-     :experience-bottle)
+     :experience-bottle :firework-rocket)
     (types/map->Projectile m)
     (compact (types/map->Mob m))))
 
@@ -161,7 +161,7 @@
    :experience-orb [:value :count :age :health]
    :tnt [:fuse :origin :owner]
    :falling-block [:block :time :fall :hurt :hurt-max]
-   :thrown [:owner :left-owner? :stack]
+   :thrown [:owner :left-owner? :stack :life :lifetime]
    :hanging [:block-pos :facing :variant :stack :rotation]})
 
 (def ^:private defaults
