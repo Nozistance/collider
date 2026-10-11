@@ -9,7 +9,7 @@
 
 (def ^:private move-keys
   [:on-ground :sprinting? :pose :swimming? :eye-in-water? :in-water?
-   :landed])
+   :landed :fall-flying])
 
 (defn- jump? [e e']
   (and (:on-ground e) (not (:on-ground e'))

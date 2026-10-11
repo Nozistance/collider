@@ -36,6 +36,7 @@
     (:climbing? m)
     (when (pos? dy) [:climb-one-cm (Math/round (* dy 100.0))])
     (:on-ground m) (ground-stat m (flat-cm dx dz))
+    (:fall-flying m) [:aviate-one-cm (full-cm dx dy dz)]
     :else (let [n (flat-cm dx dz)] (when (> n 25) [:fly-one-cm n]))))
 
 (defn- move-stats [m]
