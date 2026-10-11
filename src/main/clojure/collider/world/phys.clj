@@ -108,7 +108,10 @@
 
 (def ^:private ^:const boots-slot 8)
 
-(defn- walker? [e]
+(defn snow-walker?
+  "Returns true when body e walks on powder snow, by its kind or its
+  leather boots."
+  [e]
   (or (contains? @walkers (:type e))
       (= :leather-boots (:item (get (:inventory e) boots-slot)))))
 
@@ -121,7 +124,7 @@
   (cond-> 0
     (descends? e) (bit-or Collision/DESCENDING)
     (> (double (or (:fall e) 0.0)) 2.5) (bit-or Collision/FALLING)
-    (walker? e) (bit-or Collision/WALKER)
+    (snow-walker? e) (bit-or Collision/WALKER)
     (= :falling-block (:type e)) (bit-or Collision/FALLING_BLOCK)))
 
 (defn- with-tables [m chunks args]

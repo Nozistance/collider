@@ -49,7 +49,7 @@
   [world [eid e]]
   (let [vel (dead-banded (or (:vel e) [0.0 0.0 0.0]))
         [half height] (entity/pose-box (:pose e :standing))
-        {:keys [pos stuck flight hit? holds-on?] moved :vel}
+        {:keys [pos stuck flight hit? holds-on? snowed?] moved :vel}
         (travel/body-moved world (assoc e :vel vel) half height)
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
@@ -58,6 +58,8 @@
            (cond-> {:vel (mapv double vel') :stuck stuck}
              (= :ladder flight) (assoc :fall-flying false)
              (and holds-on? (pos? (double (:fall e 0.0))))
-             (assoc :fall 0.0))]
+             (assoc :fall 0.0)
+             (not= snowed? (boolean (:in-powder-snow e)))
+             (assoc :in-powder-snow (when snowed? true)))]
           (when (and (= :glide flight) hit?)
             (wall-deltas world eid e pos vel vel')))))

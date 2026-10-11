@@ -293,11 +293,13 @@
 
 (defn- climbed
   "Returns speed u of body e after its move mv by d, lifted when it
-  pushes into a climbable block or, if jump? counts, jumps on one."
-  [world e d ^Move mv u jump?]
-  (if (and (or (and jump? (:jump e))
+  pushes into a climbable block. In the air a jump lifts it too, and
+  so does powder snow it was in last tick and walks on."
+  [world e d ^Move mv u air?]
+  (if (and (or (and air? (:jump e))
                (hit-wall? (held e d) (phys/vel mv)))
-           (climbing? world e (phys/pos mv)))
+           (or (climbing? world e (phys/pos mv))
+               (and air? (:in-powder-snow e) (phys/snow-walker? e))))
     (v/v3 (v/x u) climb-speed (v/z u))
     u))
 
@@ -603,6 +605,22 @@
     (f e2 (nth tr 9 nil) (nth tr 10 nil))
     e2))
 
+(defn- snowed?
+  "Returns true when the move of a body from pos to pos' touched
+  powder snow at either end."
+  [world pos pos' half height]
+  (or (motion/in-powder-snow? (:chunks world) pos half height)
+      (motion/in-powder-snow? (:chunks world) pos' half height)))
+
+(defn- snow-marked
+  "Returns body e marked as in powder snow when snow? is true, for
+  its next tick, and unmarked otherwise."
+  [e snow?]
+  (let [marked? (boolean (:in-powder-snow e))]
+    (cond (= snow? marked?) e
+          snow? (assoc e :in-powder-snow true)
+          :else (dissoc e :in-powder-snow))))
+
 (defn- shoved-move
   [world index eid e tr box fall ls [look prev cram live? st]]
   (let [[half height pos] box
@@ -612,7 +630,8 @@
         hd (body-of-move world e pos look)
         came (push/arrived e pos (:tick world) eid)
         e2 (settled e tr pos fall v g (nth tr 8) hd look
-                    (walk-of e prev pos) came st)]
+                    (walk-of e prev pos) came st)
+        e2 (snow-marked e2 (snowed? world (:pos e) pos half height))]
     [(bumped e e2 tr) shoves hit? (when ls (nth ls 1))]))
 
 (defn moved
@@ -636,8 +655,8 @@
   "Returns the move of living body e with no will of its own after
   one tick of travel from its speed. It holds :pos, :vel, :on-ground,
   :stuck, :flight (:glide or :ladder for a body on wings), :hit? when
-  it ran into a block sideways and :holds-on? when it held on to a
-  climbable block."
+  it ran into a block sideways, :holds-on? when it held on to a
+  climbable block and :snowed? when it touched powder snow."
   [world e half height]
   (let [h (num/f32 half) ht (num/f32 height)
         e (dissoc e :move :jump)
@@ -648,4 +667,5 @@
      :stuck (motion/stuck-speed (:chunks world) pos half height true)
      :flight (flight world e f)
      :hit? (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))
-     :holds-on? (holds-on? world e f)}))
+     :holds-on? (holds-on? world e f)
+     :snowed? (snowed? world (:pos e) pos half height)}))

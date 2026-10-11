@@ -4,6 +4,7 @@
             [collider.num :as num]
             [collider.world.block :as block]
             [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]
             [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
@@ -47,6 +48,24 @@
             (> bz z1) (recur bx (inc by) z0 found)
             :else (let [h (held-by (state-at chunks bx by bz) snow?)]
                     (recur bx by (inc bz) (if (pos? h) h found)))))))
+
+(def ^:private ^:table snowy
+  (delay (let [n (data/block-state-count) a (boolean-array n)]
+           (dotimes [st n]
+             (when (= :powder-snow (block/type-of st))
+               (aset a st true)))
+           a)))
+
+(defn in-powder-snow?
+  "Returns true when a body at pos of half width half and height
+  touches powder snow."
+  [chunks [x y z] half height]
+  (let [x (double x) y (double y) z (double z)
+        half (double half) height (double height)]
+    (phys/some-cell? chunks @snowy
+                     (lo (- x half)) (lo y) (lo (- z half))
+                     (inc (hi (+ x half))) (inc (hi (+ y height)))
+                     (inc (hi (+ z half))))))
 
 (defn- snow-at-feet? [chunks [x y z]]
   (= :powder-snow
