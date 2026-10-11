@@ -25,7 +25,8 @@
   [t eid e]
   (when (zero? (mod (inc (long (:fall-fly-ticks e 0))) 20))
     (let [gs (glide/glider-slots e)
-          [i part] (nth gs (long (* (count gs) (random/of-key t eid :glide-wear))))]
+          roll (random/of-key t eid :glide-wear)
+          [i part] (nth gs (long (* (count gs) roll)))]
       (inventory/hurt-slot-deltas t eid e i (parts part part) 1))))
 
 (defn player-deltas

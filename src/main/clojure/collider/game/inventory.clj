@@ -147,8 +147,10 @@
             worn (+ n (stack/damage stack))]
         (cond
           (zero? n) nil
-          (>= worn (stack/max-damage stack)) (broken-deltas eid i part stack)
-          :else [[:set-slot eid i (stack/with-damage stack worn)]])))))
+          (>= worn (stack/max-damage stack))
+          (broken-deltas eid i part stack)
+          :else
+          [[:set-slot eid i (stack/with-damage stack worn)]])))))
 
 (defn hurt-item-deltas
   "Returns the deltas of wearing the item in hand by n points at
