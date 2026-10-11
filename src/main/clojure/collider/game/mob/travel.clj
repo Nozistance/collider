@@ -675,10 +675,10 @@
                                  ls (conj [(nth tr 0) pos nil]))
                                half height (:type e))
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
-        box [half height pos (nth tr 1)]]
-    (let [[look prev cram live?] more]
-      (shoved-move world index eid e tr box fall ls
-                   [look prev cram live? st]))))
+        box [half height pos (nth tr 1)]
+        [look prev cram live?] more]
+    (shoved-move world index eid e tr box fall ls
+                 [look prev cram live? st])))
 
 (defn current-pushed
   "Returns speed vel of body e with the push of the current it stands
