@@ -1,7 +1,9 @@
 (ns collider.game.projectile
   "What every projectile shares, the boxes it meets on its way, its
   owner left behind and its turn towards its motion."
-  (:require [collider.game.entity :as entity]
+  (:require [collider.data :as data]
+            [collider.game.changes :as changes]
+            [collider.game.entity :as entity]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mode :as game-mode]
             [collider.game.reach :as reach]
@@ -182,3 +184,24 @@
   (let [[yaw pitch] (facing d)]
     [(lerp-rotation (double (:yaw e 0.0)) yaw)
      (lerp-rotation (double (:pitch e 0.0)) pitch)]))
+
+(def ^:private ^:table impact
+  (delay (set (data/tag-values "entity_type" "impact_projectiles"))))
+
+(defn- may-interact? [world e]
+  (let [o (get-in world [:entities (:owner e)])]
+    (or (nil? o) (= :player (:type o))
+        (get-in world [:rules :mob-griefing] true))))
+
+(defn- may-break? [world e]
+  (and (contains? @impact (:type e))
+       (get-in world [:rules :projectiles-can-break-blocks] true)))
+
+(defn block-hit-deltas
+  "Returns the deltas of projectile e hitting the block at cell. A
+  chorus flower breaks with its drops."
+  [world e cell]
+  (let [st (changes/block-at world cell)]
+    (when (and (= :chorus-flower (block/type-of st))
+               (may-interact? world e) (may-break? world e))
+      (changes/change-deltas world [[cell 0 [[:break st] [:drop st]]]]))))

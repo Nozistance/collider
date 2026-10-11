@@ -414,7 +414,7 @@
     (v/add at (mapv #(* 0.25 (double %)) (dir/offset (:face hit))))
     at))
 
-(defn- hit-deltas [world eid e d at hit]
+(defn- own-hit-deltas [world eid e d at hit]
   (case (:type e)
     :wind-charge
     (concat (hurt-deltas world eid e d hit)
@@ -431,6 +431,12 @@
     :experience-bottle (bottle-deltas world eid d at hit)
     (delta/authored (potion-deltas world (assoc e :pos at) at hit)
                     (delta/entity-author eid e))))
+
+(defn- hit-deltas [world eid e d at hit]
+  (concat
+    (when (= :block (:kind hit))
+      (projectile/block-hit-deltas world e (:cell hit)))
+    (own-hit-deltas world eid e d at hit)))
 
 (def ^:private ^:const wind-ceiling (+ chunk/max-y 30))
 

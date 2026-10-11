@@ -110,6 +110,8 @@
           at (:pos m)]
       (concat
         (when met? (explosion world eid e at))
+        (when (= :block (:kind hit))
+          (projectile/block-hit-deltas world e (:cell hit)))
         (launch e at)
         (cond met? nil
               (> life (long (:lifetime e 0))) (explosion world eid e at)
