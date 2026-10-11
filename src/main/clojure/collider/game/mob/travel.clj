@@ -13,6 +13,7 @@
             [collider.vec :as v]
             [collider.world.block :as block]
             [collider.world.blocks.climb :as climb]
+            [collider.world.blocks.fall :as fall]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.phys :as phys])
@@ -186,6 +187,21 @@
                        ch (v/v3 (v/x o) (v/y p) (v/z o)) half c)))]
       [(if (= s (:support e)) (:support e) s) (nil? sb)])))
 
+(defn- bounced
+  "Returns speed u of body e after its move mv by d with the speed up
+  the block it landed on gives back. sup is the block it rests on. A
+  sneaking player keeps to the ground."
+  [world e d mv sup u]
+  (if (and (phys/on-ground? mv) (not (:stuck e))
+           (not (and (= :player (:type e)) (:sneaking? e))))
+    (let [vy (double (v/y d))
+          w (fall/landed-vel (:chunks world) mv sup vy
+                             (fall-gravity e vy) vertical-drag true)]
+      (if (identical? w (phys/vel mv))
+        u
+        (v/v3 (v/x u) (v/y w) (v/z u))))
+    u))
+
 (defn- wet-state? [^long st]
   (and (pos? st)
        (or (some? (block/liquid-class st)) (block/waterlogged? st))))
@@ -314,7 +330,7 @@
         free? (:discard-friction? e)
         k (if free? 1.0 (num/fmul bf air-drag))
         [h u] (moved-fluid world e d mv half height f)
-        u (climbed world e d mv u true)]
+        u (climbed world e d mv (bounced world e d mv sup u) true)]
     [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) (if free? 1.0 vertical-drag))
@@ -371,7 +387,8 @@
         c (phys/context e)
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
-        [h u] (moved-fluid world e d mv half height f)]
+        [h u] (moved-fluid world e d mv half height f)
+        u (bounced world e d mv sup u)]
     [(phys/pos mv) u (phys/on-ground? mv) sup nb? h d (phys/vel mv)
      mv]))
 
@@ -393,7 +410,8 @@
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
-        u (climbed world e d mv (after-vel e mv) false)
+        u (bounced world e d mv sup (after-vel e mv))
+        u (climbed world e d mv u false)
         vy (fluid-fall g falling? (* (v/y u) water-slowdown))
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
@@ -415,6 +433,7 @@
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
         [h u] (moved-fluid world e d mv half height f)
+        u (bounced world e d mv sup u)
         shallow? (<= (double (:lava h)) (double (:threshold f)))
         w (lava-slowed (* (v/x u) sf) (v/y u) (* (v/z u) sf)
                        g falling? shallow?)

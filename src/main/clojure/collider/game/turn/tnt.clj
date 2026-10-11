@@ -15,6 +15,7 @@
             [collider.vec :as v]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
+            [collider.world.blocks.fall :as fall]
             [collider.world.phys :as phys])
   (:import (collider.world Move)))
 
@@ -49,8 +50,12 @@
     (phys/move (:chunks world) (:pos e) (if stuck (mapv * d stuck) d)
                (tnt-half) (tnt-height))))
 
-(defn- moved-speed [world mv pos on-ground stuck]
-  (let [vel (phys/vel mv)]
+(defn- moved-speed [world e mv pos on-ground stuck]
+  (let [chunks (:chunks world)
+        sup (when on-ground
+              (phys/supporting-block chunks pos (tnt-half)))
+        vy (- (double (v/y (:vel e))) 0.04)
+        vel (fall/landed-vel chunks mv sup vy 0.04 drag false)]
     (cond stuck [0.0 0.0 0.0]
           on-ground (motion/stepped-speed (:chunks world) pos vel)
           :else vel)))
@@ -62,7 +67,7 @@
         pos (phys/pos mv)
         on-ground (phys/on-ground? mv)
         stuck' (stuck-now world pos)
-        moved (moved-speed world mv pos on-ground (:stuck e))]
+        moved (moved-speed world e mv pos on-ground (:stuck e))]
     (cond-> {:pos pos :origin nil
              :vel (stepped-vel world pos moved on-ground)
              :on-ground on-ground

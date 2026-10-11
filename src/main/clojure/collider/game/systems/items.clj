@@ -16,6 +16,7 @@
             [collider.world.chunk :as chunk]
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
+            [collider.world.blocks.fall :as fall]
             [collider.world.phys :as phys]
             [collider.game.turn.overlay :as overlay]
             [collider.num :as num]
@@ -146,10 +147,10 @@
   (let [f (motion/friction (motion/below-state chunks pos sup))]
     (num/f32 (* air-drag f))))
 
-(defn- moved-speed [chunks ^Move mv sup on-ground]
+(defn- moved-speed [chunks ^Move mv sup on-ground vy]
   (let [p (phys/pos mv)
         sf (motion/block-speed-factor chunks p sup)
-        w (phys/vel mv)
+        w (fall/landed-vel chunks mv sup vy gravity air-drag false)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (if on-ground (motion/stepped-speed chunks p vel) vel)))
 
@@ -165,8 +166,9 @@
         ^Move mv (phys/move chunks (:pos e) vel half height)
         og (phys/on-ground? mv)
         [sup nb?] (supported chunks e mv)
-        p (phys/pos mv)]
-    [p (dragged chunks p sup og (moved-speed chunks mv sup og))
+        p (phys/pos mv)
+        vy (if (:stuck e) 0.0 (double (vel 1)))]
+    [p (dragged chunks p sup og (moved-speed chunks mv sup og vy))
      og sup nb?]))
 
 (defn- jolt-of ^double [vel' old]
@@ -183,7 +185,8 @@
 
 (defn- moved-or-resting [chunks e drift rest? push]
   (if rest?
-    [(:pos e) drift true (:support e) (:no-blocks? e)]
+    [(:pos e) (motion/stepped-speed chunks (:pos e) drift) true
+     (:support e) (:no-blocks? e)]
     (item-moved chunks e push)))
 
 (defn- passed

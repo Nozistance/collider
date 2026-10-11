@@ -123,8 +123,28 @@
 (def ^:private ^:table jump-factors
   (delay (motion-table :jump-factor 1.0)))
 
+(def ^:private ^:table bounces
+  (delay (motion-table :bounce 0.0)))
+
 (defn- factor-of ^double [^doubles a ^long st]
   (if (and (< -1 st) (< st (alength a))) (aget a st) (aget a 0)))
+
+(def ^:private ^:const lifeless-bounce (double (float 0.8)))
+
+(defn bounce
+  "Returns the speed up of a body that lands on st after it asked to
+  move down by vy and moved by dy, or nil when st does not bounce it.
+  g is its gravity, drag its air drag, and a body that is not alive
+  takes four fifths of the bounce of st."
+  [st vy dy g drag living?]
+  (let [vy (double vy) dy (double dy) g (double g) drag (double drag)
+        b (factor-of @bounces (long st))
+        b (if living? b (num/fmul b lifeless-bounce))]
+    (when (and (pos? b) (not (< (- vy) g))
+               (not (block/tagged? st "suppresses_bounce")))
+      (let [p (/ dy vy)
+            d (+ 1.0 (* p (- drag 1.0)))]
+        (* (* (- (* p g) vy) d) b)))))
 
 (defn friction
   "Returns how much of its speed a body that slides on st keeps."

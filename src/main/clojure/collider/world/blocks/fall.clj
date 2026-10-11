@@ -6,7 +6,9 @@
             [collider.world.blocks.dragonegg :as dragonegg]
             [collider.world.blocks.dripstone :as dripstone]
             [collider.world.blocks.liquid :as liquid]
+            [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
+            [collider.world.phys :as phys]
             [collider.world.space.sight :as sight]))
 
 (set! *warn-on-reflection* true)
@@ -26,6 +28,18 @@
       (nil? sup) [(num/floor (v/x pos)) y (num/floor (v/z pos))]
       (keeps-support? (chunk/at chunks sup)) sup
       :else [(nth sup 0) y (nth sup 2)])))
+
+(defn landed-vel
+  "Returns the speed of a body after its move mv, asked at speed vy
+  down, with what the block it landed on gives back. sup is the block
+  it rests on, g its gravity and drag its air drag."
+  [chunks mv sup vy g drag living?]
+  (let [w (phys/vel mv)
+        up (when (phys/on-ground? mv)
+             (let [[x y z] (on-pos chunks (phys/pos mv) sup)]
+               (motion/bounce (chunk/at chunks [x y z]) vy
+                              (phys/moved-y mv) g drag living?)))]
+    (if up (v/v3 (v/x w) up (v/z w)) w)))
 
 (defn- spike-landing [^long st ^double fall]
   (if (dripstone/stalagmite-tip? st)

@@ -11,6 +11,7 @@
             [collider.world.blocks.liquid :as liquid]
             [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
+            [collider.world.blocks.fall :as fall]
             [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
@@ -229,10 +230,11 @@
   (when (phys/on-ground? mv)
     (phys/supporting-block chunks (phys/pos mv) (half))))
 
-(defn- sped [chunks mv sup on-ground]
+(defn- sped [chunks mv sup on-ground vy]
   (let [p (phys/pos mv)
         sf (motion/block-speed-factor chunks p sup)
-        w (phys/vel mv)
+        drag (num/f32 0.98)
+        w (fall/landed-vel chunks mv sup vy gravity drag false)
         vel [(* (v/x w) sf) (v/y w) (* (v/z w) sf)]]
     (if on-ground (motion/stepped-speed chunks p vel) vel)))
 
@@ -245,7 +247,7 @@
         og (phys/on-ground? mv)
         sup (supported chunks mv)]
     [(phys/pos mv)
-     (if stuck [0.0 0.0 0.0] (sped chunks mv sup og))
+     (if stuck [0.0 0.0 0.0] (sped chunks mv sup og (v/y vel)))
      og sup]))
 
 (defn- bounced ^double [^double wy on-ground ^double fall]

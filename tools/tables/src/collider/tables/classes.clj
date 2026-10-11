@@ -315,7 +315,8 @@
 (def ^:private motion-fields
   [[:friction "friction" 0.6]
    [:speed-factor "speedFactor" 1.0]
-   [:jump-factor "jumpFactor" 1.0]])
+   [:jump-factor "jumpFactor" 1.0]
+   [:bounce "bounceRestitution" 0.0]])
 
 (defn- motion-props [field]
   (into {}
