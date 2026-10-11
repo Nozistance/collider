@@ -261,7 +261,7 @@
 (defn matches?
   "Returns true when stack s, nil for none, passes item predicate p.
   Its predicates may also be keyed by type alone and a bound may be
-  a number, as loot holds them; loot components throw."
+  a number, as loot holds them. Loot components throw."
   [p s]
   (let [s (or s {:item :air :count 0})]
     (and (or (nil? (:items p)) (contains? (members "item" (:items p))
