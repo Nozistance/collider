@@ -139,7 +139,7 @@
    [:last-gamemode wire/byte]
    [:debug? {:optional true} [:= {:wire wire/boolean} false]]
    [:flat? {:optional true} [:= {:wire wire/boolean} true]]
-   [:death {:optional true} [:= {:wire wire/boolean} false]]
+   [:death [:maybe [:tuple wire/id wire/block-pos]]]
    [:portal-cooldown {:optional true} [:= {:wire wire/varint} 0]]
    [:sea-level wire/varint]])
 

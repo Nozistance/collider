@@ -25,7 +25,8 @@
     {:dimension-type (data/datapack-id "dimension_type" dim)
      :dimension dim :sea-level (biome/sea-level-of dim)
      :gamemode (game-mode/id (:game-mode e))
-     :last-gamemode (game-mode/id (:previous-game-mode e))}))
+     :last-gamemode (game-mode/id (:previous-game-mode e))
+     :death (:last-death e)}))
 
 (def ^:private difficulty-packet
   {:packet :change-difficulty :difficulty 0 :locked false})

@@ -656,14 +656,29 @@
              :on-fire? (on-fire? e) :equipment (worn e)}
       (mobs/mob-type? (:type e)) (merge (mobs/loot-entity e)))))
 
-(defn- attacking-player
-  "Returns the player who hurt mob e recently enough to count as its
-  killer, while it is in the world."
+(defn- credited-player
+  "Returns [eid player] of the player who hurt e recently enough to
+  count as its killer, while it is in the world."
   [world e]
   (when (killed-by-player? world e)
     (let [u (:last-hurt-by-player e)]
-      (some (fn [[_ p]] (when (= u (:uuid p)) p))
+      (some (fn [[_ p :as entry]] (when (= u (:uuid p)) entry))
             (level/player-entries world)))))
+
+(def ^:private ^:const mob-memory 100)
+
+(defn- kill-credit
+  "Returns [eid entity] of the one the death of e counts for. It is
+  the player who hurt e recently, else the living one that last hurt
+  it, if not too long ago."
+  [world e]
+  (or (credited-player world e)
+      (let [[src at] (:last-hurt e)
+            oid (:cause src)
+            o (get-in world [:entities oid])]
+        (when (and o (entity/living-attacker? src)
+                   (<= (- (long (:tick world)) (long at)) mob-memory))
+          [oid o]))))
 
 (defn- luck ^double [p]
   (if p
@@ -672,7 +687,7 @@
 
 (defn- loot-ctx [world e]
   (let [src (:killed-by e)
-        p (attacking-player world e)]
+        p (second (credited-player world e))]
     {:entity (loot-view e)
      :attacker (loot-view (:attacker src))
      :direct-attacker (loot-view (:direct-attacker src))
@@ -790,11 +805,6 @@
                                    (get m "death_message_type")]]))
                (data/pack "damage_type"))))
 
-(defn- credit [world e]
-  (when (killed-by-player? world e)
-    (let [u (:last-hurt-by-player e)]
-      (some (fn [[_ o]] (when (= u (:uuid o)) o)) (:entities world)))))
-
 (defn- killer [world src]
   (or (:attacker src) (get-in world [:entities (:cause src)])))
 
@@ -804,7 +814,7 @@
   (let [[id kind] (get @death-kinds (:type src) ["generic" nil])
         v (entity/display-name e)
         k (killer world src)
-        by (or k (credit world e))
+        by (or k (second (credited-player world e)))
         key (str "death.attack." id)]
     (cond
       (and (= "fall_variants" kind) (nil? by))
@@ -821,21 +831,41 @@
        (out/all (out/system-chat text))]
       [(out/to eid (out/combat-kill eid {:text ""}))])))
 
+(defn- kill-deltas
+  "Returns the stats of the death of e. A dead player counts who
+  killed it, a player with the credit counts the kill, and a player
+  who struck the blow counts the kind of mob it killed."
+  [world eid e]
+  (let [[kid k] (kill-credit world e)
+        src (:struck-by e)
+        player? (entity/player? e)]
+    (concat
+      (when (and k player?)
+        [[:award eid (keyword "killed-by" (name (:type k))) 1]])
+      (when (and (entity/player? k) (not= kid eid))
+        [[:award kid (if player? :custom/player-kills :custom/mob-kills) 1]])
+      (when (and (not player?) (entity/player? (:attacker src)))
+        [[:award (:cause src) (keyword "killed" (name (:type e))) 1]]))))
+
 (defn- player-died-deltas [world eid e]
   (when (entity/player? e)
     (concat
       (told-deltas world eid e)
       (inventory-deltas world eid e)
+      (kill-deltas world eid e)
       [[:award eid :custom/deaths 1]
        [:merge-entity eid
         {:fire 0 :burning? false :ticks-frozen 0
+         :last-death [(:dim world :overworld) (v/cell (:pos e))]
          :stats (assoc (:stats e) :custom/time-since-death 0
                        :custom/time-since-rest 0)}]])))
 
 (defn- died-deltas [world eid e]
   (concat (signal/game-event :entity-die (:pos e) eid)
           [(out/all (out/status eid :death))]
-          (player-died-deltas world eid e)
+          (if (entity/player? e)
+            (player-died-deltas world eid e)
+            (kill-deltas world eid e))
           (drop-deltas world eid e) (death-orbs world eid e)))
 
 (defn- lost-deltas [world eid e health]

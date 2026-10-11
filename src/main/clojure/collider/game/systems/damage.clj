@@ -1,6 +1,7 @@
 (ns collider.game.systems.damage
   "The hurts of players and items each tick."
   (:require [collider.game.areas :as areas]
+            [collider.game.block.screen :as screen]
             [collider.game.deltas :as deltas]
             [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
@@ -42,9 +43,13 @@
          (nil? (:struck-by e))
          (>= health (double (or (:health-sent e) health))))))
 
+(defn- removal-deltas [world eid e]
+  (when-let [ds (seq (hurt/removal-deltas world eid e))]
+    (concat ds (screen/removed-deltas world eid e))))
+
 (defn- busy-deltas [world eid e]
   (let [ds (concat (hurt/timer-deltas eid e)
-                   (hurt/removal-deltas world eid e)
+                   (removal-deltas world eid e)
                    (hurt/landing-deltas world eid e)
                    (hurt/fire-deltas world eid e))]
     (->> (concat (hurt/burnt-deltas world eid e) ds)

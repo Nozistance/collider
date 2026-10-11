@@ -290,6 +290,7 @@
    :held-slot    {:default 0}
    :spawn        {}
    :forced-spawn {}
+   :last-death   {}
    :stats        {:default {}}
    :ender-items  {:default []}
    :pos          {:store (fn [p] [(v/x p) (v/y p) (v/z p)])}

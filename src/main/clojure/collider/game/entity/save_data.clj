@@ -98,8 +98,13 @@
   [(fn [e _] (float (or (get e k) 0.0)))
    (numeric (fn [e x _] (assoc e k (f32 x))))])
 
+(defn- death-place [e _]
+  (when-let [[dim p] (:last-death e)]
+    {:dimension (data/wire dim) :pos (int-array p)}))
+
 (def ^:private player-fields
-  {:foodLevel (int-field :food)
+  {:LastDeathLocation [death-place (fn [e _ _] e)]
+   :foodLevel (int-field :food)
    :foodTickTimer (int-field :food-timer)
    :foodSaturationLevel (float-field :saturation)
    :foodExhaustionLevel (float-field :exhaustion)})
