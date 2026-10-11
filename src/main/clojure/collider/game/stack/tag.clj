@@ -1,6 +1,7 @@
 (ns collider.game.stack.tag
   "Item stacks as tags, as a block entity saves the stacks it holds."
   (:require [collider.data :as data]
+            [collider.game.stack :as stack]
             [collider.hash-order :as hash-order]))
 
 (set! *warn-on-reflection* true)
@@ -18,7 +19,7 @@
      [:pages (pages-tag pages)]
      [:resolved (when resolved true)]]))
 
-(defn- writable-tag [{:keys [pages]}]
+(defn- writable-tag [pages]
   (hash-order/compound [[:pages (pages-tag pages)]]))
 
 (def ^:private component-tags
@@ -46,7 +47,10 @@
                   [:count (int (:count stack 1))]
                   [:components cs]]))))))
 
-(defn- filterable [m] {:raw (:raw m) :filtered (:filtered m)})
+(defn- filterable [m]
+  (if (string? m)
+    {:raw m :filtered nil}
+    {:raw (:raw m) :filtered (:filtered m)}))
 
 (def ^:private tag-components
   {:written-book-content
@@ -56,7 +60,7 @@
       :pages (mapv filterable (:pages m))
       :resolved (boolean (:resolved m))})
    :writable-book-content
-   (fn [m] {:pages (mapv filterable (:pages m))})
+   (fn [m] (mapv filterable (:pages m)))
    :custom-name identity})
 
 (defn- component [[k v]]
@@ -66,6 +70,6 @@
 (defn stack
   "Returns the stack that tag t holds."
   [t]
-  (let [cs (into {} (keep component) (:components t))]
-    (cond-> {:item (data/kebab (:id t)) :count (long (:count t 1))}
-      (seq cs) (assoc :components cs))))
+  (reduce (fn [s [k v]] (stack/put s k v))
+          {:item (data/kebab (:id t)) :count (long (:count t 1))}
+          (keep component (:components t))))
