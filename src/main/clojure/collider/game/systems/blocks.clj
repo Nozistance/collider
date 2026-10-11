@@ -24,6 +24,7 @@
             [collider.game.systems.consume :as consume]
             [collider.game.block.screen :as screen]
             [collider.game.systems.hanging :as hanging]
+            [collider.game.turn.rocket :as rocket]
             [collider.game.turn.thrown :as thrown]
             [collider.world.block :as block]
             [collider.world.blocks.liquid :as liquid]
@@ -120,6 +121,8 @@
     (when-hand (wearing (on-args tools/flint-deltas)))]
    [(item-is :fire-charge)
     (when-hand (spending (on-args tools/firecharge-deltas)))]
+   [(item-is :firework-rocket)
+    (when-hand (spending (on-args rocket/launch-deltas)))]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]

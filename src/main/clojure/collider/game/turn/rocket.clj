@@ -3,6 +3,7 @@
   along what stops it and goes off when its life runs out or it meets
   a body."
   (:require [collider.game.entity :as entity]
+            [collider.game.player :as player]
             [collider.game.entity.hurt :as hurt]
             [collider.game.entity.size :as size]
             [collider.game.mode :as game-mode]
@@ -11,6 +12,8 @@
             [collider.game.stack :as stack]
             [collider.num :as num]
             [collider.parallel :as par]
+            [collider.random :as random]
+            [collider.world.direction :as dir]
             [collider.vec :as v]
             [collider.world.blocks.motion :as motion]
             [collider.world.chunk :as chunk]
@@ -114,3 +117,25 @@
                       (assoc m :vel d :left-owner? left? :yaw yaw
                              :pitch pitch :life life
                              :age (inc (long (:age e 0))))]])))))
+
+(defn- draw ^double [world eid k] (random/of-key (:tick world) eid [:rocket k]))
+
+(defn- drift ^double [world eid k]
+  (* 0.002297 (- (draw world eid [k 0]) (draw world eid [k 1]))))
+
+(defn launch-deltas
+  "Returns the deltas of player eid launching the rocket in hand from
+  face of the block at pos, clicked at cursor in sixteenths."
+  [world [eid pos face _ cursor]]
+  (let [e (get-in world [:entities eid])
+        stack (player/hand-stack e (:use-hand e))
+        flight (long (:flight-duration (stack/component stack :fireworks) 0))
+        [ox oy oz] (dir/face-offset face)
+        at (mapv (fn [p c o] (+ (+ (double p) (/ (double c) 16.0)) (* (double o) 0.15)))
+                 pos cursor [ox oy oz])]
+    [[:spawn-entity
+      {:type :firework-rocket :owner eid :left-owner? false :age 0 :life 0
+       :lifetime (+ (* 10 (inc flight)) (random/below (draw world eid :a) 6)
+                    (random/below (draw world eid :b) 7))
+       :pos at :vel [(drift world eid :x) 0.05 (drift world eid :z)]
+       :yaw 0.0 :pitch 0.0 :on-ground false :stack stack}]]))
