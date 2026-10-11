@@ -13,13 +13,14 @@
 
 (set! *warn-on-reflection* true)
 
+(defn- degrees ^double [^double rad] (num/f32 (num/degrees rad)))
+
 (defn facing
   "Returns the yaw and the pitch that point along vel."
   [vel]
   (let [x (v/x vel) y (v/y vel) z (v/z vel)
         d (Math/sqrt (+ (* x x) (* z z)))]
-    [(Math/toDegrees (Math/atan2 x z))
-     (Math/toDegrees (Math/atan2 y d))]))
+    [(degrees (num/atan2 x z)) (degrees (num/atan2 y d))]))
 
 (defn box-of
   "Returns the box of half width w and height h standing at pos."
@@ -164,15 +165,15 @@
    (+ (v/z from) (* t (v/z d)))])
 
 (defn- wrapped ^double [^double old ^double new]
-  (cond (< (- new old) -180.0) (recur (- old 360.0) new)
-        (>= (- new old) 180.0) (recur (+ old 360.0) new)
+  (cond (< (num/f32 (- new old)) -180.0) (recur (num/f32 (- old 360.0)) new)
+        (>= (num/f32 (- new old)) 180.0) (recur (num/f32 (+ old 360.0)) new)
         :else old))
 
 (defn lerp-rotation
-  "Returns angle old turned a fifth of the way to new."
+  "Returns angle old turned a fifth of the way to new, in floats."
   ^double [^double old ^double new]
-  (let [old (wrapped old new)]
-    (+ old (* 0.2 (- new old)))))
+  (let [old (wrapped (num/f32 old) new)]
+    (num/f32 (+ old (num/f32 (* (num/f32 0.2) (num/f32 (- new old))))))))
 
 (defn rotated
   "Returns the yaw and the pitch of projectile e turned towards its

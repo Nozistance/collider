@@ -238,15 +238,6 @@
     (:vel e)
     (falling-drift world e)))
 
-(defn- f-wrapped ^double [^double old ^double new]
-  (cond (< (f32 (- new old)) -180.0) (recur (f32 (- old 360.0)) new)
-        (>= (f32 (- new old)) 180.0) (recur (f32 (+ old 360.0)) new)
-        :else old))
-
-(defn- f-lerp ^double [^double old ^double new]
-  (let [old (f-wrapped (f32 old) new)]
-    (f32 (+ old (f* (f32 0.2) (f32 (- new old)))))))
-
 (def ^:private ^:const rad->deg
   (double (unchecked-float (/ (float 180.0) (float Math/PI)))))
 
@@ -262,8 +253,8 @@
       [(:yaw e 0.0) (:pitch e 0.0)]
       (let [yaw (f32 (+ (deg (num/atan2 z x)) 90.0))
             pitch (f32 (- (deg (num/atan2 h y)) 90.0))]
-        [(f-lerp (double (:yaw e 0.0)) yaw)
-         (f-lerp (double (:pitch e 0.0)) pitch)]))))
+        [(projectile/lerp-rotation (double (:yaw e 0.0)) yaw)
+         (projectile/lerp-rotation (double (:pitch e 0.0)) pitch)]))))
 
 (defn- moved [e at d left?]
   (let [[yaw pitch] (if (wind? e) (turned e d) (projectile/rotated e d))]
