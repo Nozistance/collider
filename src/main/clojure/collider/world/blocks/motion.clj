@@ -121,6 +121,33 @@
                               (num/floor (double y))
                               (num/floor (double z))))))
 
+(def ^:private ^:table holding
+  (delay (let [n (data/block-state-count) a (boolean-array n)]
+           (dotimes [st n]
+             (when (pos? (held-by st true true))
+               (aset a st true)))
+           a)))
+
+(defn- near-holder?
+  "Returns true when a block that may hold a body lies in the cells
+  its box covers on any of moves, at either end of each."
+  [chunks moves half height]
+  (let [half (double half) height (double height)]
+    (loop [ps (mapcat #(subvec (vec %) 0 2) moves)
+           x0 Double/MAX_VALUE y0 Double/MAX_VALUE z0 Double/MAX_VALUE
+           x1 (- Double/MAX_VALUE) y1 (- Double/MAX_VALUE)
+           z1 (- Double/MAX_VALUE)]
+      (if-let [p (first ps)]
+        (let [x (double (v/x p)) y (double (v/y p)) z (double (v/z p))]
+          (recur (rest ps) (Math/min x0 x) (Math/min y0 y) (Math/min z0 z)
+                 (Math/max x1 x) (Math/max y1 y) (Math/max z1 z)))
+        (phys/some-cell? chunks @holding
+                         (num/floor (- x0 half)) (num/floor y0)
+                         (num/floor (- z0 half))
+                         (inc (num/floor (+ x1 half)))
+                         (inc (num/floor (+ y1 height)))
+                         (inc (num/floor (+ z1 half))))))))
+
 (defn stuck-speed
   "Returns the factor the blocks a body met on its moves this tick
   apply to its next move, or nil when none of them holds it. Each
@@ -131,17 +158,18 @@
   of a living body, nil for any other."
   ([chunks moves half height] (stuck-speed chunks moves half height nil))
   ([chunks moves half height type]
-   (let [end (nth (peek (vec moves)) 1)
-         snow? (or (nil? type) (snow-at-feet? chunks end))
-         berry? (and (some? type) (not (contains? unberried type)))
-         held #(held-by % snow? berry?)
-         [found] (reduce #(walked-move chunks %1 %2 half height held)
-                         [0 #{}] moves)]
-     (case (long found)
-       1 web-speed
-       2 snow-speed
-       3 berry-speed
-       nil))))
+   (when (near-holder? chunks moves half height)
+     (let [end (nth (peek (vec moves)) 1)
+           snow? (or (nil? type) (snow-at-feet? chunks end))
+           berry? (and (some? type) (not (contains? unberried type)))
+           held #(held-by % snow? berry?)
+           [found] (reduce #(walked-move chunks %1 %2 half height held)
+                           [0 #{}] moves)]
+       (case (long found)
+         1 web-speed
+         2 snow-speed
+         3 berry-speed
+         nil)))))
 
 (defn- below-of ^long [chunks [x y z]]
   (state-at chunks (num/floor (double x))

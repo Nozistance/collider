@@ -4,9 +4,11 @@
   while the body stays where the client says it is."
   (:require [collider.game.entity :as entity]
             [collider.game.entity.hurt :as hurt]
+            [collider.game.mob.mobs :as mobs]
             [collider.game.mob.travel :as travel]
             [collider.game.out :as out]
-            [collider.vec :as v]))
+            [collider.vec :as v]
+            [collider.world.phys :as phys]))
 
 (set! *warn-on-reflection* true)
 
@@ -41,13 +43,26 @@
               (hurt/damage-deltas world eid e (double n)
                                   fly-into-wall))))))
 
+(defn- stuck-move
+  "Returns move [from to d] of player e cut short by the block that
+  held it."
+  [world e half height [f _ d]]
+  (let [m (mapv * d (:stuck e))
+        mv (phys/move (:chunks world) f m half height
+                      (mobs/step-height :player)
+                      (boolean (:on-ground e)) (phys/context e))]
+    [f (phys/pos mv) m]))
+
 (defn- packet-moves
-  "Returns the moves [from to d] the packets of player eid made this
-  tick."
-  [world eid]
-  (for [{f :from t :to :as m} (get-in world [:input :moves])
-        :when (= eid (:eid m))]
-    [f t (mapv - t f)]))
+  "Returns the moves [from to d] the packets of player eid, e, made
+  this tick. A block that held it holds the first of them only."
+  [world eid e half height]
+  (let [ms (for [{f :from t :to :as m} (get-in world [:input :moves])
+                 :when (= eid (:eid m))]
+             [f t (mapv - t f)])]
+    (if (and (:stuck e) (seq ms))
+      (cons (stuck-move world e half height (first ms)) (rest ms))
+      ms)))
 
 (defn player-deltas
   "Returns the deltas that move the kept speed of player eid, e, on
@@ -56,12 +71,15 @@
   falls no further."
   [world [eid e]]
   (let [[half height] (entity/pose-box (:pose e :standing))
+        ms (packet-moves world eid e half height)
+        e (if (and (:stuck e) (seq ms))
+            (assoc e :stuck nil :vel [0.0 0.0 0.0])
+            e)
         vel (dead-banded (travel/current-pushed
                            world e (or (:vel e) [0.0 0.0 0.0])
                            half height))
         {:keys [pos stuck flight hit? holds-on? snowed?] moved :vel}
-        (travel/body-moved world (assoc e :vel vel) half height
-                           (packet-moves world eid))
+        (travel/body-moved world (assoc e :vel vel) half height ms)
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
                moved)]

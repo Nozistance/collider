@@ -658,6 +658,8 @@
         e2 (snow-marked e2 (snowed? world (:pos e) pos half height))]
     [(bumped e e2 tr) shoves hit? (when ls (nth ls 1))]))
 
+(def ^:private gap-sq (double (float 9.9999994E-11)))
+
 (defn moved
   "Returns mob e after one tick of its move, the shoves it gave,
   whether cramming hurt it, and the deltas of its landing. The look
@@ -672,7 +674,9 @@
         pos (if ls (nth ls 0) (nth tr 0))
         st (motion/stuck-speed (:chunks world)
                                (cond-> [[(:pos e) (nth tr 0) (nth tr 9 nil)]]
-                                 ls (conj [(nth tr 0) pos nil]))
+                                 (and ls (> (v/dist-sq pos (nth tr 0))
+                                            gap-sq))
+                                 (conj [(nth tr 0) pos nil]))
                                half height (:type e))
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]

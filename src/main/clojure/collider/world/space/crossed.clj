@@ -15,7 +15,7 @@
 
 (defn- frac ^double [^double a] (- a (double (num/floor a))))
 
-(defn- corners
+(defn- between-corners
   "Returns the cells from corner a to corner b, first the one that
   lies against direction d, walking along y first."
   [[ax ay az] [bx by bz] [dx dy dz]]
@@ -43,7 +43,7 @@
 
 (defn- floors [x y z] [(num/floor x) (num/floor y) (num/floor z)])
 
-(defn- far-corner [[dx dy dz]]
+(defn- furthest-corner [[dx dy dz]]
   (let [x (Math/abs (double dx)) y (Math/abs (double dy))
         z (Math/abs (double dz))
         xs (step-of dx) ys (step-of dy) zs (step-of dz)]
@@ -96,13 +96,13 @@
 (defn- inside ^double [^double a ^long c]
   (clamp a (+ (double c) eps) (- (+ (double c) 1.0) eps)))
 
-(defn- along
+(defn- along-travel
   "Returns the cells the far corner of box b sweeps on its way by
   move d, each with its step, and the number of steps."
   [[x0 y0 z0 x1 y1 z1] d]
   (let [size [(- (double x1) (double x0)) (- (double y1) (double y0))
               (- (double z1) (double z0))]
-        dir (far-corner d)
+        dir (furthest-corner d)
         mid [(+ (double x0) (* 0.5 (- (double x1) (double x0))))
              (+ (double y0) (* 0.5 (- (double y1) (double y0))))
              (+ (double z0) (* 0.5 (- (double z1) (double z0))))]
@@ -140,7 +140,7 @@
                                       (double (dir k))))))
                             [0 1 2])]
               (recur c t n
-                     (into out (map #(conj % n)) (corners c far d))))
+                     (into out (map #(conj % n)) (between-corners c far d))))
             (recur c t n out)))))))
 
 (defn- between
@@ -174,11 +174,11 @@
                   (- (double y1) (double (d 1)))
                   (- (double z1) (double (d 2)))]
             first-cells (map #(conj % 0)
-                             (corners (apply floors (subvec back 0 3))
+                             (between-corners (apply floors (subvec back 0 3))
                                       (apply floors (subvec back 3 6)) d))
             [seen out] (fresh #{} first-cells)
-            [path n] (along b d)
+            [path n] (along-travel b d)
             [seen out] (let [[s o] (fresh seen path)] [s (into out o)])
             last-cells (map #(conj % (inc (long n)))
-                            (corners (floors x0 y0 z0) (floors x1 y1 z1) d))]
+                            (between-corners (floors x0 y0 z0) (floors x1 y1 z1) d))]
         (into out (second (fresh seen last-cells)))))))
