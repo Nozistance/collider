@@ -125,7 +125,6 @@
       x
       (or-else x item-name tag))))
 
-
 (def ^:private source-type (dfu/by-name "position_source_type"))
 
 (def ^:private block-source
