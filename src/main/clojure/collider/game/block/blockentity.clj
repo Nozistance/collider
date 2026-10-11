@@ -343,24 +343,6 @@
                (with-container e (:container cs))
                (get component-fields (:kind e) {}))))
 
-(defn- items-from [tags size]
-  (reduce (fn [v t]
-            (let [i (long (:Slot t -1))]
-              (if (< -1 i (long size)) (assoc v i (tag/stack t)) v)))
-          (vec (repeat size nil)) tags))
-
-(defn with-tag
-  "Returns block entity e at tick t loaded from tag d, as a command
-  puts it. What d leaves out comes back as a new one of its kind has
-  it, contents included."
-  [e d t]
-  (let [f (with-data (made (:kind e) t) d t)]
-    (cond-> f
-      (vector? (:items f)) (assoc :items (items-from (:Items d)
-                                                     (count (:items f))))
-      (and (named (:kind f)) (some? (:CustomName d)))
-      (assoc :custom-name (:CustomName d)))))
-
 (defn placed-by
   "Returns block entity e placed by player p. A structure block takes
   the name of p as its author."
@@ -422,6 +404,24 @@
 
 (defn made [k t]
   (cond-> (fresh k nil) (= :end-gateway k) (assoc :born t)))
+
+(defn- items-from [tags size]
+  (reduce (fn [v t]
+            (let [i (long (:Slot t -1))]
+              (if (< -1 i (long size)) (assoc v i (tag/stack t)) v)))
+          (vec (repeat size nil)) tags))
+
+(defn with-tag
+  "Returns block entity e at tick t loaded from tag d, as a command
+  puts it. What d leaves out comes back as a new one of its kind has
+  it, contents included."
+  [e d t]
+  (let [f (with-data (made (:kind e) t) d t)]
+    (cond-> f
+      (vector? (:items f)) (assoc :items (items-from (:Items d)
+                                                     (count (:items f))))
+      (and (named (:kind f)) (some? (:CustomName d)))
+      (assoc :custom-name (:CustomName d)))))
 
 (defn saved [e t]
   (if (= :end-gateway (:kind e))
