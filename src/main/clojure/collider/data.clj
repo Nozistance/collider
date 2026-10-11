@@ -16,7 +16,7 @@
 
 (def game "26.2")
 
-(def layout 24)
+(def layout 25)
 
 (defn- stamp-of [d]
   (try (edn/read-string (slurp (io/file d "stamp.edn")))
@@ -95,7 +95,7 @@
   (into [:packets :registries :blocks :synced :light :fire :fuel
          :brewing :dyes :sounds :potions :effects :entities
          :version :block-entities :growers
-         :attributes :spawns :lang]
+         :attributes :spawns :lang :transient-components]
         item-facts))
 
 (def ^:private ^:table tables
@@ -118,6 +118,10 @@
   [] (:registries @tables))
 
 (defn blocks [] (:blocks @tables))
+
+(defn transient-components
+  "Returns the components that a stack never saves."
+  [] (:transient-components @tables))
 
 (defn lang
   "Returns the text of each translation key in the language of the

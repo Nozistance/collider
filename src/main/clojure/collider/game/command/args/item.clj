@@ -31,10 +31,6 @@
                (map (fn [[t is]] [(str "minecraft:" t) (set is)]))
                (get (data/tags) "item"))))
 
-(def ^:private unsaved
-  "The components that commands cannot name."
-  #{:creative-slot-lock :additional-trade-cost :map-post-processing})
-
 (defn- read-item [rd]
   (let [res (args/read-id rd)
         k (when-not (r/error? res) (@item-ids (first res)))]
@@ -52,7 +48,7 @@
         k (when (vector? res) (@component-ids (first res)))]
     (cond (nil? res) (r/error-at rd no-component)
           (r/error? res) res
-          (and k (not (unsaved k))) (assoc res 0 k)
+          (and k (not ((data/transient-components) k))) (assoc res 0 k)
           :else (r/error-at rd unknown-component (first res)))))
 
 (defn- once [seen res]
@@ -188,7 +184,7 @@
 (defn- component-check [id rd]
   (let [k (@component-ids id)]
     (cond (= count-id id) :count
-          (and k (not (unsaved k))) k
+          (and k (not ((data/transient-components) k))) k
           :else (r/error-at rd unknown-component id))))
 
 (defn- predicate-check [id rd]

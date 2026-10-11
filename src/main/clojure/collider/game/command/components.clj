@@ -377,11 +377,15 @@
 
 (defn- patch-key [s]
   (let [gone? (str/starts-with? s "!")
-        [op id] (identifier (cond-> s gone? (subs 1)))]
+        [op id] (identifier (cond-> s gone? (subs 1)))
+        k (when (= :ok op) (dfu/reg-key "data_component_type" id))]
     (cond (not= :ok op) [:raw s]
-          (dfu/reg-key "data_component_type" id) [:ok [id gone?]]
-          :else [:malformed (str "No component with type: '"
-                                 (dfu/full-id id) "'")])))
+          (nil? k) [:malformed (str "No component with type: '"
+                                    (dfu/full-id id) "'")]
+          ((data/transient-components) k)
+          [:malformed (str "'" (dfu/full-id id)
+                           "' is not a persistent component")]
+          :else [:ok [id gone?]])))
 
 (defn- patch-value [[id gone?]]
   (if gone? dfu/tag-unit #(decode id %)))

@@ -548,6 +548,14 @@
         (throw (unknown "translation differs from the server" {:key k}))))
     (into (sorted-map) m)))
 
+(defn- transient-components
+  "Returns the components that a stack never saves."
+  []
+  (let [types (registry "DATA_COMPONENT_TYPE")]
+    (into (sorted-set)
+          (comp (filter #(call % "isTransient")) (map #(key-of types %)))
+          (elements types))))
+
 (defn- from-classes [loader]
   (binding [*loader* loader]
     (call-static "SharedConstants" "tryDetectVersion")
@@ -559,7 +567,8 @@
               :dyes (dye-colors) :synced (synced-registries)
               :entities (entities/entities)
               :version (version-facts) :growers (growers)
-              :attributes (attributes/attributes) :lang (translations)}
+              :attributes (attributes/attributes) :lang (translations)
+              :transient-components (transient-components)}
              (brewing-tables) (loaded-pack)))))
 
 (def ^:private silent-log4j

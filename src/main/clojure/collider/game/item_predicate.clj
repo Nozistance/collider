@@ -111,8 +111,12 @@
   (if (= :exists how) dfu/tag-unit (kinds k)))
 
 (def ^:private exact
-  (dfu/mapped (dfu/dispatched-map (by-name "data_component_type")
-                                  (fn [k] #(cs/decode k %)))
+  (dfu/mapped (dfu/dispatched-map
+                (dfu/checked (by-name "data_component_type")
+                             #(not ((data/transient-components) %))
+                             #(str "Encountered transient component "
+                                   (data/wire %)))
+                (fn [k] #(cs/decode k %)))
               vec))
 
 (def ^:private item-predicate
