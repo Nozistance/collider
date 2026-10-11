@@ -268,13 +268,13 @@
 (defn command-deltas
   "Returns [deltas n placed] for the changes of /setblock or /fill.
   They are made between ticks with the options of neighbors/commanded.
-  n counts the cells they affected, placed the cells they set."
+  n counts the cells they affected, placed holds the cells they set."
   ([world changes] (command-deltas world changes nil))
   ([world changes opts]
    (let [base (dec (long (:tick world)))
          f #(neighbors/commanded %1 %2 %3 opts)
          [ds s] (run-deltas world changes base f)]
-     [ds (:count s) (count (:placed s))])))
+     [ds (:count s) (set (:placed s))])))
 
 (defn ops-deltas
   "Returns [deltas n] for the ops of neighbors/run-counted, made

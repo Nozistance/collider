@@ -90,12 +90,53 @@
         n (area bounds)]
     (when (> n limit) (fail eid k limit n))))
 
+(defn- entity-after
+  "Returns the block entity that holds cell p of level lv once st is
+  set there, the one it has when the kind of block entity stays."
+  [lv p st mode t]
+  (when-let [k (be/kind st)]
+    (let [e (be/at lv p)
+          old (if (= "destroy" mode) 0 (changes/block-at lv p))]
+      (if (and e (not= "destroy" mode) (not (be/removed? old st 0)))
+        e
+        (be/made k t)))))
+
+(defn- tag-changes
+  "Returns [deltas cells] of the tag of block loaded into the block
+  entities that cells ps hold once its state is set there. Cells are
+  those whose block entity it changed."
+  [world ps {st :state tag :nbt} mode]
+  (let [lv (targets/source-level world)
+        t (:tick world)]
+    (reduce (fn [[ds cs] p]
+              (let [before (entity-after lv p st mode t)
+                    after (when before (be/with-tag before tag t))]
+                (if (and after (not= after before))
+                  [(into ds (changes/be-changed p after)) (conj cs p)]
+                  [ds cs])))
+            [[] []] ps)))
+
+(defn- tagged-cells [world changes {st :state} opts]
+  (let [lv (targets/source-level world)
+        ok? (or (:test opts) (constantly true))]
+    (for [[p s] changes
+          :when (and (= s st) (ok? (changes/block-at lv p)))]
+      p)))
+
 (defn- filled [world eid bounds block mode test]
   (let [changes (fill-changes bounds (:state block) mode)
-        [adds ds n] (edited world changes (mode-opts mode test))]
-    (if (zero? (long n))
+        opts (mode-opts mode test)
+        [tds tagged] (when (:nbt block)
+                       (tag-changes world (tagged-cells world changes block
+                                                        opts)
+                                    block mode))
+        [adds ds n placed] (edited world changes opts)
+        n (+ (long n) (count (remove placed tagged)))]
+    (if (zero? n)
       (concat adds (fail eid "commands.fill.failed"))
-      (concat adds ds (say eid "commands.fill.success" n)))))
+      (concat adds ds
+              (targets/in-level world (targets/source-dim world) tds)
+              (say eid "commands.fill.success" n)))))
 
 (defn- fill-by [world eid corners block mode test]
   (let [bounds (box corners)]
@@ -238,32 +279,16 @@
     (or (not= "destroy" mode) (not (block/air-type? st))
         (not (block/air-type? left)))))
 
-(defn- entity-after
-  "Returns the block entity that holds cell p of level lv once st is
-  set there, the one it has when the kind of block entity stays."
-  [lv p st mode t]
-  (when-let [k (be/kind st)]
-    (let [e (be/at lv p)
-          old (if (= "destroy" mode) 0 (changes/block-at lv p))]
-      (if (and e (not= "destroy" mode) (not (be/removed? old st 0)))
-        e
-        (be/made k t)))))
-
-(defn- block-set [world eid [x y z :as p] {st :state tag :nbt} mode]
-  (let [put? (place-needed? world p st mode)
-        lv (targets/source-level world)
-        before (when (and put? tag)
-                 (entity-after lv p st mode (:tick world)))
-        after (when before (be/with-tag before tag (:tick world)))
-        changed? (boolean (and after (not= after before)))
+(defn- block-set [world eid [x y z :as p] block mode]
+  (let [put? (place-needed? world p (:state block) mode)
+        [tds tagged] (when (and put? (:nbt block))
+                       (tag-changes world [p] block mode))
         opts (mode-opts mode nil)
-        [_ ds _ placed] (edited world [[p (when put? st)]] opts)]
-    (if (and put? (zero? (long placed)) (not changed?))
+        [_ ds _ placed] (edited world [[p (when put? (:state block))]] opts)]
+    (if (and put? (empty? placed) (empty? tagged))
       (fail eid "commands.setblock.failed")
       (concat ds
-              (when changed?
-                (targets/in-level world (targets/source-dim world)
-                                  (changes/be-changed p after)))
+              (targets/in-level world (targets/source-dim world) tds)
               (say eid "commands.setblock.success" x y z)))))
 
 (defn- setblock-deltas [world eid [x y z block mode]]

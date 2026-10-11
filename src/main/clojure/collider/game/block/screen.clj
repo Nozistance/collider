@@ -6,9 +6,11 @@
             [collider.game.block.crafting :as crafting]
             [collider.game.block.lectern :as lectern]
             [collider.game.block.lid :as lid]
+            [collider.game.block.lock :as lock]
             [collider.game.item :as item]
             [collider.game.mode :as game-mode]
             [collider.game.out :as out]
+            [collider.game.player :as player]
             [collider.game.reach :as reach]
             [collider.world.block :as block]
             [collider.world.blocks.chest :as chest]))
@@ -291,15 +293,32 @@
       [[:merge-entity eid {:menu menu :container-counter id}]]
       (open-screen-deltas world eid m id slots (:carried e')))))
 
+(defn- locked? [world e m]
+  (let [s (player/hand-stack e :main)]
+    (not (every? #(lock/unlocks? (:lock (be/at world %)) s) (:cells m)))))
+
+(defn- centre [cells]
+  (let [n (double (count cells))
+        axis (fn [i] (/ (reduce + (map #(+ 0.5 (double (nth % i))) cells))
+                        n))]
+    [(axis 0) (axis 1) (axis 2)]))
+
+(defn- locked-deltas [eid m]
+  [(out/to eid (out/overlay {:translate "container.isLocked"
+                             :with [(:title m)]}))
+   (out/all (out/sound :chest/locked (centre (:cells m)) 1.0 1.0))])
+
 (defn open-deltas
   [world eid pos]
   (if-let [m (container/menu-at world pos)]
     (let [e (get-in world [:entities eid])
           stat (open-stat world pos m)]
-      (concat
-        (open-menu-deltas world eid e m)
-        (when stat [[:award eid stat 1]])
-        (opener-deltas world e m 1)))
+      (if (locked? world e m)
+        (locked-deltas eid m)
+        (concat
+          (open-menu-deltas world eid e m)
+          (when stat [[:award eid stat 1]])
+          (opener-deltas world e m 1))))
     []))
 
 (defn spectator-open-deltas

@@ -264,7 +264,7 @@
     :smoker :brewing-stand})
 
 (def ^:private component-fields
-  (merge (zipmap named (repeat {:custom-name :custom-name}))
+  (merge (zipmap named (repeat {:custom-name :custom-name :lock :lock}))
          {:banner        {:patterns :banner-patterns}
           :skull         {:profile :profile}
           :decorated-pot {:sherds :pot-decorations}}))
@@ -421,7 +421,9 @@
       (vector? (:items f)) (assoc :items (items-from (:Items d)
                                                      (count (:items f))))
       (and (named (:kind f)) (some? (:CustomName d)))
-      (assoc :custom-name (:CustomName d)))))
+      (assoc :custom-name (:CustomName d))
+      (and (named (:kind f)) (seq (:lock d)))
+      (assoc :lock (:lock d)))))
 
 (defn saved [e t]
   (if (= :end-gateway (:kind e))
