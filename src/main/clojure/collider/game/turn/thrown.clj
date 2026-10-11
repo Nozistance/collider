@@ -19,6 +19,7 @@
             [collider.game.stack :as stack]
             [collider.game.blast :as blast]
             [collider.game.turn.overlay :as overlay]
+            [collider.game.turn.rocket :as rocket]
             [collider.num :as num]
             [collider.parallel :as par]
             [collider.random :as random]
@@ -457,8 +458,9 @@
       :else [[:merge-entity eid (moved e at d left?)]])))
 
 (defn- step-deltas [world eid e]
-  (or (when (wind? e) (wind-gone world eid e))
-      (moving-deltas world eid e)))
+  (cond (= :firework-rocket (:type e)) (rocket/step-deltas world eid e)
+        (wind? e) (or (wind-gone world eid e) (moving-deltas world eid e))
+        :else (moving-deltas world eid e)))
 
 (defn- cloud-box [e ^double r]
   (projectile/box-of (:pos e) r (size/height :area-effect-cloud)))

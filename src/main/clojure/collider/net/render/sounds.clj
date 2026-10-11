@@ -102,6 +102,7 @@
    :baby-chicken/death            [:entity.baby-chicken.death 6]
    :tnt/primed                    [:entity.tnt.primed 4]
    :snowball/throw                [:entity.snowball.throw 6]
+   :firework-rocket/launch        [:entity.firework-rocket.launch 8]
    :egg/throw                     [:entity.egg.throw 7]
    :ender-pearl/throw             [:entity.ender-pearl.throw 6]
    :wind-charge/throw             [:entity.wind-charge.throw 6]
