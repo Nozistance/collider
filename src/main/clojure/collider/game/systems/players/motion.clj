@@ -44,18 +44,20 @@
 (defn player-deltas
   "Returns the deltas that move the kept speed of player eid, e, on
   by a tick. A glider hurts itself on the walls it flies into, and a
-  ladder takes it off its wings."
+  ladder takes it off its wings. A body that holds on to a ladder
+  falls no further."
   [world [eid e]]
   (let [vel (dead-banded (or (:vel e) [0.0 0.0 0.0]))
         [half height] (entity/pose-box (:pose e :standing))
-        [pos moved _ stuck flight hit?]
+        {:keys [pos stuck flight hit? holds-on?] moved :vel}
         (travel/body-moved world (assoc e :vel vel) half height)
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
                moved)]
-    (cond-> [[:merge-entity eid
-              {:vel (mapv double vel') :stuck stuck}]]
-      (= :ladder flight)
-      (conj [:merge-entity eid {:fall-flying false}])
-      (and (= :glide flight) hit?)
-      (into (wall-deltas world eid e pos vel vel')))))
+    (cons [:merge-entity eid
+           (cond-> {:vel (mapv double vel') :stuck stuck}
+             (= :ladder flight) (assoc :fall-flying false)
+             (and holds-on? (pos? (double (:fall e 0.0))))
+             (assoc :fall 0.0))]
+          (when (and (= :glide flight) hit?)
+            (wall-deltas world eid e pos vel vel')))))

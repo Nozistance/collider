@@ -26,7 +26,7 @@
              :eid eid :from (:pos e) :to (:pos e')
              :jump? (jump? e e')
              :climbing?
-             (climb/on-climbable? (:chunks w') (:pos e'))))))
+             (climb/climbing? (:chunks w') e')))))
 
 (defn- quit-of
   [w [tag eid]]

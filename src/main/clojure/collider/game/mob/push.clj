@@ -41,14 +41,11 @@
        (not (game-mode/spectator? e))
        (contains? held (chunk/pos-chunk (:pos e)))))
 
-(defn- climbing? [chunks e]
-  (and (not (:flying e)) (climb/on-climbable? chunks (:pos e))))
-
 (defn pushable?
   "Returns true when body e takes shoves among chunks. A body that
   climbs takes none but still shoves the others."
   [chunks e]
-  (and (alive? e) (not (climbing? chunks e))))
+  (and (alive? e) (not (climb/climbing? chunks e))))
 
 (defn- came ^long [e]
   (if-let [a (:arrived e)] (long (nth a 0)) Long/MIN_VALUE))

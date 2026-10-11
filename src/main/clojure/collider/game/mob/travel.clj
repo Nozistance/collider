@@ -52,6 +52,10 @@
 
 (def ^:private ^:const walk-drive (double (float 0.21600002)))
 
+(def ^:private ^:const climb-limit (double (float 0.15)))
+
+(def ^:private ^:const climb-speed 0.2)
+
 (def ^:private ^:const glide-drag (double (float 0.99)))
 
 (def ^:private ^:const vertical-glide-drag (double (float 0.98)))
@@ -265,16 +269,50 @@
     (let [g (fluid-after world (phys/pos mv) half height d)]
       [g (carried d (after-vel e mv) (:push g))])))
 
+(defn- climbing? [world e pos]
+  (climb/climbing? (:chunks world) e pos))
+
+(defn- clamp ^double [^double a ^double lo ^double hi]
+  (if (< a lo) lo (Math/min a hi)))
+
+(defn- held-on
+  "Returns speed vel of body e slowed to the pace of the climbable
+  block it holds. A sneaking player stays put on a ladder, not on
+  scaffolding."
+  [world e vel]
+  (if (climbing? world e (:pos e))
+    (let [y (Math/max (double (v/y vel)) (- climb-limit))
+          feet (feet-state world (:pos e))
+          scaffold? (= :scaffolding (block/type-of feet))
+          stays? (and (< y 0.0) (= :player (:type e)) (:sneaking? e)
+                      (not scaffold?))]
+      (v/v3 (clamp (v/x vel) (- climb-limit) climb-limit)
+            (if stays? 0.0 y)
+            (clamp (v/z vel) (- climb-limit) climb-limit)))
+    vel))
+
+(defn- climbed
+  "Returns speed u of body e after its move mv by d, lifted when it
+  pushes into a climbable block or, if jump? counts, jumps on one."
+  [world e d ^Move mv u jump?]
+  (if (and (or (and jump? (:jump e))
+               (hit-wall? (held e d) (phys/vel mv)))
+           (climbing? world e (phys/pos mv)))
+    (v/v3 (v/x u) climb-speed (v/z u))
+    u))
+
 (defn- travel-air [world e vel half height og? f]
   (let [bf (if og? (below-friction world (:pos e) (:support e)) 1.0)
-        d (driven e vel (friction-speed og? bf (speed-of e)))
+        drive (friction-speed og? bf (speed-of e))
+        d (held-on world e (driven e vel drive))
         c (phys/context e)
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (if (:flying e) 1.0 (speed-factor world (phys/pos mv) sup))
         free? (:discard-friction? e)
         k (if free? 1.0 (num/fmul bf air-drag))
-        [h u] (moved-fluid world e d mv half height f)]
+        [h u] (moved-fluid world e d mv half height f)
+        u (climbed world e d mv u true)]
     [(phys/pos mv)
      (v/v3 (* (* (v/x u) sf) k)
            (* (lifted e (v/y u)) (if free? 1.0 vertical-drag))
@@ -341,7 +379,7 @@
   does not fly or swims."
   [world e f]
   (when (and (:fall-flying e) (not (in-fluid? f)))
-    (if (climb/on-climbable? (:chunks world) (:pos e))
+    (if (climbing? world e (:pos e))
       :ladder
       :glide)))
 
@@ -353,7 +391,7 @@
         ^Move mv (stepped world e d half height c)
         [sup nb?] (supported world e mv half c)
         sf (speed-factor world (phys/pos mv) sup)
-        u (after-vel e mv)
+        u (climbed world e d mv (after-vel e mv) false)
         vy (fluid-fall g falling? (* (v/y u) water-slowdown))
         w (v/v3 (* (* (v/x u) sf) water-slowdown) vy
                 (* (* (v/z u) sf) water-slowdown))]
@@ -542,8 +580,14 @@
   (and (zero? (double (:water (nth tr 7))))
        (zero? (double (:water (nth tr 6))))))
 
+(defn- holds-on?
+  "Returns true when body e, about to move through the air in fluid
+  f, holds on to a climbable block, which ends its fall."
+  [world e f]
+  (and (not (in-fluid? f)) (climbing? world e (:pos e))))
+
 (defn- fall-before ^double [world e tr]
-  (if (dry? tr)
+  (if (and (dry? tr) (not (holds-on? world e (nth tr 7))))
     (landing/cleared world (:pos e) (nth tr 0)
                      (landing/before-move e (nth tr 7)))
     0.0))
@@ -589,16 +633,19 @@
     (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
 
 (defn body-moved
-  "Returns [pos vel on-ground stuck flight hit] of living body e with
-  no will of its own after one tick of travel from its speed. Flight
-  is :glide or :ladder for a body that flies on wings, and hit is
-  true when it ran into a block sideways."
+  "Returns the move of living body e with no will of its own after
+  one tick of travel from its speed. It holds :pos, :vel, :on-ground,
+  :stuck, :flight (:glide or :ladder for a body on wings), :hit? when
+  it ran into a block sideways and :holds-on? when it held on to a
+  climbable block."
   [world e half height]
   (let [h (num/f32 half) ht (num/f32 height)
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
-        tr (physics-move world e (:vel e) h ht f)]
-    [(nth tr 0) (nth tr 1) (nth tr 2)
-     (motion/stuck-speed (:chunks world) (nth tr 0) half height true)
-     (flight world e f)
-     (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))]))
+        tr (physics-move world e (:vel e) h ht f)
+        pos (nth tr 0)]
+    {:pos pos :vel (nth tr 1) :on-ground (nth tr 2)
+     :stuck (motion/stuck-speed (:chunks world) pos half height true)
+     :flight (flight world e f)
+     :hit? (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))
+     :holds-on? (holds-on? world e f)}))

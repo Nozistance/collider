@@ -26,3 +26,18 @@
     (or (block/tagged? st "climbable")
         (and (contains? block/trapdoor-types (block/type-of st))
              (ladder-trapdoor? chunks st cell)))))
+
+(defn- glides-through? [chunks pos]
+  (let [[x y z] (v/cell pos)]
+    (block/tagged? (st-at chunks x y z) "can_glide_through")))
+
+(defn climbing?
+  "Returns true when living body e holds on to a climbable block at
+  pos, its own place unless given. A glider passes through the vines
+  it can glide through, and a flying or spectating player climbs
+  nothing."
+  ([chunks e] (climbing? chunks e (:pos e)))
+  ([chunks e pos]
+   (and (not (:flying e)) (not= :spectator (:game-mode e))
+        (not (and (:fall-flying e) (glides-through? chunks pos)))
+        (on-climbable? chunks pos))))

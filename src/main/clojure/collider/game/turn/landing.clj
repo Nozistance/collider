@@ -179,7 +179,7 @@
   (when (and (:impulse-at e) (zero? (long (:impulse-grace e 0)))
              (or (:on-ground e) (:in-water? e) (:in-lava? e)
                  (game-mode/spectator? e) (:fall-flying e)
-                 (climb/on-climbable? (:chunks world) (:pos e))))
+                 (climb/climbing? (:chunks world) e)))
     [[:merge-entity eid forgotten]]))
 
 (defn- honey-deltas [eid e ^long st hs]

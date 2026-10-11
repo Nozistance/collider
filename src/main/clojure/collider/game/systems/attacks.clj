@@ -64,7 +64,7 @@
 (defn- crit?
   [world a t]
   (and (pos? (double (or (:fall a) 0.0))) (not (:on-ground a))
-       (not (climb/on-climbable? (:chunks world) (:pos a)))
+       (not (climb/climbing? (:chunks world) a))
        (not (:in-water? a)) (not (:blindness (:effects a)))
        (some? (:health t)) (not (:sprinting? a))))
 
