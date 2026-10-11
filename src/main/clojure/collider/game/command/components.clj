@@ -239,7 +239,9 @@
     [:ok tag]
     [:malformed (str "Not a compound tag: " (dfu/printed tag))]))
 
-(defn- nbt-predicate [tag]
+(defn nbt-predicate
+  "Decodes an NBT predicate, an SNBT string or a compound."
+  [tag]
   (dfu/settled tag (dfu/either (snbt-compound tag) (compound tag))))
 
 (declare decode)
@@ -313,7 +315,7 @@
 (defn- string-to [most]
   (dfu/checked dfu/string-of #(<= (count %) most) (constantly nil)))
 
-(def tag-data
+(def ^:private tag-data
   (dfu/mapped #(dfu/settled % (dfu/either (compound %) (snbt-compound %)))
               nbt-tree))
 

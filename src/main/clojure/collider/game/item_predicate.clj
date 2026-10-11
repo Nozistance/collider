@@ -70,13 +70,14 @@
 (def ^:private items-of
   (dfu/record [:items :items (collection #(decode %)) :opt]))
 
-(def ^:private kinds
+(def kinds
+  "The decoders of the values of predicate types."
   {:damage (dfu/record [:durability :durability int-bounds :opt]
                        [:damage :damage int-bounds :opt])
    :enchantments enchantments
    :stored-enchantments enchantments
    :potion-contents (holders "potion")
-   :custom-data cs/tag-data
+   :custom-data cs/nbt-predicate
    :container items-of
    :bundle-contents items-of
    :firework-explosion firework
@@ -98,11 +99,6 @@
    :jukebox-playable
    (dfu/record [:song :song (holders "jukebox_song") :opt])
    :villager/variant (holders "villager_type")})
-
-(defn kind
-  "Returns the decoder of the value of predicate type k."
-  [k]
-  (kinds k))
 
 (defn- predicate-key [s]
   (let [p ((by-name "data_component_predicate_type") s)
@@ -146,12 +142,13 @@
 
 (defn component
   "Returns the value of component k on stack s, the default of its
-  item included."
+  item included. An empty stack has none."
   [s k]
-  (or (stack/component s k)
-      (when-not (or (contains? (:components s) k)
-                    (contains? (:removed s) k))
-        (cs/default-value (:item s) k))))
+  (cond (or (nil? s) (= :air (:item s))) nil
+        (or (contains? (:components s) k) (contains? (:removed s) k))
+        (stack/component s k)
+        :else (let [v (stack/component s k)]
+                (if (some? v) v (cs/default-value (:item s) k)))))
 
 (defn- every-test? [ps xs test]
   (empty? (reduce (fn [left x]
@@ -248,7 +245,8 @@
          (or (nil? (:song p))
              (contains? (members "jukebox_song" (:song p)) (:song v))))
     :villager/variant
-    (boolean (and v (contains? (members "villager_type" p) v)))))
+    (boolean (and v (contains? (members "villager_type" p) v)))
+    (throw (ex-info "item predicate not modelled" {:type k}))))
 
 (defn kind-matches?
   "Returns true when stack s passes predicate p of type k."
@@ -262,12 +260,15 @@
 
 (defn matches?
   "Returns true when stack s, nil for none, passes item predicate p.
-  Its predicates may also be keyed by type alone, as loot holds
-  them, and a bound may be a number."
+  Its predicates may also be keyed by type alone and a bound may be
+  a number, as loot holds them; loot components throw."
   [p s]
   (let [s (or s {:item :air :count 0})]
     (and (or (nil? (:items p)) (contains? (members "item" (:items p))
                                           (:item s)))
          (or (nil? (:count p)) (in? (:count p) (stack/size s)))
+         (or (vector? (:components p)) (nil? (:components p))
+             (throw (ex-info "item predicate components not modelled"
+                             {:components (:components p)})))
          (every? (fn [[k v]] (= v (component s k))) (:components p))
          (every? #(passes? s %) (:predicates p)))))

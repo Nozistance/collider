@@ -244,7 +244,7 @@
 (defn- predicate-test [c tag]
   (cond (= :count c) (bounds tag)
         (= :predicate (first c))
-        (let [k (peek c) [op v :as r] (dfu/settled tag ((ip/kind k) tag))]
+        (let [k (peek c) [op v :as r] (dfu/settled tag ((ip/kinds k) tag))]
           (if (= :ok op) [:ok [:predicate k v]] r))
         (map? tag) [:ok [:has (peek c)]]
         :else (dfu/not-map tag)))
