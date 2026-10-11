@@ -266,24 +266,29 @@
 
 (def ^:private dry {:water 0.0 :lava 0.0 :push [0.0 0.0 0.0]})
 
-(defn- fluid-after [world pos h ht v]
+(def ^:private no-push [0.0 0.0 0.0])
+
+(defn- fluid-after [world e pos h ht v]
   (let [ch (:chunks world)]
     (if (phys/dry? ch pos h ht)
       dry
-      (liquid/fluid-info ch pos h ht v (:dim world)))))
+      (cond-> (liquid/fluid-info ch pos h ht v (:dim world)
+                                 (= :player (:type e)))
+        (:flying e) (assoc :push no-push)))))
 
 (defn- fluid-of [world e half height]
-  (fluid-after world (:pos e) half height (:vel e)))
+  (fluid-after world e (:pos e) half height (:vel e)))
 
 (defn- moved-fluid
   "Returns the fluid over mob e after the move mv by d and its
   velocity with the push of that fluid. A mob that stays in the same
-  dry cells keeps the fluid it had."
+  dry cells keeps the fluid it had. A player, whose client has the
+  say, takes no push after its move."
   [world e d ^Move mv half height f]
-  (if (dry-still? e mv half height f)
-    [f (after-vel e mv)]
-    (let [g (fluid-after world (phys/pos mv) half height d)]
-      [g (carried d (after-vel e mv) (:push g))])))
+  (cond (dry-still? e mv half height f) [f (after-vel e mv)]
+        (= :player (:type e)) [nil (after-vel e mv)]
+        :else (let [g (fluid-after world e (phys/pos mv) half height d)]
+                [g (carried d (after-vel e mv) (:push g))])))
 
 (defn- climbing? [world e pos]
   (climb/climbing? (:chunks world) e pos))
@@ -645,7 +650,7 @@
   (let [[half height pos] box
         h (num/f32 half) ht (num/f32 height)
         [v shoves hit?] (pushed-back world index eid e box cram live?)
-        g (or (nth tr 6) (fluid-after world pos h ht v))
+        g (or (nth tr 6) (fluid-after world e pos h ht v))
         hd (body-of-move world e pos look)
         came (push/arrived e pos (:tick world) eid)
         e2 (settled e tr pos fall v g (nth tr 8) hd look
@@ -669,6 +674,15 @@
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]]
     (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
+
+(defn current-pushed
+  "Returns speed vel of body e with the push of the current it stands
+  in, as its tick begins."
+  [world e vel half height]
+  (let [p (:push (fluid-of world e (num/f32 half) (num/f32 height)))]
+    (v/v3 (+ (double (v/x vel)) (double (nth p 0)))
+          (+ (double (v/y vel)) (double (nth p 1)))
+          (+ (double (v/z vel)) (double (nth p 2))))))
 
 (defn body-moved
   "Returns the move of living body e with no will of its own after

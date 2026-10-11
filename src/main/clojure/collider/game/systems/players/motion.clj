@@ -47,8 +47,10 @@
   ladder takes it off its wings. A body that holds on to a ladder
   falls no further."
   [world [eid e]]
-  (let [vel (dead-banded (or (:vel e) [0.0 0.0 0.0]))
-        [half height] (entity/pose-box (:pose e :standing))
+  (let [[half height] (entity/pose-box (:pose e :standing))
+        vel (dead-banded (travel/current-pushed
+                           world e (or (:vel e) [0.0 0.0 0.0])
+                           half height))
         {:keys [pos stuck flight hit? holds-on? snowed?] moved :vel}
         (travel/body-moved world (assoc e :vel vel) half height)
         vel' (if (:flying e)

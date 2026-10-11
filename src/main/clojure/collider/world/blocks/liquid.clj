@@ -264,32 +264,41 @@
    (* (/ (double y) len) k)
    (* (/ (double z) len) k)])
 
-(defn- current [flow ^double len2 ^double p vel]
-  (let [push (unit-times flow (Math/sqrt len2) p)
+(defn- current [flow len2 p vel n mean?]
+  (let [len2 (double len2) p (double p)
+        push (if mean?
+               (let [r (/ 1.0 (double n))]
+                 (mapv #(* (* (double %) r) p) flow))
+               (unit-times flow (Math/sqrt len2) p))
         ilen (v/length push)]
     (if (and (still? vel) (< ilen min-current))
       (unit-times push ilen min-current)
       push)))
 
-(defn- current-push [table around vel]
+(defn- current-push [table around vel mean?]
   (reduce (fn [acc [cls {:keys [flow n]}]]
             (let [len2 (v/dot flow flow)
                   p (double (get-in table [cls :push] 0.0))]
               (if (or (zero? (long n)) (< len2 1.0E-5) (zero? p))
                 acc
-                (scaled-add acc (current flow len2 p vel) 1.0))))
+                (scaled-add acc (current flow len2 p vel n mean?)
+                            1.0))))
           [0.0 0.0 0.0]
           around))
 
 (defn fluid-info
-  "Returns the water and lava over a body and the push of their flow."
+  "Returns the water and lava over a body and the push of their flow.
+  A player, mean? true, takes the mean flow of the cells, any other
+  body the unit one."
   ([chunks pos half height vel]
-   (fluid-info chunks pos half height vel nil))
+   (fluid-info chunks pos half height vel nil false))
   ([chunks pos half height vel dim]
+   (fluid-info chunks pos half height vel dim false))
+  ([chunks pos half height vel dim mean?]
    (let [around (fluid-around chunks pos half height)]
      {:water (double (get-in around [:water :height] 0.0))
       :lava  (double (get-in around [:lava :height] 0.0))
-      :push  (current-push (liquids-in dim) around vel)})))
+      :push  (current-push (liquids-in dim) around vel mean?)})))
 
 (def ^:private no-fluid-types
   #{:door :standing-sign :wall-sign :ladder :sugar-cane
