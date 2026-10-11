@@ -79,6 +79,10 @@
    :throwable-projectile {:parent :projectile :fields []}
    :throwable-item-projectile
    {:parent :throwable-projectile :fields [[:item :item nil]]}
+   :firework-rocket
+   {:parent :projectile
+    :fields [[:item :item nil] [:attached :optional-unsigned-int nil]
+             [:shot-at-angle :boolean false]]}
    :hanging-entity
    {:parent :entity :fields [[:direction :direction 3]]}
    :item-frame

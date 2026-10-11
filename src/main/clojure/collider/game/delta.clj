@@ -3,6 +3,7 @@
   (:require [collider.data.long-map :as lm]
             [collider.game.entity :as entity]
             [collider.game.entity.damage :as damage]
+            [collider.game.glide :as glide]
             [collider.game.level :as level]
             [collider.game.level.writes :as writes]
             [collider.game.mob.brain :as brain]
@@ -216,6 +217,10 @@
    :rest
    {:scope :entity :schema [:cat]
     :apply (fn [_ e _] (damage/rested e))}
+   :boost
+   {:scope :entity :schema [:cat Vec3]
+    :apply (fn [_ e [_ _ look]]
+             (update e :vel (fnil glide/boosted [0.0 0.0 0.0]) look))}
    :push
    {:scope :entity :schema [:cat Vec3]
     :apply (fn [_ e [_ _ vel]]

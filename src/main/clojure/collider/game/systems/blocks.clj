@@ -94,6 +94,11 @@
     (tools/fluid-egg-deltas world eid at item)
     (tools/spawn-egg-deltas world (:args c))))
 
+(defn- rocket-deltas [c]
+  (if (:use-item? c)
+    ((spending (on-at rocket/boost-deltas)) c)
+    ((spending (on-args rocket/launch-deltas)) c)))
+
 (defn- read-deltas [{:keys [eid at]}]
   (let [hand (:use-hand at)]
     (book/open-deltas at eid hand (player/hand-slot at hand))))
@@ -121,8 +126,7 @@
     (when-hand (wearing (on-args tools/flint-deltas)))]
    [(item-is :fire-charge)
     (when-hand (spending (on-args tools/firecharge-deltas)))]
-   [(item-is :firework-rocket)
-    (when-hand (spending (on-args rocket/launch-deltas)))]
+   [(item-is :firework-rocket) rocket-deltas]
    [(item-is :bucket) (when-use (on-at bucket/scoop-deltas))]
    [(item-is :written-book) (when-use read-deltas)]
    [(item-is :glass-bottle) (when-use (on-at consume/bottle-deltas))]

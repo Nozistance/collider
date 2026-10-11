@@ -1,8 +1,10 @@
 (ns collider.game.turn.rocket
   "The turn of a firework rocket. It speeds up as it climbs, slides
   along what stops it and goes off when its life runs out or it meets
-  a body."
+  a body. A rocket set off by a glider rides at its hand and speeds it
+  up along its look."
   (:require [collider.game.entity :as entity]
+            [collider.game.glide :as glide]
             [collider.game.player :as player]
             [collider.game.entity.hurt :as hurt]
             [collider.game.entity.size :as size]
@@ -56,9 +58,10 @@
               (nil? (projectile/block-clip world at (mapv - to at)))))
           [0.0 0.5])))
 
-(defn- near [world at]
+(defn- near [world at cid]
   (for [[oid t] (par/keyed (:entities world))
-        :when (and (projectile/hittable? t) (not (game-mode/spectator? t))
+        :when (and (not= oid cid) (projectile/hittable? t)
+                   (not (game-mode/spectator? t))
                    (<= (v/dist-sq at (:pos t)) 25.0)
                    (seen? world at t))]
     [oid t]))
@@ -71,19 +74,26 @@
                        (num/f32 (* dz dz))))]
     (num/f32 (Math/sqrt sq))))
 
-(defn- blast-deltas [world eid e at]
+(defn- hit-deltas [world src [oid t hit]]
+  (when-let [ds (hurt/damage-deltas world oid t hit src)]
+    (into ds (hurt/report-deltas
+               world oid (hurt/hurt-now world oid t ds)))))
+
+(defn- blast-deltas
+  "Returns the deltas of rocket e of eid going off at at. Its carrier
+  takes the whole blast, the bodies around less with distance."
+  [world eid e at]
   (let [n (stars e)]
     (when (pos? n)
       (let [amount (num/f32 (+ 5.0 (* 2.0 n)))
-            src (source world eid e at)]
-        (for [[oid t] (near world at)
-              :let [d (distance at t)
-                    hit (num/f32 (* amount (num/f32 (Math/sqrt (/ (- 5.0 d) 5.0)))))
-                    ds (hurt/damage-deltas world oid t hit src)]
-              x (when ds
-                  (into ds (hurt/report-deltas
-                             world oid (hurt/hurt-now world oid t ds))))]
-          x)))))
+            cid (:attached e)
+            c (get-in world [:entities cid])
+            near (for [[oid t] (near world at cid)
+                       :let [d (distance at t)
+                             k (Math/sqrt (/ (- 5.0 d) 5.0))]]
+                   [oid t (num/f32 (* amount (num/f32 k)))])]
+        (mapcat #(hit-deltas world (source world eid e at) %)
+                (cond->> near c (cons [cid c amount])))))))
 
 (defn- explosion [world eid e at]
   (concat [(out/all (out/status eid :fireworks))]
@@ -94,36 +104,84 @@
   (when (zero? (long (:life e 0)))
     [(out/all (out/sound :firework-rocket/launch at 3.0 1.0))]))
 
+(defn- free-motion [world e]
+  (let [d (sped-up e)]
+    [(:pos e) d (assoc (moved world e d) :vel d) nil]))
+
+(defn- hand
+  "Returns where glider c holds a rocket, off its feet."
+  [c]
+  (let [held? #(= :firework-rocket (:item (player/hand-stack c %)))
+        off? (and (held? :off) (not (held? :main)))
+        right? (not= off? (= :right (:main-hand c :right)))
+        turn (if right? 80.0 -80.0)
+        yaw (num/f32 (+ (num/f32 (:yaw c 0.0)) turn))]
+    (mapv #(* 0.5 (double %)) (glide/look 0.0 yaw))))
+
+(defn- carried-motion
+  "Returns where rocket e rides on its carrier, its motion, what it
+  becomes and the boost it gives a gliding carrier."
+  [world e]
+  (let [cid (:attached e) c (get-in world [:entities cid])]
+    (cond
+      (nil? c) [(:pos e) (:vel e) {} nil]
+      (:fall-flying c)
+      (let [l (glide/look (double (:pitch c 0.0))
+                          (double (:yaw c 0.0)))
+            at (mapv + (:pos c) (hand c))
+            vel (glide/boosted (:vel c [0.0 0.0 0.0]) l)]
+        [at vel {:pos at :vel vel} [[:boost cid l]]])
+      :else (let [vel (:vel c [0.0 0.0 0.0])]
+              [(:pos c) vel {:pos (:pos c) :vel vel} nil]))))
+
+(defn- goes-off? [e hit]
+  (or (= :entity (:kind hit))
+      (and (= :block (:kind hit)) (pos? (stars e)))))
+
+(defn- flew-deltas [eid e m d left?]
+  (let [[yaw pitch] (projectile/rotated e d)]
+    [[:merge-entity eid
+      (assoc m :left-owner? left? :yaw yaw :pitch pitch
+             :life (inc (long (:life e 0)))
+             :age (inc (long (:age e 0))))]]))
+
 (defn step-deltas
   "Returns the deltas of the turn of firework rocket e of eid."
   [world eid e]
   (if (< (v/y (:pos e)) (chunk/void-y world))
     [[:remove-entity eid]]
     (let [left? (projectile/left-owner? world e (:vel e))
-          d (sped-up e)
-          hit (projectile/clip world eid (assoc e :left-owner? left?) d)
-          m (moved world e d)
-          [yaw pitch] (projectile/rotated e d)
-          life (inc (long (:life e 0)))
-          met? (or (= :entity (:kind hit))
-                   (and (= :block (:kind hit)) (pos? (stars e))))
-          at (:pos m)]
+          [from d m boost] (if (:attached e)
+                             (carried-motion world e)
+                             (free-motion world e))
+          seen (assoc e :pos from :left-owner? left?)
+          hit (projectile/clip world eid seen d)
+          met? (goes-off? e hit)
+          at (:pos m from)]
       (concat
+        boost
         (when met? (explosion world eid e at))
         (when (= :block (:kind hit))
           (projectile/block-hit-deltas world e (:cell hit)))
         (launch e at)
         (cond met? nil
-              (> life (long (:lifetime e 0))) (explosion world eid e at)
-              :else [[:merge-entity eid
-                      (assoc m :vel d :left-owner? left? :yaw yaw
-                             :pitch pitch :life life
-                             :age (inc (long (:age e 0))))]])))))
+              (>= (long (:life e 0)) (long (:lifetime e 0)))
+              (explosion world eid e at)
+              :else (flew-deltas eid e m d left?))))))
 
 (defn- draw ^double [world eid k] (random/of-key (:tick world) eid [:rocket k]))
 
 (defn- drift ^double [world eid k]
   (* 0.002297 (- (draw world eid [k 0]) (draw world eid [k 1]))))
+
+(defn- rocket [world eid stack at]
+  (let [flight (long (:flight-duration
+                       (stack/component stack :fireworks) 0))]
+    {:type :firework-rocket :owner eid :left-owner? false :age 0 :life 0
+     :lifetime (+ (* 10 (inc flight)) (random/below (draw world eid :a) 6)
+                  (random/below (draw world eid :b) 7))
+     :pos at :vel [(drift world eid :x) 0.05 (drift world eid :z)]
+     :yaw 0.0 :pitch 0.0 :on-ground false :stack stack}))
 
 (defn launch-deltas
   "Returns the deltas of player eid launching the rocket in hand from
@@ -131,13 +189,17 @@
   [world [eid pos face _ cursor]]
   (let [e (get-in world [:entities eid])
         stack (player/hand-stack e (:use-hand e))
-        flight (long (:flight-duration (stack/component stack :fireworks) 0))
         [ox oy oz] (dir/face-offset face)
-        at (mapv (fn [p c o] (+ (+ (double p) (/ (double c) 16.0)) (* (double o) 0.15)))
+        at (mapv (fn [p c o] (+ (+ (double p) (/ (double c) 16.0))
+                                (* (double o) 0.15)))
                  pos cursor [ox oy oz])]
-    [[:spawn-entity
-      {:type :firework-rocket :owner eid :left-owner? false :age 0 :life 0
-       :lifetime (+ (* 10 (inc flight)) (random/below (draw world eid :a) 6)
-                    (random/below (draw world eid :b) 7))
-       :pos at :vel [(drift world eid :x) 0.05 (drift world eid :z)]
-       :yaw 0.0 :pitch 0.0 :on-ground false :stack stack}]]))
+    [[:spawn-entity (rocket world eid stack at)]]))
+
+(defn boost-deltas
+  "Returns the deltas of player eid, e, setting off the rocket in hand
+  on itself, or nil when it does not glide."
+  [world eid e]
+  (when (:fall-flying e)
+    (let [stack (player/hand-stack e (:use-hand e))]
+      [[:spawn-entity
+        (assoc (rocket world eid stack (:pos e)) :attached eid)]])))

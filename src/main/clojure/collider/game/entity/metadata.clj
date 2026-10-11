@@ -46,7 +46,10 @@
      (fn [e] {:radius (:radius e) :color (:color e)
               :waiting? (boolean (:waiting? e))})}
     (zipmap entity/thrown-types (repeat thrown-metadata))
-    {:wind-charge (constantly {})}))
+    {:wind-charge (constantly {})
+     :firework-rocket
+     (fn [e] (cond-> (thrown-metadata e)
+               (:attached e) (assoc :attached (:attached e))))}))
 
 (defn- using-hand [e]
   (if (:using-item? e) (or (get-in e [:using :hand]) :main) false))

@@ -128,6 +128,7 @@
 
 (defn- class-of [kind]
   (cond (= :wind-charge kind) :projectile
+        (= :firework-rocket kind) kind
         (entity/thrown-types kind) :throwable-item-projectile
         (kinds kind) (get renamed-classes kind kind)))
 
@@ -200,6 +201,9 @@
     (:sheep :mooshroom :rabbit :armadillo :goat)
     (merge ((animal-own kind) meta) (living-fields meta))
     :item (merge (common-fields meta) (stack-fields meta))
+    :firework-rocket
+    (cond-> (stack-fields meta)
+      (:attached meta) (assoc :attached (:attached meta)))
     :tnt (tnt-fields meta)
     :falling-block (falling-fields meta)
     :area-effect-cloud (cloud-fields meta)

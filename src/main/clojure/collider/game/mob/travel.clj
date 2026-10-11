@@ -2,6 +2,7 @@
   "Mob moves in one tick, with walking, jumping, falling, swimming,
   shoving and landing."
   (:require [collider.game.entity.gen :as gen]
+            [collider.game.glide :as glide]
             [collider.game.mob.control :as control]
             [collider.game.mob.mobs :as mobs]
             [collider.game.mob.push :as push]
@@ -280,15 +281,6 @@
            (* (* (v/z u) sf) k))
      (phys/on-ground? mv) sup nb? h d (phys/vel mv) mv]))
 
-(defn- view
-  "Returns the unit vector a body looks along at pitch and yaw."
-  [^double pitch ^double yaw]
-  (let [xr (num/fmul (num/f32 pitch) deg->rad)
-        yr (num/fmul (- (num/f32 yaw)) deg->rad)
-        xc (v/cos xr)]
-    [(num/fmul (v/sin yr) xc) (- (v/sin xr))
-     (num/fmul (v/cos yr) xc)]))
-
 (defn- dived
   "Returns speed v of a glider falling, turned along its flat look
   lx, lz of length n."
@@ -320,7 +312,7 @@
   and turning toward where it looks."
   [e vel]
   (let [pitch (double (:pitch e 0.0))
-        [lx _ lz] (view pitch (double (:yaw e 0.0)))
+        [lx _ lz] (glide/look pitch (double (:yaw e 0.0)))
         n (Math/sqrt (+ (* lx lx) (* lz lz)))
         lean (num/fmul (num/f32 pitch) deg->rad)
         c (Math/cos lean) lift (* c c)

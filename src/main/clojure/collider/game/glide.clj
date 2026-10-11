@@ -1,9 +1,32 @@
 (ns collider.game.glide
   "Gliding on elytra, or on any glider worn where it is made to go."
   (:require [collider.data :as data]
-            [collider.game.stack :as stack]))
+            [collider.game.stack :as stack]
+            [collider.num :as num]
+            [collider.vec :as v]))
 
 (set! *warn-on-reflection* true)
+
+(def ^:private ^:const deg->rad (double (float (/ Math/PI 180.0))))
+
+(defn look
+  "Returns the unit vector a body looks along at pitch and yaw in
+  degrees, at the precision of the game."
+  [^double pitch ^double yaw]
+  (let [xr (num/fmul (num/f32 pitch) deg->rad)
+        yr (num/fmul (- (num/f32 yaw)) deg->rad)
+        xc (v/cos xr)]
+    [(num/fmul (v/sin yr) xc) (- (v/sin xr))
+     (num/fmul (v/cos yr) xc)]))
+
+(defn- boosted-axis ^double [^double m ^double l]
+  (+ m (+ (* l 0.1) (* (- (* l 1.5) m) 0.5))))
+
+(defn boosted
+  "Returns speed vel of a glider that a rocket pushes along look."
+  [vel [lx ly lz]]
+  [(boosted-axis (v/x vel) lx) (boosted-axis (v/y vel) ly)
+   (boosted-axis (v/z vel) lz)])
 
 (def ^:private worn
   [[45 :offhand] [8 :feet] [7 :legs] [6 :chest] [5 :head]])
