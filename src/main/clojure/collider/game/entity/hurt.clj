@@ -165,6 +165,8 @@
 
 (def ^:private ^:const sunk-bit 4)
 
+(def ^:private ^:const soul-bit 8)
+
 (defn- any-bit? [^long flags ^long mask]
   (not (zero? (bit-and flags mask))))
 
@@ -186,7 +188,13 @@
       (aset 4 (floor-lo (- pz h))) (aset 5 (floor-hi (+ pz h))))))
 
 (defn- burn-bit ^long [st]
-  (cond (block/lava? st) lava-bit (block/fire? st) fire-bit :else 0))
+  (cond (block/lava? st) lava-bit
+        (block/fire? st) fire-bit
+        (= :soul-fire (block/type-of st)) (bit-or fire-bit soul-bit)
+        :else 0))
+
+(defn- fire-damage ^double [^long flags]
+  (if (any-bit? flags soul-bit) 2.0 1.0))
 
 (def ^:private ^:table burn-bits
   (delay
@@ -249,7 +257,7 @@
         sunk? (any-bit? flags sunk-bit)
         ignite (fn [d s src] (ignite-deltas eid fire wet? d s src))]
     (concat (burning-flag eid e fire sunk?)
-            (when touch (ignite 1.0 fire-seconds in-fire))
+            (when touch (ignite (fire-damage flags) fire-seconds in-fire))
             (when sunk? (ignite lava-damage lava-seconds in-lava))
             (douse-deltas eid e fire wet?))))
 
@@ -318,13 +326,15 @@
   (not (some-inside? chunks e @occupied)))
 
 (def ^:private calm
-  {:fire? false :lava? false :water? false :snow []})
+  {:fire? false :soul? false :lava? false :water? false :snow []})
 
 (defn- touched [world e]
   (let [chunks (:chunks world)
         cs (inside-cells e)
         of (fn [pred] (boolean (some pred cs)))]
-    {:fire? (of #(block/fire? (cell-state chunks %)))
+    {:fire? (of #(contains? #{:fire :soul-fire}
+                            (block/type-of (cell-state chunks %))))
+     :soul? (of #(= :soul-fire (block/type-of (cell-state chunks %))))
      :lava? (of #(in-fluid? chunks e :lava %))
      :water? (of #(in-fluid? chunks e :water %))
      :snow (filterv #(= :powder-snow
@@ -398,7 +408,8 @@
 
 (defn- contact-hurts
   [world eid e c]
-  (concat (when (:fire? c) (damage-deltas world eid e 1.0 in-fire))
+  (concat (when (:fire? c)
+            (damage-deltas world eid e (if (:soul? c) 2.0 1.0) in-fire))
           (when (:lava? c)
             (damage-deltas world eid e lava-damage in-lava))))
 
@@ -511,7 +522,7 @@
     (concat (burning-flag eid e fire false)
             (burn-tick-deltas eid fire wet? lava?)
             (when (pos? (bit-and flags fire-bit))
-              (ignite 1.0 fire-seconds))
+              (ignite (fire-damage flags) fire-seconds))
             (when lava? (ignite lava-damage lava-seconds))
             (douse-deltas eid e fire wet?))))
 
@@ -975,7 +986,7 @@
   (delay (let [n (data/block-state-count) a (boolean-array n)]
            (dotimes [st n]
              (when (case (block/type-of st)
-                     (:cactus :soul-fire) true
+                     :cactus true
                      :campfire (= :true (:lit (block/props-of st)))
                      :sweet-berry-bush
                      (pos? (block/prop-long st :age))
@@ -997,7 +1008,6 @@
 (defn- cell-harm [e st]
   (case (block/type-of st)
     :cactus [1.0 {:type :cactus}]
-    :soul-fire [2.0 {:type :in-fire}]
     :campfire [(double (:fire-damage (data/info (block/block-of st)) 1))
                {:type :campfire}]
     :sweet-berry-bush (when (moving? e) [1.0 {:type :sweet-berry-bush}])
