@@ -30,8 +30,9 @@
         h (tnt-half) ht (tnt-height)]
     (:push (liquid/fluid-info chunks pos h ht vel dim))))
 
-(defn- stuck-now [world pos]
-  (motion/stuck-speed (:chunks world) pos (tnt-half) (tnt-height)))
+(defn- stuck-now [world e pos]
+  (motion/stuck-speed (:chunks world) [[(:pos e) pos (:vel e)]]
+                      (tnt-half) (tnt-height)))
 
 (def ^:private ^:const drag (double (float 0.98)))
 
@@ -66,7 +67,7 @@
   (let [^Move mv (tnt-move world e)
         pos (phys/pos mv)
         on-ground (phys/on-ground? mv)
-        stuck' (stuck-now world pos)
+        stuck' (stuck-now world e pos)
         moved (moved-speed world e mv pos on-ground (:stuck e))]
     (cond-> {:pos pos :origin nil
              :vel (stepped-vel world pos moved on-ground)

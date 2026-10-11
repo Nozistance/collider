@@ -41,6 +41,14 @@
               (hurt/damage-deltas world eid e (double n)
                                   fly-into-wall))))))
 
+(defn- packet-moves
+  "Returns the moves [from to d] the packets of player eid made this
+  tick."
+  [world eid]
+  (for [{f :from t :to :as m} (get-in world [:input :moves])
+        :when (= eid (:eid m))]
+    [f t (mapv - t f)]))
+
 (defn player-deltas
   "Returns the deltas that move the kept speed of player eid, e, on
   by a tick. A glider hurts itself on the walls it flies into, and a
@@ -52,7 +60,8 @@
                            world e (or (:vel e) [0.0 0.0 0.0])
                            half height))
         {:keys [pos stuck flight hit? holds-on? snowed?] moved :vel}
-        (travel/body-moved world (assoc e :vel vel) half height)
+        (travel/body-moved world (assoc e :vel vel) half height
+                           (packet-moves world eid))
         vel' (if (:flying e)
                [(v/x moved) (* (double (v/y vel)) flying-drag) (v/z moved)]
                moved)]

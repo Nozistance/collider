@@ -151,8 +151,9 @@
     [(* (double mx) air-drag) (* (double my) air-drag)
      (* (double mz) air-drag)]))
 
-(defn- stuck-now [world pos]
-  (motion/stuck-speed (:chunks world) pos (half) (height)))
+(defn- stuck-now [world e pos]
+  (motion/stuck-speed (:chunks world) [[(:pos e) pos (:vel e)]]
+                      (half) (height)))
 
 (defn- drift-deltas [eid e pos time vel stuck' fall]
   (let [stuck (:stuck e)
@@ -163,7 +164,7 @@
     [[:merge-entity eid m]]))
 
 (defn- drift [world eid e pos time vel fall]
-  (drift-deltas eid e pos time vel (stuck-now world pos) fall))
+  (drift-deltas eid e pos time vel (stuck-now world e pos) fall))
 
 (defn- expired? [world ^long time cell]
   (let [y (long (cell 1))]

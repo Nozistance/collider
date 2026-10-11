@@ -67,7 +67,8 @@
   (let [chunks (:chunks world)
         [p w og sup] (orb/moved chunks (:pos e) vel (:stuck e))
         w (assoc w 1 (liquid/bubble-push chunks p (double (w 1))))
-        st (motion/stuck-speed chunks p (orb/half) (orb/height))]
+        st (motion/stuck-speed chunks [[(:pos e) p vel]]
+                               (orb/half) (orb/height))]
     {:pos p :vel (orb/slowed chunks p w og sup (v/y vel))
      :on-ground og :follow pid
      :needs-sync? sync? :stuck st

@@ -215,7 +215,8 @@
         (moved-or-resting chunks e drift rest? push)
         v (if (and stuck (not rest?)) [0.0 0.0 0.0] v)
         vy (liquid/bubble-push chunks pos' (double (v 1)))
-        st (motion/stuck-speed chunks pos' (item-half) (item-height))]
+        st (motion/stuck-speed chunks [[(:pos e) pos' push]]
+                               (item-half) (item-height))]
     {:pos pos' :vel (assoc v 1 vy) :on-ground on-ground
      :support sup :no-blocks? nb?
      :stuck (if rest? (or st stuck) st)}))

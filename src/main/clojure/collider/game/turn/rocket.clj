@@ -40,7 +40,8 @@
     {:pos at :on-ground (phys/on-ground? mv)
      :horizontal-collision (or (not= (v/x m) (v/x (phys/vel mv)))
                 (not= (v/z m) (v/z (phys/vel mv))))
-     :stuck (motion/stuck-speed (:chunks world) at (half) (height))}))
+     :stuck (motion/stuck-speed (:chunks world) [[(:pos e) at m]]
+                                (half) (height))}))
 
 (defn- stars ^long [e]
   (count (:explosions (stack/component (:stack e) :fireworks))))

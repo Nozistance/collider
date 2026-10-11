@@ -670,10 +670,15 @@
         ls (when (lands? tr f0 f1)
              (landing/landed world eid e (nth tr 0) (nth tr 4) f0 f1))
         pos (if ls (nth ls 0) (nth tr 0))
-        st (motion/stuck-speed (:chunks world) pos half height true)
+        st (motion/stuck-speed (:chunks world)
+                               (cond-> [[(:pos e) (nth tr 0) (nth tr 9 nil)]]
+                                 ls (conj [(nth tr 0) pos nil]))
+                               half height (:type e))
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]]
-    (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
+    (let [[look prev cram live?] more]
+      (shoved-move world index eid e tr box fall ls
+                   [look prev cram live? st]))))
 
 (defn current-pushed
   "Returns speed vel of body e with the push of the current it stands
@@ -686,18 +691,23 @@
 
 (defn body-moved
   "Returns the move of living body e with no will of its own after
-  one tick of travel from its speed. It holds :pos, :vel, :on-ground,
-  :stuck, :flight (:glide or :ladder for a body on wings), :hit? when
-  it ran into a block sideways, :holds-on? when it held on to a
-  climbable block and :snowed? when it touched powder snow."
-  [world e half height]
+  one tick of travel from its speed, its moves before it this tick
+  being moves. It holds :pos, :vel, :on-ground, :stuck, :flight
+  (:glide or :ladder for a body on wings), :hit? when it ran into a
+  block sideways, :holds-on? when it held on to a climbable block
+  and :snowed? when it touched powder snow."
+  [world e half height moves]
   (let [h (num/f32 half) ht (num/f32 height)
         e (dissoc e :move :jump)
         f (fluid-at world e h ht)
         tr (physics-move world e (:vel e) h ht f)
         pos (nth tr 0)]
     {:pos pos :vel (nth tr 1) :on-ground (nth tr 2)
-     :stuck (motion/stuck-speed (:chunks world) pos half height true)
+     :stuck (when-not (:flying e)
+              (motion/stuck-speed (:chunks world)
+                                  (conj (vec moves)
+                                        [(:pos e) pos (nth tr 9)])
+                                  half height (:type e)))
      :flight (flight world e f)
      :hit? (hit-wall? (held e (nth tr 9)) (phys/vel (nth tr 11)))
      :holds-on? (holds-on? world e f)
