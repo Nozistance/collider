@@ -765,7 +765,8 @@
     (assoc :say-tick (hushed (:tick world) late?))))
 
 (defn- voice [world eid e snd]
-  (out/all (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))))
+  (let [m (out/sound snd (:pos e) 1.0 (sound-pitch world eid e))]
+    (if (entity/player? e) (out/except eid m) (out/all m))))
 
 (defn- struck-deltas
   "Returns the effects of a full hit from src on entity eid. Its
