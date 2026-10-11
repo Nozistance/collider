@@ -61,13 +61,14 @@
         absent (into (lm/long-set)
                      (remove #(contains? (:chunks world) %)) zone)
         active (live-of (zone-at ps s))]
-    {:active active :ticking (live-of (zone-at ps (inc s)))
-     :broadcast (zone-at ps (inc r)) :zone zone :absent absent
-     :active-ids (vec active) :of of}))
+    (with-meta {:active active :ticking (live-of (zone-at ps (inc s)))
+                :broadcast (zone-at ps (inc r)) :zone zone :absent absent
+                :active-ids (vec active)}
+               {::of of})))
 
 (defn- areas [world]
   (let [had (:active-chunks world) of (inputs world)]
-    (if (= of (:of had)) had (computed world of))))
+    (if (= of (::of (meta had))) had (computed world of))))
 
 (defn loaded-zone
   "Returns the ids of the chunks the players keep at full status.
