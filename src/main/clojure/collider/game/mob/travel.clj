@@ -515,3 +515,14 @@
         fall (landing/kept e (if (or st (nth tr 2)) 0.0 f1))
         box [half height pos (nth tr 1)]]
     (shoved-move world index eid e tr box fall ls (conj (vec more) st))))
+
+(defn body-moved
+  "Returns [pos vel on-ground stuck] of living body e with no will of
+  its own after one tick of travel from its speed."
+  [world e half height]
+  (let [h (num/f32 half) ht (num/f32 height)
+        e (dissoc e :move :jump)
+        f (fluid-at world e h ht)
+        tr (physics-move world e (:vel e) h ht f)]
+    [(nth tr 0) (nth tr 1) (nth tr 2)
+     (motion/stuck-speed (:chunks world) (nth tr 0) half height true)]))

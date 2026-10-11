@@ -6,6 +6,7 @@
             [collider.game.attribute :as attribute]
             [collider.game.book :as book]
             [collider.game.glide :as glide]
+            [collider.game.jump :as jump]
             [collider.game.entity :as entity]
             [collider.game.food :as food]
             [collider.game.mode :as game-mode]
@@ -476,10 +477,18 @@
 (defn- known-move [vel]
   {:client-vel (or vel still) :client-moved? true})
 
+(defn- jumps? [e changes new]
+  (and new (:on-ground e) (false? (:on-ground changes))
+       (> (v/y new) (v/y (:pos e)))))
+
 (defn- free-move [w eid e changes client?]
   (let [new (some-> (:pos changes) clamped v/v3)
         vel (move-vel (:pos e) new)
-        changes (cond-> changes new (assoc :pos new))]
+        changes (cond-> changes
+                  new (assoc :pos new)
+                  (jumps? e changes new)
+                  (assoc :vel (jump/jumped w e (or (:vel e) [0.0 0.0 0.0]))
+                         :needs-sync? true))]
     (update-entity w eid merge changes
                    (when client? (known-move vel))
                    (fall-changes e changes vel))))
