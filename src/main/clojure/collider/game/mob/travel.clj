@@ -282,11 +282,11 @@
 (defn- moved-fluid
   "Returns the fluid over mob e after the move mv by d and its
   velocity with the push of that fluid. A mob that stays in the same
-  dry cells keeps the fluid it had. A player, whose client has the
-  say, takes no push after its move."
+  dry cells keeps the fluid it had, and so does a player, whose
+  client has the say, with no push after its move."
   [world e d ^Move mv half height f]
-  (cond (dry-still? e mv half height f) [f (after-vel e mv)]
-        (= :player (:type e)) [nil (after-vel e mv)]
+  (cond (or (dry-still? e mv half height f) (= :player (:type e)))
+        [f (after-vel e mv)]
         :else (let [g (fluid-after world e (phys/pos mv) half height d)]
                 [g (carried d (after-vel e mv) (:push g))])))
 
