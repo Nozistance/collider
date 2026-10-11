@@ -1,6 +1,6 @@
 (ns collider.game.item-predicate
-  "Item predicates: the stacks a lock, a loot condition or a command
-  test takes. A predicate is read from its tag, then tested."
+  "The item predicates that pick the stacks a lock, a loot condition
+  or a command test takes."
   (:require [collider.data :as data]
             [collider.game.command.components :as cs]
             [collider.game.command.decode :as dfu
@@ -262,8 +262,8 @@
 
 (defn matches?
   "Returns true when stack s, nil for none, passes item predicate p.
-  Its predicates may also be a map of type to value, as loot holds
-  them, and a bound a number."
+  Its predicates may also be keyed by type alone, as loot holds
+  them, and a bound may be a number."
   [p s]
   (let [s (or s {:item :air :count 0})]
     (and (or (nil? (:items p)) (contains? (members "item" (:items p))
