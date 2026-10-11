@@ -19,7 +19,7 @@
                    (if (str/starts-with? s "#") (tag-items s) [(data/kebab s)])))
         (if (sequential? v) v [v])))
 
-(defn- counted? [c ^long n]
+(defn- in-count? [c ^long n]
   (if (number? c)
     (= (long c) n)
     (<= (long (:min c Long/MIN_VALUE)) n (long (:max c Long/MAX_VALUE)))))
@@ -36,6 +36,6 @@
   (and (or (nil? (:items lock))
            (boolean (and s (contains? (items-of (:items lock)) (:item s)))))
        (or (nil? (:count lock))
-           (counted? (:count lock) (if s (stack/size s) 0)))
+           (in-count? (:count lock) (if s (stack/size s) 0)))
        (every? #(holds? s %) (:components lock))
        (empty? (:predicates lock))))
